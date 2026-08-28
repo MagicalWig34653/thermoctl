@@ -16,16 +16,25 @@ und eine PHP-Oberfläche aus zwei anderen Projekten. Der Stand der Planung ist:
   Zerlegung in fünf Teilprojekte.
 - [`docs/bestandsaufnahme-altsystem.md`](docs/bestandsaufnahme-altsystem.md) — das
   abzulösende System: Services, vollständiges Ist-Schema, MQTT-Topic-Vertrag, bekannte Defekte.
+- [`docs/superpowers/specs/2026-08-28-teilprojekt-1-fundament-design.md`](docs/superpowers/specs/2026-08-28-teilprojekt-1-fundament-design.md)
+  — Spezifikation von Teilprojekt 1: Datenmodell, Auth- und Rechtemodell, Konfiguration,
+  Logging, Container, CI.
+- [`docs/technisches_konzept.md`](docs/technisches_konzept.md) — **unverbindlich.** Fachliches
+  Zielbild für Bedienung und Gerätetypen aus anderem Kontext. Setzt Home Assistant als
+  Einstiegspunkt voraus, was der Rahmenentwurf ausdrücklich verworfen hat. Bei Widerspruch
+  gilt der Rahmenentwurf. Übernommen wurden daraus vier Punkte, siehe TP1-Spezifikation.
 
-**Beide Dokumente vor der ersten Änderung lesen.** Sie ersparen es, zwei fremde Projekte
-erneut zu durchsuchen.
+**Rahmenentwurf und Bestandsaufnahme vor der ersten Änderung lesen.** Sie ersparen es, zwei
+fremde Projekte erneut zu durchsuchen.
 
 ## Stand
 
-Der Rahmen ist abgestimmt, **noch keine Zeile Implementierung**. Der nächste Schritt ist,
-Teilprojekt 1 (Fundament) auszubrainstormen — Schwerpunkt Datenmodell und Auth-Modell —,
-daraus eine Spezifikation zu schreiben und daraus einen Implementierungsplan. Nicht vorher
-mit dem Bauen anfangen.
+**Der aktuelle Stand steht in [`docs/STATUS.md`](docs/STATUS.md). Diese Datei zuerst lesen.**
+Sie sagt, welches Teilprojekt läuft, was zuletzt fertig wurde und was als Nächstes ansteht.
+
+Git allein reicht dafür nicht: Commits sagen, was getan wurde, aber nicht, was als Nächstes
+dran ist und warum. `STATUS.md` wird deshalb **im selben Commit** wie die Änderung
+nachgezogen, die sie beschreibt — nicht hinterher, sonst verfällt sie.
 
 ## Technischer Rahmen (entschieden, nicht neu verhandeln)
 
@@ -73,3 +82,27 @@ Zwei Defekte des Altsystems ausdrücklich **nicht** übernehmen:
   am Sollwert in jedem Zyklus um. `thermoctl` braucht Hysterese und Mindestschaltdauer.
 - Zeitpläne liegen dort als positionell interpretierter JSON-Blob mit acht Slots. Hier werden
   sie als echte Zeilen modelliert.
+
+## Arbeitsweise
+
+Verbindlich für alle Sessions.
+
+**Aufgaben gehen an Agents, nicht an die Hauptsession.** Grobe Zielverteilung: rund 60 % an
+Codex, der Rest an Claude-Code-Agents. Codex bekommt scharf umrissene, testbare Einheiten —
+Modelle, Migrationen, CRUD, Templates, Workflows. In der Hauptsession bleiben Auth- und
+Berechtigungslogik sowie das Zusammenführen.
+
+**Modelle:** Claude-Agents laufen auf Sonnet, Codex auf seinem Standardmodell. **Opus nur nach
+ausdrücklicher Genehmigung des Nutzers** — vorher fragen, nicht danach.
+
+**Review kreuzweise.** Wer implementiert hat, reviewt nicht. Codex-Arbeit prüft ein
+Claude-Agent und umgekehrt. Sicherheitsrelevantes (Auth, Rechteprüfung, Regellogik) wird
+zusätzlich in der Hauptsession gegengelesen — Grundsatz 7.
+
+**Ein Worktree je Aufgabe**, eigener Branch, Merge nach bestandenem Review.
+
+**Jede abgeschlossene Änderung wird committet**, zusammen mit dem nachgezogenen `STATUS.md`
+und den Haken im Implementierungsplan. Keine Sammelcommits über mehrere Aufgaben.
+
+**Die CI muss grün sein**, bevor etwas nach `main` geht: Ruff, Typprüfung, Tests gegen SQLite
+**und** MariaDB, Alembic vorwärts und rückwärts, Docker-Image-Build.
