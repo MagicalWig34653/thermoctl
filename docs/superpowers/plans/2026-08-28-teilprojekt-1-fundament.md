@@ -34,6 +34,12 @@ Diese Bedingungen gelten für **jede** Aufgabe, auch wenn sie dort nicht wiederh
 - **Jede `String`-Spalte bekommt eine ausdrückliche Länge.** SQLite ignoriert sie, MariaDB nicht.
 - **`datetime.UTC` statt `timezone.utc`.** Ruff verlangt unter `target-version = py314`
   die kürzere Form (Regel UP017); die alte Schreibweise lässt die Prüfung fehlschlagen.
+- **Verletzte `CheckConstraint`s kommen je Datenbank als andere Ausnahme an.** SQLite meldet
+  `IntegrityError`, MariaDB den Fehler 4025, den pymysql auf `OperationalError` abbildet. Die
+  Bedingung greift in beiden Fällen. Tests, die eine CHECK-Verletzung erwarten, prüfen deshalb
+  auf `CONSTRAINT_FEHLER` aus `tests/hilfen.py`. Für verletzte `UNIQUE`-Bedingungen gilt das
+  **nicht** — die sind überall `IntegrityError`, und dort die Sammelkonstante zu verwenden
+  würde den Test schwächer machen, als er sein soll.
 - **Alle Zeitstempel in UTC, zeitzonenlos** (`DateTime(timezone=False)`), erzeugt über
   `datetime.now(UTC).replace(tzinfo=None)`. Einzige Ausnahme: `schedule_point`
   speichert lokale Zeit als `minute_of_day`.
