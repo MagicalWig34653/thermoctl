@@ -3,12 +3,18 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
+from fastapi.testclient import TestClient
 from sqlalchemy import URL, Engine, create_engine, make_url, text
 from sqlalchemy.orm import Session
 
-from thermoctl.config import Settings
+from tests.hilfen import quelle
+from thermoctl.app import create_app
+from thermoctl.auth.dependencies import get_session
+from thermoctl.auth.passwords import hash_password
+from thermoctl.config import Settings, get_settings
 from thermoctl.db.base import Base
 from thermoctl.db.engine import create_engine_from_settings
+from thermoctl.db.models.identity import AccessGroup, User, UserAccessGroup
 
 TEST_DATABASE_URL = os.environ.get("THERMOCTL_TEST_DATABASE_URL", "sqlite:///./test.db")
 
@@ -131,3 +137,43 @@ def session(engine: Engine) -> Iterator[Session]:
         sitzung.close()
         transaktion.rollback()
         verbindung.close()
+
+
+@pytest.fixture
+def client(
+    settings: Settings, session: Session, monkeypatch: pytest.MonkeyPatch
+) -> Iterator[TestClient]:
+    """Baut die App gegen die Testdatenbank und laesst Anfragen in derselben,
+    per Test zurueckgerollten Transaktion laufen wie die Fixture ``session`` —
+    sonst saehe ein Test nicht, was ein per HTTP ausgeloester Vorgang geschrieben hat.
+    """
+    monkeypatch.setenv("THERMOCTL_DATABASE_URL", settings.database_url)
+    monkeypatch.setenv("THERMOCTL_SECRET_KEY", settings.secret_key.get_secret_value())
+    get_settings.cache_clear()
+    app = create_app()
+
+    def _session_override() -> Iterator[Session]:
+        yield session
+
+    app.dependency_overrides[get_session] = _session_override
+    yield TestClient(app)
+    get_settings.cache_clear()
+
+
+@pytest.fixture
+def benutzer(session: Session) -> User:
+    """Legt den Benutzer ``lino`` mit gehashtem Passwort und der Gruppe *Verwaltung* an."""
+    quelle(session, "web")
+    nutzer = User(
+        username="lino",
+        display_name="Lino",
+        password_hash=hash_password("passwort-lang-genug"),
+    )
+    session.add(nutzer)
+    session.flush()
+    gruppe = AccessGroup(name="Verwaltung", is_builtin=True)
+    session.add(gruppe)
+    session.flush()
+    session.add(UserAccessGroup(user_id=nutzer.id, access_group_id=gruppe.id))
+    session.flush()
+    return nutzer
