@@ -82,7 +82,12 @@ def hat_recht(principal: Principal, code: str, zone_id: int | None = None) -> bo
 
 def require(principal: Principal, code: str, zone_id: int | None = None) -> None:
     if not hat_recht(principal, code, zone_id):
-        raise Forbidden(f"Recht {code} fehlt" + (f" fuer Zone {zone_id}" if zone_id else ""))
+        # `is not None` und nicht `if zone_id`: eine Kennung 0 waere sonst als
+        # "keine Zone" behandelt. Heute vergeben beide Datenbanken ab 1, aber die
+        # Annahme steht nirgends geschrieben — und in einer Fehlermeldung, die eine
+        # Rechtsverweigerung erklaert, ist eine fehlende Zonenangabe irrefuehrend.
+        zusatz = f" fuer Zone {zone_id}" if zone_id is not None else ""
+        raise Forbidden(f"Recht {code} fehlt{zusatz}")
 
 
 def visible_zones(session: Session, principal: Principal, code: str) -> list[Zone]:
