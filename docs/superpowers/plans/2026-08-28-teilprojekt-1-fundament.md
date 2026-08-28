@@ -1636,7 +1636,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from thermoctl.db.models.schedule import SchedulePoint
-from tests.hilfen import zone_anlegen, modus_anlegen
+from tests.hilfen import CONSTRAINT_FEHLER, modus_anlegen, zone_anlegen
 
 
 def test_zwei_punkte_zur_selben_zeit_sind_ausgeschlossen(session: Session) -> None:
@@ -1657,7 +1657,7 @@ def test_wochentag_ausserhalb_1_bis_7_wird_abgewiesen(session: Session, wochenta
     modus = modus_anlegen(session, f"m{wochentag}")
     session.add(SchedulePoint(zone_id=zone.id, weekday=wochentag, minute_of_day=0,
                               setpoint_mode_id=modus.id))
-    with pytest.raises(IntegrityError):
+    with pytest.raises(CONSTRAINT_FEHLER):
         session.flush()
 
 
@@ -1667,7 +1667,7 @@ def test_minute_ausserhalb_des_tages_wird_abgewiesen(session: Session, minute: i
     modus = modus_anlegen(session, f"mm{minute}")
     session.add(SchedulePoint(zone_id=zone.id, weekday=1, minute_of_day=minute,
                               setpoint_mode_id=modus.id))
-    with pytest.raises(IntegrityError):
+    with pytest.raises(CONSTRAINT_FEHLER):
         session.flush()
 
 
@@ -1798,7 +1798,7 @@ from sqlalchemy.orm import Session
 
 from thermoctl.db.base import utcnow
 from thermoctl.db.models.override import ZoneOverride
-from tests.hilfen import modus_anlegen, quelle, zone_anlegen
+from tests.hilfen import CONSTRAINT_FEHLER, modus_anlegen, quelle, zone_anlegen
 
 
 def test_entweder_modus_oder_temperatur_aber_nicht_beides(session: Session) -> None:
@@ -1807,7 +1807,7 @@ def test_entweder_modus_oder_temperatur_aber_nicht_beides(session: Session) -> N
     session.add(ZoneOverride(zone_id=zone.id, setpoint_mode_id=modus.id,
                              temperature_c=Decimal("22.0"), starts_at=utcnow(),
                              source_id=quelle(session, "web").id))
-    with pytest.raises(IntegrityError):
+    with pytest.raises(CONSTRAINT_FEHLER):
         session.flush()
 
 
@@ -1815,7 +1815,7 @@ def test_weder_modus_noch_temperatur_wird_abgewiesen(session: Session) -> None:
     zone = zone_anlegen(session, "z2")
     session.add(ZoneOverride(zone_id=zone.id, starts_at=utcnow(),
                              source_id=quelle(session, "web").id))
-    with pytest.raises(IntegrityError):
+    with pytest.raises(CONSTRAINT_FEHLER):
         session.flush()
 
 
@@ -2429,7 +2429,7 @@ def test_es_gibt_genau_eine_einstellungszeile(session: Session) -> None:
     session.add(Setting(id=1, timezone="Europe/Berlin", frost_protection_mode_id=modus.id))
     session.flush()
     session.add(Setting(id=2, timezone="Europe/Berlin", frost_protection_mode_id=modus.id))
-    with pytest.raises(IntegrityError):
+    with pytest.raises(CONSTRAINT_FEHLER):
         session.flush()
 
 
