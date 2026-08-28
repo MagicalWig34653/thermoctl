@@ -34,6 +34,12 @@ Diese Bedingungen gelten für **jede** Aufgabe, auch wenn sie dort nicht wiederh
 - **Jede `String`-Spalte bekommt eine ausdrückliche Länge.** SQLite ignoriert sie, MariaDB nicht.
 - **`datetime.UTC` statt `timezone.utc`.** Ruff verlangt unter `target-version = py314`
   die kürzere Form (Regel UP017); die alte Schreibweise lässt die Prüfung fehlschlagen.
+- **Der pysqlite-Treiber braucht ausdrückliche Transaktionssteuerung.** Er beginnt
+  Transaktionen nicht von sich aus und committet zwischendurch eigenmächtig; SAVEPOINT und
+  Rollback greifen dann nicht, und Daten lecken zwischen Tests. `thermoctl/db/engine.py` setzt
+  deshalb für SQLite `isolation_level = None` und gibt `BEGIN` selbst aus.
+- **`TypeVar` ist unter py314 überholt.** Ruff verlangt die Generics-Syntax nach PEP 695
+  (`def f[T](...)`), Regel UP047.
 - **Kein `CHECK` auf einer Spalte mit `AUTO_INCREMENT`.** MariaDB weist das mit Fehler 1901
   ab, SQLite kennt die Einschränkung nicht. Betrifft `setting.id`: dort gehört
   `autoincrement=False` an die Spalte — bei einer Tabelle mit genau einer Zeile ohnehin das
@@ -3450,14 +3456,11 @@ Erwartet: FAIL, `ModuleNotFoundError`
 ```python
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import TypeVar
 
 from sqlalchemy.orm import Session
 
 from thermoctl.db.models.operations import Setting
 from thermoctl.db.models.zone import Zone
-
-T = TypeVar("T")
 
 
 @dataclass(frozen=True)
@@ -3470,7 +3473,7 @@ class Regelparameter:
     window_resume_delay_seconds: int
 
 
-def _oder_standard(zonenwert: T | None, standard: T) -> T:
+def _oder_standard[T](zonenwert: T | None, standard: T) -> T:
     """Nur None gilt als 'nicht gesetzt' — 0 und 0.0 sind gueltige Zonenwerte."""
     return standard if zonenwert is None else zonenwert
 
