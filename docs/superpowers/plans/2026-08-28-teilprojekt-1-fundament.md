@@ -32,8 +32,10 @@ Diese Bedingungen gelten für **jede** Aufgabe, auch wenn sie dort nicht wiederh
 - **`group` ist reserviert.** Die Gruppentabelle heißt `access_group`, die Zuordnung
   `user_access_group`.
 - **Jede `String`-Spalte bekommt eine ausdrückliche Länge.** SQLite ignoriert sie, MariaDB nicht.
+- **`datetime.UTC` statt `timezone.utc`.** Ruff verlangt unter `target-version = py314`
+  die kürzere Form (Regel UP017); die alte Schreibweise lässt die Prüfung fehlschlagen.
 - **Alle Zeitstempel in UTC, zeitzonenlos** (`DateTime(timezone=False)`), erzeugt über
-  `datetime.now(timezone.utc).replace(tzinfo=None)`. Einzige Ausnahme: `schedule_point`
+  `datetime.now(UTC).replace(tzinfo=None)`. Einzige Ausnahme: `schedule_point`
   speichert lokale Zeit als `minute_of_day`.
 - **Keine Secrets im Repo** — auch nicht als Vorgabewert, auch nicht in Beispielen, auch nicht
   in Logs. In `.env.example` bleiben `THERMOCTL_DATABASE_URL` und `THERMOCTL_SECRET_KEY`
@@ -425,7 +427,7 @@ import json
 import logging
 import sys
 from contextvars import ContextVar
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from thermoctl.config import Settings
@@ -471,7 +473,7 @@ def mask(value: object) -> object:
 class JsonFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
         daten: dict[str, Any] = {
-            "timestamp": datetime.fromtimestamp(record.created, timezone.utc).isoformat(),
+            "timestamp": datetime.fromtimestamp(record.created, UTC).isoformat(),
             "level": record.levelname,
             "logger": record.name,
             "message": record.getMessage(),
@@ -501,8 +503,19 @@ def configure_logging(settings: Settings) -> None:
     wurzel.setLevel(settings.log_level.upper())
 ```
 
-Die Maskierung läuft im Formatter und damit an der letzten Stelle vor der Ausgabe. Ein
-Aufrufer, der versehentlich ein Passwort mitgibt, kann sie so nicht umgehen.
+Die Maskierung greift über einen `logging.Filter` auf den strukturierten Zusatzfeldern
+eines Datensatzes und wirkt dadurch in **beiden** Ausgabeformaten, nicht nur im JSON-Format.
+
+**Ihre Grenze gehört benannt:** Der Meldungstext selbst wird nicht maskiert. `log.info(
+"passwort=%s", geheim)` ist zum Zeitpunkt der Ausgabe fertiger Text, und Freitext lässt sich
+nicht zuverlässig auf Geheimnisse absuchen, ohne entweder zu viel zu schwärzen oder zu wenig.
+Daraus folgt die Regel für allen Code in diesem Projekt: **Werte gehören in `extra`, niemals
+in die Meldung.** Eine Schutzschicht, der man mehr zutraut als sie leistet, ist gefährlicher
+als eine, deren Grenze bekannt ist.
+
+Die Schlüsselerkennung vergleicht nicht auf Gleichheit, sondern normalisiert (Kleinschreibung,
+Trennzeichen entfernt) und sucht nach Kernbegriffen. Sonst rutschen die zusammengesetzten
+Namen durch, die in der Praxis überwiegen — `mqtt_password`, `client_secret`, `refresh_token`.
 
 - [ ] **Step 4: Tests laufen lassen**
 
@@ -873,7 +886,7 @@ zwischen SQLite und MariaDB müssen hier einmal richtig abgefangen werden.
 - [ ] **Step 1: `thermoctl/db/base.py` schreiben**
 
 ```python
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import DateTime, MetaData
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -892,7 +905,7 @@ NAMENSKONVENTION = {
 
 def utcnow() -> datetime:
     """UTC ohne Zonenangabe — MariaDB DATETIME traegt keine."""
-    return datetime.now(timezone.utc).replace(tzinfo=None)
+    return datetime.now(UTC).replace(tzinfo=None)
 
 
 class Base(DeclarativeBase):
