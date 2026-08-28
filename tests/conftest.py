@@ -177,3 +177,16 @@ def benutzer(session: Session) -> User:
     session.add(UserAccessGroup(user_id=nutzer.id, access_group_id=gruppe.id))
     session.flush()
     return nutzer
+
+@pytest.fixture(autouse=True)
+def _ohne_echte_wartezeit(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Die Anmeldedrosselung schlaeft nicht wirklich, waehrend Tests laufen.
+
+    Die Drosselung selbst bleibt aktiv und wird von
+    `test_fehlversuche_werden_zunehmend_verzoegert` geprueft — jener Test ersetzt
+    `schlafen` selbst und sieht diese Fixture dadurch gar nicht. Ohne sie kostet
+    jede Anmeldung in jedem Test echte Sekunden: die Suite lief dadurch von zwei
+    auf dreiunddreissig Sekunden hoch, und eine langsame Suite wird seltener
+    ausgefuehrt.
+    """
+    monkeypatch.setattr("thermoctl.web.auth_views.schlafen", lambda sekunden: None)

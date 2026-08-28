@@ -121,12 +121,16 @@ def test_sitzungsdauer_kommt_aus_der_einstellungszeile(
     client: TestClient, benutzer, session: Session
 ) -> None:
     einstellungen_anlegen(session, sitzungsdauer_s=3600)
-    vor_der_anmeldung = utcnow()
+    # Auf ganze Sekunden abgeschnitten: MariaDB speichert DATETIME ohne
+    # Praezisionsangabe sekundengenau und verwirft die Bruchteile. Ein
+    # mikrosekundengenauer Vergleich schluege dort um Millisekunden fehl,
+    # ohne dass fachlich etwas falsch waere.
+    vor_der_anmeldung = utcnow().replace(microsecond=0)
     client.post(
         "/login", data={"username": "lino", "password": "passwort-lang-genug"},
         follow_redirects=False,
     )
-    nach_der_anmeldung = utcnow()
+    nach_der_anmeldung = utcnow().replace(microsecond=0) + timedelta(seconds=1)
     ablauf = session.query(Session_).one().expires_at
     # 3600 s aus der Einstellungszeile statt der eingebauten 14-Tage-Vorgabe.
     assert (vor_der_anmeldung + timedelta(seconds=3600)) <= ablauf
