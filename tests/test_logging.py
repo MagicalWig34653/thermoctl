@@ -1,7 +1,8 @@
 import json
 import logging
 
-from thermoctl.logging import JsonFormatter, mask, request_id_var
+from thermoctl.config import Settings
+from thermoctl.logging import JsonFormatter, configure_logging, mask, request_id_var
 
 
 def test_ausgabe_ist_gueltiges_json() -> None:
@@ -50,3 +51,59 @@ def test_maskierte_felder_erscheinen_nicht_in_der_ausgabe() -> None:
     text = JsonFormatter().format(satz)
     assert "streng-geheim" not in text
     assert "***" in text
+
+
+def test_maskierung_erkennt_zusammengesetzte_schluessel() -> None:
+    roh = {
+        "mqtt_password": "geheim1",
+        "client_secret": "geheim2",
+        "refresh_token": "geheim3",
+        "broker_password": "geheim4",
+        "access_token": "geheim5",
+    }
+    ergebnis = mask(roh)
+    assert ergebnis == {
+        "mqtt_password": "***",
+        "client_secret": "***",
+        "refresh_token": "***",
+        "broker_password": "***",
+        "access_token": "***",
+    }
+
+
+def test_username_wird_nicht_maskiert() -> None:
+    # "username" enthaelt keinen Kernbegriff (password/secret/token/...) und
+    # ist selbst kein Geheimnis — er darf lesbar bleiben.
+    assert mask({"username": "lino", "mqtt_username": "lino"}) == {
+        "username": "lino",
+        "mqtt_username": "lino",
+    }
+
+
+def test_maskierung_wirkt_auch_bei_textformat(capsys: object) -> None:
+    settings = Settings(
+        _env_file=None,
+        database_url="sqlite://",
+        secret_key="a" * 32,
+        log_format="text",
+    )
+    configure_logging(settings)
+    logger = logging.getLogger("test.textformat")
+    logger.info("verbindung", extra={"mqtt_password": "streng-geheim"})
+
+    ausgabe = capsys.readouterr().out  # type: ignore[attr-defined]
+    assert "streng-geheim" not in ausgabe
+    assert "***" in ausgabe
+
+
+def test_geheimnis_in_meldungstext_bleibt_sichtbar() -> None:
+    # Bewusste, dokumentierte Grenze: Die Maskierung wirkt nur auf strukturierte
+    # Zusatzfelder (extra=...), nicht auf den fertig formatierten Meldungstext.
+    # `log.info("passwort=%s", geheim)` erzeugt zur Ausgabezeit bereits Klartext,
+    # der nicht mehr rueckwirkend maskiert werden kann. Dieser Test haelt das
+    # bewusst fest — er ist kein Fehler, der "repariert" werden soll.
+    satz = logging.LogRecord(
+        "t", logging.INFO, "p", 1, "passwort=streng-geheim", None, None
+    )
+    text = JsonFormatter().format(satz)
+    assert "streng-geheim" in text
