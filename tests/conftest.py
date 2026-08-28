@@ -15,6 +15,7 @@ from thermoctl.config import Settings, get_settings
 from thermoctl.db.base import Base
 from thermoctl.db.engine import create_engine_from_settings
 from thermoctl.db.models.identity import AccessGroup, User, UserAccessGroup
+from thermoctl.db.models.lookup import PERMISSIONS, Permission
 
 TEST_DATABASE_URL = os.environ.get("THERMOCTL_TEST_DATABASE_URL", "sqlite:///./test.db")
 
@@ -137,6 +138,36 @@ def session(engine: Engine) -> Iterator[Session]:
         sitzung.close()
         transaktion.rollback()
         verbindung.close()
+
+
+@pytest.fixture(autouse=True)
+def _berechtigungen_fuer_einrichtungsassistenten(
+    request: pytest.FixtureRequest, session: Session
+) -> None:
+    """Seedet die Berechtigungstabelle innerhalb der Testtransaktion von ``tests/test_setup.py``.
+
+    In Produktion sind alle Codes aus `Permission` bereits durch die Migration
+    `3685e30419a4_nachschlagetabellen` vorhanden, bevor der Einrichtungsassistent je
+    laeuft. `Base.metadata.create_all()` in der Fixture ``engine`` legt dagegen nur das
+    Schema an, keine Referenzdaten — ohne diese Zeilen schluege
+    `einrichtung_durchfuehren()` mit einem `KeyError` fehl, weil sie den Beispielgruppen
+    vorhandene Berechtigungen zuordnet, statt sie selbst anzulegen.
+
+    Bewusst nicht in der session-weiten Fixture ``engine`` seedebar: dort waeren die
+    Zeilen fuer die gesamte Testsitzung sichtbar und wuerden `test_lookup.py`s
+    `test_berechtigung_kennt_ihren_geltungsbereich` an der UNIQUE-Bedingung auf `code`
+    scheitern lassen, die dort bewusst ein frisches `Permission("zone.read")` anlegt.
+    Deshalb hier je Test, beschraenkt auf `test_setup.py`, und ueber dieselbe Sitzung
+    wie der Test selbst — die Zeilen verschwinden mit deren Rollback wieder.
+    """
+    if request.node.fspath.basename != "test_setup.py":
+        return
+    vorhandene = {p.code for p in session.query(Permission)}
+    for code, beschreibung, zonenbezogen in PERMISSIONS:
+        if code not in vorhandene:
+            session.add(Permission(code=code, description=beschreibung,
+                                   is_zone_scoped=zonenbezogen))
+    session.flush()
 
 
 @pytest.fixture

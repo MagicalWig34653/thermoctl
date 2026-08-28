@@ -1,0 +1,34 @@
+{% extends "basis.html" %}
+
+{% block titel %}Einrichtung – thermoctl{% endblock %}
+
+{% block inhalt %}
+<main>
+    <h1>Einrichtung</h1>
+    <p>
+        Dieser Assistent legt den ersten Verwalter an. Er ist nur erreichbar, solange
+        noch kein Benutzer existiert, und danach dauerhaft geschlossen.
+    </p>
+    {% if fehler %}
+    <p role="alert">{{ fehler }}</p>
+    {% endif %}
+    <form method="post" action="/setup">
+        <label for="setup_token">Einrichtungs-Token</label>
+        <input type="text" id="setup_token" name="setup_token" required autofocus>
+
+        <label for="username">Benutzername</label>
+        <input type="text" id="username" name="username" autocomplete="username" required>
+
+        <label for="display_name">Anzeigename</label>
+        <input type="text" id="display_name" name="display_name" required>
+
+        <label for="password">Passwort</label>
+        <input type="password" id="password" name="password" autocomplete="new-password" required>
+
+        <label for="timezone">Zeitzone</label>
+        <input type="text" id="timezone" name="timezone" value="Europe/Berlin" required>
+
+        <button type="submit">Einrichtung abschliessen</button>
+    </form>
+</main>
+{% endblock %}
