@@ -15,7 +15,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=9.1", "httpx>=0.28", "ruff>=0.16", "mypy>=1.18"]
+dev = ["pytest>=9.1", "httpx2>=2.12", "ruff>=0.16", "mypy>=1.18"]
 
 [project.scripts]
 thermoctl = "thermoctl.cli:main"
