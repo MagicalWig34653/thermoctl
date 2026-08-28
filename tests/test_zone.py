@@ -60,5 +60,10 @@ def test_nachkommastelle_bleibt_erhalten(session: Session) -> None:
     session.add(ZoneSetpoint(zone_id=zone.id, setpoint_mode_id=modus.id,
                              temperature_c=Decimal("18.5")))
     session.commit()
+    # Ohne expire_all() liefert die Abfrage das Objekt aus dem Speicher zurueck --
+    # die Sitzung wird mit expire_on_commit=False gebaut. Der Test wuerde dann auch
+    # bestehen, wenn die Datenbank die Nachkommastelle verschluckt. Erst nach dem
+    # Verfallenlassen wird wirklich neu geladen.
+    session.expire_all()
     geladen = session.query(ZoneSetpoint).filter_by(zone_id=zone.id).one()
     assert geladen.temperature_c == Decimal("18.5")
