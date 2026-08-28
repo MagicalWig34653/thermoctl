@@ -10,7 +10,7 @@ Container und CI. Keine Geräteanbindung, keine Regellogik.
 kennt keinen Adapter; HTMX-Views (`web/`) und REST (`api/`) sind dünne Schichten darüber.
 Persistenz über SQLAlchemy 2.0 mit Alembic, lauffähig auf SQLite **und** MariaDB.
 
-**Tech Stack:** Python 3.12, FastAPI, SQLAlchemy 2.0, Alembic, pydantic-settings, argon2-cffi,
+**Tech Stack:** Python 3.14, FastAPI, SQLAlchemy 2.0, Alembic, pydantic-settings, argon2-cffi,
 Jinja2, HTMX, Bootstrap 5, pytest, Ruff, mypy, Docker, GitHub Actions.
 
 **Grundlage:** [TP1-Spezifikation](../specs/2026-08-28-teilprojekt-1-fundament-design.md).
@@ -20,7 +20,12 @@ Bei Widerspruch gilt die Spezifikation; dieser Plan setzt sie nur um.
 
 Diese Bedingungen gelten für **jede** Aufgabe, auch wenn sie dort nicht wiederholt werden.
 
-- **Python 3.12.** Keine Abhängigkeit, die nur unter einer anderen Version läuft.
+- **Python 3.14** (3.14.6 im vorhandenen `.venv`). Keine Abhängigkeit, die nur unter einer
+  älteren Version läuft.
+- **PEP 649 ist in 3.14 aktiv:** Annotationen werden verzögert ausgewertet. SQLAlchemy löst
+  `Mapped[...]` zur Laufzeit auf und braucht dafür eine Fassung, die damit umgeht — daher
+  die Untergrenze `sqlalchemy>=2.0.52`. Wer sie senkt, bekommt Fehler beim Aufbau der
+  Modelle, die wie Tippfehler aussehen, aber keine sind.
 - **Zwei Datenbanken.** Jede Änderung muss unter SQLite *und* MariaDB laufen. Kein `ENUM`,
   kein `SET`, keine JSON-Spalte als Datenmodell, keine partiellen Indizes, keine
   datenbankspezifischen Funktionen.
@@ -105,21 +110,21 @@ unabhängig und können parallel laufen, ebenso 16 und 17.
 [project]
 name = "thermoctl"
 version = "0.1.0"
-requires-python = ">=3.12"
+requires-python = ">=3.14"
 dependencies = [
-    "fastapi>=0.115",
-    "uvicorn[standard]>=0.32",
-    "sqlalchemy>=2.0.36",
-    "alembic>=1.14",
-    "pydantic-settings>=2.6",
-    "argon2-cffi>=23.1",
-    "jinja2>=3.1",
-    "python-multipart>=0.0.17",
-    "pymysql>=1.1",
+    "fastapi>=0.141",
+    "uvicorn[standard]>=0.52",
+    "sqlalchemy>=2.0.52",
+    "alembic>=1.19",
+    "pydantic-settings>=2.15",
+    "argon2-cffi>=25.1",
+    "jinja2>=3.1.6",
+    "python-multipart>=0.0.32",
+    "pymysql>=1.2",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.3", "httpx>=0.28", "ruff>=0.8", "mypy>=1.13"]
+dev = ["pytest>=9.1", "httpx>=0.28", "ruff>=0.16", "mypy>=1.18"]
 
 [project.scripts]
 thermoctl = "thermoctl.cli:main"
@@ -133,7 +138,7 @@ include = ["thermoctl*"]
 
 [tool.ruff]
 line-length = 100
-target-version = "py312"
+target-version = "py314"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "S"]
@@ -143,7 +148,7 @@ ignore = ["S101"]  # assert ist in Tests erwünscht
 "tests/*" = ["S105", "S106"]  # Testpasswörter im Klartext sind hier in Ordnung
 
 [tool.mypy]
-python_version = "3.12"
+python_version = "3.14"
 strict = true
 plugins = []
 
@@ -192,11 +197,14 @@ THERMOCTL_SECURE_COOKIES=false
 - [ ] **Step 4: Installieren und alle drei Werkzeuge laufen lassen**
 
 ```bash
-python3.12 -m venv .venv && .venv/bin/pip install -e ".[dev]"
+# .venv besteht bereits mit Python 3.14.6 — nur anlegen, falls es fehlt
+[ -d .venv ] || python3.14 -m venv .venv
+.venv/bin/python --version   # muss 3.14.x melden
+.venv/bin/pip install -e ".[dev]"
 .venv/bin/ruff check . && .venv/bin/mypy thermoctl && .venv/bin/pytest
 ```
 
-Erwartet: Ruff ohne Befund, mypy ohne Fehler, ein bestandener Test.
+Erwartet: `Python 3.14.6`, Ruff ohne Befund, mypy ohne Fehler, ein bestandener Test.
 
 - [ ] **Step 5: Commit**
 
@@ -662,13 +670,13 @@ git commit -m "feat: FastAPI-Rumpfdienst mit Healthcheck und Anfrage-ID"
 - [ ] **Step 1: `docker/Dockerfile` schreiben**
 
 ```dockerfile
-FROM python:3.12-slim AS build
+FROM python:3.14-slim AS build
 WORKDIR /build
 COPY pyproject.toml ./
 COPY thermoctl ./thermoctl
 RUN pip install --no-cache-dir --prefix=/install .
 
-FROM python:3.12-slim
+FROM python:3.14-slim
 RUN useradd --system --create-home --uid 10001 thermoctl
 COPY --from=build /install /usr/local
 COPY migrations /app/migrations
@@ -744,7 +752,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: "3.14"
           cache: pip
       - run: pip install -e ".[dev]"
       - name: Verbindungszeichenfolge setzen
