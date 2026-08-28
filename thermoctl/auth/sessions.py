@@ -7,8 +7,26 @@ from thermoctl.auth.secrets import hash_geheimnis, neues_geheimnis
 from thermoctl.db.base import utcnow
 from thermoctl.db.models.credential import Session_
 from thermoctl.db.models.identity import User
+from thermoctl.db.models.operations import Setting
 
 COOKIE_NAME = "thermoctl_session"
+
+# Deckungsgleich mit dem Spaltendefault von `setting.session_lifetime_seconds`: Rueckfall
+# fuer den Zeitraum, in dem die Einstellungszeile noch nicht existiert (vor dem
+# Setup-Assistenten aus Aufgabe 19).
+STANDARD_SITZUNGS_LEBENSDAUER_S = 60 * 60 * 24 * 14
+
+
+def sitzungslebensdauer_s(session: Session) -> int:
+    """Liest die konfigurierte Sitzungsdauer aus der Einstellungszeile.
+
+    Faellt auf ``STANDARD_SITZUNGS_LEBENSDAUER_S`` zurueck, solange die Einrichtung
+    noch nicht gelaufen ist und die Zeile deshalb fehlt.
+    """
+    einstellungen = session.get(Setting, 1)
+    if einstellungen is None:
+        return STANDARD_SITZUNGS_LEBENSDAUER_S
+    return einstellungen.session_lifetime_seconds
 
 
 def sitzung_anlegen(

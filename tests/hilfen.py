@@ -38,12 +38,17 @@ def einstellungen_anlegen(
     session: Session,
     hysterese: Decimal = Decimal("0.30"),
     min_ein: int = 300,
+    sitzungsdauer_s: int | None = None,
 ) -> Setting:
+    zusatz: dict[str, int] = {}
+    if sitzungsdauer_s is not None:
+        zusatz["session_lifetime_seconds"] = sitzungsdauer_s
     einstellungen = Setting(
         id=1,
         frost_protection_mode_id=modus_anlegen(session, "frost").id,
         default_hysteresis_k=hysterese,
         default_min_on_seconds=min_ein,
+        **zusatz,
     )
     session.add(einstellungen)
     session.flush()
