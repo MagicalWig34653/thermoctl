@@ -7,7 +7,7 @@ die neue Entitaeten anlegt, ergaenzt hier ihre Anlegefunktion.
 from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session
 
-from thermoctl.db.models.lookup import OperatingMode
+from thermoctl.db.models.lookup import ActorSource, OperatingMode
 from thermoctl.db.models.zone import SetpointMode, Zone
 
 # Eine verletzte CHECK-Bedingung kommt je nach Datenbank als andere Ausnahme an:
@@ -41,3 +41,12 @@ def modus_anlegen(session: Session, code: str, name: str | None = None) -> Setpo
     session.add(modus)
     session.flush()
     return modus
+
+
+def quelle(session: Session, code: str = "web") -> ActorSource:
+    q = session.query(ActorSource).filter_by(code=code).one_or_none()
+    if q is None:
+        q = ActorSource(code=code, label=code)
+        session.add(q)
+        session.flush()
+    return q
