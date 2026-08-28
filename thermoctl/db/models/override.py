@@ -38,6 +38,10 @@ class ZoneOverride(Base):
     ends_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     cancelled_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
-    created_by_user_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    created_by_token_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_by_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("user.id", ondelete="SET NULL"), nullable=True
+    )
+    created_by_token_id: Mapped[int | None] = mapped_column(
+        ForeignKey("api_token.id", ondelete="SET NULL"), nullable=True
+    )
     source_id: Mapped[int] = mapped_column(ForeignKey("actor_source.id"), nullable=False)

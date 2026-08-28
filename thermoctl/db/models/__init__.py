@@ -1,3 +1,21 @@
-from thermoctl.db.models import device, identity, lookup, override, schedule, zone
+from thermoctl.db.models import (
+    credential,
+    device,
+    identity,
+    lookup,
+    operations,
+    override,
+    schedule,
+    zone,
+)
 
-__all__ = ["device", "identity", "lookup", "override", "schedule", "zone"]
+__all__ = [
+    "credential",
+    "device",
+    "identity",
+    "lookup",
+    "operations",
+    "override",
+    "schedule",
+    "zone",
+]
