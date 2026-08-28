@@ -1,9 +1,10 @@
 from decimal import Decimal
 
 from sqlalchemy import Boolean, ForeignKey, Integer, Numeric, String
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from thermoctl.db.base import Base, TimestampMixin
+from thermoctl.db.models.lookup import OperatingMode
 
 
 class SetpointMode(Base):
@@ -20,6 +21,7 @@ class SetpointMode(Base):
     code: Mapped[str] = mapped_column(String(32), unique=True, nullable=False)
     name: Mapped[str] = mapped_column(String(64), nullable=False)
     sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
     is_builtin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
 
@@ -42,6 +44,8 @@ class Zone(TimestampMixin, Base):
         ForeignKey("device.id", ondelete="SET NULL"), nullable=True
     )
     sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
+    operating_mode: Mapped[OperatingMode] = relationship(lazy="joined")
 
     hysteresis_k: Mapped[Decimal | None] = mapped_column(Numeric(4, 2), nullable=True)
     min_on_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
