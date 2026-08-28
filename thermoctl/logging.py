@@ -8,6 +8,14 @@ zum Filter). Der Meldungstext selbst (``record.getMessage()``) ist zum Zeitpunkt
 Ausgabe bereits fertig formatierter Text und kann nicht mehr rueckwirkend maskiert
 werden — ``log.info("passwort=%s", geheim)`` bleibt also sichtbar. Wer ein Geheimnis
 loggen will, muss es als Zusatzfeld uebergeben, nie in die Meldung interpolieren.
+
+Einzige bewusste Ausnahme von dieser Regel im gesamten Projekt: ``create_app()`` in
+``thermoctl/app.py`` interpoliert das frisch erzeugte Setup-Token direkt in den
+Meldungstext, statt es als Zusatzfeld zu uebergeben. Das ist der einzige Kanal, ueber
+den der Betreiber beim Erststart an dieses Einmal-Token kommt. Wer hier spaeter ein
+``extra={"setup_token": ...}`` daraus macht, weil das "sauberer" aussieht, schaltet
+die Ausgabe des Tokens ab: Das Segment "token" traegt es sofort in ``KERNBEGRIFFE``.
+Das ist kein Fehler, sondern Absicht — nicht "reparieren".
 """
 
 import json
