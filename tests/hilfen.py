@@ -4,6 +4,9 @@ Wird von mehreren Testdateien benutzt und waechst mit dem Schema mit: jede Aufga
 die neue Entitaeten anlegt, ergaenzt hier ihre Anlegefunktion.
 """
 
+from datetime import datetime
+from decimal import Decimal
+
 from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session
 
@@ -17,7 +20,10 @@ from thermoctl.db.models.lookup import (
     OperatingMode,
     Permission,
 )
-from thermoctl.db.models.zone import SetpointMode, Zone
+from thermoctl.db.models.operations import Setting
+from thermoctl.db.models.override import ZoneOverride
+from thermoctl.db.models.schedule import SchedulePoint
+from thermoctl.db.models.zone import SetpointMode, Zone, ZoneSetpoint
 
 # Eine verletzte CHECK-Bedingung kommt je nach Datenbank als andere Ausnahme an:
 # SQLite meldet IntegrityError, MariaDB meldet Fehler 4025, den pymysql auf
@@ -159,3 +165,50 @@ def token_mit_rechten(
         )
     session.flush()
     return token
+def punkt(weekday: int, minute_of_day: int, modus_code: str) -> SchedulePoint:
+    return SchedulePoint(
+        weekday=weekday, minute_of_day=minute_of_day, setpoint_mode_id=0
+    )
+
+
+def zone_mit_zeitplan(
+    session: Session,
+    name: str,
+    punkte: list[tuple[int, int, str, Decimal]],
+    betriebsart: str = "auto",
+    frostschutz: Decimal = Decimal("16.0"),
+    uebersteuerung: tuple[Decimal, datetime | None] | None = None,
+) -> Zone:
+    frost = modus_anlegen(session, f"frost-{name}", "Frostschutz")
+    session.add(Setting(id=1, timezone="Europe/Berlin", frost_protection_mode_id=frost.id))
+    art = session.query(OperatingMode).filter_by(code=betriebsart).one_or_none()
+    if art is None:
+        art = OperatingMode(code=betriebsart, label=betriebsart)
+        session.add(art)
+        session.flush()
+    zone = Zone(name=name, display_name=name.capitalize(), operating_mode_id=art.id)
+    session.add(zone)
+    session.flush()
+    session.add(ZoneSetpoint(
+        zone_id=zone.id, setpoint_mode_id=frost.id, temperature_c=frostschutz
+    ))
+    for weekday, minute_of_day, modus_code, temperatur in punkte:
+        modus = session.query(SetpointMode).filter_by(code=modus_code).one_or_none()
+        if modus is None:
+            modus = modus_anlegen(session, modus_code)
+        session.add(ZoneSetpoint(
+            zone_id=zone.id, setpoint_mode_id=modus.id, temperature_c=temperatur
+        ))
+        session.add(SchedulePoint(
+            zone_id=zone.id, weekday=weekday, minute_of_day=minute_of_day,
+            setpoint_mode_id=modus.id,
+        ))
+    if uebersteuerung is not None:
+        temperatur, ende = uebersteuerung
+        session.add(ZoneOverride(
+            zone_id=zone.id, temperature_c=temperatur,
+            starts_at=datetime(2026, 8, 31, 0, 0), ends_at=ende,
+            source_id=quelle(session).id,
+        ))
+    session.flush()
+    return zone
