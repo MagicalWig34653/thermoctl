@@ -102,13 +102,34 @@ ausdrücklicher Genehmigung des Nutzers** — vorher fragen, nicht danach.
 Claude-Agent und umgekehrt. Sicherheitsrelevantes (Auth, Rechteprüfung, Regellogik) wird
 zusätzlich in der Hauptsession gegengelesen — Grundsatz 7.
 
+**Jedes Review führt die Testsuite selbst aus** und berichtet das Ergebnis — gegen beide
+Datenbanken, dazu Ruff und mypy. Der Bericht des Umsetzenden ist eine unbelegte Behauptung,
+bis sie jemand unabhängig nachvollzogen hat. (Früher galt hier das Gegenteil, aus
+Sparsamkeit: Der Umsetzende habe die Tests ja schon ausgeführt. Die Folge war, dass niemand
+unabhängig prüfte.)
+
 **Ein Worktree je Aufgabe**, eigener Branch, Merge nach bestandenem Review.
 
 **Jede abgeschlossene Änderung wird committet**, zusammen mit dem nachgezogenen `STATUS.md`
 und den Haken im Implementierungsplan. Keine Sammelcommits über mehrere Aufgaben.
 
 **Die CI muss grün sein**, bevor etwas nach `main` geht: Ruff, Typprüfung, Tests gegen SQLite
-**und** MariaDB, Alembic vorwärts und rückwärts, Docker-Image-Build.
+**und** MariaDB, Alembic vorwärts und rückwärts, Docker-Image-Build, Testabdeckung über der
+Mindestschwelle.
+
+**Zu jedem Endpunkt und jeder Funktion gehört ein Test.** Ein Test, der nur bestätigt, was
+der Code ohnehin tut, zählt nicht — er hebt die Prozentzahl und suggeriert eine Sicherheit,
+die es nicht gibt. Wo eine Zeile nur durch eine künstliche Konstruktion erreichbar wäre, ist
+eine begründete Ausnahme mit `# pragma: no cover` die ehrlichere Antwort.
+
+**Was Tests nicht leisten, muss jemand ansehen.** Zweimal sind grundlegende Fehler durch alle
+Tests und Reviews gerutscht — eine fehlende Startseite, auf die Anmeldung und Navigation
+zeigten, und eine Oberfläche ohne eingebundenes Stylesheet. Beide Male fand es der
+Projektinhaber beim ersten Öffnen der Seite. Der Grund ist strukturell: Das Verfahren prüft,
+ob das Gebaute dem Plan entspricht, nie ob der Plan vollständig war. `tests/test_rauchtest.py`
+fängt inzwischen die häufigsten Fälle — jede Seite antwortet, Weiterleitungen führen
+irgendwohin, jeder Verweis in einer Vorlage ist erreichbar. Ersetzt aber nicht, die Anwendung
+nach einem sichtbaren Teilschritt einmal wirklich zu öffnen.
 
 ### Praktisches zur Agentenarbeit
 
