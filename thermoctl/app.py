@@ -22,6 +22,7 @@ from thermoctl.web import STATIC_DIR
 from thermoctl.web.admin_views import router as admin_router
 from thermoctl.web.auth_views import router as auth_router
 from thermoctl.web.setup_views import router as setup_router
+from thermoctl.web.start_views import router as start_router
 
 log = logging.getLogger(__name__)
 
@@ -76,6 +77,7 @@ def create_app() -> FastAPI:
     )
     app = FastAPI(title="thermoctl", version=thermoctl.__version__, lifespan=_lifespan)
     app.state.session_factory = session_factory(create_engine_from_settings(settings))
+    app.include_router(start_router)
     app.include_router(auth_router)
     app.include_router(setup_router)
     app.include_router(admin_router)
