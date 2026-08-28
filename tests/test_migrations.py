@@ -1,16 +1,32 @@
+import os
 import subprocess
+import sys
 
 import pytest
-from sqlalchemy import Engine, inspect
+from sqlalchemy import Engine
 
 from tests.conftest import TEST_DATABASE_URL
 
 
 def _alembic(*argumente: str) -> subprocess.CompletedProcess[str]:
+    """Ruft Alembic als Unterprozess, damit echte Migrationslaeufe geprueft werden.
+
+    Aufruf ueber ``sys.executable -m alembic`` und nicht ueber das Skript ``alembic``:
+    Nur so liegt das Projektverzeichnis im Modulpfad des Unterprozesses. Beim
+    Skriptaufruf beginnt der Modulpfad in ``.venv/bin``, und das Paket ``thermoctl``
+    ist dann nur ueber die ``.pth`` des editierbaren Installs auffindbar — die
+    unter macOS das Flag ``hidden`` tragen kann und dann beim Start uebersprungen
+    wird. Der Umweg ueber ``-m`` macht den Test unabhaengig davon, wie das venv
+    eingerichtet wurde.
+    """
+    umgebung = {
+        **os.environ,
+        "THERMOCTL_DATABASE_URL": TEST_DATABASE_URL,
+        "THERMOCTL_SECRET_KEY": "t" * 32,
+    }
     return subprocess.run(
-        ["alembic", *argumente],
-        env={"THERMOCTL_DATABASE_URL": TEST_DATABASE_URL, "THERMOCTL_SECRET_KEY": "t" * 32,
-             "PATH": "/usr/bin:/bin:/usr/local/bin:.venv/bin"},
+        [sys.executable, "-m", "alembic", *argumente],
+        env=umgebung,
         capture_output=True,
         text=True,
         check=False,

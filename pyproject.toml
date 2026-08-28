@@ -42,7 +42,7 @@ ignore = ["S101"]  # assert ist in Tests erwünscht
 "tests/*" = ["S105", "S106"]  # Testpasswörter im Klartext sind hier in Ordnung
 # tests/test_migrations.py ruft bewusst das `alembic`-CLI als Unterprozess auf, um
 # echte Migrationsläufe zu prüfen; der Pfad ist auf .venv/bin eingeschränkt.
-"tests/test_migrations.py" = ["S603", "S607", "F401"]
+"tests/test_migrations.py" = ["S603", "S607"]
 # migrations/env.py folgt der Alembic-Konvention: DB-Konfiguration vor Domänen-Importen,
 # nicht alphabetisch nach Modulpfad.
 "migrations/env.py" = ["I001"]
