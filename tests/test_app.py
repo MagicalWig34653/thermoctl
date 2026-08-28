@@ -114,6 +114,14 @@ def test_lifespan_erzeugt_einrichtungstoken_bei_fehlender_einrichtung(
     assert "Einrichtung erforderlich" in ausgabe
 
 
+@pytest.mark.filterwarnings(
+    # Eng auf diesen einen Test begrenzt, nicht global: Er laesst absichtlich eine
+    # Ausnahme durch die Anwendung laufen. Starlettes Fehlerpfad gibt die
+    # In-Memory-Verbindung dabei erst frei, wenn der Aufraeumer sie einsammelt --
+    # nach dem Testende. Die Anwendung schliesst ihre Engine ordentlich (siehe
+    # finally unten); die Warnung sagt hier nichts ueber den Code aus.
+    "ignore:unclosed database:ResourceWarning"
+)
 def test_anfrage_id_wird_nach_ausnahme_zurueckgesetzt(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -130,6 +138,13 @@ def test_anfrage_id_wird_nach_ausnahme_zurueckgesetzt(
 
     ausgangswert = request_id_var.get()
     testclient = TestClient(app, raise_server_exceptions=False)
-    antwort = testclient.get("/wirft-ausnahme")
-    assert antwort.status_code == 500
-    assert request_id_var.get() == ausgangswert
+    try:
+        antwort = testclient.get("/wirft-ausnahme")
+        assert antwort.status_code == 500
+        assert request_id_var.get() == ausgangswert
+    finally:
+        # Dieser Test baut eine eigene Anwendung samt Engine. Ohne Schliessen bleibt
+        # eine Datenbankverbindung offen und die Suite meldet eine ResourceWarning --
+        # eine Warnung, die man nach dem dritten Mal nicht mehr liest.
+        testclient.close()
+        app.state.engine.dispose()

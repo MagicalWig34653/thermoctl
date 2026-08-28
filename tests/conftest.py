@@ -264,3 +264,31 @@ def angemeldeter_client(
             ("setting.manage", None),
         ]
     )
+
+def pytest_configure(config: pytest.Config) -> None:
+    """Sammelstelle fuer die Endpunkte, die waehrend des Laufs tatsaechlich
+    aufgerufen wurden — ausgewertet von tests/test_endpunktabdeckung.py."""
+    config._aufgerufene_endpunkte = set()  # type: ignore[attr-defined]
+
+
+@pytest.fixture(autouse=True)
+def _endpunkte_mitschreiben(request: pytest.FixtureRequest) -> Iterator[None]:
+    """Zeichnet jeden HTTP-Aufruf auf, den ein Test ueber den TestClient macht."""
+    from starlette.testclient import TestClient as _TestClient
+
+    original = _TestClient.request
+    gesammelt = request.config._aufgerufene_endpunkte  # type: ignore[attr-defined]
+
+    def aufzeichnend(self, method, url, *args, **kwargs):  # type: ignore[no-untyped-def]
+        pfad = str(url).split("?")[0]
+        for praefix in ("http://testserver", "https://testserver"):
+            if pfad.startswith(praefix):
+                pfad = pfad[len(praefix) :]
+        gesammelt.add((str(method).upper(), pfad or "/"))
+        return original(self, method, url, *args, **kwargs)
+
+    _TestClient.request = aufzeichnend  # type: ignore[method-assign]
+    try:
+        yield
+    finally:
+        _TestClient.request = original  # type: ignore[method-assign]

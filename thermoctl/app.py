@@ -76,7 +76,11 @@ def create_app() -> FastAPI:
         },
     )
     app = FastAPI(title="thermoctl", version=thermoctl.__version__, lifespan=_lifespan)
-    app.state.session_factory = session_factory(create_engine_from_settings(settings))
+    # Die Engine wird mit abgelegt, damit Aufrufer sie schliessen koennen. Ohne das
+    # bleibt bei jeder erzeugten Anwendung eine offene Datenbankverbindung zurueck --
+    # im Betrieb bis zum Prozessende, in Tests bei jedem Aufbau erneut.
+    app.state.engine = create_engine_from_settings(settings)
+    app.state.session_factory = session_factory(app.state.engine)
     app.include_router(start_router)
     app.include_router(auth_router)
     app.include_router(setup_router)
