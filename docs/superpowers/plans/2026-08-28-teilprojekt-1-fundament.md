@@ -34,6 +34,10 @@ Diese Bedingungen gelten für **jede** Aufgabe, auch wenn sie dort nicht wiederh
 - **Jede `String`-Spalte bekommt eine ausdrückliche Länge.** SQLite ignoriert sie, MariaDB nicht.
 - **`datetime.UTC` statt `timezone.utc`.** Ruff verlangt unter `target-version = py314`
   die kürzere Form (Regel UP017); die alte Schreibweise lässt die Prüfung fehlschlagen.
+- **Kein `CHECK` auf einer Spalte mit `AUTO_INCREMENT`.** MariaDB weist das mit Fehler 1901
+  ab, SQLite kennt die Einschränkung nicht. Betrifft `setting.id`: dort gehört
+  `autoincrement=False` an die Spalte — bei einer Tabelle mit genau einer Zeile ohnehin das
+  Richtige.
 - **Verletzte `CheckConstraint`s kommen je Datenbank als andere Ausnahme an.** SQLite meldet
   `IntegrityError`, MariaDB den Fehler 4025, den pymysql auf `OperationalError` abbildet. Die
   Bedingung greift in beiden Fällen. Tests, die eine CHECK-Verletzung erwarten, prüfen deshalb
@@ -2573,7 +2577,13 @@ class Setting(Base):
     __tablename__ = "setting"
     __table_args__ = (CheckConstraint("id = 1", name="genau_eine_zeile"),)
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
+    # autoincrement=False ist Pflicht, nicht Kosmetik: MariaDB vergibt sonst
+    # AUTO_INCREMENT und verbietet dann jede CHECK-Bedingung auf derselben Spalte
+    # (Fehler 1901). Fachlich ohnehin richtig — eine Tabelle mit genau einer Zeile
+    # braucht keinen automatisch vergebenen Schluessel.
+    id: Mapped[int] = mapped_column(
+        Integer, primary_key=True, autoincrement=False, default=1
+    )
     timezone: Mapped[str] = mapped_column(String(64), default="Europe/Berlin", nullable=False)
     polling_interval_seconds: Mapped[int] = mapped_column(Integer, default=30, nullable=False)
     default_hysteresis_k: Mapped[Decimal] = mapped_column(

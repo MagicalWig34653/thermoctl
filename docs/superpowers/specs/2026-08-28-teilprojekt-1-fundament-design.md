@@ -305,6 +305,7 @@ Bedingung gilt zur Laufzeit, nicht nur beim Anlegen.
 
 ```
 setting                    -- genau eine Zeile, CHECK (id = 1)
+                           -- id ohne AUTO_INCREMENT: MariaDB verbietet CHECK darauf
   id, timezone varchar(64), polling_interval_seconds,
   default_hysteresis_k, default_min_on_seconds, default_min_off_seconds,
   default_sensor_timeout_seconds, default_window_resume_delay_seconds,
