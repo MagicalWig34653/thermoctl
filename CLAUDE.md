@@ -17,8 +17,11 @@ und eine PHP-Oberfläche aus zwei anderen Projekten. Der Stand der Planung ist:
 - [`docs/bestandsaufnahme-altsystem.md`](docs/bestandsaufnahme-altsystem.md) — das
   abzulösende System: Services, vollständiges Ist-Schema, MQTT-Topic-Vertrag, bekannte Defekte.
 - [`docs/superpowers/specs/2026-08-28-teilprojekt-1-fundament-design.md`](docs/superpowers/specs/2026-08-28-teilprojekt-1-fundament-design.md)
-  — Spezifikation von Teilprojekt 1: Datenmodell, Auth- und Rechtemodell, Konfiguration,
-  Logging, Container, CI.
+  — Spezifikation von Teilprojekt 1 (**umgesetzt**): Datenmodell, Auth- und Rechtemodell,
+  Konfiguration, Logging, Container, CI.
+- [`docs/superpowers/plans/2026-08-28-teilprojekt-1-fundament.md`](docs/superpowers/plans/2026-08-28-teilprojekt-1-fundament.md)
+  — Implementierungsplan dazu, 22 Aufgaben. Enthält in den *Global Constraints* die
+  Eigenheiten, die beide Datenbanken unterscheiden — wer am Schema arbeitet, liest sie zuerst.
 - [`docs/technisches_konzept.md`](docs/technisches_konzept.md) — **unverbindlich.** Fachliches
   Zielbild für Bedienung und Gerätetypen aus anderem Kontext. Setzt Home Assistant als
   Einstiegspunkt voraus, was der Rahmenentwurf ausdrücklich verworfen hat. Bei Widerspruch
@@ -106,3 +109,30 @@ und den Haken im Implementierungsplan. Keine Sammelcommits über mehrere Aufgabe
 
 **Die CI muss grün sein**, bevor etwas nach `main` geht: Ruff, Typprüfung, Tests gegen SQLite
 **und** MariaDB, Alembic vorwärts und rückwärts, Docker-Image-Build.
+
+### Praktisches zur Agentenarbeit
+
+Aus der Umsetzung von Teilprojekt 1, damit es niemand erneut herausfinden muss:
+
+- **Codex startet man direkt, nicht über den Rescue-Weiterleiter** — der startet ihn im
+  aufrufenden Repo, wodurch ein Schwester-Worktree nicht beschreibbar ist:
+  ```
+  codex exec -C "<worktree>" --add-dir "<hauptrepo>" -s workspace-write     -c sandbox_workspace_write.network_access=true < /dev/null
+  ```
+  Netzzugriff muss ausdrücklich an, sonst scheitert `pip install`; `< /dev/null` ist Pflicht,
+  sonst wartet Codex ohne Terminal endlos auf eine Eingabe.
+- **Codex kann im Worktree nicht committen** (seine Sandbox schützt `.git`, und der
+  Worktree-Index liegt im Hauptrepo). Den Commit führt die Hauptsession aus und vermerkt die
+  Urheberschaft.
+- **Bei parallelen Aufgaben bekommt jede eine eigene Testdatenbank.** Sonst legen mehrere
+  Läufe dasselbe Schema an und räumen es einander weg; die Fehlschläge sind dann zufällig.
+- **Migrationen vertragen keine echte Parallelität.** Zweigen zwei Aufgaben vom selben Stand
+  ab, tragen beide dieselbe Vorgängerrevision, und die Historie hat zwei Köpfe. Die
+  Hauptsession ordnet sie beim Zusammenführen; die Agents lassen `down_revision` in Ruhe.
+- **Sammeldateien nach jedem Merge von Hand prüfen.** `tests/hilfen.py` und
+  `db/models/__init__.py` werden von jeder Aufgabe ergänzt und kollidieren zuverlässig. Eine
+  automatisch aufgelöste Fassung kann doppelte Definitionen enthalten und trotzdem grüne
+  Tests liefern.
+- **Agents melden Blocker, statt zu raten** — das ist die wichtigste Regel im Auftragstext.
+  Fast alle Blocker in Teilprojekt 1 waren Fehler im Plan, nicht der Umsetzung. Ein Agent,
+  der einen vorgegebenen Test „passend macht", verdeckt sie.
