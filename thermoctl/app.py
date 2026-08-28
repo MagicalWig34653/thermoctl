@@ -7,7 +7,9 @@ from fastapi import FastAPI, Request, Response
 
 import thermoctl
 from thermoctl.config import get_settings
+from thermoctl.db.engine import create_engine_from_settings, session_factory
 from thermoctl.logging import configure_logging, request_id_var
+from thermoctl.web.auth_views import router as auth_router
 
 log = logging.getLogger(__name__)
 
@@ -30,6 +32,8 @@ def create_app() -> FastAPI:
         },
     )
     app = FastAPI(title="thermoctl", version=thermoctl.__version__)
+    app.state.session_factory = session_factory(create_engine_from_settings(settings))
+    app.include_router(auth_router)
 
     @app.middleware("http")
     async def anfrage_id(

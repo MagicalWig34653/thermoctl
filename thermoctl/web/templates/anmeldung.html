@@ -1,0 +1,21 @@
+{% extends "basis.html" %}
+
+{% block titel %}Anmeldung – thermoctl{% endblock %}
+
+{% block inhalt %}
+<main>
+    <h1>Anmeldung</h1>
+    {% if fehler %}
+    <p role="alert">{{ fehler }}</p>
+    {% endif %}
+    <form method="post" action="/login">
+        <label for="username">Benutzername</label>
+        <input type="text" id="username" name="username" autocomplete="username" required autofocus>
+
+        <label for="password">Passwort</label>
+        <input type="password" id="password" name="password" autocomplete="current-password" required>
+
+        <button type="submit">Anmelden</button>
+    </form>
+</main>
+{% endblock %}
