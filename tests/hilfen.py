@@ -7,7 +7,8 @@ die neue Entitaeten anlegt, ergaenzt hier ihre Anlegefunktion.
 from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session
 
-from thermoctl.db.models.lookup import ActorSource, OperatingMode
+from thermoctl.db.models.device import Device
+from thermoctl.db.models.lookup import ActorSource, DeviceRole, Integration, OperatingMode
 from thermoctl.db.models.zone import SetpointMode, Zone
 
 # Eine verletzte CHECK-Bedingung kommt je nach Datenbank als andere Ausnahme an:
@@ -50,3 +51,29 @@ def quelle(session: Session, code: str = "web") -> ActorSource:
         session.add(q)
         session.flush()
     return q
+
+
+def anbindung(session: Session, code: str = "zigbee2mqtt") -> Integration:
+    a = session.query(Integration).filter_by(code=code).one_or_none()
+    if a is None:
+        a = Integration(code=code, label=code)
+        session.add(a)
+        session.flush()
+    return a
+
+
+def rolle(session: Session, code: str) -> DeviceRole:
+    r = session.query(DeviceRole).filter_by(code=code).one_or_none()
+    if r is None:
+        r = DeviceRole(code=code, label=code)
+        session.add(r)
+        session.flush()
+    return r
+
+
+def geraet_anlegen(session: Session, external_id: str) -> Device:
+    g = Device(integration_id=anbindung(session).id, external_id=external_id,
+               display_name=external_id)
+    session.add(g)
+    session.flush()
+    return g
