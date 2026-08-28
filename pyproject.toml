@@ -30,19 +30,19 @@ include = ["thermoctl*"]
 [tool.ruff]
 line-length = 100
 target-version = "py314"
-# Von Alembic generierte Migrationsdateien sind kein handgepflegter Code — Import-
-# Reihenfolge und ungenutzte op/sa-Importe (leere Migrationen) bleiben ungeprüft.
-extend-exclude = ["migrations/versions"]
-
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "S"]
 ignore = ["S101"]  # assert ist in Tests erwünscht
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["S105", "S106"]  # Testpasswörter im Klartext sind hier in Ordnung
-# tests/test_migrations.py ruft bewusst das `alembic`-CLI als Unterprozess auf, um
-# echte Migrationsläufe zu prüfen; der Pfad ist auf .venv/bin eingeschränkt.
-"tests/test_migrations.py" = ["S603", "S607"]
+# Ruft Alembic bewusst als Unterprozess auf, um echte Migrationsläufe zu prüfen.
+"tests/test_migrations.py" = ["S603"]
+# Von Alembic erzeugte Migrationen: Importreihenfolge und die mitgenerierten, in leeren
+# Migrationen ungenutzten Importe `op`/`sa`. Bewusst nur diese beiden Regeln statt eines
+# vollständigen Ausschlusses — Migrationen enthalten ab Aufgabe 7 handgepflegten Code,
+# der geprüft gehört.
+"migrations/versions/*" = ["I001", "F401"]
 # migrations/env.py folgt der Alembic-Konvention: DB-Konfiguration vor Domänen-Importen,
 # nicht alphabetisch nach Modulpfad.
 "migrations/env.py" = ["I001"]

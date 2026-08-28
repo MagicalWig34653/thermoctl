@@ -46,7 +46,8 @@ def test_migration_vorwaerts_und_rueckwaerts() -> None:
 @pytest.mark.migration
 def test_modelle_und_migrationen_stimmen_ueberein() -> None:
     """`alembic check` meldet, wenn ein Modell ohne Migration geaendert wurde."""
-    _alembic("upgrade", "head")
+    vorbereitung = _alembic("upgrade", "head")
+    assert vorbereitung.returncode == 0, vorbereitung.stderr
     ergebnis = _alembic("check")
     assert ergebnis.returncode == 0, ergebnis.stdout + ergebnis.stderr
 
