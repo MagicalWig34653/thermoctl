@@ -461,7 +461,14 @@ Zwei Workflows:
 | Workflow | Auslöser | Inhalt |
 |---|---|---|
 | `ci.yml` | jeder Push, jeder Pull Request | Ruff, Typprüfung, pytest gegen SQLite **und** MariaDB (Service-Container), Alembic vorwärts/rückwärts |
-| `docker.yml` | Push auf `main`, Tags | Image bauen und nach GHCR schieben |
+| `docker.yml` | Push auf `main` | Testimage bauen, Marke `sha-<kurzer Commit>` |
+| `docker.yml` | Git-Tag `v*` | Release-Image, Marken `<version>` und `latest` |
+
+`latest` entsteht **ausschließlich aus einem Git-Tag**, nie aus einem Push auf `main`. Wer
+das Image betreibt, zieht sonst mit jedem Zwischenstand einen unfertigen Stand — und bei
+einer selbst gehosteten Heizungssteuerung ist das Image der Rückfallpunkt, wenn ein Update
+schiefgeht. Testimages sind über ihren Commit eindeutig ansprechbar und lassen sich damit
+gezielt ausprobieren, ohne dass jemand sie versehentlich erwischt.
 
 ## 9. Reihenfolge der Umsetzung
 
