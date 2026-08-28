@@ -5,10 +5,8 @@ import sys
 import pytest
 from sqlalchemy import Engine
 
-from tests.conftest import TEST_DATABASE_URL
 
-
-def _alembic(*argumente: str) -> subprocess.CompletedProcess[str]:
+def _alembic(url: str, *argumente: str) -> subprocess.CompletedProcess[str]:
     """Ruft Alembic als Unterprozess, damit echte Migrationslaeufe geprueft werden.
 
     Aufruf ueber ``sys.executable -m alembic`` und nicht ueber das Skript ``alembic``:
@@ -18,10 +16,14 @@ def _alembic(*argumente: str) -> subprocess.CompletedProcess[str]:
     unter macOS das Flag ``hidden`` tragen kann und dann beim Start uebersprungen
     wird. Der Umweg ueber ``-m`` macht den Test unabhaengig davon, wie das venv
     eingerichtet wurde.
+
+    Laeuft gegen ``url`` statt gegen ``TEST_DATABASE_URL``: Die Migrationstests brauchen
+    eine eigene Datenbank, getrennt von der Fixture ``engine`` — sonst legt Alembic
+    Tabellen an, die ``Base.metadata.create_all()`` schon erzeugt hat.
     """
     umgebung = {
         **os.environ,
-        "THERMOCTL_DATABASE_URL": TEST_DATABASE_URL,
+        "THERMOCTL_DATABASE_URL": url,
         "THERMOCTL_SECRET_KEY": "t" * 32,
     }
     return subprocess.run(
@@ -34,21 +36,21 @@ def _alembic(*argumente: str) -> subprocess.CompletedProcess[str]:
 
 
 @pytest.mark.migration
-def test_migration_vorwaerts_und_rueckwaerts() -> None:
-    hoch = _alembic("upgrade", "head")
+def test_migration_vorwaerts_und_rueckwaerts(migrations_database_url: str) -> None:
+    hoch = _alembic(migrations_database_url, "upgrade", "head")
     assert hoch.returncode == 0, hoch.stderr
-    runter = _alembic("downgrade", "base")
+    runter = _alembic(migrations_database_url, "downgrade", "base")
     assert runter.returncode == 0, runter.stderr
-    wieder_hoch = _alembic("upgrade", "head")
+    wieder_hoch = _alembic(migrations_database_url, "upgrade", "head")
     assert wieder_hoch.returncode == 0, wieder_hoch.stderr
 
 
 @pytest.mark.migration
-def test_modelle_und_migrationen_stimmen_ueberein() -> None:
+def test_modelle_und_migrationen_stimmen_ueberein(migrations_database_url: str) -> None:
     """`alembic check` meldet, wenn ein Modell ohne Migration geaendert wurde."""
-    vorbereitung = _alembic("upgrade", "head")
+    vorbereitung = _alembic(migrations_database_url, "upgrade", "head")
     assert vorbereitung.returncode == 0, vorbereitung.stderr
-    ergebnis = _alembic("check")
+    ergebnis = _alembic(migrations_database_url, "check")
     assert ergebnis.returncode == 0, ergebnis.stdout + ergebnis.stderr
 
 
