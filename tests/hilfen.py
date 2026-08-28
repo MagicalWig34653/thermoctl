@@ -8,7 +8,13 @@ from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session
 
 from thermoctl.db.models.device import Device
-from thermoctl.db.models.lookup import ActorSource, DeviceRole, Integration, OperatingMode
+from thermoctl.db.models.lookup import (
+    ActorSource,
+    DeviceRole,
+    Integration,
+    OperatingMode,
+    Permission,
+)
 from thermoctl.db.models.zone import SetpointMode, Zone
 
 # Eine verletzte CHECK-Bedingung kommt je nach Datenbank als andere Ausnahme an:
@@ -77,3 +83,12 @@ def geraet_anlegen(session: Session, external_id: str) -> Device:
     session.add(g)
     session.flush()
     return g
+
+
+def berechtigung(session: Session, code: str, zonenbezogen: bool = False) -> Permission:
+    p = session.query(Permission).filter_by(code=code).one_or_none()
+    if p is None:
+        p = Permission(code=code, description=code, is_zone_scoped=zonenbezogen)
+        session.add(p)
+        session.flush()
+    return p
