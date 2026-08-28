@@ -7,8 +7,9 @@ die neue Entitaeten anlegt, ergaenzt hier ihre Anlegefunktion.
 from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session
 
+from thermoctl.db.models.credential import ApiToken, ApiTokenPermission
 from thermoctl.db.models.device import Device
-from thermoctl.db.models.identity import User
+from thermoctl.db.models.identity import AccessGroup, GroupPermission, User, UserAccessGroup
 from thermoctl.db.models.lookup import (
     ActorSource,
     DeviceRole,
@@ -100,3 +101,61 @@ def benutzer_anlegen(session: Session, name: str) -> User:
     session.add(nutzer)
     session.flush()
     return nutzer
+
+
+def _gruppe_mit_rechten(
+    session: Session, name: str, rechte: list[tuple[str, int | None]]
+) -> AccessGroup:
+    gruppe = AccessGroup(name=name)
+    session.add(gruppe)
+    session.flush()
+    for code, zone_id in rechte:
+        berechtigung_obj = berechtigung(session, code, zonenbezogen=zone_id is not None)
+        session.add(
+            GroupPermission(
+                access_group_id=gruppe.id, permission_id=berechtigung_obj.id, zone_id=zone_id
+            )
+        )
+    session.flush()
+    return gruppe
+
+
+def benutzer_mit_rechten(
+    session: Session,
+    name: str,
+    rechte: list[tuple[str, int | None]],
+    zweite_gruppe: list[tuple[str, int | None]] | None = None,
+) -> User:
+    """Legt einen Benutzer an und haengt ihn an eine (bzw. zwei) Zugriffsgruppe(n) mit den
+    uebergebenen ``(code, zone_id)``-Rechten."""
+    nutzer = benutzer_anlegen(session, name)
+    gruppe = _gruppe_mit_rechten(session, f"gruppe-{name}", rechte)
+    session.add(UserAccessGroup(user_id=nutzer.id, access_group_id=gruppe.id))
+    if zweite_gruppe is not None:
+        gruppe2 = _gruppe_mit_rechten(session, f"gruppe-{name}-2", zweite_gruppe)
+        session.add(UserAccessGroup(user_id=nutzer.id, access_group_id=gruppe2.id))
+    session.flush()
+    return nutzer
+
+
+def token_mit_rechten(
+    session: Session, nutzer: User, rechte: list[tuple[str, int | None]]
+) -> ApiToken:
+    """Legt ein API-Token fuer ``nutzer`` an und traegt die uebergebenen Rechte ein."""
+    token = ApiToken(
+        user_id=nutzer.id,
+        name=f"token-{nutzer.username}",
+        prefix=f"pfx-{nutzer.username}",
+        token_hash=f"hash-{nutzer.username}",
+    )
+    session.add(token)
+    session.flush()
+    for code, zone_id in rechte:
+        berechtigung_obj = berechtigung(session, code, zonenbezogen=zone_id is not None)
+        session.add(
+            ApiTokenPermission(
+                api_token_id=token.id, permission_id=berechtigung_obj.id, zone_id=zone_id
+            )
+        )
+    session.flush()
+    return token
