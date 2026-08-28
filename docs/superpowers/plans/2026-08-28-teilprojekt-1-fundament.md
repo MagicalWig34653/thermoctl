@@ -34,6 +34,14 @@ Diese Bedingungen gelten für **jede** Aufgabe, auch wenn sie dort nicht wiederh
 - **Jede `String`-Spalte bekommt eine ausdrückliche Länge.** SQLite ignoriert sie, MariaDB nicht.
 - **`datetime.UTC` statt `timezone.utc`.** Ruff verlangt unter `target-version = py314`
   die kürzere Form (Regel UP017); die alte Schreibweise lässt die Prüfung fehlschlagen.
+- **MariaDB speichert `DATETIME` sekundengenau** und verwirft Bruchteile, SQLite behält sie.
+  Zeitstempel deshalb nie mikrosekundengenau vergleichen — in Tests auf ganze Sekunden
+  abschneiden. Fachlich reicht das überall in diesem Projekt; entscheidend ist, es zu wissen,
+  bevor ein Vergleich in der Regellogik daran scheitert.
+- **Wartezeiten gehören nicht in die Testsuite.** Die Anmeldedrosselung wird über eine
+  autouse-Fixture neutralisiert; geprüft wird sie durch ihren eigenen Test, der die
+  Wartefunktion selbst ersetzt. Ohne das lief die Suite von 2 auf 33 Sekunden hoch — und eine
+  langsame Suite wird seltener ausgeführt.
 - **Der pysqlite-Treiber braucht ausdrückliche Transaktionssteuerung.** Er beginnt
   Transaktionen nicht von sich aus und committet zwischendurch eigenmächtig; SAVEPOINT und
   Rollback greifen dann nicht, und Daten lecken zwischen Tests. `thermoctl/db/engine.py` setzt
