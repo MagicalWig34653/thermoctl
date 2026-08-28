@@ -239,3 +239,28 @@ def _ohne_echte_wartezeit(monkeypatch: pytest.MonkeyPatch) -> None:
     ausgefuehrt.
     """
     monkeypatch.setattr("thermoctl.web.auth_views.schlafen", lambda sekunden: None)
+
+@pytest.fixture
+def angemeldeter_client(
+    client_als: Callable[[list[tuple[str, int | None]]], TestClient],
+) -> TestClient:
+    """Ein Client mit allen Rechten, fuer den Rauchtest ueber alle Seiten.
+
+    Bewusst mit vollem Rechteumfang: Der Rauchtest fragt, ob eine Seite ueberhaupt
+    existiert und ohne Fehler antwortet — ob sie die Rechte richtig prueft, gehoert in
+    die Tests der jeweiligen Ansicht.
+    """
+    return client_als(
+        [
+            ("zone.read", None),
+            ("zone.manage", None),
+            ("device.read", None),
+            ("device.manage", None),
+            ("user.manage", None),
+            ("group.manage", None),
+            ("token.self", None),
+            ("token.manage", None),
+            ("audit.read", None),
+            ("setting.manage", None),
+        ]
+    )

@@ -1,0 +1,36 @@
+{% extends "basis.html" %}
+{% block titel %}Übersicht – thermoctl{% endblock %}
+{% block inhalt %}
+<h1 class="h3 mb-4">Übersicht</h1>
+
+<div class="row g-3 mb-4">
+  <div class="col-sm-6">
+    <div class="card h-100">
+      <div class="card-body">
+        <h2 class="h6 text-secondary">Zonen</h2>
+        <p class="display-6 mb-0">{{ zonen }}</p>
+      </div>
+    </div>
+  </div>
+  <div class="col-sm-6">
+    <div class="card h-100">
+      <div class="card-body">
+        <h2 class="h6 text-secondary">Benutzer</h2>
+        <p class="display-6 mb-0">{{ benutzerzahl }}</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% if zonen == 0 %}
+<div class="alert alert-secondary" role="status">
+  <strong>Noch keine Zonen angelegt.</strong>
+  Zonen, Geräte und Zeitpläne lassen sich derzeit nur über die Datenbank pflegen –
+  die Oberfläche dafür entsteht in Teilprojekt 3. thermoctl steuert noch keine Heizung.
+</div>
+{% endif %}
+
+<p class="text-secondary mb-0">
+  Angemeldet als <strong>{{ benutzer.display_name }}</strong>.
+</p>
+{% endblock %}
