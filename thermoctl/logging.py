@@ -2,7 +2,7 @@ import json
 import logging
 import sys
 from contextvars import ContextVar
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from thermoctl.config import Settings
@@ -48,7 +48,7 @@ def mask(value: object) -> object:
 class JsonFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
         daten: dict[str, Any] = {
-            "timestamp": datetime.fromtimestamp(record.created, timezone.utc).isoformat(),
+            "timestamp": datetime.fromtimestamp(record.created, UTC).isoformat(),
             "level": record.levelname,
             "logger": record.name,
             "message": record.getMessage(),
