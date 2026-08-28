@@ -41,7 +41,7 @@ ignore = ["S101"]  # assert ist in Tests erwünscht
 [tool.mypy]
 python_version = "3.14"
 strict = true
-plugins = []
+plugins = ["pydantic.mypy"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
