@@ -84,3 +84,61 @@ def test_api_braucht_kein_csrf_token(client, token_fuer) -> None:
 def test_token_hash_erscheint_in_keiner_antwort(client, token_fuer) -> None:
     kopf = token_fuer([("zone.read", "bad"), ("token.self", None)])
     assert "token_hash" not in client.get("/api/v1/me", headers=kopf).text
+
+
+def test_me_ohne_recht_wird_abgewiesen(client, token_fuer) -> None:
+    """token.self fehlt hier bewusst -- auch das eigene Token einsehen ist ein Recht."""
+    kopf = token_fuer([("zone.read", "bad")])
+    antwort = client.get("/api/v1/me", headers=kopf)
+    assert antwort.status_code == 403
+
+
+def test_uebersteuern_bis_naechste_schaltung_ohne_zeitplan(client, token_fuer) -> None:
+    """Ohne Schaltpunkte in der Zone bleibt die Uebersteuerung unbefristet."""
+    kopf = token_fuer([("zone.read", "bad"), ("override.create", "bad")])
+    antwort = client.post(
+        "/api/v1/zones/1/override", headers=kopf,
+        json={"temperature_c": "22.0", "bis_naechste_schaltung": True},
+    )
+    assert antwort.status_code == 201
+    assert antwort.json()["ends_at"] is None
+
+
+def test_uebersteuern_bis_naechste_schaltung_mit_zeitplan(client, token_fuer, session) -> None:
+    from thermoctl.db.models.operations import Setting
+    from thermoctl.db.models.schedule import SchedulePoint
+    from thermoctl.db.models.zone import SetpointMode
+
+    modus = SetpointMode(code="tag", name="Tag")
+    session.add(modus)
+    session.flush()
+    session.add(SchedulePoint(zone_id=1, weekday=1, minute_of_day=0, setpoint_mode_id=modus.id))
+    session.add(Setting(id=1, timezone="Europe/Berlin", frost_protection_mode_id=modus.id))
+    session.flush()
+
+    kopf = token_fuer([("zone.read", "bad"), ("override.create", "bad")])
+    antwort = client.post(
+        "/api/v1/zones/1/override", headers=kopf,
+        json={"temperature_c": "22.0", "bis_naechste_schaltung": True},
+    )
+    assert antwort.status_code == 201
+    assert antwort.json()["ends_at"] is not None
+
+
+def test_uebersteuerung_loeschen_ohne_recht_wird_abgewiesen(client, token_fuer) -> None:
+    kopf = token_fuer([("zone.read", "bad")])
+    antwort = client.delete("/api/v1/zones/1/override", headers=kopf)
+    assert antwort.status_code == 403
+
+
+def test_uebersteuerung_loeschen_beendet_die_aktive(client, token_fuer, session) -> None:
+    from thermoctl.db.models.override import ZoneOverride
+
+    kopf = token_fuer([("zone.read", "bad"), ("override.create", "bad"),
+                       ("override.cancel", "bad")])
+    client.post("/api/v1/zones/1/override", headers=kopf,
+               json={"temperature_c": "22.0", "dauer_minuten": 30})
+    antwort = client.delete("/api/v1/zones/1/override", headers=kopf)
+    assert antwort.status_code == 204
+    eintrag = session.query(ZoneOverride).one()
+    assert eintrag.cancelled_at is not None
