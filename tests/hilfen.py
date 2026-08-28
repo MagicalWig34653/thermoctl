@@ -8,6 +8,7 @@ from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session
 
 from thermoctl.db.models.device import Device
+from thermoctl.db.models.identity import User
 from thermoctl.db.models.lookup import (
     ActorSource,
     DeviceRole,
@@ -92,3 +93,10 @@ def berechtigung(session: Session, code: str, zonenbezogen: bool = False) -> Per
         session.add(p)
         session.flush()
     return p
+
+
+def benutzer_anlegen(session: Session, name: str) -> User:
+    nutzer = User(username=name, display_name=name.upper(), password_hash="platzhalter")
+    session.add(nutzer)
+    session.flush()
+    return nutzer
