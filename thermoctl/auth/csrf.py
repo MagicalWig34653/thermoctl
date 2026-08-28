@@ -3,6 +3,11 @@ import hmac
 
 CSRF_HEADER = "X-CSRF-Token"
 
+# Nicht httpOnly: die Oberflaeche (HTMX) muss den Wert lesen koennen, um ihn als
+# Header mitzuschicken. Unbedenklich, weil das Token selbst nichts preisgibt, womit
+# sich die Sitzung uebernehmen liesse — es ist nur an sie gebunden.
+CSRF_COOKIE_NAME = "thermoctl_csrf"
+
 
 def csrf_token(sitzung_geheimnis: str, secret_key: str) -> str:
     """An die Sitzung gebunden: ein Token aus einer fremden Sitzung passt nicht."""

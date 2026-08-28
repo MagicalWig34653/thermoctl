@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from thermoctl import audit
-from thermoctl.auth.csrf import CSRF_HEADER, csrf_pruefen
+from thermoctl.auth.csrf import CSRF_COOKIE_NAME, CSRF_HEADER, csrf_pruefen, csrf_token
 from thermoctl.auth.dependencies import get_session
 from thermoctl.auth.passwords import verify_password
 from thermoctl.auth.sessions import (
@@ -15,6 +15,7 @@ from thermoctl.auth.sessions import (
     sitzung_anlegen,
     sitzung_aufloesen,
     sitzung_widerrufen,
+    sitzungslebensdauer_s,
 )
 from thermoctl.config import get_settings
 from thermoctl.db.base import utcnow
@@ -22,9 +23,6 @@ from thermoctl.db.models.identity import User
 from thermoctl.web import templates
 
 router = APIRouter()
-
-# 14 Tage — deckungsgleich mit dem Standardwert von `setting.session_lifetime_seconds`.
-SITZUNGS_LEBENSDAUER_S = 60 * 60 * 24 * 14
 
 # Je Benutzername gezaehlte Fehlversuche. Laeuft im Prozessspeicher, nicht in der
 # Datenbank: sie soll Rateversuche bremsen, nicht ueberdauern. Es gibt ausdruecklich
@@ -83,8 +81,9 @@ async def login(
     FEHLVERSUCHE[username] = 0
     benutzer.last_login_at = utcnow()
 
+    lebensdauer_s = sitzungslebensdauer_s(session)
     _eintrag, geheimnis = sitzung_anlegen(
-        session, benutzer, SITZUNGS_LEBENSDAUER_S,
+        session, benutzer, lebensdauer_s,
         user_agent=request.headers.get("user-agent"),
         ip=request.client.host if request.client is not None else None,
     )
@@ -96,8 +95,14 @@ async def login(
 
     antwort = RedirectResponse("/", status_code=status.HTTP_303_SEE_OTHER)
     antwort.set_cookie(
-        COOKIE_NAME, geheimnis, max_age=SITZUNGS_LEBENSDAUER_S,
+        COOKIE_NAME, geheimnis, max_age=lebensdauer_s,
         httponly=True, samesite="lax", secure=settings.secure_cookies,
+    )
+    # Nicht httpOnly: die Oberflaeche (HTMX) liest den Wert und schickt ihn als
+    # `X-CSRF-Token`-Header mit.
+    antwort.set_cookie(
+        CSRF_COOKIE_NAME, csrf_token(geheimnis, settings.secret_key.get_secret_value()),
+        max_age=lebensdauer_s, httponly=False, samesite="lax", secure=settings.secure_cookies,
     )
     return antwort
 
@@ -108,11 +113,10 @@ async def logout(request: Request, session: Annotated[Session, Depends(get_sessi
     cookie_wert = request.cookies.get(COOKIE_NAME)
     uebermitteltes_csrf_token = request.headers.get(CSRF_HEADER)
 
-    # Ein Token wird nur geprueft, wenn es tatsaechlich mitgeschickt wurde — die
-    # eigentliche Absicherung gegen klassisches Cross-Site-Request-Forgery leistet
-    # bereits `SameSite=Lax`. Wird trotzdem eines mitgeschickt, muss es zur Sitzung
-    # passen, sonst wird die Anfrage abgewiesen.
-    if cookie_wert is not None and uebermitteltes_csrf_token is not None:
+    # Jede per Sitzungscookie authentifizierte, zustandsaendernde Anfrage braucht ein
+    # gueltiges CSRF-Token — auch wenn gar keines mitgeschickt wurde. Ein Schutz, der
+    # sich durch Weglassen des Headers umgehen liesse, waere keiner.
+    if cookie_wert is not None:
         gueltig = csrf_pruefen(
             uebermitteltes_csrf_token, cookie_wert, settings.secret_key.get_secret_value()
         )
