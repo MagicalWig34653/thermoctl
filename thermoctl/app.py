@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 import thermoctl
+from thermoctl.api.routes import router as api_router
 from thermoctl.config import get_settings
 from thermoctl.db.engine import create_engine_from_settings, session_factory, session_scope
 from thermoctl.db.models.credential import SetupToken
@@ -74,6 +75,7 @@ def create_app() -> FastAPI:
     app.include_router(auth_router)
     app.include_router(setup_router)
     app.include_router(admin_router)
+    app.include_router(api_router)
 
     @app.middleware("http")
     async def anfrage_id(

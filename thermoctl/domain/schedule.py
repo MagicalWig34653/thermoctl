@@ -6,6 +6,8 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from thermoctl.db.base import utcnow
+from thermoctl.db.models.lookup import ActorSource
 from thermoctl.db.models.operations import Setting
 from thermoctl.db.models.override import ZoneOverride
 from thermoctl.db.models.schedule import SchedulePoint
@@ -58,6 +60,45 @@ def naechster_punkt(punkte: list[SchedulePoint], zeitpunkt: datetime) -> datetim
         hour=0, minute=0, second=0, microsecond=0
     )
     return wochenanfang + timedelta(minutes=ziel)
+
+
+def uebersteuerung_anlegen(
+    session: Session,
+    zone: Zone,
+    temperature_c: Decimal,
+    ends_at: datetime | None,
+    *,
+    user_id: int | None = None,
+    token_id: int | None = None,
+) -> ZoneOverride:
+    """Legt eine konkrete Uebersteuerung an; Web und API teilen diese Mutation."""
+    quelle_id = session.scalar(select(ActorSource.id).where(ActorSource.code == "api"))
+    if quelle_id is None:
+        raise RuntimeError("Actor-Quelle 'api' fehlt")
+    eintrag = ZoneOverride(
+        zone_id=zone.id,
+        temperature_c=temperature_c,
+        starts_at=utcnow(),
+        ends_at=ends_at,
+        created_by_user_id=user_id,
+        created_by_token_id=token_id,
+        source_id=quelle_id,
+    )
+    session.add(eintrag)
+    session.flush()
+    return eintrag
+
+
+def uebersteuerung_aufheben(session: Session, zone: Zone) -> ZoneOverride | None:
+    """Beendet die juengste noch aktive Uebersteuerung, ohne Historie zu loeschen."""
+    eintrag = session.scalars(
+        select(ZoneOverride)
+        .where(ZoneOverride.zone_id == zone.id, ZoneOverride.cancelled_at.is_(None))
+        .order_by(ZoneOverride.created_at.desc())
+    ).first()
+    if eintrag is not None:
+        eintrag.cancelled_at = utcnow()
+    return eintrag
 
 
 def _temperatur_fuer_modus(session: Session, zone: Zone, modus_id: int) -> Decimal | None:
