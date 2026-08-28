@@ -34,6 +34,22 @@ from thermoctl.db.models.zone import SetpointMode, Zone, ZoneSetpoint
 CONSTRAINT_FEHLER = (IntegrityError, OperationalError)
 
 
+def einstellungen_anlegen(
+    session: Session,
+    hysterese: Decimal = Decimal("0.30"),
+    min_ein: int = 300,
+) -> Setting:
+    einstellungen = Setting(
+        id=1,
+        frost_protection_mode_id=modus_anlegen(session, "frost").id,
+        default_hysteresis_k=hysterese,
+        default_min_on_seconds=min_ein,
+    )
+    session.add(einstellungen)
+    session.flush()
+    return einstellungen
+
+
 def betriebsart(session: Session, code: str = "auto") -> OperatingMode:
     art = session.query(OperatingMode).filter_by(code=code).one_or_none()
     if art is None:

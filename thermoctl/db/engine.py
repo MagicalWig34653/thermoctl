@@ -12,12 +12,22 @@ def create_engine_from_settings(settings: Settings) -> Engine:
     if engine.dialect.name == "sqlite":
 
         @event.listens_for(engine, "connect")
-        def _fremdschluessel_einschalten(dbapi_connection, connection_record) -> None:  # type: ignore[no-untyped-def]
-            # SQLite prueft Fremdschluessel sonst gar nicht. Ohne das laufen Tests
-            # gruen, die unter MariaDB an einer Verletzung scheitern wuerden.
+        def _sqlite_verbindung_vorbereiten(dbapi_connection, connection_record) -> None:  # type: ignore[no-untyped-def]
+            # 1. SQLite prueft Fremdschluessel sonst gar nicht. Ohne das laufen Tests
+            #    gruen, die unter MariaDB an einer Verletzung scheitern wuerden.
             zeiger = dbapi_connection.cursor()
             zeiger.execute("PRAGMA foreign_keys=ON")
             zeiger.close()
+            # 2. Der pysqlite-Treiber beginnt Transaktionen nicht von sich aus und
+            #    committet zwischendurch eigenmaechtig. Dadurch greifen SAVEPOINT und
+            #    Rollback nicht: geschriebene Daten ueberleben ein Rollback und lecken in
+            #    den naechsten Test. Mit isolation_level=None uebernimmt SQLAlchemy die
+            #    Transaktionssteuerung selbst (siehe _sqlite_transaktion_beginnen).
+            dbapi_connection.isolation_level = None
+
+        @event.listens_for(engine, "begin")
+        def _sqlite_transaktion_beginnen(conn) -> None:  # type: ignore[no-untyped-def]
+            conn.exec_driver_sql("BEGIN")
 
     return engine
 
