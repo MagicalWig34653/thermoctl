@@ -88,6 +88,32 @@ def test_anmeldeseite_bindet_das_stylesheet_ein(client: TestClient) -> None:
     assert "/static/vendor/bootstrap/bootstrap.min.css" in antwort.text
 
 
+def test_lifespan_erzeugt_einrichtungstoken_bei_fehlender_einrichtung(
+    monkeypatch: pytest.MonkeyPatch, tmp_path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Der Lifespan-Handler laeuft nur beim echten Start (`with TestClient(...)`), nicht
+    beim blossen Bau der App -- deshalb testet dieser Test ihn ausdruecklich ueber den
+    `with`-Block statt ueber die `client`-Fixture. `configure_logging()` ersetzt beim
+    Start die Root-Handler (auch den von `caplog`), deshalb wird hier ueber `capsys`
+    auf der tatsaechlichen Log-Ausgabe geprueft statt ueber `caplog`."""
+    db_pfad = tmp_path / "lifespan.db"
+    monkeypatch.setenv("THERMOCTL_DATABASE_URL", f"sqlite:///{db_pfad}")
+    monkeypatch.setenv("THERMOCTL_SECRET_KEY", "a" * 32)
+    from thermoctl.config import get_settings
+    from thermoctl.db.base import Base
+    from thermoctl.db.engine import create_engine_from_settings
+
+    get_settings.cache_clear()
+    vorab_engine = create_engine_from_settings(get_settings())
+    Base.metadata.create_all(vorab_engine)
+    vorab_engine.dispose()
+
+    with TestClient(create_app()):
+        pass
+    ausgabe = capsys.readouterr().out
+    assert "Einrichtung erforderlich" in ausgabe
+
+
 def test_anfrage_id_wird_nach_ausnahme_zurueckgesetzt(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
