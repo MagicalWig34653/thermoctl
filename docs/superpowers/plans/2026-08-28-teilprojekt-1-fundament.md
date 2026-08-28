@@ -733,6 +733,9 @@ __pycache__
 .pytest_cache
 .ruff_cache
 .mypy_cache
+.env
+.env.*
+!.env.example
 ```
 
 **Hinweis:** `migrations/` und `alembic.ini` entstehen erst in Task 6. Deshalb legt dieser
@@ -756,6 +759,10 @@ name: CI
 on:
   push:
   pull_request:
+
+# Der Job liest nur — kein Grund fuer die Standardrechte des Repos.
+permissions:
+  contents: read
 
 jobs:
   pruefen:
