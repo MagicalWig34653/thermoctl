@@ -36,7 +36,11 @@ Diese Bedingungen gelten für **jede** Aufgabe, auch wenn sie dort nicht wiederh
   `datetime.now(timezone.utc).replace(tzinfo=None)`. Einzige Ausnahme: `schedule_point`
   speichert lokale Zeit als `minute_of_day`.
 - **Keine Secrets im Repo** — auch nicht als Vorgabewert, auch nicht in Beispielen, auch nicht
-  in Logs. `.env.example` enthält Namen und Erläuterungen, niemals Werte.
+  in Logs. In `.env.example` bleiben `THERMOCTL_DATABASE_URL` und `THERMOCTL_SECRET_KEY`
+  **leer**; sie sind Zugangsdaten und dürfen nirgends einen Wert haben, auch keinen
+  erfundenen. Die unkritischen Optionen (Bind-Adresse, Port, Log-Stufe, Log-Format,
+  Cookie-Schalter) dürfen ihren Vorgabewert als Kommentar zeigen — dort ist er Dokumentation
+  und kein Risiko.
 - **Jede Schemaänderung ist eine Alembic-Migration.** Kein `create_all` außerhalb der Tests.
 - **Jede Aufgabe endet mit grüner CI und einem Commit.** Commit-Nachrichten auf Deutsch,
   Präfix `feat:`, `test:`, `chore:`, `fix:`, `docs:`.
@@ -185,13 +189,13 @@ THERMOCTL_DATABASE_URL=
 # Zufälliger Schlüssel, mindestens 32 Zeichen. Erzeugen: python -c "import secrets; print(secrets.token_urlsafe(48))"
 THERMOCTL_SECRET_KEY=
 
-# Optional, mit Vorgabewerten
-THERMOCTL_BIND_HOST=0.0.0.0
-THERMOCTL_BIND_PORT=8000
-THERMOCTL_LOG_LEVEL=INFO
-THERMOCTL_LOG_FORMAT=json
+# Optional. Leer gelassen gilt jeweils der als Kommentar genannte Vorgabewert.
+THERMOCTL_BIND_HOST=          # Vorgabe: 0.0.0.0
+THERMOCTL_BIND_PORT=          # Vorgabe: 8000
+THERMOCTL_LOG_LEVEL=          # Vorgabe: INFO
+THERMOCTL_LOG_FORMAT=         # Vorgabe: json
 # Nur einschalten, wenn der Dienst hinter TLS läuft
-THERMOCTL_SECURE_COOKIES=false
+THERMOCTL_SECURE_COOKIES=     # Vorgabe: false
 ```
 
 - [ ] **Step 4: Installieren und alle drei Werkzeuge laufen lassen**
