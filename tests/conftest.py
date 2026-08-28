@@ -26,6 +26,10 @@ def _migrationsdatenbank_url(basis_url: str) -> str:
     url = make_url(basis_url)
     if url.get_backend_name() == "sqlite":
         if not url.database or url.database == ":memory:":
+            # Eine In-Memory-Datenbank gehoert ohnehin genau einem Prozess. Die
+            # Migrationstests laufen als eigener Unterprozess und bekommen deshalb
+            # eine eigene, leere Datenbank — eine abgeleitete URL waere hier
+            # gegenstandslos.
             return basis_url
         pfad = Path(url.database)
         neuer_pfad = pfad.with_name(f"{pfad.stem}-migrations{pfad.suffix}")
@@ -44,7 +48,7 @@ def settings() -> Settings:
 
 
 @pytest.fixture(scope="session")
-def migrations_database_url() -> str:
+def migrations_database_url() -> Iterator[str]:
     """Stellt sicher, dass die Migrationsdatenbank existiert, und liefert ihre URL.
 
     Unter MariaDB existiert das Schema fuer die Migrationstests vor dem ersten Lauf
@@ -68,7 +72,23 @@ def migrations_database_url() -> str:
                 verbindung.commit()
         finally:
             server_werk.dispose()
-    return MIGRATIONS_DATABASE_URL
+
+    yield MIGRATIONS_DATABASE_URL
+
+    # Symmetrisch zur Fixture `engine`, die ihre Tabellen wieder entfernt: Bleibt die
+    # Migrationsdatenbank liegen, laeuft der naechste Durchlauf gegen einen alten
+    # Schemastand und scheitert an etwas, das mit dem Code nichts zu tun hat.
+    if ziel_url.get_backend_name() == "sqlite":
+        if ziel_url.database and ziel_url.database != ":memory:":
+            Path(ziel_url.database).unlink(missing_ok=True)
+    else:
+        server_werk = create_engine(server_url, pool_pre_ping=True, future=True)
+        try:
+            with server_werk.connect() as verbindung:
+                verbindung.execute(text(f"DROP DATABASE IF EXISTS `{ziel_url.database}`"))
+                verbindung.commit()
+        finally:
+            server_werk.dispose()
 
 
 @pytest.fixture(scope="session")
