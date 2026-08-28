@@ -1172,14 +1172,15 @@ markers = ["migration: laeuft Alembic als Unterprozess"]
 Dazu zwei Ruff-Ausnahmen — eng gefasst, mit Begründung, und nicht mehr als nötig:
 
 ```toml
-[tool.ruff]
-# Von Alembic erzeugte Migrationsdateien sind kein handgepflegter Code.
-extend-exclude = ["migrations/versions"]
-
 [tool.ruff.lint.per-file-ignores]
-"tests/test_migrations.py" = ["S603"]  # ruft Alembic bewusst als Unterprozess
-"migrations/env.py" = ["I001"]         # Alembic-Konvention: DB-Konfiguration vor Domänen-Importen
+"tests/test_migrations.py" = ["S603"]   # ruft Alembic bewusst als Unterprozess
+"migrations/env.py" = ["I001"]          # Alembic-Konvention: DB-Konfiguration vor Domänen-Importen
+"migrations/versions/*" = ["I001", "F401"]  # mitgenerierte Importreihenfolge und op/sa
 ```
+
+**Kein vollständiger Ausschluss von `migrations/versions`.** Ab Aufgabe 7 stehen dort
+handgepflegte Datenmigrationen, die geprüft gehören — ausgenommen werden nur die beiden
+Regeln, gegen die Alembics Vorlage selbst verstößt.
 
 - [ ] **Step 6: Gegen beide Datenbanken laufen lassen**
 
