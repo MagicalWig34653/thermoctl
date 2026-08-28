@@ -3594,14 +3594,29 @@ def test_inaktiver_benutzer_kommt_nicht_hinein(client: TestClient, benutzer,
 
 
 def test_abmelden_widerruft_die_sitzung(client: TestClient, benutzer, session: Session) -> None:
+    """Der Abmeldeweg mit gueltigem CSRF-Token — so, wie die Oberflaeche ihn geht."""
     client.post("/login", data={"username": "lino", "password": "passwort-lang-genug"})
-    client.post("/logout")
+    client.post("/logout", headers={CSRF_HEADER: gueltiges_csrf_token(client)})
     assert session.query(Session_).one().revoked_at is not None
 
 
-def test_aenderung_ohne_csrf_token_wird_abgewiesen(client: TestClient, benutzer) -> None:
+def test_fehlendes_csrf_token_wird_abgewiesen(client: TestClient, benutzer) -> None:
+    """Ein Schutz, den man durch Weglassen umgeht, ist keiner."""
     client.post("/login", data={"username": "lino", "password": "passwort-lang-genug"})
-    antwort = client.post("/logout", headers={"X-CSRF-Token": "falsch"})
+    assert client.post("/logout").status_code == 403
+
+
+def test_falsches_csrf_token_wird_abgewiesen(client: TestClient, benutzer) -> None:
+    client.post("/login", data={"username": "lino", "password": "passwort-lang-genug"})
+    antwort = client.post("/logout", headers={CSRF_HEADER: "falsch"})
+    assert antwort.status_code == 403
+
+
+def test_csrf_token_einer_fremden_sitzung_wird_abgewiesen(client: TestClient, benutzer) -> None:
+    """Das Token ist an die Sitzung gebunden; eines aus einer anderen passt nicht."""
+    client.post("/login", data={"username": "lino", "password": "passwort-lang-genug"})
+    fremdes = csrf_token("ein-anderes-sitzungsgeheimnis", TEST_SECRET_KEY)
+    antwort = client.post("/logout", headers={CSRF_HEADER: fremdes})
     assert antwort.status_code == 403
 
 

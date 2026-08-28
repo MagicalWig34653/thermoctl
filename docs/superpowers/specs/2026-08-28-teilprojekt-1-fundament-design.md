@@ -345,6 +345,10 @@ TLS ein, im Heimnetz ohne TLS aus). Verlängerung bei Aktivität, Abmelden setzt
 Standard-Header. Geprüft wird für alle Anfragen, die per Cookie authentifiziert sind —
 Token-Anfragen brauchen es nicht, da sie kein Cookie mitschicken.
 
+**Ein fehlendes Token wird abgewiesen, nicht durchgelassen.** Das klingt selbstverständlich,
+ist aber die häufigste Art, einen CSRF-Schutz wirkungslos zu machen: Prüft man nur, *wenn*
+ein Token mitgeschickt wurde, genügt es dem Angreifer, keines zu schicken.
+
 **Tokens:** Format `tctl_<prefix>_<geheimnis>`, Geheimnis 256 Bit. Gespeichert wird SHA-256
 des Geheimnisses, nicht Argon2id: bei 256 Bit Zufall trägt ein langsamer Hash nichts bei,
 muss aber bei jeder API-Anfrage berechnet werden. Der Klartext erscheint genau einmal beim
