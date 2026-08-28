@@ -735,10 +735,19 @@ __pycache__
 .mypy_cache
 ```
 
-**Hinweis:** `migrations/` und `alembic.ini` entstehen erst in Task 6. Bis dahin schlägt der
-Image-Bau fehl — deshalb legt dieser Schritt beide bereits als leeres Gerüst an
-(`alembic.ini` mit `script_location = migrations`, `migrations/versions/.gitkeep`), damit
-die CI von Beginn an grün laufen kann.
+**Hinweis:** `migrations/` und `alembic.ini` entstehen erst in Task 6. Deshalb legt dieser
+Schritt beide bereits als leeres Gerüst an (`alembic.ini` mit `script_location = migrations`,
+`migrations/versions/.gitkeep`), damit der **Image-Bau** gelingt.
+
+**Der Containerstart ist in dieser Aufgabe noch nicht prüfbar.** Der Entrypoint ruft
+`alembic upgrade head`, und Alembic braucht dafür `migrations/env.py` — das entsteht erst in
+Task 6. Ein leeres Verzeichnis genügt ihm nicht. Geprüft werden hier deshalb nur der
+Image-Bau und die Nicht-root-Ausführung; die Startprüfung wird in Task 6 nachgeholt und ist
+dort als eigener Schritt aufgeführt.
+
+Der Entrypoint bleibt bewusst unverändert: Ihn tolerant gegenüber fehlenden Migrationen zu
+machen, würde im Betrieb genau den Fehler verdecken, den er verhindern soll — einen Dienst,
+der mit veraltetem Schema startet.
 
 - [ ] **Step 2: `.github/workflows/ci.yml` schreiben**
 
@@ -1151,7 +1160,23 @@ THERMOCTL_TEST_DATABASE_URL=mysql+pymysql://root:pruefen@127.0.0.1:3306/thermoct
 
 Erwartet: beide Läufe bestanden.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 7: Den in Task 5 aufgeschobenen Containerstart nachholen**
+
+Ab jetzt existiert `migrations/env.py`, also kann der Entrypoint durchlaufen:
+
+```bash
+docker build -f docker/Dockerfile -t thermoctl:test .
+docker run -d --name thermoctl-test -e THERMOCTL_DATABASE_URL=sqlite:////data/t.db \
+  -e THERMOCTL_SECRET_KEY=$(python3 -c "import secrets;print(secrets.token_urlsafe(48))") \
+  -p 8000:8000 thermoctl:test
+curl -fsS localhost:8000/healthz && docker exec thermoctl-test id -u
+docker rm -f thermoctl-test
+```
+
+Erwartet: `{"status":"ok","version":"0.1.0"}` und `10001`. Der Schlüssel wird zur Laufzeit
+erzeugt und nirgends abgelegt.
+
+- [ ] **Step 8: Commit**
 
 ```bash
 git add thermoctl/db alembic.ini migrations tests pyproject.toml
