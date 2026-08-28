@@ -2,7 +2,13 @@ import json
 import logging
 
 from thermoctl.config import Settings
-from thermoctl.logging import JsonFormatter, configure_logging, mask, request_id_var
+from thermoctl.logging import (
+    JsonFormatter,
+    MaskierungsFilter,
+    configure_logging,
+    mask,
+    request_id_var,
+)
 
 
 def test_ausgabe_ist_gueltiges_json() -> None:
@@ -94,6 +100,51 @@ def test_maskierung_wirkt_auch_bei_textformat(capsys: object) -> None:
     ausgabe = capsys.readouterr().out  # type: ignore[attr-defined]
     assert "streng-geheim" not in ausgabe
     assert "***" in ausgabe
+
+
+def test_filter_maskiert_oberstes_zusatzfeld_isoliert() -> None:
+    # Prueft den Filter fuer sich, ohne Formatter: Der Filter muss anhand des
+    # Feldnamens entscheiden, nicht anhand des (nackten) Werts. Ein oberstes
+    # Zusatzfeld wie "mqtt_password" hat als Attributname genau die Information,
+    # die mask() braucht -- die uebergibt der Filter bislang nicht mit.
+    satz = logging.LogRecord("t", logging.INFO, "p", 1, "verbindung", None, None)
+    satz.mqtt_password = "streng-geheim"  # type: ignore[attr-defined]
+    MaskierungsFilter().filter(satz)
+    assert satz.mqtt_password == "***"  # type: ignore[attr-defined]
+
+
+def test_filter_maskiert_verschachtelte_zusatzfelder_isoliert() -> None:
+    satz = logging.LogRecord("t", logging.INFO, "p", 1, "verbindung", None, None)
+    satz.config = {"secret_key": "streng-geheim"}  # type: ignore[attr-defined]
+    MaskierungsFilter().filter(satz)
+    assert satz.config == {"secret_key": "***"}  # type: ignore[attr-defined]
+
+
+def test_maskierung_erkennt_camelcase_zusammengesetzte_schluessel() -> None:
+    roh = {"mqttPassword": "geheim1", "refreshToken": "geheim2"}
+    assert mask(roh) == {"mqttPassword": "***", "refreshToken": "***"}
+
+
+def test_maskierung_lehnt_teilzeichenketten_treffer_ab() -> None:
+    # Segmentweise exakte Pruefung statt Teilzeichenketten-Suche: diese Namen
+    # enthalten "token"/"password"/"secret" nur als Teil eines laengeren Worts
+    # in einem Segment, nicht als eigenes Segment, und sind keine Geheimnisse.
+    roh = {
+        "tokenizer": "x",
+        "passwordless_supported": True,
+        "secretary_name": "Kim",
+        "username": "lino",
+    }
+    assert mask(roh) == roh
+
+
+def test_maskierung_behaelt_absichtliche_ueberdeckung_bei() -> None:
+    # Abwaegung: Im Zweifel lieber ein harmloses Feld zu viel schwaerzen als
+    # ein Geheimnis zu wenig. "token_count" und "cookie_policy" haben ein
+    # Segment ("token"/"cookie"), das exakt einem Kernbegriff entspricht --
+    # sie werden bewusst mitmaskiert, obwohl sie selbst kein Geheimnis sind.
+    roh = {"token_count": 3, "cookie_policy": "strict"}
+    assert mask(roh) == {"token_count": "***", "cookie_policy": "***"}
 
 
 def test_geheimnis_in_meldungstext_bleibt_sichtbar() -> None:

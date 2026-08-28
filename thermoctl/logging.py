@@ -22,10 +22,10 @@ from thermoctl.config import Settings
 
 request_id_var: ContextVar[str | None] = ContextVar("request_id", default=None)
 
-# Kernbegriffe statt exakter Schluessel: ein Schluessel gilt als sensibel, wenn er
-# nach Normalisierung (Kleinschreibung, Trennzeichen entfernt) einen dieser
-# Kernbegriffe als Teilzeichenkette enthaelt. Das erfasst auch zusammengesetzte
-# Namen wie "mqtt_password", "client_secret" oder "refresh_token", ohne "username"
+# Kernbegriffe statt exakter Schluessel: ein Schluessel gilt als sensibel, wenn
+# eines seiner Segmente (siehe _segmentiere_schluessel) exakt einem dieser
+# Kernbegriffe entspricht. Das erfasst zusammengesetzte Namen wie
+# "mqtt_password", "client_secret" oder "refresh_token", ohne "username"
 # faelschlich zu treffen — ein Nutzername ist kein Geheimnis.
 KERNBEGRIFFE = frozenset(
     {
@@ -41,25 +41,44 @@ KERNBEGRIFFE = frozenset(
 )
 
 _TRENNZEICHEN = re.compile(r"[_\-.]")
+# Erkennt CamelCase-Uebergaenge (Kleinbuchstabe/Ziffer -> Grossbuchstabe), damit
+# z. B. "mqttPassword" ebenfalls in die Segmente "mqtt" und "password" zerlegt
+# wird statt als ein zusammenhaengendes Wort behandelt zu werden.
+_CAMELCASE_UEBERGANG = re.compile(r"(?<=[a-z0-9])(?=[A-Z])")
 
 _STANDARDFELDER = frozenset(logging.LogRecord("", 0, "", 0, "", None, None).__dict__)
 
 
-def _normalisiere_schluessel(schluessel: object) -> str:
-    return _TRENNZEICHEN.sub("", str(schluessel).lower())
+def _segmentiere_schluessel(schluessel: object) -> list[str]:
+    mit_trennern = _CAMELCASE_UEBERGANG.sub("_", str(schluessel))
+    return [teil.lower() for teil in _TRENNZEICHEN.split(mit_trennern) if teil]
 
 
 def _ist_sensibel(schluessel: object) -> bool:
-    normalisiert = _normalisiere_schluessel(schluessel)
-    return any(begriff in normalisiert for begriff in KERNBEGRIFFE)
+    # Segmentweise exakte Pruefung statt Teilzeichenketten-Suche: ein Schluessel
+    # gilt nur als sensibel, wenn ein ganzes Segment einem Kernbegriff
+    # entspricht — nicht schon, wenn der Kernbegriff irgendwo als Teilstring
+    # vorkommt. Das vermeidet Fehlalarme wie "tokenizer", "passwordless_supported"
+    # oder "secretary_name", bei denen der Kernbegriff nur Teil eines laengeren
+    # Worts in einem Segment ist.
+    #
+    # Abwaegung: Namen wie "token_count" oder "cookie_policy" haben ein eigenes
+    # Segment, das exakt einem Kernbegriff entspricht, und werden deshalb
+    # weiterhin (mit-)maskiert, obwohl sie selbst kein Geheimnis sind. Das wird
+    # bewusst in Kauf genommen: Im Zweifel lieber ein harmloses Feld zu viel
+    # schwaerzen als ein Geheimnis zu wenig.
+    return any(
+        segment in KERNBEGRIFFE for segment in _segmentiere_schluessel(schluessel)
+    )
 
 
 def mask(value: object) -> object:
     """Ersetzt Werte unter als sensibel erkannten Schluesseln durch '***'.
 
     Rekursiv ueber Abbildungen und Sequenzen. Ein Schluessel gilt als sensibel,
-    wenn er (normalisiert: Kleinschreibung, ohne '_', '-', '.') einen Kernbegriff
-    wie "password", "secret" oder "token" enthaelt — siehe ``KERNBEGRIFFE``.
+    wenn eines seiner Segmente (Trennzeichen '_', '-', '.' sowie CamelCase-
+    Uebergaenge, kleingeschrieben) exakt einem Kernbegriff wie "password",
+    "secret" oder "token" entspricht — siehe ``KERNBEGRIFFE``.
 
     Wirkt ausschliesslich auf strukturierte Werte (Abbildungen, Listen, Tupel),
     also auf das, was als ``extra=...`` an einen Log-Aufruf uebergeben wird.
@@ -91,7 +110,14 @@ class MaskierungsFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
         for schluessel, wert in list(record.__dict__.items()):
             if schluessel not in _STANDARDFELDER and not schluessel.startswith("_"):
-                record.__dict__[schluessel] = mask(wert)
+                # Der Feldname selbst entscheidet, ob maskiert wird -- mask()
+                # kann einen nackten Wert nicht beurteilen, es erkennt sensible
+                # Stellen nur anhand von Schluesseln in Abbildungen. Fuer ein
+                # oberstes Zusatzfeld wie "mqtt_password" ist der Attributname
+                # "mqtt_password" genau dieser Schluessel.
+                record.__dict__[schluessel] = (
+                    "***" if _ist_sensibel(schluessel) else mask(wert)
+                )
         return True
 
 
