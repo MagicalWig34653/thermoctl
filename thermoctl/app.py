@@ -14,6 +14,7 @@ from thermoctl.db.engine import create_engine_from_settings, session_factory, se
 from thermoctl.db.models.credential import SetupToken
 from thermoctl.logging import configure_logging, request_id_var
 from thermoctl.setup import einrichtung_noetig, setup_token_erzeugen
+from thermoctl.web.admin_views import router as admin_router
 from thermoctl.web.auth_views import router as auth_router
 from thermoctl.web.setup_views import router as setup_router
 
@@ -72,6 +73,7 @@ def create_app() -> FastAPI:
     app.state.session_factory = session_factory(create_engine_from_settings(settings))
     app.include_router(auth_router)
     app.include_router(setup_router)
+    app.include_router(admin_router)
 
     @app.middleware("http")
     async def anfrage_id(

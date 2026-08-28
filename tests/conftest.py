@@ -1,5 +1,5 @@
 import os
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import pytest
@@ -7,10 +7,11 @@ from fastapi.testclient import TestClient
 from sqlalchemy import URL, Engine, create_engine, make_url, text
 from sqlalchemy.orm import Session
 
-from tests.hilfen import quelle
+from tests.hilfen import benutzer_mit_rechten, quelle
 from thermoctl.app import create_app
 from thermoctl.auth.dependencies import get_session
 from thermoctl.auth.passwords import hash_password
+from thermoctl.auth.sessions import COOKIE_NAME, sitzung_anlegen
 from thermoctl.config import Settings, get_settings
 from thermoctl.db.base import Base
 from thermoctl.db.engine import create_engine_from_settings
@@ -189,6 +190,23 @@ def client(
     app.dependency_overrides[get_session] = _session_override
     yield TestClient(app)
     get_settings.cache_clear()
+
+
+@pytest.fixture
+def client_als(
+    client: TestClient, session: Session
+) -> Callable[[list[tuple[str, int | None]]], TestClient]:
+    zaehler = 0
+
+    def _client_als(rechte: list[tuple[str, int | None]]) -> TestClient:
+        nonlocal zaehler
+        zaehler += 1
+        nutzer = benutzer_mit_rechten(session, f"web-{zaehler}", rechte)
+        _sitzung, geheimnis = sitzung_anlegen(session, nutzer, 3600)
+        client.cookies.set(COOKIE_NAME, geheimnis)
+        return client
+
+    return _client_als
 
 
 @pytest.fixture

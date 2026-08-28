@@ -1,0 +1,12 @@
+{% extends "basis.html" if not ist_htmx else "leer.html" %}
+{% block titel %}Gruppen – thermoctl{% endblock %}
+{% block inhalt %}
+<section id="gruppenliste">
+    <h1>Gruppen</h1>
+    <ul>
+    {% for gruppe in gruppen %}
+        <li>{{ gruppe.name }}{% if gruppe.description %} – {{ gruppe.description }}{% endif %}</li>
+    {% endfor %}
+    </ul>
+</section>
+{% endblock %}

@@ -1,0 +1,12 @@
+{% extends "basis.html" if not ist_htmx else "leer.html" %}
+{% block titel %}Benutzer – thermoctl{% endblock %}
+{% block inhalt %}
+<section id="benutzerliste">
+    <h1>Benutzer</h1>
+    <ul>
+    {% for nutzer in benutzer %}
+        <li>{{ nutzer.display_name }} ({{ nutzer.username }}){% if not nutzer.is_active %} – inaktiv{% endif %}</li>
+    {% endfor %}
+    </ul>
+</section>
+{% endblock %}

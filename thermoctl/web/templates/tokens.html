@@ -1,0 +1,12 @@
+{% extends "basis.html" if not ist_htmx else "leer.html" %}
+{% block titel %}Tokens – thermoctl{% endblock %}
+{% block inhalt %}
+<section id="tokenliste">
+    <h1>Tokens</h1>
+    <ul>
+    {% for eintrag in token %}
+        <li>{{ eintrag.name }} ({{ eintrag.prefix }}){% if eintrag.revoked_at %} – widerrufen{% endif %}</li>
+    {% endfor %}
+    </ul>
+</section>
+{% endblock %}
