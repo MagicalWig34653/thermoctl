@@ -46,3 +46,4 @@ plugins = ["pydantic.mypy"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+markers = ["migration: laeuft Alembic als Unterprozess"]
