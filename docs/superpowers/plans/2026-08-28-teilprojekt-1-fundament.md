@@ -1102,19 +1102,33 @@ def session(engine: Engine) -> Iterator[Session]:
 - [ ] **Step 5: `tests/test_migrations.py` schreiben**
 
 ```python
+import os
 import subprocess
+import sys
 
 import pytest
-from sqlalchemy import Engine, inspect
+from sqlalchemy import Engine
 
 from tests.conftest import TEST_DATABASE_URL
 
 
 def _alembic(*argumente: str) -> subprocess.CompletedProcess[str]:
+    """Ruft Alembic als Unterprozess, damit echte Migrationslaeufe geprueft werden.
+
+    Aufruf ueber ``sys.executable -m alembic`` und nicht ueber das Skript ``alembic``:
+    Nur so liegt das Projektverzeichnis im Modulpfad des Unterprozesses. Beim
+    Skriptaufruf beginnt der Modulpfad in ``.venv/bin``, und ``thermoctl`` ist dann
+    nur ueber die ``.pth`` des editierbaren Installs auffindbar — die unter macOS
+    das Flag ``hidden`` tragen kann und dann beim Start uebersprungen wird.
+    """
+    umgebung = {
+        **os.environ,
+        "THERMOCTL_DATABASE_URL": TEST_DATABASE_URL,
+        "THERMOCTL_SECRET_KEY": "t" * 32,
+    }
     return subprocess.run(
-        ["alembic", *argumente],
-        env={"THERMOCTL_DATABASE_URL": TEST_DATABASE_URL, "THERMOCTL_SECRET_KEY": "t" * 32,
-             "PATH": "/usr/bin:/bin:/usr/local/bin:.venv/bin"},
+        [sys.executable, "-m", "alembic", *argumente],
+        env=umgebung,
         capture_output=True,
         text=True,
         check=False,
@@ -1153,6 +1167,18 @@ def test_fremdschluessel_werden_unter_sqlite_geprueft(engine: Engine) -> None:
 testpaths = ["tests"]
 addopts = "-q"
 markers = ["migration: laeuft Alembic als Unterprozess"]
+```
+
+Dazu zwei Ruff-Ausnahmen — eng gefasst, mit Begründung, und nicht mehr als nötig:
+
+```toml
+[tool.ruff]
+# Von Alembic erzeugte Migrationsdateien sind kein handgepflegter Code.
+extend-exclude = ["migrations/versions"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/test_migrations.py" = ["S603"]  # ruft Alembic bewusst als Unterprozess
+"migrations/env.py" = ["I001"]         # Alembic-Konvention: DB-Konfiguration vor Domänen-Importen
 ```
 
 - [ ] **Step 6: Gegen beide Datenbanken laufen lassen**
