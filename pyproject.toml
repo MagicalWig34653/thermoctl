@@ -15,7 +15,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=9.1", "httpx2>=2.12", "ruff>=0.16", "mypy>=1.18"]
+dev = ["pytest>=9.1", "pytest-cov>=6.0", "httpx2>=2.12", "ruff>=0.16", "mypy>=1.18"]
 
 [project.scripts]
 thermoctl = "thermoctl.cli:main"
@@ -54,5 +54,8 @@ plugins = ["pydantic.mypy"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-q"
+# Der Abdeckungsbericht laeuft immer mit, die Mindestschwelle steht dagegen in der CI
+# (--cov-fail-under=97). Sonst scheitert jeder Lauf einer einzelnen Testdatei an einer
+# Schwelle, die nur fuer die vollstaendige Suite gilt.
+addopts = "-q --cov=thermoctl --cov-report=term-missing"
 markers = ["migration: laeuft Alembic als Unterprozess"]
