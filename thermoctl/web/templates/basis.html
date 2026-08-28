@@ -4,8 +4,23 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block titel %}thermoctl{% endblock %}</title>
+    <link rel="stylesheet" href="/static/vendor/bootstrap/bootstrap.min.css">
 </head>
 <body>
+<nav class="navbar navbar-expand-sm navbar-dark bg-dark mb-4">
+    <div class="container">
+        <a class="navbar-brand" href="/">thermoctl</a>
+        <div class="navbar-nav">
+            <a class="nav-link" href="/benutzer">Benutzer</a>
+            <a class="nav-link" href="/gruppen">Gruppen</a>
+            <a class="nav-link" href="/tokens">Tokens</a>
+        </div>
+    </div>
+</nav>
+<div class="container" style="max-width: 40rem;">
 {% block inhalt %}{% endblock %}
+</div>
+<script src="/static/vendor/bootstrap/bootstrap.bundle.min.js"></script>
+<script src="/static/vendor/htmx/htmx.min.js"></script>
 </body>
 </html>

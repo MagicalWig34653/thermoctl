@@ -2,11 +2,22 @@
 {% block titel %}Gruppen – thermoctl{% endblock %}
 {% block inhalt %}
 <section id="gruppenliste">
-    <h1>Gruppen</h1>
-    <ul>
-    {% for gruppe in gruppen %}
-        <li>{{ gruppe.name }}{% if gruppe.description %} – {{ gruppe.description }}{% endif %}</li>
-    {% endfor %}
-    </ul>
+    <h1 class="mb-3">Gruppen</h1>
+    <table class="table table-striped">
+        <thead>
+        <tr>
+            <th scope="col">Name</th>
+            <th scope="col">Beschreibung</th>
+        </tr>
+        </thead>
+        <tbody>
+        {% for gruppe in gruppen %}
+        <tr>
+            <td>{{ gruppe.name }}</td>
+            <td>{{ gruppe.description or "" }}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
 </section>
 {% endblock %}

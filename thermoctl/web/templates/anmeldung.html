@@ -4,18 +4,22 @@
 
 {% block inhalt %}
 <main>
-    <h1>Anmeldung</h1>
+    <h1 class="mb-4">Anmeldung</h1>
     {% if fehler %}
-    <p role="alert">{{ fehler }}</p>
+    <div class="alert alert-danger" role="alert">{{ fehler }}</div>
     {% endif %}
     <form method="post" action="/login">
-        <label for="username">Benutzername</label>
-        <input type="text" id="username" name="username" autocomplete="username" required autofocus>
-
-        <label for="password">Passwort</label>
-        <input type="password" id="password" name="password" autocomplete="current-password" required>
-
-        <button type="submit">Anmelden</button>
+        <div class="mb-3">
+            <label for="username" class="form-label">Benutzername</label>
+            <input type="text" class="form-control" id="username" name="username"
+                   autocomplete="username" required autofocus>
+        </div>
+        <div class="mb-3">
+            <label for="password" class="form-label">Passwort</label>
+            <input type="password" class="form-control" id="password" name="password"
+                   autocomplete="current-password" required>
+        </div>
+        <button type="submit" class="btn btn-primary">Anmelden</button>
     </form>
 </main>
 {% endblock %}

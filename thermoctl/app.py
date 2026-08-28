@@ -5,6 +5,8 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, Response
+from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -13,8 +15,10 @@ from thermoctl.api.routes import router as api_router
 from thermoctl.config import get_settings
 from thermoctl.db.engine import create_engine_from_settings, session_factory, session_scope
 from thermoctl.db.models.credential import SetupToken
+from thermoctl.domain.authz import Forbidden
 from thermoctl.logging import configure_logging, request_id_var
 from thermoctl.setup import einrichtung_noetig, setup_token_erzeugen
+from thermoctl.web import STATIC_DIR
 from thermoctl.web.admin_views import router as admin_router
 from thermoctl.web.auth_views import router as auth_router
 from thermoctl.web.setup_views import router as setup_router
@@ -76,6 +80,14 @@ def create_app() -> FastAPI:
     app.include_router(setup_router)
     app.include_router(admin_router)
     app.include_router(api_router)
+    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
+    @app.exception_handler(Forbidden)
+    async def forbidden_handler(request: Request, exc: Forbidden) -> Response:
+        # Einheitliche Uebersetzung einer Rechtsverweigerung in 403 -- eine Route,
+        # die das nicht selbst tut (und das kuenftig vergisst), soll trotzdem nicht
+        # mit 500 antworten. Auflage aus dem Abschlussreview von Teilprojekt 1.
+        return JSONResponse(status_code=403, content={"detail": str(exc)})
 
     @app.middleware("http")
     async def anfrage_id(

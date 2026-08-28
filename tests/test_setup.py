@@ -80,3 +80,22 @@ def test_setup_token_erscheint_nicht_im_klartext_in_der_datenbank(session: Sessi
 
     marke = setup_token_erzeugen(session)
     assert session.query(SetupToken).one().token_hash != marke
+
+
+def test_setup_mit_zu_kurzem_passwort_fuehrt_zum_formular_zurueck(
+    client: TestClient, session: Session
+) -> None:
+    """PasswordTooShort darf nicht als 500 beim Aufrufer ankommen -- es ist ein
+    Eingabefehler, keine Stoerung des Dienstes. Bereits ausgefuellte Felder (ausser
+    dem Passwort) bleiben im Formular erhalten."""
+    marke = setup_token_erzeugen(session)
+    antwort = client.post(
+        "/setup",
+        data={"username": "lino", "display_name": "Lino", "password": "zukurz",
+              "timezone": "Europe/Berlin", "setup_token": marke},
+    )
+    assert antwort.status_code == 200
+    assert "mindestens" in antwort.text
+    assert 'value="lino"' in antwort.text
+    assert "zukurz" not in antwort.text
+    assert session.query(User).count() == 0

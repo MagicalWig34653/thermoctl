@@ -5,6 +5,7 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
 from thermoctl.auth.dependencies import get_session
+from thermoctl.auth.passwords import PasswordTooShort
 from thermoctl.setup import einrichtung_durchfuehren, einrichtung_noetig
 from thermoctl.web import templates
 
@@ -43,6 +44,12 @@ async def setup(
     setup_token: Annotated[str, Form()] = "",
 ) -> Response:
     _sicherstellen_offen(session)
+    # Bereits ausgefuellte Felder bleiben im Formular erhalten, wenn die Eingabe
+    # abgelehnt wird -- ausser dem Passwort, das nie in eine Antwort zurueckfliesst.
+    formularwerte = {
+        "username": username, "display_name": display_name, "timezone": timezone,
+        "setup_token": setup_token,
+    }
     try:
         einrichtung_durchfuehren(
             session, username=username, display_name=display_name, passwort=password,
@@ -50,5 +57,12 @@ async def setup(
         )
     except PermissionError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+    except PasswordTooShort as exc:
+        # Eine zu kurze Eingabe ist ein Formfehler des Nutzers, keine Stoerung des
+        # Dienstes -- zurueck zum Formular mit verstaendlicher Meldung statt 500.
+        return templates.TemplateResponse(
+            request, "einrichtung.html", {"fehler": str(exc), **formularwerte},
+            status_code=status.HTTP_200_OK,
+        )
 
     return RedirectResponse("/login", status_code=status.HTTP_303_SEE_OTHER)

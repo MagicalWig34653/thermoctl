@@ -1,0 +1,35 @@
+# Herkunft der mitgelieferten Dateien
+
+Dieses Verzeichnis enthaelt fremden, unveraendert uebernommenen Code. Er wird lokal
+ausgeliefert (ueber `StaticFiles` in `thermoctl/app.py`), nicht ueber ein CDN --
+`thermoctl` soll auch ohne Internetzugang im Heimnetz benutzbar bleiben, und ein
+CDN-Aufruf wuerde jedem Betreiber-Netzwerk gegenueber Dritten verraten, wann jemand
+die Heizungssteuerung oeffnet.
+
+## Bootstrap 5.3.3
+
+Quelle: https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/
+Lizenz: MIT (https://github.com/twbs/bootstrap/blob/main/LICENSE)
+
+| Datei | SHA-384 |
+|---|---|
+| `vendor/bootstrap/bootstrap.min.css` | `sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH` |
+| `vendor/bootstrap/bootstrap.bundle.min.js` | `sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz` |
+
+Das Bundle-JS enthaelt Popper.js, wird fuer Dropdowns/Toasts/Tooltips mitgeliefert,
+auch wenn die aktuellen Templates es noch nicht ausnutzen.
+
+## HTMX 2.0.4
+
+Quelle: https://cdn.jsdelivr.net/npm/htmx.org@2.0.4/dist/htmx.min.js
+Lizenz: BSD 2-Clause (https://github.com/bigskysoftware/htmx/blob/master/LICENSE)
+
+| Datei | SHA-384 |
+|---|---|
+| `vendor/htmx/htmx.min.js` | `sha384-HGfztofotfshcF7+8n44JQL2oJmowVChPTg48S+jvZoztPfvwD79OC/LTtG6dMp+` |
+
+## Pflege
+
+Beim Aktualisieren einer dieser Dateien: neue Version laden, Hash in dieser Tabelle
+nachfuehren, Version im Commit nennen. Keine dieser Dateien wird von Ruff oder mypy
+geprueft -- sie sind fremder, unveraenderter Code, kein Projektquelltext.

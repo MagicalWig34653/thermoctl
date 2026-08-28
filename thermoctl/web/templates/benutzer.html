@@ -2,11 +2,30 @@
 {% block titel %}Benutzer – thermoctl{% endblock %}
 {% block inhalt %}
 <section id="benutzerliste">
-    <h1>Benutzer</h1>
-    <ul>
-    {% for nutzer in benutzer %}
-        <li>{{ nutzer.display_name }} ({{ nutzer.username }}){% if not nutzer.is_active %} – inaktiv{% endif %}</li>
-    {% endfor %}
-    </ul>
+    <h1 class="mb-3">Benutzer</h1>
+    <table class="table table-striped">
+        <thead>
+        <tr>
+            <th scope="col">Anzeigename</th>
+            <th scope="col">Benutzername</th>
+            <th scope="col">Status</th>
+        </tr>
+        </thead>
+        <tbody>
+        {% for nutzer in benutzer %}
+        <tr>
+            <td>{{ nutzer.display_name }}</td>
+            <td>{{ nutzer.username }}</td>
+            <td>
+                {% if nutzer.is_active %}
+                <span class="badge text-bg-success">aktiv</span>
+                {% else %}
+                <span class="badge text-bg-secondary">inaktiv</span>
+                {% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
 </section>
 {% endblock %}
