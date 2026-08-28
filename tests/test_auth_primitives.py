@@ -53,3 +53,18 @@ def test_token_hat_erwartete_form() -> None:
     assert klartext.split("_")[1] == prefix
     assert hash_wert == hash_geheimnis(klartext.split("_", 2)[2])
     assert len(prefix) == 8
+
+
+def test_gespeicherter_hash_enthaelt_keinen_klartext() -> None:
+    """Unabhaengiger Nachweis, ohne hash_geheimnis zur Erwartung zu benutzen.
+
+    Der Test darueber vergleicht den Hash mit dem Ergebnis derselben Funktion, die
+    ihn erzeugt hat — er wuerde auch bestehen, wenn diese Funktion das Geheimnis
+    bloss auffuellte statt es zu hashen. Deshalb hier die direkte Probe.
+    """
+    klartext, _prefix, hash_wert = neues_token()
+    geheimnis = klartext.split("_", 2)[2]
+    assert geheimnis not in hash_wert
+    assert klartext not in hash_wert
+    assert len(hash_wert) == 64
+    assert all(zeichen in "0123456789abcdef" for zeichen in hash_wert)
