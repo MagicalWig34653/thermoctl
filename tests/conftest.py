@@ -33,6 +33,12 @@ def engine(settings: Settings) -> Iterator[Engine]:
 def session(engine: Engine) -> Iterator[Session]:
     """Jeder Test laeuft in einer Transaktion, die anschliessend zurueckgerollt wird.
 
+    Grenze dieser Isolation: Zurueckgerollt werden Datenaenderungen, nicht der Zaehler
+    fuer Auto-Increment-Schluessel — und unter MariaDB fuehrt DDL zu einem impliziten
+    Commit. Tests duerfen sich deshalb nicht auf bestimmte Kennungswerte verlassen und
+    keine Schemaaenderungen vornehmen. Der Preis dieser Loesung ist bewusst gewaehlt:
+    ein Schemaaufbau je Test waere unter MariaDB unertraeglich langsam.
+
     Dadurch teilen sich alle Tests ein Schema, ohne einander zu beeinflussen — unter
     MariaDB waere ein Neuaufbau je Test sonst spuerbar langsam.
     """
