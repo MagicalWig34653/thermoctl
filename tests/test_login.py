@@ -1,8 +1,10 @@
 from datetime import timedelta
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
+import thermoctl.web.auth_views
 from tests.hilfen import einstellungen_anlegen
 from thermoctl.auth.csrf import CSRF_COOKIE_NAME, csrf_token
 from thermoctl.auth.sessions import sitzung_anlegen
@@ -135,3 +137,30 @@ def test_sitzungsdauer_kommt_aus_der_einstellungszeile(
     # 3600 s aus der Einstellungszeile statt der eingebauten 14-Tage-Vorgabe.
     assert (vor_der_anmeldung + timedelta(seconds=3600)) <= ablauf
     assert ablauf <= (nach_der_anmeldung + timedelta(seconds=3600))
+
+def test_passwortpruefung_laeuft_auch_bei_unbekanntem_benutzer(
+    client: TestClient, benutzer, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Sonst verraet die Antwortzeit, welche Konten es gibt.
+
+    Argon2id ist absichtlich langsam. Wuerde die Pruefung bei einem unbekannten
+    Benutzernamen uebersprungen, waere die Anfrage messbar schneller als fuer einen
+    existierenden -- unabhaengig davon, dass Meldung und Wartezeit gleich sind. Der
+    Test zaehlt die Aufrufe, statt Zeiten zu messen: Zeitmessungen in Tests sind
+    unzuverlaessig, die Ursache laesst sich aber direkt pruefen.
+    """
+    aufrufe: list[str] = []
+    echtes_verify = thermoctl.web.auth_views.verify_password
+
+    def zaehlend(klartext: str, hash_wert: str) -> bool:
+        aufrufe.append(hash_wert)
+        return echtes_verify(klartext, hash_wert)
+
+    monkeypatch.setattr("thermoctl.web.auth_views.verify_password", zaehlend)
+
+    client.post("/login", data={"username": "gibtsnicht", "password": "falsch-aber-lang"})
+    assert len(aufrufe) == 1, "bei unbekanntem Benutzer wurde nicht geprueft"
+
+    aufrufe.clear()
+    client.post("/login", data={"username": "lino", "password": "falsch-aber-lang"})
+    assert len(aufrufe) == 1, "bei bekanntem Benutzer wurde nicht geprueft"

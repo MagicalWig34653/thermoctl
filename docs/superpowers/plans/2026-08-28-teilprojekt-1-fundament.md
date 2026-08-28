@@ -16,6 +16,22 @@ Jinja2, HTMX, Bootstrap 5, pytest, Ruff, mypy, Docker, GitHub Actions.
 **Grundlage:** [TP1-Spezifikation](../specs/2026-08-28-teilprojekt-1-fundament-design.md).
 Bei Widerspruch gilt die Spezifikation; dieser Plan setzt sie nur um.
 
+---
+
+## Umgesetzt am 2026-08-28
+
+Alle 22 Aufgaben sind erledigt und auf `main`. Offen bleibt allein Schritt 6 der letzten
+Aufgabe — Tag und Push sind dem Projektinhaber vorbehalten.
+
+Nachgeprüft: 141 Tests unter SQLite, 140 plus ein erwarteter Übersprung unter MariaDB, Ruff
+und mypy strict sauber, Migrationskette linear mit einem Kopf, Container baut und startet als
+Nicht-root, `/healthz` antwortet, Einrichtungs-Token erscheint im Log.
+
+**Der Plan wurde während der Umsetzung an zwölf Stellen korrigiert.** Die Korrekturen stehen
+jeweils an Ort und Stelle; die wichtigsten sind in den Global Constraints gelandet, weil sie
+für alle Aufgaben gelten. Sie sind der eigentliche Ertrag dieser Umsetzung: Fast alle
+Blocker gingen auf Fehler im Plan zurück, nicht auf Fehler der Umsetzenden.
+
 ## Global Constraints
 
 Diese Bedingungen gelten für **jede** Aufgabe, auch wenn sie dort nicht wiederholt werden.
@@ -134,7 +150,7 @@ unabhängig und können parallel laufen, ebenso 16 und 17.
 - Consumes: nichts
 - Produces: importierbares Paket `thermoctl` mit `__version__: str`; `pytest`, `ruff`, `mypy` laufen
 
-- [ ] **Step 1: `pyproject.toml` anlegen**
+- [x] **Step 1: `pyproject.toml` anlegen**
 
 ```toml
 [project]
@@ -187,7 +203,7 @@ testpaths = ["tests"]
 addopts = "-q"
 ```
 
-- [ ] **Step 2: Paket und Test anlegen**
+- [x] **Step 2: Paket und Test anlegen**
 
 `thermoctl/__init__.py`:
 
@@ -205,7 +221,7 @@ def test_paket_hat_version() -> None:
     assert thermoctl.__version__
 ```
 
-- [ ] **Step 3: `.env.example` anlegen — ohne jeden Wert**
+- [x] **Step 3: `.env.example` anlegen — ohne jeden Wert**
 
 ```bash
 # Pflichtangaben. Ohne sie startet der Dienst nicht.
@@ -224,7 +240,7 @@ THERMOCTL_LOG_FORMAT=         # Vorgabe: json
 THERMOCTL_SECURE_COOKIES=     # Vorgabe: false
 ```
 
-- [ ] **Step 4: Installieren und alle drei Werkzeuge laufen lassen**
+- [x] **Step 4: Installieren und alle drei Werkzeuge laufen lassen**
 
 ```bash
 # .venv besteht bereits mit Python 3.14.6 — nur anlegen, falls es fehlt
@@ -236,7 +252,7 @@ THERMOCTL_SECURE_COOKIES=     # Vorgabe: false
 
 Erwartet: `Python 3.14.6`, Ruff ohne Befund, mypy ohne Fehler, ein bestandener Test.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add pyproject.toml thermoctl tests .env.example
@@ -257,7 +273,7 @@ git commit -m "chore: Projektgeruest, Werkzeuge und Beispielumgebung"
   `log_format: str`, `secure_cookies: bool`; `get_settings() -> Settings` (zwischengespeichert
   über `functools.lru_cache`); `Settings.sanitized_database_url() -> str`
 
-- [ ] **Step 1: Die Tests schreiben**
+- [x] **Step 1: Die Tests schreiben**
 
 `tests/test_config.py`:
 
@@ -306,12 +322,12 @@ def test_datenbank_url_ohne_zugangsdaten() -> None:
     assert "host:3306/thermoctl" in bereinigt
 ```
 
-- [ ] **Step 2: Tests laufen lassen, Fehlschlag bestätigen**
+- [x] **Step 2: Tests laufen lassen, Fehlschlag bestätigen**
 
 Run: `.venv/bin/pytest tests/test_config.py -v`
 Erwartet: FAIL, `ModuleNotFoundError: No module named 'thermoctl.config'`
 
-- [ ] **Step 3: `thermoctl/config.py` schreiben**
+- [x] **Step 3: `thermoctl/config.py` schreiben**
 
 ```python
 from functools import lru_cache
@@ -353,12 +369,12 @@ def get_settings() -> Settings:
 Es gibt bewusst **keinen Vorgabewert** für `database_url` und `secret_key`. Ein
 Vorgabe-Secret wäre genau der Fallback-Wert, den Grundsatz 2 aus CLAUDE.md verbietet.
 
-- [ ] **Step 4: Tests laufen lassen**
+- [x] **Step 4: Tests laufen lassen**
 
 Run: `.venv/bin/pytest tests/test_config.py -v`
 Erwartet: 5 bestanden.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add thermoctl/config.py tests/test_config.py
@@ -380,7 +396,7 @@ Sicherheitsrelevant: ein durchgerutschtes Secret im Log verletzt Grundsatz 2.
   `request_id_var: ContextVar[str | None]`; `JsonFormatter(logging.Formatter)`;
   `mask(value: object) -> object`
 
-- [ ] **Step 1: Die Tests schreiben**
+- [x] **Step 1: Die Tests schreiben**
 
 `tests/test_logging.py`:
 
@@ -439,12 +455,12 @@ def test_maskierte_felder_erscheinen_nicht_in_der_ausgabe() -> None:
     assert "***" in text
 ```
 
-- [ ] **Step 2: Tests laufen lassen, Fehlschlag bestätigen**
+- [x] **Step 2: Tests laufen lassen, Fehlschlag bestätigen**
 
 Run: `.venv/bin/pytest tests/test_logging.py -v`
 Erwartet: FAIL, `ModuleNotFoundError: No module named 'thermoctl.logging'`
 
-- [ ] **Step 3: `thermoctl/logging.py` schreiben**
+- [x] **Step 3: `thermoctl/logging.py` schreiben**
 
 ```python
 import json
@@ -541,12 +557,12 @@ Die Schlüsselerkennung vergleicht nicht auf Gleichheit, sondern normalisiert (K
 Trennzeichen entfernt) und sucht nach Kernbegriffen. Sonst rutschen die zusammengesetzten
 Namen durch, die in der Praxis überwiegen — `mqtt_password`, `client_secret`, `refresh_token`.
 
-- [ ] **Step 4: Tests laufen lassen**
+- [x] **Step 4: Tests laufen lassen**
 
 Run: `.venv/bin/pytest tests/test_logging.py -v`
 Erwartet: 6 bestanden.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add thermoctl/logging.py tests/test_logging.py
@@ -565,7 +581,7 @@ git commit -m "feat: JSON-Logging mit Anfrage-ID und Maskierung sensibler Felder
 - Produces: `create_app() -> FastAPI`; Endpunkt `GET /healthz` → `{"status": "ok", "version": str}`;
   Antwortkopf `X-Request-ID` bei jeder Antwort; `main() -> None` als Konsolenbefehl
 
-- [ ] **Step 1: Die Tests schreiben**
+- [x] **Step 1: Die Tests schreiben**
 
 `tests/test_app.py`:
 
@@ -602,12 +618,12 @@ def test_mitgegebene_anfrage_id_wird_uebernommen(client: TestClient) -> None:
     assert antwort.headers["X-Request-ID"] == "vorgegeben"
 ```
 
-- [ ] **Step 2: Tests laufen lassen, Fehlschlag bestätigen**
+- [x] **Step 2: Tests laufen lassen, Fehlschlag bestätigen**
 
 Run: `.venv/bin/pytest tests/test_app.py -v`
 Erwartet: FAIL, `ModuleNotFoundError: No module named 'thermoctl.app'`
 
-- [ ] **Step 3: `thermoctl/app.py` schreiben**
+- [x] **Step 3: `thermoctl/app.py` schreiben**
 
 ```python
 import uuid
@@ -684,12 +700,12 @@ die Datenbank-URL **ohne** Zugangsdaten:
 `sanitized_database_url()` aus Task 2 und die Maskierung aus Task 3 greifen hier
 übereinander: Der Filter fängt ab, was die bereinigte Ausgabe übersehen hat.
 
-- [ ] **Step 4: Tests laufen lassen**
+- [x] **Step 4: Tests laufen lassen**
 
 Run: `.venv/bin/pytest tests/test_app.py -v`
 Erwartet: 3 bestanden.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add thermoctl/app.py thermoctl/cli.py tests/test_app.py
@@ -708,7 +724,7 @@ git commit -m "feat: FastAPI-Rumpfdienst mit Healthcheck und Anfrage-ID"
 - Consumes: `thermoctl.cli:main`, `/healthz`
 - Produces: Image mit Startbefehl `thermoctl`; zwei Workflows
 
-- [ ] **Step 1: `docker/Dockerfile` schreiben**
+- [x] **Step 1: `docker/Dockerfile` schreiben**
 
 ```dockerfile
 FROM python:3.14-slim AS build
@@ -776,7 +792,7 @@ Der Entrypoint bleibt bewusst unverändert: Ihn tolerant gegenüber fehlenden Mi
 machen, würde im Betrieb genau den Fehler verdecken, den er verhindern soll — einen Dienst,
 der mit veraltetem Schema startet.
 
-- [ ] **Step 2: `.github/workflows/ci.yml` schreiben**
+- [x] **Step 2: `.github/workflows/ci.yml` schreiben**
 
 ```yaml
 name: CI
@@ -827,7 +843,7 @@ jobs:
 Die MariaDB läuft in beiden Matrixzweigen mit; das kostet wenige Sekunden und erspart eine
 zweite, fast identische Jobdefinition.
 
-- [ ] **Step 3: `.github/workflows/docker.yml` schreiben**
+- [x] **Step 3: `.github/workflows/docker.yml` schreiben**
 
 ```yaml
 name: Docker
@@ -879,7 +895,7 @@ im letzten Schritt gesetzt, und der läuft nur bei einem Git-Tag. Ein Push auf `
 nur `sha-<kurzer Commit>` — ein Testimage, das gezielt gezogen werden kann, aber niemanden
 versehentlich erwischt.
 
-- [ ] **Step 4: Image örtlich bauen und starten**
+- [x] **Step 4: Image örtlich bauen und starten**
 
 ```bash
 docker build -f docker/Dockerfile -t thermoctl:test .
@@ -892,7 +908,7 @@ curl -fsS localhost:8000/healthz
 Erwartet: `{"status":"ok","version":"0.1.0"}`, und der Prozess läuft nicht als root
 (`docker exec <id> id -u` ergibt `10001`).
 
-- [ ] **Step 5: Commit und CI beobachten**
+- [x] **Step 5: Commit und CI beobachten**
 
 ```bash
 git add docker .dockerignore .github alembic.ini migrations
@@ -923,7 +939,7 @@ zwischen SQLite und MariaDB müssen hier einmal richtig abgefangen werden.
   `created_at`/`updated_at`; `utcnow() -> datetime`; `create_engine_from_settings(settings) -> Engine`;
   `session_factory(engine) -> sessionmaker[Session]`; pytest-Fixtures `engine`, `session`
 
-- [ ] **Step 1: `thermoctl/db/base.py` schreiben**
+- [x] **Step 1: `thermoctl/db/base.py` schreiben**
 
 ```python
 from datetime import UTC, datetime
@@ -959,7 +975,7 @@ class TimestampMixin:
     )
 ```
 
-- [ ] **Step 2: `thermoctl/db/engine.py` schreiben**
+- [x] **Step 2: `thermoctl/db/engine.py` schreiben**
 
 ```python
 from collections.abc import Iterator
@@ -1003,7 +1019,7 @@ def session_scope(factory: sessionmaker[Session]) -> Iterator[Session]:
         sitzung.close()
 ```
 
-- [ ] **Step 3: Alembic einrichten**
+- [x] **Step 3: Alembic einrichten**
 
 ```bash
 .venv/bin/alembic init -t generic migrations
@@ -1071,7 +1087,7 @@ else:
 `thermoctl/db/models/__init__.py` legt zunächst nur an, was es gibt; jede spätere Aufgabe
 ergänzt ihren Import hier.
 
-- [ ] **Step 4: `tests/conftest.py` schreiben**
+- [x] **Step 4: `tests/conftest.py` schreiben**
 
 ```python
 import os
@@ -1123,7 +1139,7 @@ def session(engine: Engine) -> Iterator[Session]:
         verbindung.close()
 ```
 
-- [ ] **Step 5: `tests/test_migrations.py` schreiben**
+- [x] **Step 5: `tests/test_migrations.py` schreiben**
 
 ```python
 import os
@@ -1206,7 +1222,7 @@ Dazu zwei Ruff-Ausnahmen — eng gefasst, mit Begründung, und nicht mehr als n�
 handgepflegte Datenmigrationen, die geprüft gehören — ausgenommen werden nur die beiden
 Regeln, gegen die Alembics Vorlage selbst verstößt.
 
-- [ ] **Step 6: Gegen beide Datenbanken laufen lassen**
+- [x] **Step 6: Gegen beide Datenbanken laufen lassen**
 
 ```bash
 THERMOCTL_TEST_DATABASE_URL=sqlite:///./test.db .venv/bin/pytest -v
@@ -1218,7 +1234,7 @@ THERMOCTL_TEST_DATABASE_URL=mysql+pymysql://root:pruefen@127.0.0.1:3306/thermoct
 
 Erwartet: beide Läufe bestanden.
 
-- [ ] **Step 7: Den in Task 5 aufgeschobenen Containerstart nachholen**
+- [x] **Step 7: Den in Task 5 aufgeschobenen Containerstart nachholen**
 
 Ab jetzt existiert `migrations/env.py`, also kann der Entrypoint durchlaufen:
 
@@ -1234,7 +1250,7 @@ docker rm -f thermoctl-test
 Erwartet: `{"status":"ok","version":"0.1.0"}` und `10001`. Der Schlüssel wird zur Laufzeit
 erzeugt und nirgends abgelegt.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add thermoctl/db alembic.ini migrations tests pyproject.toml
@@ -1258,7 +1274,7 @@ Ersetzen die `ENUM`- und `SET`-Spalten des Altsystems (Fallstrick 3).
   `ActorSource`, `Permission` — jeweils mit `id: int`, `code: str`, `label`/`description: str`;
   `Permission` zusätzlich `is_zone_scoped: bool`. Konstanten `PERMISSIONS: list[tuple[str, str, bool]]`
 
-- [ ] **Step 1: Den Test schreiben**
+- [x] **Step 1: Den Test schreiben**
 
 `tests/test_lookup.py`:
 
@@ -1285,12 +1301,12 @@ def test_berechtigung_kennt_ihren_geltungsbereich(session: Session) -> None:
     assert p.is_zone_scoped is True
 ```
 
-- [ ] **Step 2: Test laufen lassen, Fehlschlag bestätigen**
+- [x] **Step 2: Test laufen lassen, Fehlschlag bestätigen**
 
 Run: `.venv/bin/pytest tests/test_lookup.py -v`
 Erwartet: FAIL, `ModuleNotFoundError`
 
-- [ ] **Step 3: `thermoctl/db/models/lookup.py` schreiben**
+- [x] **Step 3: `thermoctl/db/models/lookup.py` schreiben**
 
 ```python
 from sqlalchemy import Boolean, Integer, String
@@ -1390,7 +1406,7 @@ PERMISSIONS: list[tuple[str, str, bool]] = [
 ]
 ```
 
-- [ ] **Step 4: Migration erzeugen und die Werte einfüllen**
+- [x] **Step 4: Migration erzeugen und die Werte einfüllen**
 
 ```bash
 .venv/bin/alembic revision --autogenerate -m "Nachschlagetabellen"
@@ -1436,12 +1452,12 @@ op.bulk_insert(
 Berechtigungen gehören zum Code und nicht zu den Nutzdaten — deshalb kommen sie aus einer
 Migration und nicht aus dem Einrichtungsassistenten.
 
-- [ ] **Step 5: Tests und Migration prüfen**
+- [x] **Step 5: Tests und Migration prüfen**
 
 Run: `.venv/bin/pytest tests/test_lookup.py tests/test_migrations.py -v`
 Erwartet: alle bestanden, auch `alembic check`.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add thermoctl/db/models migrations/versions tests/test_lookup.py
@@ -1465,7 +1481,7 @@ Ersetzt `rooms` und `thermostate` (Fallstricke 6 und 8). Läuft parallel zu 9, 1
   `sort_order`, `is_builtin`; `ZoneSetpoint` mit zusammengesetztem Schlüssel
   `(zone_id, setpoint_mode_id)` und `temperature_c: Decimal`
 
-- [ ] **Step 1: Die Tests schreiben**
+- [x] **Step 1: Die Tests schreiben**
 
 `tests/test_zone.py`:
 
@@ -1536,12 +1552,12 @@ def test_nachkommastelle_bleibt_erhalten(session: Session) -> None:
     assert geladen.temperature_c == Decimal("18.5")
 ```
 
-- [ ] **Step 2: Tests laufen lassen, Fehlschlag bestätigen**
+- [x] **Step 2: Tests laufen lassen, Fehlschlag bestätigen**
 
 Run: `.venv/bin/pytest tests/test_zone.py -v`
 Erwartet: FAIL, `ModuleNotFoundError`
 
-- [ ] **Step 3: `thermoctl/db/models/zone.py` schreiben**
+- [x] **Step 3: `thermoctl/db/models/zone.py` schreiben**
 
 ```python
 from decimal import Decimal
@@ -1611,7 +1627,7 @@ class ZoneSetpoint(Base):
 einen Fremdschlüssel, sobald `device` existiert. Ein Fremdschlüssel auf eine noch fehlende
 Tabelle würde die Migration hier scheitern lassen.
 
-- [ ] **Step 4: Migration erzeugen und beide Datenbanken prüfen**
+- [x] **Step 4: Migration erzeugen und beide Datenbanken prüfen**
 
 ```bash
 .venv/bin/alembic revision --autogenerate -m "Zonen, Sollwert-Modi und Sollwerte"
@@ -1622,7 +1638,7 @@ THERMOCTL_TEST_DATABASE_URL=mysql+pymysql://root:pruefen@127.0.0.1:3306/thermoct
 
 Erwartet: 4 Tests bestanden, unter beiden Datenbanken.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add thermoctl/db/models/zone.py migrations/versions tests/test_zone.py
@@ -1644,7 +1660,7 @@ Ersetzt den JSON-Blob `temperatureTargetNightHours` (Fallstrick 1).
 - Produces: `SchedulePoint` mit `id`, `zone_id`, `weekday: int` (1–7), `minute_of_day: int`
   (0–1439), `setpoint_mode_id`; eindeutig über `(zone_id, weekday, minute_of_day)`
 
-- [ ] **Step 1: Die Tests schreiben**
+- [x] **Step 1: Die Tests schreiben**
 
 `tests/test_schedule_model.py`:
 
@@ -1731,12 +1747,12 @@ def modus_anlegen(session: Session, code: str, name: str | None = None) -> Setpo
     return modus
 ```
 
-- [ ] **Step 2: Tests laufen lassen, Fehlschlag bestätigen**
+- [x] **Step 2: Tests laufen lassen, Fehlschlag bestätigen**
 
 Run: `.venv/bin/pytest tests/test_schedule_model.py -v`
 Erwartet: FAIL, `ModuleNotFoundError`
 
-- [ ] **Step 3: `thermoctl/db/models/schedule.py` schreiben**
+- [x] **Step 3: `thermoctl/db/models/schedule.py` schreiben**
 
 ```python
 from sqlalchemy import CheckConstraint, ForeignKey, Integer, UniqueConstraint
@@ -1772,7 +1788,7 @@ class SchedulePoint(Base):
     )
 ```
 
-- [ ] **Step 4: Migration erzeugen, Tests gegen beide Datenbanken**
+- [x] **Step 4: Migration erzeugen, Tests gegen beide Datenbanken**
 
 ```bash
 .venv/bin/alembic revision --autogenerate -m "Schaltpunkte"
@@ -1782,7 +1798,7 @@ class SchedulePoint(Base):
 Erwartet: alle bestanden. Prüfen, dass die `CheckConstraint`s auch unter MariaDB greifen —
 MariaDB setzt sie seit 10.2 durch, ältere Versionen ignorierten sie stillschweigend.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add thermoctl/db/models/schedule.py migrations/versions tests/
@@ -1803,7 +1819,7 @@ git commit -m "feat: Zeitplaene als Schaltpunkte statt JSON-Blob"
   `temperature_c | None`, `starts_at`, `ends_at | None`, `cancelled_at | None`,
   `created_at`, `created_by_user_id | None`, `created_by_token_id | None`, `source_id`
 
-- [ ] **Step 1: Die Tests schreiben**
+- [x] **Step 1: Die Tests schreiben**
 
 `tests/test_override_model.py`:
 
@@ -1875,12 +1891,12 @@ def quelle(session: Session, code: str = "web") -> ActorSource:
     return q
 ```
 
-- [ ] **Step 2: Tests laufen lassen, Fehlschlag bestätigen**
+- [x] **Step 2: Tests laufen lassen, Fehlschlag bestätigen**
 
 Run: `.venv/bin/pytest tests/test_override_model.py -v`
 Erwartet: FAIL, `ModuleNotFoundError`
 
-- [ ] **Step 3: `thermoctl/db/models/override.py` schreiben**
+- [x] **Step 3: `thermoctl/db/models/override.py` schreiben**
 
 ```python
 from datetime import datetime
@@ -1931,7 +1947,7 @@ class ZoneOverride(Base):
 `created_by_user_id` und `created_by_token_id` bleiben vorerst einfache Integer; Task 13
 macht Fremdschlüssel daraus, sobald `user` und `api_token` existieren.
 
-- [ ] **Step 4: Migration erzeugen, Tests gegen beide Datenbanken**
+- [x] **Step 4: Migration erzeugen, Tests gegen beide Datenbanken**
 
 ```bash
 .venv/bin/alembic revision --autogenerate -m "Uebersteuerungen"
@@ -1942,7 +1958,7 @@ Erwartet: 4 bestanden. Unter SQLite prüfen, dass der `CheckConstraint` greift �
 Task 6 gesetzte `PRAGMA foreign_keys=ON` und mit `render_as_batch` laufen solche Prüfungen
 sonst still ins Leere.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add thermoctl/db/models/override.py migrations/versions tests/
@@ -1966,7 +1982,7 @@ Ersetzt `valveIdRadiatorList` (Fallstrick 5) und den Thermostat-`type` (Fallstri
   `id`, `zone_id`, `device_id`, `device_role_id`, `sort_order`. Ergänzt außerdem den
   Fremdschlüssel `zone.temperature_source_device_id → device.id`
 
-- [ ] **Step 1: Die Tests schreiben**
+- [x] **Step 1: Die Tests schreiben**
 
 `tests/test_device_model.py`:
 
@@ -2081,12 +2097,12 @@ def geraet_anlegen(session: Session, external_id: str) -> Device:
     return g
 ```
 
-- [ ] **Step 2: Tests laufen lassen, Fehlschlag bestätigen**
+- [x] **Step 2: Tests laufen lassen, Fehlschlag bestätigen**
 
 Run: `.venv/bin/pytest tests/test_device_model.py -v`
 Erwartet: FAIL, `ModuleNotFoundError`
 
-- [ ] **Step 3: `thermoctl/db/models/device.py` schreiben**
+- [x] **Step 3: `thermoctl/db/models/device.py` schreiben**
 
 ```python
 from datetime import datetime
@@ -2156,7 +2172,7 @@ In `thermoctl/db/models/zone.py` die Spalte zum Fremdschlüssel machen:
     )
 ```
 
-- [ ] **Step 4: Migration erzeugen**
+- [x] **Step 4: Migration erzeugen**
 
 ```bash
 .venv/bin/alembic revision --autogenerate -m "Geraete, Faehigkeiten und Zuordnungen"
@@ -2166,7 +2182,7 @@ Prüfen, dass die erzeugte Migration den Fremdschlüssel auf `zone` in einem
 `with op.batch_alter_table("zone") as batch:`-Block hinzufügt — ohne diesen Block scheitert
 sie unter SQLite, weil es dort kein `ALTER TABLE ... ADD CONSTRAINT` gibt.
 
-- [ ] **Step 5: Tests gegen beide Datenbanken**
+- [x] **Step 5: Tests gegen beide Datenbanken**
 
 ```bash
 THERMOCTL_TEST_DATABASE_URL=sqlite:///./test.db .venv/bin/pytest tests/ -v
@@ -2176,7 +2192,7 @@ THERMOCTL_TEST_DATABASE_URL=mysql+pymysql://root:pruefen@127.0.0.1:3306/thermoct
 
 Erwartet: alles bestanden, `alembic check` ohne Befund.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add thermoctl/db/models migrations/versions tests/
@@ -2198,7 +2214,7 @@ git commit -m "feat: Geraete generisch ueber Anbindung und Rolle statt fester Ty
   `UserAccessGroup` (`user_id`, `access_group_id`); `GroupPermission` (`id`,
   `access_group_id`, `permission_id`, `zone_id | None`)
 
-- [ ] **Step 1: Die Tests schreiben**
+- [x] **Step 1: Die Tests schreiben**
 
 `tests/test_identity_model.py`:
 
@@ -2286,12 +2302,12 @@ def berechtigung(session: Session, code: str, zonenbezogen: bool = False) -> Per
     return p
 ```
 
-- [ ] **Step 2: Tests laufen lassen, Fehlschlag bestätigen**
+- [x] **Step 2: Tests laufen lassen, Fehlschlag bestätigen**
 
 Run: `.venv/bin/pytest tests/test_identity_model.py -v`
 Erwartet: FAIL, `ModuleNotFoundError`
 
-- [ ] **Step 3: `thermoctl/db/models/identity.py` schreiben**
+- [x] **Step 3: `thermoctl/db/models/identity.py` schreiben**
 
 ```python
 from datetime import datetime
@@ -2368,7 +2384,7 @@ Systemen als „immer verschieden". Zwei anlagenweite Zuordnungen desselben Rech
 dadurch technisch möglich; die Domänenlogik in Task 15 wertet Rechte als Menge aus, sodass
 eine Dopplung folgenlos bleibt.
 
-- [ ] **Step 4: Migration erzeugen, Tests gegen beide Datenbanken**
+- [x] **Step 4: Migration erzeugen, Tests gegen beide Datenbanken**
 
 ```bash
 .venv/bin/alembic revision --autogenerate -m "Benutzer, Gruppen und Rechtezuordnung"
@@ -2377,7 +2393,7 @@ eine Dopplung folgenlos bleibt.
 
 Erwartet: 5 bestanden.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add thermoctl/db/models/identity.py migrations/versions tests/
@@ -2398,7 +2414,7 @@ git commit -m "feat: Benutzer, Gruppen und zonenbezogene Rechtezuordnung"
   `Setting`, `AuditEvent`. Ergänzt die Fremdschlüssel in `zone_override` auf `user` und
   `api_token`
 
-- [ ] **Step 1: Die Tests schreiben**
+- [x] **Step 1: Die Tests schreiben**
 
 `tests/test_credential_model.py`:
 
@@ -2486,12 +2502,12 @@ def benutzer_anlegen(session: Session, name: str) -> User:
     return nutzer
 ```
 
-- [ ] **Step 2: Tests laufen lassen, Fehlschlag bestätigen**
+- [x] **Step 2: Tests laufen lassen, Fehlschlag bestätigen**
 
 Run: `.venv/bin/pytest tests/test_credential_model.py -v`
 Erwartet: FAIL, `ModuleNotFoundError`
 
-- [ ] **Step 3: `thermoctl/db/models/credential.py` schreiben**
+- [x] **Step 3: `thermoctl/db/models/credential.py` schreiben**
 
 ```python
 from datetime import datetime
@@ -2663,7 +2679,7 @@ In `thermoctl/db/models/override.py` die beiden Urheberspalten zu Fremdschlüsse
 `ON DELETE SET NULL` und nicht `CASCADE`: Ein gelöschter Benutzer darf die Historie seiner
 Übersteuerungen nicht mitnehmen.
 
-- [ ] **Step 4: Migration erzeugen, beide Datenbanken prüfen**
+- [x] **Step 4: Migration erzeugen, beide Datenbanken prüfen**
 
 ```bash
 .venv/bin/alembic revision --autogenerate -m "Zugaenge, Einstellungen und Audit"
@@ -2675,7 +2691,7 @@ THERMOCTL_TEST_DATABASE_URL=mysql+pymysql://root:pruefen@127.0.0.1:3306/thermoct
 Erwartet: alles bestanden. In der Migration prüfen, dass die Fremdschlüssel auf
 `zone_override` in einem `batch_alter_table`-Block stehen.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add thermoctl/db/models migrations/versions tests/
@@ -2698,7 +2714,7 @@ git commit -m "feat: Sitzungen, Tokens, typisierte Einstellungen und Audit-Proto
   `neues_geheimnis() -> str`; `hash_geheimnis(geheimnis: str) -> str`;
   `neues_token() -> tuple[str, str, str]` — liefert `(klartext, prefix, hash)`
 
-- [ ] **Step 1: Die Tests schreiben**
+- [x] **Step 1: Die Tests schreiben**
 
 `tests/test_auth_primitives.py`:
 
@@ -2757,12 +2773,12 @@ def test_token_hat_erwartete_form() -> None:
     assert len(prefix) == 8
 ```
 
-- [ ] **Step 2: Tests laufen lassen, Fehlschlag bestätigen**
+- [x] **Step 2: Tests laufen lassen, Fehlschlag bestätigen**
 
 Run: `.venv/bin/pytest tests/test_auth_primitives.py -v`
 Erwartet: FAIL, `ModuleNotFoundError`
 
-- [ ] **Step 3: Die beiden Module schreiben**
+- [x] **Step 3: Die beiden Module schreiben**
 
 `thermoctl/auth/passwords.py`:
 
@@ -2829,12 +2845,12 @@ def neues_token() -> tuple[str, str, str]:
     return f"{TOKEN_PRAEFIX}_{prefix}_{geheimnis}", prefix, hash_geheimnis(geheimnis)
 ```
 
-- [ ] **Step 4: Tests laufen lassen**
+- [x] **Step 4: Tests laufen lassen**
 
 Run: `.venv/bin/pytest tests/test_auth_primitives.py -v`
 Erwartet: 8 bestanden.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add thermoctl/auth tests/test_auth_primitives.py
@@ -2866,7 +2882,7 @@ Hauptsession gegengelesen.
   - `visible_zones(session, principal, code: str) -> list[Zone]`
   - `Forbidden(Exception)`
 
-- [ ] **Step 1: Die Tests schreiben**
+- [x] **Step 1: Die Tests schreiben**
 
 `tests/test_authz.py`:
 
@@ -2996,12 +3012,12 @@ Die Hilfen `benutzer_mit_rechten` und `token_mit_rechten` in `tests/hilfen.py` e
 legen Benutzer beziehungsweise Token an, hängen eine Gruppe daran und tragen die übergebenen
 `(code, zone_id)`-Paare als `GroupPermission` beziehungsweise `ApiTokenPermission` ein.
 
-- [ ] **Step 2: Tests laufen lassen, Fehlschlag bestätigen**
+- [x] **Step 2: Tests laufen lassen, Fehlschlag bestätigen**
 
 Run: `.venv/bin/pytest tests/test_authz.py -v`
 Erwartet: FAIL, `ModuleNotFoundError`
 
-- [ ] **Step 3: `thermoctl/domain/principal.py` und `authz.py` schreiben**
+- [x] **Step 3: `thermoctl/domain/principal.py` und `authz.py` schreiben**
 
 ```python
 # thermoctl/domain/principal.py
@@ -3133,12 +3149,12 @@ def visible_zones(session: Session, principal: Principal, code: str) -> list[Zon
     )
 ```
 
-- [ ] **Step 4: Tests laufen lassen**
+- [x] **Step 4: Tests laufen lassen**
 
 Run: `.venv/bin/pytest tests/test_authz.py -v`
 Erwartet: 12 bestanden.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add thermoctl/domain tests/test_authz.py tests/hilfen.py
@@ -3162,7 +3178,7 @@ Reine Berechnung ohne Datenbankschreibzugriff. Läuft parallel zu 17.
   - `aufgeloester_sollwert(session, zone, jetzt_utc: datetime) -> Sollwert`
   - `Sollwert` (Dataclass): `temperature_c: Decimal`, `grund: str`, `modus_code: str | None`
 
-- [ ] **Step 1: Die Tests schreiben**
+- [x] **Step 1: Die Tests schreiben**
 
 `tests/test_domain_schedule.py`:
 
@@ -3245,12 +3261,12 @@ def test_grund_benennt_die_entscheidung(session: Session) -> None:
     assert "Tag" in ergebnis.grund and "06:00" in ergebnis.grund
 ```
 
-- [ ] **Step 2: Tests laufen lassen, Fehlschlag bestätigen**
+- [x] **Step 2: Tests laufen lassen, Fehlschlag bestätigen**
 
 Run: `.venv/bin/pytest tests/test_domain_schedule.py -v`
 Erwartet: FAIL, `ModuleNotFoundError`
 
-- [ ] **Step 3: `thermoctl/domain/schedule.py` schreiben**
+- [x] **Step 3: `thermoctl/domain/schedule.py` schreiben**
 
 ```python
 from dataclasses import dataclass
@@ -3383,12 +3399,12 @@ ergänzen:
     operating_mode: Mapped["OperatingMode"] = relationship(lazy="joined")
 ```
 
-- [ ] **Step 4: Tests laufen lassen**
+- [x] **Step 4: Tests laufen lassen**
 
 Run: `.venv/bin/pytest tests/test_domain_schedule.py -v`
 Erwartet: 10 bestanden.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add thermoctl/domain/schedule.py thermoctl/db/models/zone.py tests/
@@ -3408,7 +3424,7 @@ git commit -m "feat: Sollwertaufloesung aus Zeitplan, Uebersteuerung und Betrieb
   `min_off_seconds: int`, `sensor_timeout_seconds: int`, `temperature_offset_k: Decimal`,
   `window_resume_delay_seconds: int`; `regelparameter(session, zone) -> Regelparameter`
 
-- [ ] **Step 1: Die Tests schreiben**
+- [x] **Step 1: Die Tests schreiben**
 
 `tests/test_zone_settings.py`:
 
@@ -3454,12 +3470,12 @@ def test_standardaenderung_wirkt_auf_nicht_ueberschriebene_zonen(session: Sessio
     assert regelparameter(session, zone).hysteresis_k == Decimal("0.50")
 ```
 
-- [ ] **Step 2: Tests laufen lassen, Fehlschlag bestätigen**
+- [x] **Step 2: Tests laufen lassen, Fehlschlag bestätigen**
 
 Run: `.venv/bin/pytest tests/test_zone_settings.py -v`
 Erwartet: FAIL, `ModuleNotFoundError`
 
-- [ ] **Step 3: `thermoctl/domain/zone_settings.py` schreiben**
+- [x] **Step 3: `thermoctl/domain/zone_settings.py` schreiben**
 
 ```python
 from dataclasses import dataclass
@@ -3509,12 +3525,12 @@ def regelparameter(session: Session, zone: Zone) -> Regelparameter:
     )
 ```
 
-- [ ] **Step 4: Tests laufen lassen**
+- [x] **Step 4: Tests laufen lassen**
 
 Run: `.venv/bin/pytest tests/test_zone_settings.py -v`
 Erwartet: 4 bestanden.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add thermoctl/domain/zone_settings.py tests/test_zone_settings.py
@@ -3545,7 +3561,7 @@ git commit -m "feat: Regelparameter je Zone mit Rueckfall auf den globalen Stand
   - Routen `GET /login`, `POST /login`, `POST /logout`
 - Konstanten: Cookie-Name `thermoctl_session`, CSRF-Header `X-CSRF-Token`
 
-- [ ] **Step 1: Die Tests schreiben**
+- [x] **Step 1: Die Tests schreiben**
 
 `tests/test_login.py`:
 
@@ -3646,12 +3662,12 @@ Die Fixtures `client` und `benutzer` in `tests/conftest.py` ergänzen: `client` 
 mit der Testdatenbank, `benutzer` legt `lino` mit gehashtem Passwort und der Gruppe
 *Verwaltung* an.
 
-- [ ] **Step 2: Tests laufen lassen, Fehlschlag bestätigen**
+- [x] **Step 2: Tests laufen lassen, Fehlschlag bestätigen**
 
 Run: `.venv/bin/pytest tests/test_login.py -v`
 Erwartet: FAIL, `ModuleNotFoundError`
 
-- [ ] **Step 3: Die Module schreiben**
+- [x] **Step 3: Die Module schreiben**
 
 `thermoctl/auth/sessions.py`:
 
@@ -3791,12 +3807,12 @@ def test_erfolgreiche_anmeldung_setzt_den_zaehler_zurueck(client, benutzer) -> N
     assert FEHLVERSUCHE.get("lino", 0) == 0
 ```
 
-- [ ] **Step 4: Tests laufen lassen**
+- [x] **Step 4: Tests laufen lassen**
 
 Run: `.venv/bin/pytest tests/test_login.py -v`
 Erwartet: 12 bestanden.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add thermoctl/auth thermoctl/audit.py thermoctl/web tests/
@@ -3822,7 +3838,7 @@ git commit -m "feat: Anmeldung mit Sitzungscookie, CSRF-Schutz und Audit"
   - `BEISPIELGRUPPEN: dict[str, list[str]]`
   - Routen `GET /setup`, `POST /setup`
 
-- [ ] **Step 1: Die Tests schreiben**
+- [x] **Step 1: Die Tests schreiben**
 
 `tests/test_setup.py`:
 
@@ -3911,12 +3927,12 @@ def test_setup_token_erscheint_nicht_im_klartext_in_der_datenbank(session: Sessi
     assert session.query(SetupToken).one().token_hash != marke
 ```
 
-- [ ] **Step 2: Tests laufen lassen, Fehlschlag bestätigen**
+- [x] **Step 2: Tests laufen lassen, Fehlschlag bestätigen**
 
 Run: `.venv/bin/pytest tests/test_setup.py -v`
 Erwartet: FAIL, `ModuleNotFoundError`
 
-- [ ] **Step 3: `thermoctl/setup.py` schreiben**
+- [x] **Step 3: `thermoctl/setup.py` schreiben**
 
 ```python
 import logging
@@ -4034,12 +4050,12 @@ geprüft: existiert kein Benutzer und kein unverbrauchtes Setup-Token, wird eine
 **einmalig** ins Log geschrieben. Das ist die einzige Stelle im ganzen Projekt, an der ein
 Geheimnis absichtlich im Log erscheint; sie gehört als Ausnahme in `logging.py` vermerkt.
 
-- [ ] **Step 4: Tests laufen lassen**
+- [x] **Step 4: Tests laufen lassen**
 
 Run: `.venv/bin/pytest tests/test_setup.py -v`
 Erwartet: 9 bestanden.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add thermoctl/setup.py thermoctl/web tests/test_setup.py
@@ -4063,7 +4079,7 @@ git commit -m "feat: Einrichtungsassistent mit Einmal-Token und Beispielgruppen"
   - `token_widerrufen(session, token) -> None`
   - Routen `/benutzer`, `/gruppen`, `/tokens` mit HTMX-Teilansichten
 
-- [ ] **Step 1: Die Tests schreiben**
+- [x] **Step 1: Die Tests schreiben**
 
 `tests/test_admin_views.py` — die wesentlichen Fälle:
 
@@ -4109,12 +4125,12 @@ def test_passwort_hash_erscheint_in_keiner_ansicht(client_als) -> None:
     assert "$argon2id$" not in antwort.text
 ```
 
-- [ ] **Step 2: Tests laufen lassen, Fehlschlag bestätigen**
+- [x] **Step 2: Tests laufen lassen, Fehlschlag bestätigen**
 
 Run: `.venv/bin/pytest tests/test_admin_views.py -v`
 Erwartet: FAIL, `ModuleNotFoundError`
 
-- [ ] **Step 3: `thermoctl/auth/tokens.py` schreiben**
+- [x] **Step 3: `thermoctl/auth/tokens.py` schreiben**
 
 ```python
 from datetime import datetime
@@ -4188,12 +4204,12 @@ Die Views prüfen jeweils zu Beginn `require(principal, "user.manage")`,
 liefern bei `Forbidden` den Status 403. Ausgegeben werden **nie** `password_hash` oder
 `token_hash`.
 
-- [ ] **Step 4: Tests laufen lassen**
+- [x] **Step 4: Tests laufen lassen**
 
 Run: `.venv/bin/pytest tests/test_admin_views.py -v`
 Erwartet: 5 bestanden.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add thermoctl/web thermoctl/auth/tokens.py tests/test_admin_views.py
@@ -4215,7 +4231,7 @@ git commit -m "feat: Verwaltung von Benutzern, Gruppen und Tokens"
   `POST /api/v1/zones/{id}/override`, `DELETE /api/v1/zones/{id}/override`.
   Authentifizierung über `Authorization: Bearer tctl_…`
 
-- [ ] **Step 1: Die Tests schreiben**
+- [x] **Step 1: Die Tests schreiben**
 
 `tests/test_api.py`:
 
@@ -4274,12 +4290,12 @@ def test_token_hash_erscheint_in_keiner_antwort(client, token_fuer) -> None:
     assert "token_hash" not in client.get("/api/v1/me", headers=kopf).text
 ```
 
-- [ ] **Step 2: Tests laufen lassen, Fehlschlag bestätigen**
+- [x] **Step 2: Tests laufen lassen, Fehlschlag bestätigen**
 
 Run: `.venv/bin/pytest tests/test_api.py -v`
 Erwartet: FAIL, `ModuleNotFoundError`
 
-- [ ] **Step 3: Den Adapter schreiben**
+- [x] **Step 3: Den Adapter schreiben**
 
 Der Adapter bleibt dünn: er löst das Token auf, baut daraus einen `Principal`, ruft
 `visible_zones` beziehungsweise `require` und übersetzt `Forbidden` in 403. **Keine Regel
@@ -4290,12 +4306,12 @@ Bedarf über `naechster_punkt` in ein konkretes `ends_at` um.
 Ein Zugriff auf eine nicht sichtbare Zone antwortet mit **404, nicht 403** — sonst verrät
 die Antwort, dass es die Zone gibt.
 
-- [ ] **Step 4: Tests laufen lassen**
+- [x] **Step 4: Tests laufen lassen**
 
 Run: `.venv/bin/pytest tests/test_api.py -v`
 Erwartet: 8 bestanden.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add thermoctl/api tests/test_api.py
@@ -4314,7 +4330,7 @@ git commit -m "feat: REST-Adapter ueber derselben Domaenenlogik"
 - Consumes: alles Bisherige
 - Produces: ein Test, der die Abhängigkeitsrichtung festhält
 
-- [ ] **Step 1: Den Test schreiben**
+- [x] **Step 1: Den Test schreiben**
 
 `tests/test_architektur.py`:
 
@@ -4363,12 +4379,12 @@ def test_kein_modell_nutzt_verbotene_spaltentypen() -> None:
     assert not verstoesse, "\n".join(verstoesse)
 ```
 
-- [ ] **Step 2: Test laufen lassen**
+- [x] **Step 2: Test laufen lassen**
 
 Run: `.venv/bin/pytest tests/test_architektur.py -v`
 Erwartet: 2 bestanden. Schlägt einer fehl, ist das ein echter Befund und kein Testproblem.
 
-- [ ] **Step 3: Gesamtlauf gegen beide Datenbanken**
+- [x] **Step 3: Gesamtlauf gegen beide Datenbanken**
 
 ```bash
 THERMOCTL_TEST_DATABASE_URL=sqlite:///./test.db .venv/bin/pytest -v
@@ -4379,7 +4395,7 @@ THERMOCTL_TEST_DATABASE_URL=mysql+pymysql://root:pruefen@127.0.0.1:3306/thermoct
 
 Erwartet: alles grün unter beiden Datenbanken.
 
-- [ ] **Step 4: `README.md` und `docs/STATUS.md` schreiben**
+- [x] **Step 4: `README.md` und `docs/STATUS.md` schreiben**
 
 `README.md` beschreibt: was thermoctl ist, wie man es mit Docker startet, welche
 Umgebungsvariablen nötig sind, und dass das Einrichtungs-Token beim ersten Start im Log
@@ -4387,11 +4403,16 @@ steht. **Keine Beispielwerte für Secrets.**
 
 `docs/STATUS.md` auf „Teilprojekt 1 abgeschlossen, Teilprojekt 2 als Nächstes" setzen.
 
-- [ ] **Step 5: Commit und Freigabe**
+- [x] **Step 5: Commit**
 
 ```bash
 git add tests/test_architektur.py README.md docs/STATUS.md
 git commit -m "test: Architekturgrenzen festhalten, Teilprojekt 1 abgeschlossen"
+```
+
+- [ ] **Step 6: Tag und Push** — *bewusst offen, Entscheidung des Projektinhabers*
+
+```bash
 git tag v0.1.0 && git push origin main --tags
 ```
 

@@ -1,6 +1,6 @@
 # thermoctl — Rahmenentwurf
 
-Stand: 2026-08-28 · Status: Rahmen abgestimmt, Teilprojekte noch nicht spezifiziert
+Stand: 2026-08-28 · Status: Rahmen abgestimmt · **Teilprojekt 1 umgesetzt**, 2 bis 5 offen
 
 Dies ist der **Gesamtrahmen**, nicht die Spezifikation einer Implementierung. Er hält die
 bereits getroffenen Entscheidungen samt Begründung fest und zerlegt das Vorhaben in fünf
@@ -69,10 +69,13 @@ Weil SQLite **und** MariaDB unterstützt werden, gilt für das gesamte Schema:
 
 Das Vorhaben ist zu groß für eine Spezifikation. Fünf Teile, in dieser Reihenfolge:
 
-### 1 — Fundament
+### 1 — Fundament ✅ umgesetzt (2026-08-28)
 Repo-Struktur, Container, Konfigurationsmodell ohne Hardcoding, neues normalisiertes Schema
 mit Alembic-Migrationen, Benutzer und Authentifizierung, API-Tokens, Logging- und
 Debugging-Grundlage.
+
+[Spezifikation](2026-08-28-teilprojekt-1-fundament-design.md) ·
+[Implementierungsplan](../plans/2026-08-28-teilprojekt-1-fundament.md)
 
 Nichts davon ist sichtbar, alles andere hängt daran. Hier stirbt das Hardcoding.
 
@@ -116,5 +119,13 @@ für Fremde gebaut, bevor es für den Autor funktioniert.
 
 ## 5. Nächster Schritt
 
-Teilprojekt 1 im Detail ausbrainstormen — Schwerpunkt Datenmodell und Auth-Modell —, dann
-Spezifikation, dann Implementierungsplan.
+Teilprojekt 1 ist umgesetzt. Als Nächstes Teilprojekt 2 (Geräte-Anbindung im Schattenbetrieb)
+ausbrainstormen, dann Spezifikation, dann Implementierungsplan — derselbe Zyklus wie bei 1.
+
+Zwei Dinge, die Teilprojekt 1 dafür hinterlässt:
+
+- **Das Schema trägt die Geräte bereits** — `device`, `zone_device`, Anbindungen und Rollen
+  stehen, befüllt werden sie erst von der Geräteerkennung in Teilprojekt 2.
+- **Die offenen Fragen aus Abschnitt 10 der TP1-Spezifikation** sind an Teilprojekt 2 und 4
+  vererbt: Datenübernahme aus dem Altschema, Umgang mit den alten MQTT-Topics, und dass
+  `vm130-nginx` bis zum abgeschlossenen Cutover unverändert als Rückfallebene bleibt.

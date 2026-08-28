@@ -1,3 +1,4 @@
+import secrets
 import time
 from typing import Annotated
 
@@ -9,7 +10,7 @@ from sqlalchemy.orm import Session
 from thermoctl import audit
 from thermoctl.auth.csrf import CSRF_COOKIE_NAME, CSRF_HEADER, csrf_pruefen, csrf_token
 from thermoctl.auth.dependencies import get_session
-from thermoctl.auth.passwords import verify_password
+from thermoctl.auth.passwords import hash_password, verify_password
 from thermoctl.auth.sessions import (
     COOKIE_NAME,
     sitzung_anlegen,
@@ -31,6 +32,12 @@ router = APIRouter()
 FEHLVERSUCHE: dict[str, int] = {}
 
 _FEHLERMELDUNG = "Benutzername oder Passwort falsch."
+
+
+# Einmalig beim Laden erzeugt, aus Zufall: nur die Rechenzeit von `verify_password`
+# wird gebraucht, nie das zugehoerige Passwort. Bewusst kein fest eingetragener Wert --
+# im Repo steht kein Hash, auch kein bedeutungsloser.
+_VERGLEICHS_HASH = hash_password(secrets.token_urlsafe(32))
 
 
 def schlafen(sekunden: float) -> None:
@@ -57,11 +64,17 @@ async def login(
     schlafen(min(2**bisherige_fehlversuche, 5))
 
     benutzer = session.scalar(select(User).where(User.username == username))
-    erfolgreich = (
-        benutzer is not None
-        and benutzer.is_active
-        and verify_password(password, benutzer.password_hash)
-    )
+    # Die Passwortpruefung laeuft IMMER, auch fuer einen unbekannten Benutzernamen --
+    # dann gegen einen Wegwerf-Hash. Andernfalls wuerde Pythons Kurzschlussauswertung
+    # `verify_password` bei unbekanntem Namen ueberspringen, und die Anfrage waere
+    # messbar schneller als fuer einen existierenden Namen: Argon2id ist absichtlich
+    # langsam, und genau diese Rechenzeit verriete, welche Konten es gibt. Gleiche
+    # Meldung und gleiche Wartezeit allein genuegen dafuer nicht.
+    if benutzer is None:
+        verify_password(password, _VERGLEICHS_HASH)
+        erfolgreich = False
+    else:
+        erfolgreich = benutzer.is_active and verify_password(password, benutzer.password_hash)
 
     if not erfolgreich:
         FEHLVERSUCHE[username] = bisherige_fehlversuche + 1

@@ -1,6 +1,10 @@
 # Teilprojekt 1 — Fundament
 
-Stand: 2026-08-28 · Status: Spezifikation, noch nicht umgesetzt
+Stand: 2026-08-28 · Status: **umgesetzt**, siehe [Implementierungsplan](../plans/2026-08-28-teilprojekt-1-fundament.md)
+
+> Diese Spezifikation beschreibt den Sollzustand und ist umgesetzt. Wo die Umsetzung
+> Abweichungen erzwang — überwiegend Unterschiede zwischen SQLite und MariaDB —, sind sie
+> hier eingearbeitet, nicht bloß im Plan vermerkt.
 
 Konkretisiert Teilprojekt 1 aus dem [Rahmenentwurf](2026-08-28-thermoctl-neubau-design.md).
 Der Rahmen — FastAPI, SQLAlchemy, Alembic, SQLite oder MariaDB, Jinja/HTMX/Bootstrap,
