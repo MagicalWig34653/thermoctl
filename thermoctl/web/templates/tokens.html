@@ -2,11 +2,30 @@
 {% block titel %}Tokens – thermoctl{% endblock %}
 {% block inhalt %}
 <section id="tokenliste">
-    <h1>Tokens</h1>
-    <ul>
-    {% for eintrag in token %}
-        <li>{{ eintrag.name }} ({{ eintrag.prefix }}){% if eintrag.revoked_at %} – widerrufen{% endif %}</li>
-    {% endfor %}
-    </ul>
+    <h1 class="mb-3">Tokens</h1>
+    <table class="table table-striped">
+        <thead>
+        <tr>
+            <th scope="col">Name</th>
+            <th scope="col">Prefix</th>
+            <th scope="col">Status</th>
+        </tr>
+        </thead>
+        <tbody>
+        {% for eintrag in token %}
+        <tr>
+            <td>{{ eintrag.name }}</td>
+            <td><code>{{ eintrag.prefix }}</code></td>
+            <td>
+                {% if eintrag.revoked_at %}
+                <span class="badge text-bg-secondary">widerrufen</span>
+                {% else %}
+                <span class="badge text-bg-success">aktiv</span>
+                {% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
 </section>
 {% endblock %}

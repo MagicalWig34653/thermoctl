@@ -4,31 +4,41 @@
 
 {% block inhalt %}
 <main>
-    <h1>Einrichtung</h1>
-    <p>
+    <h1 class="mb-3">Einrichtung</h1>
+    <p class="text-muted">
         Dieser Assistent legt den ersten Verwalter an. Er ist nur erreichbar, solange
         noch kein Benutzer existiert, und danach dauerhaft geschlossen.
     </p>
     {% if fehler %}
-    <p role="alert">{{ fehler }}</p>
+    <div class="alert alert-danger" role="alert">{{ fehler }}</div>
     {% endif %}
     <form method="post" action="/setup">
-        <label for="setup_token">Einrichtungs-Token</label>
-        <input type="text" id="setup_token" name="setup_token" required autofocus>
-
-        <label for="username">Benutzername</label>
-        <input type="text" id="username" name="username" autocomplete="username" required>
-
-        <label for="display_name">Anzeigename</label>
-        <input type="text" id="display_name" name="display_name" required>
-
-        <label for="password">Passwort</label>
-        <input type="password" id="password" name="password" autocomplete="new-password" required>
-
-        <label for="timezone">Zeitzone</label>
-        <input type="text" id="timezone" name="timezone" value="Europe/Berlin" required>
-
-        <button type="submit">Einrichtung abschliessen</button>
+        <div class="mb-3">
+            <label for="setup_token" class="form-label">Einrichtungs-Token</label>
+            <input type="text" class="form-control" id="setup_token" name="setup_token"
+                   value="{{ setup_token | default('') }}" required autofocus>
+        </div>
+        <div class="mb-3">
+            <label for="username" class="form-label">Benutzername</label>
+            <input type="text" class="form-control" id="username" name="username"
+                   value="{{ username | default('') }}" autocomplete="username" required>
+        </div>
+        <div class="mb-3">
+            <label for="display_name" class="form-label">Anzeigename</label>
+            <input type="text" class="form-control" id="display_name" name="display_name"
+                   value="{{ display_name | default('') }}" required>
+        </div>
+        <div class="mb-3">
+            <label for="password" class="form-label">Passwort</label>
+            <input type="password" class="form-control" id="password" name="password"
+                   autocomplete="new-password" required>
+        </div>
+        <div class="mb-3">
+            <label for="timezone" class="form-label">Zeitzone</label>
+            <input type="text" class="form-control" id="timezone" name="timezone"
+                   value="{{ timezone | default('Europe/Berlin') }}" required>
+        </div>
+        <button type="submit" class="btn btn-primary">Einrichtung abschliessen</button>
     </form>
 </main>
 {% endblock %}

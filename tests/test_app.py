@@ -51,6 +51,43 @@ def test_anfrage_id_mit_sonderzeichen_wird_ersetzt(client: TestClient) -> None:
     assert antwort.headers["X-Request-ID"] != mit_sonderzeichen
 
 
+def test_forbidden_wird_global_als_403_beantwortet(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Der globale Handler fuer `Forbidden` ist die Auflage aus dem Abschlussreview:
+
+    Eine Route, die eine Rechtsverweigerung nicht selbst in eine HTTPException
+    uebersetzt, soll trotzdem 403 liefern statt 500."""
+    monkeypatch.setenv("THERMOCTL_DATABASE_URL", "sqlite://")
+    monkeypatch.setenv("THERMOCTL_SECRET_KEY", "a" * 32)
+    from thermoctl.config import get_settings
+    from thermoctl.domain.authz import Forbidden
+
+    get_settings.cache_clear()
+    app = create_app()
+
+    @app.get("/wirft-forbidden")
+    async def wirft_forbidden() -> None:
+        raise Forbidden("Recht fehlt")
+
+    testclient = TestClient(app, raise_server_exceptions=False)
+    antwort = testclient.get("/wirft-forbidden")
+    assert antwort.status_code == 403
+    assert "Recht fehlt" in antwort.text
+
+
+def test_statische_dateien_werden_ausgeliefert(client: TestClient) -> None:
+    antwort = client.get("/static/vendor/bootstrap/bootstrap.min.css")
+    assert antwort.status_code == 200
+    antwort = client.get("/static/vendor/htmx/htmx.min.js")
+    assert antwort.status_code == 200
+
+
+def test_anmeldeseite_bindet_das_stylesheet_ein(client: TestClient) -> None:
+    antwort = client.get("/login")
+    assert "/static/vendor/bootstrap/bootstrap.min.css" in antwort.text
+
+
 def test_anfrage_id_wird_nach_ausnahme_zurueckgesetzt(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

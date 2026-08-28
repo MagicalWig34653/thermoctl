@@ -1,21 +1,22 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi import APIRouter, Depends, Request, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from thermoctl.auth.dependencies import aktueller_principal, get_session
 from thermoctl.db.models.credential import ApiToken
 from thermoctl.db.models.identity import AccessGroup, User
-from thermoctl.domain.authz import Forbidden, require
+from thermoctl.domain.authz import require
 from thermoctl.domain.principal import Principal
 from thermoctl.web import templates
 
 router = APIRouter()
 
-
-def _verboten(fehler: Forbidden) -> HTTPException:
-    return HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(fehler))
+# `require()` wirft bei fehlendem Recht `Forbidden` -- der globale Handler in
+# `thermoctl/app.py` uebersetzt das einheitlich in 403. Keine Route hier faengt
+# das mehr selbst ab: das war vor dem Abschlussreview an dieser Stelle noch der
+# Fall und wurde bewusst entfernt, um es nicht an jeder Route erneut zu vergessen.
 
 
 @router.get("/benutzer")
@@ -24,10 +25,7 @@ async def benutzerliste(
     principal: Annotated[Principal, Depends(aktueller_principal)],
     session: Annotated[Session, Depends(get_session)],
 ) -> Response:
-    try:
-        require(principal, "user.manage")
-    except Forbidden as fehler:
-        raise _verboten(fehler) from fehler
+    require(principal, "user.manage")
     benutzer = session.scalars(select(User).order_by(User.username)).all()
     return templates.TemplateResponse(
         request,
@@ -42,10 +40,7 @@ async def gruppenliste(
     principal: Annotated[Principal, Depends(aktueller_principal)],
     session: Annotated[Session, Depends(get_session)],
 ) -> Response:
-    try:
-        require(principal, "group.manage")
-    except Forbidden as fehler:
-        raise _verboten(fehler) from fehler
+    require(principal, "group.manage")
     gruppen = session.scalars(select(AccessGroup).order_by(AccessGroup.name)).all()
     return templates.TemplateResponse(
         request, "gruppen.html", {"gruppen": gruppen, "ist_htmx": "HX-Request" in request.headers}
@@ -58,10 +53,7 @@ async def tokenliste(
     principal: Annotated[Principal, Depends(aktueller_principal)],
     session: Annotated[Session, Depends(get_session)],
 ) -> Response:
-    try:
-        require(principal, "token.self")
-    except Forbidden as fehler:
-        raise _verboten(fehler) from fehler
+    require(principal, "token.self")
     token = session.scalars(
         select(ApiToken).where(ApiToken.user_id == principal.user_id).order_by(ApiToken.name)
     ).all()
