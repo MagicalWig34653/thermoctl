@@ -1,15 +1,39 @@
 import os
 from collections.abc import Iterator
+from pathlib import Path
 
 import pytest
-from sqlalchemy import Engine
+from sqlalchemy import URL, Engine, create_engine, make_url, text
 from sqlalchemy.orm import Session
 
 from thermoctl.config import Settings
 from thermoctl.db.base import Base
-from thermoctl.db.engine import create_engine_from_settings, session_factory
+from thermoctl.db.engine import create_engine_from_settings
 
 TEST_DATABASE_URL = os.environ.get("THERMOCTL_TEST_DATABASE_URL", "sqlite:///./test.db")
+
+
+def _migrationsdatenbank_url(basis_url: str) -> str:
+    """Leitet die Datenbank fuer die Migrationstests von ``TEST_DATABASE_URL`` ab.
+
+    Die Migrationstests fuehren ``alembic upgrade``/``downgrade`` gegen eine **eigene**
+    Datenbank aus, getrennt von der Fixture ``engine``: Sonst legt ``Base.metadata.create_all()``
+    dieselben Tabellen an, die Alembic ebenfalls anlegen will, und die Migration scheitert an
+    einer bereits vorhandenen Tabelle. Die Ableitung aus ``TEST_DATABASE_URL`` statt einer
+    zweiten Konfiguration stellt sicher, dass die Migrationstests niemals unbemerkt gegen eine
+    andere Datenbank laufen als der Rest der Suite.
+    """
+    url = make_url(basis_url)
+    if url.get_backend_name() == "sqlite":
+        if not url.database or url.database == ":memory:":
+            return basis_url
+        pfad = Path(url.database)
+        neuer_pfad = pfad.with_name(f"{pfad.stem}-migrations{pfad.suffix}")
+        return url.set(database=str(neuer_pfad)).render_as_string(hide_password=False)
+    return url.set(database=f"{url.database}_migrations").render_as_string(hide_password=False)
+
+
+MIGRATIONS_DATABASE_URL = _migrationsdatenbank_url(TEST_DATABASE_URL)
 
 
 @pytest.fixture(scope="session")
@@ -17,6 +41,34 @@ def settings() -> Settings:
     return Settings(
         _env_file=None, database_url=TEST_DATABASE_URL, secret_key="t" * 32
     )
+
+
+@pytest.fixture(scope="session")
+def migrations_database_url() -> str:
+    """Stellt sicher, dass die Migrationsdatenbank existiert, und liefert ihre URL.
+
+    Unter MariaDB existiert das Schema fuer die Migrationstests vor dem ersten Lauf
+    noch nicht — es wird hier per ``CREATE DATABASE IF NOT EXISTS`` selbst angelegt.
+    Unter SQLite legt die Datei-URL die Datenbank beim ersten Verbindungsaufbau
+    automatisch an, hier ist nichts vorzubereiten.
+    """
+    ziel_url = make_url(MIGRATIONS_DATABASE_URL)
+    if ziel_url.get_backend_name() != "sqlite":
+        server_url = URL.create(
+            ziel_url.drivername,
+            username=ziel_url.username,
+            password=ziel_url.password,
+            host=ziel_url.host,
+            port=ziel_url.port,
+        )
+        server_werk = create_engine(server_url, pool_pre_ping=True, future=True)
+        try:
+            with server_werk.connect() as verbindung:
+                verbindung.execute(text(f"CREATE DATABASE IF NOT EXISTS `{ziel_url.database}`"))
+                verbindung.commit()
+        finally:
+            server_werk.dispose()
+    return MIGRATIONS_DATABASE_URL
 
 
 @pytest.fixture(scope="session")
@@ -33,6 +85,12 @@ def engine(settings: Settings) -> Iterator[Engine]:
 def session(engine: Engine) -> Iterator[Session]:
     """Jeder Test laeuft in einer Transaktion, die anschliessend zurueckgerollt wird.
 
+    Die Sitzung tritt der aeusseren Transaktion ueber ein Savepoint bei
+    (``join_transaction_mode="create_savepoint"``). Loest ein Test absichtlich einen
+    Fehler aus (z. B. einen ``IntegrityError`` bei einer Constraint-Verletzung) und die
+    Sitzung rollt deshalb zurueck, betrifft das nur das Savepoint — die aeussere
+    Transaktion bleibt bestehen und laesst sich im Teardown noch zurueckrollen.
+
     Grenze dieser Isolation: Zurueckgerollt werden Datenaenderungen, nicht der Zaehler
     fuer Auto-Increment-Schluessel — und unter MariaDB fuehrt DDL zu einem impliziten
     Commit. Tests duerfen sich deshalb nicht auf bestimmte Kennungswerte verlassen und
@@ -44,7 +102,9 @@ def session(engine: Engine) -> Iterator[Session]:
     """
     verbindung = engine.connect()
     transaktion = verbindung.begin()
-    sitzung = session_factory(engine)(bind=verbindung)
+    sitzung = Session(
+        bind=verbindung, expire_on_commit=False, join_transaction_mode="create_savepoint"
+    )
     try:
         yield sitzung
     finally:
