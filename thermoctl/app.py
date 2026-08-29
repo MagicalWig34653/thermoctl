@@ -14,14 +14,29 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
 import thermoctl
+from thermoctl import audit
 from thermoctl.api.routes import router as api_router
 from thermoctl.config import Settings, get_settings
 from thermoctl.db.base import utcnow
 from thermoctl.db.engine import create_engine_from_settings, session_factory, session_scope
 from thermoctl.db.models.credential import SetupToken
+from thermoctl.db.models.lookup import SensorStatus
 from thermoctl.db.models.operations import Setting
+from thermoctl.db.models.zone import Zone
+from thermoctl.db.models.zustand import ZoneState
 from thermoctl.domain.authz import Forbidden
+from thermoctl.domain.stoerungsmeldung import (
+    Stoerungsmeldung,
+    brueckenmeldung,
+    sensormeldung,
+)
+from thermoctl.integrations.benachrichtigung import senden
 from thermoctl.integrations.mqtt.client import MqttClient
+from thermoctl.integrations.mqtt.zigbee2mqtt import (
+    Nachrichtenart,
+    bruecke_erreichbar,
+    zuschneiden,
+)
 from thermoctl.logging import configure_logging, request_id_var
 from thermoctl.services.aufbewahrung import alte_messwerte_loeschen
 from thermoctl.services.ingest import nachricht_verarbeiten, zonenzustand_fortschreiben
@@ -45,6 +60,47 @@ log = logging.getLogger(__name__)
 # `setting`-Zeile deshalb noch fehlt -- derselbe Wert wie die Spaltenvorgabe von
 # `setting.shadow_interval_seconds`.
 _SCHATTENINTERVALL_STANDARD_S = 60
+
+
+def _auditieren(session: Session, meldung: Stoerungsmeldung) -> None:
+    audit.record(
+        session,
+        source="system",
+        action="notification.sent",
+        object_type="fault",
+        object_id=meldung.schluessel,
+        summary=meldung.titel,
+        detail=meldung.text,
+    )
+
+
+def _sensorzustaende(session: Session) -> dict[int, str]:
+    return {
+        zone_id: code
+        for zone_id, code in session.execute(
+            select(ZoneState.zone_id, SensorStatus.code).join(
+                SensorStatus, SensorStatus.id == ZoneState.sensor_status_id
+            )
+        )
+    }
+
+
+def _sensormeldungen(
+    session: Session, vorher: dict[int, str]
+) -> list[Stoerungsmeldung]:
+    nachher = _sensorzustaende(session)
+    meldungen: list[Stoerungsmeldung] = []
+    for zone in session.scalars(select(Zone).order_by(Zone.id)):
+        status = nachher.get(zone.id)
+        if status is None:  # pragma: no cover
+            # `zonenzustand_fortschreiben` legt fuer jede vorhandene Zone eine Zeile an.
+            # Nur eine parallel geloeschte oder beschaedigte Zeile koennte hier fehlen.
+            continue
+        meldung = sensormeldung(f"sensor:{zone.id}", zone.name, vorher.get(zone.id), status)
+        if meldung is not None:
+            _auditieren(session, meldung)
+            meldungen.append(meldung)
+    return meldungen
 
 
 async def _shadow_intervall_s(session_factory: sessionmaker[Session]) -> int:
@@ -74,12 +130,17 @@ async def _schattenschleife(app: FastAPI) -> None:
             abstand = await _shadow_intervall_s(app.state.session_factory)
             await asyncio.sleep(abstand)
             jetzt = utcnow()
+            meldungen: list[Stoerungsmeldung]
             with session_scope(app.state.session_factory) as session:
+                vorher = _sensorzustaende(session)
                 zonenzustand_fortschreiben(session, jetzt)
+                meldungen = _sensormeldungen(session, vorher)
                 zyklus(session, jetzt)
                 if jetzt >= naechste_aufbewahrung:
                     alte_messwerte_loeschen(session, jetzt)
                     naechste_aufbewahrung = jetzt + timedelta(days=1)
+            for meldung in meldungen:
+                await senden(get_settings(), meldung)
         except Exception:
             log.exception("Schattenzyklus fehlgeschlagen -- naechster Versuch folgt")
 
@@ -94,6 +155,13 @@ async def _mqtt_nachricht_verarbeiten(
     naechste Nachricht hinterlassen.
     """
     empfangen_am: datetime = utcnow()
+    zuschnitt = zuschneiden(topic, settings.mqtt_base_topic)
+    meldung: Stoerungsmeldung | None = None
+    if zuschnitt.art == Nachrichtenart.BRUECKENZUSTAND:
+        erreichbar = bruecke_erreichbar(nutzlast)
+        if erreichbar is not None:
+            meldung = brueckenmeldung(app.state.bruecke_erreichbar, erreichbar)
+            app.state.bruecke_erreichbar = erreichbar
     with session_scope(app.state.session_factory) as session:
         nachricht_verarbeiten(
             session,
@@ -102,6 +170,10 @@ async def _mqtt_nachricht_verarbeiten(
             basis=settings.mqtt_base_topic,
             empfangen_am=empfangen_am,
         )
+        if meldung is not None:
+            _auditieren(session, meldung)
+    if meldung is not None:
+        await senden(settings, meldung)
 
 
 def _unverbrauchtes_setup_token_vorhanden(session: Session) -> bool:
@@ -143,6 +215,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Testsuite baut die Anwendung staendig (jeder `TestClient`), und sie darf dabei
     # weder eine Endlosschleife noch eine Netzverbindung anstossen.
     settings = get_settings()
+    app.state.bruecke_erreichbar = None
     hintergrundaufgaben: list[asyncio.Task[None]] = []
     if settings.mqtt_enabled:
         client = MqttClient(

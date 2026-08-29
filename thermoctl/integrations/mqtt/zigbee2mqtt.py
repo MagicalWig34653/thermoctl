@@ -1,5 +1,6 @@
 """Reiner Topic-Zuschnitt fuer Zigbee2MQTT."""
 
+import json
 from dataclasses import dataclass
 from enum import StrEnum
 
@@ -49,3 +50,22 @@ def abonnements(basis: str) -> list[str]:
         f"{basis}/+",
         f"{basis}/+/availability",
     ]
+
+
+def bruecke_erreichbar(nutzlast: bytes) -> bool | None:
+    """Liest die bekannten Text- und Objektformen von `bridge/state` tolerant."""
+    try:
+        daten = json.loads(nutzlast)
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return None
+    if isinstance(daten, str):
+        zustand = daten
+    elif isinstance(daten, dict) and isinstance(daten.get("state"), str):
+        zustand = daten["state"]
+    else:
+        return None
+    if zustand == "online":
+        return True
+    if zustand == "offline":
+        return False
+    return None
