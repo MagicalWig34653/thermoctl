@@ -105,3 +105,28 @@ def test_startseite_zeigt_zonenzustand_ohne_nulltemperatur(client_als, session: 
     assert "kein Messwert" in antwort.text
     assert "Noch kein Zonenzustand vorhanden" in antwort.text
     assert zone_ohne_zustand.display_name in antwort.text
+
+
+def test_alter_in_worten_beantwortet_die_frage_nach_der_frische() -> None:
+    """Ein roher Zeitstempel mit Mikrosekunden verlangt Kopfrechnen.
+
+    Fuer eine Heizungssteuerung lautet die Frage aber immer: frisch oder liegengeblieben?
+    Deshalb steht in der Uebersicht das Alter und der Zeitstempel nur im Tooltip.
+    """
+    from datetime import datetime, timedelta
+
+    from thermoctl.web import alter_in_worten
+
+    jetzt = datetime(2026, 8, 29, 12, 0, 0)
+    assert alter_in_worten(None) == "noch nie"
+    assert alter_in_worten(jetzt - timedelta(seconds=1), jetzt) == "vor 1 Sekunde"
+    assert alter_in_worten(jetzt - timedelta(seconds=42), jetzt) == "vor 42 Sekunden"
+    assert alter_in_worten(jetzt - timedelta(minutes=1), jetzt) == "vor 1 Minute"
+    assert alter_in_worten(jetzt - timedelta(minutes=59), jetzt) == "vor 59 Minuten"
+    assert alter_in_worten(jetzt - timedelta(hours=3), jetzt) == "vor 3 Stunden"
+    assert alter_in_worten(jetzt - timedelta(days=1), jetzt) == "vor 1 Tag"
+    assert alter_in_worten(jetzt - timedelta(days=9), jetzt) == "vor 9 Tagen"
+    # Ein leicht falsch gestellter Sensor darf nicht 'in -3 Minuten' anzeigen.
+    assert alter_in_worten(jetzt + timedelta(minutes=3), jetzt) == "gerade eben"
+    # Ohne ausdruecklichen Jetzt-Zeitpunkt greift die Uhr des Projekts.
+    assert alter_in_worten(datetime(2000, 1, 1)).endswith("Tagen")
