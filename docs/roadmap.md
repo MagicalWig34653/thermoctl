@@ -17,7 +17,7 @@ Phase 1 geschehen ist. Features, die aus der unverbindlichen
 | Phase | Inhalt | Zustand | Nutzen am Ende |
 |---|---|---|---|
 | 1 | Fundament | **umgesetzt**, `v0.1.0` | Nichts sichtbar, aber alles Weitere hängt daran |
-| 1a | Nacharbeiten | fast fertig | Oberfläche benutzbar, zwei Punkte offen |
+| 1a | Nacharbeiten | **umgesetzt** | Oberfläche benutzbar |
 | 2 | Geräte-Anbindung im Schattenbetrieb | offen | Belegt gegen die echte Anlage, dass die Daten stimmen |
 | 3 | Konfigurations-Oberfläche | offen | Ende der SQL-Pflege — ab hier im Alltag nützlich |
 | 4 | Regelkreis und Cutover | offen | Heizt wirklich; Altsystem wird abgelöst |
@@ -51,9 +51,11 @@ erledigen.
       nicht gab. Beim ersten Öffnen im Browser aufgefallen, nicht durch Tests.
 - [x] Rauchtest und Endpunktabdeckung ergänzt, Testabdeckung von 93 auf 99 %
 - [x] Jedes Review führt die Testsuite selbst aus *(Regel in CLAUDE.md)*
-- [ ] Gemeinsame CSRF-Abhängigkeit statt Prüfung von Hand je Route — **vor Phase 3**, dort
-      entstehen die ändernden Ansichten
-- [ ] Test für das Startverhalten: genau ein Einrichtungs-Token, beim zweiten Start keines mehr
+- [x] Gemeinsame CSRF-Abhängigkeit statt Prüfung von Hand je Route — hängt jetzt am Router,
+      dazu ein Wächtertest über alle zustandsändernden Routen
+- [x] Test für das Startverhalten: genau ein Einrichtungs-Token, beim zweiten Start keines mehr
+- [x] **Zwei Wächtertests repariert**, die seit dem FastAPI-Versionssprung nichts mehr
+      prüften — siehe [offene-entscheidungen.md](offene-entscheidungen.md)
 
 ---
 

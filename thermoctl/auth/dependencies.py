@@ -4,7 +4,9 @@ from typing import Annotated
 from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
+from thermoctl.auth.csrf import CSRF_HEADER, csrf_pruefen
 from thermoctl.auth.sessions import COOKIE_NAME, sitzung_aufloesen
+from thermoctl.config import get_settings
 from thermoctl.db.models.identity import User
 from thermoctl.domain.authz import principal_fuer_benutzer
 from thermoctl.domain.principal import Principal
@@ -52,3 +54,39 @@ def aktueller_principal(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=_NICHT_ANGEMELDET)
 
     return principal_fuer_benutzer(session, benutzer)
+
+
+# Sichere Methoden aendern nichts und brauchen deshalb keinen CSRF-Nachweis. Ohne
+# diese Ausnahme koennte `csrf_schutz` nicht an einem ganzen Router haengen — jeder
+# gewoehnliche Seitenaufruf aus dem Browser schickt das Cookie, aber keinen Header.
+_SICHERE_METHODEN = frozenset({"GET", "HEAD", "OPTIONS", "TRACE"})
+
+
+def csrf_schutz(request: Request) -> None:
+    """Gemeinsame Abhaengigkeit fuer jede zustandsaendernde Route der Oberflaeche.
+
+    Traegt die Anfrage ein Sitzungscookie, muss sie den passenden ``X-CSRF-Token``-Header
+    mitbringen — auch dann, wenn gar keiner mitgeschickt wurde. Ein Schutz, der sich durch
+    Weglassen des Headers umgehen liesse, waere keiner.
+
+    Ohne Sitzungscookie greift der Schutz nicht: Dann gibt es nichts, was ein fremder
+    Ursprung unbemerkt mitschicken koennte. Das betrifft die Anmeldung selbst und die
+    Einrichtung, die ueber das Einmal-Token abgesichert ist, sowie die REST-API, die
+    ausschliesslich Bearer-Tokens auswertet.
+
+    Haengt als ``dependencies=[Depends(csrf_schutz)]`` am Router, nicht an der einzelnen
+    Route: Eine spaeter ergaenzte Route ist damit von sich aus geschuetzt, statt dass
+    jemand daran denken muss. `tests/test_csrf.py` haelt das nach.
+    """
+    if request.method in _SICHERE_METHODEN:
+        return
+    cookie_wert = request.cookies.get(COOKIE_NAME)
+    if cookie_wert is None:
+        return
+    settings = get_settings()
+    if not csrf_pruefen(
+        request.headers.get(CSRF_HEADER), cookie_wert, settings.secret_key.get_secret_value()
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Ungueltiges CSRF-Token"
+        )

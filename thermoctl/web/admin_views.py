@@ -4,14 +4,14 @@ from fastapi import APIRouter, Depends, Request, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from thermoctl.auth.dependencies import aktueller_principal, get_session
+from thermoctl.auth.dependencies import aktueller_principal, csrf_schutz, get_session
 from thermoctl.db.models.credential import ApiToken
 from thermoctl.db.models.identity import AccessGroup, User
 from thermoctl.domain.authz import require
 from thermoctl.domain.principal import Principal
 from thermoctl.web import templates
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(csrf_schutz)])
 
 # `require()` wirft bei fehlendem Recht `Forbidden` -- der globale Handler in
 # `thermoctl/app.py` uebersetzt das einheitlich in 403. Keine Route hier faengt

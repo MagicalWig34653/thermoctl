@@ -4,12 +4,12 @@ from fastapi import APIRouter, Depends, Form, HTTPException, Request, Response, 
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
-from thermoctl.auth.dependencies import get_session
+from thermoctl.auth.dependencies import csrf_schutz, get_session
 from thermoctl.auth.passwords import PasswordTooShort
 from thermoctl.setup import einrichtung_durchfuehren, einrichtung_noetig
 from thermoctl.web import templates
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(csrf_schutz)])
 
 _GESCHLOSSEN = "Die Einrichtung ist bereits abgeschlossen."
 

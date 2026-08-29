@@ -11,8 +11,8 @@ Navigation dorthin fuehrten. Kein Test hatte sie je aufgerufen.
 import re
 
 import pytest
-from fastapi.routing import APIRoute
 
+from tests.hilfen import alle_api_routen
 from thermoctl.app import create_app
 
 # Von FastAPI selbst erzeugt, nicht von uns geschrieben.
@@ -21,8 +21,8 @@ NICHT_UNSER = {"/openapi.json", "/docs", "/docs/oauth2-redirect", "/redoc"}
 
 def _unsere_routen() -> set[tuple[str, str]]:
     paare: set[tuple[str, str]] = set()
-    for route in create_app().routes:
-        if not isinstance(route, APIRoute) or route.path in NICHT_UNSER:
+    for route in alle_api_routen(create_app()):
+        if route.path in NICHT_UNSER:
             continue
         for methode in route.methods - {"HEAD", "OPTIONS"}:
             paare.add((methode, route.path))
