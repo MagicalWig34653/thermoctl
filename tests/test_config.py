@@ -40,3 +40,26 @@ def test_datenbank_url_ohne_zugangsdaten() -> None:
     bereinigt = s.sanitized_database_url()
     assert "geheim" not in bereinigt
     assert "host:3306/thermoctl" in bereinigt
+
+
+def test_mqtt_standardmaessig_deaktiviert() -> None:
+    s = Settings(_env_file=None, database_url="sqlite://", secret_key="d" * 32)
+    assert s.mqtt_enabled is False
+    assert s.mqtt_port == 1883
+    assert s.mqtt_base_topic == "zigbee2mqtt"
+
+
+def test_mqtt_verbindungsangaben_enthalten_kein_passwort() -> None:
+    s = Settings(
+        _env_file=None,
+        database_url="sqlite://",
+        secret_key="e" * 32,
+        mqtt_host="mqtt.example.invalid",
+        mqtt_port=8883,
+        mqtt_tls=True,
+        mqtt_username="empfang",
+        mqtt_password="auffaelliges-geheimnis",
+    )
+    bereinigt = s.sanitized_mqtt_connection()
+    assert bereinigt == "mqtts://empfang@mqtt.example.invalid:8883"
+    assert "auffaelliges-geheimnis" not in bereinigt
