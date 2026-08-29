@@ -18,10 +18,10 @@ Phase 1 geschehen ist. Features, die aus der unverbindlichen
 |---|---|---|---|
 | 1 | Fundament | **umgesetzt**, `v0.1.0` | Nichts sichtbar, aber alles Weitere hängt daran |
 | 1a | Nacharbeiten | **umgesetzt** | Oberfläche benutzbar |
-| 2 | Geräte-Anbindung im Schattenbetrieb | offen | Belegt gegen die echte Anlage, dass die Daten stimmen |
+| 2 | Geräte-Anbindung im Schattenbetrieb | **gebaut**, Laufzeit an der Anlage offen | Belegt gegen die echte Anlage, dass die Daten stimmen |
 | 3 | Konfigurations-Oberfläche | offen | Ende der SQL-Pflege — ab hier im Alltag nützlich |
 | 4 | Regelkreis und Cutover | offen | Heizt wirklich; Altsystem wird abgelöst |
-| 5 | Integrationen und Veröffentlichung | offen | Für Fremde aufsetzbar |
+| 5 | Integrationen und Veröffentlichung | teilweise vorgezogen | Für Fremde aufsetzbar |
 
 Die Reihenfolge ist nicht beliebig: Der Teil, der eine echte Heizung schaltet, kommt bewusst
 zuletzt und erst mit Vergleichsdaten aus Phase 2.
@@ -76,18 +76,26 @@ anzufassen**. Es wird gelesen und protokolliert, nichts geschaltet.
 - Schattenprotokoll: Was **würde** geschaltet, mit Begründung — die Grundlage für den
   Vergleich in Phase 4
 
-### Aufgaben (Vorschlag)
+### Aufgaben
 
-1. MQTT-Anbindung: Verbindung, Wiederverbindung, TLS, Zugangsdaten aus der Konfiguration
-2. Topic-Vertrag lesen: `zigbee2mqtt/<gerät>` abonnieren, Nutzlasten robust auswerten
-3. Messwert-Modell und Ingest-Pfad samt Zonenzuordnung
-4. Geräteerkennung und Klassifikation nach Fähigkeiten
-5. Meross-Adapter (Cloud-API) im Trockenlauf
-6. Zigbee-Ventil-Adapter im Trockenlauf
-7. Fensterkontakte einlesen
-8. Sensor-Timeout und Störungszustände
-9. Schattenprotokoll mit nachvollziehbarer Begründung je Entscheidung
-10. Geräteübersicht in der Oberfläche (lesend)
+Geschärft im eigenen Zyklus, siehe [Spezifikation](superpowers/specs/2026-08-29-teilprojekt-2-geraete-schattenbetrieb-design.md)
+und [Plan](superpowers/plans/2026-08-29-teilprojekt-2-geraete-schattenbetrieb.md).
+
+- [x] 1 Schema und Migration (Messwerte, Zonenzustand, Gerätezustand, Schattenprotokoll)
+- [x] 2 Nutzlast-Auswertung, gebaut gegen die echten Anlagendaten
+- [x] 3 Geräteklassifikation aus `bridge/devices`
+- [x] 4 MQTT-Client: Verbindung, TLS, Wiederverbindung, Topic-Zuschnitt
+- [x] 5 Ingest und Aufbewahrung
+- [x] 6 Regelentscheidung — Hysterese, Mindestschaltdauer, Fensterpause *(aus Phase 4
+      vorgezogen, weil das Schattenprotokoll sonst nichts zu protokollieren hätte)*
+- [x] 7 Störungserkennung bei ausbleibenden Messwerten
+- [x] 8 Aktor-Adapter im Trockenlauf, hinter zwei Riegeln
+- [x] 9 Schattenlauf
+- [x] 10 Geräteübersicht und lesende Endpunkte
+
+**Was nur der Projektinhaber abschließen kann:** der Nachweis über mehrere Tage echten
+Betriebs. Er braucht Laufzeit an der Anlage — Zugangsdaten in `.env`,
+`THERMOCTL_MQTT_ENABLED=true`, und dann Geduld.
 
 ### Risiken
 
@@ -194,17 +202,19 @@ abgeschaltet ist.
 - Benachrichtigungen bei Störungen
 - Repository öffentlich schalten
 
-### Aufgaben (Vorschlag)
+### Aufgaben
 
-1. Neue MQTT-Topic-Struktur samt Discovery
-2. Altes Topic-Schema abkündigen
-3. MCP-Server
-4. API-Dokumentation
-5. Setup-Assistent erweitern
-6. Self-Hosting-Dokumentation
-7. Benachrichtigungswege
-8. Sicherheitsdurchsicht vor der Veröffentlichung
-9. Repository öffentlich schalten
+- [ ] 1 Neue MQTT-Topic-Struktur samt Discovery — *wartet auf Phase 4*
+- [ ] 2 Altes Topic-Schema abkündigen — *wartet auf den Cutover*
+- [x] 3 MCP-Server — sieben Werkzeuge über derselben Domänenlogik, [Doku](mcp.md)
+- [x] 4 API-Dokumentation — [docs/api.md](api.md)
+- [ ] 5 Setup-Assistent erweitern — *gehört zu Phase 3*
+- [x] 6 Self-Hosting-Dokumentation und Beispiel-Compose — [docs/self-hosting.md](self-hosting.md)
+- [ ] 7 Benachrichtigungswege
+- [ ] 8 Sicherheitsdurchsicht vor der Veröffentlichung
+- [ ] 9 Repository öffentlich schalten — **Entscheidung des Projektinhabers**
+
+Vorgezogen wurde, was nicht auf Phase 4 wartet.
 
 **Fertig, wenn** jemand ohne Zutun des Autors eine eigene Instanz aufsetzen kann.
 
