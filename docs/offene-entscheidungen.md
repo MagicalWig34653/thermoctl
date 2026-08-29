@@ -148,3 +148,37 @@ scharf."
 **Verworfen:** *Ein vereinfachter Schattenentscheider nur für Phase 2.* Dann vergliche
 Phase 4 das Altsystem gegen eine Logik, die anschließend durch eine andere ersetzt wird —
 der Vergleich wäre wertlos.
+
+---
+
+## 2026-08-29 — Bei ausgefallenem Sensor wird auf Frostschutz geregelt, nicht abgeschaltet
+
+**Entschieden:** Meldet die Störungserkennung `veraltet` — es liegt ein letzter bekannter
+Messwert vor, der aber zu alt ist —, ersetzt die Regelung den aufgelösten Sollwert durch
+den **Frostschutz-Sollwert** und regelt damit normal weiter. Nur wenn gar kein Wert
+vorliegt (`keine_quelle`), bleibt das Ventil zu.
+
+**Warum:** Die erste Umsetzung schaltete bei jedem Sensorausfall dauerhaft ab. Das klingt
+vorsichtig, ist aber die gefährlichere Antwort: Eine leere Batterie im Januar heißt dann,
+dass ein Raum unbegrenzt auskühlt — und genau daran friert eine Leitung ein. Der
+Rahmenentwurf nennt dieselbe Sache an anderer Stelle als Defekt des Altsystems („Aus heißt
+Frostschutz, nicht stromlos").
+
+Die Gegenrichtung, auf den regulären Sollwert weiterzuheizen, ist ebenso falsch: Der Wert,
+gegen den geprüft würde, ist ja gerade der unzuverlässige. Der Frostschutzwert ist der
+Kompromiss, für den er da ist — tief genug, dass ein falscher Messwert höchstens auf ein
+unbedenkliches Niveau führt, hoch genug gegen Frost.
+
+**Restrisiko, benannt:** Bleibt ein Sensor dauerhaft bei einem zu kalten Wert stehen, hält
+die Anlage die Zone auf Frostschutzniveau, statt abzuschalten. Das kostet Energie und ist
+unangenehm, richtet aber keinen Schaden an. Eine Obergrenze für die ununterbrochene
+Heizdauer wäre die vollständige Antwort; sie gehört zu Phase 4, wo wirklich geschaltet wird.
+
+**Verworfen:**
+- *Bei jedem Sensorausfall abschalten.* Die ursprüngliche Umsetzung; siehe oben.
+- *Auf dem letzten Sollwert weiterregeln.* Verlässt sich auf genau die Messung, der man
+  gerade nicht mehr traut.
+
+**Für den Projektinhaber:** Diese Entscheidung gehört zu den wenigen, die vor dem
+Scharfschalten in Phase 4 ausdrücklich bestätigt werden sollten. Sie steht deshalb hier
+und nicht nur im Quelltext.

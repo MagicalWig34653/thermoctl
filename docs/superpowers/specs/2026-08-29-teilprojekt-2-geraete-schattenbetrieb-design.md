@@ -196,6 +196,7 @@ class Lage:          # alles, was die Entscheidung sieht
     ist_c: Decimal | None
     soll_c: Decimal
     soll_grund: str
+    frost_c: Decimal            # gilt, wenn dem Sollwert nicht mehr zu trauen ist
     betriebsart: str            # auto | manual | off
     heizt_gerade: bool
     seit_s: int | None          # wie lange der aktuelle Zustand schon gilt
@@ -213,9 +214,22 @@ class Entscheidung:
 
 Rangfolge, von oben nach unten — die erste zutreffende Regel gewinnt:
 
-1. **Sensorausfall** (`veraltet` oder `keine_quelle`): nicht heizen ist falsch (Wohnung
-   kühlt aus), voll heizen ist falsch (Überhitzung ohne Rückmeldung). Es gilt der
-   Frostschutz-Sollwert; ohne Ist-Wert heißt das: aus. Ausdrücklich protokolliert.
+1. **Sensorausfall.** Ohne Ist-Wert (`keine_quelle`, oder gar kein Wert vorhanden) bleibt
+   nur aus — es gibt nichts, woran zu regeln wäre. Bei `veraltet` liegt dagegen ein
+   letzter bekannter Wert vor: Dann gilt **`frost_c` als wirksamer Sollwert**, und die
+   Regeln 3 bis 6 laufen damit normal weiter.
+
+   Das ist keine Feinheit. Dauerhaft abzuschalten wäre die gefährlichere Antwort: Genau so
+   friert im Januar eine Leitung ein, und genau dieser Fehler steckt im Altsystem. Voll auf
+   den regulären Sollwert zu heizen wäre ebenso falsch — der Wert, gegen den geprüft würde,
+   ist ja der unzuverlässige. Der Frostschutzwert liegt tief genug, dass die Anlage auch
+   auf einem falschen Messwert höchstens auf ein unbedenkliches Niveau heizt, hält die
+   Wohnung aber über der Frostgrenze.
+
+   Regel 1 ist damit die einzige, die den Sollwert *ersetzt*, statt sofort zu entscheiden.
+   Ein offenes Fenster (Regel 3) gewinnt deshalb auch gegen den Frostschutz — gegen ein
+   offenes Fenster zu heizen hilft niemandem, und sobald es zu ist, greift der Frostschutz
+   wieder.
 2. **Betriebsart `off`**: Frostschutz-Sollwert, sonst normale Regel. „Aus" heißt
    Frostschutz, nicht stromlos.
 3. **Fenster offen**: aus.
