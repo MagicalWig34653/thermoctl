@@ -20,9 +20,7 @@ Ein Token hat die Form `tctl_<achtstelliges Präfix>_<Geheimnis>`. Der Klartext 
 **genau einmal**, beim Ausstellen; gespeichert wird nur der SHA-256-Hash des Geheimnisses.
 Wer ihn verliert, stellt ein neues aus.
 
-> **Stand heute:** Die Seite `/tokens` zeigt die eigenen Tokens nur an. Ausgestellt werden
-> sie bis Phase 3 über `thermoctl.auth.tokens.token_ausstellen()` — die Oberfläche dafür
-> gehört zur Konfigurations-Oberfläche.
+Ausgestellt und widerrufen werden Tokens unter `/tokens` in der Oberfläche.
 
 Diese Schnittstelle nimmt **kein Sitzungscookie** an. Das ist Absicht und keine Lücke: Ein
 Cookie würde bei jedem Aufruf aus dem Browser automatisch mitgeschickt und die
@@ -79,8 +77,8 @@ Löschen mit `204`.
 {"code": "urlaub", "name": "Urlaub", "sort_order": 30}
 ```
 
-`GET /api/v1/zones/{zone_id}/setpoints` benötigt `zone.read`, das entsprechende `PUT`
-benötigt `setpoint.write`.
+`GET /api/v1/zones/{zone_id}/setpoints` benötigt `zone.read`,
+`PUT /api/v1/zones/{zone_id}/setpoints` benötigt `setpoint.write`.
 
 ```json
 {"setpoints": [{"mode_id": 2, "temperature_c": "20.5"}]}
@@ -98,8 +96,8 @@ benötigt `setpoint.write`.
 
 ### Regelparameter
 
-`GET /api/v1/zones/{zone_id}/parameters` benötigt `zone.read`, das entsprechende `PUT`
-benötigt `zone.manage`. `null` stellt die Vererbung des globalen Standards wieder her.
+`GET /api/v1/zones/{zone_id}/parameters` benötigt `zone.read`,
+`PUT /api/v1/zones/{zone_id}/parameters` benötigt `zone.manage`. `null` stellt die Vererbung des globalen Standards wieder her.
 
 ```json
 {"hysteresis_k": "0.30", "min_on_seconds": 300, "min_off_seconds": null,
