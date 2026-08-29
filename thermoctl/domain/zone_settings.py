@@ -3,6 +3,7 @@ from decimal import Decimal
 
 from sqlalchemy.orm import Session
 
+from thermoctl import audit
 from thermoctl.db.models.operations import Setting
 from thermoctl.db.models.zone import Zone
 
@@ -42,4 +43,27 @@ def regelparameter(session: Session, zone: Zone) -> Regelparameter:
         window_resume_delay_seconds=_oder_standard(
             zone.window_resume_delay_seconds, e.default_window_resume_delay_seconds
         ),
+    )
+
+
+def regelparameter_speichern(
+    session: Session,
+    zone: Zone,
+    werte: dict[str, Decimal | int | None],
+    *,
+    user_id: int | None,
+    token_id: int | None = None,
+) -> None:
+    """Speichert Zonenabweichungen; ``None`` stellt die Vererbung wieder her."""
+    for name in Regelparameter.__dataclass_fields__:
+        setattr(zone, name, werte[name])
+    audit.record(
+        session,
+        source="web",
+        action="update",
+        object_type="zone_settings",
+        object_id=str(zone.id),
+        summary=f"Regelparameter für Zone '{zone.display_name}' geändert",
+        user_id=user_id,
+        token_id=token_id,
     )
