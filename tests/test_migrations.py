@@ -3,7 +3,7 @@ import subprocess
 import sys
 
 import pytest
-from sqlalchemy import Engine
+from sqlalchemy import Engine, create_engine, text
 
 
 def _alembic(url: str, *argumente: str) -> subprocess.CompletedProcess[str]:
@@ -59,3 +59,73 @@ def test_fremdschluessel_werden_unter_sqlite_geprueft(engine: Engine) -> None:
         pytest.skip("nur fuer SQLite sinnvoll")
     with engine.connect() as verbindung:
         assert verbindung.exec_driver_sql("PRAGMA foreign_keys").scalar() == 1
+
+
+@pytest.mark.migration
+def test_schatten_schema_referenzdaten_und_einstellungen(
+    migrations_database_url: str,
+) -> None:
+    basis = _alembic(migrations_database_url, "downgrade", "base")
+    assert basis.returncode == 0, basis.stderr
+    vorher = _alembic(migrations_database_url, "upgrade", "4d43756aecd3")
+    assert vorher.returncode == 0, vorher.stderr
+
+    werk = create_engine(migrations_database_url)
+    try:
+        with werk.begin() as verbindung:
+            verbindung.execute(
+                text(
+                    "INSERT INTO setpoint_mode "
+                    "(code, name, sort_order, is_builtin) "
+                    "VALUES ('migration-frost', 'Migration Frost', 0, false)"
+                )
+            )
+            modus_id = verbindung.execute(
+                text("SELECT id FROM setpoint_mode WHERE code = 'migration-frost'")
+            ).scalar_one()
+            verbindung.execute(
+                text(
+                    "INSERT INTO setting "
+                    "(id, timezone, polling_interval_seconds, default_hysteresis_k, "
+                    "default_min_on_seconds, default_min_off_seconds, "
+                    "default_sensor_timeout_seconds, default_window_resume_delay_seconds, "
+                    "frost_protection_mode_id, session_lifetime_seconds, updated_at) "
+                    "VALUES (1, 'UTC', 30, 0.30, 300, 300, 1800, 120, :modus_id, "
+                    "1209600, '2026-08-29 08:00:00')"
+                ),
+                {"modus_id": modus_id},
+            )
+
+        hoch = _alembic(migrations_database_url, "upgrade", "head")
+        assert hoch.returncode == 0, hoch.stderr
+        with werk.connect() as verbindung:
+            faehigkeiten = set(
+                verbindung.execute(text("SELECT code FROM device_capability")).scalars()
+            )
+            status = set(verbindung.execute(text("SELECT code FROM sensor_status")).scalars())
+            einstellung = verbindung.execute(
+                text(
+                    "SELECT timezone, control_armed, measurement_retention_days, "
+                    "shadow_interval_seconds FROM setting WHERE id = 1"
+                )
+            ).one()
+        assert {
+            "humidity", "illuminance", "occupancy", "link_quality", "power", "energy",
+            "valve_position", "setpoint", "availability",
+        } <= faehigkeiten
+        assert status == {"ok", "veraltet", "keine_quelle"}
+        assert tuple(einstellung) == ("UTC", False, 30, 60)
+
+        runter = _alembic(migrations_database_url, "downgrade", "4d43756aecd3")
+        assert runter.returncode == 0, runter.stderr
+        with werk.connect() as verbindung:
+            verblieben = set(
+                verbindung.execute(text("SELECT code FROM device_capability")).scalars()
+            )
+        assert verblieben == {
+            "temperature", "switch", "setpoint_display", "contact", "battery",
+        }
+        wieder_hoch = _alembic(migrations_database_url, "upgrade", "head")
+        assert wieder_hoch.returncode == 0, wieder_hoch.stderr
+    finally:
+        werk.dispose()
