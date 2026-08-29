@@ -213,3 +213,114 @@ def test_zonenzustand_beruecksichtigt_quelle_alter_und_zonen_timeout(
     codes = {status.id: status.code for status in session.query(SensorStatus)}
     zustaende = {z.zone_id: codes[z.sensor_status_id] for z in session.query(ZoneState)}
     assert zustaende == {frisch.id: "ok", alt.id: "veraltet", ohne.id: "keine_quelle"}
+
+
+def test_kaputte_erreichbarkeit_bleibt_ohne_wirkung(session: Session) -> None:
+    """Der dritte Nachrichtenweg braucht dieselbe Absicherung wie die beiden anderen.
+
+    Zigbee2MQTT schickt beim Neustart der Bruecke schon einmal eine leere Nutzlast auf
+    `.../availability`. Ein Ausnahmefehler dort haelt den Ingest aller anderen Geraete an.
+    """
+    for nutzlast in (b"", b"{kaputt", b"\xff\xfe", b'"nur ein Text"', b"{}"):
+        nachricht_verarbeiten(
+            session,
+            "zigbee2mqtt/Ein Geraet/availability",
+            nutzlast,
+            basis="zigbee2mqtt",
+            empfangen_am=datetime(2026, 8, 29, 12, 0, 0),
+        )
+    session.flush()
+    zustaende = list(session.scalars(select(DeviceHealth)))
+    assert all(z.availability is None for z in zustaende), (
+        "Eine unverwertbare Erreichbarkeitsnachricht darf keinen Zustand setzen."
+    )
+
+
+def test_erste_sichtung_bleibt_bei_der_zweiten_geraeteliste_stehen(session: Session) -> None:
+    """`first_seen_at` ist die erste Sichtung, nicht die letzte.
+
+    Zigbee2MQTT sendet die Geraeteliste bei jeder Verbindung erneut. Wuerde sie den Wert
+    ueberschreiben, waere er nach jedem Neustart der Bruecke von heute — und die Frage
+    'seit wann kennen wir dieses Geraet?' unbeantwortbar.
+    """
+    liste = json.dumps(
+        [
+            {
+                "friendly_name": "Ein Multisensor",
+                "ieee_address": "0x0000000000000001",
+                "type": "EndDevice",
+                "definition": {"model": "M1", "vendor": "V", "exposes": []},
+            }
+        ]
+    ).encode()
+    anbindung(session, "zigbee2mqtt")
+    frueher = datetime(2026, 8, 1, 8, 0, 0)
+    spaeter = datetime(2026, 8, 29, 8, 0, 0)
+    nachricht_verarbeiten(
+        session, "zigbee2mqtt/bridge/devices", liste, basis="zigbee2mqtt", empfangen_am=frueher
+    )
+    nachricht_verarbeiten(
+        session, "zigbee2mqtt/bridge/devices", liste, basis="zigbee2mqtt", empfangen_am=spaeter
+    )
+    session.flush()
+    geraet = session.scalar(select(Device).where(Device.external_id == "Ein Multisensor"))
+    assert geraet is not None
+    assert geraet.first_seen_at == frueher
+
+
+def test_nicht_verarbeitete_nachrichtenarten_bleiben_folgenlos(
+    session: Session, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Bruecken- und Fremdnachrichten werden protokolliert, nicht verworfen und nicht
+    verarbeitet — protokolliert, damit ein unerwartetes Topic beim Debuggen auffaellt."""
+    vorher = len(list(session.scalars(select(Device))))
+    with caplog.at_level(logging.INFO):
+        nachricht_verarbeiten(
+            session, "zigbee2mqtt/bridge/state", b'{"state": "online"}',
+            basis="zigbee2mqtt", empfangen_am=datetime(2026, 8, 29, 12, 0, 0),
+        )
+        nachricht_verarbeiten(
+            session, "ganz/woanders/her", b"{}",
+            basis="zigbee2mqtt", empfangen_am=datetime(2026, 8, 29, 12, 0, 0),
+        )
+    session.flush()
+    assert len(list(session.scalars(select(Device)))) == vorher
+    assert "nicht verarbeitet" in caplog.text
+
+
+def test_erste_sichtung_wird_fuer_ein_von_hand_angelegtes_geraet_nachgetragen(
+    session: Session,
+) -> None:
+    """Ab Teilprojekt 3 legt auch die Oberflaeche Geraete an — dort ohne Sichtung.
+
+    Laeuft die erste Nachricht ein, soll der Zeitpunkt nachgetragen werden, statt leer zu
+    bleiben. Sonst steht in der Uebersicht dauerhaft 'noch nie'.
+    """
+    verbindung = anbindung(session, "zigbee2mqtt")
+    session.add(
+        Device(
+            integration_id=verbindung.id,
+            external_id="Von Hand angelegt",
+            display_name="Von Hand angelegt",
+            is_enabled=True,
+            first_seen_at=None,
+        )
+    )
+    session.flush()
+    liste = json.dumps(
+        [
+            {
+                "friendly_name": "Von Hand angelegt",
+                "ieee_address": "0x0000000000000002",
+                "type": "EndDevice",
+                "definition": {"model": "M2", "vendor": "V", "exposes": []},
+            }
+        ]
+    ).encode()
+    gesehen = datetime(2026, 8, 29, 9, 30, 0)
+    nachricht_verarbeiten(
+        session, "zigbee2mqtt/bridge/devices", liste, basis="zigbee2mqtt", empfangen_am=gesehen
+    )
+    session.flush()
+    geraet = session.scalar(select(Device).where(Device.external_id == "Von Hand angelegt"))
+    assert geraet is not None and geraet.first_seen_at == gesehen

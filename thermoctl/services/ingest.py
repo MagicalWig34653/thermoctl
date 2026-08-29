@@ -25,7 +25,10 @@ log = logging.getLogger(__name__)
 
 def _anbindung(session: Session) -> Integration:
     anbindung = session.scalar(select(Integration).where(Integration.code == "zigbee2mqtt"))
-    if anbindung is None:
+    if anbindung is None:  # pragma: no cover
+        # Konsistenzpruefung gegen die Migration, die diese Zeile anlegt. Erreichbar nur
+        # mit einem von Hand beschaedigten Schema — ein Test dafuer muesste die
+        # Nachschlagetabelle leerraeumen und pruefte damit die Migration, nicht uns.
         raise RuntimeError("Anbindung zigbee2mqtt fehlt in der Nachschlagetabelle")
     return anbindung
 
@@ -83,6 +86,9 @@ def _beschreibung_speichern(
     geraet.model = beschreibung.modell
     geraet.is_group = beschreibung.ist_gruppe
     if geraet.first_seen_at is None:
+        # Nachtrag fuer Geraete, die nicht ueber den Ingest entstanden sind — ab
+        # Teilprojekt 3 legt sie auch die Oberflaeche an, und dort gibt es noch keine
+        # Sichtung. Beim Ingest selbst ist der Wert schon gesetzt (_geraet).
         geraet.first_seen_at = empfangen_am
 
     session.execute(delete(DeviceCapabilityLink).where(DeviceCapabilityLink.device_id == geraet.id))
@@ -160,7 +166,11 @@ def _erreichbarkeit_verarbeiten(
 ) -> None:
     try:
         daten = json.loads(nutzlast)
-    except json.JSONDecodeError, UnicodeDecodeError:
+    # Klammern, obwohl Python 3.14 sie hier nicht mehr verlangt (PEP 758): Ohne sie sieht
+    # die Zeile genau aus wie die Python-2-Form, die etwas anderes bedeutete — dort band
+    # der zweite Name die Ausnahme, statt eine zweite Klasse zu fangen. Wer das einmal
+    # falsch liest, sucht den Fehler an der falschen Stelle.
+    except (json.JSONDecodeError, UnicodeDecodeError):
         log.warning("Zigbee2MQTT-Erreichbarkeit ist kein gueltiges JSON")
         return
     if not isinstance(daten, dict) or not isinstance(daten.get("state"), str):
@@ -231,7 +241,8 @@ def zonenzustand_fortschreiben(session: Session, jetzt: datetime) -> None:
             )
         )
         status_id = status_ids.get(code)
-        if status_id is None:
+        if status_id is None:  # pragma: no cover
+            # Wie oben: Konsistenzpruefung gegen die Migration, nicht gegen Eingaben.
             raise RuntimeError(f"Sensorstatus {code} fehlt in der Nachschlagetabelle")
         zustand = session.get(ZoneState, zone.id)
         if zustand is None:
