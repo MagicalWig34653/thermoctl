@@ -1,11 +1,26 @@
+import json
 from collections.abc import Callable
+from datetime import datetime
+from decimal import Decimal
+from pathlib import Path
 
 import pytest
 from sqlalchemy.orm import Session
 
-from tests.hilfen import benutzer_mit_rechten, betriebsart, quelle
+from tests.hilfen import (
+    benutzer_mit_rechten,
+    betriebsart,
+    geraet_anlegen,
+    geraetezustand_anlegen,
+    quelle,
+    rolle,
+    sensorstatus,
+)
 from thermoctl.auth.tokens import token_ausstellen
+from thermoctl.db.models.device import DeviceCapabilityLink, ZoneDevice
+from thermoctl.db.models.lookup import DeviceCapability
 from thermoctl.db.models.zone import Zone
+from thermoctl.db.models.zustand import ZoneState
 
 
 @pytest.fixture
@@ -52,6 +67,80 @@ def test_zugriff_auf_fremde_zone_ergibt_404(client, token_fuer) -> None:
     """404 und nicht 403: ein 403 verraet, dass die Zone existiert."""
     kopf = token_fuer([("zone.read", "bad")])
     assert client.get("/api/v1/zones/2", headers=kopf).status_code == 404
+
+
+def test_geraeteliste_braucht_device_read(client, token_fuer) -> None:
+    kopf = token_fuer([("zone.read", "bad")])
+    assert client.get("/api/v1/devices", headers=kopf).status_code == 403
+
+
+def test_geraeteliste_liefert_lebenszeichen(client, token_fuer, session: Session) -> None:
+    beispiele = json.loads(
+        (Path(__file__).parent / "daten/anlage-beispiele.json").read_text(encoding="utf-8")
+    )
+    geraet = geraet_anlegen(session, beispiele["geraete"][2])
+    session.get(Zone, 1).temperature_source_device_id = geraet.id
+    session.add(
+        ZoneDevice(
+            zone_id=2,
+            device_id=geraet.id,
+            device_role_id=rolle(session, "controller").id,
+        )
+    )
+    faehigkeit = DeviceCapability(code="temperature", label="Temperaturmessung")
+    session.add(faehigkeit)
+    session.flush()
+    session.add(DeviceCapabilityLink(device_id=geraet.id, capability_id=faehigkeit.id))
+    zustand = geraetezustand_anlegen(session, geraet)
+    zustand.availability = "online"
+    session.flush()
+    kopf = token_fuer([("device.read", None)])
+
+    antwort = client.get("/api/v1/devices", headers=kopf)
+
+    assert antwort.status_code == 200
+    assert antwort.json()[0]["external_id"] == beispiele["geraete"][2]
+    assert antwort.json()[0]["availability"] == "online"
+    assert antwort.json()[0]["capabilities"] == ["temperature"]
+    assert antwort.json()[0]["zones"] == ["andere", "bad"]
+
+
+def test_zonenzustand_ist_nur_fuer_sichtbare_zone_lesbar(
+    client, token_fuer, session: Session
+) -> None:
+    zeitpunkt = datetime(2026, 8, 29, 8, 0)
+    session.add_all(
+        [
+            ZoneState(
+                zone_id=1,
+                temperature_c=Decimal("19.75"),
+                measured_at=zeitpunkt,
+                sensor_status_id=sensorstatus(session).id,
+                updated_at=zeitpunkt,
+            ),
+            ZoneState(
+                zone_id=2,
+                temperature_c=Decimal("21.00"),
+                measured_at=zeitpunkt,
+                sensor_status_id=sensorstatus(session).id,
+                updated_at=zeitpunkt,
+            ),
+        ]
+    )
+    session.flush()
+    kopf = token_fuer([("zone.read", "bad")])
+
+    antwort = client.get("/api/v1/zones/1/state", headers=kopf)
+
+    assert antwort.status_code == 200
+    assert antwort.json()["temperature_c"] == "19.75"
+    assert antwort.json()["sensor_status"] == "ok"
+    assert client.get("/api/v1/zones/2/state", headers=kopf).status_code == 404
+
+
+def test_sichtbare_zone_ohne_zustand_ergibt_404(client, token_fuer) -> None:
+    kopf = token_fuer([("zone.read", "bad")])
+    assert client.get("/api/v1/zones/1/state", headers=kopf).status_code == 404
 
 
 def test_uebersteuern_ohne_recht_wird_abgewiesen(client, token_fuer) -> None:
