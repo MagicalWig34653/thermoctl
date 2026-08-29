@@ -7,6 +7,7 @@ in dieser Phase nirgends veroeffentlicht wird.
 """
 
 import asyncio
+import json
 import types
 from datetime import datetime, timedelta
 from decimal import Decimal
@@ -18,12 +19,20 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 from starlette.testclient import TestClient
 
-from tests.hilfen import anbindung, einstellungen_anlegen, sensorstatus, zone_anlegen
+from tests.hilfen import (
+    anbindung,
+    einstellungen_anlegen,
+    geraet_anlegen,
+    rolle,
+    sensorstatus,
+    zone_anlegen,
+)
 from thermoctl import app as app_modul
 from thermoctl.app import create_app
 from thermoctl.config import Settings, get_settings
 from thermoctl.db.base import Base
 from thermoctl.db.engine import session_factory
+from thermoctl.db.models.device import ZoneDevice
 from thermoctl.db.models.lookup import DeviceCapability
 from thermoctl.db.models.messwert import Measurement
 from thermoctl.db.models.operations import Setting
@@ -34,6 +43,7 @@ from thermoctl.integrations.mqtt.client import MqttClient
 from thermoctl.services import schattenlauf
 
 JETZT = datetime(2026, 8, 29, 8, 0)
+DATENPFAD = Path(__file__).parent / "daten" / "anlage-beispiele.json"
 
 
 def _eigene_datenbank(tmp_path: Path, name: str) -> tuple[Engine, sessionmaker[Session]]:
@@ -209,6 +219,66 @@ def test_zone_ohne_messquelle_bekommt_keine_quelle_zeile(session: Session) -> No
     assert zeilen[0].outcome_code == "keine_quelle"
     assert zeilen[0].would_heat is False
     assert zeilen[0].temperature_c is None
+
+
+def test_zone_ohne_fensterkontakt_heizt_trotz_unbekanntem_fensterzustand(
+    session: Session,
+) -> None:
+    einstellungen_anlegen(session)
+    zone = _zone_mit_zustand(session, "ohne-fensterkontakt", ist_c=Decimal("5.0"))
+    zustand = session.get(ZoneState, zone.id)
+    assert zustand is not None and zustand.window_open is None
+
+    zeile = schattenlauf.zyklus(session, JETZT)[0]
+
+    assert zeile.would_heat is True
+    assert zeile.outcome_code == "heizen"
+
+
+def test_fensterschliessung_startet_wachsende_wiederanlaufverzoegerung(
+    session: Session,
+) -> None:
+    einstellungen = einstellungen_anlegen(session)
+    einstellungen.default_window_resume_delay_seconds = 120
+    zone = _zone_mit_zustand(session, "fensterpause", ist_c=Decimal("5.0"))
+    zone.min_off_seconds = 0
+    kontakt = DeviceCapability(code="contact", label="Kontakt")
+    session.add(kontakt)
+    session.flush()
+    geraetename = json.loads(DATENPFAD.read_text(encoding="utf-8"))["geraete"][0]
+    geraet = geraet_anlegen(session, geraetename)
+    session.add(
+        ZoneDevice(
+            zone_id=zone.id,
+            device_id=geraet.id,
+            device_role_id=rolle(session, "window_contact").id,
+        )
+    )
+    for wert, zeitpunkt in (
+        ("false", JETZT - timedelta(seconds=30)),
+        ("true", JETZT - timedelta(seconds=20)),
+    ):
+        session.add(
+            Measurement(
+                device_id=geraet.id,
+                capability_id=kontakt.id,
+                value_text=wert,
+                measured_at=zeitpunkt,
+                received_at=zeitpunkt,
+            )
+        )
+    zustand = session.get(ZoneState, zone.id)
+    assert zustand is not None
+    zustand.window_open = False
+    session.flush()
+
+    erste = schattenlauf.zyklus(session, JETZT)[0]
+    zweite = schattenlauf.zyklus(session, JETZT + timedelta(seconds=30))[0]
+
+    assert erste.would_heat is False
+    assert erste.outcome_code == "aus"
+    assert "Fenster seit 20s zu" in erste.reason
+    assert "Fenster seit 50s zu" in zweite.reason
 
 
 def test_scheiternde_zone_haelt_uebrige_nicht_auf(
