@@ -76,6 +76,7 @@ DEVICE_CAPABILITIES = [
     ("valve_position", "Ventilstellung"),
     ("setpoint", "Sollwert"),
     ("availability", "Erreichbarkeit"),
+    ("soil_moisture", "Bodenfeuchte"),
 ]
 SENSOR_STATUS = [
     ("ok", "In Ordnung"),
