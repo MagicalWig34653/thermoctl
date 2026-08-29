@@ -55,6 +55,7 @@ from thermoctl.web.modi_views import router as modi_router
 from thermoctl.web.passkey_views import router as passkey_router
 from thermoctl.web.setup_views import router as setup_router
 from thermoctl.web.start_views import router as start_router
+from thermoctl.web.steuerung_views import router as steuerung_router
 from thermoctl.web.zeitplan_views import router as zeitplan_router
 from thermoctl.web.zonen_views import router as zonen_router
 
@@ -322,6 +323,7 @@ def create_app() -> FastAPI:
     app.state.engine = create_engine_from_settings(settings)
     app.state.session_factory = session_factory(app.state.engine)
     app.include_router(start_router)
+    app.include_router(steuerung_router)
     app.include_router(auth_router)
     app.include_router(setup_router)
     app.include_router(admin_router)
