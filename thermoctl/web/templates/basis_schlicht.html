@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="de" data-bs-theme="auto">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block titel %}thermoctl{% endblock %}</title>
+    <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="/static/vendor/bootstrap/bootstrap.min.css">
+</head>
+<body class="d-flex align-items-center py-4 bg-body-tertiary" style="min-height: 100vh">
+<main class="w-100 m-auto" style="max-width: 22rem">
+{% block inhalt %}{% endblock %}
+{% block passkey %}{% endblock %}
+</main>
+<script src="/static/vendor/bootstrap/bootstrap.bundle.min.js"></script>
+<script src="/static/vendor/htmx/htmx.min.js"></script>
+</body>
+</html>

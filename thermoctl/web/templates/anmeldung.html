@@ -1,25 +1,25 @@
-{% extends "basis.html" %}
+{% extends "basis_schlicht.html" %}
 
 {% block titel %}Anmeldung – thermoctl{% endblock %}
 
 {% block inhalt %}
-<main>
     <h1 class="mb-4">Anmeldung</h1>
     {% if fehler %}
     <div class="alert alert-danger" role="alert">{{ fehler }}</div>
     {% endif %}
     <form method="post" action="/login">
-        <div class="mb-3">
-            <label for="username" class="form-label">Benutzername</label>
-            <input type="text" class="form-control" id="username" name="username"
-                   autocomplete="username" required autofocus>
+        <div class="form-floating">
+            <input type="text" class="form-control rounded-bottom-0" id="username"
+                   name="username" placeholder="Benutzername"
+                   autocomplete="username webauthn" required autofocus>
+            <label for="username">Benutzername</label>
         </div>
-        <div class="mb-3">
-            <label for="password" class="form-label">Passwort</label>
-            <input type="password" class="form-control" id="password" name="password"
+        <div class="form-floating mb-3" style="margin-top: -1px">
+            <input type="password" class="form-control rounded-top-0" id="password"
+                   name="password" placeholder="Passwort"
                    autocomplete="current-password" required>
+            <label for="password">Passwort</label>
         </div>
-        <button type="submit" class="btn btn-primary">Anmelden</button>
+        <button type="submit" class="btn btn-primary w-100">Anmelden</button>
     </form>
-</main>
 {% endblock %}
