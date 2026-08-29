@@ -1,0 +1,67 @@
+# Beispiel-Compose für eine eigene Instanz. Kopieren, anpassen, starten:
+#
+#   cp docker/compose.beispiel.yml compose.yml
+#   cp .env.example .env      # und ausfüllen, siehe docs/self-hosting.md
+#   docker compose up -d
+#
+# Zwei Betriebsarten stehen darin. Die einfache ist voreingestellt; die MariaDB-Variante
+# ist auskommentiert und braucht zwei Handgriffe, die unten beschrieben sind.
+#
+# Es steht bewusst kein einziger Zugangswert in dieser Datei. Alles kommt aus `.env`,
+# die nicht ins Repo gehört.
+
+services:
+  thermoctl:
+    # Fertiges Abbild aus der Registry. Wer aus dem Quelltext bauen will, ersetzt die
+    # Zeile durch:  build: { context: ., dockerfile: docker/Dockerfile }
+    image: ghcr.io/magicalwig34653/thermoctl:latest
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      # Nur an die Loopback-Adresse gebunden. Wer den Dienst im Netz erreichbar machen
+      # will, stellt einen Reverse-Proxy mit TLS davor und setzt
+      # THERMOCTL_SECURE_COOKIES=true — siehe docs/self-hosting.md.
+      - "127.0.0.1:8000:8000"
+    volumes:
+      # Die SQLite-Datei lebt hier. Ohne dieses Volume ist nach jedem `docker compose up`
+      # alles weg, einschließlich der Benutzer.
+      - thermoctl-data:/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8000/healthz')"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+    # Für die MariaDB-Variante zusätzlich einkommentieren:
+    # depends_on:
+    #   datenbank:
+    #     condition: service_healthy
+
+  # MariaDB-Variante. Zwei Handgriffe:
+  #   1. Diesen Block einkommentieren und `depends_on` oben ebenso.
+  #   2. In `.env` setzen:
+  #      THERMOCTL_DATABASE_URL=mysql+pymysql://thermoctl:<passwort>@datenbank:3306/thermoctl
+  #      MARIADB_PASSWORT=<dasselbe passwort>
+  #      MARIADB_ROOT_PASSWORT=<ein anderes>
+  #
+  # SQLite genügt für eine Wohnung vollständig. MariaDB lohnt sich, wenn ohnehin ein
+  # Server läuft oder mehrere Dienste sich eine Datenbank teilen sollen.
+  #
+  # datenbank:
+  #   image: mariadb:11
+  #   restart: unless-stopped
+  #   environment:
+  #     MARIADB_DATABASE: thermoctl
+  #     MARIADB_USER: thermoctl
+  #     MARIADB_PASSWORD: ${MARIADB_PASSWORT:?MARIADB_PASSWORT fehlt in .env}
+  #     MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORT:?MARIADB_ROOT_PASSWORT fehlt in .env}
+  #   volumes:
+  #     - thermoctl-db:/var/lib/mysql
+  #   healthcheck:
+  #     test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+  #     interval: 5s
+  #     timeout: 5s
+  #     retries: 20
+
+volumes:
+  thermoctl-data:
+  # thermoctl-db:

@@ -4,6 +4,14 @@
 Domänenlogik, Anmeldung und Rechte, einen Einrichtungsassistenten, Verwaltungsseiten sowie
 eine REST-Schnittstelle bereit. Teilprojekt 1 steuert noch keine Heizung.
 
+## Weiterlesen
+
+- **[Eine eigene Instanz betreiben](docs/self-hosting.md)** — Schritt für Schritt, mit
+  Sicherung, Aktualisierung und dem, was bei TLS zu beachten ist.
+- **[REST-Schnittstelle](docs/api.md)** — Endpunkte, Tokens, Rechte.
+- **[Roadmap](docs/roadmap.md)** und **[Stand](docs/STATUS.md)** — was da ist und was folgt.
+- **[Beispiel-Compose](docker/compose.beispiel.yml)** — kopieren, `.env` ausfüllen, starten.
+
 ## Start mit Docker
 
 Vorausgesetzt werden Docker und eine erreichbare SQLite- oder MariaDB-Datenbank. Zuerst
