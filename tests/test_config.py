@@ -63,3 +63,9 @@ def test_mqtt_verbindungsangaben_enthalten_kein_passwort() -> None:
     bereinigt = s.sanitized_mqtt_connection()
     assert bereinigt == "mqtts://empfang@mqtt.example.invalid:8883"
     assert "auffaelliges-geheimnis" not in bereinigt
+
+
+def test_benachrichtigungen_sind_standardmaessig_ohne_webhook() -> None:
+    s = Settings(_env_file=None, database_url="sqlite://", secret_key="f" * 32)
+    assert s.notify_webhook is None
+    assert s.notify_webhook_token is None
