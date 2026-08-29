@@ -21,7 +21,9 @@ from starlette.responses import Response
 from thermoctl.auth.dependencies import csrf_schutz, get_session
 from thermoctl.auth.sessions import COOKIE_NAME, sitzung_aufloesen
 from thermoctl.db.models.identity import User
-from thermoctl.db.models.zone import Zone
+from thermoctl.db.models.lookup import SensorStatus
+from thermoctl.db.models.zustand import ZoneState
+from thermoctl.domain.authz import principal_fuer_benutzer, visible_zones
 
 router = APIRouter(dependencies=[Depends(csrf_schutz)])
 templates = Jinja2Templates(directory="thermoctl/web/templates")
@@ -38,12 +40,24 @@ def start(
     if benutzer is None or not benutzer.is_active:
         return RedirectResponse("/login", status_code=303)
 
+    principal = principal_fuer_benutzer(session, benutzer)
+    sichtbare_zonen = visible_zones(session, principal, "zone.read")
+    zustaende = {
+        zone_id: (zustand, sensorstatus)
+        for zone_id, zustand, sensorstatus in session.execute(
+            select(ZoneState.zone_id, ZoneState, SensorStatus)
+            .join(SensorStatus, SensorStatus.id == ZoneState.sensor_status_id)
+            .where(ZoneState.zone_id.in_([zone.id for zone in sichtbare_zonen]))
+        )
+    }
+
     return templates.TemplateResponse(
         request,
         "start.html",
         {
             "benutzer": benutzer,
-            "zonen": session.scalar(select(func.count()).select_from(Zone)) or 0,
+            "zonen": sichtbare_zonen,
+            "zustaende": zustaende,
             "benutzerzahl": session.scalar(select(func.count()).select_from(User)) or 0,
         },
     )

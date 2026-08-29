@@ -60,6 +60,32 @@ Zone eingeschränktes Recht ergibt eine einelementige Liste.
 
 Recht: `zone.read`. `404`, wenn es sie nicht gibt oder das Token sie nicht sehen darf.
 
+### `GET /api/v1/zones/{zone_id}/state` — Zonenzustand
+
+Recht: `zone.read`. Liefert Ist-Temperatur, Messzeitpunkt, Sensorzustand,
+Fensterzustand und Aktualisierungszeitpunkt. Fehlende Werte sind `null`; insbesondere
+bedeutet eine fehlende Temperatur nicht 0 °C. `404`, wenn die Zone nicht sichtbar ist
+oder noch keinen abgeleiteten Zustand hat.
+
+```json
+{"zone_id": 1, "temperature_c": "20.25", "measured_at": "2026-08-29T08:15:00",
+ "sensor_status": "ok", "window_open": false, "updated_at": "2026-08-29T08:15:02"}
+```
+
+### `GET /api/v1/devices` — Geräte auflisten
+
+Recht: `device.read`. Liefert Anzeigename, externe Kennung, Anbindung, Modell,
+Gruppenkennzeichen, Fähigkeiten, Lebenszeichen und zugeordnete Zonen. Noch nicht
+gemeldete Gesundheitswerte sind `null`, Zuordnungen und Fähigkeiten gegebenenfalls leer.
+
+```json
+[{"id": 4, "external_id": "geraet-a", "display_name": "Gerät A",
+  "integration": "zigbee2mqtt", "model": null, "is_group": false,
+  "capabilities": ["temperature"], "last_payload_at": null,
+  "battery_percent": null, "link_quality": null, "availability": null,
+  "zones": ["zone-a"]}]
+```
+
 ### `GET /api/v1/me` — das eigene Token
 
 Recht: `token.self`. Nützlich, um in einem Skript zu prüfen, ob ein Token noch gilt und
@@ -123,8 +149,8 @@ Die Schnittstelle wächst mit den Phasen. Solange eine Fähigkeit in der Domäne
 fehlt sie hier ebenfalls — das ist der Preis dafür, dass es keine zweite Umsetzung derselben
 Regel gibt.
 
-Noch nicht vorhanden: Zeitpläne lesen und schreiben, Sollwerte je Modus, Geräte und
-Messwerte, Zonen anlegen und ändern. Der Stand steht in der [Roadmap](roadmap.md).
+Noch nicht vorhanden: Zeitpläne lesen und schreiben, Sollwerte je Modus, Messwerte sowie
+Zonen und Geräte anlegen und ändern. Der Stand steht in der [Roadmap](roadmap.md).
 
 ## Stabilität
 
