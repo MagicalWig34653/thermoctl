@@ -73,6 +73,11 @@ def einrichtung_durchfuehren(
     if marke is None:
         raise PermissionError("Ungueltiges oder verbrauchtes Einrichtungs-Token.")
 
+    # Korrigierbare Eingaben werden geprueft, bevor Teile der Einrichtung angelegt
+    # werden. Die View faengt PasswordTooShort bewusst ab; spaetere Schreibzugriffe
+    # duerfen deshalb nicht versehentlich als erfolgreicher Request committet werden.
+    passwort_hash = hash_password(passwort)
+
     for code, name, reihenfolge in EINGEBAUTE_MODI:
         if session.scalar(select(SetpointMode).where(SetpointMode.code == code)) is None:
             session.add(
@@ -93,8 +98,7 @@ def einrichtung_durchfuehren(
                                 zone_id=None)
             )
 
-    nutzer = User(username=username, display_name=display_name,
-                  password_hash=hash_password(passwort))
+    nutzer = User(username=username, display_name=display_name, password_hash=passwort_hash)
     session.add(nutzer)
     session.flush()
     session.add(

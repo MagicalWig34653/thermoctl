@@ -99,3 +99,14 @@ def test_setup_mit_zu_kurzem_passwort_fuehrt_zum_formular_zurueck(
     assert 'value="lino"' in antwort.text
     assert "zukurz" not in antwort.text
     assert session.query(User).count() == 0
+    assert session.query(AccessGroup).count() == 0
+
+    zweiter_versuch = client.post(
+        "/setup",
+        data={"username": "lino", "display_name": "Lino",
+              "password": "passwort-lang-genug", "timezone": "Europe/Berlin",
+              "setup_token": marke},
+        follow_redirects=False,
+    )
+    assert zweiter_versuch.status_code == 303
+    assert session.query(User).count() == 1
