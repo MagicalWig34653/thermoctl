@@ -280,3 +280,181 @@ def test_unbekannter_zeitplanpunkt_ergibt_404(client_als, session: Session) -> N
     zone = zone_anlegen(session, "zone-unbekannter-punkt")
     client = client_als([("schedule.manage", None), ("zone.read", None)])
     assert client.get(f"/zonen/{zone.id}/zeitplan/punkte/999999/loeschen").status_code == 404
+
+
+# --- Verschieben (Ziel des Ziehens in der Wochenansicht) --------------------
+
+
+def test_punkt_verschieben(client_als, session: Session) -> None:
+    zone = zone_anlegen(session, "bad")
+    quelle(session, "web")
+    tag = modus_anlegen(session, "tag", "Tag")
+    punkt = _punkt(session, zone.id, 1, 360, tag.id)
+    mandant = client_als([("zone.read", None), ("schedule.manage", None)])
+
+    antwort = mandant.post(
+        f"/zonen/{zone.id}/zeitplan/punkte/verschieben",
+        data={"punkt_id": str(punkt.id), "wochentag": "3", "uhrzeit": "07:15"},
+        headers=_csrf(mandant),
+        follow_redirects=False,
+    )
+    assert antwort.status_code == 303
+    session.refresh(punkt)
+    assert (punkt.weekday, punkt.minute_of_day) == (3, 435)
+
+
+def test_verschieben_behaelt_die_kennung_und_protokolliert_woher_wohin(
+    client_als, session: Session
+) -> None:
+    """Loeschen und neu Anlegen waere fachlich dasselbe, haette aber zwei
+    unzusammenhaengende Audit-Eintraege und zwischendurch eine Luecke im Plan."""
+    zone = zone_anlegen(session, "bad")
+    quelle(session, "web")
+    tag = modus_anlegen(session, "tag", "Tag")
+    punkt = _punkt(session, zone.id, 1, 360, tag.id)
+    vorherige_kennung = punkt.id
+    mandant = client_als([("zone.read", None), ("schedule.manage", None)])
+
+    mandant.post(
+        f"/zonen/{zone.id}/zeitplan/punkte/verschieben",
+        data={"punkt_id": str(punkt.id), "wochentag": "2", "uhrzeit": "22:30"},
+        headers=_csrf(mandant),
+    )
+    session.refresh(punkt)
+    assert punkt.id == vorherige_kennung
+    eintrag = session.scalars(
+        select(AuditEvent).where(AuditEvent.object_type == "schedule_point")
+    ).one()
+    assert eintrag.detail == "Mo 06:00 → Di 22:30"
+
+
+def test_verschieben_auf_einen_belegten_zeitpunkt_wird_abgewiesen(
+    client_als, session: Session
+) -> None:
+    zone = zone_anlegen(session, "bad")
+    quelle(session, "web")
+    tag = modus_anlegen(session, "tag", "Tag")
+    nacht = modus_anlegen(session, "nacht", "Nacht")
+    beweglich = _punkt(session, zone.id, 1, 360, tag.id)
+    _punkt(session, zone.id, 1, 1320, nacht.id)
+    mandant = client_als([("zone.read", None), ("schedule.manage", None)])
+
+    antwort = mandant.post(
+        f"/zonen/{zone.id}/zeitplan/punkte/verschieben",
+        data={"punkt_id": str(beweglich.id), "wochentag": "1", "uhrzeit": "22:00"},
+        headers=_csrf(mandant),
+    )
+    assert antwort.status_code == 200
+    # Die Meldung gehoert an die Wochenansicht, nicht an das Uhrzeitfeld des
+    # Anlege-Formulars: Beide Wege melden denselben Satz, und in der ersten Fassung
+    # landete er an einem Formular, das der Benutzer gar nicht angefasst hatte.
+    assert "data-verschiebefehler" in antwort.text
+    assert "wurde nicht verschoben" in antwort.text
+    session.refresh(beweglich)
+    assert beweglich.minute_of_day == 360
+
+
+def test_verschieben_auf_den_eigenen_platz_ist_kein_fehler(
+    client_als, session: Session
+) -> None:
+    """Beim Ziehen landet ein Balken leicht wieder dort, wo er war. Das darf nicht als
+    Kollision mit sich selbst durchfallen."""
+    zone = zone_anlegen(session, "bad")
+    quelle(session, "web")
+    tag = modus_anlegen(session, "tag", "Tag")
+    punkt = _punkt(session, zone.id, 1, 360, tag.id)
+    mandant = client_als([("zone.read", None), ("schedule.manage", None)])
+
+    antwort = mandant.post(
+        f"/zonen/{zone.id}/zeitplan/punkte/verschieben",
+        data={"punkt_id": str(punkt.id), "wochentag": "1", "uhrzeit": "06:00"},
+        headers=_csrf(mandant),
+        follow_redirects=False,
+    )
+    assert antwort.status_code == 303
+    assert not session.scalars(
+        select(AuditEvent).where(AuditEvent.object_type == "schedule_point")
+    ).all()
+
+
+def test_verschieben_braucht_schedule_manage(client_als, session: Session) -> None:
+    zone = zone_anlegen(session, "bad")
+    tag = modus_anlegen(session, "tag", "Tag")
+    punkt = _punkt(session, zone.id, 1, 360, tag.id)
+    mandant = client_als([("zone.read", None)])
+    antwort = mandant.post(
+        f"/zonen/{zone.id}/zeitplan/punkte/verschieben",
+        data={"punkt_id": str(punkt.id), "wochentag": "2", "uhrzeit": "07:00"},
+        headers=_csrf(mandant),
+    )
+    assert antwort.status_code == 404
+    session.refresh(punkt)
+    assert punkt.weekday == 1
+
+
+def test_unsinnige_zieldaten_werden_abgewiesen(client_als, session: Session) -> None:
+    zone = zone_anlegen(session, "bad")
+    tag = modus_anlegen(session, "tag", "Tag")
+    punkt = _punkt(session, zone.id, 1, 360, tag.id)
+    mandant = client_als([("zone.read", None), ("schedule.manage", None)])
+    for daten in (
+        {"wochentag": "9", "uhrzeit": "07:00"},
+        {"wochentag": "kein Tag", "uhrzeit": "07:00"},
+        {"wochentag": "2", "uhrzeit": "25:00"},
+        {"wochentag": "2", "uhrzeit": ""},
+    ):
+        antwort = mandant.post(
+            f"/zonen/{zone.id}/zeitplan/punkte/verschieben",
+            data=daten | {"punkt_id": str(punkt.id)},
+            headers=_csrf(mandant),
+        )
+        assert antwort.status_code == 200, daten
+    session.refresh(punkt)
+    assert (punkt.weekday, punkt.minute_of_day) == (1, 360)
+
+
+def test_wochenansicht_liefert_die_punktkennung_zum_ziehen(
+    client_als, session: Session
+) -> None:
+    """Ohne sie hat der Balken nichts, was er verschieben koennte -- und das Ziehen
+    waere still wirkungslos statt sichtbar kaputt."""
+    zone = zone_anlegen(session, "bad")
+    tag = modus_anlegen(session, "tag", "Tag")
+    punkt = _punkt(session, zone.id, 1, 360, tag.id)
+    antwort = client_als([("zone.read", None), ("schedule.manage", None)]).get(
+        f"/zonen/{zone.id}/zeitplan"
+    )
+    assert f'data-punkt="{punkt.id}"' in antwort.text
+    assert "zeitplan-ziehbar" in antwort.text
+
+
+def test_ohne_schedule_manage_ist_kein_balken_ziehbar(
+    client_als, session: Session
+) -> None:
+    """Gegenprobe: Sonst waere der obige Test auch von einer Fassung erfuellt, die
+    jeden Balken fuer jeden ziehbar macht."""
+    zone = zone_anlegen(session, "bad")
+    tag = modus_anlegen(session, "tag", "Tag")
+    _punkt(session, zone.id, 1, 360, tag.id)
+    antwort = client_als([("zone.read", None)]).get(f"/zonen/{zone.id}/zeitplan")
+    assert antwort.status_code == 200
+    assert "zeitplan-ziehbar" not in antwort.text
+
+
+def test_der_anlegeweg_meldet_weiter_am_feld(client_als, session: Session) -> None:
+    """Gegenprobe zum eigenen Kanal fuer Verschiebefehler: Der Weg ueber das Formular
+    soll seine Meldung weiterhin dort bekommen, wo die Eingabe steht."""
+    zone = zone_anlegen(session, "bad")
+    quelle(session, "web")
+    tag = modus_anlegen(session, "tag", "Tag")
+    _punkt(session, zone.id, 1, 360, tag.id)
+    mandant = client_als([("zone.read", None), ("schedule.manage", None)])
+
+    antwort = mandant.post(
+        f"/zonen/{zone.id}/zeitplan/punkte",
+        data={"wochentag": "1", "uhrzeit": "06:00", "modus": str(tag.id)},
+        headers=_csrf(mandant),
+    )
+    assert antwort.status_code == 200
+    assert "bereits einen Punkt" in antwort.text
+    assert "data-verschiebefehler" not in antwort.text

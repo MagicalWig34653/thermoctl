@@ -15,33 +15,60 @@
     {% endif %}
 </div>
 
+{% if verschiebefehler %}
+<div class="alert alert-warning" data-verschiebefehler role="alert">
+    Der Schaltpunkt wurde nicht verschoben: {{ verschiebefehler }}
+</div>
+{% endif %}
+
 {% if punkte %}
-<div class="row g-2 mb-4">
+<div id="zeitplan-gitter" class="row g-2 mb-2"
+     data-zone="{{ zone.id }}" data-aenderbar="{{ 'ja' if darf_aendern else 'nein' }}">
 {% for tag, tagname in wochentage %}
     <section class="col" style="min-width: 8rem;">
         <h2 class="h6 text-center">{{ tagname }}</h2>
-        <div class="position-relative border rounded bg-light" style="height: 36rem;">
+        <div class="zeitplan-tag position-relative border rounded bg-light"
+             style="height: 36rem;" data-wochentag="{{ tag }}">
         {% for abschnitt in abschnitte[tag] %}
-            <div class="position-absolute start-0 end-0 border-bottom bg-primary text-white px-1 overflow-hidden"
+            <div class="zeitplan-balken position-absolute start-0 end-0 border-bottom bg-primary text-white px-1 overflow-hidden{{ ' zeitplan-ziehbar' if abschnitt.punkt_id and darf_aendern }}"
+                 {% if abschnitt.punkt_id %}data-punkt="{{ abschnitt.punkt_id }}"{% endif %}
+                 data-startminute="{{ abschnitt.startminute }}"
                  style="top: {{ abschnitt.startminute / 40 }}rem;
                         height: {{ (abschnitt.endminute - abschnitt.startminute) / 40 }}rem;"
                  title="{{ abschnitt.modusname }} ab {{ "%02d:%02d"|format(
                      abschnitt.startminute // 60, abschnitt.startminute % 60
                  ) }}">
-                <small>{{ "%02d:%02d"|format(
+                <small><span class="zeitplan-uhrzeit">{{ "%02d:%02d"|format(
                     abschnitt.startminute // 60, abschnitt.startminute % 60
-                ) }} {{ abschnitt.modusname }}</small>
+                ) }}</span> {{ abschnitt.modusname }}</small>
             </div>
         {% endfor %}
         </div>
     </section>
 {% endfor %}
 </div>
+{% if darf_aendern %}
+<p class="text-muted small mb-4" data-zeitplan-hinweis hidden>
+    Balken lassen sich mit der Maus auf eine andere Zeit oder einen anderen Tag ziehen;
+    ein Klick auf eine freie Stelle übernimmt Tag und Uhrzeit ins Formular unten.
+    Der Balken ganz oben an einem Tag reicht vom Vortag herein und gehört dorthin.
+</p>
+{% endif %}
 {% else %}
 <div class="alert alert-info">Noch kein Zeitplan vorhanden. Bis zum ersten Punkt gilt der Frostschutz.</div>
 {% endif %}
 
 {% if darf_aendern %}
+{# `hx-push-url="false"`: Ohne das schiebt hx-boost bei einer abgelehnten
+   Verschiebung den POST-Pfad in die Adresszeile, und ein Neuladen liefe
+   dann gegen einen Weg, den es fuer GET nicht gibt. Der erfolgreiche Fall
+   leitet ohnehin auf die Zeitplanseite um. #}
+<form id="zeitplan-verschieben" method="post" hidden hx-push-url="false"
+      action="/zonen/{{ zone.id }}/zeitplan/punkte/verschieben">
+    <input type="hidden" name="punkt_id">
+    <input type="hidden" name="wochentag">
+    <input type="hidden" name="uhrzeit">
+</form>
 <section class="row g-4">
     <div class="col-lg-6">
         <h2 class="h4">Schaltpunkt anlegen</h2>

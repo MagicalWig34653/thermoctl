@@ -47,6 +47,19 @@ class Tagesabschnitt:
     startminute: int
     endminute: int
     modusname: str
+    # Der Punkt, der diesen Balken beginnt -- None fuer den Rest, der vom Vortag
+    # hereinragt. Die Oberflaeche braucht ihn, um einen Balken ziehen zu koennen;
+    # ein Balken ohne eigenen Punkt gehoert einem anderen Tag und bleibt fest.
+    punkt_id: int | None = None
+
+
+# Nur fuer den lesbaren Audit-Text. Die Beschriftung der Oberflaeche steht in der
+# Ansicht; hier geht es um einen Eintrag, der in Wochen noch verstaendlich sein soll.
+_TAGE = {1: "Mo", 2: "Di", 3: "Mi", 4: "Do", 5: "Fr", 6: "Sa", 7: "So"}
+
+
+def _beschriften(wochentag: int, minute: int) -> str:
+    return f"{_TAGE[wochentag]} {minute // 60:02d}:{minute % 60:02d}"
 
 
 def uhrzeit_in_minuten(uhrzeit: str) -> int:
@@ -82,12 +95,16 @@ def wochenabschnitte(
         for start, ende in zip(grenzen, grenzen[1:], strict=False):
             davor = [punkt for punkt in sortiert if _punktminute(punkt) <= start]
             gilt = max(davor or sortiert, key=_punktminute)
+            beginnt_hier = next(
+                (punkt for punkt in sortiert if _punktminute(punkt) == start), None
+            )
             abschnitte.append(
                 Tagesabschnitt(
                     wochentag=wochentag,
                     startminute=start - tagesanfang,
                     endminute=ende - tagesanfang,
                     modusname=modusnamen[gilt.setpoint_mode_id],
+                    punkt_id=beginnt_hier.id if beginnt_hier else None,
                 )
             )
     return abschnitte
@@ -147,6 +164,60 @@ def zeitplanpunkt_anlegen(
                 object_type="schedule_point",
                 object_id=str(punkt.id),
                 summary=f"Zeitplanpunkt für Zone '{zone.display_name}' angelegt",
+                user_id=user_id,
+                token_id=token_id,
+            )
+            session.flush()
+    except IntegrityError as exc:
+        raise Zeitplanfehler(
+            "uhrzeit", "Zu diesem Zeitpunkt gibt es bereits einen Punkt."
+        ) from exc
+    return punkt
+
+
+def zeitplanpunkt_verschieben(
+    session: Session,
+    zone: Zone,
+    punkt: SchedulePoint,
+    *,
+    wochentag: int,
+    minute: int,
+    user_id: int | None,
+    token_id: int | None = None,
+) -> SchedulePoint:
+    """Setzt einen vorhandenen Punkt auf einen anderen Zeitpunkt.
+
+    Fachlich dasselbe wie Loeschen und neu Anlegen, aber als ein Vorgang: Der Punkt
+    behaelt seine Kennung, das Audit-Protokoll zeigt eine Verschiebung statt zweier
+    unzusammenhaengender Eintraege, und zwischendurch entsteht keine Luecke im Plan.
+
+    Die Kollisionspruefung ist dieselbe Funktion wie beim Anlegen -- zwei eigene
+    Pruefungen waeren zwei, die auseinanderlaufen koennen.
+    """
+    if not 1 <= wochentag <= 7:
+        raise Zeitplanfehler("wochentag", "Bitte einen Wochentag auswählen.")
+    if not 0 <= minute <= 1439:
+        raise Zeitplanfehler("uhrzeit", "Bitte eine gültige Uhrzeit eingeben.")
+    if punkt.weekday == wochentag and punkt.minute_of_day == minute:
+        return punkt
+    if _zeitpunkt_belegt(session, zone.id, wochentag, minute):
+        raise Zeitplanfehler("uhrzeit", "Zu diesem Zeitpunkt gibt es bereits einen Punkt.")
+
+    vorher = _beschriften(punkt.weekday, punkt.minute_of_day)
+    nachher = _beschriften(wochentag, minute)
+    try:
+        with session.begin_nested():
+            punkt.weekday = wochentag
+            punkt.minute_of_day = minute
+            session.flush()
+            audit.record(
+                session,
+                source="web",
+                action="update",
+                object_type="schedule_point",
+                object_id=str(punkt.id),
+                summary=f"Zeitplanpunkt für Zone '{zone.display_name}' verschoben",
+                detail=f"{vorher} → {nachher}",
                 user_id=user_id,
                 token_id=token_id,
             )

@@ -17,6 +17,7 @@ from thermoctl.domain.schedule import (
     zeitplan_uebernehmen,
     zeitplanpunkt_anlegen,
     zeitplanpunkt_loeschen,
+    zeitplanpunkt_verschieben,
 )
 from thermoctl.web import templates
 
@@ -75,6 +76,7 @@ def _zeitplanseite(
     *,
     werte: dict[str, str] | None = None,
     fehler: Zeitplanfehler | None = None,
+    verschiebefehler: str = "",
 ) -> Response:
     punkte = _punkte(session, zone.id)
     modi = _modi(session)
@@ -94,6 +96,13 @@ def _zeitplanseite(
             "abschnitte": nach_tag,
             "werte": werte or {"wochentag": "1", "uhrzeit": "06:00", "modus": ""},
             "fehler": {fehler.feld: fehler.meldung} if fehler else {},
+            # Eigener Kanal, nicht `fehler`: Eine abgelehnte Verschiebung meldete sich
+            # sonst am Uhrzeitfeld des *Anlege*-Formulars -- beide melden "Zu diesem
+            # Zeitpunkt gibt es bereits einen Punkt", und beide schreiben in dasselbe
+            # Feld. Der Benutzer sah eine rote Meldung an einem Formular, das er gar
+            # nicht angefasst hatte, waehrend der zurueckgesprungene Balken unkommentiert
+            # blieb. Im Browser aufgefallen, von keinem Test.
+            "verschiebefehler": verschiebefehler,
             "darf_aendern": hat_recht(principal, "schedule.manage", zone.id),
         },
     )
@@ -147,6 +156,60 @@ async def zeitplanpunkt_erstellen(
     except Zeitplanfehler as exc:
         return _zeitplanseite(
             request, session, zone, principal, werte=werte, fehler=exc
+        )
+    return RedirectResponse(
+        f"/zonen/{zone.id}/zeitplan", status_code=status.HTTP_303_SEE_OTHER
+    )
+
+
+@router.post("/zonen/{zone_id}/zeitplan/punkte/verschieben")
+async def zeitplanpunkt_umsetzen(
+    zone_id: int,
+    request: Request,
+    principal: Annotated[Principal, Depends(aktueller_principal)],
+    session: Annotated[Session, Depends(get_session)],
+) -> Response:
+    """Ziel des Ziehens in der Wochenansicht.
+
+    Bewusst ein gewoehnliches Formular und keine JSON-Schnittstelle: Dann gilt derselbe
+    CSRF-Schutz, dieselbe Rechtepruefung und dieselbe Fehlerdarstellung wie fuer den Weg
+    ueber die Formulare -- und der Zeitplan bleibt ohne JavaScript vollstaendig
+    bedienbar, weil das Ziehen nur eine zweite Bedienart derselben Aenderung ist.
+
+    Die Punktkennung steht im Rumpf und nicht im Pfad, anders als beim Loeschen daneben.
+    Der Grund ist htmx: `hx-boost` liest die `action` eines Formulars **einmal** beim
+    Verarbeiten der Seite. Ein Skript, das sie vor dem Absenden umschreibt, aendert damit
+    nichts -- die Anfrage ginge an den Pfad von vorhin. Mit einem festen Pfad und einem
+    Feld gibt es diese Falle nicht.
+    """
+    zone = _zone_oder_404(session, principal, zone_id, "schedule.manage")
+    formular = await request.form()
+    werte = {
+        name: str(formular.get(name, "")).strip()
+        for name in ("punkt_id", "wochentag", "uhrzeit")
+    }
+    try:
+        punkt_id = int(werte["punkt_id"])
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND) from exc
+    punkt = _punkt_oder_404(session, zone, punkt_id)
+    try:
+        try:
+            wochentag = int(werte["wochentag"])
+        except ValueError as exc:
+            raise Zeitplanfehler("wochentag", "Bitte einen Wochentag auswählen.") from exc
+        zeitplanpunkt_verschieben(
+            session,
+            zone,
+            punkt,
+            wochentag=wochentag,
+            minute=uhrzeit_in_minuten(werte["uhrzeit"]),
+            user_id=principal.user_id,
+            token_id=principal.token_id,
+        )
+    except Zeitplanfehler as exc:
+        return _zeitplanseite(
+            request, session, zone, principal, verschiebefehler=exc.meldung
         )
     return RedirectResponse(
         f"/zonen/{zone.id}/zeitplan", status_code=status.HTTP_303_SEE_OTHER
