@@ -231,3 +231,56 @@ def test_registrierte_mcp_werkzeuge_rufen_die_adapterfunktionen_auf(
     assert werkzeuge["schattenentscheidungen"](zone.id, 1)  # type: ignore[operator]
     assert werkzeuge["uebersteuern"](zone.id, Decimal("21.0"))  # type: ignore[operator]
     assert werkzeuge["uebersteuerung_aufheben"](zone.id)  # type: ignore[operator]
+
+
+def test_unbekanntes_token_wird_abgewiesen(session: Session) -> None:
+    """Der Adapter darf keine Hintertuer an der Anmeldung vorbei sein."""
+    with pytest.raises(PermissionError):
+        server.zonen_auflisten(session, "tctl_00000000_gibtesnicht")
+
+
+def test_fremde_zone_ist_nicht_auffindbar(session: Session) -> None:
+    """Nicht 'verboten', sondern 'gibt es nicht' — sonst verraet die Antwort, welche
+    Zonen existieren. Der REST-Adapter haelt es genauso."""
+    eigene = zone_anlegen(session, "eigene-zone")
+    fremde = zone_anlegen(session, "fremde-zone")
+    klartext = _token(session, "eingeschraenkt", [("zone.read", eigene.id)])
+
+    with pytest.raises(LookupError):
+        server.zonenzustand(session, klartext, fremde.id)
+
+
+def test_ohne_zonenrecht_gibt_es_keine_leere_liste_sondern_eine_verweigerung(
+    session: Session,
+) -> None:
+    """Eine leere Liste waere die falsche Antwort: Sie sieht aus wie 'keine Zonen
+    vorhanden' und verdeckt, dass schlicht das Recht fehlt."""
+    zone_anlegen(session, "zone-ohne-zugriff")
+    klartext = _token(session, "rechtelos", [("token.self", None)])
+
+    with pytest.raises(Forbidden):
+        server.zonen_auflisten(session, klartext)
+
+
+def test_zonenzustand_ohne_messung_meldet_leere_werte(session: Session) -> None:
+    """Eine frisch angelegte Zone hat noch keinen Zustand — das ist kein Fehler."""
+    zone = zone_anlegen(session, "zone-ohne-zustand")
+    klartext = _token(session, "leser-ohne-zustand", [("zone.read", None)])
+
+    assert server.zonenzustand(session, klartext, zone.id) == {
+        "temperatur_c": None,
+        "messzeitpunkt": None,
+        "sensorzustand": None,
+    }
+
+
+@pytest.mark.parametrize("anzahl", [0, -1, 101])
+def test_schattenentscheidungen_weist_unsinnige_anzahl_ab(
+    session: Session, anzahl: int
+) -> None:
+    """Ohne Obergrenze koennte ein Aufruf die ganze Historie ziehen."""
+    zone = zone_anlegen(session, f"zone-anzahl-{anzahl}")
+    klartext = _token(session, f"leser-anzahl-{anzahl}", [("zone.read", None)])
+
+    with pytest.raises(ValueError):
+        server.schattenentscheidungen(session, klartext, zone.id, anzahl)
