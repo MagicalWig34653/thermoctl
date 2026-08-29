@@ -89,5 +89,11 @@ Verwaltung (gehören zu Teilprojekt 3).
   werden.
 - `vm130-nginx` bis zum abgeschlossenen Cutover unverändert als Rückfallebene erhalten.
 
-Tag, Veröffentlichung und Push bleiben eine gesonderte Freigabeentscheidung des
-Projektinhabers.
+**Veröffentlicht am 2026-08-29:** `main` gepusht, Tag `v0.1.0` gesetzt. Die Registry führt
+`ghcr.io/magicalwig34653/thermoctl` in den Marken `latest`, `0.1.0` und `0.1`. Das
+Repository bleibt privat; öffentlich geschaltet wird es erst in Phase 5.
+
+Der erste Tag-Lauf schlug fehl: Ein handgeschriebener Schritt setzte die `latest`-Marke mit
+`github.repository`, das die Originalschreibweise des Kontos trägt — Docker verlangt
+Kleinbuchstaben. Der Schritt ist ersatzlos entfallen; die metadata-action setzt die Marke
+jetzt selbst. Genau dafür war es richtig, vor dem Tag die CI abzuwarten.

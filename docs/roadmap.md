@@ -16,7 +16,7 @@ Phase 1 geschehen ist. Features, die aus der unverbindlichen
 
 | Phase | Inhalt | Zustand | Nutzen am Ende |
 |---|---|---|---|
-| 1 | Fundament | **umgesetzt** | Nichts sichtbar, aber alles Weitere hängt daran |
+| 1 | Fundament | **umgesetzt**, `v0.1.0` | Nichts sichtbar, aber alles Weitere hängt daran |
 | 1a | Nacharbeiten | fast fertig | Oberfläche benutzbar, zwei Punkte offen |
 | 2 | Geräte-Anbindung im Schattenbetrieb | offen | Belegt gegen die echte Anlage, dass die Daten stimmen |
 | 3 | Konfigurations-Oberfläche | offen | Ende der SQL-Pflege — ab hier im Alltag nützlich |
