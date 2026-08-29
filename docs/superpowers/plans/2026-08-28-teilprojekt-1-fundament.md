@@ -4415,7 +4415,7 @@ git add tests/test_architektur.py README.md docs/STATUS.md
 git commit -m "test: Architekturgrenzen festhalten, Teilprojekt 1 abgeschlossen"
 ```
 
-- [ ] **Step 6: Tag und Push** — *bewusst offen, Entscheidung des Projektinhabers*
+- [x] **Step 6: Tag und Push** — *am 2026-08-29 nach Freigabe ausgeführt*
 
 ```bash
 git tag v0.1.0 && git push origin main --tags
