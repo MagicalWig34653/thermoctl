@@ -15,8 +15,10 @@ import pytest
 from tests.hilfen import alle_api_routen
 from thermoctl.app import create_app
 
-# Von FastAPI selbst erzeugt, nicht von uns geschrieben.
-NICHT_UNSER = {"/openapi.json", "/docs", "/docs/oauth2-redirect", "/redoc"}
+# Von FastAPI selbst erzeugt, nicht von uns geschrieben. `/docs` steht hier bewusst NICHT
+# mehr: Die Oberflaeche liefern wir seit der lokalen Einbindung selbst aus, also gehoert
+# sie geprueft wie jede andere Seite auch.
+NICHT_UNSER = {"/openapi.json"}
 
 
 def _unsere_routen() -> set[tuple[str, str]]:

@@ -28,6 +28,27 @@ Lizenz: BSD 2-Clause (https://github.com/bigskysoftware/htmx/blob/master/LICENSE
 |---|---|
 | `vendor/htmx/htmx.min.js` | `sha384-HGfztofotfshcF7+8n44JQL2oJmowVChPTg48S+jvZoztPfvwD79OC/LTtG6dMp+` |
 
+## Swagger UI 5.17.14
+
+Quelle: https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.17.14/
+Lizenz: Apache 2.0 (https://github.com/swagger-api/swagger-ui/blob/master/LICENSE)
+
+| Datei | SHA-384 |
+|---|---|
+| `vendor/swagger-ui/swagger-ui.css` | `sha384-wxLW6kwyHktdDGr6Pv1zgm/VGJh99lfUbzSn6HNHBENZlCN7W602k9VkGdxuFvPn` |
+| `vendor/swagger-ui/swagger-ui-bundle.js` | `sha384-wmyclcVGX/WhUkdkATwhaK1X1JtiNrr2EoYJ+diV3vj4v6OC5yCeSu+yW13SYJep` |
+
+Fuer `/docs`. FastAPI liefert diese Oberflaeche von sich aus mit, zieht die Dateien aber
+aus einem CDN und das Symbol sogar von `fastapi.tiangolo.com` — deshalb ist die
+mitgelieferte Fassung abgeschaltet (`docs_url=None` in `thermoctl/app.py`) und durch eine
+eigene Route ersetzt, die auf diese Dateien zeigt.
+
+`vendor/swagger-ui/favicon.svg` ist dagegen **kein** Fremdcode, sondern selbst gezeichnet:
+ein Thermometer. Sonst haette die Seite als einziges Element noch am Netz gehangen.
+
+ReDoc (`/redoc`) ist ersatzlos abgeschaltet: dasselbe CDN-Problem, und eine zweite
+Lesefassung derselben Beschreibung ist den Ballast nicht wert.
+
 ## Pflege
 
 Beim Aktualisieren einer dieser Dateien: neue Version laden, Hash in dieser Tabelle

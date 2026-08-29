@@ -8,7 +8,8 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 
 from fastapi import FastAPI, Request, Response
-from fastapi.responses import JSONResponse
+from fastapi.openapi.docs import get_swagger_ui_html
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
@@ -288,7 +289,22 @@ def create_app() -> FastAPI:
         },
     )
     _warnen_wenn_ungeschuetzt_erreichbar(settings)
-    app = FastAPI(title="thermoctl", version=thermoctl.__version__, lifespan=_lifespan)
+    # `docs_url=None` schaltet die mitgelieferte Oberflaeche ab; wir liefern sie unten
+    # selbst aus, weil FastAPIs Fassung ihre Dateien aus einem CDN zieht. Das widerspraeche
+    # gleich zweimal dem, was fuer die uebrigen Fremdbibliotheken gilt (siehe
+    # static/HERKUNFT.md): Im Heimnetz ohne Internetzugang bliebe die Seite leer, und jeder
+    # Aufruf verriete einem Dritten, wann jemand die Heizungssteuerung oeffnet.
+    #
+    # `redoc_url=None` ohne Ersatz: ReDoc zieht ebenfalls aus einem CDN, und eine zweite
+    # Lesefassung derselben Beschreibung ist den zusaetzlichen Mitgeliefert-Ballast nicht
+    # wert. `/docs` deckt beides ab.
+    app = FastAPI(
+        title="thermoctl",
+        version=thermoctl.__version__,
+        lifespan=_lifespan,
+        docs_url=None,
+        redoc_url=None,
+    )
     # Die Engine wird mit abgelegt, damit Aufrufer sie schliessen koennen. Ohne das
     # bleibt bei jeder erzeugten Anwendung eine offene Datenbankverbindung zurueck --
     # im Betrieb bis zum Prozessende, in Tests bei jedem Aufbau erneut.
@@ -335,6 +351,23 @@ def create_app() -> FastAPI:
             request_id_var.reset(marke)
         antwort.headers["X-Request-ID"] = kennung
         return antwort
+
+    @app.get("/docs", include_in_schema=False)
+    async def swagger_ui() -> HTMLResponse:
+        """Die OpenAPI-Oberflaeche, vollstaendig aus dem eigenen Verzeichnis.
+
+        Bewusst ohne Anmeldung: Die Beschreibung verraet, welche Wege es gibt, aber keinen
+        einzigen Wert und kein Geheimnis — und dasselbe steht ab der Veroeffentlichung
+        ohnehin in `docs/api.md` im oeffentlichen Repository. Ausprobieren laesst sich von
+        hier aus nichts ohne Token; jeder Aufruf durchlaeuft dieselbe Pruefung wie sonst.
+        """
+        return get_swagger_ui_html(
+            openapi_url="/openapi.json",
+            title="thermoctl — REST-Schnittstelle",
+            swagger_js_url="/static/vendor/swagger-ui/swagger-ui-bundle.js",
+            swagger_css_url="/static/vendor/swagger-ui/swagger-ui.css",
+            swagger_favicon_url="/static/vendor/swagger-ui/favicon.svg",
+        )
 
     @app.get("/healthz")
     async def healthz() -> dict[str, str]:

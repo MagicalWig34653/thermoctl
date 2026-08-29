@@ -23,7 +23,11 @@ from thermoctl.db.base import utcnow
 from thermoctl.db.models.identity import User
 from thermoctl.web import templates
 
-router = APIRouter(dependencies=[Depends(csrf_schutz)])
+# `include_in_schema=False`: Die OpenAPI-Beschreibung ist der Vertrag der
+# REST-Schnittstelle. Diese Wege liefern HTML fuer Menschen, und in der Oberflaeche
+# unter /docs stuende sonst neben jedem echten Endpunkt ein Formularweg, dessen
+# 'Try it out' eine echte Aenderung ausloest.
+router = APIRouter(dependencies=[Depends(csrf_schutz)], include_in_schema=False)
 
 # Je Benutzername gezaehlte Fehlversuche. Laeuft im Prozessspeicher, nicht in der
 # Datenbank: sie soll Rateversuche bremsen, nicht ueberdauern. Es gibt ausdruecklich
