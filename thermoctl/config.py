@@ -39,6 +39,8 @@ class Settings(BaseSettings):
     meross_email: str | None = None
     meross_password: SecretStr | None = None
     mcp_token: SecretStr | None = None
+    notify_webhook: str | None = None
+    notify_webhook_token: SecretStr | None = None
 
     def sanitized_database_url(self) -> str:
         """Die Verbindungszeichenfolge ohne Zugangsdaten — fuer Logausgaben."""
