@@ -1,14 +1,18 @@
 {% extends "basis.html" if not ist_htmx else "leer.html" %}
+{% from "formular.html" import textfeld, fehlerhinweis %}
 {% block titel %}Benutzer – thermoctl{% endblock %}
 {% block inhalt %}
 <section id="benutzerliste">
     <h1 class="mb-3">Benutzer</h1>
-    <table class="table table-striped">
+    {{ fehlerhinweis(hinweis) }}
+    <table class="table table-striped align-middle">
         <thead>
         <tr>
             <th scope="col">Anzeigename</th>
             <th scope="col">Benutzername</th>
             <th scope="col">Status</th>
+            <th scope="col">Letzte Anmeldung</th>
+            <th scope="col"></th>
         </tr>
         </thead>
         <tbody>
@@ -23,9 +27,54 @@
                 <span class="badge text-bg-secondary">inaktiv</span>
                 {% endif %}
             </td>
+            <td title="{{ nutzer.last_login_at or '' }} UTC">{{ nutzer.last_login_at|alter }}</td>
+            <td class="text-end">
+                <form method="post" action="/benutzer/{{ nutzer.id }}/aktiv" class="d-inline">
+                    <input type="hidden" name="aktiv" value="{{ 'nein' if nutzer.is_active else 'ja' }}">
+                    <button type="submit" class="btn btn-sm btn-outline-secondary">
+                        {{ "Deaktivieren" if nutzer.is_active else "Aktivieren" }}
+                    </button>
+                </form>
+            </td>
         </tr>
         {% endfor %}
         </tbody>
     </table>
+
+    <h2 class="h5 mt-4">Benutzer anlegen</h2>
+    <form method="post" action="/benutzer">
+        {{ textfeld("username", "Benutzername", werte.get("username", ""),
+                    hilfe="Wird zur Anmeldung eingegeben und lässt sich später nicht ändern.",
+                    fehler=fehler.get("username", ""), pflicht=true) }}
+        {{ textfeld("display_name", "Anzeigename", werte.get("display_name", ""),
+                    hilfe="So erscheint die Person im Audit-Protokoll.", pflicht=true) }}
+        {{ textfeld("password", "Passwort", "", typ="password", pflicht=true,
+                    hilfe="Mindestens 12 Zeichen.", fehler=fehler.get("password", "")) }}
+        <div class="mb-3">
+            <label class="form-label" for="gruppe_id">Gruppe</label>
+            <select class="form-select" id="gruppe_id" name="gruppe_id"
+                    aria-describedby="gruppe_id-hilfe">
+                <option value="">ohne Gruppe</option>
+                {% for gruppe in gruppen %}
+                <option value="{{ gruppe.id }}"
+                        {% if werte.get("gruppe_id", "")|string == gruppe.id|string %}selected{% endif %}>
+                    {{ gruppe.name }}
+                </option>
+                {% endfor %}
+            </select>
+            <div id="gruppe_id-hilfe" class="form-text">
+                Ohne Gruppe hat der Benutzer keinerlei Rechte.
+            </div>
+        </div>
+        <button type="submit" class="btn btn-primary">Anlegen</button>
+    </form>
+
+    <h2 class="h5 mt-4">Eigenes Passwort ändern</h2>
+    <form method="post" action="/benutzer/{{ eigene_id }}/passwort">
+        {{ textfeld("password", "Neues Passwort", "", typ="password", pflicht=true,
+                    hilfe="Mindestens 12 Zeichen. Bestehende Sitzungen bleiben gültig.",
+                    fehler=fehler.get("password", "")) }}
+        <button type="submit" class="btn btn-secondary">Passwort setzen</button>
+    </form>
 </section>
 {% endblock %}
