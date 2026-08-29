@@ -29,7 +29,13 @@ class ShadowDecision(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     decided_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)
-    zone_id: Mapped[int] = mapped_column(ForeignKey("zone.id"), nullable=False)
+    # CASCADE wie bei allen uebrigen Zonenbeziehungen. Das Schattenprotokoll ist
+    # Betriebsdatum einer Zone; wird sie geloescht, verliert es seinen Bezug. Dass die
+    # Zone geloescht wurde, steht im Audit-Protokoll — das ist die Aufzeichnung, die
+    # ueberdauern soll, und sie haengt nicht an der Zone.
+    zone_id: Mapped[int] = mapped_column(
+        ForeignKey("zone.id", ondelete="CASCADE"), nullable=False
+    )
     temperature_c: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), nullable=True)
     setpoint_c: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), nullable=True)
     setpoint_reason: Mapped[str] = mapped_column(String(255), nullable=False)
