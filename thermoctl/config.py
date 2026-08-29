@@ -32,6 +32,12 @@ class Settings(BaseSettings):
     mqtt_client_id: str = "thermoctl"
     mqtt_base_topic: str = "zigbee2mqtt"
     mqtt_ca_cert: str | None = None
+    # Regionsabhaengig: iotx-eu, iotx-us, iotx-ap. Steht deshalb in der Konfiguration und
+    # nicht im Quelltext (Grundsatz 1) — wer seine Geraete in einer anderen Region
+    # angemeldet hat, traegt hier seine ein, statt den Adapter zu aendern.
+    meross_api_base: str = "https://iotx-eu.meross.com"
+    meross_email: str | None = None
+    meross_password: SecretStr | None = None
 
     def sanitized_database_url(self) -> str:
         """Die Verbindungszeichenfolge ohne Zugangsdaten — fuer Logausgaben."""
