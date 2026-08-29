@@ -755,6 +755,12 @@ async def test_schattenschleife_meldet_einen_neuen_sensorausfall(
     with pytest.raises(asyncio.CancelledError):
         await app_modul._schattenschleife(fake_app)  # type: ignore[arg-type]
 
+    # Der Versand laeuft seit dem Abschlussreview nebenher, damit ein haengender Webhook
+    # den Zyklustakt nicht verschiebt. Die noch offenen Aufgaben werden hier abgewartet,
+    # damit der Test nicht davon abhaengt, wann der Ereignisschleife danach ist.
+    for aufgabe in list(app_modul._laufende_meldungen):
+        await aufgabe
+
     assert len(gesendet) == 1, (
         "Zwei Zyklen mit derselben Stoerung ergeben eine Meldung, nicht zwei."
     )

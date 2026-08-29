@@ -242,3 +242,70 @@ def test_fremde_zone_bleibt_fuer_neue_wege_verborgen(
     fremde = zone_anlegen(session, f"fremde-{pfad}")
     kopf = api_token([("zone.read", eigene.id)])
     assert client.get(f"/api/v1/zones/{fremde.id}/{pfad}", headers=kopf).status_code == 404
+
+
+def test_modi_lesen_ohne_sichtbare_zone_wird_verweigert(client, api_token, session) -> None:
+    """Wer keine einzige Zone sehen darf, hat auch nichts in der Modusliste zu suchen —
+    sonst waere sie eine Auskunft ueber die Anlage an jemanden ohne jedes Zonenrecht."""
+    zone_anlegen(session, "unsichtbare-zone")
+    kopf = api_token([("token.self", None)])
+    assert client.get("/api/v1/modes", headers=kopf).status_code == 403
+
+
+def test_umbenennen_auf_vergebenen_namen_ergibt_422(client, api_token, session) -> None:
+    quelle(session, "api")
+    art = betriebsart(session, "auto")
+    zone_anlegen(session, "belegt")
+    andere = zone_anlegen(session, "wird-umbenannt")
+    kopf = api_token([("zone.manage", None), ("zone.read", None)])
+    antwort = client.put(
+        f"/api/v1/zones/{andere.id}",
+        json={
+            "name": "belegt", "display_name": "Andere",
+            "operating_mode_id": art.id, "sort_order": 0,
+            "temperature_source_device_id": None,
+        },
+        headers=kopf,
+    )
+    assert antwort.status_code == 422
+    assert "bereits vergeben" in antwort.text
+    assert andere.name == "wird-umbenannt"
+
+
+def test_doppelter_zeitplanpunkt_ergibt_422_mit_meldung(client, api_token, session) -> None:
+    """Ein fachlicher Fehler der Domaene wird zu 422 mit Feldnamen, nicht zu 500.
+
+    Absichtlich ein Fall, den die Schema-Pruefung durchlaesst: Zwei Punkte am selben
+    Zeitpunkt sind formal gueltig und scheitern erst an der Regel.
+    """
+    quelle(session, "api")
+    zone = zone_anlegen(session, "zone-api-zeitplan")
+    modus = modus_anlegen(session, "api-tag", "Tag")
+    kopf = api_token([("schedule.manage", None), ("zone.read", None)])
+    nutzlast = {"weekday": 1, "minute_of_day": 360, "mode_id": modus.id}
+    assert client.post(
+        f"/api/v1/zones/{zone.id}/schedule", json=nutzlast, headers=kopf
+    ).status_code in (200, 201)
+    antwort = client.post(
+        f"/api/v1/zones/{zone.id}/schedule", json=nutzlast, headers=kopf
+    )
+    assert antwort.status_code == 422
+    assert "500" not in str(antwort.status_code)
+
+
+def test_fremder_zeitplanpunkt_ergibt_404(client, api_token, session) -> None:
+    quelle(session, "api")
+    eigene = zone_anlegen(session, "eigene-api")
+    fremde = zone_anlegen(session, "fremde-api")
+    modus = modus_anlegen(session, "api-fremd", "Tag")
+    punkt = SchedulePoint(
+        zone_id=fremde.id, weekday=1, minute_of_day=360, setpoint_mode_id=modus.id
+    )
+    session.add(punkt)
+    session.flush()
+    kopf = api_token([("schedule.manage", None), ("zone.read", None)])
+    antwort = client.delete(
+        f"/api/v1/zones/{eigene.id}/schedule/{punkt.id}", headers=kopf
+    )
+    assert antwort.status_code == 404
+    assert session.get(SchedulePoint, punkt.id) is not None
