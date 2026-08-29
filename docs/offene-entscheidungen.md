@@ -182,3 +182,23 @@ Heizdauer wäre die vollständige Antwort; sie gehört zu Phase 4, wo wirklich g
 **Für den Projektinhaber:** Diese Entscheidung gehört zu den wenigen, die vor dem
 Scharfschalten in Phase 4 ausdrücklich bestätigt werden sollten. Sie steht deshalb hier
 und nicht nur im Quelltext.
+
+---
+
+## 2026-08-29 — Der Meross-Nutzlastaufbau ist eine begründete Annahme, kein geprüfter Code
+
+**Festgehalten, nicht entschieden.** Der Meross-Adapter ist vollständig verdrahtet: Er
+prüft `control_armed`, bildet Anmeldung und Schaltaufruf, behandelt Fehler und ist im
+Trockenlauf getestet. Was er **nicht** ist: gegen ein echtes Meross-Konto ausgeführt.
+
+Der Grund ist die Phase selbst — es liegen keine Zugangsdaten vor, und der Trockenlauf
+verbietet den Versuch. Meross verlangt je nach Firmwarestand eine signierte Nutzlast
+(Zeitstempel, Nonce, Prüfsumme); ob der hier gebaute Aufruf so akzeptiert wird, ist offen.
+
+Das steht so im Docstring des Adapters und hier, statt dass der Code fertig aussieht und
+beim ersten scharfen Schalten scheitert. **Vor dem Scharfschalten in Phase 4 gehört genau
+dieser Aufruf einmal gegen die echte Cloud geprüft.**
+
+**Was der Projektinhaber dafür braucht:** die Zugangsdaten des Meross-Kontos in `.env`
+(`THERMOCTL_MEROSS_EMAIL`, `THERMOCTL_MEROSS_PASSWORD`) und, falls die Geräte außerhalb
+Europas angemeldet sind, `THERMOCTL_MEROSS_API_BASE`.
