@@ -38,6 +38,12 @@ class DeviceRole(_Nachschlage):
     __tablename__ = "device_role"
 
 
+class SensorStatus(_Nachschlage):
+    """Gueltigkeit der aktuell fuer eine Zone verwendeten Sensordaten."""
+
+    __tablename__ = "sensor_status"
+
+
 class ActorSource(_Nachschlage):
     """Ueber welchen Adapter etwas geschah: web, api, mcp, cli, system."""
 
@@ -61,6 +67,20 @@ DEVICE_CAPABILITIES = [
     ("setpoint_display", "Sollwertanzeige"),
     ("contact", "Kontakt"),
     ("battery", "Batteriestand"),
+    ("humidity", "Luftfeuchtigkeit"),
+    ("illuminance", "Beleuchtungsstaerke"),
+    ("occupancy", "Anwesenheit"),
+    ("link_quality", "Verbindungsqualitaet"),
+    ("power", "Leistung"),
+    ("energy", "Energie"),
+    ("valve_position", "Ventilstellung"),
+    ("setpoint", "Sollwert"),
+    ("availability", "Erreichbarkeit"),
+]
+SENSOR_STATUS = [
+    ("ok", "In Ordnung"),
+    ("veraltet", "Veraltet"),
+    ("keine_quelle", "Keine Quelle"),
 ]
 DEVICE_ROLES = [
     ("actuator", "Aktor"),

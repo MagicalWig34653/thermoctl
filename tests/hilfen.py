@@ -23,11 +23,14 @@ from thermoctl.db.models.lookup import (
     Integration,
     OperatingMode,
     Permission,
+    SensorStatus,
 )
+from thermoctl.db.models.messwert import DeviceHealth, Measurement
 from thermoctl.db.models.operations import Setting
 from thermoctl.db.models.override import ZoneOverride
 from thermoctl.db.models.schedule import SchedulePoint
 from thermoctl.db.models.zone import SetpointMode, Zone, ZoneSetpoint
+from thermoctl.db.models.zustand import ShadowDecision, ZoneState
 
 # Eine verletzte CHECK-Bedingung kommt je nach Datenbank als andere Ausnahme an:
 # SQLite meldet IntegrityError, MariaDB meldet Fehler 4025, den pymysql auf
@@ -262,3 +265,64 @@ def alle_api_routen(app: FastAPI) -> list[APIRoute]:
 
     _durchgehen(app.routes)
     return gefunden
+
+
+def messwert_anlegen(
+    session: Session, geraet: Device, faehigkeit_id: int, *, wert: Decimal
+) -> Measurement:
+    zeitpunkt = datetime(2026, 8, 29, 8, 0)
+    messwert = Measurement(
+        device_id=geraet.id,
+        capability_id=faehigkeit_id,
+        value_numeric=wert,
+        measured_at=zeitpunkt,
+        received_at=zeitpunkt,
+    )
+    session.add(messwert)
+    session.flush()
+    return messwert
+
+
+def geraetezustand_anlegen(session: Session, geraet: Device) -> DeviceHealth:
+    zustand = DeviceHealth(
+        device_id=geraet.id,
+        last_payload_at=datetime(2026, 8, 29, 8, 0),
+        payload_count=1,
+    )
+    session.add(zustand)
+    session.flush()
+    return zustand
+
+
+def sensorstatus(session: Session, code: str = "ok") -> SensorStatus:
+    status = session.query(SensorStatus).filter_by(code=code).one_or_none()
+    if status is None:
+        status = SensorStatus(code=code, label=code)
+        session.add(status)
+        session.flush()
+    return status
+
+
+def zonenzustand_anlegen(session: Session, zone: Zone) -> ZoneState:
+    zustand = ZoneState(
+        zone_id=zone.id,
+        sensor_status_id=sensorstatus(session).id,
+        updated_at=datetime(2026, 8, 29, 8, 0),
+    )
+    session.add(zustand)
+    session.flush()
+    return zustand
+
+
+def schattenentscheidung_anlegen(session: Session, zone: Zone) -> ShadowDecision:
+    entscheidung = ShadowDecision(
+        decided_at=datetime(2026, 8, 29, 8, 0),
+        zone_id=zone.id,
+        setpoint_reason="Zeitplan",
+        would_heat=False,
+        outcome_code="aus",
+        reason="Sollwert ist erreicht.",
+    )
+    session.add(entscheidung)
+    session.flush()
+    return entscheidung
