@@ -167,10 +167,13 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_index(op.f("ix_shadow_decision_decided_at"), table_name="shadow_decision")
+    # Die Indizes werden bewusst NICHT einzeln entfernt: Beide Datenbanken raeumen sie mit
+    # der Tabelle mit ab, und unter MariaDB scheitert der ausdrueckliche Versuch sogar --
+    # `ix_measurement_device_capability_measured` beginnt mit `device_id` und wird dort
+    # zur Durchsetzung des Fremdschluessels auf `device` gebraucht (Fehler 1553).
+    # Aufgefallen erst im Lauf gegen MariaDB; unter SQLite geht beides.
     op.drop_table("shadow_decision")
     op.drop_table("zone_state")
-    op.drop_index("ix_measurement_device_capability_measured", table_name="measurement")
     op.drop_table("measurement")
     op.drop_table("device_health")
     with op.batch_alter_table("setting") as batch_op:
