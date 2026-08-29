@@ -55,6 +55,31 @@ def settings() -> Settings:
     )
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _umgebung_fuer_die_ganze_sitzung(settings: Settings) -> Iterator[None]:
+    """Setzt die beiden Pflichtvariablen fuer den ganzen Lauf.
+
+    Jeder Test, der `create_app()` aufruft, braucht sie — `Settings` verlangt
+    `database_url` und `secret_key`. Die Fixture ``client`` setzt sie bisher selbst,
+    aber die Waechter in `test_endpunktabdeckung.py` und `test_csrf.py` zaehlen Routen
+    auf, ohne einen Client zu bauen.
+
+    Bis hierher ging das gut, weil `get_settings` zwischenspeichert und zufaellig noch
+    ein gueltiger Eintrag vom vorherigen Test im Cache lag. Als der Waechter ans Ende
+    des Laufs sortiert wurde, lag dort keiner mehr — und oertlich fiel es trotzdem nicht
+    auf, weil im Projektverzeichnis eine `.env` liegt, die pydantic von sich aus liest.
+    In der CI gibt es keine. Ein Test darf nicht davon abhaengen, wer vor ihm lief und
+    welche Dateien zufaellig herumliegen.
+    """
+    marke = pytest.MonkeyPatch()
+    marke.setenv("THERMOCTL_DATABASE_URL", settings.database_url)
+    marke.setenv("THERMOCTL_SECRET_KEY", settings.secret_key.get_secret_value())
+    get_settings.cache_clear()
+    yield
+    marke.undo()
+    get_settings.cache_clear()
+
+
 @pytest.fixture(scope="session")
 def migrations_database_url() -> Iterator[str]:
     """Stellt sicher, dass die Migrationsdatenbank existiert, und liefert ihre URL.
