@@ -52,3 +52,27 @@ def test_kein_modell_nutzt_verbotene_spaltentypen() -> None:
         if wort in datei.read_text(encoding="utf-8")
     ]
     assert not verstoesse, "\n".join(verstoesse)
+
+
+def test_keine_zweite_vorlagen_umgebung() -> None:
+    """Alle Ansichten benutzen `thermoctl.web.templates`, nicht ihre eigene.
+
+    Der Anlass ist ein echter Fehler: `start_views.py` baute eine eigene
+    `Jinja2Templates`-Instanz mit dem **relativen** Pfad `thermoctl/web/templates`. Das
+    ging oertlich gut, weil die Tests im Projektverzeichnis laufen — im Container liegt
+    das Paket in `site-packages` und das Arbeitsverzeichnis ist `/app`. Dort haette die
+    Startseite mit einem Fehler geantwortet, und kein Test haette es gemerkt.
+
+    Zweitens sieht eine eigene Umgebung die gemeinsamen Filter nicht. Genau daran ist es
+    schliesslich aufgefallen: Ein neuer Filter wirkte auf jeder Seite ausser dieser.
+    """
+    verstoesse = [
+        str(datei.relative_to(WURZEL))
+        for datei in (WURZEL / "web").rglob("*.py")
+        if "Jinja2Templates(" in datei.read_text(encoding="utf-8")
+        and datei.name != "__init__.py"
+    ]
+    assert not verstoesse, (
+        "Eigene Vorlagen-Umgebung statt der gemeinsamen aus thermoctl.web: "
+        + ", ".join(verstoesse)
+    )
