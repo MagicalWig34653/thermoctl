@@ -14,8 +14,17 @@ Stand: 2026-08-29.
    `tests/test_csrf.py` wird rot, wenn eine ändernde Route ohne ihn dazukommt.
 4. **Rechte** über `require()` und `visible_zones()`, dieselben Codes wie im REST-Adapter.
    Fremde Zone ⇒ `404`, nicht `403`.
-5. **Domänenlogik gehört nicht in die Ansicht.** Fehlt eine Domänenfunktion, ist das ein
-   Blocker, kein Anlass, die Regel in der Ansicht zu schreiben.
+5. **Domänenlogik gehört nicht in die Ansicht — aber sie darf hier entstehen.** Die
+   fachlichen Regeln (was darf gelöscht werden, welche Grenzen gelten, was schreibt einen
+   Audit-Eintrag) gehören nach `thermoctl/domain/`, damit REST und MCP sie später
+   unverändert benutzen. Eine Aufgabe, die eine solche Funktion braucht, **baut sie dort**
+   und ruft sie aus der Ansicht auf. Was verboten ist, ist die Regel *in* der Ansicht —
+   nicht das Anlegen der Funktion.
+
+   *(Diese Formulierung wurde nachgeschärft: Zuerst stand hier „fehlt eine Domänenfunktion,
+   ist das ein Blocker". Codex hat daraufhin bei Aufgabe 4 richtigerweise abgebrochen,
+   statt die Regel in die Ansicht zu schreiben — die Vorgabe war falsch, nicht die
+   Umsetzung.)*
 6. **Eingabefehler führen ins Formular zurück**, mit erhaltenen Werten und einer Meldung am
    Feld. Nie `500`, nie eine leere Maske. Passwörter fließen nie in eine Antwort zurück.
 7. **Jede neue Seite gehört in `GESCHUETZTE_SEITEN`** in `tests/test_rauchtest.py` und
