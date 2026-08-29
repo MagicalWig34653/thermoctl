@@ -2,6 +2,7 @@ from datetime import datetime
 from decimal import Decimal
 
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     DateTime,
     ForeignKey,
@@ -9,6 +10,8 @@ from sqlalchemy import (
     Numeric,
     String,
     Text,
+    false,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -52,6 +55,15 @@ class Setting(Base):
         Integer,
         default=1209600,
         nullable=False,  # 14 Tage
+    )
+    control_armed: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=false(), nullable=False
+    )
+    measurement_retention_days: Mapped[int] = mapped_column(
+        Integer, default=30, server_default=text("30"), nullable=False
+    )
+    shadow_interval_seconds: Mapped[int] = mapped_column(
+        Integer, default=60, server_default=text("60"), nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=utcnow, onupdate=utcnow, nullable=False

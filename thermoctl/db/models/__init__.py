@@ -3,10 +3,12 @@ from thermoctl.db.models import (
     device,
     identity,
     lookup,
+    messwert,
     operations,
     override,
     schedule,
     zone,
+    zustand,
 )
 
 __all__ = [
@@ -14,8 +16,10 @@ __all__ = [
     "device",
     "identity",
     "lookup",
+    "messwert",
     "operations",
     "override",
     "schedule",
     "zone",
+    "zustand",
 ]
