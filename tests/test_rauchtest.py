@@ -38,6 +38,7 @@ GESCHUETZTE_SEITEN = [
     "/zonen/{zone_id}/zeitplan",
     "/zonen/{zone_id}/zeitplan/uebernehmen",
     "/zonen/{zone_id}/parameter",
+    "/steuerung",
 ]
 
 
@@ -92,7 +93,7 @@ def test_ohne_benutzer_fuehrt_die_startseite_zur_einrichtung(client: TestClient)
 
 @pytest.mark.parametrize("vorlage", sorted(TEMPLATE_VERZEICHNIS.glob("*.html")))
 def test_verweise_in_vorlagen_zeigen_auf_vorhandene_seiten(
-    vorlage: Path, angemeldeter_client: TestClient
+    vorlage: Path, angemeldeter_client: TestClient, session: Session
 ) -> None:
     """Jeder interne Verweis in den Vorlagen muss irgendwo hinfuehren.
 
@@ -100,6 +101,9 @@ def test_verweise_in_vorlagen_zeigen_auf_vorhandene_seiten(
     Projektnamen fuehrte auf eine Fehlerseite. Ein solcher Verweis ist im Quelltext
     unauffaellig und faellt nur beim Benutzen auf.
     """
+    # Die Einstellungszeile gibt es in jeder eingerichteten Anlage -- die Einrichtung legt
+    # sie an. Ohne sie prueft dieser Test einen Zustand, den keine Instanz je hat.
+    einstellungen_anlegen(session)
     ziele = {
         z
         for z in re.findall(r'href="(/[^"]*)"', vorlage.read_text(encoding="utf-8"))

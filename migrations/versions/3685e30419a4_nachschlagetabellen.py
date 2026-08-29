@@ -100,8 +100,12 @@ def upgrade() -> None:
             sa.column("is_zone_scoped", sa.Boolean),
         ),
         [
+            # Geschnitten wie DEVICE_CAPABILITIES daneben: Diese Revision muss den
+            # Stand von damals einspielen, auch wenn die zentrale Liste spaeter
+            # waechst. Sonst legt sie auf einer frischen Datenbank Codes an, die eine
+            # spaetere Revision noch einmal einfuegen will.
             {"code": c, "description": d, "is_zone_scoped": z}
-            for c, d, z in PERMISSIONS
+            for c, d, z in PERMISSIONS[:15]
         ],
     )
 

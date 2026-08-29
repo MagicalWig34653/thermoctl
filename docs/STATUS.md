@@ -24,8 +24,8 @@ Vom Controller selbst nachgeprüft, nicht aus Berichten übernommen:
 
 | | |
 |---|---|
-| Tests | 699, grün unter SQLite **und** MariaDB |
-| Testabdeckung | 99,26 %, Mindestschwelle 97 % in der CI |
+| Tests | 745, grün unter SQLite **und** MariaDB |
+| Testabdeckung | 99,23 %, Mindestschwelle 97 % in der CI |
 | Ruff, mypy strict | ohne Befund, 74 Quelldateien |
 | Migrationskette | linear, ein Kopf, vorwärts und rückwärts gegen beide Datenbanken |
 | CI und Container | grün |
@@ -52,6 +52,15 @@ Trockenlauf hinter zwei Riegeln, Schattenprotokoll, Geräteübersicht.
 nichts zu protokollieren. Hysterese, Mindestschaltdauer, Fensterpause, Frostschutz bei
 Sensorausfall, als reine Funktion mit 33 Tests, darunter der Defekt des Altsystems
 ausdrücklich vorgeführt.
+
+**Die Anlage lässt sich jetzt auch bedienen, nicht nur einrichten.** `/steuerung` zeigt
+den Betriebszustand, was die Regelung gerade für jede Zone entscheiden würde, und die
+globalen Vorgaben, von denen jede Zone erbt. Scharfschalten hat ein **eigenes Recht**
+(`control.arm`) statt unter `setting.manage` mitzulaufen — wer Zeitzone und
+Aufbewahrungsdauer pflegen darf, soll die Heizung nicht nebenbei scharf schalten können.
+Es verlangt eine Begründung, die ins Audit-Protokoll geht, und ist mit einem Klick
+umkehrbar. **Der zweite Riegel bleibt unberührt:** `MqttClient(schalten_erlaubt=…)` wird
+beim Bau des Clients gesetzt, nicht von hier.
 
 **Vor der Einrichtung** führen `/` und `/login` zur Einrichtungsseite, statt ein Anmeldeformular zu zeigen, an dem sich mangels Benutzer niemand anmelden kann. Nach abgeschlossener Einrichtung gilt wieder der gewohnte Weg über `/login`; `/setup` ist dann dauerhaft geschlossen.
 

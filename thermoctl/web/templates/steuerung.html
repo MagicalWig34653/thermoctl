@@ -1,0 +1,169 @@
+{% extends "basis.html" %}
+{% from "formular.html" import textfeld, zahlenfeld, fehlerhinweis %}
+{% block titel %}Steuerung – thermoctl{% endblock %}
+{% block max_breite %}72rem{% endblock %}
+{% block inhalt %}
+<h1 class="mb-1">Steuerung</h1>
+<p class="text-muted">Betriebszustand der Anlage und die Vorgaben, von denen jede Zone erbt.</p>
+
+{% if fehler.get("") %}{{ fehlerhinweis(fehler[""]) }}{% endif %}
+
+<section class="card mb-4 {{ 'border-danger' if einstellungen.control_armed else 'border-secondary' }}">
+    <div class="card-body">
+        <div class="d-flex justify-content-between align-items-start flex-wrap gap-3">
+            <div>
+                <h2 class="h4 card-title mb-1">
+                    {% if einstellungen.control_armed %}
+                    <span class="badge text-bg-danger align-middle">Scharf</span>
+                    Die Regelung schaltet wirklich
+                    {% else %}
+                    <span class="badge text-bg-secondary align-middle">Trockenlauf</span>
+                    Die Regelung entscheidet, schaltet aber nicht
+                    {% endif %}
+                </h2>
+                <p class="card-text text-muted mb-0">
+                    {% if einstellungen.control_armed %}
+                    Jede Entscheidung unten wird an die Ventile weitergegeben. Hinter dem
+                    Ventil hängt eine echte Heizung.
+                    {% else %}
+                    Jede Entscheidung wird protokolliert und keine ausgeführt. Das ist der
+                    Zustand, in dem sich die Anlage gegen das Altsystem vergleichen lässt.
+                    {% endif %}
+                </p>
+            </div>
+            {% if darf_scharf %}
+            <div>
+                {% if einstellungen.control_armed %}
+                <form method="post" action="/steuerung/scharf">
+                    <input type="hidden" name="scharf" value="nein">
+                    <button class="btn btn-outline-secondary" type="submit">
+                        Zurück in den Trockenlauf
+                    </button>
+                </form>
+                {% else %}
+                <button class="btn btn-danger" type="button"
+                        data-bs-toggle="collapse" data-bs-target="#scharfschalten">
+                    Scharf schalten …
+                </button>
+                {% endif %}
+            </div>
+            {% endif %}
+        </div>
+
+        {% if darf_scharf and not einstellungen.control_armed %}
+        <div class="collapse mt-4 {{ 'show' if fehler.get('begruendung') }}" id="scharfschalten">
+            <div class="border-top pt-3">
+                <h3 class="h6">Vor dem Scharfschalten</h3>
+                <ul class="small text-muted">
+                    <li>Der Schattenbetrieb sollte über mehrere Tage plausible Entscheidungen
+                        gezeigt haben — die Liste unten ist der schnelle Blick darauf.</li>
+                    <li>Das Altsystem bleibt die Rückfallebene und wird nicht abgeschaltet.</li>
+                    <li>Umkehrbar: derselbe Knopf führt zurück in den Trockenlauf.</li>
+                </ul>
+                <form method="post" action="/steuerung/scharf">
+                    <input type="hidden" name="scharf" value="ja">
+                    {{ textfeld("begruendung", "Worauf stützt sich das?",
+                                "", "Wird ins Audit-Protokoll geschrieben.",
+                                fehler.get("begruendung", ""), true) }}
+                    <button class="btn btn-danger" type="submit">
+                        Jetzt scharf schalten
+                    </button>
+                </form>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</section>
+
+<section class="mb-4">
+    <h2 class="h4">Was die Regelung gerade entscheidet</h2>
+    {% if zonen %}
+    <div class="table-responsive">
+        <table class="table align-middle">
+            <thead>
+                <tr>
+                    <th>Zone</th><th class="text-end">Ist</th><th class="text-end">Soll</th>
+                    <th>Entscheidung</th><th>Begründung</th><th></th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for zone in zonen %}
+                {% set zustand = zustaende.get(zone.id) %}
+                {% set entscheidung = entscheidungen.get(zone.id) %}
+                <tr>
+                    <td>{{ zone.display_name }}</td>
+                    <td class="text-end font-monospace">
+                        {% if zustand and zustand[0].temperature_c is not none %}
+                        {{ "%.1f"|format(zustand[0].temperature_c) }} °C
+                        {% else %}<span class="text-muted">–</span>{% endif %}
+                    </td>
+                    <td class="text-end font-monospace">
+                        {% set soll = sollwerte.get(zone.id) %}
+                        {% if soll and soll.temperature_c is not none %}
+                        {{ "%.1f"|format(soll.temperature_c) }} °C
+                        {% else %}<span class="text-muted">–</span>{% endif %}
+                    </td>
+                    <td>
+                        {% if entscheidung %}
+                            {% if entscheidung.would_heat %}
+                            <span class="badge text-bg-warning">Heizen</span>
+                            {% else %}
+                            <span class="badge text-bg-light text-dark border">Aus</span>
+                            {% endif %}
+                        {% else %}<span class="text-muted">noch keine</span>{% endif %}
+                    </td>
+                    <td class="small text-muted">
+                        {{ entscheidung.reason if entscheidung else "" }}
+                    </td>
+                    <td class="text-end">
+                        <a class="btn btn-sm btn-outline-secondary"
+                           href="/zonen/{{ zone.id }}/zeitplan">Zeitplan</a>
+                    </td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <p class="small text-muted mb-0">
+        Übersteuern und die Parameter einzelner Zonen stehen auf der
+        <a href="/">Übersichtsseite</a>.
+    </p>
+    {% else %}
+    <div class="alert alert-info mb-0">Noch keine Zonen angelegt.</div>
+    {% endif %}
+</section>
+
+<section>
+    <h2 class="h4">Globale Vorgaben</h2>
+    <p class="text-muted">
+        Gelten für jede Zone, die nichts eigenes gesetzt hat. Eine Änderung wirkt damit
+        sofort auf alle Zonen, die den Wert erben.
+    </p>
+    {% if darf_vorgaben %}
+    <form method="post" action="/steuerung/vorgaben">
+        <div class="row g-3">
+            {% for feld, beschriftung, ganzzahlig in felder %}
+            <div class="col-md-6">
+                {{ zahlenfeld(feld, beschriftung, werte.get(feld, ""), "",
+                              fehler.get(feld, ""), "1" if ganzzahlig else "0.1") }}
+            </div>
+            {% endfor %}
+            <div class="col-md-6">
+                {{ textfeld("timezone", "Zeitzone", werte.get("timezone", ""),
+                            "Zum Beispiel Europe/Berlin.", fehler.get("timezone", ""), true) }}
+            </div>
+        </div>
+        <button class="btn btn-primary mt-3" type="submit">Vorgaben speichern</button>
+    </form>
+    {% else %}
+    <dl class="row">
+        {% for feld, beschriftung, ganzzahlig in felder %}
+        <dt class="col-sm-7 fw-normal text-muted">{{ beschriftung }}</dt>
+        <dd class="col-sm-5 font-monospace">{{ werte.get(feld, "") }}</dd>
+        {% endfor %}
+        <dt class="col-sm-7 fw-normal text-muted">Zeitzone</dt>
+        <dd class="col-sm-5 font-monospace">{{ werte.get("timezone", "") }}</dd>
+    </dl>
+    {% endif %}
+</section>
+{% endblock %}

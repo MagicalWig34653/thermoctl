@@ -113,4 +113,8 @@ PERMISSIONS: list[tuple[str, str, bool]] = [
     ("token.self", "Eigene Tokens ausstellen und widerrufen", False),
     ("token.manage", "Fremde Tokens verwalten", False),
     ("audit.read", "Audit-Protokoll einsehen", False),
+    # Eigenes Recht statt `setting.manage`: Scharfschalten ist die einzige Einstellung,
+    # deren Umlegen unmittelbar ein Ventil bewegt. Wer Zeitzone und Aufbewahrungsdauer
+    # pflegen darf, soll damit nicht nebenbei die Heizung scharf schalten koennen.
+    ("control.arm", "Die Regelung scharf schalten", False),
 ]
