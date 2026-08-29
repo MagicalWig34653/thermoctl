@@ -1,0 +1,19 @@
+/* Eigene Ergaenzungen zu Bootstrap. Global eingebunden, nicht je Seite: Der Kopf wird
+   bei hx-boost nicht ausgetauscht, seitenweise eingebundenes CSS fehlte nach jeder
+   Navigation. */
+
+.zeitplan-ziehbar {
+    cursor: grab;
+    touch-action: none; /* Sonst scrollt das Ziehen auf dem Tablet die Seite. */
+}
+
+.zeitplan-in-bewegung {
+    cursor: grabbing;
+    z-index: 2;
+    opacity: .85;
+    box-shadow: 0 .25rem .75rem rgba(0, 0, 0, .35);
+}
+
+.zeitplan-tag {
+    cursor: crosshair;
+}

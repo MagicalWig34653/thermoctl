@@ -24,8 +24,8 @@ Vom Controller selbst nachgeprüft, nicht aus Berichten übernommen:
 
 | | |
 |---|---|
-| Tests | 745, grün unter SQLite **und** MariaDB |
-| Testabdeckung | 99,23 %, Mindestschwelle 97 % in der CI |
+| Tests | 754, grün unter SQLite **und** MariaDB |
+| Testabdeckung | 99,10 %, Mindestschwelle 97 % in der CI |
 | Ruff, mypy strict | ohne Befund, 74 Quelldateien |
 | Migrationskette | linear, ein Kopf, vorwärts und rückwärts gegen beide Datenbanken |
 | CI und Container | grün |
@@ -52,6 +52,13 @@ Trockenlauf hinter zwei Riegeln, Schattenprotokoll, Geräteübersicht.
 nichts zu protokollieren. Hysterese, Mindestschaltdauer, Fensterpause, Frostschutz bei
 Sensorausfall, als reine Funktion mit 33 Tests, darunter der Defekt des Altsystems
 ausdrücklich vorgeführt.
+
+**Zeitpläne lassen sich ziehen.** Ein Balken der Wochenansicht geht mit der Maus auf eine
+andere Zeit oder einen anderen Tag, im 15-Minuten-Raster; ein Klick übernimmt Tag und
+Uhrzeit ins Anlege-Formular. Das Ziehen ist eine zweite Bedienart derselben Änderung, keine
+eigene Schnittstelle: Beim Loslassen geht dasselbe Formular hinaus, das ohne JavaScript von
+Hand ausgefüllt würde — gleicher CSRF-Schutz, gleiche Rechteprüfung, gleiche Fehlerdarstellung.
+Ohne JavaScript bleibt der Zeitplan vollständig bedienbar.
 
 **Die Anlage lässt sich jetzt auch bedienen, nicht nur einrichten.** `/steuerung` zeigt
 den Betriebszustand, was die Regelung gerade für jede Zone entscheiden würde, und die
