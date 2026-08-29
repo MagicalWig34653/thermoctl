@@ -56,3 +56,95 @@ Ende des Laufs.
 
 **Lehre, die zur bestehenden passt:** Ein Wächtertest braucht seine Gegenprobe nicht nur
 beim Schreiben, sondern nach jedem Versionssprung der Bibliothek, deren Interna er abfragt.
+
+---
+
+## 2026-08-29 — Testdaten sind anonymisiert, nicht die Originaldatei
+
+**Entschieden:** `tests/daten/anlage-beispiele.json` ist eine anonymisierte Fassung von
+`.superpowers/sdd/anlage-beispiele.json`. Struktur, Feldnamen und alle Werteigenheiten sind
+unverändert; nur die Gerätenamen sind ersetzt. Die Originaldatei bleibt außerhalb des Repos
+(`.superpowers/sdd/` ist vollständig gitignored).
+
+**Warum:** Die echten Namen enthalten die Vornamen der Bewohner und die Zimmeraufteilung
+einer bestimmten Wohnung. Das Repo soll veröffentlichbar sein. Grundsatz 2 nennt Secrets,
+meint aber dasselbe Prinzip: Was nicht ins Repo gehört, gehört auch nicht als Testdatum
+hinein.
+
+Erhalten bleiben genau die Eigenheiten, an denen die Auswertung scheitern könnte:
+Leerzeichen und Umlaute in Namen (`Über Küche`), Gruppen in Kleinschreibung, der Eintrag
+`bridge`, `null`-Werte, verschachtelte Objekte, `voltage` einmal in Millivolt und einmal in
+Volt.
+
+**Verworfen:**
+- *Originaldatei mit committen.* Löst das Problem der Aussagekraft, schafft ein größeres.
+- *Testdaten frei erfinden.* Genau das, was der Auftrag ausschließt — „bau das
+  Nutzlastformat dagegen, nicht gegen Vermutungen". Eine erfundene Nachricht hätte weder
+  `philips_raw` noch `voltage: 230` an einer Netzsteckdose.
+- *Tests nur örtlich gegen die echte Datei laufen lassen.* Dann prüft die CI das
+  Nutzlastformat nie.
+
+---
+
+## 2026-08-29 — Die alten MQTT-Topics werden in Phase 2 weder bedient noch gelesen
+
+**Entschieden:** `thermoctl` veröffentlicht in Phase 2 nichts und abonniert `heizung/#`
+nicht. Die Roadmap stellt die Frage, ob die Alt-Topics übergangsweise mitbedient werden;
+die Antwort für diese Phase ist nein.
+
+**Warum:** Bedienen hieße veröffentlichen, und veröffentlichen ist genau das, was der
+Trockenlauf ausschließt — Home Assistant und das Altsystem hören auf diesen Topics mit.
+Zwei Schreiber auf demselben Topic sind zudem der zuverlässigste Weg, einen Fehler zu
+erzeugen, den niemand mehr zuordnen kann, solange das Altsystem die Rückfallebene ist.
+
+Das *Lesen* von `heizung/#` wäre gefahrlos und liefert die Vergleichsdaten für Phase 4.
+Es gehört trotzdem dorthin und nicht hierher: Der Vergleichsbetrieb ist eine
+Phase-4-Aufgabe mit eigenem Datenmodell (Abweichungsbericht), und ein halb gebauter
+Vergleich, der Daten sammelt, die niemand auswertet, ist Ballast.
+
+**Verworfen:**
+- *Alt-Topics zusätzlich bedienen.* Verstößt gegen den Trockenlauf.
+- *`heizung/#` schon jetzt mitschreiben.* Sinnvoll, aber Phase 4 — dort mit dem
+  Datenmodell, das der Abweichungsbericht wirklich braucht.
+
+---
+
+## 2026-08-29 — Der Meross-Adapter bringt keine neue Abhängigkeit mit
+
+**Entschieden:** Der Meross-Adapter spricht die Cloud-HTTP-Schnittstelle selbst an, statt
+`meross_iot` einzubinden. Ohne hinterlegte Zugangsdaten meldet er sich als „nicht
+konfiguriert" und tut nichts.
+
+**Warum:** Die Meross-Cloud ist laut Roadmap eine Fremdabhängigkeit ohne Zusicherung. Eine
+Bibliothek dafür ins Projekt zu ziehen, das eine Heizung steuert, vergrößert die
+Angriffsfläche und die Abhängigkeitskette für einen Adapter, der in dieser Phase ohnehin
+nichts schaltet. Was wir wirklich brauchen — Geräteliste und Schaltbefehl — sind zwei
+HTTP-Aufrufe.
+
+**Verworfen:**
+- *`meross_iot` einbinden.* Bequemer, aber eine große Abhängigkeit für zwei Aufrufe, und
+  sie bringt einen eigenen Anmelde- und Ereignisapparat mit.
+- *Meross vorerst weglassen.* Die Anlage schaltet über Meross-Steckdosen; ohne den Adapter
+  fehlt der Hälfte der Aktoren die Anbindung, und Phase 4 stünde ohne sie da.
+
+**Offen für den Projektinhaber:** Die Zugangsdaten (E-Mail und Passwort des Meross-Kontos)
+gehören in `.env`. Ohne sie bleibt der Adapter unkonfiguriert — das ist in Phase 2 kein
+Mangel, in Phase 4 aber ein Blocker.
+
+---
+
+## 2026-08-29 — Die Regelentscheidung wird in Phase 2 gebaut, nicht erst in Phase 4
+
+**Entschieden:** `thermoctl/domain/regelung.py` — Hysterese, Mindestschaltdauer,
+Fensterpause, Frostschutz bei Sensorausfall — entsteht in Phase 2 als reine Funktion und
+wird erschöpfend getestet. Geschaltet wird damit nichts.
+
+**Warum:** Das Schattenprotokoll ist der erklärte Zweck dieser Phase, und es hat ohne eine
+Entscheidung nichts zu protokollieren. Die Funktion ist rein: kein Netz, keine Uhr, keine
+Datenbank — sie kann nichts anfassen. Phase 4 verdrahtet sie nur noch mit den Aktoren.
+Der Auftrag deckt das ausdrücklich: „Bau die Logik und die Tests, aber schalte nichts
+scharf."
+
+**Verworfen:** *Ein vereinfachter Schattenentscheider nur für Phase 2.* Dann vergliche
+Phase 4 das Altsystem gegen eine Logik, die anschließend durch eine andere ersetzt wird —
+der Vergleich wäre wertlos.
