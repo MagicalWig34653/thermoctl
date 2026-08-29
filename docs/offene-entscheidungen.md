@@ -202,3 +202,30 @@ dieser Aufruf einmal gegen die echte Cloud geprüft.**
 **Was der Projektinhaber dafür braucht:** die Zugangsdaten des Meross-Kontos in `.env`
 (`THERMOCTL_MEROSS_EMAIL`, `THERMOCTL_MEROSS_PASSWORD`) und, falls die Geräte außerhalb
 Europas angemeldet sind, `THERMOCTL_MEROSS_API_BASE`.
+
+---
+
+## 2026-08-29 — Die Ablage der Altsystem-Beobachtungen bleibt offen (für Phase 4)
+
+**Nicht entschieden, bewusst.** Die lesende Grundlage des Vergleichsbetriebs steht: Die
+Topics des Altsystems werden ausgewertet, und eine reine Funktion benennt die Abweichung
+zwischen eigener Schattenentscheidung und Altzustand. Was fehlt, ist die **Ablage** dieser
+Beobachtungen.
+
+Das vorhandene Schema reicht dafür nicht: `measurement` hängt an `device` und
+`device_capability`, die beide aus der Zigbee2MQTT-Anbindung entstehen. Das Altsystem hat
+eigene, numerische Thermostat-Kennungen ohne Entsprechung darin, und `zone` trägt kein Feld,
+das eine Zone mit einer Alt-Kennung verbindet.
+
+**Was es bräuchte:** eine Tabelle `legacy_observation` (Thermostat-Kennung, Attribut, Wert,
+Empfangszeit) und eine nullbare Spalte `zone.legacy_thermostat_id` für die Zuordnung.
+
+**Warum es jetzt nicht gebaut wurde:** Eine Migration für eine Tabelle, die erst in Phase 4
+gefüllt und ausgewertet wird, legt ein Schema fest, bevor der Vergleichsbetrieb tatsächlich
+gelaufen ist. Wie oft, wie lange und in welcher Auflösung die Altwerte gebraucht werden,
+weiß man erst dann — und ein Schema, das man vor dem ersten Gebrauch ändern muss, kostet
+mehr als eines, das man später anlegt.
+
+**Für Phase 4:** Zuerst den Vergleichsbetrieb entwerfen (wie lange, welche Auflösung, welcher
+Bericht), dann das Schema danach bauen. Die beiden reinen Funktionen stehen bereits und
+ändern sich dadurch nicht.
