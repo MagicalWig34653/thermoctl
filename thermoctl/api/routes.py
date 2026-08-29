@@ -1,7 +1,6 @@
 from datetime import timedelta
 from decimal import Decimal
 from typing import Annotated
-from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
 from sqlalchemy import select
@@ -31,7 +30,6 @@ from thermoctl.db.models.credential import ApiToken
 from thermoctl.db.models.device import Device, DeviceCapabilityLink, ZoneDevice
 from thermoctl.db.models.lookup import DeviceCapability, Integration, SensorStatus
 from thermoctl.db.models.messwert import DeviceHealth
-from thermoctl.db.models.operations import Setting
 from thermoctl.db.models.schedule import SchedulePoint
 from thermoctl.db.models.zone import SetpointMode, Zone, ZoneSetpoint
 from thermoctl.db.models.zustand import ZoneState
@@ -40,7 +38,7 @@ from thermoctl.domain.modi import Domaenenfehler, modus_anlegen, sollwerte_aende
 from thermoctl.domain.principal import Principal
 from thermoctl.domain.schedule import (
     Zeitplanfehler,
-    naechster_punkt,
+    ende_der_naechsten_schaltung,
     uebersteuerung_anlegen,
     uebersteuerung_aufheben,
     zeitplanpunkt_anlegen,
@@ -451,20 +449,10 @@ def uebersteuern(
     jetzt = utcnow()
     ende = jetzt + timedelta(minutes=daten.dauer_minuten) if daten.dauer_minuten else None
     if daten.bis_naechste_schaltung:
-        einstellungen = session.get(Setting, 1)
-        timezone = einstellungen.timezone if einstellungen is not None else "Europe/Berlin"
-        lokal = jetzt.replace(tzinfo=ZoneInfo("UTC")).astimezone(ZoneInfo(timezone))
-        punkte = list(
-            session.scalars(select(SchedulePoint).where(SchedulePoint.zone_id == zone_id))
-        )
-        lokales_ende = naechster_punkt(punkte, lokal.replace(tzinfo=None))
-        ende = (
-            None
-            if lokales_ende is None
-            else lokales_ende.replace(tzinfo=ZoneInfo(timezone))
-            .astimezone(ZoneInfo("UTC"))
-            .replace(tzinfo=None)
-        )
+        # Dieselbe Funktion wie in der Oberflaeche. Bis zum Abschlussreview von
+        # Teilprojekt 3 stand die Rechnung hier ein zweites Mal — beide Adapter haetten
+        # nach einer Korrektur an der Zeitzonenbehandlung auseinanderlaufen koennen.
+        ende = ende_der_naechsten_schaltung(session, zone_obj)
     return uebersteuerung_anlegen(
         session,
         zone_obj,

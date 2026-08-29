@@ -336,3 +336,24 @@ def aufgeloester_sollwert(session: Session, zone: Zone, jetzt_utc: datetime) -> 
             return Sollwert(temp, f"Zeitplan: Modus {modus.name} ab {uhrzeit}", modus.code)
 
     return Sollwert(frost_temp, "Kein Zeitplan hinterlegt — Frostschutz", frost_code)
+
+
+def ende_der_naechsten_schaltung(session: Session, zone: Zone) -> datetime | None:
+    """Wann die naechste Schaltung faellt, als naive UTC — oder None ohne Zeitplan.
+
+    Liegt hier und nicht im Adapter, weil Oberflaeche und REST-Schnittstelle beide danach
+    fragen. Bis zum Abschlussreview von Teilprojekt 3 stand die Rechnung zweimal da, in
+    beiden Adaptern getrennt: Eine spaetere Korrektur an der Zeitzonenbehandlung waere in
+    einem Pfad nachgezogen und im anderen vergessen worden, und dieselbe Zone haette je
+    nach Weg ein anderes Ende bekommen.
+    """
+    einstellungen = session.get(Setting, 1)
+    zeitzone = ZoneInfo(einstellungen.timezone if einstellungen is not None else "Europe/Berlin")
+    lokal = utcnow().replace(tzinfo=ZoneInfo("UTC")).astimezone(zeitzone)
+    punkte = list(
+        session.scalars(select(SchedulePoint).where(SchedulePoint.zone_id == zone.id))
+    )
+    ende = naechster_punkt(punkte, lokal.replace(tzinfo=None))
+    if ende is None:
+        return None
+    return ende.replace(tzinfo=zeitzone).astimezone(ZoneInfo("UTC")).replace(tzinfo=None)

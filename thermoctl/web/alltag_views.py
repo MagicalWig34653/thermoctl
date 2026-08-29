@@ -1,23 +1,19 @@
-from datetime import datetime, timedelta
+from datetime import timedelta
 from decimal import Decimal, InvalidOperation
 from typing import Annotated
 from urllib.parse import urlencode
-from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import RedirectResponse
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from thermoctl.auth.dependencies import aktueller_principal, csrf_schutz, get_session
 from thermoctl.db.base import utcnow
-from thermoctl.db.models.operations import Setting
-from thermoctl.db.models.schedule import SchedulePoint
 from thermoctl.db.models.zone import Zone
 from thermoctl.domain.authz import visible_zones
 from thermoctl.domain.principal import Principal
 from thermoctl.domain.schedule import (
-    naechster_punkt,
+    ende_der_naechsten_schaltung,
     uebersteuerung_anlegen,
     uebersteuerung_aufheben,
 )
@@ -113,18 +109,6 @@ async def parameter_speichern(
     return RedirectResponse(f"/zonen/{zone.id}/parameter", status.HTTP_303_SEE_OTHER)
 
 
-def _ende_naechste_schaltung(session: Session, zone: Zone) -> datetime | None:
-    jetzt = utcnow()
-    einstellungen = session.get(Setting, 1)
-    zeitzone = ZoneInfo(einstellungen.timezone if einstellungen else "Europe/Berlin")
-    lokal = jetzt.replace(tzinfo=ZoneInfo("UTC")).astimezone(zeitzone)
-    punkte = list(session.scalars(select(SchedulePoint).where(SchedulePoint.zone_id == zone.id)))
-    ende = naechster_punkt(punkte, lokal.replace(tzinfo=None))
-    if ende is None:
-        return None
-    return ende.replace(tzinfo=zeitzone).astimezone(ZoneInfo("UTC")).replace(tzinfo=None)
-
-
 @router.post("/zonen/{zone_id}/uebersteuerung")
 async def uebersteuerung_erstellen(
     zone_id: int,
@@ -141,7 +125,7 @@ async def uebersteuerung_erstellen(
         if temperatur < Decimal("5") or temperatur > Decimal("35"):
             raise InvalidOperation
         if art == "naechste_schaltung":
-            ende = _ende_naechste_schaltung(session, zone)
+            ende = ende_der_naechsten_schaltung(session, zone)
         elif art == "dauer":
             dauer = int(str(formular.get("dauer_minuten", "")))
             if dauer <= 0:

@@ -75,6 +75,11 @@ def _auditieren(session: Session, meldung: Stoerungsmeldung) -> None:
     )
 
 
+# Starke Verweise auf die laufenden Versandaufgaben. Ohne sie kann der Aufraeumer eine
+# Aufgabe einsammeln, bevor sie fertig ist — asyncio haelt selbst nur schwache Verweise.
+_laufende_meldungen: set[asyncio.Task[None]] = set()
+
+
 def _sensorzustaende(session: Session) -> dict[int, str]:
     return {
         zone_id: code
@@ -140,8 +145,16 @@ async def _schattenschleife(app: FastAPI) -> None:
                 if jetzt >= naechste_aufbewahrung:
                     alte_messwerte_loeschen(session, jetzt)
                     naechste_aufbewahrung = jetzt + timedelta(days=1)
+            # Der Versand laeuft nebenher, nicht im Takt. `senden` wartet bis zu zehn
+            # Sekunden auf einen Webhook; bei mehreren gleichzeitig ausgefallenen Sensoren
+            # summierte sich das und verschoebe den naechsten Regelzyklus. Sobald in
+            # Teilprojekt 4 wirklich geschaltet wird, ist der Takt keine Nebensache mehr.
+            # `senden` faengt seine Fehler selbst; die Aufgabe wird bewusst nicht
+            # abgewartet, aber festgehalten, damit sie nicht vom Aufraeumer verschwindet.
             for meldung in meldungen:
-                await senden(get_settings(), meldung)
+                aufgabe = asyncio.create_task(senden(get_settings(), meldung))
+                _laufende_meldungen.add(aufgabe)
+                aufgabe.add_done_callback(_laufende_meldungen.discard)
         except Exception:
             log.exception("Schattenzyklus fehlgeschlagen -- naechster Versuch folgt")
 
