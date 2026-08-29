@@ -20,7 +20,7 @@ Phase 1 geschehen ist. Features, die aus der unverbindlichen
 | 1a | Nacharbeiten | **umgesetzt** | Oberfläche benutzbar |
 | 2 | Geräte-Anbindung im Schattenbetrieb | **gebaut**, Laufzeit an der Anlage offen | Belegt gegen die echte Anlage, dass die Daten stimmen |
 | 3 | Konfigurations-Oberfläche | **umgesetzt** | Ende der SQL-Pflege — ab hier im Alltag nützlich |
-| 4 | Regelkreis und Cutover | offen | Heizt wirklich; Altsystem wird abgelöst |
+| 4 | Regelkreis und Cutover | Logik gebaut, **nichts scharf** | Heizt wirklich; Altsystem wird abgelöst |
 | 5 | Integrationen und Veröffentlichung | teilweise vorgezogen | Für Fremde aufsetzbar |
 
 Die Reihenfolge ist nicht beliebig: Der Teil, der eine echte Heizung schaltet, kommt bewusst
@@ -169,16 +169,24 @@ Gruppe und Token — alles über die Oberfläche, kein SQL.
 - Scharfschalten mit dem Altsystem als Rückfallebene
 - Datenübernahme aus `rooms`, `thermostate`, `heizung_conf`
 
-### Aufgaben (Vorschlag)
+### Aufgaben
 
-1. Regelentscheidung als reine Funktion, umfassend getestet
-2. Hysterese und Mindestschaltdauer
-3. Fensterpause und Sensorausfall
-4. Schaltprotokoll mit Begründung
-5. Vergleichsbetrieb und Abweichungsbericht
-6. Datenübernahme aus dem Altschema
-7. Scharfschalten hinter einem Schalter, jederzeit umkehrbar
-8. Ablösung: Heizungsteil aus `vm130-nginx`, die vier Skripte aus dem Alt-Repo
+Vier davon sind bereits gebaut — **ohne dass etwas scharf geschaltet wäre.** Der Auftrag für
+den autonomen Lauf deckte das ausdrücklich: „Bau die Logik und die Tests, aber schalte
+nichts scharf."
+
+- [x] 1 Regelentscheidung als reine Funktion, umfassend getestet *(in Phase 2 vorgezogen)*
+- [x] 2 Hysterese und Mindestschaltdauer
+- [x] 3 Fensterpause und Sensorausfall
+- [x] 4 Schaltprotokoll mit Begründung *(als Schattenprotokoll)*
+- [~] 5 Vergleichsbetrieb — die lesende Grundlage steht, die Ablage der Altwerte ist eine
+      offene Entscheidung, siehe [offene-entscheidungen.md](offene-entscheidungen.md)
+- [~] 6 Datenübernahme — die Umwandlung des Stundenrasters steht als reine Funktion, die
+      Übernahme selbst braucht die Altdatenbank
+- [ ] 7 Scharfschalten hinter einem Schalter, jederzeit umkehrbar
+- [ ] 8 Ablösung: Heizungsteil aus `vm130-nginx`, die vier Skripte aus dem Alt-Repo
+
+**`setting.control_armed` steht auf `false` und wurde in keinem dieser Schritte gesetzt.**
 
 ### Risiken
 
@@ -209,7 +217,8 @@ abgeschaltet ist.
 
 ### Aufgaben
 
-- [ ] 1 Neue MQTT-Topic-Struktur samt Discovery — *wartet auf Phase 4*
+- [x] 1 Neue MQTT-Topic-Struktur samt Discovery — **entworfen und geprüft**; das
+      Veröffentlichen selbst wartet auf Phase 4 (Trockenlauf)
 - [ ] 2 Altes Topic-Schema abkündigen — *wartet auf den Cutover*
 - [x] 3 MCP-Server — sieben Werkzeuge über derselben Domänenlogik, [Doku](mcp.md)
 - [x] 4 API-Dokumentation — [docs/api.md](api.md)
