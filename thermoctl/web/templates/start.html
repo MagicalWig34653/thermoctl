@@ -8,7 +8,7 @@
     <div class="card h-100">
       <div class="card-body">
         <h2 class="h6 text-secondary">Zonen</h2>
-        <p class="display-6 mb-0">{{ zonen }}</p>
+        <p class="display-6 mb-0">{{ zonen|length }}</p>
       </div>
     </div>
   </div>
@@ -22,11 +22,36 @@
   </div>
 </div>
 
-{% if zonen == 0 %}
+{% if not zonen %}
 <div class="alert alert-secondary" role="status">
   <strong>Noch keine Zonen angelegt.</strong>
   Zonen, Geräte und Zeitpläne lassen sich derzeit nur über die Datenbank pflegen –
   die Oberfläche dafür entsteht in Teilprojekt 3. thermoctl steuert noch keine Heizung.
+</div>
+{% else %}
+<h2 class="h4">Zonenzustand</h2>
+<div class="row g-3 mb-4">
+  {% for zone in zonen %}
+  {% set eintrag = zustaende.get(zone.id) %}
+  <div class="col-sm-6">
+    <div class="card h-100">
+      <div class="card-body">
+        <h3 class="h5">{{ zone.display_name }}</h3>
+        {% if eintrag %}
+        {% set zustand, sensorstatus = eintrag %}
+        <p class="mb-1">
+          Ist-Temperatur:
+          <strong>{{ (zustand.temperature_c|string + " °C") if zustand.temperature_c is not none else "kein Messwert" }}</strong>
+        </p>
+        <p class="mb-1">Sensorzustand: {{ sensorstatus.label }}</p>
+        <p class="mb-0">Messzeitpunkt: {{ zustand.measured_at or "nicht vorhanden" }}</p>
+        {% else %}
+        <p class="text-secondary mb-0">Noch kein Zonenzustand vorhanden.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  {% endfor %}
 </div>
 {% endif %}
 

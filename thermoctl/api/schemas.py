@@ -12,6 +12,30 @@ class ZoneAntwort(BaseModel):
     display_name: str
 
 
+class GeraetAntwort(BaseModel):
+    id: int
+    external_id: str
+    display_name: str
+    integration: str
+    model: str | None
+    is_group: bool
+    capabilities: list[str]
+    last_payload_at: datetime | None
+    battery_percent: Decimal | None
+    link_quality: int | None
+    availability: str | None
+    zones: list[str]
+
+
+class ZonenzustandAntwort(BaseModel):
+    zone_id: int
+    temperature_c: Decimal | None
+    measured_at: datetime | None
+    sensor_status: str
+    window_open: bool | None
+    updated_at: datetime
+
+
 class TokenAntwort(BaseModel):
     id: int
     name: str

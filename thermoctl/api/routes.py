@@ -7,18 +7,24 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from thermoctl.api.schemas import (
+    GeraetAntwort,
     TokenAntwort,
     UebersteuerungAnlegen,
     UebersteuerungAntwort,
     ZoneAntwort,
+    ZonenzustandAntwort,
 )
 from thermoctl.auth.dependencies import get_session
 from thermoctl.auth.tokens import token_aufloesen
 from thermoctl.db.base import utcnow
 from thermoctl.db.models.credential import ApiToken
+from thermoctl.db.models.device import Device, DeviceCapabilityLink, ZoneDevice
+from thermoctl.db.models.lookup import DeviceCapability, Integration, SensorStatus
+from thermoctl.db.models.messwert import DeviceHealth
 from thermoctl.db.models.operations import Setting
 from thermoctl.db.models.schedule import SchedulePoint
 from thermoctl.db.models.zone import Zone
+from thermoctl.db.models.zustand import ZoneState
 from thermoctl.domain.authz import Forbidden, principal_fuer_token, require, visible_zones
 from thermoctl.domain.principal import Principal
 from thermoctl.domain.schedule import (
@@ -74,6 +80,82 @@ def zone(
     principal: Annotated[Principal, Depends(_principal)],
 ) -> Zone:
     return _sichtbare_zone(session, principal, zone_id)
+
+
+@router.get("/devices", response_model=list[GeraetAntwort])
+def geraete(
+    session: Annotated[Session, Depends(get_session)],
+    principal: Annotated[Principal, Depends(_principal)],
+) -> list[GeraetAntwort]:
+    require(principal, "device.read")
+    faehigkeiten: dict[int, list[str]] = {}
+    for geraet_id, code in session.execute(
+        select(DeviceCapabilityLink.device_id, DeviceCapability.code)
+        .join(DeviceCapability, DeviceCapability.id == DeviceCapabilityLink.capability_id)
+        .order_by(DeviceCapability.code)
+    ):
+        faehigkeiten.setdefault(geraet_id, []).append(code)
+    zonen: dict[int, set[str]] = {}
+    for geraet_id, name in session.execute(
+        select(ZoneDevice.device_id, Zone.name).join(Zone, Zone.id == ZoneDevice.zone_id)
+    ):
+        zonen.setdefault(geraet_id, set()).add(name)
+    for geraet_id, name in session.execute(
+        select(Zone.temperature_source_device_id, Zone.name).where(
+            Zone.temperature_source_device_id.is_not(None)
+        )
+    ):
+        if geraet_id is not None:
+            zonen.setdefault(geraet_id, set()).add(name)
+
+    zeilen = session.execute(
+        select(Device, Integration, DeviceHealth)
+        .join(Integration, Integration.id == Device.integration_id)
+        .outerjoin(DeviceHealth, DeviceHealth.device_id == Device.id)
+        .order_by(Device.display_name, Device.id)
+    )
+    return [
+        GeraetAntwort(
+            id=geraet.id,
+            external_id=geraet.external_id,
+            display_name=geraet.display_name,
+            integration=anbindung.code,
+            model=geraet.model,
+            is_group=geraet.is_group,
+            capabilities=faehigkeiten.get(geraet.id, []),
+            last_payload_at=zustand.last_payload_at if zustand else None,
+            battery_percent=zustand.battery_percent if zustand else None,
+            link_quality=zustand.link_quality if zustand else None,
+            availability=zustand.availability if zustand else None,
+            zones=sorted(zonen.get(geraet.id, set())),
+        )
+        for geraet, anbindung, zustand in zeilen
+    ]
+
+
+@router.get("/zones/{zone_id}/state", response_model=ZonenzustandAntwort)
+def zonenzustand(
+    zone_id: int,
+    session: Annotated[Session, Depends(get_session)],
+    principal: Annotated[Principal, Depends(_principal)],
+) -> ZonenzustandAntwort:
+    _sichtbare_zone(session, principal, zone_id)
+    zeile = session.execute(
+        select(ZoneState, SensorStatus)
+        .join(SensorStatus, SensorStatus.id == ZoneState.sensor_status_id)
+        .where(ZoneState.zone_id == zone_id)
+    ).one_or_none()
+    if zeile is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Zonenzustand nicht gefunden")
+    zustand, sensorzustand = zeile
+    return ZonenzustandAntwort(
+        zone_id=zustand.zone_id,
+        temperature_c=zustand.temperature_c,
+        measured_at=zustand.measured_at,
+        sensor_status=sensorzustand.code,
+        window_open=zustand.window_open,
+        updated_at=zustand.updated_at,
+    )
 
 
 @router.get("/me", response_model=TokenAntwort)
