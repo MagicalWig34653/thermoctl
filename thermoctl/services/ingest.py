@@ -6,8 +6,8 @@ from decimal import Decimal
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from thermoctl.db.models.device import Device, DeviceCapabilityLink
-from thermoctl.db.models.lookup import DeviceCapability, Integration, SensorStatus
+from thermoctl.db.models.device import Device, DeviceCapabilityLink, ZoneDevice
+from thermoctl.db.models.lookup import DeviceCapability, DeviceRole, Integration, SensorStatus
 from thermoctl.db.models.messwert import DeviceHealth, Measurement
 from thermoctl.db.models.zone import Zone
 from thermoctl.db.models.zustand import ZoneState
@@ -16,7 +16,7 @@ from thermoctl.domain.geraeteklassen import (
     Geraetebeschreibung,
     beschreibungen_aus_bridge_liste,
 )
-from thermoctl.domain.stoerung import KEINE_QUELLE, sensorzustand
+from thermoctl.domain.stoerung import KEINE_QUELLE, OK, sensorzustand
 from thermoctl.domain.zone_settings import regelparameter
 from thermoctl.integrations.mqtt.zigbee2mqtt import Nachrichtenart, zuschneiden
 
@@ -218,6 +218,10 @@ def zonenzustand_fortschreiben(session: Session, jetzt: datetime) -> None:
     temperatur = session.scalar(
         select(DeviceCapability).where(DeviceCapability.code == "temperature")
     )
+    kontakt = session.scalar(select(DeviceCapability).where(DeviceCapability.code == "contact"))
+    fensterrolle = session.scalar(
+        select(DeviceRole).where(DeviceRole.code == "window_contact")
+    )
     status_ids = {status.code: status.id for status in session.scalars(select(SensorStatus))}
     for zone in session.scalars(select(Zone)):
         messwert = None
@@ -255,4 +259,61 @@ def zonenzustand_fortschreiben(session: Session, jetzt: datetime) -> None:
         zustand.temperature_c = messwert.value_numeric if messwert is not None else None
         zustand.measured_at = messwert.measured_at if messwert is not None else None
         zustand.sensor_status_id = status_id
+        zustand.window_open = _fenster_offen(
+            session,
+            zone,
+            kontakt,
+            fensterrolle,
+            jetzt,
+            regelparameter(session, zone).sensor_timeout_seconds,
+        )
         zustand.updated_at = jetzt
+
+
+def _fenster_offen(
+    session: Session,
+    zone: Zone,
+    kontakt: DeviceCapability | None,
+    fensterrolle: DeviceRole | None,
+    jetzt: datetime,
+    timeout_s: int,
+) -> bool | None:
+    if kontakt is None or fensterrolle is None:
+        return None
+    geraete_ids = list(
+        session.scalars(
+            select(ZoneDevice.device_id).where(
+                ZoneDevice.zone_id == zone.id,
+                ZoneDevice.device_role_id == fensterrolle.id,
+            )
+        )
+    )
+    if not geraete_ids:
+        # Unbekannt wird von der Regelung wie geschlossen behandelt. Sonst koennte eine
+        # Anlage ohne Fensterkontakte grundsaetzlich nie heizen.
+        return None
+
+    unbekannt = False
+    for geraet_id in geraete_ids:
+        messwert = session.scalar(
+            select(Measurement)
+            .where(
+                Measurement.device_id == geraet_id,
+                Measurement.capability_id == kontakt.id,
+            )
+            .order_by(Measurement.measured_at.desc(), Measurement.id.desc())
+            .limit(1)
+        )
+        if (
+            messwert is None
+            or sensorzustand(messwert.measured_at, jetzt, timeout_s) != OK
+            or messwert.value_text not in {"true", "false"}
+        ):
+            unbekannt = True
+            continue
+        # Zigbee2MQTT meldet `contact=true` fuer geschlossen und `false` fuer offen.
+        # Die Umkehr bleibt bewusst hier, damit sie nicht in jedem Verbraucher erneut
+        # und moeglicherweise widerspruechlich vorgenommen wird.
+        if messwert.value_text == "false":
+            return True
+    return None if unbekannt else False
