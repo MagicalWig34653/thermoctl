@@ -72,11 +72,22 @@ def test_anmeldung_fuehrt_auf_eine_existierende_seite(client: TestClient, benutz
     )
 
 
-def test_nicht_angemeldet_fuehrt_die_startseite_zur_anmeldung(client: TestClient) -> None:
+def test_nicht_angemeldet_fuehrt_die_startseite_zur_anmeldung(
+    client: TestClient, benutzer
+) -> None:
     """Wer die Adresse im Browser eingibt, soll ein Formular sehen, keine Fehlermeldung."""
     antwort = client.get("/", follow_redirects=True)
     assert antwort.status_code == 200
     assert "/login" in str(antwort.url)
+
+
+def test_ohne_benutzer_fuehrt_die_startseite_zur_einrichtung(client: TestClient) -> None:
+    """Dieselbe Zusicherung fuer den Zustand davor: Vor der Einrichtung gibt es niemanden,
+    der sich anmelden koennte -- ein Anmeldeformular waere hier die Sackgasse, die dieser
+    Rauchtest verhindern soll."""
+    antwort = client.get("/", follow_redirects=True)
+    assert antwort.status_code == 200
+    assert "/setup" in str(antwort.url)
 
 
 @pytest.mark.parametrize("vorlage", sorted(TEMPLATE_VERZEICHNIS.glob("*.html")))

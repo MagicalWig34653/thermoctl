@@ -24,8 +24,8 @@ Vom Controller selbst nachgeprüft, nicht aus Berichten übernommen:
 
 | | |
 |---|---|
-| Tests | 693, grün unter SQLite **und** MariaDB |
-| Testabdeckung | 99,23 %, Mindestschwelle 97 % in der CI |
+| Tests | 699, grün unter SQLite **und** MariaDB |
+| Testabdeckung | 99,26 %, Mindestschwelle 97 % in der CI |
 | Ruff, mypy strict | ohne Befund, 74 Quelldateien |
 | Migrationskette | linear, ein Kopf, vorwärts und rückwärts gegen beide Datenbanken |
 | CI und Container | grün |
@@ -52,6 +52,8 @@ Trockenlauf hinter zwei Riegeln, Schattenprotokoll, Geräteübersicht.
 nichts zu protokollieren. Hysterese, Mindestschaltdauer, Fensterpause, Frostschutz bei
 Sensorausfall, als reine Funktion mit 33 Tests, darunter der Defekt des Altsystems
 ausdrücklich vorgeführt.
+
+**Vor der Einrichtung** führen `/` und `/login` zur Einrichtungsseite, statt ein Anmeldeformular zu zeigen, an dem sich mangels Benutzer niemand anmelden kann. Nach abgeschlossener Einrichtung gilt wieder der gewohnte Weg über `/login`; `/setup` ist dann dauerhaft geschlossen.
 
 **Phase 3** — Formularbausteine, Zonenverwaltung, Gerätezuordnung samt Tausch, Modi und
 Sollwerte, Zeitplan-Editor mit Wochenansicht, Übersteuern, Regelparameter je Zone,

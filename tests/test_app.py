@@ -1,4 +1,5 @@
 import logging
+from collections.abc import Iterator
 
 import pytest
 from fastapi.testclient import TestClient
@@ -15,6 +16,41 @@ def client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
 
     get_settings.cache_clear()
     return TestClient(create_app())
+
+
+@pytest.fixture
+def client_mit_benutzer(monkeypatch: pytest.MonkeyPatch, tmp_path) -> Iterator[TestClient]:
+    """Wie ``client``, aber mit Schema und einem angelegten Benutzer.
+
+    Die Fixture ``client`` oben baut die App gegen eine schemalose In-Memory-Datenbank --
+    das genuegt fuer /healthz, statische Dateien und die OpenAPI-Beschreibung, die keine
+    Datenbank anfassen. Das Anmeldeformular tut das inzwischen: Ohne einen einzigen
+    Benutzer leitet es zur Einrichtung weiter, und wer es ansehen will, braucht deshalb
+    beides.
+    """
+    from sqlalchemy.orm import Session
+
+    from thermoctl.auth.passwords import hash_password
+    from thermoctl.config import get_settings
+    from thermoctl.db.base import Base
+    from thermoctl.db.models.identity import User
+
+    monkeypatch.setenv("THERMOCTL_DATABASE_URL", f"sqlite:///{tmp_path / 'anmeldeseite.db'}")
+    monkeypatch.setenv("THERMOCTL_SECRET_KEY", "a" * 32)
+    get_settings.cache_clear()
+    app = create_app()
+    Base.metadata.create_all(app.state.engine)
+    with Session(app.state.engine) as sitzung:
+        sitzung.add(
+            User(
+                username="lino",
+                display_name="Lino",
+                password_hash=hash_password("passwort-lang-genug"),
+            )
+        )
+        sitzung.commit()
+    yield TestClient(app)
+    get_settings.cache_clear()
 
 
 def test_healthz_antwortet(client: TestClient) -> None:
@@ -85,13 +121,13 @@ def test_statische_dateien_werden_ausgeliefert(client: TestClient) -> None:
     assert antwort.status_code == 200
 
 
-def test_anmeldeseite_bindet_das_stylesheet_ein(client: TestClient) -> None:
-    antwort = client.get("/login")
+def test_anmeldeseite_bindet_das_stylesheet_ein(client_mit_benutzer: TestClient) -> None:
+    antwort = client_mit_benutzer.get("/login")
     assert "/static/vendor/bootstrap/bootstrap.min.css" in antwort.text
 
 
-def test_anmeldeseite_enthaelt_keine_navigationsleiste(client: TestClient) -> None:
-    antwort = client.get("/login")
+def test_anmeldeseite_enthaelt_keine_navigationsleiste(client_mit_benutzer: TestClient) -> None:
+    antwort = client_mit_benutzer.get("/login")
     assert antwort.status_code == 200
     assert "<nav" not in antwort.text
 
