@@ -276,3 +276,76 @@ async def test_kein_publish_auch_wenn_der_aufrufer_es_verlangt(
 
 async def _kein_handler(topic: str, nutzlast: bytes) -> None:
     raise AssertionError("Dieser Handler darf nie aufgerufen werden")
+
+
+@pytest.mark.anyio
+async def test_abgeschaltetes_mqtt_baut_keine_verbindung_auf(
+    mqtt_settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Der Vorgabewert. Weder die Testsuite noch ein frisch gebauter Container darf
+    versuchen, sich irgendwohin zu verbinden."""
+    mqtt_settings.mqtt_enabled = False
+    FalscherClient.instanzen.clear()
+    monkeypatch.setattr(client_modul.aiomqtt, "Client", FalscherClient)
+
+    await MqttClient(mqtt_settings, _leerer_handler).laufen()
+
+    assert FalscherClient.instanzen == []
+
+
+@pytest.mark.anyio
+async def test_fehlender_host_wird_beim_namen_genannt(mqtt_settings: Settings) -> None:
+    """Eine Fehlkonfiguration soll sagen, welche Angabe fehlt — nicht 'NoneType'."""
+    mqtt_settings.mqtt_host = None
+    with pytest.raises(ValueError, match="MQTT_HOST"):
+        MqttClient(mqtt_settings, _leerer_handler)._neuer_client()
+
+
+@pytest.mark.anyio
+async def test_scharf_gebauter_client_veroeffentlicht_wirklich(
+    mqtt_settings: Settings,
+) -> None:
+    """Der Gegenbeweis zum Trockenlauf: Der Weg funktioniert, er ist nur verriegelt.
+
+    Ohne diesen Test belegte die Suite nur, dass nichts gesendet wird — auch dann, wenn
+    das Senden gar nicht gebaut waere. Teilprojekt 4 haengt daran.
+    """
+    kunde = MqttClient(mqtt_settings, _leerer_handler, schalten_erlaubt=True)
+    falscher = FalscherClient()
+    kunde._client = falscher  # type: ignore[assignment]
+
+    assert await kunde.veroeffentlichen("testbasis/Ventil/set", '{"state": "ON"}', scharf=True)
+    assert falscher.veroeffentlicht == [("testbasis/Ventil/set", '{"state": "ON"}')]
+
+
+@pytest.mark.anyio
+async def test_ohne_verbindung_wird_nicht_veroeffentlicht(mqtt_settings: Settings) -> None:
+    kunde = MqttClient(mqtt_settings, _leerer_handler, schalten_erlaubt=True)
+    assert await kunde.veroeffentlichen("testbasis/Ventil/set", "{}", scharf=True) is False
+
+
+@pytest.mark.anyio
+async def test_schlafen_wartet_wirklich(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Die Funktion existiert, damit Tests sie ersetzen koennen — dass sie im Betrieb
+    wirklich wartet, prueft sonst niemand."""
+    gewartet: list[float] = []
+
+    async def gefaelscht(sekunden: float) -> None:
+        gewartet.append(sekunden)
+
+    monkeypatch.setattr(client_modul.asyncio, "sleep", gefaelscht)
+    await client_modul.schlafen(2.5)
+    assert gewartet == [2.5]
+
+
+@pytest.mark.anyio
+async def test_scharfer_client_sendet_trotzdem_nicht_ohne_scharfen_aufruf(
+    mqtt_settings: Settings,
+) -> None:
+    """Beide Riegel wirken unabhaengig voneinander — hier der zweite allein."""
+    kunde = MqttClient(mqtt_settings, _leerer_handler, schalten_erlaubt=True)
+    falscher = FalscherClient()
+    kunde._client = falscher  # type: ignore[assignment]
+
+    assert await kunde.veroeffentlichen("testbasis/Ventil/set", "{}", scharf=False) is False
+    assert falscher.veroeffentlicht == []
