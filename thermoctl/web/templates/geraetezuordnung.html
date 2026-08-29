@@ -1,0 +1,89 @@
+{% extends "basis.html" %}
+{% block titel %}Geräte in {{ zone.display_name }} – thermoctl{% endblock %}
+{% block inhalt %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1>Geräte in {{ zone.display_name }}</h1>
+    <a class="btn btn-outline-secondary" href="/zonen">Zurück zu Zonen</a>
+</div>
+
+<h2 class="h4">Messquelle</h2>
+<p>Aktuell: <strong>{{ messquelle.display_name if messquelle else "Keine Messquelle" }}</strong></p>
+{% if darf_aendern %}
+{% if fehler.messquelle %}<div class="alert alert-danger">{{ fehler.messquelle }}</div>{% endif %}
+<form method="post" action="/zonen/{{ zone.id }}/geraete/messquelle" class="row g-2 mb-4">
+    <div class="col">
+        <select class="form-select" name="device_id" aria-label="Messquelle">
+            <option value="">Keine Messquelle</option>
+            {% for geraet in geraete %}
+            <option value="{{ geraet.id }}"{% if messquelle and geraet.id == messquelle.id %} selected{% endif %}>{{ geraet.display_name }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="col-auto"><button class="btn btn-primary" type="submit">Messquelle speichern</button></div>
+</form>
+{% endif %}
+
+<h2 class="h4">Rollen</h2>
+{% if zuordnungen %}
+<table class="table align-middle">
+    <thead><tr><th>Rolle</th><th>Gerät</th><th></th></tr></thead>
+    <tbody>
+    {% for zuordnung, geraet, rolle in zuordnungen %}
+    <tr>
+        <td>{{ rolle.label }}</td><td>{{ geraet.display_name }}</td>
+        <td class="text-end">
+        {% if darf_aendern %}
+        <form method="post" action="/zonen/{{ zone.id }}/geraete/{{ zuordnung.id }}/loesen">
+            <button class="btn btn-sm btn-outline-danger" type="submit">Lösen</button>
+        </form>
+        {% endif %}
+        </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+</table>
+{% else %}<p>Noch keine Rollen zugeordnet.</p>{% endif %}
+
+{% if darf_aendern %}
+<h2 class="h4 mt-4">Rolle zuordnen</h2>
+{% if fehler.zuordnung %}<div class="alert alert-danger">{{ fehler.zuordnung }}</div>{% endif %}
+<form method="post" action="/zonen/{{ zone.id }}/geraete/zuordnen" class="row g-2 mb-4">
+    <div class="col">
+        <label class="form-label" for="device_id">Gerät</label>
+        <select class="form-select" id="device_id" name="device_id" required>
+            <option value="">Bitte auswählen</option>
+            {% for geraet in geraete %}<option value="{{ geraet.id }}">{{ geraet.display_name }}</option>{% endfor %}
+        </select>
+    </div>
+    <div class="col">
+        <label class="form-label" for="role_id">Rolle</label>
+        <select class="form-select" id="role_id" name="role_id" required>
+            <option value="">Bitte auswählen</option>
+            {% for rolle in rollen %}<option value="{{ rolle.id }}">{{ rolle.label }}</option>{% endfor %}
+        </select>
+    </div>
+    <div class="col-auto align-self-end"><button class="btn btn-primary" type="submit">Zuordnen</button></div>
+</form>
+
+<h2 class="h4 mt-4">Gerät tauschen</h2>
+<p class="text-muted">Alle Rollen und die Messquelle in dieser Zone gehen auf das neue Gerät über. Sollwerte, Zeitplan, Regelparameter und Messverlauf bleiben erhalten.</p>
+{% if fehler.tausch %}<div class="alert alert-danger">{{ fehler.tausch }}</div>{% endif %}
+<form method="post" action="/zonen/{{ zone.id }}/geraete/tauschen" class="row g-2 mb-4">
+    <div class="col">
+        <label class="form-label" for="old_device_id">Altes Gerät</label>
+        <select class="form-select" id="old_device_id" name="old_device_id" required>
+            <option value="">Bitte auswählen</option>
+            {% for geraet in geraete %}<option value="{{ geraet.id }}">{{ geraet.display_name }}</option>{% endfor %}
+        </select>
+    </div>
+    <div class="col">
+        <label class="form-label" for="new_device_id">Neues Gerät</label>
+        <select class="form-select" id="new_device_id" name="new_device_id" required>
+            <option value="">Bitte auswählen</option>
+            {% for geraet in geraete %}<option value="{{ geraet.id }}">{{ geraet.display_name }}</option>{% endfor %}
+        </select>
+    </div>
+    <div class="col-auto align-self-end"><button class="btn btn-warning" type="submit">Gerät tauschen</button></div>
+</form>
+{% endif %}
+{% endblock %}
