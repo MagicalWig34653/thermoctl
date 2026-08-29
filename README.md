@@ -1,8 +1,17 @@
 # thermoctl
 
-`thermoctl` ist das Fundament einer neuen Heizungssteuerung: Es stellt Datenmodell,
-Domänenlogik, Anmeldung und Rechte, einen Einrichtungsassistenten, Verwaltungsseiten sowie
-eine REST-Schnittstelle bereit. Teilprojekt 1 steuert noch keine Heizung.
+`thermoctl` ist eine selbst gehostete Heizungssteuerung: sensorbasierte Raumregelung mit
+Zeitplänen, konfiguriert über eine Weboberfläche, ansprechbar zusätzlich über eine
+REST-Schnittstelle und einen MCP-Server.
+
+Was heute läuft: Sensoren werden über Zigbee2MQTT eingelesen, Messwerte fortgeschrieben,
+ausgefallene Sensoren erkannt und gemeldet. Räume, Geräte, Sollwerte und Zeitpläne lassen
+sich vollständig über die Oberfläche pflegen. Für jede Zone wird protokolliert, **was
+geschaltet würde und warum**.
+
+**Geschaltet wird noch nichts.** Das ist Absicht: Der Dienst läuft im Schattenbetrieb, bis
+seine Entscheidungen gegen die bestehende Anlage geprüft sind. Zwei unabhängige Riegel
+sorgen dafür, dass er es auch nicht versehentlich tut.
 
 ## Weiterlesen
 
@@ -67,6 +76,12 @@ Token sind wie Zugangsdaten zu schützen.
 
 ## Noch nicht enthalten
 
-Geräteanbindung und Schattenbetrieb, der eigentliche Regelkreis sowie eine vollständige
-Pflegeoberfläche folgen in späteren Teilprojekten. Bis dahin ist `thermoctl` keine
-betriebsfertige Heizungssteuerung.
+Der Regelkreis ist gebaut und erschöpfend getestet, aber **nicht scharf**: Es fehlt der
+Vergleichsbetrieb gegen die bestehende Anlage und die Übernahme der Altdaten. Bis dahin ist
+`thermoctl` keine betriebsfertige Heizungssteuerung, sondern ein Beobachter, der mitschreibt,
+was er täte.
+
+Ebenfalls offen: die Home-Assistant-Anbindung (die Topic-Struktur ist entworfen, das
+Veröffentlichen wartet auf den scharfen Betrieb).
+
+Der Stand im Einzelnen: [docs/STATUS.md](docs/STATUS.md) und [docs/roadmap.md](docs/roadmap.md).
