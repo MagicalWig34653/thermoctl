@@ -1,5 +1,8 @@
 import json
 import logging
+import sys
+
+import pytest
 
 from thermoctl.config import Settings
 from thermoctl.logging import (
@@ -158,3 +161,61 @@ def test_geheimnis_in_meldungstext_bleibt_sichtbar() -> None:
     )
     text = JsonFormatter().format(satz)
     assert "streng-geheim" in text
+
+
+def test_ausnahme_landet_im_json_protokoll() -> None:
+    """Ohne den Stapelauszug ist eine Ausnahme im Protokoll nur eine Meldung ohne Ort."""
+    import json
+    import logging as py_logging
+
+    from thermoctl.logging import JsonFormatter
+
+    try:
+        raise ValueError("etwas ging schief")
+    except ValueError:
+        satz = py_logging.LogRecord(
+            "test", py_logging.ERROR, __file__, 1, "gescheitert", None, sys.exc_info()
+        )
+    ausgabe = json.loads(JsonFormatter().format(satz))
+    assert "exception" in ausgabe
+    assert "ValueError" in ausgabe["exception"]
+
+
+def test_textzeile_wiederholt_ihre_eigene_meldung_nicht() -> None:
+    """Jede Textlogzeile endete mit einer Kopie ihrer selbst.
+
+    `super().format()` traegt `message` und `asctime` nachtraeglich in den LogRecord ein.
+    Beide standen nicht in `_STANDARDFELDER`, das beim Import aus einem frischen Record
+    entsteht — also hielt der Formatierer sie fuer Zusatzfelder und haengte sie an:
+    "thermoctl startet | database=… message=thermoctl startet asctime=…". Die Felder
+    werden jetzt vor dem Formatieren eingesammelt.
+    """
+    import logging as py_logging
+
+    from thermoctl.logging import TextFormatter
+
+    satz = py_logging.LogRecord("test", py_logging.INFO, __file__, 1, "schlicht", None, None)
+    assert TextFormatter().format(satz) == "schlicht"
+
+    mit_zusatz = py_logging.LogRecord("test", py_logging.INFO, __file__, 1, "gemeldet", None, None)
+    mit_zusatz.zone = "wohnzimmer"  # type: ignore[attr-defined]
+    ausgabe = TextFormatter("%(asctime)s %(message)s").format(mit_zusatz)
+    assert ausgabe.endswith("gemeldet | zone=wohnzimmer")
+    assert "message=" not in ausgabe and "asctime=" not in ausgabe
+
+
+def test_textformat_wird_gewaehlt(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`THERMOCTL_LOG_FORMAT=text` ist die Wahl fuer Menschen, json die fuer Maschinen."""
+    import logging as py_logging
+
+    from thermoctl.config import Settings
+    from thermoctl.logging import JsonFormatter, configure_logging
+
+    for format_wahl, erwartet_json in (("text", False), ("json", True)):
+        einstellungen = Settings(
+            _env_file=None, database_url="sqlite://", secret_key="s" * 32,
+            log_format=format_wahl,
+        )
+        configure_logging(einstellungen)
+        handler = py_logging.getLogger().handlers[0]
+        assert isinstance(handler.formatter, JsonFormatter) is erwartet_json, format_wahl

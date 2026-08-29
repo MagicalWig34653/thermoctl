@@ -47,16 +47,6 @@ def setup_token_erzeugen(session: Session) -> str:
     return klartext
 
 
-def setup_token_pruefen(session: Session, klartext: str) -> bool:
-    marke = session.scalar(
-        select(SetupToken).where(
-            SetupToken.token_hash == hash_geheimnis(klartext),
-            SetupToken.consumed_at.is_(None),
-        )
-    )
-    return marke is not None
-
-
 def einrichtung_durchfuehren(
     session: Session, *, username: str, display_name: str, passwort: str,
     zeitzone: str, token: str,
