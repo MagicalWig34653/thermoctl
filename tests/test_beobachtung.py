@@ -193,3 +193,24 @@ def test_ventil_und_fensterkontakt_werden_ohne_beispieldaten_erkannt() -> None:
         ("temperature", Decimal("19.25"), None),
         ("setpoint", Decimal("21"), None),
     ]
+
+
+def test_last_seen_ohne_zeitzone_wird_verworfen() -> None:
+    """Ohne Zeitzonenangabe ist der Zeitstempel nicht in UTC umrechenbar.
+
+    Zigbee2MQTT laesst sich auf Ortszeit ohne Offset einstellen. Ein solcher Wert als UTC
+    gedeutet laege im Sommer zwei Stunden daneben — und am Alter des Messwerts haengt die
+    Stoerungserkennung. Der Empfangszeitpunkt ist ungenauer, aber nicht falsch.
+    """
+    empfangen = datetime(2026, 8, 29, 12, 0, 0)
+    beobachtungen = beobachtungen_aus_nutzlast(
+        json.dumps({"last_seen": "2026-08-29T06:00:00", "temperature": 21.5}), empfangen
+    )
+    assert [b.gemessen_am for b in beobachtungen] == [empfangen]
+
+
+def test_gueltiges_json_ohne_objekt_ergibt_nichts() -> None:
+    """Eine Liste oder ein nackter Wert ist keine Zustandsnachricht, aber auch kein Fehler."""
+    empfangen = datetime(2026, 8, 29, 12, 0, 0)
+    assert beobachtungen_aus_nutzlast("[1, 2, 3]", empfangen) == []
+    assert beobachtungen_aus_nutzlast("42", empfangen) == []
