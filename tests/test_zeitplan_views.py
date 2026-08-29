@@ -218,3 +218,65 @@ def test_uebernahmeformular_und_fehlerhafte_auswahl(client_als, session: Session
     antwort = client.post(pfad, data={}, headers=_csrf(client))
     assert antwort.status_code == 200
     assert "Bitte eine Quellzone auswählen." in antwort.text
+
+
+def test_unsinnige_auswahl_beim_punkt_anlegen(client_als, session: Session) -> None:
+    """Wochentag und Modus kommen aus Auswahlfeldern — eine Anfrage muss sich daran
+    trotzdem nicht halten. Beide Wege werden hier bewusst umgangen."""
+    quelle(session)
+    zone = zone_anlegen(session, "zone-unsinn")
+    modus = modus_anlegen(session, "unsinn-tag", "Tag")
+    client = client_als([("schedule.manage", None), ("zone.read", None)])
+    kopf = _csrf(client)
+
+    for daten, erwartet in (
+        ({"wochentag": "Montag", "uhrzeit": "06:00", "modus": str(modus.id)}, "Wochentag"),
+        ({"wochentag": "1", "uhrzeit": "06:00", "modus": "kein Modus"}, "Modus"),
+    ):
+        antwort = client.post(
+            f"/zonen/{zone.id}/zeitplan/punkte", data=daten, headers=kopf
+        )
+        assert antwort.status_code == 200, daten
+        assert erwartet in antwort.text, daten
+    assert session.scalar(
+        select(SchedulePoint).where(SchedulePoint.zone_id == zone.id)
+    ) is None
+
+
+def test_fremder_zeitplanpunkt_ergibt_404(client_als, session: Session) -> None:
+    """Ein Punkt einer anderen Zone laesst sich nicht ueber die eigene loeschen."""
+    quelle(session)
+    eigene = zone_anlegen(session, "eigene-zeitplan")
+    fremde = zone_anlegen(session, "fremde-zeitplan")
+    modus = modus_anlegen(session, "fremd-tag", "Tag")
+    fremder = _punkt(session, fremde.id, 1, 360, modus.id)
+    client = client_als([("schedule.manage", None), ("zone.read", None)])
+
+    assert client.get(
+        f"/zonen/{eigene.id}/zeitplan/punkte/{fremder.id}/loeschen"
+    ).status_code == 404
+    assert client.post(
+        f"/zonen/{eigene.id}/zeitplan/punkte/{fremder.id}/loeschen", headers=_csrf(client)
+    ).status_code == 404
+    assert session.get(SchedulePoint, fremder.id) is not None
+
+
+def test_uebernahme_von_sich_selbst_ergibt_404(client_als, session: Session) -> None:
+    """Eine Zone kann ihren Zeitplan nicht von sich selbst uebernehmen — das waere ein
+    Vorgang ohne Wirkung, der aussaehe, als haette er gewirkt."""
+    quelle(session)
+    zone = zone_anlegen(session, "zone-selbstuebernahme")
+    client = client_als([("schedule.manage", None), ("zone.read", None)])
+    antwort = client.post(
+        f"/zonen/{zone.id}/zeitplan/uebernehmen",
+        data={"quelle_id": str(zone.id)},
+        headers=_csrf(client),
+    )
+    assert antwort.status_code == 404
+
+
+def test_unbekannter_zeitplanpunkt_ergibt_404(client_als, session: Session) -> None:
+    quelle(session)
+    zone = zone_anlegen(session, "zone-unbekannter-punkt")
+    client = client_als([("schedule.manage", None), ("zone.read", None)])
+    assert client.get(f"/zonen/{zone.id}/zeitplan/punkte/999999/loeschen").status_code == 404
