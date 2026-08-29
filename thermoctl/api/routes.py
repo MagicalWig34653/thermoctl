@@ -453,14 +453,20 @@ def uebersteuern(
         # Teilprojekt 3 stand die Rechnung hier ein zweites Mal — beide Adapter haetten
         # nach einer Korrektur an der Zeitzonenbehandlung auseinanderlaufen koennen.
         ende = ende_der_naechsten_schaltung(session, zone_obj)
-    return uebersteuerung_anlegen(
-        session,
-        zone_obj,
-        daten.temperature_c,
-        ende,
-        user_id=principal.user_id,
-        token_id=principal.token_id,
-    )
+    try:
+        return uebersteuerung_anlegen(
+            session,
+            zone_obj,
+            daten.temperature_c,
+            ende,
+            user_id=principal.user_id,
+            token_id=principal.token_id,
+        )
+    except Domaenenfehler as exc:
+        # Das Schema faengt den Wertebereich bereits ab; die Domaene prueft ihn seit dem
+        # Abschlussreview zusaetzlich selbst. Bleibt trotzdem etwas uebrig, ist es ein
+        # Eingabefehler und keine Stoerung des Dienstes.
+        raise _fachfehler(exc.feld, exc.meldung) from exc
 
 
 @router.delete("/zones/{zone_id}/override", status_code=status.HTTP_204_NO_CONTENT)

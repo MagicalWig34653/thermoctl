@@ -309,3 +309,17 @@ def test_fremder_zeitplanpunkt_ergibt_404(client, api_token, session) -> None:
     )
     assert antwort.status_code == 404
     assert session.get(SchedulePoint, punkt.id) is not None
+
+
+def test_uebersteuerung_ueber_die_api_haelt_dieselbe_grenze(client, api_token, session) -> None:
+    """Die Grenze liegt in der Domaene und nicht im Schema jedes Adapters."""
+    quelle(session, "api")
+    einstellungen_anlegen(session)
+    zone = zone_anlegen(session, "zone-api-grenze")
+    kopf = api_token([("override.create", None), ("zone.read", None)])
+    antwort = client.post(
+        f"/api/v1/zones/{zone.id}/override",
+        json={"temperature_c": "99.0"},
+        headers=kopf,
+    )
+    assert antwort.status_code == 422

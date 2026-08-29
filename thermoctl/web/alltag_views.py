@@ -11,6 +11,7 @@ from thermoctl.auth.dependencies import aktueller_principal, csrf_schutz, get_se
 from thermoctl.db.base import utcnow
 from thermoctl.db.models.zone import Zone
 from thermoctl.domain.authz import visible_zones
+from thermoctl.domain.modi import Domaenenfehler
 from thermoctl.domain.principal import Principal
 from thermoctl.domain.schedule import (
     ende_der_naechsten_schaltung,
@@ -148,9 +149,24 @@ async def uebersteuerung_erstellen(
             }
         )
         return RedirectResponse(f"/?{parameter}", status.HTTP_303_SEE_OTHER)
-    uebersteuerung_anlegen(
-        session, zone, temperatur, ende, user_id=principal.user_id, token_id=principal.token_id
-    )
+    try:
+        uebersteuerung_anlegen(
+            session, zone, temperatur, ende,
+            user_id=principal.user_id, token_id=principal.token_id,
+        )
+    except Domaenenfehler as exc:
+        # Die Grenze liegt seit dem Abschlussreview in der Domaene, damit sie fuer alle
+        # drei Adapter gilt. Hier wird sie nur noch angezeigt.
+        parameter = urlencode(
+            {
+                "uebersteuerungsfehler": exc.meldung,
+                "zone_id": zone.id,
+                "temperature_c": temperatur_text,
+                "ende": art,
+                "dauer_minuten": str(formular.get("dauer_minuten", "")),
+            }
+        )
+        return RedirectResponse(f"/?{parameter}", status.HTTP_303_SEE_OTHER)
     return RedirectResponse("/", status.HTTP_303_SEE_OTHER)
 
 

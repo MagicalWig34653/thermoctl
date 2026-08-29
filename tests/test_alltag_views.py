@@ -267,3 +267,20 @@ def test_unsinnige_regelparameter_bleiben_im_formular(session: Session, client_a
         )
         assert antwort.status_code == 200, feld
     assert zone.hysteresis_k is None and zone.min_on_seconds is None
+
+
+def test_uebersteuerung_mit_zwei_nachkommastellen_wird_abgewiesen(
+    session: Session, client_als
+) -> None:
+    """Die Oberflaeche prueft nicht mehr selbst — sie faengt nur noch ab, was die Domaene
+    sagt. Vorher liess sie zwei Nachkommastellen durch, die REST-Schnittstelle nicht."""
+    zone = _grundlage(session)
+    client = client_als([("override.create", None), ("zone.read", None)])
+    antwort = client.post(
+        f"/zonen/{zone.id}/uebersteuerung",
+        data={"temperature_c": "21,55", "ende": "dauerhaft"},
+        headers=_csrf(client), follow_redirects=False,
+    )
+    assert antwort.status_code == 303
+    assert "uebersteuerungsfehler" in (antwort.headers.get("location") or "")
+    assert session.scalar(select(ZoneOverride).where(ZoneOverride.zone_id == zone.id)) is None
