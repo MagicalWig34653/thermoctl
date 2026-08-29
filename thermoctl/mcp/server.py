@@ -15,7 +15,8 @@ from thermoctl.db.models.credential import ApiToken
 from thermoctl.db.models.device import Device, DeviceCapabilityLink
 from thermoctl.db.models.lookup import DeviceCapability, Integration, SensorStatus
 from thermoctl.db.models.messwert import DeviceHealth
-from thermoctl.db.models.zone import Zone
+from thermoctl.db.models.schedule import SchedulePoint
+from thermoctl.db.models.zone import SetpointMode, Zone, ZoneSetpoint
 from thermoctl.db.models.zustand import ShadowDecision, ZoneState
 from thermoctl.domain.authz import principal_fuer_token, require, visible_zones
 from thermoctl.domain.principal import Principal
@@ -45,8 +46,11 @@ def _anmelden(session: Session, klartext: str) -> tuple[ApiToken, Principal]:
 
 def _sichtbare_zone(session: Session, principal: Principal, zone_id: int) -> Zone:
     zone = next(
-        (eintrag for eintrag in visible_zones(session, principal, "zone.read")
-         if eintrag.id == zone_id),
+        (
+            eintrag
+            for eintrag in visible_zones(session, principal, "zone.read")
+            if eintrag.id == zone_id
+        ),
         None,
     )
     if zone is None:
@@ -106,6 +110,44 @@ def sollwert_erklaeren(
         "begruendung": sollwert.grund,
         "modus": sollwert.modus_code,
     }
+
+
+def zeitplan_lesen(session: Session, klartext: str, zone_id: int) -> list[dict[str, object]]:
+    """Liest die Schaltpunkte einer sichtbaren Zone samt Modusnamen."""
+    _token, principal = _anmelden(session, klartext)
+    zone = _sichtbare_zone(session, principal, zone_id)
+    require(principal, "zone.read", zone.id)
+    zeilen = session.execute(
+        select(SchedulePoint, SetpointMode)
+        .join(SetpointMode, SetpointMode.id == SchedulePoint.setpoint_mode_id)
+        .where(SchedulePoint.zone_id == zone.id)
+        .order_by(SchedulePoint.weekday, SchedulePoint.minute_of_day)
+    )
+    return [
+        {
+            "wochentag": punkt.weekday,
+            "minute_im_tag": punkt.minute_of_day,
+            "modus": modus.name,
+        }
+        for punkt, modus in zeilen
+    ]
+
+
+def sollwerte_lesen(session: Session, klartext: str, zone_id: int) -> list[dict[str, object]]:
+    """Liest die in einer sichtbaren Zone gesetzten Sollwerte je Modus."""
+    _token, principal = _anmelden(session, klartext)
+    zone = _sichtbare_zone(session, principal, zone_id)
+    require(principal, "zone.read", zone.id)
+    zeilen = session.execute(
+        select(ZoneSetpoint, SetpointMode)
+        .join(SetpointMode, SetpointMode.id == ZoneSetpoint.setpoint_mode_id)
+        .where(ZoneSetpoint.zone_id == zone.id)
+        .order_by(SetpointMode.sort_order, SetpointMode.code)
+    )
+    return [
+        {"modus": modus.name, "temperatur_c": _dezimal(sollwert.temperature_c)}
+        for sollwert, modus in zeilen
+    ]
 
 
 def geraete_auflisten(session: Session, klartext: str) -> list[dict[str, object]]:
@@ -192,9 +234,7 @@ def uebersteuern(
     }
 
 
-def uebersteuerung_aufheben(
-    session: Session, klartext: str, zone_id: int
-) -> dict[str, object]:
+def uebersteuerung_aufheben(session: Session, klartext: str, zone_id: int) -> dict[str, object]:
     """Hebt die aktive Uebersteuerung ueber die gemeinsame Domaenenfunktion auf."""
     _token, principal = _anmelden(session, klartext)
     zone = _sichtbare_zone(session, principal, zone_id)
@@ -238,15 +278,23 @@ def _werkzeuge_registrieren(
         with session_scope(factory) as session:
             return sollwert_erklaeren(session, klartext, zone_id)
 
+    @server.tool(name="zeitplan_lesen")
+    def mcp_zeitplan_lesen(zone_id: int) -> list[dict[str, object]]:
+        with session_scope(factory) as session:
+            return zeitplan_lesen(session, klartext, zone_id)
+
+    @server.tool(name="sollwerte_lesen")
+    def mcp_sollwerte_lesen(zone_id: int) -> list[dict[str, object]]:
+        with session_scope(factory) as session:
+            return sollwerte_lesen(session, klartext, zone_id)
+
     @server.tool(name="geraete_auflisten")
     def mcp_geraete_auflisten() -> list[dict[str, object]]:
         with session_scope(factory) as session:
             return geraete_auflisten(session, klartext)
 
     @server.tool(name="schattenentscheidungen")
-    def mcp_schattenentscheidungen(
-        zone_id: int, anzahl: int = 10
-    ) -> list[dict[str, object]]:
+    def mcp_schattenentscheidungen(zone_id: int, anzahl: int = 10) -> list[dict[str, object]]:
         with session_scope(factory) as session:
             return schattenentscheidungen(session, klartext, zone_id, anzahl)
 
