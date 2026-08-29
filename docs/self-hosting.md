@@ -145,9 +145,29 @@ Das Log ist strukturiert (`THERMOCTL_LOG_FORMAT=json`, für Menschen `text`) und
 Geheimnisse. Jede Antwort trägt eine `X-Request-ID`, die in jeder zugehörigen Logzeile
 wieder auftaucht — damit lässt sich ein einzelner Aufruf durch das ganze Log verfolgen.
 
-## 8. Was der Dienst über Sie nach außen gibt
+## 8. Benachrichtigungen
+
+Fällt ein Sensor aus oder ist die Zigbee2MQTT-Brücke nicht mehr erreichbar, schreibt der
+Dienst eine Warnung ins Log. Steht in `.env` zusätzlich eine Webhook-Adresse, geht dieselbe
+Meldung als JSON dorthin:
+
+```dotenv
+THERMOCTL_NOTIFY_WEBHOOK=https://…/hooks/heizung
+THERMOCTL_NOTIFY_WEBHOOK_TOKEN=…      # optional, als Authorization: Bearer
+```
+
+**Gemeldet wird der Wechsel, nicht der Zustand.** Eine Störung, die drei Tage besteht,
+ergibt eine Meldung und später eine Entwarnung — nicht eine je Regelzyklus. Das ist
+Absicht: Wer stündlich dieselbe Meldung bekommt, schaltet sie ab und verpasst die nächste
+echte.
+
+Antwortet der Webhook nicht, wird das protokolliert und sonst nichts. Die Regelung läuft
+weiter — eine Heizungssteuerung, die stehenbleibt, weil ein Webhook hängt, ist schlimmer
+als eine, die eine Meldung verliert.
+
+## 9. Was der Dienst über Sie nach außen gibt
 
 Nichts. `thermoctl` ruft von sich aus keinen fremden Dienst auf, sendet keine Telemetrie
 und braucht kein Konto bei irgendwem. Ausgehende Verbindungen entstehen erst, wenn Sie
-einen MQTT-Broker eintragen oder — später — die Meross-Cloud für Ihre Steckdosen
-konfigurieren. Beides ist Ihre Entscheidung und steht in Ihrer `.env`.
+einen MQTT-Broker, einen Webhook oder — später — die Meross-Cloud für Ihre Steckdosen
+eintragen. Alle drei sind Ihre Entscheidung und stehen in Ihrer `.env`.
