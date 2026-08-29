@@ -19,7 +19,7 @@ from fastapi.testclient import TestClient
 TEMPLATE_VERZEICHNIS = Path(__file__).resolve().parent.parent / "thermoctl/web/templates"
 
 # Seiten, die eine angemeldete Sitzung voraussetzen.
-GESCHUETZTE_SEITEN = ["/", "/benutzer", "/gruppen", "/tokens", "/geraete"]
+GESCHUETZTE_SEITEN = ["/", "/benutzer", "/gruppen", "/tokens", "/geraete", "/zonen"]
 
 
 def test_jede_seite_antwortet_angemeldet(angemeldeter_client: TestClient) -> None:
