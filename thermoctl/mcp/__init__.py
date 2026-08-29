@@ -1,0 +1,1 @@
+"""MCP-Adapter fuer thermoctl."""

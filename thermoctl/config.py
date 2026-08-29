@@ -32,6 +32,7 @@ class Settings(BaseSettings):
     mqtt_client_id: str = "thermoctl"
     mqtt_base_topic: str = "zigbee2mqtt"
     mqtt_ca_cert: str | None = None
+    mcp_token: SecretStr | None = None
 
     def sanitized_database_url(self) -> str:
         """Die Verbindungszeichenfolge ohne Zugangsdaten — fuer Logausgaben."""
