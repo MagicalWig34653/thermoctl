@@ -3,9 +3,11 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from thermoctl import audit
 from thermoctl.db.base import utcnow
 from thermoctl.db.models.lookup import ActorSource
 from thermoctl.db.models.operations import Setting
@@ -23,6 +25,180 @@ class Sollwert:
     temperature_c: Decimal
     grund: str
     modus_code: str | None
+
+
+@dataclass(frozen=True)
+class Zeitplanfehler(Exception):
+    feld: str
+    meldung: str
+
+
+@dataclass(frozen=True)
+class Tagesabschnitt:
+    """Ein durchgehender, an einer Tagesgrenze abgeschnittener Zeitplanbalken."""
+
+    wochentag: int
+    startminute: int
+    endminute: int
+    modusname: str
+
+
+def uhrzeit_in_minuten(uhrzeit: str) -> int:
+    """Wandelt lokale `HH:MM`-Formulareingaben in die DB-Darstellung um."""
+    teile = uhrzeit.strip().split(":")
+    if len(teile) != 2 or not all(teil.isdigit() for teil in teile):
+        raise Zeitplanfehler("uhrzeit", "Bitte eine gültige Uhrzeit eingeben.")
+    stunde, minute = (int(teil) for teil in teile)
+    if stunde > 23 or minute > 59:
+        raise Zeitplanfehler("uhrzeit", "Bitte eine gültige Uhrzeit eingeben.")
+    return stunde * 60 + minute
+
+
+def wochenabschnitte(
+    punkte: list[SchedulePoint], modusnamen: dict[int, str]
+) -> list[Tagesabschnitt]:
+    """Zerlegt den Wochenring in Balken, ohne den Ring an Montag 00:00 aufzubrechen."""
+    if not punkte:
+        return []
+    sortiert = sorted(punkte, key=_punktminute)
+    abschnitte: list[Tagesabschnitt] = []
+    for wochentag in range(1, 8):
+        tagesanfang = (wochentag - 1) * 1440
+        grenzen = [
+            tagesanfang,
+            *(
+                _punktminute(punkt)
+                for punkt in sortiert
+                if punkt.weekday == wochentag and punkt.minute_of_day > 0
+            ),
+            tagesanfang + 1440,
+        ]
+        for start, ende in zip(grenzen, grenzen[1:], strict=False):
+            davor = [punkt for punkt in sortiert if _punktminute(punkt) <= start]
+            gilt = max(davor or sortiert, key=_punktminute)
+            abschnitte.append(
+                Tagesabschnitt(
+                    wochentag=wochentag,
+                    startminute=start - tagesanfang,
+                    endminute=ende - tagesanfang,
+                    modusname=modusnamen[gilt.setpoint_mode_id],
+                )
+            )
+    return abschnitte
+
+
+def zeitplanpunkt_anlegen(
+    session: Session,
+    zone: Zone,
+    *,
+    wochentag: int,
+    minute: int,
+    modus_id: int,
+    user_id: int | None,
+    token_id: int | None = None,
+) -> SchedulePoint:
+    if not 1 <= wochentag <= 7:
+        raise Zeitplanfehler("wochentag", "Bitte einen Wochentag auswählen.")
+    if not 0 <= minute <= 1439:
+        raise Zeitplanfehler("uhrzeit", "Bitte eine gültige Uhrzeit eingeben.")
+    if session.get(SetpointMode, modus_id) is None:
+        raise Zeitplanfehler("modus", "Dieser Modus ist nicht bekannt.")
+    belegt = session.scalar(
+        select(SchedulePoint.id).where(
+            SchedulePoint.zone_id == zone.id,
+            SchedulePoint.weekday == wochentag,
+            SchedulePoint.minute_of_day == minute,
+        )
+    )
+    if belegt is not None:
+        raise Zeitplanfehler("uhrzeit", "Zu diesem Zeitpunkt gibt es bereits einen Punkt.")
+    punkt = SchedulePoint(
+        zone_id=zone.id,
+        weekday=wochentag,
+        minute_of_day=minute,
+        setpoint_mode_id=modus_id,
+    )
+    try:
+        with session.begin_nested():
+            session.add(punkt)
+            session.flush()
+            audit.record(
+                session,
+                source="web",
+                action="create",
+                object_type="schedule_point",
+                object_id=str(punkt.id),
+                summary=f"Zeitplanpunkt für Zone '{zone.display_name}' angelegt",
+                user_id=user_id,
+                token_id=token_id,
+            )
+            session.flush()
+    except IntegrityError as exc:
+        raise Zeitplanfehler(
+            "uhrzeit", "Zu diesem Zeitpunkt gibt es bereits einen Punkt."
+        ) from exc
+    return punkt
+
+
+def zeitplanpunkt_loeschen(
+    session: Session,
+    zone: Zone,
+    punkt: SchedulePoint,
+    *,
+    user_id: int | None,
+    token_id: int | None = None,
+) -> None:
+    punkt_id = punkt.id
+    session.delete(punkt)
+    audit.record(
+        session,
+        source="web",
+        action="delete",
+        object_type="schedule_point",
+        object_id=str(punkt_id),
+        summary=f"Zeitplanpunkt für Zone '{zone.display_name}' gelöscht",
+        user_id=user_id,
+        token_id=token_id,
+    )
+
+
+def zeitplan_uebernehmen(
+    session: Session,
+    ziel: Zone,
+    quelle: Zone,
+    *,
+    user_id: int | None,
+    token_id: int | None = None,
+) -> None:
+    """Ersetzt den Zielplan atomar durch unabhängige Kopien des Quellplans."""
+    quellpunkte = list(
+        session.scalars(
+            select(SchedulePoint).where(SchedulePoint.zone_id == quelle.id)
+        )
+    )
+    session.execute(delete(SchedulePoint).where(SchedulePoint.zone_id == ziel.id))
+    session.add_all(
+        SchedulePoint(
+            zone_id=ziel.id,
+            weekday=punkt.weekday,
+            minute_of_day=punkt.minute_of_day,
+            setpoint_mode_id=punkt.setpoint_mode_id,
+        )
+        for punkt in quellpunkte
+    )
+    audit.record(
+        session,
+        source="web",
+        action="update",
+        object_type="schedule",
+        object_id=str(ziel.id),
+        summary=(
+            f"Zeitplan für Zone '{ziel.display_name}' von "
+            f"'{quelle.display_name}' übernommen"
+        ),
+        user_id=user_id,
+        token_id=token_id,
+    )
 
 
 def _wochenminute(zeitpunkt: datetime) -> int:

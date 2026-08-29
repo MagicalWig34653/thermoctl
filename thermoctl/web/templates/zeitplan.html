@@ -1,0 +1,75 @@
+{% extends "basis.html" %}
+{% from "formular.html" import auswahl, textfeld %}
+{% block titel %}Zeitplan {{ zone.display_name }} – thermoctl{% endblock %}
+{% block max_breite %}90rem{% endblock %}
+{% block inhalt %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <h1>Zeitplan für {{ zone.display_name }}</h1>
+        <p class="text-muted mb-0">Lokale Zeit; ein Balken gilt bis zum nächsten Schaltpunkt.</p>
+    </div>
+    {% if darf_aendern %}
+    <a class="btn btn-outline-primary" href="/zonen/{{ zone.id }}/zeitplan/uebernehmen">
+        Von anderer Zone übernehmen
+    </a>
+    {% endif %}
+</div>
+
+{% if punkte %}
+<div class="row g-2 mb-4">
+{% for tag, tagname in wochentage %}
+    <section class="col" style="min-width: 8rem;">
+        <h2 class="h6 text-center">{{ tagname }}</h2>
+        <div class="position-relative border rounded bg-light" style="height: 36rem;">
+        {% for abschnitt in abschnitte[tag] %}
+            <div class="position-absolute start-0 end-0 border-bottom bg-primary text-white px-1 overflow-hidden"
+                 style="top: {{ abschnitt.startminute / 40 }}rem;
+                        height: {{ (abschnitt.endminute - abschnitt.startminute) / 40 }}rem;"
+                 title="{{ abschnitt.modusname }} ab {{ "%02d:%02d"|format(
+                     abschnitt.startminute // 60, abschnitt.startminute % 60
+                 ) }}">
+                <small>{{ "%02d:%02d"|format(
+                    abschnitt.startminute // 60, abschnitt.startminute % 60
+                ) }} {{ abschnitt.modusname }}</small>
+            </div>
+        {% endfor %}
+        </div>
+    </section>
+{% endfor %}
+</div>
+{% else %}
+<div class="alert alert-info">Noch kein Zeitplan vorhanden. Bis zum ersten Punkt gilt der Frostschutz.</div>
+{% endif %}
+
+{% if darf_aendern %}
+<section class="row g-4">
+    <div class="col-lg-6">
+        <h2 class="h4">Schaltpunkt anlegen</h2>
+        <form method="post" action="/zonen/{{ zone.id }}/zeitplan/punkte">
+            {{ auswahl("wochentag", "Tag", wochentage, werte.wochentag, "", fehler.wochentag) }}
+            {{ textfeld("uhrzeit", "Uhrzeit", werte.uhrzeit, "Lokale Zeit, zum Beispiel 06:30.", fehler.uhrzeit, true, "time") }}
+            {% set modusoptionen = [] %}
+            {% for modus in modi %}{% set _ = modusoptionen.append((modus.id, modus.name)) %}{% endfor %}
+            {{ auswahl("modus", "Modus", modusoptionen, werte.modus, "", fehler.modus) }}
+            <button class="btn btn-primary" type="submit">Punkt anlegen</button>
+        </form>
+    </div>
+    <div class="col-lg-6">
+        <h2 class="h4">Schaltpunkte</h2>
+        {% if punkte %}
+        <ul class="list-group">
+        {% for punkt in punkte %}
+            <li class="list-group-item d-flex justify-content-between align-items-center">
+                <span>{{ dict(wochentage)[punkt.weekday] }}
+                    {{ "%02d:%02d"|format(punkt.minute_of_day // 60, punkt.minute_of_day % 60) }}
+                </span>
+                <a class="btn btn-sm btn-outline-danger"
+                   href="/zonen/{{ zone.id }}/zeitplan/punkte/{{ punkt.id }}/loeschen">Löschen</a>
+            </li>
+        {% endfor %}
+        </ul>
+        {% endif %}
+    </div>
+</section>
+{% endif %}
+{% endblock %}
