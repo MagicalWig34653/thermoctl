@@ -2,7 +2,8 @@ from datetime import timedelta
 from decimal import Decimal
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -50,13 +51,26 @@ from thermoctl.domain.zonen import ZonennameVergeben, zone_aendern, zone_anlegen
 router = APIRouter(prefix="/api/v1")
 
 
+# `auto_error=False`: Ohne das antwortet FastAPI bei fehlendem Header selbst mit 403 und
+# einer englischen Meldung. Wir wollen 401 und dieselbe Antwort wie bei einem ungueltigen
+# Token — ob ein Header fehlte oder ein Token nicht gilt, geht den Aufrufer nichts an.
+#
+# Der Umweg ueber `HTTPBearer` statt eines gewoehnlichen `Header()`-Parameters hat einen
+# sichtbaren Grund: Nur so steht das Verfahren als `securityScheme` in der
+# OpenAPI-Beschreibung. Vorher tauchte `authorization` an jedem Weg als optionaler
+# Kopfzeilen-Parameter auf, und in der Oberflaeche unter /docs gab es keinen
+# Anmelde-Knopf — man haette bei jedem einzelnen Aufruf "Bearer <token>" von Hand
+# eintragen muessen.
+_bearer = HTTPBearer(auto_error=False, description="API-Token, ausgestellt unter /tokens")
+
+
 def _token(
     session: Annotated[Session, Depends(get_session)],
-    authorization: Annotated[str | None, Header()] = None,
+    zugang: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)] = None,
 ) -> ApiToken:
-    if authorization is None or not authorization.startswith("Bearer "):
+    if zugang is None or zugang.scheme.lower() != "bearer":
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Ungueltiges Token")
-    token = token_aufloesen(session, authorization.removeprefix("Bearer "))
+    token = token_aufloesen(session, zugang.credentials)
     if token is None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Ungueltiges Token")
     return token

@@ -1,12 +1,35 @@
 # REST-Schnittstelle
 
 `thermoctl` hat drei Adapter über derselben Domänenlogik: die Weboberfläche, diese
-REST-Schnittstelle und — ab Phase 5 — einen MCP-Server. Eine Regel ist einmal
-implementiert; die Schnittstellen führen sie nur aus. Was hier möglich ist, ist deshalb
-genau das, was in der Oberfläche möglich ist, und umgekehrt.
+REST-Schnittstelle und den [MCP-Server](mcp.md). Eine Regel ist einmal implementiert; die
+Schnittstellen führen sie nur aus. Was hier möglich ist, ist deshalb genau das, was in der
+Oberfläche möglich ist, und umgekehrt.
 
-Grundadresse: `/api/v1`. Eine maschinenlesbare Fassung dieser Seite liefert der laufende
-Dienst selbst unter `/openapi.json`, zum Durchklicken unter `/docs`.
+Grundadresse: `/api/v1`.
+
+## Zum Ausprobieren: `/docs`
+
+Der laufende Dienst liefert die Beschreibung maschinenlesbar unter `/openapi.json` und als
+Swagger-Oberfläche unter **`/docs`** — dort lässt sich jeder Weg anklicken und ausprobieren.
+
+Oben rechts steht **Authorize**: Dort einmal das API-Token eintragen (nur den Token selbst,
+ohne `Bearer `), danach schickt jeder Aufruf es mit.
+
+Drei Dinge, die dabei bewusst so sind:
+
+- **Die Oberfläche liegt vollständig im Dienst**, nicht in einem CDN. Sonst bliebe sie in
+  einem Heimnetz ohne Internetzugang leer, und jeder Aufruf verriete einem Dritten, wann
+  jemand die Heizungssteuerung öffnet. Herkunft und Prüfsummen der mitgelieferten Dateien
+  stehen in `thermoctl/web/static/HERKUNFT.md`.
+- **Beschrieben ist nur diese Schnittstelle**, nicht die HTML-Seiten der Oberfläche. Sonst
+  stünde neben jedem echten Endpunkt ein Formularweg, dessen „Try it out" eine echte
+  Änderung auslöst.
+- **`/docs` selbst verlangt keine Anmeldung.** Die Beschreibung verrät, welche Wege es
+  gibt, aber keinen einzigen Wert — und dasselbe steht ohnehin in dieser Datei. Ausprobieren
+  lässt sich von dort nichts ohne Token; jeder Aufruf durchläuft dieselbe Prüfung wie sonst.
+
+ReDoc (`/redoc`) gibt es nicht: dasselbe CDN-Problem, und `/docs` deckt dieselbe
+Beschreibung ab.
 
 ## Anmeldung
 

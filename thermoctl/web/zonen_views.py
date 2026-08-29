@@ -21,7 +21,11 @@ from thermoctl.domain.zonen import (
 from thermoctl.web import templates
 from thermoctl.web.formulare import Formularfehler, formular_erneut
 
-router = APIRouter(dependencies=[Depends(csrf_schutz)])
+# `include_in_schema=False`: Die OpenAPI-Beschreibung ist der Vertrag der
+# REST-Schnittstelle. Diese Wege liefern HTML fuer Menschen, und in der Oberflaeche
+# unter /docs stuende sonst neben jedem echten Endpunkt ein Formularweg, dessen
+# 'Try it out' eine echte Aenderung ausloest.
+router = APIRouter(dependencies=[Depends(csrf_schutz)], include_in_schema=False)
 
 
 def _sichtbare_zone(session: Session, principal: Principal, zone_id: int) -> Zone:
