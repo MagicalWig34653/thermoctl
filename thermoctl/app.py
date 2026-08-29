@@ -25,6 +25,7 @@ from thermoctl.db.models.lookup import SensorStatus
 from thermoctl.db.models.operations import Setting
 from thermoctl.db.models.zone import Zone
 from thermoctl.db.models.zustand import ZoneState
+from thermoctl.db.schemastand import SchemaPasstNicht, schema_pruefen
 from thermoctl.domain.authz import Forbidden
 from thermoctl.domain.stoerungsmeldung import (
     Stoerungsmeldung,
@@ -214,6 +215,15 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     FastAPI-Instanz durch `create_app()`) -- insbesondere nicht bei einem
     `TestClient`, der ohne `with`-Block genutzt wird, wie es die Testsuite tut.
     """
+    # Vor jeder Abfrage: Ein fehlendes oder veraltetes Schema soll als ein Satz
+    # herauskommen, der den naechsten Befehl nennt, nicht als Traceback aus der
+    # Tiefe von SQLAlchemy.
+    try:
+        schema_pruefen(app.state.engine)
+    except SchemaPasstNicht as fehler:
+        log.error("%s", fehler)
+        raise
+
     with session_scope(app.state.session_factory) as session:
         if einrichtung_noetig(session) and not _unverbrauchtes_setup_token_vorhanden(session):
             klartext = setup_token_erzeugen(session)

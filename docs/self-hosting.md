@@ -136,7 +136,8 @@ Wahl, wenn der Dienst wirklich heizt.
 | Symptom | Ursache und Abhilfe |
 |---|---|
 | Container startet, `/healthz` antwortet nicht | Log ansehen: `docker compose logs thermoctl`. Meist fehlt `THERMOCTL_DATABASE_URL` oder der Schlüssel ist kürzer als 32 Zeichen. |
-| `no such table: user` | Die Migrationen liefen nicht. Der Entrypoint erledigt sie; wer den Dienst ohne ihn startet, führt `alembic upgrade head` selbst aus. |
+| `Die Datenbank hat kein Schema` | Die Migrationen liefen nicht. Der Entrypoint erledigt sie; wer den Dienst ohne ihn startet (etwa `uvicorn` von Hand), führt `alembic upgrade head` selbst aus. |
+| `Das Datenbankschema steht auf …, der Code erwartet …` | Dieselbe Ursache nach einem Update: `alembic upgrade head` nachholen. Der Dienst startet dann nicht mehr halb und scheitert später an einer fehlenden Spalte. |
 | Nach dem Neustart sind alle Benutzer weg | Die SQLite-URL ist relativ. Abschnitt 2, die Sache mit den vier Schrägstrichen. |
 | Kein Einrichtungs-Token im Log | Es gibt bereits einen Benutzer — dann ist die Einrichtung abgeschlossen und `/setup` zu Recht geschlossen. |
 | Anmeldung wirft die Sitzung sofort weg | `THERMOCTL_SECURE_COOKIES=true` ohne TLS davor. Entweder TLS einrichten oder die Einstellung zurücknehmen. |
