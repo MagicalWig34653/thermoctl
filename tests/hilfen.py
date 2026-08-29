@@ -28,6 +28,7 @@ from thermoctl.db.models.lookup import (
 from thermoctl.db.models.messwert import DeviceHealth, Measurement
 from thermoctl.db.models.operations import Setting
 from thermoctl.db.models.override import ZoneOverride
+from thermoctl.db.models.passkey import UserPasskey
 from thermoctl.db.models.schedule import SchedulePoint
 from thermoctl.db.models.zone import SetpointMode, Zone, ZoneSetpoint
 from thermoctl.db.models.zustand import ShadowDecision, ZoneState
@@ -335,3 +336,20 @@ def schattenentscheidung_anlegen(session: Session, zone: Zone) -> ShadowDecision
     session.add(entscheidung)
     session.flush()
     return entscheidung
+
+
+def passkey_anlegen(
+    session: Session, nutzer: User, credential_id: str = "kennung", sign_count: int = 0
+) -> UserPasskey:
+    """Ein hinterlegter Passkey. Der oeffentliche Schluessel ist hier ein Platzhalter —
+    Tests, die wirklich pruefen, erzeugen ihn mit einem Software-Authenticator."""
+    eintrag = UserPasskey(
+        user_id=nutzer.id,
+        credential_id=credential_id,
+        public_key="platzhalter",
+        sign_count=sign_count,
+        bezeichnung=f"Passkey {credential_id}",
+    )
+    session.add(eintrag)
+    session.flush()
+    return eintrag

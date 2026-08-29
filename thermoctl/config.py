@@ -39,8 +39,34 @@ class Settings(BaseSettings):
     meross_email: str | None = None
     meross_password: SecretStr | None = None
     mcp_token: SecretStr | None = None
+
+    # --- Passkeys (WebAuthn) ---------------------------------------------------------
+    # Die Relying-Party-ID ist der nackte Hostname, unter dem die Oberflaeche erreichbar
+    # ist — ohne Schema, ohne Port. Sie steht **ausschliesslich** hier und wird nie aus
+    # der `Host`-Kopfzeile der Anfrage gebildet: Die ist vom Aufrufer gesetzt, und eine
+    # Relying-Party-ID unter seiner Kontrolle hebt den Schutz auf, den WebAuthn gerade
+    # geben soll.
+    #
+    # Ohne diese Angabe sind Passkeys abgeschaltet — nicht halb, sondern ganz: Die
+    # Anmeldeseite bietet sie dann gar nicht erst an.
+    passkey_rp_id: str | None = None
+    passkey_rp_name: str = "thermoctl"
+    # Die erlaubte Origin, gegen die die Antwort des Authenticators geprueft wird. Leer
+    # gelassen gilt `https://<passkey_rp_id>`. Fuer die Entwicklung auf dem eigenen
+    # Rechner braucht es hier `http://localhost:8000` — WebAuthn laesst http nur dort zu.
+    passkey_origin: str | None = None
     notify_webhook: str | None = None
     notify_webhook_token: SecretStr | None = None
+
+    def passkeys_moeglich(self) -> bool:
+        """Ohne Relying-Party-ID gibt es keine Passkeys — und keine halben."""
+        return bool(self.passkey_rp_id)
+
+    def passkey_erlaubte_origin(self) -> str:
+        """Die Origin, die der Authenticator gesehen haben muss."""
+        if self.passkey_origin:
+            return self.passkey_origin.rstrip("/")
+        return f"https://{self.passkey_rp_id}"
 
     def sanitized_database_url(self) -> str:
         """Die Verbindungszeichenfolge ohne Zugangsdaten — fuer Logausgaben."""

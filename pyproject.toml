@@ -13,6 +13,8 @@ dependencies = [
     "python-multipart>=0.0.32",
     "pymysql>=1.2",
     "aiomqtt>=2.4",
+    # WebAuthn/Passkeys. Von Duo gepflegt, die Referenz im Python-Umfeld.
+    "webauthn>=3.0",
 ]
 
 [project.optional-dependencies]
