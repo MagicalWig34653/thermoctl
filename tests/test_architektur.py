@@ -31,6 +31,18 @@ def test_domaene_kennt_keinen_adapter() -> None:
     assert not verstoesse, "\n".join(verstoesse)
 
 
+def test_mcp_kennt_keinen_anderen_adapter() -> None:
+    """Die drei Adapter bleiben gleichberechtigte Nachbarn."""
+    mcp_pfad = WURZEL / "mcp"
+    verstoesse = [
+        f"{datei.relative_to(WURZEL)} importiert {name}"
+        for datei in mcp_pfad.rglob("*.py")
+        for name in _importe(datei)
+        if name.startswith(("thermoctl.web", "thermoctl.api"))
+    ]
+    assert not verstoesse, "\n".join(verstoesse)
+
+
 def test_kein_modell_nutzt_verbotene_spaltentypen() -> None:
     """Kein ENUM, kein SET, keine JSON-Spalte — SQLite kann sie nicht."""
     verstoesse = [

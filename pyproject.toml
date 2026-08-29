@@ -17,9 +17,11 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=9.1", "pytest-cov>=6.0", "httpx2>=2.12", "ruff>=0.16", "mypy>=1.18"]
+mcp = ["mcp>=1.2"]
 
 [project.scripts]
 thermoctl = "thermoctl.cli:main"
+thermoctl-mcp = "thermoctl.mcp.server:main"
 
 [build-system]
 requires = ["setuptools>=75"]
