@@ -8,6 +8,7 @@ from thermoctl.auth.dependencies import csrf_schutz, get_session
 from thermoctl.auth.passwords import PasswordTooShort
 from thermoctl.setup import einrichtung_durchfuehren, einrichtung_noetig
 from thermoctl.web import templates
+from thermoctl.web.formulare import formular_erneut, passwort_formularfehler
 
 router = APIRouter(dependencies=[Depends(csrf_schutz)])
 
@@ -26,7 +27,7 @@ async def setup_formular(
     request: Request, session: Annotated[Session, Depends(get_session)]
 ) -> Response:
     _sicherstellen_offen(session)
-    return templates.TemplateResponse(request, "einrichtung.html", {})
+    return templates.TemplateResponse(request, "einrichtung.html", {"fehler": {}})
 
 
 @router.post("/setup")
@@ -60,9 +61,11 @@ async def setup(
     except PasswordTooShort as exc:
         # Eine zu kurze Eingabe ist ein Formfehler des Nutzers, keine Stoerung des
         # Dienstes -- zurueck zum Formular mit verstaendlicher Meldung statt 500.
-        return templates.TemplateResponse(
-            request, "einrichtung.html", {"fehler": str(exc), **formularwerte},
-            status_code=status.HTTP_200_OK,
+        return formular_erneut(
+            request,
+            "einrichtung.html",
+            formularwerte,
+            passwort_formularfehler(exc),
         )
 
     return RedirectResponse("/login", status_code=status.HTTP_303_SEE_OTHER)

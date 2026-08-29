@@ -9,9 +9,6 @@
         Dieser Assistent legt den ersten Verwalter an. Er ist nur erreichbar, solange
         noch kein Benutzer existiert, und danach dauerhaft geschlossen.
     </p>
-    {% if fehler %}
-    <div class="alert alert-danger" role="alert">{{ fehler }}</div>
-    {% endif %}
     <form method="post" action="/setup">
         <div class="mb-3">
             <label for="setup_token" class="form-label">Einrichtungs-Token</label>
@@ -30,8 +27,11 @@
         </div>
         <div class="mb-3">
             <label for="password" class="form-label">Passwort</label>
-            <input type="password" class="form-control" id="password" name="password"
-                   autocomplete="new-password" required>
+            <input type="password" class="form-control{% if fehler.password %} is-invalid{% endif %}"
+                   id="password" name="password" autocomplete="new-password" required>
+            {% if fehler.password %}
+            <div class="invalid-feedback">{{ fehler.password }}</div>
+            {% endif %}
         </div>
         <div class="mb-3">
             <label for="timezone" class="form-label">Zeitzone</label>
