@@ -32,6 +32,7 @@ from thermoctl.web.admin_views import router as admin_router
 from thermoctl.web.audit_views import router as audit_router
 from thermoctl.web.auth_views import router as auth_router
 from thermoctl.web.geraete_views import router as geraete_router
+from thermoctl.web.modi_views import router as modi_router
 from thermoctl.web.setup_views import router as setup_router
 from thermoctl.web.start_views import router as start_router
 from thermoctl.web.zonen_views import router as zonen_router
@@ -186,6 +187,7 @@ def create_app() -> FastAPI:
     app.include_router(audit_router)
     app.include_router(geraete_router)
     app.include_router(zonen_router)
+    app.include_router(modi_router)
     app.include_router(api_router)
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 

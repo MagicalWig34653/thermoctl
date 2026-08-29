@@ -287,6 +287,8 @@ def angemeldeter_client(
             ("token.manage", None),
             ("audit.read", None),
             ("setting.manage", None),
+            ("mode.manage", None),
+            ("setpoint.write", None),
         ]
     )
 
