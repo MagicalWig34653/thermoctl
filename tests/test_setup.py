@@ -53,7 +53,10 @@ def test_setup_token_ist_nur_einmal_verwendbar(client: TestClient, session: Sess
              "timezone": "Europe/Berlin", "setup_token": marke}
     client.post("/setup", data=daten)
     zweite = client.post("/setup", data={**daten, "username": "b"})
-    assert zweite.status_code in (403, 404)
+    # Genau 404, nicht "irgendein Fehler": Die Einrichtung ist danach dauerhaft
+    # geschlossen und nicht bloss verboten — wer sie aufruft, soll nicht erfahren, dass es
+    # sie ueberhaupt gab. Ein `in (403, 404)` haette einen Wechsel nicht bemerkt.
+    assert zweite.status_code == 404
     assert session.query(User).count() == 1
 
 
@@ -109,4 +112,28 @@ def test_setup_mit_zu_kurzem_passwort_fuehrt_zum_formular_zurueck(
         follow_redirects=False,
     )
     assert zweiter_versuch.status_code == 303
+    assert session.query(User).count() == 1
+
+
+def test_einrichtung_ist_auch_in_der_domaene_nur_einmal_moeglich(session: Session) -> None:
+    """Die Ansicht prueft schon — die Domaene prueft trotzdem selbst.
+
+    Der Einrichtungsassistent legt den ersten Verwalter an. Waere die Sperre nur in der
+    Ansicht, genuegte ein zweiter Aufrufweg, um an ihr vorbei einen weiteren anzulegen.
+    """
+    import pytest
+
+    from thermoctl.setup import einrichtung_durchfuehren, setup_token_erzeugen
+
+    marke = setup_token_erzeugen(session)
+    einrichtung_durchfuehren(
+        session, username="erster", display_name="Erster",
+        passwort="passwort-lang-genug", zeitzone="Europe/Berlin", token=marke,
+    )
+    zweite_marke = setup_token_erzeugen(session)
+    with pytest.raises(PermissionError, match="bereits abgeschlossen"):
+        einrichtung_durchfuehren(
+            session, username="zweiter", display_name="Zweiter",
+            passwort="passwort-lang-genug", zeitzone="Europe/Berlin", token=zweite_marke,
+        )
     assert session.query(User).count() == 1

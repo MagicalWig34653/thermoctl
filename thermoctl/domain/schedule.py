@@ -93,6 +93,25 @@ def wochenabschnitte(
     return abschnitte
 
 
+def _zeitpunkt_belegt(session: Session, zone_id: int, wochentag: int, minute: int) -> bool:
+    """Eigene Funktion statt einer eingebetteten Abfrage — wie bei den Zonennamen.
+
+    Damit laesst sich der Wettlauf pruefen, den die Bedingung dahinter abfaengt: Sagt die
+    Vorpruefung 'frei', weil eine gleichzeitige Anfrage denselben Zeitpunkt gerade belegt
+    hat, muss der `IntegrityError` zu einer verstaendlichen Meldung werden statt zu 500.
+    """
+    return (
+        session.scalar(
+            select(SchedulePoint.id).where(
+                SchedulePoint.zone_id == zone_id,
+                SchedulePoint.weekday == wochentag,
+                SchedulePoint.minute_of_day == minute,
+            )
+        )
+        is not None
+    )
+
+
 def zeitplanpunkt_anlegen(
     session: Session,
     zone: Zone,
@@ -109,14 +128,7 @@ def zeitplanpunkt_anlegen(
         raise Zeitplanfehler("uhrzeit", "Bitte eine gültige Uhrzeit eingeben.")
     if session.get(SetpointMode, modus_id) is None:
         raise Zeitplanfehler("modus", "Dieser Modus ist nicht bekannt.")
-    belegt = session.scalar(
-        select(SchedulePoint.id).where(
-            SchedulePoint.zone_id == zone.id,
-            SchedulePoint.weekday == wochentag,
-            SchedulePoint.minute_of_day == minute,
-        )
-    )
-    if belegt is not None:
+    if _zeitpunkt_belegt(session, zone.id, wochentag, minute):
         raise Zeitplanfehler("uhrzeit", "Zu diesem Zeitpunkt gibt es bereits einen Punkt.")
     punkt = SchedulePoint(
         zone_id=zone.id,

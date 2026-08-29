@@ -160,12 +160,18 @@ class TextFormatter(logging.Formatter):
     """
 
     def format(self, record: logging.LogRecord) -> str:
-        basis = super().format(record)
+        # Die Zusatzfelder werden VOR `super().format()` eingesammelt. Danach hat der
+        # Formatierer `message` und (bei einem `asctime`-Muster) `asctime` in
+        # `record.__dict__` nachgetragen — beide standen nicht in `_STANDARDFELDER`, das
+        # beim Import aus einem frischen LogRecord entsteht. Die Folge war, dass jede
+        # Textzeile ihre eigene Meldung am Ende noch einmal wiederholte:
+        # "thermoctl startet | database=... message=thermoctl startet asctime=...".
         zusatz = {
             schluessel: wert
             for schluessel, wert in record.__dict__.items()
             if schluessel not in _STANDARDFELDER and not schluessel.startswith("_")
         }
+        basis = super().format(record)
         if not zusatz:
             return basis
         gemaskt = mask(zusatz)
