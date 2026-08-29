@@ -365,8 +365,10 @@ def test_passkeyseite_ohne_einrichtung_erklaert_es(client_als) -> None:
 
 
 def test_anmeldeseite_bietet_passkeys_nur_mit_einrichtung(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch
+    client: TestClient, benutzer, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    # `benutzer`: ohne einen leitet /login zur Einrichtung weiter, und die Pruefung
+    # unten waere gruen, ohne je das Anmeldeformular gesehen zu haben.
     get_settings.cache_clear()
     assert "passkey-anmelden" not in client.get("/login").text
 

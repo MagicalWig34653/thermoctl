@@ -26,6 +26,7 @@ from thermoctl.db.models.override import ZoneOverride
 from thermoctl.db.models.zustand import ShadowDecision, ZoneState
 from thermoctl.domain.authz import hat_recht, principal_fuer_benutzer, visible_zones
 from thermoctl.domain.schedule import aufgeloester_sollwert
+from thermoctl.setup import einrichtung_noetig
 from thermoctl.web import templates
 
 # `include_in_schema=False`: Die OpenAPI-Beschreibung ist der Vertrag der
@@ -40,6 +41,15 @@ def start(
     request: Request,
     session: Annotated[Session, Depends(get_session)],
 ) -> Response:
+    # Vor der Anmeldung: Solange es keinen einzigen Benutzer gibt, kann sich niemand
+    # anmelden. Ein Anmeldeformular waere dann eine Sackgasse -- wer die Adresse des
+    # Dienstes eingibt, gehoert zur Einrichtung. Dass die Weiterleitung den leeren
+    # Zustand verraet, ist kein Zugewinn fuer einen Angreifer: /setup antwortet ohnehin
+    # sichtbar anders als nach abgeschlossener Einrichtung, und die Einrichtung selbst
+    # haengt am Einmal-Token aus dem Log, nicht an der Erreichbarkeit der Seite.
+    if einrichtung_noetig(session):
+        return RedirectResponse("/setup", status_code=303)
+
     cookie_wert = request.cookies.get(COOKIE_NAME)
     sitzung = sitzung_aufloesen(session, cookie_wert) if cookie_wert else None
     benutzer = session.get(User, sitzung.user_id) if sitzung else None

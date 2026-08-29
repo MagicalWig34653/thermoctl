@@ -21,6 +21,7 @@ from thermoctl.auth.sessions import (
 from thermoctl.config import get_settings
 from thermoctl.db.base import utcnow
 from thermoctl.db.models.identity import User
+from thermoctl.setup import einrichtung_noetig
 from thermoctl.web import templates
 
 # `include_in_schema=False`: Die OpenAPI-Beschreibung ist der Vertrag der
@@ -51,7 +52,15 @@ def schlafen(sekunden: float) -> None:
 
 
 @router.get("/login")
-async def login_formular(request: Request) -> Response:
+async def login_formular(
+    request: Request, session: Annotated[Session, Depends(get_session)]
+) -> Response:
+    # Siehe start_views.start(): Ohne einen einzigen Benutzer fuehrt das Formular
+    # nirgendwohin. Nur GET -- ein POST auf /login ohne Benutzer scheitert ohnehin an
+    # der gewoehnlichen Pruefung, und der soll seine gleichlautende Fehlermeldung
+    # behalten, statt am Weiterleitungsziel erkennen zu lassen, was der Dienst weiss.
+    if einrichtung_noetig(session):
+        return RedirectResponse("/setup", status_code=status.HTTP_303_SEE_OTHER)
     return templates.TemplateResponse(
         request, "anmeldung.html", {"passkeys_moeglich": get_settings().passkeys_moeglich()}
     )

@@ -137,3 +137,55 @@ def test_einrichtung_ist_auch_in_der_domaene_nur_einmal_moeglich(session: Sessio
             passwort="passwort-lang-genug", zeitzone="Europe/Berlin", token=zweite_marke,
         )
     assert session.query(User).count() == 1
+
+
+def test_start_leitet_ohne_benutzer_zur_einrichtung(client: TestClient) -> None:
+    """Ohne einen einzigen Benutzer fuehrt das Anmeldeformular nirgendwohin. Wer die
+    Adresse des Dienstes eingibt, gehoert zur Einrichtung."""
+    antwort = client.get("/", follow_redirects=False)
+    assert antwort.status_code == 303
+    assert antwort.headers["location"] == "/setup"
+
+
+def test_anmeldeformular_leitet_ohne_benutzer_zur_einrichtung(client: TestClient) -> None:
+    antwort = client.get("/login", follow_redirects=False)
+    assert antwort.status_code == 303
+    assert antwort.headers["location"] == "/setup"
+
+
+def test_die_weiterleitung_endet_wirklich_bei_der_einrichtung(client: TestClient) -> None:
+    """Ein Kreis zwischen / , /login und /setup waere der naheliegende Fehler: Die
+    Statuszeile der einzelnen Antwort wuerde ihn nicht zeigen, ein verfolgter Aufruf
+    schon."""
+    antwort = client.get("/", follow_redirects=True)
+    assert antwort.status_code == 200
+    assert antwort.url.path == "/setup"
+
+
+def test_mit_benutzer_bleibt_der_gewohnte_weg(client: TestClient, benutzer) -> None:
+    """Gegenprobe zu den drei Faellen oben. Ohne sie waeren sie auch von einer Fassung
+    erfuellt, die immer zur Einrichtung schickt -- und die haette den Dienst nach
+    abgeschlossener Einrichtung unbenutzbar gemacht."""
+    start = client.get("/", follow_redirects=False)
+    assert start.status_code == 303
+    assert start.headers["location"] == "/login"
+
+    formular = client.get("/login")
+    assert formular.status_code == 200
+    assert "/setup" not in formular.headers.get("location", "")
+
+
+def test_post_login_ohne_benutzer_wird_nicht_weitergeleitet(
+    client: TestClient, monkeypatch
+) -> None:
+    """Absichtlich nur GET weitergeleitet: Ein abgeschickter Anmeldeversuch soll seine
+    gleichlautende Fehlermeldung behalten, statt am Weiterleitungsziel erkennen zu
+    lassen, was der Dienst ueber den Benutzernamen weiss."""
+    monkeypatch.setattr("thermoctl.web.auth_views.schlafen", lambda _: None)
+    antwort = client.post(
+        "/login",
+        data={"username": "gibtsnicht", "password": "falsch-aber-lang"},
+        follow_redirects=False,
+    )
+    assert antwort.status_code != 303
+    assert "Benutzername oder Passwort falsch" in antwort.text
