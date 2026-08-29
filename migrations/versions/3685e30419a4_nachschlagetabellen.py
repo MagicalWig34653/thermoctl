@@ -87,7 +87,9 @@ def upgrade() -> None:
     # ### end Alembic commands ###
     _fuellen("operating_mode", OPERATING_MODES)
     _fuellen("integration", INTEGRATIONS)
-    _fuellen("device_capability", DEVICE_CAPABILITIES)
+    # Historische Migrationen muessen reproduzierbar bleiben, auch wenn die zentrale
+    # Liste spaeter erweitert wird. Teilprojekt 2 fuegt seine Codes in eigener Revision ein.
+    _fuellen("device_capability", DEVICE_CAPABILITIES[:5])
     _fuellen("device_role", DEVICE_ROLES)
     _fuellen("actor_source", ACTOR_SOURCES)
     op.bulk_insert(
