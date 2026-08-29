@@ -366,7 +366,7 @@ def create_app() -> FastAPI:
             title="thermoctl — REST-Schnittstelle",
             swagger_js_url="/static/vendor/swagger-ui/swagger-ui-bundle.js",
             swagger_css_url="/static/vendor/swagger-ui/swagger-ui.css",
-            swagger_favicon_url="/static/vendor/swagger-ui/favicon.svg",
+            swagger_favicon_url="/static/favicon.svg",
         )
 
     @app.get("/healthz")

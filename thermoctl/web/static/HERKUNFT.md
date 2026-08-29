@@ -43,8 +43,10 @@ aus einem CDN und das Symbol sogar von `fastapi.tiangolo.com` — deshalb ist di
 mitgelieferte Fassung abgeschaltet (`docs_url=None` in `thermoctl/app.py`) und durch eine
 eigene Route ersetzt, die auf diese Dateien zeigt.
 
-`vendor/swagger-ui/favicon.svg` ist dagegen **kein** Fremdcode, sondern selbst gezeichnet:
-ein Thermometer. Sonst haette die Seite als einziges Element noch am Netz gehangen.
+Das Symbol `static/favicon.svg` ist **kein** Fremdcode, sondern selbst gezeichnet: ein
+Thermometer. Es liegt deshalb neben diesem Verzeichnis und nicht darin. Sonst haette die
+Seite als einziges Element noch am Netz gehangen — und ohne eigenes Symbol fragte jeder
+Browser bei jedem Seitenaufruf vergeblich nach `/favicon.ico`.
 
 ReDoc (`/redoc`) ist ersatzlos abgeschaltet: dasselbe CDN-Problem, und eine zweite
 Lesefassung derselben Beschreibung ist den Ballast nicht wert.
