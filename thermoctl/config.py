@@ -23,10 +23,26 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     log_format: str = "json"
     secure_cookies: bool = False
+    mqtt_enabled: bool = False
+    mqtt_host: str | None = None
+    mqtt_port: int = 1883
+    mqtt_tls: bool = False
+    mqtt_username: str | None = None
+    mqtt_password: SecretStr | None = None
+    mqtt_client_id: str = "thermoctl"
+    mqtt_base_topic: str = "zigbee2mqtt"
+    mqtt_ca_cert: str | None = None
 
     def sanitized_database_url(self) -> str:
         """Die Verbindungszeichenfolge ohne Zugangsdaten — fuer Logausgaben."""
         return make_url(self.database_url).render_as_string(hide_password=True)
+
+    def sanitized_mqtt_connection(self) -> str:
+        """Die MQTT-Verbindungsangaben ohne Passwort — fuer Logausgaben."""
+        protokoll = "mqtts" if self.mqtt_tls else "mqtt"
+        benutzer = f"{self.mqtt_username}@" if self.mqtt_username else ""
+        host = self.mqtt_host or "<nicht konfiguriert>"
+        return f"{protokoll}://{benutzer}{host}:{self.mqtt_port}"
 
 
 @lru_cache
