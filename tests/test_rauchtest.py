@@ -15,17 +15,33 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy.orm import Session
+
+from tests.hilfen import zone_anlegen
 
 TEMPLATE_VERZEICHNIS = Path(__file__).resolve().parent.parent / "thermoctl/web/templates"
 
 # Seiten, die eine angemeldete Sitzung voraussetzen.
-GESCHUETZTE_SEITEN = ["/", "/benutzer", "/gruppen", "/tokens", "/geraete"]
+GESCHUETZTE_SEITEN = [
+    "/",
+    "/benutzer",
+    "/gruppen",
+    "/tokens",
+    "/geraete",
+    "/modi",
+    "/modi/neu",
+    "/zonen/{zone_id}/sollwerte",
+]
 
 
-def test_jede_seite_antwortet_angemeldet(angemeldeter_client: TestClient) -> None:
+def test_jede_seite_antwortet_angemeldet(
+    angemeldeter_client: TestClient, session: Session
+) -> None:
     """Keine Seite darf 404 oder 500 liefern, wenn man angemeldet ist."""
+    zone = zone_anlegen(session, "rauchtest")
     fehler = []
-    for pfad in GESCHUETZTE_SEITEN:
+    for muster in GESCHUETZTE_SEITEN:
+        pfad = muster.format(zone_id=zone.id)
         antwort = angemeldeter_client.get(pfad)
         if antwort.status_code != 200:
             fehler.append(f"{pfad}: HTTP {antwort.status_code}")

@@ -1,0 +1,21 @@
+{% extends "basis.html" %}
+{% block titel %}Sollwert-Modi – thermoctl{% endblock %}
+{% block inhalt %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="mb-0">Sollwert-Modi</h1>
+    <a class="btn btn-primary" href="/modi/neu">Neuer Modus</a>
+</div>
+{% if modi %}
+<div class="list-group">
+{% for modus in modi %}
+    <a class="list-group-item list-group-item-action d-flex justify-content-between"
+       href="/modi/{{ modus.id }}">
+        <span>{{ modus.name }} <small class="text-body-secondary">{{ modus.code }}</small></span>
+        <span class="badge text-bg-secondary">{{ modus.sort_order }}</span>
+    </a>
+{% endfor %}
+</div>
+{% else %}
+<p>Noch keine Sollwert-Modi vorhanden.</p>
+{% endif %}
+{% endblock %}
