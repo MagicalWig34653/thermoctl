@@ -37,16 +37,75 @@
     <div class="card h-100">
       <div class="card-body">
         <h3 class="h5">{{ zone.display_name }}</h3>
+        {% set sollwert = sollwerte[zone.id] %}
         {% if eintrag %}
         {% set zustand, sensorstatus = eintrag %}
         <p class="mb-1">
-          Ist-Temperatur:
-          <strong>{{ (zustand.temperature_c|string + " °C") if zustand.temperature_c is not none else "kein Messwert" }}</strong>
+          {% if zustand.temperature_c is not none %}
+          <strong>{{ zustand.temperature_c }} °C Ist, {{ sollwert.temperature_c }} °C Soll</strong>
+          ({{ sollwert.grund }})
+          {% else %}
+          <strong>Noch kein Messwert für die Temperatur vorhanden.</strong>
+          Soll {{ sollwert.temperature_c }} °C ({{ sollwert.grund }}).
+          {% endif %}
         </p>
-        <p class="mb-1">Sensorzustand: {{ sensorstatus.label }}</p>
-        <p class="mb-0" title="{{ zustand.measured_at or "" }} UTC">Gemessen {{ zustand.measured_at|alter }}</p>
+        <p class="mb-1">Sensor: {{ sensorstatus.label }}; Messwert {{ zustand.measured_at|alter }}.</p>
         {% else %}
-        <p class="text-secondary mb-0">Noch kein Zonenzustand vorhanden.</p>
+        <p class="mb-1"><strong>Noch kein Zonenzustand vorhanden:</strong>
+          noch kein Messwert für die Temperatur.</p>
+        <p class="mb-1">Soll {{ sollwert.temperature_c }} °C ({{ sollwert.grund }}).</p>
+        <p class="mb-1">Sensorzustand noch nicht ermittelt.</p>
+        {% endif %}
+        <p class="mb-1">Betriebsart: {{ zone.operating_mode.label }}</p>
+        {% set override = uebersteuerungen.get(zone.id) %}
+        {% if override %}
+        <div class="alert alert-warning py-2">
+          Übersteuerung auf {{ override.temperature_c }} °C,
+          {% if override.ends_at %}endet {{ override.ends_at|alter }}{% else %}dauerhaft{% endif %}.
+          Grund: manuell gewählte feste Temperatur.
+          {% if zone.id in darf_aufheben %}
+          <form method="post" action="/zonen/{{ zone.id }}/uebersteuerung/aufheben" class="mt-2">
+            <button class="btn btn-sm btn-outline-danger" type="submit">Übersteuerung aufheben</button>
+          </form>
+          {% endif %}
+        </div>
+        {% endif %}
+        {% set entscheidung = entscheidungen.get(zone.id) %}
+        {% if entscheidung %}
+        <p class="mb-2">Letzte Schattenentscheidung:
+          <strong>{{ "Heizen" if entscheidung.would_heat else "Nicht heizen" }}</strong>
+          – {{ entscheidung.reason }} ({{ entscheidung.decided_at|alter }}).
+        </p>
+        {% else %}
+        <p class="text-secondary mb-2">Noch keine Schattenentscheidung vorhanden.</p>
+        {% endif %}
+        {% if zone.id in darf_uebersteuern %}
+        {% set hat_fehler = uebersteuerungsfehler and fehler_zone_id == zone.id|string %}
+        <form method="post" action="/zonen/{{ zone.id }}/uebersteuerung" class="border-top pt-3 mt-3">
+          <label class="form-label" for="temperature_c-{{ zone.id }}">Temperatur übersteuern</label>
+          <div class="input-group mb-2">
+            <input class="form-control{% if hat_fehler %} is-invalid{% endif %}" id="temperature_c-{{ zone.id }}" name="temperature_c"
+                   type="number" min="5" max="35" step="0.1"
+                   value="{{ uebersteuerungswerte.get('temperature_c', '') if hat_fehler else '' }}" required>
+            <span class="input-group-text">°C</span>
+            {% if hat_fehler %}<div class="invalid-feedback">{{ uebersteuerungsfehler }}</div>{% endif %}
+          </div>
+          <select class="form-select mb-2" name="ende" aria-label="Ende der Übersteuerung">
+            <option value="naechste_schaltung"{% if hat_fehler and uebersteuerungswerte.get('ende') == 'naechste_schaltung' %} selected{% endif %}>Bis zur nächsten Schaltung</option>
+            <option value="dauer"{% if hat_fehler and uebersteuerungswerte.get('ende') == 'dauer' %} selected{% endif %}>Für eine Dauer</option>
+            <option value="dauerhaft"{% if hat_fehler and uebersteuerungswerte.get('ende') == 'dauerhaft' %} selected{% endif %}>Dauerhaft</option>
+          </select>
+          <div class="input-group mb-2">
+            <input class="form-control" name="dauer_minuten" type="number" min="1"
+                   value="{{ uebersteuerungswerte.get('dauer_minuten', '') if hat_fehler else '' }}"
+                   placeholder="Nur bei Dauer">
+            <span class="input-group-text">Minuten</span>
+          </div>
+          <button class="btn btn-sm btn-primary" type="submit">Übersteuern</button>
+        </form>
+        {% endif %}
+        {% if zone.id in darf_parameter %}
+        <a class="btn btn-sm btn-outline-secondary mt-3" href="/zonen/{{ zone.id }}/parameter">Regelparameter</a>
         {% endif %}
       </div>
     </div>

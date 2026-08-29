@@ -5,7 +5,13 @@ from pathlib import Path
 
 from sqlalchemy.orm import Session
 
-from tests.hilfen import geraet_anlegen, geraetezustand_anlegen, rolle, zone_anlegen
+from tests.hilfen import (
+    einstellungen_anlegen,
+    geraet_anlegen,
+    geraetezustand_anlegen,
+    rolle,
+    zone_anlegen,
+)
 from thermoctl.db.models.device import DeviceCapabilityLink, ZoneDevice
 from thermoctl.db.models.lookup import DeviceCapability
 
@@ -71,6 +77,7 @@ def test_startseite_zeigt_zonenzustand_ohne_nulltemperatur(client_als, session: 
     from thermoctl.db.models.lookup import SensorStatus
     from thermoctl.db.models.zustand import ZoneState
 
+    einstellungen_anlegen(session)
     zone_mit_wert = zone_anlegen(session, "mit-wert")
     zone_ohne_wert = zone_anlegen(session, "ohne-wert")
     zone_ohne_zustand = zone_anlegen(session, "ohne-zustand")

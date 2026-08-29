@@ -29,6 +29,7 @@ from thermoctl.services.schattenlauf import zyklus
 from thermoctl.setup import einrichtung_noetig, setup_token_erzeugen
 from thermoctl.web import STATIC_DIR
 from thermoctl.web.admin_views import router as admin_router
+from thermoctl.web.alltag_views import router as alltag_router
 from thermoctl.web.audit_views import router as audit_router
 from thermoctl.web.auth_views import router as auth_router
 from thermoctl.web.geraete_views import router as geraete_router
@@ -217,6 +218,7 @@ def create_app() -> FastAPI:
     app.include_router(zonen_router)
     app.include_router(modi_router)
     app.include_router(zeitplan_router)
+    app.include_router(alltag_router)
     app.include_router(api_router)
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
