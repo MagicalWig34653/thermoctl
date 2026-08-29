@@ -1,6 +1,6 @@
 # Roadmap
 
-Stand: 2026-08-28
+Stand: 2026-08-29
 
 Diese Roadmap führt zusammen, was im [Rahmenentwurf](superpowers/specs/2026-08-28-thermoctl-neubau-design.md)
 in fünf Teilprojekte zerlegt ist, und konkretisiert es zu Features und Aufgaben. Sie ersetzt
@@ -17,7 +17,7 @@ Phase 1 geschehen ist. Features, die aus der unverbindlichen
 | Phase | Inhalt | Zustand | Nutzen am Ende |
 |---|---|---|---|
 | 1 | Fundament | **umgesetzt** | Nichts sichtbar, aber alles Weitere hängt daran |
-| 1a | Nacharbeiten | läuft | Oberfläche benutzbar, Auflagen des Reviews erledigt |
+| 1a | Nacharbeiten | fast fertig | Oberfläche benutzbar, zwei Punkte offen |
 | 2 | Geräte-Anbindung im Schattenbetrieb | offen | Belegt gegen die echte Anlage, dass die Daten stimmen |
 | 3 | Konfigurations-Oberfläche | offen | Ende der SQL-Pflege — ab hier im Alltag nützlich |
 | 4 | Regelkreis und Cutover | offen | Heizt wirklich; Altsystem wird abgelöst |
@@ -43,10 +43,14 @@ Container und CI gegen beide Datenbanken.
 Aus dem Abschlussreview und dem ersten Ausprobieren im Browser. Klein, aber vor Phase 2 zu
 erledigen.
 
-- [ ] Bootstrap und HTMX lokal einbinden; Templates auf ein gemeinsames Grundgerüst bringen
+- [x] Bootstrap und HTMX lokal einbinden; Templates auf ein gemeinsames Grundgerüst bringen
       *(der Rahmenentwurf setzt beides voraus, keine Aufgabe hatte es verlangt)*
-- [ ] Eingabefehler führen zum Formular zurück statt zu `500`
-- [ ] Globaler `Forbidden`-Handler statt Übersetzung in jeder Route
+- [x] Eingabefehler führen zum Formular zurück statt zu `500`
+- [x] Globaler `Forbidden`-Handler statt Übersetzung in jeder Route
+- [x] **Startseite gebaut** — Anmeldung, Abmeldung und Navigation zeigten auf `/`, das es
+      nicht gab. Beim ersten Öffnen im Browser aufgefallen, nicht durch Tests.
+- [x] Rauchtest und Endpunktabdeckung ergänzt, Testabdeckung von 93 auf 99 %
+- [x] Jedes Review führt die Testsuite selbst aus *(Regel in CLAUDE.md)*
 - [ ] Gemeinsame CSRF-Abhängigkeit statt Prüfung von Hand je Route — **vor Phase 3**, dort
       entstehen die ändernden Ansichten
 - [ ] Test für das Startverhalten: genau ein Einrichtungs-Token, beim zweiten Start keines mehr
