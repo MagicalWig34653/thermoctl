@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="de">
+<html lang="de" data-bs-theme="auto">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -8,17 +8,48 @@
     <link rel="stylesheet" href="/static/vendor/bootstrap/bootstrap.min.css">
 </head>
 <body hx-boost="true">
-<nav class="navbar navbar-expand-sm navbar-dark bg-dark mb-4">
+<nav class="navbar sticky-top navbar-expand-lg bg-body-secondary bg-opacity-50 p-3 mb-4"
+     style="backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px)">
     <div class="container">
         <a class="navbar-brand" href="/">thermoctl</a>
-        <div class="navbar-nav">
-            <a class="nav-link" href="/benutzer">Benutzer</a>
-            <a class="nav-link" href="/gruppen">Gruppen</a>
-            <a class="nav-link" href="/tokens">Tokens</a>
-            <a class="nav-link" href="/geraete">Geräte</a>
-            <a class="nav-link" href="/zonen">Zonen</a>
-            <a class="nav-link" href="/modi">Modi</a>
-            <a class="nav-link" href="/audit">Audit</a>
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse"
+                data-bs-target="#hauptnavigation" aria-controls="hauptnavigation"
+                aria-expanded="false" aria-label="Navigation einblenden">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+        <div class="collapse navbar-collapse" id="hauptnavigation">
+            <ul class="navbar-nav ms-auto">
+                <li class="nav-item dropdown">
+                    <button class="nav-link dropdown-toggle" type="button"
+                            data-bs-toggle="dropdown" aria-expanded="false">Anlage</button>
+                    <ul class="dropdown-menu dropdown-menu-end">
+                        <li><a class="dropdown-item" href="/zonen">Zonen</a></li>
+                        <li><a class="dropdown-item" href="/geraete">Geräte</a></li>
+                        <li><a class="dropdown-item" href="/modi">Modi</a></li>
+                    </ul>
+                </li>
+                <li class="nav-item dropdown">
+                    <button class="nav-link dropdown-toggle" type="button"
+                            data-bs-toggle="dropdown" aria-expanded="false">Verwaltung</button>
+                    <ul class="dropdown-menu dropdown-menu-end">
+                        <li><a class="dropdown-item" href="/benutzer">Benutzer</a></li>
+                        <li><a class="dropdown-item" href="/gruppen">Gruppen</a></li>
+                        <li><a class="dropdown-item" href="/audit">Audit</a></li>
+                    </ul>
+                </li>
+                <li class="nav-item dropdown">
+                    <button class="nav-link dropdown-toggle" type="button"
+                            data-bs-toggle="dropdown" aria-expanded="false">Konto</button>
+                    <ul class="dropdown-menu dropdown-menu-end">
+                        <li><a class="dropdown-item" href="/tokens">Tokens</a></li>
+                        <li>
+                            <form hx-post="/logout">
+                                <button class="dropdown-item" type="submit">Abmelden</button>
+                            </form>
+                        </li>
+                    </ul>
+                </li>
+            </ul>
         </div>
     </div>
 </nav>

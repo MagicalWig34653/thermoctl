@@ -90,6 +90,22 @@ def test_anmeldeseite_bindet_das_stylesheet_ein(client: TestClient) -> None:
     assert "/static/vendor/bootstrap/bootstrap.min.css" in antwort.text
 
 
+def test_anmeldeseite_enthaelt_keine_navigationsleiste(client: TestClient) -> None:
+    antwort = client.get("/login")
+    assert antwort.status_code == 200
+    assert "<nav" not in antwort.text
+
+
+def test_basisvorlage_traegt_blur_fuer_alle_browser() -> None:
+    from pathlib import Path
+
+    basis = (
+        Path(__file__).parent.parent / "thermoctl" / "web" / "templates" / "basis.html"
+    ).read_text(encoding="utf-8")
+    assert "backdrop-filter: blur(10px)" in basis
+    assert "-webkit-backdrop-filter: blur(10px)" in basis
+
+
 def test_lifespan_erzeugt_einrichtungstoken_bei_fehlender_einrichtung(
     monkeypatch: pytest.MonkeyPatch, tmp_path, capsys: pytest.CaptureFixture[str]
 ) -> None:
