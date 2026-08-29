@@ -1,0 +1,23 @@
+{% extends "basis.html" %}
+{% from "formular.html" import zahlenfeld %}
+{% block titel %}Regelparameter – {{ zone.display_name }}{% endblock %}
+{% block inhalt %}
+<h1 class="h3">Regelparameter für {{ zone.display_name }}</h1>
+<p class="text-secondary">Ein leeres Feld verwendet den globalen Standard.</p>
+<form method="post" action="/zonen/{{ zone.id }}/parameter">
+  {{ zahlenfeld("hysteresis_k", "Hysterese (K)", werte.hysteresis_k,
+    "Wie weit die Ist-Temperatur unter den Sollwert fallen darf, bevor geheizt wird. Zu klein heißt ständiges Ein- und Ausschalten. Derzeit " ~ wirksam.hysteresis_k ~ " K" ~ (" aus dem globalen Standard." if not werte.hysteresis_k else "."), fehler.hysteresis_k, "0.01", "0") }}
+  {{ zahlenfeld("min_on_seconds", "Mindest-Einschaltdauer (Sekunden)", werte.min_on_seconds,
+    "Wie lange die Heizung nach dem Einschalten mindestens an bleibt. Das schützt vor kurzen Schaltzyklen. Derzeit " ~ wirksam.min_on_seconds ~ " Sekunden" ~ (" aus dem globalen Standard." if not werte.min_on_seconds else "."), fehler.min_on_seconds, "1", "0") }}
+  {{ zahlenfeld("min_off_seconds", "Mindest-Ausschaltdauer (Sekunden)", werte.min_off_seconds,
+    "Wie lange die Heizung nach dem Ausschalten mindestens aus bleibt. Das verhindert sofortiges Wiedereinschalten. Derzeit " ~ wirksam.min_off_seconds ~ " Sekunden" ~ (" aus dem globalen Standard." if not werte.min_off_seconds else "."), fehler.min_off_seconds, "1", "0") }}
+  {{ zahlenfeld("sensor_timeout_seconds", "Sensor-Timeout (Sekunden)", werte.sensor_timeout_seconds,
+    "Nach dieser Zeit ohne neuen Messwert gilt der Sensor als ausgefallen und die Sicherheitsregel greift. Derzeit " ~ wirksam.sensor_timeout_seconds ~ " Sekunden" ~ (" aus dem globalen Standard." if not werte.sensor_timeout_seconds else "."), fehler.sensor_timeout_seconds, "1", "0") }}
+  {{ zahlenfeld("temperature_offset_k", "Sensorkalibrierung (K)", werte.temperature_offset_k,
+    "Dieser Wert wird auf die gemessene Temperatur addiert, um eine bekannte Abweichung des Sensors auszugleichen. Negative Werte sind erlaubt. Derzeit " ~ wirksam.temperature_offset_k ~ " K" ~ (" aus dem globalen Standard." if not werte.temperature_offset_k else "."), fehler.temperature_offset_k, "0.01") }}
+  {{ zahlenfeld("window_resume_delay_seconds", "Wiederanlauf nach Fenster (Sekunden)", werte.window_resume_delay_seconds,
+    "So lange wartet die Heizung nach dem Schließen eines Fensters, bevor sie wieder anläuft. Derzeit " ~ wirksam.window_resume_delay_seconds ~ " Sekunden" ~ (" aus dem globalen Standard." if not werte.window_resume_delay_seconds else "."), fehler.window_resume_delay_seconds, "1", "0") }}
+  <button class="btn btn-primary" type="submit">Speichern</button>
+  <a class="btn btn-secondary" href="/">Abbrechen</a>
+</form>
+{% endblock %}
