@@ -4,39 +4,19 @@ Letzte Aktualisierung: 2026-08-29
 
 ## Wo wir stehen
 
-**Teilprojekt 1 (Fundament) ist abgeschlossen und als `v0.1.0` veröffentlicht.
-Teilprojekt 2 (Geräte-Anbindung im Schattenbetrieb) ist gebaut.** Teilprojekt 3
-(Konfigurations-Oberfläche) läuft. Aus Teilprojekt 5 wurde vorgezogen, was nicht auf den
-Regelkreis wartet.
-
-`thermoctl` liest jetzt Sensoren, führt eine Messwert-Historie, erkennt ausgefallene
-Sensoren und schreibt für jede Zone auf, **was es schalten würde und warum** — ohne je
-etwas zu schalten. Der Regelkreis selbst (Phase 4) ist gebaut und erschöpfend getestet,
-aber nicht scharf.
-
-### Was Phase 2 gebracht hat
-
-| | |
+| Phase | Zustand |
 |---|---|
-| Nutzlast-Auswertung | gegen die echten Anlagendaten gebaut, nicht gegen Vermutungen |
-| Geräteerkennung | aus `bridge/devices`, erkennt Ventile und Fensterkontakte ohne Zustandsnachricht |
-| MQTT-Client | TLS, Zugangsdaten aus der Umgebung, Wiederverbindung mit wachsendem Abstand |
-| Ingest | Messwerte, Gerätezustand, Zonenzustand; unbekannte Geräte werden angelegt |
-| Regelentscheidung | Hysterese, Mindestschaltdauer, Fensterpause, Frostschutz — rein und erschöpfend getestet |
-| Störungserkennung | ein ausbleibender Messwert ist ein Zustand, kein alter Wert |
-| Aktoren | vollständig gebaut, hinter **zwei** unabhängigen Riegeln |
-| Schattenprotokoll | je Zone und Zyklus eine begründete Entscheidung |
-| Oberfläche | `/geraete` lesend, Zonenzustand auf der Startseite |
+| 1 — Fundament | abgeschlossen, veröffentlicht als `v0.1.0` |
+| 1a — Nacharbeiten | abgeschlossen |
+| 2 — Geräte-Anbindung im Schattenbetrieb | **gebaut**; der Nachweis über mehrere Tage braucht die Anlage |
+| 3 — Konfigurations-Oberfläche | **abgeschlossen**, Abnahmekriterium nachgewiesen |
+| 4 — Regelkreis und Cutover | Logik und Tests stehen, **nichts ist scharf** |
+| 5 — Integrationen und Veröffentlichung | bis auf zwei Punkte erledigt |
 
-### Der Trockenlauf ist abgesichert, nicht zugesagt
-
-- `setting.control_armed` steht auf `false` und wird nirgends gesetzt.
-- Jeder Aktor prüft ihn als Erstes.
-- Der MQTT-Client verweigert das Veröffentlichen zusätzlich, solange er nicht scharf
-  gebaut wurde — auch wenn ein Aufrufer es ausdrücklich verlangt.
-- Tests belegen beides, **und** den Gegenbeweis: Ein scharf gebauter Client sendet
-  wirklich. Ohne den belegte die Suite nur, dass nichts gesendet wird — auch dann, wenn
-  das Senden gar nicht gebaut wäre.
+`thermoctl` liest Sensoren, führt eine Messwert-Historie, erkennt ausgefallene Sensoren,
+meldet Störungen, und schreibt für jede Zone auf, **was es schalten würde und warum** —
+ohne je etwas zu schalten. Eine vollständige Anlage lässt sich über die Oberfläche
+einrichten, ohne einen einzigen SQL-Befehl.
 
 ## Zahlen
 
@@ -44,36 +24,76 @@ Vom Controller selbst nachgeprüft, nicht aus Berichten übernommen:
 
 | | |
 |---|---|
-| Tests | grün unter SQLite **und** MariaDB |
+| Tests | 617, grün unter SQLite **und** MariaDB |
 | Testabdeckung | 99 %, Mindestschwelle 97 % in der CI |
-| Ruff, mypy strict | ohne Befund |
+| Ruff, mypy strict | ohne Befund, 73 Quelldateien |
 | Migrationskette | linear, ein Kopf, vorwärts und rückwärts gegen beide Datenbanken |
-| Echte Anlagendaten | zehn Zustandsnachrichten durch den Ingest: 10 Geräte, 37 Messwerte, in der Oberfläche sichtbar |
+| CI und Container | grün |
 
-## Was in dieser Runde gefunden wurde
+## Der Trockenlauf ist abgesichert, nicht zugesagt
 
-Vier Fehler, die alle Tests und Reviews passiert hatten:
+- `setting.control_armed` steht auf `false` und wird nirgends gesetzt.
+- Jeder Aktor prüft ihn als Erstes.
+- Der MQTT-Client verweigert das Veröffentlichen zusätzlich, solange er nicht scharf gebaut
+  wurde — auch wenn ein Aufrufer es ausdrücklich verlangt.
+- Tests belegen beides **und** den Gegenbeweis: Ein scharf gebauter Client sendet wirklich.
+  Ohne den belegte die Suite nur, dass nichts gesendet wird — auch dann, wenn das Senden
+  gar nicht gebaut wäre.
 
-1. **Zwei Wächtertests prüften nichts.** Seit FastAPI 0.141 verschachtelt
-   `include_router()` die Routen; beide Wächter fanden nur noch `/healthz` und waren grün,
-   weil sie leer liefen. Behoben, mit Gegenprobe.
-2. **Der Testlauf hing an einer zufällig vorhandenen `.env`.** In der CI wäre der nächste
-   Lauf rot geworden. Nachgestellt in einem frischen Worktree.
+## Was in diesem Lauf entstanden ist
+
+**Phase 2** — Nutzlast-Auswertung gegen die echten Anlagendaten, Geräteerkennung aus
+`bridge/devices` (erkennt Ventile und Fensterkontakte, ohne je eine Zustandsnachricht von
+ihnen gesehen zu haben), MQTT-Client mit TLS und Wiederverbindung, Ingest samt
+Messwert-Historie und Aufbewahrung, Störungserkennung, Fensterkontakte, Aktor-Adapter im
+Trockenlauf hinter zwei Riegeln, Schattenprotokoll, Geräteübersicht.
+
+**Die Regelentscheidung** ist aus Phase 4 vorgezogen — sonst hätte das Schattenprotokoll
+nichts zu protokollieren. Hysterese, Mindestschaltdauer, Fensterpause, Frostschutz bei
+Sensorausfall, als reine Funktion mit 33 Tests, darunter der Defekt des Altsystems
+ausdrücklich vorgeführt.
+
+**Phase 3** — Formularbausteine, Zonenverwaltung, Gerätezuordnung samt Tausch, Modi und
+Sollwerte, Zeitplan-Editor mit Wochenansicht, Übersteuern, Regelparameter je Zone,
+Benutzer-/Gruppen-/Tokenverwaltung, Audit-Ansicht, Übersichtsseite.
+
+**Aus Phase 5 vorgezogen** — MCP-Server als dritter Adapter, API-Dokumentation,
+Self-Hosting-Anleitung, Beispiel-Compose, Benachrichtigungen bei Störungen,
+[Sicherheitsdurchsicht](sicherheitsdurchsicht.md), und die REST-Endpunkte, mit denen die
+drei Adapter wieder auf demselben Stand sind.
+
+**Aus Phase 4 vorgebaut, ohne etwas scharf zu schalten** — die Umwandlung des alten
+Stundenrasters in Schaltpunkte (die Roadmap führte sie als ungeklärt; sie ist jetzt eine
+reine Funktion mit einer Rückprobe über alle 168 Wochenstunden) und die lesende Grundlage
+des Vergleichsbetriebs.
+
+## Sieben Fehler, die alle Tests und Reviews passiert hatten
+
+Alle in diesem Lauf gefunden:
+
+1. **Zwei Wächtertests prüften nichts.** Seit FastAPI 0.141 verschachtelt `include_router()`
+   die Routen; beide Wächter fanden nur noch `/healthz` und waren grün, weil sie leer
+   liefen.
+2. **Der Testlauf hing an einer zufällig vorhandenen `.env`.** Örtlich grün, in der CI wäre
+   der nächste Lauf rot geworden.
 3. **Die Startseite baute eine eigene Vorlagen-Umgebung mit relativem Pfad.** Im Container
    liegt das Paket in `site-packages` und das Arbeitsverzeichnis ist `/app` — dort hätte
-   genau die Seite gefehlt, auf die Anmeldung und Navigation zeigen. Ein Wächter in
-   `test_architektur.py` verhindert die Wiederholung.
+   genau die Seite gefehlt, auf die Anmeldung und Navigation zeigen.
 4. **Ein zu kurzes Passwort hinterließ eine halb angelegte Einrichtung**, weil die Prüfung
-   erst nach den ersten Schreibzugriffen kam. Der zweite, korrekte Versuch scheiterte dann.
+   erst nach den ersten Schreibzugriffen kam.
+5. **Der Downgrade der Phase-2-Migration scheiterte nur unter MariaDB** — dort wird der
+   Index für einen Fremdschlüssel gebraucht.
+6. **Die Frostschutz-Sperre griff in keiner echten Anlage.** Der Einrichtungsassistent legt
+   den Frostschutzmodus als eingebauten Modus an, und die allgemeine Sperre kam zuerst —
+   also bekam genau der wichtigste Modus die nichtssagende Meldung. Der zugehörige Test war
+   grün, weil seine Fixture einen Zustand herstellte, den es in keiner Instanz gibt.
+7. **`shadow_decision.zone_id` hatte als einziger Zonenbezug keine Kaskade**, wodurch sich
+   eine Zone nicht mehr löschen ließ, sobald ein Schattenlauf für sie gelaufen war.
 
-Dazu zwei sicherheitsrelevante Korrekturen aus der Gegenlesung in der Hauptsession:
-
-- **Bei ausgefallenem Sensor** schaltete die Regelung dauerhaft ab. Das ist die
-  gefährlichere Antwort — genau so friert im Januar eine Leitung ein. Jetzt gilt der
-  Frostschutz-Sollwert. Begründung und Restrisiko in
-  [offene-entscheidungen.md](offene-entscheidungen.md).
-- **Der MQTT-Wiederverbindungsabstand** wuchs über die Lebensdauer des Dienstes monoton
-  weiter; eine Verbindung, die nach Tagen einmal abreißt, hätte eine Minute gewartet.
+Dazu vier Korrekturen aus der Gegenlesung in der Hauptsession: Frostschutz statt Abschalten
+bei Sensorausfall, ein MQTT-Wiederverbindungsabstand, der monoton wuchs, eine doppelt
+implementierte Zeitberechnung in zwei Adaptern, und ein Meldungsversand, der den Zyklustakt
+verzögert hätte.
 
 ## Offen
 
@@ -81,19 +101,19 @@ Dazu zwei sicherheitsrelevante Korrekturen aus der Gegenlesung in der Hauptsessi
 
 - **Phase 2 wirklich abschließen.** Die Anlage muss über mehrere Tage laufen:
   `THERMOCTL_MQTT_ENABLED=true` samt Zugangsdaten in `.env`, dann Geduld. Erst dann steht
-  fest, dass plausible Ist-Temperaturen aller Zonen einlaufen.
-- **Die Meross-Zugangsdaten** hinterlegen. Der Adapter ist gebaut, sein Nutzlastaufbau ist
-  aber eine begründete Annahme und nie gegen ein echtes Konto gelaufen — vor dem
-  Scharfschalten zu prüfen.
-- **Das Repository öffentlich schalten** (Phase 5, Aufgabe 9). Ausdrücklich seine
-  Entscheidung.
-- **Die Entscheidung zum Frostschutz bei Sensorausfall bestätigen**, bevor Phase 4 scharf
-  schaltet.
+  fest, dass plausible Ist-Temperaturen aller Zonen einlaufen und das Schattenprotokoll
+  nachvollziehbare Entscheidungen zeigt.
+- **Die Frostschutz-Entscheidung bestätigen**, bevor Phase 4 scharf schaltet — siehe
+  [offene-entscheidungen.md](offene-entscheidungen.md). Sie hat körperliche Folgen.
+- **Meross-Zugangsdaten hinterlegen.** Der Adapter ist gebaut, sein Nutzlastaufbau ist eine
+  begründete Annahme und nie gegen ein echtes Konto gelaufen.
+- **Das Repository öffentlich schalten** — ausdrücklich seine Entscheidung.
 
 **Was als Nächstes ansteht:**
 
-- Teilprojekt 3 zu Ende bringen: Zeitplan-Editor, Gerätezuordnung samt Tausch,
-  Regelparameter je Zone, Rechte- und Tokenverwaltung, Übersichtsseite.
-- Danach Phase 4: Vergleichsbetrieb gegen das Altsystem, Datenübernahme aus dem Altschema,
-  Scharfschalten hinter einem Schalter.
-- `vm130-nginx` bleibt bis zum abgeschlossenen Cutover unverändert die Rückfallebene.
+- Phase 4: Vergleichsbetrieb entwerfen (Dauer, Auflösung, Bericht), dann das Schema dafür
+  bauen — nicht umgekehrt. Datenübernahme aus dem Altschema. Scharfschalten hinter einem
+  Schalter, jederzeit umkehrbar.
+- Phase 5, Rest: Home-Assistant-Discovery veröffentlichen (der Entwurf steht, das Senden
+  wartet auf Phase 4), altes Topic-Schema abkündigen.
+- **`vm130-nginx` bleibt bis zum abgeschlossenen Cutover unverändert die Rückfallebene.**
