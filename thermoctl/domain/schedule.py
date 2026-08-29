@@ -14,6 +14,7 @@ from thermoctl.db.models.operations import Setting
 from thermoctl.db.models.override import ZoneOverride
 from thermoctl.db.models.schedule import SchedulePoint
 from thermoctl.db.models.zone import SetpointMode, Zone, ZoneSetpoint
+from thermoctl.domain.modi import temperatur_pruefen
 
 MINUTEN_JE_WOCHE = 7 * 24 * 60
 
@@ -27,7 +28,12 @@ class Sollwert:
     modus_code: str | None
 
 
-@dataclass(frozen=True)
+# Bewusst NICHT `frozen=True`: Python haengt einer Ausnahme beim Werfen ihren
+# Traceback an, und eine eingefrorene Dataclass verweigert genau das. Der Fehler
+# faellt erst auf, wenn die Ausnahme tief genug durchgereicht wird — bei uns durch
+# die Abhaengigkeitsaufloesung von FastAPI — und aeussert sich dann als
+# `FrozenInstanceError` statt als der Fehler, den man sucht.
+@dataclass
 class Zeitplanfehler(Exception):
     feld: str
     meldung: str
@@ -247,7 +253,16 @@ def uebersteuerung_anlegen(
     user_id: int | None = None,
     token_id: int | None = None,
 ) -> ZoneOverride:
-    """Legt eine konkrete Uebersteuerung an; Web und API teilen diese Mutation."""
+    """Legt eine konkrete Uebersteuerung an; Web, API und MCP teilen diese Mutation.
+
+    Die Temperaturgrenze wird **hier** geprueft und nicht im Adapter. Bis zum
+    Abschlussreview stand sie dreimal verschieden da: die Oberflaeche prueft von Hand ohne
+    Nachkommastellen, die REST-Schnittstelle ueber ihr Schema — und der MCP-Server gar
+    nicht. Ein Werkzeug haette dort `temperature_c=99` anlegen koennen, und dieser Wert
+    fliesst in Teilprojekt 4 ungefiltert in die scharfe Regelentscheidung. Eine
+    Eingabegrenze, die von der Wahl des Adapters abhaengt, ist keine.
+    """
+    temperature_c = temperatur_pruefen(temperature_c)
     quelle_id = session.scalar(select(ActorSource.id).where(ActorSource.code == "api"))
     if quelle_id is None:
         raise RuntimeError("Actor-Quelle 'api' fehlt")

@@ -297,3 +297,26 @@ def test_schattenentscheidungen_weist_unsinnige_anzahl_ab(session: Session, anza
 
     with pytest.raises(ValueError):
         server.schattenentscheidungen(session, klartext, zone.id, anzahl)
+
+
+def test_uebersteuern_weist_unsinnige_temperatur_ab(session: Session) -> None:
+    """Der MCP-Server pruefte die Temperatur bis zum Abschlussreview gar nicht.
+
+    Er ist der Adapter, der am ehesten unbeaufsichtigt aufgerufen wird — von einem
+    Werkzeug, nicht von einem Menschen, der den Wert noch einmal ansieht. Ein
+    `temperature_c=99` waere dort angekommen und flosse in Teilprojekt 4 ungefiltert in
+    die scharfe Regelentscheidung. Die Grenze liegt jetzt in der Domaene und gilt fuer
+    alle drei Adapter.
+    """
+    from decimal import Decimal
+
+    from thermoctl.domain.modi import Domaenenfehler
+
+    zone = zone_anlegen(session, "zone-mcp-grenze")
+    einstellungen_anlegen(session)
+    quelle(session, "mcp")
+    klartext = _token(session, "uebersteuerer", [("override.create", None), ("zone.read", None)])
+
+    for wert in (Decimal("99"), Decimal("-5"), Decimal("21.55")):
+        with pytest.raises(Domaenenfehler):
+            server.uebersteuern(session, klartext, zone.id, wert, None)

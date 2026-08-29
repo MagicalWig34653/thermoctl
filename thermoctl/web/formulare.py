@@ -18,7 +18,12 @@ _PASSWORTFELDER = frozenset(
 )
 
 
-@dataclass(frozen=True)
+# Bewusst NICHT `frozen=True`: Python haengt einer Ausnahme beim Werfen ihren
+# Traceback an, und eine eingefrorene Dataclass verweigert genau das. Der Fehler
+# faellt erst auf, wenn die Ausnahme tief genug durchgereicht wird — bei uns durch
+# die Abhaengigkeitsaufloesung von FastAPI — und aeussert sich dann als
+# `FrozenInstanceError` statt als der Fehler, den man sucht.
+@dataclass
 class Formularfehler(Exception):
     """Eine Eingabe, die der Benutzer korrigieren kann -- kein Fehler des Dienstes."""
 

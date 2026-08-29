@@ -14,7 +14,12 @@ MINDESTTEMPERATUR_C = Decimal("5.0")
 HOECHSTTEMPERATUR_C = Decimal("35.0")
 
 
-@dataclass(frozen=True)
+# Bewusst NICHT `frozen=True`: Python haengt einer Ausnahme beim Werfen ihren
+# Traceback an, und eine eingefrorene Dataclass verweigert genau das. Der Fehler
+# faellt erst auf, wenn die Ausnahme tief genug durchgereicht wird — bei uns durch
+# die Abhaengigkeitsaufloesung von FastAPI — und aeussert sich dann als
+# `FrozenInstanceError` statt als der Fehler, den man sucht.
+@dataclass
 class Domaenenfehler(Exception):
     feld: str
     meldung: str
