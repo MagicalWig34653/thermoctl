@@ -1,22 +1,31 @@
+import asyncio
+import contextlib
 import logging
 import re
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
+from datetime import datetime, timedelta
 
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, sessionmaker
 
 import thermoctl
 from thermoctl.api.routes import router as api_router
-from thermoctl.config import get_settings
+from thermoctl.config import Settings, get_settings
+from thermoctl.db.base import utcnow
 from thermoctl.db.engine import create_engine_from_settings, session_factory, session_scope
 from thermoctl.db.models.credential import SetupToken
+from thermoctl.db.models.operations import Setting
 from thermoctl.domain.authz import Forbidden
+from thermoctl.integrations.mqtt.client import MqttClient
 from thermoctl.logging import configure_logging, request_id_var
+from thermoctl.services.aufbewahrung import alte_messwerte_loeschen
+from thermoctl.services.ingest import nachricht_verarbeiten, zonenzustand_fortschreiben
+from thermoctl.services.schattenlauf import zyklus
 from thermoctl.setup import einrichtung_noetig, setup_token_erzeugen
 from thermoctl.web import STATIC_DIR
 from thermoctl.web.admin_views import router as admin_router
@@ -25,6 +34,68 @@ from thermoctl.web.setup_views import router as setup_router
 from thermoctl.web.start_views import router as start_router
 
 log = logging.getLogger(__name__)
+
+# Vorgabewert, solange die Einrichtung noch nicht abgeschlossen ist und die
+# `setting`-Zeile deshalb noch fehlt -- derselbe Wert wie die Spaltenvorgabe von
+# `setting.shadow_interval_seconds`.
+_SCHATTENINTERVALL_STANDARD_S = 60
+
+
+async def _shadow_intervall_s(session_factory: sessionmaker[Session]) -> int:
+    with session_scope(session_factory) as session:
+        einstellungen = session.get(Setting, 1)
+        return (
+            einstellungen.shadow_interval_seconds
+            if einstellungen is not None
+            else _SCHATTENINTERVALL_STANDARD_S
+        )
+
+
+async def _schattenschleife(app: FastAPI) -> None:
+    """Wartet den konfigurierten Abstand ab, dann ein Zyklus -- endlos, bis abgebrochen.
+
+    Eine Ausnahme beendet die Schleife nicht -- weder im Zyklus selbst noch beim Lesen
+    des Abstands: protokollieren, weiter. Der naechste Versuch kommt nach dem naechsten
+    Abstand; ein Dienst, der wegen einer einzelnen kaputten Zone oder einer noch nicht
+    abgeschlossenen Einrichtung (die `setting`-Zeile fehlt dann noch) stehenbleibt, ist
+    schlechter als einer, der es erneut versucht. Ein Abbruch (`asyncio.CancelledError`,
+    beim Herunterfahren) ist davon ausdruecklich nicht betroffen: er erbt nicht von
+    `Exception` und laeuft ungefangen durch, sonst liesse sich die Schleife nie beenden.
+    """
+    naechste_aufbewahrung = utcnow() + timedelta(days=1)
+    while True:
+        try:
+            abstand = await _shadow_intervall_s(app.state.session_factory)
+            await asyncio.sleep(abstand)
+            jetzt = utcnow()
+            with session_scope(app.state.session_factory) as session:
+                zonenzustand_fortschreiben(session, jetzt)
+                zyklus(session, jetzt)
+                if jetzt >= naechste_aufbewahrung:
+                    alte_messwerte_loeschen(session, jetzt)
+                    naechste_aufbewahrung = jetzt + timedelta(days=1)
+        except Exception:
+            log.exception("Schattenzyklus fehlgeschlagen -- naechster Versuch folgt")
+
+
+async def _mqtt_nachricht_verarbeiten(
+    app: FastAPI, settings: Settings, topic: str, nutzlast: bytes
+) -> None:
+    """Handler fuer den MQTT-Client: jede Nachricht in einer eigenen Sitzung.
+
+    Eine eigene Sitzung je Nachricht statt einer geteilten -- eine kaputte Nutzlast (der
+    MQTT-Client faengt Ausnahmen bereits ab) darf keine halbfertige Transaktion fuer die
+    naechste Nachricht hinterlassen.
+    """
+    empfangen_am: datetime = utcnow()
+    with session_scope(app.state.session_factory) as session:
+        nachricht_verarbeiten(
+            session,
+            topic,
+            nutzlast,
+            basis=settings.mqtt_base_topic,
+            empfangen_am=empfangen_am,
+        )
 
 
 def _unverbrauchtes_setup_token_vorhanden(session: Session) -> bool:
@@ -61,7 +132,31 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
             # Maskierung in logging.py, ein Zusatzfeld mit "token" im Namen wuerde
             # dort geschwaerzt.
             log.info("Einrichtung erforderlich. Einmal-Token: %s", klartext)
-    yield
+
+    # Beide Hintergrundaufgaben laufen ausschliesslich mit `mqtt_enabled` -- die
+    # Testsuite baut die Anwendung staendig (jeder `TestClient`), und sie darf dabei
+    # weder eine Endlosschleife noch eine Netzverbindung anstossen.
+    settings = get_settings()
+    hintergrundaufgaben: list[asyncio.Task[None]] = []
+    if settings.mqtt_enabled:
+        client = MqttClient(
+            settings,
+            lambda topic, nutzlast: _mqtt_nachricht_verarbeiten(app, settings, topic, nutzlast),
+        )
+        hintergrundaufgaben.append(asyncio.create_task(client.laufen()))
+        hintergrundaufgaben.append(asyncio.create_task(_schattenschleife(app)))
+
+    try:
+        yield
+    finally:
+        # Abbrechen und abwarten, nicht nur abbrechen: Sonst kann eine Aufgabe, die
+        # gerade in einer laufenden Datenbankoperation steckt, den Prozess am Beenden
+        # hindern -- jeder Neustart des Containers waere eine Geduldsprobe.
+        for aufgabe in hintergrundaufgaben:
+            aufgabe.cancel()
+        for aufgabe in hintergrundaufgaben:
+            with contextlib.suppress(asyncio.CancelledError):
+                await aufgabe
 
 
 def create_app() -> FastAPI:
