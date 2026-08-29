@@ -14,7 +14,9 @@ from decimal import Decimal
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from thermoctl.db.models.lookup import SensorStatus
+from thermoctl.db.models.device import ZoneDevice
+from thermoctl.db.models.lookup import DeviceCapability, DeviceRole, SensorStatus
+from thermoctl.db.models.messwert import Measurement
 from thermoctl.db.models.operations import Setting
 from thermoctl.db.models.zone import Zone, ZoneSetpoint
 from thermoctl.db.models.zustand import ShadowDecision, ZoneState
@@ -80,6 +82,48 @@ def _vorheriger_zustand(
     return aktuell, int((jetzt - beginn).total_seconds()), aktuell
 
 
+def _fensterlage(
+    session: Session, zone: Zone, zustand: ZoneState | None, jetzt: datetime
+) -> tuple[bool, int | None]:
+    """Fensterzustand und Dauer seit dem letzten Schliessen aus der Historie."""
+    if zustand is None or zustand.window_open is not False:
+        return bool(zustand and zustand.window_open), None
+
+    kontakt = session.scalar(select(DeviceCapability).where(DeviceCapability.code == "contact"))
+    rolle = session.scalar(select(DeviceRole).where(DeviceRole.code == "window_contact"))
+    if kontakt is None or rolle is None:
+        return False, None
+    geraete_ids = list(
+        session.scalars(
+            select(ZoneDevice.device_id).where(
+                ZoneDevice.zone_id == zone.id,
+                ZoneDevice.device_role_id == rolle.id,
+            )
+        )
+    )
+    zuletzt_geschlossen: datetime | None = None
+    for geraet_id in geraete_ids:
+        vorheriger_wert: str | None = None
+        for wert, gemessen_am in session.execute(
+            select(Measurement.value_text, Measurement.measured_at)
+            .where(
+                Measurement.device_id == geraet_id,
+                Measurement.capability_id == kontakt.id,
+                Measurement.value_text.in_(("true", "false")),
+            )
+            .order_by(Measurement.measured_at, Measurement.id)
+        ):
+            if wert == "true" and vorheriger_wert == "false":
+                zuletzt_geschlossen = max(
+                    zuletzt_geschlossen or gemessen_am,
+                    gemessen_am,
+                )
+            vorheriger_wert = wert
+    if zuletzt_geschlossen is None:
+        return False, None
+    return False, max(0, int((jetzt - zuletzt_geschlossen).total_seconds()))
+
+
 def _zone_verarbeiten(session: Session, zone: Zone, jetzt: datetime) -> ShadowDecision:
     einstellungen = session.get(Setting, 1)
     assert einstellungen is not None, "setting-Zeile fehlt — Einrichtung unvollstaendig"
@@ -88,17 +132,12 @@ def _zone_verarbeiten(session: Session, zone: Zone, jetzt: datetime) -> ShadowDe
     if zustand is None:
         ist_c = None
         sensor_status = KEINE_QUELLE
-        fenster_offen = False
     else:
         ist_c = zustand.temperature_c
         sensor_status_zeile = session.get(SensorStatus, zustand.sensor_status_id)
         assert sensor_status_zeile is not None, "sensor_status-Zeile fehlt zur Referenz"
         sensor_status = sensor_status_zeile.code
-        # `window_open` bleibt in dieser Phase durchgehend `None`: Kein Zeitpunkt-Task
-        # verbindet bislang einen Fensterkontakt mit einer Zone (die Zuordnung fehlt im
-        # Datenmodell noch ganz, siehe `Zone` in `thermoctl/db/models/zone.py`). `None`
-        # heisst deshalb "geschlossen", nicht "unbekannt offen".
-        fenster_offen = bool(zustand.window_open)
+    fenster_offen, fenster_zu_seit_s = _fensterlage(session, zone, zustand, jetzt)
 
     sollwert = aufgeloester_sollwert(session, zone, jetzt)
     frost_c = _frostschutz_sollwert(session, zone, einstellungen)
@@ -114,11 +153,7 @@ def _zone_verarbeiten(session: Session, zone: Zone, jetzt: datetime) -> ShadowDe
         heizt_gerade=heizt_gerade,
         seit_s=seit_s,
         fenster_offen=fenster_offen,
-        # Ohne eine gespeicherte Historie des Fensterzustands (siehe oben) gibt es keinen
-        # Zeitpunkt, seit dem es zuletzt zu ist, herzuleiten. 'None' ist hier der sichere
-        # Rueckfall: er bedeutet "kein anstehender Nachlauf" und blockiert die Regelung
-        # nicht mit einer Wartezeit, die nie zu laufen begann.
-        fenster_zu_seit_s=None,
+        fenster_zu_seit_s=fenster_zu_seit_s,
         sensor_status=sensor_status,
         parameter=parameter,
     )

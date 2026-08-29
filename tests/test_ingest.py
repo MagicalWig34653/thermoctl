@@ -12,10 +12,11 @@ from tests.hilfen import (
     anbindung,
     einstellungen_anlegen,
     geraet_anlegen,
+    rolle,
     sensorstatus,
     zone_anlegen,
 )
-from thermoctl.db.models.device import Device, DeviceCapabilityLink
+from thermoctl.db.models.device import Device, DeviceCapabilityLink, ZoneDevice
 from thermoctl.db.models.lookup import DeviceCapability, SensorStatus
 from thermoctl.db.models.messwert import DeviceHealth, Measurement
 from thermoctl.db.models.zone import Zone
@@ -213,6 +214,106 @@ def test_zonenzustand_beruecksichtigt_quelle_alter_und_zonen_timeout(
     codes = {status.id: status.code for status in session.query(SensorStatus)}
     zustaende = {z.zone_id: codes[z.sensor_status_id] for z in session.query(ZoneState)}
     assert zustaende == {frisch.id: "ok", alt.id: "veraltet", ohne.id: "keine_quelle"}
+
+
+@pytest.mark.parametrize(("kontaktwert", "erwartet"), [("true", False), ("false", True)])
+def test_zonenzustand_kehrt_zigbee_kontaktwert_einmalig_um(
+    session: Session, kontaktwert: str, erwartet: bool
+) -> None:
+    einstellungen_anlegen(session)
+    sensorstatus(session, "keine_quelle")
+    kontakt = _faehigkeit(session, "contact")
+    zone = zone_anlegen(session, "kontakt-zone")
+    geraet = geraet_anlegen(session, _geraetenamen()[0])
+    session.add(
+        ZoneDevice(
+            zone_id=zone.id,
+            device_id=geraet.id,
+            device_role_id=rolle(session, "window_contact").id,
+        )
+    )
+    session.add(
+        Measurement(
+            device_id=geraet.id,
+            capability_id=kontakt.id,
+            value_text=kontaktwert,
+            measured_at=EMPFANGEN_AM,
+            received_at=EMPFANGEN_AM,
+        )
+    )
+
+    zonenzustand_fortschreiben(session, EMPFANGEN_AM)
+
+    zustand = session.get(ZoneState, zone.id)
+    assert zustand is not None and zustand.window_open is erwartet
+
+
+def test_zonenzustand_ist_offen_sobald_einer_von_zwei_kontakten_offen_ist(
+    session: Session,
+) -> None:
+    einstellungen_anlegen(session)
+    sensorstatus(session, "keine_quelle")
+    kontakt = _faehigkeit(session, "contact")
+    zone = zone_anlegen(session, "zwei-kontakte-zone")
+    fensterrolle = rolle(session, "window_contact")
+    for name, wert in zip(_geraetenamen()[:2], ("true", "false"), strict=True):
+        geraet = geraet_anlegen(session, name)
+        session.add(
+            ZoneDevice(
+                zone_id=zone.id,
+                device_id=geraet.id,
+                device_role_id=fensterrolle.id,
+            )
+        )
+        session.add(
+            Measurement(
+                device_id=geraet.id,
+                capability_id=kontakt.id,
+                value_text=wert,
+                measured_at=EMPFANGEN_AM,
+                received_at=EMPFANGEN_AM,
+            )
+        )
+
+    zonenzustand_fortschreiben(session, EMPFANGEN_AM)
+
+    zustand = session.get(ZoneState, zone.id)
+    assert zustand is not None and zustand.window_open is True
+
+
+def test_fehlender_oder_veralteter_fensterkontakt_bleibt_unbekannt(
+    session: Session,
+) -> None:
+    einstellungen_anlegen(session)
+    sensorstatus(session, "keine_quelle")
+    kontakt = _faehigkeit(session, "contact")
+    ohne = zone_anlegen(session, "ohne-kontakt-zone")
+    alt = zone_anlegen(session, "alter-kontakt-zone")
+    alt.sensor_timeout_seconds = 30
+    geraet = geraet_anlegen(session, _geraetenamen()[0])
+    session.add(
+        ZoneDevice(
+            zone_id=alt.id,
+            device_id=geraet.id,
+            device_role_id=rolle(session, "window_contact").id,
+        )
+    )
+    session.add(
+        Measurement(
+            device_id=geraet.id,
+            capability_id=kontakt.id,
+            value_text="false",
+            measured_at=EMPFANGEN_AM - timedelta(seconds=31),
+            received_at=EMPFANGEN_AM,
+        )
+    )
+
+    zonenzustand_fortschreiben(session, EMPFANGEN_AM)
+
+    ohne_zustand = session.get(ZoneState, ohne.id)
+    alter_zustand = session.get(ZoneState, alt.id)
+    assert ohne_zustand is not None and ohne_zustand.window_open is None
+    assert alter_zustand is not None and alter_zustand.window_open is None
 
 
 def test_kaputte_erreichbarkeit_bleibt_ohne_wirkung(session: Session) -> None:
