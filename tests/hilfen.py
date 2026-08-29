@@ -179,7 +179,10 @@ def token_mit_rechten(
     token = ApiToken(
         user_id=nutzer.id,
         name=f"token-{nutzer.username}",
-        prefix=f"pfx-{nutzer.username}",
+        # Auf 16 Zeichen gekuerzt: So lang ist die Spalte. SQLite nimmt laengere Werte
+        # klaglos an, MariaDB weist sie ab — ein Test mit langem Benutzernamen schlaegt
+        # sonst nur unter MariaDB fehl, und das sucht man an der falschen Stelle.
+        prefix=f"pfx-{nutzer.username}"[:16],
         token_hash=f"hash-{nutzer.username}",
     )
     session.add(token)
