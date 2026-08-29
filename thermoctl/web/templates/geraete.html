@@ -1,0 +1,49 @@
+{% extends "basis.html" if not ist_htmx else "leer.html" %}
+{% block titel %}Geräte – thermoctl{% endblock %}
+{% block inhalt %}
+<section id="geraeteliste">
+  <h1 class="mb-3">Geräte</h1>
+  {% if geraete %}
+  <div class="table-responsive">
+    <table class="table table-striped align-middle">
+      <thead>
+      <tr>
+        <th scope="col">Anzeigename</th>
+        <th scope="col">Anbindung</th>
+        <th scope="col">Modell</th>
+        <th scope="col">Fähigkeiten</th>
+        <th scope="col">Letzte Nachricht</th>
+        <th scope="col">Batterie</th>
+        <th scope="col">Funkgüte</th>
+        <th scope="col">Erreichbarkeit</th>
+        <th scope="col">Zone</th>
+      </tr>
+      </thead>
+      <tbody>
+      {% for geraet, anbindung, zustand in geraete %}
+      <tr>
+        <td>
+          {{ geraet.display_name }}
+          {% if geraet.is_group %}<span class="badge text-bg-secondary">Gruppe</span>{% endif %}
+        </td>
+        <td>{{ anbindung.label }}</td>
+        <td>{{ geraet.model or "–" }}</td>
+        <td>{{ faehigkeiten[geraet.id]|join(", ") if faehigkeiten[geraet.id] else "–" }}</td>
+        <td>{{ zustand.last_payload_at if zustand else "noch keine" }}</td>
+        <td>{{ (zustand.battery_percent|string + " %") if zustand and zustand.battery_percent is not none else "–" }}</td>
+        <td>{{ zustand.link_quality if zustand and zustand.link_quality is not none else "–" }}</td>
+        <td>{{ zustand.availability if zustand and zustand.availability else "unbekannt" }}</td>
+        <td>{{ zonen[geraet.id]|sort|join(", ") if zonen[geraet.id] else "nicht zugeordnet" }}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="alert alert-secondary" role="status">
+    Noch keine Geräte bekannt. Entweder ist MQTT nicht eingerichtet oder es ist noch keine
+    Gerätenachricht eingegangen.
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

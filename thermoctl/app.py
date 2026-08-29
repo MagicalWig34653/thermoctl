@@ -21,6 +21,7 @@ from thermoctl.setup import einrichtung_noetig, setup_token_erzeugen
 from thermoctl.web import STATIC_DIR
 from thermoctl.web.admin_views import router as admin_router
 from thermoctl.web.auth_views import router as auth_router
+from thermoctl.web.geraete_views import router as geraete_router
 from thermoctl.web.setup_views import router as setup_router
 from thermoctl.web.start_views import router as start_router
 
@@ -85,6 +86,7 @@ def create_app() -> FastAPI:
     app.include_router(auth_router)
     app.include_router(setup_router)
     app.include_router(admin_router)
+    app.include_router(geraete_router)
     app.include_router(api_router)
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
