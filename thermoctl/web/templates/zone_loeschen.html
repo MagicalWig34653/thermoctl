@@ -1,0 +1,11 @@
+{% extends "basis.html" %}
+{% from "formular.html" import loeschbestaetigung %}
+{% block titel %}Zone löschen – thermoctl{% endblock %}
+{% block inhalt %}
+{% set hinweis %}Abhängig sind {{ abhaengigkeiten.schaltpunkte }} Schaltpunkte,
+{{ abhaengigkeiten.geraete }} zugeordnete Geräte, {{ abhaengigkeiten.sollwerte }} Sollwerte,
+{{ abhaengigkeiten.uebersteuerungen }} Übersteuerungen und
+{{ abhaengigkeiten.schattenentscheidungen }} Schattenentscheidungen. Diese Daten werden mit gelöscht.{% endset %}
+{{ loeschbestaetigung("Zone löschen", "Soll die Zone „" ~ zone.display_name ~ "“ wirklich gelöscht werden?",
+                      hinweis, "/zonen/" ~ zone.id ~ "/loeschen", "/zonen/" ~ zone.id) }}
+{% endblock %}
