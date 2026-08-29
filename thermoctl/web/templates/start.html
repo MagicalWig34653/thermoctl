@@ -44,7 +44,7 @@
           <strong>{{ (zustand.temperature_c|string + " °C") if zustand.temperature_c is not none else "kein Messwert" }}</strong>
         </p>
         <p class="mb-1">Sensorzustand: {{ sensorstatus.label }}</p>
-        <p class="mb-0">Messzeitpunkt: {{ zustand.measured_at or "nicht vorhanden" }}</p>
+        <p class="mb-0" title="{{ zustand.measured_at or "" }} UTC">Gemessen {{ zustand.measured_at|alter }}</p>
         {% else %}
         <p class="text-secondary mb-0">Noch kein Zonenzustand vorhanden.</p>
         {% endif %}
