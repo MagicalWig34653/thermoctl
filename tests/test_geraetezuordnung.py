@@ -308,3 +308,127 @@ def test_aendernde_wege_und_rechte(client_als, session: Session) -> None:
         data={"device_id": neues.id},
         headers=kopf,
     ).status_code == 404
+
+
+def test_ungueltige_eingaben_bei_der_zuordnung(client_als, session: Session) -> None:
+    """Jeder Fehlerweg der Zuordnungsseite — bisher war nur der Erfolgsfall belegt."""
+    quelle(session)
+    zone = zone_anlegen(session, "zone-fehlerwege")
+    geraet = geraet_anlegen(session, "vorhanden")
+    client = client_als([("device.manage", None), ("device.read", None)])
+    kopf = _csrf(client)
+
+    # Unbekanntes Geraet, unbekannte Rolle, gar keine Angabe.
+    for daten in (
+        {"device_id": "999999", "role_id": str(rolle(session, "actuator").id)},
+        {"device_id": str(geraet.id), "role_id": "999999"},
+        {"device_id": "", "role_id": ""},
+        {"device_id": "kein Geraet", "role_id": "1"},
+    ):
+        antwort = client.post(f"/zonen/{zone.id}/geraete/zuordnen", data=daten, headers=kopf)
+        assert antwort.status_code == 200, daten
+        assert session.scalar(
+            select(ZoneDevice).where(ZoneDevice.zone_id == zone.id)
+        ) is None, daten
+
+
+def test_messquelle_laesst_sich_wieder_loesen(client_als, session: Session) -> None:
+    """Leeres Feld heisst 'keine Messquelle' — die Zone gilt danach als ohne Quelle."""
+    quelle(session)
+    zone = zone_anlegen(session, "zone-messquelle-weg")
+    geraet = geraet_anlegen(session, "quelle-weg")
+    client = client_als([("device.manage", None), ("device.read", None)])
+    kopf = _csrf(client)
+    client.post(
+        f"/zonen/{zone.id}/geraete/messquelle", data={"device_id": str(geraet.id)},
+        headers=kopf,
+    )
+    assert zone.temperature_source_device_id == geraet.id
+    antwort = client.post(
+        f"/zonen/{zone.id}/geraete/messquelle", data={"device_id": ""},
+        headers=kopf, follow_redirects=False,
+    )
+    assert antwort.status_code == 303
+    assert zone.temperature_source_device_id is None
+
+
+def test_unbekannte_messquelle_bleibt_ohne_wirkung(client_als, session: Session) -> None:
+    quelle(session)
+    zone = zone_anlegen(session, "zone-messquelle-unbekannt")
+    client = client_als([("device.manage", None), ("device.read", None)])
+    antwort = client.post(
+        f"/zonen/{zone.id}/geraete/messquelle", data={"device_id": "999999"},
+        headers=_csrf(client),
+    )
+    assert antwort.status_code == 200
+    assert zone.temperature_source_device_id is None
+
+
+def test_tausch_mit_unsinnigen_geraeten_meldet_verstaendlich(
+    client_als, session: Session
+) -> None:
+    """Drei Faelle: gleiches Geraet, unbekanntes Geraet, ein Geraet ohne Zuordnung."""
+    quelle(session)
+    zone = zone_anlegen(session, "zone-tausch-unsinn")
+    eines = geraet_anlegen(session, "eines")
+    anderes = geraet_anlegen(session, "anderes")
+    client = client_als([("device.manage", None), ("device.read", None)])
+    kopf = _csrf(client)
+
+    for daten in (
+        {"old_device_id": str(eines.id), "new_device_id": str(eines.id)},
+        {"old_device_id": str(eines.id), "new_device_id": "999999"},
+        {"old_device_id": str(eines.id), "new_device_id": str(anderes.id)},
+    ):
+        antwort = client.post(f"/zonen/{zone.id}/geraete/tauschen", data=daten, headers=kopf)
+        assert antwort.status_code == 200, daten
+        assert session.scalar(
+            select(ZoneDevice).where(ZoneDevice.zone_id == zone.id)
+        ) is None, daten
+
+
+def test_fremde_zuordnung_laesst_sich_nicht_loesen(client_als, session: Session) -> None:
+    """Eine Zuordnung einer anderen Zone ergibt 404, nicht 403."""
+    quelle(session)
+    eigene = zone_anlegen(session, "eigene-loesen")
+    fremde = zone_anlegen(session, "fremde-loesen")
+    geraet = geraet_anlegen(session, "fremdgeraet")
+    fremde_zuordnung = ZoneDevice(
+        zone_id=fremde.id, device_id=geraet.id,
+        device_role_id=rolle(session, "actuator").id,
+    )
+    session.add(fremde_zuordnung)
+    session.flush()
+    client = client_als([("device.manage", None), ("device.read", None)])
+    antwort = client.post(
+        f"/zonen/{eigene.id}/geraete/{fremde_zuordnung.id}/loesen", headers=_csrf(client)
+    )
+    assert antwort.status_code == 404
+    assert session.get(ZoneDevice, fremde_zuordnung.id) is not None
+
+
+def test_loesen_einer_fremden_zuordnung_wird_in_der_domaene_abgewiesen(
+    session: Session,
+) -> None:
+    """Die Ansicht faengt den Fall schon mit 404 ab. Die Domaene prueft trotzdem selbst:
+
+    Sie wird spaeter auch von REST und MCP aufgerufen, und eine Regel, die nur in einem
+    Adapter steht, gilt nicht fuer die anderen.
+    """
+    import pytest
+
+    from thermoctl.domain.geraetezuordnung import geraet_loesen
+
+    quelle(session)
+    eine = zone_anlegen(session, "zone-loesen-a")
+    andere = zone_anlegen(session, "zone-loesen-b")
+    geraet = geraet_anlegen(session, "geraet-loesen")
+    zuordnung = ZoneDevice(
+        zone_id=andere.id, device_id=geraet.id,
+        device_role_id=rolle(session, "actuator").id,
+    )
+    session.add(zuordnung)
+    session.flush()
+    with pytest.raises(ValueError, match="gehört nicht zu dieser Zone"):
+        geraet_loesen(session, eine, zuordnung, akteur_id=None)
+    assert session.get(ZoneDevice, zuordnung.id) is not None
