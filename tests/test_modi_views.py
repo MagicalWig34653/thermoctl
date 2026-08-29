@@ -9,6 +9,7 @@ from thermoctl.auth.csrf import csrf_token
 from thermoctl.auth.sessions import COOKIE_NAME
 from thermoctl.config import get_settings
 from thermoctl.db.models.operations import AuditEvent
+from thermoctl.db.models.schedule import SchedulePoint
 from thermoctl.db.models.zone import SetpointMode, ZoneSetpoint
 
 
@@ -251,3 +252,132 @@ def test_fremde_zone_ergibt_404(client_als, session: Session) -> None:
         ).status_code
         == 404
     )
+
+
+def test_verwendeter_modus_ist_nicht_loeschbar(client_als, session: Session) -> None:
+    """Die dritte Loeschsperre: Ein Modus, auf den ein Zeitplan zeigt, verschwindet nicht.
+
+    Ohne sie zerrisse das Loeschen den Zeitplan jeder Zone, die ihn benutzt — und zwar
+    still, weil der Fremdschluessel erst beim naechsten Regelzyklus auffiele.
+    """
+    einstellungen_anlegen(session)
+    quelle(session, "web")
+    urlaub = modus_anlegen(session, "urlaub", "Urlaub")
+    zone = zone_anlegen(session, "zone-mit-plan")
+    session.add(
+        SchedulePoint(
+            zone_id=zone.id, weekday=1, minute_of_day=360, setpoint_mode_id=urlaub.id
+        )
+    )
+    session.flush()
+
+    client = client_als([("mode.manage", None)])
+    antwort = client.get(f"/modi/{urlaub.id}/loeschen")
+    assert antwort.status_code == 200
+    assert "Zeitpläne oder historische" in antwort.text
+
+    antwort = client.post(f"/modi/{urlaub.id}/loeschen", headers=_csrf(client))
+    assert antwort.status_code == 200
+    assert session.get(SetpointMode, urlaub.id) is not None
+
+
+def test_unbekannter_modus_ergibt_404(client_als) -> None:
+    client = client_als([("mode.manage", None)])
+    assert client.get("/modi/999999").status_code == 404
+    assert client.get("/modi/999999/loeschen").status_code == 404
+
+
+def test_leere_und_zu_lange_moduswerte_bleiben_im_formular(
+    client_als, session: Session
+) -> None:
+    quelle(session, "web")
+    client = client_als([("mode.manage", None)])
+    faelle = [
+        ({"code": "  ", "name": "Name", "sort_order": "0"}, "Code darf nicht leer"),
+        ({"code": "c" * 33, "name": "Name", "sort_order": "0"}, "höchstens 32"),
+        ({"code": "gut", "name": "  ", "sort_order": "0"}, "Name darf nicht leer"),
+        ({"code": "gut", "name": "n" * 65, "sort_order": "0"}, "höchstens 64"),
+        ({"code": "gut", "name": "Name", "sort_order": "keine Zahl"}, "ganze Zahl"),
+    ]
+    for daten, erwartet in faelle:
+        antwort = client.post("/modi", data=daten, headers=_csrf(client))
+        assert antwort.status_code == 200, daten
+        assert erwartet in antwort.text, daten
+    assert session.scalar(select(SetpointMode).where(SetpointMode.code == "gut")) is None
+
+
+def test_bestehender_sollwert_wird_geaendert(client_als, session: Session) -> None:
+    """Der dritte Fall neben Anlegen und Loeschen — bisher ungeprueft."""
+    einstellungen_anlegen(session)
+    quelle(session, "web")
+    tag = modus_anlegen(session, "tag-aendern", "Tag")
+    zone = zone_anlegen(session, "zone-sollwert-aendern")
+    client = client_als([("setpoint.write", None), ("zone.read", None)])
+    client.post(
+        f"/zonen/{zone.id}/sollwerte", data={f"sollwert_{tag.id}": "20.0"},
+        headers=_csrf(client),
+    )
+    client.post(
+        f"/zonen/{zone.id}/sollwerte", data={f"sollwert_{tag.id}": "22.5"},
+        headers=_csrf(client),
+    )
+    zeilen = session.scalars(
+        select(ZoneSetpoint).where(
+            ZoneSetpoint.zone_id == zone.id, ZoneSetpoint.setpoint_mode_id == tag.id
+        )
+    ).all()
+    assert len(zeilen) == 1
+    assert zeilen[0].temperature_c == Decimal("22.5")
+
+
+def test_nicht_numerischer_sollwert_bleibt_im_formular(client_als, session: Session) -> None:
+    einstellungen_anlegen(session)
+    quelle(session, "web")
+    tag = modus_anlegen(session, "tag-keine-zahl", "Tag")
+    zone = zone_anlegen(session, "zone-keine-zahl")
+    client = client_als([("setpoint.write", None), ("zone.read", None)])
+    antwort = client.post(
+        f"/zonen/{zone.id}/sollwerte", data={f"sollwert_{tag.id}": "warm"},
+        headers=_csrf(client),
+    )
+    assert antwort.status_code == 200
+    assert "muss eine Zahl sein" in antwort.text
+    assert session.scalar(select(ZoneSetpoint).where(ZoneSetpoint.zone_id == zone.id)) is None
+
+
+def test_unendlicher_sollwert_wird_abgewiesen(client_als, session: Session) -> None:
+    """`Decimal("nan")` und `Decimal("Infinity")` sind gueltige Dezimalzahlen.
+
+    Ohne die Endlichkeitspruefung liefe ein solcher Wert bis in die Datenbank und von dort
+    in die Regelentscheidung — jeder Vergleich mit NaN ist falsch, die Zone wuerde nie
+    heizen und nie abschalten.
+    """
+    einstellungen_anlegen(session)
+    quelle(session, "web")
+    tag = modus_anlegen(session, "tag-unendlich", "Tag")
+    zone = zone_anlegen(session, "zone-unendlich")
+    client = client_als([("setpoint.write", None), ("zone.read", None)])
+    for wert in ("nan", "Infinity"):
+        antwort = client.post(
+            f"/zonen/{zone.id}/sollwerte", data={f"sollwert_{tag.id}": wert},
+            headers=_csrf(client),
+        )
+        assert antwort.status_code == 200, wert
+        assert "endliche Zahl" in antwort.text, wert
+    assert session.scalar(select(ZoneSetpoint).where(ZoneSetpoint.zone_id == zone.id)) is None
+
+
+def test_modus_aendern_mit_ungueltigem_wert_bleibt_im_formular(
+    client_als, session: Session
+) -> None:
+    quelle(session, "web")
+    modus = modus_anlegen(session, "aenderbar", "Aenderbar")
+    client = client_als([("mode.manage", None)])
+    antwort = client.post(
+        f"/modi/{modus.id}",
+        data={"code": "  ", "name": "Neuer Name", "sort_order": "0"},
+        headers=_csrf(client),
+    )
+    assert antwort.status_code == 200
+    assert "Code darf nicht leer" in antwort.text
+    assert modus.code == "aenderbar"

@@ -52,7 +52,11 @@ def einstellungen_anlegen(
         zusatz["session_lifetime_seconds"] = sitzungsdauer_s
     einstellungen = Setting(
         id=1,
-        frost_protection_mode_id=modus_anlegen(session, "frost").id,
+        # `eingebaut=True` wie in Produktion: Der Einrichtungsassistent legt den
+        # Frostschutzmodus als eingebauten Modus an. Ohne das prueft jeder Test, der
+        # diese Fixture benutzt, einen Zustand, den es in keiner echten Anlage gibt --
+        # und genau daran ist die Reihenfolge der Loeschsperren unbemerkt geblieben.
+        frost_protection_mode_id=modus_anlegen(session, "frost", eingebaut=True).id,
         default_hysteresis_k=hysterese,
         default_min_on_seconds=min_ein,
         **zusatz,
@@ -79,8 +83,10 @@ def zone_anlegen(session: Session, name: str) -> Zone:
     return zone
 
 
-def modus_anlegen(session: Session, code: str, name: str | None = None) -> SetpointMode:
-    modus = SetpointMode(code=code, name=name or code.capitalize())
+def modus_anlegen(
+    session: Session, code: str, name: str | None = None, *, eingebaut: bool = False
+) -> SetpointMode:
+    modus = SetpointMode(code=code, name=name or code.capitalize(), is_builtin=eingebaut)
     session.add(modus)
     session.flush()
     return modus

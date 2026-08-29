@@ -276,7 +276,13 @@ async def sollwerte_speichern(
                         werte=rohwerte,
                         fehler={f"sollwert_{modus.id}": exc.meldung},
                     )
-        raise
+        # Unerreichbar, solange jeder `Domaenenfehler` aus `sollwerte_aendern` aus
+        # `temperatur_pruefen` stammt -- die Schleife darueber ruft dieselbe Pruefung
+        # erneut auf und findet den Wert, der ihn ausgeloest hat. Die Zeile bleibt als
+        # Notausgang: Kommt in der Domaene spaeter eine Regel dazu, die sich nicht einem
+        # einzelnen Feld zuordnen laesst, faellt sie hier auf, statt still eine falsche
+        # Feldmeldung zu erzeugen.
+        raise  # pragma: no cover
     return RedirectResponse(
         f"/zonen/{zone.id}/sollwerte", status_code=status.HTTP_303_SEE_OTHER
     )
