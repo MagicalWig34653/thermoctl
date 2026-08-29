@@ -1,0 +1,86 @@
+{% extends "basis.html" if not ist_htmx else "leer.html" %}
+{% block titel %}Audit-Protokoll – thermoctl{% endblock %}
+{% block inhalt %}
+<section id="auditliste">
+  <h1 class="mb-3">Audit-Protokoll</h1>
+  <form method="get" action="/audit" class="row g-3 mb-4">
+    <div class="col-sm-6 col-lg-3">
+      <label class="form-label" for="von">Von</label>
+      <input class="form-control{% if fehler.von %} is-invalid{% endif %}" id="von"
+             name="von" type="date" value="{{ filter.von }}">
+      {% if fehler.von %}<div class="invalid-feedback">{{ fehler.von }}</div>{% endif %}
+    </div>
+    <div class="col-sm-6 col-lg-3">
+      <label class="form-label" for="bis">Bis</label>
+      <input class="form-control{% if fehler.bis %} is-invalid{% endif %}" id="bis"
+             name="bis" type="date" value="{{ filter.bis }}">
+      {% if fehler.bis %}<div class="invalid-feedback">{{ fehler.bis }}</div>{% endif %}
+    </div>
+    <div class="col-sm-6 col-lg-3">
+      <label class="form-label" for="quelle">Quelle</label>
+      <select class="form-select" id="quelle" name="quelle">
+        <option value="">Alle Quellen</option>
+        {% for code, bezeichnung in quellen %}
+        <option value="{{ code }}"{% if filter.quelle == code %} selected{% endif %}>{{ bezeichnung }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-sm-6 col-lg-3">
+      <label class="form-label" for="aktion">Aktion</label>
+      <select class="form-select" id="aktion" name="aktion">
+        <option value="">Alle Aktionen</option>
+        {% for wert in aktionen %}
+        <option value="{{ wert }}"{% if filter.aktion == wert %} selected{% endif %}>{{ wert }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-sm-6">
+      <label class="form-label" for="benutzer">Akteur</label>
+      <input class="form-control" id="benutzer" name="benutzer" value="{{ filter.benutzer }}"
+             placeholder="Benutzername oder Tokenname">
+    </div>
+    <div class="col-sm-6">
+      <label class="form-label" for="objekt">Objekt</label>
+      <input class="form-control" id="objekt" name="objekt" value="{{ filter.objekt }}"
+             placeholder="Typ oder Typ:ID">
+    </div>
+    <div class="col-12">
+      <button class="btn btn-primary" type="submit">Filtern</button>
+      <a class="btn btn-outline-secondary" href="/audit">Zurücksetzen</a>
+    </div>
+  </form>
+
+  {% if fehler.seite %}<div class="alert alert-danger">{{ fehler.seite }}</div>{% endif %}
+  {% if eintraege %}
+  <div class="table-responsive">
+    <table class="table table-striped align-middle">
+      <thead><tr><th>Zeitpunkt</th><th>Quelle</th><th>Akteur</th><th>Aktion</th><th>Objekt</th><th>Zusammenfassung</th></tr></thead>
+      <tbody>
+      {% for eintrag, quelle, nutzer, token in eintraege %}
+      <tr>
+        <td class="text-nowrap" title="{{ eintrag.occurred_at.isoformat(sep=' ') }} UTC">{{ eintrag.occurred_at|alter }}</td>
+        <td>{{ quelle.label }}</td>
+        <td>{{ nutzer.username if nutzer else (token.name if token else "System") }}</td>
+        <td><code>{{ eintrag.action }}</code></td>
+        <td><code>{{ eintrag.object_type }}{% if eintrag.object_id %}:{{ eintrag.object_id }}{% endif %}</code></td>
+        <td>
+          {{ eintrag.summary }}
+          {% if eintrag.detail %}<details class="mt-1"><summary>Details anzeigen</summary><pre class="mt-2 text-wrap">{{ eintrag.detail }}</pre></details>{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% elif not fehler %}
+  <div class="alert alert-secondary" role="status">Keine passenden Einträge gefunden.</div>
+  {% endif %}
+
+  {% if seite > 1 or hat_weitere %}
+  <nav aria-label="Seitennavigation" class="d-flex justify-content-between">
+    {% if seite > 1 %}<a class="btn btn-outline-secondary" href="?{{ basis_parameter }}&amp;seite={{ seite - 1 }}">Neuere Einträge</a>{% else %}<span></span>{% endif %}
+    {% if hat_weitere %}<a class="btn btn-outline-secondary" href="?{{ basis_parameter }}&amp;seite={{ seite + 1 }}">Ältere Einträge</a>{% endif %}
+  </nav>
+  {% endif %}
+</section>
+{% endblock %}
