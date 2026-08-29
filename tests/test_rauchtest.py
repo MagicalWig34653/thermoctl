@@ -111,3 +111,44 @@ def test_verweise_in_vorlagen_zeigen_auf_vorhandene_seiten(
         if antwort.status_code >= 400:
             tote.append(f"{ziel}: HTTP {antwort.status_code}")
     assert not tote, f"Tote Verweise in {vorlage.name}: " + ", ".join(tote)
+
+
+@pytest.mark.parametrize("vorlage", sorted(TEMPLATE_VERZEICHNIS.glob("*.html")))
+def test_kein_skript_im_rumpf_einer_vorlage(vorlage: Path) -> None:
+    """Skripte gehoeren in den Kopf, nicht in den Rumpf.
+
+    `hx-boost` tauscht bei jeder Navigation den Inhalt des ``<body>`` aus, und htmx
+    fuehrt ``<script>``-Tags im eingetauschten Inhalt erneut aus. Bootstrap registrierte
+    seine Menuebehandlung dadurch ein zweites Mal am ``document``: Der Umschalter feuerte
+    doppelt, das Menue ging auf und im selben Klick wieder zu -- fuer den Benutzer sah es
+    aus, als liesse es sich nicht mehr oeffnen. Im Browser nachgestellt und nach der
+    Umstellung ebenso nachgemessen; hier steht nur die Invariante, damit das naechste
+    Skript nicht wieder im Rumpf landet.
+    """
+    text = vorlage.read_text(encoding="utf-8")
+    kopfende = text.find("</head>")
+    stellen = [treffer.start() for treffer in re.finditer(r"<script\b", text)]
+    if kopfende == -1:
+        # Teilvorlagen ohne eigenen Kopf duerfen ueberhaupt kein Skript mitbringen:
+        # Sie werden ausschliesslich in ausgetauschten Inhalt hineingerendert.
+        assert not stellen, f"{vorlage.name} bringt ein Skript mit, hat aber keinen Kopf"
+        return
+    zu_spaet = [stelle for stelle in stellen if stelle > kopfende]
+    assert not zu_spaet, (
+        f"{vorlage.name}: {len(zu_spaet)} Skript(e) stehen hinter </head>. "
+        "hx-boost fuehrt sie bei jeder Navigation erneut aus."
+    )
+
+
+def test_passkey_skript_haengt_nicht_nur_an_domcontentloaded() -> None:
+    """`DOMContentLoaded` feuert nach einem hx-boost-Wechsel nie wieder.
+
+    Wer /passkeys ueber das Menue ansteuerte, bekam deshalb einen Abschnitt, den das
+    Skript nie eingeblendet hat -- die Passkey-Verwaltung war unsichtbar, solange man
+    die Seite nicht direkt neu lud. Aufgefallen ist das erst im Browser, keinem Test.
+    """
+    quelle = (
+        Path(__file__).resolve().parent.parent / "thermoctl/web/static/passkey.js"
+    ).read_text(encoding="utf-8")
+    assert 'document.addEventListener("htmx:load"' in quelle
+    assert 'document.addEventListener("DOMContentLoaded"' in quelle

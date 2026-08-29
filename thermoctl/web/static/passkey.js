@@ -159,9 +159,13 @@
 
     function anmeldungVorbereiten() {
         const knopf = document.getElementById("passkey-anmelden");
-        if (!knopf) {
+        // `dataset.verdrahtet`: initialisieren() laeuft bei jedem Inhaltswechsel erneut.
+        // Ohne die Marke bekaeme derselbe Knopf mehrere Klickbehandlungen und loeste
+        // ebenso viele Authenticator-Anfragen aus.
+        if (!knopf || knopf.dataset.verdrahtet) {
             return;
         }
+        knopf.dataset.verdrahtet = "ja";
         const hinweisfeld = document.getElementById("passkey-hinweis");
 
         function hinweis(text, istFehler) {
@@ -207,9 +211,10 @@
 
     function registrierungVorbereiten() {
         const knopf = document.getElementById("passkey-hinterlegen");
-        if (!knopf) {
+        if (!knopf || knopf.dataset.verdrahtet) {
             return;
         }
+        knopf.dataset.verdrahtet = "ja";
         const hinweisfeld = document.getElementById("passkey-registrierung-hinweis");
 
         function hinweis(text, istFehler) {
@@ -265,7 +270,9 @@
         });
     }
 
-    document.addEventListener("DOMContentLoaded", function () {
+    let bedingteGestartet = false;
+
+    function initialisieren() {
         // Ohne WebAuthn gar nichts anbieten, statt eine Schaltflaeche zu zeigen, die
         // nichts tun kann. Die Abschnitte sind im Markup ausgeblendet und werden erst
         // hier sichtbar — so blitzt auch nichts auf, das gleich wieder verschwindet.
@@ -285,8 +292,13 @@
         // Bedingte Anmeldung nur, wenn der Browser sie kennt: sonst wuerde
         // navigator.credentials.get() sofort einen Dialog aufwerfen, auch bei
         // Besuchern ohne Passkey.
-        if (document.getElementById("passkey-anmelden")
+        // `bedingteGestartet`: Auch dieser Teil laeuft bei jedem Inhaltswechsel erneut.
+        // Ein zweiter Aufruf wuerde eine zweite Anfrage aufmachen, und der Browser laesst
+        // nur eine zu -- er wiese sie ab und beendete dabei die erste.
+        if (!bedingteGestartet
+            && document.getElementById("passkey-anmelden")
             && typeof window.PublicKeyCredential.isConditionalMediationAvailable === "function") {
+            bedingteGestartet = true;
             window.PublicKeyCredential.isConditionalMediationAvailable()
                 .then(function (moeglich) {
                     if (moeglich) {
@@ -295,5 +307,16 @@
                 })
                 .catch(function () { /* Die Schaltflaeche bleibt. */ });
         }
-    });
+    }
+
+    // Zwei Aufhaenger, weil keiner allein beide Wege abdeckt:
+    //   * `DOMContentLoaded` fuer den direkten Aufruf einer Adresse,
+    //   * `htmx:load` fuer jeden per hx-boost eingetauschten Inhalt.
+    // Vorher hing hier nur `DOMContentLoaded`. Wer /passkeys ueber das Menue ansteuerte,
+    // loeste keines aus -- der ganze Passkey-Abschnitt blieb ausgeblendet, und die
+    // Funktion war fuer jeden unsichtbar, der die Seite nicht direkt neu lud.
+    // `initialisieren()` ist deshalb mehrfach ausfuehrbar: Es blendet nur ein und
+    // verdrahtet Knoepfe, die noch keine Marke tragen.
+    document.addEventListener("DOMContentLoaded", initialisieren);
+    document.addEventListener("htmx:load", initialisieren);
 })();
