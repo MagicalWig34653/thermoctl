@@ -1,0 +1,1 @@
+"""MQTT-Anbindung fuer Geraetedaten."""
