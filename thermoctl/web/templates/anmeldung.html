@@ -23,3 +23,21 @@
         <button type="submit" class="btn btn-primary w-100">Anmelden</button>
     </form>
 {% endblock %}
+
+{% block passkey %}
+{% if passkeys_moeglich %}
+{#
+    Standardmaessig ausgeblendet und erst von passkey.js eingeblendet, wenn der Browser
+    WebAuthn beherrscht. Sonst stuende hier eine Schaltflaeche, die nichts tun kann — und
+    sie blitzte auch nicht kurz auf, um dann zu verschwinden.
+#}
+<div class="mt-3" data-passkey hidden>
+    <div class="text-center small text-body-secondary my-2">oder</div>
+    <button class="btn btn-outline-secondary w-100" type="button" id="passkey-anmelden">
+        Mit Passkey anmelden
+    </button>
+    <span id="passkey-hinweis" class="form-text text-body-secondary"></span>
+</div>
+<script src="/static/passkey.js"></script>
+{% endif %}
+{% endblock %}

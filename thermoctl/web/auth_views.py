@@ -52,7 +52,9 @@ def schlafen(sekunden: float) -> None:
 
 @router.get("/login")
 async def login_formular(request: Request) -> Response:
-    return templates.TemplateResponse(request, "anmeldung.html", {})
+    return templates.TemplateResponse(
+        request, "anmeldung.html", {"passkeys_moeglich": get_settings().passkeys_moeglich()}
+    )
 
 
 @router.post("/login")
@@ -90,7 +92,8 @@ async def login(
             object_id=username, summary=f"Anmeldung als '{username}' fehlgeschlagen",
         )
         return templates.TemplateResponse(
-            request, "anmeldung.html", {"fehler": _FEHLERMELDUNG},
+            request, "anmeldung.html",
+            {"fehler": _FEHLERMELDUNG, "passkeys_moeglich": settings.passkeys_moeglich()},
             status_code=status.HTTP_401_UNAUTHORIZED,
         )
 

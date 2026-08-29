@@ -1,0 +1,80 @@
+{% extends "basis.html" if not ist_htmx else "leer.html" %}
+{% block titel %}Passkeys – thermoctl{% endblock %}
+{% block inhalt %}
+<section id="passkeyliste">
+    <h1 class="mb-3">Passkeys</h1>
+    <p class="text-body-secondary">
+        Ein Passkey ersetzt das Passwort: Der geheime Teil verlässt Ihr Gerät nie, und er
+        lässt sich nicht auf einer nachgemachten Seite eingeben — er gilt nur für diese.
+    </p>
+
+    {% if not moeglich %}
+    <div class="alert alert-secondary" role="status">
+        Passkeys sind nicht eingerichtet. Dafür braucht der Dienst
+        <code>THERMOCTL_PASSKEY_RP_ID</code> und eine verschlüsselte Verbindung — siehe
+        <code>docs/self-hosting.md</code>.
+    </div>
+    {% else %}
+
+    {% if passkeys %}
+    <table class="table table-striped align-middle">
+        <thead>
+        <tr>
+            <th scope="col">Bezeichnung</th>
+            <th scope="col">Hinterlegt</th>
+            <th scope="col">Zuletzt benutzt</th>
+            <th scope="col"></th>
+        </tr>
+        </thead>
+        <tbody>
+        {% for eintrag in passkeys %}
+        <tr>
+            <td>{{ eintrag.bezeichnung }}</td>
+            <td title="{{ eintrag.created_at }} UTC">{{ eintrag.created_at|alter }}</td>
+            <td title="{{ eintrag.last_used_at or '' }} UTC">{{ eintrag.last_used_at|alter }}</td>
+            <td class="text-end">
+                <form method="post" action="/passkeys/{{ eintrag.id }}/entfernen">
+                    <button type="submit" class="btn btn-sm btn-outline-danger">Entfernen</button>
+                </form>
+            </td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div class="alert alert-secondary" role="status">
+        Noch kein Passkey hinterlegt. Solange keiner da ist, bleibt das Passwort der
+        einzige Weg herein.
+    </div>
+    {% endif %}
+
+    <div data-ohne-passkey hidden>
+        <div class="alert alert-warning" role="status">
+            Dieser Browser beherrscht keine Passkeys. WebAuthn verlangt außerdem eine
+            verschlüsselte Verbindung — über <code>http://</code> geht es nur auf
+            <code>localhost</code>.
+        </div>
+    </div>
+
+    <div class="card mt-4" data-passkey hidden>
+        <div class="card-body">
+            <h2 class="h5 card-title">Passkey hinterlegen</h2>
+            <div class="mb-3">
+                <label class="form-label" for="passkey-bezeichnung">Bezeichnung</label>
+                <input type="text" class="form-control" id="passkey-bezeichnung"
+                       placeholder="z. B. Telefon" maxlength="120">
+                <div class="form-text">
+                    Woran Sie diesen Schlüssel später wiedererkennen. Wer zwei Geräte
+                    hinterlegt, unterscheidet sie sonst nicht mehr.
+                </div>
+            </div>
+            <button type="button" class="btn btn-primary" id="passkey-hinterlegen">
+                Passkey hinterlegen
+            </button>
+            <span id="passkey-registrierung-hinweis" class="form-text text-body-secondary"></span>
+        </div>
+    </div>
+    {% endif %}
+</section>
+<script src="/static/passkey.js"></script>
+{% endblock %}

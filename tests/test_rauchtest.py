@@ -32,6 +32,7 @@ GESCHUETZTE_SEITEN = [
     "/modi",
     "/modi/neu",
     "/audit",
+    "/passkeys",
     "/zonen/{zone_id}/sollwerte",
     "/zonen/{zone_id}/geraete",
     "/zonen/{zone_id}/zeitplan",

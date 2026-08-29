@@ -145,13 +145,44 @@ Das Log ist strukturiert (`THERMOCTL_LOG_FORMAT=json`, für Menschen `text`) und
 Geheimnisse. Jede Antwort trägt eine `X-Request-ID`, die in jeder zugehörigen Logzeile
 wieder auftaucht — damit lässt sich ein einzelner Aufruf durch das ganze Log verfolgen.
 
-## 8. Die Schnittstelle ausprobieren
+## 8. Passkeys
+
+Ein Passkey ersetzt das Passwort: Der geheime Teil verlässt das Gerät nie, und er lässt
+sich nicht auf einer nachgemachten Seite eingeben — er gilt nur für den Hostnamen, für den
+er angelegt wurde. Das ist der Unterschied, auf den es ankommt; ein Passwort können Sie
+verraten, einen Passkey nicht.
+
+```dotenv
+THERMOCTL_PASSKEY_RP_ID=heizung.example.org
+```
+
+Mehr braucht es nicht. Ohne diese Angabe sind Passkeys abgeschaltet, und die Anmeldeseite
+bietet sie gar nicht erst an — statt eine Schaltfläche zu zeigen, die nichts tun kann.
+
+Drei Dinge, die dabei oft übersehen werden:
+
+- **Die Angabe ist der nackte Hostname**, ohne `https://` und ohne Port. Sie wird
+  absichtlich nicht aus der Anfrage abgeleitet: Die `Host`-Kopfzeile setzt der Aufrufer,
+  und eine Relying-Party-ID unter seiner Kontrolle hebt genau den Schutz auf, um den es
+  geht.
+- **WebAuthn verlangt HTTPS.** Die einzige Ausnahme ist `localhost`. Wer den Dienst also
+  ohne TLS im Netz betreibt, bekommt keine Passkeys — und sollte ihn ohnehin nicht so
+  betreiben (Abschnitt 4).
+- **Weicht die Adresse vom Hostnamen ab** — etwa bei der Entwicklung auf
+  `http://localhost:8000` —, muss `THERMOCTL_PASSKEY_ORIGIN` genau diese Adresse tragen.
+
+Hinterlegt werden Passkeys nach der Anmeldung unter **`/passkeys`**, ein Gerät je Eintrag.
+Legen Sie mindestens zwei an, wenn Sie sich darauf verlassen wollen: Ein verlorenes Telefon
+ist sonst ein verlorener Zugang — das Passwort bleibt zwar bestehen, aber genau das wollten
+Sie ja loswerden.
+
+## 9. Die Schnittstelle ausprobieren
 
 Unter `/docs` liegt eine Swagger-Oberfläche: jeder Weg der REST-Schnittstelle zum
 Anklicken, mit **Authorize** oben rechts für das API-Token. Sie kommt vollständig aus dem
 Dienst selbst und funktioniert deshalb auch ohne Internetzugang.
 
-## 9. Benachrichtigungen
+## 10. Benachrichtigungen
 
 Fällt ein Sensor aus oder ist die Zigbee2MQTT-Brücke nicht mehr erreichbar, schreibt der
 Dienst eine Warnung ins Log. Steht in `.env` zusätzlich eine Webhook-Adresse, geht dieselbe
@@ -171,7 +202,7 @@ Antwortet der Webhook nicht, wird das protokolliert und sonst nichts. Die Regelu
 weiter — eine Heizungssteuerung, die stehenbleibt, weil ein Webhook hängt, ist schlimmer
 als eine, die eine Meldung verliert.
 
-## 10. Was der Dienst über Sie nach außen gibt
+## 11. Was der Dienst über Sie nach außen gibt
 
 Nichts. `thermoctl` ruft von sich aus keinen fremden Dienst auf, sendet keine Telemetrie
 und braucht kein Konto bei irgendwem. Ausgehende Verbindungen entstehen erst, wenn Sie
