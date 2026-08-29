@@ -34,6 +34,8 @@ GESCHUETZTE_SEITEN = [
     "/audit",
     "/zonen/{zone_id}/sollwerte",
     "/zonen/{zone_id}/geraete",
+    "/zonen/{zone_id}/zeitplan",
+    "/zonen/{zone_id}/zeitplan/uebernehmen",
 ]
 
 

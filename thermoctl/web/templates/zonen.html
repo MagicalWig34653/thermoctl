@@ -15,7 +15,10 @@
         <td>{{ zone.operating_mode.label }}</td>
         <td>{{ zone.sort_order }}</td>
         <td class="text-end">
-            <a class="btn btn-sm btn-outline-secondary" href="/zonen/{{ zone.id }}/geraete">Geräte</a>
+            <a class="btn btn-sm btn-outline-secondary"
+               href="/zonen/{{ zone.id }}/geraete">Geräte</a>
+            <a class="btn btn-sm btn-outline-secondary"
+               href="/zonen/{{ zone.id }}/zeitplan">Zeitplan</a>
             {% if zone.id in darf_aendern %}<a class="btn btn-sm btn-outline-primary" href="/zonen/{{ zone.id }}">Bearbeiten</a>{% endif %}
         </td>
     </tr>

@@ -21,7 +21,7 @@
         </div>
     </div>
 </nav>
-<div class="container" style="max-width: 40rem;">
+<div class="container" style="max-width: {% block max_breite %}40rem{% endblock %};">
 {% block inhalt %}{% endblock %}
 </div>
 <script src="/static/vendor/bootstrap/bootstrap.bundle.min.js"></script>
