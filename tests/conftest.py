@@ -289,6 +289,7 @@ def angemeldeter_client(
             ("setting.manage", None),
             ("mode.manage", None),
             ("setpoint.write", None),
+            ("schedule.manage", None),
         ]
     )
 
