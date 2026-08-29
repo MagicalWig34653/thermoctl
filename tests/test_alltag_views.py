@@ -184,3 +184,86 @@ def test_uebersicht_erklaert_fehlenden_messwert_und_zeigt_entscheidung(
     assert ">0 °C" not in antwort.text
     assert "Kein verwertbarer Messwert" in antwort.text
     assert "Betriebsart: auto" in antwort.text
+
+
+def test_uebersteuerung_bis_zur_naechsten_schaltung(session: Session, client_als) -> None:
+    """Das Ende wird beim Anlegen ausgerechnet und abgelegt, nicht als Regel gemerkt —
+    eine spaetere Zeitplanaenderung verschiebt eine laufende Uebersteuerung nicht."""
+    from tests.hilfen import modus_anlegen
+    from thermoctl.db.models.schedule import SchedulePoint
+
+    zone = _grundlage(session)
+    modus = modus_anlegen(session, "tag-uebersteuerung", "Tag")
+    session.add(
+        SchedulePoint(zone_id=zone.id, weekday=1, minute_of_day=360, setpoint_mode_id=modus.id)
+    )
+    session.flush()
+    client = client_als([("override.create", None), ("zone.read", None)])
+    antwort = client.post(
+        f"/zonen/{zone.id}/uebersteuerung",
+        data={"temperature_c": "21,5", "ende": "naechste_schaltung"},
+        headers=_csrf(client), follow_redirects=False,
+    )
+    assert antwort.status_code == 303
+    eintrag = session.scalar(select(ZoneOverride).where(ZoneOverride.zone_id == zone.id))
+    assert eintrag is not None and eintrag.ends_at is not None
+
+
+def test_uebersteuerung_fuer_eine_dauer(session: Session, client_als) -> None:
+    zone = _grundlage(session)
+    client = client_als([("override.create", None), ("zone.read", None)])
+    antwort = client.post(
+        f"/zonen/{zone.id}/uebersteuerung",
+        data={"temperature_c": "20.0", "ende": "dauer", "dauer_minuten": "120"},
+        headers=_csrf(client), follow_redirects=False,
+    )
+    assert antwort.status_code == 303
+    eintrag = session.scalar(select(ZoneOverride).where(ZoneOverride.zone_id == zone.id))
+    assert eintrag is not None and eintrag.ends_at is not None
+
+
+def test_uebersteuerung_ohne_zeitplan_gilt_dauerhaft(session: Session, client_als) -> None:
+    """Ohne Schaltpunkt gibt es keine naechste Schaltung — dann gilt sie, bis jemand sie
+    aufhebt. Stillschweigend gar nichts zu tun waere die schlechtere Antwort."""
+    zone = _grundlage(session)
+    client = client_als([("override.create", None), ("zone.read", None)])
+    client.post(
+        f"/zonen/{zone.id}/uebersteuerung",
+        data={"temperature_c": "20.0", "ende": "naechste_schaltung"},
+        headers=_csrf(client),
+    )
+    eintrag = session.scalar(select(ZoneOverride).where(ZoneOverride.zone_id == zone.id))
+    assert eintrag is not None and eintrag.ends_at is None
+
+
+def test_unsinnige_uebersteuerungen_werden_abgewiesen(session: Session, client_als) -> None:
+    """Eine Heizung, die eine unsinnige Eingabe zurechtbiegt, ist schlimmer als eine, die
+    widerspricht."""
+    zone = _grundlage(session)
+    client = client_als([("override.create", None), ("zone.read", None)])
+    for daten in (
+        {"temperature_c": "warm", "ende": "dauerhaft"},
+        {"temperature_c": "2.0", "ende": "dauerhaft"},
+        {"temperature_c": "50", "ende": "dauerhaft"},
+        {"temperature_c": "20", "ende": "dauer", "dauer_minuten": "0"},
+        {"temperature_c": "20", "ende": "dauer", "dauer_minuten": "keine Zahl"},
+        {"temperature_c": "20", "ende": "irgendwas"},
+    ):
+        antwort = client.post(
+            f"/zonen/{zone.id}/uebersteuerung", data=daten,
+            headers=_csrf(client), follow_redirects=False,
+        )
+        assert antwort.status_code == 303, daten
+        assert "uebersteuerungsfehler" in (antwort.headers.get("location") or ""), daten
+    assert session.scalar(select(ZoneOverride).where(ZoneOverride.zone_id == zone.id)) is None
+
+
+def test_unsinnige_regelparameter_bleiben_im_formular(session: Session, client_als) -> None:
+    zone = _grundlage(session)
+    client = client_als([("zone.manage", None), ("zone.read", None)])
+    for feld, wert in (("hysteresis_k", "keine Zahl"), ("min_on_seconds", "-5")):
+        antwort = client.post(
+            f"/zonen/{zone.id}/parameter", data={feld: wert}, headers=_csrf(client)
+        )
+        assert antwort.status_code == 200, feld
+    assert zone.hysteresis_k is None and zone.min_on_seconds is None

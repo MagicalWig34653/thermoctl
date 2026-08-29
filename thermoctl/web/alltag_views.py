@@ -151,7 +151,9 @@ async def uebersteuerung_erstellen(
             ende = None
         else:
             raise ValueError
-    except InvalidOperation, ValueError:
+    # Klammern, obwohl Python 3.14 sie nicht mehr verlangt (PEP 758): Ohne sie sieht die
+    # Zeile aus wie die Python-2-Form, die etwas anderes bedeutete.
+    except (InvalidOperation, ValueError):
         parameter = urlencode(
             {
                 "uebersteuerungsfehler": "Bitte Temperatur, Art und Dauer prüfen.",
