@@ -10,12 +10,21 @@ from collections.abc import Sequence
 from alembic import op
 import sqlalchemy as sa
 
-from thermoctl.db.models.lookup import SENSOR_STATUS
-
 revision: str = "8b2d6e8a7f10"
 down_revision: str | Sequence[str] | None = "4d43756aecd3"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
+
+# Die Listen stehen hier ausgeschrieben statt als Import aus dem Modell. Eine Migration
+# beschreibt, was zu EINEM Zeitpunkt geschah; zoege sie ihre Daten aus einer Konstanten,
+# die spaeter waechst, aenderte sich rueckwirkend, was dieser Schritt getan hat. Genau
+# dieser Fehler steckte in der Referenzdatenmigration aus Teilprojekt 1 und wurde dort
+# beim Bau dieser Revision mitbehoben.
+SENSOR_STATUS = [
+    ("ok", "In Ordnung"),
+    ("veraltet", "Messwert veraltet"),
+    ("keine_quelle", "Keine Messquelle"),
+]
 
 NEUE_FAEHIGKEITEN = [
     ("humidity", "Luftfeuchtigkeit"),
@@ -27,6 +36,7 @@ NEUE_FAEHIGKEITEN = [
     ("valve_position", "Ventilstellung"),
     ("setpoint", "Sollwert"),
     ("availability", "Erreichbarkeit"),
+    ("soil_moisture", "Bodenfeuchte"),
 ]
 
 
