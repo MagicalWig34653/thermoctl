@@ -22,6 +22,16 @@ und eine PHP-Oberfläche aus zwei anderen Projekten. Der Stand der Planung ist:
 - [`docs/superpowers/plans/2026-08-28-teilprojekt-1-fundament.md`](docs/superpowers/plans/2026-08-28-teilprojekt-1-fundament.md)
   — Implementierungsplan dazu, 22 Aufgaben. Enthält in den *Global Constraints* die
   Eigenheiten, die beide Datenbanken unterscheiden — wer am Schema arbeitet, liest sie zuerst.
+- [`docs/superpowers/specs/2026-08-29-teilprojekt-2-geraete-schattenbetrieb-design.md`](docs/superpowers/specs/2026-08-29-teilprojekt-2-geraete-schattenbetrieb-design.md)
+  und der [zugehörige Plan](docs/superpowers/plans/2026-08-29-teilprojekt-2-geraete-schattenbetrieb.md)
+  — Teilprojekt 2 (**umgesetzt**): Geräte-Anbindung im Schattenbetrieb. Enthält, warum der
+  Trockenlauf eine abgesicherte Eigenschaft ist und keine Absichtserklärung.
+- [`docs/superpowers/specs/2026-08-29-teilprojekt-3-konfigurationsoberflaeche-design.md`](docs/superpowers/specs/2026-08-29-teilprojekt-3-konfigurationsoberflaeche-design.md)
+  und der [zugehörige Plan](docs/superpowers/plans/2026-08-29-teilprojekt-3-konfigurationsoberflaeche.md)
+  — Teilprojekt 3 (**umgesetzt**): die Konfigurations-Oberfläche.
+- [`docs/offene-entscheidungen.md`](docs/offene-entscheidungen.md) — Entscheidungen, die
+  ohne Rückfrage getroffen wurden, mit Begründung und verworfenen Alternativen. **Wer eine
+  davon anders will, ändert sie** — sie sind dokumentiert, nicht in Stein.
 - [`docs/technisches_konzept.md`](docs/technisches_konzept.md) — **unverbindlich.** Fachliches
   Zielbild für Bedienung und Gerätetypen aus anderem Kontext. Setzt Home Assistant als
   Einstiegspunkt voraus, was der Rahmenentwurf ausdrücklich verworfen hat. Bei Widerspruch
