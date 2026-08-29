@@ -67,7 +67,7 @@ Stundenrasters in Schaltpunkte (die Roadmap führte sie als ungeklärt; sie ist 
 reine Funktion mit einer Rückprobe über alle 168 Wochenstunden) und die lesende Grundlage
 des Vergleichsbetriebs.
 
-## Sieben Fehler, die alle Tests und Reviews passiert hatten
+## Neun Fehler, die alle Tests und Reviews passiert hatten
 
 Alle in diesem Lauf gefunden:
 
@@ -89,6 +89,14 @@ Alle in diesem Lauf gefunden:
    grün, weil seine Fixture einen Zustand herstellte, den es in keiner Instanz gibt.
 7. **`shadow_decision.zone_id` hatte als einziger Zonenbezug keine Kaskade**, wodurch sich
    eine Zone nicht mehr löschen ließ, sobald ein Schattenlauf für sie gelaufen war.
+
+8. **Die Sollwertgrenze für Übersteuerungen galt nicht überall.** Sie stand dreimal
+   verschieden da — und der MCP-Server prüfte gar nicht. Übersteuerungen sind genau die
+   Eingabe, die in Phase 4 ungefiltert in die scharfe Regelentscheidung fließt. Die
+   Prüfung liegt jetzt in der Domäne.
+9. **Die Fehlerklassen waren eingefrorene Dataclasses.** Python hängt einer Ausnahme beim
+   Werfen ihren Traceback an, und eine eingefrorene Dataclass verweigert das — die
+   Ausnahme kam als `FrozenInstanceError` an, sobald sie tief genug durchgereicht wurde.
 
 Dazu vier Korrekturen aus der Gegenlesung in der Hauptsession: Frostschutz statt Abschalten
 bei Sensorausfall, ein MQTT-Wiederverbindungsabstand, der monoton wuchs, eine doppelt
