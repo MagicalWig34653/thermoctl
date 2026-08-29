@@ -25,9 +25,7 @@ from thermoctl.domain.authz import Forbidden
 from thermoctl.mcp import server
 
 
-def _token(
-    session: Session, name: str, rechte: list[tuple[str, int | None]]
-) -> str:
+def _token(session: Session, name: str, rechte: list[tuple[str, int | None]]) -> str:
     nutzer = benutzer_mit_rechten(session, name, rechte)
     _objekt, klartext = token_ausstellen(session, nutzer, name, rechte, None)
     return klartext
@@ -73,6 +71,19 @@ def test_sollwert_erklaeren_reicht_domaenenbegruendung_durch(session: Session) -
 
     assert ergebnis["begruendung"] == erwartet.grund
     assert ergebnis["temperatur_c"] == str(erwartet.temperature_c)
+
+
+def test_zeitplan_und_sollwerte_lesen_nennen_die_modi(session: Session) -> None:
+    zone = zone_mit_zeitplan(session, "lesezone", [(2, 390, "tag-lesezone", Decimal("20.5"))])
+    klartext = _token(session, "konfigurationsleser", [("zone.read", zone.id)])
+
+    assert server.zeitplan_lesen(session, klartext, zone.id) == [
+        {"wochentag": 2, "minute_im_tag": 390, "modus": "Tag-lesezone"}
+    ]
+    assert {
+        eintrag["modus"]: eintrag["temperatur_c"]
+        for eintrag in server.sollwerte_lesen(session, klartext, zone.id)
+    }["Tag-lesezone"] == "20.5"
 
 
 def test_geraete_auflisten_liefert_faehigkeiten_und_gesundheit(session: Session) -> None:
@@ -219,6 +230,8 @@ def test_registrierte_mcp_werkzeuge_rufen_die_adapterfunktionen_auf(
         "zonen_auflisten",
         "zonenzustand",
         "sollwert_erklaeren",
+        "zeitplan_lesen",
+        "sollwerte_lesen",
         "geraete_auflisten",
         "schattenentscheidungen",
         "uebersteuern",
@@ -227,6 +240,8 @@ def test_registrierte_mcp_werkzeuge_rufen_die_adapterfunktionen_auf(
     assert werkzeuge["zonen_auflisten"]()  # type: ignore[operator]
     assert werkzeuge["zonenzustand"](zone.id)  # type: ignore[operator]
     assert werkzeuge["sollwert_erklaeren"](zone.id)  # type: ignore[operator]
+    assert werkzeuge["zeitplan_lesen"](zone.id)  # type: ignore[operator]
+    assert werkzeuge["sollwerte_lesen"](zone.id)  # type: ignore[operator]
     assert werkzeuge["geraete_auflisten"]()  # type: ignore[operator]
     assert werkzeuge["schattenentscheidungen"](zone.id, 1)  # type: ignore[operator]
     assert werkzeuge["uebersteuern"](zone.id, Decimal("21.0"))  # type: ignore[operator]
@@ -275,9 +290,7 @@ def test_zonenzustand_ohne_messung_meldet_leere_werte(session: Session) -> None:
 
 
 @pytest.mark.parametrize("anzahl", [0, -1, 101])
-def test_schattenentscheidungen_weist_unsinnige_anzahl_ab(
-    session: Session, anzahl: int
-) -> None:
+def test_schattenentscheidungen_weist_unsinnige_anzahl_ab(session: Session, anzahl: int) -> None:
     """Ohne Obergrenze koennte ein Aufruf die ganze Historie ziehen."""
     zone = zone_anlegen(session, f"zone-anzahl-{anzahl}")
     klartext = _token(session, f"leser-anzahl-{anzahl}", [("zone.read", None)])
