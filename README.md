@@ -23,6 +23,33 @@ docker build -f docker/Dockerfile -t thermoctl .
 docker run --rm --env-file .env -p 8000:8000 -v thermoctl-data:/data thermoctl
 ```
 
+Für die Datenbank im Container muss `THERMOCTL_DATABASE_URL` auf einen Pfad im Volume
+zeigen, etwa `sqlite:////data/thermoctl.db` — ein relativer Pfad landet sonst im Container
+und ist beim nächsten Start verschwunden.
+
+## Örtlich starten, ohne Container
+
+```bash
+python3.14 -m venv .venv && .venv/bin/pip install -e ".[dev]"
+.venv/bin/python -m alembic upgrade head
+.venv/bin/python -c "from thermoctl.cli import main; main()"
+```
+
+Der Konsolenbefehl `.venv/bin/thermoctl` funktioniert bei einer editierbaren Installation
+nicht zuverlässig: Sein Modulpfad beginnt im `.venv/bin`, und die Datei, die das Paket dort
+auffindbar macht, wird unter macOS als versteckt markiert und beim Start übersprungen. Der
+Aufruf über `python -c` nimmt stattdessen das Projektverzeichnis in den Modulpfad. Im
+Container tritt das nicht auf, dort ist das Paket regulär installiert.
+
+## Tests
+
+```bash
+.venv/bin/pytest                                   # SQLite, mit Abdeckungsbericht
+THERMOCTL_TEST_DATABASE_URL=mysql+pymysql://… .venv/bin/pytest    # gegen MariaDB
+```
+
+Die Suite läuft gegen beide Datenbanken; die CI verlangt mindestens 97 % Abdeckung.
+
 Beim ersten Start stehen die Datenbankmigrationen und anschließend der Dienststart an. Ist
 noch kein Benutzer vorhanden, erscheint das einmalig verwendbare Einrichtungs-Token im
 Container-Log. Damit wird die Einrichtung unter `/setup` abgeschlossen. Logs mit diesem
