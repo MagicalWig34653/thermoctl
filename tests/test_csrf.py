@@ -87,3 +87,15 @@ def test_csrf_cookie_wird_bei_der_anmeldung_gesetzt(client: TestClient, benutzer
     )
     assert antwort.status_code == status.HTTP_303_SEE_OTHER
     assert CSRF_COOKIE_NAME in client.cookies
+
+
+def test_basisvorlage_uebertraegt_csrf_cookie_mit_htmx() -> None:
+    """Ohne die Browserbruecke enden echte Formularaufrufe trotz Cookie mit 403."""
+    from pathlib import Path
+
+    basis = (
+        Path(__file__).parent.parent / "thermoctl" / "web" / "templates" / "basis.html"
+    ).read_text(encoding="utf-8")
+    assert 'hx-boost="true"' in basis
+    assert 'headers["X-CSRF-Token"]' in basis
+    assert "thermoctl_csrf=" in basis
