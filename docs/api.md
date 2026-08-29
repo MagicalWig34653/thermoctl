@@ -60,6 +60,56 @@ Zone eingeschränktes Recht ergibt eine einelementige Liste.
 
 Recht: `zone.read`. `404`, wenn es sie nicht gibt oder das Token sie nicht sehen darf.
 
+### Zonen verwalten
+
+`POST /api/v1/zones`, `PUT /api/v1/zones/{zone_id}` und
+`DELETE /api/v1/zones/{zone_id}` benötigen `zone.manage`. Anlegen antwortet mit `201`,
+Löschen mit `204`.
+
+```json
+{"name": "bad", "display_name": "Bad", "operating_mode_id": 1,
+ "sort_order": 10, "temperature_source_device_id": null}
+```
+
+### Modi und Sollwerte
+
+`GET /api/v1/modes` benötigt `zone.read`; `POST /api/v1/modes` benötigt `mode.manage`.
+
+```json
+{"code": "urlaub", "name": "Urlaub", "sort_order": 30}
+```
+
+`GET /api/v1/zones/{zone_id}/setpoints` benötigt `zone.read`, das entsprechende `PUT`
+benötigt `setpoint.write`.
+
+```json
+{"setpoints": [{"mode_id": 2, "temperature_c": "20.5"}]}
+```
+
+### Zeitplan
+
+`GET /api/v1/zones/{zone_id}/schedule` benötigt `zone.read`. Einen Punkt legt
+`POST /api/v1/zones/{zone_id}/schedule` mit `schedule.manage` an; gelöscht wird er über
+`DELETE /api/v1/zones/{zone_id}/schedule/{punkt_id}` mit demselben Recht.
+
+```json
+{"weekday": 1, "minute_of_day": 360, "mode_id": 2}
+```
+
+### Regelparameter
+
+`GET /api/v1/zones/{zone_id}/parameters` benötigt `zone.read`, das entsprechende `PUT`
+benötigt `zone.manage`. `null` stellt die Vererbung des globalen Standards wieder her.
+
+```json
+{"hysteresis_k": "0.30", "min_on_seconds": 300, "min_off_seconds": null,
+ "sensor_timeout_seconds": null, "temperature_offset_k": "0.00",
+ "window_resume_delay_seconds": null}
+```
+
+Bei allen zonenbezogenen Wegen ergibt eine fremde Zone `404` statt `403`, damit die
+Antwort nicht verrät, dass diese Zone existiert.
+
 ### `GET /api/v1/zones/{zone_id}/state` — Zonenzustand
 
 Recht: `zone.read`. Liefert Ist-Temperatur, Messzeitpunkt, Sensorzustand,
@@ -149,8 +199,8 @@ Die Schnittstelle wächst mit den Phasen. Solange eine Fähigkeit in der Domäne
 fehlt sie hier ebenfalls — das ist der Preis dafür, dass es keine zweite Umsetzung derselben
 Regel gibt.
 
-Noch nicht vorhanden: Zeitpläne lesen und schreiben, Sollwerte je Modus, Messwerte sowie
-Zonen und Geräte anlegen und ändern. Der Stand steht in der [Roadmap](roadmap.md).
+Noch nicht vorhanden: Messwerte sowie Geräte über REST anlegen und ändern. Der Stand steht
+in der [Roadmap](roadmap.md).
 
 ## Stabilität
 
