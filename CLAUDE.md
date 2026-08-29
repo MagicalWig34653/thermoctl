@@ -144,7 +144,12 @@ Aus der Umsetzung von Teilprojekt 1, damit es niemand erneut herausfinden muss:
   sonst wartet Codex ohne Terminal endlos auf eine Eingabe.
 - **Codex kann im Worktree nicht committen** (seine Sandbox schützt `.git`, und der
   Worktree-Index liegt im Hauptrepo). Den Commit führt die Hauptsession aus und vermerkt die
-  Urheberschaft.
+  Urheberschaft. **Das gilt für jeden git-Schreibvorgang**, auch `git merge main` — wer
+  einen Worktree auf den neuesten Stand bringen will, tut das vorher aus der Hauptsession.
+  Ein Auftrag, der „hol dir main" verlangt, scheitert an `ORIG_HEAD.lock`.
+- **`pkill -f <muster>` trifft auch laufende Agents.** Deren Kommandozeile enthält den
+  ganzen Auftragstext; ein Muster wie `thermoctl.cli` steht darin und beendet den Agenten
+  mitten in der Arbeit. Prozesse gezielt über ihre PID beenden.
 - **Bei parallelen Aufgaben bekommt jede eine eigene Testdatenbank.** Sonst legen mehrere
   Läufe dasselbe Schema an und räumen es einander weg; die Fehlschläge sind dann zufällig.
 - **Migrationen vertragen keine echte Parallelität.** Zweigen zwei Aufgaben vom selben Stand
