@@ -26,6 +26,13 @@ jobs:
             type=sha,prefix=sha-,enable=${{ github.ref == 'refs/heads/main' }}
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
+            # latest entsteht ausschliesslich aus einem Tag v*, nie aus einem Push auf
+            # main. Wer das Image betreibt, zoege sonst mit jedem Zwischenstand einen
+            # unfertigen Stand -- und bei einer selbst gehosteten Heizungssteuerung ist
+            # das Image der Rueckfallpunkt, wenn ein Update schiefgeht.
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+          # Schaltet nur die automatische latest-Vergabe ab; die Zeile darueber setzt sie
+          # gezielt.
           flavor: latest=false
       - uses: docker/build-push-action@v6
         with:
@@ -34,9 +41,3 @@ jobs:
           push: true
           tags: ${{ steps.marken.outputs.tags }}
           labels: ${{ steps.marken.outputs.labels }}
-      - name: latest nur bei einem Tag setzen
-        if: startsWith(github.ref, 'refs/tags/v')
-        run: |
-          docker buildx imagetools create \
-            --tag ghcr.io/${{ github.repository }}:latest \
-            ghcr.io/${{ github.repository }}:${GITHUB_REF_NAME#v}

@@ -890,8 +890,13 @@ jobs:
             ghcr.io/${{ github.repository }}:${GITHUB_REF_NAME#v}
 ```
 
-`flavor: latest=false` schaltet die automatische `latest`-Marke ab; sie wird ausschließlich
-im letzten Schritt gesetzt, und der läuft nur bei einem Git-Tag. Ein Push auf `main` erzeugt
+`flavor: latest=false` schaltet nur die *automatische* `latest`-Vergabe ab; die Zeile
+`type=raw,value=latest,enable=…` setzt sie gezielt und ausschließlich bei einem Git-Tag.
+
+**Kein handgeschriebener `imagetools create`-Schritt dafür.** Der erste Entwurf hatte einen,
+und er scheiterte beim ersten echten Tag: `${{ github.repository }}` liefert den Namen in
+Originalschreibweise, Docker verlangt aber Kleinbuchstaben. Die metadata-action erledigt das
+selbst — der Extra-Schritt war überflüssig und fehleranfällig zugleich. Ein Push auf `main` erzeugt
 nur `sha-<kurzer Commit>` — ein Testimage, das gezielt gezogen werden kann, aber niemanden
 versehentlich erwischt.
 
