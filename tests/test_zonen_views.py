@@ -213,3 +213,66 @@ def test_zone_loeschen_entfernt_kaskaden_und_schreibt_audit(
             AuditEvent.object_id == str(zone_id), AuditEvent.action == "delete"
         )
     ) is not None
+
+
+def test_ungueltige_eingaben_fuehren_zurueck_ins_formular(
+    client_als, session: Session
+) -> None:
+    """Jede Verzweigung der Eingabepruefung einzeln — beim Anlegen und beim Aendern.
+
+    Der Bericht des Umsetzenden zaehlt nicht, solange niemand es nachvollzogen hat: Die
+    ganze Pruefung war bis hierher unbelegt, und genau diese Art Luecke hat in diesem
+    Projekt schon zweimal grundlegende Fehler durchgelassen.
+    """
+    quelle(session, "web")
+    art = betriebsart(session, "auto")
+    zone = zone_anlegen(session, "bestehende-zone")
+    client = client_als([("zone.manage", None), ("zone.read", None)])
+
+    gueltig = {
+        "name": "neu", "display_name": "Neu", "operating_mode": str(art.id),
+        "sort_order": "0", "temperature_source_device_id": "",
+    }
+    faelle = [
+        ({"name": ""}, "technischen Namen"),
+        ({"display_name": ""}, "Anzeigenamen"),
+        ({"operating_mode": ""}, "Betriebsart auswählen"),
+        ({"operating_mode": "999999"}, "nicht bekannt"),
+        ({"sort_order": "oben"}, "ganze Zahl"),
+        ({"temperature_source_device_id": "kein Gerät"}, "bekanntes Gerät"),
+        ({"temperature_source_device_id": "999999"}, "nicht bekannt"),
+    ]
+    for abweichung, erwartet in faelle:
+        daten = {**gueltig, **abweichung}
+        anlegen = client.post("/zonen", data=daten, headers=_csrf(client))
+        assert anlegen.status_code == 200, abweichung
+        assert erwartet in anlegen.text, abweichung
+
+        aendern = client.post(f"/zonen/{zone.id}", data=daten, headers=_csrf(client))
+        assert aendern.status_code == 200, abweichung
+        assert erwartet in aendern.text, abweichung
+
+    assert session.scalar(select(Zone).where(Zone.name == "neu")) is None
+    assert zone.name == "bestehende-zone"
+
+
+def test_umbenennen_auf_einen_vergebenen_namen_bleibt_im_formular(
+    client_als, session: Session
+) -> None:
+    """Beim Anlegen war der Fall belegt, beim Aendern nicht — es ist derselbe Konflikt."""
+    quelle(session, "web")
+    art = betriebsart(session, "auto")
+    zone_anlegen(session, "schon-da")
+    andere = zone_anlegen(session, "wird-umbenannt")
+    client = client_als([("zone.manage", None), ("zone.read", None)])
+    antwort = client.post(
+        f"/zonen/{andere.id}",
+        data={
+            "name": "schon-da", "display_name": "Andere", "operating_mode": str(art.id),
+            "sort_order": "0", "temperature_source_device_id": "",
+        },
+        headers=_csrf(client),
+    )
+    assert antwort.status_code == 200
+    assert "bereits vergeben" in antwort.text
+    assert andere.name == "wird-umbenannt"

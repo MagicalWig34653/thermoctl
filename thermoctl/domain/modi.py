@@ -87,14 +87,22 @@ def modus_aendern(
 
 
 def loeschsperre(session: Session, modus: SetpointMode) -> str | None:
-    if modus.is_builtin:
-        return "Eingebaute Modi können nicht gelöscht werden, weil die Anwendung sie benötigt."
+    """Warum dieser Modus nicht geloescht werden darf — oder None, wenn er darf.
+
+    Die Reihenfolge ist Absicht: **Der Frostschutz wird zuerst geprueft.** Der
+    Einrichtungsassistent legt ihn mit `is_builtin=True` an, also trifft die allgemeine
+    Sperre ebenfalls zu — und wuerde sie zuerst greifen, bekaeme in jeder echten Anlage
+    genau der wichtigste Modus die nichtssagende Meldung 'die Anwendung braucht ihn'
+    statt der Begruendung, die zaehlt: Er ist die Rueckfallebene bei Sensorausfall.
+    """
     einstellungen = session.get(Setting, 1)
     if einstellungen is not None and einstellungen.frost_protection_mode_id == modus.id:
         return (
             "Der Frostschutzmodus kann nicht gelöscht werden — er ist die Rückfallebene, "
             "wenn ein Sensor ausfällt."
         )
+    if modus.is_builtin:
+        return "Eingebaute Modi können nicht gelöscht werden, weil die Anwendung sie benötigt."
     verwendungen = sum(
         session.scalar(select(func.count()).select_from(modell).where(spalte == modus.id)) or 0
         for modell, spalte in (
