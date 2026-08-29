@@ -292,3 +292,15 @@ def _endpunkte_mitschreiben(request: pytest.FixtureRequest) -> Iterator[None]:
         yield
     finally:
         _TestClient.request = original  # type: ignore[method-assign]
+
+
+def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
+    """Zieht die Endpunktabdeckung ans Ende des Laufs.
+
+    Sie wertet die Mitschrift aller HTTP-Aufrufe aus, die waehrend des Laufs entsteht.
+    Nach Dateinamen sortiert liefe sie mitten im Lauf — sie saehe dann nur, was bis
+    dahin aufgerufen wurde, und meldete alles Spaetere als ungeprueft. Solange der
+    Waechter durch die verschachtelten Router von FastAPI ohnehin ins Leere lief, fiel
+    das nicht auf.
+    """
+    items.sort(key=lambda item: item.fspath.basename == "test_endpunktabdeckung.py")

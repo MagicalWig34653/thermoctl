@@ -4,11 +4,15 @@ Wird von mehreren Testdateien benutzt und waechst mit dem Schema mit: jede Aufga
 die neue Entitaeten anlegt, ergaenzt hier ihre Anlegefunktion.
 """
 
+from collections.abc import Sequence
 from datetime import datetime
 from decimal import Decimal
 
+from fastapi import FastAPI
+from fastapi.routing import APIRoute
 from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session
+from starlette.routing import BaseRoute
 
 from thermoctl.db.models.credential import ApiToken, ApiTokenPermission
 from thermoctl.db.models.device import Device
@@ -233,3 +237,28 @@ def zone_mit_zeitplan(
         ))
     session.flush()
     return zone
+
+
+def alle_api_routen(app: FastAPI) -> list[APIRoute]:
+    """Alle Routen der Anwendung, auch die aus eingebundenen Routern.
+
+    Seit FastAPI 0.141 legt `include_router()` keine flache Liste mehr an: Statt der
+    einzelnen Routen steht ein `_IncludedRouter` in `app.routes`, der den urspruenglichen
+    Router unter `original_router` traegt. `app.routes` allein lieferte damit nur noch
+    `/healthz` und die von FastAPI selbst erzeugten Seiten — die Waechter in
+    `test_endpunktabdeckung.py` und `test_csrf.py` liefen ins Leere, ohne rot zu werden.
+
+    Deshalb hier einmal zentral, mit Rekursion ueber `original_router`.
+    """
+    gefunden: list[APIRoute] = []
+
+    def _durchgehen(routen: Sequence[BaseRoute]) -> None:
+        for route in routen:
+            eingebundener = getattr(route, "original_router", None)
+            if eingebundener is not None:
+                _durchgehen(eingebundener.routes)
+            elif isinstance(route, APIRoute):
+                gefunden.append(route)
+
+    _durchgehen(app.routes)
+    return gefunden

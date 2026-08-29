@@ -58,21 +58,30 @@ Ebenfalls erledigt: globaler `Forbidden`-Handler, Testabdeckung von 93 auf 99 %,
 Regel in CLAUDE.md, dass **jedes Review die Suite selbst ausführt**. Vorher stand dort das
 Gegenteil — der Grund, warum nie jemand unabhängig nachgeprüft hat.
 
-**Vor Teilprojekt 3 zu erledigen** (dort entstehen die Pflegeansichten):
+### Phase 1a abgeschlossen (2026-08-29)
 
-- Eine gemeinsame Dependency für den CSRF-Schutz. Heute steht die Prüfung von Hand in der
-  einen zustandsändernden Route; mit jeder weiteren müsste sie wiederholt werden, und
-  irgendwann vergisst man sie.
+- **Gemeinsame CSRF-Abhängigkeit.** `csrf_schutz` hängt an jedem Router der Oberfläche,
+  greift nur bei zustandsändernden Methoden und nur bei Cookie-Anfragen. Die Handprüfung in
+  `logout` ist entfallen. `tests/test_csrf.py` zählt alle zustandsändernden Routen auf und
+  wird rot, sobald eine ohne Schutz dazukommt. Begründung und Ausnahme für die REST-API
+  stehen in [offene-entscheidungen.md](offene-entscheidungen.md).
+- **Startverhalten über zwei Starts.** `tests/test_startverhalten.py` fährt den Dienst
+  zweimal hoch: der erste Start meldet genau ein Einmal-Token, der zweite keines mehr, und
+  es bleibt genau eine unverbrauchte Marke in der Datenbank.
+- **Zwei Wächtertests waren blind.** Seit FastAPI 0.141 verschachtelt `include_router()`
+  die Routen (`_IncludedRouter.original_router`); beide Wächter fanden dadurch nur noch
+  `/healthz` und waren grün, weil sie nichts prüften. Zusätzlich wertete die
+  Endpunktabdeckung ihre Mitschrift mitten im Lauf aus. Beides behoben, beides mit
+  Gegenprobe belegt. Das ist die dritte Fehlerklasse dieser Art — Einzelheiten in
+  [offene-entscheidungen.md](offene-entscheidungen.md).
+- Der ganze Ablauf wurde gegen einen wirklich laufenden Dienst durchgespielt: Einrichtung,
+  Anmeldung, Startseite, Benutzerliste, Abmeldung ohne und mit CSRF-Token (403 / 303).
+
+**Weiterhin offen, vor Teilprojekt 3:**
+
 - `PasswordTooShort` wird nur im Einrichtungsformular gefangen. Eine spätere
   Passwortänderung braucht dieselbe Behandlung erneut — ein generischer Handler geht nicht,
   weil die Meldung ins jeweilige Formular zurück muss.
-
-**Vor Teilprojekt 2 zu erledigen:**
-
-- Ein Test für das Startverhalten: dass genau ein Einmal-Token entsteht und beim zweiten
-  Start keines weiteren. Das ist der einzige Kanal, über den ein Betreiber an dieses
-  Geheimnis kommt. (Der Lifespan-Hook ist inzwischen von der Abdeckung erfasst, das
-  Zusammenspiel über zwei Starts hinweg aber nicht.)
 
 **Kann warten:** CSRF-Cookie im Doppel-Submit-Muster (Standardpraxis, Token gibt nichts
 preis), Referenzdaten-Fixture nur für `test_setup.py`, fehlende ändernde Routen in der

@@ -18,12 +18,12 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 from starlette.responses import Response
 
-from thermoctl.auth.dependencies import get_session
+from thermoctl.auth.dependencies import csrf_schutz, get_session
 from thermoctl.auth.sessions import COOKIE_NAME, sitzung_aufloesen
 from thermoctl.db.models.identity import User
 from thermoctl.db.models.zone import Zone
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(csrf_schutz)])
 templates = Jinja2Templates(directory="thermoctl/web/templates")
 
 

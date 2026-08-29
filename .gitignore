@@ -31,5 +31,7 @@ htmlcov/
 
 # Werkzeuge
 .idea/
+# Portnummer wechselt mit jedem Start der IDE — rein oertlich.
+.mcp.json
 .vscode/
 .DS_Store

@@ -2,14 +2,14 @@ import secrets
 import time
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Request, Response, status
+from fastapi import APIRouter, Depends, Form, Request, Response, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from thermoctl import audit
-from thermoctl.auth.csrf import CSRF_COOKIE_NAME, CSRF_HEADER, csrf_pruefen, csrf_token
-from thermoctl.auth.dependencies import get_session
+from thermoctl.auth.csrf import CSRF_COOKIE_NAME, csrf_token
+from thermoctl.auth.dependencies import csrf_schutz, get_session
 from thermoctl.auth.passwords import hash_password, verify_password
 from thermoctl.auth.sessions import (
     COOKIE_NAME,
@@ -23,7 +23,7 @@ from thermoctl.db.base import utcnow
 from thermoctl.db.models.identity import User
 from thermoctl.web import templates
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(csrf_schutz)])
 
 # Je Benutzername gezaehlte Fehlversuche. Laeuft im Prozessspeicher, nicht in der
 # Datenbank: sie soll Rateversuche bremsen, nicht ueberdauern. Es gibt ausdruecklich
@@ -122,22 +122,8 @@ async def login(
 
 @router.post("/logout")
 async def logout(request: Request, session: Annotated[Session, Depends(get_session)]) -> Response:
-    settings = get_settings()
+    # Der CSRF-Nachweis haengt am Router (`csrf_schutz`) und ist hier bereits erbracht.
     cookie_wert = request.cookies.get(COOKIE_NAME)
-    uebermitteltes_csrf_token = request.headers.get(CSRF_HEADER)
-
-    # Jede per Sitzungscookie authentifizierte, zustandsaendernde Anfrage braucht ein
-    # gueltiges CSRF-Token — auch wenn gar keines mitgeschickt wurde. Ein Schutz, der
-    # sich durch Weglassen des Headers umgehen liesse, waere keiner.
-    if cookie_wert is not None:
-        gueltig = csrf_pruefen(
-            uebermitteltes_csrf_token, cookie_wert, settings.secret_key.get_secret_value()
-        )
-        if not gueltig:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN, detail="Ungueltiges CSRF-Token"
-            )
-
     if cookie_wert is not None:
         sitzung = sitzung_aufloesen(session, cookie_wert)
         if sitzung is not None:
