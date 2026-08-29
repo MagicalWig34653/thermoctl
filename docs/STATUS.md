@@ -107,7 +107,9 @@ verzögert hätte.
 
 **Was nur der Projektinhaber kann:**
 
-- **Phase 2 wirklich abschließen.** Die Anlage muss über mehrere Tage laufen:
+- **Phase 2 wirklich abschließen** — Schritt für Schritt in
+  [inbetriebnahme-schattenbetrieb.md](inbetriebnahme-schattenbetrieb.md). Die Anlage muss
+  über mehrere Tage laufen:
   `THERMOCTL_MQTT_ENABLED=true` samt Zugangsdaten in `.env`, dann Geduld. Erst dann steht
   fest, dass plausible Ist-Temperaturen aller Zonen einlaufen und das Schattenprotokoll
   nachvollziehbare Entscheidungen zeigt.

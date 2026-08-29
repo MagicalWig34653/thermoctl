@@ -15,6 +15,8 @@ sorgen dafür, dass er es auch nicht versehentlich tut.
 
 ## Weiterlesen
 
+- **[Den Schattenbetrieb in Gang setzen](docs/inbetriebnahme-schattenbetrieb.md)** — der
+  nächste Schritt an der echten Anlage.
 - **[Eine eigene Instanz betreiben](docs/self-hosting.md)** — Schritt für Schritt, mit
   Sicherung, Aktualisierung und dem, was bei TLS zu beachten ist.
 - **[REST-Schnittstelle](docs/api.md)** — Endpunkte, Tokens, Rechte.
