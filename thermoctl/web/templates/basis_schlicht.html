@@ -6,13 +6,36 @@
     <title>{% block titel %}thermoctl{% endblock %}</title>
     <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="/static/vendor/bootstrap/bootstrap.min.css">
+    {#
+    Skripte gehoeren in den Kopf, nicht ans Ende des Rumpfes. `hx-boost` tauscht bei
+    jeder Navigation den Inhalt des <body> aus, und htmx fuehrt <script>-Tags im
+    eingetauschten Inhalt erneut aus. Bootstrap registriert seine Menuebehandlung dann
+    ein zweites Mal am `document`: Der Umschalter feuert doppelt, das Menue geht auf und
+    im selben Klick wieder zu -- es sieht aus, als ginge es gar nicht mehr auf. Der Kopf
+    wird nie ausgetauscht, also laeuft hier alles genau einmal.
+    `defer`, weil die Dateien damit erst nach dem Parsen laufen und ihre Reihenfolge
+    trotzdem erhalten bleibt.
+    #}
+    <script defer src="/static/vendor/bootstrap/bootstrap.bundle.min.js"></script>
+    <script defer src="/static/vendor/htmx/htmx.min.js"></script>
+    <script defer src="/static/passkey.js"></script>
+    <script>
+        // Am `document`, nicht am `document.body`: htmx-Ereignisse blubbern bis dorthin,
+        // und der Rumpf existiert zum Zeitpunkt dieses Skripts noch gar nicht.
+        document.addEventListener("htmx:configRequest", function (ereignis) {
+            const eintrag = document.cookie.split("; ").find(function (wert) {
+                return wert.startsWith("thermoctl_csrf=");
+            });
+            if (eintrag) {
+                ereignis.detail.headers["X-CSRF-Token"] = decodeURIComponent(eintrag.split("=")[1]);
+            }
+        });
+    </script>
 </head>
 <body class="d-flex align-items-center py-4 bg-body-tertiary" style="min-height: 100vh">
 <main class="w-100 m-auto" style="max-width: 22rem">
 {% block inhalt %}{% endblock %}
 {% block passkey %}{% endblock %}
 </main>
-<script src="/static/vendor/bootstrap/bootstrap.bundle.min.js"></script>
-<script src="/static/vendor/htmx/htmx.min.js"></script>
 </body>
 </html>
