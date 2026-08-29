@@ -75,8 +75,9 @@ Client, der nur scharf gebaut veröffentlicht. Tests belegen beide Richtungen.
 - **`THERMOCTL_SECURE_COOKIES` steht standardmäßig auf `false`**, weil die Erstinbetrieb-
   nahme sonst über `http://` scheitert. Wer den Dienst ins Netz stellt, muss es setzen —
   das steht in [self-hosting.md](self-hosting.md), aber der Dienst erzwingt es nicht.
-  *Vorschlag für Phase 5: eine Warnung beim Start, wenn nicht-lokale Adressen gebunden
-  werden und `secure_cookies` aus ist.*
+  **Erledigt:** Der Dienst warnt jetzt beim Start, wenn er auf eine nicht-lokale Adresse
+  gebunden ist und `secure_cookies` aus steht. Erzwingen kann er es nicht — hinter einem
+  Reverse-Proxy sieht er nur HTTP —, aber sagen kann er es.
 - **Keine Anmeldebegrenzung über Prozessgrenzen hinweg.** Die Drosselung zählt
   Fehlversuche im Prozessspeicher; ein Neustart setzt sie zurück. Für eine
   Heimnetzinstallation vertretbar, für einen öffentlich erreichbaren Dienst nicht — und
