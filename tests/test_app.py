@@ -1,3 +1,5 @@
+import logging
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -148,3 +150,30 @@ def test_anfrage_id_wird_nach_ausnahme_zurueckgesetzt(
         # eine Warnung, die man nach dem dritten Mal nicht mehr liest.
         testclient.close()
         app.state.engine.dispose()
+
+
+def test_warnung_bei_netzbindung_ohne_secure_cookies(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Die Warnung ist der einzige Ort, an dem es auffaellt, bevor etwas passiert."""
+    from thermoctl.app import _warnen_wenn_ungeschuetzt_erreichbar
+    from thermoctl.config import Settings
+
+    def _einstellungen(host: str, sicher: bool) -> Settings:
+        return Settings(
+            _env_file=None, database_url="sqlite://", secret_key="s" * 32,
+            bind_host=host, secure_cookies=sicher,
+        )
+
+    with caplog.at_level(logging.WARNING, logger="thermoctl.app"):
+        caplog.clear()
+        _warnen_wenn_ungeschuetzt_erreichbar(_einstellungen("0.0.0.0", False))  # noqa: S104
+        assert "SECURE_COOKIES" in caplog.text
+
+        caplog.clear()
+        _warnen_wenn_ungeschuetzt_erreichbar(_einstellungen("127.0.0.1", False))
+        assert caplog.text == "", "Oertlich gebunden ist kein Grund zur Warnung."
+
+        caplog.clear()
+        _warnen_wenn_ungeschuetzt_erreichbar(_einstellungen("0.0.0.0", True))  # noqa: S104
+        assert caplog.text == "", "Mit secure_cookies ist alles in Ordnung."

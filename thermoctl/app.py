@@ -163,6 +163,30 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
                 await aufgabe
 
 
+# Adressen, unter denen der Dienst nur vom selben Rechner erreichbar ist. Alles andere
+# bedeutet: irgendjemand im Netz kann ihn aufrufen.
+_NUR_OERTLICH = frozenset({"127.0.0.1", "::1", "localhost"})
+
+
+def _warnen_wenn_ungeschuetzt_erreichbar(settings: Settings) -> None:
+    """Warnt, wenn der Dienst im Netz haengt und Sitzungscookies unverschluesselt gehen.
+
+    `secure_cookies` steht standardmaessig auf false, weil die Erstinbetriebnahme sonst
+    ueber `http://` scheitert — und wer sie dann nicht umstellt, schickt seine Anmeldung
+    im Klartext durchs WLAN. Der Dienst kann das nicht erzwingen (hinter einem
+    Reverse-Proxy sieht er nur HTTP), aber er kann es sagen. Eine Warnung, die einmal beim
+    Start im Log steht, ist der einzige Ort, an dem es auffaellt, bevor etwas passiert.
+    """
+    if settings.secure_cookies or settings.bind_host in _NUR_OERTLICH:
+        return
+    log.warning(
+        "Der Dienst ist im Netz erreichbar, aber THERMOCTL_SECURE_COOKIES ist aus. "
+        "Sitzungscookies gehen dann auch unverschluesselt hinaus. Hinter TLS gehoert "
+        "THERMOCTL_SECURE_COOKIES=true; ohne TLS gehoert die Bindung auf 127.0.0.1.",
+        extra={"bind": f"{settings.bind_host}:{settings.bind_port}"},
+    )
+
+
 def create_app() -> FastAPI:
     settings = get_settings()
     configure_logging(settings)
@@ -174,6 +198,7 @@ def create_app() -> FastAPI:
             "secure_cookies": settings.secure_cookies,
         },
     )
+    _warnen_wenn_ungeschuetzt_erreichbar(settings)
     app = FastAPI(title="thermoctl", version=thermoctl.__version__, lifespan=_lifespan)
     # Die Engine wird mit abgelegt, damit Aufrufer sie schliessen koennen. Ohne das
     # bleibt bei jeder erzeugten Anwendung eine offene Datenbankverbindung zurueck --
