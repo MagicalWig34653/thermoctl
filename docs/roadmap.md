@@ -19,7 +19,7 @@ Phase 1 geschehen ist. Features, die aus der unverbindlichen
 | 1 | Fundament | **umgesetzt**, `v0.1.0` | Nichts sichtbar, aber alles Weitere hängt daran |
 | 1a | Nacharbeiten | **umgesetzt** | Oberfläche benutzbar |
 | 2 | Geräte-Anbindung im Schattenbetrieb | **gebaut**, Laufzeit an der Anlage offen | Belegt gegen die echte Anlage, dass die Daten stimmen |
-| 3 | Konfigurations-Oberfläche | offen | Ende der SQL-Pflege — ab hier im Alltag nützlich |
+| 3 | Konfigurations-Oberfläche | **umgesetzt** | Ende der SQL-Pflege — ab hier im Alltag nützlich |
 | 4 | Regelkreis und Cutover | offen | Heizt wirklich; Altsystem wird abgelöst |
 | 5 | Integrationen und Veröffentlichung | teilweise vorgezogen | Für Fremde aufsetzbar |
 
@@ -130,21 +130,26 @@ pflegen statt per SQL-Client.
 - Verständliche Zustands- und Fehlermeldungen statt Rohdaten
   *(Idee aus dem Konzept-Dokument)*
 
-### Aufgaben (Vorschlag)
+### Aufgaben
 
-1. Gemeinsame Formularbausteine, Fehlerdarstellung, CSRF-Abhängigkeit
-2. Zonenverwaltung
-3. Gerätezuordnung samt Tausch
-4. Modi und Sollwerte
-5. Zeitplan-Editor
-6. Übersteuerung aus der Oberfläche
-7. Regelparameter je Zone
-8. Rechte- und Tokenverwaltung vervollständigen
-9. Audit-Ansicht
-10. Übersichtsseite mit Ist, Soll und Zustand je Zone
+Geschärft im eigenen Zyklus, siehe [Spezifikation](superpowers/specs/2026-08-29-teilprojekt-3-konfigurationsoberflaeche-design.md)
+und [Plan](superpowers/plans/2026-08-29-teilprojekt-3-konfigurationsoberflaeche.md).
+
+- [x] 1 Gemeinsame Formularbausteine, Fehlerdarstellung am Feld
+- [x] 2 Zonenverwaltung
+- [x] 3 Gerätezuordnung samt Tausch
+- [x] 4 Modi und Sollwerte
+- [x] 5 Zeitplan-Editor mit Wochenansicht und Übernahme von einer anderen Zone
+- [x] 6 Übersteuerung aus der Oberfläche
+- [x] 7 Regelparameter je Zone, mit sichtbarem Rückfall auf den globalen Standard
+- [x] 8 Benutzer-, Gruppen- und Tokenverwaltung *(in der Hauptsession, Grundsatz 7)*
+- [x] 9 Audit-Ansicht mit Filtern und Blätterung
+- [x] 10 Übersichtsseite mit Ist, Soll samt Begründung, Zustand und letzter Entscheidung
 
 **Fertig, wenn** eine vollständige Anlage ohne einen einzigen SQL-Befehl eingerichtet werden
-kann.
+kann. **Nachgewiesen am 2026-08-29** an einer frischen Instanz: Einrichtung, zwei Zonen,
+eigener Modus, Sollwerte, Zeitplan samt Übernahme, Regelparameter, Übersteuerung, Benutzer,
+Gruppe und Token — alles über die Oberfläche, kein SQL.
 
 ---
 
