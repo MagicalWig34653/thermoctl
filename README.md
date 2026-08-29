@@ -19,6 +19,7 @@ sorgen dafür, dass er es auch nicht versehentlich tut.
   Sicherung, Aktualisierung und dem, was bei TLS zu beachten ist.
 - **[REST-Schnittstelle](docs/api.md)** — Endpunkte, Tokens, Rechte.
 - **[MCP-Server](docs/mcp.md)** — derselbe Funktionsumfang für einen MCP-Client.
+- **[MQTT](docs/mqtt.md)** — was gelesen wird, und die entworfene eigene Topic-Struktur.
 - **[Sicherheitsdurchsicht](docs/sicherheitsdurchsicht.md)** — was geprüft wurde und was offen ist.
 - **[Roadmap](docs/roadmap.md)** und **[Stand](docs/STATUS.md)** — was da ist und was folgt.
 - **[Beispiel-Compose](docker/compose.beispiel.yml)** — kopieren, `.env` ausfüllen, starten.
