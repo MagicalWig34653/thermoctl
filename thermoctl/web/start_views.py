@@ -13,7 +13,6 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import RedirectResponse
-from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 from starlette.responses import Response
@@ -24,9 +23,9 @@ from thermoctl.db.models.identity import User
 from thermoctl.db.models.lookup import SensorStatus
 from thermoctl.db.models.zustand import ZoneState
 from thermoctl.domain.authz import principal_fuer_benutzer, visible_zones
+from thermoctl.web import templates
 
 router = APIRouter(dependencies=[Depends(csrf_schutz)])
-templates = Jinja2Templates(directory="thermoctl/web/templates")
 
 
 @router.get("/")

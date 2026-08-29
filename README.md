@@ -9,6 +9,7 @@ eine REST-Schnittstelle bereit. Teilprojekt 1 steuert noch keine Heizung.
 - **[Eine eigene Instanz betreiben](docs/self-hosting.md)** — Schritt für Schritt, mit
   Sicherung, Aktualisierung und dem, was bei TLS zu beachten ist.
 - **[REST-Schnittstelle](docs/api.md)** — Endpunkte, Tokens, Rechte.
+- **[MCP-Server](docs/mcp.md)** — derselbe Funktionsumfang für einen MCP-Client.
 - **[Roadmap](docs/roadmap.md)** und **[Stand](docs/STATUS.md)** — was da ist und was folgt.
 - **[Beispiel-Compose](docker/compose.beispiel.yml)** — kopieren, `.env` ausfüllen, starten.
 
