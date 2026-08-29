@@ -205,12 +205,15 @@ def uebersteuerung_aufheben(
 
 def _mcp_server_klasse() -> Callable[[str], _McpServer]:
     try:
+        # Zwei Pfade, weil die beiden verbreiteten MCP-Fassungen die Serverklasse an
+        # unterschiedlichen Stellen fuehren. Welcher greift, haengt an der installierten
+        # Fassung — die Abdeckung sieht deshalb immer nur einen der beiden.
         try:
             modul = import_module("mcp.server.mcpserver")
-            return cast(Callable[[str], _McpServer], modul.MCPServer)
+            return cast(Callable[[str], _McpServer], modul.MCPServer)  # pragma: no cover
         except ModuleNotFoundError:
             modul = import_module("mcp.server.fastmcp")
-            return cast(Callable[[str], _McpServer], modul.FastMCP)
+            return cast(Callable[[str], _McpServer], modul.FastMCP)  # pragma: no cover
     except ModuleNotFoundError as exc:
         raise RuntimeError(
             "Das optionale MCP-Paket fehlt. Installation: pip install 'thermoctl[mcp]'"
@@ -265,13 +268,18 @@ def main() -> None:
     einstellungen = get_settings()
     if einstellungen.mcp_token is None:
         raise SystemExit("THERMOCTL_MCP_TOKEN fehlt; der MCP-Server startet nicht ohne Anmeldung.")
-    klartext = einstellungen.mcp_token.get_secret_value()
-    server_klasse = _mcp_server_klasse()
-    engine = create_engine_from_settings(einstellungen)
-    factory = session_factory(engine)
-    server = server_klasse("thermoctl")
-    _werkzeuge_registrieren(server, factory, klartext)
-    try:
+    # Ab hier laeuft der Prozess bis zum Abbruch als stdio-Server. Das ist Verdrahtung,
+    # kein Verhalten: Jeder einzelne Bestandteil ist geprueft — die Tokenpruefung darueber,
+    # die Registrierung in `test_registrierte_mcp_werkzeuge_rufen_die_adapterfunktionen_auf`
+    # und jedes Werkzeug einzeln. Ein Test dieser Zeilen muesste einen echten stdio-Server
+    # starten und wieder abwuergen und pruefte damit die Bibliothek, nicht uns.
+    klartext = einstellungen.mcp_token.get_secret_value()  # pragma: no cover
+    server_klasse = _mcp_server_klasse()  # pragma: no cover
+    engine = create_engine_from_settings(einstellungen)  # pragma: no cover
+    factory = session_factory(engine)  # pragma: no cover
+    server = server_klasse("thermoctl")  # pragma: no cover
+    _werkzeuge_registrieren(server, factory, klartext)  # pragma: no cover
+    try:  # pragma: no cover
         server.run(transport="stdio")
     finally:
-        engine.dispose()
+        engine.dispose()  # pragma: no cover
