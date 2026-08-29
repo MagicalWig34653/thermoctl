@@ -23,9 +23,11 @@ from tests.hilfen import (
     anbindung,
     einstellungen_anlegen,
     geraet_anlegen,
+    quelle,
     rolle,
     sensorstatus,
     zone_anlegen,
+    zonenzustand_anlegen,
 )
 from thermoctl import app as app_modul
 from thermoctl.app import create_app
@@ -35,7 +37,7 @@ from thermoctl.db.engine import session_factory
 from thermoctl.db.models.device import ZoneDevice
 from thermoctl.db.models.lookup import DeviceCapability
 from thermoctl.db.models.messwert import Measurement
-from thermoctl.db.models.operations import Setting
+from thermoctl.db.models.operations import AuditEvent, Setting
 from thermoctl.db.models.zone import Zone
 from thermoctl.db.models.zustand import ShadowDecision, ZoneState
 from thermoctl.integrations.mqtt import client as client_modul
@@ -658,3 +660,103 @@ def test_lifespan_startet_und_beendet_mqtt_und_schattenschleife_sauber(
 
     engine.dispose()
     get_settings.cache_clear()
+
+
+@pytest.mark.anyio
+async def test_brueckenzustand_meldet_nur_den_wechsel(tmp_path: Path) -> None:
+    """Zigbee2MQTT schickt `bridge/state` bei jeder Verbindung erneut.
+
+    Gemeldet wird der Wechsel, nicht der Zustand — sonst haette man nach einer Nacht mit
+    wackeligem Funk hundert gleiche Meldungen und wuerde sie stummschalten.
+    """
+    engine, fabrik = _eigene_datenbank(tmp_path, "brueckenmeldung")
+    with fabrik() as sitzung:
+        anbindung(sitzung, "zigbee2mqtt")
+        quelle(sitzung, "system")
+        sitzung.commit()
+
+    gesendet: list[object] = []
+
+    async def mitschreiben(_einstellungen: object, meldung: object) -> None:
+        gesendet.append(meldung)
+
+    fake_app = types.SimpleNamespace(
+        state=types.SimpleNamespace(session_factory=fabrik, bruecke_erreichbar=True)
+    )
+    settings = Settings(
+        _env_file=None, database_url="sqlite://", secret_key="q" * 32,
+        mqtt_base_topic="testbasis",
+    )
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(app_modul, "senden", mitschreiben)
+        # Zweimal 'offline' — nur der erste Aufruf ist ein Wechsel.
+        for _ in range(2):
+            await app_modul._mqtt_nachricht_verarbeiten(
+                fake_app,  # type: ignore[arg-type]
+                settings, "testbasis/bridge/state", b'{"state": "offline"}',
+            )
+        # Zurueck auf 'online': die Entwarnung.
+        await app_modul._mqtt_nachricht_verarbeiten(
+            fake_app,  # type: ignore[arg-type]
+            settings, "testbasis/bridge/state", b'{"state": "online"}',
+        )
+        # Eine unlesbare Nutzlast aendert nichts und meldet nichts.
+        await app_modul._mqtt_nachricht_verarbeiten(
+            fake_app,  # type: ignore[arg-type]
+            settings, "testbasis/bridge/state", b"{kaputt",
+        )
+
+    assert [m.schwere for m in gesendet] == ["stoerung", "entwarnung"]  # type: ignore[attr-defined]
+    with fabrik() as sitzung:
+        eintraege = sitzung.query(AuditEvent).count()
+    assert eintraege == 2, "Jede versandte Meldung bekommt einen Audit-Eintrag."
+
+    engine.dispose()
+
+
+@pytest.mark.anyio
+async def test_schattenschleife_meldet_einen_neuen_sensorausfall(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Die Meldung geht wirklich hinaus — bisher war nur belegt, dass sie entsteht.
+
+    Die Zone startet im Zustand `ok` und verliert ihre Messquelle. Genau dieser Wechsel
+    ist meldungswuerdig; der zweite Zyklus mit unveraenderter Lage darf nicht erneut
+    melden. Ein Zustand ohne Vorgeschichte meldet ausdruecklich nicht — sonst feuerte
+    beim ersten Start jede noch unkonfigurierte Zone.
+    """
+    engine, fabrik = _eigene_datenbank(tmp_path, "schleife-meldung")
+    with fabrik() as sitzung:
+        einstellungen_anlegen(sitzung)
+        quelle(sitzung, "system")
+        sensorstatus(sitzung, "keine_quelle")
+        sensorstatus(sitzung, "ok")
+        zone = zone_anlegen(sitzung, "flur-ohne-quelle")
+        zonenzustand_anlegen(sitzung, zone)  # startet als 'ok'
+        sitzung.commit()
+
+    gesendet: list[object] = []
+
+    async def mitschreiben(_einstellungen: object, meldung: object) -> None:
+        gesendet.append(meldung)
+
+    gewartet: list[float] = []
+
+    async def _sleep(sekunden: float) -> None:
+        gewartet.append(sekunden)
+        if len(gewartet) == 3:
+            raise asyncio.CancelledError
+
+    fake_app = types.SimpleNamespace(state=types.SimpleNamespace(session_factory=fabrik))
+    monkeypatch.setattr(app_modul.asyncio, "sleep", _sleep)
+    monkeypatch.setattr(app_modul, "senden", mitschreiben)
+
+    with pytest.raises(asyncio.CancelledError):
+        await app_modul._schattenschleife(fake_app)  # type: ignore[arg-type]
+
+    assert len(gesendet) == 1, (
+        "Zwei Zyklen mit derselben Stoerung ergeben eine Meldung, nicht zwei."
+    )
+
+    engine.dispose()

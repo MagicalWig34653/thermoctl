@@ -210,8 +210,8 @@ abgeschaltet ist.
 - [x] 4 API-Dokumentation — [docs/api.md](api.md)
 - [ ] 5 Setup-Assistent erweitern — *gehört zu Phase 3*
 - [x] 6 Self-Hosting-Dokumentation und Beispiel-Compose — [docs/self-hosting.md](self-hosting.md)
-- [ ] 7 Benachrichtigungswege
-- [ ] 8 Sicherheitsdurchsicht vor der Veröffentlichung
+- [x] 7 Benachrichtigungswege — Log immer, Webhook optional; gemeldet wird der Wechsel
+- [x] 8 Sicherheitsdurchsicht — [docs/sicherheitsdurchsicht.md](sicherheitsdurchsicht.md), vor dem Öffentlichschalten erneut durchzugehen
 - [ ] 9 Repository öffentlich schalten — **Entscheidung des Projektinhabers**
 
 Vorgezogen wurde, was nicht auf Phase 4 wartet.
