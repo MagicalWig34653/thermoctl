@@ -24,8 +24,8 @@ Vom Controller selbst nachgeprüft, nicht aus Berichten übernommen:
 
 | | |
 |---|---|
-| Tests | 654, grün unter SQLite **und** MariaDB |
-| Testabdeckung | 99,76 %, Mindestschwelle 97 % in der CI |
+| Tests | 693, grün unter SQLite **und** MariaDB |
+| Testabdeckung | 99,23 %, Mindestschwelle 97 % in der CI |
 | Ruff, mypy strict | ohne Befund, 74 Quelldateien |
 | Migrationskette | linear, ein Kopf, vorwärts und rückwärts gegen beide Datenbanken |
 | CI und Container | grün |
@@ -67,7 +67,7 @@ Stundenrasters in Schaltpunkte (die Roadmap führte sie als ungeklärt; sie ist 
 reine Funktion mit einer Rückprobe über alle 168 Wochenstunden) und die lesende Grundlage
 des Vergleichsbetriebs.
 
-## Neun Fehler, die alle Tests und Reviews passiert hatten
+## Zehn Fehler, die alle Tests und Reviews passiert hatten
 
 Alle in diesem Lauf gefunden:
 
@@ -97,6 +97,15 @@ Alle in diesem Lauf gefunden:
 9. **Die Fehlerklassen waren eingefrorene Dataclasses.** Python hängt einer Ausnahme beim
    Werfen ihren Traceback an, und eine eingefrorene Dataclass verweigert das — die
    Ausnahme kam als `FrozenInstanceError` an, sobald sie tief genug durchgereicht wurde.
+
+10. **Ein Start ohne Migrationslauf endete in einem Traceback statt in einer Auskunft.**
+    Der Container migriert im Entrypoint, ein lokaler `uvicorn`-Aufruf nicht. Wer die
+    Datenbankdatei verschob und startete, bekam sechzig Zeilen SQLAlchemy mit
+    `no such table: user` als Kern — richtig, aber ohne einen Hinweis darauf, dass eine
+    Migration fehlt. Gefunden hat es der Projektinhaber, nicht die Suite: Kein Test
+    startete je gegen eine leere Datenbank, weil jede Fixture ihr Schema selbst anlegt.
+    Der Dienst prüft den Schemastand jetzt vor der ersten Abfrage und nennt den Befehl;
+    ein veraltetes Schema fällt dabei ebenfalls auf, statt später an einer fehlenden Spalte.
 
 Dazu vier Korrekturen aus der Gegenlesung in der Hauptsession: Frostschutz statt Abschalten
 bei Sensorausfall, ein MQTT-Wiederverbindungsabstand, der monoton wuchs, eine doppelt

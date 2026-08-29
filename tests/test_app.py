@@ -254,3 +254,28 @@ def test_openapi_beschreibt_nur_die_schnittstelle(client: TestClient) -> None:
     fremd = sorted(p for p in wege if not p.startswith("/api/") and p != "/healthz")
     assert not fremd, "Diese Wege gehoeren nicht in die Beschreibung: " + ", ".join(fremd)
     assert any(p.startswith("/api/") for p in wege), "Es steht gar nichts drin."
+
+
+def test_start_gegen_leere_datenbank_meldet_die_fehlende_migration(
+    monkeypatch: pytest.MonkeyPatch, tmp_path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Der Fall, der es in den Betrieb geschafft hat: Datenbankdatei verschoben, Dienst
+    gestartet, sechzig Zeilen Traceback mit `no such table: user` als Kern. Das Container-
+    Abbild migriert im Entrypoint, ein lokaler `uvicorn`-Start nicht -- genau dort tritt es
+    auf. Geprueft wird die Logzeile, nicht nur die Ausnahme: Die Ausnahme allein sagt dem
+    Betreiber nichts, wenn sie unter dem Traceback verschwindet."""
+    from thermoctl.db.schemastand import BEFEHL, SchemaPasstNicht
+
+    monkeypatch.setenv("THERMOCTL_DATABASE_URL", f"sqlite:///{tmp_path / 'leer.db'}")
+    monkeypatch.setenv("THERMOCTL_SECRET_KEY", "a" * 32)
+    from thermoctl.config import get_settings
+
+    get_settings.cache_clear()
+    try:
+        with pytest.raises(SchemaPasstNicht), TestClient(create_app()):
+            pass
+        ausgabe = capsys.readouterr().out
+        assert BEFEHL in ausgabe
+        assert "no such table" not in ausgabe
+    finally:
+        get_settings.cache_clear()
