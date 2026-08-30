@@ -22,10 +22,13 @@ FIELD_TO_CAPABILITY: Final[dict[str, str]] = {
     "linkquality": "link_quality",
     "local_temperature": "temperature",
     "occupancy": "occupancy",
+    "position": "valve_position",
     "power": "power",
+    "running_state": "running_state",
     "soil_moisture": "soil_moisture",
     "state": "switch",
     "temperature": "temperature",
+    "window_open": "window_open",
 }
 
 

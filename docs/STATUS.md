@@ -96,6 +96,38 @@ Was nur der Projektinhaber kann: Am echten Bediengerät prüfen, ob `sensor: ext
 `external_temperature` tatsächlich auf dem Display erscheinen und ob ein am Gerät
 verstellter Sollwert zurück in die Zone gelangt.
 
+## Zigbee-Heizkörperthermostate (WT-A03E) angebunden
+
+Ein Thermostatventil ist kein Schalter. Der neue Adapter `Zigbee2MqttThermostat` in
+`thermoctl/integrations/actuators.py` fährt es über `system_mode` (`heat`/`off`) und
+`occupied_heating_setpoint` statt über `state: ON`/`OFF` — beides bewegt ein echtes
+Ventil, also `switches=True` an der MQTT-Veröffentlichung und beide Riegel des
+Trockenlaufs vor jedem Versand. Im Trockenlauf wird nichts gesendet, sondern wie beim
+vorhandenen Ventil-Adapter ein `SwitchResult(False, "Trockenlauf, haette gesendet: …")`
+geliefert. Ein Sollwert außerhalb 5–30 °C wird abgewiesen statt gesendet; ein Wert
+zwischen den 0,5-Grad-Schritten des Geräts wird gerundet, nicht verworfen.
+
+Erkennung des Gerätetyps: `capabilities_from_exposes` in
+`thermoctl/domain/device_classes.py` vergibt die neue Fähigkeit `thermostat`, wenn ein
+Gerät sowohl `occupied_heating_setpoint` als auch `system_mode` exponiert — erst die
+Kombination beweist ein echtes Thermostatventil, `occupied_heating_setpoint` allein
+trägt auch eine reine Sollwertanzeige. Migration `b6e9f14d2a83` trägt die neue Fähigkeit
+sowie `running_state` und `window_open` in `device_capability` nach. Die Aktor-Rolle in
+`thermoctl/domain/device_assignment.py` verlangt jetzt `switch` **oder** `thermostat` —
+beide bewegen ein Ventil, welcher Adapter zuständig ist, entscheidet nur, wie der Befehl
+aussieht. `thermoctl/domain/plant_diagram.py` mitgezogen, da es dieselbe
+`REQUIRED_CAPABILITY`-Struktur liest.
+
+Die übrigen lesbaren Merkmale des Geräts (`local_temperature`, `position`,
+`running_state`, `window_open`, `battery`) laufen über den vorhandenen Weg:
+`FIELD_TO_CAPABILITY` in `thermoctl/domain/reading.py` kennt jetzt `position` →
+`valve_position`, `running_state` und `window_open` zusätzlich zu den bereits
+vorhandenen Feldern — kein zweiter Aufnahmeweg neben `readings_from_payload`.
+
+Was nur der Projektinhaber kann: Ein echtes WT-A03E gegen einen laufenden Zigbee2MQTT
+anmelden und prüfen, ob die Fähigkeitserkennung, die Messwerte und — nach dem
+Scharfschalten in Phase 4 — der Schaltbefehl tatsächlich ankommen.
+
 ## Wo wir stehen
 
 | Phase | Zustand |
@@ -389,9 +421,6 @@ verzögert hätte.
 - **Öffentliches Dashboard für ein Wandtablet** (Monitoring und Bedienung). Achtung,
   Grundsatz 4: Eine wirklich unauthentifizierte Seite widerspricht ihm. Vorschlag ist ein
   langlebiges, widerrufbares Kiosk-Token mit engem Rechtesatz — vor dem Bau bestätigen.
-- **Zigbee-Heizkörperthermostate (WT-A03E)** anbinden. Ein Thermostatventil ist kein
-  Schalter: Es braucht `system_mode` und `occupied_heating_setpoint` statt `state: ON`,
-  und beides bewegt ein Ventil — also `switches=True` und beide Riegel des Trockenlaufs.
 - **Optional: Sonnenprognose-Absenkung.** In der Übergangszeit soll eine Dachwohnung
   morgens die Sonne nutzen statt der Heizung. Braucht eine Prognosequelle, eine
   Zonen-Eigenschaft (welche Zone bekommt wie viel Sonne) und eine begrenzte Absenkung —
