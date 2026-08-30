@@ -324,7 +324,7 @@ h2, .t-abschnitt {
    untereinander vergleichbar zu machen. */
 .tc-zone {
     display: grid;
-    grid-template-columns: minmax(9rem, 1fr) 9rem minmax(14rem, 2.4fr) 10.5rem;
+    grid-template-columns: minmax(8rem, 1fr) 6.5rem auto minmax(11rem, 2fr) 10.5rem;
     gap: 1.25rem;
     align-items: center;
     padding: 1rem 1.15rem;
@@ -372,6 +372,14 @@ h2, .t-abschnitt {
    naechste eine ganze Seite unbrauchbar macht. */
 body {
     overflow-wrap: anywhere;
+}
+
+/* Das Thermostat: zwei Stufentasten um den Sollwert des laufenden Modus. */
+.tc-thermostat .tc-stufe {
+    width: 2rem;
+    padding-inline: 0;
+    font-size: 1.1rem;
+    line-height: 1.1;
 }
 
 /* ── Formulare und Schaltflächen ────────────────────────────────────────────────

@@ -173,6 +173,21 @@ def start(
                 for zone in sichtbare_zonen
                 if hat_recht(principal, "override.cancel", zone.id)
             },
+            "darf_sollwert": {
+                zone.id
+                for zone in sichtbare_zonen
+                if hat_recht(principal, "setpoint.write", zone.id)
+            },
+            "thermostatfehler": request.query_params.get("thermostatfehler"),
+            # Der Anzeigename, nicht der Code: Am Thermostat stand "frostschutz" statt
+            # "Frostschutz" -- ein Bezeichner aus der Datenbank, der dort nichts zu
+            # suchen hat.
+            "modusnamen": {
+                kennung: name
+                for kennung, name in session.execute(
+                    select(SetpointMode.id, SetpointMode.name)
+                )
+            },
             "darf_parameter": {
                 zone.id for zone in sichtbare_zonen if hat_recht(principal, "zone.manage", zone.id)
             },
