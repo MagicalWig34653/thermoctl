@@ -295,8 +295,11 @@ def test_aendernde_wege_und_rechte(client_als, session: Session) -> None:
     )
     assert neue_zuordnung is not None
 
+    # Die Kennung steht im Rumpf, nicht im Pfad: hx-boost liest die `action` eines
+    # Formulars einmal, deshalb benutzen Tabelle und Herausziehen denselben Endpunkt.
     loesen = client.post(
-        f"/zonen/{eigene.id}/geraete/{neue_zuordnung.id}/loesen",
+        f"/zonen/{eigene.id}/geraete/loesen",
+        data={"zuordnung_id": str(neue_zuordnung.id)},
         headers=kopf,
         follow_redirects=False,
     )
@@ -402,7 +405,9 @@ def test_fremde_zuordnung_laesst_sich_nicht_loesen(client_als, session: Session)
     session.flush()
     client = client_als([("device.manage", None), ("device.read", None)])
     antwort = client.post(
-        f"/zonen/{eigene.id}/geraete/{fremde_zuordnung.id}/loesen", headers=_csrf(client)
+        f"/zonen/{eigene.id}/geraete/loesen",
+        data={"zuordnung_id": str(fremde_zuordnung.id)},
+        headers=_csrf(client),
     )
     assert antwort.status_code == 404
     assert session.get(ZoneDevice, fremde_zuordnung.id) is not None
@@ -597,3 +602,65 @@ def test_die_ansicht_zeigt_den_grund_statt_eines_fehlers(client_als, session: Se
     )
     assert antwort.status_code == 200
     assert "Schaltausgang" in antwort.text
+
+
+def test_zugeordnete_karten_tragen_ihre_kennung(client_als, session: Session) -> None:
+    """Ohne sie liesse sich ein Geraet zwar hineinziehen, aber nicht wieder heraus --
+    der Weg hinein und der Weg hinaus waeren zwei verschiedene Handgriffe."""
+    from thermoctl.db.models.device import ZoneDevice
+
+    zone = zone_anlegen(session, "kennungszone")
+    geraet = geraet_anlegen(session, "kennungsgeraet")
+    zuordnung = ZoneDevice(
+        zone_id=zone.id, device_id=geraet.id, device_role_id=rolle(session, "actuator").id
+    )
+    session.add(zuordnung)
+    zone.temperature_source_device_id = geraet.id
+    session.flush()
+
+    client = client_als(
+        [("device.read", None), ("device.manage", None), ("zone.read", None)]
+    )
+    seite = client.get(f"/zonen/{zone.id}/geraete")
+    assert f'data-zuordnung="{zuordnung.id}"' in seite.text
+    assert 'data-messquelle="ja"' in seite.text
+    assert 'data-ziel="entfernen"' in seite.text
+
+
+def test_ohne_device_manage_ist_nichts_herausziehbar(client_als, session: Session) -> None:
+    """Gegenprobe: Wer nicht aendern darf, sieht dieselbe Karte ohne Griff."""
+    from thermoctl.db.models.device import ZoneDevice
+
+    zone = zone_anlegen(session, "lesezone")
+    geraet = geraet_anlegen(session, "lesegeraet")
+    session.add(
+        ZoneDevice(
+            zone_id=zone.id, device_id=geraet.id, device_role_id=rolle(session, "actuator").id
+        )
+    )
+    session.flush()
+
+    seite = client_als([("device.read", None), ("zone.read", None)]).get(
+        f"/zonen/{zone.id}/geraete"
+    )
+    assert "tc-ziehbar" not in seite.text
+    assert 'data-ziel="entfernen"' not in seite.text
+
+
+def test_das_anlagenbild_traegt_keine_griffe(client_als, session: Session) -> None:
+    """Dort gibt es keine Formulare, die ein Herausziehen abschicken koennten."""
+    from thermoctl.db.models.device import ZoneDevice
+
+    zone = zone_anlegen(session, "bildzone-griffe")
+    geraet = geraet_anlegen(session, "bildgeraet")
+    session.add(
+        ZoneDevice(
+            zone_id=zone.id, device_id=geraet.id, device_role_id=rolle(session, "actuator").id
+        )
+    )
+    session.flush()
+
+    seite = client_als(
+        [("device.read", None), ("device.manage", None), ("zone.read", None)]
+    ).get("/anlage")
+    assert "tc-ziehbar" not in seite.text

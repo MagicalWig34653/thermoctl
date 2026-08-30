@@ -10,8 +10,16 @@ Stufen, und drei Spalten mit Verbindungslinien zeigen sie genauso gut wie ein Di
 das erst geladen werden müsste. Was fehlt, steht als Lücke da und nicht als leerer Kasten:
 Eine Zone ohne Messquelle regelt nichts, und das soll man sehen.
 #}
-{% macro geraetekarte(g, art) %}
-<div class="tc-knoten tc-knoten-{{ art }}">
+{#
+`ziehbar` macht eine zugeordnete Karte herausziehbar: zurueck in den Geraetevorrat, und
+die Zuordnung ist geloest. Der Weg hinein und der Weg hinaus sind damit derselbe
+Handgriff in zwei Richtungen -- das ist die einzige Anordnung, die man sich nicht merken
+muss.
+#}
+{% macro geraetekarte(g, art, ziehbar=false, messquelle=false) %}
+<div class="tc-knoten tc-knoten-{{ art }}{{ ' tc-ziehbar' if ziehbar and (g.zuordnung_id or messquelle) }}"
+     {% if g.zuordnung_id %}data-zuordnung="{{ g.zuordnung_id }}"{% endif %}
+     {% if messquelle %}data-messquelle="ja"{% endif %}>
     <div class="tc-knoten-name">{{ g.name }}</div>
     {% if g.faehigkeiten %}
     <div class="t-leise" style="font-size: .68rem">{{ g.faehigkeiten | join(", ") }}</div>
@@ -34,12 +42,12 @@ auf dem Anlagenbild waere ein Ablegeziel eine Zusage, die die Seite nicht einloe
 <div class="tc-fluss">
     <div class="tc-fluss-spalte{{ ' tc-ziel' if ziehbar }}"{% if ziehbar %} data-ziel="messquelle" data-zielname="Messquelle" data-braucht="temperature"{% endif %}>
         <p class="t-marke">Misst</p>
-        {% if z.messquelle %}{{ geraetekarte(z.messquelle, "sensor") }}
+        {% if z.messquelle %}{{ geraetekarte(z.messquelle, "sensor", ziehbar, messquelle=true) }}
         {% else %}{{ luecke("keine Messquelle") }}{% endif %}
 
         {% if z.fensterkontakte %}
         <p class="t-marke mt-3">Unterbricht</p>
-        {% for g in z.fensterkontakte %}{{ geraetekarte(g, "kontakt") }}{% endfor %}
+        {% for g in z.fensterkontakte %}{{ geraetekarte(g, "kontakt", ziehbar) }}{% endfor %}
         {% endif %}
     </div>
 
@@ -58,12 +66,12 @@ auf dem Anlagenbild waere ein Ablegeziel eine Zusage, die die Seite nicht einloe
     <div class="tc-fluss-spalte{{ ' tc-ziel' if ziehbar }}"{% if ziehbar %} data-ziel="actuator" data-zielname="Aktor" data-braucht="switch"{% endif %}>
         <p class="t-marke">Schaltet</p>
         {% if z.aktoren %}
-        {% for g in z.aktoren %}{{ geraetekarte(g, "aktor") }}{% endfor %}
+        {% for g in z.aktoren %}{{ geraetekarte(g, "aktor", ziehbar) }}{% endfor %}
         {% else %}{{ luecke("kein Aktor") }}{% endif %}
 
         {% if z.bediengeraete %}
         <p class="t-marke mt-3">Zeigt an</p>
-        {% for g in z.bediengeraete %}{{ geraetekarte(g, "anzeige") }}{% endfor %}
+        {% for g in z.bediengeraete %}{{ geraetekarte(g, "anzeige", ziehbar) }}{% endfor %}
         {% endif %}
     </div>
 </div>

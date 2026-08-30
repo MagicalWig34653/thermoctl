@@ -1,52 +1,136 @@
 {% extends "basis.html" if not ist_htmx else "leer.html" %}
 {% block titel %}Geräte – thermoctl{% endblock %}
+{% block max_breite %}72rem{% endblock %}
+
+{#
+Eine Zeile je Gerät statt einer Tabelle mit neun gleich gewichteten Spalten.
+
+Vorher stand alles da und nichts stach heraus: Anzeigename, Anbindung, Modell,
+Fähigkeiten, letzte Nachricht, Batterie, Funkgüte, Erreichbarkeit, Zone — die meisten
+Zellen ein Gedankenstrich. Die Frage, mit der jemand herkommt, ist aber fast immer
+dieselbe: stimmt mit meiner Hardware etwas nicht? Auffälliges steht deshalb oben, in
+einem eigenen Block und mit seinem Befund im Klartext; alles Gesunde darunter, schmal.
+
+Was hier bewusst *nicht* steht: ein Kärtchen "Batteriestand" neben der Prozentzahl, ein
+Kärtchen "Verbindungsqualitaet" neben der LQI, und bei jedem der dreißig Geräte
+dieselbe Marke "ohne Zone". Wiederholung, die auf jeder Zeile gleich aussieht, trägt
+keine Auskunft — sie steht deshalb einmal oben als Zahl.
+#}
+
+{% set marken = {
+    "offline":      "tc-chip-warnung",
+    "stumm":        "tc-chip-warnung",
+    "abgeschaltet": "tc-chip-still",
+    "batterie":     "tc-chip-warnung",
+    "funk":         "tc-chip-still",
+} %}
+
+{% macro geraetezeile(g) %}
+<article class="tc-zone tc-zone-geraet" data-geraetezeile
+         data-suchtext="{{ (g.name ~ ' ' ~ (g.modell or '') ~ ' ' ~ g.faehigkeiten|join(' ') ~ ' ' ~ g.zonen|join(' '))|lower }}">
+    <div>
+        <div class="tc-zone-name">
+            {{ g.name }}
+            {% if g.ist_gruppe %}
+            <span class="tc-chip tc-chip-still align-middle">Gruppe</span>
+            {% endif %}
+        </div>
+        <div class="t-leise" style="font-size: .72rem">
+            {{ g.modell or "Modell unbekannt" }} · {{ g.anbindung }}
+        </div>
+        {% if g.befunde %}
+        <div class="d-flex flex-wrap gap-1 mt-2">
+            {% for b in g.befunde %}
+            <span class="tc-chip {{ marken.get(b.art, 'tc-chip-still') }}">{{ b.text }}</span>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="text-end">
+        {% if g.zuletzt_gehoert %}
+        <div class="t-leise small" title="{{ g.zuletzt_gehoert }} UTC">{{ g.zuletzt_gehoert|alter }}</div>
+        {% else %}
+        <div class="t-leise small">nie gehört</div>
+        {% endif %}
+        <div class="t-wert t-leise" style="font-size: .72rem">
+            {% if g.batterie is not none %}{{ g.batterie|round|int }} %{% endif %}
+            {% if g.funkguete is not none %}
+            {{ "· " if g.batterie is not none }}LQI {{ g.funkguete }}
+            {% endif %}
+        </div>
+    </div>
+
+    <div>
+        {% if g.faehigkeiten %}
+        <div class="d-flex flex-wrap gap-1">
+            {% for f in g.faehigkeiten %}
+            <span class="tc-chip tc-chip-still">{{ f }}</span>
+            {% endfor %}
+        </div>
+        {% elif not g.stille_faehigkeiten %}
+        <span class="t-leise small">keine Fähigkeiten gemeldet</span>
+        {% endif %}
+    </div>
+
+    <div class="text-end t-leise small">
+        {% if g.zonen %}{{ g.zonen|join(", ") }}{% endif %}
+    </div>
+</article>
+{% endmacro %}
+
 {% block inhalt %}
 <section id="geraeteliste">
-  <div class="d-flex justify-content-between align-items-baseline flex-wrap gap-2 mb-3">
-    <h1 class="mb-0">Geräte</h1>
-    <a class="btn btn-sm btn-outline-secondary" href="/anlage">Anlagenbild</a>
-  </div>
-  {% if geraete %}
-  <div class="table-responsive">
-    <table class="table table-striped align-middle">
-      <thead>
-      <tr>
-        <th scope="col">Anzeigename</th>
-        <th scope="col">Anbindung</th>
-        <th scope="col">Modell</th>
-        <th scope="col">Fähigkeiten</th>
-        <th scope="col">Letzte Nachricht</th>
-        <th scope="col">Batterie</th>
-        <th scope="col">Funkgüte</th>
-        <th scope="col">Erreichbarkeit</th>
-        <th scope="col">Zone</th>
-      </tr>
-      </thead>
-      <tbody>
-      {% for geraet, anbindung, zustand in geraete %}
-      <tr>
-        <td>
-          {{ geraet.display_name }}
-          {% if geraet.is_group %}<span class="badge text-bg-secondary">Gruppe</span>{% endif %}
-        </td>
-        <td>{{ anbindung.label }}</td>
-        <td>{{ geraet.model or "–" }}</td>
-        <td>{{ faehigkeiten[geraet.id]|join(", ") if faehigkeiten[geraet.id] else "–" }}</td>
-        <td title="{{ zustand.last_payload_at if zustand else "" }} UTC">{{ (zustand.last_payload_at if zustand else None)|alter }}</td>
-        <td>{{ (zustand.battery_percent|string + " %") if zustand and zustand.battery_percent is not none else "–" }}</td>
-        <td>{{ zustand.link_quality if zustand and zustand.link_quality is not none else "–" }}</td>
-        <td>{{ zustand.availability if zustand and zustand.availability else "unbekannt" }}</td>
-        <td>{{ zonen[geraet.id]|sort|join(", ") if zonen[geraet.id] else "nicht zugeordnet" }}</td>
-      </tr>
-      {% endfor %}
-      </tbody>
-    </table>
-  </div>
-  {% else %}
-  <div class="alert alert-secondary" role="status">
-    Noch keine Geräte bekannt. Entweder ist MQTT nicht eingerichtet oder es ist noch keine
-    Gerätenachricht eingegangen.
-  </div>
-  {% endif %}
+    <div class="d-flex justify-content-between align-items-baseline flex-wrap gap-2 mb-1">
+        <h1 class="mb-0">Geräte</h1>
+        <a class="btn btn-sm btn-outline-secondary" href="/anlage">Anlagenbild</a>
+    </div>
+
+    {% if geraete %}
+    <p class="t-leise mb-3">
+        {{ geraete|length }} {{ "Gerät" if geraete|length == 1 else "Geräte" }} bekannt.
+        {% if ohne_zone %}
+        {{ ohne_zone }} davon {{ "hängt" if ohne_zone == 1 else "hängen" }} an keiner Zone
+        und {{ "tut" if ohne_zone == 1 else "tun" }} damit nichts —
+        <a href="/anlage">im Anlagenbild zuordnen</a>.
+        {% else %}
+        Jedes hängt an einer Zone.
+        {% endif %}
+    </p>
+
+    <input type="search" class="form-control form-control-sm mb-3" id="geraetesuche"
+           placeholder="Nach Name, Modell, Fähigkeit oder Zone filtern" hidden
+           autocomplete="off" aria-label="Geräte filtern">
+
+    {% if auffaellig %}
+    <h2 class="t-abschnitt mb-2">
+{{ auffaellig|length }} {{ "davon fällt auf" if auffaellig|length == 1 else "davon fallen auf" }}
+    </h2>
+    <div class="tc-tafel mb-4">
+        {% for g in auffaellig %}{{ geraetezeile(g) }}{% endfor %}
+    </div>
+    {% endif %}
+
+    {% if unauffaellig %}
+    <h2 class="t-abschnitt mb-2">
+        {% if auffaellig %}Der Rest meldet sich{% else %}Alle melden sich{% endif %}
+    </h2>
+    <div class="tc-tafel">
+        {% for g in unauffaellig %}{{ geraetezeile(g) }}{% endfor %}
+    </div>
+    {% endif %}
+
+    <p class="t-leise small mt-3" id="ohne-treffer" hidden>Kein Gerät passt zum Filter.</p>
+    {% else %}
+    <div class="tc-tafel p-4">
+        <p class="t-abschnitt mb-1">Noch kein Gerät bekannt.</p>
+        <p class="t-leise mb-0">
+            Entweder ist MQTT nicht eingerichtet, oder es ist
+            noch keine Gerätenachricht eingegangen.
+            Der Zustand der Anbindung steht unter
+            <a href="/schnittstellen">Schnittstellen</a>.
+        </p>
+    </div>
+    {% endif %}
 </section>
 {% endblock %}

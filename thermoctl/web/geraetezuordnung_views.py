@@ -161,14 +161,26 @@ async def geraet_zuordnen_view(
     return RedirectResponse(f"/zonen/{zone.id}/geraete", status.HTTP_303_SEE_OTHER)
 
 
-@router.post("/zonen/{zone_id}/geraete/{zuordnung_id}/loesen")
+@router.post("/zonen/{zone_id}/geraete/loesen")
 async def geraet_loesen_view(
     zone_id: int,
-    zuordnung_id: int,
+    request: Request,
     principal: Annotated[Principal, Depends(aktueller_principal)],
     session: Annotated[Session, Depends(get_session)],
 ) -> Response:
+    """Loest eine Zuordnung. Die Kennung steht im Rumpf, nicht im Pfad.
+
+    Wie beim Verschieben im Zeitplan: `hx-boost` liest die `action` eines Formulars
+    einmal beim Verarbeiten der Seite, ein spaeter umgeschriebener Pfad waere wirkungslos.
+    Damit koennen die Schaltflaechen in der Tabelle und das Herausziehen aus dem
+    Flussbild denselben Endpunkt benutzen.
+    """
     zone = _sichtbare_zone(session, principal, zone_id, "device.manage")
+    formular = await request.form()
+    try:
+        zuordnung_id = int(str(formular.get("zuordnung_id", "")))
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Zuordnung nicht gefunden") from exc
     zuordnung = session.get(ZoneDevice, zuordnung_id)
     if zuordnung is None or zuordnung.zone_id != zone.id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Zuordnung nicht gefunden")
