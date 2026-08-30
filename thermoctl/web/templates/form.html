@@ -1,67 +1,67 @@
-{% macro textfeld(name, label, value="", hilfe="", errors="", pflicht=false, typ="text") %}
+{% macro text_field(name, label, value="", help_text="", errors="", required=false, input_type="text") %}
 <div class="mb-3">
     <label for="{{ name }}" class="form-label">{{ label }}</label>
-    <input type="{{ typ }}" class="form-control{% if errors %} is-invalid{% endif %}"
+    <input type="{{ input_type }}" class="form-control{% if errors %} is-invalid{% endif %}"
            id="{{ name }}" name="{{ name }}" value="{{ value }}"
-           {% if pflicht %}required{% endif %}
-           {% if hilfe %}aria-describedby="{{ name }}-hilfe{% if errors %} {{ name }}-fehler{% endif %}"
+           {% if required %}required{% endif %}
+           {% if help_text %}aria-describedby="{{ name }}-hilfe{% if errors %} {{ name }}-fehler{% endif %}"
            {% elif errors %}aria-describedby="{{ name }}-fehler"{% endif %}>
     {% if errors %}<div id="{{ name }}-fehler" class="invalid-feedback">{{ errors }}</div>{% endif %}
-    {% if hilfe %}<div id="{{ name }}-hilfe" class="form-text">{{ hilfe }}</div>{% endif %}
+    {% if help_text %}<div id="{{ name }}-hilfe" class="form-text">{{ help_text }}</div>{% endif %}
 </div>
 {% endmacro %}
 
-{% macro zahlenfeld(name, label, value="", hilfe="", errors="", step="0.1", min="", max="") %}
+{% macro number_field(name, label, value="", help_text="", errors="", step="0.1", min="", max="") %}
 <div class="mb-3">
     <label for="{{ name }}" class="form-label">{{ label }}</label>
     <input type="number" class="form-control{% if errors %} is-invalid{% endif %}"
            id="{{ name }}" name="{{ name }}" value="{{ value }}" step="{{ step }}"
            {% if min != "" %}min="{{ min }}"{% endif %} {% if max != "" %}max="{{ max }}"{% endif %}
-           {% if hilfe %}aria-describedby="{{ name }}-hilfe{% if errors %} {{ name }}-fehler{% endif %}"
+           {% if help_text %}aria-describedby="{{ name }}-hilfe{% if errors %} {{ name }}-fehler{% endif %}"
            {% elif errors %}aria-describedby="{{ name }}-fehler"{% endif %}>
     {% if errors %}<div id="{{ name }}-fehler" class="invalid-feedback">{{ errors }}</div>{% endif %}
-    {% if hilfe %}<div id="{{ name }}-hilfe" class="form-text">{{ hilfe }}</div>{% endif %}
+    {% if help_text %}<div id="{{ name }}-hilfe" class="form-text">{{ help_text }}</div>{% endif %}
 </div>
 {% endmacro %}
 
-{% macro auswahl(name, label, optionen, ausgewaehlt="", hilfe="", errors="", leer_erlaubt=false) %}
+{% macro select_field(name, label, options, selected="", help_text="", errors="", allow_empty=false) %}
 <div class="mb-3">
     <label for="{{ name }}" class="form-label">{{ label }}</label>
     <select class="form-select{% if errors %} is-invalid{% endif %}" id="{{ name }}" name="{{ name }}"
-            {% if not leer_erlaubt %}required{% endif %}
-            {% if hilfe %}aria-describedby="{{ name }}-hilfe{% if errors %} {{ name }}-fehler{% endif %}"
+            {% if not allow_empty %}required{% endif %}
+            {% if help_text %}aria-describedby="{{ name }}-hilfe{% if errors %} {{ name }}-fehler{% endif %}"
             {% elif errors %}aria-describedby="{{ name }}-fehler"{% endif %}>
-        {% if leer_erlaubt %}<option value=""></option>{% endif %}
-        {% for value, text in optionen %}
-        <option value="{{ value }}"{% if value|string == ausgewaehlt|string %} selected{% endif %}>{{ text }}</option>
+        {% if allow_empty %}<option value=""></option>{% endif %}
+        {% for value, text in options %}
+        <option value="{{ value }}"{% if value|string == selected|string %} selected{% endif %}>{{ text }}</option>
         {% endfor %}
     </select>
     {% if errors %}<div id="{{ name }}-fehler" class="invalid-feedback">{{ errors }}</div>{% endif %}
-    {% if hilfe %}<div id="{{ name }}-hilfe" class="form-text">{{ hilfe }}</div>{% endif %}
+    {% if help_text %}<div id="{{ name }}-hilfe" class="form-text">{{ help_text }}</div>{% endif %}
 </div>
 {% endmacro %}
 
-{% macro umschalter(name, label, an=false, hilfe="") %}
+{% macro toggle(name, label, checked=false, help_text="") %}
 <div class="form-check form-switch mb-3">
     <input class="form-check-input" type="checkbox" role="switch" id="{{ name }}" name="{{ name }}"
-           {% if an %}checked{% endif %}{% if hilfe %} aria-describedby="{{ name }}-hilfe"{% endif %}>
+           {% if checked %}checked{% endif %}{% if help_text %} aria-describedby="{{ name }}-hilfe"{% endif %}>
     <label class="form-check-label" for="{{ name }}">{{ label }}</label>
-    {% if hilfe %}<div id="{{ name }}-hilfe" class="form-text">{{ hilfe }}</div>{% endif %}
+    {% if help_text %}<div id="{{ name }}-hilfe" class="form-text">{{ help_text }}</div>{% endif %}
 </div>
 {% endmacro %}
 
-{% macro fehlerhinweis(notice) %}
+{% macro error_notice(notice) %}
 {% if notice %}<div class="alert alert-danger" role="alert">{{ notice }}</div>{% endif %}
 {% endmacro %}
 
-{% macro loeschbestaetigung(titel, frage, abhaengigkeiten, ziel, zurueck) %}
+{% macro delete_confirmation(title, question, dependencies, target, back) %}
 <section>
-    <h1 class="mb-3">{{ titel }}</h1>
-    <p>{{ frage }}</p>
-    <div class="alert alert-warning" role="alert">{{ abhaengigkeiten }}</div>
-    <form method="post" action="{{ ziel }}">
+    <h1 class="mb-3">{{ title }}</h1>
+    <p>{{ question }}</p>
+    <div class="alert alert-warning" role="alert">{{ dependencies }}</div>
+    <form method="post" action="{{ target }}">
         <button type="submit" class="btn btn-danger">Löschen</button>
-        <a class="btn btn-secondary" href="{{ zurueck }}">Abbrechen</a>
+        <a class="btn btn-secondary" href="{{ back }}">Abbrechen</a>
     </form>
 </section>
 {% endmacro %}

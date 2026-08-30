@@ -1,28 +1,28 @@
 {% extends "base.html" %}
-{% from "form.html" import textfeld, zahlenfeld, umschalter %}
-{% block titel %}Regelvorgaben – thermoctl{% endblock %}
-{% block max_breite %}52rem{% endblock %}
-{% block inhalt %}
+{% from "form.html" import text_field, number_field, toggle %}
+{% block title %}Regelvorgaben – thermoctl{% endblock %}
+{% block max_width %}52rem{% endblock %}
+{% block content %}
 
 <h1 class="mb-1">Regelvorgaben</h1>
-<p class="t-leise mb-4">
+<p class="t-quiet mb-4">
     Gelten für jede Zone, die nichts eigenes gesetzt hat. Eine Änderung wirkt damit sofort
     auf alle Zonen, die den Wert erben — die Abweichungen einer einzelnen Zone stehen bei
     der Zone selbst.
 </p>
 
-{% if darf_aendern %}
+{% if may_edit %}
 <form method="post" action="/settings" class="tc-panel p-4">
-    <p class="t-marke mb-3">Regelung</p>
+    <p class="t-label mb-3">Regelung</p>
     <div class="row g-3">
-        {% for feld, label, ganzzahlig in felder %}
+        {% for field, label, integral in fields %}
         <div class="col-sm-6">
-            {{ zahlenfeld(feld, label, values.get(feld, ""), "",
-                          errors.get(feld, ""), "1" if ganzzahlig else "0.1") }}
+            {{ number_field(field, label, values.get(field, ""), "",
+                          errors.get(field, ""), "1" if integral else "0.1") }}
         </div>
         {% endfor %}
         <div class="col-sm-6">
-            {{ textfeld("timezone", "Zeitzone", values.get("timezone", ""),
+            {{ text_field("timezone", "Zeitzone", values.get("timezone", ""),
                         "Zum Beispiel Europe/Berlin.", errors.get("timezone", ""), true) }}
         </div>
     </div>
@@ -44,15 +44,15 @@
     <input type="hidden" name="{{ feld }}" value="{{ values.get(feld, "") }}">
     {% endfor %}
     <input type="hidden" name="timezone" value="{{ values.get('timezone', '') }}">
-    {{ umschalter("solar_forecast_enabled", "Sonnenabsenkung aktiv", solar_forecast_enabled) }}
+    {{ toggle("solar_forecast_enabled", "Sonnenabsenkung aktiv", solar_forecast_enabled) }}
     <div class="row g-3">
         <div class="col-sm-6">
-            {{ zahlenfeld("solar_forecast_latitude", "Breite", values.get("solar_forecast_latitude", ""),
+            {{ number_field("solar_forecast_latitude", "Breite", values.get("solar_forecast_latitude", ""),
                 "Zum Beispiel 52.520 für Berlin. Leer lassen, um die Funktion auszuschalten.",
                 errors.get("solar_forecast_latitude", ""), "0.001", "-90", "90") }}
         </div>
         <div class="col-sm-6">
-            {{ zahlenfeld("solar_forecast_longitude", "Länge", values.get("solar_forecast_longitude", ""),
+            {{ number_field("solar_forecast_longitude", "Länge", values.get("solar_forecast_longitude", ""),
                 "Zum Beispiel 13.405 für Berlin.",
                 errors.get("solar_forecast_longitude", ""), "0.001", "-180", "180") }}
         </div>
@@ -62,26 +62,28 @@
 {% else %}
 <div class="tc-panel p-4">
     <dl class="row mb-0">
-        {% for feld, label, ganzzahlig in felder %}
-        <dt class="col-sm-7 fw-normal t-leise">{{ label }}</dt>
-        <dd class="col-sm-5 t-wert">{{ values.get(feld, "") }}</dd>
+        {% for field, label, integral in fields %}
+        <dt class="col-sm-7 fw-normal t-quiet">{{ label }}</dt>
+        <dd class="col-sm-5 t-value">{{ values.get(field, "") }}</dd>
         {% endfor %}
-        <dt class="col-sm-7 fw-normal t-leise">Zeitzone</dt>
-        <dd class="col-sm-5 t-wert mb-0">{{ values.get("timezone", "") }}</dd>
+        <dt class="col-sm-7 fw-normal t-quiet">Zeitzone</dt>
+        <dd class="col-sm-5 t-value mb-0">{{ values.get("timezone", "") }}</dd>
     </dl>
 </div>
 <div class="tc-panel p-4 mt-4">
     <dl class="row mb-0">
-        <dt class="col-sm-7 fw-normal t-leise">Sonnenabsenkung aktiv</dt>
-        <dd class="col-sm-5 t-wert">{{ "Ja" if solar_forecast_enabled else "Nein" }}</dd>
-        <dt class="col-sm-7 fw-normal t-leise">Breite</dt>
-        <dd class="col-sm-5 t-wert">{{ values.get("solar_forecast_latitude", "") }}</dd>
-        <dt class="col-sm-7 fw-normal t-leise">Länge</dt>
-        <dd class="col-sm-5 t-wert mb-0">{{ values.get("solar_forecast_longitude", "") }}</dd>
+        <dt class="col-sm-7 fw-normal t-quiet">Sonnenabsenkung aktiv</dt>
+        <dd class="col-sm-5 t-value">{{ "Ja" if solar_forecast_enabled else "Nein" }}</dd>
+        <dt class="col-sm-7 fw-normal t-quiet">Breite</dt>
+        <dd class="col-sm-5 t-value">{{ values.get("solar_forecast_latitude", "") }}</dd>
+        <dt class="col-sm-7 fw-normal t-quiet">Länge</dt>
+        <dd class="col-sm-5 t-value mb-0">{{ values.get("solar_forecast_longitude", "") }}</dd>
     </dl>
 </div>
-<p class="t-leise small mt-3">
-    Zum Ändern fehlt das Recht <span class="t-wert">setting.manage</span>.
+<p class="t-quiet small mt-3">
+    
+<p class="t-quiet small mt-3">
+    Zum Ändern fehlt das Recht <span class="t-value">setting.manage</span>.
 </p>
 {% endif %}
 

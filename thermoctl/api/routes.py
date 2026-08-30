@@ -21,8 +21,8 @@ from thermoctl.api.schemas import (
     SchedulePointResponse,
     SetArmed,
     SetpointResponse,
-    SteuerungSchreiben,
     TokenResponse,
+    WriteControl,
     WriteControlParameters,
     WriteParameter,
     WriteSetpoints,
@@ -69,7 +69,7 @@ from thermoctl.domain.zone_settings import (
     save_control_parameters,
     set_parameter,
 )
-from thermoctl.domain.zones import ZonennameVergeben, create_zone, delete_zone, update_zone
+from thermoctl.domain.zones import ZoneNameTaken, create_zone, delete_zone, update_zone
 
 router = APIRouter(prefix="/api/v1")
 
@@ -89,11 +89,11 @@ _bearer = HTTPBearer(auto_error=False, description="API-Token, ausgestellt unter
 
 def _token(
     session: Annotated[Session, Depends(get_session)],
-    zugang: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)] = None,
+    access: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)] = None,
 ) -> ApiToken:
-    if zugang is None or zugang.scheme.lower() != "bearer":
+    if access is None or access.scheme.lower() != "bearer":
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Ungueltiges Token")
-    token = resolve_token(session, zugang.credentials)
+    token = resolve_token(session, access.credentials)
     if token is None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Ungueltiges Token")
     return token
@@ -127,7 +127,7 @@ def _permission(principal: Principal, code: str, zone_id: int | None = None) -> 
         raise HTTPException(status.HTTP_403_FORBIDDEN, str(exc)) from exc
 
 
-def _modezugriff(session: Session, principal: Principal) -> None:
+def _mode_access(session: Session, principal: Principal) -> None:
     if not visible_zones(session, principal, "zone.read"):
         _permission(principal, "zone.read")
 
@@ -158,7 +158,7 @@ def create_zone_view(
     _permission(principal, "zone.manage")
     try:
         return create_zone(session, principal, **data.model_dump())
-    except ZonennameVergeben as exc:
+    except ZoneNameTaken as exc:
         raise _domain_error("name", "Dieser Name ist bereits vergeben.") from exc
 
 
@@ -173,7 +173,7 @@ def save_zone(
     _permission(principal, "zone.manage", zone_id)
     try:
         update_zone(session, zone_obj, principal, **data.model_dump())
-    except ZonennameVergeben as exc:
+    except ZoneNameTaken as exc:
         raise _domain_error("name", "Dieser Name ist bereits vergeben.") from exc
     return zone_obj
 
@@ -195,7 +195,7 @@ def modes(
     session: Annotated[Session, Depends(get_session)],
     principal: Annotated[Principal, Depends(_principal)],
 ) -> list[SetpointMode]:
-    _modezugriff(session, principal)
+    _mode_access(session, principal)
     return list(
         session.scalars(select(SetpointMode).order_by(SetpointMode.sort_order, SetpointMode.code))
     )
@@ -261,7 +261,7 @@ def save_setpoints(
 
 
 def _schedule_responses(session: Session, zone_id: int) -> list[SchedulePointResponse]:
-    zeilen = session.execute(
+    rows = session.execute(
         select(SchedulePoint, SetpointMode)
         .join(SetpointMode, SetpointMode.id == SchedulePoint.setpoint_mode_id)
         .where(SchedulePoint.zone_id == zone_id)
@@ -275,7 +275,7 @@ def _schedule_responses(session: Session, zone_id: int) -> list[SchedulePointRes
             mode_id=m.id,
             mode_name=m.name,
         )
-        for p, m in zeilen
+        for p, m in rows
     ]
 
 
@@ -375,7 +375,7 @@ def save_parameter(
 
 
 @router.put("/zones/{zone_id}/parameters/{name}", response_model=ControlParametersResponse)
-def save_parameter_einzeln(
+def save_single_parameter(
     zone_id: int,
     name: str,
     data: WriteParameter,
@@ -476,7 +476,7 @@ def devices(
         if device_id is not None:
             zones.setdefault(device_id, set()).add(name)
 
-    zeilen = session.execute(
+    rows = session.execute(
         select(Device, Integration, DeviceHealth)
         .join(Integration, Integration.id == Device.integration_id)
         .outerjoin(DeviceHealth, DeviceHealth.device_id == Device.id)
@@ -497,7 +497,7 @@ def devices(
             availability=state.availability if state else None,
             zones=sorted(zones.get(device.id, set())),
         )
-        for device, integration, state in zeilen
+        for device, integration, state in rows
     ]
 
 
@@ -562,18 +562,18 @@ def override_zone(
         raise HTTPException(status.HTTP_403_FORBIDDEN, str(exc)) from exc
 
     now = utcnow()
-    ende = now + timedelta(minutes=data.duration_minutes) if data.duration_minutes else None
+    end_at = now + timedelta(minutes=data.duration_minutes) if data.duration_minutes else None
     if data.until_next_switch:
         # The same function as in the interface. Until the final review of subproject
         # 3, the calculation was here a second time — both adapters could have drifted
         # apart after a fix to the timezone handling.
-        ende = end_of_next_switch(session, zone_obj)
+        end_at = end_of_next_switch(session, zone_obj)
     try:
         return create_override(
             session,
             zone_obj,
             data.temperature_c,
-            ende,
+            end_at,
             user_id=principal.user_id,
             token_id=principal.token_id,
             source="api",
@@ -654,7 +654,7 @@ def control_set_armed(
 
 @router.put("/control/defaults", response_model=ControlResponse)
 def control_defaults(
-    data: SteuerungSchreiben,
+    data: WriteControl,
     session: Annotated[Session, Depends(get_session)],
     principal: Annotated[Principal, Depends(_principal)],
 ) -> ControlResponse:

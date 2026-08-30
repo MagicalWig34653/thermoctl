@@ -211,17 +211,17 @@ def test_the_last_german_column_names_are_renamed_with_their_data(
 
     werk = create_engine(migrations_database_url)
     try:
-        with werk.begin() as verbindung:
-            verbindung.execute(
+        with werk.begin() as db_connection:
+            db_connection.execute(
                 text(
                     "INSERT INTO user (username, display_name, password_hash, is_active, "
                     "created_at) VALUES ('umzug', 'Umzug', 'x', true, '2026-08-30 08:00:00')"
                 )
             )
-            user_id = verbindung.execute(
+            user_id = db_connection.execute(
                 text("SELECT id FROM user WHERE username = 'umzug'")
             ).scalar_one()
-            verbindung.execute(
+            db_connection.execute(
                 text(
                     "INSERT INTO user_passkey (user_id, credential_id, public_key, "
                     "sign_count, bezeichnung, created_at) VALUES (:u, 'cred-1', 'pub', 0, "
@@ -229,7 +229,7 @@ def test_the_last_german_column_names_are_renamed_with_their_data(
                 ),
                 {"u": user_id},
             )
-            verbindung.execute(
+            db_connection.execute(
                 text(
                     "INSERT INTO passkey_challenge (challenge, zeremonie, created_at) "
                     "VALUES ('chal-1', 'login', '2026-08-30 08:00:00')"
@@ -238,20 +238,20 @@ def test_the_last_german_column_names_are_renamed_with_their_data(
 
         up = _alembic(migrations_database_url, "upgrade", "head")
         assert up.returncode == 0, up.stderr
-        with werk.connect() as verbindung:
-            assert verbindung.execute(
+        with werk.connect() as db_connection:
+            assert db_connection.execute(
                 text("SELECT label FROM user_passkey WHERE credential_id = 'cred-1'")
             ).scalar_one() == "Mein Telefon"
-            assert verbindung.execute(
+            assert db_connection.execute(
                 text("SELECT ceremony FROM passkey_challenge WHERE challenge = 'chal-1'")
             ).scalar_one() == "login"
 
         down = _alembic(migrations_database_url, "downgrade", "e4b8a21c7f10")
         assert down.returncode == 0, down.stderr
-        with werk.connect() as verbindung:
+        with werk.connect() as db_connection:
             # The counter-check to the rename: backwards the old name is there again,
             # and the value with it.
-            assert verbindung.execute(
+            assert db_connection.execute(
                 text("SELECT bezeichnung FROM user_passkey WHERE credential_id = 'cred-1'")
             ).scalar_one() == "Mein Telefon"
         again = _alembic(migrations_database_url, "upgrade", "head")

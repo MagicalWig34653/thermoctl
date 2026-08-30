@@ -18,7 +18,7 @@ from tests.helpers import (
     user_with_permissions,
     zone_with_schedule,
 )
-from thermoctl.auth.tokens import token_ausstellen
+from thermoctl.auth.tokens import issue_token
 from thermoctl.config import Settings
 from thermoctl.db.models.device import DeviceCapabilityLink
 from thermoctl.db.models.lookup import DeviceCapability
@@ -32,8 +32,8 @@ from thermoctl.mcp import server
 
 
 def _token(session: Session, name: str, permissions: list[tuple[str, int | None]]) -> str:
-    nutzer = user_with_permissions(session, name, permissions)
-    _objekt, plaintext = token_ausstellen(session, nutzer, name, permissions, None)
+    user_record = user_with_permissions(session, name, permissions)
+    _objekt, plaintext = issue_token(session, user_record, name, permissions, None)
     return plaintext
 
 
@@ -98,8 +98,8 @@ def test_listing_devices_returns_capabilities_and_health(session: Session) -> No
     session.add(capability)
     session.flush()
     session.add(DeviceCapabilityLink(device_id=device.id, capability_id=capability.id))
-    gesund = create_device_state(session, device)
-    gesund.battery_percent = Decimal("87.50")
+    healthy = create_device_state(session, device)
+    healthy.battery_percent = Decimal("87.50")
     plaintext = _token(session, "geraeteleser", [("device.read", None)])
 
     result = server.list_devices(session, plaintext)
@@ -128,7 +128,7 @@ def test_shadow_decisions_returns_the_most_recent_reason(session: Session) -> No
             "moment": decision.decided_at.isoformat(),
             "ist_c": None,
             "soll_c": None,
-            "sollwert_begruendung": "Zeitplan",
+            "setpoint_reason": "Zeitplan",
             "would_heat": False,
             "outcome": "aus",
             "reason": "Sollwert ist erreicht.",

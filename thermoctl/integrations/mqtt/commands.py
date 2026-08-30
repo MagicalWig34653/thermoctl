@@ -22,7 +22,7 @@ OPERATING_MODES = {"auto", "manual", "off"}
 # parameter's name for `parameter`. Setpoint, operating mode, and boost refer to the
 # zone as a whole and have none.
 _PATTERN = re.compile(
-    r"^(?P<praefix>[^/]+)/zones/(?P<zone>\d+)/command/(?P<art>[a-z_]+)"
+    r"^(?P<prefix>[^/]+)/zones/(?P<zone>\d+)/command/(?P<kind>[a-z_]+)"
     r"(?:/(?P<schluessel>[A-Za-z0-9_]+))?$"
 )
 
@@ -45,7 +45,7 @@ class CommandError(ValueError):
     """The topic is ours, but the message is unusable."""
 
 
-def ist_command(topic: str, praefix: str) -> bool:
+def ist_command(topic: str, prefix: str) -> bool:
     """Whether this topic is addressed to us at all.
 
     Kept separate from `zerlegen`, so the message dispatcher can decide without
@@ -54,19 +54,19 @@ def ist_command(topic: str, praefix: str) -> bool:
     match = _PATTERN.match(topic)
     return (
         match is not None
-        and match.group("praefix") == praefix.strip("/")
+        and match.group("prefix") == prefix.strip("/")
         and int(match.group("zone")) >= 1
     )
 
 
-def zerlegen(topic: str, payload: bytes, praefix: str) -> Command:
+def split_topic(topic: str, payload: bytes, prefix: str) -> Command:
     """Turns a topic and a payload into a validated request.
 
     Does **not** check the business limits -- they live in the domain and apply
     equally to every adapter. Only what isn't even a number gets rejected here.
     """
     match = _PATTERN.match(topic)
-    if match is None or match.group("praefix") != praefix.strip("/"):
+    if match is None or match.group("prefix") != prefix.strip("/"):
         raise CommandError(f"Kein Befehls-Topic dieses Dienstes: {topic}")
 
     zone_id = int(match.group("zone"))
@@ -74,11 +74,11 @@ def zerlegen(topic: str, payload: bytes, praefix: str) -> Command:
         # The same limit as on sending (`_zonenbasis`). There is no zone 0, and what
         # is rejected on one side should not be accepted on the other.
         raise CommandError(f"Keine gueltige Zonenkennung: {zone_id}")
-    kind = match.group("art")
-    schluessel = match.group("schluessel")
+    kind = match.group("kind")
+    key = match.group("schluessel")
     text = payload.decode("utf-8", errors="replace").strip()
 
-    if kind in ("setpoint", "operating_mode", "boost") and schluessel is not None:
+    if kind in ("setpoint", "operating_mode", "boost") and key is not None:
         raise CommandError(f"Die Befehlsart {kind!r} kennt keinen Unterschluessel")
 
     if kind == "setpoint":
@@ -95,16 +95,16 @@ def zerlegen(topic: str, payload: bytes, praefix: str) -> Command:
         return Command(zone_id, kind)
 
     if kind == "mode":
-        if schluessel is None or not schluessel.isdigit() or int(schluessel) < 1:
-            raise CommandError(f"Keine gueltige Moduskennung: {schluessel!r}")
+        if key is None or not key.isdigit() or int(key) < 1:
+            raise CommandError(f"Keine gueltige Moduskennung: {key!r}")
         return Command(
-            zone_id, kind, mode_id=int(schluessel), temperature=_number(text, "Temperatur")
+            zone_id, kind, mode_id=int(key), temperature=_number(text, "Temperatur")
         )
 
     if kind == "parameter":
-        if schluessel is None or not re.fullmatch(r"[a-z][a-z0-9_]*", schluessel):
-            raise CommandError(f"Kein gueltiger Parametername: {schluessel!r}")
-        return Command(zone_id, kind, parameter=schluessel, number=_number(text, "Zahl"))
+        if key is None or not re.fullmatch(r"[a-z][a-z0-9_]*", key):
+            raise CommandError(f"Kein gueltiger Parametername: {key!r}")
+        return Command(zone_id, kind, parameter=key, number=_number(text, "Zahl"))
 
     raise CommandError(f"Unbekannte Befehlsart: {kind!r}")
 
@@ -117,7 +117,7 @@ def _number(text: str, was: str) -> Decimal:
         raise CommandError(f"Keine {was}: {text!r}") from exc
 
 
-def commands_abonnements(praefix: str) -> list[str]:
+def command_subscriptions(prefix: str) -> list[str]:
     """The subscriptions that cover all commands.
 
     Two instead of one: `+` in MQTT matches **exactly one** level, never zero and
@@ -127,5 +127,5 @@ def commands_abonnements(praefix: str) -> list[str]:
     everything below it, arbitrarily deep; the two levels are the whole contract, and
     nothing more should arrive either.
     """
-    base = praefix.strip("/")
+    base = prefix.strip("/")
     return [f"{base}/zones/+/command/+", f"{base}/zones/+/command/+/+"]

@@ -16,7 +16,7 @@ arrives at `decide()` looking like any other setpoint.
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from decimal import Decimal
+from decimal import ROUND_DOWN, Decimal
 
 
 @dataclass(frozen=True)
@@ -101,8 +101,19 @@ def apply(
     room_above_frost = setpoint_c - frost_c
     if room_above_frost <= 0:
         return None
-    # Both factors of this product are already confirmed positive above, and so is
-    # `room_above_frost` -- `reduction` is therefore always positive here, never a
-    # zero-sized "correction" that would need its own no-op case.
-    reduction = min(factor * max_reduction_k, room_above_frost)
+    # Rounded to one decimal place, because that is what a setpoint carries
+    # everywhere else in this system: the interface refuses a setpoint with two
+    # decimals, and the controller's step width was narrowed for the same reason.
+    # Without this, a factor of 0.35 and a cap of 2 K would silently produce 20.30 C
+    # from a 21.0 C setpoint -- a setpoint the rest of the service would reject if a
+    # person entered it.
+    #
+    # Rounded **down** (towards the setback, away from the frost limit) so the cap is
+    # never exceeded by rounding, and clamped to the room above frost afterwards for
+    # the same reason. A reduction that rounds to zero is no correction at all and is
+    # reported as none, so the reasoning never claims a setback of -0.0 K.
+    raw = min(factor * max_reduction_k, room_above_frost)
+    reduction = raw.quantize(Decimal("0.1"), rounding=ROUND_DOWN)
+    if reduction <= 0:
+        return None
     return SetbackResult(reduction_k=reduction, setpoint_c=setpoint_c - reduction)

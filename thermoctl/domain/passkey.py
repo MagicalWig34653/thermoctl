@@ -63,22 +63,22 @@ class PasskeyError(Exception):
     """The ceremony has failed. The reason belongs in the log, not out to the caller."""
 
 
-def _challenge_merken(
+def _remember_challenge(
     session: Session, ceremony: str, user_id: int | None = None
 ) -> bytes:
     """Generates a challenge, stores it, and returns it."""
-    roh = secrets.token_bytes(32)
+    raw_entry = secrets.token_bytes(32)
     session.add(
         PasskeyChallenge(
-            challenge=bytes_to_base64url(roh), ceremony=ceremony, user_id=user_id
+            challenge=bytes_to_base64url(raw_entry), ceremony=ceremony, user_id=user_id
         )
     )
     session.flush()
-    return roh
+    return raw_entry
 
 
-def _challenge_einloesen(
-    session: Session, ceremony: str, clientdaten: dict[str, Any]
+def _redeem_challenge(
+    session: Session, ceremony: str, client_data: dict[str, Any]
 ) -> bytes:
     """Takes the challenge out of the response, checks it, and **deletes it in every case**.
 
@@ -86,12 +86,12 @@ def _challenge_einloesen(
     only used to find the stored row — the signature check afterward compares it
     itself against what we issued.
     """
-    kandidat = clientdaten.get("challenge")
-    if not isinstance(kandidat, str):
+    candidate = client_data.get("challenge")
+    if not isinstance(candidate, str):
         raise PasskeyError("Die Antwort enthaelt keine Challenge.")
 
     entry = session.scalar(
-        select(PasskeyChallenge).where(PasskeyChallenge.challenge == kandidat)
+        select(PasskeyChallenge).where(PasskeyChallenge.challenge == candidate)
     )
     if entry is None:
         raise PasskeyError("Unbekannte oder bereits verbrauchte Challenge.")
@@ -110,7 +110,7 @@ def _challenge_einloesen(
         )
     if age > CHALLENGE_GUELTIG:
         raise PasskeyError("Challenge ist abgelaufen.")
-    return base64url_to_bytes(kandidat)
+    return base64url_to_bytes(candidate)
 
 
 def cleanup_old_challenges(session: Session) -> int:
@@ -128,11 +128,11 @@ def begin_registration(
     session: Session, settings: Settings, user: User
 ) -> dict[str, Any]:
     """The arguments for `navigator.credentials.create()`."""
-    vorhandene = session.scalars(
+    existing = session.scalars(
         select(UserPasskey).where(UserPasskey.user_id == user.id)
     ).all()
-    challenge = _challenge_merken(session, REGISTRIERUNG, user.id)
-    optionen = generate_registration_options(
+    challenge = _remember_challenge(session, REGISTRIERUNG, user.id)
+    options = generate_registration_options(
         rp_id=settings.passkey_rp_id or "",
         rp_name=settings.passkey_rp_name,
         # The user's id, not their name: a renamed account keeps its passkeys, and the
@@ -146,7 +146,7 @@ def begin_registration(
         # one of which is never used and nobody knows which.
         exclude_credentials=[
             PublicKeyCredentialDescriptor(id=base64url_to_bytes(p.credential_id))
-            for p in vorhandene
+            for p in existing
         ],
         authenticator_selection=AuthenticatorSelectionCriteria(
             # `required`: the key must live in the authenticator itself. Only then can
@@ -158,7 +158,7 @@ def begin_registration(
             user_verification=UserVerificationRequirement.REQUIRED,
         ),
     )
-    result: dict[str, Any] = json.loads(options_to_json(optionen))
+    result: dict[str, Any] = json.loads(options_to_json(options))
     return result
 
 
@@ -170,15 +170,15 @@ def finish_registration(
     label: str,
 ) -> UserPasskey:
     """Verifies the authenticator's response and stores the passkey."""
-    clientdaten = _clientdaten(response)
-    challenge = _challenge_einloesen(session, REGISTRIERUNG, clientdaten)
+    client_data = _client_data(response)
+    challenge = _redeem_challenge(session, REGISTRIERUNG, client_data)
 
     try:
         checked = verify_registration_response(
             credential=response,
             expected_challenge=challenge,
             expected_rp_id=settings.passkey_rp_id or "",
-            expected_origin=settings.passkey_erlaubte_origin(),
+            expected_origin=settings.passkey_allowed_origin(),
             require_user_verification=True,
         )
     except Exception as exc:
@@ -215,13 +215,13 @@ def begin_authentication(session: Session, settings: Settings) -> dict[str, Any]
     many passkeys it has. The authenticator names the account itself (discoverable
     credential).
     """
-    challenge = _challenge_merken(session, LOGIN)
-    optionen = generate_authentication_options(
+    challenge = _remember_challenge(session, LOGIN)
+    options = generate_authentication_options(
         rp_id=settings.passkey_rp_id or "",
         challenge=challenge,
         user_verification=UserVerificationRequirement.REQUIRED,
     )
-    result: dict[str, Any] = json.loads(options_to_json(optionen))
+    result: dict[str, Any] = json.loads(options_to_json(options))
     return result
 
 
@@ -233,8 +233,8 @@ def verify_authentication(
     Every failure raises the same `PasskeyFehler`; the reason is recorded in the audit
     log.
     """
-    clientdaten = _clientdaten(response)
-    challenge = _challenge_einloesen(session, LOGIN, clientdaten)
+    client_data = _client_data(response)
+    challenge = _redeem_challenge(session, LOGIN, client_data)
 
     identifier = response.get("id") or response.get("rawId")
     if not isinstance(identifier, str):
@@ -244,7 +244,7 @@ def verify_authentication(
         select(UserPasskey).where(UserPasskey.credential_id == identifier)
     )
     if passkey is None:
-        _protokoll(session, None, "Unbekannter Passkey")
+        _log(session, None, "Unbekannter Passkey")
         raise PasskeyError("Unbekannter Passkey.")
 
     try:
@@ -252,19 +252,19 @@ def verify_authentication(
             credential=response,
             expected_challenge=challenge,
             expected_rp_id=settings.passkey_rp_id or "",
-            expected_origin=settings.passkey_erlaubte_origin(),
+            expected_origin=settings.passkey_allowed_origin(),
             credential_public_key=base64url_to_bytes(passkey.public_key),
             credential_current_sign_count=passkey.sign_count,
             require_user_verification=True,
         )
     except Exception as exc:
-        _protokoll(session, passkey.user_id, f"Signatur nicht bestanden: {exc}")
+        _log(session, passkey.user_id, f"Signatur nicht bestanden: {exc}")
         raise PasskeyError("Signatur nicht bestanden.") from exc
 
     # The counter only becomes available here. An authenticator that does not track
     # it at all permanently reports 0 -- that is allowed and not a sign of cloning.
     if checked.new_sign_count and checked.new_sign_count <= passkey.sign_count:
-        _protokoll(
+        _log(
             session, passkey.user_id,
             f"Zaehler zurueckgefallen ({checked.new_sign_count} <= {passkey.sign_count})",
         )
@@ -274,7 +274,7 @@ def verify_authentication(
     # password path, so that behavior cannot reveal which accounts exist.
     user = session.get(User, passkey.user_id)
     if user is None or not user.is_active:
-        _protokoll(session, passkey.user_id, "Konto gesperrt oder geloescht")
+        _log(session, passkey.user_id, "Konto gesperrt oder geloescht")
         raise PasskeyError("Konto nicht nutzbar.")
 
     passkey.sign_count = checked.new_sign_count
@@ -305,13 +305,13 @@ def remove_passkey(
     )
 
 
-def _clientdaten(response: dict[str, Any]) -> dict[str, Any]:
+def _client_data(response: dict[str, Any]) -> dict[str, Any]:
     """Reads `clientDataJSON` from the response -- only to find the challenge."""
-    roh = (response.get("response") or {}).get("clientDataJSON")
-    if not isinstance(roh, str):
+    raw_entry = (response.get("response") or {}).get("clientDataJSON")
+    if not isinstance(raw_entry, str):
         raise PasskeyError("Die Antwort enthaelt keine clientDataJSON.")
     try:
-        data = json.loads(base64url_to_bytes(roh))
+        data = json.loads(base64url_to_bytes(raw_entry))
     except Exception as exc:
         raise PasskeyError("clientDataJSON ist nicht lesbar.") from exc
     if not isinstance(data, dict):
@@ -319,7 +319,7 @@ def _clientdaten(response: dict[str, Any]) -> dict[str, Any]:
     return data
 
 
-def _protokoll(session: Session, user_id: int | None, reason: str) -> None:
+def _log(session: Session, user_id: int | None, reason: str) -> None:
     audit.record(
         session, source="web", action="login_failed", object_type="user",
         object_id=None if user_id is None else str(user_id),

@@ -87,14 +87,14 @@ def settings(session: Session) -> Setting:
     return row
 
 
-def check_number(field: str, eingabe: str) -> Decimal:
+def check_number(field: str, input_value: str) -> Decimal:
     """Checks a single value against its bounds.
 
     Its own function, because the same check is called from the interface, from REST
     and from MCP -- and because a bound that lives in three places drifts in three
     places.
     """
-    text = eingabe.strip().replace(",", ".")
+    text = input_value.strip().replace(",", ".")
     if not text:
         raise ControlError(field, "Bitte einen Wert angeben.")
     try:
@@ -103,17 +103,17 @@ def check_number(field: str, eingabe: str) -> Decimal:
         raise ControlError(field, "Bitte eine Zahl angeben.") from exc
     if field in GANZZAHLIG and value != value.to_integral_value():
         raise ControlError(field, "Bitte eine ganze Zahl angeben.")
-    unten, oben = LIMITS[field]
-    if not (unten <= value <= oben):
+    lower, upper = LIMITS[field]
+    if not (lower <= value <= upper):
         raise ControlError(
-            field, f"Bitte einen Wert zwischen {_short(unten)} und {_short(oben)} angeben."
+            field, f"Bitte einen Wert zwischen {_short(lower)} und {_short(upper)} angeben."
         )
     return value
 
 
 def _short(value: Decimal) -> str:
-    ganz = value.to_integral_value()
-    return str(int(ganz)) if value == ganz else str(value)
+    whole = value.to_integral_value()
+    return str(int(whole)) if value == whole else str(value)
 
 
 def save_settings(
@@ -232,7 +232,7 @@ def arm(
     """
     if armed and not reason.strip():
         raise ControlError(
-            "begruendung", "Bitte kurz festhalten, worauf sich das Scharfschalten stützt."
+            "reason", "Bitte kurz festhalten, worauf sich das Scharfschalten stützt."
         )
 
     row = settings(session)

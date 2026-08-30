@@ -43,11 +43,11 @@ def test_form_again_never_returns_the_password() -> None:
 
 def test_form_macros_link_labels_and_fields() -> None:
     template = templates.env.from_string(
-        """{% from 'form.html' import textfeld, zahlenfeld, auswahl, umschalter %}
-        {{ textfeld('name', 'Name') }}
-        {{ zahlenfeld('temperatur', 'Temperatur') }}
-        {{ auswahl('modus', 'Modus', [('tag', 'Tag')]) }}
-        {{ umschalter('aktiv', 'Aktiv') }}"""
+        """{% from 'form.html' import text_field, number_field, select_field, toggle %}
+        {{ text_field('name', 'Name') }}
+        {{ number_field('temperatur', 'Temperatur') }}
+        {{ select_field('modus', 'Modus', [('tag', 'Tag')]) }}
+        {{ toggle('aktiv', 'Aktiv') }}"""
     )
 
     content = template.render()
@@ -58,8 +58,8 @@ def test_form_macros_link_labels_and_fields() -> None:
 
 def test_delete_confirmation_shows_dependencies() -> None:
     template = templates.env.from_string(
-        """{% from 'form.html' import loeschbestaetigung %}
-        {{ loeschbestaetigung('Zone löschen', 'Wirklich löschen?',
+        """{% from 'form.html' import delete_confirmation %}
+        {{ delete_confirmation('Zone löschen', 'Wirklich löschen?',
                               '4 Schaltpunkte, 2 zugeordnete Geräte', '/zonen/1', '/zonen') }}"""
     )
 

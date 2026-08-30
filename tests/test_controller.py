@@ -30,8 +30,8 @@ from thermoctl.db.models.zone import ZoneSetpoint
 from thermoctl.domain.controller import (
     DEFAULT_STEP_K,
     ControllerError,
-    execute_aktion,
-    gesehene_aktionen,
+    execute_action,
+    seen_actions,
     set_binding,
 )
 from thermoctl.domain.schedule import resolved_setpoint
@@ -88,7 +88,7 @@ def test_a_bound_button_changes_the_active_mode(session: Session) -> None:
     zone, device = _installation(session)
     set_binding(session, device, "single_plus", "setpoint_up")
 
-    affected = execute_aktion(session, device, "single_plus", MONDAY_EIGHT)
+    affected = execute_action(session, device, "single_plus", MONDAY_EIGHT)
 
     assert affected == [zone.name]
     assert resolved_setpoint(session, zone, MONDAY_EIGHT).temperature_c == Decimal("21.5")
@@ -98,12 +98,12 @@ def test_the_step_size_can_be_set_per_button(session: Session) -> None:
     zone, device = _installation(session)
     set_binding(session, device, "hold_minus", "setpoint_down", Decimal("2.0"))
 
-    execute_aktion(session, device, "hold_minus", MONDAY_EIGHT)
+    execute_action(session, device, "hold_minus", MONDAY_EIGHT)
 
     assert resolved_setpoint(session, zone, MONDAY_EIGHT).temperature_c == Decimal("19.0")
     # Counter-check: without its own step size, the default applies.
     set_binding(session, device, "single_minus", "setpoint_down")
-    execute_aktion(session, device, "single_minus", MONDAY_EIGHT)
+    execute_action(session, device, "single_minus", MONDAY_EIGHT)
     assert resolved_setpoint(session, zone, MONDAY_EIGHT).temperature_c == (
         Decimal("19.0") - DEFAULT_STEP_K
     )
@@ -117,15 +117,15 @@ def test_boost_and_operating_mode_can_be_bound_to_buttons(session: Session) -> N
     set_binding(session, device, "single_center", "boost")
     set_binding(session, device, "hold_center", "mode_off")
 
-    execute_aktion(session, device, "single_center", MONDAY_EIGHT)
+    execute_action(session, device, "single_center", MONDAY_EIGHT)
     assert resolved_setpoint(session, zone, MONDAY_EIGHT).reason.startswith("Uebersteuerung")
 
-    execute_aktion(session, device, "hold_center", MONDAY_EIGHT)
+    execute_action(session, device, "hold_center", MONDAY_EIGHT)
     assert zone.operating_mode.code == "off"
 
     # And back again -- otherwise the button would be a one-way street.
     set_binding(session, device, "double_center", "mode_auto")
-    execute_aktion(session, device, "double_center", MONDAY_EIGHT)
+    execute_action(session, device, "double_center", MONDAY_EIGHT)
     assert zone.operating_mode.code == "auto"
 
 
@@ -135,7 +135,7 @@ def test_an_unbound_button_does_nothing_and_is_not_an_error(session: Session) ->
     zone, device = _installation(session)
     before = resolved_setpoint(session, zone, MONDAY_EIGHT).temperature_c
 
-    assert execute_aktion(session, device, "release_plus", MONDAY_EIGHT) == []
+    assert execute_action(session, device, "release_plus", MONDAY_EIGHT) == []
     assert resolved_setpoint(session, zone, MONDAY_EIGHT).temperature_c == before
 
 
@@ -147,7 +147,7 @@ def test_a_controller_without_a_zone_does_nothing(session: Session) -> None:
     device = create_device(session, "herrenloser-schalter")
     set_binding(session, device, "single_plus", "setpoint_up")
 
-    assert execute_aktion(session, device, "single_plus", MONDAY_EIGHT) == []
+    assert execute_action(session, device, "single_plus", MONDAY_EIGHT) == []
 
 
 def test_seen_actions_come_from_what_actually_arrived(session: Session) -> None:
@@ -161,9 +161,9 @@ def test_seen_actions_come_from_what_actually_arrived(session: Session) -> None:
         received_at=MONDAY_EIGHT,
     )
 
-    actions = gesehene_aktionen(session, device)
+    actions = seen_actions(session, device)
 
-    assert [a.aktion for a in actions] == ["button_1_single"]
+    assert [a.action for a in actions] == ["button_1_single"]
     assert actions[0].command_code is None
     assert actions[0].last_seen is not None
 
@@ -174,9 +174,9 @@ def test_a_bound_button_stays_visible_without_a_fresh_press(session: Session) ->
     _zone, device = _installation(session)
     set_binding(session, device, "nie_wieder_gedrueckt", "boost")
 
-    actions = gesehene_aktionen(session, device)
+    actions = seen_actions(session, device)
 
-    assert [a.aktion for a in actions] == ["nie_wieder_gedrueckt"]
+    assert [a.action for a in actions] == ["nie_wieder_gedrueckt"]
     assert actions[0].command_name == "Nächste Schaltung vorziehen"
     assert actions[0].last_seen is None
 
