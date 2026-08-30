@@ -21,8 +21,10 @@ from thermoctl.db.models.state import ShadowDecision, ZoneState
 from thermoctl.db.models.zone import Zone, ZoneSetpoint
 from thermoctl.domain.control_loop import Situation, decide
 from thermoctl.domain.fault import NO_SOURCE
-from thermoctl.domain.schedule import resolved_setpoint
-from thermoctl.domain.zone_settings import control_parameters
+from thermoctl.domain.schedule import Setpoint, resolved_setpoint
+from thermoctl.domain.solar_setback import HourlyForecast, sun_expected
+from thermoctl.domain.solar_setback import apply as apply_solar_setback
+from thermoctl.domain.zone_settings import ControlParameters, control_parameters
 
 log = logging.getLogger(__name__)
 
@@ -62,23 +64,23 @@ def _previous_state(
     Also returns the raw `previous_would_heat` for the new row: `None` if there's no
     history at all yet, otherwise the most recently decided value.
     """
-    zeilen = list(
+    rows = list(
         session.execute(
             select(ShadowDecision.would_heat, ShadowDecision.decided_at)
             .where(ShadowDecision.zone_id == zone_id)
             .order_by(ShadowDecision.decided_at.desc(), ShadowDecision.id.desc())
         )
     )
-    if not zeilen:
+    if not rows:
         return False, None, None
 
-    aktuell = zeilen[0].would_heat
-    beginn = zeilen[0].decided_at
-    for state, moment in zeilen:
-        if state != aktuell:
+    current_state = rows[0].would_heat
+    start = rows[0].decided_at
+    for state, moment in rows:
+        if state != current_state:
             break
-        beginn = moment
-    return aktuell, int((now - beginn).total_seconds()), aktuell
+        start = moment
+    return current_state, int((now - start).total_seconds()), current_state
 
 
 def _window_situation(
@@ -103,7 +105,7 @@ def _window_situation(
     last_closed: datetime | None = None
     for device_id in devices_ids:
         previous_value: str | None = None
-        for value, gemessen_am in session.execute(
+        for value, measured_at in session.execute(
             select(Measurement.value_text, Measurement.measured_at)
             .where(
                 Measurement.device_id == device_id,
@@ -114,8 +116,8 @@ def _window_situation(
         ):
             if value == "true" and previous_value == "false":
                 last_closed = max(
-                    last_closed or gemessen_am,
-                    gemessen_am,
+                    last_closed or measured_at,
+                    measured_at,
                 )
             previous_value = value
     if last_closed is None:
@@ -123,7 +125,53 @@ def _window_situation(
     return False, max(0, int((now - last_closed).total_seconds()))
 
 
-def _process_zone(session: Session, zone: Zone, now: datetime) -> ShadowDecision:
+def _with_solar_setback(
+    setpoint: Setpoint,
+    frost_c: Decimal,
+    zone: Zone,
+    parameter: ControlParameters,
+    settings: Setting,
+    forecast: list[HourlyForecast] | None,
+    now: datetime,
+) -> tuple[Decimal, str]:
+    """The setpoint and its reasoning, corrected for an expected solar gain.
+
+    Correction happens **here**, before `Situation` is built -- not inside
+    `regelung.entscheiden()`, which stays exactly as unaware of solar setback as it
+    was before this feature existed (see `domain.solar_setback` for why). `forecast`
+    being `None` (feature off, no location configured, or the source unreachable --
+    `integrations.forecast.ForecastCache` already collapses all three to the same
+    thing) and a zone with `solar_gain_factor == 0` both fall straight through
+    `solar_setback.apply()` to "no correction", so this function never needs to tell
+    those cases apart itself.
+    """
+    setpoint_c: Decimal = setpoint.temperature_c
+    setpoint_reason: str = setpoint.reason
+    if forecast is None:
+        return setpoint_c, setpoint_reason
+    expects_sun = sun_expected(forecast, now, settings.solar_setback_lookahead_hours)
+    result = apply_solar_setback(
+        setpoint_c,
+        frost_c,
+        factor=zone.solar_gain_factor,
+        max_reduction_k=parameter.solar_setback_max_k,
+        expects_sun=expects_sun,
+    )
+    if result is None:
+        return setpoint_c, setpoint_reason
+    return (
+        result.setpoint_c,
+        f"{setpoint_reason} Sonnenabsenkung: -{result.reduction_k} K wegen erwarteter "
+        f"Sonneneinstrahlung in den naechsten {settings.solar_setback_lookahead_hours} Stunden.",
+    )
+
+
+def _process_zone(
+    session: Session,
+    zone: Zone,
+    now: datetime,
+    forecast: list[HourlyForecast] | None = None,
+) -> ShadowDecision:
     settings = session.get(Setting, 1)
     assert settings is not None, "setting-Zeile fehlt — Einrichtung unvollstaendig"
 
@@ -142,11 +190,14 @@ def _process_zone(session: Session, zone: Zone, now: datetime) -> ShadowDecision
     frost_c = _frost_setpoint(session, zone, settings)
     parameter = control_parameters(session, zone)
     heating_now, held_for_s, previous_would_heat = _previous_state(session, zone.id, now)
+    setpoint_c, setpoint_reason = _with_solar_setback(
+        setpoint, frost_c, zone, parameter, settings, forecast, now
+    )
 
     situation = Situation(
         measured_c=measured_c,
-        setpoint_c=setpoint.temperature_c,
-        setpoint_reason=setpoint.reason,
+        setpoint_c=setpoint_c,
+        setpoint_reason=setpoint_reason,
         frost_c=frost_c,
         operating_mode=zone.operating_mode.code,
         heating_now=heating_now,
@@ -162,8 +213,8 @@ def _process_zone(session: Session, zone: Zone, now: datetime) -> ShadowDecision
         decided_at=now,
         zone_id=zone.id,
         temperature_c=measured_c,
-        setpoint_c=setpoint.temperature_c,
-        setpoint_reason=setpoint.reason,
+        setpoint_c=setpoint_c,
+        setpoint_reason=setpoint_reason,
         would_heat=decision.heating,
         previous_would_heat=previous_would_heat,
         outcome_code=decision.reason_code,
@@ -174,18 +225,26 @@ def _process_zone(session: Session, zone: Zone, now: datetime) -> ShadowDecision
     return row
 
 
-def cycle(session: Session, now: datetime) -> list[ShadowDecision]:
+def cycle(
+    session: Session,
+    now: datetime,
+    forecast: list[HourlyForecast] | None = None,
+) -> list[ShadowDecision]:
     """One shadow cycle over all zones — writes, but switches nothing.
 
     A zone whose processing fails does not hold up the others: each zone runs in its
     own savepoint, whose rollback on an exception only undoes its own incomplete
     changes — not the zones already processed successfully within the same call.
+
+    `forecast` is fetched once, outside this function (`integrations.forecast`), and
+    handed to every zone unchanged -- there is exactly one installation-wide location,
+    so one fetch per cycle already covers every zone.
     """
     results: list[ShadowDecision] = []
     for zone in session.scalars(select(Zone).order_by(Zone.id)):
         try:
             with session.begin_nested():
-                row = _process_zone(session, zone, now)
+                row = _process_zone(session, zone, now, forecast)
         except Exception:
             log.exception(
                 "Schattenzyklus fuer eine Zone gescheitert — uebrige Zonen laufen weiter",

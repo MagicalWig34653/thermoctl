@@ -1,6 +1,6 @@
-{% extends "base.html" if not ist_htmx else "empty.html" %}
-{% block titel %}Audit-Protokoll – thermoctl{% endblock %}
-{% block inhalt %}
+{% extends "base.html" if not is_htmx else "empty.html" %}
+{% block title %}Audit-Protokoll – thermoctl{% endblock %}
+{% block content %}
 <section id="audit-list">
   <h1 class="mb-3">Audit-Protokoll</h1>
   <form method="get" action="/audit" class="row g-3 mb-4">
@@ -29,7 +29,7 @@
       <label class="form-label" for="action_code">Aktion</label>
       <select class="form-select" id="action_code" name="action_code">
         <option value="">Alle Aktionen</option>
-        {% for value in aktionen %}
+        {% for value in actions %}
         <option value="{{ value }}"{% if filter.action_code == value %} selected{% endif %}>{{ value }}</option>
         {% endfor %}
       </select>
@@ -56,11 +56,11 @@
     <table class="table table-striped align-middle">
       <thead><tr><th>Zeitpunkt</th><th>Quelle</th><th>Akteur</th><th>Aktion</th><th>Objekt</th><th>Zusammenfassung</th></tr></thead>
       <tbody>
-      {% for entry, source, nutzer, token in entries %}
+      {% for entry, source, person, token in entries %}
       <tr>
         <td class="text-nowrap" title="{{ entry.occurred_at.isoformat(sep=' ') }} UTC">{{ entry.occurred_at|age }}</td>
         <td>{{ source.label }}</td>
-        <td>{{ nutzer.username if nutzer else (token.name if token else "System") }}</td>
+        <td>{{ person.username if person else (token.name if token else "System") }}</td>
         <td><code>{{ entry.action }}</code></td>
         <td><code>{{ entry.object_type }}{% if entry.object_id %}:{{ entry.object_id }}{% endif %}</code></td>
         <td>
@@ -76,10 +76,10 @@
   <div class="alert alert-secondary" role="status">Keine passenden Einträge gefunden.</div>
   {% endif %}
 
-  {% if page > 1 or hat_weitere %}
+  {% if page > 1 or has_more %}
   <nav aria-label="Seitennavigation" class="d-flex justify-content-between">
-    {% if page > 1 %}<a class="btn btn-outline-secondary" href="?{{ basis_parameter }}&amp;seite={{ page - 1 }}">Neuere Einträge</a>{% else %}<span></span>{% endif %}
-    {% if hat_weitere %}<a class="btn btn-outline-secondary" href="?{{ basis_parameter }}&amp;seite={{ page + 1 }}">Ältere Einträge</a>{% endif %}
+    {% if page > 1 %}<a class="btn btn-outline-secondary" href="?{{ base_parameters }}&amp;seite={{ page - 1 }}">Neuere Einträge</a>{% else %}<span></span>{% endif %}
+    {% if has_more %}<a class="btn btn-outline-secondary" href="?{{ base_parameters }}&amp;seite={{ page + 1 }}">Ältere Einträge</a>{% endif %}
   </nav>
   {% endif %}
 </section>

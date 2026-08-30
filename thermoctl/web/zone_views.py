@@ -5,18 +5,18 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from thermoctl.auth.dependencies import aktueller_principal, csrf_schutz, get_session
+from thermoctl.auth.dependencies import csrf_protection, current_principal, get_session
 from thermoctl.db.models.device import Device
 from thermoctl.db.models.lookup import OperatingMode
 from thermoctl.db.models.zone import Zone
 from thermoctl.domain.authz import has_permission, require, visible_zones
 from thermoctl.domain.principal import Principal
 from thermoctl.domain.zones import (
-    ZonennameVergeben,
+    ZoneNameTaken,
     create_zone,
     delete_zone,
     update_zone,
-    zonedependencies,
+    zone_dependencies,
 )
 from thermoctl.web import templates
 from thermoctl.web.forms import FormError, form_again
@@ -25,7 +25,7 @@ from thermoctl.web.forms import FormError, form_again
 # interface. These routes deliver HTML for humans, and in the interface under
 # /docs there would otherwise be a form route next to every real endpoint whose
 # 'Try it out' triggers a real change.
-router = APIRouter(dependencies=[Depends(csrf_schutz)], include_in_schema=False)
+router = APIRouter(dependencies=[Depends(csrf_protection)], include_in_schema=False)
 
 
 def _visible_zone(session: Session, principal: Principal, zone_id: int) -> Zone:
@@ -111,7 +111,7 @@ def _form_again(
 @router.get("/zones")
 async def zone_list_view(
     request: Request,
-    principal: Annotated[Principal, Depends(aktueller_principal)],
+    principal: Annotated[Principal, Depends(current_principal)],
     session: Annotated[Session, Depends(get_session)],
 ) -> Response:
     zones = visible_zones(session, principal, "zone.read")
@@ -120,8 +120,8 @@ async def zone_list_view(
         "zones.html",
         {
             "zones": zones,
-            "darf_anlegen": has_permission(principal, "zone.manage"),
-            "darf_aendern": {
+            "may_create": has_permission(principal, "zone.manage"),
+            "may_edit": {
                 zone.id for zone in zones if has_permission(principal, "zone.manage", zone.id)
             },
         },
@@ -131,7 +131,7 @@ async def zone_list_view(
 @router.get("/zones/new")
 async def zone_new(
     request: Request,
-    principal: Annotated[Principal, Depends(aktueller_principal)],
+    principal: Annotated[Principal, Depends(current_principal)],
     session: Annotated[Session, Depends(get_session)],
 ) -> Response:
     require(principal, "zone.manage")
@@ -145,23 +145,23 @@ async def zone_new(
 @router.post("/zones")
 async def create_zone_view(
     request: Request,
-    principal: Annotated[Principal, Depends(aktueller_principal)],
+    principal: Annotated[Principal, Depends(current_principal)],
     session: Annotated[Session, Depends(get_session)],
 ) -> Response:
     require(principal, "zone.manage")
     values = _form_values(await request.form())
     try:
-        name, anzeigename, kind_id, sortierung, device_id = _checked_values(session, values)
+        name, display_name, kind_id, order_value, device_id = _checked_values(session, values)
         create_zone(
             session,
             principal,
             name=name,
-            display_name=anzeigename,
+            display_name=display_name,
             operating_mode_id=kind_id,
-            sort_order=sortierung,
+            sort_order=order_value,
             temperature_source_device_id=device_id,
         )
-    except ZonennameVergeben:
+    except ZoneNameTaken:
         return _form_again(
             request,
             session,
@@ -178,7 +178,7 @@ async def create_zone_view(
 async def edit_zone(
     zone_id: int,
     request: Request,
-    principal: Annotated[Principal, Depends(aktueller_principal)],
+    principal: Annotated[Principal, Depends(current_principal)],
     session: Annotated[Session, Depends(get_session)],
 ) -> Response:
     zone = _visible_zone(session, principal, zone_id)
@@ -200,24 +200,24 @@ async def edit_zone(
 async def save_zone(
     zone_id: int,
     request: Request,
-    principal: Annotated[Principal, Depends(aktueller_principal)],
+    principal: Annotated[Principal, Depends(current_principal)],
     session: Annotated[Session, Depends(get_session)],
 ) -> Response:
     zone = _visible_zone(session, principal, zone_id)
     values = _form_values(await request.form())
     try:
-        name, anzeigename, kind_id, sortierung, device_id = _checked_values(session, values)
+        name, display_name, kind_id, order_value, device_id = _checked_values(session, values)
         update_zone(
             session,
             zone,
             principal,
             name=name,
-            display_name=anzeigename,
+            display_name=display_name,
             operating_mode_id=kind_id,
-            sort_order=sortierung,
+            sort_order=order_value,
             temperature_source_device_id=device_id,
         )
-    except ZonennameVergeben:
+    except ZoneNameTaken:
         return _form_again(
             request,
             session,
@@ -234,21 +234,21 @@ async def save_zone(
 async def confirm_zone_delete(
     zone_id: int,
     request: Request,
-    principal: Annotated[Principal, Depends(aktueller_principal)],
+    principal: Annotated[Principal, Depends(current_principal)],
     session: Annotated[Session, Depends(get_session)],
 ) -> Response:
     zone = _visible_zone(session, principal, zone_id)
     return templates.TemplateResponse(
         request,
         "zone_delete.html",
-        {"zone": zone, "abhaengigkeiten": zonedependencies(session, zone.id)},
+        {"zone": zone, "dependencies": zone_dependencies(session, zone.id)},
     )
 
 
 @router.post("/zones/{zone_id}/delete")
 async def execute_zone_delete(
     zone_id: int,
-    principal: Annotated[Principal, Depends(aktueller_principal)],
+    principal: Annotated[Principal, Depends(current_principal)],
     session: Annotated[Session, Depends(get_session)],
 ) -> Response:
     zone = _visible_zone(session, principal, zone_id)

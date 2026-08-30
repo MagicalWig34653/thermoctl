@@ -37,17 +37,17 @@ def create_session(
 
     Only the hash is stored — reading the database does not let you log in with it.
     """
-    geheimnis = new_secret()
+    secret = new_secret()
     entry = Session_(
         user_id=user.id,
-        token_hash=hash_secret(geheimnis),
+        token_hash=hash_secret(secret),
         expires_at=utcnow() + timedelta(seconds=lifetime_s),
         user_agent=user_agent,
         ip_address=ip,
     )
     session.add(entry)
     session.flush()
-    return entry, geheimnis
+    return entry, secret
 
 
 def resolve_session(session: Session, cookie_value: str) -> Session_ | None:

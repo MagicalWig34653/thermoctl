@@ -1,19 +1,19 @@
 {% extends "base.html" %}
 {% from "zone_header.html" import zonenkopf %}
 {% from "flow_diagram.html" import flow_diagram %}
-{% block titel %}Geräte in {{ zone.display_name }} – thermoctl{% endblock %}
-{% block inhalt %}
+{% block title %}Geräte in {{ zone.display_name }} – thermoctl{% endblock %}
+{% block content %}
 {{ zonenkopf(zone, "Geräte") }}
 <p><a href="/controllers">Bediengeräte, Anzeigen und Tasten konfigurieren</a></p>
 
 <section class="tc-panel p-4 mb-4">
-    {{ flow_diagram(picture, draggable=darf_aendern) }}
-    <p class="t-leise small mb-0 mt-3">
+    {{ flow_diagram(picture, draggable=may_edit) }}
+    <p class="t-quiet small mb-0 mt-3">
         Dasselbe Bild für alle Zonen auf einmal: <a href="/plant">Anlagenbild</a>.
     </p>
 </section>
 
-{% if darf_aendern %}
+{% if may_edit %}
 {#
 Ziehen ist eine zweite Bedienart derselben Änderung, keine eigene Schnittstelle: Beim
 Loslassen geht dasselbe Formular hinaus, das darunter von Hand ausgefüllt wird — gleicher
@@ -29,10 +29,10 @@ Der Vorrat ist zugleich Ablegeziel: Ein zugeordnetes Gerät hierher zurückziehe
 Zuordnung. Hinein und hinaus ist damit derselbe Handgriff in zwei Richtungen.
 #}
 <section class="tc-panel p-4 mb-4 tc-target" id="device-pool"
-         data-target="entfernen" data-target-name="Geräte">
+         data-target="detach" data-target-name="Geräte">
     <div class="d-flex justify-content-between align-items-baseline flex-wrap gap-2">
         <h2 class="mb-0">Geräte</h2>
-        <span class="t-leise small" data-drag-hint hidden>
+        <span class="t-quiet small" data-drag-hint hidden>
             Ein Gerät auf eine der Stufen oben ziehen — oder von dort hierher zurück,
             um es aus der Zone zu nehmen.
         </span>
@@ -50,7 +50,7 @@ Zuordnung. Hinein und hinaus ist damit derselbe Handgriff in zwei Richtungen.
              data-can="{{ capabilities.get(device.id, []) | join(' ') }}">
             <div class="tc-node-name">{{ device.display_name }}</div>
             {% if device.model %}
-            <div class="t-leise" style="font-size: .68rem">{{ device.model }}</div>
+            <div class="t-quiet" style="font-size: .68rem">{{ device.model }}</div>
             {% endif %}
         </div>
         {% endfor %}
@@ -77,7 +77,7 @@ aber nicht -- eine Regel, die man beim Lesen des Markups nicht sieht und beim Sc
 Skripts falsch rät.
 #}
 <div hidden>
-    {% for rolle in rollen %}
+    {% for rolle in roles %}
     <span data-role-code="{{ rolle.code }}" data-role-id="{{ rolle.id }}"></span>
     {% endfor %}
 </div>
@@ -85,7 +85,7 @@ Skripts falsch rät.
 
 <h2 class="h4">Messquelle</h2>
 <p>Aktuell: <strong>{{ temperature_source.display_name if temperature_source else "Keine Messquelle" }}</strong></p>
-{% if darf_aendern %}
+{% if may_edit %}
 {% if errors.temperature_source %}<div class="alert alert-danger">{{ errors.temperature_source }}</div>{% endif %}
 <form method="post" action="/zones/{{ zone.id }}/devices/source" class="row g-2 mb-4">
     <div class="col">
@@ -110,7 +110,7 @@ Skripts falsch rät.
     <tr>
         <td>{{ rolle.label }}</td><td>{{ device.display_name }}</td>
         <td class="text-end">
-        {% if darf_aendern %}
+        {% if may_edit %}
         <form method="post" action="/zones/{{ zone.id }}/devices/detach">
             <input type="hidden" name="assignment_id" value="{{ assignment.id }}">
             <button class="btn btn-sm btn-outline-danger" type="submit">Lösen</button>
@@ -126,19 +126,19 @@ Skripts falsch rät.
 
 {% if controllers %}
 <h2 class="h4 mt-4">Tastenbelegung</h2>
-<p class="t-leise">Die Bearbeitung ist zu <a href="/controllers">Bediengeräte</a> umgezogen.</p>
+<p class="t-quiet">Die Bearbeitung ist zu <a href="/controllers">Bediengeräte</a> umgezogen.</p>
 {% if errors.button %}<div class="alert alert-danger">{{ errors.button }}</div>{% endif %}
 {% for device, belegungen in controllers %}
-  {% for binding in belegungen %}<span class="t-wert me-2">{{ binding.aktion }}</span>{% endfor %}
+  {% for binding in belegungen %}<span class="t-value me-2">{{ binding.action }}</span>{% endfor %}
 {% endfor %}
 <span class="visually-hidden">{% for command in commands %}{{ command.label }} {% endfor %}</span>
 {% endif %}
 
 {% if false and controllers %}
 <h2 class="h4 mt-4">Tastenbelegung</h2>
-<p class="t-leise">
+<p class="t-quiet">
     Wie ein Gerät seine Tasten nennt, entscheidet Zigbee2MQTT je Modell — der eine schickt
-    <span class="t-wert">single_plus</span>, der nächste <span class="t-wert">button_1_single</span>.
+    <span class="t-value">single_plus</span>, der nächste <span class="t-value">button_1_single</span>.
     Deshalb steht hier nichts geraten: Aufgeführt ist, was dieses Gerät wirklich geschickt
     hat. <strong>Einmal jede Taste drücken</strong>, die Seite neu laden, zuordnen.
 </p>
@@ -148,7 +148,7 @@ Skripts falsch rät.
 <div class="tc-panel mb-3">
     <div class="p-3 pb-0">
         <div class="tc-zone-name">{{ device.display_name }}</div>
-        <div class="t-leise" style="font-size: .72rem">{{ device.model or "Modell unbekannt" }}</div>
+        <div class="t-quiet" style="font-size: .72rem">{{ device.model or "Modell unbekannt" }}</div>
     </div>
     {% if belegungen %}
     <div class="table-responsive">
@@ -157,19 +157,19 @@ Skripts falsch rät.
         <tbody>
         {% for binding in belegungen %}
         <tr>
-            <td class="t-wert">{{ binding.aktion }}</td>
-            <td class="t-leise small">
+            <td class="t-value">{{ binding.action }}</td>
+            <td class="t-quiet small">
                 {% if binding.last_seen %}{{ binding.last_seen|age }}
                 {% else %}<span title="Belegt, aber seit dem letzten Aufräumen der Messwerte nicht gesehen">—</span>{% endif %}
             </td>
             <td colspan="3">
                 <form method="post" action="/zones/{{ zone.id }}/devices/button" class="row g-2">
                     <input type="hidden" name="device_id" value="{{ device.id }}">
-                    <input type="hidden" name="action_code" value="{{ binding.aktion }}">
+                    <input type="hidden" name="action_code" value="{{ binding.action }}">
                     <div class="col-auto">
                         <select class="form-select form-select-sm" name="command"
                                 aria-label="Was diese Taste tut"
-                                {{ "disabled" if not darf_aendern }}>
+                                {{ "disabled" if not may_edit }}>
                             <option value="">— nichts —</option>
                             {% for command in commands %}
                             <option value="{{ command.code }}"
@@ -182,9 +182,9 @@ Skripts falsch rät.
                                style="width: 6rem" inputmode="decimal"
                                placeholder="0,5 K" aria-label="Schrittweite in Kelvin"
                                value="{{ binding.step_k|grad if binding.step_k is not none }}"
-                               {{ "disabled" if not darf_aendern }}>
+                               {{ "disabled" if not may_edit }}>
                     </div>
-                    {% if darf_aendern %}
+                    {% if may_edit %}
                     <div class="col-auto">
                         <button class="btn btn-sm btn-outline-secondary" type="submit">Übernehmen</button>
                     </div>
@@ -197,7 +197,7 @@ Skripts falsch rät.
     </table>
     </div>
     {% else %}
-    <p class="t-leise p-3 mb-0">
+    <p class="t-quiet p-3 mb-0">
         Dieses Gerät hat noch keinen Tastendruck geschickt. Einmal drücken, dann steht er hier.
     </p>
     {% endif %}
@@ -205,7 +205,7 @@ Skripts falsch rät.
 {% endfor %}
 {% endif %}
 
-{% if darf_aendern %}
+{% if may_edit %}
 <h2 class="h4 mt-4">Rolle zuordnen</h2>
 {% if errors.assignment %}<div class="alert alert-danger">{{ errors.assignment }}</div>{% endif %}
 <form method="post" action="/zones/{{ zone.id }}/devices/assign" class="row g-2 mb-4">
@@ -220,7 +220,7 @@ Skripts falsch rät.
         <label class="form-label" for="role_id">Rolle</label>
         <select class="form-select" id="role_id" name="role_id" required>
             <option value="">Bitte auswählen</option>
-            {% for rolle in rollen %}<option value="{{ rolle.id }}">{{ rolle.label }}</option>{% endfor %}
+            {% for rolle in roles %}<option value="{{ rolle.id }}">{{ rolle.label }}</option>{% endfor %}
         </select>
     </div>
     <div class="col-auto align-self-end"><button class="btn btn-primary" type="submit">Zuordnen</button></div>

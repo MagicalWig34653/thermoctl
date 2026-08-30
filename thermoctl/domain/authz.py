@@ -20,7 +20,7 @@ class Forbidden(Exception):
 def _user_permissions(session: Session, user: User) -> frozenset[tuple[str, int | None]]:
     if not user.is_active:
         return frozenset()
-    zeilen = session.execute(
+    rows = session.execute(
         select(Permission.code, GroupPermission.zone_id)
         .join(GroupPermission, GroupPermission.permission_id == Permission.id)
         .join(
@@ -29,7 +29,7 @@ def _user_permissions(session: Session, user: User) -> frozenset[tuple[str, int 
         )
         .where(UserAccessGroup.user_id == user.id)
     ).all()
-    return frozenset((code, zone_id) for code, zone_id in zeilen)
+    return frozenset((code, zone_id) for code, zone_id in rows)
 
 
 def principal_for_user(session: Session, user: User) -> Principal:
@@ -48,24 +48,24 @@ def principal_for_token(session: Session, token: ApiToken) -> Principal:
     ):
         return Principal(user_id=token.user_id, token_id=token.id, grants=frozenset())
 
-    besitzer = session.get(User, token.user_id)
-    if besitzer is None:
+    owner = session.get(User, token.user_id)
+    if owner is None:
         return Principal(user_id=token.user_id, token_id=token.id, grants=frozenset())
-    vom_besitzer = _user_permissions(session, besitzer)
+    from_owner = _user_permissions(session, owner)
 
-    zeilen = session.execute(
+    rows = session.execute(
         select(Permission.code, ApiTokenPermission.zone_id)
         .join(ApiTokenPermission, ApiTokenPermission.permission_id == Permission.id)
         .where(ApiTokenPermission.api_token_id == token.id)
     ).all()
-    vom_token = frozenset((code, zone_id) for code, zone_id in zeilen)
+    from_token = frozenset((code, zone_id) for code, zone_id in rows)
 
-    wirksam = {
+    effective = {
         (code, zone_id)
-        for code, zone_id in vom_token
-        if (code, zone_id) in vom_besitzer or (code, None) in vom_besitzer
+        for code, zone_id in from_token
+        if (code, zone_id) in from_owner or (code, None) in from_owner
     }
-    return Principal(user_id=token.user_id, token_id=token.id, grants=frozenset(wirksam))
+    return Principal(user_id=token.user_id, token_id=token.id, grants=frozenset(effective))
 
 
 # The permissions, sorted by area the way a human looks for them -- not alphabetically
@@ -124,8 +124,8 @@ def require(principal: Principal, code: str, zone_id: int | None = None) -> None
         # "no zone". Today both databases assign ids starting at 1, but that assumption
         # is not written down anywhere — and in an error message explaining a denied
         # permission, a missing zone reference would be misleading.
-        zusatz = f" fuer Zone {zone_id}" if zone_id is not None else ""
-        raise Forbidden(f"Recht {code} fehlt{zusatz}")
+        extra = f" fuer Zone {zone_id}" if zone_id is not None else ""
+        raise Forbidden(f"Recht {code} fehlt{extra}")
 
 
 def visible_zones(session: Session, principal: Principal, code: str) -> list[Zone]:
@@ -138,8 +138,8 @@ def visible_zones(session: Session, principal: Principal, code: str) -> list[Zon
     if (code, None) in principal.grants:
         return list(session.scalars(select(Zone).order_by(Zone.sort_order, Zone.name)))
     allowed = {
-        zone_id for vergebener_code, zone_id in principal.grants
-        if vergebener_code == code and zone_id is not None
+        zone_id for assigned_code, zone_id in principal.grants
+        if assigned_code == code and zone_id is not None
     }
     if not allowed:
         return []

@@ -18,7 +18,7 @@ from tests.helpers import (
     user_with_permissions,
     zone_with_schedule,
 )
-from thermoctl.auth.tokens import token_ausstellen
+from thermoctl.auth.tokens import issue_token
 from thermoctl.config import Settings
 from thermoctl.db.models.device import DeviceCapabilityLink
 from thermoctl.db.models.lookup import DeviceCapability
@@ -27,13 +27,13 @@ from thermoctl.db.models.override import ZoneOverride
 from thermoctl.db.models.schedule import SchedulePoint
 from thermoctl.db.models.zone import SetpointMode
 from thermoctl.domain.authz import Forbidden
-from thermoctl.domain.control import arm
+from thermoctl.domain.control import arm, save_solar_location
 from thermoctl.mcp import server
 
 
 def _token(session: Session, name: str, permissions: list[tuple[str, int | None]]) -> str:
-    nutzer = user_with_permissions(session, name, permissions)
-    _objekt, plaintext = token_ausstellen(session, nutzer, name, permissions, None)
+    user_record = user_with_permissions(session, name, permissions)
+    _objekt, plaintext = issue_token(session, user_record, name, permissions, None)
     return plaintext
 
 
@@ -45,7 +45,12 @@ def test_listing_zones_respects_the_zone_restriction(session: Session) -> None:
     result = server.list_zones(session, plaintext)
 
     assert result == [
-        {"name": first.name, "display_name": first.display_name, "operating_mode": "auto"}
+        {
+            "name": first.name,
+            "display_name": first.display_name,
+            "operating_mode": "auto",
+            "solar_gain_factor": "0.00",
+        }
     ]
 
 
@@ -98,8 +103,8 @@ def test_listing_devices_returns_capabilities_and_health(session: Session) -> No
     session.add(capability)
     session.flush()
     session.add(DeviceCapabilityLink(device_id=device.id, capability_id=capability.id))
-    gesund = create_device_state(session, device)
-    gesund.battery_percent = Decimal("87.50")
+    healthy = create_device_state(session, device)
+    healthy.battery_percent = Decimal("87.50")
     plaintext = _token(session, "geraeteleser", [("device.read", None)])
 
     result = server.list_devices(session, plaintext)
@@ -128,7 +133,7 @@ def test_shadow_decisions_returns_the_most_recent_reason(session: Session) -> No
             "moment": decision.decided_at.isoformat(),
             "ist_c": None,
             "soll_c": None,
-            "sollwert_begruendung": "Zeitplan",
+            "setpoint_reason": "Zeitplan",
             "would_heat": False,
             "outcome": "aus",
             "reason": "Sollwert ist erreicht.",
@@ -522,3 +527,35 @@ def test_regelparameter_setzen_braucht_zone_manage(session: Session) -> None:
         server.set_control_parameters(
             session, plaintext, zone.id, "hysteresis_k", Decimal("0.4")
         )
+
+
+def test_read_control_reports_whether_the_solar_setback_is_switched_on(
+    session: Session,
+) -> None:
+    """Without this, an assistant could see the setback's cap and lookahead but never
+    learn whether it applies at all -- and would explain a zone heating less than its
+    schedule says by guessing.
+
+    The coordinates come back as text like every other number here: through JSON a
+    Decimal would arrive as a float, and a coordinate that shifts in its last digit
+    points somewhere else.
+    """
+    create_settings(session)
+    source(session, "web")
+    plaintext = _token(session, "sonnenleser", [("zone.read", None)])
+
+    off = server.read_control(session, plaintext)
+    assert off["solar_forecast_enabled"] is False
+    assert off["solar_forecast_latitude"] is None
+
+    save_solar_location(
+        session,
+        enabled=True,
+        latitude_text="52.520",
+        longitude_text="13.405",
+        user_id=None,
+    )
+    on = server.read_control(session, plaintext)
+    assert on["solar_forecast_enabled"] is True
+    assert on["solar_forecast_latitude"] == "52.520"
+    assert isinstance(on["solar_forecast_longitude"], str)

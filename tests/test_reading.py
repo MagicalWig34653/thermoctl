@@ -124,7 +124,7 @@ def test_real_state_messages(
     )
 
     assert _values(result) == expected
-    assert {b.gemessen_am for b in result} == {measured_at}
+    assert {b.measured_at for b in result} == {measured_at}
 
 
 def test_voltage_is_read_neither_as_battery_level_nor_as_a_measurement() -> None:
@@ -163,7 +163,7 @@ def test_an_unreadable_last_seen_uses_the_received_time() -> None:
         '{"temperature": 20, "last_seen": "gestern"}', RECEIVED_AT
     )
 
-    assert result[0].gemessen_am == RECEIVED_AT
+    assert result[0].measured_at == RECEIVED_AT
 
 
 @pytest.mark.parametrize("payload", ["", "{kaputt", b"\xff"])
@@ -195,6 +195,30 @@ def test_a_valve_and_a_window_contact_are_recognized_without_example_data() -> N
     ]
 
 
+def test_a_thermostatic_radiator_valves_status_fields_are_read() -> None:
+    """`position`, `running_state` and `window_open` are the TRV's own readable
+    status -- they must arrive as readings just like any other value, without a
+    second parsing path next to `readings_from_payload`."""
+    result = readings_from_payload(
+        json.dumps(
+            {
+                "local_temperature": 21.3,
+                "position": 42,
+                "running_state": "heat",
+                "window_open": False,
+            }
+        ),
+        RECEIVED_AT,
+    )
+
+    assert _values(result) == [
+        ("temperature", Decimal("21.3"), None),
+        ("valve_position", Decimal("42"), None),
+        ("running_state", None, "heat"),
+        ("window_open", None, "false"),
+    ]
+
+
 def test_last_seen_without_a_timezone_is_discarded() -> None:
     """Without a timezone, the timestamp cannot be converted to UTC.
 
@@ -207,7 +231,7 @@ def test_last_seen_without_a_timezone_is_discarded() -> None:
     readings = readings_from_payload(
         json.dumps({"last_seen": "2026-08-29T06:00:00", "temperature": 21.5}), received
     )
-    assert [b.gemessen_am for b in readings] == [received]
+    assert [b.measured_at for b in readings] == [received]
 
 
 def test_valid_json_that_is_not_an_object_yields_nothing() -> None:

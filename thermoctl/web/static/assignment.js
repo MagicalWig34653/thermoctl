@@ -1,192 +1,192 @@
 /*
- * Geraete per Ziehen einer Stufe der Zone zuordnen.
+ * Assign devices to a slot of a zone by dragging.
  *
- * Dieselbe Haltung wie beim Zeitplan: Das Ziehen ist eine zweite Bedienart derselben
- * Aenderung, keine eigene Schnittstelle. Beim Loslassen geht dasselbe Formular hinaus,
- * das darunter von Hand ausgefuellt wird -- gleicher CSS-Schutz, gleiche Rechtepruefung,
- * gleiche Fehlerdarstellung. Ohne JavaScript bleiben die Formulare, und der Hinweis
- * "ziehen" wird gar nicht erst eingeblendet.
+ * Same stance as in the schedule: dragging is a second way to operate the same change,
+ * not an interface of its own. On release the very same form goes out that is filled in
+ * by hand below it -- same CSRF protection, same permission check, same error display.
+ * Without JavaScript the forms remain, and the "drag" hint is never shown in the first
+ * place.
  *
- * Zwei Dinge, die beim Zeitplan Zeit gekostet haben und hier von vornherein anders sind:
+ * Two things that cost time in the schedule and are done differently here from the start:
  *
- *   * Das gezogene Element wird **nicht** im Baum umgehaengt, nur per `transform`
- *     verschoben. Ein appendChild waehrend des Ziehens loest die Zeigererfassung, und
- *     danach landen pointermove und pointerup auf einem anderen Element.
- *   * Die Kennungen stehen im Rumpf des Formulars, nicht im Pfad. hx-boost liest die
- *     `action` einmal beim Verarbeiten der Seite; ein spaeter umgeschriebener Pfad waere
- *     wirkungslos.
+ *   * The dragged element is **not** moved in the tree, only shifted via `transform`. An
+ *     appendChild during the drag releases pointer capture, and pointermove and pointerup
+ *     then land on a different element.
+ *   * The identifiers live in the form's body, not in the path. hx-boost reads the
+ *     `action` once while processing the page; a path rewritten later would have no
+ *     effect.
  */
 (function () {
     "use strict";
 
-    /** Ist diese Karte bereits einer Stelle zugeordnet? Dann kann sie nur heraus. */
-    function zugeordnet(karte) {
-        return Boolean(karte.dataset.assignment || karte.dataset.source);
+    /** Is this card already assigned to a slot? Then it can only go back out. */
+    function isAssigned(card) {
+        return Boolean(card.dataset.assignment || card.dataset.source);
     }
 
-    /** Passt diese Karte auf dieses Ziel?
+    /** Does this card fit this target?
      *
-     *  Zwei Richtungen: Eine Karte aus dem Vorrat geht auf eine Stufe, sofern sie kann,
-     *  was die Stufe verlangt -- derselbe Massstab wie in der Domaene, abgewiesen wird
-     *  nur ein nachweislicher Widerspruch. Eine bereits zugeordnete Karte geht
-     *  ausschliesslich zurueck in den Vorrat.
+     *  Two directions: a card from the pool goes onto a slot provided it can do what the
+     *  slot requires -- the same yardstick as in the domain, only a demonstrable
+     *  contradiction is rejected. A card that is already assigned goes exclusively back
+     *  into the pool.
      */
-    function passt(karte, ziel) {
-        if (ziel.dataset.target === "entfernen") {
-            return zugeordnet(karte);
+    function fits(card, target) {
+        if (target.dataset.target === "detach") {
+            return isAssigned(card);
         }
-        if (zugeordnet(karte)) {
+        if (isAssigned(card)) {
             return false;
         }
-        const braucht = ziel.dataset.requires;
-        const kann = (karte.dataset.can || "").split(" ").filter(Boolean);
-        return !braucht || kann.length === 0 || kann.includes(braucht);
+        const required = target.dataset.requires;
+        const abilities = (card.dataset.can || "").split(" ").filter(Boolean);
+        return !required || abilities.length === 0 || abilities.includes(required);
     }
 
-    function zielUnter(x, y, ziele) {
-        for (const ziel of ziele) {
-            const rahmen = ziel.getBoundingClientRect();
-            if (x >= rahmen.left && x <= rahmen.right && y >= rahmen.top && y <= rahmen.bottom) {
-                return ziel;
+    function targetUnder(x, y, targets) {
+        for (const target of targets) {
+            const box = target.getBoundingClientRect();
+            if (x >= box.left && x <= box.right && y >= box.top && y <= box.bottom) {
+                return target;
             }
         }
         return null;
     }
 
-    function loesen(karte) {
-        if (karte.dataset.source) {
-            // Die Messquelle ist eine Spalte an der Zone, keine Zuordnungszeile. Ein
-            // leeres Geraetefeld loescht sie -- derselbe Weg wie ueber das Formular.
-            const formular = document.getElementById("assignment-source");
-            formular.elements.device_id.value = "";
-            formular.requestSubmit();
+    function detach(card) {
+        if (card.dataset.source) {
+            // The temperature source is a column on the zone, not an assignment row. An
+            // empty device field clears it -- the same route as through the form.
+            const form = document.getElementById("assignment-source");
+            form.elements.device_id.value = "";
+            form.requestSubmit();
             return;
         }
-        const formular = document.getElementById("assignment-detach");
-        formular.elements.assignment_id.value = karte.dataset.assignment;
-        formular.requestSubmit();
+        const form = document.getElementById("assignment-detach");
+        form.elements.assignment_id.value = card.dataset.assignment;
+        form.requestSubmit();
     }
 
-    function absenden(geraetId, zielart, zielElement) {
-        const ziel = zielElement && zielElement.dataset.form ? zielElement : null;
-        if (ziel) {
-            const formular = document.getElementById(ziel.dataset.form);
-            if (formular && formular.elements.source_device_id) {
-                formular.elements.kind.value = "sensor_temperature";
-                formular.elements.source_device_id.value = geraetId;
-                formular.requestSubmit();
+    function submit(deviceId, targetKind, targetElement) {
+        const target = targetElement && targetElement.dataset.form ? targetElement : null;
+        if (target) {
+            const form = document.getElementById(target.dataset.form);
+            if (form && form.elements.source_device_id) {
+                form.elements.kind.value = "sensor_temperature";
+                form.elements.source_device_id.value = deviceId;
+                form.requestSubmit();
             }
             return;
         }
-        if (zielart === "messquelle") {
-            const formular = document.getElementById("assignment-source");
-            formular.elements.device_id.value = geraetId;
-            formular.requestSubmit();
+        if (targetKind === "temperature_source") {
+            const form = document.getElementById("assignment-source");
+            form.elements.device_id.value = deviceId;
+            form.requestSubmit();
             return;
         }
-        const eintrag = document.querySelector('[data-role-code="' + zielart + '"]');
-        const rollenId = eintrag ? eintrag.dataset.roleId : null;
-        if (!rollenId) {
-            // Die Rolle gibt es in dieser Anlage nicht. Lieber nichts tun als eine
-            // Anfrage schicken, die der Server als Formfehler zurueckweist.
+        const entry = document.querySelector('[data-role-code="' + targetKind + '"]');
+        const roleId = entry ? entry.dataset.roleId : null;
+        if (!roleId) {
+            // This plant has no such role. Better to do nothing than to send a request
+            // the server would reject as a form error.
             return;
         }
-        const formular = document.getElementById("assignment-role");
-        formular.elements.device_id.value = geraetId;
-        formular.elements.role_id.value = rollenId;
-        formular.requestSubmit();
+        const form = document.getElementById("assignment-role");
+        form.elements.device_id.value = deviceId;
+        form.elements.role_id.value = roleId;
+        form.requestSubmit();
     }
 
-    function karteVerdrahten(karte, ziele) {
-        karte.addEventListener("pointerdown", function (ereignis) {
-            if (ereignis.button !== 0) {
+    function wireCard(card, targets) {
+        card.addEventListener("pointerdown", function (event) {
+            if (event.button !== 0) {
                 return;
             }
-            ereignis.preventDefault();
-            const startX = ereignis.clientX;
-            const startY = ereignis.clientY;
-            let bewegt = false;
-            let ziel = null;
+            event.preventDefault();
+            const startX = event.clientX;
+            const startY = event.clientY;
+            let moved = false;
+            let target = null;
 
-            karte.classList.add("tc-dragging");
-            karte.style.pointerEvents = "none";
-            // Unpassende Ziele treten waehrend des Ziehens zurueck, statt erst beim
-            // Loslassen mit einer Fehlermeldung zu antworten.
-            ziele.forEach(function (z) {
-                z.classList.toggle("tc-target-unfit", !passt(karte, z));
+            card.classList.add("tc-dragging");
+            card.style.pointerEvents = "none";
+            // Unsuitable targets step back during the drag instead of answering with an
+            // error message only on release.
+            targets.forEach(function (t) {
+                t.classList.toggle("tc-target-unfit", !fits(card, t));
             });
 
-            function bewegen(zweites) {
-                if (Math.abs(zweites.clientX - startX) > 3
-                    || Math.abs(zweites.clientY - startY) > 3) {
-                    bewegt = true;
+            function onMove(second) {
+                if (Math.abs(second.clientX - startX) > 3
+                    || Math.abs(second.clientY - startY) > 3) {
+                    moved = true;
                 }
-                karte.style.transform = "translate(" + (zweites.clientX - startX) + "px, "
-                    + (zweites.clientY - startY) + "px)";
-                const unter = zielUnter(zweites.clientX, zweites.clientY, ziele);
-                const getroffen = unter && passt(karte, unter) ? unter : null;
-                if (getroffen !== ziel) {
-                    ziele.forEach(function (z) { z.classList.remove("tc-target-active"); });
-                    if (getroffen) {
-                        getroffen.classList.add("tc-target-active");
+                card.style.transform = "translate(" + (second.clientX - startX) + "px, "
+                    + (second.clientY - startY) + "px)";
+                const under = targetUnder(second.clientX, second.clientY, targets);
+                const hit = under && fits(card, under) ? under : null;
+                if (hit !== target) {
+                    targets.forEach(function (t) { t.classList.remove("tc-target-active"); });
+                    if (hit) {
+                        hit.classList.add("tc-target-active");
                     }
-                    ziel = getroffen;
+                    target = hit;
                 }
             }
 
-            function aufraeumen() {
-                window.removeEventListener("pointermove", bewegen);
-                window.removeEventListener("pointerup", loslassen);
-                window.removeEventListener("pointercancel", aufraeumen);
-                karte.classList.remove("tc-dragging");
-                karte.style.pointerEvents = "";
-                karte.style.transform = "";
-                ziele.forEach(function (z) {
-                    z.classList.remove("tc-target-active");
-                    z.classList.remove("tc-target-unfit");
+            function cleanUp() {
+                window.removeEventListener("pointermove", onMove);
+                window.removeEventListener("pointerup", onRelease);
+                window.removeEventListener("pointercancel", cleanUp);
+                card.classList.remove("tc-dragging");
+                card.style.pointerEvents = "";
+                card.style.transform = "";
+                targets.forEach(function (t) {
+                    t.classList.remove("tc-target-active");
+                    t.classList.remove("tc-target-unfit");
                 });
             }
 
-            function loslassen() {
-                const getroffen = ziel;
-                aufraeumen();
-                if (!bewegt || !getroffen) {
+            function onRelease() {
+                const hit = target;
+                cleanUp();
+                if (!moved || !hit) {
                     return;
                 }
-                if (getroffen.dataset.target === "entfernen") {
-                    loesen(karte);
+                if (hit.dataset.target === "detach") {
+                    detach(card);
                 } else {
-                    absenden(karte.dataset.device, getroffen.dataset.target, getroffen);
+                    submit(card.dataset.device, hit.dataset.target, hit);
                 }
             }
 
-            window.addEventListener("pointermove", bewegen);
-            window.addEventListener("pointerup", loslassen);
-            window.addEventListener("pointercancel", aufraeumen);
+            window.addEventListener("pointermove", onMove);
+            window.addEventListener("pointerup", onRelease);
+            window.addEventListener("pointercancel", cleanUp);
         });
     }
 
-    function einrichten() {
-        const vorrat = document.getElementById("device-pool");
-        if (!vorrat || vorrat.dataset.wired) {
+    function setUp() {
+        const pool = document.getElementById("device-pool");
+        if (!pool || pool.dataset.wired) {
             return;
         }
-        vorrat.dataset.wired = "ja";
-        const ziele = Array.from(document.querySelectorAll("[data-target]"));
-        if (!ziele.length) {
+        pool.dataset.wired = "yes";
+        const targets = Array.from(document.querySelectorAll("[data-target]"));
+        if (!targets.length) {
             return;
         }
-        // Beide Richtungen: die Karten im Vorrat und die bereits zugeordneten im
-        // Flussbild.
-        document.querySelectorAll(".tc-draggable").forEach(function (karte) {
-            karteVerdrahten(karte, ziele);
+        // Both directions: the cards in the pool and the ones already assigned in the
+        // flow diagram.
+        document.querySelectorAll(".tc-draggable").forEach(function (card) {
+            wireCard(card, targets);
         });
-        const hinweis = document.querySelector("[data-drag-hint]");
-        if (hinweis) {
-            hinweis.hidden = false;
+        const hint = document.querySelector("[data-drag-hint]");
+        if (hint) {
+            hint.hidden = false;
         }
     }
 
-    document.addEventListener("DOMContentLoaded", einrichten);
-    document.addEventListener("htmx:load", einrichten);
+    document.addEventListener("DOMContentLoaded", setUp);
+    document.addEventListener("htmx:load", setUp);
 })();

@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from decimal import Decimal
 
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
@@ -18,7 +19,7 @@ class UnknownOperatingMode(Exception):
     """The requested operating mode does not exist."""
 
 
-class ZonennameVergeben(Exception):
+class ZoneNameTaken(Exception):
     """The technical zone name is already taken."""
 
 
@@ -47,17 +48,19 @@ def create_zone(
     operating_mode_id: int,
     sort_order: int,
     temperature_source_device_id: int | None,
+    solar_gain_factor: Decimal = Decimal(0),
     source: str = "web",
 ) -> Zone:
     """Creates the zone and its audit entry atomically, even under a name collision."""
     if _name_taken(session, name):
-        raise ZonennameVergeben
+        raise ZoneNameTaken
     zone = Zone(
         name=name,
         display_name=display_name,
         operating_mode_id=operating_mode_id,
         sort_order=sort_order,
         temperature_source_device_id=temperature_source_device_id,
+        solar_gain_factor=solar_gain_factor,
     )
     try:
         with session.begin_nested():
@@ -75,7 +78,7 @@ def create_zone(
             )
             session.flush()
     except IntegrityError as exc:
-        raise ZonennameVergeben from exc
+        raise ZoneNameTaken from exc
     return zone
 
 
@@ -89,11 +92,12 @@ def update_zone(
     operating_mode_id: int,
     sort_order: int,
     temperature_source_device_id: int | None,
+    solar_gain_factor: Decimal | None = None,
     source: str = "web",
 ) -> None:
     """Changes the zone and its audit entry atomically, even under a name collision."""
     if _name_taken(session, name, zone.id):
-        raise ZonennameVergeben
+        raise ZoneNameTaken
     try:
         with session.begin_nested():
             zone.name = name
@@ -101,6 +105,11 @@ def update_zone(
             zone.operating_mode_id = operating_mode_id
             zone.sort_order = sort_order
             zone.temperature_source_device_id = temperature_source_device_id
+            # `None` means "leave as is": the web form edits this field on the
+            # parameters page, not on the zone form, and must not reset it on every
+            # save of the zone's name.
+            if solar_gain_factor is not None:
+                zone.solar_gain_factor = solar_gain_factor
             audit.record(
                 session,
                 source=source,
@@ -113,13 +122,13 @@ def update_zone(
             )
             session.flush()
     except IntegrityError as exc:
-        raise ZonennameVergeben from exc
+        raise ZoneNameTaken from exc
 
 
-def zonedependencies(session: Session, zone_id: int) -> ZoneDependencies:
-    def count(modell: type[object]) -> int:
+def zone_dependencies(session: Session, zone_id: int) -> ZoneDependencies:
+    def count(model: type[object]) -> int:
         return session.scalar(
-            select(func.count()).select_from(modell).where(modell.zone_id == zone_id)  # type: ignore[attr-defined]
+            select(func.count()).select_from(model).where(model.zone_id == zone_id)  # type: ignore[attr-defined]
         ) or 0
 
     return ZoneDependencies(
@@ -156,7 +165,7 @@ def set_operating_mode(
     zone: Zone,
     code: str,
     *,
-    akteur_id: int | None,
+    actor_id: int | None,
     source: str = "web",
 ) -> bool:
     """Sets a zone's operating mode. Returns whether anything actually changed.
@@ -171,7 +180,7 @@ def set_operating_mode(
         raise UnknownOperatingMode(f"Die Betriebsart '{code}' gibt es nicht.")
     if zone.operating_mode_id == kind.id:
         return False
-    vorher = zone.operating_mode.label
+    before = zone.operating_mode.label
     # Set the relationship, not the foreign key: whoever only rewrites
     # `operating_mode_id` leaves an already loaded `zone.operating_mode` unchanged --
     # SQLAlchemy only reloads it after the next commit. But the service reports the
@@ -187,7 +196,7 @@ def set_operating_mode(
         object_type="zone",
         object_id=str(zone.id),
         summary=f"Betriebsart von '{zone.display_name}' auf {kind.label} gesetzt",
-        detail=f"{vorher} → {kind.label}",
-        user_id=akteur_id,
+        detail=f"{before} → {kind.label}",
+        user_id=actor_id,
     )
     return True

@@ -14,7 +14,7 @@ from tests.helpers import (
     create_zone,
     integration,
     role,
-    sensorstatus,
+    sensor_status_of,
 )
 from thermoctl.db.models.device import Device, DeviceCapabilityLink, ZoneDevice
 from thermoctl.db.models.lookup import DeviceCapability, SensorStatus
@@ -63,9 +63,9 @@ def test_a_real_message_writes_history_and_a_sign_of_life(session: Session) -> N
     device = session.scalar(select(Device).where(Device.external_id == name))
     assert device is not None
     assert device.last_seen_at == EMPFANGEN_AM
-    gesund = session.get(DeviceHealth, device.id)
-    assert gesund is not None
-    assert gesund.payload_count == 2
+    healthy = session.get(DeviceHealth, device.id)
+    assert healthy is not None
+    assert healthy.payload_count == 2
 
 
 def test_an_unknown_device_is_created_without_a_zone(session: Session) -> None:
@@ -177,9 +177,9 @@ def test_availability_is_carried_forward_on_the_one_device_state(
 
     device = session.scalar(select(Device).where(Device.external_id == name))
     assert device is not None
-    gesund = session.get(DeviceHealth, device.id)
-    assert gesund is not None
-    assert gesund.availability == "online"
+    healthy = session.get(DeviceHealth, device.id)
+    assert healthy is not None
+    assert healthy.availability == "online"
 
 
 def test_zone_state_accounts_for_source_age_and_the_zone_timeout(
@@ -187,7 +187,7 @@ def test_zone_state_accounts_for_source_age_and_the_zone_timeout(
 ) -> None:
     create_settings(session)
     for code in ("ok", "veraltet", "keine_quelle"):
-        sensorstatus(session, code)
+        sensor_status_of(session, code)
     temperature = _capability(session, "temperature")
     device_names = _device_names()
     fresh_device = create_device(session, device_names[0])
@@ -212,8 +212,8 @@ def test_zone_state_accounts_for_source_age_and_the_zone_timeout(
     advance_zone_state(session, EMPFANGEN_AM)
     session.flush()
     codes = {status.id: status.code for status in session.query(SensorStatus)}
-    zustaende = {z.zone_id: codes[z.sensor_status_id] for z in session.query(ZoneState)}
-    assert zustaende == {frisch.id: "ok", alt.id: "veraltet", ohne.id: "keine_quelle"}
+    states = {z.zone_id: codes[z.sensor_status_id] for z in session.query(ZoneState)}
+    assert states == {frisch.id: "ok", alt.id: "veraltet", ohne.id: "keine_quelle"}
 
 
 @pytest.mark.parametrize(("contact_value", "expected"), [("true", False), ("false", True)])
@@ -221,7 +221,7 @@ def test_zone_state_inverts_the_zigbee_contact_value_exactly_once(
     session: Session, contact_value: str, expected: bool
 ) -> None:
     create_settings(session)
-    sensorstatus(session, "keine_quelle")
+    sensor_status_of(session, "keine_quelle")
     contact = _capability(session, "contact")
     zone = create_zone(session, "kontakt-zone")
     device = create_device(session, _device_names()[0])
@@ -252,7 +252,7 @@ def test_the_zone_counts_as_open_as_soon_as_one_of_two_contacts_is_open(
     session: Session,
 ) -> None:
     create_settings(session)
-    sensorstatus(session, "keine_quelle")
+    sensor_status_of(session, "keine_quelle")
     contact = _capability(session, "contact")
     zone = create_zone(session, "zwei-kontakte-zone")
     window_role = role(session, "window_contact")
@@ -285,7 +285,7 @@ def test_a_missing_or_stale_window_contact_stays_unknown(
     session: Session,
 ) -> None:
     create_settings(session)
-    sensorstatus(session, "keine_quelle")
+    sensor_status_of(session, "keine_quelle")
     contact = _capability(session, "contact")
     ohne = create_zone(session, "ohne-kontakt-zone")
     alt = create_zone(session, "alter-kontakt-zone")
@@ -331,8 +331,8 @@ def test_a_broken_availability_message_has_no_effect(session: Session) -> None:
             received_at=datetime(2026, 8, 29, 12, 0, 0),
         )
     session.flush()
-    zustaende = list(session.scalars(select(DeviceHealth)))
-    assert all(z.availability is None for z in zustaende), (
+    states = list(session.scalars(select(DeviceHealth)))
+    assert all(z.availability is None for z in states), (
         "An unusable availability message must not set a state."
     )
 
@@ -356,12 +356,12 @@ def test_the_first_sighting_survives_a_second_device_list(session: Session) -> N
     ).encode()
     integration(session, "zigbee2mqtt")
     frueher = datetime(2026, 8, 1, 8, 0, 0)
-    spaeter = datetime(2026, 8, 29, 8, 0, 0)
+    later = datetime(2026, 8, 29, 8, 0, 0)
     process_message(
         session, "zigbee2mqtt/bridge/devices", items, base="zigbee2mqtt", received_at=frueher
     )
     process_message(
-        session, "zigbee2mqtt/bridge/devices", items, base="zigbee2mqtt", received_at=spaeter
+        session, "zigbee2mqtt/bridge/devices", items, base="zigbee2mqtt", received_at=later
     )
     session.flush()
     device = session.scalar(select(Device).where(Device.external_id == "Ein Multisensor"))
@@ -374,7 +374,7 @@ def test_message_kinds_that_are_not_processed_have_no_consequences(
 ) -> None:
     """Bridge and foreign messages are logged, not silently dropped and not
     processed -- logged so an unexpected topic stands out while debugging."""
-    vorher = len(list(session.scalars(select(Device))))
+    before = len(list(session.scalars(select(Device))))
     with caplog.at_level(logging.INFO):
         process_message(
             session, "zigbee2mqtt/bridge/state", b'{"state": "online"}',
@@ -385,7 +385,7 @@ def test_message_kinds_that_are_not_processed_have_no_consequences(
             base="zigbee2mqtt", received_at=datetime(2026, 8, 29, 12, 0, 0),
         )
     session.flush()
-    assert len(list(session.scalars(select(Device)))) == vorher
+    assert len(list(session.scalars(select(Device)))) == before
     assert "nicht verarbeitet" in caplog.text
 
 
@@ -398,10 +398,10 @@ def test_the_first_sighting_is_filled_in_for_a_hand_created_device(
     When the first message comes in, the timestamp should be filled in retroactively
     instead of staying empty. Otherwise the overview would permanently show 'never'.
     """
-    verbindung = integration(session, "zigbee2mqtt")
+    db_connection = integration(session, "zigbee2mqtt")
     session.add(
         Device(
-            integration_id=verbindung.id,
+            integration_id=db_connection.id,
             external_id="Von Hand angelegt",
             display_name="Von Hand angelegt",
             is_enabled=True,

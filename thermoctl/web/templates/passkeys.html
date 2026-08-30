@@ -1,6 +1,6 @@
-{% extends "base.html" if not ist_htmx else "empty.html" %}
-{% block titel %}Passkeys – thermoctl{% endblock %}
-{% block inhalt %}
+{% extends "base.html" if not is_htmx else "empty.html" %}
+{% block title %}Passkeys – thermoctl{% endblock %}
+{% block content %}
 <section id="passkey-list">
     <h1 class="mb-3">Passkeys</h1>
     <p class="text-body-secondary">
@@ -8,7 +8,7 @@
         lässt sich nicht auf einer nachgemachten Seite eingeben — er gilt nur für diese.
     </p>
 
-    {% if not moeglich %}
+    {% if not available %}
     <div class="alert alert-secondary" role="status">
         Passkeys sind nicht eingerichtet. Dafür braucht der Dienst
         <code>THERMOCTL_PASSKEY_RP_ID</code> und eine verschlüsselte Verbindung — siehe

@@ -3,7 +3,7 @@ from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from thermoctl.auth.secrets import hash_secret, neues_token
+from thermoctl.auth.secrets import hash_secret, new_token
 from thermoctl.db.base import utcnow
 from thermoctl.db.models.credential import ApiToken, ApiTokenPermission
 from thermoctl.db.models.identity import User
@@ -11,9 +11,9 @@ from thermoctl.db.models.lookup import Permission
 from thermoctl.domain.authz import Forbidden, has_permission, principal_for_user
 
 
-def token_ausstellen(
-    session: Session, besitzer: User, name: str,
-    permissions: list[tuple[str, int | None]], gueltig_bis: datetime | None,
+def issue_token(
+    session: Session, owner: User, name: str,
+    permissions: list[tuple[str, int | None]], valid_until: datetime | None,
     *, is_kiosk: bool = False,
 ) -> tuple[ApiToken, str]:
     """Issues a token. The plaintext appears exactly once — here.
@@ -26,17 +26,17 @@ def token_ausstellen(
     own kind without showing the other's — it changes nothing about how the token's
     scope is computed or checked.
     """
-    p = principal_for_user(session, besitzer)
+    p = principal_for_user(session, owner)
     for code, zone_id in permissions:
         if not has_permission(p, code, zone_id):
             raise Forbidden(
-                f"{besitzer.username} kann kein Token mit {code} ausstellen — "
+                f"{owner.username} kann kein Token mit {code} ausstellen — "
                 "das Recht fehlt ihm selbst."
             )
 
-    plaintext, prefix, hash_value = neues_token()
-    token = ApiToken(user_id=besitzer.id, name=name, prefix=prefix,
-                     token_hash=hash_value, expires_at=gueltig_bis, is_kiosk=is_kiosk)
+    plaintext, prefix, hash_value = new_token()
+    token = ApiToken(user_id=owner.id, name=name, prefix=prefix,
+                     token_hash=hash_value, expires_at=valid_until, is_kiosk=is_kiosk)
     session.add(token)
     session.flush()
 
@@ -51,11 +51,11 @@ def token_ausstellen(
 
 
 def resolve_token(session: Session, plaintext: str) -> ApiToken | None:
-    teile = plaintext.split("_", 2)
-    if len(teile) != 3 or teile[0] != "tctl":
+    parts = plaintext.split("_", 2)
+    if len(parts) != 3 or parts[0] != "tctl":
         return None
     token = session.scalar(
-        select(ApiToken).where(ApiToken.token_hash == hash_secret(teile[2]))
+        select(ApiToken).where(ApiToken.token_hash == hash_secret(parts[2]))
     )
     if token is None or token.revoked_at is not None:
         return None

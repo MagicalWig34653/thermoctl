@@ -81,12 +81,12 @@ class PublicationState:
     zone are then nowhere to be found anymore.
     """
 
-    angemeldet: dict[int, list[str]] = field(default_factory=dict)
-    dienst_angemeldet: bool = False
+    registered: dict[int, list[str]] = field(default_factory=dict)
+    service_registered: bool = False
     controller_values: dict[int, object] = field(default_factory=dict)
 
 
-def _als_text(value: object) -> str:
+def _as_text(value: object) -> str:
     if value is None:
         return ""
     if isinstance(value, bool):
@@ -98,25 +98,25 @@ def _als_text(value: object) -> str:
     return str(value)
 
 
-def _discovery_messages(session: Session, zone: Zone, praefix: str) -> list[DiscoveryMessage]:
+def _discovery_messages(session: Session, zone: Zone, prefix: str) -> list[DiscoveryMessage]:
     """Everything that appears for a zone in Home Assistant."""
     name = zone.display_name
     messages = [
-        zone_discovery(zone.id, name, praefix=praefix),
-        boost_discovery(zone.id, name, praefix),
-        timestamp_discovery(zone.id, name, "last_switch", "Letzte Schaltung", praefix),
+        zone_discovery(zone.id, name, prefix=prefix),
+        boost_discovery(zone.id, name, prefix),
+        timestamp_discovery(zone.id, name, "last_switch", "Letzte Schaltung", prefix),
         timestamp_discovery(
-            zone.id, name, "next_switch", "Nächster Moduswechsel", praefix
+            zone.id, name, "next_switch", "Nächster Moduswechsel", prefix
         ),
     ]
     for mode in session.scalars(select(SetpointMode).order_by(SetpointMode.sort_order)):
-        messages.append(mode_discovery(zone.id, name, mode.id, mode.name, praefix))
+        messages.append(mode_discovery(zone.id, name, mode.id, mode.name, prefix))
     for description in PARAMETERS:
         messages.append(
             parameter_discovery(
                 zone.id, name, description.name, description.label,
                 description.minimum, description.maximum, description.step,
-                description.einheit, praefix,
+                description.unit, prefix,
             )
         )
     return messages
@@ -126,42 +126,42 @@ async def cycle(
     session: Session,
     client: MqttPublisher,
     state: PublicationState,
-    praefix: str,
+    prefix: str,
     now: datetime,
 ) -> int:
     """One publication cycle. Returns the number of messages sent."""
     armed = switching_allowed(session)
     zones = list(session.scalars(select(Zone).order_by(Zone.id)))
-    gesendet = 0
+    sent_count = 0
 
     # Availability first: it's the statement "whatever comes next is current".
     if await client.publishing(
-        availability_topic(praefix), "online", switches=False, retained=True
+        availability_topic(prefix), "online", switches=False, retained=True
     ):
-        gesendet += 1
+        sent_count += 1
 
-    if not state.dienst_angemeldet:
-        message = armed_discovery(praefix)
+    if not state.service_registered:
+        message = armed_discovery(prefix)
         if await client.publishing(
             message.topic, message.payload, switches=False, retained=True
         ):
-            state.dienst_angemeldet = True
-            gesendet += 1
+            state.service_registered = True
+            sent_count += 1
     if await client.publishing(
-        armed_topic(praefix), _als_text(armed), switches=False, retained=True
+        armed_topic(prefix), _as_text(armed), switches=False, retained=True
     ):
-        gesendet += 1
+        sent_count += 1
 
     for zone in zones:
-        if zone.id in state.angemeldet:
+        if zone.id in state.registered:
             continue
-        gesendet += await _register_zone(session, client, state, zone, praefix)
+        sent_count += await _register_zone(session, client, state, zone, prefix)
 
-    gesendet += await _deregister_deleted(client, state, {zone.id for zone in zones})
+    sent_count += await _deregister_deleted(client, state, {zone.id for zone in zones})
     for zone in zones:
-        gesendet += await _send_zone_state(session, client, zone, praefix, now)
-    gesendet += await _send_controller_channels(session, client, state, get_settings().mqtt_base_topic, now)
-    return gesendet
+        sent_count += await _send_zone_state(session, client, zone, prefix, now)
+    sent_count += await _send_controller_channels(session, client, state, get_settings().mqtt_base_topic, now)
+    return sent_count
 
 
 async def _register_zone(
@@ -169,43 +169,43 @@ async def _register_zone(
     client: MqttPublisher,
     state: PublicationState,
     zone: Zone,
-    praefix: str,
+    prefix: str,
 ) -> int:
-    gesendet = 0
-    gemeldet: list[str] = []
-    for message in _discovery_messages(session, zone, praefix):
+    sent_count = 0
+    reported: list[str] = []
+    for message in _discovery_messages(session, zone, prefix):
         if await client.publishing(
             message.topic, message.payload, switches=False, retained=True
         ):
-            gemeldet.append(message.topic)
-            gesendet += 1
-    if gemeldet:
-        state.angemeldet[zone.id] = gemeldet
+            reported.append(message.topic)
+            sent_count += 1
+    if reported:
+        state.registered[zone.id] = reported
         log.info(
             "Zone bei Home Assistant angemeldet",
-            extra={"zone_id": zone.id, "entitaeten": len(gemeldet)},
+            extra={"zone_id": zone.id, "entitaeten": len(reported)},
         )
-    return gesendet
+    return sent_count
 
 
 async def _deregister_deleted(
     client: MqttPublisher,
     state: PublicationState,
-    vorhandene: set[int],
+    existing: set[int],
 ) -> int:
     """The only reason to deregister: the zone doesn't exist anymore.
 
     Without this, a thermostat that nobody operates anymore would stay behind in Home
     Assistant — it would keep showing the last known value forever.
     """
-    gesendet = 0
-    for zone_id in sorted(set(state.angemeldet) - vorhandene):
-        for topic in state.angemeldet[zone_id]:
+    sent_count = 0
+    for zone_id in sorted(set(state.registered) - existing):
+        for topic in state.registered[zone_id]:
             if await client.publishing(topic, "", switches=False, retained=True):
-                gesendet += 1
-        del state.angemeldet[zone_id]
+                sent_count += 1
+        del state.registered[zone_id]
         log.info("Geloeschte Zone bei Home Assistant abgemeldet", extra={"zone_id": zone_id})
-    return gesendet
+    return sent_count
 
 
 def _channel_value(session: Session, channel: ControllerChannel, kind: ChannelKind, now: datetime) -> object | None:
@@ -277,7 +277,7 @@ def _last_switch(session: Session, zone_id: int) -> datetime | None:
     )
 
 
-def _wuerde_heizen(session: Session, zone_id: int) -> bool | None:
+def _would_heat(session: Session, zone_id: int) -> bool | None:
     return session.scalar(
         select(ShadowDecision.would_heat)
         .where(ShadowDecision.zone_id == zone_id)
@@ -290,7 +290,7 @@ async def _send_zone_state(
     session: Session,
     client: MqttPublisher,
     zone: Zone,
-    praefix: str,
+    prefix: str,
     now: datetime,
 ) -> int:
     """All state values of **one** zone.
@@ -300,25 +300,25 @@ async def _send_zone_state(
     only arrived on the next control cycle, the mode just chosen would jump back to the
     old one for a minute — and looked as if mode selection didn't work.
     """
-    topics = states_topics(zone.id, praefix)
+    topics = states_topics(zone.id, prefix)
     state = session.get(ZoneState, zone.id)
-    statuscode = "keine_quelle"
+    status_code = "keine_quelle"
     if state is not None:
-        statuscode = (
+        status_code = (
             session.scalar(
                 select(SensorStatus.code).where(SensorStatus.id == state.sensor_status_id)
             )
-            or statuscode
+            or status_code
         )
     setpoint = resolved_setpoint(session, zone, now)
     values: list[tuple[str, str]] = [
-        (topics.current_temperature, _als_text(state.temperature_c if state else None)),
-        (topics.setpoint, _als_text(setpoint.temperature_c)),
+        (topics.current_temperature, _as_text(state.temperature_c if state else None)),
+        (topics.setpoint, _as_text(setpoint.temperature_c)),
         (topics.operating_mode, zone.operating_mode.code),
-        (topics.sensor_state, statuscode),
-        (topics.wuerde_heizen, _als_text(_wuerde_heizen(session, zone.id))),
-        (topics.last_switch, _als_text(_last_switch(session, zone.id))),
-        (topics.next_switch, _als_text(end_of_next_switch(session, zone, now))),
+        (topics.sensor_state, status_code),
+        (topics.would_heat, _as_text(_would_heat(session, zone.id))),
+        (topics.last_switch, _as_text(_last_switch(session, zone.id))),
+        (topics.next_switch, _as_text(end_of_next_switch(session, zone, now))),
     ]
 
     setpoints: dict[int, Decimal] = {
@@ -331,19 +331,19 @@ async def _send_zone_state(
     }
     for mode in session.scalars(select(SetpointMode).order_by(SetpointMode.sort_order)):
         values.append(
-            (mode_topics(zone.id, mode.id, praefix)[0], _als_text(setpoints.get(mode.id)))
+            (mode_topics(zone.id, mode.id, prefix)[0], _as_text(setpoints.get(mode.id)))
         )
 
-    wirksam = control_parameters(session, zone)
+    effective = control_parameters(session, zone)
     for description in PARAMETERS:
         values.append(
             (
-                parameter_topics(zone.id, description.name, praefix)[0],
-                _als_text(getattr(wirksam, description.name)),
+                parameter_topics(zone.id, description.name, prefix)[0],
+                _as_text(getattr(effective, description.name)),
             )
         )
 
-    gesendet = 0
+    sent_count = 0
     for topic, value in values:
         # An empty value is not sent: in MQTT an empty payload deletes a retained
         # message, and "no reading yet" is something different from "this value
@@ -351,5 +351,5 @@ async def _send_zone_state(
         if value and await client.publishing(
             topic, value, switches=False, retained=True
         ):
-            gesendet += 1
-    return gesendet
+            sent_count += 1
+    return sent_count

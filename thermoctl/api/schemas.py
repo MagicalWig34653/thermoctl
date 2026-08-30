@@ -12,6 +12,7 @@ class ZoneResponse(BaseModel):
     id: int
     name: str
     display_name: str
+    solar_gain_factor: Decimal
 
 
 class WriteZone(BaseModel):
@@ -20,6 +21,10 @@ class WriteZone(BaseModel):
     operating_mode_id: int
     sort_order: int = 0
     temperature_source_device_id: int | None = None
+    # How much this zone gains from sunshine: 0 for not at all, 1 for a lot. The
+    # default is 0, so a caller that does not know about solar setback switches it
+    # off for the zone rather than silently enabling it.
+    solar_gain_factor: Decimal = Field(default=Decimal(0), ge=0, le=1)
 
 
 class ModeResponse(BaseModel):
@@ -75,6 +80,7 @@ class WriteControlParameters(BaseModel):
     sensor_timeout_seconds: int | None = Field(default=None, ge=0)
     temperature_offset_k: Decimal | None = None
     window_resume_delay_seconds: int | None = Field(default=None, ge=0)
+    solar_setback_max_k: Decimal | None = Field(default=None, ge=0)
 
 
 class ControlParametersResponse(WriteControlParameters):
@@ -172,10 +178,15 @@ class ControlResponse(BaseModel):
     default_window_resume_delay_seconds: int
     measurement_retention_days: int
     session_lifetime_seconds: int
+    default_solar_setback_max_k: Decimal
+    solar_setback_lookahead_hours: int
+    solar_forecast_enabled: bool
+    solar_forecast_latitude: Decimal | None
+    solar_forecast_longitude: Decimal | None
 
 
 class SetArmed(BaseModel):
-    """`begruendung` is required when arming and optional when disarming --
+    """`reason` is required when arming and optional when disarming --
     the check for that lives in the domain, not here, so it's the same for
     all three adapters."""
 
@@ -183,7 +194,7 @@ class SetArmed(BaseModel):
     reason: str = ""
 
 
-class SteuerungSchreiben(BaseModel):
+class WriteControl(BaseModel):
     """The global defaults. The domain checks the limits: a `Field(ge=..., le=...)`
     here would be a second version of the same numbers, and two versions drift
     apart."""
@@ -198,8 +209,25 @@ class SteuerungSchreiben(BaseModel):
     default_window_resume_delay_seconds: int
     measurement_retention_days: int
     session_lifetime_seconds: int
+    default_solar_setback_max_k: Decimal
+    solar_setback_lookahead_hours: int
 
 
 class MoveSchedulePoint(BaseModel):
     weekday: int = Field(ge=1, le=7)
     minute_of_day: int = Field(ge=0, le=1439)
+
+
+class WriteSolarLocation(BaseModel):
+    """Switch and location for the solar forecast.
+
+    Separate from `WriteControl` for the same reason the domain keeps
+    `save_solar_location` apart from `save_settings`: those are bounded numbers with a
+    global default, this is a location that has none. The coordinates are text so the
+    domain performs the check -- a `Field(ge=-90, le=90)` here would be a second
+    version of the same limits, and two versions drift apart.
+    """
+
+    enabled: bool
+    latitude: str = ""
+    longitude: str = ""

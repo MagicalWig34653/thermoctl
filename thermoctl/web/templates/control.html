@@ -1,11 +1,11 @@
 {% extends "base.html" %}
-{% from "form.html" import textfeld %}
-{% block titel %}Betrieb – thermoctl{% endblock %}
-{% block max_breite %}68rem{% endblock %}
-{% block inhalt %}
+{% from "form.html" import text_field %}
+{% block title %}Betrieb – thermoctl{% endblock %}
+{% block max_width %}68rem{% endblock %}
+{% block content %}
 
 <h1 class="mb-1">Betrieb</h1>
-<p class="t-leise mb-4">
+<p class="t-quiet mb-4">
     Schaltet die Anlage wirklich, und was entscheidet sie gerade.
     Die Regelvorgaben stehen unter <a href="/settings">Einstellungen</a>,
     die <a href="/statistics">Heizzeiten</a> der letzten Tage auf einer eigenen Seite.
@@ -21,23 +21,23 @@
             {% if settings.control_armed %}
             <span class="tc-chip tc-chip-warm mb-2"><span class="tc-dot"></span>Scharf</span>
             <h2 class="mb-1">Die Regelung schaltet wirklich</h2>
-            <p class="t-leise mb-0">
+            <p class="t-quiet mb-0">
                 Jede Entscheidung unten geht an die Ventile. Dahinter hängt eine echte Heizung.
             </p>
             {% else %}
             <span class="tc-chip tc-chip-quiet mb-2">Trockenlauf</span>
             <h2 class="mb-1">Die Regelung entscheidet, schaltet aber nicht</h2>
-            <p class="t-leise mb-0">
+            <p class="t-quiet mb-0">
                 Jede Entscheidung wird protokolliert und keine ausgeführt. Das ist der Zustand,
                 in dem sich die Anlage gegen das Altsystem vergleichen lässt.
             </p>
             {% endif %}
         </div>
-        {% if darf_scharf %}
+        {% if may_arm %}
         <div>
             {% if settings.control_armed %}
             <form method="post" action="/control/arm">
-                <input type="hidden" name="armed" value="nein">
+                <input type="hidden" name="armed" value="no">
                 <button class="btn btn-outline-secondary" type="submit">
                     Zurück in den Trockenlauf
                 </button>
@@ -45,7 +45,7 @@
             {% else %}
             <button class="btn btn-primary" type="button"
                     data-bs-toggle="collapse" data-bs-target="#arm"
-                    aria-expanded="{{ 'true' if errors.get('begruendung') else 'false' }}">
+                    aria-expanded="{{ 'true' if errors.get('reason') else 'false' }}">
                 Scharf schalten …
             </button>
             {% endif %}
@@ -63,11 +63,11 @@
     </div>
     {% endif %}
 
-    {% if darf_scharf and not settings.control_armed %}
-    <div class="collapse mt-4 {{ 'show' if errors.get('begruendung') }}" id="arm">
+    {% if may_arm and not settings.control_armed %}
+    <div class="collapse mt-4 {{ 'show' if errors.get('reason') }}" id="arm">
         <div class="border-top pt-3">
-            <p class="t-marke">Vor dem Scharfschalten</p>
-            <ul class="small t-leise">
+            <p class="t-label">Vor dem Scharfschalten</p>
+            <ul class="small t-quiet">
                 <li>Der Schattenbetrieb sollte über mehrere Tage plausible Entscheidungen
                     gezeigt haben — die Liste unten ist der schnelle Blick darauf.</li>
                 <li>Das Altsystem bleibt die Rückfallebene und wird nicht abgeschaltet.</li>
@@ -76,13 +76,13 @@
                 <li>Tatsächlich <em>geschaltet</em> wird erst nach einem Neustart des
                     Dienstes: Der zweite Riegel sitzt im MQTT-Client und wird beim Start
                     gelesen. Die Anbindung an Home Assistant läuft schon vorher; dort
-                    sagt es die Entität <span class="t-wert">Regelung scharf</span>.</li>
+                    sagt es die Entität <span class="t-value">Regelung scharf</span>.</li>
             </ul>
             <form method="post" action="/control/arm">
-                <input type="hidden" name="armed" value="ja">
-                {{ textfeld("reason", "Worauf stützt sich das?",
+                <input type="hidden" name="armed" value="yes">
+                {{ text_field("reason", "Worauf stützt sich das?",
                             "", "Wird ins Protokoll geschrieben.",
-                            errors.get("begruendung", ""), true) }}
+                            errors.get("reason", ""), true) }}
                 <button class="btn btn-primary" type="submit">Jetzt scharf schalten</button>
             </form>
         </div>
@@ -90,28 +90,28 @@
     {% endif %}
 </section>
 
-<p class="t-marke mb-2">Was die Regelung gerade entscheidet</p>
+<p class="t-label mb-2">Was die Regelung gerade entscheidet</p>
 {% if zones %}
 <div class="tc-panel mb-3">
     {% for zone in zones %}
-    {% set state = zustaende.get(zone.id) %}
-    {% set entscheidung = entscheidungen.get(zone.id) %}
+    {% set state = states.get(zone.id) %}
+    {% set entscheidung = decisions.get(zone.id) %}
     {% set soll = setpoints.get(zone.id) %}
     <article class="tc-zone tc-zone-operation">
         <div>
             <a class="tc-zone-name" href="/zones/{{ zone.id }}/schedule">{{ zone.display_name }}</a>
         </div>
-        <div class="text-end t-wert">
+        <div class="text-end t-value">
             {% if state and state[0].temperature_c is not none %}
             {{ state[0].temperature_c|grad }} °C
-            {% else %}<span class="t-leise">–</span>{% endif %}
-            <div class="small t-leise">ist</div>
+            {% else %}<span class="t-quiet">–</span>{% endif %}
+            <div class="small t-quiet">ist</div>
         </div>
-        <div class="text-end t-wert">
+        <div class="text-end t-value">
             {% if soll and soll.temperature_c is not none %}
             {{ soll.temperature_c|grad }} °C
-            {% else %}<span class="t-leise">–</span>{% endif %}
-            <div class="small t-leise">soll</div>
+            {% else %}<span class="t-quiet">–</span>{% endif %}
+            <div class="small t-quiet">soll</div>
         </div>
         <div>
             {% if entscheidung %}
@@ -120,7 +120,7 @@
             {% else %}
             <span class="tc-chip tc-chip-cool">Aus</span>
             {% endif %}
-            <div class="small t-leise mt-1">{{ entscheidung.reason }}</div>
+            <div class="small t-quiet mt-1">{{ entscheidung.reason }}</div>
             {% else %}
             <span class="tc-chip tc-chip-quiet">Noch keine Entscheidung</span>
             {% endif %}
@@ -128,12 +128,12 @@
     </article>
     {% endfor %}
 </div>
-<p class="t-leise small">
+<p class="t-quiet small">
     Übersteuern und der Tagesplan stehen auf der <a href="/">Startseite</a>.
 </p>
 {% else %}
 <div class="tc-panel p-4">
-    <p class="t-leise mb-0">Noch keine Zonen angelegt — es gibt nichts zu entscheiden.</p>
+    <p class="t-quiet mb-0">Noch keine Zonen angelegt — es gibt nichts zu entscheiden.</p>
 </div>
 {% endif %}
 

@@ -57,12 +57,12 @@ _CAMELCASE_UEBERGANG = re.compile(r"(?<=[a-z0-9])(?=[A-Z])")
 _DEFAULT_FIELDS = frozenset(logging.LogRecord("", 0, "", 0, "", None, None).__dict__)
 
 
-def _segmentiere_schluessel(schluessel: object) -> list[str]:
-    mit_trennern = _CAMELCASE_UEBERGANG.sub("_", str(schluessel))
-    return [part.lower() for part in _TRENNZEICHEN.split(mit_trennern) if part]
+def _split_key(key: object) -> list[str]:
+    with_separators = _CAMELCASE_UEBERGANG.sub("_", str(key))
+    return [part.lower() for part in _TRENNZEICHEN.split(with_separators) if part]
 
 
-def _ist_sensibel(schluessel: object) -> bool:
+def _is_sensitive(key: object) -> bool:
     # Exact per-segment check instead of substring search: a key only counts as
     # sensitive if a whole segment matches a core term exactly -- not already
     # when the core term occurs somewhere as a substring. This avoids false
@@ -75,7 +75,7 @@ def _ist_sensibel(schluessel: object) -> bool:
     # accepted: when in doubt, better to redact one harmless field too many than
     # one secret too few.
     return any(
-        segment in KERNBEGRIFFE for segment in _segmentiere_schluessel(schluessel)
+        segment in KERNBEGRIFFE for segment in _split_key(key)
     )
 
 
@@ -96,14 +96,14 @@ def mask(value: object) -> object:
     """
     if isinstance(value, dict):
         return {
-            k: "***" if _ist_sensibel(k) else mask(v) for k, v in value.items()
+            k: "***" if _is_sensitive(k) else mask(v) for k, v in value.items()
         }
     if isinstance(value, (list, tuple)):
         return [mask(v) for v in value]
     return value
 
 
-class MaskierungsFilter(logging.Filter):
+class MaskingFilter(logging.Filter):
     """Masks sensitive structured extra fields of a log record.
 
     Works independently of the chosen output format (JSON or text), because as
@@ -114,15 +114,15 @@ class MaskierungsFilter(logging.Filter):
     """
 
     def filter(self, record: logging.LogRecord) -> bool:
-        for schluessel, value in list(record.__dict__.items()):
-            if schluessel not in _DEFAULT_FIELDS and not schluessel.startswith("_"):
+        for key, value in list(record.__dict__.items()):
+            if key not in _DEFAULT_FIELDS and not key.startswith("_"):
                 # The field name itself decides whether it gets masked -- mask()
                 # cannot judge a bare value, it only recognizes sensitive spots
                 # via keys within mappings. For a top-level extra field such as
                 # "mqtt_password", the attribute name "mqtt_password" is exactly
                 # that key.
-                record.__dict__[schluessel] = (
-                    "***" if _ist_sensibel(schluessel) else mask(value)
+                record.__dict__[key] = (
+                    "***" if _is_sensitive(key) else mask(value)
                 )
         return True
 
@@ -140,10 +140,10 @@ class MaskierungsFilter(logging.Filter):
 # does not additionally configure ITS OWN handlers, not that logging is off. Every
 # `/kiosk/...` request would otherwise write its token to the log in plain text, on
 # every single visit -- exactly what principle 2 forbids.
-_KIOSK_PFAD = re.compile(r"^(/kiosk/)[^/?\s]+")
+_KIOSK_PATH = re.compile(r"^(/kiosk/)[^/?\s]+")
 
 
-class KioskPfadFilter(logging.Filter):
+class KioskPathFilter(logging.Filter):
     """Redacts the token from `/kiosk/{token}` in the uvicorn access log.
 
     Rewrites `record.args` before formatting -- filters run first, regardless of
@@ -153,11 +153,11 @@ class KioskPfadFilter(logging.Filter):
 
     def filter(self, record: logging.LogRecord) -> bool:
         if isinstance(record.args, tuple) and len(record.args) >= 3:
-            pfad = record.args[2]
-            if isinstance(pfad, str) and pfad.startswith("/kiosk/"):
-                geflickt = list(record.args)
-                geflickt[2] = _KIOSK_PFAD.sub(r"\1***", pfad)
-                record.args = tuple(geflickt)
+            path = record.args[2]
+            if isinstance(path, str) and path.startswith("/kiosk/"):
+                patched = list(record.args)
+                patched[2] = _KIOSK_PATH.sub(r"\1***", path)
+                record.args = tuple(patched)
         return True
 
 
@@ -172,9 +172,9 @@ class JsonFormatter(logging.Formatter):
         request_id = request_id_var.get()
         if request_id is not None:
             data["request_id"] = request_id
-        for schluessel, value in record.__dict__.items():
-            if schluessel not in _DEFAULT_FIELDS and not schluessel.startswith("_"):
-                data[schluessel] = value
+        for key, value in record.__dict__.items():
+            if key not in _DEFAULT_FIELDS and not key.startswith("_"):
+                data[key] = value
         if record.exc_info:
             data["exception"] = self.formatException(record.exc_info)
         return json.dumps(mask(data), ensure_ascii=False, default=str)
@@ -198,18 +198,18 @@ class TextFormatter(logging.Formatter):
         # fresh LogRecord at import time. The consequence was that every text line
         # repeated its own message once more at the end:
         # "thermoctl startet | database=... message=thermoctl startet asctime=...".
-        zusatz = {
-            schluessel: value
-            for schluessel, value in record.__dict__.items()
-            if schluessel not in _DEFAULT_FIELDS and not schluessel.startswith("_")
+        extra = {
+            key: value
+            for key, value in record.__dict__.items()
+            if key not in _DEFAULT_FIELDS and not key.startswith("_")
         }
         base = super().format(record)
-        if not zusatz:
+        if not extra:
             return base
-        gemaskt = mask(zusatz)
-        assert isinstance(gemaskt, dict)
-        teile = " ".join(f"{k}={v}" for k, v in gemaskt.items())
-        return f"{base} | {teile}"
+        masked = mask(extra)
+        assert isinstance(masked, dict)
+        parts = " ".join(f"{k}={v}" for k, v in masked.items())
+        return f"{base} | {parts}"
 
 
 def configure_logging(settings: Settings) -> None:
@@ -223,19 +223,19 @@ def configure_logging(settings: Settings) -> None:
     # Masks extra fields independently of the output format. With JSON output
     # this overlaps with the masking in JsonFormatter -- that is intentional:
     # the filter is the safeguard in case the format changes.
-    handler.addFilter(MaskierungsFilter())
+    handler.addFilter(MaskingFilter())
     # On the logger, not the handler: `Logger.filter()` runs before the record ever
     # reaches a handler, root's included -- exactly where a kiosk token in the request
     # path needs to be gone, before anything downstream can format or ship it.
     #
-    # `filters.clear()` first, symmetric to `wurzel.handlers.clear()` below: this
+    # `filters.clear()` first, symmetric to `root.handlers.clear()` below: this
     # function runs once per real startup, but many times per test run (every
     # `TestClient` builds a fresh app) -- without clearing, the same logger would
     # collect one more (harmlessly redundant, but still leaking memory) filter
     # instance on every call.
-    zugriffslogger = logging.getLogger("uvicorn.access")
-    zugriffslogger.filters.clear()
-    zugriffslogger.addFilter(KioskPfadFilter())
+    access_logger = logging.getLogger("uvicorn.access")
+    access_logger.filters.clear()
+    access_logger.addFilter(KioskPathFilter())
     wurzel = logging.getLogger()
     wurzel.handlers.clear()
     wurzel.addHandler(handler)

@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{% block titel %}thermoctl{% endblock %}</title>
+    <title>{% block title %}thermoctl{% endblock %}</title>
     <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="/static/vendor/bootstrap/bootstrap.min.css">
     <link rel="stylesheet" href="/static/thermoctl.css">
@@ -63,11 +63,11 @@
     </script>
 </head>
 <body hx-boost="true">
-{% set hier = request.url.path %}
-{% macro weg(ziel, label, genau=false) %}
-    {% set active = hier == ziel if genau else (hier == ziel or hier.startswith(ziel ~ "/")) %}
+{% set here = request.url.path %}
+{% macro nav_link(target, label, exact=false) %}
+    {% set active = here == target if exact else (here == target or here.startswith(target ~ "/")) %}
     <li class="nav-item">
-        <a class="nav-link{{ ' tc-here' if active }}" href="{{ ziel }}"
+        <a class="nav-link{{ ' tc-here' if active }}" href="{{ target }}"
            {% if active %}aria-current="page"{% endif %}>{{ label }}</a>
     </li>
 {% endmacro %}
@@ -88,12 +88,12 @@
             "Einstellungen".
             #}
             <ul class="navbar-nav ms-auto align-items-lg-center">
-                {{ weg("/", "Start", genau=true) }}
-                {{ weg("/zonen", "Zonen") }}
-                {{ weg("/geraete", "Geräte") }}
-                {{ weg("/steuerung", "Betrieb") }}
+                {{ nav_link("/", "Start", exact=true) }}
+                {{ nav_link("/zones", "Zonen") }}
+                {{ nav_link("/devices", "Geräte") }}
+                {{ nav_link("/control", "Betrieb") }}
                 <li class="nav-item dropdown">
-                    <button class="nav-link dropdown-toggle{{ ' tc-here' if hier in ('/einstellungen', '/schnittstellen', '/benutzer', '/gruppen', '/audit', '/tokens', '/kiosk-tokens') or hier.startswith('/modi') }}"
+                    <button class="nav-link dropdown-toggle{{ ' tc-here' if here in ('/settings', '/interfaces', '/users', '/groups', '/audit', '/tokens', '/kiosk-tokens') or here.startswith('/modes') }}"
                             type="button" data-bs-toggle="dropdown" aria-expanded="false">
                         Einstellungen
                     </button>
@@ -111,9 +111,9 @@
                     </ul>
                 </li>
                 <li class="nav-item dropdown">
-                    <button class="nav-link dropdown-toggle{{ ' tc-here' if hier == '/passkeys' }}"
+                    <button class="nav-link dropdown-toggle{{ ' tc-here' if here == '/passkeys' }}"
                             type="button" data-bs-toggle="dropdown" aria-expanded="false">
-                        {{ kopf_benutzer.display_name if kopf_benutzer else "Konto" }}
+                        {{ top_bar_user.display_name if top_bar_user else "Konto" }}
                     </button>
                     <ul class="dropdown-menu dropdown-menu-end">
                         <li><a class="dropdown-item" href="/passkeys">Passkeys</a></li>
@@ -129,8 +129,8 @@
         </div>
     </div>
 </nav>
-<main class="container pb-5" style="max-width: {% block max_breite %}64rem{% endblock %};">
-{% block inhalt %}{% endblock %}
+<main class="container pb-5" style="max-width: {% block max_width %}64rem{% endblock %};">
+{% block content %}{% endblock %}
 </main>
 </body>
 </html>

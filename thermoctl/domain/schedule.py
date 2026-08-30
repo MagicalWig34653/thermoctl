@@ -49,7 +49,7 @@ class DaySegment:
 
     weekday: int
     start_minute: int
-    endminute: int
+    end_minute: int
     mode_name: str
     # The id of the mode currently in effect. The interface resolves the setpoint
     # through it -- without it, the day plan could only be named, not rendered as
@@ -72,13 +72,13 @@ def _label_for(weekday: int, minute: int) -> str:
 
 def time_of_day_in_minutes(time_of_day: str) -> int:
     """Converts local `HH:MM` form input into the DB representation."""
-    teile = time_of_day.strip().split(":")
-    if len(teile) != 2 or not all(part.isdigit() for part in teile):
+    parts = time_of_day.strip().split(":")
+    if len(parts) != 2 or not all(part.isdigit() for part in parts):
         raise ScheduleError("time_of_day", "Bitte eine gültige Uhrzeit eingeben.")
-    stunde, minute = (int(part) for part in teile)
-    if stunde > 23 or minute > 59:
+    hour, minute = (int(part) for part in parts)
+    if hour > 23 or minute > 59:
         raise ScheduleError("time_of_day", "Bitte eine gültige Uhrzeit eingeben.")
-    return stunde * 60 + minute
+    return hour * 60 + minute
 
 
 def week_segments(
@@ -87,7 +87,7 @@ def week_segments(
     """Splits the weekly ring into bars, without breaking the ring at Monday 00:00."""
     if not points:
         return []
-    sortiert = sorted(points, key=_point_minute)
+    sorted_points = sorted(points, key=_point_minute)
     segments: list[DaySegment] = []
     for weekday in range(1, 8):
         day_start = (weekday - 1) * 1440
@@ -95,25 +95,25 @@ def week_segments(
             day_start,
             *(
                 _point_minute(point)
-                for point in sortiert
+                for point in sorted_points
                 if point.weekday == weekday and point.minute_of_day > 0
             ),
             day_start + 1440,
         ]
-        for start, ende in zip(limits, limits[1:], strict=False):
-            davor = [point for point in sortiert if _point_minute(point) <= start]
-            gilt = max(davor or sortiert, key=_point_minute)
-            beginnt_hier = next(
-                (point for point in sortiert if _point_minute(point) == start), None
+        for start, end_at in zip(limits, limits[1:], strict=False):
+            before_it = [point for point in sorted_points if _point_minute(point) <= start]
+            gilt = max(before_it or sorted_points, key=_point_minute)
+            starts_here = next(
+                (point for point in sorted_points if _point_minute(point) == start), None
             )
             segments.append(
                 DaySegment(
                     weekday=weekday,
                     start_minute=start - day_start,
-                    endminute=ende - day_start,
+                    end_minute=end_at - day_start,
                     mode_name=mode_names[gilt.setpoint_mode_id],
                     mode_id=gilt.setpoint_mode_id,
-                    point_id=beginnt_hier.id if beginnt_hier else None,
+                    point_id=starts_here.id if starts_here else None,
                 )
             )
     return segments
@@ -215,8 +215,8 @@ def move_schedule_point(
     if _moment_taken(session, zone.id, weekday, minute):
         raise ScheduleError("time_of_day", "Zu diesem Zeitpunkt gibt es bereits einen Punkt.")
 
-    vorher = _label_for(point.weekday, point.minute_of_day)
-    nachher = _label_for(weekday, minute)
+    before = _label_for(point.weekday, point.minute_of_day)
+    after = _label_for(weekday, minute)
     try:
         with session.begin_nested():
             point.weekday = weekday
@@ -229,7 +229,7 @@ def move_schedule_point(
                 object_type="schedule_point",
                 object_id=str(point.id),
                 summary=f"Zeitplanpunkt für Zone '{zone.display_name}' verschoben",
-                detail=f"{vorher} → {nachher}",
+                detail=f"{before} → {after}",
                 user_id=user_id,
                 token_id=token_id,
             )
@@ -270,7 +270,7 @@ def adopt_schedule(
     # `vorlage` and not `quelle`: throughout the project, the name `quelle` stands for
     # the origin of an audit entry (web, api, mcp). Two meanings in one signature would
     # be a trap for the next caller.
-    vorlage: Zone,
+    template: Zone,
     *,
     user_id: int | None,
     token_id: int | None = None,
@@ -279,7 +279,7 @@ def adopt_schedule(
     """Replaces the target plan atomically with independent copies of the source plan."""
     source_points = list(
         session.scalars(
-            select(SchedulePoint).where(SchedulePoint.zone_id == vorlage.id)
+            select(SchedulePoint).where(SchedulePoint.zone_id == template.id)
         )
     )
     session.execute(delete(SchedulePoint).where(SchedulePoint.zone_id == target.id))
@@ -300,7 +300,7 @@ def adopt_schedule(
         object_id=str(target.id),
         summary=(
             f"Zeitplan für Zone '{target.display_name}' von "
-            f"'{vorlage.display_name}' übernommen"
+            f"'{template.display_name}' übernommen"
         ),
         user_id=user_id,
         token_id=token_id,
@@ -327,8 +327,8 @@ def current_point(
     if not points:
         return None
     now = _week_minute(moment)
-    davor = [p for p in points if _point_minute(p) <= now]
-    return max(davor or points, key=_point_minute)
+    before_it = [p for p in points if _point_minute(p) <= now]
+    return max(before_it or points, key=_point_minute)
 
 
 def next_point(points: list[SchedulePoint], moment: datetime) -> datetime | None:
@@ -336,9 +336,9 @@ def next_point(points: list[SchedulePoint], moment: datetime) -> datetime | None
     if not points:
         return None
     now = _week_minute(moment)
-    kandidaten = sorted(_point_minute(p) for p in points)
-    spaeter = [m for m in kandidaten if m > now]
-    target = spaeter[0] if spaeter else kandidaten[0] + MINUTES_PER_WEEK
+    candidates = sorted(_point_minute(p) for p in points)
+    later = [m for m in candidates if m > now]
+    target = later[0] if later else candidates[0] + MINUTES_PER_WEEK
     week_start = (moment - timedelta(days=moment.isoweekday() - 1)).replace(
         hour=0, minute=0, second=0, microsecond=0
     )
@@ -455,13 +455,13 @@ def resolved_setpoint(session: Session, zone: Zone, now_utc: datetime) -> Setpoi
 
     # Schedules are stored in local time, so the night setback does not shift when
     # clocks change for daylight saving.
-    lokal = now_utc.replace(tzinfo=ZoneInfo("UTC")).astimezone(
+    local = now_utc.replace(tzinfo=ZoneInfo("UTC")).astimezone(
         ZoneInfo(settings.timezone)
     )
     points = list(
         session.scalars(select(SchedulePoint).where(SchedulePoint.zone_id == zone.id))
     )
-    gilt = current_point(points, lokal.replace(tzinfo=None))
+    gilt = current_point(points, local.replace(tzinfo=None))
     if gilt is not None:
         temp = temperature_for_mode(session, zone, gilt.setpoint_mode_id)
         mode = session.get(SetpointMode, gilt.setpoint_mode_id)
@@ -495,11 +495,11 @@ def end_of_next_switch(
     """
     settings = session.get(Setting, 1)
     timezone_name = ZoneInfo(settings.timezone if settings is not None else "Europe/Berlin")
-    lokal = (now_utc or utcnow()).replace(tzinfo=ZoneInfo("UTC")).astimezone(timezone_name)
+    local = (now_utc or utcnow()).replace(tzinfo=ZoneInfo("UTC")).astimezone(timezone_name)
     points = list(
         session.scalars(select(SchedulePoint).where(SchedulePoint.zone_id == zone.id))
     )
-    ende = next_point(points, lokal.replace(tzinfo=None))
-    if ende is None:
+    end_at = next_point(points, local.replace(tzinfo=None))
+    if end_at is None:
         return None
-    return ende.replace(tzinfo=timezone_name).astimezone(ZoneInfo("UTC")).replace(tzinfo=None)
+    return end_at.replace(tzinfo=timezone_name).astimezone(ZoneInfo("UTC")).replace(tzinfo=None)

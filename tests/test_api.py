@@ -12,11 +12,11 @@ from tests.helpers import (
     create_device_state,
     operating_mode,
     role,
-    sensorstatus,
+    sensor_status_of,
     source,
     user_with_permissions,
 )
-from thermoctl.auth.tokens import token_ausstellen
+from thermoctl.auth.tokens import issue_token
 from thermoctl.db.models.device import DeviceCapabilityLink, ZoneDevice
 from thermoctl.db.models.lookup import DeviceCapability
 from thermoctl.db.models.state import ZoneState
@@ -27,8 +27,8 @@ from thermoctl.db.models.zone import Zone
 def token_fuer(session: Session) -> Callable[[list[tuple[str, str | None]]], dict[str, str]]:
     kind = operating_mode(session)
     bad = Zone(id=1, name="bad", display_name="Bad", operating_mode_id=kind.id)
-    andere = Zone(id=2, name="andere", display_name="Andere", operating_mode_id=kind.id)
-    session.add_all([bad, andere])
+    others = Zone(id=2, name="andere", display_name="Andere", operating_mode_id=kind.id)
+    session.add_all([bad, others])
     session.flush()
     source(session, "api")
 
@@ -38,9 +38,9 @@ def token_fuer(session: Session) -> Callable[[list[tuple[str, str | None]]], dic
         nonlocal counter
         counter += 1
         aufgeloest = [(code, bad.id if zone == "bad" else None) for code, zone in permissions]
-        besitzer = user_with_permissions(session, f"api-{counter}", aufgeloest)
-        _token, plaintext = token_ausstellen(
-            session, besitzer, f"test-{counter}", aufgeloest, None
+        owner = user_with_permissions(session, f"api-{counter}", aufgeloest)
+        _token, plaintext = issue_token(
+            session, owner, f"test-{counter}", aufgeloest, None
         )
         return {"Authorization": f"Bearer {plaintext}"}
 
@@ -58,20 +58,20 @@ def test_an_invalid_token_is_refused(client) -> None:
 
 def test_a_token_sees_only_the_zones_it_is_allowed(client, token_fuer) -> None:
     """visible_zones must work here too -- otherwise the API leaks what the UI hides."""
-    kopf = token_fuer([("zone.read", "bad")])
-    namen = [z["name"] for z in client.get("/api/v1/zones", headers=kopf).json()]
-    assert namen == ["bad"]
+    head = token_fuer([("zone.read", "bad")])
+    names = [z["name"] for z in client.get("/api/v1/zones", headers=head).json()]
+    assert names == ["bad"]
 
 
 def test_access_to_a_foreign_zone_yields_404(client, token_fuer) -> None:
     """404, not 403: a 403 would reveal that the zone exists."""
-    kopf = token_fuer([("zone.read", "bad")])
-    assert client.get("/api/v1/zones/2", headers=kopf).status_code == 404
+    head = token_fuer([("zone.read", "bad")])
+    assert client.get("/api/v1/zones/2", headers=head).status_code == 404
 
 
 def test_the_device_list_needs_device_read(client, token_fuer) -> None:
-    kopf = token_fuer([("zone.read", "bad")])
-    assert client.get("/api/v1/devices", headers=kopf).status_code == 403
+    head = token_fuer([("zone.read", "bad")])
+    assert client.get("/api/v1/devices", headers=head).status_code == 403
 
 
 def test_the_device_list_reports_signs_of_life(client, token_fuer, session: Session) -> None:
@@ -94,9 +94,9 @@ def test_the_device_list_reports_signs_of_life(client, token_fuer, session: Sess
     state = create_device_state(session, device)
     state.availability = "online"
     session.flush()
-    kopf = token_fuer([("device.read", None)])
+    head = token_fuer([("device.read", None)])
 
-    response = client.get("/api/v1/devices", headers=kopf)
+    response = client.get("/api/v1/devices", headers=head)
 
     assert response.status_code == 200
     assert response.json()[0]["external_id"] == beispiele["geraete"][2]
@@ -115,37 +115,37 @@ def test_zone_state_is_readable_only_for_a_visible_zone(
                 zone_id=1,
                 temperature_c=Decimal("19.75"),
                 measured_at=moment,
-                sensor_status_id=sensorstatus(session).id,
+                sensor_status_id=sensor_status_of(session).id,
                 updated_at=moment,
             ),
             ZoneState(
                 zone_id=2,
                 temperature_c=Decimal("21.00"),
                 measured_at=moment,
-                sensor_status_id=sensorstatus(session).id,
+                sensor_status_id=sensor_status_of(session).id,
                 updated_at=moment,
             ),
         ]
     )
     session.flush()
-    kopf = token_fuer([("zone.read", "bad")])
+    head = token_fuer([("zone.read", "bad")])
 
-    response = client.get("/api/v1/zones/1/state", headers=kopf)
+    response = client.get("/api/v1/zones/1/state", headers=head)
 
     assert response.status_code == 200
     assert response.json()["temperature_c"] == "19.75"
     assert response.json()["sensor_status"] == "ok"
-    assert client.get("/api/v1/zones/2/state", headers=kopf).status_code == 404
+    assert client.get("/api/v1/zones/2/state", headers=head).status_code == 404
 
 
 def test_a_visible_zone_without_state_yields_404(client, token_fuer) -> None:
-    kopf = token_fuer([("zone.read", "bad")])
-    assert client.get("/api/v1/zones/1/state", headers=kopf).status_code == 404
+    head = token_fuer([("zone.read", "bad")])
+    assert client.get("/api/v1/zones/1/state", headers=head).status_code == 404
 
 
 def test_overriding_without_the_permission_is_refused(client, token_fuer) -> None:
-    kopf = token_fuer([("zone.read", "bad")])
-    response = client.post("/api/v1/zones/1/override", headers=kopf,
+    head = token_fuer([("zone.read", "bad")])
+    response = client.post("/api/v1/zones/1/override", headers=head,
                           json={"temperature_c": "22.0", "duration_minutes": 30})
     assert response.status_code == 403
 
@@ -153,8 +153,8 @@ def test_overriding_without_the_permission_is_refused(client, token_fuer) -> Non
 def test_overriding_with_the_permission_creates_an_entry(client, token_fuer, session) -> None:
     from thermoctl.db.models.override import ZoneOverride
 
-    kopf = token_fuer([("zone.read", "bad"), ("override.create", "bad")])
-    response = client.post("/api/v1/zones/1/override", headers=kopf,
+    head = token_fuer([("zone.read", "bad"), ("override.create", "bad")])
+    response = client.post("/api/v1/zones/1/override", headers=head,
                           json={"temperature_c": "22.0", "duration_minutes": 30})
     assert response.status_code == 201
     entry = session.query(ZoneOverride).one()
@@ -164,29 +164,29 @@ def test_overriding_with_the_permission_creates_an_entry(client, token_fuer, ses
 
 def test_the_api_needs_no_csrf_token(client, token_fuer) -> None:
     """Token requests send no cookie and are therefore not CSRF-vulnerable."""
-    kopf = token_fuer([("zone.read", "bad"), ("override.create", "bad")])
-    response = client.post("/api/v1/zones/1/override", headers=kopf,
+    head = token_fuer([("zone.read", "bad"), ("override.create", "bad")])
+    response = client.post("/api/v1/zones/1/override", headers=head,
                           json={"temperature_c": "22.0", "duration_minutes": 30})
     assert response.status_code == 201
 
 
 def test_the_token_hash_appears_in_no_response(client, token_fuer) -> None:
-    kopf = token_fuer([("zone.read", "bad"), ("token.self", None)])
-    assert "token_hash" not in client.get("/api/v1/me", headers=kopf).text
+    head = token_fuer([("zone.read", "bad"), ("token.self", None)])
+    assert "token_hash" not in client.get("/api/v1/me", headers=head).text
 
 
 def test_me_without_the_permission_is_refused(client, token_fuer) -> None:
     """token.self is deliberately absent here -- viewing even your own token is a permission."""
-    kopf = token_fuer([("zone.read", "bad")])
-    response = client.get("/api/v1/me", headers=kopf)
+    head = token_fuer([("zone.read", "bad")])
+    response = client.get("/api/v1/me", headers=head)
     assert response.status_code == 403
 
 
 def test_overriding_until_the_next_switch_without_a_schedule(client, token_fuer) -> None:
     """Without schedule points in the zone, the override stays open-ended."""
-    kopf = token_fuer([("zone.read", "bad"), ("override.create", "bad")])
+    head = token_fuer([("zone.read", "bad"), ("override.create", "bad")])
     response = client.post(
-        "/api/v1/zones/1/override", headers=kopf,
+        "/api/v1/zones/1/override", headers=head,
         json={"temperature_c": "22.0", "until_next_switch": True},
     )
     assert response.status_code == 201
@@ -205,9 +205,9 @@ def test_overriding_until_the_next_switch_with_a_schedule(client, token_fuer, se
     session.add(Setting(id=1, timezone="Europe/Berlin", frost_protection_mode_id=mode.id))
     session.flush()
 
-    kopf = token_fuer([("zone.read", "bad"), ("override.create", "bad")])
+    head = token_fuer([("zone.read", "bad"), ("override.create", "bad")])
     response = client.post(
-        "/api/v1/zones/1/override", headers=kopf,
+        "/api/v1/zones/1/override", headers=head,
         json={"temperature_c": "22.0", "until_next_switch": True},
     )
     assert response.status_code == 201
@@ -215,19 +215,19 @@ def test_overriding_until_the_next_switch_with_a_schedule(client, token_fuer, se
 
 
 def test_cancelling_an_override_without_the_permission_is_refused(client, token_fuer) -> None:
-    kopf = token_fuer([("zone.read", "bad")])
-    response = client.delete("/api/v1/zones/1/override", headers=kopf)
+    head = token_fuer([("zone.read", "bad")])
+    response = client.delete("/api/v1/zones/1/override", headers=head)
     assert response.status_code == 403
 
 
 def test_cancelling_an_override_ends_the_active_one(client, token_fuer, session) -> None:
     from thermoctl.db.models.override import ZoneOverride
 
-    kopf = token_fuer([("zone.read", "bad"), ("override.create", "bad"),
+    head = token_fuer([("zone.read", "bad"), ("override.create", "bad"),
                        ("override.cancel", "bad")])
-    client.post("/api/v1/zones/1/override", headers=kopf,
+    client.post("/api/v1/zones/1/override", headers=head,
                json={"temperature_c": "22.0", "duration_minutes": 30})
-    response = client.delete("/api/v1/zones/1/override", headers=kopf)
+    response = client.delete("/api/v1/zones/1/override", headers=head)
     assert response.status_code == 204
     entry = session.query(ZoneOverride).one()
     assert entry.cancelled_at is not None
@@ -257,17 +257,17 @@ def _zone_with_plan(session: Session) -> None:
 
 def test_boost_needs_the_permission_to_override(client, token_fuer) -> None:
     """It *is* an override -- just one whose value the schedule determines."""
-    kopf = token_fuer([("zone.read", "bad")])
-    assert client.post("/api/v1/zones/1/boost", headers=kopf).status_code == 403
+    head = token_fuer([("zone.read", "bad")])
+    assert client.post("/api/v1/zones/1/boost", headers=head).status_code == 403
 
 
 def test_boost_brings_the_next_switch_forward(client, token_fuer, session) -> None:
     from thermoctl.db.models.override import ZoneOverride
 
     _zone_with_plan(session)
-    kopf = token_fuer([("zone.read", "bad"), ("override.create", "bad")])
+    head = token_fuer([("zone.read", "bad"), ("override.create", "bad")])
 
-    response = client.post("/api/v1/zones/1/boost", headers=kopf)
+    response = client.post("/api/v1/zones/1/boost", headers=head)
 
     assert response.status_code == 201
     data = response.json()
@@ -292,8 +292,8 @@ def test_boost_without_a_schedule_says_why(client, token_fuer, session) -> None:
     session.add(Setting(id=1, timezone="UTC", frost_protection_mode_id=mode.id))
     session.flush()
 
-    kopf = token_fuer([("zone.read", "bad"), ("override.create", "bad")])
-    response = client.post("/api/v1/zones/1/boost", headers=kopf)
+    head = token_fuer([("zone.read", "bad"), ("override.create", "bad")])
+    response = client.post("/api/v1/zones/1/boost", headers=head)
 
     assert response.status_code == 409
     assert "Zeitplan" in response.json()["detail"]
@@ -318,10 +318,10 @@ def test_a_single_parameter_leaves_the_others_inherited(client, token_fuer, sess
     and a later change to the global default would then bypass this zone.
     """
     _defaults(session)
-    kopf = token_fuer([("zone.read", "bad"), ("zone.manage", "bad")])
+    head = token_fuer([("zone.read", "bad"), ("zone.manage", "bad")])
 
     response = client.put(
-        "/api/v1/zones/1/parameters/hysteresis_k", headers=kopf, json={"value": "0.40"}
+        "/api/v1/zones/1/parameters/hysteresis_k", headers=head, json={"value": "0.40"}
     )
 
     assert response.status_code == 200
@@ -334,9 +334,9 @@ def test_a_single_parameter_leaves_the_others_inherited(client, token_fuer, sess
 
 def test_an_unknown_parameter_name_lists_the_valid_ones(client, token_fuer, session) -> None:
     _defaults(session)
-    kopf = token_fuer([("zone.read", "bad"), ("zone.manage", "bad")])
+    head = token_fuer([("zone.read", "bad"), ("zone.manage", "bad")])
     response = client.put(
-        "/api/v1/zones/1/parameters/farbe", headers=kopf, json={"value": "1"}
+        "/api/v1/zones/1/parameters/farbe", headers=head, json={"value": "1"}
     )
     assert response.status_code == 404
     assert "hysteresis_k" in response.json()["detail"]
@@ -345,9 +345,9 @@ def test_an_unknown_parameter_name_lists_the_valid_ones(client, token_fuer, sess
 def test_a_parameter_outside_the_limits_is_refused(client, token_fuer, session) -> None:
     """The limits live in the domain and apply the same way for every path."""
     _defaults(session)
-    kopf = token_fuer([("zone.read", "bad"), ("zone.manage", "bad")])
+    head = token_fuer([("zone.read", "bad"), ("zone.manage", "bad")])
     response = client.put(
-        "/api/v1/zones/1/parameters/hysteresis_k", headers=kopf, json={"value": "99"}
+        "/api/v1/zones/1/parameters/hysteresis_k", headers=head, json={"value": "99"}
     )
     assert response.status_code == 422
     zone = session.get(Zone, 1)
@@ -357,8 +357,8 @@ def test_a_parameter_outside_the_limits_is_refused(client, token_fuer, session) 
 
 def test_a_single_parameter_needs_zone_manage(client, token_fuer, session) -> None:
     _defaults(session)
-    kopf = token_fuer([("zone.read", "bad")])
+    head = token_fuer([("zone.read", "bad")])
     response = client.put(
-        "/api/v1/zones/1/parameters/hysteresis_k", headers=kopf, json={"value": "0.4"}
+        "/api/v1/zones/1/parameters/hysteresis_k", headers=head, json={"value": "0.4"}
     )
     assert response.status_code == 403

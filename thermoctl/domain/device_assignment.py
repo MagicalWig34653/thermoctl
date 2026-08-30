@@ -20,18 +20,23 @@ class CapabilityMissing(Exception):
 
 
 # What a slot in the plant requires from a device. The keys are the roles' codes,
-# plus `"messquelle"` -- it is not a role in the sense of `device_role`, but a column
+# plus `"temperature_source"` -- it is not a role in the sense of `device_role`, but a column
 # on the zone, yet needs the same check.
 #
 # `controller` is deliberately absent here: a device that only displays does not need
 # any ability that shows up in the capabilities. A caller passing `None` is asking
 # about a slot with no requirement.
-TEMPERATURE_SOURCE = "messquelle"
+TEMPERATURE_SOURCE = "temperature_source"
 
-REQUIRED_CAPABILITY: dict[str, tuple[str, str]] = {
-    TEMPERATURE_SOURCE: ("temperature", "misst keine Temperatur"),
-    "actuator": ("switch", "hat keinen Schaltausgang"),
-    "window_contact": ("contact", "meldet keinen Kontakt"),
+# The actuator slot accepts either of two capabilities: a plain switch output (a
+# smart-plug valve, e.g. Meross) or a thermostat (a Zigbee2MQTT TRV such as the
+# WT-A03E, driven through `system_mode` and `occupied_heating_setpoint` instead of
+# an on/off `state`). Both move a real valve; which one a device has decides only
+# which adapter builds its command, not whether it may fill this slot.
+REQUIRED_CAPABILITY: dict[str, tuple[frozenset[str], str]] = {
+    TEMPERATURE_SOURCE: (frozenset({"temperature"}), "misst keine Temperatur"),
+    "actuator": (frozenset({"switch", "thermostat"}), "hat keinen Schaltausgang"),
+    "window_contact": (frozenset({"contact"}), "meldet keinen Kontakt"),
 }
 
 
@@ -62,19 +67,24 @@ def check_capability(session: Session, device: Device, slot: str | None) -> None
     able to set up their plant. It is only rejected where something is known **and**
     the required thing is not among it.
     """
-    verlangt = REQUIRED_CAPABILITY.get(slot or "")
-    if verlangt is None:
+    required = REQUIRED_CAPABILITY.get(slot or "")
+    if required is None:
         return
-    code, mangel = verlangt
-    vorhanden = _capabilities(session, device)
-    if not vorhanden or code in vorhanden:
+    codes, defect = required
+    present = _capabilities(session, device)
+    if not present or codes & present:
         return
-    label = session.scalar(
-        select(DeviceCapability.label).where(DeviceCapability.code == code)
+    labels = list(
+        session.scalars(
+            select(DeviceCapability.label)
+            .where(DeviceCapability.code.in_(codes))
+            .order_by(DeviceCapability.code)
+        )
     )
+    label_text = " oder ".join(labels) if labels else " oder ".join(sorted(codes))
     raise CapabilityMissing(
-        f"'{device.display_name}' {mangel} — für diese Stelle wird "
-        f"'{label or code}' gebraucht."
+        f"'{device.display_name}' {defect} — für diese Stelle wird "
+        f"'{label_text}' gebraucht."
     )
 
 
@@ -84,17 +94,17 @@ def assign_device(
     device: Device,
     role: DeviceRole,
     *,
-    akteur_id: int | None,
+    actor_id: int | None,
     source: str = "web",
 ) -> ZoneDevice:
-    vorhanden = session.scalar(
+    existing = session.scalar(
         select(ZoneDevice.id).where(
             ZoneDevice.zone_id == zone.id,
             ZoneDevice.device_id == device.id,
             ZoneDevice.device_role_id == role.id,
         )
     )
-    if vorhanden is not None:
+    if existing is not None:
         raise AssignmentAlreadyExists
     check_capability(session, device, role.code)
     assignment = ZoneDevice(
@@ -112,7 +122,7 @@ def assign_device(
             f"Gerät '{device.display_name}' als {role.label} "
             f"zu '{zone.display_name}' zugeordnet"
         ),
-        user_id=akteur_id,
+        user_id=actor_id,
     )
     return assignment
 
@@ -122,7 +132,7 @@ def detach_device(
     zone: Zone,
     assignment: ZoneDevice,
     *,
-    akteur_id: int | None,
+    actor_id: int | None,
     source: str = "web",
 ) -> None:
     if assignment.zone_id != zone.id:
@@ -141,7 +151,7 @@ def detach_device(
             f"{role.label if role else assignment.device_role_id} aus "
             f"'{zone.display_name}' gelöst"
         ),
-        user_id=akteur_id,
+        user_id=actor_id,
     )
 
 
@@ -150,7 +160,7 @@ def set_temperature_source(
     zone: Zone,
     device: Device | None,
     *,
-    akteur_id: int | None,
+    actor_id: int | None,
     source: str = "web",
 ) -> None:
     if device is not None:
@@ -167,31 +177,31 @@ def set_temperature_source(
             if device is not None
             else f"Messquelle von '{zone.display_name}' gelöst"
         ),
-        user_id=akteur_id,
+        user_id=actor_id,
     )
 
 
 def swap_device(
     session: Session,
     zone: Zone,
-    altes: Device,
-    neues: Device,
+    old: Device,
+    new_link: Device,
     *,
-    akteur_id: int | None,
+    actor_id: int | None,
     source: str = "web",
 ) -> None:
     """Replaces a device only in its assignments to this zone."""
-    if altes.id == neues.id:
+    if old.id == new_link.id:
         raise ValueError("Altes und neues Gerät müssen verschieden sein.")
 
     old_assignments = list(
         session.scalars(
             select(ZoneDevice).where(
-                ZoneDevice.zone_id == zone.id, ZoneDevice.device_id == altes.id
+                ZoneDevice.zone_id == zone.id, ZoneDevice.device_id == old.id
             )
         )
     )
-    war_temperature_source = zone.temperature_source_device_id == altes.id
+    war_temperature_source = zone.temperature_source_device_id == old.id
     if not old_assignments and not war_temperature_source:
         raise ValueError("Das alte Gerät ist dieser Zone nicht zugeordnet.")
 
@@ -200,32 +210,32 @@ def swap_device(
     # and never even see which roles come along with them. Check first, then write,
     # otherwise the swap would be left half-done after a rejection.
     if war_temperature_source:
-        check_capability(session, neues, TEMPERATURE_SOURCE)
+        check_capability(session, new_link, TEMPERATURE_SOURCE)
     for assignment in old_assignments:
         role = session.get(DeviceRole, assignment.device_role_id)
         if role is not None:
-            check_capability(session, neues, role.code)
+            check_capability(session, new_link, role.code)
 
-    vorhandene_rolen = set(
+    existing_roles = set(
         session.scalars(
             select(ZoneDevice.device_role_id).where(
-                ZoneDevice.zone_id == zone.id, ZoneDevice.device_id == neues.id
+                ZoneDevice.zone_id == zone.id, ZoneDevice.device_id == new_link.id
             )
         )
     )
     for assignment in old_assignments:
-        if assignment.device_role_id not in vorhandene_rolen:
+        if assignment.device_role_id not in existing_roles:
             session.add(
                 ZoneDevice(
                     zone_id=zone.id,
-                    device_id=neues.id,
+                    device_id=new_link.id,
                     device_role_id=assignment.device_role_id,
                     sort_order=assignment.sort_order,
                 )
             )
         session.delete(assignment)
     if war_temperature_source:
-        zone.temperature_source_device_id = neues.id
+        zone.temperature_source_device_id = new_link.id
 
     audit.record(
         session,
@@ -234,10 +244,10 @@ def swap_device(
         object_type="zone_device",
         object_id=str(zone.id),
         summary=(
-            f"Gerät '{altes.display_name}' in '{zone.display_name}' durch "
-            f"'{neues.display_name}' ersetzt"
+            f"Gerät '{old.display_name}' in '{zone.display_name}' durch "
+            f"'{new_link.display_name}' ersetzt"
         ),
-        user_id=akteur_id,
-        detail=f"altes_geraet_id={altes.id}; neues_geraet_id={neues.id}",
+        user_id=actor_id,
+        detail=f"altes_geraet_id={old.id}; neues_geraet_id={new_link.id}",
     )
     session.flush()
