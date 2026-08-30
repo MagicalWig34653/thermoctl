@@ -37,8 +37,8 @@ def _temperature_text(value: Decimal | None) -> str:
 def vergleichen(
     *,
     would_heat: bool,
-    ist_c: Decimal | None,
-    soll_c: Decimal | None,
+    measured_c: Decimal | None,
+    setpoint_c: Decimal | None,
     altsystem_heizt: bool | None,
 ) -> Vergleich:
     """Compares our own decision with the legacy system at the same point in time.
@@ -64,16 +64,16 @@ def vergleichen(
         )
         return Vergleich(Einordnung.UEBEREINSTIMMUNG, text)
 
-    ist_text = _temperature_text(ist_c)
-    soll_text = _temperature_text(soll_c)
+    ist_text = _temperature_text(measured_c)
+    setpoint_text = _temperature_text(setpoint_c)
     if would_heat:
         text = (
             "thermoctl haette geheizt, das Altsystem heizte nicht — "
-            f"Ist {ist_text} °C, Soll {soll_text} °C."
+            f"Ist {ist_text} °C, Soll {setpoint_text} °C."
         )
     else:
         text = (
             "thermoctl haette nicht geheizt, das Altsystem heizte — "
-            f"Ist {ist_text} °C, Soll {soll_text} °C."
+            f"Ist {ist_text} °C, Soll {setpoint_text} °C."
         )
     return Vergleich(Einordnung.ABWEICHUNG, text)

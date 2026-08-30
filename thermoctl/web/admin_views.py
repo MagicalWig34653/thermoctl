@@ -217,7 +217,7 @@ async def group_create_view(
     require(principal, "group.manage")
     try:
         create_group(
-            session, name=name, beschreibung=description or None,
+            session, name=name, description=description or None,
             akteur_id=principal.user_id,
         )
     except AdministrationError as exc:

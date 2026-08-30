@@ -40,7 +40,7 @@ class FalscherClient:
         self.argumente = argumente
         self.abonniert: list[str] = []
         self.published: list[tuple[str, str]] = []
-        self.behalten: list[bool] = []
+        self.retained: list[bool] = []
         self.messages = self.stroeme.pop(0) if self.stroeme else MessageStream([])
         self.instanzen.append(self)
 
@@ -55,7 +55,7 @@ class FalscherClient:
 
     async def publish(self, topic: str, payload: str, retain: bool = False) -> None:
         self.published.append((topic, payload))
-        self.behalten.append(retain)
+        self.retained.append(retain)
 
 
 @pytest.fixture

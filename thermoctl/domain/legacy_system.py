@@ -45,7 +45,7 @@ class LegacyReading:
     thermostat_id: int
     attribut: str
     text: str | None
-    zahl: Decimal | None
+    number: Decimal | None
 
 
 def reading_from_topic(topic: str, payload: bytes | str) -> LegacyReading | None:
@@ -64,9 +64,9 @@ def reading_from_topic(topic: str, payload: bytes | str) -> LegacyReading | None
         log.debug("Kein Altsystem-Thermostat-Zustandstopic", extra={"topic": topic})
         return None
 
-    thermostat_teil, attribut = teile[2], teile[3]
+    thermostat_part, attribut = teile[2], teile[3]
     try:
-        thermostat_id = int(thermostat_teil)
+        thermostat_id = int(thermostat_part)
     except ValueError:
         log.warning(
             "Altsystem-Topic ohne lesbare Thermostat-Kennung",
@@ -83,14 +83,14 @@ def reading_from_topic(topic: str, payload: bytes | str) -> LegacyReading | None
 
     if attribut in _NUMBER_ATTRIBUTE:
         try:
-            zahl = Decimal(text)
+            number = Decimal(text)
         except InvalidOperation:
             log.warning(
                 "Altsystem-Temperaturwert ist nicht lesbar",
                 extra={"topic": topic, "wert": text},
             )
             return None
-        return LegacyReading(thermostat_id, attribut, None, zahl)
+        return LegacyReading(thermostat_id, attribut, None, number)
 
     if attribut in _TEXT_ATTRIBUTE:
         return LegacyReading(thermostat_id, attribut, text, None)

@@ -11,7 +11,7 @@ from tests.helpers import (
     create_device,
     create_device_state,
     operating_mode,
-    rolle,
+    role,
     sensorstatus,
     source,
     user_with_permissions,
@@ -84,7 +84,7 @@ def test_the_device_list_reports_signs_of_life(client, token_fuer, session: Sess
         ZoneDevice(
             zone_id=2,
             device_id=device.id,
-            device_role_id=rolle(session, "controller").id,
+            device_role_id=role(session, "controller").id,
         )
     )
     capability = DeviceCapability(code="temperature", label="Temperaturmessung")
@@ -270,14 +270,14 @@ def test_boost_brings_the_next_switch_forward(client, token_fuer, session) -> No
     response = client.post("/api/v1/zones/1/boost", headers=kopf)
 
     assert response.status_code == 201
-    daten = response.json()
+    data = response.json()
     # The mode is included: "18.0 °C until 22:00" does not say why.
-    assert daten["mode_code"] in ("tag", "nacht")
-    assert daten["gilt_bis"] is not None
+    assert data["mode_code"] in ("tag", "nacht")
+    assert data["gilt_bis"] is not None
     entry = session.query(ZoneOverride).one()
     # It ends at the switch it is bringing forward -- not at some arbitrary time.
     assert entry.ends_at is not None
-    assert entry.ends_at.isoformat() == daten["gilt_bis"]
+    assert entry.ends_at.isoformat() == data["gilt_bis"]
 
 
 def test_boost_without_a_schedule_says_why(client, token_fuer, session) -> None:

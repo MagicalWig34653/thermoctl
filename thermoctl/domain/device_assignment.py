@@ -48,7 +48,7 @@ def _capabilities(session: Session, device: Device) -> set[str]:
     )
 
 
-def check_capability(session: Session, device: Device, stelle: str | None) -> None:
+def check_capability(session: Session, device: Device, slot: str | None) -> None:
     """Rejects a device that can demonstrably not fill this slot.
 
     Previously, a temperature sensor could be assigned as an actuator. The assignment
@@ -62,7 +62,7 @@ def check_capability(session: Session, device: Device, stelle: str | None) -> No
     able to set up their plant. It is only rejected where something is known **and**
     the required thing is not among it.
     """
-    verlangt = REQUIRED_CAPABILITY.get(stelle or "")
+    verlangt = REQUIRED_CAPABILITY.get(slot or "")
     if verlangt is None:
         return
     code, mangel = verlangt
@@ -82,7 +82,7 @@ def assign_device(
     session: Session,
     zone: Zone,
     device: Device,
-    rolle: DeviceRole,
+    role: DeviceRole,
     *,
     akteur_id: int | None,
     source: str = "web",
@@ -91,14 +91,14 @@ def assign_device(
         select(ZoneDevice.id).where(
             ZoneDevice.zone_id == zone.id,
             ZoneDevice.device_id == device.id,
-            ZoneDevice.device_role_id == rolle.id,
+            ZoneDevice.device_role_id == role.id,
         )
     )
     if vorhanden is not None:
         raise AssignmentAlreadyExists
-    check_capability(session, device, rolle.code)
+    check_capability(session, device, role.code)
     assignment = ZoneDevice(
-        zone_id=zone.id, device_id=device.id, device_role_id=rolle.id
+        zone_id=zone.id, device_id=device.id, device_role_id=role.id
     )
     session.add(assignment)
     session.flush()
@@ -109,7 +109,7 @@ def assign_device(
         object_type="zone_device",
         object_id=str(assignment.id),
         summary=(
-            f"Gerät '{device.display_name}' als {rolle.label} "
+            f"Gerät '{device.display_name}' als {role.label} "
             f"zu '{zone.display_name}' zugeordnet"
         ),
         user_id=akteur_id,
@@ -128,7 +128,7 @@ def detach_device(
     if assignment.zone_id != zone.id:
         raise ValueError("Die Zuordnung gehört nicht zu dieser Zone.")
     device = session.get(Device, assignment.device_id)
-    rolle = session.get(DeviceRole, assignment.device_role_id)
+    role = session.get(DeviceRole, assignment.device_role_id)
     session.delete(assignment)
     audit.record(
         session,
@@ -138,7 +138,7 @@ def detach_device(
         object_id=str(assignment.id),
         summary=(
             f"Gerät '{device.display_name if device else assignment.device_id}' als "
-            f"{rolle.label if rolle else assignment.device_role_id} aus "
+            f"{role.label if role else assignment.device_role_id} aus "
             f"'{zone.display_name}' gelöst"
         ),
         user_id=akteur_id,
@@ -202,9 +202,9 @@ def swap_device(
     if war_temperature_source:
         check_capability(session, neues, TEMPERATURE_SOURCE)
     for assignment in old_assignments:
-        rolle = session.get(DeviceRole, assignment.device_role_id)
-        if rolle is not None:
-            check_capability(session, neues, rolle.code)
+        role = session.get(DeviceRole, assignment.device_role_id)
+        if role is not None:
+            check_capability(session, neues, role.code)
 
     vorhandene_rolen = set(
         session.scalars(

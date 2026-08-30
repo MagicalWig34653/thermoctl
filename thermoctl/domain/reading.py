@@ -32,18 +32,18 @@ FIELD_TO_CAPABILITY: Final[dict[str, str]] = {
 @dataclass(frozen=True)
 class Reading:
     capability: str
-    zahl: Decimal | None
+    number: Decimal | None
     text: str | None
     gemessen_am: datetime
 
 
-def _measured_at(value: object, empfangen_am: datetime) -> datetime:
+def _measured_at(value: object, received_at: datetime) -> datetime:
     if not isinstance(value, str):
-        return empfangen_am
+        return received_at
     try:
         moment = datetime.fromisoformat(value)
     except ValueError:
-        return empfangen_am
+        return received_at
     if moment.tzinfo is None:
         # Zigbee2MQTT can be configured to send local time without a timezone. Such a
         # value cannot be converted to UTC -- we do not know the zone. Interpreting it
@@ -51,7 +51,7 @@ def _measured_at(value: object, empfangen_am: datetime) -> datetime:
         # wrong timestamp is worse than one with the imprecise but correct receipt
         # time: fault detection depends on it, and it decides based on exactly this
         # age.
-        return empfangen_am
+        return received_at
     return moment.astimezone(UTC).replace(tzinfo=None)
 
 
@@ -72,29 +72,29 @@ def _value(value: object) -> tuple[Decimal | None, str | None] | None:
 
 
 def readings_from_payload(
-    payload: str | bytes, empfangen_am: datetime
+    payload: str | bytes, received_at: datetime
 ) -> list[Reading]:
     """Tolerantly parses the known fields of a Zigbee2MQTT state message."""
     try:
-        daten = json.loads(payload, parse_float=Decimal, parse_int=Decimal)
+        data = json.loads(payload, parse_float=Decimal, parse_int=Decimal)
     except (json.JSONDecodeError, UnicodeDecodeError, TypeError):
         log.warning("Zigbee2MQTT-Nutzlast ist kein gueltiges JSON")
         return []
 
-    if not isinstance(daten, dict):
+    if not isinstance(data, dict):
         # Valid JSON, but not a state message -- e.g. a list or a bare value. This
         # happens on foreign topics and is not a fault of this device.
         return []
 
-    gemessen_am = _measured_at(daten.get("last_seen"), empfangen_am)
+    gemessen_am = _measured_at(data.get("last_seen"), received_at)
     readings: list[Reading] = []
-    for feld, raw_value in daten.items():
-        capability = FIELD_TO_CAPABILITY.get(feld)
+    for field, raw_value in data.items():
+        capability = FIELD_TO_CAPABILITY.get(field)
         if capability is None:
             continue
         value = _value(raw_value)
         if value is None:
             continue
-        zahl, text = value
-        readings.append(Reading(capability, zahl, text, gemessen_am))
+        number, text = value
+        readings.append(Reading(capability, number, text, gemessen_am))
     return readings

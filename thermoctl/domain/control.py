@@ -34,7 +34,7 @@ class ControlError(Exception):
     frozen dataclass refuses exactly that.
     """
 
-    feld: str
+    field: str
     notice: str
 
     def __str__(self) -> str:  # pragma: no cover - display, not logic
@@ -74,13 +74,13 @@ GANZZAHLIG = frozenset(LIMITS) - {"default_hysteresis_k"}
 
 
 def settings(session: Session) -> Setting:
-    zeile = session.get(Setting, 1)
-    if zeile is None:  # pragma: no cover - only on incomplete setup
+    row = session.get(Setting, 1)
+    if row is None:  # pragma: no cover - only on incomplete setup
         raise ControlError("", "Die Einrichtung ist unvollständig.")
-    return zeile
+    return row
 
 
-def check_zahl(feld: str, eingabe: str) -> Decimal:
+def check_number(field: str, eingabe: str) -> Decimal:
     """Checks a single value against its bounds.
 
     Its own function, because the same check is called from the interface, from REST
@@ -89,22 +89,22 @@ def check_zahl(feld: str, eingabe: str) -> Decimal:
     """
     text = eingabe.strip().replace(",", ".")
     if not text:
-        raise ControlError(feld, "Bitte einen Wert angeben.")
+        raise ControlError(field, "Bitte einen Wert angeben.")
     try:
         value = Decimal(text)
     except InvalidOperation as exc:
-        raise ControlError(feld, "Bitte eine Zahl angeben.") from exc
-    if feld in GANZZAHLIG and value != value.to_integral_value():
-        raise ControlError(feld, "Bitte eine ganze Zahl angeben.")
-    unten, oben = LIMITS[feld]
+        raise ControlError(field, "Bitte eine Zahl angeben.") from exc
+    if field in GANZZAHLIG and value != value.to_integral_value():
+        raise ControlError(field, "Bitte eine ganze Zahl angeben.")
+    unten, oben = LIMITS[field]
     if not (unten <= value <= oben):
         raise ControlError(
-            feld, f"Bitte einen Wert zwischen {_kurz(unten)} und {_kurz(oben)} angeben."
+            field, f"Bitte einen Wert zwischen {_short(unten)} und {_short(oben)} angeben."
         )
     return value
 
 
-def _kurz(value: Decimal) -> str:
+def _short(value: Decimal) -> str:
     ganz = value.to_integral_value()
     return str(int(ganz)) if value == ganz else str(value)
 
@@ -126,12 +126,12 @@ def save_settings(
     """
     if not timezone_name.strip():
         raise ControlError("timezone", "Bitte eine Zeitzone angeben.")
-    checked = {feld: check_zahl(feld, values.get(feld, "")) for feld in LIMITS}
+    checked = {field: check_number(field, values.get(field, "")) for field in LIMITS}
 
-    zeile = settings(session)
-    zeile.timezone = timezone_name.strip()
-    for feld, value in checked.items():
-        setattr(zeile, feld, value if feld not in GANZZAHLIG else int(value))
+    row = settings(session)
+    row.timezone = timezone_name.strip()
+    for field, value in checked.items():
+        setattr(row, field, value if field not in GANZZAHLIG else int(value))
     audit.record(
         session,
         source=source,
@@ -165,10 +165,10 @@ def arm(
             "begruendung", "Bitte kurz festhalten, worauf sich das Scharfschalten stützt."
         )
 
-    zeile = settings(session)
-    if zeile.control_armed == armed:
+    row = settings(session)
+    if row.control_armed == armed:
         return False
-    zeile.control_armed = armed
+    row.control_armed = armed
     audit.record(
         session,
         source=source,

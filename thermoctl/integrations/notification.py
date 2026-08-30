@@ -12,7 +12,7 @@ log = logging.getLogger(__name__)
 
 
 def _send_webhook(settings: Settings, notice: FaultNotice) -> None:
-    daten = json.dumps(
+    data = json.dumps(
         {
             "schluessel": notice.schluessel,
             "schwere": notice.schwere,
@@ -20,14 +20,14 @@ def _send_webhook(settings: Settings, notice: FaultNotice) -> None:
             "text": notice.text,
         }
     ).encode("utf-8")
-    kopfzeilen = {"Content-Type": "application/json"}
+    headers = {"Content-Type": "application/json"}
     if settings.notify_webhook_token is not None:
         token = settings.notify_webhook_token.get_secret_value()
-        kopfzeilen["Authorization"] = f"Bearer {token}"
-    anfrage = Request(  # noqa: S310 -- address is operator configuration
-        settings.notify_webhook or "", data=daten, headers=kopfzeilen, method="POST"
+        headers["Authorization"] = f"Bearer {token}"
+    request = Request(  # noqa: S310 -- address is operator configuration
+        settings.notify_webhook or "", data=data, headers=headers, method="POST"
     )
-    with urlopen(anfrage, timeout=10):  # noqa: S310 -- URL was deliberately configured
+    with urlopen(request, timeout=10):  # noqa: S310 -- URL was deliberately configured
         pass
 
 

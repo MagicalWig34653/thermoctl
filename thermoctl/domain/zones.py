@@ -32,10 +32,10 @@ class ZoneDependencies:
 
 
 def _name_taken(session: Session, name: str, except_zone_id: int | None = None) -> bool:
-    anfrage = select(Zone.id).where(Zone.name == name)
+    query = select(Zone.id).where(Zone.name == name)
     if except_zone_id is not None:
-        anfrage = anfrage.where(Zone.id != except_zone_id)
-    return session.scalar(anfrage.limit(1)) is not None
+        query = query.where(Zone.id != except_zone_id)
+    return session.scalar(query.limit(1)) is not None
 
 
 def create_zone(

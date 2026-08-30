@@ -164,7 +164,7 @@ Seite ein Formularstapel, in dem die eigentliche Auskunft — wie warm ist es �
             </div>
             <div class="small t-leise mt-1">
                 {% if not plan_gilt %}<strong>Plan ausgesetzt</strong> · {% endif %}
-                {{ setpoint.grund }}{% if entscheidung %} · {{ entscheidung.reason }}{% endif %}
+                {{ setpoint.reason }}{% if entscheidung %} · {{ entscheidung.reason }}{% endif %}
             </div>
         </div>
 

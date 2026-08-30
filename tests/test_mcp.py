@@ -75,7 +75,7 @@ def test_explaining_the_setpoint_passes_the_domain_reason_through(session: Sessi
     expected = server.resolved_setpoint(session, zone, now)
     result = server.explain_setpoint(session, plaintext, zone.id, now)
 
-    assert result["reason"] == expected.grund
+    assert result["reason"] == expected.reason
     assert result["temperature_c"] == str(expected.temperature_c)
 
 
@@ -118,14 +118,14 @@ def test_listing_devices_denies_a_missing_permission(session: Session) -> None:
 
 def test_shadow_decisions_returns_the_most_recent_reason(session: Session) -> None:
     zone = create_zone(session, "schattenzone")
-    entscheidung = create_shadow_decision(session, zone)
+    decision = create_shadow_decision(session, zone)
     plaintext = _token(session, "schattenleser", [("zone.read", zone.id)])
 
     result = server.shadow_decisions(session, plaintext, zone.id, 1)
 
     assert result == [
         {
-            "moment": entscheidung.decided_at.isoformat(),
+            "moment": decision.decided_at.isoformat(),
             "ist_c": None,
             "soll_c": None,
             "sollwert_begruendung": "Zeitplan",

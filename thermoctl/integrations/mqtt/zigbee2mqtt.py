@@ -19,15 +19,15 @@ class TopicCut:
     device_name: str | None
 
 
-def zuschneiden(topic: str, basis: str) -> TopicCut:
+def zuschneiden(topic: str, base: str) -> TopicCut:
     """Maps exactly the subscribed read topics to a message kind."""
-    basis_teile = basis.strip("/").split("/")
+    base_parts = base.strip("/").split("/")
     topic_teile = topic.split("/")
     unbekannt = TopicCut(MessageKind.UNBEKANNT, None)
-    if not basis_teile or topic_teile[: len(basis_teile)] != basis_teile:
+    if not base_parts or topic_teile[: len(base_parts)] != base_parts:
         return unbekannt
 
-    rest = topic_teile[len(basis_teile) :]
+    rest = topic_teile[len(base_parts) :]
     if rest == ["bridge", "devices"]:
         return TopicCut(MessageKind.DEVICE_LIST, None)
     if rest == ["bridge", "state"]:
@@ -41,27 +41,27 @@ def zuschneiden(topic: str, basis: str) -> TopicCut:
     return unbekannt
 
 
-def abonnements(basis: str) -> list[str]:
+def abonnements(base: str) -> list[str]:
     """Returns the four deliberately narrow Zigbee2MQTT subscriptions."""
-    basis = basis.strip("/")
+    base = base.strip("/")
     return [
-        f"{basis}/bridge/devices",
-        f"{basis}/bridge/state",
-        f"{basis}/+",
-        f"{basis}/+/availability",
+        f"{base}/bridge/devices",
+        f"{base}/bridge/state",
+        f"{base}/+",
+        f"{base}/+/availability",
     ]
 
 
 def bridge_reachable(payload: bytes) -> bool | None:
     """Tolerantly reads the known text and object forms of `bridge/state`."""
     try:
-        daten = json.loads(payload)
+        data = json.loads(payload)
     except (json.JSONDecodeError, UnicodeDecodeError):
         return None
-    if isinstance(daten, str):
-        state = daten
-    elif isinstance(daten, dict) and isinstance(daten.get("state"), str):
-        state = daten["state"]
+    if isinstance(data, str):
+        state = data
+    elif isinstance(data, dict) and isinstance(data.get("state"), str):
+        state = data["state"]
     else:
         return None
     if state == "online":

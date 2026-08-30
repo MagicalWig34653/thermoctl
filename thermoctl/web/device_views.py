@@ -120,7 +120,7 @@ async def device_overview(
 
 
 @router.get("/plant")
-async def show_anlage(
+async def show_plant(
     request: Request,
     principal: Annotated[Principal, Depends(aktueller_principal)],
     session: Annotated[Session, Depends(get_session)],

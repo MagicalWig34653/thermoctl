@@ -38,7 +38,7 @@ class Command:
     # "parameter". Otherwise None.
     mode_id: int | None = None
     parameter: str | None = None
-    zahl: Decimal | None = None
+    number: Decimal | None = None
 
 
 class CommandError(ValueError):
@@ -104,7 +104,7 @@ def zerlegen(topic: str, payload: bytes, praefix: str) -> Command:
     if kind == "parameter":
         if schluessel is None or not re.fullmatch(r"[a-z][a-z0-9_]*", schluessel):
             raise CommandError(f"Kein gueltiger Parametername: {schluessel!r}")
-        return Command(zone_id, kind, parameter=schluessel, zahl=_number(text, "Zahl"))
+        return Command(zone_id, kind, parameter=schluessel, number=_number(text, "Zahl"))
 
     raise CommandError(f"Unbekannte Befehlsart: {kind!r}")
 
@@ -127,5 +127,5 @@ def commands_abonnements(praefix: str) -> list[str]:
     everything below it, arbitrarily deep; the two levels are the whole contract, and
     nothing more should arrive either.
     """
-    basis = praefix.strip("/")
-    return [f"{basis}/zones/+/command/+", f"{basis}/zones/+/command/+/+"]
+    base = praefix.strip("/")
+    return [f"{base}/zones/+/command/+", f"{base}/zones/+/command/+/+"]

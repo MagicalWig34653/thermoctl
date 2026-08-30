@@ -15,26 +15,26 @@ from thermoctl.db.models.operations import Setting
 
 @dataclass(frozen=True)
 class SwitchResult:
-    ausgefuehrt: bool
-    beschreibung: str
+    executed: bool
+    description: str
     errors: str | None = None
 
 
 class Actuator(Protocol):
-    def beschreibung(self) -> str: ...
+    def description(self) -> str: ...
 
     async def switching(self, ein: bool) -> SwitchResult: ...
 
 
 class HttpTransport(Protocol):
     async def post(
-        self, url: str, daten: Mapping[str, str], kopfzeilen: Mapping[str, str]
+        self, url: str, data: Mapping[str, str], headers: Mapping[str, str]
     ) -> Mapping[str, object]: ...
 
 
 class MqttPublisher(Protocol):
     async def publishing(
-        self, topic: str, payload: str, *, switches: bool, behalten: bool = False
+        self, topic: str, payload: str, *, switches: bool, retained: bool = False
     ) -> bool: ...
 
 
@@ -44,16 +44,16 @@ def switching_allowed(session: Session) -> bool:
     return setting is not None and setting.control_armed
 
 
-class Zigbee2MqttVentil:
+class Zigbee2MqttValve:
     def __init__(
-        self, session: Session, client: MqttPublisher, basis: str, device_name: str
+        self, session: Session, client: MqttPublisher, base: str, device_name: str
     ) -> None:
         self._session = session
         self._client = client
-        self._topic = f"{basis.rstrip('/')}/{device_name}/set"
+        self._topic = f"{base.rstrip('/')}/{device_name}/set"
         self._device_name = device_name
 
-    def beschreibung(self) -> str:
+    def description(self) -> str:
         return f"Zigbee2MQTT-Ventil {self._device_name}"
 
     async def switching(self, ein: bool) -> SwitchResult:
@@ -63,12 +63,12 @@ class Zigbee2MqttVentil:
             return SwitchResult(False, f"Trockenlauf, haette gesendet: {message}")
 
         try:
-            ausgefuehrt = await self._client.publishing(
+            executed = await self._client.publishing(
                 self._topic, payload, switches=True
             )
         except Exception as exc:
             return SwitchResult(False, message, str(exc))
-        if not ausgefuehrt:
+        if not executed:
             return SwitchResult(
                 False, message, "MQTT-Client hat die Veroeffentlichung abgewiesen"
             )
@@ -79,21 +79,21 @@ class UrllibHttpTransport:
     """Small HTTP wrapper, so the adapter doesn't need another dependency."""
 
     async def post(
-        self, url: str, daten: Mapping[str, str], kopfzeilen: Mapping[str, str]
+        self, url: str, data: Mapping[str, str], headers: Mapping[str, str]
     ) -> Mapping[str, object]:
-        return await asyncio.to_thread(self._post_synchron, url, daten, kopfzeilen)
+        return await asyncio.to_thread(self._post_synchron, url, data, headers)
 
     @staticmethod
     def _post_synchron(
-        url: str, daten: Mapping[str, str], kopfzeilen: Mapping[str, str]
+        url: str, data: Mapping[str, str], headers: Mapping[str, str]
     ) -> Mapping[str, object]:
-        anfrage = request.Request(  # noqa: S310 -- URL comes from the adapter configuration
+        http_request = request.Request(  # noqa: S310 -- URL comes from the adapter configuration
             url,
-            data=parse.urlencode(daten).encode(),
-            headers=dict(kopfzeilen),
+            data=parse.urlencode(data).encode(),
+            headers=dict(headers),
             method="POST",
         )
-        with request.urlopen(anfrage, timeout=10) as response:  # noqa: S310
+        with request.urlopen(http_request, timeout=10) as response:  # noqa: S310
             result = json.loads(response.read())
         if not isinstance(result, dict):
             raise ValueError("Meross-Antwort ist kein Objekt")
@@ -122,18 +122,18 @@ class MerossSwitch:
         settings: Settings,
         devices_id: str,
         *,
-        kanal: int = 0,
+        channel: int = 0,
         transport: HttpTransport | None = None,
-        api_basis: str | None = None,
+        api_base: str | None = None,
     ) -> None:
         self._session = session
         self._settings = settings
         self._devices_id = devices_id
-        self._kanal = kanal
+        self._kanal = channel
         self._transport = transport or UrllibHttpTransport()
-        self._api_basis = (api_basis or settings.meross_api_base).rstrip("/")
+        self._api_basis = (api_base or settings.meross_api_base).rstrip("/")
 
-    def beschreibung(self) -> str:
+    def description(self) -> str:
         return f"Meross-Schalter {self._devices_id}"
 
     async def switching(self, ein: bool) -> SwitchResult:
@@ -174,10 +174,10 @@ class MerossSwitch:
 
 
 def _meross_token(response: Mapping[str, object]) -> str:
-    daten = response.get("data")
-    if not isinstance(daten, dict):
+    data = response.get("data")
+    if not isinstance(data, dict):
         raise ValueError("Meross-Anmeldung lieferte kein Token")
-    token = daten.get("token")
+    token = data.get("token")
     if not isinstance(token, str):
         raise ValueError("Meross-Anmeldung lieferte kein Token")
     return token

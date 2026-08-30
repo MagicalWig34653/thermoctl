@@ -27,15 +27,15 @@ _PASSWORD_FIELDS = frozenset(
 class FormError(Exception):
     """An input the user can correct -- not a fault of the service."""
 
-    feld: str
+    field: str
     notice: str
 
 
 def password_form_error(
-    errors: PasswordTooShort, feld: str = "password"
+    errors: PasswordTooShort, field: str = "password"
 ) -> FormError:
     """Attributes a too-short password to the password field of the given form."""
-    return FormError(feld=feld, notice=str(errors))
+    return FormError(field=field, notice=str(errors))
 
 
 def form_again(
@@ -49,7 +49,7 @@ def form_again(
     safe_values = {
         name: value for name, value in values.items() if name not in _PASSWORD_FIELDS
     }
-    field_errors = {errors.feld: errors.notice} if errors is not None else {}
+    field_errors = {errors.field: errors.notice} if errors is not None else {}
     return templates.TemplateResponse(
         request,
         vorlage,

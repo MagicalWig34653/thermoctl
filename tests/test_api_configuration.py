@@ -44,7 +44,7 @@ def test_creating_updating_and_deleting_zones(
 ) -> None:
     kind = operating_mode(session)
     kopf = api_token([("zone.manage", None), ("zone.read", None)])
-    daten = {
+    data = {
         "name": "api-zone",
         "display_name": "API-Zone",
         "operating_mode_id": kind.id,
@@ -52,12 +52,12 @@ def test_creating_updating_and_deleting_zones(
         "temperature_source_device_id": None,
     }
 
-    angelegt = client.post("/api/v1/zones", headers=kopf, json=daten)
+    angelegt = client.post("/api/v1/zones", headers=kopf, json=data)
     assert angelegt.status_code == 201
     zone_id = angelegt.json()["id"]
-    daten["display_name"] = "Geänderte API-Zone"
+    data["display_name"] = "Geänderte API-Zone"
     assert (
-        client.put(f"/api/v1/zones/{zone_id}", headers=kopf, json=daten).json()["display_name"]
+        client.put(f"/api/v1/zones/{zone_id}", headers=kopf, json=data).json()["display_name"]
         == "Geänderte API-Zone"
     )
     assert client.delete(f"/api/v1/zones/{zone_id}", headers=kopf).status_code == 204
@@ -68,15 +68,15 @@ def test_changing_a_zone_needs_the_permission_and_reports_a_duplicate_name(
     client: TestClient, session: Session, api_token
 ) -> None:
     zone = create_zone(session, "schon-da-api")
-    daten = {
+    data = {
         "name": zone.name,
         "display_name": "Doppelt",
         "operating_mode_id": zone.operating_mode_id,
     }
     without_permission = api_token([("zone.read", None)])
-    assert client.post("/api/v1/zones", headers=without_permission, json=daten).status_code == 403
+    assert client.post("/api/v1/zones", headers=without_permission, json=data).status_code == 403
     with_permission = api_token([("zone.read", None), ("zone.manage", None)])
-    response = client.post("/api/v1/zones", headers=with_permission, json=daten)
+    response = client.post("/api/v1/zones", headers=with_permission, json=data)
     assert response.status_code == 422
     assert "name" in response.json()["detail"]
 
@@ -135,11 +135,11 @@ def test_reading_and_writing_setpoints_like_the_domain(
     web_zone = create_zone(session, "sollwert-web-zone")
     mode = create_mode(session, "komfort-api", "Komfort")
     kopf = api_token([("zone.read", zone.id), ("setpoint.write", zone.id)])
-    daten = {"setpoints": [{"mode_id": mode.id, "temperature_c": "21.5"}]}
-    response = client.put(f"/api/v1/zones/{zone.id}/setpoints", headers=kopf, json=daten)
+    data = {"setpoints": [{"mode_id": mode.id, "temperature_c": "21.5"}]}
+    response = client.put(f"/api/v1/zones/{zone.id}/setpoints", headers=kopf, json=data)
     assert response.status_code == 200
-    zeile = session.get(ZoneSetpoint, (zone.id, mode.id))
-    assert zeile is not None and zeile.temperature_c == Decimal("21.5")
+    row = session.get(ZoneSetpoint, (zone.id, mode.id))
+    assert row is not None and row.temperature_c == Decimal("21.5")
 
     web_client = client_als([("setpoint.write", web_zone.id)])
     http_session = web_client.cookies[COOKIE_NAME]
@@ -155,18 +155,18 @@ def test_reading_and_writing_setpoints_like_the_domain(
     )
     web_row = session.get(ZoneSetpoint, (web_zone.id, mode.id))
     assert web_row is not None
-    assert web_row.temperature_c == zeile.temperature_c
+    assert web_row.temperature_c == row.temperature_c
     assert client.get(f"/api/v1/zones/{zone.id}/setpoints", headers=kopf).status_code == 200
 
     without_permission = api_token([("zone.read", zone.id)])
     assert (
         client.put(
-            f"/api/v1/zones/{zone.id}/setpoints", headers=without_permission, json=daten
+            f"/api/v1/zones/{zone.id}/setpoints", headers=without_permission, json=data
         ).status_code
         == 403
     )
-    daten["setpoints"][0]["temperature_c"] = "40.0"
-    errors = client.put(f"/api/v1/zones/{zone.id}/setpoints", headers=kopf, json=daten)
+    data["setpoints"][0]["temperature_c"] = "40.0"
+    errors = client.put(f"/api/v1/zones/{zone.id}/setpoints", headers=kopf, json=data)
     assert errors.status_code == 422
     assert "temperature_c" in errors.json()["detail"]
 
@@ -177,8 +177,8 @@ def test_reading_creating_and_deleting_a_schedule(
     zone = create_zone(session, "zeitplan-api-zone")
     mode = create_mode(session, "nacht-api", "Nacht")
     kopf = api_token([("zone.read", zone.id), ("schedule.manage", zone.id)])
-    daten = {"weekday": 1, "minute_of_day": 1320, "mode_id": mode.id}
-    response = client.post(f"/api/v1/zones/{zone.id}/schedule", headers=kopf, json=daten)
+    data = {"weekday": 1, "minute_of_day": 1320, "mode_id": mode.id}
+    response = client.post(f"/api/v1/zones/{zone.id}/schedule", headers=kopf, json=data)
     assert response.status_code == 201
     point_id = response.json()["id"]
     assert (
@@ -194,12 +194,12 @@ def test_reading_creating_and_deleting_a_schedule(
     without_permission = api_token([("zone.read", zone.id)])
     assert (
         client.post(
-            f"/api/v1/zones/{zone.id}/schedule", headers=without_permission, json=daten
+            f"/api/v1/zones/{zone.id}/schedule", headers=without_permission, json=data
         ).status_code
         == 403
     )
     errors = client.post(
-        f"/api/v1/zones/{zone.id}/schedule", headers=kopf, json={**daten, "weekday": 8}
+        f"/api/v1/zones/{zone.id}/schedule", headers=kopf, json={**data, "weekday": 8}
     )
     assert errors.status_code == 422
     assert "weekday" in str(errors.json()["detail"])
@@ -212,7 +212,7 @@ def test_reading_and_writing_control_parameters(
     source(session, "web")
     zone = create_zone(session, "parameter-api-zone")
     kopf = api_token([("zone.read", zone.id), ("zone.manage", zone.id)])
-    daten = {
+    data = {
         "hysteresis_k": "0.45",
         "min_on_seconds": 120,
         "min_off_seconds": None,
@@ -220,7 +220,7 @@ def test_reading_and_writing_control_parameters(
         "temperature_offset_k": "-0.20",
         "window_resume_delay_seconds": None,
     }
-    response = client.put(f"/api/v1/zones/{zone.id}/parameters", headers=kopf, json=daten)
+    response = client.put(f"/api/v1/zones/{zone.id}/parameters", headers=kopf, json=data)
     assert response.status_code == 200
     assert response.json()["hysteresis_k"] == "0.45"
     assert client.get(f"/api/v1/zones/{zone.id}/parameters", headers=kopf).status_code == 200
@@ -228,12 +228,12 @@ def test_reading_and_writing_control_parameters(
     without_permission = api_token([("zone.read", zone.id)])
     assert (
         client.put(
-            f"/api/v1/zones/{zone.id}/parameters", headers=without_permission, json=daten
+            f"/api/v1/zones/{zone.id}/parameters", headers=without_permission, json=data
         ).status_code
         == 403
     )
     errors = client.put(
-        f"/api/v1/zones/{zone.id}/parameters", headers=kopf, json={**daten, "min_on_seconds": -1}
+        f"/api/v1/zones/{zone.id}/parameters", headers=kopf, json={**data, "min_on_seconds": -1}
     )
     assert errors.status_code == 422
     assert "min_on_seconds" in str(errors.json()["detail"])

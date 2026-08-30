@@ -64,11 +64,11 @@ def _collect_capabilities(
             continue
         entry = cast(Mapping[str, object], roh)
         typ = _text(entry.get("type"))
-        merkmal = _text(entry.get("property")) or typ
-        capability = _CAPABILITY_BY_FEATURE.get(merkmal or "")
+        property = _text(entry.get("property")) or typ
+        capability = _CAPABILITY_BY_FEATURE.get(property or "")
         if capability is not None:
             result.add(capability)
-        if inside_switch and typ == "binary" and merkmal == "state":
+        if inside_switch and typ == "binary" and property == "state":
             result.add("switch")
 
         features = entry.get("features")

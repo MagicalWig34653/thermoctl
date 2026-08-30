@@ -42,7 +42,7 @@ def _integration(session: Session) -> Integration:
     return integration
 
 
-def _device(session: Session, name: str, empfangen_am: datetime) -> Device:
+def _device(session: Session, name: str, received_at: datetime) -> Device:
     integration = _integration(session)
     device = session.scalar(
         select(Device).where(
@@ -56,14 +56,14 @@ def _device(session: Session, name: str, empfangen_am: datetime) -> Device:
             external_id=name,
             display_name=name,
             is_enabled=True,
-            first_seen_at=empfangen_am,
+            first_seen_at=received_at,
         )
         session.add(device)
         session.flush()
     return device
 
 
-def _process_device_list(session: Session, payload: bytes, empfangen_am: datetime) -> None:
+def _process_device_list(session: Session, payload: bytes, received_at: datetime) -> None:
     try:
         beschreibungen = descriptions_from_bridge_list(payload)
     except ValueError:
@@ -74,8 +74,8 @@ def _process_device_list(session: Session, payload: bytes, empfangen_am: datetim
         capability.code: capability for capability in session.scalars(select(DeviceCapability))
     }
     unbekannte: set[str] = set()
-    for beschreibung in beschreibungen:
-        _save_description(session, beschreibung, empfangen_am, capabilities, unbekannte)
+    for description in beschreibungen:
+        _save_description(session, description, received_at, capabilities, unbekannte)
     for code in sorted(unbekannte):
         log.warning(
             "Geraetefaehigkeit fehlt in der Nachschlagetabelle",
@@ -85,23 +85,23 @@ def _process_device_list(session: Session, payload: bytes, empfangen_am: datetim
 
 def _save_description(
     session: Session,
-    beschreibung: DeviceDescription,
-    empfangen_am: datetime,
+    description: DeviceDescription,
+    received_at: datetime,
     capabilities: dict[str, DeviceCapability],
     unbekannte: set[str],
 ) -> None:
-    device = _device(session, beschreibung.name, empfangen_am)
-    device.display_name = beschreibung.name
-    device.model = beschreibung.modell
-    device.is_group = beschreibung.ist_group
+    device = _device(session, description.name, received_at)
+    device.display_name = description.name
+    device.model = description.modell
+    device.is_group = description.ist_group
     if device.first_seen_at is None:
         # Backfill for devices that were not created via ingest — since subproject 3
         # the interface can also create them, and there is no sighting there yet.
         # During ingest itself the value is already set (_geraet).
-        device.first_seen_at = empfangen_am
+        device.first_seen_at = received_at
 
     session.execute(delete(DeviceCapabilityLink).where(DeviceCapabilityLink.device_id == device.id))
-    for code in beschreibung.capabilities:
+    for code in description.capabilities:
         capability = capabilities.get(code)
         if capability is None:
             unbekannte.add(code)
@@ -110,7 +110,7 @@ def _save_description(
     alte_ids = select(DeviceProperty.id).where(DeviceProperty.device_id == device.id)
     session.execute(delete(DevicePropertyValue).where(DevicePropertyValue.property_id.in_(alte_ids)))
     session.execute(delete(DeviceProperty).where(DeviceProperty.device_id == device.id))
-    for property_description in beschreibung.properties:
+    for property_description in description.properties:
         property_model = DeviceProperty(
             device_id=device.id,
             name=property_description.name,
@@ -128,12 +128,12 @@ def _save_description(
 
 
 def _process_state(
-    session: Session, name: str, payload: bytes, empfangen_am: datetime
+    session: Session, name: str, payload: bytes, received_at: datetime
 ) -> None:
-    readings = readings_from_payload(payload, empfangen_am)
+    readings = readings_from_payload(payload, received_at)
     if not readings:
         return
-    device = _device(session, name, empfangen_am)
+    device = _device(session, name, received_at)
     try:
         raw_values = json.loads(payload, parse_float=Decimal, parse_int=Decimal)
     except (json.JSONDecodeError, UnicodeDecodeError):  # bereits von readings protokolliert
@@ -173,10 +173,10 @@ def _process_state(
             Measurement(
                 device_id=device.id,
                 capability_id=capability.id,
-                value_numeric=reading.zahl,
+                value_numeric=reading.number,
                 value_text=reading.text,
                 measured_at=reading.gemessen_am,
-                received_at=empfangen_am,
+                received_at=received_at,
             )
         )
     for code in sorted(unbekannte):
@@ -189,17 +189,17 @@ def _process_state(
     if gesund is None:
         gesund = DeviceHealth(
             device_id=device.id,
-            last_payload_at=empfangen_am,
+            last_payload_at=received_at,
             payload_count=0,
         )
         session.add(gesund)
-    gesund.last_payload_at = empfangen_am
+    gesund.last_payload_at = received_at
     gesund.payload_count += 1
     gesund.link_quality = _ganzzahl(readings, "link_quality", gesund.link_quality)
     gesund.battery_percent = _dezimalzahl(readings, "battery", gesund.battery_percent)
-    device.last_seen_at = empfangen_am
-    _execute_button_press(session, device, readings, last_pressed, empfangen_am)
-    apply_read_channels(session, device, changed_values, empfangen_am)
+    device.last_seen_at = received_at
+    _execute_button_press(session, device, readings, last_pressed, received_at)
+    apply_read_channels(session, device, changed_values, received_at)
 
 
 def _last_pressed(session: Session, device_id: int) -> datetime | None:
@@ -232,7 +232,7 @@ def _execute_button_press(
     device: Device,
     readings: list[Reading],
     last_seen: datetime | None,
-    empfangen_am: datetime,
+    received_at: datetime,
 ) -> None:
     """Executes what a button press on a controller has bound to it."""
     druck = next((b for b in readings if b.capability == "action" and b.text), None)
@@ -245,14 +245,14 @@ def _execute_button_press(
         )
         return
     assert druck.text is not None
-    execute_aktion(session, device, druck.text, empfangen_am)
+    execute_aktion(session, device, druck.text, received_at)
 
 
 def _dezimalzahl(
     readings: list[Reading], code: str, bisher: Decimal | None
 ) -> Decimal | None:
     return next(
-        (b.zahl for b in readings if b.capability == code and b.zahl is not None),
+        (b.number for b in readings if b.capability == code and b.number is not None),
         bisher,
     )
 
@@ -263,10 +263,10 @@ def _ganzzahl(readings: list[Reading], code: str, bisher: int | None) -> int | N
 
 
 def _process_availability(
-    session: Session, name: str, payload: bytes, empfangen_am: datetime
+    session: Session, name: str, payload: bytes, received_at: datetime
 ) -> None:
     try:
-        daten = json.loads(payload)
+        data = json.loads(payload)
     # Parentheses, even though Python 3.14 no longer requires them here (PEP 758):
     # without them the line looks exactly like the Python 2 form, which meant
     # something different -- there, the second name bound the exception instead of
@@ -275,19 +275,19 @@ def _process_availability(
     except (json.JSONDecodeError, UnicodeDecodeError):
         log.warning("Zigbee2MQTT-Erreichbarkeit ist kein gueltiges JSON")
         return
-    if not isinstance(daten, dict) or not isinstance(daten.get("state"), str):
+    if not isinstance(data, dict) or not isinstance(data.get("state"), str):
         log.warning("Zigbee2MQTT-Erreichbarkeit enthaelt keinen Zustand")
         return
-    device = _device(session, name, empfangen_am)
+    device = _device(session, name, received_at)
     gesund = session.get(DeviceHealth, device.id)
     if gesund is None:
         gesund = DeviceHealth(
             device_id=device.id,
-            last_payload_at=empfangen_am,
+            last_payload_at=received_at,
             payload_count=0,
         )
         session.add(gesund)
-    gesund.availability = daten["state"]
+    gesund.availability = data["state"]
 
 
 def process_message(
@@ -295,19 +295,19 @@ def process_message(
     topic: str,
     payload: bytes,
     *,
-    basis: str,
-    empfangen_am: datetime,
+    base: str,
+    received_at: datetime,
 ) -> None:
     """Writes a received Zigbee2MQTT message into the database."""
-    zuschnitt = zuschneiden(topic, basis)
+    zuschnitt = zuschneiden(topic, base)
     if zuschnitt.kind == MessageKind.DEVICE_LIST:
-        _process_device_list(session, payload, empfangen_am)
+        _process_device_list(session, payload, received_at)
     elif zuschnitt.kind == MessageKind.DEVICE_STATE:
         assert zuschnitt.device_name is not None
-        _process_state(session, zuschnitt.device_name, payload, empfangen_am)
+        _process_state(session, zuschnitt.device_name, payload, received_at)
     elif zuschnitt.kind == MessageKind.AVAILABILITY:
         assert zuschnitt.device_name is not None
-        _process_availability(session, zuschnitt.device_name, payload, empfangen_am)
+        _process_availability(session, zuschnitt.device_name, payload, received_at)
     else:
         log.info(
             "Zigbee2MQTT-Nachricht wird nicht verarbeitet",

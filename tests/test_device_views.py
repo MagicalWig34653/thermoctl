@@ -10,7 +10,7 @@ from tests.helpers import (
     create_device_state,
     create_settings,
     create_zone,
-    rolle,
+    role,
 )
 from thermoctl.db.base import utcnow
 from thermoctl.db.models.device import DeviceCapabilityLink, ZoneDevice
@@ -45,7 +45,7 @@ def test_the_device_page_shows_signs_of_life_capability_and_zone(
         ZoneDevice(
             zone_id=second_zone.id,
             device_id=device.id,
-            device_role_id=rolle(session, "controller").id,
+            device_role_id=role(session, "controller").id,
         )
     )
     capability = DeviceCapability(code="temperature", label="Temperaturmessung")

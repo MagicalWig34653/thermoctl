@@ -57,16 +57,16 @@ def test_creating_a_point_and_reporting_a_double_booking_understandably(
     zone = create_zone(session, "bad")
     mode = create_mode(session, "tag", "Tag")
     client = client_als([("schedule.manage", zone.id), ("zone.read", zone.id)])
-    daten = {"weekday": "2", "time_of_day": "03:15", "mode_id": str(mode.id)}
+    data = {"weekday": "2", "time_of_day": "03:15", "mode_id": str(mode.id)}
 
     angelegt = client.post(
         f"/zones/{zone.id}/schedule/points",
-        data=daten,
+        data=data,
         headers=_csrf(client),
         follow_redirects=False,
     )
     doppelt = client.post(
-        f"/zones/{zone.id}/schedule/points", data=daten, headers=_csrf(client)
+        f"/zones/{zone.id}/schedule/points", data=data, headers=_csrf(client)
     )
 
     point = session.scalar(select(SchedulePoint).where(SchedulePoint.zone_id == zone.id))
@@ -122,17 +122,17 @@ def test_adopting_a_schedule_copies_exactly_and_leaves_the_source_unchanged(
 ) -> None:
     source(session)
     source_zone = create_zone(session, "quelle")
-    ziel = create_zone(session, "ziel")
+    target = create_zone(session, "ziel")
     day = create_mode(session, "tag", "Tag")
     night = create_mode(session, "nacht", "Nacht")
     _point(session, source_zone.id, 1, 360, day.id)
     _point(session, source_zone.id, 7, 1320, night.id)
     client = client_als(
-        [("schedule.manage", ziel.id), ("zone.read", source_zone.id)]
+        [("schedule.manage", target.id), ("zone.read", source_zone.id)]
     )
 
     response = client.post(
-        f"/zones/{ziel.id}/schedule/adopt",
+        f"/zones/{target.id}/schedule/adopt",
         data={"source_id": str(source_zone.id)},
         headers=_csrf(client),
         follow_redirects=False,
@@ -142,7 +142,7 @@ def test_adopting_a_schedule_copies_exactly_and_leaves_the_source_unchanged(
         select(SchedulePoint).where(SchedulePoint.zone_id == source_zone.id)
     ).all()
     target_points = session.scalars(
-        select(SchedulePoint).where(SchedulePoint.zone_id == ziel.id)
+        select(SchedulePoint).where(SchedulePoint.zone_id == target.id)
     ).all()
     assert response.status_code == 303
     assert [(p.weekday, p.minute_of_day, p.setpoint_mode_id) for p in target_points] == [
@@ -151,7 +151,7 @@ def test_adopting_a_schedule_copies_exactly_and_leaves_the_source_unchanged(
     assert len(source_points) == 2
     assert session.scalar(
         select(AuditEvent).where(
-            AuditEvent.object_type == "schedule", AuditEvent.object_id == str(ziel.id)
+            AuditEvent.object_type == "schedule", AuditEvent.object_id == str(target.id)
         )
     ) is not None
 
@@ -161,14 +161,14 @@ def test_adopting_onto_an_existing_schedule_asks_first(
 ) -> None:
     source(session)
     source_zone = create_zone(session, "quelle")
-    ziel = create_zone(session, "ziel")
+    target = create_zone(session, "ziel")
     mode = create_mode(session, "tag", "Tag")
-    old_point = _point(session, ziel.id, 2, 180, mode.id)
+    old_point = _point(session, target.id, 2, 180, mode.id)
     _point(session, source_zone.id, 1, 360, mode.id)
     client = client_als(
-        [("schedule.manage", ziel.id), ("zone.read", source_zone.id)]
+        [("schedule.manage", target.id), ("zone.read", source_zone.id)]
     )
-    pfad = f"/zones/{ziel.id}/schedule/adopt"
+    pfad = f"/zones/{target.id}/schedule/adopt"
 
     nachfrage = client.post(
         pfad,
@@ -211,9 +211,9 @@ def test_permissions_and_foreign_zones_yield_404(client_als, session: Session) -
 
 
 def test_the_adoption_form_and_a_faulty_selection(client_als, session: Session) -> None:
-    ziel = create_zone(session, "ziel")
-    client = client_als([("schedule.manage", ziel.id)])
-    pfad = f"/zones/{ziel.id}/schedule/adopt"
+    target = create_zone(session, "ziel")
+    client = client_als([("schedule.manage", target.id)])
+    pfad = f"/zones/{target.id}/schedule/adopt"
     assert client.get(pfad).status_code == 200
     response = client.post(pfad, data={}, headers=_csrf(client))
     assert response.status_code == 200
@@ -229,15 +229,15 @@ def test_a_nonsensical_selection_when_creating_a_point(client_als, session: Sess
     client = client_als([("schedule.manage", None), ("zone.read", None)])
     kopf = _csrf(client)
 
-    for daten, expected in (
+    for data, expected in (
         ({"weekday": "Montag", "time_of_day": "06:00", "mode_id": str(mode.id)}, "Wochentag"),
         ({"weekday": "1", "time_of_day": "06:00", "mode_id": "kein Modus"}, "Modus"),
     ):
         response = client.post(
-            f"/zones/{zone.id}/schedule/points", data=daten, headers=kopf
+            f"/zones/{zone.id}/schedule/points", data=data, headers=kopf
         )
-        assert response.status_code == 200, daten
-        assert expected in response.text, daten
+        assert response.status_code == 200, data
+        assert expected in response.text, data
     assert session.scalar(
         select(SchedulePoint).where(SchedulePoint.zone_id == zone.id)
     ) is None
@@ -397,7 +397,7 @@ def test_nonsensical_target_data_is_refused(client_als, session: Session) -> Non
     day = create_mode(session, "tag", "Tag")
     point = _point(session, zone.id, 1, 360, day.id)
     mandant = client_als([("zone.read", None), ("schedule.manage", None)])
-    for daten in (
+    for data in (
         {"weekday": "9", "time_of_day": "07:00"},
         {"weekday": "kein Tag", "time_of_day": "07:00"},
         {"weekday": "2", "time_of_day": "25:00"},
@@ -405,10 +405,10 @@ def test_nonsensical_target_data_is_refused(client_als, session: Session) -> Non
     ):
         response = mandant.post(
             f"/zones/{zone.id}/schedule/points/move",
-            data=daten | {"point_id": str(point.id)},
+            data=data | {"point_id": str(point.id)},
             headers=_csrf(mandant),
         )
-        assert response.status_code == 200, daten
+        assert response.status_code == 200, data
     session.refresh(point)
     assert (point.weekday, point.minute_of_day) == (1, 360)
 

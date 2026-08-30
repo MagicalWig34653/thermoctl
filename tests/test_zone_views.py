@@ -10,7 +10,7 @@ from tests.helpers import (
     create_device,
     create_zone,
     operating_mode,
-    rolle,
+    role,
     source,
 )
 from thermoctl.auth.csrf import CSRF_HEADER, csrf_token
@@ -136,7 +136,7 @@ def test_the_delete_confirmation_names_every_dependency(
         ZoneDevice(
             zone_id=zone.id,
             device_id=device.id,
-            device_role_id=rolle(session, "controller").id,
+            device_role_id=role(session, "controller").id,
         )
     )
     mode = SetpointMode(code="tag", name="Tag")
@@ -246,12 +246,12 @@ def test_invalid_input_returns_to_the_form(
         ({"temperature_source_device_id": "999999"}, "nicht bekannt"),
     ]
     for deviation, expected in faelle:
-        daten = {**gueltig, **deviation}
-        create = client.post("/zones", data=daten, headers=_csrf(client))
+        data = {**gueltig, **deviation}
+        create = client.post("/zones", data=data, headers=_csrf(client))
         assert create.status_code == 200, deviation
         assert expected in create.text, deviation
 
-        update = client.post(f"/zones/{zone.id}", data=daten, headers=_csrf(client))
+        update = client.post(f"/zones/{zone.id}", data=data, headers=_csrf(client))
         assert update.status_code == 200, deviation
         assert expected in update.text, deviation
 

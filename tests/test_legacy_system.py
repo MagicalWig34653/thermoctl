@@ -42,11 +42,11 @@ def test_every_thermostat_topic_is_evaluated(topic: str) -> None:
     assert isinstance(result, LegacyReading)
     assert result.thermostat_id in {1, 2, 3, 4, 5, 9}
     if result.attribut in {"temperatureActual", "temperatureTarget"}:
-        assert result.zahl == Decimal(payload)
+        assert result.number == Decimal(payload)
         assert result.text is None
     else:
         assert result.text == payload
-        assert result.zahl is None
+        assert result.number is None
 
 
 @pytest.mark.parametrize(

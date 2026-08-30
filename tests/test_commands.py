@@ -85,7 +85,7 @@ def test_the_new_command_kinds_are_read() -> None:
     parameter = zerlegen(
         "thermoctl/zones/4/command/parameter/hysteresis_k", b"0.4", "thermoctl"
     )
-    assert (parameter.kind, parameter.parameter, parameter.zahl) == (
+    assert (parameter.kind, parameter.parameter, parameter.number) == (
         "parameter", "hysteresis_k", Decimal("0.4"),
     )
 

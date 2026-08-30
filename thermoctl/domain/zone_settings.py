@@ -152,19 +152,19 @@ def set_parameter(
     cannot be empty, so there is no "inherits from global default" there; whoever
     wants inheritance back clears the field in the interface.
     """
-    beschreibung = BY_NAME.get(name)
-    if beschreibung is None:
+    description = BY_NAME.get(name)
+    if description is None:
         raise UnknownParameter(f"Den Regelparameter '{name}' gibt es nicht.")
-    if not beschreibung.minimum <= value <= beschreibung.maximum:
+    if not description.minimum <= value <= description.maximum:
         raise ParameterOutOfRange(
-            f"{beschreibung.label} muss zwischen {beschreibung.minimum} und "
-            f"{beschreibung.maximum} liegen."
+            f"{description.label} muss zwischen {description.minimum} und "
+            f"{description.maximum} liegen."
         )
-    gerundet = int(value) if beschreibung.ganzzahlig else value
+    gerundet = int(value) if description.ganzzahlig else value
     # Take over the other fields exactly as they stand on the zone -- an inherited
     # None stays inherited. Only this one parameter gets fixed.
     values: dict[str, Decimal | int | None] = {
-        feld: getattr(zone, feld) for feld in ControlParameters.__dataclass_fields__
+        field: getattr(zone, field) for field in ControlParameters.__dataclass_fields__
     }
     values[name] = gerundet
     save_control_parameters(

@@ -59,7 +59,7 @@ _DEFAULT_FIELDS = frozenset(logging.LogRecord("", 0, "", 0, "", None, None).__di
 
 def _segmentiere_schluessel(schluessel: object) -> list[str]:
     mit_trennern = _CAMELCASE_UEBERGANG.sub("_", str(schluessel))
-    return [teil.lower() for teil in _TRENNZEICHEN.split(mit_trennern) if teil]
+    return [part.lower() for part in _TRENNZEICHEN.split(mit_trennern) if part]
 
 
 def _ist_sensibel(schluessel: object) -> bool:
@@ -129,21 +129,21 @@ class MaskierungsFilter(logging.Filter):
 
 class JsonFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
-        daten: dict[str, Any] = {
+        data: dict[str, Any] = {
             "timestamp": datetime.fromtimestamp(record.created, UTC).isoformat(),
             "level": record.levelname,
             "logger": record.name,
             "message": record.getMessage(),
         }
-        anfrage_id = request_id_var.get()
-        if anfrage_id is not None:
-            daten["request_id"] = anfrage_id
+        request_id = request_id_var.get()
+        if request_id is not None:
+            data["request_id"] = request_id
         for schluessel, value in record.__dict__.items():
             if schluessel not in _DEFAULT_FIELDS and not schluessel.startswith("_"):
-                daten[schluessel] = value
+                data[schluessel] = value
         if record.exc_info:
-            daten["exception"] = self.formatException(record.exc_info)
-        return json.dumps(mask(daten), ensure_ascii=False, default=str)
+            data["exception"] = self.formatException(record.exc_info)
+        return json.dumps(mask(data), ensure_ascii=False, default=str)
 
 
 class TextFormatter(logging.Formatter):
@@ -169,13 +169,13 @@ class TextFormatter(logging.Formatter):
             for schluessel, value in record.__dict__.items()
             if schluessel not in _DEFAULT_FIELDS and not schluessel.startswith("_")
         }
-        basis = super().format(record)
+        base = super().format(record)
         if not zusatz:
-            return basis
+            return base
         gemaskt = mask(zusatz)
         assert isinstance(gemaskt, dict)
         teile = " ".join(f"{k}={v}" for k, v in gemaskt.items())
-        return f"{basis} | {teile}"
+        return f"{base} | {teile}"
 
 
 def configure_logging(settings: Settings) -> None:

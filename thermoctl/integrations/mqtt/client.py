@@ -132,7 +132,7 @@ class MqttClient:
             interval = min(interval * 2, 60.0)
 
     async def publishing(
-        self, topic: str, payload: str, *, switches: bool, behalten: bool = False
+        self, topic: str, payload: str, *, switches: bool, retained: bool = False
     ) -> bool:
         """Sends a message. `switches=True` additionally requires the bolt.
 
@@ -158,5 +158,5 @@ class MqttClient:
         # every reconnect. Retain belongs on registration and state: without it, Home
         # Assistant shows an empty card after a restart until this service sends
         # something the next time.
-        await self._client.publish(topic, payload, retain=behalten)
+        await self._client.publish(topic, payload, retain=retained)
         return True

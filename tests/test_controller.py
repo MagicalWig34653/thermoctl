@@ -19,7 +19,7 @@ from tests.helpers import (
     create_mode,
     create_settings,
     create_zone,
-    rolle,
+    role,
     source,
 )
 from thermoctl.db.models.device import ControllerBinding, ZoneDevice
@@ -75,7 +75,7 @@ def _installation(session: Session):
         ZoneDevice(
             zone_id=zone.id,
             device_id=device.id,
-            device_role_id=rolle(session, "controller").id,
+            device_role_id=role(session, "controller").id,
         )
     )
     session.flush()
@@ -118,7 +118,7 @@ def test_boost_and_operating_mode_can_be_bound_to_buttons(session: Session) -> N
     set_binding(session, device, "hold_center", "mode_off")
 
     execute_aktion(session, device, "single_center", MONDAY_EIGHT)
-    assert resolved_setpoint(session, zone, MONDAY_EIGHT).grund.startswith("Uebersteuerung")
+    assert resolved_setpoint(session, zone, MONDAY_EIGHT).reason.startswith("Uebersteuerung")
 
     execute_aktion(session, device, "hold_center", MONDAY_EIGHT)
     assert zone.operating_mode.code == "off"
@@ -157,8 +157,8 @@ def test_seen_actions_come_from_what_actually_arrived(session: Session) -> None:
         session,
         f"zigbee2mqtt/{device.external_id}",
         json.dumps({"action": "button_1_single", "battery": 90}).encode(),
-        basis="zigbee2mqtt",
-        empfangen_am=MONDAY_EIGHT,
+        base="zigbee2mqtt",
+        received_at=MONDAY_EIGHT,
     )
 
     actions = gesehene_aktionen(session, device)
@@ -190,8 +190,8 @@ def test_a_button_press_from_a_real_message_takes_effect(session: Session) -> No
         session,
         f"zigbee2mqtt/{device.external_id}",
         json.dumps({"action": "single_plus"}).encode(),
-        basis="zigbee2mqtt",
-        empfangen_am=MONDAY_EIGHT,
+        base="zigbee2mqtt",
+        received_at=MONDAY_EIGHT,
     )
 
     assert resolved_setpoint(session, zone, MONDAY_EIGHT).temperature_c == Decimal("21.5")
@@ -214,8 +214,8 @@ def test_the_same_message_twice_takes_effect_only_once(session: Session) -> None
             session,
             f"zigbee2mqtt/{device.external_id}",
             payload,
-            basis="zigbee2mqtt",
-            empfangen_am=MONDAY_EIGHT,
+            base="zigbee2mqtt",
+            received_at=MONDAY_EIGHT,
         )
 
     assert resolved_setpoint(session, zone, MONDAY_EIGHT).temperature_c == Decimal("21.5")
@@ -238,8 +238,8 @@ def test_a_later_press_takes_effect_again(session: Session) -> None:
             json.dumps(
                 {"action": "single_plus", "last_seen": moment.isoformat() + "Z"}
             ).encode(),
-            basis="zigbee2mqtt",
-            empfangen_am=moment,
+            base="zigbee2mqtt",
+            received_at=moment,
         )
 
     assert resolved_setpoint(session, zone, MONDAY_EIGHT).temperature_c == Decimal("22.5")
@@ -252,8 +252,8 @@ def test_every_button_press_is_stored_as_a_measurement(session: Session) -> None
         session,
         f"zigbee2mqtt/{device.external_id}",
         json.dumps({"action": "double_center"}).encode(),
-        basis="zigbee2mqtt",
-        empfangen_am=MONDAY_EIGHT,
+        base="zigbee2mqtt",
+        received_at=MONDAY_EIGHT,
     )
 
     capability_id = session.scalar(

@@ -23,7 +23,7 @@ def sensornotice(
         and nachher in {"veraltet", "keine_quelle"}
         and vorher != nachher
     ):
-        grund = (
+        reason = (
             "Der Temperaturwert ist veraltet."
             if nachher == "veraltet"
             else "Der Zone ist keine Temperaturquelle zugeordnet."
@@ -32,7 +32,7 @@ def sensornotice(
             schluessel=schluessel,
             schwere="stoerung",
             titel=f"Sensorstoerung in {zone_name}",
-            text=grund,
+            text=reason,
         )
     if nachher == "ok" and vorher in {"veraltet", "keine_quelle"}:
         return FaultNotice(

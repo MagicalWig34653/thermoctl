@@ -300,10 +300,10 @@ def test_empty_and_overlong_mode_values_stay_in_the_form(
         ({"code": "gut", "name": "n" * 65, "sort_order": "0"}, "höchstens 64"),
         ({"code": "gut", "name": "Name", "sort_order": "keine Zahl"}, "ganze Zahl"),
     ]
-    for daten, expected in faelle:
-        response = client.post("/modes", data=daten, headers=_csrf(client))
-        assert response.status_code == 200, daten
-        assert expected in response.text, daten
+    for data, expected in faelle:
+        response = client.post("/modes", data=data, headers=_csrf(client))
+        assert response.status_code == 200, data
+        assert expected in response.text, data
     assert session.scalar(select(SetpointMode).where(SetpointMode.code == "gut")) is None
 
 
@@ -423,13 +423,13 @@ def test_the_setpoint_limit_exists_in_exactly_one_place() -> None:
         text = datei.read_text(encoding="utf-8")
         if "°C" not in text:
             continue
-        for nummer, zeile in enumerate(text.splitlines(), 1):
-            if "temperatur" in zeile.lower():
+        for nummer, row in enumerate(text.splitlines(), 1):
+            if "temperatur" in row.lower():
                 continue  # refers to the passed-through constants
-            gefunden = set(zahl_in_anfuehrung.findall(zeile))
-            above_temperature = "°C" in zeile or "sollwert" in zeile.lower()
+            gefunden = set(zahl_in_anfuehrung.findall(row))
+            above_temperature = "°C" in row or "sollwert" in row.lower()
             if gefunden & eindeutig or (above_temperature and gefunden & mehrdeutig):
-                match.append(f"{datei.name}:{nummer}: {zeile.strip()}")
+                match.append(f"{datei.name}:{nummer}: {row.strip()}")
 
     # Python: a number at a spot where a temperature limit stands. The context is
     # often in the line before (`temperature_c: Decimal = Field(` wraps), hence a
@@ -442,17 +442,17 @@ def test_the_setpoint_limit_exists_in_exactly_one_place() -> None:
         if datei.name == "modes.py":
             continue  # that is where it belongs
         zeilen = datei.read_text(encoding="utf-8").splitlines()
-        for nummer, zeile in enumerate(zeilen, 1):
-            if "MINIMUM_TEMPERATURE_C" in zeile or "MAXIMUM_TEMPERATURE_C" in zeile:
+        for nummer, row in enumerate(zeilen, 1):
+            if "MINIMUM_TEMPERATURE_C" in row or "MAXIMUM_TEMPERATURE_C" in row:
                 continue  # refers to the constants
-            if not grenzstelle.search(zeile):
+            if not grenzstelle.search(row):
                 continue
             # Narrowed to the setpoint field: a bare "temp" in the surroundings also
             # matched `sensor_timeout_seconds` next to `temperature_offset_k` --
             # both temperature-adjacent with entirely different limits.
             umfeld = " ".join(zeilen[max(0, nummer - 3) : nummer + 1])
             if "temperature_c" in umfeld or "min_temp" in umfeld or "max_temp" in umfeld:
-                match.append(f"{datei.relative_to(wurzel)}:{nummer}: {zeile.strip()}")
+                match.append(f"{datei.relative_to(wurzel)}:{nummer}: {row.strip()}")
 
     assert not match, "setpoint limit outside the domain:\n" + "\n".join(match)
 

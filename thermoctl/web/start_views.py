@@ -145,12 +145,12 @@ def start(
     ):
         overrides.setdefault(entry.zone_id, entry)
     entscheidungen: dict[int, ShadowDecision] = {}
-    for entscheidung in session.scalars(
+    for decision in session.scalars(
         select(ShadowDecision)
         .where(ShadowDecision.zone_id.in_(zone_ids))
         .order_by(ShadowDecision.decided_at.desc(), ShadowDecision.id.desc())
     ):
-        entscheidungen.setdefault(entscheidung.zone_id, entscheidung)
+        entscheidungen.setdefault(decision.zone_id, decision)
 
     return templates.TemplateResponse(
         request,

@@ -9,7 +9,7 @@ from tests.helpers import create_mode
 from thermoctl.config import Settings
 from thermoctl.db.models.operations import Setting
 from thermoctl.integrations import actuators as actuators_module
-from thermoctl.integrations.actuators import MerossSwitch, Zigbee2MqttVentil
+from thermoctl.integrations.actuators import MerossSwitch, Zigbee2MqttValve
 
 
 class MqttStub:
@@ -70,7 +70,7 @@ async def test_without_control_armed_nothing_is_sent(session: Session) -> None:
     base_topic = _settings().mqtt_base_topic
     devices_id = installation_data["geraete"][0]
 
-    mqtt_result = await Zigbee2MqttVentil(
+    mqtt_result = await Zigbee2MqttValve(
         session, mqtt, base_topic, name
     ).switching(True)
     meross_result = await MerossSwitch(
@@ -80,13 +80,13 @@ async def test_without_control_armed_nothing_is_sent(session: Session) -> None:
 
     assert mqtt.calls == []
     assert http.calls == []
-    assert f"{base_topic}/{name}/set" in mqtt_result.beschreibung
-    assert '{"state": "ON"}' in mqtt_result.beschreibung
-    assert "Zustand OFF" in meross_result.beschreibung
-    assert name in Zigbee2MqttVentil(session, mqtt, base_topic, name).beschreibung()
+    assert f"{base_topic}/{name}/set" in mqtt_result.description
+    assert '{"state": "ON"}' in mqtt_result.description
+    assert "Zustand OFF" in meross_result.description
+    assert name in Zigbee2MqttValve(session, mqtt, base_topic, name).description()
     assert devices_id in MerossSwitch(
         session, _settings(), devices_id, transport=http
-    ).beschreibung()
+    ).description()
 
 
 @pytest.mark.anyio
@@ -102,11 +102,11 @@ async def test_control_armed_builds_the_meross_login_and_switch_call(session: Se
         session,
         _settings(meross_email="konto@example.invalid", meross_password="geheim"),
         devices_id,
-        kanal=2,
+        channel=2,
         transport=http,
-        api_basis="https://meross.example.invalid",
+        api_base="https://meross.example.invalid",
     ).switching(True)
-    assert result.ausgefuehrt is True
+    assert result.executed is True
     assert [call[0] for call in http.calls] == [
         "https://meross.example.invalid/v1/Auth/signIn",
         "https://meross.example.invalid/v1/Device/devControl",
@@ -119,20 +119,20 @@ async def test_control_armed_builds_the_meross_login_and_switch_call(session: Se
     not_configured = await MerossSwitch(
         session, _settings(), devices_id, transport=without_http
     ).switching(True)
-    assert not_configured.ausgefuehrt is False
-    assert "Nicht konfiguriert" in not_configured.beschreibung
+    assert not_configured.executed is False
+    assert "Nicht konfiguriert" in not_configured.description
     assert without_http.calls == []
 
     mqtt = MqttStub(errors=ConnectionError("Gegenstelle nicht erreichbar"))
-    errors = await Zigbee2MqttVentil(
+    errors = await Zigbee2MqttValve(
         session, mqtt, base_topic, devices_id
     ).switching(True)
-    assert errors.ausgefuehrt is False
+    assert errors.executed is False
     assert errors.errors == "Gegenstelle nicht erreichbar"
 
     rejected = MqttStub()
     rejected.publishing = _reject_publication  # type: ignore[method-assign]
-    mqtt_result = await Zigbee2MqttVentil(
+    mqtt_result = await Zigbee2MqttValve(
         session, rejected, base_topic, devices_id
     ).switching(False)
     assert mqtt_result.errors == "MQTT-Client hat die Veroeffentlichung abgewiesen"
@@ -202,8 +202,8 @@ async def test_meross_without_credentials_reports_itself_as_unconfigured(
     result = await MerossSwitch(session, _settings(), "geraet-1", transport=http).switching(
         True
     )
-    assert result.ausgefuehrt is False
-    assert "Nicht konfiguriert" in result.beschreibung
+    assert result.executed is False
+    assert "Nicht konfiguriert" in result.description
     assert http.calls == []
 
 
@@ -218,9 +218,9 @@ async def test_a_device_name_with_an_umlaut_and_a_space_yields_the_correct_topic
         n for n in installation_data["geraete"]
         if " " in n and any(c in n for c in "äöüÄÖÜ")
     )
-    valve = Zigbee2MqttVentil(session, MqttStub(), "zigbee2mqtt", name)
+    valve = Zigbee2MqttValve(session, MqttStub(), "zigbee2mqtt", name)
     result = await valve.switching(True)
-    assert f"zigbee2mqtt/{name}/set" in result.beschreibung
+    assert f"zigbee2mqtt/{name}/set" in result.description
 
 
 @pytest.mark.anyio
@@ -230,8 +230,8 @@ async def test_a_peer_error_becomes_a_result_not_an_exception(
     """An actuator error must not abort the control cycle for every other zone."""
     _armed(session)
     mqtt = MqttStub(errors=ConnectionError("Broker weg"))
-    valve = await Zigbee2MqttVentil(session, mqtt, "zigbee2mqtt", "Ventil").switching(True)
-    assert valve.ausgefuehrt is False
+    valve = await Zigbee2MqttValve(session, mqtt, "zigbee2mqtt", "Ventil").switching(True)
+    assert valve.executed is False
     assert valve.errors is not None and "Broker weg" in valve.errors
 
     http = HttpStub(errors=TimeoutError("Cloud antwortet nicht"))
@@ -239,7 +239,7 @@ async def test_a_peer_error_becomes_a_result_not_an_exception(
         session, _settings(meross_email="k@example.invalid", meross_password="geheim"),
         "geraet-1", transport=http,
     ).switching(True)
-    assert meross.ausgefuehrt is False
+    assert meross.executed is False
     assert meross.errors is not None and "antwortet nicht" in meross.errors
 
 
@@ -251,10 +251,10 @@ async def test_a_rejected_publication_is_reported_as_an_error(
     count that as success, or the log would say 'switched' where nothing
     switched."""
     _armed(session)
-    result = await Zigbee2MqttVentil(
+    result = await Zigbee2MqttValve(
         session, _RejectingClient(), "zigbee2mqtt", "Ventil"
     ).switching(True)
-    assert result.ausgefuehrt is False
+    assert result.executed is False
     assert result.errors is not None and "abgewiesen" in result.errors
 
 
@@ -273,7 +273,7 @@ async def test_a_login_without_a_token_becomes_an_error(session: Session) -> Non
         session, _settings(meross_email="k@example.invalid", meross_password="geheim"),
         "geraet-1", transport=http,
     ).switching(True)
-    assert result.ausgefuehrt is False
+    assert result.executed is False
     assert result.errors is not None
     assert len(http.calls) == 1, "Nothing may follow a failed login"
 
@@ -287,8 +287,8 @@ async def test_an_armed_valve_actually_sends(session: Session) -> None:
     """
     _armed(session)
     mqtt = MqttStub()
-    result = await Zigbee2MqttVentil(session, mqtt, "zigbee2mqtt", "Ventil").switching(True)
-    assert result.ausgefuehrt is True
+    result = await Zigbee2MqttValve(session, mqtt, "zigbee2mqtt", "Ventil").switching(True)
+    assert result.executed is True
     assert mqtt.calls == [("zigbee2mqtt/Ventil/set", '{"state": "ON"}', True)]
 
 
@@ -303,7 +303,7 @@ async def test_an_unexpected_meross_response_becomes_an_error(session: Session) 
         session, _settings(meross_email="k@example.invalid", meross_password="geheim"),
         "geraet-1", transport=http,
     ).switching(True)
-    assert result.ausgefuehrt is False
+    assert result.executed is False
     assert result.errors is not None and "Token" in result.errors
 
 

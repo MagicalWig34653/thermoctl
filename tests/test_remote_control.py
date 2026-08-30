@@ -111,7 +111,7 @@ def test_after_the_boost_the_schedule_takes_over_by_itself(session: Session) -> 
     afterward = datetime(2026, 8, 31, 22, 30)
     # From 22:00 night applies anyway -- but the reason must be the schedule
     # again, not the override, or it would have outlived it.
-    assert "Zeitplan" in resolved_setpoint(session, zone, afterward).grund
+    assert "Zeitplan" in resolved_setpoint(session, zone, afterward).reason
 
 
 def test_boost_without_a_schedule_says_why(session: Session) -> None:

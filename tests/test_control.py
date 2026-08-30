@@ -23,7 +23,7 @@ from thermoctl.domain.control import (
     LIMITS,
     ControlError,
     arm,
-    check_zahl,
+    check_number,
 )
 
 ClientBuilder = Callable[[list[tuple[str, int | None]]], TestClient]
@@ -53,7 +53,7 @@ def _defaults(**overrides: str) -> dict[str, str]:
 
 def test_checking_a_number_accepts_the_comma() -> None:
     """On a German keyboard you type 0,5 -- that is not a mistake."""
-    assert check_zahl("default_hysteresis_k", "0,5") == Decimal("0.5")
+    assert check_number("default_hysteresis_k", "0,5") == Decimal("0.5")
 
 
 @pytest.mark.parametrize(
@@ -72,8 +72,8 @@ def test_unusable_defaults_are_rejected(field: str, input_value: str) -> None:
     """Zero seconds minimum on-time and zero Kelvin hysteresis are exactly the
     legacy system's defect: cycling at the setpoint on every tick."""
     with pytest.raises(ControlError) as errors:
-        check_zahl(field, input_value)
-    assert errors.value.feld == field
+        check_number(field, input_value)
+    assert errors.value.field == field
 
 
 def test_arming_requires_a_justification(session: Session) -> None:

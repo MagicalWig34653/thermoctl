@@ -39,6 +39,28 @@ ein Wächtertest in `tests/test_smoke_test.py`, der die Feldnamen aus dem *geren
 Formular zieht und nur Werte beisteuert — er wurde von beiden Seiten gegengeprüft: Er wird
 rot, wenn die Vorlage abweicht, und er wird rot, wenn die View abweicht.
 
+**Nachtrag, und eine Korrektur an dieser Datei:** Der Satz, der Code spreche
+Englisch, stimmte für Python nicht ganz. Eine Zählung über den Syntaxbaum fand noch
+43 deutsche Bezeichner mit 167 Vorkommen — darunter der Kern der Regellogik (`Lage`,
+`entscheiden`, `Entscheidung`, `soll_c`, `ist_c`, `heizt_gerade`) und das Ventil
+(`Zigbee2MqttVentil`, `beschreibung`, `ausgefuehrt`). Sie sind jetzt übersetzt, wieder
+über Tokens statt über Text: Ein Vergleich aller 3036 Zeichenkettenliterale unter
+`thermoctl/` vor und nach der Umstellung zeigt **null** Unterschiede.
+
+Drei Brüche, die die Umbenennung erzeugte, und wie sie gefunden wurden:
+
+- `anfrage` → `request` verdeckte in `actuators.py` das importierte `urllib.request` —
+  der Adapter hätte beim ersten echten Schaltbefehl mit `UnboundLocalError` abgebrochen.
+  Gefunden hat es Ruff (`F823`), nicht ein Test: Der Meross-Pfad läuft mangels
+  Zugangsdaten ohnehin nicht. Der Name heißt jetzt `http_request`; in `zones.py` war
+  dasselbe Wort nie eine Anfrage, sondern ein `select()` — dort `query`.
+- `rolle` → `role` traf in einem Test den gleichnamigen Import aus `tests/helpers.py`.
+- **Die Vorlagen sieht ein Python-Werkzeug nicht.** `Setpoint.grund` heißt jetzt
+  `reason`, `start.html` las weiter `setpoint.grund` — Jinja liefert für Unbekanntes
+  die leere Zeichenkette, die Startseite zeigte die Begründung des Sollwerts also
+  einfach nicht mehr an. Das fing ein Test. Wer künftig ein Feld eines Datenmodells
+  umbenennt, greppt die Vorlagen nach dem alten Attributnamen.
+
 Zehn der elf geprüften Seiten sind pixelgleich zu den Aufnahmen davor; die elfte
 unterscheidet sich in einem Satz, der eine Zeitspanne nennt.
 
