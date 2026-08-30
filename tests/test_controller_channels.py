@@ -48,7 +48,7 @@ def _assign(session: Session, zone_id: int, device_id: int, role: str) -> None:
     session.flush()
 
 
-def test_exposes_liefert_zugriff_bereich_und_auswahlwerte() -> None:
+def test_exposes_returns_access_range_and_enum_values() -> None:
     properties = properties_from_exposes(
         [
             {
@@ -77,7 +77,7 @@ def test_exposes_liefert_zugriff_bereich_und_auswahlwerte() -> None:
     assert properties[1].values == ("off", "heat", "auto")
 
 
-def test_schreibkanal_auf_aktor_wird_abgewiesen(session: Session) -> None:
+def test_a_write_channel_on_an_actuator_is_rejected(session: Session) -> None:
     _kinds(session)
     zone = create_zone(session, "aktorzone")
     device = create_device(session, "ventil")
@@ -101,7 +101,7 @@ class Recorder:
 
 
 @pytest.mark.anyio
-async def test_gleicher_wert_wird_nicht_zweimal_gesendet(session: Session) -> None:
+async def test_the_same_value_is_not_sent_twice(session: Session) -> None:
     _kinds(session)
     zone = create_zone(session, "wandzone")
     device = create_device(session, "wandregler")
@@ -132,7 +132,7 @@ def _csrf(client: TestClient) -> dict[str, str]:
     return {CSRF_HEADER: csrf_token(secret, get_settings().secret_key.get_secret_value())}
 
 
-def test_controller_seite_und_beide_formularendpunkte(client_als, session: Session) -> None:
+def test_the_controller_page_and_both_form_endpoints(client_als, session: Session) -> None:
     _kinds(session)
     zone = create_zone(session, "webzone")
     device = create_device(session, "wandgeraet")
@@ -163,20 +163,21 @@ def test_controller_seite_und_beide_formularendpunkte(client_als, session: Sessi
     assert response.status_code == 303
 
 
-def test_ein_geraet_das_auch_aktor_ist_bekommt_keinen_schreibkanal(session: Session) -> None:
-    """Ein Thermostat kann in einer Zone Aktor sein und in einer anderen Bediengeraet.
+def test_a_device_that_is_also_an_actuator_gets_no_write_channel(session: Session) -> None:
+    """A thermostat can be an actuator in one zone and a controller in another.
 
-    Es zeigt ja einen Sollwert an. Ein Schreibkanal auf sein `occupied_heating_setpoint`
-    waere dann als blosse Anzeige angemeldet und bewegte trotzdem ein Ventil -- mit
-    `switches=False` an beiden Riegeln des Trockenlaufs vorbei. Deshalb reicht es nicht,
-    dass das Geraet *irgendwo* Bediengeraet ist: Aktor darf es nirgends sein.
+    After all, it does display a setpoint. A write channel on its
+    `occupied_heating_setpoint` would then be registered as a mere display
+    and would still move a valve -- with `switches=False` slipping past both
+    of the dry run's bolts. That is why it is not enough for the device to be
+    a controller *somewhere*: it must be an actuator nowhere.
     """
     _kinds(session)
-    anzeigezone = create_zone(session, "anzeigezone")
-    ventilzone = create_zone(session, "ventilzone")
+    display_zone = create_zone(session, "anzeigezone")
+    valve_zone = create_zone(session, "ventilzone")
     device = create_device(session, "thermostat-mit-anzeige")
-    _assign(session, anzeigezone.id, device.id, "controller")
-    _assign(session, ventilzone.id, device.id, "actuator")
+    _assign(session, display_zone.id, device.id, "controller")
+    _assign(session, valve_zone.id, device.id, "actuator")
     _property(session, device.id)
 
     with pytest.raises(ControllerChannelError, match="nirgends Aktor"):
@@ -186,8 +187,8 @@ def test_ein_geraet_das_auch_aktor_ist_bekommt_keinen_schreibkanal(session: Sess
         )
 
 
-def test_ohne_die_aktorrolle_geht_derselbe_kanal(session: Session) -> None:
-    """Die Gegenprobe: Der Riegel darf nicht jedes Bediengeraet aussperren."""
+def test_without_the_actuator_role_the_same_channel_works(session: Session) -> None:
+    """The counter-check: the bolt must not lock out every controller."""
     _kinds(session)
     zone = create_zone(session, "reine-anzeigezone")
     device = create_device(session, "reines-bediengeraet")

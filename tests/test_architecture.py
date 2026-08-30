@@ -1,78 +1,80 @@
 import ast
 from pathlib import Path
 
-WURZEL = Path(__file__).resolve().parent.parent / "thermoctl"
+ROOT = Path(__file__).resolve().parent.parent / "thermoctl"
 FORBIDDEN_FOR_DOMAIN = ("thermoctl.web", "thermoctl.api", "fastapi")
 
 
-def _importe(datei: Path) -> set[str]:
-    baum = ast.parse(datei.read_text(encoding="utf-8"))
-    namen: set[str] = set()
-    for knoten in ast.walk(baum):
-        if isinstance(knoten, ast.Import):
-            namen.update(a.name for a in knoten.names)
-        elif isinstance(knoten, ast.ImportFrom) and knoten.module:
-            namen.add(knoten.module)
-    return namen
+def _imports(file: Path) -> set[str]:
+    tree = ast.parse(file.read_text(encoding="utf-8"))
+    names: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            names.update(a.name for a in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            names.add(node.module)
+    return names
 
 
-def test_domaene_kennt_keinen_adapter() -> None:
-    """Eine Regel wird einmal implementiert (Grundsatz 6).
+def test_the_domain_knows_no_adapter() -> None:
+    """A rule gets implemented once (principle 6).
 
-    Sobald die Domaene einen Adapter importiert, weicht diese Trennung schleichend auf —
-    deshalb steht sie hier als Test und nicht nur als Absicht in der Spezifikation.
+    As soon as the domain imports an adapter, this separation quietly erodes --
+    which is why this is a test and not just an intention in the specification.
     """
     violations = [
-        f"{datei.relative_to(WURZEL)} importiert {name}"
-        for datei in (WURZEL / "domain").rglob("*.py")
-        for name in _importe(datei)
+        f"{file.relative_to(ROOT)} imports {name}"
+        for file in (ROOT / "domain").rglob("*.py")
+        for name in _imports(file)
         if name.startswith(FORBIDDEN_FOR_DOMAIN)
     ]
     assert not violations, "\n".join(violations)
 
 
-def test_mcp_kennt_keinen_anderen_adapter() -> None:
-    """Die drei Adapter bleiben gleichberechtigte Nachbarn."""
-    mcp_path = WURZEL / "mcp"
+def test_mcp_knows_no_other_adapter() -> None:
+    """The three adapters remain equal neighbors."""
+    mcp_path = ROOT / "mcp"
     violations = [
-        f"{datei.relative_to(WURZEL)} importiert {name}"
-        for datei in mcp_path.rglob("*.py")
-        for name in _importe(datei)
+        f"{file.relative_to(ROOT)} imports {name}"
+        for file in mcp_path.rglob("*.py")
+        for name in _imports(file)
         if name.startswith(("thermoctl.web", "thermoctl.api"))
     ]
     assert not violations, "\n".join(violations)
 
 
-def test_kein_modell_nutzt_verbotene_spaltentypen() -> None:
-    """Kein ENUM, kein SET, keine JSON-Spalte — SQLite kann sie nicht."""
+def test_no_model_uses_forbidden_column_types() -> None:
+    """No ENUM, no SET, no JSON column -- SQLite cannot handle them."""
     violations = [
-        f"{datei.relative_to(WURZEL)}: {wort}"
-        for datei in (WURZEL / "db" / "models").rglob("*.py")
-        for wort in ("Enum(", "JSON(", "SET(")
-        if wort in datei.read_text(encoding="utf-8")
+        f"{file.relative_to(ROOT)}: {word}"
+        for file in (ROOT / "db" / "models").rglob("*.py")
+        for word in ("Enum(", "JSON(", "SET(")
+        if word in file.read_text(encoding="utf-8")
     ]
     assert not violations, "\n".join(violations)
 
 
-def test_keine_zweite_vorlagen_umgebung() -> None:
-    """Alle Ansichten benutzen `thermoctl.web.templates`, nicht ihre eigene.
+def test_no_second_template_environment() -> None:
+    """All views use `thermoctl.web.templates`, not one of their own.
 
-    Der Anlass ist ein echter Fehler: `start_views.py` baute eine eigene
-    `Jinja2Templates`-Instanz mit dem **relativen** Pfad `thermoctl/web/templates`. Das
-    ging oertlich gut, weil die Tests im Projektverzeichnis laufen — im Container liegt
-    das Paket in `site-packages` und das Arbeitsverzeichnis ist `/app`. Dort haette die
-    Startseite mit einem Fehler geantwortet, und kein Test haette es gemerkt.
+    The reason is a real bug: `start_views.py` built its own `Jinja2Templates`
+    instance with the **relative** path `thermoctl/web/templates`. That worked
+    locally, because the tests run inside the project directory -- in the
+    container the package lives in `site-packages` and the working directory
+    is `/app`. There, the home page would have responded with an error, and
+    no test would have noticed.
 
-    Zweitens sieht eine eigene Umgebung die gemeinsamen Filter nicht. Genau daran ist es
-    schliesslich aufgefallen: Ein neuer Filter wirkte auf jeder Seite ausser dieser.
+    Second, an environment of its own does not see the shared filters. That is
+    ultimately how it was noticed: a new filter took effect on every page
+    except this one.
     """
     violations = [
-        str(datei.relative_to(WURZEL))
-        for datei in (WURZEL / "web").rglob("*.py")
-        if "Jinja2Templates(" in datei.read_text(encoding="utf-8")
-        and datei.name != "__init__.py"
+        str(file.relative_to(ROOT))
+        for file in (ROOT / "web").rglob("*.py")
+        if "Jinja2Templates(" in file.read_text(encoding="utf-8")
+        and file.name != "__init__.py"
     ]
     assert not violations, (
-        "Eigene Vorlagen-Umgebung statt der gemeinsamen aus thermoctl.web: "
+        "Own template environment instead of the shared one from thermoctl.web: "
         + ", ".join(violations)
     )

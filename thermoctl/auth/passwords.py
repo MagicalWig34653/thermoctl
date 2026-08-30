@@ -19,7 +19,7 @@ def hash_password(plaintext: str) -> str:
 
 
 def verify_password(plaintext: str, hash_value: str) -> bool:
-    """Prueft ein Passwort. Gibt False zurueck statt zu werfen — auch bei kaputtem Hash."""
+    """Verifies a password. Returns False instead of raising — even for a broken hash."""
     try:
         return _hasher.verify(hash_value, plaintext)
     except (VerifyMismatchError, InvalidHashError, ValueError):

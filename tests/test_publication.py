@@ -24,16 +24,16 @@ from thermoctl.integrations.mqtt.publication import (
 
 
 def _zone_name() -> str:
-    daten = json.loads(Path("tests/daten/anlage-beispiele.json").read_text())
-    return next(name for name in daten["geraete"] if name == "Über Küche")
+    data = json.loads(Path("tests/daten/anlage-beispiele.json").read_text())
+    return next(name for name in data["geraete"] if name == "Über Küche")
 
 
 def _another_zone_name() -> str:
-    daten = json.loads(Path("tests/daten/anlage-beispiele.json").read_text())
-    return next(name for name in daten["geraete"] if name != _zone_name())
+    data = json.loads(Path("tests/daten/anlage-beispiele.json").read_text())
+    return next(name for name in data["geraete"] if name != _zone_name())
 
 
-def test_zustands_topics_sind_ohne_get_suffix() -> None:
+def test_state_topics_have_no_get_suffix() -> None:
     assert states_topics(17, "haus_nord") == StateTopics(
         current_temperature="haus_nord/zones/17/state/current_temperature",
         setpoint="haus_nord/zones/17/state/setpoint",
@@ -45,7 +45,7 @@ def test_zustands_topics_sind_ohne_get_suffix() -> None:
     )
 
 
-def test_befehls_topics_liegen_im_eigenen_baum() -> None:
+def test_command_topics_live_in_their_own_tree() -> None:
     assert command_topics(17, "haus_nord") == CommandTopics(
         setpoint="haus_nord/zones/17/command/setpoint",
         operating_mode="haus_nord/zones/17/command/operating_mode",
@@ -53,17 +53,17 @@ def test_befehls_topics_liegen_im_eigenen_baum() -> None:
     )
 
 
-def test_verfuegbarkeit_gilt_fuer_den_dienst() -> None:
+def test_availability_applies_to_the_service() -> None:
     assert availability_topic("haus_nord") == "haus_nord/availability"
 
 
-def test_discovery_config_topic_ist_eindeutig_je_instanz_und_zone() -> None:
+def test_discovery_config_topic_is_unique_per_instance_and_zone() -> None:
     assert discovery_config_topic(17, "Haus/Nord") == (
         "homeassistant/climate/haus_nord_zone_17/config"
     )
 
 
-def test_zonenname_mit_umlaut_geraet_nicht_ins_topic() -> None:
+def test_a_zone_name_with_an_umlaut_does_not_end_up_in_the_topic() -> None:
     name = _zone_name()
     assert name == "Über Küche"
     topics = alle_topics(17, "haus_nord")
@@ -71,91 +71,91 @@ def test_zonenname_mit_umlaut_geraet_nicht_ins_topic() -> None:
     assert all(not ({"+", "#", "\0"} & set(topic)) for topic in topics)
 
 
-def test_zustandsabonnement_trifft_mit_mqtt_wildcards_keinen_befehl() -> None:
-    abonnement = "haus_nord/zones/+/state/#"
+def test_the_state_subscription_with_mqtt_wildcards_matches_no_command() -> None:
+    subscription = "haus_nord/zones/+/state/#"
     state = states_topics(17, "haus_nord").__dict__.values()
     command = command_topics(17, "haus_nord").__dict__.values()
-    assert all(Topic(topic).matches(abonnement) for topic in state)
-    assert not any(Topic(topic).matches(abonnement) for topic in command)
+    assert all(Topic(topic).matches(subscription) for topic in state)
+    assert not any(Topic(topic).matches(subscription) for topic in command)
 
 
-def test_discovery_nutzlast_ist_gueltiges_json_und_verweist_auf_topics() -> None:
-    daten: dict[str, Any] = json.loads(
+def test_the_discovery_payload_is_valid_json_and_references_the_topics() -> None:
+    data: dict[str, Any] = json.loads(
         discovery_payload(17, _zone_name(), temp_step=Decimal("0.25"), praefix="haus_nord")
     )
     state = states_topics(17, "haus_nord")
     command = command_topics(17, "haus_nord")
 
-    assert daten["unique_id"] == "haus_nord_zone_17"
-    # Ausdruecklich gesetzt: Ohne `object_id` leitet Home Assistant die
-    # Entitaetskennung aus dem Namen ab -- und sie haengt dann an der Schreibweise
-    # des Zonennamens von damals.
-    assert daten["object_id"] == "haus_nord_zone_17"
-    # `name: null` heisst in Home Assistant "heisse wie dein Geraet". Das Geraet ist
-    # seit der Aufteilung je Zone die Zone selbst, also steht der Name dort.
-    assert daten["name"] is None
-    assert daten["device"]["name"] == "Über Küche"
-    assert daten["availability_topic"] == "haus_nord/availability"
-    assert daten["current_temperature_topic"] == state.current_temperature
-    assert daten["temperature_state_topic"] == state.setpoint
-    assert daten["mode_state_topic"] == state.operating_mode
-    assert daten["action_topic"] == state.wuerde_heizen
-    assert daten["temperature_command_topic"] == command.setpoint
-    assert daten["mode_command_topic"] == command.operating_mode
-    # Die Grenzen kommen aus der Domaene: Home Assistant zeigt damit denselben Bereich
-    # an, den der Dienst auch annimmt. Ein abgeschriebenes Paar Zahlen waere beim
-    # naechsten Verschieben zurueckgeblieben -- und die Karte haette einen Wert
-    # angeboten, den der Server ablehnt.
+    assert data["unique_id"] == "haus_nord_zone_17"
+    # Explicitly set: without `object_id`, Home Assistant derives the entity
+    # id from the name -- and it would then be pinned to however the zone
+    # name happened to be spelled at the time.
+    assert data["object_id"] == "haus_nord_zone_17"
+    # `name: null` means "use your device's name" in Home Assistant. Since the
+    # per-zone split, the device *is* the zone, so the name goes there.
+    assert data["name"] is None
+    assert data["device"]["name"] == "Über Küche"
+    assert data["availability_topic"] == "haus_nord/availability"
+    assert data["current_temperature_topic"] == state.current_temperature
+    assert data["temperature_state_topic"] == state.setpoint
+    assert data["mode_state_topic"] == state.operating_mode
+    assert data["action_topic"] == state.wuerde_heizen
+    assert data["temperature_command_topic"] == command.setpoint
+    assert data["mode_command_topic"] == command.operating_mode
+    # The bounds come from the domain: this way Home Assistant shows the same
+    # range the service itself accepts. A copied-down pair of numbers would
+    # have fallen behind at the next change -- and the card would have
+    # offered a value the server rejects.
     from thermoctl.domain.modes import MAXIMUM_TEMPERATURE_C, MINIMUM_TEMPERATURE_C
 
-    assert (daten["min_temp"], daten["max_temp"], daten["temp_step"]) == (
+    assert (data["min_temp"], data["max_temp"], data["temp_step"]) == (
         float(MINIMUM_TEMPERATURE_C),
         float(MAXIMUM_TEMPERATURE_C),
         0.25,
     )
 
 
-def test_je_zone_ein_geraet_unter_dem_dienst() -> None:
-    """Vorher hingen alle Entitaeten an einem einzigen Geraet "thermoctl".
+def test_one_device_per_zone_under_the_service() -> None:
+    """Previously every entity hung off a single device "thermoctl".
 
-    Bei einer Handvoll Zonen mit je einem Dutzend Reglern ist das eine unsortierte
-    Liste. `via_device` haelt sie trotzdem zusammen: In Home Assistant stehen die
-    Zonen als eigene Geraete unter dem Dienst.
+    With a handful of zones with a dozen controllers each, that is an
+    unsorted list. `via_device` still keeps them together: in Home Assistant
+    the zones appear as their own devices under the service.
     """
     first = json.loads(discovery_payload(17, _zone_name(), praefix="haus_nord"))
-    zweite = json.loads(discovery_payload(23, _another_zone_name(), praefix="haus_nord"))
+    second = json.loads(discovery_payload(23, _another_zone_name(), praefix="haus_nord"))
     assert first["device"] == {
         "identifiers": ["thermoctl:haus_nord:zone:17"],
         "manufacturer": "thermoctl",
         "name": _zone_name(),
         "via_device": "thermoctl:haus_nord",
     }
-    assert first["device"]["identifiers"] != zweite["device"]["identifiers"]
-    assert first["device"]["via_device"] == zweite["device"]["via_device"]
+    assert first["device"]["identifiers"] != second["device"]["identifiers"]
+    assert first["device"]["via_device"] == second["device"]["via_device"]
 
 
-def test_abmeldung_nutzt_dasselbe_config_topic_und_leere_nutzlast() -> None:
-    login = zone_discovery(17, _zone_name(), praefix="haus_nord")
-    assert login == DiscoveryMessage(
-        "homeassistant/climate/haus_nord_zone_17/config", login.payload
+def test_removal_uses_the_same_config_topic_and_an_empty_payload() -> None:
+    message = zone_discovery(17, _zone_name(), praefix="haus_nord")
+    assert message == DiscoveryMessage(
+        "homeassistant/climate/haus_nord_zone_17/config", message.payload
     )
-    assert discovery_removal(17, "haus_nord") == DiscoveryMessage(login.topic, "")
+    assert discovery_removal(17, "haus_nord") == DiscoveryMessage(message.topic, "")
 
 
-def test_dieses_modul_veroeffentlicht_nichts() -> None:
-    quelltext = inspect.getsource(publication)
-    assert "publish" not in quelltext
-    assert "aiomqtt" not in quelltext
-    assert "integrations.mqtt.client" not in quelltext
+def test_this_module_publishes_nothing() -> None:
+    source_code = inspect.getsource(publication)
+    assert "publish" not in source_code
+    assert "aiomqtt" not in source_code
+    assert "integrations.mqtt.client" not in source_code
 
 
 @pytest.mark.parametrize("praefix", ["", "haus/+", "haus/#", "haus\0nord"])
-def test_ungueltiges_praefix_wird_abgewiesen(praefix: str) -> None:
+def test_an_invalid_prefix_is_rejected(praefix: str) -> None:
     with pytest.raises(ValueError, match="MQTT-Praefix"):
         availability_topic(praefix)
 
 
-def test_ungueltige_discovery_eingaben_werden_abgewiesen() -> None:
+def test_invalid_discovery_inputs_are_rejected() -> None:
     with pytest.raises(ValueError, match="Zonenkennung"):
         states_topics(0)
     with pytest.raises(ValueError, match="Discovery-Kennung"):
@@ -167,7 +167,7 @@ def test_ungueltige_discovery_eingaben_werden_abgewiesen() -> None:
 
 
 @pytest.mark.parametrize(
-    ("aufruf", "argumente"),
+    ("call", "arguments"),
     [
         (publication.mode_topics, (17, 0)),
         (publication.parameter_topics, (17, "Hysterese")),
@@ -175,15 +175,15 @@ def test_ungueltige_discovery_eingaben_werden_abgewiesen() -> None:
         (publication.timestamp_discovery, (17, "Bad", "irgendwas", "Irgendwas")),
     ],
 )
-def test_unterschluessel_kommen_nicht_ungeprueft_ins_topic(
-    aufruf: Any, argumente: tuple[Any, ...]
+def test_subkeys_do_not_reach_the_topic_unchecked(
+    call: Any, arguments: tuple[Any, ...]
 ) -> None:
-    """Ein Name aus einer Schleife ist trotzdem eine Eingabe.
+    """A name from a loop is still an input.
 
-    Alle heutigen Aufrufer reichen Konstanten durch. Genau deshalb steht die Pruefung
-    hier: Sie kostet nichts und faengt den Tag ab, an dem ein Name aus der Datenbank
-    kommt -- ein Schraegstrich darin oeffnete sonst eine Ebene im Topic-Baum, die
-    niemand vorgesehen hat.
+    Every caller today passes through constants. That is exactly why the
+    check lives here: it costs nothing and catches the day a name comes from
+    the database -- a slash in it would otherwise open a level in the topic
+    tree that nobody intended.
     """
     with pytest.raises(ValueError):
-        aufruf(*argumente)
+        call(*arguments)

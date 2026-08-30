@@ -1,9 +1,9 @@
-"""Die Startpruefung des Datenbankschemas.
+"""The startup check of the database schema.
 
-Anlass ist ein echter Fehlstart: Nach dem Verschieben der Datenbankdatei startete der
-Dienst gegen eine leere Datei und scheiterte mit einem sechzigzeiligen Traceback, dessen
-Kern `no such table: user` war -- eine Meldung, die den fehlenden Migrationslauf weder
-benennt noch den Befehl nennt, der hilft.
+Reason: a real failed start. After the database file was moved, the service
+started against an empty file and failed with a sixty-line traceback whose
+core was `no such table: user` -- a message that names neither the missing
+migration run nor the command that would fix it.
 """
 
 import logging
@@ -20,60 +20,60 @@ from thermoctl.db.schema_state import (
 )
 
 
-def _leere_datenbank(tmp_path, name: str = "leer.db") -> Engine:
+def _empty_database(tmp_path, name: str = "leer.db") -> Engine:
     return create_engine(f"sqlite:///{tmp_path / name}")
 
 
-def _gestempelte_datenbank(tmp_path, revision: str, name: str = "gestempelt.db") -> Engine:
+def _stamped_database(tmp_path, revision: str, name: str = "gestempelt.db") -> Engine:
     engine = create_engine(f"sqlite:///{tmp_path / name}")
     Base.metadata.create_all(engine)
-    with engine.begin() as verbindung:
-        verbindung.execute(text("CREATE TABLE alembic_version (version_num VARCHAR(32))"))
-        verbindung.execute(
+    with engine.begin() as connection:
+        connection.execute(text("CREATE TABLE alembic_version (version_num VARCHAR(32))"))
+        connection.execute(
             text("INSERT INTO alembic_version (version_num) VALUES (:r)"), {"r": revision}
         )
     return engine
 
 
-def test_leere_datenbank_nennt_den_befehl(tmp_path) -> None:
-    """Die Meldung muss handlungsfaehig machen: Was fehlt, und was tut man dagegen."""
+def test_an_empty_database_names_the_command(tmp_path) -> None:
+    """The message must be actionable: what is missing, and what to do about it."""
     with pytest.raises(SchemaPasstNicht) as errors:
-        check_schema(_leere_datenbank(tmp_path))
+        check_schema(_empty_database(tmp_path))
     assert COMMAND in str(errors.value)
     assert "kein Schema" in str(errors.value)
 
 
-def test_veralteter_stand_nennt_beide_revisionen(tmp_path, monkeypatch) -> None:
-    """Der unangenehmere Fall: Das Schema ist da, aber alt. Ohne Pruefung faellt das
-    erst spaeter auf, an einer beliebigen Spalte, die es noch nicht gibt."""
+def test_an_outdated_state_names_both_revisions(tmp_path, monkeypatch) -> None:
+    """The less pleasant case: the schema exists, but is old. Without this check
+    that only surfaces later, at some arbitrary column that does not exist yet."""
     monkeypatch.setattr("thermoctl.db.schema_state._migration_head", lambda: "neue_revision")
     with pytest.raises(SchemaPasstNicht) as errors:
-        check_schema(_gestempelte_datenbank(tmp_path, "alte_revision"))
+        check_schema(_stamped_database(tmp_path, "alte_revision"))
     notice = str(errors.value)
     assert "alte_revision" in notice
     assert "neue_revision" in notice
     assert COMMAND in notice
 
 
-def test_aktueller_stand_laesst_den_start_durch(tmp_path, monkeypatch) -> None:
-    """Gegenprobe zu den beiden Faellen oben. Ohne sie wuerden sie auch von einer
-    Funktion erfuellt, die grundsaetzlich abbricht."""
+def test_a_current_state_lets_the_start_through(tmp_path, monkeypatch) -> None:
+    """Counter-check to the two cases above. Without it, they would also be
+    satisfied by a function that always aborts."""
     monkeypatch.setattr("thermoctl.db.schema_state._migration_head", lambda: "kopf")
-    check_schema(_gestempelte_datenbank(tmp_path, "kopf"))
+    check_schema(_stamped_database(tmp_path, "kopf"))
 
 
-def test_ohne_ermittelbaren_kopf_kein_fehlalarm(tmp_path, monkeypatch) -> None:
-    """Wer thermoctl ohne das Migrationsverzeichnis betreibt, soll starten koennen --
-    lieber eine Pruefung weniger als eine, die im falschen Moment blockiert."""
+def test_without_a_determinable_head_there_is_no_false_alarm(tmp_path, monkeypatch) -> None:
+    """Anyone running thermoctl without the migrations directory should still be
+    able to start -- better one check fewer than one that blocks at the wrong moment."""
     monkeypatch.setattr("thermoctl.db.schema_state._migration_head", lambda: None)
-    check_schema(_gestempelte_datenbank(tmp_path, "irgendeine"))
+    check_schema(_stamped_database(tmp_path, "irgendeine"))
 
 
-def test_schema_ohne_stempel_ist_kein_startgrund(
+def test_schema_without_a_stamp_is_not_a_reason_to_refuse_starting(
     tmp_path, caplog: pytest.LogCaptureFixture
 ) -> None:
-    """`Base.metadata.create_all()` hinterlaesst keinen Alembic-Stempel. Genau so baut
-    die Testsuite ihr Schema; ein Abbruch daran wuerde den halben Lauf lahmlegen."""
+    """`Base.metadata.create_all()` leaves behind no Alembic stamp. That is exactly
+    how the test suite builds its schema; aborting on that would cripple half the run."""
     engine = create_engine(f"sqlite:///{tmp_path / 'ohne_stempel.db'}")
     Base.metadata.create_all(engine)
     with caplog.at_level(logging.WARNING):
@@ -81,13 +81,13 @@ def test_schema_ohne_stempel_ist_kein_startgrund(
     assert "nicht ueber Alembic" in caplog.text
 
 
-def test_stand_der_datenbank_meldet_leere_datei_als_unbekannt(tmp_path) -> None:
-    assert database_state(_leere_datenbank(tmp_path, "blank.db")) is None
+def test_database_state_reports_an_empty_file_as_unknown(tmp_path) -> None:
+    assert database_state(_empty_database(tmp_path, "blank.db")) is None
 
 
-def test_kopf_der_migrationen_findet_die_echte_revision() -> None:
-    """Kein Attrappen-Test: Er liest das echte Migrationsverzeichnis und belegt damit,
-    dass der Vergleich im Betrieb ueberhaupt eine Grundlage hat."""
+def test_the_migration_head_finds_the_real_revision() -> None:
+    """Not a stub test: it reads the actual migrations directory, proving the
+    comparison has a real basis in operation."""
     from alembic.config import Config
     from alembic.script import ScriptDirectory
 

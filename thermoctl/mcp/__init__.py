@@ -1,1 +1,1 @@
-"""MCP-Adapter fuer thermoctl."""
+"""MCP adapter for thermoctl."""

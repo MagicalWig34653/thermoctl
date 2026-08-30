@@ -15,11 +15,11 @@ from thermoctl.domain.principal import Principal
 
 
 class UnknownOperatingMode(Exception):
-    """Die verlangte Betriebsart gibt es nicht."""
+    """The requested operating mode does not exist."""
 
 
 class ZonennameVergeben(Exception):
-    """Der technische Zonenname ist bereits vergeben."""
+    """The technical zone name is already taken."""
 
 
 @dataclass(frozen=True)
@@ -49,7 +49,7 @@ def create_zone(
     temperature_source_device_id: int | None,
     source: str = "web",
 ) -> Zone:
-    """Legt Zone und Audit-Eintrag atomar an, auch bei konkurrierendem Namen."""
+    """Creates the zone and its audit entry atomically, even under a name collision."""
     if _name_taken(session, name):
         raise ZonennameVergeben
     zone = Zone(
@@ -91,7 +91,7 @@ def update_zone(
     temperature_source_device_id: int | None,
     source: str = "web",
 ) -> None:
-    """Aendert Zone und Audit-Eintrag atomar, auch bei konkurrierendem Namen."""
+    """Changes the zone and its audit entry atomically, even under a name collision."""
     if _name_taken(session, name, zone.id):
         raise ZonennameVergeben
     try:
@@ -134,7 +134,7 @@ def zonedependencies(session: Session, zone_id: int) -> ZoneDependencies:
 def delete_zone(
     session: Session, zone: Zone, principal: Principal, *, source: str = "web"
 ) -> None:
-    """Loescht eine Zone; der Audit-Eintrag ueberdauert ihre Kaskaden."""
+    """Deletes a zone; the audit entry outlives its cascades."""
     zone_id = zone.id
     name = zone.name
     session.delete(zone)
@@ -159,12 +159,12 @@ def set_operating_mode(
     akteur_id: int | None,
     source: str = "web",
 ) -> bool:
-    """Setzt die Betriebsart einer Zone. Gibt zurueck, ob sich etwas geaendert hat.
+    """Sets a zone's operating mode. Returns whether anything actually changed.
 
-    Eigene Funktion neben `zone_aendern`, das alle Felder auf einmal nimmt: Ein Befehl von
-    aussen -- aus Home Assistant etwa -- kennt nur die Betriebsart und wuerde mit
-    `zone_aendern` alles andere mit den Werten ueberschreiben, die der Aufrufer gerade
-    zufaellig zur Hand hat.
+    Its own function next to `zone_aendern`, which takes all fields at once: a command
+    from the outside -- from Home Assistant, say -- knows only the operating mode and
+    would use `zone_aendern` to overwrite everything else with whatever values the
+    caller happens to have on hand.
     """
     kind = session.scalar(select(OperatingMode).where(OperatingMode.code == code))
     if kind is None:
@@ -172,12 +172,12 @@ def set_operating_mode(
     if zone.operating_mode_id == kind.id:
         return False
     vorher = zone.operating_mode.label
-    # Die Beziehung setzen, nicht den Fremdschluessel: Wer nur `operating_mode_id`
-    # umschreibt, laesst ein bereits geladenes `zone.operating_mode` unveraendert
-    # stehen -- SQLAlchemy laedt es erst nach dem naechsten Commit neu. Der Dienst
-    # meldet den neuen Zustand aber sofort nach dem Befehl an Home Assistant, also
-    # noch vor dem Commit: Dort kam die alte Betriebsart an, und es sah aus, als
-    # liesse sie sich nicht umstellen.
+    # Set the relationship, not the foreign key: whoever only rewrites
+    # `operating_mode_id` leaves an already loaded `zone.operating_mode` unchanged --
+    # SQLAlchemy only reloads it after the next commit. But the service reports the
+    # new state to Home Assistant right after the command, i.e. still before the
+    # commit: the old operating mode arrived there, and it looked like it could not
+    # be changed.
     zone.operating_mode = kind
     session.flush()
     audit.record(

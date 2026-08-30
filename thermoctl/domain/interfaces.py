@@ -1,18 +1,18 @@
-"""Was von aussen an diese Anlage angebunden ist -- und ob es wirklich läuft.
+"""What is connected to this plant from the outside -- and whether it is really running.
 
-Der Dienst spricht mit sechs Gegenstellen, und bis hierher musste man in `.env` nachsehen,
-um zu wissen, welche davon eingerichtet sind. Zwei Fragen beantwortet keine `.env`:
-ob eine Einrichtung auch *funktioniert*, und woher ein Wert eigentlich kommt.
+The service talks to six external endpoints, and up to now you had to check `.env` to
+know which of them are configured. No `.env` answers two questions: whether a
+configuration actually *works*, and where a value actually comes from.
 
-**Warum es hier keine Schalter gibt.** Jede dieser Einstellungen wird beim Start aus der
-Umgebung gelesen; die MQTT-Verbindung etwa wird im Lebenszyklus genau einmal aufgebaut. Ein
-Schalter in der Oberflaeche wuerde also erst nach einem Neustart wirken -- und ein Schalter,
-der aussieht, als haette er gewirkt, ist schlimmer als keiner. Die Seite sagt stattdessen,
-welche Variable zu setzen ist. Was sich zur Laufzeit wirklich umlegen laesst, steht unter
-Betrieb und Einstellungen und ist von hier verlinkt.
+**Why there are no switches here.** Each of these settings is read from the environment
+at startup; the MQTT connection, for instance, is established exactly once during the
+service's lifecycle. A switch in the interface would therefore only take effect after a
+restart -- and a switch that looks like it worked is worse than no switch at all. The
+page instead states which variable to set. Whatever can genuinely be flipped at runtime
+lives under Operation and Settings, and is linked from here.
 
-**Geheimnisse stehen nie hier.** Die Seite zeigt, *ob* ein Passwort oder Token gesetzt ist,
-nie welches. Grundsatz 2.
+**Secrets never appear here.** The page shows *whether* a password or token is set,
+never which one. Principle 2.
 """
 
 from dataclasses import dataclass, field
@@ -26,7 +26,7 @@ from thermoctl.db.models.credential import ApiToken
 
 @dataclass(frozen=True)
 class Detail:
-    """Ein einzelner Wert einer Schnittstelle, samt Herkunft."""
+    """A single value of an interface, together with its origin."""
 
     name: str
     value: str
@@ -47,14 +47,14 @@ class Interface:
 
 
 def _ja_nein(gesetzt: bool) -> str:
-    """Fuer Geheimnisse: ob etwas gesetzt ist, nie was."""
+    """For secrets: whether something is set, never what."""
     return "hinterlegt" if gesetzt else "nicht hinterlegt"
 
 
 def uebersicht(
     session: Session, settings: Settings, bridge_reachable: bool | None
 ) -> list[Interface]:
-    """Der Zustand aller Gegenstellen, in der Reihenfolge, in der man sie einrichtet."""
+    """The state of all endpoints, in the order in which they get configured."""
     default = Settings.model_fields
 
     def source(feldname: str, jetziger: object) -> str:
@@ -190,7 +190,7 @@ def uebersicht(
         )
     )
 
-    # --- Benachrichtigungen --------------------------------------------------
+    # --- Notifications ---------------------------------------------------------
     hat_webhook = settings.notify_webhook is not None
     items.append(
         Interface(

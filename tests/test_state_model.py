@@ -6,7 +6,7 @@ from thermoctl.db.models.state import ShadowDecision, ZoneState
 from thermoctl.db.models.zone import Zone
 
 
-def test_zonenzustand_verschwindet_mit_der_zone(session: Session) -> None:
+def test_zone_state_disappears_with_the_zone(session: Session) -> None:
     zone = create_zone(session, "zustand-kaskade")
     create_zone_state(session, zone)
     session.execute(delete(Zone).where(Zone.id == zone.id))
@@ -14,12 +14,12 @@ def test_zonenzustand_verschwindet_mit_der_zone(session: Session) -> None:
     assert session.query(ZoneState).count() == 0
 
 
-def test_schattenprotokoll_folgt_der_zone_beim_loeschen(session: Session) -> None:
-    """Sonst laesst sich eine Zone nicht mehr loeschen, sobald ein Schattenlauf lief.
+def test_shadow_log_follows_the_zone_on_deletion(session: Session) -> None:
+    """Otherwise a zone could no longer be deleted once a shadow run had happened.
 
-    Aufgefallen beim Bau der Zonenverwaltung: `shadow_decision.zone_id` war der einzige
-    Zonenbezug ohne CASCADE. Dass die Zone geloescht wurde, steht im Audit-Protokoll —
-    das ist die Aufzeichnung, die ueberdauern soll, und sie haengt nicht an der Zone.
+    Found while building zone administration: `shadow_decision.zone_id` was the only
+    zone reference without CASCADE. The fact that the zone was deleted is recorded in
+    the audit log — that record is meant to outlive the zone, and it does not hang off it.
     """
     zone = create_zone(session, "zone-mit-protokoll")
     create_shadow_decision(session, zone)

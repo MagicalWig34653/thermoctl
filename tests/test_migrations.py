@@ -6,29 +6,31 @@ import pytest
 from sqlalchemy import Engine, create_engine, text
 
 
-def _alembic(url: str, *argumente: str) -> subprocess.CompletedProcess[str]:
-    """Ruft Alembic als Unterprozess, damit echte Migrationslaeufe geprueft werden.
+def _alembic(url: str, *arguments: str) -> subprocess.CompletedProcess[str]:
+    """Calls Alembic as a subprocess so real migration runs are exercised.
 
-    Aufruf ueber ``sys.executable -m alembic`` und nicht ueber das Skript ``alembic``:
-    Nur so liegt das Projektverzeichnis im Modulpfad des Unterprozesses. Beim
-    Skriptaufruf beginnt der Modulpfad in ``.venv/bin``, und das Paket ``thermoctl``
-    ist dann nur ueber die ``.pth`` des editierbaren Installs auffindbar — die
-    unter macOS das Flag ``hidden`` tragen kann und dann beim Start uebersprungen
-    wird. Der Umweg ueber ``-m`` macht den Test unabhaengig davon, wie das venv
-    eingerichtet wurde.
+    Invoked via ``sys.executable -m alembic`` rather than the ``alembic``
+    script: only that way does the project directory end up on the
+    subprocess's module path. With the script invocation, the module path
+    starts at ``.venv/bin``, and the ``thermoctl`` package is then only
+    discoverable through the editable install's ``.pth`` file -- which on
+    macOS can carry the ``hidden`` flag and then gets skipped at startup.
+    The detour through ``-m`` makes the test independent of how the venv
+    was set up.
 
-    Laeuft gegen ``url`` statt gegen ``TEST_DATABASE_URL``: Die Migrationstests brauchen
-    eine eigene Datenbank, getrennt von der Fixture ``engine`` — sonst legt Alembic
-    Tabellen an, die ``Base.metadata.create_all()`` schon erzeugt hat.
+    Runs against ``url`` instead of ``TEST_DATABASE_URL``: the migration
+    tests need their own database, separate from the ``engine`` fixture --
+    otherwise Alembic would create tables that ``Base.metadata.create_all()``
+    has already created.
     """
-    umgebung = {
+    environment = {
         **os.environ,
         "THERMOCTL_DATABASE_URL": url,
         "THERMOCTL_SECRET_KEY": "t" * 32,
     }
     return subprocess.run(
-        [sys.executable, "-m", "alembic", *argumente],
-        env=umgebung,
+        [sys.executable, "-m", "alembic", *arguments],
+        env=environment,
         capture_output=True,
         text=True,
         check=False,
@@ -36,54 +38,54 @@ def _alembic(url: str, *argumente: str) -> subprocess.CompletedProcess[str]:
 
 
 @pytest.mark.migration
-def test_migration_vorwaerts_und_rueckwaerts(migrations_database_url: str) -> None:
-    hoch = _alembic(migrations_database_url, "upgrade", "head")
-    assert hoch.returncode == 0, hoch.stderr
-    runter = _alembic(migrations_database_url, "downgrade", "base")
-    assert runter.returncode == 0, runter.stderr
-    wieder_hoch = _alembic(migrations_database_url, "upgrade", "head")
-    assert wieder_hoch.returncode == 0, wieder_hoch.stderr
+def test_migration_forward_and_backward(migrations_database_url: str) -> None:
+    up = _alembic(migrations_database_url, "upgrade", "head")
+    assert up.returncode == 0, up.stderr
+    down = _alembic(migrations_database_url, "downgrade", "base")
+    assert down.returncode == 0, down.stderr
+    up_again = _alembic(migrations_database_url, "upgrade", "head")
+    assert up_again.returncode == 0, up_again.stderr
 
 
 @pytest.mark.migration
-def test_modelle_und_migrationen_stimmen_ueberein(migrations_database_url: str) -> None:
-    """`alembic check` meldet, wenn ein Modell ohne Migration geaendert wurde."""
-    vorbereitung = _alembic(migrations_database_url, "upgrade", "head")
-    assert vorbereitung.returncode == 0, vorbereitung.stderr
+def test_models_and_migrations_are_in_sync(migrations_database_url: str) -> None:
+    """`alembic check` reports when a model was changed without a migration."""
+    prep = _alembic(migrations_database_url, "upgrade", "head")
+    assert prep.returncode == 0, prep.stderr
     result = _alembic(migrations_database_url, "check")
     assert result.returncode == 0, result.stdout + result.stderr
 
 
-def test_fremdschluessel_werden_unter_sqlite_geprueft(engine: Engine) -> None:
+def test_foreign_keys_are_enforced_under_sqlite(engine: Engine) -> None:
     if engine.dialect.name != "sqlite":
-        pytest.skip("nur fuer SQLite sinnvoll")
-    with engine.connect() as verbindung:
-        assert verbindung.exec_driver_sql("PRAGMA foreign_keys").scalar() == 1
+        pytest.skip("only meaningful for SQLite")
+    with engine.connect() as connection:
+        assert connection.exec_driver_sql("PRAGMA foreign_keys").scalar() == 1
 
 
 @pytest.mark.migration
-def test_schatten_schema_referenzdaten_und_einstellungen(
+def test_shadow_schema_reference_data_and_settings(
     migrations_database_url: str,
 ) -> None:
-    basis = _alembic(migrations_database_url, "downgrade", "base")
-    assert basis.returncode == 0, basis.stderr
-    vorher = _alembic(migrations_database_url, "upgrade", "4d43756aecd3")
-    assert vorher.returncode == 0, vorher.stderr
+    base = _alembic(migrations_database_url, "downgrade", "base")
+    assert base.returncode == 0, base.stderr
+    before = _alembic(migrations_database_url, "upgrade", "4d43756aecd3")
+    assert before.returncode == 0, before.stderr
 
-    werk = create_engine(migrations_database_url)
+    db_engine = create_engine(migrations_database_url)
     try:
-        with werk.begin() as verbindung:
-            verbindung.execute(
+        with db_engine.begin() as connection:
+            connection.execute(
                 text(
                     "INSERT INTO setpoint_mode "
                     "(code, name, sort_order, is_builtin) "
                     "VALUES ('migration-frost', 'Migration Frost', 0, false)"
                 )
             )
-            mode_id = verbindung.execute(
+            mode_id = connection.execute(
                 text("SELECT id FROM setpoint_mode WHERE code = 'migration-frost'")
             ).scalar_one()
-            verbindung.execute(
+            connection.execute(
                 text(
                     "INSERT INTO setting "
                     "(id, timezone, polling_interval_seconds, default_hysteresis_k, "
@@ -96,14 +98,14 @@ def test_schatten_schema_referenzdaten_und_einstellungen(
                 {"mode_id": mode_id},
             )
 
-        hoch = _alembic(migrations_database_url, "upgrade", "head")
-        assert hoch.returncode == 0, hoch.stderr
-        with werk.connect() as verbindung:
+        up = _alembic(migrations_database_url, "upgrade", "head")
+        assert up.returncode == 0, up.stderr
+        with db_engine.connect() as connection:
             capabilities = set(
-                verbindung.execute(text("SELECT code FROM device_capability")).scalars()
+                connection.execute(text("SELECT code FROM device_capability")).scalars()
             )
-            status = set(verbindung.execute(text("SELECT code FROM sensor_status")).scalars())
-            setting = verbindung.execute(
+            status = set(connection.execute(text("SELECT code FROM sensor_status")).scalars())
+            setting = connection.execute(
                 text(
                     "SELECT timezone, control_armed, measurement_retention_days, "
                     "shadow_interval_seconds FROM setting WHERE id = 1"
@@ -116,37 +118,38 @@ def test_schatten_schema_referenzdaten_und_einstellungen(
         assert status == {"ok", "veraltet", "keine_quelle"}
         assert tuple(setting) == ("UTC", False, 30, 60)
 
-        runter = _alembic(migrations_database_url, "downgrade", "4d43756aecd3")
-        assert runter.returncode == 0, runter.stderr
-        with werk.connect() as verbindung:
-            verblieben = set(
-                verbindung.execute(text("SELECT code FROM device_capability")).scalars()
+        down = _alembic(migrations_database_url, "downgrade", "4d43756aecd3")
+        assert down.returncode == 0, down.stderr
+        with db_engine.connect() as connection:
+            remaining = set(
+                connection.execute(text("SELECT code FROM device_capability")).scalars()
             )
-        assert verblieben == {
+        assert remaining == {
             "temperature", "switch", "setpoint_display", "contact", "battery",
         }
-        wieder_hoch = _alembic(migrations_database_url, "upgrade", "head")
-        assert wieder_hoch.returncode == 0, wieder_hoch.stderr
+        up_again = _alembic(migrations_database_url, "upgrade", "head")
+        assert up_again.returncode == 0, up_again.stderr
     finally:
-        werk.dispose()
+        db_engine.dispose()
 
 
 @pytest.mark.migration
-def test_umlaute_werden_in_bestehenden_bezeichnungen_nachgezogen(
+def test_umlauts_are_backfilled_into_existing_labels(
     migrations_database_url: str,
 ) -> None:
-    """Vier Bezeichnungen standen transliteriert in der Datenbank.
+    """Four labels sat transliterated in the database.
 
-    Eine frisch eingerichtete Anlage bekommt die richtige Schreibweise schon beim
-    Fuellen -- die Seed-Revision liest die Konstanten aus dem Code. Bestehende Anlagen
-    tragen die alte Schreibweise aber in ihren Zeilen, und genau die stellt dieser Test
-    her, bevor er die Revision darueber laufen laesst. Ohne den Umweg pruefte er nur,
-    dass die Konstante richtig ist, und nie, dass die Revision etwas tut.
+    A freshly set-up installation gets the correct spelling already at seed
+    time -- the seed revision reads the constants from the code. Existing
+    installations, however, carry the old spelling in their rows, and that is
+    exactly what this test creates before letting the revision run over it.
+    Without this detour, it would only check that the constant is correct,
+    never that the revision does anything.
     """
-    basis = _alembic(migrations_database_url, "downgrade", "base")
-    assert basis.returncode == 0, basis.stderr
-    vorher = _alembic(migrations_database_url, "upgrade", "c8e21a5f4d70")
-    assert vorher.returncode == 0, vorher.stderr
+    base = _alembic(migrations_database_url, "downgrade", "base")
+    assert base.returncode == 0, base.stderr
+    before = _alembic(migrations_database_url, "upgrade", "c8e21a5f4d70")
+    assert before.returncode == 0, before.stderr
 
     old_spelling = [
         ("device_capability", "link_quality", "Verbindungsqualitaet", "Verbindungsqualität"),
@@ -154,38 +157,38 @@ def test_umlaute_werden_in_bestehenden_bezeichnungen_nachgezogen(
         ("device_role", "controller", "Bediengeraet", "Bediengerät"),
         ("actor_source", "web", "Weboberflaeche", "Weboberfläche"),
     ]
-    werk = create_engine(migrations_database_url)
+    db_engine = create_engine(migrations_database_url)
     try:
-        with werk.begin() as verbindung:
-            for tabelle, code, alt, _ in old_spelling:
-                verbindung.execute(
-                    text(f"UPDATE {tabelle} SET label = :alt WHERE code = :code"),  # noqa: S608
-                    {"alt": alt, "code": code},
+        with db_engine.begin() as connection:
+            for table, code, old, _ in old_spelling:
+                connection.execute(
+                    text(f"UPDATE {table} SET label = :old WHERE code = :code"),  # noqa: S608
+                    {"old": old, "code": code},
                 )
-            # Eine von Hand vergebene Bezeichnung, die die Revision in Ruhe lassen muss.
-            verbindung.execute(
+            # A manually assigned label that the revision must leave alone.
+            connection.execute(
                 text("UPDATE device_role SET label = 'Mein Aktor' WHERE code = 'actuator'")
             )
 
-        hoch = _alembic(migrations_database_url, "upgrade", "head")
-        assert hoch.returncode == 0, hoch.stderr
+        up = _alembic(migrations_database_url, "upgrade", "head")
+        assert up.returncode == 0, up.stderr
 
-        def bezeichnung(tabelle: str, code: str) -> str | None:
-            with werk.connect() as verbindung:
-                return verbindung.execute(
-                    text(f"SELECT label FROM {tabelle} WHERE code = :code"),  # noqa: S608
+        def label(table: str, code: str) -> str | None:
+            with db_engine.connect() as connection:
+                return connection.execute(
+                    text(f"SELECT label FROM {table} WHERE code = :code"),  # noqa: S608
                     {"code": code},
                 ).scalar()
 
-        for tabelle, code, _, neu in old_spelling:
-            assert bezeichnung(tabelle, code) == neu, code
-        assert bezeichnung("device_role", "actuator") == "Mein Aktor"
+        for table, code, _, new in old_spelling:
+            assert label(table, code) == new, code
+        assert label("device_role", "actuator") == "Mein Aktor"
 
-        runter = _alembic(migrations_database_url, "downgrade", "c8e21a5f4d70")
-        assert runter.returncode == 0, runter.stderr
-        for tabelle, code, alt, _ in old_spelling:
-            assert bezeichnung(tabelle, code) == alt, code
-        wieder_hoch = _alembic(migrations_database_url, "upgrade", "head")
-        assert wieder_hoch.returncode == 0, wieder_hoch.stderr
+        down = _alembic(migrations_database_url, "downgrade", "c8e21a5f4d70")
+        assert down.returncode == 0, down.stderr
+        for table, code, old, _ in old_spelling:
+            assert label(table, code) == old, code
+        up_again = _alembic(migrations_database_url, "upgrade", "head")
+        assert up_again.returncode == 0, up_again.stderr
     finally:
-        werk.dispose()
+        db_engine.dispose()

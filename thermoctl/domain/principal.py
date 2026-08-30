@@ -3,13 +3,13 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class Principal:
-    """Wer handelt — Benutzer oder Token — samt seinem effektiven Rechteumfang.
+    """Who is acting — user or token — together with their effective permission scope.
 
-    Die Adapter (HTMX, REST, spaeter MCP) bekommen nur diesen Typ zu sehen und muessen
-    nicht wissen, womit sie es zu tun haben.
+    The adapters (HTMX, REST, later MCP) only ever see this type and do not need to
+    know what they are actually dealing with.
 
-    `grants` enthaelt Paare (berechtigungs_code, zone_id). `zone_id = None` heisst
-    anlagenweit.
+    `grants` holds pairs of (permission code, zone_id). `zone_id = None` means
+    plant-wide.
     """
 
     user_id: int

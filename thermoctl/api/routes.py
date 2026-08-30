@@ -74,16 +74,16 @@ from thermoctl.domain.zones import ZonennameVergeben, create_zone, delete_zone, 
 router = APIRouter(prefix="/api/v1")
 
 
-# `auto_error=False`: Ohne das antwortet FastAPI bei fehlendem Header selbst mit 403 und
-# einer englischen Meldung. Wir wollen 401 und dieselbe Antwort wie bei einem ungueltigen
-# Token — ob ein Header fehlte oder ein Token nicht gilt, geht den Aufrufer nichts an.
+# `auto_error=False`: without this, FastAPI itself responds with 403 and an English
+# message when the header is missing. We want 401 and the same response as for an
+# invalid token — whether a header was missing or a token is invalid is none of the
+# caller's business.
 #
-# Der Umweg ueber `HTTPBearer` statt eines gewoehnlichen `Header()`-Parameters hat einen
-# sichtbaren Grund: Nur so steht das Verfahren als `securityScheme` in der
-# OpenAPI-Beschreibung. Vorher tauchte `authorization` an jedem Weg als optionaler
-# Kopfzeilen-Parameter auf, und in der Oberflaeche unter /docs gab es keinen
-# Anmelde-Knopf — man haette bei jedem einzelnen Aufruf "Bearer <token>" von Hand
-# eintragen muessen.
+# The detour via `HTTPBearer` instead of an ordinary `Header()` parameter has a
+# visible reason: only this way does the scheme show up as a `securityScheme` in the
+# OpenAPI description. Before, `authorization` appeared on every route as an optional
+# header parameter, and the interface under /docs had no login button — you would
+# have had to type "Bearer <token>" by hand on every single call.
 _bearer = HTTPBearer(auto_error=False, description="API-Token, ausgestellt unter /tokens")
 
 
@@ -382,11 +382,11 @@ def save_parameter_einzeln(
     session: Annotated[Session, Depends(get_session)],
     principal: Annotated[Principal, Depends(_principal)],
 ) -> ControlParametersResponse:
-    """Setzt **einen** Regelparameter und laesst die uebrigen, wie sie sind.
+    """Sets **one** control parameter and leaves the rest as they are.
 
-    Neben dem PUT auf alle Parameter, nicht statt seiner: Wer nur die Hysterese aendern
-    will, muesste sonst erst alle sechs lesen und wieder mitschicken -- und schriebe
-    dabei jeden geerbten Wert als Zonenabweichung fest.
+    Alongside the PUT for all parameters, not instead of it: whoever just wants to
+    change the hysteresis would otherwise have to read all six first and send them
+    back -- fixing every inherited value as a zone override in the process.
     """
     zone_obj = _visible_zone(session, principal, zone_id)
     _permission(principal, "zone.manage", zone_id)
@@ -401,8 +401,8 @@ def save_parameter_einzeln(
             source="api",
         )
     except UnknownParameter as exc:
-        # Ein Name, den es nicht gibt, ist keine ungueltige Eingabe, sondern ein Weg,
-        # den es nicht gibt -- und die Liste der gueltigen gehoert in die Antwort.
+        # A name that doesn't exist is not invalid input but a route that doesn't
+        # exist -- and the list of valid ones belongs in the response.
         raise HTTPException(
             status.HTTP_404_NOT_FOUND,
             f"{exc} Möglich sind: {', '.join(p.name for p in PARAMETERS)}.",
@@ -422,10 +422,10 @@ def boost(
     session: Annotated[Session, Depends(get_session)],
     principal: Annotated[Principal, Depends(_principal)],
 ) -> BoostResponse:
-    """Zieht die naechste Schaltung vor.
+    """Pulls the next switch forward.
 
-    Dasselbe Recht wie eine Uebersteuerung, weil es eine ist -- nur eine, deren Wert und
-    Ende der Zeitplan bestimmt statt der Aufrufer.
+    The same permission as an override, because it is one -- just one whose value and
+    end are determined by the schedule instead of the caller.
     """
     zone_obj = _visible_zone(session, principal, zone_id)
     _permission(principal, "override.create", zone_id)
@@ -439,8 +439,8 @@ def boost(
             source="api",
         )
     except RemoteControlError as exc:
-        # Kein Zeitplan, kein hinterlegter Sollwert: Der Wunsch ist verstanden, aber in
-        # diesem Zustand nicht ausfuehrbar.
+        # No schedule, no stored setpoint: the request is understood but cannot be
+        # carried out in this state.
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
     return BoostResponse(
         zone_id=zone_obj.id,
@@ -564,9 +564,9 @@ def override_zone(
     now = utcnow()
     ende = now + timedelta(minutes=daten.duration_minutes) if daten.duration_minutes else None
     if daten.until_next_switch:
-        # Dieselbe Funktion wie in der Oberflaeche. Bis zum Abschlussreview von
-        # Teilprojekt 3 stand die Rechnung hier ein zweites Mal — beide Adapter haetten
-        # nach einer Korrektur an der Zeitzonenbehandlung auseinanderlaufen koennen.
+        # The same function as in the interface. Until the final review of subproject
+        # 3, the calculation was here a second time — both adapters could have drifted
+        # apart after a fix to the timezone handling.
         ende = end_of_next_switch(session, zone_obj)
     try:
         return create_override(
@@ -579,9 +579,9 @@ def override_zone(
             source="api",
         )
     except DomainError as exc:
-        # Das Schema faengt den Wertebereich bereits ab; die Domaene prueft ihn seit dem
-        # Abschlussreview zusaetzlich selbst. Bleibt trotzdem etwas uebrig, ist es ein
-        # Eingabefehler und keine Stoerung des Dienstes.
+        # The schema already catches the value range; the domain has additionally
+        # checked it itself since the final review. If anything still slips through
+        # regardless, it's an input error, not a fault of the service.
         raise _domain_error(exc.feld, exc.notice) from exc
 
 
@@ -600,10 +600,10 @@ def delete_override(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-# --- Steuerung ---------------------------------------------------------------
+# --- Control ------------------------------------------------------------------
 #
-# Dieselben Domaenenfunktionen wie die Oberflaeche. Der Adapter uebersetzt nur Formate
-# und Fehler; jede Grenze und jede Rechtepruefung steht genau einmal, in der Domaene.
+# The same domain functions as the interface. The adapter only translates formats
+# and errors; every limit and every permission check lives exactly once, in the domain.
 
 
 def _control_response(session: Session) -> ControlResponse:
@@ -620,8 +620,8 @@ def control(
     session: Annotated[Session, Depends(get_session)],
     principal: Annotated[Principal, Depends(_principal)],
 ) -> ControlResponse:
-    # Lesen darf, wer die Anlage sehen darf: "Schaltet das Ding gerade wirklich?" soll
-    # niemand raten muessen.
+    # Whoever may see the plant may read this: nobody should have to guess "is this
+    # thing actually switching right now?".
     _permission(principal, "zone.read")
     return _control_response(session)
 
@@ -632,10 +632,10 @@ def control_set_armed(
     session: Annotated[Session, Depends(get_session)],
     principal: Annotated[Principal, Depends(_principal)],
 ) -> ControlResponse:
-    """Legt den Riegel um, den die Datenbank haelt.
+    """Flips the bolt that the database holds.
 
-    Eigenes Recht `control.arm`, nicht `setting.manage`: Das hier bewegt ein Ventil. Der
-    zweite Riegel -- `MqttClient(schalten_erlaubt=...)` -- bleibt unberuehrt.
+    Its own permission `control.arm`, not `setting.manage`: this here moves a valve.
+    The second bolt -- `MqttClient(switching_allowed=...)` -- stays untouched.
     """
     _permission(principal, "control.arm")
     try:
@@ -682,9 +682,8 @@ def reposition_schedule_point(
     session: Annotated[Session, Depends(get_session)],
     principal: Annotated[Principal, Depends(_principal)],
 ) -> SchedulePointResponse:
-    """Setzt einen Punkt auf einen anderen Zeitpunkt -- das Gegenstueck zum Ziehen in der
-    Wochenansicht. Der Punkt behaelt seine Kennung, damit ein Aufrufer ihn weiter
-    verfolgen kann."""
+    """Moves a point to a different time -- the counterpart to dragging it in the week
+    view. The point keeps its id so a caller can keep tracking it."""
     zone_obj = _visible_zone(session, principal, zone_id)
     _permission(principal, "schedule.manage", zone_id)
     point = session.get(SchedulePoint, point_id)

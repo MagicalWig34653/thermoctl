@@ -1,30 +1,31 @@
 # ruff: noqa: E501
-"""Den eigenen Zustand veröffentlichen — und die Zonen bei Home Assistant anmelden.
+"""Publish our own state — and register the zones with Home Assistant.
 
-Der Vertrag steht in `integrations/mqtt/veroeffentlichung.py`: Topics, Discovery-Nutzlasten,
-An- und Abmeldung, mit Tests. Hier ist der Aufrufer.
+The contract lives in `integrations/mqtt/veroeffentlichung.py`: topics, discovery
+payloads, registration and deregistration, with tests. This is the caller.
 
-**Das läuft auch im Trockenlauf** — und zwar mit Absicht. Eine Zustandsmeldung bewegt
-nichts, und eine Anbindung, die man erst nach dem Scharfschalten ausprobieren kann, lässt
-sich genau dann nicht mehr gefahrlos prüfen, wenn ein Fehler noch folgenlos wäre. Wer die
-Anlage in Home Assistant einrichten, den Thermostat drehen und nachsehen will, ob der
-Sollwert ankommt, soll das vorher tun können.
+**This also runs in the dry run** — deliberately. A state message doesn't move
+anything, and an integration that can only be tried out after arming can no longer be
+checked safely at exactly the moment when an error would still be harmless. Whoever
+wants to set up the plant in Home Assistant, turn the thermostat, and check whether the
+setpoint arrives should be able to do that beforehand.
 
-**Der Trockenlauf steht nicht mehr im Namen der Zone.** Er stand dort, weil es sichtbar
-war — und war genau deshalb falsch: Home Assistant leitet die Entitätskennung beim ersten
-Auftauchen aus dem Namen ab. Eine Zone, die zuerst im Trockenlauf erschien, hieß danach für
-immer `climate.thermoctl_zone_1_trockenlauf`, auch scharf geschaltet. Stattdessen sagt es
-jetzt eine eigene Entität für den ganzen Dienst (`binary_sensor`, „Regelung scharf"), und
-die Zonen behalten ihre Kennung über den ganzen Umstieg.
+**The dry run no longer appears in the zone's name.** It used to be there because it
+was visible — and was wrong for exactly that reason: Home Assistant derives the entity
+id from the name the first time it appears. A zone that first showed up during the dry
+run was then called `climate.thermoctl_zone_1_trockenlauf` forever, even once armed.
+Instead, a dedicated entity for the whole service now says so (`binary_sensor`,
+"control armed"), and the zones keep their id across the whole transition.
 
-**Alles Bleibende geht mit dem retain-Flag hinaus** — Anmeldungen wie Zustände. Ohne das
-steht in Home Assistant nach jedem Neustart eine leere Karte, bis dieser Dienst das nächste
-Mal etwas sendet; bei einem Regelzyklus von einer Minute ist das eine Minute Ratlosigkeit,
-und beim Umschalten eines Modus sah es aus, als sei der Befehl verschluckt worden.
+**Everything persistent goes out with the retain flag** — registrations as well as
+states. Without that, Home Assistant shows an empty card after every restart until
+this service sends something the next time; with a one-minute control cycle that's a
+minute of confusion, and when switching a mode it looked as if the command had been
+swallowed.
 
-**Abgemeldet wird nur, was es nicht mehr gibt.** Eine gelöschte Zone bekommt die leere
-Nutzlast auf jedem ihrer Config-Topics; sonst bliebe in Home Assistant ein Thermostat
-stehen, der niemandem mehr gehört.
+**Only what no longer exists gets deregistered.** A deleted zone gets the empty payload
+on each of its config topics; otherwise a thermostat that belongs to nobody anymore
+would stay behind in Home Assistant.
 """
 
 import json
@@ -67,17 +68,17 @@ log = logging.getLogger(__name__)
 
 @dataclass
 class PublicationState:
-    """Welche Config-Topics dieser Lauf gesendet hat, je Zone.
+    """Which config topics this run has sent, per zone.
 
-    Der Stand lebt im Prozess, nicht in der Datenbank: Er beschreibt, was *dieser* Lauf
-    gesendet hat. Nach einem Neustart ist er leer, und der erste Zyklus meldet alles neu
-    an -- was richtig ist, denn ob die Nachrichten von damals noch beim Broker liegen,
-    weiß niemand.
+    The state lives in the process, not in the database: it describes what *this* run
+    has sent. After a restart it is empty, and the first cycle registers everything
+    again -- which is correct, because nobody knows whether the messages from back then
+    are still sitting at the broker.
 
-    Die Topics statt nur der Zonenkennungen, damit eine gelöschte Zone vollständig
-    abgemeldet werden kann: Sie hat je Modus und je Regelparameter eine eigene Entität,
-    und deren Config-Topics ließen sich hinterher nicht mehr herleiten -- die Modi der
-    gelöschten Zone stehen dann nirgends mehr.
+    The topics instead of just the zone ids, so that a deleted zone can be fully
+    deregistered: it has its own entity per mode and per control parameter, and their
+    config topics could no longer be derived afterwards -- the modes of the deleted
+    zone are then nowhere to be found anymore.
     """
 
     angemeldet: dict[int, list[str]] = field(default_factory=dict)
@@ -91,14 +92,14 @@ def _als_text(value: object) -> str:
     if isinstance(value, bool):
         return "true" if value else "false"
     if isinstance(value, datetime):
-        # Mit Zeitzone: `device_class: timestamp` verlangt sie, und eine naive Angabe
-        # legt Home Assistant als Ortszeit aus -- bei uns wäre sie UTC.
+        # With timezone: `device_class: timestamp` requires it, and a naive value
+        # gets interpreted by Home Assistant as local time -- ours would be UTC.
         return value.replace(tzinfo=ZoneInfo("UTC")).isoformat()
     return str(value)
 
 
 def _discovery_messages(session: Session, zone: Zone, praefix: str) -> list[DiscoveryMessage]:
-    """Alles, was zu einer Zone in Home Assistant erscheint."""
+    """Everything that appears for a zone in Home Assistant."""
     name = zone.display_name
     messages = [
         zone_discovery(zone.id, name, praefix=praefix),
@@ -128,12 +129,12 @@ async def cycle(
     praefix: str,
     now: datetime,
 ) -> int:
-    """Ein Veröffentlichungszyklus. Gibt die Zahl der gesendeten Nachrichten zurück."""
+    """One publication cycle. Returns the number of messages sent."""
     armed = switching_allowed(session)
     zones = list(session.scalars(select(Zone).order_by(Zone.id)))
     gesendet = 0
 
-    # Verfügbarkeit zuerst: Sie ist die Aussage „was gleich kommt, ist aktuell".
+    # Availability first: it's the statement "whatever comes next is current".
     if await client.publishing(
         availability_topic(praefix), "online", switches=False, behalten=True
     ):
@@ -192,10 +193,10 @@ async def _deregister_deleted(
     state: PublicationState,
     vorhandene: set[int],
 ) -> int:
-    """Der einzige Grund für eine Abmeldung: Die Zone gibt es nicht mehr.
+    """The only reason to deregister: the zone doesn't exist anymore.
 
-    Ohne sie bliebe in Home Assistant ein Thermostat stehen, den niemand mehr bedient —
-    er zeigte den letzten bekannten Wert für immer weiter.
+    Without this, a thermostat that nobody operates anymore would stay behind in Home
+    Assistant — it would keep showing the last known value forever.
     """
     gesendet = 0
     for zone_id in sorted(set(state.angemeldet) - vorhandene):
@@ -220,7 +221,7 @@ def _channel_value(session: Session, channel: ControllerChannel, kind: ChannelKi
     if channel.zone_id is None:
         return None
     zone = session.get(Zone, channel.zone_id)
-    if zone is None:  # pragma: no cover - Fremdschluessel haelt dagegen
+    if zone is None:  # pragma: no cover - the foreign key prevents this
         return None
     if kind.code == "zone_temperature":
         zone_state = session.get(ZoneState, zone.id)
@@ -233,7 +234,7 @@ def _channel_value(session: Session, channel: ControllerChannel, kind: ChannelKi
 async def _controller_channels_senden(
     session: Session, client: MqttPublisher, state: PublicationState, basis: str, now: datetime
 ) -> int:
-    """Sendet geaenderte Anzeigenwerte; jeder Versand bleibt explizit unschaltend."""
+    """Sends changed display values; every send explicitly stays non-switching."""
     sent = 0
     rows = session.execute(
         select(ControllerChannel, ChannelKind, Device)
@@ -242,8 +243,8 @@ async def _controller_channels_senden(
         .where(ControllerChannel.direction == "write")
     )
     for channel, kind, device in rows:
-        # Zweite Pruefung, absichtlich dieselbe Funktion wie beim Anlegen: Eine Rolle
-        # kann sich aendern, nachdem der Kanal eingerichtet wurde.
+        # Second check, deliberately the same function as at creation time: a role
+        # can change after the channel has been set up.
         if not darf_beschrieben_werden(session, device):
             log.error("Unsicherer Schreibkanal wird nicht gesendet", extra={"geraet": device.display_name})
             continue
@@ -259,10 +260,10 @@ async def _controller_channels_senden(
 
 
 def _last_switch(session: Session, zone_id: int) -> datetime | None:
-    """Wann die Entscheidung zuletzt gekippt ist — nicht, wann zuletzt gerechnet wurde.
+    """When the decision last flipped — not when it was last computed.
 
-    `previous_would_heat` steht im Schattenprotokoll ohnehin; ohne den Vergleich wäre
-    „letzte Schaltung" der letzte Regelzyklus, also immer „vor einer Minute".
+    `previous_would_heat` is in the shadow log anyway; without the comparison, "last
+    switch" would be the last control cycle, i.e. always "a minute ago".
     """
     return session.scalar(
         select(ShadowDecision.decided_at)
@@ -292,12 +293,12 @@ async def zone_state_senden(
     praefix: str,
     now: datetime,
 ) -> int:
-    """Alle Zustandswerte **einer** Zone.
+    """All state values of **one** zone.
 
-    Einzeln aufrufbar, weil ein Befehl aus Home Assistant sofort eine Antwort braucht:
-    Die Climate-Karte dort ist nicht optimistisch, sie wartet auf den Zustand. Kam der
-    erst im nächsten Regelzyklus, sprang der eben gewählte Modus für eine Minute auf den
-    alten zurück — und sah aus, als funktioniere die Moduswahl nicht.
+    Callable individually, because a command from Home Assistant needs an immediate
+    response: the climate card there is not optimistic, it waits for the state. If it
+    only arrived on the next control cycle, the mode just chosen would jump back to the
+    old one for a minute — and looked as if mode selection didn't work.
     """
     topics = states_topics(zone.id, praefix)
     state = session.get(ZoneState, zone.id)
@@ -344,9 +345,9 @@ async def zone_state_senden(
 
     gesendet = 0
     for topic, value in values:
-        # Ein leerer Wert wird nicht gesendet: In MQTT löscht eine leere Nutzlast
-        # eine behaltene Nachricht, und „noch kein Messwert" ist etwas anderes als
-        # „diesen Wert gibt es nicht mehr".
+        # An empty value is not sent: in MQTT an empty payload deletes a retained
+        # message, and "no reading yet" is something different from "this value
+        # doesn't exist anymore".
         if value and await client.publishing(
             topic, value, switches=False, behalten=True
         ):

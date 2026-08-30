@@ -1,4 +1,4 @@
-"""Schaltadapter mit einem datenbankgestuetzten Trockenlauf-Riegel."""
+"""Switching adapters with a database-backed dry-run bolt."""
 
 import asyncio
 import json
@@ -39,7 +39,7 @@ class MqttPublisher(Protocol):
 
 
 def switching_allowed(session: Session) -> bool:
-    """Liest setting.control_armed. Einzige Stelle, die darueber entscheidet."""
+    """Reads setting.control_armed. The only place that decides this."""
     setting = session.get(Setting, 1)
     return setting is not None and setting.control_armed
 
@@ -76,7 +76,7 @@ class Zigbee2MqttVentil:
 
 
 class UrllibHttpTransport:
-    """Kleine HTTP-Huelle, damit der Adapter keine weitere Abhaengigkeit braucht."""
+    """Small HTTP wrapper, so the adapter doesn't need another dependency."""
 
     async def post(
         self, url: str, daten: Mapping[str, str], kopfzeilen: Mapping[str, str]
@@ -87,7 +87,7 @@ class UrllibHttpTransport:
     def _post_synchron(
         url: str, daten: Mapping[str, str], kopfzeilen: Mapping[str, str]
     ) -> Mapping[str, object]:
-        anfrage = request.Request(  # noqa: S310 -- URL kommt aus der Adapterkonfiguration
+        anfrage = request.Request(  # noqa: S310 -- URL comes from the adapter configuration
             url,
             data=parse.urlencode(daten).encode(),
             headers=dict(kopfzeilen),
@@ -101,19 +101,19 @@ class UrllibHttpTransport:
 
 
 class MerossSwitch:
-    """Schaltet eine Meross-Steckdose, die in der Anlage als Ventil dient.
+    """Switches a Meross socket that serves as a valve in the plant.
 
-    **Ungeprueft gegen die echte Cloud.** Der Aufbau der beiden Aufrufe ist aus der
-    oeffentlich dokumentierten Schnittstelle abgeleitet, aber nie gegen ein echtes Konto
-    ausgefuehrt worden — in dieser Phase liegen keine Zugangsdaten vor, und der
-    Trockenlauf verbietet den Versuch. Meross verlangt je nach Firmwarestand zusaetzlich
-    eine signierte Nutzlast (Zeitstempel, Nonce, Pruefsumme); sollte das hier fehlen,
-    faellt es beim ersten echten Aufruf auf.
+    **Untested against the real cloud.** The structure of the two calls is derived
+    from the publicly documented interface, but has never been run against a real
+    account — at this stage there are no credentials, and the dry run forbids the
+    attempt. Depending on the firmware version, Meross additionally requires a signed
+    payload (timestamp, nonce, checksum); if that's missing here, it will surface on
+    the first real call.
 
-    Das ist bewusst so stehengelassen und nicht als fertig ausgegeben: Der Adapter ist
-    vollstaendig verdrahtet und im Trockenlauf pruefbar, seine Nutzlast aber ist eine
-    begruendete Annahme. **Vor dem Scharfschalten in Phase 4 gehoert genau dieser Aufruf
-    einmal gegen die echte Cloud geprueft.** Vermerkt in docs/offene-entscheidungen.md.
+    This is deliberately left as is and not presented as finished: the adapter is
+    fully wired up and verifiable in the dry run, but its payload is an educated
+    guess. **Before arming in phase 4, this exact call needs to be checked once
+    against the real cloud.** Noted in docs/offene-entscheidungen.md.
     """
 
     def __init__(

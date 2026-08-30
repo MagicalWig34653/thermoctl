@@ -8,8 +8,8 @@ import pytest
 
 from thermoctl.domain.reading import Reading, readings_from_payload
 
-DATENPFAD = Path(__file__).parent / "daten" / "anlage-beispiele.json"
-EMPFANGEN_AM = datetime(2035, 1, 2, 3, 4, 5)
+DATA_PATH = Path(__file__).parent / "daten" / "anlage-beispiele.json"
+RECEIVED_AT = datetime(2035, 1, 2, 3, 4, 5)
 
 
 def _values(readings: list[Reading]) -> list[tuple[str, Decimal | None, str | None]]:
@@ -17,7 +17,7 @@ def _values(readings: list[Reading]) -> list[tuple[str, Decimal | None, str | No
 
 
 @pytest.mark.parametrize(
-    ("device", "expected", "gemessen_am"),
+    ("device", "expected", "measured_at"),
     [
         (
             "Wohnraum Couchlicht",
@@ -112,37 +112,37 @@ def _values(readings: list[Reading]) -> list[tuple[str, Decimal | None, str | No
         ),
     ],
 )
-def test_echte_zustandsnachrichten(
+def test_real_state_messages(
     device: str,
     expected: list[tuple[str, Decimal | None, str | None]],
-    gemessen_am: datetime,
+    measured_at: datetime,
 ) -> None:
-    daten = json.loads(DATENPFAD.read_text(encoding="utf-8"))
+    data = json.loads(DATA_PATH.read_text(encoding="utf-8"))
 
     result = readings_from_payload(
-        json.dumps(daten["zustaende"][device]), EMPFANGEN_AM
+        json.dumps(data["zustaende"][device]), RECEIVED_AT
     )
 
     assert _values(result) == expected
-    assert {b.gemessen_am for b in result} == {gemessen_am}
+    assert {b.gemessen_am for b in result} == {measured_at}
 
 
-def test_spannung_wird_weder_als_batteriestand_noch_als_messwert_gedeutet() -> None:
-    daten = json.loads(DATENPFAD.read_text(encoding="utf-8"))["zustaende"]
+def test_voltage_is_read_neither_as_battery_level_nor_as_a_measurement() -> None:
+    data = json.loads(DATA_PATH.read_text(encoding="utf-8"))["zustaende"]
 
-    steckdose = _values(
-        readings_from_payload(json.dumps(daten["Bad Steckdose Entfeuchter"]), EMPFANGEN_AM)
+    outlet = _values(
+        readings_from_payload(json.dumps(data["Bad Steckdose Entfeuchter"]), RECEIVED_AT)
     )
     battery_device = _values(
-        readings_from_payload(json.dumps(daten["Schlafzimmer Multisensor"]), EMPFANGEN_AM)
+        readings_from_payload(json.dumps(data["Schlafzimmer Multisensor"]), RECEIVED_AT)
     )
 
-    assert ("battery", Decimal("230"), None) not in steckdose
+    assert ("battery", Decimal("230"), None) not in outlet
     assert ("battery", Decimal("2900"), None) not in battery_device
-    assert all(capability != "voltage" for capability, _number, _text in steckdose + battery_device)
+    assert all(capability != "voltage" for capability, _number, _text in outlet + battery_device)
 
 
-def test_null_objekte_und_unbekanntes_feld_stoeren_bekannten_wert_nicht() -> None:
+def test_null_objects_and_an_unknown_field_do_not_disturb_a_known_value() -> None:
     payload = json.dumps(
         {
             "temperature": 21.5,
@@ -153,39 +153,39 @@ def test_null_objekte_und_unbekanntes_feld_stoeren_bekannten_wert_nicht() -> Non
         }
     )
 
-    assert readings_from_payload(payload, EMPFANGEN_AM) == [
-        Reading("temperature", Decimal("21.5"), None, EMPFANGEN_AM)
+    assert readings_from_payload(payload, RECEIVED_AT) == [
+        Reading("temperature", Decimal("21.5"), None, RECEIVED_AT)
     ]
 
 
-def test_unlesbares_last_seen_verwendet_empfangszeitpunkt() -> None:
+def test_an_unreadable_last_seen_uses_the_received_time() -> None:
     result = readings_from_payload(
-        '{"temperature": 20, "last_seen": "gestern"}', EMPFANGEN_AM
+        '{"temperature": 20, "last_seen": "gestern"}', RECEIVED_AT
     )
 
-    assert result[0].gemessen_am == EMPFANGEN_AM
+    assert result[0].gemessen_am == RECEIVED_AT
 
 
 @pytest.mark.parametrize("payload", ["", "{kaputt", b"\xff"])
-def test_kaputtes_json_wird_protokolliert(
+def test_broken_json_is_logged(
     payload: str | bytes, caplog: pytest.LogCaptureFixture
 ) -> None:
     with caplog.at_level(logging.WARNING, logger="thermoctl.domain.reading"):
-        assert readings_from_payload(payload, EMPFANGEN_AM) == []
+        assert readings_from_payload(payload, RECEIVED_AT) == []
 
     assert "kein gueltiges JSON" in caplog.text
 
 
-def test_bytes_nutzlast_wird_ausgewertet() -> None:
-    result = readings_from_payload(b'{"state":"ON"}', EMPFANGEN_AM)
+def test_bytes_payload_is_evaluated() -> None:
+    result = readings_from_payload(b'{"state":"ON"}', RECEIVED_AT)
 
-    assert result == [Reading("switch", None, "ON", EMPFANGEN_AM)]
+    assert result == [Reading("switch", None, "ON", RECEIVED_AT)]
 
 
-def test_ventil_und_fensterkontakt_werden_ohne_beispieldaten_erkannt() -> None:
+def test_a_valve_and_a_window_contact_are_recognized_without_example_data() -> None:
     result = readings_from_payload(
         b'{"contact":false,"local_temperature":19.25,"current_heating_setpoint":21}',
-        EMPFANGEN_AM,
+        RECEIVED_AT,
     )
 
     assert _values(result) == [
@@ -195,22 +195,23 @@ def test_ventil_und_fensterkontakt_werden_ohne_beispieldaten_erkannt() -> None:
     ]
 
 
-def test_last_seen_ohne_zeitzone_wird_verworfen() -> None:
-    """Ohne Zeitzonenangabe ist der Zeitstempel nicht in UTC umrechenbar.
+def test_last_seen_without_a_timezone_is_discarded() -> None:
+    """Without a timezone, the timestamp cannot be converted to UTC.
 
-    Zigbee2MQTT laesst sich auf Ortszeit ohne Offset einstellen. Ein solcher Wert als UTC
-    gedeutet laege im Sommer zwei Stunden daneben — und am Alter des Messwerts haengt die
-    Stoerungserkennung. Der Empfangszeitpunkt ist ungenauer, aber nicht falsch.
+    Zigbee2MQTT can be set to local time with no offset. Interpreting such a
+    value as UTC would be off by two hours in summer — and fault detection
+    depends on the age of the reading. The received time is less precise,
+    but not wrong.
     """
-    empfangen = datetime(2026, 8, 29, 12, 0, 0)
+    received = datetime(2026, 8, 29, 12, 0, 0)
     readings = readings_from_payload(
-        json.dumps({"last_seen": "2026-08-29T06:00:00", "temperature": 21.5}), empfangen
+        json.dumps({"last_seen": "2026-08-29T06:00:00", "temperature": 21.5}), received
     )
-    assert [b.gemessen_am for b in readings] == [empfangen]
+    assert [b.gemessen_am for b in readings] == [received]
 
 
-def test_gueltiges_json_ohne_objekt_ergibt_nichts() -> None:
-    """Eine Liste oder ein nackter Wert ist keine Zustandsnachricht, aber auch kein Fehler."""
-    empfangen = datetime(2026, 8, 29, 12, 0, 0)
-    assert readings_from_payload("[1, 2, 3]", empfangen) == []
-    assert readings_from_payload("42", empfangen) == []
+def test_valid_json_that_is_not_an_object_yields_nothing() -> None:
+    """A list or a bare value is not a state message, but not an error either."""
+    received = datetime(2026, 8, 29, 12, 0, 0)
+    assert readings_from_payload("[1, 2, 3]", received) == []
+    assert readings_from_payload("42", received) == []

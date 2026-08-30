@@ -1,12 +1,13 @@
-"""Reine Auswertung der Altsystem-MQTT-Topics (Vergleichsbetrieb, Teilprojekt 4).
+"""Pure parsing of the legacy system's MQTT topics (shadow run, sub-project 4).
 
-Das Altsystem veroeffentlicht seinen Zustand unter `heizung/thermostate/<id>/<attribut>/get`
-(Bestandsaufnahme, Abschnitt 5). Dieses Modul macht daraus eine `AltsystemBeobachtung` —
-ohne Datenbank, ohne Netz, ohne Uhr. Genau wie `beobachtung.py` fuer Zigbee2MQTT ist die
-Auswertung tolerant: ein fremdes Topic, ein `/set` statt `/get`, ein unbekanntes Attribut
-oder ein unlesbarer Wert sind keine Ausnahme, sondern ein Ergebnis von `None`.
+The legacy system publishes its state under `heizung/thermostate/<id>/<attribut>/get`
+(inventory document, section 5). This module turns that into an `AltsystemBeobachtung` —
+no database, no network, no clock. Just like `beobachtung.py` for Zigbee2MQTT, the
+parsing is tolerant: a foreign topic, a `/set` instead of `/get`, an unknown attribute
+or an unreadable value are not exceptions, but a result of `None`.
 
-Diese Funktion liest nur — sie loest kein `publish` aus und veraendert nichts am Altsystem.
+This function only reads — it triggers no `publish` and changes nothing on the legacy
+system.
 """
 
 import logging
@@ -19,13 +20,13 @@ log = logging.getLogger(__name__)
 _PRAEFIX: Final = ("heizung", "thermostate")
 _SUFFIX: Final = "get"
 
-# Attribute, deren Wert eine Temperatur in Grad Celsius ist.
+# Attributes whose value is a temperature in degrees Celsius.
 _NUMBER_ATTRIBUTE: Final = frozenset({"temperatureActual", "temperatureTarget"})
 
-# Attribute, deren Wert als Text uebernommen wird — die vollstaendige Liste aus der
-# Bestandsaufnahme. `thermostatActualState` und `thermostatTargetState` sind `off`/`heat`
-# (theoretisch auch `cool`/`auto`, siehe Fallstrick 7 der Bestandsaufnahme), aber diese
-# Auswertung erzwingt das nicht: sie legt nur ab, was ankam.
+# Attributes whose value is taken over as text — the full list from the inventory
+# document. `thermostatActualState` and `thermostatTargetState` are `off`/`heat`
+# (theoretically also `cool`/`auto`, see pitfall 7 of the inventory document), but this
+# parsing does not enforce that: it only stores whatever arrived.
 _TEXT_ATTRIBUTE: Final = frozenset(
     {
         "preset_mode",
@@ -39,7 +40,7 @@ _TEXT_ATTRIBUTE: Final = frozenset(
 
 @dataclass(frozen=True)
 class LegacyReading:
-    """Eine einzelne ausgewertete Beobachtung des Altsystems zu einem Thermostat."""
+    """A single parsed reading of the legacy system for one thermostat."""
 
     thermostat_id: int
     attribut: str
@@ -48,15 +49,15 @@ class LegacyReading:
 
 
 def reading_from_topic(topic: str, payload: bytes | str) -> LegacyReading | None:
-    """Wertet ein einzelnes Altsystem-Topic samt Nutzlast tolerant aus.
+    """Tolerantly parses a single legacy-system topic together with its payload.
 
-    Liefert `None` fuer alles, was keine Thermostat-Zustandsbeobachtung ist: ein fremdes
-    Topic-Praefix (z. B. `zigbee2mqtt/...`), ein Konfigurations-Topic
-    (`heizung/config/<schluessel>/get`), ein `/set`-Befehl statt `/get`, eine
-    nicht-numerische Thermostat-Kennung, eine nicht als UTF-8 lesbare Nutzlast, ein
-    unbekanntes Attribut oder — bei einem Temperaturattribut — ein nicht als Zahl lesbarer
-    Wert. Keiner dieser Faelle ist ein Fehler dieser Funktion; alle werden protokolliert und
-    fuehren zu `None`, nie zu einer Ausnahme.
+    Returns `None` for everything that is not a thermostat state reading: a foreign
+    topic prefix (e.g. `zigbee2mqtt/...`), a config topic
+    (`heizung/config/<schluessel>/get`), a `/set` command instead of `/get`, a
+    non-numeric thermostat id, a payload not readable as UTF-8, an unknown attribute,
+    or — for a temperature attribute — a value not readable as a number. None of these
+    cases is a bug in this function; all of them get logged and lead to `None`, never
+    to an exception.
     """
     teile = topic.split("/")
     if len(teile) != 5 or tuple(teile[:2]) != _PRAEFIX or teile[4] != _SUFFIX:

@@ -9,9 +9,9 @@ log = logging.getLogger(__name__)
 
 
 FIELD_TO_CAPABILITY: Final[dict[str, str]] = {
-    # Der Tastendruck eines Bediengeraets. Er wird wie jeder andere Wert als Messung
-    # abgelegt -- und genau daraus weiss die Oberflaeche spaeter, welche Tasten dieses
-    # Geraet ueberhaupt hat, ohne dass jemand ein Datenblatt liest.
+    # A controller's button press. It is stored as a reading like any other value --
+    # and that is exactly how the interface later knows which buttons this device
+    # even has, without anyone reading a datasheet.
     "action": "action",
     "battery": "battery",
     "contact": "contact",
@@ -45,12 +45,12 @@ def _measured_at(value: object, empfangen_am: datetime) -> datetime:
     except ValueError:
         return empfangen_am
     if moment.tzinfo is None:
-        # Zigbee2MQTT kann so eingestellt werden, dass es Ortszeit ohne Zeitzonenangabe
-        # sendet. Ein solcher Wert ist nicht in UTC umrechenbar — wir wissen die Zone
-        # nicht. Ihn als UTC zu deuten hiesse, im Sommer zwei Stunden danebenzuliegen,
-        # und ein Messwert mit falschem Zeitstempel ist schlimmer als einer mit dem
-        # ungenauen, aber richtigen Empfangszeitpunkt: an ihm haengt die Stoerungs-
-        # erkennung, die genau ueber das Alter entscheidet.
+        # Zigbee2MQTT can be configured to send local time without a timezone. Such a
+        # value cannot be converted to UTC -- we do not know the zone. Interpreting it
+        # as UTC would mean being off by two hours in summer, and a reading with a
+        # wrong timestamp is worse than one with the imprecise but correct receipt
+        # time: fault detection depends on it, and it decides based on exactly this
+        # age.
         return empfangen_am
     return moment.astimezone(UTC).replace(tzinfo=None)
 
@@ -64,17 +64,17 @@ def _value(value: object) -> tuple[Decimal | None, str | None] | None:
         return value, None
     if isinstance(value, str):
         return None, value
-    # Praktisch unerreichbar: `json.loads(..., parse_float=Decimal, parse_int=Decimal)`
-    # liefert nur die oben behandelten Typen. Die Zeile bleibt als Rueckfall stehen,
-    # falls die Auswertung einmal ohne diese Parser aufgerufen wird — ein Test dafuer
-    # muesste den Parser umgehen und wuerde nur sich selbst pruefen.
+    # Practically unreachable: `json.loads(..., parse_float=Decimal, parse_int=Decimal)`
+    # only ever produces the types handled above. This line stays as a fallback in
+    # case the parsing is ever called without these parsers -- a test for it would
+    # have to bypass the parser and would only be testing itself.
     return None  # pragma: no cover
 
 
 def readings_from_payload(
     payload: str | bytes, empfangen_am: datetime
 ) -> list[Reading]:
-    """Wertet bekannte Felder einer Zigbee2MQTT-Zustandsnachricht tolerant aus."""
+    """Tolerantly parses the known fields of a Zigbee2MQTT state message."""
     try:
         daten = json.loads(payload, parse_float=Decimal, parse_int=Decimal)
     except (json.JSONDecodeError, UnicodeDecodeError, TypeError):
@@ -82,8 +82,8 @@ def readings_from_payload(
         return []
 
     if not isinstance(daten, dict):
-        # Gueltiges JSON, aber keine Zustandsnachricht — etwa eine Liste oder ein nackter
-        # Wert. Kommt bei fremden Topics vor und ist kein Fehler dieses Geraets.
+        # Valid JSON, but not a state message -- e.g. a list or a bare value. This
+        # happens on foreign topics and is not a fault of this device.
         return []
 
     gemessen_am = _measured_at(daten.get("last_seen"), empfangen_am)

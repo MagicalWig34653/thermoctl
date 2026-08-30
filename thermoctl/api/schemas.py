@@ -114,8 +114,8 @@ class TokenResponse(BaseModel):
 
 
 class CreateOverride(BaseModel):
-    # Die Zahlen stehen in der Domaene; hier nur, damit sie in der
-    # OpenAPI-Beschreibung auftauchen. Weist ab tut die Domaene.
+    # The numbers live in the domain; here only so they show up in the OpenAPI
+    # description. Rejecting is done by the domain.
     temperature_c: Decimal = Field(
         ge=MINIMUM_TEMPERATURE_C, le=MAXIMUM_TEMPERATURE_C, decimal_places=1
     )
@@ -135,10 +135,10 @@ class OverrideResponse(BaseModel):
 
 
 class BoostResponse(BaseModel):
-    """Was der vorgezogene Schaltpunkt bewirkt hat.
+    """What the pulled-forward schedule point achieved.
 
-    Der Modus steht dabei mit drin, nicht nur die Temperatur: "18,0 °C bis 22:00" sagt
-    nicht, *warum* -- "Nacht, vorgezogen bis 22:00" schon.
+    The mode is included, not just the temperature: "18.0 °C until 22:00" doesn't say
+    *why* -- "night, pulled forward until 22:00" does.
     """
 
     zone_id: int
@@ -148,18 +148,18 @@ class BoostResponse(BaseModel):
 
 
 class WriteParameter(BaseModel):
-    """Ein einzelner Regelparameter.
+    """A single control parameter.
 
-    Die Grenzen stehen in der Domaene (`domain/zone_settings.PARAMETER`) und werden dort
-    geprueft. Hier steht nur, dass eine Zahl erwartet wird -- ein zweites Paar Grenzen
-    an dieser Stelle waere beim naechsten Verschieben zurueckgeblieben.
+    The limits live in the domain (`domain/zone_settings.PARAMETER`) and are checked
+    there. Here only says that a number is expected -- a second pair of limits at this
+    spot would have fallen behind on the next change.
     """
 
     value: Decimal
 
 
 class ControlResponse(BaseModel):
-    """Der Betriebszustand der Anlage samt der Vorgaben, von denen jede Zone erbt."""
+    """The plant's operating state along with the defaults every zone inherits from."""
 
     control_armed: bool
     timezone: str
@@ -175,18 +175,18 @@ class ControlResponse(BaseModel):
 
 
 class SetArmed(BaseModel):
-    """`begruendung` ist beim Scharfschalten Pflicht und beim Zuruecknehmen freiwillig --
-    die Pruefung dazu steht in der Domaene, nicht hier, damit sie fuer alle drei Adapter
-    dieselbe ist."""
+    """`begruendung` is required when arming and optional when disarming --
+    the check for that lives in the domain, not here, so it's the same for
+    all three adapters."""
 
     armed: bool
     reason: str = ""
 
 
 class SteuerungSchreiben(BaseModel):
-    """Die globalen Vorgaben. Die Grenzen prueft die Domaene: Ein `Field(ge=..., le=...)`
-    hier waere eine zweite Fassung derselben Zahlen, und zwei Fassungen laufen
-    auseinander."""
+    """The global defaults. The domain checks the limits: a `Field(ge=..., le=...)`
+    here would be a second version of the same numbers, and two versions drift
+    apart."""
 
     timezone: str = Field(min_length=1, max_length=64)
     polling_interval_seconds: int

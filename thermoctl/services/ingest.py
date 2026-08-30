@@ -35,9 +35,9 @@ log = logging.getLogger(__name__)
 def _integration(session: Session) -> Integration:
     integration = session.scalar(select(Integration).where(Integration.code == "zigbee2mqtt"))
     if integration is None:  # pragma: no cover
-        # Konsistenzpruefung gegen die Migration, die diese Zeile anlegt. Erreichbar nur
-        # mit einem von Hand beschaedigten Schema — ein Test dafuer muesste die
-        # Nachschlagetabelle leerraeumen und pruefte damit die Migration, nicht uns.
+        # Consistency check against the migration that creates this row. Reachable
+        # only with a manually corrupted schema -- a test for this would have to
+        # empty the lookup table, and would thereby test the migration, not us.
         raise RuntimeError("Anbindung zigbee2mqtt fehlt in der Nachschlagetabelle")
     return integration
 
@@ -95,9 +95,9 @@ def _save_description(
     device.model = beschreibung.modell
     device.is_group = beschreibung.ist_group
     if device.first_seen_at is None:
-        # Nachtrag fuer Geraete, die nicht ueber den Ingest entstanden sind — ab
-        # Teilprojekt 3 legt sie auch die Oberflaeche an, und dort gibt es noch keine
-        # Sichtung. Beim Ingest selbst ist der Wert schon gesetzt (_geraet).
+        # Backfill for devices that were not created via ingest — since subproject 3
+        # the interface can also create them, and there is no sighting there yet.
+        # During ingest itself the value is already set (_geraet).
         device.first_seen_at = empfangen_am
 
     session.execute(delete(DeviceCapabilityLink).where(DeviceCapabilityLink.device_id == device.id))
@@ -140,8 +140,8 @@ def _process_state(
         raw_values = {}
     if not isinstance(raw_values, dict):
         raw_values = {}
-    # Vor dem Einfuegen gelesen: Danach waere der eigene neue Messwert der juengste,
-    # und der Vergleich unten verglichen die Nachricht mit sich selbst.
+    # Read before inserting: afterwards our own new reading would be the most recent
+    # one, and the comparison below would compare the message with itself.
     last_pressed = _last_pressed(session, device.id)
     measured_at = readings[0].gemessen_am
     changed_values: dict[str, object] = {}
@@ -203,13 +203,13 @@ def _process_state(
 
 
 def _last_pressed(session: Session, device_id: int) -> datetime | None:
-    """Wann dieses Geraet zuletzt eine Taste gemeldet hat -- vor dieser Nachricht.
+    """When this device last reported a button press -- before this message.
 
-    Der Schutz gegen doppelte Ausfuehrung: Zigbee2MQTT sendet Zustandsnachrichten
-    normalerweise ohne retain-Flag, aber eine behaltene Nachricht wird bei **jeder**
-    Neuverbindung erneut zugestellt. Ohne diesen Vergleich loeste ein Wackelkontakt in
-    der Netzverbindung jedes Mal denselben Tastendruck erneut aus -- und ein Boost, den
-    niemand gedrueckt hat, faellt erst auf, wenn es im Raum zu warm ist.
+    The guard against duplicate execution: Zigbee2MQTT normally sends state messages
+    without the retain flag, but a retained message gets redelivered on **every**
+    reconnect. Without this comparison, a flaky network connection would trigger the
+    same button press again every time -- and a boost nobody pressed only gets noticed
+    once the room is too warm.
     """
     capability_id = session.scalar(
         select(DeviceCapability.id).where(DeviceCapability.code == "action")
@@ -234,7 +234,7 @@ def _execute_button_press(
     last_seen: datetime | None,
     empfangen_am: datetime,
 ) -> None:
-    """Fuehrt aus, was ein Tastendruck an einem Bediengeraet belegt hat."""
+    """Executes what a button press on a controller has bound to it."""
     druck = next((b for b in readings if b.capability == "action" and b.text), None)
     if druck is None:
         return
@@ -267,10 +267,11 @@ def _process_availability(
 ) -> None:
     try:
         daten = json.loads(payload)
-    # Klammern, obwohl Python 3.14 sie hier nicht mehr verlangt (PEP 758): Ohne sie sieht
-    # die Zeile genau aus wie die Python-2-Form, die etwas anderes bedeutete — dort band
-    # der zweite Name die Ausnahme, statt eine zweite Klasse zu fangen. Wer das einmal
-    # falsch liest, sucht den Fehler an der falschen Stelle.
+    # Parentheses, even though Python 3.14 no longer requires them here (PEP 758):
+    # without them the line looks exactly like the Python 2 form, which meant
+    # something different -- there, the second name bound the exception instead of
+    # catching a second class. Whoever misreads this once looks for the bug in the
+    # wrong place.
     except (json.JSONDecodeError, UnicodeDecodeError):
         log.warning("Zigbee2MQTT-Erreichbarkeit ist kein gueltiges JSON")
         return
@@ -297,7 +298,7 @@ def process_message(
     basis: str,
     empfangen_am: datetime,
 ) -> None:
-    """Schreibt eine empfangene Zigbee2MQTT-Nachricht in die Datenbank."""
+    """Writes a received Zigbee2MQTT message into the database."""
     zuschnitt = zuschneiden(topic, basis)
     if zuschnitt.kind == MessageKind.DEVICE_LIST:
         _process_device_list(session, payload, empfangen_am)
@@ -315,7 +316,7 @@ def process_message(
 
 
 def advance_zone_state(session: Session, now: datetime) -> None:
-    """Leitet den aktuellen Zustand aller Zonen aus ihrer Temperaturquelle ab."""
+    """Derives the current state of all zones from their temperature source."""
     temperature = session.scalar(
         select(DeviceCapability).where(DeviceCapability.code == "temperature")
     )
@@ -347,7 +348,7 @@ def advance_zone_state(session: Session, now: datetime) -> None:
         )
         status_id = status_ids.get(code)
         if status_id is None:  # pragma: no cover
-            # Wie oben: Konsistenzpruefung gegen die Migration, nicht gegen Eingaben.
+            # As above: consistency check against the migration, not against input.
             raise RuntimeError(f"Sensorstatus {code} fehlt in der Nachschlagetabelle")
         state = session.get(ZoneState, zone.id)
         if state is None:
@@ -390,8 +391,8 @@ def _window_open(
         )
     )
     if not devices_ids:
-        # Unbekannt wird von der Regelung wie geschlossen behandelt. Sonst koennte eine
-        # Anlage ohne Fensterkontakte grundsaetzlich nie heizen.
+        # Unknown is treated by the control logic like closed. Otherwise a plant
+        # without window contacts could fundamentally never heat.
         return None
 
     unbekannt = False
@@ -412,9 +413,9 @@ def _window_open(
         ):
             unbekannt = True
             continue
-        # Zigbee2MQTT meldet `contact=true` fuer geschlossen und `false` fuer offen.
-        # Die Umkehr bleibt bewusst hier, damit sie nicht in jedem Verbraucher erneut
-        # und moeglicherweise widerspruechlich vorgenommen wird.
+        # Zigbee2MQTT reports `contact=true` for closed and `false` for open. The
+        # inversion deliberately stays here, so it isn't done again in every
+        # consumer, possibly inconsistently.
         if measurement.value_text == "false":
             return True
     return None if unbekannt else False

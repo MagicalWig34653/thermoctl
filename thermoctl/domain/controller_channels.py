@@ -1,5 +1,5 @@
 # ruff: noqa: E501
-"""Konfigurierbare Werte zwischen thermoctl und Bediengeraeten."""
+"""Configurable values exchanged between thermoctl and controllers."""
 import logging
 from datetime import datetime
 from decimal import Decimal
@@ -25,7 +25,7 @@ log = logging.getLogger(__name__)
 
 
 class ControllerChannelError(ValueError):
-    """Ein Kanal ist fachlich ungueltig oder koennte einen Aktor umgehen."""
+    """A channel is invalid on domain grounds or could bypass an actuator."""
 
 
 def _hat_rolle(session: Session, device: Device, code: str) -> bool:
@@ -36,16 +36,17 @@ def _hat_rolle(session: Session, device: Device, code: str) -> bool:
 
 
 def darf_beschrieben_werden(session: Session, device: Device) -> bool:
-    """Ob auf dieses Geraet ein Anzeigewert geschrieben werden darf.
+    """Whether a display value may be written to this device.
 
-    Zwei Bedingungen, nicht eine. Dass das Geraet **irgendwo** Bediengeraet ist, reicht
-    nicht: Ein Thermostat kann in einer Zone Aktor sein und in einer anderen als
-    Bediengeraet haengen -- es zeigt ja einen Sollwert an. Ein Schreibkanal auf sein
-    `occupied_heating_setpoint` waere dann als Anzeige angemeldet und bewegte trotzdem
-    ein Ventil, mit `switches=False` an beiden Riegeln des Trockenlaufs vorbei.
+    Two conditions, not one. It is not enough that the device is a controller
+    **somewhere**: a thermostat can be an actuator in one zone and hang as a
+    controller in another -- after all, it does display a setpoint. A write channel
+    onto its `occupied_heating_setpoint` would then be registered as a display value
+    and would still move a valve, slipping past both of the dry run's bolts even with
+    `switches=False`.
 
-    Deshalb: Bediengeraet ja, Aktor nirgends. Wer ein Geraet wirklich beides sein lassen
-    will, muss die Aktorrolle loesen -- und sieht dabei, was er tut.
+    Hence: controller yes, actuator nowhere. Whoever really wants a device to be both
+    must remove the actuator role -- and sees what they are doing while doing it.
     """
     return _hat_rolle(session, device, "controller") and not _hat_rolle(
         session, device, "actuator"
@@ -57,7 +58,7 @@ def configure_channel(
     *, zone_id: int | None = None, source_device_id: int | None = None,
     fixed_text: str | None = None, fixed_number: Decimal | None = None,
 ) -> ControllerChannel:
-    """Prueft und speichert einen Kanal; Schreibziele muessen Bediengeraete sein."""
+    """Validates and saves a channel; write targets must be controllers."""
     property_model = session.scalar(select(DeviceProperty).where(
         DeviceProperty.device_id == device.id, DeviceProperty.name == property_name))
     if property_model is None:
@@ -99,13 +100,13 @@ def configure_channel(
 
 
 def apply_read_channels(session: Session, device: Device, values: dict[str, object], now: datetime) -> None:
-    """Wendet alle in der Nachricht vorhandenen Lesekanaele einmal an."""
+    """Applies every read channel present in the message, once each."""
     for channel, kind in session.execute(select(ControllerChannel, ChannelKind).join(ChannelKind).where(
         ControllerChannel.device_id == device.id, ControllerChannel.direction == "read")):
         if channel.property_name not in values or channel.zone_id is None:
             continue
         zone = session.get(Zone, channel.zone_id)
-        if zone is None:  # pragma: no cover - Fremdschluessel haelt dagegen
+        if zone is None:  # pragma: no cover - foreign key prevents this
             continue
         raw = values[channel.property_name]
         try:

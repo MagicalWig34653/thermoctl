@@ -1,5 +1,5 @@
-"""Domaenenlogik: geraeteunabhaengige Regeln, von allen Adaptern gleichermassen benutzt.
+"""Domain logic: device-independent rules, used equally by all adapters.
 
-Dieses Paket darf nichts aus ``thermoctl.web``, ``thermoctl.api`` oder ``fastapi``
-importieren (Grundsatz 6: Domaenenlogik gehoert nicht in Adapter).
+This package must not import anything from ``thermoctl.web``, ``thermoctl.api`` or
+``fastapi`` (Principle 6: domain logic does not belong in adapters).
 """

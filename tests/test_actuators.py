@@ -12,30 +12,30 @@ from thermoctl.integrations import actuators as actuators_module
 from thermoctl.integrations.actuators import MerossSwitch, Zigbee2MqttVentil
 
 
-class MqttAttrappe:
+class MqttStub:
     def __init__(self, *, errors: Exception | None = None) -> None:
-        self.aufrufe: list[tuple[str, str, bool]] = []
+        self.calls: list[tuple[str, str, bool]] = []
         self.errors = errors
 
     async def publishing(self, topic: str, payload: str, *, switches: bool) -> bool:
-        self.aufrufe.append((topic, payload, switches))
+        self.calls.append((topic, payload, switches))
         if self.errors:
             raise self.errors
         return True
 
 
-class HttpAttrappe:
+class HttpStub:
     def __init__(
         self, *, errors: Exception | None = None, response: dict[str, Any] | None = None
     ) -> None:
-        self.aufrufe: list[tuple[str, dict[str, str], dict[str, str]]] = []
+        self.calls: list[tuple[str, dict[str, str], dict[str, str]]] = []
         self.errors = errors
         self.response = response or {"data": {"token": "ersatz-token"}}
 
     async def post(
-        self, url: str, daten: dict[str, str], kopfzeilen: dict[str, str]
+        self, url: str, data: dict[str, str], headers: dict[str, str]
     ) -> dict[str, Any]:
-        self.aufrufe.append((url, dict(daten), dict(kopfzeilen)))
+        self.calls.append((url, dict(data), dict(headers)))
         if self.errors:
             raise self.errors
         return self.response
@@ -45,7 +45,7 @@ class HttpResponse:
     def __enter__(self) -> HttpResponse:
         return self
 
-    def __exit__(self, *_argumente: object) -> None:
+    def __exit__(self, *_arguments: object) -> None:
         return None
 
     def read(self) -> bytes:
@@ -62,42 +62,42 @@ def _settings(**values: object) -> Settings:
 
 
 @pytest.mark.anyio
-async def test_ohne_control_armed_wird_nichts_gesendet(session: Session) -> None:
-    mqtt = MqttAttrappe()
-    http = HttpAttrappe()
-    anlagendaten = json.loads(Path("tests/daten/anlage-beispiele.json").read_text())
-    name = anlagendaten["geraete"][-1]
-    basis = _settings().mqtt_base_topic
-    devices_id = anlagendaten["geraete"][0]
+async def test_without_control_armed_nothing_is_sent(session: Session) -> None:
+    mqtt = MqttStub()
+    http = HttpStub()
+    installation_data = json.loads(Path("tests/daten/anlage-beispiele.json").read_text())
+    name = installation_data["geraete"][-1]
+    base_topic = _settings().mqtt_base_topic
+    devices_id = installation_data["geraete"][0]
 
     mqtt_result = await Zigbee2MqttVentil(
-        session, mqtt, basis, name
+        session, mqtt, base_topic, name
     ).switching(True)
     meross_result = await MerossSwitch(
         session, _settings(meross_email="konto@example.invalid", meross_password="geheim"),
         devices_id, transport=http,
     ).switching(False)
 
-    assert mqtt.aufrufe == []
-    assert http.aufrufe == []
-    assert f"{basis}/{name}/set" in mqtt_result.beschreibung
+    assert mqtt.calls == []
+    assert http.calls == []
+    assert f"{base_topic}/{name}/set" in mqtt_result.beschreibung
     assert '{"state": "ON"}' in mqtt_result.beschreibung
     assert "Zustand OFF" in meross_result.beschreibung
-    assert name in Zigbee2MqttVentil(session, mqtt, basis, name).beschreibung()
+    assert name in Zigbee2MqttVentil(session, mqtt, base_topic, name).beschreibung()
     assert devices_id in MerossSwitch(
         session, _settings(), devices_id, transport=http
     ).beschreibung()
 
 
 @pytest.mark.anyio
-async def test_control_armed_baut_meross_anmeldung_und_schaltaufruf(session: Session) -> None:
+async def test_control_armed_builds_the_meross_login_and_switch_call(session: Session) -> None:
     frost_protection = create_mode(session, "frostschutz")
     session.add(Setting(id=1, control_armed=True, frost_protection_mode_id=frost_protection.id))
     session.flush()
-    anlagendaten = json.loads(Path("tests/daten/anlage-beispiele.json").read_text())
-    devices_id = anlagendaten["geraete"][0]
-    basis = _settings().mqtt_base_topic
-    http = HttpAttrappe()
+    installation_data = json.loads(Path("tests/daten/anlage-beispiele.json").read_text())
+    devices_id = installation_data["geraete"][0]
+    base_topic = _settings().mqtt_base_topic
+    http = HttpStub()
     result = await MerossSwitch(
         session,
         _settings(meross_email="konto@example.invalid", meross_password="geheim"),
@@ -107,33 +107,33 @@ async def test_control_armed_baut_meross_anmeldung_und_schaltaufruf(session: Ses
         api_basis="https://meross.example.invalid",
     ).switching(True)
     assert result.ausgefuehrt is True
-    assert [aufruf[0] for aufruf in http.aufrufe] == [
+    assert [call[0] for call in http.calls] == [
         "https://meross.example.invalid/v1/Auth/signIn",
         "https://meross.example.invalid/v1/Device/devControl",
     ]
-    assert http.aufrufe[1][1] == {
+    assert http.calls[1][1] == {
         "uuid": devices_id, "channel": "2", "action": "ON"
     }
 
-    ohne_http = HttpAttrappe()
-    nicht_konfiguriert = await MerossSwitch(
-        session, _settings(), devices_id, transport=ohne_http
+    without_http = HttpStub()
+    not_configured = await MerossSwitch(
+        session, _settings(), devices_id, transport=without_http
     ).switching(True)
-    assert nicht_konfiguriert.ausgefuehrt is False
-    assert "Nicht konfiguriert" in nicht_konfiguriert.beschreibung
-    assert ohne_http.aufrufe == []
+    assert not_configured.ausgefuehrt is False
+    assert "Nicht konfiguriert" in not_configured.beschreibung
+    assert without_http.calls == []
 
-    mqtt = MqttAttrappe(errors=ConnectionError("Gegenstelle nicht erreichbar"))
+    mqtt = MqttStub(errors=ConnectionError("Gegenstelle nicht erreichbar"))
     errors = await Zigbee2MqttVentil(
-        session, mqtt, basis, devices_id
+        session, mqtt, base_topic, devices_id
     ).switching(True)
     assert errors.ausgefuehrt is False
     assert errors.errors == "Gegenstelle nicht erreichbar"
 
-    abgewiesen = MqttAttrappe()
-    abgewiesen.publishing = _reject_publication  # type: ignore[method-assign]
+    rejected = MqttStub()
+    rejected.publishing = _reject_publication  # type: ignore[method-assign]
     mqtt_result = await Zigbee2MqttVentil(
-        session, abgewiesen, basis, devices_id
+        session, rejected, base_topic, devices_id
     ).switching(False)
     assert mqtt_result.errors == "MQTT-Client hat die Veroeffentlichung abgewiesen"
 
@@ -141,17 +141,17 @@ async def test_control_armed_baut_meross_anmeldung_und_schaltaufruf(session: Ses
         session,
         _settings(meross_email="konto@example.invalid", meross_password="geheim"),
         devices_id,
-        transport=HttpAttrappe(errors=ConnectionError("Cloud nicht erreichbar")),
+        transport=HttpStub(errors=ConnectionError("Cloud nicht erreichbar")),
     ).switching(False)
     assert meross_error.errors == "Cloud nicht erreichbar"
 
-    token_fehlt = await MerossSwitch(
+    missing_token = await MerossSwitch(
         session,
         _settings(meross_email="konto@example.invalid", meross_password="geheim"),
         devices_id,
-        transport=HttpAttrappe(response={"data": {}}),
+        transport=HttpStub(response={"data": {}}),
     ).switching(False)
-    assert token_fehlt.errors == "Meross-Anmeldung lieferte kein Token"
+    assert missing_token.errors == "Meross-Anmeldung lieferte kein Token"
 
 
 async def _reject_publication(
@@ -161,77 +161,80 @@ async def _reject_publication(
 
 
 @pytest.mark.anyio
-async def test_http_transport_kodiert_formular_und_liefert_objekt(
+async def test_http_transport_encodes_the_form_and_returns_an_object(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    anfragen: list[object] = []
+    requests: list[object] = []
 
-    def url_oeffnen(anfrage: object, *, timeout: int) -> HttpResponse:
-        anfragen.append(anfrage)
+    def open_url(request: object, *, timeout: int) -> HttpResponse:
+        requests.append(request)
         assert timeout == 10
         return HttpResponse()
 
-    monkeypatch.setattr(actuators_module.request, "urlopen", url_oeffnen)
+    monkeypatch.setattr(actuators_module.request, "urlopen", open_url)
     result = await actuators_module.UrllibHttpTransport().post(
         "https://meross.example.invalid/v1/test",
         {"zustand": "AN"},
         {"Authorization": "Basic token"},
     )
     assert result == {"data": {"token": "ersatz-token"}}
-    assert len(anfragen) == 1
+    assert len(requests) == 1
 
 
 def _armed(session: Session) -> None:
-    """Setzt control_armed — ausschliesslich in Tests, die den Riegel selbst pruefen."""
+    """Sets control_armed — only in tests that check the bolt itself."""
     frost_protection = create_mode(session, "frostschutz")
     session.add(Setting(id=1, control_armed=True, frost_protection_mode_id=frost_protection.id))
     session.flush()
 
 
 @pytest.mark.anyio
-async def test_meross_ohne_zugangsdaten_meldet_sich_als_unkonfiguriert(
+async def test_meross_without_credentials_reports_itself_as_unconfigured(
     session: Session,
 ) -> None:
-    """Der Normalfall in dieser Phase: kein Konto hinterlegt, also kein Aufruf.
+    """The normal case at this stage: no account configured, so no call.
 
-    Das ist ausdruecklich kein Fehler — der Adapter soll dann still nichts tun, statt
-    einen Anmeldeversuch mit leeren Feldern zu unternehmen.
+    This is explicitly not an error — the adapter should then quietly do
+    nothing, instead of attempting a login with empty fields.
     """
     _armed(session)
-    http = HttpAttrappe()
+    http = HttpStub()
     result = await MerossSwitch(session, _settings(), "geraet-1", transport=http).switching(
         True
     )
     assert result.ausgefuehrt is False
     assert "Nicht konfiguriert" in result.beschreibung
-    assert http.aufrufe == []
+    assert http.calls == []
 
 
 @pytest.mark.anyio
-async def test_geraetename_mit_umlaut_und_leerzeichen_ergibt_das_richtige_topic(
+async def test_a_device_name_with_an_umlaut_and_a_space_yields_the_correct_topic(
     session: Session,
 ) -> None:
-    """Die Anlage fuehrt Namen wie 'Über Küche'. Ein Adapter, der sie verstuemmelt,
-    schaltet spaeter ein anderes Geraet oder gar keines."""
-    anlagendaten = json.loads(Path("tests/daten/anlage-beispiele.json").read_text())
-    name = next(n for n in anlagendaten["geraete"] if " " in n and any(c in n for c in "äöüÄÖÜ"))
-    ventil = Zigbee2MqttVentil(session, MqttAttrappe(), "zigbee2mqtt", name)
-    result = await ventil.switching(True)
+    """The installation carries names like 'Über Küche'. An adapter that
+    mangles them later switches a different device, or none at all."""
+    installation_data = json.loads(Path("tests/daten/anlage-beispiele.json").read_text())
+    name = next(
+        n for n in installation_data["geraete"]
+        if " " in n and any(c in n for c in "äöüÄÖÜ")
+    )
+    valve = Zigbee2MqttVentil(session, MqttStub(), "zigbee2mqtt", name)
+    result = await valve.switching(True)
     assert f"zigbee2mqtt/{name}/set" in result.beschreibung
 
 
 @pytest.mark.anyio
-async def test_fehler_der_gegenstelle_wird_zum_ergebnis_nicht_zur_ausnahme(
+async def test_a_peer_error_becomes_a_result_not_an_exception(
     session: Session,
 ) -> None:
-    """Ein Aktorfehler darf den Regelzyklus aller anderen Zonen nicht abbrechen."""
+    """An actuator error must not abort the control cycle for every other zone."""
     _armed(session)
-    mqtt = MqttAttrappe(errors=ConnectionError("Broker weg"))
-    ventil = await Zigbee2MqttVentil(session, mqtt, "zigbee2mqtt", "Ventil").switching(True)
-    assert ventil.ausgefuehrt is False
-    assert ventil.errors is not None and "Broker weg" in ventil.errors
+    mqtt = MqttStub(errors=ConnectionError("Broker weg"))
+    valve = await Zigbee2MqttVentil(session, mqtt, "zigbee2mqtt", "Ventil").switching(True)
+    assert valve.ausgefuehrt is False
+    assert valve.errors is not None and "Broker weg" in valve.errors
 
-    http = HttpAttrappe(errors=TimeoutError("Cloud antwortet nicht"))
+    http = HttpStub(errors=TimeoutError("Cloud antwortet nicht"))
     meross = await MerossSwitch(
         session, _settings(meross_email="k@example.invalid", meross_password="geheim"),
         "geraet-1", transport=http,
@@ -241,59 +244,61 @@ async def test_fehler_der_gegenstelle_wird_zum_ergebnis_nicht_zur_ausnahme(
 
 
 @pytest.mark.anyio
-async def test_abgewiesene_veroeffentlichung_wird_als_fehler_gemeldet(
+async def test_a_rejected_publication_is_reported_as_an_error(
     session: Session,
 ) -> None:
-    """Der zweite Riegel im MQTT-Client greift — der Aktor darf das nicht als Erfolg
-    verbuchen, sonst stuende im Protokoll 'geschaltet', wo nichts geschaltet wurde."""
+    """The second bolt in the MQTT client kicks in — the actuator must not
+    count that as success, or the log would say 'switched' where nothing
+    switched."""
     _armed(session)
     result = await Zigbee2MqttVentil(
-        session, _AbweisenderClient(), "zigbee2mqtt", "Ventil"
+        session, _RejectingClient(), "zigbee2mqtt", "Ventil"
     ).switching(True)
     assert result.ausgefuehrt is False
     assert result.errors is not None and "abgewiesen" in result.errors
 
 
-class _AbweisenderClient:
+class _RejectingClient:
     async def publishing(self, topic: str, payload: str, *, switches: bool) -> bool:
         return False
 
 
 @pytest.mark.anyio
-async def test_anmeldung_ohne_token_wird_zum_fehler(session: Session) -> None:
-    """Antwortet die Cloud ohne Token, ist der Schaltaufruf sinnlos — und der Adapter
-    darf ihn nicht trotzdem absetzen."""
+async def test_a_login_without_a_token_becomes_an_error(session: Session) -> None:
+    """If the cloud responds without a token, the switch call is
+    meaningless — and the adapter must not send it anyway."""
     _armed(session)
-    http = HttpAttrappe(response={"data": {}})
+    http = HttpStub(response={"data": {}})
     result = await MerossSwitch(
         session, _settings(meross_email="k@example.invalid", meross_password="geheim"),
         "geraet-1", transport=http,
     ).switching(True)
     assert result.ausgefuehrt is False
     assert result.errors is not None
-    assert len(http.aufrufe) == 1, "Nach der gescheiterten Anmeldung darf nichts folgen"
+    assert len(http.calls) == 1, "Nothing may follow a failed login"
 
 
 @pytest.mark.anyio
-async def test_scharfes_ventil_sendet_wirklich(session: Session) -> None:
-    """Der Gegenbeweis zum Trockenlauf: Der Weg funktioniert, er ist nur verriegelt.
+async def test_an_armed_valve_actually_sends(session: Session) -> None:
+    """The counter-proof to the dry run: the path works, it is merely locked.
 
-    Ohne diesen Test belegte die Suite nur, dass nichts gesendet wird — auch dann, wenn
-    das Senden gar nicht gebaut waere. Phase 4 haengt daran.
+    Without this test, the suite would only prove that nothing is sent —
+    even if sending had never been built at all. Phase 4 depends on this.
     """
     _armed(session)
-    mqtt = MqttAttrappe()
+    mqtt = MqttStub()
     result = await Zigbee2MqttVentil(session, mqtt, "zigbee2mqtt", "Ventil").switching(True)
     assert result.ausgefuehrt is True
-    assert mqtt.aufrufe == [("zigbee2mqtt/Ventil/set", '{"state": "ON"}', True)]
+    assert mqtt.calls == [("zigbee2mqtt/Ventil/set", '{"state": "ON"}', True)]
 
 
 @pytest.mark.anyio
-async def test_unerwartete_meross_antwort_wird_zum_fehler(session: Session) -> None:
-    """Antwortet die Cloud mit etwas anderem als einem Objekt mit Token, ist das ein
-    Fehler des Adapters und kein Grund, den Schaltaufruf blind abzusetzen."""
+async def test_an_unexpected_meross_response_becomes_an_error(session: Session) -> None:
+    """If the cloud responds with anything other than an object containing a
+    token, that is a bug in the adapter and no reason to send the switch
+    call blindly."""
     _armed(session)
-    http = HttpAttrappe(response={"data": "unerwartet"})
+    http = HttpStub(response={"data": "unerwartet"})
     result = await MerossSwitch(
         session, _settings(meross_email="k@example.invalid", meross_password="geheim"),
         "geraet-1", transport=http,
@@ -302,9 +307,9 @@ async def test_unerwartete_meross_antwort_wird_zum_fehler(session: Session) -> N
     assert result.errors is not None and "Token" in result.errors
 
 
-def test_http_transport_weist_nicht_objekt_antworten_ab() -> None:
-    """Die HTTP-Huelle liefert nur Objekte weiter — eine Liste waere fuer jeden Aufrufer
-    eine Ueberraschung, die erst weiter unten auffiele."""
+def test_http_transport_rejects_non_object_responses() -> None:
+    """The HTTP wrapper only passes objects through — a list would surprise
+    every caller, and only show up further down the line."""
     import pytest as _pytest
 
     class _List:

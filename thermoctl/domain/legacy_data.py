@@ -17,7 +17,7 @@ class SchedulePointDraft:
 
 
 def read_night_hours(blob: str) -> dict[int, frozenset[int]]:
-    """Liest das ungepruefte Stundenraster, ohne unlesbare Teile zu uebernehmen."""
+    """Reads the unvalidated hour grid, without adopting unreadable parts."""
     result: dict[int, frozenset[int]] = {
         weekday: frozenset() for weekday in range(1, DAYS_PER_WEEK + 1)
     }
@@ -58,7 +58,7 @@ def read_night_hours(blob: str) -> dict[int, frozenset[int]]:
 
 
 def _read_hour(value: object) -> int | None:
-    # Bool ist technisch ein Integer, war aber nie ein moeglicher Wert des PHP-Formulars.
+    # A bool is technically an integer, but was never a possible value of the PHP form.
     if isinstance(value, bool):
         return None
     if isinstance(value, int):
@@ -73,7 +73,7 @@ def _read_hour(value: object) -> int | None:
 def schedule_points_from_night_hours(
     night_hours: dict[int, frozenset[int]],
 ) -> list[SchedulePointDraft]:
-    """Verdichtet ein Stundenraster zu den Zustandswechseln des Wochenrings."""
+    """Condenses an hour grid into the state transitions of the weekly ring."""
     week_picture = [
         stunde in night_hours.get(weekday, frozenset())
         for weekday in range(1, DAYS_PER_WEEK + 1)

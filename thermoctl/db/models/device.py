@@ -18,10 +18,10 @@ from thermoctl.db.base import Base
 
 
 class Device(Base):
-    """Ein Geraet, wie es ueber seine Anbindung erreichbar ist.
+    """A device, as it is reachable via its binding.
 
-    Getrennt von der Rolle, die es in einer Zone spielt: derselbe Schaltaktor kann ueber
-    Zigbee2MQTT oder Meross haengen, ohne dass die Zone davon etwas merkt.
+    Separate from the role it plays in a zone: the same switching actuator can hang off
+    Zigbee2MQTT or Meross without the zone noticing anything of it.
     """
 
     __tablename__ = "device"
@@ -31,7 +31,7 @@ class Device(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     integration_id: Mapped[int] = mapped_column(ForeignKey("integration.id"), nullable=False)
-    # 191 Zeichen: unter utf8mb4 die Grenze indizierbarer Schluessellaenge in MariaDB
+    # 191 characters: under utf8mb4 the limit of indexable key length in MariaDB
     external_id: Mapped[str] = mapped_column(String(191), nullable=False)
     display_name: Mapped[str] = mapped_column(String(128), nullable=False)
     model: Mapped[str | None] = mapped_column(String(128), nullable=True)
@@ -66,18 +66,17 @@ class ZoneDevice(Base):
 
 
 class ControllerBinding(Base):
-    """Was ein Tastendruck an einem Bediengeraet ausloest.
+    """What a button press on a controller triggers.
 
-    Warum das in der Datenbank steht und nicht im Quelltext: Wie ein Geraet seine Tasten
-    benennt, entscheidet Zigbee2MQTT je Modell -- der eine schickt `single_plus`, der
-    naechste `button_1_single`, der uebernaechste `up_open`. Eine Tabelle im Code waere
-    genau die Sorte harte Verdrahtung, gegen die dieses Projekt gebaut ist (Grundsatz 1),
-    und sie waere fuer jedes Geraet falsch, das noch nicht darin steht.
+    Why this lives in the database and not in the source code: how a device names its
+    buttons is decided by Zigbee2MQTT per model -- one sends `single_plus`, the next
+    `button_1_single`, the one after that `up_open`. A table in code would be exactly
+    the kind of hard wiring this project is built against (Principle 1), and it would
+    be wrong for every device not yet listed in it.
 
-    Stattdessen merkt sich der Dienst, welche Aktionen ein Geraet **tatsaechlich**
-    geschickt hat, und die Oberflaeche laesst sie zuordnen. Damit funktioniert jedes
-    Geraet, das ueberhaupt ein `action`-Feld sendet, ohne dass jemand sein Datenblatt
-    liest.
+    Instead, the service remembers which actions a device has **actually** sent, and
+    the interface lets them be assigned. This way every device that sends an `action`
+    field at all works, without anyone reading its data sheet.
     """
 
     __tablename__ = "controller_binding"
@@ -89,18 +88,18 @@ class ControllerBinding(Base):
     device_id: Mapped[int] = mapped_column(
         ForeignKey("device.id", ondelete="CASCADE"), nullable=False
     )
-    # Der Wert, den Zigbee2MQTT im Feld `action` schickt.
+    # The value that Zigbee2MQTT sends in the `action` field.
     action_code: Mapped[str] = mapped_column(String(64), nullable=False)
     command_id: Mapped[int] = mapped_column(
         ForeignKey("controller_command.id"), nullable=False
     )
-    # Nur fuer Befehle, die eine Groesse brauchen -- die Schrittweite beim Verstellen.
-    # Sonst None: Ein Boost hat keine Schrittweite, und eine 0 daneben waere eine
-    # Behauptung ueber etwas, das es nicht gibt.
+    # Only for commands that need a magnitude -- the step size when adjusting. Otherwise
+    # None: a boost has no step size, and a 0 next to it would be a claim about
+    # something that does not exist.
     #
-    # Eine Nachkommastelle, nicht zwei: Ein Sollwert traegt nach `temperatur_pruefen`
-    # ohnehin nur eine, und ein Viertelgrad Schrittweite waere eine Zusage, die beim
-    # ersten Druck gebrochen wuerde.
+    # One decimal place, not two: a setpoint only ever carries one after
+    # `temperatur_pruefen` anyway, and a quarter-degree step size would be a promise
+    # broken on the very first press.
     step_k: Mapped[Decimal | None] = mapped_column(Numeric(3, 1), nullable=True)
 
 

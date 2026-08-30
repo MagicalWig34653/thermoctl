@@ -9,16 +9,16 @@ from thermoctl.db.base import utcnow
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 def _logged_in_user(request: Request) -> dict[str, object]:
-    """Stellt jeder Vorlage den angemeldeten Benutzer bereit.
+    """Provides every template with the logged-in user.
 
-    Ohne das trug die Kopfleiste auf der Startseite den Namen und ueberall sonst das
-    Wort "Konto" -- die Startseite war die einzige Ansicht, die `benutzer` in ihren
-    Kontext legte. Ein Bedienelement, das je nach Seite anders heisst, sieht aus wie ein
-    anderes Bedienelement.
+    Without this, the top bar on the start page carried the name and everywhere else
+    the word "account" -- the start page was the only view that put `benutzer` into
+    its context. A control that is named differently depending on the page looks like
+    a different control.
 
-    Der Benutzer wird nicht erneut aufgeloest: Die Anmeldung hat ihn ohnehin schon
-    ermittelt und unter `request.state` hinterlegt. Fehlt er dort, steht schlicht nichts
-    da -- die Anmeldeseite hat keinen.
+    The user is not resolved again: the login has already determined it anyway and
+    stored it under `request.state`. If it's missing there, simply nothing shows --
+    the login page has none.
     """
     return {"kopf_benutzer": getattr(request.state, "user", None)}
 
@@ -27,42 +27,42 @@ templates = Jinja2Templates(
     directory=str(TEMPLATES_DIR), context_processors=[_logged_in_user]
 )
 
-# Bootstrap und HTMX liegen als Dateien in diesem Verzeichnis (siehe
-# static/HERKUNFT.md) und werden lokal ausgeliefert, nicht ueber ein CDN --
-# `thermoctl` soll auch ohne Internetzugang im Heimnetz benutzbar bleiben.
+# Bootstrap and HTMX sit as files in this directory (see static/HERKUNFT.md) and
+# are served locally, not via a CDN -- `thermoctl` should stay usable on a home
+# network without internet access, too.
 STATIC_DIR = Path(__file__).parent / "static"
 
 
 def ist_teilaustausch(request: Request) -> bool:
-    """Ob htmx nur ein Stueck der Seite nachlaedt -- und nicht eine ganze Seite holt.
+    """Whether htmx is only loading a piece of the page -- and not fetching a whole page.
 
-    `HX-Request` allein reicht dafuer **nicht**: Seit `hx-boost="true"` am <body> haengt,
-    traegt jede gewoehnliche Navigation diesen Kopf. Sechs Ansichten haben daraufhin nur
-    ihren Inhalt ohne Rahmen gerendert -- wer ueber das Menue auf /geraete oder /audit
-    ging, verlor die Kopfleiste und kam nur durch Neuladen zurueck. Beim Direktaufruf
-    derselben Adresse war alles in Ordnung, weshalb es niemandem auffiel, der die Seite
-    zum Pruefen einfach aufrief.
+    `HX-Request` alone is **not** enough for this: ever since `hx-boost="true"` has
+    been on the <body>, every ordinary navigation carries this header too. As a
+    result, six views rendered only their content without the frame -- whoever went to
+    /geraete or /audit via the menu lost the top bar and could only get it back by
+    reloading. On a direct call to the same address everything was fine, which is why
+    nobody noticed who simply opened the page to check it.
 
-    `HX-Boosted` setzt htmx zusaetzlich, wenn die Anfrage aus einem geboosteten Verweis
-    stammt. Nur ohne diesen Kopf ist es wirklich ein Teilaustausch.
+    `HX-Boosted` is additionally set by htmx when the request comes from a boosted
+    link. It's only truly a partial swap without this header.
     """
     return "HX-Request" in request.headers and "HX-Boosted" not in request.headers
 
 
 def age_in_words(moment: datetime | None, now: datetime | None = None) -> str:
-    """Wie lange etwas her ist, in Worten — 'vor 3 Minuten' statt eines Zeitstempels.
+    """How long ago something was, in words — 'vor 3 Minuten' instead of a timestamp.
 
-    Fuer eine Heizungssteuerung ist genau das die Frage: Ist dieser Messwert frisch oder
-    liegt er seit gestern herum? Ein roher Zeitstempel mit Mikrosekunden beantwortet sie
-    nicht, er verlangt Kopfrechnen — und im Zweifel rechnet man falsch.
+    For a heating control this is exactly the question: is this reading fresh, or has
+    it been sitting there since yesterday? A raw timestamp with microseconds doesn't
+    answer that, it demands mental arithmetic — and when in doubt, you get it wrong.
 
-    Alle Zeitpunkte sind naive UTC, wie im ganzen Projekt.
+    All points in time are naive UTC, as throughout the whole project.
     """
     if moment is None:
         return "noch nie"
     elapsed = ((now or utcnow()) - moment).total_seconds()
     if elapsed < 0:
-        # Ein leicht falsch gestellter Sensor darf nicht 'in -3 Minuten' anzeigen.
+        # A slightly misconfigured sensor must not display 'in -3 minutes'.
         return "gerade eben"
     for limit, teiler, einzahl, mehrzahl in (
         (60, 1, "Sekunde", "Sekunden"),
@@ -76,19 +76,19 @@ def age_in_words(moment: datetime | None, now: datetime | None = None) -> str:
     return f"vor {days} {'Tag' if days == 1 else 'Tagen'}"
 
 
-# Der Bereich, ueber den Temperaturen als Farbe dargestellt werden. Nicht die Grenzen
-# der Eingabe, sondern der Bereich, in dem sich Wohnraumtemperaturen
-# tatsaechlich bewegen -- sonst laege alles in derselben blassen Mitte.
+# The range over which temperatures are rendered as color. Not the input's limits,
+# but the range in which living-room temperatures actually move -- otherwise
+# everything would sit in the same pale middle.
 SPUR_KALT = Decimal("15")
 SPUR_WARM = Decimal("23")
 
 
 def waermeanteil(temperature: Decimal | None) -> float:
-    """0 = kuehlster darstellbarer Sollwert, 1 = waermster. Ausserhalb wird gekappt.
+    """0 = coldest representable setpoint, 1 = warmest. Clamped outside that range.
 
-    Steht hier und nicht in einer der beiden Ansichten: Startseite und Wochenansicht
-    zeigen dieselbe Groesse, und zwei Skalen fuer dieselbe Aussage waeren zwei Skalen,
-    die auseinanderlaufen.
+    Lives here and not in either of the two views: the start page and the week view
+    show the same quantity, and two scales for the same statement would be two scales
+    that drift apart.
     """
     if temperature is None:
         return 0.5
@@ -97,11 +97,11 @@ def waermeanteil(temperature: Decimal | None) -> float:
 
 
 def grad(value: Decimal | float | None, stellen: int = 1) -> str:
-    """Eine Temperatur, wie man sie im Deutschen schreibt: mit Komma.
+    """A temperature written the way it's done in German: with a comma.
 
-    Nur fuer die Anzeige. In `value`-Attributen von `<input type="number">` hat ein
-    Komma nichts zu suchen -- der Browser verwirft den Wert dann still, und das Feld
-    steht leer da, ohne dass jemand sagen kann warum.
+    Display only. A comma has no business in `value` attributes of
+    `<input type="number">` -- the browser then silently discards the value, and the
+    field sits there empty with nobody able to say why.
     """
     if value is None:
         return "–"

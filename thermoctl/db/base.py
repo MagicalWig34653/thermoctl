@@ -3,9 +3,9 @@ from datetime import UTC, datetime
 from sqlalchemy import DateTime, MetaData
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
-# Ohne diese Konvention vergibt SQLAlchemy anonyme Constraint-Namen. Alembic kann sie
-# dann unter SQLite nicht wieder aufloesen, weil dort jede Aenderung als Tabellenkopie
-# laeuft (batch mode). Das faellt erst bei der zweiten Migration auf.
+# Without this convention SQLAlchemy assigns anonymous constraint names. Alembic can
+# then not resolve them again under SQLite, because there every change runs as a table
+# copy (batch mode). This only surfaces at the second migration.
 NAMENSKONVENTION = {
     "ix": "ix_%(column_0_label)s",
     "uq": "uq_%(table_name)s_%(column_0_name)s",
@@ -16,7 +16,7 @@ NAMENSKONVENTION = {
 
 
 def utcnow() -> datetime:
-    """UTC ohne Zonenangabe — MariaDB DATETIME traegt keine."""
+    """UTC without a timezone — MariaDB DATETIME does not carry one."""
     return datetime.now(UTC).replace(tzinfo=None)
 
 

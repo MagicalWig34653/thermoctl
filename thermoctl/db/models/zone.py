@@ -8,11 +8,11 @@ from thermoctl.db.models.lookup import OperatingMode
 
 
 class SetpointMode(Base):
-    """Frei anlegbarer Sollwert-Modus: Tag, Nacht, Frostschutz, Urlaub, …
+    """Freely creatable setpoint mode: day, night, frost protection, vacation, …
 
-    Welcher Modus der Frostschutz ist, steht ausschliesslich in
-    `setting.frost_protection_mode_id` und nicht zusaetzlich hier — zwei Quellen fuer
-    dieselbe Aussage geraten auseinander.
+    Which mode is frost protection is stated exclusively in
+    `setting.frost_protection_mode_id` and not additionally here — two sources for the
+    same fact drift apart.
     """
 
     __tablename__ = "setpoint_mode"
@@ -26,10 +26,10 @@ class SetpointMode(Base):
 
 
 class Zone(TimestampMixin, Base):
-    """Ersetzt `rooms` und `thermostate` gemeinsam.
+    """Replaces `rooms` and `thermostate` together.
 
-    Die sechs Regelparameter sind nullbar: leer heisst 'globaler Standard aus `setting`'.
-    So steht jeder Wert genau einmal irgendwo.
+    The six control parameters are nullable: empty means 'global default from
+    `setting`'. This way every value lives in exactly one place.
     """
 
     __tablename__ = "zone"

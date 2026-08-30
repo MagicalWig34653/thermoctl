@@ -1,26 +1,25 @@
-"""Bediengeraete: was ein Tastendruck an der Wand bewirkt.
+"""Controllers: what a button press on the wall does.
 
-Ein Bediengeraet -- etwa ein Aqara W100 -- schickt seine Tastendruecke als Feld `action`
-in der Zustandsnachricht. Welche Werte darin stehen, entscheidet Zigbee2MQTT je Modell:
-der eine schickt `single_plus`, der naechste `button_1_single`, der uebernaechste
-`up_open`. Eine Tabelle dieser Namen im Quelltext waere genau die harte Verdrahtung,
-gegen die dieses Projekt gebaut ist -- und fuer jedes Geraet falsch, das noch nicht darin
-steht.
+A controller -- an Aqara W100, say -- sends its button presses as an `action` field in
+the state message. Which values appear there is decided by Zigbee2MQTT per model: one
+sends `single_plus`, the next `button_1_single`, the one after that `up_open`. A table
+of these names in the source code would be exactly the hardcoding this project is built
+against -- and wrong for every device not yet listed in it.
 
-**Deshalb wird nicht geraten, sondern zugehoert.** Jeder Tastendruck landet wie jeder
-andere Messwert in `measurement`. Die Oberflaeche zeigt, welche Aktionen ein Geraet
-tatsaechlich geschickt hat, und laesst sie belegen. Wer ein neues Modell anschliesst,
-drueckt einmal jede Taste und ordnet zu, was er sieht; ein Datenblatt braucht dafuer
-niemand.
+**That is why nothing is guessed, only listened for.** Every button press ends up in
+`measurement` like any other reading. The interface shows which actions a device has
+actually sent, and lets them be bound to commands. Whoever connects a new model presses
+every button once and maps what they see; nobody needs a datasheet for that.
 
-**Was eine Taste ausloesen darf, ist bewusst klein gehalten:** waermer, kaelter, die
-naechste Schaltung vorziehen, aus, automatisch. Alles Weitere gehoert an eine Stelle, an
-der man sieht, was man tut -- nicht auf einen Knopf, den jemand im Vorbeigehen drueckt.
+**What a button is allowed to trigger is deliberately kept small:** warmer, colder,
+bring the next schedule point forward, off, automatic. Everything else belongs at a
+place where you can see what you are doing -- not on a button someone presses in
+passing.
 
-**Waermer und kaelter verstellen den Modus, der gerade gilt** -- dasselbe wie der
-Thermostat in Home Assistant und auf der Startseite. Eine Uebersteuerung waere nach dem
-naechsten Schaltpunkt weg, und der Raum kuehlte ohne Zutun wieder aus; wer an der Wand
-+1 Grad drueckt, meint nicht "fuer die naechste halbe Stunde".
+**Warmer and colder adjust the mode that currently applies** -- the same as the
+thermostat in Home Assistant and on the start page. An override would be gone after the
+next schedule point, and the room would cool back down on its own; someone pressing +1
+degree on the wall does not mean "for the next half hour".
 """
 
 import logging
@@ -41,23 +40,23 @@ from thermoctl.domain.zones import set_operating_mode
 
 log = logging.getLogger(__name__)
 
-# Wie weit ein Druck auf "waermer" verstellt, wenn die Belegung nichts anderes sagt.
-# Ein halbes Grad ist die Stufe, die auch der Thermostat auf der Startseite nimmt.
+# How far a press on "warmer" adjusts things when the binding says nothing else.
+# Half a degree is the step the thermostat on the start page also uses.
 DEFAULT_STEP_K = Decimal("0.5")
 
-# Wie viele der zuletzt gesehenen Tastendruecke die Oberflaeche zur Auswahl stellt.
-# Genug, um bei einem Geraet mit drei Tasten alle Varianten (einfach, doppelt, halten)
-# einmal gesehen zu haben, ohne dass die Liste unuebersichtlich wird.
+# How many of the most recently seen button presses the interface offers for selection.
+# Enough to have seen every variant (single, double, hold) once on a three-button
+# device, without the list becoming cluttered.
 SEEN_ACTIONS = 20
 
 
 class ControllerError(ValueError):
-    """Die Belegung ist unbrauchbar -- unbekannter Befehl, unbekanntes Geraet."""
+    """The binding is unusable -- unknown command, unknown device."""
 
 
 @dataclass(frozen=True)
 class Binding:
-    """Eine Taste und was sie tut."""
+    """A button and what it does."""
 
     aktion: str
     command_code: str | None
@@ -67,13 +66,12 @@ class Binding:
 
 
 def gesehene_aktionen(session: Session, device: Device) -> list[Binding]:
-    """Welche Tasten dieses Geraet geschickt hat -- belegte und noch unbelegte.
+    """Which buttons this device has sent -- both bound and still unbound ones.
 
-    Die Grundlage der ganzen Einrichtung: Ohne sie muesste jemand wissen, wie sein Modell
-    seine Tasten nennt. Belegte Aktionen stehen auch dann da, wenn sie seit dem letzten
-    Aufraeumen der Messwerte nicht mehr gesehen wurden -- sonst verschwaende eine
-    funktionierende Belegung aus der Oberflaeche, nur weil die Taste eine Weile nicht
-    gedrueckt wurde.
+    The foundation of the whole setup: without it, someone would have to know what
+    their model calls its buttons. Bound actions still show up even if they have not
+    been seen since the last cleanup of readings -- otherwise a working binding would
+    vanish from the interface just because the button was not pressed for a while.
     """
     capability_id = session.scalar(
         select(DeviceCapability.id).where(DeviceCapability.code == "action")
@@ -126,7 +124,7 @@ def set_binding(
     command_code: str | None,
     step_k: Decimal | None = None,
 ) -> None:
-    """Belegt eine Taste -- oder loescht die Belegung, wenn `befehl_code` None ist."""
+    """Binds a button -- or deletes the binding if `befehl_code` is None."""
     vorhanden = session.scalars(
         select(ControllerBinding).where(
             ControllerBinding.device_id == device.id,
@@ -149,9 +147,9 @@ def set_binding(
     if step_k is not None:
         exponent = step_k.as_tuple().exponent
         if isinstance(exponent, int) and exponent < -1:
-            # Dieselbe Grenze wie beim Sollwert selbst. Ein Viertelgrad Schrittweite
-            # waere eine Zusage, die beim ersten Druck gebrochen wuerde -- die Domaene
-            # weist einen Sollwert mit zwei Nachkommastellen ab.
+            # The same bound as on the setpoint itself. A quarter-degree step would be
+            # a promise broken on the first press -- the domain rejects a setpoint
+            # with two decimal places.
             raise ControllerError(
                 "Die Schrittweite darf höchstens eine Nachkommastelle haben."
             )
@@ -171,7 +169,7 @@ def set_binding(
 
 
 def _zone(session: Session, device: Device) -> list[Zone]:
-    """Die Zonen, in denen dieses Geraet als Bediengeraet haengt."""
+    """The zones in which this device hangs as a controller."""
     return list(
         session.scalars(
             select(Zone)
@@ -186,11 +184,11 @@ def _zone(session: Session, device: Device) -> list[Zone]:
 def execute_aktion(
     session: Session, device: Device, aktion: str, now: datetime, *, source: str = "system"
 ) -> list[str]:
-    """Fuehrt aus, was fuer diese Taste belegt ist. Gibt die betroffenen Zonen zurueck.
+    """Executes whatever is bound to this button. Returns the zones affected.
 
-    Eine unbelegte Taste tut nichts und ist kein Fehler: Die meisten Geraete schicken
-    mehr Aktionen, als jemand belegen will -- jedes Halten und jedes Loslassen. Eine
-    Warnung je Druck waere Laerm.
+    An unbound button does nothing and is not an error: most devices send more actions
+    than anyone wants to bind -- every hold and every release. A warning on every press
+    would be noise.
     """
     binding = session.scalars(
         select(ControllerBinding).where(
@@ -201,13 +199,13 @@ def execute_aktion(
     if binding is None:
         return []
     command = session.get(ControllerCommand, binding.command_id)
-    if command is None:  # pragma: no cover - Fremdschluessel haelt dagegen
+    if command is None:  # pragma: no cover - foreign key prevents this
         raise ControllerError("Die Belegung zeigt auf einen Befehl, den es nicht gibt.")
 
     zones = _zone(session, device)
     if not zones:
-        # Ein Bediengeraet ohne Zone ist keine Stoerung, sondern eine unfertige
-        # Einrichtung -- und der haeufigste Grund, warum "die Taste tut nichts".
+        # A controller without a zone is not a fault but an unfinished setup -- and the
+        # most common reason why "the button does nothing".
         log.info(
             "Tastendruck ohne Zone verworfen",
             extra={"geraet": device.display_name, "aktion": aktion},
@@ -247,5 +245,5 @@ def _auf_zone_anwenden(
         set_operating_mode(session, zone, "off", akteur_id=None, source=source)
     elif command_code == "mode_auto":
         set_operating_mode(session, zone, "auto", akteur_id=None, source=source)
-    else:  # pragma: no cover - die Nachschlagetabelle kennt nur die fuenf oben
+    else:  # pragma: no cover - the lookup table only knows the five above
         raise ControllerError(f"Unbekannter Befehl: {command_code}")

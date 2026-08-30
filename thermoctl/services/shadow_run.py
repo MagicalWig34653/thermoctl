@@ -1,10 +1,9 @@
-"""Der Schattenlauf: je Zone die Lage zusammenstellen, entscheiden, protokollieren.
+"""The shadow run: assemble the situation per zone, decide, log.
 
-Trockenlauf (Abschnitt 1 der Spezifikation): dieses Modul schaltet nichts und
-veroeffentlicht nichts. Es liest `zone_state` (von `ingest.zonenzustand_fortschreiben`
-bereits fortgeschrieben), ruft `regelung.entscheiden()` auf und schreibt das Ergebnis als
-`shadow_decision`-Zeile. Genau diese Zeilen sind spaeter die Vergleichsgrundlage gegen das
-Altsystem (Teilprojekt 4).
+Dry run (section 1 of the specification): this module switches nothing and publishes
+nothing. It reads `zone_state` (already advanced by `ingest.zonenzustand_fortschreiben`),
+calls `regelung.entscheiden()`, and writes the result as a `shadow_decision` row. These
+exact rows later become the basis for comparison against the old system (subproject 4).
 """
 
 import logging
@@ -31,11 +30,11 @@ _FROST_DEFAULT = Decimal("16.0")
 
 
 def _frost_setpoint(session: Session, zone: Zone, settings: Setting) -> Decimal:
-    """Der Frostschutz-Sollwert der Zone zum konfigurierten Frostschutz-Modus.
+    """The zone's frost protection setpoint for the configured frost protection mode.
 
-    Derselbe Rueckfall wie in `aufgeloester_sollwert()`: Fehlt der Zone ein eigener Wert
-    fuer diesen Modus, gilt ein unverdaechtiger Standardwert statt eines Fehlers — eine
-    fehlende Zeile in `zone_setpoint` darf die Regelung nicht zum Stehen bringen.
+    The same fallback as in `aufgeloester_sollwert()`: if the zone has no own value
+    for this mode, an unremarkable default value applies instead of an error — a
+    missing row in `zone_setpoint` must not bring control to a halt.
     """
     value = session.scalar(
         select(ZoneSetpoint.temperature_c).where(
@@ -49,19 +48,19 @@ def _frost_setpoint(session: Session, zone: Zone, settings: Setting) -> Decimal:
 def _previous_state(
     session: Session, zone_id: int, now: datetime
 ) -> tuple[bool, int | None, bool | None]:
-    """`heizt_gerade` und `seit_s` aus der Kette der eigenen bisherigen Entscheidungen.
+    """`heizt_gerade` and `seit_s` from the chain of this zone's own past decisions.
 
-    Im Schattenbetrieb schaltet nichts wirklich, also gibt es keinen echten Ventilzustand,
-    an dem sich ablesen liesse, ob und seit wann gerade geheizt wird. Die einzige
-    verfuegbare Wahrheit ist deshalb die eigene Entscheidungshistorie: `would_heat` der
-    letzten Zeile gilt als aktueller Zustand, und `seit_s` ist die Zeit bis zur aeltesten
-    Zeile, die noch denselben Wert traegt. Genau das macht das Protokoll spaeter mit dem
-    Altsystem vergleichbar (Abschnitt 6 der Spezifikation) — und ist der Grund, warum die
-    Mindestschaltdauer (Regel 5 in `regelung.entscheiden`) im Schattenbetrieb ueberhaupt
-    etwas bewirkt: ohne diese Herleitung waere `seit_s` bei jedem Zyklus `None`.
+    In shadow run nothing actually switches, so there's no real valve state to read
+    off whether and since when it's currently heating. The only truth available is
+    therefore its own decision history: `would_heat` of the latest row counts as the
+    current state, and `seit_s` is the time back to the oldest row that still carries
+    the same value. This is exactly what later makes the log comparable to the old
+    system (section 6 of the specification) — and is the reason the minimum switch
+    duration (rule 5 in `regelung.entscheiden`) has any effect at all in shadow run:
+    without this derivation, `seit_s` would be `None` on every cycle.
 
-    Liefert zusaetzlich das rohe `previous_would_heat` fuer die neue Zeile: `None`, wenn es
-    noch gar keine Vorgeschichte gibt, sonst den zuletzt entschiedenen Wert.
+    Also returns the raw `previous_would_heat` for the new row: `None` if there's no
+    history at all yet, otherwise the most recently decided value.
     """
     zeilen = list(
         session.execute(
@@ -85,7 +84,7 @@ def _previous_state(
 def _window_situation(
     session: Session, zone: Zone, state: ZoneState | None, now: datetime
 ) -> tuple[bool, int | None]:
-    """Fensterzustand und Dauer seit dem letzten Schliessen aus der Historie."""
+    """Window state and duration since the last closing, from history."""
     if state is None or state.window_open is not False:
         return bool(state and state.window_open), None
 
@@ -176,12 +175,11 @@ def _process_zone(session: Session, zone: Zone, now: datetime) -> ShadowDecision
 
 
 def cycle(session: Session, now: datetime) -> list[ShadowDecision]:
-    """Ein Schattenzyklus ueber alle Zonen — schreibt, schaltet aber nichts.
+    """One shadow cycle over all zones — writes, but switches nothing.
 
-    Eine Zone, deren Verarbeitung scheitert, haelt die uebrigen nicht auf: jede Zone laeuft
-    in einem eigenen Savepoint, dessen Rollback bei einer Ausnahme nur ihre eigenen,
-    unvollstaendigen Aenderungen zuruecknimmt — nicht die bereits erfolgreich verarbeiteten
-    Zonen im selben Aufruf.
+    A zone whose processing fails does not hold up the others: each zone runs in its
+    own savepoint, whose rollback on an exception only undoes its own incomplete
+    changes — not the zones already processed successfully within the same call.
     """
     results: list[ShadowDecision] = []
     for zone in session.scalars(select(Zone).order_by(Zone.id)):

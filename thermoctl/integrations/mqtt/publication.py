@@ -1,13 +1,13 @@
-"""Reine MQTT-Topics und Home-Assistant-Discovery-Nutzlasten.
+"""Pure MQTT topics and Home Assistant discovery payloads.
 
-Die stabile Datenbankkennung der Zone steht im Topic; der aenderbare, moeglicherweise
-Leerzeichen oder Umlaute enthaltende Anzeigename bleibt in der Nutzlast. Zustand und Befehl
-liegen in getrennten Teilbaeumen. Dadurch trifft ein Abonnement auf ``zustand/#`` niemals
-einen Befehl, und Zustands-Topics brauchen kein missverstaendliches ``/get``-Suffix.
+The zone's stable database id lives in the topic; the changeable display name, which
+may contain spaces or umlauts, stays in the payload. State and command sit in separate
+subtrees. This way a subscription to ``zustand/#`` never catches a command, and state
+topics need no ambiguous ``/get`` suffix.
 
-Diese Funktionen werden erst in Phase 4/5 an einen sendenden Adapter angeschlossen. Der
-Vertrag entsteht schon jetzt, damit Topic-Struktur und Discovery ohne Zugriff auf die echte
-Heizungsanlage vollstaendig geprueft werden koennen.
+These functions are only wired up to a sending adapter in phase 4/5. The contract is
+built already now, so topic structure and discovery can be fully verified without
+access to the real heating system.
 """
 
 import json
@@ -22,7 +22,7 @@ from thermoctl.domain.modes import MAXIMUM_TEMPERATURE_C, MINIMUM_TEMPERATURE_C
 
 @dataclass(frozen=True)
 class StateTopics:
-    """Die einzeln abonnierbaren Zustandswerte einer Zone."""
+    """The individually subscribable state values of a zone."""
 
     current_temperature: str
     setpoint: str
@@ -35,7 +35,7 @@ class StateTopics:
 
 @dataclass(frozen=True)
 class CommandTopics:
-    """Die von Zustandsabonnements getrennten Befehle einer Zone."""
+    """The commands of a zone, kept separate from state subscriptions."""
 
     setpoint: str
     operating_mode: str
@@ -44,7 +44,7 @@ class CommandTopics:
 
 @dataclass(frozen=True)
 class DiscoveryMessage:
-    """Topic und Nutzlast einer spaeter zu sendenden Discovery-Nachricht."""
+    """Topic and payload of a discovery message to be sent later."""
 
     topic: str
     payload: str
@@ -64,7 +64,7 @@ def _zonebasis(zone_id: int, praefix: str) -> str:
 
 
 def states_topics(zone_id: int, praefix: str = "thermoctl") -> StateTopics:
-    """Baut alle Zustands-Topics einer Zone."""
+    """Builds all state topics of a zone."""
     basis = f"{_zonebasis(zone_id, praefix)}/state"
     return StateTopics(
         current_temperature=f"{basis}/current_temperature",
@@ -78,7 +78,7 @@ def states_topics(zone_id: int, praefix: str = "thermoctl") -> StateTopics:
 
 
 def command_topics(zone_id: int, praefix: str = "thermoctl") -> CommandTopics:
-    """Baut die getrennten Befehls-Topics einer Zone."""
+    """Builds the separate command topics of a zone."""
     basis = f"{_zonebasis(zone_id, praefix)}/command"
     return CommandTopics(
         setpoint=f"{basis}/setpoint",
@@ -88,7 +88,7 @@ def command_topics(zone_id: int, praefix: str = "thermoctl") -> CommandTopics:
 
 
 def mode_topics(zone_id: int, mode_id: int, praefix: str = "thermoctl") -> tuple[str, str]:
-    """Zustand und Befehl fuer die Solltemperatur **eines** Modus dieser Zone."""
+    """State and command for the setpoint of **one** mode of this zone."""
     if mode_id < 1:
         raise ValueError("Die Moduskennung muss groesser als null sein")
     basis = _zonebasis(zone_id, praefix)
@@ -96,7 +96,7 @@ def mode_topics(zone_id: int, mode_id: int, praefix: str = "thermoctl") -> tuple
 
 
 def parameter_topics(zone_id: int, name: str, praefix: str = "thermoctl") -> tuple[str, str]:
-    """Zustand und Befehl fuer **einen** Regelparameter dieser Zone."""
+    """State and command for **one** control parameter of this zone."""
     if not re.fullmatch(r"[a-z][a-z0-9_]*", name):
         raise ValueError(f"Kein gueltiger Parametername: {name!r}")
     basis = _zonebasis(zone_id, praefix)
@@ -104,24 +104,24 @@ def parameter_topics(zone_id: int, name: str, praefix: str = "thermoctl") -> tup
 
 
 def armed_topic(praefix: str = "thermoctl") -> str:
-    """Ob die Regelung wirklich schaltet -- eine Aussage fuer den ganzen Dienst.
+    """Whether control is really switching -- one statement for the whole service.
 
-    Der Trockenlauf stand bis hierher im *Namen* jeder Zone. Das war gut sichtbar und
-    genau deshalb falsch: Home Assistant leitet die Entitaetskennung beim ersten
-    Auftauchen aus dem Namen ab, und eine Zone, die zuerst im Trockenlauf erschien,
-    hiess danach fuer immer `climate.thermoctl_zone_1_trockenlauf`. Der Betriebszustand
-    gehoert in eine eigene Entitaet, nicht in den Namen einer anderen.
+    Up until this point the dry run lived in the *name* of every zone. That was clearly
+    visible and wrong for exactly that reason: Home Assistant derives the entity id
+    from the name the first time it appears, and a zone that first showed up during the
+    dry run was then called `climate.thermoctl_zone_1_trockenlauf` forever. The
+    operating state belongs in its own entity, not in the name of a different one.
     """
     return f"{_praefix(praefix)}/state/armed"
 
 
 def availability_topic(praefix: str = "thermoctl") -> str:
-    """Baut das gemeinsame Last-Will-Topic des Dienstes."""
+    """Builds the service's shared last-will topic."""
     return f"{_praefix(praefix)}/availability"
 
 
 def _identifier(praefix: str) -> str:
-    """Das Praefix, auf das reduziert, was in einer Discovery-Kennung stehen darf."""
+    """The prefix, reduced to what is allowed to appear in a discovery id."""
     ohne_akzente = unicodedata.normalize("NFKD", _praefix(praefix)).encode("ascii", "ignore")
     identifier = re.sub(rb"[^a-zA-Z0-9_-]+", b"_", ohne_akzente).decode().strip("_").lower()
     if not identifier:
@@ -135,7 +135,7 @@ def _objekt_id(zone_id: int, praefix: str) -> str:
 
 
 def discovery_config_topic(zone_id: int, praefix: str = "thermoctl") -> str:
-    """Baut das Home-Assistant-Config-Topic einer Climate-Zone."""
+    """Builds the Home Assistant config topic of a climate zone."""
     _zonebasis(zone_id, praefix)
     return f"homeassistant/climate/{_objekt_id(zone_id, praefix)}/config"
 
@@ -145,13 +145,13 @@ def _config_topic(komponente: str, objekt_id: str) -> str:
 
 
 def _devicesblock(zone_id: int, zone_name: str, praefix: str) -> dict[str, Any]:
-    """Ein Home-Assistant-Geraet je Zone, unter dem Dienst als uebergeordnetem.
+    """One Home Assistant device per zone, with the service as its parent.
 
-    Vorher hingen alle Entitaeten an einem einzigen Geraet "thermoctl". Bei einer
-    Handvoll Zonen mit je einem Dutzend Reglern ist das eine unsortierte Liste; nach
-    Zonen gruppiert steht beieinander, was zusammengehoert. Die `unique_id` der
-    Entitaeten aendert sich dadurch nicht -- Home Assistant haengt eine bestehende
-    Entitaet nur um, die Entitaetskennung bleibt.
+    Previously, all entities hung off a single device "thermoctl". With a handful of
+    zones with a dozen controls each, that's an unsorted list; grouped by zone, what
+    belongs together sits together. The `unique_id` of the entities does not change as
+    a result -- Home Assistant only re-parents an existing entity, the entity id stays
+    the same.
     """
     return {
         "identifiers": [f"thermoctl:{_praefix(praefix)}:zone:{zone_id}"],
@@ -162,7 +162,7 @@ def _devicesblock(zone_id: int, zone_name: str, praefix: str) -> dict[str, Any]:
 
 
 def _grundgeruest(zone_id: int, zone_name: str, praefix: str) -> dict[str, Any]:
-    """Was jede Entitaet einer Zone gleich traegt."""
+    """What every entity of a zone carries alike."""
     return {
         "device": _devicesblock(zone_id, zone_name, praefix),
         "availability_topic": availability_topic(praefix),
@@ -182,7 +182,7 @@ def discovery_payload(
     temp_step: Decimal = Decimal("0.5"),
     praefix: str = "thermoctl",
 ) -> str:
-    """Baut die JSON-Nutzlast fuer eine Home-Assistant-Climate-Zone."""
+    """Builds the JSON payload for a Home Assistant climate zone."""
     if not zone_name.strip():
         raise ValueError("Der Zonenname darf nicht leer sein")
     if temp_step <= 0:
@@ -195,9 +195,9 @@ def discovery_payload(
         **_grundgeruest(zone_id, zone_name, praefix),
         "name": None,
         "unique_id": objekt_id,
-        # Ausdruecklich gesetzt, damit die Entitaetskennung nicht aus dem Namen
-        # abgeleitet wird. Sonst haengt sie an der Schreibweise des Zonennamens von
-        # damals -- und aenderte sich mit jeder Umbenennung der Zone.
+        # Explicitly set so the entity id is not derived from the name. Otherwise it
+        # would depend on the zone name's spelling from back then -- and would change
+        # with every renaming of the zone.
         "object_id": objekt_id,
         "current_temperature_topic": state.current_temperature,
         "temperature_state_topic": state.setpoint,
@@ -209,8 +209,8 @@ def discovery_payload(
         "action_topic": state.wuerde_heizen,
         "action_template": "{{ 'heating' if value == 'true' else 'idle' }}",
         "modes": ["auto", "heat", "off"],
-        # Aus der Domaene, nicht abgeschrieben: Home Assistant zeigt damit
-        # denselben Bereich an, den der Dienst auch annimmt.
+        # From the domain, not copied by hand: this way Home Assistant shows the
+        # same range the service also accepts.
         "min_temp": float(MINIMUM_TEMPERATURE_C),
         "max_temp": float(MAXIMUM_TEMPERATURE_C),
         "temp_step": float(temp_step),
@@ -226,7 +226,7 @@ def zone_discovery(
     temp_step: Decimal = Decimal("0.5"),
     praefix: str = "thermoctl",
 ) -> DiscoveryMessage:
-    """Buendelt Config-Topic und Discovery-Nutzlast fuer eine Zone."""
+    """Bundles config topic and discovery payload for a zone."""
     return DiscoveryMessage(
         discovery_config_topic(zone_id, praefix),
         discovery_payload(zone_id, zone_name, temp_step=temp_step, praefix=praefix),
@@ -234,14 +234,14 @@ def zone_discovery(
 
 
 def discovery_removal(zone_id: int, praefix: str = "thermoctl") -> DiscoveryMessage:
-    """Baut die leere Discovery-Nachricht zum Entfernen einer Zone."""
+    """Builds the empty discovery message for removing a zone."""
     return DiscoveryMessage(discovery_config_topic(zone_id, praefix), "")
 
 
 def boost_discovery(
     zone_id: int, zone_name: str, praefix: str = "thermoctl"
 ) -> DiscoveryMessage:
-    """Der Knopf, der die naechste Schaltung vorzieht."""
+    """The button that pulls the next switch forward."""
     objekt_id = f"{_objekt_id(zone_id, praefix)}_boost"
     daten: dict[str, Any] = {
         **_grundgeruest(zone_id, zone_name, praefix),
@@ -262,11 +262,11 @@ def timestamp_discovery(
     label: str,
     praefix: str = "thermoctl",
 ) -> DiscoveryMessage:
-    """Ein Zeitpunkt als Sensor -- 'letzte Schaltung' und 'naechster Moduswechsel'.
+    """A point in time as a sensor -- 'last switch' and 'next mode change'.
 
-    `device_class: timestamp` heisst: Home Assistant erwartet ISO-8601 mit Zeitzone und
-    zeigt selbst "vor 12 Minuten" an. Deshalb steht hier kein vorformatierter Text --
-    die Anzeigesprache gehoert dorthin, wo sie gelesen wird.
+    `device_class: timestamp` means: Home Assistant expects ISO 8601 with timezone and
+    displays "12 minutes ago" itself. That's why no preformatted text goes here -- the
+    display language belongs wherever it is read.
     """
     if kind not in ("last_switch", "next_switch"):
         raise ValueError(f"Unbekannte Zeitstempelart: {kind!r}")
@@ -290,11 +290,11 @@ def mode_discovery(
     praefix: str = "thermoctl",
     temp_step: Decimal = Decimal("0.5"),
 ) -> DiscoveryMessage:
-    """Die Solltemperatur eines Modus als Zahleneingabe.
+    """The setpoint of a mode as a number input.
 
-    Der Thermostat zeigt immer nur den Modus, der gerade gilt. Wer die Nachtabsenkung
-    am Nachmittag verstellen will, braucht dafuer eine eigene Eingabe -- sonst muesste
-    er bis zum Abend warten.
+    The thermostat only ever shows the mode currently in effect. Whoever wants to
+    adjust the night setback in the afternoon needs a dedicated input for that --
+    otherwise they would have to wait until evening.
     """
     objekt_id = f"{_objekt_id(zone_id, praefix)}_modus_{mode_id}"
     daten: dict[str, Any] = {
@@ -325,7 +325,7 @@ def parameter_discovery(
     einheit: str | None = None,
     praefix: str = "thermoctl",
 ) -> DiscoveryMessage:
-    """Ein Regelparameter der Zone als Zahleneingabe."""
+    """A control parameter of the zone as a number input."""
     state, command = parameter_topics(zone_id, name, praefix)
     objekt_id = f"{_objekt_id(zone_id, praefix)}_parameter_{name}"
     daten: dict[str, Any] = {
@@ -339,7 +339,7 @@ def parameter_discovery(
         "max": float(maximum),
         "step": float(step),
         "mode": "box",
-        # Regelparameter gehoeren nicht auf die Zonenkarte, sondern hinter "Konfiguration".
+        # Control parameters don't belong on the zone card, but behind "Configuration".
         "entity_category": "config",
     }
     if einheit is not None:
@@ -348,7 +348,7 @@ def parameter_discovery(
 
 
 def armed_discovery(praefix: str = "thermoctl") -> DiscoveryMessage:
-    """Ob die Regelung wirklich schaltet, als eigene Entitaet fuer den ganzen Dienst."""
+    """Whether control is really switching, as its own entity for the whole service."""
     objekt_id = f"{_identifier(praefix)}_scharf"
     daten: dict[str, Any] = {
         "device": {
@@ -371,7 +371,7 @@ def armed_discovery(praefix: str = "thermoctl") -> DiscoveryMessage:
 
 
 def alle_topics(zone_id: int, praefix: str = "thermoctl") -> tuple[str, ...]:
-    """Liefert alle zonenbezogenen Topics fuer Vertragspruefungen."""
+    """Returns all zone-related topics for contract checks."""
     state = asdict(states_topics(zone_id, praefix)).values()
     command = asdict(command_topics(zone_id, praefix)).values()
     return (*state, *command)

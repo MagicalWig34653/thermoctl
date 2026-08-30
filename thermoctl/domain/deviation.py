@@ -1,13 +1,14 @@
-"""Vergleich einer eigenen Schattenentscheidung mit dem gleichzeitigen Altsystem-Zustand.
+"""Comparison of a shadow-run decision of our own against the legacy system's state at the
+same moment.
 
-Rein wie die uebrigen Module unter `domain/`: keine Datenbank, kein Netz, keine Uhr. Die
-Zusammenfuehrung von `ShadowDecision` und `AltsystemBeobachtung` — beide zum selben
-Zeitpunkt, aus welcher Quelle auch immer — ist Aufgabe des Aufrufers.
+Pure like the other modules under `domain/`: no database, no network, no clock. Bringing
+together `ShadowDecision` and `AltsystemBeobachtung` — both for the same point in time,
+from whichever source — is the caller's job.
 
-Eine Abweichung ist keine Fehlermeldung, sondern eine Beobachtung: Das Altsystem hat keine
-Hysterese (Bestandsaufnahme, Fallstrick 2) und schaltet am Sollwert in jedem Zyklus um, also
-sind Abweichungen im laufenden Vergleichsbetrieb erwartbar. Die Formulierung bleibt deshalb
-neutral, ohne Wertung, wer "richtig" liegt.
+A deviation is not an error, it is an observation: the legacy system has no hysteresis
+(inventory document, pitfall 2) and switches at the setpoint on every cycle, so deviations
+are to be expected during ongoing shadow-run comparison. The wording therefore stays
+neutral, without judging which side is "correct".
 """
 
 from dataclasses import dataclass
@@ -40,14 +41,14 @@ def vergleichen(
     soll_c: Decimal | None,
     altsystem_heizt: bool | None,
 ) -> Vergleich:
-    """Vergleicht die eigene Entscheidung mit dem Altsystem zum selben Zeitpunkt.
+    """Compares our own decision with the legacy system at the same point in time.
 
-    `would_heat` ist `ShadowDecision.would_heat` (die eigene Entscheidung, ungeschaltet).
-    `ist_c`/`soll_c` sind die Werte, die diese Entscheidung gesehen hat — sie erscheinen
-    nur im Klartext, gehen nicht in die Einordnung ein. `altsystem_heizt` ist aus
-    `thermostatActualState` abgeleitet (`heat` -> True, `off` -> False); `None` heisst, dass
-    zum Vergleichszeitpunkt kein Altsystem-Wert vorliegt — dann ist gar kein Vergleich
-    moeglich, was ausdruecklich keine Abweichung ist.
+    `would_heat` is `ShadowDecision.would_heat` (our own decision, not acted on). `ist_c`/
+    `soll_c` are the values this decision saw — they appear only in the plain-text
+    message, they do not feed into the classification. `altsystem_heizt` is derived
+    from `thermostatActualState` (`heat` -> True, `off` -> False); `None` means that no
+    legacy-system value is available at the comparison time — in that case no comparison
+    is possible at all, which is explicitly not a deviation.
     """
     if altsystem_heizt is None:
         return Vergleich(

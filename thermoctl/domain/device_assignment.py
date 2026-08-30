@@ -8,24 +8,24 @@ from thermoctl.db.models.zone import Zone
 
 
 class AssignmentAlreadyExists(Exception):
-    """Das Geraet hat diese Rolle in der Zone bereits."""
+    """The device already has this role in the zone."""
 
 
 class CapabilityMissing(Exception):
-    """Das Geraet kann nicht, was die Rolle von ihm verlangt."""
+    """The device cannot do what the role requires of it."""
 
     def __init__(self, notice: str) -> None:
         super().__init__(notice)
         self.notice = notice
 
 
-# Was eine Stelle in der Anlage von einem Geraet verlangt. Die Schluessel sind die Codes
-# der Rollen, dazu `"messquelle"` -- sie ist keine Rolle im Sinne von `device_role`,
-# sondern eine Spalte an der Zone, braucht aber dieselbe Pruefung.
+# What a slot in the plant requires from a device. The keys are the roles' codes,
+# plus `"messquelle"` -- it is not a role in the sense of `device_role`, but a column
+# on the zone, yet needs the same check.
 #
-# `controller` (Bediengeraet) steht bewusst nicht darin: Ein Geraet, das nur anzeigt,
-# muss dafuer nichts koennen, was sich in den Faehigkeiten niederschlaegt. Ein Aufrufer
-# mit `None` fragt nach einer Stelle ohne Anforderung.
+# `controller` is deliberately absent here: a device that only displays does not need
+# any ability that shows up in the capabilities. A caller passing `None` is asking
+# about a slot with no requirement.
 TEMPERATURE_SOURCE = "messquelle"
 
 REQUIRED_CAPABILITY: dict[str, tuple[str, str]] = {
@@ -49,18 +49,18 @@ def _capabilities(session: Session, device: Device) -> set[str]:
 
 
 def check_capability(session: Session, device: Device, stelle: str | None) -> None:
-    """Weist ein Geraet ab, das die Stelle nachweislich nicht ausfuellen kann.
+    """Rejects a device that can demonstrably not fill this slot.
 
-    Vorher liess sich ein Temperatursensor als Aktor zuordnen. Die Zuordnung sah danach
-    richtig aus, das Anlagenbild zeigte einen vollstaendigen Weg, und geschaltet haette
-    trotzdem nie etwas -- ein Fehler, der erst im Winter auffaellt und dann nach einem
-    Regelungsfehler aussieht.
+    Previously, a temperature sensor could be assigned as an actuator. The assignment
+    then looked correct, the plant diagram showed a complete path, and yet nothing
+    would ever actually switch -- a bug that only shows up in winter and then looks
+    like a control-logic bug.
 
-    **Nur bei nachweislichem Widerspruch.** Ein Geraet, von dem ueberhaupt keine
-    Faehigkeit bekannt ist, wird durchgelassen: Die Faehigkeiten stammen aus der
-    Geraeteliste der Bruecke, und wer ein Geraet einbindet, das sich dort sparsam
-    beschreibt, soll seine Anlage trotzdem einrichten koennen. Abgewiesen wird nur, wo
-    etwas bekannt ist **und** das Noetige nicht dabei ist.
+    **Only on demonstrable contradiction.** A device for which no capability at all is
+    known is let through: the capabilities come from the bridge's device list, and
+    whoever connects a device that describes itself sparsely there should still be
+    able to set up their plant. It is only rejected where something is known **and**
+    the required thing is not among it.
     """
     verlangt = REQUIRED_CAPABILITY.get(stelle or "")
     if verlangt is None:
@@ -180,7 +180,7 @@ def swap_device(
     akteur_id: int | None,
     source: str = "web",
 ) -> None:
-    """Ersetzt ein Geraet ausschliesslich in seinen Zuordnungen zu dieser Zone."""
+    """Replaces a device only in its assignments to this zone."""
     if altes.id == neues.id:
         raise ValueError("Altes und neues Gerät müssen verschieden sein.")
 
@@ -195,10 +195,10 @@ def swap_device(
     if not old_assignments and not war_temperature_source:
         raise ValueError("Das alte Gerät ist dieser Zone nicht zugeordnet.")
 
-    # Vor dem ersten Schreibzugriff, und fuer **jede** Stelle, die uebergeht: Der Tausch
-    # ist der stillste Weg, ein unpassendes Geraet an eine Stelle zu setzen -- man waehlt
-    # zwei Namen aus und sieht gar nicht, welche Rollen dabei mitgehen. Erst pruefen,
-    # dann schreiben, sonst bliebe der Tausch nach einer Ablehnung halb ausgefuehrt.
+    # Before the first write, and for **every** slot being carried over: swapping is
+    # the quietest way to put an unsuitable device into a slot -- you pick two names
+    # and never even see which roles come along with them. Check first, then write,
+    # otherwise the swap would be left half-done after a rejection.
     if war_temperature_source:
         check_capability(session, neues, TEMPERATURE_SOURCE)
     for assignment in old_assignments:

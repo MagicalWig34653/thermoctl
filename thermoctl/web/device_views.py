@@ -18,15 +18,16 @@ from thermoctl.domain.plant_diagram import plant_diagram
 from thermoctl.domain.principal import Principal
 from thermoctl.web import ist_teilaustausch, templates
 
-# `include_in_schema=False`: Die OpenAPI-Beschreibung ist der Vertrag der
-# REST-Schnittstelle. Diese Wege liefern HTML fuer Menschen, und in der Oberflaeche
-# unter /docs stuende sonst neben jedem echten Endpunkt ein Formularweg, dessen
-# 'Try it out' eine echte Aenderung ausloest.
+# `include_in_schema=False`: the OpenAPI description is the contract of the REST
+# interface. These routes deliver HTML for humans, and in the interface under
+# /docs there would otherwise be a form route next to every real endpoint whose
+# 'Try it out' triggers a real change.
 router = APIRouter(dependencies=[Depends(csrf_schutz)], include_in_schema=False)
 
-# Wonach die Geraeteseite still ist, wenn die Einrichtung noch keine Vorgaben angelegt
-# hat. Die Seite ist genau dann erreichbar, und ohne diesen Rueckfall haette sie gar
-# keine Schwelle -- ein Geraet waere nie stumm, egal wie lange es schweigt.
+# The threshold after which the device page considers a device silent when setup
+# hasn't created defaults yet. The page is reachable at exactly that point, and
+# without this fallback it would have no threshold at all -- a device would never be
+# silent, no matter how long it stayed quiet.
 SILENT_WITHOUT_DEFAULTS_SECONDS = 900
 
 
@@ -100,9 +101,9 @@ async def device_overview(
         )
         for device, integration, state in zeilen
     ]
-    # Auffaelliges nach oben: Die Frage, mit der jemand herkommt, ist fast immer
-    # "stimmt etwas nicht?" -- und die Antwort soll nicht unter zwanzig gesunden
-    # Geraeten stehen.
+    # Notable ones on top: the question someone arrives with is almost always "is
+    # something wrong?" -- and the answer shouldn't be buried under twenty healthy
+    # devices.
     schau.sort(key=lambda g: (g.schwere, g.name))
 
     return templates.TemplateResponse(
@@ -124,10 +125,10 @@ async def show_anlage(
     principal: Annotated[Principal, Depends(aktueller_principal)],
     session: Annotated[Session, Depends(get_session)],
 ) -> Response:
-    """Das Anlagenbild: welches Geraet wo etwas tut.
+    """The plant diagram: which device does what, where.
 
-    `device.read`, wie die Geraeteliste: Es ist dieselbe Auskunft, nur als Weg statt als
-    Tabelle.
+    `device.read`, same as the device list: it's the same information, just as a
+    diagram instead of a table.
     """
     require(principal, "device.read")
     return templates.TemplateResponse(

@@ -1,8 +1,9 @@
-"""Das Anlagenbild -- welches Geraet wo etwas tut.
+"""The plant diagram -- which device does what, where.
 
-Der Wert dieser Ansicht liegt in den **Luecken**: Eine Zone ohne Messquelle regelt nichts,
-eine ohne Aktor bewirkt nichts, und ein Geraet ohne Zone tut ueberhaupt nichts. Genau das
-sieht man einer Geraeteliste nicht an.
+The value of this view lies in the **gaps**: a zone without a temperature
+source controls nothing, one without an actuator does nothing, and a device
+without a zone does nothing at all. A plain device list does not show any of
+that.
 """
 
 from sqlalchemy.orm import Session
@@ -12,14 +13,14 @@ from thermoctl.db.models.device import DeviceCapabilityLink, ZoneDevice
 from thermoctl.domain.plant_diagram import plant_diagram
 
 
-def test_vollstaendig_verdrahtete_zone_hat_keine_maengel(session: Session) -> None:
+def test_a_fully_wired_zone_has_no_deficiencies(session: Session) -> None:
     zone = create_zone(session, "vollstaendig")
     sensor = create_device(session, "thermometer")
-    ventil = create_device(session, "ventil")
+    valve = create_device(session, "ventil")
     zone.temperature_source_device_id = sensor.id
     session.add(
         ZoneDevice(
-            zone_id=zone.id, device_id=ventil.id, device_role_id=rolle(session, "actuator").id
+            zone_id=zone.id, device_id=valve.id, device_role_id=rolle(session, "actuator").id
         )
     )
     session.flush()
@@ -27,16 +28,16 @@ def test_vollstaendig_verdrahtete_zone_hat_keine_maengel(session: Session) -> No
     picture = plant_diagram(session, [zone]).zones[0]
     assert picture.temperature_source is not None
     assert picture.temperature_source.name == sensor.display_name
-    assert [a.name for a in picture.actuators] == [ventil.display_name]
+    assert [a.name for a in picture.actuators] == [valve.display_name]
     assert picture.maengel == []
 
 
-def test_zone_ohne_messquelle_meldet_den_mangel(session: Session) -> None:
+def test_a_zone_without_a_temperature_source_reports_the_deficiency(session: Session) -> None:
     zone = create_zone(session, "blind")
-    ventil = create_device(session, "ventil-blind")
+    valve = create_device(session, "ventil-blind")
     session.add(
         ZoneDevice(
-            zone_id=zone.id, device_id=ventil.id, device_role_id=rolle(session, "actuator").id
+            zone_id=zone.id, device_id=valve.id, device_role_id=rolle(session, "actuator").id
         )
     )
     session.flush()
@@ -45,7 +46,7 @@ def test_zone_ohne_messquelle_meldet_den_mangel(session: Session) -> None:
     assert any("Messquelle" in m for m in picture.maengel)
 
 
-def test_zone_ohne_aktor_meldet_den_mangel(session: Session) -> None:
+def test_a_zone_without_an_actuator_reports_the_deficiency(session: Session) -> None:
     zone = create_zone(session, "ohnmaechtig")
     sensor = create_device(session, "thermometer-ohnmaechtig")
     zone.temperature_source_device_id = sensor.id
@@ -54,7 +55,7 @@ def test_zone_ohne_aktor_meldet_den_mangel(session: Session) -> None:
     assert any("Aktor" in m for m in picture.maengel)
 
 
-def test_fensterkontakte_stehen_bei_ihrer_zone(session: Session) -> None:
+def test_window_contacts_appear_under_their_zone(session: Session) -> None:
     zone = create_zone(session, "mit-fenster")
     contact = create_device(session, "fensterkontakt")
     session.add(
@@ -70,22 +71,22 @@ def test_fensterkontakte_stehen_bei_ihrer_zone(session: Session) -> None:
     assert picture.actuators == []
 
 
-def test_geraete_ohne_zone_werden_eigens_aufgefuehrt(session: Session) -> None:
-    """Der haeufigste Grund, warum ein neu eingebundener Sensor 'nicht ankommt': Er
-    meldet sich, aber keine Zone benutzt ihn."""
+def test_devices_without_a_zone_are_listed_separately(session: Session) -> None:
+    """The most common reason a newly added sensor "doesn't come through": it
+    reports in, but no zone uses it."""
     zone = create_zone(session, "eine-zone")
-    benutzt = create_device(session, "benutzt")
-    unbenutzt = create_device(session, "herrenlos")
-    zone.temperature_source_device_id = benutzt.id
+    used = create_device(session, "benutzt")
+    unused = create_device(session, "herrenlos")
+    zone.temperature_source_device_id = used.id
     session.flush()
 
     picture = plant_diagram(session, [zone])
-    assert [g.name for g in picture.without_zone] == [unbenutzt.display_name]
+    assert [g.name for g in picture.without_zone] == [unused.display_name]
 
 
-def test_faehigkeiten_stehen_am_geraet(session: Session) -> None:
-    """Sie beantworten, *warum* ein Geraet an dieser Stelle steht -- ein Ventil ohne
-    Schaltausgang waere ein Aktor, der nichts kann."""
+def test_capabilities_appear_on_the_device(session: Session) -> None:
+    """They answer *why* a device sits in this spot -- a valve without a switch
+    output would be an actuator that can do nothing."""
     zone = create_zone(session, "faehig")
     sensor = create_device(session, "faehiger-sensor")
     session.add(
@@ -100,10 +101,11 @@ def test_faehigkeiten_stehen_am_geraet(session: Session) -> None:
     assert picture.temperature_source.capabilities
 
 
-def test_eine_alte_fehlzuordnung_wird_als_mangel_gemeldet(session: Session) -> None:
-    """Die Pruefung bei der Zuordnung verhindert neue solche Faelle. Die alten stehen
-    schon in der Datenbank und wuerden sonst nie auffallen -- das Anlagenbild zeigte
-    einen vollstaendigen Weg, und geschaltet haette trotzdem nie etwas."""
+def test_an_old_misassignment_is_reported_as_a_deficiency(session: Session) -> None:
+    """The check at assignment time prevents new cases like this. The old ones
+    already sit in the database and would otherwise never be noticed -- the
+    plant diagram would show a complete path, and yet nothing would ever have
+    switched."""
     zone = create_zone(session, "altlast")
     sensor = create_device(session, "sensor-als-aktor")
     session.add(
@@ -111,8 +113,8 @@ def test_eine_alte_fehlzuordnung_wird_als_mangel_gemeldet(session: Session) -> N
             device_id=sensor.id, capability_id=capability(session, "temperature").id
         )
     )
-    # Absichtlich an der Domaenenfunktion vorbei: So sieht ein Bestand aus, der vor der
-    # Pruefung entstanden ist.
+    # Deliberately bypassing the domain function: this is what an existing
+    # record looks like if it predates the check.
     session.add(
         ZoneDevice(
             zone_id=zone.id,
@@ -127,19 +129,20 @@ def test_eine_alte_fehlzuordnung_wird_als_mangel_gemeldet(session: Session) -> N
     assert any("Schaltausgang" in m or "keinen Schaltausgang" in m for m in picture.maengel)
 
 
-def test_ein_herrenloses_ventil_gilt_nicht_als_ungeeignet(session: Session) -> None:
-    """Gegenprobe zur Unterscheidung "Messquelle" gegen "keine Anforderung": An ein
-    Geraet ohne Zone stellt niemand eine Anforderung. Ohne sie waere jedes nicht
-    zugeordnete Ventil als "misst keine Temperatur" markiert."""
+def test_an_orphaned_valve_does_not_count_as_unsuitable(session: Session) -> None:
+    """Counter-check for the distinction "temperature source" versus "no
+    requirement": nobody places a requirement on a device without a zone.
+    Without this, every unassigned valve would be marked "does not measure
+    temperature"."""
     create_zone(session, "leerzone")
-    ventil = create_device(session, "herrenloses-ventil")
+    valve = create_device(session, "herrenloses-ventil")
     session.add(
         DeviceCapabilityLink(
-            device_id=ventil.id, capability_id=capability(session, "switch").id
+            device_id=valve.id, capability_id=capability(session, "switch").id
         )
     )
     session.flush()
 
     picture = plant_diagram(session, [])
-    frei = next(g for g in picture.without_zone if g.name == ventil.display_name)
-    assert frei.ungeeignet is None
+    free_device = next(g for g in picture.without_zone if g.name == valve.display_name)
+    assert free_device.ungeeignet is None

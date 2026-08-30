@@ -28,10 +28,10 @@ from thermoctl.domain.plant_diagram import plant_diagram
 from thermoctl.domain.principal import Principal
 from thermoctl.web import templates
 
-# `include_in_schema=False`: Die OpenAPI-Beschreibung ist der Vertrag der
-# REST-Schnittstelle. Diese Wege liefern HTML fuer Menschen, und in der Oberflaeche
-# unter /docs stuende sonst neben jedem echten Endpunkt ein Formularweg, dessen
-# 'Try it out' eine echte Aenderung ausloest.
+# `include_in_schema=False`: the OpenAPI description is the contract of the REST
+# interface. These routes deliver HTML for humans, and in the interface under
+# /docs there would otherwise be a form route next to every real endpoint whose
+# 'Try it out' triggers a real change.
 router = APIRouter(dependencies=[Depends(csrf_schutz)], include_in_schema=False)
 
 
@@ -70,9 +70,9 @@ def _kontext(session: Session, zone: Zone, **zusatz: object) -> dict[str, object
     ):
         capabilities.setdefault(device_id, []).append(code)
 
-    # Je Bediengeraet dieser Zone: welche Tasten es geschickt hat und was sie tun.
-    # Ohne diese Liste muesste jemand wissen, wie sein Modell seine Tasten nennt --
-    # `single_plus`, `button_1_single`, `up_open`, je nach Hersteller.
+    # Per controller in this zone: which buttons it has sent and what they do.
+    # Without this list, someone would have to know what their model calls its
+    # buttons -- `single_plus`, `button_1_single`, `up_open`, depending on manufacturer.
     controllere = [
         (device, gesehene_aktionen(session, device))
         for assignment, device, rolle in assignments
@@ -86,9 +86,9 @@ def _kontext(session: Session, zone: Zone, **zusatz: object) -> dict[str, object
         "commands": session.scalars(
             select(ControllerCommand).order_by(ControllerCommand.id)
         ).all(),
-        # Dasselbe Flussbild wie auf /anlage, hier fuer diese eine Zone. Es steht ueber
-        # den Formularen, weil es die Frage beantwortet, mit der man herkommt -- was ist
-        # hier verdrahtet und was fehlt -- bevor man etwas aendert.
+        # The same plant diagram as on /anlage, here for this one zone. It sits above
+        # the forms because it answers the question you arrive with -- what's wired
+        # up here and what's missing -- before you change anything.
         "picture": plant_diagram(session, [zone]).zones[0],
         "devices": devices,
         "rollen": rollen,
@@ -187,12 +187,12 @@ async def device_detach_view(
     principal: Annotated[Principal, Depends(aktueller_principal)],
     session: Annotated[Session, Depends(get_session)],
 ) -> Response:
-    """Loest eine Zuordnung. Die Kennung steht im Rumpf, nicht im Pfad.
+    """Removes a binding. The id lives in the body, not in the path.
 
-    Wie beim Verschieben im Zeitplan: `hx-boost` liest die `action` eines Formulars
-    einmal beim Verarbeiten der Seite, ein spaeter umgeschriebener Pfad waere wirkungslos.
-    Damit koennen die Schaltflaechen in der Tabelle und das Herausziehen aus dem
-    Flussbild denselben Endpunkt benutzen.
+    Just like moving in the schedule: `hx-boost` reads a form's `action` once when
+    processing the page, so a path rewritten later would have no effect. This lets
+    the buttons in the table and dragging something out of the plant diagram use the
+    same endpoint.
     """
     zone = _visible_zone(session, principal, zone_id, "device.manage")
     form = await request.form()
@@ -269,12 +269,12 @@ async def bind_button(
     principal: Annotated[Principal, Depends(aktueller_principal)],
     session: Annotated[Session, Depends(get_session)],
 ) -> Response:
-    """Belegt eine Taste eines Bediengeraets -- oder loescht die Belegung.
+    """Binds a controller's button -- or deletes the binding.
 
-    Die Aktion steht im Rumpf und nicht im Pfad: Sie ist ein Wert, den das Geraet
-    geschickt hat (`single_plus`, `button_1_single`, …), und was darin vorkommen darf,
-    entscheidet Zigbee2MQTT. Im Pfad muesste sie erst kodiert werden, und ein
-    Schraegstrich darin oeffnete eine Ebene, die niemand vorgesehen hat.
+    The action lives in the body and not in the path: it's a value the device has
+    sent (`single_plus`, `button_1_single`, …), and Zigbee2MQTT decides what's
+    allowed to appear in it. In the path it would first have to be encoded, and a
+    slash in it would open a level nobody intended.
     """
     zone = _visible_zone(session, principal, zone_id, "device.manage")
     form = await request.form()

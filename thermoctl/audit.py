@@ -11,17 +11,17 @@ def record(
     summary: str, object_id: str | None = None, user_id: int | None = None,
     token_id: int | None = None, detail: str | None = None,
 ) -> None:
-    """Schreibt einen Audit-Eintrag in dieselbe Transaktion wie die Aenderung.
+    """Writes an audit entry into the same transaction as the change.
 
-    Damit gibt es keinen Eintrag zu einer Aenderung, die zurueckgerollt wurde — und keine
-    Aenderung ohne Eintrag.
+    This way there is no entry for a change that was rolled back — and no change
+    without an entry.
     """
     source_id = session.scalar(select(ActorSource.id).where(ActorSource.code == source))
     if source_id is None:
-        # Sonst ginge eine NULL in eine NOT-NULL-Spalte und der Aufrufer bekaeme einen
-        # IntegrityError ueber `audit_event.source_id` -- eine Meldung, die den
-        # eigentlichen Fehler (ein Tippfehler in `source`) nirgends nennt. Seit die
-        # Quelle vom Adapter durchgereicht wird, ist das ein erreichbarer Fall.
+        # Otherwise a NULL would go into a NOT-NULL column and the caller would get an
+        # IntegrityError about `audit_event.source_id` -- a message that mentions the
+        # actual bug (a typo in `source`) nowhere. Since the source is passed through
+        # from the adapter, this is a reachable case.
         raise ValueError(f"Unbekannte Audit-Quelle {source!r}")
     session.add(
         AuditEvent(

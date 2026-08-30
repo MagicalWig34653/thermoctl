@@ -19,11 +19,11 @@ def _capability(session: Session) -> DeviceCapability:
 
 
 @pytest.mark.parametrize(
-    ("zahl", "text"),
+    ("number", "text"),
     [(None, None), (Decimal("1.000"), "ON")],
 )
-def test_messwert_verlangt_genau_eine_wertspalte(
-    session: Session, zahl: Decimal | None, text: str | None
+def test_measurement_requires_exactly_one_value_column(
+    session: Session, number: Decimal | None, text: str | None
 ) -> None:
     device = create_device(session, "messwert-pruefung")
     capability = _capability(session)
@@ -32,7 +32,7 @@ def test_messwert_verlangt_genau_eine_wertspalte(
         Measurement(
             device_id=device.id,
             capability_id=capability.id,
-            value_numeric=zahl,
+            value_numeric=number,
             value_text=text,
             measured_at=now,
             received_at=now,
@@ -42,7 +42,7 @@ def test_messwert_verlangt_genau_eine_wertspalte(
         session.flush()
 
 
-def test_messwerte_verschwinden_mit_dem_geraet(session: Session) -> None:
+def test_measurements_disappear_with_the_device(session: Session) -> None:
     device = create_device(session, "kaskaden-pruefung")
     capability = _capability(session)
     now = datetime(2026, 8, 29, 8, 0)

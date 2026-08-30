@@ -24,30 +24,30 @@ from thermoctl.db.models.identity import User
 from thermoctl.setup import einrichtung_noetig
 from thermoctl.web import templates
 
-# `include_in_schema=False`: Die OpenAPI-Beschreibung ist der Vertrag der
-# REST-Schnittstelle. Diese Wege liefern HTML fuer Menschen, und in der Oberflaeche
-# unter /docs stuende sonst neben jedem echten Endpunkt ein Formularweg, dessen
-# 'Try it out' eine echte Aenderung ausloest.
+# `include_in_schema=False`: the OpenAPI description is the contract of the REST
+# interface. These routes deliver HTML for humans, and in the interface under
+# /docs there would otherwise be a form route next to every real endpoint whose
+# 'Try it out' triggers a real change.
 router = APIRouter(dependencies=[Depends(csrf_schutz)], include_in_schema=False)
 
-# Je Benutzername gezaehlte Fehlversuche. Laeuft im Prozessspeicher, nicht in der
-# Datenbank: sie soll Rateversuche bremsen, nicht ueberdauern. Es gibt ausdruecklich
-# keine Kontosperre — in einem Einhaushalt-System waere sie vor allem eine bequeme
-# Moeglichkeit, sich selbst auszusperren.
+# Failed attempts counted per username. Lives in process memory, not in the
+# database: it's meant to slow down guessing, not persist. There is deliberately no
+# account lockout — in a single-household system it would mostly be a convenient way
+# to lock yourself out.
 FEHLVERSUCHE: dict[str, int] = {}
 
 _ERROR_MESSAGE = "Benutzername oder Passwort falsch."
 
 
-# Einmalig beim Laden erzeugt, aus Zufall: nur die Rechenzeit von `verify_password`
-# wird gebraucht, nie das zugehoerige Passwort. Bewusst kein fest eingetragener Wert --
-# im Repo steht kein Hash, auch kein bedeutungsloser.
+# Generated once at load time, from randomness: only the computation time of
+# `verify_password` is needed, never the corresponding password. Deliberately not a
+# hardcoded value -- there's no hash in the repo, not even a meaningless one.
 _VERGLEICHS_HASH = hash_password(secrets.token_urlsafe(32))
 
 
 def schlafen(seconds: float) -> None:
-    """Eigene Funktion statt eines direkten `time.sleep()`-Aufrufs, damit Tests die
-    Verzoegerung durch `monkeypatch.setattr` ersetzen koennen, ohne wirklich zu warten."""
+    """A dedicated function instead of a direct `time.sleep()` call, so tests can
+    replace the delay via `monkeypatch.setattr` without actually waiting."""
     time.sleep(seconds)
 
 
@@ -55,10 +55,10 @@ def schlafen(seconds: float) -> None:
 async def login_form(
     request: Request, session: Annotated[Session, Depends(get_session)]
 ) -> Response:
-    # Siehe start_views.start(): Ohne einen einzigen Benutzer fuehrt das Formular
-    # nirgendwohin. Nur GET -- ein POST auf /login ohne Benutzer scheitert ohnehin an
-    # der gewoehnlichen Pruefung, und der soll seine gleichlautende Fehlermeldung
-    # behalten, statt am Weiterleitungsziel erkennen zu lassen, was der Dienst weiss.
+    # See start_views.start(): without a single user, the form leads nowhere. GET
+    # only -- a POST to /login without a user fails at the ordinary check anyway,
+    # and that check should keep its identical error message, instead of letting the
+    # redirect target reveal what the service knows.
     if einrichtung_noetig(session):
         return RedirectResponse("/setup", status_code=status.HTTP_303_SEE_OTHER)
     return templates.TemplateResponse(
@@ -79,12 +79,12 @@ async def login(
     schlafen(min(2**bisherige_fehlversuche, 5))
 
     user = session.scalar(select(User).where(User.username == username))
-    # Die Passwortpruefung laeuft IMMER, auch fuer einen unbekannten Benutzernamen --
-    # dann gegen einen Wegwerf-Hash. Andernfalls wuerde Pythons Kurzschlussauswertung
-    # `verify_password` bei unbekanntem Namen ueberspringen, und die Anfrage waere
-    # messbar schneller als fuer einen existierenden Namen: Argon2id ist absichtlich
-    # langsam, und genau diese Rechenzeit verriete, welche Konten es gibt. Gleiche
-    # Meldung und gleiche Wartezeit allein genuegen dafuer nicht.
+    # The password check ALWAYS runs, even for an unknown username -- then against a
+    # throwaway hash. Otherwise Python's short-circuit evaluation would skip
+    # `verify_password` for an unknown name, and the request would be measurably
+    # faster than for an existing name: Argon2id is deliberately slow, and exactly
+    # this computation time would reveal which accounts exist. The same message and
+    # the same wait time alone are not enough for that.
     if user is None:
         verify_password(password, _VERGLEICHS_HASH)
         erfolgreich = False
@@ -93,9 +93,9 @@ async def login(
 
     if not erfolgreich:
         FEHLVERSUCHE[username] = bisherige_fehlversuche + 1
-        # Dieselbe Zusammenfassung fuer existierende wie fuer nicht existierende
-        # Benutzernamen — der Audit-Eintrag darf verraten, was passiert ist, die
-        # HTTP-Antwort an den Aufrufer aber nicht, ob der Benutzername existiert.
+        # The same summary for existing and non-existing usernames alike — the audit
+        # entry is allowed to reveal what happened, but the HTTP response to the
+        # caller must not reveal whether the username exists.
         audit.record(
             session, source="web", action="login_failed", object_type="user",
             object_id=username, summary=f"Anmeldung als '{username}' fehlgeschlagen",
@@ -127,8 +127,8 @@ async def login(
         COOKIE_NAME, geheimnis, max_age=lifetime_s,
         httponly=True, samesite="lax", secure=settings.secure_cookies,
     )
-    # Nicht httpOnly: die Oberflaeche (HTMX) liest den Wert und schickt ihn als
-    # `X-CSRF-Token`-Header mit.
+    # Not httpOnly: the interface (HTMX) reads the value and sends it along as an
+    # `X-CSRF-Token` header.
     response.set_cookie(
         CSRF_COOKIE_NAME, csrf_token(geheimnis, settings.secret_key.get_secret_value()),
         max_age=lifetime_s, httponly=False, samesite="lax", secure=settings.secure_cookies,
@@ -138,7 +138,8 @@ async def login(
 
 @router.post("/logout")
 async def logout(request: Request, session: Annotated[Session, Depends(get_session)]) -> Response:
-    # Der CSRF-Nachweis haengt am Router (`csrf_schutz`) und ist hier bereits erbracht.
+    # The CSRF proof is attached to the router (`csrf_schutz`) and has already been
+    # provided by this point.
     cookie_value = request.cookies.get(COOKIE_NAME)
     if cookie_value is not None:
         http_session = resolve_session(session, cookie_value)

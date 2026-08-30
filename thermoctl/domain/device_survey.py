@@ -1,46 +1,46 @@
-"""Der Zustand der Geräte — was in Ordnung ist und was nicht.
+"""The state of the devices — what is fine and what is not.
 
-Die Geräteseite zeigte bis hierher eine Tabelle mit neun gleich gewichteten Spalten:
-Anzeigename, Anbindung, Modell, Fähigkeiten, letzte Nachricht, Batterie, Funkgüte,
-Erreichbarkeit, Zone. Alles stand da, nichts stach heraus, und die meisten Zellen waren
-ein Gedankenstrich.
+Up to this point, the device page showed a table with nine equally weighted columns:
+display name, integration, model, capabilities, last message, battery, radio quality,
+availability, zone. Everything was there, nothing stood out, and most cells held nothing
+but an em dash.
 
-Die Frage, mit der jemand auf diese Seite kommt, ist aber fast immer dieselbe: **Stimmt
-mit meiner Hardware etwas nicht?** Ein Sensor, der seit zwei Tagen schweigt, eine Batterie
-bei sieben Prozent, ein Gerät, das die Brücke als offline führt. Dieses Modul beantwortet
-genau das — und zwar in der Domäne, damit die Schwellen einmal dastehen und nicht in einer
-Vorlage.
+The question someone comes to this page with, though, is almost always the same: **is
+something wrong with my hardware?** A sensor that has been silent for two days, a
+battery at seven percent, a device the bridge lists as offline. This module answers
+exactly that — and it does so in the domain, so the thresholds are stated once instead
+of living in a template.
 
-Was *wo* hängt, beantwortet dagegen das Anlagenbild. Die beiden Seiten teilen sich die
-Geräte, aber nicht die Frage.
+What is connected *where*, on the other hand, is answered by the plant diagram. The two
+pages share the devices, but not the question.
 """
 
 from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal
 
-# Ab hier gilt eine Batterie als schwach. Nicht als leer: Zigbee-Geräte melden lange
-# Zeit 100 Prozent und fallen dann schnell; zwanzig Prozent lassen noch Tage, um eine
-# Zelle zu besorgen.
+# From here down, a battery counts as weak. Not as empty: Zigbee devices report 100
+# percent for a long time and then drop quickly; twenty percent still leaves days to
+# get hold of a replacement cell.
 BATTERY_LOW_PERCENT = Decimal(20)
 
-# Unterhalb dieser Funkgüte wird die Verbindung unzuverlässig. Zigbee2MQTT meldet sie
-# als LQI von 0 bis 255; die Grenze ist Erfahrung, kein Standard, und deshalb hier
-# benannt statt in einer Bedingung versteckt.
+# Below this radio quality, the connection becomes unreliable. Zigbee2MQTT reports it
+# as an LQI from 0 to 255; the threshold is experience, not a standard, which is why
+# it is named here instead of hidden inside a condition.
 RADIO_WEAK_LQI = 30
 
-# Diese Faehigkeiten bekommen kein eigenes Kaertchen: Ihr Wert steht in derselben Zeile
-# schon als Zahl oder als Befund. Ein Kaertchen "Batteriestand" neben "58 %" sagt nichts,
-# was die Zahl nicht sagt -- es kostet nur die Aufmerksamkeit, die den zwei auffaelligen
-# Geraeten gehoert.
+# These capabilities get no chip of their own: their value already appears in the same
+# row, either as a number or as a finding. A "battery level" chip next to "58 %" says
+# nothing the number does not already say -- it only spends attention that belongs to
+# the two devices that actually stand out.
 WITHOUT_CHIP = frozenset({"battery", "link_quality", "availability"})
 
 
 @dataclass(frozen=True)
 class Finding:
-    """Ein Satz darüber, was an diesem Gerät nicht stimmt."""
+    """A sentence about what is wrong with this device."""
 
-    kind: str  # "stumm", "offline", "batterie", "funk", "abgeschaltet"
+    kind: str  # "disabled", "offline", "silent", "battery", "radio"
     text: str
 
 
@@ -57,10 +57,10 @@ class DeviceSurvey:
     battery: Decimal | None
     radio_quality: int | None
     befunde: list[Finding] = field(default_factory=list)
-    # Wie viele Faehigkeiten unterdrueckt wurden, weil ihr Wert schon als Zahl dasteht.
-    # Ohne diese Zahl liesse sich "meldet nichts" nicht von "meldet nur Batterie und
-    # Funk" unterscheiden -- und die Seite behauptete bei jedem Fernbedienungsknopf, er
-    # koenne gar nichts.
+    # How many capabilities were suppressed because their value already appears as a
+    # number. Without this count, "reports nothing" could not be told apart from
+    # "reports only battery and radio" -- and the page would claim, for every remote
+    # control button, that it could not do anything at all.
     quiet_capabilities: int = 0
 
     @property
@@ -69,10 +69,10 @@ class DeviceSurvey:
 
     @property
     def schwere(self) -> int:
-        """Zum Sortieren: Je kleiner, desto dringender.
+        """For sorting: the smaller, the more urgent.
 
-        Ein stummes Gerät steht vor einer schwachen Batterie -- das eine ist ein Ausfall,
-        das andere eine Ankündigung.
+        A silent device ranks ahead of a weak battery -- one is a failure, the other
+        just a warning.
         """
         rang = {"offline": 0, "silent": 1, "disabled": 2, "battery": 3, "radio": 4}
         return min((rang.get(b.kind, 9) for b in self.befunde), default=9)
@@ -97,12 +97,12 @@ def befunde(
     silent_after_seconds: int,
     now: datetime,
 ) -> list[Finding]:
-    """Was an einem Gerät auffällt. Leer heißt: nichts.
+    """What stands out about a device. Empty means: nothing.
 
-    `stumm_nach_sekunden` kommt aus den globalen Vorgaben — dieselbe Schwelle, nach der
-    die Regelung einen Sensor für ausgefallen hält. Eine zweite Zahl allein für diese
-    Seite hieße, dass die Geräteliste ein Gerät für gesund hält, das die Regelung schon
-    aufgegeben hat.
+    `stumm_nach_sekunden` comes from the global defaults — the same threshold by which
+    control logic considers a sensor failed. A second number just for this page would
+    mean the device list considers a device healthy that control logic has already
+    given up on.
     """
     gefunden: list[Finding] = []
     if not active:

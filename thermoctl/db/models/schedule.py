@@ -5,12 +5,12 @@ from thermoctl.db.base import Base
 
 
 class SchedulePoint(Base):
-    """Ein Schaltpunkt gilt bis zum naechsten — wie bei klassischen Heizungsreglern.
+    """A schedule point holds until the next one — like classic heating controllers.
 
-    Daraus folgt, dass es weder Luecken noch Ueberlappungen geben kann. `minute_of_day`
-    ist ein Integer und kein TIME, weil Integer ueber SQLite und MariaDB identisch
-    vergleicht und sortiert. Die Zeit ist lokale Zeit (`setting.timezone`), damit sich
-    die Nachtabsenkung bei der Zeitumstellung nicht verschiebt.
+    It follows that there can be neither gaps nor overlaps. `minute_of_day` is an
+    integer and not a TIME, because integer compares and sorts identically across
+    SQLite and MariaDB. The time is local time (`setting.timezone`), so that the
+    night setback does not shift with daylight saving changes.
     """
 
     __tablename__ = "schedule_point"
@@ -24,7 +24,7 @@ class SchedulePoint(Base):
     zone_id: Mapped[int] = mapped_column(
         ForeignKey("zone.id", ondelete="CASCADE"), nullable=False
     )
-    weekday: Mapped[int] = mapped_column(Integer, nullable=False)  # 1 = Montag … 7 = Sonntag
+    weekday: Mapped[int] = mapped_column(Integer, nullable=False)  # 1 = Monday … 7 = Sunday
     minute_of_day: Mapped[int] = mapped_column(Integer, nullable=False)
     setpoint_mode_id: Mapped[int] = mapped_column(
         ForeignKey("setpoint_mode.id"), nullable=False

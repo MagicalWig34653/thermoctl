@@ -1,9 +1,9 @@
-"""Die Steuerungsseite -- Betriebszustand, Scharfschalten, globale Vorgaben.
+"""The control page -- operating state, arming, global defaults.
 
-Scharfschalten ist die einzige Bedienhandlung im Projekt, die unmittelbar ein Ventil
-bewegt. Die Tests hier pruefen deshalb nicht nur, dass sie funktioniert, sondern auch,
-dass sie ohne das eigene Recht **nicht** funktioniert -- und dass der Weg zurueck in den
-Trockenlauf an nichts scheitert.
+Arming is the only operation in the project that immediately moves a valve.
+The tests here therefore check not only that it works, but also that it
+**does not** work without the dedicated permission -- and that the way back
+into dry run fails on nothing.
 """
 
 from collections.abc import Callable
@@ -26,7 +26,7 @@ from thermoctl.domain.control import (
     check_zahl,
 )
 
-Clientbauer = Callable[[list[tuple[str, int | None]]], TestClient]
+ClientBuilder = Callable[[list[tuple[str, int | None]]], TestClient]
 
 ALL_PERMISSIONS: list[tuple[str, int | None]] = [
     ("zone.read", None),
@@ -41,23 +41,23 @@ def _csrf(client: TestClient) -> dict[str, str]:
     return {CSRF_HEADER: csrf_token(http_session, get_settings().secret_key.get_secret_value())}
 
 
-def _defaults(**abweichungen: str) -> dict[str, str]:
-    values = {feld: str(LIMITS[feld][0]) for feld in LIMITS}
+def _defaults(**overrides: str) -> dict[str, str]:
+    values = {field: str(LIMITS[field][0]) for field in LIMITS}
     values["timezone"] = "Europe/Berlin"
-    values.update(abweichungen)
+    values.update(overrides)
     return values
 
 
-# --- Domaene ---------------------------------------------------------------
+# --- Domain ---------------------------------------------------------------
 
 
-def test_zahl_pruefen_nimmt_das_komma_an() -> None:
-    """Auf einer deutschen Tastatur tippt man 0,5 -- das ist keine Fehleingabe."""
+def test_checking_a_number_accepts_the_comma() -> None:
+    """On a German keyboard you type 0,5 -- that is not a mistake."""
     assert check_zahl("default_hysteresis_k", "0,5") == Decimal("0.5")
 
 
 @pytest.mark.parametrize(
-    ("feld", "eingabe"),
+    ("field", "input_value"),
     [
         ("default_min_on_seconds", "0"),
         ("default_hysteresis_k", "0"),
@@ -68,15 +68,15 @@ def test_zahl_pruefen_nimmt_das_komma_an() -> None:
         ("polling_interval_seconds", ""),
     ],
 )
-def test_unbrauchbare_vorgaben_werden_abgewiesen(feld: str, eingabe: str) -> None:
-    """Null Sekunden Mindestschaltdauer und null Kelvin Hysterese sind genau der Defekt
-    des Altsystems: Takten am Sollwert in jedem Zyklus."""
+def test_unusable_defaults_are_rejected(field: str, input_value: str) -> None:
+    """Zero seconds minimum on-time and zero Kelvin hysteresis are exactly the
+    legacy system's defect: cycling at the setpoint on every tick."""
     with pytest.raises(ControlError) as errors:
-        check_zahl(feld, eingabe)
-    assert errors.value.feld == feld
+        check_zahl(field, input_value)
+    assert errors.value.feld == field
 
 
-def test_scharfschalten_verlangt_eine_begruendung(session: Session) -> None:
+def test_arming_requires_a_justification(session: Session) -> None:
     create_settings(session)
     source(session, "web")
     with pytest.raises(ControlError):
@@ -84,9 +84,9 @@ def test_scharfschalten_verlangt_eine_begruendung(session: Session) -> None:
     assert session.get(Setting, 1).control_armed is False
 
 
-def test_zurueck_in_den_trockenlauf_verlangt_keine(session: Session) -> None:
-    """Der Weg zurueck ist der, den jemand in Eile geht. Er darf an keiner Formalie
-    scheitern."""
+def test_going_back_to_dry_run_requires_no_justification(session: Session) -> None:
+    """The way back is the one someone takes in a hurry. It must not fail on
+    any formality."""
     create_settings(session)
     source(session, "web")
     arm(session, True, reason="Schattenlauf geprüft", user_id=None)
@@ -94,8 +94,8 @@ def test_zurueck_in_den_trockenlauf_verlangt_keine(session: Session) -> None:
     assert session.get(Setting, 1).control_armed is False
 
 
-def test_zweimal_dasselbe_schreibt_keinen_zweiten_eintrag(session: Session) -> None:
-    """Sonst steht im Audit-Protokoll eine Scharfschaltung, die gar keine war."""
+def test_the_same_thing_twice_does_not_write_a_second_entry(session: Session) -> None:
+    """Otherwise the audit log would show an arming that never actually happened."""
     create_settings(session)
     source(session, "web")
     assert arm(session, True, reason="erste", user_id=None) is True
@@ -107,10 +107,10 @@ def test_zweimal_dasselbe_schreibt_keinen_zweiten_eintrag(session: Session) -> N
     assert entries[0].detail == "erste"
 
 
-# --- Oberflaeche -----------------------------------------------------------
+# --- Interface -----------------------------------------------------------
 
 
-def test_seite_zeigt_den_trockenlauf(client_als: Clientbauer, session: Session) -> None:
+def test_the_page_shows_the_dry_run(client_als: ClientBuilder, session: Session) -> None:
     create_settings(session)
     create_zone(session, "bad")
     response = client_als(ALL_PERMISSIONS).get("/control")
@@ -118,16 +118,16 @@ def test_seite_zeigt_den_trockenlauf(client_als: Clientbauer, session: Session) 
     assert "Trockenlauf" in response.text
 
 
-def test_scharfschalten_ueber_die_oberflaeche(
-    client_als: Clientbauer, session: Session
+def test_arming_through_the_interface(
+    client_als: ClientBuilder, session: Session
 ) -> None:
     create_settings(session)
     source(session, "web")
-    mandant = client_als(ALL_PERMISSIONS)
-    response = mandant.post(
+    client = client_als(ALL_PERMISSIONS)
+    response = client.post(
         "/control/arm",
         data={"armed": "ja", "begruendung": "Vier Tage Schattenlauf verglichen"},
-        headers=_csrf(mandant),
+        headers=_csrf(client),
         follow_redirects=False,
     )
     assert response.status_code == 303
@@ -136,72 +136,72 @@ def test_scharfschalten_ueber_die_oberflaeche(
     assert entry.detail == "Vier Tage Schattenlauf verglichen"
 
 
-def test_ohne_control_arm_bleibt_die_anlage_im_trockenlauf(
-    client_als: Clientbauer, session: Session
+def test_without_control_arm_the_installation_stays_in_dry_run(
+    client_als: ClientBuilder, session: Session
 ) -> None:
-    """`setting.manage` allein reicht nicht. Wer Zeitzone und Aufbewahrungsdauer pflegen
-    darf, soll die Heizung nicht nebenbei scharf schalten koennen."""
+    """`setting.manage` alone is not enough. Someone allowed to maintain
+    timezone and retention period should not be able to arm the heating on
+    the side."""
     create_settings(session)
-    mandant = client_als([("zone.read", None), ("setting.manage", None)])
-    response = mandant.post(
+    client = client_als([("zone.read", None), ("setting.manage", None)])
+    response = client.post(
         "/control/arm",
         data={"armed": "ja", "begruendung": "trotzdem"},
-        headers=_csrf(mandant),
+        headers=_csrf(client),
         follow_redirects=False,
     )
     assert response.status_code == 403
     assert session.get(Setting, 1).control_armed is False
 
 
-def test_fehlende_begruendung_fuehrt_zurueck_ins_formular(
-    client_als: Clientbauer, session: Session
+def test_a_missing_justification_returns_to_the_form(
+    client_als: ClientBuilder, session: Session
 ) -> None:
     create_settings(session)
-    mandant = client_als(ALL_PERMISSIONS)
-    response = mandant.post(
+    client = client_als(ALL_PERMISSIONS)
+    response = client.post(
         "/control/arm", data={"armed": "ja", "begruendung": ""},
-        headers=_csrf(mandant),
+        headers=_csrf(client),
     )
     assert response.status_code == 200
     assert "Bitte kurz festhalten" in response.text
     assert session.get(Setting, 1).control_armed is False
 
 
-def test_vorgaben_speichern(client_als: Clientbauer, session: Session) -> None:
+def test_saving_defaults(client_als: ClientBuilder, session: Session) -> None:
     create_settings(session)
     source(session, "web")
-    mandant = client_als(ALL_PERMISSIONS)
-    response = mandant.post(
+    client = client_als(ALL_PERMISSIONS)
+    response = client.post(
         "/settings",
         data=_defaults(default_hysteresis_k="0,4", shadow_interval_seconds="90"),
-        headers=_csrf(mandant),
+        headers=_csrf(client),
         follow_redirects=False,
     )
     assert response.status_code == 303
-    zeile = session.get(Setting, 1)
-    assert zeile.default_hysteresis_k == Decimal("0.4")
-    assert zeile.shadow_interval_seconds == 90
+    row = session.get(Setting, 1)
+    assert row.default_hysteresis_k == Decimal("0.4")
+    assert row.shadow_interval_seconds == 90
 
 
-def test_eine_abgelehnte_vorgabe_laesst_nichts_halb_stehen(
-    client_als: Clientbauer, session: Session
+def test_a_rejected_default_leaves_nothing_half_written(
+    client_als: ClientBuilder, session: Session
 ) -> None:
-    """Der Fehler, der die Einrichtung schon einmal halb angelegt hinterlassen hat:
-    schreiben, bevor alles geprueft ist."""
+    """The bug that once left setup half-created: writing before everything is checked."""
     create_settings(session)
-    vorher = session.get(Setting, 1).shadow_interval_seconds
-    mandant = client_als(ALL_PERMISSIONS)
-    response = mandant.post(
+    before = session.get(Setting, 1).shadow_interval_seconds
+    client = client_als(ALL_PERMISSIONS)
+    response = client.post(
         "/settings",
         data=_defaults(shadow_interval_seconds="90", default_min_on_seconds="0"),
-        headers=_csrf(mandant),
+        headers=_csrf(client),
     )
     assert response.status_code == 200
     session.expire_all()
-    assert session.get(Setting, 1).shadow_interval_seconds == vorher
+    assert session.get(Setting, 1).shadow_interval_seconds == before
 
 
-def test_ohne_setting_manage_nur_lesen(client_als: Clientbauer, session: Session) -> None:
+def test_without_setting_manage_read_only(client_als: ClientBuilder, session: Session) -> None:
     create_settings(session)
     read_only = client_als([("zone.read", None)])
     assert read_only.get("/control").status_code == 200
@@ -214,11 +214,11 @@ def test_ohne_setting_manage_nur_lesen(client_als: Clientbauer, session: Session
     )
 
 
-def test_betriebsseite_nennt_den_zweiten_riegel(
-    client_als: Clientbauer, session: Session
+def test_the_operations_page_names_the_second_bolt(
+    client_als: ClientBuilder, session: Session
 ) -> None:
-    """Scharf entschieden, aber nichts gesendet: Wer diesen Zustand nicht kennt, sucht
-    stundenlang den Fehler an der falschen Stelle."""
+    """Armed but nothing sent: anyone unaware of this state searches for
+    hours in the wrong place."""
     create_settings(session)
     source(session, "web")
     arm(session, True, reason="Test", user_id=None)
@@ -228,12 +228,12 @@ def test_betriebsseite_nennt_den_zweiten_riegel(
     assert "noch nichts geschaltet" in page.text
 
 
-def test_im_trockenlauf_steht_der_hinweis_nicht_da(
-    client_als: Clientbauer, session: Session
+def test_the_hint_does_not_appear_in_dry_run(
+    client_als: ClientBuilder, session: Session
 ) -> None:
-    """Gegenprobe: Ohne sie waere der Test oben auch von einer Fassung erfuellt, die den
-    Hinweis immer anzeigt -- und dann steht auf jeder Seite eine Warnung, die niemand
-    mehr liest."""
+    """Counter-check: without it, the test above would also be satisfied by
+    a version that always shows the hint -- and then every page would carry
+    a warning that nobody reads any more."""
     create_settings(session)
     page = client_als(ALL_PERMISSIONS).get("/control")
     assert "noch nichts geschaltet" not in page.text

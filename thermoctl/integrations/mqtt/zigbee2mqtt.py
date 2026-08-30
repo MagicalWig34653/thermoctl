@@ -1,4 +1,4 @@
-"""Reiner Topic-Zuschnitt fuer Zigbee2MQTT."""
+"""Pure topic parsing for Zigbee2MQTT."""
 
 import json
 from dataclasses import dataclass
@@ -20,7 +20,7 @@ class TopicCut:
 
 
 def zuschneiden(topic: str, basis: str) -> TopicCut:
-    """Ordnet genau die abonnierten Lese-Topics einer Nachrichtenart zu."""
+    """Maps exactly the subscribed read topics to a message kind."""
     basis_teile = basis.strip("/").split("/")
     topic_teile = topic.split("/")
     unbekannt = TopicCut(MessageKind.UNBEKANNT, None)
@@ -42,7 +42,7 @@ def zuschneiden(topic: str, basis: str) -> TopicCut:
 
 
 def abonnements(basis: str) -> list[str]:
-    """Liefert die vier absichtlich eng begrenzten Zigbee2MQTT-Abonnements."""
+    """Returns the four deliberately narrow Zigbee2MQTT subscriptions."""
     basis = basis.strip("/")
     return [
         f"{basis}/bridge/devices",
@@ -53,7 +53,7 @@ def abonnements(basis: str) -> list[str]:
 
 
 def bridge_reachable(payload: bytes) -> bool | None:
-    """Liest die bekannten Text- und Objektformen von `bridge/state` tolerant."""
+    """Tolerantly reads the known text and object forms of `bridge/state`."""
     try:
         daten = json.loads(payload)
     except (json.JSONDecodeError, UnicodeDecodeError):

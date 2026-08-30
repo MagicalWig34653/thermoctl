@@ -1,1 +1,1 @@
-"""Anbindungen an externe Systeme."""
+"""Integrations with external systems."""

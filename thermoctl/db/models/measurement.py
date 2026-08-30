@@ -8,7 +8,7 @@ from thermoctl.db.base import Base
 
 
 class Measurement(Base):
-    """Ein unveraenderlicher Messwert mit genau einer Wertdarstellung."""
+    """An immutable measured value with exactly one value representation."""
 
     __tablename__ = "measurement"
     __table_args__ = (
@@ -38,7 +38,7 @@ class Measurement(Base):
 
 
 class DeviceHealth(Base):
-    """Das zuletzt empfangene Lebenszeichen eines Geraets."""
+    """The last received sign of life from a device."""
 
     __tablename__ = "device_health"
 

@@ -40,43 +40,43 @@ NOTICE = FaultNotice(
 )
 
 
-def test_ohne_webhook_erfolgt_keinerlei_http_aufruf(
+def test_without_a_webhook_no_http_call_happens_at_all(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    aufrufe: list[Request] = []
+    calls: list[Request] = []
     monkeypatch.setattr(
         notification,
         "urlopen",
-        lambda anfrage, timeout: aufrufe.append(anfrage),
+        lambda request, timeout: calls.append(request),
     )
 
     asyncio.run(notification.send(_settings(), NOTICE))
 
-    assert aufrufe == []
+    assert calls == []
 
 
-def test_webhook_sendet_genau_einmal_erwartete_nutzlast(
+def test_webhook_sends_the_expected_payload_exactly_once(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    aufrufe: list[tuple[Request, int]] = []
+    calls: list[tuple[Request, int]] = []
 
-    def _oeffnen(anfrage: Request, timeout: int) -> _Response:
-        aufrufe.append((anfrage, timeout))
+    def _open(request: Request, timeout: int) -> _Response:
+        calls.append((request, timeout))
         return _Response()
 
-    monkeypatch.setattr(notification, "urlopen", _oeffnen)
+    monkeypatch.setattr(notification, "urlopen", _open)
     asyncio.run(
         notification.send(
             _settings(notify_webhook="https://example.invalid/meldung"), NOTICE
         )
     )
 
-    assert len(aufrufe) == 1
-    anfrage, timeout = aufrufe[0]
+    assert len(calls) == 1
+    request, timeout = calls[0]
     assert timeout == 10
-    assert anfrage.full_url == "https://example.invalid/meldung"
-    assert anfrage.get_method() == "POST"
-    assert json.loads(anfrage.data or b"") == {
+    assert request.full_url == "https://example.invalid/meldung"
+    assert request.get_method() == "POST"
+    assert json.loads(request.data or b"") == {
         "schluessel": "sensor:1",
         "schwere": "stoerung",
         "titel": "Sensorstoerung",
@@ -84,17 +84,17 @@ def test_webhook_sendet_genau_einmal_erwartete_nutzlast(
     }
 
 
-def test_fehler_haelt_aufrufer_nicht_an_und_token_bleibt_aus_log(
+def test_an_error_does_not_stop_the_caller_and_the_token_stays_out_of_the_log(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
     token = "auffaelliges-webhook-geheimnis"
-    gesehen: list[str | None] = []
+    seen: list[str | None] = []
 
-    def _kaputt(anfrage: Request, timeout: int) -> _Response:
-        gesehen.append(anfrage.get_header("Authorization"))
+    def _broken(request: Request, timeout: int) -> _Response:
+        seen.append(request.get_header("Authorization"))
         raise OSError("Gegenstelle nicht erreichbar")
 
-    monkeypatch.setattr(notification, "urlopen", _kaputt)
+    monkeypatch.setattr(notification, "urlopen", _broken)
     caplog.set_level(logging.WARNING)
 
     asyncio.run(
@@ -106,24 +106,24 @@ def test_fehler_haelt_aufrufer_nicht_an_und_token_bleibt_aus_log(
             NOTICE,
         )
     )
-    danach = True
+    afterward = True
 
-    assert danach is True
-    assert gesehen == [f"Bearer {token}"]
+    assert afterward is True
+    assert seen == [f"Bearer {token}"]
     assert "konnte nicht" in caplog.text
     assert token not in caplog.text
 
 
-def test_sensormeldung_bekommt_audit_eintrag_mit_quelle_system(
+def test_a_sensor_notice_gets_an_audit_entry_with_source_system(
     session: Session,
 ) -> None:
     source(session, "system")
     zone = create_zone(session, "Meldezone")
     state = create_zone_state(session, zone)
-    vorher = app_modul._sensorzustaende(session)
+    previous = app_modul._sensorzustaende(session)
     state.sensor_status_id = sensorstatus(session, "veraltet").id
 
-    notices = app_modul._sensor_notices(session, vorher)
+    notices = app_modul._sensor_notices(session, previous)
 
     entry = session.scalar(select(AuditEvent))
     assert len(notices) == 1

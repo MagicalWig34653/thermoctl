@@ -5,7 +5,7 @@ from thermoctl.db.base import Base
 
 
 class _Lookup(Base):
-    """Gemeinsame Form aller Nachschlagetabellen: eine Kennung, ein Code, ein Klartext."""
+    """Common shape of all lookup tables: an id, a code, a plain-text label."""
 
     __abstract__ = True
 
@@ -15,54 +15,54 @@ class _Lookup(Base):
 
 
 class OperatingMode(_Lookup):
-    """auto, manual, off. 'off' heisst Frostschutz, nicht stromlos."""
+    """auto, manual, off. 'off' means frost protection, not powered off."""
 
     __tablename__ = "operating_mode"
 
 
 class Integration(_Lookup):
-    """Wie ein Geraet erreicht wird: zigbee2mqtt, meross."""
+    """How a device is reached: zigbee2mqtt, meross."""
 
     __tablename__ = "integration"
 
 
 class DeviceCapability(_Lookup):
-    """Was ein Geraet kann: temperature, switch, setpoint_display, contact, battery."""
+    """What a device can do: temperature, switch, setpoint_display, contact, battery."""
 
     __tablename__ = "device_capability"
 
 
 class DeviceRole(_Lookup):
-    """Wozu ein Geraet in einer Zone dient: actuator, window_contact, controller."""
+    """What a device is used for in a zone: actuator, window_contact, controller."""
 
     __tablename__ = "device_role"
 
 
 class SensorStatus(_Lookup):
-    """Gueltigkeit der aktuell fuer eine Zone verwendeten Sensordaten."""
+    """Validity of the sensor data currently used for a zone."""
 
     __tablename__ = "sensor_status"
 
 
 class ControllerCommand(_Lookup):
-    """Was ein Bediengeraet ausloesen kann: waermer, kaelter, Boost, Betriebsart.
+    """What a controller can trigger: warmer, colder, boost, operating mode.
 
-    Eine Nachschlagetabelle und keine Aufzaehlung im Code: Grundsatz 3 verbietet ENUM,
-    und die Oberflaeche soll die moeglichen Befehle aus der Datenbank anbieten koennen,
-    ohne eine zweite Liste im Quelltext pflegen zu muessen.
+    A lookup table and not an enumeration in code: Principle 3 forbids ENUM, and the
+    interface should be able to offer the possible commands from the database, without
+    having to maintain a second list in the source code.
     """
 
     __tablename__ = "controller_command"
 
 
 class ChannelKind(_Lookup):
-    """Quelle oder Wirkung eines konfigurierten Bediengeraetekanals."""
+    """Source or effect of a configured controller channel."""
 
     __tablename__ = "channel_kind"
 
 
 class ActorSource(_Lookup):
-    """Ueber welchen Adapter etwas geschah: web, api, mcp, cli, system."""
+    """Via which adapter something happened: web, api, mcp, cli, system."""
 
     __tablename__ = "actor_source"
 
@@ -106,9 +106,9 @@ DEVICE_ROLES = [
     ("window_contact", "Fensterkontakt"),
     ("controller", "Bediengerät"),
 ]
-# Bewusst klein gehalten: Was ein Tastendruck an der Wand ausloest, soll man in einem
-# Satz erklaeren koennen. Alles Weitere gehoert an eine Stelle, an der man sieht, was man
-# tut -- nicht auf einen Knopf, den jemand im Vorbeigehen drueckt.
+# Deliberately kept small: what a button press on the wall triggers should be
+# explainable in one sentence. Everything beyond that belongs at a place where you can
+# see what you are doing -- not on a button someone presses in passing.
 CONTROLLER_COMMANDS = [
     ("setpoint_up", "Wärmer"),
     ("setpoint_down", "Kälter"),
@@ -131,11 +131,11 @@ ACTOR_SOURCES = [
     ("system", "System"),
 ]
 
-# (code, beschreibung, zonenbezogen) — die Liste aus Abschnitt 2.6 der Spezifikation
+# (code, description, zone-scoped) — the list from section 2.6 of the specification
 #
-# Die Beschreibung ist **sichtbarer Text**, keine Notiz: Sie steht auf der Gruppenseite
-# neben jedem Kästchen und ist dort das Erste, was jemand liest. Deshalb mit Umlauten,
-# anders als Kommentare und Docstrings in diesem Projekt.
+# The description is **visible text**, not a note: it appears on the group page next
+# to each checkbox and is the first thing anyone reads there. Hence with umlauts,
+# unlike comments and docstrings in this project.
 PERMISSIONS: list[tuple[str, str, bool]] = [
     ("zone.read", "Zonen und ihren Zustand sehen", True),
     ("zone.manage", "Zonen anlegen, ändern, löschen", True),
@@ -152,8 +152,8 @@ PERMISSIONS: list[tuple[str, str, bool]] = [
     ("token.self", "Eigene Tokens ausstellen und widerrufen", False),
     ("token.manage", "Fremde Tokens verwalten", False),
     ("audit.read", "Audit-Protokoll einsehen", False),
-    # Eigenes Recht statt `setting.manage`: Scharfschalten ist die einzige Einstellung,
-    # deren Umlegen unmittelbar ein Ventil bewegt. Wer Zeitzone und Aufbewahrungsdauer
-    # pflegen darf, soll damit nicht nebenbei die Heizung scharf schalten koennen.
+    # A dedicated permission instead of `setting.manage`: arming is the only setting
+    # whose flip immediately moves a valve. Whoever is allowed to maintain time zone and
+    # retention period should not incidentally be able to arm the heating with it.
     ("control.arm", "Die Regelung scharf schalten", False),
 ]

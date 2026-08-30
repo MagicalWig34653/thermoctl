@@ -6,15 +6,15 @@ from thermoctl.db.models.operations import Setting
 from thermoctl.setup import einrichtung_noetig, setup_token_erzeugen
 
 
-def test_ohne_benutzer_ist_einrichtung_noetig(session: Session) -> None:
+def test_without_a_user_setup_is_needed(session: Session) -> None:
     assert einrichtung_noetig(session) is True
 
 
-def test_mit_benutzer_ist_sie_nicht_mehr_noetig(session: Session, user) -> None:
+def test_with_a_user_it_is_no_longer_needed(session: Session, user) -> None:
     assert einrichtung_noetig(session) is False
 
 
-def test_setup_ohne_token_wird_abgewiesen(client: TestClient, session: Session) -> None:
+def test_setup_without_a_token_is_rejected(client: TestClient, session: Session) -> None:
     response = client.post("/setup", data={"username": "lino", "display_name": "Lino",
                                           "password": "passwort-lang-genug",
                                           "timezone": "Europe/Berlin", "setup_token": ""})
@@ -22,7 +22,7 @@ def test_setup_ohne_token_wird_abgewiesen(client: TestClient, session: Session) 
     assert session.query(User).count() == 0
 
 
-def test_setup_mit_falschem_token_wird_abgewiesen(client: TestClient, session: Session) -> None:
+def test_setup_with_the_wrong_token_is_rejected(client: TestClient, session: Session) -> None:
     setup_token_erzeugen(session)
     response = client.post("/setup", data={"username": "lino", "display_name": "Lino",
                                           "password": "passwort-lang-genug",
@@ -32,7 +32,7 @@ def test_setup_mit_falschem_token_wird_abgewiesen(client: TestClient, session: S
     assert session.query(User).count() == 0
 
 
-def test_setup_legt_verwalter_gruppen_und_einstellungen_an(client: TestClient,
+def test_setup_creates_the_administrator_groups_and_settings(client: TestClient,
                                                            session: Session) -> None:
     marker = setup_token_erzeugen(session)
     response = client.post("/setup", data={"username": "lino", "display_name": "Lino",
@@ -47,50 +47,51 @@ def test_setup_legt_verwalter_gruppen_und_einstellungen_an(client: TestClient,
     assert session.get(Setting, 1) is not None
 
 
-def test_setup_token_ist_nur_einmal_verwendbar(client: TestClient, session: Session) -> None:
+def test_setup_token_can_only_be_used_once(client: TestClient, session: Session) -> None:
     marker = setup_token_erzeugen(session)
-    daten = {"username": "a", "display_name": "A", "password": "passwort-lang-genug",
+    data = {"username": "a", "display_name": "A", "password": "passwort-lang-genug",
              "timezone": "Europe/Berlin", "setup_token": marker}
-    client.post("/setup", data=daten)
-    zweite = client.post("/setup", data={**daten, "username": "b"})
-    # Genau 404, nicht "irgendein Fehler": Die Einrichtung ist danach dauerhaft
-    # geschlossen und nicht bloss verboten — wer sie aufruft, soll nicht erfahren, dass es
-    # sie ueberhaupt gab. Ein `in (403, 404)` haette einen Wechsel nicht bemerkt.
-    assert zweite.status_code == 404
+    client.post("/setup", data=data)
+    second = client.post("/setup", data={**data, "username": "b"})
+    # Exactly 404, not "some error": setup is permanently closed after this,
+    # not merely forbidden — anyone requesting it should not learn that it
+    # ever existed at all. An `in (403, 404)` would not have noticed a switch
+    # between the two.
+    assert second.status_code == 404
     assert session.query(User).count() == 1
 
 
-def test_setup_ist_nach_abschluss_geschlossen(client: TestClient, session: Session,
+def test_setup_is_closed_after_completion(client: TestClient, session: Session,
                                               user) -> None:
     assert client.get("/setup").status_code == 404
 
 
-def test_erster_benutzer_ist_verwalter(client: TestClient, session: Session) -> None:
+def test_the_first_user_is_an_administrator(client: TestClient, session: Session) -> None:
     marker = setup_token_erzeugen(session)
     client.post("/setup", data={"username": "lino", "display_name": "Lino",
                                 "password": "passwort-lang-genug",
                                 "timezone": "Europe/Berlin", "setup_token": marker})
     from thermoctl.domain.authz import has_permission, principal_for_user
 
-    nutzer = session.query(User).one()
-    p = principal_for_user(session, nutzer)
+    user = session.query(User).one()
+    p = principal_for_user(session, user)
     assert has_permission(p, "user.manage") is True
     assert has_permission(p, "setting.manage") is True
 
 
-def test_setup_token_erscheint_nicht_im_klartext_in_der_datenbank(session: Session) -> None:
+def test_setup_token_does_not_appear_in_plaintext_in_the_database(session: Session) -> None:
     from thermoctl.db.models.credential import SetupToken
 
     marker = setup_token_erzeugen(session)
     assert session.query(SetupToken).one().token_hash != marker
 
 
-def test_setup_mit_zu_kurzem_passwort_fuehrt_zum_formular_zurueck(
+def test_setup_with_a_too_short_password_returns_to_the_form(
     client: TestClient, session: Session
 ) -> None:
-    """PasswordTooShort darf nicht als 500 beim Aufrufer ankommen -- es ist ein
-    Eingabefehler, keine Stoerung des Dienstes. Bereits ausgefuellte Felder (ausser
-    dem Passwort) bleiben im Formular erhalten."""
+    """PasswordTooShort must not reach the caller as a 500 -- it is an input
+    error, not a service fault. Fields already filled in (except the
+    password) are kept in the form."""
     marker = setup_token_erzeugen(session)
     response = client.post(
         "/setup",
@@ -104,22 +105,23 @@ def test_setup_mit_zu_kurzem_passwort_fuehrt_zum_formular_zurueck(
     assert session.query(User).count() == 0
     assert session.query(AccessGroup).count() == 0
 
-    zweiter_versuch = client.post(
+    second_attempt = client.post(
         "/setup",
         data={"username": "lino", "display_name": "Lino",
               "password": "passwort-lang-genug", "timezone": "Europe/Berlin",
               "setup_token": marker},
         follow_redirects=False,
     )
-    assert zweiter_versuch.status_code == 303
+    assert second_attempt.status_code == 303
     assert session.query(User).count() == 1
 
 
-def test_einrichtung_ist_auch_in_der_domaene_nur_einmal_moeglich(session: Session) -> None:
-    """Die Ansicht prueft schon — die Domaene prueft trotzdem selbst.
+def test_setup_is_also_possible_only_once_in_the_domain(session: Session) -> None:
+    """The view already checks — the domain checks again anyway.
 
-    Der Einrichtungsassistent legt den ersten Verwalter an. Waere die Sperre nur in der
-    Ansicht, genuegte ein zweiter Aufrufweg, um an ihr vorbei einen weiteren anzulegen.
+    The setup wizard creates the first administrator. If the lock lived only
+    in the view, a second call path would be enough to create another one
+    past it.
     """
     import pytest
 
@@ -139,33 +141,33 @@ def test_einrichtung_ist_auch_in_der_domaene_nur_einmal_moeglich(session: Sessio
     assert session.query(User).count() == 1
 
 
-def test_start_leitet_ohne_benutzer_zur_einrichtung(client: TestClient) -> None:
-    """Ohne einen einzigen Benutzer fuehrt das Anmeldeformular nirgendwohin. Wer die
-    Adresse des Dienstes eingibt, gehoert zur Einrichtung."""
+def test_the_start_page_redirects_to_setup_without_a_user(client: TestClient) -> None:
+    """Without a single user, the login form leads nowhere. Anyone entering the
+    service's address belongs at setup."""
     response = client.get("/", follow_redirects=False)
     assert response.status_code == 303
     assert response.headers["location"] == "/setup"
 
 
-def test_anmeldeformular_leitet_ohne_benutzer_zur_einrichtung(client: TestClient) -> None:
+def test_the_login_form_redirects_to_setup_without_a_user(client: TestClient) -> None:
     response = client.get("/login", follow_redirects=False)
     assert response.status_code == 303
     assert response.headers["location"] == "/setup"
 
 
-def test_die_weiterleitung_endet_wirklich_bei_der_einrichtung(client: TestClient) -> None:
-    """Ein Kreis zwischen / , /login und /setup waere der naheliegende Fehler: Die
-    Statuszeile der einzelnen Antwort wuerde ihn nicht zeigen, ein verfolgter Aufruf
-    schon."""
+def test_the_redirect_really_ends_at_setup(client: TestClient) -> None:
+    """A cycle between / , /login and /setup would be the obvious bug: the
+    status line of a single response would not show it, but a followed
+    request would."""
     response = client.get("/", follow_redirects=True)
     assert response.status_code == 200
     assert response.url.path == "/setup"
 
 
-def test_mit_benutzer_bleibt_der_gewohnte_weg(client: TestClient, user) -> None:
-    """Gegenprobe zu den drei Faellen oben. Ohne sie waeren sie auch von einer Fassung
-    erfuellt, die immer zur Einrichtung schickt -- und die haette den Dienst nach
-    abgeschlossener Einrichtung unbenutzbar gemacht."""
+def test_with_a_user_the_usual_path_remains(client: TestClient, user) -> None:
+    """Counter-check for the three cases above. Without it, they would also be
+    satisfied by a version that always redirects to setup -- and that would
+    have made the service unusable once setup was complete."""
     start = client.get("/", follow_redirects=False)
     assert start.status_code == 303
     assert start.headers["location"] == "/login"
@@ -175,12 +177,12 @@ def test_mit_benutzer_bleibt_der_gewohnte_weg(client: TestClient, user) -> None:
     assert "/setup" not in form.headers.get("location", "")
 
 
-def test_post_login_ohne_benutzer_wird_nicht_weitergeleitet(
+def test_post_login_without_a_user_is_not_redirected(
     client: TestClient, monkeypatch
 ) -> None:
-    """Absichtlich nur GET weitergeleitet: Ein abgeschickter Anmeldeversuch soll seine
-    gleichlautende Fehlermeldung behalten, statt am Weiterleitungsziel erkennen zu
-    lassen, was der Dienst ueber den Benutzernamen weiss."""
+    """Deliberately only GET is redirected: a submitted login attempt should
+    keep its identical error message, rather than letting the redirect
+    target give away what the service knows about the username."""
     monkeypatch.setattr("thermoctl.web.auth_views.schlafen", lambda _: None)
     response = client.post(
         "/login",

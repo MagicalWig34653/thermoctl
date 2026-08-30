@@ -1,27 +1,26 @@
-"""Befehle, die von aussen auf den eigenen Topics ankommen.
+"""Commands that arrive from outside on our own topics.
 
-Home Assistant bekommt je Zone einen Thermostat, und ein Thermostat, den man drehen kann,
-muss auch etwas bewirken. Die Discovery-Nutzlast nennt dafuer zwei Befehls-Topics --
-Sollwert und Betriebsart. Ohne einen Empfaenger waeren sie ein Regler, der sich dreht und
-nichts tut.
+Home Assistant gets a thermostat per zone, and a thermostat you can turn also has to do
+something. The discovery payload names two command topics for that -- setpoint and
+operating mode. Without a receiver they would be a dial that turns and does nothing.
 
-Dieses Modul enthaelt **nur die Zerlegung**: aus einem Topic und einer Nutzlast wird ein
-geprueftes Anliegen. Was damit geschieht, entscheidet die Domaene -- dieselben Funktionen,
-die auch die Oberflaeche benutzt, mit denselben Grenzen.
+This module contains **only the parsing**: a topic and a payload become a validated
+request. What happens with it is decided by the domain -- the same functions the
+interface also uses, with the same limits.
 """
 
 import re
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 
-# Die Betriebsarten, die Home Assistant kennt, und ihre Entsprechung hier. `heat` heisst
-# in der Discovery-Nutzlast `manual` -- HA kennt keinen Modus dieses Namens, und die
-# Nutzlast rechnet ihn deshalb schon in beide Richtungen um.
+# The operating modes Home Assistant knows, and their counterpart here. `heat` is
+# called `manual` in the discovery payload -- HA doesn't know a mode by that name, so
+# the payload already converts it in both directions.
 OPERATING_MODES = {"auto", "manual", "off"}
 
-# Der Unterschluessel traegt, worauf sich ein Befehl bezieht: die Kennung des Modus bei
-# `modus`, der Name des Regelparameters bei `parameter`. Sollwert, Betriebsart und Boost
-# beziehen sich auf die Zone als Ganzes und haben keinen.
+# The sub-key carries what a command refers to: the mode's id for `modus`, the control
+# parameter's name for `parameter`. Setpoint, operating mode, and boost refer to the
+# zone as a whole and have none.
 _PATTERN = re.compile(
     r"^(?P<praefix>[^/]+)/zones/(?P<zone>\d+)/command/(?P<art>[a-z_]+)"
     r"(?:/(?P<schluessel>[A-Za-z0-9_]+))?$"
@@ -31,26 +30,26 @@ _PATTERN = re.compile(
 @dataclass(frozen=True)
 class Command:
     zone_id: int
-    # "sollwert", "betriebsart", "boost", "modus" oder "parameter"
+    # "setpoint", "operating_mode", "boost", "mode", or "parameter"
     kind: str
     temperature: Decimal | None = None
     operating_mode: str | None = None
-    # Worauf sich der Befehl bezieht: die Moduskennung bei "modus", der Parametername
-    # bei "parameter". Sonst None.
+    # What the command refers to: the mode id for "mode", the parameter name for
+    # "parameter". Otherwise None.
     mode_id: int | None = None
     parameter: str | None = None
     zahl: Decimal | None = None
 
 
 class CommandError(ValueError):
-    """Das Topic gehoert uns, aber die Nachricht ist unbrauchbar."""
+    """The topic is ours, but the message is unusable."""
 
 
 def ist_command(topic: str, praefix: str) -> bool:
-    """Ob dieses Topic ueberhaupt an uns gerichtet ist.
+    """Whether this topic is addressed to us at all.
 
-    Getrennt von `zerlegen`, damit der Nachrichtenverteiler ohne Ausnahmen entscheiden
-    kann, ob eine Nachricht fuer Zigbee2MQTT oder fuer uns ist.
+    Kept separate from `zerlegen`, so the message dispatcher can decide without
+    exceptions whether a message is for Zigbee2MQTT or for us.
     """
     match = _PATTERN.match(topic)
     return (
@@ -61,10 +60,10 @@ def ist_command(topic: str, praefix: str) -> bool:
 
 
 def zerlegen(topic: str, payload: bytes, praefix: str) -> Command:
-    """Macht aus Topic und Nutzlast ein geprueftes Anliegen.
+    """Turns a topic and a payload into a validated request.
 
-    Prueft **nicht** die fachlichen Grenzen -- sie stehen in der Domaene und
-    gilt fuer alle Adapter gleich. Hier faellt nur durch, was gar keine Zahl ist.
+    Does **not** check the business limits -- they live in the domain and apply
+    equally to every adapter. Only what isn't even a number gets rejected here.
     """
     match = _PATTERN.match(topic)
     if match is None or match.group("praefix") != praefix.strip("/"):
@@ -72,9 +71,8 @@ def zerlegen(topic: str, payload: bytes, praefix: str) -> Command:
 
     zone_id = int(match.group("zone"))
     if zone_id < 1:
-        # Dieselbe Grenze wie beim Senden (`_zonenbasis`). Eine Zone 0 gibt es nicht,
-        # und was auf der einen Seite abgewiesen wird, soll auf der anderen nicht
-        # angenommen werden.
+        # The same limit as on sending (`_zonenbasis`). There is no zone 0, and what
+        # is rejected on one side should not be accepted on the other.
         raise CommandError(f"Keine gueltige Zonenkennung: {zone_id}")
     kind = match.group("art")
     schluessel = match.group("schluessel")
@@ -92,8 +90,8 @@ def zerlegen(topic: str, payload: bytes, praefix: str) -> Command:
         return Command(zone_id, kind, operating_mode=text)
 
     if kind == "boost":
-        # Die Nutzlast ist gleichgueltig: Ein Knopf hat keinen Wert, nur ein Ereignis.
-        # Home Assistant sendet `payload_press`; alles andere waere ebenso gemeint.
+        # The payload doesn't matter: a button has no value, only an event. Home
+        # Assistant sends `payload_press`; anything else would mean the same thing.
         return Command(zone_id, kind)
 
     if kind == "mode":
@@ -112,7 +110,7 @@ def zerlegen(topic: str, payload: bytes, praefix: str) -> Command:
 
 
 def _number(text: str, was: str) -> Decimal:
-    """Home Assistant sendet Punkt, ein Mensch auf der Kommandozeile auch mal Komma."""
+    """Home Assistant sends a period, a human on the command line sometimes a comma."""
     try:
         return Decimal(text.replace(",", "."))
     except InvalidOperation as exc:
@@ -120,13 +118,14 @@ def _number(text: str, was: str) -> Decimal:
 
 
 def commands_abonnements(praefix: str) -> list[str]:
-    """Die Abonnements, die alle Befehle abdecken.
+    """The subscriptions that cover all commands.
 
-    Zwei statt eines: `+` in MQTT trifft **genau eine** Ebene, nie null und nie zwei.
-    Ein einzelnes `.../befehl/+` liesse deshalb jeden Befehl mit Unterschluessel
-    (`befehl/modus/3`) liegen -- die Drehregler je Modus haetten stumm nichts getan.
-    `#` statt der zweiten Zeile waere kuerzer und faenge auch alles darunter, beliebig
-    tief; die zwei Ebenen sind der ganze Vertrag, und mehr soll auch nicht ankommen.
+    Two instead of one: `+` in MQTT matches **exactly one** level, never zero and
+    never two. A single `.../command/+` would therefore leave every command with a
+    sub-key (`command/mode/3`) unhandled -- the dial per mode would have silently done
+    nothing. `#` instead of the second line would be shorter and would also catch
+    everything below it, arbitrarily deep; the two levels are the whole contract, and
+    nothing more should arrive either.
     """
     basis = praefix.strip("/")
     return [f"{basis}/zones/+/command/+", f"{basis}/zones/+/command/+/+"]

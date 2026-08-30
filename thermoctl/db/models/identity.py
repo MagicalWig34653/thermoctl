@@ -26,7 +26,7 @@ class User(Base):
 
 
 class AccessGroup(Base):
-    """Heisst nicht `group` — das ist in SQLite wie MariaDB ein reserviertes Wort."""
+    """Not called `group` — that is a reserved word in both SQLite and MariaDB."""
 
     __tablename__ = "access_group"
 
@@ -48,11 +48,11 @@ class UserAccessGroup(Base):
 
 
 class GroupPermission(Base):
-    """`zone_id = NULL` heisst anlagenweit.
+    """`zone_id = NULL` means plant-wide.
 
-    Fuer nicht zonenbezogene Berechtigungen muss `zone_id` leer sein; das prueft die
-    Domaenenlogik anhand von `Permission.is_zone_scoped`, weil eine Datenbankbedingung
-    ueber zwei Tabellen hinweg nicht portabel formulierbar ist.
+    For permissions that are not zone-scoped, `zone_id` must be empty; the domain logic
+    checks this via `Permission.is_zone_scoped`, because a database constraint spanning
+    two tables cannot be formulated in a portable way.
     """
 
     __tablename__ = "group_permission"

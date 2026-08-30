@@ -84,8 +84,8 @@ from thermoctl.web.zone_views import router as zone_router
 
 log = logging.getLogger(__name__)
 
-# Vorgabewert, solange die Einrichtung noch nicht abgeschlossen ist und die
-# `setting`-Zeile deshalb noch fehlt -- derselbe Wert wie die Spaltenvorgabe von
+# Default value while setup is not yet complete and the `setting` row is
+# therefore still missing -- the same value as the column default of
 # `setting.shadow_interval_seconds`.
 _SHADOW_INTERVAL_DEFAULT_S = 60
 
@@ -102,8 +102,8 @@ def _auditieren(session: Session, notice: FaultNotice) -> None:
     )
 
 
-# Starke Verweise auf die laufenden Versandaufgaben. Ohne sie kann der Aufraeumer eine
-# Aufgabe einsammeln, bevor sie fertig ist — asyncio haelt selbst nur schwache Verweise.
+# Strong references to the running dispatch tasks. Without them the garbage collector
+# could collect a task before it finishes -- asyncio itself only holds weak references.
 _running_notices: set[asyncio.Task[None]] = set()
 
 
@@ -126,8 +126,8 @@ def _sensor_notices(
     for zone in session.scalars(select(Zone).order_by(Zone.id)):
         status = nachher.get(zone.id)
         if status is None:  # pragma: no cover
-            # `zonenzustand_fortschreiben` legt fuer jede vorhandene Zone eine Zeile an.
-            # Nur eine parallel geloeschte oder beschaedigte Zeile koennte hier fehlen.
+            # `advance_zone_state` creates a row for every existing zone. Only a row
+            # deleted or corrupted concurrently could be missing here.
             continue
         notice = sensornotice(f"sensor:{zone.id}", zone.name, vorher.get(zone.id), status)
         if notice is not None:
@@ -147,15 +147,15 @@ async def _shadow_intervall_s(session_factory: sessionmaker[Session]) -> int:
 
 
 async def _shadowschleife(app: FastAPI) -> None:
-    """Wartet den konfigurierten Abstand ab, dann ein Zyklus -- endlos, bis abgebrochen.
+    """Waits out the configured interval, then one cycle -- forever, until cancelled.
 
-    Eine Ausnahme beendet die Schleife nicht -- weder im Zyklus selbst noch beim Lesen
-    des Abstands: protokollieren, weiter. Der naechste Versuch kommt nach dem naechsten
-    Abstand; ein Dienst, der wegen einer einzelnen kaputten Zone oder einer noch nicht
-    abgeschlossenen Einrichtung (die `setting`-Zeile fehlt dann noch) stehenbleibt, ist
-    schlechter als einer, der es erneut versucht. Ein Abbruch (`asyncio.CancelledError`,
-    beim Herunterfahren) ist davon ausdruecklich nicht betroffen: er erbt nicht von
-    `Exception` und laeuft ungefangen durch, sonst liesse sich die Schleife nie beenden.
+    An exception does not end the loop -- neither in the cycle itself nor while reading
+    the interval: log it, keep going. The next attempt follows the next interval; a
+    service that stalls because of a single broken zone or a setup that is not yet
+    complete (the `setting` row is then still missing) is worse than one that tries
+    again. Cancellation (`asyncio.CancelledError`, on shutdown) is explicitly exempt
+    from this: it does not inherit from `Exception` and passes through uncaught,
+    otherwise the loop could never be stopped.
     """
     next_retention = utcnow() + timedelta(days=1)
     while True:
@@ -169,8 +169,8 @@ async def _shadowschleife(app: FastAPI) -> None:
                 advance_zone_state(session, now)
                 notices = _sensor_notices(session, vorher)
                 cycle(session, now)
-                # `getattr`: Die Schleife laeuft auch in Tests, die sich eine App
-                # zusammenstecken, ohne den ganzen Lebenszyklus durchlaufen zu lassen.
+                # `getattr`: the loop also runs in tests that assemble an app without
+                # running through the full lifespan.
                 if getattr(app.state, "publisher", None) is not None:
                     await publication_cycle(
                         session,
@@ -182,12 +182,12 @@ async def _shadowschleife(app: FastAPI) -> None:
                 if now >= next_retention:
                     delete_old_measurements(session, now)
                     next_retention = now + timedelta(days=1)
-            # Der Versand laeuft nebenher, nicht im Takt. `senden` wartet bis zu zehn
-            # Sekunden auf einen Webhook; bei mehreren gleichzeitig ausgefallenen Sensoren
-            # summierte sich das und verschoebe den naechsten Regelzyklus. Sobald in
-            # Teilprojekt 4 wirklich geschaltet wird, ist der Takt keine Nebensache mehr.
-            # `senden` faengt seine Fehler selbst; die Aufgabe wird bewusst nicht
-            # abgewartet, aber festgehalten, damit sie nicht vom Aufraeumer verschwindet.
+            # Dispatch runs alongside, not in step with the cycle. `send` waits up to
+            # ten seconds for a webhook; with several sensors failing at once that would
+            # add up and delay the next control cycle. Once subproject 4 actually starts
+            # switching, the cycle timing stops being a side concern.
+            # `send` catches its own errors; the task is deliberately not awaited, but
+            # kept referenced so it does not disappear via garbage collection.
             for notice in notices:
                 aufgabe = asyncio.create_task(send(get_settings(), notice))
                 _running_notices.add(aufgabe)
@@ -199,18 +199,18 @@ async def _shadowschleife(app: FastAPI) -> None:
 def _execute_command(
     session: Session, topic: str, payload: bytes, settings: Settings
 ) -> Zone | None:
-    """Fuehrt einen von aussen gesendeten Befehl aus -- ueber die Domaene, wie jeder Adapter.
+    """Executes a command sent from outside -- through the domain, like every adapter.
 
-    Home Assistant bekommt je Zone einen Thermostat, einen Boost-Knopf und je Modus und
-    Regelparameter einen Drehregler; wer dort dreht, landet hier. Die Grenzen und die
-    Audit-Eintraege kommen aus der Domaene, damit ein Befehl von aussen genau so viel darf
-    wie ein Klick in der Oberflaeche -- und keinen Deut mehr.
+    Home Assistant gets a thermostat per zone, a boost button, and a dial per mode and
+    control parameter; whoever turns one there ends up here. The limits and the audit
+    entries come from the domain, so a command from outside is allowed exactly as much
+    as a click in the interface -- and not a bit more.
 
-    Ein Befehl hat keinen angemeldeten Benutzer. Er laeuft unter der Quelle `system`,
-    denn niemand hat sich dafuer angemeldet, und das soll im Protokoll auch so dastehen.
+    A command has no logged-in user. It runs under the source `system`, because nobody
+    logged in for it, and that is meant to show up in the log that way too.
 
-    Gibt die Zone zurueck, deren Zustand sich geaendert hat -- der Aufrufer meldet ihn
-    sofort zurueck, statt bis zum naechsten Regelzyklus zu warten.
+    Returns the zone whose state changed -- the caller reports it back immediately,
+    instead of waiting for the next control cycle.
     """
     try:
         command = zerlegen(topic, payload, settings.mqtt_praefix)
@@ -232,19 +232,18 @@ def _execute_command(
         UnknownParameter,
         ParameterOutOfRange,
     ) as exc:
-        # Eine abgewiesene Eingabe ist keine Stoerung des Dienstes. Sie darf aber auch
-        # nicht still verschwinden: Wer in Home Assistant 99 Grad einstellt, soll den
-        # Grund im Protokoll finden.
+        # A rejected input is not a fault of the service. But it must not disappear
+        # silently either: whoever sets 99 degrees in Home Assistant should find the
+        # reason in the log.
         log.warning("Befehl abgelehnt: %s", exc, extra={"topic": topic, "zone_id": zone.id})
         return None
-    # Auch ein abgelehnter Befehl braucht streng genommen eine Antwort -- aber die
-    # richtige Antwort darauf ist der unveraenderte Zustand, und den schickt der
-    # Aufrufer ohnehin gleich mit.
+    # Even a rejected command strictly needs a response -- but the correct response to
+    # it is the unchanged state, and the caller sends that along right after anyway.
     return zone
 
 
 def _anwenden(session: Session, zone: Zone, command: Command) -> None:
-    """Was ein zerlegter Befehl bewirkt. Getrennt, damit die Fehlerbehandlung eine bleibt."""
+    """What a parsed command does. Kept separate so error handling stays in one place."""
     now = utcnow()
     if command.kind == "operating_mode" and command.operating_mode is not None:
         set_operating_mode(session, zone, command.operating_mode, akteur_id=None, source="system")
@@ -266,24 +265,24 @@ def _anwenden(session: Session, zone: Zone, command: Command) -> None:
 async def _process_mqtt_message(
     app: FastAPI, settings: Settings, topic: str, payload: bytes
 ) -> None:
-    """Handler fuer den MQTT-Client: jede Nachricht in einer eigenen Sitzung.
+    """Handler for the MQTT client: each message in its own session.
 
-    Eine eigene Sitzung je Nachricht statt einer geteilten -- eine kaputte Nutzlast (der
-    MQTT-Client faengt Ausnahmen bereits ab) darf keine halbfertige Transaktion fuer die
-    naechste Nachricht hinterlassen.
+    A dedicated session per message instead of a shared one -- a broken payload (the
+    MQTT client already catches exceptions) must not leave a half-finished transaction
+    for the next message.
     """
     empfangen_am: datetime = utcnow()
 
-    # Eigene Befehls-Topics zuerst: Sie liegen unter unserem eigenen Praefix und haben
-    # mit dem Zigbee2MQTT-Zuschnitt nichts zu tun.
+    # Our own command topics first: they live under our own prefix and have nothing to
+    # do with the Zigbee2MQTT parsing.
     if ist_command(topic, settings.mqtt_praefix):
         with session_scope(app.state.session_factory) as session:
             zone = _execute_command(session, topic, payload, settings)
-            # Sofort antworten, noch in derselben Sitzung. Die Climate-Karte in Home
-            # Assistant ist nicht optimistisch: Sie wartet auf den Zustand und zeigt bis
-            # dahin den alten. Kam der erst im naechsten Regelzyklus, sprang der eben
-            # gewaehlte Modus fuer eine Minute zurueck -- fuer den Benutzer sah es aus,
-            # als lasse sich die Betriebsart nicht umstellen.
+            # Respond immediately, still in the same session. The climate card in Home
+            # Assistant is not optimistic: it waits for the state and shows the old one
+            # until then. If it only arrived on the next control cycle, the mode just
+            # chosen would jump back for a minute -- to the user it looked as if the
+            # operating mode could not be changed.
             publisher = getattr(app.state, "publisher", None)
             if zone is not None and publisher is not None:
                 await zone_state_senden(
@@ -313,30 +312,30 @@ async def _process_mqtt_message(
 
 
 def _unverbrauchtes_setup_token_vorhanden(session: Session) -> bool:
-    """Verhindert, dass jeder Neustart ein weiteres, ungenutztes Token erzeugt und
-    loggt, solange bereits eines aussteht."""
+    """Prevents every restart from generating and logging another, unused token while
+    one is already pending."""
     return (
         session.scalar(select(SetupToken.id).where(SetupToken.consumed_at.is_(None)).limit(1))
         is not None
     )
 
 
-# Hoechstens 64 Zeichen, ausschliesslich Buchstaben, Ziffern, Bindestrich und
-# Unterstrich. Alles andere -- insbesondere Zeilenumbrueche, die im Textformat
-# des Logs zusaetzliche Zeilen vortaeuschen koennten, oder beliebig lange Werte,
-# die jede Logzeile aufblaehen -- gilt als unplausibel.
+# At most 64 characters, letters, digits, hyphen, and underscore only. Anything
+# else -- in particular line breaks, which could fake additional lines in the
+# text format of the log, or arbitrarily long values that bloat every log line
+# -- counts as implausible.
 _REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Laeuft beim tatsaechlichen Start des Dienstes (nicht beim blossen Bau der
-    FastAPI-Instanz durch `create_app()`) -- insbesondere nicht bei einem
-    `TestClient`, der ohne `with`-Block genutzt wird, wie es die Testsuite tut.
+    """Runs on actual startup of the service (not merely on building the FastAPI
+    instance via `create_app()`) -- in particular not for a `TestClient` used
+    without a `with` block, as the test suite does.
     """
-    # Vor jeder Abfrage: Ein fehlendes oder veraltetes Schema soll als ein Satz
-    # herauskommen, der den naechsten Befehl nennt, nicht als Traceback aus der
-    # Tiefe von SQLAlchemy.
+    # Before any query: a missing or outdated schema should come out as one
+    # sentence naming the next command, not as a traceback from deep inside
+    # SQLAlchemy.
     try:
         check_schema(app.state.engine)
     except SchemaPasstNicht as errors:
@@ -346,29 +345,29 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     with session_scope(app.state.session_factory) as session:
         if einrichtung_noetig(session) and not _unverbrauchtes_setup_token_vorhanden(session):
             plaintext = setup_token_erzeugen(session)
-            # Einzige Stelle im ganzen Projekt, an der ein Geheimnis absichtlich im
-            # Log erscheint (Ausnahme vermerkt in thermoctl/logging.py). Das Log ist
-            # der einzige Kanal, ueber den der Betreiber an dieses Einmal-Token
-            # kommt -- ohne es gewinnt im unguenstigen Fall der Erste im Netz, der
-            # die Einrichtungsseite findet. Absichtlich in den Meldungstext
-            # interpoliert statt als `extra=`-Feld: Nur der Meldungstext entgeht der
-            # Maskierung in logging.py, ein Zusatzfeld mit "token" im Namen wuerde
-            # dort geschwaerzt.
+            # The only place in the whole project where a secret intentionally
+            # appears in the log (exception noted in thermoctl/logging.py). The log
+            # is the only channel through which the operator gets this one-time
+            # token -- without it, in the unfavorable case, whoever finds the setup
+            # page first on the network wins. Deliberately interpolated into the
+            # message text instead of an `extra=` field: only the message text
+            # escapes the redaction in logging.py, an extra field with "token" in
+            # its name would be redacted there.
             log.info("Einrichtung erforderlich. Einmal-Token: %s", plaintext)
 
-    # Beide Hintergrundaufgaben laufen ausschliesslich mit `mqtt_enabled` -- die
-    # Testsuite baut die Anwendung staendig (jeder `TestClient`), und sie darf dabei
-    # weder eine Endlosschleife noch eine Netzverbindung anstossen.
+    # Both background tasks run only with `mqtt_enabled` -- the test suite builds the
+    # application constantly (every `TestClient`), and doing so must not trigger
+    # either an infinite loop or a network connection.
     settings = get_settings()
     app.state.bridge_reachable = None
     app.state.publisher = None
     app.state.publication_state = PublicationState()
-    # Der **erste** Riegel, beim Bau des Clients gesetzt. Er kommt aus der Datenbank, wie
-    # es der Kommentar in `MqttClient` seit Teilprojekt 2 vorsieht -- und er wird hier
-    # einmal gelesen, nicht bei jedem Senden. Wer die Anlage im laufenden Betrieb scharf
-    # schaltet, muss den Dienst deshalb einmal neu starten, bevor wirklich gesendet wird;
-    # die Betriebsseite sagt das auch. Der zweite Riegel (`setting.control_armed`, bei
-    # jedem Senden geprueft) wirkt dagegen sofort -- in die sichere Richtung.
+    # The **first** bolt, set when the client is built. It comes from the database, as
+    # the comment in `MqttClient` has specified since subproject 2 -- and it is read
+    # once here, not on every send. Whoever arms the plant while it is running
+    # therefore has to restart the service once before anything is actually sent; the
+    # operations page says so too. The second bolt (`setting.control_armed`, checked on
+    # every send) takes effect immediately, on the other hand -- in the safe direction.
     with session_scope(app.state.session_factory) as session:
         app.state.sending_allowed = switching_allowed(session)
     hintergrundaufgaben: list[asyncio.Task[None]] = []
@@ -386,9 +385,9 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     try:
         yield
     finally:
-        # Abbrechen und abwarten, nicht nur abbrechen: Sonst kann eine Aufgabe, die
-        # gerade in einer laufenden Datenbankoperation steckt, den Prozess am Beenden
-        # hindern -- jeder Neustart des Containers waere eine Geduldsprobe.
+        # Cancel and wait, not just cancel: otherwise a task that is currently stuck
+        # in an ongoing database operation could prevent the process from exiting --
+        # every restart of the container would become a test of patience.
         for aufgabe in hintergrundaufgaben:
             aufgabe.cancel()
         for aufgabe in hintergrundaufgaben:
@@ -396,19 +395,19 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
                 await aufgabe
 
 
-# Adressen, unter denen der Dienst nur vom selben Rechner erreichbar ist. Alles andere
-# bedeutet: irgendjemand im Netz kann ihn aufrufen.
+# Addresses under which the service is only reachable from the same machine. Anything
+# else means: someone on the network can reach it.
 _NUR_OERTLICH = frozenset({"127.0.0.1", "::1", "localhost"})
 
 
 def _warn_if_reachable_unprotected(settings: Settings) -> None:
-    """Warnt, wenn der Dienst im Netz haengt und Sitzungscookies unverschluesselt gehen.
+    """Warns when the service hangs on the network and session cookies go unencrypted.
 
-    `secure_cookies` steht standardmaessig auf false, weil die Erstinbetriebnahme sonst
-    ueber `http://` scheitert — und wer sie dann nicht umstellt, schickt seine Anmeldung
-    im Klartext durchs WLAN. Der Dienst kann das nicht erzwingen (hinter einem
-    Reverse-Proxy sieht er nur HTTP), aber er kann es sagen. Eine Warnung, die einmal beim
-    Start im Log steht, ist der einzige Ort, an dem es auffaellt, bevor etwas passiert.
+    `secure_cookies` defaults to false because otherwise initial setup over `http://`
+    would fail -- and whoever then does not switch it sends their login in plaintext
+    over Wi-Fi. The service cannot enforce this (behind a reverse proxy it only sees
+    HTTP), but it can say so. A warning that appears once in the log at startup is the
+    only place this gets noticed before something happens.
     """
     if settings.secure_cookies or settings.bind_host in _NUR_OERTLICH:
         return
@@ -432,15 +431,15 @@ def create_app() -> FastAPI:
         },
     )
     _warn_if_reachable_unprotected(settings)
-    # `docs_url=None` schaltet die mitgelieferte Oberflaeche ab; wir liefern sie unten
-    # selbst aus, weil FastAPIs Fassung ihre Dateien aus einem CDN zieht. Das widerspraeche
-    # gleich zweimal dem, was fuer die uebrigen Fremdbibliotheken gilt (siehe
-    # static/HERKUNFT.md): Im Heimnetz ohne Internetzugang bliebe die Seite leer, und jeder
-    # Aufruf verriete einem Dritten, wann jemand die Heizungssteuerung oeffnet.
+    # `docs_url=None` disables the bundled interface; we serve it ourselves below,
+    # because FastAPI's version pulls its files from a CDN. That would violate what
+    # holds for the other third-party libraries (see static/HERKUNFT.md) twice over: on
+    # a home network without internet access the page would stay blank, and every call
+    # would tell a third party when someone opens the heating control.
     #
-    # `redoc_url=None` ohne Ersatz: ReDoc zieht ebenfalls aus einem CDN, und eine zweite
-    # Lesefassung derselben Beschreibung ist den zusaetzlichen Mitgeliefert-Ballast nicht
-    # wert. `/docs` deckt beides ab.
+    # `redoc_url=None` with no replacement: ReDoc also pulls from a CDN, and a second
+    # read view of the same description is not worth the extra bundled weight. `/docs`
+    # covers both.
     app = FastAPI(
         title="thermoctl",
         version=thermoctl.__version__,
@@ -448,9 +447,9 @@ def create_app() -> FastAPI:
         docs_url=None,
         redoc_url=None,
     )
-    # Die Engine wird mit abgelegt, damit Aufrufer sie schliessen koennen. Ohne das
-    # bleibt bei jeder erzeugten Anwendung eine offene Datenbankverbindung zurueck --
-    # im Betrieb bis zum Prozessende, in Tests bei jedem Aufbau erneut.
+    # The engine is stored alongside so callers can close it. Without this, every
+    # created application leaves behind an open database connection -- in production
+    # until the process ends, in tests again on every setup.
     app.state.engine = create_engine_from_settings(settings)
     app.state.session_factory = session_factory(app.state.engine)
     app.include_router(start_router)
@@ -472,9 +471,9 @@ def create_app() -> FastAPI:
 
     @app.exception_handler(Forbidden)
     async def forbidden_handler(request: Request, exc: Forbidden) -> Response:
-        # Einheitliche Uebersetzung einer Rechtsverweigerung in 403 -- eine Route,
-        # die das nicht selbst tut (und das kuenftig vergisst), soll trotzdem nicht
-        # mit 500 antworten. Auflage aus dem Abschlussreview von Teilprojekt 1.
+        # Uniform translation of a denied permission into 403 -- a route that does
+        # not do this itself (and forgets to in the future) should still not respond
+        # with 500. Requirement from the final review of subproject 1.
         return JSONResponse(status_code=403, content={"detail": str(exc)})
 
     @app.middleware("http")
@@ -482,9 +481,9 @@ def create_app() -> FastAPI:
         request: Request, call_next: Callable[[Request], Awaitable[Response]]
     ) -> Response:
         mitgegeben = request.headers.get("X-Request-ID")
-        # Eine unplausible mitgegebene Kennung ist kein Grund, eine sonst
-        # gueltige Anfrage abzuweisen -- sie wird schlicht durch eine frisch
-        # erzeugte ersetzt, als waere keine mitgeliefert worden.
+        # An implausible supplied identifier is no reason to reject an otherwise
+        # valid request -- it is simply replaced by a freshly generated one, as if
+        # none had been supplied.
         identifier = (
             mitgegeben
             if mitgegeben is not None and _REQUEST_ID_PATTERN.fullmatch(mitgegeben)
@@ -500,12 +499,12 @@ def create_app() -> FastAPI:
 
     @app.get("/docs", include_in_schema=False)
     async def swagger_ui() -> HTMLResponse:
-        """Die OpenAPI-Oberflaeche, vollstaendig aus dem eigenen Verzeichnis.
+        """The OpenAPI interface, served entirely from our own directory.
 
-        Bewusst ohne Anmeldung: Die Beschreibung verraet, welche Wege es gibt, aber keinen
-        einzigen Wert und kein Geheimnis — und dasselbe steht ab der Veroeffentlichung
-        ohnehin in `docs/api.md` im oeffentlichen Repository. Ausprobieren laesst sich von
-        hier aus nichts ohne Token; jeder Aufruf durchlaeuft dieselbe Pruefung wie sonst.
+        Deliberately without a login: the description reveals which routes exist, but
+        not a single value and no secret -- and the same thing is in `docs/api.md` in
+        the public repository anyway once published. Nothing here can be tried out
+        without a token; every call goes through the same check as anywhere else.
         """
         return get_swagger_ui_html(
             openapi_url="/openapi.json",

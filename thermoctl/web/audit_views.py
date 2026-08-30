@@ -17,10 +17,10 @@ from thermoctl.domain.authz import require
 from thermoctl.domain.principal import Principal
 from thermoctl.web import ist_teilaustausch, templates
 
-# `include_in_schema=False`: Die OpenAPI-Beschreibung ist der Vertrag der
-# REST-Schnittstelle. Diese Wege liefern HTML fuer Menschen, und in der Oberflaeche
-# unter /docs stuende sonst neben jedem echten Endpunkt ein Formularweg, dessen
-# 'Try it out' eine echte Aenderung ausloest.
+# `include_in_schema=False`: the OpenAPI description is the contract of the REST
+# interface. These routes deliver HTML for humans, and in the interface under
+# /docs there would otherwise be a form route next to every real endpoint whose
+# 'Try it out' triggers a real change.
 router = APIRouter(dependencies=[Depends(csrf_schutz)], include_in_schema=False)
 
 ENTRIES_PER_PAGE = 50
@@ -45,7 +45,7 @@ async def audit_list(
     to_date: str = "",
     user: str = "",
     action_code: str = "",
-    object: str = "",  # noqa: A002 - Abfrageparameter, nicht die eingebaute Funktion
+    object: str = "",  # noqa: A002 - query parameter, not the builtin function
     source: str = "",
     page: str = "1",
 ) -> Response:
@@ -74,8 +74,8 @@ async def audit_list(
                 AuditEvent.occurred_at >= datetime.combine(from_day, time.min)
             )
         if to_day is not None:
-            # Exklusive Grenze am Folgetag schliesst den gesamten Bis-Tag ein und
-            # vermeidet datenbankspezifische Datumsfunktionen.
+            # An exclusive bound on the following day includes the whole "to" day
+            # and avoids database-specific date functions.
             next_day = datetime.combine(to_day, time.min) + timedelta(days=1)
             abfrage = abfrage.where(AuditEvent.occurred_at < next_day)
         if user:

@@ -18,14 +18,14 @@ _PASSWORD_FIELDS = frozenset(
 )
 
 
-# Bewusst NICHT `frozen=True`: Python haengt einer Ausnahme beim Werfen ihren
-# Traceback an, und eine eingefrorene Dataclass verweigert genau das. Der Fehler
-# faellt erst auf, wenn die Ausnahme tief genug durchgereicht wird — bei uns durch
-# die Abhaengigkeitsaufloesung von FastAPI — und aeussert sich dann als
-# `FrozenInstanceError` statt als der Fehler, den man sucht.
+# Deliberately NOT `frozen=True`: Python attaches its traceback to an exception when
+# it's raised, and a frozen dataclass refuses exactly that. The bug only surfaces once
+# the exception is passed deep enough -- in our case through FastAPI's dependency
+# resolution -- and then shows up as a `FrozenInstanceError` instead of the bug you're
+# actually looking for.
 @dataclass
 class FormError(Exception):
-    """Eine Eingabe, die der Benutzer korrigieren kann -- kein Fehler des Dienstes."""
+    """An input the user can correct -- not a fault of the service."""
 
     feld: str
     notice: str
@@ -34,7 +34,7 @@ class FormError(Exception):
 def password_form_error(
     errors: PasswordTooShort, feld: str = "password"
 ) -> FormError:
-    """Ordnet ein zu kurzes Passwort dem Passwortfeld des jeweiligen Formulars zu."""
+    """Attributes a too-short password to the password field of the given form."""
     return FormError(feld=feld, notice=str(errors))
 
 
@@ -45,7 +45,7 @@ def form_again(
     errors: FormError | None = None,
     **weitere: object,
 ) -> Response:
-    """Zeigt korrigierbare Eingaben erneut, ohne Passwortwerte zurueckzugeben."""
+    """Shows correctable input again, without echoing back password values."""
     safe_values = {
         name: value for name, value in values.items() if name not in _PASSWORD_FIELDS
     }

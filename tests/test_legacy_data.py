@@ -16,7 +16,7 @@ def _week(**days: frozenset[int]) -> dict[int, frozenset[int]]:
     return {day: days.get(str(day), frozenset()) for day in range(1, 8)}
 
 
-def test_ringuebergang_wird_nicht_an_mitternacht_geteilt() -> None:
+def test_the_wraparound_is_not_split_at_midnight() -> None:
     night_hours = _week(**{"7": frozenset({22, 23}), "1": frozenset(range(6))})
 
     assert schedule_points_from_night_hours(night_hours) == [
@@ -25,7 +25,7 @@ def test_ringuebergang_wird_nicht_an_mitternacht_geteilt() -> None:
     ]
 
 
-def test_durchgehend_nacht_braucht_einen_punkt() -> None:
+def test_continuous_night_needs_one_point() -> None:
     night_hours = {day: frozenset(range(24)) for day in range(1, 8)}
 
     assert schedule_points_from_night_hours(night_hours) == [
@@ -33,13 +33,13 @@ def test_durchgehend_nacht_braucht_einen_punkt() -> None:
     ]
 
 
-def test_durchgehend_tag_braucht_einen_punkt() -> None:
+def test_continuous_day_needs_one_point() -> None:
     assert schedule_points_from_night_hours(_week()) == [
         SchedulePointDraft(1, 0, False)
     ]
 
 
-def test_loecher_erzeugen_jeden_tatsaechlichen_wechsel() -> None:
+def test_gaps_create_every_actual_change() -> None:
     night_hours = _week(**{"1": frozenset({0, 1, 5, 6})})
 
     assert schedule_points_from_night_hours(night_hours) == [
@@ -50,7 +50,7 @@ def test_loecher_erzeugen_jeden_tatsaechlichen_wechsel() -> None:
     ]
 
 
-def test_vorgabewert_bedeutet_durchgehend_tag() -> None:
+def test_the_default_value_means_continuous_day() -> None:
     read_back = read_night_hours("[[],[],[],[],[],[],[],[]]")
 
     assert schedule_points_from_night_hours(read_back) == [
@@ -59,23 +59,23 @@ def test_vorgabewert_bedeutet_durchgehend_tag() -> None:
 
 
 @pytest.mark.parametrize(
-    ("blob", "warnung"),
+    ("blob", "warning"),
     [
         ("kein JSON", "kein gueltiges JSON"),
         ('{"1": [2]}', "kein Array"),
     ],
 )
-def test_unlesbarer_blob_wird_als_leere_woche_protokolliert(
-    blob: str, warnung: str, caplog: pytest.LogCaptureFixture
+def test_an_unreadable_blob_is_logged_as_an_empty_week(
+    blob: str, warning: str, caplog: pytest.LogCaptureFixture
 ) -> None:
     with caplog.at_level(logging.WARNING, logger="thermoctl.domain.legacy_data"):
         read_back = read_night_hours(blob)
 
     assert read_back == _week()
-    assert warnung in caplog.text
+    assert warning in caplog.text
 
 
-def test_sieben_slots_uebernehmen_lesbare_tage_und_protokollieren_luecke(
+def test_seven_slots_keep_the_readable_days_and_log_the_gap(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     with caplog.at_level(logging.WARNING, logger="thermoctl.domain.legacy_data"):
@@ -87,7 +87,7 @@ def test_sieben_slots_uebernehmen_lesbare_tage_und_protokollieren_luecke(
     assert "7 statt acht Slots" in caplog.text
 
 
-def test_neun_slots_verwerfen_ueberzaehligen_slot_und_protokollieren_ihn(
+def test_nine_slots_discard_the_extra_slot_and_log_it(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     with caplog.at_level(logging.WARNING, logger="thermoctl.domain.legacy_data"):
@@ -98,16 +98,16 @@ def test_neun_slots_verwerfen_ueberzaehligen_slot_und_protokollieren_ihn(
     assert "9 statt acht Slots" in caplog.text
 
 
-def test_stunde_als_zahl_wird_uebernommen() -> None:
+def test_an_hour_given_as_a_number_is_accepted() -> None:
     assert read_night_hours('[[],[3],[],[],[],[],[],[]]')[1] == frozenset({3})
 
 
-def test_boolescher_wert_ist_keine_stundenzahl() -> None:
+def test_a_boolean_value_is_not_an_hour_number() -> None:
     assert read_night_hours('[[],[true],[],[],[],[],[],[]]')[1] == frozenset()
 
 
 @pytest.mark.parametrize("value", ['"24"', "24"])
-def test_stunde_24_wird_verworfen(
+def test_hour_24_is_discarded(
     value: str, caplog: pytest.LogCaptureFixture
 ) -> None:
     with caplog.at_level(logging.WARNING, logger="thermoctl.domain.legacy_data"):
@@ -117,7 +117,7 @@ def test_stunde_24_wird_verworfen(
     assert "verworfen" in caplog.text
 
 
-def test_doppelte_stunde_wird_nur_einmal_uebernommen(
+def test_a_duplicate_hour_is_kept_only_once(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     with caplog.at_level(logging.WARNING, logger="thermoctl.domain.legacy_data"):
@@ -127,7 +127,7 @@ def test_doppelte_stunde_wird_nur_einmal_uebernommen(
     assert "doppelte Nachtstunde" in caplog.text
 
 
-def test_objekt_statt_slotliste_gilt_als_leer(caplog: pytest.LogCaptureFixture) -> None:
+def test_an_object_instead_of_a_slot_list_counts_as_empty(caplog: pytest.LogCaptureFixture) -> None:
     with caplog.at_level(logging.WARNING, logger="thermoctl.domain.legacy_data"):
         read_back = read_night_hours('[[],{"0": true},[],[],[],[],[],[]]')
 
@@ -145,24 +145,24 @@ def test_objekt_statt_slotliste_gilt_als_leer(caplog: pytest.LogCaptureFixture) 
         {day: frozenset({day, day + 8, day + 16}) for day in range(1, 8)},
     ],
 )
-def test_rueckprobe_gegen_echte_auswertungsregel(
+def test_a_counter_check_against_the_real_evaluation_rule(
     night_hours: dict[int, frozenset[int]],
 ) -> None:
-    entwuerfe = schedule_points_from_night_hours(night_hours)
+    drafts = schedule_points_from_night_hours(night_hours)
     points = [
         SchedulePoint(
-            weekday=entwurf.weekday,
-            minute_of_day=entwurf.minute_of_day,
-            setpoint_mode_id=int(entwurf.night),
+            weekday=draft.weekday,
+            minute_of_day=draft.minute_of_day,
+            setpoint_mode_id=int(draft.night),
             zone_id=1,
         )
-        for entwurf in entwuerfe
+        for draft in drafts
     ]
 
     for day in range(1, 8):
-        for stunde in range(24):
-            moment = datetime(2026, 8, 24 + day - 1, stunde)
+        for hour in range(24):
+            moment = datetime(2026, 8, 24 + day - 1, hour)
             point = current_point(points, moment)
             assert point is not None
-            old_hours = {str(stunde) for stunde in night_hours[day]}
-            assert bool(point.setpoint_mode_id) == (str(stunde) in old_hours)
+            old_hours = {str(hour) for hour in night_hours[day]}
+            assert bool(point.setpoint_mode_id) == (str(hour) in old_hours)
