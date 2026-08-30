@@ -12,6 +12,7 @@ in dem Moment nicht interessierten -- und wer eine Vorgabe aendern wollte, lande
 beim Scharfschalt-Knopf.
 """
 
+from datetime import timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request, Response, status
@@ -28,6 +29,7 @@ from thermoctl.domain.authz import hat_recht, require, visible_zones
 from thermoctl.domain.principal import Principal
 from thermoctl.domain.schedule import aufgeloester_sollwert
 from thermoctl.domain.schnittstellen import uebersicht
+from thermoctl.domain.statistik import als_dauer, heizzeiten
 from thermoctl.domain.steuerung import (
     BESCHRIFTUNG,
     GANZZAHLIG,
@@ -206,5 +208,65 @@ async def schnittstellen_anzeigen(
                 get_settings(),
                 getattr(request.app.state, "bruecke_erreichbar", None),
             ),
+        },
+    )
+
+
+# Zeitraeume, die man wirklich wissen will. Kein freies Datumsfeld: Die Frage lautet
+# "diese Woche" oder "diesen Monat", nicht "vom 14. bis zum 23.".
+ZEITRAEUME: dict[str, tuple[str, int]] = {
+    "7": ("7 Tage", 7),
+    "30": ("30 Tage", 30),
+    "90": ("90 Tage", 90),
+}
+
+
+@router.get("/statistik")
+async def statistik_anzeigen(
+    request: Request,
+    principal: Annotated[Principal, Depends(aktueller_principal)],
+    session: Annotated[Session, Depends(get_session)],
+) -> Response:
+    """Wann und wie lange geheizt wurde, je Zone und Tag.
+
+    Im Trockenlauf ist das eine Aussage darueber, was thermoctl geheizt *haette* -- die
+    Seite sagt das auch, statt eine Zahl hinzustellen, die man fuer die Vergangenheit der
+    Anlage haelt.
+    """
+    require(principal, "zone.read")
+    zonen = visible_zones(session, principal, "zone.read")
+    zeile = einstellungen(session)
+
+    schluessel = request.query_params.get("zeitraum", "7")
+    if schluessel not in ZEITRAEUME:
+        schluessel = "7"
+    _beschriftung, tage = ZEITRAEUME[schluessel]
+
+    bis = utcnow()
+    von = (bis - timedelta(days=tage - 1)).replace(hour=0, minute=0, second=0, microsecond=0)
+    werte = heizzeiten(
+        session,
+        [zone.id for zone in zonen],
+        von,
+        bis,
+        zyklus_sekunden=zeile.shadow_interval_seconds,
+    )
+    # Der laengste Tageswert ueberhaupt bestimmt die Hoehe der Balken. Je Zone zu
+    # skalieren waere bequemer zu lesen und faelscht den Vergleich zwischen Zonen --
+    # und genau der ist der Grund, warum die Zonen untereinander stehen.
+    hoechstwert = max(
+        (t.sekunden for stat in werte.values() for t in stat.tage), default=0
+    )
+    return templates.TemplateResponse(
+        request,
+        "statistik.html",
+        {
+            "zonen": zonen,
+            "werte": werte,
+            "hoechstwert": hoechstwert,
+            "zeitraeume": [(s, b) for s, (b, _t) in ZEITRAEUME.items()],
+            "zeitraum": schluessel,
+            "scharf": zeile.control_armed,
+            "als_dauer": als_dauer,
         },
     )

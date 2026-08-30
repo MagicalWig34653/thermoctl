@@ -41,6 +41,7 @@ GESCHUETZTE_SEITEN = [
     "/steuerung",
     "/einstellungen",
     "/schnittstellen",
+    "/statistik",
 ]
 
 

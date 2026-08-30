@@ -1,0 +1,83 @@
+{% extends "basis.html" %}
+{% block titel %}Statistik – thermoctl{% endblock %}
+{% block max_breite %}72rem{% endblock %}
+
+{#
+Ein Balken je Tag, eine Reihe je Zone, alle Reihen an derselben Skala. Je Zone eigen zu
+skalieren wäre bequemer zu lesen und fälschte den Vergleich zwischen Zonen — und genau
+der ist der Grund, warum die Zonen untereinander stehen.
+
+Die Balken sind kupfern wie überall: Farbe ist hier Wärme, und nichts anderes.
+#}
+
+{% block inhalt %}
+<div class="d-flex justify-content-between align-items-baseline flex-wrap gap-2 mb-1">
+    <h1 class="mb-0">Heizzeiten</h1>
+    <nav class="d-flex gap-1" aria-label="Zeitraum">
+        {% for schluessel, beschriftung in zeitraeume %}
+        <a class="btn btn-sm {{ 'btn-primary' if schluessel == zeitraum else 'btn-outline-secondary' }}"
+           href="/statistik?zeitraum={{ schluessel }}"
+           {% if schluessel == zeitraum %}aria-current="page"{% endif %}>{{ beschriftung }}</a>
+        {% endfor %}
+    </nav>
+</div>
+<p class="t-leise mb-4">
+    {% if scharf %}
+    Wie lange die Regelung je Zone und Tag geheizt hat.
+    {% else %}
+    Wie lange die Regelung je Zone und Tag geheizt <strong>hätte</strong> — die Anlage
+    läuft im Trockenlauf und schaltet nichts. Die Zahlen entstehen an derselben Stelle wie
+    später die echten.
+    {% endif %}
+</p>
+
+{% if not zonen %}
+<div class="tc-tafel p-4">
+    <p class="t-leise mb-0">Noch keine Zonen angelegt.</p>
+</div>
+{% elif hoechstwert == 0 %}
+<div class="tc-tafel p-4">
+    <p class="t-abschnitt mb-1">In diesem Zeitraum wurde nicht geheizt.</p>
+    <p class="t-leise mb-0">
+        Entweder war es warm genug, oder der Regelzyklus lief noch nicht — er schreibt
+        seine Entscheidungen nur mit eingeschaltetem MQTT.
+        <a href="/schnittstellen">Schnittstellen ansehen</a>
+    </p>
+</div>
+{% else %}
+
+<div class="tc-tafel p-4">
+    {% for zone in zonen %}
+    {% set stat = werte[zone.id] %}
+    <section class="{{ 'mt-4 pt-4 border-top' if not loop.first }}">
+        <div class="d-flex justify-content-between align-items-baseline mb-2">
+            <h2 class="mb-0">{{ zone.display_name }}</h2>
+            <span class="t-wert">
+                {{ als_dauer(stat.sekunden_gesamt) }}
+                <span class="t-leise" style="font-size: .75rem">gesamt</span>
+            </span>
+        </div>
+        <div class="tc-saeulen">
+            {% for tag in stat.tage %}
+            <div class="tc-saeule" title="{{ tag.tag.strftime('%d.%m.%Y') }}: {{ als_dauer(tag.sekunden) }}">
+                <div class="tc-saeule-flaeche">
+                    <div class="tc-saeule-wert"
+                         style="height: {{ (tag.sekunden * 100 / hoechstwert)|round(2) }}%"></div>
+                </div>
+                <div class="tc-saeule-marke t-wert t-leise">{{ tag.tag.strftime("%d.%m.") }}</div>
+            </div>
+            {% endfor %}
+        </div>
+    </section>
+    {% endfor %}
+</div>
+
+<p class="t-leise small mt-3">
+    Gerechnet aus dem Schattenprotokoll: Der Regelzyklus schreibt für jede Zone in jedem
+    Durchlauf, ob sie heizen würde. Gezählt werden die Abstände zwischen diesen
+    Messpunkten — stand der Dienst still, zählt die Lücke nicht als Heizzeit.
+    Alle Zonen an derselben Skala; der höchste Tageswert ist
+    <span class="t-wert">{{ als_dauer(hoechstwert) }}</span>.
+</p>
+{% endif %}
+{% endblock %}
