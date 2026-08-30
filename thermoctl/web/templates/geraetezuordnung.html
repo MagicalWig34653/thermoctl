@@ -6,9 +6,9 @@
 {{ zonenkopf(zone, "Geräte") }}
 
 <section class="tc-tafel p-4 mb-4">
-    {{ flussbild(bild, ziehbar=darf_aendern) }}
+    {{ flussbild(picture, ziehbar=darf_aendern) }}
     <p class="t-leise small mb-0 mt-3">
-        Dasselbe Bild für alle Zonen auf einmal: <a href="/anlage">Anlagenbild</a>.
+        Dasselbe Bild für alle Zonen auf einmal: <a href="/plant">Anlagenbild</a>.
     </p>
 </section>
 
@@ -37,7 +37,7 @@ Zuordnung. Hinein und hinaus ist damit derselbe Handgriff in zwei Richtungen.
         </span>
     </div>
     <div class="d-flex flex-wrap gap-2 mt-3">
-        {% for geraet in geraete %}
+        {% for device in devices %}
         {#
         `data-kann` traegt die Faehigkeiten des Geraets. Das Skript blendet damit beim
         Ziehen die Ziele aus, die dieses Geraet nicht ausfuellen kann -- derselbe
@@ -45,11 +45,11 @@ Zuordnung. Hinein und hinaus ist damit derselbe Handgriff in zwei Richtungen.
         bleibt im Server: Was der Browser verhindert, ist Bequemlichkeit, was die Domaene
         verhindert, ist die Regel.
         #}
-        <div class="tc-knoten tc-knoten-frei tc-ziehbar" data-geraet="{{ geraet.id }}"
-             data-kann="{{ faehigkeiten.get(geraet.id, []) | join(' ') }}">
-            <div class="tc-knoten-name">{{ geraet.display_name }}</div>
-            {% if geraet.model %}
-            <div class="t-leise" style="font-size: .68rem">{{ geraet.model }}</div>
+        <div class="tc-knoten tc-knoten-frei tc-ziehbar" data-geraet="{{ device.id }}"
+             data-kann="{{ capabilities.get(device.id, []) | join(' ') }}">
+            <div class="tc-knoten-name">{{ device.display_name }}</div>
+            {% if device.model %}
+            <div class="t-leise" style="font-size: .68rem">{{ device.model }}</div>
             {% endif %}
         </div>
         {% endfor %}
@@ -57,17 +57,17 @@ Zuordnung. Hinein und hinaus ist damit derselbe Handgriff in zwei Richtungen.
 </section>
 
 <form id="zuordnung-messquelle" method="post" hidden hx-push-url="false"
-      action="/zonen/{{ zone.id }}/geraete/messquelle">
+      action="/zones/{{ zone.id }}/devices/source">
     <input type="hidden" name="device_id">
 </form>
 <form id="zuordnung-rolle" method="post" hidden hx-push-url="false"
-      action="/zonen/{{ zone.id }}/geraete/zuordnen">
+      action="/zones/{{ zone.id }}/devices/assign">
     <input type="hidden" name="device_id">
     <input type="hidden" name="role_id">
 </form>
 <form id="zuordnung-loesen" method="post" hidden hx-push-url="false"
-      action="/zonen/{{ zone.id }}/geraete/loesen">
-    <input type="hidden" name="zuordnung_id">
+      action="/zones/{{ zone.id }}/devices/detach">
+    <input type="hidden" name="assignment_id">
 </form>
 {#
 Ein Element je Rolle statt Attributnamen wie `data-rolle-window_contact`: Der Browser
@@ -83,15 +83,15 @@ Skripts falsch rät.
 {% endif %}
 
 <h2 class="h4">Messquelle</h2>
-<p>Aktuell: <strong>{{ messquelle.display_name if messquelle else "Keine Messquelle" }}</strong></p>
+<p>Aktuell: <strong>{{ temperature_source.display_name if temperature_source else "Keine Messquelle" }}</strong></p>
 {% if darf_aendern %}
-{% if fehler.messquelle %}<div class="alert alert-danger">{{ fehler.messquelle }}</div>{% endif %}
-<form method="post" action="/zonen/{{ zone.id }}/geraete/messquelle" class="row g-2 mb-4">
+{% if errors.temperature_source %}<div class="alert alert-danger">{{ errors.temperature_source }}</div>{% endif %}
+<form method="post" action="/zones/{{ zone.id }}/devices/source" class="row g-2 mb-4">
     <div class="col">
         <select class="form-select" name="device_id" aria-label="Messquelle">
             <option value="">Keine Messquelle</option>
-            {% for geraet in geraete %}
-            <option value="{{ geraet.id }}"{% if messquelle and geraet.id == messquelle.id %} selected{% endif %}>{{ geraet.display_name }}</option>
+            {% for device in devices %}
+            <option value="{{ device.id }}"{% if temperature_source and device.id == temperature_source.id %} selected{% endif %}>{{ device.display_name }}</option>
             {% endfor %}
         </select>
     </div>
@@ -100,18 +100,18 @@ Skripts falsch rät.
 {% endif %}
 
 <h2 class="h4">Rollen</h2>
-{% if zuordnungen %}
+{% if assignments %}
 <div class="table-responsive">
 <table class="table align-middle">
     <thead><tr><th>Rolle</th><th>Gerät</th><th></th></tr></thead>
     <tbody>
-    {% for zuordnung, geraet, rolle in zuordnungen %}
+    {% for assignment, device, rolle in assignments %}
     <tr>
-        <td>{{ rolle.label }}</td><td>{{ geraet.display_name }}</td>
+        <td>{{ rolle.label }}</td><td>{{ device.display_name }}</td>
         <td class="text-end">
         {% if darf_aendern %}
-        <form method="post" action="/zonen/{{ zone.id }}/geraete/loesen">
-            <input type="hidden" name="zuordnung_id" value="{{ zuordnung.id }}">
+        <form method="post" action="/zones/{{ zone.id }}/devices/detach">
+            <input type="hidden" name="assignment_id" value="{{ assignment.id }}">
             <button class="btn btn-sm btn-outline-danger" type="submit">Lösen</button>
         </form>
         {% endif %}
@@ -123,7 +123,7 @@ Skripts falsch rät.
 </div>
 {% else %}<p>Noch keine Rollen zugeordnet.</p>{% endif %}
 
-{% if bediengeraete %}
+{% if controllere %}
 <h2 class="h4 mt-4">Tastenbelegung</h2>
 <p class="t-leise">
     Wie ein Gerät seine Tasten nennt, entscheidet Zigbee2MQTT je Modell — der eine schickt
@@ -131,46 +131,46 @@ Skripts falsch rät.
     Deshalb steht hier nichts geraten: Aufgeführt ist, was dieses Gerät wirklich geschickt
     hat. <strong>Einmal jede Taste drücken</strong>, die Seite neu laden, zuordnen.
 </p>
-{% if fehler.taste %}<div class="alert alert-danger">{{ fehler.taste }}</div>{% endif %}
+{% if errors.button %}<div class="alert alert-danger">{{ errors.button }}</div>{% endif %}
 
-{% for geraet, belegungen in bediengeraete %}
+{% for device, belegungen in controllere %}
 <div class="tc-tafel mb-3">
     <div class="p-3 pb-0">
-        <div class="tc-zone-name">{{ geraet.display_name }}</div>
-        <div class="t-leise" style="font-size: .72rem">{{ geraet.model or "Modell unbekannt" }}</div>
+        <div class="tc-zone-name">{{ device.display_name }}</div>
+        <div class="t-leise" style="font-size: .72rem">{{ device.model or "Modell unbekannt" }}</div>
     </div>
     {% if belegungen %}
     <div class="table-responsive">
     <table class="table align-middle mb-0">
         <thead><tr><th>Taste</th><th>Zuletzt gesehen</th><th>Tut</th><th>Schritt</th><th></th></tr></thead>
         <tbody>
-        {% for belegung in belegungen %}
+        {% for binding in belegungen %}
         <tr>
-            <td class="t-wert">{{ belegung.aktion }}</td>
+            <td class="t-wert">{{ binding.aktion }}</td>
             <td class="t-leise small">
-                {% if belegung.zuletzt_gesehen %}{{ belegung.zuletzt_gesehen|alter }}
+                {% if binding.last_seen %}{{ binding.last_seen|age }}
                 {% else %}<span title="Belegt, aber seit dem letzten Aufräumen der Messwerte nicht gesehen">—</span>{% endif %}
             </td>
             <td colspan="3">
-                <form method="post" action="/zonen/{{ zone.id }}/geraete/taste" class="row g-2">
-                    <input type="hidden" name="device_id" value="{{ geraet.id }}">
-                    <input type="hidden" name="aktion" value="{{ belegung.aktion }}">
+                <form method="post" action="/zones/{{ zone.id }}/devices/button" class="row g-2">
+                    <input type="hidden" name="device_id" value="{{ device.id }}">
+                    <input type="hidden" name="action_code" value="{{ binding.aktion }}">
                     <div class="col-auto">
-                        <select class="form-select form-select-sm" name="befehl"
+                        <select class="form-select form-select-sm" name="command"
                                 aria-label="Was diese Taste tut"
                                 {{ "disabled" if not darf_aendern }}>
                             <option value="">— nichts —</option>
-                            {% for befehl in befehle %}
-                            <option value="{{ befehl.code }}"
-                                {{ "selected" if befehl.code == belegung.befehl_code }}>{{ befehl.label }}</option>
+                            {% for command in commands %}
+                            <option value="{{ command.code }}"
+                                {{ "selected" if command.code == binding.command_code }}>{{ command.label }}</option>
                             {% endfor %}
                         </select>
                     </div>
                     <div class="col-auto">
-                        <input class="form-control form-control-sm" type="text" name="schritt_k"
+                        <input class="form-control form-control-sm" type="text" name="step_k"
                                style="width: 6rem" inputmode="decimal"
                                placeholder="0,5 K" aria-label="Schrittweite in Kelvin"
-                               value="{{ belegung.schritt_k|grad if belegung.schritt_k is not none }}"
+                               value="{{ binding.step_k|grad if binding.step_k is not none }}"
                                {{ "disabled" if not darf_aendern }}>
                     </div>
                     {% if darf_aendern %}
@@ -196,13 +196,13 @@ Skripts falsch rät.
 
 {% if darf_aendern %}
 <h2 class="h4 mt-4">Rolle zuordnen</h2>
-{% if fehler.zuordnung %}<div class="alert alert-danger">{{ fehler.zuordnung }}</div>{% endif %}
-<form method="post" action="/zonen/{{ zone.id }}/geraete/zuordnen" class="row g-2 mb-4">
+{% if errors.assignment %}<div class="alert alert-danger">{{ errors.assignment }}</div>{% endif %}
+<form method="post" action="/zones/{{ zone.id }}/devices/assign" class="row g-2 mb-4">
     <div class="col">
         <label class="form-label" for="device_id">Gerät</label>
         <select class="form-select" id="device_id" name="device_id" required>
             <option value="">Bitte auswählen</option>
-            {% for geraet in geraete %}<option value="{{ geraet.id }}">{{ geraet.display_name }}</option>{% endfor %}
+            {% for device in devices %}<option value="{{ device.id }}">{{ device.display_name }}</option>{% endfor %}
         </select>
     </div>
     <div class="col">
@@ -217,20 +217,20 @@ Skripts falsch rät.
 
 <h2 class="h4 mt-4">Gerät tauschen</h2>
 <p class="text-muted">Alle Rollen und die Messquelle in dieser Zone gehen auf das neue Gerät über. Sollwerte, Zeitplan, Regelparameter und Messverlauf bleiben erhalten.</p>
-{% if fehler.tausch %}<div class="alert alert-danger">{{ fehler.tausch }}</div>{% endif %}
-<form method="post" action="/zonen/{{ zone.id }}/geraete/tauschen" class="row g-2 mb-4">
+{% if errors.swap %}<div class="alert alert-danger">{{ errors.swap }}</div>{% endif %}
+<form method="post" action="/zones/{{ zone.id }}/devices/swap" class="row g-2 mb-4">
     <div class="col">
         <label class="form-label" for="old_device_id">Altes Gerät</label>
         <select class="form-select" id="old_device_id" name="old_device_id" required>
             <option value="">Bitte auswählen</option>
-            {% for geraet in geraete %}<option value="{{ geraet.id }}">{{ geraet.display_name }}</option>{% endfor %}
+            {% for device in devices %}<option value="{{ device.id }}">{{ device.display_name }}</option>{% endfor %}
         </select>
     </div>
     <div class="col">
         <label class="form-label" for="new_device_id">Neues Gerät</label>
         <select class="form-select" id="new_device_id" name="new_device_id" required>
             <option value="">Bitte auswählen</option>
-            {% for geraet in geraete %}<option value="{{ geraet.id }}">{{ geraet.display_name }}</option>{% endfor %}
+            {% for device in devices %}<option value="{{ device.id }}">{{ device.display_name }}</option>{% endfor %}
         </select>
     </div>
     <div class="col-auto align-self-end"><button class="btn btn-warning" type="submit">Gerät tauschen</button></div>

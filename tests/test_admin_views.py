@@ -1,56 +1,56 @@
 import pytest
 from sqlalchemy.orm import Session
 
-from tests.hilfen import benutzer_mit_rechten, quelle, zone_anlegen
+from tests.helpers import create_zone, source, user_with_permissions
 from thermoctl.auth.tokens import token_ausstellen
 from thermoctl.domain.authz import Forbidden
 
 
 def test_token_klartext_erscheint_genau_einmal(session: Session) -> None:
-    nutzer = benutzer_mit_rechten(session, "a", [("zone.read", None), ("token.self", None)])
-    token, klartext = token_ausstellen(session, nutzer, "HA", [("zone.read", None)], None)
-    assert klartext.startswith("tctl_")
-    assert klartext not in (token.token_hash, token.prefix)
+    nutzer = user_with_permissions(session, "a", [("zone.read", None), ("token.self", None)])
+    token, plaintext = token_ausstellen(session, nutzer, "HA", [("zone.read", None)], None)
+    assert plaintext.startswith("tctl_")
+    assert plaintext not in (token.token_hash, token.prefix)
 
 
 def test_token_mit_mehr_rechten_als_der_besitzer_wird_abgewiesen(session: Session) -> None:
-    nutzer = benutzer_mit_rechten(session, "b", [("zone.read", None), ("token.self", None)])
+    nutzer = user_with_permissions(session, "b", [("zone.read", None), ("token.self", None)])
     with pytest.raises(Forbidden):
         token_ausstellen(session, nutzer, "Zuviel", [("zone.manage", None)], None)
 
 
 def test_token_mit_fremder_zone_wird_abgewiesen(session: Session) -> None:
-    bad = zone_anlegen(session, "bad")
-    kueche = zone_anlegen(session, "kueche")
-    nutzer = benutzer_mit_rechten(session, "c", [("zone.read", bad.id), ("token.self", None)])
+    bad = create_zone(session, "bad")
+    kueche = create_zone(session, "kueche")
+    nutzer = user_with_permissions(session, "c", [("zone.read", bad.id), ("token.self", None)])
     with pytest.raises(Forbidden):
         token_ausstellen(session, nutzer, "Fremd", [("zone.read", kueche.id)], None)
 
 
 def test_benutzerliste_braucht_user_manage(client_als) -> None:
     ohne = client_als([("zone.read", None)])
-    assert ohne.get("/benutzer").status_code == 403
+    assert ohne.get("/users").status_code == 403
     mit = client_als([("user.manage", None)])
-    assert mit.get("/benutzer").status_code == 200
+    assert mit.get("/users").status_code == 200
 
 
 def test_passwort_hash_erscheint_in_keiner_ansicht(client_als) -> None:
-    antwort = client_als([("user.manage", None)]).get("/benutzer")
-    assert "$argon2id$" not in antwort.text
+    response = client_als([("user.manage", None)]).get("/users")
+    assert "$argon2id$" not in response.text
 
 
 @pytest.fixture(autouse=True)
-def _actor_quelle(session: Session) -> None:
+def _actor_source(session: Session) -> None:
     """Die Quelle `web` legt in Produktion die Referenzdatenmigration an.
 
     `Base.metadata.create_all()` in der Fixture `engine` legt nur das Schema an, keine
     Referenzdaten — ohne diese Zeile scheitert jeder Audit-Eintrag der aendernden
     Ansichten an der NOT-NULL-Bedingung auf `audit_event.source_id`.
     """
-    quelle(session, "web")
+    source(session, "web")
 
 
-def _mit_csrf(client, session):  # type: ignore[no-untyped-def]
+def _with_csrf(client, session):  # type: ignore[no-untyped-def]
     """Kopfzeile mit gueltigem CSRF-Token fuer aendernde Anfragen."""
     from thermoctl.auth.csrf import csrf_token
     from thermoctl.auth.sessions import COOKIE_NAME
@@ -62,14 +62,14 @@ def _mit_csrf(client, session):  # type: ignore[no-untyped-def]
 
 def test_benutzer_anlegen_ueber_die_oberflaeche(client_als, session: Session) -> None:
     c = client_als([("user.manage", None)])
-    antwort = c.post(
-        "/benutzer",
+    response = c.post(
+        "/users",
         data={"username": "neuling", "display_name": "Neuling",
-              "password": "passwort-lang-genug", "gruppe_id": ""},
-        headers=_mit_csrf(c, session),
+              "password": "passwort-lang-genug", "group_id": ""},
+        headers=_with_csrf(c, session),
         follow_redirects=False,
     )
-    assert antwort.status_code == 303
+    assert response.status_code == 303
     from sqlalchemy import select
 
     from thermoctl.db.models.identity import User
@@ -80,27 +80,27 @@ def test_benutzer_anlegen_ueber_die_oberflaeche(client_als, session: Session) ->
 def test_zu_kurzes_passwort_fuehrt_zurueck_ins_formular(client_als, session: Session) -> None:
     """Kein 500, keine leere Maske — und der Benutzername bleibt stehen."""
     c = client_als([("user.manage", None)])
-    antwort = c.post(
-        "/benutzer",
+    response = c.post(
+        "/users",
         data={"username": "kurzpass", "display_name": "Kurz", "password": "kurz",
-              "gruppe_id": ""},
-        headers=_mit_csrf(c, session),
+              "group_id": ""},
+        headers=_with_csrf(c, session),
     )
-    assert antwort.status_code == 200
-    assert "mindestens 12 Zeichen" in antwort.text
-    assert "kurzpass" in antwort.text
-    assert "kurz\"" not in antwort.text.replace('value="kurzpass"', "")
+    assert response.status_code == 200
+    assert "mindestens 12 Zeichen" in response.text
+    assert "kurzpass" in response.text
+    assert "kurz\"" not in response.text.replace('value="kurzpass"', "")
 
 
 def test_passwort_erscheint_nie_in_der_antwort(client_als, session: Session) -> None:
     c = client_als([("user.manage", None)])
-    antwort = c.post(
-        "/benutzer",
+    response = c.post(
+        "/users",
         data={"username": "", "display_name": "X", "password": "ein-auffaelliges-geheimnis",
-              "gruppe_id": ""},
-        headers=_mit_csrf(c, session),
+              "group_id": ""},
+        headers=_with_csrf(c, session),
     )
-    assert "ein-auffaelliges-geheimnis" not in antwort.text
+    assert "ein-auffaelliges-geheimnis" not in response.text
 
 
 def test_letzter_verwalter_kann_sich_nicht_selbst_deaktivieren(
@@ -114,46 +114,46 @@ def test_letzter_verwalter_kann_sich_nicht_selbst_deaktivieren(
     c = client_als([("user.manage", None)])
     ich = session.scalar(select(User).where(User.username.like("web-%")))
     assert ich is not None
-    antwort = c.post(
-        f"/benutzer/{ich.id}/aktiv", data={"aktiv": "nein"},
-        headers=_mit_csrf(c, session),
+    response = c.post(
+        f"/users/{ich.id}/active", data={"active": "nein"},
+        headers=_with_csrf(c, session),
     )
-    assert antwort.status_code == 200
-    assert "letzte aktive Benutzer" in antwort.text
+    assert response.status_code == 200
+    assert "letzte aktive Benutzer" in response.text
     assert ich.is_active is True
 
 
 def test_unbekannter_benutzer_ergibt_404(client_als, session: Session) -> None:
     c = client_als([("user.manage", None)])
-    antwort = c.post(
-        "/benutzer/999999/aktiv", data={"aktiv": "ja"}, headers=_mit_csrf(c, session)
+    response = c.post(
+        "/users/999999/active", data={"active": "ja"}, headers=_with_csrf(c, session)
     )
-    assert antwort.status_code == 404
+    assert response.status_code == 404
 
 
 def test_gruppe_anlegen_und_recht_vergeben(client_als, session: Session) -> None:
     from sqlalchemy import select
 
-    from tests.hilfen import berechtigung
+    from tests.helpers import ensure_permission
     from thermoctl.db.models.identity import AccessGroup, GroupPermission
 
-    berechtigung(session, "zone.read", zonenbezogen=True)
+    ensure_permission(session, "zone.read", zone_scoped=True)
     c = client_als([("group.manage", None)])
     assert c.post(
-        "/gruppen", data={"name": "Gaeste", "description": "Nur schauen"},
-        headers=_mit_csrf(c, session), follow_redirects=False,
+        "/groups", data={"name": "Gaeste", "description": "Nur schauen"},
+        headers=_with_csrf(c, session), follow_redirects=False,
     ).status_code == 303
-    gruppe = session.scalar(select(AccessGroup).where(AccessGroup.name == "Gaeste"))
-    assert gruppe is not None
+    group = session.scalar(select(AccessGroup).where(AccessGroup.name == "Gaeste"))
+    assert group is not None
 
     # Der Endpunkt nimmt den ganzen gewuenschten Stand entgegen, nicht ein einzelnes
     # Recht: `recht=<code>` fuer die ganze Anlage, `recht=<code>:<zone>` fuer eine Zone.
     assert c.post(
-        f"/gruppen/{gruppe.id}/rechte", data={"recht": ["zone.read"]},
-        headers=_mit_csrf(c, session), follow_redirects=False,
+        f"/groups/{group.id}/permissions", data={"permission": ["zone.read"]},
+        headers=_with_csrf(c, session), follow_redirects=False,
     ).status_code == 303
     assert session.scalar(
-        select(GroupPermission).where(GroupPermission.access_group_id == gruppe.id)
+        select(GroupPermission).where(GroupPermission.access_group_id == group.id)
     ) is not None
 
 
@@ -162,79 +162,79 @@ def test_anlagenweites_recht_auf_eine_zone_wird_in_der_ansicht_abgewiesen(
 ) -> None:
     from sqlalchemy import select
 
-    from tests.hilfen import berechtigung, zone_anlegen
+    from tests.helpers import create_zone, ensure_permission
     from thermoctl.db.models.identity import AccessGroup
 
-    berechtigung(session, "user.manage", zonenbezogen=False)
-    zone = zone_anlegen(session, "bad-fuer-rechte")
+    ensure_permission(session, "user.manage", zone_scoped=False)
+    zone = create_zone(session, "bad-fuer-rechte")
     c = client_als([("group.manage", None)])
-    c.post("/gruppen", data={"name": "Falsch", "description": ""},
-           headers=_mit_csrf(c, session))
-    gruppe = session.scalar(select(AccessGroup).where(AccessGroup.name == "Falsch"))
-    assert gruppe is not None
-    antwort = c.post(
-        f"/gruppen/{gruppe.id}/rechte", data={"recht": [f"user.manage:{zone.id}"]},
-        headers=_mit_csrf(c, session),
+    c.post("/groups", data={"name": "Falsch", "description": ""},
+           headers=_with_csrf(c, session))
+    group = session.scalar(select(AccessGroup).where(AccessGroup.name == "Falsch"))
+    assert group is not None
+    response = c.post(
+        f"/groups/{group.id}/permissions", data={"permission": [f"user.manage:{zone.id}"]},
+        headers=_with_csrf(c, session),
     )
-    assert antwort.status_code == 200
-    assert "ganze Anlage" in antwort.text
+    assert response.status_code == 200
+    assert "ganze Anlage" in response.text
 
 
 def test_token_ausstellen_zeigt_den_klartext_genau_einmal(client_als, session: Session) -> None:
     c = client_als([("token.self", None), ("zone.read", None)])
-    antwort = c.post(
+    response = c.post(
         "/tokens", data={"name": "Anzeigetafel", "code": "zone.read", "gueltig_tage": ""},
-        headers=_mit_csrf(c, session),
+        headers=_with_csrf(c, session),
     )
-    assert antwort.status_code == 200
-    assert "tctl_" in antwort.text
+    assert response.status_code == 200
+    assert "tctl_" in response.text
     # Beim naechsten Aufruf der Seite ist er weg — gespeichert wird nur der Hash.
     assert "tctl_" not in c.get("/tokens").text
 
 
 def test_token_ohne_namen_wird_abgewiesen(client_als, session: Session) -> None:
     c = client_als([("token.self", None)])
-    antwort = c.post(
+    response = c.post(
         "/tokens", data={"name": "  ", "code": "", "gueltig_tage": ""},
-        headers=_mit_csrf(c, session),
+        headers=_with_csrf(c, session),
     )
-    assert antwort.status_code == 200
-    assert "braucht einen Namen" in antwort.text
+    assert response.status_code == 200
+    assert "braucht einen Namen" in response.text
 
 
 def test_token_mit_zuviel_rechten_wird_verstaendlich_abgewiesen(
     client_als, session: Session
 ) -> None:
-    from tests.hilfen import berechtigung
+    from tests.helpers import ensure_permission
 
-    berechtigung(session, "zone.manage", zonenbezogen=True)
+    ensure_permission(session, "zone.manage", zone_scoped=True)
     c = client_als([("token.self", None)])
-    antwort = c.post(
+    response = c.post(
         "/tokens", data={"name": "Zuviel", "code": "zone.manage", "gueltig_tage": ""},
-        headers=_mit_csrf(c, session),
+        headers=_with_csrf(c, session),
     )
-    assert antwort.status_code == 200
-    assert "kann kein Token" in antwort.text
+    assert response.status_code == 200
+    assert "kann kein Token" in response.text
 
 
 def test_fremdes_token_ist_nicht_auffindbar(client_als, session: Session) -> None:
     """404 statt 403 — sonst verriete die Antwort, welche Kennungen es gibt."""
-    from tests.hilfen import benutzer_mit_rechten, token_mit_rechten
+    from tests.helpers import token_with_permissions, user_with_permissions
 
-    fremder = benutzer_mit_rechten(session, "fremder", [("token.self", None)])
-    fremdes = token_mit_rechten(session, fremder, [])
+    fremder = user_with_permissions(session, "fremder", [("token.self", None)])
+    fremdes = token_with_permissions(session, fremder, [])
     c = client_als([("token.self", None)])
-    antwort = c.post(
-        f"/tokens/{fremdes.id}/widerrufen", headers=_mit_csrf(c, session)
+    response = c.post(
+        f"/tokens/{fremdes.id}/revoke", headers=_with_csrf(c, session)
     )
-    assert antwort.status_code == 404
+    assert response.status_code == 404
     assert fremdes.revoked_at is None
 
 
 def test_eigenes_token_laesst_sich_widerrufen(client_als, session: Session) -> None:
     c = client_als([("token.self", None)])
     c.post("/tokens", data={"name": "Weg damit", "code": "", "gueltig_tage": "30"},
-           headers=_mit_csrf(c, session))
+           headers=_with_csrf(c, session))
     from sqlalchemy import select
 
     from thermoctl.db.models.credential import ApiToken
@@ -242,7 +242,7 @@ def test_eigenes_token_laesst_sich_widerrufen(client_als, session: Session) -> N
     token = session.scalar(select(ApiToken).where(ApiToken.name == "Weg damit"))
     assert token is not None
     assert c.post(
-        f"/tokens/{token.id}/widerrufen", headers=_mit_csrf(c, session),
+        f"/tokens/{token.id}/revoke", headers=_with_csrf(c, session),
         follow_redirects=False,
     ).status_code == 303
     assert token.revoked_at is not None
@@ -259,24 +259,24 @@ def test_eigenes_passwort_aendern_ohne_user_manage(client_als, session: Session)
     c = client_als([("zone.read", None)])
     ich = session.scalar(select(User).where(User.username.like("web-%")).order_by(User.id.desc()))
     assert ich is not None
-    antwort = c.post(
-        f"/benutzer/{ich.id}/passwort", data={"password": "mein-neues-langes-passwort"},
-        headers=_mit_csrf(c, session), follow_redirects=False,
+    response = c.post(
+        f"/users/{ich.id}/password", data={"password": "mein-neues-langes-passwort"},
+        headers=_with_csrf(c, session), follow_redirects=False,
     )
-    assert antwort.status_code == 303
+    assert response.status_code == 303
     assert verify_password("mein-neues-langes-passwort", ich.password_hash)
 
 
 def test_fremdes_passwort_aendern_braucht_user_manage(client_als, session: Session) -> None:
-    from tests.hilfen import benutzer_anlegen
+    from tests.helpers import create_user
 
-    fremder = benutzer_anlegen(session, "fremdes-passwort")
+    fremder = create_user(session, "fremdes-passwort")
     c = client_als([("zone.read", None)])
-    antwort = c.post(
-        f"/benutzer/{fremder.id}/passwort", data={"password": "egal-was-hier-steht"},
-        headers=_mit_csrf(c, session),
+    response = c.post(
+        f"/users/{fremder.id}/password", data={"password": "egal-was-hier-steht"},
+        headers=_with_csrf(c, session),
     )
-    assert antwort.status_code == 403
+    assert response.status_code == 403
 
 
 def test_gruppe_loeschen_ueber_die_oberflaeche(client_als, session: Session) -> None:
@@ -285,76 +285,76 @@ def test_gruppe_loeschen_ueber_die_oberflaeche(client_als, session: Session) -> 
     from thermoctl.db.models.identity import AccessGroup
 
     c = client_als([("group.manage", None)])
-    c.post("/gruppen", data={"name": "Entbehrlich", "description": ""},
-           headers=_mit_csrf(c, session))
-    gruppe = session.scalar(select(AccessGroup).where(AccessGroup.name == "Entbehrlich"))
-    assert gruppe is not None
+    c.post("/groups", data={"name": "Entbehrlich", "description": ""},
+           headers=_with_csrf(c, session))
+    group = session.scalar(select(AccessGroup).where(AccessGroup.name == "Entbehrlich"))
+    assert group is not None
     assert c.post(
-        f"/gruppen/{gruppe.id}/loeschen", headers=_mit_csrf(c, session),
+        f"/groups/{group.id}/delete", headers=_with_csrf(c, session),
         follow_redirects=False,
     ).status_code == 303
-    assert session.get(AccessGroup, gruppe.id) is None
+    assert session.get(AccessGroup, group.id) is None
 
 
 def test_recht_entziehen_ueber_die_oberflaeche(client_als, session: Session) -> None:
     from sqlalchemy import select
 
-    from tests.hilfen import berechtigung
+    from tests.helpers import ensure_permission
     from thermoctl.db.models.identity import AccessGroup, GroupPermission
 
-    berechtigung(session, "device.read", zonenbezogen=True)
+    ensure_permission(session, "device.read", zone_scoped=True)
     c = client_als([("group.manage", None)])
-    c.post("/gruppen", data={"name": "Rechteweg", "description": ""},
-           headers=_mit_csrf(c, session))
-    gruppe = session.scalar(select(AccessGroup).where(AccessGroup.name == "Rechteweg"))
-    assert gruppe is not None
-    c.post(f"/gruppen/{gruppe.id}/rechte", data={"recht": ["device.read"]},
-           headers=_mit_csrf(c, session))
-    eintrag = session.scalar(
-        select(GroupPermission).where(GroupPermission.access_group_id == gruppe.id)
+    c.post("/groups", data={"name": "Rechteweg", "description": ""},
+           headers=_with_csrf(c, session))
+    group = session.scalar(select(AccessGroup).where(AccessGroup.name == "Rechteweg"))
+    assert group is not None
+    c.post(f"/groups/{group.id}/permissions", data={"permission": ["device.read"]},
+           headers=_with_csrf(c, session))
+    entry = session.scalar(
+        select(GroupPermission).where(GroupPermission.access_group_id == group.id)
     )
-    assert eintrag is not None
+    assert entry is not None
     # Entzogen wird durch Weglassen: Das Formular schickt den ganzen gewuenschten Stand,
     # und was nicht darin steht, faellt weg. Ein leeres Formular nimmt der Gruppe alles.
     assert c.post(
-        f"/gruppen/{gruppe.id}/rechte", data={},
-        headers=_mit_csrf(c, session), follow_redirects=False,
+        f"/groups/{group.id}/permissions", data={},
+        headers=_with_csrf(c, session), follow_redirects=False,
     ).status_code == 303
-    assert session.get(GroupPermission, eintrag.id) is None
+    assert session.get(GroupPermission, entry.id) is None
 
 
 def test_rechte_einer_unbekannten_gruppe_ergeben_404(client_als, session: Session) -> None:
     """Frueher stand die Kennung des Rechteintrags im Pfad und der Test pruefte, dass ein
     Eintrag einer fremden Gruppe nicht entzogen werden kann. Den Pfad gibt es nicht mehr
     -- der Sammel-Endpunkt kennt nur die Gruppe, und die muss es geben."""
-    from tests.hilfen import berechtigung
+    from tests.helpers import ensure_permission
 
-    berechtigung(session, "device.read", zonenbezogen=True)
+    ensure_permission(session, "device.read", zone_scoped=True)
     c = client_als([("group.manage", None)])
-    antwort = c.post(
-        "/gruppen/999999/rechte", data={"recht": ["device.read"]},
-        headers=_mit_csrf(c, session),
+    response = c.post(
+        "/groups/999999/permissions", data={"permission": ["device.read"]},
+        headers=_with_csrf(c, session),
     )
-    assert antwort.status_code == 404
+    assert response.status_code == 404
 
 
 def test_unbekannte_gruppe_ergibt_404(client_als, session: Session) -> None:
     c = client_als([("group.manage", None)])
-    assert c.post("/gruppen/999999/loeschen", headers=_mit_csrf(c, session)).status_code == 404
+    assert c.post("/groups/999999/delete", headers=_with_csrf(c, session)).status_code == 404
     assert c.post(
-        "/gruppen/999999/rechte", data={"code": "zone.read", "zone_id": ""},
-        headers=_mit_csrf(c, session),
+        "/groups/999999/permissions", data={"code": "zone.read", "zone_id": ""},
+        headers=_with_csrf(c, session),
     ).status_code == 404
 
 
 def test_doppelter_gruppenname_bleibt_im_formular(client_als, session: Session) -> None:
     c = client_als([("group.manage", None)])
-    c.post("/gruppen", data={"name": "Zweimal", "description": ""},
-           headers=_mit_csrf(c, session))
-    antwort = c.post("/gruppen", data={"name": "Zweimal", "description": ""},
-                     headers=_mit_csrf(c, session))
-    assert antwort.status_code == 200
-    assert "gibt es bereits" in antwort.text
+    c.post("/groups", data={"name": "Zweimal", "description": ""},
+           headers=_with_csrf(c, session))
+    response = c.post("/groups", data={"name": "Zweimal", "description": ""},
+                     headers=_with_csrf(c, session))
+    assert response.status_code == 200
+    assert "gibt es bereits" in response.text
 
 
 def test_gruppe_mit_dem_letzten_verwaltungsrecht_bleibt_stehen(
@@ -366,16 +366,16 @@ def test_gruppe_mit_dem_letzten_verwaltungsrecht_bleibt_stehen(
     from thermoctl.db.models.identity import AccessGroup
 
     c = client_als([("group.manage", None), ("user.manage", None)])
-    gruppe = session.scalar(
+    group = session.scalar(
         select(AccessGroup).where(AccessGroup.name.like("gruppe-web-%")).order_by(
             AccessGroup.id.desc()
         )
     )
-    assert gruppe is not None
-    antwort = c.post(f"/gruppen/{gruppe.id}/loeschen", headers=_mit_csrf(c, session))
-    assert antwort.status_code == 200
-    assert "einzige verbliebene" in antwort.text
-    assert session.get(AccessGroup, gruppe.id) is not None
+    assert group is not None
+    response = c.post(f"/groups/{group.id}/delete", headers=_with_csrf(c, session))
+    assert response.status_code == 200
+    assert "einzige verbliebene" in response.text
+    assert session.get(AccessGroup, group.id) is not None
 
 
 def test_zu_kurzes_passwort_beim_eigenen_wechsel_bleibt_im_formular(
@@ -388,27 +388,27 @@ def test_zu_kurzes_passwort_beim_eigenen_wechsel_bleibt_im_formular(
     c = client_als([("user.manage", None)])
     ich = session.scalar(select(User).where(User.username.like("web-%")).order_by(User.id.desc()))
     assert ich is not None
-    antwort = c.post(
-        f"/benutzer/{ich.id}/passwort", data={"password": "kurz"},
-        headers=_mit_csrf(c, session),
+    response = c.post(
+        f"/users/{ich.id}/password", data={"password": "kurz"},
+        headers=_with_csrf(c, session),
     )
-    assert antwort.status_code == 200
-    assert "mindestens 12 Zeichen" in antwort.text
+    assert response.status_code == 200
+    assert "mindestens 12 Zeichen" in response.text
 
 
 def test_benutzer_deaktivieren_und_wieder_aktivieren(client_als, session: Session) -> None:
-    from tests.hilfen import benutzer_anlegen
+    from tests.helpers import create_user
 
-    anderer = benutzer_anlegen(session, "kommt-und-geht")
+    anderer = create_user(session, "kommt-und-geht")
     c = client_als([("user.manage", None)])
     assert c.post(
-        f"/benutzer/{anderer.id}/aktiv", data={"aktiv": "nein"},
-        headers=_mit_csrf(c, session), follow_redirects=False,
+        f"/users/{anderer.id}/active", data={"active": "nein"},
+        headers=_with_csrf(c, session), follow_redirects=False,
     ).status_code == 303
     assert anderer.is_active is False
     assert c.post(
-        f"/benutzer/{anderer.id}/aktiv", data={"aktiv": "ja"},
-        headers=_mit_csrf(c, session), follow_redirects=False,
+        f"/users/{anderer.id}/active", data={"active": "ja"},
+        headers=_with_csrf(c, session), follow_redirects=False,
     ).status_code == 303
     assert anderer.is_active is True
 
@@ -417,11 +417,11 @@ def test_passwortwechsel_fuer_unbekannten_benutzer_ergibt_404(
     client_als, session: Session
 ) -> None:
     c = client_als([("user.manage", None)])
-    antwort = c.post(
-        "/benutzer/999999/passwort", data={"password": "ein-langes-passwort-hier"},
-        headers=_mit_csrf(c, session),
+    response = c.post(
+        "/users/999999/password", data={"password": "ein-langes-passwort-hier"},
+        headers=_with_csrf(c, session),
     )
-    assert antwort.status_code == 404
+    assert response.status_code == 404
 
 
 def test_letztes_verwaltungsrecht_laesst_sich_nicht_entziehen(
@@ -435,28 +435,28 @@ def test_letztes_verwaltungsrecht_laesst_sich_nicht_entziehen(
     from thermoctl.db.models.lookup import Permission
 
     c = client_als([("group.manage", None), ("user.manage", None)])
-    gruppe = session.scalar(
+    group = session.scalar(
         select(AccessGroup).where(AccessGroup.name.like("gruppe-web-%")).order_by(
             AccessGroup.id.desc()
         )
     )
-    assert gruppe is not None
-    recht_id = session.scalar(select(Permission.id).where(Permission.code == "user.manage"))
-    eintrag = session.scalar(
+    assert group is not None
+    permission_id = session.scalar(select(Permission.id).where(Permission.code == "user.manage"))
+    entry = session.scalar(
         select(GroupPermission).where(
-            GroupPermission.access_group_id == gruppe.id,
-            GroupPermission.permission_id == recht_id,
+            GroupPermission.access_group_id == group.id,
+            GroupPermission.permission_id == permission_id,
         )
     )
-    assert eintrag is not None
+    assert entry is not None
     # Weglassen ist der neue Weg zu entziehen -- die Sperre muss auch dort greifen.
-    antwort = c.post(
-        f"/gruppen/{gruppe.id}/rechte", data={"recht": ["group.manage"]},
-        headers=_mit_csrf(c, session),
+    response = c.post(
+        f"/groups/{group.id}/permissions", data={"permission": ["group.manage"]},
+        headers=_with_csrf(c, session),
     )
-    assert antwort.status_code == 200
-    assert "einzige verbliebene" in antwort.text
-    assert session.get(GroupPermission, eintrag.id) is not None
+    assert response.status_code == 200
+    assert "einzige verbliebene" in response.text
+    assert session.get(GroupPermission, entry.id) is not None
 
 
 def test_rechte_setzen_vergibt_und_entzieht_in_einem_schritt(
@@ -467,35 +467,35 @@ def test_rechte_setzen_vergibt_und_entzieht_in_einem_schritt(
     dasteht."""
     from sqlalchemy import select
 
-    from tests.hilfen import berechtigung, zone_anlegen
+    from tests.helpers import create_zone, ensure_permission
     from thermoctl.db.models.identity import AccessGroup, GroupPermission
     from thermoctl.db.models.lookup import Permission
 
-    berechtigung(session, "zone.read", zonenbezogen=True)
-    berechtigung(session, "device.read", zonenbezogen=True)
-    bad = zone_anlegen(session, "bad-umstellen")
+    ensure_permission(session, "zone.read", zone_scoped=True)
+    ensure_permission(session, "device.read", zone_scoped=True)
+    bad = create_zone(session, "bad-umstellen")
     c = client_als([("group.manage", None)])
-    c.post("/gruppen", data={"name": "Umbau", "description": ""}, headers=_mit_csrf(c, session))
-    gruppe = session.scalar(select(AccessGroup).where(AccessGroup.name == "Umbau"))
-    assert gruppe is not None
+    c.post("/groups", data={"name": "Umbau", "description": ""}, headers=_with_csrf(c, session))
+    group = session.scalar(select(AccessGroup).where(AccessGroup.name == "Umbau"))
+    assert group is not None
 
-    c.post(f"/gruppen/{gruppe.id}/rechte", data={"recht": ["zone.read"]},
-           headers=_mit_csrf(c, session))
+    c.post(f"/groups/{group.id}/permissions", data={"permission": ["zone.read"]},
+           headers=_with_csrf(c, session))
     c.post(
-        f"/gruppen/{gruppe.id}/rechte",
-        data={"recht": [f"zone.read:{bad.id}", "device.read"]},
-        headers=_mit_csrf(c, session),
+        f"/groups/{group.id}/permissions",
+        data={"permission": [f"zone.read:{bad.id}", "device.read"]},
+        headers=_with_csrf(c, session),
     )
 
-    stand = {
+    state = {
         (code, zone_id)
         for code, zone_id in session.execute(
             select(Permission.code, GroupPermission.zone_id)
             .join(Permission, Permission.id == GroupPermission.permission_id)
-            .where(GroupPermission.access_group_id == gruppe.id)
+            .where(GroupPermission.access_group_id == group.id)
         )
     }
-    assert stand == {("zone.read", bad.id), ("device.read", None)}
+    assert state == {("zone.read", bad.id), ("device.read", None)}
 
 
 def test_gruppenseite_zeigt_rechte_nach_bereichen_mit_klartext(
@@ -504,13 +504,13 @@ def test_gruppenseite_zeigt_rechte_nach_bereichen_mit_klartext(
     """Vorher stand dort eine flache Liste aus Codes. Der Code bleibt sichtbar -- er
     steht in Fehlermeldungen und in der Dokumentation --, aber er ist nicht mehr das
     Einzige, was dasteht."""
-    from tests.hilfen import alle_rechte_anlegen
-    from thermoctl.domain.authz import RECHTEBEREICHE
+    from tests.helpers import create_all_permissions
+    from thermoctl.domain.authz import PERMISSION_AREAS
 
-    alle_rechte_anlegen(session)
-    seite = client_als([("group.manage", None)]).get("/gruppen")
-    assert seite.status_code == 200
-    for name, _hinweis, _codes in RECHTEBEREICHE:
-        assert name in seite.text, f"Bereich '{name}' fehlt auf der Seite"
-    assert "Zonen und ihren Zustand sehen" in seite.text
-    assert "zone.read" in seite.text
+    create_all_permissions(session)
+    page = client_als([("group.manage", None)]).get("/groups")
+    assert page.status_code == 200
+    for name, _hint, _codes in PERMISSION_AREAS:
+        assert name in page.text, f"Bereich '{name}' fehlt auf der Seite"
+    assert "Zonen und ihren Zustand sehen" in page.text
+    assert "zone.read" in page.text

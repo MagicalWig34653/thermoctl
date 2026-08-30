@@ -39,43 +39,43 @@ prüft dasselbe Recht wie der entsprechende REST-Endpunkt.
 
 | Werkzeug | Recht | Was es liefert |
 |---|---|---|
-| `zonen_auflisten()` | `zone.read` | Name, Anzeigename und Betriebsart je sichtbarer Zone |
-| `zonenzustand(zone_id)` | `zone.read` | Ist-Temperatur, Messzeitpunkt, Sensorzustand |
-| `sollwert_erklaeren(zone_id)` | `zone.read` | Sollwert **und Begründung**, aus derselben Funktion, die auch regelt |
-| `zeitplan_lesen(zone_id)` | `zone.read` | Schaltpunkte mit Wochentag, Minute im Tag und Modusnamen |
-| `sollwerte_lesen(zone_id)` | `zone.read` | die gesetzte Temperatur je Modus |
-| `geraete_auflisten()` | `device.read` | Anbindung, Fähigkeiten, letzte Nachricht, Batterie |
-| `schattenentscheidungen(zone_id, anzahl=10)` | `zone.read` | die jüngsten Entscheidungen samt Grund |
-| `uebersteuern(zone_id, temperatur_c, endet_am)` | `override.create` | legt eine Übersteuerung an |
-| `uebersteuerung_aufheben(zone_id)` | `override.cancel` | beendet die laufende Übersteuerung |
+| `list_zones()` | `zone.read` | Name, Anzeigename und Betriebsart je sichtbarer Zone |
+| `zone_state(zone_id)` | `zone.read` | Ist-Temperatur, Messzeitpunkt, Sensorzustand |
+| `explain_setpoint(zone_id)` | `zone.read` | Sollwert **und Begründung**, aus derselben Funktion, die auch regelt |
+| `read_schedule(zone_id)` | `zone.read` | Schaltpunkte mit Wochentag, Minute im Tag und Modusnamen |
+| `read_setpoints(zone_id)` | `zone.read` | die gesetzte Temperatur je Modus |
+| `list_devices()` | `device.read` | Anbindung, Fähigkeiten, letzte Nachricht, Batterie |
+| `shadow_decisions(zone_id, count=10)` | `zone.read` | die jüngsten Entscheidungen samt Grund |
+| `override_zone(zone_id, temperature_c, ends_at)` | `override.create` | legt eine Übersteuerung an |
+| `cancel_override(zone_id)` | `override.cancel` | beendet die laufende Übersteuerung |
 | `boost(zone_id)` | `override.create` | zieht die nächste Schaltung vor |
-| `regelparameter_lesen(zone_id)` | `zone.read` | wirksame Regelparameter **samt ihrer Grenzen** |
-| `regelparameter_setzen(zone_id, name, wert)` | `zone.manage` | setzt einen Parameter, lässt die übrigen |
-| `steuerung_lesen()` | `zone.read` | Betriebszustand und globale Vorgaben |
-| `trockenlauf_erzwingen(begruendung)` | `control.arm` | nimmt die Regelung in den Trockenlauf zurück |
-| `zeitplanpunkt_verschieben(zone_id, punkt_id, wochentag, minute)` | `schedule.manage` | setzt einen Punkt auf einen anderen Zeitpunkt |
+| `read_control_parameters(zone_id)` | `zone.read` | wirksame Regelparameter **samt ihrer Grenzen** |
+| `set_control_parameters(zone_id, name, wert)` | `zone.manage` | setzt einen Parameter, lässt die übrigen |
+| `read_control()` | `zone.read` | Betriebszustand und globale Vorgaben |
+| `force_dry_run(begruendung)` | `control.arm` | nimmt die Regelung in den Trockenlauf zurück |
+| `move_schedule_point(zone_id, punkt_id, weekday, minute)` | `schedule.manage` | setzt einen Punkt auf einen anderen Zeitpunkt |
 
 Eine nicht sichtbare Zone wird wie eine unbekannte behandelt — die Antwort verrät nicht,
 dass es sie gibt.
 
 **`boost` ist für ein Sprachmodell die verlässlichere Form von „mach es hier wärmer".** Es
 muss weder eine Temperatur noch eine Dauer raten, und nach dem Schaltpunkt räumt sich der
-Eingriff selbst weg. `uebersteuern` bleibt daneben für den Fall, dass jemand eine bestimmte
+Eingriff selbst weg. `override_zone` bleibt daneben für den Fall, dass jemand eine bestimmte
 Temperatur nennt.
 
-**`regelparameter_lesen` liefert die Grenzen mit.** Ohne sie wäre jeder Schreibversuch ein
+**`read_control_parameters` liefert die Grenzen mit.** Ohne sie wäre jeder Schreibversuch ein
 Versuch: „0,05 Kelvin Hysterese" sieht für ein Modell so plausibel aus wie „0,5".
-`regelparameter_setzen` verlangt `zone.manage` und nicht `override.create` — ein
+`set_control_parameters` verlangt `zone.manage` und nicht `override.create` — ein
 Regelparameter wirkt dauerhaft und auf jede künftige Entscheidung, eine Übersteuerung nur
 bis zum nächsten Schaltpunkt.
 
-**Der eigentliche Gewinn sind `sollwert_erklaeren` und `schattenentscheidungen`.** Sie
+**Der eigentliche Gewinn sind `explain_setpoint` und `shadow_decisions`.** Sie
 beantworten „warum ist es hier kalt?" in einem Aufruf, statt Ist-Wert, Zeitplan und
 Regelentscheidung von Hand zusammenzusuchen.
 
 ## Was es bewusst nicht gibt
 
-**Kein Werkzeug schaltet die Anlage scharf.** `trockenlauf_erzwingen` gibt es, die
+**Kein Werkzeug schaltet die Anlage scharf.** `force_dry_run` gibt es, die
 Gegenrichtung nicht — obwohl die Oberfläche und die REST-Schnittstelle sie können.
 
 Der Grund: Die Domäne verlangt beim Scharfschalten eine Begründung, und für ein
@@ -90,11 +90,11 @@ ebenfalls nicht. Je weniger ein Assistent ungefragt ändern kann, desto besser. 
 Zone umbaut, tut das in der Oberfläche oder über die REST-Schnittstelle, wo eine Person
 daneben sitzt.
 
-Beim Zeitplan gibt es eine Ausnahme: `zeitplanpunkt_verschieben` ändert einen **schon
+Beim Zeitplan gibt es eine Ausnahme: `move_schedule_point` ändert einen **schon
 vorhandenen** Punkt, legt aber keinen an und löscht keinen. „Verschieb die Morgenheizung
 im Bad eine halbe Stunde nach hinten" ist eine alltägliche Bitte, und der Umfang des
 Schadens ist auf einen Zeitpunkt begrenzt.
 
 Die Grenzen für Übersteuerungen (−20 bis 35 °C, eine Nachkommastelle) prüft die Domäne, nicht
-der Adapter. Ein Werkzeug, das `temperatur_c=99` schickt, bekommt einen Fehler — und zwar
+der Adapter. Ein Werkzeug, das `temperature_c=99` schickt, bekommt einen Fehler — und zwar
 denselben wie die Oberfläche.

@@ -13,9 +13,9 @@ from thermoctl.integrations.mqtt.zigbee2mqtt import abonnements
 log = logging.getLogger(__name__)
 
 
-async def schlafen(sekunden: float) -> None:
+async def schlafen(seconds: float) -> None:
     """Wartet vor dem naechsten Verbindungsversuch."""
-    await asyncio.sleep(sekunden)
+    await asyncio.sleep(seconds)
 
 
 class MqttClient:
@@ -24,7 +24,7 @@ class MqttClient:
         settings: Settings,
         handler: Callable[[str, bytes], Awaitable[None]],
         *,
-        schalten_erlaubt: bool = False,
+        switching_allowed: bool = False,
         zusatz_abonnements: list[str] | None = None,
     ) -> None:
         """`schalten_erlaubt` ist die harte Grenze des Trockenlaufs -- fuer das Schalten.
@@ -44,7 +44,7 @@ class MqttClient:
         """
         self._settings = settings
         self._handler = handler
-        self._schalten_erlaubt = schalten_erlaubt
+        self._switching_allowed = switching_allowed
         # Ueber die Zigbee2MQTT-Abonnements hinaus: die eigenen Befehls-Topics. Sie
         # stehen nicht in `abonnements()`, weil das die vier bewusst eng begrenzten
         # Zigbee2MQTT-Themen liefert und nichts anderes.
@@ -56,11 +56,11 @@ class MqttClient:
             return None
         return ssl.create_default_context(cafile=self._settings.mqtt_ca_cert)
 
-    def _neuer_client(self) -> aiomqtt.Client:
+    def _newer_client(self) -> aiomqtt.Client:
         host = self._settings.mqtt_host
         if host is None:
             raise ValueError("MQTT ist aktiviert, aber THERMOCTL_MQTT_HOST fehlt")
-        passwort = (
+        password = (
             self._settings.mqtt_password.get_secret_value()
             if self._settings.mqtt_password is not None
             else None
@@ -69,21 +69,21 @@ class MqttClient:
             hostname=host,
             port=self._settings.mqtt_port,
             username=self._settings.mqtt_username,
-            password=passwort,
+            password=password,
             identifier=self._settings.mqtt_client_id,
             tls_context=self._tls_context(),
         )
 
-    async def laufen(self) -> None:
+    async def run(self) -> None:
         """Empfaengt Nachrichten und verbindet nach Fehlern unbegrenzt neu."""
         if not self._settings.mqtt_enabled:
             log.info("MQTT-Empfang ist deaktiviert")
             return
 
-        abstand = 1.0
+        interval = 1.0
         while True:
             try:
-                client = self._neuer_client()
+                client = self._newer_client()
                 async with client:
                     self._client = client
                     log.info(
@@ -96,7 +96,7 @@ class MqttClient:
                         *self._zusatz_abonnements,
                     ]:
                         await client.subscribe(topic)
-                    async for nachricht in client.messages:
+                    async for message in client.messages:
                         # Der Abstand faellt erst zurueck, wenn wirklich etwas ankam,
                         # nicht schon beim Verbindungsaufbau. Sonst waere ein Broker,
                         # der annimmt und sofort wieder trennt, eine Endlosschleife
@@ -108,13 +108,13 @@ class MqttClient:
                         # Dass ueberhaupt etwas ankommt, ist verlaesslich: Auf
                         # `bridge/devices` liegt eine retained-Nachricht, die bei jeder
                         # Verbindung sofort zugestellt wird.
-                        abstand = 1.0
+                        interval = 1.0
                         try:
-                            await self._handler(str(nachricht.topic), bytes(nachricht.payload))
+                            await self._handler(str(message.topic), bytes(message.payload))
                         except Exception:
                             log.exception(
                                 "MQTT-Nachricht konnte nicht verarbeitet werden",
-                                extra={"topic": str(nachricht.topic)},
+                                extra={"topic": str(message.topic)},
                             )
             except Exception:
                 log.exception(
@@ -122,17 +122,17 @@ class MqttClient:
                     extra={
                         "host": self._settings.mqtt_host,
                         "port": self._settings.mqtt_port,
-                        "wartezeit_s": abstand,
+                        "wartezeit_s": interval,
                     },
                 )
             finally:
                 self._client = None
 
-            await schlafen(abstand)
-            abstand = min(abstand * 2, 60.0)
+            await schlafen(interval)
+            interval = min(interval * 2, 60.0)
 
-    async def veroeffentlichen(
-        self, topic: str, nutzlast: str, *, schaltet: bool, behalten: bool = False
+    async def publishing(
+        self, topic: str, payload: str, *, switches: bool, behalten: bool = False
     ) -> bool:
         """Sendet eine Nachricht. `schaltet=True` verlangt zusaetzlich den Riegel.
 
@@ -142,7 +142,7 @@ class MqttClient:
         Aufrufer musste ihn setzen, *und* der Client musste scharf gebaut sein. Dabei
         fiel die Zustandsmeldung unter dieselbe Sperre wie der Ventilbefehl.
         """
-        if schaltet and not self._schalten_erlaubt:
+        if switches and not self._switching_allowed:
             log.warning(
                 "Trockenlauf: Schaltbefehl abgewiesen, obwohl der Aufrufer ihn "
                 "verlangt hat",
@@ -158,5 +158,5 @@ class MqttClient:
         # zugestellt und erneut ausgefuehrt. Behalten gehoert auf Anmeldung und
         # Zustand: Ohne das steht in Home Assistant nach einem Neustart eine leere
         # Karte, bis dieser Dienst das naechste Mal etwas sendet.
-        await self._client.publish(topic, nutzlast, retain=behalten)
+        await self._client.publish(topic, payload, retain=behalten)
         return True

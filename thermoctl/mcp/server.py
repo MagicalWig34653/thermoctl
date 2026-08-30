@@ -7,37 +7,37 @@ from typing import Any, Protocol, cast
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
-from thermoctl.auth.tokens import token_aufloesen
+from thermoctl.auth.tokens import resolve_token
 from thermoctl.config import get_settings
 from thermoctl.db.base import utcnow
 from thermoctl.db.engine import create_engine_from_settings, session_factory, session_scope
 from thermoctl.db.models.credential import ApiToken
 from thermoctl.db.models.device import Device, DeviceCapabilityLink
 from thermoctl.db.models.lookup import DeviceCapability, Integration, SensorStatus
-from thermoctl.db.models.messwert import DeviceHealth
+from thermoctl.db.models.measurement import DeviceHealth
 from thermoctl.db.models.schedule import SchedulePoint
+from thermoctl.db.models.state import ShadowDecision, ZoneState
 from thermoctl.db.models.zone import SetpointMode, Zone, ZoneSetpoint
-from thermoctl.db.models.zustand import ShadowDecision, ZoneState
-from thermoctl.domain.authz import principal_fuer_token, require, visible_zones
-from thermoctl.domain.fernbedienung import boost as domaene_boost
+from thermoctl.domain.authz import principal_for_token, require, visible_zones
+from thermoctl.domain.control import LIMITS, arm, settings
 from thermoctl.domain.principal import Principal
+from thermoctl.domain.remote_control import boost as domain_boost
 from thermoctl.domain.schedule import (
-    aufgeloester_sollwert,
-    uebersteuerung_anlegen,
+    cancel_override as domain_cancel_override,
 )
 from thermoctl.domain.schedule import (
-    uebersteuerung_aufheben as domaene_uebersteuerung_aufheben,
+    create_override,
+    resolved_setpoint,
 )
 from thermoctl.domain.schedule import (
-    zeitplanpunkt_verschieben as domaene_zeitplanpunkt_verschieben,
-)
-from thermoctl.domain.steuerung import GRENZEN, einstellungen, scharf_schalten
-from thermoctl.domain.zone_settings import (
-    PARAMETER,
-    regelparameter,
+    move_schedule_point as domain_move_schedule_point,
 )
 from thermoctl.domain.zone_settings import (
-    parameter_setzen as domaene_parameter_setzen,
+    PARAMETERS,
+    control_parameters,
+)
+from thermoctl.domain.zone_settings import (
+    set_parameter as domain_set_parameter,
 )
 
 
@@ -49,19 +49,19 @@ class _McpServer(Protocol):
     def run(self, transport: str = "stdio", **kwargs: Any) -> None: ...
 
 
-def _anmelden(session: Session, klartext: str) -> tuple[ApiToken, Principal]:
-    token = token_aufloesen(session, klartext)
+def _log_in(session: Session, plaintext: str) -> tuple[ApiToken, Principal]:
+    token = resolve_token(session, plaintext)
     if token is None:
         raise PermissionError("Ungueltiges oder nicht mehr gueltiges MCP-Token")
-    return token, principal_fuer_token(session, token)
+    return token, principal_for_token(session, token)
 
 
-def _sichtbare_zone(session: Session, principal: Principal, zone_id: int) -> Zone:
+def _visible_zone(session: Session, principal: Principal, zone_id: int) -> Zone:
     zone = next(
         (
-            eintrag
-            for eintrag in visible_zones(session, principal, "zone.read")
-            if eintrag.id == zone_id
+            entry
+            for entry in visible_zones(session, principal, "zone.read")
+            if entry.id == zone_id
         ),
         None,
     )
@@ -71,63 +71,63 @@ def _sichtbare_zone(session: Session, principal: Principal, zone_id: int) -> Zon
     return zone
 
 
-def _dezimal(wert: Decimal | None) -> str | None:
-    return None if wert is None else str(wert)
+def _dezimal(value: Decimal | None) -> str | None:
+    return None if value is None else str(value)
 
 
-def _zeitpunkt(wert: datetime | None) -> str | None:
-    return None if wert is None else wert.isoformat()
+def _moment(value: datetime | None) -> str | None:
+    return None if value is None else value.isoformat()
 
 
-def zonen_auflisten(session: Session, klartext: str) -> list[dict[str, object]]:
+def list_zones(session: Session, plaintext: str) -> list[dict[str, object]]:
     """Listet ausschliesslich die fuer das Token sichtbaren Zonen auf."""
-    _token, principal = _anmelden(session, klartext)
-    zonen = visible_zones(session, principal, "zone.read")
-    if not zonen:
+    _token, principal = _log_in(session, plaintext)
+    zones = visible_zones(session, principal, "zone.read")
+    if not zones:
         require(principal, "zone.read")
     return [
         {
             "name": zone.name,
-            "anzeigename": zone.display_name,
-            "betriebsart": zone.operating_mode.code,
+            "display_name": zone.display_name,
+            "operating_mode": zone.operating_mode.code,
         }
-        for zone in zonen
+        for zone in zones
     ]
 
 
-def zonenzustand(session: Session, klartext: str, zone_id: int) -> dict[str, object]:
+def zone_state(session: Session, plaintext: str, zone_id: int) -> dict[str, object]:
     """Liefert den zuletzt abgeleiteten Zustand einer sichtbaren Zone."""
-    _token, principal = _anmelden(session, klartext)
-    zone = _sichtbare_zone(session, principal, zone_id)
+    _token, principal = _log_in(session, plaintext)
+    zone = _visible_zone(session, principal, zone_id)
     zeile = session.get(ZoneState, zone.id)
     if zeile is None:
-        return {"temperatur_c": None, "messzeitpunkt": None, "sensorzustand": None}
+        return {"temperature_c": None, "measured_at": None, "sensor_state": None}
     status = session.get(SensorStatus, zeile.sensor_status_id)
     return {
-        "temperatur_c": _dezimal(zeile.temperature_c),
-        "messzeitpunkt": _zeitpunkt(zeile.measured_at),
-        "sensorzustand": None if status is None else status.code,
+        "temperature_c": _dezimal(zeile.temperature_c),
+        "measured_at": _moment(zeile.measured_at),
+        "sensor_state": None if status is None else status.code,
     }
 
 
-def sollwert_erklaeren(
-    session: Session, klartext: str, zone_id: int, jetzt: datetime | None = None
+def explain_setpoint(
+    session: Session, plaintext: str, zone_id: int, now: datetime | None = None
 ) -> dict[str, object]:
     """Reicht Wert und Begruendung der gemeinsamen Sollwertlogik durch."""
-    _token, principal = _anmelden(session, klartext)
-    zone = _sichtbare_zone(session, principal, zone_id)
-    sollwert = aufgeloester_sollwert(session, zone, jetzt or utcnow())
+    _token, principal = _log_in(session, plaintext)
+    zone = _visible_zone(session, principal, zone_id)
+    setpoint = resolved_setpoint(session, zone, now or utcnow())
     return {
-        "temperatur_c": _dezimal(sollwert.temperature_c),
-        "begruendung": sollwert.grund,
-        "modus": sollwert.modus_code,
+        "temperature_c": _dezimal(setpoint.temperature_c),
+        "reason": setpoint.grund,
+        "mode": setpoint.mode_code,
     }
 
 
-def zeitplan_lesen(session: Session, klartext: str, zone_id: int) -> list[dict[str, object]]:
+def read_schedule(session: Session, plaintext: str, zone_id: int) -> list[dict[str, object]]:
     """Liest die Schaltpunkte einer sichtbaren Zone samt Modusnamen."""
-    _token, principal = _anmelden(session, klartext)
-    zone = _sichtbare_zone(session, principal, zone_id)
+    _token, principal = _log_in(session, plaintext)
+    zone = _visible_zone(session, principal, zone_id)
     require(principal, "zone.read", zone.id)
     zeilen = session.execute(
         select(SchedulePoint, SetpointMode)
@@ -137,18 +137,18 @@ def zeitplan_lesen(session: Session, klartext: str, zone_id: int) -> list[dict[s
     )
     return [
         {
-            "wochentag": punkt.weekday,
-            "minute_im_tag": punkt.minute_of_day,
-            "modus": modus.name,
+            "weekday": point.weekday,
+            "minute_of_day": point.minute_of_day,
+            "mode": mode.name,
         }
-        for punkt, modus in zeilen
+        for point, mode in zeilen
     ]
 
 
-def sollwerte_lesen(session: Session, klartext: str, zone_id: int) -> list[dict[str, object]]:
+def read_setpoints(session: Session, plaintext: str, zone_id: int) -> list[dict[str, object]]:
     """Liest die in einer sichtbaren Zone gesetzten Sollwerte je Modus."""
-    _token, principal = _anmelden(session, klartext)
-    zone = _sichtbare_zone(session, principal, zone_id)
+    _token, principal = _log_in(session, plaintext)
+    zone = _visible_zone(session, principal, zone_id)
     require(principal, "zone.read", zone.id)
     zeilen = session.execute(
         select(ZoneSetpoint, SetpointMode)
@@ -157,14 +157,14 @@ def sollwerte_lesen(session: Session, klartext: str, zone_id: int) -> list[dict[
         .order_by(SetpointMode.sort_order, SetpointMode.code)
     )
     return [
-        {"modus": modus.name, "temperatur_c": _dezimal(sollwert.temperature_c)}
-        for sollwert, modus in zeilen
+        {"mode": mode.name, "temperature_c": _dezimal(setpoint.temperature_c)}
+        for setpoint, mode in zeilen
     ]
 
 
-def geraete_auflisten(session: Session, klartext: str) -> list[dict[str, object]]:
+def list_devices(session: Session, plaintext: str) -> list[dict[str, object]]:
     """Listet Geraete samt Anbindung, Faehigkeiten und Lebenszeichen auf."""
-    _token, principal = _anmelden(session, klartext)
+    _token, principal = _log_in(session, plaintext)
     require(principal, "device.read")
     zeilen = session.execute(
         select(Device, Integration, DeviceHealth)
@@ -172,91 +172,91 @@ def geraete_auflisten(session: Session, klartext: str) -> list[dict[str, object]
         .outerjoin(DeviceHealth, DeviceHealth.device_id == Device.id)
         .order_by(Device.display_name, Device.external_id)
     ).all()
-    faehigkeiten = session.execute(
+    capabilities = session.execute(
         select(DeviceCapabilityLink.device_id, DeviceCapability.code)
         .join(DeviceCapability, DeviceCapability.id == DeviceCapabilityLink.capability_id)
         .order_by(DeviceCapability.code)
     ).all()
-    nach_geraet: dict[int, list[str]] = {}
-    for geraet_id, code in faehigkeiten:
-        nach_geraet.setdefault(geraet_id, []).append(code)
+    by_device: dict[int, list[str]] = {}
+    for device_id, code in capabilities:
+        by_device.setdefault(device_id, []).append(code)
     return [
         {
-            "name": geraet.display_name,
-            "anbindung": anbindung.code,
-            "faehigkeiten": nach_geraet.get(geraet.id, []),
-            "letzte_nachricht": None if gesund is None else _zeitpunkt(gesund.last_payload_at),
+            "name": device.display_name,
+            "integration": integration.code,
+            "capabilities": by_device.get(device.id, []),
+            "letzte_nachricht": None if gesund is None else _moment(gesund.last_payload_at),
             "batterie_prozent": None if gesund is None else _dezimal(gesund.battery_percent),
         }
-        for geraet, anbindung, gesund in zeilen
+        for device, integration, gesund in zeilen
     ]
 
 
-def schattenentscheidungen(
-    session: Session, klartext: str, zone_id: int, anzahl: int = 10
+def shadow_decisions(
+    session: Session, plaintext: str, zone_id: int, count: int = 10
 ) -> list[dict[str, object]]:
     """Liefert die juengsten begruendeten Schattenentscheidungen einer Zone."""
-    if anzahl < 1 or anzahl > 100:
+    if count < 1 or count > 100:
         raise ValueError("Anzahl muss zwischen 1 und 100 liegen")
-    _token, principal = _anmelden(session, klartext)
-    zone = _sichtbare_zone(session, principal, zone_id)
+    _token, principal = _log_in(session, plaintext)
+    zone = _visible_zone(session, principal, zone_id)
     zeilen = session.scalars(
         select(ShadowDecision)
         .where(ShadowDecision.zone_id == zone.id)
         .order_by(ShadowDecision.decided_at.desc(), ShadowDecision.id.desc())
-        .limit(anzahl)
+        .limit(count)
     )
     return [
         {
-            "zeitpunkt": _zeitpunkt(zeile.decided_at),
+            "moment": _moment(zeile.decided_at),
             "ist_c": _dezimal(zeile.temperature_c),
             "soll_c": _dezimal(zeile.setpoint_c),
             "sollwert_begruendung": zeile.setpoint_reason,
-            "wuerde_heizen": zeile.would_heat,
-            "ergebnis": zeile.outcome_code,
-            "begruendung": zeile.reason,
+            "would_heat": zeile.would_heat,
+            "outcome": zeile.outcome_code,
+            "reason": zeile.reason,
         }
         for zeile in zeilen
     ]
 
 
-def uebersteuern(
+def override_zone(
     session: Session,
-    klartext: str,
+    plaintext: str,
     zone_id: int,
-    temperatur_c: Decimal,
+    temperature_c: Decimal,
     endet_am: datetime | None = None,
 ) -> dict[str, object]:
     """Legt ueber die gemeinsame Domaenenfunktion eine Uebersteuerung an."""
-    token, principal = _anmelden(session, klartext)
-    zone = _sichtbare_zone(session, principal, zone_id)
+    token, principal = _log_in(session, plaintext)
+    zone = _visible_zone(session, principal, zone_id)
     require(principal, "override.create", zone_id)
-    eintrag = uebersteuerung_anlegen(
+    entry = create_override(
         session,
         zone,
-        temperatur_c,
+        temperature_c,
         endet_am,
         user_id=principal.user_id,
         token_id=token.id,
-        quelle="mcp",
+        source="mcp",
     )
     return {
         "zone": zone.name,
-        "temperatur_c": _dezimal(eintrag.temperature_c),
-        "endet_am": _zeitpunkt(eintrag.ends_at),
+        "temperature_c": _dezimal(entry.temperature_c),
+        "ends_at": _moment(entry.ends_at),
     }
 
 
-def uebersteuerung_aufheben(session: Session, klartext: str, zone_id: int) -> dict[str, object]:
+def cancel_override(session: Session, plaintext: str, zone_id: int) -> dict[str, object]:
     """Hebt die aktive Uebersteuerung ueber die gemeinsame Domaenenfunktion auf."""
-    _token, principal = _anmelden(session, klartext)
-    zone = _sichtbare_zone(session, principal, zone_id)
+    _token, principal = _log_in(session, plaintext)
+    zone = _visible_zone(session, principal, zone_id)
     require(principal, "override.cancel", zone_id)
-    aufgehoben = domaene_uebersteuerung_aufheben(session, zone)
-    return {"zone": zone.name, "aufgehoben": aufgehoben is not None}
+    aufgehoben = domain_cancel_override(session, zone)
+    return {"zone": zone.name, "cancelled": aufgehoben is not None}
 
 
-def boost(session: Session, klartext: str, zone_id: int) -> dict[str, object]:
+def boost(session: Session, plaintext: str, zone_id: int) -> dict[str, object]:
     """Zieht die naechste Schaltung vor -- ueber die gemeinsame Domaenenfunktion.
 
     Dasselbe Recht wie eine Uebersteuerung, weil es eine ist: nur eine, deren Wert und
@@ -264,88 +264,88 @@ def boost(session: Session, klartext: str, zone_id: int) -> dict[str, object]:
     verlaesslichere Form von "mach es hier waermer" -- es muss weder eine Temperatur
     noch eine Dauer raten, und nach dem Schaltpunkt raeumt sich der Eingriff selbst weg.
     """
-    token, principal = _anmelden(session, klartext)
-    zone = _sichtbare_zone(session, principal, zone_id)
+    token, principal = _log_in(session, plaintext)
+    zone = _visible_zone(session, principal, zone_id)
     require(principal, "override.create", zone_id)
-    ergebnis = domaene_boost(
+    result = domain_boost(
         session,
         zone,
         utcnow(),
         user_id=principal.user_id,
         token_id=token.id,
-        quelle="mcp",
+        source="mcp",
     )
     return {
         "zone": zone.name,
-        "modus": ergebnis.modus_code,
-        "temperatur_c": _dezimal(ergebnis.temperatur),
-        "gilt_bis": _zeitpunkt(ergebnis.bis),
+        "mode": result.mode_code,
+        "temperature_c": _dezimal(result.temperature),
+        "valid_until": _moment(result.bis),
     }
 
 
-def regelparameter_lesen(session: Session, klartext: str, zone_id: int) -> dict[str, object]:
+def read_control_parameters(session: Session, plaintext: str, zone_id: int) -> dict[str, object]:
     """Die wirksamen Regelparameter einer Zone, samt ihrer Grenzen.
 
     Die Grenzen stehen mit in der Antwort, weil ein Sprachmodell sie sonst raten muesste:
     Ohne sie waere jeder Schreibversuch ein Versuch, und "0,05 Kelvin Hysterese" saehe
     fuer ein Modell so plausibel aus wie "0,5".
     """
-    _token, principal = _anmelden(session, klartext)
-    zone = _sichtbare_zone(session, principal, zone_id)
-    wirksam = regelparameter(session, zone)
+    _token, principal = _log_in(session, plaintext)
+    zone = _visible_zone(session, principal, zone_id)
+    wirksam = control_parameters(session, zone)
     return {
         "zone": zone.name,
         "parameter": [
             {
                 "name": beschreibung.name,
-                "beschriftung": beschreibung.beschriftung,
-                "einheit": beschreibung.einheit,
-                "wert": str(getattr(wirksam, beschreibung.name)),
-                "eigener_wert": getattr(zone, beschreibung.name) is not None,
+                "label": beschreibung.label,
+                "unit": beschreibung.einheit,
+                "value": str(getattr(wirksam, beschreibung.name)),
+                "own_value": getattr(zone, beschreibung.name) is not None,
                 "minimum": str(beschreibung.minimum),
                 "maximum": str(beschreibung.maximum),
             }
-            for beschreibung in PARAMETER
+            for beschreibung in PARAMETERS
         ],
     }
 
 
-def regelparameter_setzen(
-    session: Session, klartext: str, zone_id: int, name: str, wert: Decimal
+def set_control_parameters(
+    session: Session, plaintext: str, zone_id: int, name: str, value: Decimal
 ) -> dict[str, object]:
     """Setzt **einen** Regelparameter und laesst die uebrigen, wie sie sind.
 
     `zone.manage`, nicht `override.create`: Ein Regelparameter wirkt dauerhaft und auf
     jede kuenftige Entscheidung, eine Uebersteuerung nur bis zum naechsten Schaltpunkt.
     """
-    _token, principal = _anmelden(session, klartext)
-    zone = _sichtbare_zone(session, principal, zone_id)
+    _token, principal = _log_in(session, plaintext)
+    zone = _visible_zone(session, principal, zone_id)
     require(principal, "zone.manage", zone_id)
-    gesetzt = domaene_parameter_setzen(
-        session, zone, name, wert, user_id=principal.user_id, quelle="mcp"
+    gesetzt = domain_set_parameter(
+        session, zone, name, value, user_id=principal.user_id, source="mcp"
     )
-    return {"zone": zone.name, "name": name, "wert": _dezimal(gesetzt)}
+    return {"zone": zone.name, "name": name, "value": _dezimal(gesetzt)}
 
 
-def steuerung_lesen(session: Session, klartext: str) -> dict[str, object]:
+def read_control(session: Session, plaintext: str) -> dict[str, object]:
     """Der Betriebszustand der Anlage samt der Vorgaben, von denen jede Zone erbt.
 
     Die wichtigste Frage, die ein Assistent ueber diese Anlage stellen kann, ist
     "schaltet sie gerade wirklich?" -- eine Entscheidung im Schattenbetrieb ist eine
     Behauptung, eine im scharfen Betrieb bewegt ein Ventil.
     """
-    _token, principal = _anmelden(session, klartext)
+    _token, principal = _log_in(session, plaintext)
     require(principal, "zone.read")
-    zeile = einstellungen(session)
+    zeile = settings(session)
     return {
-        "scharf": zeile.control_armed,
-        "zeitzone": zeile.timezone,
-        **{feld: str(getattr(zeile, feld)) for feld in GRENZEN},
+        "armed": zeile.control_armed,
+        "timezone": zeile.timezone,
+        **{feld: str(getattr(zeile, feld)) for feld in LIMITS},
     }
 
 
-def trockenlauf_erzwingen(
-    session: Session, klartext: str, begruendung: str = ""
+def force_dry_run(
+    session: Session, plaintext: str, reason: str = ""
 ) -> dict[str, object]:
     """Nimmt die Regelung in den Trockenlauf zurueck.
 
@@ -359,21 +359,21 @@ def trockenlauf_erzwingen(
     ueber die REST-Schnittstelle, wo ein Mensch am Knopf steht.
     Nachzulesen in docs/offene-entscheidungen.md.
     """
-    token, principal = _anmelden(session, klartext)
+    token, principal = _log_in(session, plaintext)
     require(principal, "control.arm")
-    geaendert = scharf_schalten(
+    changed = arm(
         session,
         False,
-        begruendung=begruendung,
+        reason=reason,
         user_id=principal.user_id,
         token_id=token.id,
-        quelle="mcp",
+        source="mcp",
     )
-    return {"scharf": False, "geaendert": geaendert}
+    return {"armed": False, "changed": changed}
 
 
-def zeitplanpunkt_verschieben(
-    session: Session, klartext: str, zone_id: int, punkt_id: int, wochentag: int, minute: int
+def move_schedule_point(
+    session: Session, plaintext: str, zone_id: int, point_id: int, weekday: int, minute: int
 ) -> dict[str, object]:
     """Setzt einen Zeitplanpunkt auf einen anderen Zeitpunkt.
 
@@ -381,148 +381,148 @@ def zeitplanpunkt_verschieben(
     seine Kennung, und das Audit-Protokoll zeigt eine Verschiebung statt eines Loeschens
     mit anschliessendem Anlegen.
     """
-    token, principal = _anmelden(session, klartext)
-    zone = _sichtbare_zone(session, principal, zone_id)
+    token, principal = _log_in(session, plaintext)
+    zone = _visible_zone(session, principal, zone_id)
     require(principal, "schedule.manage", zone_id)
-    punkt = session.get(SchedulePoint, punkt_id)
-    if punkt is None or punkt.zone_id != zone.id:
+    point = session.get(SchedulePoint, point_id)
+    if point is None or point.zone_id != zone.id:
         raise ValueError("Zeitplanpunkt nicht gefunden")
-    domaene_zeitplanpunkt_verschieben(
+    domain_move_schedule_point(
         session,
         zone,
-        punkt,
-        wochentag=wochentag,
+        point,
+        weekday=weekday,
         minute=minute,
         user_id=principal.user_id,
         token_id=token.id,
-        quelle="mcp",
+        source="mcp",
     )
     return {
         "zone": zone.name,
-        "punkt_id": punkt.id,
-        "wochentag": punkt.weekday,
-        "minute": punkt.minute_of_day,
+        "point_id": point.id,
+        "weekday": point.weekday,
+        "minute": point.minute_of_day,
     }
 
 
-def _mcp_server_klasse() -> Callable[[str], _McpServer]:
+def _mcp_server_class() -> Callable[[str], _McpServer]:
     try:
         # Zwei Pfade, weil die beiden verbreiteten MCP-Fassungen die Serverklasse an
         # unterschiedlichen Stellen fuehren. Welcher greift, haengt an der installierten
         # Fassung — die Abdeckung sieht deshalb immer nur einen der beiden.
         try:
-            modul = import_module("mcp.server.mcpserver")
-            return cast(Callable[[str], _McpServer], modul.MCPServer)  # pragma: no cover
+            module = import_module("mcp.server.mcpserver")
+            return cast(Callable[[str], _McpServer], module.MCPServer)  # pragma: no cover
         except ModuleNotFoundError:
-            modul = import_module("mcp.server.fastmcp")
-            return cast(Callable[[str], _McpServer], modul.FastMCP)  # pragma: no cover
+            module = import_module("mcp.server.fastmcp")
+            return cast(Callable[[str], _McpServer], module.FastMCP)  # pragma: no cover
     except ModuleNotFoundError as exc:
         raise RuntimeError(
             "Das optionale MCP-Paket fehlt. Installation: pip install 'thermoctl[mcp]'"
         ) from exc
 
 
-def _werkzeuge_registrieren(
-    server: _McpServer, factory: sessionmaker[Session], klartext: str
+def _register_tools(
+    server: _McpServer, factory: sessionmaker[Session], plaintext: str
 ) -> None:
-    @server.tool(name="zonen_auflisten")
-    def mcp_zonen_auflisten() -> list[dict[str, object]]:
+    @server.tool(name="list_zones")
+    def mcp_list_zones() -> list[dict[str, object]]:
         with session_scope(factory) as session:
-            return zonen_auflisten(session, klartext)
+            return list_zones(session, plaintext)
 
-    @server.tool(name="zonenzustand")
-    def mcp_zonenzustand(zone_id: int) -> dict[str, object]:
+    @server.tool(name="zone_state")
+    def mcp_zone_state(zone_id: int) -> dict[str, object]:
         with session_scope(factory) as session:
-            return zonenzustand(session, klartext, zone_id)
+            return zone_state(session, plaintext, zone_id)
 
-    @server.tool(name="sollwert_erklaeren")
-    def mcp_sollwert_erklaeren(zone_id: int) -> dict[str, object]:
+    @server.tool(name="explain_setpoint")
+    def mcp_explain_setpoint(zone_id: int) -> dict[str, object]:
         with session_scope(factory) as session:
-            return sollwert_erklaeren(session, klartext, zone_id)
+            return explain_setpoint(session, plaintext, zone_id)
 
-    @server.tool(name="zeitplan_lesen")
-    def mcp_zeitplan_lesen(zone_id: int) -> list[dict[str, object]]:
+    @server.tool(name="read_schedule")
+    def mcp_read_schedule(zone_id: int) -> list[dict[str, object]]:
         with session_scope(factory) as session:
-            return zeitplan_lesen(session, klartext, zone_id)
+            return read_schedule(session, plaintext, zone_id)
 
-    @server.tool(name="sollwerte_lesen")
-    def mcp_sollwerte_lesen(zone_id: int) -> list[dict[str, object]]:
+    @server.tool(name="read_setpoints")
+    def mcp_read_setpoints(zone_id: int) -> list[dict[str, object]]:
         with session_scope(factory) as session:
-            return sollwerte_lesen(session, klartext, zone_id)
+            return read_setpoints(session, plaintext, zone_id)
 
-    @server.tool(name="geraete_auflisten")
-    def mcp_geraete_auflisten() -> list[dict[str, object]]:
+    @server.tool(name="list_devices")
+    def mcp_list_devices() -> list[dict[str, object]]:
         with session_scope(factory) as session:
-            return geraete_auflisten(session, klartext)
+            return list_devices(session, plaintext)
 
-    @server.tool(name="schattenentscheidungen")
-    def mcp_schattenentscheidungen(zone_id: int, anzahl: int = 10) -> list[dict[str, object]]:
+    @server.tool(name="shadow_decisions")
+    def mcp_shadow_decisions(zone_id: int, count: int = 10) -> list[dict[str, object]]:
         with session_scope(factory) as session:
-            return schattenentscheidungen(session, klartext, zone_id, anzahl)
+            return shadow_decisions(session, plaintext, zone_id, count)
 
-    @server.tool(name="uebersteuern")
-    def mcp_uebersteuern(
-        zone_id: int, temperatur_c: Decimal, endet_am: datetime | None = None
+    @server.tool(name="override")
+    def mcp_override(
+        zone_id: int, temperature_c: Decimal, endet_am: datetime | None = None
     ) -> dict[str, object]:
         with session_scope(factory) as session:
-            return uebersteuern(session, klartext, zone_id, temperatur_c, endet_am)
+            return override_zone(session, plaintext, zone_id, temperature_c, endet_am)
 
-    @server.tool(name="uebersteuerung_aufheben")
-    def mcp_uebersteuerung_aufheben(zone_id: int) -> dict[str, object]:
+    @server.tool(name="cancel_override")
+    def mcp_cancel_override(zone_id: int) -> dict[str, object]:
         with session_scope(factory) as session:
-            return uebersteuerung_aufheben(session, klartext, zone_id)
+            return cancel_override(session, plaintext, zone_id)
 
     @server.tool(name="boost")
     def mcp_boost(zone_id: int) -> dict[str, object]:
         with session_scope(factory) as session:
-            return boost(session, klartext, zone_id)
+            return boost(session, plaintext, zone_id)
 
-    @server.tool(name="regelparameter_lesen")
-    def mcp_regelparameter_lesen(zone_id: int) -> dict[str, object]:
+    @server.tool(name="read_control_parameters")
+    def mcp_read_control_parameters(zone_id: int) -> dict[str, object]:
         with session_scope(factory) as session:
-            return regelparameter_lesen(session, klartext, zone_id)
+            return read_control_parameters(session, plaintext, zone_id)
 
-    @server.tool(name="regelparameter_setzen")
-    def mcp_regelparameter_setzen(zone_id: int, name: str, wert: Decimal) -> dict[str, object]:
+    @server.tool(name="set_control_parameters")
+    def mcp_set_control_parameters(zone_id: int, name: str, value: Decimal) -> dict[str, object]:
         with session_scope(factory) as session:
-            return regelparameter_setzen(session, klartext, zone_id, name, wert)
+            return set_control_parameters(session, plaintext, zone_id, name, value)
 
-    @server.tool(name="steuerung_lesen")
-    def mcp_steuerung_lesen() -> dict[str, object]:
+    @server.tool(name="read_control")
+    def mcp_read_control() -> dict[str, object]:
         with session_scope(factory) as session:
-            return steuerung_lesen(session, klartext)
+            return read_control(session, plaintext)
 
-    @server.tool(name="trockenlauf_erzwingen")
-    def mcp_trockenlauf_erzwingen(begruendung: str = "") -> dict[str, object]:
+    @server.tool(name="force_dry_run")
+    def mcp_force_dry_run(reason: str = "") -> dict[str, object]:
         with session_scope(factory) as session:
-            return trockenlauf_erzwingen(session, klartext, begruendung)
+            return force_dry_run(session, plaintext, reason)
 
-    @server.tool(name="zeitplanpunkt_verschieben")
-    def mcp_zeitplanpunkt_verschieben(
-        zone_id: int, punkt_id: int, wochentag: int, minute: int
+    @server.tool(name="move_schedule_point")
+    def mcp_move_schedule_point(
+        zone_id: int, point_id: int, weekday: int, minute: int
     ) -> dict[str, object]:
         with session_scope(factory) as session:
-            return zeitplanpunkt_verschieben(
-                session, klartext, zone_id, punkt_id, wochentag, minute
+            return move_schedule_point(
+                session, plaintext, zone_id, point_id, weekday, minute
             )
 
 
 def main() -> None:
     """Startet den authentifizierten MCP-Server ueber stdio."""
-    einstellungen = get_settings()
-    if einstellungen.mcp_token is None:
+    settings = get_settings()
+    if settings.mcp_token is None:
         raise SystemExit("THERMOCTL_MCP_TOKEN fehlt; der MCP-Server startet nicht ohne Anmeldung.")
     # Ab hier laeuft der Prozess bis zum Abbruch als stdio-Server. Das ist Verdrahtung,
     # kein Verhalten: Jeder einzelne Bestandteil ist geprueft — die Tokenpruefung darueber,
     # die Registrierung in `test_registrierte_mcp_werkzeuge_rufen_die_adapterfunktionen_auf`
     # und jedes Werkzeug einzeln. Ein Test dieser Zeilen muesste einen echten stdio-Server
     # starten und wieder abwuergen und pruefte damit die Bibliothek, nicht uns.
-    klartext = einstellungen.mcp_token.get_secret_value()  # pragma: no cover
-    server_klasse = _mcp_server_klasse()  # pragma: no cover
-    engine = create_engine_from_settings(einstellungen)  # pragma: no cover
+    plaintext = settings.mcp_token.get_secret_value()  # pragma: no cover
+    server_class = _mcp_server_class()  # pragma: no cover
+    engine = create_engine_from_settings(settings)  # pragma: no cover
     factory = session_factory(engine)  # pragma: no cover
-    server = server_klasse("thermoctl")  # pragma: no cover
-    _werkzeuge_registrieren(server, factory, klartext)  # pragma: no cover
+    server = server_class("thermoctl")  # pragma: no cover
+    _register_tools(server, factory, plaintext)  # pragma: no cover
     try:  # pragma: no cover
         server.run(transport="stdio")
     finally:

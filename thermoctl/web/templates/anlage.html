@@ -12,29 +12,29 @@
 
 <section class="tc-tafel p-4 mb-4">
     <div class="d-flex align-items-center gap-3 flex-wrap">
-        <span class="tc-chip {{ 'tc-chip-waerme' if bruecke is true else ('tc-chip-warnung' if bruecke is false else 'tc-chip-still') }}">
-            {% if bruecke is true %}<span class="tc-punkt"></span>Brücke meldet sich
-            {% elif bruecke is false %}Brücke meldet sich nicht
+        <span class="tc-chip {{ 'tc-chip-waerme' if bridge is true else ('tc-chip-warnung' if bridge is false else 'tc-chip-still') }}">
+            {% if bridge is true %}<span class="tc-punkt"></span>Brücke meldet sich
+            {% elif bridge is false %}Brücke meldet sich nicht
             {% else %}Brücke: noch keine Meldung{% endif %}
         </span>
         <span class="t-leise">
             Alle Geräte hängen an der Zigbee2MQTT-Brücke. Meldet sie sich nicht, kommt
             von keinem einzigen etwas an — egal, wie die Zuordnung unten aussieht.
         </span>
-        <a class="ms-auto btn btn-sm btn-outline-secondary" href="/schnittstellen">Schnittstellen</a>
+        <a class="ms-auto btn btn-sm btn-outline-secondary" href="/interfaces">Schnittstellen</a>
     </div>
 </section>
 
-{% if not zonen %}
+{% if not zones %}
 <div class="tc-tafel p-4">
     <p class="t-leise mb-0">Noch keine Zonen angelegt.</p>
 </div>
 {% else %}
-{% for z in zonen %}
+{% for z in zones %}
 <article class="tc-tafel p-4 mb-3">
     <div class="d-flex justify-content-between align-items-baseline mb-3">
         <h2 class="mb-0">{{ z.name }}</h2>
-        <a class="btn btn-sm btn-outline-secondary" href="/zonen/{{ z.zone_id }}/geraete">
+        <a class="btn btn-sm btn-outline-secondary" href="/zones/{{ z.zone_id }}/devices">
             Zuordnung ändern
         </a>
     </div>
@@ -43,7 +43,7 @@
 {% endfor %}
 {% endif %}
 
-{% if ohne_zone %}
+{% if without_zone %}
 <article class="tc-tafel p-4">
     <h2 class="mb-1">Ohne Zone</h2>
     <p class="t-leise">
@@ -51,7 +51,7 @@
         nicht. Der häufigste Grund, warum ein neu eingebundener Sensor „nicht ankommt".
     </p>
     <div class="d-flex flex-wrap gap-2">
-        {% for g in ohne_zone %}{{ geraetekarte(g, "frei") }}{% endfor %}
+        {% for g in without_zone %}{{ geraetekarte(g, "frei") }}{% endfor %}
     </div>
 </article>
 {% endif %}

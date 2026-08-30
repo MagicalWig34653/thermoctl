@@ -1,0 +1,17 @@
+tests/test_befehle.py	betriebsart	operating_mode
+tests/test_befehle.py	modus	mode
+tests/test_befehle.py	sollwert	setpoint
+tests/test_geraeteschau.py	aktiv	active
+tests/test_geraeteschau.py	batterie	battery
+tests/test_geraeteschau.py	erreichbarkeit	availability
+tests/test_geraeteschau.py	funkguete	radio_quality
+tests/test_geraeteschau.py	jetzt	now
+tests/test_geraeteschau.py	stumm_nach_sekunden	silent_after_seconds
+tests/test_geraeteschau.py	zuletzt_gehoert	last_heard
+thermoctl/integrations/mqtt/commands.py	betriebsart	operating_mode
+thermoctl/integrations/mqtt/commands.py	modus	mode
+thermoctl/integrations/mqtt/commands.py	sollwert	setpoint
+thermoctl/integrations/mqtt/publication.py	letzte_schaltung	last_switch
+thermoctl/integrations/mqtt/publication.py	naechste_schaltung	next_switch
+thermoctl/services/veroeffentlichen.py	letzte_schaltung	last_switch
+thermoctl/services/veroeffentlichen.py	naechste_schaltung	next_switch

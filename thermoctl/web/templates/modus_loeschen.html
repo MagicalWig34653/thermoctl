@@ -5,14 +5,14 @@
 {% if sperre %}
 <h1>Sollwert-Modus nicht löschbar</h1>
 <div class="alert alert-warning" role="alert">{{ sperre }}</div>
-<a class="btn btn-secondary" href="/modi/{{ modus.id }}">Zurück</a>
+<a class="btn btn-secondary" href="/modes/{{ mode.id }}">Zurück</a>
 {% else %}
 {{ loeschbestaetigung(
     "Sollwert-Modus löschen",
-    "Soll der Modus „" ~ modus.name ~ "“ wirklich gelöscht werden?",
+    "Soll der Modus „" ~ mode.name ~ "“ wirklich gelöscht werden?",
     "Vorhandene Sollwerte dieses Modus werden ebenfalls gelöscht.",
-    "/modi/" ~ modus.id ~ "/loeschen",
-    "/modi/" ~ modus.id
+    "/modi/" ~ mode.id ~ "/loeschen",
+    "/modi/" ~ mode.id
 ) }}
 {% endif %}
 {% endblock %}

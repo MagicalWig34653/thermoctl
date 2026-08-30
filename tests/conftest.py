@@ -7,11 +7,11 @@ from fastapi.testclient import TestClient
 from sqlalchemy import URL, Engine, create_engine, make_url, text
 from sqlalchemy.orm import Session
 
-from tests.hilfen import benutzer_mit_rechten, quelle
+from tests.helpers import source, user_with_permissions
 from thermoctl.app import create_app
 from thermoctl.auth.dependencies import get_session
 from thermoctl.auth.passwords import hash_password
-from thermoctl.auth.sessions import COOKIE_NAME, sitzung_anlegen
+from thermoctl.auth.sessions import COOKIE_NAME, create_session
 from thermoctl.config import Settings, get_settings
 from thermoctl.db.base import Base
 from thermoctl.db.engine import create_engine_from_settings
@@ -40,8 +40,8 @@ def _migrationsdatenbank_url(basis_url: str) -> str:
             # gegenstandslos.
             return basis_url
         pfad = Path(url.database)
-        neuer_pfad = pfad.with_name(f"{pfad.stem}-migrations{pfad.suffix}")
-        return url.set(database=str(neuer_pfad)).render_as_string(hide_password=False)
+        new_path = pfad.with_name(f"{pfad.stem}-migrations{pfad.suffix}")
+        return url.set(database=str(new_path)).render_as_string(hide_password=False)
     return url.set(database=f"{url.database}_migrations").render_as_string(hide_password=False)
 
 
@@ -56,7 +56,7 @@ def settings() -> Settings:
 
 
 @pytest.fixture(scope="session", autouse=True)
-def _umgebung_fuer_die_ganze_sitzung(settings: Settings) -> Iterator[None]:
+def _environment_for_the_whole_session(settings: Settings) -> Iterator[None]:
     """Setzt die Pflichtvariablen fuer den ganzen Lauf und schneidet die `.env` ab.
 
     Jeder Test, der `create_app()` aufruft, braucht sie — `Settings` verlangt
@@ -79,13 +79,13 @@ def _umgebung_fuer_die_ganze_sitzung(settings: Settings) -> Iterator[None]:
     `THERMOCTL_ENV_FILE=""` schneidet die Datei ab; die Suite sieht nur noch, was sie
     selbst setzt.
     """
-    marke = pytest.MonkeyPatch()
-    marke.setenv("THERMOCTL_ENV_FILE", "")
-    marke.setenv("THERMOCTL_DATABASE_URL", settings.database_url)
-    marke.setenv("THERMOCTL_SECRET_KEY", settings.secret_key.get_secret_value())
+    marker = pytest.MonkeyPatch()
+    marker.setenv("THERMOCTL_ENV_FILE", "")
+    marker.setenv("THERMOCTL_DATABASE_URL", settings.database_url)
+    marker.setenv("THERMOCTL_SECRET_KEY", settings.secret_key.get_secret_value())
     get_settings.cache_clear()
     yield
-    marke.undo()
+    marker.undo()
     get_settings.cache_clear()
 
 
@@ -147,12 +147,12 @@ def engine(settings: Settings) -> Iterator[Engine]:
     #
     # Anders als die Rechte darf das hier stehen: Kein Test legt eine ActorSource von
     # Hand an, es gibt also keine UNIQUE-Kollision wie bei `Permission`.
-    with Session(werk) as sitzung:
-        vorhandene = {q.code for q in sitzung.query(ActorSource)}
+    with Session(werk) as http_session:
+        vorhandene = {q.code for q in http_session.query(ActorSource)}
         for code, bezeichnung in ACTOR_SOURCES:
             if code not in vorhandene:
-                sitzung.add(ActorSource(code=code, label=bezeichnung))
-        sitzung.commit()
+                http_session.add(ActorSource(code=code, label=bezeichnung))
+        http_session.commit()
     yield werk
     Base.metadata.drop_all(werk)
     werk.dispose()
@@ -179,19 +179,19 @@ def session(engine: Engine) -> Iterator[Session]:
     """
     verbindung = engine.connect()
     transaktion = verbindung.begin()
-    sitzung = Session(
+    http_session = Session(
         bind=verbindung, expire_on_commit=False, join_transaction_mode="create_savepoint"
     )
     try:
-        yield sitzung
+        yield http_session
     finally:
-        sitzung.close()
+        http_session.close()
         transaktion.rollback()
         verbindung.close()
 
 
 @pytest.fixture(autouse=True)
-def _berechtigungen_fuer_einrichtungsassistenten(
+def _permissions_for_setup_wizard(
     request: pytest.FixtureRequest, session: Session
 ) -> None:
     """Seedet die Berechtigungstabelle innerhalb der Testtransaktion von ``tests/test_setup.py``.
@@ -213,10 +213,10 @@ def _berechtigungen_fuer_einrichtungsassistenten(
     if request.node.fspath.basename != "test_setup.py":
         return
     vorhandene = {p.code for p in session.query(Permission)}
-    for code, beschreibung, zonenbezogen in PERMISSIONS:
+    for code, beschreibung, zone_scoped in PERMISSIONS:
         if code not in vorhandene:
             session.add(Permission(code=code, description=beschreibung,
-                                   is_zone_scoped=zonenbezogen))
+                                   is_zone_scoped=zone_scoped))
     session.flush()
 
 
@@ -245,13 +245,13 @@ def client(
 def client_als(
     client: TestClient, session: Session
 ) -> Callable[[list[tuple[str, int | None]]], TestClient]:
-    zaehler = 0
+    counter = 0
 
-    def _client_als(rechte: list[tuple[str, int | None]]) -> TestClient:
-        nonlocal zaehler
-        zaehler += 1
-        nutzer = benutzer_mit_rechten(session, f"web-{zaehler}", rechte)
-        _sitzung, geheimnis = sitzung_anlegen(session, nutzer, 3600)
+    def _client_als(permissions: list[tuple[str, int | None]]) -> TestClient:
+        nonlocal counter
+        counter += 1
+        nutzer = user_with_permissions(session, f"web-{counter}", permissions)
+        _http_session, geheimnis = create_session(session, nutzer, 3600)
         client.cookies.set(COOKIE_NAME, geheimnis)
         return client
 
@@ -259,9 +259,9 @@ def client_als(
 
 
 @pytest.fixture
-def benutzer(session: Session) -> User:
+def user(session: Session) -> User:
     """Legt den Benutzer ``lino`` mit gehashtem Passwort und der Gruppe *Verwaltung* an."""
-    quelle(session, "web")
+    source(session, "web")
     nutzer = User(
         username="lino",
         display_name="Lino",
@@ -269,15 +269,15 @@ def benutzer(session: Session) -> User:
     )
     session.add(nutzer)
     session.flush()
-    gruppe = AccessGroup(name="Verwaltung", is_builtin=True)
-    session.add(gruppe)
+    group = AccessGroup(name="Verwaltung", is_builtin=True)
+    session.add(group)
     session.flush()
-    session.add(UserAccessGroup(user_id=nutzer.id, access_group_id=gruppe.id))
+    session.add(UserAccessGroup(user_id=nutzer.id, access_group_id=group.id))
     session.flush()
     return nutzer
 
 @pytest.fixture(autouse=True)
-def _ohne_echte_wartezeit(monkeypatch: pytest.MonkeyPatch) -> None:
+def _without_real_waiting(monkeypatch: pytest.MonkeyPatch) -> None:
     """Die Anmeldedrosselung schlaeft nicht wirklich, waehrend Tests laufen.
 
     Die Drosselung selbst bleibt aktiv und wird von
@@ -287,7 +287,7 @@ def _ohne_echte_wartezeit(monkeypatch: pytest.MonkeyPatch) -> None:
     auf dreiunddreissig Sekunden hoch, und eine langsame Suite wird seltener
     ausgefuehrt.
     """
-    monkeypatch.setattr("thermoctl.web.auth_views.schlafen", lambda sekunden: None)
+    monkeypatch.setattr("thermoctl.web.auth_views.schlafen", lambda seconds: None)
 
 @pytest.fixture
 def angemeldeter_client(
@@ -321,16 +321,16 @@ def angemeldeter_client(
 def pytest_configure(config: pytest.Config) -> None:
     """Sammelstelle fuer die Endpunkte, die waehrend des Laufs tatsaechlich
     aufgerufen wurden — ausgewertet von tests/test_endpunktabdeckung.py."""
-    config._aufgerufene_endpunkte = set()  # type: ignore[attr-defined]
+    config._called_endpoints = set()  # type: ignore[attr-defined]
 
 
 @pytest.fixture(autouse=True)
-def _endpunkte_mitschreiben(request: pytest.FixtureRequest) -> Iterator[None]:
+def _record_endpoints(request: pytest.FixtureRequest) -> Iterator[None]:
     """Zeichnet jeden HTTP-Aufruf auf, den ein Test ueber den TestClient macht."""
     from starlette.testclient import TestClient as _TestClient
 
     original = _TestClient.request
-    gesammelt = request.config._aufgerufene_endpunkte  # type: ignore[attr-defined]
+    gesammelt = request.config._called_endpoints  # type: ignore[attr-defined]
 
     def aufzeichnend(self, method, url, *args, **kwargs):  # type: ignore[no-untyped-def]
         pfad = str(url).split("?")[0]
@@ -356,4 +356,4 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
     Waechter durch die verschachtelten Router von FastAPI ohnehin ins Leere lief, fiel
     das nicht auf.
     """
-    items.sort(key=lambda item: item.fspath.basename == "test_endpunktabdeckung.py")
+    items.sort(key=lambda item: item.fspath.basename == "test_endpoint_coverage.py")

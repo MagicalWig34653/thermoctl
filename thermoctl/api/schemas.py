@@ -3,10 +3,10 @@ from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from thermoctl.domain.modi import HOECHSTTEMPERATUR_C, MINDESTTEMPERATUR_C
+from thermoctl.domain.modes import MAXIMUM_TEMPERATURE_C, MINIMUM_TEMPERATURE_C
 
 
-class ZoneAntwort(BaseModel):
+class ZoneResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
@@ -14,7 +14,7 @@ class ZoneAntwort(BaseModel):
     display_name: str
 
 
-class ZoneSchreiben(BaseModel):
+class WriteZone(BaseModel):
     name: str = Field(min_length=1, max_length=64)
     display_name: str = Field(min_length=1, max_length=128)
     operating_mode_id: int
@@ -22,7 +22,7 @@ class ZoneSchreiben(BaseModel):
     temperature_source_device_id: int | None = None
 
 
-class ModusAntwort(BaseModel):
+class ModeResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
@@ -32,35 +32,35 @@ class ModusAntwort(BaseModel):
     is_builtin: bool
 
 
-class ModusAnlegen(BaseModel):
+class CreateMode(BaseModel):
     code: str
     name: str
     sort_order: int = 0
 
 
-class SollwertEintrag(BaseModel):
+class SetpointEntry(BaseModel):
     mode_id: int
     temperature_c: Decimal | None
 
 
-class SollwerteSchreiben(BaseModel):
-    setpoints: list[SollwertEintrag]
+class WriteSetpoints(BaseModel):
+    setpoints: list[SetpointEntry]
 
 
-class SollwertAntwort(BaseModel):
+class SetpointResponse(BaseModel):
     mode_id: int
     mode_code: str
     mode_name: str
     temperature_c: Decimal | None
 
 
-class ZeitplanpunktAnlegen(BaseModel):
+class CreateSchedulePoint(BaseModel):
     weekday: int = Field(ge=1, le=7)
     minute_of_day: int = Field(ge=0, le=1439)
     mode_id: int
 
 
-class ZeitplanpunktAntwort(BaseModel):
+class SchedulePointResponse(BaseModel):
     id: int
     weekday: int
     minute_of_day: int
@@ -68,7 +68,7 @@ class ZeitplanpunktAntwort(BaseModel):
     mode_name: str
 
 
-class RegelparameterSchreiben(BaseModel):
+class WriteControlParameters(BaseModel):
     hysteresis_k: Decimal | None = Field(default=None, ge=0)
     min_on_seconds: int | None = Field(default=None, ge=0)
     min_off_seconds: int | None = Field(default=None, ge=0)
@@ -77,11 +77,11 @@ class RegelparameterSchreiben(BaseModel):
     window_resume_delay_seconds: int | None = Field(default=None, ge=0)
 
 
-class RegelparameterAntwort(RegelparameterSchreiben):
+class ControlParametersResponse(WriteControlParameters):
     pass
 
 
-class GeraetAntwort(BaseModel):
+class DeviceResponse(BaseModel):
     id: int
     external_id: str
     display_name: str
@@ -96,7 +96,7 @@ class GeraetAntwort(BaseModel):
     zones: list[str]
 
 
-class ZonenzustandAntwort(BaseModel):
+class ZoneStateResponse(BaseModel):
     zone_id: int
     temperature_c: Decimal | None
     measured_at: datetime | None
@@ -105,7 +105,7 @@ class ZonenzustandAntwort(BaseModel):
     updated_at: datetime
 
 
-class TokenAntwort(BaseModel):
+class TokenResponse(BaseModel):
     id: int
     name: str
     prefix: str
@@ -113,17 +113,17 @@ class TokenAntwort(BaseModel):
     expires_at: datetime | None
 
 
-class UebersteuerungAnlegen(BaseModel):
+class CreateOverride(BaseModel):
     # Die Zahlen stehen in der Domaene; hier nur, damit sie in der
     # OpenAPI-Beschreibung auftauchen. Weist ab tut die Domaene.
     temperature_c: Decimal = Field(
-        ge=MINDESTTEMPERATUR_C, le=HOECHSTTEMPERATUR_C, decimal_places=1
+        ge=MINIMUM_TEMPERATURE_C, le=MAXIMUM_TEMPERATURE_C, decimal_places=1
     )
-    dauer_minuten: int | None = Field(default=None, gt=0)
-    bis_naechste_schaltung: bool = False
+    duration_minutes: int | None = Field(default=None, gt=0)
+    until_next_switch: bool = False
 
 
-class UebersteuerungAntwort(BaseModel):
+class OverrideResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
@@ -134,7 +134,7 @@ class UebersteuerungAntwort(BaseModel):
     cancelled_at: datetime | None
 
 
-class BoostAntwort(BaseModel):
+class BoostResponse(BaseModel):
     """Was der vorgezogene Schaltpunkt bewirkt hat.
 
     Der Modus steht dabei mit drin, nicht nur die Temperatur: "18,0 °C bis 22:00" sagt
@@ -142,12 +142,12 @@ class BoostAntwort(BaseModel):
     """
 
     zone_id: int
-    modus_code: str
+    mode_code: str
     temperature_c: Decimal
     gilt_bis: datetime
 
 
-class ParameterSchreiben(BaseModel):
+class WriteParameter(BaseModel):
     """Ein einzelner Regelparameter.
 
     Die Grenzen stehen in der Domaene (`domain/zone_settings.PARAMETER`) und werden dort
@@ -155,10 +155,10 @@ class ParameterSchreiben(BaseModel):
     an dieser Stelle waere beim naechsten Verschieben zurueckgeblieben.
     """
 
-    wert: Decimal
+    value: Decimal
 
 
-class SteuerungAntwort(BaseModel):
+class ControlResponse(BaseModel):
     """Der Betriebszustand der Anlage samt der Vorgaben, von denen jede Zone erbt."""
 
     control_armed: bool
@@ -174,13 +174,13 @@ class SteuerungAntwort(BaseModel):
     session_lifetime_seconds: int
 
 
-class ScharfSchalten(BaseModel):
+class SetArmed(BaseModel):
     """`begruendung` ist beim Scharfschalten Pflicht und beim Zuruecknehmen freiwillig --
     die Pruefung dazu steht in der Domaene, nicht hier, damit sie fuer alle drei Adapter
     dieselbe ist."""
 
     armed: bool
-    begruendung: str = ""
+    reason: str = ""
 
 
 class SteuerungSchreiben(BaseModel):
@@ -200,6 +200,6 @@ class SteuerungSchreiben(BaseModel):
     session_lifetime_seconds: int
 
 
-class ZeitplanpunktVerschieben(BaseModel):
+class MoveSchedulePoint(BaseModel):
     weekday: int = Field(ge=1, le=7)
     minute_of_day: int = Field(ge=0, le=1439)

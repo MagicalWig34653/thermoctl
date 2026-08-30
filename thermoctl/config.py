@@ -81,9 +81,9 @@ class Settings(BaseSettings):
     def sanitized_mqtt_connection(self) -> str:
         """Die MQTT-Verbindungsangaben ohne Passwort — fuer Logausgaben."""
         protokoll = "mqtts" if self.mqtt_tls else "mqtt"
-        benutzer = f"{self.mqtt_username}@" if self.mqtt_username else ""
+        user = f"{self.mqtt_username}@" if self.mqtt_username else ""
         host = self.mqtt_host or "<nicht konfiguriert>"
-        return f"{protokoll}://{benutzer}{host}:{self.mqtt_port}"
+        return f"{protokoll}://{user}{host}:{self.mqtt_port}"
 
 
 @lru_cache

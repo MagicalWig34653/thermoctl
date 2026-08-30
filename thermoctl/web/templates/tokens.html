@@ -4,13 +4,13 @@
 {% block inhalt %}
 <section id="tokenliste">
     <h1 class="mb-3">Tokens</h1>
-    {{ fehlerhinweis(hinweis) }}
+    {{ fehlerhinweis(hint) }}
 
-    {% if klartext %}
+    {% if plaintext %}
     <div class="alert alert-success" role="alert">
         <p class="mb-1"><strong>Das Token wurde ausgestellt.</strong> Es erscheint
             <em>genau einmal</em> — gespeichert wird nur sein Hash.</p>
-        <p class="mb-1"><code id="neues-token">{{ klartext }}</code></p>
+        <p class="mb-1"><code id="neues-token">{{ plaintext }}</code></p>
         <p class="mb-0 small">Jetzt kopieren. Wer es verliert, stellt ein neues aus.</p>
     </div>
     {% endif %}
@@ -27,21 +27,21 @@
         </tr>
         </thead>
         <tbody>
-        {% for eintrag in token %}
+        {% for entry in token %}
         <tr>
-            <td>{{ eintrag.name }}</td>
-            <td><code>{{ eintrag.prefix }}</code></td>
-            <td>{{ eintrag.expires_at or "unbegrenzt" }}</td>
+            <td>{{ entry.name }}</td>
+            <td><code>{{ entry.prefix }}</code></td>
+            <td>{{ entry.expires_at or "unbegrenzt" }}</td>
             <td>
-                {% if eintrag.revoked_at %}
+                {% if entry.revoked_at %}
                 <span class="badge text-bg-secondary">widerrufen</span>
                 {% else %}
                 <span class="badge text-bg-success">aktiv</span>
                 {% endif %}
             </td>
             <td class="text-end">
-                {% if not eintrag.revoked_at %}
-                <form method="post" action="/tokens/{{ eintrag.id }}/widerrufen">
+                {% if not entry.revoked_at %}
+                <form method="post" action="/tokens/{{ entry.id }}/revoke">
                     <button type="submit" class="btn btn-sm btn-outline-danger">Widerrufen</button>
                 </form>
                 {% endif %}
@@ -56,20 +56,20 @@
     <p class="text-muted">Ein Token kann höchstens, was Sie selbst dürfen — und behält das
         auch dann nicht, wenn Sie ein Recht später verlieren.</p>
     <form method="post" action="/tokens">
-        {{ textfeld("name", "Name", werte.get("name", ""), pflicht=true,
+        {{ textfeld("name", "Name", values.get("name", ""), pflicht=true,
                     hilfe="Wofür ist es gedacht? Später ist der Name das Einzige, woran Sie es erkennen.",
-                    fehler=fehler.get("name", "")) }}
+                    errors=errors.get("name", "")) }}
         <div class="mb-3">
             <label class="form-label" for="code">Recht</label>
             <select class="form-select" id="code" name="code">
                 <option value="">ohne Recht (nur zum Prüfen der Gültigkeit)</option>
-                {% for recht in alle_rechte %}
-                <option value="{{ recht.code }}">{{ recht.code }} – {{ recht.description }}</option>
+                {% for permission in alle_rechte %}
+                <option value="{{ permission.code }}">{{ permission.code }} – {{ permission.description }}</option>
                 {% endfor %}
             </select>
         </div>
-        {{ zahlenfeld("gueltig_tage", "Gültig für (Tage)", werte.get("gueltig_tage", ""),
-                      schritt="1", min="1",
+        {{ zahlenfeld("gueltig_tage", "Gültig für (Tage)", values.get("gueltig_tage", ""),
+                      step="1", min="1",
                       hilfe="Leer lassen für unbegrenzt. Ein befristetes Token ist die sicherere Wahl.") }}
         <button type="submit" class="btn btn-primary">Ausstellen</button>
     </form>

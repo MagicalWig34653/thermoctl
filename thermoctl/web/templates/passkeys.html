@@ -28,13 +28,13 @@
         </tr>
         </thead>
         <tbody>
-        {% for eintrag in passkeys %}
+        {% for entry in passkeys %}
         <tr>
-            <td>{{ eintrag.bezeichnung }}</td>
-            <td title="{{ eintrag.created_at }} UTC">{{ eintrag.created_at|alter }}</td>
-            <td title="{{ eintrag.last_used_at or '' }} UTC">{{ eintrag.last_used_at|alter }}</td>
+            <td>{{ entry.bezeichnung }}</td>
+            <td title="{{ entry.created_at }} UTC">{{ entry.created_at|age }}</td>
+            <td title="{{ entry.last_used_at or '' }} UTC">{{ entry.last_used_at|age }}</td>
             <td class="text-end">
-                <form method="post" action="/passkeys/{{ eintrag.id }}/entfernen">
+                <form method="post" action="/passkeys/{{ entry.id }}/remove">
                     <button type="submit" class="btn btn-sm btn-outline-danger">Entfernen</button>
                 </form>
             </td>

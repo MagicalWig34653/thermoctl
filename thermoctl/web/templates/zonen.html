@@ -3,25 +3,25 @@
 {% block inhalt %}
 <div class="d-flex justify-content-between align-items-center mb-3">
     <h1>Zonen</h1>
-    {% if darf_anlegen %}<a class="btn btn-primary" href="/zonen/neu">Zone anlegen</a>{% endif %}
+    {% if darf_anlegen %}<a class="btn btn-primary" href="/zones/new">Zone anlegen</a>{% endif %}
 </div>
-{% if zonen %}
+{% if zones %}
 {# Scrollt in sich selbst statt die ganze Seite breit zu machen: Auf einem Telefon passt diese Tabelle nicht nebeneinander. #}
 <div class="table-responsive">
 <table class="table align-middle">
     <thead><tr><th>Name</th><th>Betriebsart</th><th>Sortierung</th><th></th></tr></thead>
     <tbody>
-    {% for zone in zonen %}
+    {% for zone in zones %}
     <tr>
         <td><strong>{{ zone.display_name }}</strong><br><small class="text-muted">{{ zone.name }}</small></td>
         <td>{{ zone.operating_mode.label }}</td>
         <td>{{ zone.sort_order }}</td>
         <td class="text-end">
             <a class="btn btn-sm btn-outline-secondary"
-               href="/zonen/{{ zone.id }}/geraete">Geräte</a>
+               href="/zones/{{ zone.id }}/devices">Geräte</a>
             <a class="btn btn-sm btn-outline-secondary"
-               href="/zonen/{{ zone.id }}/zeitplan">Zeitplan</a>
-            {% if zone.id in darf_aendern %}<a class="btn btn-sm btn-outline-primary" href="/zonen/{{ zone.id }}">Bearbeiten</a>{% endif %}
+               href="/zones/{{ zone.id }}/schedule">Zeitplan</a>
+            {% if zone.id in darf_aendern %}<a class="btn btn-sm btn-outline-primary" href="/zones/{{ zone.id }}">Bearbeiten</a>{% endif %}
         </td>
     </tr>
     {% endfor %}

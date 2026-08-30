@@ -23,44 +23,44 @@ from thermoctl.web import ist_teilaustausch, templates
 # 'Try it out' eine echte Aenderung ausloest.
 router = APIRouter(dependencies=[Depends(csrf_schutz)], include_in_schema=False)
 
-EINTRAEGE_JE_SEITE = 50
+ENTRIES_PER_PAGE = 50
 
 
-def _datum(wert: str, feld: str, fehler: dict[str, str]) -> date | None:
-    if not wert:
+def _datum(value: str, feld: str, errors: dict[str, str]) -> date | None:
+    if not value:
         return None
     try:
-        return date.fromisoformat(wert)
+        return date.fromisoformat(value)
     except ValueError:
-        fehler[feld] = "Bitte ein gültiges Datum eingeben."
+        errors[feld] = "Bitte ein gültiges Datum eingeben."
         return None
 
 
 @router.get("/audit")
-async def auditliste(
+async def audit_list(
     request: Request,
     principal: Annotated[Principal, Depends(aktueller_principal)],
     session: Annotated[Session, Depends(get_session)],
-    von: str = "",
-    bis: str = "",
-    benutzer: str = "",
-    aktion: str = "",
-    objekt: str = "",
-    quelle: str = "",
-    seite: str = "1",
+    from_date: str = "",
+    to_date: str = "",
+    user: str = "",
+    action_code: str = "",
+    object: str = "",  # noqa: A002 - Abfrageparameter, nicht die eingebaute Funktion
+    source: str = "",
+    page: str = "1",
 ) -> Response:
     require(principal, "audit.read")
 
-    fehler: dict[str, str] = {}
-    von_datum = _datum(von, "von", fehler)
-    bis_datum = _datum(bis, "bis", fehler)
-    if von_datum is not None and bis_datum is not None and bis_datum < von_datum:
-        fehler["bis"] = "Das Bis-Datum darf nicht vor dem Von-Datum liegen."
+    errors: dict[str, str] = {}
+    from_day = _datum(from_date, "from_date", errors)
+    to_day = _datum(to_date, "to_date", errors)
+    if from_day is not None and to_day is not None and to_day < from_day:
+        errors["to_date"] = "Das Bis-Datum darf nicht vor dem Von-Datum liegen."
     try:
-        seitennummer = max(1, int(seite))
+        pagennummer = max(1, int(page))
     except ValueError:
-        seitennummer = 1
-        fehler["seite"] = "Die Seitennummer muss eine ganze Zahl sein."
+        pagennummer = 1
+        errors["page"] = "Die Seitennummer muss eine ganze Zahl sein."
 
     abfrage = (
         select(AuditEvent, ActorSource, User, ApiToken)
@@ -68,67 +68,67 @@ async def auditliste(
         .outerjoin(User, User.id == AuditEvent.actor_user_id)
         .outerjoin(ApiToken, ApiToken.id == AuditEvent.actor_token_id)
     )
-    if not fehler:
-        if von_datum is not None:
+    if not errors:
+        if from_day is not None:
             abfrage = abfrage.where(
-                AuditEvent.occurred_at >= datetime.combine(von_datum, time.min)
+                AuditEvent.occurred_at >= datetime.combine(from_day, time.min)
             )
-        if bis_datum is not None:
+        if to_day is not None:
             # Exklusive Grenze am Folgetag schliesst den gesamten Bis-Tag ein und
             # vermeidet datenbankspezifische Datumsfunktionen.
-            folgetag = datetime.combine(bis_datum, time.min) + timedelta(days=1)
-            abfrage = abfrage.where(AuditEvent.occurred_at < folgetag)
-        if benutzer:
+            next_day = datetime.combine(to_day, time.min) + timedelta(days=1)
+            abfrage = abfrage.where(AuditEvent.occurred_at < next_day)
+        if user:
             abfrage = abfrage.where(
-                or_(User.username == benutzer, ApiToken.name == benutzer)
+                or_(User.username == user, ApiToken.name == user)
             )
-        if aktion:
-            abfrage = abfrage.where(AuditEvent.action == aktion)
-        if quelle:
-            abfrage = abfrage.where(ActorSource.code == quelle)
-        if objekt:
-            objekttyp, trennzeichen, objekt_id = objekt.partition(":")
+        if action_code:
+            abfrage = abfrage.where(AuditEvent.action == action_code)
+        if source:
+            abfrage = abfrage.where(ActorSource.code == source)
+        if object:
+            objekttyp, trennzeichen, objekt_id = object.partition(":")
             abfrage = abfrage.where(AuditEvent.object_type == objekttyp)
             if trennzeichen:
                 abfrage = abfrage.where(AuditEvent.object_id == objekt_id)
 
-    eintraege: Sequence[Row[tuple[AuditEvent, ActorSource, User, ApiToken]]] = ()
+    entries: Sequence[Row[tuple[AuditEvent, ActorSource, User, ApiToken]]] = ()
     hat_weitere = False
-    if not fehler:
+    if not errors:
         zeilen = session.execute(
             abfrage.order_by(AuditEvent.occurred_at.desc(), AuditEvent.id.desc())
-            .offset((seitennummer - 1) * EINTRAEGE_JE_SEITE)
-            .limit(EINTRAEGE_JE_SEITE + 1)
+            .offset((pagennummer - 1) * ENTRIES_PER_PAGE)
+            .limit(ENTRIES_PER_PAGE + 1)
         ).all()
-        hat_weitere = len(zeilen) > EINTRAEGE_JE_SEITE
-        eintraege = zeilen[:EINTRAEGE_JE_SEITE]
+        hat_weitere = len(zeilen) > ENTRIES_PER_PAGE
+        entries = zeilen[:ENTRIES_PER_PAGE]
 
-    quellen = session.execute(
+    sources = session.execute(
         select(ActorSource.code, ActorSource.label).order_by(ActorSource.label)
     ).all()
     aktionen = session.scalars(
         select(AuditEvent.action).distinct().order_by(AuditEvent.action)
     ).all()
-    filterwerte = {
-        "von": von,
-        "bis": bis,
-        "benutzer": benutzer,
-        "aktion": aktion,
-        "objekt": objekt,
-        "quelle": quelle,
+    filter_values = {
+        "from_date": from_date,
+        "to_date": to_date,
+        "user": user,
+        "action_code": action_code,
+        "object": object,
+        "source": source,
     }
     return templates.TemplateResponse(
         request,
         "audit.html",
         {
-            "eintraege": eintraege,
-            "quellen": quellen,
+            "entries": entries,
+            "sources": sources,
             "aktionen": aktionen,
-            "filter": filterwerte,
-            "fehler": fehler,
-            "seite": seitennummer,
+            "filter": filter_values,
+            "errors": errors,
+            "page": pagennummer,
             "hat_weitere": hat_weitere,
-            "basis_parameter": urlencode(filterwerte),
+            "basis_parameter": urlencode(filter_values),
             "ist_htmx": ist_teilaustausch(request),
         },
     )

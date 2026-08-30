@@ -4,7 +4,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from thermoctl.db.base import Base
 
 
-class _Nachschlage(Base):
+class _Lookup(Base):
     """Gemeinsame Form aller Nachschlagetabellen: eine Kennung, ein Code, ein Klartext."""
 
     __abstract__ = True
@@ -14,37 +14,37 @@ class _Nachschlage(Base):
     label: Mapped[str] = mapped_column(String(64), nullable=False)
 
 
-class OperatingMode(_Nachschlage):
+class OperatingMode(_Lookup):
     """auto, manual, off. 'off' heisst Frostschutz, nicht stromlos."""
 
     __tablename__ = "operating_mode"
 
 
-class Integration(_Nachschlage):
+class Integration(_Lookup):
     """Wie ein Geraet erreicht wird: zigbee2mqtt, meross."""
 
     __tablename__ = "integration"
 
 
-class DeviceCapability(_Nachschlage):
+class DeviceCapability(_Lookup):
     """Was ein Geraet kann: temperature, switch, setpoint_display, contact, battery."""
 
     __tablename__ = "device_capability"
 
 
-class DeviceRole(_Nachschlage):
+class DeviceRole(_Lookup):
     """Wozu ein Geraet in einer Zone dient: actuator, window_contact, controller."""
 
     __tablename__ = "device_role"
 
 
-class SensorStatus(_Nachschlage):
+class SensorStatus(_Lookup):
     """Gueltigkeit der aktuell fuer eine Zone verwendeten Sensordaten."""
 
     __tablename__ = "sensor_status"
 
 
-class ControllerCommand(_Nachschlage):
+class ControllerCommand(_Lookup):
     """Was ein Bediengeraet ausloesen kann: waermer, kaelter, Boost, Betriebsart.
 
     Eine Nachschlagetabelle und keine Aufzaehlung im Code: Grundsatz 3 verbietet ENUM,
@@ -55,7 +55,7 @@ class ControllerCommand(_Nachschlage):
     __tablename__ = "controller_command"
 
 
-class ActorSource(_Nachschlage):
+class ActorSource(_Lookup):
     """Ueber welchen Adapter etwas geschah: web, api, mcp, cli, system."""
 
     __tablename__ = "actor_source"

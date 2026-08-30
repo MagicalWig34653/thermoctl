@@ -14,20 +14,20 @@ from thermoctl.db.models.credential import ApiToken
 from thermoctl.db.models.identity import AccessGroup, GroupPermission, User
 from thermoctl.db.models.lookup import Permission
 from thermoctl.db.models.zone import Zone
-from thermoctl.domain.authz import RECHTEBEREICHE, Forbidden, require
-from thermoctl.domain.principal import Principal
-from thermoctl.domain.verwaltung import (
-    Verwaltungsfehler,
-    benutzer_aktiv_setzen,
-    benutzer_anlegen,
-    gruppe_anlegen,
-    gruppe_loeschen,
-    gruppenrechte_setzen,
-    passwort_setzen,
-    token_widerrufen,
+from thermoctl.domain.administration import (
+    AdministrationError,
+    create_group,
+    create_user,
+    delete_group,
+    revoke_token,
+    set_group_permissions,
+    set_password,
+    set_user_active,
 )
+from thermoctl.domain.authz import PERMISSION_AREAS, Forbidden, require
+from thermoctl.domain.principal import Principal
 from thermoctl.web import ist_teilaustausch
-from thermoctl.web.formulare import Formularfehler, formular_erneut, passwort_formularfehler
+from thermoctl.web.forms import FormError, form_again, password_form_error
 
 # `include_in_schema=False`: Die OpenAPI-Beschreibung ist der Vertrag der
 # REST-Schnittstelle. Diese Wege liefern HTML fuer Menschen, und in der Oberflaeche
@@ -41,173 +41,173 @@ router = APIRouter(dependencies=[Depends(csrf_schutz)], include_in_schema=False)
 # Fall und wurde bewusst entfernt, um es nicht an jeder Route erneut zu vergessen.
 
 
-def _benutzerliste(
-    request: Request, session: Session, eigene_id: int | None,
-    fehler: Formularfehler | None = None,
-    werte: dict[str, object] | None = None, hinweis: str | None = None,
+def _user_list(
+    request: Request, session: Session, own_id: int | None,
+    errors: FormError | None = None,
+    values: dict[str, object] | None = None, hint: str | None = None,
 ) -> Response:
-    return formular_erneut(
-        request, "benutzer.html", werte or {}, fehler,
-        benutzer=session.scalars(select(User).order_by(User.username)).all(),
-        gruppen=session.scalars(select(AccessGroup).order_by(AccessGroup.name)).all(),
-        eigene_id=eigene_id,
-        hinweis=hinweis,
+    return form_again(
+        request, "benutzer.html", values or {}, errors,
+        user=session.scalars(select(User).order_by(User.username)).all(),
+        groups=session.scalars(select(AccessGroup).order_by(AccessGroup.name)).all(),
+        own_id=own_id,
+        hint=hint,
         ist_htmx=ist_teilaustausch(request),
     )
 
 
-@router.get("/benutzer")
-async def benutzerliste(
+@router.get("/users")
+async def user_list(
     request: Request,
     principal: Annotated[Principal, Depends(aktueller_principal)],
     session: Annotated[Session, Depends(get_session)],
 ) -> Response:
     require(principal, "user.manage")
-    return _benutzerliste(request, session, principal.user_id)
+    return _user_list(request, session, principal.user_id)
 
 
-@router.post("/benutzer")
-async def benutzer_anlegen_ansicht(
+@router.post("/users")
+async def user_create_view(
     request: Request,
     principal: Annotated[Principal, Depends(aktueller_principal)],
     session: Annotated[Session, Depends(get_session)],
     username: Annotated[str, Form()] = "",
     display_name: Annotated[str, Form()] = "",
     password: Annotated[str, Form()] = "",
-    gruppe_id: Annotated[str, Form()] = "",
+    group_id: Annotated[str, Form()] = "",
 ) -> Response:
     require(principal, "user.manage")
-    werte: dict[str, object] = {
-        "username": username, "display_name": display_name, "gruppe_id": gruppe_id,
+    values: dict[str, object] = {
+        "username": username, "display_name": display_name, "group_id": group_id,
     }
     try:
-        benutzer_anlegen(
-            session, username=username, display_name=display_name, passwort=password,
-            gruppen_ids=[int(gruppe_id)] if gruppe_id else [],
+        create_user(
+            session, username=username, display_name=display_name, password=password,
+            group_ids=[int(group_id)] if group_id else [],
             akteur_id=principal.user_id,
         )
     except PasswordTooShort as exc:
-        return _benutzerliste(
-            request, session, principal.user_id, passwort_formularfehler(exc), werte
+        return _user_list(
+            request, session, principal.user_id, password_form_error(exc), values
         )
-    except Verwaltungsfehler as exc:
-        return _benutzerliste(
-            request, session, principal.user_id, Formularfehler("username", str(exc)), werte
+    except AdministrationError as exc:
+        return _user_list(
+            request, session, principal.user_id, FormError("username", str(exc)), values
         )
-    return RedirectResponse("/benutzer", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse("/users", status_code=status.HTTP_303_SEE_OTHER)
 
 
-@router.post("/benutzer/{benutzer_id}/aktiv")
-async def benutzer_aktiv_ansicht(
+@router.post("/users/{user_id}/active")
+async def user_active_view(
     request: Request,
-    benutzer_id: int,
+    user_id: int,
     principal: Annotated[Principal, Depends(aktueller_principal)],
     session: Annotated[Session, Depends(get_session)],
-    aktiv: Annotated[str, Form()] = "",
+    active: Annotated[str, Form()] = "",
 ) -> Response:
     require(principal, "user.manage")
-    nutzer = session.get(User, benutzer_id)
+    nutzer = session.get(User, user_id)
     if nutzer is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Benutzer nicht gefunden")
     try:
-        benutzer_aktiv_setzen(
-            session, nutzer, aktiv == "ja", akteur_id=principal.user_id
+        set_user_active(
+            session, nutzer, active == "ja", akteur_id=principal.user_id
         )
-    except Verwaltungsfehler as exc:
+    except AdministrationError as exc:
         # Die Aussperrsperre ist kein Formfehler an einem Feld, sondern eine Aussage
         # ueber den Zustand der Anlage -- sie gehoert als Hinweis ueber die Liste.
-        return _benutzerliste(request, session, principal.user_id, hinweis=str(exc))
-    return RedirectResponse("/benutzer", status_code=status.HTTP_303_SEE_OTHER)
+        return _user_list(request, session, principal.user_id, hint=str(exc))
+    return RedirectResponse("/users", status_code=status.HTTP_303_SEE_OTHER)
 
 
-@router.post("/benutzer/{benutzer_id}/passwort")
-async def benutzer_passwort_ansicht(
+@router.post("/users/{user_id}/password")
+async def user_password_view(
     request: Request,
-    benutzer_id: int,
+    user_id: int,
     principal: Annotated[Principal, Depends(aktueller_principal)],
     session: Annotated[Session, Depends(get_session)],
     password: Annotated[str, Form()] = "",
 ) -> Response:
     # Das eigene Passwort darf jeder aendern; fremde nur mit `user.manage`. Sonst
     # koennte niemand sein eigenes Passwort wechseln, ohne Verwalter zu sein.
-    if benutzer_id != principal.user_id:
+    if user_id != principal.user_id:
         require(principal, "user.manage")
-    nutzer = session.get(User, benutzer_id)
+    nutzer = session.get(User, user_id)
     if nutzer is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Benutzer nicht gefunden")
     try:
-        passwort_setzen(session, nutzer, password, akteur_id=principal.user_id)
+        set_password(session, nutzer, password, akteur_id=principal.user_id)
     except PasswordTooShort as exc:
-        return _benutzerliste(
-            request, session, principal.user_id, passwort_formularfehler(exc), {}
+        return _user_list(
+            request, session, principal.user_id, password_form_error(exc), {}
         )
-    return RedirectResponse("/benutzer", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse("/users", status_code=status.HTTP_303_SEE_OTHER)
 
 
-def _gruppenliste(
-    request: Request, session: Session, fehler: Formularfehler | None = None,
-    werte: dict[str, object] | None = None, hinweis: str | None = None,
+def _group_list(
+    request: Request, session: Session, errors: FormError | None = None,
+    values: dict[str, object] | None = None, hint: str | None = None,
 ) -> Response:
-    gruppen = list(session.scalars(select(AccessGroup).order_by(AccessGroup.name)))
+    groups = list(session.scalars(select(AccessGroup).order_by(AccessGroup.name)))
     # Je Gruppe die Menge der vergebenen (Code, Zone) -- die Vorlage fragt damit jedes
     # Kaestchen direkt ab, statt eine Liste zu durchsuchen.
-    vergeben: dict[int, set[tuple[str, int | None]]] = {g.id: set() for g in gruppen}
-    for gruppen_id, code, zone_id in session.execute(
+    vergeben: dict[int, set[tuple[str, int | None]]] = {g.id: set() for g in groups}
+    for group_id, code, zone_id in session.execute(
         select(GroupPermission.access_group_id, Permission.code, GroupPermission.zone_id)
         .join(Permission, Permission.id == GroupPermission.permission_id)
     ):
-        if gruppen_id in vergeben:
-            vergeben[gruppen_id].add((code, zone_id))
+        if group_id in vergeben:
+            vergeben[group_id].add((code, zone_id))
 
-    rechte = {r.code: r for r in session.scalars(select(Permission))}
-    zonennamen = {
+    permissions = {r.code: r for r in session.scalars(select(Permission))}
+    zone_names = {
         zone_id: name
         for zone_id, name in session.execute(select(Zone.id, Zone.display_name))
     }
     # Was eine Gruppe darf, in einem Satz. Ohne ihn muss man 16 Kaestchen lesen, um zu
     # wissen, wofuer eine Gruppe da ist -- und das ist die erste Frage, die man hat.
     zusammenfassung: dict[int, list[str]] = {}
-    for gruppen_id, eintraege in vergeben.items():
+    for group_id, entries in vergeben.items():
         satz = []
-        for code, zone_id in sorted(eintraege, key=lambda p: (p[0], p[1] or 0)):
-            recht = rechte.get(code)
-            if recht is None:
+        for code, zone_id in sorted(entries, key=lambda p: (p[0], p[1] or 0)):
+            permission = permissions.get(code)
+            if permission is None:
                 continue
-            wo = f" ({zonennamen.get(zone_id, 'unbekannte Zone')})" if zone_id else ""
-            satz.append(recht.description + wo)
-        zusammenfassung[gruppen_id] = satz
+            wo = f" ({zone_names.get(zone_id, 'unbekannte Zone')})" if zone_id else ""
+            satz.append(permission.description + wo)
+        zusammenfassung[group_id] = satz
     bereiche = [
         (
             name,
-            hinweis_text,
-            [rechte[code] for code in codes if code in rechte],
+            hint_text,
+            [permissions[code] for code in codes if code in permissions],
         )
-        for name, hinweis_text, codes in RECHTEBEREICHE
+        for name, hint_text, codes in PERMISSION_AREAS
     ]
-    return formular_erneut(
-        request, "gruppen.html", werte or {}, fehler,
-        gruppen=gruppen,
+    return form_again(
+        request, "gruppen.html", values or {}, errors,
+        groups=groups,
         vergeben=vergeben,
         zusammenfassung=zusammenfassung,
         bereiche=bereiche,
         alle_zonen=session.scalars(select(Zone).order_by(Zone.name)).all(),
-        hinweis=hinweis,
+        hint=hint,
         ist_htmx=ist_teilaustausch(request),
     )
 
 
-@router.get("/gruppen")
-async def gruppenliste(
+@router.get("/groups")
+async def group_list(
     request: Request,
     principal: Annotated[Principal, Depends(aktueller_principal)],
     session: Annotated[Session, Depends(get_session)],
 ) -> Response:
     require(principal, "group.manage")
-    return _gruppenliste(request, session)
+    return _group_list(request, session)
 
 
-@router.post("/gruppen")
-async def gruppe_anlegen_ansicht(
+@router.post("/groups")
+async def group_create_view(
     request: Request,
     principal: Annotated[Principal, Depends(aktueller_principal)],
     session: Annotated[Session, Depends(get_session)],
@@ -216,40 +216,40 @@ async def gruppe_anlegen_ansicht(
 ) -> Response:
     require(principal, "group.manage")
     try:
-        gruppe_anlegen(
+        create_group(
             session, name=name, beschreibung=description or None,
             akteur_id=principal.user_id,
         )
-    except Verwaltungsfehler as exc:
-        return _gruppenliste(
-            request, session, Formularfehler("name", str(exc)),
+    except AdministrationError as exc:
+        return _group_list(
+            request, session, FormError("name", str(exc)),
             {"name": name, "description": description},
         )
-    return RedirectResponse("/gruppen", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse("/groups", status_code=status.HTTP_303_SEE_OTHER)
 
 
-@router.post("/gruppen/{gruppen_id}/loeschen")
-async def gruppe_loeschen_ansicht(
+@router.post("/groups/{group_id}/delete")
+async def group_delete_view(
     request: Request,
-    gruppen_id: int,
+    group_id: int,
     principal: Annotated[Principal, Depends(aktueller_principal)],
     session: Annotated[Session, Depends(get_session)],
 ) -> Response:
     require(principal, "group.manage")
-    gruppe = session.get(AccessGroup, gruppen_id)
-    if gruppe is None:
+    group = session.get(AccessGroup, group_id)
+    if group is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Gruppe nicht gefunden")
     try:
-        gruppe_loeschen(session, gruppe, akteur_id=principal.user_id)
-    except Verwaltungsfehler as exc:
-        return _gruppenliste(request, session, hinweis=str(exc))
-    return RedirectResponse("/gruppen", status_code=status.HTTP_303_SEE_OTHER)
+        delete_group(session, group, akteur_id=principal.user_id)
+    except AdministrationError as exc:
+        return _group_list(request, session, hint=str(exc))
+    return RedirectResponse("/groups", status_code=status.HTTP_303_SEE_OTHER)
 
 
-@router.post("/gruppen/{gruppen_id}/rechte")
-async def rechte_setzen_ansicht(
+@router.post("/groups/{group_id}/permissions")
+async def permissions_set_view(
     request: Request,
-    gruppen_id: int,
+    group_id: int,
     principal: Annotated[Principal, Depends(aktueller_principal)],
     session: Annotated[Session, Depends(get_session)],
 ) -> Response:
@@ -265,14 +265,14 @@ async def rechte_setzen_ansicht(
     `code:zone_id`.
     """
     require(principal, "group.manage")
-    gruppe = session.get(AccessGroup, gruppen_id)
-    if gruppe is None:
+    group = session.get(AccessGroup, group_id)
+    if group is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Gruppe nicht gefunden")
 
-    formular = await request.form()
+    form = await request.form()
     gewuenscht: set[tuple[str, int | None]] = set()
-    for eintrag in formular.getlist("recht"):
-        code, _, zone = str(eintrag).partition(":")
+    for entry in form.getlist("permission"):
+        code, _, zone = str(entry).partition(":")
         if not code:
             continue
         try:
@@ -283,51 +283,51 @@ async def rechte_setzen_ansicht(
             ) from None
 
     try:
-        gruppenrechte_setzen(
-            session, gruppe, gewuenscht, akteur_id=principal.user_id
+        set_group_permissions(
+            session, group, gewuenscht, akteur_id=principal.user_id
         )
-    except Verwaltungsfehler as exc:
-        return _gruppenliste(request, session, hinweis=str(exc))
-    return RedirectResponse("/gruppen", status_code=status.HTTP_303_SEE_OTHER)
+    except AdministrationError as exc:
+        return _group_list(request, session, hint=str(exc))
+    return RedirectResponse("/groups", status_code=status.HTTP_303_SEE_OTHER)
 
 
-def _tokenliste(
+def _token_list(
     request: Request, session: Session, principal: Principal,
-    fehler: Formularfehler | None = None, werte: dict[str, object] | None = None,
-    klartext: str | None = None, hinweis: str | None = None,
+    errors: FormError | None = None, values: dict[str, object] | None = None,
+    plaintext: str | None = None, hint: str | None = None,
 ) -> Response:
-    return formular_erneut(
-        request, "tokens.html", werte or {}, fehler,
+    return form_again(
+        request, "tokens.html", values or {}, errors,
         token=session.scalars(
             select(ApiToken)
             .where(ApiToken.user_id == principal.user_id)
             .order_by(ApiToken.name)
         ).all(),
         alle_rechte=session.scalars(select(Permission).order_by(Permission.code)).all(),
-        klartext=klartext,
-        hinweis=hinweis,
+        plaintext=plaintext,
+        hint=hint,
         ist_htmx=ist_teilaustausch(request),
     )
 
 
 @router.get("/tokens")
-async def tokenliste(
+async def token_list(
     request: Request,
     principal: Annotated[Principal, Depends(aktueller_principal)],
     session: Annotated[Session, Depends(get_session)],
 ) -> Response:
     require(principal, "token.self")
-    return _tokenliste(request, session, principal)
+    return _token_list(request, session, principal)
 
 
 @router.post("/tokens")
-async def token_ausstellen_ansicht(
+async def token_issue_view(
     request: Request,
     principal: Annotated[Principal, Depends(aktueller_principal)],
     session: Annotated[Session, Depends(get_session)],
     name: Annotated[str, Form()] = "",
     code: Annotated[str, Form()] = "",
-    gueltig_tage: Annotated[str, Form()] = "",
+    valid_days: Annotated[str, Form()] = "",
 ) -> Response:
     require(principal, "token.self")
     # Beide Faelle sind ueber diesen Weg nicht erreichbar: `aktueller_principal` loest ein
@@ -340,28 +340,28 @@ async def token_ausstellen_ansicht(
     if besitzer is None:  # pragma: no cover
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Nur fuer angemeldete Benutzer")
     if not name.strip():
-        return _tokenliste(
+        return _token_list(
             request, session, principal,
-            Formularfehler("name", "Das Token braucht einen Namen, sonst ist es spaeter "
+            FormError("name", "Das Token braucht einen Namen, sonst ist es spaeter "
                                    "nicht auseinanderzuhalten."),
             {"name": name, "code": code},
         )
-    ablauf: datetime | None = None
-    if gueltig_tage:
-        ablauf = utcnow() + timedelta(days=int(gueltig_tage))
+    expiry: datetime | None = None
+    if valid_days:
+        expiry = utcnow() + timedelta(days=int(valid_days))
     try:
-        _token, klartext = token_ausstellen(
-            session, besitzer, name, [(code, None)] if code else [], ablauf
+        _token, plaintext = token_ausstellen(
+            session, besitzer, name, [(code, None)] if code else [], expiry
         )
     except Forbidden as exc:
-        return _tokenliste(request, session, principal, hinweis=str(exc))
+        return _token_list(request, session, principal, hint=str(exc))
     # Der Klartext erscheint genau einmal: Gespeichert wird nur sein Hash, und ein Token,
     # das man spaeter nachschlagen kann, ist keines.
-    return _tokenliste(request, session, principal, klartext=klartext)
+    return _token_list(request, session, principal, plaintext=plaintext)
 
 
-@router.post("/tokens/{token_id}/widerrufen")
-async def token_widerrufen_ansicht(
+@router.post("/tokens/{token_id}/revoke")
+async def token_revoke_view(
     request: Request,
     token_id: int,
     principal: Annotated[Principal, Depends(aktueller_principal)],
@@ -373,5 +373,5 @@ async def token_widerrufen_ansicht(
         # Fremde Tokens sind nicht auffindbar, nicht verboten -- sonst verriete die
         # Antwort, welche Kennungen es gibt.
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Token nicht gefunden")
-    token_widerrufen(session, token, akteur_id=principal.user_id)
+    revoke_token(session, token, akteur_id=principal.user_id)
     return RedirectResponse("/tokens", status_code=status.HTTP_303_SEE_OTHER)

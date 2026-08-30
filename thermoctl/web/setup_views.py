@@ -8,7 +8,7 @@ from thermoctl.auth.dependencies import csrf_schutz, get_session
 from thermoctl.auth.passwords import PasswordTooShort
 from thermoctl.setup import einrichtung_durchfuehren, einrichtung_noetig
 from thermoctl.web import templates
-from thermoctl.web.formulare import formular_erneut, passwort_formularfehler
+from thermoctl.web.forms import form_again, password_form_error
 
 # `include_in_schema=False`: Die OpenAPI-Beschreibung ist der Vertrag der
 # REST-Schnittstelle. Diese Wege liefern HTML fuer Menschen, und in der Oberflaeche
@@ -19,7 +19,7 @@ router = APIRouter(dependencies=[Depends(csrf_schutz)], include_in_schema=False)
 _GESCHLOSSEN = "Die Einrichtung ist bereits abgeschlossen."
 
 
-def _sicherstellen_offen(session: Session) -> None:
+def _ensure_open(session: Session) -> None:
     # Dauerhaft geschlossen, sobald ein Benutzer existiert -- nicht nur ausgeblendet.
     # Sonst gewinnt im unguenstigen Fall der Erste im Netz, der die Seite noch findet.
     if not einrichtung_noetig(session):
@@ -27,11 +27,11 @@ def _sicherstellen_offen(session: Session) -> None:
 
 
 @router.get("/setup")
-async def setup_formular(
+async def setup_form(
     request: Request, session: Annotated[Session, Depends(get_session)]
 ) -> Response:
-    _sicherstellen_offen(session)
-    return templates.TemplateResponse(request, "einrichtung.html", {"fehler": {}})
+    _ensure_open(session)
+    return templates.TemplateResponse(request, "einrichtung.html", {"errors": {}})
 
 
 @router.post("/setup")
@@ -48,28 +48,28 @@ async def setup(
     # normaler, abzuweisender Fall (403) -- kein Formatfehler.
     setup_token: Annotated[str, Form()] = "",
 ) -> Response:
-    _sicherstellen_offen(session)
+    _ensure_open(session)
     # Bereits ausgefuellte Felder bleiben im Formular erhalten, wenn die Eingabe
     # abgelehnt wird -- ausser dem Passwort, das nie in eine Antwort zurueckfliesst.
-    formularwerte = {
+    form_values = {
         "username": username, "display_name": display_name, "timezone": timezone,
         "setup_token": setup_token,
     }
     try:
         einrichtung_durchfuehren(
-            session, username=username, display_name=display_name, passwort=password,
-            zeitzone=timezone, token=setup_token,
+            session, username=username, display_name=display_name, password=password,
+            timezone_name=timezone, token=setup_token,
         )
     except PermissionError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
     except PasswordTooShort as exc:
         # Eine zu kurze Eingabe ist ein Formfehler des Nutzers, keine Stoerung des
         # Dienstes -- zurueck zum Formular mit verstaendlicher Meldung statt 500.
-        return formular_erneut(
+        return form_again(
             request,
             "einrichtung.html",
-            formularwerte,
-            passwort_formularfehler(exc),
+            form_values,
+            password_form_error(exc),
         )
 
     return RedirectResponse("/login", status_code=status.HTTP_303_SEE_OTHER)

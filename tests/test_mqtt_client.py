@@ -11,7 +11,7 @@ from thermoctl.integrations.mqtt.client import MqttClient
 
 
 @dataclass
-class Nachricht:
+class Message:
     topic: str
     payload: bytes
 
@@ -20,28 +20,28 @@ class Schleifenende(BaseException):
     """Beendet die absichtlich endlose Empfangsschleife ausserhalb ihrer Fehlerfaenge."""
 
 
-class Nachrichtenstrom:
-    def __init__(self, nachrichten: list[Nachricht], fehler: Exception | None = None) -> None:
-        self._nachrichten = nachrichten
-        self._fehler = fehler
+class MessageStream:
+    def __init__(self, messages: list[Message], errors: Exception | None = None) -> None:
+        self._messages = messages
+        self._errors = errors
 
-    async def __aiter__(self) -> AsyncIterator[Nachricht]:
-        for nachricht in self._nachrichten:
-            yield nachricht
-        if self._fehler is not None:
-            raise self._fehler
+    async def __aiter__(self) -> AsyncIterator[Message]:
+        for message in self._messages:
+            yield message
+        if self._errors is not None:
+            raise self._errors
 
 
 class FalscherClient:
     instanzen: list[FalscherClient] = []
-    stroeme: list[Nachrichtenstrom] = []
+    stroeme: list[MessageStream] = []
 
     def __init__(self, **argumente: Any) -> None:
         self.argumente = argumente
         self.abonniert: list[str] = []
-        self.veroeffentlicht: list[tuple[str, str]] = []
+        self.published: list[tuple[str, str]] = []
         self.behalten: list[bool] = []
-        self.messages = self.stroeme.pop(0) if self.stroeme else Nachrichtenstrom([])
+        self.messages = self.stroeme.pop(0) if self.stroeme else MessageStream([])
         self.instanzen.append(self)
 
     async def __aenter__(self) -> FalscherClient:
@@ -53,8 +53,8 @@ class FalscherClient:
     async def subscribe(self, topic: str) -> None:
         self.abonniert.append(topic)
 
-    async def publish(self, topic: str, nutzlast: str, retain: bool = False) -> None:
-        self.veroeffentlicht.append((topic, nutzlast))
+    async def publish(self, topic: str, payload: str, retain: bool = False) -> None:
+        self.published.append((topic, payload))
         self.behalten.append(retain)
 
 
@@ -84,16 +84,16 @@ async def test_abonnements_und_nachricht_werden_zugestellt(
     mqtt_settings: Settings,
 ) -> None:
     FalscherClient.stroeme = [
-        Nachrichtenstrom([Nachricht("testbasis/Sensor", b"wert")])
+        MessageStream([Message("testbasis/Sensor", b"wert")])
     ]
     empfangen: list[tuple[str, bytes]] = []
 
-    async def handler(topic: str, nutzlast: bytes) -> None:
-        empfangen.append((topic, nutzlast))
+    async def handler(topic: str, payload: bytes) -> None:
+        empfangen.append((topic, payload))
         raise Schleifenende
 
     with pytest.raises(Schleifenende):
-        await MqttClient(mqtt_settings, handler).laufen()
+        await MqttClient(mqtt_settings, handler).run()
 
     assert FalscherClient.instanzen[0].abonniert == [
         "testbasis/bridge/devices",
@@ -109,20 +109,20 @@ async def test_handlerfehler_stoppt_naechste_nachricht_nicht(
     mqtt_settings: Settings,
 ) -> None:
     FalscherClient.stroeme = [
-        Nachrichtenstrom(
-            [Nachricht("testbasis/Erste", b"kaputt"), Nachricht("testbasis/Zweite", b"ok")]
+        MessageStream(
+            [Message("testbasis/Erste", b"kaputt"), Message("testbasis/Zweite", b"ok")]
         )
     ]
     empfangen: list[str] = []
 
-    async def handler(topic: str, _nutzlast: bytes) -> None:
+    async def handler(topic: str, _payload: bytes) -> None:
         empfangen.append(topic)
         if topic.endswith("Erste"):
             raise ValueError("kaputte Nutzlast")
         raise Schleifenende
 
     with pytest.raises(Schleifenende):
-        await MqttClient(mqtt_settings, handler).laufen()
+        await MqttClient(mqtt_settings, handler).run()
 
     assert empfangen == ["testbasis/Erste", "testbasis/Zweite"]
 
@@ -132,26 +132,26 @@ async def test_verbindungsabbruch_verwendet_wachsenden_abstand(
     mqtt_settings: Settings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     FalscherClient.stroeme = [
-        Nachrichtenstrom([], ConnectionError("eins")),
-        Nachrichtenstrom([], ConnectionError("zwei")),
-        Nachrichtenstrom([], ConnectionError("drei")),
+        MessageStream([], ConnectionError("eins")),
+        MessageStream([], ConnectionError("zwei")),
+        MessageStream([], ConnectionError("drei")),
     ]
-    gewartet: list[float] = []
+    waited: list[float] = []
 
-    async def warten(sekunden: float) -> None:
-        gewartet.append(sekunden)
-        if len(gewartet) == 3:
+    async def wait(seconds: float) -> None:
+        waited.append(seconds)
+        if len(waited) == 3:
             raise Schleifenende
 
-    monkeypatch.setattr(client_modul, "schlafen", warten)
+    monkeypatch.setattr(client_modul, "schlafen", wait)
 
-    async def handler(_topic: str, _nutzlast: bytes) -> None:
+    async def handler(_topic: str, _payload: bytes) -> None:
         return None
 
     with pytest.raises(Schleifenende):
-        await MqttClient(mqtt_settings, handler).laufen()
+        await MqttClient(mqtt_settings, handler).run()
 
-    assert gewartet == [1.0, 2.0, 4.0]
+    assert waited == [1.0, 2.0, 4.0]
     assert len(FalscherClient.instanzen) == 3
 
 
@@ -162,23 +162,23 @@ async def test_tls_beruecksichtigt_ca_zertifikat(
     mqtt_settings.mqtt_tls = True
     mqtt_settings.mqtt_ca_cert = "/konfiguration/ca.pem"
     tls_context = object()
-    ca_pfade: list[str | None] = []
+    ca_pathe: list[str | None] = []
 
     def context_erzeugen(*, cafile: str | None) -> object:
-        ca_pfade.append(cafile)
+        ca_pathe.append(cafile)
         return tls_context
 
-    async def abbrechen(_sekunden: float) -> None:
+    async def abbrechen(_seconds: float) -> None:
         raise Schleifenende
 
     monkeypatch.setattr(client_modul.ssl, "create_default_context", context_erzeugen)
     monkeypatch.setattr(client_modul, "schlafen", abbrechen)
-    FalscherClient.stroeme = [Nachrichtenstrom([], ConnectionError("getrennt"))]
+    FalscherClient.stroeme = [MessageStream([], ConnectionError("getrennt"))]
 
     with pytest.raises(Schleifenende):
-        await MqttClient(mqtt_settings, _leerer_handler).laufen()
+        await MqttClient(mqtt_settings, _leerer_handler).run()
 
-    assert ca_pfade == ["/konfiguration/ca.pem"]
+    assert ca_pathe == ["/konfiguration/ca.pem"]
     assert FalscherClient.instanzen[0].argumente["tls_context"] is tls_context
 
 
@@ -188,10 +188,10 @@ async def test_kein_schaltbefehl_im_trockenlauf(mqtt_settings: Settings) -> None
     falscher_client = FalscherClient()
     client._client = falscher_client
 
-    ergebnis = await client.veroeffentlichen("testbasis/Aktor/set", "ON", schaltet=True)
+    result = await client.publishing("testbasis/Aktor/set", "ON", switches=True)
 
-    assert ergebnis is False
-    assert falscher_client.veroeffentlicht == []
+    assert result is False
+    assert falscher_client.published == []
 
 
 @pytest.mark.anyio
@@ -209,13 +209,13 @@ async def test_zustandsmeldung_geht_auch_im_trockenlauf_hinaus(
     falscher_client = FalscherClient()
     client._client = falscher_client
 
-    ergebnis = await client.veroeffentlichen(
-        "thermoctl/zonen/1/zustand/ist_temperatur", "21.5", schaltet=False
+    result = await client.publishing(
+        "thermoctl/zones/1/state/current_temperature", "21.5", switches=False
     )
 
-    assert ergebnis is True
-    assert falscher_client.veroeffentlicht == [
-        ("thermoctl/zonen/1/zustand/ist_temperatur", "21.5")
+    assert result is True
+    assert falscher_client.published == [
+        ("thermoctl/zones/1/state/current_temperature", "21.5")
     ]
 
 
@@ -225,15 +225,15 @@ async def test_passwort_taucht_in_keiner_logzeile_auf(
     caplog: pytest.LogCaptureFixture,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    FalscherClient.stroeme = [Nachrichtenstrom([], ConnectionError("getrennt"))]
+    FalscherClient.stroeme = [MessageStream([], ConnectionError("getrennt"))]
 
-    async def abbrechen(_sekunden: float) -> None:
+    async def abbrechen(_seconds: float) -> None:
         raise Schleifenende
 
     monkeypatch.setattr(client_modul, "schlafen", abbrechen)
     caplog.set_level(logging.INFO)
     with pytest.raises(Schleifenende):
-        await MqttClient(mqtt_settings, _leerer_handler).laufen()
+        await MqttClient(mqtt_settings, _leerer_handler).run()
 
     assert "auffaelliges-mqtt-testpasswort" not in caplog.text
 
@@ -248,31 +248,31 @@ async def test_abstand_faellt_nach_erfolgreicher_verbindung_zurueck(
     statt einer Sekunde — obwohl gar keine Stoerungsserie vorliegt. Fuer eine Heizung
     im Winter ist das der Unterschied zwischen einer Luecke und einer Pause.
     """
-    gewartet: list[float] = []
+    waited: list[float] = []
     FalscherClient.instanzen.clear()
 
-    async def mitschreiben(sekunden: float) -> None:
-        gewartet.append(sekunden)
-        if len(gewartet) == 4:
+    async def mitschreiben(seconds: float) -> None:
+        waited.append(seconds)
+        if len(waited) == 4:
             raise Schleifenende
 
     monkeypatch.setattr(client_modul, "schlafen", mitschreiben)
     # Drei Fehlversuche in Folge (1, 2, 4 s), dann eine Verbindung, die Nachrichten
     # liefert und erst danach abreisst — der vierte Abstand muss wieder 1 s sein.
     FalscherClient.stroeme = [
-        Nachrichtenstrom([], ConnectionError("getrennt")),
-        Nachrichtenstrom([], ConnectionError("getrennt")),
-        Nachrichtenstrom([], ConnectionError("getrennt")),
-        Nachrichtenstrom([Nachricht("testbasis/Geraet", b"{}")], ConnectionError("getrennt")),
+        MessageStream([], ConnectionError("getrennt")),
+        MessageStream([], ConnectionError("getrennt")),
+        MessageStream([], ConnectionError("getrennt")),
+        MessageStream([Message("testbasis/Geraet", b"{}")], ConnectionError("getrennt")),
     ]
 
     with pytest.raises(Schleifenende):
-        await MqttClient(mqtt_settings, _leerer_handler).laufen()
+        await MqttClient(mqtt_settings, _leerer_handler).run()
 
-    assert gewartet == [1.0, 2.0, 4.0, 1.0]
+    assert waited == [1.0, 2.0, 4.0, 1.0]
 
 
-async def _leerer_handler(_topic: str, _nutzlast: bytes) -> None:
+async def _leerer_handler(_topic: str, _payload: bytes) -> None:
     return None
 
 
@@ -298,13 +298,13 @@ async def test_kein_publish_auch_wenn_der_aufrufer_es_verlangt(
     kunde._client = falscher  # type: ignore[assignment]
 
     assert (
-        await kunde.veroeffentlichen("zigbee2mqtt/irgendwas/set", "{}", schaltet=True)
+        await kunde.publishing("zigbee2mqtt/irgendwas/set", "{}", switches=True)
         is False
     )
-    assert falscher.veroeffentlicht == []
+    assert falscher.published == []
 
 
-async def _kein_handler(topic: str, nutzlast: bytes) -> None:
+async def _kein_handler(topic: str, payload: bytes) -> None:
     raise AssertionError("Dieser Handler darf nie aufgerufen werden")
 
 
@@ -318,7 +318,7 @@ async def test_abgeschaltetes_mqtt_baut_keine_verbindung_auf(
     FalscherClient.instanzen.clear()
     monkeypatch.setattr(client_modul.aiomqtt, "Client", FalscherClient)
 
-    await MqttClient(mqtt_settings, _leerer_handler).laufen()
+    await MqttClient(mqtt_settings, _leerer_handler).run()
 
     assert FalscherClient.instanzen == []
 
@@ -328,7 +328,7 @@ async def test_fehlender_host_wird_beim_namen_genannt(mqtt_settings: Settings) -
     """Eine Fehlkonfiguration soll sagen, welche Angabe fehlt — nicht 'NoneType'."""
     mqtt_settings.mqtt_host = None
     with pytest.raises(ValueError, match="MQTT_HOST"):
-        MqttClient(mqtt_settings, _leerer_handler)._neuer_client()
+        MqttClient(mqtt_settings, _leerer_handler)._newer_client()
 
 
 @pytest.mark.anyio
@@ -340,34 +340,34 @@ async def test_scharf_gebauter_client_veroeffentlicht_wirklich(
     Ohne diesen Test belegte die Suite nur, dass nichts gesendet wird — auch dann, wenn
     das Senden gar nicht gebaut waere. Teilprojekt 4 haengt daran.
     """
-    kunde = MqttClient(mqtt_settings, _leerer_handler, schalten_erlaubt=True)
+    kunde = MqttClient(mqtt_settings, _leerer_handler, switching_allowed=True)
     falscher = FalscherClient()
     kunde._client = falscher  # type: ignore[assignment]
 
-    assert await kunde.veroeffentlichen(
-        "testbasis/Ventil/set", '{"state": "ON"}', schaltet=True
+    assert await kunde.publishing(
+        "testbasis/Ventil/set", '{"state": "ON"}', switches=True
     )
-    assert falscher.veroeffentlicht == [("testbasis/Ventil/set", '{"state": "ON"}')]
+    assert falscher.published == [("testbasis/Ventil/set", '{"state": "ON"}')]
 
 
 @pytest.mark.anyio
 async def test_ohne_verbindung_wird_nicht_veroeffentlicht(mqtt_settings: Settings) -> None:
-    kunde = MqttClient(mqtt_settings, _leerer_handler, schalten_erlaubt=True)
-    assert await kunde.veroeffentlichen("testbasis/Ventil/set", "{}", schaltet=True) is False
+    kunde = MqttClient(mqtt_settings, _leerer_handler, switching_allowed=True)
+    assert await kunde.publishing("testbasis/Ventil/set", "{}", switches=True) is False
 
 
 @pytest.mark.anyio
 async def test_schlafen_wartet_wirklich(monkeypatch: pytest.MonkeyPatch) -> None:
     """Die Funktion existiert, damit Tests sie ersetzen koennen — dass sie im Betrieb
     wirklich wartet, prueft sonst niemand."""
-    gewartet: list[float] = []
+    waited: list[float] = []
 
-    async def gefaelscht(sekunden: float) -> None:
-        gewartet.append(sekunden)
+    async def gefaelscht(seconds: float) -> None:
+        waited.append(seconds)
 
     monkeypatch.setattr(client_modul.asyncio, "sleep", gefaelscht)
     await client_modul.schlafen(2.5)
-    assert gewartet == [2.5]
+    assert waited == [2.5]
 
 
 @pytest.mark.anyio
@@ -378,9 +378,9 @@ async def test_ein_scharf_gebauter_client_sendet_auch_zustaende(
     gebauten Client abgewiesen. Das war die Fassung, in der `scharf` zwei Dinge zugleich
     bedeutete -- die Absicht des Aufrufers und die Erlaubnis des Clients. Jetzt sagt
     `schaltet`, was die Nachricht bewirkt, und eine Zustandsmeldung bewirkt nichts."""
-    kunde = MqttClient(mqtt_settings, _leerer_handler, schalten_erlaubt=True)
+    kunde = MqttClient(mqtt_settings, _leerer_handler, switching_allowed=True)
     falscher = FalscherClient()
     kunde._client = falscher  # type: ignore[assignment]
 
-    assert await kunde.veroeffentlichen("thermoctl/verfuegbarkeit", "online", schaltet=False)
-    assert falscher.veroeffentlicht == [("thermoctl/verfuegbarkeit", "online")]
+    assert await kunde.publishing("thermoctl/availability", "online", switches=False)
+    assert falscher.published == [("thermoctl/availability", "online")]

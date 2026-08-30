@@ -50,8 +50,8 @@ def test_modelle_und_migrationen_stimmen_ueberein(migrations_database_url: str) 
     """`alembic check` meldet, wenn ein Modell ohne Migration geaendert wurde."""
     vorbereitung = _alembic(migrations_database_url, "upgrade", "head")
     assert vorbereitung.returncode == 0, vorbereitung.stderr
-    ergebnis = _alembic(migrations_database_url, "check")
-    assert ergebnis.returncode == 0, ergebnis.stdout + ergebnis.stderr
+    result = _alembic(migrations_database_url, "check")
+    assert result.returncode == 0, result.stdout + result.stderr
 
 
 def test_fremdschluessel_werden_unter_sqlite_geprueft(engine: Engine) -> None:
@@ -80,7 +80,7 @@ def test_schatten_schema_referenzdaten_und_einstellungen(
                     "VALUES ('migration-frost', 'Migration Frost', 0, false)"
                 )
             )
-            modus_id = verbindung.execute(
+            mode_id = verbindung.execute(
                 text("SELECT id FROM setpoint_mode WHERE code = 'migration-frost'")
             ).scalar_one()
             verbindung.execute(
@@ -90,20 +90,20 @@ def test_schatten_schema_referenzdaten_und_einstellungen(
                     "default_min_on_seconds, default_min_off_seconds, "
                     "default_sensor_timeout_seconds, default_window_resume_delay_seconds, "
                     "frost_protection_mode_id, session_lifetime_seconds, updated_at) "
-                    "VALUES (1, 'UTC', 30, 0.30, 300, 300, 1800, 120, :modus_id, "
+                    "VALUES (1, 'UTC', 30, 0.30, 300, 300, 1800, 120, :mode_id, "
                     "1209600, '2026-08-29 08:00:00')"
                 ),
-                {"modus_id": modus_id},
+                {"mode_id": mode_id},
             )
 
         hoch = _alembic(migrations_database_url, "upgrade", "head")
         assert hoch.returncode == 0, hoch.stderr
         with werk.connect() as verbindung:
-            faehigkeiten = set(
+            capabilities = set(
                 verbindung.execute(text("SELECT code FROM device_capability")).scalars()
             )
             status = set(verbindung.execute(text("SELECT code FROM sensor_status")).scalars())
-            einstellung = verbindung.execute(
+            setting = verbindung.execute(
                 text(
                     "SELECT timezone, control_armed, measurement_retention_days, "
                     "shadow_interval_seconds FROM setting WHERE id = 1"
@@ -112,9 +112,9 @@ def test_schatten_schema_referenzdaten_und_einstellungen(
         assert {
             "humidity", "illuminance", "occupancy", "link_quality", "power", "energy",
             "valve_position", "setpoint", "availability",
-        } <= faehigkeiten
+        } <= capabilities
         assert status == {"ok", "veraltet", "keine_quelle"}
-        assert tuple(einstellung) == ("UTC", False, 30, 60)
+        assert tuple(setting) == ("UTC", False, 30, 60)
 
         runter = _alembic(migrations_database_url, "downgrade", "4d43756aecd3")
         assert runter.returncode == 0, runter.stderr
@@ -148,7 +148,7 @@ def test_umlaute_werden_in_bestehenden_bezeichnungen_nachgezogen(
     vorher = _alembic(migrations_database_url, "upgrade", "c8e21a5f4d70")
     assert vorher.returncode == 0, vorher.stderr
 
-    alte_schreibweise = [
+    old_spelling = [
         ("device_capability", "link_quality", "Verbindungsqualitaet", "Verbindungsqualität"),
         ("device_capability", "illuminance", "Beleuchtungsstaerke", "Beleuchtungsstärke"),
         ("device_role", "controller", "Bediengeraet", "Bediengerät"),
@@ -157,7 +157,7 @@ def test_umlaute_werden_in_bestehenden_bezeichnungen_nachgezogen(
     werk = create_engine(migrations_database_url)
     try:
         with werk.begin() as verbindung:
-            for tabelle, code, alt, _ in alte_schreibweise:
+            for tabelle, code, alt, _ in old_spelling:
                 verbindung.execute(
                     text(f"UPDATE {tabelle} SET label = :alt WHERE code = :code"),  # noqa: S608
                     {"alt": alt, "code": code},
@@ -177,13 +177,13 @@ def test_umlaute_werden_in_bestehenden_bezeichnungen_nachgezogen(
                     {"code": code},
                 ).scalar()
 
-        for tabelle, code, _, neu in alte_schreibweise:
+        for tabelle, code, _, neu in old_spelling:
             assert bezeichnung(tabelle, code) == neu, code
         assert bezeichnung("device_role", "actuator") == "Mein Aktor"
 
         runter = _alembic(migrations_database_url, "downgrade", "c8e21a5f4d70")
         assert runter.returncode == 0, runter.stderr
-        for tabelle, code, alt, _ in alte_schreibweise:
+        for tabelle, code, alt, _ in old_spelling:
             assert bezeichnung(tabelle, code) == alt, code
         wieder_hoch = _alembic(migrations_database_url, "upgrade", "head")
         assert wieder_hoch.returncode == 0, wieder_hoch.stderr

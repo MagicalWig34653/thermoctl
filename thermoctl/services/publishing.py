@@ -1,0 +1,295 @@
+"""Den eigenen Zustand veröffentlichen — und die Zonen bei Home Assistant anmelden.
+
+Der Vertrag steht in `integrations/mqtt/veroeffentlichung.py`: Topics, Discovery-Nutzlasten,
+An- und Abmeldung, mit Tests. Hier ist der Aufrufer.
+
+**Das läuft auch im Trockenlauf** — und zwar mit Absicht. Eine Zustandsmeldung bewegt
+nichts, und eine Anbindung, die man erst nach dem Scharfschalten ausprobieren kann, lässt
+sich genau dann nicht mehr gefahrlos prüfen, wenn ein Fehler noch folgenlos wäre. Wer die
+Anlage in Home Assistant einrichten, den Thermostat drehen und nachsehen will, ob der
+Sollwert ankommt, soll das vorher tun können.
+
+**Der Trockenlauf steht nicht mehr im Namen der Zone.** Er stand dort, weil es sichtbar
+war — und war genau deshalb falsch: Home Assistant leitet die Entitätskennung beim ersten
+Auftauchen aus dem Namen ab. Eine Zone, die zuerst im Trockenlauf erschien, hieß danach für
+immer `climate.thermoctl_zone_1_trockenlauf`, auch scharf geschaltet. Stattdessen sagt es
+jetzt eine eigene Entität für den ganzen Dienst (`binary_sensor`, „Regelung scharf"), und
+die Zonen behalten ihre Kennung über den ganzen Umstieg.
+
+**Alles Bleibende geht mit dem retain-Flag hinaus** — Anmeldungen wie Zustände. Ohne das
+steht in Home Assistant nach jedem Neustart eine leere Karte, bis dieser Dienst das nächste
+Mal etwas sendet; bei einem Regelzyklus von einer Minute ist das eine Minute Ratlosigkeit,
+und beim Umschalten eines Modus sah es aus, als sei der Befehl verschluckt worden.
+
+**Abgemeldet wird nur, was es nicht mehr gibt.** Eine gelöschte Zone bekommt die leere
+Nutzlast auf jedem ihrer Config-Topics; sonst bliebe in Home Assistant ein Thermostat
+stehen, der niemandem mehr gehört.
+"""
+
+import logging
+from dataclasses import dataclass, field
+from datetime import datetime
+from decimal import Decimal
+from zoneinfo import ZoneInfo
+
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from thermoctl.db.models.lookup import SensorStatus
+from thermoctl.db.models.state import ShadowDecision, ZoneState
+from thermoctl.db.models.zone import SetpointMode, Zone, ZoneSetpoint
+from thermoctl.domain.schedule import end_of_next_switch, resolved_setpoint
+from thermoctl.domain.zone_settings import PARAMETERS, control_parameters
+from thermoctl.integrations.actuators import MqttPublisher, switching_allowed
+from thermoctl.integrations.mqtt.publication import (
+    DiscoveryMessage,
+    armed_discovery,
+    armed_topic,
+    availability_topic,
+    boost_discovery,
+    mode_discovery,
+    mode_topics,
+    parameter_discovery,
+    parameter_topics,
+    states_topics,
+    timestamp_discovery,
+    zone_discovery,
+)
+
+log = logging.getLogger(__name__)
+
+
+@dataclass
+class PublicationState:
+    """Welche Config-Topics dieser Lauf gesendet hat, je Zone.
+
+    Der Stand lebt im Prozess, nicht in der Datenbank: Er beschreibt, was *dieser* Lauf
+    gesendet hat. Nach einem Neustart ist er leer, und der erste Zyklus meldet alles neu
+    an -- was richtig ist, denn ob die Nachrichten von damals noch beim Broker liegen,
+    weiß niemand.
+
+    Die Topics statt nur der Zonenkennungen, damit eine gelöschte Zone vollständig
+    abgemeldet werden kann: Sie hat je Modus und je Regelparameter eine eigene Entität,
+    und deren Config-Topics ließen sich hinterher nicht mehr herleiten -- die Modi der
+    gelöschten Zone stehen dann nirgends mehr.
+    """
+
+    angemeldet: dict[int, list[str]] = field(default_factory=dict)
+    dienst_angemeldet: bool = False
+
+
+def _als_text(value: object) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, datetime):
+        # Mit Zeitzone: `device_class: timestamp` verlangt sie, und eine naive Angabe
+        # legt Home Assistant als Ortszeit aus -- bei uns wäre sie UTC.
+        return value.replace(tzinfo=ZoneInfo("UTC")).isoformat()
+    return str(value)
+
+
+def _discovery_messages(session: Session, zone: Zone, praefix: str) -> list[DiscoveryMessage]:
+    """Alles, was zu einer Zone in Home Assistant erscheint."""
+    name = zone.display_name
+    messages = [
+        zone_discovery(zone.id, name, praefix=praefix),
+        boost_discovery(zone.id, name, praefix),
+        timestamp_discovery(zone.id, name, "last_switch", "Letzte Schaltung", praefix),
+        timestamp_discovery(
+            zone.id, name, "next_switch", "Nächster Moduswechsel", praefix
+        ),
+    ]
+    for mode in session.scalars(select(SetpointMode).order_by(SetpointMode.sort_order)):
+        messages.append(mode_discovery(zone.id, name, mode.id, mode.name, praefix))
+    for beschreibung in PARAMETERS:
+        messages.append(
+            parameter_discovery(
+                zone.id, name, beschreibung.name, beschreibung.label,
+                beschreibung.minimum, beschreibung.maximum, beschreibung.step,
+                beschreibung.einheit, praefix,
+            )
+        )
+    return messages
+
+
+async def cycle(
+    session: Session,
+    client: MqttPublisher,
+    state: PublicationState,
+    praefix: str,
+    now: datetime,
+) -> int:
+    """Ein Veröffentlichungszyklus. Gibt die Zahl der gesendeten Nachrichten zurück."""
+    armed = switching_allowed(session)
+    zones = list(session.scalars(select(Zone).order_by(Zone.id)))
+    gesendet = 0
+
+    # Verfügbarkeit zuerst: Sie ist die Aussage „was gleich kommt, ist aktuell".
+    if await client.publishing(
+        availability_topic(praefix), "online", switches=False, behalten=True
+    ):
+        gesendet += 1
+
+    if not state.dienst_angemeldet:
+        message = armed_discovery(praefix)
+        if await client.publishing(
+            message.topic, message.payload, switches=False, behalten=True
+        ):
+            state.dienst_angemeldet = True
+            gesendet += 1
+    if await client.publishing(
+        armed_topic(praefix), _als_text(armed), switches=False, behalten=True
+    ):
+        gesendet += 1
+
+    for zone in zones:
+        if zone.id in state.angemeldet:
+            continue
+        gesendet += await _register_zone(session, client, state, zone, praefix)
+
+    gesendet += await _deregister_deleted(client, state, {zone.id for zone in zones})
+    for zone in zones:
+        gesendet += await zone_state_senden(session, client, zone, praefix, now)
+    return gesendet
+
+
+async def _register_zone(
+    session: Session,
+    client: MqttPublisher,
+    state: PublicationState,
+    zone: Zone,
+    praefix: str,
+) -> int:
+    gesendet = 0
+    gemeldet: list[str] = []
+    for message in _discovery_messages(session, zone, praefix):
+        if await client.publishing(
+            message.topic, message.payload, switches=False, behalten=True
+        ):
+            gemeldet.append(message.topic)
+            gesendet += 1
+    if gemeldet:
+        state.angemeldet[zone.id] = gemeldet
+        log.info(
+            "Zone bei Home Assistant angemeldet",
+            extra={"zone_id": zone.id, "entitaeten": len(gemeldet)},
+        )
+    return gesendet
+
+
+async def _deregister_deleted(
+    client: MqttPublisher,
+    state: PublicationState,
+    vorhandene: set[int],
+) -> int:
+    """Der einzige Grund für eine Abmeldung: Die Zone gibt es nicht mehr.
+
+    Ohne sie bliebe in Home Assistant ein Thermostat stehen, den niemand mehr bedient —
+    er zeigte den letzten bekannten Wert für immer weiter.
+    """
+    gesendet = 0
+    for zone_id in sorted(set(state.angemeldet) - vorhandene):
+        for topic in state.angemeldet[zone_id]:
+            if await client.publishing(topic, "", switches=False, behalten=True):
+                gesendet += 1
+        del state.angemeldet[zone_id]
+        log.info("Geloeschte Zone bei Home Assistant abgemeldet", extra={"zone_id": zone_id})
+    return gesendet
+
+
+def _last_switch(session: Session, zone_id: int) -> datetime | None:
+    """Wann die Entscheidung zuletzt gekippt ist — nicht, wann zuletzt gerechnet wurde.
+
+    `previous_would_heat` steht im Schattenprotokoll ohnehin; ohne den Vergleich wäre
+    „letzte Schaltung" der letzte Regelzyklus, also immer „vor einer Minute".
+    """
+    return session.scalar(
+        select(ShadowDecision.decided_at)
+        .where(
+            ShadowDecision.zone_id == zone_id,
+            ShadowDecision.previous_would_heat.is_not(None),
+            ShadowDecision.previous_would_heat != ShadowDecision.would_heat,
+        )
+        .order_by(ShadowDecision.decided_at.desc(), ShadowDecision.id.desc())
+        .limit(1)
+    )
+
+
+def _wuerde_heizen(session: Session, zone_id: int) -> bool | None:
+    return session.scalar(
+        select(ShadowDecision.would_heat)
+        .where(ShadowDecision.zone_id == zone_id)
+        .order_by(ShadowDecision.decided_at.desc(), ShadowDecision.id.desc())
+        .limit(1)
+    )
+
+
+async def zone_state_senden(
+    session: Session,
+    client: MqttPublisher,
+    zone: Zone,
+    praefix: str,
+    now: datetime,
+) -> int:
+    """Alle Zustandswerte **einer** Zone.
+
+    Einzeln aufrufbar, weil ein Befehl aus Home Assistant sofort eine Antwort braucht:
+    Die Climate-Karte dort ist nicht optimistisch, sie wartet auf den Zustand. Kam der
+    erst im nächsten Regelzyklus, sprang der eben gewählte Modus für eine Minute auf den
+    alten zurück — und sah aus, als funktioniere die Moduswahl nicht.
+    """
+    topics = states_topics(zone.id, praefix)
+    state = session.get(ZoneState, zone.id)
+    statuscode = "keine_quelle"
+    if state is not None:
+        statuscode = (
+            session.scalar(
+                select(SensorStatus.code).where(SensorStatus.id == state.sensor_status_id)
+            )
+            or statuscode
+        )
+    setpoint = resolved_setpoint(session, zone, now)
+    values: list[tuple[str, str]] = [
+        (topics.current_temperature, _als_text(state.temperature_c if state else None)),
+        (topics.setpoint, _als_text(setpoint.temperature_c)),
+        (topics.operating_mode, zone.operating_mode.code),
+        (topics.sensor_state, statuscode),
+        (topics.wuerde_heizen, _als_text(_wuerde_heizen(session, zone.id))),
+        (topics.last_switch, _als_text(_last_switch(session, zone.id))),
+        (topics.next_switch, _als_text(end_of_next_switch(session, zone, now))),
+    ]
+
+    setpoints: dict[int, Decimal] = {
+        mode_id: temperature
+        for mode_id, temperature in session.execute(
+            select(ZoneSetpoint.setpoint_mode_id, ZoneSetpoint.temperature_c).where(
+                ZoneSetpoint.zone_id == zone.id
+            )
+        )
+    }
+    for mode in session.scalars(select(SetpointMode).order_by(SetpointMode.sort_order)):
+        values.append(
+            (mode_topics(zone.id, mode.id, praefix)[0], _als_text(setpoints.get(mode.id)))
+        )
+
+    wirksam = control_parameters(session, zone)
+    for beschreibung in PARAMETERS:
+        values.append(
+            (
+                parameter_topics(zone.id, beschreibung.name, praefix)[0],
+                _als_text(getattr(wirksam, beschreibung.name)),
+            )
+        )
+
+    gesendet = 0
+    for topic, value in values:
+        # Ein leerer Wert wird nicht gesendet: In MQTT löscht eine leere Nutzlast
+        # eine behaltene Nachricht, und „noch kein Messwert" ist etwas anderes als
+        # „diesen Wert gibt es nicht mehr".
+        if value and await client.publishing(
+            topic, value, switches=False, behalten=True
+        ):
+            gesendet += 1
+    return gesendet

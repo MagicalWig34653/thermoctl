@@ -14,8 +14,8 @@
 (function () {
     "use strict";
 
-    const ANMELDUNG = "/passkey/anmeldung";
-    const REGISTRIERUNG = "/passkey/registrierung";
+    const ANMELDUNG = "/passkey/authentication";
+    const REGISTRIERUNG = "/passkey/registration";
     // Die Challenge des Dienstes gilt zwei Minuten. Die bedingte Anfrage laeuft
     // laenger, also wird sie vorher mit einer frischen erneuert.
     const CHALLENGE_ERNEUERN_NACH_MS = 90 * 1000;
@@ -95,7 +95,7 @@
     }
 
     function assertionSenden(credential) {
-        return holen(ANMELDUNG + "/pruefen", {
+        return holen(ANMELDUNG + "/verify", {
             id: credential.id,
             rawId: bytesZuBase64url(credential.rawId),
             type: credential.type,
@@ -128,7 +128,7 @@
      * erneuert, solange die Seite offen ist.
      */
     function bedingteAnmeldungStarten() {
-        holen(ANMELDUNG + "/argumente").then(function (argumente) {
+        holen(ANMELDUNG + "/options").then(function (argumente) {
             const abbruch = new AbortController();
             const erneuerung = window.setTimeout(function () {
                 bedingteAnfrageAbbrechen();
@@ -184,7 +184,7 @@
             knopf.disabled = true;
             hinweis("Warte auf den Authenticator …", false);
 
-            holen(ANMELDUNG + "/argumente")
+            holen(ANMELDUNG + "/options")
                 .then(function (argumente) {
                     return navigator.credentials.get({
                         publicKey: argumenteAufbereiten(argumente)
@@ -232,7 +232,7 @@
             knopf.disabled = true;
             hinweis("Warte auf den Authenticator …", false);
 
-            holen(REGISTRIERUNG + "/argumente")
+            holen(REGISTRIERUNG + "/options")
                 .then(function (argumente) {
                     return navigator.credentials.create({
                         publicKey: argumenteAufbereiten(argumente)
@@ -242,7 +242,7 @@
                     if (!credential) {
                         throw new Error("Es wurde kein Passkey angelegt.");
                     }
-                    return holen(REGISTRIERUNG + "/pruefen", {
+                    return holen(REGISTRIERUNG + "/verify", {
                         bezeichnung: bezeichnung,
                         id: credential.id,
                         rawId: bytesZuBase64url(credential.rawId),

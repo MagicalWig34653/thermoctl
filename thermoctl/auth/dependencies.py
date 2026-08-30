@@ -4,11 +4,11 @@ from typing import Annotated
 from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
-from thermoctl.auth.csrf import CSRF_HEADER, csrf_pruefen
-from thermoctl.auth.sessions import COOKIE_NAME, sitzung_aufloesen
+from thermoctl.auth.csrf import CSRF_HEADER, check_csrf
+from thermoctl.auth.sessions import COOKIE_NAME, resolve_session
 from thermoctl.config import get_settings
 from thermoctl.db.models.identity import User
-from thermoctl.domain.authz import principal_fuer_benutzer
+from thermoctl.domain.authz import principal_for_user
 from thermoctl.domain.principal import Principal
 
 _NICHT_ANGEMELDET = "Nicht angemeldet"
@@ -21,15 +21,15 @@ def get_session(request: Request) -> Iterator[Session]:
     Session-Factory sitzt auf ``app.state`` — ``create_app()`` legt sie beim Start an.
     """
     factory = request.app.state.session_factory
-    sitzung = factory()
+    http_session = factory()
     try:
-        yield sitzung
-        sitzung.commit()
+        yield http_session
+        http_session.commit()
     except Exception:
-        sitzung.rollback()
+        http_session.rollback()
         raise
     finally:
-        sitzung.close()
+        http_session.close()
 
 
 def aktueller_principal(
@@ -41,24 +41,24 @@ def aktueller_principal(
     zugehoerige Benutzer inaktiv, antwortet das einheitlich mit 401 — dieselbe Antwort
     fuer jeden dieser Faelle, aus demselben Grund wie bei der Anmeldung selbst.
     """
-    cookie_wert = request.cookies.get(COOKIE_NAME)
-    if cookie_wert is None:
+    cookie_value = request.cookies.get(COOKIE_NAME)
+    if cookie_value is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=_NICHT_ANGEMELDET)
 
-    sitzung = sitzung_aufloesen(session, cookie_wert)
-    if sitzung is None:
+    http_session = resolve_session(session, cookie_value)
+    if http_session is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=_NICHT_ANGEMELDET)
 
-    benutzer = session.get(User, sitzung.user_id)
-    if benutzer is None or not benutzer.is_active:
+    user = session.get(User, http_session.user_id)
+    if user is None or not user.is_active:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=_NICHT_ANGEMELDET)
 
     # Fuer die Kopfleiste, die auf jeder Seite den angemeldeten Namen tragen soll (siehe
     # `_angemeldeter_benutzer` in thermoctl/web/__init__.py). Hier hinterlegt statt in
     # jeder Ansicht: Sonst traegt die Leiste den Namen genau dort, wo eine Ansicht daran
     # gedacht hat.
-    request.state.benutzer = benutzer
-    return principal_fuer_benutzer(session, benutzer)
+    request.state.user = user
+    return principal_for_user(session, user)
 
 
 # Sichere Methoden aendern nichts und brauchen deshalb keinen CSRF-Nachweis. Ohne
@@ -85,12 +85,12 @@ def csrf_schutz(request: Request) -> None:
     """
     if request.method in _SICHERE_METHODEN:
         return
-    cookie_wert = request.cookies.get(COOKIE_NAME)
-    if cookie_wert is None:
+    cookie_value = request.cookies.get(COOKIE_NAME)
+    if cookie_value is None:
         return
     settings = get_settings()
-    if not csrf_pruefen(
-        request.headers.get(CSRF_HEADER), cookie_wert, settings.secret_key.get_secret_value()
+    if not check_csrf(
+        request.headers.get(CSRF_HEADER), cookie_value, settings.secret_key.get_secret_value()
     ):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Ungueltiges CSRF-Token"

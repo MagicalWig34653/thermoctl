@@ -5,39 +5,39 @@ from dataclasses import dataclass
 from enum import StrEnum
 
 
-class Nachrichtenart(StrEnum):
-    GERAETELISTE = "geraeteliste"
-    BRUECKENZUSTAND = "brueckenzustand"
-    GERAETEZUSTAND = "geraetezustand"
-    ERREICHBARKEIT = "erreichbarkeit"
+class MessageKind(StrEnum):
+    DEVICE_LIST = "geraeteliste"
+    BRIDGE_STATE = "brueckenzustand"
+    DEVICE_STATE = "geraetezustand"
+    AVAILABILITY = "erreichbarkeit"
     UNBEKANNT = "unbekannt"
 
 
 @dataclass(frozen=True)
-class Zuschnitt:
-    art: Nachrichtenart
-    geraetename: str | None
+class TopicCut:
+    kind: MessageKind
+    device_name: str | None
 
 
-def zuschneiden(topic: str, basis: str) -> Zuschnitt:
+def zuschneiden(topic: str, basis: str) -> TopicCut:
     """Ordnet genau die abonnierten Lese-Topics einer Nachrichtenart zu."""
     basis_teile = basis.strip("/").split("/")
     topic_teile = topic.split("/")
-    unbekannt = Zuschnitt(Nachrichtenart.UNBEKANNT, None)
+    unbekannt = TopicCut(MessageKind.UNBEKANNT, None)
     if not basis_teile or topic_teile[: len(basis_teile)] != basis_teile:
         return unbekannt
 
     rest = topic_teile[len(basis_teile) :]
     if rest == ["bridge", "devices"]:
-        return Zuschnitt(Nachrichtenart.GERAETELISTE, None)
+        return TopicCut(MessageKind.DEVICE_LIST, None)
     if rest == ["bridge", "state"]:
-        return Zuschnitt(Nachrichtenart.BRUECKENZUSTAND, None)
+        return TopicCut(MessageKind.BRIDGE_STATE, None)
     if not rest or rest[0] == "bridge":
         return unbekannt
     if len(rest) == 1 and rest[0]:
-        return Zuschnitt(Nachrichtenart.GERAETEZUSTAND, rest[0])
+        return TopicCut(MessageKind.DEVICE_STATE, rest[0])
     if len(rest) == 2 and rest[0] and rest[1] == "availability":
-        return Zuschnitt(Nachrichtenart.ERREICHBARKEIT, rest[0])
+        return TopicCut(MessageKind.AVAILABILITY, rest[0])
     return unbekannt
 
 
@@ -52,20 +52,20 @@ def abonnements(basis: str) -> list[str]:
     ]
 
 
-def bruecke_erreichbar(nutzlast: bytes) -> bool | None:
+def bridge_reachable(payload: bytes) -> bool | None:
     """Liest die bekannten Text- und Objektformen von `bridge/state` tolerant."""
     try:
-        daten = json.loads(nutzlast)
+        daten = json.loads(payload)
     except (json.JSONDecodeError, UnicodeDecodeError):
         return None
     if isinstance(daten, str):
-        zustand = daten
+        state = daten
     elif isinstance(daten, dict) and isinstance(daten.get("state"), str):
-        zustand = daten["state"]
+        state = daten["state"]
     else:
         return None
-    if zustand == "online":
+    if state == "online":
         return True
-    if zustand == "offline":
+    if state == "offline":
         return False
     return None

@@ -8,7 +8,7 @@ from fastapi.templating import Jinja2Templates
 from thermoctl.db.base import utcnow
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
-def _angemeldeter_benutzer(request: Request) -> dict[str, object]:
+def _logged_in_user(request: Request) -> dict[str, object]:
     """Stellt jeder Vorlage den angemeldeten Benutzer bereit.
 
     Ohne das trug die Kopfleiste auf der Startseite den Namen und ueberall sonst das
@@ -20,11 +20,11 @@ def _angemeldeter_benutzer(request: Request) -> dict[str, object]:
     ermittelt und unter `request.state` hinterlegt. Fehlt er dort, steht schlicht nichts
     da -- die Anmeldeseite hat keinen.
     """
-    return {"kopf_benutzer": getattr(request.state, "benutzer", None)}
+    return {"kopf_benutzer": getattr(request.state, "user", None)}
 
 
 templates = Jinja2Templates(
-    directory=str(TEMPLATES_DIR), context_processors=[_angemeldeter_benutzer]
+    directory=str(TEMPLATES_DIR), context_processors=[_logged_in_user]
 )
 
 # Bootstrap und HTMX liegen als Dateien in diesem Verzeichnis (siehe
@@ -49,7 +49,7 @@ def ist_teilaustausch(request: Request) -> bool:
     return "HX-Request" in request.headers and "HX-Boosted" not in request.headers
 
 
-def alter_in_worten(zeitpunkt: datetime | None, jetzt: datetime | None = None) -> str:
+def age_in_words(moment: datetime | None, now: datetime | None = None) -> str:
     """Wie lange etwas her ist, in Worten — 'vor 3 Minuten' statt eines Zeitstempels.
 
     Fuer eine Heizungssteuerung ist genau das die Frage: Ist dieser Messwert frisch oder
@@ -58,22 +58,22 @@ def alter_in_worten(zeitpunkt: datetime | None, jetzt: datetime | None = None) -
 
     Alle Zeitpunkte sind naive UTC, wie im ganzen Projekt.
     """
-    if zeitpunkt is None:
+    if moment is None:
         return "noch nie"
-    verstrichen = ((jetzt or utcnow()) - zeitpunkt).total_seconds()
-    if verstrichen < 0:
+    elapsed = ((now or utcnow()) - moment).total_seconds()
+    if elapsed < 0:
         # Ein leicht falsch gestellter Sensor darf nicht 'in -3 Minuten' anzeigen.
         return "gerade eben"
-    for grenze, teiler, einzahl, mehrzahl in (
+    for limit, teiler, einzahl, mehrzahl in (
         (60, 1, "Sekunde", "Sekunden"),
         (3600, 60, "Minute", "Minuten"),
         (86400, 3600, "Stunde", "Stunden"),
     ):
-        if verstrichen < grenze:
-            wert = int(verstrichen // teiler)
-            return f"vor {wert} {einzahl if wert == 1 else mehrzahl}"
-    tage = int(verstrichen // 86400)
-    return f"vor {tage} {'Tag' if tage == 1 else 'Tagen'}"
+        if elapsed < limit:
+            value = int(elapsed // teiler)
+            return f"vor {value} {einzahl if value == 1 else mehrzahl}"
+    days = int(elapsed // 86400)
+    return f"vor {days} {'Tag' if days == 1 else 'Tagen'}"
 
 
 # Der Bereich, ueber den Temperaturen als Farbe dargestellt werden. Nicht die Grenzen
@@ -83,30 +83,30 @@ SPUR_KALT = Decimal("15")
 SPUR_WARM = Decimal("23")
 
 
-def waermeanteil(temperatur: Decimal | None) -> float:
+def waermeanteil(temperature: Decimal | None) -> float:
     """0 = kuehlster darstellbarer Sollwert, 1 = waermster. Ausserhalb wird gekappt.
 
     Steht hier und nicht in einer der beiden Ansichten: Startseite und Wochenansicht
     zeigen dieselbe Groesse, und zwei Skalen fuer dieselbe Aussage waeren zwei Skalen,
     die auseinanderlaufen.
     """
-    if temperatur is None:
+    if temperature is None:
         return 0.5
-    anteil = (temperatur - SPUR_KALT) / (SPUR_WARM - SPUR_KALT)
+    anteil = (temperature - SPUR_KALT) / (SPUR_WARM - SPUR_KALT)
     return float(min(max(anteil, Decimal(0)), Decimal(1)))
 
 
-def grad(wert: Decimal | float | None, stellen: int = 1) -> str:
+def grad(value: Decimal | float | None, stellen: int = 1) -> str:
     """Eine Temperatur, wie man sie im Deutschen schreibt: mit Komma.
 
     Nur fuer die Anzeige. In `value`-Attributen von `<input type="number">` hat ein
     Komma nichts zu suchen -- der Browser verwirft den Wert dann still, und das Feld
     steht leer da, ohne dass jemand sagen kann warum.
     """
-    if wert is None:
+    if value is None:
         return "–"
-    return f"{wert:.{stellen}f}".replace(".", ",")
+    return f"{value:.{stellen}f}".replace(".", ",")
 
 
-templates.env.filters["alter"] = alter_in_worten
+templates.env.filters["age"] = age_in_words
 templates.env.filters["grad"] = grad

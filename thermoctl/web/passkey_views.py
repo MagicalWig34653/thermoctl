@@ -17,19 +17,19 @@ from sqlalchemy.orm import Session
 
 from thermoctl.auth.csrf import CSRF_COOKIE_NAME, csrf_token
 from thermoctl.auth.dependencies import aktueller_principal, csrf_schutz, get_session
-from thermoctl.auth.sessions import COOKIE_NAME, sitzung_anlegen, sitzungslebensdauer_s
+from thermoctl.auth.sessions import COOKIE_NAME, create_session, session_lifetime_s
 from thermoctl.config import Settings, get_settings
 from thermoctl.db.base import utcnow
 from thermoctl.db.models.identity import User
 from thermoctl.db.models.passkey import UserPasskey
 from thermoctl.domain.passkey import (
-    PasskeyFehler,
-    alte_challenges_aufraeumen,
-    anmeldung_beginnen,
-    anmeldung_pruefen,
-    passkey_entfernen,
-    registrierung_abschliessen,
-    registrierung_beginnen,
+    PasskeyError,
+    begin_authentication,
+    begin_registration,
+    cleanup_old_challenges,
+    finish_registration,
+    remove_passkey,
+    verify_authentication,
 )
 from thermoctl.domain.principal import Principal
 from thermoctl.web import ist_teilaustausch, templates
@@ -52,20 +52,20 @@ def _ablehnen() -> JSONResponse:
     )
 
 
-@router.post("/passkey/anmeldung/argumente")
-async def anmeldung_argumente(
+@router.post("/passkey/authentication/options")
+async def authentication_options(
     session: Annotated[Session, Depends(get_session)],
 ) -> Response:
     """Liefert die Argumente fuer `navigator.credentials.get()`."""
     settings = get_settings()
     _passkeys_an(settings)
     # Nebenbei aufraeumen: abgelaufene Challenges sind wertlos, sammeln sich aber an.
-    alte_challenges_aufraeumen(session)
-    return JSONResponse(anmeldung_beginnen(session, settings))
+    cleanup_old_challenges(session)
+    return JSONResponse(begin_authentication(session, settings))
 
 
-@router.post("/passkey/anmeldung/pruefen")
-async def anmeldung_abschliessen(
+@router.post("/passkey/authentication/verify")
+async def finish_authentication(
     request: Request,
     session: Annotated[Session, Depends(get_session)],
 ) -> Response:
@@ -73,60 +73,60 @@ async def anmeldung_abschliessen(
     settings = get_settings()
     _passkeys_an(settings)
     try:
-        antwort: dict[str, Any] = await request.json()
+        response: dict[str, Any] = await request.json()
     except Exception:
         return _ablehnen()
-    if not isinstance(antwort, dict):
+    if not isinstance(response, dict):
         return _ablehnen()
 
     try:
-        benutzer = anmeldung_pruefen(session, settings, antwort)
-    except PasskeyFehler:
+        user = verify_authentication(session, settings, response)
+    except PasskeyError:
         # Der Grund steht bereits im Protokoll; nach aussen geht er nicht.
         return _ablehnen()
 
-    benutzer.last_login_at = utcnow()
-    lebensdauer_s = sitzungslebensdauer_s(session)
-    _eintrag, geheimnis = sitzung_anlegen(
-        session, benutzer, lebensdauer_s,
+    user.last_login_at = utcnow()
+    lifetime_s = session_lifetime_s(session)
+    _entry, geheimnis = create_session(
+        session, user, lifetime_s,
         user_agent=request.headers.get("user-agent"),
         ip=request.client.host if request.client is not None else None,
     )
-    ergebnis = JSONResponse({"status": "angemeldet", "weiter": "/"})
-    ergebnis.set_cookie(
-        COOKIE_NAME, geheimnis, max_age=lebensdauer_s,
+    result = JSONResponse({"status": "angemeldet", "weiter": "/"})
+    result.set_cookie(
+        COOKIE_NAME, geheimnis, max_age=lifetime_s,
         httponly=True, samesite="lax", secure=settings.secure_cookies,
     )
-    ergebnis.set_cookie(
+    result.set_cookie(
         CSRF_COOKIE_NAME, csrf_token(geheimnis, settings.secret_key.get_secret_value()),
-        max_age=lebensdauer_s, httponly=False, samesite="lax",
+        max_age=lifetime_s, httponly=False, samesite="lax",
         secure=settings.secure_cookies,
     )
-    return ergebnis
+    return result
 
 
-def _eigener_benutzer(session: Session, principal: Principal) -> User:
-    benutzer = None if principal.user_id is None else session.get(User, principal.user_id)
-    if benutzer is None:
+def _own_user(session: Session, principal: Principal) -> User:
+    user = None if principal.user_id is None else session.get(User, principal.user_id)
+    if user is None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Nicht angemeldet")
-    return benutzer
+    return user
 
 
 @router.get("/passkeys")
-async def passkey_liste(
+async def passkey_list(
     request: Request,
     principal: Annotated[Principal, Depends(aktueller_principal)],
     session: Annotated[Session, Depends(get_session)],
 ) -> Response:
     """Die eigenen Passkeys. Fremde sieht hier niemand — es gibt keinen Weg dorthin."""
-    benutzer = _eigener_benutzer(session, principal)
+    user = _own_user(session, principal)
     return templates.TemplateResponse(
         request,
         "passkeys.html",
         {
             "passkeys": session.scalars(
                 select(UserPasskey)
-                .where(UserPasskey.user_id == benutzer.id)
+                .where(UserPasskey.user_id == user.id)
                 .order_by(UserPasskey.created_at)
             ).all(),
             "moeglich": get_settings().passkeys_moeglich(),
@@ -135,37 +135,37 @@ async def passkey_liste(
     )
 
 
-@router.post("/passkey/registrierung/argumente")
+@router.post("/passkey/registration/options")
 async def registrierung_argumente(
     principal: Annotated[Principal, Depends(aktueller_principal)],
     session: Annotated[Session, Depends(get_session)],
 ) -> Response:
     settings = get_settings()
     _passkeys_an(settings)
-    benutzer = _eigener_benutzer(session, principal)
-    return JSONResponse(registrierung_beginnen(session, settings, benutzer))
+    user = _own_user(session, principal)
+    return JSONResponse(begin_registration(session, settings, user))
 
 
-@router.post("/passkey/registrierung/pruefen")
-async def registrierung_speichern(
+@router.post("/passkey/registration/verify")
+async def save_registration(
     request: Request,
     principal: Annotated[Principal, Depends(aktueller_principal)],
     session: Annotated[Session, Depends(get_session)],
 ) -> Response:
     settings = get_settings()
     _passkeys_an(settings)
-    benutzer = _eigener_benutzer(session, principal)
+    user = _own_user(session, principal)
     try:
-        nutzlast: dict[str, Any] = await request.json()
+        payload: dict[str, Any] = await request.json()
     except Exception:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Unlesbare Antwort") from None
 
-    bezeichnung = str(nutzlast.pop("bezeichnung", "") or "")
+    bezeichnung = str(payload.pop("bezeichnung", "") or "")
     try:
-        eintrag = registrierung_abschliessen(
-            session, settings, benutzer, nutzlast, bezeichnung
+        entry = finish_registration(
+            session, settings, user, payload, bezeichnung
         )
-    except PasskeyFehler as exc:
+    except PasskeyError as exc:
         # Hier darf der Grund nach aussen: Der Aufrufer ist angemeldet und registriert
         # seinen eigenen Schluessel — eine unverstaendliche Ablehnung waere hier nur
         # hinderlich, ohne irgendetwas zu schuetzen.
@@ -173,22 +173,22 @@ async def registrierung_speichern(
             status_code=status.HTTP_400_BAD_REQUEST,
             content={"status": "abgelehnt", "meldung": str(exc)},
         )
-    return JSONResponse({"status": "gespeichert", "bezeichnung": eintrag.bezeichnung})
+    return JSONResponse({"status": "gespeichert", "bezeichnung": entry.bezeichnung})
 
 
-@router.post("/passkeys/{passkey_id}/entfernen")
-async def passkey_loeschen(
+@router.post("/passkeys/{passkey_id}/remove")
+async def delete_passkey(
     passkey_id: int,
     principal: Annotated[Principal, Depends(aktueller_principal)],
     session: Annotated[Session, Depends(get_session)],
 ) -> Response:
     from fastapi.responses import RedirectResponse
 
-    benutzer = _eigener_benutzer(session, principal)
-    eintrag = session.get(UserPasskey, passkey_id)
+    user = _own_user(session, principal)
+    entry = session.get(UserPasskey, passkey_id)
     # Ein fremder Passkey ist nicht auffindbar, nicht verboten — sonst verriete die
     # Antwort, welche Kennungen es gibt.
-    if eintrag is None or eintrag.user_id != benutzer.id:
+    if entry is None or entry.user_id != user.id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Passkey nicht gefunden")
-    passkey_entfernen(session, benutzer, eintrag)
+    remove_passkey(session, user, entry)
     return RedirectResponse("/passkeys", status_code=status.HTTP_303_SEE_OTHER)

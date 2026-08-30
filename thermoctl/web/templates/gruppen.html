@@ -16,20 +16,20 @@ Bedienelement, das beides beantwortet — ob überhaupt, und wenn ja wo. Abgesch
 der ganze Stand; die Domäne bildet die Differenz.
 #}
 
-{% macro rechtezeile(gruppe, recht, alle_zonen, vergeben) %}
-{% set anlagenweit = (recht.code, None) in vergeben %}
+{% macro rechtezeile(group, permission, alle_zonen, vergeben) %}
+{% set anlagenweit = (permission.code, None) in vergeben %}
 <div class="tc-recht">
     <label class="tc-recht-marke">
-        <input class="form-check-input mt-0" type="checkbox" name="recht"
-               value="{{ recht.code }}"{{ " checked" if anlagenweit }}
-               data-recht="{{ recht.code }}" data-gruppe="{{ gruppe.id }}">
+        <input class="form-check-input mt-0" type="checkbox" name="permission"
+               value="{{ permission.code }}"{{ " checked" if anlagenweit }}
+               data-recht="{{ permission.code }}" data-gruppe="{{ group.id }}">
         <span>
-            {{ recht.description }}
-            <span class="t-wert t-leise d-block" style="font-size: .7rem">{{ recht.code }}</span>
+            {{ permission.description }}
+            <span class="t-wert t-leise d-block" style="font-size: .7rem">{{ permission.code }}</span>
         </span>
     </label>
 
-    {% if recht.is_zone_scoped and alle_zonen %}
+    {% if permission.is_zone_scoped and alle_zonen %}
     {#
     Nur zonenbezogene Rechte bekommen Zonenhaken. Ein anlagenweites Recht auf eine Zone
     zu vergeben, wies die Domäne schon immer ab — die Oberfläche bot es trotzdem an, und
@@ -37,12 +37,12 @@ der ganze Stand; die Domäne bildet die Differenz.
     abgelehnte.
     #}
     <div class="tc-recht-zonen{{ ' tc-verdeckt' if anlagenweit }}"
-         data-zonen-fuer="{{ recht.code }}-{{ gruppe.id }}">
+         data-zonen-fuer="{{ permission.code }}-{{ group.id }}">
         {% for zone in alle_zonen %}
         <label class="tc-chip tc-chip-still">
-            <input class="form-check-input mt-0 me-1" type="checkbox" name="recht"
-                   value="{{ recht.code }}:{{ zone.id }}"
-                   {{ " checked" if (recht.code, zone.id) in vergeben }}>
+            <input class="form-check-input mt-0 me-1" type="checkbox" name="permission"
+                   value="{{ permission.code }}:{{ zone.id }}"
+                   {{ " checked" if (permission.code, zone.id) in vergeben }}>
             {{ zone.display_name }}
         </label>
         {% endfor %}
@@ -58,24 +58,24 @@ der ganze Stand; die Domäne bildet die Differenz.
         Rechte hängen an Gruppen, nicht an Personen. Wer in mehreren Gruppen ist, darf
         alles, was eine davon erlaubt.
     </p>
-    {{ fehlerhinweis(hinweis) }}
+    {{ fehlerhinweis(hint) }}
 
-    {% for gruppe in gruppen %}
+    {% for group in groups %}
     <article class="tc-tafel p-4 mb-3">
         <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-1">
             <div>
                 <h2 class="mb-0">
-                    {{ gruppe.name }}
-                    {% if gruppe.is_builtin %}
+                    {{ group.name }}
+                    {% if group.is_builtin %}
                     <span class="tc-chip tc-chip-still align-middle">eingebaut</span>
                     {% endif %}
                 </h2>
-                {% if gruppe.description %}
-                <p class="t-leise mb-0">{{ gruppe.description }}</p>
+                {% if group.description %}
+                <p class="t-leise mb-0">{{ group.description }}</p>
                 {% endif %}
             </div>
-            {% if not gruppe.is_builtin %}
-            <form method="post" action="/gruppen/{{ gruppe.id }}/loeschen">
+            {% if not group.is_builtin %}
+            <form method="post" action="/groups/{{ group.id }}/delete">
                 <button type="submit" class="btn btn-sm btn-outline-danger">Gruppe löschen</button>
             </form>
             {% endif %}
@@ -88,8 +88,8 @@ der ganze Stand; die Domäne bildet die Differenz.
         Es braucht kein JavaScript und laesst sich mit der Tastatur bedienen.
         #}
         <p class="t-leise small mb-0 mt-2">
-            {% if zusammenfassung[gruppe.id] %}
-            Darf: {{ zusammenfassung[gruppe.id] | join(" · ") }}
+            {% if zusammenfassung[group.id] %}
+            Darf: {{ zusammenfassung[group.id] | join(" · ") }}
             {% else %}
             Darf noch nichts.
             {% endif %}
@@ -97,21 +97,21 @@ der ganze Stand; die Domäne bildet die Differenz.
 
         <details class="tc-rechteeditor mt-3">
             <summary>Rechte bearbeiten</summary>
-        <form method="post" action="/gruppen/{{ gruppe.id }}/rechte">
-            {% for name, hinweis_text, rechte in bereiche %}
+        <form method="post" action="/groups/{{ group.id }}/permissions">
+            {% for name, hint_text, permissions in bereiche %}
             <fieldset class="mt-4">
                 <legend class="t-marke mb-1">{{ name }}</legend>
-                <p class="t-leise small mb-2">{{ hinweis_text }}</p>
-                {% for recht in rechte %}
-                {{ rechtezeile(gruppe, recht, alle_zonen, vergeben[gruppe.id]) }}
+                <p class="t-leise small mb-2">{{ hint_text }}</p>
+                {% for permission in permissions %}
+                {{ rechtezeile(group, permission, alle_zonen, vergeben[group.id]) }}
                 {% endfor %}
             </fieldset>
             {% endfor %}
             <div class="d-flex align-items-center gap-3 mt-4 pt-3 border-top">
                 <button type="submit" class="btn btn-primary">Rechte speichern</button>
                 <span class="t-leise small">
-                    {% set anzahl = vergeben[gruppe.id] | length %}
-                    {% if anzahl %}{{ anzahl }} {{ "Recht" if anzahl == 1 else "Rechte" }} vergeben
+                    {% set count = vergeben[group.id] | length %}
+                    {% if count %}{{ count }} {{ "Recht" if count == 1 else "Rechte" }} vergeben
                     {% else %}Diese Gruppe darf noch nichts.{% endif %}
                 </span>
             </div>
@@ -122,10 +122,10 @@ der ganze Stand; die Domäne bildet die Differenz.
 
     <article class="tc-tafel p-4">
         <h2 class="mb-3">Gruppe anlegen</h2>
-        <form method="post" action="/gruppen">
-            {{ textfeld("name", "Name", werte.get("name", ""), pflicht=true,
-                        fehler=fehler.get("name", "")) }}
-            {{ textfeld("description", "Beschreibung", werte.get("description", ""),
+        <form method="post" action="/groups">
+            {{ textfeld("name", "Name", values.get("name", ""), pflicht=true,
+                        errors=errors.get("name", "")) }}
+            {{ textfeld("description", "Beschreibung", values.get("description", ""),
                         hilfe="Wofür ist diese Gruppe gedacht?") }}
             <button type="submit" class="btn btn-primary">Anlegen</button>
         </form>
