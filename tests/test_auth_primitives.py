@@ -6,7 +6,7 @@ from thermoctl.auth.passwords import (
     hash_password,
     verify_password,
 )
-from thermoctl.auth.secrets import hash_secret, neues_token, new_secret
+from thermoctl.auth.secrets import hash_secret, new_secret, new_token
 
 
 def test_hash_is_not_plaintext() -> None:
@@ -48,7 +48,7 @@ def test_secret_hash_is_stable_and_sixty_four_characters() -> None:
 
 
 def test_token_has_the_expected_shape() -> None:
-    plaintext, prefix, hash_value = neues_token()
+    plaintext, prefix, hash_value = new_token()
     assert plaintext.startswith("tctl_")
     assert plaintext.split("_")[1] == prefix
     assert hash_value == hash_secret(plaintext.split("_", 2)[2])
@@ -62,7 +62,7 @@ def test_stored_hash_contains_no_plaintext() -> None:
     produced it -- it would also pass if that function merely padded the secret
     instead of hashing it. Hence the direct check here.
     """
-    plaintext, _prefix, hash_value = neues_token()
+    plaintext, _prefix, hash_value = new_token()
     secret = plaintext.split("_", 2)[2]
     assert secret not in hash_value
     assert plaintext not in hash_value

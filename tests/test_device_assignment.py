@@ -70,10 +70,10 @@ def test_a_swap_keeps_the_zone_configuration_and_takes_over_every_role(
             ),
         ]
     )
-    altes = create_device(session, "alt")
+    old = create_device(session, "alt")
     neues = create_device(session, "neu")
-    _assign(session, zone.id, altes.id, "actuator")
-    _assign(session, zone.id, altes.id, "controller")
+    _assign(session, zone.id, old.id, "actuator")
+    _assign(session, zone.id, old.id, "controller")
     session.flush()
     vorher_setpoints = list(
         session.execute(
@@ -103,7 +103,7 @@ def test_a_swap_keeps_the_zone_configuration_and_takes_over_every_role(
         zone.window_resume_delay_seconds,
     )
 
-    swap_device(session, zone, altes, neues, akteur_id=None)
+    swap_device(session, zone, old, neues, actor_id=None)
 
     assert list(
         session.execute(
@@ -142,7 +142,7 @@ def test_a_swap_keeps_the_zone_configuration_and_takes_over_every_role(
     assert new_rolen == {role(session, "actuator").id, role(session, "controller").id}
     assert session.scalar(
         select(ZoneDevice).where(
-            ZoneDevice.zone_id == zone.id, ZoneDevice.device_id == altes.id
+            ZoneDevice.zone_id == zone.id, ZoneDevice.device_id == old.id
         )
     ) is None
 
@@ -150,14 +150,14 @@ def test_a_swap_keeps_the_zone_configuration_and_takes_over_every_role(
 def test_a_swap_leaves_the_measurement_history_with_the_old_device(session: Session) -> None:
     source(session)
     zone = create_zone(session, "bad")
-    altes = create_device(session, "sensor-alt")
+    old = create_device(session, "sensor-alt")
     neues = create_device(session, "sensor-neu")
-    zone.temperature_source_device_id = altes.id
+    zone.temperature_source_device_id = old.id
     capability = DeviceCapability(code="temperature", label="Temperatur")
     session.add(capability)
     session.flush()
     measurement = Measurement(
-        device_id=altes.id,
+        device_id=old.id,
         capability_id=capability.id,
         value_numeric=Decimal("19.750"),
         measured_at=datetime(2026, 8, 29, 10, 0),
@@ -166,10 +166,10 @@ def test_a_swap_leaves_the_measurement_history_with_the_old_device(session: Sess
     session.add(measurement)
     session.flush()
 
-    swap_device(session, zone, altes, neues, akteur_id=None)
+    swap_device(session, zone, old, neues, actor_id=None)
 
     assert zone.temperature_source_device_id == neues.id
-    assert session.get(Measurement, measurement.id).device_id == altes.id
+    assert session.get(Measurement, measurement.id).device_id == old.id
     assert session.scalar(
         select(Measurement).where(Measurement.device_id == neues.id)
     ) is None
@@ -179,16 +179,16 @@ def test_a_swap_in_one_zone_leaves_a_second_zone_untouched(session: Session) -> 
     source(session)
     zone_a = create_zone(session, "a")
     zone_b = create_zone(session, "b")
-    altes = create_device(session, "alt-gemeinsam")
+    old = create_device(session, "alt-gemeinsam")
     neues = create_device(session, "neu-a")
-    _assign(session, zone_a.id, altes.id, "window_contact")
-    _assign(session, zone_b.id, altes.id, "window_contact")
+    _assign(session, zone_a.id, old.id, "window_contact")
+    _assign(session, zone_b.id, old.id, "window_contact")
 
-    swap_device(session, zone_a, altes, neues, akteur_id=None)
+    swap_device(session, zone_a, old, neues, actor_id=None)
 
     assert session.scalar(
         select(ZoneDevice).where(
-            ZoneDevice.zone_id == zone_b.id, ZoneDevice.device_id == altes.id
+            ZoneDevice.zone_id == zone_b.id, ZoneDevice.device_id == old.id
         )
     ) is not None
     assert session.scalar(
@@ -201,11 +201,11 @@ def test_a_swap_in_one_zone_leaves_a_second_zone_untouched(session: Session) -> 
 def test_tausch_schreibt_audit(session: Session) -> None:
     source(session)
     zone = create_zone(session, "audit-zone")
-    altes = create_device(session, "audit-alt")
+    old = create_device(session, "audit-alt")
     neues = create_device(session, "audit-neu")
-    _assign(session, zone.id, altes.id, "actuator")
+    _assign(session, zone.id, old.id, "actuator")
 
-    swap_device(session, zone, altes, neues, akteur_id=None)
+    swap_device(session, zone, old, neues, actor_id=None)
 
     entry = session.scalar(
         select(AuditEvent).where(
@@ -257,15 +257,15 @@ def test_the_writing_routes_and_their_permissions(client_als, session: Session) 
     source(session)
     eigene = create_zone(session, "eigene")
     fremde = create_zone(session, "fremde")
-    altes = create_device(session, "weg")
+    old = create_device(session, "weg")
     neues = create_device(session, "hin")
     client = client_als([("device.manage", eigene.id)])
-    kopf = _csrf(client)
+    head = _csrf(client)
 
     zuordnen = client.post(
         f"/zones/{eigene.id}/devices/assign",
-        data={"device_id": altes.id, "role_id": role(session, "actuator").id},
-        headers=kopf,
+        data={"device_id": old.id, "role_id": role(session, "actuator").id},
+        headers=head,
         follow_redirects=False,
     )
     assert zuordnen.status_code == 303
@@ -276,17 +276,17 @@ def test_the_writing_routes_and_their_permissions(client_als, session: Session) 
 
     temperature_source = client.post(
         f"/zones/{eigene.id}/devices/source",
-        data={"device_id": altes.id},
-        headers=kopf,
+        data={"device_id": old.id},
+        headers=head,
         follow_redirects=False,
     )
     assert temperature_source.status_code == 303
-    assert eigene.temperature_source_device_id == altes.id
+    assert eigene.temperature_source_device_id == old.id
 
     swap = client.post(
         f"/zones/{eigene.id}/devices/swap",
-        data={"old_device_id": altes.id, "new_device_id": neues.id},
-        headers=kopf,
+        data={"old_device_id": old.id, "new_device_id": neues.id},
+        headers=head,
         follow_redirects=False,
     )
     assert swap.status_code == 303
@@ -302,7 +302,7 @@ def test_the_writing_routes_and_their_permissions(client_als, session: Session) 
     loesen = client.post(
         f"/zones/{eigene.id}/devices/detach",
         data={"assignment_id": str(new_assignment.id)},
-        headers=kopf,
+        headers=head,
         follow_redirects=False,
     )
     assert loesen.status_code == 303
@@ -312,7 +312,7 @@ def test_the_writing_routes_and_their_permissions(client_als, session: Session) 
     assert client.post(
         f"/zones/{fremde.id}/devices/source",
         data={"device_id": neues.id},
-        headers=kopf,
+        headers=head,
     ).status_code == 404
 
 
@@ -323,7 +323,7 @@ def test_invalid_input_when_assigning(client_als, session: Session) -> None:
     zone = create_zone(session, "zone-fehlerwege")
     device = create_device(session, "vorhanden")
     client = client_als([("device.manage", None), ("device.read", None)])
-    kopf = _csrf(client)
+    head = _csrf(client)
 
     # Unknown device, unknown role, no data at all.
     for data in (
@@ -332,7 +332,7 @@ def test_invalid_input_when_assigning(client_als, session: Session) -> None:
         {"device_id": "", "role_id": ""},
         {"device_id": "kein Geraet", "role_id": "1"},
     ):
-        response = client.post(f"/zones/{zone.id}/devices/assign", data=data, headers=kopf)
+        response = client.post(f"/zones/{zone.id}/devices/assign", data=data, headers=head)
         assert response.status_code == 200, data
         assert session.scalar(
             select(ZoneDevice).where(ZoneDevice.zone_id == zone.id)
@@ -342,18 +342,18 @@ def test_invalid_input_when_assigning(client_als, session: Session) -> None:
 def test_the_temperature_source_can_be_detached_again(client_als, session: Session) -> None:
     """An empty field means 'no measurement source' — the zone then counts as having no source."""
     source(session)
-    zone = create_zone(session, "zone-messquelle-weg")
+    zone = create_zone(session, "zone-source-removed")
     device = create_device(session, "quelle-weg")
     client = client_als([("device.manage", None), ("device.read", None)])
-    kopf = _csrf(client)
+    head = _csrf(client)
     client.post(
         f"/zones/{zone.id}/devices/source", data={"device_id": str(device.id)},
-        headers=kopf,
+        headers=head,
     )
     assert zone.temperature_source_device_id == device.id
     response = client.post(
         f"/zones/{zone.id}/devices/source", data={"device_id": ""},
-        headers=kopf, follow_redirects=False,
+        headers=head, follow_redirects=False,
     )
     assert response.status_code == 303
     assert zone.temperature_source_device_id is None
@@ -361,7 +361,7 @@ def test_the_temperature_source_can_be_detached_again(client_als, session: Sessi
 
 def test_an_unknown_temperature_source_has_no_effect(client_als, session: Session) -> None:
     source(session)
-    zone = create_zone(session, "zone-messquelle-unbekannt")
+    zone = create_zone(session, "zone-source-unknown")
     client = client_als([("device.manage", None), ("device.read", None)])
     response = client.post(
         f"/zones/{zone.id}/devices/source", data={"device_id": "999999"},
@@ -380,14 +380,14 @@ def test_a_swap_with_nonsensical_devices_reports_understandably(
     eines = create_device(session, "eines")
     anderes = create_device(session, "anderes")
     client = client_als([("device.manage", None), ("device.read", None)])
-    kopf = _csrf(client)
+    head = _csrf(client)
 
     for data in (
         {"old_device_id": str(eines.id), "new_device_id": str(eines.id)},
         {"old_device_id": str(eines.id), "new_device_id": "999999"},
         {"old_device_id": str(eines.id), "new_device_id": str(anderes.id)},
     ):
-        response = client.post(f"/zones/{zone.id}/devices/swap", data=data, headers=kopf)
+        response = client.post(f"/zones/{zone.id}/devices/swap", data=data, headers=head)
         assert response.status_code == 200, data
         assert session.scalar(
             select(ZoneDevice).where(ZoneDevice.zone_id == zone.id)
@@ -430,16 +430,16 @@ def test_detaching_a_foreign_assignment_is_refused_in_the_domain(
 
     source(session)
     eine = create_zone(session, "zone-loesen-a")
-    andere = create_zone(session, "zone-loesen-b")
+    others = create_zone(session, "zone-loesen-b")
     device = create_device(session, "geraet-loesen")
     assignment = ZoneDevice(
-        zone_id=andere.id, device_id=device.id,
+        zone_id=others.id, device_id=device.id,
         device_role_id=role(session, "actuator").id,
     )
     session.add(assignment)
     session.flush()
     with pytest.raises(ValueError, match="gehört nicht zu dieser Zone"):
-        detach_device(session, eine, assignment, akteur_id=None)
+        detach_device(session, eine, assignment, actor_id=None)
     assert session.get(ZoneDevice, assignment.id) is not None
 
 
@@ -454,7 +454,7 @@ def test_drop_targets_only_with_device_manage(client_als, session: Session) -> N
     darf = client_als([("device.read", None), ("device.manage", zone.id), ("zone.read", None)])
     page = darf.get(f"/zones/{zone.id}/devices")
     assert page.status_code == 200
-    assert 'data-target="messquelle"' in page.text
+    assert 'data-target="temperature_source"' in page.text
     assert "tc-draggable" in page.text
 
     read_only = client_als([("device.read", None), ("zone.read", None)])
@@ -504,7 +504,7 @@ def test_a_sensor_cannot_be_assigned_as_an_actuator(session: Session) -> None:
     sensor = _with_capability(session, "nur-thermometer", "temperature", "battery")
     with pytest.raises(CapabilityMissing, match="Schaltausgang"):
         assign_device(
-            session, zone, sensor, role(session, "actuator"), akteur_id=None
+            session, zone, sensor, role(session, "actuator"), actor_id=None
         )
 
 
@@ -516,7 +516,7 @@ def test_a_valve_can_be_assigned_as_an_actuator(session: Session) -> None:
     zone = create_zone(session, "ventilzone")
     ventil = _with_capability(session, "echtes-ventil", "switch")
     assignment = assign_device(
-        session, zone, ventil, role(session, "actuator"), akteur_id=None
+        session, zone, ventil, role(session, "actuator"), actor_id=None
     )
     assert assignment.device_id == ventil.id
 
@@ -529,16 +529,16 @@ def test_a_device_without_known_capabilities_is_let_through(session: Session) ->
 
     zone = create_zone(session, "unbekanntzone")
     schweigsam = create_device(session, "sagt-nichts-ueber-sich")
-    assign_device(session, zone, schweigsam, role(session, "actuator"), akteur_id=None)
+    assign_device(session, zone, schweigsam, role(session, "actuator"), actor_id=None)
 
 
 def test_a_temperature_source_must_measure_temperature(session: Session) -> None:
     from thermoctl.domain.device_assignment import CapabilityMissing, set_temperature_source
 
-    zone = create_zone(session, "messquellenzone")
-    ventil = _with_capability(session, "ventil-als-messquelle", "switch")
+    zone = create_zone(session, "temperature-source-zone")
+    ventil = _with_capability(session, "valve-as-temperature-source", "switch")
     with pytest.raises(CapabilityMissing, match="Temperatur"):
-        set_temperature_source(session, zone, ventil, akteur_id=None)
+        set_temperature_source(session, zone, ventil, actor_id=None)
 
 
 def test_a_window_contact_must_report_a_contact(session: Session) -> None:
@@ -548,7 +548,7 @@ def test_a_window_contact_must_report_a_contact(session: Session) -> None:
     ventil = _with_capability(session, "ventil-als-kontakt", "switch")
     with pytest.raises(CapabilityMissing, match="Kontakt"):
         assign_device(
-            session, zone, ventil, role(session, "window_contact"), akteur_id=None
+            session, zone, ventil, role(session, "window_contact"), actor_id=None
         )
 
 
@@ -564,10 +564,10 @@ def test_a_swap_checks_every_place_that_transfers(session: Session) -> None:
     zone = create_zone(session, "tauschzone")
     ventil = _with_capability(session, "altes-ventil", "switch")
     sensor = _with_capability(session, "neuer-sensor", "temperature")
-    assign_device(session, zone, ventil, role(session, "actuator"), akteur_id=None)
+    assign_device(session, zone, ventil, role(session, "actuator"), actor_id=None)
 
     with pytest.raises(CapabilityMissing, match="Schaltausgang"):
-        swap_device(session, zone, ventil, sensor, akteur_id=None)
+        swap_device(session, zone, ventil, sensor, actor_id=None)
 
 
 def test_a_refused_swap_leaves_nothing_half_done(session: Session) -> None:
@@ -583,11 +583,11 @@ def test_a_refused_swap_leaves_nothing_half_done(session: Session) -> None:
     zone = create_zone(session, "halbzone")
     kombi = _with_capability(session, "kann-beides", "temperature", "switch")
     nur_sensor = _with_capability(session, "kann-nur-messen", "temperature")
-    set_temperature_source(session, zone, kombi, akteur_id=None)
-    assign_device(session, zone, kombi, role(session, "actuator"), akteur_id=None)
+    set_temperature_source(session, zone, kombi, actor_id=None)
+    assign_device(session, zone, kombi, role(session, "actuator"), actor_id=None)
 
     with pytest.raises(CapabilityMissing):
-        swap_device(session, zone, kombi, nur_sensor, akteur_id=None)
+        swap_device(session, zone, kombi, nur_sensor, actor_id=None)
     session.expire_all()
     assert zone.temperature_source_device_id == kombi.id
 
@@ -626,8 +626,8 @@ def test_zugeordnete_karten_tragen_ihre_kennung(client_als, session: Session) ->
     )
     page = client.get(f"/zones/{zone.id}/devices")
     assert f'data-assignment="{assignment.id}"' in page.text
-    assert 'data-source="ja"' in page.text
-    assert 'data-target="entfernen"' in page.text
+    assert 'data-source="yes"' in page.text
+    assert 'data-target="detach"' in page.text
 
 
 def test_without_device_manage_nothing_can_be_dragged_out(client_als, session: Session) -> None:
@@ -647,7 +647,7 @@ def test_without_device_manage_nothing_can_be_dragged_out(client_als, session: S
         f"/zones/{zone.id}/devices"
     )
     assert "tc-draggable" not in page.text
-    assert 'data-target="entfernen"' not in page.text
+    assert 'data-target="detach"' not in page.text
 
 
 def test_the_plant_diagram_carries_no_drag_handles(client_als, session: Session) -> None:

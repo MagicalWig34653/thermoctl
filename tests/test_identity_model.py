@@ -15,15 +15,15 @@ def test_a_username_is_unique(session: Session) -> None:
 
 
 def test_a_user_can_be_in_several_groups(session: Session) -> None:
-    nutzer = User(username="a", display_name="A", password_hash="x")
-    session.add(nutzer)
+    user_record = User(username="a", display_name="A", password_hash="x")
+    session.add(user_record)
     for name in ("Verwaltung", "Bedienung"):
         group = AccessGroup(name=name)
         session.add(group)
         session.flush()
-        session.add(UserAccessGroup(user_id=nutzer.id, access_group_id=group.id))
+        session.add(UserAccessGroup(user_id=user_record.id, access_group_id=group.id))
     session.flush()
-    assert session.query(UserAccessGroup).filter_by(user_id=nutzer.id).count() == 2
+    assert session.query(UserAccessGroup).filter_by(user_id=user_record.id).count() == 2
 
 
 def test_a_permission_installation_wide_and_zone_scoped_side_by_side(session: Session) -> None:

@@ -6,7 +6,7 @@ from typing import Any
 import pytest
 
 from thermoctl.config import Settings
-from thermoctl.integrations.mqtt import client as client_modul
+from thermoctl.integrations.mqtt import client as client_module
 from thermoctl.integrations.mqtt.client import MqttClient
 
 
@@ -76,7 +76,7 @@ def mqtt_settings() -> Settings:
 def falscher_client(monkeypatch: pytest.MonkeyPatch) -> None:
     FalscherClient.instanzen = []
     FalscherClient.stroeme = []
-    monkeypatch.setattr(client_modul.aiomqtt, "Client", FalscherClient)
+    monkeypatch.setattr(client_module.aiomqtt, "Client", FalscherClient)
 
 
 @pytest.mark.anyio
@@ -143,7 +143,7 @@ async def test_verbindungsabbruch_verwendet_wachsenden_abstand(
         if len(waited) == 3:
             raise Schleifenende
 
-    monkeypatch.setattr(client_modul, "schlafen", wait)
+    monkeypatch.setattr(client_module, "sleep", wait)
 
     async def handler(_topic: str, _payload: bytes) -> None:
         return None
@@ -171,8 +171,8 @@ async def test_tls_beruecksichtigt_ca_zertifikat(
     async def abbrechen(_seconds: float) -> None:
         raise Schleifenende
 
-    monkeypatch.setattr(client_modul.ssl, "create_default_context", context_erzeugen)
-    monkeypatch.setattr(client_modul, "schlafen", abbrechen)
+    monkeypatch.setattr(client_module.ssl, "create_default_context", context_erzeugen)
+    monkeypatch.setattr(client_module, "sleep", abbrechen)
     FalscherClient.stroeme = [MessageStream([], ConnectionError("getrennt"))]
 
     with pytest.raises(Schleifenende):
@@ -230,7 +230,7 @@ async def test_the_password_shows_up_in_no_log_line(
     async def abbrechen(_seconds: float) -> None:
         raise Schleifenende
 
-    monkeypatch.setattr(client_modul, "schlafen", abbrechen)
+    monkeypatch.setattr(client_module, "sleep", abbrechen)
     caplog.set_level(logging.INFO)
     with pytest.raises(Schleifenende):
         await MqttClient(mqtt_settings, _leerer_handler).run()
@@ -256,7 +256,7 @@ async def test_the_backoff_falls_back_after_a_successful_connection(
         if len(waited) == 4:
             raise Schleifenende
 
-    monkeypatch.setattr(client_modul, "schlafen", mitschreiben)
+    monkeypatch.setattr(client_module, "sleep", mitschreiben)
     # Three failed attempts in a row (1, 2, 4 s), then a connection that delivers
     # messages and only afterwards drops -- the fourth interval must be 1 s again.
     FalscherClient.stroeme = [
@@ -292,7 +292,7 @@ async def test_no_publish_even_when_the_caller_asks_for_it(
     have been built with `schalten_erlaubt=True`.
     """
     FalscherClient.instanzen.clear()
-    monkeypatch.setattr(client_modul.aiomqtt, "Client", FalscherClient)
+    monkeypatch.setattr(client_module.aiomqtt, "Client", FalscherClient)
     kunde = MqttClient(mqtt_settings, _kein_handler)
     falscher = FalscherClient()
     kunde._client = falscher  # type: ignore[assignment]
@@ -316,7 +316,7 @@ async def test_disabled_mqtt_opens_no_connection(
     try to connect anywhere."""
     mqtt_settings.mqtt_enabled = False
     FalscherClient.instanzen.clear()
-    monkeypatch.setattr(client_modul.aiomqtt, "Client", FalscherClient)
+    monkeypatch.setattr(client_module.aiomqtt, "Client", FalscherClient)
 
     await MqttClient(mqtt_settings, _leerer_handler).run()
 
@@ -357,7 +357,7 @@ async def test_nothing_is_published_without_a_connection(mqtt_settings: Settings
 
 
 @pytest.mark.anyio
-async def test_schlafen_wartet_wirklich(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_sleep_really_waits(monkeypatch: pytest.MonkeyPatch) -> None:
     """The function exists so tests can replace it -- nobody else checks that it
     really waits in production."""
     waited: list[float] = []
@@ -365,8 +365,8 @@ async def test_schlafen_wartet_wirklich(monkeypatch: pytest.MonkeyPatch) -> None
     async def gefaelscht(seconds: float) -> None:
         waited.append(seconds)
 
-    monkeypatch.setattr(client_modul.asyncio, "sleep", gefaelscht)
-    await client_modul.schlafen(2.5)
+    monkeypatch.setattr(client_module.asyncio, "sleep", gefaelscht)
+    await client_module.sleep(2.5)
     assert waited == [2.5]
 
 

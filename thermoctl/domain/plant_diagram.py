@@ -32,13 +32,13 @@ from thermoctl.domain.device_assignment import REQUIRED_CAPABILITY, TEMPERATURE_
 class DevicePicture:
     id: int
     name: str
-    modell: str | None
+    model: str | None
     capabilities: list[str]
     active: bool
     # Only set when this device demonstrably cannot do what is required of it at this
     # slot. The check at assignment time prevents new such cases; the old ones already
     # sit in the database and would otherwise never stand out.
-    ungeeignet: str | None = None
+    unsuitable: str | None = None
     # The id of the `zone_device` row through which this device hangs at this slot --
     # None for the temperature source (that is a column on the zone, not a row) and
     # for devices without a zone. The interface needs it to be able to pull a device
@@ -56,17 +56,17 @@ class ZonePicture:
     controllers: list[DevicePicture] = field(default_factory=list)
 
     @property
-    def maengel(self) -> list[str]:
+    def defects(self) -> list[str]:
         """What is stopping this zone from controlling anything. Empty means: fully wired."""
-        fehlt = []
+        missing = []
         if self.temperature_source is None:
-            fehlt.append("keine Messquelle — ohne Ist-Wert entscheidet die Regelung nichts")
+            missing.append("keine Messquelle — ohne Ist-Wert entscheidet die Regelung nichts")
         if not self.actuators:
-            fehlt.append("kein Aktor — die Entscheidung erreicht kein Ventil")
+            missing.append("kein Aktor — die Entscheidung erreicht kein Ventil")
         for device in [self.temperature_source, *self.window_contacts, *self.actuators]:
-            if device is not None and device.ungeeignet:
-                fehlt.append(device.ungeeignet)
-        return fehlt
+            if device is not None and device.unsuitable:
+                missing.append(device.unsuitable)
+        return missing
 
 
 @dataclass(frozen=True)
@@ -85,20 +85,20 @@ def _picture(
     # `None` means "no requirement" -- that is how devices without a zone are shown,
     # since nothing is required of them. Without this distinction, an ownerless valve
     # would have been flagged as "misst keine Temperatur".
-    verlangt = REQUIRED_CAPABILITY.get(slot or "")
-    ungeeignet = None
-    kann = codes.get(device.id, set())
-    if verlangt is not None and kann and verlangt[0] not in kann:
-        ungeeignet = (
-            f"'{device.display_name}' {verlangt[1]} — diese Zuordnung wirkt nicht"
+    required = REQUIRED_CAPABILITY.get(slot or "")
+    unsuitable = None
+    can_do = codes.get(device.id, set())
+    if required is not None and can_do and required[0] not in can_do:
+        unsuitable = (
+            f"'{device.display_name}' {required[1]} — diese Zuordnung wirkt nicht"
         )
     return DevicePicture(
         id=device.id,
         name=device.display_name,
-        modell=device.model,
+        model=device.model,
         capabilities=sorted(capabilities.get(device.id, [])),
         active=device.is_enabled,
-        ungeeignet=ungeeignet,
+        unsuitable=unsuitable,
         assignment_id=assignment_id,
     )
 
@@ -128,7 +128,7 @@ def plant_diagram(session: Session, zones: list[Zone]) -> PlantDiagram:
     by_zone: dict[int, dict[str, list[DevicePicture]]] = {
         zone.id: {"actuator": [], "window_contact": [], "controller": []} for zone in zones
     }
-    zugeordnet: set[int] = set()
+    assigned: set[int] = set()
     for assignment in session.scalars(
         select(ZoneDevice)
         .where(ZoneDevice.zone_id.in_([zone.id for zone in zones]))
@@ -141,13 +141,13 @@ def plant_diagram(session: Session, zones: list[Zone]) -> PlantDiagram:
         by_zone[assignment.zone_id][role].append(
             _picture(device, capabilities, codes, role, assignment.id)
         )
-        zugeordnet.add(device.id)
+        assigned.add(device.id)
 
     pictures = []
     for zone in zones:
         source = devices.get(zone.temperature_source_device_id or 0)
         if source is not None:
-            zugeordnet.add(source.id)
+            assigned.add(source.id)
         pictures.append(
             ZonePicture(
                 zone_id=zone.id,
@@ -167,6 +167,6 @@ def plant_diagram(session: Session, zones: list[Zone]) -> PlantDiagram:
     without_zone = [
         _picture(device, capabilities, codes)
         for device in sorted(devices.values(), key=lambda g: g.display_name)
-        if device.id not in zugeordnet
+        if device.id not in assigned
     ]
     return PlantDiagram(zones=pictures, without_zone=without_zone)

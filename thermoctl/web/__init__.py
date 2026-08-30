@@ -33,7 +33,7 @@ templates = Jinja2Templates(
 STATIC_DIR = Path(__file__).parent / "static"
 
 
-def ist_teilaustausch(request: Request) -> bool:
+def is_partial_swap(request: Request) -> bool:
     """Whether htmx is only loading a piece of the page -- and not fetching a whole page.
 
     `HX-Request` alone is **not** enough for this: ever since `hx-boost="true"` has
@@ -64,14 +64,14 @@ def age_in_words(moment: datetime | None, now: datetime | None = None) -> str:
     if elapsed < 0:
         # A slightly misconfigured sensor must not display 'in -3 minutes'.
         return "gerade eben"
-    for limit, teiler, einzahl, mehrzahl in (
+    for limit, divisor, singular, plural in (
         (60, 1, "Sekunde", "Sekunden"),
         (3600, 60, "Minute", "Minuten"),
         (86400, 3600, "Stunde", "Stunden"),
     ):
         if elapsed < limit:
-            value = int(elapsed // teiler)
-            return f"vor {value} {einzahl if value == 1 else mehrzahl}"
+            value = int(elapsed // divisor)
+            return f"vor {value} {singular if value == 1 else plural}"
     days = int(elapsed // 86400)
     return f"vor {days} {'Tag' if days == 1 else 'Tagen'}"
 
@@ -83,7 +83,7 @@ SPUR_KALT = Decimal("15")
 SPUR_WARM = Decimal("23")
 
 
-def waermeanteil(temperature: Decimal | None) -> float:
+def warmth_fraction(temperature: Decimal | None) -> float:
     """0 = coldest representable setpoint, 1 = warmest. Clamped outside that range.
 
     Lives here and not in either of the two views: the start page and the week view
@@ -92,11 +92,11 @@ def waermeanteil(temperature: Decimal | None) -> float:
     """
     if temperature is None:
         return 0.5
-    anteil = (temperature - SPUR_KALT) / (SPUR_WARM - SPUR_KALT)
-    return float(min(max(anteil, Decimal(0)), Decimal(1)))
+    fraction = (temperature - SPUR_KALT) / (SPUR_WARM - SPUR_KALT)
+    return float(min(max(fraction, Decimal(0)), Decimal(1)))
 
 
-def grad(value: Decimal | float | None, stellen: int = 1) -> str:
+def grad(value: Decimal | float | None, digits: int = 1) -> str:
     """A temperature written the way it's done in German: with a comma.
 
     Display only. A comma has no business in `value` attributes of
@@ -105,7 +105,7 @@ def grad(value: Decimal | float | None, stellen: int = 1) -> str:
     """
     if value is None:
         return "–"
-    return f"{value:.{stellen}f}".replace(".", ",")
+    return f"{value:.{digits}f}".replace(".", ",")
 
 
 templates.env.filters["age"] = age_in_words

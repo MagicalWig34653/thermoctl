@@ -1,243 +1,240 @@
 /*
- * Ziehen in der Wochenansicht des Zeitplans.
+ * Dragging in the schedule's week view.
  *
- * Das Skript ist eine zweite Bedienart derselben Aenderung, keine eigene Schnittstelle:
- * Beim Loslassen schickt es dasselbe Formular ab, das ein Benutzer ohne JavaScript von
- * Hand ausfuellen wuerde. Damit gilt derselbe CSRF-Schutz, dieselbe Rechtepruefung und
- * dieselbe Fehlerdarstellung -- und der Zeitplan bleibt ohne JavaScript vollstaendig
- * bedienbar.
+ * The script is a second way to operate the same change, not an interface of its own: on
+ * release it submits the very form a user without JavaScript would fill in by hand. So the
+ * same CSRF protection, the same permission check and the same error display apply -- and
+ * the schedule stays fully operable without JavaScript.
  *
- * Nach dem Absenden laedt die Seite neu, statt den Balken einfach stehen zu lassen. Das
- * ist Absicht: Ein verschobener Punkt aendert die Grenzen der *benachbarten* Balken mit,
- * und diese Zerlegung serverseitig noch einmal im Browser nachzubauen waere eine zweite
- * Fassung derselben Logik -- genau das, was Grundsatz 6 verbietet.
+ * After submitting, the page reloads instead of simply leaving the bar where it was. That
+ * is deliberate: a moved point also changes the boundaries of the *neighbouring* bars, and
+ * rebuilding that server-side split once more in the browser would be a second version of
+ * the same logic -- exactly what principle 6 forbids.
  */
 (function () {
     "use strict";
 
-    const MINUTEN_PRO_TAG = 1440;
-    const RASTER = 15; // Minuten. Feiner ist mit der Maus nicht zuverlaessig treffbar.
+    const MINUTES_PER_DAY = 1440;
+    const GRID = 15; // Minutes. Anything finer cannot be hit reliably with a mouse.
 
-    function zweistellig(zahl) {
-        return String(zahl).padStart(2, "0");
+    function twoDigits(number) {
+        return String(number).padStart(2, "0");
     }
 
-    function alsUhrzeit(minute) {
-        return zweistellig(Math.floor(minute / 60)) + ":" + zweistellig(minute % 60);
+    function asTimeOfDay(minute) {
+        return twoDigits(Math.floor(minute / 60)) + ":" + twoDigits(minute % 60);
     }
 
-    function gerastert(minute) {
-        const gerundet = Math.round(minute / RASTER) * RASTER;
-        // 24:00 gibt es nicht: Der letzte erreichbare Punkt ist 23:45.
-        return Math.min(Math.max(gerundet, 0), MINUTEN_PRO_TAG - RASTER);
+    function snapped(minute) {
+        const rounded = Math.round(minute / GRID) * GRID;
+        // There is no 24:00: the last reachable point is 23:45.
+        return Math.min(Math.max(rounded, 0), MINUTES_PER_DAY - GRID);
     }
 
-    /** Der Tag, ueber dem der Zeiger gerade steht -- oder null ausserhalb des Gitters. */
-    function tagUnter(x, y, tage) {
-        for (const tag of tage) {
-            const rahmen = tag.getBoundingClientRect();
-            if (x >= rahmen.left && x <= rahmen.right && y >= rahmen.top && y <= rahmen.bottom) {
-                return tag;
+    /** The day the pointer is currently over -- or null outside the grid. */
+    function dayUnder(x, y, days) {
+        for (const day of days) {
+            const box = day.getBoundingClientRect();
+            if (x >= box.left && x <= box.right && y >= box.top && y <= box.bottom) {
+                return day;
             }
         }
         return null;
     }
 
-    function minuteIn(tag, y) {
-        const rahmen = tag.getBoundingClientRect();
-        const anteil = (y - rahmen.top) / rahmen.height;
-        return gerastert(anteil * MINUTEN_PRO_TAG);
+    function minuteIn(day, y) {
+        const box = day.getBoundingClientRect();
+        const fraction = (y - box.top) / box.height;
+        return snapped(fraction * MINUTES_PER_DAY);
     }
 
-    function absenden(punktId, wochentag, minute) {
-        const formular = document.getElementById("schedule-move");
-        if (!formular) {
+    function submit(pointId, weekday, minute) {
+        const form = document.getElementById("schedule-move");
+        if (!form) {
             return;
         }
-        // Die Kennung als Feld, nicht im Pfad: hx-boost liest die `action` eines
-        // Formulars einmal beim Verarbeiten der Seite. Ein hier umgeschriebener Pfad
-        // waere wirkungslos -- die Anfrage ginge an den Pfad von vorhin.
-        formular.elements.point_id.value = String(punktId);
-        formular.elements.weekday.value = String(wochentag);
-        formular.elements.time_of_day.value = alsUhrzeit(minute);
-        // `requestSubmit()` und nicht `submit()`: Nur das feuert ein submit-Ereignis,
-        // und nur darueber greift hx-boost -- das ist die Stelle, an der der
-        // CSRF-Kopf aus dem Cookie gesetzt wird. Ein nacktes submit() ginge ohne ihn
-        // hinaus und wuerde mit 403 abgewiesen.
-        formular.requestSubmit();
+        // The identifier as a field, not in the path: hx-boost reads a form's `action`
+        // once while processing the page. A path rewritten here would have no effect --
+        // the request would go to the path from before.
+        form.elements.point_id.value = String(pointId);
+        form.elements.weekday.value = String(weekday);
+        form.elements.time_of_day.value = asTimeOfDay(minute);
+        // `requestSubmit()` and not `submit()`: only that fires a submit event, and only
+        // through it does hx-boost take hold -- which is where the CSRF header is set
+        // from the cookie. A bare submit() would go out without it and be rejected with
+        // a 403.
+        form.requestSubmit();
     }
 
-    function balkenVerdrahten(balken, tage) {
-        balken.addEventListener("pointerdown", function (ereignis) {
-            // Nur die primaere Taste. Ein Rechtsklick soll das Kontextmenue oeffnen,
-            // nicht einen Balken verschieben.
-            if (ereignis.button !== 0) {
+    function wireBar(bar, days) {
+        bar.addEventListener("pointerdown", function (event) {
+            // Primary button only. A right-click should open the context menu, not move
+            // a bar.
+            if (event.button !== 0) {
                 return;
             }
-            ereignis.preventDefault();
+            event.preventDefault();
 
-            const griffX = ereignis.clientX;
-            const griffY = ereignis.clientY;
-            const griffversatz = ereignis.clientY - balken.getBoundingClientRect().top;
-            const uhrzeitfeld = balken.querySelector(".schedule-time");
-            const urspruenglicheZeit = uhrzeitfeld ? uhrzeitfeld.textContent : "";
-            let ziel = null;
-            let bewegt = false;
+            const grabX = event.clientX;
+            const grabY = event.clientY;
+            const grabOffset = event.clientY - bar.getBoundingClientRect().top;
+            const timeField = bar.querySelector(".schedule-time");
+            const originalTime = timeField ? timeField.textContent : "";
+            let target = null;
+            let moved = false;
 
-            // Der Balken wird nur optisch verschoben, nie im Baum umgehaengt. Ein
-            // appendChild waehrend des Ziehens loest die Zeigererfassung aus (der
-            // Browser gibt sie beim Entfernen aus dem Baum implizit frei), und danach
-            // landen pointermove und pointerup auf irgendeinem *anderen* Balken unter
-            // dem Zeiger. Genau daran ist die erste Fassung gescheitert: Das Ziehen sah
-            // richtig aus und schickte nichts ab.
-            balken.classList.add("schedule-dragging");
-            // Waehrend des Ziehens durchlaessig, damit die Tagesspalte darunter
-            // getroffen wird und nicht der Balken selbst.
-            balken.style.pointerEvents = "none";
+            // The bar is only moved visually, never relocated in the tree. An appendChild
+            // during the drag releases pointer capture (the browser frees it implicitly
+            // when the element leaves the tree), and pointermove and pointerup then land
+            // on some *other* bar under the pointer. That is exactly what the first
+            // version failed on: the drag looked right and submitted nothing.
+            bar.classList.add("schedule-dragging");
+            // Transparent to pointers during the drag, so the day column underneath is
+            // hit and not the bar itself.
+            bar.style.pointerEvents = "none";
 
-            function bewegen(zweitesEreignis) {
-                if (Math.abs(zweitesEreignis.clientY - griffY) > 3
-                    || Math.abs(zweitesEreignis.clientX - griffX) > 3) {
-                    bewegt = true;
+            function onMove(secondEvent) {
+                if (Math.abs(secondEvent.clientY - grabY) > 3
+                    || Math.abs(secondEvent.clientX - grabX) > 3) {
+                    moved = true;
                 }
-                balken.style.transform =
-                    "translate(" + (zweitesEreignis.clientX - griffX) + "px, "
-                    + (zweitesEreignis.clientY - griffY) + "px)";
-                const tag = tagUnter(zweitesEreignis.clientX, zweitesEreignis.clientY, tage);
-                if (!tag) {
-                    ziel = null;
+                bar.style.transform =
+                    "translate(" + (secondEvent.clientX - grabX) + "px, "
+                    + (secondEvent.clientY - grabY) + "px)";
+                const day = dayUnder(secondEvent.clientX, secondEvent.clientY, days);
+                if (!day) {
+                    target = null;
                     return;
                 }
-                const minute = minuteIn(tag, zweitesEreignis.clientY - griffversatz);
-                ziel = { wochentag: Number(tag.dataset.weekday), minute: minute };
-                if (uhrzeitfeld) {
-                    uhrzeitfeld.textContent = alsUhrzeit(minute);
+                const minute = minuteIn(day, secondEvent.clientY - grabOffset);
+                target = { weekday: Number(day.dataset.weekday), minute: minute };
+                if (timeField) {
+                    timeField.textContent = asTimeOfDay(minute);
                 }
             }
 
-            function aufraeumen() {
-                window.removeEventListener("pointermove", bewegen);
-                window.removeEventListener("pointerup", loslassen);
-                window.removeEventListener("pointercancel", abbrechen);
-                balken.classList.remove("schedule-dragging");
-                balken.style.pointerEvents = "";
-                balken.style.transform = "";
+            function cleanUp() {
+                window.removeEventListener("pointermove", onMove);
+                window.removeEventListener("pointerup", onRelease);
+                window.removeEventListener("pointercancel", onCancel);
+                bar.classList.remove("schedule-dragging");
+                bar.style.pointerEvents = "";
+                bar.style.transform = "";
             }
 
-            function loslassen(zweitesEreignis) {
-                aufraeumen();
-                if (!bewegt || !ziel) {
-                    if (uhrzeitfeld) {
-                        uhrzeitfeld.textContent = urspruenglicheZeit;
+            function onRelease(secondEvent) {
+                cleanUp();
+                if (!moved || !target) {
+                    if (timeField) {
+                        timeField.textContent = originalTime;
                     }
-                    // Ein Klick ohne Bewegung ist kein misslungenes Ziehen, sondern die
-                    // Ansage "hier soll etwas hin". Er wird hier behandelt und nicht als
-                    // click-Ereignis: `preventDefault()` auf pointerdown unterdrueckt den
-                    // Klick auf dem Balken vollstaendig. Ohne das griffe das Vorbelegen
-                    // nur auf freien Flaechen -- und sobald ein Plan existiert, decken
-                    // die Balken den Tag lueckenlos ab, es gaebe also fast keine.
-                    const tag = tagUnter(
-                        zweitesEreignis.clientX, zweitesEreignis.clientY, tage
+                    // A click without movement is not a failed drag but the statement
+                    // "something belongs here". It is handled here and not as a click
+                    // event: `preventDefault()` on pointerdown suppresses the click on
+                    // the bar entirely. Without that, pre-filling would only work on
+                    // free areas -- and as soon as a schedule exists, the bars cover the
+                    // day without gaps, so there would be almost none.
+                    const day = dayUnder(
+                        secondEvent.clientX, secondEvent.clientY, days
                     );
-                    if (tag) {
-                        vorbelegen(tag, zweitesEreignis.clientY);
+                    if (day) {
+                        prefill(day, secondEvent.clientY);
                     }
                     return;
                 }
-                absenden(balken.dataset.point, ziel.wochentag, ziel.minute);
+                submit(bar.dataset.point, target.weekday, target.minute);
             }
 
-            function abbrechen() {
-                aufraeumen();
-                if (uhrzeitfeld) {
-                    uhrzeitfeld.textContent = urspruenglicheZeit;
+            function onCancel() {
+                cleanUp();
+                if (timeField) {
+                    timeField.textContent = originalTime;
                 }
             }
 
-            // Am Fenster, nicht am Balken: Die Ereignisse sollen ankommen, auch wenn
-            // der Zeiger den Balken verlaesst oder etwas anderes ueberdeckt.
-            window.addEventListener("pointermove", bewegen);
-            window.addEventListener("pointerup", loslassen);
-            window.addEventListener("pointercancel", abbrechen);
+            // On the window, not on the bar: the events should still arrive when the
+            // pointer leaves the bar or something else covers it.
+            window.addEventListener("pointermove", onMove);
+            window.addEventListener("pointerup", onRelease);
+            window.addEventListener("pointercancel", onCancel);
         });
     }
 
-    /** Zeigt im Gitter, welche Zeit gerade uebernommen wurde.
+    /** Shows in the grid which time was just taken over.
      *
-     *  Die Rueckmeldung steht dort, wo der Zeiger ist, und nicht in einem Formular
-     *  weiter unten. Vorher holte `scrollIntoView` das Formular heran -- und riss dabei
-     *  das Gitter unter der Maus weg: Wer zwei Punkte nacheinander setzen wollte, klickte
-     *  beim zweiten Mal auf dieselbe Bildschirmstelle und traf eine voellig andere
-     *  Uhrzeit, weil die Seite in der Zwischenzeit um mehrere hundert Pixel gescrollt
-     *  war. Im Browser nachgemessen: ein Klick verschob das Gitter um 377 px, das sind
-     *  rund dreizehn Stunden.
+     *  The feedback sits where the pointer is, not in a form further down. Previously
+     *  `scrollIntoView` pulled the form into view -- and tore the grid away from under
+     *  the mouse in doing so: anyone wanting to set two points in a row clicked the same
+     *  spot on screen the second time and hit a completely different time, because the
+     *  page had scrolled several hundred pixels in between. Measured in the browser: one
+     *  click shifted the grid by 377 px, which is about thirteen hours.
      */
-    function markieren(tag, minute) {
-        document.querySelectorAll(".schedule-marker").forEach(function (alte) {
-            alte.remove();
+    function mark(day, minute) {
+        document.querySelectorAll(".schedule-marker").forEach(function (old) {
+            old.remove();
         });
-        const marke = document.createElement("div");
-        marke.className = "schedule-marker";
-        marke.style.top = (minute / MINUTEN_PRO_TAG * 100) + "%";
-        marke.textContent = alsUhrzeit(minute);
-        tag.appendChild(marke);
+        const marker = document.createElement("div");
+        marker.className = "schedule-marker";
+        marker.style.top = (minute / MINUTES_PER_DAY * 100) + "%";
+        marker.textContent = asTimeOfDay(minute);
+        day.appendChild(marker);
     }
 
-    function vorbelegen(tag, y) {
-        // Uebernimmt Tag und Uhrzeit ins Anlege-Formular, statt sofort einen Punkt
-        // anzulegen: Ein Schaltpunkt ohne gewaehlten Modus waere keiner.
-        const wochentagfeld = document.querySelector('select[name="weekday"]');
-        const uhrzeitfeld = document.getElementById("time_of_day");
-        if (!wochentagfeld || !uhrzeitfeld) {
+    function prefill(day, y) {
+        // Takes day and time into the create form instead of creating a point right
+        // away: a switch point without a chosen mode would be none.
+        const weekdayField = document.querySelector('select[name="weekday"]');
+        const timeField = document.getElementById("time_of_day");
+        if (!weekdayField || !timeField) {
             return;
         }
-        const minute = minuteIn(tag, y);
-        wochentagfeld.value = tag.dataset.weekday;
-        uhrzeitfeld.value = alsUhrzeit(minute);
-        markieren(tag, minute);
-        // Fokus nur, wenn das Feld ohnehin im Blick ist. `focus({preventScroll: true})`
-        // reicht dafuer nicht: In Chromium scrollte der Aufruf die Seite trotzdem um
-        // 377 px -- nachgemessen, mit Fokus 377, ohne 0. Ein Feld, das man nicht sieht,
-        // zu fokussieren bringt ohnehin nichts; die Rueckmeldung ist die Marke oben.
-        const rahmen = uhrzeitfeld.getBoundingClientRect();
-        const sichtbar = rahmen.top >= 0
-            && rahmen.bottom <= (window.innerHeight || document.documentElement.clientHeight);
-        if (sichtbar) {
-            uhrzeitfeld.focus({ preventScroll: true });
+        const minute = minuteIn(day, y);
+        weekdayField.value = day.dataset.weekday;
+        timeField.value = asTimeOfDay(minute);
+        mark(day, minute);
+        // Focus only when the field is in view anyway. `focus({preventScroll: true})` is
+        // not enough for that: in Chromium the call still scrolled the page by 377 px --
+        // measured, 377 with focus, 0 without. Focusing a field you cannot see achieves
+        // nothing anyway; the feedback is the marker above.
+        const box = timeField.getBoundingClientRect();
+        const visible = box.top >= 0
+            && box.bottom <= (window.innerHeight || document.documentElement.clientHeight);
+        if (visible) {
+            timeField.focus({ preventScroll: true });
         }
     }
 
-    function einrichten() {
-        const gitter = document.getElementById("schedule-grid");
-        if (!gitter || gitter.dataset.editable !== "ja" || gitter.dataset.wired) {
+    function setUp() {
+        const grid = document.getElementById("schedule-grid");
+        if (!grid || grid.dataset.editable !== "yes" || grid.dataset.wired) {
             return;
         }
-        gitter.dataset.wired = "ja";
+        grid.dataset.wired = "yes";
 
-        const tage = Array.from(gitter.querySelectorAll(".schedule-day"));
-        gitter.querySelectorAll(".schedule-draggable").forEach(function (balken) {
-            balkenVerdrahten(balken, tage);
+        const days = Array.from(grid.querySelectorAll(".schedule-day"));
+        grid.querySelectorAll(".schedule-draggable").forEach(function (bar) {
+            wireBar(bar, days);
         });
-        tage.forEach(function (tag) {
-            // Freie Flaechen: Dort kommt der Klick ganz normal an. Balken behandeln
-            // ihren Klick selbst, siehe loslassen().
-            tag.addEventListener("click", function (ereignis) {
-                if (ereignis.target === tag) {
-                    vorbelegen(tag, ereignis.clientY);
+        days.forEach(function (day) {
+            // Free areas: there the click arrives quite normally. Bars handle their own
+            // click, see onRelease().
+            day.addEventListener("click", function (event) {
+                if (event.target === day) {
+                    prefill(day, event.clientY);
                 }
             });
         });
 
-        // Der Hinweis steht im Markup ausgeblendet und wird erst hier sichtbar: Wer kein
-        // JavaScript hat, soll nicht lesen, er koenne etwas ziehen, das sich nicht zieht.
-        const hinweis = document.querySelector("[data-schedule-hint]");
-        if (hinweis) {
-            hinweis.hidden = false;
+        // The hint sits hidden in the markup and only becomes visible here: whoever has
+        // no JavaScript should not read that they can drag something that does not drag.
+        const hint = document.querySelector("[data-schedule-hint]");
+        if (hint) {
+            hint.hidden = false;
         }
     }
 
-    // Zwei Aufhaenger, wie in passkey.js: `DOMContentLoaded` fuer den direkten Aufruf,
-    // `htmx:load` fuer jede per hx-boost eingetauschte Seite.
-    document.addEventListener("DOMContentLoaded", einrichten);
-    document.addEventListener("htmx:load", einrichten);
+    // Two hooks, as in passkey.js: `DOMContentLoaded` for the direct call, `htmx:load`
+    // for every page swapped in by hx-boost.
+    document.addEventListener("DOMContentLoaded", setUp);
+    document.addEventListener("htmx:load", setUp);
 })();

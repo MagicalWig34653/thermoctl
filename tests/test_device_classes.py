@@ -61,8 +61,8 @@ def test_a_multisensor_carries_its_real_installation_name_and_metadata() -> None
     assert descriptions_from_bridge_list(payload) == [
         DeviceDescription(
             name=name,
-            adresse="aus-der-bridge-liste",
-            modell="Modell aus der Bridge",
+            address="aus-der-bridge-liste",
+            model="Modell aus der Bridge",
             manufacturer="Hersteller aus der Bridge",
             ist_group=False,
             capabilities=frozenset(
@@ -93,7 +93,7 @@ def test_a_group_remains_visible_and_is_marked() -> None:
 
     assert group.name == name
     assert group.ist_group is True
-    assert group.adresse is None
+    assert group.address is None
 
 
 def test_an_unrecognized_device_has_an_empty_description() -> None:
@@ -103,7 +103,7 @@ def test_an_unrecognized_device_has_an_empty_description() -> None:
         json.dumps([{"friendly_name": name, "ieee_address": "aus-der-bridge-liste"}])
     )
 
-    assert device.modell is None
+    assert device.model is None
     assert device.manufacturer is None
     assert device.capabilities == frozenset()
 

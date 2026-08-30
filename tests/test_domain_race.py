@@ -19,7 +19,7 @@ from thermoctl.db.models.schedule import SchedulePoint
 from thermoctl.domain import zones as zone_modul
 from thermoctl.domain.principal import Principal
 from thermoctl.domain.schedule import ScheduleError, create_schedule_point
-from thermoctl.domain.zones import ZonennameVergeben, create_zone, update_zone
+from thermoctl.domain.zones import ZoneNameTaken, create_zone, update_zone
 
 
 @pytest.fixture(autouse=True)
@@ -42,7 +42,7 @@ def test_a_zone_name_taken_concurrently_when_creating(
     # The pre-check says 'free' — as it would for a second request that claims
     # the same name at the same moment.
     monkeypatch.setattr(zone_modul, "_name_taken", lambda *a, **k: False)
-    with pytest.raises(ZonennameVergeben):
+    with pytest.raises(ZoneNameTaken):
         create_zone(
             session, _principal(), name="besetzt", display_name="Zweiter",
             operating_mode_id=kind.id, sort_order=0, temperature_source_device_id=None,
@@ -62,7 +62,7 @@ def test_a_zone_name_taken_concurrently_when_updating(
         operating_mode_id=kind.id, sort_order=0, temperature_source_device_id=None,
     )
     monkeypatch.setattr(zone_modul, "_name_taken", lambda *a, **k: False)
-    with pytest.raises(ZonennameVergeben):
+    with pytest.raises(ZoneNameTaken):
         update_zone(
             session, other, _principal(), name="schon-da", display_name="Andere",
             operating_mode_id=kind.id, sort_order=0, temperature_source_device_id=None,

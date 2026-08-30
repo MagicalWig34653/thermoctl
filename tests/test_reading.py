@@ -124,7 +124,7 @@ def test_real_state_messages(
     )
 
     assert _values(result) == expected
-    assert {b.gemessen_am for b in result} == {measured_at}
+    assert {b.measured_at for b in result} == {measured_at}
 
 
 def test_voltage_is_read_neither_as_battery_level_nor_as_a_measurement() -> None:
@@ -163,7 +163,7 @@ def test_an_unreadable_last_seen_uses_the_received_time() -> None:
         '{"temperature": 20, "last_seen": "gestern"}', RECEIVED_AT
     )
 
-    assert result[0].gemessen_am == RECEIVED_AT
+    assert result[0].measured_at == RECEIVED_AT
 
 
 @pytest.mark.parametrize("payload", ["", "{kaputt", b"\xff"])
@@ -207,7 +207,7 @@ def test_last_seen_without_a_timezone_is_discarded() -> None:
     readings = readings_from_payload(
         json.dumps({"last_seen": "2026-08-29T06:00:00", "temperature": 21.5}), received
     )
-    assert [b.gemessen_am for b in readings] == [received]
+    assert [b.measured_at for b in readings] == [received]
 
 
 def test_valid_json_that_is_not_an_object_yields_nothing() -> None:

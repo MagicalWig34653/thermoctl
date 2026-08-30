@@ -98,11 +98,11 @@ def decide(situation: Situation) -> Decision:
     # (rule 1), otherwise the zone's resolved setpoint. From here on the same rule
     # runs in both cases — that is the core of "off means frost protection, not
     # powered down".
-    sensor_ausgefallen = situation.sensor_status == "veraltet"
-    setpoint_c = situation.frost_c if sensor_ausgefallen else situation.setpoint_c
+    sensor_failed = situation.sensor_status == "veraltet"
+    setpoint_c = situation.frost_c if sensor_failed else situation.setpoint_c
     setpoint_reason = (
         f"Sensorwert veraltet — Frostschutz {situation.frost_c} °C statt {situation.setpoint_c} °C"
-        if sensor_ausgefallen
+        if sensor_failed
         else situation.setpoint_reason
     )
 
@@ -121,17 +121,17 @@ def decide(situation: Situation) -> Decision:
     # from it. 'None' for fenster_zu_seit_s means "no pending resume delay" (the
     # window has never been open since recording began) — then there is nothing to
     # wait out.
-    verzoegerung = situation.parameter.window_resume_delay_seconds
+    delay = situation.parameter.window_resume_delay_seconds
     if (
         situation.window_closed_for_s is not None
-        and situation.window_closed_for_s < verzoegerung
+        and situation.window_closed_for_s < delay
     ):
         return Decision(
             heating=False,
             reason_code=REASON_CODE_OFF,
             reason=(
                 f"Fenster seit {situation.window_closed_for_s}s zu, Wiederanlauf erst nach "
-                f"{verzoegerung}s — Raum kuehlt noch nach."
+                f"{delay}s — Raum kuehlt noch nach."
             ),
         )
 
@@ -166,7 +166,7 @@ def decide(situation: Situation) -> Decision:
         return Decision(
             heating=True,
             reason_code=(
-                REASON_CODE_FROST_SENSOR_FAILURE if sensor_ausgefallen
+                REASON_CODE_FROST_SENSOR_FAILURE if sensor_failed
                 else REASON_CODE_HEATING
             ),
             reason=(
@@ -186,7 +186,7 @@ def decide(situation: Situation) -> Decision:
     return Decision(
         heating=situation.heating_now,
         reason_code=(
-            REASON_CODE_FROST_SENSOR_FAILURE if sensor_ausgefallen
+            REASON_CODE_FROST_SENSOR_FAILURE if sensor_failed
             else REASON_CODE_UNCHANGED
         ),
         reason=(

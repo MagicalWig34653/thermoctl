@@ -6,7 +6,7 @@ fuenf unverbundene Seiten. Man erreichte sie nur ueber die Zonenliste und musste
 jedem Schritt dorthin zurueck -- als waeren es fuenf Dinge und nicht fuenf Sichten auf
 dasselbe. Der Kopf macht daraus einen Ort.
 #}
-{% macro zonenkopf(zone, hier) %}
+{% macro zonenkopf(zone, here) %}
 <nav aria-label="Zone {{ zone.display_name }}" class="mb-4">
     <div class="d-flex justify-content-between align-items-baseline flex-wrap gap-2">
         <h1 class="mb-0">{{ zone.display_name }}</h1>
@@ -20,8 +20,8 @@ dasselbe. Der Kopf macht daraus einen Ort.
             ("/zonen/" ~ zone.id ~ "/parameter", "Regelparameter"),
             ("/zonen/" ~ zone.id, "Zonendaten"),
         ] %}
-        <a class="btn btn-sm {{ 'btn-primary' if hier == label else 'btn-outline-secondary' }}"
-           href="{{ pfad }}"{% if hier == label %} aria-current="page"{% endif %}>{{ label }}</a>
+        <a class="btn btn-sm {{ 'btn-primary' if here == label else 'btn-outline-secondary' }}"
+           href="{{ pfad }}"{% if here == label %} aria-current="page"{% endif %}>{{ label }}</a>
         {% endfor %}
     </div>
 </nav>

@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block titel %}Schnittstellen – thermoctl{% endblock %}
+{% block title %}Schnittstellen – thermoctl{% endblock %}
 {% block max_breite %}58rem{% endblock %}
 
 {#
@@ -12,55 +12,55 @@ Ein Schalter hier würde erst nach einem Neustart wirken, und einer, der aussieh
 hätte er gewirkt, ist schlimmer als keiner.
 #}
 
-{% set marken = {
-    "laeuft":       ("tc-chip-warm",  "Läuft"),
-    "eingerichtet": ("tc-chip-cool",  "Eingerichtet"),
-    "aus":          ("tc-chip-quiet",   "Aus"),
-    "fehlt":        ("tc-chip-warning", "Kommt nicht zustande"),
-    "ungebaut":     ("tc-chip-quiet",   "Noch nicht gebaut"),
+{% set badges = {
+    "running":       ("tc-chip-warm",  "Läuft"),
+    "configured": ("tc-chip-cool",  "Eingerichtet"),
+    "off":          ("tc-chip-quiet",   "Aus"),
+    "missing":        ("tc-chip-warning", "Kommt nicht zustande"),
+    "not_built":     ("tc-chip-quiet",   "Noch nicht gebaut"),
 } %}
 
 {% block inhalt %}
 <h1 class="mb-1">Schnittstellen</h1>
-<p class="t-leise mb-4">
+<p class="t-quiet mb-4">
     Womit diese Anlage nach außen spricht, und ob es wirklich läuft.
 </p>
 
 {% for s in interfaces %}
-{% set marker = marken[s.state] %}
+{% set marker = badges[s.state] %}
 <article class="tc-panel p-4 mb-3">
     <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
         <div>
             <h2 class="mb-1">
                 {{ s.name }}
                 <span class="tc-chip {{ marker[0] }} align-middle">
-                    {% if s.state == "laeuft" %}<span class="tc-dot"></span>{% endif %}
+                    {% if s.state == "running" %}<span class="tc-dot"></span>{% endif %}
                     {{ marker[1] }}
                 </span>
             </h2>
-            <p class="t-leise mb-0">{{ s.zweck }}</p>
+            <p class="t-quiet mb-0">{{ s.purpose }}</p>
         </div>
-        {% if s.weiter %}
-        <a class="btn btn-sm btn-outline-secondary" href="{{ s.weiter[1] }}">{{ s.weiter[0] }}</a>
+        {% if s.more %}
+        <a class="btn btn-sm btn-outline-secondary" href="{{ s.more[1] }}">{{ s.more[0] }}</a>
         {% endif %}
     </div>
 
-    <p class="mt-3 mb-0">{{ s.befund }}</p>
+    <p class="mt-3 mb-0">{{ s.finding }}</p>
     {% if s.hint %}
-    <p class="t-leise small mb-0 mt-1">{{ s.hint }}</p>
+    <p class="t-quiet small mb-0 mt-1">{{ s.hint }}</p>
     {% endif %}
 
-    {% if s.angaben %}
+    {% if s.details %}
     <div class="table-responsive mt-3">
         <table class="table table-sm align-middle mb-0">
             <tbody>
-            {% for a in s.angaben %}
+            {% for a in s.details %}
             <tr>
-                <td class="t-leise" style="width: 12rem">{{ a.name }}</td>
-                <td class="t-wert">{{ a.value }}</td>
+                <td class="t-quiet" style="width: 12rem">{{ a.name }}</td>
+                <td class="t-value">{{ a.value }}</td>
                 <td class="text-end">
                     {% if a.variable %}
-                    <span class="t-wert t-leise" style="font-size: .7rem">{{ a.variable }}</span>
+                    <span class="t-value t-quiet" style="font-size: .7rem">{{ a.variable }}</span>
                     {% endif %}
                     <span class="tc-chip tc-chip-quiet ms-1">{{ a.source }}</span>
                 </td>
@@ -74,11 +74,11 @@ hätte er gewirkt, ist schlimmer als keiner.
 {% endfor %}
 
 <div class="tc-panel p-4">
-    <p class="t-marke mb-2">Warum hier keine Schalter stehen</p>
-    <p class="t-leise mb-0">
+    <p class="t-label mb-2">Warum hier keine Schalter stehen</p>
+    <p class="t-quiet mb-0">
         Diese Werte liest der Dienst beim Start aus der Umgebung — die MQTT-Verbindung
         etwa wird genau einmal aufgebaut. Ein Schalter an dieser Stelle würde erst nach
-        einem Neustart wirken. Zum Ändern die genannte Variable in <span class="t-wert">.env</span>
+        einem Neustart wirken. Zum Ändern die genannte Variable in <span class="t-value">.env</span>
         setzen und den Dienst neu starten. Was sich im laufenden Betrieb umlegen lässt,
         steht unter <a href="/control">Betrieb</a> und <a href="/settings">Einstellungen</a>.
     </p>

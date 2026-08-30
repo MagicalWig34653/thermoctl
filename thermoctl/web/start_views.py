@@ -22,7 +22,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 from starlette.responses import Response
 
-from thermoctl.auth.dependencies import csrf_schutz, get_session
+from thermoctl.auth.dependencies import csrf_protection, get_session
 from thermoctl.auth.sessions import COOKIE_NAME, resolve_session
 from thermoctl.db.base import utcnow
 from thermoctl.db.models.identity import User
@@ -35,14 +35,14 @@ from thermoctl.db.models.zone import SetpointMode, ZoneSetpoint
 from thermoctl.domain.authz import has_permission, principal_for_user, visible_zones
 from thermoctl.domain.modes import MAXIMUM_TEMPERATURE_C, MINIMUM_TEMPERATURE_C
 from thermoctl.domain.schedule import resolved_setpoint, week_segments
-from thermoctl.setup import einrichtung_noetig
-from thermoctl.web import templates, waermeanteil
+from thermoctl.setup import setup_needed
+from thermoctl.web import templates, warmth_fraction
 
 # `include_in_schema=False`: the OpenAPI description is the contract of the REST
 # interface. These routes deliver HTML for humans, and in the interface under
 # /docs there would otherwise be a form route next to every real endpoint whose
 # 'Try it out' triggers a real change.
-router = APIRouter(dependencies=[Depends(csrf_schutz)], include_in_schema=False)
+router = APIRouter(dependencies=[Depends(csrf_protection)], include_in_schema=False)
 
 
 MINUTES_PER_DAY = 1440
@@ -60,7 +60,7 @@ def _day_track(
     if not zone_ids:
         return {}
     modes = {m.id: m for m in session.scalars(select(SetpointMode))}
-    namen = {identifier: mode.name for identifier, mode in modes.items()}
+    names = {identifier: mode.name for identifier, mode in modes.items()}
     temperatures: dict[tuple[int, int], Decimal] = {
         (zone_id, mode_id): temperature
         for zone_id, mode_id, temperature in session.execute(
@@ -77,25 +77,25 @@ def _day_track(
     ):
         points_per_zone[point.zone_id].append(point)
 
-    spuren: dict[int, list[dict[str, object]]] = {}
+    tracks: dict[int, list[dict[str, object]]] = {}
     for zone_id, points in points_per_zone.items():
         segments = [
-            a for a in week_segments(points, namen) if a.weekday == weekday
+            a for a in week_segments(points, names) if a.weekday == weekday
         ]
-        spuren[zone_id] = [
+        tracks[zone_id] = [
             {
                 "start": segment.start_minute,
-                "breite": (segment.endminute - segment.start_minute)
+                "width": (segment.end_minute - segment.start_minute)
                 * 100
                 / MINUTES_PER_DAY,
-                "links": segment.start_minute * 100 / MINUTES_PER_DAY,
-                "modusname": segment.mode_name,
-                "temperatur": temperatures.get((zone_id, segment.mode_id)),
-                "waerme": waermeanteil(temperatures.get((zone_id, segment.mode_id))),
+                "left": segment.start_minute * 100 / MINUTES_PER_DAY,
+                "mode_name": segment.mode_name,
+                "temperature": temperatures.get((zone_id, segment.mode_id)),
+                "warmth": warmth_fraction(temperatures.get((zone_id, segment.mode_id))),
             }
             for segment in segments
         ]
-    return spuren
+    return tracks
 
 
 @router.get("/")
@@ -109,7 +109,7 @@ def start(
     # /setup responds visibly differently anyway after setup is complete, and setup
     # itself depends on the one-time token from the log, not on the page's
     # reachability.
-    if einrichtung_noetig(session):
+    if setup_needed(session):
         return RedirectResponse("/setup", status_code=303)
 
     cookie_value = request.cookies.get(COOKIE_NAME)
@@ -123,9 +123,9 @@ def start(
     zones = visible_zones(session, principal, "zone.read")
     now = utcnow()
     settings = session.get(Setting, 1)
-    zustaende = {
-        zone_id: (state, sensorstatus)
-        for zone_id, state, sensorstatus in session.execute(
+    states = {
+        zone_id: (state, sensor_status_of)
+        for zone_id, state, sensor_status_of in session.execute(
             select(ZoneState.zone_id, ZoneState, SensorStatus)
             .join(SensorStatus, SensorStatus.id == ZoneState.sensor_status_id)
             .where(ZoneState.zone_id.in_([zone.id for zone in zones]))
@@ -144,13 +144,13 @@ def start(
         .order_by(ZoneOverride.created_at.desc())
     ):
         overrides.setdefault(entry.zone_id, entry)
-    entscheidungen: dict[int, ShadowDecision] = {}
+    decisions: dict[int, ShadowDecision] = {}
     for decision in session.scalars(
         select(ShadowDecision)
         .where(ShadowDecision.zone_id.in_(zone_ids))
         .order_by(ShadowDecision.decided_at.desc(), ShadowDecision.id.desc())
     ):
-        entscheidungen.setdefault(decision.zone_id, decision)
+        decisions.setdefault(decision.zone_id, decision)
 
     return templates.TemplateResponse(
         request,
@@ -158,32 +158,32 @@ def start(
         {
             "user": user,
             "zones": zones,
-            "zustaende": zustaende,
+            "states": states,
             "setpoints": {
                 zone.id: resolved_setpoint(session, zone, now) for zone in zones
             },
             "overrides": overrides,
-            "entscheidungen": entscheidungen,
-            "darf_uebersteuern": {
+            "decisions": decisions,
+            "may_override": {
                 zone.id
                 for zone in zones
                 if has_permission(principal, "override.create", zone.id)
             },
-            "darf_aufheben": {
+            "may_cancel": {
                 zone.id
                 for zone in zones
                 if has_permission(principal, "override.cancel", zone.id)
             },
-            "darf_sollwert": {
+            "may_edit_setpoint": {
                 zone.id
                 for zone in zones
                 if has_permission(principal, "setpoint.write", zone.id)
             },
-            "thermostatfehler": request.query_params.get("thermostatfehler"),
+            "thermostat_errors": request.query_params.get("thermostat_errors"),
             # From the domain: a `min="5"` in the markup would be a second version of
             # the limit and would fall behind on the next change.
-            "mindesttemperatur": MINIMUM_TEMPERATURE_C,
-            "hoechsttemperatur": MAXIMUM_TEMPERATURE_C,
+            "minimum_temperature": MINIMUM_TEMPERATURE_C,
+            "maximum_temperature": MAXIMUM_TEMPERATURE_C,
             # The display name, not the code: the thermostat used to show "frostschutz"
             # instead of "Frostschutz" -- a database identifier that has no business
             # showing up there.
@@ -193,25 +193,25 @@ def start(
                     select(SetpointMode.id, SetpointMode.name)
                 )
             },
-            "darf_parameter": {
+            "may_edit_parameters": {
                 zone.id for zone in zones if has_permission(principal, "zone.manage", zone.id)
             },
-            "uebersteuerungsfehler": request.query_params.get("uebersteuerungsfehler"),
-            "fehler_zone_id": request.query_params.get("zone_id"),
-            "uebersteuerungswerte": request.query_params,
+            "override_errors": request.query_params.get("override_errors"),
+            "error_zone_id": request.query_params.get("zone_id"),
+            "override_values": request.query_params,
             # The plant in one sentence: is it really switching, is the bridge
             # running, and are there sensors that stay silent? Exactly the three
             # things that make a display untrustworthy if you don't know them.
             "armed": bool(settings and settings.control_armed),
             "bridge": getattr(request.app.state, "bridge_reachable", None),
-            "stumme_sensoren": [
+            "silent_sensors": [
                 zone.display_name
                 for zone in zones
-                if zone.id in zustaende and zustaende[zone.id][1].code != "ok"
+                if zone.id in states and states[zone.id][1].code != "ok"
             ],
-            "tagesspuren": _day_track(
+            "day_tracks": _day_track(
                 session, zone_ids, now.isoweekday()
             ),
-            "jetzt_anteil": (now.hour * 60 + now.minute) * 100 / MINUTES_PER_DAY,
+            "now_fraction": (now.hour * 60 + now.minute) * 100 / MINUTES_PER_DAY,
         },
     )

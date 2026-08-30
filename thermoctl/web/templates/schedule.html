@@ -1,15 +1,15 @@
 {% extends "base.html" %}
-{% from "form.html" import auswahl, textfeld %}
+{% from "form.html" import select_field, text_field %}
 {% from "zone_header.html" import zonenkopf %}
-{% block titel %}Zeitplan {{ zone.display_name }} – thermoctl{% endblock %}
+{% block title %}Zeitplan {{ zone.display_name }} – thermoctl{% endblock %}
 {% block max_breite %}90rem{% endblock %}
 {% block inhalt %}
 {{ zonenkopf(zone, "Zeitplan") }}
 <div class="d-flex justify-content-between align-items-center mb-3">
     <div>
-        <p class="t-leise mb-0">Lokale Zeit; ein Balken gilt bis zum nächsten Schaltpunkt.</p>
+        <p class="t-quiet mb-0">Lokale Zeit; ein Balken gilt bis zum nächsten Schaltpunkt.</p>
     </div>
-    {% if darf_aendern %}
+    {% if may_edit %}
     <a class="btn btn-outline-secondary" href="/zones/{{ zone.id }}/schedule/adopt">
         Von anderer Zone übernehmen
     </a>
@@ -24,38 +24,38 @@
 
 {% if points %}
 <div id="schedule-grid" class="row g-2 mb-2"
-     data-zone="{{ zone.id }}" data-editable="{{ 'ja' if darf_aendern else 'nein' }}">
-{% for day, tagname in wochentage %}
+     data-zone="{{ zone.id }}" data-editable="{{ 'yes' if may_edit else 'no' }}">
+{% for day, tagname in weekdays %}
     <section class="col" style="min-width: 8rem;">
         <h2 class="h6 text-center">{{ tagname }}</h2>
         <div class="schedule-day position-relative border rounded bg-light"
              style="height: 26rem;" data-weekday="{{ day }}">
         {% for segment in segments[day] %}
-            <div class="schedule-bar position-absolute start-0 end-0 border-bottom px-1 overflow-hidden{{ ' schedule-draggable' if segment.point_id and darf_aendern }}"
+            <div class="schedule-bar position-absolute start-0 end-0 border-bottom px-1 overflow-hidden{{ ' schedule-draggable' if segment.point_id and may_edit }}"
                  {% if segment.point_id %}data-point="{{ segment.point_id }}"{% endif %}
                  data-start-minute="{{ segment.start_minute }}"
-                 {% set w = waerme.get(segment.mode_id, 0.5) %}
+                 {% set w = warmth.get(segment.mode_id, 0.5) %}
                  style="top: {{ segment.start_minute / 55.4 }}rem;
-                        height: {{ (segment.endminute - segment.start_minute) / 55.4 }}rem;
+                        height: {{ (segment.end_minute - segment.start_minute) / 55.4 }}rem;
                         background: color-mix(in oklab,
-                            var({{ '--waerme' if w >= 0.5 else '--kuehle' }})
-                            {{ (45 + (w - 0.5)|abs * 90)|round|int }}%, var(--flaeche));"
+                            var({{ '--warmth' if w >= 0.5 else '--cool' }})
+                            {{ (45 + (w - 0.5)|abs * 90)|round|int }}%, var(--surface));"
                  title="{{ segment.mode_name }} ab {{ "%02d:%02d"|format(
                      segment.start_minute // 60, segment.start_minute % 60
                  ) }}{% if temperatures.get(segment.mode_id) %} – {{ temperatures[segment.mode_id]|grad }} °C{% endif %}">
                 {# Eine Zeile, nicht zwei: Ein Balken von zwei Stunden ist keine zwei
                    Zeilen hoch, und die Beschriftung wurde unten abgeschnitten. #}
-                <small class="text-nowrap"><span class="schedule-time t-wert">{{ "%02d:%02d"|format(
+                <small class="text-nowrap"><span class="schedule-time t-value">{{ "%02d:%02d"|format(
                     segment.start_minute // 60, segment.start_minute % 60
                 ) }}</span> {{ segment.mode_name }}{% if temperatures.get(segment.mode_id) %}
-                    <span class="t-wert">{{ temperatures[segment.mode_id]|grad }}°</span>{% endif %}</small>
+                    <span class="t-value">{{ temperatures[segment.mode_id]|grad }}°</span>{% endif %}</small>
             </div>
         {% endfor %}
         </div>
     </section>
 {% endfor %}
 </div>
-{% if darf_aendern %}
+{% if may_edit %}
 <p class="text-muted small mb-4" data-schedule-hint hidden>
     Balken lassen sich mit der Maus auf eine andere Zeit oder einen anderen Tag ziehen;
     ein Klick markiert eine Stelle und übernimmt Tag und Uhrzeit ins Formular unten.
@@ -66,7 +66,7 @@
 <div class="alert alert-info">Noch kein Zeitplan vorhanden. Bis zum ersten Punkt gilt der Frostschutz.</div>
 {% endif %}
 
-{% if darf_aendern %}
+{% if may_edit %}
 {# `hx-push-url="false"`: Ohne das schiebt hx-boost bei einer abgelehnten
    Verschiebung den POST-Pfad in die Adresszeile, und ein Neuladen liefe
    dann gegen einen Weg, den es fuer GET nicht gibt. Der erfolgreiche Fall
@@ -81,11 +81,11 @@
     <div class="col-lg-6">
         <h2 class="h4">Schaltpunkt anlegen</h2>
         <form method="post" action="/zones/{{ zone.id }}/schedule/points">
-            {{ auswahl("weekday", "Tag", wochentage, values.weekday, "", errors.weekday) }}
-            {{ textfeld("time_of_day", "Uhrzeit", values.time_of_day, "Lokale Zeit, zum Beispiel 06:30.", errors.time_of_day, true, "time") }}
+            {{ select_field("weekday", "Tag", weekdays, values.weekday, "", errors.weekday) }}
+            {{ text_field("time_of_day", "Uhrzeit", values.time_of_day, "Lokale Zeit, zum Beispiel 06:30.", errors.time_of_day, true, "time") }}
             {% set modusoptionen = [] %}
             {% for mode in modes %}{% set _ = modusoptionen.append((mode.id, mode.name)) %}{% endfor %}
-            {{ auswahl("mode_id", "Modus", modusoptionen, values.mode, "", errors.mode) }}
+            {{ select_field("mode_id", "Modus", modusoptionen, values.mode, "", errors.mode) }}
             <button class="btn btn-primary" type="submit">Punkt anlegen</button>
         </form>
     </div>
@@ -95,7 +95,7 @@
         <ul class="list-group">
         {% for point in points %}
             <li class="list-group-item d-flex justify-content-between align-items-center">
-                <span>{{ dict(wochentage)[point.weekday] }}
+                <span>{{ dict(weekdays)[point.weekday] }}
                     {{ "%02d:%02d"|format(point.minute_of_day // 60, point.minute_of_day % 60) }}
                 </span>
                 <a class="btn btn-sm btn-outline-danger"

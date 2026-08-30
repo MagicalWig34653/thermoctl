@@ -6,7 +6,7 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from thermoctl.auth.dependencies import aktueller_principal, csrf_schutz, get_session
+from thermoctl.auth.dependencies import csrf_protection, current_principal, get_session
 from thermoctl.db.models.schedule import SchedulePoint
 from thermoctl.db.models.zone import SetpointMode, Zone, ZoneSetpoint
 from thermoctl.domain.authz import has_permission, visible_zones
@@ -20,13 +20,13 @@ from thermoctl.domain.schedule import (
     time_of_day_in_minutes,
     week_segments,
 )
-from thermoctl.web import templates, waermeanteil
+from thermoctl.web import templates, warmth_fraction
 
 # `include_in_schema=False`: the OpenAPI description is the contract of the REST
 # interface. These routes deliver HTML for humans, and in the interface under
 # /docs there would otherwise be a form route next to every real endpoint whose
 # 'Try it out' triggers a real change.
-router = APIRouter(dependencies=[Depends(csrf_schutz)], include_in_schema=False)
+router = APIRouter(dependencies=[Depends(csrf_protection)], include_in_schema=False)
 
 WEEKDAYS = (
     (1, "Montag"),
@@ -69,7 +69,7 @@ def _modes(session: Session) -> list[SetpointMode]:
     )
 
 
-def _schedulepage(
+def _schedule_page(
     request: Request,
     session: Session,
     zone: Zone,
@@ -94,7 +94,7 @@ def _schedulepage(
             )
         )
     }
-    waerme = {mode.id: waermeanteil(temperatures.get(mode.id)) for mode in modes}
+    warmth = {mode.id: warmth_fraction(temperatures.get(mode.id)) for mode in modes}
     by_day = {
         day: [segment for segment in segments if segment.weekday == day]
         for day, _name in WEEKDAYS
@@ -106,9 +106,9 @@ def _schedulepage(
             "zone": zone,
             "points": points,
             "modes": modes,
-            "wochentage": WEEKDAYS,
+            "weekdays": WEEKDAYS,
             "segments": by_day,
-            "waerme": waerme,
+            "warmth": warmth,
             "temperatures": temperatures,
             "values": values or {"weekday": "1", "time_of_day": "06:00", "mode_id": ""},
             "errors": {errors.field: errors.notice} if errors else {},
@@ -119,7 +119,7 @@ def _schedulepage(
             # bar that snapped back stayed uncommented. Noticed in the browser, by no
             # test.
             "move_error": move_error,
-            "darf_aendern": has_permission(principal, "schedule.manage", zone.id),
+            "may_edit": has_permission(principal, "schedule.manage", zone.id),
         },
     )
 
@@ -128,18 +128,18 @@ def _schedulepage(
 async def show_schedule(
     zone_id: int,
     request: Request,
-    principal: Annotated[Principal, Depends(aktueller_principal)],
+    principal: Annotated[Principal, Depends(current_principal)],
     session: Annotated[Session, Depends(get_session)],
 ) -> Response:
     zone = _zone_or_404(session, principal, zone_id, "zone.read")
-    return _schedulepage(request, session, zone, principal)
+    return _schedule_page(request, session, zone, principal)
 
 
 @router.post("/zones/{zone_id}/schedule/points")
 async def create_schedule_point_view(
     zone_id: int,
     request: Request,
-    principal: Annotated[Principal, Depends(aktueller_principal)],
+    principal: Annotated[Principal, Depends(current_principal)],
     session: Annotated[Session, Depends(get_session)],
 ) -> Response:
     zone = _zone_or_404(session, principal, zone_id, "schedule.manage")
@@ -170,7 +170,7 @@ async def create_schedule_point_view(
             token_id=principal.token_id,
         )
     except ScheduleError as exc:
-        return _schedulepage(
+        return _schedule_page(
             request, session, zone, principal, values=values, errors=exc
         )
     return RedirectResponse(
@@ -182,7 +182,7 @@ async def create_schedule_point_view(
 async def reposition_schedule_point(
     zone_id: int,
     request: Request,
-    principal: Annotated[Principal, Depends(aktueller_principal)],
+    principal: Annotated[Principal, Depends(current_principal)],
     session: Annotated[Session, Depends(get_session)],
 ) -> Response:
     """Target of dragging in the week view.
@@ -224,7 +224,7 @@ async def reposition_schedule_point(
             token_id=principal.token_id,
         )
     except ScheduleError as exc:
-        return _schedulepage(
+        return _schedule_page(
             request, session, zone, principal, move_error=exc.notice
         )
     return RedirectResponse(
@@ -244,7 +244,7 @@ async def schedule_point_delete_form(
     zone_id: int,
     point_id: int,
     request: Request,
-    principal: Annotated[Principal, Depends(aktueller_principal)],
+    principal: Annotated[Principal, Depends(current_principal)],
     session: Annotated[Session, Depends(get_session)],
 ) -> Response:
     zone = _zone_or_404(session, principal, zone_id, "schedule.manage")
@@ -252,7 +252,7 @@ async def schedule_point_delete_form(
     return templates.TemplateResponse(
         request,
         "schedule_point_delete.html",
-        {"zone": zone, "point": point, "wochentage": dict(WEEKDAYS)},
+        {"zone": zone, "point": point, "weekdays": dict(WEEKDAYS)},
     )
 
 
@@ -260,7 +260,7 @@ async def schedule_point_delete_form(
 async def remove_schedule_point(
     zone_id: int,
     point_id: int,
-    principal: Annotated[Principal, Depends(aktueller_principal)],
+    principal: Annotated[Principal, Depends(current_principal)],
     session: Annotated[Session, Depends(get_session)],
 ) -> Response:
     zone = _zone_or_404(session, principal, zone_id, "schedule.manage")
@@ -284,13 +284,13 @@ def _schedule_adopt_page(
     zone: Zone,
     *,
     source_id: int | None = None,
-    bestaetigung: bool = False,
+    confirmation: bool = False,
     errors: str = "",
 ) -> Response:
     sources = [
-        andere
-        for andere in visible_zones(session, principal, "zone.read")
-        if andere.id != zone.id
+        others
+        for others in visible_zones(session, principal, "zone.read")
+        if others.id != zone.id
     ]
     return templates.TemplateResponse(
         request,
@@ -299,7 +299,7 @@ def _schedule_adopt_page(
             "zone": zone,
             "sources": sources,
             "source_id": source_id,
-            "bestaetigung": bestaetigung,
+            "confirmation": confirmation,
             "errors": errors,
         },
     )
@@ -309,7 +309,7 @@ def _schedule_adopt_page(
 async def schedule_adopt_form(
     zone_id: int,
     request: Request,
-    principal: Annotated[Principal, Depends(aktueller_principal)],
+    principal: Annotated[Principal, Depends(current_principal)],
     session: Annotated[Session, Depends(get_session)],
 ) -> Response:
     zone = _zone_or_404(session, principal, zone_id, "schedule.manage")
@@ -320,7 +320,7 @@ async def schedule_adopt_form(
 async def execute_schedule_adoption(
     zone_id: int,
     request: Request,
-    principal: Annotated[Principal, Depends(aktueller_principal)],
+    principal: Annotated[Principal, Depends(current_principal)],
     session: Annotated[Session, Depends(get_session)],
 ) -> Response:
     target = _zone_or_404(session, principal, zone_id, "schedule.manage")
@@ -342,14 +342,14 @@ async def execute_schedule_adoption(
     if source is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
     hat_plan = bool(_points(session, target.id))
-    if hat_plan and str(form.get("confirmed", "")) != "ja":
+    if hat_plan and str(form.get("confirmed", "")) != "yes":
         return _schedule_adopt_page(
             request,
             session,
             principal,
             target,
             source_id=source.id,
-            bestaetigung=True,
+            confirmation=True,
         )
     adopt_schedule(
         session,
