@@ -146,8 +146,10 @@ def test_gruppe_anlegen_und_recht_vergeben(client_als, session: Session) -> None
     gruppe = session.scalar(select(AccessGroup).where(AccessGroup.name == "Gaeste"))
     assert gruppe is not None
 
+    # Der Endpunkt nimmt den ganzen gewuenschten Stand entgegen, nicht ein einzelnes
+    # Recht: `recht=<code>` fuer die ganze Anlage, `recht=<code>:<zone>` fuer eine Zone.
     assert c.post(
-        f"/gruppen/{gruppe.id}/rechte", data={"code": "zone.read", "zone_id": ""},
+        f"/gruppen/{gruppe.id}/rechte", data={"recht": ["zone.read"]},
         headers=_mit_csrf(c, session), follow_redirects=False,
     ).status_code == 303
     assert session.scalar(
@@ -171,7 +173,7 @@ def test_anlagenweites_recht_auf_eine_zone_wird_in_der_ansicht_abgewiesen(
     gruppe = session.scalar(select(AccessGroup).where(AccessGroup.name == "Falsch"))
     assert gruppe is not None
     antwort = c.post(
-        f"/gruppen/{gruppe.id}/rechte", data={"code": "user.manage", "zone_id": str(zone.id)},
+        f"/gruppen/{gruppe.id}/rechte", data={"recht": [f"user.manage:{zone.id}"]},
         headers=_mit_csrf(c, session),
     )
     assert antwort.status_code == 200
@@ -306,40 +308,32 @@ def test_recht_entziehen_ueber_die_oberflaeche(client_als, session: Session) -> 
            headers=_mit_csrf(c, session))
     gruppe = session.scalar(select(AccessGroup).where(AccessGroup.name == "Rechteweg"))
     assert gruppe is not None
-    c.post(f"/gruppen/{gruppe.id}/rechte", data={"code": "device.read", "zone_id": ""},
+    c.post(f"/gruppen/{gruppe.id}/rechte", data={"recht": ["device.read"]},
            headers=_mit_csrf(c, session))
     eintrag = session.scalar(
         select(GroupPermission).where(GroupPermission.access_group_id == gruppe.id)
     )
     assert eintrag is not None
+    # Entzogen wird durch Weglassen: Das Formular schickt den ganzen gewuenschten Stand,
+    # und was nicht darin steht, faellt weg. Ein leeres Formular nimmt der Gruppe alles.
     assert c.post(
-        f"/gruppen/{gruppe.id}/rechte/{eintrag.id}/loeschen",
+        f"/gruppen/{gruppe.id}/rechte", data={},
         headers=_mit_csrf(c, session), follow_redirects=False,
     ).status_code == 303
     assert session.get(GroupPermission, eintrag.id) is None
 
 
-def test_rechteintrag_einer_fremden_gruppe_ergibt_404(client_als, session: Session) -> None:
-    from sqlalchemy import select
-
+def test_rechte_einer_unbekannten_gruppe_ergeben_404(client_als, session: Session) -> None:
+    """Frueher stand die Kennung des Rechteintrags im Pfad und der Test pruefte, dass ein
+    Eintrag einer fremden Gruppe nicht entzogen werden kann. Den Pfad gibt es nicht mehr
+    -- der Sammel-Endpunkt kennt nur die Gruppe, und die muss es geben."""
     from tests.hilfen import berechtigung
-    from thermoctl.db.models.identity import AccessGroup, GroupPermission
 
     berechtigung(session, "device.read", zonenbezogen=True)
     c = client_als([("group.manage", None)])
-    c.post("/gruppen", data={"name": "Eine", "description": ""}, headers=_mit_csrf(c, session))
-    c.post("/gruppen", data={"name": "Andere", "description": ""}, headers=_mit_csrf(c, session))
-    eine = session.scalar(select(AccessGroup).where(AccessGroup.name == "Eine"))
-    andere = session.scalar(select(AccessGroup).where(AccessGroup.name == "Andere"))
-    assert eine is not None and andere is not None
-    c.post(f"/gruppen/{eine.id}/rechte", data={"code": "device.read", "zone_id": ""},
-           headers=_mit_csrf(c, session))
-    eintrag = session.scalar(
-        select(GroupPermission).where(GroupPermission.access_group_id == eine.id)
-    )
-    assert eintrag is not None
     antwort = c.post(
-        f"/gruppen/{andere.id}/rechte/{eintrag.id}/loeschen", headers=_mit_csrf(c, session)
+        "/gruppen/999999/rechte", data={"recht": ["device.read"]},
+        headers=_mit_csrf(c, session),
     )
     assert antwort.status_code == 404
 
@@ -455,9 +449,68 @@ def test_letztes_verwaltungsrecht_laesst_sich_nicht_entziehen(
         )
     )
     assert eintrag is not None
+    # Weglassen ist der neue Weg zu entziehen -- die Sperre muss auch dort greifen.
     antwort = c.post(
-        f"/gruppen/{gruppe.id}/rechte/{eintrag.id}/loeschen", headers=_mit_csrf(c, session)
+        f"/gruppen/{gruppe.id}/rechte", data={"recht": ["group.manage"]},
+        headers=_mit_csrf(c, session),
     )
     assert antwort.status_code == 200
     assert "einzige verbliebene" in antwort.text
     assert session.get(GroupPermission, eintrag.id) is not None
+
+
+def test_rechte_setzen_vergibt_und_entzieht_in_einem_schritt(
+    client_als, session: Session
+) -> None:
+    """Der eigentliche Gewinn des Sammel-Endpunkts: Eine Gruppe umzustellen ist ein
+    Vorgang, nicht eine Folge von Einzelschritten, zwischen denen sie halb eingerichtet
+    dasteht."""
+    from sqlalchemy import select
+
+    from tests.hilfen import berechtigung, zone_anlegen
+    from thermoctl.db.models.identity import AccessGroup, GroupPermission
+    from thermoctl.db.models.lookup import Permission
+
+    berechtigung(session, "zone.read", zonenbezogen=True)
+    berechtigung(session, "device.read", zonenbezogen=True)
+    bad = zone_anlegen(session, "bad-umstellen")
+    c = client_als([("group.manage", None)])
+    c.post("/gruppen", data={"name": "Umbau", "description": ""}, headers=_mit_csrf(c, session))
+    gruppe = session.scalar(select(AccessGroup).where(AccessGroup.name == "Umbau"))
+    assert gruppe is not None
+
+    c.post(f"/gruppen/{gruppe.id}/rechte", data={"recht": ["zone.read"]},
+           headers=_mit_csrf(c, session))
+    c.post(
+        f"/gruppen/{gruppe.id}/rechte",
+        data={"recht": [f"zone.read:{bad.id}", "device.read"]},
+        headers=_mit_csrf(c, session),
+    )
+
+    stand = {
+        (code, zone_id)
+        for code, zone_id in session.execute(
+            select(Permission.code, GroupPermission.zone_id)
+            .join(Permission, Permission.id == GroupPermission.permission_id)
+            .where(GroupPermission.access_group_id == gruppe.id)
+        )
+    }
+    assert stand == {("zone.read", bad.id), ("device.read", None)}
+
+
+def test_gruppenseite_zeigt_rechte_nach_bereichen_mit_klartext(
+    client_als, session: Session
+) -> None:
+    """Vorher stand dort eine flache Liste aus Codes. Der Code bleibt sichtbar -- er
+    steht in Fehlermeldungen und in der Dokumentation --, aber er ist nicht mehr das
+    Einzige, was dasteht."""
+    from tests.hilfen import alle_rechte_anlegen
+    from thermoctl.domain.authz import RECHTEBEREICHE
+
+    alle_rechte_anlegen(session)
+    seite = client_als([("group.manage", None)]).get("/gruppen")
+    assert seite.status_code == 200
+    for name, _hinweis, _codes in RECHTEBEREICHE:
+        assert name in seite.text, f"Bereich '{name}' fehlt auf der Seite"
+    assert "Zonen und ihren Zustand sehen" in seite.text
+    assert "zone.read" in seite.text

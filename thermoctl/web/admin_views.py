@@ -14,7 +14,7 @@ from thermoctl.db.models.credential import ApiToken
 from thermoctl.db.models.identity import AccessGroup, GroupPermission, User
 from thermoctl.db.models.lookup import Permission
 from thermoctl.db.models.zone import Zone
-from thermoctl.domain.authz import Forbidden, require
+from thermoctl.domain.authz import RECHTEBEREICHE, Forbidden, require
 from thermoctl.domain.principal import Principal
 from thermoctl.domain.verwaltung import (
     Verwaltungsfehler,
@@ -22,9 +22,8 @@ from thermoctl.domain.verwaltung import (
     benutzer_anlegen,
     gruppe_anlegen,
     gruppe_loeschen,
+    gruppenrechte_setzen,
     passwort_setzen,
-    recht_entziehen,
-    recht_vergeben,
     token_widerrufen,
 )
 from thermoctl.web import ist_teilaustausch
@@ -150,21 +149,47 @@ def _gruppenliste(
     werte: dict[str, object] | None = None, hinweis: str | None = None,
 ) -> Response:
     gruppen = list(session.scalars(select(AccessGroup).order_by(AccessGroup.name)))
-    rechte_je_gruppe: dict[int, list[tuple[GroupPermission, str, str | None]]] = {}
-    for gruppe in gruppen:
-        zeilen = session.execute(
-            select(GroupPermission, Permission.code, Zone.name)
-            .join(Permission, Permission.id == GroupPermission.permission_id)
-            .outerjoin(Zone, Zone.id == GroupPermission.zone_id)
-            .where(GroupPermission.access_group_id == gruppe.id)
-            .order_by(Permission.code)
-        ).all()
-        rechte_je_gruppe[gruppe.id] = [(g, c, z) for g, c, z in zeilen]
+    # Je Gruppe die Menge der vergebenen (Code, Zone) -- die Vorlage fragt damit jedes
+    # Kaestchen direkt ab, statt eine Liste zu durchsuchen.
+    vergeben: dict[int, set[tuple[str, int | None]]] = {g.id: set() for g in gruppen}
+    for gruppen_id, code, zone_id in session.execute(
+        select(GroupPermission.access_group_id, Permission.code, GroupPermission.zone_id)
+        .join(Permission, Permission.id == GroupPermission.permission_id)
+    ):
+        if gruppen_id in vergeben:
+            vergeben[gruppen_id].add((code, zone_id))
+
+    rechte = {r.code: r for r in session.scalars(select(Permission))}
+    zonennamen = {
+        zone_id: name
+        for zone_id, name in session.execute(select(Zone.id, Zone.display_name))
+    }
+    # Was eine Gruppe darf, in einem Satz. Ohne ihn muss man 16 Kaestchen lesen, um zu
+    # wissen, wofuer eine Gruppe da ist -- und das ist die erste Frage, die man hat.
+    zusammenfassung: dict[int, list[str]] = {}
+    for gruppen_id, eintraege in vergeben.items():
+        satz = []
+        for code, zone_id in sorted(eintraege, key=lambda p: (p[0], p[1] or 0)):
+            recht = rechte.get(code)
+            if recht is None:
+                continue
+            wo = f" ({zonennamen.get(zone_id, 'unbekannte Zone')})" if zone_id else ""
+            satz.append(recht.description + wo)
+        zusammenfassung[gruppen_id] = satz
+    bereiche = [
+        (
+            name,
+            hinweis_text,
+            [rechte[code] for code in codes if code in rechte],
+        )
+        for name, hinweis_text, codes in RECHTEBEREICHE
+    ]
     return formular_erneut(
         request, "gruppen.html", werte or {}, fehler,
         gruppen=gruppen,
-        rechte_je_gruppe=rechte_je_gruppe,
-        alle_rechte=session.scalars(select(Permission).order_by(Permission.code)).all(),
+        vergeben=vergeben,
+        zusammenfassung=zusammenfassung,
+        bereiche=bereiche,
         alle_zonen=session.scalars(select(Zone).order_by(Zone.name)).all(),
         hinweis=hinweis,
         ist_htmx=ist_teilaustausch(request),
@@ -222,42 +247,45 @@ async def gruppe_loeschen_ansicht(
 
 
 @router.post("/gruppen/{gruppen_id}/rechte")
-async def recht_vergeben_ansicht(
+async def rechte_setzen_ansicht(
     request: Request,
     gruppen_id: int,
     principal: Annotated[Principal, Depends(aktueller_principal)],
     session: Annotated[Session, Depends(get_session)],
-    code: Annotated[str, Form()] = "",
-    zone_id: Annotated[str, Form()] = "",
 ) -> Response:
+    """Nimmt den **ganzen** gewuenschten Rechtestand einer Gruppe entgegen.
+
+    Vorher gab es zwei Endpunkte: einen zum Vergeben eines einzelnen Rechts und einen
+    zum Entziehen eines einzelnen Eintrags. Wer eine Gruppe einrichtete, klickte sich
+    durch eine flache Liste von sechzehn Codes, einen nach dem anderen, und sah dabei
+    nie, was die Gruppe insgesamt darf. Jetzt schickt ein Formular alle Haken auf einmal,
+    und die Domaene bildet die Differenz.
+
+    Die Felder heissen `recht` und tragen entweder `code` (ganze Anlage) oder
+    `code:zone_id`.
+    """
     require(principal, "group.manage")
     gruppe = session.get(AccessGroup, gruppen_id)
     if gruppe is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Gruppe nicht gefunden")
+
+    formular = await request.form()
+    gewuenscht: set[tuple[str, int | None]] = set()
+    for eintrag in formular.getlist("recht"):
+        code, _, zone = str(eintrag).partition(":")
+        if not code:
+            continue
+        try:
+            gewuenscht.add((code, int(zone) if zone else None))
+        except ValueError:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST, "Unbrauchbare Zonenangabe"
+            ) from None
+
     try:
-        recht_vergeben(
-            session, gruppe, code, int(zone_id) if zone_id else None,
-            akteur_id=principal.user_id,
+        gruppenrechte_setzen(
+            session, gruppe, gewuenscht, akteur_id=principal.user_id
         )
-    except Verwaltungsfehler as exc:
-        return _gruppenliste(request, session, hinweis=str(exc))
-    return RedirectResponse("/gruppen", status_code=status.HTTP_303_SEE_OTHER)
-
-
-@router.post("/gruppen/{gruppen_id}/rechte/{eintrag_id}/loeschen")
-async def recht_entziehen_ansicht(
-    request: Request,
-    gruppen_id: int,
-    eintrag_id: int,
-    principal: Annotated[Principal, Depends(aktueller_principal)],
-    session: Annotated[Session, Depends(get_session)],
-) -> Response:
-    require(principal, "group.manage")
-    eintrag = session.get(GroupPermission, eintrag_id)
-    if eintrag is None or eintrag.access_group_id != gruppen_id:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Rechteintrag nicht gefunden")
-    try:
-        recht_entziehen(session, eintrag, akteur_id=principal.user_id)
     except Verwaltungsfehler as exc:
         return _gruppenliste(request, session, hinweis=str(exc))
     return RedirectResponse("/gruppen", status_code=status.HTTP_303_SEE_OTHER)

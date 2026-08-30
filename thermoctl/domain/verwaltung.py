@@ -273,3 +273,47 @@ def token_widerrufen(
         object_id=str(token.id), summary=f"Token '{token.name}' widerrufen",
         user_id=akteur_id,
     )
+
+
+def gruppenrechte_setzen(
+    session: Session,
+    gruppe: AccessGroup,
+    gewuenscht: set[tuple[str, int | None]],
+    *,
+    akteur_id: int | None,
+    quelle: str = "web",
+) -> tuple[int, int]:
+    """Bringt die Rechte einer Gruppe auf den gewuenschten Stand. Gibt (vergeben, entzogen).
+
+    Statt einzelner Vergeben- und Entziehen-Klicks: Die Oberflaeche schickt den ganzen
+    gewuenschten Stand, hier wird die Differenz gebildet. Wer eine Gruppe einrichtet,
+    denkt in "das soll sie duerfen" und nicht in einer Folge von sechzehn Einzelschritten.
+
+    Ruft ausdruecklich `recht_vergeben` und `recht_entziehen` auf, statt selbst Zeilen
+    anzufassen: Dort haengen die Pruefung auf zonenlose Rechte, die Sperre gegen den
+    Verlust des letzten Verwalters und die Audit-Eintraege. Eine zweite Fassung davon
+    waere genau die Art Abkuerzung, die spaeter jemanden aussperrt.
+    """
+    vorhanden: dict[tuple[str, int | None], GroupPermission] = {}
+    for eintrag, code in session.execute(
+        select(GroupPermission, Permission.code)
+        .join(Permission, Permission.id == GroupPermission.permission_id)
+        .where(GroupPermission.access_group_id == gruppe.id)
+    ):
+        vorhanden[(code, eintrag.zone_id)] = eintrag
+
+    vergeben = 0
+    for code, zone_id in sorted(gewuenscht - set(vorhanden), key=lambda p: (p[0], p[1] or 0)):
+        recht_vergeben(
+            session, gruppe, code, zone_id, akteur_id=akteur_id, quelle=quelle
+        )
+        vergeben += 1
+
+    entzogen = 0
+    # Erst vergeben, dann entziehen: Wer das Verwaltungsrecht von "ganze Anlage" auf
+    # einzelne Zonen umstellt, wuerde sonst mittendrin an der Verwaltersperre scheitern.
+    for schluessel, eintrag in sorted(vorhanden.items(), key=lambda p: (p[0][0], p[0][1] or 0)):
+        if schluessel not in gewuenscht:
+            recht_entziehen(session, eintrag, akteur_id=akteur_id, quelle=quelle)
+            entzogen += 1
+    return vergeben, entzogen

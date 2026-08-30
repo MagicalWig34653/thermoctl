@@ -97,17 +97,21 @@ ACTOR_SOURCES = [
 ]
 
 # (code, beschreibung, zonenbezogen) — die Liste aus Abschnitt 2.6 der Spezifikation
+#
+# Die Beschreibung ist **sichtbarer Text**, keine Notiz: Sie steht auf der Gruppenseite
+# neben jedem Kästchen und ist dort das Erste, was jemand liest. Deshalb mit Umlauten,
+# anders als Kommentare und Docstrings in diesem Projekt.
 PERMISSIONS: list[tuple[str, str, bool]] = [
     ("zone.read", "Zonen und ihren Zustand sehen", True),
-    ("zone.manage", "Zonen anlegen, aendern, loeschen", True),
-    ("setpoint.write", "Sollwerte je Modus aendern", True),
-    ("schedule.manage", "Zeitplaene aendern", True),
-    ("override.create", "Uebersteuern", True),
-    ("override.cancel", "Fremde Uebersteuerung aufheben", True),
-    ("device.read", "Geraete und Zuordnungen sehen", True),
-    ("device.manage", "Geraete zuordnen, tauschen, entfernen", True),
-    ("mode.manage", "Sollwert-Modi anlegen und aendern", False),
-    ("setting.manage", "Globale Einstellungen aendern", False),
+    ("zone.manage", "Zonen anlegen, ändern, löschen", True),
+    ("setpoint.write", "Sollwerte je Modus ändern", True),
+    ("schedule.manage", "Zeitpläne ändern", True),
+    ("override.create", "Übersteuern", True),
+    ("override.cancel", "Fremde Übersteuerung aufheben", True),
+    ("device.read", "Geräte und Zuordnungen sehen", True),
+    ("device.manage", "Geräte zuordnen, tauschen, entfernen", True),
+    ("mode.manage", "Sollwert-Modi anlegen und ändern", False),
+    ("setting.manage", "Globale Einstellungen ändern", False),
     ("user.manage", "Benutzer verwalten", False),
     ("group.manage", "Gruppen und Rechte verwalten", False),
     ("token.self", "Eigene Tokens ausstellen und widerrufen", False),

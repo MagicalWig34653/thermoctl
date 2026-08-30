@@ -68,6 +68,43 @@ def principal_fuer_token(session: Session, token: ApiToken) -> Principal:
     return Principal(user_id=token.user_id, token_id=token.id, grants=frozenset(wirksam))
 
 
+# Die Rechte, nach Bereichen sortiert, wie ein Mensch sie sucht -- nicht alphabetisch
+# nach Code. Die Oberflaeche zeigte vorher eine flache Liste aus sechzehn Eintraegen der
+# Form "zone.read – Zonen und ihren Zustand sehen"; wer eine Gruppe einrichten wollte,
+# musste sie sechzehnmal durchlesen und einzeln vergeben.
+#
+# Die Zuordnung steht hier und nicht in der Vorlage: Ein neues Recht soll auffallen,
+# solange es noch niemand vergeben kann. `test_authz.py` prueft, dass jedes Recht aus
+# PERMISSIONS genau einmal vorkommt.
+RECHTEBEREICHE: list[tuple[str, str, list[str]]] = [
+    (
+        "Sehen und bedienen",
+        "Was im Alltag gebraucht wird.",
+        ["zone.read", "setpoint.write", "override.create", "override.cancel"],
+    ),
+    (
+        "Zonen und Zeitplaene",
+        "Die Anlage umbauen statt sie zu bedienen.",
+        ["zone.manage", "schedule.manage", "mode.manage"],
+    ),
+    (
+        "Geraete",
+        "Sensoren, Ventile und ihre Zuordnung zu Zonen.",
+        ["device.read", "device.manage"],
+    ),
+    (
+        "Betrieb der Anlage",
+        "Globale Vorgaben -- und der Riegel, hinter dem eine echte Heizung haengt.",
+        ["setting.manage", "control.arm"],
+    ),
+    (
+        "Benutzer und Zugang",
+        "Wer sich anmelden darf und wer was sehen kann.",
+        ["user.manage", "group.manage", "token.self", "token.manage", "audit.read"],
+    ),
+]
+
+
 def hat_recht(principal: Principal, code: str, zone_id: int | None = None) -> bool:
     """Ein anlagenweites Recht deckt jede Zone ab, ein zonenbezogenes nur die eigene.
 
