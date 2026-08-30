@@ -40,6 +40,7 @@ GESCHUETZTE_SEITEN = [
     "/zonen/{zone_id}/parameter",
     "/steuerung",
     "/einstellungen",
+    "/schnittstellen",
 ]
 
 

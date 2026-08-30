@@ -91,13 +91,14 @@
                 {{ weg("/geraete", "Geräte") }}
                 {{ weg("/steuerung", "Betrieb") }}
                 <li class="nav-item dropdown">
-                    <button class="nav-link dropdown-toggle{{ ' tc-hier' if hier in ('/einstellungen', '/benutzer', '/gruppen', '/audit', '/tokens') or hier.startswith('/modi') }}"
+                    <button class="nav-link dropdown-toggle{{ ' tc-hier' if hier in ('/einstellungen', '/schnittstellen', '/benutzer', '/gruppen', '/audit', '/tokens') or hier.startswith('/modi') }}"
                             type="button" data-bs-toggle="dropdown" aria-expanded="false">
                         Einstellungen
                     </button>
                     <ul class="dropdown-menu dropdown-menu-end">
                         <li><a class="dropdown-item" href="/einstellungen">Regelvorgaben</a></li>
                         <li><a class="dropdown-item" href="/modi">Sollwert-Modi</a></li>
+                        <li><a class="dropdown-item" href="/schnittstellen">Schnittstellen</a></li>
                         <li><hr class="dropdown-divider"></li>
                         <li><a class="dropdown-item" href="/benutzer">Benutzer</a></li>
                         <li><a class="dropdown-item" href="/gruppen">Gruppen</a></li>
