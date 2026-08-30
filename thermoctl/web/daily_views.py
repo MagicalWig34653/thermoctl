@@ -40,8 +40,16 @@ FELDER = (
     "sensor_timeout_seconds",
     "temperature_offset_k",
     "window_resume_delay_seconds",
+    "solar_setback_max_k",
 )
-GANZZAHLEN = frozenset(FELDER) - {"hysteresis_k", "temperature_offset_k"}
+GANZZAHLEN = frozenset(FELDER) - {"hysteresis_k", "temperature_offset_k", "solar_setback_max_k"}
+
+# Not part of `FELDER`: unlike the fields above, an empty value here does not mean
+# "inherited from the global default" -- there is no meaningful plant-wide default for
+# how much sun a particular room gets. It is its own, always-present, non-nullable
+# zone value (default 0 -- off), so it gets its own bounds check instead of going
+# through `_check_parameters`.
+SOLAR_GAIN_FACTOR_LIMITS = (Decimal("0"), Decimal("1"))
 
 
 def _zone_or_404(session: Session, principal: Principal, zone_id: int, permission: str) -> Zone:
@@ -79,6 +87,7 @@ async def show_parameter(
     values = {
         name: str(getattr(zone, name)) if getattr(zone, name) is not None else "" for name in FELDER
     }
+    values["solar_gain_factor"] = str(zone.solar_gain_factor)
     return _parameterpage(request, zone, control_parameters(session, zone), values)
 
 
@@ -100,6 +109,21 @@ def _check_parameters(values: dict[str, str]) -> dict[str, Decimal | int | None]
     return result
 
 
+def _check_solar_gain_factor(text: str) -> Decimal:
+    """Always present, never empty (unlike the fields in `FELDER`) -- 0 is the
+    documented off-state, not a missing value."""
+    try:
+        value = Decimal(text.replace(",", "."))
+    except InvalidOperation as exc:
+        raise FormError("solar_gain_factor", "Bitte eine gültige Zahl eingeben.") from exc
+    lower, upper = SOLAR_GAIN_FACTOR_LIMITS
+    if not lower <= value <= upper:
+        raise FormError(
+            "solar_gain_factor", f"Bitte einen Wert zwischen {lower} und {upper} angeben."
+        )
+    return value
+
+
 @router.post("/zones/{zone_id}/parameters")
 async def save_parameter(
     zone_id: int,
@@ -110,10 +134,24 @@ async def save_parameter(
     zone = _zone_or_404(session, principal, zone_id, "zone.manage")
     form = await request.form()
     values = {name: str(form.get(name, "")).strip() for name in FELDER}
+    raw_solar_gain_factor = str(form.get("solar_gain_factor", "")).strip()
+    values["solar_gain_factor"] = raw_solar_gain_factor or str(zone.solar_gain_factor)
     try:
-        checked = _check_parameters(values)
+        checked = _check_parameters({name: values[name] for name in FELDER})
+        # Missing/empty leaves the zone's current value untouched -- unlike the
+        # fields in `FELDER`, an empty `solar_gain_factor` cannot mean "inherit",
+        # so there is nothing sensible left for it to mean except "unchanged".
+        solar_gain_factor = (
+            zone.solar_gain_factor
+            if not raw_solar_gain_factor
+            else _check_solar_gain_factor(raw_solar_gain_factor)
+        )
     except FormError as exc:
         return _parameterpage(request, zone, control_parameters(session, zone), values, exc)
+    # Set before `save_control_parameters` runs: that call also writes the audit
+    # entry, and its `object_type="zone_settings"` covers this field too -- a second,
+    # near-identical entry right after it would only make the log harder to read.
+    zone.solar_gain_factor = solar_gain_factor
     save_control_parameters(
         session, zone, checked, user_id=principal.user_id, token_id=principal.token_id
     )

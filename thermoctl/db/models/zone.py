@@ -1,6 +1,6 @@
 from decimal import Decimal
 
-from sqlalchemy import Boolean, ForeignKey, Integer, Numeric, String
+from sqlalchemy import Boolean, CheckConstraint, ForeignKey, Integer, Numeric, String, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from thermoctl.db.base import Base, TimestampMixin
@@ -33,6 +33,11 @@ class Zone(TimestampMixin, Base):
     """
 
     __tablename__ = "zone"
+    __table_args__ = (
+        CheckConstraint(
+            "solar_gain_factor BETWEEN 0 AND 1", name="solar_gain_faktor_0_bis_1"
+        ),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
@@ -53,6 +58,19 @@ class Zone(TimestampMixin, Base):
     sensor_timeout_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
     temperature_offset_k: Mapped[Decimal | None] = mapped_column(Numeric(4, 2), nullable=True)
     window_resume_delay_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    # How strongly this zone profits from sunshine, 0 (not at all, e.g. a north-facing
+    # room) to 1 (strongly, e.g. a room with roof windows). Default 0 -- off, like the
+    # rest of the solar setback feature until an operator explicitly configures it.
+    # Not nullable and not inherited from a global default like the six fields above:
+    # there is no meaningful installation-wide default for "how sunny is this room".
+    solar_gain_factor: Mapped[Decimal] = mapped_column(
+        Numeric(3, 2), default=Decimal("0"), server_default=text("0"), nullable=False
+    )
+    # The zone's own cap on the setback in Kelvin -- nullable and inherited exactly
+    # like the six control parameters in `ControlParameters` above: empty means
+    # `setting.default_solar_setback_max_k`.
+    solar_setback_max_k: Mapped[Decimal | None] = mapped_column(Numeric(3, 1), nullable=True)
 
 
 class ZoneSetpoint(Base):

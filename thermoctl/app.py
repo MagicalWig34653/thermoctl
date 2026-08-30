@@ -38,6 +38,7 @@ from thermoctl.domain.remote_control import (
     boost,
     set_setpoint,
 )
+from thermoctl.domain.solar_setback import HourlyForecast
 from thermoctl.domain.zone_settings import (
     ParameterOutOfRange,
     UnknownParameter,
@@ -45,6 +46,7 @@ from thermoctl.domain.zone_settings import (
 )
 from thermoctl.domain.zones import UnknownOperatingMode, set_operating_mode
 from thermoctl.integrations.actuators import switching_allowed
+from thermoctl.integrations.forecast import ForecastCache
 from thermoctl.integrations.mqtt.client import MqttClient
 from thermoctl.integrations.mqtt.commands import (
     Command,
@@ -136,6 +138,34 @@ def _sensor_notices(
     return notices
 
 
+async def _solar_forecast(
+    app: FastAPI, session: Session, now: datetime
+) -> list[HourlyForecast] | None:
+    """The hourly forecast for the configured location, or `None`.
+
+    `None` covers three different reasons, and they are meant to collapse into the
+    same outcome (CLAUDE.md: a failed source must not disturb control -- the safe
+    direction is simply no setback): the feature is switched off, no location is
+    configured (`solar_forecast_latitude`/`_longitude` unset -- there is no sensible
+    default location, principle 1), or `ForecastCache.get()` could not reach the
+    source this cycle.
+    """
+    settings_row = session.get(Setting, 1)
+    if settings_row is None or not settings_row.solar_forecast_enabled:
+        return None
+    latitude = settings_row.solar_forecast_latitude
+    longitude = settings_row.solar_forecast_longitude
+    if latitude is None or longitude is None:
+        return None
+    cache: ForecastCache | None = getattr(app.state, "forecast_cache", None)
+    if cache is None:
+        # Only reachable when the lifespan never ran (the shadow loop invoked
+        # directly against a bare `SimpleNamespace`, as some tests do) -- in normal
+        # operation `_lifespan` always sets this up, whether or not MQTT is enabled.
+        return None
+    return await cache.get(latitude, longitude, now)
+
+
 async def _shadow_intervall_s(session_factory: sessionmaker[Session]) -> int:
     with session_scope(session_factory) as session:
         settings = session.get(Setting, 1)
@@ -168,7 +198,8 @@ async def _shadowschleife(app: FastAPI) -> None:
                 vorher = _sensorzustaende(session)
                 advance_zone_state(session, now)
                 notices = _sensor_notices(session, vorher)
-                cycle(session, now)
+                forecast = await _solar_forecast(app, session, now)
+                cycle(session, now, forecast)
                 # `getattr`: the loop also runs in tests that assemble an app without
                 # running through the full lifespan.
                 if getattr(app.state, "publisher", None) is not None:
@@ -362,6 +393,11 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.bridge_reachable = None
     app.state.publisher = None
     app.state.publication_state = PublicationState()
+    # No network call happens here -- `ForecastCache` fetches lazily, on the first
+    # cycle that finds the feature configured. Set up unconditionally (unlike the
+    # MQTT client below) so a later `settings.solar_forecast_enabled` flip takes
+    # effect on the very next shadow cycle, without a restart.
+    app.state.forecast_cache = ForecastCache()
     # The **first** bolt, set when the client is built. It comes from the database, as
     # the comment in `MqttClient` has specified since subproject 2 -- and it is read
     # once here, not on every send. Whoever arms the plant while it is running

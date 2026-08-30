@@ -55,6 +55,11 @@ LIMITS: dict[str, tuple[Decimal, Decimal]] = {
     "default_window_resume_delay_seconds": (Decimal(0), Decimal(3600)),
     "measurement_retention_days": (Decimal(1), Decimal(3650)),
     "session_lifetime_seconds": (Decimal(300), Decimal(31536000)),
+    "default_solar_setback_max_k": (Decimal("0.0"), Decimal("10.0")),
+    # A window of a day or more would predict "sun" far past the point where the
+    # forecast is still meaningful; below one hour there is nothing left to look
+    # ahead to.
+    "solar_setback_lookahead_hours": (Decimal(1), Decimal(12)),
 }
 
 LABELS: dict[str, str] = {
@@ -67,10 +72,12 @@ LABELS: dict[str, str] = {
     "default_window_resume_delay_seconds": "Nachlauf nach Fensterschluss (Sekunden)",
     "measurement_retention_days": "Messwerte aufbewahren (Tage)",
     "session_lifetime_seconds": "Sitzungsdauer (Sekunden)",
+    "default_solar_setback_max_k": "Sonnenabsenkung, Obergrenze (K)",
+    "solar_setback_lookahead_hours": "Sonnenabsenkung, Vorschau (Stunden)",
 }
 
 # Which fields are integer-valued. The rest are decimal numbers.
-GANZZAHLIG = frozenset(LIMITS) - {"default_hysteresis_k"}
+GANZZAHLIG = frozenset(LIMITS) - {"default_hysteresis_k", "default_solar_setback_max_k"}
 
 
 def settings(session: Session) -> Setting:
@@ -139,6 +146,69 @@ def save_settings(
         object_type="setting",
         object_id="1",
         summary="Globale Regelvorgaben geändert",
+        user_id=user_id,
+        token_id=token_id,
+    )
+
+
+def check_coordinate(field: str, eingabe: str, *, bound: Decimal) -> Decimal | None:
+    """A latitude or longitude, or `None` if the field was left empty.
+
+    Empty is a valid, meaningful value here -- unlike `check_number` above, where an
+    empty global default would be a mistake. Without a location the solar setback
+    feature stays off regardless of `solar_forecast_enabled` (CLAUDE.md principle 1:
+    no coordinate belongs in the source as a fallback, so there is no default to fall
+    back to -- "not configured" has to be a real, valid state).
+    """
+    text = eingabe.strip().replace(",", ".")
+    if not text:
+        return None
+    try:
+        value = Decimal(text)
+    except InvalidOperation as exc:
+        raise ControlError(field, "Bitte eine Zahl angeben.") from exc
+    if not -bound <= value <= bound:
+        raise ControlError(
+            field, f"Bitte einen Wert zwischen -{bound} und {bound} angeben."
+        )
+    return value
+
+
+def save_solar_location(
+    session: Session,
+    *,
+    enabled: bool,
+    latitude_text: str,
+    longitude_text: str,
+    user_id: int | None,
+    token_id: int | None = None,
+    source: str = "web",
+) -> None:
+    """The on/off switch and the location for the solar forecast.
+
+    Kept apart from `save_settings`: those are bounded numbers with a global default,
+    these are a location that has none, plus a switch. Checked together before either
+    is written, for the same reason `save_settings` does -- a coordinate rejected in
+    the second field must not leave the switch already flipped.
+    """
+    latitude = check_coordinate(
+        "solar_forecast_latitude", latitude_text, bound=Decimal("90")
+    )
+    longitude = check_coordinate(
+        "solar_forecast_longitude", longitude_text, bound=Decimal("180")
+    )
+
+    row = settings(session)
+    row.solar_forecast_enabled = enabled
+    row.solar_forecast_latitude = latitude
+    row.solar_forecast_longitude = longitude
+    audit.record(
+        session,
+        source=source,
+        action="update",
+        object_type="setting",
+        object_id="1",
+        summary="Standort und Schalter für die Sonnenprognose geändert",
         user_id=user_id,
         token_id=token_id,
     )
