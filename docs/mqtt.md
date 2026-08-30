@@ -44,6 +44,41 @@ Phase 4 und bekommt dort sein eigenes Datenmodell.
 Ein Gerätename mit Schrägstrich entginge dem `+`-Platzhalter. In der Anlage kommt keiner
 vor; der Fall wird protokolliert statt stillschweigend verschluckt.
 
+### Bediengeräte: Tastendrücke
+
+Ein Bediengerät an der Wand — etwa ein Aqara W100 — schickt seine Tastendrücke als Feld
+`action` in derselben Zustandsnachricht. Der Dienst legt jeden davon als Messwert ab und
+führt aus, was für diese Taste **belegt** ist.
+
+**Die Belegung steht in der Datenbank, nicht im Quelltext.** Wie ein Gerät seine Tasten
+nennt, entscheidet Zigbee2MQTT je Modell: der eine schickt `single_plus`, der nächste
+`button_1_single`, der übernächste `up_open`. Eine Tabelle dieser Namen im Code wäre genau
+die harte Verdrahtung, gegen die dieses Projekt gebaut ist (Grundsatz 1) — und für jedes
+Gerät falsch, das noch nicht darin steht.
+
+Statt zu raten, wird zugehört: Unter *Zone → Geräte → Tastenbelegung* steht, welche
+Aktionen dieses Gerät **wirklich** geschickt hat. Wer ein neues Modell anschließt, drückt
+einmal jede Taste, lädt die Seite neu und ordnet zu, was er sieht. Ein Datenblatt braucht
+dafür niemand.
+
+Belegbar sind fünf Dinge — bewusst wenige, weil man an einem Knopf im Vorbeigehen nicht
+sieht, was man tut: **Wärmer**, **Kälter** (Schrittweite je Taste einstellbar, Standard
+0,5 K), **nächste Schaltung vorziehen**, **Betriebsart Aus**, **Betriebsart Automatik**.
+Wärmer und kälter verstellen dabei den Sollwert des Modus, der gerade gilt — dasselbe wie
+der Thermostat in Home Assistant. Als Übersteuerung wäre der Wert nach dem nächsten
+Schaltpunkt weg, und der Raum kühlte ohne Zutun wieder aus.
+
+**Derselbe Tastendruck wirkt nur einmal.** Eine behaltene Nachricht wird bei jeder
+Neuverbindung erneut zugestellt; ohne diesen Schutz löste ein Wackelkontakt in der
+Netzverbindung denselben Druck immer wieder aus, und ein Boost, den niemand gedrückt hat,
+fiele erst auf, wenn es im Raum zu warm ist. Verglichen wird der Messzeitpunkt gegen den
+zuletzt verarbeiteten.
+
+Was **nicht** gebaut ist: das Display eines Bediengeräts mit Werten aus thermoctl zu
+speisen. Der W100 kann eine externe Temperatur anzeigen, aber unter welchem Schlüssel
+Zigbee2MQTT sie entgegennimmt, ist ohne das Gerät in der Hand nicht zu verifizieren — und
+eine geratene Nutzlast wäre eine Zusage, die niemand geprüft hat.
+
 ## 2. Senden: die eigene Struktur
 
 Angeschlossen. Sie behebt die drei Eigenheiten, die die

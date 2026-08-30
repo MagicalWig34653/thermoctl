@@ -11,6 +11,7 @@ from thermoctl.db.models.lookup import DeviceCapability, DeviceRole, Integration
 from thermoctl.db.models.messwert import DeviceHealth, Measurement
 from thermoctl.db.models.zone import Zone
 from thermoctl.db.models.zustand import ZoneState
+from thermoctl.domain.bediengeraet import aktion_ausfuehren
 from thermoctl.domain.beobachtung import Beobachtung, beobachtungen_aus_nutzlast
 from thermoctl.domain.geraeteklassen import (
     Geraetebeschreibung,
@@ -107,6 +108,9 @@ def _zustand_verarbeiten(
     if not beobachtungen:
         return
     geraet = _geraet(session, name, empfangen_am)
+    # Vor dem Einfuegen gelesen: Danach waere der eigene neue Messwert der juengste,
+    # und der Vergleich unten verglichen die Nachricht mit sich selbst.
+    zuletzt_gedrueckt = _zuletzt_gedrueckt(session, geraet.id)
     faehigkeiten = {
         faehigkeit.code: faehigkeit for faehigkeit in session.scalars(select(DeviceCapability))
     }
@@ -145,6 +149,53 @@ def _zustand_verarbeiten(
     gesund.link_quality = _ganzzahl(beobachtungen, "link_quality", gesund.link_quality)
     gesund.battery_percent = _dezimalzahl(beobachtungen, "battery", gesund.battery_percent)
     geraet.last_seen_at = empfangen_am
+    _tastendruck_ausfuehren(session, geraet, beobachtungen, zuletzt_gedrueckt, empfangen_am)
+
+
+def _zuletzt_gedrueckt(session: Session, geraet_id: int) -> datetime | None:
+    """Wann dieses Geraet zuletzt eine Taste gemeldet hat -- vor dieser Nachricht.
+
+    Der Schutz gegen doppelte Ausfuehrung: Zigbee2MQTT sendet Zustandsnachrichten
+    normalerweise ohne retain-Flag, aber eine behaltene Nachricht wird bei **jeder**
+    Neuverbindung erneut zugestellt. Ohne diesen Vergleich loeste ein Wackelkontakt in
+    der Netzverbindung jedes Mal denselben Tastendruck erneut aus -- und ein Boost, den
+    niemand gedrueckt hat, faellt erst auf, wenn es im Raum zu warm ist.
+    """
+    faehigkeit_id = session.scalar(
+        select(DeviceCapability.id).where(DeviceCapability.code == "action")
+    )
+    if faehigkeit_id is None:
+        return None
+    return session.scalar(
+        select(Measurement.measured_at)
+        .where(
+            Measurement.device_id == geraet_id,
+            Measurement.capability_id == faehigkeit_id,
+        )
+        .order_by(Measurement.measured_at.desc(), Measurement.id.desc())
+        .limit(1)
+    )
+
+
+def _tastendruck_ausfuehren(
+    session: Session,
+    geraet: Device,
+    beobachtungen: list[Beobachtung],
+    zuletzt: datetime | None,
+    empfangen_am: datetime,
+) -> None:
+    """Fuehrt aus, was ein Tastendruck an einem Bediengeraet belegt hat."""
+    druck = next((b for b in beobachtungen if b.faehigkeit == "action" and b.text), None)
+    if druck is None:
+        return
+    if zuletzt is not None and druck.gemessen_am <= zuletzt:
+        log.debug(
+            "Tastendruck bereits verarbeitet, wird uebergangen",
+            extra={"geraet": geraet.display_name, "aktion": druck.text},
+        )
+        return
+    assert druck.text is not None
+    aktion_ausfuehren(session, geraet, druck.text, empfangen_am)
 
 
 def _dezimalzahl(

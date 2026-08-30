@@ -1,3 +1,4 @@
+from decimal import Decimal, InvalidOperation
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
@@ -7,10 +8,15 @@ from sqlalchemy.orm import Session
 
 from thermoctl.auth.dependencies import aktueller_principal, csrf_schutz, get_session
 from thermoctl.db.models.device import Device, DeviceCapabilityLink, ZoneDevice
-from thermoctl.db.models.lookup import DeviceCapability, DeviceRole
+from thermoctl.db.models.lookup import ControllerCommand, DeviceCapability, DeviceRole
 from thermoctl.db.models.zone import Zone
 from thermoctl.domain.anlagenbild import anlagenbild
 from thermoctl.domain.authz import hat_recht, visible_zones
+from thermoctl.domain.bediengeraet import (
+    Bediengeraetefehler,
+    belegung_setzen,
+    gesehene_aktionen,
+)
 from thermoctl.domain.geraetezuordnung import (
     FaehigkeitFehlt,
     ZuordnungBereitsVorhanden,
@@ -64,9 +70,22 @@ def _kontext(session: Session, zone: Zone, **zusatz: object) -> dict[str, object
     ):
         faehigkeiten.setdefault(geraet_id, []).append(code)
 
+    # Je Bediengeraet dieser Zone: welche Tasten es geschickt hat und was sie tun.
+    # Ohne diese Liste muesste jemand wissen, wie sein Modell seine Tasten nennt --
+    # `single_plus`, `button_1_single`, `up_open`, je nach Hersteller.
+    bediengeraete = [
+        (geraet, gesehene_aktionen(session, geraet))
+        for zuordnung, geraet, rolle in zuordnungen
+        if rolle.code == "controller"
+    ]
+
     return {
         "zone": zone,
         "faehigkeiten": faehigkeiten,
+        "bediengeraete": bediengeraete,
+        "befehle": session.scalars(
+            select(ControllerCommand).order_by(ControllerCommand.id)
+        ).all(),
         # Dasselbe Flussbild wie auf /anlage, hier fuer diese eine Zone. Es steht ueber
         # den Formularen, weil es die Frage beantwortet, mit der man herkommt -- was ist
         # hier verdrahtet und was fehlt -- bevor man etwas aendert.
@@ -239,5 +258,47 @@ async def geraet_tauschen_view(
             zone,
             darf_aendern=True,
             fehler={"tausch": meldung},
+        )
+    return RedirectResponse(f"/zonen/{zone.id}/geraete", status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/zonen/{zone_id}/geraete/taste")
+async def taste_belegen(
+    zone_id: int,
+    request: Request,
+    principal: Annotated[Principal, Depends(aktueller_principal)],
+    session: Annotated[Session, Depends(get_session)],
+) -> Response:
+    """Belegt eine Taste eines Bediengeraets -- oder loescht die Belegung.
+
+    Die Aktion steht im Rumpf und nicht im Pfad: Sie ist ein Wert, den das Geraet
+    geschickt hat (`single_plus`, `button_1_single`, …), und was darin vorkommen darf,
+    entscheidet Zigbee2MQTT. Im Pfad muesste sie erst kodiert werden, und ein
+    Schraegstrich darin oeffnete eine Ebene, die niemand vorgesehen hat.
+    """
+    zone = _sichtbare_zone(session, principal, zone_id, "device.manage")
+    formular = await request.form()
+    geraet = _geraet(session, formular.get("device_id"), "device_id")
+    aktion = str(formular.get("aktion", "")).strip()
+    if not aktion:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Keine Aktion angegeben")
+    befehl = str(formular.get("befehl", "")).strip() or None
+
+    schritt: Decimal | None = None
+    rohschritt = str(formular.get("schritt_k", "")).strip().replace(",", ".")
+    if rohschritt:
+        try:
+            schritt = Decimal(rohschritt)
+        except InvalidOperation:
+            return _antwort(
+                session, request, zone, darf_aendern=True,
+                fehler={"taste": "Die Schrittweite muss eine Zahl sein."},
+            )
+
+    try:
+        belegung_setzen(session, geraet, aktion, befehl, schritt)
+    except Bediengeraetefehler as exc:
+        return _antwort(
+            session, request, zone, darf_aendern=True, fehler={"taste": str(exc)}
         )
     return RedirectResponse(f"/zonen/{zone.id}/geraete", status.HTTP_303_SEE_OTHER)

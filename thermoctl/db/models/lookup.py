@@ -44,6 +44,17 @@ class SensorStatus(_Nachschlage):
     __tablename__ = "sensor_status"
 
 
+class ControllerCommand(_Nachschlage):
+    """Was ein Bediengeraet ausloesen kann: waermer, kaelter, Boost, Betriebsart.
+
+    Eine Nachschlagetabelle und keine Aufzaehlung im Code: Grundsatz 3 verbietet ENUM,
+    und die Oberflaeche soll die moeglichen Befehle aus der Datenbank anbieten koennen,
+    ohne eine zweite Liste im Quelltext pflegen zu muessen.
+    """
+
+    __tablename__ = "controller_command"
+
+
 class ActorSource(_Nachschlage):
     """Ueber welchen Adapter etwas geschah: web, api, mcp, cli, system."""
 
@@ -77,6 +88,7 @@ DEVICE_CAPABILITIES = [
     ("setpoint", "Sollwert"),
     ("availability", "Erreichbarkeit"),
     ("soil_moisture", "Bodenfeuchte"),
+    ("action", "Tastendruck"),
 ]
 SENSOR_STATUS = [
     ("ok", "In Ordnung"),
@@ -87,6 +99,16 @@ DEVICE_ROLES = [
     ("actuator", "Aktor"),
     ("window_contact", "Fensterkontakt"),
     ("controller", "Bediengerät"),
+]
+# Bewusst klein gehalten: Was ein Tastendruck an der Wand ausloest, soll man in einem
+# Satz erklaeren koennen. Alles Weitere gehoert an eine Stelle, an der man sieht, was man
+# tut -- nicht auf einen Knopf, den jemand im Vorbeigehen drueckt.
+CONTROLLER_COMMANDS = [
+    ("setpoint_up", "Wärmer"),
+    ("setpoint_down", "Kälter"),
+    ("boost", "Nächste Schaltung vorziehen"),
+    ("mode_off", "Betriebsart Aus"),
+    ("mode_auto", "Betriebsart Automatik"),
 ]
 ACTOR_SOURCES = [
     ("web", "Weboberfläche"),
