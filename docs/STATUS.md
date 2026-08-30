@@ -174,6 +174,19 @@ Obergrenze ist die Zusage dieser Funktion. Und beide Migrationen hingen an derse
 Vorgängerrevision; die Historie hatte zwei Köpfe. Die Hauptsession hat sie geordnet, wie es
 die Arbeitsanweisung vorsieht.
 
+Die Sonnenabsenkung ist über alle drei Adapter erreichbar, nicht nur über die
+Oberfläche: `PUT /api/v1/control/solar-location` setzt Schalter und Standort,
+`GET /api/v1/control` und das MCP-Werkzeug `read_control` geben beides zurück, und der
+`solar_gain_factor` hängt an der Zone und geht über `POST`/`PUT /api/v1/zones` mit.
+Fehlt das Feld beim Schreiben, gilt 0 — ein Aufrufer, der die Absenkung nicht kennt,
+schaltet sie damit aus statt sie versehentlich ein. Die Koordinaten sind im REST-Schema
+absichtlich Text: Ein `Field(ge=-90, le=90)` wäre eine zweite Fassung der Grenzen, die
+in der Domäne stehen, und zwei Fassungen laufen auseinander.
+
+Dabei kam eine Datenbank-Abhängigkeit ans Licht, die nur der MariaDB-Lauf zeigt: SQLite
+gibt `Numeric(3,2)` als `0` zurück, MariaDB als `0.00`. Eine MCP-Ausgabe, die je nach
+Datenbank anders aussieht, ist keine Zusicherung — die Skala ist jetzt festgenagelt.
+
 **Was nur der Projektinhaber kann:** Eine echte Abfrage gegen Open-Meteo einmal laufen
 lassen — der Aufbau der Anfrage ist aus der Dokumentation gebaut, aber nie gegen den
 laufenden Dienst geprüft. Und am echten WT-A03E nachsehen, ob `system_mode` und

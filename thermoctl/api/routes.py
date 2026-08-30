@@ -26,6 +26,7 @@ from thermoctl.api.schemas import (
     WriteControlParameters,
     WriteParameter,
     WriteSetpoints,
+    WriteSolarLocation,
     WriteZone,
     ZoneResponse,
     ZoneStateResponse,
@@ -46,6 +47,7 @@ from thermoctl.domain.control import (
     ControlError,
     arm,
     save_settings,
+    save_solar_location,
     settings,
 )
 from thermoctl.domain.modes import DomainError, create_mode, update_setpoints
@@ -611,6 +613,9 @@ def _control_response(session: Session) -> ControlResponse:
     return ControlResponse(
         control_armed=row.control_armed,
         timezone=row.timezone,
+        solar_forecast_enabled=row.solar_forecast_enabled,
+        solar_forecast_latitude=row.solar_forecast_latitude,
+        solar_forecast_longitude=row.solar_forecast_longitude,
         **{field: getattr(row, field) for field in LIMITS},
     )
 
@@ -665,6 +670,34 @@ def control_defaults(
             session,
             values,
             data.timezone,
+            user_id=principal.user_id,
+            token_id=principal.token_id,
+            source="api",
+        )
+    except ControlError as exc:
+        raise _domain_error(exc.field, exc.notice) from exc
+    return _control_response(session)
+
+
+@router.put("/control/solar-location", response_model=ControlResponse)
+def control_solar_location(
+    data: WriteSolarLocation,
+    session: Annotated[Session, Depends(get_session)],
+    principal: Annotated[Principal, Depends(_principal)],
+) -> ControlResponse:
+    """Switch and location for the solar forecast.
+
+    An empty coordinate is a valid answer and means "off" -- there is no sensible
+    default location (principle 1), so a caller that has none says so by leaving the
+    fields empty rather than by sending someone else's.
+    """
+    _permission(principal, "setting.manage")
+    try:
+        save_solar_location(
+            session,
+            enabled=data.enabled,
+            latitude_text=data.latitude,
+            longitude_text=data.longitude,
             user_id=principal.user_id,
             token_id=principal.token_id,
             source="api",
