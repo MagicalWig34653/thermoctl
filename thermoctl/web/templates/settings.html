@@ -40,8 +40,8 @@
     <!-- Hidden fields from the global-defaults form above are resubmitted here too:
          both forms post to the same endpoint, and `save_settings` needs every LIMITS
          field present to validate them, not only the ones on this half of the page. -->
-    {% for feld, _label, _ganzzahlig in felder %}
-    <input type="hidden" name="{{ feld }}" value="{{ values.get(feld, "") }}">
+    {% for field, _label, _integral in fields %}
+    <input type="hidden" name="{{ field }}" value="{{ values.get(field, "") }}">
     {% endfor %}
     <input type="hidden" name="timezone" value="{{ values.get('timezone', '') }}">
     {{ toggle("solar_forecast_enabled", "Sonnenabsenkung aktiv", solar_forecast_enabled) }}
