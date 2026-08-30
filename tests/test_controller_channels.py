@@ -10,11 +10,13 @@ from tests.helpers import create_device, create_zone, rolle
 from thermoctl.auth.csrf import CSRF_HEADER, csrf_token
 from thermoctl.auth.sessions import COOKIE_NAME
 from thermoctl.config import get_settings
-from thermoctl.db.models.device import DeviceProperty, ZoneDevice
+from thermoctl.db.models.device import DeviceProperty, DevicePropertyValue, ZoneDevice
 from thermoctl.db.models.lookup import CHANNEL_KINDS, ChannelKind
 from thermoctl.domain.controller_channels import ControllerChannelError, configure_channel
 from thermoctl.domain.device_classes import properties_from_exposes
 from thermoctl.services.publishing import PublicationState, _controller_channels_senden
+
+MONDAY_EIGHT = datetime(2026, 8, 31, 8, 0)
 
 
 def _kinds(session: Session) -> None:
@@ -200,3 +202,423 @@ def test_without_the_actuator_role_the_same_channel_works(session: Session) -> N
         fixed_number=Decimal("20"),
     )
     assert channel.direction == "write"
+
+
+def _controller(session: Session, name: str = "wall-unit"):
+    """A device that is a controller in a zone and an actuator nowhere."""
+    zone = create_zone(session, f"zone-for-{name}")
+    device = create_device(session, name)
+    _assign(session, zone.id, device.id, "controller")
+    return zone, device
+
+
+@pytest.mark.parametrize(
+    ("case", "expected"),
+    [
+        ("unknown_property", "bietet dieses Merkmal nicht an"),
+        ("bad_direction", "Kanalrichtung ist ungültig"),
+        ("read_on_write_only", "nicht lesbar"),
+        ("kind_does_not_fit", "passt nicht zur Richtung"),
+        ("zone_kind_without_zone", "eine Zone erforderlich"),
+        ("sensor_kind_without_source", "ein Quellgerät erforderlich"),
+        ("fixed_without_value", "feste Wert fehlt"),
+    ],
+)
+def test_every_rule_for_a_channel_is_enforced(session: Session, case: str, expected: str) -> None:
+    """Each of these rules exists because the alternative is a channel that does nothing.
+
+    A channel pointing at a property the device does not have, or a kind that needs a zone
+    without one, would be accepted, stored, and then silently skipped on every cycle --
+    and whoever configured it would look for the fault at the device.
+    """
+    _kinds(session)
+    _zone, device = _controller(session)
+    _property(session, device.id)
+
+    calls = {
+        "unknown_property": dict(property_name="does_not_exist", direction="write",
+                                 kind_code="fixed", fixed_number=Decimal("20")),
+        "bad_direction": dict(property_name="external_temperature", direction="sideways",
+                              kind_code="fixed", fixed_number=Decimal("20")),
+        "read_on_write_only": dict(property_name="external_temperature", direction="read",
+                                   kind_code="zone_setpoint"),
+        "kind_does_not_fit": dict(property_name="external_temperature", direction="write",
+                                  kind_code="operating_mode"),
+        "zone_kind_without_zone": dict(property_name="external_temperature",
+                                       direction="write", kind_code="zone_temperature"),
+        "sensor_kind_without_source": dict(property_name="external_temperature",
+                                           direction="write", kind_code="sensor_temperature"),
+        "fixed_without_value": dict(property_name="external_temperature", direction="write",
+                                    kind_code="fixed"),
+    }[case]
+
+    with pytest.raises(ControllerChannelError, match=expected):
+        configure_channel(session, device, **calls)
+
+
+def test_a_fixed_value_must_be_one_the_device_accepts(session: Session) -> None:
+    """The bridge says what a property takes; a value outside that is a message the
+    device will discard -- and the discarding happens where nobody sees it."""
+    _kinds(session)
+    _zone, device = _controller(session)
+    prop = DeviceProperty(
+        device_id=device.id, name="sensor", value_type="enum",
+        is_readable=True, is_writable=True,
+    )
+    session.add(prop)
+    session.flush()
+    for i, value in enumerate(("internal", "external")):
+        session.add(DevicePropertyValue(property_id=prop.id, value=value, sort_order=i))
+    session.flush()
+
+    with pytest.raises(ControllerChannelError, match="nicht erlaubt"):
+        configure_channel(session, device, "sensor", "write", "fixed", fixed_text="draussen")
+
+    # The counter-check: a value the bridge does list goes through.
+    channel = configure_channel(session, device, "sensor", "write", "fixed",
+                                fixed_text="external")
+    assert channel.fixed_text == "external"
+
+
+def test_a_fixed_number_must_be_inside_the_range(session: Session) -> None:
+    _kinds(session)
+    _zone, device = _controller(session)
+    _property(session, device.id)  # -100 … 100 °C
+
+    with pytest.raises(ControllerChannelError, match="außerhalb des Wertebereichs"):
+        configure_channel(session, device, "external_temperature", "write", "fixed",
+                          fixed_number=Decimal("250"))
+    # Exactly on the boundary is still allowed -- the counter-check to the rule above.
+    channel = configure_channel(session, device, "external_temperature", "write", "fixed",
+                                fixed_number=Decimal("100"))
+    assert channel.fixed_number == Decimal("100")
+
+
+def test_configuring_the_same_property_twice_replaces_the_channel(session: Session) -> None:
+    """One property, one channel. Otherwise two of them would write to the same place
+    and the device would show whichever message arrived last."""
+    from sqlalchemy import select
+
+    from thermoctl.db.models.device import ControllerChannel
+
+    _kinds(session)
+    _zone, device = _controller(session)
+    _property(session, device.id)
+    source = create_device(session, "sensor-for-display")
+
+    configure_channel(session, device, "external_temperature", "write", "fixed",
+                      fixed_number=Decimal("20"))
+    configure_channel(session, device, "external_temperature", "write", "sensor_temperature",
+                      source_device_id=source.id)
+
+    channel = session.scalars(select(ControllerChannel)).one()
+    assert channel.source_device_id == source.id
+    assert channel.fixed_number is None, "der alte feste Wert blieb stehen"
+
+
+def _read_channel(session: Session, device, zone, prop_name: str, kind: str) -> None:
+    prop = DeviceProperty(
+        device_id=device.id, name=prop_name, value_type="numeric",
+        is_readable=True, is_writable=False,
+    )
+    session.add(prop)
+    session.flush()
+    configure_channel(session, device, prop_name, "read", kind, zone_id=zone.id)
+
+
+def test_a_setpoint_turned_on_the_device_becomes_the_setpoint_of_the_zone(
+    session: Session,
+) -> None:
+    """Like the thermostat in Home Assistant: it changes the mode that currently applies.
+
+    As an override the value would be gone after the next schedule point, and the room
+    would cool down again without anyone touching it.
+    """
+    from tests.helpers import create_mode, create_settings, source
+    from thermoctl.db.models.schedule import SchedulePoint
+    from thermoctl.db.models.zone import ZoneSetpoint
+    from thermoctl.domain.controller_channels import apply_read_channels
+    from thermoctl.domain.schedule import resolved_setpoint
+
+    create_settings(session).timezone = "UTC"
+    source(session, "system")
+    _kinds(session)
+    zone, device = _controller(session, "dial")
+    day = create_mode(session, "day")
+    session.add_all([
+        SchedulePoint(zone_id=zone.id, weekday=1, minute_of_day=0, setpoint_mode_id=day.id),
+        ZoneSetpoint(zone_id=zone.id, setpoint_mode_id=day.id, temperature_c=Decimal("21.0")),
+    ])
+    session.flush()
+    _read_channel(session, device, zone, "occupied_heating_setpoint", "zone_setpoint")
+
+    apply_read_channels(session, device, {"occupied_heating_setpoint": 23}, MONDAY_EIGHT)
+
+    assert resolved_setpoint(session, zone, MONDAY_EIGHT).temperature_c == Decimal("23")
+
+
+def test_a_mode_turned_on_the_device_becomes_the_operating_mode(session: Session) -> None:
+    from tests.helpers import create_settings, operating_mode, source
+    from thermoctl.domain.controller_channels import apply_read_channels
+
+    create_settings(session)
+    source(session, "system")
+    operating_mode(session, "off")
+    _kinds(session)
+    zone, device = _controller(session, "switch")
+    _read_channel(session, device, zone, "system_mode", "operating_mode")
+
+    apply_read_channels(session, device, {"system_mode": "off"}, MONDAY_EIGHT)
+
+    assert zone.operating_mode.code == "off"
+
+
+def test_a_value_the_domain_rejects_is_logged_and_changes_nothing(
+    session: Session, caplog
+) -> None:
+    """99 degrees from a wall dial are not a fault of the service.
+
+    The domain limit applies, and the reason belongs in the log instead of vanishing --
+    otherwise the only symptom is a dial that does nothing.
+    """
+    import logging
+
+    from tests.helpers import create_settings, source
+    from thermoctl.db.models.zone import ZoneSetpoint
+    from thermoctl.domain.controller_channels import apply_read_channels
+    from thermoctl.domain.schedule import resolved_setpoint
+
+    settings = create_settings(session)
+    source(session, "system")
+    _kinds(session)
+    zone, device = _controller(session, "wild-dial")
+    session.add(ZoneSetpoint(
+        zone_id=zone.id,
+        setpoint_mode_id=settings.frost_protection_mode_id,
+        temperature_c=Decimal("16.0"),
+    ))
+    session.flush()
+    _read_channel(session, device, zone, "occupied_heating_setpoint", "zone_setpoint")
+    before = resolved_setpoint(session, zone, MONDAY_EIGHT).temperature_c
+
+    with caplog.at_level(logging.WARNING):
+        apply_read_channels(session, device, {"occupied_heating_setpoint": 99}, MONDAY_EIGHT)
+
+    assert resolved_setpoint(session, zone, MONDAY_EIGHT).temperature_c == before
+    assert "abgewiesen" in caplog.text.lower()
+
+
+def test_a_property_that_is_not_in_the_message_is_left_alone(session: Session) -> None:
+    """The counter-check: a device sends more than the one value a channel watches."""
+    from tests.helpers import create_settings, operating_mode, source
+    from thermoctl.domain.controller_channels import apply_read_channels
+
+    create_settings(session)
+    source(session, "system")
+    operating_mode(session, "off")
+    _kinds(session)
+    zone, device = _controller(session, "quiet-dial")
+    _read_channel(session, device, zone, "system_mode", "operating_mode")
+    before = zone.operating_mode.code
+
+    apply_read_channels(session, device, {"battery": 90, "linkquality": 120}, MONDAY_EIGHT)
+
+    assert zone.operating_mode.code == before
+
+
+def test_the_bridge_list_becomes_device_properties(session: Session) -> None:
+    """The whole point: the page works with any device Zigbee2MQTT knows.
+
+    If the properties did not arrive from `bridge/devices`, someone would have to type
+    them in per model -- and every device not on that list would stay unconfigurable.
+    """
+    from sqlalchemy import select
+
+    from tests.helpers import integration
+    from thermoctl.services.ingest import process_message
+
+    integration(session, "zigbee2mqtt")
+    device_list = [{
+        "friendly_name": "wandthermostat",
+        "ieee_address": "0x00158d0001",
+        "definition": {"model": "TH-S04D", "vendor": "Aqara", "exposes": [
+            {"type": "numeric", "property": "external_temperature", "access": 2,
+             "unit": "°C", "value_min": -100, "value_max": 100},
+            {"type": "enum", "property": "sensor", "access": 3,
+             "values": ["internal", "external"]},
+        ]},
+    }]
+    process_message(
+        session, "zigbee2mqtt/bridge/devices", json.dumps(device_list).encode(),
+        basis="zigbee2mqtt", empfangen_am=MONDAY_EIGHT,
+    )
+
+    properties = {
+        p.name: p for p in session.scalars(select(DeviceProperty))
+    }
+    assert properties["external_temperature"].is_writable is True
+    assert properties["external_temperature"].is_readable is False
+    assert properties["sensor"].value_type == "enum"
+    values = session.scalars(
+        select(DevicePropertyValue.value)
+        .where(DevicePropertyValue.property_id == properties["sensor"].id)
+        .order_by(DevicePropertyValue.sort_order)
+    ).all()
+    assert list(values) == ["internal", "external"]
+
+
+def test_a_second_bridge_list_replaces_the_properties(session: Session) -> None:
+    """A device can be re-paired or its firmware updated; then it exposes something else.
+
+    Without replacing, the old properties would linger and the page would offer settings
+    the device no longer has.
+    """
+    from sqlalchemy import select
+
+    from tests.helpers import integration
+    from thermoctl.services.ingest import process_message
+
+    integration(session, "zigbee2mqtt")
+
+    def liste(merkmal: str) -> bytes:
+        return json.dumps([{
+            "friendly_name": "wechselgeraet", "ieee_address": "0x00158d0002",
+            "definition": {"model": "X", "vendor": "Y", "exposes": [
+                {"type": "numeric", "property": merkmal, "access": 2},
+            ]},
+        }]).encode()
+
+    process_message(session, "zigbee2mqtt/bridge/devices", liste("altes_merkmal"),
+                    basis="zigbee2mqtt", empfangen_am=MONDAY_EIGHT)
+    process_message(session, "zigbee2mqtt/bridge/devices", liste("neues_merkmal"),
+                    basis="zigbee2mqtt", empfangen_am=MONDAY_EIGHT)
+
+    namen = list(session.scalars(select(DeviceProperty.name)))
+    assert namen == ["neues_merkmal"]
+
+
+def test_the_last_value_of_a_property_is_kept_for_the_page(session: Session) -> None:
+    """"Does the device talk to me at all?" is the first question on that page.
+
+    It is answered by the last value of every readable property -- and the same
+    timestamp is what keeps a retained message from being applied twice.
+    """
+    from sqlalchemy import select
+
+    from thermoctl.services.ingest import process_message
+
+    device = create_device(session, "melder")
+    session.add(DeviceProperty(
+        device_id=device.id, name="local_temperature", value_type="numeric",
+        is_readable=True, is_writable=False,
+    ))
+    session.add(DeviceProperty(
+        device_id=device.id, name="sensor", value_type="enum",
+        is_readable=True, is_writable=True,
+    ))
+    session.flush()
+
+    process_message(
+        session, f"zigbee2mqtt/{device.external_id}",
+        json.dumps({"local_temperature": 21.5, "sensor": "external"}).encode(),
+        basis="zigbee2mqtt", empfangen_am=MONDAY_EIGHT,
+    )
+
+    werte = {
+        p.name: (p.last_value_number, p.last_value_text, p.last_value_at)
+        for p in session.scalars(select(DeviceProperty))
+    }
+    assert werte["local_temperature"][0] == Decimal("21.5")
+    assert werte["sensor"][1] == "external"
+    assert werte["local_temperature"][2] == MONDAY_EIGHT
+
+
+def test_a_rejected_channel_shows_the_reason_instead_of_a_blank_page(
+    client_als, session: Session
+) -> None:
+    """A rejected setting is not a fault of the service, but it must not vanish either.
+
+    Without the reason on the page the only symptom is a form that keeps resetting, and
+    the fault is looked for at the device.
+    """
+    from tests.helpers import source
+
+    source(session)
+    _kinds(session)
+    zone, device = _controller(session, "meldegeraet")
+    _property(session, device.id)
+    client = client_als([("device.read", zone.id), ("device.manage", zone.id)])
+    client.get("/controllers")
+
+    response = client.post(
+        "/controllers/channel",
+        headers=_csrf(client),
+        data={"device_id": str(device.id), "property_name": "external_temperature",
+              "direction": "write", "kind": "fixed", "fixed_number": "250"},
+    )
+
+    assert response.status_code == 400
+    assert "außerhalb des Wertebereichs" in response.text
+
+
+def test_a_button_binding_without_an_action_is_refused(client_als, session: Session) -> None:
+    from tests.helpers import source
+
+    source(session)
+    _kinds(session)
+    zone, device = _controller(session, "tastengeraet")
+    client = client_als([("device.read", zone.id), ("device.manage", zone.id)])
+    client.get("/controllers")
+
+    response = client.post(
+        "/controllers/button",
+        headers=_csrf(client),
+        data={"device_id": str(device.id), "action_code": "", "command": "boost"},
+    )
+    assert response.status_code == 400
+
+
+def test_a_bad_step_width_shows_the_reason(client_als, session: Session) -> None:
+    """The same limit as everywhere: a setpoint carries one decimal, so a step does too."""
+    from tests.helpers import source
+    from thermoctl.db.models.lookup import CONTROLLER_COMMANDS, ControllerCommand
+
+    source(session)
+    _kinds(session)
+    for code, label in CONTROLLER_COMMANDS:
+        session.add(ControllerCommand(code=code, label=label))
+    session.flush()
+    zone, device = _controller(session, "schrittgeraet")
+    client = client_als([("device.read", zone.id), ("device.manage", zone.id)])
+    client.get("/controllers")
+
+    response = client.post(
+        "/controllers/button",
+        headers=_csrf(client),
+        data={"device_id": str(device.id), "action_code": "single_plus",
+              "command": "setpoint_up", "step_k": "0,25"},
+    )
+    assert response.status_code == 400
+    assert "Nachkommastelle" in response.text
+
+
+def test_a_controller_in_a_foreign_zone_is_not_found(client_als, session: Session) -> None:
+    """Not 'forbidden' but 'does not exist' -- otherwise the answer reveals which
+    devices are configured elsewhere. The rest of the project handles it the same way."""
+    from tests.helpers import source
+
+    source(session)
+    _kinds(session)
+    own = create_zone(session, "eigene-zone")
+    foreign_zone, foreign_device = _controller(session, "fremdes-geraet")
+    del foreign_zone
+    client = client_als([("device.read", own.id), ("device.manage", own.id)])
+    client.get("/controllers")
+
+    response = client.post(
+        "/controllers/button",
+        headers=_csrf(client),
+        data={"device_id": str(foreign_device.id), "action_code": "single_plus",
+              "command": "boost"},
+    )
+    assert response.status_code == 404
