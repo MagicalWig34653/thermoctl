@@ -8,7 +8,7 @@ that.
 
 from sqlalchemy.orm import Session
 
-from tests.helpers import capability, create_device, create_zone, rolle
+from tests.helpers import capability, create_device, create_zone, role
 from thermoctl.db.models.device import DeviceCapabilityLink, ZoneDevice
 from thermoctl.domain.plant_diagram import plant_diagram
 
@@ -20,7 +20,7 @@ def test_a_fully_wired_zone_has_no_deficiencies(session: Session) -> None:
     zone.temperature_source_device_id = sensor.id
     session.add(
         ZoneDevice(
-            zone_id=zone.id, device_id=valve.id, device_role_id=rolle(session, "actuator").id
+            zone_id=zone.id, device_id=valve.id, device_role_id=role(session, "actuator").id
         )
     )
     session.flush()
@@ -37,7 +37,7 @@ def test_a_zone_without_a_temperature_source_reports_the_deficiency(session: Ses
     valve = create_device(session, "ventil-blind")
     session.add(
         ZoneDevice(
-            zone_id=zone.id, device_id=valve.id, device_role_id=rolle(session, "actuator").id
+            zone_id=zone.id, device_id=valve.id, device_role_id=role(session, "actuator").id
         )
     )
     session.flush()
@@ -62,7 +62,7 @@ def test_window_contacts_appear_under_their_zone(session: Session) -> None:
         ZoneDevice(
             zone_id=zone.id,
             device_id=contact.id,
-            device_role_id=rolle(session, "window_contact").id,
+            device_role_id=role(session, "window_contact").id,
         )
     )
     session.flush()
@@ -119,7 +119,7 @@ def test_an_old_misassignment_is_reported_as_a_deficiency(session: Session) -> N
         ZoneDevice(
             zone_id=zone.id,
             device_id=sensor.id,
-            device_role_id=rolle(session, "actuator").id,
+            device_role_id=role(session, "actuator").id,
         )
     )
     session.flush()

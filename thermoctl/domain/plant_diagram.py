@@ -79,13 +79,13 @@ def _picture(
     device: Device,
     capabilities: dict[int, list[str]],
     codes: dict[int, set[str]],
-    stelle: str | None = None,
+    slot: str | None = None,
     assignment_id: int | None = None,
 ) -> DevicePicture:
     # `None` means "no requirement" -- that is how devices without a zone are shown,
     # since nothing is required of them. Without this distinction, an ownerless valve
     # would have been flagged as "misst keine Temperatur".
-    verlangt = REQUIRED_CAPABILITY.get(stelle or "")
+    verlangt = REQUIRED_CAPABILITY.get(slot or "")
     ungeeignet = None
     kann = codes.get(device.id, set())
     if verlangt is not None and kann and verlangt[0] not in kann:
@@ -124,7 +124,7 @@ def plant_diagram(session: Session, zones: list[Zone]) -> PlantDiagram:
     ):
         codes.setdefault(device_id, set()).add(code)
 
-    rollen = {r.id: r.code for r in session.scalars(select(DeviceRole))}
+    roles = {r.id: r.code for r in session.scalars(select(DeviceRole))}
     by_zone: dict[int, dict[str, list[DevicePicture]]] = {
         zone.id: {"actuator": [], "window_contact": [], "controller": []} for zone in zones
     }
@@ -135,11 +135,11 @@ def plant_diagram(session: Session, zones: list[Zone]) -> PlantDiagram:
         .order_by(ZoneDevice.sort_order, ZoneDevice.id)
     ):
         device = devices.get(assignment.device_id)
-        rolle = rollen.get(assignment.device_role_id)
-        if device is None or rolle not in by_zone[assignment.zone_id]:
+        role = roles.get(assignment.device_role_id)
+        if device is None or role not in by_zone[assignment.zone_id]:
             continue
-        by_zone[assignment.zone_id][rolle].append(
-            _picture(device, capabilities, codes, rolle, assignment.id)
+        by_zone[assignment.zone_id][role].append(
+            _picture(device, capabilities, codes, role, assignment.id)
         )
         zugeordnet.add(device.id)
 

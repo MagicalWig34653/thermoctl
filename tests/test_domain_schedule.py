@@ -49,7 +49,7 @@ def test_without_a_schedule_frost_protection_applies(session: Session) -> None:
     zone = zone_with_schedule(session, "leer", points=[], frost_protection=Decimal("16.0"))
     result = resolved_setpoint(session, zone, datetime(2026, 8, 31, 10, 0))
     assert result.temperature_c == Decimal("16.0")
-    assert "Frostschutz" in result.grund
+    assert "Frostschutz" in result.reason
 
 
 def test_operating_mode_off_results_in_frost_protection(session: Session) -> None:
@@ -64,7 +64,7 @@ def test_an_override_beats_the_schedule(session: Session) -> None:
                              override=(Decimal("23.5"), None))
     result = resolved_setpoint(session, zone, datetime(2026, 8, 31, 10, 0))
     assert result.temperature_c == Decimal("23.5")
-    assert "Uebersteuerung" in result.grund
+    assert "Uebersteuerung" in result.reason
 
 
 def test_an_expired_override_no_longer_applies(session: Session) -> None:
@@ -80,7 +80,7 @@ def test_the_reason_names_the_decision(session: Session) -> None:
     """Principle 5: traceable, why this setpoint applies."""
     zone = zone_with_schedule(session, "grund", points=[(1, 360, "tag", Decimal("21.0"))])
     result = resolved_setpoint(session, zone, datetime(2026, 8, 31, 10, 0))
-    assert "Tag" in result.grund and "06:00" in result.grund
+    assert "Tag" in result.reason and "06:00" in result.reason
 
 
 def test_there_is_no_next_point_without_any_points() -> None:
@@ -154,4 +154,4 @@ def test_an_override_on_a_mode_without_a_fixed_temperature(session: Session) -> 
     session.flush()
     result = resolved_setpoint(session, zone, datetime(2026, 8, 31, 10, 0))
     assert result.temperature_c == Decimal("21.0")
-    assert "Modus tag" in result.grund
+    assert "Modus tag" in result.reason

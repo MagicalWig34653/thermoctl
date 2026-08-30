@@ -24,7 +24,7 @@ class Setpoint:
     """The result together with its reasoning — principle 5 from CLAUDE.md."""
 
     temperature_c: Decimal
-    grund: str
+    reason: str
     mode_code: str | None
     # The mode whose stored temperature currently applies -- None if the setpoint does
     # not come from a mode (fixed override). The interface needs it for the thermostat
@@ -39,7 +39,7 @@ class Setpoint:
 # actually looking for.
 @dataclass
 class ScheduleError(Exception):
-    feld: str
+    field: str
     notice: str
 
 
@@ -73,9 +73,9 @@ def _label_for(weekday: int, minute: int) -> str:
 def time_of_day_in_minutes(time_of_day: str) -> int:
     """Converts local `HH:MM` form input into the DB representation."""
     teile = time_of_day.strip().split(":")
-    if len(teile) != 2 or not all(teil.isdigit() for teil in teile):
+    if len(teile) != 2 or not all(part.isdigit() for part in teile):
         raise ScheduleError("time_of_day", "Bitte eine gültige Uhrzeit eingeben.")
-    stunde, minute = (int(teil) for teil in teile)
+    stunde, minute = (int(part) for part in teile)
     if stunde > 23 or minute > 59:
         raise ScheduleError("time_of_day", "Bitte eine gültige Uhrzeit eingeben.")
     return stunde * 60 + minute
@@ -266,7 +266,7 @@ def delete_schedule_point(
 
 def adopt_schedule(
     session: Session,
-    ziel: Zone,
+    target: Zone,
     # `vorlage` and not `quelle`: throughout the project, the name `quelle` stands for
     # the origin of an audit entry (web, api, mcp). Two meanings in one signature would
     # be a trap for the next caller.
@@ -282,10 +282,10 @@ def adopt_schedule(
             select(SchedulePoint).where(SchedulePoint.zone_id == vorlage.id)
         )
     )
-    session.execute(delete(SchedulePoint).where(SchedulePoint.zone_id == ziel.id))
+    session.execute(delete(SchedulePoint).where(SchedulePoint.zone_id == target.id))
     session.add_all(
         SchedulePoint(
-            zone_id=ziel.id,
+            zone_id=target.id,
             weekday=point.weekday,
             minute_of_day=point.minute_of_day,
             setpoint_mode_id=point.setpoint_mode_id,
@@ -297,9 +297,9 @@ def adopt_schedule(
         source=source,
         action="update",
         object_type="schedule",
-        object_id=str(ziel.id),
+        object_id=str(target.id),
         summary=(
-            f"Zeitplan für Zone '{ziel.display_name}' von "
+            f"Zeitplan für Zone '{target.display_name}' von "
             f"'{vorlage.display_name}' übernommen"
         ),
         user_id=user_id,
@@ -338,11 +338,11 @@ def next_point(points: list[SchedulePoint], moment: datetime) -> datetime | None
     now = _week_minute(moment)
     kandidaten = sorted(_point_minute(p) for p in points)
     spaeter = [m for m in kandidaten if m > now]
-    ziel = spaeter[0] if spaeter else kandidaten[0] + MINUTES_PER_WEEK
+    target = spaeter[0] if spaeter else kandidaten[0] + MINUTES_PER_WEEK
     week_start = (moment - timedelta(days=moment.isoweekday() - 1)).replace(
         hour=0, minute=0, second=0, microsecond=0
     )
-    return week_start + timedelta(minutes=ziel)
+    return week_start + timedelta(minutes=target)
 
 
 def create_override(

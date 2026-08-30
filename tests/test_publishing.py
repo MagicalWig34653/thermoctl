@@ -33,12 +33,12 @@ class Mitschrift:
         self.fluechtig: list[str] = []
 
     async def publishing(
-        self, topic: str, payload: str, *, switches: bool, behalten: bool = False
+        self, topic: str, payload: str, *, switches: bool, retained: bool = False
     ) -> bool:
         self.messages.append((topic, payload))
         if switches:
             self.switched.append(topic)
-        if not behalten:
+        if not retained:
             self.fluechtig.append(topic)
         return True
 
@@ -369,11 +369,11 @@ async def test_state_switch_times_and_sensor_situation_go_along(session: Session
     session.flush()
 
     messages = dict((await _run(session, PublicationState())).messages)
-    basis = f"thermoctl/zones/{zone.id}/state"
+    base = f"thermoctl/zones/{zone.id}/state"
 
-    assert messages[f"{basis}/current_temperature"] == "20.5"
-    assert messages[f"{basis}/sensor_state"] == "veraltet"
-    assert messages[f"{basis}/would_heat"] == "true"
+    assert messages[f"{base}/current_temperature"] == "20.5"
+    assert messages[f"{base}/sensor_state"] == "veraltet"
+    assert messages[f"{base}/would_heat"] == "true"
     # 05:00, not 06:30: at 06:30 only what already held was confirmed.
     # With a time zone, because `device_class: timestamp` requires one.
-    assert messages[f"{basis}/last_switch"] == "2026-08-31T05:00:00+00:00"
+    assert messages[f"{base}/last_switch"] == "2026-08-31T05:00:00+00:00"

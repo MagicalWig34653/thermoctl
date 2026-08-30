@@ -41,7 +41,7 @@ def _source(session: Session) -> None:
 
 def test_creating_a_user_writes_an_audit_entry_and_a_group_assignment(session: Session) -> None:
     group = create_group(
-        session, name="Bedienung", beschreibung=None, akteur_id=None
+        session, name="Bedienung", description=None, akteur_id=None
     )
     user = domain_create_user(
         session, username="neu", display_name="Neu", password="passwort-lang-genug",
@@ -127,7 +127,7 @@ def test_an_installation_wide_permission_cannot_be_restricted_to_a_zone(
     """
     ensure_permission(session, "user.manage", zone_scoped=False)
     zone = create_zone(session, "bad")
-    group = create_group(session, name="Falsch", beschreibung=None, akteur_id=None)
+    group = create_group(session, name="Falsch", description=None, akteur_id=None)
     with pytest.raises(AdministrationError, match="ganze Anlage"):
         grant_permission(session, group, "user.manage", zone.id, akteur_id=None)
 
@@ -135,21 +135,21 @@ def test_an_installation_wide_permission_cannot_be_restricted_to_a_zone(
 def test_a_zone_scoped_permission_may_carry_a_zone(session: Session) -> None:
     ensure_permission(session, "zone.read", zone_scoped=True)
     zone = create_zone(session, "kueche")
-    group = create_group(session, name="Kuechenleser", beschreibung=None, akteur_id=None)
+    group = create_group(session, name="Kuechenleser", description=None, akteur_id=None)
     entry = grant_permission(session, group, "zone.read", zone.id, akteur_id=None)
     assert entry.zone_id == zone.id
 
 
 def test_granting_a_permission_twice_yields_one_row(session: Session) -> None:
     ensure_permission(session, "zone.read", zone_scoped=True)
-    group = create_group(session, name="Doppelt", beschreibung=None, akteur_id=None)
+    group = create_group(session, name="Doppelt", description=None, akteur_id=None)
     first = grant_permission(session, group, "zone.read", None, akteur_id=None)
     second = grant_permission(session, group, "zone.read", None, akteur_id=None)
     assert first.id == second.id
 
 
 def test_an_unknown_permission_is_rejected(session: Session) -> None:
-    group = create_group(session, name="Leer", beschreibung=None, akteur_id=None)
+    group = create_group(session, name="Leer", description=None, akteur_id=None)
     with pytest.raises(AdministrationError, match="gibt es nicht"):
         grant_permission(session, group, "gibt.es.nicht", None, akteur_id=None)
 
@@ -189,7 +189,7 @@ def test_the_last_source_of_the_management_permission_cannot_be_removed(
 def test_a_group_without_the_management_permission_can_be_deleted(session: Session) -> None:
     user_with_permissions(session, "chef", [("user.manage", None)])
     dispensable = create_group(
-        session, name="Entbehrlich", beschreibung=None, akteur_id=None
+        session, name="Entbehrlich", description=None, akteur_id=None
     )
     delete_group(session, dispensable, akteur_id=None)
     assert session.get(AccessGroup, dispensable.id) is None
@@ -212,7 +212,7 @@ def test_setting_a_password_changes_the_hash_and_logs_it(session: Session) -> No
 
 def test_an_empty_group_name_is_rejected(session: Session) -> None:
     with pytest.raises(AdministrationError, match="nicht leer"):
-        create_group(session, name="   ", beschreibung=None, akteur_id=None)
+        create_group(session, name="   ", description=None, akteur_id=None)
 
 
 def test_an_empty_username_is_rejected(session: Session) -> None:

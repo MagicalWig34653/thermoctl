@@ -64,7 +64,7 @@ def _mode_form(
         "mode_form.html",
         {
             "values": values,
-            "errors": {errors.feld: errors.notice} if errors is not None else {},
+            "errors": {errors.field: errors.notice} if errors is not None else {},
             "mode": mode,
         },
     )
@@ -208,8 +208,8 @@ def _setpointpage(
     modes = _modes(session)
     if values is None:
         stored = {
-            zeile.setpoint_mode_id: zeile.temperature_c
-            for zeile in session.scalars(
+            row.setpoint_mode_id: row.temperature_c
+            for row in session.scalars(
                 select(ZoneSetpoint).where(ZoneSetpoint.zone_id == zone.id)
             )
         }
@@ -259,19 +259,19 @@ async def save_setpoints(
     }
     values: dict[int, Decimal | None] = {}
     for mode in modes:
-        feld = f"sollwert_{mode.id}"
-        if not raw_values[feld]:
+        field = f"sollwert_{mode.id}"
+        if not raw_values[field]:
             values[mode.id] = None
             continue
         try:
-            values[mode.id] = Decimal(raw_values[feld])
+            values[mode.id] = Decimal(raw_values[field])
         except InvalidOperation:
             return _setpointpage(
                 request,
                 session,
                 zone,
                 values=raw_values,
-                errors={feld: "Der Sollwert muss eine Zahl sein."},
+                errors={field: "Der Sollwert muss eine Zahl sein."},
             )
     try:
         update_setpoints(session, zone, values, user_id=principal.user_id)

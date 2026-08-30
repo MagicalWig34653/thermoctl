@@ -26,13 +26,13 @@ router = APIRouter(dependencies=[Depends(csrf_schutz)], include_in_schema=False)
 ENTRIES_PER_PAGE = 50
 
 
-def _datum(value: str, feld: str, errors: dict[str, str]) -> date | None:
+def _datum(value: str, field: str, errors: dict[str, str]) -> date | None:
     if not value:
         return None
     try:
         return date.fromisoformat(value)
     except ValueError:
-        errors[feld] = "Bitte ein gültiges Datum eingeben."
+        errors[field] = "Bitte ein gültiges Datum eingeben."
         return None
 
 

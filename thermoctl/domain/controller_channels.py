@@ -29,14 +29,14 @@ class ControllerChannelError(ValueError):
     """A channel is invalid on domain grounds or could bypass an actuator."""
 
 
-def _hat_rolle(session: Session, device: Device, code: str) -> bool:
+def _has_role(session: Session, device: Device, code: str) -> bool:
     return session.scalar(
         select(ZoneDevice.id).join(DeviceRole, DeviceRole.id == ZoneDevice.device_role_id)
         .where(ZoneDevice.device_id == device.id, DeviceRole.code == code).limit(1)
     ) is not None
 
 
-def darf_beschrieben_werden(session: Session, device: Device) -> bool:
+def may_be_written(session: Session, device: Device) -> bool:
     """Whether a display value may be written to this device.
 
     Two conditions, not one. It is not enough that the device is a controller
@@ -49,7 +49,7 @@ def darf_beschrieben_werden(session: Session, device: Device) -> bool:
     Hence: controller yes, actuator nowhere. Whoever really wants a device to be both
     must remove the actuator role -- and sees what they are doing while doing it.
     """
-    return _hat_rolle(session, device, "controller") and not _hat_rolle(
+    return _has_role(session, device, "controller") and not _has_role(
         session, device, "actuator"
     )
 
@@ -66,7 +66,7 @@ def configure_channel(
         raise ControllerChannelError("Das Gerät bietet dieses Merkmal nicht an.")
     if direction not in {"read", "write"}:
         raise ControllerChannelError("Die Kanalrichtung ist ungültig.")
-    if direction == "write" and (not property_model.is_writable or not darf_beschrieben_werden(session, device)):
+    if direction == "write" and (not property_model.is_writable or not may_be_written(session, device)):
         raise ControllerChannelError(
             "Schreibkanäle sind nur auf Bediengeräten erlaubt, die nirgends Aktor sind."
         )

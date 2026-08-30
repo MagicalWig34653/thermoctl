@@ -251,7 +251,7 @@ def test_nonsensical_overrides_are_refused(session: Session, client_als) -> None
     that refuses it."""
     zone = _grundlage(session)
     client = client_als([("override.create", None), ("zone.read", None)])
-    for daten in (
+    for data in (
         {"temperature_c": "warm", "end": "dauerhaft"},
         # The lower bound is -20 degrees: a setpoint in the negative range means
         # "no heating here". Below that there is no longer a real intent, only a
@@ -263,22 +263,22 @@ def test_nonsensical_overrides_are_refused(session: Session, client_als) -> None
         {"temperature_c": "20", "end": "irgendwas"},
     ):
         response = client.post(
-            f"/zones/{zone.id}/override", data=daten,
+            f"/zones/{zone.id}/override", data=data,
             headers=_csrf(client), follow_redirects=False,
         )
-        assert response.status_code == 303, daten
-        assert "uebersteuerungsfehler" in (response.headers.get("location") or ""), daten
+        assert response.status_code == 303, data
+        assert "uebersteuerungsfehler" in (response.headers.get("location") or ""), data
     assert session.scalar(select(ZoneOverride).where(ZoneOverride.zone_id == zone.id)) is None
 
 
 def test_nonsensical_control_parameters_stay_in_the_form(session: Session, client_als) -> None:
     zone = _grundlage(session)
     client = client_als([("zone.manage", None), ("zone.read", None)])
-    for feld, value in (("hysteresis_k", "keine Zahl"), ("min_on_seconds", "-5")):
+    for field, value in (("hysteresis_k", "keine Zahl"), ("min_on_seconds", "-5")):
         response = client.post(
-            f"/zones/{zone.id}/parameters", data={feld: value}, headers=_csrf(client)
+            f"/zones/{zone.id}/parameters", data={field: value}, headers=_csrf(client)
         )
-        assert response.status_code == 200, feld
+        assert response.status_code == 200, field
     assert zone.hysteresis_k is None and zone.min_on_seconds is None
 
 
@@ -358,12 +358,12 @@ def test_the_thermostat_raises_the_setpoint_of_the_current_mode(
         follow_redirects=False,
     )
     assert response.status_code == 303
-    zeile = session.scalars(
+    row = session.scalars(
         select(ZoneSetpoint).where(
             ZoneSetpoint.zone_id == zone.id, ZoneSetpoint.setpoint_mode_id == mode.id
         )
     ).one()
-    assert zeile.temperature_c == Decimal("21.5")
+    assert row.temperature_c == Decimal("21.5")
 
 
 def test_two_clicks_are_two_steps(session: Session, client_als) -> None:
@@ -379,10 +379,10 @@ def test_two_clicks_are_two_steps(session: Session, client_als) -> None:
             data={"mode_id": str(mode.id), "direction": "runter"},
             headers=_csrf(client),
         )
-    zeile = session.scalars(
+    row = session.scalars(
         select(ZoneSetpoint).where(ZoneSetpoint.setpoint_mode_id == mode.id)
     ).one()
-    assert zeile.temperature_c == Decimal("20.0")
+    assert row.temperature_c == Decimal("20.0")
 
 
 def test_the_thermostat_stops_at_the_limit(session: Session, client_als) -> None:
@@ -400,10 +400,10 @@ def test_the_thermostat_stops_at_the_limit(session: Session, client_als) -> None
     )
     assert response.status_code == 303
     assert "thermostatfehler" in response.headers["location"]
-    zeile = session.scalars(
+    row = session.scalars(
         select(ZoneSetpoint).where(ZoneSetpoint.setpoint_mode_id == mode.id)
     ).one()
-    assert zeile.temperature_c == Decimal("35.0")
+    assert row.temperature_c == Decimal("35.0")
 
 
 def test_thermostat_braucht_setpoint_write(session: Session, client_als) -> None:
@@ -459,13 +459,13 @@ def test_the_thermostat_works_even_without_a_stored_setpoint(
     )
     assert response.status_code == 303
 
-    zeile = session.scalars(
+    row = session.scalars(
         select(ZoneSetpoint).where(
             ZoneSetpoint.zone_id == zone.id,
             ZoneSetpoint.setpoint_mode_id == angezeigt.mode_id,
         )
     ).one()
-    assert zeile.temperature_c == angezeigt.temperature_c + Decimal("0.5")
+    assert row.temperature_c == angezeigt.temperature_c + Decimal("0.5")
 
 
 def test_the_thermostat_for_a_foreign_mode_stays_a_404(
@@ -530,7 +530,7 @@ def test_the_thermostat_goes_below_zero(session: Session, client_als) -> None:
         data={"mode_id": str(mode.id), "direction": "runter"},
         headers=_csrf(client),
     )
-    zeile = session.scalars(
+    row = session.scalars(
         select(ZoneSetpoint).where(ZoneSetpoint.setpoint_mode_id == mode.id)
     ).one()
-    assert zeile.temperature_c == Decimal("-0.5")
+    assert row.temperature_c == Decimal("-0.5")

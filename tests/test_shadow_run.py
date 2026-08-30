@@ -25,7 +25,7 @@ from tests.helpers import (
     create_zone,
     create_zone_state,
     integration,
-    rolle,
+    role,
     sensorstatus,
     source,
 )
@@ -65,14 +65,14 @@ def _zone_with_state(
     session: Session,
     name: str,
     *,
-    ist_c: Decimal | None,
+    measured_c: Decimal | None,
     now: datetime = NOW,
     status: str = "ok",
 ) -> Zone:
     zone = create_zone(session, name)
     state = ZoneState(
         zone_id=zone.id,
-        temperature_c=ist_c,
+        temperature_c=measured_c,
         measured_at=now,
         sensor_status_id=sensorstatus(session, status).id,
         updated_at=now,
@@ -86,17 +86,17 @@ def test_one_cycle_with_a_fresh_reading_writes_a_row_with_a_reason(
     session: Session,
 ) -> None:
     create_settings(session, hysteresis=Decimal("0.30"))
-    zone = _zone_with_state(session, "buero", ist_c=Decimal("10.0"))
+    zone = _zone_with_state(session, "buero", measured_c=Decimal("10.0"))
 
     zeilen = shadow_run.cycle(session, NOW)
 
     assert len(zeilen) == 1
-    zeile = zeilen[0]
-    assert zeile.zone_id == zone.id
-    assert zeile.would_heat is True
-    assert zeile.outcome_code == "heizen"
-    assert zeile.reason and "Ist" in zeile.reason
-    assert zeile.previous_would_heat is None  # no history in the first cycle
+    row = zeilen[0]
+    assert row.zone_id == zone.id
+    assert row.would_heat is True
+    assert row.outcome_code == "heizen"
+    assert row.reason and "Ist" in row.reason
+    assert row.previous_would_heat is None  # no history in the first cycle
     assert session.query(ShadowDecision).count() == 1
 
 
@@ -106,7 +106,7 @@ def test_several_cycles_with_an_unchanged_situation_yield_unchanged_without_a_fl
     create_settings(session, hysteresis=Decimal("0.30"))
     # Frost-protection fallback is 16.0 °C (no schedule configured); 16.0 °C sits
     # inside the ±0.30 K hysteresis band and therefore never changes anything.
-    zone = _zone_with_state(session, "flur", ist_c=Decimal("16.0"))
+    zone = _zone_with_state(session, "flur", measured_c=Decimal("16.0"))
     # Minimum switching duration set to 0: otherwise rule 5 (minimum switching
     # duration) would already kick in from the second cycle and yield
     # 'gesperrt_mindestdauer' instead of 'unveraendert' — regardless of the fact
@@ -149,7 +149,7 @@ def test_the_elapsed_time_grows_across_cycles_and_resets_on_a_change(
     zone.min_off_seconds = 5
     session.flush()
 
-    def _state(ist_c: Decimal, now: datetime) -> None:
+    def _state(measured_c: Decimal, now: datetime) -> None:
         bisherig = session.get(ZoneState, zone.id)
         if bisherig is not None:
             session.delete(bisherig)
@@ -157,7 +157,7 @@ def test_the_elapsed_time_grows_across_cycles_and_resets_on_a_change(
         session.add(
             ZoneState(
                 zone_id=zone.id,
-                temperature_c=ist_c,
+                temperature_c=measured_c,
                 measured_at=now,
                 sensor_status_id=sensorstatus(session, "ok").id,
                 updated_at=now,
@@ -231,14 +231,14 @@ def test_a_zone_without_a_window_contact_heats_despite_an_unknown_window_state(
     session: Session,
 ) -> None:
     create_settings(session)
-    zone = _zone_with_state(session, "ohne-fensterkontakt", ist_c=Decimal("5.0"))
+    zone = _zone_with_state(session, "ohne-fensterkontakt", measured_c=Decimal("5.0"))
     state = session.get(ZoneState, zone.id)
     assert state is not None and state.window_open is None
 
-    zeile = shadow_run.cycle(session, NOW)[0]
+    row = shadow_run.cycle(session, NOW)[0]
 
-    assert zeile.would_heat is True
-    assert zeile.outcome_code == "heizen"
+    assert row.would_heat is True
+    assert row.outcome_code == "heizen"
 
 
 def test_closing_a_window_starts_a_growing_restart_delay(
@@ -246,7 +246,7 @@ def test_closing_a_window_starts_a_growing_restart_delay(
 ) -> None:
     settings = create_settings(session)
     settings.default_window_resume_delay_seconds = 120
-    zone = _zone_with_state(session, "fensterpause", ist_c=Decimal("5.0"))
+    zone = _zone_with_state(session, "fensterpause", measured_c=Decimal("5.0"))
     zone.min_off_seconds = 0
     contact = DeviceCapability(code="contact", label="Kontakt")
     session.add(contact)
@@ -257,7 +257,7 @@ def test_closing_a_window_starts_a_growing_restart_delay(
         ZoneDevice(
             zone_id=zone.id,
             device_id=device.id,
-            device_role_id=rolle(session, "window_contact").id,
+            device_role_id=role(session, "window_contact").id,
         )
     )
     for value, moment in (
@@ -291,8 +291,8 @@ def test_a_failing_zone_does_not_hold_up_the_others(
     session: Session, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     create_settings(session)
-    gesund = _zone_with_state(session, "gesund", ist_c=Decimal("10.0"))
-    kaputt = _zone_with_state(session, "kaputt", ist_c=Decimal("10.0"))
+    gesund = _zone_with_state(session, "gesund", measured_c=Decimal("10.0"))
+    kaputt = _zone_with_state(session, "kaputt", measured_c=Decimal("10.0"))
     assert kaputt.id > gesund.id  # order by id, the way `zyklus()` walks through them
 
     original = shadow_run.control_parameters
@@ -335,7 +335,7 @@ async def test_no_publishing_despite_a_heating_decision(
             self.published.append((topic, payload))
 
     create_settings(session)
-    _zone_with_state(session, "wohnzimmer", ist_c=Decimal("5.0"))
+    _zone_with_state(session, "wohnzimmer", measured_c=Decimal("5.0"))
     zeilen = shadow_run.cycle(session, NOW)
     assert zeilen[0].would_heat is True  # the starting situation is armed: it would heat
 

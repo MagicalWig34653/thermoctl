@@ -13,7 +13,7 @@ RECEIVED_AT = datetime(2035, 1, 2, 3, 4, 5)
 
 
 def _values(readings: list[Reading]) -> list[tuple[str, Decimal | None, str | None]]:
-    return [(b.capability, b.zahl, b.text) for b in readings]
+    return [(b.capability, b.number, b.text) for b in readings]
 
 
 @pytest.mark.parametrize(

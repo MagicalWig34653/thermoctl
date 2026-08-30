@@ -2,7 +2,7 @@ import pytest
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from tests.helpers import create_device, create_zone, integration, rolle
+from tests.helpers import create_device, create_zone, integration, role
 from thermoctl.db.models.device import Device, ZoneDevice
 
 
@@ -29,7 +29,7 @@ def test_the_same_address_in_two_integrations_is_allowed(session: Session) -> No
 
 def test_a_zone_can_have_any_number_of_actuators(session: Session) -> None:
     zone = create_zone(session, "wohnzimmer")
-    actuator = rolle(session, "actuator")
+    actuator = role(session, "actuator")
     for name in ("aktor_1", "aktor_2"):
         session.add(
             ZoneDevice(
@@ -48,7 +48,7 @@ def test_a_device_can_have_two_roles(session: Session) -> None:
     w100 = create_device(session, "w100_bad")
     for code in ("controller", "actuator"):
         session.add(
-            ZoneDevice(zone_id=zone.id, device_id=w100.id, device_role_id=rolle(session, code).id)
+            ZoneDevice(zone_id=zone.id, device_id=w100.id, device_role_id=role(session, code).id)
         )
     session.flush()
     assert session.query(ZoneDevice).filter_by(device_id=w100.id).count() == 2
@@ -57,7 +57,7 @@ def test_a_device_can_have_two_roles(session: Session) -> None:
 def test_the_same_role_twice_on_the_same_device_is_excluded(session: Session) -> None:
     zone = create_zone(session, "kueche")
     device = create_device(session, "aktor_kueche")
-    actuator = rolle(session, "actuator")
+    actuator = role(session, "actuator")
     session.add(ZoneDevice(zone_id=zone.id, device_id=device.id, device_role_id=actuator.id))
     session.flush()
     session.add(ZoneDevice(zone_id=zone.id, device_id=device.id, device_role_id=actuator.id))
@@ -78,7 +78,7 @@ def test_swapping_a_device_leaves_the_zone_untouched(session: Session) -> None:
     old = create_device(session, "aktor_alt")
     new = create_device(session, "aktor_neu")
     assignment = ZoneDevice(
-        zone_id=zone.id, device_id=old.id, device_role_id=rolle(session, "actuator").id
+        zone_id=zone.id, device_id=old.id, device_role_id=role(session, "actuator").id
     )
     session.add(assignment)
     session.flush()

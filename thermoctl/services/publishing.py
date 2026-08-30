@@ -44,7 +44,7 @@ from thermoctl.db.models.lookup import ChannelKind, DeviceCapability, SensorStat
 from thermoctl.db.models.measurement import Measurement
 from thermoctl.db.models.state import ShadowDecision, ZoneState
 from thermoctl.db.models.zone import SetpointMode, Zone, ZoneSetpoint
-from thermoctl.domain.controller_channels import darf_beschrieben_werden
+from thermoctl.domain.controller_channels import may_be_written
 from thermoctl.domain.schedule import end_of_next_switch, resolved_setpoint
 from thermoctl.domain.zone_settings import PARAMETERS, control_parameters
 from thermoctl.integrations.actuators import MqttPublisher, switching_allowed
@@ -111,12 +111,12 @@ def _discovery_messages(session: Session, zone: Zone, praefix: str) -> list[Disc
     ]
     for mode in session.scalars(select(SetpointMode).order_by(SetpointMode.sort_order)):
         messages.append(mode_discovery(zone.id, name, mode.id, mode.name, praefix))
-    for beschreibung in PARAMETERS:
+    for description in PARAMETERS:
         messages.append(
             parameter_discovery(
-                zone.id, name, beschreibung.name, beschreibung.label,
-                beschreibung.minimum, beschreibung.maximum, beschreibung.step,
-                beschreibung.einheit, praefix,
+                zone.id, name, description.name, description.label,
+                description.minimum, description.maximum, description.step,
+                description.einheit, praefix,
             )
         )
     return messages
@@ -136,19 +136,19 @@ async def cycle(
 
     # Availability first: it's the statement "whatever comes next is current".
     if await client.publishing(
-        availability_topic(praefix), "online", switches=False, behalten=True
+        availability_topic(praefix), "online", switches=False, retained=True
     ):
         gesendet += 1
 
     if not state.dienst_angemeldet:
         message = armed_discovery(praefix)
         if await client.publishing(
-            message.topic, message.payload, switches=False, behalten=True
+            message.topic, message.payload, switches=False, retained=True
         ):
             state.dienst_angemeldet = True
             gesendet += 1
     if await client.publishing(
-        armed_topic(praefix), _als_text(armed), switches=False, behalten=True
+        armed_topic(praefix), _als_text(armed), switches=False, retained=True
     ):
         gesendet += 1
 
@@ -159,8 +159,8 @@ async def cycle(
 
     gesendet += await _deregister_deleted(client, state, {zone.id for zone in zones})
     for zone in zones:
-        gesendet += await zone_state_senden(session, client, zone, praefix, now)
-    gesendet += await _controller_channels_senden(session, client, state, get_settings().mqtt_base_topic, now)
+        gesendet += await _send_zone_state(session, client, zone, praefix, now)
+    gesendet += await _send_controller_channels(session, client, state, get_settings().mqtt_base_topic, now)
     return gesendet
 
 
@@ -175,7 +175,7 @@ async def _register_zone(
     gemeldet: list[str] = []
     for message in _discovery_messages(session, zone, praefix):
         if await client.publishing(
-            message.topic, message.payload, switches=False, behalten=True
+            message.topic, message.payload, switches=False, retained=True
         ):
             gemeldet.append(message.topic)
             gesendet += 1
@@ -201,7 +201,7 @@ async def _deregister_deleted(
     gesendet = 0
     for zone_id in sorted(set(state.angemeldet) - vorhandene):
         for topic in state.angemeldet[zone_id]:
-            if await client.publishing(topic, "", switches=False, behalten=True):
+            if await client.publishing(topic, "", switches=False, retained=True):
                 gesendet += 1
         del state.angemeldet[zone_id]
         log.info("Geloeschte Zone bei Home Assistant abgemeldet", extra={"zone_id": zone_id})
@@ -231,8 +231,8 @@ def _channel_value(session: Session, channel: ControllerChannel, kind: ChannelKi
     return None
 
 
-async def _controller_channels_senden(
-    session: Session, client: MqttPublisher, state: PublicationState, basis: str, now: datetime
+async def _send_controller_channels(
+    session: Session, client: MqttPublisher, state: PublicationState, base: str, now: datetime
 ) -> int:
     """Sends changed display values; every send explicitly stays non-switching."""
     sent = 0
@@ -245,7 +245,7 @@ async def _controller_channels_senden(
     for channel, kind, device in rows:
         # Second check, deliberately the same function as at creation time: a role
         # can change after the channel has been set up.
-        if not darf_beschrieben_werden(session, device):
+        if not may_be_written(session, device):
             log.error("Unsicherer Schreibkanal wird nicht gesendet", extra={"geraet": device.display_name})
             continue
         value = _channel_value(session, channel, kind, now)
@@ -253,7 +253,7 @@ async def _controller_channels_senden(
             continue
         payload_value: object = float(value) if isinstance(value, Decimal) else value
         payload = json.dumps({channel.property_name: payload_value}, ensure_ascii=False, separators=(",", ":"))
-        if await client.publishing(f"{basis.rstrip('/')}/{device.external_id}/set", payload, switches=False):
+        if await client.publishing(f"{base.rstrip('/')}/{device.external_id}/set", payload, switches=False):
             state.controller_values[channel.id] = value
             sent += 1
     return sent
@@ -286,7 +286,7 @@ def _wuerde_heizen(session: Session, zone_id: int) -> bool | None:
     )
 
 
-async def zone_state_senden(
+async def _send_zone_state(
     session: Session,
     client: MqttPublisher,
     zone: Zone,
@@ -335,11 +335,11 @@ async def zone_state_senden(
         )
 
     wirksam = control_parameters(session, zone)
-    for beschreibung in PARAMETERS:
+    for description in PARAMETERS:
         values.append(
             (
-                parameter_topics(zone.id, beschreibung.name, praefix)[0],
-                _als_text(getattr(wirksam, beschreibung.name)),
+                parameter_topics(zone.id, description.name, praefix)[0],
+                _als_text(getattr(wirksam, description.name)),
             )
         )
 
@@ -349,7 +349,7 @@ async def zone_state_senden(
         # message, and "no reading yet" is something different from "this value
         # doesn't exist anymore".
         if value and await client.publishing(
-            topic, value, switches=False, behalten=True
+            topic, value, switches=False, retained=True
         ):
             gesendet += 1
     return gesendet

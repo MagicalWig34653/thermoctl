@@ -49,7 +49,7 @@ def _visible_zone(
 
 def _kontext(session: Session, zone: Zone, **zusatz: object) -> dict[str, object]:
     devices = session.scalars(select(Device).order_by(Device.display_name, Device.id)).all()
-    rollen = session.scalars(select(DeviceRole).order_by(DeviceRole.id)).all()
+    roles = session.scalars(select(DeviceRole).order_by(DeviceRole.id)).all()
     assignments = session.execute(
         select(ZoneDevice, Device, DeviceRole)
         .join(Device, Device.id == ZoneDevice.device_id)
@@ -75,8 +75,8 @@ def _kontext(session: Session, zone: Zone, **zusatz: object) -> dict[str, object
     # buttons -- `single_plus`, `button_1_single`, `up_open`, depending on manufacturer.
     controllers = [
         (device, gesehene_aktionen(session, device))
-        for assignment, device, rolle in assignments
-        if rolle.code == "controller"
+        for assignment, device, role in assignments
+        if role.code == "controller"
     ]
 
     return {
@@ -91,7 +91,7 @@ def _kontext(session: Session, zone: Zone, **zusatz: object) -> dict[str, object
         # up here and what's missing -- before you change anything.
         "picture": plant_diagram(session, [zone]).zones[0],
         "devices": devices,
-        "rollen": rollen,
+        "rollen": roles,
         "assignments": assignments,
         "temperature_source": temperature_source,
         "errors": {},
@@ -105,13 +105,13 @@ def _response(session: Session, request: Request, zone: Zone, **zusatz: object) 
     )
 
 
-def _device(session: Session, raw_value: object, feld: str) -> Device:
+def _device(session: Session, raw_value: object, field: str) -> Device:
     try:
         device = session.get(Device, int(str(raw_value)))
     except ValueError:
         device = None
     if device is None:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Ungültiges Gerät im Feld {feld}")
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Ungültiges Gerät im Feld {field}")
     return device
 
 
@@ -142,7 +142,7 @@ async def assign_device_view(
     form = await request.form()
     try:
         device = _device(session, form.get("device_id"), "device_id")
-        rolle = session.get(DeviceRole, int(str(form.get("role_id", ""))))
+        role = session.get(DeviceRole, int(str(form.get("role_id", ""))))
     except (ValueError, HTTPException):
         return _response(
             session,
@@ -151,7 +151,7 @@ async def assign_device_view(
             darf_aendern=True,
             errors={"assignment": "Bitte Gerät und Rolle auswählen."},
         )
-    if rolle is None:
+    if role is None:
         return _response(
             session,
             request,
@@ -161,7 +161,7 @@ async def assign_device_view(
         )
     try:
         assign_device(
-            session, zone, device, rolle, akteur_id=principal.user_id
+            session, zone, device, role, akteur_id=principal.user_id
         )
     except AssignmentAlreadyExists:
         return _response(

@@ -6,7 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from tests.helpers import create_device, create_zone, rolle
+from tests.helpers import create_device, create_zone, role
 from thermoctl.auth.csrf import CSRF_HEADER, csrf_token
 from thermoctl.auth.sessions import COOKIE_NAME
 from thermoctl.config import get_settings
@@ -14,7 +14,7 @@ from thermoctl.db.models.device import DeviceProperty, DevicePropertyValue, Zone
 from thermoctl.db.models.lookup import CHANNEL_KINDS, ChannelKind
 from thermoctl.domain.controller_channels import ControllerChannelError, configure_channel
 from thermoctl.domain.device_classes import properties_from_exposes
-from thermoctl.services.publishing import PublicationState, _controller_channels_senden
+from thermoctl.services.publishing import PublicationState, _send_controller_channels
 
 MONDAY_EIGHT = datetime(2026, 8, 31, 8, 0)
 
@@ -43,9 +43,11 @@ def _property(
     return prop
 
 
-def _assign(session: Session, zone_id: int, device_id: int, role: str) -> None:
+def _assign(session: Session, zone_id: int, device_id: int, role_code: str) -> None:
     session.add(
-        ZoneDevice(zone_id=zone_id, device_id=device_id, device_role_id=rolle(session, role).id)
+        ZoneDevice(
+            zone_id=zone_id, device_id=device_id, device_role_id=role(session, role_code).id
+        )
     )
     session.flush()
 
@@ -96,7 +98,7 @@ class Recorder:
         self.messages: list[tuple[str, str, bool]] = []
 
     async def publishing(
-        self, topic: str, payload: str, *, switches: bool, behalten: bool = False
+        self, topic: str, payload: str, *, switches: bool, retained: bool = False
     ) -> bool:
         self.messages.append((topic, payload, switches))
         return True
@@ -113,10 +115,10 @@ async def test_the_same_value_is_not_sent_twice(session: Session) -> None:
         session, device, "external_temperature", "write", "fixed", fixed_number=Decimal("20")
     )
     state, recorder = PublicationState(), Recorder()
-    await _controller_channels_senden(
+    await _send_controller_channels(
         session, recorder, state, "zigbee2mqtt", datetime(2026, 8, 30)
     )
-    await _controller_channels_senden(
+    await _send_controller_channels(
         session, recorder, state, "zigbee2mqtt", datetime(2026, 8, 30)
     )
     assert recorder.messages == [
@@ -450,7 +452,7 @@ def test_the_bridge_list_becomes_device_properties(session: Session) -> None:
     }]
     process_message(
         session, "zigbee2mqtt/bridge/devices", json.dumps(device_list).encode(),
-        basis="zigbee2mqtt", empfangen_am=MONDAY_EIGHT,
+        base="zigbee2mqtt", received_at=MONDAY_EIGHT,
     )
 
     properties = {
@@ -480,18 +482,18 @@ def test_a_second_bridge_list_replaces_the_properties(session: Session) -> None:
 
     integration(session, "zigbee2mqtt")
 
-    def liste(merkmal: str) -> bytes:
+    def liste(property: str) -> bytes:
         return json.dumps([{
             "friendly_name": "wechselgeraet", "ieee_address": "0x00158d0002",
             "definition": {"model": "X", "vendor": "Y", "exposes": [
-                {"type": "numeric", "property": merkmal, "access": 2},
+                {"type": "numeric", "property": property, "access": 2},
             ]},
         }]).encode()
 
     process_message(session, "zigbee2mqtt/bridge/devices", liste("altes_merkmal"),
-                    basis="zigbee2mqtt", empfangen_am=MONDAY_EIGHT)
+                    base="zigbee2mqtt", received_at=MONDAY_EIGHT)
     process_message(session, "zigbee2mqtt/bridge/devices", liste("neues_merkmal"),
-                    basis="zigbee2mqtt", empfangen_am=MONDAY_EIGHT)
+                    base="zigbee2mqtt", received_at=MONDAY_EIGHT)
 
     namen = list(session.scalars(select(DeviceProperty.name)))
     assert namen == ["neues_merkmal"]
@@ -521,7 +523,7 @@ def test_the_last_value_of_a_property_is_kept_for_the_page(session: Session) -> 
     process_message(
         session, f"zigbee2mqtt/{device.external_id}",
         json.dumps({"local_temperature": 21.5, "sensor": "external"}).encode(),
-        basis="zigbee2mqtt", empfangen_am=MONDAY_EIGHT,
+        base="zigbee2mqtt", received_at=MONDAY_EIGHT,
     )
 
     werte = {

@@ -139,14 +139,14 @@ def set_password(
 
 
 def create_group(
-    session: Session, *, name: str, beschreibung: str | None, akteur_id: int | None,
+    session: Session, *, name: str, description: str | None, akteur_id: int | None,
     source: str = "web",
 ) -> AccessGroup:
     if not name.strip():
         raise AdministrationError("Der Gruppenname darf nicht leer sein.")
     if session.scalar(select(AccessGroup).where(AccessGroup.name == name)) is not None:
         raise AdministrationError(f"Die Gruppe '{name}' gibt es bereits.")
-    group = AccessGroup(name=name, description=beschreibung, is_builtin=False)
+    group = AccessGroup(name=name, description=description, is_builtin=False)
     session.add(group)
     session.flush()
     audit.record(

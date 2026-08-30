@@ -218,9 +218,9 @@ def _permissions_for_setup_wizard(
     if request.node.fspath.basename != "test_setup.py":
         return
     vorhandene = {p.code for p in session.query(Permission)}
-    for code, beschreibung, zone_scoped in PERMISSIONS:
+    for code, description, zone_scoped in PERMISSIONS:
         if code not in vorhandene:
-            session.add(Permission(code=code, description=beschreibung,
+            session.add(Permission(code=code, description=description,
                                    is_zone_scoped=zone_scoped))
     session.flush()
 

@@ -19,7 +19,7 @@ from thermoctl.db.models.measurement import Measurement
 from thermoctl.db.models.operations import Setting
 from thermoctl.db.models.state import ShadowDecision, ZoneState
 from thermoctl.db.models.zone import Zone, ZoneSetpoint
-from thermoctl.domain.control_loop import Lage, entscheiden
+from thermoctl.domain.control_loop import Situation, decide
 from thermoctl.domain.fault import NO_SOURCE
 from thermoctl.domain.schedule import resolved_setpoint
 from thermoctl.domain.zone_settings import control_parameters
@@ -89,14 +89,14 @@ def _window_situation(
         return bool(state and state.window_open), None
 
     contact = session.scalar(select(DeviceCapability).where(DeviceCapability.code == "contact"))
-    rolle = session.scalar(select(DeviceRole).where(DeviceRole.code == "window_contact"))
-    if contact is None or rolle is None:
+    role = session.scalar(select(DeviceRole).where(DeviceRole.code == "window_contact"))
+    if contact is None or role is None:
         return False, None
     devices_ids = list(
         session.scalars(
             select(ZoneDevice.device_id).where(
                 ZoneDevice.zone_id == zone.id,
-                ZoneDevice.device_role_id == rolle.id,
+                ZoneDevice.device_role_id == role.id,
             )
         )
     )
@@ -129,10 +129,10 @@ def _process_zone(session: Session, zone: Zone, now: datetime) -> ShadowDecision
 
     state = session.get(ZoneState, zone.id)
     if state is None:
-        ist_c = None
+        measured_c = None
         sensor_status = NO_SOURCE
     else:
-        ist_c = state.temperature_c
+        measured_c = state.temperature_c
         sensor_status_row = session.get(SensorStatus, state.sensor_status_id)
         assert sensor_status_row is not None, "sensor_status-Zeile fehlt zur Referenz"
         sensor_status = sensor_status_row.code
@@ -141,37 +141,37 @@ def _process_zone(session: Session, zone: Zone, now: datetime) -> ShadowDecision
     setpoint = resolved_setpoint(session, zone, now)
     frost_c = _frost_setpoint(session, zone, settings)
     parameter = control_parameters(session, zone)
-    heizt_gerade, seit_s, previous_would_heat = _previous_state(session, zone.id, now)
+    heating_now, held_for_s, previous_would_heat = _previous_state(session, zone.id, now)
 
-    lage = Lage(
-        ist_c=ist_c,
-        soll_c=setpoint.temperature_c,
-        soll_grund=setpoint.grund,
+    situation = Situation(
+        measured_c=measured_c,
+        setpoint_c=setpoint.temperature_c,
+        setpoint_reason=setpoint.reason,
         frost_c=frost_c,
         operating_mode=zone.operating_mode.code,
-        heizt_gerade=heizt_gerade,
-        seit_s=seit_s,
+        heating_now=heating_now,
+        held_for_s=held_for_s,
         window_open=window_open,
         window_closed_for_s=window_closed_for_s,
         sensor_status=sensor_status,
         parameter=parameter,
     )
-    entscheidung = entscheiden(lage)
+    decision = decide(situation)
 
-    zeile = ShadowDecision(
+    row = ShadowDecision(
         decided_at=now,
         zone_id=zone.id,
-        temperature_c=ist_c,
+        temperature_c=measured_c,
         setpoint_c=setpoint.temperature_c,
-        setpoint_reason=setpoint.grund,
-        would_heat=entscheidung.heizen,
+        setpoint_reason=setpoint.reason,
+        would_heat=decision.heating,
         previous_would_heat=previous_would_heat,
-        outcome_code=entscheidung.grund_code,
-        reason=entscheidung.grund,
+        outcome_code=decision.reason_code,
+        reason=decision.reason,
     )
-    session.add(zeile)
+    session.add(row)
     session.flush()
-    return zeile
+    return row
 
 
 def cycle(session: Session, now: datetime) -> list[ShadowDecision]:
@@ -185,12 +185,12 @@ def cycle(session: Session, now: datetime) -> list[ShadowDecision]:
     for zone in session.scalars(select(Zone).order_by(Zone.id)):
         try:
             with session.begin_nested():
-                zeile = _process_zone(session, zone, now)
+                row = _process_zone(session, zone, now)
         except Exception:
             log.exception(
                 "Schattenzyklus fuer eine Zone gescheitert — uebrige Zonen laufen weiter",
                 extra={"zone_id": zone.id},
             )
             continue
-        results.append(zeile)
+        results.append(row)
     return results

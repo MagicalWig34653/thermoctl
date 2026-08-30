@@ -56,7 +56,7 @@ def _page(
     *,
     errors: ControlError | None = None,
 ) -> Response:
-    zeile = settings(session)
+    row = settings(session)
     zones = visible_zones(session, principal, "zone.read")
     now = utcnow()
 
@@ -69,25 +69,25 @@ def _page(
         )
     }
     entscheidungen: dict[int, ShadowDecision] = {}
-    for entscheidung in session.scalars(
+    for decision in session.scalars(
         select(ShadowDecision)
         .where(ShadowDecision.zone_id.in_([zone.id for zone in zones]))
         .order_by(ShadowDecision.decided_at.desc(), ShadowDecision.id.desc())
     ):
-        entscheidungen.setdefault(entscheidung.zone_id, entscheidung)
+        entscheidungen.setdefault(decision.zone_id, decision)
 
     return templates.TemplateResponse(
         request,
         "control.html",
         {
-            "settings": zeile,
+            "settings": row,
             "zones": zones,
             "zustaende": zustaende,
             "entscheidungen": entscheidungen,
             "setpoints": {
                 zone.id: resolved_setpoint(session, zone, now) for zone in zones
             },
-            "errors": {errors.feld: errors.notice} if errors else {},
+            "errors": {errors.field: errors.notice} if errors else {},
             "darf_scharf": has_permission(principal, "control.arm"),
             # The first bolt sits in the MQTT client's constructor and is read from
             # the database at startup. Whoever arms the plant while it is running
@@ -107,17 +107,17 @@ def _defaults_page(
     values: dict[str, str] | None = None,
     errors: ControlError | None = None,
 ) -> Response:
-    zeile = settings(session)
+    row = settings(session)
     if values is None:
-        values = {feld: str(getattr(zeile, feld)) for feld in LIMITS}
-        values["timezone"] = zeile.timezone
+        values = {field: str(getattr(row, field)) for field in LIMITS}
+        values["timezone"] = row.timezone
     return templates.TemplateResponse(
         request,
         "settings.html",
         {
-            "felder": [(feld, LABELS[feld], feld in GANZZAHLIG) for feld in LIMITS],
+            "felder": [(field, LABELS[field], field in GANZZAHLIG) for field in LIMITS],
             "values": values,
-            "errors": {errors.feld: errors.notice} if errors else {},
+            "errors": {errors.field: errors.notice} if errors else {},
             "darf_aendern": has_permission(principal, "setting.manage"),
         },
     )
@@ -242,7 +242,7 @@ async def show_statistics(
     """
     require(principal, "zone.read")
     zones = visible_zones(session, principal, "zone.read")
-    zeile = settings(session)
+    row = settings(session)
 
     schluessel = request.query_params.get("zeitraum", "7")
     if schluessel not in ZEITRAEUME:
@@ -256,7 +256,7 @@ async def show_statistics(
         [zone.id for zone in zones],
         von,
         bis,
-        cycle_seconds=zeile.shadow_interval_seconds,
+        cycle_seconds=row.shadow_interval_seconds,
     )
     # The single longest day value determines the height of the bars. Scaling per
     # zone would be more comfortable to read and would falsify the comparison
@@ -273,7 +273,7 @@ async def show_statistics(
             "maximum": maximum,
             "zeitraeume": [(s, b) for s, (b, _t) in ZEITRAEUME.items()],
             "zeitraum": schluessel,
-            "armed": zeile.control_armed,
+            "armed": row.control_armed,
             "as_duration": as_duration,
         },
     )

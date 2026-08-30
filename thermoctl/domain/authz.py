@@ -137,14 +137,14 @@ def visible_zones(session: Session, principal: Principal, code: str) -> list[Zon
     """
     if (code, None) in principal.grants:
         return list(session.scalars(select(Zone).order_by(Zone.sort_order, Zone.name)))
-    erlaubt = {
+    allowed = {
         zone_id for vergebener_code, zone_id in principal.grants
         if vergebener_code == code and zone_id is not None
     }
-    if not erlaubt:
+    if not allowed:
         return []
     return list(
         session.scalars(
-            select(Zone).where(Zone.id.in_(erlaubt)).order_by(Zone.sort_order, Zone.name)
+            select(Zone).where(Zone.id.in_(allowed)).order_by(Zone.sort_order, Zone.name)
         )
     )

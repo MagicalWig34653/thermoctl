@@ -124,7 +124,7 @@ def integration(session: Session, code: str = "zigbee2mqtt") -> Integration:
     return a
 
 
-def rolle(session: Session, code: str) -> DeviceRole:
+def role(session: Session, code: str) -> DeviceRole:
     r = session.query(DeviceRole).filter_by(code=code).one_or_none()
     if r is None:
         r = DeviceRole(code=code, label=code)
@@ -152,8 +152,8 @@ def create_device(session: Session, external_id: str) -> Device:
 
 # The real descriptions and scopes, the way the migration seeds them.
 _MODEL_PERMISSIONS = {
-    code: (beschreibung, zone_scoped)
-    for code, beschreibung, zone_scoped in PERMISSIONS
+    code: (description, zone_scoped)
+    for code, description, zone_scoped in PERMISSIONS
 }
 
 
@@ -166,10 +166,10 @@ def ensure_permission(session: Session, code: str, zone_scoped: bool | None = No
     """
     p = session.query(Permission).filter_by(code=code).one_or_none()
     if p is None:
-        beschreibung, aus_modell = _MODEL_PERMISSIONS.get(code, (code, False))
+        description, aus_modell = _MODEL_PERMISSIONS.get(code, (code, False))
         p = Permission(
             code=code,
-            description=beschreibung,
+            description=description,
             is_zone_scoped=aus_modell if zone_scoped is None else zone_scoped,
         )
         session.add(p)
@@ -367,7 +367,7 @@ def create_zone_state(session: Session, zone: Zone) -> ZoneState:
 
 
 def create_shadow_decision(session: Session, zone: Zone) -> ShadowDecision:
-    entscheidung = ShadowDecision(
+    decision = ShadowDecision(
         decided_at=datetime(2026, 8, 29, 8, 0),
         zone_id=zone.id,
         setpoint_reason="Zeitplan",
@@ -375,9 +375,9 @@ def create_shadow_decision(session: Session, zone: Zone) -> ShadowDecision:
         outcome_code="aus",
         reason="Sollwert ist erreicht.",
     )
-    session.add(entscheidung)
+    session.add(decision)
     session.flush()
-    return entscheidung
+    return decision
 
 
 def create_passkey(

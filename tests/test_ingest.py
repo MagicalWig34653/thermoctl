@@ -13,7 +13,7 @@ from tests.helpers import (
     create_settings,
     create_zone,
     integration,
-    rolle,
+    role,
     sensorstatus,
 )
 from thermoctl.db.models.device import Device, DeviceCapabilityLink, ZoneDevice
@@ -36,9 +36,9 @@ def _capability(session: Session, code: str) -> DeviceCapability:
 
 
 def _example_state() -> tuple[str, bytes]:
-    daten = json.loads(DATENPFAD.read_text(encoding="utf-8"))
-    name = next(name for name, state in daten["zustaende"].items() if "humidity" in state)
-    return name, json.dumps(daten["zustaende"][name]).encode()
+    data = json.loads(DATENPFAD.read_text(encoding="utf-8"))
+    name = next(name for name, state in data["zustaende"].items() if "humidity" in state)
+    return name, json.dumps(data["zustaende"][name]).encode()
 
 
 def _device_names() -> list[str]:
@@ -52,10 +52,10 @@ def test_a_real_message_writes_history_and_a_sign_of_life(session: Session) -> N
     name, payload = _example_state()
 
     process_message(
-        session, f"{BASIS}/{name}", payload, basis=BASIS, empfangen_am=EMPFANGEN_AM
+        session, f"{BASIS}/{name}", payload, base=BASIS, received_at=EMPFANGEN_AM
     )
     process_message(
-        session, f"{BASIS}/{name}", payload, basis=BASIS, empfangen_am=EMPFANGEN_AM
+        session, f"{BASIS}/{name}", payload, base=BASIS, received_at=EMPFANGEN_AM
     )
     session.flush()
 
@@ -77,8 +77,8 @@ def test_an_unknown_device_is_created_without_a_zone(session: Session) -> None:
         session,
         f"{BASIS}/{name}",
         b'{"temperature": 21}',
-        basis=BASIS,
-        empfangen_am=EMPFANGEN_AM,
+        base=BASIS,
+        received_at=EMPFANGEN_AM,
     )
     session.flush()
 
@@ -99,8 +99,8 @@ def test_a_missing_capability_does_not_discard_the_other_values(
             session,
             f"{BASIS}/{name}",
             b'{"temperature": 20.5, "battery": 75}',
-            basis=BASIS,
-            empfangen_am=EMPFANGEN_AM,
+            base=BASIS,
+            received_at=EMPFANGEN_AM,
         )
     session.flush()
 
@@ -131,8 +131,8 @@ def test_the_device_list_updates_the_device_and_sets_known_capabilities(
         session,
         f"{BASIS}/bridge/devices",
         json.dumps(items).encode(),
-        basis=BASIS,
-        empfangen_am=EMPFANGEN_AM,
+        base=BASIS,
+        received_at=EMPFANGEN_AM,
     )
     session.flush()
 
@@ -152,11 +152,11 @@ def test_a_broken_payload_leaves_no_database_row(session: Session) -> None:
         session,
         f"{BASIS}/bridge/devices",
         b"{kaputt",
-        basis=BASIS,
-        empfangen_am=EMPFANGEN_AM,
+        base=BASIS,
+        received_at=EMPFANGEN_AM,
     )
     process_message(
-        session, f"{BASIS}/geraet", b"{kaputt", basis=BASIS, empfangen_am=EMPFANGEN_AM
+        session, f"{BASIS}/geraet", b"{kaputt", base=BASIS, received_at=EMPFANGEN_AM
     )
     assert session.query(Device).count() == 0
 
@@ -170,8 +170,8 @@ def test_availability_is_carried_forward_on_the_one_device_state(
         session,
         f"{BASIS}/{name}/availability",
         b'{"state": "online"}',
-        basis=BASIS,
-        empfangen_am=EMPFANGEN_AM,
+        base=BASIS,
+        received_at=EMPFANGEN_AM,
     )
     session.flush()
 
@@ -229,7 +229,7 @@ def test_zone_state_inverts_the_zigbee_contact_value_exactly_once(
         ZoneDevice(
             zone_id=zone.id,
             device_id=device.id,
-            device_role_id=rolle(session, "window_contact").id,
+            device_role_id=role(session, "window_contact").id,
         )
     )
     session.add(
@@ -255,7 +255,7 @@ def test_the_zone_counts_as_open_as_soon_as_one_of_two_contacts_is_open(
     sensorstatus(session, "keine_quelle")
     contact = _capability(session, "contact")
     zone = create_zone(session, "zwei-kontakte-zone")
-    window_role = rolle(session, "window_contact")
+    window_role = role(session, "window_contact")
     for name, value in zip(_device_names()[:2], ("true", "false"), strict=True):
         device = create_device(session, name)
         session.add(
@@ -295,7 +295,7 @@ def test_a_missing_or_stale_window_contact_stays_unknown(
         ZoneDevice(
             zone_id=alt.id,
             device_id=device.id,
-            device_role_id=rolle(session, "window_contact").id,
+            device_role_id=role(session, "window_contact").id,
         )
     )
     session.add(
@@ -327,8 +327,8 @@ def test_a_broken_availability_message_has_no_effect(session: Session) -> None:
             session,
             "zigbee2mqtt/Ein Geraet/availability",
             payload,
-            basis="zigbee2mqtt",
-            empfangen_am=datetime(2026, 8, 29, 12, 0, 0),
+            base="zigbee2mqtt",
+            received_at=datetime(2026, 8, 29, 12, 0, 0),
         )
     session.flush()
     zustaende = list(session.scalars(select(DeviceHealth)))
@@ -358,10 +358,10 @@ def test_the_first_sighting_survives_a_second_device_list(session: Session) -> N
     frueher = datetime(2026, 8, 1, 8, 0, 0)
     spaeter = datetime(2026, 8, 29, 8, 0, 0)
     process_message(
-        session, "zigbee2mqtt/bridge/devices", items, basis="zigbee2mqtt", empfangen_am=frueher
+        session, "zigbee2mqtt/bridge/devices", items, base="zigbee2mqtt", received_at=frueher
     )
     process_message(
-        session, "zigbee2mqtt/bridge/devices", items, basis="zigbee2mqtt", empfangen_am=spaeter
+        session, "zigbee2mqtt/bridge/devices", items, base="zigbee2mqtt", received_at=spaeter
     )
     session.flush()
     device = session.scalar(select(Device).where(Device.external_id == "Ein Multisensor"))
@@ -378,11 +378,11 @@ def test_message_kinds_that_are_not_processed_have_no_consequences(
     with caplog.at_level(logging.INFO):
         process_message(
             session, "zigbee2mqtt/bridge/state", b'{"state": "online"}',
-            basis="zigbee2mqtt", empfangen_am=datetime(2026, 8, 29, 12, 0, 0),
+            base="zigbee2mqtt", received_at=datetime(2026, 8, 29, 12, 0, 0),
         )
         process_message(
             session, "ganz/woanders/her", b"{}",
-            basis="zigbee2mqtt", empfangen_am=datetime(2026, 8, 29, 12, 0, 0),
+            base="zigbee2mqtt", received_at=datetime(2026, 8, 29, 12, 0, 0),
         )
     session.flush()
     assert len(list(session.scalars(select(Device)))) == vorher
@@ -421,7 +421,7 @@ def test_the_first_sighting_is_filled_in_for_a_hand_created_device(
     ).encode()
     gesehen = datetime(2026, 8, 29, 9, 30, 0)
     process_message(
-        session, "zigbee2mqtt/bridge/devices", items, basis="zigbee2mqtt", empfangen_am=gesehen
+        session, "zigbee2mqtt/bridge/devices", items, base="zigbee2mqtt", received_at=gesehen
     )
     session.flush()
     device = session.scalar(select(Device).where(Device.external_id == "Von Hand angelegt"))

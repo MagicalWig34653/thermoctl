@@ -115,7 +115,7 @@ def test_schedule_point_boundaries_also_apply_in_the_domain(
             session, zone, weekday=weekday, minute=minute, mode_id=mode.id,
             user_id=None, token_id=None,
         )
-    assert errors.value.feld == field
+    assert errors.value.field == field
 
 
 def test_an_unknown_mode_is_rejected_in_the_domain(session: Session) -> None:
@@ -125,7 +125,7 @@ def test_an_unknown_mode_is_rejected_in_the_domain(session: Session) -> None:
             session, zone, weekday=1, minute=360, mode_id=999999,
             user_id=None, token_id=None,
         )
-    assert errors.value.feld == "mode_id"
+    assert errors.value.field == "mode_id"
 
 
 @pytest.mark.parametrize(

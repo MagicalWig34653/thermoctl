@@ -111,7 +111,7 @@ def _schedulepage(
             "waerme": waerme,
             "temperatures": temperatures,
             "values": values or {"weekday": "1", "time_of_day": "06:00", "mode_id": ""},
-            "errors": {errors.feld: errors.notice} if errors else {},
+            "errors": {errors.field: errors.notice} if errors else {},
             # Its own channel, not `fehler`: a rejected move would otherwise show up
             # on the time field of the *creation* form -- both report "there's
             # already a point at this time", and both write into the same field. The
@@ -323,41 +323,41 @@ async def execute_schedule_adoption(
     principal: Annotated[Principal, Depends(aktueller_principal)],
     session: Annotated[Session, Depends(get_session)],
 ) -> Response:
-    ziel = _zone_or_404(session, principal, zone_id, "schedule.manage")
+    target = _zone_or_404(session, principal, zone_id, "schedule.manage")
     form = await request.form()
     try:
         source_id = int(str(form.get("source_id", "")))
     except ValueError:
         return _schedule_adopt_page(
-            request, session, principal, ziel, errors="Bitte eine Quellzone auswählen."
+            request, session, principal, target, errors="Bitte eine Quellzone auswählen."
         )
     source = next(
         (
             zone
             for zone in visible_zones(session, principal, "zone.read")
-            if zone.id == source_id and zone.id != ziel.id
+            if zone.id == source_id and zone.id != target.id
         ),
         None,
     )
     if source is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
-    hat_plan = bool(_points(session, ziel.id))
+    hat_plan = bool(_points(session, target.id))
     if hat_plan and str(form.get("confirmed", "")) != "ja":
         return _schedule_adopt_page(
             request,
             session,
             principal,
-            ziel,
+            target,
             source_id=source.id,
             bestaetigung=True,
         )
     adopt_schedule(
         session,
-        ziel,
+        target,
         source,
         user_id=principal.user_id,
         token_id=principal.token_id,
     )
     return RedirectResponse(
-        f"/zones/{ziel.id}/schedule", status_code=status.HTTP_303_SEE_OTHER
+        f"/zones/{target.id}/schedule", status_code=status.HTTP_303_SEE_OTHER
     )

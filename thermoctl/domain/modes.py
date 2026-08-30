@@ -39,7 +39,7 @@ MAXIMUM_TEMPERATURE_C = Decimal("35.0")
 # actually looking for.
 @dataclass
 class DomainError(Exception):
-    feld: str
+    field: str
     notice: str
 
 
@@ -134,8 +134,8 @@ def delete_guard(session: Session, mode: SetpointMode) -> str | None:
     if mode.is_builtin:
         return "Eingebaute Modi können nicht gelöscht werden, weil die Anwendung sie benötigt."
     verwendungen = sum(
-        session.scalar(select(func.count()).select_from(modell).where(spalte == mode.id)) or 0
-        for modell, spalte in (
+        session.scalar(select(func.count()).select_from(modell).where(column == mode.id)) or 0
+        for modell, column in (
             (SchedulePoint, SchedulePoint.setpoint_mode_id),
             (ZoneOverride, ZoneOverride.setpoint_mode_id),
         )
@@ -216,29 +216,29 @@ def update_setpoints(
         for mode_id, temperature in values.items()
     }
     vorhandene = {
-        zeile.setpoint_mode_id: zeile
-        for zeile in session.scalars(
+        row.setpoint_mode_id: row
+        for row in session.scalars(
             select(ZoneSetpoint).where(ZoneSetpoint.zone_id == zone.id)
         )
     }
     changed = False
     for mode_id, temperature in checked_values.items():
-        zeile = vorhandene.get(mode_id)
+        row = vorhandene.get(mode_id)
         if temperature is None:
-            if zeile is not None:
-                session.delete(zeile)
+            if row is not None:
+                session.delete(row)
                 changed = True
             continue
         temperature = check_temperature(temperature)
-        if zeile is None:
+        if row is None:
             session.add(
                 ZoneSetpoint(
                     zone_id=zone.id, setpoint_mode_id=mode_id, temperature_c=temperature
                 )
             )
             changed = True
-        elif zeile.temperature_c != temperature:
-            zeile.temperature_c = temperature
+        elif row.temperature_c != temperature:
+            row.temperature_c = temperature
             changed = True
     if changed:
         audit.record(

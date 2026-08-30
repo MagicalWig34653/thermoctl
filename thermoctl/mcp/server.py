@@ -99,13 +99,13 @@ def zone_state(session: Session, plaintext: str, zone_id: int) -> dict[str, obje
     """Returns the most recently derived state of a visible zone."""
     _token, principal = _log_in(session, plaintext)
     zone = _visible_zone(session, principal, zone_id)
-    zeile = session.get(ZoneState, zone.id)
-    if zeile is None:
+    row = session.get(ZoneState, zone.id)
+    if row is None:
         return {"temperature_c": None, "measured_at": None, "sensor_state": None}
-    status = session.get(SensorStatus, zeile.sensor_status_id)
+    status = session.get(SensorStatus, row.sensor_status_id)
     return {
-        "temperature_c": _dezimal(zeile.temperature_c),
-        "measured_at": _moment(zeile.measured_at),
+        "temperature_c": _dezimal(row.temperature_c),
+        "measured_at": _moment(row.measured_at),
         "sensor_state": None if status is None else status.code,
     }
 
@@ -119,7 +119,7 @@ def explain_setpoint(
     setpoint = resolved_setpoint(session, zone, now or utcnow())
     return {
         "temperature_c": _dezimal(setpoint.temperature_c),
-        "reason": setpoint.grund,
+        "reason": setpoint.reason,
         "mode": setpoint.mode_code,
     }
 
@@ -208,15 +208,15 @@ def shadow_decisions(
     )
     return [
         {
-            "moment": _moment(zeile.decided_at),
-            "ist_c": _dezimal(zeile.temperature_c),
-            "soll_c": _dezimal(zeile.setpoint_c),
-            "sollwert_begruendung": zeile.setpoint_reason,
-            "would_heat": zeile.would_heat,
-            "outcome": zeile.outcome_code,
-            "reason": zeile.reason,
+            "moment": _moment(row.decided_at),
+            "ist_c": _dezimal(row.temperature_c),
+            "soll_c": _dezimal(row.setpoint_c),
+            "sollwert_begruendung": row.setpoint_reason,
+            "would_heat": row.would_heat,
+            "outcome": row.outcome_code,
+            "reason": row.reason,
         }
-        for zeile in zeilen
+        for row in zeilen
     ]
 
 
@@ -298,15 +298,15 @@ def read_control_parameters(session: Session, plaintext: str, zone_id: int) -> d
         "zone": zone.name,
         "parameter": [
             {
-                "name": beschreibung.name,
-                "label": beschreibung.label,
-                "unit": beschreibung.einheit,
-                "value": str(getattr(wirksam, beschreibung.name)),
-                "own_value": getattr(zone, beschreibung.name) is not None,
-                "minimum": str(beschreibung.minimum),
-                "maximum": str(beschreibung.maximum),
+                "name": description.name,
+                "label": description.label,
+                "unit": description.einheit,
+                "value": str(getattr(wirksam, description.name)),
+                "own_value": getattr(zone, description.name) is not None,
+                "minimum": str(description.minimum),
+                "maximum": str(description.maximum),
             }
-            for beschreibung in PARAMETERS
+            for description in PARAMETERS
         ],
     }
 
@@ -337,11 +337,11 @@ def read_control(session: Session, plaintext: str) -> dict[str, object]:
     """
     _token, principal = _log_in(session, plaintext)
     require(principal, "zone.read")
-    zeile = settings(session)
+    row = settings(session)
     return {
-        "armed": zeile.control_armed,
-        "timezone": zeile.timezone,
-        **{feld: str(getattr(zeile, feld)) for feld in LIMITS},
+        "armed": row.control_armed,
+        "timezone": row.timezone,
+        **{field: str(getattr(row, field)) for field in LIMITS},
     }
 
 

@@ -116,8 +116,8 @@ def _visible_zone(session: Session, principal: Principal, zone_id: int) -> Zone:
     return zone
 
 
-def _domain_error(feld: str, notice: str) -> HTTPException:
-    return HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, f"{feld}: {notice}")
+def _domain_error(field: str, notice: str) -> HTTPException:
+    return HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, f"{field}: {notice}")
 
 
 def _permission(principal: Principal, code: str, zone_id: int | None = None) -> None:
@@ -151,13 +151,13 @@ def zone(
 
 @router.post("/zones", response_model=ZoneResponse, status_code=status.HTTP_201_CREATED)
 def create_zone_view(
-    daten: WriteZone,
+    data: WriteZone,
     session: Annotated[Session, Depends(get_session)],
     principal: Annotated[Principal, Depends(_principal)],
 ) -> Zone:
     _permission(principal, "zone.manage")
     try:
-        return create_zone(session, principal, **daten.model_dump())
+        return create_zone(session, principal, **data.model_dump())
     except ZonennameVergeben as exc:
         raise _domain_error("name", "Dieser Name ist bereits vergeben.") from exc
 
@@ -165,14 +165,14 @@ def create_zone_view(
 @router.put("/zones/{zone_id}", response_model=ZoneResponse)
 def save_zone(
     zone_id: int,
-    daten: WriteZone,
+    data: WriteZone,
     session: Annotated[Session, Depends(get_session)],
     principal: Annotated[Principal, Depends(_principal)],
 ) -> Zone:
     zone_obj = _visible_zone(session, principal, zone_id)
     _permission(principal, "zone.manage", zone_id)
     try:
-        update_zone(session, zone_obj, principal, **daten.model_dump())
+        update_zone(session, zone_obj, principal, **data.model_dump())
     except ZonennameVergeben as exc:
         raise _domain_error("name", "Dieser Name ist bereits vergeben.") from exc
     return zone_obj
@@ -203,15 +203,15 @@ def modes(
 
 @router.post("/modes", response_model=ModeResponse, status_code=status.HTTP_201_CREATED)
 def create_mode_view(
-    daten: CreateMode,
+    data: CreateMode,
     session: Annotated[Session, Depends(get_session)],
     principal: Annotated[Principal, Depends(_principal)],
 ) -> SetpointMode:
     _permission(principal, "mode.manage")
     try:
-        return create_mode(session, **daten.model_dump(), user_id=principal.user_id)
+        return create_mode(session, **data.model_dump(), user_id=principal.user_id)
     except DomainError as exc:
-        raise _domain_error(exc.feld, exc.notice) from exc
+        raise _domain_error(exc.field, exc.notice) from exc
 
 
 def _setpoint_responses(session: Session, zone_id: int) -> list[SetpointResponse]:
@@ -246,13 +246,13 @@ def setpoints(
 @router.put("/zones/{zone_id}/setpoints", response_model=list[SetpointResponse])
 def save_setpoints(
     zone_id: int,
-    daten: WriteSetpoints,
+    data: WriteSetpoints,
     session: Annotated[Session, Depends(get_session)],
     principal: Annotated[Principal, Depends(_principal)],
 ) -> list[SetpointResponse]:
     zone_obj = _visible_zone(session, principal, zone_id)
     _permission(principal, "setpoint.write", zone_id)
-    values = {entry.mode_id: entry.temperature_c for entry in daten.setpoints}
+    values = {entry.mode_id: entry.temperature_c for entry in data.setpoints}
     try:
         update_setpoints(session, zone_obj, values, user_id=principal.user_id)
     except DomainError as exc:
@@ -296,7 +296,7 @@ def schedule(
 )
 def create_schedule_point_view(
     zone_id: int,
-    daten: CreateSchedulePoint,
+    data: CreateSchedulePoint,
     session: Annotated[Session, Depends(get_session)],
     principal: Annotated[Principal, Depends(_principal)],
 ) -> SchedulePointResponse:
@@ -306,15 +306,15 @@ def create_schedule_point_view(
         point = create_schedule_point(
             session,
             zone_obj,
-            weekday=daten.weekday,
-            minute=daten.minute_of_day,
-            mode_id=daten.mode_id,
+            weekday=data.weekday,
+            minute=data.minute_of_day,
+            mode_id=data.mode_id,
             user_id=principal.user_id,
             token_id=principal.token_id,
             source="api",
         )
     except ScheduleError as exc:
-        raise _domain_error(exc.feld, exc.notice) from exc
+        raise _domain_error(exc.field, exc.notice) from exc
     mode = session.get(SetpointMode, point.setpoint_mode_id)
     assert mode is not None
     return SchedulePointResponse(
@@ -357,7 +357,7 @@ def parameter(
 @router.put("/zones/{zone_id}/parameters", response_model=ControlParametersResponse)
 def save_parameter(
     zone_id: int,
-    daten: WriteControlParameters,
+    data: WriteControlParameters,
     session: Annotated[Session, Depends(get_session)],
     principal: Annotated[Principal, Depends(_principal)],
 ) -> ControlParametersResponse:
@@ -366,7 +366,7 @@ def save_parameter(
     save_control_parameters(
         session,
         zone_obj,
-        daten.model_dump(),
+        data.model_dump(),
         user_id=principal.user_id,
         token_id=principal.token_id,
         source="api",
@@ -378,7 +378,7 @@ def save_parameter(
 def save_parameter_einzeln(
     zone_id: int,
     name: str,
-    daten: WriteParameter,
+    data: WriteParameter,
     session: Annotated[Session, Depends(get_session)],
     principal: Annotated[Principal, Depends(_principal)],
 ) -> ControlParametersResponse:
@@ -395,7 +395,7 @@ def save_parameter_einzeln(
             session,
             zone_obj,
             name,
-            daten.value,
+            data.value,
             user_id=principal.user_id,
             token_id=principal.token_id,
             source="api",
@@ -508,14 +508,14 @@ def zone_state(
     principal: Annotated[Principal, Depends(_principal)],
 ) -> ZoneStateResponse:
     _visible_zone(session, principal, zone_id)
-    zeile = session.execute(
+    row = session.execute(
         select(ZoneState, SensorStatus)
         .join(SensorStatus, SensorStatus.id == ZoneState.sensor_status_id)
         .where(ZoneState.zone_id == zone_id)
     ).one_or_none()
-    if zeile is None:
+    if row is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Zonenzustand nicht gefunden")
-    state, sensor_state = zeile
+    state, sensor_state = row
     return ZoneStateResponse(
         zone_id=state.zone_id,
         temperature_c=state.temperature_c,
@@ -551,7 +551,7 @@ def ich(
 )
 def override_zone(
     zone_id: int,
-    daten: CreateOverride,
+    data: CreateOverride,
     session: Annotated[Session, Depends(get_session)],
     principal: Annotated[Principal, Depends(_principal)],
 ) -> object:
@@ -562,8 +562,8 @@ def override_zone(
         raise HTTPException(status.HTTP_403_FORBIDDEN, str(exc)) from exc
 
     now = utcnow()
-    ende = now + timedelta(minutes=daten.duration_minutes) if daten.duration_minutes else None
-    if daten.until_next_switch:
+    ende = now + timedelta(minutes=data.duration_minutes) if data.duration_minutes else None
+    if data.until_next_switch:
         # The same function as in the interface. Until the final review of subproject
         # 3, the calculation was here a second time — both adapters could have drifted
         # apart after a fix to the timezone handling.
@@ -572,7 +572,7 @@ def override_zone(
         return create_override(
             session,
             zone_obj,
-            daten.temperature_c,
+            data.temperature_c,
             ende,
             user_id=principal.user_id,
             token_id=principal.token_id,
@@ -582,7 +582,7 @@ def override_zone(
         # The schema already catches the value range; the domain has additionally
         # checked it itself since the final review. If anything still slips through
         # regardless, it's an input error, not a fault of the service.
-        raise _domain_error(exc.feld, exc.notice) from exc
+        raise _domain_error(exc.field, exc.notice) from exc
 
 
 @router.delete("/zones/{zone_id}/override", status_code=status.HTTP_204_NO_CONTENT)
@@ -607,11 +607,11 @@ def delete_override(
 
 
 def _control_response(session: Session) -> ControlResponse:
-    zeile = settings(session)
+    row = settings(session)
     return ControlResponse(
-        control_armed=zeile.control_armed,
-        timezone=zeile.timezone,
-        **{feld: getattr(zeile, feld) for feld in LIMITS},
+        control_armed=row.control_armed,
+        timezone=row.timezone,
+        **{field: getattr(row, field) for field in LIMITS},
     )
 
 
@@ -628,7 +628,7 @@ def control(
 
 @router.put("/control/armed", response_model=ControlResponse)
 def control_set_armed(
-    daten: SetArmed,
+    data: SetArmed,
     session: Annotated[Session, Depends(get_session)],
     principal: Annotated[Principal, Depends(_principal)],
 ) -> ControlResponse:
@@ -641,36 +641,36 @@ def control_set_armed(
     try:
         arm(
             session,
-            daten.armed,
-            reason=daten.reason,
+            data.armed,
+            reason=data.reason,
             user_id=principal.user_id,
             token_id=principal.token_id,
             source="api",
         )
     except ControlError as exc:
-        raise _domain_error(exc.feld, exc.notice) from exc
+        raise _domain_error(exc.field, exc.notice) from exc
     return _control_response(session)
 
 
 @router.put("/control/defaults", response_model=ControlResponse)
 def control_defaults(
-    daten: SteuerungSchreiben,
+    data: SteuerungSchreiben,
     session: Annotated[Session, Depends(get_session)],
     principal: Annotated[Principal, Depends(_principal)],
 ) -> ControlResponse:
     _permission(principal, "setting.manage")
-    values = {feld: str(getattr(daten, feld)) for feld in LIMITS}
+    values = {field: str(getattr(data, field)) for field in LIMITS}
     try:
         save_settings(
             session,
             values,
-            daten.timezone,
+            data.timezone,
             user_id=principal.user_id,
             token_id=principal.token_id,
             source="api",
         )
     except ControlError as exc:
-        raise _domain_error(exc.feld, exc.notice) from exc
+        raise _domain_error(exc.field, exc.notice) from exc
     return _control_response(session)
 
 
@@ -678,7 +678,7 @@ def control_defaults(
 def reposition_schedule_point(
     zone_id: int,
     point_id: int,
-    daten: MoveSchedulePoint,
+    data: MoveSchedulePoint,
     session: Annotated[Session, Depends(get_session)],
     principal: Annotated[Principal, Depends(_principal)],
 ) -> SchedulePointResponse:
@@ -694,14 +694,14 @@ def reposition_schedule_point(
             session,
             zone_obj,
             point,
-            weekday=daten.weekday,
-            minute=daten.minute_of_day,
+            weekday=data.weekday,
+            minute=data.minute_of_day,
             user_id=principal.user_id,
             token_id=principal.token_id,
             source="api",
         )
     except ScheduleError as exc:
-        raise _domain_error(exc.feld, exc.notice) from exc
+        raise _domain_error(exc.field, exc.notice) from exc
     mode = session.get(SetpointMode, point.setpoint_mode_id)
     assert mode is not None
     return SchedulePointResponse(

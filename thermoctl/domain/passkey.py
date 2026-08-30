@@ -311,17 +311,17 @@ def _clientdaten(response: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(roh, str):
         raise PasskeyError("Die Antwort enthaelt keine clientDataJSON.")
     try:
-        daten = json.loads(base64url_to_bytes(roh))
+        data = json.loads(base64url_to_bytes(roh))
     except Exception as exc:
         raise PasskeyError("clientDataJSON ist nicht lesbar.") from exc
-    if not isinstance(daten, dict):
+    if not isinstance(data, dict):
         raise PasskeyError("clientDataJSON ist kein Objekt.")
-    return daten
+    return data
 
 
-def _protokoll(session: Session, user_id: int | None, grund: str) -> None:
+def _protokoll(session: Session, user_id: int | None, reason: str) -> None:
     audit.record(
         session, source="web", action="login_failed", object_type="user",
         object_id=None if user_id is None else str(user_id),
-        summary="Passkey-Anmeldung fehlgeschlagen", detail=grund, user_id=user_id,
+        summary="Passkey-Anmeldung fehlgeschlagen", detail=reason, user_id=user_id,
     )
