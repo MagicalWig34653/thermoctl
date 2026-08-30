@@ -24,9 +24,9 @@ Vom Controller selbst nachgeprüft, nicht aus Berichten übernommen:
 
 | | |
 |---|---|
-| Tests | 976, grün unter SQLite **und** MariaDB |
-| Testabdeckung | 98,94 %, Mindestschwelle 97 % in der CI |
-| Ruff, mypy strict | ohne Befund, 87 Quelldateien |
+| Tests | 994, grün unter SQLite **und** MariaDB |
+| Testabdeckung | 98,97 %, Mindestschwelle 97 % in der CI |
+| Ruff, mypy strict | ohne Befund, 88 Quelldateien |
 | Migrationskette | linear, ein Kopf, vorwärts und rückwärts gegen beide Datenbanken |
 | CI und Container | grün |
 
@@ -99,6 +99,30 @@ Vier Entscheidungen darin:
   trocken und scharf Byte für Byte gleich — am Broker nachgemessen.
 - **Alles Bleibende geht mit retain hinaus**, und ein Befehl wird sofort beantwortet statt
   erst im nächsten Regelzyklus.
+
+**Bediengeräte tun etwas.** Die Rolle `controller` war bis hierher eine Zuordnung ohne
+Wirkung: Ein Gerät an der Wand konnte zugeordnet werden, aber ein Tastendruck fiel durch —
+das Feld `action` stand nicht in der Feldzuordnung. Jetzt landet jeder Druck als Messwert
+in der Datenbank, und was er auslöst, steht in `controller_binding`.
+
+**Es wird nicht geraten, sondern zugehört.** Wie ein Gerät seine Tasten nennt, entscheidet
+Zigbee2MQTT je Modell — `single_plus`, `button_1_single`, `up_open`. Eine Tabelle dieser
+Namen im Quelltext wäre harte Verdrahtung (Grundsatz 1) und für jedes Gerät falsch, das
+noch nicht darin steht. Stattdessen zeigt die Oberfläche unter *Zone → Geräte →
+Tastenbelegung*, welche Aktionen dieses Gerät **wirklich** geschickt hat: einmal jede Taste
+drücken, neu laden, zuordnen. Belegbar sind fünf Dinge — wärmer, kälter (Schrittweite je
+Taste), nächste Schaltung vorziehen, Aus, Automatik. Mehr gehört nicht auf einen Knopf, an
+dem man im Vorbeigehen nicht sieht, was man tut.
+
+Zwei Dinge, die dabei auffielen: Eine **behaltene Nachricht** wird bei jeder Neuverbindung
+erneut zugestellt — ohne Vergleich des Messzeitpunkts löste ein Wackelkontakt denselben
+Tastendruck immer wieder aus. Und eine **Schrittweite mit zwei Nachkommastellen** erzeugte
+Sollwerte, die die Domäne ablehnt; die Spalte trägt jetzt eine Stelle, so viel wie ein
+Sollwert auch.
+
+Was **nicht** gebaut ist: das Display eines Bediengeräts mit Werten aus thermoctl zu
+speisen. Unter welchem Schlüssel Zigbee2MQTT eine externe Temperatur für den W100
+entgegennimmt, ist ohne das Gerät in der Hand nicht zu verifizieren.
 
 **Boost und die Regelparameter gibt es auch über REST und MCP.** Die Logik liegt in
 `domain/fernbedienung.py` und `domain/zone_settings.py`, die Adapter sind dünn —

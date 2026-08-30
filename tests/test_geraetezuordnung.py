@@ -664,3 +664,145 @@ def test_das_anlagenbild_traegt_keine_griffe(client_als, session: Session) -> No
         [("device.read", None), ("device.manage", None), ("zone.read", None)]
     ).get("/anlage")
     assert "tc-ziehbar" not in seite.text
+
+
+def _bedienbefehle(session: Session) -> None:
+    from thermoctl.db.models.lookup import CONTROLLER_COMMANDS, ControllerCommand
+
+    for code, bezeichnung in CONTROLLER_COMMANDS:
+        session.add(ControllerCommand(code=code, label=bezeichnung))
+    session.add(DeviceCapability(code="action", label="Tastendruck"))
+    session.flush()
+
+
+def test_die_seite_zeigt_die_tasten_die_wirklich_ankamen(client_als, session: Session) -> None:
+    """Nichts geraten: Wie ein Geraet seine Tasten nennt, entscheidet Zigbee2MQTT.
+
+    Ohne diese Liste muesste jemand das Datenblatt seines Modells lesen -- und bei einem
+    Tippfehler taete die Taste stumm nichts.
+    """
+    import json
+
+    from thermoctl.services.ingest import nachricht_verarbeiten
+
+    _bedienbefehle(session)
+    zone = zone_anlegen(session, "tastenzone")
+    geraet = geraet_anlegen(session, "wandschalter")
+    _zuordnen(session, zone.id, geraet.id, "controller")
+    nachricht_verarbeiten(
+        session,
+        f"zigbee2mqtt/{geraet.external_id}",
+        json.dumps({"action": "button_1_single"}).encode(),
+        basis="zigbee2mqtt",
+        empfangen_am=datetime(2026, 8, 31, 8, 0),
+    )
+
+    antwort = client_als([("device.read", zone.id)]).get(f"/zonen/{zone.id}/geraete")
+
+    assert antwort.status_code == 200
+    assert "Tastenbelegung" in antwort.text
+    assert "button_1_single" in antwort.text
+    assert "Nächste Schaltung vorziehen" in antwort.text
+
+
+def test_ohne_bediengeraet_gibt_es_keine_tastenbelegung(client_als, session: Session) -> None:
+    """Gegenprobe: Ein Abschnitt, der bei jeder Zone steht, traegt keine Auskunft."""
+    _bedienbefehle(session)
+    zone = zone_anlegen(session, "tastenlos")
+    geraet = geraet_anlegen(session, "ventil")
+    _zuordnen(session, zone.id, geraet.id, "actuator")
+
+    antwort = client_als([("device.read", zone.id)]).get(f"/zonen/{zone.id}/geraete")
+
+    assert "Tastenbelegung" not in antwort.text
+
+
+def test_eine_taste_laesst_sich_belegen_und_wieder_freigeben(
+    client_als, session: Session
+) -> None:
+    from thermoctl.db.models.device import ControllerBinding
+
+    quelle(session)
+    _bedienbefehle(session)
+    zone = zone_anlegen(session, "belegzone")
+    geraet = geraet_anlegen(session, "schalter")
+    _zuordnen(session, zone.id, geraet.id, "controller")
+    client = client_als([("device.manage", zone.id), ("device.read", zone.id)])
+    client.get(f"/zonen/{zone.id}/geraete")
+
+    antwort = client.post(
+        f"/zonen/{zone.id}/geraete/taste",
+        headers=_csrf(client),
+        data={
+            "device_id": str(geraet.id),
+            "aktion": "single_plus",
+            "befehl": "setpoint_up",
+            "schritt_k": "1,0",
+        },
+        follow_redirects=False,
+    )
+    assert antwort.status_code == 303
+    belegung = session.scalars(select(ControllerBinding)).one()
+    # Komma wie im Formular ueblich, Punkt in der Datenbank.
+    assert belegung.step_k == Decimal("1.0")
+
+    client.post(
+        f"/zonen/{zone.id}/geraete/taste",
+        headers=_csrf(client),
+        data={"device_id": str(geraet.id), "aktion": "single_plus", "befehl": ""},
+        follow_redirects=False,
+    )
+    assert session.scalars(select(ControllerBinding)).all() == []
+
+
+def test_unbrauchbare_tastenbelegungen_werden_abgewiesen(client_als, session: Session) -> None:
+    quelle(session)
+    _bedienbefehle(session)
+    zone = zone_anlegen(session, "fehlzone")
+    geraet = geraet_anlegen(session, "fehlschalter")
+    _zuordnen(session, zone.id, geraet.id, "controller")
+    client = client_als([("device.manage", zone.id), ("device.read", zone.id)])
+    client.get(f"/zonen/{zone.id}/geraete")
+
+    ohne_aktion = client.post(
+        f"/zonen/{zone.id}/geraete/taste",
+        headers=_csrf(client),
+        data={"device_id": str(geraet.id), "aktion": "", "befehl": "boost"},
+    )
+    assert ohne_aktion.status_code == 400
+
+    krumme_zahl = client.post(
+        f"/zonen/{zone.id}/geraete/taste",
+        headers=_csrf(client),
+        data={
+            "device_id": str(geraet.id), "aktion": "single_plus",
+            "befehl": "setpoint_up", "schritt_k": "warm",
+        },
+    )
+    assert "Zahl sein" in krumme_zahl.text
+
+    zu_genau = client.post(
+        f"/zonen/{zone.id}/geraete/taste",
+        headers=_csrf(client),
+        data={
+            "device_id": str(geraet.id), "aktion": "single_plus",
+            "befehl": "setpoint_up", "schritt_k": "0,25",
+        },
+    )
+    assert "Nachkommastelle" in zu_genau.text
+
+
+def test_tastenbelegung_braucht_device_manage(client_als, session: Session) -> None:
+    _bedienbefehle(session)
+    zone = zone_anlegen(session, "rechtezone")
+    geraet = geraet_anlegen(session, "rechteschalter")
+    _zuordnen(session, zone.id, geraet.id, "controller")
+    client = client_als([("device.read", zone.id)])
+    client.get(f"/zonen/{zone.id}/geraete")
+
+    antwort = client.post(
+        f"/zonen/{zone.id}/geraete/taste",
+        headers=_csrf(client),
+        data={"device_id": str(geraet.id), "aktion": "single_plus", "befehl": "boost"},
+    )
+    assert antwort.status_code == 404

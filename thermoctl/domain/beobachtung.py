@@ -9,6 +9,10 @@ log = logging.getLogger(__name__)
 
 
 FELD_ZU_FAEHIGKEIT: Final[dict[str, str]] = {
+    # Der Tastendruck eines Bediengeraets. Er wird wie jeder andere Wert als Messung
+    # abgelegt -- und genau daraus weiss die Oberflaeche spaeter, welche Tasten dieses
+    # Geraet ueberhaupt hat, ohne dass jemand ein Datenblatt liest.
+    "action": "action",
     "battery": "battery",
     "contact": "contact",
     "current_heating_setpoint": "setpoint",

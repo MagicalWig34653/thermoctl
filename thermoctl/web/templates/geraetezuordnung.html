@@ -123,6 +123,77 @@ Skripts falsch rät.
 </div>
 {% else %}<p>Noch keine Rollen zugeordnet.</p>{% endif %}
 
+{% if bediengeraete %}
+<h2 class="h4 mt-4">Tastenbelegung</h2>
+<p class="t-leise">
+    Wie ein Gerät seine Tasten nennt, entscheidet Zigbee2MQTT je Modell — der eine schickt
+    <span class="t-wert">single_plus</span>, der nächste <span class="t-wert">button_1_single</span>.
+    Deshalb steht hier nichts geraten: Aufgeführt ist, was dieses Gerät wirklich geschickt
+    hat. <strong>Einmal jede Taste drücken</strong>, die Seite neu laden, zuordnen.
+</p>
+{% if fehler.taste %}<div class="alert alert-danger">{{ fehler.taste }}</div>{% endif %}
+
+{% for geraet, belegungen in bediengeraete %}
+<div class="tc-tafel mb-3">
+    <div class="p-3 pb-0">
+        <div class="tc-zone-name">{{ geraet.display_name }}</div>
+        <div class="t-leise" style="font-size: .72rem">{{ geraet.model or "Modell unbekannt" }}</div>
+    </div>
+    {% if belegungen %}
+    <div class="table-responsive">
+    <table class="table align-middle mb-0">
+        <thead><tr><th>Taste</th><th>Zuletzt gesehen</th><th>Tut</th><th>Schritt</th><th></th></tr></thead>
+        <tbody>
+        {% for belegung in belegungen %}
+        <tr>
+            <td class="t-wert">{{ belegung.aktion }}</td>
+            <td class="t-leise small">
+                {% if belegung.zuletzt_gesehen %}{{ belegung.zuletzt_gesehen|alter }}
+                {% else %}<span title="Belegt, aber seit dem letzten Aufräumen der Messwerte nicht gesehen">—</span>{% endif %}
+            </td>
+            <td colspan="3">
+                <form method="post" action="/zonen/{{ zone.id }}/geraete/taste" class="row g-2">
+                    <input type="hidden" name="device_id" value="{{ geraet.id }}">
+                    <input type="hidden" name="aktion" value="{{ belegung.aktion }}">
+                    <div class="col-auto">
+                        <select class="form-select form-select-sm" name="befehl"
+                                aria-label="Was diese Taste tut"
+                                {{ "disabled" if not darf_aendern }}>
+                            <option value="">— nichts —</option>
+                            {% for befehl in befehle %}
+                            <option value="{{ befehl.code }}"
+                                {{ "selected" if befehl.code == belegung.befehl_code }}>{{ befehl.label }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-auto">
+                        <input class="form-control form-control-sm" type="text" name="schritt_k"
+                               style="width: 6rem" inputmode="decimal"
+                               placeholder="0,5 K" aria-label="Schrittweite in Kelvin"
+                               value="{{ belegung.schritt_k|grad if belegung.schritt_k is not none }}"
+                               {{ "disabled" if not darf_aendern }}>
+                    </div>
+                    {% if darf_aendern %}
+                    <div class="col-auto">
+                        <button class="btn btn-sm btn-outline-secondary" type="submit">Übernehmen</button>
+                    </div>
+                    {% endif %}
+                </form>
+            </td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+    {% else %}
+    <p class="t-leise p-3 mb-0">
+        Dieses Gerät hat noch keinen Tastendruck geschickt. Einmal drücken, dann steht er hier.
+    </p>
+    {% endif %}
+</div>
+{% endfor %}
+{% endif %}
+
 {% if darf_aendern %}
 <h2 class="h4 mt-4">Rolle zuordnen</h2>
 {% if fehler.zuordnung %}<div class="alert alert-danger">{{ fehler.zuordnung }}</div>{% endif %}
