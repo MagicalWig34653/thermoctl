@@ -99,11 +99,17 @@ def test_herkunft_unterscheidet_umgebung_und_standard(session: Session) -> None:
     assert quellen["TLS"] == "Standard"
 
 
-def test_home_assistant_verspricht_nichts(session: Session) -> None:
-    """Sie ist entworfen, aber sendet nicht. Eine Seite, die sie als 'eingerichtet'
-    fuehrte, waere eine Zusage, die niemand einloest."""
-    liste = uebersicht(session, _einstellungen(), None)
-    assert _zustand(liste, "homeassistant") == "ungebaut"
+def test_home_assistant_haengt_an_mqtt(session: Session) -> None:
+    """Sie sendet inzwischen wirklich -- aber nur ueber MQTT.
+
+    Frueher stand hier "ungebaut", weil nur die Nutzlast entworfen war. Ohne MQTT gibt
+    es weiterhin keinen Weg dorthin, und die Seite darf dann nichts anderes behaupten.
+    """
+    ohne = uebersicht(session, _einstellungen(), None)
+    assert _zustand(ohne, "homeassistant") == "aus"
+
+    mit = uebersicht(session, _einstellungen(mqtt_enabled=True, mqtt_host="b"), None)
+    assert _zustand(mit, "homeassistant") == "laeuft"
 
 
 def test_jede_schnittstelle_hat_einen_bekannten_zustand(session: Session) -> None:

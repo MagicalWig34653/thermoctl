@@ -34,7 +34,7 @@ class HttpTransport(Protocol):
 
 class MqttVeroeffentlicher(Protocol):
     async def veroeffentlichen(
-        self, topic: str, nutzlast: str, *, schaltet: bool
+        self, topic: str, nutzlast: str, *, schaltet: bool, behalten: bool = False
     ) -> bool: ...
 
 

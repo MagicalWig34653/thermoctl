@@ -10,7 +10,7 @@ import pytest
 
 from thermoctl.integrations.mqtt.befehle import (
     Befehlsfehler,
-    befehls_abonnement,
+    befehls_abonnements,
     ist_befehl,
     zerlegen,
 )
@@ -63,36 +63,157 @@ def test_zustands_topics_sind_keine_befehle() -> None:
     assert not ist_befehl("thermoctl/zonen/1/zustand/sollwert", "thermoctl")
 
 
-def test_das_abonnement_deckt_beide_arten_ab() -> None:
-    muster = befehls_abonnement("thermoctl")
-    assert muster == "thermoctl/zonen/+/befehl/+"
+def test_die_abonnements_decken_auch_befehle_mit_unterschluessel_ab() -> None:
+    """`+` trifft in MQTT **genau eine** Ebene, nie null und nie zwei.
+
+    Mit nur `.../befehl/+` kaeme `befehl/modus/3` nie an -- die Drehregler je Modus
+    haetten in Home Assistant stumm nichts getan.
+    """
+    muster = befehls_abonnements("thermoctl")
+    assert muster == ["thermoctl/zonen/+/befehl/+", "thermoctl/zonen/+/befehl/+/+"]
+    assert ist_befehl("thermoctl/zonen/3/befehl/modus/7", "thermoctl")
+    assert ist_befehl("thermoctl/zonen/3/befehl/parameter/hysteresis_k", "thermoctl")
+
+
+def test_die_neuen_befehlsarten_werden_gelesen() -> None:
+    boost = zerlegen("thermoctl/zonen/4/befehl/boost", b"boost", "thermoctl")
+    assert (boost.art, boost.zone_id) == ("boost", 4)
+
+    modus = zerlegen("thermoctl/zonen/4/befehl/modus/9", b"19.5", "thermoctl")
+    assert (modus.art, modus.modus_id, modus.temperatur) == ("modus", 9, Decimal("19.5"))
+
+    parameter = zerlegen(
+        "thermoctl/zonen/4/befehl/parameter/hysteresis_k", b"0.4", "thermoctl"
+    )
+    assert (parameter.art, parameter.parameter, parameter.zahl) == (
+        "parameter", "hysteresis_k", Decimal("0.4"),
+    )
+
+
+@pytest.mark.parametrize(
+    "topic",
+    [
+        # Ein Unterschluessel, wo keiner hingehoert: Sonst waere
+        # `befehl/sollwert/irgendwas` ein zweiter, ungeprueftder Weg zum selben Ziel.
+        "thermoctl/zonen/1/befehl/sollwert/17",
+        "thermoctl/zonen/1/befehl/boost/jetzt",
+        # Und die Unterschluessel selbst muessen stimmen.
+        "thermoctl/zonen/1/befehl/modus/0",
+        "thermoctl/zonen/1/befehl/modus/tag",
+        "thermoctl/zonen/1/befehl/parameter/Hysterese",
+        "thermoctl/zonen/1/befehl/modus",
+        "thermoctl/zonen/1/befehl/parameter",
+    ],
+)
+def test_unterschluessel_werden_gepruft(topic: str) -> None:
+    with pytest.raises(Befehlsfehler):
+        zerlegen(topic, b"21", "thermoctl")
 
 
 # --- Ausfuehrung in der Anwendung -------------------------------------------
 
 
-def test_ein_befehl_legt_eine_uebersteuerung_an(session) -> None:
-    """Der Thermostat in Home Assistant setzt eine Zieltemperatur. Hier wird daraus das,
-    was die Domaene fuer diesen Wunsch vorsieht -- mit denselben Grenzen wie jeder
-    andere Weg."""
+def test_der_sollwert_verstellt_den_geltenden_modus(session) -> None:
+    """Der Thermostat in Home Assistant meint den Modus, nicht "die naechsten zwei Stunden".
+
+    Als Uebersteuerung waere der Wert nach dem naechsten Schaltpunkt wieder weg, und der
+    Regler spraenge scheinbar von selbst zurueck. Er verstellt deshalb dieselbe Zeile,
+    die auch das Thermostat auf der Startseite verstellt.
+    """
     from sqlalchemy import select
 
-    from tests.hilfen import quelle, zone_anlegen
+    from tests.hilfen import einstellungen_anlegen, quelle, zone_anlegen
     from thermoctl.app import _befehl_ausfuehren
     from thermoctl.config import Settings
     from thermoctl.db.models.override import ZoneOverride
+    from thermoctl.db.models.zone import ZoneSetpoint
 
-    zone = zone_anlegen(session, "befehlszone")
+    einstellungen = einstellungen_anlegen(session)
     quelle(session, "system")
-    einstellungen = Settings(_env_file=None, database_url="sqlite://", secret_key="s" * 32)
+    zone = zone_anlegen(session, "befehlszone")
+    session.add(
+        ZoneSetpoint(
+            zone_id=zone.id,
+            setpoint_mode_id=einstellungen.frost_protection_mode_id,
+            temperature_c=Decimal("16.0"),
+        )
+    )
+    session.flush()
+    umgebung = Settings(_env_file=None, database_url="sqlite://", secret_key="s" * 32)
 
     _befehl_ausfuehren(
-        session, f"thermoctl/zonen/{zone.id}/befehl/sollwert", b"22.5", einstellungen
+        session, f"thermoctl/zonen/{zone.id}/befehl/sollwert", b"22.5", umgebung
     )
-    eintrag = session.scalars(
+
+    geaendert = session.scalar(
+        select(ZoneSetpoint.temperature_c).where(
+            ZoneSetpoint.zone_id == zone.id,
+            ZoneSetpoint.setpoint_mode_id == einstellungen.frost_protection_mode_id,
+        )
+    )
+    assert geaendert == Decimal("22.5")
+    # Gegenprobe: Es entsteht dabei ausdruecklich *keine* Uebersteuerung mehr.
+    assert not session.scalars(
         select(ZoneOverride).where(ZoneOverride.zone_id == zone.id)
-    ).one()
-    assert eintrag.temperature_c == Decimal("22.5")
+    ).all()
+
+
+def test_ein_moduswert_und_ein_regelparameter_kommen_an(session) -> None:
+    """Die Drehregler je Modus und je Regelparameter."""
+    from sqlalchemy import select
+
+    from tests.hilfen import einstellungen_anlegen, modus_anlegen, quelle, zone_anlegen
+    from thermoctl.app import _befehl_ausfuehren
+    from thermoctl.config import Settings
+    from thermoctl.db.models.zone import ZoneSetpoint
+
+    einstellungen_anlegen(session)
+    quelle(session, "system")
+    zone = zone_anlegen(session, "reglerzone")
+    nacht = modus_anlegen(session, "nacht")
+    umgebung = Settings(_env_file=None, database_url="sqlite://", secret_key="s" * 32)
+
+    _befehl_ausfuehren(
+        session, f"thermoctl/zonen/{zone.id}/befehl/modus/{nacht.id}", b"17.5", umgebung
+    )
+    _befehl_ausfuehren(
+        session,
+        f"thermoctl/zonen/{zone.id}/befehl/parameter/hysteresis_k",
+        b"0.4",
+        umgebung,
+    )
+
+    assert session.scalar(
+        select(ZoneSetpoint.temperature_c).where(
+            ZoneSetpoint.zone_id == zone.id, ZoneSetpoint.setpoint_mode_id == nacht.id
+        )
+    ) == Decimal("17.5")
+    assert zone.hysteresis_k == Decimal("0.4")
+
+
+def test_ein_regelparameter_ausserhalb_der_grenzen_wird_abgewiesen(session, caplog) -> None:
+    """Gegenprobe: Der Drehregler in Home Assistant darf nicht mehr duerfen als das
+    Formular in der Oberflaeche."""
+    import logging
+
+    from tests.hilfen import einstellungen_anlegen, quelle, zone_anlegen
+    from thermoctl.app import _befehl_ausfuehren
+    from thermoctl.config import Settings
+
+    einstellungen_anlegen(session)
+    quelle(session, "system")
+    zone = zone_anlegen(session, "grenzzone")
+    umgebung = Settings(_env_file=None, database_url="sqlite://", secret_key="s" * 32)
+
+    with caplog.at_level(logging.WARNING):
+        _befehl_ausfuehren(
+            session,
+            f"thermoctl/zonen/{zone.id}/befehl/parameter/hysteresis_k",
+            b"99",
+            umgebung,
+        )
+    assert zone.hysteresis_k is None
+    assert "abgelehnt" in caplog.text.lower()
 
 
 def test_ein_unsinniger_befehl_aendert_nichts(session, caplog) -> None:
@@ -102,11 +223,12 @@ def test_ein_unsinniger_befehl_aendert_nichts(session, caplog) -> None:
 
     from sqlalchemy import select
 
-    from tests.hilfen import quelle, zone_anlegen
+    from tests.hilfen import einstellungen_anlegen, quelle, zone_anlegen
     from thermoctl.app import _befehl_ausfuehren
     from thermoctl.config import Settings
-    from thermoctl.db.models.override import ZoneOverride
+    from thermoctl.db.models.zone import ZoneSetpoint
 
+    einstellungen_anlegen(session)
     zone = zone_anlegen(session, "unsinnzone")
     quelle(session, "system")
     einstellungen = Settings(_env_file=None, database_url="sqlite://", secret_key="s" * 32)
@@ -116,7 +238,7 @@ def test_ein_unsinniger_befehl_aendert_nichts(session, caplog) -> None:
             session, f"thermoctl/zonen/{zone.id}/befehl/sollwert", b"99", einstellungen
         )
     assert not session.scalars(
-        select(ZoneOverride).where(ZoneOverride.zone_id == zone.id)
+        select(ZoneSetpoint).where(ZoneSetpoint.zone_id == zone.id)
     ).all()
     assert "abgelehnt" in caplog.text.lower()
 
@@ -145,3 +267,44 @@ def test_ein_unbrauchbares_topic_wird_verworfen(session, caplog) -> None:
     with caplog.at_level(logging.WARNING):
         _befehl_ausfuehren(session, "thermoctl/zonen/1/befehl/farbe", b"blau", einstellungen)
     assert "unbrauchbar" in caplog.text.lower()
+
+
+def test_der_boost_knopf_zieht_die_naechste_schaltung_vor(session) -> None:
+    """Der Knopf hat keinen Wert, nur ein Ereignis -- die Nutzlast ist gleichgueltig."""
+    from datetime import datetime
+
+    from sqlalchemy import select
+
+    from tests.hilfen import einstellungen_anlegen, modus_anlegen, quelle, zone_anlegen
+    from thermoctl.app import _befehl_ausfuehren
+    from thermoctl.config import Settings
+    from thermoctl.db.models.override import ZoneOverride
+    from thermoctl.db.models.schedule import SchedulePoint
+    from thermoctl.db.models.zone import ZoneSetpoint
+
+    einstellungen_anlegen(session).timezone = "UTC"
+    quelle(session, "system")
+    zone = zone_anlegen(session, "boostzone")
+    nacht = modus_anlegen(session, "nacht")
+    session.add_all(
+        [
+            SchedulePoint(
+                zone_id=zone.id, weekday=int(datetime.now().isoweekday()),
+                minute_of_day=1439, setpoint_mode_id=nacht.id,
+            ),
+            ZoneSetpoint(
+                zone_id=zone.id, setpoint_mode_id=nacht.id, temperature_c=Decimal("18.0")
+            ),
+        ]
+    )
+    session.flush()
+    umgebung = Settings(_env_file=None, database_url="sqlite://", secret_key="s" * 32)
+
+    _befehl_ausfuehren(session, f"thermoctl/zonen/{zone.id}/befehl/boost", b"PRESS", umgebung)
+
+    eintrag = session.scalars(
+        select(ZoneOverride).where(ZoneOverride.zone_id == zone.id)
+    ).one()
+    assert eintrag.temperature_c == Decimal("18.0")
+    # Sie endet an der Schaltung, die sie vorzieht -- nicht irgendwann.
+    assert eintrag.ends_at is not None

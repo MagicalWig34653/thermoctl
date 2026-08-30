@@ -201,7 +201,11 @@ def sollwerte_aendern(
     zone: Zone,
     werte: dict[int, Decimal | None],
     *,
-    user_id: int,
+    # `None` heisst: niemand ist angemeldet. Das trifft auf einen Befehl aus Home
+    # Assistant zu, hinter dem kein Konto steht. Frueher stand hier `int`, und die
+    # Adapter reichten `principal.user_id or 0` durch -- eine Kennung, die es nicht
+    # gibt und an der MariaDB den Fremdschluessel des Audit-Eintrags verweigert.
+    user_id: int | None,
     quelle: str = "web",
 ) -> None:
     # Erst alle Werte pruefen, dann irgendeine Zeile anfassen. Die Ansicht faengt den

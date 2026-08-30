@@ -5,16 +5,23 @@ Drei getrennte Dinge:
 - **Lesen** — Sensordaten aus Zigbee2MQTT aufnehmen. Läuft, sobald MQTT eingeschaltet ist.
 - **Senden** — den eigenen Zustand veröffentlichen und die Zonen bei Home Assistant
   anmelden. Läuft ebenfalls, sobald MQTT eingeschaltet ist — **auch im Trockenlauf.**
-- **Entgegennehmen** — Sollwert und Betriebsart, die aus Home Assistant kommen. Auch das
-  im Trockenlauf: Der Wunsch wird übernommen, nur bewegt sich kein Ventil.
+- **Entgegennehmen** — Sollwert, Betriebsart, Boost, die Solltemperatur je Modus und die
+  Regelparameter, die aus Home Assistant kommen. Auch das im Trockenlauf: Der Wunsch wird
+  übernommen, nur bewegt sich kein Ventil.
 
 Dass Senden und Entgegennehmen im Trockenlauf laufen, ist Absicht. Eine Zustandsmeldung
 bewegt nichts, und eine Anbindung, die man erst nach dem Scharfschalten ausprobieren kann,
 lässt sich genau dann nicht mehr gefahrlos prüfen, wenn ein Fehler noch folgenlos wäre.
 
-Gelogen wird dabei nicht: Solange die Regelung nicht scharf ist, trägt jede Zone in Home
-Assistant ein `(Trockenlauf)` im Namen. Das steht an jeder Karte und verschwindet, sobald
-wirklich geschaltet wird.
+Gelogen wird dabei nicht: Ob wirklich geschaltet wird, sagt eine eigene Entität für den
+ganzen Dienst — der `binary_sensor` **Regelung scharf**.
+
+Bis August 2026 stand der Trockenlauf stattdessen als `(Trockenlauf)` im *Namen* jeder
+Zone. Das war gut sichtbar und genau deshalb falsch: Home Assistant leitet die
+Entitätskennung beim ersten Auftauchen aus dem Namen ab, und eine Zone, die zuerst im
+Trockenlauf erschien, hieß danach für immer `climate.thermoctl_zone_1_trockenlauf` — auch
+scharf geschaltet. Die Kennung bleibt jetzt über den ganzen Umstieg dieselbe; die
+Discovery-Nutzlast ist im Trockenlauf und scharf **Byte für Byte gleich**.
 
 ## 1. Lesen: Zigbee2MQTT
 
@@ -39,19 +46,58 @@ vor; der Fall wird protokolliert statt stillschweigend verschluckt.
 
 ## 2. Senden: die eigene Struktur
 
-Entworfen und geprüft, **noch nicht angeschlossen**. Sie behebt die drei Eigenheiten, die
-die [Bestandsaufnahme](bestandsaufnahme-altsystem.md) am gewachsenen Altsystem festhält.
+Angeschlossen. Sie behebt die drei Eigenheiten, die die
+[Bestandsaufnahme](bestandsaufnahme-altsystem.md) am gewachsenen Altsystem festhält.
 
 ```
-thermoctl/verfuegbarkeit                      online | offline  (Last Will)
+thermoctl/verfuegbarkeit                          online | offline  (Last Will)
+thermoctl/zustand/scharf                          true | false
 thermoctl/zonen/<id>/zustand/ist_temperatur
 thermoctl/zonen/<id>/zustand/sollwert
 thermoctl/zonen/<id>/zustand/betriebsart
 thermoctl/zonen/<id>/zustand/sensorzustand
 thermoctl/zonen/<id>/zustand/wuerde_heizen
+thermoctl/zonen/<id>/zustand/letzte_schaltung     ISO-8601 mit Zeitzone
+thermoctl/zonen/<id>/zustand/naechste_schaltung   ISO-8601 mit Zeitzone
+thermoctl/zonen/<id>/zustand/modus/<modus_id>     Solltemperatur dieses Modus
+thermoctl/zonen/<id>/zustand/parameter/<name>     wirksamer Regelparameter
 thermoctl/zonen/<id>/befehl/sollwert
 thermoctl/zonen/<id>/befehl/betriebsart
+thermoctl/zonen/<id>/befehl/boost                 zieht die nächste Schaltung vor
+thermoctl/zonen/<id>/befehl/modus/<modus_id>
+thermoctl/zonen/<id>/befehl/parameter/<name>
 ```
+
+**Alles Bleibende geht mit dem retain-Flag hinaus** — Anmeldungen wie Zustände. Ohne das
+steht in Home Assistant nach jedem Neustart eine leere Karte, bis dieser Dienst das nächste
+Mal sendet. `retain` gehört dabei an das Senden und **nicht** in die Discovery-Nutzlast:
+Der gleichnamige Schlüssel dort heißt in Home Assistant „sende *Befehle* mit retain-Flag",
+und ein behaltener Befehl würde bei jeder Neuverbindung erneut zugestellt und erneut
+ausgeführt.
+
+**Abonniert werden zwei Muster**, `.../befehl/+` und `.../befehl/+/+`: `+` trifft in MQTT
+genau eine Ebene, nie null und nie zwei. Mit nur dem ersten käme `befehl/modus/3` nie an.
+
+Was ein Befehl bewirkt, steht in `domain/fernbedienung.py` — dieselben Funktionen, die auch
+die Oberfläche benutzt, mit denselben Grenzen:
+
+- **Sollwert** verstellt die Solltemperatur des Modus, der gerade gilt — nicht „jetzt
+  gerade". Als Übersteuerung wäre der Wert nach dem nächsten Schaltpunkt wieder weg, und
+  der Regler spränge scheinbar von selbst zurück. Läuft eine Übersteuerung mit fester
+  Temperatur, gibt es keinen Modus, den man verstellen könnte — dann wird sie selbst
+  gesetzt. Steht die Zone auf *Aus*, gilt der Frostschutz, und der Regler verstellt
+  folgerichtig dessen Sollwert: Verstellt wird immer der Wert, der angezeigt wird.
+- **Boost** zieht die nächste Schaltung vor. Was als Nächstes ohnehin käme, gilt ab
+  sofort — und genau bis zu dem Zeitpunkt, an dem es planmäßig gekommen wäre. Danach läuft
+  der Plan weiter, als wäre nichts gewesen. Ein Boost auf einen festen Wert müsste dagegen
+  raten, wie warm und wie lange.
+- **Regelparameter** werden als Zonenabweichung festgeschrieben. Eine `number`-Entität kann
+  nicht leer sein, es gibt dort also kein „erbt vom globalen Standard"; wer die Vererbung
+  zurückwill, leert das Feld in der Oberfläche.
+
+Je Zone entsteht in Home Assistant ein eigenes Gerät (`via_device` auf den Dienst) mit
+Thermostat, Boost-Knopf, zwei Zeitstempeln, je Modus einer Solltemperatur und je
+Regelparameter einer Zahleneingabe.
 
 Drei Entscheidungen darin, jede mit Grund:
 

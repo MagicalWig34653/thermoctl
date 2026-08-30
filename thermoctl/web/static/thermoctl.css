@@ -733,6 +733,23 @@ body {
     border-color: var(--linie) !important;
 }
 
+/* Die Stelle, die ein Klick ins Anlege-Formular uebernommen hat. Sie steht im Gitter,
+   weil dort die Maus ist -- das Formular kann weit unten stehen, und es dorthin zu
+   scrollen hat genau den Fehler erzeugt, den diese Marke ersetzt. */
+.zeitplan-marke {
+    position: absolute;
+    left: 0;
+    right: 0;
+    z-index: 3;
+    border-top: 2px dashed var(--waerme);
+    font-size: 0.68rem;
+    line-height: 1;
+    padding-left: 0.15rem;
+    color: var(--waerme);
+    background: color-mix(in srgb, var(--flaeche) 75%, transparent);
+    pointer-events: none;
+}
+
 /* Die Farbe kommt aus der Vorlage (Solltemperatur des Modus), deshalb hier keine.
    Der Text steht auf hellen wie dunklen Flaechen -- Tinte statt Weiss. */
 .zeitplan-balken {

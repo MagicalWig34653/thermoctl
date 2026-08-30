@@ -129,3 +129,63 @@ def test_schatten_schema_referenzdaten_und_einstellungen(
         assert wieder_hoch.returncode == 0, wieder_hoch.stderr
     finally:
         werk.dispose()
+
+
+@pytest.mark.migration
+def test_umlaute_werden_in_bestehenden_bezeichnungen_nachgezogen(
+    migrations_database_url: str,
+) -> None:
+    """Vier Bezeichnungen standen transliteriert in der Datenbank.
+
+    Eine frisch eingerichtete Anlage bekommt die richtige Schreibweise schon beim
+    Fuellen -- die Seed-Revision liest die Konstanten aus dem Code. Bestehende Anlagen
+    tragen die alte Schreibweise aber in ihren Zeilen, und genau die stellt dieser Test
+    her, bevor er die Revision darueber laufen laesst. Ohne den Umweg pruefte er nur,
+    dass die Konstante richtig ist, und nie, dass die Revision etwas tut.
+    """
+    basis = _alembic(migrations_database_url, "downgrade", "base")
+    assert basis.returncode == 0, basis.stderr
+    vorher = _alembic(migrations_database_url, "upgrade", "c8e21a5f4d70")
+    assert vorher.returncode == 0, vorher.stderr
+
+    alte_schreibweise = [
+        ("device_capability", "link_quality", "Verbindungsqualitaet", "Verbindungsqualität"),
+        ("device_capability", "illuminance", "Beleuchtungsstaerke", "Beleuchtungsstärke"),
+        ("device_role", "controller", "Bediengeraet", "Bediengerät"),
+        ("actor_source", "web", "Weboberflaeche", "Weboberfläche"),
+    ]
+    werk = create_engine(migrations_database_url)
+    try:
+        with werk.begin() as verbindung:
+            for tabelle, code, alt, _ in alte_schreibweise:
+                verbindung.execute(
+                    text(f"UPDATE {tabelle} SET label = :alt WHERE code = :code"),  # noqa: S608
+                    {"alt": alt, "code": code},
+                )
+            # Eine von Hand vergebene Bezeichnung, die die Revision in Ruhe lassen muss.
+            verbindung.execute(
+                text("UPDATE device_role SET label = 'Mein Aktor' WHERE code = 'actuator'")
+            )
+
+        hoch = _alembic(migrations_database_url, "upgrade", "head")
+        assert hoch.returncode == 0, hoch.stderr
+
+        def bezeichnung(tabelle: str, code: str) -> str | None:
+            with werk.connect() as verbindung:
+                return verbindung.execute(
+                    text(f"SELECT label FROM {tabelle} WHERE code = :code"),  # noqa: S608
+                    {"code": code},
+                ).scalar()
+
+        for tabelle, code, _, neu in alte_schreibweise:
+            assert bezeichnung(tabelle, code) == neu, code
+        assert bezeichnung("device_role", "actuator") == "Mein Aktor"
+
+        runter = _alembic(migrations_database_url, "downgrade", "c8e21a5f4d70")
+        assert runter.returncode == 0, runter.stderr
+        for tabelle, code, alt, _ in alte_schreibweise:
+            assert bezeichnung(tabelle, code) == alt, code
+        wieder_hoch = _alembic(migrations_database_url, "upgrade", "head")
+        assert wieder_hoch.returncode == 0, wieder_hoch.stderr
+    finally:
+        werk.dispose()

@@ -247,13 +247,31 @@ def uebersicht(
         Schnittstelle(
             "homeassistant",
             "Home Assistant",
-            "Meldet jede Zone als Thermostat an, über die MQTT-Discovery.",
-            "ungebaut",
-            "Die Nutzlast ist gebaut und geprüft, das Senden noch nicht: Eine Zone, die "
-            "sich in Home Assistant als Thermostat anmeldet, obwohl thermoctl im "
-            "Trockenlauf niemanden schaltet, wäre eine Zusage, die niemand einlöst.",
-            [],
-            hinweis="Kommt mit dem Scharfschalten in Phase 4.",
+            "Meldet jede Zone als eigenes Gerät an, über die MQTT-Discovery: Thermostat, "
+            "Boost, Solltemperatur je Modus und die Regelparameter.",
+            "laeuft" if einstellungen.mqtt_enabled else "aus",
+            (
+                "Läuft und nimmt Befehle entgegen — auch im Trockenlauf. Eine "
+                "Zustandsmeldung bewegt nichts, und eine Anbindung, die man erst nach "
+                "dem Scharfschalten ausprobieren kann, ließe sich genau dann nicht mehr "
+                "gefahrlos prüfen, wenn ein Fehler noch folgenlos wäre. Ob wirklich "
+                "geschaltet wird, sagt dort die Entität „Regelung scharf“."
+                if einstellungen.mqtt_enabled
+                else "Ohne MQTT gibt es keinen Weg zu Home Assistant."
+            ),
+            [
+                Angabe(
+                    "Discovery-Präfix",
+                    "homeassistant",
+                    "Standard",
+                ),
+                Angabe(
+                    "Eigenes Präfix",
+                    einstellungen.mqtt_praefix,
+                    quelle("mqtt_praefix", einstellungen.mqtt_praefix),
+                    "THERMOCTL_MQTT_PRAEFIX",
+                ),
+            ],
             weiter=("Betriebszustand", "/steuerung"),
         )
     )

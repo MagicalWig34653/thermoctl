@@ -68,9 +68,9 @@ DEVICE_CAPABILITIES = [
     ("contact", "Kontakt"),
     ("battery", "Batteriestand"),
     ("humidity", "Luftfeuchtigkeit"),
-    ("illuminance", "Beleuchtungsstaerke"),
+    ("illuminance", "Beleuchtungsstärke"),
     ("occupancy", "Anwesenheit"),
-    ("link_quality", "Verbindungsqualitaet"),
+    ("link_quality", "Verbindungsqualität"),
     ("power", "Leistung"),
     ("energy", "Energie"),
     ("valve_position", "Ventilstellung"),
@@ -86,10 +86,10 @@ SENSOR_STATUS = [
 DEVICE_ROLES = [
     ("actuator", "Aktor"),
     ("window_contact", "Fensterkontakt"),
-    ("controller", "Bediengeraet"),
+    ("controller", "Bediengerät"),
 ]
 ACTOR_SOURCES = [
-    ("web", "Weboberflaeche"),
+    ("web", "Weboberfläche"),
     ("api", "REST-API"),
     ("mcp", "MCP"),
     ("cli", "Kommandozeile"),
