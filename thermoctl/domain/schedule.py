@@ -47,6 +47,10 @@ class Tagesabschnitt:
     startminute: int
     endminute: int
     modusname: str
+    # Die Kennung des geltenden Modus. Die Oberflaeche loest darueber die
+    # Solltemperatur auf -- ohne sie liesse sich der Tagesplan nur benennen, nicht als
+    # Waerme darstellen.
+    modus_id: int = 0
     # Der Punkt, der diesen Balken beginnt -- None fuer den Rest, der vom Vortag
     # hereinragt. Die Oberflaeche braucht ihn, um einen Balken ziehen zu koennen;
     # ein Balken ohne eigenen Punkt gehoert einem anderen Tag und bleibt fest.
@@ -104,6 +108,7 @@ def wochenabschnitte(
                     startminute=start - tagesanfang,
                     endminute=ende - tagesanfang,
                     modusname=modusnamen[gilt.setpoint_mode_id],
+                    modus_id=gilt.setpoint_mode_id,
                     punkt_id=beginnt_hier.id if beginnt_hier else None,
                 )
             )

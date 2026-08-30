@@ -1,8 +1,9 @@
 {% extends "basis.html" %}
+{% from "zonenkopf.html" import zonenkopf %}
 {% from "formular.html" import zahlenfeld %}
 {% block titel %}Regelparameter – {{ zone.display_name }}{% endblock %}
 {% block inhalt %}
-<h1 class="h3">Regelparameter für {{ zone.display_name }}</h1>
+{{ zonenkopf(zone, "Regelparameter") }}
 <p class="text-secondary">Ein leeres Feld verwendet den globalen Standard.</p>
 <form method="post" action="/zonen/{{ zone.id }}/parameter">
   {{ zahlenfeld("hysteresis_k", "Hysterese (K)", werte.hysteresis_k,

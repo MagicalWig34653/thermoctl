@@ -1,8 +1,9 @@
 {% extends "basis.html" %}
+{% from "zonenkopf.html" import zonenkopf %}
 {% from "formular.html" import textfeld, zahlenfeld, auswahl %}
 {% block titel %}{% if zone %}Zone bearbeiten{% else %}Zone anlegen{% endif %} – thermoctl{% endblock %}
 {% block inhalt %}
-<h1>{% if zone %}Zone bearbeiten{% else %}Zone anlegen{% endif %}</h1>
+{% if zone %}{{ zonenkopf(zone, "Zonendaten") }}{% else %}<h1 class="mb-4">Zone anlegen</h1>{% endif %}
 <form method="post" action="{% if zone %}/zonen/{{ zone.id }}{% else %}/zonen{% endif %}">
     {{ textfeld("name", "Technischer Name", werte.name|default(""),
                  "Eindeutiger Name für Schnittstellen und Konfiguration.", fehler.name, true) }}

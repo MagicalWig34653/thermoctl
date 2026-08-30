@@ -132,14 +132,20 @@ def test_anmeldeseite_enthaelt_keine_navigationsleiste(client_mit_benutzer: Test
     assert "<nav" not in antwort.text
 
 
-def test_basisvorlage_traegt_blur_fuer_alle_browser() -> None:
+def test_kopfleiste_traegt_blur_fuer_alle_browser() -> None:
+    """Safari braucht bis heute das Praefix; ohne es ist die Leiste dort einfach
+    durchsichtig und der Text darunter schwer lesbar.
+
+    Steht jetzt im Stylesheet statt als style-Attribut in der Vorlage -- Gestaltung
+    gehoert nicht ins Markup, und im Attribut liess sie sich weder ueberschreiben noch
+    fuer das dunkle Schema anpassen."""
     from pathlib import Path
 
-    basis = (
-        Path(__file__).parent.parent / "thermoctl" / "web" / "templates" / "basis.html"
+    stil = (
+        Path(__file__).parent.parent / "thermoctl" / "web" / "static" / "thermoctl.css"
     ).read_text(encoding="utf-8")
-    assert "backdrop-filter: blur(10px)" in basis
-    assert "-webkit-backdrop-filter: blur(10px)" in basis
+    assert "backdrop-filter: blur(" in stil
+    assert "-webkit-backdrop-filter: blur(" in stil
 
 
 def test_lifespan_erzeugt_einrichtungstoken_bei_fehlender_einrichtung(

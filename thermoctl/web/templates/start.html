@@ -1,120 +1,206 @@
 {% extends "basis.html" %}
-{% block titel %}Übersicht – thermoctl{% endblock %}
-{% block inhalt %}
-<h1 class="h3 mb-4">Übersicht</h1>
+{% block titel %}thermoctl{% endblock %}
+{% block max_breite %}76rem{% endblock %}
 
-<div class="row g-3 mb-4">
-  <div class="col-sm-6">
-    <div class="card h-100">
-      <div class="card-body">
-        <h2 class="h6 text-secondary">Zonen</h2>
-        <p class="display-6 mb-0">{{ zonen|length }}</p>
-      </div>
-    </div>
-  </div>
-  <div class="col-sm-6">
-    <div class="card h-100">
-      <div class="card-body">
-        <h2 class="h6 text-secondary">Benutzer</h2>
-        <p class="display-6 mb-0">{{ benutzerzahl }}</p>
-      </div>
-    </div>
-  </div>
+{#
+Die Statustafel. Eine Frage, eine Seite: *Tut das Haus gerade das, was ich ihm gesagt
+habe?* Deshalb keine Kacheln nebeneinander, sondern eine Zeile je Zone — Zonen vergleicht
+man untereinander, und was untereinander steht, vergleicht sich von selbst.
+
+Das Übersteuern liegt hinter einem Klick statt offen unter jeder Zone. Vorher stand unter
+jeder einzelnen Zone ein vollständiges Formular mit drei Feldern; bei vier Zonen war die
+Seite ein Formularstapel, in dem die eigentliche Auskunft — wie warm ist es — unterging.
+#}
+
+{% macro spur(abschnitte, jetzt_anteil, gilt) %}
+<div class="tc-spur{{ '' if gilt else ' tc-spur-ausgesetzt' }}" role="img"
+     aria-label="Tagesplan: {% for a in abschnitte %}ab {{ "%02d:%02d"|format(a.start // 60, a.start % 60) }} {{ a.modusname }}{% if a.temperatur %} auf {{ a.temperatur|grad }} Grad{% endif %}{{ ", " if not loop.last }}{% endfor %}"
+>
+    {% for a in abschnitte %}
+    <div class="tc-spur-abschnitt"
+         {#
+         Zwei Toene statt eines Verlaufs. Ein Verlauf von Kupfer nach Stahlblau fuehrt
+         durch deren Mitte, und die Mitte zweier fast gegenlaeufiger Farben ist Grau:
+         Die Nachtabsenkung war damit nicht kuehl, sondern farblos. Ein Zeitplan hat
+         ohnehin nur eine Handvoll Modi -- die Farbe sagt "waermer" oder "kuehler", die
+         Saettigung sagt "wie deutlich".
+         #}
+         style="left: {{ "%.4f"|format(a.links) }}%; width: {{ "%.4f"|format(a.breite) }}%;
+                background: color-mix(in oklab,
+                    var({{ '--waerme' if a.waerme >= 0.5 else '--kuehle' }})
+                    {{ (40 + (a.waerme - 0.5)|abs * 90)|round|int }}%, var(--flaeche));"
+         title="{{ "%02d:%02d"|format(a.start // 60, a.start % 60) }} {{ a.modusname }}{% if a.temperatur %} – {{ a.temperatur|grad }} °C{% endif %}"></div>
+    {% endfor %}
+    <div class="tc-spur-jetzt" style="left: {{ "%.4f"|format(jetzt_anteil) }}%"></div>
 </div>
+{% endmacro %}
+
+{% block inhalt %}
+
+<div class="d-flex justify-content-between align-items-baseline flex-wrap gap-2 mb-3">
+    <h1 class="mb-0">Jetzt</h1>
+    <span class="t-leise small">{{ zonen|length }} {{ "Zone" if zonen|length == 1 else "Zonen" }}</span>
+</div>
+
+<section class="tc-systemzeile {{ 'tc-scharf' if scharf }} mb-4">
+    {% if scharf %}
+    <span class="tc-chip tc-chip-waerme"><span class="tc-punkt"></span>Scharf</span>
+    <span>Entscheidungen werden an die Ventile weitergegeben.</span>
+    {% else %}
+    <span class="tc-chip tc-chip-still">Trockenlauf</span>
+    <span>Es wird entschieden und protokolliert, aber nichts geschaltet.</span>
+    {% endif %}
+
+    {% if bruecke is false %}
+    <span class="tc-chip tc-chip-warnung">Brücke nicht erreichbar</span>
+    {% endif %}
+    {% if stumme_sensoren %}
+    <span class="tc-chip tc-chip-warnung">
+        Kein Messwert: {{ stumme_sensoren|join(", ") }}
+    </span>
+    {% endif %}
+
+    <a class="ms-auto small" href="/steuerung">Betrieb ansehen</a>
+</section>
 
 {% if not zonen %}
-<div class="alert alert-secondary" role="status">
-  <strong>Noch keine Zonen angelegt.</strong>
-  Zonen, Geräte und Zeitpläne lassen sich derzeit nur über die Datenbank pflegen –
-  die Oberfläche dafür entsteht in Teilprojekt 3. thermoctl steuert noch keine Heizung.
+<div class="tc-tafel p-4 text-center">
+    <p class="t-abschnitt mb-1">Noch keine Zone eingerichtet.</p>
+    <p class="t-leise mb-3">
+        Eine Zone ist ein Raum oder eine Gruppe von Räumen mit einem eigenen Sollwert.
+        Ohne mindestens eine gibt es nichts zu regeln.
+    </p>
+    <a class="btn btn-primary" href="/zonen/neu">Erste Zone anlegen</a>
 </div>
 {% else %}
-<h2 class="h4">Zonenzustand</h2>
-<div class="row g-3 mb-4">
-  {% for zone in zonen %}
-  {% set eintrag = zustaende.get(zone.id) %}
-  <div class="col-sm-6">
-    <div class="card h-100">
-      <div class="card-body">
-        <h3 class="h5">{{ zone.display_name }}</h3>
-        {% set sollwert = sollwerte[zone.id] %}
-        {% if eintrag %}
-        {% set zustand, sensorstatus = eintrag %}
-        <p class="mb-1">
-          {% if zustand.temperature_c is not none %}
-          <strong>{{ zustand.temperature_c }} °C Ist, {{ sollwert.temperature_c }} °C Soll</strong>
-          ({{ sollwert.grund }})
-          {% else %}
-          <strong>Noch kein Messwert für die Temperatur vorhanden.</strong>
-          Soll {{ sollwert.temperature_c }} °C ({{ sollwert.grund }}).
-          {% endif %}
-        </p>
-        <p class="mb-1">Sensor: {{ sensorstatus.label }}; Messwert {{ zustand.measured_at|alter }}.</p>
-        {% else %}
-        <p class="mb-1"><strong>Noch kein Zonenzustand vorhanden:</strong>
-          noch kein Messwert für die Temperatur.</p>
-        <p class="mb-1">Soll {{ sollwert.temperature_c }} °C ({{ sollwert.grund }}).</p>
-        <p class="mb-1">Sensorzustand noch nicht ermittelt.</p>
-        {% endif %}
-        <p class="mb-1">Betriebsart: {{ zone.operating_mode.label }}</p>
-        {% set override = uebersteuerungen.get(zone.id) %}
-        {% if override %}
-        <div class="alert alert-warning py-2">
-          Übersteuerung auf {{ override.temperature_c }} °C,
-          {% if override.ends_at %}endet {{ override.ends_at|alter }}{% else %}dauerhaft{% endif %}.
-          Grund: manuell gewählte feste Temperatur.
-          {% if zone.id in darf_aufheben %}
-          <form method="post" action="/zonen/{{ zone.id }}/uebersteuerung/aufheben" class="mt-2">
-            <button class="btn btn-sm btn-outline-danger" type="submit">Übersteuerung aufheben</button>
-          </form>
-          {% endif %}
+
+<div class="tc-tafel mb-4">
+    {% for zone in zonen %}
+    {% set eintrag = zustaende.get(zone.id) %}
+    {% set sollwert = sollwerte[zone.id] %}
+    {% set entscheidung = entscheidungen.get(zone.id) %}
+    {% set override = uebersteuerungen.get(zone.id) %}
+    <article class="tc-zone">
+
+        <div>
+            <a class="tc-zone-name" href="/zonen/{{ zone.id }}/zeitplan">{{ zone.display_name }}</a>
+            <div class="mt-1 d-flex flex-wrap gap-1">
+                {% if entscheidung and entscheidung.would_heat %}
+                <span class="tc-chip tc-chip-waerme"><span class="tc-punkt"></span>Heizt</span>
+                {% elif entscheidung %}
+                <span class="tc-chip tc-chip-kuehle">Aus</span>
+                {% else %}
+                <span class="tc-chip tc-chip-still">Noch nicht entschieden</span>
+                {% endif %}
+                {% if eintrag and eintrag[1].code != "ok" %}
+                <span class="tc-chip tc-chip-warnung">{{ eintrag[1].label }}</span>
+                {% endif %}
+                {% if override %}
+                {# Wert und Ende gehoeren in die Marke, nicht nur das Wort: Eine
+                   Uebersteuerung, deren Temperatur man nicht sieht, ist eine Warnung
+                   ohne Inhalt. #}
+                <span class="tc-chip tc-chip-warnung t-wert">Übersteuerung auf {{ override.temperature_c|grad }} °C,
+                    {% if override.ends_at %}endet {{ override.ends_at|alter }}{% else %}auf Widerruf{% endif %}</span>
+                {% endif %}
+                {# Nur wenn sie vom Regelfall abweicht: "Automatik" an jeder Zone waere
+                   Rauschen, "Aus" an einer Zone dagegen der Grund, warum es dort kalt
+                   bleibt. #}
+                {% if zone.operating_mode.code != "auto" %}
+                <span class="tc-chip tc-chip-still">Betriebsart: {{ zone.operating_mode.label }}</span>
+                {% endif %}
+            </div>
         </div>
-        {% endif %}
-        {% set entscheidung = entscheidungen.get(zone.id) %}
-        {% if entscheidung %}
-        <p class="mb-2">Letzte Schattenentscheidung:
-          <strong>{{ "Heizen" if entscheidung.would_heat else "Nicht heizen" }}</strong>
-          – {{ entscheidung.reason }} ({{ entscheidung.decided_at|alter }}).
-        </p>
-        {% else %}
-        <p class="text-secondary mb-2">Noch keine Schattenentscheidung vorhanden.</p>
-        {% endif %}
+
+        <div class="text-end">
+            {% if eintrag and eintrag[0].temperature_c is not none %}
+            <div class="t-wert t-gross">{{ eintrag[0].temperature_c|grad }}<span class="t-einheit">°C</span></div>
+            <div class="t-leise small t-wert">
+                Soll {{ sollwert.temperature_c|grad }} °C
+            </div>
+            <div class="t-leise small">{{ eintrag[0].measured_at|alter }}</div>
+            {% else %}
+            <div class="t-wert t-gross t-leise">––<span class="t-einheit">°C</span></div>
+            <div class="t-leise small">kein Messwert</div>
+            <div class="t-leise small t-wert">Soll {{ sollwert.temperature_c|grad }} °C</div>
+            {% endif %}
+        </div>
+
+        <div class="tc-zone-spur">
+            {% set plan_gilt = zone.operating_mode.code == "auto" and not override %}
+            {{ spur(tagesspuren.get(zone.id, []), jetzt_anteil, plan_gilt) }}
+            <div class="tc-spur-skala t-leise t-wert">
+                <span>00</span><span>06</span><span>12</span><span>18</span><span>24</span>
+            </div>
+            <div class="small t-leise mt-1">
+                {% if not plan_gilt %}<strong>Plan ausgesetzt</strong> · {% endif %}
+                {{ sollwert.grund }}{% if entscheidung %} · {{ entscheidung.reason }}{% endif %}
+            </div>
+        </div>
+
+        <div class="text-end">
+            {% if override and zone.id in darf_aufheben %}
+            <form method="post" action="/zonen/{{ zone.id }}/uebersteuerung/aufheben">
+                <button class="btn btn-sm btn-outline-secondary" type="submit">
+                    Übersteuerung aufheben
+                </button>
+            </form>
+            {% elif zone.id in darf_uebersteuern %}
+            <button class="btn btn-sm btn-outline-secondary" type="button"
+                    data-bs-toggle="collapse" data-bs-target="#uebersteuern-{{ zone.id }}"
+                    aria-expanded="{{ 'true' if uebersteuerungsfehler and fehler_zone_id == zone.id|string else 'false' }}">
+                Übersteuern
+            </button>
+            {% endif %}
+        </div>
+
         {% if zone.id in darf_uebersteuern %}
         {% set hat_fehler = uebersteuerungsfehler and fehler_zone_id == zone.id|string %}
-        <form method="post" action="/zonen/{{ zone.id }}/uebersteuerung" class="border-top pt-3 mt-3">
-          <label class="form-label" for="temperature_c-{{ zone.id }}">Temperatur übersteuern</label>
-          <div class="input-group mb-2">
-            <input class="form-control{% if hat_fehler %} is-invalid{% endif %}" id="temperature_c-{{ zone.id }}" name="temperature_c"
-                   type="number" min="5" max="35" step="0.1"
-                   value="{{ uebersteuerungswerte.get('temperature_c', '') if hat_fehler else '' }}" required>
-            <span class="input-group-text">°C</span>
-            {% if hat_fehler %}<div class="invalid-feedback">{{ uebersteuerungsfehler }}</div>{% endif %}
-          </div>
-          <select class="form-select mb-2" name="ende" aria-label="Ende der Übersteuerung">
-            <option value="naechste_schaltung"{% if hat_fehler and uebersteuerungswerte.get('ende') == 'naechste_schaltung' %} selected{% endif %}>Bis zur nächsten Schaltung</option>
-            <option value="dauer"{% if hat_fehler and uebersteuerungswerte.get('ende') == 'dauer' %} selected{% endif %}>Für eine Dauer</option>
-            <option value="dauerhaft"{% if hat_fehler and uebersteuerungswerte.get('ende') == 'dauerhaft' %} selected{% endif %}>Dauerhaft</option>
-          </select>
-          <div class="input-group mb-2">
-            <input class="form-control" name="dauer_minuten" type="number" min="1"
-                   value="{{ uebersteuerungswerte.get('dauer_minuten', '') if hat_fehler else '' }}"
-                   placeholder="Nur bei Dauer">
-            <span class="input-group-text">Minuten</span>
-          </div>
-          <button class="btn btn-sm btn-primary" type="submit">Übersteuern</button>
-        </form>
+        <div class="collapse{{ ' show' if hat_fehler }} tc-zone-spur" id="uebersteuern-{{ zone.id }}"
+             style="grid-column: 1 / -1">
+            <form method="post" action="/zonen/{{ zone.id }}/uebersteuerung"
+                  class="d-flex flex-wrap align-items-end gap-2 pt-3 border-top">
+                <div>
+                    <label class="form-label small mb-1" for="temperature_c-{{ zone.id }}">Temperatur</label>
+                    <div class="input-group input-group-sm" style="width: 9rem">
+                        <input class="form-control t-wert{% if hat_fehler %} is-invalid{% endif %}"
+                               id="temperature_c-{{ zone.id }}" name="temperature_c"
+                               type="number" min="5" max="35" step="0.1"
+                               value="{{ uebersteuerungswerte.get('temperature_c', '') if hat_fehler else '' }}" required>
+                        <span class="input-group-text">°C</span>
+                    </div>
+                </div>
+                <div>
+                    <label class="form-label small mb-1" for="ende-{{ zone.id }}">Bis</label>
+                    <select class="form-select form-select-sm" id="ende-{{ zone.id }}" name="ende" style="width: 14rem">
+                        <option value="naechste_schaltung"{% if hat_fehler and uebersteuerungswerte.get('ende') == 'naechste_schaltung' %} selected{% endif %}>zur nächsten Schaltung</option>
+                        <option value="dauer"{% if hat_fehler and uebersteuerungswerte.get('ende') == 'dauer' %} selected{% endif %}>für eine Dauer</option>
+                        <option value="dauerhaft"{% if hat_fehler and uebersteuerungswerte.get('ende') == 'dauerhaft' %} selected{% endif %}>auf Widerruf</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="form-label small mb-1" for="dauer-{{ zone.id }}">Dauer</label>
+                    <div class="input-group input-group-sm" style="width: 10rem">
+                        <input class="form-control t-wert" id="dauer-{{ zone.id }}" name="dauer_minuten"
+                               type="number" min="1"
+                               value="{{ uebersteuerungswerte.get('dauer_minuten', '') if hat_fehler else '' }}">
+                        <span class="input-group-text">Min</span>
+                    </div>
+                </div>
+                <button class="btn btn-sm btn-primary" type="submit">Übersteuern</button>
+                {% if hat_fehler %}
+                <div class="w-100 small" style="color: var(--waerme)">{{ uebersteuerungsfehler }}</div>
+                {% endif %}
+            </form>
+        </div>
         {% endif %}
-        {% if zone.id in darf_parameter %}
-        <a class="btn btn-sm btn-outline-secondary mt-3" href="/zonen/{{ zone.id }}/parameter">Regelparameter</a>
-        {% endif %}
-      </div>
-    </div>
-  </div>
-  {% endfor %}
-</div>
-{% endif %}
 
-<p class="text-secondary mb-0">
-  Angemeldet als <strong>{{ benutzer.display_name }}</strong>.
+    </article>
+    {% endfor %}
+</div>
+
+<p class="t-leise small">
+    Das Band je Zone zeigt den heutigen Zeitplan über 24 Stunden — je wärmer der Ton,
+    desto höher der Sollwert. Der senkrechte Strich ist jetzt.
 </p>
+{% endif %}
 {% endblock %}

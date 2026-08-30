@@ -3,22 +3,25 @@
 {% block titel %}Anmeldung – thermoctl{% endblock %}
 
 {% block inhalt %}
-    <h1 class="mb-4">Anmeldung</h1>
+    <h1 class="h4 mb-3">Anmeldung</h1>
     {% if fehler %}
     <div class="alert alert-danger" role="alert">{{ fehler }}</div>
     {% endif %}
+    {#
+    Beschriftungen ueber den Feldern, nicht schwebend darin. Der Rest der Anwendung setzt
+    Formulare so (siehe formular.html); zwei Formularsprachen in einem Programm sind eine
+    zu viel, und die Anmeldung ist die erste Seite, die jemand sieht.
+    #}
     <form method="post" action="/login">
-        <div class="form-floating">
-            <input type="text" class="form-control rounded-bottom-0" id="username"
-                   name="username" placeholder="Benutzername"
+        <div class="mb-3">
+            <label class="form-label" for="username">Benutzername</label>
+            <input type="text" class="form-control" id="username" name="username"
                    autocomplete="username webauthn" required autofocus>
-            <label for="username">Benutzername</label>
         </div>
-        <div class="form-floating mb-3" style="margin-top: -1px">
-            <input type="password" class="form-control rounded-top-0" id="password"
-                   name="password" placeholder="Passwort"
+        <div class="mb-4">
+            <label class="form-label" for="password">Passwort</label>
+            <input type="password" class="form-control" id="password" name="password"
                    autocomplete="current-password" required>
-            <label for="password">Passwort</label>
         </div>
         <button type="submit" class="btn btn-primary w-100">Anmelden</button>
     </form>

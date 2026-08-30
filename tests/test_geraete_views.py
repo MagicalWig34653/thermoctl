@@ -108,9 +108,14 @@ def test_startseite_zeigt_zonenzustand_ohne_nulltemperatur(client_als, session: 
     antwort = client_als([("zone.read", None)]).get("/")
 
     assert antwort.status_code == 200
-    assert "20.25 °C" in antwort.text
-    assert "kein Messwert" in antwort.text
-    assert "Noch kein Zonenzustand vorhanden" in antwort.text
+    # Auf eine Nachkommastelle gerundet: Ein Wohnraum ist nicht auf ein Hundertstel Grad
+    # bestimmt, und die zweite Stelle ist Rauschen im wichtigsten Wert der Seite.
+    assert "20,2" in antwort.text
+    assert "20.25" not in antwort.text
+    assert "20,25" not in antwort.text
+    # Beide Faelle -- Zustandszeile ohne Wert und gar keine Zustandszeile -- sagen dem
+    # Leser dasselbe und stehen deshalb gleich da.
+    assert antwort.text.count("kein Messwert") == 2
     assert zone_ohne_zustand.display_name in antwort.text
 
 

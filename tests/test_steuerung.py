@@ -172,7 +172,7 @@ def test_vorgaben_speichern(client_als: Clientbauer, session: Session) -> None:
     quelle(session, "web")
     mandant = client_als(ALLE_RECHTE)
     antwort = mandant.post(
-        "/steuerung/vorgaben",
+        "/einstellungen",
         data=_vorgaben(default_hysteresis_k="0,4", shadow_interval_seconds="90"),
         headers=_csrf(mandant),
         follow_redirects=False,
@@ -192,7 +192,7 @@ def test_eine_abgelehnte_vorgabe_laesst_nichts_halb_stehen(
     vorher = session.get(Setting, 1).shadow_interval_seconds
     mandant = client_als(ALLE_RECHTE)
     antwort = mandant.post(
-        "/steuerung/vorgaben",
+        "/einstellungen",
         data=_vorgaben(shadow_interval_seconds="90", default_min_on_seconds="0"),
         headers=_csrf(mandant),
     )
@@ -205,9 +205,10 @@ def test_ohne_setting_manage_nur_lesen(client_als: Clientbauer, session: Session
     einstellungen_anlegen(session)
     nur_lesen = client_als([("zone.read", None)])
     assert nur_lesen.get("/steuerung").status_code == 200
+    assert nur_lesen.get("/einstellungen").status_code == 200
     assert (
         nur_lesen.post(
-            "/steuerung/vorgaben", data=_vorgaben(), headers=_csrf(nur_lesen)
+            "/einstellungen", data=_vorgaben(), headers=_csrf(nur_lesen)
         ).status_code
         == 403
     )

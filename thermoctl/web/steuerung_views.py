@@ -1,8 +1,15 @@
-"""Die Steuerungsseite: Betriebszustand, Scharfschalten, globale Regelvorgaben.
+"""Zwei Seiten, die dieselbe Einstellungszeile bedienen -- und trotzdem getrennt gehoeren.
 
-Bis hierher liess sich die Anlage ueber die Oberflaeche einrichten, aber nicht bedienen:
-`setting.control_armed` war nur ueber die Datenbank erreichbar, und die globalen Vorgaben,
-von denen jede Zone erbt, ueberhaupt nicht.
+`/steuerung` ist **Betrieb**: Schaltet die Anlage gerade wirklich, was entscheidet sie
+gerade, und der Knopf, der beides umlegt. Das sieht man sich an, wenn etwas nicht stimmt.
+
+`/einstellungen` sind die **Regelvorgaben**: Hysterese, Mindestschaltdauern, Zykluszeit,
+Aufbewahrung, Zeitzone. Die stellt man einmal ein und dann jahrelang nicht mehr.
+
+Zuerst standen beide auf einer Seite. Das war bequem zu bauen und falsch zu benutzen: Wer
+nachsehen wollte, ob die Anlage scharf ist, scrollte an neun Zahlenfeldern vorbei, die ihn
+in dem Moment nicht interessierten -- und wer eine Vorgabe aendern wollte, landete zuerst
+beim Scharfschalt-Knopf.
 """
 
 from typing import Annotated
@@ -42,7 +49,6 @@ def _seite(
     session: Session,
     principal: Principal,
     *,
-    werte: dict[str, str] | None = None,
     fehler: Steuerungsfehler | None = None,
 ) -> Response:
     zeile = einstellungen(session)
@@ -65,10 +71,6 @@ def _seite(
     ):
         entscheidungen.setdefault(entscheidung.zone_id, entscheidung)
 
-    if werte is None:
-        werte = {feld: str(getattr(zeile, feld)) for feld in GRENZEN}
-        werte["timezone"] = zeile.timezone
-
     return templates.TemplateResponse(
         request,
         "steuerung.html",
@@ -80,11 +82,32 @@ def _seite(
             "sollwerte": {
                 zone.id: aufgeloester_sollwert(session, zone, jetzt) for zone in zonen
             },
+            "fehler": {fehler.feld: fehler.meldung} if fehler else {},
+            "darf_scharf": hat_recht(principal, "control.arm"),
+        },
+    )
+
+
+def _vorgabenseite(
+    request: Request,
+    session: Session,
+    principal: Principal,
+    *,
+    werte: dict[str, str] | None = None,
+    fehler: Steuerungsfehler | None = None,
+) -> Response:
+    zeile = einstellungen(session)
+    if werte is None:
+        werte = {feld: str(getattr(zeile, feld)) for feld in GRENZEN}
+        werte["timezone"] = zeile.timezone
+    return templates.TemplateResponse(
+        request,
+        "einstellungen.html",
+        {
             "felder": [(feld, BESCHRIFTUNG[feld], feld in GANZZAHLIG) for feld in GRENZEN],
             "werte": werte,
             "fehler": {fehler.feld: fehler.meldung} if fehler else {},
-            "darf_vorgaben": hat_recht(principal, "setting.manage"),
-            "darf_scharf": hat_recht(principal, "control.arm"),
+            "darf_aendern": hat_recht(principal, "setting.manage"),
         },
     )
 
@@ -101,7 +124,17 @@ async def steuerung_anzeigen(
     return _seite(request, session, principal)
 
 
-@router.post("/steuerung/vorgaben")
+@router.get("/einstellungen")
+async def einstellungen_anzeigen(
+    request: Request,
+    principal: Annotated[Principal, Depends(aktueller_principal)],
+    session: Annotated[Session, Depends(get_session)],
+) -> Response:
+    require(principal, "zone.read")
+    return _vorgabenseite(request, session, principal)
+
+
+@router.post("/einstellungen")
 async def vorgaben_speichern(
     request: Request,
     principal: Annotated[Principal, Depends(aktueller_principal)],
@@ -122,8 +155,8 @@ async def vorgaben_speichern(
             token_id=principal.token_id,
         )
     except Steuerungsfehler as exc:
-        return _seite(request, session, principal, werte=werte, fehler=exc)
-    return RedirectResponse("/steuerung", status_code=status.HTTP_303_SEE_OTHER)
+        return _vorgabenseite(request, session, principal, werte=werte, fehler=exc)
+    return RedirectResponse("/einstellungen", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @router.post("/steuerung/scharf")

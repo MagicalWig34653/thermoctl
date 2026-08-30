@@ -24,8 +24,8 @@ Vom Controller selbst nachgeprüft, nicht aus Berichten übernommen:
 
 | | |
 |---|---|
-| Tests | 754, grün unter SQLite **und** MariaDB |
-| Testabdeckung | 99,10 %, Mindestschwelle 97 % in der CI |
+| Tests | 776, grün unter SQLite **und** MariaDB |
+| Testabdeckung | 99,01 %, Mindestschwelle 97 % in der CI |
 | Ruff, mypy strict | ohne Befund, 74 Quelldateien |
 | Migrationskette | linear, ein Kopf, vorwärts und rückwärts gegen beide Datenbanken |
 | CI und Container | grün |
@@ -52,6 +52,26 @@ Trockenlauf hinter zwei Riegeln, Schattenprotokoll, Geräteübersicht.
 nichts zu protokollieren. Hysterese, Mindestschaltdauer, Fensterpause, Frostschutz bei
 Sensorausfall, als reine Funktion mit 33 Tests, darunter der Defekt des Altsystems
 ausdrücklich vorgeführt.
+
+**Die Oberfläche ist neu gestaltet und neu aufgeteilt.** Farbe ist darin kein Schmuck,
+sondern Messwert: Die ganze Fläche ist Schiefer und Papier, und die einzigen gesättigten
+Töne im Programm sind Kupfer (warm) und Stahlblau (kühl). Temperaturen stehen in einem
+eigenen dicktengleichen Register, damit Zahlen untereinander vergleichbar sind, und mit
+Komma statt Punkt. Ein dunkles Schema gibt es jetzt wirklich — vorher stand
+`data-bs-theme="auto"` im Markup, ein Wert, den Bootstrap nicht kennt.
+
+**Die Startseite ist eine Statustafel.** Eine Zeile je Zone, und je Zone ein **Tagesplan
+als Band**: der heutige Zeitplan über 24 Stunden, eingefärbt nach Solltemperatur, mit
+einem Strich für *jetzt*. Gilt der Plan gerade nicht — Betriebsart „Aus" oder eine laufende
+Übersteuerung —, wird das Band entkräftet und beschriftet, statt einen Plan zu behaupten,
+der nicht wirkt. Weggefallen sind die beiden Zählkacheln, darunter die Zahl der
+**Benutzer**: Wie viele Konten es gibt, sagt über eine Heizung nichts.
+
+**Neu aufgeteilt:** Was täglich gebraucht wird, steht offen in der Leiste (Start, Zonen,
+Geräte, Betrieb); was selten gebraucht wird, liegt unter Einstellungen. `/steuerung` heißt
+jetzt *Betrieb* und trägt nur noch den Betriebszustand — die Regelvorgaben sind nach
+`/einstellungen` gezogen. Die fünf Seiten einer Zone (Zeitplan, Sollwerte, Geräte,
+Regelparameter, Zonendaten) haben einen gemeinsamen Kopf und sind damit ein Ort statt fünf.
 
 **Zeitpläne lassen sich ziehen.** Ein Balken der Wochenansicht geht mit der Maus auf eine
 andere Zeit oder einen anderen Tag, im 15-Minuten-Raster; ein Klick übernimmt Tag und
