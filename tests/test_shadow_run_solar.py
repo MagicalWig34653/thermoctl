@@ -102,7 +102,7 @@ def test_expected_sun_reduces_a_setpoint_that_has_headroom_above_frost(
     row = shadow_run.cycle(session, NOW, _sunny_forecast())[0]
 
     assert row.setpoint_c == Decimal("19.0")  # 21.0 - (1.0 * 2.0)
-    assert "Sonnenabsenkung: -2.00 K" in row.setpoint_reason
+    assert "Sonnenabsenkung: -2.0 K" in row.setpoint_reason
     assert "in den naechsten 3 Stunden" in row.setpoint_reason  # setting's default
 
 
@@ -132,7 +132,7 @@ def test_the_setback_is_capped_at_the_configured_maximum(session: Session) -> No
     row = shadow_run.cycle(session, NOW, _sunny_forecast())[0]
 
     assert row.setpoint_c == Decimal("29.0")  # capped at 1.0 K, not the full headroom
-    assert "Sonnenabsenkung: -1.00 K" in row.setpoint_reason
+    assert "Sonnenabsenkung: -1.0 K" in row.setpoint_reason
 
 
 def test_the_setback_never_drops_the_setpoint_below_frost_protection(
@@ -168,4 +168,4 @@ def test_a_zone_override_setting_the_maximum_takes_precedence(session: Session) 
     row = shadow_run.cycle(session, NOW, _sunny_forecast())[0]
 
     assert row.setpoint_c == Decimal("20.5")
-    assert "Sonnenabsenkung: -0.50 K" in row.setpoint_reason
+    assert "Sonnenabsenkung: -0.5 K" in row.setpoint_reason

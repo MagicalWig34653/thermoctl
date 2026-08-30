@@ -32,7 +32,7 @@ def get_session(request: Request) -> Iterator[Session]:
         http_session.close()
 
 
-def aktueller_principal(
+def current_principal(
     request: Request, session: Annotated[Session, Depends(get_session)]
 ) -> Principal:
     """FastAPI dependency for protected routes: resolves the session cookie.
@@ -67,7 +67,7 @@ def aktueller_principal(
 _SICHERE_METHODEN = frozenset({"GET", "HEAD", "OPTIONS", "TRACE"})
 
 
-def csrf_schutz(request: Request) -> None:
+def csrf_protection(request: Request) -> None:
     """Shared dependency for every state-changing route of the UI.
 
     If the request carries a session cookie, it must bring the matching

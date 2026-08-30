@@ -7,7 +7,7 @@ import pytest
 from thermoctl.config import Settings
 from thermoctl.logging import (
     JsonFormatter,
-    MaskierungsFilter,
+    MaskingFilter,
     configure_logging,
     mask,
     request_id_var,
@@ -113,14 +113,14 @@ def test_the_filter_masks_a_top_level_extra_field_in_isolation() -> None:
     # along so far.
     record = logging.LogRecord("t", logging.INFO, "p", 1, "verbindung", None, None)
     record.mqtt_password = "streng-geheim"  # type: ignore[attr-defined]
-    MaskierungsFilter().filter(record)
+    MaskingFilter().filter(record)
     assert record.mqtt_password == "***"  # type: ignore[attr-defined]
 
 
 def test_the_filter_masks_nested_extra_fields_in_isolation() -> None:
     record = logging.LogRecord("t", logging.INFO, "p", 1, "verbindung", None, None)
     record.config = {"secret_key": "streng-geheim"}  # type: ignore[attr-defined]
-    MaskierungsFilter().filter(record)
+    MaskingFilter().filter(record)
     assert record.config == {"secret_key": "***"}  # type: ignore[attr-defined]
 
 

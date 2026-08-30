@@ -22,10 +22,13 @@ FIELD_TO_CAPABILITY: Final[dict[str, str]] = {
     "linkquality": "link_quality",
     "local_temperature": "temperature",
     "occupancy": "occupancy",
+    "position": "valve_position",
     "power": "power",
+    "running_state": "running_state",
     "soil_moisture": "soil_moisture",
     "state": "switch",
     "temperature": "temperature",
+    "window_open": "window_open",
 }
 
 
@@ -34,7 +37,7 @@ class Reading:
     capability: str
     number: Decimal | None
     text: str | None
-    gemessen_am: datetime
+    measured_at: datetime
 
 
 def _measured_at(value: object, received_at: datetime) -> datetime:
@@ -86,7 +89,7 @@ def readings_from_payload(
         # happens on foreign topics and is not a fault of this device.
         return []
 
-    gemessen_am = _measured_at(data.get("last_seen"), received_at)
+    measured_at = _measured_at(data.get("last_seen"), received_at)
     readings: list[Reading] = []
     for field, raw_value in data.items():
         capability = FIELD_TO_CAPABILITY.get(field)
@@ -96,5 +99,5 @@ def readings_from_payload(
         if value is None:
             continue
         number, text = value
-        readings.append(Reading(capability, number, text, gemessen_am))
+        readings.append(Reading(capability, number, text, measured_at))
     return readings

@@ -64,23 +64,23 @@ def _previous_state(
     Also returns the raw `previous_would_heat` for the new row: `None` if there's no
     history at all yet, otherwise the most recently decided value.
     """
-    zeilen = list(
+    rows = list(
         session.execute(
             select(ShadowDecision.would_heat, ShadowDecision.decided_at)
             .where(ShadowDecision.zone_id == zone_id)
             .order_by(ShadowDecision.decided_at.desc(), ShadowDecision.id.desc())
         )
     )
-    if not zeilen:
+    if not rows:
         return False, None, None
 
-    aktuell = zeilen[0].would_heat
-    beginn = zeilen[0].decided_at
-    for state, moment in zeilen:
-        if state != aktuell:
+    current_state = rows[0].would_heat
+    start = rows[0].decided_at
+    for state, moment in rows:
+        if state != current_state:
             break
-        beginn = moment
-    return aktuell, int((now - beginn).total_seconds()), aktuell
+        start = moment
+    return current_state, int((now - start).total_seconds()), current_state
 
 
 def _window_situation(
@@ -105,7 +105,7 @@ def _window_situation(
     last_closed: datetime | None = None
     for device_id in devices_ids:
         previous_value: str | None = None
-        for value, gemessen_am in session.execute(
+        for value, measured_at in session.execute(
             select(Measurement.value_text, Measurement.measured_at)
             .where(
                 Measurement.device_id == device_id,
@@ -116,8 +116,8 @@ def _window_situation(
         ):
             if value == "true" and previous_value == "false":
                 last_closed = max(
-                    last_closed or gemessen_am,
-                    gemessen_am,
+                    last_closed or measured_at,
+                    measured_at,
                 )
             previous_value = value
     if last_closed is None:

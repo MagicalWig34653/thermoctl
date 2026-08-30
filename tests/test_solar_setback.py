@@ -131,3 +131,41 @@ def test_a_setpoint_already_at_frost_protection_gets_no_setback_at_all() -> None
         factor=Decimal("1.0"), max_reduction_k=Decimal("2.0"), expects_sun=True,
     )
     assert result is None
+
+
+def test_the_reduction_carries_only_one_decimal_place() -> None:
+    """A setpoint has one decimal place everywhere in this service -- so does a setback.
+
+    The interface refuses a setpoint with two decimals, and the controller's step
+    width was narrowed to one for the same reason. Without rounding here, a factor of
+    0.35 against a 2 K cap would turn 21.0 into 20.30 -- a setpoint a person would not
+    be allowed to type in.
+
+    Rounded down, towards the setback: rounding up could exceed the configured cap,
+    and the cap is the promise this feature makes.
+    """
+    result = apply(
+        Decimal("21.0"),
+        Decimal("7.0"),
+        factor=Decimal("0.35"),
+        max_reduction_k=Decimal("2.0"),
+        expects_sun=True,
+    )
+    assert result is not None
+    assert result.reduction_k == Decimal("0.7")  # 0.70 exactly, not 0.700
+    assert result.reduction_k.as_tuple().exponent == -1
+    assert result.setpoint_c == Decimal("20.3")
+
+
+def test_a_reduction_that_rounds_away_to_nothing_is_no_setback() -> None:
+    """Otherwise the reasoning would claim a setback of -0.0 K that never happened."""
+    assert (
+        apply(
+            Decimal("21.0"),
+            Decimal("7.0"),
+            factor=Decimal("0.01"),
+            max_reduction_k=Decimal("0.5"),
+            expects_sun=True,
+        )
+        is None
+    )

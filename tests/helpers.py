@@ -50,9 +50,9 @@ def create_settings(
     min_ein: int = 300,
     session_duration_s: int | None = None,
 ) -> Setting:
-    zusatz: dict[str, int] = {}
+    extra: dict[str, int] = {}
     if session_duration_s is not None:
-        zusatz["session_lifetime_seconds"] = session_duration_s
+        extra["session_lifetime_seconds"] = session_duration_s
     settings = Setting(
         id=1,
         # `eingebaut=True` as in production: the setup wizard creates the frost
@@ -62,7 +62,7 @@ def create_settings(
         frost_protection_mode_id=create_mode(session, "frost", eingebaut=True).id,
         default_hysteresis_k=hysteresis,
         default_min_on_seconds=min_ein,
-        **zusatz,
+        **extra,
     )
     session.add(settings)
     session.flush()
@@ -178,10 +178,10 @@ def ensure_permission(session: Session, code: str, zone_scoped: bool | None = No
 
 
 def create_user(session: Session, name: str) -> User:
-    nutzer = User(username=name, display_name=name.upper(), password_hash="platzhalter")
-    session.add(nutzer)
+    user_record = User(username=name, display_name=name.upper(), password_hash="platzhalter")
+    session.add(user_record)
     session.flush()
-    return nutzer
+    return user_record
 
 
 def _group_with_permissions(
@@ -209,29 +209,29 @@ def user_with_permissions(
 ) -> User:
     """Creates a user and attaches them to one (or two) access group(s) with the
     given ``(code, zone_id)`` permissions."""
-    nutzer = create_user(session, name)
+    user_record = create_user(session, name)
     group = _group_with_permissions(session, f"gruppe-{name}", permissions)
-    session.add(UserAccessGroup(user_id=nutzer.id, access_group_id=group.id))
+    session.add(UserAccessGroup(user_id=user_record.id, access_group_id=group.id))
     if second_group is not None:
         group_two = _group_with_permissions(session, f"gruppe-{name}-2", second_group)
-        session.add(UserAccessGroup(user_id=nutzer.id, access_group_id=group_two.id))
+        session.add(UserAccessGroup(user_id=user_record.id, access_group_id=group_two.id))
     session.flush()
-    return nutzer
+    return user_record
 
 
 def token_with_permissions(
-    session: Session, nutzer: User, permissions: list[tuple[str, int | None]]
+    session: Session, user_record: User, permissions: list[tuple[str, int | None]]
 ) -> ApiToken:
     """Creates an API token for ``nutzer`` and enters the given permissions."""
     token = ApiToken(
-        user_id=nutzer.id,
-        name=f"token-{nutzer.username}",
+        user_id=user_record.id,
+        name=f"token-{user_record.username}",
         # Truncated to 16 characters: that is how long the column is. SQLite
         # accepts longer values without complaint, MariaDB rejects them -- a
         # test with a long username would otherwise only fail under MariaDB,
         # and that gets looked for in the wrong place.
-        prefix=f"pfx-{nutzer.username}"[:16],
-        token_hash=f"hash-{nutzer.username}",
+        prefix=f"pfx-{user_record.username}"[:16],
+        token_hash=f"hash-{user_record.username}",
     )
     session.add(token)
     session.flush()
@@ -283,10 +283,10 @@ def zone_with_schedule(
             setpoint_mode_id=mode.id,
         ))
     if override is not None:
-        temperature, ende = override
+        temperature, end_at = override
         session.add(ZoneOverride(
             zone_id=zone.id, temperature_c=temperature,
-            starts_at=datetime(2026, 8, 31, 0, 0), ends_at=ende,
+            starts_at=datetime(2026, 8, 31, 0, 0), ends_at=end_at,
             source_id=source(session).id,
         ))
     session.flush()
@@ -305,7 +305,7 @@ def alle_api_routen(app: FastAPI) -> list[APIRoute]:
 
     Hence this, centralized once, with recursion over `original_router`.
     """
-    gefunden: list[APIRoute] = []
+    found: list[APIRoute] = []
 
     def _durchgehen(routen: Sequence[BaseRoute]) -> None:
         for route in routen:
@@ -313,10 +313,10 @@ def alle_api_routen(app: FastAPI) -> list[APIRoute]:
             if eingebundener is not None:
                 _durchgehen(eingebundener.routes)
             elif isinstance(route, APIRoute):
-                gefunden.append(route)
+                found.append(route)
 
     _durchgehen(app.routes)
-    return gefunden
+    return found
 
 
 def create_measurement(
@@ -346,7 +346,7 @@ def create_device_state(session: Session, device: Device) -> DeviceHealth:
     return state
 
 
-def sensorstatus(session: Session, code: str = "ok") -> SensorStatus:
+def sensor_status_of(session: Session, code: str = "ok") -> SensorStatus:
     status = session.query(SensorStatus).filter_by(code=code).one_or_none()
     if status is None:
         status = SensorStatus(code=code, label=code)
@@ -358,7 +358,7 @@ def sensorstatus(session: Session, code: str = "ok") -> SensorStatus:
 def create_zone_state(session: Session, zone: Zone) -> ZoneState:
     state = ZoneState(
         zone_id=zone.id,
-        sensor_status_id=sensorstatus(session).id,
+        sensor_status_id=sensor_status_of(session).id,
         updated_at=datetime(2026, 8, 29, 8, 0),
     )
     session.add(state)
@@ -381,12 +381,12 @@ def create_shadow_decision(session: Session, zone: Zone) -> ShadowDecision:
 
 
 def create_passkey(
-    session: Session, nutzer: User, credential_id: str = "kennung", sign_count: int = 0
+    session: Session, user_record: User, credential_id: str = "kennung", sign_count: int = 0
 ) -> UserPasskey:
     """A stored passkey. The public key here is a placeholder —
     tests that actually verify it generate one with a software authenticator."""
     entry = UserPasskey(
-        user_id=nutzer.id,
+        user_id=user_record.id,
         credential_id=credential_id,
         public_key="platzhalter",
         sign_count=sign_count,

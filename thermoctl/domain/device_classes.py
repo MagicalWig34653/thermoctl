@@ -9,8 +9,8 @@ from typing import cast
 @dataclass(frozen=True)
 class DeviceDescription:
     name: str
-    adresse: str | None
-    modell: str | None
+    address: str | None
+    model: str | None
     manufacturer: str | None
     ist_group: bool
     capabilities: frozenset[str]
@@ -48,7 +48,16 @@ _CAPABILITY_BY_FEATURE = {
     "pi_heating_demand": "valve_position",
     "power": "power",
     "energy": "energy",
+    "running_state": "running_state",
+    "window_open": "window_open",
 }
+
+# A thermostatic radiator valve (e.g. WT-A03E) exposes no `state` field to switch --
+# it is driven through these two features together. Neither one alone implies a
+# valve: `occupied_heating_setpoint` alone is also exposed by a plain wall
+# thermostat display, and `system_mode` alone would be unusual but not impossible.
+# Only the combination is treated as proof of an actual thermostat.
+_THERMOSTAT_FEATURES = frozenset({"occupied_heating_setpoint", "system_mode"})
 
 
 def _text(value: object) -> str | None:
@@ -59,33 +68,60 @@ def _collect_capabilities(
     entries: list[object], *, inside_switch: bool = False
 ) -> set[str]:
     result: set[str] = set()
-    for roh in entries:
-        if not isinstance(roh, Mapping):
+    for raw_entry in entries:
+        if not isinstance(raw_entry, Mapping):
             continue
-        entry = cast(Mapping[str, object], roh)
-        typ = _text(entry.get("type"))
-        property = _text(entry.get("property")) or typ
+        entry = cast(Mapping[str, object], raw_entry)
+        feature_type = _text(entry.get("type"))
+        property = _text(entry.get("property")) or feature_type
         capability = _CAPABILITY_BY_FEATURE.get(property or "")
         if capability is not None:
             result.add(capability)
-        if inside_switch and typ == "binary" and property == "state":
+        if inside_switch and feature_type == "binary" and property == "state":
             result.add("switch")
 
         features = entry.get("features")
         if isinstance(features, list):
             result.update(
                 _collect_capabilities(
-                    cast(list[object], features), inside_switch=inside_switch or typ == "switch"
+                    cast(list[object], features), inside_switch=inside_switch or feature_type == "switch"
                 )
             )
     return result
+
+
+def _feature_property_names(entries: list[object]) -> set[str]:
+    """Collects every `property` name anywhere in the expose tree, unfiltered.
+
+    Separate from `_collect_capabilities`: that one only keeps names that already
+    map to a known capability. `system_mode` does not -- it is an operating mode,
+    not a measurable or switchable value by itself -- but its presence alongside
+    `occupied_heating_setpoint` is exactly what tells a thermostat apart from a
+    plain setpoint display.
+    """
+    names: set[str] = set()
+    for raw_item in entries:
+        if not isinstance(raw_item, Mapping):
+            continue
+        entry = cast(Mapping[str, object], raw_item)
+        property_name = _text(entry.get("property"))
+        if property_name is not None:
+            names.add(property_name)
+        features = entry.get("features")
+        if isinstance(features, list):
+            names.update(_feature_property_names(cast(list[object], features)))
+    return names
 
 
 def capabilities_from_exposes(
     exposes: list[dict[str, object]],
 ) -> frozenset[str]:
     """Derives only explicitly agreed-upon capabilities from Zigbee2MQTT."""
-    return frozenset(_collect_capabilities(cast(list[object], exposes)))
+    entries = cast(list[object], exposes)
+    result = _collect_capabilities(entries)
+    if _THERMOSTAT_FEATURES <= _feature_property_names(entries):
+        result.add("thermostat")
+    return frozenset(result)
 
 
 def _decimal(value: object) -> Decimal | None:
@@ -140,14 +176,14 @@ def descriptions_from_bridge_list(
 ) -> list[DeviceDescription]:
     """Reads the device descriptions from the Zigbee2MQTT bridge list."""
     try:
-        roh = json.loads(payload)
+        raw_entry = json.loads(payload)
     except (json.JSONDecodeError, UnicodeDecodeError) as exc:
         raise ValueError("Geraeteliste ist kein gueltiges JSON") from exc
-    if not isinstance(roh, list):
+    if not isinstance(raw_entry, list):
         raise ValueError("Geraeteliste muss eine JSON-Liste sein")
 
-    beschreibungen: list[DeviceDescription] = []
-    for element in roh:
+    descriptions: list[DeviceDescription] = []
+    for element in raw_entry:
         if not isinstance(element, Mapping):
             continue
         entry = cast(Mapping[str, object], element)
@@ -157,28 +193,28 @@ def descriptions_from_bridge_list(
         if entry.get("type") == "Coordinator" or name in {"Coordinator", "bridge"}:
             continue
 
-        adresse = _text(entry.get("ieee_address"))
-        definition_roh = entry.get("definition")
+        address = _text(entry.get("ieee_address"))
+        definition_raw = entry.get("definition")
         definition = (
-            cast(Mapping[str, object], definition_roh)
-            if isinstance(definition_roh, Mapping)
+            cast(Mapping[str, object], definition_raw)
+            if isinstance(definition_raw, Mapping)
             else {}
         )
-        exposes_roh = definition.get("exposes")
+        exposes_raw = definition.get("exposes")
         exposes = (
-            cast(list[dict[str, object]], exposes_roh)
-            if isinstance(exposes_roh, list)
+            cast(list[dict[str, object]], exposes_raw)
+            if isinstance(exposes_raw, list)
             else []
         )
-        beschreibungen.append(
+        descriptions.append(
             DeviceDescription(
                 name=name,
-                adresse=adresse,
-                modell=_text(definition.get("model")),
+                address=address,
+                model=_text(definition.get("model")),
                 manufacturer=_text(definition.get("vendor")),
-                ist_group=adresse is None,
+                ist_group=address is None,
                 capabilities=capabilities_from_exposes(exposes),
                 properties=properties_from_exposes(exposes),
             )
         )
-    return beschreibungen
+    return descriptions

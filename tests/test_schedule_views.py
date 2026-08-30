@@ -11,10 +11,10 @@ from thermoctl.db.models.schedule import SchedulePoint
 
 
 def _csrf(client: TestClient) -> dict[str, str]:
-    geheimnis = client.cookies[COOKIE_NAME]
+    secret = client.cookies[COOKIE_NAME]
     return {
         "X-CSRF-Token": csrf_token(
-            geheimnis, get_settings().secret_key.get_secret_value()
+            secret, get_settings().secret_key.get_secret_value()
         )
     }
 
@@ -181,7 +181,7 @@ def test_adopting_onto_an_existing_schedule_asks_first(
 
     bestaetigt = client.post(
         pfad,
-        data={"source_id": str(source_zone.id), "confirmed": "ja"},
+        data={"source_id": str(source_zone.id), "confirmed": "yes"},
         headers=_csrf(client),
         follow_redirects=False,
     )
@@ -227,14 +227,14 @@ def test_a_nonsensical_selection_when_creating_a_point(client_als, session: Sess
     zone = create_zone(session, "zone-unsinn")
     mode = create_mode(session, "unsinn-tag", "Tag")
     client = client_als([("schedule.manage", None), ("zone.read", None)])
-    kopf = _csrf(client)
+    head = _csrf(client)
 
     for data, expected in (
         ({"weekday": "Montag", "time_of_day": "06:00", "mode_id": str(mode.id)}, "Wochentag"),
         ({"weekday": "1", "time_of_day": "06:00", "mode_id": "kein Modus"}, "Modus"),
     ):
         response = client.post(
-            f"/zones/{zone.id}/schedule/points", data=data, headers=kopf
+            f"/zones/{zone.id}/schedule/points", data=data, headers=head
         )
         assert response.status_code == 200, data
         assert expected in response.text, data

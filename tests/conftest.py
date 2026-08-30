@@ -109,9 +109,9 @@ def migrations_database_url() -> Iterator[str]:
         )
         server_werk = create_engine(server_url, pool_pre_ping=True, future=True)
         try:
-            with server_werk.connect() as verbindung:
-                verbindung.execute(text(f"CREATE DATABASE IF NOT EXISTS `{ziel_url.database}`"))
-                verbindung.commit()
+            with server_werk.connect() as db_connection:
+                db_connection.execute(text(f"CREATE DATABASE IF NOT EXISTS `{ziel_url.database}`"))
+                db_connection.commit()
         finally:
             server_werk.dispose()
 
@@ -127,9 +127,9 @@ def migrations_database_url() -> Iterator[str]:
     else:
         server_werk = create_engine(server_url, pool_pre_ping=True, future=True)
         try:
-            with server_werk.connect() as verbindung:
-                verbindung.execute(text(f"DROP DATABASE IF EXISTS `{ziel_url.database}`"))
-                verbindung.commit()
+            with server_werk.connect() as db_connection:
+                db_connection.execute(text(f"DROP DATABASE IF EXISTS `{ziel_url.database}`"))
+                db_connection.commit()
         finally:
             server_werk.dispose()
 
@@ -149,9 +149,9 @@ def engine(settings: Settings) -> Iterator[Engine]:
     # Unlike the permissions, this is fine to seed here: no test creates an
     # ActorSource by hand, so there is no UNIQUE collision like with `Permission`.
     with Session(werk) as http_session:
-        vorhandene = {q.code for q in http_session.query(ActorSource)}
+        existing = {q.code for q in http_session.query(ActorSource)}
         for code, label in ACTOR_SOURCES:
-            if code not in vorhandene:
+            if code not in existing:
                 http_session.add(ActorSource(code=code, label=label))
         http_session.commit()
     yield werk
@@ -180,17 +180,17 @@ def session(engine: Engine) -> Iterator[Session]:
     This way, all tests share one schema without affecting each other —
     under MariaDB, rebuilding it per test would otherwise be noticeably slow.
     """
-    verbindung = engine.connect()
-    transaktion = verbindung.begin()
+    db_connection = engine.connect()
+    transaktion = db_connection.begin()
     http_session = Session(
-        bind=verbindung, expire_on_commit=False, join_transaction_mode="create_savepoint"
+        bind=db_connection, expire_on_commit=False, join_transaction_mode="create_savepoint"
     )
     try:
         yield http_session
     finally:
         http_session.close()
         transaktion.rollback()
-        verbindung.close()
+        db_connection.close()
 
 
 @pytest.fixture(autouse=True)
@@ -217,9 +217,9 @@ def _permissions_for_setup_wizard(
     """
     if request.node.fspath.basename != "test_setup.py":
         return
-    vorhandene = {p.code for p in session.query(Permission)}
+    existing = {p.code for p in session.query(Permission)}
     for code, description, zone_scoped in PERMISSIONS:
-        if code not in vorhandene:
+        if code not in existing:
             session.add(Permission(code=code, description=description,
                                    is_zone_scoped=zone_scoped))
     session.flush()
@@ -256,9 +256,9 @@ def client_als(
     def _client_als(permissions: list[tuple[str, int | None]]) -> TestClient:
         nonlocal counter
         counter += 1
-        nutzer = user_with_permissions(session, f"web-{counter}", permissions)
-        _http_session, geheimnis = create_session(session, nutzer, 3600)
-        client.cookies.set(COOKIE_NAME, geheimnis)
+        user_record = user_with_permissions(session, f"web-{counter}", permissions)
+        _http_session, secret = create_session(session, user_record, 3600)
+        client.cookies.set(COOKIE_NAME, secret)
         return client
 
     return _client_als
@@ -268,19 +268,19 @@ def client_als(
 def user(session: Session) -> User:
     """Creates the user ``lino`` with a hashed password and the *Verwaltung* group."""
     source(session, "web")
-    nutzer = User(
+    user_record = User(
         username="lino",
         display_name="Lino",
         password_hash=hash_password("passwort-lang-genug"),
     )
-    session.add(nutzer)
+    session.add(user_record)
     session.flush()
     group = AccessGroup(name="Verwaltung", is_builtin=True)
     session.add(group)
     session.flush()
-    session.add(UserAccessGroup(user_id=nutzer.id, access_group_id=group.id))
+    session.add(UserAccessGroup(user_id=user_record.id, access_group_id=group.id))
     session.flush()
-    return nutzer
+    return user_record
 
 @pytest.fixture(autouse=True)
 def _without_real_waiting(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -288,12 +288,12 @@ def _without_real_waiting(monkeypatch: pytest.MonkeyPatch) -> None:
 
     The throttling itself stays active and is checked by
     `test_failed_attempts_are_increasingly_delayed` — that test replaces
-    `schlafen` itself and therefore never sees this fixture at all. Without
+    `sleep` itself and therefore never sees this fixture at all. Without
     it, every login in every test costs real seconds: the suite's runtime
     went from two seconds to thirty-three because of this, and a slow suite
     gets run less often.
     """
-    monkeypatch.setattr("thermoctl.web.auth_views.schlafen", lambda seconds: None)
+    monkeypatch.setattr("thermoctl.web.auth_views.sleep", lambda seconds: None)
 
 @pytest.fixture
 def angemeldeter_client(
@@ -340,9 +340,9 @@ def _record_endpoints(request: pytest.FixtureRequest) -> Iterator[None]:
 
     def aufzeichnend(self, method, url, *args, **kwargs):  # type: ignore[no-untyped-def]
         pfad = str(url).split("?")[0]
-        for praefix in ("http://testserver", "https://testserver"):
-            if pfad.startswith(praefix):
-                pfad = pfad[len(praefix) :]
+        for prefix in ("http://testserver", "https://testserver"):
+            if pfad.startswith(prefix):
+                pfad = pfad[len(prefix) :]
         gesammelt.add((str(method).upper(), pfad or "/"))
         return original(self, method, url, *args, **kwargs)
 

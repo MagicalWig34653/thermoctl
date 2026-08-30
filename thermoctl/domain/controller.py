@@ -58,14 +58,14 @@ class ControllerError(ValueError):
 class Binding:
     """A button and what it does."""
 
-    aktion: str
+    action: str
     command_code: str | None
     command_name: str | None
     step_k: Decimal | None
     last_seen: datetime | None
 
 
-def gesehene_aktionen(session: Session, device: Device) -> list[Binding]:
+def seen_actions(session: Session, device: Device) -> list[Binding]:
     """Which buttons this device has sent -- both bound and still unbound ones.
 
     The foundation of the whole setup: without it, someone would have to know what
@@ -78,7 +78,7 @@ def gesehene_aktionen(session: Session, device: Device) -> list[Binding]:
     )
     last_seen: dict[str, datetime] = {}
     if capability_id is not None:
-        for text, gemessen_am in session.execute(
+        for text, measured_at in session.execute(
             select(Measurement.value_text, Measurement.measured_at)
             .where(
                 Measurement.device_id == device.id,
@@ -89,11 +89,11 @@ def gesehene_aktionen(session: Session, device: Device) -> list[Binding]:
             .limit(SEEN_ACTIONS)
         ):
             if text is not None:
-                last_seen.setdefault(text, gemessen_am)
+                last_seen.setdefault(text, measured_at)
 
-    belegt = {
-        aktion: (code, name, step)
-        for aktion, code, name, step in session.execute(
+    bound = {
+        action: (code, name, step)
+        for action, code, name, step in session.execute(
             select(
                 ControllerBinding.action_code,
                 ControllerCommand.code,
@@ -104,36 +104,36 @@ def gesehene_aktionen(session: Session, device: Device) -> list[Binding]:
             .where(ControllerBinding.device_id == device.id)
         )
     }
-    alle = sorted(set(last_seen) | set(belegt))
+    alle = sorted(set(last_seen) | set(bound))
     return [
         Binding(
-            aktion=aktion,
-            command_code=belegt.get(aktion, (None, None, None))[0],
-            command_name=belegt.get(aktion, (None, None, None))[1],
-            step_k=belegt.get(aktion, (None, None, None))[2],
-            last_seen=last_seen.get(aktion),
+            action=action,
+            command_code=bound.get(action, (None, None, None))[0],
+            command_name=bound.get(action, (None, None, None))[1],
+            step_k=bound.get(action, (None, None, None))[2],
+            last_seen=last_seen.get(action),
         )
-        for aktion in alle
+        for action in alle
     ]
 
 
 def set_binding(
     session: Session,
     device: Device,
-    aktion: str,
+    action: str,
     command_code: str | None,
     step_k: Decimal | None = None,
 ) -> None:
     """Binds a button -- or deletes the binding if `befehl_code` is None."""
-    vorhanden = session.scalars(
+    present = session.scalars(
         select(ControllerBinding).where(
             ControllerBinding.device_id == device.id,
-            ControllerBinding.action_code == aktion,
+            ControllerBinding.action_code == action,
         )
     ).first()
     if command_code is None:
-        if vorhanden is not None:
-            session.delete(vorhanden)
+        if present is not None:
+            session.delete(present)
             session.flush()
         return
 
@@ -153,18 +153,18 @@ def set_binding(
             raise ControllerError(
                 "Die Schrittweite darf höchstens eine Nachkommastelle haben."
             )
-    if vorhanden is None:
+    if present is None:
         session.add(
             ControllerBinding(
                 device_id=device.id,
-                action_code=aktion,
+                action_code=action,
                 command_id=command.id,
                 step_k=step_k,
             )
         )
     else:
-        vorhanden.command_id = command.id
-        vorhanden.step_k = step_k
+        present.command_id = command.id
+        present.step_k = step_k
     session.flush()
 
 
@@ -181,8 +181,8 @@ def _zone(session: Session, device: Device) -> list[Zone]:
     )
 
 
-def execute_aktion(
-    session: Session, device: Device, aktion: str, now: datetime, *, source: str = "system"
+def execute_action(
+    session: Session, device: Device, action: str, now: datetime, *, source: str = "system"
 ) -> list[str]:
     """Executes whatever is bound to this button. Returns the zones affected.
 
@@ -193,7 +193,7 @@ def execute_aktion(
     binding = session.scalars(
         select(ControllerBinding).where(
             ControllerBinding.device_id == device.id,
-            ControllerBinding.action_code == aktion,
+            ControllerBinding.action_code == action,
         )
     ).first()
     if binding is None:
@@ -208,17 +208,17 @@ def execute_aktion(
         # most common reason why "the button does nothing".
         log.info(
             "Tastendruck ohne Zone verworfen",
-            extra={"geraet": device.display_name, "aktion": aktion},
+            extra={"geraet": device.display_name, "aktion": action},
         )
         return []
 
     for zone in zones:
-        _auf_zone_anwenden(session, zone, command.code, binding.step_k, now, source)
+        _apply_to_zone(session, zone, command.code, binding.step_k, now, source)
         log.info(
             "Tastendruck ausgefuehrt",
             extra={
                 "geraet": device.display_name,
-                "aktion": aktion,
+                "aktion": action,
                 "befehl": command.code,
                 "zone_id": zone.id,
             },
@@ -226,7 +226,7 @@ def execute_aktion(
     return [zone.name for zone in zones]
 
 
-def _auf_zone_anwenden(
+def _apply_to_zone(
     session: Session,
     zone: Zone,
     command_code: str,
@@ -236,14 +236,14 @@ def _auf_zone_anwenden(
 ) -> None:
     if command_code in ("setpoint_up", "setpoint_down"):
         step = step_k or DEFAULT_STEP_K
-        jetziger = resolved_setpoint(session, zone, now).temperature_c
-        neu = jetziger + (step if command_code == "setpoint_up" else -step)
-        set_setpoint(session, zone, neu, now, source=source)
+        current = resolved_setpoint(session, zone, now).temperature_c
+        new = current + (step if command_code == "setpoint_up" else -step)
+        set_setpoint(session, zone, new, now, source=source)
     elif command_code == "boost":
         boost(session, zone, now, source=source)
     elif command_code == "mode_off":
-        set_operating_mode(session, zone, "off", akteur_id=None, source=source)
+        set_operating_mode(session, zone, "off", actor_id=None, source=source)
     elif command_code == "mode_auto":
-        set_operating_mode(session, zone, "auto", akteur_id=None, source=source)
+        set_operating_mode(session, zone, "auto", actor_id=None, source=source)
     else:  # pragma: no cover - the lookup table only knows the five above
         raise ControllerError(f"Unbekannter Befehl: {command_code}")

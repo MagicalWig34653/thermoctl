@@ -178,7 +178,7 @@ class ControlResponse(BaseModel):
 
 
 class SetArmed(BaseModel):
-    """`begruendung` is required when arming and optional when disarming --
+    """`reason` is required when arming and optional when disarming --
     the check for that lives in the domain, not here, so it's the same for
     all three adapters."""
 
@@ -186,7 +186,7 @@ class SetArmed(BaseModel):
     reason: str = ""
 
 
-class SteuerungSchreiben(BaseModel):
+class WriteControl(BaseModel):
     """The global defaults. The domain checks the limits: a `Field(ge=..., le=...)`
     here would be a second version of the same numbers, and two versions drift
     apart."""

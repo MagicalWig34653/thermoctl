@@ -88,7 +88,7 @@ def test_the_start_page_shows_zone_state_without_a_zero_temperature(
     from thermoctl.db.models.state import ZoneState
 
     create_settings(session)
-    zone_with_value = create_zone(session, "mit-wert")
+    zone_with_value = create_zone(session, "mit-value")
     zone_without_value = create_zone(session, "ohne-wert")
     zone_without_state = create_zone(session, "ohne-zustand")
     status = SensorStatus(code="ok", label="In Ordnung")
@@ -164,9 +164,9 @@ def test_the_device_page_puts_conspicuous_devices_on_top(client_als, session: Se
     beispiele = json.loads(
         (Path(__file__).parent / "daten/anlage-beispiele.json").read_text(encoding="utf-8")
     )
-    gesund = create_device(session, beispiele["geraete"][0])
-    gesund.display_name = "Alpha gesund"
-    healthy_state = create_device_state(session, gesund)
+    healthy = create_device(session, beispiele["geraete"][0])
+    healthy.display_name = "Alpha gesund"
+    healthy_state = create_device_state(session, healthy)
     healthy_state.last_payload_at = utcnow()
     healthy_state.availability = "online"
 

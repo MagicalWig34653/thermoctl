@@ -255,7 +255,7 @@ def test_the_schedule_grid_does_not_jump_out_from_under_the_mouse() -> None:
         "schedule.js scrolls on its own again"
     )
     # Focus only after the visibility check -- otherwise the browser scrolls by itself.
-    assert "if (sichtbar) {" in source
+    assert "if (visible) {" in source
     before_focus = source[: source.index(".focus(")]
     assert "getBoundingClientRect" in before_focus and "innerHeight" in before_focus, (
         "focus() no longer comes after the visibility check"
@@ -289,9 +289,9 @@ def _rendered_form_fields(html: str, action: str) -> dict[str, str]:
             name = re.search(r'name="([^"]+)"', field)
             if name is None:
                 continue
-            typ = re.search(r'type="([^"]+)"', field)
+            feature_type = re.search(r'type="([^"]+)"', field)
             rendered = re.search(r'value="([^"]*)"', field)
-            if typ and typ.group(1) == "time":
+            if feature_type and feature_type.group(1) == "time":
                 values[name.group(1)] = "07:15"
             else:
                 values[name.group(1)] = rendered.group(1) if rendered else ""
@@ -299,8 +299,8 @@ def _rendered_form_fields(html: str, action: str) -> dict[str, str]:
             name = re.search(r'name="([^"]+)"', select)
             if name is None:
                 continue
-            optionen = [o for o in re.findall(r'<option value="([^"]*)"', select) if o]
-            values[name.group(1)] = optionen[0] if optionen else ""
+            options = [o for o in re.findall(r'<option value="([^"]*)"', select) if o]
+            values[name.group(1)] = options[0] if options else ""
         return values
     raise AssertionError(f"Kein Formular mit action={action!r} gefunden")
 
@@ -342,4 +342,64 @@ def test_the_rendered_form_carries_the_field_names_the_view_reads(
     points = session.scalars(select(SchedulePoint).where(SchedulePoint.zone_id == zone.id)).all()
     assert [(p.weekday, p.minute_of_day) for p in points] == [(1, 7 * 60 + 15)], (
         "Das Formular hat nichts angelegt — Feldnamen in Vorlage und Ansicht gehen auseinander"
+    )
+
+
+def test_no_page_reads_a_name_its_view_does_not_supply(
+    angemeldeter_client: TestClient, session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Renders every page and fails on the first name Jinja cannot resolve.
+
+    This closes the gap that three defects slipped through in one day, all of the
+    same shape: a view was renamed, its template was not, and Jinja answers an
+    unknown name with the empty string. The page keeps returning 200 and simply
+    shows nothing where the setpoint's reason used to be -- or, in the worse case,
+    the form posts a field name the view never reads and creating a schedule point
+    silently does nothing.
+
+    A test cannot see that; only a person looking at the page can. So this makes
+    the silence audible: an undefined name becomes a recorded miss, and a miss
+    fails the test.
+
+    `Undefined` is deliberately not swapped for `StrictUndefined`: several
+    templates legitimately ask whether an optional value exists. Only *reading*
+    one -- printing it, taking an attribute off it -- is recorded, which is
+    exactly the case that renders wrongly.
+    """
+    from typing import NoReturn
+
+    from jinja2 import Undefined
+
+    from thermoctl.web import templates
+
+    misses: list[str] = []
+
+    class ReportingUndefined(Undefined):
+        def _fail_with_undefined_error(
+            self, *args: object, **kwargs: object
+        ) -> NoReturn:
+            misses.append(self._undefined_name or "<unnamed>")
+            super()._fail_with_undefined_error(*args, **kwargs)
+
+        def __str__(self) -> str:
+            misses.append(self._undefined_name or "<unnamed>")
+            return ""
+
+        def __getattr__(self, name: str) -> object:
+            if name.startswith("__"):
+                raise AttributeError(name)
+            misses.append(f"{self._undefined_name}.{name}")
+            return self
+
+    monkeypatch.setattr(templates.env, "undefined", ReportingUndefined)
+    zone = create_zone(session, "undefined-check")
+    create_settings(session)
+    for pattern in PROTECTED_PAGES:
+        path = pattern.format(zone_id=zone.id)
+        vorher = len(misses)
+        assert angemeldeter_client.get(path).status_code == 200, path
+        for i in range(vorher, len(misses)):
+            misses[i] = f"{path}: {misses[i]}"
+    assert not misses, (
+        "Vorlagen lesen Namen, die ihre View nicht liefert: " + ", ".join(sorted(set(misses)))
     )

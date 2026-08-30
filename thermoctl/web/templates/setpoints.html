@@ -1,21 +1,21 @@
 {% extends "base.html" %}
 {% from "zone_header.html" import zonenkopf %}
-{% from "form.html" import zahlenfeld %}
-{% block titel %}Sollwerte {{ zone.display_name }} – thermoctl{% endblock %}
-{% block inhalt %}
+{% from "form.html" import number_field %}
+{% block title %}Sollwerte {{ zone.display_name }} – thermoctl{% endblock %}
+{% block content %}
 {{ zonenkopf(zone, "Sollwerte") }}
 <form method="post" action="/zones/{{ zone.id }}/setpoints">
 {% for mode in modes %}
-    {% set feld = "sollwert_" ~ mode.id %}
-    {{ zahlenfeld(
-        feld,
+    {% set field = "setpoint_" ~ mode.id %}
+    {{ number_field(
+        field,
         mode.name ~ " (°C)",
-        values[feld],
+        values[field],
         "Leer lassen löscht den Sollwert für diesen Modus.",
-        errors[feld],
+        errors[field],
         "0.1",
-        mindesttemperatur,
-        hoechsttemperatur
+        minimum_temperature,
+        maximum_temperature
     ) }}
 {% endfor %}
     <button class="btn btn-primary" type="submit">Sollwerte speichern</button>

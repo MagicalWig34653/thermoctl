@@ -36,6 +36,59 @@ def test_a_window_contact_is_recognized() -> None:
     assert capabilities_from_exposes(exposes) == frozenset({"contact"})
 
 
+def test_a_thermostatic_radiator_valve_is_recognized_as_thermostat() -> None:
+    """A WT-A03E-style TRV has no `state` to switch -- it is `system_mode` plus
+    `occupied_heating_setpoint` together that mark it as an actual thermostat."""
+    exposes = [
+        {
+            "type": "climate",
+            "features": [
+                {
+                    "type": "numeric",
+                    "property": "occupied_heating_setpoint",
+                    "value_min": 5,
+                    "value_max": 30,
+                },
+                {"type": "numeric", "property": "local_temperature"},
+                {
+                    "type": "enum",
+                    "property": "system_mode",
+                    "values": ["off", "heat", "auto"],
+                },
+                {"type": "enum", "property": "running_state", "values": ["idle", "heat"]},
+                {"type": "numeric", "property": "position"},
+                {"type": "binary", "property": "window_open"},
+            ],
+        }
+    ]
+
+    assert capabilities_from_exposes(exposes) == frozenset(
+        {
+            "thermostat",
+            "setpoint",
+            "temperature",
+            "running_state",
+            "valve_position",
+            "window_open",
+        }
+    )
+
+
+def test_occupied_heating_setpoint_alone_is_not_enough_to_be_a_thermostat() -> None:
+    """A plain setpoint display without `system_mode` is not a thermostat -- it
+    cannot be armed one way or the other, only shown."""
+    exposes = [
+        {
+            "type": "climate",
+            "features": [
+                {"type": "numeric", "property": "occupied_heating_setpoint"},
+            ],
+        }
+    ]
+
+    assert capabilities_from_exposes(exposes) == frozenset({"setpoint"})
+
+
 def test_a_multisensor_carries_its_real_installation_name_and_metadata() -> None:
     name = _installation_name("Über Küche")
     payload = json.dumps(
@@ -61,8 +114,8 @@ def test_a_multisensor_carries_its_real_installation_name_and_metadata() -> None
     assert descriptions_from_bridge_list(payload) == [
         DeviceDescription(
             name=name,
-            adresse="aus-der-bridge-liste",
-            modell="Modell aus der Bridge",
+            address="aus-der-bridge-liste",
+            model="Modell aus der Bridge",
             manufacturer="Hersteller aus der Bridge",
             ist_group=False,
             capabilities=frozenset(
@@ -93,7 +146,7 @@ def test_a_group_remains_visible_and_is_marked() -> None:
 
     assert group.name == name
     assert group.ist_group is True
-    assert group.adresse is None
+    assert group.address is None
 
 
 def test_an_unrecognized_device_has_an_empty_description() -> None:
@@ -103,7 +156,7 @@ def test_an_unrecognized_device_has_an_empty_description() -> None:
         json.dumps([{"friendly_name": name, "ieee_address": "aus-der-bridge-liste"}])
     )
 
-    assert device.modell is None
+    assert device.model is None
     assert device.manufacturer is None
     assert device.capabilities == frozenset()
 
