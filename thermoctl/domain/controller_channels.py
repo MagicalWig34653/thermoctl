@@ -16,8 +16,9 @@ from thermoctl.db.models.device import (
 )
 from thermoctl.db.models.lookup import ChannelKind, DeviceRole
 from thermoctl.db.models.zone import Zone
+from thermoctl.domain.modes import DomainError
 from thermoctl.domain.remote_control import set_setpoint
-from thermoctl.domain.zones import set_operating_mode
+from thermoctl.domain.zones import UnknownOperatingMode, set_operating_mode
 
 WRITE_KINDS = {"sensor_temperature", "zone_temperature", "zone_setpoint", "fixed"}
 READ_KINDS = {"zone_setpoint", "operating_mode"}
@@ -74,9 +75,15 @@ def configure_channel(
     kind = session.scalar(select(ChannelKind).where(ChannelKind.code == kind_code))
     if kind is None or kind_code not in (WRITE_KINDS if direction == "write" else READ_KINDS):
         raise ControllerChannelError("Diese Kanalart passt nicht zur Richtung.")
-    if kind_code in {"zone_temperature", "zone_setpoint", "operating_mode"} and session.get(Zone, zone_id) is None:
+    if kind_code in {"zone_temperature", "zone_setpoint", "operating_mode"} and (
+        # `zone_id is None` first: `session.get(Zone, None)` looks up a NULL primary
+        # key and SQLAlchemy warns about it -- correct result, noisy way to get there.
+        zone_id is None or session.get(Zone, zone_id) is None
+    ):
         raise ControllerChannelError("Für diese Kanalart ist eine Zone erforderlich.")
-    if kind_code == "sensor_temperature" and session.get(Device, source_device_id) is None:
+    if kind_code == "sensor_temperature" and (
+        source_device_id is None or session.get(Device, source_device_id) is None
+    ):
         raise ControllerChannelError("Für diese Kanalart ist ein Quellgerät erforderlich.")
     if kind_code == "fixed":
         value: object = fixed_number if property_model.value_type == "numeric" else fixed_text
@@ -114,5 +121,9 @@ def apply_read_channels(session: Session, device: Device, values: dict[str, obje
                 set_setpoint(session, zone, Decimal(str(raw)), now, source="system")
             elif kind.code == "operating_mode":
                 set_operating_mode(session, zone, str(raw), akteur_id=None, source="system")
-        except ValueError as exc:
+        except (ValueError, DomainError, UnknownOperatingMode) as exc:
+            # `DomainError` and `UnknownOperatingMode` derive from `Exception`, not from
+            # `ValueError` -- catching only the latter let a dial turned to 99 degrees
+            # escape all the way out of the message handler. One rejected value would
+            # then have aborted the whole payload, including the readings in it.
             log.warning("Wert aus Bediengeraetekanal abgewiesen", extra={"geraet": device.display_name, "merkmal": channel.property_name, "fehler": str(exc)})
