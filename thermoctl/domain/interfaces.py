@@ -72,24 +72,24 @@ def overview(
 
     # --- Zigbee2MQTT ---------------------------------------------------------
     if not settings.mqtt_enabled:
-        mqtt_state, mqtt_befund = (
+        mqtt_state, mqtt_finding = (
             "off",
             "Abgeschaltet. Ohne sie kommen keine Messwerte an und die Anlage regelt nichts.",
         )
     elif settings.mqtt_host is None:
-        mqtt_state, mqtt_befund = (
+        mqtt_state, mqtt_finding = (
             "missing",
             "Eingeschaltet, aber ohne Broker-Adresse — so kommt keine Verbindung zustande.",
         )
     elif bridge_reachable is True:
-        mqtt_state, mqtt_befund = ("running", "Die Brücke meldet sich.")
+        mqtt_state, mqtt_finding = ("running", "Die Brücke meldet sich.")
     elif bridge_reachable is False:
-        mqtt_state, mqtt_befund = (
+        mqtt_state, mqtt_finding = (
             "missing",
             "Verbunden, aber die Zigbee2MQTT-Brücke meldet sich nicht.",
         )
     else:
-        mqtt_state, mqtt_befund = (
+        mqtt_state, mqtt_finding = (
             "configured",
             "Eingerichtet; seit dem Start kam noch keine Zustandsmeldung der Brücke.",
         )
@@ -100,7 +100,7 @@ def overview(
             "Zigbee2MQTT",
             "Die Quelle aller Messwerte und der Weg zu den Ventilen.",
             mqtt_state,
-            mqtt_befund,
+            mqtt_finding,
             [
                 Detail("Eingeschaltet", "ja" if settings.mqtt_enabled else "nein",
                        source("mqtt_enabled", settings.mqtt_enabled),

@@ -109,9 +109,9 @@ def migrations_database_url() -> Iterator[str]:
         )
         server_werk = create_engine(server_url, pool_pre_ping=True, future=True)
         try:
-            with server_werk.connect() as verbindung:
-                verbindung.execute(text(f"CREATE DATABASE IF NOT EXISTS `{ziel_url.database}`"))
-                verbindung.commit()
+            with server_werk.connect() as db_connection:
+                db_connection.execute(text(f"CREATE DATABASE IF NOT EXISTS `{ziel_url.database}`"))
+                db_connection.commit()
         finally:
             server_werk.dispose()
 
@@ -127,9 +127,9 @@ def migrations_database_url() -> Iterator[str]:
     else:
         server_werk = create_engine(server_url, pool_pre_ping=True, future=True)
         try:
-            with server_werk.connect() as verbindung:
-                verbindung.execute(text(f"DROP DATABASE IF EXISTS `{ziel_url.database}`"))
-                verbindung.commit()
+            with server_werk.connect() as db_connection:
+                db_connection.execute(text(f"DROP DATABASE IF EXISTS `{ziel_url.database}`"))
+                db_connection.commit()
         finally:
             server_werk.dispose()
 
@@ -149,9 +149,9 @@ def engine(settings: Settings) -> Iterator[Engine]:
     # Unlike the permissions, this is fine to seed here: no test creates an
     # ActorSource by hand, so there is no UNIQUE collision like with `Permission`.
     with Session(werk) as http_session:
-        vorhandene = {q.code for q in http_session.query(ActorSource)}
+        existing = {q.code for q in http_session.query(ActorSource)}
         for code, label in ACTOR_SOURCES:
-            if code not in vorhandene:
+            if code not in existing:
                 http_session.add(ActorSource(code=code, label=label))
         http_session.commit()
     yield werk
@@ -180,17 +180,17 @@ def session(engine: Engine) -> Iterator[Session]:
     This way, all tests share one schema without affecting each other —
     under MariaDB, rebuilding it per test would otherwise be noticeably slow.
     """
-    verbindung = engine.connect()
-    transaktion = verbindung.begin()
+    db_connection = engine.connect()
+    transaktion = db_connection.begin()
     http_session = Session(
-        bind=verbindung, expire_on_commit=False, join_transaction_mode="create_savepoint"
+        bind=db_connection, expire_on_commit=False, join_transaction_mode="create_savepoint"
     )
     try:
         yield http_session
     finally:
         http_session.close()
         transaktion.rollback()
-        verbindung.close()
+        db_connection.close()
 
 
 @pytest.fixture(autouse=True)
@@ -217,9 +217,9 @@ def _permissions_for_setup_wizard(
     """
     if request.node.fspath.basename != "test_setup.py":
         return
-    vorhandene = {p.code for p in session.query(Permission)}
+    existing = {p.code for p in session.query(Permission)}
     for code, description, zone_scoped in PERMISSIONS:
-        if code not in vorhandene:
+        if code not in existing:
             session.add(Permission(code=code, description=description,
                                    is_zone_scoped=zone_scoped))
     session.flush()

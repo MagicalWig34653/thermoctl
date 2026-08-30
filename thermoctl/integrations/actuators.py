@@ -125,8 +125,8 @@ class Zigbee2MqttThermostat:
     def description(self) -> str:
         return f"Zigbee2MQTT-Thermostat {self._device_name}"
 
-    async def switching(self, ein: bool) -> SwitchResult:
-        if not ein:
+    async def switching(self, on: bool) -> SwitchResult:
+        if not on:
             payload = json.dumps({"system_mode": "off"})
         else:
             if not (

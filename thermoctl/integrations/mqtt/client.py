@@ -8,7 +8,7 @@ from collections.abc import Awaitable, Callable
 import aiomqtt
 
 from thermoctl.config import Settings
-from thermoctl.integrations.mqtt.zigbee2mqtt import abonnements
+from thermoctl.integrations.mqtt.zigbee2mqtt import subscriptions
 
 log = logging.getLogger(__name__)
 
@@ -92,7 +92,7 @@ class MqttClient:
                     )
 
                     for topic in [
-                        *abonnements(self._settings.mqtt_base_topic),
+                        *subscriptions(self._settings.mqtt_base_topic),
                         *self._zusatz_abonnements,
                     ]:
                         await client.subscribe(topic)

@@ -6,7 +6,7 @@ import pytest
 from thermoctl.integrations.mqtt.zigbee2mqtt import (
     MessageKind,
     TopicCut,
-    abonnements,
+    subscriptions,
     trim,
 )
 
@@ -27,7 +27,7 @@ def device_name_with_umlaut_and_space() -> str:
 
 
 def test_subscriptions_are_limited_to_read_only_topics(base: str) -> None:
-    assert abonnements(base) == [
+    assert subscriptions(base) == [
         f"{base}/bridge/devices",
         f"{base}/bridge/state",
         f"{base}/+",

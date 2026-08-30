@@ -58,8 +58,8 @@ def database_state(engine: Engine) -> str | None:
     try:
         if not inspect(engine).has_table("alembic_version"):
             return None
-        with engine.connect() as verbindung:
-            entry = verbindung.scalar(text("SELECT version_num FROM alembic_version"))
+        with engine.connect() as db_connection:
+            entry = db_connection.scalar(text("SELECT version_num FROM alembic_version"))
             return str(entry) if entry is not None else None
     except SQLAlchemyError:  # pragma: no cover - an unreachable database reports itself
         return None

@@ -78,7 +78,7 @@ def _remember_challenge(
 
 
 def _redeem_challenge(
-    session: Session, ceremony: str, clientdaten: dict[str, Any]
+    session: Session, ceremony: str, client_data: dict[str, Any]
 ) -> bytes:
     """Takes the challenge out of the response, checks it, and **deletes it in every case**.
 
@@ -86,7 +86,7 @@ def _redeem_challenge(
     only used to find the stored row — the signature check afterward compares it
     itself against what we issued.
     """
-    candidate = clientdaten.get("challenge")
+    candidate = client_data.get("challenge")
     if not isinstance(candidate, str):
         raise PasskeyError("Die Antwort enthaelt keine Challenge.")
 
@@ -128,7 +128,7 @@ def begin_registration(
     session: Session, settings: Settings, user: User
 ) -> dict[str, Any]:
     """The arguments for `navigator.credentials.create()`."""
-    vorhandene = session.scalars(
+    existing = session.scalars(
         select(UserPasskey).where(UserPasskey.user_id == user.id)
     ).all()
     challenge = _remember_challenge(session, REGISTRIERUNG, user.id)
@@ -146,7 +146,7 @@ def begin_registration(
         # one of which is never used and nobody knows which.
         exclude_credentials=[
             PublicKeyCredentialDescriptor(id=base64url_to_bytes(p.credential_id))
-            for p in vorhandene
+            for p in existing
         ],
         authenticator_selection=AuthenticatorSelectionCriteria(
             # `required`: the key must live in the authenticator itself. Only then can
@@ -170,8 +170,8 @@ def finish_registration(
     label: str,
 ) -> UserPasskey:
     """Verifies the authenticator's response and stores the passkey."""
-    clientdaten = _client_data(response)
-    challenge = _redeem_challenge(session, REGISTRIERUNG, clientdaten)
+    client_data = _client_data(response)
+    challenge = _redeem_challenge(session, REGISTRIERUNG, client_data)
 
     try:
         checked = verify_registration_response(
@@ -233,8 +233,8 @@ def verify_authentication(
     Every failure raises the same `PasskeyFehler`; the reason is recorded in the audit
     log.
     """
-    clientdaten = _client_data(response)
-    challenge = _redeem_challenge(session, LOGIN, clientdaten)
+    client_data = _client_data(response)
+    challenge = _redeem_challenge(session, LOGIN, client_data)
 
     identifier = response.get("id") or response.get("rawId")
     if not isinstance(identifier, str):
@@ -244,7 +244,7 @@ def verify_authentication(
         select(UserPasskey).where(UserPasskey.credential_id == identifier)
     )
     if passkey is None:
-        _protokoll(session, None, "Unbekannter Passkey")
+        _log(session, None, "Unbekannter Passkey")
         raise PasskeyError("Unbekannter Passkey.")
 
     try:
@@ -258,13 +258,13 @@ def verify_authentication(
             require_user_verification=True,
         )
     except Exception as exc:
-        _protokoll(session, passkey.user_id, f"Signatur nicht bestanden: {exc}")
+        _log(session, passkey.user_id, f"Signatur nicht bestanden: {exc}")
         raise PasskeyError("Signatur nicht bestanden.") from exc
 
     # The counter only becomes available here. An authenticator that does not track
     # it at all permanently reports 0 -- that is allowed and not a sign of cloning.
     if checked.new_sign_count and checked.new_sign_count <= passkey.sign_count:
-        _protokoll(
+        _log(
             session, passkey.user_id,
             f"Zaehler zurueckgefallen ({checked.new_sign_count} <= {passkey.sign_count})",
         )
@@ -274,7 +274,7 @@ def verify_authentication(
     # password path, so that behavior cannot reveal which accounts exist.
     user = session.get(User, passkey.user_id)
     if user is None or not user.is_active:
-        _protokoll(session, passkey.user_id, "Konto gesperrt oder geloescht")
+        _log(session, passkey.user_id, "Konto gesperrt oder geloescht")
         raise PasskeyError("Konto nicht nutzbar.")
 
     passkey.sign_count = checked.new_sign_count
@@ -319,7 +319,7 @@ def _client_data(response: dict[str, Any]) -> dict[str, Any]:
     return data
 
 
-def _protokoll(session: Session, user_id: int | None, reason: str) -> None:
+def _log(session: Session, user_id: int | None, reason: str) -> None:
     audit.record(
         session, source="web", action="login_failed", object_type="user",
         object_id=None if user_id is None else str(user_id),

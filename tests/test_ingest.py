@@ -398,10 +398,10 @@ def test_the_first_sighting_is_filled_in_for_a_hand_created_device(
     When the first message comes in, the timestamp should be filled in retroactively
     instead of staying empty. Otherwise the overview would permanently show 'never'.
     """
-    verbindung = integration(session, "zigbee2mqtt")
+    db_connection = integration(session, "zigbee2mqtt")
     session.add(
         Device(
-            integration_id=verbindung.id,
+            integration_id=db_connection.id,
             external_id="Von Hand angelegt",
             display_name="Von Hand angelegt",
             is_enabled=True,

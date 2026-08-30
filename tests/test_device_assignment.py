@@ -71,7 +71,7 @@ def test_a_swap_keeps_the_zone_configuration_and_takes_over_every_role(
         ]
     )
     old = create_device(session, "alt")
-    neues = create_device(session, "neu")
+    new_link = create_device(session, "neu")
     _assign(session, zone.id, old.id, "actuator")
     _assign(session, zone.id, old.id, "controller")
     session.flush()
@@ -103,7 +103,7 @@ def test_a_swap_keeps_the_zone_configuration_and_takes_over_every_role(
         zone.window_resume_delay_seconds,
     )
 
-    swap_device(session, zone, old, neues, actor_id=None)
+    swap_device(session, zone, old, new_link, actor_id=None)
 
     assert list(
         session.execute(
@@ -135,7 +135,7 @@ def test_a_swap_keeps_the_zone_configuration_and_takes_over_every_role(
     new_rolen = set(
         session.scalars(
             select(ZoneDevice.device_role_id).where(
-                ZoneDevice.zone_id == zone.id, ZoneDevice.device_id == neues.id
+                ZoneDevice.zone_id == zone.id, ZoneDevice.device_id == new_link.id
             )
         )
     )
@@ -151,7 +151,7 @@ def test_a_swap_leaves_the_measurement_history_with_the_old_device(session: Sess
     source(session)
     zone = create_zone(session, "bad")
     old = create_device(session, "sensor-alt")
-    neues = create_device(session, "sensor-neu")
+    new_link = create_device(session, "sensor-neu")
     zone.temperature_source_device_id = old.id
     capability = DeviceCapability(code="temperature", label="Temperatur")
     session.add(capability)
@@ -166,12 +166,12 @@ def test_a_swap_leaves_the_measurement_history_with_the_old_device(session: Sess
     session.add(measurement)
     session.flush()
 
-    swap_device(session, zone, old, neues, actor_id=None)
+    swap_device(session, zone, old, new_link, actor_id=None)
 
-    assert zone.temperature_source_device_id == neues.id
+    assert zone.temperature_source_device_id == new_link.id
     assert session.get(Measurement, measurement.id).device_id == old.id
     assert session.scalar(
-        select(Measurement).where(Measurement.device_id == neues.id)
+        select(Measurement).where(Measurement.device_id == new_link.id)
     ) is None
 
 
@@ -180,11 +180,11 @@ def test_a_swap_in_one_zone_leaves_a_second_zone_untouched(session: Session) -> 
     zone_a = create_zone(session, "a")
     zone_b = create_zone(session, "b")
     old = create_device(session, "alt-gemeinsam")
-    neues = create_device(session, "neu-a")
+    new_link = create_device(session, "neu-a")
     _assign(session, zone_a.id, old.id, "window_contact")
     _assign(session, zone_b.id, old.id, "window_contact")
 
-    swap_device(session, zone_a, old, neues, actor_id=None)
+    swap_device(session, zone_a, old, new_link, actor_id=None)
 
     assert session.scalar(
         select(ZoneDevice).where(
@@ -193,7 +193,7 @@ def test_a_swap_in_one_zone_leaves_a_second_zone_untouched(session: Session) -> 
     ) is not None
     assert session.scalar(
         select(ZoneDevice).where(
-            ZoneDevice.zone_id == zone_b.id, ZoneDevice.device_id == neues.id
+            ZoneDevice.zone_id == zone_b.id, ZoneDevice.device_id == new_link.id
         )
     ) is None
 
@@ -202,10 +202,10 @@ def test_tausch_schreibt_audit(session: Session) -> None:
     source(session)
     zone = create_zone(session, "audit-zone")
     old = create_device(session, "audit-alt")
-    neues = create_device(session, "audit-neu")
+    new_link = create_device(session, "audit-neu")
     _assign(session, zone.id, old.id, "actuator")
 
-    swap_device(session, zone, old, neues, actor_id=None)
+    swap_device(session, zone, old, new_link, actor_id=None)
 
     entry = session.scalar(
         select(AuditEvent).where(
@@ -258,7 +258,7 @@ def test_the_writing_routes_and_their_permissions(client_als, session: Session) 
     eigene = create_zone(session, "eigene")
     fremde = create_zone(session, "fremde")
     old = create_device(session, "weg")
-    neues = create_device(session, "hin")
+    new_link = create_device(session, "hin")
     client = client_als([("device.manage", eigene.id)])
     head = _csrf(client)
 
@@ -285,14 +285,14 @@ def test_the_writing_routes_and_their_permissions(client_als, session: Session) 
 
     swap = client.post(
         f"/zones/{eigene.id}/devices/swap",
-        data={"old_device_id": old.id, "new_device_id": neues.id},
+        data={"old_device_id": old.id, "new_device_id": new_link.id},
         headers=head,
         follow_redirects=False,
     )
     assert swap.status_code == 303
     new_assignment = session.scalar(
         select(ZoneDevice).where(
-            ZoneDevice.zone_id == eigene.id, ZoneDevice.device_id == neues.id
+            ZoneDevice.zone_id == eigene.id, ZoneDevice.device_id == new_link.id
         )
     )
     assert new_assignment is not None
@@ -311,7 +311,7 @@ def test_the_writing_routes_and_their_permissions(client_als, session: Session) 
     assert client.get(f"/zones/{fremde.id}/devices").status_code == 404
     assert client.post(
         f"/zones/{fremde.id}/devices/source",
-        data={"device_id": neues.id},
+        data={"device_id": new_link.id},
         headers=head,
     ).status_code == 404
 

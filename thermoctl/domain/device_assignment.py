@@ -185,13 +185,13 @@ def swap_device(
     session: Session,
     zone: Zone,
     old: Device,
-    neues: Device,
+    new_link: Device,
     *,
     actor_id: int | None,
     source: str = "web",
 ) -> None:
     """Replaces a device only in its assignments to this zone."""
-    if old.id == neues.id:
+    if old.id == new_link.id:
         raise ValueError("Altes und neues Gerät müssen verschieden sein.")
 
     old_assignments = list(
@@ -210,16 +210,16 @@ def swap_device(
     # and never even see which roles come along with them. Check first, then write,
     # otherwise the swap would be left half-done after a rejection.
     if war_temperature_source:
-        check_capability(session, neues, TEMPERATURE_SOURCE)
+        check_capability(session, new_link, TEMPERATURE_SOURCE)
     for assignment in old_assignments:
         role = session.get(DeviceRole, assignment.device_role_id)
         if role is not None:
-            check_capability(session, neues, role.code)
+            check_capability(session, new_link, role.code)
 
     existing_roles = set(
         session.scalars(
             select(ZoneDevice.device_role_id).where(
-                ZoneDevice.zone_id == zone.id, ZoneDevice.device_id == neues.id
+                ZoneDevice.zone_id == zone.id, ZoneDevice.device_id == new_link.id
             )
         )
     )
@@ -228,14 +228,14 @@ def swap_device(
             session.add(
                 ZoneDevice(
                     zone_id=zone.id,
-                    device_id=neues.id,
+                    device_id=new_link.id,
                     device_role_id=assignment.device_role_id,
                     sort_order=assignment.sort_order,
                 )
             )
         session.delete(assignment)
     if war_temperature_source:
-        zone.temperature_source_device_id = neues.id
+        zone.temperature_source_device_id = new_link.id
 
     audit.record(
         session,
@@ -245,9 +245,9 @@ def swap_device(
         object_id=str(zone.id),
         summary=(
             f"Gerät '{old.display_name}' in '{zone.display_name}' durch "
-            f"'{neues.display_name}' ersetzt"
+            f"'{new_link.display_name}' ersetzt"
         ),
         user_id=actor_id,
-        detail=f"altes_geraet_id={old.id}; neues_geraet_id={neues.id}",
+        detail=f"altes_geraet_id={old.id}; neues_geraet_id={new_link.id}",
     )
     session.flush()

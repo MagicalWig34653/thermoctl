@@ -96,6 +96,13 @@ gingen getrennt — `var(--warmth)` stand in der Vorlage, `--waerme` im Styleshe
 Zeitplan-Balken verloren dadurch ihre Waermefarbe und wurden grau. Kein Test hat das
 gesehen; die Seite antwortete mit 200 und sah nur anders aus.
 
+**Der Rest, gefunden mit umgekehrter Suche.** Statt nach deutschen Woertern zu suchen,
+wurde jeder Bezeichner gegen ein Woerterbuch gehalten und alles Unbekannte angesehen. Das
+foerderte noch 23 Bezeichner zutage (`einordnung`, `abonnements`, `clientdaten`, `typ`,
+`roh`, `vorhanden`, …) und vier Makro-Parameter in den Vorlagen (`pflicht`, `typ`,
+`leer_erlaubt`, `an`). Damit ist der Vorrat leer: Was die Suche jetzt noch meldet, sind
+englische Woerter, die im Woerterbuch fehlen.
+
 Von 18 verglichenen Seiten sind 15 pixelgleich zur Fassung davor; zwei aendern sich schon
 zwischen zwei Aufnahmen desselben Standes (sie nennen Zeitspannen), und die dritte
 unterscheidet sich genau in dem umbenannten Variablennamen.

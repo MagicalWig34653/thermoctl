@@ -246,9 +246,9 @@ async def device_swap_view(
     form = await request.form()
     try:
         old = _device(session, form.get("old_device_id"), "old_device_id")
-        neues = _device(session, form.get("new_device_id"), "new_device_id")
+        new_link = _device(session, form.get("new_device_id"), "new_device_id")
         swap_device(
-            session, zone, old, neues, actor_id=principal.user_id
+            session, zone, old, new_link, actor_id=principal.user_id
         )
     except (HTTPException, ValueError, CapabilityMissing) as exc:
         notice = exc.detail if isinstance(exc, HTTPException) else str(exc)

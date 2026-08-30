@@ -300,7 +300,7 @@ def read_control_parameters(session: Session, plaintext: str, zone_id: int) -> d
             {
                 "name": description.name,
                 "label": description.label,
-                "unit": description.einheit,
+                "unit": description.unit,
                 "value": str(getattr(effective, description.name)),
                 "own_value": getattr(zone, description.name) is not None,
                 "minimum": str(description.minimum),

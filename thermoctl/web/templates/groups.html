@@ -123,7 +123,7 @@ der ganze Stand; die Domäne bildet die Differenz.
     <article class="tc-panel p-4">
         <h2 class="mb-3">Gruppe anlegen</h2>
         <form method="post" action="/groups">
-            {{ text_field("name", "Name", values.get("name", ""), pflicht=true,
+            {{ text_field("name", "Name", values.get("name", ""), required=true,
                         errors=errors.get("name", "")) }}
             {{ text_field("description", "Beschreibung", values.get("description", ""),
                         help_text="Wofür ist diese Gruppe gedacht?") }}
