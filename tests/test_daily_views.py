@@ -101,8 +101,8 @@ def test_an_override_from_the_interface_uses_the_same_data_model_as_rest(
     assert response.status_code == 303
     entry = session.scalar(select(ZoneOverride).where(ZoneOverride.zone_id == zone.id))
     assert entry is not None
-    # REST gibt genau diese persistierte ZoneOverride-Zeile zurück; die Webansicht
-    # ruft dieselbe Domänenfunktion auf und erzeugt keinen zweiten UI-Datentyp.
+    # REST returns exactly this persisted ZoneOverride row; the web view calls
+    # the same domain function and does not create a second UI data type.
     assert (entry.temperature_c, entry.ends_at, entry.cancelled_at) == (
         Decimal("21.5"),
         None,
@@ -121,14 +121,14 @@ def test_showing_and_cancelling_an_override(session: Session, client_als) -> Non
         headers=_csrf(client),
     )
     page = client.get("/")
-    # Komma, nicht Punkt: Die Oberflaeche ist deutsch, und "22.0 °C" liest sich hier
-    # wie ein Tippfehler. Eingabefelder behalten den Punkt -- ein <input type="number">
-    # verwirft einen Wert mit Komma still.
+    # Comma, not a period: the interface is German, and "22.0 °C" reads here
+    # like a typo. Input fields keep the period -- an <input type="number">
+    # silently discards a value with a comma.
     assert "Übersteuerung auf 22,0 °C" in page.text
-    # Frueher stand hier zusaetzlich der feste Satz "manuell gewaehlte feste Temperatur".
-    # Die Begruendung kommt jetzt aus der Domaene selbst -- derselbe Text, den auch das
-    # Schattenprotokoll und die REST-Antwort tragen, statt einer zweiten Formulierung
-    # allein fuer diese Seite.
+    # This used to also carry the fixed phrase "manually chosen fixed temperature".
+    # The reasoning now comes from the domain itself -- the same text that the
+    # shadow log and the REST response also carry, instead of a second wording
+    # just for this page.
     assert "Uebersteuerung (feste Temperatur)" in page.text
 
     response = client.post(
@@ -190,15 +190,15 @@ def test_the_overview_explains_a_missing_reading_and_shows_the_decision(
     assert "None" not in response.text
     assert ">0 °C" not in response.text
     assert "Kein verwertbarer Messwert" in response.text
-    # Die Betriebsart steht nur da, wenn sie vom Regelfall abweicht: "Automatik" unter
-    # jeder Zone waere Rauschen, "Aus" dagegen der Grund, warum es dort kalt bleibt.
-    # Siehe test_betriebsart_steht_nur_da_wenn_sie_abweicht.
+    # The operating mode is only shown when it deviates from the default: "Auto"
+    # under every zone would be noise, "Off" on the other hand is the reason why
+    # it stays cold there. See test_betriebsart_steht_nur_da_wenn_sie_abweicht.
     assert "Betriebsart" not in response.text
 
 
 def test_an_override_until_the_next_switch(session: Session, client_als) -> None:
-    """Das Ende wird beim Anlegen ausgerechnet und abgelegt, nicht als Regel gemerkt —
-    eine spaetere Zeitplanaenderung verschiebt eine laufende Uebersteuerung nicht."""
+    """The end is computed and stored when creating it, not remembered as a rule —
+    a later schedule change does not shift an override already in progress."""
     from tests.helpers import create_mode
     from thermoctl.db.models.schedule import SchedulePoint
 
@@ -233,8 +233,8 @@ def test_an_override_for_a_duration(session: Session, client_als) -> None:
 
 
 def test_an_override_without_a_schedule_lasts_indefinitely(session: Session, client_als) -> None:
-    """Ohne Schaltpunkt gibt es keine naechste Schaltung — dann gilt sie, bis jemand sie
-    aufhebt. Stillschweigend gar nichts zu tun waere die schlechtere Antwort."""
+    """Without a schedule point there is no next switch — then it holds until
+    someone cancels it. Silently doing nothing at all would be the worse answer."""
     zone = _grundlage(session)
     client = client_als([("override.create", None), ("zone.read", None)])
     client.post(
@@ -247,15 +247,15 @@ def test_an_override_without_a_schedule_lasts_indefinitely(session: Session, cli
 
 
 def test_nonsensical_overrides_are_refused(session: Session, client_als) -> None:
-    """Eine Heizung, die eine unsinnige Eingabe zurechtbiegt, ist schlimmer als eine, die
-    widerspricht."""
+    """A heating system that bends a nonsensical input into shape is worse than one
+    that refuses it."""
     zone = _grundlage(session)
     client = client_als([("override.create", None), ("zone.read", None)])
     for daten in (
         {"temperature_c": "warm", "end": "dauerhaft"},
-        # Die Untergrenze liegt bei -20 Grad: Ein Sollwert im Minusbereich heisst
-        # "hier wird nicht geheizt". Darunter liegt kein Wunsch mehr, sondern ein
-        # Tippfehler.
+        # The lower bound is -20 degrees: a setpoint in the negative range means
+        # "no heating here". Below that there is no longer a real intent, only a
+        # typo.
         {"temperature_c": "-30", "end": "dauerhaft"},
         {"temperature_c": "50", "end": "dauerhaft"},
         {"temperature_c": "20", "end": "dauer", "duration_minutes": "0"},
@@ -285,8 +285,9 @@ def test_nonsensical_control_parameters_stay_in_the_form(session: Session, clien
 def test_an_override_with_two_decimal_places_is_refused(
     session: Session, client_als
 ) -> None:
-    """Die Oberflaeche prueft nicht mehr selbst — sie faengt nur noch ab, was die Domaene
-    sagt. Vorher liess sie zwei Nachkommastellen durch, die REST-Schnittstelle nicht."""
+    """The interface no longer validates on its own — it only catches what the
+    domain says. It used to let two decimal places through, the REST interface
+    did not."""
     zone = _grundlage(session)
     client = client_als([("override.create", None), ("zone.read", None)])
     response = client.post(
@@ -300,8 +301,8 @@ def test_an_override_with_two_decimal_places_is_refused(
 
 
 def test_the_operating_mode_is_shown_only_when_it_deviates(session: Session, client_als) -> None:
-    """Gegenprobe zur Zeile oben. Eine Zone auf "Aus" sieht sonst aus wie jede andere --
-    und genau sie ist der Grund, warum ein Raum kalt bleibt."""
+    """Counter-check to the line above. A zone set to "Off" would otherwise look like
+    every other zone -- and it is precisely the reason a room stays cold."""
     from thermoctl.db.models.lookup import OperatingMode
 
     zone = _grundlage(session)
@@ -315,11 +316,11 @@ def test_the_operating_mode_is_shown_only_when_it_deviates(session: Session, cli
     assert "Betriebsart: Aus" in response.text
 
 
-# --- Thermostat auf der Startseite -----------------------------------------
+# --- Thermostat on the home page --------------------------------------------
 
 
 def _zone_with_mode(session: Session, temperature: str = "21.0"):
-    """Eine Zone, deren geltender Sollwert aus einem Zeitplanmodus kommt."""
+    """A zone whose effective setpoint comes from a schedule mode."""
     from tests.helpers import create_mode
     from thermoctl.db.models.schedule import SchedulePoint
     from thermoctl.db.models.zone import ZoneSetpoint
@@ -343,8 +344,8 @@ def _zone_with_mode(session: Session, temperature: str = "21.0"):
 def test_the_thermostat_raises_the_setpoint_of_the_current_mode(
     session: Session, client_als
 ) -> None:
-    """Nicht eine Uebersteuerung: Der Klick aendert den hinterlegten Sollwert des Modus
-    dauerhaft. Deshalb steht auf der Seite auch daneben, welcher Modus gemeint ist."""
+    """Not an override: the click permanently changes the stored setpoint of the
+    mode. That is why the page also shows, right next to it, which mode is meant."""
     from thermoctl.db.models.zone import ZoneSetpoint
 
     zone, mode = _zone_with_mode(session)
@@ -366,8 +367,8 @@ def test_the_thermostat_raises_the_setpoint_of_the_current_mode(
 
 
 def test_two_clicks_are_two_steps(session: Session, client_als) -> None:
-    """Die Stufe wird auf den aktuellen Wert gerechnet, nicht auf den, den die Seite
-    beim Rendern kannte -- sonst waere der zweite Klick wirkungslos."""
+    """The step is computed against the current value, not against the one the
+    page knew at render time -- otherwise the second click would have no effect."""
     from thermoctl.db.models.zone import ZoneSetpoint
 
     zone, mode = _zone_with_mode(session)
@@ -385,8 +386,8 @@ def test_two_clicks_are_two_steps(session: Session, client_als) -> None:
 
 
 def test_the_thermostat_stops_at_the_limit(session: Session, client_als) -> None:
-    """35 Grad ist das Ende des Weges, kein Fehlerzustand -- die Domaenengrenze gilt,
-    und die Seite zeigt danach den unveraenderten Wert mit einem Hinweis."""
+    """35 degrees is the end of the road, not an error state -- the domain limit
+    applies, and the page then shows the unchanged value with a hint."""
     from thermoctl.db.models.zone import ZoneSetpoint
 
     zone, mode = _zone_with_mode(session, "35.0")
@@ -419,8 +420,8 @@ def test_thermostat_braucht_setpoint_write(session: Session, client_als) -> None
 def test_without_setpoint_write_no_thermostat_is_on_the_page(
     session: Session, client_als
 ) -> None:
-    """Gegenprobe zur Anzeige: Wer nicht verstellen darf, sieht den Sollwert, aber keine
-    Stufentasten."""
+    """Counter-check to the display: whoever may not adjust it sees the setpoint,
+    but no step buttons."""
     zone, _mode = _zone_with_mode(session)
     read_only = client_als([("zone.read", zone.id)]).get("/")
     assert "tc-stufe" not in read_only.text
@@ -432,10 +433,10 @@ def test_without_setpoint_write_no_thermostat_is_on_the_page(
 def test_the_thermostat_works_even_without_a_stored_setpoint(
     session: Session, client_als
 ) -> None:
-    """Der Zustand einer frisch eingerichteten Anlage: keine Sollwerte gepflegt, kein
-    Zeitplan. Die Seite zeigt dann den Frostschutz-Notnagel von 16 Grad -- und das
-    Thermostat suchte eine Zeile, die es nicht gibt, und antwortete mit 404. Auf der
-    Seite sah es aus, als passiere beim Druecken nichts.
+    """The state of a freshly set-up plant: no setpoints maintained, no schedule.
+    The page then shows the frost-protection fallback of 16 degrees -- and the
+    thermostat used to look for a row that does not exist, and answered with a
+    404. On the page it looked as if nothing happened when pressing it.
     """
     from sqlalchemy import select
 
@@ -470,9 +471,9 @@ def test_the_thermostat_works_even_without_a_stored_setpoint(
 def test_the_thermostat_for_a_foreign_mode_stays_a_404(
     session: Session, client_als
 ) -> None:
-    """Gegenprobe: Der Notnagel gilt nur fuer den Modus, den die Seite gerade anzeigt.
-    Ein beliebiger anderer bekommt weiter eine klare Absage statt eines aus dem Nichts
-    erfundenen Sollwerts."""
+    """Counter-check: the fallback only applies to the mode the page is currently
+    showing. Any other one still gets a clear refusal instead of a setpoint
+    conjured out of nowhere."""
     from tests.helpers import create_mode
 
     zone = _grundlage(session)
@@ -487,11 +488,11 @@ def test_the_thermostat_for_a_foreign_mode_stays_a_404(
 
 
 def test_overriding_into_the_negative_range(session: Session, client_als) -> None:
-    """"Untersteuern" heisst: ein Sollwert unter null.
+    """"Under-steering" means: a setpoint below zero.
 
-    Mit 1 Grad heizt die Anlage immer noch, sobald es kaelter wird. Wer eine Garage oder
-    einen Schuppen nur ueberwachen und nicht temperieren will, braucht einen Wert, den
-    die Raumtemperatur nie unterschreitet.
+    At 1 degree the system still heats as soon as it gets colder. Anyone who
+    only wants to monitor a garage or shed and not temper it needs a value that
+    the room temperature never falls below.
     """
     from sqlalchemy import select
 
@@ -513,14 +514,15 @@ def test_overriding_into_the_negative_range(session: Session, client_als) -> Non
 
 
 def test_the_thermostat_goes_below_zero(session: Session, client_als) -> None:
-    """Gegenprobe von der anderen Seite: Auch die Stufentasten duerfen unter null."""
+    """Counter-check from the other side: the step buttons are also allowed to go
+    below zero."""
     from sqlalchemy import select
 
     from thermoctl.db.models.zone import ZoneSetpoint
 
-    # Der Ausgangswert wird direkt gesetzt, nicht ueber `sollwerte_aendern`: Das schriebe
-    # einen Audit-Eintrag, und dessen Fremdschluessel auf den Benutzer haelt unter
-    # MariaDB wirklich -- unter SQLite fiel eine erfundene Kennung nicht auf.
+    # The starting value is set directly, not via `sollwerte_aendern`: that would
+    # write an audit entry, and its foreign key to the user is actually enforced
+    # under MariaDB -- under SQLite a made-up id would not have been noticed.
     zone, mode = _zone_with_mode(session, "0.0")
     client = client_als([("zone.read", zone.id), ("setpoint.write", zone.id)])
     client.post(

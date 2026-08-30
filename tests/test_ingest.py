@@ -317,10 +317,10 @@ def test_a_missing_or_stale_window_contact_stays_unknown(
 
 
 def test_a_broken_availability_message_has_no_effect(session: Session) -> None:
-    """Der dritte Nachrichtenweg braucht dieselbe Absicherung wie die beiden anderen.
+    """The third message path needs the same protection as the other two.
 
-    Zigbee2MQTT schickt beim Neustart der Bruecke schon einmal eine leere Nutzlast auf
-    `.../availability`. Ein Ausnahmefehler dort haelt den Ingest aller anderen Geraete an.
+    Zigbee2MQTT is known to send an empty payload to `.../availability` when the
+    bridge restarts. An exception there would halt ingest for every other device.
     """
     for payload in (b"", b"{kaputt", b"\xff\xfe", b'"nur ein Text"', b"{}"):
         process_message(
@@ -333,16 +333,16 @@ def test_a_broken_availability_message_has_no_effect(session: Session) -> None:
     session.flush()
     zustaende = list(session.scalars(select(DeviceHealth)))
     assert all(z.availability is None for z in zustaende), (
-        "Eine unverwertbare Erreichbarkeitsnachricht darf keinen Zustand setzen."
+        "An unusable availability message must not set a state."
     )
 
 
 def test_the_first_sighting_survives_a_second_device_list(session: Session) -> None:
-    """`first_seen_at` ist die erste Sichtung, nicht die letzte.
+    """`first_seen_at` is the first sighting, not the last.
 
-    Zigbee2MQTT sendet die Geraeteliste bei jeder Verbindung erneut. Wuerde sie den Wert
-    ueberschreiben, waere er nach jedem Neustart der Bruecke von heute — und die Frage
-    'seit wann kennen wir dieses Geraet?' unbeantwortbar.
+    Zigbee2MQTT resends the device list on every connection. If it overwrote the
+    value, it would say today after every bridge restart -- making the question
+    'since when have we known this device?' unanswerable.
     """
     items = json.dumps(
         [
@@ -372,8 +372,8 @@ def test_the_first_sighting_survives_a_second_device_list(session: Session) -> N
 def test_message_kinds_that_are_not_processed_have_no_consequences(
     session: Session, caplog: pytest.LogCaptureFixture
 ) -> None:
-    """Bruecken- und Fremdnachrichten werden protokolliert, nicht verworfen und nicht
-    verarbeitet — protokolliert, damit ein unerwartetes Topic beim Debuggen auffaellt."""
+    """Bridge and foreign messages are logged, not silently dropped and not
+    processed -- logged so an unexpected topic stands out while debugging."""
     vorher = len(list(session.scalars(select(Device))))
     with caplog.at_level(logging.INFO):
         process_message(
@@ -392,10 +392,11 @@ def test_message_kinds_that_are_not_processed_have_no_consequences(
 def test_the_first_sighting_is_filled_in_for_a_hand_created_device(
     session: Session,
 ) -> None:
-    """Ab Teilprojekt 3 legt auch die Oberflaeche Geraete an — dort ohne Sichtung.
+    """Starting with subproject 3, the interface also creates devices -- without a
+    sighting there.
 
-    Laeuft die erste Nachricht ein, soll der Zeitpunkt nachgetragen werden, statt leer zu
-    bleiben. Sonst steht in der Uebersicht dauerhaft 'noch nie'.
+    When the first message comes in, the timestamp should be filled in retroactively
+    instead of staying empty. Otherwise the overview would permanently show 'never'.
     """
     verbindung = integration(session, "zigbee2mqtt")
     session.add(

@@ -221,11 +221,11 @@ def test_deleting_a_zone_removes_the_cascades_and_writes_an_audit_entry(
 def test_invalid_input_returns_to_the_form(
     client_als, session: Session
 ) -> None:
-    """Jede Verzweigung der Eingabepruefung einzeln — beim Anlegen und beim Aendern.
+    """Every branch of the input validation individually -- on create and on update.
 
-    Der Bericht des Umsetzenden zaehlt nicht, solange niemand es nachvollzogen hat: Die
-    ganze Pruefung war bis hierher unbelegt, und genau diese Art Luecke hat in diesem
-    Projekt schon zweimal grundlegende Fehler durchgelassen.
+    The implementer's report does not count as long as nobody has verified it: the
+    entire check was unproven until now, and this exact kind of gap has already let
+    basic bugs through twice in this project.
     """
     source(session, "web")
     kind = operating_mode(session, "auto")
@@ -262,7 +262,7 @@ def test_invalid_input_returns_to_the_form(
 def test_renaming_to_a_taken_name_stays_in_the_form(
     client_als, session: Session
 ) -> None:
-    """Beim Anlegen war der Fall belegt, beim Aendern nicht — es ist derselbe Konflikt."""
+    """On create, this case was covered; on update, it was not -- it is the same conflict."""
     source(session, "web")
     kind = operating_mode(session, "auto")
     create_zone(session, "schon-da")
@@ -281,13 +281,13 @@ def test_renaming_to_a_taken_name_stays_in_the_form(
     assert andere.name == "wird-umbenannt"
 
 
-# --- Betriebsart aus der Ferne ---------------------------------------------
+# --- Remote operating mode --------------------------------------------------
 
 
 def test_setting_the_operating_mode_writes_and_logs(session: Session) -> None:
-    """Eigene Funktion neben `zone_aendern`: Ein Befehl von aussen kennt nur die
-    Betriebsart und wuerde mit `zone_aendern` alles andere mit dem ueberschreiben, was
-    der Aufrufer gerade zufaellig zur Hand hat."""
+    """A dedicated function next to `zone_aendern`: a command from outside knows only
+    the operating mode, and using `zone_aendern` would overwrite everything else
+    with whatever the caller happens to have on hand."""
     from sqlalchemy import select
 
     from tests.helpers import source
@@ -310,8 +310,8 @@ def test_setting_the_operating_mode_writes_and_logs(session: Session) -> None:
 
 
 def test_the_same_operating_mode_writes_no_entry(session: Session) -> None:
-    """Home Assistant schickt seinen Zustand gern noch einmal. Ein Protokoll, das jede
-    Wiederholung als Aenderung fuehrt, ist nach einer Woche unlesbar."""
+    """Home Assistant likes to resend its state. A log that records every repetition
+    as a change would be unreadable after a week."""
     from sqlalchemy import select
 
     from tests.helpers import source

@@ -1,8 +1,9 @@
-"""Die beiden WebAuthn-Zeremonien, mit einem echten Software-Authenticator.
+"""The two WebAuthn ceremonies, with a real software authenticator.
 
-`soft-webauthn` erzeugt richtige Signaturen. Das ist der Unterschied zwischen einem Test,
-der belegt, dass ein Passkey funktioniert, und einem, der nur belegt, dass alles abgelehnt
-wird — Letzteres waere auch dann gruen, wenn die Anmeldung gar nicht gebaut waere.
+`soft-webauthn` produces genuine signatures. That is the difference between a
+test that proves a passkey works, and one that only proves everything gets
+rejected — the latter would also stay green even if login had never been built
+at all.
 """
 
 
@@ -56,7 +57,7 @@ def _register(
 def test_a_registered_passkey_really_logs_in(
     session: Session, passkey_settings: Settings
 ) -> None:
-    """Der Gegenbeweis: Ohne ihn belegte die Suite nur, dass alles abgelehnt wird."""
+    """The counter-proof: without it, the suite only proved that everything gets rejected."""
     nutzer = create_user(session, "passkey-nutzer")
     device = WebAuthnDevice()
     entry = _register(session, passkey_settings, nutzer, device)
@@ -71,7 +72,7 @@ def test_a_registered_passkey_really_logs_in(
 def test_a_challenge_is_consumed_even_on_failure(
     session: Session, passkey_settings: Settings
 ) -> None:
-    """Eine wiederverwendbare Challenge hebt den Schutz auf, den sie geben soll."""
+    """A reusable challenge cancels out the protection it is supposed to provide."""
     nutzer = create_user(session, "einmal-nutzer")
     device = WebAuthnDevice()
     _register(session, passkey_settings, nutzer, device)
@@ -80,7 +81,7 @@ def test_a_challenge_is_consumed_even_on_failure(
     response = device.log_in(argumente, ORIGIN)
 
     assert verify_authentication(session, passkey_settings, response).id == nutzer.id
-    # Genau dieselbe Antwort ein zweites Mal — die Challenge ist verbraucht.
+    # The exact same response a second time — the challenge is spent.
     with pytest.raises(PasskeyError):
         verify_authentication(session, passkey_settings, response)
 
@@ -88,13 +89,13 @@ def test_a_challenge_is_consumed_even_on_failure(
 def test_a_login_challenge_is_no_good_for_a_registration(
     session: Session, passkey_settings: Settings
 ) -> None:
-    """Ohne die Bindung an die Zeremonie liesse sich eine Challenge zweckentfremden."""
+    """Without binding it to the ceremony, a challenge could be repurposed for the wrong use."""
     nutzer = create_user(session, "zweck-nutzer")
     device = WebAuthnDevice()
     argumente = begin_authentication(session, passkey_settings)
 
-    # Der Authenticator legt einen neuen Schluessel an, aber mit der Challenge der
-    # Anmeldung — die Registrierung muss das erkennen.
+    # The authenticator creates a new key, but with the login's challenge — the
+    # registration must detect this.
     registrierungsargumente = begin_registration(session, passkey_settings, nutzer)
     registrierungsargumente["challenge"] = argumente["challenge"]
     response = device.register(registrierungsargumente, ORIGIN)
@@ -116,7 +117,7 @@ def test_an_expired_challenge_is_refused(
 
     argumente = begin_authentication(session, passkey_settings)
     response = device.log_in(argumente, ORIGIN)
-    # Die Zeile altern lassen, statt zu warten.
+    # Age the row instead of waiting.
     entry = session.scalars(select(PasskeyChallenge)).one()
     entry.created_at = entry.created_at - timedelta(minutes=5)
     session.flush()
@@ -128,14 +129,14 @@ def test_an_expired_challenge_is_refused(
 def test_a_counter_that_went_backwards_ends_the_login(
     session: Session, passkey_settings: Settings
 ) -> None:
-    """Der einzige Hinweis auf einen geklonten Authenticator, den das Verfahren kennt."""
+    """The only sign of a cloned authenticator that the procedure knows about."""
     nutzer = create_user(session, "klon-nutzer")
     device = WebAuthnDevice()
     entry = _register(session, passkey_settings, nutzer, device)
 
     argumente = begin_authentication(session, passkey_settings)
     response = device.log_in(argumente, ORIGIN)
-    # Der Dienst hat schon einen hoeheren Stand gesehen, als das Geraet jetzt meldet.
+    # The service has already seen a higher count than the device is reporting now.
     entry.sign_count = 9999
     session.flush()
 
@@ -146,8 +147,8 @@ def test_a_counter_that_went_backwards_ends_the_login(
 def test_a_disabled_account_is_checked_only_after_the_signature(
     session: Session, passkey_settings: Settings
 ) -> None:
-    """Dieselbe Reihenfolge wie im Passwortweg — sonst liesse sich am Verhalten ablesen,
-    welche Konten es gibt."""
+    """The same order as in the password path — otherwise the behavior would
+    reveal which accounts exist."""
     nutzer = create_user(session, "gesperrt-nutzer")
     device = WebAuthnDevice()
     _register(session, passkey_settings, nutzer, device)
@@ -168,13 +169,13 @@ def test_a_disabled_account_is_checked_only_after_the_signature(
 def test_a_foreign_origin_is_refused(
     session: Session, passkey_settings: Settings
 ) -> None:
-    """Der Schutz gegen nachgemachte Seiten. Faellt er weg, ist ein Passkey ein Passwort."""
+    """The protection against imitation sites. Without it, a passkey is just a password."""
     nutzer = create_user(session, "origin-nutzer")
     device = WebAuthnDevice()
     _register(session, passkey_settings, nutzer, device)
 
     argumente = begin_authentication(session, passkey_settings)
-    # Der Authenticator antwortet einer anderen Seite.
+    # The authenticator responds to a different site.
     response = device.log_in(argumente, "https://boese.example")
     with pytest.raises(PasskeyError):
         verify_authentication(session, passkey_settings, response)
@@ -226,7 +227,7 @@ def test_old_challenges_are_cleaned_up(
 
 
 def test_without_a_relying_party_id_the_routes_do_not_exist(client: TestClient) -> None:
-    """Passkeys sind entweder eingerichtet oder gar nicht da — nicht halb."""
+    """Passkeys are either set up or not there at all — never halfway."""
     get_settings.cache_clear()
     assert client.post("/passkey/authentication/options").status_code == 404
     assert client.post("/passkey/authentication/verify", json={}).status_code == 404
@@ -234,7 +235,7 @@ def test_without_a_relying_party_id_the_routes_do_not_exist(client: TestClient) 
 
 @pytest.fixture
 def mit_passkeys(monkeypatch: pytest.MonkeyPatch, passkey_settings) -> None:  # type: ignore[no-untyped-def]
-    """Schaltet Passkeys fuer die HTTP-Tests ein."""
+    """Enables passkeys for the HTTP tests."""
     monkeypatch.setenv("THERMOCTL_PASSKEY_RP_ID", RP_ID)
     monkeypatch.setenv("THERMOCTL_PASSKEY_ORIGIN", ORIGIN)
     get_settings.cache_clear()
@@ -253,22 +254,22 @@ def _csrf(client: TestClient) -> dict[str, str]:
 def test_authentication_options_are_served_without_being_logged_in(
     client: TestClient, mit_passkeys: None
 ) -> None:
-    """Die Argumente muss jeder holen koennen — sonst gaebe es keinen Weg herein."""
+    """Everyone must be able to fetch the arguments — otherwise there would be no
+    way in."""
     response = client.post("/passkey/authentication/options")
     assert response.status_code == 200
     argumente = response.json()
     assert argumente["rpId"] == RP_ID
     assert argumente["challenge"]
-    # Ohne `allowCredentials`: Eine Liste verriete, ob es ein Konto gibt und wie viele
-    # Passkeys es hat.
+    # Without `allowCredentials`: a list would reveal whether an account exists
+    # and how many passkeys it has.
     assert not argumente.get("allowCredentials")
 
 
 def test_a_nonsensical_login_is_refused_uniformly(
     client: TestClient, mit_passkeys: None
 ) -> None:
-    """Gleiche Antwort fuer jeden Fehlschlag — sonst liesse sich daran ablesen, welche
-    Konten es gibt."""
+    """Same response for every failure — otherwise it would reveal which accounts exist."""
     for payload in ({}, {"id": "gibtesnicht"}, {"response": {}}):
         response = client.post("/passkey/authentication/verify", json=payload)
         assert response.status_code == 401, payload
@@ -278,7 +279,7 @@ def test_a_nonsensical_login_is_refused_uniformly(
 def test_logging_in_through_the_http_route(
     client: TestClient, session: Session, mit_passkeys: None
 ) -> None:
-    """Der ganze Weg, wie ihn der Browser geht — bis zum gesetzten Sitzungscookie."""
+    """The whole path the way the browser takes it — up to the session cookie being set."""
     from thermoctl.auth.sessions import COOKIE_NAME
 
     nutzer = create_user(session, "http-nutzer")
@@ -293,7 +294,7 @@ def test_logging_in_through_the_http_route(
     assert response.status_code == 200
     assert response.json() == {"status": "angemeldet", "weiter": "/"}
     assert client.cookies.get(COOKIE_NAME)
-    # Und die Sitzung traegt wirklich: eine geschuetzte Seite antwortet jetzt.
+    # And the session really carries: a protected page now responds.
     assert client.get("/passkeys").status_code == 200
 
 
@@ -323,7 +324,7 @@ def test_registering_through_the_http_route(
 def test_a_foreign_passkey_cannot_be_removed(
     client_als, session: Session, mit_passkeys: None
 ) -> None:
-    """404 statt 403 — sonst verriete die Antwort, welche Kennungen es gibt."""
+    """404 instead of 403 — otherwise the response would reveal which ids exist."""
     from tests.helpers import create_passkey
 
     fremder = create_user(session, "fremder-passkeybesitzer")
@@ -356,8 +357,8 @@ def test_your_own_passkey_can_be_removed(
 
 
 def test_the_passkey_page_explains_a_missing_setup(client_als) -> None:
-    """Ohne Relying-Party-ID keine Schaltflaeche, die nichts tun kann — sondern ein Satz,
-    der sagt, was fehlt."""
+    """Without a relying-party id, no button that could do nothing -- instead a
+    sentence saying what is missing."""
     get_settings.cache_clear()
     response = client_als([("zone.read", None)]).get("/passkeys")
     assert response.status_code == 200
@@ -367,8 +368,8 @@ def test_the_passkey_page_explains_a_missing_setup(client_als) -> None:
 def test_the_login_page_offers_passkeys_only_when_set_up(
     client: TestClient, user, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # `benutzer`: ohne einen leitet /login zur Einrichtung weiter, und die Pruefung
-    # unten waere gruen, ohne je das Anmeldeformular gesehen zu haben.
+    # `benutzer`: without one, /login redirects to setup, and the check below
+    # would be green without ever having seen the login form.
     get_settings.cache_clear()
     assert "passkey-anmelden" not in client.get("/login").text
 

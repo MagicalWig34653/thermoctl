@@ -255,10 +255,11 @@ def test_fremde_zone_ergibt_404(client_als, session: Session) -> None:
 
 
 def test_a_mode_in_use_cannot_be_deleted(client_als, session: Session) -> None:
-    """Die dritte Loeschsperre: Ein Modus, auf den ein Zeitplan zeigt, verschwindet nicht.
+    """The third deletion guard: a mode that a schedule points to does not disappear.
 
-    Ohne sie zerrisse das Loeschen den Zeitplan jeder Zone, die ihn benutzt — und zwar
-    still, weil der Fremdschluessel erst beim naechsten Regelzyklus auffiele.
+    Without it, deleting the mode would tear apart the schedule of every zone that
+    uses it -- silently, because the foreign key would only surface at the next
+    control cycle.
     """
     create_settings(session)
     source(session, "web")
@@ -307,7 +308,7 @@ def test_empty_and_overlong_mode_values_stay_in_the_form(
 
 
 def test_an_existing_setpoint_is_updated(client_als, session: Session) -> None:
-    """Der dritte Fall neben Anlegen und Loeschen — bisher ungeprueft."""
+    """The third case besides create and delete -- untested until now."""
     create_settings(session)
     source(session, "web")
     day = create_mode(session, "tag-aendern", "Tag")
@@ -346,11 +347,11 @@ def test_a_non_numeric_setpoint_stays_in_the_form(client_als, session: Session) 
 
 
 def test_an_infinite_setpoint_is_refused(client_als, session: Session) -> None:
-    """`Decimal("nan")` und `Decimal("Infinity")` sind gueltige Dezimalzahlen.
+    """`Decimal("nan")` and `Decimal("Infinity")` are valid decimal numbers.
 
-    Ohne die Endlichkeitspruefung liefe ein solcher Wert bis in die Datenbank und von dort
-    in die Regelentscheidung — jeder Vergleich mit NaN ist falsch, die Zone wuerde nie
-    heizen und nie abschalten.
+    Without the finiteness check, such a value would run all the way to the database
+    and from there into the control decision -- every comparison with NaN is false,
+    so the zone would never heat and never switch off.
     """
     create_settings(session)
     source(session, "web")
@@ -384,22 +385,22 @@ def test_updating_a_mode_with_an_invalid_value_stays_in_the_form(
 
 
 def test_the_setpoint_limit_exists_in_exactly_one_place() -> None:
-    """Die Grenze hat schon einmal an drei Stellen verschieden dagestanden.
+    """The limit has already stood differently in three places at once.
 
-    Damals prueften die Oberflaeche von Hand ohne Nachkommastellen, die
-    REST-Schnittstelle ueber ihr Schema und der MCP-Server gar nicht. Sie liegt seither
-    in der Domaene -- aber eine abgeschriebene Zahl schleicht sich leicht zurueck:
-    beim Umstellen von 5 auf 1 Grad stand sie noch einmal in `alltag_views.py`, in der
-    Discovery-Nutzlast und im Markup des Formulars.
+    Back then the UI checked by hand with no decimal places, the REST interface
+    checked via its schema, and the MCP server did not check at all. It has lived
+    in the domain ever since -- but a copied-down number sneaks back in easily:
+    when moving from 5 to 1 degree it still appeared once more in `alltag_views.py`,
+    in the discovery payload, and in the form's markup.
 
-    Der Test sucht darum nach nackten Grenzwerten ausserhalb der Domaene. Er ist grob --
-    eine 5 in einer Zeile ueber Hysterese meint etwas anderes -- deshalb sucht er nur
-    das Muster, in dem eine Temperaturgrenze auftritt.
+    The test therefore looks for bare limit values outside the domain. It is
+    coarse -- a 5 in a line about hysteresis means something else -- so it only
+    looks for the pattern in which a temperature limit occurs.
 
-    **Auch in den Vorlagen.** Seine erste Fassung sah nur Python-Dateien und uebersah
-    `sollwerte.html`, wo `min="5"` und `max="35"` als Zeichenketten standen. Aufgefallen
-    ist das erst beim naechsten Verschieben der Grenze -- also genau dann, wenn der
-    Waechter es haette verhindern sollen.
+    **Also in the templates.** Its first version only looked at Python files and
+    missed `sollwerte.html`, where `min="5"` and `max="35"` appeared as strings.
+    That surfaced only at the next move of the limit -- exactly the moment the
+    guard should have caught it.
     """
     import re
     from pathlib import Path
@@ -407,14 +408,14 @@ def test_the_setpoint_limit_exists_in_exactly_one_place() -> None:
     wurzel = Path(__file__).resolve().parent.parent / "thermoctl"
     match = []
 
-    # Vorlagen: Eine Seite, die Temperaturen erfragt, darf keine nackte Grenze
-    # enthalten -- weder als `min="5"` noch als Argument `"35"` an `zahlenfeld`.
-    # Erkannt wird eine solche Seite am Gradzeichen.
-    # Zwei Klassen: Die Obergrenze und die neue Untergrenze sind als Zahl eindeutig --
-    # eine `35` oder `-20` in Anfuehrungszeichen ist hier nie etwas anderes. Die alten
-    # Untergrenzen `5` und `1` stehen dagegen auch fuer Minuten oder Sortierung; sie
-    # zaehlen nur, wenn die Zeile selbst von Temperatur spricht. Genau daran ist die
-    # erste Fassung gescheitert: Sie meldete das Minutenfeld der Uebersteuerung.
+    # Templates: a page that asks for temperatures must not contain a bare limit --
+    # neither as `min="5"` nor as the argument `"35"` to `zahlenfeld`. Such a page is
+    # recognized by the degree sign.
+    # Two classes: the upper limit and the new lower limit are unambiguous as a
+    # number -- a `35` or `-20` in quotes is never anything else here. The old lower
+    # limits `5` and `1`, however, also stand for minutes or sort order; they only
+    # count if the line itself talks about temperature. That is exactly where the
+    # first version failed: it flagged the override's minute field.
     eindeutig = {"35", "35.0", "-20", "-20.0"}
     mehrdeutig = {"5", "5.0", "1", "1.0"}
     zahl_in_anfuehrung = re.compile(r"""["'](-?\d{1,2}(?:\.\d)?)["']""")
@@ -424,41 +425,41 @@ def test_the_setpoint_limit_exists_in_exactly_one_place() -> None:
             continue
         for nummer, zeile in enumerate(text.splitlines(), 1):
             if "temperatur" in zeile.lower():
-                continue  # verweist auf die durchgereichten Konstanten
+                continue  # refers to the passed-through constants
             gefunden = set(zahl_in_anfuehrung.findall(zeile))
             above_temperature = "°C" in zeile or "sollwert" in zeile.lower()
             if gefunden & eindeutig or (above_temperature and gefunden & mehrdeutig):
                 match.append(f"{datei.name}:{nummer}: {zeile.strip()}")
 
-    # Python: eine Zahl an einer Stelle, an der eine Temperaturgrenze steht. Der
-    # Zusammenhang steckt oft in der Zeile davor (`temperature_c: Decimal = Field(`
-    # umbricht), deshalb ein kleines Fenster.
+    # Python: a number at a spot where a temperature limit stands. The context is
+    # often in the line before (`temperature_c: Decimal = Field(` wraps), hence a
+    # small window.
     grenzstelle = re.compile(
         r"""(?:ge=|le=|min_temp["']?\s*:\s*|max_temp["']?\s*:\s*)"""
         r"""(?:Decimal\(["'])?-?\d+(?:\.\d+)?"""
     )
     for datei in sorted(wurzel.rglob("*.py")):
         if datei.name == "modes.py":
-            continue  # dort gehoert sie hin
+            continue  # that is where it belongs
         zeilen = datei.read_text(encoding="utf-8").splitlines()
         for nummer, zeile in enumerate(zeilen, 1):
             if "MINIMUM_TEMPERATURE_C" in zeile or "MAXIMUM_TEMPERATURE_C" in zeile:
-                continue  # verweist auf die Konstanten
+                continue  # refers to the constants
             if not grenzstelle.search(zeile):
                 continue
-            # Eng auf das Sollwertfeld: Ein blosses "temp" im Umfeld traf auch
-            # `sensor_timeout_seconds` neben `temperature_offset_k` -- beides
-            # Temperaturnahes mit ganz anderen Grenzen.
+            # Narrowed to the setpoint field: a bare "temp" in the surroundings also
+            # matched `sensor_timeout_seconds` next to `temperature_offset_k` --
+            # both temperature-adjacent with entirely different limits.
             umfeld = " ".join(zeilen[max(0, nummer - 3) : nummer + 1])
             if "temperature_c" in umfeld or "min_temp" in umfeld or "max_temp" in umfeld:
                 match.append(f"{datei.relative_to(wurzel)}:{nummer}: {zeile.strip()}")
 
-    assert not match, "Sollwertgrenze ausserhalb der Domaene:\n" + "\n".join(match)
+    assert not match, "setpoint limit outside the domain:\n" + "\n".join(match)
 
 
 def test_the_message_names_the_limit_that_applies() -> None:
-    """Sie wird aus den Konstanten gebaut, nicht abgeschrieben -- sonst nennt sie nach
-    dem naechsten Verschieben eine Zahl, die nicht mehr gilt."""
+    """It is built from the constants, not copied down -- otherwise, after the next
+    move, it would name a number that no longer applies."""
     import pytest as _pytest
 
     from thermoctl.domain.modes import (

@@ -250,8 +250,9 @@ def test_a_foreign_zone_stays_hidden_from_the_new_routes(
 
 
 def test_reading_modes_without_a_visible_zone_is_denied(client, api_token, session) -> None:
-    """Wer keine einzige Zone sehen darf, hat auch nichts in der Modusliste zu suchen —
-    sonst waere sie eine Auskunft ueber die Anlage an jemanden ohne jedes Zonenrecht."""
+    """Anyone who may not see a single zone has no business in the mode list either --
+    otherwise it would disclose information about the installation to someone with
+    no zone permission at all."""
     create_zone(session, "unsichtbare-zone")
     kopf = api_token([("token.self", None)])
     assert client.get("/api/v1/modes", headers=kopf).status_code == 403
@@ -278,10 +279,10 @@ def test_renaming_to_a_taken_name_yields_422(client, api_token, session) -> None
 
 
 def test_a_duplicate_schedule_point_yields_422_with_a_message(client, api_token, session) -> None:
-    """Ein fachlicher Fehler der Domaene wird zu 422 mit Feldnamen, nicht zu 500.
+    """A domain-level business error becomes a 422 with field names, not a 500.
 
-    Absichtlich ein Fall, den die Schema-Pruefung durchlaesst: Zwei Punkte am selben
-    Zeitpunkt sind formal gueltig und scheitern erst an der Regel.
+    Deliberately a case that the schema check lets through: two points at the same
+    moment are formally valid and only fail on the rule.
     """
     source(session, "api")
     zone = create_zone(session, "zone-api-zeitplan")
@@ -317,7 +318,7 @@ def test_a_foreign_schedule_point_yields_404(client, api_token, session) -> None
 
 
 def test_an_override_through_the_api_holds_the_same_limit(client, api_token, session) -> None:
-    """Die Grenze liegt in der Domaene und nicht im Schema jedes Adapters."""
+    """The limit lives in the domain, not in each adapter's schema."""
     source(session, "api")
     create_settings(session)
     zone = create_zone(session, "zone-api-grenze")
@@ -330,7 +331,7 @@ def test_an_override_through_the_api_holds_the_same_limit(client, api_token, ses
     assert response.status_code == 422
 
 
-# --- Steuerung ueber REST --------------------------------------------------
+# --- Control via REST -------------------------------------------------------
 
 
 def _defaults(**abweichungen: object) -> dict[str, object]:
@@ -380,8 +381,8 @@ def test_arming_and_taking_it_back(
 def test_arming_without_a_reason_is_refused(
     client: TestClient, session: Session, api_token
 ) -> None:
-    """Dieselbe Pruefung wie in der Oberflaeche -- sie steht in der Domaene, nicht im
-    Schema, damit sie fuer alle Adapter dieselbe ist."""
+    """The same check as in the interface -- it lives in the domain, not in the
+    schema, so it is the same for every adapter."""
     create_settings(session)
     kopf = api_token([("zone.read", None), ("control.arm", None)])
     response = client.put("/api/v1/control/armed", json={"armed": True}, headers=kopf)
@@ -442,7 +443,7 @@ def test_moving_a_schedule_point(
         headers=kopf,
     )
     assert response.status_code == 200
-    # Die Kennung bleibt: Ein Aufrufer soll denselben Punkt weiterverfolgen koennen.
+    # The identifier stays: a caller should be able to keep tracking the same point.
     assert response.json()["id"] == point.id
     assert response.json()["weekday"] == 4
 
@@ -496,9 +497,9 @@ def test_moving_a_foreign_point_is_not_found(
 def test_a_rest_change_is_logged_with_source_api(
     client: TestClient, session: Session, api_token
 ) -> None:
-    """Frueher schrieb jede Domaenenfunktion fest `source="web"`. Damit behauptete das
-    Audit-Protokoll von jeder REST- und MCP-Aenderung, sie sei ueber die Oberflaeche
-    gekommen -- und beantwortete damit genau die Frage falsch, fuer die es da ist."""
+    """Every domain function used to hard-code `source="web"`. That made the audit
+    log claim that every REST and MCP change had come through the interface --
+    answering, wrongly, exactly the question it exists to answer."""
     from thermoctl.db.models.lookup import ActorSource
     from thermoctl.db.models.operations import AuditEvent
 

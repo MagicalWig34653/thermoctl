@@ -17,7 +17,7 @@ class Message:
 
 
 class Schleifenende(BaseException):
-    """Beendet die absichtlich endlose Empfangsschleife ausserhalb ihrer Fehlerfaenge."""
+    """Ends the deliberately endless receive loop from outside its error handling."""
 
 
 class MessageStream:
@@ -198,12 +198,12 @@ async def test_no_switching_command_in_dry_run(mqtt_settings: Settings) -> None:
 async def test_a_state_message_goes_out_in_dry_run_too(
     mqtt_settings: Settings,
 ) -> None:
-    """Der Riegel gilt dem Schalten, nicht dem Melden.
+    """The bolt applies to switching, not to reporting.
 
-    Bis hierher sperrte er jede Veroeffentlichung. Das war richtig, solange gar nichts
-    gesendet wurde -- es machte aber den Trockenlauf unpruefbar: Die Home-Assistant-
-    Anbindung liess sich erst ausprobieren, nachdem man die Anlage scharf geschaltet
-    hatte, also genau dann nicht mehr, wenn ein Fehler noch folgenlos gewesen waere.
+    Up to this point it blocked every publication. That was right as long as nothing
+    was sent at all -- but it made dry run untestable: the Home Assistant integration
+    could only be tried out after the installation was armed, which is exactly the
+    moment when a mistake would no longer be consequence-free.
     """
     client = MqttClient(mqtt_settings, _leerer_handler)
     falscher_client = FalscherClient()
@@ -242,11 +242,11 @@ async def test_the_password_shows_up_in_no_log_line(
 async def test_the_backoff_falls_back_after_a_successful_connection(
     mqtt_settings: Settings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Sonst waechst die Wartezeit ueber die Lebensdauer des Dienstes monoton weiter.
+    """Otherwise the wait time would grow monotonically over the service's lifetime.
 
-    Eine Verbindung, die nach Tagen einmal abreisst, wuerde dann eine Minute warten
-    statt einer Sekunde — obwohl gar keine Stoerungsserie vorliegt. Fuer eine Heizung
-    im Winter ist das der Unterschied zwischen einer Luecke und einer Pause.
+    A connection that drops once after running for days would then wait a minute
+    instead of a second -- even though there is no series of faults at all. For a
+    heating system in winter, that is the difference between a gap and a pause.
     """
     waited: list[float] = []
     FalscherClient.instanzen.clear()
@@ -257,8 +257,8 @@ async def test_the_backoff_falls_back_after_a_successful_connection(
             raise Schleifenende
 
     monkeypatch.setattr(client_modul, "schlafen", mitschreiben)
-    # Drei Fehlversuche in Folge (1, 2, 4 s), dann eine Verbindung, die Nachrichten
-    # liefert und erst danach abreisst — der vierte Abstand muss wieder 1 s sein.
+    # Three failed attempts in a row (1, 2, 4 s), then a connection that delivers
+    # messages and only afterwards drops -- the fourth interval must be 1 s again.
     FalscherClient.stroeme = [
         MessageStream([], ConnectionError("getrennt")),
         MessageStream([], ConnectionError("getrennt")),
@@ -285,11 +285,11 @@ def anyio_backend() -> str:
 async def test_no_publish_even_when_the_caller_asks_for_it(
     mqtt_settings: Settings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Der zweite Riegel: `schaltet=True` allein genuegt nicht.
+    """The second bolt: `schaltet=True` alone is not enough.
 
-    Hinter dem Ventil haengt eine bewohnte Wohnung. Ein einzelner Aufrufer, der eine
-    Nachricht faelschlich als Schaltbefehl schickt, darf nicht ausreichen — der Client
-    muss zusaetzlich mit `schalten_erlaubt=True` gebaut worden sein.
+    Behind the valve hangs an inhabited home. A single caller that mistakenly sends
+    a message as a switching command must not be sufficient -- the client must also
+    have been built with `schalten_erlaubt=True`.
     """
     FalscherClient.instanzen.clear()
     monkeypatch.setattr(client_modul.aiomqtt, "Client", FalscherClient)
@@ -305,15 +305,15 @@ async def test_no_publish_even_when_the_caller_asks_for_it(
 
 
 async def _kein_handler(topic: str, payload: bytes) -> None:
-    raise AssertionError("Dieser Handler darf nie aufgerufen werden")
+    raise AssertionError("this handler must never be called")
 
 
 @pytest.mark.anyio
 async def test_disabled_mqtt_opens_no_connection(
     mqtt_settings: Settings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Der Vorgabewert. Weder die Testsuite noch ein frisch gebauter Container darf
-    versuchen, sich irgendwohin zu verbinden."""
+    """The default value. Neither the test suite nor a freshly built container may
+    try to connect anywhere."""
     mqtt_settings.mqtt_enabled = False
     FalscherClient.instanzen.clear()
     monkeypatch.setattr(client_modul.aiomqtt, "Client", FalscherClient)
@@ -325,7 +325,7 @@ async def test_disabled_mqtt_opens_no_connection(
 
 @pytest.mark.anyio
 async def test_a_missing_host_is_named_explicitly(mqtt_settings: Settings) -> None:
-    """Eine Fehlkonfiguration soll sagen, welche Angabe fehlt — nicht 'NoneType'."""
+    """A misconfiguration should say which setting is missing -- not 'NoneType'."""
     mqtt_settings.mqtt_host = None
     with pytest.raises(ValueError, match="MQTT_HOST"):
         MqttClient(mqtt_settings, _leerer_handler)._newer_client()
@@ -335,10 +335,10 @@ async def test_a_missing_host_is_named_explicitly(mqtt_settings: Settings) -> No
 async def test_a_client_built_armed_really_publishes(
     mqtt_settings: Settings,
 ) -> None:
-    """Der Gegenbeweis zum Trockenlauf: Der Weg funktioniert, er ist nur verriegelt.
+    """The counter-proof to dry run: the path works, it is just locked.
 
-    Ohne diesen Test belegte die Suite nur, dass nichts gesendet wird — auch dann, wenn
-    das Senden gar nicht gebaut waere. Teilprojekt 4 haengt daran.
+    Without this test, the suite only proved that nothing is sent -- even if sending
+    had never been implemented at all. Subproject 4 depends on this.
     """
     kunde = MqttClient(mqtt_settings, _leerer_handler, switching_allowed=True)
     falscher = FalscherClient()
@@ -358,8 +358,8 @@ async def test_nothing_is_published_without_a_connection(mqtt_settings: Settings
 
 @pytest.mark.anyio
 async def test_schlafen_wartet_wirklich(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Die Funktion existiert, damit Tests sie ersetzen koennen — dass sie im Betrieb
-    wirklich wartet, prueft sonst niemand."""
+    """The function exists so tests can replace it -- nobody else checks that it
+    really waits in production."""
     waited: list[float] = []
 
     async def gefaelscht(seconds: float) -> None:
@@ -374,10 +374,10 @@ async def test_schlafen_wartet_wirklich(monkeypatch: pytest.MonkeyPatch) -> None
 async def test_a_client_built_armed_also_sends_state(
     mqtt_settings: Settings,
 ) -> None:
-    """Frueher stand hier das Gegenteil: Ein `scharf=False` wurde auch von einem scharf
-    gebauten Client abgewiesen. Das war die Fassung, in der `scharf` zwei Dinge zugleich
-    bedeutete -- die Absicht des Aufrufers und die Erlaubnis des Clients. Jetzt sagt
-    `schaltet`, was die Nachricht bewirkt, und eine Zustandsmeldung bewirkt nichts."""
+    """This used to say the opposite: a `scharf=False` was also rejected by a client
+    built armed. That was the version in which `scharf` meant two things at once --
+    the caller's intent and the client's permission. Now `schaltet` says what the
+    message causes, and a state message causes nothing."""
     kunde = MqttClient(mqtt_settings, _leerer_handler, switching_allowed=True)
     falscher = FalscherClient()
     kunde._client = falscher  # type: ignore[assignment]
