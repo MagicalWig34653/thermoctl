@@ -65,7 +65,7 @@ def _last_administrator(session: Session, user: User) -> bool:
 
 def create_user(
     session: Session, *, username: str, display_name: str, password: str,
-    group_ids: list[int], akteur_id: int | None, source: str = "web",
+    group_ids: list[int], actor_id: int | None, source: str = "web",
 ) -> User:
     """Creates a user and assigns them to groups."""
     if not username.strip():
@@ -79,22 +79,22 @@ def create_user(
     # in the setup form.
     hash_value = hash_password(password)
 
-    nutzer = User(username=username, display_name=display_name, password_hash=hash_value)
-    session.add(nutzer)
+    user_record = User(username=username, display_name=display_name, password_hash=hash_value)
+    session.add(user_record)
     session.flush()
     for group_id in group_ids:
-        session.add(UserAccessGroup(user_id=nutzer.id, access_group_id=group_id))
+        session.add(UserAccessGroup(user_id=user_record.id, access_group_id=group_id))
     session.flush()
     audit.record(
         session, source=source, action="user.created", object_type="user",
-        object_id=str(nutzer.id), summary=f"Benutzer '{username}' angelegt",
-        user_id=akteur_id,
+        object_id=str(user_record.id), summary=f"Benutzer '{username}' angelegt",
+        user_id=actor_id,
     )
-    return nutzer
+    return user_record
 
 
 def set_user_active(
-    session: Session, user: User, active: bool, *, akteur_id: int | None,
+    session: Session, user: User, active: bool, *, actor_id: int | None,
     source: str = "web",
 ) -> None:
     """Deactivates or reactivates a user. Never deleted.
@@ -115,12 +115,12 @@ def set_user_active(
         action="user.activated" if active else "user.deactivated",
         object_type="user", object_id=str(user.id),
         summary=f"Benutzer '{user.username}' {'aktiviert' if active else 'deaktiviert'}",
-        user_id=akteur_id,
+        user_id=actor_id,
     )
 
 
 def set_password(
-    session: Session, user: User, new_password: str, *, akteur_id: int | None,
+    session: Session, user: User, new_password: str, *, actor_id: int | None,
     source: str = "web",
 ) -> None:
     """Sets a new password. Existing sessions remain valid.
@@ -134,12 +134,12 @@ def set_password(
     audit.record(
         session, source=source, action="user.password_changed", object_type="user",
         object_id=str(user.id),
-        summary=f"Passwort von '{user.username}' geaendert", user_id=akteur_id,
+        summary=f"Passwort von '{user.username}' geaendert", user_id=actor_id,
     )
 
 
 def create_group(
-    session: Session, *, name: str, description: str | None, akteur_id: int | None,
+    session: Session, *, name: str, description: str | None, actor_id: int | None,
     source: str = "web",
 ) -> AccessGroup:
     if not name.strip():
@@ -151,13 +151,13 @@ def create_group(
     session.flush()
     audit.record(
         session, source=source, action="group.created", object_type="access_group",
-        object_id=str(group.id), summary=f"Gruppe '{name}' angelegt", user_id=akteur_id,
+        object_id=str(group.id), summary=f"Gruppe '{name}' angelegt", user_id=actor_id,
     )
     return group
 
 
 def delete_group(
-    session: Session, group: AccessGroup, *, akteur_id: int | None, source: str = "web"
+    session: Session, group: AccessGroup, *, actor_id: int | None, source: str = "web"
 ) -> None:
     if group.is_builtin:
         raise AdministrationError(
@@ -170,7 +170,7 @@ def delete_group(
     session.flush()
     audit.record(
         session, source=source, action="group.deleted", object_type="access_group",
-        object_id=str(group.id), summary=f"Gruppe '{name}' geloescht", user_id=akteur_id,
+        object_id=str(group.id), summary=f"Gruppe '{name}' geloescht", user_id=actor_id,
     )
 
 
@@ -204,7 +204,7 @@ def _without_this_group_no_administrator(session: Session, group: AccessGroup) -
 
 def grant_permission(
     session: Session, group: AccessGroup, code: str, zone_id: int | None, *,
-    akteur_id: int | None, source: str = "web",
+    actor_id: int | None, source: str = "web",
 ) -> GroupPermission:
     """Grants a permission to a group, optionally restricted to a zone."""
     permission = session.scalar(select(Permission).where(Permission.code == code))
@@ -238,13 +238,13 @@ def grant_permission(
         object_type="access_group", object_id=str(group.id),
         summary=f"Recht {code} an '{group.name}' vergeben",
         detail=None if zone_id is None else f"eingeschraenkt auf Zone {zone_id}",
-        user_id=akteur_id,
+        user_id=actor_id,
     )
     return entry
 
 
 def revoke_permission(
-    session: Session, entry: GroupPermission, *, akteur_id: int | None,
+    session: Session, entry: GroupPermission, *, actor_id: int | None,
     source: str = "web",
 ) -> None:
     group = session.get(AccessGroup, entry.access_group_id)
@@ -257,12 +257,12 @@ def revoke_permission(
     audit.record(
         session, source=source, action="group.permission_revoked",
         object_type="access_group", object_id=str(group.id),
-        summary=f"Recht {permission.code} von '{group.name}' entzogen", user_id=akteur_id,
+        summary=f"Recht {permission.code} von '{group.name}' entzogen", user_id=actor_id,
     )
 
 
 def revoke_token(
-    session: Session, token: ApiToken, *, akteur_id: int | None, source: str = "web"
+    session: Session, token: ApiToken, *, actor_id: int | None, source: str = "web"
 ) -> None:
     """Revokes a token. Rows are never deleted — they are the history."""
     if token.revoked_at is not None:
@@ -272,16 +272,16 @@ def revoke_token(
     audit.record(
         session, source=source, action="token.revoked", object_type="api_token",
         object_id=str(token.id), summary=f"Token '{token.name}' widerrufen",
-        user_id=akteur_id,
+        user_id=actor_id,
     )
 
 
 def set_group_permissions(
     session: Session,
     group: AccessGroup,
-    gewuenscht: set[tuple[str, int | None]],
+    wanted: set[tuple[str, int | None]],
     *,
-    akteur_id: int | None,
+    actor_id: int | None,
     source: str = "web",
 ) -> tuple[int, int]:
     """Brings a group's permissions to the desired state. Returns (granted, revoked).
@@ -304,19 +304,19 @@ def set_group_permissions(
     ):
         vorhanden[(code, entry.zone_id)] = entry
 
-    vergeben = 0
-    for code, zone_id in sorted(gewuenscht - set(vorhanden), key=lambda p: (p[0], p[1] or 0)):
+    taken = 0
+    for code, zone_id in sorted(wanted - set(vorhanden), key=lambda p: (p[0], p[1] or 0)):
         grant_permission(
-            session, group, code, zone_id, akteur_id=akteur_id, source=source
+            session, group, code, zone_id, actor_id=actor_id, source=source
         )
-        vergeben += 1
+        taken += 1
 
-    entzogen = 0
+    revoked = 0
     # Grant first, then revoke: otherwise, whoever switches the administration
     # permission from "whole plant" to individual zones would fail halfway through
     # on the administrator lock.
-    for schluessel, entry in sorted(vorhanden.items(), key=lambda p: (p[0][0], p[0][1] or 0)):
-        if schluessel not in gewuenscht:
-            revoke_permission(session, entry, akteur_id=akteur_id, source=source)
-            entzogen += 1
-    return vergeben, entzogen
+    for key, entry in sorted(vorhanden.items(), key=lambda p: (p[0][0], p[0][1] or 0)):
+        if key not in wanted:
+            revoke_permission(session, entry, actor_id=actor_id, source=source)
+            revoked += 1
+    return taken, revoked

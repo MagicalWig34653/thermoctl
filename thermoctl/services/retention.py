@@ -10,9 +10,9 @@ from thermoctl.db.models.operations import Setting
 log = logging.getLogger(__name__)
 
 
-def delete_old_measurements(session: Session, now: datetime, *, blockgroesse: int = 5000) -> int:
+def delete_old_measurements(session: Session, now: datetime, *, batch_size: int = 5000) -> int:
     """Deletes expired measurements in short, database-agnostic blocks."""
-    if blockgroesse <= 0:
+    if batch_size <= 0:
         raise ValueError("Blockgroesse muss groesser als null sein")
     settings = session.get(Setting, 1)
     assert settings is not None, "setting-Zeile fehlt — Einrichtung unvollstaendig"
@@ -27,7 +27,7 @@ def delete_old_measurements(session: Session, now: datetime, *, blockgroesse: in
                 select(Measurement.id)
                 .where(Measurement.measured_at < limit)
                 .order_by(Measurement.id)
-                .limit(blockgroesse)
+                .limit(batch_size)
             )
         )
         if not ids:

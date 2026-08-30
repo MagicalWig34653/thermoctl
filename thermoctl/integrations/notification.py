@@ -14,9 +14,9 @@ log = logging.getLogger(__name__)
 def _send_webhook(settings: Settings, notice: FaultNotice) -> None:
     data = json.dumps(
         {
-            "schluessel": notice.schluessel,
-            "schwere": notice.schwere,
-            "titel": notice.titel,
+            "schluessel": notice.key,
+            "schwere": notice.severity,
+            "titel": notice.title,
             "text": notice.text,
         }
     ).encode("utf-8")
@@ -35,9 +35,9 @@ async def send(settings: Settings, notice: FaultNotice) -> None:
     """Always logs and attempts the optional webhook, without propagating errors."""
     log.warning(
         "%s: %s",
-        notice.titel,
+        notice.title,
         notice.text,
-        extra={"schluessel": notice.schluessel, "schwere": notice.schwere},
+        extra={"schluessel": notice.key, "schwere": notice.severity},
     )
     if settings.notify_webhook is None:
         return
@@ -46,5 +46,5 @@ async def send(settings: Settings, notice: FaultNotice) -> None:
     except Exception:
         log.exception(
             "Stoerungsmeldung konnte nicht an den Webhook gesendet werden",
-            extra={"schluessel": notice.schluessel},
+            extra={"schluessel": notice.key},
         )

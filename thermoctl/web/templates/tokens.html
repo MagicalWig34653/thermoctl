@@ -1,10 +1,10 @@
-{% extends "base.html" if not ist_htmx else "empty.html" %}
-{% from "form.html" import textfeld, zahlenfeld, fehlerhinweis %}
-{% block titel %}Tokens – thermoctl{% endblock %}
+{% extends "base.html" if not is_htmx else "empty.html" %}
+{% from "form.html" import text_field, number_field, error_notice %}
+{% block title %}Tokens – thermoctl{% endblock %}
 {% block inhalt %}
 <section id="token-list">
     <h1 class="mb-3">Tokens</h1>
-    {{ fehlerhinweis(hint) }}
+    {{ error_notice(hint) }}
 
     {% if plaintext %}
     <div class="alert alert-success" role="alert">
@@ -56,8 +56,8 @@
     <p class="text-muted">Ein Token kann höchstens, was Sie selbst dürfen — und behält das
         auch dann nicht, wenn Sie ein Recht später verlieren.</p>
     <form method="post" action="/tokens">
-        {{ textfeld("name", "Name", values.get("name", ""), pflicht=true,
-                    hilfe="Wofür ist es gedacht? Später ist der Name das Einzige, woran Sie es erkennen.",
+        {{ text_field("name", "Name", values.get("name", ""), pflicht=true,
+                    help_text="Wofür ist es gedacht? Später ist der Name das Einzige, woran Sie es erkennen.",
                     errors=errors.get("name", "")) }}
         <div class="mb-3">
             <label class="form-label" for="code">Recht</label>
@@ -68,9 +68,9 @@
                 {% endfor %}
             </select>
         </div>
-        {{ zahlenfeld("valid_days", "Gültig für (Tage)", values.get("gueltig_tage", ""),
+        {{ number_field("valid_days", "Gültig für (Tage)", values.get("valid_days", ""),
                       step="1", min="1",
-                      hilfe="Leer lassen für unbegrenzt. Ein befristetes Token ist die sicherere Wahl.") }}
+                      help_text="Leer lassen für unbegrenzt. Ein befristetes Token ist die sicherere Wahl.") }}
         <button type="submit" class="btn btn-primary">Ausstellen</button>
     </form>
 </section>

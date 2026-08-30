@@ -26,7 +26,7 @@ from tests.helpers import (
     create_zone_state,
     integration,
     role,
-    sensorstatus,
+    sensor_status_of,
     source,
 )
 from thermoctl import app as app_modul
@@ -74,7 +74,7 @@ def _zone_with_state(
         zone_id=zone.id,
         temperature_c=measured_c,
         measured_at=now,
-        sensor_status_id=sensorstatus(session, status).id,
+        sensor_status_id=sensor_status_of(session, status).id,
         updated_at=now,
     )
     session.add(state)
@@ -88,10 +88,10 @@ def test_one_cycle_with_a_fresh_reading_writes_a_row_with_a_reason(
     create_settings(session, hysteresis=Decimal("0.30"))
     zone = _zone_with_state(session, "buero", measured_c=Decimal("10.0"))
 
-    zeilen = shadow_run.cycle(session, NOW)
+    rows = shadow_run.cycle(session, NOW)
 
-    assert len(zeilen) == 1
-    row = zeilen[0]
+    assert len(rows) == 1
+    row = rows[0]
     assert row.zone_id == zone.id
     assert row.would_heat is True
     assert row.outcome_code == "heizen"
@@ -120,16 +120,16 @@ def test_several_cycles_with_an_unchanged_situation_yield_unchanged_without_a_fl
         result = shadow_run.cycle(session, NOW + timedelta(minutes=i))
         assert len(result) == 1  # exactly one row per cycle, no gap
 
-    zeilen = list(
+    rows = list(
         session.scalars(
             select(ShadowDecision)
             .where(ShadowDecision.zone_id == zone.id)
             .order_by(ShadowDecision.decided_at)
         )
     )
-    assert len(zeilen) == 3  # no flood of rows across the three cycles
-    assert [z.outcome_code for z in zeilen] == ["unveraendert"] * 3
-    assert [z.would_heat for z in zeilen] == [False, False, False]
+    assert len(rows) == 3  # no flood of rows across the three cycles
+    assert [z.outcome_code for z in rows] == ["unveraendert"] * 3
+    assert [z.would_heat for z in rows] == [False, False, False]
 
 
 def test_the_elapsed_time_grows_across_cycles_and_resets_on_a_change(
@@ -159,7 +159,7 @@ def test_the_elapsed_time_grows_across_cycles_and_resets_on_a_change(
                 zone_id=zone.id,
                 temperature_c=measured_c,
                 measured_at=now,
-                sensor_status_id=sensorstatus(session, "ok").id,
+                sensor_status_id=sensor_status_of(session, "ok").id,
                 updated_at=now,
             )
         )
@@ -218,13 +218,13 @@ def test_a_zone_without_a_temperature_source_gets_a_no_source_row(session: Sessi
     create_settings(session)
     zone = create_zone(session, "abstellraum")  # no ZoneState row at all
 
-    zeilen = shadow_run.cycle(session, NOW)
+    rows = shadow_run.cycle(session, NOW)
 
-    assert len(zeilen) == 1
-    assert zeilen[0].zone_id == zone.id
-    assert zeilen[0].outcome_code == "keine_quelle"
-    assert zeilen[0].would_heat is False
-    assert zeilen[0].temperature_c is None
+    assert len(rows) == 1
+    assert rows[0].zone_id == zone.id
+    assert rows[0].outcome_code == "keine_quelle"
+    assert rows[0].would_heat is False
+    assert rows[0].temperature_c is None
 
 
 def test_a_zone_without_a_window_contact_heats_despite_an_unknown_window_state(
@@ -291,9 +291,9 @@ def test_a_failing_zone_does_not_hold_up_the_others(
     session: Session, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     create_settings(session)
-    gesund = _zone_with_state(session, "gesund", measured_c=Decimal("10.0"))
+    healthy = _zone_with_state(session, "gesund", measured_c=Decimal("10.0"))
     kaputt = _zone_with_state(session, "kaputt", measured_c=Decimal("10.0"))
-    assert kaputt.id > gesund.id  # order by id, the way `zyklus()` walks through them
+    assert kaputt.id > healthy.id  # order by id, the way `zyklus()` walks through them
 
     original = shadow_run.control_parameters
 
@@ -304,9 +304,9 @@ def test_a_failing_zone_does_not_hold_up_the_others(
 
     monkeypatch.setattr(shadow_run, "control_parameters", _manchmal_kaputt)
 
-    zeilen = shadow_run.cycle(session, NOW)
+    rows = shadow_run.cycle(session, NOW)
 
-    assert [z.zone_id for z in zeilen] == [gesund.id]
+    assert [z.zone_id for z in rows] == [healthy.id]
     # The failed attempt of the broken zone left behind no (half-finished) row —
     # the per-zone savepoint rolled it back completely.
     assert session.query(ShadowDecision).filter_by(zone_id=kaputt.id).count() == 0
@@ -336,8 +336,8 @@ async def test_no_publishing_despite_a_heating_decision(
 
     create_settings(session)
     _zone_with_state(session, "wohnzimmer", measured_c=Decimal("5.0"))
-    zeilen = shadow_run.cycle(session, NOW)
-    assert zeilen[0].would_heat is True  # the starting situation is armed: it would heat
+    rows = shadow_run.cycle(session, NOW)
+    assert rows[0].would_heat is True  # the starting situation is armed: it would heat
 
     monkeypatch.setattr(client_modul.aiomqtt, "Client", GefaelschterClient)
     settings = Settings(
@@ -415,7 +415,7 @@ async def test_the_shadow_loop_reads_the_interval_and_writes_a_result(
         settings = http_session.get(Setting, 1)
         assert settings is not None
         settings.shadow_interval_seconds = 42
-        sensorstatus(http_session, "keine_quelle")  # `zonenzustand_fortschreiben` needs it
+        sensor_status_of(http_session, "keine_quelle")  # `zonenzustand_fortschreiben` needs it
         create_zone(http_session, "flur")
         http_session.commit()
 
@@ -432,15 +432,15 @@ async def test_the_shadow_loop_reads_the_interval_and_writes_a_result(
     monkeypatch.setattr(app_modul.asyncio, "sleep", _sleep)
 
     with pytest.raises(asyncio.CancelledError):
-        await app_modul._shadowschleife(fake_app)  # type: ignore[arg-type]
+        await app_modul._shadow_loop(fake_app)  # type: ignore[arg-type]
 
     assert waited[0] == 42  # read from setting.shadow_interval_seconds, not the
     # built-in default value
 
     with fabrik() as http_session:
-        zeilen = list(http_session.scalars(select(ShadowDecision)))
-    assert len(zeilen) == 1  # one pass before the simulated abort
-    assert zeilen[0].outcome_code == "keine_quelle"  # the zone has no temperature source
+        rows = list(http_session.scalars(select(ShadowDecision)))
+    assert len(rows) == 1  # one pass before the simulated abort
+    assert rows[0].outcome_code == "keine_quelle"  # the zone has no temperature source
 
     engine.dispose()
 
@@ -464,7 +464,7 @@ async def test_the_shadow_loop_survives_a_missing_interval(
     monkeypatch.setattr(app_modul.asyncio, "sleep", _sleep)
 
     with pytest.raises(asyncio.CancelledError):
-        await app_modul._shadowschleife(fake_app)  # type: ignore[arg-type]
+        await app_modul._shadow_loop(fake_app)  # type: ignore[arg-type]
 
     assert waited == [60, 60]  # built-in default value, twice in a row
 
@@ -484,7 +484,7 @@ async def test_the_shadow_loop_survives_an_exception_in_the_cycle(
     engine, fabrik = _own_database(tmp_path, "fehler-im-zyklus")
     with fabrik() as http_session:
         create_settings(http_session)
-        sensorstatus(http_session, "keine_quelle")
+        sensor_status_of(http_session, "keine_quelle")
         create_zone(http_session, "flur")
         http_session.commit()
 
@@ -512,7 +512,7 @@ async def test_the_shadow_loop_survives_an_exception_in_the_cycle(
     monkeypatch.setattr(app_modul.asyncio, "sleep", _sleep)
 
     with pytest.raises(asyncio.CancelledError):
-        await app_modul._shadowschleife(fake_app)  # type: ignore[arg-type]
+        await app_modul._shadow_loop(fake_app)  # type: ignore[arg-type]
 
     assert aufrufe == 2  # the first attempt failed, the second continued regularly
     with fabrik() as http_session:
@@ -530,7 +530,7 @@ async def test_the_shadow_loop_triggers_retention_once_a_day(
     engine, fabrik = _own_database(tmp_path, "aufbewahrung")
     with fabrik() as http_session:
         create_settings(http_session)
-        sensorstatus(http_session, "keine_quelle")
+        sensor_status_of(http_session, "keine_quelle")
         create_zone(http_session, "flur")
         http_session.commit()
 
@@ -561,7 +561,7 @@ async def test_the_shadow_loop_triggers_retention_once_a_day(
     monkeypatch.setattr(app_modul.asyncio, "sleep", _sleep)
 
     with pytest.raises(asyncio.CancelledError):
-        await app_modul._shadowschleife(fake_app)  # type: ignore[arg-type]
+        await app_modul._shadow_loop(fake_app)  # type: ignore[arg-type]
 
     assert aufrufe == [NOW + timedelta(days=2)]
 
@@ -644,7 +644,7 @@ def test_the_lifespan_starts_and_stops_mqtt_and_the_shadow_loop_cleanly(
     and `with TestClient(...)` still returns -- no hanging process on shutdown."""
     engine, fabrik = _own_database(tmp_path, "lifespan-mqtt")
     with fabrik() as http_session:
-        sensorstatus(http_session, "keine_quelle")
+        sensor_status_of(http_session, "keine_quelle")
         http_session.commit()
 
     monkeypatch.setattr(client_modul.aiomqtt, "Client", _FalscherAiomqttClient)
@@ -680,10 +680,10 @@ async def test_the_bridge_state_reports_only_the_change(tmp_path: Path) -> None:
         source(http_session, "system")
         http_session.commit()
 
-    gesendet: list[object] = []
+    sent_count: list[object] = []
 
     async def mitschreiben(_settings: object, notice: object) -> None:
-        gesendet.append(notice)
+        sent_count.append(notice)
 
     fake_app = types.SimpleNamespace(
         state=types.SimpleNamespace(session_factory=fabrik, bridge_reachable=True)
@@ -712,7 +712,7 @@ async def test_the_bridge_state_reports_only_the_change(tmp_path: Path) -> None:
             settings, "testbasis/bridge/state", b"{kaputt",
         )
 
-    assert [m.schwere for m in gesendet] == ["stoerung", "entwarnung"]  # type: ignore[attr-defined]
+    assert [m.severity for m in sent_count] == ["stoerung", "entwarnung"]  # type: ignore[attr-defined]
     with fabrik() as http_session:
         entries = http_session.query(AuditEvent).count()
     assert entries == 2, "Every notice sent gets an audit entry."
@@ -735,16 +735,16 @@ async def test_the_shadow_loop_reports_a_new_sensor_failure(
     with fabrik() as http_session:
         create_settings(http_session)
         source(http_session, "system")
-        sensorstatus(http_session, "keine_quelle")
-        sensorstatus(http_session, "ok")
+        sensor_status_of(http_session, "keine_quelle")
+        sensor_status_of(http_session, "ok")
         zone = create_zone(http_session, "flur-ohne-quelle")
         create_zone_state(http_session, zone)  # starts as 'ok'
         http_session.commit()
 
-    gesendet: list[object] = []
+    sent_count: list[object] = []
 
     async def mitschreiben(_settings: object, notice: object) -> None:
-        gesendet.append(notice)
+        sent_count.append(notice)
 
     waited: list[float] = []
 
@@ -758,16 +758,16 @@ async def test_the_shadow_loop_reports_a_new_sensor_failure(
     monkeypatch.setattr(app_modul, "send", mitschreiben)
 
     with pytest.raises(asyncio.CancelledError):
-        await app_modul._shadowschleife(fake_app)  # type: ignore[arg-type]
+        await app_modul._shadow_loop(fake_app)  # type: ignore[arg-type]
 
     # Sending has run alongside since the closing review, so that a hanging
     # webhook does not shift the cycle cadence. The still-open tasks are
     # awaited here so the test does not depend on when the event loop gets
     # around to them.
-    for aufgabe in list(app_modul._running_notices):
-        await aufgabe
+    for task in list(app_modul._running_notices):
+        await task
 
-    assert len(gesendet) == 1, (
+    assert len(sent_count) == 1, (
         "Two cycles with the same fault yield one notice, not two."
     )
 

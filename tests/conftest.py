@@ -256,9 +256,9 @@ def client_als(
     def _client_als(permissions: list[tuple[str, int | None]]) -> TestClient:
         nonlocal counter
         counter += 1
-        nutzer = user_with_permissions(session, f"web-{counter}", permissions)
-        _http_session, geheimnis = create_session(session, nutzer, 3600)
-        client.cookies.set(COOKIE_NAME, geheimnis)
+        user_record = user_with_permissions(session, f"web-{counter}", permissions)
+        _http_session, secret = create_session(session, user_record, 3600)
+        client.cookies.set(COOKIE_NAME, secret)
         return client
 
     return _client_als
@@ -268,19 +268,19 @@ def client_als(
 def user(session: Session) -> User:
     """Creates the user ``lino`` with a hashed password and the *Verwaltung* group."""
     source(session, "web")
-    nutzer = User(
+    user_record = User(
         username="lino",
         display_name="Lino",
         password_hash=hash_password("passwort-lang-genug"),
     )
-    session.add(nutzer)
+    session.add(user_record)
     session.flush()
     group = AccessGroup(name="Verwaltung", is_builtin=True)
     session.add(group)
     session.flush()
-    session.add(UserAccessGroup(user_id=nutzer.id, access_group_id=group.id))
+    session.add(UserAccessGroup(user_id=user_record.id, access_group_id=group.id))
     session.flush()
-    return nutzer
+    return user_record
 
 @pytest.fixture(autouse=True)
 def _without_real_waiting(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -288,12 +288,12 @@ def _without_real_waiting(monkeypatch: pytest.MonkeyPatch) -> None:
 
     The throttling itself stays active and is checked by
     `test_failed_attempts_are_increasingly_delayed` — that test replaces
-    `schlafen` itself and therefore never sees this fixture at all. Without
+    `sleep` itself and therefore never sees this fixture at all. Without
     it, every login in every test costs real seconds: the suite's runtime
     went from two seconds to thirty-three because of this, and a slow suite
     gets run less often.
     """
-    monkeypatch.setattr("thermoctl.web.auth_views.schlafen", lambda seconds: None)
+    monkeypatch.setattr("thermoctl.web.auth_views.sleep", lambda seconds: None)
 
 @pytest.fixture
 def angemeldeter_client(
@@ -340,9 +340,9 @@ def _record_endpoints(request: pytest.FixtureRequest) -> Iterator[None]:
 
     def aufzeichnend(self, method, url, *args, **kwargs):  # type: ignore[no-untyped-def]
         pfad = str(url).split("?")[0]
-        for praefix in ("http://testserver", "https://testserver"):
-            if pfad.startswith(praefix):
-                pfad = pfad[len(praefix) :]
+        for prefix in ("http://testserver", "https://testserver"):
+            if pfad.startswith(prefix):
+                pfad = pfad[len(prefix) :]
         gesammelt.add((str(method).upper(), pfad or "/"))
         return original(self, method, url, *args, **kwargs)
 

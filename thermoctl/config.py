@@ -36,7 +36,7 @@ class Settings(BaseSettings):
     # commands. Kept separate from `mqtt_base_topic`, which belongs to Zigbee2MQTT --
     # two writers in one subtree would be the most reliable way to a bug nobody can
     # trace anymore.
-    mqtt_praefix: str = "thermoctl"
+    mqtt_prefix: str = "thermoctl"
     mqtt_ca_cert: str | None = None
     # Region-dependent: iotx-eu, iotx-us, iotx-ap. Lives in configuration and not in
     # source code for that reason (principle 1) — whoever registered their devices in
@@ -64,11 +64,11 @@ class Settings(BaseSettings):
     notify_webhook: str | None = None
     notify_webhook_token: SecretStr | None = None
 
-    def passkeys_moeglich(self) -> bool:
+    def passkeys_available(self) -> bool:
         """Without a relying party id there are no passkeys — and none half-enabled."""
         return bool(self.passkey_rp_id)
 
-    def passkey_erlaubte_origin(self) -> str:
+    def passkey_allowed_origin(self) -> str:
         """The origin the authenticator must have seen."""
         if self.passkey_origin:
             return self.passkey_origin.rstrip("/")
@@ -80,10 +80,10 @@ class Settings(BaseSettings):
 
     def sanitized_mqtt_connection(self) -> str:
         """The MQTT connection details without the password — for log output."""
-        protokoll = "mqtts" if self.mqtt_tls else "mqtt"
+        log = "mqtts" if self.mqtt_tls else "mqtt"
         user = f"{self.mqtt_username}@" if self.mqtt_username else ""
         host = self.mqtt_host or "<nicht konfiguriert>"
-        return f"{protokoll}://{user}{host}:{self.mqtt_port}"
+        return f"{log}://{user}{host}:{self.mqtt_port}"
 
 
 @lru_cache
@@ -100,5 +100,5 @@ def get_settings() -> Settings:
     Evaluated here and not in `model_config`: an `os.environ` access there would run
     at module **import** time, i.e. before any test can set anything.
     """
-    datei = os.environ.get("THERMOCTL_ENV_FILE", ".env")
-    return Settings(_env_file=datei or None)
+    file = os.environ.get("THERMOCTL_ENV_FILE", ".env")
+    return Settings(_env_file=file or None)

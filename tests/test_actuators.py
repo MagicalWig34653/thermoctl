@@ -326,7 +326,7 @@ def test_http_transport_rejects_non_object_responses() -> None:
     with _pytest.MonkeyPatch.context() as mp:
         mp.setattr(actuators_module.request, "urlopen", lambda *_a, **_k: _List())
         with _pytest.raises(ValueError, match="kein Objekt"):
-            transport._post_synchron("https://example.invalid", {}, {})
+            transport._post_sync("https://example.invalid", {}, {})
 
 
 @pytest.fixture

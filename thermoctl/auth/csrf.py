@@ -16,7 +16,7 @@ def csrf_token(session_secret: str, secret_key: str) -> str:
     ).hexdigest()
 
 
-def check_csrf(uebermittelt: str | None, session_secret: str, secret_key: str) -> bool:
-    if not uebermittelt:
+def check_csrf(submitted: str | None, session_secret: str, secret_key: str) -> bool:
+    if not submitted:
         return False
-    return hmac.compare_digest(uebermittelt, csrf_token(session_secret, secret_key))
+    return hmac.compare_digest(submitted, csrf_token(session_secret, secret_key))

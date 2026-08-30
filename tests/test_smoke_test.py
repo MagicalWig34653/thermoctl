@@ -255,7 +255,7 @@ def test_the_schedule_grid_does_not_jump_out_from_under_the_mouse() -> None:
         "schedule.js scrolls on its own again"
     )
     # Focus only after the visibility check -- otherwise the browser scrolls by itself.
-    assert "if (sichtbar) {" in source
+    assert "if (visible) {" in source
     before_focus = source[: source.index(".focus(")]
     assert "getBoundingClientRect" in before_focus and "innerHeight" in before_focus, (
         "focus() no longer comes after the visibility check"
@@ -299,8 +299,8 @@ def _rendered_form_fields(html: str, action: str) -> dict[str, str]:
             name = re.search(r'name="([^"]+)"', select)
             if name is None:
                 continue
-            optionen = [o for o in re.findall(r'<option value="([^"]*)"', select) if o]
-            values[name.group(1)] = optionen[0] if optionen else ""
+            options = [o for o in re.findall(r'<option value="([^"]*)"', select) if o]
+            values[name.group(1)] = options[0] if options else ""
         return values
     raise AssertionError(f"Kein Formular mit action={action!r} gefunden")
 

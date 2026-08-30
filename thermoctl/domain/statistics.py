@@ -45,14 +45,14 @@ class ZoneStatistics:
     days: list[DayValue]
 
     @property
-    def seconds_gesamt(self) -> int:
+    def seconds_total(self) -> int:
         return sum(t.seconds for t in self.days)
 
 
-def heizzeiten(
+def heating_periods(
     session: Session,
     zone_ids: list[int],
-    von: datetime,
+    start_at: datetime,
     bis: datetime,
     *,
     cycle_seconds: int,
@@ -69,29 +69,29 @@ def heizzeiten(
     if not zone_ids:
         return {}
 
-    vorheriger: dict[int, tuple[datetime, bool]] = {}
+    previous: dict[int, tuple[datetime, bool]] = {}
     for zone_id, moment, heizt in session.execute(
         select(
             ShadowDecision.zone_id, ShadowDecision.decided_at, ShadowDecision.would_heat
         )
         .where(
             ShadowDecision.zone_id.in_(zone_ids),
-            ShadowDecision.decided_at >= von,
+            ShadowDecision.decided_at >= start_at,
             ShadowDecision.decided_at <= bis,
         )
         .order_by(ShadowDecision.zone_id, ShadowDecision.decided_at)
     ):
-        last = vorheriger.get(zone_id)
+        last = previous.get(zone_id)
         if last is not None:
-            last_seen, hat_geheizt = last
-            if hat_geheizt:
+            last_seen, was_heating = last
+            if was_heating:
                 interval = int((moment - last_seen).total_seconds())
                 eimer[zone_id][last_seen.date()] += min(interval, maximum_interval)
-        vorheriger[zone_id] = (moment, heizt)
+        previous[zone_id] = (moment, heizt)
 
     days = [
-        (von + timedelta(days=versatz)).date()
-        for versatz in range((bis.date() - von.date()).days + 1)
+        (start_at + timedelta(days=offset)).date()
+        for offset in range((bis.date() - start_at.date()).days + 1)
     ]
     return {
         zone_id: ZoneStatistics(

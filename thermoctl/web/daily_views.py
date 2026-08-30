@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
-from thermoctl.auth.dependencies import aktueller_principal, csrf_schutz, get_session
+from thermoctl.auth.dependencies import csrf_protection, current_principal, get_session
 from thermoctl.db.base import utcnow
 from thermoctl.db.models.zone import Zone
 from thermoctl.domain.authz import visible_zones
@@ -31,7 +31,7 @@ from thermoctl.web.forms import FormError, form_again
 # interface. These routes deliver HTML for humans, and in the interface under
 # /docs there would otherwise be a form route next to every real endpoint whose
 # 'Try it out' triggers a real change.
-router = APIRouter(dependencies=[Depends(csrf_schutz)], include_in_schema=False)
+router = APIRouter(dependencies=[Depends(csrf_protection)], include_in_schema=False)
 
 FELDER = (
     "hysteresis_k",
@@ -51,10 +51,10 @@ def _zone_or_404(session: Session, principal: Principal, zone_id: int, permissio
     return zone
 
 
-def _parameterpage(
+def _parameter_page(
     request: Request,
     zone: Zone,
-    wirksam: ControlParameters,
+    effective: ControlParameters,
     values: dict[str, str],
     errors: FormError | None = None,
 ) -> Response:
@@ -64,7 +64,7 @@ def _parameterpage(
         values,
         errors,
         zone=zone,
-        wirksam=wirksam,
+        effective=effective,
     )
 
 
@@ -72,14 +72,14 @@ def _parameterpage(
 async def show_parameter(
     zone_id: int,
     request: Request,
-    principal: Annotated[Principal, Depends(aktueller_principal)],
+    principal: Annotated[Principal, Depends(current_principal)],
     session: Annotated[Session, Depends(get_session)],
 ) -> Response:
     zone = _zone_or_404(session, principal, zone_id, "zone.manage")
     values = {
         name: str(getattr(zone, name)) if getattr(zone, name) is not None else "" for name in FELDER
     }
-    return _parameterpage(request, zone, control_parameters(session, zone), values)
+    return _parameter_page(request, zone, control_parameters(session, zone), values)
 
 
 def _check_parameters(values: dict[str, str]) -> dict[str, Decimal | int | None]:
@@ -104,7 +104,7 @@ def _check_parameters(values: dict[str, str]) -> dict[str, Decimal | int | None]
 async def save_parameter(
     zone_id: int,
     request: Request,
-    principal: Annotated[Principal, Depends(aktueller_principal)],
+    principal: Annotated[Principal, Depends(current_principal)],
     session: Annotated[Session, Depends(get_session)],
 ) -> Response:
     zone = _zone_or_404(session, principal, zone_id, "zone.manage")
@@ -113,7 +113,7 @@ async def save_parameter(
     try:
         checked = _check_parameters(values)
     except FormError as exc:
-        return _parameterpage(request, zone, control_parameters(session, zone), values, exc)
+        return _parameter_page(request, zone, control_parameters(session, zone), values, exc)
     save_control_parameters(
         session, zone, checked, user_id=principal.user_id, token_id=principal.token_id
     )
@@ -124,28 +124,28 @@ async def save_parameter(
 async def create_override_view(
     zone_id: int,
     request: Request,
-    principal: Annotated[Principal, Depends(aktueller_principal)],
+    principal: Annotated[Principal, Depends(current_principal)],
     session: Annotated[Session, Depends(get_session)],
 ) -> Response:
     zone = _zone_or_404(session, principal, zone_id, "override.create")
     form = await request.form()
     temperature_text = str(form.get("temperature_c", "")).strip()
-    kind = str(form.get("end", "dauerhaft"))
+    kind = str(form.get("end", "permanent"))
     try:
         # Only the number itself now. The limit is checked by `uebersteuerung_anlegen`
         # further below -- it used to be here a second time too, with its own numbers,
         # and would have had to be kept in sync on the next change. This exact mistake
         # has already happened to the project once; the message comes from the domain.
         temperature = Decimal(temperature_text.replace(",", "."))
-        if kind == "naechste_schaltung":
-            ende = end_of_next_switch(session, zone)
-        elif kind == "dauer":
+        if kind == "next_switch":
+            end_at = end_of_next_switch(session, zone)
+        elif kind == "duration":
             duration = int(str(form.get("duration_minutes", "")))
             if duration <= 0:
                 raise ValueError
-            ende = utcnow() + timedelta(minutes=duration)
-        elif kind == "dauerhaft":
-            ende = None
+            end_at = utcnow() + timedelta(minutes=duration)
+        elif kind == "permanent":
+            end_at = None
         else:
             raise ValueError
     # Parentheses, even though Python 3.14 no longer requires them (PEP 758): without
@@ -153,7 +153,7 @@ async def create_override_view(
     except (InvalidOperation, ValueError):
         parameter = urlencode(
             {
-                "uebersteuerungsfehler": "Bitte Temperatur, Art und Dauer prüfen.",
+                "override_errors": "Bitte Temperatur, Art und Dauer prüfen.",
                 "zone_id": zone.id,
                 "temperature_c": temperature_text,
                 "end": kind,
@@ -163,7 +163,7 @@ async def create_override_view(
         return RedirectResponse(f"/?{parameter}", status.HTTP_303_SEE_OTHER)
     try:
         create_override(
-            session, zone, temperature, ende,
+            session, zone, temperature, end_at,
             user_id=principal.user_id, token_id=principal.token_id,
         )
     except DomainError as exc:
@@ -171,7 +171,7 @@ async def create_override_view(
         # all three adapters. Here it is only displayed.
         parameter = urlencode(
             {
-                "uebersteuerungsfehler": exc.notice,
+                "override_errors": exc.notice,
                 "zone_id": zone.id,
                 "temperature_c": temperature_text,
                 "end": kind,
@@ -185,7 +185,7 @@ async def create_override_view(
 @router.post("/zones/{zone_id}/override/cancel")
 async def end_override(
     zone_id: int,
-    principal: Annotated[Principal, Depends(aktueller_principal)],
+    principal: Annotated[Principal, Depends(current_principal)],
     session: Annotated[Session, Depends(get_session)],
 ) -> Response:
     zone = _zone_or_404(session, principal, zone_id, "override.cancel")
@@ -202,7 +202,7 @@ THERMOSTAT_STEP = Decimal("0.5")
 async def adjust_thermostat(
     zone_id: int,
     request: Request,
-    principal: Annotated[Principal, Depends(aktueller_principal)],
+    principal: Annotated[Principal, Depends(current_principal)],
     session: Annotated[Session, Depends(get_session)],
 ) -> Response:
     """Adjusts the stored temperature of the mode currently in effect.
@@ -223,8 +223,8 @@ async def adjust_thermostat(
     except ValueError as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Kein Modus angegeben") from exc
 
-    richtung = str(form.get("direction", ""))
-    if richtung not in ("hoch", "runter"):
+    direction = str(form.get("direction", ""))
+    if direction not in ("hoch", "runter"):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Unbekannte Richtung")
 
     # The value the page shows -- not the stored row. The two are not the same: if a
@@ -233,22 +233,22 @@ async def adjust_thermostat(
     # respond with 404 -- on the page it looked as if nothing happened when pressed.
     # That is exactly the state of a freshly set-up plant where nobody has maintained
     # setpoints yet.
-    jetziger = temperature_for_mode(session, zone, mode_id)
-    if jetziger is None:
-        angezeigt = resolved_setpoint(session, zone, utcnow())
-        if angezeigt.mode_id == mode_id:
-            jetziger = angezeigt.temperature_c
-    if jetziger is None:
+    current = temperature_for_mode(session, zone, mode_id)
+    if current is None:
+        shown = resolved_setpoint(session, zone, utcnow())
+        if shown.mode_id == mode_id:
+            current = shown.temperature_c
+    if current is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Für diesen Modus gibt es keinen Sollwert")
 
-    neu = jetziger + (THERMOSTAT_STEP if richtung == "hoch" else -THERMOSTAT_STEP)
+    new = current + (THERMOSTAT_STEP if direction == "hoch" else -THERMOSTAT_STEP)
     try:
         update_setpoints(
-            session, zone, {mode_id: neu}, user_id=principal.user_id
+            session, zone, {mode_id: new}, user_id=principal.user_id
         )
     except DomainError as exc:
         # Reached the limit. Not an error state, but the end of the road -- the
         # page simply shows the unchanged value afterward.
-        parameter = urlencode({"thermostatfehler": exc.notice, "zone_id": zone.id})
+        parameter = urlencode({"thermostat_errors": exc.notice, "zone_id": zone.id})
         return RedirectResponse(f"/?{parameter}", status.HTTP_303_SEE_OTHER)
     return RedirectResponse("/", status.HTTP_303_SEE_OTHER)

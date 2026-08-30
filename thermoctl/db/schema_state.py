@@ -22,7 +22,7 @@ log = logging.getLogger(__name__)
 COMMAND = "alembic upgrade head"
 
 
-class SchemaPasstNicht(RuntimeError):
+class SchemaMismatch(RuntimeError):
     """The service cannot start because the schema is missing or outdated."""
 
 
@@ -41,16 +41,16 @@ def _migration_head() -> str | None:
     except ImportError:  # pragma: no cover - alembic is a hard dependency
         return None
 
-    ini = Path("alembic.ini")
-    if not ini.is_file():
+    ini_path = Path("alembic.ini")
+    if not ini_path.is_file():
         return None
     try:
-        verzeichnis = ScriptDirectory.from_config(Config(str(ini)))
-        koepfe = verzeichnis.get_heads()
+        directory = ScriptDirectory.from_config(Config(str(ini_path)))
+        heads = directory.get_heads()
     except Exception:  # pragma: no cover - a broken configuration is no reason to abort startup
         return None
     # Multiple heads would be an error in the history, not in this database.
-    return koepfe[0] if len(koepfe) == 1 else None
+    return heads[0] if len(heads) == 1 else None
 
 
 def database_state(engine: Engine) -> str | None:
@@ -74,7 +74,7 @@ def check_schema(engine: Engine) -> None:
     state = database_state(engine)
     if state is None:
         if not inspect(engine).has_table("user"):
-            raise SchemaPasstNicht(
+            raise SchemaMismatch(
                 f"Die Datenbank hat kein Schema. Vor dem ersten Start einmal '{COMMAND}' "
                 "ausfuehren; das Container-Abbild erledigt das selbst."
             )
@@ -86,12 +86,12 @@ def check_schema(engine: Engine) -> None:
         )
         return
 
-    kopf = _migration_head()
-    if kopf is None:
+    head = _migration_head()
+    if head is None:
         log.debug("Migrationsverzeichnis nicht gefunden, Versionsvergleich entfaellt")
         return
-    if state != kopf:
-        raise SchemaPasstNicht(
-            f"Das Datenbankschema steht auf {state}, der Code erwartet {kopf}. "
+    if state != head:
+        raise SchemaMismatch(
+            f"Das Datenbankschema steht auf {state}, der Code erwartet {head}. "
             f"'{COMMAND}' ausfuehren."
         )

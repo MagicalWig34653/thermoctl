@@ -203,7 +203,7 @@ async def test_dry_run_does_not_deregister(session: Session) -> None:
 
     config = f"homeassistant/climate/thermoctl_zone_{zone.id}/config"
     assert (config, "") not in client.messages
-    assert zone.id in state.angemeldet
+    assert zone.id in state.registered
 
 
 @pytest.mark.anyio
@@ -225,7 +225,7 @@ async def test_only_a_deleted_zone_is_deregistered(session: Session) -> None:
     abgemeldet = {topic for topic, payload in client.messages if payload == ""}
     assert f"homeassistant/climate/thermoctl_zone_{zone.id}/config" in abgemeldet
     assert f"homeassistant/button/thermoctl_zone_{zone.id}_boost/config" in abgemeldet
-    assert state.angemeldet == {}
+    assert state.registered == {}
 
 
 @pytest.mark.anyio
@@ -344,14 +344,14 @@ async def test_state_switch_times_and_sensor_situation_go_along(session: Session
     "Last switch" here is not the last control cycle, but the last *change*:
     otherwise it would always say "a minute ago".
     """
-    from tests.helpers import create_zone_state, sensorstatus
+    from tests.helpers import create_zone_state, sensor_status_of
     from thermoctl.db.models.state import ShadowDecision
 
     create_settings(session)
     zone = create_zone(session, "zustandsreiche-zone")
     state = create_zone_state(session, zone)
     state.temperature_c = Decimal("20.5")
-    state.sensor_status_id = sensorstatus(session, "veraltet").id
+    state.sensor_status_id = sensor_status_of(session, "veraltet").id
     session.add_all(
         [
             ShadowDecision(

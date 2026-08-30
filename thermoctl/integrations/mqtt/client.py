@@ -13,7 +13,7 @@ from thermoctl.integrations.mqtt.zigbee2mqtt import abonnements
 log = logging.getLogger(__name__)
 
 
-async def schlafen(seconds: float) -> None:
+async def sleep(seconds: float) -> None:
     """Waits before the next connection attempt."""
     await asyncio.sleep(seconds)
 
@@ -25,7 +25,7 @@ class MqttClient:
         handler: Callable[[str, bytes], Awaitable[None]],
         *,
         switching_allowed: bool = False,
-        zusatz_abonnements: list[str] | None = None,
+        extra_subscriptions: list[str] | None = None,
     ) -> None:
         """`switching_allowed` is the hard limit of the dry run -- for switching.
 
@@ -48,7 +48,7 @@ class MqttClient:
         # Beyond the Zigbee2MQTT subscriptions: our own command topics. They are not
         # in `abonnements()`, because that delivers the four deliberately narrow
         # Zigbee2MQTT topics and nothing else.
-        self._zusatz_abonnements = list(zusatz_abonnements or [])
+        self._zusatz_abonnements = list(extra_subscriptions or [])
         self._client: aiomqtt.Client | None = None
 
     def _tls_context(self) -> ssl.SSLContext | None:
@@ -128,7 +128,7 @@ class MqttClient:
             finally:
                 self._client = None
 
-            await schlafen(interval)
+            await sleep(interval)
             interval = min(interval * 2, 60.0)
 
     async def publishing(

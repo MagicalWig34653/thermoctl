@@ -45,12 +45,12 @@ def _source(session: Session) -> None:
 
 
 def _register(
-    session: Session, passkey_settings: Settings, nutzer: User, device: WebAuthnDevice
+    session: Session, passkey_settings: Settings, user_record: User, device: WebAuthnDevice
 ) -> UserPasskey:
-    argumente = begin_registration(session, passkey_settings, nutzer)
+    argumente = begin_registration(session, passkey_settings, user_record)
     response = device.register(argumente, ORIGIN)
     return finish_registration(
-        session, passkey_settings, nutzer, response, "Testgerät"
+        session, passkey_settings, user_record, response, "Testgerät"
     )
 
 
@@ -58,29 +58,29 @@ def test_a_registered_passkey_really_logs_in(
     session: Session, passkey_settings: Settings
 ) -> None:
     """The counter-proof: without it, the suite only proved that everything gets rejected."""
-    nutzer = create_user(session, "passkey-nutzer")
+    user_record = create_user(session, "passkey-nutzer")
     device = WebAuthnDevice()
-    entry = _register(session, passkey_settings, nutzer, device)
+    entry = _register(session, passkey_settings, user_record, device)
     assert entry.label == "Testgerät"
 
     argumente = begin_authentication(session, passkey_settings)
     response = device.log_in(argumente, ORIGIN)
-    angemeldet = verify_authentication(session, passkey_settings, response)
-    assert angemeldet.id == nutzer.id
+    registered = verify_authentication(session, passkey_settings, response)
+    assert registered.id == user_record.id
 
 
 def test_a_challenge_is_consumed_even_on_failure(
     session: Session, passkey_settings: Settings
 ) -> None:
     """A reusable challenge cancels out the protection it is supposed to provide."""
-    nutzer = create_user(session, "einmal-nutzer")
+    user_record = create_user(session, "einmal-nutzer")
     device = WebAuthnDevice()
-    _register(session, passkey_settings, nutzer, device)
+    _register(session, passkey_settings, user_record, device)
 
     argumente = begin_authentication(session, passkey_settings)
     response = device.log_in(argumente, ORIGIN)
 
-    assert verify_authentication(session, passkey_settings, response).id == nutzer.id
+    assert verify_authentication(session, passkey_settings, response).id == user_record.id
     # The exact same response a second time — the challenge is spent.
     with pytest.raises(PasskeyError):
         verify_authentication(session, passkey_settings, response)
@@ -90,19 +90,19 @@ def test_a_login_challenge_is_no_good_for_a_registration(
     session: Session, passkey_settings: Settings
 ) -> None:
     """Without binding it to the ceremony, a challenge could be repurposed for the wrong use."""
-    nutzer = create_user(session, "zweck-nutzer")
+    user_record = create_user(session, "zweck-nutzer")
     device = WebAuthnDevice()
     argumente = begin_authentication(session, passkey_settings)
 
     # The authenticator creates a new key, but with the login's challenge — the
     # registration must detect this.
-    registrierungsargumente = begin_registration(session, passkey_settings, nutzer)
+    registrierungsargumente = begin_registration(session, passkey_settings, user_record)
     registrierungsargumente["challenge"] = argumente["challenge"]
     response = device.register(registrierungsargumente, ORIGIN)
 
     with pytest.raises(PasskeyError, match="anmeldung"):
         finish_registration(
-            session, passkey_settings, nutzer, response, "Falsch"
+            session, passkey_settings, user_record, response, "Falsch"
         )
 
 
@@ -111,9 +111,9 @@ def test_an_expired_challenge_is_refused(
 ) -> None:
     from datetime import timedelta
 
-    nutzer = create_user(session, "spaet-nutzer")
+    user_record = create_user(session, "spaet-nutzer")
     device = WebAuthnDevice()
-    _register(session, passkey_settings, nutzer, device)
+    _register(session, passkey_settings, user_record, device)
 
     argumente = begin_authentication(session, passkey_settings)
     response = device.log_in(argumente, ORIGIN)
@@ -130,9 +130,9 @@ def test_a_counter_that_went_backwards_ends_the_login(
     session: Session, passkey_settings: Settings
 ) -> None:
     """The only sign of a cloned authenticator that the procedure knows about."""
-    nutzer = create_user(session, "klon-nutzer")
+    user_record = create_user(session, "klon-nutzer")
     device = WebAuthnDevice()
-    entry = _register(session, passkey_settings, nutzer, device)
+    entry = _register(session, passkey_settings, user_record, device)
 
     argumente = begin_authentication(session, passkey_settings)
     response = device.log_in(argumente, ORIGIN)
@@ -149,10 +149,10 @@ def test_a_disabled_account_is_checked_only_after_the_signature(
 ) -> None:
     """The same order as in the password path — otherwise the behavior would
     reveal which accounts exist."""
-    nutzer = create_user(session, "gesperrt-nutzer")
+    user_record = create_user(session, "gesperrt-nutzer")
     device = WebAuthnDevice()
-    _register(session, passkey_settings, nutzer, device)
-    nutzer.is_active = False
+    _register(session, passkey_settings, user_record, device)
+    user_record.is_active = False
     session.flush()
 
     argumente = begin_authentication(session, passkey_settings)
@@ -160,19 +160,19 @@ def test_a_disabled_account_is_checked_only_after_the_signature(
     with pytest.raises(PasskeyError):
         verify_authentication(session, passkey_settings, response)
 
-    protokoll = session.scalars(
+    log = session.scalars(
         select(AuditEvent).where(AuditEvent.action == "login_failed")
     ).all()
-    assert protokoll and "gesperrt" in (protokoll[-1].detail or "").lower()
+    assert log and "gesperrt" in (log[-1].detail or "").lower()
 
 
 def test_a_foreign_origin_is_refused(
     session: Session, passkey_settings: Settings
 ) -> None:
     """The protection against imitation sites. Without it, a passkey is just a password."""
-    nutzer = create_user(session, "origin-nutzer")
+    user_record = create_user(session, "origin-nutzer")
     device = WebAuthnDevice()
-    _register(session, passkey_settings, nutzer, device)
+    _register(session, passkey_settings, user_record, device)
 
     argumente = begin_authentication(session, passkey_settings)
     # The authenticator responds to a different site.
@@ -184,12 +184,12 @@ def test_a_foreign_origin_is_refused(
 def test_an_unknown_passkey_is_refused(
     session: Session, passkey_settings: Settings
 ) -> None:
-    nutzer = create_user(session, "unbekannt-nutzer")
+    user_record = create_user(session, "unbekannt-nutzer")
     device = WebAuthnDevice()
-    _register(session, passkey_settings, nutzer, device)
+    _register(session, passkey_settings, user_record, device)
 
     fremdes = WebAuthnDevice()
-    argumente = begin_registration(session, passkey_settings, nutzer)
+    argumente = begin_registration(session, passkey_settings, user_record)
     fremdes.register(argumente, ORIGIN)
 
     login = begin_authentication(session, passkey_settings)
@@ -201,11 +201,11 @@ def test_an_unknown_passkey_is_refused(
 def test_the_same_passkey_cannot_be_stored_twice(
     session: Session, passkey_settings: Settings
 ) -> None:
-    nutzer = create_user(session, "doppelt-nutzer")
+    user_record = create_user(session, "doppelt-nutzer")
     device = WebAuthnDevice()
-    _register(session, passkey_settings, nutzer, device)
+    _register(session, passkey_settings, user_record, device)
     with pytest.raises(PasskeyError, match="bereits hinterlegt"):
-        _register(session, passkey_settings, nutzer, device)
+        _register(session, passkey_settings, user_record, device)
 
 
 def test_old_challenges_are_cleaned_up(
@@ -247,8 +247,8 @@ def _csrf(client: TestClient) -> dict[str, str]:
     from thermoctl.auth.csrf import CSRF_HEADER, csrf_token
     from thermoctl.auth.sessions import COOKIE_NAME
 
-    geheimnis = client.cookies[COOKIE_NAME]
-    return {CSRF_HEADER: csrf_token(geheimnis, get_settings().secret_key.get_secret_value())}
+    secret = client.cookies[COOKIE_NAME]
+    return {CSRF_HEADER: csrf_token(secret, get_settings().secret_key.get_secret_value())}
 
 
 def test_authentication_options_are_served_without_being_logged_in(
@@ -273,7 +273,7 @@ def test_a_nonsensical_login_is_refused_uniformly(
     for payload in ({}, {"id": "gibtesnicht"}, {"response": {}}):
         response = client.post("/passkey/authentication/verify", json=payload)
         assert response.status_code == 401, payload
-        assert response.json()["meldung"] == "Die Anmeldung war nicht erfolgreich."
+        assert response.json()["notice"] == "Die Anmeldung war nicht erfolgreich."
 
 
 def test_logging_in_through_the_http_route(
@@ -282,17 +282,17 @@ def test_logging_in_through_the_http_route(
     """The whole path the way the browser takes it — up to the session cookie being set."""
     from thermoctl.auth.sessions import COOKIE_NAME
 
-    nutzer = create_user(session, "http-nutzer")
+    user_record = create_user(session, "http-nutzer")
     device = WebAuthnDevice()
     passkey_settings = get_settings()
-    _register(session, passkey_settings, nutzer, device)
+    _register(session, passkey_settings, user_record, device)
 
     argumente = client.post("/passkey/authentication/options").json()
     response = client.post(
         "/passkey/authentication/verify", json=device.log_in(argumente, ORIGIN)
     )
     assert response.status_code == 200
-    assert response.json() == {"status": "angemeldet", "weiter": "/"}
+    assert response.json() == {"status": "signed_in", "redirect": "/"}
     assert client.cookies.get(COOKIE_NAME)
     # And the session really carries: a protected page now responds.
     assert client.get("/passkeys").status_code == 200

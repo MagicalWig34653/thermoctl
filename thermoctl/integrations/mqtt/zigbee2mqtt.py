@@ -19,13 +19,13 @@ class TopicCut:
     device_name: str | None
 
 
-def zuschneiden(topic: str, base: str) -> TopicCut:
+def trim(topic: str, base: str) -> TopicCut:
     """Maps exactly the subscribed read topics to a message kind."""
     base_parts = base.strip("/").split("/")
     topic_teile = topic.split("/")
-    unbekannt = TopicCut(MessageKind.UNBEKANNT, None)
+    unknown = TopicCut(MessageKind.UNBEKANNT, None)
     if not base_parts or topic_teile[: len(base_parts)] != base_parts:
-        return unbekannt
+        return unknown
 
     rest = topic_teile[len(base_parts) :]
     if rest == ["bridge", "devices"]:
@@ -33,12 +33,12 @@ def zuschneiden(topic: str, base: str) -> TopicCut:
     if rest == ["bridge", "state"]:
         return TopicCut(MessageKind.BRIDGE_STATE, None)
     if not rest or rest[0] == "bridge":
-        return unbekannt
+        return unknown
     if len(rest) == 1 and rest[0]:
         return TopicCut(MessageKind.DEVICE_STATE, rest[0])
     if len(rest) == 2 and rest[0] and rest[1] == "availability":
         return TopicCut(MessageKind.AVAILABILITY, rest[0])
-    return unbekannt
+    return unknown
 
 
 def abonnements(base: str) -> list[str]:

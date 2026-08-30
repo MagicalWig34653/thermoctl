@@ -93,7 +93,7 @@ def test_an_override_from_the_interface_uses_the_same_data_model_as_rest(
 
     response = client.post(
         f"/zones/{zone.id}/override",
-        data={"temperature_c": "21.5", "end": "dauerhaft"},
+        data={"temperature_c": "21.5", "end": "permanent"},
         headers=_csrf(client),
         follow_redirects=False,
     )
@@ -117,7 +117,7 @@ def test_showing_and_cancelling_an_override(session: Session, client_als) -> Non
     )
     client.post(
         f"/zones/{zone.id}/override",
-        data={"temperature_c": "22", "end": "dauerhaft"},
+        data={"temperature_c": "22", "end": "permanent"},
         headers=_csrf(client),
     )
     page = client.get("/")
@@ -150,7 +150,7 @@ def test_an_override_on_a_foreign_zone_yields_404(session: Session, client_als) 
     assert (
         client.post(
             f"/zones/{fremde.id}/override",
-            data={"temperature_c": "20", "end": "dauerhaft"},
+            data={"temperature_c": "20", "end": "permanent"},
             headers=_csrf(client),
         ).status_code
         == 404
@@ -211,7 +211,7 @@ def test_an_override_until_the_next_switch(session: Session, client_als) -> None
     client = client_als([("override.create", None), ("zone.read", None)])
     response = client.post(
         f"/zones/{zone.id}/override",
-        data={"temperature_c": "21,5", "end": "naechste_schaltung"},
+        data={"temperature_c": "21,5", "end": "next_switch"},
         headers=_csrf(client), follow_redirects=False,
     )
     assert response.status_code == 303
@@ -224,7 +224,7 @@ def test_an_override_for_a_duration(session: Session, client_als) -> None:
     client = client_als([("override.create", None), ("zone.read", None)])
     response = client.post(
         f"/zones/{zone.id}/override",
-        data={"temperature_c": "20.0", "end": "dauer", "duration_minutes": "120"},
+        data={"temperature_c": "20.0", "end": "duration", "duration_minutes": "120"},
         headers=_csrf(client), follow_redirects=False,
     )
     assert response.status_code == 303
@@ -239,7 +239,7 @@ def test_an_override_without_a_schedule_lasts_indefinitely(session: Session, cli
     client = client_als([("override.create", None), ("zone.read", None)])
     client.post(
         f"/zones/{zone.id}/override",
-        data={"temperature_c": "20.0", "end": "naechste_schaltung"},
+        data={"temperature_c": "20.0", "end": "next_switch"},
         headers=_csrf(client),
     )
     entry = session.scalar(select(ZoneOverride).where(ZoneOverride.zone_id == zone.id))
@@ -252,14 +252,14 @@ def test_nonsensical_overrides_are_refused(session: Session, client_als) -> None
     zone = _grundlage(session)
     client = client_als([("override.create", None), ("zone.read", None)])
     for data in (
-        {"temperature_c": "warm", "end": "dauerhaft"},
+        {"temperature_c": "warm", "end": "permanent"},
         # The lower bound is -20 degrees: a setpoint in the negative range means
         # "no heating here". Below that there is no longer a real intent, only a
         # typo.
-        {"temperature_c": "-30", "end": "dauerhaft"},
-        {"temperature_c": "50", "end": "dauerhaft"},
-        {"temperature_c": "20", "end": "dauer", "duration_minutes": "0"},
-        {"temperature_c": "20", "end": "dauer", "duration_minutes": "keine Zahl"},
+        {"temperature_c": "-30", "end": "permanent"},
+        {"temperature_c": "50", "end": "permanent"},
+        {"temperature_c": "20", "end": "duration", "duration_minutes": "0"},
+        {"temperature_c": "20", "end": "duration", "duration_minutes": "keine Zahl"},
         {"temperature_c": "20", "end": "irgendwas"},
     ):
         response = client.post(
@@ -267,7 +267,7 @@ def test_nonsensical_overrides_are_refused(session: Session, client_als) -> None
             headers=_csrf(client), follow_redirects=False,
         )
         assert response.status_code == 303, data
-        assert "uebersteuerungsfehler" in (response.headers.get("location") or ""), data
+        assert "override_errors" in (response.headers.get("location") or ""), data
     assert session.scalar(select(ZoneOverride).where(ZoneOverride.zone_id == zone.id)) is None
 
 
@@ -292,11 +292,11 @@ def test_an_override_with_two_decimal_places_is_refused(
     client = client_als([("override.create", None), ("zone.read", None)])
     response = client.post(
         f"/zones/{zone.id}/override",
-        data={"temperature_c": "21,55", "end": "dauerhaft"},
+        data={"temperature_c": "21,55", "end": "permanent"},
         headers=_csrf(client), follow_redirects=False,
     )
     assert response.status_code == 303
-    assert "uebersteuerungsfehler" in (response.headers.get("location") or "")
+    assert "override_errors" in (response.headers.get("location") or "")
     assert session.scalar(select(ZoneOverride).where(ZoneOverride.zone_id == zone.id)) is None
 
 
@@ -399,7 +399,7 @@ def test_the_thermostat_stops_at_the_limit(session: Session, client_als) -> None
         follow_redirects=False,
     )
     assert response.status_code == 303
-    assert "thermostatfehler" in response.headers["location"]
+    assert "thermostat_errors" in response.headers["location"]
     row = session.scalars(
         select(ZoneSetpoint).where(ZoneSetpoint.setpoint_mode_id == mode.id)
     ).one()
@@ -447,13 +447,13 @@ def test_the_thermostat_works_even_without_a_stored_setpoint(
     zone = _grundlage(session)
     session.query(ZoneSetpoint).filter_by(zone_id=zone.id).delete()
     session.flush()
-    angezeigt = resolved_setpoint(session, zone, utcnow())
-    assert angezeigt.mode_id is not None
+    shown = resolved_setpoint(session, zone, utcnow())
+    assert shown.mode_id is not None
 
     client = client_als([("zone.read", zone.id), ("setpoint.write", zone.id)])
     response = client.post(
         f"/zones/{zone.id}/thermostat",
-        data={"mode_id": str(angezeigt.mode_id), "direction": "hoch"},
+        data={"mode_id": str(shown.mode_id), "direction": "hoch"},
         headers=_csrf(client),
         follow_redirects=False,
     )
@@ -462,10 +462,10 @@ def test_the_thermostat_works_even_without_a_stored_setpoint(
     row = session.scalars(
         select(ZoneSetpoint).where(
             ZoneSetpoint.zone_id == zone.id,
-            ZoneSetpoint.setpoint_mode_id == angezeigt.mode_id,
+            ZoneSetpoint.setpoint_mode_id == shown.mode_id,
         )
     ).one()
-    assert row.temperature_c == angezeigt.temperature_c + Decimal("0.5")
+    assert row.temperature_c == shown.temperature_c + Decimal("0.5")
 
 
 def test_the_thermostat_for_a_foreign_mode_stays_a_404(
@@ -502,7 +502,7 @@ def test_overriding_into_the_negative_range(session: Session, client_als) -> Non
     client = client_als([("override.create", None), ("zone.read", None)])
     response = client.post(
         f"/zones/{zone.id}/override",
-        data={"temperature_c": "-5", "end": "dauerhaft"},
+        data={"temperature_c": "-5", "end": "permanent"},
         headers=_csrf(client),
         follow_redirects=False,
     )
@@ -520,7 +520,7 @@ def test_the_thermostat_goes_below_zero(session: Session, client_als) -> None:
 
     from thermoctl.db.models.zone import ZoneSetpoint
 
-    # The starting value is set directly, not via `sollwerte_aendern`: that would
+    # The starting value is set directly, not via `change_setpoints`: that would
     # write an audit entry, and its foreign key to the user is actually enforced
     # under MariaDB -- under SQLite a made-up id would not have been noticed.
     zone, mode = _zone_with_mode(session, "0.0")

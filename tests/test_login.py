@@ -104,7 +104,7 @@ def test_the_password_appears_in_no_response(client: TestClient, user) -> None:
 
 def test_failed_attempts_are_increasingly_delayed(client, user, monkeypatch) -> None:
     delays: list[float] = []
-    monkeypatch.setattr("thermoctl.web.auth_views.schlafen", delays.append)
+    monkeypatch.setattr("thermoctl.web.auth_views.sleep", delays.append)
     for _ in range(3):
         client.post("/login", data={"username": "lino", "password": "falsch-aber-lang"})
     assert delays == sorted(delays)

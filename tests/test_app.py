@@ -313,7 +313,7 @@ def test_starting_against_an_empty_database_reports_the_missing_migration(
     start does not -- that is exactly where it happens. What is checked is
     the log line, not just the exception: the exception alone tells the
     operator nothing once it disappears under the traceback."""
-    from thermoctl.db.schema_state import COMMAND, SchemaPasstNicht
+    from thermoctl.db.schema_state import COMMAND, SchemaMismatch
 
     monkeypatch.setenv("THERMOCTL_DATABASE_URL", f"sqlite:///{tmp_path / 'leer.db'}")
     monkeypatch.setenv("THERMOCTL_SECRET_KEY", "a" * 32)
@@ -321,7 +321,7 @@ def test_starting_against_an_empty_database_reports_the_missing_migration(
 
     get_settings.cache_clear()
     try:
-        with pytest.raises(SchemaPasstNicht), TestClient(create_app()):
+        with pytest.raises(SchemaMismatch), TestClient(create_app()):
             pass
         output = capsys.readouterr().out
         assert COMMAND in output

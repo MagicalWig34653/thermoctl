@@ -28,7 +28,7 @@ class StateTopics:
     setpoint: str
     operating_mode: str
     sensor_state: str
-    wuerde_heizen: str
+    would_heat: str
     last_switch: str
     next_switch: str
 
@@ -50,36 +50,36 @@ class DiscoveryMessage:
     payload: str
 
 
-def _praefix(praefix: str) -> str:
-    bereinigt = praefix.strip("/")
-    if not bereinigt or any(zeichen in bereinigt for zeichen in ("+", "#", "\0")):
+def _prefix_of(prefix: str) -> str:
+    cleaned = prefix.strip("/")
+    if not cleaned or any(character in cleaned for character in ("+", "#", "\0")):
         raise ValueError("Das MQTT-Praefix muss gueltig sein und darf keine Wildcards enthalten")
-    return bereinigt
+    return cleaned
 
 
-def _zonebasis(zone_id: int, praefix: str) -> str:
+def _zone_base(zone_id: int, prefix: str) -> str:
     if zone_id < 1:
         raise ValueError("Die Zonenkennung muss groesser als null sein")
-    return f"{_praefix(praefix)}/zones/{zone_id}"
+    return f"{_prefix_of(prefix)}/zones/{zone_id}"
 
 
-def states_topics(zone_id: int, praefix: str = "thermoctl") -> StateTopics:
+def states_topics(zone_id: int, prefix: str = "thermoctl") -> StateTopics:
     """Builds all state topics of a zone."""
-    base = f"{_zonebasis(zone_id, praefix)}/state"
+    base = f"{_zone_base(zone_id, prefix)}/state"
     return StateTopics(
         current_temperature=f"{base}/current_temperature",
         setpoint=f"{base}/setpoint",
         operating_mode=f"{base}/operating_mode",
         sensor_state=f"{base}/sensor_state",
-        wuerde_heizen=f"{base}/would_heat",
+        would_heat=f"{base}/would_heat",
         last_switch=f"{base}/last_switch",
         next_switch=f"{base}/next_switch",
     )
 
 
-def command_topics(zone_id: int, praefix: str = "thermoctl") -> CommandTopics:
+def command_topics(zone_id: int, prefix: str = "thermoctl") -> CommandTopics:
     """Builds the separate command topics of a zone."""
-    base = f"{_zonebasis(zone_id, praefix)}/command"
+    base = f"{_zone_base(zone_id, prefix)}/command"
     return CommandTopics(
         setpoint=f"{base}/setpoint",
         operating_mode=f"{base}/operating_mode",
@@ -87,23 +87,23 @@ def command_topics(zone_id: int, praefix: str = "thermoctl") -> CommandTopics:
     )
 
 
-def mode_topics(zone_id: int, mode_id: int, praefix: str = "thermoctl") -> tuple[str, str]:
+def mode_topics(zone_id: int, mode_id: int, prefix: str = "thermoctl") -> tuple[str, str]:
     """State and command for the setpoint of **one** mode of this zone."""
     if mode_id < 1:
         raise ValueError("Die Moduskennung muss groesser als null sein")
-    base = _zonebasis(zone_id, praefix)
+    base = _zone_base(zone_id, prefix)
     return (f"{base}/state/mode/{mode_id}", f"{base}/command/mode/{mode_id}")
 
 
-def parameter_topics(zone_id: int, name: str, praefix: str = "thermoctl") -> tuple[str, str]:
+def parameter_topics(zone_id: int, name: str, prefix: str = "thermoctl") -> tuple[str, str]:
     """State and command for **one** control parameter of this zone."""
     if not re.fullmatch(r"[a-z][a-z0-9_]*", name):
         raise ValueError(f"Kein gueltiger Parametername: {name!r}")
-    base = _zonebasis(zone_id, praefix)
+    base = _zone_base(zone_id, prefix)
     return (f"{base}/state/parameter/{name}", f"{base}/command/parameter/{name}")
 
 
-def armed_topic(praefix: str = "thermoctl") -> str:
+def armed_topic(prefix: str = "thermoctl") -> str:
     """Whether control is really switching -- one statement for the whole service.
 
     Up until this point the dry run lived in the *name* of every zone. That was clearly
@@ -112,39 +112,39 @@ def armed_topic(praefix: str = "thermoctl") -> str:
     dry run was then called `climate.thermoctl_zone_1_trockenlauf` forever. The
     operating state belongs in its own entity, not in the name of a different one.
     """
-    return f"{_praefix(praefix)}/state/armed"
+    return f"{_prefix_of(prefix)}/state/armed"
 
 
-def availability_topic(praefix: str = "thermoctl") -> str:
+def availability_topic(prefix: str = "thermoctl") -> str:
     """Builds the service's shared last-will topic."""
-    return f"{_praefix(praefix)}/availability"
+    return f"{_prefix_of(prefix)}/availability"
 
 
-def _identifier(praefix: str) -> str:
+def _identifier(prefix: str) -> str:
     """The prefix, reduced to what is allowed to appear in a discovery id."""
-    ohne_akzente = unicodedata.normalize("NFKD", _praefix(praefix)).encode("ascii", "ignore")
-    identifier = re.sub(rb"[^a-zA-Z0-9_-]+", b"_", ohne_akzente).decode().strip("_").lower()
+    without_accents = unicodedata.normalize("NFKD", _prefix_of(prefix)).encode("ascii", "ignore")
+    identifier = re.sub(rb"[^a-zA-Z0-9_-]+", b"_", without_accents).decode().strip("_").lower()
     if not identifier:
         raise ValueError("Das MQTT-Praefix ergibt keine gueltige Discovery-Kennung")
     return identifier
 
 
-def _objekt_id(zone_id: int, praefix: str) -> str:
-    _zonebasis(zone_id, praefix)
-    return f"{_identifier(praefix)}_zone_{zone_id}"
+def _object_id(zone_id: int, prefix: str) -> str:
+    _zone_base(zone_id, prefix)
+    return f"{_identifier(prefix)}_zone_{zone_id}"
 
 
-def discovery_config_topic(zone_id: int, praefix: str = "thermoctl") -> str:
+def discovery_config_topic(zone_id: int, prefix: str = "thermoctl") -> str:
     """Builds the Home Assistant config topic of a climate zone."""
-    _zonebasis(zone_id, praefix)
-    return f"homeassistant/climate/{_objekt_id(zone_id, praefix)}/config"
+    _zone_base(zone_id, prefix)
+    return f"homeassistant/climate/{_object_id(zone_id, prefix)}/config"
 
 
-def _config_topic(komponente: str, objekt_id: str) -> str:
-    return f"homeassistant/{komponente}/{objekt_id}/config"
+def _config_topic(component: str, objekt_id: str) -> str:
+    return f"homeassistant/{component}/{objekt_id}/config"
 
 
-def _devicesblock(zone_id: int, zone_name: str, praefix: str) -> dict[str, Any]:
+def _devices_block(zone_id: int, zone_name: str, prefix: str) -> dict[str, Any]:
     """One Home Assistant device per zone, with the service as its parent.
 
     Previously, all entities hung off a single device "thermoctl". With a handful of
@@ -154,24 +154,24 @@ def _devicesblock(zone_id: int, zone_name: str, praefix: str) -> dict[str, Any]:
     the same.
     """
     return {
-        "identifiers": [f"thermoctl:{_praefix(praefix)}:zone:{zone_id}"],
+        "identifiers": [f"thermoctl:{_prefix_of(prefix)}:zone:{zone_id}"],
         "name": zone_name,
         "manufacturer": "thermoctl",
-        "via_device": f"thermoctl:{_praefix(praefix)}",
+        "via_device": f"thermoctl:{_prefix_of(prefix)}",
     }
 
 
-def _grundgeruest(zone_id: int, zone_name: str, praefix: str) -> dict[str, Any]:
+def _skeleton(zone_id: int, zone_name: str, prefix: str) -> dict[str, Any]:
     """What every entity of a zone carries alike."""
     return {
-        "device": _devicesblock(zone_id, zone_name, praefix),
-        "availability_topic": availability_topic(praefix),
+        "device": _devices_block(zone_id, zone_name, prefix),
+        "availability_topic": availability_topic(prefix),
         "payload_available": "online",
         "payload_not_available": "offline",
     }
 
 
-def _als_json(data: dict[str, Any]) -> str:
+def _as_json(data: dict[str, Any]) -> str:
     return json.dumps(data, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
 
 
@@ -180,7 +180,7 @@ def discovery_payload(
     zone_name: str,
     *,
     temp_step: Decimal = Decimal("0.5"),
-    praefix: str = "thermoctl",
+    prefix: str = "thermoctl",
 ) -> str:
     """Builds the JSON payload for a Home Assistant climate zone."""
     if not zone_name.strip():
@@ -188,11 +188,11 @@ def discovery_payload(
     if temp_step <= 0:
         raise ValueError("Der Temperaturschritt muss groesser als null sein")
 
-    state = states_topics(zone_id, praefix)
-    command = command_topics(zone_id, praefix)
-    objekt_id = _objekt_id(zone_id, praefix)
+    state = states_topics(zone_id, prefix)
+    command = command_topics(zone_id, prefix)
+    objekt_id = _object_id(zone_id, prefix)
     data: dict[str, Any] = {
-        **_grundgeruest(zone_id, zone_name, praefix),
+        **_skeleton(zone_id, zone_name, prefix),
         "name": None,
         "unique_id": objekt_id,
         # Explicitly set so the entity id is not derived from the name. Otherwise it
@@ -206,7 +206,7 @@ def discovery_payload(
         "mode_command_topic": command.operating_mode,
         "mode_state_template": "{{ 'heat' if value == 'manual' else value }}",
         "mode_command_template": "{{ 'manual' if value == 'heat' else value }}",
-        "action_topic": state.wuerde_heizen,
+        "action_topic": state.would_heat,
         "action_template": "{{ 'heating' if value == 'true' else 'idle' }}",
         "modes": ["auto", "heat", "off"],
         # From the domain, not copied by hand: this way Home Assistant shows the
@@ -216,7 +216,7 @@ def discovery_payload(
         "temp_step": float(temp_step),
         "temperature_unit": "C",
     }
-    return _als_json(data)
+    return _as_json(data)
 
 
 def zone_discovery(
@@ -224,35 +224,35 @@ def zone_discovery(
     zone_name: str,
     *,
     temp_step: Decimal = Decimal("0.5"),
-    praefix: str = "thermoctl",
+    prefix: str = "thermoctl",
 ) -> DiscoveryMessage:
     """Bundles config topic and discovery payload for a zone."""
     return DiscoveryMessage(
-        discovery_config_topic(zone_id, praefix),
-        discovery_payload(zone_id, zone_name, temp_step=temp_step, praefix=praefix),
+        discovery_config_topic(zone_id, prefix),
+        discovery_payload(zone_id, zone_name, temp_step=temp_step, prefix=prefix),
     )
 
 
-def discovery_removal(zone_id: int, praefix: str = "thermoctl") -> DiscoveryMessage:
+def discovery_removal(zone_id: int, prefix: str = "thermoctl") -> DiscoveryMessage:
     """Builds the empty discovery message for removing a zone."""
-    return DiscoveryMessage(discovery_config_topic(zone_id, praefix), "")
+    return DiscoveryMessage(discovery_config_topic(zone_id, prefix), "")
 
 
 def boost_discovery(
-    zone_id: int, zone_name: str, praefix: str = "thermoctl"
+    zone_id: int, zone_name: str, prefix: str = "thermoctl"
 ) -> DiscoveryMessage:
     """The button that pulls the next switch forward."""
-    objekt_id = f"{_objekt_id(zone_id, praefix)}_boost"
+    objekt_id = f"{_object_id(zone_id, prefix)}_boost"
     data: dict[str, Any] = {
-        **_grundgeruest(zone_id, zone_name, praefix),
+        **_skeleton(zone_id, zone_name, prefix),
         "name": "Boost",
         "unique_id": objekt_id,
         "object_id": objekt_id,
-        "command_topic": command_topics(zone_id, praefix).boost,
+        "command_topic": command_topics(zone_id, prefix).boost,
         "payload_press": "boost",
         "icon": "mdi:fast-forward",
     }
-    return DiscoveryMessage(_config_topic("button", objekt_id), _als_json(data))
+    return DiscoveryMessage(_config_topic("button", objekt_id), _as_json(data))
 
 
 def timestamp_discovery(
@@ -260,7 +260,7 @@ def timestamp_discovery(
     zone_name: str,
     kind: str,
     label: str,
-    praefix: str = "thermoctl",
+    prefix: str = "thermoctl",
 ) -> DiscoveryMessage:
     """A point in time as a sensor -- 'last switch' and 'next mode change'.
 
@@ -270,16 +270,16 @@ def timestamp_discovery(
     """
     if kind not in ("last_switch", "next_switch"):
         raise ValueError(f"Unbekannte Zeitstempelart: {kind!r}")
-    objekt_id = f"{_objekt_id(zone_id, praefix)}_{kind}"
+    objekt_id = f"{_object_id(zone_id, prefix)}_{kind}"
     data: dict[str, Any] = {
-        **_grundgeruest(zone_id, zone_name, praefix),
+        **_skeleton(zone_id, zone_name, prefix),
         "name": label,
         "unique_id": objekt_id,
         "object_id": objekt_id,
-        "state_topic": getattr(states_topics(zone_id, praefix), kind),
+        "state_topic": getattr(states_topics(zone_id, prefix), kind),
         "device_class": "timestamp",
     }
-    return DiscoveryMessage(_config_topic("sensor", objekt_id), _als_json(data))
+    return DiscoveryMessage(_config_topic("sensor", objekt_id), _as_json(data))
 
 
 def mode_discovery(
@@ -287,7 +287,7 @@ def mode_discovery(
     zone_name: str,
     mode_id: int,
     mode_name: str,
-    praefix: str = "thermoctl",
+    prefix: str = "thermoctl",
     temp_step: Decimal = Decimal("0.5"),
 ) -> DiscoveryMessage:
     """The setpoint of a mode as a number input.
@@ -296,14 +296,14 @@ def mode_discovery(
     adjust the night setback in the afternoon needs a dedicated input for that --
     otherwise they would have to wait until evening.
     """
-    objekt_id = f"{_objekt_id(zone_id, praefix)}_modus_{mode_id}"
+    objekt_id = f"{_object_id(zone_id, prefix)}_modus_{mode_id}"
     data: dict[str, Any] = {
-        **_grundgeruest(zone_id, zone_name, praefix),
+        **_skeleton(zone_id, zone_name, prefix),
         "name": f"Sollwert {mode_name}",
         "unique_id": objekt_id,
         "object_id": objekt_id,
-        "state_topic": mode_topics(zone_id, mode_id, praefix)[0],
-        "command_topic": mode_topics(zone_id, mode_id, praefix)[1],
+        "state_topic": mode_topics(zone_id, mode_id, prefix)[0],
+        "command_topic": mode_topics(zone_id, mode_id, prefix)[1],
         "min": float(MINIMUM_TEMPERATURE_C),
         "max": float(MAXIMUM_TEMPERATURE_C),
         "step": float(temp_step),
@@ -311,7 +311,7 @@ def mode_discovery(
         "device_class": "temperature",
         "mode": "box",
     }
-    return DiscoveryMessage(_config_topic("number", objekt_id), _als_json(data))
+    return DiscoveryMessage(_config_topic("number", objekt_id), _as_json(data))
 
 
 def parameter_discovery(
@@ -323,13 +323,13 @@ def parameter_discovery(
     maximum: Decimal,
     step: Decimal,
     einheit: str | None = None,
-    praefix: str = "thermoctl",
+    prefix: str = "thermoctl",
 ) -> DiscoveryMessage:
     """A control parameter of the zone as a number input."""
-    state, command = parameter_topics(zone_id, name, praefix)
-    objekt_id = f"{_objekt_id(zone_id, praefix)}_parameter_{name}"
+    state, command = parameter_topics(zone_id, name, prefix)
+    objekt_id = f"{_object_id(zone_id, prefix)}_parameter_{name}"
     data: dict[str, Any] = {
-        **_grundgeruest(zone_id, zone_name, praefix),
+        **_skeleton(zone_id, zone_name, prefix),
         "name": label,
         "unique_id": objekt_id,
         "object_id": objekt_id,
@@ -344,34 +344,34 @@ def parameter_discovery(
     }
     if einheit is not None:
         data["unit_of_measurement"] = einheit
-    return DiscoveryMessage(_config_topic("number", objekt_id), _als_json(data))
+    return DiscoveryMessage(_config_topic("number", objekt_id), _as_json(data))
 
 
-def armed_discovery(praefix: str = "thermoctl") -> DiscoveryMessage:
+def armed_discovery(prefix: str = "thermoctl") -> DiscoveryMessage:
     """Whether control is really switching, as its own entity for the whole service."""
-    objekt_id = f"{_identifier(praefix)}_scharf"
+    objekt_id = f"{_identifier(prefix)}_scharf"
     data: dict[str, Any] = {
         "device": {
-            "identifiers": [f"thermoctl:{_praefix(praefix)}"],
+            "identifiers": [f"thermoctl:{_prefix_of(prefix)}"],
             "name": "thermoctl",
             "manufacturer": "thermoctl",
         },
-        "availability_topic": availability_topic(praefix),
+        "availability_topic": availability_topic(prefix),
         "payload_available": "online",
         "payload_not_available": "offline",
         "name": "Regelung scharf",
         "unique_id": objekt_id,
         "object_id": objekt_id,
-        "state_topic": armed_topic(praefix),
+        "state_topic": armed_topic(prefix),
         "payload_on": "true",
         "payload_off": "false",
         "device_class": "running",
     }
-    return DiscoveryMessage(_config_topic("binary_sensor", objekt_id), _als_json(data))
+    return DiscoveryMessage(_config_topic("binary_sensor", objekt_id), _as_json(data))
 
 
-def alle_topics(zone_id: int, praefix: str = "thermoctl") -> tuple[str, ...]:
+def alle_topics(zone_id: int, prefix: str = "thermoctl") -> tuple[str, ...]:
     """Returns all zone-related topics for contract checks."""
-    state = asdict(states_topics(zone_id, praefix)).values()
-    command = asdict(command_topics(zone_id, praefix)).values()
+    state = asdict(states_topics(zone_id, prefix)).values()
+    command = asdict(command_topics(zone_id, prefix)).values()
     return (*state, *command)
