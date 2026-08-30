@@ -55,11 +55,11 @@
 
     {% if einstellungen.control_armed and not senden_erlaubt %}
     <div class="alert alert-warning mt-3 mb-0" role="alert">
-        <strong>Es wird entschieden, aber noch nicht gesendet.</strong>
-        Der Dienst lief beim Start im Trockenlauf; der Riegel dafür sitzt im MQTT-Client
-        und wird nur beim Start gelesen. Bis zum nächsten Neustart bleiben Ventile,
-        Zustandsmeldungen und die Home-Assistant-Anmeldung aus — zwei Riegel statt
-        einem, weil dahinter eine echte Heizung hängt.
+        <strong>Scharf, aber es wird noch nichts geschaltet.</strong>
+        Der Dienst lief beim Start im Trockenlauf; dieser Riegel sitzt im MQTT-Client und
+        wird nur beim Start gelesen. Bis zum nächsten Neustart bleiben die Ventile
+        unberührt — zwei Riegel statt einem, weil dahinter eine echte Heizung hängt.
+        Zustandsmeldungen und die Home-Assistant-Anmeldung gehen davon unabhängig hinaus.
     </div>
     {% endif %}
 
@@ -73,9 +73,11 @@
                 <li>Das Altsystem bleibt die Rückfallebene und wird nicht abgeschaltet.</li>
                 <li>Umkehrbar: derselbe Knopf führt zurück in den Trockenlauf — und
                     zwar sofort, ohne Neustart.</li>
-                <li>Tatsächlich <em>gesendet</em> wird erst nach einem Neustart des
+                <li>Tatsächlich <em>geschaltet</em> wird erst nach einem Neustart des
                     Dienstes: Der zweite Riegel sitzt im MQTT-Client und wird beim Start
-                    gelesen.</li>
+                    gelesen. Die Anbindung an Home Assistant läuft schon vorher — dort
+                    steht dann <span class="t-wert">(Trockenlauf)</span> hinter jedem
+                    Zonennamen.</li>
             </ul>
             <form method="post" action="/steuerung/scharf">
                 <input type="hidden" name="scharf" value="ja">

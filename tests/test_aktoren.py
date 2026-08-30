@@ -17,8 +17,8 @@ class MqttAttrappe:
         self.aufrufe: list[tuple[str, str, bool]] = []
         self.fehler = fehler
 
-    async def veroeffentlichen(self, topic: str, nutzlast: str, *, scharf: bool) -> bool:
-        self.aufrufe.append((topic, nutzlast, scharf))
+    async def veroeffentlichen(self, topic: str, nutzlast: str, *, schaltet: bool) -> bool:
+        self.aufrufe.append((topic, nutzlast, schaltet))
         if self.fehler:
             raise self.fehler
         return True
@@ -155,7 +155,7 @@ async def test_control_armed_baut_meross_anmeldung_und_schaltaufruf(session: Ses
 
 
 async def _veroeffentlichung_abweisen(
-    _topic: str, _nutzlast: str, *, scharf: bool
+    _topic: str, _nutzlast: str, *, schaltet: bool
 ) -> bool:
     return False
 
@@ -255,7 +255,7 @@ async def test_abgewiesene_veroeffentlichung_wird_als_fehler_gemeldet(
 
 
 class _AbweisenderClient:
-    async def veroeffentlichen(self, topic: str, nutzlast: str, *, scharf: bool) -> bool:
+    async def veroeffentlichen(self, topic: str, nutzlast: str, *, schaltet: bool) -> bool:
         return False
 
 

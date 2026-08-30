@@ -34,7 +34,7 @@ class HttpTransport(Protocol):
 
 class MqttVeroeffentlicher(Protocol):
     async def veroeffentlichen(
-        self, topic: str, nutzlast: str, *, scharf: bool
+        self, topic: str, nutzlast: str, *, schaltet: bool
     ) -> bool: ...
 
 
@@ -64,7 +64,7 @@ class Zigbee2MqttVentil:
 
         try:
             ausgefuehrt = await self._client.veroeffentlichen(
-                self._topic, nutzlast, scharf=True
+                self._topic, nutzlast, schaltet=True
             )
         except Exception as exc:
             return Schaltergebnis(False, nachricht, str(exc))

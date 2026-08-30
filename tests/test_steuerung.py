@@ -225,7 +225,7 @@ def test_betriebsseite_nennt_den_zweiten_riegel(
 
     seite = client_als(ALLE_RECHTE).get("/steuerung")
     assert seite.status_code == 200
-    assert "noch nicht gesendet" in seite.text
+    assert "noch nichts geschaltet" in seite.text
 
 
 def test_im_trockenlauf_steht_der_hinweis_nicht_da(
@@ -236,4 +236,4 @@ def test_im_trockenlauf_steht_der_hinweis_nicht_da(
     mehr liest."""
     einstellungen_anlegen(session)
     seite = client_als(ALLE_RECHTE).get("/steuerung")
-    assert "noch nicht gesendet" not in seite.text
+    assert "noch nichts geschaltet" not in seite.text

@@ -1,22 +1,29 @@
 """Den eigenen Zustand veröffentlichen — und die Zonen bei Home Assistant anmelden.
 
 Der Vertrag stand seit Teilprojekt 2 vollständig da (`integrations/mqtt/veroeffentlichung.py`:
-Topics, Discovery-Nutzlast, An- und Abmeldung, mit Tests). Was fehlte, war der Aufrufer.
+Topics, Discovery-Nutzlast, An- und Abmeldung, mit Tests). Hier ist der Aufrufer.
 
-**Er sitzt hinter demselben Riegel wie das Schalten.** Solange die Anlage im Trockenlauf
-läuft, wird nichts angemeldet und nichts veröffentlicht. Das ist kein Übermaß an Vorsicht,
-sondern die einzige ehrliche Möglichkeit: Eine Zone, die sich in Home Assistant als
-Thermostat anmeldet, bekommt dort einen Regler, den man drehen kann, und eine Anzeige
-„heizt". Beides wäre im Trockenlauf gelogen — in einer fremden Oberfläche, in der niemand
-nachsehen würde, warum.
+**Das läuft auch im Trockenlauf** — und zwar mit Absicht. Eine Zustandsmeldung bewegt
+nichts, und eine Anbindung, die man erst nach dem Scharfschalten ausprobieren kann, lässt
+sich genau dann nicht mehr gefahrlos prüfen, wenn ein Fehler noch folgenlos wäre. Wer die
+Anlage in Home Assistant einrichten, den Thermostat drehen und nachsehen will, ob der
+Sollwert ankommt, soll das vorher tun können.
 
-Beim Zurücknehmen in den Trockenlauf werden die Zonen wieder **abgemeldet**. Ohne das
-bliebe in Home Assistant ein Thermostat stehen, der niemandem mehr gehört; er zeigte den
-letzten bekannten Wert für immer weiter.
+Gelogen wird dabei nicht: Solange die Regelung nicht scharf ist, trägt jede Zone in ihrem
+Namen ein `(Trockenlauf)`. Das steht in Home Assistant an jeder Karte, und es verschwindet,
+sobald wirklich geschaltet wird. Bewegt wird trotzdem nichts — dafür sorgen die beiden
+Riegel im Aktorpfad, an denen sich nichts geändert hat.
+
+**Abgemeldet wird nur, was es nicht mehr gibt.** Eine gelöschte Zone bekommt die leere
+Nutzlast auf ihrem Config-Topic; sonst bliebe in Home Assistant ein Thermostat stehen, der
+niemandem mehr gehört. Der Wechsel zurück in den Trockenlauf meldet dagegen **nicht** ab —
+er benennt nur um. Abmelden und Neuanmelden bei jedem Umschalten würde die Entität in Home
+Assistant kurz verschwinden lassen und dort Verlaufsdaten und Automatisierungen ins Leere
+laufen lassen.
 """
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 
 from sqlalchemy import select
@@ -36,21 +43,27 @@ from thermoctl.integrations.mqtt.veroeffentlichung import (
 
 log = logging.getLogger(__name__)
 
+# Was im Namen jeder Zone steht, solange nicht wirklich geschaltet wird. In Home Assistant
+# ist der Name das Einzige, was an jeder Karte sichtbar ist -- eine Notiz an anderer Stelle
+# läse dort niemand.
+TROCKENLAUF_ZUSATZ = " (Trockenlauf)"
+
 
 @dataclass
 class Veroeffentlichungsstand:
-    """Welche Zonen gerade angemeldet sind.
+    """Welche Zonen angemeldet sind, und unter welchem Betriebszustand.
 
     Der Stand lebt im Prozess, nicht in der Datenbank: Er beschreibt, was *dieser* Lauf
-    gesendet hat. Nach einem Neustart ist er leer, und der erste scharfe Zyklus meldet
-    alles neu an — was richtig ist, denn ob die Nachrichten von damals noch beim Broker
-    liegen, weiß niemand.
+    gesendet hat. Nach einem Neustart ist er leer, und der erste Zyklus meldet alles neu
+    an — was richtig ist, denn ob die Nachrichten von damals noch beim Broker liegen,
+    weiß niemand.
     """
 
-    angemeldet: set[int]
-
-    def __init__(self) -> None:
-        self.angemeldet = set()
+    angemeldet: set[int] = field(default_factory=set)
+    # Unter welchem Betriebszustand die Anmeldung hinausging. Wechselt er, muss die
+    # Anmeldung erneuert werden -- sonst trüge die Zone in Home Assistant für immer den
+    # Namen von damals.
+    angemeldet_scharf: bool | None = None
 
 
 def _als_text(wert: object) -> str:
@@ -61,6 +74,10 @@ def _als_text(wert: object) -> str:
     return str(wert)
 
 
+def anzeigename(zone: Zone, scharf: bool) -> str:
+    return zone.display_name if scharf else zone.display_name + TROCKENLAUF_ZUSATZ
+
+
 async def zyklus(
     session: Session,
     client: MqttVeroeffentlicher,
@@ -68,29 +85,34 @@ async def zyklus(
     praefix: str,
     jetzt: datetime,
 ) -> int:
-    """Ein Veröffentlichungszyklus. Gibt die Zahl der gesendeten Nachrichten zurück.
-
-    Im Trockenlauf meldet er ab, was angemeldet war, und sendet sonst nichts.
-    """
+    """Ein Veröffentlichungszyklus. Gibt die Zahl der gesendeten Nachrichten zurück."""
     scharf = schalten_erlaubt(session)
-    if not scharf:
-        return await _abmelden(client, stand, praefix)
-
     zonen = list(session.scalars(select(Zone).order_by(Zone.id)))
     gesendet = 0
 
     # Verfügbarkeit zuerst: Sie ist die Aussage „was gleich kommt, ist aktuell".
     if await client.veroeffentlichen(
-        verfuegbarkeits_topic(praefix), "online", scharf=True
+        verfuegbarkeits_topic(praefix), "online", schaltet=False
     ):
         gesendet += 1
 
-    vorhandene = {zone.id for zone in zonen}
+    # Beim Wechsel des Betriebszustands muss jede Anmeldung erneuert werden -- der Name
+    # trägt ihn.
+    if stand.angemeldet_scharf is not None and stand.angemeldet_scharf != scharf:
+        log.info(
+            "Betriebszustand gewechselt — Zonen werden bei Home Assistant erneuert",
+            extra={"scharf": scharf, "anzahl": len(stand.angemeldet)},
+        )
+        stand.angemeldet.clear()
+    stand.angemeldet_scharf = scharf
+
     for zone in zonen:
         if zone.id not in stand.angemeldet:
-            nachricht = discovery_anmeldung(zone.id, zone.display_name, praefix=praefix)
+            nachricht = discovery_anmeldung(
+                zone.id, anzeigename(zone, scharf), praefix=praefix
+            )
             if await client.veroeffentlichen(
-                nachricht.topic, nachricht.nutzlast, scharf=True
+                nachricht.topic, nachricht.nutzlast, schaltet=False
             ):
                 stand.angemeldet.add(zone.id)
                 gesendet += 1
@@ -99,15 +121,36 @@ async def zyklus(
                     extra={"zone_id": zone.id, "topic": nachricht.topic},
                 )
 
-    # Zonen, die es nicht mehr gibt: abmelden, sonst bleibt in Home Assistant ein
-    # Thermostat stehen, den niemand mehr bedient.
+    gesendet += await _geloeschte_abmelden(
+        client, stand, praefix, {zone.id for zone in zonen}
+    )
+    gesendet += await _zustaende_senden(session, client, zonen, praefix, jetzt)
+    return gesendet
+
+
+async def _geloeschte_abmelden(
+    client: MqttVeroeffentlicher,
+    stand: Veroeffentlichungsstand,
+    praefix: str,
+    vorhandene: set[int],
+) -> int:
+    """Der einzige Grund für eine Abmeldung: Die Zone gibt es nicht mehr.
+
+    Ohne sie bliebe in Home Assistant ein Thermostat stehen, den niemand mehr bedient —
+    er zeigte den letzten bekannten Wert für immer weiter.
+    """
+    gesendet = 0
     for zone_id in sorted(stand.angemeldet - vorhandene):
         nachricht = discovery_abmeldung(zone_id, praefix)
-        if await client.veroeffentlichen(nachricht.topic, nachricht.nutzlast, scharf=True):
+        if await client.veroeffentlichen(
+            nachricht.topic, nachricht.nutzlast, schaltet=False
+        ):
             stand.angemeldet.discard(zone_id)
             gesendet += 1
-
-    gesendet += await _zustaende_senden(session, client, zonen, praefix, jetzt)
+            log.info(
+                "Geloeschte Zone bei Home Assistant abgemeldet",
+                extra={"zone_id": zone_id},
+            )
     return gesendet
 
 
@@ -147,32 +190,9 @@ async def _zustaende_senden(
             (topics.wuerde_heizen, _als_text(entscheidungen.get(zone.id))),
         )
         for topic, wert in werte:
-            # Ein leerer Wert wird nicht gesendet: In MQTT loescht eine leere Nutzlast
+            # Ein leerer Wert wird nicht gesendet: In MQTT löscht eine leere Nutzlast
             # eine behaltene Nachricht, und „noch kein Messwert" ist etwas anderes als
             # „diesen Wert gibt es nicht mehr".
-            if wert and await client.veroeffentlichen(topic, wert, scharf=True):
+            if wert and await client.veroeffentlichen(topic, wert, schaltet=False):
                 gesendet += 1
-    return gesendet
-
-
-async def _abmelden(
-    client: MqttVeroeffentlicher, stand: Veroeffentlichungsstand, praefix: str
-) -> int:
-    """Nimmt zurück, was dieser Lauf angemeldet hat."""
-    if not stand.angemeldet:
-        return 0
-    gesendet = 0
-    for zone_id in sorted(stand.angemeldet):
-        nachricht = discovery_abmeldung(zone_id, praefix)
-        if await client.veroeffentlichen(nachricht.topic, nachricht.nutzlast, scharf=True):
-            gesendet += 1
-    if await client.veroeffentlichen(
-        verfuegbarkeits_topic(praefix), "offline", scharf=True
-    ):
-        gesendet += 1
-    log.info(
-        "Zonen bei Home Assistant abgemeldet — die Anlage ist im Trockenlauf",
-        extra={"anzahl": len(stand.angemeldet)},
-    )
-    stand.angemeldet.clear()
     return gesendet

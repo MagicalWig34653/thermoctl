@@ -4,14 +4,17 @@ Drei getrennte Dinge:
 
 - **Lesen** — Sensordaten aus Zigbee2MQTT aufnehmen. Läuft, sobald MQTT eingeschaltet ist.
 - **Senden** — den eigenen Zustand veröffentlichen und die Zonen bei Home Assistant
-  anmelden. **Nur mit scharfer Regelung.**
-- **Entgegennehmen** — Sollwert und Betriebsart, die aus Home Assistant kommen. Ebenfalls
-  nur mit scharfer Regelung, denn ohne Senden gäbe es dort gar keinen Thermostat.
+  anmelden. Läuft ebenfalls, sobald MQTT eingeschaltet ist — **auch im Trockenlauf.**
+- **Entgegennehmen** — Sollwert und Betriebsart, die aus Home Assistant kommen. Auch das
+  im Trockenlauf: Der Wunsch wird übernommen, nur bewegt sich kein Ventil.
 
-Die beiden letzten hängen am selben Riegel wie das Schalten selbst. Der Grund ist kein
-Übermaß an Vorsicht: Eine Zone, die sich in Home Assistant als Thermostat anmeldet, bekommt
-dort einen Regler, den man drehen kann, und eine Anzeige „heizt". Beides wäre im
-Trockenlauf gelogen — in einer fremden Oberfläche, in der niemand nachsehen würde, warum.
+Dass Senden und Entgegennehmen im Trockenlauf laufen, ist Absicht. Eine Zustandsmeldung
+bewegt nichts, und eine Anbindung, die man erst nach dem Scharfschalten ausprobieren kann,
+lässt sich genau dann nicht mehr gefahrlos prüfen, wenn ein Fehler noch folgenlos wäre.
+
+Gelogen wird dabei nicht: Solange die Regelung nicht scharf ist, trägt jede Zone in Home
+Assistant ein `(Trockenlauf)` im Namen. Das steht an jeder Karte und verschwindet, sobald
+wirklich geschaltet wird.
 
 ## 1. Lesen: Zigbee2MQTT
 
@@ -107,15 +110,25 @@ Beides läuft über dieselben Domänenfunktionen wie Oberfläche, REST und MCP u
 der Quelle `system` im Audit-Protokoll — niemand hat sich dafür angemeldet, und das soll
 dort auch so dastehen.
 
-## 5. Der Riegel, und warum ein Neustart nötig ist
+## 5. Die beiden Riegel — und was sie *nicht* sperren
 
-Zwei Riegel, wie beim Schalten:
+Sie gelten dem **Schalten**, nicht dem Melden:
 
 1. **Beim Bau des Clients**, aus `setting.control_armed` gelesen — einmal, beim Start.
-2. **Bei jedem Senden**, ebenfalls aus `setting.control_armed`.
+2. **Bei jedem Schaltbefehl**, ebenfalls aus `setting.control_armed`
+   (`integrations/aktoren.py`).
 
-Der zweite wirkt sofort: Zurück in den Trockenlauf hört das Senden auf der Stelle auf, und
-die Zonen werden bei Home Assistant **abgemeldet**. Der erste wirkt erst nach einem
-Neustart: Wer die Anlage im laufenden Betrieb scharf schaltet, hat bis dahin einen Zustand,
-in dem scharf entschieden und trotzdem nichts gesendet wird. Die Betriebsseite sagt das
-ausdrücklich, statt es zu verschweigen.
+Der zweite wirkt sofort, der erste erst nach einem Neustart. Wer die Anlage im laufenden
+Betrieb scharf schaltet, hat bis dahin einen Zustand, in dem scharf entschieden und
+trotzdem kein Ventil bewegt wird; die Betriebsseite sagt das ausdrücklich.
+
+Zustandsmeldungen und die Home-Assistant-Anmeldung gehen an beiden vorbei — sie bewegen
+nichts. Der Parameter am Client heißt deshalb `schaltet` und beschreibt, was eine Nachricht
+**bewirkt**, nicht wie dringend ein Aufrufer sie meint.
+
+## 6. Abgemeldet wird nur, was es nicht mehr gibt
+
+Eine gelöschte Zone bekommt die leere Nutzlast auf ihrem Config-Topic. Der Wechsel zurück
+in den Trockenlauf meldet dagegen **nicht** ab — er benennt nur um. Abmelden und
+Neuanmelden bei jedem Umschalten ließe die Entität in Home Assistant kurz verschwinden, und
+Verlaufsdaten und Automatisierungen liefen dort ins Leere.

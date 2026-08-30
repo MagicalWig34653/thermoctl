@@ -181,15 +181,40 @@ async def test_tls_beruecksichtigt_ca_zertifikat(
 
 
 @pytest.mark.anyio
-async def test_kein_publish_im_trockenlauf(mqtt_settings: Settings) -> None:
+async def test_kein_schaltbefehl_im_trockenlauf(mqtt_settings: Settings) -> None:
     client = MqttClient(mqtt_settings, _leerer_handler)
     falscher_client = FalscherClient()
     client._client = falscher_client
 
-    ergebnis = await client.veroeffentlichen("testbasis/Aktor/set", "ON", scharf=False)
+    ergebnis = await client.veroeffentlichen("testbasis/Aktor/set", "ON", schaltet=True)
 
     assert ergebnis is False
     assert falscher_client.veroeffentlicht == []
+
+
+@pytest.mark.anyio
+async def test_zustandsmeldung_geht_auch_im_trockenlauf_hinaus(
+    mqtt_settings: Settings,
+) -> None:
+    """Der Riegel gilt dem Schalten, nicht dem Melden.
+
+    Bis hierher sperrte er jede Veroeffentlichung. Das war richtig, solange gar nichts
+    gesendet wurde -- es machte aber den Trockenlauf unpruefbar: Die Home-Assistant-
+    Anbindung liess sich erst ausprobieren, nachdem man die Anlage scharf geschaltet
+    hatte, also genau dann nicht mehr, wenn ein Fehler noch folgenlos gewesen waere.
+    """
+    client = MqttClient(mqtt_settings, _leerer_handler)
+    falscher_client = FalscherClient()
+    client._client = falscher_client
+
+    ergebnis = await client.veroeffentlichen(
+        "thermoctl/zonen/1/zustand/ist_temperatur", "21.5", schaltet=False
+    )
+
+    assert ergebnis is True
+    assert falscher_client.veroeffentlicht == [
+        ("thermoctl/zonen/1/zustand/ist_temperatur", "21.5")
+    ]
 
 
 @pytest.mark.anyio
@@ -258,11 +283,11 @@ def anyio_backend() -> str:
 async def test_kein_publish_auch_wenn_der_aufrufer_es_verlangt(
     mqtt_settings: Settings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Der zweite Riegel: `scharf=True` allein genuegt nicht.
+    """Der zweite Riegel: `schaltet=True` allein genuegt nicht.
 
-    Hinter dem Ventil haengt eine bewohnte Wohnung. Ein einzelner Aufrufer, der `scharf`
-    faelschlich setzt, darf nicht ausreichen — deshalb muss der Client zusaetzlich mit
-    `schalten_erlaubt=True` gebaut worden sein, was in Teilprojekt 2 nirgends geschieht.
+    Hinter dem Ventil haengt eine bewohnte Wohnung. Ein einzelner Aufrufer, der eine
+    Nachricht faelschlich als Schaltbefehl schickt, darf nicht ausreichen — der Client
+    muss zusaetzlich mit `schalten_erlaubt=True` gebaut worden sein.
     """
     FalscherClient.instanzen.clear()
     monkeypatch.setattr(client_modul.aiomqtt, "Client", FalscherClient)
@@ -270,7 +295,10 @@ async def test_kein_publish_auch_wenn_der_aufrufer_es_verlangt(
     falscher = FalscherClient()
     kunde._client = falscher  # type: ignore[assignment]
 
-    assert await kunde.veroeffentlichen("zigbee2mqtt/irgendwas/set", "{}", scharf=True) is False
+    assert (
+        await kunde.veroeffentlichen("zigbee2mqtt/irgendwas/set", "{}", schaltet=True)
+        is False
+    )
     assert falscher.veroeffentlicht == []
 
 
@@ -314,14 +342,16 @@ async def test_scharf_gebauter_client_veroeffentlicht_wirklich(
     falscher = FalscherClient()
     kunde._client = falscher  # type: ignore[assignment]
 
-    assert await kunde.veroeffentlichen("testbasis/Ventil/set", '{"state": "ON"}', scharf=True)
+    assert await kunde.veroeffentlichen(
+        "testbasis/Ventil/set", '{"state": "ON"}', schaltet=True
+    )
     assert falscher.veroeffentlicht == [("testbasis/Ventil/set", '{"state": "ON"}')]
 
 
 @pytest.mark.anyio
 async def test_ohne_verbindung_wird_nicht_veroeffentlicht(mqtt_settings: Settings) -> None:
     kunde = MqttClient(mqtt_settings, _leerer_handler, schalten_erlaubt=True)
-    assert await kunde.veroeffentlichen("testbasis/Ventil/set", "{}", scharf=True) is False
+    assert await kunde.veroeffentlichen("testbasis/Ventil/set", "{}", schaltet=True) is False
 
 
 @pytest.mark.anyio
@@ -339,13 +369,16 @@ async def test_schlafen_wartet_wirklich(monkeypatch: pytest.MonkeyPatch) -> None
 
 
 @pytest.mark.anyio
-async def test_scharfer_client_sendet_trotzdem_nicht_ohne_scharfen_aufruf(
+async def test_ein_scharf_gebauter_client_sendet_auch_zustaende(
     mqtt_settings: Settings,
 ) -> None:
-    """Beide Riegel wirken unabhaengig voneinander — hier der zweite allein."""
+    """Frueher stand hier das Gegenteil: Ein `scharf=False` wurde auch von einem scharf
+    gebauten Client abgewiesen. Das war die Fassung, in der `scharf` zwei Dinge zugleich
+    bedeutete -- die Absicht des Aufrufers und die Erlaubnis des Clients. Jetzt sagt
+    `schaltet`, was die Nachricht bewirkt, und eine Zustandsmeldung bewirkt nichts."""
     kunde = MqttClient(mqtt_settings, _leerer_handler, schalten_erlaubt=True)
     falscher = FalscherClient()
     kunde._client = falscher  # type: ignore[assignment]
 
-    assert await kunde.veroeffentlichen("testbasis/Ventil/set", "{}", scharf=False) is False
-    assert falscher.veroeffentlicht == []
+    assert await kunde.veroeffentlichen("thermoctl/verfuegbarkeit", "online", schaltet=False)
+    assert falscher.veroeffentlicht == [("thermoctl/verfuegbarkeit", "online")]
