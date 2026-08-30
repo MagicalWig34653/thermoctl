@@ -17,18 +17,18 @@ from thermoctl.db.models.device import DeviceCapabilityLink, ZoneDevice
 from thermoctl.db.models.lookup import DeviceCapability
 
 
-def test_geraeteseite_braucht_device_read(client_als) -> None:
+def test_the_device_page_needs_device_read(client_als) -> None:
     assert client_als([("zone.read", None)]).get("/devices").status_code == 403
 
 
-def test_leere_geraeteseite_erklaert_den_normalfall(client_als) -> None:
+def test_an_empty_device_page_explains_the_normal_case(client_als) -> None:
     response = client_als([("device.read", None)]).get("/devices")
     assert response.status_code == 200
     assert "MQTT nicht eingerichtet" in response.text
     assert "Gerätenachricht eingegangen" in response.text
 
 
-def test_geraeteseite_zeigt_lebenszeichen_faehigkeit_und_zone(
+def test_the_device_page_shows_signs_of_life_capability_and_zone(
     client_als, session: Session
 ) -> None:
     beispiele = json.loads(
@@ -81,7 +81,9 @@ def test_geraeteseite_zeigt_lebenszeichen_faehigkeit_und_zone(
     assert "die Brücke führt es als offline" not in response.text
 
 
-def test_startseite_zeigt_zonenzustand_ohne_nulltemperatur(client_als, session: Session) -> None:
+def test_the_start_page_shows_zone_state_without_a_zero_temperature(
+    client_als, session: Session
+) -> None:
     from thermoctl.db.models.lookup import SensorStatus
     from thermoctl.db.models.state import ZoneState
 
@@ -127,7 +129,7 @@ def test_startseite_zeigt_zonenzustand_ohne_nulltemperatur(client_als, session: 
     assert zone_without_state.display_name in response.text
 
 
-def test_alter_in_worten_beantwortet_die_frage_nach_der_frische() -> None:
+def test_age_in_words_answers_the_question_of_freshness() -> None:
     """Ein roher Zeitstempel mit Mikrosekunden verlangt Kopfrechnen.
 
     Fuer eine Heizungssteuerung lautet die Frage aber immer: frisch oder liegengeblieben?
@@ -152,7 +154,7 @@ def test_alter_in_worten_beantwortet_die_frage_nach_der_frische() -> None:
     assert age_in_words(datetime(2000, 1, 1)).endswith("Tagen")
 
 
-def test_geraeteseite_stellt_auffaellige_geraete_nach_oben(client_als, session: Session) -> None:
+def test_the_device_page_puts_conspicuous_devices_on_top(client_als, session: Session) -> None:
     """Die Gegenprobe zur Rundung oben: Was nicht stimmt, muss auch wirklich dastehen.
 
     Zwei Geraete, eines gesund und alphabetisch zuerst, eines mit leerer Batterie und von
@@ -184,7 +186,7 @@ def test_geraeteseite_stellt_auffaellige_geraete_nach_oben(client_als, session: 
     assert "1 davon fällt auf" in text
 
 
-def test_batterie_und_funk_stehen_als_zahl_und_nicht_als_kaertchen(
+def test_battery_and_radio_appear_as_a_number_not_as_a_chip(
     client_als, session: Session
 ) -> None:
     """Ein Kaertchen "Batteriestand" neben "58 %" sagt nichts, was die Zahl nicht sagt.

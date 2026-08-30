@@ -13,13 +13,13 @@ def test_token_klartext_erscheint_genau_einmal(session: Session) -> None:
     assert plaintext not in (token.token_hash, token.prefix)
 
 
-def test_token_mit_mehr_rechten_als_der_besitzer_wird_abgewiesen(session: Session) -> None:
+def test_a_token_with_more_permissions_than_its_owner_is_refused(session: Session) -> None:
     nutzer = user_with_permissions(session, "b", [("zone.read", None), ("token.self", None)])
     with pytest.raises(Forbidden):
         token_ausstellen(session, nutzer, "Zuviel", [("zone.manage", None)], None)
 
 
-def test_token_mit_fremder_zone_wird_abgewiesen(session: Session) -> None:
+def test_a_token_for_a_foreign_zone_is_refused(session: Session) -> None:
     bad = create_zone(session, "bad")
     kueche = create_zone(session, "kueche")
     nutzer = user_with_permissions(session, "c", [("zone.read", bad.id), ("token.self", None)])
@@ -27,14 +27,14 @@ def test_token_mit_fremder_zone_wird_abgewiesen(session: Session) -> None:
         token_ausstellen(session, nutzer, "Fremd", [("zone.read", kueche.id)], None)
 
 
-def test_benutzerliste_braucht_user_manage(client_als) -> None:
+def test_the_user_list_needs_user_manage(client_als) -> None:
     ohne = client_als([("zone.read", None)])
     assert ohne.get("/users").status_code == 403
     mit = client_als([("user.manage", None)])
     assert mit.get("/users").status_code == 200
 
 
-def test_passwort_hash_erscheint_in_keiner_ansicht(client_als) -> None:
+def test_the_password_hash_appears_in_no_view(client_als) -> None:
     response = client_als([("user.manage", None)]).get("/users")
     assert "$argon2id$" not in response.text
 
@@ -60,7 +60,7 @@ def _with_csrf(client, session):  # type: ignore[no-untyped-def]
     return {"X-CSRF-Token": csrf_token(geheimnis, get_settings().secret_key.get_secret_value())}
 
 
-def test_benutzer_anlegen_ueber_die_oberflaeche(client_als, session: Session) -> None:
+def test_creating_a_user_through_the_interface(client_als, session: Session) -> None:
     c = client_als([("user.manage", None)])
     response = c.post(
         "/users",
@@ -77,7 +77,7 @@ def test_benutzer_anlegen_ueber_die_oberflaeche(client_als, session: Session) ->
     assert session.scalar(select(User).where(User.username == "neuling")) is not None
 
 
-def test_zu_kurzes_passwort_fuehrt_zurueck_ins_formular(client_als, session: Session) -> None:
+def test_a_password_that_is_too_short_returns_to_the_form(client_als, session: Session) -> None:
     """Kein 500, keine leere Maske — und der Benutzername bleibt stehen."""
     c = client_als([("user.manage", None)])
     response = c.post(
@@ -92,7 +92,7 @@ def test_zu_kurzes_passwort_fuehrt_zurueck_ins_formular(client_als, session: Ses
     assert "kurz\"" not in response.text.replace('value="kurzpass"', "")
 
 
-def test_passwort_erscheint_nie_in_der_antwort(client_als, session: Session) -> None:
+def test_a_password_never_appears_in_the_response(client_als, session: Session) -> None:
     c = client_als([("user.manage", None)])
     response = c.post(
         "/users",
@@ -103,7 +103,7 @@ def test_passwort_erscheint_nie_in_der_antwort(client_als, session: Session) -> 
     assert "ein-auffaelliges-geheimnis" not in response.text
 
 
-def test_letzter_verwalter_kann_sich_nicht_selbst_deaktivieren(
+def test_the_last_administrator_cannot_deactivate_themselves(
     client_als, session: Session
 ) -> None:
     """Die Aussperrsperre wirkt auch ueber die Oberflaeche, nicht nur in der Domaene."""
@@ -123,7 +123,7 @@ def test_letzter_verwalter_kann_sich_nicht_selbst_deaktivieren(
     assert ich.is_active is True
 
 
-def test_unbekannter_benutzer_ergibt_404(client_als, session: Session) -> None:
+def test_an_unknown_user_yields_404(client_als, session: Session) -> None:
     c = client_als([("user.manage", None)])
     response = c.post(
         "/users/999999/active", data={"active": "ja"}, headers=_with_csrf(c, session)
@@ -131,7 +131,7 @@ def test_unbekannter_benutzer_ergibt_404(client_als, session: Session) -> None:
     assert response.status_code == 404
 
 
-def test_gruppe_anlegen_und_recht_vergeben(client_als, session: Session) -> None:
+def test_creating_a_group_and_granting_a_permission(client_als, session: Session) -> None:
     from sqlalchemy import select
 
     from tests.helpers import ensure_permission
@@ -157,7 +157,7 @@ def test_gruppe_anlegen_und_recht_vergeben(client_als, session: Session) -> None
     ) is not None
 
 
-def test_anlagenweites_recht_auf_eine_zone_wird_in_der_ansicht_abgewiesen(
+def test_an_installation_wide_permission_on_one_zone_is_refused_in_the_view(
     client_als, session: Session
 ) -> None:
     from sqlalchemy import select
@@ -180,7 +180,7 @@ def test_anlagenweites_recht_auf_eine_zone_wird_in_der_ansicht_abgewiesen(
     assert "ganze Anlage" in response.text
 
 
-def test_token_ausstellen_zeigt_den_klartext_genau_einmal(client_als, session: Session) -> None:
+def test_issuing_a_token_shows_the_plaintext_exactly_once(client_als, session: Session) -> None:
     c = client_als([("token.self", None), ("zone.read", None)])
     response = c.post(
         "/tokens", data={"name": "Anzeigetafel", "code": "zone.read", "gueltig_tage": ""},
@@ -192,7 +192,7 @@ def test_token_ausstellen_zeigt_den_klartext_genau_einmal(client_als, session: S
     assert "tctl_" not in c.get("/tokens").text
 
 
-def test_token_ohne_namen_wird_abgewiesen(client_als, session: Session) -> None:
+def test_a_token_without_a_name_is_refused(client_als, session: Session) -> None:
     c = client_als([("token.self", None)])
     response = c.post(
         "/tokens", data={"name": "  ", "code": "", "gueltig_tage": ""},
@@ -202,7 +202,7 @@ def test_token_ohne_namen_wird_abgewiesen(client_als, session: Session) -> None:
     assert "braucht einen Namen" in response.text
 
 
-def test_token_mit_zuviel_rechten_wird_verstaendlich_abgewiesen(
+def test_a_token_with_too_many_permissions_is_refused_understandably(
     client_als, session: Session
 ) -> None:
     from tests.helpers import ensure_permission
@@ -217,7 +217,7 @@ def test_token_mit_zuviel_rechten_wird_verstaendlich_abgewiesen(
     assert "kann kein Token" in response.text
 
 
-def test_fremdes_token_ist_nicht_auffindbar(client_als, session: Session) -> None:
+def test_a_foreign_token_cannot_be_found(client_als, session: Session) -> None:
     """404 statt 403 — sonst verriete die Antwort, welche Kennungen es gibt."""
     from tests.helpers import token_with_permissions, user_with_permissions
 
@@ -231,7 +231,7 @@ def test_fremdes_token_ist_nicht_auffindbar(client_als, session: Session) -> Non
     assert fremdes.revoked_at is None
 
 
-def test_eigenes_token_laesst_sich_widerrufen(client_als, session: Session) -> None:
+def test_your_own_token_can_be_revoked(client_als, session: Session) -> None:
     c = client_als([("token.self", None)])
     c.post("/tokens", data={"name": "Weg damit", "code": "", "gueltig_tage": "30"},
            headers=_with_csrf(c, session))
@@ -248,7 +248,7 @@ def test_eigenes_token_laesst_sich_widerrufen(client_als, session: Session) -> N
     assert token.revoked_at is not None
 
 
-def test_eigenes_passwort_aendern_ohne_user_manage(client_als, session: Session) -> None:
+def test_changing_your_own_password_without_user_manage(client_als, session: Session) -> None:
     """Wer nur sich selbst betrifft, braucht kein Verwaltungsrecht — sonst koennte
     niemand sein eigenes Passwort wechseln, ohne Verwalter zu sein."""
     from sqlalchemy import select
@@ -267,7 +267,7 @@ def test_eigenes_passwort_aendern_ohne_user_manage(client_als, session: Session)
     assert verify_password("mein-neues-langes-passwort", ich.password_hash)
 
 
-def test_fremdes_passwort_aendern_braucht_user_manage(client_als, session: Session) -> None:
+def test_changing_someone_elses_password_needs_user_manage(client_als, session: Session) -> None:
     from tests.helpers import create_user
 
     fremder = create_user(session, "fremdes-passwort")
@@ -279,7 +279,7 @@ def test_fremdes_passwort_aendern_braucht_user_manage(client_als, session: Sessi
     assert response.status_code == 403
 
 
-def test_gruppe_loeschen_ueber_die_oberflaeche(client_als, session: Session) -> None:
+def test_deleting_a_group_through_the_interface(client_als, session: Session) -> None:
     from sqlalchemy import select
 
     from thermoctl.db.models.identity import AccessGroup
@@ -296,7 +296,7 @@ def test_gruppe_loeschen_ueber_die_oberflaeche(client_als, session: Session) -> 
     assert session.get(AccessGroup, group.id) is None
 
 
-def test_recht_entziehen_ueber_die_oberflaeche(client_als, session: Session) -> None:
+def test_revoking_a_permission_through_the_interface(client_als, session: Session) -> None:
     from sqlalchemy import select
 
     from tests.helpers import ensure_permission
@@ -323,7 +323,7 @@ def test_recht_entziehen_ueber_die_oberflaeche(client_als, session: Session) -> 
     assert session.get(GroupPermission, entry.id) is None
 
 
-def test_rechte_einer_unbekannten_gruppe_ergeben_404(client_als, session: Session) -> None:
+def test_permissions_of_an_unknown_group_yield_404(client_als, session: Session) -> None:
     """Frueher stand die Kennung des Rechteintrags im Pfad und der Test pruefte, dass ein
     Eintrag einer fremden Gruppe nicht entzogen werden kann. Den Pfad gibt es nicht mehr
     -- der Sammel-Endpunkt kennt nur die Gruppe, und die muss es geben."""
@@ -338,7 +338,7 @@ def test_rechte_einer_unbekannten_gruppe_ergeben_404(client_als, session: Sessio
     assert response.status_code == 404
 
 
-def test_unbekannte_gruppe_ergibt_404(client_als, session: Session) -> None:
+def test_an_unknown_group_yields_404(client_als, session: Session) -> None:
     c = client_als([("group.manage", None)])
     assert c.post("/groups/999999/delete", headers=_with_csrf(c, session)).status_code == 404
     assert c.post(
@@ -347,7 +347,7 @@ def test_unbekannte_gruppe_ergibt_404(client_als, session: Session) -> None:
     ).status_code == 404
 
 
-def test_doppelter_gruppenname_bleibt_im_formular(client_als, session: Session) -> None:
+def test_a_duplicate_group_name_stays_in_the_form(client_als, session: Session) -> None:
     c = client_als([("group.manage", None)])
     c.post("/groups", data={"name": "Zweimal", "description": ""},
            headers=_with_csrf(c, session))
@@ -357,7 +357,7 @@ def test_doppelter_gruppenname_bleibt_im_formular(client_als, session: Session) 
     assert "gibt es bereits" in response.text
 
 
-def test_gruppe_mit_dem_letzten_verwaltungsrecht_bleibt_stehen(
+def test_the_group_holding_the_last_admin_permission_stays(
     client_als, session: Session
 ) -> None:
     """Auch ueber die Oberflaeche laesst sich die letzte Quelle nicht entfernen."""
@@ -378,7 +378,7 @@ def test_gruppe_mit_dem_letzten_verwaltungsrecht_bleibt_stehen(
     assert session.get(AccessGroup, group.id) is not None
 
 
-def test_zu_kurzes_passwort_beim_eigenen_wechsel_bleibt_im_formular(
+def test_a_too_short_password_on_your_own_change_stays_in_the_form(
     client_als, session: Session
 ) -> None:
     from sqlalchemy import select
@@ -396,7 +396,7 @@ def test_zu_kurzes_passwort_beim_eigenen_wechsel_bleibt_im_formular(
     assert "mindestens 12 Zeichen" in response.text
 
 
-def test_benutzer_deaktivieren_und_wieder_aktivieren(client_als, session: Session) -> None:
+def test_deactivating_and_reactivating_a_user(client_als, session: Session) -> None:
     from tests.helpers import create_user
 
     anderer = create_user(session, "kommt-und-geht")
@@ -413,7 +413,7 @@ def test_benutzer_deaktivieren_und_wieder_aktivieren(client_als, session: Sessio
     assert anderer.is_active is True
 
 
-def test_passwortwechsel_fuer_unbekannten_benutzer_ergibt_404(
+def test_a_password_change_for_an_unknown_user_yields_404(
     client_als, session: Session
 ) -> None:
     c = client_als([("user.manage", None)])
@@ -424,7 +424,7 @@ def test_passwortwechsel_fuer_unbekannten_benutzer_ergibt_404(
     assert response.status_code == 404
 
 
-def test_letztes_verwaltungsrecht_laesst_sich_nicht_entziehen(
+def test_the_last_admin_permission_cannot_be_revoked(
     client_als, session: Session
 ) -> None:
     """Der zweite Weg in dieselbe Sackgasse: nicht die Gruppe loeschen, sondern ihr das
@@ -459,7 +459,7 @@ def test_letztes_verwaltungsrecht_laesst_sich_nicht_entziehen(
     assert session.get(GroupPermission, entry.id) is not None
 
 
-def test_rechte_setzen_vergibt_und_entzieht_in_einem_schritt(
+def test_setting_permissions_grants_and_revokes_in_one_step(
     client_als, session: Session
 ) -> None:
     """Der eigentliche Gewinn des Sammel-Endpunkts: Eine Gruppe umzustellen ist ein
@@ -498,7 +498,7 @@ def test_rechte_setzen_vergibt_und_entzieht_in_einem_schritt(
     assert state == {("zone.read", bad.id), ("device.read", None)}
 
 
-def test_gruppenseite_zeigt_rechte_nach_bereichen_mit_klartext(
+def test_the_group_page_shows_permissions_by_area_in_plain_words(
     client_als, session: Session
 ) -> None:
     """Vorher stand dort eine flache Liste aus Codes. Der Code bleibt sichtbar -- er

@@ -6,7 +6,7 @@ from tests.helpers import create_zone, ensure_permission
 from thermoctl.db.models.identity import AccessGroup, GroupPermission, User, UserAccessGroup
 
 
-def test_benutzername_ist_eindeutig(session: Session) -> None:
+def test_a_username_is_unique(session: Session) -> None:
     session.add(User(username="lino", display_name="Lino", password_hash="x"))
     session.flush()
     session.add(User(username="lino", display_name="Zweiter", password_hash="y"))
@@ -14,7 +14,7 @@ def test_benutzername_ist_eindeutig(session: Session) -> None:
         session.flush()
 
 
-def test_benutzer_kann_in_mehreren_gruppen_sein(session: Session) -> None:
+def test_a_user_can_be_in_several_groups(session: Session) -> None:
     nutzer = User(username="a", display_name="A", password_hash="x")
     session.add(nutzer)
     for name in ("Verwaltung", "Bedienung"):
@@ -26,7 +26,7 @@ def test_benutzer_kann_in_mehreren_gruppen_sein(session: Session) -> None:
     assert session.query(UserAccessGroup).filter_by(user_id=nutzer.id).count() == 2
 
 
-def test_recht_anlagenweit_und_zonenbezogen_nebeneinander(session: Session) -> None:
+def test_a_permission_installation_wide_and_zone_scoped_side_by_side(session: Session) -> None:
     """NULL in zone_id heisst anlagenweit; beides darf nebeneinander stehen."""
     group = AccessGroup(name="Gemischt")
     session.add(group)
@@ -41,7 +41,7 @@ def test_recht_anlagenweit_und_zonenbezogen_nebeneinander(session: Session) -> N
     assert session.query(GroupPermission).filter_by(access_group_id=group.id).count() == 2
 
 
-def test_dieselbe_zuordnung_zweimal_ist_ausgeschlossen(session: Session) -> None:
+def test_the_same_assignment_twice_is_ruled_out(session: Session) -> None:
     group = AccessGroup(name="Doppelt")
     session.add(group)
     session.flush()
@@ -55,7 +55,7 @@ def test_dieselbe_zuordnung_zweimal_ist_ausgeschlossen(session: Session) -> None
         session.flush()
 
 
-def test_gruppe_wird_mit_ihren_rechten_geloescht(session: Session) -> None:
+def test_a_group_is_deleted_together_with_its_permissions(session: Session) -> None:
     group = AccessGroup(name="Weg")
     session.add(group)
     session.flush()

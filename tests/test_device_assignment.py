@@ -46,7 +46,7 @@ def _assign(session: Session, zone_id: int, device_id: int, rollencode: str) -> 
     session.flush()
 
 
-def test_tausch_erhaelt_zonenkonfiguration_und_uebernimmt_alle_rollen(
+def test_a_swap_keeps_the_zone_configuration_and_takes_over_every_role(
     session: Session,
 ) -> None:
     source(session)
@@ -147,7 +147,7 @@ def test_tausch_erhaelt_zonenkonfiguration_und_uebernimmt_alle_rollen(
     ) is None
 
 
-def test_tausch_laesst_messhistorie_beim_alten_geraet(session: Session) -> None:
+def test_a_swap_leaves_the_measurement_history_with_the_old_device(session: Session) -> None:
     source(session)
     zone = create_zone(session, "bad")
     altes = create_device(session, "sensor-alt")
@@ -175,7 +175,7 @@ def test_tausch_laesst_messhistorie_beim_alten_geraet(session: Session) -> None:
     ) is None
 
 
-def test_tausch_in_einer_zone_laesst_zweite_zone_unberuehrt(session: Session) -> None:
+def test_a_swap_in_one_zone_leaves_a_second_zone_untouched(session: Session) -> None:
     source(session)
     zone_a = create_zone(session, "a")
     zone_b = create_zone(session, "b")
@@ -217,7 +217,9 @@ def test_tausch_schreibt_audit(session: Session) -> None:
     assert "audit-neu" in entry.summary
 
 
-def test_seite_zeigt_zuordnungen_und_messquelle(client_als, session: Session) -> None:
+def test_the_page_shows_assignments_and_the_temperature_source(
+    client_als, session: Session
+) -> None:
     zone = create_zone(session, "anzeige")
     device = create_device(session, "thermostat")
     zone.temperature_source_device_id = device.id
@@ -233,7 +235,7 @@ def test_seite_zeigt_zuordnungen_und_messquelle(client_als, session: Session) ->
     assert "Gerät tauschen" not in response.text
 
 
-def test_doppelte_rolle_zeigt_verstaendliche_meldung(client_als, session: Session) -> None:
+def test_a_duplicate_role_shows_an_understandable_message(client_als, session: Session) -> None:
     source(session)
     zone = create_zone(session, "doppelt")
     device = create_device(session, "kontakt")
@@ -251,7 +253,7 @@ def test_doppelte_rolle_zeigt_verstaendliche_meldung(client_als, session: Sessio
     assert "in dieser Rolle bereits zugeordnet" in response.text
 
 
-def test_aendernde_wege_und_rechte(client_als, session: Session) -> None:
+def test_the_writing_routes_and_their_permissions(client_als, session: Session) -> None:
     source(session)
     eigene = create_zone(session, "eigene")
     fremde = create_zone(session, "fremde")
@@ -314,7 +316,7 @@ def test_aendernde_wege_und_rechte(client_als, session: Session) -> None:
     ).status_code == 404
 
 
-def test_ungueltige_eingaben_bei_der_zuordnung(client_als, session: Session) -> None:
+def test_invalid_input_when_assigning(client_als, session: Session) -> None:
     """Jeder Fehlerweg der Zuordnungsseite — bisher war nur der Erfolgsfall belegt."""
     source(session)
     zone = create_zone(session, "zone-fehlerwege")
@@ -336,7 +338,7 @@ def test_ungueltige_eingaben_bei_der_zuordnung(client_als, session: Session) -> 
         ) is None, daten
 
 
-def test_messquelle_laesst_sich_wieder_loesen(client_als, session: Session) -> None:
+def test_the_temperature_source_can_be_detached_again(client_als, session: Session) -> None:
     """Leeres Feld heisst 'keine Messquelle' — die Zone gilt danach als ohne Quelle."""
     source(session)
     zone = create_zone(session, "zone-messquelle-weg")
@@ -356,7 +358,7 @@ def test_messquelle_laesst_sich_wieder_loesen(client_als, session: Session) -> N
     assert zone.temperature_source_device_id is None
 
 
-def test_unbekannte_messquelle_bleibt_ohne_wirkung(client_als, session: Session) -> None:
+def test_an_unknown_temperature_source_has_no_effect(client_als, session: Session) -> None:
     source(session)
     zone = create_zone(session, "zone-messquelle-unbekannt")
     client = client_als([("device.manage", None), ("device.read", None)])
@@ -368,7 +370,7 @@ def test_unbekannte_messquelle_bleibt_ohne_wirkung(client_als, session: Session)
     assert zone.temperature_source_device_id is None
 
 
-def test_tausch_mit_unsinnigen_geraeten_meldet_verstaendlich(
+def test_a_swap_with_nonsensical_devices_reports_understandably(
     client_als, session: Session
 ) -> None:
     """Drei Faelle: gleiches Geraet, unbekanntes Geraet, ein Geraet ohne Zuordnung."""
@@ -391,7 +393,7 @@ def test_tausch_mit_unsinnigen_geraeten_meldet_verstaendlich(
         ) is None, daten
 
 
-def test_fremde_zuordnung_laesst_sich_nicht_loesen(client_als, session: Session) -> None:
+def test_a_foreign_assignment_cannot_be_detached(client_als, session: Session) -> None:
     """Eine Zuordnung einer anderen Zone ergibt 404, nicht 403."""
     source(session)
     eigene = create_zone(session, "eigene-loesen")
@@ -413,7 +415,7 @@ def test_fremde_zuordnung_laesst_sich_nicht_loesen(client_als, session: Session)
     assert session.get(ZoneDevice, foreign_assignment.id) is not None
 
 
-def test_loesen_einer_fremden_zuordnung_wird_in_der_domaene_abgewiesen(
+def test_detaching_a_foreign_assignment_is_refused_in_the_domain(
     session: Session,
 ) -> None:
     """Die Ansicht faengt den Fall schon mit 404 ab. Die Domaene prueft trotzdem selbst:
@@ -440,7 +442,7 @@ def test_loesen_einer_fremden_zuordnung_wird_in_der_domaene_abgewiesen(
     assert session.get(ZoneDevice, assignment.id) is not None
 
 
-def test_ablegeziele_nur_mit_device_manage(client_als, session: Session) -> None:
+def test_drop_targets_only_with_device_manage(client_als, session: Session) -> None:
     """Das Ziehen ist eine zweite Bedienart derselben Aenderung -- es muss an derselben
     Rechtepruefung haengen wie die Formulare. Ein Ablegeziel, das man sieht und nicht
     benutzen darf, ist eine Einladung zu einer 403."""
@@ -461,7 +463,7 @@ def test_ablegeziele_nur_mit_device_manage(client_als, session: Session) -> None
     assert "tc-ziehbar" not in page.text
 
 
-def test_anlagenbild_bietet_keine_ablegeziele(client_als, session: Session) -> None:
+def test_the_plant_diagram_offers_no_drop_targets(client_als, session: Session) -> None:
     """Gegenprobe: Auf dem Anlagenbild waere ein Ablegeziel eine Zusage, die die Seite
     nicht einloest -- dort gibt es keine Formulare, die es abschicken koennte."""
     create_zone(session, "bildzone")
@@ -491,7 +493,7 @@ def _with_capability(session: Session, name: str, *codes: str):
     return device
 
 
-def test_sensor_laesst_sich_nicht_als_aktor_zuordnen(session: Session) -> None:
+def test_a_sensor_cannot_be_assigned_as_an_actuator(session: Session) -> None:
     """Vorher ging das. Die Zuordnung sah danach richtig aus, das Anlagenbild zeigte
     einen vollstaendigen Weg, und geschaltet haette trotzdem nie etwas -- ein Fehler, der
     erst im Winter auffaellt und dann nach einem Regelungsfehler aussieht."""
@@ -505,7 +507,7 @@ def test_sensor_laesst_sich_nicht_als_aktor_zuordnen(session: Session) -> None:
         )
 
 
-def test_ventil_laesst_sich_als_aktor_zuordnen(session: Session) -> None:
+def test_a_valve_can_be_assigned_as_an_actuator(session: Session) -> None:
     """Gegenprobe. Ohne sie waere der Test oben auch von einer Fassung erfuellt, die
     jede Zuordnung ablehnt."""
     from thermoctl.domain.device_assignment import assign_device
@@ -518,7 +520,7 @@ def test_ventil_laesst_sich_als_aktor_zuordnen(session: Session) -> None:
     assert assignment.device_id == ventil.id
 
 
-def test_geraet_ohne_bekannte_faehigkeiten_wird_durchgelassen(session: Session) -> None:
+def test_a_device_without_known_capabilities_is_let_through(session: Session) -> None:
     """Die Faehigkeiten stammen aus der Geraeteliste der Bruecke. Wer ein Geraet
     einbindet, das sich dort sparsam beschreibt, soll seine Anlage trotzdem einrichten
     koennen -- abgewiesen wird nur ein nachweislicher Widerspruch."""
@@ -529,7 +531,7 @@ def test_geraet_ohne_bekannte_faehigkeiten_wird_durchgelassen(session: Session) 
     assign_device(session, zone, schweigsam, rolle(session, "actuator"), akteur_id=None)
 
 
-def test_messquelle_muss_temperatur_messen(session: Session) -> None:
+def test_a_temperature_source_must_measure_temperature(session: Session) -> None:
     from thermoctl.domain.device_assignment import CapabilityMissing, set_temperature_source
 
     zone = create_zone(session, "messquellenzone")
@@ -538,7 +540,7 @@ def test_messquelle_muss_temperatur_messen(session: Session) -> None:
         set_temperature_source(session, zone, ventil, akteur_id=None)
 
 
-def test_fensterkontakt_muss_einen_kontakt_melden(session: Session) -> None:
+def test_a_window_contact_must_report_a_contact(session: Session) -> None:
     from thermoctl.domain.device_assignment import CapabilityMissing, assign_device
 
     zone = create_zone(session, "kontaktzone")
@@ -549,7 +551,7 @@ def test_fensterkontakt_muss_einen_kontakt_melden(session: Session) -> None:
         )
 
 
-def test_tausch_prueft_jede_stelle_die_uebergeht(session: Session) -> None:
+def test_a_swap_checks_every_place_that_transfers(session: Session) -> None:
     """Der stillste Weg, ein unpassendes Geraet an eine Stelle zu setzen: Man waehlt zwei
     Namen aus und sieht gar nicht, welche Rollen dabei mitgehen."""
     from thermoctl.domain.device_assignment import (
@@ -567,7 +569,7 @@ def test_tausch_prueft_jede_stelle_die_uebergeht(session: Session) -> None:
         swap_device(session, zone, ventil, sensor, akteur_id=None)
 
 
-def test_abgelehnter_tausch_laesst_nichts_halb_stehen(session: Session) -> None:
+def test_a_refused_swap_leaves_nothing_half_done(session: Session) -> None:
     """Erst pruefen, dann schreiben. Sonst bliebe die Messquelle beim neuen Geraet und
     die Rolle beim alten."""
     from thermoctl.domain.device_assignment import (
@@ -589,7 +591,7 @@ def test_abgelehnter_tausch_laesst_nichts_halb_stehen(session: Session) -> None:
     assert zone.temperature_source_device_id == kombi.id
 
 
-def test_die_ansicht_zeigt_den_grund_statt_eines_fehlers(client_als, session: Session) -> None:
+def test_the_view_shows_the_reason_instead_of_an_error(client_als, session: Session) -> None:
     """Ein 500 waere hier die schlechteste Antwort: Der Benutzer hat nichts falsch
     gemacht ausser dem Falschen, und er soll erfahren, was gefehlt hat."""
     zone = create_zone(session, "ansichtszone")
@@ -627,7 +629,7 @@ def test_zugeordnete_karten_tragen_ihre_kennung(client_als, session: Session) ->
     assert 'data-ziel="entfernen"' in page.text
 
 
-def test_ohne_device_manage_ist_nichts_herausziehbar(client_als, session: Session) -> None:
+def test_without_device_manage_nothing_can_be_dragged_out(client_als, session: Session) -> None:
     """Gegenprobe: Wer nicht aendern darf, sieht dieselbe Karte ohne Griff."""
     from thermoctl.db.models.device import ZoneDevice
 
@@ -647,7 +649,7 @@ def test_ohne_device_manage_ist_nichts_herausziehbar(client_als, session: Sessio
     assert 'data-ziel="entfernen"' not in page.text
 
 
-def test_das_anlagenbild_traegt_keine_griffe(client_als, session: Session) -> None:
+def test_the_plant_diagram_carries_no_drag_handles(client_als, session: Session) -> None:
     """Dort gibt es keine Formulare, die ein Herausziehen abschicken koennten."""
     from thermoctl.db.models.device import ZoneDevice
 
@@ -675,7 +677,7 @@ def _controller_commands(session: Session) -> None:
     session.flush()
 
 
-def test_die_seite_zeigt_die_tasten_die_wirklich_ankamen(client_als, session: Session) -> None:
+def test_the_page_shows_the_buttons_that_actually_arrived(client_als, session: Session) -> None:
     """Nichts geraten: Wie ein Geraet seine Tasten nennt, entscheidet Zigbee2MQTT.
 
     Ohne diese Liste muesste jemand das Datenblatt seines Modells lesen -- und bei einem
@@ -705,7 +707,9 @@ def test_die_seite_zeigt_die_tasten_die_wirklich_ankamen(client_als, session: Se
     assert "Nächste Schaltung vorziehen" in response.text
 
 
-def test_ohne_bediengeraet_gibt_es_keine_tastenbelegung(client_als, session: Session) -> None:
+def test_without_a_controller_there_is_no_button_binding_section(
+    client_als, session: Session
+) -> None:
     """Gegenprobe: Ein Abschnitt, der bei jeder Zone steht, traegt keine Auskunft."""
     _controller_commands(session)
     zone = create_zone(session, "tastenlos")
@@ -717,7 +721,7 @@ def test_ohne_bediengeraet_gibt_es_keine_tastenbelegung(client_als, session: Ses
     assert "Tastenbelegung" not in response.text
 
 
-def test_eine_taste_laesst_sich_belegen_und_wieder_freigeben(
+def test_a_button_can_be_bound_and_released_again(
     client_als, session: Session
 ) -> None:
     from thermoctl.db.models.device import ControllerBinding
@@ -755,7 +759,7 @@ def test_eine_taste_laesst_sich_belegen_und_wieder_freigeben(
     assert session.scalars(select(ControllerBinding)).all() == []
 
 
-def test_unbrauchbare_tastenbelegungen_werden_abgewiesen(client_als, session: Session) -> None:
+def test_unusable_button_bindings_are_refused(client_als, session: Session) -> None:
     source(session)
     _controller_commands(session)
     zone = create_zone(session, "fehlzone")
@@ -792,7 +796,7 @@ def test_unbrauchbare_tastenbelegungen_werden_abgewiesen(client_als, session: Se
     assert "Nachkommastelle" in zu_genau.text
 
 
-def test_tastenbelegung_braucht_device_manage(client_als, session: Session) -> None:
+def test_button_binding_needs_device_manage(client_als, session: Session) -> None:
     _controller_commands(session)
     zone = create_zone(session, "rechtezone")
     device = create_device(session, "rechteschalter")

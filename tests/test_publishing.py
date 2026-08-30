@@ -51,7 +51,7 @@ async def _run(session: Session, state: PublicationState) -> Mitschrift:
 
 
 @pytest.mark.anyio
-async def test_im_trockenlauf_wird_veroeffentlicht(session: Session) -> None:
+async def test_publishing_happens_in_dry_run(session: Session) -> None:
     """Eine Zustandsmeldung bewegt nichts. Eine Anbindung, die man erst nach dem
     Scharfschalten ausprobieren kann, laesst sich genau dann nicht mehr gefahrlos
     pruefen, wenn ein Fehler noch folgenlos waere."""
@@ -65,7 +65,7 @@ async def test_im_trockenlauf_wird_veroeffentlicht(session: Session) -> None:
 
 
 @pytest.mark.anyio
-async def test_keine_dieser_nachrichten_schaltet(session: Session) -> None:
+async def test_none_of_these_messages_switches(session: Session) -> None:
     """Gegenprobe zur Zeile oben: Veroeffentlicht wird, geschaltet nicht. Ohne sie waere
     der Test darueber auch von einer Fassung erfuellt, die im Trockenlauf Ventile
     bewegt."""
@@ -76,7 +76,7 @@ async def test_keine_dieser_nachrichten_schaltet(session: Session) -> None:
 
 
 @pytest.mark.anyio
-async def test_der_trockenlauf_steht_nicht_mehr_im_namen(session: Session) -> None:
+async def test_dry_run_no_longer_appears_in_the_name(session: Session) -> None:
     """Er stand dort, weil es sichtbar war -- und war genau deshalb falsch.
 
     Home Assistant leitet die Entitaetskennung beim ersten Auftauchen aus dem Namen ab.
@@ -94,7 +94,7 @@ async def test_der_trockenlauf_steht_nicht_mehr_im_namen(session: Session) -> No
 
 
 @pytest.mark.anyio
-async def test_die_kennung_bleibt_ueber_das_scharfschalten_hinweg_gleich(
+async def test_the_identifier_stays_the_same_across_arming(
     session: Session,
 ) -> None:
     """Die Gegenprobe zur Zeile darueber, und die eigentliche Zusage.
@@ -118,7 +118,7 @@ async def test_die_kennung_bleibt_ueber_das_scharfschalten_hinweg_gleich(
 
 
 @pytest.mark.anyio
-async def test_der_betriebszustand_steht_in_einer_eigenen_entitaet(session: Session) -> None:
+async def test_the_operating_state_lives_in_its_own_entity(session: Session) -> None:
     """Er muss sichtbar bleiben -- nur eben nicht im Namen einer anderen Entitaet."""
     create_settings(session)
     source(session, "web")
@@ -134,7 +134,7 @@ async def test_der_betriebszustand_steht_in_einer_eigenen_entitaet(session: Sess
 
 
 @pytest.mark.anyio
-async def test_anmeldungen_und_zustaende_gehen_behalten_hinaus(session: Session) -> None:
+async def test_discoveries_and_state_go_out_retained(session: Session) -> None:
     """Ohne retain steht in Home Assistant nach jedem Neustart eine leere Karte.
 
     Bis der Dienst das naechste Mal sendet, vergeht ein ganzer Regelzyklus -- und beim
@@ -148,7 +148,7 @@ async def test_anmeldungen_und_zustaende_gehen_behalten_hinaus(session: Session)
 
 
 @pytest.mark.anyio
-async def test_je_zone_stehen_boost_zeitpunkte_modi_und_parameter_bereit(
+async def test_boost_timestamps_modes_and_parameters_are_offered_per_zone(
     session: Session,
 ) -> None:
     """Was in Home Assistant je Zone bedienbar sein soll, muss auch angemeldet werden."""
@@ -171,7 +171,7 @@ async def test_je_zone_stehen_boost_zeitpunkte_modi_und_parameter_bereit(
 
 
 @pytest.mark.anyio
-async def test_ohne_wechsel_wird_nicht_erneut_angemeldet(session: Session) -> None:
+async def test_without_a_change_nothing_is_registered_again(session: Session) -> None:
     """Sonst ginge je Zone und Minute eine Discovery-Nachricht hinaus -- viel Verkehr
     fuer eine Aussage, die sich nicht geaendert hat."""
     create_settings(session)
@@ -185,7 +185,7 @@ async def test_ohne_wechsel_wird_nicht_erneut_angemeldet(session: Session) -> No
 
 
 @pytest.mark.anyio
-async def test_der_trockenlauf_meldet_nicht_ab(session: Session) -> None:
+async def test_dry_run_does_not_deregister(session: Session) -> None:
     """Abmelden und Neuanmelden bei jedem Umschalten liesse die Entitaet in Home
     Assistant kurz verschwinden -- Verlaufsdaten und Automatisierungen liefen dort ins
     Leere."""
@@ -205,7 +205,7 @@ async def test_der_trockenlauf_meldet_nicht_ab(session: Session) -> None:
 
 
 @pytest.mark.anyio
-async def test_nur_eine_geloeschte_zone_wird_abgemeldet(session: Session) -> None:
+async def test_only_a_deleted_zone_is_deregistered(session: Session) -> None:
     """Der einzige Grund fuer eine Abmeldung. Ohne sie bliebe in Home Assistant ein
     Thermostat stehen, den niemand mehr bedient."""
     create_settings(session)
@@ -226,7 +226,7 @@ async def test_nur_eine_geloeschte_zone_wird_abgemeldet(session: Session) -> Non
 
 
 @pytest.mark.anyio
-async def test_ein_fehlender_messwert_wird_nicht_als_leere_nutzlast_gesendet(
+async def test_a_missing_reading_is_not_sent_as_an_empty_payload(
     session: Session,
 ) -> None:
     """In MQTT loescht eine leere Nutzlast eine behaltene Nachricht. 'Noch kein
@@ -239,7 +239,7 @@ async def test_ein_fehlender_messwert_wird_nicht_als_leere_nutzlast_gesendet(
 
 
 @pytest.mark.anyio
-async def test_sollwert_wird_mit_punkt_gesendet(session: Session) -> None:
+async def test_the_setpoint_is_sent_with_a_decimal_point(session: Session) -> None:
     """MQTT ist keine Oberflaeche: Home Assistant erwartet eine Zahl, kein deutsches
     Komma."""
     create_settings(session)
@@ -251,7 +251,7 @@ async def test_sollwert_wird_mit_punkt_gesendet(session: Session) -> None:
 
 
 @pytest.mark.anyio
-async def test_ein_befehl_wird_sofort_beantwortet(session: Session) -> None:
+async def test_a_command_is_answered_immediately(session: Session) -> None:
     """Die Climate-Karte in Home Assistant ist nicht optimistisch.
 
     Sie wartet auf den Zustand und zeigt bis dahin den alten. Kam der erst im naechsten
@@ -296,7 +296,7 @@ async def test_ein_befehl_wird_sofort_beantwortet(session: Session) -> None:
 
 
 @pytest.mark.anyio
-async def test_ein_verworfener_befehl_loest_keine_meldung_aus(session: Session) -> None:
+async def test_a_discarded_command_triggers_no_message(session: Session) -> None:
     """Gegenprobe: Sonst antwortete der Dienst auch auf Unsinn und auf fremde Topics."""
     from types import SimpleNamespace
 
@@ -332,7 +332,7 @@ async def test_ein_verworfener_befehl_loest_keine_meldung_aus(session: Session) 
 
 
 @pytest.mark.anyio
-async def test_zustand_schaltzeitpunkte_und_sensorlage_gehen_mit(session: Session) -> None:
+async def test_state_switch_times_and_sensor_situation_go_along(session: Session) -> None:
     """Was Home Assistant je Zone anzeigen soll, muss auch gesendet werden.
 
     „Letzte Schaltung" ist dabei nicht der letzte Regelzyklus, sondern der letzte

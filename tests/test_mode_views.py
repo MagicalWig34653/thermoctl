@@ -24,13 +24,13 @@ def test_modusliste_braucht_mode_manage(client_als) -> None:
     assert client_als([("mode.manage", None)]).get("/modes").status_code == 200
 
 
-def test_modus_neu_formular_wird_angezeigt(client_als) -> None:
+def test_the_new_mode_form_is_shown(client_als) -> None:
     response = client_als([("mode.manage", None)]).get("/modes/new")
     assert response.status_code == 200
     assert "Technischer Code" in response.text
 
 
-def test_modus_wird_angelegt_und_auditiert(client_als, session: Session) -> None:
+def test_a_mode_is_created_and_audited(client_als, session: Session) -> None:
     source(session)
     client = client_als([("mode.manage", None)])
     response = client.post(
@@ -50,7 +50,7 @@ def test_modus_wird_angelegt_und_auditiert(client_als, session: Session) -> None
     ) is not None
 
 
-def test_doppelter_code_kommt_mit_wert_ins_formular_zurueck(
+def test_a_duplicate_code_returns_to_the_form_with_its_value(
     client_als, session: Session
 ) -> None:
     create_mode(session, "tag", "Tag")
@@ -66,14 +66,14 @@ def test_doppelter_code_kommt_mit_wert_ins_formular_zurueck(
     assert 'value="Mein Tag"' in response.text
 
 
-def test_modus_bearbeiten_formular_zeigt_werte(client_als, session: Session) -> None:
+def test_the_edit_mode_form_shows_the_values(client_als, session: Session) -> None:
     mode = create_mode(session, "nacht", "Nacht")
     response = client_als([("mode.manage", None)]).get(f"/modes/{mode.id}")
     assert response.status_code == 200
     assert 'value="nacht"' in response.text
 
 
-def test_modus_wird_geaendert(client_als, session: Session) -> None:
+def test_a_mode_is_updated(client_als, session: Session) -> None:
     source(session)
     mode = create_mode(session, "nacht", "Nacht")
     client = client_als([("mode.manage", None)])
@@ -93,14 +93,14 @@ def test_modus_wird_geaendert(client_als, session: Session) -> None:
     ) is not None
 
 
-def test_loeschformular_fuer_freien_modus(client_als, session: Session) -> None:
+def test_the_delete_form_for_an_unused_mode(client_als, session: Session) -> None:
     mode = create_mode(session, "urlaub", "Urlaub")
     response = client_als([("mode.manage", None)]).get(f"/modes/{mode.id}/delete")
     assert response.status_code == 200
     assert "wirklich gelöscht" in response.text
 
 
-def test_freier_modus_wird_geloescht(client_als, session: Session) -> None:
+def test_an_unused_mode_is_deleted(client_als, session: Session) -> None:
     source(session)
     mode = create_mode(session, "urlaub", "Urlaub")
     mode_id = mode.id
@@ -118,7 +118,7 @@ def test_freier_modus_wird_geloescht(client_als, session: Session) -> None:
     ) is not None
 
 
-def test_eingebauter_modus_ist_mit_begruendung_nicht_loeschbar(
+def test_a_builtin_mode_cannot_be_deleted_and_says_why(
     client_als, session: Session
 ) -> None:
     mode = create_mode(session, "tag", "Tag")
@@ -133,7 +133,7 @@ def test_eingebauter_modus_ist_mit_begruendung_nicht_loeschbar(
     assert session.get(SetpointMode, mode.id) is mode
 
 
-def test_frostschutzmodus_ist_mit_begruendung_nicht_loeschbar(
+def test_the_frost_protection_mode_cannot_be_deleted_and_says_why(
     client_als, session: Session
 ) -> None:
     settings = create_settings(session)
@@ -147,7 +147,7 @@ def test_frostschutzmodus_ist_mit_begruendung_nicht_loeschbar(
     ) in response.text
 
 
-def test_sollwertformular_zeigt_alle_modi_und_hilfetext(client_als, session: Session) -> None:
+def test_the_setpoint_form_shows_every_mode_and_the_help_text(client_als, session: Session) -> None:
     zone = create_zone(session, "bad")
     create_mode(session, "tag", "Tag")
     create_mode(session, "nacht", "Nacht")
@@ -160,7 +160,7 @@ def test_sollwertformular_zeigt_alle_modi_und_hilfetext(client_als, session: Ses
     assert "Leer lassen löscht den Sollwert" in response.text
 
 
-def test_sollwerte_werden_als_decimal_gespeichert_und_auditiert(
+def test_setpoints_are_stored_as_decimal_and_audited(
     client_als, session: Session
 ) -> None:
     source(session)
@@ -185,7 +185,7 @@ def test_sollwerte_werden_als_decimal_gespeichert_und_auditiert(
     ) is not None
 
 
-def test_sollwert_ausserhalb_der_grenzen_wird_am_feld_abgewiesen(
+def test_a_setpoint_outside_the_limits_is_refused_at_the_field(
     client_als, session: Session
 ) -> None:
     zone = create_zone(session, "bad")
@@ -203,7 +203,7 @@ def test_sollwert_ausserhalb_der_grenzen_wird_am_feld_abgewiesen(
     assert session.get(ZoneSetpoint, (zone.id, mode.id)) is None
 
 
-def test_sollwert_mit_zwei_nachkommastellen_wird_abgewiesen(
+def test_a_setpoint_with_two_decimal_places_is_refused(
     client_als, session: Session
 ) -> None:
     zone = create_zone(session, "bad")
@@ -220,7 +220,7 @@ def test_sollwert_mit_zwei_nachkommastellen_wird_abgewiesen(
     assert session.get(ZoneSetpoint, (zone.id, mode.id)) is None
 
 
-def test_leeres_sollwertfeld_loescht_die_zeile(client_als, session: Session) -> None:
+def test_an_empty_setpoint_field_deletes_the_row(client_als, session: Session) -> None:
     source(session)
     zone = create_zone(session, "bad")
     mode = create_mode(session, "tag", "Tag")
@@ -254,7 +254,7 @@ def test_fremde_zone_ergibt_404(client_als, session: Session) -> None:
     )
 
 
-def test_verwendeter_modus_ist_nicht_loeschbar(client_als, session: Session) -> None:
+def test_a_mode_in_use_cannot_be_deleted(client_als, session: Session) -> None:
     """Die dritte Loeschsperre: Ein Modus, auf den ein Zeitplan zeigt, verschwindet nicht.
 
     Ohne sie zerrisse das Loeschen den Zeitplan jeder Zone, die ihn benutzt — und zwar
@@ -287,7 +287,7 @@ def test_unbekannter_modus_ergibt_404(client_als) -> None:
     assert client.get("/modes/999999/delete").status_code == 404
 
 
-def test_leere_und_zu_lange_moduswerte_bleiben_im_formular(
+def test_empty_and_overlong_mode_values_stay_in_the_form(
     client_als, session: Session
 ) -> None:
     source(session, "web")
@@ -306,7 +306,7 @@ def test_leere_und_zu_lange_moduswerte_bleiben_im_formular(
     assert session.scalar(select(SetpointMode).where(SetpointMode.code == "gut")) is None
 
 
-def test_bestehender_sollwert_wird_geaendert(client_als, session: Session) -> None:
+def test_an_existing_setpoint_is_updated(client_als, session: Session) -> None:
     """Der dritte Fall neben Anlegen und Loeschen — bisher ungeprueft."""
     create_settings(session)
     source(session, "web")
@@ -330,7 +330,7 @@ def test_bestehender_sollwert_wird_geaendert(client_als, session: Session) -> No
     assert zeilen[0].temperature_c == Decimal("22.5")
 
 
-def test_nicht_numerischer_sollwert_bleibt_im_formular(client_als, session: Session) -> None:
+def test_a_non_numeric_setpoint_stays_in_the_form(client_als, session: Session) -> None:
     create_settings(session)
     source(session, "web")
     day = create_mode(session, "tag-keine-zahl", "Tag")
@@ -345,7 +345,7 @@ def test_nicht_numerischer_sollwert_bleibt_im_formular(client_als, session: Sess
     assert session.scalar(select(ZoneSetpoint).where(ZoneSetpoint.zone_id == zone.id)) is None
 
 
-def test_unendlicher_sollwert_wird_abgewiesen(client_als, session: Session) -> None:
+def test_an_infinite_setpoint_is_refused(client_als, session: Session) -> None:
     """`Decimal("nan")` und `Decimal("Infinity")` sind gueltige Dezimalzahlen.
 
     Ohne die Endlichkeitspruefung liefe ein solcher Wert bis in die Datenbank und von dort
@@ -367,7 +367,7 @@ def test_unendlicher_sollwert_wird_abgewiesen(client_als, session: Session) -> N
     assert session.scalar(select(ZoneSetpoint).where(ZoneSetpoint.zone_id == zone.id)) is None
 
 
-def test_modus_aendern_mit_ungueltigem_wert_bleibt_im_formular(
+def test_updating_a_mode_with_an_invalid_value_stays_in_the_form(
     client_als, session: Session
 ) -> None:
     source(session, "web")
@@ -383,7 +383,7 @@ def test_modus_aendern_mit_ungueltigem_wert_bleibt_im_formular(
     assert mode.code == "aenderbar"
 
 
-def test_die_sollwertgrenze_steht_nur_an_einer_stelle() -> None:
+def test_the_setpoint_limit_exists_in_exactly_one_place() -> None:
     """Die Grenze hat schon einmal an drei Stellen verschieden dagestanden.
 
     Damals prueften die Oberflaeche von Hand ohne Nachkommastellen, die
@@ -456,7 +456,7 @@ def test_die_sollwertgrenze_steht_nur_an_einer_stelle() -> None:
     assert not match, "Sollwertgrenze ausserhalb der Domaene:\n" + "\n".join(match)
 
 
-def test_die_meldung_nennt_die_geltende_grenze() -> None:
+def test_the_message_names_the_limit_that_applies() -> None:
     """Sie wird aus den Konstanten gebaut, nicht abgeschrieben -- sonst nennt sie nach
     dem naechsten Verschieben eine Zahl, die nicht mehr gilt."""
     import pytest as _pytest

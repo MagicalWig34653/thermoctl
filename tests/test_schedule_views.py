@@ -31,7 +31,7 @@ def _point(session: Session, zone_id: int, day: int, minute: int, mode_id: int) 
     return point
 
 
-def test_wochenansicht_zeigt_ringuebergang_von_sonntag_auf_montag(
+def test_the_week_view_shows_the_wraparound_from_sunday_to_monday(
     client_als, session: Session
 ) -> None:
     zone = create_zone(session, "bad")
@@ -50,7 +50,7 @@ def test_wochenansicht_zeigt_ringuebergang_von_sonntag_auf_montag(
     assert "Schaltpunkt anlegen" not in response.text
 
 
-def test_punkt_anlegen_und_doppelbelegung_verstaendlich_melden(
+def test_creating_a_point_and_reporting_a_double_booking_understandably(
     client_als, session: Session
 ) -> None:
     source(session)
@@ -80,7 +80,7 @@ def test_punkt_anlegen_und_doppelbelegung_verstaendlich_melden(
     ) is not None
 
 
-def test_ungueltige_punkte_bleiben_mit_eingaben_im_formular(
+def test_invalid_points_stay_in_the_form_with_their_input(
     client_als, session: Session
 ) -> None:
     zone = create_zone(session, "bad")
@@ -95,7 +95,7 @@ def test_ungueltige_punkte_bleiben_mit_eingaben_im_formular(
     assert 'value="25:61"' in response.text
 
 
-def test_punkt_loeschen_bestaetigen_und_ausfuehren(client_als, session: Session) -> None:
+def test_confirming_and_carrying_out_a_point_deletion(client_als, session: Session) -> None:
     source(session)
     zone = create_zone(session, "bad")
     mode = create_mode(session, "tag", "Tag")
@@ -117,7 +117,7 @@ def test_punkt_loeschen_bestaetigen_und_ausfuehren(client_als, session: Session)
     assert session.get(SchedulePoint, point_id) is None
 
 
-def test_zeitplan_uebernehmen_kopiert_genau_und_laesst_quelle_unveraendert(
+def test_adopting_a_schedule_copies_exactly_and_leaves_the_source_unchanged(
     client_als, session: Session
 ) -> None:
     source(session)
@@ -156,7 +156,7 @@ def test_zeitplan_uebernehmen_kopiert_genau_und_laesst_quelle_unveraendert(
     ) is not None
 
 
-def test_uebernahme_mit_bestehendem_plan_fragt_vorher_nach(
+def test_adopting_onto_an_existing_schedule_asks_first(
     client_als, session: Session
 ) -> None:
     source(session)
@@ -189,7 +189,7 @@ def test_uebernahme_mit_bestehendem_plan_fragt_vorher_nach(
     assert session.get(SchedulePoint, old_point.id) is None
 
 
-def test_rechte_und_fremde_zonen_geben_404(client_als, session: Session) -> None:
+def test_permissions_and_foreign_zones_yield_404(client_als, session: Session) -> None:
     eigene = create_zone(session, "eigene")
     fremde = create_zone(session, "fremde")
     mode = create_mode(session, "tag", "Tag")
@@ -210,7 +210,7 @@ def test_rechte_und_fremde_zonen_geben_404(client_als, session: Session) -> None
     )
 
 
-def test_uebernahmeformular_und_fehlerhafte_auswahl(client_als, session: Session) -> None:
+def test_the_adoption_form_and_a_faulty_selection(client_als, session: Session) -> None:
     ziel = create_zone(session, "ziel")
     client = client_als([("schedule.manage", ziel.id)])
     pfad = f"/zones/{ziel.id}/schedule/adopt"
@@ -220,7 +220,7 @@ def test_uebernahmeformular_und_fehlerhafte_auswahl(client_als, session: Session
     assert "Bitte eine Quellzone auswählen." in response.text
 
 
-def test_unsinnige_auswahl_beim_punkt_anlegen(client_als, session: Session) -> None:
+def test_a_nonsensical_selection_when_creating_a_point(client_als, session: Session) -> None:
     """Wochentag und Modus kommen aus Auswahlfeldern — eine Anfrage muss sich daran
     trotzdem nicht halten. Beide Wege werden hier bewusst umgangen."""
     source(session)
@@ -243,7 +243,7 @@ def test_unsinnige_auswahl_beim_punkt_anlegen(client_als, session: Session) -> N
     ) is None
 
 
-def test_fremder_zeitplanpunkt_ergibt_404(client_als, session: Session) -> None:
+def test_a_foreign_schedule_point_yields_404(client_als, session: Session) -> None:
     """Ein Punkt einer anderen Zone laesst sich nicht ueber die eigene loeschen."""
     source(session)
     eigene = create_zone(session, "eigene-zeitplan")
@@ -261,7 +261,7 @@ def test_fremder_zeitplanpunkt_ergibt_404(client_als, session: Session) -> None:
     assert session.get(SchedulePoint, fremder.id) is not None
 
 
-def test_uebernahme_von_sich_selbst_ergibt_404(client_als, session: Session) -> None:
+def test_adopting_from_itself_yields_404(client_als, session: Session) -> None:
     """Eine Zone kann ihren Zeitplan nicht von sich selbst uebernehmen — das waere ein
     Vorgang ohne Wirkung, der aussaehe, als haette er gewirkt."""
     source(session)
@@ -275,7 +275,7 @@ def test_uebernahme_von_sich_selbst_ergibt_404(client_als, session: Session) -> 
     assert response.status_code == 404
 
 
-def test_unbekannter_zeitplanpunkt_ergibt_404(client_als, session: Session) -> None:
+def test_an_unknown_schedule_point_yields_404(client_als, session: Session) -> None:
     source(session)
     zone = create_zone(session, "zone-unbekannter-punkt")
     client = client_als([("schedule.manage", None), ("zone.read", None)])
@@ -303,7 +303,7 @@ def test_punkt_verschieben(client_als, session: Session) -> None:
     assert (point.weekday, point.minute_of_day) == (3, 435)
 
 
-def test_verschieben_behaelt_die_kennung_und_protokolliert_woher_wohin(
+def test_moving_keeps_the_identifier_and_logs_where_from_and_to(
     client_als, session: Session
 ) -> None:
     """Loeschen und neu Anlegen waere fachlich dasselbe, haette aber zwei
@@ -328,7 +328,7 @@ def test_verschieben_behaelt_die_kennung_und_protokolliert_woher_wohin(
     assert entry.detail == "Mo 06:00 → Di 22:30"
 
 
-def test_verschieben_auf_einen_belegten_zeitpunkt_wird_abgewiesen(
+def test_moving_onto_an_occupied_moment_is_refused(
     client_als, session: Session
 ) -> None:
     zone = create_zone(session, "bad")
@@ -354,7 +354,7 @@ def test_verschieben_auf_einen_belegten_zeitpunkt_wird_abgewiesen(
     assert beweglich.minute_of_day == 360
 
 
-def test_verschieben_auf_den_eigenen_platz_ist_kein_fehler(
+def test_moving_onto_its_own_place_is_not_an_error(
     client_als, session: Session
 ) -> None:
     """Beim Ziehen landet ein Balken leicht wieder dort, wo er war. Das darf nicht als
@@ -392,7 +392,7 @@ def test_verschieben_braucht_schedule_manage(client_als, session: Session) -> No
     assert point.weekday == 1
 
 
-def test_unsinnige_zieldaten_werden_abgewiesen(client_als, session: Session) -> None:
+def test_nonsensical_target_data_is_refused(client_als, session: Session) -> None:
     zone = create_zone(session, "bad")
     day = create_mode(session, "tag", "Tag")
     point = _point(session, zone.id, 1, 360, day.id)
@@ -413,7 +413,7 @@ def test_unsinnige_zieldaten_werden_abgewiesen(client_als, session: Session) -> 
     assert (point.weekday, point.minute_of_day) == (1, 360)
 
 
-def test_wochenansicht_liefert_die_punktkennung_zum_ziehen(
+def test_the_week_view_carries_the_point_identifier_for_dragging(
     client_als, session: Session
 ) -> None:
     """Ohne sie hat der Balken nichts, was er verschieben koennte -- und das Ziehen
@@ -428,7 +428,7 @@ def test_wochenansicht_liefert_die_punktkennung_zum_ziehen(
     assert "zeitplan-ziehbar" in response.text
 
 
-def test_ohne_schedule_manage_ist_kein_balken_ziehbar(
+def test_without_schedule_manage_no_bar_can_be_dragged(
     client_als, session: Session
 ) -> None:
     """Gegenprobe: Sonst waere der obige Test auch von einer Fassung erfuellt, die
@@ -441,7 +441,7 @@ def test_ohne_schedule_manage_ist_kein_balken_ziehbar(
     assert "zeitplan-ziehbar" not in response.text
 
 
-def test_der_anlegeweg_meldet_weiter_am_feld(client_als, session: Session) -> None:
+def test_the_create_route_still_reports_at_the_field(client_als, session: Session) -> None:
     """Gegenprobe zum eigenen Kanal fuer Verschiebefehler: Der Weg ueber das Formular
     soll seine Meldung weiterhin dort bekommen, wo die Eingabe steht."""
     zone = create_zone(session, "bad")

@@ -10,14 +10,14 @@ behauptet: Ein Vergleich aller Zeichenkettenliterale vor und nach der Umstellung
 unter `thermoctl/` **keine einzige** Änderung. Was sich geändert hat, sind Assertion-Texte
 in `tests/`.
 
-Kommentare und Docstrings sind übersetzt. **Was noch aussteht:** rund 300 der 730
-Testnamen sind weiterhin deutsch; der Lauf brach an einem Ausgabelimit des Kontos ab.
-Das ist Kosmetik und kein Mangel an Zusicherung — die Tests prüfen dasselbe wie vorher.
-Wer weitermacht, findet die betroffenen Dateien mit
+Kommentare, Docstrings und **alle 794 Testnamen** sind übersetzt. Ein Testname ist eine
+Zusicherung: `test_rule6_exactly_on_the_switch_on_threshold_does_not_switch_on_yet` sagt
+dasselbe wie vorher, nicht weniger. Ein allgemeinerer Name wäre grün geblieben und hätte
+beim nächsten Lesen niemandem mehr verraten, was hier eigentlich zugesichert ist.
 
-```
-grep -lE "^def test_.*(_wird_|_werden_|_nicht_|_kein|_ohne_|_mit_)" tests/*.py
-```
+**Was noch aussteht:** rund 280 von 830 Kommentar- und Docstringzeilen in `tests/` sind
+weiterhin deutsch, verteilt auf 16 Dateien. Betroffen sind vor allem `test_mcp.py` und
+`test_control_loop.py`. Das ist Prosa und kein Mangel an Zusicherung.
 
 Ebenfalls offen: `user_passkey.bezeichnung`, `passkey_challenge.zeremonie` und das Dict
 `NAMENSKONVENTION` in `db/base.py` sind deutsche Bezeichner im sonst englischen Schema.
@@ -70,8 +70,8 @@ Vom Controller selbst nachgeprüft, nicht aus Berichten übernommen:
 
 | | |
 |---|---|
-| Tests | 1003, grün unter SQLite **und** MariaDB |
-| Testabdeckung | 98,97 %, Mindestschwelle 97 % in der CI |
+| Tests | 1024, grün unter SQLite **und** MariaDB |
+| Testabdeckung | 98,55 %, Mindestschwelle 97 % in der CI |
 | Ruff, mypy strict | ohne Befund, 90 Quelldateien |
 | Migrationskette | linear, ein Kopf, vorwärts und rückwärts gegen beide Datenbanken |
 | CI und Container | grün |

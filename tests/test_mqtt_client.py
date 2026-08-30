@@ -80,7 +80,7 @@ def falscher_client(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.mark.anyio
-async def test_abonnements_und_nachricht_werden_zugestellt(
+async def test_subscriptions_and_a_message_are_delivered(
     mqtt_settings: Settings,
 ) -> None:
     FalscherClient.stroeme = [
@@ -105,7 +105,7 @@ async def test_abonnements_und_nachricht_werden_zugestellt(
 
 
 @pytest.mark.anyio
-async def test_handlerfehler_stoppt_naechste_nachricht_nicht(
+async def test_a_handler_error_does_not_stop_the_next_message(
     mqtt_settings: Settings,
 ) -> None:
     FalscherClient.stroeme = [
@@ -183,7 +183,7 @@ async def test_tls_beruecksichtigt_ca_zertifikat(
 
 
 @pytest.mark.anyio
-async def test_kein_schaltbefehl_im_trockenlauf(mqtt_settings: Settings) -> None:
+async def test_no_switching_command_in_dry_run(mqtt_settings: Settings) -> None:
     client = MqttClient(mqtt_settings, _leerer_handler)
     falscher_client = FalscherClient()
     client._client = falscher_client
@@ -195,7 +195,7 @@ async def test_kein_schaltbefehl_im_trockenlauf(mqtt_settings: Settings) -> None
 
 
 @pytest.mark.anyio
-async def test_zustandsmeldung_geht_auch_im_trockenlauf_hinaus(
+async def test_a_state_message_goes_out_in_dry_run_too(
     mqtt_settings: Settings,
 ) -> None:
     """Der Riegel gilt dem Schalten, nicht dem Melden.
@@ -220,7 +220,7 @@ async def test_zustandsmeldung_geht_auch_im_trockenlauf_hinaus(
 
 
 @pytest.mark.anyio
-async def test_passwort_taucht_in_keiner_logzeile_auf(
+async def test_the_password_shows_up_in_no_log_line(
     mqtt_settings: Settings,
     caplog: pytest.LogCaptureFixture,
     monkeypatch: pytest.MonkeyPatch,
@@ -239,7 +239,7 @@ async def test_passwort_taucht_in_keiner_logzeile_auf(
 
 
 @pytest.mark.anyio
-async def test_abstand_faellt_nach_erfolgreicher_verbindung_zurueck(
+async def test_the_backoff_falls_back_after_a_successful_connection(
     mqtt_settings: Settings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Sonst waechst die Wartezeit ueber die Lebensdauer des Dienstes monoton weiter.
@@ -282,7 +282,7 @@ def anyio_backend() -> str:
 
 
 @pytest.mark.anyio
-async def test_kein_publish_auch_wenn_der_aufrufer_es_verlangt(
+async def test_no_publish_even_when_the_caller_asks_for_it(
     mqtt_settings: Settings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Der zweite Riegel: `schaltet=True` allein genuegt nicht.
@@ -309,7 +309,7 @@ async def _kein_handler(topic: str, payload: bytes) -> None:
 
 
 @pytest.mark.anyio
-async def test_abgeschaltetes_mqtt_baut_keine_verbindung_auf(
+async def test_disabled_mqtt_opens_no_connection(
     mqtt_settings: Settings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Der Vorgabewert. Weder die Testsuite noch ein frisch gebauter Container darf
@@ -324,7 +324,7 @@ async def test_abgeschaltetes_mqtt_baut_keine_verbindung_auf(
 
 
 @pytest.mark.anyio
-async def test_fehlender_host_wird_beim_namen_genannt(mqtt_settings: Settings) -> None:
+async def test_a_missing_host_is_named_explicitly(mqtt_settings: Settings) -> None:
     """Eine Fehlkonfiguration soll sagen, welche Angabe fehlt — nicht 'NoneType'."""
     mqtt_settings.mqtt_host = None
     with pytest.raises(ValueError, match="MQTT_HOST"):
@@ -332,7 +332,7 @@ async def test_fehlender_host_wird_beim_namen_genannt(mqtt_settings: Settings) -
 
 
 @pytest.mark.anyio
-async def test_scharf_gebauter_client_veroeffentlicht_wirklich(
+async def test_a_client_built_armed_really_publishes(
     mqtt_settings: Settings,
 ) -> None:
     """Der Gegenbeweis zum Trockenlauf: Der Weg funktioniert, er ist nur verriegelt.
@@ -351,7 +351,7 @@ async def test_scharf_gebauter_client_veroeffentlicht_wirklich(
 
 
 @pytest.mark.anyio
-async def test_ohne_verbindung_wird_nicht_veroeffentlicht(mqtt_settings: Settings) -> None:
+async def test_nothing_is_published_without_a_connection(mqtt_settings: Settings) -> None:
     kunde = MqttClient(mqtt_settings, _leerer_handler, switching_allowed=True)
     assert await kunde.publishing("testbasis/Ventil/set", "{}", switches=True) is False
 
@@ -371,7 +371,7 @@ async def test_schlafen_wartet_wirklich(monkeypatch: pytest.MonkeyPatch) -> None
 
 
 @pytest.mark.anyio
-async def test_ein_scharf_gebauter_client_sendet_auch_zustaende(
+async def test_a_client_built_armed_also_sends_state(
     mqtt_settings: Settings,
 ) -> None:
     """Frueher stand hier das Gegenteil: Ein `scharf=False` wurde auch von einem scharf
