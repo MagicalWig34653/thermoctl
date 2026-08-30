@@ -271,11 +271,19 @@ vergessenes Setzen fiele erst im Protokoll auf, wo es niemand nachprüft.
 Bedeutungen von `quelle` in einer Signatur wären eine Falle für den nächsten Aufrufer.
 
 
-## 2026-08-30 — Der kleinste einstellbare Sollwert liegt bei 1 °C, nicht bei 5 °C
+## 2026-08-30 — Sollwerte dürfen in den Minusbereich, bis −20 °C
 
-**Entschieden:** `MINDESTTEMPERATUR_C` in `thermoctl/domain/modi.py` steht auf 1,0 °C.
-Auf Wunsch des Projektinhabers, damit sich ein Keller oder eine Garage wirklich kalt
-stellen lässt.
+**Entschieden:** `MINDESTTEMPERATUR_C` in `thermoctl/domain/modi.py` steht auf −20,0 °C.
+Auf Wunsch des Projektinhabers.
+
+**Warum nicht 1 °C, wie zuerst umgesetzt:** Mit einem Sollwert von 1 °C heizt die Anlage
+immer noch, sobald es kälter wird. Wer eine Garage oder einen Schuppen nur überwachen und
+nicht temperieren will, braucht einen Wert, den die Raumtemperatur nie unterschreitet —
+also einen im Minusbereich. „Untersteuern" heißt genau das.
+
+**Warum −20 und nicht beliebig tief:** Darunter liegt kein Wunsch mehr, sondern ein
+Tippfehler oder eine kaputte Nutzlast, und die soll weiter auffallen. Es ist zugleich der
+Bereich, den übliche Zigbee-Sensoren melden.
 
 **Was das bedeutet:** Die Grenze ist eine Grenze der *Eingabe*, keine der Physik. Wer den
 Sollwert eines Modus unter etwa 4 °C setzt, nimmt einfrierende Leitungen in Kauf — die
@@ -289,11 +297,14 @@ Ein tief eingestellter Sollwert ist die ehrlichere Abbildung dessen, was jemand 
 
 **Verworfen:** die Grenze pro Zone einstellbar machen. Das wäre eine vierte Zahl, die
 irgendwo gepflegt werden muss, für einen Fall, der in einem Einfamilienhaus einmal
-vorkommt.
+vorkommt. Ebenso verworfen: gar keine Untergrenze — dann fällt eine kaputte Nutzlast mit
+−273 nicht mehr auf.
 
-**Nebenbefund:** Beim Verschieben stellte sich heraus, dass die Grenze wieder an vier
-Stellen stand — in der Domäne, noch einmal von Hand in `alltag_views.py`, in der
-Discovery-Nutzlast und im Markup des Übersteuerungsformulars. Genau der Fehler, den das
-Projekt schon einmal behoben hatte. Ein Wächtertest sucht jetzt nach nackten Grenzwerten
-außerhalb der Domäne; seine erste Fassung übersah ausgerechnet den Fall, den er finden
-sollte, und fiel erst bei der Gegenprobe auf.
+**Nebenbefund:** Beim Verschieben stellte sich heraus, dass die Grenze an **fünf** Stellen
+stand — in der Domäne, noch einmal von Hand in `alltag_views.py`, in der
+Discovery-Nutzlast, im Markup des Übersteuerungsformulars und im Markup der
+Sollwertseite. Genau der Fehler, den das Projekt schon einmal behoben hatte. Ein
+Wächtertest sucht jetzt nach nackten Grenzwerten außerhalb der Domäne, in Python **und**
+in den Vorlagen; er brauchte drei Anläufe, und jeder Fehlgriff fiel erst bei der
+Gegenprobe auf — die erste Fassung übersprang die gesuchte Zeile, die zweite sah keine
+Vorlagen, die dritte meldete ein Minutenfeld.

@@ -253,8 +253,10 @@ def test_unsinnige_uebersteuerungen_werden_abgewiesen(session: Session, client_a
     client = client_als([("override.create", None), ("zone.read", None)])
     for daten in (
         {"temperature_c": "warm", "ende": "dauerhaft"},
-        # Die Untergrenze liegt bei 1,0 Grad -- 2,0 ist seither gueltig.
-        {"temperature_c": "0.5", "ende": "dauerhaft"},
+        # Die Untergrenze liegt bei -20 Grad: Ein Sollwert im Minusbereich heisst
+        # "hier wird nicht geheizt". Darunter liegt kein Wunsch mehr, sondern ein
+        # Tippfehler.
+        {"temperature_c": "-30", "ende": "dauerhaft"},
         {"temperature_c": "50", "ende": "dauerhaft"},
         {"temperature_c": "20", "ende": "dauer", "dauer_minuten": "0"},
         {"temperature_c": "20", "ende": "dauer", "dauer_minuten": "keine Zahl"},
@@ -482,3 +484,51 @@ def test_thermostat_fuer_einen_fremden_modus_bleibt_ein_404(
         headers=_csrf(client),
     )
     assert antwort.status_code == 404
+
+
+def test_uebersteuern_in_den_minusbereich(session: Session, client_als) -> None:
+    """"Untersteuern" heisst: ein Sollwert unter null.
+
+    Mit 1 Grad heizt die Anlage immer noch, sobald es kaelter wird. Wer eine Garage oder
+    einen Schuppen nur ueberwachen und nicht temperieren will, braucht einen Wert, den
+    die Raumtemperatur nie unterschreitet.
+    """
+    from sqlalchemy import select
+
+    from thermoctl.db.models.override import ZoneOverride
+
+    zone = _grundlage(session)
+    client = client_als([("override.create", None), ("zone.read", None)])
+    antwort = client.post(
+        f"/zonen/{zone.id}/uebersteuerung",
+        data={"temperature_c": "-5", "ende": "dauerhaft"},
+        headers=_csrf(client),
+        follow_redirects=False,
+    )
+    assert antwort.status_code == 303
+    eintrag = session.scalars(
+        select(ZoneOverride).where(ZoneOverride.zone_id == zone.id)
+    ).one()
+    assert eintrag.temperature_c == Decimal("-5.0")
+
+
+def test_das_thermostat_geht_unter_null(session: Session, client_als) -> None:
+    """Gegenprobe von der anderen Seite: Auch die Stufentasten duerfen unter null."""
+    from sqlalchemy import select
+
+    from thermoctl.db.models.zone import ZoneSetpoint
+
+    # Der Ausgangswert wird direkt gesetzt, nicht ueber `sollwerte_aendern`: Das schriebe
+    # einen Audit-Eintrag, und dessen Fremdschluessel auf den Benutzer haelt unter
+    # MariaDB wirklich -- unter SQLite fiel eine erfundene Kennung nicht auf.
+    zone, modus = _zone_mit_modus(session, "0.0")
+    client = client_als([("zone.read", zone.id), ("setpoint.write", zone.id)])
+    client.post(
+        f"/zonen/{zone.id}/thermostat",
+        data={"modus_id": str(modus.id), "richtung": "runter"},
+        headers=_csrf(client),
+    )
+    zeile = session.scalars(
+        select(ZoneSetpoint).where(ZoneSetpoint.setpoint_mode_id == modus.id)
+    ).one()
+    assert zeile.temperature_c == Decimal("-0.5")

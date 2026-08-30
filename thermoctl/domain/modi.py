@@ -14,13 +14,21 @@ from thermoctl.db.models.zone import SetpointMode, Zone, ZoneSetpoint
 # Uebersteuerungen und fuer alle vier Adapter -- Oberflaeche, REST, MCP und die
 # Home-Assistant-Karte lesen sie von hier.
 #
-# Die Untergrenze lag bis hierher bei 5 Grad. Auf Wunsch des Projektinhabers liegt sie
-# jetzt bei 1 Grad: Ein Keller oder eine Garage soll sich wirklich kalt stellen lassen.
-# **Das umgeht den Frostschutz nicht von selbst** -- der ist ein eigener Modus mit einem
-# eigenen Sollwert --, aber wer diesen Sollwert unter 4 Grad setzt, nimmt einfrierende
-# Leitungen in Kauf. Die Grenze schuetzt davor nicht mehr; sie ist eine Grenze der
-# Eingabe, keine der Physik.
-MINDESTTEMPERATUR_C = Decimal("1.0")
+# Die Untergrenze lag bis hierher bei 5 Grad, dann kurz bei 1. Sie liegt jetzt bei
+# **minus 20**: Ein Sollwert im Minusbereich heisst "hier wird nicht geheizt, und zwar
+# wirklich nicht" -- fuer eine Garage, einen Schuppen oder einen Raum, den man nur
+# ueberwachen und nicht temperieren will. Mit einem Sollwert von 1 Grad heizt die Anlage
+# immer noch, sobald es kaelter wird; das ist etwas anderes.
+#
+# Minus 20 und nicht beliebig tief: Darunter liegt kein Wunsch mehr, sondern ein
+# Tippfehler oder eine kaputte Nutzlast, und die soll weiter auffallen. Es ist zugleich
+# der Bereich, den uebliche Zigbee-Sensoren melden.
+#
+# **Das ist eine Grenze der Eingabe, keine der Physik.** Wer einen Sollwert unter etwa
+# 4 Grad setzt, nimmt einfrierende Leitungen in Kauf; die Software haelt ihn davon nicht
+# mehr ab. Der Frostschutz bleibt ein eigener Modus und greift weiter bei ausgefallenem
+# Sensor und Betriebsart "Aus".
+MINDESTTEMPERATUR_C = Decimal("-20.0")
 HOECHSTTEMPERATUR_C = Decimal("35.0")
 
 

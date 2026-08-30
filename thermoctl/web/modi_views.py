@@ -10,6 +10,8 @@ from thermoctl.auth.dependencies import aktueller_principal, csrf_schutz, get_se
 from thermoctl.db.models.zone import SetpointMode, Zone, ZoneSetpoint
 from thermoctl.domain.authz import require, visible_zones
 from thermoctl.domain.modi import (
+    HOECHSTTEMPERATUR_C,
+    MINDESTTEMPERATUR_C,
     Domaenenfehler,
     loeschsperre,
     modus_aendern,
@@ -217,7 +219,16 @@ def _sollwertseite(
     return templates.TemplateResponse(
         request,
         "sollwerte.html",
-        {"zone": zone, "modi": modi, "werte": werte, "fehler": fehler or {}},
+        {
+            # Aus der Domaene: Zahlen im Markup waeren eine zweite Fassung
+            # der Grenze und blieben beim naechsten Verschieben zurueck.
+            "mindesttemperatur": MINDESTTEMPERATUR_C,
+            "hoechsttemperatur": HOECHSTTEMPERATUR_C,
+            "zone": zone,
+            "modi": modi,
+            "werte": werte,
+            "fehler": fehler or {},
+        },
     )
 
 
