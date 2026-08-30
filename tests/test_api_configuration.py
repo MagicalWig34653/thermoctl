@@ -39,7 +39,7 @@ def api_token(session: Session) -> Callable[[list[tuple[str, int | None]]], dict
     return create_entry
 
 
-def test_zonen_anlegen_aendern_und_loeschen(
+def test_creating_updating_and_deleting_zones(
     client: TestClient, session: Session, api_token
 ) -> None:
     kind = operating_mode(session)
@@ -64,7 +64,7 @@ def test_zonen_anlegen_aendern_und_loeschen(
     assert session.get(Zone, zone_id) is None
 
 
-def test_zonenmutation_braucht_recht_und_meldet_doppelten_namen(
+def test_changing_a_zone_needs_the_permission_and_reports_a_duplicate_name(
     client: TestClient, session: Session, api_token
 ) -> None:
     zone = create_zone(session, "schon-da-api")
@@ -81,7 +81,7 @@ def test_zonenmutation_braucht_recht_und_meldet_doppelten_namen(
     assert "name" in response.json()["detail"]
 
 
-def test_aendern_und_loeschen_pruefen_ihr_jeweiliges_recht(
+def test_update_and_delete_each_check_their_own_permission(
     client: TestClient, session: Session, api_token
 ) -> None:
     zone = create_zone(session, "rechte-api-zone")
@@ -104,7 +104,7 @@ def test_aendern_und_loeschen_pruefen_ihr_jeweiliges_recht(
     )
 
 
-def test_modi_lesen_und_anlegen(client: TestClient, session: Session, api_token) -> None:
+def test_reading_and_creating_modes(client: TestClient, session: Session, api_token) -> None:
     zone = create_zone(session, "modus-api-zone")
     kopf = api_token([("zone.read", zone.id), ("mode.manage", None)])
     assert client.get("/api/v1/modes", headers=kopf).status_code == 200
@@ -128,7 +128,7 @@ def test_modi_lesen_und_anlegen(client: TestClient, session: Session, api_token)
     assert "code" in errors.json()["detail"]
 
 
-def test_sollwerte_lesen_und_schreiben_wie_die_domaene(
+def test_reading_and_writing_setpoints_like_the_domain(
     client: TestClient, client_als, session: Session, api_token
 ) -> None:
     zone = create_zone(session, "sollwert-api-zone")
@@ -171,7 +171,7 @@ def test_sollwerte_lesen_und_schreiben_wie_die_domaene(
     assert "temperature_c" in errors.json()["detail"]
 
 
-def test_zeitplan_lesen_anlegen_und_loeschen(
+def test_reading_creating_and_deleting_a_schedule(
     client: TestClient, session: Session, api_token
 ) -> None:
     zone = create_zone(session, "zeitplan-api-zone")
@@ -205,7 +205,7 @@ def test_zeitplan_lesen_anlegen_und_loeschen(
     assert "weekday" in str(errors.json()["detail"])
 
 
-def test_regelparameter_lesen_und_schreiben(
+def test_reading_and_writing_control_parameters(
     client: TestClient, session: Session, api_token
 ) -> None:
     create_settings(session)
@@ -240,7 +240,7 @@ def test_regelparameter_lesen_und_schreiben(
 
 
 @pytest.mark.parametrize("pfad", ["setpoints", "schedule", "parameters"])
-def test_fremde_zone_bleibt_fuer_neue_wege_verborgen(
+def test_a_foreign_zone_stays_hidden_from_the_new_routes(
     pfad: str, client: TestClient, session: Session, api_token
 ) -> None:
     eigene = create_zone(session, f"eigene-{pfad}")
@@ -249,7 +249,7 @@ def test_fremde_zone_bleibt_fuer_neue_wege_verborgen(
     assert client.get(f"/api/v1/zones/{fremde.id}/{pfad}", headers=kopf).status_code == 404
 
 
-def test_modi_lesen_ohne_sichtbare_zone_wird_verweigert(client, api_token, session) -> None:
+def test_reading_modes_without_a_visible_zone_is_denied(client, api_token, session) -> None:
     """Wer keine einzige Zone sehen darf, hat auch nichts in der Modusliste zu suchen —
     sonst waere sie eine Auskunft ueber die Anlage an jemanden ohne jedes Zonenrecht."""
     create_zone(session, "unsichtbare-zone")
@@ -257,7 +257,7 @@ def test_modi_lesen_ohne_sichtbare_zone_wird_verweigert(client, api_token, sessi
     assert client.get("/api/v1/modes", headers=kopf).status_code == 403
 
 
-def test_umbenennen_auf_vergebenen_namen_ergibt_422(client, api_token, session) -> None:
+def test_renaming_to_a_taken_name_yields_422(client, api_token, session) -> None:
     source(session, "api")
     kind = operating_mode(session, "auto")
     create_zone(session, "belegt")
@@ -277,7 +277,7 @@ def test_umbenennen_auf_vergebenen_namen_ergibt_422(client, api_token, session) 
     assert andere.name == "wird-umbenannt"
 
 
-def test_doppelter_zeitplanpunkt_ergibt_422_mit_meldung(client, api_token, session) -> None:
+def test_a_duplicate_schedule_point_yields_422_with_a_message(client, api_token, session) -> None:
     """Ein fachlicher Fehler der Domaene wird zu 422 mit Feldnamen, nicht zu 500.
 
     Absichtlich ein Fall, den die Schema-Pruefung durchlaesst: Zwei Punkte am selben
@@ -298,7 +298,7 @@ def test_doppelter_zeitplanpunkt_ergibt_422_mit_meldung(client, api_token, sessi
     assert "500" not in str(response.status_code)
 
 
-def test_fremder_zeitplanpunkt_ergibt_404(client, api_token, session) -> None:
+def test_a_foreign_schedule_point_yields_404(client, api_token, session) -> None:
     source(session, "api")
     eigene = create_zone(session, "eigene-api")
     fremde = create_zone(session, "fremde-api")
@@ -316,7 +316,7 @@ def test_fremder_zeitplanpunkt_ergibt_404(client, api_token, session) -> None:
     assert session.get(SchedulePoint, point.id) is not None
 
 
-def test_uebersteuerung_ueber_die_api_haelt_dieselbe_grenze(client, api_token, session) -> None:
+def test_an_override_through_the_api_holds_the_same_limit(client, api_token, session) -> None:
     """Die Grenze liegt in der Domaene und nicht im Schema jedes Adapters."""
     source(session, "api")
     create_settings(session)
@@ -358,7 +358,7 @@ def test_steuerung_lesen(client: TestClient, session: Session, api_token) -> Non
     assert response.json()["control_armed"] is False
 
 
-def test_scharfschalten_und_zuruecknehmen(
+def test_arming_and_taking_it_back(
     client: TestClient, session: Session, api_token
 ) -> None:
     create_settings(session)
@@ -377,7 +377,7 @@ def test_scharfschalten_und_zuruecknehmen(
     assert zurueck.json()["control_armed"] is False
 
 
-def test_scharfschalten_ohne_begruendung_wird_abgewiesen(
+def test_arming_without_a_reason_is_refused(
     client: TestClient, session: Session, api_token
 ) -> None:
     """Dieselbe Pruefung wie in der Oberflaeche -- sie steht in der Domaene, nicht im
@@ -388,7 +388,7 @@ def test_scharfschalten_ohne_begruendung_wird_abgewiesen(
     assert response.status_code == 422
 
 
-def test_scharfschalten_braucht_das_eigene_recht(
+def test_arming_needs_its_own_permission(
     client: TestClient, session: Session, api_token
 ) -> None:
     create_settings(session)
@@ -411,7 +411,7 @@ def test_vorgaben_schreiben(client: TestClient, session: Session, api_token) -> 
     assert response.json()["shadow_interval_seconds"] == 90
 
 
-def test_unbrauchbare_vorgabe_wird_abgewiesen(
+def test_an_unusable_default_is_refused(
     client: TestClient, session: Session, api_token
 ) -> None:
     create_settings(session)
@@ -424,7 +424,7 @@ def test_unbrauchbare_vorgabe_wird_abgewiesen(
     assert response.status_code == 422
 
 
-def test_zeitplanpunkt_verschieben(
+def test_moving_a_schedule_point(
     client: TestClient, session: Session, api_token
 ) -> None:
     zone = create_zone(session, "api-verschiebezone")
@@ -447,7 +447,7 @@ def test_zeitplanpunkt_verschieben(
     assert response.json()["weekday"] == 4
 
 
-def test_verschieben_auf_einen_belegten_zeitpunkt(
+def test_moving_onto_an_occupied_moment(
     client: TestClient, session: Session, api_token
 ) -> None:
     zone = create_zone(session, "api-kollision")
@@ -472,7 +472,7 @@ def test_verschieben_auf_einen_belegten_zeitpunkt(
     assert response.status_code == 422
 
 
-def test_verschieben_eines_fremden_punktes_ist_nicht_gefunden(
+def test_moving_a_foreign_point_is_not_found(
     client: TestClient, session: Session, api_token
 ) -> None:
     zone = create_zone(session, "api-eigen")
@@ -493,7 +493,7 @@ def test_verschieben_eines_fremden_punktes_ist_nicht_gefunden(
     assert response.status_code == 404
 
 
-def test_rest_aenderung_steht_als_api_im_protokoll(
+def test_a_rest_change_is_logged_with_source_api(
     client: TestClient, session: Session, api_token
 ) -> None:
     """Frueher schrieb jede Domaenenfunktion fest `source="web"`. Damit behauptete das

@@ -53,7 +53,7 @@ def _register(
     )
 
 
-def test_ein_registrierter_passkey_meldet_wirklich_an(
+def test_a_registered_passkey_really_logs_in(
     session: Session, passkey_settings: Settings
 ) -> None:
     """Der Gegenbeweis: Ohne ihn belegte die Suite nur, dass alles abgelehnt wird."""
@@ -68,7 +68,7 @@ def test_ein_registrierter_passkey_meldet_wirklich_an(
     assert angemeldet.id == nutzer.id
 
 
-def test_challenge_wird_auch_bei_einem_fehlschlag_verbraucht(
+def test_a_challenge_is_consumed_even_on_failure(
     session: Session, passkey_settings: Settings
 ) -> None:
     """Eine wiederverwendbare Challenge hebt den Schutz auf, den sie geben soll."""
@@ -85,7 +85,7 @@ def test_challenge_wird_auch_bei_einem_fehlschlag_verbraucht(
         verify_authentication(session, passkey_settings, response)
 
 
-def test_challenge_der_anmeldung_taugt_nicht_fuer_eine_registrierung(
+def test_a_login_challenge_is_no_good_for_a_registration(
     session: Session, passkey_settings: Settings
 ) -> None:
     """Ohne die Bindung an die Zeremonie liesse sich eine Challenge zweckentfremden."""
@@ -105,7 +105,7 @@ def test_challenge_der_anmeldung_taugt_nicht_fuer_eine_registrierung(
         )
 
 
-def test_abgelaufene_challenge_wird_abgewiesen(
+def test_an_expired_challenge_is_refused(
     session: Session, passkey_settings: Settings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     from datetime import timedelta
@@ -125,7 +125,7 @@ def test_abgelaufene_challenge_wird_abgewiesen(
         verify_authentication(session, passkey_settings, response)
 
 
-def test_zurueckgefallener_zaehler_beendet_die_anmeldung(
+def test_a_counter_that_went_backwards_ends_the_login(
     session: Session, passkey_settings: Settings
 ) -> None:
     """Der einzige Hinweis auf einen geklonten Authenticator, den das Verfahren kennt."""
@@ -143,7 +143,7 @@ def test_zurueckgefallener_zaehler_beendet_die_anmeldung(
         verify_authentication(session, passkey_settings, response)
 
 
-def test_gesperrtes_konto_wird_erst_nach_der_signatur_geprueft(
+def test_a_disabled_account_is_checked_only_after_the_signature(
     session: Session, passkey_settings: Settings
 ) -> None:
     """Dieselbe Reihenfolge wie im Passwortweg — sonst liesse sich am Verhalten ablesen,
@@ -165,7 +165,7 @@ def test_gesperrtes_konto_wird_erst_nach_der_signatur_geprueft(
     assert protokoll and "gesperrt" in (protokoll[-1].detail or "").lower()
 
 
-def test_fremde_origin_wird_abgewiesen(
+def test_a_foreign_origin_is_refused(
     session: Session, passkey_settings: Settings
 ) -> None:
     """Der Schutz gegen nachgemachte Seiten. Faellt er weg, ist ein Passkey ein Passwort."""
@@ -180,7 +180,7 @@ def test_fremde_origin_wird_abgewiesen(
         verify_authentication(session, passkey_settings, response)
 
 
-def test_unbekannter_passkey_wird_abgewiesen(
+def test_an_unknown_passkey_is_refused(
     session: Session, passkey_settings: Settings
 ) -> None:
     nutzer = create_user(session, "unbekannt-nutzer")
@@ -197,7 +197,7 @@ def test_unbekannter_passkey_wird_abgewiesen(
         verify_authentication(session, passkey_settings, response)
 
 
-def test_derselbe_passkey_laesst_sich_nicht_zweimal_hinterlegen(
+def test_the_same_passkey_cannot_be_stored_twice(
     session: Session, passkey_settings: Settings
 ) -> None:
     nutzer = create_user(session, "doppelt-nutzer")
@@ -207,7 +207,7 @@ def test_derselbe_passkey_laesst_sich_nicht_zweimal_hinterlegen(
         _register(session, passkey_settings, nutzer, device)
 
 
-def test_alte_challenges_werden_aufgeraeumt(
+def test_old_challenges_are_cleaned_up(
     session: Session, passkey_settings: Settings
 ) -> None:
     from datetime import timedelta
@@ -225,7 +225,7 @@ def test_alte_challenges_werden_aufgeraeumt(
     assert len(uebrig) == 1 and uebrig[0].challenge == frisch["challenge"]
 
 
-def test_ohne_relying_party_id_gibt_es_die_wege_nicht(client: TestClient) -> None:
+def test_without_a_relying_party_id_the_routes_do_not_exist(client: TestClient) -> None:
     """Passkeys sind entweder eingerichtet oder gar nicht da — nicht halb."""
     get_settings.cache_clear()
     assert client.post("/passkey/authentication/options").status_code == 404
@@ -250,7 +250,7 @@ def _csrf(client: TestClient) -> dict[str, str]:
     return {CSRF_HEADER: csrf_token(geheimnis, get_settings().secret_key.get_secret_value())}
 
 
-def test_anmeldeargumente_kommen_ohne_anmeldung(
+def test_authentication_options_are_served_without_being_logged_in(
     client: TestClient, mit_passkeys: None
 ) -> None:
     """Die Argumente muss jeder holen koennen — sonst gaebe es keinen Weg herein."""
@@ -264,7 +264,7 @@ def test_anmeldeargumente_kommen_ohne_anmeldung(
     assert not argumente.get("allowCredentials")
 
 
-def test_unsinnige_anmeldung_wird_einheitlich_abgelehnt(
+def test_a_nonsensical_login_is_refused_uniformly(
     client: TestClient, mit_passkeys: None
 ) -> None:
     """Gleiche Antwort fuer jeden Fehlschlag — sonst liesse sich daran ablesen, welche
@@ -275,7 +275,7 @@ def test_unsinnige_anmeldung_wird_einheitlich_abgelehnt(
         assert response.json()["meldung"] == "Die Anmeldung war nicht erfolgreich."
 
 
-def test_anmeldung_ueber_den_http_weg(
+def test_logging_in_through_the_http_route(
     client: TestClient, session: Session, mit_passkeys: None
 ) -> None:
     """Der ganze Weg, wie ihn der Browser geht — bis zum gesetzten Sitzungscookie."""
@@ -297,14 +297,14 @@ def test_anmeldung_ueber_den_http_weg(
     assert client.get("/passkeys").status_code == 200
 
 
-def test_registrierung_braucht_eine_anmeldung(
+def test_registration_requires_being_logged_in(
     client: TestClient, mit_passkeys: None
 ) -> None:
     assert client.post("/passkey/registration/options").status_code == 401
     assert client.post("/passkey/registration/verify", json={}).status_code == 401
 
 
-def test_registrierung_ueber_den_http_weg(
+def test_registering_through_the_http_route(
     client_als, session: Session, mit_passkeys: None
 ) -> None:
     c = client_als([("zone.read", None)])
@@ -320,7 +320,7 @@ def test_registrierung_ueber_den_http_weg(
     assert session.scalars(select(UserPasskey)).all()
 
 
-def test_fremder_passkey_laesst_sich_nicht_entfernen(
+def test_a_foreign_passkey_cannot_be_removed(
     client_als, session: Session, mit_passkeys: None
 ) -> None:
     """404 statt 403 — sonst verriete die Antwort, welche Kennungen es gibt."""
@@ -334,7 +334,7 @@ def test_fremder_passkey_laesst_sich_nicht_entfernen(
     assert session.get(UserPasskey, entry.id) is not None
 
 
-def test_eigener_passkey_laesst_sich_entfernen(
+def test_your_own_passkey_can_be_removed(
     client_als, session: Session, mit_passkeys: None
 ) -> None:
     from thermoctl.db.models.identity import User as Konto
@@ -355,7 +355,7 @@ def test_eigener_passkey_laesst_sich_entfernen(
     assert session.scalars(select(Konto)).all()
 
 
-def test_passkeyseite_ohne_einrichtung_erklaert_es(client_als) -> None:
+def test_the_passkey_page_explains_a_missing_setup(client_als) -> None:
     """Ohne Relying-Party-ID keine Schaltflaeche, die nichts tun kann — sondern ein Satz,
     der sagt, was fehlt."""
     get_settings.cache_clear()
@@ -364,7 +364,7 @@ def test_passkeyseite_ohne_einrichtung_erklaert_es(client_als) -> None:
     assert "THERMOCTL_PASSKEY_RP_ID" in response.text
 
 
-def test_anmeldeseite_bietet_passkeys_nur_mit_einrichtung(
+def test_the_login_page_offers_passkeys_only_when_set_up(
     client: TestClient, user, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     # `benutzer`: ohne einen leitet /login zur Einrichtung weiter, und die Pruefung

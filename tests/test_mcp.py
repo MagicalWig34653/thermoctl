@@ -37,7 +37,7 @@ def _token(session: Session, name: str, permissions: list[tuple[str, int | None]
     return plaintext
 
 
-def test_zonen_auflisten_beachtet_zoneneinschraenkung(session: Session) -> None:
+def test_listing_zones_respects_the_zone_restriction(session: Session) -> None:
     first = create_zone(session, "zone-eins")
     create_zone(session, "zone-zwei")
     plaintext = _token(session, "zonenleser", [("zone.read", first.id)])
@@ -49,7 +49,7 @@ def test_zonen_auflisten_beachtet_zoneneinschraenkung(session: Session) -> None:
     ]
 
 
-def test_zonenzustand_liefert_messwert_und_sensorzustand(session: Session) -> None:
+def test_zone_state_returns_the_reading_and_the_sensor_state(session: Session) -> None:
     zone = create_zone(session, "zustandszone")
     state = create_zone_state(session, zone)
     state.temperature_c = Decimal("20.25")
@@ -65,7 +65,7 @@ def test_zonenzustand_liefert_messwert_und_sensorzustand(session: Session) -> No
     }
 
 
-def test_sollwert_erklaeren_reicht_domaenenbegruendung_durch(session: Session) -> None:
+def test_explaining_the_setpoint_passes_the_domain_reason_through(session: Session) -> None:
     zone = zone_with_schedule(
         session, "sollwertzone", [(1, 8 * 60, "tag-sollwertzone", Decimal("21.0"))]
     )
@@ -79,7 +79,7 @@ def test_sollwert_erklaeren_reicht_domaenenbegruendung_durch(session: Session) -
     assert result["temperature_c"] == str(expected.temperature_c)
 
 
-def test_zeitplan_und_sollwerte_lesen_nennen_die_modi(session: Session) -> None:
+def test_reading_schedule_and_setpoints_names_the_modes(session: Session) -> None:
     zone = zone_with_schedule(session, "lesezone", [(2, 390, "tag-lesezone", Decimal("20.5"))])
     plaintext = _token(session, "konfigurationsleser", [("zone.read", zone.id)])
 
@@ -92,7 +92,7 @@ def test_zeitplan_und_sollwerte_lesen_nennen_die_modi(session: Session) -> None:
     }["Tag-lesezone"] == "20.5"
 
 
-def test_geraete_auflisten_liefert_faehigkeiten_und_gesundheit(session: Session) -> None:
+def test_listing_devices_returns_capabilities_and_health(session: Session) -> None:
     device = create_device(session, "testgeraet")
     capability = DeviceCapability(code="temperature", label="Temperatur")
     session.add(capability)
@@ -108,7 +108,7 @@ def test_geraete_auflisten_liefert_faehigkeiten_und_gesundheit(session: Session)
     assert result[0]["batterie_prozent"] == "87.50"
 
 
-def test_geraete_auflisten_verweigert_fehlendes_recht(session: Session) -> None:
+def test_listing_devices_denies_a_missing_permission(session: Session) -> None:
     create_device(session, "unsichtbares-geraet")
     plaintext = _token(session, "ohnegeraeterecht", [("zone.read", None)])
 
@@ -116,7 +116,7 @@ def test_geraete_auflisten_verweigert_fehlendes_recht(session: Session) -> None:
         server.list_devices(session, plaintext)
 
 
-def test_schattenentscheidungen_liefert_juengste_begruendung(session: Session) -> None:
+def test_shadow_decisions_returns_the_most_recent_reason(session: Session) -> None:
     zone = create_zone(session, "schattenzone")
     entscheidung = create_shadow_decision(session, zone)
     plaintext = _token(session, "schattenleser", [("zone.read", zone.id)])
@@ -136,7 +136,7 @@ def test_schattenentscheidungen_liefert_juengste_begruendung(session: Session) -
     ]
 
 
-def test_uebersteuern_ruft_domaenenmutation_mit_tokenbezug_auf(session: Session) -> None:
+def test_overriding_calls_the_domain_mutation_with_the_token_attached(session: Session) -> None:
     create_settings(session)
     source(session, "api")
     zone = create_zone(session, "uebersteuerungszone")
@@ -153,7 +153,7 @@ def test_uebersteuern_ruft_domaenenmutation_mit_tokenbezug_auf(session: Session)
     assert entry.created_by_token_id is not None
 
 
-def test_uebersteuerung_aufheben_beendet_historieneintrag(session: Session) -> None:
+def test_cancelling_an_override_ends_the_history_entry(session: Session) -> None:
     create_settings(session)
     source(session, "api")
     zone = create_zone(session, "aufhebungszone")
@@ -174,7 +174,7 @@ def test_uebersteuerung_aufheben_beendet_historieneintrag(session: Session) -> N
     assert session.query(ZoneOverride).one().cancelled_at is not None
 
 
-def test_start_ohne_mcp_token_wird_verweigert(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_starting_without_an_mcp_token_is_denied(monkeypatch: pytest.MonkeyPatch) -> None:
     settings = Settings(
         _env_file=None, database_url="sqlite://", secret_key="x" * 32, mcp_token=None
     )
@@ -184,7 +184,7 @@ def test_start_ohne_mcp_token_wird_verweigert(monkeypatch: pytest.MonkeyPatch) -
         server.main()
 
 
-def test_fehlendes_mcp_paket_wird_verstaendlich_gemeldet(
+def test_a_missing_mcp_package_is_reported_understandably(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     def ohne_mcp(name: str) -> object:
@@ -196,7 +196,7 @@ def test_fehlendes_mcp_paket_wird_verstaendlich_gemeldet(
         server._mcp_server_class()
 
 
-def test_registrierte_mcp_werkzeuge_rufen_die_adapterfunktionen_auf(
+def test_the_registered_mcp_tools_call_the_adapter_functions(
     session: Session, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Die registrierten Werkzeuge tragen echte Schemas und sind nicht nur Namen."""
@@ -277,13 +277,13 @@ def test_registrierte_mcp_werkzeuge_rufen_die_adapterfunktionen_auf(
     )
 
 
-def test_unbekanntes_token_wird_abgewiesen(session: Session) -> None:
+def test_an_unknown_token_is_refused(session: Session) -> None:
     """Der Adapter darf keine Hintertuer an der Anmeldung vorbei sein."""
     with pytest.raises(PermissionError):
         server.list_zones(session, "tctl_00000000_gibtesnicht")
 
 
-def test_fremde_zone_ist_nicht_auffindbar(session: Session) -> None:
+def test_a_foreign_zone_cannot_be_found(session: Session) -> None:
     """Nicht 'verboten', sondern 'gibt es nicht' — sonst verraet die Antwort, welche
     Zonen existieren. Der REST-Adapter haelt es genauso."""
     eigene = create_zone(session, "eigene-zone")
@@ -294,7 +294,7 @@ def test_fremde_zone_ist_nicht_auffindbar(session: Session) -> None:
         server.zone_state(session, plaintext, fremde.id)
 
 
-def test_ohne_zonenrecht_gibt_es_keine_leere_liste_sondern_eine_verweigerung(
+def test_without_the_zone_permission_there_is_a_denial_not_an_empty_list(
     session: Session,
 ) -> None:
     """Eine leere Liste waere die falsche Antwort: Sie sieht aus wie 'keine Zonen
@@ -306,7 +306,7 @@ def test_ohne_zonenrecht_gibt_es_keine_leere_liste_sondern_eine_verweigerung(
         server.list_zones(session, plaintext)
 
 
-def test_zonenzustand_ohne_messung_meldet_leere_werte(session: Session) -> None:
+def test_zone_state_without_a_measurement_reports_empty_values(session: Session) -> None:
     """Eine frisch angelegte Zone hat noch keinen Zustand — das ist kein Fehler."""
     zone = create_zone(session, "zone-ohne-zustand")
     plaintext = _token(session, "leser-ohne-zustand", [("zone.read", None)])
@@ -319,7 +319,7 @@ def test_zonenzustand_ohne_messung_meldet_leere_werte(session: Session) -> None:
 
 
 @pytest.mark.parametrize("count", [0, -1, 101])
-def test_schattenentscheidungen_weist_unsinnige_anzahl_ab(session: Session, count: int) -> None:
+def test_shadow_decisions_refuses_a_nonsensical_count(session: Session, count: int) -> None:
     """Ohne Obergrenze koennte ein Aufruf die ganze Historie ziehen."""
     zone = create_zone(session, f"zone-anzahl-{count}")
     plaintext = _token(session, f"leser-anzahl-{count}", [("zone.read", None)])
@@ -328,7 +328,7 @@ def test_schattenentscheidungen_weist_unsinnige_anzahl_ab(session: Session, coun
         server.shadow_decisions(session, plaintext, zone.id, count)
 
 
-def test_uebersteuern_weist_unsinnige_temperatur_ab(session: Session) -> None:
+def test_overriding_refuses_a_nonsensical_temperature(session: Session) -> None:
     """Der MCP-Server pruefte die Temperatur bis zum Abschlussreview gar nicht.
 
     Er ist der Adapter, der am ehesten unbeaufsichtigt aufgerufen wird — von einem
@@ -356,7 +356,7 @@ def test_uebersteuern_weist_unsinnige_temperatur_ab(session: Session) -> None:
 # --- Steuerung ueber MCP ---------------------------------------------------
 
 
-def test_steuerung_lesen_zeigt_den_betriebszustand(session: Session) -> None:
+def test_reading_control_shows_the_operating_state(session: Session) -> None:
     create_settings(session)
     plaintext = _token(session, "leser", [("zone.read", None)])
     response = server.read_control(session, plaintext)
@@ -371,7 +371,7 @@ def test_steuerung_lesen_braucht_zone_read(session: Session) -> None:
         server.read_control(session, plaintext)
 
 
-def test_trockenlauf_erzwingen_nimmt_die_anlage_zurueck(session: Session) -> None:
+def test_forcing_dry_run_takes_the_installation_back(session: Session) -> None:
     create_settings(session)
     source(session, "mcp")
     source(session, "web")
@@ -383,7 +383,7 @@ def test_trockenlauf_erzwingen_nimmt_die_anlage_zurueck(session: Session) -> Non
     assert session.get(Setting, 1).control_armed is False
 
 
-def test_mcp_kann_nicht_scharf_schalten(session: Session) -> None:
+def test_mcp_cannot_arm_the_control(session: Session) -> None:
     """Bewusste Asymmetrie zu REST und Oberflaeche, dokumentiert in
     docs/offene-entscheidungen.md: Der MCP-Server spricht fuer ein Sprachmodell, und die
     Begruendung, die die Domaene beim Scharfschalten verlangt, ist fuer ein Modell keine
@@ -403,7 +403,7 @@ def test_mcp_kann_nicht_scharf_schalten(session: Session) -> None:
     assert "        False," in quelltext
 
 
-def test_zeitplanpunkt_verschieben_ueber_mcp(session: Session) -> None:
+def test_moving_a_schedule_point_through_mcp(session: Session) -> None:
     zone = zone_with_schedule(session, "mcp-zeitplan", [(1, 360, "tag-mcp", Decimal("21.0"))])
     source(session, "web")
     point = session.scalars(
@@ -441,7 +441,7 @@ def test_verschieben_eines_fremden_punktes_scheitert(session: Session) -> None:
         )
 
 
-def test_boost_zieht_die_naechste_schaltung_vor(session: Session) -> None:
+def test_boost_brings_the_next_switch_forward(session: Session) -> None:
     """Fuer ein Sprachmodell die verlaessliche Form von „mach es hier waermer".
 
     Es muss weder eine Temperatur noch eine Dauer raten, und nach dem Schaltpunkt
@@ -465,7 +465,7 @@ def test_boost_zieht_die_naechste_schaltung_vor(session: Session) -> None:
     assert Decimal(str(result["temperature_c"])) in (Decimal("21.0"), Decimal("18.0"))
 
 
-def test_boost_braucht_das_recht_zu_uebersteuern(session: Session) -> None:
+def test_boost_needs_the_permission_to_override(session: Session) -> None:
     """Gegenprobe: Lesen allein reicht nicht, obwohl der Aufruf kein Argument traegt."""
     zone = zone_with_schedule(session, "boostsperre", [(1, 0, "tag-sperre", Decimal("21.0"))])
     plaintext = _token(session, "nurleser", [("zone.read", zone.id)])
@@ -474,7 +474,7 @@ def test_boost_braucht_das_recht_zu_uebersteuern(session: Session) -> None:
         server.boost(session, plaintext, zone.id)
 
 
-def test_regelparameter_lesen_liefert_die_grenzen_mit(session: Session) -> None:
+def test_reading_control_parameters_returns_the_limits_as_well(session: Session) -> None:
     """Ohne sie waere jeder Schreibversuch ein Versuch.
 
     „0,05 Kelvin Hysterese" sieht fuer ein Sprachmodell so plausibel aus wie „0,5" --
@@ -492,7 +492,7 @@ def test_regelparameter_lesen_liefert_die_grenzen_mit(session: Session) -> None:
     assert parameter["hysteresis_k"]["own_value"] is False
 
 
-def test_regelparameter_setzen_laesst_die_uebrigen_geerbt(session: Session) -> None:
+def test_setting_a_control_parameter_leaves_the_others_inherited(session: Session) -> None:
     zone = zone_with_schedule(session, "setzzone", [(1, 0, "tag-s", Decimal("21.0"))])
     source(session, "mcp")
     plaintext = _token(

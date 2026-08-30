@@ -45,7 +45,7 @@ def _device_names() -> list[str]:
     return json.loads(DATENPFAD.read_text(encoding="utf-8"))["geraete"]
 
 
-def test_echte_nachricht_schreibt_historie_und_ein_lebenszeichen(session: Session) -> None:
+def test_a_real_message_writes_history_and_a_sign_of_life(session: Session) -> None:
     integration(session)
     for code in ("battery", "humidity", "link_quality", "temperature"):
         _capability(session, code)
@@ -68,7 +68,7 @@ def test_echte_nachricht_schreibt_historie_und_ein_lebenszeichen(session: Sessio
     assert gesund.payload_count == 2
 
 
-def test_unbekanntes_geraet_wird_ohne_zone_angelegt(session: Session) -> None:
+def test_an_unknown_device_is_created_without_a_zone(session: Session) -> None:
     integration(session)
     _capability(session, "temperature")
     name, _payload = _example_state()
@@ -88,7 +88,7 @@ def test_unbekanntes_geraet_wird_ohne_zone_angelegt(session: Session) -> None:
     assert not any(zone.temperature_source_device_id == device.id for zone in session.query(Zone))
 
 
-def test_fehlende_faehigkeit_verwirft_nicht_die_uebrigen_werte(
+def test_a_missing_capability_does_not_discard_the_other_values(
     session: Session, caplog: pytest.LogCaptureFixture
 ) -> None:
     integration(session)
@@ -108,7 +108,7 @@ def test_fehlende_faehigkeit_verwirft_nicht_die_uebrigen_werte(
     assert "Messwertfaehigkeit fehlt" in caplog.text
 
 
-def test_geraeteliste_aktualisiert_geraet_und_setzt_bekannte_faehigkeiten(
+def test_the_device_list_updates_the_device_and_sets_known_capabilities(
     session: Session,
 ) -> None:
     integration(session)
@@ -146,7 +146,7 @@ def test_geraeteliste_aktualisiert_geraet_und_setzt_bekannte_faehigkeiten(
     ).all() == [temperature.id]
 
 
-def test_kaputte_nutzlast_bleibt_ohne_datenbankzeile(session: Session) -> None:
+def test_a_broken_payload_leaves_no_database_row(session: Session) -> None:
     integration(session)
     process_message(
         session,
@@ -161,7 +161,7 @@ def test_kaputte_nutzlast_bleibt_ohne_datenbankzeile(session: Session) -> None:
     assert session.query(Device).count() == 0
 
 
-def test_erreichbarkeit_wird_am_einen_geraetezustand_fortgeschrieben(
+def test_availability_is_carried_forward_on_the_one_device_state(
     session: Session,
 ) -> None:
     integration(session)
@@ -182,7 +182,7 @@ def test_erreichbarkeit_wird_am_einen_geraetezustand_fortgeschrieben(
     assert gesund.availability == "online"
 
 
-def test_zonenzustand_beruecksichtigt_quelle_alter_und_zonen_timeout(
+def test_zone_state_accounts_for_source_age_and_the_zone_timeout(
     session: Session,
 ) -> None:
     create_settings(session)
@@ -217,7 +217,7 @@ def test_zonenzustand_beruecksichtigt_quelle_alter_und_zonen_timeout(
 
 
 @pytest.mark.parametrize(("contact_value", "expected"), [("true", False), ("false", True)])
-def test_zonenzustand_kehrt_zigbee_kontaktwert_einmalig_um(
+def test_zone_state_inverts_the_zigbee_contact_value_exactly_once(
     session: Session, contact_value: str, expected: bool
 ) -> None:
     create_settings(session)
@@ -248,7 +248,7 @@ def test_zonenzustand_kehrt_zigbee_kontaktwert_einmalig_um(
     assert state is not None and state.window_open is expected
 
 
-def test_zonenzustand_ist_offen_sobald_einer_von_zwei_kontakten_offen_ist(
+def test_the_zone_counts_as_open_as_soon_as_one_of_two_contacts_is_open(
     session: Session,
 ) -> None:
     create_settings(session)
@@ -281,7 +281,7 @@ def test_zonenzustand_ist_offen_sobald_einer_von_zwei_kontakten_offen_ist(
     assert state is not None and state.window_open is True
 
 
-def test_fehlender_oder_veralteter_fensterkontakt_bleibt_unbekannt(
+def test_a_missing_or_stale_window_contact_stays_unknown(
     session: Session,
 ) -> None:
     create_settings(session)
@@ -316,7 +316,7 @@ def test_fehlender_oder_veralteter_fensterkontakt_bleibt_unbekannt(
     assert old_state is not None and old_state.window_open is None
 
 
-def test_kaputte_erreichbarkeit_bleibt_ohne_wirkung(session: Session) -> None:
+def test_a_broken_availability_message_has_no_effect(session: Session) -> None:
     """Der dritte Nachrichtenweg braucht dieselbe Absicherung wie die beiden anderen.
 
     Zigbee2MQTT schickt beim Neustart der Bruecke schon einmal eine leere Nutzlast auf
@@ -337,7 +337,7 @@ def test_kaputte_erreichbarkeit_bleibt_ohne_wirkung(session: Session) -> None:
     )
 
 
-def test_erste_sichtung_bleibt_bei_der_zweiten_geraeteliste_stehen(session: Session) -> None:
+def test_the_first_sighting_survives_a_second_device_list(session: Session) -> None:
     """`first_seen_at` ist die erste Sichtung, nicht die letzte.
 
     Zigbee2MQTT sendet die Geraeteliste bei jeder Verbindung erneut. Wuerde sie den Wert
@@ -369,7 +369,7 @@ def test_erste_sichtung_bleibt_bei_der_zweiten_geraeteliste_stehen(session: Sess
     assert device.first_seen_at == frueher
 
 
-def test_nicht_verarbeitete_nachrichtenarten_bleiben_folgenlos(
+def test_message_kinds_that_are_not_processed_have_no_consequences(
     session: Session, caplog: pytest.LogCaptureFixture
 ) -> None:
     """Bruecken- und Fremdnachrichten werden protokolliert, nicht verworfen und nicht
@@ -389,7 +389,7 @@ def test_nicht_verarbeitete_nachrichtenarten_bleiben_folgenlos(
     assert "nicht verarbeitet" in caplog.text
 
 
-def test_erste_sichtung_wird_fuer_ein_von_hand_angelegtes_geraet_nachgetragen(
+def test_the_first_sighting_is_filled_in_for_a_hand_created_device(
     session: Session,
 ) -> None:
     """Ab Teilprojekt 3 legt auch die Oberflaeche Geraete an — dort ohne Sichtung.

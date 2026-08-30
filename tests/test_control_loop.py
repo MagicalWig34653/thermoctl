@@ -74,7 +74,7 @@ def _lage(
 # ---------------------------------------------------------------------------
 
 
-def test_regel1_sensor_veraltet_regelt_auf_frostschutz() -> None:
+def test_rule1_a_stale_sensor_controls_to_frost_protection() -> None:
     """Ein veralteter Messwert traegt keine normale Heizentscheidung mehr — aber Frostschutz.
 
     Dauerhaft abschalten waere die gefaehrlichere Antwort: Genau so friert im Januar eine
@@ -90,7 +90,7 @@ def test_regel1_sensor_veraltet_regelt_auf_frostschutz() -> None:
     assert "16.0" in e.grund and "Frostschutz" in e.grund
 
 
-def test_regel1_veralteter_sensor_heizt_nicht_auf_den_normalen_sollwert() -> None:
+def test_rule1_a_stale_sensor_does_not_heat_to_the_normal_setpoint() -> None:
     """Der eigentliche Sollwert gilt bei ausgefallenem Sensor ausdruecklich nicht mehr."""
     e = entscheiden(
         _lage(sensor_status="veraltet", ist_c=Decimal("18.0"), soll_c=Decimal("21.0"),
@@ -101,21 +101,21 @@ def test_regel1_veralteter_sensor_heizt_nicht_auf_den_normalen_sollwert() -> Non
     assert e.grund_code == REASON_CODE_FROST_SENSOR_FAILURE
 
 
-def test_regel1_keine_quelle_heizt_nicht() -> None:
+def test_rule1_no_source_does_not_heat() -> None:
     """Ohne jeden Ist-Wert gibt es nichts, woran zu regeln waere — dann bleibt nur aus."""
     e = entscheiden(_lage(sensor_status="keine_quelle", ist_c=None))
     assert e.heizen is False
     assert e.grund_code == REASON_CODE_NO_SOURCE
 
 
-def test_regel1_veralteter_sensor_ohne_wert_heizt_nicht() -> None:
+def test_rule1_a_stale_sensor_without_a_value_does_not_heat() -> None:
     """Veraltet UND ohne Wert: auch der Frostschutz braucht etwas, woran er sich misst."""
     e = entscheiden(_lage(sensor_status="veraltet", ist_c=None))
     assert e.heizen is False
     assert e.grund_code == REASON_CODE_NO_SOURCE
 
 
-def test_regel1_sicherheitsnetz_ok_ohne_istwert() -> None:
+def test_rule1_safety_net_status_ok_without_a_measured_value() -> None:
     """Vertragsverletzung des Aufrufers (status 'ok', aber kein Ist-Wert) fuehrt nicht zum
     Absturz, sondern zur selben sicheren Antwort wie 'keine_quelle'."""
     e = entscheiden(_lage(sensor_status="ok", ist_c=None))
@@ -128,7 +128,7 @@ def test_regel1_sicherheitsnetz_ok_ohne_istwert() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_regel2_off_laeuft_ueber_die_normale_regel() -> None:
+def test_rule2_off_runs_through_the_normal_rule() -> None:
     """'off' heisst nicht stromlos: Der Aufrufer hat soll_c bereits auf den Frostschutzwert
     aufgeloest (aufgeloester_sollwert), und ab hier gilt schlicht die normale Hysterese
     darauf — bei ausreichend kaltem Ist-Wert wird auch im Zustand 'off' geheizt."""
@@ -163,7 +163,7 @@ def test_regel2_off_schaltet_auch_wieder_aus() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_regel3_fenster_offen_heizt_nicht_trotz_kaeltem_raum() -> None:
+def test_rule3_an_open_window_does_not_heat_despite_a_cold_room() -> None:
     e = entscheiden(_lage(window_open=True, ist_c=Decimal("5.0"), soll_c=Decimal("21.0")))
     assert e.heizen is False
     assert e.grund_code == REASON_CODE_WINDOW_OPEN
@@ -190,7 +190,7 @@ def test_regel4_wiederanlaufverzoegerung_haelt_ab() -> None:
     assert "Wiederanlauf" in e.grund
 
 
-def test_regel4_nach_ablauf_der_verzoegerung_greift_wieder_die_normale_regel() -> None:
+def test_rule4_after_the_delay_expires_the_normal_rule_applies_again() -> None:
     e = entscheiden(
         _lage(
             window_open=False,
@@ -204,7 +204,7 @@ def test_regel4_nach_ablauf_der_verzoegerung_greift_wieder_die_normale_regel() -
     assert e.grund_code == GRUND_CODE_HEIZEN
 
 
-def test_regel4_ohne_bekannten_schliesszeitpunkt_kein_nachlauf() -> None:
+def test_rule4_no_delay_without_a_known_closing_time() -> None:
     """`fenster_zu_seit_s is None` heisst 'kein anstehender Nachlauf' (das Fenster war seit
     Beginn der Aufzeichnung nie offen) — dann gibt es nichts abzuwarten."""
     e = entscheiden(
@@ -223,7 +223,7 @@ def test_regel4_ohne_bekannten_schliesszeitpunkt_kein_nachlauf() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_regel5_mindesteinschaltdauer_haelt_das_ventil_offen() -> None:
+def test_rule5_the_minimum_on_time_keeps_the_valve_open() -> None:
     """Obwohl die Hysterese laengst 'aus' verlangt, bleibt eine gerade erst begonnene
     Heizphase fuer min_on_seconds bestehen — Ventilschutz."""
     e = entscheiden(
@@ -239,7 +239,7 @@ def test_regel5_mindesteinschaltdauer_haelt_das_ventil_offen() -> None:
     assert e.grund_code == REASON_CODE_BLOCKED_MINIMUM_DURATION
 
 
-def test_regel5_mindestausschaltdauer_haelt_das_ventil_zu() -> None:
+def test_rule5_the_minimum_off_time_keeps_the_valve_closed() -> None:
     e = entscheiden(
         _lage(
             heizt_gerade=False,
@@ -253,7 +253,7 @@ def test_regel5_mindestausschaltdauer_haelt_das_ventil_zu() -> None:
     assert e.grund_code == REASON_CODE_BLOCKED_MINIMUM_DURATION
 
 
-def test_regel5_seit_s_none_hebt_die_sperre_nicht_kuenstlich_auf() -> None:
+def test_rule5_an_unknown_elapsed_time_does_not_lift_the_block_artificially() -> None:
     """`seit_s is None` heisst 'Dauer des aktuellen Zustands unbekannt', typischerweise der
     erste Zyklus nach einem Neustart ohne Vorgeschichte. Eine Sperre auf eine unbekannte
     Dauer waere selbst willkuerlich; deshalb greift sie hier nicht, und die Hysterese
@@ -277,7 +277,7 @@ def test_regel5_seit_s_none_hebt_die_sperre_nicht_kuenstlich_auf() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_regel6_schaltet_ein_unterhalb_soll_minus_hysterese() -> None:
+def test_rule6_switches_on_below_setpoint_minus_hysteresis() -> None:
     e = entscheiden(
         _lage(
             heizt_gerade=False,
@@ -290,7 +290,7 @@ def test_regel6_schaltet_ein_unterhalb_soll_minus_hysterese() -> None:
     assert e.grund_code == GRUND_CODE_HEIZEN
 
 
-def test_regel6_schaltet_aus_oberhalb_soll_plus_hysterese() -> None:
+def test_rule6_switches_off_above_setpoint_plus_hysteresis() -> None:
     e = entscheiden(
         _lage(
             heizt_gerade=True,
@@ -303,7 +303,7 @@ def test_regel6_schaltet_aus_oberhalb_soll_plus_hysterese() -> None:
     assert e.grund_code == GRUND_CODE_AUS
 
 
-def test_regel6_grenzfall_genau_auf_einschaltschwelle_schaltet_noch_nicht_ein() -> None:
+def test_rule6_exactly_on_the_switch_on_threshold_does_not_switch_on_yet() -> None:
     """ist == soll - h: exakt auf der Schwelle wird noch nicht eingeschaltet."""
     e = entscheiden(
         _lage(
@@ -317,7 +317,7 @@ def test_regel6_grenzfall_genau_auf_einschaltschwelle_schaltet_noch_nicht_ein() 
     assert e.grund_code == REASON_CODE_UNCHANGED
 
 
-def test_regel6_grenzfall_genau_auf_ausschaltschwelle_schaltet_noch_nicht_aus() -> None:
+def test_rule6_exactly_on_the_switch_off_threshold_does_not_switch_off_yet() -> None:
     """ist == soll + h: exakt auf der Schwelle wird noch nicht ausgeschaltet."""
     e = entscheiden(
         _lage(
@@ -331,7 +331,7 @@ def test_regel6_grenzfall_genau_auf_ausschaltschwelle_schaltet_noch_nicht_aus() 
     assert e.grund_code == REASON_CODE_UNCHANGED
 
 
-def test_regel6_innerhalb_der_hysterese_bleibt_unveraendert_in_beide_richtungen() -> None:
+def test_rule6_inside_the_hysteresis_nothing_changes_in_either_direction() -> None:
     aus_bleibt_aus = entscheiden(
         _lage(heizt_gerade=False, ist_c=Decimal("21.0"), soll_c=Decimal("21.0"))
     )
@@ -348,7 +348,7 @@ def test_regel6_innerhalb_der_hysterese_bleibt_unveraendert_in_beide_richtungen(
 # ---------------------------------------------------------------------------
 
 
-def test_altsystem_defekt_kein_dauertoggeln_am_sollwert() -> None:
+def test_the_legacy_defect_no_constant_toggling_at_the_setpoint() -> None:
     """Das Altsystem entscheidet `if ist < soll: an, sonst aus` — ohne Hysterese schaltet das
     Ventil bei ist == soll in jedem Zyklus um (an, aus, an, aus, ...), weil Gleichheit jedes
     Mal denselben Vergleich neu und ohne Gedaechtnis an den letzten Zustand auswertet. Dieser
@@ -382,7 +382,7 @@ def test_altsystem_defekt_kein_dauertoggeln_am_sollwert() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_rangfolge_sensorausfall_schlaegt_den_aufgeloesten_sollwert() -> None:
+def test_precedence_sensor_failure_beats_the_resolved_setpoint() -> None:
     """Bei ausgefallenem Sensor gilt der Frostschutzwert, egal was der Zeitplan sagt."""
     e = entscheiden(
         _lage(sensor_status="veraltet", operating_mode="off", ist_c=Decimal("5.0"),
@@ -393,7 +393,7 @@ def test_rangfolge_sensorausfall_schlaegt_den_aufgeloesten_sollwert() -> None:
     assert "16.0" in e.grund
 
 
-def test_rangfolge_fenster_offen_schlaegt_frostschutz_bei_sensorausfall() -> None:
+def test_precedence_an_open_window_beats_frost_protection_on_sensor_failure() -> None:
     """Ein offenes Fenster gewinnt auch gegen den Frostschutz.
 
     Das ist Absicht: Gegen ein offenes Fenster zu heizen hilft niemandem, und die Zone
@@ -407,7 +407,7 @@ def test_rangfolge_fenster_offen_schlaegt_frostschutz_bei_sensorausfall() -> Non
     assert e.grund_code == REASON_CODE_WINDOW_OPEN
 
 
-def test_rangfolge_sensorausfall_schlaegt_fenster_offen() -> None:
+def test_precedence_sensor_failure_beats_an_open_window() -> None:
     """Besonders im Auftrag verlangt: Sensorausfall gewinnt auch gegen ein offenes Fenster."""
     e = entscheiden(
         _lage(sensor_status="keine_quelle", ist_c=None, window_open=True)
@@ -415,7 +415,7 @@ def test_rangfolge_sensorausfall_schlaegt_fenster_offen() -> None:
     assert e.grund_code == REASON_CODE_NO_SOURCE
 
 
-def test_rangfolge_betriebsart_off_unterliegt_fenster_offen() -> None:
+def test_precedence_operating_mode_off_loses_to_an_open_window() -> None:
     """'off' fuehrt lediglich zum Frostschutz-Sollwert; ein offenes Fenster gewinnt trotzdem
     gegen die daraus resultierende Heizabsicht der Hysterese."""
     e = entscheiden(
@@ -430,7 +430,7 @@ def test_rangfolge_betriebsart_off_unterliegt_fenster_offen() -> None:
     assert e.grund_code == REASON_CODE_WINDOW_OPEN
 
 
-def test_rangfolge_fenster_offen_schlaegt_wiederanlaufverzoegerung() -> None:
+def test_precedence_an_open_window_beats_the_restart_delay() -> None:
     """Widerspruechliche Eingabe (Fenster offen, aber auch eine 'zu seit'-Dauer gesetzt) —
     Regel 3 gewinnt unabhaengig davon, was Regel 4 dazu sagen wuerde."""
     e = entscheiden(
@@ -444,7 +444,7 @@ def test_rangfolge_fenster_offen_schlaegt_wiederanlaufverzoegerung() -> None:
     assert e.grund_code == REASON_CODE_WINDOW_OPEN
 
 
-def test_rangfolge_wiederanlaufverzoegerung_schlaegt_mindestschaltdauer() -> None:
+def test_precedence_the_restart_delay_beats_the_minimum_switch_time() -> None:
     """Fenster gerade erst zu UND der aktuelle (Aus-)Zustand gilt auch noch keine
     Mindestdauer — Regel 4 entscheidet mit ihrer eigenen Begruendung, nicht mit der aus
     Regel 5."""
@@ -463,7 +463,7 @@ def test_rangfolge_wiederanlaufverzoegerung_schlaegt_mindestschaltdauer() -> Non
     assert e.grund_code != REASON_CODE_BLOCKED_MINIMUM_DURATION
 
 
-def test_rangfolge_mindestschaltdauer_schlaegt_hysterese() -> None:
+def test_precedence_the_minimum_switch_time_beats_the_hysteresis() -> None:
     """Besonders im Auftrag verlangt (sinngemaess): eine noch laufende Mindestdauer haelt
     den Zustand fest, obwohl die Hysterese laengst etwas anderes verlangt."""
     e = entscheiden(
@@ -479,7 +479,7 @@ def test_rangfolge_mindestschaltdauer_schlaegt_hysterese() -> None:
     assert e.grund_code == REASON_CODE_BLOCKED_MINIMUM_DURATION
 
 
-def test_rangfolge_fenster_offen_schlaegt_mindestschaltdauer() -> None:
+def test_precedence_an_open_window_beats_the_minimum_switch_time() -> None:
     """Besonders im Auftrag verlangt: ein offenes Fenster gewinnt gegen eine laufende
     Mindestschaltdauer, die sonst den Heizzustand haette festhalten koennen."""
     e = entscheiden(
@@ -500,7 +500,7 @@ def test_rangfolge_fenster_offen_schlaegt_mindestschaltdauer() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_grenzfall_mindestdauer_genau_erreicht_ist_sperre_vorbei() -> None:
+def test_exactly_at_the_minimum_duration_the_block_is_over() -> None:
     """seit_s == min_on_seconds: die Sperre ist zu diesem Zeitpunkt bereits vorbei
     (`<` statt `<=` in der Bedingung), die Hysterese entscheidet wieder regulaer."""
     e = entscheiden(
@@ -522,7 +522,7 @@ def test_grenzfall_mindestdauer_genau_erreicht_ist_sperre_vorbei() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_offset_veraendert_die_entscheidung_wenn_er_ueber_die_hysterese_hinausreicht() -> None:
+def test_the_offset_changes_the_decision_when_it_reaches_past_the_hysteresis() -> None:
     """Derselbe rohe Ist-Wert fuehrt mit einem hinreichend grossen Offset zu einer anderen
     Entscheidung — die Kalibrierung wirkt vor der Regel, wie in Abschnitt 6 gefordert."""
     ohne_offset = entscheiden(
@@ -551,7 +551,7 @@ def test_offset_veraendert_die_entscheidung_wenn_er_ueber_die_hysterese_hinausre
 # ---------------------------------------------------------------------------
 
 
-def test_grund_enthaelt_die_konkreten_zahlen_der_hysterese_entscheidung() -> None:
+def test_the_reason_carries_the_actual_numbers_of_the_hysteresis_decision() -> None:
     e = entscheiden(
         _lage(
             heizt_gerade=False,
@@ -565,7 +565,7 @@ def test_grund_enthaelt_die_konkreten_zahlen_der_hysterese_entscheidung() -> Non
     assert "0.5" in e.grund
 
 
-def test_grund_enthaelt_die_konkreten_zahlen_der_mindestdauer_entscheidung() -> None:
+def test_the_reason_carries_the_actual_numbers_of_the_minimum_duration_decision() -> None:
     e = entscheiden(
         _lage(
             heizt_gerade=True,
@@ -578,7 +578,7 @@ def test_grund_enthaelt_die_konkreten_zahlen_der_mindestdauer_entscheidung() -> 
     assert "300" in e.grund
 
 
-def test_grund_enthaelt_die_konkreten_zahlen_der_wiederanlaufverzoegerung() -> None:
+def test_the_reason_carries_the_actual_numbers_of_the_restart_delay() -> None:
     e = entscheiden(
         _lage(
             window_open=False,

@@ -41,7 +41,7 @@ def _daten(session: Session, name: str = "wohnzimmer") -> dict[str, str]:
     }
 
 
-def test_zonenliste_zeigt_nur_sichtbare_zonen(client_als, session: Session) -> None:
+def test_the_zone_list_shows_only_visible_zones(client_als, session: Session) -> None:
     sichtbar = create_zone(session, "sichtbar")
     create_zone(session, "verborgen")
 
@@ -52,13 +52,15 @@ def test_zonenliste_zeigt_nur_sichtbare_zonen(client_als, session: Session) -> N
     assert "Verborgen" not in response.text
 
 
-def test_leeres_zonenformular_braucht_anlagenweites_recht(client_als, session: Session) -> None:
+def test_the_empty_zone_form_needs_an_installation_wide_permission(
+    client_als, session: Session
+) -> None:
     zone = create_zone(session, "bestehend")
     assert client_als([("zone.manage", zone.id)]).get("/zones/new").status_code == 403
     assert client_als([("zone.manage", None)]).get("/zones/new").status_code == 200
 
 
-def test_zone_anlegen_schreibt_audit(client_als, session: Session) -> None:
+def test_creating_a_zone_writes_an_audit_entry(client_als, session: Session) -> None:
     source(session)
     client = client_als([("zone.manage", None)])
 
@@ -75,7 +77,7 @@ def test_zone_anlegen_schreibt_audit(client_als, session: Session) -> None:
     assert audit.actor_user_id is not None
 
 
-def test_doppelter_name_bleibt_mit_feldmeldung_im_formular(
+def test_a_duplicate_name_stays_in_the_form_with_a_field_message(
     client_als, session: Session
 ) -> None:
     create_zone(session, "wohnzimmer")
@@ -88,7 +90,7 @@ def test_doppelter_name_bleibt_mit_feldmeldung_im_formular(
     assert 'name="display_name" value="Wohnzimmer"' in response.text
 
 
-def test_zone_bearbeiten_zeigt_werte_und_speichert_aenderung(
+def test_editing_a_zone_shows_the_values_and_saves_the_change(
     client_als, session: Session
 ) -> None:
     source(session)
@@ -114,7 +116,7 @@ def test_zone_bearbeiten_zeigt_werte_und_speichert_aenderung(
     ) is not None
 
 
-def test_zonenrecht_fuer_andere_zone_liefert_404(client_als, session: Session) -> None:
+def test_a_zone_permission_for_another_zone_yields_404(client_als, session: Session) -> None:
     eigene = create_zone(session, "eigene")
     fremde = create_zone(session, "fremde")
     client = client_als([("zone.manage", eigene.id)])
@@ -125,7 +127,7 @@ def test_zonenrecht_fuer_andere_zone_liefert_404(client_als, session: Session) -
     ).status_code == 404
 
 
-def test_loeschbestaetigung_nennt_alle_abhaengigkeiten(
+def test_the_delete_confirmation_names_every_dependency(
     client_als, session: Session
 ) -> None:
     zone = create_zone(session, "voll")
@@ -183,7 +185,7 @@ def test_loeschbestaetigung_nennt_alle_abhaengigkeiten(
         assert expected in response.text
 
 
-def test_zone_loeschen_entfernt_kaskaden_und_schreibt_audit(
+def test_deleting_a_zone_removes_the_cascades_and_writes_an_audit_entry(
     client_als, session: Session
 ) -> None:
     source(session)
@@ -216,7 +218,7 @@ def test_zone_loeschen_entfernt_kaskaden_und_schreibt_audit(
     ) is not None
 
 
-def test_ungueltige_eingaben_fuehren_zurueck_ins_formular(
+def test_invalid_input_returns_to_the_form(
     client_als, session: Session
 ) -> None:
     """Jede Verzweigung der Eingabepruefung einzeln — beim Anlegen und beim Aendern.
@@ -257,7 +259,7 @@ def test_ungueltige_eingaben_fuehren_zurueck_ins_formular(
     assert zone.name == "bestehende-zone"
 
 
-def test_umbenennen_auf_einen_vergebenen_namen_bleibt_im_formular(
+def test_renaming_to_a_taken_name_stays_in_the_form(
     client_als, session: Session
 ) -> None:
     """Beim Anlegen war der Fall belegt, beim Aendern nicht — es ist derselbe Konflikt."""
@@ -282,7 +284,7 @@ def test_umbenennen_auf_einen_vergebenen_namen_bleibt_im_formular(
 # --- Betriebsart aus der Ferne ---------------------------------------------
 
 
-def test_betriebsart_setzen_schreibt_und_protokolliert(session: Session) -> None:
+def test_setting_the_operating_mode_writes_and_logs(session: Session) -> None:
     """Eigene Funktion neben `zone_aendern`: Ein Befehl von aussen kennt nur die
     Betriebsart und wuerde mit `zone_aendern` alles andere mit dem ueberschreiben, was
     der Aufrufer gerade zufaellig zur Hand hat."""
@@ -307,7 +309,7 @@ def test_betriebsart_setzen_schreibt_und_protokolliert(session: Session) -> None
     assert "Aus" in (entry.detail or "")
 
 
-def test_dieselbe_betriebsart_schreibt_keinen_eintrag(session: Session) -> None:
+def test_the_same_operating_mode_writes_no_entry(session: Session) -> None:
     """Home Assistant schickt seinen Zustand gern noch einmal. Ein Protokoll, das jede
     Wiederholung als Aenderung fuehrt, ist nach einer Woche unlesbar."""
     from sqlalchemy import select
@@ -326,7 +328,7 @@ def test_dieselbe_betriebsart_schreibt_keinen_eintrag(session: Session) -> None:
     ).all()
 
 
-def test_unbekannte_betriebsart_wird_abgewiesen(session: Session) -> None:
+def test_an_unknown_operating_mode_is_refused(session: Session) -> None:
     from thermoctl.domain.zones import UnknownOperatingMode, set_operating_mode
 
     zone = create_zone(session, "unbekanntbetrieb")

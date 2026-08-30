@@ -82,7 +82,7 @@ def _zone_with_state(
     return zone
 
 
-def test_ein_zyklus_frischer_messwert_schreibt_eine_zeile_mit_begruendung(
+def test_one_cycle_with_a_fresh_reading_writes_a_row_with_a_reason(
     session: Session,
 ) -> None:
     create_settings(session, hysteresis=Decimal("0.30"))
@@ -100,7 +100,7 @@ def test_ein_zyklus_frischer_messwert_schreibt_eine_zeile_mit_begruendung(
     assert session.query(ShadowDecision).count() == 1
 
 
-def test_mehrere_zyklen_unveraenderte_lage_ergeben_unveraendert_ohne_zeilenflut(
+def test_several_cycles_with_an_unchanged_situation_yield_unchanged_without_a_flood_of_rows(
     session: Session,
 ) -> None:
     create_settings(session, hysteresis=Decimal("0.30"))
@@ -131,7 +131,7 @@ def test_mehrere_zyklen_unveraenderte_lage_ergeben_unveraendert_ohne_zeilenflut(
     assert [z.would_heat for z in zeilen] == [False, False, False]
 
 
-def test_seit_s_waechst_ueber_zyklen_und_faellt_bei_wechsel_zurueck(
+def test_the_elapsed_time_grows_across_cycles_and_resets_on_a_change(
     session: Session,
 ) -> None:
     """Die Mindestschaltdauer wirkt nur, wenn `seit_s` ueber Zyklen hinweg mitwaechst.
@@ -210,7 +210,7 @@ def test_seit_s_waechst_ueber_zyklen_und_faellt_bei_wechsel_zurueck(
     assert z5.outcome_code == "gesperrt_mindestdauer"
 
 
-def test_zone_ohne_messquelle_bekommt_keine_quelle_zeile(session: Session) -> None:
+def test_a_zone_without_a_temperature_source_gets_a_no_source_row(session: Session) -> None:
     create_settings(session)
     zone = create_zone(session, "abstellraum")  # keine ZoneState-Zeile ueberhaupt
 
@@ -223,7 +223,7 @@ def test_zone_ohne_messquelle_bekommt_keine_quelle_zeile(session: Session) -> No
     assert zeilen[0].temperature_c is None
 
 
-def test_zone_ohne_fensterkontakt_heizt_trotz_unbekanntem_fensterzustand(
+def test_a_zone_without_a_window_contact_heats_despite_an_unknown_window_state(
     session: Session,
 ) -> None:
     create_settings(session)
@@ -237,7 +237,7 @@ def test_zone_ohne_fensterkontakt_heizt_trotz_unbekanntem_fensterzustand(
     assert zeile.outcome_code == "heizen"
 
 
-def test_fensterschliessung_startet_wachsende_wiederanlaufverzoegerung(
+def test_closing_a_window_starts_a_growing_restart_delay(
     session: Session,
 ) -> None:
     settings = create_settings(session)
@@ -283,7 +283,7 @@ def test_fensterschliessung_startet_wachsende_wiederanlaufverzoegerung(
     assert "Fenster seit 50s zu" in zweite.reason
 
 
-def test_scheiternde_zone_haelt_uebrige_nicht_auf(
+def test_a_failing_zone_does_not_hold_up_the_others(
     session: Session, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     create_settings(session)
@@ -315,7 +315,7 @@ def anyio_backend() -> str:
 
 
 @pytest.mark.anyio
-async def test_keine_veroeffentlichung_trotz_heizender_entscheidung(
+async def test_no_publishing_despite_a_heating_decision(
     session: Session, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Belegt die harte Grenze aus Abschnitt 1 der Spezifikation mit einem gefaelschten
@@ -359,7 +359,7 @@ async def test_keine_veroeffentlichung_trotz_heizender_entscheidung(
     assert gefaelscht.published == []
 
 
-def test_hintergrundlauf_startet_nicht_ohne_mqtt(
+def test_the_background_run_does_not_start_without_mqtt(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Vorgabe aus dem Auftrag: ohne `mqtt_enabled` darf beim Start keine
@@ -397,7 +397,7 @@ def test_hintergrundlauf_startet_nicht_ohne_mqtt(
 
 
 @pytest.mark.anyio
-async def test_schattenschleife_liest_intervall_und_schreibt_ergebnis(
+async def test_the_shadow_loop_reads_the_interval_and_writes_a_result(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """`_schattenschleife` wartet den in `setting.shadow_interval_seconds` konfigurierten
@@ -441,7 +441,7 @@ async def test_schattenschleife_liest_intervall_und_schreibt_ergebnis(
 
 
 @pytest.mark.anyio
-async def test_schattenschleife_uebersteht_fehlenden_intervall(
+async def test_the_shadow_loop_survives_a_missing_interval(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Ohne `setting`-Zeile (Einrichtung nicht abgeschlossen) darf die Schleife weder
@@ -471,7 +471,7 @@ async def test_schattenschleife_uebersteht_fehlenden_intervall(
 
 
 @pytest.mark.anyio
-async def test_schattenschleife_uebersteht_ausnahme_im_zyklus(
+async def test_the_shadow_loop_survives_an_exception_in_the_cycle(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Ein Fehler in einem Zyklus (hier: `zonenzustand_fortschreiben` scheitert) beendet
@@ -517,7 +517,7 @@ async def test_schattenschleife_uebersteht_ausnahme_im_zyklus(
 
 
 @pytest.mark.anyio
-async def test_schattenschleife_stoesst_aufbewahrung_einmal_taeglich_an(
+async def test_the_shadow_loop_triggers_retention_once_a_day(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """`alte_messwerte_loeschen()` laeuft aus derselben Schleife, aber nur einmal je Tag
@@ -566,7 +566,7 @@ async def test_schattenschleife_stoesst_aufbewahrung_einmal_taeglich_an(
 
 
 @pytest.mark.anyio
-async def test_mqtt_nachricht_verarbeiten_schreibt_in_eigener_sitzung(
+async def test_processing_an_mqtt_message_writes_in_its_own_session(
     tmp_path: Path,
 ) -> None:
     """Der MQTT-Handler des Lifespan verarbeitet eine Nachricht in einer frisch
@@ -631,7 +631,7 @@ class _FalscherAiomqttClient:
         return None
 
 
-def test_lifespan_startet_und_beendet_mqtt_und_schattenschleife_sauber(
+def test_the_lifespan_starts_and_stops_mqtt_and_the_shadow_loop_cleanly(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Der eigentliche Beleg fuer 'sauber beenden': Beide Hintergrundaufgaben laufen
@@ -663,7 +663,7 @@ def test_lifespan_startet_und_beendet_mqtt_und_schattenschleife_sauber(
 
 
 @pytest.mark.anyio
-async def test_brueckenzustand_meldet_nur_den_wechsel(tmp_path: Path) -> None:
+async def test_the_bridge_state_reports_only_the_change(tmp_path: Path) -> None:
     """Zigbee2MQTT schickt `bridge/state` bei jeder Verbindung erneut.
 
     Gemeldet wird der Wechsel, nicht der Zustand — sonst haette man nach einer Nacht mit
@@ -716,7 +716,7 @@ async def test_brueckenzustand_meldet_nur_den_wechsel(tmp_path: Path) -> None:
 
 
 @pytest.mark.anyio
-async def test_schattenschleife_meldet_einen_neuen_sensorausfall(
+async def test_the_shadow_loop_reports_a_new_sensor_failure(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Die Meldung geht wirklich hinaus — bisher war nur belegt, dass sie entsteht.

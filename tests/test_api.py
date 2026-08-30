@@ -47,34 +47,34 @@ def token_fuer(session: Session) -> Callable[[list[tuple[str, str | None]]], dic
     return _token_fuer
 
 
-def test_ohne_token_kein_zugriff(client) -> None:
+def test_no_access_without_a_token(client) -> None:
     assert client.get("/api/v1/zones").status_code == 401
 
 
-def test_ungueltiges_token_wird_abgewiesen(client) -> None:
+def test_an_invalid_token_is_refused(client) -> None:
     response = client.get("/api/v1/zones", headers={"Authorization": "Bearer tctl_x_y"})
     assert response.status_code == 401
 
 
-def test_token_sieht_nur_erlaubte_zonen(client, token_fuer) -> None:
+def test_a_token_sees_only_the_zones_it_is_allowed(client, token_fuer) -> None:
     """visible_zones muss auch hier wirken — sonst leckt die API, was die UI verbirgt."""
     kopf = token_fuer([("zone.read", "bad")])
     namen = [z["name"] for z in client.get("/api/v1/zones", headers=kopf).json()]
     assert namen == ["bad"]
 
 
-def test_zugriff_auf_fremde_zone_ergibt_404(client, token_fuer) -> None:
+def test_access_to_a_foreign_zone_yields_404(client, token_fuer) -> None:
     """404 und nicht 403: ein 403 verraet, dass die Zone existiert."""
     kopf = token_fuer([("zone.read", "bad")])
     assert client.get("/api/v1/zones/2", headers=kopf).status_code == 404
 
 
-def test_geraeteliste_braucht_device_read(client, token_fuer) -> None:
+def test_the_device_list_needs_device_read(client, token_fuer) -> None:
     kopf = token_fuer([("zone.read", "bad")])
     assert client.get("/api/v1/devices", headers=kopf).status_code == 403
 
 
-def test_geraeteliste_liefert_lebenszeichen(client, token_fuer, session: Session) -> None:
+def test_the_device_list_reports_signs_of_life(client, token_fuer, session: Session) -> None:
     beispiele = json.loads(
         (Path(__file__).parent / "daten/anlage-beispiele.json").read_text(encoding="utf-8")
     )
@@ -105,7 +105,7 @@ def test_geraeteliste_liefert_lebenszeichen(client, token_fuer, session: Session
     assert response.json()[0]["zones"] == ["andere", "bad"]
 
 
-def test_zonenzustand_ist_nur_fuer_sichtbare_zone_lesbar(
+def test_zone_state_is_readable_only_for_a_visible_zone(
     client, token_fuer, session: Session
 ) -> None:
     moment = datetime(2026, 8, 29, 8, 0)
@@ -138,19 +138,19 @@ def test_zonenzustand_ist_nur_fuer_sichtbare_zone_lesbar(
     assert client.get("/api/v1/zones/2/state", headers=kopf).status_code == 404
 
 
-def test_sichtbare_zone_ohne_zustand_ergibt_404(client, token_fuer) -> None:
+def test_a_visible_zone_without_state_yields_404(client, token_fuer) -> None:
     kopf = token_fuer([("zone.read", "bad")])
     assert client.get("/api/v1/zones/1/state", headers=kopf).status_code == 404
 
 
-def test_uebersteuern_ohne_recht_wird_abgewiesen(client, token_fuer) -> None:
+def test_overriding_without_the_permission_is_refused(client, token_fuer) -> None:
     kopf = token_fuer([("zone.read", "bad")])
     response = client.post("/api/v1/zones/1/override", headers=kopf,
                           json={"temperature_c": "22.0", "duration_minutes": 30})
     assert response.status_code == 403
 
 
-def test_uebersteuern_mit_recht_legt_eintrag_an(client, token_fuer, session) -> None:
+def test_overriding_with_the_permission_creates_an_entry(client, token_fuer, session) -> None:
     from thermoctl.db.models.override import ZoneOverride
 
     kopf = token_fuer([("zone.read", "bad"), ("override.create", "bad")])
@@ -162,7 +162,7 @@ def test_uebersteuern_mit_recht_legt_eintrag_an(client, token_fuer, session) -> 
     assert entry.created_by_token_id is not None
 
 
-def test_api_braucht_kein_csrf_token(client, token_fuer) -> None:
+def test_the_api_needs_no_csrf_token(client, token_fuer) -> None:
     """Token-Anfragen schicken kein Cookie und sind damit nicht CSRF-gefaehrdet."""
     kopf = token_fuer([("zone.read", "bad"), ("override.create", "bad")])
     response = client.post("/api/v1/zones/1/override", headers=kopf,
@@ -170,19 +170,19 @@ def test_api_braucht_kein_csrf_token(client, token_fuer) -> None:
     assert response.status_code == 201
 
 
-def test_token_hash_erscheint_in_keiner_antwort(client, token_fuer) -> None:
+def test_the_token_hash_appears_in_no_response(client, token_fuer) -> None:
     kopf = token_fuer([("zone.read", "bad"), ("token.self", None)])
     assert "token_hash" not in client.get("/api/v1/me", headers=kopf).text
 
 
-def test_me_ohne_recht_wird_abgewiesen(client, token_fuer) -> None:
+def test_me_without_the_permission_is_refused(client, token_fuer) -> None:
     """token.self fehlt hier bewusst -- auch das eigene Token einsehen ist ein Recht."""
     kopf = token_fuer([("zone.read", "bad")])
     response = client.get("/api/v1/me", headers=kopf)
     assert response.status_code == 403
 
 
-def test_uebersteuern_bis_naechste_schaltung_ohne_zeitplan(client, token_fuer) -> None:
+def test_overriding_until_the_next_switch_without_a_schedule(client, token_fuer) -> None:
     """Ohne Schaltpunkte in der Zone bleibt die Uebersteuerung unbefristet."""
     kopf = token_fuer([("zone.read", "bad"), ("override.create", "bad")])
     response = client.post(
@@ -193,7 +193,7 @@ def test_uebersteuern_bis_naechste_schaltung_ohne_zeitplan(client, token_fuer) -
     assert response.json()["ends_at"] is None
 
 
-def test_uebersteuern_bis_naechste_schaltung_mit_zeitplan(client, token_fuer, session) -> None:
+def test_overriding_until_the_next_switch_with_a_schedule(client, token_fuer, session) -> None:
     from thermoctl.db.models.operations import Setting
     from thermoctl.db.models.schedule import SchedulePoint
     from thermoctl.db.models.zone import SetpointMode
@@ -214,13 +214,13 @@ def test_uebersteuern_bis_naechste_schaltung_mit_zeitplan(client, token_fuer, se
     assert response.json()["ends_at"] is not None
 
 
-def test_uebersteuerung_loeschen_ohne_recht_wird_abgewiesen(client, token_fuer) -> None:
+def test_cancelling_an_override_without_the_permission_is_refused(client, token_fuer) -> None:
     kopf = token_fuer([("zone.read", "bad")])
     response = client.delete("/api/v1/zones/1/override", headers=kopf)
     assert response.status_code == 403
 
 
-def test_uebersteuerung_loeschen_beendet_die_aktive(client, token_fuer, session) -> None:
+def test_cancelling_an_override_ends_the_active_one(client, token_fuer, session) -> None:
     from thermoctl.db.models.override import ZoneOverride
 
     kopf = token_fuer([("zone.read", "bad"), ("override.create", "bad"),
@@ -255,13 +255,13 @@ def _zone_with_plan(session: Session) -> None:
     session.flush()
 
 
-def test_boost_braucht_das_recht_zu_uebersteuern(client, token_fuer) -> None:
+def test_boost_needs_the_permission_to_override(client, token_fuer) -> None:
     """Es *ist* eine Uebersteuerung -- nur eine, deren Wert der Zeitplan bestimmt."""
     kopf = token_fuer([("zone.read", "bad")])
     assert client.post("/api/v1/zones/1/boost", headers=kopf).status_code == 403
 
 
-def test_boost_zieht_die_naechste_schaltung_vor(client, token_fuer, session) -> None:
+def test_boost_brings_the_next_switch_forward(client, token_fuer, session) -> None:
     from thermoctl.db.models.override import ZoneOverride
 
     _zone_with_plan(session)
@@ -280,7 +280,7 @@ def test_boost_zieht_die_naechste_schaltung_vor(client, token_fuer, session) -> 
     assert entry.ends_at.isoformat() == daten["gilt_bis"]
 
 
-def test_boost_ohne_zeitplan_sagt_warum(client, token_fuer, session) -> None:
+def test_boost_without_a_schedule_says_why(client, token_fuer, session) -> None:
     """Gegenprobe: Ohne Plan gibt es nichts vorzuziehen, und das ist kein Serverfehler."""
     from thermoctl.db.models.operations import Setting
     from thermoctl.db.models.zone import SetpointMode
@@ -310,7 +310,7 @@ def _defaults(session: Session) -> None:
     session.flush()
 
 
-def test_ein_einzelner_parameter_laesst_die_uebrigen_geerbt(client, token_fuer, session) -> None:
+def test_a_single_parameter_leaves_the_others_inherited(client, token_fuer, session) -> None:
     """Wer nur die Hysterese aendern will, soll nicht alle sechs mitschicken muessen.
 
     Er schriebe dabei jeden geerbten Wert als Zonenabweichung fest -- und eine spaetere
@@ -331,7 +331,7 @@ def test_ein_einzelner_parameter_laesst_die_uebrigen_geerbt(client, token_fuer, 
     assert zone.min_on_seconds is None, "ein geerbter Wert wurde festgeschrieben"
 
 
-def test_ein_unbekannter_parametername_nennt_die_gueltigen(client, token_fuer, session) -> None:
+def test_an_unknown_parameter_name_lists_the_valid_ones(client, token_fuer, session) -> None:
     _defaults(session)
     kopf = token_fuer([("zone.read", "bad"), ("zone.manage", "bad")])
     response = client.put(
@@ -341,7 +341,7 @@ def test_ein_unbekannter_parametername_nennt_die_gueltigen(client, token_fuer, s
     assert "hysteresis_k" in response.json()["detail"]
 
 
-def test_ein_parameter_ausserhalb_der_grenzen_wird_abgewiesen(client, token_fuer, session) -> None:
+def test_a_parameter_outside_the_limits_is_refused(client, token_fuer, session) -> None:
     """Die Grenzen stehen in der Domaene und gelten fuer jeden Weg gleich."""
     _defaults(session)
     kopf = token_fuer([("zone.read", "bad"), ("zone.manage", "bad")])
@@ -354,7 +354,7 @@ def test_ein_parameter_ausserhalb_der_grenzen_wird_abgewiesen(client, token_fuer
     assert zone.hysteresis_k is None
 
 
-def test_ein_einzelner_parameter_braucht_zone_manage(client, token_fuer, session) -> None:
+def test_a_single_parameter_needs_zone_manage(client, token_fuer, session) -> None:
     _defaults(session)
     kopf = token_fuer([("zone.read", "bad")])
     response = client.put(

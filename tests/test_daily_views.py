@@ -26,7 +26,7 @@ def _csrf(client: TestClient) -> dict[str, str]:
     return {CSRF_HEADER: csrf_token(http_session, get_settings().secret_key.get_secret_value())}
 
 
-def test_parameterseite_zeigt_geerbte_werte_und_leer_stellt_vererbung_wieder_her(
+def test_the_parameter_page_shows_inherited_values_and_empty_restores_inheritance(
     session: Session, client_als
 ) -> None:
     zone = _grundlage(session)
@@ -52,7 +52,7 @@ def test_parameterseite_zeigt_geerbte_werte_und_leer_stellt_vererbung_wieder_her
     assert "Derzeit 0.30 K aus dem globalen Standard" in response.text
 
 
-def test_negative_hysterese_wird_abgewiesen_offset_aber_gespeichert(
+def test_a_negative_hysteresis_is_refused_but_the_offset_is_saved(
     session: Session, client_als
 ) -> None:
     zone = _grundlage(session)
@@ -74,7 +74,7 @@ def test_negative_hysterese_wird_abgewiesen_offset_aber_gespeichert(
     assert zone.temperature_offset_k == Decimal("-1.25")
 
 
-def test_parameter_fremder_zone_ist_404(session: Session, client_als) -> None:
+def test_parameters_of_a_foreign_zone_yield_404(session: Session, client_als) -> None:
     eigene = _grundlage(session)
     fremde = create_zone(session, "fremd")
     client = client_als([("zone.manage", eigene.id)])
@@ -85,7 +85,7 @@ def test_parameter_fremder_zone_ist_404(session: Session, client_als) -> None:
     )
 
 
-def test_uebersteuerung_der_oberflaeche_nutzt_dasselbe_datenmodell_wie_rest(
+def test_an_override_from_the_interface_uses_the_same_data_model_as_rest(
     session: Session, client_als
 ) -> None:
     zone = _grundlage(session)
@@ -110,7 +110,7 @@ def test_uebersteuerung_der_oberflaeche_nutzt_dasselbe_datenmodell_wie_rest(
     )
 
 
-def test_uebersteuerung_anzeigen_und_aufheben(session: Session, client_als) -> None:
+def test_showing_and_cancelling_an_override(session: Session, client_als) -> None:
     zone = _grundlage(session)
     client = client_als(
         [("zone.read", zone.id), ("override.create", zone.id), ("override.cancel", zone.id)]
@@ -141,7 +141,7 @@ def test_uebersteuerung_anzeigen_und_aufheben(session: Session, client_als) -> N
     assert entry is not None and entry.cancelled_at is not None
 
 
-def test_uebersteuerung_fremder_zone_ist_404(session: Session, client_als) -> None:
+def test_an_override_on_a_foreign_zone_yields_404(session: Session, client_als) -> None:
     eigene = _grundlage(session)
     fremde = create_zone(session, "fremd")
     client = client_als(
@@ -163,7 +163,7 @@ def test_uebersteuerung_fremder_zone_ist_404(session: Session, client_als) -> No
     )
 
 
-def test_uebersicht_erklaert_fehlenden_messwert_und_zeigt_entscheidung(
+def test_the_overview_explains_a_missing_reading_and_shows_the_decision(
     session: Session, client_als
 ) -> None:
     zone = _grundlage(session)
@@ -196,7 +196,7 @@ def test_uebersicht_erklaert_fehlenden_messwert_und_zeigt_entscheidung(
     assert "Betriebsart" not in response.text
 
 
-def test_uebersteuerung_bis_zur_naechsten_schaltung(session: Session, client_als) -> None:
+def test_an_override_until_the_next_switch(session: Session, client_als) -> None:
     """Das Ende wird beim Anlegen ausgerechnet und abgelegt, nicht als Regel gemerkt —
     eine spaetere Zeitplanaenderung verschiebt eine laufende Uebersteuerung nicht."""
     from tests.helpers import create_mode
@@ -219,7 +219,7 @@ def test_uebersteuerung_bis_zur_naechsten_schaltung(session: Session, client_als
     assert entry is not None and entry.ends_at is not None
 
 
-def test_uebersteuerung_fuer_eine_dauer(session: Session, client_als) -> None:
+def test_an_override_for_a_duration(session: Session, client_als) -> None:
     zone = _grundlage(session)
     client = client_als([("override.create", None), ("zone.read", None)])
     response = client.post(
@@ -232,7 +232,7 @@ def test_uebersteuerung_fuer_eine_dauer(session: Session, client_als) -> None:
     assert entry is not None and entry.ends_at is not None
 
 
-def test_uebersteuerung_ohne_zeitplan_gilt_dauerhaft(session: Session, client_als) -> None:
+def test_an_override_without_a_schedule_lasts_indefinitely(session: Session, client_als) -> None:
     """Ohne Schaltpunkt gibt es keine naechste Schaltung — dann gilt sie, bis jemand sie
     aufhebt. Stillschweigend gar nichts zu tun waere die schlechtere Antwort."""
     zone = _grundlage(session)
@@ -246,7 +246,7 @@ def test_uebersteuerung_ohne_zeitplan_gilt_dauerhaft(session: Session, client_al
     assert entry is not None and entry.ends_at is None
 
 
-def test_unsinnige_uebersteuerungen_werden_abgewiesen(session: Session, client_als) -> None:
+def test_nonsensical_overrides_are_refused(session: Session, client_als) -> None:
     """Eine Heizung, die eine unsinnige Eingabe zurechtbiegt, ist schlimmer als eine, die
     widerspricht."""
     zone = _grundlage(session)
@@ -271,7 +271,7 @@ def test_unsinnige_uebersteuerungen_werden_abgewiesen(session: Session, client_a
     assert session.scalar(select(ZoneOverride).where(ZoneOverride.zone_id == zone.id)) is None
 
 
-def test_unsinnige_regelparameter_bleiben_im_formular(session: Session, client_als) -> None:
+def test_nonsensical_control_parameters_stay_in_the_form(session: Session, client_als) -> None:
     zone = _grundlage(session)
     client = client_als([("zone.manage", None), ("zone.read", None)])
     for feld, value in (("hysteresis_k", "keine Zahl"), ("min_on_seconds", "-5")):
@@ -282,7 +282,7 @@ def test_unsinnige_regelparameter_bleiben_im_formular(session: Session, client_a
     assert zone.hysteresis_k is None and zone.min_on_seconds is None
 
 
-def test_uebersteuerung_mit_zwei_nachkommastellen_wird_abgewiesen(
+def test_an_override_with_two_decimal_places_is_refused(
     session: Session, client_als
 ) -> None:
     """Die Oberflaeche prueft nicht mehr selbst — sie faengt nur noch ab, was die Domaene
@@ -299,7 +299,7 @@ def test_uebersteuerung_mit_zwei_nachkommastellen_wird_abgewiesen(
     assert session.scalar(select(ZoneOverride).where(ZoneOverride.zone_id == zone.id)) is None
 
 
-def test_betriebsart_steht_nur_da_wenn_sie_abweicht(session: Session, client_als) -> None:
+def test_the_operating_mode_is_shown_only_when_it_deviates(session: Session, client_als) -> None:
     """Gegenprobe zur Zeile oben. Eine Zone auf "Aus" sieht sonst aus wie jede andere --
     und genau sie ist der Grund, warum ein Raum kalt bleibt."""
     from thermoctl.db.models.lookup import OperatingMode
@@ -340,7 +340,7 @@ def _zone_with_mode(session: Session, temperature: str = "21.0"):
     return zone, mode
 
 
-def test_thermostat_hebt_den_sollwert_des_laufenden_modus(
+def test_the_thermostat_raises_the_setpoint_of_the_current_mode(
     session: Session, client_als
 ) -> None:
     """Nicht eine Uebersteuerung: Der Klick aendert den hinterlegten Sollwert des Modus
@@ -365,7 +365,7 @@ def test_thermostat_hebt_den_sollwert_des_laufenden_modus(
     assert zeile.temperature_c == Decimal("21.5")
 
 
-def test_zwei_klicks_sind_zwei_stufen(session: Session, client_als) -> None:
+def test_two_clicks_are_two_steps(session: Session, client_als) -> None:
     """Die Stufe wird auf den aktuellen Wert gerechnet, nicht auf den, den die Seite
     beim Rendern kannte -- sonst waere der zweite Klick wirkungslos."""
     from thermoctl.db.models.zone import ZoneSetpoint
@@ -384,7 +384,7 @@ def test_zwei_klicks_sind_zwei_stufen(session: Session, client_als) -> None:
     assert zeile.temperature_c == Decimal("20.0")
 
 
-def test_thermostat_bleibt_an_der_grenze_stehen(session: Session, client_als) -> None:
+def test_the_thermostat_stops_at_the_limit(session: Session, client_als) -> None:
     """35 Grad ist das Ende des Weges, kein Fehlerzustand -- die Domaenengrenze gilt,
     und die Seite zeigt danach den unveraenderten Wert mit einem Hinweis."""
     from thermoctl.db.models.zone import ZoneSetpoint
@@ -416,7 +416,7 @@ def test_thermostat_braucht_setpoint_write(session: Session, client_als) -> None
     assert response.status_code == 404
 
 
-def test_ohne_setpoint_write_steht_kein_thermostat_auf_der_seite(
+def test_without_setpoint_write_no_thermostat_is_on_the_page(
     session: Session, client_als
 ) -> None:
     """Gegenprobe zur Anzeige: Wer nicht verstellen darf, sieht den Sollwert, aber keine
@@ -429,7 +429,7 @@ def test_ohne_setpoint_write_steht_kein_thermostat_auf_der_seite(
     assert "tc-stufe" in darf.text
 
 
-def test_thermostat_wirkt_auch_ohne_hinterlegten_sollwert(
+def test_the_thermostat_works_even_without_a_stored_setpoint(
     session: Session, client_als
 ) -> None:
     """Der Zustand einer frisch eingerichteten Anlage: keine Sollwerte gepflegt, kein
@@ -467,7 +467,7 @@ def test_thermostat_wirkt_auch_ohne_hinterlegten_sollwert(
     assert zeile.temperature_c == angezeigt.temperature_c + Decimal("0.5")
 
 
-def test_thermostat_fuer_einen_fremden_modus_bleibt_ein_404(
+def test_the_thermostat_for_a_foreign_mode_stays_a_404(
     session: Session, client_als
 ) -> None:
     """Gegenprobe: Der Notnagel gilt nur fuer den Modus, den die Seite gerade anzeigt.
@@ -486,7 +486,7 @@ def test_thermostat_fuer_einen_fremden_modus_bleibt_ein_404(
     assert response.status_code == 404
 
 
-def test_uebersteuern_in_den_minusbereich(session: Session, client_als) -> None:
+def test_overriding_into_the_negative_range(session: Session, client_als) -> None:
     """"Untersteuern" heisst: ein Sollwert unter null.
 
     Mit 1 Grad heizt die Anlage immer noch, sobald es kaelter wird. Wer eine Garage oder
@@ -512,7 +512,7 @@ def test_uebersteuern_in_den_minusbereich(session: Session, client_als) -> None:
     assert entry.temperature_c == Decimal("-5.0")
 
 
-def test_das_thermostat_geht_unter_null(session: Session, client_als) -> None:
+def test_the_thermostat_goes_below_zero(session: Session, client_als) -> None:
     """Gegenprobe von der anderen Seite: Auch die Stufentasten duerfen unter null."""
     from sqlalchemy import select
 
