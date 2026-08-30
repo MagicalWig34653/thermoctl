@@ -30,6 +30,7 @@ def _parameter(
     sensor_timeout_seconds: int = 600,
     temperature_offset_k: Decimal = Decimal("0.0"),
     window_resume_delay_seconds: int = 300,
+    solar_setback_max_k: Decimal = Decimal("2.0"),
 ) -> ControlParameters:
     return ControlParameters(
         hysteresis_k=hysteresis_k,
@@ -38,6 +39,7 @@ def _parameter(
         sensor_timeout_seconds=sensor_timeout_seconds,
         temperature_offset_k=temperature_offset_k,
         window_resume_delay_seconds=window_resume_delay_seconds,
+        solar_setback_max_k=solar_setback_max_k,
     )
 
 
