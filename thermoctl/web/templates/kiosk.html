@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Kiosk – thermoctl</title>
+    <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="/static/vendor/bootstrap/bootstrap.min.css">
+    <link rel="stylesheet" href="/static/thermoctl.css">
+    {#
+    Eigener, schlanker Kopf statt base.html/base_plain.html: Beide sind fuer eine
+    schmale, mittig stehende Karte gebaut (Anmeldeformular, Einrichtung). Ein
+    Wandtablett braucht das Gegenteil -- ein Raster, das die ganze Flaeche nutzt --,
+    darum ein eigenes Dokument. Kopfzeilen-Assets (Bootstrap, htmx, das Farbschema)
+    sind dieselben wie ueberall im Projekt.
+    #}
+    <script>
+        (function () {
+            var abfrage = window.matchMedia("(prefers-color-scheme: dark)");
+            function setzen() {
+                document.documentElement.setAttribute(
+                    "data-bs-theme", abfrage.matches ? "dark" : "light");
+            }
+            setzen();
+            abfrage.addEventListener("change", setzen);
+        })();
+    </script>
+    <script defer src="/static/vendor/htmx/htmx.min.js"></script>
+    <script>
+        {#
+        Eigenes Cookie, eigenes Skript: Der Kopf aus base.html liest
+        "thermoctl_csrf" -- das Sitzungs-Cookie eines angemeldeten Benutzers. Am
+        Kiosk gibt es keine Sitzung, nur das Kiosk-Cookie und sein eigenes
+        CSRF-Gegenstueck (thermoctl/auth/kiosk.py).
+        #}
+        document.addEventListener("htmx:configRequest", function (ereignis) {
+            const eintrag = document.cookie.split("; ").find(function (wert) {
+                return wert.startsWith("thermoctl_kiosk_csrf=");
+            });
+            if (eintrag) {
+                ereignis.detail.headers["X-CSRF-Token"] = decodeURIComponent(eintrag.split("=")[1]);
+            }
+        });
+    </script>
+</head>
+<body class="kiosk-page">
+<div id="kiosk-body" hx-get="/kiosk" hx-trigger="every 20s" hx-select="#kiosk-body"
+     hx-target="#kiosk-body" hx-swap="outerHTML">
+    <div class="kiosk-heading">
+        <span class="tc-marker" style="font-size: 1.75rem">thermoctl</span>
+        <span class="kiosk-clock">{{ now.strftime("%H:%M") }}</span>
+    </div>
+
+    {% if not zones %}
+    <div class="tc-panel kiosk-tile">
+        <p class="t-quiet mb-0">Diesem Token ist keine Zone zugewiesen.</p>
+    </div>
+    {% else %}
+    <div class="kiosk-grid">
+        {% for zone in zones %}
+        {% set entry = zustaende.get(zone.id) %}
+        {% set setpoint = setpoints[zone.id] %}
+        {% set would_heat = would_heat_je_zone.get(zone.id) %}
+        <article class="tc-panel kiosk-tile" id="kiosk-zone-{{ zone.id }}">
+            <div class="d-flex justify-content-between align-items-start gap-2">
+                <span class="kiosk-tile-name">{{ zone.display_name }}</span>
+                {% if would_heat %}
+                <span class="tc-chip tc-chip-warm"><span class="tc-dot"></span>Heizt</span>
+                {% elif would_heat is not none %}
+                <span class="tc-chip tc-chip-cool">Aus</span>
+                {% else %}
+                <span class="tc-chip tc-chip-quiet">Noch nicht entschieden</span>
+                {% endif %}
+            </div>
+
+            {% if entry and entry[0].temperature_c is not none %}
+            <div class="kiosk-temperature t-value">{{ entry[0].temperature_c|grad }}<span class="t-unit">°C</span></div>
+            <div class="t-quiet">{{ entry[0].measured_at|age }}</div>
+            {% else %}
+            <div class="kiosk-temperature t-value t-quiet">––<span class="t-unit">°C</span></div>
+            <div class="t-quiet">kein Messwert</div>
+            {% endif %}
+
+            {% if entry and entry[1].code != "ok" %}
+            <span class="tc-chip tc-chip-warning align-self-start">{{ entry[1].label }}</span>
+            {% endif %}
+
+            {#
+            No mode_id field: `set_setpoint` (thermoctl/domain/remote_control.py)
+            adjusts whichever setpoint is currently in effect on its own -- the mode
+            in charge, or a running fixed override if there is one. Unlike the start
+            page's thermostat (daily_views.py, which calls `update_setpoints`
+            directly and therefore does need a mode to target), this button works the
+            same way regardless of which of the two currently applies.
+            #}
+            {% if zone.id in control_zone_ids %}
+            <form method="post" action="/kiosk/zones/{{ zone.id }}/setpoint"
+                  class="kiosk-setpoint">
+                <button class="btn btn-outline-secondary kiosk-stage" type="submit"
+                        name="direction" value="runter" aria-label="Sollwert senken">−</button>
+                <span class="t-value">{{ setpoint.temperature_c|grad }} °C</span>
+                <button class="btn btn-outline-secondary kiosk-stage" type="submit"
+                        name="direction" value="hoch" aria-label="Sollwert anheben">+</button>
+            </form>
+            {% else %}
+            <div class="kiosk-setpoint t-value">{{ setpoint.temperature_c|grad }} °C</div>
+            {% endif %}
+            <div class="t-quiet">{{ setpoint.reason }} · Betriebsart: {{ zone.operating_mode.label }}</div>
+
+            {% if error and error_zone_id == zone.id|string %}
+            <div class="kiosk-error">{{ error }}</div>
+            {% endif %}
+
+            {% if zone.id in control_zone_ids %}
+            <form method="post" action="/kiosk/zones/{{ zone.id }}/boost">
+                <button class="btn btn-outline-secondary" type="submit">
+                    Nächste Schaltung vorziehen
+                </button>
+            </form>
+            {% endif %}
+        </article>
+        {% endfor %}
+    </div>
+    {% endif %}
+</div>
+</body>
+</html>

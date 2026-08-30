@@ -27,6 +27,7 @@ PROTECTED_PAGES = [
     "/users",
     "/groups",
     "/tokens",
+    "/kiosk-tokens",
     "/devices",
     "/zones",
     "/modes",
@@ -458,3 +459,76 @@ def test_every_link_and_form_on_a_rendered_page_leads_somewhere(
             if not _route_exists(angemeldeter_client.app, action):
                 dead.append(f"{path} -> POST {action}: keine solche Route")
     assert not dead, "Verweise, die ins Leere fuehren:\n  " + "\n  ".join(dead)
+
+def test_kiosk_link_leads_to_an_actual_dashboard(
+    client: TestClient, session: Session
+) -> None:
+    """The same gap this file exists for, applied to the kiosk entry link.
+
+    `/kiosk-tokens` hands out an address to paste into a tablet's browser. A token
+    that resolves but leads to a blank or broken page would satisfy every unit test
+    that only checks the redirect target exists -- this follows the redirect and
+    reads the rendered page, the way `test_login_leads_to_an_existing_page` does for
+    the ordinary login.
+    """
+    from tests.helpers import source, user_with_permissions
+    from thermoctl.domain.kiosk import issue_kiosk_token
+
+    create_settings(session)
+    source(session, "kiosk")
+    zone = create_zone(session, "wandtablett")
+    admin = user_with_permissions(
+        session, "kiosk-admin",
+        [("zone.read", None), ("setpoint.write", None), ("override.create", None)],
+    )
+    _token, plaintext = issue_kiosk_token(
+        session, admin, "Flur", [zone.id], control_allowed=True, expires_at=None
+    )
+
+    entry = client.get(f"/kiosk/{plaintext}", follow_redirects=False)
+    assert entry.status_code == 303
+    assert entry.headers["location"] == "/kiosk"
+    assert "thermoctl_kiosk" in entry.cookies
+
+    dashboard = client.get("/kiosk")
+    assert dashboard.status_code == 200
+    assert zone.display_name in dashboard.text
+
+
+def test_the_new_zone_form_posts_to_a_real_endpoint(
+    angemeldeter_client: TestClient, session: Session
+) -> None:
+    """Found by actually clicking through the kiosk feature's own setup: `zone_form.html`
+    still posted to `/zonen` -- a leftover from before the English rename -- while the
+    router only ever answered `/zones`. Every other link on the same page (Abbrechen,
+    Löschen) had already been renamed; only the form's own `action` was missed. Nothing
+    in the suite caught it, because the smoke test's link guard only follows `href=`,
+    never a form's `action`, and this form was never posted end to end anywhere else.
+    """
+    from sqlalchemy import select
+
+    from tests.helpers import operating_mode
+    from thermoctl.db.models.zone import Zone
+
+    create_settings(session)
+    kind = operating_mode(session)
+    page = angemeldeter_client.get("/zones/new")
+    assert page.status_code == 200
+    action = re.search(r'<form method="post" action="([^"]+)"', page.text)
+    assert action is not None, "Kein Formular auf /zones/new gefunden"
+
+    # The operating mode goes out as its **id**, which is what the rendered `<option
+    # value=…>` carries -- posting the code `"auto"` would fail the form's own check
+    # and look exactly like a broken route while telling nothing about one.
+    response = angemeldeter_client.post(
+        action.group(1),
+        data={
+            "name": "smoketestzone", "display_name": "Smoketestzone",
+            "operating_mode": str(kind.id), "sort_order": "0",
+            "temperature_source_device_id": "",
+        },
+        headers=_csrf(angemeldeter_client),
+        follow_redirects=False,
+    )
+    assert response.status_code != 404, f"{action.group(1)} fuehrt ins Leere"
+    assert session.scalar(select(Zone).filter_by(name="smoketestzone")) is not None
