@@ -15,7 +15,7 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from thermoctl.auth.dependencies import aktueller_principal, csrf_schutz, get_session
+from thermoctl.auth.dependencies import csrf_protection, current_principal, get_session
 from thermoctl.db.base import utcnow
 from thermoctl.db.models.credential import ApiToken
 from thermoctl.db.models.identity import User
@@ -24,12 +24,12 @@ from thermoctl.domain.administration import revoke_token
 from thermoctl.domain.authz import require
 from thermoctl.domain.kiosk import KioskError, issue_kiosk_token, kiosk_scope
 from thermoctl.domain.principal import Principal
-from thermoctl.web import ist_teilaustausch
+from thermoctl.web import is_partial_swap
 from thermoctl.web.forms import FormError, form_again
 
 # `include_in_schema=False`: see the same note in every other HTML-only router --
 # these are pages for humans, not the REST contract described under /docs.
-router = APIRouter(dependencies=[Depends(csrf_schutz)], include_in_schema=False)
+router = APIRouter(dependencies=[Depends(csrf_protection)], include_in_schema=False)
 
 
 def _kiosk_token_list(
@@ -60,14 +60,14 @@ def _kiosk_token_list(
         zones=session.scalars(select(Zone).order_by(Zone.sort_order, Zone.name)).all(),
         plaintext=plaintext,
         hint=hint,
-        ist_htmx=ist_teilaustausch(request),
+        ist_htmx=is_partial_swap(request),
     )
 
 
 @router.get("/kiosk-tokens")
 async def kiosk_token_list(
     request: Request,
-    principal: Annotated[Principal, Depends(aktueller_principal)],
+    principal: Annotated[Principal, Depends(current_principal)],
     session: Annotated[Session, Depends(get_session)],
 ) -> Response:
     require(principal, "token.manage")
@@ -77,7 +77,7 @@ async def kiosk_token_list(
 @router.post("/kiosk-tokens")
 async def kiosk_token_issue_view(
     request: Request,
-    principal: Annotated[Principal, Depends(aktueller_principal)],
+    principal: Annotated[Principal, Depends(current_principal)],
     session: Annotated[Session, Depends(get_session)],
     name: Annotated[str, Form()] = "",
     control_allowed: Annotated[str, Form()] = "",
@@ -101,16 +101,16 @@ async def kiosk_token_issue_view(
             values,
         )
 
-    # `aktueller_principal` always resolves to an existing, active user -- see the
+    # `current_principal` always resolves to an existing, active user -- see the
     # identical comment on `/tokens` in admin_views.py.
-    besitzer = session.get(User, principal.user_id)
-    if besitzer is None:  # pragma: no cover
+    owner = session.get(User, principal.user_id)
+    if owner is None:  # pragma: no cover
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Nur fuer angemeldete Benutzer")
 
     expiry = utcnow() + timedelta(days=int(valid_days)) if valid_days else None
     try:
         _token, plaintext = issue_kiosk_token(
-            session, besitzer, name, zone_ids,
+            session, owner, name, zone_ids,
             # A checkbox that is left unchecked sends no field at all -- `bool("")`
             # is therefore exactly the right test, not a comparison against a
             # specific value the switch never actually sends.
@@ -125,12 +125,12 @@ async def kiosk_token_issue_view(
 async def kiosk_token_revoke_view(
     request: Request,
     token_id: int,
-    principal: Annotated[Principal, Depends(aktueller_principal)],
+    principal: Annotated[Principal, Depends(current_principal)],
     session: Annotated[Session, Depends(get_session)],
 ) -> Response:
     require(principal, "token.manage")
     token = session.get(ApiToken, token_id)
     if token is None or not token.is_kiosk:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Kiosk-Token nicht gefunden")
-    revoke_token(session, token, akteur_id=principal.user_id)
+    revoke_token(session, token, actor_id=principal.user_id)
     return RedirectResponse("/kiosk-tokens", status_code=status.HTTP_303_SEE_OTHER)

@@ -12,12 +12,12 @@ def create_engine_from_settings(settings: Settings) -> Engine:
     if engine.dialect.name == "sqlite":
 
         @event.listens_for(engine, "connect")
-        def _sqlite_verbindung_vorbereiten(dbapi_connection, connection_record) -> None:  # type: ignore[no-untyped-def]
+        def _prepare_sqlite_connection(dbapi_connection, connection_record) -> None:  # type: ignore[no-untyped-def]
             # 1. SQLite otherwise does not check foreign keys at all. Without this, tests
             #    pass that would fail on a violation under MariaDB.
-            zeiger = dbapi_connection.cursor()
-            zeiger.execute("PRAGMA foreign_keys=ON")
-            zeiger.close()
+            cursor = dbapi_connection.cursor()
+            cursor.execute("PRAGMA foreign_keys=ON")
+            cursor.close()
             # 2. The pysqlite driver does not begin transactions on its own and commits
             #    on its own initiative in between. This means SAVEPOINT and rollback do
             #    not take hold: data written survives a rollback and leaks into the next

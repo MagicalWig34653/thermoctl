@@ -126,7 +126,7 @@ def test_arming_through_the_interface(
     client = client_als(ALL_PERMISSIONS)
     response = client.post(
         "/control/arm",
-        data={"armed": "ja", "begruendung": "Vier Tage Schattenlauf verglichen"},
+        data={"armed": "yes", "reason": "Vier Tage Schattenlauf verglichen"},
         headers=_csrf(client),
         follow_redirects=False,
     )
@@ -146,7 +146,7 @@ def test_without_control_arm_the_installation_stays_in_dry_run(
     client = client_als([("zone.read", None), ("setting.manage", None)])
     response = client.post(
         "/control/arm",
-        data={"armed": "ja", "begruendung": "trotzdem"},
+        data={"armed": "yes", "reason": "trotzdem"},
         headers=_csrf(client),
         follow_redirects=False,
     )
@@ -160,7 +160,7 @@ def test_a_missing_justification_returns_to_the_form(
     create_settings(session)
     client = client_als(ALL_PERMISSIONS)
     response = client.post(
-        "/control/arm", data={"armed": "ja", "begruendung": ""},
+        "/control/arm", data={"armed": "yes", "reason": ""},
         headers=_csrf(client),
     )
     assert response.status_code == 200

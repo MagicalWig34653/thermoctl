@@ -28,7 +28,7 @@ from thermoctl.auth.dependencies import get_session
 from thermoctl.auth.kiosk import (
     KIOSK_COOKIE_NAME,
     KIOSK_CSRF_COOKIE_NAME,
-    kiosk_csrf_schutz,
+    kiosk_csrf_protection,
     kiosk_token_from_cookie,
 )
 from thermoctl.auth.tokens import resolve_token
@@ -45,7 +45,7 @@ from thermoctl.domain.remote_control import boost as domain_boost
 from thermoctl.domain.schedule import resolved_setpoint
 from thermoctl.web import templates
 
-router = APIRouter(dependencies=[Depends(kiosk_csrf_schutz)], include_in_schema=False)
+router = APIRouter(dependencies=[Depends(kiosk_csrf_protection)], include_in_schema=False)
 
 # A year: long enough that nobody re-scans a QR code every few weeks, short enough
 # that a forgotten, still-bookmarked tablet does not outlive every other credential in
@@ -163,7 +163,7 @@ async def kiosk_dashboard(
     principal = principal_for_token(session, token)
     return _dashboard(
         request, session, principal,
-        error=request.query_params.get("fehler"),
+        error=request.query_params.get("error"),
         error_zone_id=request.query_params.get("zone_id"),
     )
 
@@ -190,19 +190,19 @@ async def kiosk_adjust_setpoint(
         return _invalid_page(request)
     require(principal, "setpoint.write", zone.id)
 
-    if direction not in ("hoch", "runter"):
+    if direction not in ("up", "down"):
         return _dashboard(
             request, session, principal,
             error="Unbekannte Richtung.", error_zone_id=str(zone_id),
         )
 
     now = utcnow()
-    aktuell = resolved_setpoint(session, zone, now).temperature_c
-    neu = aktuell + (THERMOSTAT_STEP if direction == "hoch" else -THERMOSTAT_STEP)
+    current = resolved_setpoint(session, zone, now).temperature_c
+    updated = current + (THERMOSTAT_STEP if direction == "up" else -THERMOSTAT_STEP)
     try:
-        set_setpoint(session, zone, neu, now, token_id=principal.token_id, source="kiosk")
+        set_setpoint(session, zone, updated, now, token_id=principal.token_id, source="kiosk")
     except DomainError as exc:
-        query = urlencode({"fehler": exc.notice, "zone_id": zone_id})
+        query = urlencode({"error": exc.notice, "zone_id": zone_id})
         return RedirectResponse(f"/kiosk?{query}", status_code=status.HTTP_303_SEE_OTHER)
     return RedirectResponse("/kiosk", status_code=status.HTTP_303_SEE_OTHER)
 
@@ -225,6 +225,6 @@ async def kiosk_boost(
     try:
         domain_boost(session, zone, utcnow(), token_id=principal.token_id, source="kiosk")
     except RemoteControlError as exc:
-        query = urlencode({"fehler": str(exc), "zone_id": zone_id})
+        query = urlencode({"error": str(exc), "zone_id": zone_id})
         return RedirectResponse(f"/kiosk?{query}", status_code=status.HTTP_303_SEE_OTHER)
     return RedirectResponse("/kiosk", status_code=status.HTTP_303_SEE_OTHER)

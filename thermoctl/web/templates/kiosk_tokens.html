@@ -1,15 +1,15 @@
-{% extends "base.html" if not ist_htmx else "empty.html" %}
-{% from "form.html" import textfeld, zahlenfeld, umschalter, fehlerhinweis %}
-{% block titel %}Kiosk-Tokens – thermoctl{% endblock %}
-{% block inhalt %}
+{% extends "base.html" if not is_htmx else "empty.html" %}
+{% from "form.html" import text_field, number_field, toggle, error_notice %}
+{% block title %}Kiosk-Tokens – thermoctl{% endblock %}
+{% block content %}
 <section id="kiosk-token-list">
     <h1 class="mb-1">Kiosk-Tokens</h1>
-    <p class="t-leise mb-4">
+    <p class="t-quiet mb-4">
         Ein Kiosk-Token öffnet das Wandtablett-Dashboard unter <code>/kiosk/&lt;Token&gt;</code>
         — ohne Anmeldung, aber mit einem engen, jederzeit widerrufbaren Rechtesatz: sehen
         darf es nur die zugewiesenen Zonen, bedienen nur, wenn das hier erlaubt wird.
     </p>
-    {{ fehlerhinweis(hint) }}
+    {{ error_notice(hint) }}
 
     {% if plaintext %}
     <div class="alert alert-success" role="alert">
@@ -60,7 +60,7 @@
         </tr>
         {% endfor %}
         {% if not token %}
-        <tr><td colspan="6" class="t-leise">Noch kein Kiosk-Token ausgestellt.</td></tr>
+        <tr><td colspan="6" class="t-quiet">Noch kein Kiosk-Token ausgestellt.</td></tr>
         {% endif %}
         </tbody>
     </table>
@@ -68,8 +68,8 @@
 
     <h2 class="h5 mt-4">Kiosk-Token ausstellen</h2>
     <form method="post" action="/kiosk-tokens">
-        {{ textfeld("name", "Name", values.get("name", ""), pflicht=true,
-                    hilfe="Zum Beispiel 'Tablet Flur' — später ist der Name das Einzige, "
+        {{ text_field("name", "Name", values.get("name", ""), required=true,
+                    help_text="Zum Beispiel 'Tablet Flur' — später ist der Name das Einzige, "
                           "woran Sie das Gerät wiedererkennen.",
                     errors=errors.get("name", "")) }}
         <div class="mb-3">
@@ -86,13 +86,13 @@
             <div class="text-danger small mt-1">{{ errors.get("zone_id", "") }}</div>
             {% endif %}
         </div>
-        {{ umschalter("control_allowed", "Auch bedienen (Sollwert und Boost)", an=false,
-                      hilfe="Ohne diesen Haken zeigt das Dashboard nur an. Eine nicht "
+        {{ toggle("control_allowed", "Auch bedienen (Sollwert und Boost)", checked=false,
+                      help_text="Ohne diesen Haken zeigt das Dashboard nur an. Eine nicht "
                             "angehakte Checkbox schickt gar kein Feld -- die Auswertung "
                             "prueft daher nur, ob ueberhaupt ein Wert ankam.") }}
-        {{ zahlenfeld("valid_days", "Gültig für (Tage)", values.get("valid_days", ""),
+        {{ number_field("valid_days", "Gültig für (Tage)", values.get("valid_days", ""),
                       step="1", min="1",
-                      hilfe="Leer lassen für unbegrenzt. Ein befristetes Token ist die "
+                      help_text="Leer lassen für unbegrenzt. Ein befristetes Token ist die "
                             "sicherere Wahl.") }}
         <button type="submit" class="btn btn-primary">Ausstellen</button>
     </form>

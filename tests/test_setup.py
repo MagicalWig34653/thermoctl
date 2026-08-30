@@ -3,15 +3,15 @@ from sqlalchemy.orm import Session
 
 from thermoctl.db.models.identity import AccessGroup, User
 from thermoctl.db.models.operations import Setting
-from thermoctl.setup import einrichtung_noetig, setup_token_erzeugen
+from thermoctl.setup import create_setup_token, setup_needed
 
 
 def test_without_a_user_setup_is_needed(session: Session) -> None:
-    assert einrichtung_noetig(session) is True
+    assert setup_needed(session) is True
 
 
 def test_with_a_user_it_is_no_longer_needed(session: Session, user) -> None:
-    assert einrichtung_noetig(session) is False
+    assert setup_needed(session) is False
 
 
 def test_setup_without_a_token_is_rejected(client: TestClient, session: Session) -> None:
@@ -23,7 +23,7 @@ def test_setup_without_a_token_is_rejected(client: TestClient, session: Session)
 
 
 def test_setup_with_the_wrong_token_is_rejected(client: TestClient, session: Session) -> None:
-    setup_token_erzeugen(session)
+    create_setup_token(session)
     response = client.post("/setup", data={"username": "lino", "display_name": "Lino",
                                           "password": "passwort-lang-genug",
                                           "timezone": "Europe/Berlin",
@@ -34,7 +34,7 @@ def test_setup_with_the_wrong_token_is_rejected(client: TestClient, session: Ses
 
 def test_setup_creates_the_administrator_groups_and_settings(client: TestClient,
                                                            session: Session) -> None:
-    marker = setup_token_erzeugen(session)
+    marker = create_setup_token(session)
     response = client.post("/setup", data={"username": "lino", "display_name": "Lino",
                                           "password": "passwort-lang-genug",
                                           "timezone": "Europe/Berlin", "setup_token": marker},
@@ -48,7 +48,7 @@ def test_setup_creates_the_administrator_groups_and_settings(client: TestClient,
 
 
 def test_setup_token_can_only_be_used_once(client: TestClient, session: Session) -> None:
-    marker = setup_token_erzeugen(session)
+    marker = create_setup_token(session)
     data = {"username": "a", "display_name": "A", "password": "passwort-lang-genug",
              "timezone": "Europe/Berlin", "setup_token": marker}
     client.post("/setup", data=data)
@@ -67,7 +67,7 @@ def test_setup_is_closed_after_completion(client: TestClient, session: Session,
 
 
 def test_the_first_user_is_an_administrator(client: TestClient, session: Session) -> None:
-    marker = setup_token_erzeugen(session)
+    marker = create_setup_token(session)
     client.post("/setup", data={"username": "lino", "display_name": "Lino",
                                 "password": "passwort-lang-genug",
                                 "timezone": "Europe/Berlin", "setup_token": marker})
@@ -82,7 +82,7 @@ def test_the_first_user_is_an_administrator(client: TestClient, session: Session
 def test_setup_token_does_not_appear_in_plaintext_in_the_database(session: Session) -> None:
     from thermoctl.db.models.credential import SetupToken
 
-    marker = setup_token_erzeugen(session)
+    marker = create_setup_token(session)
     assert session.query(SetupToken).one().token_hash != marker
 
 
@@ -92,7 +92,7 @@ def test_setup_with_a_too_short_password_returns_to_the_form(
     """PasswordTooShort must not reach the caller as a 500 -- it is an input
     error, not a service fault. Fields already filled in (except the
     password) are kept in the form."""
-    marker = setup_token_erzeugen(session)
+    marker = create_setup_token(session)
     response = client.post(
         "/setup",
         data={"username": "lino", "display_name": "Lino", "password": "zukurz",
@@ -125,16 +125,16 @@ def test_setup_is_also_possible_only_once_in_the_domain(session: Session) -> Non
     """
     import pytest
 
-    from thermoctl.setup import einrichtung_durchfuehren, setup_token_erzeugen
+    from thermoctl.setup import create_setup_token, run_setup
 
-    marker = setup_token_erzeugen(session)
-    einrichtung_durchfuehren(
+    marker = create_setup_token(session)
+    run_setup(
         session, username="erster", display_name="Erster",
         password="passwort-lang-genug", timezone_name="Europe/Berlin", token=marker,
     )
-    second_marker = setup_token_erzeugen(session)
+    second_marker = create_setup_token(session)
     with pytest.raises(PermissionError, match="bereits abgeschlossen"):
-        einrichtung_durchfuehren(
+        run_setup(
             session, username="zweiter", display_name="Zweiter",
             password="passwort-lang-genug", timezone_name="Europe/Berlin", token=second_marker,
         )
@@ -183,7 +183,7 @@ def test_post_login_without_a_user_is_not_redirected(
     """Deliberately only GET is redirected: a submitted login attempt should
     keep its identical error message, rather than letting the redirect
     target give away what the service knows about the username."""
-    monkeypatch.setattr("thermoctl.web.auth_views.schlafen", lambda _: None)
+    monkeypatch.setattr("thermoctl.web.auth_views.sleep", lambda _: None)
     response = client.post(
         "/login",
         data={"username": "gibtsnicht", "password": "falsch-aber-lang"},

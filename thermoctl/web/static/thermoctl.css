@@ -28,67 +28,67 @@
 :root {
     color-scheme: light;
 
-    --grund: #f4f6f7;
-    --flaeche: #ffffff;
-    --flaeche-tief: #eceff1;
-    --tinte: #15181b;
-    --gedaempft: #5b656e;
-    --linie: #dde2e6;
-    --linie-stark: #c3cbd2;
+    --ground: #f4f6f7;
+    --surface: #ffffff;
+    --surface-deep: #eceff1;
+    --ink: #15181b;
+    --muted: #5b656e;
+    --line: #dde2e6;
+    --line-strong: #c3cbd2;
 
     /* Die einzigen gesättigten Töne. Beide bedeuten etwas. */
-    --waerme: #b4562f;
-    --waerme-flaeche: #f6e3da;
-    --kuehle: #3a6a89;
-    --kuehle-flaeche: #dfeaf1;
-    --warnung: #8a6212;
-    --warnung-flaeche: #f7ecd2;
+    --warmth: #b4562f;
+    --warmth-area: #f6e3da;
+    --cool: #3a6a89;
+    --cool-area: #dfeaf1;
+    --warning: #8a6212;
+    --warning-area: #f7ecd2;
 
-    --schrift-ui: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue",
+    --font-ui: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue",
         Arial, sans-serif;
-    --schrift-instrument: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+    --font-instrument: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
         "Liberation Mono", monospace;
 
-    --rundung: 6px;
-    --rundung-klein: 4px;
+    --radius: 6px;
+    --radius-small: 4px;
 }
 
 [data-bs-theme="dark"] {
     color-scheme: dark;
 
-    --grund: #121517;
-    --flaeche: #1a1e21;
-    --flaeche-tief: #24292d;
-    --tinte: #e6eaed;
-    --gedaempft: #9aa4ad;
-    --linie: #2b3136;
-    --linie-stark: #3c444b;
+    --ground: #121517;
+    --surface: #1a1e21;
+    --surface-deep: #24292d;
+    --ink: #e6eaed;
+    --muted: #9aa4ad;
+    --line: #2b3136;
+    --line-strong: #3c444b;
 
-    --waerme: #dd8055;
-    --waerme-flaeche: #3a2419;
-    --kuehle: #79aecd;
-    --kuehle-flaeche: #16272f;
-    --warnung: #d8a743;
-    --warnung-flaeche: #2f2612;
+    --warmth: #dd8055;
+    --warmth-area: #3a2419;
+    --cool: #79aecd;
+    --cool-area: #16272f;
+    --warning: #d8a743;
+    --warning-area: #2f2612;
 }
 
 body {
-    background: var(--grund);
-    color: var(--tinte);
-    font-family: var(--schrift-ui);
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--font-ui);
     -webkit-font-smoothing: antialiased;
 }
 
 /* ── Typografie ─────────────────────────────────────────────────────────────── */
 
-h1, .t-titel {
+h1, .t-title {
     font-size: 1.6rem;
     font-weight: 620;
     letter-spacing: -0.015em;
     text-wrap: balance;
 }
 
-h2, .t-abschnitt {
+h2, .t-section {
     font-size: 1.05rem;
     font-weight: 600;
     letter-spacing: -0.005em;
@@ -96,51 +96,51 @@ h2, .t-abschnitt {
 
 /* Kleine Grossbuchstaben-Marke. Sparsam: Sie beschriftet Abschnitte, sie schmückt sie
    nicht. */
-.t-marke {
+.t-label {
     font-size: 0.6875rem;
     font-weight: 640;
     letter-spacing: 0.1em;
     text-transform: uppercase;
-    color: var(--gedaempft);
+    color: var(--muted);
 }
 
-.t-leise {
-    color: var(--gedaempft);
+.t-quiet {
+    color: var(--muted);
 }
 
 /* Das Instrument-Register: alles, was ein Messwert ist. */
-.t-wert {
-    font-family: var(--schrift-instrument);
+.t-value {
+    font-family: var(--font-instrument);
     font-variant-numeric: tabular-nums;
     letter-spacing: -0.02em;
 }
 
-.t-gross {
+.t-large {
     font-size: 2rem;
     font-weight: 500;
     line-height: 1;
 }
 
-.t-einheit {
+.t-unit {
     font-size: 0.55em;
     font-weight: 400;
-    color: var(--gedaempft);
+    color: var(--muted);
     margin-left: 0.15em;
 }
 
 /* ── Navigation ─────────────────────────────────────────────────────────────── */
 
 .tc-head {
-    background: color-mix(in srgb, var(--flaeche) 72%, transparent);
+    background: color-mix(in srgb, var(--surface) 72%, transparent);
     backdrop-filter: blur(12px) saturate(140%);
     -webkit-backdrop-filter: blur(12px) saturate(140%);
-    border-bottom: 1px solid var(--linie);
+    border-bottom: 1px solid var(--line);
 }
 
 .tc-marker {
     font-weight: 640;
     letter-spacing: -0.02em;
-    color: var(--tinte);
+    color: var(--ink);
     text-decoration: none;
 }
 
@@ -153,31 +153,31 @@ h2, .t-abschnitt {
     margin-right: 0.5rem;
     vertical-align: -0.1em;
     border-radius: 2px;
-    background: linear-gradient(to top, var(--kuehle), var(--waerme));
+    background: linear-gradient(to top, var(--cool), var(--warmth));
 }
 
 .tc-head .nav-link {
-    color: var(--gedaempft);
+    color: var(--muted);
     font-weight: 520;
     padding-inline: 0.7rem;
 }
 
 .tc-head .nav-link:hover,
 .tc-head .nav-link:focus-visible {
-    color: var(--tinte);
+    color: var(--ink);
 }
 
 .tc-head .nav-link.tc-here {
-    color: var(--tinte);
-    box-shadow: inset 0 -2px 0 var(--tinte);
+    color: var(--ink);
+    box-shadow: inset 0 -2px 0 var(--ink);
 }
 
 /* ── Flächen ────────────────────────────────────────────────────────────────── */
 
 .tc-panel {
-    background: var(--flaeche);
-    border: 1px solid var(--linie);
-    border-radius: var(--rundung);
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
 }
 
 /* Die Systemzeile ganz oben: ein Satz über den Zustand der ganzen Anlage. */
@@ -187,14 +187,14 @@ h2, .t-abschnitt {
     align-items: center;
     gap: 0.5rem 1.25rem;
     padding: 0.7rem 1rem;
-    border-radius: var(--rundung);
-    border: 1px solid var(--linie);
-    background: var(--flaeche);
+    border-radius: var(--radius);
+    border: 1px solid var(--line);
+    background: var(--surface);
 }
 
 .tc-system-row.tc-armed {
-    border-color: color-mix(in srgb, var(--waerme) 45%, var(--linie));
-    background: var(--waerme-flaeche);
+    border-color: color-mix(in srgb, var(--warmth) 45%, var(--line));
+    background: var(--warmth-area);
 }
 
 /* ── Zustandsmarken ─────────────────────────────────────────────────────────── */
@@ -204,7 +204,7 @@ h2, .t-abschnitt {
     align-items: center;
     gap: 0.35rem;
     padding: 0.15rem 0.5rem;
-    border-radius: var(--rundung-klein);
+    border-radius: var(--radius-small);
     font-size: 0.75rem;
     font-weight: 600;
     line-height: 1.4;
@@ -213,27 +213,27 @@ h2, .t-abschnitt {
 }
 
 .tc-chip-warm {
-    color: var(--waerme);
-    background: var(--waerme-flaeche);
-    border-color: color-mix(in srgb, var(--waerme) 25%, transparent);
+    color: var(--warmth);
+    background: var(--warmth-area);
+    border-color: color-mix(in srgb, var(--warmth) 25%, transparent);
 }
 
 .tc-chip-cool {
-    color: var(--kuehle);
-    background: var(--kuehle-flaeche);
-    border-color: color-mix(in srgb, var(--kuehle) 25%, transparent);
+    color: var(--cool);
+    background: var(--cool-area);
+    border-color: color-mix(in srgb, var(--cool) 25%, transparent);
 }
 
 .tc-chip-warning {
-    color: var(--warnung);
-    background: var(--warnung-flaeche);
-    border-color: color-mix(in srgb, var(--warnung) 30%, transparent);
+    color: var(--warning);
+    background: var(--warning-area);
+    border-color: color-mix(in srgb, var(--warning) 30%, transparent);
 }
 
 .tc-chip-quiet {
-    color: var(--gedaempft);
-    background: var(--flaeche-tief);
-    border-color: var(--linie);
+    color: var(--muted);
+    background: var(--surface-deep);
+    border-color: var(--line);
 }
 
 /* Ein Punkt, der pulst, solange wirklich geheizt wird. Das einzige bewegte Element im
@@ -273,17 +273,17 @@ h2, .t-abschnitt {
 .tc-track {
     position: relative;
     height: 2.25rem;
-    border-radius: var(--rundung-klein);
-    background: var(--flaeche-tief);
+    border-radius: var(--radius-small);
+    background: var(--surface-deep);
     overflow: hidden;
-    border: 1px solid var(--linie);
+    border: 1px solid var(--line);
 }
 
 .tc-track-segment {
     position: absolute;
     top: 0;
     bottom: 0;
-    border-right: 1px solid color-mix(in srgb, var(--flaeche) 55%, transparent);
+    border-right: 1px solid color-mix(in srgb, var(--surface) 55%, transparent);
 }
 
 .tc-track-segment:last-child {
@@ -304,8 +304,8 @@ h2, .t-abschnitt {
     top: -2px;
     bottom: -2px;
     width: 2px;
-    background: var(--tinte);
-    box-shadow: 0 0 0 1px color-mix(in srgb, var(--flaeche) 70%, transparent);
+    background: var(--ink);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--surface) 70%, transparent);
     z-index: 2;
 }
 
@@ -328,7 +328,7 @@ h2, .t-abschnitt {
     gap: 1.25rem;
     align-items: center;
     padding: 1rem 1.15rem;
-    border-bottom: 1px solid var(--linie);
+    border-bottom: 1px solid var(--line);
 }
 
 .tc-zone:last-child {
@@ -337,7 +337,7 @@ h2, .t-abschnitt {
 
 .tc-zone-name {
     font-weight: 600;
-    color: var(--tinte);
+    color: var(--ink);
     text-decoration: none;
 }
 
@@ -415,38 +415,38 @@ body {
 }
 
 .form-control, .form-select {
-    border-color: var(--linie-stark);
+    border-color: var(--line-strong);
 }
 
 /* Bootstraps `secondary` ist im dunklen Schema fast unsichtbar. Beide Varianten
    nehmen deshalb die eigenen Linien- und Textfarben. */
 .btn-outline-secondary {
-    --bs-btn-color: var(--tinte);
-    --bs-btn-border-color: var(--linie-stark);
-    --bs-btn-hover-color: var(--tinte);
-    --bs-btn-hover-bg: var(--flaeche-tief);
-    --bs-btn-hover-border-color: var(--linie-stark);
-    --bs-btn-active-color: var(--tinte);
-    --bs-btn-active-bg: var(--flaeche-tief);
-    --bs-btn-active-border-color: var(--linie-stark);
+    --bs-btn-color: var(--ink);
+    --bs-btn-border-color: var(--line-strong);
+    --bs-btn-hover-color: var(--ink);
+    --bs-btn-hover-bg: var(--surface-deep);
+    --bs-btn-hover-border-color: var(--line-strong);
+    --bs-btn-active-color: var(--ink);
+    --bs-btn-active-bg: var(--surface-deep);
+    --bs-btn-active-border-color: var(--line-strong);
 }
 
 :focus-visible {
-    outline: 2px solid var(--kuehle);
+    outline: 2px solid var(--cool);
     outline-offset: 2px;
 }
 
 /* Bootstraps Warngelb passt nicht zum Messing dieser Oberflaeche. Es bleibt als Signal
    erhalten -- "sieh genau hin" --, nur im richtigen Ton. */
 .btn-warning {
-    --bs-btn-bg: var(--warnung-flaeche);
-    --bs-btn-border-color: color-mix(in srgb, var(--warnung) 45%, transparent);
-    --bs-btn-color: var(--warnung);
-    --bs-btn-hover-bg: color-mix(in srgb, var(--warnung) 18%, var(--warnung-flaeche));
-    --bs-btn-hover-border-color: var(--warnung);
-    --bs-btn-hover-color: var(--warnung);
-    --bs-btn-active-bg: color-mix(in srgb, var(--warnung) 18%, var(--warnung-flaeche));
-    --bs-btn-active-color: var(--warnung);
+    --bs-btn-bg: var(--warning-area);
+    --bs-btn-border-color: color-mix(in srgb, var(--warning) 45%, transparent);
+    --bs-btn-color: var(--warning);
+    --bs-btn-hover-bg: color-mix(in srgb, var(--warning) 18%, var(--warning-area));
+    --bs-btn-hover-border-color: var(--warning);
+    --bs-btn-hover-color: var(--warning);
+    --bs-btn-active-bg: color-mix(in srgb, var(--warning) 18%, var(--warning-area));
+    --bs-btn-active-color: var(--warning);
 }
 
 /* Die dritte und letzte Bedeutung von Farbe: "das loescht etwas". Sie erscheint
@@ -489,7 +489,7 @@ body {
 
 /* Die Bereichsmarke traegt sonst Bootstraps Absatzabstand von einem ganzen rem und
    schiebt den ersten Knoten von den Pfeilen weg. */
-.tc-flow-column > .t-marke {
+.tc-flow-column > .t-label {
     margin-bottom: 0.1rem;
 }
 
@@ -503,7 +503,7 @@ body {
     align-self: start;
     width: 2.5rem;
     height: 1px;
-    background: var(--linie-stark);
+    background: var(--line-strong);
     position: relative;
     /* Auf die Mitte des ersten Knotens: Marke (rund 1,1rem) plus die halbe Hoehe einer
        Karte. Ein `align-items: center` ueber die ganze Spalte waere falsch, sobald eine
@@ -517,16 +517,16 @@ body {
     position: absolute;
     right: 0;
     top: -4px;
-    border-left: 7px solid var(--linie-stark);
+    border-left: 7px solid var(--line-strong);
     border-top: 4.5px solid transparent;
     border-bottom: 4.5px solid transparent;
 }
 
 .tc-node {
-    border: 1px solid var(--linie);
-    border-left: 3px solid var(--linie-stark);
-    border-radius: var(--rundung-klein);
-    background: var(--flaeche);
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--line-strong);
+    border-radius: var(--radius-small);
+    background: var(--surface);
     padding: 0.45rem 0.6rem;
 }
 
@@ -537,23 +537,23 @@ body {
 
 /* Die Farbe sagt, was der Knoten in der Kette ist -- Messung ist kuehl, Schalten ist
    warm, die Zone dazwischen bleibt neutral. Dieselbe Sprache wie ueberall. */
-.tc-node-sensor { border-left-color: var(--kuehle); }
-.tc-node-contact { border-left-color: var(--warnung); }
-.tc-node-actuator { border-left-color: var(--waerme); }
+.tc-node-sensor { border-left-color: var(--cool); }
+.tc-node-contact { border-left-color: var(--warning); }
+.tc-node-actuator { border-left-color: var(--warmth); }
 .tc-node-zone {
-    border-left-color: var(--tinte);
-    background: var(--flaeche-tief);
+    border-left-color: var(--ink);
+    background: var(--surface-deep);
 }
-.tc-node-display { border-left-color: var(--linie-stark); }
-.tc-node-free { border-left-color: var(--linie-stark); }
+.tc-node-display { border-left-color: var(--line-strong); }
+.tc-node-free { border-left-color: var(--line-strong); }
 
 /* Eine Luecke ist kein Kasten mit leerem Inhalt, sondern sichtbar keiner: gestrichelt
    und in Warnfarbe. Ein leerer Kasten sieht aus wie ein Geraet ohne Namen. */
 .tc-node-gap {
-    border: 1px dashed color-mix(in srgb, var(--warnung) 55%, var(--linie));
-    border-radius: var(--rundung-klein);
+    border: 1px dashed color-mix(in srgb, var(--warning) 55%, var(--line));
+    border-radius: var(--radius-small);
     padding: 0.45rem 0.6rem;
-    color: var(--warnung);
+    color: var(--warning);
     font-size: 0.8rem;
     background: none;
 }
@@ -573,16 +573,16 @@ body {
    waehrend des Ziehens: Ein Ziel, das erst erscheint, wenn man schon zieht, findet
    niemand, der nicht weiss, dass es da ist. */
 .tc-target {
-    border: 1px dashed var(--linie-stark);
-    border-radius: var(--rundung-klein);
+    border: 1px dashed var(--line-strong);
+    border-radius: var(--radius-small);
     padding: 0.5rem;
     transition: background-color .12s ease, border-color .12s ease;
 }
 
 .tc-target-active {
-    border-color: var(--waerme);
+    border-color: var(--warmth);
     border-style: solid;
-    background: var(--waerme-flaeche);
+    background: var(--warmth-area);
 }
 
 .tc-target-unfit {
@@ -629,14 +629,14 @@ body {
     display: flex;
     align-items: end;
     height: 5rem;
-    background: var(--flaeche-tief);
-    border-radius: var(--rundung-klein) var(--rundung-klein) 0 0;
+    background: var(--surface-deep);
+    border-radius: var(--radius-small) var(--radius-small) 0 0;
 }
 
 .tc-bar-value {
     width: 100%;
-    background: var(--waerme);
-    border-radius: var(--rundung-klein) var(--rundung-klein) 0 0;
+    background: var(--warmth);
+    border-radius: var(--radius-small) var(--radius-small) 0 0;
     min-height: 1px;
 }
 
@@ -662,8 +662,8 @@ body {
     cursor: pointer;
     display: inline-block;
     padding: 0.25rem 0.7rem;
-    border: 1px solid var(--linie-stark);
-    border-radius: var(--rundung-klein);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-small);
     font-size: 0.875rem;
     font-weight: 520;
 }
@@ -678,7 +678,7 @@ body {
     align-items: start;
     gap: 0.5rem 1.5rem;
     padding: 0.5rem 0;
-    border-top: 1px solid var(--linie);
+    border-top: 1px solid var(--line);
 }
 
 .tc-permission-marker {
@@ -729,8 +729,8 @@ body {
 
 .schedule-day {
     cursor: crosshair;
-    background: var(--flaeche-tief) !important;
-    border-color: var(--linie) !important;
+    background: var(--surface-deep) !important;
+    border-color: var(--line) !important;
 }
 
 /* Die Stelle, die ein Klick ins Anlege-Formular uebernommen hat. Sie steht im Gitter,
@@ -741,20 +741,20 @@ body {
     left: 0;
     right: 0;
     z-index: 3;
-    border-top: 2px dashed var(--waerme);
+    border-top: 2px dashed var(--warmth);
     font-size: 0.68rem;
     line-height: 1;
     padding-left: 0.15rem;
-    color: var(--waerme);
-    background: color-mix(in srgb, var(--flaeche) 75%, transparent);
+    color: var(--warmth);
+    background: color-mix(in srgb, var(--surface) 75%, transparent);
     pointer-events: none;
 }
 
 /* Die Farbe kommt aus der Vorlage (Solltemperatur des Modus), deshalb hier keine.
    Der Text steht auf hellen wie dunklen Flaechen -- Tinte statt Weiss. */
 .schedule-bar {
-    color: var(--tinte);
-    border-bottom-color: color-mix(in srgb, var(--tinte) 18%, transparent) !important;
+    color: var(--ink);
+    border-bottom-color: color-mix(in srgb, var(--ink) 18%, transparent) !important;
     line-height: 1.25;
 }
 

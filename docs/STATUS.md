@@ -61,6 +61,93 @@ Drei Brüche, die die Umbenennung erzeugte, und wie sie gefunden wurden:
   einfach nicht mehr an. Das fing ein Test. Wer künftig ein Feld eines Datenmodells
   umbenennt, greppt die Vorlagen nach dem alten Attributnamen.
 
+**Und noch ein Nachtrag: Der Rest war groesser als gedacht.** Eine zweite Zaehlung,
+diesmal jeden Bezeichner gegen ein Woerterbuch gehalten statt nach deutschen Woertern
+gesucht, fand rund 200 weitere. Dazu kamen die Stellen, die gar kein Python sind: die
+Kontextschluessel der Vorlagen (43), die Jinja-Makros und ihre Parameter, die CSS-Variablen
+(17), die vier JavaScript-Dateien mitsamt Kommentaren, und die Werte, die zwischen Vorlage
+und View verabredet sind (`ja`/`nein`, `naechste_schaltung`, `laeuft`/`eingerichtet`).
+Alles davon ist jetzt englisch. Der Nachweis ist derselbe wie oben: null Unterschiede in
+den 3036 Zeichenkettenliteralen unter `thermoctl/`.
+
+**Drei Defekte, die dabei ans Licht kamen — alle aelter als diese Umstellung:**
+
+- Das **Scharfschalt-Formular war kaputt.** Die View las `form.get("begruendung")`, die
+  Vorlage schickte seit der ersten Uebersetzung `name="reason"`. Scharfschalten verlangt
+  eine Begruendung, also waere jeder Versuch mit „Bitte kurz festhalten, worauf sich das
+  Scharfschalten stuetzt" abgeprallt — an einer Anlage, die niemand scharf schalten kann.
+- Die **Uebersteuerung auf der Startseite** schickte `naechste_schaltung`, `dauer`,
+  `dauerhaft`; die View kennt `next_switch`, `duration`, `permanent`. „Bis zur naechsten
+  Schaltung" und „fuer eine Dauer" fielen still auf „auf Widerruf" zurueck.
+- Die **Token-Gueltigkeit** und die **Uebersteuerungsdauer** lasen bei einer abgewiesenen
+  Eingabe Schluessel, die es nicht mehr gab (`gueltig_tage`, `dauer_minuten`) — das Feld
+  kam leer zurueck statt mit dem, was dort stand.
+
+Keiner der drei hatte einen roten Test. Alle drei fand erst der Abgleich Vorlage gegen
+View, den diese Umstellung erzwungen hat.
+
+**Eine Konfigurationsaenderung, die beim Umstieg zu beachten ist:**
+`THERMOCTL_MQTT_PRAEFIX` heisst jetzt `THERMOCTL_MQTT_PREFIX`. Wer eine `.env` hat, zieht
+das nach; sonst gilt wieder die Vorgabe `thermoctl` und der Dienst veroeffentlicht unter
+einem anderen Topic-Zweig als bisher.
+
+**Was der Vergleich der Bildschirmfotos gefangen hat:** Die CSS-Variablen und die Vorlagen
+gingen getrennt — `var(--warmth)` stand in der Vorlage, `--waerme` im Stylesheet. Die
+Zeitplan-Balken verloren dadurch ihre Waermefarbe und wurden grau. Kein Test hat das
+gesehen; die Seite antwortete mit 200 und sah nur anders aus.
+
+**Die Navigationsleiste zeigte ins Leere — auf jeder Seite.** `/zonen`, `/geraete`,
+`/steuerung`: alle drei seit der Endpunkt-Umstellung 404. Dazu die Formularziele zum
+Anlegen und Ändern einer Zone, eines Modus und zum Löschen — wer eine Zone anlegen wollte,
+bekam eine Fehlerseite. Die Anwendung sah dabei vollständig in Ordnung aus, solange man
+Adressen direkt eintippte, und genau das haben alle Prüfungen getan: die Bildschirmfotos,
+der Rauchtest und ich.
+
+Der vorhandene Verweis-Test liest den *Quelltext* der Vorlagen und überspringt alles, was
+`{{` oder `{%` enthält. Das ist fast alles: Die Navigationsleiste baut ihre Verweise über
+ein Makro, und jedes Formularziel setzt eine Zonen-Id ein. Die ganze Leiste war für ihn
+unsichtbar.
+
+Der neue Test liest stattdessen die **gerenderten** Seiten — dort sieht ein per Makro
+gebauter Verweis aus wie jeder andere — und folgt jedem `href`. Formularziele gleicht er
+gegen die Routentabelle ab, statt sie abzuschicken. Die erste Fassung schickte sie ab, mit
+leerem Rumpf, an jede Aktion jeder Seite; eine davon heißt „setze die Rechte dieser
+Gruppe", ein leerer Rumpf heißt „keine Rechte", und der Test entzog dem Konto, mit dem er
+angemeldet war, seine eigenen Rechte. Ein Test, der das verändert, was er prüft, berichtet
+über einen Zustand, den es nie gab.
+
+Beide Hälften sind von beiden Seiten gegengeprüft, und die Navigation ist danach im
+Browser einmal wirklich durchgeklickt worden — jeder Punkt der Leiste, jeder Eintrag des
+Untermenüs, jeder Reiter einer Zone.
+
+**Ein Waechter gegen genau diese Fehlerklasse.** Fuenfmal an einem Tag dasselbe
+Muster: Eine View wurde umbenannt, die Vorlage nicht, und Jinja beantwortet einen
+unbekannten Namen mit der leeren Zeichenkette. Die Seite antwortet weiter mit 200 und
+zeigt nur nichts mehr an — oder schickt, im schlimmeren Fall, einen Feldnamen, den die
+View nie liest, und das Anlegen tut still gar nichts.
+
+`tests/test_smoke_test.py` rendert jetzt jede Seite mit einem `Undefined`, das jeden
+*Zugriff* auf einen unbekannten Namen mitschreibt, und faellt beim ersten. Bewusst kein
+`StrictUndefined`: Etliche Vorlagen fragen zu Recht, ob ein optionaler Wert da ist. Rot
+wird nur, wer einen unbekannten Namen tatsaechlich *liest*.
+
+Der Waechter fand sofort den fuenften Fall: Die Modusauswahl im Zeitplan las
+`values.mode` und `errors.mode`, die View liefert `mode_id`. Der gewaehlte Modus kam nach
+einer abgewiesenen Eingabe nicht zurueck, und die Fehlermeldung am Feld erschien nie.
+Gegengeprueft von beiden Seiten: Mit dem alten Namen wird der Test rot, mit dem neuen
+gruen.
+
+**Der Rest, gefunden mit umgekehrter Suche.** Statt nach deutschen Woertern zu suchen,
+wurde jeder Bezeichner gegen ein Woerterbuch gehalten und alles Unbekannte angesehen. Das
+foerderte noch 23 Bezeichner zutage (`einordnung`, `abonnements`, `clientdaten`, `typ`,
+`roh`, `vorhanden`, …) und vier Makro-Parameter in den Vorlagen (`pflicht`, `typ`,
+`leer_erlaubt`, `an`). Damit ist der Vorrat leer: Was die Suche jetzt noch meldet, sind
+englische Woerter, die im Woerterbuch fehlen.
+
+Von 18 verglichenen Seiten sind 15 pixelgleich zur Fassung davor; zwei aendern sich schon
+zwischen zwei Aufnahmen desselben Standes (sie nennen Zeitspannen), und die dritte
+unterscheidet sich genau in dem umbenannten Variablennamen.
+
 Zehn der elf geprüften Seiten sind pixelgleich zu den Aufnahmen davor; die elfte
 unterscheidet sich in einem Satz, der eine Zeitspanne nennt.
 
@@ -70,6 +157,64 @@ einem Test, der die Daten über beide Richtungen hinweg verfolgt — `batch_alte
 die Tabelle unter SQLite neu, und eine misslungene Kopie sähe hinterher richtig aus und
 wäre leer). Dazu `NAMENSKONVENTION` → `NAMING_CONVENTION` und der JSON-Schlüssel der
 Passkey-Registrierung.
+
+## Zwei neue Fähigkeiten: Thermostatventile und die Sonne
+
+**Zigbee-Heizkörperthermostate (WT-A03E).** Ein Thermostatventil ist kein Schalter: Es hat
+gar keinen Schaltausgang, sondern wird über `system_mode` (`heat`/`off`) und
+`occupied_heating_setpoint` gefahren, 5–30 °C in halben Schritten. Beides bewegt ein echtes
+Ventil, also trägt die Nachricht `switches=True` und beide Riegel des Trockenlaufs greifen.
+
+Als Thermostat gilt ein Gerät nur, wenn es `occupied_heating_setpoint` **und** `system_mode`
+gemeinsam anbietet. Keines allein reicht: Einen Sollwert zeigt auch eine bloße Wandanzeige.
+Die Aktor-Stelle verlangt seither `switch` **oder** `thermostat` — welche Fähigkeit ein Gerät
+hat, entscheidet nur, welcher Adapter den Befehl baut, nicht ob es die Stelle füllen darf.
+
+**Sonnenprognose-Absenkung.** In der Übergangszeit heizt eine Dachwohnung morgens hoch,
+obwohl zwei Stunden später die Sonne durch die Dachfenster kommt. Verspricht die Vorhersage
+(Open-Meteo, kein Schlüssel nötig) in den nächsten Stunden nennenswerte Einstrahlung, wird
+der Sollwert abgesenkt — begrenzt durch eine Obergrenze in Kelvin und gewichtet mit einem
+Sonnenprofil je Zone (0 = gar nicht, etwa ein Nordzimmer; 1 = stark). Voreinstellung 0,
+also aus.
+
+Drei Eigenschaften, auf die es hier ankommt:
+
+- **`decide()` bleibt unangetastet.** Die Absenkung ist eine Korrektur am Sollwert *vor* dem
+  Bau der Situation, keine neue Regel. Die Rangfolge aus Frostschutz, Fenster offen,
+  Mindestschaltdauer und Hysterese ändert sich nicht — Grundsatz 7.
+- **Der Frostschutz ist eine absolute Untergrenze.** Die Absenkung wird auf genau den
+  Abstand nach oben begrenzt und fällt ganz weg, wenn keiner mehr da ist.
+- **Ein Ausfall der Quelle senkt nichts ab.** „Funktion aus", „kein Standort hinterlegt" und
+  „Quelle nicht erreichbar" fallen alle auf dasselbe `None` zusammen. Die Testsuite geht nie
+  ins Netz.
+
+Die Begründung des Sollwerts nennt die tatsächliche Absenkung in Kelvin (Grundsatz 5).
+
+Zwei Befunde kamen aus der Gegenlesung in der Hauptsession. Die Absenkung trug beliebig
+viele Nachkommastellen — ein Faktor 0,35 gegen 2 K hätte aus 21,0 still 20,30 gemacht, einen
+Sollwert, den die Oberfläche einem Menschen verweigert. Jetzt auf eine Nachkommastelle
+**abwärts** gerundet: Aufrunden könnte die eingestellte Obergrenze überschreiten, und die
+Obergrenze ist die Zusage dieser Funktion. Und beide Migrationen hingen an derselben
+Vorgängerrevision; die Historie hatte zwei Köpfe. Die Hauptsession hat sie geordnet, wie es
+die Arbeitsanweisung vorsieht.
+
+Die Sonnenabsenkung ist über alle drei Adapter erreichbar, nicht nur über die
+Oberfläche: `PUT /api/v1/control/solar-location` setzt Schalter und Standort,
+`GET /api/v1/control` und das MCP-Werkzeug `read_control` geben beides zurück, und der
+`solar_gain_factor` hängt an der Zone und geht über `POST`/`PUT /api/v1/zones` mit.
+Fehlt das Feld beim Schreiben, gilt 0 — ein Aufrufer, der die Absenkung nicht kennt,
+schaltet sie damit aus statt sie versehentlich ein. Die Koordinaten sind im REST-Schema
+absichtlich Text: Ein `Field(ge=-90, le=90)` wäre eine zweite Fassung der Grenzen, die
+in der Domäne stehen, und zwei Fassungen laufen auseinander.
+
+Dabei kam eine Datenbank-Abhängigkeit ans Licht, die nur der MariaDB-Lauf zeigt: SQLite
+gibt `Numeric(3,2)` als `0` zurück, MariaDB als `0.00`. Eine MCP-Ausgabe, die je nach
+Datenbank anders aussieht, ist keine Zusicherung — die Skala ist jetzt festgenagelt.
+
+**Was nur der Projektinhaber kann:** Eine echte Abfrage gegen Open-Meteo einmal laufen
+lassen — der Aufbau der Anfrage ist aus der Dokumentation gebaut, aber nie gegen den
+laufenden Dienst geprüft. Und am echten WT-A03E nachsehen, ob `system_mode` und
+`occupied_heating_setpoint` tatsächlich das tun, was hier angenommen wird.
 
 ## Konfigurierbare Bediengeräte
 
@@ -95,6 +240,38 @@ Tastendrücke den Messzeitpunkt als Wiederholungsschutz.
 Was nur der Projektinhaber kann: Am echten Bediengerät prüfen, ob `sensor: external` und
 `external_temperature` tatsächlich auf dem Display erscheinen und ob ein am Gerät
 verstellter Sollwert zurück in die Zone gelangt.
+
+## Zigbee-Heizkörperthermostate (WT-A03E) angebunden
+
+Ein Thermostatventil ist kein Schalter. Der neue Adapter `Zigbee2MqttThermostat` in
+`thermoctl/integrations/actuators.py` fährt es über `system_mode` (`heat`/`off`) und
+`occupied_heating_setpoint` statt über `state: ON`/`OFF` — beides bewegt ein echtes
+Ventil, also `switches=True` an der MQTT-Veröffentlichung und beide Riegel des
+Trockenlaufs vor jedem Versand. Im Trockenlauf wird nichts gesendet, sondern wie beim
+vorhandenen Ventil-Adapter ein `SwitchResult(False, "Trockenlauf, haette gesendet: …")`
+geliefert. Ein Sollwert außerhalb 5–30 °C wird abgewiesen statt gesendet; ein Wert
+zwischen den 0,5-Grad-Schritten des Geräts wird gerundet, nicht verworfen.
+
+Erkennung des Gerätetyps: `capabilities_from_exposes` in
+`thermoctl/domain/device_classes.py` vergibt die neue Fähigkeit `thermostat`, wenn ein
+Gerät sowohl `occupied_heating_setpoint` als auch `system_mode` exponiert — erst die
+Kombination beweist ein echtes Thermostatventil, `occupied_heating_setpoint` allein
+trägt auch eine reine Sollwertanzeige. Migration `b6e9f14d2a83` trägt die neue Fähigkeit
+sowie `running_state` und `window_open` in `device_capability` nach. Die Aktor-Rolle in
+`thermoctl/domain/device_assignment.py` verlangt jetzt `switch` **oder** `thermostat` —
+beide bewegen ein Ventil, welcher Adapter zuständig ist, entscheidet nur, wie der Befehl
+aussieht. `thermoctl/domain/plant_diagram.py` mitgezogen, da es dieselbe
+`REQUIRED_CAPABILITY`-Struktur liest.
+
+Die übrigen lesbaren Merkmale des Geräts (`local_temperature`, `position`,
+`running_state`, `window_open`, `battery`) laufen über den vorhandenen Weg:
+`FIELD_TO_CAPABILITY` in `thermoctl/domain/reading.py` kennt jetzt `position` →
+`valve_position`, `running_state` und `window_open` zusätzlich zu den bereits
+vorhandenen Feldern — kein zweiter Aufnahmeweg neben `readings_from_payload`.
+
+Was nur der Projektinhaber kann: Ein echtes WT-A03E gegen einen laufenden Zigbee2MQTT
+anmelden und prüfen, ob die Fähigkeitserkennung, die Messwerte und — nach dem
+Scharfschalten in Phase 4 — der Schaltbefehl tatsächlich ankommen.
 
 ## Wo wir stehen
 
@@ -389,9 +566,6 @@ verzögert hätte.
 - **Öffentliches Dashboard für ein Wandtablet** (Monitoring und Bedienung). Achtung,
   Grundsatz 4: Eine wirklich unauthentifizierte Seite widerspricht ihm. Vorschlag ist ein
   langlebiges, widerrufbares Kiosk-Token mit engem Rechtesatz — vor dem Bau bestätigen.
-- **Zigbee-Heizkörperthermostate (WT-A03E)** anbinden. Ein Thermostatventil ist kein
-  Schalter: Es braucht `system_mode` und `occupied_heating_setpoint` statt `state: ON`,
-  und beides bewegt ein Ventil — also `switches=True` und beide Riegel des Trockenlaufs.
 - **Optional: Sonnenprognose-Absenkung.** In der Übergangszeit soll eine Dachwohnung
   morgens die Sonne nutzen statt der Heizung. Braucht eine Prognosequelle, eine
   Zonen-Eigenschaft (welche Zone bekommt wie viel Sonne) und eine begrenzte Absenkung —

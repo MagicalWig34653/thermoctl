@@ -7,7 +7,7 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from thermoctl.auth.dependencies import aktueller_principal, csrf_schutz, get_session
+from thermoctl.auth.dependencies import csrf_protection, current_principal, get_session
 from thermoctl.db.models.device import (
     ControllerChannel,
     Device,
@@ -18,12 +18,12 @@ from thermoctl.db.models.device import (
 from thermoctl.db.models.lookup import ChannelKind, ControllerCommand, DeviceRole
 from thermoctl.db.models.zone import Zone
 from thermoctl.domain.authz import visible_zones
-from thermoctl.domain.controller import ControllerError, gesehene_aktionen, set_binding
+from thermoctl.domain.controller import ControllerError, seen_actions, set_binding
 from thermoctl.domain.controller_channels import ControllerChannelError, configure_channel
 from thermoctl.domain.principal import Principal
 from thermoctl.web import templates
 
-router = APIRouter(dependencies=[Depends(csrf_schutz)], include_in_schema=False)
+router = APIRouter(dependencies=[Depends(csrf_protection)], include_in_schema=False)
 
 
 def _zones(session: Session, principal: Principal, permission: str) -> list[Zone]:
@@ -56,13 +56,13 @@ def _context(session: Session, principal: Principal, **extra: object) -> dict[st
         "devices": session.scalars(select(Device).order_by(Device.display_name)).all(),
         "kinds": {kind.id: kind for kind in session.scalars(select(ChannelKind))},
         "commands": session.scalars(select(ControllerCommand).order_by(ControllerCommand.id)).all(),
-        "bindings": {device.id: gesehene_aktionen(session, device) for device in controllers},
+        "bindings": {device.id: seen_actions(session, device) for device in controllers},
         "errors": {}, **extra,
     }
 
 
 @router.get("/controllers")
-async def controllers(request: Request, principal: Annotated[Principal, Depends(aktueller_principal)], session: Annotated[Session, Depends(get_session)]) -> Response:
+async def controllers(request: Request, principal: Annotated[Principal, Depends(current_principal)], session: Annotated[Session, Depends(get_session)]) -> Response:
     return templates.TemplateResponse(request, "controllers.html", _context(session, principal))
 
 
@@ -76,7 +76,7 @@ def _managed_device(session: Session, principal: Principal, device_id: int) -> D
 
 
 @router.post("/controllers/channel")
-async def channel_set(request: Request, principal: Annotated[Principal, Depends(aktueller_principal)], session: Annotated[Session, Depends(get_session)]) -> Response:
+async def channel_set(request: Request, principal: Annotated[Principal, Depends(current_principal)], session: Annotated[Session, Depends(get_session)]) -> Response:
     form = await request.form()
     try:
         device = _managed_device(session, principal, int(str(form.get("device_id", ""))))
@@ -94,7 +94,7 @@ async def channel_set(request: Request, principal: Annotated[Principal, Depends(
 
 
 @router.post("/controllers/button")
-async def button_set(request: Request, principal: Annotated[Principal, Depends(aktueller_principal)], session: Annotated[Session, Depends(get_session)]) -> Response:
+async def button_set(request: Request, principal: Annotated[Principal, Depends(current_principal)], session: Annotated[Session, Depends(get_session)]) -> Response:
     form = await request.form()
     device = _managed_device(session, principal, int(str(form.get("device_id", ""))))
     action = str(form.get("action_code", "")).strip()

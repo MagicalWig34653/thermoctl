@@ -26,9 +26,9 @@ KIOSK_COOKIE_NAME = "thermoctl_kiosk"
 # kiosk cookie.
 KIOSK_CSRF_COOKIE_NAME = "thermoctl_kiosk_csrf"
 
-# Same set as `csrf_schutz` in thermoctl/auth/dependencies.py: methods that change
+# Same set as `csrf_protection` in thermoctl/auth/dependencies.py: methods that change
 # nothing need no proof of origin.
-_SICHERE_METHODEN = frozenset({"GET", "HEAD", "OPTIONS", "TRACE"})
+_SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS", "TRACE"})
 
 
 def kiosk_token_from_cookie(request: Request, session: Session) -> ApiToken | None:
@@ -49,14 +49,14 @@ def kiosk_token_from_cookie(request: Request, session: Session) -> ApiToken | No
     return token
 
 
-def kiosk_csrf_schutz(request: Request) -> None:
-    """Same shape as `csrf_schutz`, bound to the kiosk cookie instead of the session.
+def kiosk_csrf_protection(request: Request) -> None:
+    """Same shape as `csrf_protection`, bound to the kiosk cookie instead of the session.
 
     Hung on the kiosk router's mutating routes: without a kiosk cookie there is
     nothing to forge (the request fails the token check right after anyway), and a
     safe method changes nothing regardless of origin.
     """
-    if request.method in _SICHERE_METHODEN:
+    if request.method in _SAFE_METHODS:
         return
     cookie_value = request.cookies.get(KIOSK_COOKIE_NAME)
     if cookie_value is None:

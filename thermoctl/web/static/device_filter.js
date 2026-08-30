@@ -1,52 +1,52 @@
 /*
- * Das Suchfeld auf der Geraeteseite.
+ * The search field on the devices page.
  *
- * Rein in der Anzeige: Es blendet Zeilen aus, die nicht passen, und schickt nichts an den
- * Server. Eine Liste von dreissig Geraeten ist zu lang zum Ueberfliegen und zu kurz fuer
- * eine Suchmaske mit eigenem Weg -- und ein Filter, der eine Anfrage ausloest, waere bei
- * dieser Menge langsamer als das Auge.
+ * Purely presentational: it hides rows that do not match and sends nothing to the server.
+ * A list of thirty devices is too long to skim and too short for a search mask with a
+ * route of its own -- and a filter that triggers a request would, at this size, be slower
+ * than the eye.
  *
- * Das Feld ist im HTML `hidden` und wird erst hier eingeblendet: Ohne JavaScript filterte
- * es nicht, und ein Eingabefeld, das nichts tut, ist schlimmer als keines.
+ * The field is `hidden` in the HTML and only revealed here: without JavaScript it would
+ * not filter, and an input field that does nothing is worse than none.
  */
 (function () {
     "use strict";
 
-    function einrichten() {
-        const feld = document.getElementById("device-search");
-        if (!feld || feld.dataset.wired) {
+    function setUp() {
+        const field = document.getElementById("device-search");
+        if (!field || field.dataset.wired) {
             return;
         }
-        feld.dataset.wired = "ja";
-        feld.hidden = false;
-        const zeilen = Array.from(document.querySelectorAll("[data-device-row]"));
-        const leermeldung = document.getElementById("no-matches");
+        field.dataset.wired = "yes";
+        field.hidden = false;
+        const rows = Array.from(document.querySelectorAll("[data-device-row]"));
+        const emptyNotice = document.getElementById("no-matches");
 
-        feld.addEventListener("input", function () {
-            const suche = feld.value.trim().toLowerCase();
-            let treffer = 0;
-            zeilen.forEach(function (zeile) {
-                const passt = !suche || zeile.dataset.searchText.includes(suche);
-                zeile.hidden = !passt;
-                if (passt) {
-                    treffer += 1;
+        field.addEventListener("input", function () {
+            const search = field.value.trim().toLowerCase();
+            let matches = 0;
+            rows.forEach(function (row) {
+                const fits = !search || row.dataset.searchText.includes(search);
+                row.hidden = !fits;
+                if (fits) {
+                    matches += 1;
                 }
             });
-            // Eine Ueberschrift ohne Zeilen darunter sieht aus wie ein Fehler.
-            document.querySelectorAll(".tc-panel").forEach(function (tafel) {
-                const sichtbar = tafel.querySelector("[data-device-row]:not([hidden])");
-                tafel.hidden = !sichtbar;
-                const ueberschrift = tafel.previousElementSibling;
-                if (ueberschrift && ueberschrift.classList.contains("t-abschnitt")) {
-                    ueberschrift.hidden = !sichtbar;
+            // A heading with no rows underneath looks like a bug.
+            document.querySelectorAll(".tc-panel").forEach(function (panel) {
+                const visible = panel.querySelector("[data-device-row]:not([hidden])");
+                panel.hidden = !visible;
+                const heading = panel.previousElementSibling;
+                if (heading && heading.classList.contains("t-section")) {
+                    heading.hidden = !visible;
                 }
             });
-            if (leermeldung) {
-                leermeldung.hidden = treffer > 0;
+            if (emptyNotice) {
+                emptyNotice.hidden = matches > 0;
             }
         });
     }
 
-    document.addEventListener("DOMContentLoaded", einrichten);
-    document.addEventListener("htmx:load", einrichten);
+    document.addEventListener("DOMContentLoaded", setUp);
+    document.addEventListener("htmx:load", setUp);
 })();

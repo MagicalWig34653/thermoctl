@@ -14,6 +14,7 @@ landed on the arm button first.
 """
 
 from datetime import timedelta
+from decimal import Decimal
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request, Response, status
@@ -21,7 +22,7 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from thermoctl.auth.dependencies import aktueller_principal, csrf_schutz, get_session
+from thermoctl.auth.dependencies import csrf_protection, current_principal, get_session
 from thermoctl.config import get_settings
 from thermoctl.db.base import utcnow
 from thermoctl.db.models.lookup import SensorStatus
@@ -33,20 +34,22 @@ from thermoctl.domain.control import (
     LIMITS,
     ControlError,
     arm,
+    check_coordinate,
     save_settings,
+    save_solar_location,
     settings,
 )
-from thermoctl.domain.interfaces import uebersicht
+from thermoctl.domain.interfaces import overview
 from thermoctl.domain.principal import Principal
 from thermoctl.domain.schedule import resolved_setpoint
-from thermoctl.domain.statistics import as_duration, heizzeiten
+from thermoctl.domain.statistics import as_duration, heating_periods
 from thermoctl.web import templates
 
 # `include_in_schema=False`: the OpenAPI description is the contract of the REST
 # interface. These routes deliver HTML for humans, and in the interface under
 # /docs there would otherwise be a form route next to every real endpoint whose
 # 'Try it out' triggers a real change.
-router = APIRouter(dependencies=[Depends(csrf_schutz)], include_in_schema=False)
+router = APIRouter(dependencies=[Depends(csrf_protection)], include_in_schema=False)
 
 
 def _page(
@@ -60,7 +63,7 @@ def _page(
     zones = visible_zones(session, principal, "zone.read")
     now = utcnow()
 
-    zustaende = {
+    states = {
         zone_id: (state, status)
         for zone_id, state, status in session.execute(
             select(ZoneState.zone_id, ZoneState, SensorStatus)
@@ -68,13 +71,13 @@ def _page(
             .where(ZoneState.zone_id.in_([zone.id for zone in zones]))
         )
     }
-    entscheidungen: dict[int, ShadowDecision] = {}
+    decisions: dict[int, ShadowDecision] = {}
     for decision in session.scalars(
         select(ShadowDecision)
         .where(ShadowDecision.zone_id.in_([zone.id for zone in zones]))
         .order_by(ShadowDecision.decided_at.desc(), ShadowDecision.id.desc())
     ):
-        entscheidungen.setdefault(decision.zone_id, decision)
+        decisions.setdefault(decision.zone_id, decision)
 
     return templates.TemplateResponse(
         request,
@@ -82,13 +85,13 @@ def _page(
         {
             "settings": row,
             "zones": zones,
-            "zustaende": zustaende,
-            "entscheidungen": entscheidungen,
+            "states": states,
+            "decisions": decisions,
             "setpoints": {
                 zone.id: resolved_setpoint(session, zone, now) for zone in zones
             },
             "errors": {errors.field: errors.notice} if errors else {},
-            "darf_scharf": has_permission(principal, "control.arm"),
+            "may_arm": has_permission(principal, "control.arm"),
             # The first bolt sits in the MQTT client's constructor and is read from
             # the database at startup. Whoever arms the plant while it is running
             # ends up with a state where the plant decides while armed and still
@@ -105,20 +108,29 @@ def _defaults_page(
     principal: Principal,
     *,
     values: dict[str, str] | None = None,
+    solar_enabled: bool | None = None,
     errors: ControlError | None = None,
 ) -> Response:
     row = settings(session)
     if values is None:
         values = {field: str(getattr(row, field)) for field in LIMITS}
         values["timezone"] = row.timezone
+        values["solar_forecast_latitude"] = (
+            str(row.solar_forecast_latitude) if row.solar_forecast_latitude is not None else ""
+        )
+        values["solar_forecast_longitude"] = (
+            str(row.solar_forecast_longitude) if row.solar_forecast_longitude is not None else ""
+        )
+        solar_enabled = row.solar_forecast_enabled
     return templates.TemplateResponse(
         request,
         "settings.html",
         {
-            "felder": [(field, LABELS[field], field in GANZZAHLIG) for field in LIMITS],
+            "fields": [(field, LABELS[field], field in GANZZAHLIG) for field in LIMITS],
             "values": values,
+            "solar_forecast_enabled": bool(solar_enabled),
             "errors": {errors.field: errors.notice} if errors else {},
-            "darf_aendern": has_permission(principal, "setting.manage"),
+            "may_edit": has_permission(principal, "setting.manage"),
         },
     )
 
@@ -126,7 +138,7 @@ def _defaults_page(
 @router.get("/control")
 async def show_control(
     request: Request,
-    principal: Annotated[Principal, Depends(aktueller_principal)],
+    principal: Annotated[Principal, Depends(current_principal)],
     session: Annotated[Session, Depends(get_session)],
 ) -> Response:
     # Whoever may see the plant may read this. The operating state is the answer to
@@ -138,7 +150,7 @@ async def show_control(
 @router.get("/settings")
 async def show_settings(
     request: Request,
-    principal: Annotated[Principal, Depends(aktueller_principal)],
+    principal: Annotated[Principal, Depends(current_principal)],
     session: Annotated[Session, Depends(get_session)],
 ) -> Response:
     require(principal, "zone.read")
@@ -148,16 +160,29 @@ async def show_settings(
 @router.post("/settings")
 async def save_defaults(
     request: Request,
-    principal: Annotated[Principal, Depends(aktueller_principal)],
+    principal: Annotated[Principal, Depends(current_principal)],
     session: Annotated[Session, Depends(get_session)],
 ) -> Response:
     require(principal, "setting.manage")
     form = await request.form()
     values = {
         name: str(form.get(name, "")).strip()
-        for name in (*LIMITS, "timezone")
+        for name in (*LIMITS, "timezone", "solar_forecast_latitude", "solar_forecast_longitude")
     }
+    solar_enabled = str(form.get("solar_forecast_enabled", "")) == "on"
     try:
+        # Validated -- but deliberately not yet written: `save_settings` below still
+        # has to run its own check before either group's fields actually change, so
+        # a bad coordinate here must not leave the (already checked) global defaults
+        # committed on their own. Only `settings.manage` can trigger any of this, and
+        # the request only ever commits at the very end (`get_session`) -- but that
+        # commits whatever is on the row by then, checked or not.
+        check_coordinate(
+            "solar_forecast_latitude", values["solar_forecast_latitude"], bound=Decimal("90")
+        )
+        check_coordinate(
+            "solar_forecast_longitude", values["solar_forecast_longitude"], bound=Decimal("180")
+        )
         save_settings(
             session,
             values,
@@ -165,26 +190,36 @@ async def save_defaults(
             user_id=principal.user_id,
             token_id=principal.token_id,
         )
+        save_solar_location(
+            session,
+            enabled=solar_enabled,
+            latitude_text=values["solar_forecast_latitude"],
+            longitude_text=values["solar_forecast_longitude"],
+            user_id=principal.user_id,
+            token_id=principal.token_id,
+        )
     except ControlError as exc:
-        return _defaults_page(request, session, principal, values=values, errors=exc)
+        return _defaults_page(
+            request, session, principal, values=values, solar_enabled=solar_enabled, errors=exc
+        )
     return RedirectResponse("/settings", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @router.post("/control/arm")
 async def arm_view(
     request: Request,
-    principal: Annotated[Principal, Depends(aktueller_principal)],
+    principal: Annotated[Principal, Depends(current_principal)],
     session: Annotated[Session, Depends(get_session)],
 ) -> Response:
     # Its own permission, not `setting.manage`: this here moves a valve.
     require(principal, "control.arm")
     form = await request.form()
-    armed = str(form.get("armed", "")) == "ja"
+    armed = str(form.get("armed", "")) == "yes"
     try:
         arm(
             session,
             armed,
-            reason=str(form.get("begruendung", "")),
+            reason=str(form.get("reason", "")),
             user_id=principal.user_id,
             token_id=principal.token_id,
         )
@@ -196,7 +231,7 @@ async def arm_view(
 @router.get("/interfaces")
 async def show_interfaces(
     request: Request,
-    principal: Annotated[Principal, Depends(aktueller_principal)],
+    principal: Annotated[Principal, Depends(current_principal)],
     session: Annotated[Session, Depends(get_session)],
 ) -> Response:
     """What is connected from outside -- and whether it's really running.
@@ -210,7 +245,7 @@ async def show_interfaces(
         request,
         "interfaces.html",
         {
-            "interfaces": uebersicht(
+            "interfaces": overview(
                 session,
                 get_settings(),
                 getattr(request.app.state, "bridge_reachable", None),
@@ -231,7 +266,7 @@ ZEITRAEUME: dict[str, tuple[str, int]] = {
 @router.get("/statistics")
 async def show_statistics(
     request: Request,
-    principal: Annotated[Principal, Depends(aktueller_principal)],
+    principal: Annotated[Principal, Depends(current_principal)],
     session: Annotated[Session, Depends(get_session)],
 ) -> Response:
     """When and for how long there was heating, per zone and day.
@@ -244,17 +279,17 @@ async def show_statistics(
     zones = visible_zones(session, principal, "zone.read")
     row = settings(session)
 
-    schluessel = request.query_params.get("zeitraum", "7")
-    if schluessel not in ZEITRAEUME:
-        schluessel = "7"
-    _label, days = ZEITRAEUME[schluessel]
+    key = request.query_params.get("period", "7")
+    if key not in ZEITRAEUME:
+        key = "7"
+    _label, days = ZEITRAEUME[key]
 
     bis = utcnow()
-    von = (bis - timedelta(days=days - 1)).replace(hour=0, minute=0, second=0, microsecond=0)
-    values = heizzeiten(
+    start_at = (bis - timedelta(days=days - 1)).replace(hour=0, minute=0, second=0, microsecond=0)
+    values = heating_periods(
         session,
         [zone.id for zone in zones],
-        von,
+        start_at,
         bis,
         cycle_seconds=row.shadow_interval_seconds,
     )
@@ -271,8 +306,8 @@ async def show_statistics(
             "zones": zones,
             "values": values,
             "maximum": maximum,
-            "zeitraeume": [(s, b) for s, (b, _t) in ZEITRAEUME.items()],
-            "zeitraum": schluessel,
+            "periods": [(s, b) for s, (b, _t) in ZEITRAEUME.items()],
+            "period": key,
             "armed": row.control_armed,
             "as_duration": as_duration,
         },

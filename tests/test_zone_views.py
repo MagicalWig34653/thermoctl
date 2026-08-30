@@ -27,8 +27,8 @@ from thermoctl.db.models.zone import SetpointMode, Zone, ZoneSetpoint
 def _csrf(client: TestClient) -> dict[str, str]:
     http_session = client.cookies.get(COOKIE_NAME)
     assert http_session is not None
-    geheimnis = get_settings().secret_key.get_secret_value()
-    return {CSRF_HEADER: csrf_token(http_session, geheimnis)}
+    secret = get_settings().secret_key.get_secret_value()
+    return {CSRF_HEADER: csrf_token(http_session, secret)}
 
 
 def _daten(session: Session, name: str = "wohnzimmer") -> dict[str, str]:
@@ -266,10 +266,10 @@ def test_renaming_to_a_taken_name_stays_in_the_form(
     source(session, "web")
     kind = operating_mode(session, "auto")
     create_zone(session, "schon-da")
-    andere = create_zone(session, "wird-umbenannt")
+    others = create_zone(session, "wird-umbenannt")
     client = client_als([("zone.manage", None), ("zone.read", None)])
     response = client.post(
-        f"/zones/{andere.id}",
+        f"/zones/{others.id}",
         data={
             "name": "schon-da", "display_name": "Andere", "operating_mode": str(kind.id),
             "sort_order": "0", "temperature_source_device_id": "",
@@ -278,7 +278,7 @@ def test_renaming_to_a_taken_name_stays_in_the_form(
     )
     assert response.status_code == 200
     assert "bereits vergeben" in response.text
-    assert andere.name == "wird-umbenannt"
+    assert others.name == "wird-umbenannt"
 
 
 # --- Remote operating mode --------------------------------------------------
@@ -301,7 +301,7 @@ def test_setting_the_operating_mode_writes_and_logs(session: Session) -> None:
     session.add(aus)
     session.flush()
 
-    assert set_operating_mode(session, zone, "off", akteur_id=None, source="system") is True
+    assert set_operating_mode(session, zone, "off", actor_id=None, source="system") is True
     assert zone.operating_mode_id == aus.id
     entry = session.scalars(
         select(AuditEvent).where(AuditEvent.object_type == "zone")
@@ -322,7 +322,7 @@ def test_the_same_operating_mode_writes_no_entry(session: Session) -> None:
     source(session, "system")
     code = zone.operating_mode.code
 
-    assert set_operating_mode(session, zone, code, akteur_id=None, source="system") is False
+    assert set_operating_mode(session, zone, code, actor_id=None, source="system") is False
     assert not session.scalars(
         select(AuditEvent).where(AuditEvent.object_type == "zone")
     ).all()
@@ -333,4 +333,4 @@ def test_an_unknown_operating_mode_is_refused(session: Session) -> None:
 
     zone = create_zone(session, "unbekanntbetrieb")
     with pytest.raises(UnknownOperatingMode):
-        set_operating_mode(session, zone, "gemuetlich", akteur_id=None, source="system")
+        set_operating_mode(session, zone, "gemuetlich", actor_id=None, source="system")

@@ -40,10 +40,10 @@ def password_form_error(
 
 def form_again(
     request: Request,
-    vorlage: str,
+    template: str,
     values: Mapping[str, object],
     errors: FormError | None = None,
-    **weitere: object,
+    **more_items: object,
 ) -> Response:
     """Shows correctable input again, without echoing back password values."""
     safe_values = {
@@ -52,7 +52,7 @@ def form_again(
     field_errors = {errors.field: errors.notice} if errors is not None else {}
     return templates.TemplateResponse(
         request,
-        vorlage,
-        {**weitere, **safe_values, "values": safe_values, "errors": field_errors},
+        template,
+        {**more_items, **safe_values, "values": safe_values, "errors": field_errors},
         status_code=status.HTTP_200_OK,
     )

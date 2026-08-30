@@ -10,14 +10,14 @@ import pytest
 
 from thermoctl.integrations.mqtt.commands import (
     CommandError,
-    commands_abonnements,
+    command_subscriptions,
     ist_command,
-    zerlegen,
+    split_topic,
 )
 
 
 def test_the_setpoint_is_read() -> None:
-    command = zerlegen("thermoctl/zones/7/command/setpoint", b"21.5", "thermoctl")
+    command = split_topic("thermoctl/zones/7/command/setpoint", b"21.5", "thermoctl")
     assert command.zone_id == 7
     assert command.temperature == Decimal("21.5")
 
@@ -25,12 +25,12 @@ def test_the_setpoint_is_read() -> None:
 def test_the_comma_is_accepted() -> None:
     """Not every sender sends a period -- and a rejected command here would
     mean a dial that turns and does nothing."""
-    command = zerlegen("thermoctl/zones/1/command/setpoint", b"20,5", "thermoctl")
+    command = split_topic("thermoctl/zones/1/command/setpoint", b"20,5", "thermoctl")
     assert command.temperature == Decimal("20.5")
 
 
 def test_the_operating_mode_is_read() -> None:
-    command = zerlegen("thermoctl/zones/2/command/operating_mode", b"off", "thermoctl")
+    command = split_topic("thermoctl/zones/2/command/operating_mode", b"off", "thermoctl")
     assert command.operating_mode == "off"
 
 
@@ -45,7 +45,7 @@ def test_the_operating_mode_is_read() -> None:
 )
 def test_unusable_input_falls_through(topic: str, payload: bytes) -> None:
     with pytest.raises(CommandError):
-        zerlegen(topic, payload, "thermoctl")
+        split_topic(topic, payload, "thermoctl")
 
 
 def test_a_foreign_prefix_does_not_belong_to_us() -> None:
@@ -54,7 +54,7 @@ def test_a_foreign_prefix_does_not_belong_to_us() -> None:
     topic = "andereanlage/zones/1/command/setpoint"
     assert not ist_command(topic, "thermoctl")
     with pytest.raises(CommandError):
-        zerlegen(topic, b"21", "thermoctl")
+        split_topic(topic, b"21", "thermoctl")
 
 
 def test_state_topics_are_not_commands() -> None:
@@ -69,20 +69,20 @@ def test_the_subscriptions_also_cover_commands_with_a_subkey() -> None:
     With only `.../befehl/+`, `befehl/modus/3` would never arrive -- the
     per-mode dials in Home Assistant would silently have done nothing.
     """
-    pattern = commands_abonnements("thermoctl")
+    pattern = command_subscriptions("thermoctl")
     assert pattern == ["thermoctl/zones/+/command/+", "thermoctl/zones/+/command/+/+"]
     assert ist_command("thermoctl/zones/3/command/mode/7", "thermoctl")
     assert ist_command("thermoctl/zones/3/command/parameter/hysteresis_k", "thermoctl")
 
 
 def test_the_new_command_kinds_are_read() -> None:
-    boost = zerlegen("thermoctl/zones/4/command/boost", b"boost", "thermoctl")
+    boost = split_topic("thermoctl/zones/4/command/boost", b"boost", "thermoctl")
     assert (boost.kind, boost.zone_id) == ("boost", 4)
 
-    mode = zerlegen("thermoctl/zones/4/command/mode/9", b"19.5", "thermoctl")
+    mode = split_topic("thermoctl/zones/4/command/mode/9", b"19.5", "thermoctl")
     assert (mode.kind, mode.mode_id, mode.temperature) == ("mode", 9, Decimal("19.5"))
 
-    parameter = zerlegen(
+    parameter = split_topic(
         "thermoctl/zones/4/command/parameter/hysteresis_k", b"0.4", "thermoctl"
     )
     assert (parameter.kind, parameter.parameter, parameter.number) == (
@@ -107,7 +107,7 @@ def test_the_new_command_kinds_are_read() -> None:
 )
 def test_subkeys_are_checked(topic: str) -> None:
     with pytest.raises(CommandError):
-        zerlegen(topic, b"21", "thermoctl")
+        split_topic(topic, b"21", "thermoctl")
 
 
 # --- Execution in the application -------------------------------------------

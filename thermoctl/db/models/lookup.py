@@ -95,6 +95,9 @@ DEVICE_CAPABILITIES = [
     ("availability", "Erreichbarkeit"),
     ("soil_moisture", "Bodenfeuchte"),
     ("action", "Tastendruck"),
+    ("thermostat", "Thermostatventil"),
+    ("running_state", "Heizbetrieb"),
+    ("window_open", "Fenster erkannt offen"),
 ]
 SENSOR_STATUS = [
     ("ok", "In Ordnung"),

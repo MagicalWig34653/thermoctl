@@ -256,7 +256,7 @@ def test_the_schedule_grid_does_not_jump_out_from_under_the_mouse() -> None:
         "schedule.js scrolls on its own again"
     )
     # Focus only after the visibility check -- otherwise the browser scrolls by itself.
-    assert "if (sichtbar) {" in source
+    assert "if (visible) {" in source
     before_focus = source[: source.index(".focus(")]
     assert "getBoundingClientRect" in before_focus and "innerHeight" in before_focus, (
         "focus() no longer comes after the visibility check"
@@ -290,9 +290,9 @@ def _rendered_form_fields(html: str, action: str) -> dict[str, str]:
             name = re.search(r'name="([^"]+)"', field)
             if name is None:
                 continue
-            typ = re.search(r'type="([^"]+)"', field)
+            feature_type = re.search(r'type="([^"]+)"', field)
             rendered = re.search(r'value="([^"]*)"', field)
-            if typ and typ.group(1) == "time":
+            if feature_type and feature_type.group(1) == "time":
                 values[name.group(1)] = "07:15"
             else:
                 values[name.group(1)] = rendered.group(1) if rendered else ""
@@ -300,8 +300,8 @@ def _rendered_form_fields(html: str, action: str) -> dict[str, str]:
             name = re.search(r'name="([^"]+)"', select)
             if name is None:
                 continue
-            optionen = [o for o in re.findall(r'<option value="([^"]*)"', select) if o]
-            values[name.group(1)] = optionen[0] if optionen else ""
+            options = [o for o in re.findall(r'<option value="([^"]*)"', select) if o]
+            values[name.group(1)] = options[0] if options else ""
         return values
     raise AssertionError(f"Kein Formular mit action={action!r} gefunden")
 
@@ -345,6 +345,120 @@ def test_the_rendered_form_carries_the_field_names_the_view_reads(
         "Das Formular hat nichts angelegt — Feldnamen in Vorlage und Ansicht gehen auseinander"
     )
 
+
+def test_no_page_reads_a_name_its_view_does_not_supply(
+    angemeldeter_client: TestClient, session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Renders every page and fails on the first name Jinja cannot resolve.
+
+    This closes the gap that three defects slipped through in one day, all of the
+    same shape: a view was renamed, its template was not, and Jinja answers an
+    unknown name with the empty string. The page keeps returning 200 and simply
+    shows nothing where the setpoint's reason used to be -- or, in the worse case,
+    the form posts a field name the view never reads and creating a schedule point
+    silently does nothing.
+
+    A test cannot see that; only a person looking at the page can. So this makes
+    the silence audible: an undefined name becomes a recorded miss, and a miss
+    fails the test.
+
+    `Undefined` is deliberately not swapped for `StrictUndefined`: several
+    templates legitimately ask whether an optional value exists. Only *reading*
+    one -- printing it, taking an attribute off it -- is recorded, which is
+    exactly the case that renders wrongly.
+    """
+    from typing import NoReturn
+
+    from jinja2 import Undefined
+
+    from thermoctl.web import templates
+
+    misses: list[str] = []
+
+    class ReportingUndefined(Undefined):
+        def _fail_with_undefined_error(
+            self, *args: object, **kwargs: object
+        ) -> NoReturn:
+            misses.append(self._undefined_name or "<unnamed>")
+            super()._fail_with_undefined_error(*args, **kwargs)
+
+        def __str__(self) -> str:
+            misses.append(self._undefined_name or "<unnamed>")
+            return ""
+
+        def __getattr__(self, name: str) -> object:
+            if name.startswith("__"):
+                raise AttributeError(name)
+            misses.append(f"{self._undefined_name}.{name}")
+            return self
+
+    monkeypatch.setattr(templates.env, "undefined", ReportingUndefined)
+    zone = create_zone(session, "undefined-check")
+    create_settings(session)
+    for pattern in PROTECTED_PAGES:
+        path = pattern.format(zone_id=zone.id)
+        vorher = len(misses)
+        assert angemeldeter_client.get(path).status_code == 200, path
+        for i in range(vorher, len(misses)):
+            misses[i] = f"{path}: {misses[i]}"
+    assert not misses, (
+        "Vorlagen lesen Namen, die ihre View nicht liefert: " + ", ".join(sorted(set(misses)))
+    )
+
+
+def _route_exists(app: object, path: str) -> bool:
+    """Whether any registered POST route matches this path.
+
+    Asked of the route table instead of by sending a request: a form action is a
+    state-changing endpoint, and finding out whether it exists must not run it.
+    """
+    from starlette.routing import Match
+
+    scope = {"type": "http", "method": "POST", "path": path, "path_params": {}}
+    return any(
+        route.matches(scope)[0] is not Match.NONE
+        for route in app.routes  # type: ignore[attr-defined]
+    )
+
+
+def test_every_link_and_form_on_a_rendered_page_leads_somewhere(
+    angemeldeter_client: TestClient, session: Session
+) -> None:
+    """Renders every page and follows every URL it actually emits.
+
+    The older check reads the template source and skips anything containing `{{` or
+    `{%`. That is most of them: the navigation bar builds its links through a macro
+    (`nav_link("/zones", "Zonen")`), and every form action interpolates a zone id. So
+    the whole navigation bar was invisible to it -- and stayed invisible while it
+    pointed at `/zonen`, `/geraete` and `/steuerung`, none of which exist since the
+    endpoints were translated. Every page rendered fine; only *clicking* anything
+    failed, which no test ever did.
+
+    Reading the rendered page instead of its source closes that: a macro-built link
+    and an interpolated action look exactly like any other URL by then.
+
+    A POST target is matched against the application's route table rather than
+    posted to. The first version did post -- with an empty body, to every action on
+    every page -- and one of those actions is "set this group's permissions". An empty
+    body means "no permissions", so the check revoked the rights of the very account
+    it was logged in with, and every later page came back 403. A test that changes the
+    thing it is inspecting reports on a state that never existed.
+    """
+    zone = create_zone(session, "linkcheck")
+    create_settings(session)
+    dead: list[str] = []
+    for pattern in PROTECTED_PAGES:
+        path = pattern.format(zone_id=zone.id)
+        page = angemeldeter_client.get(path)
+        assert page.status_code == 200, path
+        for target in sorted(set(re.findall(r'href="(/[^"#?]*)"', page.text))):
+            answer = angemeldeter_client.get(target, follow_redirects=True)
+            if answer.status_code >= 400:
+                dead.append(f"{path} -> {target}: HTTP {answer.status_code}")
+        for action in sorted(set(re.findall(r'action="(/[^"?]*)"', page.text))):
+            if not _route_exists(angemeldeter_client.app, action):
+                dead.append(f"{path} -> POST {action}: keine solche Route")
+    assert not dead, "Verweise, die ins Leere fuehren:\n  " + "\n  ".join(dead)
 
 def test_kiosk_link_leads_to_an_actual_dashboard(
     client: TestClient, session: Session
@@ -391,25 +505,30 @@ def test_the_new_zone_form_posts_to_a_real_endpoint(
     in the suite caught it, because the smoke test's link guard only follows `href=`,
     never a form's `action`, and this form was never posted end to end anywhere else.
     """
+    from sqlalchemy import select
+
+    from tests.helpers import operating_mode
+    from thermoctl.db.models.zone import Zone
+
     create_settings(session)
+    kind = operating_mode(session)
     page = angemeldeter_client.get("/zones/new")
     assert page.status_code == 200
     action = re.search(r'<form method="post" action="([^"]+)"', page.text)
     assert action is not None, "Kein Formular auf /zones/new gefunden"
 
+    # The operating mode goes out as its **id**, which is what the rendered `<option
+    # value=…>` carries -- posting the code `"auto"` would fail the form's own check
+    # and look exactly like a broken route while telling nothing about one.
     response = angemeldeter_client.post(
         action.group(1),
         data={
             "name": "smoketestzone", "display_name": "Smoketestzone",
-            "operating_mode": "auto", "sort_order": "0",
+            "operating_mode": str(kind.id), "sort_order": "0",
             "temperature_source_device_id": "",
         },
         headers=_csrf(angemeldeter_client),
         follow_redirects=False,
     )
     assert response.status_code != 404, f"{action.group(1)} fuehrt ins Leere"
-    from sqlalchemy import select
-
-    from thermoctl.db.models.zone import Zone
-
     assert session.scalar(select(Zone).filter_by(name="smoketestzone")) is not None

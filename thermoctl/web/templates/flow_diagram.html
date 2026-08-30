@@ -19,10 +19,10 @@ muss.
 {% macro device_card(g, kind, draggable=false, temperature_source=false) %}
 <div class="tc-node tc-node-{{ kind }}{{ ' tc-draggable' if draggable and (g.assignment_id or temperature_source) }}"
      {% if g.assignment_id %}data-assignment="{{ g.assignment_id }}"{% endif %}
-     {% if temperature_source %}data-source="ja"{% endif %}>
+     {% if temperature_source %}data-source="yes"{% endif %}>
     <div class="tc-node-name">{{ g.name }}</div>
     {% if g.capabilities %}
-    <div class="t-leise" style="font-size: .68rem">{{ g.capabilities | join(", ") }}</div>
+    <div class="t-quiet" style="font-size: .68rem">{{ g.capabilities | join(", ") }}</div>
     {% endif %}
     {% if not g.active %}
     <span class="tc-chip tc-chip-warning mt-1">abgeschaltet</span>
@@ -40,13 +40,13 @@ auf dem Anlagenbild waere ein Ablegeziel eine Zusage, die die Seite nicht einloe
 #}
 {% macro flow_diagram(z, draggable=false) %}
 <div class="tc-flow">
-    <div class="tc-flow-column{{ ' tc-target' if draggable }}"{% if draggable %} data-target="messquelle" data-target-name="Messquelle" data-requires="temperature"{% endif %}>
-        <p class="t-marke">Misst</p>
+    <div class="tc-flow-column{{ ' tc-target' if draggable }}"{% if draggable %} data-target="temperature_source" data-target-name="Messquelle" data-requires="temperature"{% endif %}>
+        <p class="t-label">Misst</p>
         {% if z.temperature_source %}{{ device_card(z.temperature_source, "sensor", draggable, temperature_source=true) }}
         {% else %}{{ luecke("keine Messquelle") }}{% endif %}
 
         {% if z.window_contacts %}
-        <p class="t-marke mt-3">Unterbricht</p>
+        <p class="t-label mt-3">Unterbricht</p>
         {% for g in z.window_contacts %}{{ device_card(g, "contact", draggable) }}{% endfor %}
         {% endif %}
     </div>
@@ -54,23 +54,23 @@ auf dem Anlagenbild waere ein Ablegeziel eine Zusage, die die Seite nicht einloe
     <div class="tc-flow-arrow" aria-hidden="true"></div>
 
     <div class="tc-flow-column">
-        <p class="t-marke">Entscheidet</p>
+        <p class="t-label">Entscheidet</p>
         <div class="tc-node tc-node-zone">
             <div class="tc-node-name">{{ z.name }}</div>
-            <div class="t-leise" style="font-size: .68rem">Ist gegen Soll, mit Hysterese</div>
+            <div class="t-quiet" style="font-size: .68rem">Ist gegen Soll, mit Hysterese</div>
         </div>
     </div>
 
     <div class="tc-flow-arrow" aria-hidden="true"></div>
 
     <div class="tc-flow-column{{ ' tc-target' if draggable }}"{% if draggable %} data-target="actuator" data-target-name="Aktor" data-requires="switch"{% endif %}>
-        <p class="t-marke">Schaltet</p>
+        <p class="t-label">Schaltet</p>
         {% if z.actuators %}
         {% for g in z.actuators %}{{ device_card(g, "actuator", draggable) }}{% endfor %}
         {% else %}{{ luecke("kein Aktor") }}{% endif %}
 
         {% if z.controllers %}
-        <p class="t-marke mt-3">Zeigt an</p>
+        <p class="t-label mt-3">Zeigt an</p>
         {% for g in z.controllers %}{{ device_card(g, "display", draggable) }}{% endfor %}
         {% endif %}
     </div>
@@ -78,16 +78,16 @@ auf dem Anlagenbild waere ein Ablegeziel eine Zusage, die die Seite nicht einloe
 
 {% if draggable %}
 <div class="tc-target tc-target-contact mt-2" data-target="window_contact" data-target-name="Fensterkontakt" data-requires="contact">
-    <p class="t-leise small mb-0">
+    <p class="t-quiet small mb-0">
         Fensterkontakte hierher ziehen — sie unterbrechen das Heizen, solange ein Fenster
         offen ist.
     </p>
 </div>
 {% endif %}
 
-{% if z.maengel %}
-<ul class="t-leise small mb-0 mt-2">
-    {% for m in z.maengel %}<li>{{ m }}</li>{% endfor %}
+{% if z.defects %}
+<ul class="t-quiet small mb-0 mt-2">
+    {% for m in z.defects %}<li>{{ m }}</li>{% endfor %}
 </ul>
 {% endif %}
 {% endmacro %}

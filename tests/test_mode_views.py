@@ -14,8 +14,8 @@ from thermoctl.db.models.zone import SetpointMode, ZoneSetpoint
 
 
 def _csrf(client: TestClient) -> dict[str, str]:
-    geheimnis = client.cookies[COOKIE_NAME]
-    token = csrf_token(geheimnis, get_settings().secret_key.get_secret_value())
+    secret = client.cookies[COOKIE_NAME]
+    token = csrf_token(secret, get_settings().secret_key.get_secret_value())
     return {"X-CSRF-Token": token}
 
 
@@ -169,7 +169,7 @@ def test_setpoints_are_stored_as_decimal_and_audited(
     client = client_als([("setpoint.write", zone.id)])
     response = client.post(
         f"/zones/{zone.id}/setpoints",
-        data={f"sollwert_{mode.id}": "21.5"},
+        data={f"setpoint_{mode.id}": "21.5"},
         headers=_csrf(client),
         follow_redirects=False,
     )
@@ -193,7 +193,7 @@ def test_a_setpoint_outside_the_limits_is_refused_at_the_field(
     client = client_als([("setpoint.write", zone.id)])
     response = client.post(
         f"/zones/{zone.id}/setpoints",
-        data={f"sollwert_{mode.id}": "36.0"},
+        data={f"setpoint_{mode.id}": "36.0"},
         headers=_csrf(client),
     )
 
@@ -211,7 +211,7 @@ def test_a_setpoint_with_two_decimal_places_is_refused(
     client = client_als([("setpoint.write", zone.id)])
     response = client.post(
         f"/zones/{zone.id}/setpoints",
-        data={f"sollwert_{mode.id}": "21.25"},
+        data={f"setpoint_{mode.id}": "21.25"},
         headers=_csrf(client),
     )
 
@@ -231,7 +231,7 @@ def test_an_empty_setpoint_field_deletes_the_row(client_als, session: Session) -
     client = client_als([("setpoint.write", zone.id)])
     response = client.post(
         f"/zones/{zone.id}/setpoints",
-        data={f"sollwert_{mode.id}": ""},
+        data={f"setpoint_{mode.id}": ""},
         headers=_csrf(client),
         follow_redirects=False,
     )
@@ -315,20 +315,20 @@ def test_an_existing_setpoint_is_updated(client_als, session: Session) -> None:
     zone = create_zone(session, "zone-sollwert-aendern")
     client = client_als([("setpoint.write", None), ("zone.read", None)])
     client.post(
-        f"/zones/{zone.id}/setpoints", data={f"sollwert_{day.id}": "20.0"},
+        f"/zones/{zone.id}/setpoints", data={f"setpoint_{day.id}": "20.0"},
         headers=_csrf(client),
     )
     client.post(
-        f"/zones/{zone.id}/setpoints", data={f"sollwert_{day.id}": "22.5"},
+        f"/zones/{zone.id}/setpoints", data={f"setpoint_{day.id}": "22.5"},
         headers=_csrf(client),
     )
-    zeilen = session.scalars(
+    rows = session.scalars(
         select(ZoneSetpoint).where(
             ZoneSetpoint.zone_id == zone.id, ZoneSetpoint.setpoint_mode_id == day.id
         )
     ).all()
-    assert len(zeilen) == 1
-    assert zeilen[0].temperature_c == Decimal("22.5")
+    assert len(rows) == 1
+    assert rows[0].temperature_c == Decimal("22.5")
 
 
 def test_a_non_numeric_setpoint_stays_in_the_form(client_als, session: Session) -> None:
@@ -338,7 +338,7 @@ def test_a_non_numeric_setpoint_stays_in_the_form(client_als, session: Session) 
     zone = create_zone(session, "zone-keine-zahl")
     client = client_als([("setpoint.write", None), ("zone.read", None)])
     response = client.post(
-        f"/zones/{zone.id}/setpoints", data={f"sollwert_{day.id}": "warm"},
+        f"/zones/{zone.id}/setpoints", data={f"setpoint_{day.id}": "warm"},
         headers=_csrf(client),
     )
     assert response.status_code == 200
@@ -360,7 +360,7 @@ def test_an_infinite_setpoint_is_refused(client_als, session: Session) -> None:
     client = client_als([("setpoint.write", None), ("zone.read", None)])
     for value in ("nan", "Infinity"):
         response = client.post(
-            f"/zones/{zone.id}/setpoints", data={f"sollwert_{day.id}": value},
+            f"/zones/{zone.id}/setpoints", data={f"setpoint_{day.id}": value},
             headers=_csrf(client),
         )
         assert response.status_code == 200, value
@@ -409,7 +409,7 @@ def test_the_setpoint_limit_exists_in_exactly_one_place() -> None:
     match = []
 
     # Templates: a page that asks for temperatures must not contain a bare limit --
-    # neither as `min="5"` nor as the argument `"35"` to `zahlenfeld`. Such a page is
+    # neither as `min="5"` nor as the argument `"35"` to `number_field`. Such a page is
     # recognized by the degree sign.
     # Two classes: the upper limit and the new lower limit are unambiguous as a
     # number -- a `35` or `-20` in quotes is never anything else here. The old lower
@@ -419,17 +419,17 @@ def test_the_setpoint_limit_exists_in_exactly_one_place() -> None:
     eindeutig = {"35", "35.0", "-20", "-20.0"}
     mehrdeutig = {"5", "5.0", "1", "1.0"}
     zahl_in_anfuehrung = re.compile(r"""["'](-?\d{1,2}(?:\.\d)?)["']""")
-    for datei in sorted(wurzel.parent.rglob("web/templates/*.html")):
-        text = datei.read_text(encoding="utf-8")
+    for file in sorted(wurzel.parent.rglob("web/templates/*.html")):
+        text = file.read_text(encoding="utf-8")
         if "°C" not in text:
             continue
         for nummer, row in enumerate(text.splitlines(), 1):
             if "temperatur" in row.lower():
                 continue  # refers to the passed-through constants
-            gefunden = set(zahl_in_anfuehrung.findall(row))
+            found = set(zahl_in_anfuehrung.findall(row))
             above_temperature = "°C" in row or "sollwert" in row.lower()
-            if gefunden & eindeutig or (above_temperature and gefunden & mehrdeutig):
-                match.append(f"{datei.name}:{nummer}: {row.strip()}")
+            if found & eindeutig or (above_temperature and found & mehrdeutig):
+                match.append(f"{file.name}:{nummer}: {row.strip()}")
 
     # Python: a number at a spot where a temperature limit stands. The context is
     # often in the line before (`temperature_c: Decimal = Field(` wraps), hence a
@@ -438,11 +438,11 @@ def test_the_setpoint_limit_exists_in_exactly_one_place() -> None:
         r"""(?:ge=|le=|min_temp["']?\s*:\s*|max_temp["']?\s*:\s*)"""
         r"""(?:Decimal\(["'])?-?\d+(?:\.\d+)?"""
     )
-    for datei in sorted(wurzel.rglob("*.py")):
-        if datei.name == "modes.py":
+    for file in sorted(wurzel.rglob("*.py")):
+        if file.name == "modes.py":
             continue  # that is where it belongs
-        zeilen = datei.read_text(encoding="utf-8").splitlines()
-        for nummer, row in enumerate(zeilen, 1):
+        rows = file.read_text(encoding="utf-8").splitlines()
+        for nummer, row in enumerate(rows, 1):
             if "MINIMUM_TEMPERATURE_C" in row or "MAXIMUM_TEMPERATURE_C" in row:
                 continue  # refers to the constants
             if not grenzstelle.search(row):
@@ -450,9 +450,9 @@ def test_the_setpoint_limit_exists_in_exactly_one_place() -> None:
             # Narrowed to the setpoint field: a bare "temp" in the surroundings also
             # matched `sensor_timeout_seconds` next to `temperature_offset_k` --
             # both temperature-adjacent with entirely different limits.
-            umfeld = " ".join(zeilen[max(0, nummer - 3) : nummer + 1])
+            umfeld = " ".join(rows[max(0, nummer - 3) : nummer + 1])
             if "temperature_c" in umfeld or "min_temp" in umfeld or "max_temp" in umfeld:
-                match.append(f"{datei.relative_to(wurzel)}:{nummer}: {row.strip()}")
+                match.append(f"{file.relative_to(wurzel)}:{nummer}: {row.strip()}")
 
     assert not match, "setpoint limit outside the domain:\n" + "\n".join(match)
 

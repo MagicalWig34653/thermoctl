@@ -41,7 +41,7 @@ def test_every_thermostat_topic_is_evaluated(topic: str) -> None:
     assert result is not None
     assert isinstance(result, LegacyReading)
     assert result.thermostat_id in {1, 2, 3, 4, 5, 9}
-    if result.attribut in {"temperatureActual", "temperatureTarget"}:
+    if result.attribute in {"temperatureActual", "temperatureTarget"}:
         assert result.number == Decimal(payload)
         assert result.text is None
     else:

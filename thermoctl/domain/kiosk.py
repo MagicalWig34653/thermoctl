@@ -21,7 +21,7 @@ from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from thermoctl.auth.tokens import token_ausstellen
+from thermoctl.auth.tokens import issue_token
 from thermoctl.db.models.credential import ApiToken, ApiTokenPermission
 from thermoctl.db.models.identity import User
 from thermoctl.db.models.lookup import Permission
@@ -40,7 +40,7 @@ class KioskError(Exception):
 
 def issue_kiosk_token(
     session: Session,
-    besitzer: User,
+    owner: User,
     name: str,
     zone_ids: list[int],
     *,
@@ -49,7 +49,7 @@ def issue_kiosk_token(
 ) -> tuple[ApiToken, str]:
     """Issues a kiosk token scoped to exactly the given zones.
 
-    Delegates to `token_ausstellen`, which already enforces that a token cannot carry
+    Delegates to `issue_token`, which already enforces that a token cannot carry
     more than its issuer holds, and re-checks that on every request via
     `principal_for_token` -- an admin who later loses a permission takes it away from
     every kiosk token they issued, too. This function adds nothing on top of that
@@ -68,14 +68,14 @@ def issue_kiosk_token(
             (code, zone_id) for code in KIOSK_CONTROL_PERMISSIONS for zone_id in zone_ids
         ]
     try:
-        return token_ausstellen(
-            session, besitzer, name, permissions, expires_at, is_kiosk=True
+        return issue_token(
+            session, owner, name, permissions, expires_at, is_kiosk=True
         )
     except Forbidden as exc:
-        # `besitzer` is always the admin issuing it, so this only fires if they
+        # `owner` is always the admin issuing it, so this only fires if they
         # themselves lack `zone.read`/`setpoint.write`/`override.create` for one of
         # the chosen zones -- surfaced as a kiosk-specific message instead of the
-        # generic one from `token_ausstellen`.
+        # generic one from `issue_token`.
         raise KioskError(str(exc)) from exc
 
 

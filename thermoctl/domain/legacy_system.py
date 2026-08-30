@@ -43,7 +43,7 @@ class LegacyReading:
     """A single parsed reading of the legacy system for one thermostat."""
 
     thermostat_id: int
-    attribut: str
+    attribute: str
     text: str | None
     number: Decimal | None
 
@@ -59,12 +59,12 @@ def reading_from_topic(topic: str, payload: bytes | str) -> LegacyReading | None
     cases is a bug in this function; all of them get logged and lead to `None`, never
     to an exception.
     """
-    teile = topic.split("/")
-    if len(teile) != 5 or tuple(teile[:2]) != _PRAEFIX or teile[4] != _SUFFIX:
+    parts = topic.split("/")
+    if len(parts) != 5 or tuple(parts[:2]) != _PRAEFIX or parts[4] != _SUFFIX:
         log.debug("Kein Altsystem-Thermostat-Zustandstopic", extra={"topic": topic})
         return None
 
-    thermostat_part, attribut = teile[2], teile[3]
+    thermostat_part, attribute = parts[2], parts[3]
     try:
         thermostat_id = int(thermostat_part)
     except ValueError:
@@ -81,7 +81,7 @@ def reading_from_topic(topic: str, payload: bytes | str) -> LegacyReading | None
         return None
     text = text.strip()
 
-    if attribut in _NUMBER_ATTRIBUTE:
+    if attribute in _NUMBER_ATTRIBUTE:
         try:
             number = Decimal(text)
         except InvalidOperation:
@@ -90,13 +90,13 @@ def reading_from_topic(topic: str, payload: bytes | str) -> LegacyReading | None
                 extra={"topic": topic, "wert": text},
             )
             return None
-        return LegacyReading(thermostat_id, attribut, None, number)
+        return LegacyReading(thermostat_id, attribute, None, number)
 
-    if attribut in _TEXT_ATTRIBUTE:
-        return LegacyReading(thermostat_id, attribut, text, None)
+    if attribute in _TEXT_ATTRIBUTE:
+        return LegacyReading(thermostat_id, attribute, text, None)
 
     log.info(
         "Altsystem-Attribut wird nicht ausgewertet",
-        extra={"topic": topic, "attribut": attribut},
+        extra={"topic": topic, "attribut": attribute},
     )
     return None

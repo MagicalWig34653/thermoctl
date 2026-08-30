@@ -26,7 +26,7 @@ from tests.helpers import (
 from thermoctl.auth.csrf import csrf_token
 from thermoctl.auth.kiosk import KIOSK_COOKIE_NAME, KIOSK_CSRF_COOKIE_NAME
 from thermoctl.auth.sessions import COOKIE_NAME, create_session
-from thermoctl.auth.tokens import resolve_token, token_ausstellen
+from thermoctl.auth.tokens import issue_token, resolve_token
 from thermoctl.config import get_settings
 from thermoctl.db.base import utcnow
 from thermoctl.db.models.credential import ApiToken
@@ -83,7 +83,7 @@ def test_issuing_requires_the_token_manage_permission(
 
 
 def test_a_token_carries_no_more_than_its_issuer_holds(session: Session) -> None:
-    """The admin page's own guard: `token_ausstellen` already enforces this, but a
+    """The admin page's own guard: `issue_token` already enforces this, but a
     kiosk-specific message is what an admin should actually see."""
     zone = create_zone(session, "flur")
     # No `zone.read` for this admin at all.
@@ -156,7 +156,7 @@ def test_a_revoked_token_is_rejected(client: TestClient, session: Session) -> No
     token, plaintext = issue_kiosk_token(
         session, admin, "Flur", [zone.id], control_allowed=False, expires_at=None
     )
-    revoke_token(session, token, akteur_id=admin.id)
+    revoke_token(session, token, actor_id=admin.id)
 
     response = client.get(f"/kiosk/{plaintext}")
     assert response.status_code == status.HTTP_401_UNAUTHORIZED
@@ -181,7 +181,7 @@ def test_an_ordinary_api_token_does_not_work_as_a_kiosk_cookie(
     must not double as a tablet's cookie just because the hash resolves."""
     zone = create_zone(session, "flur")
     admin = _admin(session)
-    _token, plaintext = token_ausstellen(
+    _token, plaintext = issue_token(
         session, admin, "Entwickler-Token", [("zone.read", zone.id)], None
     )
     _with_kiosk_cookie(client, plaintext)
@@ -240,7 +240,7 @@ def test_a_token_cannot_reach_a_zone_outside_its_scope(
 
     setpoint = client.post(
         f"/kiosk/zones/{other.id}/setpoint",
-        data={"mode_id": "1", "direction": "hoch"},
+        data={"mode_id": "1", "direction": "up"},
         headers=_csrf_headers(plaintext),
     )
     assert setpoint.status_code == status.HTTP_401_UNAUTHORIZED
@@ -270,7 +270,7 @@ def test_a_view_only_token_cannot_adjust_the_setpoint(
 
     response = client.post(
         f"/kiosk/zones/{zone.id}/setpoint",
-        data={"mode_id": "1", "direction": "hoch"},
+        data={"mode_id": "1", "direction": "up"},
         headers=_csrf_headers(plaintext),
     )
     assert response.status_code == status.HTTP_403_FORBIDDEN
@@ -317,7 +317,7 @@ def test_a_control_allowed_token_can_adjust_the_setpoint(
 
     response = client.post(
         f"/kiosk/zones/{zone.id}/setpoint",
-        data={"direction": "hoch"},
+        data={"direction": "up"},
         headers=_csrf_headers(plaintext),
         follow_redirects=False,
     )
@@ -381,7 +381,7 @@ def test_a_kiosk_cookie_reaches_no_administration_page(
     path: str, client: TestClient, session: Session
 ) -> None:
     """The kiosk cookie is not a session cookie -- it authenticates nothing that
-    `aktueller_principal` looks for, so every logged-in-only page must still demand
+    `current_principal` looks for, so every logged-in-only page must still demand
     an actual login."""
     zone = create_zone(session, "flur")
     admin = _admin(session)
@@ -498,7 +498,7 @@ def test_a_setpoint_beyond_the_domain_limit_shows_up_as_an_error(
 
     response = client.post(
         f"/kiosk/zones/{zone.id}/setpoint",
-        data={"direction": "hoch"},
+        data={"direction": "up"},
         headers=_csrf_headers(plaintext),
         follow_redirects=True,
     )
@@ -595,7 +595,7 @@ def test_revoking_an_ordinary_api_token_via_the_kiosk_endpoint_is_not_found(
     developer's own API token."""
     admin = _admin(session)
     zone = create_zone(session, "flur")
-    developer_token, _plaintext = token_ausstellen(
+    developer_token, _plaintext = issue_token(
         session, admin, "Entwickler-Token", [("zone.read", zone.id)], None
     )
     _entry, secret = create_session(session, admin, 3600)

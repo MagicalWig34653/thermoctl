@@ -1,7 +1,7 @@
-{% extends "base.html" if not ist_htmx else "empty.html" %}
-{% from "form.html" import textfeld, fehlerhinweis %}
-{% block titel %}Gruppen – thermoctl{% endblock %}
-{% block max_breite %}60rem{% endblock %}
+{% extends "base.html" if not is_htmx else "empty.html" %}
+{% from "form.html" import text_field, error_notice %}
+{% block title %}Gruppen – thermoctl{% endblock %}
+{% block max_width %}60rem{% endblock %}
 
 {#
 Die Rechtevergabe.
@@ -16,33 +16,33 @@ Bedienelement, das beides beantwortet — ob überhaupt, und wenn ja wo. Abgesch
 der ganze Stand; die Domäne bildet die Differenz.
 #}
 
-{% macro rechtezeile(group, permission, alle_zonen, vergeben) %}
-{% set anlagenweit = (permission.code, None) in vergeben %}
+{% macro permission_row(group, permission, all_zones, taken) %}
+{% set plant_wide = (permission.code, None) in taken %}
 <div class="tc-permission">
     <label class="tc-permission-marker">
         <input class="form-check-input mt-0" type="checkbox" name="permission"
-               value="{{ permission.code }}"{{ " checked" if anlagenweit }}
+               value="{{ permission.code }}"{{ " checked" if plant_wide }}
                data-permission="{{ permission.code }}" data-group="{{ group.id }}">
         <span>
             {{ permission.description }}
-            <span class="t-wert t-leise d-block" style="font-size: .7rem">{{ permission.code }}</span>
+            <span class="t-value t-quiet d-block" style="font-size: .7rem">{{ permission.code }}</span>
         </span>
     </label>
 
-    {% if permission.is_zone_scoped and alle_zonen %}
+    {% if permission.is_zone_scoped and all_zones %}
     {#
     Nur zonenbezogene Rechte bekommen Zonenhaken. Ein anlagenweites Recht auf eine Zone
     zu vergeben, wies die Domäne schon immer ab — die Oberfläche bot es trotzdem an, und
     eine Rechtevergabe, die aussieht, als hätte sie gewirkt, ist schlimmer als eine
     abgelehnte.
     #}
-    <div class="tc-permission-zones{{ ' tc-hidden' if anlagenweit }}"
+    <div class="tc-permission-zones{{ ' tc-hidden' if plant_wide }}"
          data-zones-for="{{ permission.code }}-{{ group.id }}">
-        {% for zone in alle_zonen %}
+        {% for zone in all_zones %}
         <label class="tc-chip tc-chip-quiet">
             <input class="form-check-input mt-0 me-1" type="checkbox" name="permission"
                    value="{{ permission.code }}:{{ zone.id }}"
-                   {{ " checked" if (permission.code, zone.id) in vergeben }}>
+                   {{ " checked" if (permission.code, zone.id) in taken }}>
             {{ zone.display_name }}
         </label>
         {% endfor %}
@@ -51,14 +51,14 @@ der ganze Stand; die Domäne bildet die Differenz.
 </div>
 {% endmacro %}
 
-{% block inhalt %}
+{% block content %}
 <section id="group-list">
     <h1 class="mb-1">Gruppen</h1>
-    <p class="t-leise mb-4">
+    <p class="t-quiet mb-4">
         Rechte hängen an Gruppen, nicht an Personen. Wer in mehreren Gruppen ist, darf
         alles, was eine davon erlaubt.
     </p>
-    {{ fehlerhinweis(hint) }}
+    {{ error_notice(hint) }}
 
     {% for group in groups %}
     <article class="tc-panel p-4 mb-3">
@@ -71,7 +71,7 @@ der ganze Stand; die Domäne bildet die Differenz.
                     {% endif %}
                 </h2>
                 {% if group.description %}
-                <p class="t-leise mb-0">{{ group.description }}</p>
+                <p class="t-quiet mb-0">{{ group.description }}</p>
                 {% endif %}
             </div>
             {% if not group.is_builtin %}
@@ -87,9 +87,9 @@ der ganze Stand; die Domäne bildet die Differenz.
         und trotzdem nichts zu erkennen. Ein <details> statt eines Bootstrap-Collapse:
         Es braucht kein JavaScript und laesst sich mit der Tastatur bedienen.
         #}
-        <p class="t-leise small mb-0 mt-2">
-            {% if zusammenfassung[group.id] %}
-            Darf: {{ zusammenfassung[group.id] | join(" · ") }}
+        <p class="t-quiet small mb-0 mt-2">
+            {% if summary[group.id] %}
+            Darf: {{ summary[group.id] | join(" · ") }}
             {% else %}
             Darf noch nichts.
             {% endif %}
@@ -98,19 +98,19 @@ der ganze Stand; die Domäne bildet die Differenz.
         <details class="tc-permission-editor mt-3">
             <summary>Rechte bearbeiten</summary>
         <form method="post" action="/groups/{{ group.id }}/permissions">
-            {% for name, hint_text, permissions in bereiche %}
+            {% for name, hint_text, permissions in scopes %}
             <fieldset class="mt-4">
-                <legend class="t-marke mb-1">{{ name }}</legend>
-                <p class="t-leise small mb-2">{{ hint_text }}</p>
+                <legend class="t-label mb-1">{{ name }}</legend>
+                <p class="t-quiet small mb-2">{{ hint_text }}</p>
                 {% for permission in permissions %}
-                {{ rechtezeile(group, permission, alle_zonen, vergeben[group.id]) }}
+                {{ permission_row(group, permission, all_zones, taken[group.id]) }}
                 {% endfor %}
             </fieldset>
             {% endfor %}
             <div class="d-flex align-items-center gap-3 mt-4 pt-3 border-top">
                 <button type="submit" class="btn btn-primary">Rechte speichern</button>
-                <span class="t-leise small">
-                    {% set count = vergeben[group.id] | length %}
+                <span class="t-quiet small">
+                    {% set count = taken[group.id] | length %}
                     {% if count %}{{ count }} {{ "Recht" if count == 1 else "Rechte" }} vergeben
                     {% else %}Diese Gruppe darf noch nichts.{% endif %}
                 </span>
@@ -123,10 +123,10 @@ der ganze Stand; die Domäne bildet die Differenz.
     <article class="tc-panel p-4">
         <h2 class="mb-3">Gruppe anlegen</h2>
         <form method="post" action="/groups">
-            {{ textfeld("name", "Name", values.get("name", ""), pflicht=true,
+            {{ text_field("name", "Name", values.get("name", ""), required=true,
                         errors=errors.get("name", "")) }}
-            {{ textfeld("description", "Beschreibung", values.get("description", ""),
-                        hilfe="Wofür ist diese Gruppe gedacht?") }}
+            {{ text_field("description", "Beschreibung", values.get("description", ""),
+                        help_text="Wofür ist diese Gruppe gedacht?") }}
             <button type="submit" class="btn btn-primary">Anlegen</button>
         </form>
     </article>

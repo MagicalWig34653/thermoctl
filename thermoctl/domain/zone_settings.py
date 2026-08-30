@@ -16,6 +16,9 @@ class ControlParameters:
     sensor_timeout_seconds: int
     temperature_offset_k: Decimal
     window_resume_delay_seconds: int
+    # The zone's cap on the solar setback in Kelvin -- inherited from
+    # `setting.default_solar_setback_max_k` exactly like the six fields above.
+    solar_setback_max_k: Decimal
 
 
 def _or_standard[T](zone_value: T | None, default: T) -> T:
@@ -42,6 +45,9 @@ def control_parameters(session: Session, zone: Zone) -> ControlParameters:
         temperature_offset_k=_or_standard(zone.temperature_offset_k, Decimal("0.00")),
         window_resume_delay_seconds=_or_standard(
             zone.window_resume_delay_seconds, e.default_window_resume_delay_seconds
+        ),
+        solar_setback_max_k=_or_standard(
+            zone.solar_setback_max_k, e.default_solar_setback_max_k
         ),
     )
 
@@ -91,13 +97,13 @@ class ParameterDescription:
 
     name: str
     label: str
-    einheit: str | None
+    unit: str | None
     minimum: Decimal
     maximum: Decimal
     step: Decimal
 
     @property
-    def ganzzahlig(self) -> bool:
+    def integral(self) -> bool:
         return self.step == self.step.to_integral_value() and self.step >= 1
 
 
@@ -126,6 +132,13 @@ PARAMETERS: tuple[ParameterDescription, ...] = (
     ParameterDescription(
         "window_resume_delay_seconds", "Nachlauf nach Fensterschluss", "s",
         Decimal(0), Decimal(3600), Decimal(10),
+    ),
+    # No global counterpart under a *different* name here either -- unlike
+    # `temperature_offset_k`, this one has one: `setting.default_solar_setback_max_k`.
+    # The bound matches `domain.control.LIMITS["default_solar_setback_max_k"]`.
+    ParameterDescription(
+        "solar_setback_max_k", "Obergrenze Sonnenabsenkung", "K",
+        Decimal("0.0"), Decimal("10.0"), Decimal("0.1"),
     ),
 )
 
@@ -160,14 +173,14 @@ def set_parameter(
             f"{description.label} muss zwischen {description.minimum} und "
             f"{description.maximum} liegen."
         )
-    gerundet = int(value) if description.ganzzahlig else value
+    rounded = int(value) if description.integral else value
     # Take over the other fields exactly as they stand on the zone -- an inherited
     # None stays inherited. Only this one parameter gets fixed.
     values: dict[str, Decimal | int | None] = {
         field: getattr(zone, field) for field in ControlParameters.__dataclass_fields__
     }
-    values[name] = gerundet
+    values[name] = rounded
     save_control_parameters(
         session, zone, values, user_id=user_id, token_id=token_id, source=source
     )
-    return Decimal(gerundet)
+    return Decimal(rounded)
