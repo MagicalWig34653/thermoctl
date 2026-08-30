@@ -14,6 +14,7 @@ from thermoctl.domain.authz import visible_zones
 from thermoctl.domain.modi import Domaenenfehler, sollwerte_aendern
 from thermoctl.domain.principal import Principal
 from thermoctl.domain.schedule import (
+    aufgeloester_sollwert,
     ende_der_naechsten_schaltung,
     temperatur_fuer_modus,
     uebersteuerung_anlegen,
@@ -221,7 +222,17 @@ async def thermostat_verstellen(
     if richtung not in ("hoch", "runter"):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Unbekannte Richtung")
 
+    # Der Wert, den die Seite zeigt -- nicht die hinterlegte Zeile. Die beiden sind
+    # nicht dasselbe: Hat eine Zone fuer den Frostschutz keinen eigenen Sollwert, zeigt
+    # `aufgeloester_sollwert` den Notnagel von 16 Grad an. Das Thermostat suchte
+    # bisher die Zeile, fand keine und antwortete mit 404 -- auf der Seite sah es aus,
+    # als passiere beim Druecken nichts. Genau das ist der Zustand einer frisch
+    # eingerichteten Anlage, in der noch niemand Sollwerte gepflegt hat.
     jetziger = temperatur_fuer_modus(session, zone, modus_id)
+    if jetziger is None:
+        angezeigt = aufgeloester_sollwert(session, zone, utcnow())
+        if angezeigt.modus_id == modus_id:
+            jetziger = angezeigt.temperature_c
     if jetziger is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Für diesen Modus gibt es keinen Sollwert")
 
