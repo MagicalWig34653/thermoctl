@@ -1,7 +1,7 @@
 {% extends "base.html" if not is_htmx else "empty.html" %}
 {% from "form.html" import text_field, number_field, error_notice %}
 {% block title %}Tokens – thermoctl{% endblock %}
-{% block inhalt %}
+{% block content %}
 <section id="token-list">
     <h1 class="mb-3">Tokens</h1>
     {{ error_notice(hint) }}

@@ -2,7 +2,7 @@
 {% from "zone_header.html" import zonenkopf %}
 {% from "form.html" import number_field %}
 {% block title %}Regelparameter – {{ zone.display_name }}{% endblock %}
-{% block inhalt %}
+{% block content %}
 {{ zonenkopf(zone, "Regelparameter") }}
 <p class="text-secondary">Ein leeres Feld verwendet den globalen Standard.</p>
 <form method="post" action="/zones/{{ zone.id }}/parameters">

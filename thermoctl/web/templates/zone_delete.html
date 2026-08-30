@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% from "form.html" import delete_confirmation %}
 {% block title %}Zone löschen – thermoctl{% endblock %}
-{% block inhalt %}
+{% block content %}
 {% set hint %}Abhängig sind {{ dependencies.schedule_points }} Schaltpunkte,
 {{ dependencies.devices }} zugeordnete Geräte, {{ dependencies.setpoints }} Sollwerte,
 {{ dependencies.overrides }} Übersteuerungen und

@@ -1,7 +1,7 @@
 {% extends "base.html" if not is_htmx else "empty.html" %}
 {% from "form.html" import text_field, error_notice %}
 {% block title %}Gruppen – thermoctl{% endblock %}
-{% block max_breite %}60rem{% endblock %}
+{% block max_width %}60rem{% endblock %}
 
 {#
 Die Rechtevergabe.
@@ -51,7 +51,7 @@ der ganze Stand; die Domäne bildet die Differenz.
 </div>
 {% endmacro %}
 
-{% block inhalt %}
+{% block content %}
 <section id="group-list">
     <h1 class="mb-1">Gruppen</h1>
     <p class="t-quiet mb-4">
