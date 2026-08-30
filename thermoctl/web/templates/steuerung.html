@@ -53,6 +53,16 @@
         {% endif %}
     </div>
 
+    {% if einstellungen.control_armed and not senden_erlaubt %}
+    <div class="alert alert-warning mt-3 mb-0" role="alert">
+        <strong>Es wird entschieden, aber noch nicht gesendet.</strong>
+        Der Dienst lief beim Start im Trockenlauf; der Riegel dafür sitzt im MQTT-Client
+        und wird nur beim Start gelesen. Bis zum nächsten Neustart bleiben Ventile,
+        Zustandsmeldungen und die Home-Assistant-Anmeldung aus — zwei Riegel statt
+        einem, weil dahinter eine echte Heizung hängt.
+    </div>
+    {% endif %}
+
     {% if darf_scharf and not einstellungen.control_armed %}
     <div class="collapse mt-4 {{ 'show' if fehler.get('begruendung') }}" id="scharfschalten">
         <div class="border-top pt-3">
@@ -61,7 +71,11 @@
                 <li>Der Schattenbetrieb sollte über mehrere Tage plausible Entscheidungen
                     gezeigt haben — die Liste unten ist der schnelle Blick darauf.</li>
                 <li>Das Altsystem bleibt die Rückfallebene und wird nicht abgeschaltet.</li>
-                <li>Umkehrbar: derselbe Knopf führt zurück in den Trockenlauf.</li>
+                <li>Umkehrbar: derselbe Knopf führt zurück in den Trockenlauf — und
+                    zwar sofort, ohne Neustart.</li>
+                <li>Tatsächlich <em>gesendet</em> wird erst nach einem Neustart des
+                    Dienstes: Der zweite Riegel sitzt im MQTT-Client und wird beim Start
+                    gelesen.</li>
             </ul>
             <form method="post" action="/steuerung/scharf">
                 <input type="hidden" name="scharf" value="ja">

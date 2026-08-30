@@ -1,6 +1,7 @@
 from datetime import datetime
 from decimal import Decimal
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -276,3 +277,58 @@ def test_umbenennen_auf_einen_vergebenen_namen_bleibt_im_formular(
     assert antwort.status_code == 200
     assert "bereits vergeben" in antwort.text
     assert andere.name == "wird-umbenannt"
+
+
+# --- Betriebsart aus der Ferne ---------------------------------------------
+
+
+def test_betriebsart_setzen_schreibt_und_protokolliert(session: Session) -> None:
+    """Eigene Funktion neben `zone_aendern`: Ein Befehl von aussen kennt nur die
+    Betriebsart und wuerde mit `zone_aendern` alles andere mit dem ueberschreiben, was
+    der Aufrufer gerade zufaellig zur Hand hat."""
+    from sqlalchemy import select
+
+    from tests.hilfen import quelle
+    from thermoctl.db.models.lookup import OperatingMode
+    from thermoctl.db.models.operations import AuditEvent
+    from thermoctl.domain.zonen import betriebsart_setzen
+
+    zone = zone_anlegen(session, "betriebsartzone")
+    quelle(session, "system")
+    aus = OperatingMode(code="off", label="Aus")
+    session.add(aus)
+    session.flush()
+
+    assert betriebsart_setzen(session, zone, "off", akteur_id=None, quelle="system") is True
+    assert zone.operating_mode_id == aus.id
+    eintrag = session.scalars(
+        select(AuditEvent).where(AuditEvent.object_type == "zone")
+    ).one()
+    assert "Aus" in (eintrag.detail or "")
+
+
+def test_dieselbe_betriebsart_schreibt_keinen_eintrag(session: Session) -> None:
+    """Home Assistant schickt seinen Zustand gern noch einmal. Ein Protokoll, das jede
+    Wiederholung als Aenderung fuehrt, ist nach einer Woche unlesbar."""
+    from sqlalchemy import select
+
+    from tests.hilfen import quelle
+    from thermoctl.db.models.operations import AuditEvent
+    from thermoctl.domain.zonen import betriebsart_setzen
+
+    zone = zone_anlegen(session, "wiederholungszone")
+    quelle(session, "system")
+    code = zone.operating_mode.code
+
+    assert betriebsart_setzen(session, zone, code, akteur_id=None, quelle="system") is False
+    assert not session.scalars(
+        select(AuditEvent).where(AuditEvent.object_type == "zone")
+    ).all()
+
+
+def test_unbekannte_betriebsart_wird_abgewiesen(session: Session) -> None:
+    from thermoctl.domain.zonen import Betriebsartunbekannt, betriebsart_setzen
+
+    zone = zone_anlegen(session, "unbekanntbetrieb")
+    with pytest.raises(Betriebsartunbekannt):
+        betriebsart_setzen(session, zone, "gemuetlich", akteur_id=None, quelle="system")

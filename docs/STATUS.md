@@ -24,7 +24,7 @@ Vom Controller selbst nachgeprüft, nicht aus Berichten übernommen:
 
 | | |
 |---|---|
-| Tests | 887, grün unter SQLite **und** MariaDB |
+| Tests | 914, grün unter SQLite **und** MariaDB |
 | Testabdeckung | 99 %, Mindestschwelle 97 % in der CI |
 | Ruff, mypy strict | ohne Befund, 74 Quelldateien |
 | Migrationskette | linear, ein Kopf, vorwärts und rückwärts gegen beide Datenbanken |
@@ -187,6 +187,8 @@ verzögert hätte.
 - Phase 4: Vergleichsbetrieb entwerfen (Dauer, Auflösung, Bericht), dann das Schema dafür
   bauen — nicht umgekehrt. Datenübernahme aus dem Altschema. Scharfschalten hinter einem
   Schalter, jederzeit umkehrbar.
-- Phase 5, Rest: Home-Assistant-Discovery veröffentlichen (der Entwurf steht, das Senden
-  wartet auf Phase 4), altes Topic-Schema abkündigen.
+- Phase 5, Rest: altes Topic-Schema abkündigen (wartet auf den Cutover). Die
+  Home-Assistant-Anbindung ist angeschlossen — sie meldet die Zonen an, veröffentlicht
+  ihren Zustand und nimmt Sollwert und Betriebsart entgegen, sobald die Regelung scharf
+  ist.
 - **`vm130-nginx` bleibt bis zum abgeschlossenen Cutover unverändert die Rückfallebene.**

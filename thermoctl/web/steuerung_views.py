@@ -88,6 +88,12 @@ def _seite(
             },
             "fehler": {fehler.feld: fehler.meldung} if fehler else {},
             "darf_scharf": hat_recht(principal, "control.arm"),
+            # Der erste Riegel sitzt im Konstruktor des MQTT-Clients und wird beim Start
+            # aus der Datenbank gelesen. Wer im laufenden Betrieb scharf schaltet, hat
+            # damit einen Zustand, in dem die Anlage scharf entscheidet und trotzdem
+            # nichts sendet. Das ist beabsichtigt -- aber es muss dastehen, sonst sucht
+            # jemand stundenlang den Fehler.
+            "senden_erlaubt": getattr(request.app.state, "senden_erlaubt", False),
         },
     )
 

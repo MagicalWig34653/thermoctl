@@ -57,7 +57,7 @@ def settings() -> Settings:
 
 @pytest.fixture(scope="session", autouse=True)
 def _umgebung_fuer_die_ganze_sitzung(settings: Settings) -> Iterator[None]:
-    """Setzt die beiden Pflichtvariablen fuer den ganzen Lauf.
+    """Setzt die Pflichtvariablen fuer den ganzen Lauf und schneidet die `.env` ab.
 
     Jeder Test, der `create_app()` aufruft, braucht sie — `Settings` verlangt
     `database_url` und `secret_key`. Die Fixture ``client`` setzt sie bisher selbst,
@@ -70,8 +70,17 @@ def _umgebung_fuer_die_ganze_sitzung(settings: Settings) -> Iterator[None]:
     auf, weil im Projektverzeichnis eine `.env` liegt, die pydantic von sich aus liest.
     In der CI gibt es keine. Ein Test darf nicht davon abhaengen, wer vor ihm lief und
     welche Dateien zufaellig herumliegen.
+
+    Der zweite Anlauf auf denselben Fehler: Damals wurden die beiden Pflichtvariablen
+    gesetzt, die `.env` aber weiter gelesen. Wer dort spaeter etwas eintrug -- eine
+    Passkey-Kennung etwa -- sah Tests rot werden, die mit seiner Aenderung nichts zu tun
+    hatten. Umgekehrt ist der gefaehrlichere Fall: eine Einstellung, die oertlich gesetzt
+    ist und in der CI fehlt, laesst Tests gruen aussehen, die dort scheitern werden.
+    `THERMOCTL_ENV_FILE=""` schneidet die Datei ab; die Suite sieht nur noch, was sie
+    selbst setzt.
     """
     marke = pytest.MonkeyPatch()
+    marke.setenv("THERMOCTL_ENV_FILE", "")
     marke.setenv("THERMOCTL_DATABASE_URL", settings.database_url)
     marke.setenv("THERMOCTL_SECRET_KEY", settings.secret_key.get_secret_value())
     get_settings.cache_clear()

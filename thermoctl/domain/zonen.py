@@ -6,11 +6,16 @@ from sqlalchemy.orm import Session
 
 from thermoctl import audit
 from thermoctl.db.models.device import ZoneDevice
+from thermoctl.db.models.lookup import OperatingMode
 from thermoctl.db.models.override import ZoneOverride
 from thermoctl.db.models.schedule import SchedulePoint
 from thermoctl.db.models.zone import Zone, ZoneSetpoint
 from thermoctl.db.models.zustand import ShadowDecision
 from thermoctl.domain.principal import Principal
+
+
+class Betriebsartunbekannt(Exception):
+    """Die verlangte Betriebsart gibt es nicht."""
 
 
 class ZonennameVergeben(Exception):
@@ -144,3 +149,39 @@ def zone_loeschen(
         token_id=principal.token_id,
     )
 
+
+
+def betriebsart_setzen(
+    session: Session,
+    zone: Zone,
+    code: str,
+    *,
+    akteur_id: int | None,
+    quelle: str = "web",
+) -> bool:
+    """Setzt die Betriebsart einer Zone. Gibt zurueck, ob sich etwas geaendert hat.
+
+    Eigene Funktion neben `zone_aendern`, das alle Felder auf einmal nimmt: Ein Befehl von
+    aussen -- aus Home Assistant etwa -- kennt nur die Betriebsart und wuerde mit
+    `zone_aendern` alles andere mit den Werten ueberschreiben, die der Aufrufer gerade
+    zufaellig zur Hand hat.
+    """
+    art = session.scalar(select(OperatingMode).where(OperatingMode.code == code))
+    if art is None:
+        raise Betriebsartunbekannt(f"Die Betriebsart '{code}' gibt es nicht.")
+    if zone.operating_mode_id == art.id:
+        return False
+    vorher = zone.operating_mode.label
+    zone.operating_mode_id = art.id
+    session.flush()
+    audit.record(
+        session,
+        source=quelle,
+        action="update",
+        object_type="zone",
+        object_id=str(zone.id),
+        summary=f"Betriebsart von '{zone.display_name}' auf {art.label} gesetzt",
+        detail=f"{vorher} → {art.label}",
+        user_id=akteur_id,
+    )
+    return True

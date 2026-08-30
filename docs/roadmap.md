@@ -217,8 +217,8 @@ abgeschaltet ist.
 
 ### Aufgaben
 
-- [x] 1 Neue MQTT-Topic-Struktur samt Discovery — **entworfen und geprüft**; das
-      Veröffentlichen selbst wartet auf Phase 4 (Trockenlauf)
+- [x] 1 Neue MQTT-Topic-Struktur samt Discovery — **gebaut und angeschlossen**; das
+      Veröffentlichen hängt am selben Riegel wie das Schalten, siehe [mqtt.md](mqtt.md)
 - [ ] 2 Altes Topic-Schema abkündigen — *wartet auf den Cutover*
 - [x] 3 MCP-Server — sieben Werkzeuge über derselben Domänenlogik, [Doku](mcp.md)
 - [x] 4 API-Dokumentation — [docs/api.md](api.md)

@@ -212,3 +212,28 @@ def test_ohne_setting_manage_nur_lesen(client_als: Clientbauer, session: Session
         ).status_code
         == 403
     )
+
+
+def test_betriebsseite_nennt_den_zweiten_riegel(
+    client_als: Clientbauer, session: Session
+) -> None:
+    """Scharf entschieden, aber nichts gesendet: Wer diesen Zustand nicht kennt, sucht
+    stundenlang den Fehler an der falschen Stelle."""
+    einstellungen_anlegen(session)
+    quelle(session, "web")
+    scharf_schalten(session, True, begruendung="Test", user_id=None)
+
+    seite = client_als(ALLE_RECHTE).get("/steuerung")
+    assert seite.status_code == 200
+    assert "noch nicht gesendet" in seite.text
+
+
+def test_im_trockenlauf_steht_der_hinweis_nicht_da(
+    client_als: Clientbauer, session: Session
+) -> None:
+    """Gegenprobe: Ohne sie waere der Test oben auch von einer Fassung erfuellt, die den
+    Hinweis immer anzeigt -- und dann steht auf jeder Seite eine Warnung, die niemand
+    mehr liest."""
+    einstellungen_anlegen(session)
+    seite = client_als(ALLE_RECHTE).get("/steuerung")
+    assert "noch nicht gesendet" not in seite.text
