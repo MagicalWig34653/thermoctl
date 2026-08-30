@@ -14,12 +14,17 @@ from thermoctl.domain.authz import Forbidden, has_permission, principal_for_user
 def issue_token(
     session: Session, owner: User, name: str,
     permissions: list[tuple[str, int | None]], valid_until: datetime | None,
+    *, is_kiosk: bool = False,
 ) -> tuple[ApiToken, str]:
     """Issues a token. The plaintext appears exactly once — here.
 
     The scope must be a subset of the owner's own permissions. This is also checked
     on every request (see principal_for_token); here the error surfaces early and
     with a comprehensible message.
+
+    `is_kiosk` only tags the row so `/tokens` and `/kiosk-tokens` can each list their
+    own kind without showing the other's — it changes nothing about how the token's
+    scope is computed or checked.
     """
     p = principal_for_user(session, owner)
     for code, zone_id in permissions:
@@ -31,7 +36,7 @@ def issue_token(
 
     plaintext, prefix, hash_value = new_token()
     token = ApiToken(user_id=owner.id, name=name, prefix=prefix,
-                     token_hash=hash_value, expires_at=valid_until)
+                     token_hash=hash_value, expires_at=valid_until, is_kiosk=is_kiosk)
     session.add(token)
     session.flush()
 

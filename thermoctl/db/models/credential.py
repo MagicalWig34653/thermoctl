@@ -1,6 +1,7 @@
 from datetime import datetime
 
 from sqlalchemy import (
+    Boolean,
     DateTime,
     ForeignKey,
     Integer,
@@ -40,6 +41,11 @@ class ApiToken(Base):
     expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # A kiosk token is otherwise an ordinary `ApiToken` -- same hash, same scoping via
+    # `ApiTokenPermission`. The flag only keeps `/tokens` (a user's own developer
+    # tokens) and `/kiosk-tokens` (tablet credentials, scoped to zones) apart; see the
+    # migration `a84359d9d263`.
+    is_kiosk: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
 
 class ApiTokenPermission(Base):

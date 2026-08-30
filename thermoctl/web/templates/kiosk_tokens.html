@@ -1,0 +1,100 @@
+{% extends "base.html" if not is_htmx else "empty.html" %}
+{% from "form.html" import text_field, number_field, toggle, error_notice %}
+{% block title %}Kiosk-Tokens – thermoctl{% endblock %}
+{% block content %}
+<section id="kiosk-token-list">
+    <h1 class="mb-1">Kiosk-Tokens</h1>
+    <p class="t-quiet mb-4">
+        Ein Kiosk-Token öffnet das Wandtablett-Dashboard unter <code>/kiosk/&lt;Token&gt;</code>
+        — ohne Anmeldung, aber mit einem engen, jederzeit widerrufbaren Rechtesatz: sehen
+        darf es nur die zugewiesenen Zonen, bedienen nur, wenn das hier erlaubt wird.
+    </p>
+    {{ error_notice(hint) }}
+
+    {% if plaintext %}
+    <div class="alert alert-success" role="alert">
+        <p class="mb-1"><strong>Das Kiosk-Token wurde ausgestellt.</strong> Es erscheint
+            <em>genau einmal</em> — gespeichert wird nur sein Hash.</p>
+        <p class="mb-1">
+            Adresse fürs Tablett: <code id="new-kiosk-token">/kiosk/{{ plaintext }}</code>
+        </p>
+        <p class="mb-0 small">Jetzt auf dem Tablett öffnen und als Lesezeichen sichern. Wer
+            das Token verliert, stellt ein neues aus und widerruft das alte.</p>
+    </div>
+    {% endif %}
+
+    <div class="table-responsive">
+    <table class="table table-striped align-middle">
+        <thead>
+        <tr>
+            <th scope="col">Name</th>
+            <th scope="col">Zonen</th>
+            <th scope="col">Bedienen</th>
+            <th scope="col">Gültig bis</th>
+            <th scope="col">Status</th>
+            <th scope="col"></th>
+        </tr>
+        </thead>
+        <tbody>
+        {% for entry in token %}
+        {% set zone_label, control_allowed = scopes[entry.id] %}
+        <tr>
+            <td>{{ entry.name }}</td>
+            <td>{{ zone_label }}</td>
+            <td>{{ "ja" if control_allowed else "nur sehen" }}</td>
+            <td>{{ entry.expires_at or "unbegrenzt" }}</td>
+            <td>
+                {% if entry.revoked_at %}
+                <span class="badge text-bg-secondary">widerrufen</span>
+                {% else %}
+                <span class="badge text-bg-success">aktiv</span>
+                {% endif %}
+            </td>
+            <td class="text-end">
+                {% if not entry.revoked_at %}
+                <form method="post" action="/kiosk-tokens/{{ entry.id }}/revoke">
+                    <button type="submit" class="btn btn-sm btn-outline-danger">Widerrufen</button>
+                </form>
+                {% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+        {% if not token %}
+        <tr><td colspan="6" class="t-quiet">Noch kein Kiosk-Token ausgestellt.</td></tr>
+        {% endif %}
+        </tbody>
+    </table>
+    </div>
+
+    <h2 class="h5 mt-4">Kiosk-Token ausstellen</h2>
+    <form method="post" action="/kiosk-tokens">
+        {{ text_field("name", "Name", values.get("name", ""), required=true,
+                    help_text="Zum Beispiel 'Tablet Flur' — später ist der Name das Einzige, "
+                          "woran Sie das Gerät wiedererkennen.",
+                    errors=errors.get("name", "")) }}
+        <div class="mb-3">
+            <span class="form-label d-block">Zonen</span>
+            {% for zone in zones %}
+            <label class="tc-chip tc-chip-quiet">
+                <input class="form-check-input mt-0 me-1" type="checkbox" name="zone_id"
+                       value="{{ zone.id }}"
+                       {{ "checked" if zone.id|string in values.get("zone_id", []) }}>
+                {{ zone.display_name }}
+            </label>
+            {% endfor %}
+            {% if errors.get("zone_id", "") %}
+            <div class="text-danger small mt-1">{{ errors.get("zone_id", "") }}</div>
+            {% endif %}
+        </div>
+        {{ toggle("control_allowed", "Auch bedienen (Sollwert und Boost)", checked=false,
+                      help_text="Ohne diesen Haken zeigt das Dashboard nur an. Eine nicht "
+                            "angehakte Checkbox schickt gar kein Feld -- die Auswertung "
+                            "prueft daher nur, ob ueberhaupt ein Wert ankam.") }}
+        {{ number_field("valid_days", "Gültig für (Tage)", values.get("valid_days", ""),
+                      step="1", min="1",
+                      help_text="Leer lassen für unbegrenzt. Ein befristetes Token ist die "
+                            "sicherere Wahl.") }}
+        <button type="submit" class="btn btn-primary">Ausstellen</button>
+    </form>
+</section>
+{% endblock %}

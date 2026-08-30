@@ -93,7 +93,7 @@
                 {{ nav_link("/devices", "Geräte") }}
                 {{ nav_link("/control", "Betrieb") }}
                 <li class="nav-item dropdown">
-                    <button class="nav-link dropdown-toggle{{ ' tc-here' if here in ('/settings', '/interfaces', '/users', '/groups', '/audit', '/tokens') or here.startswith('/modes') }}"
+                    <button class="nav-link dropdown-toggle{{ ' tc-here' if here in ('/settings', '/interfaces', '/users', '/groups', '/audit', '/tokens', '/kiosk-tokens') or here.startswith('/modes') }}"
                             type="button" data-bs-toggle="dropdown" aria-expanded="false">
                         Einstellungen
                     </button>
@@ -106,6 +106,7 @@
                         <li><a class="dropdown-item" href="/users">Benutzer</a></li>
                         <li><a class="dropdown-item" href="/groups">Gruppen</a></li>
                         <li><a class="dropdown-item" href="/tokens">API-Tokens</a></li>
+                        <li><a class="dropdown-item" href="/kiosk-tokens">Kiosk-Tokens</a></li>
                         <li><a class="dropdown-item" href="/audit">Protokoll</a></li>
                     </ul>
                 </li>

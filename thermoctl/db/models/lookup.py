@@ -133,6 +133,16 @@ ACTOR_SOURCES = [
     ("cli", "Kommandozeile"),
     ("system", "System"),
 ]
+# "kiosk" is deliberately NOT listed here, even though it is a fully real actor
+# source from here on (see the migration `d07073d9abdf`). The very first migration,
+# `3685e30419a4_nachschlagetabellen.py`, imports this constant *live* instead of
+# embedding a frozen literal list the way every migration after it does (see the
+# comment in `8b2d6e8a7f10_schema_schattenbetrieb.py` for why that discipline
+# exists) -- so growing `ACTOR_SOURCES` here would make that decade-old migration
+# insert "kiosk" too, colliding with the dedicated migration that is supposed to be
+# the only place that row comes from. Tests that need it call
+# `tests.helpers.source(session, "kiosk")`, the same way they already do for every
+# other source.
 
 # (code, description, zone-scoped) — the list from section 2.6 of the specification
 #
