@@ -17,6 +17,8 @@ from dataclasses import asdict, dataclass
 from decimal import Decimal
 from typing import Any
 
+from thermoctl.domain.modi import HOECHSTTEMPERATUR_C, MINDESTTEMPERATUR_C
+
 
 @dataclass(frozen=True)
 class ZustandsTopics:
@@ -135,8 +137,10 @@ def discovery_nutzlast(
         "action_topic": zustand.wuerde_heizen,
         "action_template": "{{ 'heating' if value == 'true' else 'idle' }}",
         "modes": ["auto", "heat", "off"],
-        "min_temp": 5,
-        "max_temp": 35,
+        # Aus der Domaene, nicht abgeschrieben: Home Assistant zeigt damit
+        # denselben Bereich an, den der Dienst auch annimmt.
+        "min_temp": float(MINDESTTEMPERATUR_C),
+        "max_temp": float(HOECHSTTEMPERATUR_C),
         "temp_step": float(temp_step),
         "temperature_unit": "C",
     }

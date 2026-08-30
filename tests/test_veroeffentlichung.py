@@ -92,7 +92,17 @@ def test_discovery_nutzlast_ist_gueltiges_json_und_verweist_auf_topics() -> None
     assert daten["action_topic"] == zustand.wuerde_heizen
     assert daten["temperature_command_topic"] == befehl.sollwert
     assert daten["mode_command_topic"] == befehl.betriebsart
-    assert (daten["min_temp"], daten["max_temp"], daten["temp_step"]) == (5, 35, 0.25)
+    # Die Grenzen kommen aus der Domaene: Home Assistant zeigt damit denselben Bereich
+    # an, den der Dienst auch annimmt. Ein abgeschriebenes Paar Zahlen waere beim
+    # naechsten Verschieben zurueckgeblieben -- und die Karte haette einen Wert
+    # angeboten, den der Server ablehnt.
+    from thermoctl.domain.modi import HOECHSTTEMPERATUR_C, MINDESTTEMPERATUR_C
+
+    assert (daten["min_temp"], daten["max_temp"], daten["temp_step"]) == (
+        float(MINDESTTEMPERATUR_C),
+        float(HOECHSTTEMPERATUR_C),
+        0.25,
+    )
 
 
 def test_device_block_ist_fuer_alle_zonen_gleich() -> None:

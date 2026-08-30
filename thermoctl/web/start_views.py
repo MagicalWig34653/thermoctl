@@ -33,6 +33,7 @@ from thermoctl.db.models.schedule import SchedulePoint
 from thermoctl.db.models.zone import SetpointMode, ZoneSetpoint
 from thermoctl.db.models.zustand import ShadowDecision, ZoneState
 from thermoctl.domain.authz import hat_recht, principal_fuer_benutzer, visible_zones
+from thermoctl.domain.modi import HOECHSTTEMPERATUR_C, MINDESTTEMPERATUR_C
 from thermoctl.domain.schedule import aufgeloester_sollwert, wochenabschnitte
 from thermoctl.setup import einrichtung_noetig
 from thermoctl.web import templates, waermeanteil
@@ -179,6 +180,10 @@ def start(
                 if hat_recht(principal, "setpoint.write", zone.id)
             },
             "thermostatfehler": request.query_params.get("thermostatfehler"),
+            # Aus der Domaene: Ein `min="5"` im Markup waere eine zweite Fassung der
+            # Grenze und wuerde beim naechsten Verschieben zurueckbleiben.
+            "mindesttemperatur": MINDESTTEMPERATUR_C,
+            "hoechsttemperatur": HOECHSTTEMPERATUR_C,
             # Der Anzeigename, nicht der Code: Am Thermostat stand "frostschutz" statt
             # "Frostschutz" -- ein Bezeichner aus der Datenbank, der dort nichts zu
             # suchen hat.

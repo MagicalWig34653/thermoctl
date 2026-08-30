@@ -81,6 +81,6 @@ vorhandenen** Punkt, legt aber keinen an und löscht keinen. „Verschieb die Mo
 im Bad eine halbe Stunde nach hinten" ist eine alltägliche Bitte, und der Umfang des
 Schadens ist auf einen Zeitpunkt begrenzt.
 
-Die Grenzen für Übersteuerungen (5 bis 35 °C, eine Nachkommastelle) prüft die Domäne, nicht
+Die Grenzen für Übersteuerungen (1 bis 35 °C, eine Nachkommastelle) prüft die Domäne, nicht
 der Adapter. Ein Werkzeug, das `temperatur_c=99` schickt, bekommt einen Fehler — und zwar
 denselben wie die Oberfläche.

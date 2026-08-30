@@ -51,7 +51,7 @@ def ist_befehl(topic: str, praefix: str) -> bool:
 def zerlegen(topic: str, nutzlast: bytes, praefix: str) -> Befehl:
     """Macht aus Topic und Nutzlast ein geprueftes Anliegen.
 
-    Prueft **nicht** die fachlichen Grenzen -- 5 bis 35 Grad steht in der Domaene und
+    Prueft **nicht** die fachlichen Grenzen -- sie stehen in der Domaene und
     gilt fuer alle Adapter gleich. Hier faellt nur durch, was gar keine Zahl ist.
     """
     treffer = _MUSTER.match(topic)

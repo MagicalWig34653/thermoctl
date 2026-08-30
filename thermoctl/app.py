@@ -191,7 +191,7 @@ def _befehl_ausfuehren(
     """Fuehrt einen von aussen gesendeten Befehl aus -- ueber die Domaene, wie jeder Adapter.
 
     Home Assistant bekommt je Zone einen Thermostat; wer dort dreht, landet hier. Die
-    Grenzen (5 bis 35 Grad) und die Audit-Eintraege kommen aus der Domaene, damit ein
+    Grenzen (1 bis 35 Grad) und die Audit-Eintraege kommen aus der Domaene, damit ein
     Befehl von aussen genau so viel darf wie ein Klick in der Oberflaeche -- und keinen
     Deut mehr.
 

@@ -10,7 +10,17 @@ from thermoctl.db.models.override import ZoneOverride
 from thermoctl.db.models.schedule import SchedulePoint
 from thermoctl.db.models.zone import SetpointMode, Zone, ZoneSetpoint
 
-MINDESTTEMPERATUR_C = Decimal("5.0")
+# Die eine Sollwertgrenze des Projekts. Sie gilt fuer Modus-Sollwerte wie fuer
+# Uebersteuerungen und fuer alle vier Adapter -- Oberflaeche, REST, MCP und die
+# Home-Assistant-Karte lesen sie von hier.
+#
+# Die Untergrenze lag bis hierher bei 5 Grad. Auf Wunsch des Projektinhabers liegt sie
+# jetzt bei 1 Grad: Ein Keller oder eine Garage soll sich wirklich kalt stellen lassen.
+# **Das umgeht den Frostschutz nicht von selbst** -- der ist ein eigener Modus mit einem
+# eigenen Sollwert --, aber wer diesen Sollwert unter 4 Grad setzt, nimmt einfrierende
+# Leitungen in Kauf. Die Grenze schuetzt davor nicht mehr; sie ist eine Grenze der
+# Eingabe, keine der Physik.
+MINDESTTEMPERATUR_C = Decimal("1.0")
 HOECHSTTEMPERATUR_C = Decimal("35.0")
 
 
@@ -154,11 +164,22 @@ def modus_loeschen(
     )
 
 
+def _grad(wert: Decimal) -> str:
+    """`1,0` -- mit Komma, weil die Meldung dem Benutzer angezeigt wird."""
+    return f"{wert:.1f}".replace(".", ",")
+
+
 def temperatur_pruefen(temperatur: Decimal) -> Decimal:
     if not temperatur.is_finite():
         raise Domaenenfehler("temperatur", "Der Sollwert muss eine endliche Zahl sein.")
     if temperatur < MINDESTTEMPERATUR_C or temperatur > HOECHSTTEMPERATUR_C:
-        raise Domaenenfehler("temperatur", "Der Sollwert muss zwischen 5,0 und 35,0 °C liegen.")
+        # Aus den Konstanten gebaut, nicht abgeschrieben: Eine Meldung, die die Grenze
+        # noch einmal nennt, weicht beim naechsten Verschieben von ihr ab.
+        raise Domaenenfehler(
+            "temperatur",
+            f"Der Sollwert muss zwischen {_grad(MINDESTTEMPERATUR_C)} und "
+            f"{_grad(HOECHSTTEMPERATUR_C)} °C liegen.",
+        )
     exponent = temperatur.as_tuple().exponent
     if isinstance(exponent, int) and exponent < -1:
         raise Domaenenfehler(
