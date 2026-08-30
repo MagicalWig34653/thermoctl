@@ -14,6 +14,7 @@ landed on the arm button first.
 """
 
 from datetime import timedelta
+from decimal import Decimal
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request, Response, status
@@ -33,7 +34,9 @@ from thermoctl.domain.control import (
     LIMITS,
     ControlError,
     arm,
+    check_coordinate,
     save_settings,
+    save_solar_location,
     settings,
 )
 from thermoctl.domain.interfaces import uebersicht
@@ -105,18 +108,27 @@ def _defaults_page(
     principal: Principal,
     *,
     values: dict[str, str] | None = None,
+    solar_enabled: bool | None = None,
     errors: ControlError | None = None,
 ) -> Response:
     row = settings(session)
     if values is None:
         values = {field: str(getattr(row, field)) for field in LIMITS}
         values["timezone"] = row.timezone
+        values["solar_forecast_latitude"] = (
+            str(row.solar_forecast_latitude) if row.solar_forecast_latitude is not None else ""
+        )
+        values["solar_forecast_longitude"] = (
+            str(row.solar_forecast_longitude) if row.solar_forecast_longitude is not None else ""
+        )
+        solar_enabled = row.solar_forecast_enabled
     return templates.TemplateResponse(
         request,
         "settings.html",
         {
             "felder": [(field, LABELS[field], field in GANZZAHLIG) for field in LIMITS],
             "values": values,
+            "solar_forecast_enabled": bool(solar_enabled),
             "errors": {errors.field: errors.notice} if errors else {},
             "darf_aendern": has_permission(principal, "setting.manage"),
         },
@@ -155,9 +167,22 @@ async def save_defaults(
     form = await request.form()
     values = {
         name: str(form.get(name, "")).strip()
-        for name in (*LIMITS, "timezone")
+        for name in (*LIMITS, "timezone", "solar_forecast_latitude", "solar_forecast_longitude")
     }
+    solar_enabled = str(form.get("solar_forecast_enabled", "")) == "on"
     try:
+        # Validated -- but deliberately not yet written: `save_settings` below still
+        # has to run its own check before either group's fields actually change, so
+        # a bad coordinate here must not leave the (already checked) global defaults
+        # committed on their own. Only `settings.manage` can trigger any of this, and
+        # the request only ever commits at the very end (`get_session`) -- but that
+        # commits whatever is on the row by then, checked or not.
+        check_coordinate(
+            "solar_forecast_latitude", values["solar_forecast_latitude"], bound=Decimal("90")
+        )
+        check_coordinate(
+            "solar_forecast_longitude", values["solar_forecast_longitude"], bound=Decimal("180")
+        )
         save_settings(
             session,
             values,
@@ -165,8 +190,18 @@ async def save_defaults(
             user_id=principal.user_id,
             token_id=principal.token_id,
         )
+        save_solar_location(
+            session,
+            enabled=solar_enabled,
+            latitude_text=values["solar_forecast_latitude"],
+            longitude_text=values["solar_forecast_longitude"],
+            user_id=principal.user_id,
+            token_id=principal.token_id,
+        )
     except ControlError as exc:
-        return _defaults_page(request, session, principal, values=values, errors=exc)
+        return _defaults_page(
+            request, session, principal, values=values, solar_enabled=solar_enabled, errors=exc
+        )
     return RedirectResponse("/settings", status_code=status.HTTP_303_SEE_OTHER)
 
 

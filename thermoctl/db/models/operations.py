@@ -65,6 +65,26 @@ class Setting(Base):
     shadow_interval_seconds: Mapped[int] = mapped_column(
         Integer, default=60, server_default=text("60"), nullable=False
     )
+    # --- Solar setback ---------------------------------------------------------
+    # Off by default, and effectively off regardless of this flag while latitude or
+    # longitude is unset (there is no sensible default location -- CLAUDE.md
+    # principle 1). The location is domain configuration, not a secret, which is why
+    # it lives here and not in `thermoctl.config.Settings`.
+    solar_forecast_enabled: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=false(), nullable=False
+    )
+    solar_forecast_latitude: Mapped[Decimal | None] = mapped_column(
+        Numeric(6, 3), nullable=True
+    )
+    solar_forecast_longitude: Mapped[Decimal | None] = mapped_column(
+        Numeric(6, 3), nullable=True
+    )
+    solar_setback_lookahead_hours: Mapped[int] = mapped_column(
+        Integer, default=3, server_default=text("3"), nullable=False
+    )
+    default_solar_setback_max_k: Mapped[Decimal] = mapped_column(
+        Numeric(3, 1), default=Decimal("2.0"), server_default=text("2.0"), nullable=False
+    )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=utcnow, onupdate=utcnow, nullable=False
     )

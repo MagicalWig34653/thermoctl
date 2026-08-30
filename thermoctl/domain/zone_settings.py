@@ -16,6 +16,9 @@ class ControlParameters:
     sensor_timeout_seconds: int
     temperature_offset_k: Decimal
     window_resume_delay_seconds: int
+    # The zone's cap on the solar setback in Kelvin -- inherited from
+    # `setting.default_solar_setback_max_k` exactly like the six fields above.
+    solar_setback_max_k: Decimal
 
 
 def _or_standard[T](zone_value: T | None, default: T) -> T:
@@ -42,6 +45,9 @@ def control_parameters(session: Session, zone: Zone) -> ControlParameters:
         temperature_offset_k=_or_standard(zone.temperature_offset_k, Decimal("0.00")),
         window_resume_delay_seconds=_or_standard(
             zone.window_resume_delay_seconds, e.default_window_resume_delay_seconds
+        ),
+        solar_setback_max_k=_or_standard(
+            zone.solar_setback_max_k, e.default_solar_setback_max_k
         ),
     )
 
@@ -126,6 +132,13 @@ PARAMETERS: tuple[ParameterDescription, ...] = (
     ParameterDescription(
         "window_resume_delay_seconds", "Nachlauf nach Fensterschluss", "s",
         Decimal(0), Decimal(3600), Decimal(10),
+    ),
+    # No global counterpart under a *different* name here either -- unlike
+    # `temperature_offset_k`, this one has one: `setting.default_solar_setback_max_k`.
+    # The bound matches `domain.control.LIMITS["default_solar_setback_max_k"]`.
+    ParameterDescription(
+        "solar_setback_max_k", "Obergrenze Sonnenabsenkung", "K",
+        Decimal("0.0"), Decimal("10.0"), Decimal("0.1"),
     ),
 )
 

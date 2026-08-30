@@ -346,6 +346,8 @@ def _defaults(**abweichungen: object) -> dict[str, object]:
         "default_window_resume_delay_seconds": 120,
         "measurement_retention_days": 30,
         "session_lifetime_seconds": 1209600,
+        "default_solar_setback_max_k": "2.0",
+        "solar_setback_lookahead_hours": 3,
     }
     values.update(abweichungen)
     return values
