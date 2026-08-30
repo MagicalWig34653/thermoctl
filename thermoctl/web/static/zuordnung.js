@@ -67,7 +67,17 @@
         formular.requestSubmit();
     }
 
-    function absenden(geraetId, zielart) {
+    function absenden(geraetId, zielart, zielElement) {
+        const ziel = zielElement && zielElement.dataset.form ? zielElement : null;
+        if (ziel) {
+            const formular = document.getElementById(ziel.dataset.form);
+            if (formular && formular.elements.source_device_id) {
+                formular.elements.kind.value = "sensor_temperature";
+                formular.elements.source_device_id.value = geraetId;
+                formular.requestSubmit();
+            }
+            return;
+        }
         if (zielart === "messquelle") {
             const formular = document.getElementById("zuordnung-messquelle");
             formular.elements.device_id.value = geraetId;
@@ -146,7 +156,7 @@
                 if (getroffen.dataset.ziel === "entfernen") {
                     loesen(karte);
                 } else {
-                    absenden(karte.dataset.geraet, getroffen.dataset.ziel);
+                    absenden(karte.dataset.geraet, getroffen.dataset.ziel, getroffen);
                 }
             }
 

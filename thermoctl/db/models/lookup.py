@@ -55,6 +55,12 @@ class ControllerCommand(_Lookup):
     __tablename__ = "controller_command"
 
 
+class ChannelKind(_Lookup):
+    """Quelle oder Wirkung eines konfigurierten Bediengeraetekanals."""
+
+    __tablename__ = "channel_kind"
+
+
 class ActorSource(_Lookup):
     """Ueber welchen Adapter etwas geschah: web, api, mcp, cli, system."""
 
@@ -109,6 +115,13 @@ CONTROLLER_COMMANDS = [
     ("boost", "Nächste Schaltung vorziehen"),
     ("mode_off", "Betriebsart Aus"),
     ("mode_auto", "Betriebsart Automatik"),
+]
+CHANNEL_KINDS = [
+    ("sensor_temperature", "Temperatur eines Geräts"),
+    ("zone_temperature", "Ist-Temperatur der Zone"),
+    ("zone_setpoint", "Sollwert der Zone"),
+    ("fixed", "Fester Wert"),
+    ("operating_mode", "Betriebsart der Zone"),
 ]
 ACTOR_SOURCES = [
     ("web", "Weboberfläche"),

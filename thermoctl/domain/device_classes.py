@@ -1,6 +1,8 @@
+# ruff: noqa: E501
 import json
 from collections.abc import Mapping
 from dataclasses import dataclass
+from decimal import Decimal, InvalidOperation
 from typing import cast
 
 
@@ -12,6 +14,21 @@ class DeviceDescription:
     manufacturer: str | None
     ist_group: bool
     capabilities: frozenset[str]
+    properties: tuple[PropertyDescription, ...] = ()
+
+
+@dataclass(frozen=True)
+class PropertyDescription:
+    """Ein einzelnes, von Zigbee2MQTT beschriebenes Geraetemerkmal."""
+
+    name: str
+    value_type: str
+    unit: str | None
+    min_value: Decimal | None
+    max_value: Decimal | None
+    is_readable: bool
+    is_writable: bool
+    values: tuple[str, ...]
 
 
 _CAPABILITY_BY_FEATURE = {
@@ -71,6 +88,53 @@ def capabilities_from_exposes(
     return frozenset(_collect_capabilities(cast(list[object], exposes)))
 
 
+def _decimal(value: object) -> Decimal | None:
+    try:
+        return Decimal(str(value)) if value is not None else None
+    except InvalidOperation:
+        return None
+
+
+def properties_from_exposes(exposes: list[dict[str, object]]) -> tuple[PropertyDescription, ...]:
+    """Liest Merkmale rekursiv; Container ohne eigenes Merkmal werden ausgelassen."""
+    result: list[PropertyDescription] = []
+
+    def visit(entries: list[object]) -> None:
+        for raw in entries:
+            if not isinstance(raw, Mapping):
+                continue
+            entry = cast(Mapping[str, object], raw)
+            name = _text(entry.get("property"))
+            kind = _text(entry.get("type"))
+            access = entry.get("access")
+            if (
+                name is not None
+                and kind in {"numeric", "binary", "enum", "text"}
+                and isinstance(access, int)
+            ):
+                raw_values = entry.get("values")
+                values = tuple(str(value) for value in raw_values) if isinstance(raw_values, list) else ()
+                bits = access
+                result.append(
+                    PropertyDescription(
+                        name=name,
+                        value_type=kind,
+                        unit=_text(entry.get("unit")),
+                        min_value=_decimal(entry.get("value_min")),
+                        max_value=_decimal(entry.get("value_max")),
+                        is_readable=bool(bits & 1),
+                        is_writable=bool(bits & 2),
+                        values=values,
+                    )
+                )
+            children = entry.get("features")
+            if isinstance(children, list):
+                visit(cast(list[object], children))
+
+    visit(cast(list[object], exposes))
+    return tuple(result)
+
+
 def descriptions_from_bridge_list(
     payload: str | bytes,
 ) -> list[DeviceDescription]:
@@ -114,6 +178,7 @@ def descriptions_from_bridge_list(
                 manufacturer=_text(definition.get("vendor")),
                 ist_group=adresse is None,
                 capabilities=capabilities_from_exposes(exposes),
+                properties=properties_from_exposes(exposes),
             )
         )
     return beschreibungen
