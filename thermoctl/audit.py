@@ -17,6 +17,12 @@ def record(
     Aenderung ohne Eintrag.
     """
     quelle_id = session.scalar(select(ActorSource.id).where(ActorSource.code == source))
+    if quelle_id is None:
+        # Sonst ginge eine NULL in eine NOT-NULL-Spalte und der Aufrufer bekaeme einen
+        # IntegrityError ueber `audit_event.source_id` -- eine Meldung, die den
+        # eigentlichen Fehler (ein Tippfehler in `source`) nirgends nennt. Seit die
+        # Quelle vom Adapter durchgereicht wird, ist das ein erreichbarer Fall.
+        raise ValueError(f"Unbekannte Audit-Quelle {source!r}")
     session.add(
         AuditEvent(
             occurred_at=utcnow(), source_id=quelle_id, action=action,

@@ -13,13 +13,17 @@ from thermoctl.api.schemas import (
     ModusAntwort,
     RegelparameterAntwort,
     RegelparameterSchreiben,
+    ScharfSchalten,
     SollwertAntwort,
     SollwerteSchreiben,
+    SteuerungAntwort,
+    SteuerungSchreiben,
     TokenAntwort,
     UebersteuerungAnlegen,
     UebersteuerungAntwort,
     ZeitplanpunktAnlegen,
     ZeitplanpunktAntwort,
+    ZeitplanpunktVerschieben,
     ZoneAntwort,
     ZonenzustandAntwort,
     ZoneSchreiben,
@@ -44,6 +48,14 @@ from thermoctl.domain.schedule import (
     uebersteuerung_aufheben,
     zeitplanpunkt_anlegen,
     zeitplanpunkt_loeschen,
+    zeitplanpunkt_verschieben,
+)
+from thermoctl.domain.steuerung import (
+    GRENZEN,
+    Steuerungsfehler,
+    einstellungen,
+    einstellungen_speichern,
+    scharf_schalten,
 )
 from thermoctl.domain.zone_settings import regelparameter, regelparameter_speichern
 from thermoctl.domain.zonen import ZonennameVergeben, zone_aendern, zone_anlegen, zone_loeschen
@@ -288,6 +300,7 @@ def zeitplanpunkt_erstellen(
             modus_id=daten.mode_id,
             user_id=principal.user_id,
             token_id=principal.token_id,
+            quelle="api",
         )
     except Zeitplanfehler as exc:
         raise _fachfehler(exc.feld, exc.meldung) from exc
@@ -345,6 +358,7 @@ def parameter_speichern(
         daten.model_dump(),
         user_id=principal.user_id,
         token_id=principal.token_id,
+        quelle="api",
     )
     return RegelparameterAntwort(**regelparameter(session, zone_obj).__dict__)
 
@@ -475,6 +489,7 @@ def uebersteuern(
             ende,
             user_id=principal.user_id,
             token_id=principal.token_id,
+            quelle="api",
         )
     except Domaenenfehler as exc:
         # Das Schema faengt den Wertebereich bereits ab; die Domaene prueft ihn seit dem
@@ -496,3 +511,117 @@ def uebersteuerung_loeschen(
         raise HTTPException(status.HTTP_403_FORBIDDEN, str(exc)) from exc
     uebersteuerung_aufheben(session, zone_obj)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+# --- Steuerung ---------------------------------------------------------------
+#
+# Dieselben Domaenenfunktionen wie die Oberflaeche. Der Adapter uebersetzt nur Formate
+# und Fehler; jede Grenze und jede Rechtepruefung steht genau einmal, in der Domaene.
+
+
+def _steuerungsantwort(session: Session) -> SteuerungAntwort:
+    zeile = einstellungen(session)
+    return SteuerungAntwort(
+        control_armed=zeile.control_armed,
+        timezone=zeile.timezone,
+        **{feld: getattr(zeile, feld) for feld in GRENZEN},
+    )
+
+
+@router.get("/control", response_model=SteuerungAntwort)
+def steuerung(
+    session: Annotated[Session, Depends(get_session)],
+    principal: Annotated[Principal, Depends(_principal)],
+) -> SteuerungAntwort:
+    # Lesen darf, wer die Anlage sehen darf: "Schaltet das Ding gerade wirklich?" soll
+    # niemand raten muessen.
+    _recht(principal, "zone.read")
+    return _steuerungsantwort(session)
+
+
+@router.put("/control/armed", response_model=SteuerungAntwort)
+def steuerung_scharfschalten(
+    daten: ScharfSchalten,
+    session: Annotated[Session, Depends(get_session)],
+    principal: Annotated[Principal, Depends(_principal)],
+) -> SteuerungAntwort:
+    """Legt den Riegel um, den die Datenbank haelt.
+
+    Eigenes Recht `control.arm`, nicht `setting.manage`: Das hier bewegt ein Ventil. Der
+    zweite Riegel -- `MqttClient(schalten_erlaubt=...)` -- bleibt unberuehrt.
+    """
+    _recht(principal, "control.arm")
+    try:
+        scharf_schalten(
+            session,
+            daten.armed,
+            begruendung=daten.begruendung,
+            user_id=principal.user_id,
+            token_id=principal.token_id,
+            quelle="api",
+        )
+    except Steuerungsfehler as exc:
+        raise _fachfehler(exc.feld, exc.meldung) from exc
+    return _steuerungsantwort(session)
+
+
+@router.put("/control/defaults", response_model=SteuerungAntwort)
+def steuerung_vorgaben(
+    daten: SteuerungSchreiben,
+    session: Annotated[Session, Depends(get_session)],
+    principal: Annotated[Principal, Depends(_principal)],
+) -> SteuerungAntwort:
+    _recht(principal, "setting.manage")
+    werte = {feld: str(getattr(daten, feld)) for feld in GRENZEN}
+    try:
+        einstellungen_speichern(
+            session,
+            werte,
+            daten.timezone,
+            user_id=principal.user_id,
+            token_id=principal.token_id,
+            quelle="api",
+        )
+    except Steuerungsfehler as exc:
+        raise _fachfehler(exc.feld, exc.meldung) from exc
+    return _steuerungsantwort(session)
+
+
+@router.put("/zones/{zone_id}/schedule/{punkt_id}", response_model=ZeitplanpunktAntwort)
+def zeitplanpunkt_umsetzen(
+    zone_id: int,
+    punkt_id: int,
+    daten: ZeitplanpunktVerschieben,
+    session: Annotated[Session, Depends(get_session)],
+    principal: Annotated[Principal, Depends(_principal)],
+) -> ZeitplanpunktAntwort:
+    """Setzt einen Punkt auf einen anderen Zeitpunkt -- das Gegenstueck zum Ziehen in der
+    Wochenansicht. Der Punkt behaelt seine Kennung, damit ein Aufrufer ihn weiter
+    verfolgen kann."""
+    zone_obj = _sichtbare_zone(session, principal, zone_id)
+    _recht(principal, "schedule.manage", zone_id)
+    punkt = session.get(SchedulePoint, punkt_id)
+    if punkt is None or punkt.zone_id != zone_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Zeitplanpunkt nicht gefunden")
+    try:
+        zeitplanpunkt_verschieben(
+            session,
+            zone_obj,
+            punkt,
+            wochentag=daten.weekday,
+            minute=daten.minute_of_day,
+            user_id=principal.user_id,
+            token_id=principal.token_id,
+            quelle="api",
+        )
+    except Zeitplanfehler as exc:
+        raise _fachfehler(exc.feld, exc.meldung) from exc
+    modus = session.get(SetpointMode, punkt.setpoint_mode_id)
+    assert modus is not None
+    return ZeitplanpunktAntwort(
+        id=punkt.id,
+        weekday=punkt.weekday,
+        minute_of_day=punkt.minute_of_day,
+        mode_id=modus.id,
+        mode_name=modus.name,
+    )

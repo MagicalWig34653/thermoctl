@@ -42,6 +42,7 @@ def zone_anlegen(
     operating_mode_id: int,
     sort_order: int,
     temperature_source_device_id: int | None,
+    quelle: str = "web",
 ) -> Zone:
     """Legt Zone und Audit-Eintrag atomar an, auch bei konkurrierendem Namen."""
     if _name_vergeben(session, name):
@@ -59,7 +60,7 @@ def zone_anlegen(
             session.flush()
             audit.record(
                 session,
-                source="web",
+                source=quelle,
                 action="create",
                 object_type="zone",
                 object_id=str(zone.id),
@@ -83,6 +84,7 @@ def zone_aendern(
     operating_mode_id: int,
     sort_order: int,
     temperature_source_device_id: int | None,
+    quelle: str = "web",
 ) -> None:
     """Aendert Zone und Audit-Eintrag atomar, auch bei konkurrierendem Namen."""
     if _name_vergeben(session, name, zone.id):
@@ -96,7 +98,7 @@ def zone_aendern(
             zone.temperature_source_device_id = temperature_source_device_id
             audit.record(
                 session,
-                source="web",
+                source=quelle,
                 action="update",
                 object_type="zone",
                 object_id=str(zone.id),
@@ -124,14 +126,16 @@ def zonenabhaengigkeiten(session: Session, zone_id: int) -> Zonenabhaengigkeiten
     )
 
 
-def zone_loeschen(session: Session, zone: Zone, principal: Principal) -> None:
+def zone_loeschen(
+    session: Session, zone: Zone, principal: Principal, *, quelle: str = "web"
+) -> None:
     """Loescht eine Zone; der Audit-Eintrag ueberdauert ihre Kaskaden."""
     zone_id = zone.id
     name = zone.name
     session.delete(zone)
     audit.record(
         session,
-        source="web",
+        source=quelle,
         action="delete",
         object_type="zone",
         object_id=str(zone_id),

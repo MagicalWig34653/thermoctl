@@ -16,7 +16,7 @@ from thermoctl.config import Settings, get_settings
 from thermoctl.db.base import Base
 from thermoctl.db.engine import create_engine_from_settings
 from thermoctl.db.models.identity import AccessGroup, User, UserAccessGroup
-from thermoctl.db.models.lookup import PERMISSIONS, Permission
+from thermoctl.db.models.lookup import ACTOR_SOURCES, PERMISSIONS, ActorSource, Permission
 
 TEST_DATABASE_URL = os.environ.get("THERMOCTL_TEST_DATABASE_URL", "sqlite:///./test.db")
 
@@ -129,6 +129,21 @@ def engine(settings: Settings) -> Iterator[Engine]:
     werk = create_engine_from_settings(settings)
     Base.metadata.drop_all(werk)
     Base.metadata.create_all(werk)
+    # Die Audit-Quellen gehoeren zum Schema wie die Rechte: Die Migration legt sie in
+    # jeder echten Datenbank an. Vorher legte jeder Test die eine an, die er zufaellig
+    # brauchte, und wer eine vergass, scheiterte an einem IntegrityError ueber
+    # `audit_event.source_id` -- einer Meldung, die die Ursache nirgends nennt. Seit die
+    # Quelle vom Adapter durchgereicht wird (web, api, mcp), braucht fast jeder
+    # schreibende Test mehr als eine.
+    #
+    # Anders als die Rechte darf das hier stehen: Kein Test legt eine ActorSource von
+    # Hand an, es gibt also keine UNIQUE-Kollision wie bei `Permission`.
+    with Session(werk) as sitzung:
+        vorhandene = {q.code for q in sitzung.query(ActorSource)}
+        for code, bezeichnung in ACTOR_SOURCES:
+            if code not in vorhandene:
+                sitzung.add(ActorSource(code=code, label=bezeichnung))
+        sitzung.commit()
     yield werk
     Base.metadata.drop_all(werk)
     werk.dispose()

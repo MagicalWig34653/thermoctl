@@ -3,6 +3,7 @@ from decimal import Decimal
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from tests.hilfen import (
@@ -323,3 +324,190 @@ def test_uebersteuerung_ueber_die_api_haelt_dieselbe_grenze(client, api_token, s
         headers=kopf,
     )
     assert antwort.status_code == 422
+
+
+# --- Steuerung ueber REST --------------------------------------------------
+
+
+def _vorgaben(**abweichungen: object) -> dict[str, object]:
+    werte: dict[str, object] = {
+        "timezone": "Europe/Berlin",
+        "polling_interval_seconds": 30,
+        "shadow_interval_seconds": 60,
+        "default_hysteresis_k": "0.3",
+        "default_min_on_seconds": 300,
+        "default_min_off_seconds": 300,
+        "default_sensor_timeout_seconds": 1800,
+        "default_window_resume_delay_seconds": 120,
+        "measurement_retention_days": 30,
+        "session_lifetime_seconds": 1209600,
+    }
+    werte.update(abweichungen)
+    return werte
+
+
+def test_steuerung_lesen(client: TestClient, session: Session, api_token) -> None:
+    einstellungen_anlegen(session)
+    kopf = api_token([("zone.read", None)])
+    antwort = client.get("/api/v1/control", headers=kopf)
+    assert antwort.status_code == 200
+    assert antwort.json()["control_armed"] is False
+
+
+def test_scharfschalten_und_zuruecknehmen(
+    client: TestClient, session: Session, api_token
+) -> None:
+    einstellungen_anlegen(session)
+    kopf = api_token([("zone.read", None), ("control.arm", None)])
+
+    scharf = client.put(
+        "/api/v1/control/armed",
+        json={"armed": True, "begruendung": "Vergleich abgeschlossen"},
+        headers=kopf,
+    )
+    assert scharf.status_code == 200
+    assert scharf.json()["control_armed"] is True
+
+    zurueck = client.put("/api/v1/control/armed", json={"armed": False}, headers=kopf)
+    assert zurueck.status_code == 200
+    assert zurueck.json()["control_armed"] is False
+
+
+def test_scharfschalten_ohne_begruendung_wird_abgewiesen(
+    client: TestClient, session: Session, api_token
+) -> None:
+    """Dieselbe Pruefung wie in der Oberflaeche -- sie steht in der Domaene, nicht im
+    Schema, damit sie fuer alle Adapter dieselbe ist."""
+    einstellungen_anlegen(session)
+    kopf = api_token([("zone.read", None), ("control.arm", None)])
+    antwort = client.put("/api/v1/control/armed", json={"armed": True}, headers=kopf)
+    assert antwort.status_code == 422
+
+
+def test_scharfschalten_braucht_das_eigene_recht(
+    client: TestClient, session: Session, api_token
+) -> None:
+    einstellungen_anlegen(session)
+    kopf = api_token([("zone.read", None), ("setting.manage", None)])
+    antwort = client.put(
+        "/api/v1/control/armed", json={"armed": True, "begruendung": "x"}, headers=kopf
+    )
+    assert antwort.status_code == 403
+
+
+def test_vorgaben_schreiben(client: TestClient, session: Session, api_token) -> None:
+    einstellungen_anlegen(session)
+    kopf = api_token([("zone.read", None), ("setting.manage", None)])
+    antwort = client.put(
+        "/api/v1/control/defaults",
+        json=_vorgaben(shadow_interval_seconds=90),
+        headers=kopf,
+    )
+    assert antwort.status_code == 200
+    assert antwort.json()["shadow_interval_seconds"] == 90
+
+
+def test_unbrauchbare_vorgabe_wird_abgewiesen(
+    client: TestClient, session: Session, api_token
+) -> None:
+    einstellungen_anlegen(session)
+    kopf = api_token([("zone.read", None), ("setting.manage", None)])
+    antwort = client.put(
+        "/api/v1/control/defaults",
+        json=_vorgaben(default_min_on_seconds=0),
+        headers=kopf,
+    )
+    assert antwort.status_code == 422
+
+
+def test_zeitplanpunkt_verschieben(
+    client: TestClient, session: Session, api_token
+) -> None:
+    zone = zone_anlegen(session, "api-verschiebezone")
+    modus = modus_anlegen(session, "api-verschiebemodus")
+    punkt = SchedulePoint(
+        zone_id=zone.id, weekday=1, minute_of_day=360, setpoint_mode_id=modus.id
+    )
+    session.add(punkt)
+    session.flush()
+    kopf = api_token([("zone.read", None), ("schedule.manage", None)])
+
+    antwort = client.put(
+        f"/api/v1/zones/{zone.id}/schedule/{punkt.id}",
+        json={"weekday": 4, "minute_of_day": 480},
+        headers=kopf,
+    )
+    assert antwort.status_code == 200
+    # Die Kennung bleibt: Ein Aufrufer soll denselben Punkt weiterverfolgen koennen.
+    assert antwort.json()["id"] == punkt.id
+    assert antwort.json()["weekday"] == 4
+
+
+def test_verschieben_auf_einen_belegten_zeitpunkt(
+    client: TestClient, session: Session, api_token
+) -> None:
+    zone = zone_anlegen(session, "api-kollision")
+    modus = modus_anlegen(session, "api-kollisionsmodus")
+    beweglich = SchedulePoint(
+        zone_id=zone.id, weekday=1, minute_of_day=360, setpoint_mode_id=modus.id
+    )
+    session.add(beweglich)
+    session.add(
+        SchedulePoint(
+            zone_id=zone.id, weekday=2, minute_of_day=480, setpoint_mode_id=modus.id
+        )
+    )
+    session.flush()
+    kopf = api_token([("zone.read", None), ("schedule.manage", None)])
+
+    antwort = client.put(
+        f"/api/v1/zones/{zone.id}/schedule/{beweglich.id}",
+        json={"weekday": 2, "minute_of_day": 480},
+        headers=kopf,
+    )
+    assert antwort.status_code == 422
+
+
+def test_verschieben_eines_fremden_punktes_ist_nicht_gefunden(
+    client: TestClient, session: Session, api_token
+) -> None:
+    zone = zone_anlegen(session, "api-eigen")
+    fremde = zone_anlegen(session, "api-fremd")
+    modus = modus_anlegen(session, "api-fremdmodus")
+    fremder = SchedulePoint(
+        zone_id=fremde.id, weekday=1, minute_of_day=360, setpoint_mode_id=modus.id
+    )
+    session.add(fremder)
+    session.flush()
+    kopf = api_token([("zone.read", None), ("schedule.manage", None)])
+
+    antwort = client.put(
+        f"/api/v1/zones/{zone.id}/schedule/{fremder.id}",
+        json={"weekday": 2, "minute_of_day": 480},
+        headers=kopf,
+    )
+    assert antwort.status_code == 404
+
+
+def test_rest_aenderung_steht_als_api_im_protokoll(
+    client: TestClient, session: Session, api_token
+) -> None:
+    """Frueher schrieb jede Domaenenfunktion fest `source="web"`. Damit behauptete das
+    Audit-Protokoll von jeder REST- und MCP-Aenderung, sie sei ueber die Oberflaeche
+    gekommen -- und beantwortete damit genau die Frage falsch, fuer die es da ist."""
+    from thermoctl.db.models.lookup import ActorSource
+    from thermoctl.db.models.operations import AuditEvent
+
+    zone = zone_anlegen(session, "protokollzone")
+    modus = modus_anlegen(session, "protokollmodus")
+    kopf = api_token([("zone.read", None), ("schedule.manage", None)])
+    client.post(
+        f"/api/v1/zones/{zone.id}/schedule",
+        json={"weekday": 3, "minute_of_day": 420, "mode_id": modus.id},
+        headers=kopf,
+    )
+    eintrag = session.scalars(
+        select(AuditEvent).where(AuditEvent.object_type == "schedule_point")
+    ).one()
+    quelle_code = session.get(ActorSource, eintrag.source_id).code
+    assert quelle_code == "api"
