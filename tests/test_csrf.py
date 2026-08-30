@@ -16,6 +16,7 @@ from tests.helpers import alle_api_routen
 from thermoctl.app import create_app
 from thermoctl.auth.csrf import CSRF_COOKIE_NAME, csrf_token
 from thermoctl.auth.dependencies import csrf_schutz
+from thermoctl.auth.kiosk import kiosk_csrf_schutz
 from thermoctl.auth.sessions import COOKIE_NAME, create_session
 
 WRITING_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
@@ -25,6 +26,12 @@ WRITING_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 # CSRF path. `test_the_api_does_not_accept_a_session_cookie` verifies exactly
 # that, so the exception does not silently become invalid.
 EXEMPT_PREFIXES = ("/api/",)
+
+# Two flavors of the same HMAC scheme (thermoctl/auth/csrf.py): `csrf_schutz` binds
+# to the session cookie, `kiosk_csrf_schutz` to the kiosk cookie. A kiosk token has
+# no session to bind to, so it carries its own dependency instead of reusing one
+# bound to a cookie it never has -- either counts as protection for this guard.
+CSRF_ABSICHERUNGEN = (csrf_schutz, kiosk_csrf_schutz)
 
 
 def _writing_routes() -> list[APIRoute]:
@@ -40,7 +47,7 @@ def test_every_state_changing_route_depends_on_csrf_protection() -> None:
         f"{sorted(route.methods & WRITING_METHODS)} {route.path}"
         for route in _writing_routes()
         if not route.path.startswith(EXEMPT_PREFIXES)
-        and not any(d.dependency is csrf_schutz for d in route.dependencies)
+        and not any(d.dependency in CSRF_ABSICHERUNGEN for d in route.dependencies)
     ]
     assert not unprotected, (
         "These state-changing routes have no CSRF protection: " + ", ".join(unprotected)
