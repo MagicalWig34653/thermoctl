@@ -22,12 +22,12 @@ class TopicCut:
 def trim(topic: str, base: str) -> TopicCut:
     """Maps exactly the subscribed read topics to a message kind."""
     base_parts = base.strip("/").split("/")
-    topic_teile = topic.split("/")
+    topic_parts = topic.split("/")
     unknown = TopicCut(MessageKind.UNBEKANNT, None)
-    if not base_parts or topic_teile[: len(base_parts)] != base_parts:
+    if not base_parts or topic_parts[: len(base_parts)] != base_parts:
         return unknown
 
-    rest = topic_teile[len(base_parts) :]
+    rest = topic_parts[len(base_parts) :]
     if rest == ["bridge", "devices"]:
         return TopicCut(MessageKind.DEVICE_LIST, None)
     if rest == ["bridge", "state"]:
@@ -41,7 +41,7 @@ def trim(topic: str, base: str) -> TopicCut:
     return unknown
 
 
-def abonnements(base: str) -> list[str]:
+def subscriptions(base: str) -> list[str]:
     """Returns the four deliberately narrow Zigbee2MQTT subscriptions."""
     base = base.strip("/")
     return [

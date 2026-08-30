@@ -86,7 +86,7 @@ class PublicationState:
     controller_values: dict[int, object] = field(default_factory=dict)
 
 
-def _als_text(value: object) -> str:
+def _as_text(value: object) -> str:
     if value is None:
         return ""
     if isinstance(value, bool):
@@ -116,7 +116,7 @@ def _discovery_messages(session: Session, zone: Zone, prefix: str) -> list[Disco
             parameter_discovery(
                 zone.id, name, description.name, description.label,
                 description.minimum, description.maximum, description.step,
-                description.einheit, prefix,
+                description.unit, prefix,
             )
         )
     return messages
@@ -148,7 +148,7 @@ async def cycle(
             state.service_registered = True
             sent_count += 1
     if await client.publishing(
-        armed_topic(prefix), _als_text(armed), switches=False, retained=True
+        armed_topic(prefix), _as_text(armed), switches=False, retained=True
     ):
         sent_count += 1
 
@@ -191,7 +191,7 @@ async def _register_zone(
 async def _deregister_deleted(
     client: MqttPublisher,
     state: PublicationState,
-    vorhandene: set[int],
+    existing: set[int],
 ) -> int:
     """The only reason to deregister: the zone doesn't exist anymore.
 
@@ -199,7 +199,7 @@ async def _deregister_deleted(
     Assistant — it would keep showing the last known value forever.
     """
     sent_count = 0
-    for zone_id in sorted(set(state.registered) - vorhandene):
+    for zone_id in sorted(set(state.registered) - existing):
         for topic in state.registered[zone_id]:
             if await client.publishing(topic, "", switches=False, retained=True):
                 sent_count += 1
@@ -277,7 +277,7 @@ def _last_switch(session: Session, zone_id: int) -> datetime | None:
     )
 
 
-def _wuerde_heizen(session: Session, zone_id: int) -> bool | None:
+def _would_heat(session: Session, zone_id: int) -> bool | None:
     return session.scalar(
         select(ShadowDecision.would_heat)
         .where(ShadowDecision.zone_id == zone_id)
@@ -312,13 +312,13 @@ async def _send_zone_state(
         )
     setpoint = resolved_setpoint(session, zone, now)
     values: list[tuple[str, str]] = [
-        (topics.current_temperature, _als_text(state.temperature_c if state else None)),
-        (topics.setpoint, _als_text(setpoint.temperature_c)),
+        (topics.current_temperature, _as_text(state.temperature_c if state else None)),
+        (topics.setpoint, _as_text(setpoint.temperature_c)),
         (topics.operating_mode, zone.operating_mode.code),
         (topics.sensor_state, status_code),
-        (topics.would_heat, _als_text(_wuerde_heizen(session, zone.id))),
-        (topics.last_switch, _als_text(_last_switch(session, zone.id))),
-        (topics.next_switch, _als_text(end_of_next_switch(session, zone, now))),
+        (topics.would_heat, _as_text(_would_heat(session, zone.id))),
+        (topics.last_switch, _as_text(_last_switch(session, zone.id))),
+        (topics.next_switch, _as_text(end_of_next_switch(session, zone, now))),
     ]
 
     setpoints: dict[int, Decimal] = {
@@ -331,7 +331,7 @@ async def _send_zone_state(
     }
     for mode in session.scalars(select(SetpointMode).order_by(SetpointMode.sort_order)):
         values.append(
-            (mode_topics(zone.id, mode.id, prefix)[0], _als_text(setpoints.get(mode.id)))
+            (mode_topics(zone.id, mode.id, prefix)[0], _as_text(setpoints.get(mode.id)))
         )
 
     effective = control_parameters(session, zone)
@@ -339,7 +339,7 @@ async def _send_zone_state(
         values.append(
             (
                 parameter_topics(zone.id, description.name, prefix)[0],
-                _als_text(getattr(effective, description.name)),
+                _as_text(getattr(effective, description.name)),
             )
         )
 

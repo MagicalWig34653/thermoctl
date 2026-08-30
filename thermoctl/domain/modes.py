@@ -56,8 +56,8 @@ def _check_mode_values(
         raise DomainError("name", "Der Name darf nicht leer sein.")
     if len(name) > 64:
         raise DomainError("name", "Der Name darf höchstens 64 Zeichen haben.")
-    vorhandene_id = session.scalar(select(SetpointMode.id).where(SetpointMode.code == code))
-    if vorhandene_id is not None and vorhandene_id != mode_id:
+    existing_id = session.scalar(select(SetpointMode.id).where(SetpointMode.code == code))
+    if existing_id is not None and existing_id != mode_id:
         raise DomainError("code", "Dieser technische Code ist bereits vergeben.")
     return code, name, sort_order
 
@@ -215,7 +215,7 @@ def update_setpoints(
         mode_id: check_temperature(temperature) if temperature is not None else None
         for mode_id, temperature in values.items()
     }
-    vorhandene = {
+    existing = {
         row.setpoint_mode_id: row
         for row in session.scalars(
             select(ZoneSetpoint).where(ZoneSetpoint.zone_id == zone.id)
@@ -223,7 +223,7 @@ def update_setpoints(
     }
     changed = False
     for mode_id, temperature in checked_values.items():
-        row = vorhandene.get(mode_id)
+        row = existing.get(mode_id)
         if temperature is None:
             if row is not None:
                 session.delete(row)

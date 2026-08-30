@@ -289,9 +289,9 @@ def _rendered_form_fields(html: str, action: str) -> dict[str, str]:
             name = re.search(r'name="([^"]+)"', field)
             if name is None:
                 continue
-            typ = re.search(r'type="([^"]+)"', field)
+            feature_type = re.search(r'type="([^"]+)"', field)
             rendered = re.search(r'value="([^"]*)"', field)
-            if typ and typ.group(1) == "time":
+            if feature_type and feature_type.group(1) == "time":
                 values[name.group(1)] = "07:15"
             else:
                 values[name.group(1)] = rendered.group(1) if rendered else ""

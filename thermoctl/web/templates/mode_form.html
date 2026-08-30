@@ -4,8 +4,8 @@
 {% block inhalt %}
 <h1>{{ "Sollwert-Modus bearbeiten" if mode else "Sollwert-Modus anlegen" }}</h1>
 <form method="post" action="{{ '/modi/' ~ mode.id if mode else '/modi' }}">
-    {{ text_field("code", "Technischer Code", values.code, errors=errors.code, pflicht=true) }}
-    {{ text_field("name", "Name", values.name, errors=errors.name, pflicht=true) }}
+    {{ text_field("code", "Technischer Code", values.code, errors=errors.code, required=true) }}
+    {{ text_field("name", "Name", values.name, errors=errors.name, required=true) }}
     {{ number_field("sort_order", "Sortierung", values.sort_order,
                   errors=errors.sort_order, step="1") }}
     <button class="btn btn-primary" type="submit">Speichern</button>

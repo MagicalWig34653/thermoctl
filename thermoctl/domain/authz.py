@@ -58,11 +58,11 @@ def principal_for_token(session: Session, token: ApiToken) -> Principal:
         .join(ApiTokenPermission, ApiTokenPermission.permission_id == Permission.id)
         .where(ApiTokenPermission.api_token_id == token.id)
     ).all()
-    vom_token = frozenset((code, zone_id) for code, zone_id in rows)
+    from_token = frozenset((code, zone_id) for code, zone_id in rows)
 
     effective = {
         (code, zone_id)
-        for code, zone_id in vom_token
+        for code, zone_id in from_token
         if (code, zone_id) in from_owner or (code, None) in from_owner
     }
     return Principal(user_id=token.user_id, token_id=token.id, grants=frozenset(effective))

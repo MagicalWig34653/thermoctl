@@ -70,8 +70,8 @@ def create_user(
     """Creates a user and assigns them to groups."""
     if not username.strip():
         raise AdministrationError("Der Benutzername darf nicht leer sein.")
-    vorhanden = session.scalar(select(User).where(User.username == username))
-    if vorhanden is not None:
+    present = session.scalar(select(User).where(User.username == username))
+    if present is not None:
         raise AdministrationError(f"Den Benutzernamen '{username}' gibt es bereits.")
 
     # The password first — `hash_password` raises on too short an input, and an
@@ -218,7 +218,7 @@ def grant_permission(
             f"Das Recht '{code}' gilt fuer die ganze Anlage und laesst sich nicht auf "
             "eine einzelne Zone einschraenken."
         )
-    vorhanden = session.scalar(
+    present = session.scalar(
         select(GroupPermission).where(
             GroupPermission.access_group_id == group.id,
             GroupPermission.permission_id == permission.id,
@@ -226,8 +226,8 @@ def grant_permission(
             else GroupPermission.zone_id == zone_id,
         )
     )
-    if vorhanden is not None:
-        return vorhanden
+    if present is not None:
+        return present
     entry = GroupPermission(
         access_group_id=group.id, permission_id=permission.id, zone_id=zone_id
     )
@@ -296,16 +296,16 @@ def set_group_permissions(
     the last administrator, and the audit entries all live. A second version of that
     logic would be exactly the kind of shortcut that later locks someone out.
     """
-    vorhanden: dict[tuple[str, int | None], GroupPermission] = {}
+    present: dict[tuple[str, int | None], GroupPermission] = {}
     for entry, code in session.execute(
         select(GroupPermission, Permission.code)
         .join(Permission, Permission.id == GroupPermission.permission_id)
         .where(GroupPermission.access_group_id == group.id)
     ):
-        vorhanden[(code, entry.zone_id)] = entry
+        present[(code, entry.zone_id)] = entry
 
     taken = 0
-    for code, zone_id in sorted(wanted - set(vorhanden), key=lambda p: (p[0], p[1] or 0)):
+    for code, zone_id in sorted(wanted - set(present), key=lambda p: (p[0], p[1] or 0)):
         grant_permission(
             session, group, code, zone_id, actor_id=actor_id, source=source
         )
@@ -315,7 +315,7 @@ def set_group_permissions(
     # Grant first, then revoke: otherwise, whoever switches the administration
     # permission from "whole plant" to individual zones would fail halfway through
     # on the administrator lock.
-    for key, entry in sorted(vorhanden.items(), key=lambda p: (p[0][0], p[0][1] or 0)):
+    for key, entry in sorted(present.items(), key=lambda p: (p[0][0], p[0][1] or 0)):
         if key not in wanted:
             revoke_permission(session, entry, actor_id=actor_id, source=source)
             revoked += 1

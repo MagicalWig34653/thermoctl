@@ -72,19 +72,19 @@ def _collect_capabilities(
         if not isinstance(raw_entry, Mapping):
             continue
         entry = cast(Mapping[str, object], raw_entry)
-        typ = _text(entry.get("type"))
-        property = _text(entry.get("property")) or typ
+        feature_type = _text(entry.get("type"))
+        property = _text(entry.get("property")) or feature_type
         capability = _CAPABILITY_BY_FEATURE.get(property or "")
         if capability is not None:
             result.add(capability)
-        if inside_switch and typ == "binary" and property == "state":
+        if inside_switch and feature_type == "binary" and property == "state":
             result.add("switch")
 
         features = entry.get("features")
         if isinstance(features, list):
             result.update(
                 _collect_capabilities(
-                    cast(list[object], features), inside_switch=inside_switch or typ == "switch"
+                    cast(list[object], features), inside_switch=inside_switch or feature_type == "switch"
                 )
             )
     return result
@@ -100,10 +100,10 @@ def _feature_property_names(entries: list[object]) -> set[str]:
     plain setpoint display.
     """
     names: set[str] = set()
-    for roh in entries:
-        if not isinstance(roh, Mapping):
+    for raw_item in entries:
+        if not isinstance(raw_item, Mapping):
             continue
-        entry = cast(Mapping[str, object], roh)
+        entry = cast(Mapping[str, object], raw_item)
         property_name = _text(entry.get("property"))
         if property_name is not None:
             names.add(property_name)
@@ -194,16 +194,16 @@ def descriptions_from_bridge_list(
             continue
 
         address = _text(entry.get("ieee_address"))
-        definition_roh = entry.get("definition")
+        definition_raw = entry.get("definition")
         definition = (
-            cast(Mapping[str, object], definition_roh)
-            if isinstance(definition_roh, Mapping)
+            cast(Mapping[str, object], definition_raw)
+            if isinstance(definition_raw, Mapping)
             else {}
         )
-        exposes_roh = definition.get("exposes")
+        exposes_raw = definition.get("exposes")
         exposes = (
-            cast(list[dict[str, object]], exposes_roh)
-            if isinstance(exposes_roh, list)
+            cast(list[dict[str, object]], exposes_raw)
+            if isinstance(exposes_raw, list)
             else []
         )
         descriptions.append(

@@ -91,7 +91,7 @@ class ParameterDescription:
 
     name: str
     label: str
-    einheit: str | None
+    unit: str | None
     minimum: Decimal
     maximum: Decimal
     step: Decimal

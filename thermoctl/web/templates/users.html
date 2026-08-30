@@ -48,10 +48,10 @@
     <form method="post" action="/users">
         {{ text_field("username", "Benutzername", values.get("username", ""),
                     help_text="Wird zur Anmeldung eingegeben und lässt sich später nicht ändern.",
-                    errors=errors.get("username", ""), pflicht=true) }}
+                    errors=errors.get("username", ""), required=true) }}
         {{ text_field("display_name", "Anzeigename", values.get("display_name", ""),
-                    help_text="So erscheint die Person im Audit-Protokoll.", pflicht=true) }}
-        {{ text_field("password", "Passwort", "", typ="password", pflicht=true,
+                    help_text="So erscheint die Person im Audit-Protokoll.", required=true) }}
+        {{ text_field("password", "Passwort", "", input_type="password", required=true,
                     help_text="Mindestens 12 Zeichen.", errors=errors.get("password", "")) }}
         <div class="mb-3">
             <label class="form-label" for="group_id">Gruppe</label>
@@ -74,7 +74,7 @@
 
     <h2 class="h5 mt-4">Eigenes Passwort ändern</h2>
     <form method="post" action="/users/{{ own_id }}/password">
-        {{ text_field("password", "Neues Passwort", "", typ="password", pflicht=true,
+        {{ text_field("password", "Neues Passwort", "", input_type="password", required=true,
                     help_text="Mindestens 12 Zeichen. Bestehende Sitzungen bleiben gültig.",
                     errors=errors.get("password", "")) }}
         <button type="submit" class="btn btn-secondary">Passwort setzen</button>

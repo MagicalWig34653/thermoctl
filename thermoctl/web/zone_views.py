@@ -151,14 +151,14 @@ async def create_zone_view(
     require(principal, "zone.manage")
     values = _form_values(await request.form())
     try:
-        name, display_name, kind_id, sortierung, device_id = _checked_values(session, values)
+        name, display_name, kind_id, order_value, device_id = _checked_values(session, values)
         create_zone(
             session,
             principal,
             name=name,
             display_name=display_name,
             operating_mode_id=kind_id,
-            sort_order=sortierung,
+            sort_order=order_value,
             temperature_source_device_id=device_id,
         )
     except ZoneNameTaken:
@@ -206,7 +206,7 @@ async def save_zone(
     zone = _visible_zone(session, principal, zone_id)
     values = _form_values(await request.form())
     try:
-        name, display_name, kind_id, sortierung, device_id = _checked_values(session, values)
+        name, display_name, kind_id, order_value, device_id = _checked_values(session, values)
         update_zone(
             session,
             zone,
@@ -214,7 +214,7 @@ async def save_zone(
             name=name,
             display_name=display_name,
             operating_mode_id=kind_id,
-            sort_order=sortierung,
+            sort_order=order_value,
             temperature_source_device_id=device_id,
         )
     except ZoneNameTaken:

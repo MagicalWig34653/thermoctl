@@ -70,7 +70,7 @@ def heating_periods(
         return {}
 
     previous: dict[int, tuple[datetime, bool]] = {}
-    for zone_id, moment, heizt in session.execute(
+    for zone_id, moment, heating in session.execute(
         select(
             ShadowDecision.zone_id, ShadowDecision.decided_at, ShadowDecision.would_heat
         )
@@ -87,7 +87,7 @@ def heating_periods(
             if was_heating:
                 interval = int((moment - last_seen).total_seconds())
                 eimer[zone_id][last_seen.date()] += min(interval, maximum_interval)
-        previous[zone_id] = (moment, heizt)
+        previous[zone_id] = (moment, heating)
 
     days = [
         (start_at + timedelta(days=offset)).date()

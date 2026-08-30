@@ -56,7 +56,7 @@
     <p class="text-muted">Ein Token kann höchstens, was Sie selbst dürfen — und behält das
         auch dann nicht, wenn Sie ein Recht später verlieren.</p>
     <form method="post" action="/tokens">
-        {{ text_field("name", "Name", values.get("name", ""), pflicht=true,
+        {{ text_field("name", "Name", values.get("name", ""), required=true,
                     help_text="Wofür ist es gedacht? Später ist der Name das Einzige, woran Sie es erkennen.",
                     errors=errors.get("name", "")) }}
         <div class="mb-3">

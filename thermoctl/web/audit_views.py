@@ -87,10 +87,10 @@ async def audit_list(
         if source:
             query = query.where(ActorSource.code == source)
         if object:
-            object_type, separator, objekt_id = object.partition(":")
+            object_type, separator, object_id = object.partition(":")
             query = query.where(AuditEvent.object_type == object_type)
             if separator:
-                query = query.where(AuditEvent.object_id == objekt_id)
+                query = query.where(AuditEvent.object_id == object_id)
 
     entries: Sequence[Row[tuple[AuditEvent, ActorSource, User, ApiToken]]] = ()
     has_more = False

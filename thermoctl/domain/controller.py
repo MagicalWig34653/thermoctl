@@ -125,15 +125,15 @@ def set_binding(
     step_k: Decimal | None = None,
 ) -> None:
     """Binds a button -- or deletes the binding if `befehl_code` is None."""
-    vorhanden = session.scalars(
+    present = session.scalars(
         select(ControllerBinding).where(
             ControllerBinding.device_id == device.id,
             ControllerBinding.action_code == action,
         )
     ).first()
     if command_code is None:
-        if vorhanden is not None:
-            session.delete(vorhanden)
+        if present is not None:
+            session.delete(present)
             session.flush()
         return
 
@@ -153,7 +153,7 @@ def set_binding(
             raise ControllerError(
                 "Die Schrittweite darf höchstens eine Nachkommastelle haben."
             )
-    if vorhanden is None:
+    if present is None:
         session.add(
             ControllerBinding(
                 device_id=device.id,
@@ -163,8 +163,8 @@ def set_binding(
             )
         )
     else:
-        vorhanden.command_id = command.id
-        vorhanden.step_k = step_k
+        present.command_id = command.id
+        present.step_k = step_k
     session.flush()
 
 

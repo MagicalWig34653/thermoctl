@@ -24,7 +24,7 @@ class Classification(StrEnum):
 
 @dataclass(frozen=True)
 class Comparison:
-    einordnung: Classification
+    classification: Classification
     text: str
 
 
