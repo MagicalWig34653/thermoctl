@@ -19,6 +19,15 @@
 (function () {
     "use strict";
 
+    /** Kann dieses Geraet die Stelle ausfuellen? Derselbe Massstab wie in der Domaene:
+     *  Abgewiesen wird nur ein nachweislicher Widerspruch -- ein Geraet, von dem gar
+     *  keine Faehigkeit bekannt ist, darf ueberall hin. */
+    function passt(karte, ziel) {
+        const braucht = ziel.dataset.braucht;
+        const kann = (karte.dataset.kann || "").split(" ").filter(Boolean);
+        return !braucht || kann.length === 0 || kann.includes(braucht);
+    }
+
     function zielUnter(x, y, ziele) {
         for (const ziel of ziele) {
             const rahmen = ziel.getBoundingClientRect();
@@ -62,6 +71,11 @@
 
             karte.classList.add("tc-in-bewegung");
             karte.style.pointerEvents = "none";
+            // Unpassende Ziele treten waehrend des Ziehens zurueck, statt erst beim
+            // Loslassen mit einer Fehlermeldung zu antworten.
+            ziele.forEach(function (z) {
+                z.classList.toggle("tc-ziel-unpassend", !passt(karte, z));
+            });
 
             function bewegen(zweites) {
                 if (Math.abs(zweites.clientX - startX) > 3
@@ -70,7 +84,8 @@
                 }
                 karte.style.transform = "translate(" + (zweites.clientX - startX) + "px, "
                     + (zweites.clientY - startY) + "px)";
-                const getroffen = zielUnter(zweites.clientX, zweites.clientY, ziele);
+                const unter = zielUnter(zweites.clientX, zweites.clientY, ziele);
+                const getroffen = unter && passt(karte, unter) ? unter : null;
                 if (getroffen !== ziel) {
                     ziele.forEach(function (z) { z.classList.remove("tc-ziel-aktiv"); });
                     if (getroffen) {
@@ -87,7 +102,10 @@
                 karte.classList.remove("tc-in-bewegung");
                 karte.style.pointerEvents = "";
                 karte.style.transform = "";
-                ziele.forEach(function (z) { z.classList.remove("tc-ziel-aktiv"); });
+                ziele.forEach(function (z) {
+                    z.classList.remove("tc-ziel-aktiv");
+                    z.classList.remove("tc-ziel-unpassend");
+                });
             }
 
             function loslassen() {

@@ -24,7 +24,7 @@ Vom Controller selbst nachgeprüft, nicht aus Berichten übernommen:
 
 | | |
 |---|---|
-| Tests | 877, grün unter SQLite **und** MariaDB |
+| Tests | 887, grün unter SQLite **und** MariaDB |
 | Testabdeckung | 99 %, Mindestschwelle 97 % in der CI |
 | Ruff, mypy strict | ohne Befund, 74 Quelldateien |
 | Migrationskette | linear, ein Kopf, vorwärts und rückwärts gegen beide Datenbanken |

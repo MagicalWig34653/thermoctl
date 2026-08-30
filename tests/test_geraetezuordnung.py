@@ -1,6 +1,7 @@
 from datetime import datetime
 from decimal import Decimal
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -464,3 +465,135 @@ def test_anlagenbild_bietet_keine_ablegeziele(client_als, session: Session) -> N
     )
     assert seite.status_code == 200
     assert "data-ziel=" not in seite.text
+
+
+# --- Faehigkeitspruefung ----------------------------------------------------
+
+
+def _mit_faehigkeit(session: Session, name: str, *codes: str):
+    """Ein Geraet, dessen Faehigkeiten bekannt sind."""
+    from tests.hilfen import faehigkeit
+    from thermoctl.db.models.device import DeviceCapabilityLink
+
+    geraet = geraet_anlegen(session, name)
+    for code in codes:
+        session.add(
+            DeviceCapabilityLink(
+                device_id=geraet.id, capability_id=faehigkeit(session, code).id
+            )
+        )
+    session.flush()
+    return geraet
+
+
+def test_sensor_laesst_sich_nicht_als_aktor_zuordnen(session: Session) -> None:
+    """Vorher ging das. Die Zuordnung sah danach richtig aus, das Anlagenbild zeigte
+    einen vollstaendigen Weg, und geschaltet haette trotzdem nie etwas -- ein Fehler, der
+    erst im Winter auffaellt und dann nach einem Regelungsfehler aussieht."""
+    from thermoctl.domain.geraetezuordnung import FaehigkeitFehlt, geraet_zuordnen
+
+    zone = zone_anlegen(session, "faehigkeitszone")
+    sensor = _mit_faehigkeit(session, "nur-thermometer", "temperature", "battery")
+    with pytest.raises(FaehigkeitFehlt, match="Schaltausgang"):
+        geraet_zuordnen(
+            session, zone, sensor, rolle(session, "actuator"), akteur_id=None
+        )
+
+
+def test_ventil_laesst_sich_als_aktor_zuordnen(session: Session) -> None:
+    """Gegenprobe. Ohne sie waere der Test oben auch von einer Fassung erfuellt, die
+    jede Zuordnung ablehnt."""
+    from thermoctl.domain.geraetezuordnung import geraet_zuordnen
+
+    zone = zone_anlegen(session, "ventilzone")
+    ventil = _mit_faehigkeit(session, "echtes-ventil", "switch")
+    zuordnung = geraet_zuordnen(
+        session, zone, ventil, rolle(session, "actuator"), akteur_id=None
+    )
+    assert zuordnung.device_id == ventil.id
+
+
+def test_geraet_ohne_bekannte_faehigkeiten_wird_durchgelassen(session: Session) -> None:
+    """Die Faehigkeiten stammen aus der Geraeteliste der Bruecke. Wer ein Geraet
+    einbindet, das sich dort sparsam beschreibt, soll seine Anlage trotzdem einrichten
+    koennen -- abgewiesen wird nur ein nachweislicher Widerspruch."""
+    from thermoctl.domain.geraetezuordnung import geraet_zuordnen
+
+    zone = zone_anlegen(session, "unbekanntzone")
+    schweigsam = geraet_anlegen(session, "sagt-nichts-ueber-sich")
+    geraet_zuordnen(session, zone, schweigsam, rolle(session, "actuator"), akteur_id=None)
+
+
+def test_messquelle_muss_temperatur_messen(session: Session) -> None:
+    from thermoctl.domain.geraetezuordnung import FaehigkeitFehlt, messquelle_setzen
+
+    zone = zone_anlegen(session, "messquellenzone")
+    ventil = _mit_faehigkeit(session, "ventil-als-messquelle", "switch")
+    with pytest.raises(FaehigkeitFehlt, match="Temperatur"):
+        messquelle_setzen(session, zone, ventil, akteur_id=None)
+
+
+def test_fensterkontakt_muss_einen_kontakt_melden(session: Session) -> None:
+    from thermoctl.domain.geraetezuordnung import FaehigkeitFehlt, geraet_zuordnen
+
+    zone = zone_anlegen(session, "kontaktzone")
+    ventil = _mit_faehigkeit(session, "ventil-als-kontakt", "switch")
+    with pytest.raises(FaehigkeitFehlt, match="Kontakt"):
+        geraet_zuordnen(
+            session, zone, ventil, rolle(session, "window_contact"), akteur_id=None
+        )
+
+
+def test_tausch_prueft_jede_stelle_die_uebergeht(session: Session) -> None:
+    """Der stillste Weg, ein unpassendes Geraet an eine Stelle zu setzen: Man waehlt zwei
+    Namen aus und sieht gar nicht, welche Rollen dabei mitgehen."""
+    from thermoctl.domain.geraetezuordnung import (
+        FaehigkeitFehlt,
+        geraet_tauschen,
+        geraet_zuordnen,
+    )
+
+    zone = zone_anlegen(session, "tauschzone")
+    ventil = _mit_faehigkeit(session, "altes-ventil", "switch")
+    sensor = _mit_faehigkeit(session, "neuer-sensor", "temperature")
+    geraet_zuordnen(session, zone, ventil, rolle(session, "actuator"), akteur_id=None)
+
+    with pytest.raises(FaehigkeitFehlt, match="Schaltausgang"):
+        geraet_tauschen(session, zone, ventil, sensor, akteur_id=None)
+
+
+def test_abgelehnter_tausch_laesst_nichts_halb_stehen(session: Session) -> None:
+    """Erst pruefen, dann schreiben. Sonst bliebe die Messquelle beim neuen Geraet und
+    die Rolle beim alten."""
+    from thermoctl.domain.geraetezuordnung import (
+        FaehigkeitFehlt,
+        geraet_tauschen,
+        geraet_zuordnen,
+        messquelle_setzen,
+    )
+
+    zone = zone_anlegen(session, "halbzone")
+    kombi = _mit_faehigkeit(session, "kann-beides", "temperature", "switch")
+    nur_sensor = _mit_faehigkeit(session, "kann-nur-messen", "temperature")
+    messquelle_setzen(session, zone, kombi, akteur_id=None)
+    geraet_zuordnen(session, zone, kombi, rolle(session, "actuator"), akteur_id=None)
+
+    with pytest.raises(FaehigkeitFehlt):
+        geraet_tauschen(session, zone, kombi, nur_sensor, akteur_id=None)
+    session.expire_all()
+    assert zone.temperature_source_device_id == kombi.id
+
+
+def test_die_ansicht_zeigt_den_grund_statt_eines_fehlers(client_als, session: Session) -> None:
+    """Ein 500 waere hier die schlechteste Antwort: Der Benutzer hat nichts falsch
+    gemacht ausser dem Falschen, und er soll erfahren, was gefehlt hat."""
+    zone = zone_anlegen(session, "ansichtszone")
+    sensor = _mit_faehigkeit(session, "ansichts-sensor", "temperature")
+    c = client_als([("device.read", None), ("device.manage", None), ("zone.read", None)])
+    antwort = c.post(
+        f"/zonen/{zone.id}/geraete/zuordnen",
+        data={"device_id": str(sensor.id), "role_id": str(rolle(session, "actuator").id)},
+        headers=_csrf(c),
+    )
+    assert antwort.status_code == 200
+    assert "Schaltausgang" in antwort.text
