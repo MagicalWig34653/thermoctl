@@ -134,6 +134,51 @@ die Tabelle unter SQLite neu, und eine misslungene Kopie sähe hinterher richtig
 wäre leer). Dazu `NAMENSKONVENTION` → `NAMING_CONVENTION` und der JSON-Schlüssel der
 Passkey-Registrierung.
 
+## Zwei neue Fähigkeiten: Thermostatventile und die Sonne
+
+**Zigbee-Heizkörperthermostate (WT-A03E).** Ein Thermostatventil ist kein Schalter: Es hat
+gar keinen Schaltausgang, sondern wird über `system_mode` (`heat`/`off`) und
+`occupied_heating_setpoint` gefahren, 5–30 °C in halben Schritten. Beides bewegt ein echtes
+Ventil, also trägt die Nachricht `switches=True` und beide Riegel des Trockenlaufs greifen.
+
+Als Thermostat gilt ein Gerät nur, wenn es `occupied_heating_setpoint` **und** `system_mode`
+gemeinsam anbietet. Keines allein reicht: Einen Sollwert zeigt auch eine bloße Wandanzeige.
+Die Aktor-Stelle verlangt seither `switch` **oder** `thermostat` — welche Fähigkeit ein Gerät
+hat, entscheidet nur, welcher Adapter den Befehl baut, nicht ob es die Stelle füllen darf.
+
+**Sonnenprognose-Absenkung.** In der Übergangszeit heizt eine Dachwohnung morgens hoch,
+obwohl zwei Stunden später die Sonne durch die Dachfenster kommt. Verspricht die Vorhersage
+(Open-Meteo, kein Schlüssel nötig) in den nächsten Stunden nennenswerte Einstrahlung, wird
+der Sollwert abgesenkt — begrenzt durch eine Obergrenze in Kelvin und gewichtet mit einem
+Sonnenprofil je Zone (0 = gar nicht, etwa ein Nordzimmer; 1 = stark). Voreinstellung 0,
+also aus.
+
+Drei Eigenschaften, auf die es hier ankommt:
+
+- **`decide()` bleibt unangetastet.** Die Absenkung ist eine Korrektur am Sollwert *vor* dem
+  Bau der Situation, keine neue Regel. Die Rangfolge aus Frostschutz, Fenster offen,
+  Mindestschaltdauer und Hysterese ändert sich nicht — Grundsatz 7.
+- **Der Frostschutz ist eine absolute Untergrenze.** Die Absenkung wird auf genau den
+  Abstand nach oben begrenzt und fällt ganz weg, wenn keiner mehr da ist.
+- **Ein Ausfall der Quelle senkt nichts ab.** „Funktion aus", „kein Standort hinterlegt" und
+  „Quelle nicht erreichbar" fallen alle auf dasselbe `None` zusammen. Die Testsuite geht nie
+  ins Netz.
+
+Die Begründung des Sollwerts nennt die tatsächliche Absenkung in Kelvin (Grundsatz 5).
+
+Zwei Befunde kamen aus der Gegenlesung in der Hauptsession. Die Absenkung trug beliebig
+viele Nachkommastellen — ein Faktor 0,35 gegen 2 K hätte aus 21,0 still 20,30 gemacht, einen
+Sollwert, den die Oberfläche einem Menschen verweigert. Jetzt auf eine Nachkommastelle
+**abwärts** gerundet: Aufrunden könnte die eingestellte Obergrenze überschreiten, und die
+Obergrenze ist die Zusage dieser Funktion. Und beide Migrationen hingen an derselben
+Vorgängerrevision; die Historie hatte zwei Köpfe. Die Hauptsession hat sie geordnet, wie es
+die Arbeitsanweisung vorsieht.
+
+**Was nur der Projektinhaber kann:** Eine echte Abfrage gegen Open-Meteo einmal laufen
+lassen — der Aufbau der Anfrage ist aus der Dokumentation gebaut, aber nie gegen den
+laufenden Dienst geprüft. Und am echten WT-A03E nachsehen, ob `system_mode` und
+`occupied_heating_setpoint` tatsächlich das tun, was hier angenommen wird.
+
 ## Konfigurierbare Bediengeräte
 
 Zigbee2MQTT-Merkmale aus `bridge/devices` werden jetzt mit Zugriff, Typ, Einheit,
