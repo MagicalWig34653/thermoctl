@@ -48,7 +48,16 @@ _CAPABILITY_BY_FEATURE = {
     "pi_heating_demand": "valve_position",
     "power": "power",
     "energy": "energy",
+    "running_state": "running_state",
+    "window_open": "window_open",
 }
+
+# A thermostatic radiator valve (e.g. WT-A03E) exposes no `state` field to switch --
+# it is driven through these two features together. Neither one alone implies a
+# valve: `occupied_heating_setpoint` alone is also exposed by a plain wall
+# thermostat display, and `system_mode` alone would be unusual but not impossible.
+# Only the combination is treated as proof of an actual thermostat.
+_THERMOSTAT_FEATURES = frozenset({"occupied_heating_setpoint", "system_mode"})
 
 
 def _text(value: object) -> str | None:
@@ -81,11 +90,38 @@ def _collect_capabilities(
     return result
 
 
+def _feature_property_names(entries: list[object]) -> set[str]:
+    """Collects every `property` name anywhere in the expose tree, unfiltered.
+
+    Separate from `_collect_capabilities`: that one only keeps names that already
+    map to a known capability. `system_mode` does not -- it is an operating mode,
+    not a measurable or switchable value by itself -- but its presence alongside
+    `occupied_heating_setpoint` is exactly what tells a thermostat apart from a
+    plain setpoint display.
+    """
+    names: set[str] = set()
+    for roh in entries:
+        if not isinstance(roh, Mapping):
+            continue
+        entry = cast(Mapping[str, object], roh)
+        property_name = _text(entry.get("property"))
+        if property_name is not None:
+            names.add(property_name)
+        features = entry.get("features")
+        if isinstance(features, list):
+            names.update(_feature_property_names(cast(list[object], features)))
+    return names
+
+
 def capabilities_from_exposes(
     exposes: list[dict[str, object]],
 ) -> frozenset[str]:
     """Derives only explicitly agreed-upon capabilities from Zigbee2MQTT."""
-    return frozenset(_collect_capabilities(cast(list[object], exposes)))
+    entries = cast(list[object], exposes)
+    result = _collect_capabilities(entries)
+    if _THERMOSTAT_FEATURES <= _feature_property_names(entries):
+        result.add("thermostat")
+    return frozenset(result)
 
 
 def _decimal(value: object) -> Decimal | None:

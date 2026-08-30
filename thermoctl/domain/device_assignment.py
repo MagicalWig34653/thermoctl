@@ -28,10 +28,15 @@ class CapabilityMissing(Exception):
 # about a slot with no requirement.
 TEMPERATURE_SOURCE = "messquelle"
 
-REQUIRED_CAPABILITY: dict[str, tuple[str, str]] = {
-    TEMPERATURE_SOURCE: ("temperature", "misst keine Temperatur"),
-    "actuator": ("switch", "hat keinen Schaltausgang"),
-    "window_contact": ("contact", "meldet keinen Kontakt"),
+# The actuator slot accepts either of two capabilities: a plain switch output (a
+# smart-plug valve, e.g. Meross) or a thermostat (a Zigbee2MQTT TRV such as the
+# WT-A03E, driven through `system_mode` and `occupied_heating_setpoint` instead of
+# an on/off `state`). Both move a real valve; which one a device has decides only
+# which adapter builds its command, not whether it may fill this slot.
+REQUIRED_CAPABILITY: dict[str, tuple[frozenset[str], str]] = {
+    TEMPERATURE_SOURCE: (frozenset({"temperature"}), "misst keine Temperatur"),
+    "actuator": (frozenset({"switch", "thermostat"}), "hat keinen Schaltausgang"),
+    "window_contact": (frozenset({"contact"}), "meldet keinen Kontakt"),
 }
 
 
@@ -65,16 +70,21 @@ def check_capability(session: Session, device: Device, slot: str | None) -> None
     verlangt = REQUIRED_CAPABILITY.get(slot or "")
     if verlangt is None:
         return
-    code, mangel = verlangt
+    codes, mangel = verlangt
     vorhanden = _capabilities(session, device)
-    if not vorhanden or code in vorhanden:
+    if not vorhanden or codes & vorhanden:
         return
-    label = session.scalar(
-        select(DeviceCapability.label).where(DeviceCapability.code == code)
+    labels = list(
+        session.scalars(
+            select(DeviceCapability.label)
+            .where(DeviceCapability.code.in_(codes))
+            .order_by(DeviceCapability.code)
+        )
     )
+    label_text = " oder ".join(labels) if labels else " oder ".join(sorted(codes))
     raise CapabilityMissing(
         f"'{device.display_name}' {mangel} — für diese Stelle wird "
-        f"'{label or code}' gebraucht."
+        f"'{label_text}' gebraucht."
     )
 
 
