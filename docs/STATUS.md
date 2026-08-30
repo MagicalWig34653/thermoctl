@@ -24,9 +24,9 @@ Vom Controller selbst nachgeprüft, nicht aus Berichten übernommen:
 
 | | |
 |---|---|
-| Tests | 923, grün unter SQLite **und** MariaDB |
-| Testabdeckung | 98,78 %, Mindestschwelle 97 % in der CI |
-| Ruff, mypy strict | ohne Befund, 74 Quelldateien |
+| Tests | 932, grün unter SQLite **und** MariaDB |
+| Testabdeckung | 98,75 %, Mindestschwelle 97 % in der CI |
+| Ruff, mypy strict | ohne Befund, 86 Quelldateien |
 | Migrationskette | linear, ein Kopf, vorwärts und rückwärts gegen beide Datenbanken |
 | CI und Container | grün |
 
@@ -61,7 +61,21 @@ Schattenprotokoll gerechnet und mit gekappten Ausfalllücken; die
 **Schnittstellen-Übersicht** (`/schnittstellen`), die für jede Gegenstelle sagt, ob sie
 eingerichtet ist, ob sie läuft und woher jeder Wert kommt; eine neue **Rechtevergabe** mit
 einem Formular je Gruppe statt sechzehn Einzelklicks; und **Gerätezuordnung per Ziehen** auf
-das Flussbild.
+das Flussbild — in beide Richtungen: Ein Gerät geht aus dem Vorrat auf eine Stufe und von
+dort auch wieder zurück, was es aus der Zone nimmt. Beides im Browser nachgestellt, für die
+Messquelle (eine Spalte an der Zone) wie für eine Rolle (eine eigene Zeile).
+
+**Die Geräteseite beantwortet jetzt die Frage, mit der man hinkommt.** Vorher stand dort
+eine Tabelle mit neun gleich gewichteten Spalten, in der die meisten Zellen ein
+Gedankenstrich waren; bei vierunddreißig Geräten fand man darin nichts. Jetzt trägt jedes
+Gerät seinen Befund im Klartext — offline, seit zwei Tagen still, Batterie bei 8 %,
+schwacher Funk —, das Auffällige steht in einem eigenen Block oben, und ein Suchfeld
+filtert nach Name, Modell, Fähigkeit oder Zone. Die Schwelle, ab der ein Gerät als stumm
+gilt, ist dieselbe, nach der die Regelung einen Sensor aufgibt: eine zweite Zahl hieße,
+dass die Liste ein Gerät für gesund hält, das die Regelung schon abgeschrieben hat.
+Weggelassen ist alles, was sich auf jeder Zeile wiederholte — ein Kärtchen „Batteriestand"
+neben der Prozentzahl sagt nichts, was die Zahl nicht sagt, und „ohne Zone" bei jedem der
+vierunddreißig Geräte steht jetzt einmal oben als Zahl.
 
 **Drei Fehler behoben, die nur beim Benutzen auffielen:** Die Kopfleiste verschwand auf
 sechs Seiten, sobald man sie über das Menü ansteuerte (`hx-boost` schickt bei jeder

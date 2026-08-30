@@ -23,11 +23,17 @@ Die Formulare tragen feste Pfade und die Kennungen im Rumpf: hx-boost liest die 
 eines Formulars einmal beim Verarbeiten der Seite, ein später umgeschriebener Pfad wäre
 wirkungslos.
 #}
-<section class="tc-tafel p-4 mb-4" id="geraetevorrat">
+{#
+Der Vorrat ist zugleich Ablegeziel: Ein zugeordnetes Gerät hierher zurückziehen löst die
+Zuordnung. Hinein und hinaus ist damit derselbe Handgriff in zwei Richtungen.
+#}
+<section class="tc-tafel p-4 mb-4 tc-ziel" id="geraetevorrat"
+         data-ziel="entfernen" data-zielname="Geräte">
     <div class="d-flex justify-content-between align-items-baseline flex-wrap gap-2">
         <h2 class="mb-0">Geräte</h2>
         <span class="t-leise small" data-ziehhinweis hidden>
-            Ein Gerät auf eine der drei Stufen oben ziehen.
+            Ein Gerät auf eine der Stufen oben ziehen — oder von dort hierher zurück,
+            um es aus der Zone zu nehmen.
         </span>
     </div>
     <div class="d-flex flex-wrap gap-2 mt-3">
@@ -58,6 +64,10 @@ wirkungslos.
       action="/zonen/{{ zone.id }}/geraete/zuordnen">
     <input type="hidden" name="device_id">
     <input type="hidden" name="role_id">
+</form>
+<form id="zuordnung-loesen" method="post" hidden hx-push-url="false"
+      action="/zonen/{{ zone.id }}/geraete/loesen">
+    <input type="hidden" name="zuordnung_id">
 </form>
 {#
 Ein Element je Rolle statt Attributnamen wie `data-rolle-window_contact`: Der Browser
@@ -100,7 +110,8 @@ Skripts falsch rät.
         <td>{{ rolle.label }}</td><td>{{ geraet.display_name }}</td>
         <td class="text-end">
         {% if darf_aendern %}
-        <form method="post" action="/zonen/{{ zone.id }}/geraete/{{ zuordnung.id }}/loesen">
+        <form method="post" action="/zonen/{{ zone.id }}/geraete/loesen">
+            <input type="hidden" name="zuordnung_id" value="{{ zuordnung.id }}">
             <button class="btn btn-sm btn-outline-danger" type="submit">Lösen</button>
         </form>
         {% endif %}

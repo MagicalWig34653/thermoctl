@@ -39,6 +39,11 @@ class Geraetebild:
     # ihm verlangt wird. Die Pruefung bei der Zuordnung verhindert neue solche Faelle;
     # die alten stehen schon in der Datenbank und wuerden sonst nie auffallen.
     ungeeignet: str | None = None
+    # Die Kennung der `zone_device`-Zeile, ueber die dieses Geraet an dieser Stelle
+    # haengt -- None bei der Messquelle (die ist eine Spalte an der Zone, keine Zeile)
+    # und bei Geraeten ohne Zone. Die Oberflaeche braucht sie, um ein Geraet wieder
+    # herausziehen zu koennen.
+    zuordnung_id: int | None = None
 
 
 @dataclass(frozen=True)
@@ -75,6 +80,7 @@ def _bild(
     faehigkeiten: dict[int, list[str]],
     codes: dict[int, set[str]],
     stelle: str | None = None,
+    zuordnung_id: int | None = None,
 ) -> Geraetebild:
     # `None` heisst "keine Anforderung" -- so stehen die Geraete ohne Zone da, an die
     # niemand etwas verlangt. Ohne die Unterscheidung waere ein herrenloses Ventil als
@@ -93,6 +99,7 @@ def _bild(
         faehigkeiten=sorted(faehigkeiten.get(geraet.id, [])),
         aktiv=geraet.is_enabled,
         ungeeignet=ungeeignet,
+        zuordnung_id=zuordnung_id,
     )
 
 
@@ -132,7 +139,7 @@ def anlagenbild(session: Session, zonen: list[Zone]) -> Anlagenbild:
         if geraet is None or rolle not in nach_zone[zuordnung.zone_id]:
             continue
         nach_zone[zuordnung.zone_id][rolle].append(
-            _bild(geraet, faehigkeiten, codes, rolle)
+            _bild(geraet, faehigkeiten, codes, rolle, zuordnung.id)
         )
         zugeordnet.add(geraet.id)
 

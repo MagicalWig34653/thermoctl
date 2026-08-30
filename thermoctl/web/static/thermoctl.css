@@ -352,9 +352,17 @@ h2, .t-abschnitt {
     grid-template-columns: minmax(8rem, 1fr) 6.5rem 6.5rem minmax(12rem, 2.4fr);
 }
 
+/* Geraeteliste: Name und Befund tragen das Gewicht, Zustandswerte und Faehigkeiten
+   stehen daneben. */
+.tc-zone-geraet {
+    grid-template-columns: minmax(12rem, 2fr) 7rem minmax(10rem, 1.6fr) minmax(7rem, 1fr);
+    align-items: start;
+}
+
 @media (max-width: 62em) {
     .tc-zone,
-    .tc-zone-betrieb {
+    .tc-zone-betrieb,
+    .tc-zone-geraet {
         grid-template-columns: 1fr auto;
         row-gap: 0.85rem;
     }
@@ -362,7 +370,8 @@ h2, .t-abschnitt {
         grid-column: 1 / -1;
     }
     /* Die Begruendung darf umbrechen; sie ist der laengste Text der Zeile. */
-    .tc-zone-betrieb > :last-child {
+    .tc-zone-betrieb > :last-child,
+    .tc-zone-geraet > :last-child {
         grid-column: 1 / -1;
     }
 }

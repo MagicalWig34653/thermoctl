@@ -12,6 +12,7 @@ from tests.hilfen import (
     rolle,
     zone_anlegen,
 )
+from thermoctl.db.base import utcnow
 from thermoctl.db.models.device import DeviceCapabilityLink, ZoneDevice
 from thermoctl.db.models.lookup import DeviceCapability
 
@@ -69,8 +70,15 @@ def test_geraeteseite_zeigt_lebenszeichen_faehigkeit_und_zone(
         "Gruppe",
     ):
         assert erwartet in antwort.text
-    assert "71.50 %" in antwort.text
-    assert "online" in antwort.text
+    # Gerundet: Ein Hundertstel Prozent Batterie ist Rauschen, und die Zahl steht hier,
+    # damit man sieht, ob bald eine Zelle faellig ist.
+    assert "72 %" in antwort.text
+    assert "71.50" not in antwort.text
+    assert "LQI 88" in antwort.text
+    # Erreichbarkeit steht nur noch da, wenn sie ein Problem ist. Eine Spalte, in der bei
+    # jedem gesunden Geraet "online" steht, traegt keine Auskunft -- sie verdeckt die
+    # zwei Zeilen, auf die es ankommt.
+    assert "die Brücke führt es als offline" not in antwort.text
 
 
 def test_startseite_zeigt_zonenzustand_ohne_nulltemperatur(client_als, session: Session) -> None:
@@ -142,3 +150,67 @@ def test_alter_in_worten_beantwortet_die_frage_nach_der_frische() -> None:
     assert alter_in_worten(jetzt + timedelta(minutes=3), jetzt) == "gerade eben"
     # Ohne ausdruecklichen Jetzt-Zeitpunkt greift die Uhr des Projekts.
     assert alter_in_worten(datetime(2000, 1, 1)).endswith("Tagen")
+
+
+def test_geraeteseite_stellt_auffaellige_geraete_nach_oben(client_als, session: Session) -> None:
+    """Die Gegenprobe zur Rundung oben: Was nicht stimmt, muss auch wirklich dastehen.
+
+    Zwei Geraete, eines gesund und alphabetisch zuerst, eines mit leerer Batterie und von
+    der Bruecke als offline gefuehrt. Die Seite ist erst dann brauchbar, wenn das zweite
+    oben steht und seinen Befund im Klartext traegt.
+    """
+    beispiele = json.loads(
+        (Path(__file__).parent / "daten/anlage-beispiele.json").read_text(encoding="utf-8")
+    )
+    gesund = geraet_anlegen(session, beispiele["geraete"][0])
+    gesund.display_name = "Alpha gesund"
+    gesunder_zustand = geraetezustand_anlegen(session, gesund)
+    gesunder_zustand.last_payload_at = utcnow()
+    gesunder_zustand.availability = "online"
+
+    krank = geraet_anlegen(session, beispiele["geraete"][1])
+    krank.display_name = "Zulu krank"
+    kranker_zustand = geraetezustand_anlegen(session, krank)
+    kranker_zustand.last_payload_at = utcnow()
+    kranker_zustand.battery_percent = Decimal("7.00")
+    kranker_zustand.availability = "offline"
+    session.flush()
+
+    text = client_als([("device.read", None)]).get("/geraete").text
+
+    assert "Batterie bei 7 %" in text
+    assert "die Brücke führt es als offline" in text
+    assert text.index("Zulu krank") < text.index("Alpha gesund")
+    assert "1 davon fällt auf" in text
+
+
+def test_batterie_und_funk_stehen_als_zahl_und_nicht_als_kaertchen(
+    client_als, session: Session
+) -> None:
+    """Ein Kaertchen "Batteriestand" neben "58 %" sagt nichts, was die Zahl nicht sagt.
+
+    Die Gegenprobe steckt im zweiten Teil: Wer die Kaertchen unterdrueckt, darf daraus
+    nicht "keine Faehigkeiten gemeldet" machen. Ein Fernbedienungsknopf, der genau
+    Batterie und Funkguete meldet, kann etwas -- es steht nur schon rechts.
+    """
+    beispiele = json.loads(
+        (Path(__file__).parent / "daten/anlage-beispiele.json").read_text(encoding="utf-8")
+    )
+    nur_batterie = geraet_anlegen(session, beispiele["geraete"][0])
+    nur_batterie.display_name = "Nur Batterie"
+    stumm = geraet_anlegen(session, beispiele["geraete"][1])
+    stumm.display_name = "Meldet nichts"
+    for zeitpunkt in (nur_batterie, stumm):
+        zustand = geraetezustand_anlegen(session, zeitpunkt)
+        zustand.last_payload_at = utcnow()
+    batterie = DeviceCapability(code="battery", label="Batteriestand")
+    session.add(batterie)
+    session.flush()
+    session.add(DeviceCapabilityLink(device_id=nur_batterie.id, capability_id=batterie.id))
+    session.flush()
+
+    text = client_als([("device.read", None)]).get("/geraete").text
+
+    assert "Batteriestand" not in text
+    # Genau einmal -- fuer das Geraet ohne jede Faehigkeit, nicht fuer das mit Batterie.
+    assert text.count("keine Fähigkeiten gemeldet") == 1

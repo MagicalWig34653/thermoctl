@@ -19,10 +19,25 @@
 (function () {
     "use strict";
 
-    /** Kann dieses Geraet die Stelle ausfuellen? Derselbe Massstab wie in der Domaene:
-     *  Abgewiesen wird nur ein nachweislicher Widerspruch -- ein Geraet, von dem gar
-     *  keine Faehigkeit bekannt ist, darf ueberall hin. */
+    /** Ist diese Karte bereits einer Stelle zugeordnet? Dann kann sie nur heraus. */
+    function zugeordnet(karte) {
+        return Boolean(karte.dataset.zuordnung || karte.dataset.messquelle);
+    }
+
+    /** Passt diese Karte auf dieses Ziel?
+     *
+     *  Zwei Richtungen: Eine Karte aus dem Vorrat geht auf eine Stufe, sofern sie kann,
+     *  was die Stufe verlangt -- derselbe Massstab wie in der Domaene, abgewiesen wird
+     *  nur ein nachweislicher Widerspruch. Eine bereits zugeordnete Karte geht
+     *  ausschliesslich zurueck in den Vorrat.
+     */
     function passt(karte, ziel) {
+        if (ziel.dataset.ziel === "entfernen") {
+            return zugeordnet(karte);
+        }
+        if (zugeordnet(karte)) {
+            return false;
+        }
         const braucht = ziel.dataset.braucht;
         const kann = (karte.dataset.kann || "").split(" ").filter(Boolean);
         return !braucht || kann.length === 0 || kann.includes(braucht);
@@ -36,6 +51,20 @@
             }
         }
         return null;
+    }
+
+    function loesen(karte) {
+        if (karte.dataset.messquelle) {
+            // Die Messquelle ist eine Spalte an der Zone, keine Zuordnungszeile. Ein
+            // leeres Geraetefeld loescht sie -- derselbe Weg wie ueber das Formular.
+            const formular = document.getElementById("zuordnung-messquelle");
+            formular.elements.device_id.value = "";
+            formular.requestSubmit();
+            return;
+        }
+        const formular = document.getElementById("zuordnung-loesen");
+        formular.elements.zuordnung_id.value = karte.dataset.zuordnung;
+        formular.requestSubmit();
     }
 
     function absenden(geraetId, zielart) {
@@ -111,7 +140,12 @@
             function loslassen() {
                 const getroffen = ziel;
                 aufraeumen();
-                if (bewegt && getroffen) {
+                if (!bewegt || !getroffen) {
+                    return;
+                }
+                if (getroffen.dataset.ziel === "entfernen") {
+                    loesen(karte);
+                } else {
                     absenden(karte.dataset.geraet, getroffen.dataset.ziel);
                 }
             }
@@ -132,7 +166,9 @@
         if (!ziele.length) {
             return;
         }
-        vorrat.querySelectorAll(".tc-ziehbar").forEach(function (karte) {
+        // Beide Richtungen: die Karten im Vorrat und die bereits zugeordneten im
+        // Flussbild.
+        document.querySelectorAll(".tc-ziehbar").forEach(function (karte) {
             karteVerdrahten(karte, ziele);
         });
         const hinweis = document.querySelector("[data-ziehhinweis]");
