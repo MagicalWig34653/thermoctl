@@ -33,6 +33,22 @@ templates = Jinja2Templates(
 STATIC_DIR = Path(__file__).parent / "static"
 
 
+def ist_teilaustausch(request: Request) -> bool:
+    """Ob htmx nur ein Stueck der Seite nachlaedt -- und nicht eine ganze Seite holt.
+
+    `HX-Request` allein reicht dafuer **nicht**: Seit `hx-boost="true"` am <body> haengt,
+    traegt jede gewoehnliche Navigation diesen Kopf. Sechs Ansichten haben daraufhin nur
+    ihren Inhalt ohne Rahmen gerendert -- wer ueber das Menue auf /geraete oder /audit
+    ging, verlor die Kopfleiste und kam nur durch Neuladen zurueck. Beim Direktaufruf
+    derselben Adresse war alles in Ordnung, weshalb es niemandem auffiel, der die Seite
+    zum Pruefen einfach aufrief.
+
+    `HX-Boosted` setzt htmx zusaetzlich, wenn die Anfrage aus einem geboosteten Verweis
+    stammt. Nur ohne diesen Kopf ist es wirklich ein Teilaustausch.
+    """
+    return "HX-Request" in request.headers and "HX-Boosted" not in request.headers
+
+
 def alter_in_worten(zeitpunkt: datetime | None, jetzt: datetime | None = None) -> str:
     """Wie lange etwas her ist, in Worten — 'vor 3 Minuten' statt eines Zeitstempels.
 

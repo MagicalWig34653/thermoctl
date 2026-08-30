@@ -26,6 +26,7 @@
 
 <h2 class="h4">Rollen</h2>
 {% if zuordnungen %}
+<div class="table-responsive">
 <table class="table align-middle">
     <thead><tr><th>Rolle</th><th>Gerät</th><th></th></tr></thead>
     <tbody>
@@ -43,6 +44,7 @@
     {% endfor %}
     </tbody>
 </table>
+</div>
 {% else %}<p>Noch keine Rollen zugeordnet.</p>{% endif %}
 
 {% if darf_aendern %}

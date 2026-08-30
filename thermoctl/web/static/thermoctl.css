@@ -345,14 +345,33 @@ h2, .t-abschnitt {
     text-decoration: underline;
 }
 
+/* Eigene Klasse statt eines style-Attributs an der Zeile: Ein Attribut schlaegt jede
+   Medienabfrage, und die Betriebsseite lief deshalb auf schmalen Geraeten 260 Pixel
+   ueber den Rand hinaus. */
+.tc-zone-betrieb {
+    grid-template-columns: minmax(8rem, 1fr) 6.5rem 6.5rem minmax(12rem, 2.4fr);
+}
+
 @media (max-width: 62em) {
-    .tc-zone {
+    .tc-zone,
+    .tc-zone-betrieb {
         grid-template-columns: 1fr auto;
         row-gap: 0.85rem;
     }
     .tc-zone > .tc-zone-spur {
         grid-column: 1 / -1;
     }
+    /* Die Begruendung darf umbrechen; sie ist der laengste Text der Zeile. */
+    .tc-zone-betrieb > :last-child {
+        grid-column: 1 / -1;
+    }
+}
+
+/* Letzte Sicherung: Kein einzelnes Wort und keine lange Kennung darf die Seite
+   aufspannen. Das ersetzt keine der Ursachen oben -- es verhindert nur, dass die
+   naechste eine ganze Seite unbrauchbar macht. */
+body {
+    overflow-wrap: anywhere;
 }
 
 /* ── Formulare und Schaltflächen ────────────────────────────────────────────────

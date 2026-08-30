@@ -27,6 +27,7 @@ from thermoctl.domain.verwaltung import (
     recht_vergeben,
     token_widerrufen,
 )
+from thermoctl.web import ist_teilaustausch
 from thermoctl.web.formulare import Formularfehler, formular_erneut, passwort_formularfehler
 
 # `include_in_schema=False`: Die OpenAPI-Beschreibung ist der Vertrag der
@@ -52,7 +53,7 @@ def _benutzerliste(
         gruppen=session.scalars(select(AccessGroup).order_by(AccessGroup.name)).all(),
         eigene_id=eigene_id,
         hinweis=hinweis,
-        ist_htmx="HX-Request" in request.headers,
+        ist_htmx=ist_teilaustausch(request),
     )
 
 
@@ -166,7 +167,7 @@ def _gruppenliste(
         alle_rechte=session.scalars(select(Permission).order_by(Permission.code)).all(),
         alle_zonen=session.scalars(select(Zone).order_by(Zone.name)).all(),
         hinweis=hinweis,
-        ist_htmx="HX-Request" in request.headers,
+        ist_htmx=ist_teilaustausch(request),
     )
 
 
@@ -277,7 +278,7 @@ def _tokenliste(
         alle_rechte=session.scalars(select(Permission).order_by(Permission.code)).all(),
         klartext=klartext,
         hinweis=hinweis,
-        ist_htmx="HX-Request" in request.headers,
+        ist_htmx=ist_teilaustausch(request),
     )
 
 
