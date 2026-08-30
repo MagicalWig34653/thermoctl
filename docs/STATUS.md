@@ -600,6 +600,10 @@ verzögert hätte.
 - **Meross-Zugangsdaten hinterlegen.** Der Adapter ist gebaut, sein Nutzlastaufbau ist eine
   begründete Annahme und nie gegen ein echtes Konto gelaufen.
 - **Das Repository öffentlich schalten** — ausdrücklich seine Entscheidung.
+- **Den Kiosk-Entwurf bestätigen oder verwerfen.** Der Wunsch lautete „öffentliches
+  Dashboard"; gebaut ist ein Kiosk-Token mit engem, widerrufbarem Rechtesatz, weil eine
+  unauthentifizierte Seite Grundsatz 4 widerspräche. Das ist eine Auslegung, keine
+  Rückfrage — wer es anders will, sagt es.
 
 **Was als Nächstes ansteht:**
 
@@ -610,12 +614,9 @@ verzögert hätte.
   Home-Assistant-Anbindung ist angeschlossen — sie meldet die Zonen an, veröffentlicht
   ihren Zustand und nimmt Sollwert und Betriebsart entgegen, sobald die Regelung scharf
   ist.
-- **Öffentliches Dashboard für ein Wandtablet** (Monitoring und Bedienung). Achtung,
-  Grundsatz 4: Eine wirklich unauthentifizierte Seite widerspricht ihm. Vorschlag ist ein
-  langlebiges, widerrufbares Kiosk-Token mit engem Rechtesatz — vor dem Bau bestätigen.
-- **Optional: Sonnenprognose-Absenkung.** In der Übergangszeit soll eine Dachwohnung
-  morgens die Sonne nutzen statt der Heizung. Braucht eine Prognosequelle, eine
-  Zonen-Eigenschaft (welche Zone bekommt wie viel Sonne) und eine begrenzte Absenkung —
-  physisch wirksam, also Grundsatz 7.
+
+- **Die transliterierten Umlaute aufräumen.** Rund hundert Zeichenketten schreiben
+  `gueltig`, `naechster`, `geloescht`. Die meisten sind Protokollmeldungen, einige aber
+  Fehlertexte für Menschen. Die sichtbaren Sollwert-Begründungen sind erledigt.
 
 - **`vm130-nginx` bleibt bis zum abgeschlossenen Cutover unverändert die Rückfallebene.**
