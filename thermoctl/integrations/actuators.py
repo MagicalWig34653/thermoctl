@@ -24,7 +24,7 @@ class SwitchResult:
 class Actuator(Protocol):
     def description(self) -> str: ...
 
-    async def switching(self, ein: bool) -> SwitchResult: ...
+    async def switching(self, on: bool) -> SwitchResult: ...
 
 
 class HttpTransport(Protocol):
@@ -57,8 +57,8 @@ class Zigbee2MqttValve:
     def description(self) -> str:
         return f"Zigbee2MQTT-Ventil {self._device_name}"
 
-    async def switching(self, ein: bool) -> SwitchResult:
-        payload = json.dumps({"state": "ON" if ein else "OFF"})
+    async def switching(self, on: bool) -> SwitchResult:
+        payload = json.dumps({"state": "ON" if on else "OFF"})
         message = f"{self._topic} mit Nutzlast {payload}"
         if not switching_allowed(self._session):
             return SwitchResult(False, f"Trockenlauf, haette gesendet: {message}")
@@ -171,10 +171,10 @@ class UrllibHttpTransport:
     async def post(
         self, url: str, data: Mapping[str, str], headers: Mapping[str, str]
     ) -> Mapping[str, object]:
-        return await asyncio.to_thread(self._post_synchron, url, data, headers)
+        return await asyncio.to_thread(self._post_sync, url, data, headers)
 
     @staticmethod
-    def _post_synchron(
+    def _post_sync(
         url: str, data: Mapping[str, str], headers: Mapping[str, str]
     ) -> Mapping[str, object]:
         http_request = request.Request(  # noqa: S310 -- URL comes from the adapter configuration
@@ -226,8 +226,8 @@ class MerossSwitch:
     def description(self) -> str:
         return f"Meross-Schalter {self._devices_id}"
 
-    async def switching(self, ein: bool) -> SwitchResult:
-        command = "ON" if ein else "OFF"
+    async def switching(self, on: bool) -> SwitchResult:
+        command = "ON" if on else "OFF"
         message = (
             f"{self._api_basis}/v1/Device/devControl: Geraet {self._devices_id}, "
             f"Kanal {self._kanal}, Zustand {command}"

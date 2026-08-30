@@ -495,8 +495,8 @@ def test_a_second_bridge_list_replaces_the_properties(session: Session) -> None:
     process_message(session, "zigbee2mqtt/bridge/devices", liste("neues_merkmal"),
                     base="zigbee2mqtt", received_at=MONDAY_EIGHT)
 
-    namen = list(session.scalars(select(DeviceProperty.name)))
-    assert namen == ["neues_merkmal"]
+    names = list(session.scalars(select(DeviceProperty.name)))
+    assert names == ["neues_merkmal"]
 
 
 def test_the_last_value_of_a_property_is_kept_for_the_page(session: Session) -> None:

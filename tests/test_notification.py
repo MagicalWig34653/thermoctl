@@ -7,7 +7,7 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from tests.helpers import create_zone, create_zone_state, sensorstatus, source
+from tests.helpers import create_zone, create_zone_state, sensor_status_of, source
 from thermoctl import app as app_modul
 from thermoctl.config import Settings
 from thermoctl.db.models.operations import AuditEvent
@@ -33,9 +33,9 @@ def _settings(**values: str) -> Settings:
 
 
 NOTICE = FaultNotice(
-    schluessel="sensor:1",
-    schwere="stoerung",
-    titel="Sensorstoerung",
+    key="sensor:1",
+    severity="stoerung",
+    title="Sensorstoerung",
     text="Keine aktuellen Werte.",
 )
 
@@ -120,8 +120,8 @@ def test_a_sensor_notice_gets_an_audit_entry_with_source_system(
     source(session, "system")
     zone = create_zone(session, "Meldezone")
     state = create_zone_state(session, zone)
-    previous = app_modul._sensorzustaende(session)
-    state.sensor_status_id = sensorstatus(session, "veraltet").id
+    previous = app_modul._sensor_states(session)
+    state.sensor_status_id = sensor_status_of(session, "veraltet").id
 
     notices = app_modul._sensor_notices(session, previous)
 

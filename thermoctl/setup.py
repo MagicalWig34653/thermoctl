@@ -31,11 +31,11 @@ EXAMPLE_GROUPS: dict[str, list[str]] = {
 BUILTIN_MODES = [("tag", "Tag", 0), ("nacht", "Nacht", 1), ("frostschutz", "Frostschutz", 2)]
 
 
-def einrichtung_noetig(session: Session) -> bool:
+def setup_needed(session: Session) -> bool:
     return session.scalar(select(User.id).limit(1)) is None
 
 
-def setup_token_erzeugen(session: Session) -> str:
+def create_setup_token(session: Session) -> str:
     """Generates a one-time token, stores its hash, and returns the plaintext.
 
     The caller writes it to the log. Without this protection, in the unfavorable
@@ -47,12 +47,12 @@ def setup_token_erzeugen(session: Session) -> str:
     return plaintext
 
 
-def einrichtung_durchfuehren(
+def run_setup(
     session: Session, *, username: str, display_name: str, password: str,
     timezone_name: str, token: str,
 ) -> User:
     """Creates the first administrator, the example groups, and the settings row."""
-    if not einrichtung_noetig(session):
+    if not setup_needed(session):
         raise PermissionError("Die Einrichtung ist bereits abgeschlossen.")
     marker = session.scalar(
         select(SetupToken).where(
@@ -68,10 +68,10 @@ def einrichtung_durchfuehren(
     # accidentally get committed as if the request had succeeded.
     password_hash = hash_password(password)
 
-    for code, name, reihenfolge in BUILTIN_MODES:
+    for code, name, order in BUILTIN_MODES:
         if session.scalar(select(SetpointMode).where(SetpointMode.code == code)) is None:
             session.add(
-                SetpointMode(code=code, name=name, sort_order=reihenfolge, is_builtin=True)
+                SetpointMode(code=code, name=name, sort_order=order, is_builtin=True)
             )
     session.flush()
 
@@ -88,11 +88,11 @@ def einrichtung_durchfuehren(
                                 zone_id=None)
             )
 
-    nutzer = User(username=username, display_name=display_name, password_hash=password_hash)
-    session.add(nutzer)
+    user_record = User(username=username, display_name=display_name, password_hash=password_hash)
+    session.add(user_record)
     session.flush()
     session.add(
-        UserAccessGroup(user_id=nutzer.id, access_group_id=groups["Verwaltung"].id)
+        UserAccessGroup(user_id=user_record.id, access_group_id=groups["Verwaltung"].id)
     )
 
     frost = session.scalar(select(SetpointMode).where(SetpointMode.code == "frostschutz"))
@@ -104,4 +104,4 @@ def einrichtung_durchfuehren(
     marker.consumed_at = utcnow()
     session.flush()
     log.info("Einrichtung abgeschlossen", extra={"username": username})
-    return nutzer
+    return user_record

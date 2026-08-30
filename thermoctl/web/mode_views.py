@@ -6,7 +6,7 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from thermoctl.auth.dependencies import aktueller_principal, csrf_schutz, get_session
+from thermoctl.auth.dependencies import csrf_protection, current_principal, get_session
 from thermoctl.db.models.zone import SetpointMode, Zone, ZoneSetpoint
 from thermoctl.domain.authz import require, visible_zones
 from thermoctl.domain.modes import (
@@ -27,7 +27,7 @@ from thermoctl.web import templates
 # interface. These routes deliver HTML for humans, and in the interface under
 # /docs there would otherwise be a form route next to every real endpoint whose
 # 'Try it out' triggers a real change.
-router = APIRouter(dependencies=[Depends(csrf_schutz)], include_in_schema=False)
+router = APIRouter(dependencies=[Depends(csrf_protection)], include_in_schema=False)
 
 
 def _modes(session: Session) -> list[SetpointMode]:
@@ -45,7 +45,7 @@ def _mode_or_404(session: Session, mode_id: int) -> SetpointMode:
     return mode
 
 
-def _sortierung(value: str) -> int:
+def _sort_order(value: str) -> int:
     try:
         return int(value)
     except ValueError as exc:
@@ -73,7 +73,7 @@ def _mode_form(
 @router.get("/modes")
 async def mode_list(
     request: Request,
-    principal: Annotated[Principal, Depends(aktueller_principal)],
+    principal: Annotated[Principal, Depends(current_principal)],
     session: Annotated[Session, Depends(get_session)],
 ) -> Response:
     require(principal, "mode.manage")
@@ -84,7 +84,7 @@ async def mode_list(
 @router.get("/modes/new")
 async def mode_new_form(
     request: Request,
-    principal: Annotated[Principal, Depends(aktueller_principal)],
+    principal: Annotated[Principal, Depends(current_principal)],
 ) -> Response:
     require(principal, "mode.manage")
     return _mode_form(
@@ -95,7 +95,7 @@ async def mode_new_form(
 @router.post("/modes")
 async def create_mode_view(
     request: Request,
-    principal: Annotated[Principal, Depends(aktueller_principal)],
+    principal: Annotated[Principal, Depends(current_principal)],
     session: Annotated[Session, Depends(get_session)],
 ) -> Response:
     require(principal, "mode.manage")
@@ -106,7 +106,7 @@ async def create_mode_view(
             session,
             code=values["code"],
             name=values["name"],
-            sort_order=_sortierung(values["sort_order"]),
+            sort_order=_sort_order(values["sort_order"]),
             user_id=principal.user_id,
         )
     except DomainError as exc:
@@ -118,7 +118,7 @@ async def create_mode_view(
 async def mode_edit_form(
     request: Request,
     mode_id: int,
-    principal: Annotated[Principal, Depends(aktueller_principal)],
+    principal: Annotated[Principal, Depends(current_principal)],
     session: Annotated[Session, Depends(get_session)],
 ) -> Response:
     require(principal, "mode.manage")
@@ -134,7 +134,7 @@ async def mode_edit_form(
 async def save_mode(
     request: Request,
     mode_id: int,
-    principal: Annotated[Principal, Depends(aktueller_principal)],
+    principal: Annotated[Principal, Depends(current_principal)],
     session: Annotated[Session, Depends(get_session)],
 ) -> Response:
     require(principal, "mode.manage")
@@ -147,7 +147,7 @@ async def save_mode(
             mode,
             code=values["code"],
             name=values["name"],
-            sort_order=_sortierung(values["sort_order"]),
+            sort_order=_sort_order(values["sort_order"]),
             user_id=principal.user_id,
         )
     except DomainError as exc:
@@ -159,7 +159,7 @@ async def save_mode(
 async def mode_delete_form(
     request: Request,
     mode_id: int,
-    principal: Annotated[Principal, Depends(aktueller_principal)],
+    principal: Annotated[Principal, Depends(current_principal)],
     session: Annotated[Session, Depends(get_session)],
 ) -> Response:
     require(principal, "mode.manage")
@@ -167,7 +167,7 @@ async def mode_delete_form(
     return templates.TemplateResponse(
         request,
         "mode_delete.html",
-        {"mode": mode, "sperre": delete_guard(session, mode)},
+        {"mode": mode, "lock": delete_guard(session, mode)},
     )
 
 
@@ -175,7 +175,7 @@ async def mode_delete_form(
 async def remove_mode(
     request: Request,
     mode_id: int,
-    principal: Annotated[Principal, Depends(aktueller_principal)],
+    principal: Annotated[Principal, Depends(current_principal)],
     session: Annotated[Session, Depends(get_session)],
 ) -> Response:
     require(principal, "mode.manage")
@@ -184,7 +184,7 @@ async def remove_mode(
         delete_mode(session, mode, user_id=principal.user_id)
     except DomainError as exc:
         return templates.TemplateResponse(
-            request, "mode_delete.html", {"mode": mode, "sperre": exc.notice}
+            request, "mode_delete.html", {"mode": mode, "lock": exc.notice}
         )
     return RedirectResponse("/modes", status_code=status.HTTP_303_SEE_OTHER)
 
@@ -197,7 +197,7 @@ def _zone_or_404(session: Session, principal: Principal, zone_id: int) -> Zone:
     return zone
 
 
-def _setpointpage(
+def _setpoint_page(
     request: Request,
     session: Session,
     zone: Zone,
@@ -214,7 +214,7 @@ def _setpointpage(
             )
         }
         values = {
-            f"sollwert_{mode.id}": str(stored.get(mode.id, "")) for mode in modes
+            f"setpoint_{mode.id}": str(stored.get(mode.id, "")) for mode in modes
         }
     return templates.TemplateResponse(
         request,
@@ -222,8 +222,8 @@ def _setpointpage(
         {
             # From the domain: numbers in the markup would be a second version of
             # the limit and would fall behind on the next change.
-            "mindesttemperatur": MINIMUM_TEMPERATURE_C,
-            "hoechsttemperatur": MAXIMUM_TEMPERATURE_C,
+            "minimum_temperature": MINIMUM_TEMPERATURE_C,
+            "maximum_temperature": MAXIMUM_TEMPERATURE_C,
             "zone": zone,
             "modes": modes,
             "values": values,
@@ -236,37 +236,37 @@ def _setpointpage(
 async def setpoints_form(
     request: Request,
     zone_id: int,
-    principal: Annotated[Principal, Depends(aktueller_principal)],
+    principal: Annotated[Principal, Depends(current_principal)],
     session: Annotated[Session, Depends(get_session)],
 ) -> Response:
     zone = _zone_or_404(session, principal, zone_id)
-    return _setpointpage(request, session, zone)
+    return _setpoint_page(request, session, zone)
 
 
 @router.post("/zones/{zone_id}/setpoints")
 async def save_setpoints(
     request: Request,
     zone_id: int,
-    principal: Annotated[Principal, Depends(aktueller_principal)],
+    principal: Annotated[Principal, Depends(current_principal)],
     session: Annotated[Session, Depends(get_session)],
 ) -> Response:
     zone = _zone_or_404(session, principal, zone_id)
     modes = _modes(session)
     form = await request.form()
     raw_values = {
-        f"sollwert_{mode.id}": str(form.get(f"sollwert_{mode.id}", "")).strip()
+        f"setpoint_{mode.id}": str(form.get(f"setpoint_{mode.id}", "")).strip()
         for mode in modes
     }
     values: dict[int, Decimal | None] = {}
     for mode in modes:
-        field = f"sollwert_{mode.id}"
+        field = f"setpoint_{mode.id}"
         if not raw_values[field]:
             values[mode.id] = None
             continue
         try:
             values[mode.id] = Decimal(raw_values[field])
         except InvalidOperation:
-            return _setpointpage(
+            return _setpoint_page(
                 request,
                 session,
                 zone,
@@ -285,12 +285,12 @@ async def save_setpoints(
                 try:
                     check_temperature(temperature)
                 except DomainError:
-                    return _setpointpage(
+                    return _setpoint_page(
                         request,
                         session,
                         zone,
                         values=raw_values,
-                        errors={f"sollwert_{mode.id}": exc.notice},
+                        errors={f"setpoint_{mode.id}": exc.notice},
                     )
         # Unreachable as long as every `DomainError` from `sollwerte_aendern` comes
         # from `temperatur_pruefen` -- the loop above calls the same check again and

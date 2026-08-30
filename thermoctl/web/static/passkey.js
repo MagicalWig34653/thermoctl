@@ -1,255 +1,254 @@
 /**
- * Passkey-Anmeldung und -Registrierung.
+ * Passkey sign-in and registration.
  *
- * Zwei Dinge, die hier leicht falsch gemacht werden und dann wortlos scheitern:
+ * Two things that are easily got wrong here and then fail without a word:
  *
- * 1. WebAuthn spricht Binaerdaten, JSON nicht. Alles, was hin- und hergeht, ist
- *    base64url — ohne Polsterung, mit "-" und "_" statt "+" und "/".
- * 2. Der Browser bietet einen hinterlegten Passkey nur dann im
- *    Autovervollstaendigen-Menue des Benutzernamenfelds an, wenn dort
- *    autocomplete="username webauthn" steht UND hier eine Anfrage mit
- *    mediation: "conditional" laeuft. Fehlt eines von beidem, passiert nichts —
- *    und zwar ohne Fehlermeldung.
+ * 1. WebAuthn speaks binary, JSON does not. Everything that goes back and forth is
+ *    base64url — no padding, with "-" and "_" instead of "+" and "/".
+ * 2. The browser only offers a stored passkey in the username field's autocomplete menu
+ *    when autocomplete="username webauthn" is set there AND a request with
+ *    mediation: "conditional" is running here. If either is missing, nothing happens —
+ *    and without any error message.
  */
 (function () {
     "use strict";
 
-    const ANMELDUNG = "/passkey/authentication";
-    const REGISTRIERUNG = "/passkey/registration";
-    // Die Challenge des Dienstes gilt zwei Minuten. Die bedingte Anfrage laeuft
-    // laenger, also wird sie vorher mit einer frischen erneuert.
-    const CHALLENGE_ERNEUERN_NACH_MS = 90 * 1000;
+    const AUTHENTICATION = "/passkey/authentication";
+    const REGISTRATION = "/passkey/registration";
+    // The service's challenge is valid for two minutes. The conditional request runs
+    // longer, so it is renewed with a fresh one before that.
+    const RENEW_CHALLENGE_AFTER_MS = 90 * 1000;
 
-    let bedingteAnfrage = null;
+    let conditionalRequest = null;
 
-    function unterstuetzt() {
+    function isSupported() {
         return typeof window.PublicKeyCredential === "function"
             && typeof navigator.credentials === "object";
     }
 
-    function base64urlZuBytes(wert) {
-        const gefuellt = wert.replace(/-/g, "+").replace(/_/g, "/")
-            + "=".repeat((4 - (wert.length % 4)) % 4);
-        const roh = window.atob(gefuellt);
-        const bytes = new Uint8Array(roh.length);
-        for (let i = 0; i < roh.length; i += 1) {
-            bytes[i] = roh.charCodeAt(i);
+    function base64urlToBytes(value) {
+        const padded = value.replace(/-/g, "+").replace(/_/g, "/")
+            + "=".repeat((4 - (value.length % 4)) % 4);
+        const raw = window.atob(padded);
+        const bytes = new Uint8Array(raw.length);
+        for (let i = 0; i < raw.length; i += 1) {
+            bytes[i] = raw.charCodeAt(i);
         }
         return bytes;
     }
 
-    function bytesZuBase64url(puffer) {
-        const bytes = new Uint8Array(puffer);
-        let roh = "";
+    function bytesToBase64url(buffer) {
+        const bytes = new Uint8Array(buffer);
+        let raw = "";
         for (let i = 0; i < bytes.length; i += 1) {
-            roh += String.fromCharCode(bytes[i]);
+            raw += String.fromCharCode(bytes[i]);
         }
-        return window.btoa(roh).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+        return window.btoa(raw).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
     }
 
-    /** Das CSRF-Token aus dem Cookie — die aendernden Wege verlangen es. */
-    function csrfKopf() {
-        const eintrag = document.cookie.split("; ").find(function (wert) {
-            return wert.startsWith("thermoctl_csrf=");
+    /** The CSRF token from the cookie — the changing routes require it. */
+    function csrfHeaders() {
+        const entry = document.cookie.split("; ").find(function (value) {
+            return value.startsWith("thermoctl_csrf=");
         });
-        const kopf = { "Content-Type": "application/json" };
-        if (eintrag) {
-            kopf["X-CSRF-Token"] = decodeURIComponent(eintrag.split("=")[1]);
+        const headers = { "Content-Type": "application/json" };
+        if (entry) {
+            headers["X-CSRF-Token"] = decodeURIComponent(entry.split("=")[1]);
         }
-        return kopf;
+        return headers;
     }
 
-    function holen(pfad, koerper) {
-        return fetch(pfad, {
+    function post(path, body) {
+        return fetch(path, {
             method: "POST",
             credentials: "same-origin",
-            headers: csrfKopf(),
-            body: koerper === undefined ? null : JSON.stringify(koerper)
-        }).then(function (antwort) {
-            return antwort.json().then(function (ergebnis) {
-                if (!antwort.ok) {
-                    throw new Error(ergebnis.meldung || "Es hat nicht geklappt.");
+            headers: csrfHeaders(),
+            body: body === undefined ? null : JSON.stringify(body)
+        }).then(function (response) {
+            return response.json().then(function (result) {
+                if (!response.ok) {
+                    throw new Error(result.notice || "Es hat nicht geklappt.");
                 }
-                return ergebnis;
+                return result;
             });
         });
     }
 
-    /** Wandelt die Argumente des Dienstes in das um, was der Browser erwartet. */
-    function argumenteAufbereiten(argumente) {
-        const fertig = Object.assign({}, argumente);
-        fertig.challenge = base64urlZuBytes(argumente.challenge);
-        if (argumente.user) {
-            fertig.user = Object.assign({}, argumente.user, {
-                id: base64urlZuBytes(argumente.user.id)
+    /** Turns the service's arguments into what the browser expects. */
+    function prepareArguments(args) {
+        const ready = Object.assign({}, args);
+        ready.challenge = base64urlToBytes(args.challenge);
+        if (args.user) {
+            ready.user = Object.assign({}, args.user, {
+                id: base64urlToBytes(args.user.id)
             });
         }
-        ["allowCredentials", "excludeCredentials"].forEach(function (feld) {
-            if (Array.isArray(argumente[feld])) {
-                fertig[feld] = argumente[feld].map(function (eintrag) {
-                    return Object.assign({}, eintrag, { id: base64urlZuBytes(eintrag.id) });
+        ["allowCredentials", "excludeCredentials"].forEach(function (field) {
+            if (Array.isArray(args[field])) {
+                ready[field] = args[field].map(function (entry) {
+                    return Object.assign({}, entry, { id: base64urlToBytes(entry.id) });
                 });
             }
         });
-        return fertig;
+        return ready;
     }
 
-    function assertionSenden(credential) {
-        return holen(ANMELDUNG + "/verify", {
+    function sendAssertion(credential) {
+        return post(AUTHENTICATION + "/verify", {
             id: credential.id,
-            rawId: bytesZuBase64url(credential.rawId),
+            rawId: bytesToBase64url(credential.rawId),
             type: credential.type,
             response: {
-                clientDataJSON: bytesZuBase64url(credential.response.clientDataJSON),
-                authenticatorData: bytesZuBase64url(credential.response.authenticatorData),
-                signature: bytesZuBase64url(credential.response.signature),
+                clientDataJSON: bytesToBase64url(credential.response.clientDataJSON),
+                authenticatorData: bytesToBase64url(credential.response.authenticatorData),
+                signature: bytesToBase64url(credential.response.signature),
                 userHandle: credential.response.userHandle
-                    ? bytesZuBase64url(credential.response.userHandle)
+                    ? bytesToBase64url(credential.response.userHandle)
                     : null
             }
-        }).then(function (ergebnis) {
-            window.location.href = ergebnis.weiter || "/";
+        }).then(function (result) {
+            window.location.href = result.redirect || "/";
         });
     }
 
-    function bedingteAnfrageAbbrechen() {
-        if (bedingteAnfrage === null) {
+    function abortConditionalRequest() {
+        if (conditionalRequest === null) {
             return;
         }
-        const laufende = bedingteAnfrage;
-        bedingteAnfrage = null;
-        window.clearTimeout(laufende.erneuerung);
-        laufende.abbruch.abort();
+        const running = conditionalRequest;
+        conditionalRequest = null;
+        window.clearTimeout(running.renewal);
+        running.controller.abort();
     }
 
     /**
-     * Haelt im Hintergrund eine Anfrage offen, damit der Browser einen hinterlegten
-     * Passkey im Benutzernamenfeld anbieten kann. Sie wird mit frischer Challenge
-     * erneuert, solange die Seite offen ist.
+     * Keeps a request open in the background so the browser can offer a stored passkey
+     * in the username field. It is renewed with a fresh challenge for as long as the
+     * page stays open.
      */
-    function bedingteAnmeldungStarten() {
-        holen(ANMELDUNG + "/options").then(function (argumente) {
-            const abbruch = new AbortController();
-            const erneuerung = window.setTimeout(function () {
-                bedingteAnfrageAbbrechen();
-                bedingteAnmeldungStarten();
-            }, CHALLENGE_ERNEUERN_NACH_MS);
-            bedingteAnfrage = { abbruch: abbruch, erneuerung: erneuerung };
+    function startConditionalAuthentication() {
+        post(AUTHENTICATION + "/options").then(function (args) {
+            const controller = new AbortController();
+            const renewal = window.setTimeout(function () {
+                abortConditionalRequest();
+                startConditionalAuthentication();
+            }, RENEW_CHALLENGE_AFTER_MS);
+            conditionalRequest = { controller: controller, renewal: renewal };
 
             return navigator.credentials.get({
                 mediation: "conditional",
-                signal: abbruch.signal,
-                publicKey: argumenteAufbereiten(argumente)
+                signal: controller.signal,
+                publicKey: prepareArguments(args)
             }).then(function (credential) {
-                window.clearTimeout(erneuerung);
-                bedingteAnfrage = null;
+                window.clearTimeout(renewal);
+                conditionalRequest = null;
                 if (credential) {
-                    return assertionSenden(credential);
+                    return sendAssertion(credential);
                 }
             });
-        }).catch(function (fehler) {
-            // Ein Abbruch ist der Normalfall — entweder die Erneuerung oder ein Klick
-            // auf die Schaltflaeche. Die bedingte Anmeldung ist ein Angebot, kein
-            // Vorgang, den jemand angestossen hat; sie bleibt deshalb still.
-            if (!fehler || fehler.name !== "AbortError") {
-                console.debug("Bedingte Passkey-Anmeldung nicht moeglich:", fehler);
+        }).catch(function (error) {
+            // An abort is the normal case — either the renewal or a click on the button.
+            // Conditional sign-in is an offer, not something anyone set in motion; it
+            // therefore stays silent.
+            if (!error || error.name !== "AbortError") {
+                console.debug("Bedingte Passkey-Anmeldung nicht moeglich:", error);
             }
         });
     }
 
-    function anmeldungVorbereiten() {
-        const knopf = document.getElementById("passkey-login");
-        // `dataset.wired`: initialisieren() laeuft bei jedem Inhaltswechsel erneut.
-        // Ohne die Marke bekaeme derselbe Knopf mehrere Klickbehandlungen und loeste
-        // ebenso viele Authenticator-Anfragen aus.
-        if (!knopf || knopf.dataset.wired) {
+    function wireAuthentication() {
+        const button = document.getElementById("passkey-login");
+        // `dataset.wired`: setUp() runs again on every content swap. Without the mark the
+        // same button would get several click handlers and trigger just as many
+        // authenticator requests.
+        if (!button || button.dataset.wired) {
             return;
         }
-        knopf.dataset.wired = "ja";
-        const hinweisfeld = document.getElementById("passkey-hint");
+        button.dataset.wired = "yes";
+        const hintField = document.getElementById("passkey-hint");
 
-        function hinweis(text, istFehler) {
-            if (hinweisfeld) {
-                hinweisfeld.textContent = text;
-                hinweisfeld.className = istFehler
+        function hint(text, isError) {
+            if (hintField) {
+                hintField.textContent = text;
+                hintField.className = isError
                     ? "form-text text-danger"
                     : "form-text text-body-secondary";
             }
         }
 
-        knopf.addEventListener("click", function () {
-            // Der Browser laesst nur EINE Anfrage gleichzeitig zu; die bedingte muss
-            // deshalb zuerst weichen, sonst wiese er die zweite ab.
-            bedingteAnfrageAbbrechen();
-            knopf.disabled = true;
-            hinweis("Warte auf den Authenticator …", false);
+        button.addEventListener("click", function () {
+            // The browser allows only ONE request at a time; the conditional one must
+            // therefore give way first, otherwise it would reject the second.
+            abortConditionalRequest();
+            button.disabled = true;
+            hint("Warte auf den Authenticator …", false);
 
-            holen(ANMELDUNG + "/options")
-                .then(function (argumente) {
+            post(AUTHENTICATION + "/options")
+                .then(function (args) {
                     return navigator.credentials.get({
-                        publicKey: argumenteAufbereiten(argumente)
+                        publicKey: prepareArguments(args)
                     });
                 })
                 .then(function (credential) {
                     if (!credential) {
                         throw new Error("Es wurde kein Passkey ausgewählt.");
                     }
-                    return assertionSenden(credential);
+                    return sendAssertion(credential);
                 })
-                .catch(function (fehler) {
-                    knopf.disabled = false;
-                    hinweis(
-                        fehler && fehler.name === "NotAllowedError"
+                .catch(function (error) {
+                    button.disabled = false;
+                    hint(
+                        error && error.name === "NotAllowedError"
                             ? "Die Anmeldung wurde abgebrochen."
-                            : (fehler.message || "Die Anmeldung war nicht erfolgreich."),
+                            : (error.message || "Die Anmeldung war nicht erfolgreich."),
                         true
                     );
-                    bedingteAnmeldungStarten();
+                    startConditionalAuthentication();
                 });
         });
     }
 
-    function registrierungVorbereiten() {
-        const knopf = document.getElementById("passkey-register");
-        if (!knopf || knopf.dataset.wired) {
+    function wireRegistration() {
+        const button = document.getElementById("passkey-register");
+        if (!button || button.dataset.wired) {
             return;
         }
-        knopf.dataset.wired = "ja";
-        const hinweisfeld = document.getElementById("passkey-registration-hint");
+        button.dataset.wired = "yes";
+        const hintField = document.getElementById("passkey-registration-hint");
 
-        function hinweis(text, istFehler) {
-            if (hinweisfeld) {
-                hinweisfeld.textContent = text;
-                hinweisfeld.className = istFehler
+        function hint(text, isError) {
+            if (hintField) {
+                hintField.textContent = text;
+                hintField.className = isError
                     ? "form-text text-danger"
                     : "form-text text-body-secondary";
             }
         }
 
-        knopf.addEventListener("click", function () {
-            const feld = document.getElementById("passkey-label");
-            const label = feld ? feld.value : "";
-            knopf.disabled = true;
-            hinweis("Warte auf den Authenticator …", false);
+        button.addEventListener("click", function () {
+            const field = document.getElementById("passkey-label");
+            const label = field ? field.value : "";
+            button.disabled = true;
+            hint("Warte auf den Authenticator …", false);
 
-            holen(REGISTRIERUNG + "/options")
-                .then(function (argumente) {
+            post(REGISTRATION + "/options")
+                .then(function (args) {
                     return navigator.credentials.create({
-                        publicKey: argumenteAufbereiten(argumente)
+                        publicKey: prepareArguments(args)
                     });
                 })
                 .then(function (credential) {
                     if (!credential) {
                         throw new Error("Es wurde kein Passkey angelegt.");
                     }
-                    return holen(REGISTRIERUNG + "/verify", {
+                    return post(REGISTRATION + "/verify", {
                         label: label,
                         id: credential.id,
-                        rawId: bytesZuBase64url(credential.rawId),
+                        rawId: bytesToBase64url(credential.rawId),
                         type: credential.type,
                         response: {
-                            clientDataJSON: bytesZuBase64url(credential.response.clientDataJSON),
-                            attestationObject: bytesZuBase64url(
+                            clientDataJSON: bytesToBase64url(credential.response.clientDataJSON),
+                            attestationObject: bytesToBase64url(
                                 credential.response.attestationObject
                             )
                         }
@@ -258,65 +257,65 @@
                 .then(function () {
                     window.location.reload();
                 })
-                .catch(function (fehler) {
-                    knopf.disabled = false;
-                    hinweis(
-                        fehler && fehler.name === "NotAllowedError"
+                .catch(function (error) {
+                    button.disabled = false;
+                    hint(
+                        error && error.name === "NotAllowedError"
                             ? "Der Vorgang wurde abgebrochen."
-                            : (fehler.message || "Der Passkey konnte nicht hinterlegt werden."),
+                            : (error.message || "Der Passkey konnte nicht hinterlegt werden."),
                         true
                     );
                 });
         });
     }
 
-    let bedingteGestartet = false;
+    let conditionalStarted = false;
 
-    function initialisieren() {
-        // Ohne WebAuthn gar nichts anbieten, statt eine Schaltflaeche zu zeigen, die
-        // nichts tun kann. Die Abschnitte sind im Markup ausgeblendet und werden erst
-        // hier sichtbar — so blitzt auch nichts auf, das gleich wieder verschwindet.
-        const kann = unterstuetzt();
+    function setUp() {
+        // Offer nothing at all without WebAuthn, instead of showing a button that cannot
+        // do anything. The sections are hidden in the markup and only become visible
+        // here — that way nothing flashes up only to disappear again.
+        const supported = isSupported();
         document.querySelectorAll("[data-passkey]").forEach(function (element) {
-            element.hidden = !kann;
+            element.hidden = !supported;
         });
         document.querySelectorAll("[data-without-passkey]").forEach(function (element) {
-            element.hidden = kann;
+            element.hidden = supported;
         });
-        if (!kann) {
+        if (!supported) {
             return;
         }
-        anmeldungVorbereiten();
-        registrierungVorbereiten();
+        wireAuthentication();
+        wireRegistration();
 
-        // Bedingte Anmeldung nur, wenn der Browser sie kennt: sonst wuerde
-        // navigator.credentials.get() sofort einen Dialog aufwerfen, auch bei
-        // Besuchern ohne Passkey.
-        // `bedingteGestartet`: Auch dieser Teil laeuft bei jedem Inhaltswechsel erneut.
-        // Ein zweiter Aufruf wuerde eine zweite Anfrage aufmachen, und der Browser laesst
-        // nur eine zu -- er wiese sie ab und beendete dabei die erste.
-        if (!bedingteGestartet
+        // Conditional sign-in only when the browser knows it: otherwise
+        // navigator.credentials.get() would immediately raise a dialog, even for
+        // visitors without a passkey.
+        // `conditionalStarted`: this part, too, runs again on every content swap. A
+        // second call would open a second request, and the browser allows only one --
+        // it would reject it and end the first one in doing so.
+        if (!conditionalStarted
             && document.getElementById("passkey-login")
             && typeof window.PublicKeyCredential.isConditionalMediationAvailable === "function") {
-            bedingteGestartet = true;
+            conditionalStarted = true;
             window.PublicKeyCredential.isConditionalMediationAvailable()
-                .then(function (moeglich) {
-                    if (moeglich) {
-                        bedingteAnmeldungStarten();
+                .then(function (available) {
+                    if (available) {
+                        startConditionalAuthentication();
                     }
                 })
-                .catch(function () { /* Die Schaltflaeche bleibt. */ });
+                .catch(function () { /* The button stays. */ });
         }
     }
 
-    // Zwei Aufhaenger, weil keiner allein beide Wege abdeckt:
-    //   * `DOMContentLoaded` fuer den direkten Aufruf einer Adresse,
-    //   * `htmx:load` fuer jeden per hx-boost eingetauschten Inhalt.
-    // Vorher hing hier nur `DOMContentLoaded`. Wer /passkeys ueber das Menue ansteuerte,
-    // loeste keines aus -- der ganze Passkey-Abschnitt blieb ausgeblendet, und die
-    // Funktion war fuer jeden unsichtbar, der die Seite nicht direkt neu lud.
-    // `initialisieren()` ist deshalb mehrfach ausfuehrbar: Es blendet nur ein und
-    // verdrahtet Knoepfe, die noch keine Marke tragen.
-    document.addEventListener("DOMContentLoaded", initialisieren);
-    document.addEventListener("htmx:load", initialisieren);
+    // Two hooks, because neither alone covers both routes:
+    //   * `DOMContentLoaded` for a direct call of an address,
+    //   * `htmx:load` for every content swapped in by hx-boost.
+    // Previously only `DOMContentLoaded` hung here. Anyone reaching /passkeys through the
+    // menu triggered neither -- the whole passkey section stayed hidden, and the feature
+    // was invisible to everyone who did not reload the page directly. `setUp()` is
+    // therefore safe to run repeatedly: it only reveals sections and wires up buttons
+    // that carry no mark yet.
+    document.addEventListener("DOMContentLoaded", setUp);
+    document.addEventListener("htmx:load", setUp);
 })();

@@ -133,14 +133,14 @@ def delete_guard(session: Session, mode: SetpointMode) -> str | None:
         )
     if mode.is_builtin:
         return "Eingebaute Modi können nicht gelöscht werden, weil die Anwendung sie benötigt."
-    verwendungen = sum(
-        session.scalar(select(func.count()).select_from(modell).where(column == mode.id)) or 0
-        for modell, column in (
+    uses = sum(
+        session.scalar(select(func.count()).select_from(model).where(column == mode.id)) or 0
+        for model, column in (
             (SchedulePoint, SchedulePoint.setpoint_mode_id),
             (ZoneOverride, ZoneOverride.setpoint_mode_id),
         )
     )
-    if verwendungen:
+    if uses:
         return (
             "Dieser Modus kann nicht gelöscht werden, weil Zeitpläne oder historische "
             "Übersteuerungen ihn noch verwenden."
@@ -151,9 +151,9 @@ def delete_guard(session: Session, mode: SetpointMode) -> str | None:
 def delete_mode(
     session: Session, mode: SetpointMode, *, user_id: int, source: str = "web"
 ) -> None:
-    sperre = delete_guard(session, mode)
-    if sperre is not None:
-        raise DomainError("mode_id", sperre)
+    lock = delete_guard(session, mode)
+    if lock is not None:
+        raise DomainError("mode_id", lock)
     # Setpoints have no meaning without their mode. They are deliberately removed here
     # in the same transaction; schedules and history, by contrast, prevent deletion
     # above because their record must be preserved.

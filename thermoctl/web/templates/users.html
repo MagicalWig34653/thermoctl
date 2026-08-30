@@ -1,10 +1,10 @@
-{% extends "base.html" if not ist_htmx else "empty.html" %}
-{% from "form.html" import textfeld, fehlerhinweis %}
-{% block titel %}Benutzer – thermoctl{% endblock %}
+{% extends "base.html" if not is_htmx else "empty.html" %}
+{% from "form.html" import text_field, error_notice %}
+{% block title %}Benutzer – thermoctl{% endblock %}
 {% block inhalt %}
 <section id="user-list">
     <h1 class="mb-3">Benutzer</h1>
-    {{ fehlerhinweis(hint) }}
+    {{ error_notice(hint) }}
     {# Scrollt in sich selbst statt die ganze Seite breit zu machen: Auf einem Telefon passt diese Tabelle nicht nebeneinander. #}
     <div class="table-responsive">
     <table class="table table-striped align-middle">
@@ -18,23 +18,23 @@
         </tr>
         </thead>
         <tbody>
-        {% for nutzer in user %}
+        {% for person in user %}
         <tr>
-            <td>{{ nutzer.display_name }}</td>
-            <td>{{ nutzer.username }}</td>
+            <td>{{ person.display_name }}</td>
+            <td>{{ person.username }}</td>
             <td>
-                {% if nutzer.is_active %}
+                {% if person.is_active %}
                 <span class="badge text-bg-success">aktiv</span>
                 {% else %}
                 <span class="badge text-bg-secondary">inaktiv</span>
                 {% endif %}
             </td>
-            <td title="{{ nutzer.last_login_at or '' }} UTC">{{ nutzer.last_login_at|age }}</td>
+            <td title="{{ person.last_login_at or '' }} UTC">{{ person.last_login_at|age }}</td>
             <td class="text-end">
-                <form method="post" action="/users/{{ nutzer.id }}/active" class="d-inline">
-                    <input type="hidden" name="active" value="{{ 'nein' if nutzer.is_active else 'ja' }}">
+                <form method="post" action="/users/{{ person.id }}/active" class="d-inline">
+                    <input type="hidden" name="active" value="{{ 'no' if person.is_active else 'yes' }}">
                     <button type="submit" class="btn btn-sm btn-outline-secondary">
-                        {{ "Deaktivieren" if nutzer.is_active else "Aktivieren" }}
+                        {{ "Deaktivieren" if person.is_active else "Aktivieren" }}
                     </button>
                 </form>
             </td>
@@ -46,13 +46,13 @@
 
     <h2 class="h5 mt-4">Benutzer anlegen</h2>
     <form method="post" action="/users">
-        {{ textfeld("username", "Benutzername", values.get("username", ""),
-                    hilfe="Wird zur Anmeldung eingegeben und lässt sich später nicht ändern.",
+        {{ text_field("username", "Benutzername", values.get("username", ""),
+                    help_text="Wird zur Anmeldung eingegeben und lässt sich später nicht ändern.",
                     errors=errors.get("username", ""), pflicht=true) }}
-        {{ textfeld("display_name", "Anzeigename", values.get("display_name", ""),
-                    hilfe="So erscheint die Person im Audit-Protokoll.", pflicht=true) }}
-        {{ textfeld("password", "Passwort", "", typ="password", pflicht=true,
-                    hilfe="Mindestens 12 Zeichen.", errors=errors.get("password", "")) }}
+        {{ text_field("display_name", "Anzeigename", values.get("display_name", ""),
+                    help_text="So erscheint die Person im Audit-Protokoll.", pflicht=true) }}
+        {{ text_field("password", "Passwort", "", typ="password", pflicht=true,
+                    help_text="Mindestens 12 Zeichen.", errors=errors.get("password", "")) }}
         <div class="mb-3">
             <label class="form-label" for="group_id">Gruppe</label>
             <select class="form-select" id="group_id" name="group_id"
@@ -74,8 +74,8 @@
 
     <h2 class="h5 mt-4">Eigenes Passwort ändern</h2>
     <form method="post" action="/users/{{ own_id }}/password">
-        {{ textfeld("password", "Neues Passwort", "", typ="password", pflicht=true,
-                    hilfe="Mindestens 12 Zeichen. Bestehende Sitzungen bleiben gültig.",
+        {{ text_field("password", "Neues Passwort", "", typ="password", pflicht=true,
+                    help_text="Mindestens 12 Zeichen. Bestehende Sitzungen bleiben gültig.",
                     errors=errors.get("password", "")) }}
         <button type="submit" class="btn btn-secondary">Passwort setzen</button>
     </form>

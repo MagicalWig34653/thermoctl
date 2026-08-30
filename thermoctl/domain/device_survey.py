@@ -48,7 +48,7 @@ class Finding:
 class DeviceSurvey:
     device_id: int
     name: str
-    modell: str | None
+    model: str | None
     integration: str
     ist_group: bool
     capabilities: list[str]
@@ -56,7 +56,7 @@ class DeviceSurvey:
     last_heard: datetime | None
     battery: Decimal | None
     radio_quality: int | None
-    befunde: list[Finding] = field(default_factory=list)
+    findings: list[Finding] = field(default_factory=list)
     # How many capabilities were suppressed because their value already appears as a
     # number. Without this count, "reports nothing" could not be told apart from
     # "reports only battery and radio" -- and the page would claim, for every remote
@@ -64,18 +64,18 @@ class DeviceSurvey:
     quiet_capabilities: int = 0
 
     @property
-    def in_ordnung(self) -> bool:
-        return not self.befunde
+    def is_fine(self) -> bool:
+        return not self.findings
 
     @property
-    def schwere(self) -> int:
+    def severity(self) -> int:
         """For sorting: the smaller, the more urgent.
 
         A silent device ranks ahead of a weak battery -- one is a failure, the other
         just a warning.
         """
         rang = {"offline": 0, "silent": 1, "disabled": 2, "battery": 3, "radio": 4}
-        return min((rang.get(b.kind, 9) for b in self.befunde), default=9)
+        return min((rang.get(b.kind, 9) for b in self.findings), default=9)
 
 
 def _age_in_words(seconds: float) -> str:
@@ -87,7 +87,7 @@ def _age_in_words(seconds: float) -> str:
     return f"{days} {'Tag' if days == 1 else 'Tagen'}"
 
 
-def befunde(
+def findings(
     *,
     active: bool,
     last_heard: datetime | None,
@@ -104,18 +104,18 @@ def befunde(
     mean the device list considers a device healthy that control logic has already
     given up on.
     """
-    gefunden: list[Finding] = []
+    found: list[Finding] = []
     if not active:
-        gefunden.append(Finding("disabled", "in der Brücke abgeschaltet"))
+        found.append(Finding("disabled", "in der Brücke abgeschaltet"))
     if availability is not None and availability.lower() == "offline":
-        gefunden.append(Finding("offline", "die Brücke führt es als offline"))
+        found.append(Finding("offline", "die Brücke führt es als offline"))
     if last_heard is None:
-        gefunden.append(Finding("silent", "hat sich noch nie gemeldet"))
+        found.append(Finding("silent", "hat sich noch nie gemeldet"))
     elif (now - last_heard).total_seconds() > silent_after_seconds:
         age = _age_in_words((now - last_heard).total_seconds())
-        gefunden.append(Finding("silent", f"seit {age} still"))
+        found.append(Finding("silent", f"seit {age} still"))
     if battery is not None and battery <= BATTERY_LOW_PERCENT:
-        gefunden.append(Finding("battery", f"Batterie bei {battery:.0f} %"))
+        found.append(Finding("battery", f"Batterie bei {battery:.0f} %"))
     if radio_quality is not None and radio_quality < RADIO_WEAK_LQI:
-        gefunden.append(Finding("radio", f"schwacher Funk (LQI {radio_quality})"))
-    return gefunden
+        found.append(Finding("radio", f"schwacher Funk (LQI {radio_quality})"))
+    return found

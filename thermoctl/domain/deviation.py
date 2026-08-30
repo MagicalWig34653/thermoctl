@@ -16,15 +16,15 @@ from decimal import Decimal
 from enum import StrEnum
 
 
-class Einordnung(StrEnum):
+class Classification(StrEnum):
     UEBEREINSTIMMUNG = "uebereinstimmung"
     ABWEICHUNG = "abweichung"
     KEIN_VERGLEICH = "kein_vergleich"
 
 
 @dataclass(frozen=True)
-class Vergleich:
-    einordnung: Einordnung
+class Comparison:
+    einordnung: Classification
     text: str
 
 
@@ -34,13 +34,13 @@ def _temperature_text(value: Decimal | None) -> str:
     return f"{value:.1f}".replace(".", ",")
 
 
-def vergleichen(
+def compare(
     *,
     would_heat: bool,
     measured_c: Decimal | None,
     setpoint_c: Decimal | None,
-    altsystem_heizt: bool | None,
-) -> Vergleich:
+    legacy_system_heating: bool | None,
+) -> Comparison:
     """Compares our own decision with the legacy system at the same point in time.
 
     `would_heat` is `ShadowDecision.would_heat` (our own decision, not acted on). `ist_c`/
@@ -50,19 +50,19 @@ def vergleichen(
     legacy-system value is available at the comparison time — in that case no comparison
     is possible at all, which is explicitly not a deviation.
     """
-    if altsystem_heizt is None:
-        return Vergleich(
-            Einordnung.KEIN_VERGLEICH,
+    if legacy_system_heating is None:
+        return Comparison(
+            Classification.KEIN_VERGLEICH,
             "Zum Vergleichszeitpunkt liegt kein Altsystem-Wert vor.",
         )
 
-    if would_heat == altsystem_heizt:
+    if would_heat == legacy_system_heating:
         text = (
             "thermoctl und das Altsystem heizen beide."
             if would_heat
             else "thermoctl und das Altsystem heizen beide nicht."
         )
-        return Vergleich(Einordnung.UEBEREINSTIMMUNG, text)
+        return Comparison(Classification.UEBEREINSTIMMUNG, text)
 
     ist_text = _temperature_text(measured_c)
     setpoint_text = _temperature_text(setpoint_c)
@@ -76,4 +76,4 @@ def vergleichen(
             "thermoctl haette nicht geheizt, das Altsystem heizte — "
             f"Ist {ist_text} °C, Soll {setpoint_text} °C."
         )
-    return Vergleich(Einordnung.ABWEICHUNG, text)
+    return Comparison(Classification.ABWEICHUNG, text)

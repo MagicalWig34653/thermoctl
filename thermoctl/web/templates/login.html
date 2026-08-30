@@ -1,6 +1,6 @@
 {% extends "base_plain.html" %}
 
-{% block titel %}Anmeldung – thermoctl{% endblock %}
+{% block title %}Anmeldung – thermoctl{% endblock %}
 
 {% block inhalt %}
     <h1 class="h4 mb-3">Anmeldung</h1>
@@ -28,7 +28,7 @@
 {% endblock %}
 
 {% block passkey %}
-{% if passkeys_moeglich %}
+{% if passkeys_available %}
 {#
     Standardmaessig ausgeblendet und erst von passkey.js eingeblendet, wenn der Browser
     WebAuthn beherrscht. Sonst stuende hier eine Schaltflaeche, die nichts tun kann — und

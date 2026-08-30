@@ -4,9 +4,9 @@ from fastapi import APIRouter, Depends, Form, HTTPException, Request, Response, 
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
-from thermoctl.auth.dependencies import csrf_schutz, get_session
+from thermoctl.auth.dependencies import csrf_protection, get_session
 from thermoctl.auth.passwords import PasswordTooShort
-from thermoctl.setup import einrichtung_durchfuehren, einrichtung_noetig
+from thermoctl.setup import run_setup, setup_needed
 from thermoctl.web import templates
 from thermoctl.web.forms import form_again, password_form_error
 
@@ -14,7 +14,7 @@ from thermoctl.web.forms import form_again, password_form_error
 # interface. These routes deliver HTML for humans, and in the interface under
 # /docs there would otherwise be a form route next to every real endpoint whose
 # 'Try it out' triggers a real change.
-router = APIRouter(dependencies=[Depends(csrf_schutz)], include_in_schema=False)
+router = APIRouter(dependencies=[Depends(csrf_protection)], include_in_schema=False)
 
 _GESCHLOSSEN = "Die Einrichtung ist bereits abgeschlossen."
 
@@ -22,7 +22,7 @@ _GESCHLOSSEN = "Die Einrichtung ist bereits abgeschlossen."
 def _ensure_open(session: Session) -> None:
     # Permanently closed once a user exists -- not just hidden. Otherwise, in the
     # unfavorable case, whoever finds the page first on the network wins.
-    if not einrichtung_noetig(session):
+    if not setup_needed(session):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_GESCHLOSSEN)
 
 
@@ -56,7 +56,7 @@ async def setup(
         "setup_token": setup_token,
     }
     try:
-        einrichtung_durchfuehren(
+        run_setup(
             session, username=username, display_name=display_name, password=password,
             timezone_name=timezone, token=setup_token,
         )

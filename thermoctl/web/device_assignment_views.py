@@ -6,14 +6,14 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from thermoctl.auth.dependencies import aktueller_principal, csrf_schutz, get_session
+from thermoctl.auth.dependencies import csrf_protection, current_principal, get_session
 from thermoctl.db.models.device import Device, DeviceCapabilityLink, ZoneDevice
 from thermoctl.db.models.lookup import ControllerCommand, DeviceCapability, DeviceRole
 from thermoctl.db.models.zone import Zone
 from thermoctl.domain.authz import has_permission, visible_zones
 from thermoctl.domain.controller import (
     ControllerError,
-    gesehene_aktionen,
+    seen_actions,
     set_binding,
 )
 from thermoctl.domain.device_assignment import (
@@ -32,7 +32,7 @@ from thermoctl.web import templates
 # interface. These routes deliver HTML for humans, and in the interface under
 # /docs there would otherwise be a form route next to every real endpoint whose
 # 'Try it out' triggers a real change.
-router = APIRouter(dependencies=[Depends(csrf_schutz)], include_in_schema=False)
+router = APIRouter(dependencies=[Depends(csrf_protection)], include_in_schema=False)
 
 
 def _visible_zone(
@@ -47,7 +47,7 @@ def _visible_zone(
     return zone
 
 
-def _kontext(session: Session, zone: Zone, **zusatz: object) -> dict[str, object]:
+def _context(session: Session, zone: Zone, **extra: object) -> dict[str, object]:
     devices = session.scalars(select(Device).order_by(Device.display_name, Device.id)).all()
     roles = session.scalars(select(DeviceRole).order_by(DeviceRole.id)).all()
     assignments = session.execute(
@@ -74,7 +74,7 @@ def _kontext(session: Session, zone: Zone, **zusatz: object) -> dict[str, object
     # Without this list, someone would have to know what their model calls its
     # buttons -- `single_plus`, `button_1_single`, `up_open`, depending on manufacturer.
     controllers = [
-        (device, gesehene_aktionen(session, device))
+        (device, seen_actions(session, device))
         for assignment, device, role in assignments
         if role.code == "controller"
     ]
@@ -91,17 +91,17 @@ def _kontext(session: Session, zone: Zone, **zusatz: object) -> dict[str, object
         # up here and what's missing -- before you change anything.
         "picture": plant_diagram(session, [zone]).zones[0],
         "devices": devices,
-        "rollen": roles,
+        "roles": roles,
         "assignments": assignments,
         "temperature_source": temperature_source,
         "errors": {},
-        **zusatz,
+        **extra,
     }
 
 
-def _response(session: Session, request: Request, zone: Zone, **zusatz: object) -> Response:
+def _response(session: Session, request: Request, zone: Zone, **extra: object) -> Response:
     return templates.TemplateResponse(
-        request, "device_assignment.html", _kontext(session, zone, **zusatz)
+        request, "device_assignment.html", _context(session, zone, **extra)
     )
 
 
@@ -119,7 +119,7 @@ def _device(session: Session, raw_value: object, field: str) -> Device:
 async def devices_of_the_zone(
     zone_id: int,
     request: Request,
-    principal: Annotated[Principal, Depends(aktueller_principal)],
+    principal: Annotated[Principal, Depends(current_principal)],
     session: Annotated[Session, Depends(get_session)],
 ) -> Response:
     zone = _visible_zone(session, principal, zone_id, "device.read")
@@ -127,7 +127,7 @@ async def devices_of_the_zone(
         session,
         request,
         zone,
-        darf_aendern=has_permission(principal, "device.manage", zone.id),
+        may_edit=has_permission(principal, "device.manage", zone.id),
     )
 
 
@@ -135,7 +135,7 @@ async def devices_of_the_zone(
 async def assign_device_view(
     zone_id: int,
     request: Request,
-    principal: Annotated[Principal, Depends(aktueller_principal)],
+    principal: Annotated[Principal, Depends(current_principal)],
     session: Annotated[Session, Depends(get_session)],
 ) -> Response:
     zone = _visible_zone(session, principal, zone_id, "device.manage")
@@ -148,7 +148,7 @@ async def assign_device_view(
             session,
             request,
             zone,
-            darf_aendern=True,
+            may_edit=True,
             errors={"assignment": "Bitte Gerät und Rolle auswählen."},
         )
     if role is None:
@@ -156,26 +156,26 @@ async def assign_device_view(
             session,
             request,
             zone,
-            darf_aendern=True,
+            may_edit=True,
             errors={"assignment": "Bitte eine bekannte Rolle auswählen."},
         )
     try:
         assign_device(
-            session, zone, device, role, akteur_id=principal.user_id
+            session, zone, device, role, actor_id=principal.user_id
         )
     except AssignmentAlreadyExists:
         return _response(
             session,
             request,
             zone,
-            darf_aendern=True,
+            may_edit=True,
             errors={
                 "assignment": "Dieses Gerät ist der Zone in dieser Rolle bereits zugeordnet."
             },
         )
     except CapabilityMissing as exc:
         return _response(
-            session, request, zone, darf_aendern=True, errors={"assignment": exc.notice}
+            session, request, zone, may_edit=True, errors={"assignment": exc.notice}
         )
     return RedirectResponse(f"/zones/{zone.id}/devices", status.HTTP_303_SEE_OTHER)
 
@@ -184,7 +184,7 @@ async def assign_device_view(
 async def device_detach_view(
     zone_id: int,
     request: Request,
-    principal: Annotated[Principal, Depends(aktueller_principal)],
+    principal: Annotated[Principal, Depends(current_principal)],
     session: Annotated[Session, Depends(get_session)],
 ) -> Response:
     """Removes a binding. The id lives in the body, not in the path.
@@ -203,7 +203,7 @@ async def device_detach_view(
     assignment = session.get(ZoneDevice, assignment_id)
     if assignment is None or assignment.zone_id != zone.id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Zuordnung nicht gefunden")
-    detach_device(session, zone, assignment, akteur_id=principal.user_id)
+    detach_device(session, zone, assignment, actor_id=principal.user_id)
     return RedirectResponse(f"/zones/{zone.id}/devices", status.HTTP_303_SEE_OTHER)
 
 
@@ -211,7 +211,7 @@ async def device_detach_view(
 async def temperature_source_set_view(
     zone_id: int,
     request: Request,
-    principal: Annotated[Principal, Depends(aktueller_principal)],
+    principal: Annotated[Principal, Depends(current_principal)],
     session: Annotated[Session, Depends(get_session)],
 ) -> Response:
     zone = _visible_zone(session, principal, zone_id, "device.manage")
@@ -223,14 +223,14 @@ async def temperature_source_set_view(
             session,
             request,
             zone,
-            darf_aendern=True,
+            may_edit=True,
             errors={"temperature_source": "Bitte ein bekanntes Gerät auswählen."},
         )
     try:
-        set_temperature_source(session, zone, device, akteur_id=principal.user_id)
+        set_temperature_source(session, zone, device, actor_id=principal.user_id)
     except CapabilityMissing as exc:
         return _response(
-            session, request, zone, darf_aendern=True, errors={"temperature_source": exc.notice}
+            session, request, zone, may_edit=True, errors={"temperature_source": exc.notice}
         )
     return RedirectResponse(f"/zones/{zone.id}/devices", status.HTTP_303_SEE_OTHER)
 
@@ -239,16 +239,16 @@ async def temperature_source_set_view(
 async def device_swap_view(
     zone_id: int,
     request: Request,
-    principal: Annotated[Principal, Depends(aktueller_principal)],
+    principal: Annotated[Principal, Depends(current_principal)],
     session: Annotated[Session, Depends(get_session)],
 ) -> Response:
     zone = _visible_zone(session, principal, zone_id, "device.manage")
     form = await request.form()
     try:
-        altes = _device(session, form.get("old_device_id"), "old_device_id")
+        old = _device(session, form.get("old_device_id"), "old_device_id")
         neues = _device(session, form.get("new_device_id"), "new_device_id")
         swap_device(
-            session, zone, altes, neues, akteur_id=principal.user_id
+            session, zone, old, neues, actor_id=principal.user_id
         )
     except (HTTPException, ValueError, CapabilityMissing) as exc:
         notice = exc.detail if isinstance(exc, HTTPException) else str(exc)
@@ -256,7 +256,7 @@ async def device_swap_view(
             session,
             request,
             zone,
-            darf_aendern=True,
+            may_edit=True,
             errors={"swap": notice},
         )
     return RedirectResponse(f"/zones/{zone.id}/devices", status.HTTP_303_SEE_OTHER)
@@ -266,7 +266,7 @@ async def device_swap_view(
 async def bind_button(
     zone_id: int,
     request: Request,
-    principal: Annotated[Principal, Depends(aktueller_principal)],
+    principal: Annotated[Principal, Depends(current_principal)],
     session: Annotated[Session, Depends(get_session)],
 ) -> Response:
     """Binds a controller's button -- or deletes the binding.
@@ -279,8 +279,8 @@ async def bind_button(
     zone = _visible_zone(session, principal, zone_id, "device.manage")
     form = await request.form()
     device = _device(session, form.get("device_id"), "device_id")
-    aktion = str(form.get("action_code", "")).strip()
-    if not aktion:
+    action = str(form.get("action_code", "")).strip()
+    if not action:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Keine Aktion angegeben")
     command = str(form.get("command", "")).strip() or None
 
@@ -291,14 +291,14 @@ async def bind_button(
             step = Decimal(raw_step)
         except InvalidOperation:
             return _response(
-                session, request, zone, darf_aendern=True,
+                session, request, zone, may_edit=True,
                 errors={"button": "Die Schrittweite muss eine Zahl sein."},
             )
 
     try:
-        set_binding(session, device, aktion, command, step)
+        set_binding(session, device, action, command, step)
     except ControllerError as exc:
         return _response(
-            session, request, zone, darf_aendern=True, errors={"button": str(exc)}
+            session, request, zone, may_edit=True, errors={"button": str(exc)}
         )
     return RedirectResponse(f"/zones/{zone.id}/devices", status.HTTP_303_SEE_OTHER)

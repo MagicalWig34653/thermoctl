@@ -120,7 +120,7 @@ def apply_read_channels(session: Session, device: Device, values: dict[str, obje
             if kind.code == "zone_setpoint":
                 set_setpoint(session, zone, Decimal(str(raw)), now, source="system")
             elif kind.code == "operating_mode":
-                set_operating_mode(session, zone, str(raw), akteur_id=None, source="system")
+                set_operating_mode(session, zone, str(raw), actor_id=None, source="system")
         except (ValueError, DomainError, UnknownOperatingMode) as exc:
             # `DomainError` and `UnknownOperatingMode` derive from `Exception`, not from
             # `ValueError` -- catching only the latter let a dial turned to 99 degrees

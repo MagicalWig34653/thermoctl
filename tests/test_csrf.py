@@ -15,7 +15,7 @@ from fastapi.testclient import TestClient
 from tests.helpers import alle_api_routen
 from thermoctl.app import create_app
 from thermoctl.auth.csrf import CSRF_COOKIE_NAME, csrf_token
-from thermoctl.auth.dependencies import csrf_schutz
+from thermoctl.auth.dependencies import csrf_protection
 from thermoctl.auth.sessions import COOKIE_NAME, create_session
 
 WRITING_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
@@ -40,7 +40,7 @@ def test_every_state_changing_route_depends_on_csrf_protection() -> None:
         f"{sorted(route.methods & WRITING_METHODS)} {route.path}"
         for route in _writing_routes()
         if not route.path.startswith(EXEMPT_PREFIXES)
-        and not any(d.dependency is csrf_schutz for d in route.dependencies)
+        and not any(d.dependency is csrf_protection for d in route.dependencies)
     ]
     assert not unprotected, (
         "These state-changing routes have no CSRF protection: " + ", ".join(unprotected)

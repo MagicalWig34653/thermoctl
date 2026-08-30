@@ -18,7 +18,7 @@ class UnknownOperatingMode(Exception):
     """The requested operating mode does not exist."""
 
 
-class ZonennameVergeben(Exception):
+class ZoneNameTaken(Exception):
     """The technical zone name is already taken."""
 
 
@@ -51,7 +51,7 @@ def create_zone(
 ) -> Zone:
     """Creates the zone and its audit entry atomically, even under a name collision."""
     if _name_taken(session, name):
-        raise ZonennameVergeben
+        raise ZoneNameTaken
     zone = Zone(
         name=name,
         display_name=display_name,
@@ -75,7 +75,7 @@ def create_zone(
             )
             session.flush()
     except IntegrityError as exc:
-        raise ZonennameVergeben from exc
+        raise ZoneNameTaken from exc
     return zone
 
 
@@ -93,7 +93,7 @@ def update_zone(
 ) -> None:
     """Changes the zone and its audit entry atomically, even under a name collision."""
     if _name_taken(session, name, zone.id):
-        raise ZonennameVergeben
+        raise ZoneNameTaken
     try:
         with session.begin_nested():
             zone.name = name
@@ -113,13 +113,13 @@ def update_zone(
             )
             session.flush()
     except IntegrityError as exc:
-        raise ZonennameVergeben from exc
+        raise ZoneNameTaken from exc
 
 
-def zonedependencies(session: Session, zone_id: int) -> ZoneDependencies:
-    def count(modell: type[object]) -> int:
+def zone_dependencies(session: Session, zone_id: int) -> ZoneDependencies:
+    def count(model: type[object]) -> int:
         return session.scalar(
-            select(func.count()).select_from(modell).where(modell.zone_id == zone_id)  # type: ignore[attr-defined]
+            select(func.count()).select_from(model).where(model.zone_id == zone_id)  # type: ignore[attr-defined]
         ) or 0
 
     return ZoneDependencies(
@@ -156,7 +156,7 @@ def set_operating_mode(
     zone: Zone,
     code: str,
     *,
-    akteur_id: int | None,
+    actor_id: int | None,
     source: str = "web",
 ) -> bool:
     """Sets a zone's operating mode. Returns whether anything actually changed.
@@ -171,7 +171,7 @@ def set_operating_mode(
         raise UnknownOperatingMode(f"Die Betriebsart '{code}' gibt es nicht.")
     if zone.operating_mode_id == kind.id:
         return False
-    vorher = zone.operating_mode.label
+    before = zone.operating_mode.label
     # Set the relationship, not the foreign key: whoever only rewrites
     # `operating_mode_id` leaves an already loaded `zone.operating_mode` unchanged --
     # SQLAlchemy only reloads it after the next commit. But the service reports the
@@ -187,7 +187,7 @@ def set_operating_mode(
         object_type="zone",
         object_id=str(zone.id),
         summary=f"Betriebsart von '{zone.display_name}' auf {kind.label} gesetzt",
-        detail=f"{vorher} → {kind.label}",
-        user_id=akteur_id,
+        detail=f"{before} → {kind.label}",
+        user_id=actor_id,
     )
     return True

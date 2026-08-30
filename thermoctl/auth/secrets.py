@@ -14,17 +14,17 @@ def new_secret() -> str:
     return secrets.token_urlsafe(32)
 
 
-def hash_secret(geheimnis: str) -> str:
+def hash_secret(secret: str) -> str:
     """SHA-256 instead of Argon2id.
 
     With 256 bits of randomness, a slow hash adds nothing, yet it would have to be
     computed on every API request. The opposite holds for passwords — see passwords.py.
     """
-    return hashlib.sha256(geheimnis.encode("utf-8")).hexdigest()
+    return hashlib.sha256(secret.encode("utf-8")).hexdigest()
 
 
-def neues_token() -> tuple[str, str, str]:
+def new_token() -> tuple[str, str, str]:
     """Returns (plaintext, prefix, hash). The plaintext appears exactly once."""
     prefix = secrets.token_hex(PREFIX_LAENGE // 2)
-    geheimnis = new_secret()
-    return f"{TOKEN_PRAEFIX}_{prefix}_{geheimnis}", prefix, hash_secret(geheimnis)
+    secret = new_secret()
+    return f"{TOKEN_PRAEFIX}_{prefix}_{secret}", prefix, hash_secret(secret)

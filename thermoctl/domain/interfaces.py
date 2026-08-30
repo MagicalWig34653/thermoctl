@@ -36,30 +36,30 @@ class Detail:
 
 @dataclass(frozen=True)
 class Interface:
-    schluessel: str
+    key: str
     name: str
-    zweck: str
-    state: str  # "laeuft", "eingerichtet", "aus", "fehlt", "ungebaut"
-    befund: str
-    angaben: list[Detail] = field(default_factory=list)
+    purpose: str
+    state: str  # "running", "configured", "off", "missing", "not_built"
+    finding: str
+    details: list[Detail] = field(default_factory=list)
     hint: str | None = None
-    weiter: tuple[str, str] | None = None  # (Beschriftung, Pfad)
+    more: tuple[str, str] | None = None  # (Beschriftung, Pfad)
 
 
-def _ja_nein(gesetzt: bool) -> str:
+def _yes_no(set_value: bool) -> str:
     """For secrets: whether something is set, never what."""
-    return "hinterlegt" if gesetzt else "nicht hinterlegt"
+    return "hinterlegt" if set_value else "nicht hinterlegt"
 
 
-def uebersicht(
+def overview(
     session: Session, settings: Settings, bridge_reachable: bool | None
 ) -> list[Interface]:
     """The state of all endpoints, in the order in which they get configured."""
     default = Settings.model_fields
 
-    def source(feldname: str, jetziger: object) -> str:
-        default_value = default[feldname].default
-        return "Standard" if jetziger == default_value else "Umgebung"
+    def source(field_name: str, current: object) -> str:
+        default_value = default[field_name].default
+        return "Standard" if current == default_value else "Umgebung"
 
     active_tokens = (
         session.scalar(
@@ -73,24 +73,24 @@ def uebersicht(
     # --- Zigbee2MQTT ---------------------------------------------------------
     if not settings.mqtt_enabled:
         mqtt_state, mqtt_befund = (
-            "aus",
+            "off",
             "Abgeschaltet. Ohne sie kommen keine Messwerte an und die Anlage regelt nichts.",
         )
     elif settings.mqtt_host is None:
         mqtt_state, mqtt_befund = (
-            "fehlt",
+            "missing",
             "Eingeschaltet, aber ohne Broker-Adresse — so kommt keine Verbindung zustande.",
         )
     elif bridge_reachable is True:
-        mqtt_state, mqtt_befund = ("laeuft", "Die Brücke meldet sich.")
+        mqtt_state, mqtt_befund = ("running", "Die Brücke meldet sich.")
     elif bridge_reachable is False:
         mqtt_state, mqtt_befund = (
-            "fehlt",
+            "missing",
             "Verbunden, aber die Zigbee2MQTT-Brücke meldet sich nicht.",
         )
     else:
         mqtt_state, mqtt_befund = (
-            "eingerichtet",
+            "configured",
             "Eingerichtet; seit dem Start kam noch keine Zustandsmeldung der Brücke.",
         )
 
@@ -112,11 +112,11 @@ def uebersicht(
                 Detail("Basis-Topic", settings.mqtt_base_topic,
                        source("mqtt_base_topic", settings.mqtt_base_topic),
                        "THERMOCTL_MQTT_BASE_TOPIC"),
-                Detail("Passwort", _ja_nein(settings.mqtt_password is not None),
+                Detail("Passwort", _yes_no(settings.mqtt_password is not None),
                        "Umgebung" if settings.mqtt_password else "Standard",
                        "THERMOCTL_MQTT_PASSWORD"),
             ],
-            weiter=("Geräte ansehen", "/devices"),
+            more=("Geräte ansehen", "/devices"),
         )
     )
 
@@ -126,7 +126,7 @@ def uebersicht(
             "rest",
             "REST-Schnittstelle",
             "Für eigene Skripte und fremde Systeme. Immer da, aber ohne Token nutzlos.",
-            "laeuft" if active_tokens else "eingerichtet",
+            "running" if active_tokens else "configured",
             (
                 "Erreichbar unter /api/v1; mindestens ein Token ist ausgestellt."
                 if active_tokens
@@ -134,7 +134,7 @@ def uebersicht(
                 "damit kommt niemand hinein."
             ),
             [Detail("Beschreibung", "/docs", "Standard")],
-            weiter=("Tokens verwalten", "/tokens"),
+            more=("Tokens verwalten", "/tokens"),
         )
     )
 
@@ -145,7 +145,7 @@ def uebersicht(
             "mcp",
             "MCP-Server",
             "Damit ein Sprachmodell die Anlage lesen und im Alltag bedienen kann.",
-            "eingerichtet" if hat_mcp else "aus",
+            "configured" if hat_mcp else "off",
             (
                 "Ein Token ist hinterlegt. Der Server läuft als eigener Prozess "
                 "(thermoctl-mcp), nicht in diesem hier."
@@ -153,7 +153,7 @@ def uebersicht(
                 else "Kein Token hinterlegt — der MCP-Server startet ohne eines nicht."
             ),
             [
-                Detail("Token", _ja_nein(hat_mcp),
+                Detail("Token", _yes_no(hat_mcp),
                        "Umgebung" if hat_mcp else "Standard", "THERMOCTL_MCP_TOKEN"),
             ],
             hint=(
@@ -170,11 +170,11 @@ def uebersicht(
             "passkeys",
             "Passkeys",
             "Anmeldung ohne Passwort, mit dem Gerät als Schlüssel.",
-            "eingerichtet" if settings.passkeys_moeglich() else "aus",
+            "configured" if settings.passkeys_available() else "off",
             (
                 "Eingerichtet. Wer noch keinen hinterlegt hat, meldet sich weiter "
                 "mit Passwort an."
-                if settings.passkeys_moeglich()
+                if settings.passkeys_available()
                 else "Ohne die Kennung der Gegenstelle (RP-ID) bietet die Anmeldung "
                 "keine Passkeys an."
             ),
@@ -182,11 +182,11 @@ def uebersicht(
                 Detail("RP-ID", settings.passkey_rp_id or "—",
                        "Umgebung" if settings.passkey_rp_id else "Standard",
                        "THERMOCTL_PASSKEY_RP_ID"),
-                Detail("Erlaubter Ursprung", settings.passkey_erlaubte_origin() or "—",
+                Detail("Erlaubter Ursprung", settings.passkey_allowed_origin() or "—",
                        "Umgebung" if settings.passkey_rp_id else "Standard",
                        "THERMOCTL_PASSKEY_ORIGIN"),
             ],
-            weiter=("Eigene Passkeys", "/passkeys"),
+            more=("Eigene Passkeys", "/passkeys"),
         )
     )
 
@@ -197,7 +197,7 @@ def uebersicht(
             "benachrichtigung",
             "Benachrichtigungen",
             "Meldet Störungen an einen Webhook — ausgefallene Sensoren, stille Brücke.",
-            "eingerichtet" if hat_webhook else "aus",
+            "configured" if hat_webhook else "off",
             (
                 "Störungen gehen an den hinterlegten Webhook."
                 if hat_webhook
@@ -208,7 +208,7 @@ def uebersicht(
                 Detail("Webhook", settings.notify_webhook or "—",
                        "Umgebung" if hat_webhook else "Standard",
                        "THERMOCTL_NOTIFY_WEBHOOK"),
-                Detail("Token", _ja_nein(settings.notify_webhook_token is not None),
+                Detail("Token", _yes_no(settings.notify_webhook_token is not None),
                        "Umgebung" if settings.notify_webhook_token else "Standard",
                        "THERMOCTL_NOTIFY_WEBHOOK_TOKEN"),
             ],
@@ -222,7 +222,7 @@ def uebersicht(
             "meross",
             "Meross",
             "Schaltsteckdosen als zweiter Aktortyp neben den Zigbee-Ventilen.",
-            "eingerichtet" if hat_meross else "aus",
+            "configured" if hat_meross else "off",
             (
                 "Zugangsdaten hinterlegt."
                 if hat_meross
@@ -231,7 +231,7 @@ def uebersicht(
             [
                 Detail("Konto", settings.meross_email or "—",
                        "Umgebung" if hat_meross else "Standard", "THERMOCTL_MEROSS_EMAIL"),
-                Detail("Passwort", _ja_nein(settings.meross_password is not None),
+                Detail("Passwort", _yes_no(settings.meross_password is not None),
                        "Umgebung" if settings.meross_password else "Standard",
                        "THERMOCTL_MEROSS_PASSWORD"),
             ],
@@ -249,7 +249,7 @@ def uebersicht(
             "Home Assistant",
             "Meldet jede Zone als eigenes Gerät an, über die MQTT-Discovery: Thermostat, "
             "Boost, Solltemperatur je Modus und die Regelparameter.",
-            "laeuft" if settings.mqtt_enabled else "aus",
+            "running" if settings.mqtt_enabled else "off",
             (
                 "Läuft und nimmt Befehle entgegen — auch im Trockenlauf. Eine "
                 "Zustandsmeldung bewegt nichts, und eine Anbindung, die man erst nach "
@@ -267,12 +267,12 @@ def uebersicht(
                 ),
                 Detail(
                     "Eigenes Präfix",
-                    settings.mqtt_praefix,
-                    source("mqtt_praefix", settings.mqtt_praefix),
-                    "THERMOCTL_MQTT_PRAEFIX",
+                    settings.mqtt_prefix,
+                    source("mqtt_prefix", settings.mqtt_prefix),
+                    "THERMOCTL_MQTT_PREFIX",
                 ),
             ],
-            weiter=("Betriebszustand", "/control"),
+            more=("Betriebszustand", "/control"),
         )
     )
 

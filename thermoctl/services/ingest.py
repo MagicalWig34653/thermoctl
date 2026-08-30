@@ -18,7 +18,7 @@ from thermoctl.db.models.lookup import DeviceCapability, DeviceRole, Integration
 from thermoctl.db.models.measurement import DeviceHealth, Measurement
 from thermoctl.db.models.state import ZoneState
 from thermoctl.db.models.zone import Zone
-from thermoctl.domain.controller import execute_aktion
+from thermoctl.domain.controller import execute_action
 from thermoctl.domain.controller_channels import apply_read_channels
 from thermoctl.domain.device_classes import (
     DeviceDescription,
@@ -27,7 +27,7 @@ from thermoctl.domain.device_classes import (
 from thermoctl.domain.fault import NO_SOURCE, OK, sensor_state
 from thermoctl.domain.reading import Reading, readings_from_payload
 from thermoctl.domain.zone_settings import control_parameters
-from thermoctl.integrations.mqtt.zigbee2mqtt import MessageKind, zuschneiden
+from thermoctl.integrations.mqtt.zigbee2mqtt import MessageKind, trim
 
 log = logging.getLogger(__name__)
 
@@ -65,7 +65,7 @@ def _device(session: Session, name: str, received_at: datetime) -> Device:
 
 def _process_device_list(session: Session, payload: bytes, received_at: datetime) -> None:
     try:
-        beschreibungen = descriptions_from_bridge_list(payload)
+        descriptions = descriptions_from_bridge_list(payload)
     except ValueError:
         log.warning("Zigbee2MQTT-Geraeteliste ist ungueltig")
         return
@@ -73,10 +73,10 @@ def _process_device_list(session: Session, payload: bytes, received_at: datetime
     capabilities = {
         capability.code: capability for capability in session.scalars(select(DeviceCapability))
     }
-    unbekannte: set[str] = set()
-    for description in beschreibungen:
-        _save_description(session, description, received_at, capabilities, unbekannte)
-    for code in sorted(unbekannte):
+    unknown_ones: set[str] = set()
+    for description in descriptions:
+        _save_description(session, description, received_at, capabilities, unknown_ones)
+    for code in sorted(unknown_ones):
         log.warning(
             "Geraetefaehigkeit fehlt in der Nachschlagetabelle",
             extra={"faehigkeitscode": code},
@@ -88,11 +88,11 @@ def _save_description(
     description: DeviceDescription,
     received_at: datetime,
     capabilities: dict[str, DeviceCapability],
-    unbekannte: set[str],
+    unknown_ones: set[str],
 ) -> None:
     device = _device(session, description.name, received_at)
     device.display_name = description.name
-    device.model = description.modell
+    device.model = description.model
     device.is_group = description.ist_group
     if device.first_seen_at is None:
         # Backfill for devices that were not created via ingest — since subproject 3
@@ -104,11 +104,11 @@ def _save_description(
     for code in description.capabilities:
         capability = capabilities.get(code)
         if capability is None:
-            unbekannte.add(code)
+            unknown_ones.add(code)
             continue
         session.add(DeviceCapabilityLink(device_id=device.id, capability_id=capability.id))
-    alte_ids = select(DeviceProperty.id).where(DeviceProperty.device_id == device.id)
-    session.execute(delete(DevicePropertyValue).where(DevicePropertyValue.property_id.in_(alte_ids)))
+    old_ids = select(DeviceProperty.id).where(DeviceProperty.device_id == device.id)
+    session.execute(delete(DevicePropertyValue).where(DevicePropertyValue.property_id.in_(old_ids)))
     session.execute(delete(DeviceProperty).where(DeviceProperty.device_id == device.id))
     for property_description in description.properties:
         property_model = DeviceProperty(
@@ -143,7 +143,7 @@ def _process_state(
     # Read before inserting: afterwards our own new reading would be the most recent
     # one, and the comparison below would compare the message with itself.
     last_pressed = _last_pressed(session, device.id)
-    measured_at = readings[0].gemessen_am
+    measured_at = readings[0].measured_at
     changed_values: dict[str, object] = {}
     for property_model in session.scalars(
         select(DeviceProperty).where(DeviceProperty.device_id == device.id)
@@ -163,11 +163,11 @@ def _process_state(
     capabilities = {
         capability.code: capability for capability in session.scalars(select(DeviceCapability))
     }
-    unbekannte: set[str] = set()
+    unknown_ones: set[str] = set()
     for reading in readings:
         capability = capabilities.get(reading.capability)
         if capability is None:
-            unbekannte.add(reading.capability)
+            unknown_ones.add(reading.capability)
             continue
         session.add(
             Measurement(
@@ -175,28 +175,28 @@ def _process_state(
                 capability_id=capability.id,
                 value_numeric=reading.number,
                 value_text=reading.text,
-                measured_at=reading.gemessen_am,
+                measured_at=reading.measured_at,
                 received_at=received_at,
             )
         )
-    for code in sorted(unbekannte):
+    for code in sorted(unknown_ones):
         log.warning(
             "Messwertfaehigkeit fehlt in der Nachschlagetabelle",
             extra={"faehigkeitscode": code},
         )
 
-    gesund = session.get(DeviceHealth, device.id)
-    if gesund is None:
-        gesund = DeviceHealth(
+    healthy = session.get(DeviceHealth, device.id)
+    if healthy is None:
+        healthy = DeviceHealth(
             device_id=device.id,
             last_payload_at=received_at,
             payload_count=0,
         )
-        session.add(gesund)
-    gesund.last_payload_at = received_at
-    gesund.payload_count += 1
-    gesund.link_quality = _ganzzahl(readings, "link_quality", gesund.link_quality)
-    gesund.battery_percent = _dezimalzahl(readings, "battery", gesund.battery_percent)
+        session.add(healthy)
+    healthy.last_payload_at = received_at
+    healthy.payload_count += 1
+    healthy.link_quality = _integer(readings, "link_quality", healthy.link_quality)
+    healthy.battery_percent = _decimal_number(readings, "battery", healthy.battery_percent)
     device.last_seen_at = received_at
     _execute_button_press(session, device, readings, last_pressed, received_at)
     apply_read_channels(session, device, changed_values, received_at)
@@ -235,31 +235,31 @@ def _execute_button_press(
     received_at: datetime,
 ) -> None:
     """Executes what a button press on a controller has bound to it."""
-    druck = next((b for b in readings if b.capability == "action" and b.text), None)
-    if druck is None:
+    press = next((b for b in readings if b.capability == "action" and b.text), None)
+    if press is None:
         return
-    if last_seen is not None and druck.gemessen_am <= last_seen:
+    if last_seen is not None and press.measured_at <= last_seen:
         log.debug(
             "Tastendruck bereits verarbeitet, wird uebergangen",
-            extra={"geraet": device.display_name, "aktion": druck.text},
+            extra={"geraet": device.display_name, "aktion": press.text},
         )
         return
-    assert druck.text is not None
-    execute_aktion(session, device, druck.text, received_at)
+    assert press.text is not None
+    execute_action(session, device, press.text, received_at)
 
 
-def _dezimalzahl(
-    readings: list[Reading], code: str, bisher: Decimal | None
+def _decimal_number(
+    readings: list[Reading], code: str, so_far: Decimal | None
 ) -> Decimal | None:
     return next(
         (b.number for b in readings if b.capability == code and b.number is not None),
-        bisher,
+        so_far,
     )
 
 
-def _ganzzahl(readings: list[Reading], code: str, bisher: int | None) -> int | None:
-    value = _dezimalzahl(readings, code, None)
-    return int(value) if value is not None else bisher
+def _integer(readings: list[Reading], code: str, so_far: int | None) -> int | None:
+    value = _decimal_number(readings, code, None)
+    return int(value) if value is not None else so_far
 
 
 def _process_availability(
@@ -279,15 +279,15 @@ def _process_availability(
         log.warning("Zigbee2MQTT-Erreichbarkeit enthaelt keinen Zustand")
         return
     device = _device(session, name, received_at)
-    gesund = session.get(DeviceHealth, device.id)
-    if gesund is None:
-        gesund = DeviceHealth(
+    healthy = session.get(DeviceHealth, device.id)
+    if healthy is None:
+        healthy = DeviceHealth(
             device_id=device.id,
             last_payload_at=received_at,
             payload_count=0,
         )
-        session.add(gesund)
-    gesund.availability = data["state"]
+        session.add(healthy)
+    healthy.availability = data["state"]
 
 
 def process_message(
@@ -299,19 +299,19 @@ def process_message(
     received_at: datetime,
 ) -> None:
     """Writes a received Zigbee2MQTT message into the database."""
-    zuschnitt = zuschneiden(topic, base)
-    if zuschnitt.kind == MessageKind.DEVICE_LIST:
+    trimmed = trim(topic, base)
+    if trimmed.kind == MessageKind.DEVICE_LIST:
         _process_device_list(session, payload, received_at)
-    elif zuschnitt.kind == MessageKind.DEVICE_STATE:
-        assert zuschnitt.device_name is not None
-        _process_state(session, zuschnitt.device_name, payload, received_at)
-    elif zuschnitt.kind == MessageKind.AVAILABILITY:
-        assert zuschnitt.device_name is not None
-        _process_availability(session, zuschnitt.device_name, payload, received_at)
+    elif trimmed.kind == MessageKind.DEVICE_STATE:
+        assert trimmed.device_name is not None
+        _process_state(session, trimmed.device_name, payload, received_at)
+    elif trimmed.kind == MessageKind.AVAILABILITY:
+        assert trimmed.device_name is not None
+        _process_availability(session, trimmed.device_name, payload, received_at)
     else:
         log.info(
             "Zigbee2MQTT-Nachricht wird nicht verarbeitet",
-            extra={"nachrichtenart": zuschnitt.kind.value, "topic": topic},
+            extra={"nachrichtenart": trimmed.kind.value, "topic": topic},
         )
 
 
@@ -395,7 +395,7 @@ def _window_open(
         # without window contacts could fundamentally never heat.
         return None
 
-    unbekannt = False
+    unknown = False
     for device_id in devices_ids:
         measurement = session.scalar(
             select(Measurement)
@@ -411,11 +411,11 @@ def _window_open(
             or sensor_state(measurement.measured_at, now, timeout_s) != OK
             or measurement.value_text not in {"true", "false"}
         ):
-            unbekannt = True
+            unknown = True
             continue
         # Zigbee2MQTT reports `contact=true` for closed and `false` for open. The
         # inversion deliberately stays here, so it isn't done again in every
         # consumer, possibly inconsistently.
         if measurement.value_text == "false":
             return True
-    return None if unbekannt else False
+    return None if unknown else False
