@@ -1,11 +1,20 @@
 # Die Umstellung des Codes auf Englisch
 
-Diese Dateien haben die einmalige Umbenennung durchgeführt. Sie stehen hier, damit
-nachvollziehbar bleibt, **was** umbenannt wurde und **warum** es in dieser Reihenfolge
-geschah — nicht, weil sie noch einmal laufen sollen.
+Diese Tabellen haben die einmalige Umbenennung gesteuert. Sie stehen hier, damit
+nachvollziehbar bleibt, **was** wozu wurde — nicht, weil sie noch einmal laufen sollen.
 
-`alles.py` führt die Umstellung in elf Schritten aus, von einem sauberen `HEAD` aus. Die
-Trennung ist der Kern: Dieselben deutschen Wörter stecken gleichzeitig in
+| Datei | |
+|---|---|
+| `abbildung.txt` | die Bezeichner, 847 Zeilen |
+| `zu_pruefen.tsv` | die 147 davon, die von Hand nachgebessert wurden |
+| `module.tsv`, `testdateien.tsv` | die umbenannten Dateien |
+| `formularfelder.tsv` | die Formularfelder — Vorlage, Ansicht und Test zugleich |
+| `zeichenketten_global.tsv` | Namen, die als Zeichenkette vorkommen (Modulpfade, `monkeypatch`) |
+| `zeichenketten_datei.tsv` | dieselben Wörter, aber nur in bestimmten Dateien — anderswo sind es Formularfelder |
+
+Hier liegen die **Tabellen**, nicht die Skripte: Was umbenannt wurde, ist der Teil, der
+überdauert; das Werkzeug war Einweg und ist nicht gepflegt. Die Umstellung lief in elf
+Schritten von einem sauberen `HEAD` aus. Die Trennung ist der Kern: Dieselben deutschen Wörter stecken gleichzeitig in
 
 * **Bezeichnern** (Schritt 1) — nur `NAME`-Token, nie Zeichenketten,
 * **Modul- und Testdateinamen** (Schritt 2),
