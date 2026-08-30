@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from thermoctl import audit
 from thermoctl.auth.csrf import CSRF_COOKIE_NAME, csrf_token
-from thermoctl.auth.dependencies import csrf_schutz, get_session
+from thermoctl.auth.dependencies import csrf_protection, get_session
 from thermoctl.auth.passwords import hash_password, verify_password
 from thermoctl.auth.sessions import (
     COOKIE_NAME,
@@ -21,14 +21,14 @@ from thermoctl.auth.sessions import (
 from thermoctl.config import get_settings
 from thermoctl.db.base import utcnow
 from thermoctl.db.models.identity import User
-from thermoctl.setup import einrichtung_noetig
+from thermoctl.setup import setup_needed
 from thermoctl.web import templates
 
 # `include_in_schema=False`: the OpenAPI description is the contract of the REST
 # interface. These routes deliver HTML for humans, and in the interface under
 # /docs there would otherwise be a form route next to every real endpoint whose
 # 'Try it out' triggers a real change.
-router = APIRouter(dependencies=[Depends(csrf_schutz)], include_in_schema=False)
+router = APIRouter(dependencies=[Depends(csrf_protection)], include_in_schema=False)
 
 # Failed attempts counted per username. Lives in process memory, not in the
 # database: it's meant to slow down guessing, not persist. There is deliberately no
@@ -45,7 +45,7 @@ _ERROR_MESSAGE = "Benutzername oder Passwort falsch."
 _VERGLEICHS_HASH = hash_password(secrets.token_urlsafe(32))
 
 
-def schlafen(seconds: float) -> None:
+def sleep(seconds: float) -> None:
     """A dedicated function instead of a direct `time.sleep()` call, so tests can
     replace the delay via `monkeypatch.setattr` without actually waiting."""
     time.sleep(seconds)
@@ -59,10 +59,10 @@ async def login_form(
     # only -- a POST to /login without a user fails at the ordinary check anyway,
     # and that check should keep its identical error message, instead of letting the
     # redirect target reveal what the service knows.
-    if einrichtung_noetig(session):
+    if setup_needed(session):
         return RedirectResponse("/setup", status_code=status.HTTP_303_SEE_OTHER)
     return templates.TemplateResponse(
-        request, "login.html", {"passkeys_moeglich": get_settings().passkeys_moeglich()}
+        request, "login.html", {"passkeys_available": get_settings().passkeys_available()}
     )
 
 
@@ -75,8 +75,8 @@ async def login(
 ) -> Response:
     settings = get_settings()
 
-    bisherige_fehlversuche = FEHLVERSUCHE.get(username, 0)
-    schlafen(min(2**bisherige_fehlversuche, 5))
+    previous_failures = FEHLVERSUCHE.get(username, 0)
+    sleep(min(2**previous_failures, 5))
 
     user = session.scalar(select(User).where(User.username == username))
     # The password check ALWAYS runs, even for an unknown username -- then against a
@@ -87,12 +87,12 @@ async def login(
     # the same wait time alone are not enough for that.
     if user is None:
         verify_password(password, _VERGLEICHS_HASH)
-        erfolgreich = False
+        successful = False
     else:
-        erfolgreich = user.is_active and verify_password(password, user.password_hash)
+        successful = user.is_active and verify_password(password, user.password_hash)
 
-    if not erfolgreich:
-        FEHLVERSUCHE[username] = bisherige_fehlversuche + 1
+    if not successful:
+        FEHLVERSUCHE[username] = previous_failures + 1
         # The same summary for existing and non-existing usernames alike — the audit
         # entry is allowed to reveal what happened, but the HTTP response to the
         # caller must not reveal whether the username exists.
@@ -102,7 +102,7 @@ async def login(
         )
         return templates.TemplateResponse(
             request, "login.html",
-            {"errors": _ERROR_MESSAGE, "passkeys_moeglich": settings.passkeys_moeglich()},
+            {"errors": _ERROR_MESSAGE, "passkeys_available": settings.passkeys_available()},
             status_code=status.HTTP_401_UNAUTHORIZED,
         )
 
@@ -111,7 +111,7 @@ async def login(
     user.last_login_at = utcnow()
 
     lifetime_s = session_lifetime_s(session)
-    _entry, geheimnis = create_session(
+    _entry, secret = create_session(
         session, user, lifetime_s,
         user_agent=request.headers.get("user-agent"),
         ip=request.client.host if request.client is not None else None,
@@ -124,13 +124,13 @@ async def login(
 
     response = RedirectResponse("/", status_code=status.HTTP_303_SEE_OTHER)
     response.set_cookie(
-        COOKIE_NAME, geheimnis, max_age=lifetime_s,
+        COOKIE_NAME, secret, max_age=lifetime_s,
         httponly=True, samesite="lax", secure=settings.secure_cookies,
     )
     # Not httpOnly: the interface (HTMX) reads the value and sends it along as an
     # `X-CSRF-Token` header.
     response.set_cookie(
-        CSRF_COOKIE_NAME, csrf_token(geheimnis, settings.secret_key.get_secret_value()),
+        CSRF_COOKIE_NAME, csrf_token(secret, settings.secret_key.get_secret_value()),
         max_age=lifetime_s, httponly=False, samesite="lax", secure=settings.secure_cookies,
     )
     return response

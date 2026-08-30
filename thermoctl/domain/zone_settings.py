@@ -97,7 +97,7 @@ class ParameterDescription:
     step: Decimal
 
     @property
-    def ganzzahlig(self) -> bool:
+    def integral(self) -> bool:
         return self.step == self.step.to_integral_value() and self.step >= 1
 
 
@@ -160,14 +160,14 @@ def set_parameter(
             f"{description.label} muss zwischen {description.minimum} und "
             f"{description.maximum} liegen."
         )
-    gerundet = int(value) if description.ganzzahlig else value
+    rounded = int(value) if description.integral else value
     # Take over the other fields exactly as they stand on the zone -- an inherited
     # None stays inherited. Only this one parameter gets fixed.
     values: dict[str, Decimal | int | None] = {
         field: getattr(zone, field) for field in ControlParameters.__dataclass_fields__
     }
-    values[name] = gerundet
+    values[name] = rounded
     save_control_parameters(
         session, zone, values, user_id=user_id, token_id=token_id, source=source
     )
-    return Decimal(gerundet)
+    return Decimal(rounded)

@@ -39,7 +39,7 @@ def test_state_topics_have_no_get_suffix() -> None:
         setpoint="haus_nord/zones/17/state/setpoint",
         operating_mode="haus_nord/zones/17/state/operating_mode",
         sensor_state="haus_nord/zones/17/state/sensor_state",
-        wuerde_heizen="haus_nord/zones/17/state/would_heat",
+        would_heat="haus_nord/zones/17/state/would_heat",
         last_switch="haus_nord/zones/17/state/last_switch",
         next_switch="haus_nord/zones/17/state/next_switch",
     )
@@ -81,7 +81,7 @@ def test_the_state_subscription_with_mqtt_wildcards_matches_no_command() -> None
 
 def test_the_discovery_payload_is_valid_json_and_references_the_topics() -> None:
     data: dict[str, Any] = json.loads(
-        discovery_payload(17, _zone_name(), temp_step=Decimal("0.25"), praefix="haus_nord")
+        discovery_payload(17, _zone_name(), temp_step=Decimal("0.25"), prefix="haus_nord")
     )
     state = states_topics(17, "haus_nord")
     command = command_topics(17, "haus_nord")
@@ -99,7 +99,7 @@ def test_the_discovery_payload_is_valid_json_and_references_the_topics() -> None
     assert data["current_temperature_topic"] == state.current_temperature
     assert data["temperature_state_topic"] == state.setpoint
     assert data["mode_state_topic"] == state.operating_mode
-    assert data["action_topic"] == state.wuerde_heizen
+    assert data["action_topic"] == state.would_heat
     assert data["temperature_command_topic"] == command.setpoint
     assert data["mode_command_topic"] == command.operating_mode
     # The bounds come from the domain: this way Home Assistant shows the same
@@ -122,8 +122,8 @@ def test_one_device_per_zone_under_the_service() -> None:
     unsorted list. `via_device` still keeps them together: in Home Assistant
     the zones appear as their own devices under the service.
     """
-    first = json.loads(discovery_payload(17, _zone_name(), praefix="haus_nord"))
-    second = json.loads(discovery_payload(23, _another_zone_name(), praefix="haus_nord"))
+    first = json.loads(discovery_payload(17, _zone_name(), prefix="haus_nord"))
+    second = json.loads(discovery_payload(23, _another_zone_name(), prefix="haus_nord"))
     assert first["device"] == {
         "identifiers": ["thermoctl:haus_nord:zone:17"],
         "manufacturer": "thermoctl",
@@ -135,7 +135,7 @@ def test_one_device_per_zone_under_the_service() -> None:
 
 
 def test_removal_uses_the_same_config_topic_and_an_empty_payload() -> None:
-    message = zone_discovery(17, _zone_name(), praefix="haus_nord")
+    message = zone_discovery(17, _zone_name(), prefix="haus_nord")
     assert message == DiscoveryMessage(
         "homeassistant/climate/haus_nord_zone_17/config", message.payload
     )
@@ -149,10 +149,10 @@ def test_this_module_publishes_nothing() -> None:
     assert "integrations.mqtt.client" not in source_code
 
 
-@pytest.mark.parametrize("praefix", ["", "haus/+", "haus/#", "haus\0nord"])
-def test_an_invalid_prefix_is_rejected(praefix: str) -> None:
+@pytest.mark.parametrize("prefix", ["", "haus/+", "haus/#", "haus\0nord"])
+def test_an_invalid_prefix_is_rejected(prefix: str) -> None:
     with pytest.raises(ValueError, match="MQTT-Praefix"):
-        availability_topic(praefix)
+        availability_topic(prefix)
 
 
 def test_invalid_discovery_inputs_are_rejected() -> None:

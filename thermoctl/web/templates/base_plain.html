@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{% block titel %}thermoctl{% endblock %}</title>
+    <title>{% block title %}thermoctl{% endblock %}</title>
     <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="/static/vendor/bootstrap/bootstrap.min.css">
     <link rel="stylesheet" href="/static/thermoctl.css">
@@ -52,7 +52,7 @@ Einladung zum Danebengreifen.
 <main class="w-100 m-auto px-3" style="max-width: 23rem">
     <div class="text-center mb-4">
         <span class="tc-marker" style="font-size: 1.35rem">thermoctl</span>
-        <p class="t-leise small mb-0 mt-1">{% block untertitel %}Heizungssteuerung{% endblock %}</p>
+        <p class="t-quiet small mb-0 mt-1">{% block untertitel %}Heizungssteuerung{% endblock %}</p>
     </div>
     <div class="tc-panel p-4">
         {% block inhalt %}{% endblock %}

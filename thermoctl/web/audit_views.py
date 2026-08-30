@@ -8,20 +8,20 @@ from sqlalchemy import or_, select
 from sqlalchemy.engine import Row
 from sqlalchemy.orm import Session
 
-from thermoctl.auth.dependencies import aktueller_principal, csrf_schutz, get_session
+from thermoctl.auth.dependencies import csrf_protection, current_principal, get_session
 from thermoctl.db.models.credential import ApiToken
 from thermoctl.db.models.identity import User
 from thermoctl.db.models.lookup import ActorSource
 from thermoctl.db.models.operations import AuditEvent
 from thermoctl.domain.authz import require
 from thermoctl.domain.principal import Principal
-from thermoctl.web import ist_teilaustausch, templates
+from thermoctl.web import is_partial_swap, templates
 
 # `include_in_schema=False`: the OpenAPI description is the contract of the REST
 # interface. These routes deliver HTML for humans, and in the interface under
 # /docs there would otherwise be a form route next to every real endpoint whose
 # 'Try it out' triggers a real change.
-router = APIRouter(dependencies=[Depends(csrf_schutz)], include_in_schema=False)
+router = APIRouter(dependencies=[Depends(csrf_protection)], include_in_schema=False)
 
 ENTRIES_PER_PAGE = 50
 
@@ -39,7 +39,7 @@ def _datum(value: str, field: str, errors: dict[str, str]) -> date | None:
 @router.get("/audit")
 async def audit_list(
     request: Request,
-    principal: Annotated[Principal, Depends(aktueller_principal)],
+    principal: Annotated[Principal, Depends(current_principal)],
     session: Annotated[Session, Depends(get_session)],
     from_date: str = "",
     to_date: str = "",
@@ -57,12 +57,12 @@ async def audit_list(
     if from_day is not None and to_day is not None and to_day < from_day:
         errors["to_date"] = "Das Bis-Datum darf nicht vor dem Von-Datum liegen."
     try:
-        pagennummer = max(1, int(page))
+        page_number = max(1, int(page))
     except ValueError:
-        pagennummer = 1
+        page_number = 1
         errors["page"] = "Die Seitennummer muss eine ganze Zahl sein."
 
-    abfrage = (
+    query = (
         select(AuditEvent, ActorSource, User, ApiToken)
         .join(ActorSource, ActorSource.id == AuditEvent.source_id)
         .outerjoin(User, User.id == AuditEvent.actor_user_id)
@@ -70,43 +70,43 @@ async def audit_list(
     )
     if not errors:
         if from_day is not None:
-            abfrage = abfrage.where(
+            query = query.where(
                 AuditEvent.occurred_at >= datetime.combine(from_day, time.min)
             )
         if to_day is not None:
             # An exclusive bound on the following day includes the whole "to" day
             # and avoids database-specific date functions.
             next_day = datetime.combine(to_day, time.min) + timedelta(days=1)
-            abfrage = abfrage.where(AuditEvent.occurred_at < next_day)
+            query = query.where(AuditEvent.occurred_at < next_day)
         if user:
-            abfrage = abfrage.where(
+            query = query.where(
                 or_(User.username == user, ApiToken.name == user)
             )
         if action_code:
-            abfrage = abfrage.where(AuditEvent.action == action_code)
+            query = query.where(AuditEvent.action == action_code)
         if source:
-            abfrage = abfrage.where(ActorSource.code == source)
+            query = query.where(ActorSource.code == source)
         if object:
-            objekttyp, trennzeichen, objekt_id = object.partition(":")
-            abfrage = abfrage.where(AuditEvent.object_type == objekttyp)
-            if trennzeichen:
-                abfrage = abfrage.where(AuditEvent.object_id == objekt_id)
+            object_type, separator, objekt_id = object.partition(":")
+            query = query.where(AuditEvent.object_type == object_type)
+            if separator:
+                query = query.where(AuditEvent.object_id == objekt_id)
 
     entries: Sequence[Row[tuple[AuditEvent, ActorSource, User, ApiToken]]] = ()
-    hat_weitere = False
+    has_more = False
     if not errors:
-        zeilen = session.execute(
-            abfrage.order_by(AuditEvent.occurred_at.desc(), AuditEvent.id.desc())
-            .offset((pagennummer - 1) * ENTRIES_PER_PAGE)
+        rows = session.execute(
+            query.order_by(AuditEvent.occurred_at.desc(), AuditEvent.id.desc())
+            .offset((page_number - 1) * ENTRIES_PER_PAGE)
             .limit(ENTRIES_PER_PAGE + 1)
         ).all()
-        hat_weitere = len(zeilen) > ENTRIES_PER_PAGE
-        entries = zeilen[:ENTRIES_PER_PAGE]
+        has_more = len(rows) > ENTRIES_PER_PAGE
+        entries = rows[:ENTRIES_PER_PAGE]
 
     sources = session.execute(
         select(ActorSource.code, ActorSource.label).order_by(ActorSource.label)
     ).all()
-    aktionen = session.scalars(
+    actions = session.scalars(
         select(AuditEvent.action).distinct().order_by(AuditEvent.action)
     ).all()
     filter_values = {
@@ -123,12 +123,12 @@ async def audit_list(
         {
             "entries": entries,
             "sources": sources,
-            "aktionen": aktionen,
+            "actions": actions,
             "filter": filter_values,
             "errors": errors,
-            "page": pagennummer,
-            "hat_weitere": hat_weitere,
-            "basis_parameter": urlencode(filter_values),
-            "ist_htmx": ist_teilaustausch(request),
+            "page": page_number,
+            "has_more": has_more,
+            "base_parameters": urlencode(filter_values),
+            "is_htmx": is_partial_swap(request),
         },
     )

@@ -14,7 +14,7 @@ from thermoctl.domain.device_survey import (
     RADIO_WEAK_LQI,
     DeviceSurvey,
     Finding,
-    befunde,
+    findings,
 )
 
 NOW = datetime(2026, 8, 30, 12, 0)
@@ -31,7 +31,7 @@ def _findings(**deviation) -> list[Finding]:
         "now": NOW,
     }
     arguments.update(deviation)
-    return befunde(**arguments)
+    return findings(**arguments)
 
 
 def test_a_healthy_device_has_nothing_to_report() -> None:
@@ -79,7 +79,7 @@ def test_severity_ranks_failure_before_early_warning() -> None:
         return DeviceSurvey(
             device_id=1,
             name="x",
-            modell=None,
+            model=None,
             integration="Zigbee2MQTT",
             ist_group=False,
             capabilities=[],
@@ -87,15 +87,16 @@ def test_severity_ranks_failure_before_early_warning() -> None:
             last_heard=None,
             battery=None,
             radio_quality=None,
-            befunde=list(findings),
+            findings=list(findings),
         )
 
     offline = build_survey(Finding("offline", "o"))
     battery = build_survey(Finding("battery", "b"))
     healthy = build_survey()
-    assert offline.schwere < battery.schwere < healthy.schwere
-    assert healthy.in_ordnung and not offline.in_ordnung
+    assert offline.severity < battery.severity < healthy.severity
+    assert healthy.is_fine and not offline.is_fine
     # Multiple findings: the most urgent one determines the ranking.
-    assert build_survey(Finding("battery", "b"), Finding("offline", "o")).schwere == offline.schwere
+    mixed = build_survey(Finding("battery", "b"), Finding("offline", "o"))
+    assert mixed.severity == offline.severity
     # An unknown kind lands at the back instead of tripping things up.
-    assert build_survey(Finding("neuartig", "?")).schwere > battery.schwere
+    assert build_survey(Finding("novel", "?")).severity > battery.severity

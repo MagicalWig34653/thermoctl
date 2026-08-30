@@ -9,8 +9,8 @@ from typing import cast
 @dataclass(frozen=True)
 class DeviceDescription:
     name: str
-    adresse: str | None
-    modell: str | None
+    address: str | None
+    model: str | None
     manufacturer: str | None
     ist_group: bool
     capabilities: frozenset[str]
@@ -68,10 +68,10 @@ def _collect_capabilities(
     entries: list[object], *, inside_switch: bool = False
 ) -> set[str]:
     result: set[str] = set()
-    for roh in entries:
-        if not isinstance(roh, Mapping):
+    for raw_entry in entries:
+        if not isinstance(raw_entry, Mapping):
             continue
-        entry = cast(Mapping[str, object], roh)
+        entry = cast(Mapping[str, object], raw_entry)
         typ = _text(entry.get("type"))
         property = _text(entry.get("property")) or typ
         capability = _CAPABILITY_BY_FEATURE.get(property or "")
@@ -176,14 +176,14 @@ def descriptions_from_bridge_list(
 ) -> list[DeviceDescription]:
     """Reads the device descriptions from the Zigbee2MQTT bridge list."""
     try:
-        roh = json.loads(payload)
+        raw_entry = json.loads(payload)
     except (json.JSONDecodeError, UnicodeDecodeError) as exc:
         raise ValueError("Geraeteliste ist kein gueltiges JSON") from exc
-    if not isinstance(roh, list):
+    if not isinstance(raw_entry, list):
         raise ValueError("Geraeteliste muss eine JSON-Liste sein")
 
-    beschreibungen: list[DeviceDescription] = []
-    for element in roh:
+    descriptions: list[DeviceDescription] = []
+    for element in raw_entry:
         if not isinstance(element, Mapping):
             continue
         entry = cast(Mapping[str, object], element)
@@ -193,7 +193,7 @@ def descriptions_from_bridge_list(
         if entry.get("type") == "Coordinator" or name in {"Coordinator", "bridge"}:
             continue
 
-        adresse = _text(entry.get("ieee_address"))
+        address = _text(entry.get("ieee_address"))
         definition_roh = entry.get("definition")
         definition = (
             cast(Mapping[str, object], definition_roh)
@@ -206,15 +206,15 @@ def descriptions_from_bridge_list(
             if isinstance(exposes_roh, list)
             else []
         )
-        beschreibungen.append(
+        descriptions.append(
             DeviceDescription(
                 name=name,
-                adresse=adresse,
-                modell=_text(definition.get("model")),
+                address=address,
+                model=_text(definition.get("model")),
                 manufacturer=_text(definition.get("vendor")),
-                ist_group=adresse is None,
+                ist_group=address is None,
                 capabilities=capabilities_from_exposes(exposes),
                 properties=properties_from_exposes(exposes),
             )
         )
-    return beschreibungen
+    return descriptions

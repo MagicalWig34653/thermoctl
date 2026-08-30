@@ -76,20 +76,20 @@ def set_setpoint(
     jump back to the old value on the next state report and look as if it had
     swallowed the command.
     """
-    geltend = resolved_setpoint(session, zone, now)
-    if geltend.mode_id is None:
+    in_effect = resolved_setpoint(session, zone, now)
+    if in_effect.mode_id is None:
         create_override(
-            session, zone, temperature, _runendes_ende(session, zone, now),
+            session, zone, temperature, _rounded_end(session, zone, now),
             user_id=user_id, token_id=token_id, source=source,
         )
         return temperature
     update_setpoints(
-        session, zone, {geltend.mode_id: temperature}, user_id=user_id, source=source
+        session, zone, {in_effect.mode_id: temperature}, user_id=user_id, source=source
     )
     return temperature
 
 
-def _runendes_ende(session: Session, zone: Zone, now: datetime) -> datetime | None:
+def _rounded_end(session: Session, zone: Zone, now: datetime) -> datetime | None:
     """The end of the currently running override -- so the new one lasts no longer."""
     running = session.scalars(
         select(ZoneOverride)
@@ -122,7 +122,7 @@ def boost(
     if settings is None:
         raise RemoteControlError("Die Einrichtung ist unvollständig.")
     timezone_name = ZoneInfo(settings.timezone)
-    lokal = now.replace(tzinfo=ZoneInfo("UTC")).astimezone(timezone_name).replace(tzinfo=None)
+    local = now.replace(tzinfo=ZoneInfo("UTC")).astimezone(timezone_name).replace(tzinfo=None)
 
     points = list(
         session.scalars(select(SchedulePoint).where(SchedulePoint.zone_id == zone.id))
@@ -131,30 +131,30 @@ def boost(
         raise RemoteControlError(
             "Diese Zone hat keinen Zeitplan — es gibt keine nächste Schaltung."
         )
-    faellt_um = next_point(points, lokal)
-    ende = end_of_next_switch(session, zone, now)
-    if faellt_um is None or ende is None:  # pragma: no cover - points is not empty
+    falls_at = next_point(points, local)
+    end_at = end_of_next_switch(session, zone, now)
+    if falls_at is None or end_at is None:  # pragma: no cover - points is not empty
         raise RemoteControlError("Die nächste Schaltung lässt sich nicht bestimmen.")
 
     # The point that applies from `faellt_um` onward -- the one we are bringing
     # forward. Queried one minute past it, so that `geltender_punkt` returns it and
     # not its predecessor.
-    kommend = current_point(points, faellt_um)
-    if kommend is None:  # pragma: no cover - points is not empty
+    upcoming = current_point(points, falls_at)
+    if upcoming is None:  # pragma: no cover - points is not empty
         raise RemoteControlError("Die nächste Schaltung lässt sich nicht bestimmen.")
-    mode = session.get(SetpointMode, kommend.setpoint_mode_id)
-    temperature = temperature_for_mode(session, zone, kommend.setpoint_mode_id)
+    mode = session.get(SetpointMode, upcoming.setpoint_mode_id)
+    temperature = temperature_for_mode(session, zone, upcoming.setpoint_mode_id)
     if mode is None or temperature is None:
         raise RemoteControlError(
             "Für den nächsten Modus ist in dieser Zone keine Temperatur hinterlegt."
         )
 
     create_override(
-        session, zone, temperature, ende,
+        session, zone, temperature, end_at,
         user_id=user_id, token_id=token_id, source=source,
     )
     log.info(
         "Naechste Schaltung vorgezogen",
-        extra={"zone_id": zone.id, "modus": mode.code, "bis": ende.isoformat()},
+        extra={"zone_id": zone.id, "modus": mode.code, "bis": end_at.isoformat()},
     )
-    return Boost(mode.code, temperature, ende)
+    return Boost(mode.code, temperature, end_at)

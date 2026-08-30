@@ -1,25 +1,25 @@
 {% extends "base.html" %}
-{% from "form.html" import auswahl, fehlerhinweis %}
-{% block titel %}Zeitplan übernehmen – thermoctl{% endblock %}
+{% from "form.html" import select_field, error_notice %}
+{% block title %}Zeitplan übernehmen – thermoctl{% endblock %}
 {% block inhalt %}
 <h1>Zeitplan für {{ zone.display_name }} übernehmen</h1>
-{% if bestaetigung %}
+{% if confirmation %}
 <div class="alert alert-warning">
     Diese Zone hat bereits einen Zeitplan. Die Übernahme ersetzt ihn vollständig.
 </div>
 <form method="post" action="/zones/{{ zone.id }}/schedule/adopt">
     <input type="hidden" name="source_id" value="{{ source_id }}">
-    <input type="hidden" name="confirmed" value="ja">
+    <input type="hidden" name="confirmed" value="yes">
     <button class="btn btn-danger" type="submit">Vorhandenen Zeitplan ersetzen</button>
     <a class="btn btn-secondary" href="/zones/{{ zone.id }}/schedule">Abbrechen</a>
 </form>
 {% else %}
-{{ fehlerhinweis(errors) }}
+{{ error_notice(errors) }}
 {% if sources %}
 <form method="post" action="/zones/{{ zone.id }}/schedule/adopt">
-    {% set optionen = [] %}
-    {% for source in sources %}{% set _ = optionen.append((source.id, source.display_name)) %}{% endfor %}
-    {{ auswahl("source_id", "Quellzone", optionen, source_id or "") }}
+    {% set options = [] %}
+    {% for source in sources %}{% set _ = options.append((source.id, source.display_name)) %}{% endfor %}
+    {{ select_field("source_id", "Quellzone", options, source_id or "") }}
     <button class="btn btn-primary" type="submit">Zeitplan übernehmen</button>
     <a class="btn btn-secondary" href="/zones/{{ zone.id }}/schedule">Abbrechen</a>
 </form>

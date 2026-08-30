@@ -25,12 +25,12 @@ from thermoctl.db.models.lookup import SensorStatus
 from thermoctl.db.models.operations import Setting
 from thermoctl.db.models.state import ZoneState
 from thermoctl.db.models.zone import Zone
-from thermoctl.db.schema_state import SchemaPasstNicht, check_schema
+from thermoctl.db.schema_state import SchemaMismatch, check_schema
 from thermoctl.domain.authz import Forbidden
 from thermoctl.domain.fault_notice import (
     FaultNotice,
     bridge_notice,
-    sensornotice,
+    sensor_notice,
 )
 from thermoctl.domain.modes import DomainError, update_setpoints
 from thermoctl.domain.remote_control import (
@@ -49,14 +49,14 @@ from thermoctl.integrations.mqtt.client import MqttClient
 from thermoctl.integrations.mqtt.commands import (
     Command,
     CommandError,
-    commands_abonnements,
+    command_subscriptions,
     ist_command,
-    zerlegen,
+    split_topic,
 )
 from thermoctl.integrations.mqtt.zigbee2mqtt import (
     MessageKind,
     bridge_reachable,
-    zuschneiden,
+    trim,
 )
 from thermoctl.integrations.notification import send
 from thermoctl.logging import configure_logging, request_id_var
@@ -65,7 +65,7 @@ from thermoctl.services.publishing import PublicationState, _send_zone_state
 from thermoctl.services.publishing import cycle as publication_cycle
 from thermoctl.services.retention import delete_old_measurements
 from thermoctl.services.shadow_run import cycle
-from thermoctl.setup import einrichtung_noetig, setup_token_erzeugen
+from thermoctl.setup import create_setup_token, setup_needed
 from thermoctl.web import STATIC_DIR
 from thermoctl.web.admin_views import router as admin_router
 from thermoctl.web.audit_views import router as audit_router
@@ -90,14 +90,14 @@ log = logging.getLogger(__name__)
 _SHADOW_INTERVAL_DEFAULT_S = 60
 
 
-def _auditieren(session: Session, notice: FaultNotice) -> None:
+def _audit(session: Session, notice: FaultNotice) -> None:
     audit.record(
         session,
         source="system",
         action="notification.sent",
         object_type="fault",
-        object_id=notice.schluessel,
-        summary=notice.titel,
+        object_id=notice.key,
+        summary=notice.title,
         detail=notice.text,
     )
 
@@ -107,7 +107,7 @@ def _auditieren(session: Session, notice: FaultNotice) -> None:
 _running_notices: set[asyncio.Task[None]] = set()
 
 
-def _sensorzustaende(session: Session) -> dict[int, str]:
+def _sensor_states(session: Session) -> dict[int, str]:
     return {
         zone_id: code
         for zone_id, code in session.execute(
@@ -119,24 +119,24 @@ def _sensorzustaende(session: Session) -> dict[int, str]:
 
 
 def _sensor_notices(
-    session: Session, vorher: dict[int, str]
+    session: Session, before: dict[int, str]
 ) -> list[FaultNotice]:
-    nachher = _sensorzustaende(session)
+    after = _sensor_states(session)
     notices: list[FaultNotice] = []
     for zone in session.scalars(select(Zone).order_by(Zone.id)):
-        status = nachher.get(zone.id)
+        status = after.get(zone.id)
         if status is None:  # pragma: no cover
             # `advance_zone_state` creates a row for every existing zone. Only a row
             # deleted or corrupted concurrently could be missing here.
             continue
-        notice = sensornotice(f"sensor:{zone.id}", zone.name, vorher.get(zone.id), status)
+        notice = sensor_notice(f"sensor:{zone.id}", zone.name, before.get(zone.id), status)
         if notice is not None:
-            _auditieren(session, notice)
+            _audit(session, notice)
             notices.append(notice)
     return notices
 
 
-async def _shadow_intervall_s(session_factory: sessionmaker[Session]) -> int:
+async def _shadow_interval_s(session_factory: sessionmaker[Session]) -> int:
     with session_scope(session_factory) as session:
         settings = session.get(Setting, 1)
         return (
@@ -146,7 +146,7 @@ async def _shadow_intervall_s(session_factory: sessionmaker[Session]) -> int:
         )
 
 
-async def _shadowschleife(app: FastAPI) -> None:
+async def _shadow_loop(app: FastAPI) -> None:
     """Waits out the configured interval, then one cycle -- forever, until cancelled.
 
     An exception does not end the loop -- neither in the cycle itself nor while reading
@@ -160,14 +160,14 @@ async def _shadowschleife(app: FastAPI) -> None:
     next_retention = utcnow() + timedelta(days=1)
     while True:
         try:
-            interval = await _shadow_intervall_s(app.state.session_factory)
+            interval = await _shadow_interval_s(app.state.session_factory)
             await asyncio.sleep(interval)
             now = utcnow()
             notices: list[FaultNotice]
             with session_scope(app.state.session_factory) as session:
-                vorher = _sensorzustaende(session)
+                before = _sensor_states(session)
                 advance_zone_state(session, now)
-                notices = _sensor_notices(session, vorher)
+                notices = _sensor_notices(session, before)
                 cycle(session, now)
                 # `getattr`: the loop also runs in tests that assemble an app without
                 # running through the full lifespan.
@@ -176,7 +176,7 @@ async def _shadowschleife(app: FastAPI) -> None:
                         session,
                         app.state.publisher,
                         app.state.publication_state,
-                        get_settings().mqtt_praefix,
+                        get_settings().mqtt_prefix,
                         now,
                     )
                 if now >= next_retention:
@@ -189,9 +189,9 @@ async def _shadowschleife(app: FastAPI) -> None:
             # `send` catches its own errors; the task is deliberately not awaited, but
             # kept referenced so it does not disappear via garbage collection.
             for notice in notices:
-                aufgabe = asyncio.create_task(send(get_settings(), notice))
-                _running_notices.add(aufgabe)
-                aufgabe.add_done_callback(_running_notices.discard)
+                task = asyncio.create_task(send(get_settings(), notice))
+                _running_notices.add(task)
+                task.add_done_callback(_running_notices.discard)
         except Exception:
             log.exception("Schattenzyklus fehlgeschlagen -- naechster Versuch folgt")
 
@@ -213,7 +213,7 @@ def _execute_command(
     instead of waiting for the next control cycle.
     """
     try:
-        command = zerlegen(topic, payload, settings.mqtt_praefix)
+        command = split_topic(topic, payload, settings.mqtt_prefix)
     except CommandError as exc:
         log.warning("Unbrauchbarer Befehl verworfen: %s", exc, extra={"topic": topic})
         return None
@@ -224,7 +224,7 @@ def _execute_command(
         return None
 
     try:
-        _anwenden(session, zone, command)
+        _apply(session, zone, command)
     except (
         DomainError,
         UnknownOperatingMode,
@@ -242,11 +242,11 @@ def _execute_command(
     return zone
 
 
-def _anwenden(session: Session, zone: Zone, command: Command) -> None:
+def _apply(session: Session, zone: Zone, command: Command) -> None:
     """What a parsed command does. Kept separate so error handling stays in one place."""
     now = utcnow()
     if command.kind == "operating_mode" and command.operating_mode is not None:
-        set_operating_mode(session, zone, command.operating_mode, akteur_id=None, source="system")
+        set_operating_mode(session, zone, command.operating_mode, actor_id=None, source="system")
     elif command.kind == "setpoint" and command.temperature is not None:
         set_setpoint(session, zone, command.temperature, now, source="system")
     elif command.kind == "boost":
@@ -275,7 +275,7 @@ async def _process_mqtt_message(
 
     # Our own command topics first: they live under our own prefix and have nothing to
     # do with the Zigbee2MQTT parsing.
-    if ist_command(topic, settings.mqtt_praefix):
+    if ist_command(topic, settings.mqtt_prefix):
         with session_scope(app.state.session_factory) as session:
             zone = _execute_command(session, topic, payload, settings)
             # Respond immediately, still in the same session. The climate card in Home
@@ -286,13 +286,13 @@ async def _process_mqtt_message(
             publisher = getattr(app.state, "publisher", None)
             if zone is not None and publisher is not None:
                 await _send_zone_state(
-                    session, publisher, zone, settings.mqtt_praefix, received_at
+                    session, publisher, zone, settings.mqtt_prefix, received_at
                 )
         return
 
-    zuschnitt = zuschneiden(topic, settings.mqtt_base_topic)
+    trimmed = trim(topic, settings.mqtt_base_topic)
     notice: FaultNotice | None = None
-    if zuschnitt.kind == MessageKind.BRIDGE_STATE:
+    if trimmed.kind == MessageKind.BRIDGE_STATE:
         reachable = bridge_reachable(payload)
         if reachable is not None:
             notice = bridge_notice(app.state.bridge_reachable, reachable)
@@ -306,12 +306,12 @@ async def _process_mqtt_message(
             received_at=received_at,
         )
         if notice is not None:
-            _auditieren(session, notice)
+            _audit(session, notice)
     if notice is not None:
         await send(settings, notice)
 
 
-def _unverbrauchtes_setup_token_vorhanden(session: Session) -> bool:
+def _unused_setup_token_exists(session: Session) -> bool:
     """Prevents every restart from generating and logging another, unused token while
     one is already pending."""
     return (
@@ -338,13 +338,13 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     # SQLAlchemy.
     try:
         check_schema(app.state.engine)
-    except SchemaPasstNicht as errors:
+    except SchemaMismatch as errors:
         log.error("%s", errors)
         raise
 
     with session_scope(app.state.session_factory) as session:
-        if einrichtung_noetig(session) and not _unverbrauchtes_setup_token_vorhanden(session):
-            plaintext = setup_token_erzeugen(session)
+        if setup_needed(session) and not _unused_setup_token_exists(session):
+            plaintext = create_setup_token(session)
             # The only place in the whole project where a secret intentionally
             # appears in the log (exception noted in thermoctl/logging.py). The log
             # is the only channel through which the operator gets this one-time
@@ -370,17 +370,17 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     # every send) takes effect immediately, on the other hand -- in the safe direction.
     with session_scope(app.state.session_factory) as session:
         app.state.sending_allowed = switching_allowed(session)
-    hintergrundaufgaben: list[asyncio.Task[None]] = []
+    background_tasks: list[asyncio.Task[None]] = []
     if settings.mqtt_enabled:
         client = MqttClient(
             settings,
             lambda topic, payload: _process_mqtt_message(app, settings, topic, payload),
             switching_allowed=app.state.sending_allowed,
-            zusatz_abonnements=commands_abonnements(settings.mqtt_praefix),
+            extra_subscriptions=command_subscriptions(settings.mqtt_prefix),
         )
         app.state.publisher = client
-        hintergrundaufgaben.append(asyncio.create_task(client.run()))
-        hintergrundaufgaben.append(asyncio.create_task(_shadowschleife(app)))
+        background_tasks.append(asyncio.create_task(client.run()))
+        background_tasks.append(asyncio.create_task(_shadow_loop(app)))
 
     try:
         yield
@@ -388,11 +388,11 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         # Cancel and wait, not just cancel: otherwise a task that is currently stuck
         # in an ongoing database operation could prevent the process from exiting --
         # every restart of the container would become a test of patience.
-        for aufgabe in hintergrundaufgaben:
-            aufgabe.cancel()
-        for aufgabe in hintergrundaufgaben:
+        for task in background_tasks:
+            task.cancel()
+        for task in background_tasks:
             with contextlib.suppress(asyncio.CancelledError):
-                await aufgabe
+                await task
 
 
 # Addresses under which the service is only reachable from the same machine. Anything
@@ -480,13 +480,13 @@ def create_app() -> FastAPI:
     async def request_id(
         request: Request, call_next: Callable[[Request], Awaitable[Response]]
     ) -> Response:
-        mitgegeben = request.headers.get("X-Request-ID")
+        supplied = request.headers.get("X-Request-ID")
         # An implausible supplied identifier is no reason to reject an otherwise
         # valid request -- it is simply replaced by a freshly generated one, as if
         # none had been supplied.
         identifier = (
-            mitgegeben
-            if mitgegeben is not None and _REQUEST_ID_PATTERN.fullmatch(mitgegeben)
+            supplied
+            if supplied is not None and _REQUEST_ID_PATTERN.fullmatch(supplied)
             else uuid.uuid4().hex
         )
         marker = request_id_var.set(identifier)

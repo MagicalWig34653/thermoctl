@@ -40,7 +40,7 @@ def test_old_measurements_are_deleted_completely_in_blocks(session: Session) -> 
     settings.measurement_retention_days = 30
     _inventory(session, [31, 32, 33, 29])
 
-    assert delete_old_measurements(session, NOW, blockgroesse=2) == 3
+    assert delete_old_measurements(session, NOW, batch_size=2) == 3
     assert [m.measured_at for m in session.query(Measurement)] == [NOW - timedelta(days=29)]
 
 
@@ -55,4 +55,4 @@ def test_a_retention_value_of_zero_keeps_the_entire_history(session: Session) ->
 
 def test_block_size_must_be_positive(session: Session) -> None:
     with pytest.raises(ValueError, match="groesser als null"):
-        delete_old_measurements(session, NOW, blockgroesse=0)
+        delete_old_measurements(session, NOW, batch_size=0)

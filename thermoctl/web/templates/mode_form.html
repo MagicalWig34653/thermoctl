@@ -1,12 +1,12 @@
 {% extends "base.html" %}
-{% from "form.html" import textfeld, zahlenfeld %}
-{% block titel %}Sollwert-Modus – thermoctl{% endblock %}
+{% from "form.html" import text_field, number_field %}
+{% block title %}Sollwert-Modus – thermoctl{% endblock %}
 {% block inhalt %}
 <h1>{{ "Sollwert-Modus bearbeiten" if mode else "Sollwert-Modus anlegen" }}</h1>
 <form method="post" action="{{ '/modi/' ~ mode.id if mode else '/modi' }}">
-    {{ textfeld("code", "Technischer Code", values.code, errors=errors.code, pflicht=true) }}
-    {{ textfeld("name", "Name", values.name, errors=errors.name, pflicht=true) }}
-    {{ zahlenfeld("sort_order", "Sortierung", values.sort_order,
+    {{ text_field("code", "Technischer Code", values.code, errors=errors.code, pflicht=true) }}
+    {{ text_field("name", "Name", values.name, errors=errors.name, pflicht=true) }}
+    {{ number_field("sort_order", "Sortierung", values.sort_order,
                   errors=errors.sort_order, step="1") }}
     <button class="btn btn-primary" type="submit">Speichern</button>
     <a class="btn btn-secondary" href="/modes">Abbrechen</a>

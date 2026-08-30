@@ -1,10 +1,10 @@
 {% extends "base.html" %}
-{% from "form.html" import loeschbestaetigung %}
-{% block titel %}Schaltpunkt löschen – thermoctl{% endblock %}
+{% from "form.html" import delete_confirmation %}
+{% block title %}Schaltpunkt löschen – thermoctl{% endblock %}
 {% block inhalt %}
-{{ loeschbestaetigung(
+{{ delete_confirmation(
     "Schaltpunkt löschen",
-    "Soll der Schaltpunkt am " ~ wochentage[point.weekday] ~ " um " ~
+    "Soll der Schaltpunkt am " ~ weekdays[point.weekday] ~ " um " ~
         "%02d:%02d"|format(point.minute_of_day // 60, point.minute_of_day % 60) ~
         " wirklich gelöscht werden?",
     "Der vorherige Modus gilt danach bis zum folgenden Schaltpunkt.",

@@ -1,8 +1,8 @@
 {% extends "base.html" %}
-{% block titel %}Bediengeräte – thermoctl{% endblock %}
+{% block title %}Bediengeräte – thermoctl{% endblock %}
 {% block inhalt %}
 <h1>Bediengeräte</h1>
-<p class="t-leise">Hier steht je Merkmal, was vom Gerät ankommt und was thermoctl dorthin sendet.</p>
+<p class="t-quiet">Hier steht je Merkmal, was vom Gerät ankommt und was thermoctl dorthin sendet.</p>
 {% if errors.channel %}<div class="alert alert-danger">{{ errors.channel }}</div>{% endif %}
 {% if errors.button %}<div class="alert alert-danger">{{ errors.button }}</div>{% endif %}
 {% if not controllers %}<p>Noch kein Bediengerät ist einer sichtbaren Zone zugeordnet.</p>{% endif %}
@@ -10,16 +10,16 @@
 {% for device in controllers %}
 <section class="tc-panel p-4 mb-4">
   <h2>{{ device.display_name }}</h2>
-  <p class="t-leise">{{ device.model or "Modell unbekannt" }}</p>
+  <p class="t-quiet">{{ device.model or "Modell unbekannt" }}</p>
 
   <h3 class="h5">Was ankommt</h3>
   <div class="table-responsive"><table class="table align-middle"><thead><tr><th>Merkmal</th><th>Letzter Wert</th><th>Verwendung</th></tr></thead><tbody>
   {% for property in properties.get(device.id, []) if property.is_readable %}
   {% set channel = channels.get((device.id, property.name)) %}
-  <tr><td class="t-wert">{{ property.name }}</td><td>
+  <tr><td class="t-value">{{ property.name }}</td><td>
     {% if property.last_value_number is not none %}{{ property.last_value_number }} {{ property.unit or "" }}
     {% elif property.last_value_text is not none %}{{ property.last_value_text }}{% else %}—{% endif %}
-    {% if property.last_value_at %}<span class="t-leise small">({{ property.last_value_at|age }})</span>{% endif %}
+    {% if property.last_value_at %}<span class="t-quiet small">({{ property.last_value_at|age }})</span>{% endif %}
   </td><td>
   {% if device.id in manageable_ids %}
     <form method="post" action="/controllers/channel" class="row g-2">
@@ -36,7 +36,7 @@
   <div class="table-responsive"><table class="table align-middle"><thead><tr><th>Merkmal</th><th>Erlaubt</th><th>Quelle</th></tr></thead><tbody>
   {% for property in properties.get(device.id, []) if property.is_writable %}
   {% set channel = channels.get((device.id, property.name)) %}
-  <tr class="tc-target" data-target="kanal" data-form="channel-{{ device.id }}-{{ property.id }}"><td class="t-wert">{{ property.name }}</td><td>
+  <tr class="tc-target" data-target="channel" data-form="channel-{{ device.id }}-{{ property.id }}"><td class="t-value">{{ property.name }}</td><td>
     {% if property_values[property.id] %}{{ property_values[property.id]|join(", ") }}{% elif property.min_value is not none or property.max_value is not none %}{{ property.min_value|grad if property.min_value is not none else "…" }} bis {{ property.max_value|grad if property.max_value is not none else "…" }} {{ property.unit or "" }}{% else %}{{ property.value_type }}{% endif %}
   </td><td>
   {% if device.id in manageable_ids %}<form id="channel-{{ device.id }}-{{ property.id }}" method="post" action="/controllers/channel" class="row g-2">
@@ -51,10 +51,10 @@
   </tbody></table></div>
 
   <h3 class="h5 mt-4">Tastenbelegung</h3>
-  {% if bindings[device.id] %}<div class="table-responsive"><table class="table align-middle"><tbody>{% for binding in bindings[device.id] %}<tr><td class="t-wert">{{ binding.aktion }}</td><td>
-    <form method="post" action="/controllers/button" class="row g-2"><input type="hidden" name="device_id" value="{{ device.id }}"><input type="hidden" name="action_code" value="{{ binding.aktion }}"><div class="col"><select class="form-select form-select-sm" name="command"><option value="">— nichts —</option>{% for command in commands %}<option value="{{ command.code }}" {{ "selected" if command.code == binding.command_code }}>{{ command.label }}</option>{% endfor %}</select></div><div class="col"><input class="form-control form-control-sm" name="step_k" value="{{ binding.step_k|grad if binding.step_k is not none }}" placeholder="0,5 K"></div><div class="col-auto"><button class="btn btn-sm btn-outline-secondary">Übernehmen</button></div></form>
-  </td></tr>{% endfor %}</tbody></table></div>{% else %}<p class="t-leise">Noch keinen Tastendruck empfangen.</p>{% endif %}
+  {% if bindings[device.id] %}<div class="table-responsive"><table class="table align-middle"><tbody>{% for binding in bindings[device.id] %}<tr><td class="t-value">{{ binding.action }}</td><td>
+    <form method="post" action="/controllers/button" class="row g-2"><input type="hidden" name="device_id" value="{{ device.id }}"><input type="hidden" name="action_code" value="{{ binding.action }}"><div class="col"><select class="form-select form-select-sm" name="command"><option value="">— nichts —</option>{% for command in commands %}<option value="{{ command.code }}" {{ "selected" if command.code == binding.command_code }}>{{ command.label }}</option>{% endfor %}</select></div><div class="col"><input class="form-control form-control-sm" name="step_k" value="{{ binding.step_k|grad if binding.step_k is not none }}" placeholder="0,5 K"></div><div class="col-auto"><button class="btn btn-sm btn-outline-secondary">Übernehmen</button></div></form>
+  </td></tr>{% endfor %}</tbody></table></div>{% else %}<p class="t-quiet">Noch keinen Tastendruck empfangen.</p>{% endif %}
 </section>{% endfor %}
 
-<section class="tc-panel p-4" id="device-pool"><h2 class="h5">Temperaturquellen</h2><p class="t-leise small" data-drag-hint hidden>Ein Gerät auf ein schreibbares Merkmal ziehen.</p><div class="d-flex flex-wrap gap-2">{% for source in devices %}<div class="tc-node tc-node-free tc-draggable" data-device="{{ source.id }}"><div class="tc-node-name">{{ source.display_name }}</div></div>{% endfor %}</div></section>
+<section class="tc-panel p-4" id="device-pool"><h2 class="h5">Temperaturquellen</h2><p class="t-quiet small" data-drag-hint hidden>Ein Gerät auf ein schreibbares Merkmal ziehen.</p><div class="d-flex flex-wrap gap-2">{% for source in devices %}<div class="tc-node tc-node-free tc-draggable" data-device="{{ source.id }}"><div class="tc-node-name">{{ source.display_name }}</div></div>{% endfor %}</div></section>
 {% endblock %}

@@ -61,6 +61,45 @@ Drei Brüche, die die Umbenennung erzeugte, und wie sie gefunden wurden:
   einfach nicht mehr an. Das fing ein Test. Wer künftig ein Feld eines Datenmodells
   umbenennt, greppt die Vorlagen nach dem alten Attributnamen.
 
+**Und noch ein Nachtrag: Der Rest war groesser als gedacht.** Eine zweite Zaehlung,
+diesmal jeden Bezeichner gegen ein Woerterbuch gehalten statt nach deutschen Woertern
+gesucht, fand rund 200 weitere. Dazu kamen die Stellen, die gar kein Python sind: die
+Kontextschluessel der Vorlagen (43), die Jinja-Makros und ihre Parameter, die CSS-Variablen
+(17), die vier JavaScript-Dateien mitsamt Kommentaren, und die Werte, die zwischen Vorlage
+und View verabredet sind (`ja`/`nein`, `naechste_schaltung`, `laeuft`/`eingerichtet`).
+Alles davon ist jetzt englisch. Der Nachweis ist derselbe wie oben: null Unterschiede in
+den 3036 Zeichenkettenliteralen unter `thermoctl/`.
+
+**Drei Defekte, die dabei ans Licht kamen — alle aelter als diese Umstellung:**
+
+- Das **Scharfschalt-Formular war kaputt.** Die View las `form.get("begruendung")`, die
+  Vorlage schickte seit der ersten Uebersetzung `name="reason"`. Scharfschalten verlangt
+  eine Begruendung, also waere jeder Versuch mit „Bitte kurz festhalten, worauf sich das
+  Scharfschalten stuetzt" abgeprallt — an einer Anlage, die niemand scharf schalten kann.
+- Die **Uebersteuerung auf der Startseite** schickte `naechste_schaltung`, `dauer`,
+  `dauerhaft`; die View kennt `next_switch`, `duration`, `permanent`. „Bis zur naechsten
+  Schaltung" und „fuer eine Dauer" fielen still auf „auf Widerruf" zurueck.
+- Die **Token-Gueltigkeit** und die **Uebersteuerungsdauer** lasen bei einer abgewiesenen
+  Eingabe Schluessel, die es nicht mehr gab (`gueltig_tage`, `dauer_minuten`) — das Feld
+  kam leer zurueck statt mit dem, was dort stand.
+
+Keiner der drei hatte einen roten Test. Alle drei fand erst der Abgleich Vorlage gegen
+View, den diese Umstellung erzwungen hat.
+
+**Eine Konfigurationsaenderung, die beim Umstieg zu beachten ist:**
+`THERMOCTL_MQTT_PRAEFIX` heisst jetzt `THERMOCTL_MQTT_PREFIX`. Wer eine `.env` hat, zieht
+das nach; sonst gilt wieder die Vorgabe `thermoctl` und der Dienst veroeffentlicht unter
+einem anderen Topic-Zweig als bisher.
+
+**Was der Vergleich der Bildschirmfotos gefangen hat:** Die CSS-Variablen und die Vorlagen
+gingen getrennt — `var(--warmth)` stand in der Vorlage, `--waerme` im Stylesheet. Die
+Zeitplan-Balken verloren dadurch ihre Waermefarbe und wurden grau. Kein Test hat das
+gesehen; die Seite antwortete mit 200 und sah nur anders aus.
+
+Von 18 verglichenen Seiten sind 15 pixelgleich zur Fassung davor; zwei aendern sich schon
+zwischen zwei Aufnahmen desselben Standes (sie nennen Zeitspannen), und die dritte
+unterscheidet sich genau in dem umbenannten Variablennamen.
+
 Zehn der elf geprüften Seiten sind pixelgleich zu den Aufnahmen davor; die elfte
 unterscheidet sich in einem Satz, der eine Zeitspanne nennt.
 

@@ -71,7 +71,7 @@ def _visible_zone(session: Session, principal: Principal, zone_id: int) -> Zone:
     return zone
 
 
-def _dezimal(value: Decimal | None) -> str | None:
+def _decimal(value: Decimal | None) -> str | None:
     return None if value is None else str(value)
 
 
@@ -104,7 +104,7 @@ def zone_state(session: Session, plaintext: str, zone_id: int) -> dict[str, obje
         return {"temperature_c": None, "measured_at": None, "sensor_state": None}
     status = session.get(SensorStatus, row.sensor_status_id)
     return {
-        "temperature_c": _dezimal(row.temperature_c),
+        "temperature_c": _decimal(row.temperature_c),
         "measured_at": _moment(row.measured_at),
         "sensor_state": None if status is None else status.code,
     }
@@ -118,7 +118,7 @@ def explain_setpoint(
     zone = _visible_zone(session, principal, zone_id)
     setpoint = resolved_setpoint(session, zone, now or utcnow())
     return {
-        "temperature_c": _dezimal(setpoint.temperature_c),
+        "temperature_c": _decimal(setpoint.temperature_c),
         "reason": setpoint.reason,
         "mode": setpoint.mode_code,
     }
@@ -129,7 +129,7 @@ def read_schedule(session: Session, plaintext: str, zone_id: int) -> list[dict[s
     _token, principal = _log_in(session, plaintext)
     zone = _visible_zone(session, principal, zone_id)
     require(principal, "zone.read", zone.id)
-    zeilen = session.execute(
+    rows = session.execute(
         select(SchedulePoint, SetpointMode)
         .join(SetpointMode, SetpointMode.id == SchedulePoint.setpoint_mode_id)
         .where(SchedulePoint.zone_id == zone.id)
@@ -141,7 +141,7 @@ def read_schedule(session: Session, plaintext: str, zone_id: int) -> list[dict[s
             "minute_of_day": point.minute_of_day,
             "mode": mode.name,
         }
-        for point, mode in zeilen
+        for point, mode in rows
     ]
 
 
@@ -150,15 +150,15 @@ def read_setpoints(session: Session, plaintext: str, zone_id: int) -> list[dict[
     _token, principal = _log_in(session, plaintext)
     zone = _visible_zone(session, principal, zone_id)
     require(principal, "zone.read", zone.id)
-    zeilen = session.execute(
+    rows = session.execute(
         select(ZoneSetpoint, SetpointMode)
         .join(SetpointMode, SetpointMode.id == ZoneSetpoint.setpoint_mode_id)
         .where(ZoneSetpoint.zone_id == zone.id)
         .order_by(SetpointMode.sort_order, SetpointMode.code)
     )
     return [
-        {"mode": mode.name, "temperature_c": _dezimal(setpoint.temperature_c)}
-        for setpoint, mode in zeilen
+        {"mode": mode.name, "temperature_c": _decimal(setpoint.temperature_c)}
+        for setpoint, mode in rows
     ]
 
 
@@ -166,7 +166,7 @@ def list_devices(session: Session, plaintext: str) -> list[dict[str, object]]:
     """Lists devices along with integration, capabilities, and signs of life."""
     _token, principal = _log_in(session, plaintext)
     require(principal, "device.read")
-    zeilen = session.execute(
+    rows = session.execute(
         select(Device, Integration, DeviceHealth)
         .join(Integration, Integration.id == Device.integration_id)
         .outerjoin(DeviceHealth, DeviceHealth.device_id == Device.id)
@@ -185,10 +185,10 @@ def list_devices(session: Session, plaintext: str) -> list[dict[str, object]]:
             "name": device.display_name,
             "integration": integration.code,
             "capabilities": by_device.get(device.id, []),
-            "letzte_nachricht": None if gesund is None else _moment(gesund.last_payload_at),
-            "batterie_prozent": None if gesund is None else _dezimal(gesund.battery_percent),
+            "letzte_nachricht": None if healthy is None else _moment(healthy.last_payload_at),
+            "batterie_prozent": None if healthy is None else _decimal(healthy.battery_percent),
         }
-        for device, integration, gesund in zeilen
+        for device, integration, healthy in rows
     ]
 
 
@@ -200,7 +200,7 @@ def shadow_decisions(
         raise ValueError("Anzahl muss zwischen 1 und 100 liegen")
     _token, principal = _log_in(session, plaintext)
     zone = _visible_zone(session, principal, zone_id)
-    zeilen = session.scalars(
+    rows = session.scalars(
         select(ShadowDecision)
         .where(ShadowDecision.zone_id == zone.id)
         .order_by(ShadowDecision.decided_at.desc(), ShadowDecision.id.desc())
@@ -209,14 +209,14 @@ def shadow_decisions(
     return [
         {
             "moment": _moment(row.decided_at),
-            "ist_c": _dezimal(row.temperature_c),
-            "soll_c": _dezimal(row.setpoint_c),
-            "sollwert_begruendung": row.setpoint_reason,
+            "ist_c": _decimal(row.temperature_c),
+            "soll_c": _decimal(row.setpoint_c),
+            "setpoint_reason": row.setpoint_reason,
             "would_heat": row.would_heat,
             "outcome": row.outcome_code,
             "reason": row.reason,
         }
-        for row in zeilen
+        for row in rows
     ]
 
 
@@ -225,7 +225,7 @@ def override_zone(
     plaintext: str,
     zone_id: int,
     temperature_c: Decimal,
-    endet_am: datetime | None = None,
+    ends_at: datetime | None = None,
 ) -> dict[str, object]:
     """Creates an override via the shared domain function."""
     token, principal = _log_in(session, plaintext)
@@ -235,14 +235,14 @@ def override_zone(
         session,
         zone,
         temperature_c,
-        endet_am,
+        ends_at,
         user_id=principal.user_id,
         token_id=token.id,
         source="mcp",
     )
     return {
         "zone": zone.name,
-        "temperature_c": _dezimal(entry.temperature_c),
+        "temperature_c": _decimal(entry.temperature_c),
         "ends_at": _moment(entry.ends_at),
     }
 
@@ -252,8 +252,8 @@ def cancel_override(session: Session, plaintext: str, zone_id: int) -> dict[str,
     _token, principal = _log_in(session, plaintext)
     zone = _visible_zone(session, principal, zone_id)
     require(principal, "override.cancel", zone_id)
-    aufgehoben = domain_cancel_override(session, zone)
-    return {"zone": zone.name, "cancelled": aufgehoben is not None}
+    cancelled = domain_cancel_override(session, zone)
+    return {"zone": zone.name, "cancelled": cancelled is not None}
 
 
 def boost(session: Session, plaintext: str, zone_id: int) -> dict[str, object]:
@@ -279,7 +279,7 @@ def boost(session: Session, plaintext: str, zone_id: int) -> dict[str, object]:
     return {
         "zone": zone.name,
         "mode": result.mode_code,
-        "temperature_c": _dezimal(result.temperature),
+        "temperature_c": _decimal(result.temperature),
         "valid_until": _moment(result.bis),
     }
 
@@ -293,7 +293,7 @@ def read_control_parameters(session: Session, plaintext: str, zone_id: int) -> d
     """
     _token, principal = _log_in(session, plaintext)
     zone = _visible_zone(session, principal, zone_id)
-    wirksam = control_parameters(session, zone)
+    effective = control_parameters(session, zone)
     return {
         "zone": zone.name,
         "parameter": [
@@ -301,7 +301,7 @@ def read_control_parameters(session: Session, plaintext: str, zone_id: int) -> d
                 "name": description.name,
                 "label": description.label,
                 "unit": description.einheit,
-                "value": str(getattr(wirksam, description.name)),
+                "value": str(getattr(effective, description.name)),
                 "own_value": getattr(zone, description.name) is not None,
                 "minimum": str(description.minimum),
                 "maximum": str(description.maximum),
@@ -322,10 +322,10 @@ def set_control_parameters(
     _token, principal = _log_in(session, plaintext)
     zone = _visible_zone(session, principal, zone_id)
     require(principal, "zone.manage", zone_id)
-    gesetzt = domain_set_parameter(
+    set_value = domain_set_parameter(
         session, zone, name, value, user_id=principal.user_id, source="mcp"
     )
-    return {"zone": zone.name, "name": name, "value": _dezimal(gesetzt)}
+    return {"zone": zone.name, "name": name, "value": _decimal(set_value)}
 
 
 def read_control(session: Session, plaintext: str) -> dict[str, object]:
@@ -462,10 +462,10 @@ def _register_tools(
 
     @server.tool(name="override")
     def mcp_override(
-        zone_id: int, temperature_c: Decimal, endet_am: datetime | None = None
+        zone_id: int, temperature_c: Decimal, ends_at: datetime | None = None
     ) -> dict[str, object]:
         with session_scope(factory) as session:
-            return override_zone(session, plaintext, zone_id, temperature_c, endet_am)
+            return override_zone(session, plaintext, zone_id, temperature_c, ends_at)
 
     @server.tool(name="cancel_override")
     def mcp_cancel_override(zone_id: int) -> dict[str, object]:

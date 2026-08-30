@@ -1,19 +1,19 @@
 {% extends "base.html" %}
 {% from "zone_header.html" import zonenkopf %}
-{% from "form.html" import textfeld, zahlenfeld, auswahl %}
-{% block titel %}{% if zone %}Zone bearbeiten{% else %}Zone anlegen{% endif %} – thermoctl{% endblock %}
+{% from "form.html" import text_field, number_field, select_field %}
+{% block title %}{% if zone %}Zone bearbeiten{% else %}Zone anlegen{% endif %} – thermoctl{% endblock %}
 {% block inhalt %}
 {% if zone %}{{ zonenkopf(zone, "Zonendaten") }}{% else %}<h1 class="mb-4">Zone anlegen</h1>{% endif %}
 <form method="post" action="{% if zone %}/zonen/{{ zone.id }}{% else %}/zonen{% endif %}">
-    {{ textfeld("name", "Technischer Name", values.name|default(""),
+    {{ text_field("name", "Technischer Name", values.name|default(""),
                  "Eindeutiger Name für Schnittstellen und Konfiguration.", errors.name, true) }}
-    {{ textfeld("display_name", "Anzeigename", values.display_name|default(""),
+    {{ text_field("display_name", "Anzeigename", values.display_name|default(""),
                  "Dieser Name erscheint in der Oberfläche.", errors.display_name, true) }}
-    {{ auswahl("operating_mode", "Betriebsart", operating_modes,
+    {{ select_field("operating_mode", "Betriebsart", operating_modes,
                values.operating_mode|default(""), "", errors.operating_mode) }}
-    {{ zahlenfeld("sort_order", "Sortierung", values.sort_order|default("0"),
+    {{ number_field("sort_order", "Sortierung", values.sort_order|default("0"),
                   "Kleinere Zahlen erscheinen zuerst.", errors.sort_order, "1") }}
-    {{ auswahl("temperature_source_device_id", "Messquelle", devices,
+    {{ select_field("temperature_source_device_id", "Messquelle", devices,
                values.temperature_source_device_id|default(""),
                "Leer lassen, wenn noch kein Temperatursensor zugeordnet ist.",
                errors.temperature_source_device_id, true) }}

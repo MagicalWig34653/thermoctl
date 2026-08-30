@@ -29,7 +29,7 @@ def test_a_fully_wired_zone_has_no_deficiencies(session: Session) -> None:
     assert picture.temperature_source is not None
     assert picture.temperature_source.name == sensor.display_name
     assert [a.name for a in picture.actuators] == [valve.display_name]
-    assert picture.maengel == []
+    assert picture.defects == []
 
 
 def test_a_zone_without_a_temperature_source_reports_the_deficiency(session: Session) -> None:
@@ -43,7 +43,7 @@ def test_a_zone_without_a_temperature_source_reports_the_deficiency(session: Ses
     session.flush()
     picture = plant_diagram(session, [zone]).zones[0]
     assert picture.temperature_source is None
-    assert any("Messquelle" in m for m in picture.maengel)
+    assert any("Messquelle" in m for m in picture.defects)
 
 
 def test_a_zone_without_an_actuator_reports_the_deficiency(session: Session) -> None:
@@ -52,7 +52,7 @@ def test_a_zone_without_an_actuator_reports_the_deficiency(session: Session) -> 
     zone.temperature_source_device_id = sensor.id
     session.flush()
     picture = plant_diagram(session, [zone]).zones[0]
-    assert any("Aktor" in m for m in picture.maengel)
+    assert any("Aktor" in m for m in picture.defects)
 
 
 def test_window_contacts_appear_under_their_zone(session: Session) -> None:
@@ -125,8 +125,8 @@ def test_an_old_misassignment_is_reported_as_a_deficiency(session: Session) -> N
     session.flush()
 
     picture = plant_diagram(session, [zone]).zones[0]
-    assert picture.actuators[0].ungeeignet is not None
-    assert any("Schaltausgang" in m or "keinen Schaltausgang" in m for m in picture.maengel)
+    assert picture.actuators[0].unsuitable is not None
+    assert any("Schaltausgang" in m or "keinen Schaltausgang" in m for m in picture.defects)
 
 
 def test_an_orphaned_valve_does_not_count_as_unsuitable(session: Session) -> None:
@@ -145,4 +145,4 @@ def test_an_orphaned_valve_does_not_count_as_unsuitable(session: Session) -> Non
 
     picture = plant_diagram(session, [])
     free_device = next(g for g in picture.without_zone if g.name == valve.display_name)
-    assert free_device.ungeeignet is None
+    assert free_device.unsuitable is None

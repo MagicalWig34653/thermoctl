@@ -1,28 +1,28 @@
 {% extends "base.html" %}
-{% from "form.html" import textfeld, zahlenfeld %}
-{% block titel %}Regelvorgaben – thermoctl{% endblock %}
+{% from "form.html" import text_field, number_field %}
+{% block title %}Regelvorgaben – thermoctl{% endblock %}
 {% block max_breite %}52rem{% endblock %}
 {% block inhalt %}
 
 <h1 class="mb-1">Regelvorgaben</h1>
-<p class="t-leise mb-4">
+<p class="t-quiet mb-4">
     Gelten für jede Zone, die nichts eigenes gesetzt hat. Eine Änderung wirkt damit sofort
     auf alle Zonen, die den Wert erben — die Abweichungen einer einzelnen Zone stehen bei
     der Zone selbst.
 </p>
 
-{% if darf_aendern %}
+{% if may_edit %}
 <form method="post" action="/settings" class="tc-panel p-4">
-    <p class="t-marke mb-3">Regelung</p>
+    <p class="t-label mb-3">Regelung</p>
     <div class="row g-3">
-        {% for feld, label, ganzzahlig in felder %}
+        {% for field, label, integral in fields %}
         <div class="col-sm-6">
-            {{ zahlenfeld(feld, label, values.get(feld, ""), "",
-                          errors.get(feld, ""), "1" if ganzzahlig else "0.1") }}
+            {{ number_field(field, label, values.get(field, ""), "",
+                          errors.get(field, ""), "1" if integral else "0.1") }}
         </div>
         {% endfor %}
         <div class="col-sm-6">
-            {{ textfeld("timezone", "Zeitzone", values.get("timezone", ""),
+            {{ text_field("timezone", "Zeitzone", values.get("timezone", ""),
                         "Zum Beispiel Europe/Berlin.", errors.get("timezone", ""), true) }}
         </div>
     </div>
@@ -31,16 +31,16 @@
 {% else %}
 <div class="tc-panel p-4">
     <dl class="row mb-0">
-        {% for feld, label, ganzzahlig in felder %}
-        <dt class="col-sm-7 fw-normal t-leise">{{ label }}</dt>
-        <dd class="col-sm-5 t-wert">{{ values.get(feld, "") }}</dd>
+        {% for field, label, integral in fields %}
+        <dt class="col-sm-7 fw-normal t-quiet">{{ label }}</dt>
+        <dd class="col-sm-5 t-value">{{ values.get(field, "") }}</dd>
         {% endfor %}
-        <dt class="col-sm-7 fw-normal t-leise">Zeitzone</dt>
-        <dd class="col-sm-5 t-wert mb-0">{{ values.get("timezone", "") }}</dd>
+        <dt class="col-sm-7 fw-normal t-quiet">Zeitzone</dt>
+        <dd class="col-sm-5 t-value mb-0">{{ values.get("timezone", "") }}</dd>
     </dl>
 </div>
-<p class="t-leise small mt-3">
-    Zum Ändern fehlt das Recht <span class="t-wert">setting.manage</span>.
+<p class="t-quiet small mt-3">
+    Zum Ändern fehlt das Recht <span class="t-value">setting.manage</span>.
 </p>
 {% endif %}
 

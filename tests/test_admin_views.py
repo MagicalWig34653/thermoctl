@@ -2,29 +2,29 @@ import pytest
 from sqlalchemy.orm import Session
 
 from tests.helpers import create_zone, source, user_with_permissions
-from thermoctl.auth.tokens import token_ausstellen
+from thermoctl.auth.tokens import issue_token
 from thermoctl.domain.authz import Forbidden
 
 
 def test_token_klartext_erscheint_genau_einmal(session: Session) -> None:
-    nutzer = user_with_permissions(session, "a", [("zone.read", None), ("token.self", None)])
-    token, plaintext = token_ausstellen(session, nutzer, "HA", [("zone.read", None)], None)
+    user_record = user_with_permissions(session, "a", [("zone.read", None), ("token.self", None)])
+    token, plaintext = issue_token(session, user_record, "HA", [("zone.read", None)], None)
     assert plaintext.startswith("tctl_")
     assert plaintext not in (token.token_hash, token.prefix)
 
 
 def test_a_token_with_more_permissions_than_its_owner_is_refused(session: Session) -> None:
-    nutzer = user_with_permissions(session, "b", [("zone.read", None), ("token.self", None)])
+    user_record = user_with_permissions(session, "b", [("zone.read", None), ("token.self", None)])
     with pytest.raises(Forbidden):
-        token_ausstellen(session, nutzer, "Zuviel", [("zone.manage", None)], None)
+        issue_token(session, user_record, "Zuviel", [("zone.manage", None)], None)
 
 
 def test_a_token_for_a_foreign_zone_is_refused(session: Session) -> None:
     bad = create_zone(session, "bad")
     kueche = create_zone(session, "kueche")
-    nutzer = user_with_permissions(session, "c", [("zone.read", bad.id), ("token.self", None)])
+    user_record = user_with_permissions(session, "c", [("zone.read", bad.id), ("token.self", None)])
     with pytest.raises(Forbidden):
-        token_ausstellen(session, nutzer, "Fremd", [("zone.read", kueche.id)], None)
+        issue_token(session, user_record, "Fremd", [("zone.read", kueche.id)], None)
 
 
 def test_the_user_list_needs_user_manage(client_als) -> None:
@@ -56,8 +56,8 @@ def _with_csrf(client, session):  # type: ignore[no-untyped-def]
     from thermoctl.auth.sessions import COOKIE_NAME
     from thermoctl.config import get_settings
 
-    geheimnis = client.cookies[COOKIE_NAME]
-    return {"X-CSRF-Token": csrf_token(geheimnis, get_settings().secret_key.get_secret_value())}
+    secret = client.cookies[COOKIE_NAME]
+    return {"X-CSRF-Token": csrf_token(secret, get_settings().secret_key.get_secret_value())}
 
 
 def test_creating_a_user_through_the_interface(client_als, session: Session) -> None:
@@ -115,7 +115,7 @@ def test_the_last_administrator_cannot_deactivate_themselves(
     ich = session.scalar(select(User).where(User.username.like("web-%")))
     assert ich is not None
     response = c.post(
-        f"/users/{ich.id}/active", data={"active": "nein"},
+        f"/users/{ich.id}/active", data={"active": "no"},
         headers=_with_csrf(c, session),
     )
     assert response.status_code == 200
@@ -126,7 +126,7 @@ def test_the_last_administrator_cannot_deactivate_themselves(
 def test_an_unknown_user_yields_404(client_als, session: Session) -> None:
     c = client_als([("user.manage", None)])
     response = c.post(
-        "/users/999999/active", data={"active": "ja"}, headers=_with_csrf(c, session)
+        "/users/999999/active", data={"active": "yes"}, headers=_with_csrf(c, session)
     )
     assert response.status_code == 404
 
@@ -406,12 +406,12 @@ def test_deactivating_and_reactivating_a_user(client_als, session: Session) -> N
     anderer = create_user(session, "kommt-und-geht")
     c = client_als([("user.manage", None)])
     assert c.post(
-        f"/users/{anderer.id}/active", data={"active": "nein"},
+        f"/users/{anderer.id}/active", data={"active": "no"},
         headers=_with_csrf(c, session), follow_redirects=False,
     ).status_code == 303
     assert anderer.is_active is False
     assert c.post(
-        f"/users/{anderer.id}/active", data={"active": "ja"},
+        f"/users/{anderer.id}/active", data={"active": "yes"},
         headers=_with_csrf(c, session), follow_redirects=False,
     ).status_code == 303
     assert anderer.is_active is True

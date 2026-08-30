@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block titel %}Statistik – thermoctl{% endblock %}
+{% block title %}Statistik – thermoctl{% endblock %}
 {% block max_breite %}72rem{% endblock %}
 
 {#
@@ -14,14 +14,14 @@ Die Balken sind kupfern wie überall: Farbe ist hier Wärme, und nichts anderes.
 <div class="d-flex justify-content-between align-items-baseline flex-wrap gap-2 mb-1">
     <h1 class="mb-0">Heizzeiten</h1>
     <nav class="d-flex gap-1" aria-label="Zeitraum">
-        {% for schluessel, label in zeitraeume %}
-        <a class="btn btn-sm {{ 'btn-primary' if schluessel == zeitraum else 'btn-outline-secondary' }}"
-           href="/statistik?zeitraum={{ schluessel }}"
-           {% if schluessel == zeitraum %}aria-current="page"{% endif %}>{{ label }}</a>
+        {% for key, label in periods %}
+        <a class="btn btn-sm {{ 'btn-primary' if key == period else 'btn-outline-secondary' }}"
+           href="/statistik?zeitraum={{ key }}"
+           {% if key == period %}aria-current="page"{% endif %}>{{ label }}</a>
         {% endfor %}
     </nav>
 </div>
-<p class="t-leise mb-4">
+<p class="t-quiet mb-4">
     {% if armed %}
     Wie lange die Regelung je Zone und Tag geheizt hat.
     {% else %}
@@ -33,12 +33,12 @@ Die Balken sind kupfern wie überall: Farbe ist hier Wärme, und nichts anderes.
 
 {% if not zones %}
 <div class="tc-panel p-4">
-    <p class="t-leise mb-0">Noch keine Zonen angelegt.</p>
+    <p class="t-quiet mb-0">Noch keine Zonen angelegt.</p>
 </div>
 {% elif maximum == 0 %}
 <div class="tc-panel p-4">
-    <p class="t-abschnitt mb-1">In diesem Zeitraum wurde nicht geheizt.</p>
-    <p class="t-leise mb-0">
+    <p class="t-section mb-1">In diesem Zeitraum wurde nicht geheizt.</p>
+    <p class="t-quiet mb-0">
         Entweder war es warm genug, oder der Regelzyklus lief noch nicht — er schreibt
         seine Entscheidungen nur mit eingeschaltetem MQTT.
         <a href="/interfaces">Schnittstellen ansehen</a>
@@ -52,9 +52,9 @@ Die Balken sind kupfern wie überall: Farbe ist hier Wärme, und nichts anderes.
     <section class="{{ 'mt-4 pt-4 border-top' if not loop.first }}">
         <div class="d-flex justify-content-between align-items-baseline mb-2">
             <h2 class="mb-0">{{ zone.display_name }}</h2>
-            <span class="t-wert">
-                {{ as_duration(stat.seconds_gesamt) }}
-                <span class="t-leise" style="font-size: .75rem">gesamt</span>
+            <span class="t-value">
+                {{ as_duration(stat.seconds_total) }}
+                <span class="t-quiet" style="font-size: .75rem">gesamt</span>
             </span>
         </div>
         <div class="tc-bars">
@@ -64,7 +64,7 @@ Die Balken sind kupfern wie überall: Farbe ist hier Wärme, und nichts anderes.
                     <div class="tc-bar-value"
                          style="height: {{ (day.seconds * 100 / maximum)|round(2) }}%"></div>
                 </div>
-                <div class="tc-bar-marker t-wert t-leise">{{ day.day.strftime("%d.%m.") }}</div>
+                <div class="tc-bar-marker t-value t-quiet">{{ day.day.strftime("%d.%m.") }}</div>
             </div>
             {% endfor %}
         </div>
@@ -72,12 +72,12 @@ Die Balken sind kupfern wie überall: Farbe ist hier Wärme, und nichts anderes.
     {% endfor %}
 </div>
 
-<p class="t-leise small mt-3">
+<p class="t-quiet small mt-3">
     Gerechnet aus dem Schattenprotokoll: Der Regelzyklus schreibt für jede Zone in jedem
     Durchlauf, ob sie heizen würde. Gezählt werden die Abstände zwischen diesen
     Messpunkten — stand der Dienst still, zählt die Lücke nicht als Heizzeit.
     Alle Zonen an derselben Skala; der höchste Tageswert ist
-    <span class="t-wert">{{ as_duration(maximum) }}</span>.
+    <span class="t-value">{{ as_duration(maximum) }}</span>.
 </p>
 {% endif %}
 {% endblock %}

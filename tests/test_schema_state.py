@@ -14,7 +14,7 @@ from sqlalchemy import Engine, create_engine, text
 from thermoctl.db.base import Base
 from thermoctl.db.schema_state import (
     COMMAND,
-    SchemaPasstNicht,
+    SchemaMismatch,
     check_schema,
     database_state,
 )
@@ -37,7 +37,7 @@ def _stamped_database(tmp_path, revision: str, name: str = "gestempelt.db") -> E
 
 def test_an_empty_database_names_the_command(tmp_path) -> None:
     """The message must be actionable: what is missing, and what to do about it."""
-    with pytest.raises(SchemaPasstNicht) as errors:
+    with pytest.raises(SchemaMismatch) as errors:
         check_schema(_empty_database(tmp_path))
     assert COMMAND in str(errors.value)
     assert "kein Schema" in str(errors.value)
@@ -47,7 +47,7 @@ def test_an_outdated_state_names_both_revisions(tmp_path, monkeypatch) -> None:
     """The less pleasant case: the schema exists, but is old. Without this check
     that only surfaces later, at some arbitrary column that does not exist yet."""
     monkeypatch.setattr("thermoctl.db.schema_state._migration_head", lambda: "neue_revision")
-    with pytest.raises(SchemaPasstNicht) as errors:
+    with pytest.raises(SchemaMismatch) as errors:
         check_schema(_stamped_database(tmp_path, "alte_revision"))
     notice = str(errors.value)
     assert "alte_revision" in notice
