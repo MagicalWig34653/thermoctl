@@ -1,3 +1,4 @@
+# ruff: noqa: E501
 """Den eigenen Zustand veröffentlichen — und die Zonen bei Home Assistant anmelden.
 
 Der Vertrag steht in `integrations/mqtt/veroeffentlichung.py`: Topics, Discovery-Nutzlasten,
@@ -26,6 +27,7 @@ Nutzlast auf jedem ihrer Config-Topics; sonst bliebe in Home Assistant ein Therm
 stehen, der niemandem mehr gehört.
 """
 
+import json
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -35,9 +37,13 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from thermoctl.db.models.lookup import SensorStatus
+from thermoctl.config import get_settings
+from thermoctl.db.models.device import ControllerChannel, Device
+from thermoctl.db.models.lookup import ChannelKind, DeviceCapability, SensorStatus
+from thermoctl.db.models.measurement import Measurement
 from thermoctl.db.models.state import ShadowDecision, ZoneState
 from thermoctl.db.models.zone import SetpointMode, Zone, ZoneSetpoint
+from thermoctl.domain.controller_channels import darf_beschrieben_werden
 from thermoctl.domain.schedule import end_of_next_switch, resolved_setpoint
 from thermoctl.domain.zone_settings import PARAMETERS, control_parameters
 from thermoctl.integrations.actuators import MqttPublisher, switching_allowed
@@ -76,6 +82,7 @@ class PublicationState:
 
     angemeldet: dict[int, list[str]] = field(default_factory=dict)
     dienst_angemeldet: bool = False
+    controller_values: dict[int, object] = field(default_factory=dict)
 
 
 def _als_text(value: object) -> str:
@@ -152,6 +159,7 @@ async def cycle(
     gesendet += await _deregister_deleted(client, state, {zone.id for zone in zones})
     for zone in zones:
         gesendet += await zone_state_senden(session, client, zone, praefix, now)
+    gesendet += await _controller_channels_senden(session, client, state, get_settings().mqtt_base_topic, now)
     return gesendet
 
 
@@ -197,6 +205,57 @@ async def _deregister_deleted(
         del state.angemeldet[zone_id]
         log.info("Geloeschte Zone bei Home Assistant abgemeldet", extra={"zone_id": zone_id})
     return gesendet
+
+
+def _channel_value(session: Session, channel: ControllerChannel, kind: ChannelKind, now: datetime) -> object | None:
+    if kind.code == "fixed":
+        return channel.fixed_number if channel.fixed_number is not None else channel.fixed_text
+    if kind.code == "sensor_temperature" and channel.source_device_id is not None:
+        capability_id = session.scalar(select(DeviceCapability.id).where(DeviceCapability.code == "temperature"))
+        return session.scalar(select(Measurement.value_numeric).where(
+            Measurement.device_id == channel.source_device_id,
+            Measurement.capability_id == capability_id,
+            Measurement.value_numeric.is_not(None),
+        ).order_by(Measurement.measured_at.desc(), Measurement.id.desc()).limit(1))
+    if channel.zone_id is None:
+        return None
+    zone = session.get(Zone, channel.zone_id)
+    if zone is None:  # pragma: no cover - Fremdschluessel haelt dagegen
+        return None
+    if kind.code == "zone_temperature":
+        zone_state = session.get(ZoneState, zone.id)
+        return zone_state.temperature_c if zone_state is not None else None
+    if kind.code == "zone_setpoint":
+        return resolved_setpoint(session, zone, now).temperature_c
+    return None
+
+
+async def _controller_channels_senden(
+    session: Session, client: MqttPublisher, state: PublicationState, basis: str, now: datetime
+) -> int:
+    """Sendet geaenderte Anzeigenwerte; jeder Versand bleibt explizit unschaltend."""
+    sent = 0
+    rows = session.execute(
+        select(ControllerChannel, ChannelKind, Device)
+        .join(ChannelKind, ChannelKind.id == ControllerChannel.kind_id)
+        .join(Device, Device.id == ControllerChannel.device_id)
+        .where(ControllerChannel.direction == "write")
+    )
+    for channel, kind, device in rows:
+        # Zweite Pruefung, absichtlich dieselbe Funktion wie beim Anlegen: Eine Rolle
+        # kann sich aendern, nachdem der Kanal eingerichtet wurde.
+        if not darf_beschrieben_werden(session, device):
+            log.error("Unsicherer Schreibkanal wird nicht gesendet", extra={"geraet": device.display_name})
+            continue
+        value = _channel_value(session, channel, kind, now)
+        if value is None or state.controller_values.get(channel.id) == value:
+            continue
+        payload_value: object = float(value) if isinstance(value, Decimal) else value
+        payload = json.dumps({channel.property_name: payload_value}, ensure_ascii=False, separators=(",", ":"))
+        if await client.publishing(f"{basis.rstrip('/')}/{device.external_id}/set", payload, switches=False):
+            state.controller_values[channel.id] = value
+            sent += 1
+    return sent
 
 
 def _last_switch(session: Session, zone_id: int) -> datetime | None:

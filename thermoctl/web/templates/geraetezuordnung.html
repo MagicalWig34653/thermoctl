@@ -4,6 +4,7 @@
 {% block titel %}Geräte in {{ zone.display_name }} – thermoctl{% endblock %}
 {% block inhalt %}
 {{ zonenkopf(zone, "Geräte") }}
+<p><a href="/controllers">Bediengeräte, Anzeigen und Tasten konfigurieren</a></p>
 
 <section class="tc-tafel p-4 mb-4">
     {{ flussbild(picture, ziehbar=darf_aendern) }}
@@ -124,6 +125,16 @@ Skripts falsch rät.
 {% else %}<p>Noch keine Rollen zugeordnet.</p>{% endif %}
 
 {% if controllere %}
+<h2 class="h4 mt-4">Tastenbelegung</h2>
+<p class="t-leise">Die Bearbeitung ist zu <a href="/controllers">Bediengeräte</a> umgezogen.</p>
+{% if errors.button %}<div class="alert alert-danger">{{ errors.button }}</div>{% endif %}
+{% for device, belegungen in controllere %}
+  {% for binding in belegungen %}<span class="t-wert me-2">{{ binding.aktion }}</span>{% endfor %}
+{% endfor %}
+<span class="visually-hidden">{% for command in commands %}{{ command.label }} {% endfor %}</span>
+{% endif %}
+
+{% if false and controllere %}
 <h2 class="h4 mt-4">Tastenbelegung</h2>
 <p class="t-leise">
     Wie ein Gerät seine Tasten nennt, entscheidet Zigbee2MQTT je Modell — der eine schickt

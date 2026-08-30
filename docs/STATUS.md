@@ -1,6 +1,24 @@
 # Stand
 
-Letzte Aktualisierung: 2026-08-29
+Letzte Aktualisierung: 2026-08-30
+
+## Konfigurierbare Bediengeräte
+
+Zigbee2MQTT-Merkmale aus `bridge/devices` werden jetzt mit Zugriff, Typ, Einheit,
+Wertebereich und Auswahlwerten gespeichert. Unter `/controllers` lassen sich lesbare
+Merkmale auf Sollwert oder Betriebsart einer Zone und schreibbare Merkmale auf
+Sensor-/Zonentemperatur, Zonensollwert oder einen festen Wert legen. Die Tastenbelegung
+wird dort bearbeitet; die Zonenseite verweist nur noch auf die neue Stelle.
+
+Schreibkanäle sind doppelt abgesichert: Die Domäne nimmt sie ausschließlich für Geräte
+mit der Zonenrolle `controller` an, und der Veröffentlichungszyklus prüft diese Rolle vor
+jedem Versand erneut. Die MQTT-Nachricht trägt `switches=False` und wird nur bei einem
+geänderten Wert (oder nach Prozessneustart) gesendet. Lesekanäle verwenden wie
+Tastendrücke den Messzeitpunkt als Wiederholungsschutz.
+
+Was nur der Projektinhaber kann: Am echten Bediengerät prüfen, ob `sensor: external` und
+`external_temperature` tatsächlich auf dem Display erscheinen und ob ein am Gerät
+verstellter Sollwert zurück in die Zone gelangt.
 
 ## Wo wir stehen
 
