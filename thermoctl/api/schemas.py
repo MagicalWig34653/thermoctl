@@ -134,6 +134,30 @@ class UebersteuerungAntwort(BaseModel):
     cancelled_at: datetime | None
 
 
+class BoostAntwort(BaseModel):
+    """Was der vorgezogene Schaltpunkt bewirkt hat.
+
+    Der Modus steht dabei mit drin, nicht nur die Temperatur: "18,0 °C bis 22:00" sagt
+    nicht, *warum* -- "Nacht, vorgezogen bis 22:00" schon.
+    """
+
+    zone_id: int
+    modus_code: str
+    temperature_c: Decimal
+    gilt_bis: datetime
+
+
+class ParameterSchreiben(BaseModel):
+    """Ein einzelner Regelparameter.
+
+    Die Grenzen stehen in der Domaene (`domain/zone_settings.PARAMETER`) und werden dort
+    geprueft. Hier steht nur, dass eine Zahl erwartet wird -- ein zweites Paar Grenzen
+    an dieser Stelle waere beim naechsten Verschieben zurueckgeblieben.
+    """
+
+    wert: Decimal
+
+
 class SteuerungAntwort(BaseModel):
     """Der Betriebszustand der Anlage samt der Vorgaben, von denen jede Zone erbt."""
 

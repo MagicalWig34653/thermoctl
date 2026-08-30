@@ -231,3 +231,133 @@ def test_uebersteuerung_loeschen_beendet_die_aktive(client, token_fuer, session)
     assert antwort.status_code == 204
     eintrag = session.query(ZoneOverride).one()
     assert eintrag.cancelled_at is not None
+
+
+def _zone_mit_plan(session: Session) -> None:
+    """Zone 1 bekommt Tag ab 00:00 und Nacht ab 22:00, beide mit Sollwert."""
+    from thermoctl.db.models.operations import Setting
+    from thermoctl.db.models.schedule import SchedulePoint
+    from thermoctl.db.models.zone import SetpointMode, ZoneSetpoint
+
+    tag = SetpointMode(code="tag", name="Tag")
+    nacht = SetpointMode(code="nacht", name="Nacht")
+    session.add_all([tag, nacht])
+    session.flush()
+    session.add_all(
+        [
+            Setting(id=1, timezone="UTC", frost_protection_mode_id=tag.id),
+            SchedulePoint(zone_id=1, weekday=1, minute_of_day=0, setpoint_mode_id=tag.id),
+            SchedulePoint(zone_id=1, weekday=1, minute_of_day=1320, setpoint_mode_id=nacht.id),
+            ZoneSetpoint(zone_id=1, setpoint_mode_id=tag.id, temperature_c=Decimal("21.0")),
+            ZoneSetpoint(zone_id=1, setpoint_mode_id=nacht.id, temperature_c=Decimal("18.0")),
+        ]
+    )
+    session.flush()
+
+
+def test_boost_braucht_das_recht_zu_uebersteuern(client, token_fuer) -> None:
+    """Es *ist* eine Uebersteuerung -- nur eine, deren Wert der Zeitplan bestimmt."""
+    kopf = token_fuer([("zone.read", "bad")])
+    assert client.post("/api/v1/zones/1/boost", headers=kopf).status_code == 403
+
+
+def test_boost_zieht_die_naechste_schaltung_vor(client, token_fuer, session) -> None:
+    from thermoctl.db.models.override import ZoneOverride
+
+    _zone_mit_plan(session)
+    kopf = token_fuer([("zone.read", "bad"), ("override.create", "bad")])
+
+    antwort = client.post("/api/v1/zones/1/boost", headers=kopf)
+
+    assert antwort.status_code == 201
+    daten = antwort.json()
+    # Der Modus steht mit drin: "18,0 °C bis 22:00" sagt nicht, warum.
+    assert daten["modus_code"] in ("tag", "nacht")
+    assert daten["gilt_bis"] is not None
+    eintrag = session.query(ZoneOverride).one()
+    # Sie endet an der Schaltung, die sie vorzieht -- nicht irgendwann.
+    assert eintrag.ends_at is not None
+    assert eintrag.ends_at.isoformat() == daten["gilt_bis"]
+
+
+def test_boost_ohne_zeitplan_sagt_warum(client, token_fuer, session) -> None:
+    """Gegenprobe: Ohne Plan gibt es nichts vorzuziehen, und das ist kein Serverfehler."""
+    from thermoctl.db.models.operations import Setting
+    from thermoctl.db.models.zone import SetpointMode
+
+    modus = SetpointMode(code="frost", name="Frost")
+    session.add(modus)
+    session.flush()
+    session.add(Setting(id=1, timezone="UTC", frost_protection_mode_id=modus.id))
+    session.flush()
+
+    kopf = token_fuer([("zone.read", "bad"), ("override.create", "bad")])
+    antwort = client.post("/api/v1/zones/1/boost", headers=kopf)
+
+    assert antwort.status_code == 409
+    assert "Zeitplan" in antwort.json()["detail"]
+
+
+def _vorgaben(session: Session) -> None:
+    """Die globalen Vorgaben, von denen jede Zone erbt."""
+    from thermoctl.db.models.operations import Setting
+    from thermoctl.db.models.zone import SetpointMode
+
+    modus = SetpointMode(code="frost", name="Frost")
+    session.add(modus)
+    session.flush()
+    session.add(Setting(id=1, timezone="UTC", frost_protection_mode_id=modus.id))
+    session.flush()
+
+
+def test_ein_einzelner_parameter_laesst_die_uebrigen_geerbt(client, token_fuer, session) -> None:
+    """Wer nur die Hysterese aendern will, soll nicht alle sechs mitschicken muessen.
+
+    Er schriebe dabei jeden geerbten Wert als Zonenabweichung fest -- und eine spaetere
+    Aenderung des globalen Standards ginge an dieser Zone vorbei.
+    """
+    _vorgaben(session)
+    kopf = token_fuer([("zone.read", "bad"), ("zone.manage", "bad")])
+
+    antwort = client.put(
+        "/api/v1/zones/1/parameters/hysteresis_k", headers=kopf, json={"wert": "0.40"}
+    )
+
+    assert antwort.status_code == 200
+    assert antwort.json()["hysteresis_k"] == "0.40"
+    zone = session.get(Zone, 1)
+    assert zone is not None
+    assert zone.hysteresis_k == Decimal("0.40")
+    assert zone.min_on_seconds is None, "ein geerbter Wert wurde festgeschrieben"
+
+
+def test_ein_unbekannter_parametername_nennt_die_gueltigen(client, token_fuer, session) -> None:
+    _vorgaben(session)
+    kopf = token_fuer([("zone.read", "bad"), ("zone.manage", "bad")])
+    antwort = client.put(
+        "/api/v1/zones/1/parameters/farbe", headers=kopf, json={"wert": "1"}
+    )
+    assert antwort.status_code == 404
+    assert "hysteresis_k" in antwort.json()["detail"]
+
+
+def test_ein_parameter_ausserhalb_der_grenzen_wird_abgewiesen(client, token_fuer, session) -> None:
+    """Die Grenzen stehen in der Domaene und gelten fuer jeden Weg gleich."""
+    _vorgaben(session)
+    kopf = token_fuer([("zone.read", "bad"), ("zone.manage", "bad")])
+    antwort = client.put(
+        "/api/v1/zones/1/parameters/hysteresis_k", headers=kopf, json={"wert": "99"}
+    )
+    assert antwort.status_code == 422
+    zone = session.get(Zone, 1)
+    assert zone is not None
+    assert zone.hysteresis_k is None
+
+
+def test_ein_einzelner_parameter_braucht_zone_manage(client, token_fuer, session) -> None:
+    _vorgaben(session)
+    kopf = token_fuer([("zone.read", "bad")])
+    antwort = client.put(
+        "/api/v1/zones/1/parameters/hysteresis_k", headers=kopf, json={"wert": "0.4"}
+    )
+    assert antwort.status_code == 403

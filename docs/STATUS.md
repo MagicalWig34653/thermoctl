@@ -24,8 +24,8 @@ Vom Controller selbst nachgeprüft, nicht aus Berichten übernommen:
 
 | | |
 |---|---|
-| Tests | 964, grün unter SQLite **und** MariaDB |
-| Testabdeckung | 98,93 %, Mindestschwelle 97 % in der CI |
+| Tests | 976, grün unter SQLite **und** MariaDB |
+| Testabdeckung | 98,94 %, Mindestschwelle 97 % in der CI |
 | Ruff, mypy strict | ohne Befund, 87 Quelldateien |
 | Migrationskette | linear, ein Kopf, vorwärts und rückwärts gegen beide Datenbanken |
 | CI und Container | grün |
@@ -99,6 +99,18 @@ Vier Entscheidungen darin:
   trocken und scharf Byte für Byte gleich — am Broker nachgemessen.
 - **Alles Bleibende geht mit retain hinaus**, und ein Befehl wird sofort beantwortet statt
   erst im nächsten Regelzyklus.
+
+**Boost und die Regelparameter gibt es auch über REST und MCP.** Die Logik liegt in
+`domain/fernbedienung.py` und `domain/zone_settings.py`, die Adapter sind dünn —
+Grundsatz 6. Neu sind `POST /api/v1/zones/{id}/boost`,
+`PUT /api/v1/zones/{id}/parameters/{name}` sowie die MCP-Werkzeuge `boost`,
+`regelparameter_lesen` und `regelparameter_setzen`.
+
+Zwei Entscheidungen dabei: Ein **einzelner** Parameter statt nur des PUT auf alle sechs —
+wer sonst nur die Hysterese ändern will, müsste erst alle lesen und wieder mitschicken und
+schriebe dabei jeden geerbten Wert als Zonenabweichung fest. Und `regelparameter_lesen`
+liefert die **Grenzen mit**: Ohne sie wäre für ein Sprachmodell jeder Schreibversuch ein
+Versuch, „0,05 Kelvin Hysterese" sieht so plausibel aus wie „0,5".
 
 **Drei Fehler, die dabei aufgefallen sind:**
 

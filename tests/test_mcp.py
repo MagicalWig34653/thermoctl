@@ -213,6 +213,7 @@ def test_registrierte_mcp_werkzeuge_rufen_die_adapterfunktionen_auf(
         ("override.create", zone.id),
         ("override.cancel", zone.id),
         ("schedule.manage", zone.id),
+        ("zone.manage", zone.id),
         ("control.arm", None),
     ]
     klartext = _token(session, "registrierter-nutzer", rechte)
@@ -244,6 +245,9 @@ def test_registrierte_mcp_werkzeuge_rufen_die_adapterfunktionen_auf(
         "schattenentscheidungen",
         "uebersteuern",
         "uebersteuerung_aufheben",
+        "boost",
+        "regelparameter_lesen",
+        "regelparameter_setzen",
         "steuerung_lesen",
         "trockenlauf_erzwingen",
         "zeitplanpunkt_verschieben",
@@ -257,6 +261,11 @@ def test_registrierte_mcp_werkzeuge_rufen_die_adapterfunktionen_auf(
     assert werkzeuge["schattenentscheidungen"](zone.id, 1)  # type: ignore[operator]
     assert werkzeuge["uebersteuern"](zone.id, Decimal("21.0"))  # type: ignore[operator]
     assert werkzeuge["uebersteuerung_aufheben"](zone.id)  # type: ignore[operator]
+    assert werkzeuge["boost"](zone.id)  # type: ignore[operator]
+    assert werkzeuge["regelparameter_lesen"](zone.id)  # type: ignore[operator]
+    assert werkzeuge["regelparameter_setzen"](  # type: ignore[operator]
+        zone.id, "hysteresis_k", Decimal("0.4")
+    )
     assert werkzeuge["steuerung_lesen"]()  # type: ignore[operator]
     # `trockenlauf_erzwingen` meldet `geaendert: False`, wenn schon Trockenlauf herrscht --
     # deshalb auf den Schluessel pruefen und nicht auf Wahrheit des Ergebnisses.
@@ -429,4 +438,88 @@ def test_verschieben_eines_fremden_punktes_scheitert(session: Session) -> None:
     with pytest.raises(ValueError, match="nicht gefunden"):
         server.zeitplanpunkt_verschieben(
             session, klartext, zone.id, fremder_punkt.id, 5, 450
+        )
+
+
+def test_boost_zieht_die_naechste_schaltung_vor(session: Session) -> None:
+    """Fuer ein Sprachmodell die verlaessliche Form von „mach es hier waermer".
+
+    Es muss weder eine Temperatur noch eine Dauer raten, und nach dem Schaltpunkt
+    raeumt sich der Eingriff selbst weg.
+    """
+    zone = zone_mit_zeitplan(
+        session,
+        "boostzone",
+        [(1, 0, "tag-boost", Decimal("21.0")), (1, 1320, "nacht-boost", Decimal("18.0"))],
+    )
+    quelle(session, "mcp")
+    klartext = _token(
+        session, "boostnutzer", [("zone.read", zone.id), ("override.create", zone.id)]
+    )
+
+    ergebnis = server.boost(session, klartext, zone.id)
+
+    assert ergebnis["zone"] == zone.name
+    assert ergebnis["modus"] in ("tag-boost", "nacht-boost")
+    assert ergebnis["gilt_bis"] is not None
+    assert Decimal(str(ergebnis["temperatur_c"])) in (Decimal("21.0"), Decimal("18.0"))
+
+
+def test_boost_braucht_das_recht_zu_uebersteuern(session: Session) -> None:
+    """Gegenprobe: Lesen allein reicht nicht, obwohl der Aufruf kein Argument traegt."""
+    zone = zone_mit_zeitplan(session, "boostsperre", [(1, 0, "tag-sperre", Decimal("21.0"))])
+    klartext = _token(session, "nurleser", [("zone.read", zone.id)])
+
+    with pytest.raises(Forbidden):
+        server.boost(session, klartext, zone.id)
+
+
+def test_regelparameter_lesen_liefert_die_grenzen_mit(session: Session) -> None:
+    """Ohne sie waere jeder Schreibversuch ein Versuch.
+
+    „0,05 Kelvin Hysterese" sieht fuer ein Sprachmodell so plausibel aus wie „0,5" --
+    die Grenzen gehoeren deshalb in dieselbe Antwort und nicht in die Dokumentation.
+    """
+    zone = zone_mit_zeitplan(session, "parameterzone", [(1, 0, "tag-p", Decimal("21.0"))])
+    klartext = _token(session, "parameterleser", [("zone.read", zone.id)])
+
+    ergebnis = server.regelparameter_lesen(session, klartext, zone.id)
+
+    parameter = {p["name"]: p for p in ergebnis["parameter"]}  # type: ignore[union-attr]
+    assert parameter["hysteresis_k"]["minimum"] == "0.1"
+    assert parameter["hysteresis_k"]["maximum"] == "5.0"
+    # Und ob der Wert dieser Zone gehoert oder vom globalen Standard kommt.
+    assert parameter["hysteresis_k"]["eigener_wert"] is False
+
+
+def test_regelparameter_setzen_laesst_die_uebrigen_geerbt(session: Session) -> None:
+    zone = zone_mit_zeitplan(session, "setzzone", [(1, 0, "tag-s", Decimal("21.0"))])
+    quelle(session, "mcp")
+    klartext = _token(
+        session, "parameterschreiber", [("zone.read", zone.id), ("zone.manage", zone.id)]
+    )
+
+    ergebnis = server.regelparameter_setzen(
+        session, klartext, zone.id, "hysteresis_k", Decimal("0.4")
+    )
+
+    assert ergebnis["wert"] == "0.4"
+    assert zone.hysteresis_k == Decimal("0.4")
+    assert zone.min_on_seconds is None, "ein geerbter Wert wurde festgeschrieben"
+
+
+def test_regelparameter_setzen_braucht_zone_manage(session: Session) -> None:
+    """`zone.manage`, nicht `override.create`.
+
+    Ein Regelparameter wirkt dauerhaft und auf jede kuenftige Entscheidung, eine
+    Uebersteuerung nur bis zum naechsten Schaltpunkt.
+    """
+    zone = zone_mit_zeitplan(session, "setzsperre", [(1, 0, "tag-ss", Decimal("21.0"))])
+    klartext = _token(
+        session, "uebersteuerer", [("zone.read", zone.id), ("override.create", zone.id)]
+    )
+
+    with pytest.raises(Forbidden):
+        server.regelparameter_setzen(
+            session, klartext, zone.id, "hysteresis_k", Decimal("0.4")
         )
