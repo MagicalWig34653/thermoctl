@@ -1,3 +1,4 @@
+# ruff: noqa: E501
 import json
 import logging
 from datetime import datetime
@@ -6,12 +7,19 @@ from decimal import Decimal
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from thermoctl.db.models.device import Device, DeviceCapabilityLink, ZoneDevice
+from thermoctl.db.models.device import (
+    Device,
+    DeviceCapabilityLink,
+    DeviceProperty,
+    DevicePropertyValue,
+    ZoneDevice,
+)
 from thermoctl.db.models.lookup import DeviceCapability, DeviceRole, Integration, SensorStatus
 from thermoctl.db.models.measurement import DeviceHealth, Measurement
 from thermoctl.db.models.state import ZoneState
 from thermoctl.db.models.zone import Zone
 from thermoctl.domain.controller import execute_aktion
+from thermoctl.domain.controller_channels import apply_read_channels
 from thermoctl.domain.device_classes import (
     DeviceDescription,
     descriptions_from_bridge_list,
@@ -99,6 +107,24 @@ def _save_description(
             unbekannte.add(code)
             continue
         session.add(DeviceCapabilityLink(device_id=device.id, capability_id=capability.id))
+    alte_ids = select(DeviceProperty.id).where(DeviceProperty.device_id == device.id)
+    session.execute(delete(DevicePropertyValue).where(DevicePropertyValue.property_id.in_(alte_ids)))
+    session.execute(delete(DeviceProperty).where(DeviceProperty.device_id == device.id))
+    for property_description in beschreibung.properties:
+        property_model = DeviceProperty(
+            device_id=device.id,
+            name=property_description.name,
+            value_type=property_description.value_type,
+            unit=property_description.unit,
+            min_value=property_description.min_value,
+            max_value=property_description.max_value,
+            is_readable=property_description.is_readable,
+            is_writable=property_description.is_writable,
+        )
+        session.add(property_model)
+        session.flush()
+        for sort_order, value in enumerate(property_description.values):
+            session.add(DevicePropertyValue(property_id=property_model.id, value=value, sort_order=sort_order))
 
 
 def _process_state(
@@ -108,9 +134,32 @@ def _process_state(
     if not readings:
         return
     device = _device(session, name, empfangen_am)
+    try:
+        raw_values = json.loads(payload, parse_float=Decimal, parse_int=Decimal)
+    except (json.JSONDecodeError, UnicodeDecodeError):  # bereits von readings protokolliert
+        raw_values = {}
+    if not isinstance(raw_values, dict):
+        raw_values = {}
     # Vor dem Einfuegen gelesen: Danach waere der eigene neue Messwert der juengste,
     # und der Vergleich unten verglichen die Nachricht mit sich selbst.
     last_pressed = _last_pressed(session, device.id)
+    measured_at = readings[0].gemessen_am
+    changed_values: dict[str, object] = {}
+    for property_model in session.scalars(
+        select(DeviceProperty).where(DeviceProperty.device_id == device.id)
+    ):
+        if property_model.name not in raw_values:
+            continue
+        raw = raw_values[property_model.name]
+        if property_model.last_value_at is None or measured_at > property_model.last_value_at:
+            changed_values[property_model.name] = raw
+        if isinstance(raw, Decimal):
+            property_model.last_value_number, property_model.last_value_text = raw, None
+        elif isinstance(raw, bool):
+            property_model.last_value_number, property_model.last_value_text = None, str(raw).lower()
+        elif isinstance(raw, str):
+            property_model.last_value_number, property_model.last_value_text = None, raw
+        property_model.last_value_at = measured_at
     capabilities = {
         capability.code: capability for capability in session.scalars(select(DeviceCapability))
     }
@@ -150,6 +199,7 @@ def _process_state(
     gesund.battery_percent = _dezimalzahl(readings, "battery", gesund.battery_percent)
     device.last_seen_at = empfangen_am
     _execute_button_press(session, device, readings, last_pressed, empfangen_am)
+    apply_read_channels(session, device, changed_values, empfangen_am)
 
 
 def _last_pressed(session: Session, device_id: int) -> datetime | None:

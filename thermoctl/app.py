@@ -71,6 +71,7 @@ from thermoctl.web.admin_views import router as admin_router
 from thermoctl.web.audit_views import router as audit_router
 from thermoctl.web.auth_views import router as auth_router
 from thermoctl.web.control_views import router as control_router
+from thermoctl.web.controller_views import router as controller_router
 from thermoctl.web.daily_views import router as alltag_router
 from thermoctl.web.device_assignment_views import router as device_assignment_router
 from thermoctl.web.device_views import router as devices_router
@@ -454,6 +455,7 @@ def create_app() -> FastAPI:
     app.state.session_factory = session_factory(app.state.engine)
     app.include_router(start_router)
     app.include_router(control_router)
+    app.include_router(controller_router)
     app.include_router(auth_router)
     app.include_router(setup_router)
     app.include_router(admin_router)

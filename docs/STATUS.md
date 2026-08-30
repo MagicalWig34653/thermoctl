@@ -1,6 +1,31 @@
 # Stand
 
-Letzte Aktualisierung: 2026-08-29
+Letzte Aktualisierung: 2026-08-30
+
+## Konfigurierbare Bediengeräte
+
+Zigbee2MQTT-Merkmale aus `bridge/devices` werden jetzt mit Zugriff, Typ, Einheit,
+Wertebereich und Auswahlwerten gespeichert. Unter `/controllers` lassen sich lesbare
+Merkmale auf Sollwert oder Betriebsart einer Zone und schreibbare Merkmale auf
+Sensor-/Zonentemperatur, Zonensollwert oder einen festen Wert legen. Die Tastenbelegung
+wird dort bearbeitet; die Zonenseite verweist nur noch auf die neue Stelle.
+
+Schreibkanäle sind doppelt abgesichert: Die Domäne nimmt sie ausschließlich für Geräte an,
+die Bediengerät und **nirgends Aktor** sind, und der Veröffentlichungszyklus prüft dieselbe
+Bedingung vor jedem Versand erneut.
+
+Die zweite Hälfte dieser Bedingung kam bei der Gegenlesung dazu und ist der Grund, warum es
+sie gibt: Zu prüfen, ob ein Gerät *irgendwo* Bediengerät ist, reicht nicht. Ein Thermostat
+kann in einer Zone Aktor sein und in einer anderen als Bediengerät hängen — es zeigt ja
+einen Sollwert an. Ein Schreibkanal auf sein `occupied_heating_setpoint` wäre dann als
+bloße Anzeige angemeldet und bewegte trotzdem ein Ventil, mit `switches=False` an beiden
+Riegeln des Trockenlaufs vorbei. Die MQTT-Nachricht trägt `switches=False` und wird nur bei einem
+geänderten Wert (oder nach Prozessneustart) gesendet. Lesekanäle verwenden wie
+Tastendrücke den Messzeitpunkt als Wiederholungsschutz.
+
+Was nur der Projektinhaber kann: Am echten Bediengerät prüfen, ob `sensor: external` und
+`external_temperature` tatsächlich auf dem Display erscheinen und ob ein am Gerät
+verstellter Sollwert zurück in die Zone gelangt.
 
 ## Wo wir stehen
 
@@ -24,9 +49,9 @@ Vom Controller selbst nachgeprüft, nicht aus Berichten übernommen:
 
 | | |
 |---|---|
-| Tests | 994, grün unter SQLite **und** MariaDB |
+| Tests | 1003, grün unter SQLite **und** MariaDB |
 | Testabdeckung | 98,97 %, Mindestschwelle 97 % in der CI |
-| Ruff, mypy strict | ohne Befund, 88 Quelldateien |
+| Ruff, mypy strict | ohne Befund, 90 Quelldateien |
 | Migrationskette | linear, ein Kopf, vorwärts und rückwärts gegen beide Datenbanken |
 | CI und Container | grün |
 
