@@ -6,11 +6,63 @@
 {{ zonenkopf(zone, "Geräte") }}
 
 <section class="tc-tafel p-4 mb-4">
-    {{ flussbild(bild) }}
+    {{ flussbild(bild, ziehbar=darf_aendern) }}
     <p class="t-leise small mb-0 mt-3">
         Dasselbe Bild für alle Zonen auf einmal: <a href="/anlage">Anlagenbild</a>.
     </p>
 </section>
+
+{% if darf_aendern %}
+{#
+Ziehen ist eine zweite Bedienart derselben Änderung, keine eigene Schnittstelle: Beim
+Loslassen geht dasselbe Formular hinaus, das darunter von Hand ausgefüllt wird — gleicher
+CSS-Schutz, gleiche Rechteprüfung, gleiche Fehlerdarstellung. Ohne JavaScript bleiben die
+Formulare, und der Hinweis darüber wird gar nicht erst eingeblendet.
+
+Die Formulare tragen feste Pfade und die Kennungen im Rumpf: hx-boost liest die `action`
+eines Formulars einmal beim Verarbeiten der Seite, ein später umgeschriebener Pfad wäre
+wirkungslos.
+#}
+<section class="tc-tafel p-4 mb-4" id="geraetevorrat">
+    <div class="d-flex justify-content-between align-items-baseline flex-wrap gap-2">
+        <h2 class="mb-0">Geräte</h2>
+        <span class="t-leise small" data-ziehhinweis hidden>
+            Ein Gerät auf eine der drei Stufen oben ziehen.
+        </span>
+    </div>
+    <div class="d-flex flex-wrap gap-2 mt-3">
+        {% for geraet in geraete %}
+        <div class="tc-knoten tc-knoten-frei tc-ziehbar" data-geraet="{{ geraet.id }}">
+            <div class="tc-knoten-name">{{ geraet.display_name }}</div>
+            {% if geraet.model %}
+            <div class="t-leise" style="font-size: .68rem">{{ geraet.model }}</div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+</section>
+
+<form id="zuordnung-messquelle" method="post" hidden hx-push-url="false"
+      action="/zonen/{{ zone.id }}/geraete/messquelle">
+    <input type="hidden" name="device_id">
+</form>
+<form id="zuordnung-rolle" method="post" hidden hx-push-url="false"
+      action="/zonen/{{ zone.id }}/geraete/zuordnen">
+    <input type="hidden" name="device_id">
+    <input type="hidden" name="role_id">
+</form>
+{#
+Ein Element je Rolle statt Attributnamen wie `data-rolle-window_contact`: Der Browser
+benennt Attribute mit Bindestrichen im `dataset` um (`data-a-b` wird zu `aB`), Unterstriche
+aber nicht -- eine Regel, die man beim Lesen des Markups nicht sieht und beim Schreiben des
+Skripts falsch rät.
+#}
+<div hidden>
+    {% for rolle in rollen %}
+    <span data-rollencode="{{ rolle.code }}" data-rollenid="{{ rolle.id }}"></span>
+    {% endfor %}
+</div>
+{% endif %}
 
 <h2 class="h4">Messquelle</h2>
 <p>Aktuell: <strong>{{ messquelle.display_name if messquelle else "Keine Messquelle" }}</strong></p>
