@@ -88,7 +88,7 @@ def _picture(
     required = REQUIRED_CAPABILITY.get(slot or "")
     unsuitable = None
     can_do = codes.get(device.id, set())
-    if required is not None and can_do and required[0] not in can_do:
+    if required is not None and can_do and not (required[0] & can_do):
         unsuitable = (
             f"'{device.display_name}' {required[1]} — diese Zuordnung wirkt nicht"
         )

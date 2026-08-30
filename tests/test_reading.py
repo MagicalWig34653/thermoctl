@@ -195,6 +195,30 @@ def test_a_valve_and_a_window_contact_are_recognized_without_example_data() -> N
     ]
 
 
+def test_a_thermostatic_radiator_valves_status_fields_are_read() -> None:
+    """`position`, `running_state` and `window_open` are the TRV's own readable
+    status -- they must arrive as readings just like any other value, without a
+    second parsing path next to `readings_from_payload`."""
+    result = readings_from_payload(
+        json.dumps(
+            {
+                "local_temperature": 21.3,
+                "position": 42,
+                "running_state": "heat",
+                "window_open": False,
+            }
+        ),
+        RECEIVED_AT,
+    )
+
+    assert _values(result) == [
+        ("temperature", Decimal("21.3"), None),
+        ("valve_position", Decimal("42"), None),
+        ("running_state", None, "heat"),
+        ("window_open", None, "false"),
+    ]
+
+
 def test_last_seen_without_a_timezone_is_discarded() -> None:
     """Without a timezone, the timestamp cannot be converted to UTC.
 

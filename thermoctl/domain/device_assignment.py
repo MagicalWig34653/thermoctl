@@ -28,10 +28,15 @@ class CapabilityMissing(Exception):
 # about a slot with no requirement.
 TEMPERATURE_SOURCE = "temperature_source"
 
-REQUIRED_CAPABILITY: dict[str, tuple[str, str]] = {
-    TEMPERATURE_SOURCE: ("temperature", "misst keine Temperatur"),
-    "actuator": ("switch", "hat keinen Schaltausgang"),
-    "window_contact": ("contact", "meldet keinen Kontakt"),
+# The actuator slot accepts either of two capabilities: a plain switch output (a
+# smart-plug valve, e.g. Meross) or a thermostat (a Zigbee2MQTT TRV such as the
+# WT-A03E, driven through `system_mode` and `occupied_heating_setpoint` instead of
+# an on/off `state`). Both move a real valve; which one a device has decides only
+# which adapter builds its command, not whether it may fill this slot.
+REQUIRED_CAPABILITY: dict[str, tuple[frozenset[str], str]] = {
+    TEMPERATURE_SOURCE: (frozenset({"temperature"}), "misst keine Temperatur"),
+    "actuator": (frozenset({"switch", "thermostat"}), "hat keinen Schaltausgang"),
+    "window_contact": (frozenset({"contact"}), "meldet keinen Kontakt"),
 }
 
 
@@ -65,16 +70,21 @@ def check_capability(session: Session, device: Device, slot: str | None) -> None
     required = REQUIRED_CAPABILITY.get(slot or "")
     if required is None:
         return
-    code, mangel = required
-    vorhanden = _capabilities(session, device)
-    if not vorhanden or code in vorhanden:
+    codes, defect = required
+    present = _capabilities(session, device)
+    if not present or codes & present:
         return
-    label = session.scalar(
-        select(DeviceCapability.label).where(DeviceCapability.code == code)
+    labels = list(
+        session.scalars(
+            select(DeviceCapability.label)
+            .where(DeviceCapability.code.in_(codes))
+            .order_by(DeviceCapability.code)
+        )
     )
+    label_text = " oder ".join(labels) if labels else " oder ".join(sorted(codes))
     raise CapabilityMissing(
-        f"'{device.display_name}' {mangel} — für diese Stelle wird "
-        f"'{label or code}' gebraucht."
+        f"'{device.display_name}' {defect} — für diese Stelle wird "
+        f"'{label_text}' gebraucht."
     )
 
 
@@ -87,14 +97,14 @@ def assign_device(
     actor_id: int | None,
     source: str = "web",
 ) -> ZoneDevice:
-    vorhanden = session.scalar(
+    existing = session.scalar(
         select(ZoneDevice.id).where(
             ZoneDevice.zone_id == zone.id,
             ZoneDevice.device_id == device.id,
             ZoneDevice.device_role_id == role.id,
         )
     )
-    if vorhanden is not None:
+    if existing is not None:
         raise AssignmentAlreadyExists
     check_capability(session, device, role.code)
     assignment = ZoneDevice(
