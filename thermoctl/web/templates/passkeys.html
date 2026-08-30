@@ -30,7 +30,7 @@
         <tbody>
         {% for entry in passkeys %}
         <tr>
-            <td>{{ entry.bezeichnung }}</td>
+            <td>{{ entry.label }}</td>
             <td title="{{ entry.created_at }} UTC">{{ entry.created_at|age }}</td>
             <td title="{{ entry.last_used_at or '' }} UTC">{{ entry.last_used_at|age }}</td>
             <td class="text-end">
@@ -62,8 +62,8 @@
         <div class="card-body">
             <h2 class="h5 card-title">Passkey hinterlegen</h2>
             <div class="mb-3">
-                <label class="form-label" for="passkey-bezeichnung">Bezeichnung</label>
-                <input type="text" class="form-control" id="passkey-bezeichnung"
+                <label class="form-label" for="passkey-label">Bezeichnung</label>
+                <input type="text" class="form-control" id="passkey-label"
                        placeholder="z. B. Telefon" maxlength="120">
                 <div class="form-text">
                     Woran Sie diesen Schlüssel später wiedererkennen. Wer zwei Geräte

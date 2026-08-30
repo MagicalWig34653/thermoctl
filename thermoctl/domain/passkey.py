@@ -64,13 +64,13 @@ class PasskeyError(Exception):
 
 
 def _challenge_merken(
-    session: Session, zeremonie: str, user_id: int | None = None
+    session: Session, ceremony: str, user_id: int | None = None
 ) -> bytes:
     """Generates a challenge, stores it, and returns it."""
     roh = secrets.token_bytes(32)
     session.add(
         PasskeyChallenge(
-            challenge=bytes_to_base64url(roh), zeremonie=zeremonie, user_id=user_id
+            challenge=bytes_to_base64url(roh), ceremony=ceremony, user_id=user_id
         )
     )
     session.flush()
@@ -78,7 +78,7 @@ def _challenge_merken(
 
 
 def _challenge_einloesen(
-    session: Session, zeremonie: str, clientdaten: dict[str, Any]
+    session: Session, ceremony: str, clientdaten: dict[str, Any]
 ) -> bytes:
     """Takes the challenge out of the response, checks it, and **deletes it in every case**.
 
@@ -98,15 +98,15 @@ def _challenge_einloesen(
 
     # Delete first, judge after: even an expired or misused challenge is consumed by
     # then. Otherwise it could be resubmitted an arbitrary number of times.
-    ceremony_of_the_row = entry.zeremonie
+    ceremony_of_the_row = entry.ceremony
     age = utcnow() - entry.created_at
     session.delete(entry)
     session.flush()
 
-    if ceremony_of_the_row != zeremonie:
+    if ceremony_of_the_row != ceremony:
         raise PasskeyError(
             f"Challenge war fuer '{ceremony_of_the_row}' ausgegeben, nicht fuer "
-            f"'{zeremonie}'."
+            f"'{ceremony}'."
         )
     if age > CHALLENGE_GUELTIG:
         raise PasskeyError("Challenge ist abgelaufen.")
@@ -167,7 +167,7 @@ def finish_registration(
     settings: Settings,
     user: User,
     response: dict[str, Any],
-    bezeichnung: str,
+    label: str,
 ) -> UserPasskey:
     """Verifies the authenticator's response and stores the passkey."""
     clientdaten = _clientdaten(response)
@@ -195,13 +195,13 @@ def finish_registration(
         credential_id=identifier,
         public_key=bytes_to_base64url(checked.credential_public_key),
         sign_count=checked.sign_count,
-        bezeichnung=(bezeichnung.strip() or "Passkey")[:120],
+        label=(label.strip() or "Passkey")[:120],
     )
     session.add(entry)
     session.flush()
     audit.record(
         session, source="web", action="passkey.registered", object_type="user_passkey",
-        object_id=str(entry.id), summary=f"Passkey '{entry.bezeichnung}' hinterlegt",
+        object_id=str(entry.id), summary=f"Passkey '{entry.label}' hinterlegt",
         user_id=user.id,
     )
     return entry
@@ -295,12 +295,12 @@ def remove_passkey(
     """Removes a passkey belonging to the caller's own account."""
     if passkey.user_id != user.id:
         raise PasskeyError("Dieser Passkey gehoert einem anderen Konto.")
-    bezeichnung = passkey.bezeichnung
+    label = passkey.label
     session.delete(passkey)
     session.flush()
     audit.record(
         session, source="web", action="passkey.removed", object_type="user_passkey",
-        object_id=str(passkey.id), summary=f"Passkey '{bezeichnung}' entfernt",
+        object_id=str(passkey.id), summary=f"Passkey '{label}' entfernt",
         user_id=user.id,
     )
 

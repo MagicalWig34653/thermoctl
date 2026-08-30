@@ -150,9 +150,9 @@ def engine(settings: Settings) -> Iterator[Engine]:
     # ActorSource by hand, so there is no UNIQUE collision like with `Permission`.
     with Session(werk) as http_session:
         vorhandene = {q.code for q in http_session.query(ActorSource)}
-        for code, bezeichnung in ACTOR_SOURCES:
+        for code, label in ACTOR_SOURCES:
             if code not in vorhandene:
-                http_session.add(ActorSource(code=code, label=bezeichnung))
+                http_session.add(ActorSource(code=code, label=label))
         http_session.commit()
     yield werk
     Base.metadata.drop_all(werk)

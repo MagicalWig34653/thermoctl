@@ -69,12 +69,12 @@ def check_capability(session: Session, device: Device, stelle: str | None) -> No
     vorhanden = _capabilities(session, device)
     if not vorhanden or code in vorhanden:
         return
-    bezeichnung = session.scalar(
+    label = session.scalar(
         select(DeviceCapability.label).where(DeviceCapability.code == code)
     )
     raise CapabilityMissing(
         f"'{device.display_name}' {mangel} — für diese Stelle wird "
-        f"'{bezeichnung or code}' gebraucht."
+        f"'{label or code}' gebraucht."
     )
 
 

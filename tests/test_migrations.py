@@ -192,3 +192,69 @@ def test_umlauts_are_backfilled_into_existing_labels(
         assert up_again.returncode == 0, up_again.stderr
     finally:
         db_engine.dispose()
+
+
+@pytest.mark.migration
+def test_the_last_german_column_names_are_renamed_with_their_data(
+    migrations_database_url: str,
+) -> None:
+    """A column rename must not lose what is in it.
+
+    `batch_alter_table` rebuilds the table under SQLite. If the copy were to go wrong,
+    the schema would still look right afterwards and the rows would be gone -- which is
+    exactly the kind of fault that only shows up on someone's real installation.
+    """
+    base = _alembic(migrations_database_url, "downgrade", "base")
+    assert base.returncode == 0, base.stderr
+    before = _alembic(migrations_database_url, "upgrade", "e4b8a21c7f10")
+    assert before.returncode == 0, before.stderr
+
+    werk = create_engine(migrations_database_url)
+    try:
+        with werk.begin() as verbindung:
+            verbindung.execute(
+                text(
+                    "INSERT INTO user (username, display_name, password_hash, is_active, "
+                    "created_at) VALUES ('umzug', 'Umzug', 'x', true, '2026-08-30 08:00:00')"
+                )
+            )
+            user_id = verbindung.execute(
+                text("SELECT id FROM user WHERE username = 'umzug'")
+            ).scalar_one()
+            verbindung.execute(
+                text(
+                    "INSERT INTO user_passkey (user_id, credential_id, public_key, "
+                    "sign_count, bezeichnung, created_at) VALUES (:u, 'cred-1', 'pub', 0, "
+                    "'Mein Telefon', '2026-08-30 08:00:00')"
+                ),
+                {"u": user_id},
+            )
+            verbindung.execute(
+                text(
+                    "INSERT INTO passkey_challenge (challenge, zeremonie, created_at) "
+                    "VALUES ('chal-1', 'login', '2026-08-30 08:00:00')"
+                )
+            )
+
+        up = _alembic(migrations_database_url, "upgrade", "head")
+        assert up.returncode == 0, up.stderr
+        with werk.connect() as verbindung:
+            assert verbindung.execute(
+                text("SELECT label FROM user_passkey WHERE credential_id = 'cred-1'")
+            ).scalar_one() == "Mein Telefon"
+            assert verbindung.execute(
+                text("SELECT ceremony FROM passkey_challenge WHERE challenge = 'chal-1'")
+            ).scalar_one() == "login"
+
+        down = _alembic(migrations_database_url, "downgrade", "e4b8a21c7f10")
+        assert down.returncode == 0, down.stderr
+        with werk.connect() as verbindung:
+            # The counter-check to the rename: backwards the old name is there again,
+            # and the value with it.
+            assert verbindung.execute(
+                text("SELECT bezeichnung FROM user_passkey WHERE credential_id = 'cred-1'")
+            ).scalar_one() == "Mein Telefon"
+        again = _alembic(migrations_database_url, "upgrade", "head")
+        assert again.returncode == 0, again.stderr
+    finally:
+        werk.dispose()

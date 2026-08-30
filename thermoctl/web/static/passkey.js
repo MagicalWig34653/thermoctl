@@ -227,8 +227,8 @@
         }
 
         knopf.addEventListener("click", function () {
-            const feld = document.getElementById("passkey-bezeichnung");
-            const bezeichnung = feld ? feld.value : "";
+            const feld = document.getElementById("passkey-label");
+            const label = feld ? feld.value : "";
             knopf.disabled = true;
             hinweis("Warte auf den Authenticator …", false);
 
@@ -243,7 +243,7 @@
                         throw new Error("Es wurde kein Passkey angelegt.");
                     }
                     return holen(REGISTRIERUNG + "/verify", {
-                        bezeichnung: bezeichnung,
+                        label: label,
                         id: credential.id,
                         rawId: bytesZuBase64url(credential.rawId),
                         type: credential.type,

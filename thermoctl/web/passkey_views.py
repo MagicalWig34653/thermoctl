@@ -160,10 +160,10 @@ async def save_registration(
     except Exception:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Unlesbare Antwort") from None
 
-    bezeichnung = str(payload.pop("bezeichnung", "") or "")
+    label = str(payload.pop("label", "") or "")
     try:
         entry = finish_registration(
-            session, settings, user, payload, bezeichnung
+            session, settings, user, payload, label
         )
     except PasskeyError as exc:
         # The reason is allowed to go out here: the caller is logged in and is
@@ -173,7 +173,7 @@ async def save_registration(
             status_code=status.HTTP_400_BAD_REQUEST,
             content={"status": "abgelehnt", "meldung": str(exc)},
         )
-    return JSONResponse({"status": "gespeichert", "bezeichnung": entry.bezeichnung})
+    return JSONResponse({"status": "saved", "label": entry.label})
 
 
 @router.post("/passkeys/{passkey_id}/remove")

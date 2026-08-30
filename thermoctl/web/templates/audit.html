@@ -20,8 +20,8 @@
       <label class="form-label" for="source">Quelle</label>
       <select class="form-select" id="source" name="source">
         <option value="">Alle Quellen</option>
-        {% for code, bezeichnung in sources %}
-        <option value="{{ code }}"{% if filter.source == code %} selected{% endif %}>{{ bezeichnung }}</option>
+        {% for code, label in sources %}
+        <option value="{{ code }}"{% if filter.source == code %} selected{% endif %}>{{ label }}</option>
         {% endfor %}
       </select>
     </div>

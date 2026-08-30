@@ -19,9 +19,12 @@ beim nächsten Lesen niemandem mehr verraten, was hier eigentlich zugesichert is
 weiterhin deutsch, verteilt auf 16 Dateien. Betroffen sind vor allem `test_mcp.py` und
 `test_control_loop.py`. Das ist Prosa und kein Mangel an Zusicherung.
 
-Ebenfalls offen: `user_passkey.bezeichnung`, `passkey_challenge.zeremonie` und das Dict
-`NAMENSKONVENTION` in `db/base.py` sind deutsche Bezeichner im sonst englischen Schema.
-Die beiden Spalten brauchen eine Migration.
+Die letzten deutschen Bezeichner im Schema sind weg: `user_passkey.bezeichnung` heißt
+`label`, `passkey_challenge.zeremonie` heißt `ceremony` (Migration `f2c6d90a41b8`, mit
+einem Test, der die Daten über beide Richtungen hinweg verfolgt — `batch_alter_table` baut
+die Tabelle unter SQLite neu, und eine misslungene Kopie sähe hinterher richtig aus und
+wäre leer). Dazu `NAMENSKONVENTION` → `NAMING_CONVENTION` und der JSON-Schlüssel der
+Passkey-Registrierung.
 
 ## Konfigurierbare Bediengeräte
 

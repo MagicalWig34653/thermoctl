@@ -671,8 +671,8 @@ def test_the_plant_diagram_carries_no_drag_handles(client_als, session: Session)
 def _controller_commands(session: Session) -> None:
     from thermoctl.db.models.lookup import CONTROLLER_COMMANDS, ControllerCommand
 
-    for code, bezeichnung in CONTROLLER_COMMANDS:
-        session.add(ControllerCommand(code=code, label=bezeichnung))
+    for code, label in CONTROLLER_COMMANDS:
+        session.add(ControllerCommand(code=code, label=label))
     session.add(DeviceCapability(code="action", label="Tastendruck"))
     session.flush()
 
