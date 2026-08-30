@@ -27,12 +27,22 @@ from thermoctl.db.models.zone import Zone
 from thermoctl.db.models.zustand import ZoneState
 from thermoctl.db.schemastand import SchemaPasstNicht, schema_pruefen
 from thermoctl.domain.authz import Forbidden
+from thermoctl.domain.modi import Domaenenfehler
+from thermoctl.domain.schedule import uebersteuerung_anlegen
 from thermoctl.domain.stoerungsmeldung import (
     Stoerungsmeldung,
     brueckenmeldung,
     sensormeldung,
 )
+from thermoctl.domain.zonen import Betriebsartunbekannt, betriebsart_setzen
+from thermoctl.integrations.aktoren import schalten_erlaubt
 from thermoctl.integrations.benachrichtigung import senden
+from thermoctl.integrations.mqtt.befehle import (
+    Befehlsfehler,
+    befehls_abonnement,
+    ist_befehl,
+    zerlegen,
+)
 from thermoctl.integrations.mqtt.client import MqttClient
 from thermoctl.integrations.mqtt.zigbee2mqtt import (
     Nachrichtenart,
@@ -43,6 +53,8 @@ from thermoctl.logging import configure_logging, request_id_var
 from thermoctl.services.aufbewahrung import alte_messwerte_loeschen
 from thermoctl.services.ingest import nachricht_verarbeiten, zonenzustand_fortschreiben
 from thermoctl.services.schattenlauf import zyklus
+from thermoctl.services.veroeffentlichen import Veroeffentlichungsstand
+from thermoctl.services.veroeffentlichen import zyklus as veroeffentlichungszyklus
 from thermoctl.setup import einrichtung_noetig, setup_token_erzeugen
 from thermoctl.web import STATIC_DIR
 from thermoctl.web.admin_views import router as admin_router
@@ -146,6 +158,16 @@ async def _schattenschleife(app: FastAPI) -> None:
                 zonenzustand_fortschreiben(session, jetzt)
                 meldungen = _sensormeldungen(session, vorher)
                 zyklus(session, jetzt)
+                # `getattr`: Die Schleife laeuft auch in Tests, die sich eine App
+                # zusammenstecken, ohne den ganzen Lebenszyklus durchlaufen zu lassen.
+                if getattr(app.state, "veroeffentlicher", None) is not None:
+                    await veroeffentlichungszyklus(
+                        session,
+                        app.state.veroeffentlicher,
+                        app.state.veroeffentlichungsstand,
+                        get_settings().mqtt_praefix,
+                        jetzt,
+                    )
                 if jetzt >= naechste_aufbewahrung:
                     alte_messwerte_loeschen(session, jetzt)
                     naechste_aufbewahrung = jetzt + timedelta(days=1)
@@ -163,6 +185,49 @@ async def _schattenschleife(app: FastAPI) -> None:
             log.exception("Schattenzyklus fehlgeschlagen -- naechster Versuch folgt")
 
 
+def _befehl_ausfuehren(
+    session: Session, topic: str, nutzlast: bytes, settings: Settings
+) -> None:
+    """Fuehrt einen von aussen gesendeten Befehl aus -- ueber die Domaene, wie jeder Adapter.
+
+    Home Assistant bekommt je Zone einen Thermostat; wer dort dreht, landet hier. Die
+    Grenzen (5 bis 35 Grad) und die Audit-Eintraege kommen aus der Domaene, damit ein
+    Befehl von aussen genau so viel darf wie ein Klick in der Oberflaeche -- und keinen
+    Deut mehr.
+
+    Ein Befehl hat keinen angemeldeten Benutzer. Er wird als Quelle `mqtt`... es gibt
+    keine solche Quelle: Er laeuft unter `system`, denn niemand hat sich dafuer
+    angemeldet, und das soll im Protokoll auch so dastehen.
+    """
+    try:
+        befehl = zerlegen(topic, nutzlast, settings.mqtt_praefix)
+    except Befehlsfehler as exc:
+        log.warning("Unbrauchbarer Befehl verworfen: %s", exc, extra={"topic": topic})
+        return
+
+    zone = session.get(Zone, befehl.zone_id)
+    if zone is None:
+        log.warning("Befehl fuer unbekannte Zone verworfen", extra={"topic": topic})
+        return
+
+    try:
+        if befehl.art == "betriebsart" and befehl.betriebsart is not None:
+            betriebsart_setzen(
+                session, zone, befehl.betriebsart, akteur_id=None, quelle="system"
+            )
+        elif befehl.art == "sollwert" and befehl.temperatur is not None:
+            uebersteuerung_anlegen(
+                session, zone, befehl.temperatur, None, user_id=None, quelle="system"
+            )
+    except (Domaenenfehler, Betriebsartunbekannt) as exc:
+        # Eine abgewiesene Eingabe ist keine Stoerung des Dienstes. Sie darf aber auch
+        # nicht still verschwinden: Wer in Home Assistant 99 Grad einstellt, soll den
+        # Grund im Protokoll finden.
+        log.warning(
+            "Befehl abgelehnt: %s", exc, extra={"topic": topic, "zone_id": zone.id}
+        )
+
+
 async def _mqtt_nachricht_verarbeiten(
     app: FastAPI, settings: Settings, topic: str, nutzlast: bytes
 ) -> None:
@@ -173,6 +238,14 @@ async def _mqtt_nachricht_verarbeiten(
     naechste Nachricht hinterlassen.
     """
     empfangen_am: datetime = utcnow()
+
+    # Eigene Befehls-Topics zuerst: Sie liegen unter unserem eigenen Praefix und haben
+    # mit dem Zigbee2MQTT-Zuschnitt nichts zu tun.
+    if ist_befehl(topic, settings.mqtt_praefix):
+        with session_scope(app.state.session_factory) as session:
+            _befehl_ausfuehren(session, topic, nutzlast, settings)
+        return
+
     zuschnitt = zuschneiden(topic, settings.mqtt_base_topic)
     meldung: Stoerungsmeldung | None = None
     if zuschnitt.art == Nachrichtenart.BRUECKENZUSTAND:
@@ -243,12 +316,25 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     # weder eine Endlosschleife noch eine Netzverbindung anstossen.
     settings = get_settings()
     app.state.bruecke_erreichbar = None
+    app.state.veroeffentlicher = None
+    app.state.veroeffentlichungsstand = Veroeffentlichungsstand()
+    # Der **erste** Riegel, beim Bau des Clients gesetzt. Er kommt aus der Datenbank, wie
+    # es der Kommentar in `MqttClient` seit Teilprojekt 2 vorsieht -- und er wird hier
+    # einmal gelesen, nicht bei jedem Senden. Wer die Anlage im laufenden Betrieb scharf
+    # schaltet, muss den Dienst deshalb einmal neu starten, bevor wirklich gesendet wird;
+    # die Betriebsseite sagt das auch. Der zweite Riegel (`setting.control_armed`, bei
+    # jedem Senden geprueft) wirkt dagegen sofort -- in die sichere Richtung.
+    with session_scope(app.state.session_factory) as session:
+        app.state.senden_erlaubt = schalten_erlaubt(session)
     hintergrundaufgaben: list[asyncio.Task[None]] = []
     if settings.mqtt_enabled:
         client = MqttClient(
             settings,
             lambda topic, nutzlast: _mqtt_nachricht_verarbeiten(app, settings, topic, nutzlast),
+            schalten_erlaubt=app.state.senden_erlaubt,
+            zusatz_abonnements=[befehls_abonnement(settings.mqtt_praefix)],
         )
+        app.state.veroeffentlicher = client
         hintergrundaufgaben.append(asyncio.create_task(client.laufen()))
         hintergrundaufgaben.append(asyncio.create_task(_schattenschleife(app)))
 

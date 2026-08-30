@@ -25,6 +25,7 @@ class MqttClient:
         handler: Callable[[str, bytes], Awaitable[None]],
         *,
         schalten_erlaubt: bool = False,
+        zusatz_abonnements: list[str] | None = None,
     ) -> None:
         """`schalten_erlaubt` ist die harte Grenze des Trockenlaufs.
 
@@ -37,6 +38,10 @@ class MqttClient:
         self._settings = settings
         self._handler = handler
         self._schalten_erlaubt = schalten_erlaubt
+        # Ueber die Zigbee2MQTT-Abonnements hinaus: die eigenen Befehls-Topics. Sie
+        # stehen nicht in `abonnements()`, weil das die vier bewusst eng begrenzten
+        # Zigbee2MQTT-Themen liefert und nichts anderes.
+        self._zusatz_abonnements = list(zusatz_abonnements or [])
         self._client: aiomqtt.Client | None = None
 
     def _tls_context(self) -> ssl.SSLContext | None:
@@ -79,7 +84,10 @@ class MqttClient:
                         extra={"host": self._settings.mqtt_host, "port": self._settings.mqtt_port},
                     )
 
-                    for topic in abonnements(self._settings.mqtt_base_topic):
+                    for topic in [
+                        *abonnements(self._settings.mqtt_base_topic),
+                        *self._zusatz_abonnements,
+                    ]:
                         await client.subscribe(topic)
                     async for nachricht in client.messages:
                         # Der Abstand faellt erst zurueck, wenn wirklich etwas ankam,

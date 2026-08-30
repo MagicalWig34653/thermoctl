@@ -1,3 +1,4 @@
+import os
 from functools import lru_cache
 
 from pydantic import Field, SecretStr
@@ -31,6 +32,11 @@ class Settings(BaseSettings):
     mqtt_password: SecretStr | None = None
     mqtt_client_id: str = "thermoctl"
     mqtt_base_topic: str = "zigbee2mqtt"
+    # Der eigene Teilbaum: Hier veroeffentlicht thermoctl seinen Zustand und hoert auf
+    # Befehle. Getrennt von `mqtt_base_topic`, das Zigbee2MQTT gehoert -- zwei Schreiber
+    # in einem Teilbaum waeren der zuverlaessigste Weg zu einem Fehler, den niemand mehr
+    # zuordnen kann.
+    mqtt_praefix: str = "thermoctl"
     mqtt_ca_cert: str | None = None
     # Regionsabhaengig: iotx-eu, iotx-us, iotx-ap. Steht deshalb in der Konfiguration und
     # nicht im Quelltext (Grundsatz 1) — wer seine Geraete in einer anderen Region
@@ -82,4 +88,18 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
-    return Settings()
+    """Die Einstellungen dieses Prozesses.
+
+    `THERMOCTL_ENV_FILE` waehlt die Datei -- leer heisst keine. Das braucht die
+    Testsuite: Vorher las der Testlauf die `.env` des Entwicklers mit, und wer dort
+    THERMOCTL_PASSKEY_RP_ID eintrug, sah drei Tests rot werden, die mit seiner Aenderung
+    nichts zu tun hatten. Der gefaehrlichere Fall ist der umgekehrte -- eine Einstellung,
+    die oertlich gesetzt ist und in der CI fehlt, laesst Tests gruen aussehen, die dort
+    scheitern werden. Das ist der zweite Anlauf auf denselben Fehler; beim ersten wurden
+    nur die zwei Pflichtvariablen gesetzt.
+
+    Ausgewertet wird hier und nicht in `model_config`: Ein `os.environ`-Zugriff dort
+    liefe beim **Import** des Moduls, also bevor irgendein Test etwas setzen kann.
+    """
+    datei = os.environ.get("THERMOCTL_ENV_FILE", ".env")
+    return Settings(_env_file=datei or None)

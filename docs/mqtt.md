@@ -1,11 +1,17 @@
-# MQTT: was gelesen wird und was einmal gesendet werden soll
+# MQTT: was gelesen, was gesendet und was entgegengenommen wird
 
-Zwei getrennte Dinge, die oft verwechselt werden:
+Drei getrennte Dinge:
 
-- **Lesen** — was `thermoctl` heute tut: Sensordaten aus Zigbee2MQTT aufnehmen.
-- **Senden** — was es tun *wird*: den eigenen Zustand veröffentlichen, damit Home Assistant
-  die Zonen findet. **Das ist entworfen, aber abgeschaltet.** Solange der Regelkreis nicht
-  scharf ist, veröffentlicht der Dienst nichts.
+- **Lesen** — Sensordaten aus Zigbee2MQTT aufnehmen. Läuft, sobald MQTT eingeschaltet ist.
+- **Senden** — den eigenen Zustand veröffentlichen und die Zonen bei Home Assistant
+  anmelden. **Nur mit scharfer Regelung.**
+- **Entgegennehmen** — Sollwert und Betriebsart, die aus Home Assistant kommen. Ebenfalls
+  nur mit scharfer Regelung, denn ohne Senden gäbe es dort gar keinen Thermostat.
+
+Die beiden letzten hängen am selben Riegel wie das Schalten selbst. Der Grund ist kein
+Übermaß an Vorsicht: Eine Zone, die sich in Home Assistant als Thermostat anmeldet, bekommt
+dort einen Regler, den man drehen kann, und eine Anzeige „heizt". Beides wäre im
+Trockenlauf gelogen — in einer fremden Oberfläche, in der niemand nachsehen würde, warum.
 
 ## 1. Lesen: Zigbee2MQTT
 
@@ -68,13 +74,48 @@ Climate-Entität.
 demselben Config-Topic. Ohne sie bleibt sie in Home Assistant als Leiche stehen — der Teil,
 den man beim ersten Bauen vergisst.
 
-## 4. Was noch fehlt
+## 4. Was Home Assistant bekommt
 
-Das Senden selbst. Es wartet auf Phase 4, aus einem Grund, der keine Formalie ist: Solange
-der Dienst im Schattenbetrieb läuft, würde eine veröffentlichte Sollwertänderung aus Home
-Assistant eine Erwartung wecken, die er nicht erfüllt — die Zone bekäme einen neuen
-Sollwert und würde trotzdem nicht heizen.
+**Eine Climate-Entität je Zone — nicht je Gerät.** Alle Zonen erscheinen als ein einziges
+Gerät namens `thermoctl` mit je einem Thermostat darunter. Die einzelnen Ventile, Sensoren
+und Fensterkontakte meldet `thermoctl` *nicht* an: Die stehen in Home Assistant ohnehin
+schon, wenn es an demselben Broker hängt — Zigbee2MQTT meldet sie selbst an. Zweimal
+dasselbe Gerät anzumelden brächte nur zwei Einträge, die sich widersprechen können.
 
-Wenn es so weit ist, sind es zwei Schritte: die Funktionen aus
-`thermoctl/integrations/mqtt/veroeffentlichung.py` an den Client hängen, und den
-Last-Will-Eintrag beim Verbinden setzen. Beide sind bereits getestet.
+Je Zone trägt der Thermostat:
+
+| In Home Assistant | Kommt von / geht nach |
+|---|---|
+| Ist-Temperatur | `<präfix>/zonen/<id>/zustand/ist_temperatur` |
+| Soll-Temperatur (lesen und **setzen**) | `.../zustand/sollwert`, `.../befehl/sollwert` |
+| Betriebsart `auto`/`heat`/`off` (lesen und **setzen**) | `.../zustand/betriebsart`, `.../befehl/betriebsart` |
+| Anzeige „heizt / bereit" | `.../zustand/wuerde_heizen` |
+| Erreichbarkeit | `<präfix>/verfuegbarkeit` |
+
+Grenzen: 5 bis 35 °C, Schrittweite 0,5 K. Sie stehen in der Discovery-Nutzlast **und** in
+der Domäne — Home Assistant zeigt sie an, abgewiesen wird an derselben Stelle wie ein
+Klick in der Oberfläche.
+
+Was ein eingehender Befehl bewirkt:
+
+- **Soll-Temperatur** → eine Übersteuerung mit fester Temperatur, wie ein „Übersteuern"
+  auf der Startseite. Nicht der hinterlegte Sollwert des Modus: Wer am Thermostat dreht,
+  meint „jetzt", nicht „ab jetzt immer".
+- **Betriebsart** → die Betriebsart der Zone (`auto`, `manual`, `off`).
+
+Beides läuft über dieselben Domänenfunktionen wie Oberfläche, REST und MCP und steht mit
+der Quelle `system` im Audit-Protokoll — niemand hat sich dafür angemeldet, und das soll
+dort auch so dastehen.
+
+## 5. Der Riegel, und warum ein Neustart nötig ist
+
+Zwei Riegel, wie beim Schalten:
+
+1. **Beim Bau des Clients**, aus `setting.control_armed` gelesen — einmal, beim Start.
+2. **Bei jedem Senden**, ebenfalls aus `setting.control_armed`.
+
+Der zweite wirkt sofort: Zurück in den Trockenlauf hört das Senden auf der Stelle auf, und
+die Zonen werden bei Home Assistant **abgemeldet**. Der erste wirkt erst nach einem
+Neustart: Wer die Anlage im laufenden Betrieb scharf schaltet, hat bis dahin einen Zustand,
+in dem scharf entschieden und trotzdem nichts gesendet wird. Die Betriebsseite sagt das
+ausdrücklich, statt es zu verschweigen.
