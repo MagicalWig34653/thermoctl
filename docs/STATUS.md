@@ -96,6 +96,30 @@ gingen getrennt — `var(--warmth)` stand in der Vorlage, `--waerme` im Styleshe
 Zeitplan-Balken verloren dadurch ihre Waermefarbe und wurden grau. Kein Test hat das
 gesehen; die Seite antwortete mit 200 und sah nur anders aus.
 
+**Die Navigationsleiste zeigte ins Leere — auf jeder Seite.** `/zonen`, `/geraete`,
+`/steuerung`: alle drei seit der Endpunkt-Umstellung 404. Dazu die Formularziele zum
+Anlegen und Ändern einer Zone, eines Modus und zum Löschen — wer eine Zone anlegen wollte,
+bekam eine Fehlerseite. Die Anwendung sah dabei vollständig in Ordnung aus, solange man
+Adressen direkt eintippte, und genau das haben alle Prüfungen getan: die Bildschirmfotos,
+der Rauchtest und ich.
+
+Der vorhandene Verweis-Test liest den *Quelltext* der Vorlagen und überspringt alles, was
+`{{` oder `{%` enthält. Das ist fast alles: Die Navigationsleiste baut ihre Verweise über
+ein Makro, und jedes Formularziel setzt eine Zonen-Id ein. Die ganze Leiste war für ihn
+unsichtbar.
+
+Der neue Test liest stattdessen die **gerenderten** Seiten — dort sieht ein per Makro
+gebauter Verweis aus wie jeder andere — und folgt jedem `href`. Formularziele gleicht er
+gegen die Routentabelle ab, statt sie abzuschicken. Die erste Fassung schickte sie ab, mit
+leerem Rumpf, an jede Aktion jeder Seite; eine davon heißt „setze die Rechte dieser
+Gruppe", ein leerer Rumpf heißt „keine Rechte", und der Test entzog dem Konto, mit dem er
+angemeldet war, seine eigenen Rechte. Ein Test, der das verändert, was er prüft, berichtet
+über einen Zustand, den es nie gab.
+
+Beide Hälften sind von beiden Seiten gegengeprüft, und die Navigation ist danach im
+Browser einmal wirklich durchgeklickt worden — jeder Punkt der Leiste, jeder Eintrag des
+Untermenüs, jeder Reiter einer Zone.
+
 **Ein Waechter gegen genau diese Fehlerklasse.** Fuenfmal an einem Tag dasselbe
 Muster: Eine View wurde umbenannt, die Vorlage nicht, und Jinja beantwortet einen
 unbekannten Namen mit der leeren Zeichenkette. Die Seite antwortet weiter mit 200 und

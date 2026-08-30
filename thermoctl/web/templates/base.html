@@ -89,11 +89,11 @@
             #}
             <ul class="navbar-nav ms-auto align-items-lg-center">
                 {{ nav_link("/", "Start", exact=true) }}
-                {{ nav_link("/zonen", "Zonen") }}
-                {{ nav_link("/geraete", "Geräte") }}
-                {{ nav_link("/steuerung", "Betrieb") }}
+                {{ nav_link("/zones", "Zonen") }}
+                {{ nav_link("/devices", "Geräte") }}
+                {{ nav_link("/control", "Betrieb") }}
                 <li class="nav-item dropdown">
-                    <button class="nav-link dropdown-toggle{{ ' tc-here' if here in ('/einstellungen', '/schnittstellen', '/benutzer', '/gruppen', '/audit', '/tokens') or here.startswith('/modi') }}"
+                    <button class="nav-link dropdown-toggle{{ ' tc-here' if here in ('/settings', '/interfaces', '/users', '/groups', '/audit', '/tokens') or here.startswith('/modes') }}"
                             type="button" data-bs-toggle="dropdown" aria-expanded="false">
                         Einstellungen
                     </button>
