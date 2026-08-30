@@ -1,0 +1,72 @@
+{#
+Das Flussbild: der Weg durch eine Zone, von links nach rechts.
+
+    Messquelle ─┐
+                ├→ Zone → Aktoren
+Fensterkontakte ┘
+
+Reines HTML und CSS, keine Bibliothek und kein Zeichenprogramm — die Anlage hat drei
+Stufen, und drei Spalten mit Verbindungslinien zeigen sie genauso gut wie ein Diagramm,
+das erst geladen werden müsste. Was fehlt, steht als Lücke da und nicht als leerer Kasten:
+Eine Zone ohne Messquelle regelt nichts, und das soll man sehen.
+#}
+{% macro geraetekarte(g, art) %}
+<div class="tc-knoten tc-knoten-{{ art }}">
+    <div class="tc-knoten-name">{{ g.name }}</div>
+    {% if g.faehigkeiten %}
+    <div class="t-leise" style="font-size: .68rem">{{ g.faehigkeiten | join(", ") }}</div>
+    {% endif %}
+    {% if not g.aktiv %}
+    <span class="tc-chip tc-chip-warnung mt-1">abgeschaltet</span>
+    {% endif %}
+</div>
+{% endmacro %}
+
+{% macro luecke(text) %}
+<div class="tc-knoten tc-knoten-luecke">{{ text }}</div>
+{% endmacro %}
+
+{% macro flussbild(z) %}
+<div class="tc-fluss">
+    <div class="tc-fluss-spalte">
+        <p class="t-marke">Misst</p>
+        {% if z.messquelle %}{{ geraetekarte(z.messquelle, "sensor") }}
+        {% else %}{{ luecke("keine Messquelle") }}{% endif %}
+
+        {% if z.fensterkontakte %}
+        <p class="t-marke mt-3">Unterbricht</p>
+        {% for g in z.fensterkontakte %}{{ geraetekarte(g, "kontakt") }}{% endfor %}
+        {% endif %}
+    </div>
+
+    <div class="tc-fluss-pfeil" aria-hidden="true"></div>
+
+    <div class="tc-fluss-spalte">
+        <p class="t-marke">Entscheidet</p>
+        <div class="tc-knoten tc-knoten-zone">
+            <div class="tc-knoten-name">{{ z.name }}</div>
+            <div class="t-leise" style="font-size: .68rem">Ist gegen Soll, mit Hysterese</div>
+        </div>
+    </div>
+
+    <div class="tc-fluss-pfeil" aria-hidden="true"></div>
+
+    <div class="tc-fluss-spalte">
+        <p class="t-marke">Schaltet</p>
+        {% if z.aktoren %}
+        {% for g in z.aktoren %}{{ geraetekarte(g, "aktor") }}{% endfor %}
+        {% else %}{{ luecke("kein Aktor") }}{% endif %}
+
+        {% if z.bediengeraete %}
+        <p class="t-marke mt-3">Zeigt an</p>
+        {% for g in z.bediengeraete %}{{ geraetekarte(g, "anzeige") }}{% endfor %}
+        {% endif %}
+    </div>
+</div>
+
+{% if z.maengel %}
+<ul class="t-leise small mb-0 mt-2">
+    {% for m in z.maengel %}<li>{{ m }}</li>{% endfor %}
+</ul>
+{% endif %}
+{% endmacro %}

@@ -10,7 +10,8 @@ from thermoctl.db.models.device import Device, DeviceCapabilityLink, ZoneDevice
 from thermoctl.db.models.lookup import DeviceCapability, Integration
 from thermoctl.db.models.messwert import DeviceHealth
 from thermoctl.db.models.zone import Zone
-from thermoctl.domain.authz import require
+from thermoctl.domain.anlagenbild import anlagenbild
+from thermoctl.domain.authz import require, visible_zones
 from thermoctl.domain.principal import Principal
 from thermoctl.web import ist_teilaustausch, templates
 
@@ -63,5 +64,29 @@ async def geraeteuebersicht(
             "faehigkeiten": faehigkeiten,
             "zonen": zonen,
             "ist_htmx": ist_teilaustausch(request),
+        },
+    )
+
+
+@router.get("/anlage")
+async def anlage_anzeigen(
+    request: Request,
+    principal: Annotated[Principal, Depends(aktueller_principal)],
+    session: Annotated[Session, Depends(get_session)],
+) -> Response:
+    """Das Anlagenbild: welches Geraet wo etwas tut.
+
+    `device.read`, wie die Geraeteliste: Es ist dieselbe Auskunft, nur als Weg statt als
+    Tabelle.
+    """
+    require(principal, "device.read")
+    return templates.TemplateResponse(
+        request,
+        "anlage.html",
+        {
+            **anlagenbild(
+                session, visible_zones(session, principal, "zone.read")
+            ).__dict__,
+            "bruecke": getattr(request.app.state, "bruecke_erreichbar", None),
         },
     )

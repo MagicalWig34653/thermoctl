@@ -20,6 +20,7 @@ from thermoctl.db.models.identity import AccessGroup, GroupPermission, User, Use
 from thermoctl.db.models.lookup import (
     PERMISSIONS,
     ActorSource,
+    DeviceCapability,
     DeviceRole,
     Integration,
     OperatingMode,
@@ -130,6 +131,15 @@ def rolle(session: Session, code: str) -> DeviceRole:
         session.add(r)
         session.flush()
     return r
+
+
+def faehigkeit(session: Session, code: str) -> DeviceCapability:
+    f = session.query(DeviceCapability).filter_by(code=code).one_or_none()
+    if f is None:
+        f = DeviceCapability(code=code, label=code)
+        session.add(f)
+        session.flush()
+    return f
 
 
 def geraet_anlegen(session: Session, external_id: str) -> Device:

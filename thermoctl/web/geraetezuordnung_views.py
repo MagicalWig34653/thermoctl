@@ -9,6 +9,7 @@ from thermoctl.auth.dependencies import aktueller_principal, csrf_schutz, get_se
 from thermoctl.db.models.device import Device, ZoneDevice
 from thermoctl.db.models.lookup import DeviceRole
 from thermoctl.db.models.zone import Zone
+from thermoctl.domain.anlagenbild import anlagenbild
 from thermoctl.domain.authz import hat_recht, visible_zones
 from thermoctl.domain.geraetezuordnung import (
     ZuordnungBereitsVorhanden,
@@ -56,6 +57,10 @@ def _kontext(session: Session, zone: Zone, **zusatz: object) -> dict[str, object
     )
     return {
         "zone": zone,
+        # Dasselbe Flussbild wie auf /anlage, hier fuer diese eine Zone. Es steht ueber
+        # den Formularen, weil es die Frage beantwortet, mit der man herkommt -- was ist
+        # hier verdrahtet und was fehlt -- bevor man etwas aendert.
+        "bild": anlagenbild(session, [zone]).zonen[0],
         "geraete": geraete,
         "rollen": rollen,
         "zuordnungen": zuordnungen,
