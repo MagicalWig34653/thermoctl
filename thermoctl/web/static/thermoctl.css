@@ -449,6 +449,63 @@ body {
     --bs-btn-active-border-color: #7d3527;
 }
 
+/* ── Rechtevergabe ─────────────────────────────────────────────────────────── */
+
+.tc-rechteeditor > summary {
+    cursor: pointer;
+    display: inline-block;
+    padding: 0.25rem 0.7rem;
+    border: 1px solid var(--linie-stark);
+    border-radius: var(--rundung-klein);
+    font-size: 0.875rem;
+    font-weight: 520;
+}
+
+.tc-rechteeditor[open] > summary {
+    margin-bottom: 0.5rem;
+}
+
+.tc-recht {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: start;
+    gap: 0.5rem 1.5rem;
+    padding: 0.5rem 0;
+    border-top: 1px solid var(--linie);
+}
+
+.tc-recht-marke {
+    display: flex;
+    align-items: start;
+    gap: 0.55rem;
+    min-width: 18rem;
+    flex: 1;
+    cursor: pointer;
+}
+
+/* Die Zonenhaken eines Rechts. Sie stehen rechts daneben und nicht darunter: Ein Recht
+   ist eine Zeile, und "wo gilt es" gehoert in dieselbe Zeile wie "gilt es". */
+.tc-recht-zonen {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    align-items: center;
+}
+
+.tc-recht-zonen .tc-chip {
+    cursor: pointer;
+    font-weight: 500;
+}
+
+/* Anlagenweit vergeben: Die Zonenhaken sind dann gegenstandslos -- ein anlagenweites
+   Recht deckt jede Zone ab. Sie bleiben sichtbar, aber gedaempft, statt zu
+   verschwinden; ein Bedienelement, das beim Klicken verschwindet, laesst einen raten,
+   ob man etwas kaputtgemacht hat. */
+.tc-verdeckt {
+    opacity: 0.35;
+    pointer-events: none;
+}
+
 /* ── Zeitplan-Wochenansicht ─────────────────────────────────────────────────── */
 
 .zeitplan-ziehbar {

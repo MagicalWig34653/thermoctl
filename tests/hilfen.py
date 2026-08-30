@@ -18,6 +18,7 @@ from thermoctl.db.models.credential import ApiToken, ApiTokenPermission
 from thermoctl.db.models.device import Device
 from thermoctl.db.models.identity import AccessGroup, GroupPermission, User, UserAccessGroup
 from thermoctl.db.models.lookup import (
+    PERMISSIONS,
     ActorSource,
     DeviceRole,
     Integration,
@@ -84,6 +85,17 @@ def zone_anlegen(session: Session, name: str) -> Zone:
     return zone
 
 
+def alle_rechte_anlegen(session: Session) -> None:
+    """Legt alle Rechte an, wie es die Migration in jeder echten Datenbank tut.
+
+    Die Gruppenseite zeigt die Rechte, die es *gibt*. In einem Test, der nur die zwei
+    Rechte anlegt, die er selbst braucht, zeigt sie folgerichtig zwei -- das sagt ueber
+    die Seite nichts.
+    """
+    for code, _beschreibung, _zonenbezogen in PERMISSIONS:
+        berechtigung(session, code)
+
+
 def modus_anlegen(
     session: Session, code: str, name: str | None = None, *, eingebaut: bool = False
 ) -> SetpointMode:
@@ -128,10 +140,28 @@ def geraet_anlegen(session: Session, external_id: str) -> Device:
     return g
 
 
-def berechtigung(session: Session, code: str, zonenbezogen: bool = False) -> Permission:
+# Die echten Beschreibungen und Geltungsbereiche, wie die Migration sie einspielt.
+_RECHTE_AUS_DEM_MODELL = {
+    code: (beschreibung, zonenbezogen)
+    for code, beschreibung, zonenbezogen in PERMISSIONS
+}
+
+
+def berechtigung(session: Session, code: str, zonenbezogen: bool | None = None) -> Permission:
+    """Legt ein Recht an, wie es die Migration tut -- mit seiner echten Beschreibung.
+
+    Vorher stand als Beschreibung schlicht der Code. Das ist ein Zustand, den keine
+    Instanz hat, und er verdeckte, dass die Gruppenseite nur Codes anzeigte: In den
+    Tests sahen Code und Klartext gleich aus.
+    """
     p = session.query(Permission).filter_by(code=code).one_or_none()
     if p is None:
-        p = Permission(code=code, description=code, is_zone_scoped=zonenbezogen)
+        beschreibung, aus_modell = _RECHTE_AUS_DEM_MODELL.get(code, (code, False))
+        p = Permission(
+            code=code,
+            description=beschreibung,
+            is_zone_scoped=aus_modell if zonenbezogen is None else zonenbezogen,
+        )
         session.add(p)
         session.flush()
     return p
