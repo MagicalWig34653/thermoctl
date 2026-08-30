@@ -8,7 +8,7 @@
         "%02d:%02d"|format(point.minute_of_day // 60, point.minute_of_day % 60) ~
         " wirklich gelöscht werden?",
     "Der vorherige Modus gilt danach bis zum folgenden Schaltpunkt.",
-    "/zonen/" ~ zone.id ~ "/zeitplan/punkte/" ~ point.id ~ "/loeschen",
-    "/zonen/" ~ zone.id ~ "/zeitplan"
+    "/zones/" ~ zone.id ~ "/schedule/points/" ~ point.id ~ "/delete",
+    "/zones/" ~ zone.id ~ "/schedule"
 ) }}
 {% endblock %}

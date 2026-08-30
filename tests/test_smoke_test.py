@@ -403,3 +403,58 @@ def test_no_page_reads_a_name_its_view_does_not_supply(
     assert not misses, (
         "Vorlagen lesen Namen, die ihre View nicht liefert: " + ", ".join(sorted(set(misses)))
     )
+
+
+def _route_exists(app: object, path: str) -> bool:
+    """Whether any registered POST route matches this path.
+
+    Asked of the route table instead of by sending a request: a form action is a
+    state-changing endpoint, and finding out whether it exists must not run it.
+    """
+    from starlette.routing import Match
+
+    scope = {"type": "http", "method": "POST", "path": path, "path_params": {}}
+    return any(
+        route.matches(scope)[0] is not Match.NONE
+        for route in app.routes  # type: ignore[attr-defined]
+    )
+
+
+def test_every_link_and_form_on_a_rendered_page_leads_somewhere(
+    angemeldeter_client: TestClient, session: Session
+) -> None:
+    """Renders every page and follows every URL it actually emits.
+
+    The older check reads the template source and skips anything containing `{{` or
+    `{%`. That is most of them: the navigation bar builds its links through a macro
+    (`nav_link("/zones", "Zonen")`), and every form action interpolates a zone id. So
+    the whole navigation bar was invisible to it -- and stayed invisible while it
+    pointed at `/zonen`, `/geraete` and `/steuerung`, none of which exist since the
+    endpoints were translated. Every page rendered fine; only *clicking* anything
+    failed, which no test ever did.
+
+    Reading the rendered page instead of its source closes that: a macro-built link
+    and an interpolated action look exactly like any other URL by then.
+
+    A POST target is matched against the application's route table rather than
+    posted to. The first version did post -- with an empty body, to every action on
+    every page -- and one of those actions is "set this group's permissions". An empty
+    body means "no permissions", so the check revoked the rights of the very account
+    it was logged in with, and every later page came back 403. A test that changes the
+    thing it is inspecting reports on a state that never existed.
+    """
+    zone = create_zone(session, "linkcheck")
+    create_settings(session)
+    dead: list[str] = []
+    for pattern in PROTECTED_PAGES:
+        path = pattern.format(zone_id=zone.id)
+        page = angemeldeter_client.get(path)
+        assert page.status_code == 200, path
+        for target in sorted(set(re.findall(r'href="(/[^"#?]*)"', page.text))):
+            answer = angemeldeter_client.get(target, follow_redirects=True)
+            if answer.status_code >= 400:
+                dead.append(f"{path} -> {target}: HTTP {answer.status_code}")
+        for action in sorted(set(re.findall(r'action="(/[^"?]*)"', page.text))):
+            if not _route_exists(angemeldeter_client.app, action):
+                dead.append(f"{path} -> POST {action}: keine solche Route")
+    assert not dead, "Verweise, die ins Leere fuehren:\n  " + "\n  ".join(dead)

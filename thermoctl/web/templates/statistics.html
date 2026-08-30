@@ -16,7 +16,7 @@ Die Balken sind kupfern wie überall: Farbe ist hier Wärme, und nichts anderes.
     <nav class="d-flex gap-1" aria-label="Zeitraum">
         {% for key, label in periods %}
         <a class="btn btn-sm {{ 'btn-primary' if key == period else 'btn-outline-secondary' }}"
-           href="/statistik?zeitraum={{ key }}"
+           href="/statistics?period={{ key }}"
            {% if key == period %}aria-current="page"{% endif %}>{{ label }}</a>
         {% endfor %}
     </nav>

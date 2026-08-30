@@ -7,5 +7,5 @@
 {{ dependencies.overrides }} Übersteuerungen und
 {{ dependencies.shadow_decisions }} Schattenentscheidungen. Diese Daten werden mit gelöscht.{% endset %}
 {{ delete_confirmation("Zone löschen", "Soll die Zone „" ~ zone.display_name ~ "“ wirklich gelöscht werden?",
-                      hint, "/zonen/" ~ zone.id ~ "/loeschen", "/zonen/" ~ zone.id) }}
+                      hint, "/zones/" ~ zone.id ~ "/delete", "/zones/" ~ zone.id) }}
 {% endblock %}
