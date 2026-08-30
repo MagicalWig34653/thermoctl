@@ -15,11 +15,17 @@ Zusicherung: `test_rule6_exactly_on_the_switch_on_threshold_does_not_switch_on_y
 dasselbe wie vorher, nicht weniger. Ein allgemeinerer Name wäre grün geblieben und hätte
 beim nächsten Lesen niemandem mehr verraten, was hier eigentlich zugesichert ist.
 
-Damit ist die Umstellung abgeschlossen: Bezeichner, Dateinamen, Endpunkte, MQTT-Topics,
-MCP-Werkzeuge, Formularfelder, Spaltennamen, Kommentare, Docstrings und alle 794 Testnamen
-sind englisch. Deutsch geblieben ist genau das, was ein Mensch liest — und ein Zitat: Der
-Defekt des Altsystems steht als `if ist < soll: an, sonst aus` im Test, weil das der
-Quelltext von dort ist.
+Englisch sind damit: Bezeichner, Datei- und Modulnamen, Web-Endpunkte, MQTT-Topics,
+MCP-Werkzeuge, Formularfelder, Spaltennamen, Kommentare, Docstrings und alle 794 Testnamen.
+Deutsch geblieben ist, was ein Mensch liest — und ein Zitat: Der Defekt des Altsystems
+steht als `if ist < soll: an, sonst aus` im Test, weil das der Quelltext von dort ist.
+
+**Was in HTML und CSS noch deutsch ist:** rund 9 Element-Kennungen (`passkey-anmelden`,
+`passkey-hinterlegen`, …) und etwa 32 CSS-Klassen (`tc-ziehbar`, `zeitplan-balken`,
+`tc-knoten`, …). Sie sind Code, aber ein anderer Vertrag: Eine Klasse steht gleichzeitig
+in der Vorlage, im Stylesheet und im JavaScript, und wer eine davon vergisst, bekommt kein
+rotes Testergebnis, sondern eine Seite, die still anders aussieht. Das gehört als eigener
+Schritt gemacht, mit einem Blick in den Browser danach.
 
 Die letzten deutschen Bezeichner im Schema sind weg: `user_passkey.bezeichnung` heißt
 `label`, `passkey_challenge.zeremonie` heißt `ceremony` (Migration `f2c6d90a41b8`, mit
