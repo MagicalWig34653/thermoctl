@@ -343,3 +343,63 @@ def test_the_rendered_form_carries_the_field_names_the_view_reads(
     assert [(p.weekday, p.minute_of_day) for p in points] == [(1, 7 * 60 + 15)], (
         "Das Formular hat nichts angelegt — Feldnamen in Vorlage und Ansicht gehen auseinander"
     )
+
+
+def test_no_page_reads_a_name_its_view_does_not_supply(
+    angemeldeter_client: TestClient, session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Renders every page and fails on the first name Jinja cannot resolve.
+
+    This closes the gap that three defects slipped through in one day, all of the
+    same shape: a view was renamed, its template was not, and Jinja answers an
+    unknown name with the empty string. The page keeps returning 200 and simply
+    shows nothing where the setpoint's reason used to be -- or, in the worse case,
+    the form posts a field name the view never reads and creating a schedule point
+    silently does nothing.
+
+    A test cannot see that; only a person looking at the page can. So this makes
+    the silence audible: an undefined name becomes a recorded miss, and a miss
+    fails the test.
+
+    `Undefined` is deliberately not swapped for `StrictUndefined`: several
+    templates legitimately ask whether an optional value exists. Only *reading*
+    one -- printing it, taking an attribute off it -- is recorded, which is
+    exactly the case that renders wrongly.
+    """
+    from typing import NoReturn
+
+    from jinja2 import Undefined
+
+    from thermoctl.web import templates
+
+    misses: list[str] = []
+
+    class ReportingUndefined(Undefined):
+        def _fail_with_undefined_error(
+            self, *args: object, **kwargs: object
+        ) -> NoReturn:
+            misses.append(self._undefined_name or "<unnamed>")
+            super()._fail_with_undefined_error(*args, **kwargs)
+
+        def __str__(self) -> str:
+            misses.append(self._undefined_name or "<unnamed>")
+            return ""
+
+        def __getattr__(self, name: str) -> object:
+            if name.startswith("__"):
+                raise AttributeError(name)
+            misses.append(f"{self._undefined_name}.{name}")
+            return self
+
+    monkeypatch.setattr(templates.env, "undefined", ReportingUndefined)
+    zone = create_zone(session, "undefined-check")
+    create_settings(session)
+    for pattern in PROTECTED_PAGES:
+        path = pattern.format(zone_id=zone.id)
+        vorher = len(misses)
+        assert angemeldeter_client.get(path).status_code == 200, path
+        for i in range(vorher, len(misses)):
+            misses[i] = f"{path}: {misses[i]}"
+    assert not misses, (
+        "Vorlagen lesen Namen, die ihre View nicht liefert: " + ", ".join(sorted(set(misses)))
+    )
