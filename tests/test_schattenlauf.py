@@ -352,7 +352,7 @@ async def test_keine_veroeffentlichung_trotz_heizender_entscheidung(
     client._client = gefaelscht  # type: ignore[assignment]
 
     ergebnis = await client.veroeffentlichen(
-        "zigbee2mqtt/Ventil/set", '{"state": "ON"}', scharf=True
+        "zigbee2mqtt/Ventil/set", '{"state": "ON"}', schaltet=True
     )
 
     assert ergebnis is False

@@ -27,13 +27,20 @@ class MqttClient:
         schalten_erlaubt: bool = False,
         zusatz_abonnements: list[str] | None = None,
     ) -> None:
-        """`schalten_erlaubt` ist die harte Grenze des Trockenlaufs.
+        """`schalten_erlaubt` ist die harte Grenze des Trockenlaufs -- fuer das Schalten.
 
-        Solange sie False ist, veroeffentlicht dieser Client nichts — auch dann nicht,
-        wenn ein Aufrufer es mit `scharf=True` ausdruecklich verlangt. In Teilprojekt 2
-        setzt sie niemand auf True; erst Teilprojekt 4 leitet sie aus
-        `setting.control_armed` ab. Zwei Riegel statt einem, weil hinter dem Ventil eine
-        bewohnte Wohnung haengt und ein einzelner vergessener Aufrufer sonst genuegt.
+        Sie gilt fuer Nachrichten, die ein Ventil bewegen (`schaltet=True`). Solange sie
+        False ist, geht keine davon hinaus, auch wenn ein Aufrufer es verlangt. Zwei
+        Riegel statt einem, weil hinter dem Ventil eine bewohnte Wohnung haengt und ein
+        einzelner vergessener Aufrufer sonst genuegt: dieser hier beim Bau des Clients,
+        der zweite bei jedem Aufruf in `integrations/aktoren.py`.
+
+        **Nicht betroffen sind Zustandsmeldungen und die Home-Assistant-Anmeldung.**
+        Bis hierher sperrte dieser Riegel jede Veroeffentlichung, auch die. Das war
+        richtig, solange gar nichts gesendet wurde -- es machte aber den Trockenlauf
+        unpruefbar: Man konnte die Anbindung erst ausprobieren, nachdem man die Anlage
+        scharf geschaltet hatte, also genau dann nicht mehr, wenn ein Fehler noch
+        folgenlos gewesen waere. Eine Zustandsmeldung bewegt nichts.
         """
         self._settings = settings
         self._handler = handler
@@ -125,20 +132,21 @@ class MqttClient:
             abstand = min(abstand * 2, 60.0)
 
     async def veroeffentlichen(
-        self, topic: str, nutzlast: str, *, scharf: bool
+        self, topic: str, nutzlast: str, *, schaltet: bool
     ) -> bool:
-        """Sendet nur, wenn der Aufrufer es verlangt UND der Client scharf gebaut wurde."""
-        if not self._schalten_erlaubt:
+        """Sendet eine Nachricht. `schaltet=True` verlangt zusaetzlich den Riegel.
+
+        `schaltet` beschreibt, was die Nachricht **bewirkt**, nicht wie dringend der
+        Aufrufer sie meint: Ein Ventilbefehl bewegt etwas, eine Zustandsmeldung nicht.
+        Frueher hiess der Parameter `scharf` und bedeutete beides zugleich -- der
+        Aufrufer musste ihn setzen, *und* der Client musste scharf gebaut sein. Dabei
+        fiel die Zustandsmeldung unter dieselbe Sperre wie der Ventilbefehl.
+        """
+        if schaltet and not self._schalten_erlaubt:
             log.warning(
-                "Trockenlauf: Veroeffentlichung abgewiesen, obwohl der Aufrufer sie "
+                "Trockenlauf: Schaltbefehl abgewiesen, obwohl der Aufrufer ihn "
                 "verlangt hat",
-                extra={"topic": topic, "scharf_verlangt": scharf},
-            )
-            return False
-        if not scharf:
-            log.info(
-                "Trockenlauf: MQTT-Nachricht wird nicht veroeffentlicht",
-                extra={"topic": topic, "nutzlast": nutzlast},
+                extra={"topic": topic},
             )
             return False
         if self._client is None:
