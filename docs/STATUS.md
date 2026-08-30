@@ -158,6 +158,53 @@ die Tabelle unter SQLite neu, und eine misslungene Kopie sähe hinterher richtig
 wäre leer). Dazu `NAMENSKONVENTION` → `NAMING_CONVENTION` und der JSON-Schlüssel der
 Passkey-Registrierung.
 
+## Das Wandtablet-Dashboard
+
+Unter `/kiosk` läuft eine eigene, große Ansicht für ein Tablet an der Wand: je Zone
+Ist-Temperatur, Sollwert, Betriebsart und, wenn erlaubt, zwei Knöpfe für den Sollwert und
+einer für den Boost.
+
+**Es ist nicht öffentlich, und das ist eine bewusste Abweichung vom Wortlaut des
+Wunsches.** Eine unauthentifizierte Seite widerspräche Grundsatz 4 — im Altsystem war
+fehlende Auth eine akzeptierte Heimnetz-Eigenschaft, hier ausdrücklich nicht mehr.
+Stattdessen gibt es ein **Kiosk-Token**: ein gewöhnlicher `ApiToken`, ausgestellt unter
+`/kiosk-tokens`, jederzeit widerrufbar, optional befristet, und mit einem Rechtesatz aus
+genau zwei Angaben — welche Zonen, und ob auch bedient werden darf. „Bedienen" heißt
+`setpoint.write` und `override.create`; ein Kiosk-Token kann damit genau das, was eine
+Home-Assistant-Thermostatkarte kann, und nichts darüber hinaus. Es läuft durch dieselbe
+`Principal`-Maschinerie wie jeder andere Zugang, nichts geht an `domain/authz.py` vorbei.
+
+Das Token fährt **einmal** in der Adresse (`/kiosk/<token>`, als Lesezeichen des Tablets)
+und danach nur noch im Cookie; der Einstieg leitet deshalb weiter, statt direkt zu
+rendern — so steht es weder in der Adresszeile noch in einem `Referer`-Kopf. Die erste
+Anfrage stünde allerdings in der Zugriffsprotokollierung, und die erreicht der vorhandene
+Maskierungsfilter **nicht**: uvicorn baut seine Meldung aus `record.args` statt aus
+strukturierten Feldern. Ein eigener Filter am Logger — nicht am Handler, damit er vor
+jedem Handler läuft — schwärzt den Pfad, bevor er formatiert wird. Ohne das hätte jeder
+Aufruf das Token im Klartext protokolliert, Grundsatz 2.
+
+Im Browser durchgespielt, nicht nur getestet: Token ausstellen, Adresse einmal im Klartext,
+Einstieg vom Tablet aus in einem frischen Browser ohne Anmeldung, Weiterleitung auf das
+nackte `/kiosk`, Sollwert verstellt — und dann die Gegenprobe, dass dasselbe Tablet auf
+`/settings`, `/users`, `/devices` und `/kiosk-tokens` mit **401** abprallt und auf `/`
+zur Anmeldung geschickt wird.
+
+**Was dabei auffiel und was noch offen ist:** Das Cookie trägt das Token im Klartext — wer
+das Tablet in der Hand hat, kann es auslesen und anderswo verwenden. Das ist der Preis
+eines Lesezeichens statt einer Anmeldung und durch den engen, widerrufbaren Rechtesatz
+abgefedert, aber es ist eine Eigenschaft, keine Nachlässigkeit. Und der Trockenlauf gilt
+auch hier: Ein am Tablet verstellter Sollwert ändert die Entscheidung, aber solange nicht
+scharf geschaltet ist, bewegt er kein Ventil.
+
+Auf dem großen Display fiel außerdem etwas auf, das vorher niemandem auffiel: Die
+Begründung des Sollwerts stand als „Uebersteuerung (feste Temperatur)" da — mit
+transliteriertem Umlaut, während dieselbe Anwendung an anderer Stelle „Übersteuerung"
+schreibt. Die sichtbaren Begründungen sind nachgezogen. **Der Rest steht noch:** Rund
+hundert weitere Zeichenketten im Projekt transliterieren Umlaute (`gueltig`, `naechster`,
+`geloescht`, …). Die meisten davon sind Protokollmeldungen, einige aber sind Fehlertexte,
+die ein Mensch zu sehen bekommt. Das ist eine eigene Aufräumarbeit und bewusst nicht
+nebenbei erledigt.
+
 ## Zwei neue Fähigkeiten: Thermostatventile und die Sonne
 
 **Zigbee-Heizkörperthermostate (WT-A03E).** Ein Thermostatventil ist kein Schalter: Es hat

@@ -76,8 +76,8 @@ def decide(situation: Situation) -> Decision:
             heating=False,
             reason_code=REASON_CODE_NO_SOURCE,
             reason=(
-                "Keine verwertbare Messung fuer die Zone — es gibt nichts, woran zu regeln "
-                "waere. Ventil bleibt zu."
+                "Keine verwertbare Messung für die Zone — es gibt nichts, woran zu regeln "
+                "wäre. Ventil bleibt zu."
             ),
         )
 
@@ -131,7 +131,7 @@ def decide(situation: Situation) -> Decision:
             reason_code=REASON_CODE_OFF,
             reason=(
                 f"Fenster seit {situation.window_closed_for_s}s zu, Wiederanlauf erst nach "
-                f"{delay}s — Raum kuehlt noch nach."
+                f"{delay}s — Raum kühlt noch nach."
             ),
         )
 
@@ -179,7 +179,7 @@ def decide(situation: Situation) -> Decision:
             heating=False,
             reason_code=REASON_CODE_OFF,
             reason=(
-                f"Ist {measured_c} °C ueber Soll {setpoint_c} °C plus Hysterese {h}K "
+                f"Ist {measured_c} °C über Soll {setpoint_c} °C plus Hysterese {h}K "
                 f"({setpoint_reason})."
             ),
         )

@@ -103,7 +103,7 @@ def test_expected_sun_reduces_a_setpoint_that_has_headroom_above_frost(
 
     assert row.setpoint_c == Decimal("19.0")  # 21.0 - (1.0 * 2.0)
     assert "Sonnenabsenkung: -2.0 K" in row.setpoint_reason
-    assert "in den naechsten 3 Stunden" in row.setpoint_reason  # setting's default
+    assert "in den nächsten 3 Stunden" in row.setpoint_reason  # setting's default
 
 
 def test_a_zone_with_factor_zero_is_unaffected_by_any_forecast(session: Session) -> None:

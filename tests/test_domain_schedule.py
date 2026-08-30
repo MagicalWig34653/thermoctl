@@ -64,7 +64,7 @@ def test_an_override_beats_the_schedule(session: Session) -> None:
                              override=(Decimal("23.5"), None))
     result = resolved_setpoint(session, zone, datetime(2026, 8, 31, 10, 0))
     assert result.temperature_c == Decimal("23.5")
-    assert "Uebersteuerung" in result.reason
+    assert "Übersteuerung" in result.reason
 
 
 def test_an_expired_override_no_longer_applies(session: Session) -> None:
