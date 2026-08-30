@@ -20,12 +20,14 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from thermoctl.auth.dependencies import aktueller_principal, csrf_schutz, get_session
+from thermoctl.config import get_settings
 from thermoctl.db.base import utcnow
 from thermoctl.db.models.lookup import SensorStatus
 from thermoctl.db.models.zustand import ShadowDecision, ZoneState
 from thermoctl.domain.authz import hat_recht, require, visible_zones
 from thermoctl.domain.principal import Principal
 from thermoctl.domain.schedule import aufgeloester_sollwert
+from thermoctl.domain.schnittstellen import uebersicht
 from thermoctl.domain.steuerung import (
     BESCHRIFTUNG,
     GANZZAHLIG,
@@ -180,3 +182,29 @@ async def scharfschalten(
     except Steuerungsfehler as exc:
         return _seite(request, session, principal, fehler=exc)
     return RedirectResponse("/steuerung", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.get("/schnittstellen")
+async def schnittstellen_anzeigen(
+    request: Request,
+    principal: Annotated[Principal, Depends(aktueller_principal)],
+    session: Annotated[Session, Depends(get_session)],
+) -> Response:
+    """Was von aussen angebunden ist -- und ob es wirklich laeuft.
+
+    `setting.manage`, nicht `zone.read`: Die Seite nennt Broker-Adressen, Webhook-Ziele
+    und Kontonamen. Nichts davon ist ein Geheimnis im engeren Sinn, aber es ist auch
+    nichts, was jeder Bediener der Heizung sehen muss.
+    """
+    require(principal, "setting.manage")
+    return templates.TemplateResponse(
+        request,
+        "schnittstellen.html",
+        {
+            "schnittstellen": uebersicht(
+                session,
+                get_settings(),
+                getattr(request.app.state, "bruecke_erreichbar", None),
+            ),
+        },
+    )
