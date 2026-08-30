@@ -127,6 +127,40 @@ class MaskierungsFilter(logging.Filter):
         return True
 
 
+# `/kiosk/{token}` carries a live, if revocable, credential in the URL itself -- the
+# one channel `MaskierungsFilter` above cannot reach. That filter only ever looks at
+# structured `extra` fields; uvicorn's access log builds its message from `record.args`
+# instead (`'%s - "%s %s HTTP/%s" %d'`, with the raw request path as one of the
+# arguments), and the request path is never something a caller of `log.info()` in this
+# project passes as an extra field for `MaskierungsFilter` to catch.
+#
+# `uvicorn.access` has a handler by the time a request comes in (see
+# `configure_logging()` below), so access logging is active in this project whether or
+# not anyone intended it -- `log_config=None` in `thermoctl/cli.py` only means uvicorn
+# does not additionally configure ITS OWN handlers, not that logging is off. Every
+# `/kiosk/...` request would otherwise write its token to the log in plain text, on
+# every single visit -- exactly what principle 2 forbids.
+_KIOSK_PFAD = re.compile(r"^(/kiosk/)[^/?\s]+")
+
+
+class KioskPfadFilter(logging.Filter):
+    """Redacts the token from `/kiosk/{token}` in the uvicorn access log.
+
+    Rewrites `record.args` before formatting -- filters run first, regardless of
+    output format -- so the token never reaches `record.getMessage()` in the first
+    place, rather than trying to scrub it back out of already-formatted text.
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if isinstance(record.args, tuple) and len(record.args) >= 3:
+            pfad = record.args[2]
+            if isinstance(pfad, str) and pfad.startswith("/kiosk/"):
+                geflickt = list(record.args)
+                geflickt[2] = _KIOSK_PFAD.sub(r"\1***", pfad)
+                record.args = tuple(geflickt)
+        return True
+
+
 class JsonFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
         data: dict[str, Any] = {
@@ -190,6 +224,18 @@ def configure_logging(settings: Settings) -> None:
     # this overlaps with the masking in JsonFormatter -- that is intentional:
     # the filter is the safeguard in case the format changes.
     handler.addFilter(MaskierungsFilter())
+    # On the logger, not the handler: `Logger.filter()` runs before the record ever
+    # reaches a handler, root's included -- exactly where a kiosk token in the request
+    # path needs to be gone, before anything downstream can format or ship it.
+    #
+    # `filters.clear()` first, symmetric to `wurzel.handlers.clear()` below: this
+    # function runs once per real startup, but many times per test run (every
+    # `TestClient` builds a fresh app) -- without clearing, the same logger would
+    # collect one more (harmlessly redundant, but still leaking memory) filter
+    # instance on every call.
+    zugriffslogger = logging.getLogger("uvicorn.access")
+    zugriffslogger.filters.clear()
+    zugriffslogger.addFilter(KioskPfadFilter())
     wurzel = logging.getLogger()
     wurzel.handlers.clear()
     wurzel.addHandler(handler)

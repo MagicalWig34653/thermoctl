@@ -1,0 +1,70 @@
+"""Cookie handling for the kiosk dashboard.
+
+A kiosk token travels in a URL once (`/kiosk/{token}`, meant to become a tablet's
+bookmark) and from then on in a cookie, exactly like a session secret does for a
+logged-in user (see `thermoctl/auth/sessions.py`) -- the cookie is what keeps the
+plaintext out of the address bar and the request log on every visit after the first.
+
+CSRF protection reuses the same HMAC scheme as the logged-in UI
+(`thermoctl/auth/csrf.py`), just bound to the kiosk cookie's secret instead of the
+session's: a foreign origin that gets a browser to submit a form still cannot produce
+a matching header, because it never sees the cookie value it would have to sign.
+"""
+
+from fastapi import HTTPException, Request, status
+from sqlalchemy.orm import Session
+
+from thermoctl.auth.csrf import CSRF_HEADER, check_csrf
+from thermoctl.auth.tokens import resolve_token
+from thermoctl.config import get_settings
+from thermoctl.db.models.credential import ApiToken
+
+KIOSK_COOKIE_NAME = "thermoctl_kiosk"
+# Not httpOnly, for the same reason as `thermoctl_csrf`: htmx needs to read it to send
+# the header along, and the value itself hands out no more than the session's CSRF
+# cookie does -- it only proves the request came from whoever already holds the
+# kiosk cookie.
+KIOSK_CSRF_COOKIE_NAME = "thermoctl_kiosk_csrf"
+
+# Same set as `csrf_schutz` in thermoctl/auth/dependencies.py: methods that change
+# nothing need no proof of origin.
+_SICHERE_METHODEN = frozenset({"GET", "HEAD", "OPTIONS", "TRACE"})
+
+
+def kiosk_token_from_cookie(request: Request, session: Session) -> ApiToken | None:
+    """Resolves the kiosk cookie to a token -- `None` for anything not usable as one.
+
+    Deliberately also rejects an otherwise valid, non-revoked, non-expired
+    `ApiToken` that was never issued as a kiosk token: a developer's API token
+    pasted into this cookie by hand would otherwise work here too, and a bearer
+    token's threat model (kept in a script, sent in a header) is not the one a
+    cookie sitting in a tablet's browser storage has.
+    """
+    cookie_value = request.cookies.get(KIOSK_COOKIE_NAME)
+    if cookie_value is None:
+        return None
+    token = resolve_token(session, cookie_value)
+    if token is None or not token.is_kiosk:
+        return None
+    return token
+
+
+def kiosk_csrf_schutz(request: Request) -> None:
+    """Same shape as `csrf_schutz`, bound to the kiosk cookie instead of the session.
+
+    Hung on the kiosk router's mutating routes: without a kiosk cookie there is
+    nothing to forge (the request fails the token check right after anyway), and a
+    safe method changes nothing regardless of origin.
+    """
+    if request.method in _SICHERE_METHODEN:
+        return
+    cookie_value = request.cookies.get(KIOSK_COOKIE_NAME)
+    if cookie_value is None:
+        return
+    settings = get_settings()
+    if not check_csrf(
+        request.headers.get(CSRF_HEADER), cookie_value, settings.secret_key.get_secret_value()
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Ungueltiges CSRF-Token"
+        )

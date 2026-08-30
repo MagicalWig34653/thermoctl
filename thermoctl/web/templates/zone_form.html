@@ -4,7 +4,7 @@
 {% block titel %}{% if zone %}Zone bearbeiten{% else %}Zone anlegen{% endif %} – thermoctl{% endblock %}
 {% block inhalt %}
 {% if zone %}{{ zonenkopf(zone, "Zonendaten") }}{% else %}<h1 class="mb-4">Zone anlegen</h1>{% endif %}
-<form method="post" action="{% if zone %}/zonen/{{ zone.id }}{% else %}/zonen{% endif %}">
+<form method="post" action="{% if zone %}/zones/{{ zone.id }}{% else %}/zones{% endif %}">
     {{ textfeld("name", "Technischer Name", values.name|default(""),
                  "Eindeutiger Name für Schnittstellen und Konfiguration.", errors.name, true) }}
     {{ textfeld("display_name", "Anzeigename", values.display_name|default(""),
