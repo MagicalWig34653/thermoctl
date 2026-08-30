@@ -18,6 +18,10 @@
     "Dieser Wert wird auf die gemessene Temperatur addiert, um eine bekannte Abweichung des Sensors auszugleichen. Negative Werte sind erlaubt. Derzeit " ~ effective.temperature_offset_k ~ " K" ~ (" aus dem globalen Standard." if not values.temperature_offset_k else "."), errors.temperature_offset_k, "0.01") }}
   {{ number_field("window_resume_delay_seconds", "Wiederanlauf nach Fenster (Sekunden)", values.window_resume_delay_seconds,
     "So lange wartet die Heizung nach dem Schließen eines Fensters, bevor sie wieder anläuft. Derzeit " ~ effective.window_resume_delay_seconds ~ " Sekunden" ~ (" aus dem globalen Standard." if not values.window_resume_delay_seconds else "."), errors.window_resume_delay_seconds, "1", "0") }}
+  {{ number_field("solar_setback_max_k", "Sonnenabsenkung, Obergrenze (K)", values.solar_setback_max_k,
+    "Wie viel der Sollwert bei erwarteter Sonne höchstens absinken darf. Derzeit " ~ effective.solar_setback_max_k ~ " K" ~ (" aus dem globalen Standard." if not values.solar_setback_max_k else "."), errors.solar_setback_max_k, "0.1", "0") }}
+  {{ number_field("solar_gain_factor", "Sonnenprofil (0 bis 1)", values.solar_gain_factor,
+    "Wie stark diese Zone von Sonneneinstrahlung profitiert — 0 für gar nicht (z. B. ein Nordzimmer), 1 für stark (z. B. ein Zimmer mit Dachfenstern). Voreinstellung 0, also aus.", errors.solar_gain_factor, "0.05", "0", "1") }}
   <button class="btn btn-primary" type="submit">Speichern</button>
   <a class="btn btn-secondary" href="/">Abbrechen</a>
 </form>

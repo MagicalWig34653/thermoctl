@@ -75,6 +75,7 @@ class WriteControlParameters(BaseModel):
     sensor_timeout_seconds: int | None = Field(default=None, ge=0)
     temperature_offset_k: Decimal | None = None
     window_resume_delay_seconds: int | None = Field(default=None, ge=0)
+    solar_setback_max_k: Decimal | None = Field(default=None, ge=0)
 
 
 class ControlParametersResponse(WriteControlParameters):
@@ -172,6 +173,8 @@ class ControlResponse(BaseModel):
     default_window_resume_delay_seconds: int
     measurement_retention_days: int
     session_lifetime_seconds: int
+    default_solar_setback_max_k: Decimal
+    solar_setback_lookahead_hours: int
 
 
 class SetArmed(BaseModel):
@@ -198,6 +201,8 @@ class WriteControl(BaseModel):
     default_window_resume_delay_seconds: int
     measurement_retention_days: int
     session_lifetime_seconds: int
+    default_solar_setback_max_k: Decimal
+    solar_setback_lookahead_hours: int
 
 
 class MoveSchedulePoint(BaseModel):
