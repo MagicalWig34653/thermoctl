@@ -1,4 +1,4 @@
-"""Reine Ableitung von Stoerungsmeldungen aus Zustandswechseln."""
+"""Pure derivation of fault notices from state transitions."""
 
 from dataclasses import dataclass
 
@@ -17,7 +17,7 @@ def sensornotice(
     vorher: str | None,
     nachher: str,
 ) -> FaultNotice | None:
-    """Meldet nur den Eintritt in einen Sensorausfall und dessen Entwarnung."""
+    """Reports only entry into a sensor fault and its all-clear."""
     if (
         vorher is not None
         and nachher in {"veraltet", "keine_quelle"}
@@ -47,7 +47,7 @@ def sensornotice(
 def bridge_notice(
     reachable_before: bool | None, reachable_after: bool
 ) -> FaultNotice | None:
-    """Meldet Ausfall und Wiederkehr der Zigbee2MQTT-Bruecke je einmal."""
+    """Reports failure and recovery of the Zigbee2MQTT bridge, each exactly once."""
     if not reachable_after and reachable_before is not False:
         return FaultNotice(
             schluessel="zigbee2mqtt:bruecke",

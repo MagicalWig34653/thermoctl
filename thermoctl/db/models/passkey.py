@@ -7,15 +7,16 @@ from thermoctl.db.base import Base, utcnow
 
 
 class UserPasskey(Base):
-    """Ein hinterlegter Passkey (WebAuthn-Credential) eines Benutzers.
+    """A stored passkey (WebAuthn credential) of a user.
 
-    `credential_id` und `public_key` stehen als base64url-Text und nicht als Binaerspalte:
-    Ein UNIQUE ueber eine Binaerspalte verhaelt sich zwischen SQLite und MariaDB
-    unterschiedlich, und der Wert ist ohnehin nur ein Bezeichner, mit dem nie gerechnet
-    wird. Grundsatz 3 — was ueber beide Datenbanken gleich sein soll, wird gleich abgelegt.
+    `credential_id` and `public_key` are stored as base64url text and not as a binary
+    column: a UNIQUE over a binary column behaves differently between SQLite and
+    MariaDB, and the value is only ever an identifier that is never computed with
+    anyway. Principle 3 — whatever should be the same across both databases is stored
+    the same way.
 
-    Der oeffentliche Schluessel ist **kein Geheimnis**. Er darf im Klartext stehen; was
-    zaehlt, ist der private Teil, und der verlaesst den Authenticator nie.
+    The public key is **not a secret**. It may be stored in plain text; what matters is
+    the private part, and that never leaves the authenticator.
     """
 
     __tablename__ = "user_passkey"
@@ -24,13 +25,13 @@ class UserPasskey(Base):
     user_id: Mapped[int] = mapped_column(
         ForeignKey("user.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    # 255 Zeichen: base64url einer Credential-ID, die die Spezifikation auf 1023 Byte
-    # begrenzt. In der Praxis sind es 16 bis 64 Byte; 255 reicht mit Abstand und bleibt
-    # unter der indizierbaren Schluessellaenge von MariaDB unter utf8mb4.
+    # 255 characters: base64url of a credential ID, which the specification limits to
+    # 1023 bytes. In practice it is 16 to 64 bytes; 255 is comfortably enough and stays
+    # under the indexable key length of MariaDB under utf8mb4.
     credential_id: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
     public_key: Mapped[str] = mapped_column(Text, nullable=False)
-    # Der Zaehler des Authenticators. Faellt er zurueck, ist der Schluessel geklont —
-    # dann wird die Anmeldung abgelehnt, siehe thermoctl/domain/passkey.py.
+    # The authenticator's counter. If it falls back, the key has been cloned — then the
+    # sign-in is rejected, see thermoctl/domain/passkey.py.
     sign_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     bezeichnung: Mapped[str] = mapped_column(String(120), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
@@ -38,16 +39,16 @@ class UserPasskey(Base):
 
 
 class PasskeyChallenge(Base):
-    """Eine ausgegebene Challenge, bis sie eingeloest oder abgelaufen ist.
+    """An issued challenge, until it is redeemed or expires.
 
-    Sie liegt **ausschliesslich hier**, nie beim Aufrufer: Wer seine eigene Challenge
-    setzen kann, kann eine alte Antwort erneut einreichen.
+    It lives **exclusively here**, never with the caller: whoever can set their own
+    challenge can resubmit an old answer.
 
-    `zeremonie` bindet sie an ihren Zweck. Ohne diese Bindung liesse sich eine Challenge,
-    die fuer eine Anmeldung ausgegeben wurde, fuer eine Registrierung einreichen.
+    `zeremonie` binds it to its purpose. Without this binding, a challenge issued for a
+    sign-in could be submitted for a registration.
 
-    Zeilen werden beim Einloesen geloescht — **auch wenn die Pruefung scheitert.** Eine
-    wiederverwendbare Challenge hebt den Schutz auf, den sie geben soll.
+    Rows are deleted upon redemption — **even if the check fails.** A reusable
+    challenge cancels out the protection it is meant to provide.
     """
 
     __tablename__ = "passkey_challenge"
@@ -55,8 +56,8 @@ class PasskeyChallenge(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     challenge: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
     zeremonie: Mapped[str] = mapped_column(String(16), nullable=False)
-    # Nur bei der Registrierung gesetzt: dort steht schon fest, wer registriert. Bei der
-    # Anmeldung nennt erst der Authenticator das Konto.
+    # Only set during registration: there it is already fixed who is registering. At
+    # sign-in, only the authenticator names the account.
     user_id: Mapped[int | None] = mapped_column(
         ForeignKey("user.id", ondelete="CASCADE"), nullable=True
     )

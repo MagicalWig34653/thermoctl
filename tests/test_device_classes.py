@@ -10,13 +10,13 @@ from thermoctl.domain.device_classes import (
 )
 
 
-def _anlagenname(teil: str) -> str:
-    pfad = Path(__file__).parent / "daten" / "anlage-beispiele.json"
-    namen = json.loads(pfad.read_text(encoding="utf-8"))["geraete"]
-    return next(name for name in namen if teil in name)
+def _installation_name(part: str) -> str:
+    path = Path(__file__).parent / "daten" / "anlage-beispiele.json"
+    names = json.loads(path.read_text(encoding="utf-8"))["geraete"]
+    return next(name for name in names if part in name)
 
 
-def test_ventil_wird_allein_aus_exposes_erkannt() -> None:
+def test_a_valve_is_recognized_from_exposes_alone() -> None:
     exposes = [
         {
             "type": "climate",
@@ -30,14 +30,14 @@ def test_ventil_wird_allein_aus_exposes_erkannt() -> None:
     assert capabilities_from_exposes(exposes) == frozenset({"setpoint", "temperature"})
 
 
-def test_fensterkontakt_wird_erkannt() -> None:
+def test_a_window_contact_is_recognized() -> None:
     exposes = [{"type": "binary", "property": "contact"}]
 
     assert capabilities_from_exposes(exposes) == frozenset({"contact"})
 
 
-def test_multisensor_traegt_echten_anlagennamen_und_metadaten() -> None:
-    name = _anlagenname("Über Küche")
+def test_a_multisensor_carries_its_real_installation_name_and_metadata() -> None:
+    name = _installation_name("Über Küche")
     payload = json.dumps(
         [
             {
@@ -72,7 +72,7 @@ def test_multisensor_traegt_echten_anlagennamen_und_metadaten() -> None:
     ]
 
 
-def test_coordinator_und_bruecke_werden_aussortiert() -> None:
+def test_coordinator_and_bridge_are_filtered_out() -> None:
     payload = json.dumps(
         [
             {"friendly_name": "anderer Name", "type": "Coordinator"},
@@ -84,8 +84,8 @@ def test_coordinator_und_bruecke_werden_aussortiert() -> None:
     assert descriptions_from_bridge_list(payload) == []
 
 
-def test_gruppe_bleibt_sichtbar_und_ist_markiert() -> None:
-    name = _anlagenname("wohnraum")
+def test_a_group_remains_visible_and_is_marked() -> None:
+    name = _installation_name("wohnraum")
 
     [group] = descriptions_from_bridge_list(
         json.dumps([{"friendly_name": name, "definition": {"exposes": []}}])
@@ -96,8 +96,8 @@ def test_gruppe_bleibt_sichtbar_und_ist_markiert() -> None:
     assert group.adresse is None
 
 
-def test_unerkanntes_geraet_hat_leere_beschreibung() -> None:
-    name = _anlagenname("Thermostat")
+def test_an_unrecognized_device_has_an_empty_description() -> None:
+    name = _installation_name("Thermostat")
 
     [device] = descriptions_from_bridge_list(
         json.dumps([{"friendly_name": name, "ieee_address": "aus-der-bridge-liste"}])
@@ -108,21 +108,21 @@ def test_unerkanntes_geraet_hat_leere_beschreibung() -> None:
     assert device.capabilities == frozenset()
 
 
-def test_leere_geraeteliste_bleibt_leer() -> None:
+def test_an_empty_device_list_stays_empty() -> None:
     assert descriptions_from_bridge_list("[]") == []
 
 
-def test_kaputtes_json_wird_verstaendlich_gemeldet() -> None:
+def test_broken_json_is_reported_understandably() -> None:
     with pytest.raises(ValueError, match="kein gueltiges JSON"):
         descriptions_from_bridge_list("[")
 
 
-def test_json_objekt_statt_liste_wird_abgelehnt() -> None:
+def test_a_json_object_instead_of_a_list_is_rejected() -> None:
     with pytest.raises(ValueError, match="JSON-Liste"):
         descriptions_from_bridge_list("{}")
 
 
-def test_unvollstaendige_fremde_elemente_werden_toleriert() -> None:
+def test_incomplete_foreign_elements_are_tolerated() -> None:
     payload = json.dumps(
         [
             None,
@@ -140,7 +140,7 @@ def test_unvollstaendige_fremde_elemente_werden_toleriert() -> None:
     assert device.capabilities == frozenset()
 
 
-def test_features_werden_beliebig_tief_durchlaufen() -> None:
+def test_features_are_traversed_arbitrarily_deep() -> None:
     exposes = [
         {
             "type": "switch",
@@ -159,7 +159,7 @@ def test_features_werden_beliebig_tief_durchlaufen() -> None:
     assert capabilities_from_exposes(exposes) == frozenset({"switch", "power"})
 
 
-def test_unbekannte_und_unstrukturierte_exposes_werden_uebersprungen() -> None:
+def test_unknown_and_unstructured_exposes_are_skipped() -> None:
     exposes: list[dict[str, object]] = [
         {"type": "numeric", "property": "voltage"},
         {"type": "composite", "features": [None, "fremd"]},

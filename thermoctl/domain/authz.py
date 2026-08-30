@@ -14,7 +14,7 @@ from thermoctl.domain.principal import Principal
 
 
 class Forbidden(Exception):
-    """Die Handlung ist diesem Principal nicht erlaubt."""
+    """This action is not permitted for this principal."""
 
 
 def _user_permissions(session: Session, user: User) -> frozenset[tuple[str, int | None]]:
@@ -37,10 +37,10 @@ def principal_for_user(session: Session, user: User) -> Principal:
 
 
 def principal_for_token(session: Session, token: ApiToken) -> Principal:
-    """Der Umfang eines Tokens ist stets die Schnittmenge mit den Rechten des Besitzers.
+    """A token's scope is always the intersection with the owner's permissions.
 
-    Zur Laufzeit, nicht nur beim Ausstellen: verliert der Besitzer spaeter ein Recht,
-    verliert das Token es ebenfalls.
+    At runtime, not just at issuance: if the owner later loses a permission, the
+    token loses it too.
     """
     now = utcnow()
     if token.revoked_at is not None or (
@@ -68,14 +68,14 @@ def principal_for_token(session: Session, token: ApiToken) -> Principal:
     return Principal(user_id=token.user_id, token_id=token.id, grants=frozenset(wirksam))
 
 
-# Die Rechte, nach Bereichen sortiert, wie ein Mensch sie sucht -- nicht alphabetisch
-# nach Code. Die Oberflaeche zeigte vorher eine flache Liste aus sechzehn Eintraegen der
-# Form "zone.read – Zonen und ihren Zustand sehen"; wer eine Gruppe einrichten wollte,
-# musste sie sechzehnmal durchlesen und einzeln vergeben.
+# The permissions, sorted by area the way a human looks for them -- not alphabetically
+# by code. The interface used to show a flat list of sixteen entries of the form
+# "zone.read - see zones and their state"; anyone setting up a group had to read
+# through all sixteen and assign them one by one.
 #
-# Die Zuordnung steht hier und nicht in der Vorlage: Ein neues Recht soll auffallen,
-# solange es noch niemand vergeben kann. `test_authz.py` prueft, dass jedes Recht aus
-# PERMISSIONS genau einmal vorkommt.
+# The grouping lives here and not in the template: a new permission should stand out
+# as long as nobody has assigned it to anything yet. `test_authz.py` checks that every
+# permission from PERMISSIONS appears exactly once.
 PERMISSION_AREAS: list[tuple[str, str, list[str]]] = [
     (
         "Sehen und bedienen",
@@ -106,9 +106,10 @@ PERMISSION_AREAS: list[tuple[str, str, list[str]]] = [
 
 
 def has_permission(principal: Principal, code: str, zone_id: int | None = None) -> bool:
-    """Ein anlagenweites Recht deckt jede Zone ab, ein zonenbezogenes nur die eigene.
+    """A plant-wide permission covers every zone, a zone-scoped one only its own.
 
-    Umgekehrt gilt das ausdruecklich nicht: wer nur das Bad darf, darf nicht 'ueberall'.
+    The reverse is explicitly not true: whoever is allowed only the bathroom is not
+    allowed 'everywhere'.
     """
     if (code, None) in principal.grants:
         return True
@@ -119,20 +120,20 @@ def has_permission(principal: Principal, code: str, zone_id: int | None = None) 
 
 def require(principal: Principal, code: str, zone_id: int | None = None) -> None:
     if not has_permission(principal, code, zone_id):
-        # `is not None` und nicht `if zone_id`: eine Kennung 0 waere sonst als
-        # "keine Zone" behandelt. Heute vergeben beide Datenbanken ab 1, aber die
-        # Annahme steht nirgends geschrieben — und in einer Fehlermeldung, die eine
-        # Rechtsverweigerung erklaert, ist eine fehlende Zonenangabe irrefuehrend.
+        # `is not None` and not `if zone_id`: an id of 0 would otherwise be treated as
+        # "no zone". Today both databases assign ids starting at 1, but that assumption
+        # is not written down anywhere — and in an error message explaining a denied
+        # permission, a missing zone reference would be misleading.
         zusatz = f" fuer Zone {zone_id}" if zone_id is not None else ""
         raise Forbidden(f"Recht {code} fehlt{zusatz}")
 
 
 def visible_zones(session: Session, principal: Principal, code: str) -> list[Zone]:
-    """Die Zonen, auf die ein Principal mit diesem Recht sehen darf.
+    """The zones a principal with this permission is allowed to see.
 
-    Jede Liste und jede API-Antwort geht hier durch. Das ist die Stelle, an der
-    zonenbezogene Rechte still lecken, wenn man sie irgendwo vergisst — deshalb liegt
-    sie in der Domaenenlogik und nicht in den Adaptern.
+    Every listing and every API response goes through here. This is the spot where
+    zone-scoped permissions silently leak if someone forgets to check them anywhere —
+    which is why it lives in the domain logic and not in the adapters.
     """
     if (code, None) in principal.grants:
         return list(session.scalars(select(Zone).order_by(Zone.sort_order, Zone.name)))

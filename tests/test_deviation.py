@@ -3,7 +3,7 @@ from decimal import Decimal
 from thermoctl.domain.deviation import Einordnung, vergleichen
 
 
-def test_beide_heizen_ist_keine_abweichung() -> None:
+def test_both_heating_is_not_a_deviation() -> None:
     result = vergleichen(
         would_heat=True,
         ist_c=Decimal("19.4"),
@@ -14,7 +14,7 @@ def test_beide_heizen_ist_keine_abweichung() -> None:
     assert result.text == "thermoctl und das Altsystem heizen beide."
 
 
-def test_beide_heizen_nicht_ist_keine_abweichung() -> None:
+def test_both_not_heating_is_not_a_deviation() -> None:
     result = vergleichen(
         would_heat=False,
         ist_c=Decimal("24.5"),
@@ -25,7 +25,7 @@ def test_beide_heizen_nicht_ist_keine_abweichung() -> None:
     assert result.text == "thermoctl und das Altsystem heizen beide nicht."
 
 
-def test_nur_thermoctl_haette_geheizt_ist_eine_abweichung() -> None:
+def test_only_thermoctl_would_have_heated_is_a_deviation() -> None:
     result = vergleichen(
         would_heat=True,
         ist_c=Decimal("19.4"),
@@ -38,7 +38,7 @@ def test_nur_thermoctl_haette_geheizt_ist_eine_abweichung() -> None:
     )
 
 
-def test_nur_altsystem_heizte_ist_eine_abweichung() -> None:
+def test_only_the_legacy_system_heated_is_a_deviation() -> None:
     result = vergleichen(
         would_heat=False,
         ist_c=Decimal("21.6"),
@@ -51,7 +51,7 @@ def test_nur_altsystem_heizte_ist_eine_abweichung() -> None:
     )
 
 
-def test_fehlende_temperaturwerte_werden_als_unbekannt_ausgegeben() -> None:
+def test_missing_temperature_values_are_reported_as_unknown() -> None:
     result = vergleichen(
         would_heat=True,
         ist_c=None,
@@ -65,7 +65,7 @@ def test_fehlende_temperaturwerte_werden_als_unbekannt_ausgegeben() -> None:
     )
 
 
-def test_kein_altwert_zum_vergleichszeitpunkt_ist_kein_vergleich() -> None:
+def test_no_legacy_value_at_comparison_time_is_not_a_comparison() -> None:
     result = vergleichen(
         would_heat=True,
         ist_c=Decimal("19.4"),

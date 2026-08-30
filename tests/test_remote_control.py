@@ -1,8 +1,8 @@
-"""Was ein Drehregler von aussen bewirkt.
+"""What a physical dial does from the outside.
 
-Zwei Entscheidungen stehen hier auf dem Pruefstand: dass der Thermostat den *Modus*
-verstellt und nicht "jetzt gerade", und dass Boost die naechste Schaltung vorzieht statt
-auf einen geratenen Wert zu heizen.
+Two decisions are on trial here: that the thermostat adjusts the *mode* and
+not "right now", and that boost brings forward the next switch instead of
+heating to some guessed value.
 """
 
 from datetime import datetime
@@ -19,14 +19,15 @@ from thermoctl.db.models.zone import ZoneSetpoint
 from thermoctl.domain.remote_control import RemoteControlError, boost, set_setpoint
 from thermoctl.domain.schedule import create_override, resolved_setpoint
 
-# Ein Montag, 08:00 UTC. Die Einstellungen stehen auf UTC, also ist das auch Ortszeit.
+# A Monday, 08:00 UTC. The settings are in UTC, so this is local time too.
 MONDAY_EIGHT = datetime(2026, 8, 31, 8, 0)
 
 
 def _zone_with_plan(session: Session) -> tuple[object, object, object]:
-    """Eine Zone mit Tag ab 06:00 und Nacht ab 22:00 -- und Sollwerten fuer beide."""
-    # Zeitzone UTC, damit im Test die Ortszeit des Plans und die UTC der Ergebnisse
-    # dieselbe Zahl sind. Die Umrechnung selbst pruefen die Zeitplantests.
+    """A zone with day from 06:00 and night from 22:00 -- and setpoints for both."""
+    # Timezone UTC, so that in the test the plan's local time and the results'
+    # UTC are the same number. The conversion itself is checked by the
+    # schedule tests.
     create_settings(session).timezone = "UTC"
     source(session, "system")
     zone = create_zone(session, "planzone")
@@ -50,7 +51,7 @@ def _zone_with_plan(session: Session) -> tuple[object, object, object]:
     return zone, day, night
 
 
-def test_der_sollwert_verstellt_den_modus_der_gerade_gilt(session: Session) -> None:
+def test_the_setpoint_changes_the_currently_active_mode(session: Session) -> None:
     zone, day, night = _zone_with_plan(session)
 
     set_setpoint(session, zone, Decimal("22.5"), MONDAY_EIGHT, source="system")
@@ -60,23 +61,24 @@ def test_der_sollwert_verstellt_den_modus_der_gerade_gilt(session: Session) -> N
             ZoneSetpoint.zone_id == zone.id, ZoneSetpoint.setpoint_mode_id == day.id
         )
     ) == Decimal("22.5")
-    # Gegenprobe: Der andere Modus bleibt, wie er war -- verstellt wurde genau einer.
+    # Counter-check: the other mode stays as it was -- exactly one was changed.
     assert session.scalar(
         select(ZoneSetpoint.temperature_c).where(
             ZoneSetpoint.zone_id == zone.id, ZoneSetpoint.setpoint_mode_id == night.id
         )
     ) == Decimal("18.0")
-    # Und es entsteht keine Uebersteuerung, die nach dem naechsten Punkt verfiele.
+    # And no override is created that would lapse after the next point.
     assert not session.scalars(
         select(ZoneOverride).where(ZoneOverride.zone_id == zone.id)
     ).all()
 
 
-def test_bei_laufender_uebersteuerung_wird_diese_verstellt(session: Session) -> None:
-    """Dann gibt es keinen Modus, den man verstellen koennte.
+def test_a_running_override_is_changed_instead(session: Session) -> None:
+    """Then there is no mode to change.
 
-    Ohne diesen Fall spraenge der Regler beim naechsten Zustandsbericht auf den Wert der
-    Uebersteuerung zurueck und saehe aus, als habe er den Befehl verschluckt.
+    Without this case, the controller would jump back to the override's
+    value at the next status report and look as if it had swallowed the
+    command.
     """
     zone, _, _ = _zone_with_plan(session)
     create_override(
@@ -88,31 +90,31 @@ def test_bei_laufender_uebersteuerung_wird_diese_verstellt(session: Session) -> 
     assert resolved_setpoint(session, zone, MONDAY_EIGHT).temperature_c == Decimal("23.0")
 
 
-def test_boost_zieht_die_naechste_schaltung_vor(session: Session) -> None:
-    """Ab sofort gilt, was als Naechstes kaeme -- bis genau zu dem Zeitpunkt."""
+def test_boost_brings_forward_the_next_switch_point(session: Session) -> None:
+    """From now on, whatever would come next applies -- until exactly that point in time."""
     zone, _, night = _zone_with_plan(session)
 
     result = boost(session, zone, MONDAY_EIGHT, source="system")
 
     assert result.mode_code == "nacht"
     assert result.temperature == Decimal("18.0")
-    # 22:00 desselben Tages: der Punkt, der planmaessig als Naechstes gekommen waere.
+    # 22:00 the same day: the point that would have come next on schedule.
     assert result.bis == datetime(2026, 8, 31, 22, 0)
     assert resolved_setpoint(session, zone, MONDAY_EIGHT).temperature_c == Decimal("18.0")
 
 
-def test_nach_dem_boost_uebernimmt_der_zeitplan_von_selbst(session: Session) -> None:
-    """Die Gegenprobe: Es bleibt nichts stehen, das jemand aufraeumen muesste."""
+def test_after_the_boost_the_schedule_takes_over_by_itself(session: Session) -> None:
+    """The counter-check: nothing is left behind that anyone would need to clean up."""
     zone, _, _ = _zone_with_plan(session)
     boost(session, zone, MONDAY_EIGHT, source="system")
 
-    danach = datetime(2026, 8, 31, 22, 30)
-    # Ab 22:00 gilt ohnehin Nacht -- der Grund muss aber wieder der Zeitplan sein und
-    # nicht die Uebersteuerung, sonst haette sie ihn ueberdauert.
-    assert "Zeitplan" in resolved_setpoint(session, zone, danach).grund
+    afterward = datetime(2026, 8, 31, 22, 30)
+    # From 22:00 night applies anyway -- but the reason must be the schedule
+    # again, not the override, or it would have outlived it.
+    assert "Zeitplan" in resolved_setpoint(session, zone, afterward).grund
 
 
-def test_boost_ohne_zeitplan_sagt_warum(session: Session) -> None:
+def test_boost_without_a_schedule_says_why(session: Session) -> None:
     create_settings(session)
     source(session, "system")
     zone = create_zone(session, "planlos")
@@ -120,8 +122,8 @@ def test_boost_ohne_zeitplan_sagt_warum(session: Session) -> None:
         boost(session, zone, MONDAY_EIGHT, source="system")
 
 
-def test_boost_ohne_hinterlegte_temperatur_sagt_warum(session: Session) -> None:
-    """Ein Modus ohne Sollwert in dieser Zone: Es gibt nichts vorzuziehen."""
+def test_boost_without_a_stored_temperature_says_why(session: Session) -> None:
+    """A mode with no setpoint in this zone: there is nothing to bring forward."""
     create_settings(session)
     source(session, "system")
     zone = create_zone(session, "temperaturlos")
@@ -134,7 +136,7 @@ def test_boost_ohne_hinterlegte_temperatur_sagt_warum(session: Session) -> None:
         boost(session, zone, MONDAY_EIGHT, source="system")
 
 
-def test_boost_ohne_einstellungen_sagt_warum(session: Session) -> None:
+def test_boost_without_settings_says_why(session: Session) -> None:
     zone = create_zone(session, "unfertig")
     with pytest.raises(RemoteControlError, match="unvollständig"):
         boost(session, zone, MONDAY_EIGHT, source="system")

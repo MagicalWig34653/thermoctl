@@ -1,11 +1,11 @@
-"""Die HTTP-Seite der Passkey-Zeremonien.
+"""The HTTP side of the passkey ceremonies.
 
-Duenn: Die Regeln stehen in `thermoctl/domain/passkey.py`. Hier wird entgegengenommen,
-weitergereicht und einheitlich abgelehnt.
+Thin: the rules live in `thermoctl/domain/passkey.py`. This just receives, passes
+along, and rejects uniformly.
 
-**Jede gescheiterte Anmeldung sieht gleich aus** — gleicher Status, gleicher Text. Ob eine
-Credential-ID unbekannt ist, ein Konto gesperrt oder eine Signatur falsch, steht im
-Audit-Protokoll. Sonst liesse sich an den Antworten ablesen, welche Konten es gibt.
+**Every failed login looks the same** — same status, same text. Whether a credential
+id is unknown, an account is locked, or a signature is wrong is in the audit log. Not
+otherwise, or the responses would reveal which accounts exist.
 """
 
 from typing import Annotated, Any
@@ -40,7 +40,7 @@ _ABGELEHNT = "Die Anmeldung war nicht erfolgreich."
 
 
 def _passkeys_an(settings: Settings) -> None:
-    """Ohne Relying-Party-ID gibt es die Wege gar nicht — nicht halb, sondern gar nicht."""
+    """Without a relying party id, these routes don't exist at all — not halfway."""
     if not settings.passkeys_moeglich():
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Passkeys sind nicht eingerichtet.")
 
@@ -56,10 +56,10 @@ def _ablehnen() -> JSONResponse:
 async def authentication_options(
     session: Annotated[Session, Depends(get_session)],
 ) -> Response:
-    """Liefert die Argumente fuer `navigator.credentials.get()`."""
+    """Returns the arguments for `navigator.credentials.get()`."""
     settings = get_settings()
     _passkeys_an(settings)
-    # Nebenbei aufraeumen: abgelaufene Challenges sind wertlos, sammeln sich aber an.
+    # Cleanup on the side: expired challenges are worthless but do pile up.
     cleanup_old_challenges(session)
     return JSONResponse(begin_authentication(session, settings))
 
@@ -69,7 +69,7 @@ async def finish_authentication(
     request: Request,
     session: Annotated[Session, Depends(get_session)],
 ) -> Response:
-    """Nimmt die Assertion entgegen und meldet bei Erfolg an."""
+    """Receives the assertion and logs in on success."""
     settings = get_settings()
     _passkeys_an(settings)
     try:
@@ -82,7 +82,7 @@ async def finish_authentication(
     try:
         user = verify_authentication(session, settings, response)
     except PasskeyError:
-        # Der Grund steht bereits im Protokoll; nach aussen geht er nicht.
+        # The reason is already in the log; it does not go out to the caller.
         return _ablehnen()
 
     user.last_login_at = utcnow()
@@ -118,7 +118,7 @@ async def passkey_list(
     principal: Annotated[Principal, Depends(aktueller_principal)],
     session: Annotated[Session, Depends(get_session)],
 ) -> Response:
-    """Die eigenen Passkeys. Fremde sieht hier niemand — es gibt keinen Weg dorthin."""
+    """One's own passkeys. Nobody sees someone else's here — there's no route there."""
     user = _own_user(session, principal)
     return templates.TemplateResponse(
         request,
@@ -166,9 +166,9 @@ async def save_registration(
             session, settings, user, payload, bezeichnung
         )
     except PasskeyError as exc:
-        # Hier darf der Grund nach aussen: Der Aufrufer ist angemeldet und registriert
-        # seinen eigenen Schluessel — eine unverstaendliche Ablehnung waere hier nur
-        # hinderlich, ohne irgendetwas zu schuetzen.
+        # The reason is allowed to go out here: the caller is logged in and is
+        # registering their own key — an incomprehensible rejection would only be a
+        # nuisance here, without protecting anything.
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
             content={"status": "abgelehnt", "meldung": str(exc)},
@@ -186,8 +186,8 @@ async def delete_passkey(
 
     user = _own_user(session, principal)
     entry = session.get(UserPasskey, passkey_id)
-    # Ein fremder Passkey ist nicht auffindbar, nicht verboten — sonst verriete die
-    # Antwort, welche Kennungen es gibt.
+    # Someone else's passkey is unfindable, not forbidden — otherwise the response
+    # would reveal which ids exist.
     if entry is None or entry.user_id != user.id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Passkey nicht gefunden")
     remove_passkey(session, user, entry)

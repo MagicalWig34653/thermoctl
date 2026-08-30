@@ -6,7 +6,7 @@ from tests.helpers import create_settings, create_zone
 from thermoctl.domain.zone_settings import control_parameters
 
 
-def test_leere_zonenwerte_fallen_auf_den_standard(session: Session) -> None:
+def test_empty_zone_values_fall_back_to_the_default(session: Session) -> None:
     create_settings(session, hysteresis=Decimal("0.30"), min_ein=300)
     zone = create_zone(session, "bad")
     values = control_parameters(session, zone)
@@ -14,7 +14,7 @@ def test_leere_zonenwerte_fallen_auf_den_standard(session: Session) -> None:
     assert values.min_on_seconds == 300
 
 
-def test_gesetzter_zonenwert_hat_vorrang(session: Session) -> None:
+def test_a_zone_value_that_is_set_takes_precedence(session: Session) -> None:
     create_settings(session, hysteresis=Decimal("0.30"))
     zone = create_zone(session, "kueche")
     zone.hysteresis_k = Decimal("0.80")
@@ -22,8 +22,8 @@ def test_gesetzter_zonenwert_hat_vorrang(session: Session) -> None:
     assert control_parameters(session, zone).hysteresis_k == Decimal("0.80")
 
 
-def test_null_ist_ein_gueltiger_zonenwert(session: Session) -> None:
-    """0 darf nicht als 'nicht gesetzt' missverstanden werden."""
+def test_zero_is_a_valid_zone_value(session: Session) -> None:
+    """0 must not be misread as 'not set'."""
     create_settings(session, min_ein=300)
     zone = create_zone(session, "flur")
     zone.min_on_seconds = 0
@@ -31,7 +31,7 @@ def test_null_ist_ein_gueltiger_zonenwert(session: Session) -> None:
     assert control_parameters(session, zone).min_on_seconds == 0
 
 
-def test_standardaenderung_wirkt_auf_nicht_ueberschriebene_zonen(session: Session) -> None:
+def test_changing_the_default_affects_zones_that_do_not_override_it(session: Session) -> None:
     e = create_settings(session, hysteresis=Decimal("0.30"))
     zone = create_zone(session, "buero")
     e.default_hysteresis_k = Decimal("0.50")
@@ -39,12 +39,13 @@ def test_standardaenderung_wirkt_auf_nicht_ueberschriebene_zonen(session: Sessio
     assert control_parameters(session, zone).hysteresis_k == Decimal("0.50")
 
 
-def test_ein_einzelner_parameter_laesst_die_uebrigen_geerbt(session: Session) -> None:
-    """`regelparameter_speichern` nimmt immer alle Felder auf einmal.
+def test_a_single_parameter_leaves_the_rest_inherited(session: Session) -> None:
+    """`regelparameter_speichern` always takes all fields at once.
 
-    Richtig fuer ein Formular, falsch fuer einen einzelnen Drehregler in Home Assistant:
-    Der kennt nur seinen eigenen Wert und wuerde alle anderen auf das setzen, was der
-    Aufrufer gerade zur Hand hat -- aus geerbten Werten wuerden festgeschriebene.
+    Right for a form, wrong for a single dial in Home Assistant: that dial
+    only knows its own value and would set every other field to whatever the
+    caller happens to have at hand -- inherited values would turn into pinned
+    ones.
     """
     from tests.helpers import source
     from thermoctl.domain.zone_settings import set_parameter
@@ -57,13 +58,13 @@ def test_ein_einzelner_parameter_laesst_die_uebrigen_geerbt(session: Session) ->
                      source="system")
 
     assert zone.hysteresis_k == Decimal("0.7")
-    assert zone.min_on_seconds is None, "ein geerbter Wert wurde festgeschrieben"
-    # Und die Vererbung wirkt weiter: der Standard steht nach wie vor dahinter.
+    assert zone.min_on_seconds is None, "an inherited value was pinned"
+    # And inheritance keeps working: the default still stands behind it.
     assert control_parameters(session, zone).min_on_seconds == 300
 
 
-def test_ganzzahlige_parameter_werden_ganzzahlig_gespeichert(session: Session) -> None:
-    """Home Assistant schickt auch fuer Sekunden eine Kommazahl."""
+def test_integer_parameters_are_stored_as_integers(session: Session) -> None:
+    """Home Assistant sends a decimal number even for seconds."""
     from tests.helpers import source
     from thermoctl.domain.zone_settings import set_parameter
 
@@ -77,7 +78,7 @@ def test_ganzzahlige_parameter_werden_ganzzahlig_gespeichert(session: Session) -
     assert zone.min_on_seconds == 600
 
 
-def test_unbekannte_und_ausserhalb_liegende_parameter_werden_abgewiesen(
+def test_unknown_and_out_of_range_parameters_are_rejected(
     session: Session,
 ) -> None:
     import pytest
@@ -99,7 +100,7 @@ def test_unbekannte_und_ausserhalb_liegende_parameter_werden_abgewiesen(
         set_parameter(
             session, zone, "hysteresis_k", Decimal(99), user_id=None, source="system"
         )
-    # Die Gegenprobe zur Grenze: genau am Rand ist noch erlaubt.
+    # The counter-check for the boundary: right at the edge is still allowed.
     set_parameter(
         session, zone, "hysteresis_k", Decimal("5.0"), user_id=None, source="system"
     )

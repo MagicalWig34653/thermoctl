@@ -22,22 +22,21 @@ TEST_DATABASE_URL = os.environ.get("THERMOCTL_TEST_DATABASE_URL", "sqlite:///./t
 
 
 def _migrationsdatenbank_url(basis_url: str) -> str:
-    """Leitet die Datenbank fuer die Migrationstests von ``TEST_DATABASE_URL`` ab.
+    """Derives the database for the migration tests from ``TEST_DATABASE_URL``.
 
-    Die Migrationstests fuehren ``alembic upgrade``/``downgrade`` gegen eine **eigene**
-    Datenbank aus, getrennt von der Fixture ``engine``: Sonst legt ``Base.metadata.create_all()``
-    dieselben Tabellen an, die Alembic ebenfalls anlegen will, und die Migration scheitert an
-    einer bereits vorhandenen Tabelle. Die Ableitung aus ``TEST_DATABASE_URL`` statt einer
-    zweiten Konfiguration stellt sicher, dass die Migrationstests niemals unbemerkt gegen eine
-    andere Datenbank laufen als der Rest der Suite.
+    The migration tests run ``alembic upgrade``/``downgrade`` against their **own**
+    database, separate from the ``engine`` fixture: otherwise ``Base.metadata.create_all()``
+    would create the same tables Alembic also wants to create, and the migration would fail
+    on a table that already exists. Deriving it from ``TEST_DATABASE_URL`` instead of a
+    second configuration ensures the migration tests never unknowingly run against a
+    different database than the rest of the suite.
     """
     url = make_url(basis_url)
     if url.get_backend_name() == "sqlite":
         if not url.database or url.database == ":memory:":
-            # Eine In-Memory-Datenbank gehoert ohnehin genau einem Prozess. Die
-            # Migrationstests laufen als eigener Unterprozess und bekommen deshalb
-            # eine eigene, leere Datenbank — eine abgeleitete URL waere hier
-            # gegenstandslos.
+            # An in-memory database belongs to exactly one process anyway. The
+            # migration tests run as their own subprocess and therefore get
+            # their own, empty database — a derived URL would be moot here.
             return basis_url
         pfad = Path(url.database)
         new_path = pfad.with_name(f"{pfad.stem}-migrations{pfad.suffix}")
@@ -57,27 +56,27 @@ def settings() -> Settings:
 
 @pytest.fixture(scope="session", autouse=True)
 def _environment_for_the_whole_session(settings: Settings) -> Iterator[None]:
-    """Setzt die Pflichtvariablen fuer den ganzen Lauf und schneidet die `.env` ab.
+    """Sets the required variables for the entire run and cuts off the `.env` file.
 
-    Jeder Test, der `create_app()` aufruft, braucht sie — `Settings` verlangt
-    `database_url` und `secret_key`. Die Fixture ``client`` setzt sie bisher selbst,
-    aber die Waechter in `test_endpunktabdeckung.py` und `test_csrf.py` zaehlen Routen
-    auf, ohne einen Client zu bauen.
+    Every test that calls `create_app()` needs them — `Settings` requires
+    `database_url` and `secret_key`. The ``client`` fixture has so far set them
+    itself, but the guards in `test_endpunktabdeckung.py` and `test_csrf.py`
+    enumerate routes without building a client.
 
-    Bis hierher ging das gut, weil `get_settings` zwischenspeichert und zufaellig noch
-    ein gueltiger Eintrag vom vorherigen Test im Cache lag. Als der Waechter ans Ende
-    des Laufs sortiert wurde, lag dort keiner mehr — und oertlich fiel es trotzdem nicht
-    auf, weil im Projektverzeichnis eine `.env` liegt, die pydantic von sich aus liest.
-    In der CI gibt es keine. Ein Test darf nicht davon abhaengen, wer vor ihm lief und
-    welche Dateien zufaellig herumliegen.
+    This worked so far because `get_settings` caches, and by chance a valid
+    entry from the previous test still sat in the cache. Once the guard was
+    sorted to the end of the run, none was left there any more — and locally
+    it still did not show up, because the project directory has a `.env`
+    file that pydantic reads on its own. CI has none. A test must not depend
+    on who ran before it and which files happen to lie around.
 
-    Der zweite Anlauf auf denselben Fehler: Damals wurden die beiden Pflichtvariablen
-    gesetzt, die `.env` aber weiter gelesen. Wer dort spaeter etwas eintrug -- eine
-    Passkey-Kennung etwa -- sah Tests rot werden, die mit seiner Aenderung nichts zu tun
-    hatten. Umgekehrt ist der gefaehrlichere Fall: eine Einstellung, die oertlich gesetzt
-    ist und in der CI fehlt, laesst Tests gruen aussehen, die dort scheitern werden.
-    `THERMOCTL_ENV_FILE=""` schneidet die Datei ab; die Suite sieht nur noch, was sie
-    selbst setzt.
+    The second attempt at the same bug: back then the two required variables
+    were set, but the `.env` file kept being read. Anyone who later entered
+    something there -- a passkey id, say -- saw tests turn red that had
+    nothing to do with their change. The more dangerous case is the reverse:
+    a setting that is set locally and missing in CI makes tests look green
+    that will fail there. `THERMOCTL_ENV_FILE=""` cuts off the file; the
+    suite only ever sees what it sets itself.
     """
     marker = pytest.MonkeyPatch()
     marker.setenv("THERMOCTL_ENV_FILE", "")
@@ -91,12 +90,13 @@ def _environment_for_the_whole_session(settings: Settings) -> Iterator[None]:
 
 @pytest.fixture(scope="session")
 def migrations_database_url() -> Iterator[str]:
-    """Stellt sicher, dass die Migrationsdatenbank existiert, und liefert ihre URL.
+    """Makes sure the migrations database exists, and returns its URL.
 
-    Unter MariaDB existiert das Schema fuer die Migrationstests vor dem ersten Lauf
-    noch nicht — es wird hier per ``CREATE DATABASE IF NOT EXISTS`` selbst angelegt.
-    Unter SQLite legt die Datei-URL die Datenbank beim ersten Verbindungsaufbau
-    automatisch an, hier ist nichts vorzubereiten.
+    Under MariaDB, the schema for the migration tests does not yet exist
+    before the first run — it is created here itself via
+    ``CREATE DATABASE IF NOT EXISTS``. Under SQLite, the file URL creates the
+    database automatically on the first connection, so there is nothing to
+    prepare here.
     """
     ziel_url = make_url(MIGRATIONS_DATABASE_URL)
     if ziel_url.get_backend_name() != "sqlite":
@@ -117,9 +117,10 @@ def migrations_database_url() -> Iterator[str]:
 
     yield MIGRATIONS_DATABASE_URL
 
-    # Symmetrisch zur Fixture `engine`, die ihre Tabellen wieder entfernt: Bleibt die
-    # Migrationsdatenbank liegen, laeuft der naechste Durchlauf gegen einen alten
-    # Schemastand und scheitert an etwas, das mit dem Code nichts zu tun hat.
+    # Symmetric to the `engine` fixture, which removes its tables again: if the
+    # migrations database were left lying around, the next run would run
+    # against an old schema state and fail on something that has nothing to
+    # do with the code.
     if ziel_url.get_backend_name() == "sqlite":
         if ziel_url.database and ziel_url.database != ":memory:":
             Path(ziel_url.database).unlink(missing_ok=True)
@@ -138,15 +139,15 @@ def engine(settings: Settings) -> Iterator[Engine]:
     werk = create_engine_from_settings(settings)
     Base.metadata.drop_all(werk)
     Base.metadata.create_all(werk)
-    # Die Audit-Quellen gehoeren zum Schema wie die Rechte: Die Migration legt sie in
-    # jeder echten Datenbank an. Vorher legte jeder Test die eine an, die er zufaellig
-    # brauchte, und wer eine vergass, scheiterte an einem IntegrityError ueber
-    # `audit_event.source_id` -- einer Meldung, die die Ursache nirgends nennt. Seit die
-    # Quelle vom Adapter durchgereicht wird (web, api, mcp), braucht fast jeder
-    # schreibende Test mehr als eine.
+    # The audit sources belong to the schema just like the permissions: the migration
+    # creates them in every real database. Previously each test created the one it
+    # happened to need, and anyone who forgot one hit an IntegrityError on
+    # `audit_event.source_id` -- a message that names the cause nowhere. Since the
+    # source is passed through from the adapter (web, api, mcp), almost every
+    # writing test needs more than one.
     #
-    # Anders als die Rechte darf das hier stehen: Kein Test legt eine ActorSource von
-    # Hand an, es gibt also keine UNIQUE-Kollision wie bei `Permission`.
+    # Unlike the permissions, this is fine to seed here: no test creates an
+    # ActorSource by hand, so there is no UNIQUE collision like with `Permission`.
     with Session(werk) as http_session:
         vorhandene = {q.code for q in http_session.query(ActorSource)}
         for code, bezeichnung in ACTOR_SOURCES:
@@ -160,22 +161,24 @@ def engine(settings: Settings) -> Iterator[Engine]:
 
 @pytest.fixture
 def session(engine: Engine) -> Iterator[Session]:
-    """Jeder Test laeuft in einer Transaktion, die anschliessend zurueckgerollt wird.
+    """Every test runs in a transaction that is rolled back afterward.
 
-    Die Sitzung tritt der aeusseren Transaktion ueber ein Savepoint bei
-    (``join_transaction_mode="create_savepoint"``). Loest ein Test absichtlich einen
-    Fehler aus (z. B. einen ``IntegrityError`` bei einer Constraint-Verletzung) und die
-    Sitzung rollt deshalb zurueck, betrifft das nur das Savepoint — die aeussere
-    Transaktion bleibt bestehen und laesst sich im Teardown noch zurueckrollen.
+    The session joins the outer transaction via a savepoint
+    (``join_transaction_mode="create_savepoint"``). If a test deliberately
+    triggers an error (e.g. an ``IntegrityError`` on a constraint violation)
+    and the session rolls back because of it, that only affects the
+    savepoint — the outer transaction survives and can still be rolled back
+    in teardown.
 
-    Grenze dieser Isolation: Zurueckgerollt werden Datenaenderungen, nicht der Zaehler
-    fuer Auto-Increment-Schluessel — und unter MariaDB fuehrt DDL zu einem impliziten
-    Commit. Tests duerfen sich deshalb nicht auf bestimmte Kennungswerte verlassen und
-    keine Schemaaenderungen vornehmen. Der Preis dieser Loesung ist bewusst gewaehlt:
-    ein Schemaaufbau je Test waere unter MariaDB unertraeglich langsam.
+    Limit of this isolation: data changes are rolled back, not the counter
+    for auto-increment keys — and under MariaDB, DDL triggers an implicit
+    commit. Tests must therefore not rely on specific id values and must not
+    make schema changes. The cost of this approach is a deliberate choice:
+    building the schema anew for every test would be unbearably slow under
+    MariaDB.
 
-    Dadurch teilen sich alle Tests ein Schema, ohne einander zu beeinflussen — unter
-    MariaDB waere ein Neuaufbau je Test sonst spuerbar langsam.
+    This way, all tests share one schema without affecting each other —
+    under MariaDB, rebuilding it per test would otherwise be noticeably slow.
     """
     verbindung = engine.connect()
     transaktion = verbindung.begin()
@@ -194,21 +197,23 @@ def session(engine: Engine) -> Iterator[Session]:
 def _permissions_for_setup_wizard(
     request: pytest.FixtureRequest, session: Session
 ) -> None:
-    """Seedet die Berechtigungstabelle innerhalb der Testtransaktion von ``tests/test_setup.py``.
+    """Seeds the permission table within the test transaction of ``tests/test_setup.py``.
 
-    In Produktion sind alle Codes aus `Permission` bereits durch die Migration
-    `3685e30419a4_nachschlagetabellen` vorhanden, bevor der Einrichtungsassistent je
-    laeuft. `Base.metadata.create_all()` in der Fixture ``engine`` legt dagegen nur das
-    Schema an, keine Referenzdaten — ohne diese Zeilen schluege
-    `einrichtung_durchfuehren()` mit einem `KeyError` fehl, weil sie den Beispielgruppen
-    vorhandene Berechtigungen zuordnet, statt sie selbst anzulegen.
+    In production, every code from `Permission` already exists through the
+    migration `3685e30419a4_nachschlagetabellen`, before the setup wizard
+    ever runs. `Base.metadata.create_all()` in the ``engine`` fixture, by
+    contrast, only creates the schema, no reference data — without these
+    rows, `einrichtung_durchfuehren()` would fail with a `KeyError`, because
+    it assigns existing permissions to the example groups instead of
+    creating them itself.
 
-    Bewusst nicht in der session-weiten Fixture ``engine`` seedebar: dort waeren die
-    Zeilen fuer die gesamte Testsitzung sichtbar und wuerden `test_lookup.py`s
-    `test_berechtigung_kennt_ihren_geltungsbereich` an der UNIQUE-Bedingung auf `code`
-    scheitern lassen, die dort bewusst ein frisches `Permission("zone.read")` anlegt.
-    Deshalb hier je Test, beschraenkt auf `test_setup.py`, und ueber dieselbe Sitzung
-    wie der Test selbst — die Zeilen verschwinden mit deren Rollback wieder.
+    Deliberately not seedable in the session-wide ``engine`` fixture: there,
+    the rows would be visible for the entire test session and would make
+    `test_lookup.py`'s `test_permission_knows_its_scope` fail on the UNIQUE
+    constraint on `code`, since it deliberately creates a fresh
+    `Permission("zone.read")`. Hence this happens per test here, limited to
+    `test_setup.py`, and through the same session as the test itself — the
+    rows disappear again with its rollback.
     """
     if request.node.fspath.basename != "test_setup.py":
         return
@@ -224,9 +229,10 @@ def _permissions_for_setup_wizard(
 def client(
     settings: Settings, session: Session, monkeypatch: pytest.MonkeyPatch
 ) -> Iterator[TestClient]:
-    """Baut die App gegen die Testdatenbank und laesst Anfragen in derselben,
-    per Test zurueckgerollten Transaktion laufen wie die Fixture ``session`` —
-    sonst saehe ein Test nicht, was ein per HTTP ausgeloester Vorgang geschrieben hat.
+    """Builds the app against the test database and runs requests in the
+    same per-test, rolled-back transaction as the ``session`` fixture —
+    otherwise a test would not see what an operation triggered over HTTP
+    had written.
     """
     monkeypatch.setenv("THERMOCTL_DATABASE_URL", settings.database_url)
     monkeypatch.setenv("THERMOCTL_SECRET_KEY", settings.secret_key.get_secret_value())
@@ -260,7 +266,7 @@ def client_als(
 
 @pytest.fixture
 def user(session: Session) -> User:
-    """Legt den Benutzer ``lino`` mit gehashtem Passwort und der Gruppe *Verwaltung* an."""
+    """Creates the user ``lino`` with a hashed password and the *Verwaltung* group."""
     source(session, "web")
     nutzer = User(
         username="lino",
@@ -278,14 +284,14 @@ def user(session: Session) -> User:
 
 @pytest.fixture(autouse=True)
 def _without_real_waiting(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Die Anmeldedrosselung schlaeft nicht wirklich, waehrend Tests laufen.
+    """The login throttle does not actually sleep while tests run.
 
-    Die Drosselung selbst bleibt aktiv und wird von
-    `test_fehlversuche_werden_zunehmend_verzoegert` geprueft — jener Test ersetzt
-    `schlafen` selbst und sieht diese Fixture dadurch gar nicht. Ohne sie kostet
-    jede Anmeldung in jedem Test echte Sekunden: die Suite lief dadurch von zwei
-    auf dreiunddreissig Sekunden hoch, und eine langsame Suite wird seltener
-    ausgefuehrt.
+    The throttling itself stays active and is checked by
+    `test_failed_attempts_are_increasingly_delayed` — that test replaces
+    `schlafen` itself and therefore never sees this fixture at all. Without
+    it, every login in every test costs real seconds: the suite's runtime
+    went from two seconds to thirty-three because of this, and a slow suite
+    gets run less often.
     """
     monkeypatch.setattr("thermoctl.web.auth_views.schlafen", lambda seconds: None)
 
@@ -293,11 +299,11 @@ def _without_real_waiting(monkeypatch: pytest.MonkeyPatch) -> None:
 def angemeldeter_client(
     client_als: Callable[[list[tuple[str, int | None]]], TestClient],
 ) -> TestClient:
-    """Ein Client mit allen Rechten, fuer den Rauchtest ueber alle Seiten.
+    """A client with every permission, for the smoke test across all pages.
 
-    Bewusst mit vollem Rechteumfang: Der Rauchtest fragt, ob eine Seite ueberhaupt
-    existiert und ohne Fehler antwortet — ob sie die Rechte richtig prueft, gehoert in
-    die Tests der jeweiligen Ansicht.
+    Deliberately with the full permission set: the smoke test asks whether a
+    page exists at all and responds without an error — whether it checks
+    permissions correctly belongs in that view's own tests.
     """
     return client_als(
         [
@@ -319,14 +325,14 @@ def angemeldeter_client(
     )
 
 def pytest_configure(config: pytest.Config) -> None:
-    """Sammelstelle fuer die Endpunkte, die waehrend des Laufs tatsaechlich
-    aufgerufen wurden — ausgewertet von tests/test_endpunktabdeckung.py."""
+    """Collection point for the endpoints actually called during the run —
+    evaluated by tests/test_endpunktabdeckung.py."""
     config._called_endpoints = set()  # type: ignore[attr-defined]
 
 
 @pytest.fixture(autouse=True)
 def _record_endpoints(request: pytest.FixtureRequest) -> Iterator[None]:
-    """Zeichnet jeden HTTP-Aufruf auf, den ein Test ueber den TestClient macht."""
+    """Records every HTTP call a test makes through the TestClient."""
     from starlette.testclient import TestClient as _TestClient
 
     original = _TestClient.request
@@ -348,12 +354,12 @@ def _record_endpoints(request: pytest.FixtureRequest) -> Iterator[None]:
 
 
 def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
-    """Zieht die Endpunktabdeckung ans Ende des Laufs.
+    """Moves endpoint coverage to the end of the run.
 
-    Sie wertet die Mitschrift aller HTTP-Aufrufe aus, die waehrend des Laufs entsteht.
-    Nach Dateinamen sortiert liefe sie mitten im Lauf — sie saehe dann nur, was bis
-    dahin aufgerufen wurde, und meldete alles Spaetere als ungeprueft. Solange der
-    Waechter durch die verschachtelten Router von FastAPI ohnehin ins Leere lief, fiel
-    das nicht auf.
+    It evaluates the record of every HTTP call made during the run. Sorted
+    by filename, it would run in the middle of the run — it would then only
+    see what had been called up to that point, and report everything later
+    as unchecked. As long as the guard ran into nothing anyway because of
+    FastAPI's nested routers, this went unnoticed.
     """
     items.sort(key=lambda item: item.fspath.basename == "test_endpoint_coverage.py")

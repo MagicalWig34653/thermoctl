@@ -8,14 +8,14 @@ from thermoctl.db.base import Base, utcnow
 
 
 class ZoneOverride(Base):
-    """Eine Uebersteuerung des Zeitplans.
+    """An override of the schedule.
 
-    Drei Enden: bis zum naechsten Schaltpunkt, fuer eine Dauer, oder dauerhaft. In den
-    ersten beiden Faellen wird `ends_at` beim Anlegen konkret ausgerechnet, nicht als
-    Regel abgelegt — so steht in der Datenbank immer, wann Schluss ist, und eine spaetere
-    Zeitplanaenderung verschiebt eine laufende Uebersteuerung nicht rueckwirkend.
+    Three endings: until the next schedule point, for a duration, or permanently. In
+    the first two cases, `ends_at` is computed concretely when the row is created,
+    rather than stored as a rule — this way the database always states when it ends,
+    and a later schedule change does not retroactively shift a running override.
 
-    Zeilen werden nie geloescht; sie sind die Historie.
+    Rows are never deleted; they are the history.
     """
 
     __tablename__ = "zone_override"

@@ -12,11 +12,11 @@ from thermoctl.db.models.measurement import Measurement
 from thermoctl.services.retention import delete_old_measurements
 
 NOW = datetime(2026, 8, 29, 12, 0)
-DATENPFAD = Path(__file__).parent / "daten" / "anlage-beispiele.json"
+DATA_PATH = Path(__file__).parent / "daten" / "anlage-beispiele.json"
 
 
 def _inventory(session: Session, age_days: list[int]) -> None:
-    device_name = json.loads(DATENPFAD.read_text(encoding="utf-8"))["geraete"][0]
+    device_name = json.loads(DATA_PATH.read_text(encoding="utf-8"))["geraete"][0]
     device = create_device(session, device_name)
     capability = DeviceCapability(code="aufbewahrung", label="Aufbewahrung")
     session.add(capability)
@@ -35,7 +35,7 @@ def _inventory(session: Session, age_days: list[int]) -> None:
     session.flush()
 
 
-def test_alte_messwerte_werden_blockweise_vollstaendig_geloescht(session: Session) -> None:
+def test_old_measurements_are_deleted_completely_in_blocks(session: Session) -> None:
     settings = create_settings(session)
     settings.measurement_retention_days = 30
     _inventory(session, [31, 32, 33, 29])
@@ -44,7 +44,7 @@ def test_alte_messwerte_werden_blockweise_vollstaendig_geloescht(session: Sessio
     assert [m.measured_at for m in session.query(Measurement)] == [NOW - timedelta(days=29)]
 
 
-def test_aufbewahrungswert_null_behaelt_die_gesamte_historie(session: Session) -> None:
+def test_a_retention_value_of_zero_keeps_the_entire_history(session: Session) -> None:
     settings = create_settings(session)
     settings.measurement_retention_days = 0
     _inventory(session, [100])
@@ -53,6 +53,6 @@ def test_aufbewahrungswert_null_behaelt_die_gesamte_historie(session: Session) -
     assert session.query(Measurement).count() == 1
 
 
-def test_blockgroesse_muss_positiv_sein(session: Session) -> None:
+def test_block_size_must_be_positive(session: Session) -> None:
     with pytest.raises(ValueError, match="groesser als null"):
         delete_old_measurements(session, NOW, blockgroesse=0)

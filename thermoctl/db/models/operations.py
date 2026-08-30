@@ -19,19 +19,19 @@ from thermoctl.db.base import Base, utcnow
 
 
 class Setting(Base):
-    """Genau eine Zeile mit typisierten Spalten — ersetzt die EAV-Tabelle `heizung_conf`.
+    """Exactly one row with typed columns — replaces the EAV table `heizung_conf`.
 
-    Eine neue Einstellung ist eine Alembic-Migration statt eines Strings, der erst zur
-    Laufzeit als Fehler auffaellt.
+    A new setting is an Alembic migration instead of a string that only shows up as an
+    error at runtime.
     """
 
     __tablename__ = "setting"
     __table_args__ = (CheckConstraint("id = 1", name="genau_eine_zeile"),)
 
-    # autoincrement=False ist hier Pflicht, nicht Kosmetik: MariaDB vergibt sonst
-    # AUTO_INCREMENT und verbietet dann jede CHECK-Bedingung auf derselben Spalte
-    # (Fehler 1901). Fachlich ist es ohnehin richtig — eine Tabelle mit genau einer
-    # Zeile braucht keinen automatisch vergebenen Schluessel.
+    # autoincrement=False is mandatory here, not cosmetic: MariaDB otherwise assigns
+    # AUTO_INCREMENT and then forbids any CHECK constraint on the same column (error
+    # 1901). It is the correct choice on the merits anyway — a table with exactly one
+    # row does not need an automatically assigned key.
     id: Mapped[int] = mapped_column(
         Integer, primary_key=True, autoincrement=False, default=1
     )
@@ -54,7 +54,7 @@ class Setting(Base):
     session_lifetime_seconds: Mapped[int] = mapped_column(
         Integer,
         default=1209600,
-        nullable=False,  # 14 Tage
+        nullable=False,  # 14 days
     )
     control_armed: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default=false(), nullable=False
@@ -71,10 +71,10 @@ class Setting(Base):
 
 
 class AuditEvent(Base):
-    """Was Wochen spaeter noch beantwortbar sein soll.
+    """What should still be answerable weeks later.
 
-    Wird in derselben Transaktion geschrieben wie die Aenderung, damit kein Eintrag zu
-    einer Aenderung existiert, die nicht stattfand.
+    Written in the same transaction as the change, so that no entry exists for a
+    change that did not take place.
     """
 
     __tablename__ = "audit_event"

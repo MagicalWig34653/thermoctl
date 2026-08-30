@@ -1,9 +1,9 @@
-"""Bediengeraete: was ein Tastendruck an der Wand bewirkt.
+"""Controllers: what a button press on the wall does.
 
-Der Kern der Sache ist, dass hier **nichts geraten** wird. Wie ein Geraet seine Tasten
-nennt, entscheidet Zigbee2MQTT je Modell; der Dienst zeichnet auf, was wirklich ankam,
-und die Belegung steht in der Datenbank. Diese Tests pruefen beide Haelften: das Zuhoeren
-und das Ausfuehren.
+The core of it is that **nothing here is guessed**. What a device calls its
+buttons is decided per model by Zigbee2MQTT; the service records what
+actually arrived, and the binding lives in the database. These tests check
+both halves: listening and executing.
 """
 
 import json
@@ -41,17 +41,17 @@ MONDAY_EIGHT = datetime(2026, 8, 31, 8, 0)
 
 
 def _commands(session: Session) -> None:
-    """Die Nachschlagetabelle, die in der echten Anlage die Migration fuellt."""
+    """The lookup table that a migration fills in a real installation."""
     from thermoctl.db.models.lookup import CONTROLLER_COMMANDS
 
-    for code, bezeichnung in CONTROLLER_COMMANDS:
-        session.add(ControllerCommand(code=code, label=bezeichnung))
+    for code, label in CONTROLLER_COMMANDS:
+        session.add(ControllerCommand(code=code, label=label))
     session.add(DeviceCapability(code="action", label="Tastendruck"))
     session.flush()
 
 
-def _anlage(session: Session):
-    """Eine Zone mit Plan und ein Bediengeraet daran."""
+def _installation(session: Session):
+    """A zone with a schedule and a controller attached to it."""
     create_settings(session).timezone = "UTC"
     source(session, "system")
     _commands(session)
@@ -82,26 +82,26 @@ def _anlage(session: Session):
     return zone, device
 
 
-def test_eine_belegte_taste_verstellt_den_geltenden_modus(session: Session) -> None:
-    """Nicht als Uebersteuerung: Die waere nach dem naechsten Schaltpunkt weg, und der
-    Raum kuehlte ohne Zutun wieder aus."""
-    zone, device = _anlage(session)
+def test_a_bound_button_changes_the_active_mode(session: Session) -> None:
+    """Not as an override: that would be gone after the next schedule point,
+    and the room would cool down again on its own."""
+    zone, device = _installation(session)
     set_binding(session, device, "single_plus", "setpoint_up")
 
-    betroffen = execute_aktion(session, device, "single_plus", MONDAY_EIGHT)
+    affected = execute_aktion(session, device, "single_plus", MONDAY_EIGHT)
 
-    assert betroffen == [zone.name]
+    assert affected == [zone.name]
     assert resolved_setpoint(session, zone, MONDAY_EIGHT).temperature_c == Decimal("21.5")
 
 
-def test_die_schrittweite_laesst_sich_je_taste_festlegen(session: Session) -> None:
-    zone, device = _anlage(session)
+def test_the_step_size_can_be_set_per_button(session: Session) -> None:
+    zone, device = _installation(session)
     set_binding(session, device, "hold_minus", "setpoint_down", Decimal("2.0"))
 
     execute_aktion(session, device, "hold_minus", MONDAY_EIGHT)
 
     assert resolved_setpoint(session, zone, MONDAY_EIGHT).temperature_c == Decimal("19.0")
-    # Gegenprobe: Ohne eigene Schrittweite gilt der Standard.
+    # Counter-check: without its own step size, the default applies.
     set_binding(session, device, "single_minus", "setpoint_down")
     execute_aktion(session, device, "single_minus", MONDAY_EIGHT)
     assert resolved_setpoint(session, zone, MONDAY_EIGHT).temperature_c == (
@@ -109,8 +109,8 @@ def test_die_schrittweite_laesst_sich_je_taste_festlegen(session: Session) -> No
     )
 
 
-def test_boost_und_betriebsart_lassen_sich_auf_tasten_legen(session: Session) -> None:
-    zone, device = _anlage(session)
+def test_boost_and_operating_mode_can_be_bound_to_buttons(session: Session) -> None:
+    zone, device = _installation(session)
     from tests.helpers import operating_mode
 
     operating_mode(session, "off")
@@ -123,24 +123,24 @@ def test_boost_und_betriebsart_lassen_sich_auf_tasten_legen(session: Session) ->
     execute_aktion(session, device, "hold_center", MONDAY_EIGHT)
     assert zone.operating_mode.code == "off"
 
-    # Und zurueck -- sonst waere die Taste eine Einbahnstrasse.
+    # And back again -- otherwise the button would be a one-way street.
     set_binding(session, device, "double_center", "mode_auto")
     execute_aktion(session, device, "double_center", MONDAY_EIGHT)
     assert zone.operating_mode.code == "auto"
 
 
-def test_eine_unbelegte_taste_tut_nichts_und_ist_kein_fehler(session: Session) -> None:
-    """Die meisten Geraete schicken mehr Aktionen, als jemand belegen will -- jedes
-    Halten und jedes Loslassen. Eine Warnung je Druck waere Laerm."""
-    zone, device = _anlage(session)
-    vorher = resolved_setpoint(session, zone, MONDAY_EIGHT).temperature_c
+def test_an_unbound_button_does_nothing_and_is_not_an_error(session: Session) -> None:
+    """Most devices send more actions than anyone wants to bind -- every hold
+    and every release. A warning per press would be noise."""
+    zone, device = _installation(session)
+    before = resolved_setpoint(session, zone, MONDAY_EIGHT).temperature_c
 
     assert execute_aktion(session, device, "release_plus", MONDAY_EIGHT) == []
-    assert resolved_setpoint(session, zone, MONDAY_EIGHT).temperature_c == vorher
+    assert resolved_setpoint(session, zone, MONDAY_EIGHT).temperature_c == before
 
 
-def test_ein_bediengeraet_ohne_zone_tut_nichts(session: Session) -> None:
-    """Der haeufigste Grund, warum 'die Taste tut nichts' -- und deshalb im Protokoll."""
+def test_a_controller_without_a_zone_does_nothing(session: Session) -> None:
+    """The most common reason 'the button does nothing' -- and therefore logged."""
     create_settings(session)
     source(session, "system")
     _commands(session)
@@ -150,9 +150,9 @@ def test_ein_bediengeraet_ohne_zone_tut_nichts(session: Session) -> None:
     assert execute_aktion(session, device, "single_plus", MONDAY_EIGHT) == []
 
 
-def test_gesehene_aktionen_kommen_aus_dem_was_wirklich_ankam(session: Session) -> None:
-    """Der Kern: Es wird nicht geraten, wie ein Modell seine Tasten nennt."""
-    zone, device = _anlage(session)
+def test_seen_actions_come_from_what_actually_arrived(session: Session) -> None:
+    """The core of it: nobody guesses what a model calls its buttons."""
+    zone, device = _installation(session)
     process_message(
         session,
         f"zigbee2mqtt/{device.external_id}",
@@ -161,29 +161,29 @@ def test_gesehene_aktionen_kommen_aus_dem_was_wirklich_ankam(session: Session) -
         empfangen_am=MONDAY_EIGHT,
     )
 
-    aktionen = gesehene_aktionen(session, device)
+    actions = gesehene_aktionen(session, device)
 
-    assert [a.aktion for a in aktionen] == ["button_1_single"]
-    assert aktionen[0].command_code is None
-    assert aktionen[0].last_seen is not None
+    assert [a.aktion for a in actions] == ["button_1_single"]
+    assert actions[0].command_code is None
+    assert actions[0].last_seen is not None
 
 
-def test_eine_belegte_taste_bleibt_sichtbar_ohne_frischen_druck(session: Session) -> None:
-    """Sonst verschwaende eine funktionierende Belegung aus der Oberflaeche, sobald das
-    Aufraeumen der Messwerte den letzten Druck geloescht hat."""
-    _zone, device = _anlage(session)
+def test_a_bound_button_stays_visible_without_a_fresh_press(session: Session) -> None:
+    """Otherwise a working binding would disappear from the interface as
+    soon as measurement cleanup deleted the last press."""
+    _zone, device = _installation(session)
     set_binding(session, device, "nie_wieder_gedrueckt", "boost")
 
-    aktionen = gesehene_aktionen(session, device)
+    actions = gesehene_aktionen(session, device)
 
-    assert [a.aktion for a in aktionen] == ["nie_wieder_gedrueckt"]
-    assert aktionen[0].command_name == "Nächste Schaltung vorziehen"
-    assert aktionen[0].last_seen is None
+    assert [a.aktion for a in actions] == ["nie_wieder_gedrueckt"]
+    assert actions[0].command_name == "Nächste Schaltung vorziehen"
+    assert actions[0].last_seen is None
 
 
-def test_ein_tastendruck_aus_einer_echten_nachricht_wirkt(session: Session) -> None:
-    """Der ganze Weg: MQTT-Nachricht, Messwert, Ausfuehrung."""
-    zone, device = _anlage(session)
+def test_a_button_press_from_a_real_message_takes_effect(session: Session) -> None:
+    """The whole path: MQTT message, measurement, execution."""
+    zone, device = _installation(session)
     set_binding(session, device, "single_plus", "setpoint_up")
 
     process_message(
@@ -197,14 +197,13 @@ def test_ein_tastendruck_aus_einer_echten_nachricht_wirkt(session: Session) -> N
     assert resolved_setpoint(session, zone, MONDAY_EIGHT).temperature_c == Decimal("21.5")
 
 
-def test_dieselbe_nachricht_zweimal_wirkt_nur_einmal(session: Session) -> None:
-    """Eine behaltene Nachricht wird bei **jeder** Neuverbindung erneut zugestellt.
-
-    Ohne diesen Schutz loeste ein Wackelkontakt in der Netzverbindung denselben
-    Tastendruck immer wieder aus -- und ein Boost, den niemand gedrueckt hat, faellt
-    erst auf, wenn es im Raum zu warm ist.
+def test_the_same_message_twice_takes_effect_only_once(session: Session) -> None:
+    """A retained message is redelivered on **every** reconnect. Without this
+    guard, a flaky network connection would trigger the same button press
+    over and over — and a boost nobody pressed only becomes apparent once
+    the room is too warm.
     """
-    zone, device = _anlage(session)
+    zone, device = _installation(session)
     set_binding(session, device, "single_plus", "setpoint_up")
     payload = json.dumps(
         {"action": "single_plus", "last_seen": "2026-08-31T08:00:00Z"}
@@ -222,17 +221,17 @@ def test_dieselbe_nachricht_zweimal_wirkt_nur_einmal(session: Session) -> None:
     assert resolved_setpoint(session, zone, MONDAY_EIGHT).temperature_c == Decimal("21.5")
 
 
-def test_ein_spaeterer_druck_wirkt_wieder(session: Session) -> None:
-    """Gegenprobe zum Schutz oben: Er darf nicht jede Wiederholung sperren.
+def test_a_later_press_takes_effect_again(session: Session) -> None:
+    """Counter-check for the guard above: it must not block every repeat.
 
-    Wer zweimal auf 'waermer' drueckt, meint zwei Schritte -- sonst waere der Schutz
-    schlimmer als das Problem.
+    Someone pressing 'warmer' twice means two steps -- otherwise the guard
+    would be worse than the problem.
     """
-    zone, device = _anlage(session)
+    zone, device = _installation(session)
     set_binding(session, device, "single_plus", "setpoint_up")
 
-    for versatz in (0, 1, 2):
-        moment = MONDAY_EIGHT + timedelta(minutes=versatz)
+    for offset in (0, 1, 2):
+        moment = MONDAY_EIGHT + timedelta(minutes=offset)
         process_message(
             session,
             f"zigbee2mqtt/{device.external_id}",
@@ -246,10 +245,9 @@ def test_ein_spaeterer_druck_wirkt_wieder(session: Session) -> None:
     assert resolved_setpoint(session, zone, MONDAY_EIGHT).temperature_c == Decimal("22.5")
 
 
-def test_jeder_tastendruck_wird_als_messwert_abgelegt(session: Session) -> None:
-    """Er ist die Grundlage der Einrichtung -- und die Antwort auf 'kommt da ueberhaupt
-    etwas an?'."""
-    _zone, device = _anlage(session)
+def test_every_button_press_is_stored_as_a_measurement(session: Session) -> None:
+    """It is the basis for setup -- and the answer to 'does anything even arrive?'."""
+    _zone, device = _installation(session)
     process_message(
         session,
         f"zigbee2mqtt/{device.external_id}",
@@ -269,8 +267,8 @@ def test_jeder_tastendruck_wird_als_messwert_abgelegt(session: Session) -> None:
     assert list(values) == ["double_center"]
 
 
-def test_eine_belegung_laesst_sich_wieder_loeschen(session: Session) -> None:
-    _zone, device = _anlage(session)
+def test_a_binding_can_be_deleted_again(session: Session) -> None:
+    _zone, device = _installation(session)
     set_binding(session, device, "single_plus", "setpoint_up")
     set_binding(session, device, "single_plus", "boost", Decimal("1.0"))
 
@@ -278,12 +276,12 @@ def test_eine_belegung_laesst_sich_wieder_loeschen(session: Session) -> None:
 
     set_binding(session, device, "single_plus", None)
     assert session.scalars(select(ControllerBinding)).all() == []
-    # Und ein zweites Loeschen ist kein Fehler.
+    # And deleting a second time is not an error.
     set_binding(session, device, "single_plus", None)
 
 
-def test_unbrauchbare_belegungen_werden_abgewiesen(session: Session) -> None:
-    _zone, device = _anlage(session)
+def test_unusable_bindings_are_rejected(session: Session) -> None:
+    _zone, device = _installation(session)
     with pytest.raises(ControllerError, match="gibt es nicht"):
         set_binding(session, device, "single_plus", "gibtsnicht")
     with pytest.raises(ControllerError, match="groesser als null"):

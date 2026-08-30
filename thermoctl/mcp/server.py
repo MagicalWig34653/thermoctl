@@ -80,7 +80,7 @@ def _moment(value: datetime | None) -> str | None:
 
 
 def list_zones(session: Session, plaintext: str) -> list[dict[str, object]]:
-    """Listet ausschliesslich die fuer das Token sichtbaren Zonen auf."""
+    """Lists only the zones visible for the token."""
     _token, principal = _log_in(session, plaintext)
     zones = visible_zones(session, principal, "zone.read")
     if not zones:
@@ -96,7 +96,7 @@ def list_zones(session: Session, plaintext: str) -> list[dict[str, object]]:
 
 
 def zone_state(session: Session, plaintext: str, zone_id: int) -> dict[str, object]:
-    """Liefert den zuletzt abgeleiteten Zustand einer sichtbaren Zone."""
+    """Returns the most recently derived state of a visible zone."""
     _token, principal = _log_in(session, plaintext)
     zone = _visible_zone(session, principal, zone_id)
     zeile = session.get(ZoneState, zone.id)
@@ -113,7 +113,7 @@ def zone_state(session: Session, plaintext: str, zone_id: int) -> dict[str, obje
 def explain_setpoint(
     session: Session, plaintext: str, zone_id: int, now: datetime | None = None
 ) -> dict[str, object]:
-    """Reicht Wert und Begruendung der gemeinsamen Sollwertlogik durch."""
+    """Passes through the value and reasoning of the shared setpoint logic."""
     _token, principal = _log_in(session, plaintext)
     zone = _visible_zone(session, principal, zone_id)
     setpoint = resolved_setpoint(session, zone, now or utcnow())
@@ -125,7 +125,7 @@ def explain_setpoint(
 
 
 def read_schedule(session: Session, plaintext: str, zone_id: int) -> list[dict[str, object]]:
-    """Liest die Schaltpunkte einer sichtbaren Zone samt Modusnamen."""
+    """Reads the schedule points of a visible zone along with mode names."""
     _token, principal = _log_in(session, plaintext)
     zone = _visible_zone(session, principal, zone_id)
     require(principal, "zone.read", zone.id)
@@ -146,7 +146,7 @@ def read_schedule(session: Session, plaintext: str, zone_id: int) -> list[dict[s
 
 
 def read_setpoints(session: Session, plaintext: str, zone_id: int) -> list[dict[str, object]]:
-    """Liest die in einer sichtbaren Zone gesetzten Sollwerte je Modus."""
+    """Reads the setpoints set for a visible zone, per mode."""
     _token, principal = _log_in(session, plaintext)
     zone = _visible_zone(session, principal, zone_id)
     require(principal, "zone.read", zone.id)
@@ -163,7 +163,7 @@ def read_setpoints(session: Session, plaintext: str, zone_id: int) -> list[dict[
 
 
 def list_devices(session: Session, plaintext: str) -> list[dict[str, object]]:
-    """Listet Geraete samt Anbindung, Faehigkeiten und Lebenszeichen auf."""
+    """Lists devices along with integration, capabilities, and signs of life."""
     _token, principal = _log_in(session, plaintext)
     require(principal, "device.read")
     zeilen = session.execute(
@@ -195,7 +195,7 @@ def list_devices(session: Session, plaintext: str) -> list[dict[str, object]]:
 def shadow_decisions(
     session: Session, plaintext: str, zone_id: int, count: int = 10
 ) -> list[dict[str, object]]:
-    """Liefert die juengsten begruendeten Schattenentscheidungen einer Zone."""
+    """Returns the most recent, reasoned shadow decisions of a zone."""
     if count < 1 or count > 100:
         raise ValueError("Anzahl muss zwischen 1 und 100 liegen")
     _token, principal = _log_in(session, plaintext)
@@ -227,7 +227,7 @@ def override_zone(
     temperature_c: Decimal,
     endet_am: datetime | None = None,
 ) -> dict[str, object]:
-    """Legt ueber die gemeinsame Domaenenfunktion eine Uebersteuerung an."""
+    """Creates an override via the shared domain function."""
     token, principal = _log_in(session, plaintext)
     zone = _visible_zone(session, principal, zone_id)
     require(principal, "override.create", zone_id)
@@ -248,7 +248,7 @@ def override_zone(
 
 
 def cancel_override(session: Session, plaintext: str, zone_id: int) -> dict[str, object]:
-    """Hebt die aktive Uebersteuerung ueber die gemeinsame Domaenenfunktion auf."""
+    """Cancels the active override via the shared domain function."""
     _token, principal = _log_in(session, plaintext)
     zone = _visible_zone(session, principal, zone_id)
     require(principal, "override.cancel", zone_id)
@@ -257,12 +257,13 @@ def cancel_override(session: Session, plaintext: str, zone_id: int) -> dict[str,
 
 
 def boost(session: Session, plaintext: str, zone_id: int) -> dict[str, object]:
-    """Zieht die naechste Schaltung vor -- ueber die gemeinsame Domaenenfunktion.
+    """Pulls the next switch forward -- via the shared domain function.
 
-    Dasselbe Recht wie eine Uebersteuerung, weil es eine ist: nur eine, deren Wert und
-    Ende der Zeitplan bestimmt statt der Aufrufer. Fuer ein Sprachmodell ist das die
-    verlaesslichere Form von "mach es hier waermer" -- es muss weder eine Temperatur
-    noch eine Dauer raten, und nach dem Schaltpunkt raeumt sich der Eingriff selbst weg.
+    The same permission as an override, because it is one: just one whose value and end
+    are determined by the schedule instead of the caller. For a language model this is
+    the more reliable form of "make it warmer here" -- it has to guess neither a
+    temperature nor a duration, and after the schedule point the intervention clears
+    itself away.
     """
     token, principal = _log_in(session, plaintext)
     zone = _visible_zone(session, principal, zone_id)
@@ -284,11 +285,11 @@ def boost(session: Session, plaintext: str, zone_id: int) -> dict[str, object]:
 
 
 def read_control_parameters(session: Session, plaintext: str, zone_id: int) -> dict[str, object]:
-    """Die wirksamen Regelparameter einer Zone, samt ihrer Grenzen.
+    """The effective control parameters of a zone, along with their limits.
 
-    Die Grenzen stehen mit in der Antwort, weil ein Sprachmodell sie sonst raten muesste:
-    Ohne sie waere jeder Schreibversuch ein Versuch, und "0,05 Kelvin Hysterese" saehe
-    fuer ein Modell so plausibel aus wie "0,5".
+    The limits are included in the response because a language model would otherwise
+    have to guess them: without them every write attempt would be a shot in the dark,
+    and "0.05 kelvin hysteresis" would look just as plausible to a model as "0.5".
     """
     _token, principal = _log_in(session, plaintext)
     zone = _visible_zone(session, principal, zone_id)
@@ -313,10 +314,10 @@ def read_control_parameters(session: Session, plaintext: str, zone_id: int) -> d
 def set_control_parameters(
     session: Session, plaintext: str, zone_id: int, name: str, value: Decimal
 ) -> dict[str, object]:
-    """Setzt **einen** Regelparameter und laesst die uebrigen, wie sie sind.
+    """Sets **one** control parameter and leaves the rest as they are.
 
-    `zone.manage`, nicht `override.create`: Ein Regelparameter wirkt dauerhaft und auf
-    jede kuenftige Entscheidung, eine Uebersteuerung nur bis zum naechsten Schaltpunkt.
+    `zone.manage`, not `override.create`: a control parameter has a lasting effect on
+    every future decision, an override only until the next schedule point.
     """
     _token, principal = _log_in(session, plaintext)
     zone = _visible_zone(session, principal, zone_id)
@@ -328,11 +329,11 @@ def set_control_parameters(
 
 
 def read_control(session: Session, plaintext: str) -> dict[str, object]:
-    """Der Betriebszustand der Anlage samt der Vorgaben, von denen jede Zone erbt.
+    """The plant's operating state along with the defaults every zone inherits from.
 
-    Die wichtigste Frage, die ein Assistent ueber diese Anlage stellen kann, ist
-    "schaltet sie gerade wirklich?" -- eine Entscheidung im Schattenbetrieb ist eine
-    Behauptung, eine im scharfen Betrieb bewegt ein Ventil.
+    The most important question an assistant can ask about this plant is "is it
+    actually switching right now?" -- a decision in shadow run is a claim, one in armed
+    operation moves a valve.
     """
     _token, principal = _log_in(session, plaintext)
     require(principal, "zone.read")
@@ -347,17 +348,17 @@ def read_control(session: Session, plaintext: str) -> dict[str, object]:
 def force_dry_run(
     session: Session, plaintext: str, reason: str = ""
 ) -> dict[str, object]:
-    """Nimmt die Regelung in den Trockenlauf zurueck.
+    """Puts control back into the dry run.
 
-    **Nur diese Richtung.** Scharfschalten gibt es hier bewusst nicht, obwohl REST und
-    Oberflaeche es koennen: Der MCP-Server spricht fuer ein Sprachmodell, und die
-    Begruendung, die die Domaene beim Scharfschalten verlangt, ist fuer ein Modell keine
-    Huerde -- sie ist genau die Sorte Text, die es muehelos erzeugt. Die Sperre waere
-    damit eine Formalie statt einer Entscheidung. Zurueck in den Trockenlauf ist
-    dagegen immer die sichere Richtung und soll jedem offenstehen, der die Anlage
-    bedienen darf. Wer die Anlage scharf schalten will, tut das in der Oberflaeche oder
-    ueber die REST-Schnittstelle, wo ein Mensch am Knopf steht.
-    Nachzulesen in docs/offene-entscheidungen.md.
+    **Only this direction.** Arming deliberately does not exist here, even though REST
+    and the interface can do it: the MCP server speaks for a language model, and the
+    justification the domain requires for arming is no obstacle for a model -- it is
+    exactly the kind of text it generates effortlessly. The barrier would thus be a
+    formality instead of a decision. Going back to the dry run, on the other hand, is
+    always the safe direction and should be open to anyone allowed to operate the
+    plant. Whoever wants to arm the plant does so in the interface or via the REST
+    interface, where a human is at the button.
+    See docs/offene-entscheidungen.md for more.
     """
     token, principal = _log_in(session, plaintext)
     require(principal, "control.arm")
@@ -375,11 +376,10 @@ def force_dry_run(
 def move_schedule_point(
     session: Session, plaintext: str, zone_id: int, point_id: int, weekday: int, minute: int
 ) -> dict[str, object]:
-    """Setzt einen Zeitplanpunkt auf einen anderen Zeitpunkt.
+    """Moves a schedule point to a different time.
 
-    Dieselbe Domaenenfunktion wie das Ziehen in der Wochenansicht -- der Punkt behaelt
-    seine Kennung, und das Audit-Protokoll zeigt eine Verschiebung statt eines Loeschens
-    mit anschliessendem Anlegen.
+    The same domain function as dragging it in the week view -- the point keeps its id,
+    and the audit log shows a move instead of a deletion followed by a re-creation.
     """
     token, principal = _log_in(session, plaintext)
     zone = _visible_zone(session, principal, zone_id)
@@ -407,9 +407,9 @@ def move_schedule_point(
 
 def _mcp_server_class() -> Callable[[str], _McpServer]:
     try:
-        # Zwei Pfade, weil die beiden verbreiteten MCP-Fassungen die Serverklasse an
-        # unterschiedlichen Stellen fuehren. Welcher greift, haengt an der installierten
-        # Fassung — die Abdeckung sieht deshalb immer nur einen der beiden.
+        # Two paths, because the two common MCP versions keep the server class in
+        # different places. Which one applies depends on the installed version --
+        # coverage therefore always sees only one of the two.
         try:
             module = import_module("mcp.server.mcpserver")
             return cast(Callable[[str], _McpServer], module.MCPServer)  # pragma: no cover
@@ -508,15 +508,15 @@ def _register_tools(
 
 
 def main() -> None:
-    """Startet den authentifizierten MCP-Server ueber stdio."""
+    """Starts the authenticated MCP server over stdio."""
     settings = get_settings()
     if settings.mcp_token is None:
         raise SystemExit("THERMOCTL_MCP_TOKEN fehlt; der MCP-Server startet nicht ohne Anmeldung.")
-    # Ab hier laeuft der Prozess bis zum Abbruch als stdio-Server. Das ist Verdrahtung,
-    # kein Verhalten: Jeder einzelne Bestandteil ist geprueft — die Tokenpruefung darueber,
-    # die Registrierung in `test_registrierte_mcp_werkzeuge_rufen_die_adapterfunktionen_auf`
-    # und jedes Werkzeug einzeln. Ein Test dieser Zeilen muesste einen echten stdio-Server
-    # starten und wieder abwuergen und pruefte damit die Bibliothek, nicht uns.
+    # From here on the process runs as a stdio server until stopped. This is wiring,
+    # not behavior: every single part is tested -- the token check above it, the
+    # registration in `test_registrierte_mcp_werkzeuge_rufen_die_adapterfunktionen_auf`,
+    # and each tool individually. A test of these lines would have to start and then
+    # kill a real stdio server, and would thereby test the library, not us.
     plaintext = settings.mcp_token.get_secret_value()  # pragma: no cover
     server_class = _mcp_server_class()  # pragma: no cover
     engine = create_engine_from_settings(settings)  # pragma: no cover

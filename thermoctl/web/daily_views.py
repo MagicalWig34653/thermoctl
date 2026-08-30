@@ -27,10 +27,10 @@ from thermoctl.domain.zone_settings import (
 )
 from thermoctl.web.forms import FormError, form_again
 
-# `include_in_schema=False`: Die OpenAPI-Beschreibung ist der Vertrag der
-# REST-Schnittstelle. Diese Wege liefern HTML fuer Menschen, und in der Oberflaeche
-# unter /docs stuende sonst neben jedem echten Endpunkt ein Formularweg, dessen
-# 'Try it out' eine echte Aenderung ausloest.
+# `include_in_schema=False`: the OpenAPI description is the contract of the REST
+# interface. These routes deliver HTML for humans, and in the interface under
+# /docs there would otherwise be a form route next to every real endpoint whose
+# 'Try it out' triggers a real change.
 router = APIRouter(dependencies=[Depends(csrf_schutz)], include_in_schema=False)
 
 FELDER = (
@@ -132,10 +132,10 @@ async def create_override_view(
     temperature_text = str(form.get("temperature_c", "")).strip()
     kind = str(form.get("end", "dauerhaft"))
     try:
-        # Nur noch die Zahl selbst. Die Grenze prueft `uebersteuerung_anlegen` weiter
-        # unten -- sie stand hier ein zweites Mal, mit eigenen Zahlen, und haette beim
-        # naechsten Verschieben abweichen muessen. Genau dieser Fehler ist dem Projekt
-        # schon einmal passiert; die Meldung kommt aus der Domaene.
+        # Only the number itself now. The limit is checked by `uebersteuerung_anlegen`
+        # further below -- it used to be here a second time too, with its own numbers,
+        # and would have had to be kept in sync on the next change. This exact mistake
+        # has already happened to the project once; the message comes from the domain.
         temperature = Decimal(temperature_text.replace(",", "."))
         if kind == "naechste_schaltung":
             ende = end_of_next_switch(session, zone)
@@ -148,8 +148,8 @@ async def create_override_view(
             ende = None
         else:
             raise ValueError
-    # Klammern, obwohl Python 3.14 sie nicht mehr verlangt (PEP 758): Ohne sie sieht die
-    # Zeile aus wie die Python-2-Form, die etwas anderes bedeutete.
+    # Parentheses, even though Python 3.14 no longer requires them (PEP 758): without
+    # them the line looks like the Python 2 form, which meant something different.
     except (InvalidOperation, ValueError):
         parameter = urlencode(
             {
@@ -167,8 +167,8 @@ async def create_override_view(
             user_id=principal.user_id, token_id=principal.token_id,
         )
     except DomainError as exc:
-        # Die Grenze liegt seit dem Abschlussreview in der Domaene, damit sie fuer alle
-        # drei Adapter gilt. Hier wird sie nur noch angezeigt.
+        # The limit has lived in the domain since the final review, so it applies to
+        # all three adapters. Here it is only displayed.
         parameter = urlencode(
             {
                 "uebersteuerungsfehler": exc.notice,
@@ -193,8 +193,8 @@ async def end_override(
     return RedirectResponse("/", status.HTTP_303_SEE_OTHER)
 
 
-# Ein Klick auf dem Thermostat der Startseite. Eine halbe Stufe, weil ein Raum darunter
-# nicht spuerbar anders wird und man sonst zu oft klickt.
+# One click on the start page's thermostat. A half step, because below that a room
+# doesn't perceptibly change and you would otherwise click too often.
 THERMOSTAT_STEP = Decimal("0.5")
 
 
@@ -205,17 +205,16 @@ async def adjust_thermostat(
     principal: Annotated[Principal, Depends(aktueller_principal)],
     session: Annotated[Session, Depends(get_session)],
 ) -> Response:
-    """Verstellt die hinterlegte Temperatur des Modus, der gerade gilt.
+    """Adjusts the stored temperature of the mode currently in effect.
 
-    Das ist ausdruecklich **keine** Uebersteuerung: Wer hier drueckt, aendert den
-    Sollwert des laufenden Modus dauerhaft -- "Tag soll ein halbes Grad waermer sein",
-    nicht "jetzt einmal waermer". Beides ist ein alltaeglicher Wunsch, und beides mit
-    demselben Bedienelement zu machen waere die sicherste Art, das Falsche zu treffen.
-    Deshalb steht daneben, welcher Modus verstellt wird.
+    This is explicitly **not** an override: whoever presses here changes the setpoint
+    of the running mode permanently -- "day should be half a degree warmer", not "make
+    it warmer just this once". Both are everyday requests, and doing both with the same
+    control would be the surest way to hit the wrong one. That's why it shows next to
+    it which mode is being adjusted.
 
-    Die Schrittweite wird hier auf den *aktuellen* Wert gerechnet und nicht im Browser:
-    Zwei Klicks sind dann zwei Stufen, auch wenn die Seite dazwischen nicht neu geladen
-    hat.
+    The step is calculated here against the *current* value, not in the browser: two
+    clicks are then two steps, even if the page hasn't reloaded in between.
     """
     zone = _zone_or_404(session, principal, zone_id, "setpoint.write")
     form = await request.form()
@@ -228,12 +227,12 @@ async def adjust_thermostat(
     if richtung not in ("hoch", "runter"):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Unbekannte Richtung")
 
-    # Der Wert, den die Seite zeigt -- nicht die hinterlegte Zeile. Die beiden sind
-    # nicht dasselbe: Hat eine Zone fuer den Frostschutz keinen eigenen Sollwert, zeigt
-    # `aufgeloester_sollwert` den Notnagel von 16 Grad an. Das Thermostat suchte
-    # bisher die Zeile, fand keine und antwortete mit 404 -- auf der Seite sah es aus,
-    # als passiere beim Druecken nichts. Genau das ist der Zustand einer frisch
-    # eingerichteten Anlage, in der noch niemand Sollwerte gepflegt hat.
+    # The value the page shows -- not the stored row. The two are not the same: if a
+    # zone has no own setpoint for frost protection, `aufgeloester_sollwert` shows the
+    # fallback of 16 degrees. The thermostat used to look up the row, find none, and
+    # respond with 404 -- on the page it looked as if nothing happened when pressed.
+    # That is exactly the state of a freshly set-up plant where nobody has maintained
+    # setpoints yet.
     jetziger = temperature_for_mode(session, zone, mode_id)
     if jetziger is None:
         angezeigt = resolved_setpoint(session, zone, utcnow())
@@ -248,8 +247,8 @@ async def adjust_thermostat(
             session, zone, {mode_id: neu}, user_id=principal.user_id
         )
     except DomainError as exc:
-        # An der Grenze angekommen. Kein Fehlerzustand, sondern das
-        # Ende des Weges -- die Seite zeigt danach schlicht den unveraenderten Wert.
+        # Reached the limit. Not an error state, but the end of the road -- the
+        # page simply shows the unchanged value afterward.
         parameter = urlencode({"thermostatfehler": exc.notice, "zone_id": zone.id})
         return RedirectResponse(f"/?{parameter}", status.HTTP_303_SEE_OTHER)
     return RedirectResponse("/", status.HTTP_303_SEE_OTHER)

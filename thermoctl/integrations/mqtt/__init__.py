@@ -1,1 +1,1 @@
-"""MQTT-Anbindung fuer Geraetedaten."""
+"""MQTT integration for device data."""

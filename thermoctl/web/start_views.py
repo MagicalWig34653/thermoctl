@@ -1,16 +1,16 @@
-"""Die Startseite: eine Statustafel, keine Kennzahlensammlung.
+"""The start page: a status board, not a collection of metrics.
 
-Sie beantwortet genau eine Frage -- *tut das Haus gerade das, was ich ihm gesagt habe?*
--- und zwar fuer alle Zonen auf einmal. Alles, was diese Frage nicht beantwortet, gehoert
-woandershin.
+It answers exactly one question -- *is the house currently doing what I told it to?*
+-- for all zones at once. Anything that doesn't answer this question belongs
+elsewhere.
 
-Frueher standen hier zwei Zaehlkacheln: die Zahl der Zonen und die Zahl der **Benutzer**.
-Wie viele Konten es gibt, sagt ueber eine Heizung nichts; die Zahl stand da, weil sie
-leicht zu ermitteln war. Beide sind weg.
+There used to be two count tiles here: the number of zones and the number of
+**users**. How many accounts exist says nothing about a heating system; the number was
+there because it was easy to compute. Both are gone.
 
-Anders als die geschuetzten Verwaltungsseiten antwortet die Seite einem nicht angemeldeten
-Besucher nicht mit 401, sondern leitet auf die Anmeldung weiter: Wer die Adresse des
-Dienstes im Browser eingibt, soll ein Anmeldeformular sehen und keine Fehlermeldung.
+Unlike the protected administration pages, this page does not respond to a
+non-logged-in visitor with 401, but redirects to the login: whoever types the
+service's address into a browser should see a login form, not an error message.
 """
 
 from decimal import Decimal
@@ -38,10 +38,10 @@ from thermoctl.domain.schedule import resolved_setpoint, week_segments
 from thermoctl.setup import einrichtung_noetig
 from thermoctl.web import templates, waermeanteil
 
-# `include_in_schema=False`: Die OpenAPI-Beschreibung ist der Vertrag der
-# REST-Schnittstelle. Diese Wege liefern HTML fuer Menschen, und in der Oberflaeche
-# unter /docs stuende sonst neben jedem echten Endpunkt ein Formularweg, dessen
-# 'Try it out' eine echte Aenderung ausloest.
+# `include_in_schema=False`: the OpenAPI description is the contract of the REST
+# interface. These routes deliver HTML for humans, and in the interface under
+# /docs there would otherwise be a form route next to every real endpoint whose
+# 'Try it out' triggers a real change.
 router = APIRouter(dependencies=[Depends(csrf_schutz)], include_in_schema=False)
 
 
@@ -51,11 +51,11 @@ MINUTES_PER_DAY = 1440
 def _day_track(
     session: Session, zone_ids: list[int], weekday: int
 ) -> dict[int, list[dict[str, object]]]:
-    """Der heutige Zeitplan je Zone als Abschnitte mit Anteil, Zeit und Solltemperatur.
+    """Today's schedule per zone as segments with share, time, and setpoint.
 
-    Dieselbe Zerlegung wie die Wochenansicht (`wochenabschnitte`), nur auf einen Tag
-    beschraenkt -- eine zweite Fassung derselben Logik im Browser waere genau das, was
-    Grundsatz 6 verbietet.
+    The same decomposition as the week view (`wochenabschnitte`), just restricted to
+    one day -- a second version of the same logic in the browser would be exactly what
+    principle 6 forbids.
     """
     if not zone_ids:
         return {}
@@ -103,12 +103,12 @@ def start(
     request: Request,
     session: Annotated[Session, Depends(get_session)],
 ) -> Response:
-    # Vor der Anmeldung: Solange es keinen einzigen Benutzer gibt, kann sich niemand
-    # anmelden. Ein Anmeldeformular waere dann eine Sackgasse -- wer die Adresse des
-    # Dienstes eingibt, gehoert zur Einrichtung. Dass die Weiterleitung den leeren
-    # Zustand verraet, ist kein Zugewinn fuer einen Angreifer: /setup antwortet ohnehin
-    # sichtbar anders als nach abgeschlossener Einrichtung, und die Einrichtung selbst
-    # haengt am Einmal-Token aus dem Log, nicht an der Erreichbarkeit der Seite.
+    # Before login: as long as there isn't a single user, nobody can log in. A login
+    # form would then be a dead end -- whoever types the service's address is here for
+    # setup. That the redirect reveals the empty state is no gain for an attacker:
+    # /setup responds visibly differently anyway after setup is complete, and setup
+    # itself depends on the one-time token from the log, not on the page's
+    # reachability.
     if einrichtung_noetig(session):
         return RedirectResponse("/setup", status_code=303)
 
@@ -180,13 +180,13 @@ def start(
                 if has_permission(principal, "setpoint.write", zone.id)
             },
             "thermostatfehler": request.query_params.get("thermostatfehler"),
-            # Aus der Domaene: Ein `min="5"` im Markup waere eine zweite Fassung der
-            # Grenze und wuerde beim naechsten Verschieben zurueckbleiben.
+            # From the domain: a `min="5"` in the markup would be a second version of
+            # the limit and would fall behind on the next change.
             "mindesttemperatur": MINIMUM_TEMPERATURE_C,
             "hoechsttemperatur": MAXIMUM_TEMPERATURE_C,
-            # Der Anzeigename, nicht der Code: Am Thermostat stand "frostschutz" statt
-            # "Frostschutz" -- ein Bezeichner aus der Datenbank, der dort nichts zu
-            # suchen hat.
+            # The display name, not the code: the thermostat used to show "frostschutz"
+            # instead of "Frostschutz" -- a database identifier that has no business
+            # showing up there.
             "mode_names": {
                 identifier: name
                 for identifier, name in session.execute(
@@ -199,9 +199,9 @@ def start(
             "uebersteuerungsfehler": request.query_params.get("uebersteuerungsfehler"),
             "fehler_zone_id": request.query_params.get("zone_id"),
             "uebersteuerungswerte": request.query_params,
-            # Die Anlage in einem Satz: Schaltet sie wirklich, laeuft die Bruecke, und
-            # gibt es Sensoren, die schweigen? Genau die drei Dinge, die eine Anzeige
-            # unglaubwuerdig machen, wenn man sie nicht kennt.
+            # The plant in one sentence: is it really switching, is the bridge
+            # running, and are there sensors that stay silent? Exactly the three
+            # things that make a display untrustworthy if you don't know them.
             "armed": bool(settings and settings.control_armed),
             "bridge": getattr(request.app.state, "bridge_reachable", None),
             "stumme_sensoren": [

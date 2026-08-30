@@ -10,18 +10,18 @@ from thermoctl.setup import einrichtung_durchfuehren, einrichtung_noetig
 from thermoctl.web import templates
 from thermoctl.web.forms import form_again, password_form_error
 
-# `include_in_schema=False`: Die OpenAPI-Beschreibung ist der Vertrag der
-# REST-Schnittstelle. Diese Wege liefern HTML fuer Menschen, und in der Oberflaeche
-# unter /docs stuende sonst neben jedem echten Endpunkt ein Formularweg, dessen
-# 'Try it out' eine echte Aenderung ausloest.
+# `include_in_schema=False`: the OpenAPI description is the contract of the REST
+# interface. These routes deliver HTML for humans, and in the interface under
+# /docs there would otherwise be a form route next to every real endpoint whose
+# 'Try it out' triggers a real change.
 router = APIRouter(dependencies=[Depends(csrf_schutz)], include_in_schema=False)
 
 _GESCHLOSSEN = "Die Einrichtung ist bereits abgeschlossen."
 
 
 def _ensure_open(session: Session) -> None:
-    # Dauerhaft geschlossen, sobald ein Benutzer existiert -- nicht nur ausgeblendet.
-    # Sonst gewinnt im unguenstigen Fall der Erste im Netz, der die Seite noch findet.
+    # Permanently closed once a user exists -- not just hidden. Otherwise, in the
+    # unfavorable case, whoever finds the page first on the network wins.
     if not einrichtung_noetig(session):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_GESCHLOSSEN)
 
@@ -42,15 +42,15 @@ async def setup(
     password: Annotated[str, Form()],
     timezone: Annotated[str, Form()],
     session: Annotated[Session, Depends(get_session)],
-    # Mit Default statt reinem `Form()`: FastAPI behandelt ein leeres Formularfeld
-    # bei einem *erforderlichen* `Form()` als fehlend und antwortet mit 422, noch
-    # bevor unser Code laeuft. Ein fehlendes oder leeres Token ist hier aber ein
-    # normaler, abzuweisender Fall (403) -- kein Formatfehler.
+    # With a default instead of a bare `Form()`: FastAPI treats an empty form field
+    # for a *required* `Form()` as missing and responds with 422, before our code
+    # even runs. A missing or empty token here, though, is a normal case to be
+    # rejected (403) -- not a format error.
     setup_token: Annotated[str, Form()] = "",
 ) -> Response:
     _ensure_open(session)
-    # Bereits ausgefuellte Felder bleiben im Formular erhalten, wenn die Eingabe
-    # abgelehnt wird -- ausser dem Passwort, das nie in eine Antwort zurueckfliesst.
+    # Already filled-in fields are kept in the form when the input is rejected --
+    # except the password, which never flows back into a response.
     form_values = {
         "username": username, "display_name": display_name, "timezone": timezone,
         "setup_token": setup_token,
@@ -63,8 +63,8 @@ async def setup(
     except PermissionError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
     except PasswordTooShort as exc:
-        # Eine zu kurze Eingabe ist ein Formfehler des Nutzers, keine Stoerung des
-        # Dienstes -- zurueck zum Formular mit verstaendlicher Meldung statt 500.
+        # Input that's too short is a user form error, not a fault of the service --
+        # back to the form with an understandable message instead of 500.
         return form_again(
             request,
             "einrichtung.html",

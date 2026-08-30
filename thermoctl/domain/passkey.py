@@ -1,25 +1,25 @@
-"""Die beiden WebAuthn-Zeremonien: einen Passkey hinterlegen und sich damit anmelden.
+"""The two WebAuthn ceremonies: registering a passkey and logging in with one.
 
-Die Regeln stehen hier und nicht im Adapter, damit sie fuer jeden Weg gelten. Fuenf davon
-sind der eigentliche Inhalt dieses Moduls — ohne sie ist WebAuthn nur ein umstaendliches
-Passwort:
+The rules live here and not in the adapter, so that they apply to every path. Five of
+them are the actual substance of this module — without them, WebAuthn is just a
+cumbersome password:
 
-1. **Die Challenge liegt ausschliesslich beim Dienst.** Wer seine eigene setzen kann, kann
-   eine alte Antwort erneut einreichen.
-2. **Sie wird in jedem Fall verbraucht**, auch wenn die Pruefung scheitert. Eine
-   wiederverwendbare Challenge hebt den Schutz auf, den sie geben soll.
-3. **Sie ist an ihre Zeremonie gebunden.** Eine fuer die Anmeldung ausgegebene Challenge
-   darf sich nicht fuer eine Registrierung einreichen lassen.
-4. **Relying-Party-ID und Origin kommen aus der Konfiguration**, nie aus der Anfrage. Die
-   `Host`-Kopfzeile setzt der Aufrufer; eine Relying-Party-ID unter seiner Kontrolle macht
-   die Pruefung wertlos.
-5. **Ein zurueckgefallener Zaehler beendet die Anmeldung.** Authenticatoren zaehlen ihre
-   Benutzungen hoch. Zaehlt einer zurueck, gibt es den Schluessel zweimal — das ist der
-   einzige Hinweis auf einen geklonten Authenticator, den das Verfahren ueberhaupt kennt.
+1. **The challenge is held exclusively by the service.** Whoever can set their own
+   can resubmit an old response.
+2. **It is consumed in every case**, even if verification fails. A reusable challenge
+   removes the very protection it is meant to provide.
+3. **It is bound to its ceremony.** A challenge issued for login must not be
+   submittable for a registration.
+4. **Relying-party ID and origin come from configuration**, never from the request.
+   The `Host` header is set by the caller; a relying-party ID under their control
+   would make the check worthless.
+5. **A counter that has gone backward ends the login.** Authenticators count their
+   uses upward. If one counts backward, the key exists twice — that is the only
+   sign of a cloned authenticator this procedure knows of at all.
 
-Nach aussen sieht jede gescheiterte Anmeldung gleich aus. Ob eine Credential-ID unbekannt
-ist, ein Konto gesperrt oder eine Signatur falsch, steht im Audit-Protokoll und nirgends
-sonst; sonst liesse sich an den Antworten ablesen, welche Konten es gibt.
+From the outside, every failed login looks the same. Whether a credential id is
+unknown, an account is locked, or a signature is wrong is recorded in the audit log and
+nowhere else; otherwise the responses would reveal which accounts exist.
 """
 
 import json
@@ -54,19 +54,19 @@ from thermoctl.db.models.passkey import PasskeyChallenge, UserPasskey
 LOGIN = "anmeldung"
 REGISTRIERUNG = "registrierung"
 
-# Eine Challenge gilt zwei Minuten. Lang genug, um einen Authenticator zu suchen und
-# anzutippen; kurz genug, dass eine abgefangene nicht spaeter noch etwas wert ist.
+# A challenge is valid for two minutes. Long enough to find and tap an authenticator;
+# short enough that an intercepted one is worthless by the time anyone could use it.
 CHALLENGE_GUELTIG = timedelta(minutes=2)
 
 
 class PasskeyError(Exception):
-    """Die Zeremonie ist gescheitert. Der Grund gehoert ins Protokoll, nicht nach aussen."""
+    """The ceremony has failed. The reason belongs in the log, not out to the caller."""
 
 
 def _challenge_merken(
     session: Session, zeremonie: str, user_id: int | None = None
 ) -> bytes:
-    """Erzeugt eine Challenge, legt sie ab und gibt sie zurueck."""
+    """Generates a challenge, stores it, and returns it."""
     roh = secrets.token_bytes(32)
     session.add(
         PasskeyChallenge(
@@ -80,11 +80,11 @@ def _challenge_merken(
 def _challenge_einloesen(
     session: Session, zeremonie: str, clientdaten: dict[str, Any]
 ) -> bytes:
-    """Nimmt die Challenge aus der Antwort, prueft sie und **loescht sie in jedem Fall**.
+    """Takes the challenge out of the response, checks it, and **deletes it in every case**.
 
-    Der Wert kommt aus `clientDataJSON` des Authenticators. Er wird hier nicht geglaubt,
-    sondern nur benutzt, um die abgelegte Zeile zu finden — die Signaturpruefung vergleicht
-    ihn anschliessend selbst gegen das, was wir ausgegeben haben.
+    The value comes from the authenticator's `clientDataJSON`. It is not trusted here,
+    only used to find the stored row — the signature check afterward compares it
+    itself against what we issued.
     """
     kandidat = clientdaten.get("challenge")
     if not isinstance(kandidat, str):
@@ -96,8 +96,8 @@ def _challenge_einloesen(
     if entry is None:
         raise PasskeyError("Unbekannte oder bereits verbrauchte Challenge.")
 
-    # Erst loeschen, dann urteilen: Auch eine abgelaufene oder zweckfremde Challenge ist
-    # danach verbraucht. Sonst liesse sie sich beliebig oft erneut einreichen.
+    # Delete first, judge after: even an expired or misused challenge is consumed by
+    # then. Otherwise it could be resubmitted an arbitrary number of times.
     ceremony_of_the_row = entry.zeremonie
     age = utcnow() - entry.created_at
     session.delete(entry)
@@ -114,20 +114,20 @@ def _challenge_einloesen(
 
 
 def cleanup_old_challenges(session: Session) -> int:
-    """Entfernt abgelaufene Challenges. Sie sind wertlos, aber sie sammeln sich an."""
+    """Removes expired challenges. They are worthless, but they pile up."""
     limit = utcnow() - CHALLENGE_GUELTIG
     result = session.execute(
         delete(PasskeyChallenge).where(PasskeyChallenge.created_at < limit)
     )
-    # `rowcount` steht nur auf CursorResult, nicht auf dem allgemeinen Result-Typ;
-    # bei einem DELETE ist es immer ein CursorResult.
+    # `rowcount` only exists on CursorResult, not on the general Result type; for a
+    # DELETE it is always a CursorResult.
     return int(result.rowcount)  # type: ignore[attr-defined]
 
 
 def begin_registration(
     session: Session, settings: Settings, user: User
 ) -> dict[str, Any]:
-    """Die Argumente fuer `navigator.credentials.create()`."""
+    """The arguments for `navigator.credentials.create()`."""
     vorhandene = session.scalars(
         select(UserPasskey).where(UserPasskey.user_id == user.id)
     ).all()
@@ -135,26 +135,26 @@ def begin_registration(
     optionen = generate_registration_options(
         rp_id=settings.passkey_rp_id or "",
         rp_name=settings.passkey_rp_name,
-        # Die Kennung des Benutzers, nicht sein Name: Ein umbenanntes Konto behaelt seine
-        # Passkeys, und der Authenticator speichert nichts, was sich aendern kann.
+        # The user's id, not their name: a renamed account keeps its passkeys, and the
+        # authenticator stores nothing that can change.
         user_id=str(user.id).encode(),
         user_name=user.username,
         user_display_name=user.display_name,
         challenge=challenge,
-        # `exclude_credentials` verhindert, dass derselbe Authenticator ein zweites Mal
-        # fuer dasselbe Konto registriert wird — sonst haette man zwei Eintraege, von
-        # denen einer nie benutzt wird und niemand weiss, welcher.
+        # `exclude_credentials` prevents the same authenticator from being registered
+        # a second time for the same account -- otherwise there would be two entries,
+        # one of which is never used and nobody knows which.
         exclude_credentials=[
             PublicKeyCredentialDescriptor(id=base64url_to_bytes(p.credential_id))
             for p in vorhandene
         ],
         authenticator_selection=AuthenticatorSelectionCriteria(
-            # `required`: Der Schluessel muss im Authenticator selbst liegen. Nur dann
-            # kann sich jemand anmelden, ohne vorher seinen Benutzernamen zu nennen —
-            # und genau das ist der Gewinn gegenueber einem Passwort.
+            # `required`: the key must live in the authenticator itself. Only then can
+            # someone log in without naming their username first -- and that is
+            # exactly the gain over a password.
             resident_key=ResidentKeyRequirement.REQUIRED,
-            # `required`: PIN oder Fingerabdruck sind Pflicht. Ohne das waere ein
-            # gestohlener Sicherheitsschluessel ein vollstaendiger Zugang.
+            # `required`: PIN or fingerprint are mandatory. Without this, a stolen
+            # security key would be complete access.
             user_verification=UserVerificationRequirement.REQUIRED,
         ),
     )
@@ -169,7 +169,7 @@ def finish_registration(
     response: dict[str, Any],
     bezeichnung: str,
 ) -> UserPasskey:
-    """Prueft die Antwort des Authenticators und legt den Passkey ab."""
+    """Verifies the authenticator's response and stores the passkey."""
     clientdaten = _clientdaten(response)
     challenge = _challenge_einloesen(session, REGISTRIERUNG, clientdaten)
 
@@ -208,11 +208,12 @@ def finish_registration(
 
 
 def begin_authentication(session: Session, settings: Settings) -> dict[str, Any]:
-    """Die Argumente fuer `navigator.credentials.get()`.
+    """The arguments for `navigator.credentials.get()`.
 
-    **Ohne `allow_credentials`.** Eine Liste erlaubter Schluessel muesste vorher wissen,
-    wer sich anmeldet — und wuerde damit verraten, ob es ein Konto gibt und wie viele
-    Passkeys es hat. Der Authenticator nennt das Konto selbst (Discoverable Credential).
+    **Without `allow_credentials`.** A list of allowed keys would first have to know
+    who is logging in -- and would thereby reveal whether an account exists and how
+    many passkeys it has. The authenticator names the account itself (discoverable
+    credential).
     """
     challenge = _challenge_merken(session, LOGIN)
     optionen = generate_authentication_options(
@@ -227,9 +228,10 @@ def begin_authentication(session: Session, settings: Settings) -> dict[str, Any]
 def verify_authentication(
     session: Session, settings: Settings, response: dict[str, Any]
 ) -> User:
-    """Prueft die Assertion und liefert den angemeldeten Benutzer.
+    """Verifies the assertion and returns the logged-in user.
 
-    Jeder Fehlschlag wirft denselben `PasskeyFehler`; der Grund steht im Audit-Protokoll.
+    Every failure raises the same `PasskeyFehler`; the reason is recorded in the audit
+    log.
     """
     clientdaten = _clientdaten(response)
     challenge = _challenge_einloesen(session, LOGIN, clientdaten)
@@ -259,8 +261,8 @@ def verify_authentication(
         _protokoll(session, passkey.user_id, f"Signatur nicht bestanden: {exc}")
         raise PasskeyError("Signatur nicht bestanden.") from exc
 
-    # Der Zaehler steht erst hier zur Verfuegung. Ein Authenticator, der ihn gar nicht
-    # fuehrt, meldet dauerhaft 0 — das ist erlaubt und kein Klonhinweis.
+    # The counter only becomes available here. An authenticator that does not track
+    # it at all permanently reports 0 -- that is allowed and not a sign of cloning.
     if checked.new_sign_count and checked.new_sign_count <= passkey.sign_count:
         _protokoll(
             session, passkey.user_id,
@@ -268,8 +270,8 @@ def verify_authentication(
         )
         raise PasskeyError("Der Zaehler des Authenticators ist zurueckgefallen.")
 
-    # Die Sperre wird NACH der Signaturpruefung ausgewertet — dieselbe Reihenfolge wie im
-    # Passwortweg, damit sich am Verhalten nicht ablesen laesst, welche Konten es gibt.
+    # The lock is evaluated AFTER the signature check -- the same ordering as in the
+    # password path, so that behavior cannot reveal which accounts exist.
     user = session.get(User, passkey.user_id)
     if user is None or not user.is_active:
         _protokoll(session, passkey.user_id, "Konto gesperrt oder geloescht")
@@ -290,7 +292,7 @@ def verify_authentication(
 def remove_passkey(
     session: Session, user: User, passkey: UserPasskey
 ) -> None:
-    """Entfernt einen Passkey des eigenen Kontos."""
+    """Removes a passkey belonging to the caller's own account."""
     if passkey.user_id != user.id:
         raise PasskeyError("Dieser Passkey gehoert einem anderen Konto.")
     bezeichnung = passkey.bezeichnung
@@ -304,7 +306,7 @@ def remove_passkey(
 
 
 def _clientdaten(response: dict[str, Any]) -> dict[str, Any]:
-    """Liest `clientDataJSON` aus der Antwort — nur, um die Challenge zu finden."""
+    """Reads `clientDataJSON` from the response -- only to find the challenge."""
     roh = (response.get("response") or {}).get("clientDataJSON")
     if not isinstance(roh, str):
         raise PasskeyError("Die Antwort enthaelt keine clientDataJSON.")

@@ -1,8 +1,8 @@
-"""Tests fuer die Bausteine, die zwischen Anfrage und Datenbank sitzen.
+"""Tests for the building blocks that sit between request and database.
 
-Sie waren lange ungetestet, weil die Testfixture sie umgeht: Sie reicht ihre eigene
-Sitzung herein, statt `get_session` laufen zu lassen. Damit blieb ausgerechnet der
-Pfad ungeprueft, den jede echte Anfrage nimmt.
+They went untested for a long time because the test fixture bypasses them: it
+hands in its own session instead of letting `get_session` run. That left
+untested exactly the path every real request takes.
 """
 
 from collections.abc import Iterator
@@ -20,7 +20,7 @@ from thermoctl.db.engine import session_factory, session_scope
 
 class _FakeApp:
     def __init__(self, factory: Any) -> None:
-        self.state = type("Zustand", (), {"session_factory": factory})()
+        self.state = type("State", (), {"session_factory": factory})()
 
 
 class _FakeRequest:
@@ -28,64 +28,64 @@ class _FakeRequest:
         self.app = _FakeApp(factory)
 
 
-def test_get_session_committet_bei_erfolg(engine: Engine) -> None:
-    """Der Pfad jeder echten Anfrage — von der Testfixture sonst umgangen."""
+def test_get_session_commits_on_success(engine: Engine) -> None:
+    """The path taken by every real request -- otherwise bypassed by the test fixture."""
     from thermoctl.auth.dependencies import get_session
 
-    erzeuger: Iterator[Session] = get_session(_FakeRequest(session_factory(engine)))  # type: ignore[arg-type]
-    http_session = next(erzeuger)
+    generator: Iterator[Session] = get_session(_FakeRequest(session_factory(engine)))  # type: ignore[arg-type]
+    http_session = next(generator)
     http_session.execute(text("SELECT 1"))
     with pytest.raises(StopIteration):
-        next(erzeuger)
+        next(generator)
 
 
-def test_get_session_rollt_bei_fehler_zurueck(engine: Engine) -> None:
+def test_get_session_rolls_back_on_error(engine: Engine) -> None:
     from thermoctl.auth.dependencies import get_session
 
-    erzeuger: Iterator[Session] = get_session(_FakeRequest(session_factory(engine)))  # type: ignore[arg-type]
-    next(erzeuger)
+    generator: Iterator[Session] = get_session(_FakeRequest(session_factory(engine)))  # type: ignore[arg-type]
+    next(generator)
     with pytest.raises(RuntimeError):
-        erzeuger.throw(RuntimeError("abbruch"))
+        generator.throw(RuntimeError("abbruch"))
 
 
-def test_session_scope_rollt_bei_fehler_zurueck(engine: Engine) -> None:
+def test_session_scope_rolls_back_on_error(engine: Engine) -> None:
     with pytest.raises(RuntimeError):
         with session_scope(session_factory(engine)) as http_session:
             http_session.execute(text("SELECT 1"))
             raise RuntimeError("abbruch")
 
 
-def test_geschuetzte_seite_ohne_cookie_ist_401(client: TestClient) -> None:
+def test_a_protected_page_without_a_cookie_is_401(client: TestClient) -> None:
     assert client.get("/users").status_code == 401
 
 
-def test_geschuetzte_seite_mit_unbekanntem_cookie_ist_401(client: TestClient) -> None:
-    """Dieselbe Antwort wie ohne Cookie — ein anderer Status wuerde verraten,
-    dass die Sitzung einmal existiert hat."""
+def test_a_protected_page_with_an_unknown_cookie_is_401(client: TestClient) -> None:
+    """The same response as without a cookie -- a different status would give away
+    that the session once existed."""
     client.cookies.set(COOKIE_NAME, "ein-geheimnis-das-es-nie-gab")
     assert client.get("/users").status_code == 401
 
 
-def test_geschuetzte_seite_bei_inaktivem_benutzer_ist_401(
+def test_a_protected_page_for_an_inactive_user_is_401(
     client: TestClient, user, session: Session
 ) -> None:
-    """Ein deaktiviertes Konto verliert seine laufende Sitzung sofort, nicht erst
-    beim naechsten Anmelden."""
-    _http_session, geheimnis = create_session(session, user, 3600)
+    """A deactivated account loses its running session immediately, not only at
+    the next login."""
+    _http_session, secret = create_session(session, user, 3600)
     session.flush()
-    client.cookies.set(COOKIE_NAME, geheimnis)
-    assert client.get("/users").status_code != 401, "Vorbedingung: angemeldet"
+    client.cookies.set(COOKIE_NAME, secret)
+    assert client.get("/users").status_code != 401, "precondition: logged in"
 
     user.is_active = False
     session.flush()
     assert client.get("/users").status_code == 401
 
 
-def test_cli_reicht_die_einstellungen_an_uvicorn_durch(
+def test_cli_passes_the_settings_through_to_uvicorn(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Ohne Test bliebe der Startbefehl ungeprueft — und ein vertippter
-    Parametername faellt dann erst im Betrieb auf."""
+    """Without a test, the start command would go unchecked -- and a mistyped
+    parameter name would only surface in production."""
     from thermoctl.cli import main
     from thermoctl.config import get_settings
 
@@ -102,5 +102,5 @@ def test_cli_reicht_die_einstellungen_an_uvicorn_durch(
     started.assert_called_once()
     _args, kwargs = started.call_args
     assert kwargs["factory"] is True
-    assert kwargs["log_config"] is None, "sonst ueberschreibt uvicorn das JSON-Logging"
+    assert kwargs["log_config"] is None, "otherwise uvicorn overwrites the JSON logging"
     assert isinstance(kwargs["port"], int)

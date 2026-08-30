@@ -15,11 +15,11 @@ def token_ausstellen(
     session: Session, besitzer: User, name: str,
     permissions: list[tuple[str, int | None]], gueltig_bis: datetime | None,
 ) -> tuple[ApiToken, str]:
-    """Stellt ein Token aus. Der Klartext erscheint genau einmal — hier.
+    """Issues a token. The plaintext appears exactly once — here.
 
-    Der Umfang muss eine Teilmenge der Rechte des Besitzers sein. Geprueft wird das
-    zusaetzlich bei jeder Anfrage (siehe principal_fuer_token); hier faellt der Fehler
-    frueh und mit einer verstaendlichen Meldung auf.
+    The scope must be a subset of the owner's own permissions. This is also checked
+    on every request (see principal_for_token); here the error surfaces early and
+    with a comprehensible message.
     """
     p = principal_for_user(session, besitzer)
     for code, zone_id in permissions:

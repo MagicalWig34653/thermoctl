@@ -43,11 +43,11 @@ def _source(session: Session) -> None:
     source(session, "web")
 
 
-def _registrieren(
+def _register(
     session: Session, passkey_settings: Settings, nutzer: User, device: WebAuthnDevice
 ) -> UserPasskey:
     argumente = begin_registration(session, passkey_settings, nutzer)
-    response = device.registrieren(argumente, ORIGIN)
+    response = device.register(argumente, ORIGIN)
     return finish_registration(
         session, passkey_settings, nutzer, response, "Testgerät"
     )
@@ -59,7 +59,7 @@ def test_ein_registrierter_passkey_meldet_wirklich_an(
     """Der Gegenbeweis: Ohne ihn belegte die Suite nur, dass alles abgelehnt wird."""
     nutzer = create_user(session, "passkey-nutzer")
     device = WebAuthnDevice()
-    entry = _registrieren(session, passkey_settings, nutzer, device)
+    entry = _register(session, passkey_settings, nutzer, device)
     assert entry.bezeichnung == "Testgerät"
 
     argumente = begin_authentication(session, passkey_settings)
@@ -74,7 +74,7 @@ def test_challenge_wird_auch_bei_einem_fehlschlag_verbraucht(
     """Eine wiederverwendbare Challenge hebt den Schutz auf, den sie geben soll."""
     nutzer = create_user(session, "einmal-nutzer")
     device = WebAuthnDevice()
-    _registrieren(session, passkey_settings, nutzer, device)
+    _register(session, passkey_settings, nutzer, device)
 
     argumente = begin_authentication(session, passkey_settings)
     response = device.log_in(argumente, ORIGIN)
@@ -97,7 +97,7 @@ def test_challenge_der_anmeldung_taugt_nicht_fuer_eine_registrierung(
     # Anmeldung — die Registrierung muss das erkennen.
     registrierungsargumente = begin_registration(session, passkey_settings, nutzer)
     registrierungsargumente["challenge"] = argumente["challenge"]
-    response = device.registrieren(registrierungsargumente, ORIGIN)
+    response = device.register(registrierungsargumente, ORIGIN)
 
     with pytest.raises(PasskeyError, match="anmeldung"):
         finish_registration(
@@ -112,7 +112,7 @@ def test_abgelaufene_challenge_wird_abgewiesen(
 
     nutzer = create_user(session, "spaet-nutzer")
     device = WebAuthnDevice()
-    _registrieren(session, passkey_settings, nutzer, device)
+    _register(session, passkey_settings, nutzer, device)
 
     argumente = begin_authentication(session, passkey_settings)
     response = device.log_in(argumente, ORIGIN)
@@ -131,7 +131,7 @@ def test_zurueckgefallener_zaehler_beendet_die_anmeldung(
     """Der einzige Hinweis auf einen geklonten Authenticator, den das Verfahren kennt."""
     nutzer = create_user(session, "klon-nutzer")
     device = WebAuthnDevice()
-    entry = _registrieren(session, passkey_settings, nutzer, device)
+    entry = _register(session, passkey_settings, nutzer, device)
 
     argumente = begin_authentication(session, passkey_settings)
     response = device.log_in(argumente, ORIGIN)
@@ -150,7 +150,7 @@ def test_gesperrtes_konto_wird_erst_nach_der_signatur_geprueft(
     welche Konten es gibt."""
     nutzer = create_user(session, "gesperrt-nutzer")
     device = WebAuthnDevice()
-    _registrieren(session, passkey_settings, nutzer, device)
+    _register(session, passkey_settings, nutzer, device)
     nutzer.is_active = False
     session.flush()
 
@@ -171,7 +171,7 @@ def test_fremde_origin_wird_abgewiesen(
     """Der Schutz gegen nachgemachte Seiten. Faellt er weg, ist ein Passkey ein Passwort."""
     nutzer = create_user(session, "origin-nutzer")
     device = WebAuthnDevice()
-    _registrieren(session, passkey_settings, nutzer, device)
+    _register(session, passkey_settings, nutzer, device)
 
     argumente = begin_authentication(session, passkey_settings)
     # Der Authenticator antwortet einer anderen Seite.
@@ -185,11 +185,11 @@ def test_unbekannter_passkey_wird_abgewiesen(
 ) -> None:
     nutzer = create_user(session, "unbekannt-nutzer")
     device = WebAuthnDevice()
-    _registrieren(session, passkey_settings, nutzer, device)
+    _register(session, passkey_settings, nutzer, device)
 
     fremdes = WebAuthnDevice()
     argumente = begin_registration(session, passkey_settings, nutzer)
-    fremdes.registrieren(argumente, ORIGIN)
+    fremdes.register(argumente, ORIGIN)
 
     login = begin_authentication(session, passkey_settings)
     response = fremdes.log_in(login, ORIGIN)
@@ -202,9 +202,9 @@ def test_derselbe_passkey_laesst_sich_nicht_zweimal_hinterlegen(
 ) -> None:
     nutzer = create_user(session, "doppelt-nutzer")
     device = WebAuthnDevice()
-    _registrieren(session, passkey_settings, nutzer, device)
+    _register(session, passkey_settings, nutzer, device)
     with pytest.raises(PasskeyError, match="bereits hinterlegt"):
-        _registrieren(session, passkey_settings, nutzer, device)
+        _register(session, passkey_settings, nutzer, device)
 
 
 def test_alte_challenges_werden_aufgeraeumt(
@@ -284,7 +284,7 @@ def test_anmeldung_ueber_den_http_weg(
     nutzer = create_user(session, "http-nutzer")
     device = WebAuthnDevice()
     passkey_settings = get_settings()
-    _registrieren(session, passkey_settings, nutzer, device)
+    _register(session, passkey_settings, nutzer, device)
 
     argumente = client.post("/passkey/authentication/options").json()
     response = client.post(
@@ -312,7 +312,7 @@ def test_registrierung_ueber_den_http_weg(
         "/passkey/registration/options", headers=_csrf(c)
     ).json()
     device = WebAuthnDevice()
-    payload = device.registrieren(argumente, ORIGIN)
+    payload = device.register(argumente, ORIGIN)
     payload["bezeichnung"] = "Mein Telefon"
     response = c.post("/passkey/registration/verify", json=payload, headers=_csrf(c))
     assert response.status_code == 200, response.text
@@ -341,7 +341,7 @@ def test_eigener_passkey_laesst_sich_entfernen(
 
     c = client_als([("zone.read", None)])
     argumente = c.post("/passkey/registration/options", headers=_csrf(c)).json()
-    payload = WebAuthnDevice().registrieren(argumente, ORIGIN)
+    payload = WebAuthnDevice().register(argumente, ORIGIN)
     payload["bezeichnung"] = "Weg damit"
     c.post("/passkey/registration/verify", json=payload, headers=_csrf(c))
 

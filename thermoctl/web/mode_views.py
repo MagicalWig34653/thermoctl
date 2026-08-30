@@ -23,10 +23,10 @@ from thermoctl.domain.modes import (
 from thermoctl.domain.principal import Principal
 from thermoctl.web import templates
 
-# `include_in_schema=False`: Die OpenAPI-Beschreibung ist der Vertrag der
-# REST-Schnittstelle. Diese Wege liefern HTML fuer Menschen, und in der Oberflaeche
-# unter /docs stuende sonst neben jedem echten Endpunkt ein Formularweg, dessen
-# 'Try it out' eine echte Aenderung ausloest.
+# `include_in_schema=False`: the OpenAPI description is the contract of the REST
+# interface. These routes deliver HTML for humans, and in the interface under
+# /docs there would otherwise be a form route next to every real endpoint whose
+# 'Try it out' triggers a real change.
 router = APIRouter(dependencies=[Depends(csrf_schutz)], include_in_schema=False)
 
 
@@ -220,8 +220,8 @@ def _setpointpage(
         request,
         "sollwerte.html",
         {
-            # Aus der Domaene: Zahlen im Markup waeren eine zweite Fassung
-            # der Grenze und blieben beim naechsten Verschieben zurueck.
+            # From the domain: numbers in the markup would be a second version of
+            # the limit and would fall behind on the next change.
             "mindesttemperatur": MINIMUM_TEMPERATURE_C,
             "hoechsttemperatur": MAXIMUM_TEMPERATURE_C,
             "zone": zone,
@@ -276,8 +276,9 @@ async def save_setpoints(
     try:
         update_setpoints(session, zone, values, user_id=principal.user_id)
     except DomainError as exc:
-        # Die Domänenregel kennt bewusst keine HTML-Feldnamen. Der erste Wert, der
-        # ihre Temperaturregel verletzt, wird am zugehörigen Modusfeld angezeigt.
+        # The domain rule deliberately doesn't know HTML field names. The first value
+        # that violates its temperature rule gets displayed on the corresponding mode
+        # field.
         for mode in modes:
             temperature = values[mode.id]
             if temperature is not None:
@@ -291,12 +292,11 @@ async def save_setpoints(
                         values=raw_values,
                         errors={f"sollwert_{mode.id}": exc.notice},
                     )
-        # Unerreichbar, solange jeder `Domaenenfehler` aus `sollwerte_aendern` aus
-        # `temperatur_pruefen` stammt -- die Schleife darueber ruft dieselbe Pruefung
-        # erneut auf und findet den Wert, der ihn ausgeloest hat. Die Zeile bleibt als
-        # Notausgang: Kommt in der Domaene spaeter eine Regel dazu, die sich nicht einem
-        # einzelnen Feld zuordnen laesst, faellt sie hier auf, statt still eine falsche
-        # Feldmeldung zu erzeugen.
+        # Unreachable as long as every `DomainError` from `sollwerte_aendern` comes
+        # from `temperatur_pruefen` -- the loop above calls the same check again and
+        # finds the value that triggered it. This line stays as an emergency exit: if
+        # the domain later gains a rule that can't be attributed to a single field,
+        # it surfaces here instead of silently producing a wrong field message.
         raise  # pragma: no cover
     return RedirectResponse(
         f"/zones/{zone.id}/setpoints", status_code=status.HTTP_303_SEE_OTHER

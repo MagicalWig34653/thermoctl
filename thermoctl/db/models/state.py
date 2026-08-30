@@ -8,7 +8,7 @@ from thermoctl.db.base import Base
 
 
 class ZoneState(Base):
-    """Der zuletzt abgeleitete und fuer Entscheidungen verwendete Zonenzustand."""
+    """The most recently derived zone state, used for decisions."""
 
     __tablename__ = "zone_state"
 
@@ -23,16 +23,16 @@ class ZoneState(Base):
 
 
 class ShadowDecision(Base):
-    """Nachvollziehbares Ergebnis eines einzelnen Schattenzyklus."""
+    """Traceable result of a single shadow cycle."""
 
     __tablename__ = "shadow_decision"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     decided_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)
-    # CASCADE wie bei allen uebrigen Zonenbeziehungen. Das Schattenprotokoll ist
-    # Betriebsdatum einer Zone; wird sie geloescht, verliert es seinen Bezug. Dass die
-    # Zone geloescht wurde, steht im Audit-Protokoll — das ist die Aufzeichnung, die
-    # ueberdauern soll, und sie haengt nicht an der Zone.
+    # CASCADE as with all other zone relationships. The shadow log is operational data
+    # of a zone; if it is deleted, the log loses its reference. That the zone was
+    # deleted is recorded in the audit log — that is the record meant to persist, and
+    # it does not depend on the zone.
     zone_id: Mapped[int] = mapped_column(
         ForeignKey("zone.id", ondelete="CASCADE"), nullable=False
     )

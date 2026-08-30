@@ -13,7 +13,7 @@ def _request() -> Request:
     return Request({"type": "http", "method": "GET", "path": "/test", "headers": []})
 
 
-def test_formular_erneut_zeigt_werte_und_feldfehler() -> None:
+def test_form_again_shows_values_and_field_errors() -> None:
     response = form_again(
         _request(),
         "einrichtung.html",
@@ -21,28 +21,28 @@ def test_formular_erneut_zeigt_werte_und_feldfehler() -> None:
         FormError("password", "Das Passwort ist zu kurz."),
     )
 
-    inhalt = response.body.decode()
+    content = response.body.decode()
     assert response.status_code == 200
-    assert 'value="eingegebener-name"' in inhalt
-    assert "Das Passwort ist zu kurz." in inhalt
-    assert 'class="form-control is-invalid"' in inhalt
+    assert 'value="eingegebener-name"' in content
+    assert "Das Passwort ist zu kurz." in content
+    assert 'class="form-control is-invalid"' in content
 
 
-def test_formular_erneut_gibt_passwort_nie_zurueck() -> None:
-    geheimnis = "dieses-passwort-darf-nicht-zurueck"
+def test_form_again_never_returns_the_password() -> None:
+    secret = "dieses-passwort-darf-nicht-zurueck"
     response = form_again(
         _request(),
         "einrichtung.html",
-        {"username": "lino", "password": geheimnis, "new_password": geheimnis},
+        {"username": "lino", "password": secret, "new_password": secret},
     )
 
-    assert geheimnis not in response.body.decode()
-    assert geheimnis not in response.context.values()
-    assert geheimnis not in response.context["values"].values()
+    assert secret not in response.body.decode()
+    assert secret not in response.context.values()
+    assert secret not in response.context["values"].values()
 
 
-def test_formularmakros_verknuepfen_beschriftungen_und_felder() -> None:
-    vorlage = templates.env.from_string(
+def test_form_macros_link_labels_and_fields() -> None:
+    template = templates.env.from_string(
         """{% from 'formular.html' import textfeld, zahlenfeld, auswahl, umschalter %}
         {{ textfeld('name', 'Name') }}
         {{ zahlenfeld('temperatur', 'Temperatur') }}
@@ -50,37 +50,38 @@ def test_formularmakros_verknuepfen_beschriftungen_und_felder() -> None:
         {{ umschalter('aktiv', 'Aktiv') }}"""
     )
 
-    inhalt = vorlage.render()
-    for feld in ("name", "temperatur", "modus", "aktiv"):
-        assert f'for="{feld}"' in inhalt
-        assert f'id="{feld}"' in inhalt
+    content = template.render()
+    for field in ("name", "temperatur", "modus", "aktiv"):
+        assert f'for="{field}"' in content
+        assert f'id="{field}"' in content
 
 
-def test_loeschbestaetigung_zeigt_abhaengigkeiten() -> None:
-    vorlage = templates.env.from_string(
+def test_delete_confirmation_shows_dependencies() -> None:
+    template = templates.env.from_string(
         """{% from 'formular.html' import loeschbestaetigung %}
         {{ loeschbestaetigung('Zone löschen', 'Wirklich löschen?',
                               '4 Schaltpunkte, 2 zugeordnete Geräte', '/zonen/1', '/zonen') }}"""
     )
 
-    inhalt = vorlage.render()
-    assert "4 Schaltpunkte, 2 zugeordnete Geräte" in inhalt
+    content = template.render()
+    assert "4 Schaltpunkte, 2 zugeordnete Geräte" in content
 
 
-def test_password_too_short_wird_formularfehler_am_passwortfeld() -> None:
+def test_password_too_short_becomes_a_form_error_on_the_password_field() -> None:
     errors = password_form_error(PasswordTooShort("Mindestens 12 Zeichen."))
 
     assert errors == FormError("password", "Mindestens 12 Zeichen.")
 
 
-def test_fehlerklassen_vertragen_das_werfen_durch_mehrere_ebenen() -> None:
-    """Eine eingefrorene Dataclass als Ausnahme zerbricht, sobald Python ihr einen
-    Traceback anhaengen will.
+def test_error_classes_survive_being_raised_through_multiple_layers() -> None:
+    """A frozen dataclass used as an exception breaks as soon as Python tries to
+    attach a traceback to it.
 
-    Aufgefallen ist es erst, als ein Domaenenfehler durch die Abhaengigkeitsaufloesung von
-    FastAPI lief: Statt der gesuchten Meldung stand dort ein `FrozenInstanceError`. Dieser
-    Test haelt fest, dass die drei Fehlerklassen das aushalten — er wird rot, sobald
-    jemand `frozen=True` wieder ergaenzt, weil es 'sauberer' aussieht.
+    This only surfaced when a domain error passed through FastAPI's dependency
+    resolution: instead of the expected message, a `FrozenInstanceError` showed
+    up. This test pins down that the three error classes withstand that -- it
+    turns red as soon as someone adds `frozen=True` back because it "looks
+    cleaner".
     """
     import pytest as _pytest
 
@@ -88,16 +89,16 @@ def test_fehlerklassen_vertragen_das_werfen_durch_mehrere_ebenen() -> None:
     from thermoctl.domain.schedule import ScheduleError
     from thermoctl.web.forms import FormError
 
-    def werfen(klasse: type[Exception]) -> None:
-        raise klasse("feld", "meldung")
+    def throw_it(cls: type[Exception]) -> None:
+        raise cls("feld", "meldung")
 
-    def dazwischen(klasse: type[Exception]) -> None:
-        werfen(klasse)
+    def in_between(cls: type[Exception]) -> None:
+        throw_it(cls)
 
-    for klasse in (DomainError, ScheduleError, FormError):
-        with _pytest.raises(klasse) as errors:
-            dazwischen(klasse)
-        # Genau hier scheiterte die eingefrorene Fassung: Python setzt beim Durchreichen
-        # `__traceback__` auf der Ausnahme.
+    for cls in (DomainError, ScheduleError, FormError):
+        with _pytest.raises(cls) as errors:
+            in_between(cls)
+        # This is exactly where the frozen version failed: Python sets
+        # `__traceback__` on the exception while it is propagating.
         assert errors.value.__traceback__ is not None
         assert errors.value.notice == "meldung"

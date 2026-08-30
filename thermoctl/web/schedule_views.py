@@ -22,10 +22,10 @@ from thermoctl.domain.schedule import (
 )
 from thermoctl.web import templates, waermeanteil
 
-# `include_in_schema=False`: Die OpenAPI-Beschreibung ist der Vertrag der
-# REST-Schnittstelle. Diese Wege liefern HTML fuer Menschen, und in der Oberflaeche
-# unter /docs stuende sonst neben jedem echten Endpunkt ein Formularweg, dessen
-# 'Try it out' eine echte Aenderung ausloest.
+# `include_in_schema=False`: the OpenAPI description is the contract of the REST
+# interface. These routes deliver HTML for humans, and in the interface under
+# /docs there would otherwise be a form route next to every real endpoint whose
+# 'Try it out' triggers a real change.
 router = APIRouter(dependencies=[Depends(csrf_schutz)], include_in_schema=False)
 
 WEEKDAYS = (
@@ -82,10 +82,10 @@ def _schedulepage(
     points = _points(session, zone.id)
     modes = _modes(session)
     segments = week_segments(points, {mode.id: mode.name for mode in modes})
-    # Die Waerme je Modus, damit die Wochenansicht dieselbe Sprache spricht wie die
-    # Tagesspur der Startseite: waermer heisst waermer. Ohne sie waeren Tag und Nacht
-    # zwei gleich aussehende Balken -- und der Zeitplan zeigte nur, *dass* umgeschaltet
-    # wird, nicht wohin.
+    # The warmth per mode, so the week view speaks the same language as the start
+    # page's day track: warmer means warmer. Without it, day and night would be two
+    # identical-looking bars -- and the schedule would only show *that* it switches,
+    # not to what.
     temperatures: dict[int, Decimal] = {
         mode_id: temperature
         for mode_id, temperature in session.execute(
@@ -112,12 +112,12 @@ def _schedulepage(
             "temperatures": temperatures,
             "values": values or {"weekday": "1", "time_of_day": "06:00", "modus": ""},
             "errors": {errors.feld: errors.notice} if errors else {},
-            # Eigener Kanal, nicht `fehler`: Eine abgelehnte Verschiebung meldete sich
-            # sonst am Uhrzeitfeld des *Anlege*-Formulars -- beide melden "Zu diesem
-            # Zeitpunkt gibt es bereits einen Punkt", und beide schreiben in dasselbe
-            # Feld. Der Benutzer sah eine rote Meldung an einem Formular, das er gar
-            # nicht angefasst hatte, waehrend der zurueckgesprungene Balken unkommentiert
-            # blieb. Im Browser aufgefallen, von keinem Test.
+            # Its own channel, not `fehler`: a rejected move would otherwise show up
+            # on the time field of the *creation* form -- both report "there's
+            # already a point at this time", and both write into the same field. The
+            # user saw a red message on a form they hadn't even touched, while the
+            # bar that snapped back stayed uncommented. Noticed in the browser, by no
+            # test.
             "move_error": move_error,
             "darf_aendern": has_permission(principal, "schedule.manage", zone.id),
         },
@@ -185,18 +185,18 @@ async def reposition_schedule_point(
     principal: Annotated[Principal, Depends(aktueller_principal)],
     session: Annotated[Session, Depends(get_session)],
 ) -> Response:
-    """Ziel des Ziehens in der Wochenansicht.
+    """Target of dragging in the week view.
 
-    Bewusst ein gewoehnliches Formular und keine JSON-Schnittstelle: Dann gilt derselbe
-    CSRF-Schutz, dieselbe Rechtepruefung und dieselbe Fehlerdarstellung wie fuer den Weg
-    ueber die Formulare -- und der Zeitplan bleibt ohne JavaScript vollstaendig
-    bedienbar, weil das Ziehen nur eine zweite Bedienart derselben Aenderung ist.
+    Deliberately an ordinary form and not a JSON interface: this way the same CSRF
+    protection, the same permission check, and the same error display apply as for
+    the route via the forms -- and the schedule stays fully operable without
+    JavaScript, because dragging is only a second way of operating the same change.
 
-    Die Punktkennung steht im Rumpf und nicht im Pfad, anders als beim Loeschen daneben.
-    Der Grund ist htmx: `hx-boost` liest die `action` eines Formulars **einmal** beim
-    Verarbeiten der Seite. Ein Skript, das sie vor dem Absenden umschreibt, aendert damit
-    nichts -- die Anfrage ginge an den Pfad von vorhin. Mit einem festen Pfad und einem
-    Feld gibt es diese Falle nicht.
+    The point id lives in the body and not in the path, unlike the delete route next
+    to it. The reason is htmx: `hx-boost` reads a form's `action` **once** when
+    processing the page. A script that rewrites it before submission changes nothing
+    -- the request would still go to the earlier path. With a fixed path and a field,
+    this trap doesn't exist.
     """
     zone = _zone_or_404(session, principal, zone_id, "schedule.manage")
     form = await request.form()

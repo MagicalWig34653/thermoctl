@@ -1,12 +1,12 @@
-"""Die Regelentscheidung: aus einer Lage wird eine Entscheidung samt Begruendung.
+"""The control decision: a situation becomes a decision, together with its reasoning.
 
-Rein im Sinne von CLAUDE.md und Abschnitt 3 der Spezifikation: keine Datenbank, kein Netz,
-keine Uhr. Alles, was die Entscheidung braucht, steckt in `Lage`. Genau deshalb ist sie
-erschoepfend testbar (`tests/test_regelung.py`), und genau deshalb kann Teilprojekt 4 sie
-unveraendert scharf schalten.
+Pure in the sense of CLAUDE.md and section 3 of the specification: no database, no
+network, no clock. Everything the decision needs sits in `Lage`. That is exactly why it
+is exhaustively testable (`tests/test_regelung.py`), and exactly why sub-project 4 can
+arm it unchanged.
 
-In dieser Phase wird nicht geschaltet (Trockenlauf, Abschnitt 1 der Spezifikation) — das
-Ergebnis landet nur im Schattenprotokoll.
+In this phase nothing is actually switched (dry run, section 1 of the specification) —
+the result only ends up in the shadow log.
 """
 
 from dataclasses import dataclass
@@ -14,8 +14,8 @@ from decimal import Decimal
 
 from thermoctl.domain.zone_settings import ControlParameters
 
-# Diese Codes entsprechen woertlich der Spalte shadow_decision.outcome_code aus Abschnitt 4
-# der Spezifikation. Wer hier einen neuen Code braucht, muss zuerst dort nachtragen.
+# These codes correspond literally to the shadow_decision.outcome_code column from
+# section 4 of the specification. Anyone needing a new code here must add it there first.
 GRUND_CODE_HEIZEN = "heizen"
 GRUND_CODE_AUS = "aus"
 REASON_CODE_UNCHANGED = "unveraendert"
@@ -27,19 +27,19 @@ REASON_CODE_NO_SOURCE = "keine_quelle"
 
 @dataclass(frozen=True)
 class Lage:
-    """Alles, was die Entscheidung sieht — unveraendert aus Abschnitt 6 der Spezifikation."""
+    """Everything the decision sees — unchanged from section 6 of the specification."""
 
     ist_c: Decimal | None
     soll_c: Decimal
     soll_grund: str
-    # Der Frostschutz-Sollwert der Anlage. Getrennt von `soll_c`, weil er auch dann gilt,
-    # wenn `soll_c` gerade etwas ganz anderes sagt: bei ausgefallenem Sensor faellt die
-    # Regelung darauf zurueck, statt sich auf einen Sollwert zu stuetzen, den sie nicht
-    # mehr ueberpruefen kann.
+    # The plant's frost-protection setpoint. Kept separate from `soll_c` because it
+    # still applies even when `soll_c` currently says something completely different:
+    # on a failed sensor, control falls back to it instead of relying on a setpoint it
+    # can no longer verify.
     frost_c: Decimal
     operating_mode: str  # auto | manual | off
     heizt_gerade: bool
-    seit_s: int | None  # wie lange der aktuelle Zustand schon gilt
+    seit_s: int | None  # how long the current state has already held
     window_open: bool
     window_closed_for_s: int | None
     sensor_status: str  # ok | veraltet | keine_quelle
@@ -54,21 +54,23 @@ class Entscheidung:
 
 
 def entscheiden(lage: Lage) -> Entscheidung:
-    """Die Rangfolge aus Abschnitt 6 der Spezifikation, Regel fuer Regel.
+    """The precedence from section 6 of the specification, rule by rule.
 
-    Die erste zutreffende Regel gewinnt und liefert sofort zurueck — absichtlich als frueher
-    Ausstieg je Regel geschrieben, statt als eine grosse Bedingung, damit die Rangfolge im
-    Code so aussieht wie in der Spezifikation und niemand sie aus dem Ausdruck rekonstruieren
-    muss.
+    The first matching rule wins and returns immediately — deliberately written as an
+    early exit per rule instead of one large condition, so the precedence in the code
+    looks the same as in the specification and nobody has to reconstruct it from an
+    expression.
     """
-    # Regel 1 — Sensorausfall schlaegt alles. Ohne verlaesslichen Ist-Wert ist "voll heizen"
-    # falsch (Ueberhitzung ohne Rueckmeldung) — "dauerhaft aus" aber ebenso, und zwar
-    # gefaehrlicher: Genau so friert im Januar eine Leitung ein. Deshalb faellt die Regelung
-    # auf den Frostschutz-Sollwert zurueck und regelt mit dem letzten bekannten Wert
-    # weiter. Der Frostschutzwert liegt tief; die Anlage kann damit hoechstens auf ein
-    # unbedenkliches Niveau heizen, haelt die Wohnung aber ueber der Frostgrenze.
+    # Rule 1 — sensor failure trumps everything. Without a reliable current value,
+    # "heat fully" is wrong (overheating with no feedback) — but "permanently off" is
+    # just as wrong, and more dangerous: that is exactly how a pipe freezes in January.
+    # So control falls back to the frost-protection setpoint and keeps controlling
+    # against the last known value. The frost-protection value is low; with it the
+    # plant can heat at most to an unproblematic level, but keeps the home above the
+    # freezing point.
     #
-    # Liegt gar kein Wert vor, bleibt nur "aus" — es gibt nichts, woran zu regeln waere.
+    # If there is no value at all, only "off" remains — there is nothing to control
+    # against.
     if lage.sensor_status == "keine_quelle" or lage.ist_c is None:
         return Entscheidung(
             heizen=False,
@@ -79,20 +81,23 @@ def entscheiden(lage: Lage) -> Entscheidung:
             ),
         )
 
-    # Die Kalibrierung des Sensors ist eine Eigenschaft der Messung, keine der Regel —
-    # deshalb hier und nur hier auf den Ist-Wert gerechnet, vor jeder weiteren Regel.
+    # The sensor's calibration is a property of the measurement, not of the rule —
+    # which is why it is applied to the current value here, and only here, before any
+    # further rule.
     ist_c = lage.ist_c + lage.parameter.temperature_offset_k
 
-    # Regel 2 — Betriebsart 'off' heisst Frostschutz, nicht stromlos. Der Aufrufer loest den
-    # Sollwert bereits vor uns auf (`aufgeloester_sollwert`), die dort bei 'off' den
-    # Frostschutzwert liefert. `lage.soll_c` ist also im Fall 'off' bereits der
-    # Frostschutz-Sollwert, und die "normale Regel" ist genau das, was ab Regel 3 folgt —
-    # diese Funktion muss die Betriebsart deshalb nicht gesondert verzweigen, nur die
-    # Herkunft des Sollwerts (`soll_grund`) landet unveraendert in der Begruendung.
+    # Rule 2 — operating mode 'off' means frost protection, not powered down. The
+    # caller already resolves the setpoint before us (`aufgeloester_sollwert`), which
+    # returns the frost-protection value for 'off'. So `lage.soll_c` is already the
+    # frost-protection setpoint in the 'off' case, and the "normal rule" is exactly
+    # what follows from rule 3 onward — this function therefore does not need a
+    # separate branch for the operating mode, only the origin of the setpoint
+    # (`soll_grund`) carries through unchanged into the reasoning.
 
-    # Der wirksame Sollwert. Bei ausgefallenem Sensor ist das der Frostschutzwert (Regel 1),
-    # sonst der aufgeloeste Sollwert der Zone. Ab hier laeuft in beiden Faellen dieselbe
-    # Regel — das ist der Kern von "Aus heisst Frostschutz, nicht stromlos".
+    # The effective setpoint. On a failed sensor this is the frost-protection value
+    # (rule 1), otherwise the zone's resolved setpoint. From here on the same rule
+    # runs in both cases — that is the core of "off means frost protection, not
+    # powered down".
     sensor_ausgefallen = lage.sensor_status == "veraltet"
     soll_c = lage.frost_c if sensor_ausgefallen else lage.soll_c
     soll_grund = (
@@ -101,7 +106,7 @@ def entscheiden(lage: Lage) -> Entscheidung:
         else lage.soll_grund
     )
 
-    # Regel 3 — Fenster offen: aus, ungeachtet der Temperatur.
+    # Rule 3 — window open: off, regardless of temperature.
     if lage.window_open:
         return Entscheidung(
             heizen=False,
@@ -109,9 +114,10 @@ def entscheiden(lage: Lage) -> Entscheidung:
             grund=f"Fenster offen — Ist {ist_c} °C, Soll {soll_c} °C ({soll_grund}).",
         )
 
-    # Regel 4 — Wiederanlaufverzoegerung: Fenster ist zu, aber der Raum kuehlt noch nach.
-    # 'None' bei fenster_zu_seit_s heisst "kein anstehender Nachlauf" (Fenster war seit
-    # Beginn der Aufzeichnung nie offen) — dann gibt es nichts abzuwarten.
+    # Rule 4 — resume delay: the window is closed, but the room is still cooling down
+    # from it. 'None' for fenster_zu_seit_s means "no pending resume delay" (the
+    # window has never been open since recording began) — then there is nothing to
+    # wait out.
     verzoegerung = lage.parameter.window_resume_delay_seconds
     if (
         lage.window_closed_for_s is not None
@@ -126,12 +132,12 @@ def entscheiden(lage: Lage) -> Entscheidung:
             ),
         )
 
-    # Regel 5 — Mindestschaltdauer schuetzt das Ventil vor Kurztakten. 'None' bei seit_s
-    # heisst "Dauer des aktuellen Zustands unbekannt" — typischerweise der erste Zyklus nach
-    # einem Neustart, ohne Vorgeschichte. Eine Sperre gegen eine Dauer zu verhaengen, die wir
-    # nicht kennen, waere selbst willkuerlich; deshalb greift die Sperre nur, wenn seit_s
-    # bekannt UND zu kurz ist. Ein frisch gestarteter Dienst darf also sofort nach Hysterese
-    # entscheiden, statt bis zum Ablauf einer Frist zu warten, die nie zu laufen begann.
+    # Rule 5 — minimum switch duration protects the valve from short-cycling. 'None'
+    # for seit_s means "duration of the current state unknown" — typically the first
+    # cycle after a restart, with no history. Imposing a lock against a duration we do
+    # not know would itself be arbitrary; so the lock only applies when seit_s is known
+    # AND too short. A freshly started service may therefore decide by hysteresis right
+    # away, instead of waiting out a deadline that never started running.
     minimum_duration = (
         lage.parameter.min_on_seconds if lage.heizt_gerade else lage.parameter.min_off_seconds
     )
@@ -146,9 +152,9 @@ def entscheiden(lage: Lage) -> Entscheidung:
             ),
         )
 
-    # Regel 6 — Hysterese. Das Altsystem kennt sie nicht (`if ist < soll: an, sonst aus`) und
-    # schaltet am Sollwert in jedem Zyklus um; `h` ist genau die Bandbreite, die das
-    # verhindert.
+    # Rule 6 — hysteresis. The legacy system does not have it
+    # (`if ist < soll: an, sonst aus`) and switches at the setpoint on every cycle;
+    # `h` is exactly the band that prevents that.
     h = lage.parameter.hysteresis_k
     if not lage.heizt_gerade and ist_c < soll_c - h:
         return Entscheidung(

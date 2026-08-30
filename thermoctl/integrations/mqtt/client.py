@@ -1,4 +1,4 @@
-"""Empfangender MQTT-Client mit dauerhafter Wiederverbindung."""
+"""Receiving MQTT client with persistent reconnection."""
 
 import asyncio
 import logging
@@ -14,7 +14,7 @@ log = logging.getLogger(__name__)
 
 
 async def schlafen(seconds: float) -> None:
-    """Wartet vor dem naechsten Verbindungsversuch."""
+    """Waits before the next connection attempt."""
     await asyncio.sleep(seconds)
 
 
@@ -27,27 +27,27 @@ class MqttClient:
         switching_allowed: bool = False,
         zusatz_abonnements: list[str] | None = None,
     ) -> None:
-        """`schalten_erlaubt` ist die harte Grenze des Trockenlaufs -- fuer das Schalten.
+        """`switching_allowed` is the hard limit of the dry run -- for switching.
 
-        Sie gilt fuer Nachrichten, die ein Ventil bewegen (`schaltet=True`). Solange sie
-        False ist, geht keine davon hinaus, auch wenn ein Aufrufer es verlangt. Zwei
-        Riegel statt einem, weil hinter dem Ventil eine bewohnte Wohnung haengt und ein
-        einzelner vergessener Aufrufer sonst genuegt: dieser hier beim Bau des Clients,
-        der zweite bei jedem Aufruf in `integrations/aktoren.py`.
+        It applies to messages that move a valve (`switches=True`). As long as it is
+        False, none of those go out, even if a caller demands it. Two bolts instead of
+        one, because an inhabited apartment hangs behind the valve, and a single
+        forgotten caller would otherwise be enough: this one here when the client is
+        built, the second one on every call in `integrations/aktoren.py`.
 
-        **Nicht betroffen sind Zustandsmeldungen und die Home-Assistant-Anmeldung.**
-        Bis hierher sperrte dieser Riegel jede Veroeffentlichung, auch die. Das war
-        richtig, solange gar nichts gesendet wurde -- es machte aber den Trockenlauf
-        unpruefbar: Man konnte die Anbindung erst ausprobieren, nachdem man die Anlage
-        scharf geschaltet hatte, also genau dann nicht mehr, wenn ein Fehler noch
-        folgenlos gewesen waere. Eine Zustandsmeldung bewegt nichts.
+        **State messages and the Home Assistant registration are not affected.** Up
+        until now this bolt blocked every publication, including those. That was
+        correct as long as nothing at all was sent -- but it made the dry run
+        unverifiable: you could only try out the integration after arming the plant,
+        i.e. exactly when an error would no longer have been harmless. A state message
+        doesn't move anything.
         """
         self._settings = settings
         self._handler = handler
         self._switching_allowed = switching_allowed
-        # Ueber die Zigbee2MQTT-Abonnements hinaus: die eigenen Befehls-Topics. Sie
-        # stehen nicht in `abonnements()`, weil das die vier bewusst eng begrenzten
-        # Zigbee2MQTT-Themen liefert und nichts anderes.
+        # Beyond the Zigbee2MQTT subscriptions: our own command topics. They are not
+        # in `abonnements()`, because that delivers the four deliberately narrow
+        # Zigbee2MQTT topics and nothing else.
         self._zusatz_abonnements = list(zusatz_abonnements or [])
         self._client: aiomqtt.Client | None = None
 
@@ -75,7 +75,7 @@ class MqttClient:
         )
 
     async def run(self) -> None:
-        """Empfaengt Nachrichten und verbindet nach Fehlern unbegrenzt neu."""
+        """Receives messages and reconnects indefinitely after errors."""
         if not self._settings.mqtt_enabled:
             log.info("MQTT-Empfang ist deaktiviert")
             return
@@ -97,17 +97,17 @@ class MqttClient:
                     ]:
                         await client.subscribe(topic)
                     async for message in client.messages:
-                        # Der Abstand faellt erst zurueck, wenn wirklich etwas ankam,
-                        # nicht schon beim Verbindungsaufbau. Sonst waere ein Broker,
-                        # der annimmt und sofort wieder trennt, eine Endlosschleife
-                        # ohne Pause. Umgekehrt darf der Abstand auch nicht ueber die
-                        # Lebensdauer des Dienstes monoton weiterwachsen: Eine
-                        # Verbindung, die nach Tagen einmal abreisst, soll nach einer
-                        # Sekunde wiederkommen, nicht nach einer Minute.
+                        # The interval only resets once something actually arrives, not
+                        # already on connection setup. Otherwise a broker that accepts
+                        # and immediately disconnects again would become an infinite
+                        # loop with no pause. Conversely, the interval must also not
+                        # keep growing monotonically over the service's lifetime: a
+                        # connection that drops once after days should come back after
+                        # a second, not after a minute.
                         #
-                        # Dass ueberhaupt etwas ankommt, ist verlaesslich: Auf
-                        # `bridge/devices` liegt eine retained-Nachricht, die bei jeder
-                        # Verbindung sofort zugestellt wird.
+                        # That something arrives at all is reliable: `bridge/devices`
+                        # carries a retained message that gets delivered immediately on
+                        # every connection.
                         interval = 1.0
                         try:
                             await self._handler(str(message.topic), bytes(message.payload))
@@ -134,13 +134,13 @@ class MqttClient:
     async def publishing(
         self, topic: str, payload: str, *, switches: bool, behalten: bool = False
     ) -> bool:
-        """Sendet eine Nachricht. `schaltet=True` verlangt zusaetzlich den Riegel.
+        """Sends a message. `switches=True` additionally requires the bolt.
 
-        `schaltet` beschreibt, was die Nachricht **bewirkt**, nicht wie dringend der
-        Aufrufer sie meint: Ein Ventilbefehl bewegt etwas, eine Zustandsmeldung nicht.
-        Frueher hiess der Parameter `scharf` und bedeutete beides zugleich -- der
-        Aufrufer musste ihn setzen, *und* der Client musste scharf gebaut sein. Dabei
-        fiel die Zustandsmeldung unter dieselbe Sperre wie der Ventilbefehl.
+        `switches` describes what the message **does**, not how urgently the caller
+        means it: a valve command moves something, a state message doesn't. The
+        parameter used to be called `scharf` and meant both at once -- the caller had
+        to set it, *and* the client had to be built armed. That put the state message
+        under the same lock as the valve command.
         """
         if switches and not self._switching_allowed:
             log.warning(
@@ -152,11 +152,11 @@ class MqttClient:
         if self._client is None:
             log.error("MQTT-Nachricht kann ohne Verbindung nicht veroeffentlicht werden")
             return False
-        # `behalten` gehoert an das Senden, nicht in die Discovery-Nutzlast: Der
-        # Schluessel `retain` dort heisst in Home Assistant "sende *Befehle* mit
-        # retain-Flag" -- ein behaltener Befehl wuerde bei jeder Neuverbindung erneut
-        # zugestellt und erneut ausgefuehrt. Behalten gehoert auf Anmeldung und
-        # Zustand: Ohne das steht in Home Assistant nach einem Neustart eine leere
-        # Karte, bis dieser Dienst das naechste Mal etwas sendet.
+        # `behalten` belongs on the publish call, not in the discovery payload: the
+        # `retain` key there means "send *commands* with the retain flag" in Home
+        # Assistant -- a retained command would be redelivered and re-executed on
+        # every reconnect. Retain belongs on registration and state: without it, Home
+        # Assistant shows an empty card after a restart until this service sends
+        # something the next time.
         await self._client.publish(topic, payload, retain=behalten)
         return True

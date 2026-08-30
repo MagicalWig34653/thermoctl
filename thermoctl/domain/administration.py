@@ -1,16 +1,17 @@
-"""Benutzer, Gruppen und Rechte aendern — die Regeln dazu, nicht die Masken.
+"""Changing users, groups and permissions — the rules for it, not the forms.
 
-Liegt in der Domaene, damit Oberflaeche, REST und MCP dieselben Regeln benutzen. Zwei
-davon sind der eigentliche Grund fuer dieses Modul:
+Lives in the domain so that the interface, REST and MCP use the same rules. Two of
+those rules are the actual reason for this module:
 
-- **Man kann sich nicht aussperren.** Der letzte aktive Benutzer mit `user.manage` laesst
-  sich weder deaktivieren noch aus seiner Gruppe entfernen. Ohne diese Regel genuegt ein
-  Fehlgriff, um eine laufende Heizungssteuerung unbedienbar zu machen — mit Zugriff nur
-  noch ueber die Datenbank.
-- **Ein nicht zonenbezogenes Recht darf keine Zone tragen.** `hat_recht()` fragt solche
-  Rechte immer ohne Zonenangabe ab; ein mit Zone vergebenes `user.manage` steht in der
-  Liste, greift aber nie. Das Modell haelt das seit Teilprojekt 1 als Zusicherung der
-  Domaenenlogik fest — bis hierher hat sie niemand eingeloest.
+- **You cannot lock yourself out.** The last active user with `user.manage` can
+  neither be deactivated nor removed from their group. Without this rule, a single
+  mistake would be enough to make a running heating control system unmanageable --
+  with access recoverable only through the database.
+- **A permission that is not zone-scoped must not carry a zone.** `hat_recht()` always
+  queries such permissions without a zone reference; a `user.manage` granted with a
+  zone would sit in the list but never take effect. The model has held this as a
+  guarantee of the domain logic since sub-project 1 -- up to now nobody had actually
+  enforced it.
 """
 
 from sqlalchemy import select
@@ -30,14 +31,14 @@ from thermoctl.db.models.lookup import Permission
 
 
 class AdministrationError(Exception):
-    """Eine Aenderung, die fachlich nicht zulaessig ist — kein Fehler des Dienstes."""
+    """A change that is not permitted on domain grounds — not a fault of the service."""
 
 
 ADMIN_PERMISSION = "user.manage"
 
 
 def _user_with_permission(session: Session, code: str) -> list[User]:
-    """Alle aktiven Benutzer, die dieses Recht anlagenweit besitzen."""
+    """All active users who hold this permission plant-wide."""
     return list(
         session.scalars(
             select(User)
@@ -66,16 +67,16 @@ def create_user(
     session: Session, *, username: str, display_name: str, password: str,
     group_ids: list[int], akteur_id: int | None, source: str = "web",
 ) -> User:
-    """Legt einen Benutzer an und ordnet ihn Gruppen zu."""
+    """Creates a user and assigns them to groups."""
     if not username.strip():
         raise AdministrationError("Der Benutzername darf nicht leer sein.")
     vorhanden = session.scalar(select(User).where(User.username == username))
     if vorhanden is not None:
         raise AdministrationError(f"Den Benutzernamen '{username}' gibt es bereits.")
 
-    # Das Passwort zuerst — `hash_password` wirft bei zu kurzer Eingabe, und eine
-    # abgebrochene Anlage darf keine halben Zeilen hinterlassen. Genau dieser Fehler
-    # steckte im Einrichtungsformular.
+    # The password first — `hash_password` raises on too short an input, and an
+    # aborted creation must not leave half a row behind. This exact bug used to sit
+    # in the setup form.
     hash_value = hash_password(password)
 
     nutzer = User(username=username, display_name=display_name, password_hash=hash_value)
@@ -96,10 +97,10 @@ def set_user_active(
     session: Session, user: User, active: bool, *, akteur_id: int | None,
     source: str = "web",
 ) -> None:
-    """Deaktiviert oder reaktiviert einen Benutzer. Geloescht wird nie.
+    """Deactivates or reactivates a user. Never deleted.
 
-    Ein geloeschter Benutzer risse seine Audit-Eintraege mit sich oder liesse sie ohne
-    Namen zurueck. Deaktiviert bleibt nachvollziehbar, wer wann was getan hat.
+    A deleted user would tear their audit entries down with them, or leave them
+    without a name. Deactivated, it stays traceable who did what and when.
     """
     if not active and _last_administrator(session, user):
         raise AdministrationError(
@@ -122,11 +123,11 @@ def set_password(
     session: Session, user: User, new_password: str, *, akteur_id: int | None,
     source: str = "web",
 ) -> None:
-    """Setzt ein neues Passwort. Bestehende Sitzungen bleiben gueltig.
+    """Sets a new password. Existing sessions remain valid.
 
-    Bewusst so: Ein Passwortwechsel ist im Alltag meist keine Reaktion auf einen
-    Verdacht. Wer alle Sitzungen beenden will, widerruft sie ausdruecklich — dafuer gibt
-    es einen eigenen Weg, statt zwei Absichten in einer Handlung zu vermengen.
+    Deliberately so: in everyday use, a password change is usually not a reaction to a
+    suspicion. Whoever wants to end all sessions revokes them explicitly -- there is a
+    dedicated way to do that, instead of conflating two intents into one action.
     """
     user.password_hash = hash_password(new_password)
     session.flush()
@@ -174,7 +175,7 @@ def delete_group(
 
 
 def _without_this_group_no_administrator(session: Session, group: AccessGroup) -> None:
-    """Verhindert, dass die letzte Quelle des Verwaltungsrechts verschwindet."""
+    """Prevents the last source of the administration permission from disappearing."""
     administrator = _user_with_permission(session, ADMIN_PERMISSION)
     if not administrator:
         return
@@ -205,14 +206,14 @@ def grant_permission(
     session: Session, group: AccessGroup, code: str, zone_id: int | None, *,
     akteur_id: int | None, source: str = "web",
 ) -> GroupPermission:
-    """Vergibt ein Recht an eine Gruppe, wahlweise auf eine Zone eingeschraenkt."""
+    """Grants a permission to a group, optionally restricted to a zone."""
     permission = session.scalar(select(Permission).where(Permission.code == code))
     if permission is None:
         raise AdministrationError(f"Das Recht '{code}' gibt es nicht.")
     if not permission.is_zone_scoped and zone_id is not None:
-        # `hat_recht()` fragt ein solches Recht immer ohne Zonenangabe ab. Mit Zone
-        # vergeben stuende es in der Liste und griffe nie — eine Rechtevergabe, die
-        # aussieht, als haette sie gewirkt, ist schlimmer als eine abgelehnte.
+        # `hat_recht()` always queries such a permission without a zone reference.
+        # Granted with a zone, it would sit in the list and never take effect — a
+        # grant that looks like it worked is worse than a rejected one.
         raise AdministrationError(
             f"Das Recht '{code}' gilt fuer die ganze Anlage und laesst sich nicht auf "
             "eine einzelne Zone einschraenken."
@@ -263,7 +264,7 @@ def revoke_permission(
 def revoke_token(
     session: Session, token: ApiToken, *, akteur_id: int | None, source: str = "web"
 ) -> None:
-    """Widerruft ein Token. Zeilen werden nie geloescht — sie sind die Historie."""
+    """Revokes a token. Rows are never deleted — they are the history."""
     if token.revoked_at is not None:
         return
     token.revoked_at = utcnow()
@@ -283,16 +284,17 @@ def set_group_permissions(
     akteur_id: int | None,
     source: str = "web",
 ) -> tuple[int, int]:
-    """Bringt die Rechte einer Gruppe auf den gewuenschten Stand. Gibt (vergeben, entzogen).
+    """Brings a group's permissions to the desired state. Returns (granted, revoked).
 
-    Statt einzelner Vergeben- und Entziehen-Klicks: Die Oberflaeche schickt den ganzen
-    gewuenschten Stand, hier wird die Differenz gebildet. Wer eine Gruppe einrichtet,
-    denkt in "das soll sie duerfen" und nicht in einer Folge von sechzehn Einzelschritten.
+    Instead of individual grant and revoke clicks: the interface sends the whole
+    desired state, and the difference is computed here. Whoever sets up a group thinks
+    in terms of "this is what it should be allowed to do", not a sequence of sixteen
+    individual steps.
 
-    Ruft ausdruecklich `recht_vergeben` und `recht_entziehen` auf, statt selbst Zeilen
-    anzufassen: Dort haengen die Pruefung auf zonenlose Rechte, die Sperre gegen den
-    Verlust des letzten Verwalters und die Audit-Eintraege. Eine zweite Fassung davon
-    waere genau die Art Abkuerzung, die spaeter jemanden aussperrt.
+    Deliberately calls `recht_vergeben` and `recht_entziehen` instead of touching rows
+    itself: that is where the check for zone-less permissions, the lock against losing
+    the last administrator, and the audit entries all live. A second version of that
+    logic would be exactly the kind of shortcut that later locks someone out.
     """
     vorhanden: dict[tuple[str, int | None], GroupPermission] = {}
     for entry, code in session.execute(
@@ -310,8 +312,9 @@ def set_group_permissions(
         vergeben += 1
 
     entzogen = 0
-    # Erst vergeben, dann entziehen: Wer das Verwaltungsrecht von "ganze Anlage" auf
-    # einzelne Zonen umstellt, wuerde sonst mittendrin an der Verwaltersperre scheitern.
+    # Grant first, then revoke: otherwise, whoever switches the administration
+    # permission from "whole plant" to individual zones would fail halfway through
+    # on the administrator lock.
     for schluessel, entry in sorted(vorhanden.items(), key=lambda p: (p[0][0], p[0][1] or 0)):
         if schluessel not in gewuenscht:
             revoke_permission(session, entry, akteur_id=akteur_id, source=source)

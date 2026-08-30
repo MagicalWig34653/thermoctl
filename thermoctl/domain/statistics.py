@@ -1,23 +1,22 @@
-"""Wann und wie lange geheizt wurde.
+"""When and for how long heating happened.
 
-Die Quelle ist das Schattenprotokoll: Der Regelzyklus schreibt fuer jede Zone in jedem
-Durchlauf eine Zeile mit `would_heat`. Das ist eine dichte Abtastung -- alle 60 Sekunden
-ein Messpunkt -- und daraus laesst sich die Dauer wirklich ausrechnen, statt sie zu
-schaetzen.
+The source is the shadow log: the control cycle writes a row with `would_heat` for
+every zone on every pass. That is dense sampling -- one data point every 60 seconds --
+and from that the duration can genuinely be computed instead of estimated.
 
-**Gerechnet wird ueber die Abstaende, nicht ueber die Anzahl der Zeilen.** Ein Zaehler
-"so viele Zeilen mal Zyklusdauer" waere einfacher und in zwei Faellen falsch: wenn der
-Zyklus zwischendurch anders eingestellt war, und wenn der Dienst stand. Jeder Abstand
-zwischen zwei aufeinanderfolgenden Messpunkten zaehlt so lange, wie er wirklich war.
+**Computed over the gaps, not over the row count.** A counter of "this many rows times
+cycle length" would be simpler and wrong in two cases: when the cycle was set to a
+different length at some point, and when the service was down. Every gap between two
+consecutive data points counts for exactly as long as it actually was.
 
-**Luecken werden gekappt.** Stand der Dienst eine Nacht lang still, liegen zwischen zwei
-Messpunkten acht Stunden. Sie als Heizzeit zu zaehlen, waere frei erfunden -- die Anlage
-hat in dieser Zeit nichts gemeldet, und was sie tat, weiss niemand. Ein Abstand, der
-deutlich groesser ist als der Zyklus, zaehlt deshalb nur bis zur Kappungsgrenze.
+**Gaps get capped.** If the service stood still for a night, eight hours lie between
+two data points. Counting that as heating time would be pure fabrication -- the plant
+reported nothing during that time, and nobody knows what it actually did. A gap
+significantly larger than the cycle therefore only counts up to the cap.
 
-Im Trockenlauf ist das eine Aussage darueber, was thermoctl geheizt *haette*. Nach dem
-Scharfschalten ueber dasselbe, was es getan hat -- die Zeilen entstehen an derselben
-Stelle.
+During the dry run this is a statement about what thermoctl *would have* heated. After
+arming, about the same thing it actually did -- the rows are produced at the same
+place.
 """
 
 from collections import defaultdict
@@ -29,9 +28,8 @@ from sqlalchemy.orm import Session
 
 from thermoctl.db.models.state import ShadowDecision
 
-# Wie viel groesser als ein Zyklus ein Abstand sein darf, bevor er als Luecke gilt.
-# Drei Zyklen: Ein einzelner ausgefallener Durchlauf ist Betrieb, drei hintereinander
-# sind ein Ausfall.
+# How much larger than a cycle a gap is allowed to be before it counts as a gap.
+# Three cycles: a single missed pass is normal operation, three in a row is an outage.
 GAP_FACTOR = 3
 
 
@@ -59,12 +57,12 @@ def heizzeiten(
     *,
     cycle_seconds: int,
 ) -> dict[int, ZoneStatistics]:
-    """Heizdauer je Zone und Tag im angegebenen Zeitraum, in Sekunden.
+    """Heating duration per zone and day in the given period, in seconds.
 
-    `von` und `bis` sind naive UTC wie alles in diesem Projekt. Ein Abschnitt wird dem
-    Tag seines **Beginns** zugeschlagen; bei einer Abtastung im Minutentakt liegt der
-    Fehler an der Tagesgrenze unter einer Minute und damit unter der Aufloesung, in der
-    die Zahl ueberhaupt angezeigt wird.
+    `von` and `bis` are naive UTC like everything in this project. A segment is
+    attributed to the day of its **start**; with sampling on a minute cadence, the
+    error at a day boundary stays under a minute and thus below the resolution at
+    which the number is even displayed.
     """
     maximum_interval = max(cycle_seconds, 1) * GAP_FACTOR
     eimer: dict[int, dict[date, int]] = defaultdict(lambda: defaultdict(int))
@@ -105,8 +103,8 @@ def heizzeiten(
 
 
 def as_duration(seconds: int) -> str:
-    """`4h 05m`, `35m`, `–`. Stunden und Minuten, weil eine Heizung in diesen Groessen
-    gedacht wird; Sekunden waeren eine Genauigkeit, die die Abtastung nicht hergibt."""
+    """`4h 05m`, `35m`, `–`. Hours and minutes, because a heating system is thought of
+    in these units; seconds would be a precision the sampling cannot actually provide."""
     if seconds <= 0:
         return "–"
     minutes = round(seconds / 60)

@@ -29,16 +29,16 @@ from thermoctl.domain.principal import Principal
 from thermoctl.web import ist_teilaustausch
 from thermoctl.web.forms import FormError, form_again, password_form_error
 
-# `include_in_schema=False`: Die OpenAPI-Beschreibung ist der Vertrag der
-# REST-Schnittstelle. Diese Wege liefern HTML fuer Menschen, und in der Oberflaeche
-# unter /docs stuende sonst neben jedem echten Endpunkt ein Formularweg, dessen
-# 'Try it out' eine echte Aenderung ausloest.
+# `include_in_schema=False`: the OpenAPI description is the contract of the REST
+# interface. These routes deliver HTML for humans, and in the interface under
+# /docs there would otherwise be a form route next to every real endpoint whose
+# 'Try it out' triggers a real change.
 router = APIRouter(dependencies=[Depends(csrf_schutz)], include_in_schema=False)
 
-# `require()` wirft bei fehlendem Recht `Forbidden` -- der globale Handler in
-# `thermoctl/app.py` uebersetzt das einheitlich in 403. Keine Route hier faengt
-# das mehr selbst ab: das war vor dem Abschlussreview an dieser Stelle noch der
-# Fall und wurde bewusst entfernt, um es nicht an jeder Route erneut zu vergessen.
+# `require()` raises `Forbidden` when a permission is missing -- the global handler
+# in `thermoctl/app.py` translates that uniformly into 403. No route here catches
+# that itself anymore: that used to be the case at this point before the final
+# review and was deliberately removed, to avoid forgetting it again on every route.
 
 
 def _user_list(
@@ -114,8 +114,8 @@ async def user_active_view(
             session, nutzer, active == "ja", akteur_id=principal.user_id
         )
     except AdministrationError as exc:
-        # Die Aussperrsperre ist kein Formfehler an einem Feld, sondern eine Aussage
-        # ueber den Zustand der Anlage -- sie gehoert als Hinweis ueber die Liste.
+        # The lockout guard is not a form error on a field but a statement about the
+        # state of the plant -- it belongs as a hint above the list.
         return _user_list(request, session, principal.user_id, hint=str(exc))
     return RedirectResponse("/users", status_code=status.HTTP_303_SEE_OTHER)
 
@@ -128,8 +128,8 @@ async def user_password_view(
     session: Annotated[Session, Depends(get_session)],
     password: Annotated[str, Form()] = "",
 ) -> Response:
-    # Das eigene Passwort darf jeder aendern; fremde nur mit `user.manage`. Sonst
-    # koennte niemand sein eigenes Passwort wechseln, ohne Verwalter zu sein.
+    # Everyone may change their own password; someone else's only with `user.manage`.
+    # Otherwise nobody could change their own password without being an administrator.
     if user_id != principal.user_id:
         require(principal, "user.manage")
     nutzer = session.get(User, user_id)
@@ -149,8 +149,8 @@ def _group_list(
     values: dict[str, object] | None = None, hint: str | None = None,
 ) -> Response:
     groups = list(session.scalars(select(AccessGroup).order_by(AccessGroup.name)))
-    # Je Gruppe die Menge der vergebenen (Code, Zone) -- die Vorlage fragt damit jedes
-    # Kaestchen direkt ab, statt eine Liste zu durchsuchen.
+    # Per group, the set of granted (code, zone) pairs -- the template can then check
+    # each checkbox directly, instead of searching through a list.
     vergeben: dict[int, set[tuple[str, int | None]]] = {g.id: set() for g in groups}
     for group_id, code, zone_id in session.execute(
         select(GroupPermission.access_group_id, Permission.code, GroupPermission.zone_id)
@@ -164,8 +164,8 @@ def _group_list(
         zone_id: name
         for zone_id, name in session.execute(select(Zone.id, Zone.display_name))
     }
-    # Was eine Gruppe darf, in einem Satz. Ohne ihn muss man 16 Kaestchen lesen, um zu
-    # wissen, wofuer eine Gruppe da ist -- und das ist die erste Frage, die man hat.
+    # What a group is allowed to do, in one sentence. Without it you'd have to read 16
+    # checkboxes to know what a group is for -- and that's the first question you have.
     zusammenfassung: dict[int, list[str]] = {}
     for group_id, entries in vergeben.items():
         satz = []
@@ -253,15 +253,14 @@ async def permissions_set_view(
     principal: Annotated[Principal, Depends(aktueller_principal)],
     session: Annotated[Session, Depends(get_session)],
 ) -> Response:
-    """Nimmt den **ganzen** gewuenschten Rechtestand einer Gruppe entgegen.
+    """Accepts the **entire** desired permission state of a group.
 
-    Vorher gab es zwei Endpunkte: einen zum Vergeben eines einzelnen Rechts und einen
-    zum Entziehen eines einzelnen Eintrags. Wer eine Gruppe einrichtete, klickte sich
-    durch eine flache Liste von sechzehn Codes, einen nach dem anderen, und sah dabei
-    nie, was die Gruppe insgesamt darf. Jetzt schickt ein Formular alle Haken auf einmal,
-    und die Domaene bildet die Differenz.
+    There used to be two endpoints: one for granting a single permission and one for
+    revoking a single entry. Whoever set up a group clicked through a flat list of
+    sixteen codes, one at a time, and never saw what the group is allowed to do overall.
+    Now a form sends all checkmarks at once, and the domain computes the diff.
 
-    Die Felder heissen `recht` und tragen entweder `code` (ganze Anlage) oder
+    The fields are named `recht` and carry either `code` (whole plant) or
     `code:zone_id`.
     """
     require(principal, "group.manage")
@@ -330,10 +329,10 @@ async def token_issue_view(
     valid_days: Annotated[str, Form()] = "",
 ) -> Response:
     require(principal, "token.self")
-    # Beide Faelle sind ueber diesen Weg nicht erreichbar: `aktueller_principal` loest ein
-    # Sitzungscookie auf und liefert deshalb immer einen vorhandenen Benutzer. Die
-    # Pruefungen stehen trotzdem hier, weil `token_ausstellen` einen Besitzer braucht und
-    # ein `None` dort ein stiller Fehler waere statt einer klaren Antwort.
+    # Neither case is reachable via this route: `aktueller_principal` resolves a
+    # session cookie and therefore always yields an existing user. The checks are
+    # here anyway because `token_ausstellen` needs an owner, and a `None` there would
+    # be a silent failure instead of a clear response.
     if principal.user_id is None:  # pragma: no cover
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Nur fuer angemeldete Benutzer")
     besitzer = session.get(User, principal.user_id)
@@ -355,8 +354,8 @@ async def token_issue_view(
         )
     except Forbidden as exc:
         return _token_list(request, session, principal, hint=str(exc))
-    # Der Klartext erscheint genau einmal: Gespeichert wird nur sein Hash, und ein Token,
-    # das man spaeter nachschlagen kann, ist keines.
+    # The plaintext appears exactly once: only its hash is stored, and a token you
+    # could look up later would not be one.
     return _token_list(request, session, principal, plaintext=plaintext)
 
 
@@ -370,8 +369,8 @@ async def token_revoke_view(
     require(principal, "token.self")
     token = session.get(ApiToken, token_id)
     if token is None or token.user_id != principal.user_id:
-        # Fremde Tokens sind nicht auffindbar, nicht verboten -- sonst verriete die
-        # Antwort, welche Kennungen es gibt.
+        # Someone else's tokens are unfindable, not forbidden -- otherwise the
+        # response would reveal which ids exist.
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Token nicht gefunden")
     revoke_token(session, token, akteur_id=principal.user_id)
     return RedirectResponse("/tokens", status_code=status.HTTP_303_SEE_OTHER)

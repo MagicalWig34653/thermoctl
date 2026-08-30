@@ -1,1 +1,1 @@
-"""REST-Adapter fuer token-authentifizierte Clients."""
+"""REST adapter for token-authenticated clients."""

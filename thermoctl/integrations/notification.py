@@ -1,4 +1,4 @@
-"""Ausfallsichere Ausgabe von Stoerungsmeldungen in Log und Webhook."""
+"""Fail-safe delivery of fault notices to the log and webhook."""
 
 import asyncio
 import json
@@ -24,15 +24,15 @@ def _send_webhook(settings: Settings, notice: FaultNotice) -> None:
     if settings.notify_webhook_token is not None:
         token = settings.notify_webhook_token.get_secret_value()
         kopfzeilen["Authorization"] = f"Bearer {token}"
-    anfrage = Request(  # noqa: S310 -- Adresse ist Betreiberkonfiguration
+    anfrage = Request(  # noqa: S310 -- address is operator configuration
         settings.notify_webhook or "", data=daten, headers=kopfzeilen, method="POST"
     )
-    with urlopen(anfrage, timeout=10):  # noqa: S310 -- URL wurde bewusst konfiguriert
+    with urlopen(anfrage, timeout=10):  # noqa: S310 -- URL was deliberately configured
         pass
 
 
 async def send(settings: Settings, notice: FaultNotice) -> None:
-    """Loggt immer und versucht den optionalen Webhook, ohne Fehler weiterzugeben."""
+    """Always logs and attempts the optional webhook, without propagating errors."""
     log.warning(
         "%s: %s",
         notice.titel,

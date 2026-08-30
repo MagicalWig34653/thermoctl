@@ -1,1 +1,1 @@
-"""Anwendungsdienste zwischen Domaene und Persistenz."""
+"""Application services between the domain and persistence."""

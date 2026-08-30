@@ -19,16 +19,16 @@ class ControlParameters:
 
 
 def _or_standard[T](zone_value: T | None, default: T) -> T:
-    """Nur None gilt als 'nicht gesetzt' — 0 und 0.0 sind gueltige Zonenwerte."""
+    """Only None counts as 'not set' — 0 and 0.0 are valid zone values."""
     return default if zone_value is None else zone_value
 
 
 def control_parameters(session: Session, zone: Zone) -> ControlParameters:
-    """Die wirksamen Regelparameter einer Zone.
+    """The effective control parameters of a zone.
 
-    Leere Zonenfelder heissen 'globaler Standard'. So steht jeder Wert genau einmal
-    irgendwo, und eine Aenderung des Standards wirkt auf alle Zonen, die ihn nicht
-    ausdruecklich ueberschrieben haben.
+    Empty zone fields mean 'global default'. That way every value lives in exactly one
+    place, and a change to the default affects every zone that has not explicitly
+    overridden it.
     """
     e = session.get(Setting, 1)
     assert e is not None, "setting-Zeile fehlt — Einrichtung unvollstaendig"
@@ -55,7 +55,7 @@ def save_control_parameters(
     token_id: int | None = None,
     source: str = "web",
 ) -> None:
-    """Speichert Zonenabweichungen; ``None`` stellt die Vererbung wieder her."""
+    """Saves zone deviations; ``None`` restores inheritance."""
     for name in ControlParameters.__dataclass_fields__:
         setattr(zone, name, values[name])
     audit.record(
@@ -71,22 +71,22 @@ def save_control_parameters(
 
 
 class UnknownParameter(ValueError):
-    """Ein Regelparameter dieses Namens gibt es nicht."""
+    """There is no control parameter of this name."""
 
 
 class ParameterOutOfRange(ValueError):
-    """Der Wert liegt ausserhalb der erlaubten Grenzen."""
+    """The value lies outside the allowed bounds."""
 
 
 @dataclass(frozen=True)
 class ParameterDescription:
-    """Was ein Regelparameter bedeutet und welche Werte er annehmen darf.
+    """What a control parameter means and which values it may take.
 
-    Steht hier und nicht im Adapter, weil inzwischen drei Stellen dieselbe Auskunft
-    brauchen: das Formular in der Oberflaeche, das Schema der REST-Schnittstelle und die
-    Home-Assistant-Anmeldung, die je Parameter eine `number`-Entitaet mit Minimum,
-    Maximum und Schrittweite beschreibt. Eine Grenze, die je nach Weg anders ausfaellt,
-    ist keine.
+    Lives here and not in the adapter, because by now three places need the same
+    information: the form in the interface, the REST interface's schema, and the Home
+    Assistant registration, which describes a `number` entity per parameter with
+    minimum, maximum and step. A bound that comes out differently depending on the
+    path is not a bound at all.
     """
 
     name: str
@@ -101,11 +101,10 @@ class ParameterDescription:
         return self.step == self.step.to_integral_value() and self.step >= 1
 
 
-# Die Grenzen entsprechen denen der globalen Vorgaben (`domain/steuerung.GRENZEN`) --
-# ein Zonenwert, den die globale Vorgabe nicht annehmen duerfte, waere eine Hintertuer.
-# `temperature_offset_k` hat keine globale Entsprechung: Er gleicht einen falsch
-# stehenden Sensor aus, und mehr als zehn Kelvin daneben ist kein Offset mehr, sondern
-# ein defektes Geraet.
+# The bounds match those of the global defaults (`domain/steuerung.GRENZEN`) -- a zone
+# value that the global default would not be allowed to take would be a back door.
+# `temperature_offset_k` has no global counterpart: it corrects a miscalibrated
+# sensor, and more than ten kelvin off is no longer an offset but a broken device.
 PARAMETERS: tuple[ParameterDescription, ...] = (
     ParameterDescription(
         "hysteresis_k", "Hysterese", "K", Decimal("0.1"), Decimal("5.0"), Decimal("0.1")
@@ -143,16 +142,15 @@ def set_parameter(
     token_id: int | None = None,
     source: str = "web",
 ) -> Decimal:
-    """Setzt **einen** Regelparameter der Zone und laesst die uebrigen, wie sie sind.
+    """Sets **one** control parameter of the zone and leaves the rest as they are.
 
-    `regelparameter_speichern` nimmt immer alle Felder auf einmal -- richtig fuer ein
-    Formular, falsch fuer einen einzelnen Drehregler in Home Assistant: Der kennt nur
-    seinen eigenen Wert und wuerde alle anderen auf das setzen, was der Aufrufer gerade
-    zur Hand hat.
+    `regelparameter_speichern` always takes all fields at once -- right for a form,
+    wrong for a single dial in Home Assistant: it knows only its own value and would
+    set every other field to whatever the caller happened to have at hand.
 
-    Der Wert wird als Zonenabweichung festgeschrieben, nicht als Vererbung. Eine
-    `number`-Entitaet kann nicht leer sein, also gibt es dort kein "erbt vom globalen
-    Standard"; wer die Vererbung zurueck will, leert das Feld in der Oberflaeche.
+    The value gets fixed as a zone deviation, not as inheritance. A `number` entity
+    cannot be empty, so there is no "inherits from global default" there; whoever
+    wants inheritance back clears the field in the interface.
     """
     beschreibung = BY_NAME.get(name)
     if beschreibung is None:
@@ -163,8 +161,8 @@ def set_parameter(
             f"{beschreibung.maximum} liegen."
         )
     gerundet = int(value) if beschreibung.ganzzahlig else value
-    # Die uebrigen Felder so uebernehmen, wie sie an der Zone stehen -- ein geerbtes
-    # None bleibt geerbt. Nur dieser eine Parameter wird festgeschrieben.
+    # Take over the other fields exactly as they stand on the zone -- an inherited
+    # None stays inherited. Only this one parameter gets fixed.
     values: dict[str, Decimal | int | None] = {
         feld: getattr(zone, feld) for feld in ControlParameters.__dataclass_fields__
     }

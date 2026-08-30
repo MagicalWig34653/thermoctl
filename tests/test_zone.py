@@ -17,7 +17,7 @@ def _operating_mode(session: Session) -> OperatingMode:
     return kind
 
 
-def test_regelparameter_sind_standardmaessig_leer(session: Session) -> None:
+def test_control_parameters_are_empty_by_default(session: Session) -> None:
     zone = Zone(name="wohnzimmer", display_name="Wohnzimmer",
                 operating_mode_id=_operating_mode(session).id)
     session.add(zone)
@@ -27,7 +27,7 @@ def test_regelparameter_sind_standardmaessig_leer(session: Session) -> None:
     assert zone.sensor_timeout_seconds is None
 
 
-def test_zonenname_ist_eindeutig(session: Session) -> None:
+def test_zone_name_is_unique(session: Session) -> None:
     kind = _operating_mode(session).id
     session.add(Zone(name="bad", display_name="Bad", operating_mode_id=kind))
     session.flush()
@@ -36,7 +36,7 @@ def test_zonenname_ist_eindeutig(session: Session) -> None:
         session.flush()
 
 
-def test_ein_sollwert_je_zone_und_modus(session: Session) -> None:
+def test_one_setpoint_per_zone_and_mode(session: Session) -> None:
     zone = Zone(name="kueche", display_name="Kueche",
                 operating_mode_id=_operating_mode(session).id)
     mode = SetpointMode(code="tag", name="Tag")
@@ -51,7 +51,7 @@ def test_ein_sollwert_je_zone_und_modus(session: Session) -> None:
         session.flush()
 
 
-def test_nachkommastelle_bleibt_erhalten(session: Session) -> None:
+def test_decimal_place_is_preserved(session: Session) -> None:
     zone = Zone(name="flur", display_name="Flur",
                 operating_mode_id=_operating_mode(session).id)
     mode = SetpointMode(code="nacht", name="Nacht")
@@ -60,10 +60,10 @@ def test_nachkommastelle_bleibt_erhalten(session: Session) -> None:
     session.add(ZoneSetpoint(zone_id=zone.id, setpoint_mode_id=mode.id,
                              temperature_c=Decimal("18.5")))
     session.commit()
-    # Ohne expire_all() liefert die Abfrage das Objekt aus dem Speicher zurueck --
-    # die Sitzung wird mit expire_on_commit=False gebaut. Der Test wuerde dann auch
-    # bestehen, wenn die Datenbank die Nachkommastelle verschluckt. Erst nach dem
-    # Verfallenlassen wird wirklich neu geladen.
+    # Without expire_all() the query would return the object from memory --
+    # the session is built with expire_on_commit=False. The test would then
+    # pass even if the database swallowed the decimal place. Only after
+    # expiring it is the row genuinely reloaded.
     session.expire_all()
-    geladen = session.query(ZoneSetpoint).filter_by(zone_id=zone.id).one()
-    assert geladen.temperature_c == Decimal("18.5")
+    loaded = session.query(ZoneSetpoint).filter_by(zone_id=zone.id).one()
+    assert loaded.temperature_c == Decimal("18.5")

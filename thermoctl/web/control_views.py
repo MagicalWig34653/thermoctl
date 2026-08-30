@@ -1,15 +1,16 @@
-"""Zwei Seiten, die dieselbe Einstellungszeile bedienen -- und trotzdem getrennt gehoeren.
+"""Two pages that operate on the same settings row -- and still belong apart.
 
-`/steuerung` ist **Betrieb**: Schaltet die Anlage gerade wirklich, was entscheidet sie
-gerade, und der Knopf, der beides umlegt. Das sieht man sich an, wenn etwas nicht stimmt.
+`/steuerung` is **operations**: whether the plant is really switching right now, what
+it's currently deciding, and the button that flips both. This is what you look at when
+something's wrong.
 
-`/einstellungen` sind die **Regelvorgaben**: Hysterese, Mindestschaltdauern, Zykluszeit,
-Aufbewahrung, Zeitzone. Die stellt man einmal ein und dann jahrelang nicht mehr.
+`/einstellungen` are the **control defaults**: hysteresis, minimum switch durations,
+cycle time, retention, timezone. You set these once and then not again for years.
 
-Zuerst standen beide auf einer Seite. Das war bequem zu bauen und falsch zu benutzen: Wer
-nachsehen wollte, ob die Anlage scharf ist, scrollte an neun Zahlenfeldern vorbei, die ihn
-in dem Moment nicht interessierten -- und wer eine Vorgabe aendern wollte, landete zuerst
-beim Scharfschalt-Knopf.
+At first both lived on one page. That was convenient to build and wrong to use:
+whoever wanted to check whether the plant is armed scrolled past nine number fields
+that didn't interest them at that moment -- and whoever wanted to change a default
+landed on the arm button first.
 """
 
 from datetime import timedelta
@@ -41,10 +42,10 @@ from thermoctl.domain.schedule import resolved_setpoint
 from thermoctl.domain.statistics import as_duration, heizzeiten
 from thermoctl.web import templates
 
-# `include_in_schema=False`: Die OpenAPI-Beschreibung ist der Vertrag der
-# REST-Schnittstelle. Diese Wege liefern HTML fuer Menschen, und in der Oberflaeche
-# unter /docs stuende sonst neben jedem echten Endpunkt ein Formularweg, dessen
-# 'Try it out' eine echte Aenderung ausloest.
+# `include_in_schema=False`: the OpenAPI description is the contract of the REST
+# interface. These routes deliver HTML for humans, and in the interface under
+# /docs there would otherwise be a form route next to every real endpoint whose
+# 'Try it out' triggers a real change.
 router = APIRouter(dependencies=[Depends(csrf_schutz)], include_in_schema=False)
 
 
@@ -88,11 +89,11 @@ def _page(
             },
             "errors": {errors.feld: errors.notice} if errors else {},
             "darf_scharf": has_permission(principal, "control.arm"),
-            # Der erste Riegel sitzt im Konstruktor des MQTT-Clients und wird beim Start
-            # aus der Datenbank gelesen. Wer im laufenden Betrieb scharf schaltet, hat
-            # damit einen Zustand, in dem die Anlage scharf entscheidet und trotzdem
-            # nichts sendet. Das ist beabsichtigt -- aber es muss dastehen, sonst sucht
-            # jemand stundenlang den Fehler.
+            # The first bolt sits in the MQTT client's constructor and is read from
+            # the database at startup. Whoever arms the plant while it is running
+            # ends up with a state where the plant decides while armed and still
+            # sends nothing. That is intentional -- but it has to show up here,
+            # otherwise someone spends hours hunting for the bug.
             "sending_allowed": getattr(request.app.state, "sending_allowed", False),
         },
     )
@@ -128,8 +129,8 @@ async def show_control(
     principal: Annotated[Principal, Depends(aktueller_principal)],
     session: Annotated[Session, Depends(get_session)],
 ) -> Response:
-    # Lesen darf, wer die Anlage sehen darf. Der Betriebszustand ist die Antwort auf
-    # "schaltet das Ding gerade wirklich?" -- diese Frage soll niemand raten muessen.
+    # Whoever may see the plant may read this. The operating state is the answer to
+    # "is this thing actually switching right now?" -- nobody should have to guess it.
     require(principal, "zone.read")
     return _page(request, session, principal)
 
@@ -175,7 +176,7 @@ async def arm_view(
     principal: Annotated[Principal, Depends(aktueller_principal)],
     session: Annotated[Session, Depends(get_session)],
 ) -> Response:
-    # Eigenes Recht, nicht `setting.manage`: Das hier bewegt ein Ventil.
+    # Its own permission, not `setting.manage`: this here moves a valve.
     require(principal, "control.arm")
     form = await request.form()
     armed = str(form.get("armed", "")) == "ja"
@@ -198,11 +199,11 @@ async def show_interfaces(
     principal: Annotated[Principal, Depends(aktueller_principal)],
     session: Annotated[Session, Depends(get_session)],
 ) -> Response:
-    """Was von aussen angebunden ist -- und ob es wirklich laeuft.
+    """What is connected from outside -- and whether it's really running.
 
-    `setting.manage`, nicht `zone.read`: Die Seite nennt Broker-Adressen, Webhook-Ziele
-    und Kontonamen. Nichts davon ist ein Geheimnis im engeren Sinn, aber es ist auch
-    nichts, was jeder Bediener der Heizung sehen muss.
+    `setting.manage`, not `zone.read`: the page names broker addresses, webhook
+    targets, and account names. None of that is a secret in the strict sense, but it's
+    also nothing every operator of the heating needs to see.
     """
     require(principal, "setting.manage")
     return templates.TemplateResponse(
@@ -218,8 +219,8 @@ async def show_interfaces(
     )
 
 
-# Zeitraeume, die man wirklich wissen will. Kein freies Datumsfeld: Die Frage lautet
-# "diese Woche" oder "diesen Monat", nicht "vom 14. bis zum 23.".
+# Time ranges people actually want to know about. No free-form date field: the
+# question is "this week" or "this month", not "from the 14th to the 23rd".
 ZEITRAEUME: dict[str, tuple[str, int]] = {
     "7": ("7 Tage", 7),
     "30": ("30 Tage", 30),
@@ -233,11 +234,11 @@ async def show_statistics(
     principal: Annotated[Principal, Depends(aktueller_principal)],
     session: Annotated[Session, Depends(get_session)],
 ) -> Response:
-    """Wann und wie lange geheizt wurde, je Zone und Tag.
+    """When and for how long there was heating, per zone and day.
 
-    Im Trockenlauf ist das eine Aussage darueber, was thermoctl geheizt *haette* -- die
-    Seite sagt das auch, statt eine Zahl hinzustellen, die man fuer die Vergangenheit der
-    Anlage haelt.
+    In the dry run this is a statement about what thermoctl *would have* heated -- the
+    page says so too, instead of just putting up a number that could be mistaken for
+    the plant's actual history.
     """
     require(principal, "zone.read")
     zones = visible_zones(session, principal, "zone.read")
@@ -257,9 +258,9 @@ async def show_statistics(
         bis,
         cycle_seconds=zeile.shadow_interval_seconds,
     )
-    # Der laengste Tageswert ueberhaupt bestimmt die Hoehe der Balken. Je Zone zu
-    # skalieren waere bequemer zu lesen und faelscht den Vergleich zwischen Zonen --
-    # und genau der ist der Grund, warum die Zonen untereinander stehen.
+    # The single longest day value determines the height of the bars. Scaling per
+    # zone would be more comfortable to read and would falsify the comparison
+    # between zones -- and that comparison is exactly why the zones are stacked.
     maximum = max(
         (t.seconds for stat in values.values() for t in stat.days), default=0
     )

@@ -21,23 +21,22 @@ MINUTES_PER_WEEK = 7 * 24 * 60
 
 @dataclass(frozen=True)
 class Setpoint:
-    """Das Ergebnis samt Begruendung — Grundsatz 5 aus CLAUDE.md."""
+    """The result together with its reasoning — principle 5 from CLAUDE.md."""
 
     temperature_c: Decimal
     grund: str
     mode_code: str | None
-    # Der Modus, dessen hinterlegte Temperatur gerade gilt -- None, wenn der Sollwert
-    # nicht aus einem Modus kommt (feste Uebersteuerung). Die Oberflaeche braucht ihn
-    # fuer das Thermostat auf der Startseite: Wer dort verstellt, verstellt *diesen*
-    # Modus und nicht "jetzt gerade".
+    # The mode whose stored temperature currently applies -- None if the setpoint does
+    # not come from a mode (fixed override). The interface needs it for the thermostat
+    # on the start page: whoever adjusts it there adjusts *this* mode, not "right now".
     mode_id: int | None = None
 
 
-# Bewusst NICHT `frozen=True`: Python haengt einer Ausnahme beim Werfen ihren
-# Traceback an, und eine eingefrorene Dataclass verweigert genau das. Der Fehler
-# faellt erst auf, wenn die Ausnahme tief genug durchgereicht wird — bei uns durch
-# die Abhaengigkeitsaufloesung von FastAPI — und aeussert sich dann als
-# `FrozenInstanceError` statt als der Fehler, den man sucht.
+# Deliberately NOT `frozen=True`: Python attaches a traceback to an exception when it
+# is raised, and a frozen dataclass refuses exactly that. The bug only surfaces once
+# the exception is passed far enough — in our case through FastAPI's dependency
+# resolution — and then shows up as `FrozenInstanceError` instead of the error you are
+# actually looking for.
 @dataclass
 class ScheduleError(Exception):
     feld: str
@@ -46,24 +45,24 @@ class ScheduleError(Exception):
 
 @dataclass(frozen=True)
 class DaySegment:
-    """Ein durchgehender, an einer Tagesgrenze abgeschnittener Zeitplanbalken."""
+    """A contiguous schedule bar, cut off at a day boundary."""
 
     weekday: int
     start_minute: int
     endminute: int
     mode_name: str
-    # Die Kennung des geltenden Modus. Die Oberflaeche loest darueber die
-    # Solltemperatur auf -- ohne sie liesse sich der Tagesplan nur benennen, nicht als
-    # Waerme darstellen.
+    # The id of the mode currently in effect. The interface resolves the setpoint
+    # through it -- without it, the day plan could only be named, not rendered as
+    # heat.
     mode_id: int = 0
-    # Der Punkt, der diesen Balken beginnt -- None fuer den Rest, der vom Vortag
-    # hereinragt. Die Oberflaeche braucht ihn, um einen Balken ziehen zu koennen;
-    # ein Balken ohne eigenen Punkt gehoert einem anderen Tag und bleibt fest.
+    # The point that starts this bar -- None for the remainder carrying over from the
+    # previous day. The interface needs it to be able to drag a bar; a bar without its
+    # own point belongs to another day and stays fixed.
     point_id: int | None = None
 
 
-# Nur fuer den lesbaren Audit-Text. Die Beschriftung der Oberflaeche steht in der
-# Ansicht; hier geht es um einen Eintrag, der in Wochen noch verstaendlich sein soll.
+# Only for the readable audit text. The interface's labeling lives in the view; here
+# it is about an entry that should still be understandable weeks later.
 _DAYS = {1: "Mo", 2: "Di", 3: "Mi", 4: "Do", 5: "Fr", 6: "Sa", 7: "So"}
 
 
@@ -72,7 +71,7 @@ def _label_for(weekday: int, minute: int) -> str:
 
 
 def time_of_day_in_minutes(time_of_day: str) -> int:
-    """Wandelt lokale `HH:MM`-Formulareingaben in die DB-Darstellung um."""
+    """Converts local `HH:MM` form input into the DB representation."""
     teile = time_of_day.strip().split(":")
     if len(teile) != 2 or not all(teil.isdigit() for teil in teile):
         raise ScheduleError("time_of_day", "Bitte eine gültige Uhrzeit eingeben.")
@@ -85,7 +84,7 @@ def time_of_day_in_minutes(time_of_day: str) -> int:
 def week_segments(
     points: list[SchedulePoint], mode_names: dict[int, str]
 ) -> list[DaySegment]:
-    """Zerlegt den Wochenring in Balken, ohne den Ring an Montag 00:00 aufzubrechen."""
+    """Splits the weekly ring into bars, without breaking the ring at Monday 00:00."""
     if not points:
         return []
     sortiert = sorted(points, key=_point_minute)
@@ -121,11 +120,12 @@ def week_segments(
 
 
 def _moment_taken(session: Session, zone_id: int, weekday: int, minute: int) -> bool:
-    """Eigene Funktion statt einer eingebetteten Abfrage — wie bei den Zonennamen.
+    """Its own function instead of an embedded query — same as with the zone names.
 
-    Damit laesst sich der Wettlauf pruefen, den die Bedingung dahinter abfaengt: Sagt die
-    Vorpruefung 'frei', weil eine gleichzeitige Anfrage denselben Zeitpunkt gerade belegt
-    hat, muss der `IntegrityError` zu einer verstaendlichen Meldung werden statt zu 500.
+    This makes the race condition testable that the check right after it guards
+    against: if the pre-check says 'free' because a concurrent request has just
+    claimed the same slot, the `IntegrityError` must turn into an understandable
+    message instead of a 500.
     """
     return (
         session.scalar(
@@ -197,14 +197,14 @@ def move_schedule_point(
     token_id: int | None = None,
     source: str = "web",
 ) -> SchedulePoint:
-    """Setzt einen vorhandenen Punkt auf einen anderen Zeitpunkt.
+    """Moves an existing point to a different time.
 
-    Fachlich dasselbe wie Loeschen und neu Anlegen, aber als ein Vorgang: Der Punkt
-    behaelt seine Kennung, das Audit-Protokoll zeigt eine Verschiebung statt zweier
-    unzusammenhaengender Eintraege, und zwischendurch entsteht keine Luecke im Plan.
+    Functionally the same as deleting and recreating it, but as one operation: the
+    point keeps its id, the audit log shows a move instead of two unrelated entries,
+    and no gap appears in the plan in between.
 
-    Die Kollisionspruefung ist dieselbe Funktion wie beim Anlegen -- zwei eigene
-    Pruefungen waeren zwei, die auseinanderlaufen koennen.
+    The collision check is the same function used at creation -- two separate checks
+    would be two that can drift apart.
     """
     if not 1 <= weekday <= 7:
         raise ScheduleError("weekday", "Bitte einen Wochentag auswählen.")
@@ -267,16 +267,16 @@ def delete_schedule_point(
 def adopt_schedule(
     session: Session,
     ziel: Zone,
-    # `vorlage` und nicht `quelle`: Der Name `quelle` steht im ganzen Projekt fuer die
-    # Herkunft eines Audit-Eintrags (web, api, mcp). Zwei Bedeutungen in einer Signatur
-    # waeren eine Falle fuer den naechsten Aufrufer.
+    # `vorlage` and not `quelle`: throughout the project, the name `quelle` stands for
+    # the origin of an audit entry (web, api, mcp). Two meanings in one signature would
+    # be a trap for the next caller.
     vorlage: Zone,
     *,
     user_id: int | None,
     token_id: int | None = None,
     source: str = "web",
 ) -> None:
-    """Ersetzt den Zielplan atomar durch unabhängige Kopien des Quellplans."""
+    """Replaces the target plan atomically with independent copies of the source plan."""
     source_points = list(
         session.scalars(
             select(SchedulePoint).where(SchedulePoint.zone_id == vorlage.id)
@@ -318,10 +318,11 @@ def _point_minute(point: SchedulePoint) -> int:
 def current_point(
     points: list[SchedulePoint], moment: datetime
 ) -> SchedulePoint | None:
-    """Der letzte Punkt vor oder genau auf dem Zeitpunkt.
+    """The last point before or exactly at the given time.
 
-    Die Woche ist ein Ring: liegt kein Punkt davor, gilt der letzte der Woche. Deshalb
-    kann es weder Luecken noch Ueberlappungen geben, solange ueberhaupt ein Punkt da ist.
+    The week is a ring: if no point lies before it, the last point of the week
+    applies. So there can be neither gaps nor overlaps, as long as at least one point
+    exists at all.
     """
     if not points:
         return None
@@ -331,7 +332,7 @@ def current_point(
 
 
 def next_point(points: list[SchedulePoint], moment: datetime) -> datetime | None:
-    """Wann der naechste Schaltpunkt faellt — Grundlage fuer 'bis zur naechsten Schaltung'."""
+    """When the next schedule point falls — the basis for 'until the next switch'."""
     if not points:
         return None
     now = _week_minute(moment)
@@ -354,19 +355,19 @@ def create_override(
     token_id: int | None = None,
     source: str = "web",
 ) -> ZoneOverride:
-    """Legt eine konkrete Uebersteuerung an; Web, API und MCP teilen diese Mutation.
+    """Creates a concrete override; web, API and MCP share this mutation.
 
-    Die Temperaturgrenze wird **hier** geprueft und nicht im Adapter. Bis zum
-    Abschlussreview stand sie dreimal verschieden da: die Oberflaeche prueft von Hand ohne
-    Nachkommastellen, die REST-Schnittstelle ueber ihr Schema — und der MCP-Server gar
-    nicht. Ein Werkzeug haette dort `temperature_c=99` anlegen koennen, und dieser Wert
-    fliesst in Teilprojekt 4 ungefiltert in die scharfe Regelentscheidung. Eine
-    Eingabegrenze, die von der Wahl des Adapters abhaengt, ist keine.
+    The temperature bound is checked **here** and not in the adapter. Until the final
+    review it appeared three different ways: the interface checked by hand with no
+    decimal places, the REST interface through its schema — and the MCP server not at
+    all. A tool could have created `temperature_c=99` there, and that value flows
+    unfiltered into the armed control decision in sub-project 4. An input bound that
+    depends on which adapter you chose is not a bound at all.
     """
     temperature_c = check_temperature(temperature_c)
-    # Frueher fest "api", auch wenn die Uebersteuerung aus der Oberflaeche kam: Die
-    # Spalte `zone_override.source_id` beantwortet die Frage "worueber wurde das
-    # eingestellt", und sie beantwortete sie fuer zwei von drei Adaptern falsch.
+    # Used to be hardcoded to "api" even when the override came from the interface:
+    # the `zone_override.source_id` column answers the question "how was this set",
+    # and it answered it wrongly for two out of three adapters.
     source_id = session.scalar(select(ActorSource.id).where(ActorSource.code == source))
     if source_id is None:
         raise ValueError(f"Unbekannte Quelle {source!r}")
@@ -385,7 +386,7 @@ def create_override(
 
 
 def cancel_override(session: Session, zone: Zone) -> ZoneOverride | None:
-    """Beendet die juengste noch aktive Uebersteuerung, ohne Historie zu loeschen."""
+    """Ends the most recent still-active override, without deleting history."""
     entry = session.scalars(
         select(ZoneOverride)
         .where(ZoneOverride.zone_id == zone.id, ZoneOverride.cancelled_at.is_(None))
@@ -397,11 +398,11 @@ def cancel_override(session: Session, zone: Zone) -> ZoneOverride | None:
 
 
 def temperature_for_mode(session: Session, zone: Zone, mode_id: int) -> Decimal | None:
-    """Die fuer diese Zone hinterlegte Temperatur eines Modus, oder None.
+    """The temperature stored for this zone for a mode, or None.
 
-    Oeffentlich, weil das Thermostat der Startseite denselben Wert braucht, um eine
-    halbe Stufe darauf zu rechnen -- und weil ein Unterstrich, den drei Module
-    ignorieren, kein Schutz ist, sondern nur eine falsche Auskunft.
+    Public, because the thermostat on the start page needs the same value to add half
+    a step to it -- and because an underscore that three modules ignore anyway is not
+    protection, only a false signal.
     """
     return session.scalar(
         select(ZoneSetpoint.temperature_c).where(
@@ -411,10 +412,10 @@ def temperature_for_mode(session: Session, zone: Zone, mode_id: int) -> Decimal 
 
 
 def resolved_setpoint(session: Session, zone: Zone, now_utc: datetime) -> Setpoint:
-    """Welcher Sollwert gerade gilt, und warum.
+    """Which setpoint currently applies, and why.
 
-    Rangfolge: Betriebsart 'off' schlaegt alles, dann eine laufende Uebersteuerung,
-    dann der Zeitplan, zuletzt der Frostschutz.
+    Precedence: operating mode 'off' beats everything, then a running override, then
+    the schedule, and last of all frost protection.
     """
     settings = session.get(Setting, 1)
     assert settings is not None, "setting-Zeile fehlt — Einrichtung unvollstaendig"
@@ -432,10 +433,10 @@ def resolved_setpoint(session: Session, zone: Zone, now_utc: datetime) -> Setpoi
             ZoneOverride.cancelled_at.is_(None),
             ZoneOverride.starts_at <= now_utc,
         )
-        # `id` als zweites Merkmal: MariaDB legt DATETIME sekundengenau ab. Zwei
-        # Uebersteuerungen derselben Sekunde -- etwa eine, die eine andere ersetzt --
-        # haetten sonst denselben Zeitstempel, und welche gilt, entschiede die
-        # Datenbank nach Gutduenken.
+        # `id` as a second criterion: MariaDB stores DATETIME with second precision.
+        # Two overrides within the same second -- say, one replacing another -- would
+        # otherwise share the same timestamp, and which one applies would be decided
+        # by the database at its own discretion.
         .order_by(ZoneOverride.created_at.desc(), ZoneOverride.id.desc())
     ).first()
     if running is not None and (running.ends_at is None or running.ends_at > now_utc):
@@ -452,8 +453,8 @@ def resolved_setpoint(session: Session, zone: Zone, now_utc: datetime) -> Setpoi
                 temp, f"Uebersteuerung auf Modus {code}", code, running.setpoint_mode_id
             )
 
-    # Zeitplaene stehen in lokaler Zeit, damit sich die Nachtabsenkung bei der
-    # Zeitumstellung nicht verschiebt.
+    # Schedules are stored in local time, so the night setback does not shift when
+    # clocks change for daylight saving.
     lokal = now_utc.replace(tzinfo=ZoneInfo("UTC")).astimezone(
         ZoneInfo(settings.timezone)
     )
@@ -478,19 +479,19 @@ def resolved_setpoint(session: Session, zone: Zone, now_utc: datetime) -> Setpoi
 def end_of_next_switch(
     session: Session, zone: Zone, now_utc: datetime | None = None
 ) -> datetime | None:
-    """Wann die naechste Schaltung faellt, als naive UTC — oder None ohne Zeitplan.
+    """When the next schedule change falls, as naive UTC — or None without a schedule.
 
-    Liegt hier und nicht im Adapter, weil Oberflaeche und REST-Schnittstelle beide danach
-    fragen. Bis zum Abschlussreview von Teilprojekt 3 stand die Rechnung zweimal da, in
-    beiden Adaptern getrennt: Eine spaetere Korrektur an der Zeitzonenbehandlung waere in
-    einem Pfad nachgezogen und im anderen vergessen worden, und dieselbe Zone haette je
-    nach Weg ein anderes Ende bekommen.
+    Lives here and not in the adapter, because both the interface and the REST
+    interface ask for it. Until the final review of sub-project 3, the computation
+    appeared twice, separately in both adapters: a later fix to timezone handling
+    would have been applied to one path and forgotten in the other, and the same zone
+    would have gotten a different end depending on which way it was reached.
 
-    `jetzt_utc` ist ausdruecklich angebbar, weil der Boost beides zugleich braucht: den
-    Punkt, der als Naechstes kaeme, *und* seinen Zeitpunkt. Griff diese Funktion dabei
-    zur echten Uhr, waehrend der Aufrufer mit einem uebergebenen Zeitpunkt rechnet,
-    bezoegen sich beide Haelften auf verschiedene Augenblicke -- die Uebersteuerung
-    endete dann irgendwann, nur nicht an ihrem Schaltpunkt.
+    `jetzt_utc` can be explicitly supplied because boost needs both at once: the point
+    that would come next, *and* its point in time. If this function reached for the
+    real clock while the caller was computing against a supplied moment, the two
+    halves would refer to different instants -- the override would then end at some
+    point, just not at its actual schedule point.
     """
     settings = session.get(Setting, 1)
     timezone_name = ZoneInfo(settings.timezone if settings is not None else "Europe/Berlin")

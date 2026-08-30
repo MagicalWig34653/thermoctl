@@ -2,6 +2,27 @@
 
 Letzte Aktualisierung: 2026-08-30
 
+## Der Code spricht Englisch — die Prosa zur Hälfte
+
+Bezeichner, Modul- und Testdateinamen, Web-Endpunkte, MQTT-Topics, MCP-Werkzeuge und
+Formularfelder sind englisch. **Der sichtbare Text bleibt deutsch** — nachgewiesen, nicht
+behauptet: Ein Vergleich aller Zeichenkettenliterale vor und nach der Umstellung zeigt
+unter `thermoctl/` **keine einzige** Änderung. Was sich geändert hat, sind Assertion-Texte
+in `tests/`.
+
+Kommentare und Docstrings sind übersetzt. **Was noch aussteht:** rund 300 der 730
+Testnamen sind weiterhin deutsch; der Lauf brach an einem Ausgabelimit des Kontos ab.
+Das ist Kosmetik und kein Mangel an Zusicherung — die Tests prüfen dasselbe wie vorher.
+Wer weitermacht, findet die betroffenen Dateien mit
+
+```
+grep -lE "^def test_.*(_wird_|_werden_|_nicht_|_kein|_ohne_|_mit_)" tests/*.py
+```
+
+Ebenfalls offen: `user_passkey.bezeichnung`, `passkey_challenge.zeremonie` und das Dict
+`NAMENSKONVENTION` in `db/base.py` sind deutsche Bezeichner im sonst englischen Schema.
+Die beiden Spalten brauchen eine Migration.
+
 ## Konfigurierbare Bediengeräte
 
 Zigbee2MQTT-Merkmale aus `bridge/devices` werden jetzt mit Zugriff, Typ, Einheit,

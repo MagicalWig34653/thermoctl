@@ -1,20 +1,20 @@
-"""Der Betriebszustand der Anlage: scharf oder Trockenlauf, und die globalen Vorgaben.
+"""The plant's operating state: armed or dry run, and the global defaults.
 
-Zwei Dinge stehen hier, die vorher nirgends bedienbar waren:
+Two things live here that used to be operable nowhere at all:
 
-* **Scharfschalten.** `setting.control_armed` war bisher ein Feld, das niemand setzen
-  konnte -- der Riegel des Trockenlaufs, aber ohne Schluessel. Wer die Anlage in Betrieb
-  nehmen will, musste ihn in der Datenbank umlegen. Das ist jetzt eine Bedienhandlung
-  mit eigenem Recht, eigenem Audit-Eintrag und einer Begruendung, die mitgeschrieben wird.
-* **Die globalen Vorgaben**, von denen jede Zone erbt, die nichts eigenes gesetzt hat.
+* **Arming.** `setting.control_armed` used to be a field that nobody could set -- the
+  dry run's bolt, but without a key. Whoever wanted to bring the plant into operation
+  had to flip it in the database by hand. This is now an operator action with its own
+  permission, its own audit entry, and a reason that gets recorded along with it.
+* **The global defaults** that every zone inherits from unless it has set its own.
 
-Beides liegt in der Domaene und nicht in der Weboberflaeche, damit REST und MCP dieselbe
-Pruefung benutzen und nicht jeweils eine eigene, leicht andere.
+Both live in the domain and not in the web interface, so that REST and MCP use the same
+check instead of each having their own, slightly different one.
 
-**Der zweite Riegel bleibt unberuehrt.** `MqttClient(schalten_erlaubt=...)` wird beim Bau
-des Clients gesetzt und nicht von hier. Scharfschalten allein laesst also noch nichts
-senden -- es hebt nur den Riegel, den die Datenbank haelt. Das ist Absicht: Ein einzelner
-falscher Klick soll die Heizung nicht in Bewegung setzen koennen.
+**The second bolt is left untouched.** `MqttClient(schalten_erlaubt=...)` is set when the
+client is built, not from here. Arming alone therefore still does not send anything -- it
+only lifts the bolt the database holds. That is deliberate: a single wrong click must not
+be able to set the heating in motion.
 """
 
 from dataclasses import dataclass
@@ -28,23 +28,23 @@ from thermoctl.db.models.operations import Setting
 
 @dataclass
 class ControlError(Exception):
-    """Eine abzuweisende Eingabe, kein Fehler des Dienstes.
+    """An input to be rejected, not a fault of the service.
 
-    Nicht eingefroren: Python haengt einer Ausnahme beim Werfen ihren Traceback an, und
-    eine eingefrorene Dataclass verweigert das.
+    Not frozen: Python attaches a traceback to an exception when it is raised, and a
+    frozen dataclass refuses exactly that.
     """
 
     feld: str
     notice: str
 
-    def __str__(self) -> str:  # pragma: no cover - Anzeige, nicht Logik
+    def __str__(self) -> str:  # pragma: no cover - display, not logic
         return self.notice
 
 
-# Untergrenzen, nicht Geschmack: Ein Regelzyklus von null Sekunden ist eine Endlosschleife,
-# eine Mindestschaltdauer von null Sekunden ist genau der Defekt des Altsystems (Takten am
-# Sollwert), und eine Hysterese von null Kelvin ebenso. Obergrenzen halten Zahlen fern, die
-# nur durch einen Tippfehler entstehen koennen.
+# Lower bounds are not a matter of taste: a control cycle of zero seconds is an infinite
+# loop, a minimum switch duration of zero seconds is exactly the legacy system's defect
+# (cycling at the setpoint), and a hysteresis of zero kelvin is the same problem. Upper
+# bounds keep out numbers that can only arise from a typo.
 LIMITS: dict[str, tuple[Decimal, Decimal]] = {
     "polling_interval_seconds": (Decimal(5), Decimal(3600)),
     "shadow_interval_seconds": (Decimal(5), Decimal(3600)),
@@ -69,22 +69,23 @@ LABELS: dict[str, str] = {
     "session_lifetime_seconds": "Sitzungsdauer (Sekunden)",
 }
 
-# Welche Felder ganzzahlig sind. Der Rest ist eine Dezimalzahl.
+# Which fields are integer-valued. The rest are decimal numbers.
 GANZZAHLIG = frozenset(LIMITS) - {"default_hysteresis_k"}
 
 
 def settings(session: Session) -> Setting:
     zeile = session.get(Setting, 1)
-    if zeile is None:  # pragma: no cover - nur bei unvollstaendiger Einrichtung
+    if zeile is None:  # pragma: no cover - only on incomplete setup
         raise ControlError("", "Die Einrichtung ist unvollständig.")
     return zeile
 
 
 def check_zahl(feld: str, eingabe: str) -> Decimal:
-    """Prueft einen einzelnen Wert gegen seine Grenzen.
+    """Checks a single value against its bounds.
 
-    Eigene Funktion, weil dieselbe Pruefung aus der Oberflaeche, aus REST und aus MCP
-    kommt -- und weil eine Grenze, die an drei Stellen steht, an drei Stellen abweicht.
+    Its own function, because the same check is called from the interface, from REST
+    and from MCP -- and because a bound that lives in three places drifts in three
+    places.
     """
     text = eingabe.strip().replace(",", ".")
     if not text:
@@ -117,11 +118,11 @@ def save_settings(
     token_id: int | None = None,
     source: str = "web",
 ) -> None:
-    """Uebernimmt die globalen Vorgaben, nachdem **alle** Werte geprueft sind.
+    """Applies the global defaults after **all** values have been checked.
 
-    Erst pruefen, dann schreiben: Sonst bliebe bei einer abgelehnten Eingabe im dritten
-    Feld eine halb uebernommene Einstellung stehen -- derselbe Fehler, der die
-    Einrichtung schon einmal halb angelegt hinterlassen hat.
+    Check first, then write: otherwise a rejected input in the third field would leave
+    a half-applied setting behind -- the same bug that once left the setup itself
+    half-created.
     """
     if not timezone_name.strip():
         raise ControlError("timezone", "Bitte eine Zeitzone angeben.")
@@ -152,12 +153,12 @@ def arm(
     token_id: int | None = None,
     source: str = "web",
 ) -> bool:
-    """Legt den Riegel um, den die Datenbank haelt. Gibt zurueck, ob sich etwas aenderte.
+    """Flips the bolt the database holds. Returns whether anything actually changed.
 
-    Die Begruendung ist Pflicht beim Scharfschalten und freiwillig beim Zurueckdrehen:
-    Wer die Anlage aus der Hand gibt, soll spaeter nachlesen koennen, worauf er sich
-    dabei verlassen hat. Zurueck in den Trockenlauf soll dagegen nie an einer Formalie
-    scheitern -- das ist der Weg, den jemand in Eile geht.
+    The reason is mandatory when arming and optional when disarming: whoever hands the
+    plant over to be operated should be able to look up later what they relied on when
+    doing so. Going back to the dry run, on the other hand, should never fail on a
+    formality -- that is the path someone takes in a hurry.
     """
     if armed and not reason.strip():
         raise ControlError(

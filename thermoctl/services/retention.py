@@ -11,7 +11,7 @@ log = logging.getLogger(__name__)
 
 
 def delete_old_measurements(session: Session, now: datetime, *, blockgroesse: int = 5000) -> int:
-    """Loescht abgelaufene Messwerte in kurzen, datenbankagnostischen Bloecken."""
+    """Deletes expired measurements in short, database-agnostic blocks."""
     if blockgroesse <= 0:
         raise ValueError("Blockgroesse muss groesser als null sein")
     settings = session.get(Setting, 1)

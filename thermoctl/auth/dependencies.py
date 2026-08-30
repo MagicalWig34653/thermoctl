@@ -15,10 +15,10 @@ _NICHT_ANGEMELDET = "Nicht angemeldet"
 
 
 def get_session(request: Request) -> Iterator[Session]:
-    """Liefert eine Datenbank-Sitzung fuer die Dauer der Anfrage.
+    """Provides a database session for the duration of the request.
 
-    Wird committet, wenn die Anfrage ohne Fehler durchlaeuft, sonst zurueckgerollt. Der
-    Session-Factory sitzt auf ``app.state`` — ``create_app()`` legt sie beim Start an.
+    Committed if the request runs through without error, otherwise rolled back. The
+    session factory sits on ``app.state`` — ``create_app()`` sets it up on startup.
     """
     factory = request.app.state.session_factory
     http_session = factory()
@@ -35,11 +35,11 @@ def get_session(request: Request) -> Iterator[Session]:
 def aktueller_principal(
     request: Request, session: Annotated[Session, Depends(get_session)]
 ) -> Principal:
-    """FastAPI-Abhaengigkeit fuer geschuetzte Routen: loest das Sitzungscookie auf.
+    """FastAPI dependency for protected routes: resolves the session cookie.
 
-    Fehlt das Cookie, ist es unbekannt, abgelaufen oder widerrufen, oder ist der
-    zugehoerige Benutzer inaktiv, antwortet das einheitlich mit 401 — dieselbe Antwort
-    fuer jeden dieser Faelle, aus demselben Grund wie bei der Anmeldung selbst.
+    If the cookie is missing, unknown, expired or revoked, or the associated user is
+    inactive, this responds uniformly with 401 — the same response for every one of
+    these cases, for the same reason as for the login itself.
     """
     cookie_value = request.cookies.get(COOKIE_NAME)
     if cookie_value is None:
@@ -53,35 +53,36 @@ def aktueller_principal(
     if user is None or not user.is_active:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=_NICHT_ANGEMELDET)
 
-    # Fuer die Kopfleiste, die auf jeder Seite den angemeldeten Namen tragen soll (siehe
-    # `_angemeldeter_benutzer` in thermoctl/web/__init__.py). Hier hinterlegt statt in
-    # jeder Ansicht: Sonst traegt die Leiste den Namen genau dort, wo eine Ansicht daran
-    # gedacht hat.
+    # For the header bar, which should carry the logged-in name on every page (see
+    # `_angemeldeter_benutzer` in thermoctl/web/__init__.py). Set here rather than in
+    # every view: otherwise the bar carries the name only where some view happened to
+    # think of it.
     request.state.user = user
     return principal_for_user(session, user)
 
 
-# Sichere Methoden aendern nichts und brauchen deshalb keinen CSRF-Nachweis. Ohne
-# diese Ausnahme koennte `csrf_schutz` nicht an einem ganzen Router haengen — jeder
-# gewoehnliche Seitenaufruf aus dem Browser schickt das Cookie, aber keinen Header.
+# Safe methods change nothing and therefore need no CSRF proof. Without this
+# exception, `csrf_schutz` could not be hung on an entire router — every ordinary
+# page request from the browser sends the cookie, but no header.
 _SICHERE_METHODEN = frozenset({"GET", "HEAD", "OPTIONS", "TRACE"})
 
 
 def csrf_schutz(request: Request) -> None:
-    """Gemeinsame Abhaengigkeit fuer jede zustandsaendernde Route der Oberflaeche.
+    """Shared dependency for every state-changing route of the UI.
 
-    Traegt die Anfrage ein Sitzungscookie, muss sie den passenden ``X-CSRF-Token``-Header
-    mitbringen — auch dann, wenn gar keiner mitgeschickt wurde. Ein Schutz, der sich durch
-    Weglassen des Headers umgehen liesse, waere keiner.
+    If the request carries a session cookie, it must bring the matching
+    ``X-CSRF-Token`` header — even when none was sent at all. A protection that could
+    be bypassed simply by omitting the header would be no protection at all.
 
-    Ohne Sitzungscookie greift der Schutz nicht: Dann gibt es nichts, was ein fremder
-    Ursprung unbemerkt mitschicken koennte. Das betrifft die Anmeldung selbst und die
-    Einrichtung, die ueber das Einmal-Token abgesichert ist, sowie die REST-API, die
-    ausschliesslich Bearer-Tokens auswertet.
+    Without a session cookie the protection does not apply: there is then nothing
+    that a foreign origin could send along unnoticed. This covers the login itself
+    and setup, which is secured via the one-time token, as well as the REST API,
+    which only ever evaluates bearer tokens.
 
-    Haengt als ``dependencies=[Depends(csrf_schutz)]`` am Router, nicht an der einzelnen
-    Route: Eine spaeter ergaenzte Route ist damit von sich aus geschuetzt, statt dass
-    jemand daran denken muss. `tests/test_csrf.py` haelt das nach.
+    Hung as ``dependencies=[Depends(csrf_schutz)]`` on the router, not on the
+    individual route: a route added later is thereby protected automatically,
+    instead of relying on someone remembering to do it. `tests/test_csrf.py` checks
+    this.
     """
     if request.method in _SICHERE_METHODEN:
         return

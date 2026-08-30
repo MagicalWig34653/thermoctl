@@ -19,7 +19,7 @@ from thermoctl.db.models.zone import SetpointMode
 
 log = logging.getLogger(__name__)
 
-# Beispiele, nach der Einrichtung frei aenderbar. Leere Liste heisst 'alle Rechte'.
+# Examples, freely changeable after setup. Empty list means 'all permissions'.
 EXAMPLE_GROUPS: dict[str, list[str]] = {
     "Verwaltung": [],
     "Bedienung": ["zone.read", "setpoint.write", "override.create", "override.cancel",
@@ -36,10 +36,10 @@ def einrichtung_noetig(session: Session) -> bool:
 
 
 def setup_token_erzeugen(session: Session) -> str:
-    """Erzeugt ein Einmal-Token, legt seinen Hash ab und gibt den Klartext zurueck.
+    """Generates a one-time token, stores its hash, and returns the plaintext.
 
-    Der Aufrufer schreibt ihn ins Log. Ohne diesen Schutz gewinnt im unguenstigen Fall
-    der Erste im Netz, der die Einrichtungsseite findet.
+    The caller writes it to the log. Without this protection, in the unfavorable
+    case, whoever finds the setup page first on the network wins.
     """
     plaintext = new_secret()
     session.add(SetupToken(token_hash=hash_secret(plaintext)))
@@ -51,7 +51,7 @@ def einrichtung_durchfuehren(
     session: Session, *, username: str, display_name: str, password: str,
     timezone_name: str, token: str,
 ) -> User:
-    """Legt den ersten Verwalter, die Beispielgruppen und die Einstellungszeile an."""
+    """Creates the first administrator, the example groups, and the settings row."""
     if not einrichtung_noetig(session):
         raise PermissionError("Die Einrichtung ist bereits abgeschlossen.")
     marker = session.scalar(
@@ -63,9 +63,9 @@ def einrichtung_durchfuehren(
     if marker is None:
         raise PermissionError("Ungueltiges oder verbrauchtes Einrichtungs-Token.")
 
-    # Korrigierbare Eingaben werden geprueft, bevor Teile der Einrichtung angelegt
-    # werden. Die View faengt PasswordTooShort bewusst ab; spaetere Schreibzugriffe
-    # duerfen deshalb nicht versehentlich als erfolgreicher Request committet werden.
+    # Correctable input is validated before any part of the setup is created. The
+    # view deliberately catches PasswordTooShort; later writes must therefore not
+    # accidentally get committed as if the request had succeeded.
     password_hash = hash_password(password)
 
     for code, name, reihenfolge in BUILTIN_MODES:
@@ -96,8 +96,8 @@ def einrichtung_durchfuehren(
     )
 
     frost = session.scalar(select(SetpointMode).where(SetpointMode.code == "frostschutz"))
-    # Kann nach der Anlage der EINGEBAUTE_MODI oben nicht None sein -- nur fuer mypy
-    # strict, das den Rueckgabetyp von `scalar()` nicht enger kennt.
+    # Cannot be None after BUILTIN_MODES is created above -- only here for mypy
+    # strict, which doesn't know a narrower return type for `scalar()`.
     assert frost is not None
     session.add(Setting(id=1, timezone=timezone_name, frost_protection_mode_id=frost.id))
 

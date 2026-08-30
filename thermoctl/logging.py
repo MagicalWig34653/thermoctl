@@ -1,21 +1,21 @@
-"""Strukturiertes Logging mit Maskierung sensibler Zusatzfelder.
+"""Structured logging with masking of sensitive extra fields.
 
-Projektregel: Geheimnisse gehoeren ausschliesslich in strukturierte Zusatzfelder
-(``extra={...}``), niemals in den Meldungstext. Die Maskierung hier wirkt nur auf
-diese Zusatzfelder — sowohl ueber ``MaskierungsFilter`` (wirkt in jedem Ausgabeformat)
-als auch zusaetzlich ueber ``JsonFormatter`` (wirkt nur bei JSON-Ausgabe, redundant
-zum Filter). Der Meldungstext selbst (``record.getMessage()``) ist zum Zeitpunkt der
-Ausgabe bereits fertig formatierter Text und kann nicht mehr rueckwirkend maskiert
-werden — ``log.info("passwort=%s", geheim)`` bleibt also sichtbar. Wer ein Geheimnis
-loggen will, muss es als Zusatzfeld uebergeben, nie in die Meldung interpolieren.
+Project rule: secrets belong exclusively in structured extra fields (``extra={...}``),
+never in the message text. The masking here only acts on these extra fields -- both
+via ``MaskierungsFilter`` (works in every output format) and additionally via
+``JsonFormatter`` (works only for JSON output, redundant with the filter). The message
+text itself (``record.getMessage()``) is already fully formatted text by the time of
+output and can no longer be masked retroactively -- so ``log.info("password=%s",
+secret)`` stays visible. Whoever wants to log a secret must pass it as an extra field,
+never interpolate it into the message.
 
-Einzige bewusste Ausnahme von dieser Regel im gesamten Projekt: ``create_app()`` in
-``thermoctl/app.py`` interpoliert das frisch erzeugte Setup-Token direkt in den
-Meldungstext, statt es als Zusatzfeld zu uebergeben. Das ist der einzige Kanal, ueber
-den der Betreiber beim Erststart an dieses Einmal-Token kommt. Wer hier spaeter ein
-``extra={"setup_token": ...}`` daraus macht, weil das "sauberer" aussieht, schaltet
-die Ausgabe des Tokens ab: Das Segment "token" traegt es sofort in ``KERNBEGRIFFE``.
-Das ist kein Fehler, sondern Absicht — nicht "reparieren".
+The single deliberate exception to this rule in the whole project: ``create_app()`` in
+``thermoctl/app.py`` interpolates the freshly generated setup token directly into the
+message text instead of passing it as an extra field. That is the only channel through
+which the operator gets this one-time token on first startup. Whoever later turns this
+into ``extra={"setup_token": ...}`` because it looks "cleaner" disables the token's
+output: the segment "token" immediately carries it into ``KERNBEGRIFFE``. That is not a
+bug, it is intentional -- do not "fix" it.
 """
 
 import json
@@ -30,11 +30,11 @@ from thermoctl.config import Settings
 
 request_id_var: ContextVar[str | None] = ContextVar("request_id", default=None)
 
-# Kernbegriffe statt exakter Schluessel: ein Schluessel gilt als sensibel, wenn
-# eines seiner Segmente (siehe _segmentiere_schluessel) exakt einem dieser
-# Kernbegriffe entspricht. Das erfasst zusammengesetzte Namen wie
-# "mqtt_password", "client_secret" oder "refresh_token", ohne "username"
-# faelschlich zu treffen — ein Nutzername ist kein Geheimnis.
+# Core terms instead of exact keys: a key counts as sensitive if one of its
+# segments (see _segmentiere_schluessel) matches one of these core terms
+# exactly. This catches compound names like "mqtt_password", "client_secret",
+# or "refresh_token", without falsely matching "username" -- a username is
+# not a secret.
 KERNBEGRIFFE = frozenset(
     {
         "password",
@@ -49,9 +49,9 @@ KERNBEGRIFFE = frozenset(
 )
 
 _TRENNZEICHEN = re.compile(r"[_\-.]")
-# Erkennt CamelCase-Uebergaenge (Kleinbuchstabe/Ziffer -> Grossbuchstabe), damit
-# z. B. "mqttPassword" ebenfalls in die Segmente "mqtt" und "password" zerlegt
-# wird statt als ein zusammenhaengendes Wort behandelt zu werden.
+# Detects CamelCase transitions (lowercase letter/digit -> uppercase letter), so
+# that e.g. "mqttPassword" is also split into the segments "mqtt" and "password"
+# instead of being treated as one contiguous word.
 _CAMELCASE_UEBERGANG = re.compile(r"(?<=[a-z0-9])(?=[A-Z])")
 
 _DEFAULT_FIELDS = frozenset(logging.LogRecord("", 0, "", 0, "", None, None).__dict__)
@@ -63,38 +63,36 @@ def _segmentiere_schluessel(schluessel: object) -> list[str]:
 
 
 def _ist_sensibel(schluessel: object) -> bool:
-    # Segmentweise exakte Pruefung statt Teilzeichenketten-Suche: ein Schluessel
-    # gilt nur als sensibel, wenn ein ganzes Segment einem Kernbegriff
-    # entspricht — nicht schon, wenn der Kernbegriff irgendwo als Teilstring
-    # vorkommt. Das vermeidet Fehlalarme wie "tokenizer", "passwordless_supported"
-    # oder "secretary_name", bei denen der Kernbegriff nur Teil eines laengeren
-    # Worts in einem Segment ist.
+    # Exact per-segment check instead of substring search: a key only counts as
+    # sensitive if a whole segment matches a core term exactly -- not already
+    # when the core term occurs somewhere as a substring. This avoids false
+    # positives like "tokenizer", "passwordless_supported", or "secretary_name",
+    # where the core term is only part of a longer word within a segment.
     #
-    # Abwaegung: Namen wie "token_count" oder "cookie_policy" haben ein eigenes
-    # Segment, das exakt einem Kernbegriff entspricht, und werden deshalb
-    # weiterhin (mit-)maskiert, obwohl sie selbst kein Geheimnis sind. Das wird
-    # bewusst in Kauf genommen: Im Zweifel lieber ein harmloses Feld zu viel
-    # schwaerzen als ein Geheimnis zu wenig.
+    # Trade-off: names like "token_count" or "cookie_policy" have their own
+    # segment that matches a core term exactly, and are therefore still (also)
+    # masked, even though they are not themselves a secret. This is deliberately
+    # accepted: when in doubt, better to redact one harmless field too many than
+    # one secret too few.
     return any(
         segment in KERNBEGRIFFE for segment in _segmentiere_schluessel(schluessel)
     )
 
 
 def mask(value: object) -> object:
-    """Ersetzt Werte unter als sensibel erkannten Schluesseln durch '***'.
+    """Replaces values under keys recognized as sensitive with '***'.
 
-    Rekursiv ueber Abbildungen und Sequenzen. Ein Schluessel gilt als sensibel,
-    wenn eines seiner Segmente (Trennzeichen '_', '-', '.' sowie CamelCase-
-    Uebergaenge, kleingeschrieben) exakt einem Kernbegriff wie "password",
-    "secret" oder "token" entspricht — siehe ``KERNBEGRIFFE``.
+    Recursive over mappings and sequences. A key counts as sensitive if one of
+    its segments (separators '_', '-', '.' as well as CamelCase transitions,
+    lowercased) matches a core term such as "password", "secret", or "token"
+    exactly -- see ``KERNBEGRIFFE``.
 
-    Wirkt ausschliesslich auf strukturierte Werte (Abbildungen, Listen, Tupel),
-    also auf das, was als ``extra=...`` an einen Log-Aufruf uebergeben wird.
-    Der bereits fertig formatierte Meldungstext eines Log-Aufrufs wird davon
-    nicht erfasst und kann es prinzipbedingt nicht werden: Ein Geheimnis, das
-    per ``log.info("passwort=%s", geheim)`` in die Meldung interpoliert wurde,
-    bleibt sichtbar. Deshalb die Projektregel: Geheimnisse immer als Zusatzfeld
-    uebergeben, nie in die Meldung schreiben.
+    Acts exclusively on structured values (mappings, lists, tuples), i.e. on
+    what is passed as ``extra=...`` to a log call. The already fully formatted
+    message text of a log call is not covered by this and cannot be in
+    principle: a secret interpolated into the message via
+    ``log.info("password=%s", secret)`` stays visible. Hence the project rule:
+    always pass secrets as an extra field, never write them into the message.
     """
     if isinstance(value, dict):
         return {
@@ -106,23 +104,23 @@ def mask(value: object) -> object:
 
 
 class MaskierungsFilter(logging.Filter):
-    """Maskiert sensible strukturierte Zusatzfelder eines Log-Datensatzes.
+    """Masks sensitive structured extra fields of a log record.
 
-    Wirkt unabhaengig vom gewaehlten Ausgabeformat (JSON oder Text), weil sie
-    als ``logging.Filter`` vor der Formatierung auf dem Datensatz selbst
-    ansetzt. Erfasst nur Felder, die zusaetzlich zu den Standardattributen
-    von ``logging.LogRecord`` per ``extra=...`` gesetzt wurden — nicht den
-    Meldungstext, siehe Modul-Docstring.
+    Works independently of the chosen output format (JSON or text), because as
+    a ``logging.Filter`` it acts on the record itself before formatting.
+    Covers only fields set in addition to the standard attributes of
+    ``logging.LogRecord`` via ``extra=...`` -- not the message text, see the
+    module docstring.
     """
 
     def filter(self, record: logging.LogRecord) -> bool:
         for schluessel, value in list(record.__dict__.items()):
             if schluessel not in _DEFAULT_FIELDS and not schluessel.startswith("_"):
-                # Der Feldname selbst entscheidet, ob maskiert wird -- mask()
-                # kann einen nackten Wert nicht beurteilen, es erkennt sensible
-                # Stellen nur anhand von Schluesseln in Abbildungen. Fuer ein
-                # oberstes Zusatzfeld wie "mqtt_password" ist der Attributname
-                # "mqtt_password" genau dieser Schluessel.
+                # The field name itself decides whether it gets masked -- mask()
+                # cannot judge a bare value, it only recognizes sensitive spots
+                # via keys within mappings. For a top-level extra field such as
+                # "mqtt_password", the attribute name "mqtt_password" is exactly
+                # that key.
                 record.__dict__[schluessel] = (
                     "***" if _ist_sensibel(schluessel) else mask(value)
                 )
@@ -149,22 +147,22 @@ class JsonFormatter(logging.Formatter):
 
 
 class TextFormatter(logging.Formatter):
-    """Textzeile mit angehaengten strukturierten Zusatzfeldern.
+    """Text line with structured extra fields appended.
 
-    Ohne diese Ergaenzung wuerden ueber ``extra=`` uebergebene Felder in der
-    Textausgabe schlicht verschwinden — im Standardformat ``%(message)s`` kommen
-    sie nicht vor. Das widerspraeche Grundsatz 5 (Debuggbarkeit ist ein Ziel).
-    Die Felder kommen hier bereits durch ``MaskierungsFilter`` maskiert an, weil
-    Filter vor Formatter laufen; die Maskierung hier ist eine zusaetzliche
-    Absicherung, keine alleinige.
+    Without this addition, fields passed via ``extra=`` would simply vanish in
+    the text output -- the standard format ``%(message)s`` does not include
+    them. That would violate principle 5 (debuggability is a goal). The fields
+    arrive here already masked by ``MaskierungsFilter``, because filters run
+    before formatters; the masking here is an additional safeguard, not the
+    only one.
     """
 
     def format(self, record: logging.LogRecord) -> str:
-        # Die Zusatzfelder werden VOR `super().format()` eingesammelt. Danach hat der
-        # Formatierer `message` und (bei einem `asctime`-Muster) `asctime` in
-        # `record.__dict__` nachgetragen — beide standen nicht in `_STANDARDFELDER`, das
-        # beim Import aus einem frischen LogRecord entsteht. Die Folge war, dass jede
-        # Textzeile ihre eigene Meldung am Ende noch einmal wiederholte:
+        # The extra fields are collected BEFORE `super().format()`. Afterwards the
+        # formatter has added `message` and (with an `asctime` pattern) `asctime` to
+        # `record.__dict__` -- neither was in `_STANDARDFELDER`, which is built from a
+        # fresh LogRecord at import time. The consequence was that every text line
+        # repeated its own message once more at the end:
         # "thermoctl startet | database=... message=thermoctl startet asctime=...".
         zusatz = {
             schluessel: value
@@ -188,9 +186,9 @@ def configure_logging(settings: Settings) -> None:
         handler.setFormatter(
             TextFormatter("%(asctime)s %(levelname)-8s %(name)s: %(message)s")
         )
-    # Maskiert Zusatzfelder unabhaengig vom Ausgabeformat. Bei JSON-Ausgabe
-    # ueberschneidet sich das mit der Maskierung in JsonFormatter — das ist
-    # gewollt: der Filter ist die Absicherung, falls das Format wechselt.
+    # Masks extra fields independently of the output format. With JSON output
+    # this overlaps with the masking in JsonFormatter -- that is intentional:
+    # the filter is the safeguard in case the format changes.
     handler.addFilter(MaskierungsFilter())
     wurzel = logging.getLogger()
     wurzel.handlers.clear()

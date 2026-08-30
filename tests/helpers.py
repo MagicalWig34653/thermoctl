@@ -1,7 +1,7 @@
-"""Gemeinsame Testhilfen.
+"""Shared test helpers.
 
-Wird von mehreren Testdateien benutzt und waechst mit dem Schema mit: jede Aufgabe,
-die neue Entitaeten anlegt, ergaenzt hier ihre Anlegefunktion.
+Used by several test files and grows with the schema: every task that
+introduces new entities adds its own creation function here.
 """
 
 from collections.abc import Sequence
@@ -35,12 +35,12 @@ from thermoctl.db.models.schedule import SchedulePoint
 from thermoctl.db.models.state import ShadowDecision, ZoneState
 from thermoctl.db.models.zone import SetpointMode, Zone, ZoneSetpoint
 
-# Eine verletzte CHECK-Bedingung kommt je nach Datenbank als andere Ausnahme an:
-# SQLite meldet IntegrityError, MariaDB meldet Fehler 4025, den pymysql auf
-# OperationalError abbildet. Die Bedingung greift in beiden Faellen — nur die
-# Klasse unterscheidet sich. Verletzte UNIQUE-Bedingungen sind dagegen ueberall
-# IntegrityError; dort diese Konstante nicht verwenden, sonst prueft der Test
-# weniger als er soll.
+# A violated CHECK constraint arrives as a different exception depending on the
+# database: SQLite reports IntegrityError, MariaDB reports error 4025, which
+# pymysql maps to OperationalError. The constraint fires in both cases — only
+# the exception class differs. A violated UNIQUE constraint, by contrast, is
+# always IntegrityError everywhere; don't use this constant there, or the test
+# would check less than it should.
 CONSTRAINT_ERRORS = (IntegrityError, OperationalError)
 
 
@@ -55,10 +55,10 @@ def create_settings(
         zusatz["session_lifetime_seconds"] = session_duration_s
     settings = Setting(
         id=1,
-        # `eingebaut=True` wie in Produktion: Der Einrichtungsassistent legt den
-        # Frostschutzmodus als eingebauten Modus an. Ohne das prueft jeder Test, der
-        # diese Fixture benutzt, einen Zustand, den es in keiner echten Anlage gibt --
-        # und genau daran ist die Reihenfolge der Loeschsperren unbemerkt geblieben.
+        # `eingebaut=True` as in production: the setup wizard creates the frost
+        # protection mode as a builtin mode. Without this, every test using this
+        # fixture would check a state that no real installation ever has -- and
+        # that is exactly how the ordering of the deletion locks went unnoticed.
         frost_protection_mode_id=create_mode(session, "frost", eingebaut=True).id,
         default_hysteresis_k=hysteresis,
         default_min_on_seconds=min_ein,
@@ -87,11 +87,11 @@ def create_zone(session: Session, name: str) -> Zone:
 
 
 def create_all_permissions(session: Session) -> None:
-    """Legt alle Rechte an, wie es die Migration in jeder echten Datenbank tut.
+    """Creates every permission, the way the migration does in every real database.
 
-    Die Gruppenseite zeigt die Rechte, die es *gibt*. In einem Test, der nur die zwei
-    Rechte anlegt, die er selbst braucht, zeigt sie folgerichtig zwei -- das sagt ueber
-    die Seite nichts.
+    The group page shows the permissions that *exist*. In a test that only
+    creates the two permissions it happens to need itself, it consequently
+    shows two -- that says nothing about the page.
     """
     for code, _beschreibung, _zone_scoped in PERMISSIONS:
         ensure_permission(session, code)
@@ -150,7 +150,7 @@ def create_device(session: Session, external_id: str) -> Device:
     return g
 
 
-# Die echten Beschreibungen und Geltungsbereiche, wie die Migration sie einspielt.
+# The real descriptions and scopes, the way the migration seeds them.
 _MODEL_PERMISSIONS = {
     code: (beschreibung, zone_scoped)
     for code, beschreibung, zone_scoped in PERMISSIONS
@@ -158,11 +158,11 @@ _MODEL_PERMISSIONS = {
 
 
 def ensure_permission(session: Session, code: str, zone_scoped: bool | None = None) -> Permission:
-    """Legt ein Recht an, wie es die Migration tut -- mit seiner echten Beschreibung.
+    """Creates a permission the way the migration does -- with its real description.
 
-    Vorher stand als Beschreibung schlicht der Code. Das ist ein Zustand, den keine
-    Instanz hat, und er verdeckte, dass die Gruppenseite nur Codes anzeigte: In den
-    Tests sahen Code und Klartext gleich aus.
+    Previously, the description was simply the code. That is a state no
+    instance ever has, and it hid the fact that the group page only showed
+    codes: in the tests, the code and the plain-language text looked the same.
     """
     p = session.query(Permission).filter_by(code=code).one_or_none()
     if p is None:
@@ -207,8 +207,8 @@ def user_with_permissions(
     permissions: list[tuple[str, int | None]],
     second_group: list[tuple[str, int | None]] | None = None,
 ) -> User:
-    """Legt einen Benutzer an und haengt ihn an eine (bzw. zwei) Zugriffsgruppe(n) mit den
-    uebergebenen ``(code, zone_id)``-Rechten."""
+    """Creates a user and attaches them to one (or two) access group(s) with the
+    given ``(code, zone_id)`` permissions."""
     nutzer = create_user(session, name)
     group = _group_with_permissions(session, f"gruppe-{name}", permissions)
     session.add(UserAccessGroup(user_id=nutzer.id, access_group_id=group.id))
@@ -222,13 +222,14 @@ def user_with_permissions(
 def token_with_permissions(
     session: Session, nutzer: User, permissions: list[tuple[str, int | None]]
 ) -> ApiToken:
-    """Legt ein API-Token fuer ``nutzer`` an und traegt die uebergebenen Rechte ein."""
+    """Creates an API token for ``nutzer`` and enters the given permissions."""
     token = ApiToken(
         user_id=nutzer.id,
         name=f"token-{nutzer.username}",
-        # Auf 16 Zeichen gekuerzt: So lang ist die Spalte. SQLite nimmt laengere Werte
-        # klaglos an, MariaDB weist sie ab — ein Test mit langem Benutzernamen schlaegt
-        # sonst nur unter MariaDB fehl, und das sucht man an der falschen Stelle.
+        # Truncated to 16 characters: that is how long the column is. SQLite
+        # accepts longer values without complaint, MariaDB rejects them -- a
+        # test with a long username would otherwise only fail under MariaDB,
+        # and that gets looked for in the wrong place.
         prefix=f"pfx-{nutzer.username}"[:16],
         token_hash=f"hash-{nutzer.username}",
     )
@@ -293,15 +294,16 @@ def zone_with_schedule(
 
 
 def alle_api_routen(app: FastAPI) -> list[APIRoute]:
-    """Alle Routen der Anwendung, auch die aus eingebundenen Routern.
+    """Every route of the application, including those from included routers.
 
-    Seit FastAPI 0.141 legt `include_router()` keine flache Liste mehr an: Statt der
-    einzelnen Routen steht ein `_IncludedRouter` in `app.routes`, der den urspruenglichen
-    Router unter `original_router` traegt. `app.routes` allein lieferte damit nur noch
-    `/healthz` und die von FastAPI selbst erzeugten Seiten — die Waechter in
-    `test_endpunktabdeckung.py` und `test_csrf.py` liefen ins Leere, ohne rot zu werden.
+    Since FastAPI 0.141, `include_router()` no longer creates a flat list:
+    instead of the individual routes, an `_IncludedRouter` sits in
+    `app.routes`, carrying the original router under `original_router`.
+    `app.routes` alone therefore only returned `/healthz` and the pages
+    FastAPI generates itself — the guards in `test_endpunktabdeckung.py` and
+    `test_csrf.py` ran into nothing, without turning red.
 
-    Deshalb hier einmal zentral, mit Rekursion ueber `original_router`.
+    Hence this, centralized once, with recursion over `original_router`.
     """
     gefunden: list[APIRoute] = []
 
@@ -381,8 +383,8 @@ def create_shadow_decision(session: Session, zone: Zone) -> ShadowDecision:
 def create_passkey(
     session: Session, nutzer: User, credential_id: str = "kennung", sign_count: int = 0
 ) -> UserPasskey:
-    """Ein hinterlegter Passkey. Der oeffentliche Schluessel ist hier ein Platzhalter —
-    Tests, die wirklich pruefen, erzeugen ihn mit einem Software-Authenticator."""
+    """A stored passkey. The public key here is a placeholder —
+    tests that actually verify it generate one with a software authenticator."""
     entry = UserPasskey(
         user_id=nutzer.id,
         credential_id=credential_id,

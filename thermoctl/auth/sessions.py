@@ -11,17 +11,17 @@ from thermoctl.db.models.operations import Setting
 
 COOKIE_NAME = "thermoctl_session"
 
-# Deckungsgleich mit dem Spaltendefault von `setting.session_lifetime_seconds`: Rueckfall
-# fuer den Zeitraum, in dem die Einstellungszeile noch nicht existiert (vor dem
-# Setup-Assistenten aus Aufgabe 19).
+# Matches the column default of `setting.session_lifetime_seconds`: fallback for
+# the period during which the settings row does not exist yet (before the setup
+# wizard from task 19).
 DEFAULT_SESSION_LIFETIME_S = 60 * 60 * 24 * 14
 
 
 def session_lifetime_s(session: Session) -> int:
-    """Liest die konfigurierte Sitzungsdauer aus der Einstellungszeile.
+    """Reads the configured session lifetime from the settings row.
 
-    Faellt auf ``STANDARD_SITZUNGS_LEBENSDAUER_S`` zurueck, solange die Einrichtung
-    noch nicht gelaufen ist und die Zeile deshalb fehlt.
+    Falls back to ``DEFAULT_SESSION_LIFETIME_S`` as long as setup has not run yet
+    and the row is therefore missing.
     """
     settings = session.get(Setting, 1)
     if settings is None:
@@ -33,9 +33,9 @@ def create_session(
     session: Session, user: User, lifetime_s: int,
     user_agent: str | None = None, ip: str | None = None,
 ) -> tuple[Session_, str]:
-    """Legt eine Sitzung an und liefert sie samt Klartext-Geheimnis fuer das Cookie.
+    """Creates a session and returns it along with the plaintext secret for the cookie.
 
-    Gespeichert wird nur der Hash — wer die Datenbank liest, kann sich damit nicht anmelden.
+    Only the hash is stored — reading the database does not let you log in with it.
     """
     geheimnis = new_secret()
     entry = Session_(

@@ -12,54 +12,54 @@ from thermoctl.integrations.mqtt.zigbee2mqtt import (
 
 
 @pytest.fixture
-def basis() -> str:
+def base() -> str:
     return "testbasis"
 
 
 @pytest.fixture
 def device_name_with_umlaut_and_space() -> str:
-    daten = json.loads(Path("tests/daten/anlage-beispiele.json").read_text())
+    data = json.loads(Path("tests/daten/anlage-beispiele.json").read_text())
     return next(
         name
-        for name in daten["geraete"]
-        if " " in name and any(zeichen in name for zeichen in "äöüÄÖÜ")
+        for name in data["geraete"]
+        if " " in name and any(character in name for character in "äöüÄÖÜ")
     )
 
 
-def test_abonnements_sind_auf_lesende_topics_begrenzt(basis: str) -> None:
-    assert abonnements(basis) == [
-        f"{basis}/bridge/devices",
-        f"{basis}/bridge/state",
-        f"{basis}/+",
-        f"{basis}/+/availability",
+def test_subscriptions_are_limited_to_read_only_topics(base: str) -> None:
+    assert abonnements(base) == [
+        f"{base}/bridge/devices",
+        f"{base}/bridge/state",
+        f"{base}/+",
+        f"{base}/+/availability",
     ]
 
 
-def test_brueckennachrichten_werden_unterschieden(basis: str) -> None:
-    assert zuschneiden(f"{basis}/bridge/devices", basis) == TopicCut(
+def test_bridge_messages_are_distinguished(base: str) -> None:
+    assert zuschneiden(f"{base}/bridge/devices", base) == TopicCut(
         MessageKind.DEVICE_LIST, None
     )
-    assert zuschneiden(f"{basis}/bridge/state", basis) == TopicCut(
+    assert zuschneiden(f"{base}/bridge/state", base) == TopicCut(
         MessageKind.BRIDGE_STATE, None
     )
 
 
-def test_geraetename_bleibt_unveraendert(
-    basis: str, device_name_with_umlaut_and_space: str
+def test_device_name_remains_unchanged(
+    base: str, device_name_with_umlaut_and_space: str
 ) -> None:
     name = device_name_with_umlaut_and_space
-    assert zuschneiden(f"{basis}/{name}", basis) == TopicCut(
+    assert zuschneiden(f"{base}/{name}", base) == TopicCut(
         MessageKind.DEVICE_STATE, name
     )
-    assert zuschneiden(f"{basis}/{name}/availability", basis) == TopicCut(
+    assert zuschneiden(f"{base}/{name}/availability", base) == TopicCut(
         MessageKind.AVAILABILITY, name
     )
 
 
-def test_unbekannte_topics_werden_nicht_als_geraet_gedeutet(basis: str) -> None:
-    unbekannt = TopicCut(MessageKind.UNBEKANNT, None)
-    assert zuschneiden("fremd/geraet", basis) == unbekannt
-    assert zuschneiden(f"{basis}/bridge", basis) == unbekannt
-    assert zuschneiden(f"{basis}/bridge/logging", basis) == unbekannt
-    assert zuschneiden(f"{basis}/geraet/set", basis) == unbekannt
-    assert zuschneiden(f"{basis}/geraet/availability/set", basis) == unbekannt
+def test_unknown_topics_are_not_interpreted_as_a_device(base: str) -> None:
+    unknown = TopicCut(MessageKind.UNBEKANNT, None)
+    assert zuschneiden("fremd/geraet", base) == unknown
+    assert zuschneiden(f"{base}/bridge", base) == unknown
+    assert zuschneiden(f"{base}/bridge/logging", base) == unknown
+    assert zuschneiden(f"{base}/geraet/set", base) == unknown
+    assert zuschneiden(f"{base}/geraet/availability/set", base) == unknown

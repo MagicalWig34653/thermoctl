@@ -1,23 +1,23 @@
-"""Was ein Drehregler von aussen bewirkt.
+"""What a dial does from the outside.
 
-Home Assistant zeigt je Zone einen Thermostat, einen Boost-Knopf und je Modus einen
-Drehregler. Dieses Modul beantwortet, was beim Drehen **fachlich** geschieht -- einmal,
-fuer alle Adapter. Der MQTT-Empfaenger ruft es genauso auf wie es die Oberflaeche
-koennte; die Grenzen und die Audit-Eintraege kommen aus denselben Funktionen.
+Home Assistant shows a thermostat per zone, a boost button, and a dial per mode. This
+module answers what happens **on the domain level** when it is turned -- once, for all
+adapters. The MQTT receiver calls it exactly as the interface could; the bounds and the
+audit entries come from the same functions.
 
-Zwei Entscheidungen stecken darin:
+Two decisions are embedded in it:
 
-* **Der Thermostat verstellt den Modus, nicht "jetzt gerade".** Wer in Home Assistant
-  auf 21 Grad dreht, meint fast immer "hier soll es 21 Grad warm sein", nicht "die
-  naechsten zwei Stunden". Eine Uebersteuerung waere nach dem naechsten Schaltpunkt
-  wieder weg, und der Regler spraenge scheinbar von selbst zurueck. Deshalb aendert er
-  die Solltemperatur des Modus, der gerade gilt -- dasselbe, was das Thermostat auf der
-  Startseite tut.
-* **Boost zieht die naechste Schaltung vor.** Nicht "heize auf Anschlag": Was als
-  Naechstes ohnehin kaeme, gilt ab sofort, und zwar genau bis zu dem Zeitpunkt, an dem
-  es planmaessig gekommen waere. Danach laeuft der Plan weiter, als waere nichts
-  gewesen. Ein Boost auf einen festen Wert muesste dagegen raten, wie warm und wie
-  lange.
+* **The thermostat adjusts the mode, not "right now".** Whoever turns a dial in Home
+  Assistant to 21 degrees almost always means "it should be 21 degrees warm here", not
+  "for the next two hours". An override would be gone again after the next schedule
+  point, and the dial would appear to jump back on its own. That is why it changes the
+  setpoint of the mode currently in effect -- the same thing the thermostat on the
+  start page does.
+* **Boost brings the next schedule point forward.** Not "heat at full blast": whatever
+  would come next anyway now applies immediately, and exactly until the point in time
+  it would have arrived at as scheduled. After that, the plan continues as if nothing
+  had happened. A boost to a fixed value would instead have to guess how warm and for
+  how long.
 """
 
 import logging
@@ -47,12 +47,12 @@ log = logging.getLogger(__name__)
 
 
 class RemoteControlError(ValueError):
-    """Der Wunsch ist verstanden, aber in diesem Zustand nicht ausfuehrbar."""
+    """The request is understood, but cannot be carried out in this state."""
 
 
 @dataclass(frozen=True)
 class Boost:
-    """Was ein Boost bewirkt hat."""
+    """What a boost has done."""
 
     mode_code: str
     temperature: Decimal
@@ -69,12 +69,12 @@ def set_setpoint(
     token_id: int | None = None,
     source: str,
 ) -> Decimal:
-    """Setzt die Solltemperatur des gerade geltenden Modus.
+    """Sets the setpoint of the currently effective mode.
 
-    Laeuft eine Uebersteuerung mit fester Temperatur, gibt es keinen Modus, den man
-    verstellen koennte -- dann wird die Uebersteuerung selbst auf den neuen Wert
-    gesetzt. Sonst spraenge der Regler beim naechsten Zustandsbericht auf den alten
-    Wert zurueck und saehe aus, als habe er den Befehl verschluckt.
+    If an override with a fixed temperature is running, there is no mode to adjust --
+    in that case the override itself is set to the new value. Otherwise the dial would
+    jump back to the old value on the next state report and look as if it had
+    swallowed the command.
     """
     geltend = resolved_setpoint(session, zone, now)
     if geltend.mode_id is None:
@@ -90,7 +90,7 @@ def set_setpoint(
 
 
 def _runendes_ende(session: Session, zone: Zone, now: datetime) -> datetime | None:
-    """Das Ende der laufenden Uebersteuerung -- damit die neue nicht laenger gilt."""
+    """The end of the currently running override -- so the new one lasts no longer."""
     running = session.scalars(
         select(ZoneOverride)
         .where(
@@ -112,11 +112,11 @@ def boost(
     token_id: int | None = None,
     source: str,
 ) -> Boost:
-    """Zieht die naechste Schaltung vor: ab sofort gilt, was als Naechstes kaeme.
+    """Brings the next schedule point forward: whatever would come next applies now.
 
-    Umgesetzt als Uebersteuerung, die genau dann endet, wenn der Schaltpunkt
-    planmaessig faellt. Danach uebernimmt der Zeitplan von selbst -- es bleibt nichts
-    stehen, das jemand wieder aufraeumen muesste.
+    Implemented as an override that ends exactly when the schedule point would
+    normally fall. After that, the schedule takes over on its own -- nothing is left
+    behind that someone would have to clean up afterward.
     """
     settings = session.get(Setting, 1)
     if settings is None:
@@ -133,13 +133,14 @@ def boost(
         )
     faellt_um = next_point(points, lokal)
     ende = end_of_next_switch(session, zone, now)
-    if faellt_um is None or ende is None:  # pragma: no cover - punkte ist nicht leer
+    if faellt_um is None or ende is None:  # pragma: no cover - points is not empty
         raise RemoteControlError("Die nächste Schaltung lässt sich nicht bestimmen.")
 
-    # Der Punkt, der ab `faellt_um` gilt -- also der, den wir vorziehen. Eine Minute
-    # dahinter gefragt, damit `geltender_punkt` ihn und nicht seinen Vorgaenger liefert.
+    # The point that applies from `faellt_um` onward -- the one we are bringing
+    # forward. Queried one minute past it, so that `geltender_punkt` returns it and
+    # not its predecessor.
     kommend = current_point(points, faellt_um)
-    if kommend is None:  # pragma: no cover - punkte ist nicht leer
+    if kommend is None:  # pragma: no cover - points is not empty
         raise RemoteControlError("Die nächste Schaltung lässt sich nicht bestimmen.")
     mode = session.get(SetpointMode, kommend.setpoint_mode_id)
     temperature = temperature_for_mode(session, zone, kommend.setpoint_mode_id)

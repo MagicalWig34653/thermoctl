@@ -19,7 +19,7 @@ class DeviceDescription:
 
 @dataclass(frozen=True)
 class PropertyDescription:
-    """Ein einzelnes, von Zigbee2MQTT beschriebenes Geraetemerkmal."""
+    """A single device property as described by Zigbee2MQTT."""
 
     name: str
     value_type: str
@@ -84,7 +84,7 @@ def _collect_capabilities(
 def capabilities_from_exposes(
     exposes: list[dict[str, object]],
 ) -> frozenset[str]:
-    """Leitet nur ausdruecklich vereinbarte Faehigkeiten aus Zigbee2MQTT ab."""
+    """Derives only explicitly agreed-upon capabilities from Zigbee2MQTT."""
     return frozenset(_collect_capabilities(cast(list[object], exposes)))
 
 
@@ -96,7 +96,7 @@ def _decimal(value: object) -> Decimal | None:
 
 
 def properties_from_exposes(exposes: list[dict[str, object]]) -> tuple[PropertyDescription, ...]:
-    """Liest Merkmale rekursiv; Container ohne eigenes Merkmal werden ausgelassen."""
+    """Reads properties recursively; containers with no property of their own are skipped."""
     result: list[PropertyDescription] = []
 
     def visit(entries: list[object]) -> None:
@@ -138,7 +138,7 @@ def properties_from_exposes(exposes: list[dict[str, object]]) -> tuple[PropertyD
 def descriptions_from_bridge_list(
     payload: str | bytes,
 ) -> list[DeviceDescription]:
-    """Liest die Geraetebeschreibungen aus der Zigbee2MQTT-Brueckenliste."""
+    """Reads the device descriptions from the Zigbee2MQTT bridge list."""
     try:
         roh = json.loads(payload)
     except (json.JSONDecodeError, UnicodeDecodeError) as exc:

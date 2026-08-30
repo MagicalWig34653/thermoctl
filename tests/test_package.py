@@ -1,5 +1,5 @@
 import thermoctl
 
 
-def test_paket_hat_version() -> None:
+def test_package_has_a_version() -> None:
     assert thermoctl.__version__

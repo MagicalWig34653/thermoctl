@@ -10,33 +10,33 @@ from thermoctl.db.models.override import ZoneOverride
 from thermoctl.db.models.schedule import SchedulePoint
 from thermoctl.db.models.zone import SetpointMode, Zone, ZoneSetpoint
 
-# Die eine Sollwertgrenze des Projekts. Sie gilt fuer Modus-Sollwerte wie fuer
-# Uebersteuerungen und fuer alle vier Adapter -- Oberflaeche, REST, MCP und die
-# Home-Assistant-Karte lesen sie von hier.
+# The project's one setpoint bound. It applies to mode setpoints as well as to
+# overrides, and to all four adapters -- interface, REST, MCP and the Home Assistant
+# card all read it from here.
 #
-# Die Untergrenze lag bis hierher bei 5 Grad, dann kurz bei 1. Sie liegt jetzt bei
-# **minus 20**: Ein Sollwert im Minusbereich heisst "hier wird nicht geheizt, und zwar
-# wirklich nicht" -- fuer eine Garage, einen Schuppen oder einen Raum, den man nur
-# ueberwachen und nicht temperieren will. Mit einem Sollwert von 1 Grad heizt die Anlage
-# immer noch, sobald es kaelter wird; das ist etwas anderes.
+# The lower bound used to be 5 degrees, then briefly 1. It is now
+# **minus 20**: a setpoint in the negative range means "no heating happens here, and
+# genuinely none" -- for a garage, a shed, or a room someone only wants to monitor and
+# not temperature-control. With a setpoint of 1 degree, the plant still heats as soon
+# as it gets colder; that is a different thing.
 #
-# Minus 20 und nicht beliebig tief: Darunter liegt kein Wunsch mehr, sondern ein
-# Tippfehler oder eine kaputte Nutzlast, und die soll weiter auffallen. Es ist zugleich
-# der Bereich, den uebliche Zigbee-Sensoren melden.
+# Minus 20 and not arbitrarily low: below that there is no longer a genuine intent, only
+# a typo or a broken payload, and that should keep standing out. It is also the range
+# ordinary Zigbee sensors report.
 #
-# **Das ist eine Grenze der Eingabe, keine der Physik.** Wer einen Sollwert unter etwa
-# 4 Grad setzt, nimmt einfrierende Leitungen in Kauf; die Software haelt ihn davon nicht
-# mehr ab. Der Frostschutz bleibt ein eigener Modus und greift weiter bei ausgefallenem
-# Sensor und Betriebsart "Aus".
+# **This is a bound on input, not on physics.** Whoever sets a setpoint below roughly
+# 4 degrees accepts that pipes may freeze; the software no longer stops them from doing
+# so. Frost protection remains a mode of its own and still kicks in on a failed sensor
+# and operating mode "off".
 MINIMUM_TEMPERATURE_C = Decimal("-20.0")
 MAXIMUM_TEMPERATURE_C = Decimal("35.0")
 
 
-# Bewusst NICHT `frozen=True`: Python haengt einer Ausnahme beim Werfen ihren
-# Traceback an, und eine eingefrorene Dataclass verweigert genau das. Der Fehler
-# faellt erst auf, wenn die Ausnahme tief genug durchgereicht wird — bei uns durch
-# die Abhaengigkeitsaufloesung von FastAPI — und aeussert sich dann als
-# `FrozenInstanceError` statt als der Fehler, den man sucht.
+# Deliberately NOT `frozen=True`: Python attaches a traceback to an exception when it
+# is raised, and a frozen dataclass refuses exactly that. The bug only surfaces once
+# the exception is passed far enough — in our case through FastAPI's dependency
+# resolution — and then shows up as `FrozenInstanceError` instead of the error you are
+# actually looking for.
 @dataclass
 class DomainError(Exception):
     feld: str
@@ -117,13 +117,13 @@ def update_mode(
 
 
 def delete_guard(session: Session, mode: SetpointMode) -> str | None:
-    """Warum dieser Modus nicht geloescht werden darf — oder None, wenn er darf.
+    """Why this mode cannot be deleted — or None if it can.
 
-    Die Reihenfolge ist Absicht: **Der Frostschutz wird zuerst geprueft.** Der
-    Einrichtungsassistent legt ihn mit `is_builtin=True` an, also trifft die allgemeine
-    Sperre ebenfalls zu — und wuerde sie zuerst greifen, bekaeme in jeder echten Anlage
-    genau der wichtigste Modus die nichtssagende Meldung 'die Anwendung braucht ihn'
-    statt der Begruendung, die zaehlt: Er ist die Rueckfallebene bei Sensorausfall.
+    The ordering is deliberate: **frost protection is checked first.** The setup
+    wizard creates it with `is_builtin=True`, so the general lock also applies to it —
+    and if that lock took effect first, then in every real plant exactly the most
+    important mode would get the meaningless message 'the application needs it'
+    instead of the reason that actually matters: it is the fallback on sensor failure.
     """
     settings = session.get(Setting, 1)
     if settings is not None and settings.frost_protection_mode_id == mode.id:
@@ -154,9 +154,9 @@ def delete_mode(
     sperre = delete_guard(session, mode)
     if sperre is not None:
         raise DomainError("mode_id", sperre)
-    # Sollwerte besitzen ohne ihren Modus keine Bedeutung. Sie werden hier bewusst in
-    # derselben Transaktion entfernt; Zeitpläne und Historie verhindern dagegen oben
-    # das Löschen, weil ihre Aussage erhalten bleiben muss.
+    # Setpoints have no meaning without their mode. They are deliberately removed here
+    # in the same transaction; schedules and history, by contrast, prevent deletion
+    # above because their record must be preserved.
     session.execute(delete(ZoneSetpoint).where(ZoneSetpoint.setpoint_mode_id == mode.id))
     mode_id = mode.id
     mode_name = mode.name
@@ -173,7 +173,7 @@ def delete_mode(
 
 
 def _grad(value: Decimal) -> str:
-    """`1,0` -- mit Komma, weil die Meldung dem Benutzer angezeigt wird."""
+    """`1,0` -- with a comma, because the message is shown to the user."""
     return f"{value:.1f}".replace(".", ",")
 
 
@@ -181,8 +181,8 @@ def check_temperature(temperature: Decimal) -> Decimal:
     if not temperature.is_finite():
         raise DomainError("temperature_c", "Der Sollwert muss eine endliche Zahl sein.")
     if temperature < MINIMUM_TEMPERATURE_C or temperature > MAXIMUM_TEMPERATURE_C:
-        # Aus den Konstanten gebaut, nicht abgeschrieben: Eine Meldung, die die Grenze
-        # noch einmal nennt, weicht beim naechsten Verschieben von ihr ab.
+        # Built from the constants, not copied by hand: a message that states the
+        # bound again would drift from it the next time it moves.
         raise DomainError(
             "temperatur",
             f"Der Sollwert muss zwischen {_grad(MINIMUM_TEMPERATURE_C)} und "
@@ -201,16 +201,16 @@ def update_setpoints(
     zone: Zone,
     values: dict[int, Decimal | None],
     *,
-    # `None` heisst: niemand ist angemeldet. Das trifft auf einen Befehl aus Home
-    # Assistant zu, hinter dem kein Konto steht. Frueher stand hier `int`, und die
-    # Adapter reichten `principal.user_id or 0` durch -- eine Kennung, die es nicht
-    # gibt und an der MariaDB den Fremdschluessel des Audit-Eintrags verweigert.
+    # `None` means: nobody is logged in. That applies to a command from Home
+    # Assistant, which has no account behind it. This used to be `int`, and the
+    # adapters passed through `principal.user_id or 0` -- an id that does not exist
+    # and on which MariaDB rejects the audit entry's foreign key.
     user_id: int | None,
     source: str = "web",
 ) -> None:
-    # Erst alle Werte pruefen, dann irgendeine Zeile anfassen. Die Ansicht faengt den
-    # Domaenenfehler und zeigt das Formular erneut; ohne diese Reihenfolge wuerde eine
-    # fruehere gueltige Eingabe trotz eines spaeteren Fehlers gespeichert.
+    # Check all values first, only then touch any row. The view catches the domain
+    # error and shows the form again; without this ordering, an earlier valid input
+    # would get saved despite a later error.
     checked_values = {
         mode_id: check_temperature(temperature) if temperature is not None else None
         for mode_id, temperature in values.items()

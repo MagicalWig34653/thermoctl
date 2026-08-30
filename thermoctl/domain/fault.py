@@ -14,7 +14,7 @@ def sensor_state(
         return NO_SOURCE
 
     age_s = (now - juengste_messung).total_seconds()
-    # Eine leicht vorgehende Sensoruhr soll keinen vermeintlichen Ausfall ausloesen.
+    # A sensor clock running slightly fast must not trigger a false failure.
     if age_s <= timeout_s:
         return OK
     return VERALTET

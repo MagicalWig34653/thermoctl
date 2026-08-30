@@ -1,20 +1,20 @@
-"""Was welches Gerät wo tut -- als Bild statt als Liste.
+"""What device does what, where -- as a picture instead of a list.
 
-Die Zuordnung von Geräten zu Zonen steht in drei Tabellen: `zone.temperature_source_device_id`
-für die Messquelle, `zone_device` mit einer Rolle für Aktoren und Fensterkontakte, und
-`device_capability_link` für das, was ein Gerät überhaupt kann. Wer wissen will, warum ein
-Raum kalt bleibt, muss diese drei im Kopf zusammensetzen.
+The assignment of devices to zones lives in three tables: `zone.temperature_source_device_id`
+for the temperature source, `zone_device` with a role for actuators and window contacts,
+and `device_capability_link` for what a device can do at all. Anyone wanting to know why
+a room stays cold has to piece these three together in their head.
 
-Der Weg durch die Anlage ist immer derselbe und immer in einer Richtung:
+The path through the plant is always the same, and always in one direction:
 
-    Brücke → Messquelle ─┐
-                         ├→ Zone (Ist, Soll, Entscheidung) → Aktoren
-       Fensterkontakte ──┘
+    Bridge → temperature source ─┐
+                                 ├→ zone (current, setpoint, decision) → actuators
+       window contacts ─────────┘
 
-Diese Funktion bildet genau das ab. Sie rechnet nichts aus, was es nicht schon gibt -- sie
-stellt zusammen, was in fünf Abfragen verstreut liegt, und benennt die Lücken: eine Zone
-ohne Messquelle kann nichts regeln, eine ohne Aktor nichts bewirken, und ein Gerät ohne
-Zone tut überhaupt nichts.
+This function depicts exactly that. It computes nothing that does not already exist --
+it assembles what is scattered across five queries, and names the gaps: a zone without
+a temperature source cannot control anything, one without an actuator cannot act on
+anything, and a device without a zone does nothing at all.
 """
 
 from dataclasses import dataclass, field
@@ -35,14 +35,14 @@ class DevicePicture:
     modell: str | None
     capabilities: list[str]
     active: bool
-    # Nur gesetzt, wenn dieses Geraet an dieser Stelle nachweislich nicht kann, was von
-    # ihm verlangt wird. Die Pruefung bei der Zuordnung verhindert neue solche Faelle;
-    # die alten stehen schon in der Datenbank und wuerden sonst nie auffallen.
+    # Only set when this device demonstrably cannot do what is required of it at this
+    # slot. The check at assignment time prevents new such cases; the old ones already
+    # sit in the database and would otherwise never stand out.
     ungeeignet: str | None = None
-    # Die Kennung der `zone_device`-Zeile, ueber die dieses Geraet an dieser Stelle
-    # haengt -- None bei der Messquelle (die ist eine Spalte an der Zone, keine Zeile)
-    # und bei Geraeten ohne Zone. Die Oberflaeche braucht sie, um ein Geraet wieder
-    # herausziehen zu koennen.
+    # The id of the `zone_device` row through which this device hangs at this slot --
+    # None for the temperature source (that is a column on the zone, not a row) and
+    # for devices without a zone. The interface needs it to be able to pull a device
+    # back out.
     assignment_id: int | None = None
 
 
@@ -57,7 +57,7 @@ class ZonePicture:
 
     @property
     def maengel(self) -> list[str]:
-        """Was diese Zone am Regeln hindert. Leer heisst: vollstaendig verdrahtet."""
+        """What is stopping this zone from controlling anything. Empty means: fully wired."""
         fehlt = []
         if self.temperature_source is None:
             fehlt.append("keine Messquelle — ohne Ist-Wert entscheidet die Regelung nichts")
@@ -82,9 +82,9 @@ def _picture(
     stelle: str | None = None,
     assignment_id: int | None = None,
 ) -> DevicePicture:
-    # `None` heisst "keine Anforderung" -- so stehen die Geraete ohne Zone da, an die
-    # niemand etwas verlangt. Ohne die Unterscheidung waere ein herrenloses Ventil als
-    # "misst keine Temperatur" markiert worden.
+    # `None` means "no requirement" -- that is how devices without a zone are shown,
+    # since nothing is required of them. Without this distinction, an ownerless valve
+    # would have been flagged as "misst keine Temperatur".
     verlangt = REQUIRED_CAPABILITY.get(stelle or "")
     ungeeignet = None
     kann = codes.get(device.id, set())
@@ -104,7 +104,7 @@ def _picture(
 
 
 def plant_diagram(session: Session, zones: list[Zone]) -> PlantDiagram:
-    """Der Weg durch die Anlage, je Zone -- und was ausserhalb jeder Zone liegt."""
+    """The path through the plant, per zone -- and what lies outside every zone."""
     devices = {g.id: g for g in session.scalars(select(Device))}
     capabilities: dict[int, list[str]] = {}
     for device_id, bezeichnung in session.execute(
@@ -114,8 +114,8 @@ def plant_diagram(session: Session, zones: list[Zone]) -> PlantDiagram:
     ):
         capabilities.setdefault(device_id, []).append(bezeichnung)
 
-    # Die Codes getrennt von den Bezeichnungen: Die einen sind fuer den Leser da, die
-    # anderen fuer den Vergleich mit ERFORDERLICHE_FAEHIGKEIT.
+    # The codes kept separate from the labels: one set is for the reader, the other
+    # for comparison against REQUIRED_CAPABILITY.
     codes: dict[int, set[str]] = {}
     for device_id, code in session.execute(
         select(DeviceCapabilityLink.device_id, DeviceCapability.code).join(
@@ -161,9 +161,9 @@ def plant_diagram(session: Session, zones: list[Zone]) -> PlantDiagram:
             )
         )
 
-    # Geraete, die keiner Zone zugeordnet sind. Sie melden zwar Werte, aber die
-    # Regelung sieht sie nicht -- und das ist der haeufigste Grund, warum ein neu
-    # eingebundener Sensor "nicht ankommt".
+    # Devices assigned to no zone. They do report values, but control logic does not
+    # see them -- and that is the most common reason a newly connected sensor "does
+    # not show up".
     without_zone = [
         _picture(device, capabilities, codes)
         for device in sorted(devices.values(), key=lambda g: g.display_name)

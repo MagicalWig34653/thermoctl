@@ -13,7 +13,7 @@ from thermoctl.db.base import Base, utcnow
 
 
 class Session_(Base):
-    """Sitzung der Weboberflaeche. Gespeichert wird nur der SHA-256 des Cookie-Geheimnisses."""
+    """Session of the web interface. Only the SHA-256 of the cookie secret is stored."""
 
     __tablename__ = "session"
 
@@ -43,7 +43,7 @@ class ApiToken(Base):
 
 
 class ApiTokenPermission(Base):
-    """Der eigene, engere Rechteumfang eines Tokens."""
+    """The token's own, narrower scope of permissions."""
 
     __tablename__ = "api_token_permission"
     __table_args__ = (
@@ -61,7 +61,7 @@ class ApiTokenPermission(Base):
 
 
 class SetupToken(Base):
-    """Einmal-Token fuer den Einrichtungsassistenten."""
+    """One-time token for the setup wizard."""
 
     __tablename__ = "setup_token"
 

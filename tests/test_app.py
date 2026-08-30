@@ -20,13 +20,13 @@ def client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
 
 @pytest.fixture
 def client_with_user(monkeypatch: pytest.MonkeyPatch, tmp_path) -> Iterator[TestClient]:
-    """Wie ``client``, aber mit Schema und einem angelegten Benutzer.
+    """Like ``client``, but with a schema and a created user.
 
-    Die Fixture ``client`` oben baut die App gegen eine schemalose In-Memory-Datenbank --
-    das genuegt fuer /healthz, statische Dateien und die OpenAPI-Beschreibung, die keine
-    Datenbank anfassen. Das Anmeldeformular tut das inzwischen: Ohne einen einzigen
-    Benutzer leitet es zur Einrichtung weiter, und wer es ansehen will, braucht deshalb
-    beides.
+    The ``client`` fixture above builds the app against a schema-less
+    in-memory database -- that is enough for /healthz, static files, and the
+    OpenAPI description, none of which touch the database. The login form
+    now does: without a single user it redirects to setup, so anyone wanting
+    to look at it needs both.
     """
     from sqlalchemy.orm import Session
 
@@ -53,49 +53,49 @@ def client_with_user(monkeypatch: pytest.MonkeyPatch, tmp_path) -> Iterator[Test
     get_settings.cache_clear()
 
 
-def test_healthz_antwortet(client: TestClient) -> None:
+def test_healthz_responds(client: TestClient) -> None:
     response = client.get("/healthz")
     assert response.status_code == 200
     assert response.json()["status"] == "ok"
 
 
-def test_jede_antwort_traegt_eine_anfrage_id(client: TestClient) -> None:
+def test_every_response_carries_a_request_id(client: TestClient) -> None:
     response = client.get("/healthz")
     assert response.headers["X-Request-ID"]
 
 
-def test_mitgegebene_anfrage_id_wird_uebernommen(client: TestClient) -> None:
+def test_a_supplied_request_id_is_kept(client: TestClient) -> None:
     response = client.get("/healthz", headers={"X-Request-ID": "vorgegeben"})
     assert response.headers["X-Request-ID"] == "vorgegeben"
 
 
-def test_zu_lange_anfrage_id_wird_ersetzt(client: TestClient) -> None:
-    zu_lang = "a" * 65
-    response = client.get("/healthz", headers={"X-Request-ID": zu_lang})
-    assert response.headers["X-Request-ID"] != zu_lang
+def test_a_too_long_request_id_is_replaced(client: TestClient) -> None:
+    too_long = "a" * 65
+    response = client.get("/healthz", headers={"X-Request-ID": too_long})
+    assert response.headers["X-Request-ID"] != too_long
     assert response.headers["X-Request-ID"]
 
 
-def test_anfrage_id_mit_zeilenumbruch_wird_ersetzt(client: TestClient) -> None:
-    mit_rownumbruch = "boese\nInjizierte-Zeile: ja"
-    response = client.get("/healthz", headers={"X-Request-ID": mit_rownumbruch})
+def test_a_request_id_with_a_line_break_is_replaced(client: TestClient) -> None:
+    with_line_break = "boese\nInjizierte-Zeile: ja"
+    response = client.get("/healthz", headers={"X-Request-ID": with_line_break})
     assert "\n" not in response.headers["X-Request-ID"]
-    assert response.headers["X-Request-ID"] != mit_rownumbruch
+    assert response.headers["X-Request-ID"] != with_line_break
 
 
-def test_anfrage_id_mit_sonderzeichen_wird_ersetzt(client: TestClient) -> None:
-    mit_sonderzeichen = "abc$def!"
-    response = client.get("/healthz", headers={"X-Request-ID": mit_sonderzeichen})
-    assert response.headers["X-Request-ID"] != mit_sonderzeichen
+def test_a_request_id_with_special_characters_is_replaced(client: TestClient) -> None:
+    with_special_characters = "abc$def!"
+    response = client.get("/healthz", headers={"X-Request-ID": with_special_characters})
+    assert response.headers["X-Request-ID"] != with_special_characters
 
 
-def test_forbidden_wird_global_als_403_beantwortet(
+def test_forbidden_is_answered_globally_as_403(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Der globale Handler fuer `Forbidden` ist die Auflage aus dem Abschlussreview:
+    """The global handler for `Forbidden` is the requirement from the closing review:
 
-    Eine Route, die eine Rechtsverweigerung nicht selbst in eine HTTPException
-    uebersetzt, soll trotzdem 403 liefern statt 500."""
+    A route that does not translate a permission denial into an
+    HTTPException itself should still return 403 instead of 500."""
     monkeypatch.setenv("THERMOCTL_DATABASE_URL", "sqlite://")
     monkeypatch.setenv("THERMOCTL_SECRET_KEY", "a" * 32)
     from thermoctl.config import get_settings
@@ -105,7 +105,7 @@ def test_forbidden_wird_global_als_403_beantwortet(
     app = create_app()
 
     @app.get("/wirft-forbidden")
-    async def wirft_forbidden() -> None:
+    async def raises_forbidden() -> None:
         raise Forbidden("Recht fehlt")
 
     testclient = TestClient(app, raise_server_exceptions=False)
@@ -114,48 +114,50 @@ def test_forbidden_wird_global_als_403_beantwortet(
     assert "Recht fehlt" in response.text
 
 
-def test_statische_dateien_werden_ausgeliefert(client: TestClient) -> None:
+def test_static_files_are_served(client: TestClient) -> None:
     response = client.get("/static/vendor/bootstrap/bootstrap.min.css")
     assert response.status_code == 200
     response = client.get("/static/vendor/htmx/htmx.min.js")
     assert response.status_code == 200
 
 
-def test_anmeldeseite_bindet_das_stylesheet_ein(client_with_user: TestClient) -> None:
+def test_the_login_page_includes_the_stylesheet(client_with_user: TestClient) -> None:
     response = client_with_user.get("/login")
     assert "/static/vendor/bootstrap/bootstrap.min.css" in response.text
 
 
-def test_anmeldeseite_enthaelt_keine_navigationsleiste(client_with_user: TestClient) -> None:
+def test_the_login_page_contains_no_navigation_bar(client_with_user: TestClient) -> None:
     response = client_with_user.get("/login")
     assert response.status_code == 200
     assert "<nav" not in response.text
 
 
-def test_kopfleiste_traegt_blur_fuer_alle_browser() -> None:
-    """Safari braucht bis heute das Praefix; ohne es ist die Leiste dort einfach
-    durchsichtig und der Text darunter schwer lesbar.
+def test_the_header_bar_carries_blur_for_every_browser() -> None:
+    """Safari still needs the prefix to this day; without it the bar is
+    simply transparent there and the text underneath is hard to read.
 
-    Steht jetzt im Stylesheet statt als style-Attribut in der Vorlage -- Gestaltung
-    gehoert nicht ins Markup, und im Attribut liess sie sich weder ueberschreiben noch
-    fuer das dunkle Schema anpassen."""
+    Now lives in the stylesheet instead of as a style attribute in the
+    template -- styling does not belong in markup, and as an attribute it
+    could neither be overridden nor adapted for the dark scheme.
+    """
     from pathlib import Path
 
-    stil = (
+    stylesheet = (
         Path(__file__).parent.parent / "thermoctl" / "web" / "static" / "thermoctl.css"
     ).read_text(encoding="utf-8")
-    assert "backdrop-filter: blur(" in stil
-    assert "-webkit-backdrop-filter: blur(" in stil
+    assert "backdrop-filter: blur(" in stylesheet
+    assert "-webkit-backdrop-filter: blur(" in stylesheet
 
 
-def test_lifespan_erzeugt_einrichtungstoken_bei_fehlender_einrichtung(
+def test_lifespan_creates_a_setup_token_when_setup_is_missing(
     monkeypatch: pytest.MonkeyPatch, tmp_path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """Der Lifespan-Handler laeuft nur beim echten Start (`with TestClient(...)`), nicht
-    beim blossen Bau der App -- deshalb testet dieser Test ihn ausdruecklich ueber den
-    `with`-Block statt ueber die `client`-Fixture. `configure_logging()` ersetzt beim
-    Start die Root-Handler (auch den von `caplog`), deshalb wird hier ueber `capsys`
-    auf der tatsaechlichen Log-Ausgabe geprueft statt ueber `caplog`."""
+    """The lifespan handler only runs on a real start (`with TestClient(...)`),
+    not when the app is merely constructed -- which is why this test
+    exercises it deliberately through the `with` block instead of the
+    `client` fixture. `configure_logging()` replaces the root handlers at
+    startup (including `caplog`'s), so the actual log output is checked here
+    via `capsys` instead of `caplog`."""
     db_path = tmp_path / "lifespan.db"
     monkeypatch.setenv("THERMOCTL_DATABASE_URL", f"sqlite:///{db_path}")
     monkeypatch.setenv("THERMOCTL_SECRET_KEY", "a" * 32)
@@ -164,25 +166,26 @@ def test_lifespan_erzeugt_einrichtungstoken_bei_fehlender_einrichtung(
     from thermoctl.db.engine import create_engine_from_settings
 
     get_settings.cache_clear()
-    vorab_engine = create_engine_from_settings(get_settings())
-    Base.metadata.create_all(vorab_engine)
-    vorab_engine.dispose()
+    preexisting_engine = create_engine_from_settings(get_settings())
+    Base.metadata.create_all(preexisting_engine)
+    preexisting_engine.dispose()
 
     with TestClient(create_app()):
         pass
-    ausgabe = capsys.readouterr().out
-    assert "Einrichtung erforderlich" in ausgabe
+    output = capsys.readouterr().out
+    assert "Einrichtung erforderlich" in output
 
 
 @pytest.mark.filterwarnings(
-    # Eng auf diesen einen Test begrenzt, nicht global: Er laesst absichtlich eine
-    # Ausnahme durch die Anwendung laufen. Starlettes Fehlerpfad gibt die
-    # In-Memory-Verbindung dabei erst frei, wenn der Aufraeumer sie einsammelt --
-    # nach dem Testende. Die Anwendung schliesst ihre Engine ordentlich (siehe
-    # finally unten); die Warnung sagt hier nichts ueber den Code aus.
+    # Scoped narrowly to this one test, not globally: it deliberately lets
+    # an exception run through the application. Starlette's error path only
+    # releases the in-memory connection once the garbage collector picks it
+    # up -- after the test has ended. The application closes its engine
+    # properly (see the finally block below); the warning says nothing about
+    # the code here.
     "ignore:unclosed database:ResourceWarning"
 )
-def test_anfrage_id_wird_nach_ausnahme_zurueckgesetzt(
+def test_the_request_id_is_reset_after_an_exception(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("THERMOCTL_DATABASE_URL", "sqlite://")
@@ -193,7 +196,7 @@ def test_anfrage_id_wird_nach_ausnahme_zurueckgesetzt(
     app = create_app()
 
     @app.get("/wirft-ausnahme")
-    async def wirft_ausnahme() -> None:
+    async def raises_an_exception() -> None:
         raise RuntimeError("absichtlicher Fehler fuer den Test")
 
     initial_value = request_id_var.get()
@@ -203,24 +206,25 @@ def test_anfrage_id_wird_nach_ausnahme_zurueckgesetzt(
         assert response.status_code == 500
         assert request_id_var.get() == initial_value
     finally:
-        # Dieser Test baut eine eigene Anwendung samt Engine. Ohne Schliessen bleibt
-        # eine Datenbankverbindung offen und die Suite meldet eine ResourceWarning --
-        # eine Warnung, die man nach dem dritten Mal nicht mehr liest.
+        # This test builds its own application including its own engine.
+        # Without closing it, a database connection stays open and the suite
+        # reports a ResourceWarning -- a warning nobody reads any more after
+        # the third time.
         testclient.close()
         app.state.engine.dispose()
 
 
-def test_warnung_bei_netzbindung_ohne_secure_cookies(
+def test_a_warning_on_a_network_bind_without_secure_cookies(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """Die Warnung ist der einzige Ort, an dem es auffaellt, bevor etwas passiert."""
+    """The warning is the only place this shows up before anything happens."""
     from thermoctl.app import _warn_if_reachable_unprotected
     from thermoctl.config import Settings
 
-    def _settings(host: str, sicher: bool) -> Settings:
+    def _settings(host: str, secure: bool) -> Settings:
         return Settings(
             _env_file=None, database_url="sqlite://", secret_key="s" * 32,
-            bind_host=host, secure_cookies=sicher,
+            bind_host=host, secure_cookies=secure,
         )
 
     with caplog.at_level(logging.WARNING, logger="thermoctl.app"):
@@ -230,82 +234,85 @@ def test_warnung_bei_netzbindung_ohne_secure_cookies(
 
         caplog.clear()
         _warn_if_reachable_unprotected(_settings("127.0.0.1", False))
-        assert caplog.text == "", "Oertlich gebunden ist kein Grund zur Warnung."
+        assert caplog.text == "", "Bound locally is no reason for a warning."
 
         caplog.clear()
         _warn_if_reachable_unprotected(_settings("0.0.0.0", True))  # noqa: S104
-        assert caplog.text == "", "Mit secure_cookies ist alles in Ordnung."
+        assert caplog.text == "", "With secure_cookies everything is fine."
 
 
-def test_swagger_ui_haengt_an_keiner_fremden_adresse(client: TestClient) -> None:
-    """Die mitgelieferte Fassung zieht ihre Dateien aus einem CDN und das Symbol von
+def test_swagger_ui_depends_on_no_foreign_address(client: TestClient) -> None:
+    """The bundled build pulls its files from a CDN, and the icon from
     `fastapi.tiangolo.com`.
 
-    Beides widerspricht dem, was fuer Bootstrap und HTMX schon gilt (static/HERKUNFT.md):
-    Im Heimnetz ohne Internetzugang bliebe die Seite leer, und jeder Aufruf verriete einem
-    Dritten, wann jemand die Heizungssteuerung oeffnet.
+    Both contradict what already applies to Bootstrap and HTMX
+    (static/HERKUNFT.md): on a home network without internet access the page
+    would stay blank, and every request would tell a third party when
+    someone opens the heating control.
     """
     import re
 
     response = client.get("/docs")
     assert response.status_code == 200
-    ressourcen = re.findall(r'(?:src|href)="([^"]+)"', response.text)
-    assert ressourcen, "Die Seite bindet gar nichts ein — dann prueft der Test nichts."
-    fremde = [r for r in ressourcen if not r.startswith("/")]
-    assert not fremde, "Diese Ressourcen kommen von auswaerts: " + ", ".join(fremde)
-    for pfad in ressourcen:
-        assert client.get(pfad).status_code == 200, pfad
+    resources = re.findall(r'(?:src|href)="([^"]+)"', response.text)
+    assert resources, "The page includes nothing at all — then the test checks nothing."
+    foreign = [r for r in resources if not r.startswith("/")]
+    assert not foreign, "These resources come from outside: " + ", ".join(foreign)
+    for path in resources:
+        assert client.get(path).status_code == 200, path
 
 
-def test_redoc_ist_abgeschaltet(client: TestClient) -> None:
-    """Ersatzlos: dasselbe CDN-Problem, und /docs deckt dieselbe Beschreibung ab."""
+def test_redoc_is_disabled(client: TestClient) -> None:
+    """Removed outright: the same CDN problem, and /docs covers the same description."""
     assert client.get("/redoc").status_code == 404
 
 
-def test_openapi_kennt_das_token_als_sicherheitsverfahren(client: TestClient) -> None:
-    """Sonst gibt es in der Oberflaeche keinen Anmelde-Knopf.
+def test_openapi_knows_the_token_as_a_security_scheme(client: TestClient) -> None:
+    """Otherwise there is no login button in the interface (Swagger UI).
 
-    Vorher stand `authorization` an jedem Weg als optionaler Kopfzeilen-Parameter — man
-    haette bei jedem einzelnen Aufruf "Bearer <token>" von Hand eintragen muessen, und
-    nichts sagte, dass es sich um dasselbe Token handelt.
+    Previously `authorization` appeared on every path as an optional header
+    parameter — you would have had to type "Bearer <token>" by hand for
+    every single call, and nothing indicated it was the same token.
     """
-    beschreibung = client.get("/openapi.json").json()
-    verfahren = beschreibung["components"]["securitySchemes"]
-    assert verfahren == {
+    description = client.get("/openapi.json").json()
+    schemes = description["components"]["securitySchemes"]
+    assert schemes == {
         "HTTPBearer": {
             "type": "http",
             "scheme": "bearer",
             "description": "API-Token, ausgestellt unter /tokens",
         }
     }
-    zones = beschreibung["paths"]["/api/v1/zones"]["get"]
+    zones = description["paths"]["/api/v1/zones"]["get"]
     assert zones["security"] == [{"HTTPBearer": []}]
     assert "parameters" not in zones, (
-        "Der Token-Header darf nicht zusaetzlich als gewoehnlicher Parameter dastehen."
+        "The token header must not also appear as an ordinary parameter."
     )
 
 
-def test_openapi_beschreibt_nur_die_schnittstelle(client: TestClient) -> None:
-    """Die Beschreibung ist der Vertrag der REST-Schnittstelle, nicht ein Abzug aller Routen.
+def test_openapi_describes_only_the_interface(client: TestClient) -> None:
+    """The description is the contract of the REST interface, not a dump of
+    every route.
 
-    Ohne diese Trennung stuenden in der Oberflaeche unter /docs neben jedem echten Endpunkt
-    die HTML-Formularwege — und ein Klick auf 'Try it out' bei
-    `POST /benutzer/{id}/aktiv` wuerde einen Benutzer wirklich deaktivieren.
+    Without this separation, /docs would list the HTML form paths alongside
+    every real endpoint in the interface — and clicking 'Try it out' on
+    `POST /benutzer/{id}/aktiv` would really deactivate a user.
     """
-    wege = client.get("/openapi.json").json()["paths"]
-    fremd = sorted(p for p in wege if not p.startswith("/api/") and p != "/healthz")
-    assert not fremd, "Diese Wege gehoeren nicht in die Beschreibung: " + ", ".join(fremd)
-    assert any(p.startswith("/api/") for p in wege), "Es steht gar nichts drin."
+    paths = client.get("/openapi.json").json()["paths"]
+    foreign = sorted(p for p in paths if not p.startswith("/api/") and p != "/healthz")
+    assert not foreign, "These paths do not belong in the description: " + ", ".join(foreign)
+    assert any(p.startswith("/api/") for p in paths), "It contains nothing at all."
 
 
-def test_start_gegen_leere_datenbank_meldet_die_fehlende_migration(
+def test_starting_against_an_empty_database_reports_the_missing_migration(
     monkeypatch: pytest.MonkeyPatch, tmp_path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """Der Fall, der es in den Betrieb geschafft hat: Datenbankdatei verschoben, Dienst
-    gestartet, sechzig Zeilen Traceback mit `no such table: user` als Kern. Das Container-
-    Abbild migriert im Entrypoint, ein lokaler `uvicorn`-Start nicht -- genau dort tritt es
-    auf. Geprueft wird die Logzeile, nicht nur die Ausnahme: Die Ausnahme allein sagt dem
-    Betreiber nichts, wenn sie unter dem Traceback verschwindet."""
+    """The case that made it into production: database file moved, service
+    started, sixty lines of traceback with `no such table: user` at its
+    core. The container image migrates in its entrypoint, a local `uvicorn`
+    start does not -- that is exactly where it happens. What is checked is
+    the log line, not just the exception: the exception alone tells the
+    operator nothing once it disappears under the traceback."""
     from thermoctl.db.schema_state import COMMAND, SchemaPasstNicht
 
     monkeypatch.setenv("THERMOCTL_DATABASE_URL", f"sqlite:///{tmp_path / 'leer.db'}")
@@ -316,8 +323,8 @@ def test_start_gegen_leere_datenbank_meldet_die_fehlende_migration(
     try:
         with pytest.raises(SchemaPasstNicht), TestClient(create_app()):
             pass
-        ausgabe = capsys.readouterr().out
-        assert COMMAND in ausgabe
-        assert "no such table" not in ausgabe
+        output = capsys.readouterr().out
+        assert COMMAND in output
+        assert "no such table" not in output
     finally:
         get_settings.cache_clear()
