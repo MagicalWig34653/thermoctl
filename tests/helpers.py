@@ -390,7 +390,7 @@ def create_passkey(
         credential_id=credential_id,
         public_key="platzhalter",
         sign_count=sign_count,
-        bezeichnung=f"Passkey {credential_id}",
+        label=f"Passkey {credential_id}",
     )
     session.add(entry)
     session.flush()

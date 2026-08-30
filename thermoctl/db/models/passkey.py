@@ -33,7 +33,7 @@ class UserPasskey(Base):
     # The authenticator's counter. If it falls back, the key has been cloned — then the
     # sign-in is rejected, see thermoctl/domain/passkey.py.
     sign_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    bezeichnung: Mapped[str] = mapped_column(String(120), nullable=False)
+    label: Mapped[str] = mapped_column(String(120), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
@@ -44,7 +44,7 @@ class PasskeyChallenge(Base):
     It lives **exclusively here**, never with the caller: whoever can set their own
     challenge can resubmit an old answer.
 
-    `zeremonie` binds it to its purpose. Without this binding, a challenge issued for a
+    `ceremony` binds it to its purpose. Without this binding, a challenge issued for a
     sign-in could be submitted for a registration.
 
     Rows are deleted upon redemption — **even if the check fails.** A reusable
@@ -55,7 +55,7 @@ class PasskeyChallenge(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     challenge: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
-    zeremonie: Mapped[str] = mapped_column(String(16), nullable=False)
+    ceremony: Mapped[str] = mapped_column(String(16), nullable=False)
     # Only set during registration: there it is already fixed who is registering. At
     # sign-in, only the authenticator names the account.
     user_id: Mapped[int | None] = mapped_column(

@@ -60,7 +60,7 @@ def test_a_registered_passkey_really_logs_in(
     nutzer = create_user(session, "passkey-nutzer")
     device = WebAuthnDevice()
     entry = _register(session, passkey_settings, nutzer, device)
-    assert entry.bezeichnung == "Testgerät"
+    assert entry.label == "Testgerät"
 
     argumente = begin_authentication(session, passkey_settings)
     response = device.log_in(argumente, ORIGIN)
@@ -313,10 +313,10 @@ def test_registering_through_the_http_route(
     ).json()
     device = WebAuthnDevice()
     payload = device.register(argumente, ORIGIN)
-    payload["bezeichnung"] = "Mein Telefon"
+    payload["label"] = "Mein Telefon"
     response = c.post("/passkey/registration/verify", json=payload, headers=_csrf(c))
     assert response.status_code == 200, response.text
-    assert response.json()["bezeichnung"] == "Mein Telefon"
+    assert response.json()["label"] == "Mein Telefon"
     assert session.scalars(select(UserPasskey)).all()
 
 
@@ -342,11 +342,11 @@ def test_your_own_passkey_can_be_removed(
     c = client_als([("zone.read", None)])
     argumente = c.post("/passkey/registration/options", headers=_csrf(c)).json()
     payload = WebAuthnDevice().register(argumente, ORIGIN)
-    payload["bezeichnung"] = "Weg damit"
+    payload["label"] = "Weg damit"
     c.post("/passkey/registration/verify", json=payload, headers=_csrf(c))
 
     entry = session.scalars(
-        select(UserPasskey).where(UserPasskey.bezeichnung == "Weg damit")
+        select(UserPasskey).where(UserPasskey.label == "Weg damit")
     ).one()
     assert c.post(
         f"/passkeys/{entry.id}/remove", headers=_csrf(c), follow_redirects=False

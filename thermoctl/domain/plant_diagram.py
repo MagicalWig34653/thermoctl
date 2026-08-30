@@ -107,12 +107,12 @@ def plant_diagram(session: Session, zones: list[Zone]) -> PlantDiagram:
     """The path through the plant, per zone -- and what lies outside every zone."""
     devices = {g.id: g for g in session.scalars(select(Device))}
     capabilities: dict[int, list[str]] = {}
-    for device_id, bezeichnung in session.execute(
+    for device_id, label in session.execute(
         select(DeviceCapabilityLink.device_id, DeviceCapability.label).join(
             DeviceCapability, DeviceCapability.id == DeviceCapabilityLink.capability_id
         )
     ):
-        capabilities.setdefault(device_id, []).append(bezeichnung)
+        capabilities.setdefault(device_id, []).append(label)
 
     # The codes kept separate from the labels: one set is for the reader, the other
     # for comparison against REQUIRED_CAPABILITY.

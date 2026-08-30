@@ -46,7 +46,7 @@ async def device_overview(
     ).all()
     capabilities: defaultdict[int, list[str]] = defaultdict(list)
     still: defaultdict[int, int] = defaultdict(int)
-    for device_id, code, bezeichnung in session.execute(
+    for device_id, code, label in session.execute(
         select(DeviceCapabilityLink.device_id, DeviceCapability.code, DeviceCapability.label)
         .join(DeviceCapability, DeviceCapability.id == DeviceCapabilityLink.capability_id)
         .order_by(DeviceCapability.label)
@@ -54,7 +54,7 @@ async def device_overview(
         if code in WITHOUT_CHIP:
             still[device_id] += 1
         else:
-            capabilities[device_id].append(bezeichnung)
+            capabilities[device_id].append(label)
 
     zones: defaultdict[int, set[str]] = defaultdict(set)
     for device_id, anzeigename in session.execute(
