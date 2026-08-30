@@ -442,7 +442,7 @@ def resolved_setpoint(session: Session, zone: Zone, now_utc: datetime) -> Setpoi
     if running is not None and (running.ends_at is None or running.ends_at > now_utc):
         if running.temperature_c is not None:
             return Setpoint(
-                running.temperature_c, "Uebersteuerung (feste Temperatur)", None, None
+                running.temperature_c, "Übersteuerung (feste Temperatur)", None, None
             )
         temp = temperature_for_mode(session, zone, running.setpoint_mode_id or 0)
         code = session.scalar(
@@ -450,7 +450,7 @@ def resolved_setpoint(session: Session, zone: Zone, now_utc: datetime) -> Setpoi
         )
         if temp is not None:
             return Setpoint(
-                temp, f"Uebersteuerung auf Modus {code}", code, running.setpoint_mode_id
+                temp, f"Übersteuerung auf Modus {code}", code, running.setpoint_mode_id
             )
 
     # Schedules are stored in local time, so the night setback does not shift when

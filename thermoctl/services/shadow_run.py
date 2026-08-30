@@ -162,7 +162,7 @@ def _with_solar_setback(
     return (
         result.setpoint_c,
         f"{setpoint_reason} Sonnenabsenkung: -{result.reduction_k} K wegen erwarteter "
-        f"Sonneneinstrahlung in den naechsten {settings.solar_setback_lookahead_hours} Stunden.",
+        f"Sonneneinstrahlung in den nächsten {settings.solar_setback_lookahead_hours} Stunden.",
     )
 
 

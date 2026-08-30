@@ -129,7 +129,7 @@ def test_showing_and_cancelling_an_override(session: Session, client_als) -> Non
     # The reasoning now comes from the domain itself -- the same text that the
     # shadow log and the REST response also carry, instead of a second wording
     # just for this page.
-    assert "Uebersteuerung (feste Temperatur)" in page.text
+    assert "Übersteuerung (feste Temperatur)" in page.text
 
     response = client.post(
         f"/zones/{zone.id}/override/cancel",

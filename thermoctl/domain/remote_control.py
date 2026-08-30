@@ -154,7 +154,7 @@ def boost(
         user_id=user_id, token_id=token_id, source=source,
     )
     log.info(
-        "Naechste Schaltung vorgezogen",
+        "Nächste Schaltung vorgezogen",
         extra={"zone_id": zone.id, "modus": mode.code, "bis": end_at.isoformat()},
     )
     return Boost(mode.code, temperature, end_at)

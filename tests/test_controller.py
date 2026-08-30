@@ -118,7 +118,7 @@ def test_boost_and_operating_mode_can_be_bound_to_buttons(session: Session) -> N
     set_binding(session, device, "hold_center", "mode_off")
 
     execute_action(session, device, "single_center", MONDAY_EIGHT)
-    assert resolved_setpoint(session, zone, MONDAY_EIGHT).reason.startswith("Uebersteuerung")
+    assert resolved_setpoint(session, zone, MONDAY_EIGHT).reason.startswith("Übersteuerung")
 
     execute_action(session, device, "hold_center", MONDAY_EIGHT)
     assert zone.operating_mode.code == "off"
