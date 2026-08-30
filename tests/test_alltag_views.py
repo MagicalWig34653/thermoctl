@@ -310,3 +310,117 @@ def test_betriebsart_steht_nur_da_wenn_sie_abweicht(session: Session, client_als
 
     antwort = client_als([("zone.read", zone.id)]).get("/")
     assert "Betriebsart: Aus" in antwort.text
+
+
+# --- Thermostat auf der Startseite -----------------------------------------
+
+
+def _zone_mit_modus(session: Session, temperatur: str = "21.0"):
+    """Eine Zone, deren geltender Sollwert aus einem Zeitplanmodus kommt."""
+    from tests.hilfen import modus_anlegen
+    from thermoctl.db.models.schedule import SchedulePoint
+    from thermoctl.db.models.zone import ZoneSetpoint
+
+    zone = _grundlage(session)
+    modus = modus_anlegen(session, "thermostat-tag", "Tag")
+    session.add(
+        ZoneSetpoint(
+            zone_id=zone.id, setpoint_mode_id=modus.id, temperature_c=Decimal(temperatur)
+        )
+    )
+    session.add(
+        SchedulePoint(
+            zone_id=zone.id, weekday=1, minute_of_day=0, setpoint_mode_id=modus.id
+        )
+    )
+    session.flush()
+    return zone, modus
+
+
+def test_thermostat_hebt_den_sollwert_des_laufenden_modus(
+    session: Session, client_als
+) -> None:
+    """Nicht eine Uebersteuerung: Der Klick aendert den hinterlegten Sollwert des Modus
+    dauerhaft. Deshalb steht auf der Seite auch daneben, welcher Modus gemeint ist."""
+    from thermoctl.db.models.zone import ZoneSetpoint
+
+    zone, modus = _zone_mit_modus(session)
+    client = client_als([("zone.read", zone.id), ("setpoint.write", zone.id)])
+
+    antwort = client.post(
+        f"/zonen/{zone.id}/thermostat",
+        data={"modus_id": str(modus.id), "richtung": "hoch"},
+        headers=_csrf(client),
+        follow_redirects=False,
+    )
+    assert antwort.status_code == 303
+    zeile = session.scalars(
+        select(ZoneSetpoint).where(
+            ZoneSetpoint.zone_id == zone.id, ZoneSetpoint.setpoint_mode_id == modus.id
+        )
+    ).one()
+    assert zeile.temperature_c == Decimal("21.5")
+
+
+def test_zwei_klicks_sind_zwei_stufen(session: Session, client_als) -> None:
+    """Die Stufe wird auf den aktuellen Wert gerechnet, nicht auf den, den die Seite
+    beim Rendern kannte -- sonst waere der zweite Klick wirkungslos."""
+    from thermoctl.db.models.zone import ZoneSetpoint
+
+    zone, modus = _zone_mit_modus(session)
+    client = client_als([("zone.read", zone.id), ("setpoint.write", zone.id)])
+    for _ in range(2):
+        client.post(
+            f"/zonen/{zone.id}/thermostat",
+            data={"modus_id": str(modus.id), "richtung": "runter"},
+            headers=_csrf(client),
+        )
+    zeile = session.scalars(
+        select(ZoneSetpoint).where(ZoneSetpoint.setpoint_mode_id == modus.id)
+    ).one()
+    assert zeile.temperature_c == Decimal("20.0")
+
+
+def test_thermostat_bleibt_an_der_grenze_stehen(session: Session, client_als) -> None:
+    """35 Grad ist das Ende des Weges, kein Fehlerzustand -- die Domaenengrenze gilt,
+    und die Seite zeigt danach den unveraenderten Wert mit einem Hinweis."""
+    from thermoctl.db.models.zone import ZoneSetpoint
+
+    zone, modus = _zone_mit_modus(session, "35.0")
+    client = client_als([("zone.read", zone.id), ("setpoint.write", zone.id)])
+    antwort = client.post(
+        f"/zonen/{zone.id}/thermostat",
+        data={"modus_id": str(modus.id), "richtung": "hoch"},
+        headers=_csrf(client),
+        follow_redirects=False,
+    )
+    assert antwort.status_code == 303
+    assert "thermostatfehler" in antwort.headers["location"]
+    zeile = session.scalars(
+        select(ZoneSetpoint).where(ZoneSetpoint.setpoint_mode_id == modus.id)
+    ).one()
+    assert zeile.temperature_c == Decimal("35.0")
+
+
+def test_thermostat_braucht_setpoint_write(session: Session, client_als) -> None:
+    zone, modus = _zone_mit_modus(session)
+    client = client_als([("zone.read", zone.id)])
+    antwort = client.post(
+        f"/zonen/{zone.id}/thermostat",
+        data={"modus_id": str(modus.id), "richtung": "hoch"},
+        headers=_csrf(client),
+    )
+    assert antwort.status_code == 404
+
+
+def test_ohne_setpoint_write_steht_kein_thermostat_auf_der_seite(
+    session: Session, client_als
+) -> None:
+    """Gegenprobe zur Anzeige: Wer nicht verstellen darf, sieht den Sollwert, aber keine
+    Stufentasten."""
+    zone, _modus = _zone_mit_modus(session)
+    nur_lesen = client_als([("zone.read", zone.id)]).get("/")
+    assert "tc-stufe" not in nur_lesen.text
+
+    darf = client_als([("zone.read", zone.id), ("setpoint.write", zone.id)]).get("/")
+    assert "tc-stufe" in darf.text

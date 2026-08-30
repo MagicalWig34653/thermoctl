@@ -26,6 +26,11 @@ class Sollwert:
     temperature_c: Decimal
     grund: str
     modus_code: str | None
+    # Der Modus, dessen hinterlegte Temperatur gerade gilt -- None, wenn der Sollwert
+    # nicht aus einem Modus kommt (feste Uebersteuerung). Die Oberflaeche braucht ihn
+    # fuer das Thermostat auf der Startseite: Wer dort verstellt, verstellt *diesen*
+    # Modus und nicht "jetzt gerade".
+    modus_id: int | None = None
 
 
 # Bewusst NICHT `frozen=True`: Python haengt einer Ausnahme beim Werfen ihren
@@ -391,7 +396,13 @@ def uebersteuerung_aufheben(session: Session, zone: Zone) -> ZoneOverride | None
     return eintrag
 
 
-def _temperatur_fuer_modus(session: Session, zone: Zone, modus_id: int) -> Decimal | None:
+def temperatur_fuer_modus(session: Session, zone: Zone, modus_id: int) -> Decimal | None:
+    """Die fuer diese Zone hinterlegte Temperatur eines Modus, oder None.
+
+    Oeffentlich, weil das Thermostat der Startseite denselben Wert braucht, um eine
+    halbe Stufe darauf zu rechnen -- und weil ein Unterstrich, den drei Module
+    ignorieren, kein Schutz ist, sondern nur eine falsche Auskunft.
+    """
     return session.scalar(
         select(ZoneSetpoint.temperature_c).where(
             ZoneSetpoint.zone_id == zone.id, ZoneSetpoint.setpoint_mode_id == modus_id
@@ -408,11 +419,11 @@ def aufgeloester_sollwert(session: Session, zone: Zone, jetzt_utc: datetime) -> 
     einstellungen = session.get(Setting, 1)
     assert einstellungen is not None, "setting-Zeile fehlt — Einrichtung unvollstaendig"
     frost_id = einstellungen.frost_protection_mode_id
-    frost_temp = _temperatur_fuer_modus(session, zone, frost_id) or Decimal("16.0")
+    frost_temp = temperatur_fuer_modus(session, zone, frost_id) or Decimal("16.0")
     frost_code = session.scalar(select(SetpointMode.code).where(SetpointMode.id == frost_id))
 
     if zone.operating_mode.code == "off":
-        return Sollwert(frost_temp, "Betriebsart Aus — Frostschutz", frost_code)
+        return Sollwert(frost_temp, "Betriebsart Aus — Frostschutz", frost_code, frost_id)
 
     laufend = session.scalars(
         select(ZoneOverride)
@@ -425,13 +436,17 @@ def aufgeloester_sollwert(session: Session, zone: Zone, jetzt_utc: datetime) -> 
     ).first()
     if laufend is not None and (laufend.ends_at is None or laufend.ends_at > jetzt_utc):
         if laufend.temperature_c is not None:
-            return Sollwert(laufend.temperature_c, "Uebersteuerung (feste Temperatur)", None)
-        temp = _temperatur_fuer_modus(session, zone, laufend.setpoint_mode_id or 0)
+            return Sollwert(
+                laufend.temperature_c, "Uebersteuerung (feste Temperatur)", None, None
+            )
+        temp = temperatur_fuer_modus(session, zone, laufend.setpoint_mode_id or 0)
         code = session.scalar(
             select(SetpointMode.code).where(SetpointMode.id == laufend.setpoint_mode_id)
         )
         if temp is not None:
-            return Sollwert(temp, f"Uebersteuerung auf Modus {code}", code)
+            return Sollwert(
+                temp, f"Uebersteuerung auf Modus {code}", code, laufend.setpoint_mode_id
+            )
 
     # Zeitplaene stehen in lokaler Zeit, damit sich die Nachtabsenkung bei der
     # Zeitumstellung nicht verschiebt.
@@ -443,13 +458,17 @@ def aufgeloester_sollwert(session: Session, zone: Zone, jetzt_utc: datetime) -> 
     )
     gilt = geltender_punkt(punkte, lokal.replace(tzinfo=None))
     if gilt is not None:
-        temp = _temperatur_fuer_modus(session, zone, gilt.setpoint_mode_id)
+        temp = temperatur_fuer_modus(session, zone, gilt.setpoint_mode_id)
         modus = session.get(SetpointMode, gilt.setpoint_mode_id)
         if temp is not None and modus is not None:
             uhrzeit = f"{gilt.minute_of_day // 60:02d}:{gilt.minute_of_day % 60:02d}"
-            return Sollwert(temp, f"Zeitplan: Modus {modus.name} ab {uhrzeit}", modus.code)
+            return Sollwert(
+                temp, f"Zeitplan: Modus {modus.name} ab {uhrzeit}", modus.code, modus.id
+            )
 
-    return Sollwert(frost_temp, "Kein Zeitplan hinterlegt — Frostschutz", frost_code)
+    return Sollwert(
+        frost_temp, "Kein Zeitplan hinterlegt — Frostschutz", frost_code, frost_id
+    )
 
 
 def ende_der_naechsten_schaltung(session: Session, zone: Zone) -> datetime | None:

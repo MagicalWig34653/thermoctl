@@ -114,14 +114,43 @@ Seite ein Formularstapel, in dem die eigentliche Auskunft — wie warm ist es �
         <div class="text-end">
             {% if eintrag and eintrag[0].temperature_c is not none %}
             <div class="t-wert t-gross">{{ eintrag[0].temperature_c|grad }}<span class="t-einheit">°C</span></div>
-            <div class="t-leise small t-wert">
-                Soll {{ sollwert.temperature_c|grad }} °C
-            </div>
             <div class="t-leise small">{{ eintrag[0].measured_at|alter }}</div>
             {% else %}
             <div class="t-wert t-gross t-leise">––<span class="t-einheit">°C</span></div>
             <div class="t-leise small">kein Messwert</div>
-            <div class="t-leise small t-wert">Soll {{ sollwert.temperature_c|grad }} °C</div>
+            {% endif %}
+        </div>
+
+        {#
+        Das Thermostat. Es verstellt den Sollwert des Modus, der **gerade gilt** -- also
+        dauerhaft "Tag soll waermer sein", nicht "jetzt einmal waermer". Deshalb steht
+        der Modusname daneben: Ohne ihn waere es dasselbe Bedienelement wie das
+        Uebersteuern und man traefe zwangslaeufig manchmal das Falsche.
+
+        Ohne Modus (feste Uebersteuerung) gibt es nichts zu verstellen -- dann steht dort
+        nur der Wert.
+        #}
+        <div class="tc-thermostat">
+            {% if sollwert.modus_id and zone.id in darf_sollwert %}
+            <form method="post" action="/zonen/{{ zone.id }}/thermostat" class="d-flex align-items-center gap-1">
+                <input type="hidden" name="modus_id" value="{{ sollwert.modus_id }}">
+                <button class="btn btn-sm btn-outline-secondary tc-stufe" type="submit"
+                        name="richtung" value="runter" aria-label="Sollwert senken">−</button>
+                <div class="text-center" style="min-width: 4.5rem">
+                    <div class="t-wert fw-medium">{{ sollwert.temperature_c|grad }} °C</div>
+                    <div class="t-leise" style="font-size: .7rem">{{ modusnamen.get(sollwert.modus_id, "Soll") }}</div>
+                </div>
+                <button class="btn btn-sm btn-outline-secondary tc-stufe" type="submit"
+                        name="richtung" value="hoch" aria-label="Sollwert anheben">+</button>
+            </form>
+            {% else %}
+            <div class="text-center" style="min-width: 4.5rem">
+                <div class="t-wert fw-medium">{{ sollwert.temperature_c|grad }} °C</div>
+                <div class="t-leise" style="font-size: .7rem">Soll</div>
+            </div>
+            {% endif %}
+            {% if thermostatfehler and fehler_zone_id == zone.id|string %}
+            <div class="small mt-1" style="color: var(--waerme)">{{ thermostatfehler }}</div>
             {% endif %}
         </div>
 

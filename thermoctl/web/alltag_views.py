@@ -11,10 +11,11 @@ from thermoctl.auth.dependencies import aktueller_principal, csrf_schutz, get_se
 from thermoctl.db.base import utcnow
 from thermoctl.db.models.zone import Zone
 from thermoctl.domain.authz import visible_zones
-from thermoctl.domain.modi import Domaenenfehler
+from thermoctl.domain.modi import Domaenenfehler, sollwerte_aendern
 from thermoctl.domain.principal import Principal
 from thermoctl.domain.schedule import (
     ende_der_naechsten_schaltung,
+    temperatur_fuer_modus,
     uebersteuerung_anlegen,
     uebersteuerung_aufheben,
 )
@@ -182,4 +183,56 @@ async def uebersteuerung_beenden(
 ) -> Response:
     zone = _zone_oder_404(session, principal, zone_id, "override.cancel")
     uebersteuerung_aufheben(session, zone)
+    return RedirectResponse("/", status.HTTP_303_SEE_OTHER)
+
+
+# Ein Klick auf dem Thermostat der Startseite. Eine halbe Stufe, weil ein Raum darunter
+# nicht spuerbar anders wird und man sonst zu oft klickt.
+THERMOSTATSCHRITT = Decimal("0.5")
+
+
+@router.post("/zonen/{zone_id}/thermostat")
+async def thermostat_verstellen(
+    zone_id: int,
+    request: Request,
+    principal: Annotated[Principal, Depends(aktueller_principal)],
+    session: Annotated[Session, Depends(get_session)],
+) -> Response:
+    """Verstellt die hinterlegte Temperatur des Modus, der gerade gilt.
+
+    Das ist ausdruecklich **keine** Uebersteuerung: Wer hier drueckt, aendert den
+    Sollwert des laufenden Modus dauerhaft -- "Tag soll ein halbes Grad waermer sein",
+    nicht "jetzt einmal waermer". Beides ist ein alltaeglicher Wunsch, und beides mit
+    demselben Bedienelement zu machen waere die sicherste Art, das Falsche zu treffen.
+    Deshalb steht daneben, welcher Modus verstellt wird.
+
+    Die Schrittweite wird hier auf den *aktuellen* Wert gerechnet und nicht im Browser:
+    Zwei Klicks sind dann zwei Stufen, auch wenn die Seite dazwischen nicht neu geladen
+    hat.
+    """
+    zone = _zone_oder_404(session, principal, zone_id, "setpoint.write")
+    formular = await request.form()
+    try:
+        modus_id = int(str(formular.get("modus_id", "")))
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Kein Modus angegeben") from exc
+
+    richtung = str(formular.get("richtung", ""))
+    if richtung not in ("hoch", "runter"):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Unbekannte Richtung")
+
+    jetziger = temperatur_fuer_modus(session, zone, modus_id)
+    if jetziger is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Für diesen Modus gibt es keinen Sollwert")
+
+    neu = jetziger + (THERMOSTATSCHRITT if richtung == "hoch" else -THERMOSTATSCHRITT)
+    try:
+        sollwerte_aendern(
+            session, zone, {modus_id: neu}, user_id=principal.user_id or 0
+        )
+    except Domaenenfehler as exc:
+        # An der Grenze angekommen (5 bis 35 Grad). Kein Fehlerzustand, sondern das
+        # Ende des Weges -- die Seite zeigt danach schlicht den unveraenderten Wert.
+        parameter = urlencode({"thermostatfehler": exc.meldung, "zone_id": zone.id})
+        return RedirectResponse(f"/?{parameter}", status.HTTP_303_SEE_OTHER)
     return RedirectResponse("/", status.HTTP_303_SEE_OTHER)
