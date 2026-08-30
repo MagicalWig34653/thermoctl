@@ -167,6 +167,34 @@ Grenzen prüft die Domäne, ein Verstoß ist `422`.
  "window_resume_delay_seconds": null}
 ```
 
+`PUT /api/v1/zones/{zone_id}/parameters/{name}` setzt **einen** Parameter und lässt die
+übrigen, wie sie sind — auch die geerbten. Neben dem PUT auf alle, nicht statt seiner: Wer
+nur die Hysterese ändern will, müsste sonst erst alle sechs lesen und wieder mitschicken
+und schriebe dabei jeden geerbten Wert als Zonenabweichung fest. Recht: `zone.manage`.
+
+```json
+{"wert": "0.40"}
+```
+
+Gültige Namen sind die sechs Felder oben. Ein anderer ergibt `404` samt der Liste der
+gültigen; ein Wert außerhalb der Grenzen `422`. Die Grenzen stehen in
+`domain/zone_settings.PARAMETER` und gelten für jeden Weg gleich.
+
+### `POST /api/v1/zones/{zone_id}/boost` — die nächste Schaltung vorziehen
+
+Recht: **`override.create`** — es *ist* eine Übersteuerung, nur eine, deren Wert und Ende
+der Zeitplan bestimmt statt der Aufrufer. Was als Nächstes ohnehin käme, gilt ab sofort und
+genau bis zu dem Zeitpunkt, an dem es planmäßig gekommen wäre; danach läuft der Plan weiter,
+als wäre nichts gewesen.
+
+```json
+{"zone_id": 1, "modus_code": "nacht", "temperature_c": "18.0",
+ "gilt_bis": "2026-08-31T20:00:00"}
+```
+
+Ohne Zeitplan oder ohne hinterlegte Temperatur für den nächsten Modus gibt es nichts
+vorzuziehen: `409` mit dem Grund im Klartext. Der Body ist leer — es gibt nichts zu wählen.
+
 Bei allen zonenbezogenen Wegen ergibt eine fremde Zone `404` statt `403`, damit die
 Antwort nicht verrät, dass diese Zone existiert.
 

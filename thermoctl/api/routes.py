@@ -8,9 +8,11 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from thermoctl.api.schemas import (
+    BoostAntwort,
     GeraetAntwort,
     ModusAnlegen,
     ModusAntwort,
+    ParameterSchreiben,
     RegelparameterAntwort,
     RegelparameterSchreiben,
     ScharfSchalten,
@@ -39,6 +41,8 @@ from thermoctl.db.models.schedule import SchedulePoint
 from thermoctl.db.models.zone import SetpointMode, Zone, ZoneSetpoint
 from thermoctl.db.models.zustand import ZoneState
 from thermoctl.domain.authz import Forbidden, principal_fuer_token, require, visible_zones
+from thermoctl.domain.fernbedienung import Fernbedienungsfehler
+from thermoctl.domain.fernbedienung import boost as domaene_boost
 from thermoctl.domain.modi import Domaenenfehler, modus_anlegen, sollwerte_aendern
 from thermoctl.domain.principal import Principal
 from thermoctl.domain.schedule import (
@@ -57,7 +61,14 @@ from thermoctl.domain.steuerung import (
     einstellungen_speichern,
     scharf_schalten,
 )
-from thermoctl.domain.zone_settings import regelparameter, regelparameter_speichern
+from thermoctl.domain.zone_settings import (
+    PARAMETER,
+    Parametergrenze,
+    Parameterunbekannt,
+    parameter_setzen,
+    regelparameter,
+    regelparameter_speichern,
+)
 from thermoctl.domain.zonen import ZonennameVergeben, zone_aendern, zone_anlegen, zone_loeschen
 
 router = APIRouter(prefix="/api/v1")
@@ -361,6 +372,82 @@ def parameter_speichern(
         quelle="api",
     )
     return RegelparameterAntwort(**regelparameter(session, zone_obj).__dict__)
+
+
+@router.put("/zones/{zone_id}/parameters/{name}", response_model=RegelparameterAntwort)
+def parameter_einzeln_speichern(
+    zone_id: int,
+    name: str,
+    daten: ParameterSchreiben,
+    session: Annotated[Session, Depends(get_session)],
+    principal: Annotated[Principal, Depends(_principal)],
+) -> RegelparameterAntwort:
+    """Setzt **einen** Regelparameter und laesst die uebrigen, wie sie sind.
+
+    Neben dem PUT auf alle Parameter, nicht statt seiner: Wer nur die Hysterese aendern
+    will, muesste sonst erst alle sechs lesen und wieder mitschicken -- und schriebe
+    dabei jeden geerbten Wert als Zonenabweichung fest.
+    """
+    zone_obj = _sichtbare_zone(session, principal, zone_id)
+    _recht(principal, "zone.manage", zone_id)
+    try:
+        parameter_setzen(
+            session,
+            zone_obj,
+            name,
+            daten.wert,
+            user_id=principal.user_id,
+            token_id=principal.token_id,
+            quelle="api",
+        )
+    except Parameterunbekannt as exc:
+        # Ein Name, den es nicht gibt, ist keine ungueltige Eingabe, sondern ein Weg,
+        # den es nicht gibt -- und die Liste der gueltigen gehoert in die Antwort.
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            f"{exc} Möglich sind: {', '.join(p.name for p in PARAMETER)}.",
+        ) from exc
+    except Parametergrenze as exc:
+        raise _fachfehler(name, str(exc)) from exc
+    return RegelparameterAntwort(**regelparameter(session, zone_obj).__dict__)
+
+
+@router.post(
+    "/zones/{zone_id}/boost",
+    response_model=BoostAntwort,
+    status_code=status.HTTP_201_CREATED,
+)
+def boost(
+    zone_id: int,
+    session: Annotated[Session, Depends(get_session)],
+    principal: Annotated[Principal, Depends(_principal)],
+) -> BoostAntwort:
+    """Zieht die naechste Schaltung vor.
+
+    Dasselbe Recht wie eine Uebersteuerung, weil es eine ist -- nur eine, deren Wert und
+    Ende der Zeitplan bestimmt statt der Aufrufer.
+    """
+    zone_obj = _sichtbare_zone(session, principal, zone_id)
+    _recht(principal, "override.create", zone_id)
+    try:
+        ergebnis = domaene_boost(
+            session,
+            zone_obj,
+            utcnow(),
+            user_id=principal.user_id,
+            token_id=principal.token_id,
+            quelle="api",
+        )
+    except Fernbedienungsfehler as exc:
+        # Kein Zeitplan, kein hinterlegter Sollwert: Der Wunsch ist verstanden, aber in
+        # diesem Zustand nicht ausfuehrbar.
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    return BoostAntwort(
+        zone_id=zone_obj.id,
+        modus_code=ergebnis.modus_code,
+        temperature_c=ergebnis.temperatur,
+        gilt_bis=ergebnis.bis,
+    )
 
 
 @router.get("/devices", response_model=list[GeraetAntwort])

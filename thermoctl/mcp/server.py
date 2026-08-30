@@ -19,6 +19,7 @@ from thermoctl.db.models.schedule import SchedulePoint
 from thermoctl.db.models.zone import SetpointMode, Zone, ZoneSetpoint
 from thermoctl.db.models.zustand import ShadowDecision, ZoneState
 from thermoctl.domain.authz import principal_fuer_token, require, visible_zones
+from thermoctl.domain.fernbedienung import boost as domaene_boost
 from thermoctl.domain.principal import Principal
 from thermoctl.domain.schedule import (
     aufgeloester_sollwert,
@@ -31,6 +32,13 @@ from thermoctl.domain.schedule import (
     zeitplanpunkt_verschieben as domaene_zeitplanpunkt_verschieben,
 )
 from thermoctl.domain.steuerung import GRENZEN, einstellungen, scharf_schalten
+from thermoctl.domain.zone_settings import (
+    PARAMETER,
+    regelparameter,
+)
+from thermoctl.domain.zone_settings import (
+    parameter_setzen as domaene_parameter_setzen,
+)
 
 
 class _McpServer(Protocol):
@@ -248,6 +256,77 @@ def uebersteuerung_aufheben(session: Session, klartext: str, zone_id: int) -> di
     return {"zone": zone.name, "aufgehoben": aufgehoben is not None}
 
 
+def boost(session: Session, klartext: str, zone_id: int) -> dict[str, object]:
+    """Zieht die naechste Schaltung vor -- ueber die gemeinsame Domaenenfunktion.
+
+    Dasselbe Recht wie eine Uebersteuerung, weil es eine ist: nur eine, deren Wert und
+    Ende der Zeitplan bestimmt statt der Aufrufer. Fuer ein Sprachmodell ist das die
+    verlaesslichere Form von "mach es hier waermer" -- es muss weder eine Temperatur
+    noch eine Dauer raten, und nach dem Schaltpunkt raeumt sich der Eingriff selbst weg.
+    """
+    token, principal = _anmelden(session, klartext)
+    zone = _sichtbare_zone(session, principal, zone_id)
+    require(principal, "override.create", zone_id)
+    ergebnis = domaene_boost(
+        session,
+        zone,
+        utcnow(),
+        user_id=principal.user_id,
+        token_id=token.id,
+        quelle="mcp",
+    )
+    return {
+        "zone": zone.name,
+        "modus": ergebnis.modus_code,
+        "temperatur_c": _dezimal(ergebnis.temperatur),
+        "gilt_bis": _zeitpunkt(ergebnis.bis),
+    }
+
+
+def regelparameter_lesen(session: Session, klartext: str, zone_id: int) -> dict[str, object]:
+    """Die wirksamen Regelparameter einer Zone, samt ihrer Grenzen.
+
+    Die Grenzen stehen mit in der Antwort, weil ein Sprachmodell sie sonst raten muesste:
+    Ohne sie waere jeder Schreibversuch ein Versuch, und "0,05 Kelvin Hysterese" saehe
+    fuer ein Modell so plausibel aus wie "0,5".
+    """
+    _token, principal = _anmelden(session, klartext)
+    zone = _sichtbare_zone(session, principal, zone_id)
+    wirksam = regelparameter(session, zone)
+    return {
+        "zone": zone.name,
+        "parameter": [
+            {
+                "name": beschreibung.name,
+                "beschriftung": beschreibung.beschriftung,
+                "einheit": beschreibung.einheit,
+                "wert": str(getattr(wirksam, beschreibung.name)),
+                "eigener_wert": getattr(zone, beschreibung.name) is not None,
+                "minimum": str(beschreibung.minimum),
+                "maximum": str(beschreibung.maximum),
+            }
+            for beschreibung in PARAMETER
+        ],
+    }
+
+
+def regelparameter_setzen(
+    session: Session, klartext: str, zone_id: int, name: str, wert: Decimal
+) -> dict[str, object]:
+    """Setzt **einen** Regelparameter und laesst die uebrigen, wie sie sind.
+
+    `zone.manage`, nicht `override.create`: Ein Regelparameter wirkt dauerhaft und auf
+    jede kuenftige Entscheidung, eine Uebersteuerung nur bis zum naechsten Schaltpunkt.
+    """
+    _token, principal = _anmelden(session, klartext)
+    zone = _sichtbare_zone(session, principal, zone_id)
+    require(principal, "zone.manage", zone_id)
+    gesetzt = domaene_parameter_setzen(
+        session, zone, name, wert, user_id=principal.user_id, quelle="mcp"
+    )
+    return {"zone": zone.name, "name": name, "wert": _dezimal(gesetzt)}
+
+
 def steuerung_lesen(session: Session, klartext: str) -> dict[str, object]:
     """Der Betriebszustand der Anlage samt der Vorgaben, von denen jede Zone erbt.
 
@@ -392,6 +471,21 @@ def _werkzeuge_registrieren(
     def mcp_uebersteuerung_aufheben(zone_id: int) -> dict[str, object]:
         with session_scope(factory) as session:
             return uebersteuerung_aufheben(session, klartext, zone_id)
+
+    @server.tool(name="boost")
+    def mcp_boost(zone_id: int) -> dict[str, object]:
+        with session_scope(factory) as session:
+            return boost(session, klartext, zone_id)
+
+    @server.tool(name="regelparameter_lesen")
+    def mcp_regelparameter_lesen(zone_id: int) -> dict[str, object]:
+        with session_scope(factory) as session:
+            return regelparameter_lesen(session, klartext, zone_id)
+
+    @server.tool(name="regelparameter_setzen")
+    def mcp_regelparameter_setzen(zone_id: int, name: str, wert: Decimal) -> dict[str, object]:
+        with session_scope(factory) as session:
+            return regelparameter_setzen(session, klartext, zone_id, name, wert)
 
     @server.tool(name="steuerung_lesen")
     def mcp_steuerung_lesen() -> dict[str, object]:

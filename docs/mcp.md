@@ -48,12 +48,26 @@ prüft dasselbe Recht wie der entsprechende REST-Endpunkt.
 | `schattenentscheidungen(zone_id, anzahl=10)` | `zone.read` | die jüngsten Entscheidungen samt Grund |
 | `uebersteuern(zone_id, temperatur_c, endet_am)` | `override.create` | legt eine Übersteuerung an |
 | `uebersteuerung_aufheben(zone_id)` | `override.cancel` | beendet die laufende Übersteuerung |
+| `boost(zone_id)` | `override.create` | zieht die nächste Schaltung vor |
+| `regelparameter_lesen(zone_id)` | `zone.read` | wirksame Regelparameter **samt ihrer Grenzen** |
+| `regelparameter_setzen(zone_id, name, wert)` | `zone.manage` | setzt einen Parameter, lässt die übrigen |
 | `steuerung_lesen()` | `zone.read` | Betriebszustand und globale Vorgaben |
 | `trockenlauf_erzwingen(begruendung)` | `control.arm` | nimmt die Regelung in den Trockenlauf zurück |
 | `zeitplanpunkt_verschieben(zone_id, punkt_id, wochentag, minute)` | `schedule.manage` | setzt einen Punkt auf einen anderen Zeitpunkt |
 
 Eine nicht sichtbare Zone wird wie eine unbekannte behandelt — die Antwort verrät nicht,
 dass es sie gibt.
+
+**`boost` ist für ein Sprachmodell die verlässlichere Form von „mach es hier wärmer".** Es
+muss weder eine Temperatur noch eine Dauer raten, und nach dem Schaltpunkt räumt sich der
+Eingriff selbst weg. `uebersteuern` bleibt daneben für den Fall, dass jemand eine bestimmte
+Temperatur nennt.
+
+**`regelparameter_lesen` liefert die Grenzen mit.** Ohne sie wäre jeder Schreibversuch ein
+Versuch: „0,05 Kelvin Hysterese" sieht für ein Modell so plausibel aus wie „0,5".
+`regelparameter_setzen` verlangt `zone.manage` und nicht `override.create` — ein
+Regelparameter wirkt dauerhaft und auf jede künftige Entscheidung, eine Übersteuerung nur
+bis zum nächsten Schaltpunkt.
 
 **Der eigentliche Gewinn sind `sollwert_erklaeren` und `schattenentscheidungen`.** Sie
 beantworten „warum ist es hier kalt?" in einem Aufruf, statt Ist-Wert, Zeitplan und
