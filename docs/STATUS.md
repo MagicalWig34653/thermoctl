@@ -96,6 +96,23 @@ gingen getrennt — `var(--warmth)` stand in der Vorlage, `--waerme` im Styleshe
 Zeitplan-Balken verloren dadurch ihre Waermefarbe und wurden grau. Kein Test hat das
 gesehen; die Seite antwortete mit 200 und sah nur anders aus.
 
+**Ein Waechter gegen genau diese Fehlerklasse.** Fuenfmal an einem Tag dasselbe
+Muster: Eine View wurde umbenannt, die Vorlage nicht, und Jinja beantwortet einen
+unbekannten Namen mit der leeren Zeichenkette. Die Seite antwortet weiter mit 200 und
+zeigt nur nichts mehr an — oder schickt, im schlimmeren Fall, einen Feldnamen, den die
+View nie liest, und das Anlegen tut still gar nichts.
+
+`tests/test_smoke_test.py` rendert jetzt jede Seite mit einem `Undefined`, das jeden
+*Zugriff* auf einen unbekannten Namen mitschreibt, und faellt beim ersten. Bewusst kein
+`StrictUndefined`: Etliche Vorlagen fragen zu Recht, ob ein optionaler Wert da ist. Rot
+wird nur, wer einen unbekannten Namen tatsaechlich *liest*.
+
+Der Waechter fand sofort den fuenften Fall: Die Modusauswahl im Zeitplan las
+`values.mode` und `errors.mode`, die View liefert `mode_id`. Der gewaehlte Modus kam nach
+einer abgewiesenen Eingabe nicht zurueck, und die Fehlermeldung am Feld erschien nie.
+Gegengeprueft von beiden Seiten: Mit dem alten Namen wird der Test rot, mit dem neuen
+gruen.
+
 **Der Rest, gefunden mit umgekehrter Suche.** Statt nach deutschen Woertern zu suchen,
 wurde jeder Bezeichner gegen ein Woerterbuch gehalten und alles Unbekannte angesehen. Das
 foerderte noch 23 Bezeichner zutage (`einordnung`, `abonnements`, `clientdaten`, `typ`,

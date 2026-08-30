@@ -12,7 +12,7 @@ def _logged_in_user(request: Request) -> dict[str, object]:
     """Provides every template with the logged-in user.
 
     Without this, the top bar on the start page carried the name and everywhere else
-    the word "account" -- the start page was the only view that put `benutzer` into
+    the word "account" -- the start page was the only view that put `user` into
     its context. A control that is named differently depending on the page looks like
     a different control.
 
@@ -20,7 +20,7 @@ def _logged_in_user(request: Request) -> dict[str, object]:
     stored it under `request.state`. If it's missing there, simply nothing shows --
     the login page has none.
     """
-    return {"kopf_benutzer": getattr(request.state, "user", None)}
+    return {"top_bar_user": getattr(request.state, "user", None)}
 
 
 templates = Jinja2Templates(

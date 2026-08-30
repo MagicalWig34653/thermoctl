@@ -83,9 +83,9 @@
         <form method="post" action="/zones/{{ zone.id }}/schedule/points">
             {{ select_field("weekday", "Tag", weekdays, values.weekday, "", errors.weekday) }}
             {{ text_field("time_of_day", "Uhrzeit", values.time_of_day, "Lokale Zeit, zum Beispiel 06:30.", errors.time_of_day, true, "time") }}
-            {% set modusoptionen = [] %}
-            {% for mode in modes %}{% set _ = modusoptionen.append((mode.id, mode.name)) %}{% endfor %}
-            {{ select_field("mode_id", "Modus", modusoptionen, values.mode, "", errors.mode) }}
+            {% set mode_options = [] %}
+            {% for mode in modes %}{% set _ = mode_options.append((mode.id, mode.name)) %}{% endfor %}
+            {{ select_field("mode_id", "Modus", mode_options, values.mode_id, "", errors.mode_id) }}
             <button class="btn btn-primary" type="submit">Punkt anlegen</button>
         </form>
     </div>

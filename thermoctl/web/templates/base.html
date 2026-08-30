@@ -112,7 +112,7 @@
                 <li class="nav-item dropdown">
                     <button class="nav-link dropdown-toggle{{ ' tc-here' if here == '/passkeys' }}"
                             type="button" data-bs-toggle="dropdown" aria-expanded="false">
-                        {{ kopf_benutzer.display_name if kopf_benutzer else "Konto" }}
+                        {{ top_bar_user.display_name if top_bar_user else "Konto" }}
                     </button>
                     <ul class="dropdown-menu dropdown-menu-end">
                         <li><a class="dropdown-item" href="/passkeys">Passkeys</a></li>
