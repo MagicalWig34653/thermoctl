@@ -23,87 +23,87 @@ from thermoctl.db.engine import create_engine_from_settings, session_factory, se
 from thermoctl.db.models.credential import SetupToken
 from thermoctl.db.models.lookup import SensorStatus
 from thermoctl.db.models.operations import Setting
+from thermoctl.db.models.state import ZoneState
 from thermoctl.db.models.zone import Zone
-from thermoctl.db.models.zustand import ZoneState
-from thermoctl.db.schemastand import SchemaPasstNicht, schema_pruefen
+from thermoctl.db.schema_state import SchemaPasstNicht, check_schema
 from thermoctl.domain.authz import Forbidden
-from thermoctl.domain.fernbedienung import (
-    Fernbedienungsfehler,
-    boost,
-    sollwert_setzen,
+from thermoctl.domain.fault_notice import (
+    FaultNotice,
+    bridge_notice,
+    sensornotice,
 )
-from thermoctl.domain.modi import Domaenenfehler, sollwerte_aendern
-from thermoctl.domain.stoerungsmeldung import (
-    Stoerungsmeldung,
-    brueckenmeldung,
-    sensormeldung,
+from thermoctl.domain.modes import DomainError, update_setpoints
+from thermoctl.domain.remote_control import (
+    RemoteControlError,
+    boost,
+    set_setpoint,
 )
 from thermoctl.domain.zone_settings import (
-    Parametergrenze,
-    Parameterunbekannt,
-    parameter_setzen,
+    ParameterOutOfRange,
+    UnknownParameter,
+    set_parameter,
 )
-from thermoctl.domain.zonen import Betriebsartunbekannt, betriebsart_setzen
-from thermoctl.integrations.aktoren import schalten_erlaubt
-from thermoctl.integrations.benachrichtigung import senden
-from thermoctl.integrations.mqtt.befehle import (
-    Befehl,
-    Befehlsfehler,
-    befehls_abonnements,
-    ist_befehl,
+from thermoctl.domain.zones import UnknownOperatingMode, set_operating_mode
+from thermoctl.integrations.actuators import switching_allowed
+from thermoctl.integrations.mqtt.client import MqttClient
+from thermoctl.integrations.mqtt.commands import (
+    Command,
+    CommandError,
+    commands_abonnements,
+    ist_command,
     zerlegen,
 )
-from thermoctl.integrations.mqtt.client import MqttClient
 from thermoctl.integrations.mqtt.zigbee2mqtt import (
-    Nachrichtenart,
-    bruecke_erreichbar,
+    MessageKind,
+    bridge_reachable,
     zuschneiden,
 )
+from thermoctl.integrations.notification import send
 from thermoctl.logging import configure_logging, request_id_var
-from thermoctl.services.aufbewahrung import alte_messwerte_loeschen
-from thermoctl.services.ingest import nachricht_verarbeiten, zonenzustand_fortschreiben
-from thermoctl.services.schattenlauf import zyklus
-from thermoctl.services.veroeffentlichen import Veroeffentlichungsstand, zone_zustand_senden
-from thermoctl.services.veroeffentlichen import zyklus as veroeffentlichungszyklus
+from thermoctl.services.ingest import advance_zone_state, process_message
+from thermoctl.services.publishing import PublicationState, zone_state_senden
+from thermoctl.services.publishing import cycle as publication_cycle
+from thermoctl.services.retention import delete_old_measurements
+from thermoctl.services.shadow_run import cycle
 from thermoctl.setup import einrichtung_noetig, setup_token_erzeugen
 from thermoctl.web import STATIC_DIR
 from thermoctl.web.admin_views import router as admin_router
-from thermoctl.web.alltag_views import router as alltag_router
 from thermoctl.web.audit_views import router as audit_router
 from thermoctl.web.auth_views import router as auth_router
-from thermoctl.web.geraete_views import router as geraete_router
-from thermoctl.web.geraetezuordnung_views import router as geraetezuordnung_router
-from thermoctl.web.modi_views import router as modi_router
+from thermoctl.web.control_views import router as control_router
+from thermoctl.web.daily_views import router as alltag_router
+from thermoctl.web.device_assignment_views import router as device_assignment_router
+from thermoctl.web.device_views import router as devices_router
+from thermoctl.web.mode_views import router as modes_router
 from thermoctl.web.passkey_views import router as passkey_router
+from thermoctl.web.schedule_views import router as schedule_router
 from thermoctl.web.setup_views import router as setup_router
 from thermoctl.web.start_views import router as start_router
-from thermoctl.web.steuerung_views import router as steuerung_router
-from thermoctl.web.zeitplan_views import router as zeitplan_router
-from thermoctl.web.zonen_views import router as zonen_router
+from thermoctl.web.zone_views import router as zone_router
 
 log = logging.getLogger(__name__)
 
 # Vorgabewert, solange die Einrichtung noch nicht abgeschlossen ist und die
 # `setting`-Zeile deshalb noch fehlt -- derselbe Wert wie die Spaltenvorgabe von
 # `setting.shadow_interval_seconds`.
-_SCHATTENINTERVALL_STANDARD_S = 60
+_SHADOW_INTERVAL_DEFAULT_S = 60
 
 
-def _auditieren(session: Session, meldung: Stoerungsmeldung) -> None:
+def _auditieren(session: Session, notice: FaultNotice) -> None:
     audit.record(
         session,
         source="system",
         action="notification.sent",
         object_type="fault",
-        object_id=meldung.schluessel,
-        summary=meldung.titel,
-        detail=meldung.text,
+        object_id=notice.schluessel,
+        summary=notice.titel,
+        detail=notice.text,
     )
 
 
 # Starke Verweise auf die laufenden Versandaufgaben. Ohne sie kann der Aufraeumer eine
 # Aufgabe einsammeln, bevor sie fertig ist — asyncio haelt selbst nur schwache Verweise.
-_laufende_meldungen: set[asyncio.Task[None]] = set()
+_running_notices: set[asyncio.Task[None]] = set()
 
 
 def _sensorzustaende(session: Session) -> dict[int, str]:
@@ -117,35 +117,35 @@ def _sensorzustaende(session: Session) -> dict[int, str]:
     }
 
 
-def _sensormeldungen(
+def _sensor_notices(
     session: Session, vorher: dict[int, str]
-) -> list[Stoerungsmeldung]:
+) -> list[FaultNotice]:
     nachher = _sensorzustaende(session)
-    meldungen: list[Stoerungsmeldung] = []
+    notices: list[FaultNotice] = []
     for zone in session.scalars(select(Zone).order_by(Zone.id)):
         status = nachher.get(zone.id)
         if status is None:  # pragma: no cover
             # `zonenzustand_fortschreiben` legt fuer jede vorhandene Zone eine Zeile an.
             # Nur eine parallel geloeschte oder beschaedigte Zeile koennte hier fehlen.
             continue
-        meldung = sensormeldung(f"sensor:{zone.id}", zone.name, vorher.get(zone.id), status)
-        if meldung is not None:
-            _auditieren(session, meldung)
-            meldungen.append(meldung)
-    return meldungen
+        notice = sensornotice(f"sensor:{zone.id}", zone.name, vorher.get(zone.id), status)
+        if notice is not None:
+            _auditieren(session, notice)
+            notices.append(notice)
+    return notices
 
 
 async def _shadow_intervall_s(session_factory: sessionmaker[Session]) -> int:
     with session_scope(session_factory) as session:
-        einstellungen = session.get(Setting, 1)
+        settings = session.get(Setting, 1)
         return (
-            einstellungen.shadow_interval_seconds
-            if einstellungen is not None
-            else _SCHATTENINTERVALL_STANDARD_S
+            settings.shadow_interval_seconds
+            if settings is not None
+            else _SHADOW_INTERVAL_DEFAULT_S
         )
 
 
-async def _schattenschleife(app: FastAPI) -> None:
+async def _shadowschleife(app: FastAPI) -> None:
     """Wartet den konfigurierten Abstand ab, dann ein Zyklus -- endlos, bis abgebrochen.
 
     Eine Ausnahme beendet die Schleife nicht -- weder im Zyklus selbst noch beim Lesen
@@ -156,47 +156,47 @@ async def _schattenschleife(app: FastAPI) -> None:
     beim Herunterfahren) ist davon ausdruecklich nicht betroffen: er erbt nicht von
     `Exception` und laeuft ungefangen durch, sonst liesse sich die Schleife nie beenden.
     """
-    naechste_aufbewahrung = utcnow() + timedelta(days=1)
+    next_retention = utcnow() + timedelta(days=1)
     while True:
         try:
-            abstand = await _shadow_intervall_s(app.state.session_factory)
-            await asyncio.sleep(abstand)
-            jetzt = utcnow()
-            meldungen: list[Stoerungsmeldung]
+            interval = await _shadow_intervall_s(app.state.session_factory)
+            await asyncio.sleep(interval)
+            now = utcnow()
+            notices: list[FaultNotice]
             with session_scope(app.state.session_factory) as session:
                 vorher = _sensorzustaende(session)
-                zonenzustand_fortschreiben(session, jetzt)
-                meldungen = _sensormeldungen(session, vorher)
-                zyklus(session, jetzt)
+                advance_zone_state(session, now)
+                notices = _sensor_notices(session, vorher)
+                cycle(session, now)
                 # `getattr`: Die Schleife laeuft auch in Tests, die sich eine App
                 # zusammenstecken, ohne den ganzen Lebenszyklus durchlaufen zu lassen.
-                if getattr(app.state, "veroeffentlicher", None) is not None:
-                    await veroeffentlichungszyklus(
+                if getattr(app.state, "publisher", None) is not None:
+                    await publication_cycle(
                         session,
-                        app.state.veroeffentlicher,
-                        app.state.veroeffentlichungsstand,
+                        app.state.publisher,
+                        app.state.publication_state,
                         get_settings().mqtt_praefix,
-                        jetzt,
+                        now,
                     )
-                if jetzt >= naechste_aufbewahrung:
-                    alte_messwerte_loeschen(session, jetzt)
-                    naechste_aufbewahrung = jetzt + timedelta(days=1)
+                if now >= next_retention:
+                    delete_old_measurements(session, now)
+                    next_retention = now + timedelta(days=1)
             # Der Versand laeuft nebenher, nicht im Takt. `senden` wartet bis zu zehn
             # Sekunden auf einen Webhook; bei mehreren gleichzeitig ausgefallenen Sensoren
             # summierte sich das und verschoebe den naechsten Regelzyklus. Sobald in
             # Teilprojekt 4 wirklich geschaltet wird, ist der Takt keine Nebensache mehr.
             # `senden` faengt seine Fehler selbst; die Aufgabe wird bewusst nicht
             # abgewartet, aber festgehalten, damit sie nicht vom Aufraeumer verschwindet.
-            for meldung in meldungen:
-                aufgabe = asyncio.create_task(senden(get_settings(), meldung))
-                _laufende_meldungen.add(aufgabe)
-                aufgabe.add_done_callback(_laufende_meldungen.discard)
+            for notice in notices:
+                aufgabe = asyncio.create_task(send(get_settings(), notice))
+                _running_notices.add(aufgabe)
+                aufgabe.add_done_callback(_running_notices.discard)
         except Exception:
             log.exception("Schattenzyklus fehlgeschlagen -- naechster Versuch folgt")
 
 
-def _befehl_ausfuehren(
-    session: Session, topic: str, nutzlast: bytes, settings: Settings
+def _execute_command(
+    session: Session, topic: str, payload: bytes, settings: Settings
 ) -> Zone | None:
     """Fuehrt einen von aussen gesendeten Befehl aus -- ueber die Domaene, wie jeder Adapter.
 
@@ -212,24 +212,24 @@ def _befehl_ausfuehren(
     sofort zurueck, statt bis zum naechsten Regelzyklus zu warten.
     """
     try:
-        befehl = zerlegen(topic, nutzlast, settings.mqtt_praefix)
-    except Befehlsfehler as exc:
+        command = zerlegen(topic, payload, settings.mqtt_praefix)
+    except CommandError as exc:
         log.warning("Unbrauchbarer Befehl verworfen: %s", exc, extra={"topic": topic})
         return None
 
-    zone = session.get(Zone, befehl.zone_id)
+    zone = session.get(Zone, command.zone_id)
     if zone is None:
         log.warning("Befehl fuer unbekannte Zone verworfen", extra={"topic": topic})
         return None
 
     try:
-        _anwenden(session, zone, befehl)
+        _anwenden(session, zone, command)
     except (
-        Domaenenfehler,
-        Betriebsartunbekannt,
-        Fernbedienungsfehler,
-        Parameterunbekannt,
-        Parametergrenze,
+        DomainError,
+        UnknownOperatingMode,
+        RemoteControlError,
+        UnknownParameter,
+        ParameterOutOfRange,
     ) as exc:
         # Eine abgewiesene Eingabe ist keine Stoerung des Dienstes. Sie darf aber auch
         # nicht still verschwinden: Wer in Home Assistant 99 Grad einstellt, soll den
@@ -242,28 +242,28 @@ def _befehl_ausfuehren(
     return zone
 
 
-def _anwenden(session: Session, zone: Zone, befehl: Befehl) -> None:
+def _anwenden(session: Session, zone: Zone, command: Command) -> None:
     """Was ein zerlegter Befehl bewirkt. Getrennt, damit die Fehlerbehandlung eine bleibt."""
-    jetzt = utcnow()
-    if befehl.art == "betriebsart" and befehl.betriebsart is not None:
-        betriebsart_setzen(session, zone, befehl.betriebsart, akteur_id=None, quelle="system")
-    elif befehl.art == "sollwert" and befehl.temperatur is not None:
-        sollwert_setzen(session, zone, befehl.temperatur, jetzt, quelle="system")
-    elif befehl.art == "boost":
-        boost(session, zone, jetzt, quelle="system")
-    elif befehl.art == "modus" and befehl.modus_id and befehl.temperatur is not None:
-        sollwerte_aendern(
-            session, zone, {befehl.modus_id: befehl.temperatur},
-            user_id=None, quelle="system",
+    now = utcnow()
+    if command.kind == "operating_mode" and command.operating_mode is not None:
+        set_operating_mode(session, zone, command.operating_mode, akteur_id=None, source="system")
+    elif command.kind == "setpoint" and command.temperature is not None:
+        set_setpoint(session, zone, command.temperature, now, source="system")
+    elif command.kind == "boost":
+        boost(session, zone, now, source="system")
+    elif command.kind == "mode" and command.mode_id and command.temperature is not None:
+        update_setpoints(
+            session, zone, {command.mode_id: command.temperature},
+            user_id=None, source="system",
         )
-    elif befehl.art == "parameter" and befehl.parameter and befehl.zahl is not None:
-        parameter_setzen(
-            session, zone, befehl.parameter, befehl.zahl, user_id=None, quelle="system"
+    elif command.kind == "parameter" and command.parameter and command.zahl is not None:
+        set_parameter(
+            session, zone, command.parameter, command.zahl, user_id=None, source="system"
         )
 
 
-async def _mqtt_nachricht_verarbeiten(
-    app: FastAPI, settings: Settings, topic: str, nutzlast: bytes
+async def _process_mqtt_message(
+    app: FastAPI, settings: Settings, topic: str, payload: bytes
 ) -> None:
     """Handler fuer den MQTT-Client: jede Nachricht in einer eigenen Sitzung.
 
@@ -275,40 +275,40 @@ async def _mqtt_nachricht_verarbeiten(
 
     # Eigene Befehls-Topics zuerst: Sie liegen unter unserem eigenen Praefix und haben
     # mit dem Zigbee2MQTT-Zuschnitt nichts zu tun.
-    if ist_befehl(topic, settings.mqtt_praefix):
+    if ist_command(topic, settings.mqtt_praefix):
         with session_scope(app.state.session_factory) as session:
-            zone = _befehl_ausfuehren(session, topic, nutzlast, settings)
+            zone = _execute_command(session, topic, payload, settings)
             # Sofort antworten, noch in derselben Sitzung. Die Climate-Karte in Home
             # Assistant ist nicht optimistisch: Sie wartet auf den Zustand und zeigt bis
             # dahin den alten. Kam der erst im naechsten Regelzyklus, sprang der eben
             # gewaehlte Modus fuer eine Minute zurueck -- fuer den Benutzer sah es aus,
             # als lasse sich die Betriebsart nicht umstellen.
-            veroeffentlicher = getattr(app.state, "veroeffentlicher", None)
-            if zone is not None and veroeffentlicher is not None:
-                await zone_zustand_senden(
-                    session, veroeffentlicher, zone, settings.mqtt_praefix, empfangen_am
+            publisher = getattr(app.state, "publisher", None)
+            if zone is not None and publisher is not None:
+                await zone_state_senden(
+                    session, publisher, zone, settings.mqtt_praefix, empfangen_am
                 )
         return
 
     zuschnitt = zuschneiden(topic, settings.mqtt_base_topic)
-    meldung: Stoerungsmeldung | None = None
-    if zuschnitt.art == Nachrichtenart.BRUECKENZUSTAND:
-        erreichbar = bruecke_erreichbar(nutzlast)
-        if erreichbar is not None:
-            meldung = brueckenmeldung(app.state.bruecke_erreichbar, erreichbar)
-            app.state.bruecke_erreichbar = erreichbar
+    notice: FaultNotice | None = None
+    if zuschnitt.kind == MessageKind.BRIDGE_STATE:
+        reachable = bridge_reachable(payload)
+        if reachable is not None:
+            notice = bridge_notice(app.state.bridge_reachable, reachable)
+            app.state.bridge_reachable = reachable
     with session_scope(app.state.session_factory) as session:
-        nachricht_verarbeiten(
+        process_message(
             session,
             topic,
-            nutzlast,
+            payload,
             basis=settings.mqtt_base_topic,
             empfangen_am=empfangen_am,
         )
-        if meldung is not None:
-            _auditieren(session, meldung)
-    if meldung is not None:
-        await senden(settings, meldung)
+        if notice is not None:
+            _auditieren(session, notice)
+    if notice is not None:
+        await send(settings, notice)
 
 
 def _unverbrauchtes_setup_token_vorhanden(session: Session) -> bool:
@@ -324,7 +324,7 @@ def _unverbrauchtes_setup_token_vorhanden(session: Session) -> bool:
 # Unterstrich. Alles andere -- insbesondere Zeilenumbrueche, die im Textformat
 # des Logs zusaetzliche Zeilen vortaeuschen koennten, oder beliebig lange Werte,
 # die jede Logzeile aufblaehen -- gilt als unplausibel.
-_ANFRAGE_ID_MUSTER = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+_REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
 
 @asynccontextmanager
@@ -337,14 +337,14 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     # herauskommen, der den naechsten Befehl nennt, nicht als Traceback aus der
     # Tiefe von SQLAlchemy.
     try:
-        schema_pruefen(app.state.engine)
-    except SchemaPasstNicht as fehler:
-        log.error("%s", fehler)
+        check_schema(app.state.engine)
+    except SchemaPasstNicht as errors:
+        log.error("%s", errors)
         raise
 
     with session_scope(app.state.session_factory) as session:
         if einrichtung_noetig(session) and not _unverbrauchtes_setup_token_vorhanden(session):
-            klartext = setup_token_erzeugen(session)
+            plaintext = setup_token_erzeugen(session)
             # Einzige Stelle im ganzen Projekt, an der ein Geheimnis absichtlich im
             # Log erscheint (Ausnahme vermerkt in thermoctl/logging.py). Das Log ist
             # der einzige Kanal, ueber den der Betreiber an dieses Einmal-Token
@@ -353,15 +353,15 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
             # interpoliert statt als `extra=`-Feld: Nur der Meldungstext entgeht der
             # Maskierung in logging.py, ein Zusatzfeld mit "token" im Namen wuerde
             # dort geschwaerzt.
-            log.info("Einrichtung erforderlich. Einmal-Token: %s", klartext)
+            log.info("Einrichtung erforderlich. Einmal-Token: %s", plaintext)
 
     # Beide Hintergrundaufgaben laufen ausschliesslich mit `mqtt_enabled` -- die
     # Testsuite baut die Anwendung staendig (jeder `TestClient`), und sie darf dabei
     # weder eine Endlosschleife noch eine Netzverbindung anstossen.
     settings = get_settings()
-    app.state.bruecke_erreichbar = None
-    app.state.veroeffentlicher = None
-    app.state.veroeffentlichungsstand = Veroeffentlichungsstand()
+    app.state.bridge_reachable = None
+    app.state.publisher = None
+    app.state.publication_state = PublicationState()
     # Der **erste** Riegel, beim Bau des Clients gesetzt. Er kommt aus der Datenbank, wie
     # es der Kommentar in `MqttClient` seit Teilprojekt 2 vorsieht -- und er wird hier
     # einmal gelesen, nicht bei jedem Senden. Wer die Anlage im laufenden Betrieb scharf
@@ -369,18 +369,18 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     # die Betriebsseite sagt das auch. Der zweite Riegel (`setting.control_armed`, bei
     # jedem Senden geprueft) wirkt dagegen sofort -- in die sichere Richtung.
     with session_scope(app.state.session_factory) as session:
-        app.state.senden_erlaubt = schalten_erlaubt(session)
+        app.state.sending_allowed = switching_allowed(session)
     hintergrundaufgaben: list[asyncio.Task[None]] = []
     if settings.mqtt_enabled:
         client = MqttClient(
             settings,
-            lambda topic, nutzlast: _mqtt_nachricht_verarbeiten(app, settings, topic, nutzlast),
-            schalten_erlaubt=app.state.senden_erlaubt,
-            zusatz_abonnements=befehls_abonnements(settings.mqtt_praefix),
+            lambda topic, payload: _process_mqtt_message(app, settings, topic, payload),
+            switching_allowed=app.state.sending_allowed,
+            zusatz_abonnements=commands_abonnements(settings.mqtt_praefix),
         )
-        app.state.veroeffentlicher = client
-        hintergrundaufgaben.append(asyncio.create_task(client.laufen()))
-        hintergrundaufgaben.append(asyncio.create_task(_schattenschleife(app)))
+        app.state.publisher = client
+        hintergrundaufgaben.append(asyncio.create_task(client.run()))
+        hintergrundaufgaben.append(asyncio.create_task(_shadowschleife(app)))
 
     try:
         yield
@@ -400,7 +400,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
 _NUR_OERTLICH = frozenset({"127.0.0.1", "::1", "localhost"})
 
 
-def _warnen_wenn_ungeschuetzt_erreichbar(settings: Settings) -> None:
+def _warn_if_reachable_unprotected(settings: Settings) -> None:
     """Warnt, wenn der Dienst im Netz haengt und Sitzungscookies unverschluesselt gehen.
 
     `secure_cookies` steht standardmaessig auf false, weil die Erstinbetriebnahme sonst
@@ -430,7 +430,7 @@ def create_app() -> FastAPI:
             "secure_cookies": settings.secure_cookies,
         },
     )
-    _warnen_wenn_ungeschuetzt_erreichbar(settings)
+    _warn_if_reachable_unprotected(settings)
     # `docs_url=None` schaltet die mitgelieferte Oberflaeche ab; wir liefern sie unten
     # selbst aus, weil FastAPIs Fassung ihre Dateien aus einem CDN zieht. Das widerspraeche
     # gleich zweimal dem, was fuer die uebrigen Fremdbibliotheken gilt (siehe
@@ -453,17 +453,17 @@ def create_app() -> FastAPI:
     app.state.engine = create_engine_from_settings(settings)
     app.state.session_factory = session_factory(app.state.engine)
     app.include_router(start_router)
-    app.include_router(steuerung_router)
+    app.include_router(control_router)
     app.include_router(auth_router)
     app.include_router(setup_router)
     app.include_router(admin_router)
     app.include_router(audit_router)
-    app.include_router(geraete_router)
-    app.include_router(geraetezuordnung_router)
-    app.include_router(zonen_router)
-    app.include_router(modi_router)
+    app.include_router(devices_router)
+    app.include_router(device_assignment_router)
+    app.include_router(zone_router)
+    app.include_router(modes_router)
     app.include_router(passkey_router)
-    app.include_router(zeitplan_router)
+    app.include_router(schedule_router)
     app.include_router(alltag_router)
     app.include_router(api_router)
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
@@ -483,18 +483,18 @@ def create_app() -> FastAPI:
         # Eine unplausible mitgegebene Kennung ist kein Grund, eine sonst
         # gueltige Anfrage abzuweisen -- sie wird schlicht durch eine frisch
         # erzeugte ersetzt, als waere keine mitgeliefert worden.
-        kennung = (
+        identifier = (
             mitgegeben
-            if mitgegeben is not None and _ANFRAGE_ID_MUSTER.fullmatch(mitgegeben)
+            if mitgegeben is not None and _REQUEST_ID_PATTERN.fullmatch(mitgegeben)
             else uuid.uuid4().hex
         )
-        marke = request_id_var.set(kennung)
+        marker = request_id_var.set(identifier)
         try:
-            antwort = await call_next(request)
+            response = await call_next(request)
         finally:
-            request_id_var.reset(marke)
-        antwort.headers["X-Request-ID"] = kennung
-        return antwort
+            request_id_var.reset(marker)
+        response.headers["X-Request-ID"] = identifier
+        return response
 
     @app.get("/docs", include_in_schema=False)
     async def swagger_ui() -> HTMLResponse:

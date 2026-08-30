@@ -8,68 +8,68 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from thermoctl.api.schemas import (
-    BoostAntwort,
-    GeraetAntwort,
-    ModusAnlegen,
-    ModusAntwort,
-    ParameterSchreiben,
-    RegelparameterAntwort,
-    RegelparameterSchreiben,
-    ScharfSchalten,
-    SollwertAntwort,
-    SollwerteSchreiben,
-    SteuerungAntwort,
+    BoostResponse,
+    ControlParametersResponse,
+    ControlResponse,
+    CreateMode,
+    CreateOverride,
+    CreateSchedulePoint,
+    DeviceResponse,
+    ModeResponse,
+    MoveSchedulePoint,
+    OverrideResponse,
+    SchedulePointResponse,
+    SetArmed,
+    SetpointResponse,
     SteuerungSchreiben,
-    TokenAntwort,
-    UebersteuerungAnlegen,
-    UebersteuerungAntwort,
-    ZeitplanpunktAnlegen,
-    ZeitplanpunktAntwort,
-    ZeitplanpunktVerschieben,
-    ZoneAntwort,
-    ZonenzustandAntwort,
-    ZoneSchreiben,
+    TokenResponse,
+    WriteControlParameters,
+    WriteParameter,
+    WriteSetpoints,
+    WriteZone,
+    ZoneResponse,
+    ZoneStateResponse,
 )
 from thermoctl.auth.dependencies import get_session
-from thermoctl.auth.tokens import token_aufloesen
+from thermoctl.auth.tokens import resolve_token
 from thermoctl.db.base import utcnow
 from thermoctl.db.models.credential import ApiToken
 from thermoctl.db.models.device import Device, DeviceCapabilityLink, ZoneDevice
 from thermoctl.db.models.lookup import DeviceCapability, Integration, SensorStatus
-from thermoctl.db.models.messwert import DeviceHealth
+from thermoctl.db.models.measurement import DeviceHealth
 from thermoctl.db.models.schedule import SchedulePoint
+from thermoctl.db.models.state import ZoneState
 from thermoctl.db.models.zone import SetpointMode, Zone, ZoneSetpoint
-from thermoctl.db.models.zustand import ZoneState
-from thermoctl.domain.authz import Forbidden, principal_fuer_token, require, visible_zones
-from thermoctl.domain.fernbedienung import Fernbedienungsfehler
-from thermoctl.domain.fernbedienung import boost as domaene_boost
-from thermoctl.domain.modi import Domaenenfehler, modus_anlegen, sollwerte_aendern
-from thermoctl.domain.principal import Principal
-from thermoctl.domain.schedule import (
-    Zeitplanfehler,
-    ende_der_naechsten_schaltung,
-    uebersteuerung_anlegen,
-    uebersteuerung_aufheben,
-    zeitplanpunkt_anlegen,
-    zeitplanpunkt_loeschen,
-    zeitplanpunkt_verschieben,
+from thermoctl.domain.authz import Forbidden, principal_for_token, require, visible_zones
+from thermoctl.domain.control import (
+    LIMITS,
+    ControlError,
+    arm,
+    save_settings,
+    settings,
 )
-from thermoctl.domain.steuerung import (
-    GRENZEN,
-    Steuerungsfehler,
-    einstellungen,
-    einstellungen_speichern,
-    scharf_schalten,
+from thermoctl.domain.modes import DomainError, create_mode, update_setpoints
+from thermoctl.domain.principal import Principal
+from thermoctl.domain.remote_control import RemoteControlError
+from thermoctl.domain.remote_control import boost as domain_boost
+from thermoctl.domain.schedule import (
+    ScheduleError,
+    cancel_override,
+    create_override,
+    create_schedule_point,
+    delete_schedule_point,
+    end_of_next_switch,
+    move_schedule_point,
 )
 from thermoctl.domain.zone_settings import (
-    PARAMETER,
-    Parametergrenze,
-    Parameterunbekannt,
-    parameter_setzen,
-    regelparameter,
-    regelparameter_speichern,
+    PARAMETERS,
+    ParameterOutOfRange,
+    UnknownParameter,
+    control_parameters,
+    save_control_parameters,
+    set_parameter,
 )
-from thermoctl.domain.zonen import ZonennameVergeben, zone_aendern, zone_anlegen, zone_loeschen
+from thermoctl.domain.zones import ZonennameVergeben, create_zone, delete_zone, update_zone
 
 router = APIRouter(prefix="/api/v1")
 
@@ -93,7 +93,7 @@ def _token(
 ) -> ApiToken:
     if zugang is None or zugang.scheme.lower() != "bearer":
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Ungueltiges Token")
-    token = token_aufloesen(session, zugang.credentials)
+    token = resolve_token(session, zugang.credentials)
     if token is None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Ungueltiges Token")
     return token
@@ -103,10 +103,10 @@ def _principal(
     session: Annotated[Session, Depends(get_session)],
     token: Annotated[ApiToken, Depends(_token)],
 ) -> Principal:
-    return principal_fuer_token(session, token)
+    return principal_for_token(session, token)
 
 
-def _sichtbare_zone(session: Session, principal: Principal, zone_id: int) -> Zone:
+def _visible_zone(session: Session, principal: Principal, zone_id: int) -> Zone:
     zone = next(
         (z for z in visible_zones(session, principal, "zone.read") if z.id == zone_id),
         None,
@@ -116,116 +116,116 @@ def _sichtbare_zone(session: Session, principal: Principal, zone_id: int) -> Zon
     return zone
 
 
-def _fachfehler(feld: str, meldung: str) -> HTTPException:
-    return HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, f"{feld}: {meldung}")
+def _domain_error(feld: str, notice: str) -> HTTPException:
+    return HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, f"{feld}: {notice}")
 
 
-def _recht(principal: Principal, code: str, zone_id: int | None = None) -> None:
+def _permission(principal: Principal, code: str, zone_id: int | None = None) -> None:
     try:
         require(principal, code, zone_id)
     except Forbidden as exc:
         raise HTTPException(status.HTTP_403_FORBIDDEN, str(exc)) from exc
 
 
-def _moduszugriff(session: Session, principal: Principal) -> None:
+def _modezugriff(session: Session, principal: Principal) -> None:
     if not visible_zones(session, principal, "zone.read"):
-        _recht(principal, "zone.read")
+        _permission(principal, "zone.read")
 
 
-@router.get("/zones", response_model=list[ZoneAntwort])
-def zonen(
+@router.get("/zones", response_model=list[ZoneResponse])
+def zones(
     session: Annotated[Session, Depends(get_session)],
     principal: Annotated[Principal, Depends(_principal)],
 ) -> list[Zone]:
     return visible_zones(session, principal, "zone.read")
 
 
-@router.get("/zones/{zone_id}", response_model=ZoneAntwort)
+@router.get("/zones/{zone_id}", response_model=ZoneResponse)
 def zone(
     zone_id: int,
     session: Annotated[Session, Depends(get_session)],
     principal: Annotated[Principal, Depends(_principal)],
 ) -> Zone:
-    return _sichtbare_zone(session, principal, zone_id)
+    return _visible_zone(session, principal, zone_id)
 
 
-@router.post("/zones", response_model=ZoneAntwort, status_code=status.HTTP_201_CREATED)
-def zone_erstellen(
-    daten: ZoneSchreiben,
+@router.post("/zones", response_model=ZoneResponse, status_code=status.HTTP_201_CREATED)
+def create_zone_view(
+    daten: WriteZone,
     session: Annotated[Session, Depends(get_session)],
     principal: Annotated[Principal, Depends(_principal)],
 ) -> Zone:
-    _recht(principal, "zone.manage")
+    _permission(principal, "zone.manage")
     try:
-        return zone_anlegen(session, principal, **daten.model_dump())
+        return create_zone(session, principal, **daten.model_dump())
     except ZonennameVergeben as exc:
-        raise _fachfehler("name", "Dieser Name ist bereits vergeben.") from exc
+        raise _domain_error("name", "Dieser Name ist bereits vergeben.") from exc
 
 
-@router.put("/zones/{zone_id}", response_model=ZoneAntwort)
-def zone_speichern(
+@router.put("/zones/{zone_id}", response_model=ZoneResponse)
+def save_zone(
     zone_id: int,
-    daten: ZoneSchreiben,
+    daten: WriteZone,
     session: Annotated[Session, Depends(get_session)],
     principal: Annotated[Principal, Depends(_principal)],
 ) -> Zone:
-    zone_obj = _sichtbare_zone(session, principal, zone_id)
-    _recht(principal, "zone.manage", zone_id)
+    zone_obj = _visible_zone(session, principal, zone_id)
+    _permission(principal, "zone.manage", zone_id)
     try:
-        zone_aendern(session, zone_obj, principal, **daten.model_dump())
+        update_zone(session, zone_obj, principal, **daten.model_dump())
     except ZonennameVergeben as exc:
-        raise _fachfehler("name", "Dieser Name ist bereits vergeben.") from exc
+        raise _domain_error("name", "Dieser Name ist bereits vergeben.") from exc
     return zone_obj
 
 
 @router.delete("/zones/{zone_id}", status_code=status.HTTP_204_NO_CONTENT)
-def zone_entfernen(
+def remove_zone(
     zone_id: int,
     session: Annotated[Session, Depends(get_session)],
     principal: Annotated[Principal, Depends(_principal)],
 ) -> Response:
-    zone_obj = _sichtbare_zone(session, principal, zone_id)
-    _recht(principal, "zone.manage", zone_id)
-    zone_loeschen(session, zone_obj, principal)
+    zone_obj = _visible_zone(session, principal, zone_id)
+    _permission(principal, "zone.manage", zone_id)
+    delete_zone(session, zone_obj, principal)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@router.get("/modes", response_model=list[ModusAntwort])
-def modi(
+@router.get("/modes", response_model=list[ModeResponse])
+def modes(
     session: Annotated[Session, Depends(get_session)],
     principal: Annotated[Principal, Depends(_principal)],
 ) -> list[SetpointMode]:
-    _moduszugriff(session, principal)
+    _modezugriff(session, principal)
     return list(
         session.scalars(select(SetpointMode).order_by(SetpointMode.sort_order, SetpointMode.code))
     )
 
 
-@router.post("/modes", response_model=ModusAntwort, status_code=status.HTTP_201_CREATED)
-def modus_erstellen(
-    daten: ModusAnlegen,
+@router.post("/modes", response_model=ModeResponse, status_code=status.HTTP_201_CREATED)
+def create_mode_view(
+    daten: CreateMode,
     session: Annotated[Session, Depends(get_session)],
     principal: Annotated[Principal, Depends(_principal)],
 ) -> SetpointMode:
-    _recht(principal, "mode.manage")
+    _permission(principal, "mode.manage")
     try:
-        return modus_anlegen(session, **daten.model_dump(), user_id=principal.user_id)
-    except Domaenenfehler as exc:
-        raise _fachfehler(exc.feld, exc.meldung) from exc
+        return create_mode(session, **daten.model_dump(), user_id=principal.user_id)
+    except DomainError as exc:
+        raise _domain_error(exc.feld, exc.notice) from exc
 
 
-def _sollwertantworten(session: Session, zone_id: int) -> list[SollwertAntwort]:
-    werte: dict[int, Decimal] = {
-        modus_id: temperatur
-        for modus_id, temperatur in session.execute(
+def _setpoint_responses(session: Session, zone_id: int) -> list[SetpointResponse]:
+    values: dict[int, Decimal] = {
+        mode_id: temperature
+        for mode_id, temperature in session.execute(
             select(ZoneSetpoint.setpoint_mode_id, ZoneSetpoint.temperature_c).where(
                 ZoneSetpoint.zone_id == zone_id
             )
         )
     }
     return [
-        SollwertAntwort(
-            mode_id=m.id, mode_code=m.code, mode_name=m.name, temperature_c=werte.get(m.id)
+        SetpointResponse(
+            mode_id=m.id, mode_code=m.code, mode_name=m.name, temperature_c=values.get(m.id)
         )
         for m in session.scalars(
             select(SetpointMode).order_by(SetpointMode.sort_order, SetpointMode.code)
@@ -233,34 +233,34 @@ def _sollwertantworten(session: Session, zone_id: int) -> list[SollwertAntwort]:
     ]
 
 
-@router.get("/zones/{zone_id}/setpoints", response_model=list[SollwertAntwort])
-def sollwerte(
+@router.get("/zones/{zone_id}/setpoints", response_model=list[SetpointResponse])
+def setpoints(
     zone_id: int,
     session: Annotated[Session, Depends(get_session)],
     principal: Annotated[Principal, Depends(_principal)],
-) -> list[SollwertAntwort]:
-    _sichtbare_zone(session, principal, zone_id)
-    return _sollwertantworten(session, zone_id)
+) -> list[SetpointResponse]:
+    _visible_zone(session, principal, zone_id)
+    return _setpoint_responses(session, zone_id)
 
 
-@router.put("/zones/{zone_id}/setpoints", response_model=list[SollwertAntwort])
-def sollwerte_speichern(
+@router.put("/zones/{zone_id}/setpoints", response_model=list[SetpointResponse])
+def save_setpoints(
     zone_id: int,
-    daten: SollwerteSchreiben,
+    daten: WriteSetpoints,
     session: Annotated[Session, Depends(get_session)],
     principal: Annotated[Principal, Depends(_principal)],
-) -> list[SollwertAntwort]:
-    zone_obj = _sichtbare_zone(session, principal, zone_id)
-    _recht(principal, "setpoint.write", zone_id)
-    werte = {eintrag.mode_id: eintrag.temperature_c for eintrag in daten.setpoints}
+) -> list[SetpointResponse]:
+    zone_obj = _visible_zone(session, principal, zone_id)
+    _permission(principal, "setpoint.write", zone_id)
+    values = {entry.mode_id: entry.temperature_c for entry in daten.setpoints}
     try:
-        sollwerte_aendern(session, zone_obj, werte, user_id=principal.user_id)
-    except Domaenenfehler as exc:
-        raise _fachfehler("temperature_c", exc.meldung) from exc
-    return _sollwertantworten(session, zone_id)
+        update_setpoints(session, zone_obj, values, user_id=principal.user_id)
+    except DomainError as exc:
+        raise _domain_error("temperature_c", exc.notice) from exc
+    return _setpoint_responses(session, zone_id)
 
 
-def _zeitplanantworten(session: Session, zone_id: int) -> list[ZeitplanpunktAntwort]:
+def _schedule_responses(session: Session, zone_id: int) -> list[SchedulePointResponse]:
     zeilen = session.execute(
         select(SchedulePoint, SetpointMode)
         .join(SetpointMode, SetpointMode.id == SchedulePoint.setpoint_mode_id)
@@ -268,7 +268,7 @@ def _zeitplanantworten(session: Session, zone_id: int) -> list[ZeitplanpunktAntw
         .order_by(SchedulePoint.weekday, SchedulePoint.minute_of_day)
     )
     return [
-        ZeitplanpunktAntwort(
+        SchedulePointResponse(
             id=p.id,
             weekday=p.weekday,
             minute_of_day=p.minute_of_day,
@@ -279,202 +279,202 @@ def _zeitplanantworten(session: Session, zone_id: int) -> list[ZeitplanpunktAntw
     ]
 
 
-@router.get("/zones/{zone_id}/schedule", response_model=list[ZeitplanpunktAntwort])
-def zeitplan(
+@router.get("/zones/{zone_id}/schedule", response_model=list[SchedulePointResponse])
+def schedule(
     zone_id: int,
     session: Annotated[Session, Depends(get_session)],
     principal: Annotated[Principal, Depends(_principal)],
-) -> list[ZeitplanpunktAntwort]:
-    _sichtbare_zone(session, principal, zone_id)
-    return _zeitplanantworten(session, zone_id)
+) -> list[SchedulePointResponse]:
+    _visible_zone(session, principal, zone_id)
+    return _schedule_responses(session, zone_id)
 
 
 @router.post(
     "/zones/{zone_id}/schedule",
-    response_model=ZeitplanpunktAntwort,
+    response_model=SchedulePointResponse,
     status_code=status.HTTP_201_CREATED,
 )
-def zeitplanpunkt_erstellen(
+def create_schedule_point_view(
     zone_id: int,
-    daten: ZeitplanpunktAnlegen,
+    daten: CreateSchedulePoint,
     session: Annotated[Session, Depends(get_session)],
     principal: Annotated[Principal, Depends(_principal)],
-) -> ZeitplanpunktAntwort:
-    zone_obj = _sichtbare_zone(session, principal, zone_id)
-    _recht(principal, "schedule.manage", zone_id)
+) -> SchedulePointResponse:
+    zone_obj = _visible_zone(session, principal, zone_id)
+    _permission(principal, "schedule.manage", zone_id)
     try:
-        punkt = zeitplanpunkt_anlegen(
+        point = create_schedule_point(
             session,
             zone_obj,
-            wochentag=daten.weekday,
+            weekday=daten.weekday,
             minute=daten.minute_of_day,
-            modus_id=daten.mode_id,
+            mode_id=daten.mode_id,
             user_id=principal.user_id,
             token_id=principal.token_id,
-            quelle="api",
+            source="api",
         )
-    except Zeitplanfehler as exc:
-        raise _fachfehler(exc.feld, exc.meldung) from exc
-    modus = session.get(SetpointMode, punkt.setpoint_mode_id)
-    assert modus is not None
-    return ZeitplanpunktAntwort(
-        id=punkt.id,
-        weekday=punkt.weekday,
-        minute_of_day=punkt.minute_of_day,
-        mode_id=modus.id,
-        mode_name=modus.name,
+    except ScheduleError as exc:
+        raise _domain_error(exc.feld, exc.notice) from exc
+    mode = session.get(SetpointMode, point.setpoint_mode_id)
+    assert mode is not None
+    return SchedulePointResponse(
+        id=point.id,
+        weekday=point.weekday,
+        minute_of_day=point.minute_of_day,
+        mode_id=mode.id,
+        mode_name=mode.name,
     )
 
 
-@router.delete("/zones/{zone_id}/schedule/{punkt_id}", status_code=status.HTTP_204_NO_CONTENT)
-def zeitplanpunkt_entfernen(
+@router.delete("/zones/{zone_id}/schedule/{point_id}", status_code=status.HTTP_204_NO_CONTENT)
+def remove_schedule_point(
     zone_id: int,
-    punkt_id: int,
+    point_id: int,
     session: Annotated[Session, Depends(get_session)],
     principal: Annotated[Principal, Depends(_principal)],
 ) -> Response:
-    zone_obj = _sichtbare_zone(session, principal, zone_id)
-    _recht(principal, "schedule.manage", zone_id)
-    punkt = session.get(SchedulePoint, punkt_id)
-    if punkt is None or punkt.zone_id != zone_id:
+    zone_obj = _visible_zone(session, principal, zone_id)
+    _permission(principal, "schedule.manage", zone_id)
+    point = session.get(SchedulePoint, point_id)
+    if point is None or point.zone_id != zone_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Zeitplanpunkt nicht gefunden")
-    zeitplanpunkt_loeschen(
-        session, zone_obj, punkt, user_id=principal.user_id, token_id=principal.token_id
+    delete_schedule_point(
+        session, zone_obj, point, user_id=principal.user_id, token_id=principal.token_id
     )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@router.get("/zones/{zone_id}/parameters", response_model=RegelparameterAntwort)
+@router.get("/zones/{zone_id}/parameters", response_model=ControlParametersResponse)
 def parameter(
     zone_id: int,
     session: Annotated[Session, Depends(get_session)],
     principal: Annotated[Principal, Depends(_principal)],
-) -> RegelparameterAntwort:
-    zone_obj = _sichtbare_zone(session, principal, zone_id)
-    return RegelparameterAntwort(**regelparameter(session, zone_obj).__dict__)
+) -> ControlParametersResponse:
+    zone_obj = _visible_zone(session, principal, zone_id)
+    return ControlParametersResponse(**control_parameters(session, zone_obj).__dict__)
 
 
-@router.put("/zones/{zone_id}/parameters", response_model=RegelparameterAntwort)
-def parameter_speichern(
+@router.put("/zones/{zone_id}/parameters", response_model=ControlParametersResponse)
+def save_parameter(
     zone_id: int,
-    daten: RegelparameterSchreiben,
+    daten: WriteControlParameters,
     session: Annotated[Session, Depends(get_session)],
     principal: Annotated[Principal, Depends(_principal)],
-) -> RegelparameterAntwort:
-    zone_obj = _sichtbare_zone(session, principal, zone_id)
-    _recht(principal, "zone.manage", zone_id)
-    regelparameter_speichern(
+) -> ControlParametersResponse:
+    zone_obj = _visible_zone(session, principal, zone_id)
+    _permission(principal, "zone.manage", zone_id)
+    save_control_parameters(
         session,
         zone_obj,
         daten.model_dump(),
         user_id=principal.user_id,
         token_id=principal.token_id,
-        quelle="api",
+        source="api",
     )
-    return RegelparameterAntwort(**regelparameter(session, zone_obj).__dict__)
+    return ControlParametersResponse(**control_parameters(session, zone_obj).__dict__)
 
 
-@router.put("/zones/{zone_id}/parameters/{name}", response_model=RegelparameterAntwort)
-def parameter_einzeln_speichern(
+@router.put("/zones/{zone_id}/parameters/{name}", response_model=ControlParametersResponse)
+def save_parameter_einzeln(
     zone_id: int,
     name: str,
-    daten: ParameterSchreiben,
+    daten: WriteParameter,
     session: Annotated[Session, Depends(get_session)],
     principal: Annotated[Principal, Depends(_principal)],
-) -> RegelparameterAntwort:
+) -> ControlParametersResponse:
     """Setzt **einen** Regelparameter und laesst die uebrigen, wie sie sind.
 
     Neben dem PUT auf alle Parameter, nicht statt seiner: Wer nur die Hysterese aendern
     will, muesste sonst erst alle sechs lesen und wieder mitschicken -- und schriebe
     dabei jeden geerbten Wert als Zonenabweichung fest.
     """
-    zone_obj = _sichtbare_zone(session, principal, zone_id)
-    _recht(principal, "zone.manage", zone_id)
+    zone_obj = _visible_zone(session, principal, zone_id)
+    _permission(principal, "zone.manage", zone_id)
     try:
-        parameter_setzen(
+        set_parameter(
             session,
             zone_obj,
             name,
-            daten.wert,
+            daten.value,
             user_id=principal.user_id,
             token_id=principal.token_id,
-            quelle="api",
+            source="api",
         )
-    except Parameterunbekannt as exc:
+    except UnknownParameter as exc:
         # Ein Name, den es nicht gibt, ist keine ungueltige Eingabe, sondern ein Weg,
         # den es nicht gibt -- und die Liste der gueltigen gehoert in die Antwort.
         raise HTTPException(
             status.HTTP_404_NOT_FOUND,
-            f"{exc} Möglich sind: {', '.join(p.name for p in PARAMETER)}.",
+            f"{exc} Möglich sind: {', '.join(p.name for p in PARAMETERS)}.",
         ) from exc
-    except Parametergrenze as exc:
-        raise _fachfehler(name, str(exc)) from exc
-    return RegelparameterAntwort(**regelparameter(session, zone_obj).__dict__)
+    except ParameterOutOfRange as exc:
+        raise _domain_error(name, str(exc)) from exc
+    return ControlParametersResponse(**control_parameters(session, zone_obj).__dict__)
 
 
 @router.post(
     "/zones/{zone_id}/boost",
-    response_model=BoostAntwort,
+    response_model=BoostResponse,
     status_code=status.HTTP_201_CREATED,
 )
 def boost(
     zone_id: int,
     session: Annotated[Session, Depends(get_session)],
     principal: Annotated[Principal, Depends(_principal)],
-) -> BoostAntwort:
+) -> BoostResponse:
     """Zieht die naechste Schaltung vor.
 
     Dasselbe Recht wie eine Uebersteuerung, weil es eine ist -- nur eine, deren Wert und
     Ende der Zeitplan bestimmt statt der Aufrufer.
     """
-    zone_obj = _sichtbare_zone(session, principal, zone_id)
-    _recht(principal, "override.create", zone_id)
+    zone_obj = _visible_zone(session, principal, zone_id)
+    _permission(principal, "override.create", zone_id)
     try:
-        ergebnis = domaene_boost(
+        result = domain_boost(
             session,
             zone_obj,
             utcnow(),
             user_id=principal.user_id,
             token_id=principal.token_id,
-            quelle="api",
+            source="api",
         )
-    except Fernbedienungsfehler as exc:
+    except RemoteControlError as exc:
         # Kein Zeitplan, kein hinterlegter Sollwert: Der Wunsch ist verstanden, aber in
         # diesem Zustand nicht ausfuehrbar.
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
-    return BoostAntwort(
+    return BoostResponse(
         zone_id=zone_obj.id,
-        modus_code=ergebnis.modus_code,
-        temperature_c=ergebnis.temperatur,
-        gilt_bis=ergebnis.bis,
+        mode_code=result.mode_code,
+        temperature_c=result.temperature,
+        gilt_bis=result.bis,
     )
 
 
-@router.get("/devices", response_model=list[GeraetAntwort])
-def geraete(
+@router.get("/devices", response_model=list[DeviceResponse])
+def devices(
     session: Annotated[Session, Depends(get_session)],
     principal: Annotated[Principal, Depends(_principal)],
-) -> list[GeraetAntwort]:
+) -> list[DeviceResponse]:
     require(principal, "device.read")
-    faehigkeiten: dict[int, list[str]] = {}
-    for geraet_id, code in session.execute(
+    capabilities: dict[int, list[str]] = {}
+    for device_id, code in session.execute(
         select(DeviceCapabilityLink.device_id, DeviceCapability.code)
         .join(DeviceCapability, DeviceCapability.id == DeviceCapabilityLink.capability_id)
         .order_by(DeviceCapability.code)
     ):
-        faehigkeiten.setdefault(geraet_id, []).append(code)
-    zonen: dict[int, set[str]] = {}
-    for geraet_id, name in session.execute(
+        capabilities.setdefault(device_id, []).append(code)
+    zones: dict[int, set[str]] = {}
+    for device_id, name in session.execute(
         select(ZoneDevice.device_id, Zone.name).join(Zone, Zone.id == ZoneDevice.zone_id)
     ):
-        zonen.setdefault(geraet_id, set()).add(name)
-    for geraet_id, name in session.execute(
+        zones.setdefault(device_id, set()).add(name)
+    for device_id, name in session.execute(
         select(Zone.temperature_source_device_id, Zone.name).where(
             Zone.temperature_source_device_id.is_not(None)
         )
     ):
-        if geraet_id is not None:
-            zonen.setdefault(geraet_id, set()).add(name)
+        if device_id is not None:
+            zones.setdefault(device_id, set()).add(name)
 
     zeilen = session.execute(
         select(Device, Integration, DeviceHealth)
@@ -483,31 +483,31 @@ def geraete(
         .order_by(Device.display_name, Device.id)
     )
     return [
-        GeraetAntwort(
-            id=geraet.id,
-            external_id=geraet.external_id,
-            display_name=geraet.display_name,
-            integration=anbindung.code,
-            model=geraet.model,
-            is_group=geraet.is_group,
-            capabilities=faehigkeiten.get(geraet.id, []),
-            last_payload_at=zustand.last_payload_at if zustand else None,
-            battery_percent=zustand.battery_percent if zustand else None,
-            link_quality=zustand.link_quality if zustand else None,
-            availability=zustand.availability if zustand else None,
-            zones=sorted(zonen.get(geraet.id, set())),
+        DeviceResponse(
+            id=device.id,
+            external_id=device.external_id,
+            display_name=device.display_name,
+            integration=integration.code,
+            model=device.model,
+            is_group=device.is_group,
+            capabilities=capabilities.get(device.id, []),
+            last_payload_at=state.last_payload_at if state else None,
+            battery_percent=state.battery_percent if state else None,
+            link_quality=state.link_quality if state else None,
+            availability=state.availability if state else None,
+            zones=sorted(zones.get(device.id, set())),
         )
-        for geraet, anbindung, zustand in zeilen
+        for device, integration, state in zeilen
     ]
 
 
-@router.get("/zones/{zone_id}/state", response_model=ZonenzustandAntwort)
-def zonenzustand(
+@router.get("/zones/{zone_id}/state", response_model=ZoneStateResponse)
+def zone_state(
     zone_id: int,
     session: Annotated[Session, Depends(get_session)],
     principal: Annotated[Principal, Depends(_principal)],
-) -> ZonenzustandAntwort:
-    _sichtbare_zone(session, principal, zone_id)
+) -> ZoneStateResponse:
+    _visible_zone(session, principal, zone_id)
     zeile = session.execute(
         select(ZoneState, SensorStatus)
         .join(SensorStatus, SensorStatus.id == ZoneState.sensor_status_id)
@@ -515,27 +515,27 @@ def zonenzustand(
     ).one_or_none()
     if zeile is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Zonenzustand nicht gefunden")
-    zustand, sensorzustand = zeile
-    return ZonenzustandAntwort(
-        zone_id=zustand.zone_id,
-        temperature_c=zustand.temperature_c,
-        measured_at=zustand.measured_at,
-        sensor_status=sensorzustand.code,
-        window_open=zustand.window_open,
-        updated_at=zustand.updated_at,
+    state, sensor_state = zeile
+    return ZoneStateResponse(
+        zone_id=state.zone_id,
+        temperature_c=state.temperature_c,
+        measured_at=state.measured_at,
+        sensor_status=sensor_state.code,
+        window_open=state.window_open,
+        updated_at=state.updated_at,
     )
 
 
-@router.get("/me", response_model=TokenAntwort)
+@router.get("/me", response_model=TokenResponse)
 def ich(
     token: Annotated[ApiToken, Depends(_token)],
     principal: Annotated[Principal, Depends(_principal)],
-) -> TokenAntwort:
+) -> TokenResponse:
     try:
         require(principal, "token.self")
     except Forbidden as exc:
         raise HTTPException(status.HTTP_403_FORBIDDEN, str(exc)) from exc
-    return TokenAntwort(
+    return TokenResponse(
         id=token.id,
         name=token.name,
         prefix=token.prefix,
@@ -546,57 +546,57 @@ def ich(
 
 @router.post(
     "/zones/{zone_id}/override",
-    response_model=UebersteuerungAntwort,
+    response_model=OverrideResponse,
     status_code=status.HTTP_201_CREATED,
 )
-def uebersteuern(
+def override_zone(
     zone_id: int,
-    daten: UebersteuerungAnlegen,
+    daten: CreateOverride,
     session: Annotated[Session, Depends(get_session)],
     principal: Annotated[Principal, Depends(_principal)],
 ) -> object:
-    zone_obj = _sichtbare_zone(session, principal, zone_id)
+    zone_obj = _visible_zone(session, principal, zone_id)
     try:
         require(principal, "override.create", zone_id)
     except Forbidden as exc:
         raise HTTPException(status.HTTP_403_FORBIDDEN, str(exc)) from exc
 
-    jetzt = utcnow()
-    ende = jetzt + timedelta(minutes=daten.dauer_minuten) if daten.dauer_minuten else None
-    if daten.bis_naechste_schaltung:
+    now = utcnow()
+    ende = now + timedelta(minutes=daten.duration_minutes) if daten.duration_minutes else None
+    if daten.until_next_switch:
         # Dieselbe Funktion wie in der Oberflaeche. Bis zum Abschlussreview von
         # Teilprojekt 3 stand die Rechnung hier ein zweites Mal — beide Adapter haetten
         # nach einer Korrektur an der Zeitzonenbehandlung auseinanderlaufen koennen.
-        ende = ende_der_naechsten_schaltung(session, zone_obj)
+        ende = end_of_next_switch(session, zone_obj)
     try:
-        return uebersteuerung_anlegen(
+        return create_override(
             session,
             zone_obj,
             daten.temperature_c,
             ende,
             user_id=principal.user_id,
             token_id=principal.token_id,
-            quelle="api",
+            source="api",
         )
-    except Domaenenfehler as exc:
+    except DomainError as exc:
         # Das Schema faengt den Wertebereich bereits ab; die Domaene prueft ihn seit dem
         # Abschlussreview zusaetzlich selbst. Bleibt trotzdem etwas uebrig, ist es ein
         # Eingabefehler und keine Stoerung des Dienstes.
-        raise _fachfehler(exc.feld, exc.meldung) from exc
+        raise _domain_error(exc.feld, exc.notice) from exc
 
 
 @router.delete("/zones/{zone_id}/override", status_code=status.HTTP_204_NO_CONTENT)
-def uebersteuerung_loeschen(
+def delete_override(
     zone_id: int,
     session: Annotated[Session, Depends(get_session)],
     principal: Annotated[Principal, Depends(_principal)],
 ) -> Response:
-    zone_obj = _sichtbare_zone(session, principal, zone_id)
+    zone_obj = _visible_zone(session, principal, zone_id)
     try:
         require(principal, "override.cancel", zone_id)
     except Forbidden as exc:
         raise HTTPException(status.HTTP_403_FORBIDDEN, str(exc)) from exc
-    uebersteuerung_aufheben(session, zone_obj)
+    cancel_override(session, zone_obj)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -606,109 +606,109 @@ def uebersteuerung_loeschen(
 # und Fehler; jede Grenze und jede Rechtepruefung steht genau einmal, in der Domaene.
 
 
-def _steuerungsantwort(session: Session) -> SteuerungAntwort:
-    zeile = einstellungen(session)
-    return SteuerungAntwort(
+def _control_response(session: Session) -> ControlResponse:
+    zeile = settings(session)
+    return ControlResponse(
         control_armed=zeile.control_armed,
         timezone=zeile.timezone,
-        **{feld: getattr(zeile, feld) for feld in GRENZEN},
+        **{feld: getattr(zeile, feld) for feld in LIMITS},
     )
 
 
-@router.get("/control", response_model=SteuerungAntwort)
-def steuerung(
+@router.get("/control", response_model=ControlResponse)
+def control(
     session: Annotated[Session, Depends(get_session)],
     principal: Annotated[Principal, Depends(_principal)],
-) -> SteuerungAntwort:
+) -> ControlResponse:
     # Lesen darf, wer die Anlage sehen darf: "Schaltet das Ding gerade wirklich?" soll
     # niemand raten muessen.
-    _recht(principal, "zone.read")
-    return _steuerungsantwort(session)
+    _permission(principal, "zone.read")
+    return _control_response(session)
 
 
-@router.put("/control/armed", response_model=SteuerungAntwort)
-def steuerung_scharfschalten(
-    daten: ScharfSchalten,
+@router.put("/control/armed", response_model=ControlResponse)
+def control_set_armed(
+    daten: SetArmed,
     session: Annotated[Session, Depends(get_session)],
     principal: Annotated[Principal, Depends(_principal)],
-) -> SteuerungAntwort:
+) -> ControlResponse:
     """Legt den Riegel um, den die Datenbank haelt.
 
     Eigenes Recht `control.arm`, nicht `setting.manage`: Das hier bewegt ein Ventil. Der
     zweite Riegel -- `MqttClient(schalten_erlaubt=...)` -- bleibt unberuehrt.
     """
-    _recht(principal, "control.arm")
+    _permission(principal, "control.arm")
     try:
-        scharf_schalten(
+        arm(
             session,
             daten.armed,
-            begruendung=daten.begruendung,
+            reason=daten.reason,
             user_id=principal.user_id,
             token_id=principal.token_id,
-            quelle="api",
+            source="api",
         )
-    except Steuerungsfehler as exc:
-        raise _fachfehler(exc.feld, exc.meldung) from exc
-    return _steuerungsantwort(session)
+    except ControlError as exc:
+        raise _domain_error(exc.feld, exc.notice) from exc
+    return _control_response(session)
 
 
-@router.put("/control/defaults", response_model=SteuerungAntwort)
-def steuerung_vorgaben(
+@router.put("/control/defaults", response_model=ControlResponse)
+def control_defaults(
     daten: SteuerungSchreiben,
     session: Annotated[Session, Depends(get_session)],
     principal: Annotated[Principal, Depends(_principal)],
-) -> SteuerungAntwort:
-    _recht(principal, "setting.manage")
-    werte = {feld: str(getattr(daten, feld)) for feld in GRENZEN}
+) -> ControlResponse:
+    _permission(principal, "setting.manage")
+    values = {feld: str(getattr(daten, feld)) for feld in LIMITS}
     try:
-        einstellungen_speichern(
+        save_settings(
             session,
-            werte,
+            values,
             daten.timezone,
             user_id=principal.user_id,
             token_id=principal.token_id,
-            quelle="api",
+            source="api",
         )
-    except Steuerungsfehler as exc:
-        raise _fachfehler(exc.feld, exc.meldung) from exc
-    return _steuerungsantwort(session)
+    except ControlError as exc:
+        raise _domain_error(exc.feld, exc.notice) from exc
+    return _control_response(session)
 
 
-@router.put("/zones/{zone_id}/schedule/{punkt_id}", response_model=ZeitplanpunktAntwort)
-def zeitplanpunkt_umsetzen(
+@router.put("/zones/{zone_id}/schedule/{point_id}", response_model=SchedulePointResponse)
+def reposition_schedule_point(
     zone_id: int,
-    punkt_id: int,
-    daten: ZeitplanpunktVerschieben,
+    point_id: int,
+    daten: MoveSchedulePoint,
     session: Annotated[Session, Depends(get_session)],
     principal: Annotated[Principal, Depends(_principal)],
-) -> ZeitplanpunktAntwort:
+) -> SchedulePointResponse:
     """Setzt einen Punkt auf einen anderen Zeitpunkt -- das Gegenstueck zum Ziehen in der
     Wochenansicht. Der Punkt behaelt seine Kennung, damit ein Aufrufer ihn weiter
     verfolgen kann."""
-    zone_obj = _sichtbare_zone(session, principal, zone_id)
-    _recht(principal, "schedule.manage", zone_id)
-    punkt = session.get(SchedulePoint, punkt_id)
-    if punkt is None or punkt.zone_id != zone_id:
+    zone_obj = _visible_zone(session, principal, zone_id)
+    _permission(principal, "schedule.manage", zone_id)
+    point = session.get(SchedulePoint, point_id)
+    if point is None or point.zone_id != zone_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Zeitplanpunkt nicht gefunden")
     try:
-        zeitplanpunkt_verschieben(
+        move_schedule_point(
             session,
             zone_obj,
-            punkt,
-            wochentag=daten.weekday,
+            point,
+            weekday=daten.weekday,
             minute=daten.minute_of_day,
             user_id=principal.user_id,
             token_id=principal.token_id,
-            quelle="api",
+            source="api",
         )
-    except Zeitplanfehler as exc:
-        raise _fachfehler(exc.feld, exc.meldung) from exc
-    modus = session.get(SetpointMode, punkt.setpoint_mode_id)
-    assert modus is not None
-    return ZeitplanpunktAntwort(
-        id=punkt.id,
-        weekday=punkt.weekday,
-        minute_of_day=punkt.minute_of_day,
-        mode_id=modus.id,
-        mode_name=modus.name,
+    except ScheduleError as exc:
+        raise _domain_error(exc.feld, exc.notice) from exc
+    mode = session.get(SetpointMode, point.setpoint_mode_id)
+    assert mode is not None
+    return SchedulePointResponse(
+        id=point.id,
+        weekday=point.weekday,
+        minute_of_day=point.minute_of_day,
+        mode_id=mode.id,
+        mode_name=mode.name,
     )

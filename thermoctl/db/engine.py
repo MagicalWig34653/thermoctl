@@ -26,7 +26,7 @@ def create_engine_from_settings(settings: Settings) -> Engine:
             dbapi_connection.isolation_level = None
 
         @event.listens_for(engine, "begin")
-        def _sqlite_transaktion_beginnen(conn) -> None:  # type: ignore[no-untyped-def]
+        def _begin_sqlite_transaction(conn) -> None:  # type: ignore[no-untyped-def]
             conn.exec_driver_sql("BEGIN")
 
     return engine
@@ -38,12 +38,12 @@ def session_factory(engine: Engine) -> sessionmaker[Session]:
 
 @contextmanager
 def session_scope(factory: sessionmaker[Session]) -> Iterator[Session]:
-    sitzung = factory()
+    http_session = factory()
     try:
-        yield sitzung
-        sitzung.commit()
+        yield http_session
+        http_session.commit()
     except Exception:
-        sitzung.rollback()
+        http_session.rollback()
         raise
     finally:
-        sitzung.close()
+        http_session.close()

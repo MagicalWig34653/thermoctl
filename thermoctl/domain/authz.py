@@ -17,7 +17,7 @@ class Forbidden(Exception):
     """Die Handlung ist diesem Principal nicht erlaubt."""
 
 
-def _benutzerrechte(session: Session, user: User) -> frozenset[tuple[str, int | None]]:
+def _user_permissions(session: Session, user: User) -> frozenset[tuple[str, int | None]]:
     if not user.is_active:
         return frozenset()
     zeilen = session.execute(
@@ -32,26 +32,26 @@ def _benutzerrechte(session: Session, user: User) -> frozenset[tuple[str, int | 
     return frozenset((code, zone_id) for code, zone_id in zeilen)
 
 
-def principal_fuer_benutzer(session: Session, user: User) -> Principal:
-    return Principal(user_id=user.id, token_id=None, grants=_benutzerrechte(session, user))
+def principal_for_user(session: Session, user: User) -> Principal:
+    return Principal(user_id=user.id, token_id=None, grants=_user_permissions(session, user))
 
 
-def principal_fuer_token(session: Session, token: ApiToken) -> Principal:
+def principal_for_token(session: Session, token: ApiToken) -> Principal:
     """Der Umfang eines Tokens ist stets die Schnittmenge mit den Rechten des Besitzers.
 
     Zur Laufzeit, nicht nur beim Ausstellen: verliert der Besitzer spaeter ein Recht,
     verliert das Token es ebenfalls.
     """
-    jetzt = utcnow()
+    now = utcnow()
     if token.revoked_at is not None or (
-        token.expires_at is not None and token.expires_at <= jetzt
+        token.expires_at is not None and token.expires_at <= now
     ):
         return Principal(user_id=token.user_id, token_id=token.id, grants=frozenset())
 
     besitzer = session.get(User, token.user_id)
     if besitzer is None:
         return Principal(user_id=token.user_id, token_id=token.id, grants=frozenset())
-    vom_besitzer = _benutzerrechte(session, besitzer)
+    vom_besitzer = _user_permissions(session, besitzer)
 
     zeilen = session.execute(
         select(Permission.code, ApiTokenPermission.zone_id)
@@ -76,7 +76,7 @@ def principal_fuer_token(session: Session, token: ApiToken) -> Principal:
 # Die Zuordnung steht hier und nicht in der Vorlage: Ein neues Recht soll auffallen,
 # solange es noch niemand vergeben kann. `test_authz.py` prueft, dass jedes Recht aus
 # PERMISSIONS genau einmal vorkommt.
-RECHTEBEREICHE: list[tuple[str, str, list[str]]] = [
+PERMISSION_AREAS: list[tuple[str, str, list[str]]] = [
     (
         "Sehen und bedienen",
         "Was im Alltag gebraucht wird.",
@@ -105,7 +105,7 @@ RECHTEBEREICHE: list[tuple[str, str, list[str]]] = [
 ]
 
 
-def hat_recht(principal: Principal, code: str, zone_id: int | None = None) -> bool:
+def has_permission(principal: Principal, code: str, zone_id: int | None = None) -> bool:
     """Ein anlagenweites Recht deckt jede Zone ab, ein zonenbezogenes nur die eigene.
 
     Umgekehrt gilt das ausdruecklich nicht: wer nur das Bad darf, darf nicht 'ueberall'.
@@ -118,7 +118,7 @@ def hat_recht(principal: Principal, code: str, zone_id: int | None = None) -> bo
 
 
 def require(principal: Principal, code: str, zone_id: int | None = None) -> None:
-    if not hat_recht(principal, code, zone_id):
+    if not has_permission(principal, code, zone_id):
         # `is not None` und nicht `if zone_id`: eine Kennung 0 waere sonst als
         # "keine Zone" behandelt. Heute vergeben beide Datenbanken ab 1, aber die
         # Annahme steht nirgends geschrieben — und in einer Fehlermeldung, die eine

@@ -12,18 +12,18 @@
 </p>
 
 {% if darf_aendern %}
-<form method="post" action="/einstellungen" class="tc-tafel p-4">
+<form method="post" action="/settings" class="tc-tafel p-4">
     <p class="t-marke mb-3">Regelung</p>
     <div class="row g-3">
-        {% for feld, beschriftung, ganzzahlig in felder %}
+        {% for feld, label, ganzzahlig in felder %}
         <div class="col-sm-6">
-            {{ zahlenfeld(feld, beschriftung, werte.get(feld, ""), "",
-                          fehler.get(feld, ""), "1" if ganzzahlig else "0.1") }}
+            {{ zahlenfeld(feld, label, values.get(feld, ""), "",
+                          errors.get(feld, ""), "1" if ganzzahlig else "0.1") }}
         </div>
         {% endfor %}
         <div class="col-sm-6">
-            {{ textfeld("timezone", "Zeitzone", werte.get("timezone", ""),
-                        "Zum Beispiel Europe/Berlin.", fehler.get("timezone", ""), true) }}
+            {{ textfeld("timezone", "Zeitzone", values.get("timezone", ""),
+                        "Zum Beispiel Europe/Berlin.", errors.get("timezone", ""), true) }}
         </div>
     </div>
     <button class="btn btn-primary mt-4" type="submit">Vorgaben speichern</button>
@@ -31,12 +31,12 @@
 {% else %}
 <div class="tc-tafel p-4">
     <dl class="row mb-0">
-        {% for feld, beschriftung, ganzzahlig in felder %}
-        <dt class="col-sm-7 fw-normal t-leise">{{ beschriftung }}</dt>
-        <dd class="col-sm-5 t-wert">{{ werte.get(feld, "") }}</dd>
+        {% for feld, label, ganzzahlig in felder %}
+        <dt class="col-sm-7 fw-normal t-leise">{{ label }}</dt>
+        <dd class="col-sm-5 t-wert">{{ values.get(feld, "") }}</dd>
         {% endfor %}
         <dt class="col-sm-7 fw-normal t-leise">Zeitzone</dt>
-        <dd class="col-sm-5 t-wert mb-0">{{ werte.get("timezone", "") }}</dd>
+        <dd class="col-sm-5 t-wert mb-0">{{ values.get("timezone", "") }}</dd>
     </dl>
 </div>
 <p class="t-leise small mt-3">

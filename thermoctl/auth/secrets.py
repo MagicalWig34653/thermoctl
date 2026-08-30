@@ -9,12 +9,12 @@ TOKEN_PRAEFIX = "tctl"  # noqa: S105
 PREFIX_LAENGE = 8
 
 
-def neues_geheimnis() -> str:
+def new_secret() -> str:
     """256 Bit Zufall, base64url-kodiert."""
     return secrets.token_urlsafe(32)
 
 
-def hash_geheimnis(geheimnis: str) -> str:
+def hash_secret(geheimnis: str) -> str:
     """SHA-256 statt Argon2id.
 
     Bei 256 Bit Zufall traegt ein langsamer Hash nichts bei, muss aber bei jeder
@@ -26,5 +26,5 @@ def hash_geheimnis(geheimnis: str) -> str:
 def neues_token() -> tuple[str, str, str]:
     """Liefert (klartext, prefix, hash). Der Klartext erscheint genau einmal."""
     prefix = secrets.token_hex(PREFIX_LAENGE // 2)
-    geheimnis = neues_geheimnis()
-    return f"{TOKEN_PRAEFIX}_{prefix}_{geheimnis}", prefix, hash_geheimnis(geheimnis)
+    geheimnis = new_secret()
+    return f"{TOKEN_PRAEFIX}_{prefix}_{geheimnis}", prefix, hash_secret(geheimnis)

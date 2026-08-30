@@ -23,18 +23,18 @@ from sqlalchemy.orm import Session
 from starlette.responses import Response
 
 from thermoctl.auth.dependencies import csrf_schutz, get_session
-from thermoctl.auth.sessions import COOKIE_NAME, sitzung_aufloesen
+from thermoctl.auth.sessions import COOKIE_NAME, resolve_session
 from thermoctl.db.base import utcnow
 from thermoctl.db.models.identity import User
 from thermoctl.db.models.lookup import SensorStatus
 from thermoctl.db.models.operations import Setting
 from thermoctl.db.models.override import ZoneOverride
 from thermoctl.db.models.schedule import SchedulePoint
+from thermoctl.db.models.state import ShadowDecision, ZoneState
 from thermoctl.db.models.zone import SetpointMode, ZoneSetpoint
-from thermoctl.db.models.zustand import ShadowDecision, ZoneState
-from thermoctl.domain.authz import hat_recht, principal_fuer_benutzer, visible_zones
-from thermoctl.domain.modi import HOECHSTTEMPERATUR_C, MINDESTTEMPERATUR_C
-from thermoctl.domain.schedule import aufgeloester_sollwert, wochenabschnitte
+from thermoctl.domain.authz import has_permission, principal_for_user, visible_zones
+from thermoctl.domain.modes import MAXIMUM_TEMPERATURE_C, MINIMUM_TEMPERATURE_C
+from thermoctl.domain.schedule import resolved_setpoint, week_segments
 from thermoctl.setup import einrichtung_noetig
 from thermoctl.web import templates, waermeanteil
 
@@ -45,11 +45,11 @@ from thermoctl.web import templates, waermeanteil
 router = APIRouter(dependencies=[Depends(csrf_schutz)], include_in_schema=False)
 
 
-MINUTEN_PRO_TAG = 1440
+MINUTES_PER_DAY = 1440
 
 
-def _tagesspur(
-    session: Session, zone_ids: list[int], wochentag: int
+def _day_track(
+    session: Session, zone_ids: list[int], weekday: int
 ) -> dict[int, list[dict[str, object]]]:
     """Der heutige Zeitplan je Zone als Abschnitte mit Anteil, Zeit und Solltemperatur.
 
@@ -59,11 +59,11 @@ def _tagesspur(
     """
     if not zone_ids:
         return {}
-    modi = {m.id: m for m in session.scalars(select(SetpointMode))}
-    namen = {kennung: modus.name for kennung, modus in modi.items()}
-    temperaturen: dict[tuple[int, int], Decimal] = {
-        (zone_id, modus_id): temperatur
-        for zone_id, modus_id, temperatur in session.execute(
+    modes = {m.id: m for m in session.scalars(select(SetpointMode))}
+    namen = {identifier: mode.name for identifier, mode in modes.items()}
+    temperatures: dict[tuple[int, int], Decimal] = {
+        (zone_id, mode_id): temperature
+        for zone_id, mode_id, temperature in session.execute(
             select(
                 ZoneSetpoint.zone_id,
                 ZoneSetpoint.setpoint_mode_id,
@@ -71,29 +71,29 @@ def _tagesspur(
             ).where(ZoneSetpoint.zone_id.in_(zone_ids))
         )
     }
-    punkte_je_zone: dict[int, list[SchedulePoint]] = {zone_id: [] for zone_id in zone_ids}
-    for punkt in session.scalars(
+    points_per_zone: dict[int, list[SchedulePoint]] = {zone_id: [] for zone_id in zone_ids}
+    for point in session.scalars(
         select(SchedulePoint).where(SchedulePoint.zone_id.in_(zone_ids))
     ):
-        punkte_je_zone[punkt.zone_id].append(punkt)
+        points_per_zone[point.zone_id].append(point)
 
     spuren: dict[int, list[dict[str, object]]] = {}
-    for zone_id, punkte in punkte_je_zone.items():
-        abschnitte = [
-            a for a in wochenabschnitte(punkte, namen) if a.wochentag == wochentag
+    for zone_id, points in points_per_zone.items():
+        segments = [
+            a for a in week_segments(points, namen) if a.weekday == weekday
         ]
         spuren[zone_id] = [
             {
-                "start": abschnitt.startminute,
-                "breite": (abschnitt.endminute - abschnitt.startminute)
+                "start": segment.start_minute,
+                "breite": (segment.endminute - segment.start_minute)
                 * 100
-                / MINUTEN_PRO_TAG,
-                "links": abschnitt.startminute * 100 / MINUTEN_PRO_TAG,
-                "modusname": abschnitt.modusname,
-                "temperatur": temperaturen.get((zone_id, abschnitt.modus_id)),
-                "waerme": waermeanteil(temperaturen.get((zone_id, abschnitt.modus_id))),
+                / MINUTES_PER_DAY,
+                "links": segment.start_minute * 100 / MINUTES_PER_DAY,
+                "modusname": segment.mode_name,
+                "temperatur": temperatures.get((zone_id, segment.mode_id)),
+                "waerme": waermeanteil(temperatures.get((zone_id, segment.mode_id))),
             }
-            for abschnitt in abschnitte
+            for segment in segments
         ]
     return spuren
 
@@ -112,38 +112,38 @@ def start(
     if einrichtung_noetig(session):
         return RedirectResponse("/setup", status_code=303)
 
-    cookie_wert = request.cookies.get(COOKIE_NAME)
-    sitzung = sitzung_aufloesen(session, cookie_wert) if cookie_wert else None
-    benutzer = session.get(User, sitzung.user_id) if sitzung else None
-    if benutzer is None or not benutzer.is_active:
+    cookie_value = request.cookies.get(COOKIE_NAME)
+    http_session = resolve_session(session, cookie_value) if cookie_value else None
+    user = session.get(User, http_session.user_id) if http_session else None
+    if user is None or not user.is_active:
         return RedirectResponse("/login", status_code=303)
 
-    request.state.benutzer = benutzer
-    principal = principal_fuer_benutzer(session, benutzer)
-    sichtbare_zonen = visible_zones(session, principal, "zone.read")
-    jetzt = utcnow()
-    einstellungen = session.get(Setting, 1)
+    request.state.user = user
+    principal = principal_for_user(session, user)
+    zones = visible_zones(session, principal, "zone.read")
+    now = utcnow()
+    settings = session.get(Setting, 1)
     zustaende = {
-        zone_id: (zustand, sensorstatus)
-        for zone_id, zustand, sensorstatus in session.execute(
+        zone_id: (state, sensorstatus)
+        for zone_id, state, sensorstatus in session.execute(
             select(ZoneState.zone_id, ZoneState, SensorStatus)
             .join(SensorStatus, SensorStatus.id == ZoneState.sensor_status_id)
-            .where(ZoneState.zone_id.in_([zone.id for zone in sichtbare_zonen]))
+            .where(ZoneState.zone_id.in_([zone.id for zone in zones]))
         )
     }
-    zone_ids = [zone.id for zone in sichtbare_zonen]
-    uebersteuerungen: dict[int, ZoneOverride] = {}
-    for eintrag in session.scalars(
+    zone_ids = [zone.id for zone in zones]
+    overrides: dict[int, ZoneOverride] = {}
+    for entry in session.scalars(
         select(ZoneOverride)
         .where(
             ZoneOverride.zone_id.in_(zone_ids),
             ZoneOverride.cancelled_at.is_(None),
-            ZoneOverride.starts_at <= jetzt,
-            or_(ZoneOverride.ends_at.is_(None), ZoneOverride.ends_at > jetzt),
+            ZoneOverride.starts_at <= now,
+            or_(ZoneOverride.ends_at.is_(None), ZoneOverride.ends_at > now),
         )
         .order_by(ZoneOverride.created_at.desc())
     ):
-        uebersteuerungen.setdefault(eintrag.zone_id, eintrag)
+        overrides.setdefault(entry.zone_id, entry)
     entscheidungen: dict[int, ShadowDecision] = {}
     for entscheidung in session.scalars(
         select(ShadowDecision)
@@ -156,45 +156,45 @@ def start(
         request,
         "start.html",
         {
-            "benutzer": benutzer,
-            "zonen": sichtbare_zonen,
+            "user": user,
+            "zones": zones,
             "zustaende": zustaende,
-            "sollwerte": {
-                zone.id: aufgeloester_sollwert(session, zone, jetzt) for zone in sichtbare_zonen
+            "setpoints": {
+                zone.id: resolved_setpoint(session, zone, now) for zone in zones
             },
-            "uebersteuerungen": uebersteuerungen,
+            "overrides": overrides,
             "entscheidungen": entscheidungen,
             "darf_uebersteuern": {
                 zone.id
-                for zone in sichtbare_zonen
-                if hat_recht(principal, "override.create", zone.id)
+                for zone in zones
+                if has_permission(principal, "override.create", zone.id)
             },
             "darf_aufheben": {
                 zone.id
-                for zone in sichtbare_zonen
-                if hat_recht(principal, "override.cancel", zone.id)
+                for zone in zones
+                if has_permission(principal, "override.cancel", zone.id)
             },
             "darf_sollwert": {
                 zone.id
-                for zone in sichtbare_zonen
-                if hat_recht(principal, "setpoint.write", zone.id)
+                for zone in zones
+                if has_permission(principal, "setpoint.write", zone.id)
             },
             "thermostatfehler": request.query_params.get("thermostatfehler"),
             # Aus der Domaene: Ein `min="5"` im Markup waere eine zweite Fassung der
             # Grenze und wuerde beim naechsten Verschieben zurueckbleiben.
-            "mindesttemperatur": MINDESTTEMPERATUR_C,
-            "hoechsttemperatur": HOECHSTTEMPERATUR_C,
+            "mindesttemperatur": MINIMUM_TEMPERATURE_C,
+            "hoechsttemperatur": MAXIMUM_TEMPERATURE_C,
             # Der Anzeigename, nicht der Code: Am Thermostat stand "frostschutz" statt
             # "Frostschutz" -- ein Bezeichner aus der Datenbank, der dort nichts zu
             # suchen hat.
-            "modusnamen": {
-                kennung: name
-                for kennung, name in session.execute(
+            "mode_names": {
+                identifier: name
+                for identifier, name in session.execute(
                     select(SetpointMode.id, SetpointMode.name)
                 )
             },
             "darf_parameter": {
-                zone.id for zone in sichtbare_zonen if hat_recht(principal, "zone.manage", zone.id)
+                zone.id for zone in zones if has_permission(principal, "zone.manage", zone.id)
             },
             "uebersteuerungsfehler": request.query_params.get("uebersteuerungsfehler"),
             "fehler_zone_id": request.query_params.get("zone_id"),
@@ -202,16 +202,16 @@ def start(
             # Die Anlage in einem Satz: Schaltet sie wirklich, laeuft die Bruecke, und
             # gibt es Sensoren, die schweigen? Genau die drei Dinge, die eine Anzeige
             # unglaubwuerdig machen, wenn man sie nicht kennt.
-            "scharf": bool(einstellungen and einstellungen.control_armed),
-            "bruecke": getattr(request.app.state, "bruecke_erreichbar", None),
+            "armed": bool(settings and settings.control_armed),
+            "bridge": getattr(request.app.state, "bridge_reachable", None),
             "stumme_sensoren": [
                 zone.display_name
-                for zone in sichtbare_zonen
+                for zone in zones
                 if zone.id in zustaende and zustaende[zone.id][1].code != "ok"
             ],
-            "tagesspuren": _tagesspur(
-                session, zone_ids, jetzt.isoweekday()
+            "tagesspuren": _day_track(
+                session, zone_ids, now.isoweekday()
             ),
-            "jetzt_anteil": (jetzt.hour * 60 + jetzt.minute) * 100 / MINUTEN_PRO_TAG,
+            "jetzt_anteil": (now.hour * 60 + now.minute) * 100 / MINUTES_PER_DAY,
         },
     )

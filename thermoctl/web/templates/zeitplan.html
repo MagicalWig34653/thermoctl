@@ -10,45 +10,45 @@
         <p class="t-leise mb-0">Lokale Zeit; ein Balken gilt bis zum nächsten Schaltpunkt.</p>
     </div>
     {% if darf_aendern %}
-    <a class="btn btn-outline-secondary" href="/zonen/{{ zone.id }}/zeitplan/uebernehmen">
+    <a class="btn btn-outline-secondary" href="/zones/{{ zone.id }}/schedule/adopt">
         Von anderer Zone übernehmen
     </a>
     {% endif %}
 </div>
 
-{% if verschiebefehler %}
+{% if move_error %}
 <div class="alert alert-warning" data-verschiebefehler role="alert">
-    Der Schaltpunkt wurde nicht verschoben: {{ verschiebefehler }}
+    Der Schaltpunkt wurde nicht verschoben: {{ move_error }}
 </div>
 {% endif %}
 
-{% if punkte %}
+{% if points %}
 <div id="zeitplan-gitter" class="row g-2 mb-2"
      data-zone="{{ zone.id }}" data-aenderbar="{{ 'ja' if darf_aendern else 'nein' }}">
-{% for tag, tagname in wochentage %}
+{% for day, tagname in wochentage %}
     <section class="col" style="min-width: 8rem;">
         <h2 class="h6 text-center">{{ tagname }}</h2>
         <div class="zeitplan-tag position-relative border rounded bg-light"
-             style="height: 26rem;" data-wochentag="{{ tag }}">
-        {% for abschnitt in abschnitte[tag] %}
-            <div class="zeitplan-balken position-absolute start-0 end-0 border-bottom px-1 overflow-hidden{{ ' zeitplan-ziehbar' if abschnitt.punkt_id and darf_aendern }}"
-                 {% if abschnitt.punkt_id %}data-punkt="{{ abschnitt.punkt_id }}"{% endif %}
-                 data-startminute="{{ abschnitt.startminute }}"
-                 {% set w = waerme.get(abschnitt.modus_id, 0.5) %}
-                 style="top: {{ abschnitt.startminute / 55.4 }}rem;
-                        height: {{ (abschnitt.endminute - abschnitt.startminute) / 55.4 }}rem;
+             style="height: 26rem;" data-wochentag="{{ day }}">
+        {% for segment in segments[day] %}
+            <div class="zeitplan-balken position-absolute start-0 end-0 border-bottom px-1 overflow-hidden{{ ' zeitplan-ziehbar' if segment.point_id and darf_aendern }}"
+                 {% if segment.point_id %}data-punkt="{{ segment.point_id }}"{% endif %}
+                 data-startminute="{{ segment.start_minute }}"
+                 {% set w = waerme.get(segment.mode_id, 0.5) %}
+                 style="top: {{ segment.start_minute / 55.4 }}rem;
+                        height: {{ (segment.endminute - segment.start_minute) / 55.4 }}rem;
                         background: color-mix(in oklab,
                             var({{ '--waerme' if w >= 0.5 else '--kuehle' }})
                             {{ (45 + (w - 0.5)|abs * 90)|round|int }}%, var(--flaeche));"
-                 title="{{ abschnitt.modusname }} ab {{ "%02d:%02d"|format(
-                     abschnitt.startminute // 60, abschnitt.startminute % 60
-                 ) }}{% if temperaturen.get(abschnitt.modus_id) %} – {{ temperaturen[abschnitt.modus_id]|grad }} °C{% endif %}">
+                 title="{{ segment.mode_name }} ab {{ "%02d:%02d"|format(
+                     segment.start_minute // 60, segment.start_minute % 60
+                 ) }}{% if temperatures.get(segment.mode_id) %} – {{ temperatures[segment.mode_id]|grad }} °C{% endif %}">
                 {# Eine Zeile, nicht zwei: Ein Balken von zwei Stunden ist keine zwei
                    Zeilen hoch, und die Beschriftung wurde unten abgeschnitten. #}
                 <small class="text-nowrap"><span class="zeitplan-uhrzeit t-wert">{{ "%02d:%02d"|format(
-                    abschnitt.startminute // 60, abschnitt.startminute % 60
-                ) }}</span> {{ abschnitt.modusname }}{% if temperaturen.get(abschnitt.modus_id) %}
-                    <span class="t-wert">{{ temperaturen[abschnitt.modus_id]|grad }}°</span>{% endif %}</small>
+                    segment.start_minute // 60, segment.start_minute % 60
+                ) }}</span> {{ segment.mode_name }}{% if temperatures.get(segment.mode_id) %}
+                    <span class="t-wert">{{ temperatures[segment.mode_id]|grad }}°</span>{% endif %}</small>
             </div>
         {% endfor %}
         </div>
@@ -72,34 +72,34 @@
    dann gegen einen Weg, den es fuer GET nicht gibt. Der erfolgreiche Fall
    leitet ohnehin auf die Zeitplanseite um. #}
 <form id="zeitplan-verschieben" method="post" hidden hx-push-url="false"
-      action="/zonen/{{ zone.id }}/zeitplan/punkte/verschieben">
-    <input type="hidden" name="punkt_id">
-    <input type="hidden" name="wochentag">
-    <input type="hidden" name="uhrzeit">
+      action="/zones/{{ zone.id }}/schedule/points/move">
+    <input type="hidden" name="point_id">
+    <input type="hidden" name="weekday">
+    <input type="hidden" name="time_of_day">
 </form>
 <section class="row g-4">
     <div class="col-lg-6">
         <h2 class="h4">Schaltpunkt anlegen</h2>
-        <form method="post" action="/zonen/{{ zone.id }}/zeitplan/punkte">
-            {{ auswahl("wochentag", "Tag", wochentage, werte.wochentag, "", fehler.wochentag) }}
-            {{ textfeld("uhrzeit", "Uhrzeit", werte.uhrzeit, "Lokale Zeit, zum Beispiel 06:30.", fehler.uhrzeit, true, "time") }}
+        <form method="post" action="/zones/{{ zone.id }}/schedule/points">
+            {{ auswahl("wochentag", "Tag", wochentage, values.weekday, "", errors.weekday) }}
+            {{ textfeld("uhrzeit", "Uhrzeit", values.time_of_day, "Lokale Zeit, zum Beispiel 06:30.", errors.time_of_day, true, "time") }}
             {% set modusoptionen = [] %}
-            {% for modus in modi %}{% set _ = modusoptionen.append((modus.id, modus.name)) %}{% endfor %}
-            {{ auswahl("modus", "Modus", modusoptionen, werte.modus, "", fehler.modus) }}
+            {% for mode in modes %}{% set _ = modusoptionen.append((mode.id, mode.name)) %}{% endfor %}
+            {{ auswahl("modus", "Modus", modusoptionen, values.mode, "", errors.mode) }}
             <button class="btn btn-primary" type="submit">Punkt anlegen</button>
         </form>
     </div>
     <div class="col-lg-6">
         <h2 class="h4">Schaltpunkte</h2>
-        {% if punkte %}
+        {% if points %}
         <ul class="list-group">
-        {% for punkt in punkte %}
+        {% for point in points %}
             <li class="list-group-item d-flex justify-content-between align-items-center">
-                <span>{{ dict(wochentage)[punkt.weekday] }}
-                    {{ "%02d:%02d"|format(punkt.minute_of_day // 60, punkt.minute_of_day % 60) }}
+                <span>{{ dict(wochentage)[point.weekday] }}
+                    {{ "%02d:%02d"|format(point.minute_of_day // 60, point.minute_of_day % 60) }}
                 </span>
                 <a class="btn btn-sm btn-outline-danger"
-                   href="/zonen/{{ zone.id }}/zeitplan/punkte/{{ punkt.id }}/loeschen">Löschen</a>
+                   href="/zones/{{ zone.id }}/schedule/points/{{ point.id }}/delete">Löschen</a>
             </li>
         {% endfor %}
         </ul>

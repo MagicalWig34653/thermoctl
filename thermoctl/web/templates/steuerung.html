@@ -7,18 +7,18 @@
 <h1 class="mb-1">Betrieb</h1>
 <p class="t-leise mb-4">
     Schaltet die Anlage wirklich, und was entscheidet sie gerade.
-    Die Regelvorgaben stehen unter <a href="/einstellungen">Einstellungen</a>,
-    die <a href="/statistik">Heizzeiten</a> der letzten Tage auf einer eigenen Seite.
+    Die Regelvorgaben stehen unter <a href="/settings">Einstellungen</a>,
+    die <a href="/statistics">Heizzeiten</a> der letzten Tage auf einer eigenen Seite.
 </p>
 
-{% if fehler.get("") %}
-<div class="alert alert-warning" role="alert">{{ fehler[""] }}</div>
+{% if errors.get("") %}
+<div class="alert alert-warning" role="alert">{{ errors[""] }}</div>
 {% endif %}
 
-<section class="tc-tafel p-4 mb-4 {{ 'tc-scharf' if einstellungen.control_armed }}">
+<section class="tc-tafel p-4 mb-4 {{ 'tc-scharf' if settings.control_armed }}">
     <div class="d-flex justify-content-between align-items-start flex-wrap gap-3">
         <div>
-            {% if einstellungen.control_armed %}
+            {% if settings.control_armed %}
             <span class="tc-chip tc-chip-waerme mb-2"><span class="tc-punkt"></span>Scharf</span>
             <h2 class="mb-1">Die Regelung schaltet wirklich</h2>
             <p class="t-leise mb-0">
@@ -35,9 +35,9 @@
         </div>
         {% if darf_scharf %}
         <div>
-            {% if einstellungen.control_armed %}
-            <form method="post" action="/steuerung/scharf">
-                <input type="hidden" name="scharf" value="nein">
+            {% if settings.control_armed %}
+            <form method="post" action="/control/arm">
+                <input type="hidden" name="armed" value="nein">
                 <button class="btn btn-outline-secondary" type="submit">
                     Zurück in den Trockenlauf
                 </button>
@@ -45,7 +45,7 @@
             {% else %}
             <button class="btn btn-primary" type="button"
                     data-bs-toggle="collapse" data-bs-target="#scharfschalten"
-                    aria-expanded="{{ 'true' if fehler.get('begruendung') else 'false' }}">
+                    aria-expanded="{{ 'true' if errors.get('begruendung') else 'false' }}">
                 Scharf schalten …
             </button>
             {% endif %}
@@ -53,7 +53,7 @@
         {% endif %}
     </div>
 
-    {% if einstellungen.control_armed and not senden_erlaubt %}
+    {% if settings.control_armed and not sending_allowed %}
     <div class="alert alert-warning mt-3 mb-0" role="alert">
         <strong>Scharf, aber es wird noch nichts geschaltet.</strong>
         Der Dienst lief beim Start im Trockenlauf; dieser Riegel sitzt im MQTT-Client und
@@ -63,8 +63,8 @@
     </div>
     {% endif %}
 
-    {% if darf_scharf and not einstellungen.control_armed %}
-    <div class="collapse mt-4 {{ 'show' if fehler.get('begruendung') }}" id="scharfschalten">
+    {% if darf_scharf and not settings.control_armed %}
+    <div class="collapse mt-4 {{ 'show' if errors.get('begruendung') }}" id="scharfschalten">
         <div class="border-top pt-3">
             <p class="t-marke">Vor dem Scharfschalten</p>
             <ul class="small t-leise">
@@ -78,11 +78,11 @@
                     gelesen. Die Anbindung an Home Assistant läuft schon vorher; dort
                     sagt es die Entität <span class="t-wert">Regelung scharf</span>.</li>
             </ul>
-            <form method="post" action="/steuerung/scharf">
-                <input type="hidden" name="scharf" value="ja">
+            <form method="post" action="/control/arm">
+                <input type="hidden" name="armed" value="ja">
                 {{ textfeld("begruendung", "Worauf stützt sich das?",
                             "", "Wird ins Protokoll geschrieben.",
-                            fehler.get("begruendung", ""), true) }}
+                            errors.get("begruendung", ""), true) }}
                 <button class="btn btn-primary" type="submit">Jetzt scharf schalten</button>
             </form>
         </div>
@@ -91,19 +91,19 @@
 </section>
 
 <p class="t-marke mb-2">Was die Regelung gerade entscheidet</p>
-{% if zonen %}
+{% if zones %}
 <div class="tc-tafel mb-3">
-    {% for zone in zonen %}
-    {% set zustand = zustaende.get(zone.id) %}
+    {% for zone in zones %}
+    {% set state = zustaende.get(zone.id) %}
     {% set entscheidung = entscheidungen.get(zone.id) %}
-    {% set soll = sollwerte.get(zone.id) %}
+    {% set soll = setpoints.get(zone.id) %}
     <article class="tc-zone tc-zone-betrieb">
         <div>
-            <a class="tc-zone-name" href="/zonen/{{ zone.id }}/zeitplan">{{ zone.display_name }}</a>
+            <a class="tc-zone-name" href="/zones/{{ zone.id }}/schedule">{{ zone.display_name }}</a>
         </div>
         <div class="text-end t-wert">
-            {% if zustand and zustand[0].temperature_c is not none %}
-            {{ zustand[0].temperature_c|grad }} °C
+            {% if state and state[0].temperature_c is not none %}
+            {{ state[0].temperature_c|grad }} °C
             {% else %}<span class="t-leise">–</span>{% endif %}
             <div class="small t-leise">ist</div>
         </div>

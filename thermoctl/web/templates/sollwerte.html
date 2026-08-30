@@ -4,15 +4,15 @@
 {% block titel %}Sollwerte {{ zone.display_name }} – thermoctl{% endblock %}
 {% block inhalt %}
 {{ zonenkopf(zone, "Sollwerte") }}
-<form method="post" action="/zonen/{{ zone.id }}/sollwerte">
-{% for modus in modi %}
-    {% set feld = "sollwert_" ~ modus.id %}
+<form method="post" action="/zones/{{ zone.id }}/setpoints">
+{% for mode in modes %}
+    {% set feld = "sollwert_" ~ mode.id %}
     {{ zahlenfeld(
         feld,
-        modus.name ~ " (°C)",
-        werte[feld],
+        mode.name ~ " (°C)",
+        values[feld],
         "Leer lassen löscht den Sollwert für diesen Modus.",
-        fehler[feld],
+        errors[feld],
         "0.1",
         mindesttemperatur,
         hoechsttemperatur

@@ -54,7 +54,7 @@ _TRENNZEICHEN = re.compile(r"[_\-.]")
 # wird statt als ein zusammenhaengendes Wort behandelt zu werden.
 _CAMELCASE_UEBERGANG = re.compile(r"(?<=[a-z0-9])(?=[A-Z])")
 
-_STANDARDFELDER = frozenset(logging.LogRecord("", 0, "", 0, "", None, None).__dict__)
+_DEFAULT_FIELDS = frozenset(logging.LogRecord("", 0, "", 0, "", None, None).__dict__)
 
 
 def _segmentiere_schluessel(schluessel: object) -> list[str]:
@@ -116,15 +116,15 @@ class MaskierungsFilter(logging.Filter):
     """
 
     def filter(self, record: logging.LogRecord) -> bool:
-        for schluessel, wert in list(record.__dict__.items()):
-            if schluessel not in _STANDARDFELDER and not schluessel.startswith("_"):
+        for schluessel, value in list(record.__dict__.items()):
+            if schluessel not in _DEFAULT_FIELDS and not schluessel.startswith("_"):
                 # Der Feldname selbst entscheidet, ob maskiert wird -- mask()
                 # kann einen nackten Wert nicht beurteilen, es erkennt sensible
                 # Stellen nur anhand von Schluesseln in Abbildungen. Fuer ein
                 # oberstes Zusatzfeld wie "mqtt_password" ist der Attributname
                 # "mqtt_password" genau dieser Schluessel.
                 record.__dict__[schluessel] = (
-                    "***" if _ist_sensibel(schluessel) else mask(wert)
+                    "***" if _ist_sensibel(schluessel) else mask(value)
                 )
         return True
 
@@ -140,9 +140,9 @@ class JsonFormatter(logging.Formatter):
         anfrage_id = request_id_var.get()
         if anfrage_id is not None:
             daten["request_id"] = anfrage_id
-        for schluessel, wert in record.__dict__.items():
-            if schluessel not in _STANDARDFELDER and not schluessel.startswith("_"):
-                daten[schluessel] = wert
+        for schluessel, value in record.__dict__.items():
+            if schluessel not in _DEFAULT_FIELDS and not schluessel.startswith("_"):
+                daten[schluessel] = value
         if record.exc_info:
             daten["exception"] = self.formatException(record.exc_info)
         return json.dumps(mask(daten), ensure_ascii=False, default=str)
@@ -167,9 +167,9 @@ class TextFormatter(logging.Formatter):
         # Textzeile ihre eigene Meldung am Ende noch einmal wiederholte:
         # "thermoctl startet | database=... message=thermoctl startet asctime=...".
         zusatz = {
-            schluessel: wert
-            for schluessel, wert in record.__dict__.items()
-            if schluessel not in _STANDARDFELDER and not schluessel.startswith("_")
+            schluessel: value
+            for schluessel, value in record.__dict__.items()
+            if schluessel not in _DEFAULT_FIELDS and not schluessel.startswith("_")
         }
         basis = super().format(record)
         if not zusatz:

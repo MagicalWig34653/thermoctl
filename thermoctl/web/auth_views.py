@@ -13,10 +13,10 @@ from thermoctl.auth.dependencies import csrf_schutz, get_session
 from thermoctl.auth.passwords import hash_password, verify_password
 from thermoctl.auth.sessions import (
     COOKIE_NAME,
-    sitzung_anlegen,
-    sitzung_aufloesen,
-    sitzung_widerrufen,
-    sitzungslebensdauer_s,
+    create_session,
+    resolve_session,
+    revoke_session,
+    session_lifetime_s,
 )
 from thermoctl.config import get_settings
 from thermoctl.db.base import utcnow
@@ -36,7 +36,7 @@ router = APIRouter(dependencies=[Depends(csrf_schutz)], include_in_schema=False)
 # Moeglichkeit, sich selbst auszusperren.
 FEHLVERSUCHE: dict[str, int] = {}
 
-_FEHLERMELDUNG = "Benutzername oder Passwort falsch."
+_ERROR_MESSAGE = "Benutzername oder Passwort falsch."
 
 
 # Einmalig beim Laden erzeugt, aus Zufall: nur die Rechenzeit von `verify_password`
@@ -45,14 +45,14 @@ _FEHLERMELDUNG = "Benutzername oder Passwort falsch."
 _VERGLEICHS_HASH = hash_password(secrets.token_urlsafe(32))
 
 
-def schlafen(sekunden: float) -> None:
+def schlafen(seconds: float) -> None:
     """Eigene Funktion statt eines direkten `time.sleep()`-Aufrufs, damit Tests die
     Verzoegerung durch `monkeypatch.setattr` ersetzen koennen, ohne wirklich zu warten."""
-    time.sleep(sekunden)
+    time.sleep(seconds)
 
 
 @router.get("/login")
-async def login_formular(
+async def login_form(
     request: Request, session: Annotated[Session, Depends(get_session)]
 ) -> Response:
     # Siehe start_views.start(): Ohne einen einzigen Benutzer fuehrt das Formular
@@ -78,18 +78,18 @@ async def login(
     bisherige_fehlversuche = FEHLVERSUCHE.get(username, 0)
     schlafen(min(2**bisherige_fehlversuche, 5))
 
-    benutzer = session.scalar(select(User).where(User.username == username))
+    user = session.scalar(select(User).where(User.username == username))
     # Die Passwortpruefung laeuft IMMER, auch fuer einen unbekannten Benutzernamen --
     # dann gegen einen Wegwerf-Hash. Andernfalls wuerde Pythons Kurzschlussauswertung
     # `verify_password` bei unbekanntem Namen ueberspringen, und die Anfrage waere
     # messbar schneller als fuer einen existierenden Namen: Argon2id ist absichtlich
     # langsam, und genau diese Rechenzeit verriete, welche Konten es gibt. Gleiche
     # Meldung und gleiche Wartezeit allein genuegen dafuer nicht.
-    if benutzer is None:
+    if user is None:
         verify_password(password, _VERGLEICHS_HASH)
         erfolgreich = False
     else:
-        erfolgreich = benutzer.is_active and verify_password(password, benutzer.password_hash)
+        erfolgreich = user.is_active and verify_password(password, user.password_hash)
 
     if not erfolgreich:
         FEHLVERSUCHE[username] = bisherige_fehlversuche + 1
@@ -102,49 +102,49 @@ async def login(
         )
         return templates.TemplateResponse(
             request, "anmeldung.html",
-            {"fehler": _FEHLERMELDUNG, "passkeys_moeglich": settings.passkeys_moeglich()},
+            {"errors": _ERROR_MESSAGE, "passkeys_moeglich": settings.passkeys_moeglich()},
             status_code=status.HTTP_401_UNAUTHORIZED,
         )
 
-    assert benutzer is not None
+    assert user is not None
     FEHLVERSUCHE[username] = 0
-    benutzer.last_login_at = utcnow()
+    user.last_login_at = utcnow()
 
-    lebensdauer_s = sitzungslebensdauer_s(session)
-    _eintrag, geheimnis = sitzung_anlegen(
-        session, benutzer, lebensdauer_s,
+    lifetime_s = session_lifetime_s(session)
+    _entry, geheimnis = create_session(
+        session, user, lifetime_s,
         user_agent=request.headers.get("user-agent"),
         ip=request.client.host if request.client is not None else None,
     )
     audit.record(
         session, source="web", action="login", object_type="user",
-        object_id=str(benutzer.id), summary=f"Anmeldung als '{benutzer.username}'",
-        user_id=benutzer.id,
+        object_id=str(user.id), summary=f"Anmeldung als '{user.username}'",
+        user_id=user.id,
     )
 
-    antwort = RedirectResponse("/", status_code=status.HTTP_303_SEE_OTHER)
-    antwort.set_cookie(
-        COOKIE_NAME, geheimnis, max_age=lebensdauer_s,
+    response = RedirectResponse("/", status_code=status.HTTP_303_SEE_OTHER)
+    response.set_cookie(
+        COOKIE_NAME, geheimnis, max_age=lifetime_s,
         httponly=True, samesite="lax", secure=settings.secure_cookies,
     )
     # Nicht httpOnly: die Oberflaeche (HTMX) liest den Wert und schickt ihn als
     # `X-CSRF-Token`-Header mit.
-    antwort.set_cookie(
+    response.set_cookie(
         CSRF_COOKIE_NAME, csrf_token(geheimnis, settings.secret_key.get_secret_value()),
-        max_age=lebensdauer_s, httponly=False, samesite="lax", secure=settings.secure_cookies,
+        max_age=lifetime_s, httponly=False, samesite="lax", secure=settings.secure_cookies,
     )
-    return antwort
+    return response
 
 
 @router.post("/logout")
 async def logout(request: Request, session: Annotated[Session, Depends(get_session)]) -> Response:
     # Der CSRF-Nachweis haengt am Router (`csrf_schutz`) und ist hier bereits erbracht.
-    cookie_wert = request.cookies.get(COOKIE_NAME)
-    if cookie_wert is not None:
-        sitzung = sitzung_aufloesen(session, cookie_wert)
-        if sitzung is not None:
-            sitzung_widerrufen(session, sitzung)
+    cookie_value = request.cookies.get(COOKIE_NAME)
+    if cookie_value is not None:
+        http_session = resolve_session(session, cookie_value)
+        if http_session is not None:
+            revoke_session(session, http_session)
 
-    antwort = RedirectResponse("/", status_code=status.HTTP_303_SEE_OTHER)
-    antwort.delete_cookie(COOKIE_NAME)
-    return antwort
+    response = RedirectResponse("/", status_code=status.HTTP_303_SEE_OTHER)
+    response.delete_cookie(COOKIE_NAME)
+    return response

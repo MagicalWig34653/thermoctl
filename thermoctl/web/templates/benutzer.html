@@ -4,7 +4,7 @@
 {% block inhalt %}
 <section id="benutzerliste">
     <h1 class="mb-3">Benutzer</h1>
-    {{ fehlerhinweis(hinweis) }}
+    {{ fehlerhinweis(hint) }}
     {# Scrollt in sich selbst statt die ganze Seite breit zu machen: Auf einem Telefon passt diese Tabelle nicht nebeneinander. #}
     <div class="table-responsive">
     <table class="table table-striped align-middle">
@@ -18,7 +18,7 @@
         </tr>
         </thead>
         <tbody>
-        {% for nutzer in benutzer %}
+        {% for nutzer in user %}
         <tr>
             <td>{{ nutzer.display_name }}</td>
             <td>{{ nutzer.username }}</td>
@@ -29,10 +29,10 @@
                 <span class="badge text-bg-secondary">inaktiv</span>
                 {% endif %}
             </td>
-            <td title="{{ nutzer.last_login_at or '' }} UTC">{{ nutzer.last_login_at|alter }}</td>
+            <td title="{{ nutzer.last_login_at or '' }} UTC">{{ nutzer.last_login_at|age }}</td>
             <td class="text-end">
-                <form method="post" action="/benutzer/{{ nutzer.id }}/aktiv" class="d-inline">
-                    <input type="hidden" name="aktiv" value="{{ 'nein' if nutzer.is_active else 'ja' }}">
+                <form method="post" action="/users/{{ nutzer.id }}/active" class="d-inline">
+                    <input type="hidden" name="active" value="{{ 'nein' if nutzer.is_active else 'ja' }}">
                     <button type="submit" class="btn btn-sm btn-outline-secondary">
                         {{ "Deaktivieren" if nutzer.is_active else "Aktivieren" }}
                     </button>
@@ -45,23 +45,23 @@
     </div>
 
     <h2 class="h5 mt-4">Benutzer anlegen</h2>
-    <form method="post" action="/benutzer">
-        {{ textfeld("username", "Benutzername", werte.get("username", ""),
+    <form method="post" action="/users">
+        {{ textfeld("username", "Benutzername", values.get("username", ""),
                     hilfe="Wird zur Anmeldung eingegeben und lässt sich später nicht ändern.",
-                    fehler=fehler.get("username", ""), pflicht=true) }}
-        {{ textfeld("display_name", "Anzeigename", werte.get("display_name", ""),
+                    errors=errors.get("username", ""), pflicht=true) }}
+        {{ textfeld("display_name", "Anzeigename", values.get("display_name", ""),
                     hilfe="So erscheint die Person im Audit-Protokoll.", pflicht=true) }}
         {{ textfeld("password", "Passwort", "", typ="password", pflicht=true,
-                    hilfe="Mindestens 12 Zeichen.", fehler=fehler.get("password", "")) }}
+                    hilfe="Mindestens 12 Zeichen.", errors=errors.get("password", "")) }}
         <div class="mb-3">
-            <label class="form-label" for="gruppe_id">Gruppe</label>
-            <select class="form-select" id="gruppe_id" name="gruppe_id"
+            <label class="form-label" for="group_id">Gruppe</label>
+            <select class="form-select" id="group_id" name="group_id"
                     aria-describedby="gruppe_id-hilfe">
                 <option value="">ohne Gruppe</option>
-                {% for gruppe in gruppen %}
-                <option value="{{ gruppe.id }}"
-                        {% if werte.get("gruppe_id", "")|string == gruppe.id|string %}selected{% endif %}>
-                    {{ gruppe.name }}
+                {% for group in groups %}
+                <option value="{{ group.id }}"
+                        {% if values.get("gruppe_id", "")|string == group.id|string %}selected{% endif %}>
+                    {{ group.name }}
                 </option>
                 {% endfor %}
             </select>
@@ -73,10 +73,10 @@
     </form>
 
     <h2 class="h5 mt-4">Eigenes Passwort ändern</h2>
-    <form method="post" action="/benutzer/{{ eigene_id }}/passwort">
+    <form method="post" action="/users/{{ own_id }}/password">
         {{ textfeld("password", "Neues Passwort", "", typ="password", pflicht=true,
                     hilfe="Mindestens 12 Zeichen. Bestehende Sitzungen bleiben gültig.",
-                    fehler=fehler.get("password", "")) }}
+                    errors=errors.get("password", "")) }}
         <button type="submit" class="btn btn-secondary">Passwort setzen</button>
     </form>
 </section>

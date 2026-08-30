@@ -4,11 +4,11 @@
 {% block inhalt %}
 {{ loeschbestaetigung(
     "Schaltpunkt löschen",
-    "Soll der Schaltpunkt am " ~ wochentage[punkt.weekday] ~ " um " ~
-        "%02d:%02d"|format(punkt.minute_of_day // 60, punkt.minute_of_day % 60) ~
+    "Soll der Schaltpunkt am " ~ wochentage[point.weekday] ~ " um " ~
+        "%02d:%02d"|format(point.minute_of_day // 60, point.minute_of_day % 60) ~
         " wirklich gelöscht werden?",
     "Der vorherige Modus gilt danach bis zum folgenden Schaltpunkt.",
-    "/zonen/" ~ zone.id ~ "/zeitplan/punkte/" ~ punkt.id ~ "/loeschen",
+    "/zonen/" ~ zone.id ~ "/zeitplan/punkte/" ~ point.id ~ "/loeschen",
     "/zonen/" ~ zone.id ~ "/zeitplan"
 ) }}
 {% endblock %}

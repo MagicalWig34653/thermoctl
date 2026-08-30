@@ -10,18 +10,18 @@ dasselbe. Der Kopf macht daraus einen Ort.
 <nav aria-label="Zone {{ zone.display_name }}" class="mb-4">
     <div class="d-flex justify-content-between align-items-baseline flex-wrap gap-2">
         <h1 class="mb-0">{{ zone.display_name }}</h1>
-        <a class="small" href="/zonen">Alle Zonen</a>
+        <a class="small" href="/zones">Alle Zonen</a>
     </div>
     <div class="d-flex flex-wrap gap-1 mt-2 border-bottom pb-2">
-        {% for pfad, beschriftung in [
+        {% for pfad, label in [
             ("/zonen/" ~ zone.id ~ "/zeitplan", "Zeitplan"),
             ("/zonen/" ~ zone.id ~ "/sollwerte", "Sollwerte"),
             ("/zonen/" ~ zone.id ~ "/geraete", "Geräte"),
             ("/zonen/" ~ zone.id ~ "/parameter", "Regelparameter"),
             ("/zonen/" ~ zone.id, "Zonendaten"),
         ] %}
-        <a class="btn btn-sm {{ 'btn-primary' if hier == beschriftung else 'btn-outline-secondary' }}"
-           href="{{ pfad }}"{% if hier == beschriftung %} aria-current="page"{% endif %}>{{ beschriftung }}</a>
+        <a class="btn btn-sm {{ 'btn-primary' if hier == label else 'btn-outline-secondary' }}"
+           href="{{ pfad }}"{% if hier == label %} aria-current="page"{% endif %}>{{ label }}</a>
         {% endfor %}
     </div>
 </nav>

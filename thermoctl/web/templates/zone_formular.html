@@ -5,20 +5,20 @@
 {% block inhalt %}
 {% if zone %}{{ zonenkopf(zone, "Zonendaten") }}{% else %}<h1 class="mb-4">Zone anlegen</h1>{% endif %}
 <form method="post" action="{% if zone %}/zonen/{{ zone.id }}{% else %}/zonen{% endif %}">
-    {{ textfeld("name", "Technischer Name", werte.name|default(""),
-                 "Eindeutiger Name für Schnittstellen und Konfiguration.", fehler.name, true) }}
-    {{ textfeld("display_name", "Anzeigename", werte.display_name|default(""),
-                 "Dieser Name erscheint in der Oberfläche.", fehler.display_name, true) }}
-    {{ auswahl("operating_mode", "Betriebsart", betriebsarten,
-               werte.operating_mode|default(""), "", fehler.operating_mode) }}
-    {{ zahlenfeld("sort_order", "Sortierung", werte.sort_order|default("0"),
-                  "Kleinere Zahlen erscheinen zuerst.", fehler.sort_order, "1") }}
-    {{ auswahl("temperature_source_device_id", "Messquelle", geraete,
-               werte.temperature_source_device_id|default(""),
+    {{ textfeld("name", "Technischer Name", values.name|default(""),
+                 "Eindeutiger Name für Schnittstellen und Konfiguration.", errors.name, true) }}
+    {{ textfeld("display_name", "Anzeigename", values.display_name|default(""),
+                 "Dieser Name erscheint in der Oberfläche.", errors.display_name, true) }}
+    {{ auswahl("operating_mode", "Betriebsart", operating_modes,
+               values.operating_mode|default(""), "", errors.operating_mode) }}
+    {{ zahlenfeld("sort_order", "Sortierung", values.sort_order|default("0"),
+                  "Kleinere Zahlen erscheinen zuerst.", errors.sort_order, "1") }}
+    {{ auswahl("temperature_source_device_id", "Messquelle", devices,
+               values.temperature_source_device_id|default(""),
                "Leer lassen, wenn noch kein Temperatursensor zugeordnet ist.",
-               fehler.temperature_source_device_id, true) }}
+               errors.temperature_source_device_id, true) }}
     <button type="submit" class="btn btn-primary">Speichern</button>
-    <a class="btn btn-secondary" href="/zonen">Abbrechen</a>
-    {% if zone %}<a class="btn btn-outline-danger float-end" href="/zonen/{{ zone.id }}/loeschen">Löschen</a>{% endif %}
+    <a class="btn btn-secondary" href="/zones">Abbrechen</a>
+    {% if zone %}<a class="btn btn-outline-danger float-end" href="/zones/{{ zone.id }}/delete">Löschen</a>{% endif %}
 </form>
 {% endblock %}

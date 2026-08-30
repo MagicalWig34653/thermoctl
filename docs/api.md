@@ -111,13 +111,13 @@ Löschen mit `204`.
 
 `GET /api/v1/zones/{zone_id}/schedule` benötigt `zone.read`. Einen Punkt legt
 `POST /api/v1/zones/{zone_id}/schedule` mit `schedule.manage` an; gelöscht wird er über
-`DELETE /api/v1/zones/{zone_id}/schedule/{punkt_id}` mit demselben Recht.
+`DELETE /api/v1/zones/{zone_id}/schedule/{point_id}` mit demselben Recht.
 
 ```json
 {"weekday": 1, "minute_of_day": 360, "mode_id": 2}
 ```
 
-`PUT /api/v1/zones/{zone_id}/schedule/{punkt_id}` verschiebt einen vorhandenen Punkt
+`PUT /api/v1/zones/{zone_id}/schedule/{point_id}` verschiebt einen vorhandenen Punkt
 (`schedule.manage`) — das Gegenstück zum Ziehen in der Wochenansicht. Der Punkt **behält
 seine Kennung**, damit ein Aufrufer ihn weiterverfolgen kann, und das Audit-Protokoll
 zeigt eine Verschiebung statt eines Löschens mit anschließendem Anlegen.
@@ -142,10 +142,10 @@ globalen Vorgaben, von denen jede Zone erbt.
 Aufbewahrungsdauer pflegen darf, soll die Heizung nicht nebenbei scharf schalten können.
 
 ```json
-{"armed": true, "begruendung": "Vier Tage Schattenlauf gegen das Altsystem verglichen"}
+{"armed": true, "reason": "Vier Tage Schattenlauf gegen das Altsystem verglichen"}
 ```
 
-`begruendung` ist beim Scharfschalten Pflicht und geht ins Audit-Protokoll; beim
+`reason` ist beim Scharfschalten Pflicht und geht ins Audit-Protokoll; beim
 Zurücknehmen in den Trockenlauf ist sie freiwillig, weil das der Weg ist, den jemand in
 Eile geht. Fehlt sie beim Scharfschalten, antwortet der Dienst mit `422`.
 
@@ -173,7 +173,7 @@ nur die Hysterese ändern will, müsste sonst erst alle sechs lesen und wieder m
 und schriebe dabei jeden geerbten Wert als Zonenabweichung fest. Recht: `zone.manage`.
 
 ```json
-{"wert": "0.40"}
+{"value": "0.40"}
 ```
 
 Gültige Namen sind die sechs Felder oben. Ein anderer ergibt `404` samt der Liste der
@@ -188,8 +188,8 @@ genau bis zu dem Zeitpunkt, an dem es planmäßig gekommen wäre; danach läuft 
 als wäre nichts gewesen.
 
 ```json
-{"zone_id": 1, "modus_code": "nacht", "temperature_c": "18.0",
- "gilt_bis": "2026-08-31T20:00:00"}
+{"zone_id": 1, "mode_code": "nacht", "temperature_c": "18.0",
+ "valid_until": "2026-08-31T20:00:00"}
 ```
 
 Ohne Zeitplan oder ohne hinterlegte Temperatur für den nächsten Modus gibt es nichts
@@ -242,14 +242,14 @@ auseinanderzuhalten, und für sich genommen wertlos: Geprüft wird nur der dritt
 Recht: `override.create` (für diese Zone). Antwort `201`.
 
 ```json
-{"temperature_c": 21.5, "dauer_minuten": 120}
+{"temperature_c": 21.5, "duration_minutes": 120}
 ```
 
 | Feld | Bedeutung |
 |---|---|
 | `temperature_c` | Pflicht, −20 bis 35 °C, eine Nachkommastelle |
-| `dauer_minuten` | Ende in Minuten ab jetzt |
-| `bis_naechste_schaltung` | `true` = bis zum nächsten Punkt des Zeitplans |
+| `duration_minutes` | Ende in Minuten ab jetzt |
+| `until_next_switch` | `true` = bis zum nächsten Punkt des Zeitplans |
 
 Ohne beides gilt die Übersteuerung **dauerhaft**, bis jemand sie aufhebt.
 
@@ -275,7 +275,7 @@ BASIS=http://127.0.0.1:8000/api/v1
 curl -sH "Authorization: Bearer $TOKEN" "$BASIS/zones"
 
 curl -sX POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-     -d '{"temperature_c": 21.5, "bis_naechste_schaltung": true}' \
+     -d '{"temperature_c": 21.5, "until_next_switch": true}' \
      "$BASIS/zones/1/override"
 
 curl -sX DELETE -H "Authorization: Bearer $TOKEN" "$BASIS/zones/1/override"

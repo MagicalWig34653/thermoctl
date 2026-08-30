@@ -8,66 +8,66 @@ from sqlalchemy.orm import Session
 
 from thermoctl.db.models.device import Device, DeviceCapabilityLink, ZoneDevice
 from thermoctl.db.models.lookup import DeviceCapability, DeviceRole, Integration, SensorStatus
-from thermoctl.db.models.messwert import DeviceHealth, Measurement
+from thermoctl.db.models.measurement import DeviceHealth, Measurement
+from thermoctl.db.models.state import ZoneState
 from thermoctl.db.models.zone import Zone
-from thermoctl.db.models.zustand import ZoneState
-from thermoctl.domain.bediengeraet import aktion_ausfuehren
-from thermoctl.domain.beobachtung import Beobachtung, beobachtungen_aus_nutzlast
-from thermoctl.domain.geraeteklassen import (
-    Geraetebeschreibung,
-    beschreibungen_aus_bridge_liste,
+from thermoctl.domain.controller import execute_aktion
+from thermoctl.domain.device_classes import (
+    DeviceDescription,
+    descriptions_from_bridge_list,
 )
-from thermoctl.domain.stoerung import KEINE_QUELLE, OK, sensorzustand
-from thermoctl.domain.zone_settings import regelparameter
-from thermoctl.integrations.mqtt.zigbee2mqtt import Nachrichtenart, zuschneiden
+from thermoctl.domain.fault import NO_SOURCE, OK, sensor_state
+from thermoctl.domain.reading import Reading, readings_from_payload
+from thermoctl.domain.zone_settings import control_parameters
+from thermoctl.integrations.mqtt.zigbee2mqtt import MessageKind, zuschneiden
 
 log = logging.getLogger(__name__)
 
 
-def _anbindung(session: Session) -> Integration:
-    anbindung = session.scalar(select(Integration).where(Integration.code == "zigbee2mqtt"))
-    if anbindung is None:  # pragma: no cover
+def _integration(session: Session) -> Integration:
+    integration = session.scalar(select(Integration).where(Integration.code == "zigbee2mqtt"))
+    if integration is None:  # pragma: no cover
         # Konsistenzpruefung gegen die Migration, die diese Zeile anlegt. Erreichbar nur
         # mit einem von Hand beschaedigten Schema — ein Test dafuer muesste die
         # Nachschlagetabelle leerraeumen und pruefte damit die Migration, nicht uns.
         raise RuntimeError("Anbindung zigbee2mqtt fehlt in der Nachschlagetabelle")
-    return anbindung
+    return integration
 
 
-def _geraet(session: Session, name: str, empfangen_am: datetime) -> Device:
-    anbindung = _anbindung(session)
-    geraet = session.scalar(
+def _device(session: Session, name: str, empfangen_am: datetime) -> Device:
+    integration = _integration(session)
+    device = session.scalar(
         select(Device).where(
-            Device.integration_id == anbindung.id,
+            Device.integration_id == integration.id,
             Device.external_id == name,
         )
     )
-    if geraet is None:
-        geraet = Device(
-            integration_id=anbindung.id,
+    if device is None:
+        device = Device(
+            integration_id=integration.id,
             external_id=name,
             display_name=name,
             is_enabled=True,
             first_seen_at=empfangen_am,
         )
-        session.add(geraet)
+        session.add(device)
         session.flush()
-    return geraet
+    return device
 
 
-def _geraeteliste_verarbeiten(session: Session, nutzlast: bytes, empfangen_am: datetime) -> None:
+def _process_device_list(session: Session, payload: bytes, empfangen_am: datetime) -> None:
     try:
-        beschreibungen = beschreibungen_aus_bridge_liste(nutzlast)
+        beschreibungen = descriptions_from_bridge_list(payload)
     except ValueError:
         log.warning("Zigbee2MQTT-Geraeteliste ist ungueltig")
         return
 
-    faehigkeiten = {
-        faehigkeit.code: faehigkeit for faehigkeit in session.scalars(select(DeviceCapability))
+    capabilities = {
+        capability.code: capability for capability in session.scalars(select(DeviceCapability))
     }
     unbekannte: set[str] = set()
     for beschreibung in beschreibungen:
-        _beschreibung_speichern(session, beschreibung, empfangen_am, faehigkeiten, unbekannte)
+        _save_description(session, beschreibung, empfangen_am, capabilities, unbekannte)
     for code in sorted(unbekannte):
         log.warning(
             "Geraetefaehigkeit fehlt in der Nachschlagetabelle",
@@ -75,58 +75,58 @@ def _geraeteliste_verarbeiten(session: Session, nutzlast: bytes, empfangen_am: d
         )
 
 
-def _beschreibung_speichern(
+def _save_description(
     session: Session,
-    beschreibung: Geraetebeschreibung,
+    beschreibung: DeviceDescription,
     empfangen_am: datetime,
-    faehigkeiten: dict[str, DeviceCapability],
+    capabilities: dict[str, DeviceCapability],
     unbekannte: set[str],
 ) -> None:
-    geraet = _geraet(session, beschreibung.name, empfangen_am)
-    geraet.display_name = beschreibung.name
-    geraet.model = beschreibung.modell
-    geraet.is_group = beschreibung.ist_gruppe
-    if geraet.first_seen_at is None:
+    device = _device(session, beschreibung.name, empfangen_am)
+    device.display_name = beschreibung.name
+    device.model = beschreibung.modell
+    device.is_group = beschreibung.ist_group
+    if device.first_seen_at is None:
         # Nachtrag fuer Geraete, die nicht ueber den Ingest entstanden sind — ab
         # Teilprojekt 3 legt sie auch die Oberflaeche an, und dort gibt es noch keine
         # Sichtung. Beim Ingest selbst ist der Wert schon gesetzt (_geraet).
-        geraet.first_seen_at = empfangen_am
+        device.first_seen_at = empfangen_am
 
-    session.execute(delete(DeviceCapabilityLink).where(DeviceCapabilityLink.device_id == geraet.id))
-    for code in beschreibung.faehigkeiten:
-        faehigkeit = faehigkeiten.get(code)
-        if faehigkeit is None:
+    session.execute(delete(DeviceCapabilityLink).where(DeviceCapabilityLink.device_id == device.id))
+    for code in beschreibung.capabilities:
+        capability = capabilities.get(code)
+        if capability is None:
             unbekannte.add(code)
             continue
-        session.add(DeviceCapabilityLink(device_id=geraet.id, capability_id=faehigkeit.id))
+        session.add(DeviceCapabilityLink(device_id=device.id, capability_id=capability.id))
 
 
-def _zustand_verarbeiten(
-    session: Session, name: str, nutzlast: bytes, empfangen_am: datetime
+def _process_state(
+    session: Session, name: str, payload: bytes, empfangen_am: datetime
 ) -> None:
-    beobachtungen = beobachtungen_aus_nutzlast(nutzlast, empfangen_am)
-    if not beobachtungen:
+    readings = readings_from_payload(payload, empfangen_am)
+    if not readings:
         return
-    geraet = _geraet(session, name, empfangen_am)
+    device = _device(session, name, empfangen_am)
     # Vor dem Einfuegen gelesen: Danach waere der eigene neue Messwert der juengste,
     # und der Vergleich unten verglichen die Nachricht mit sich selbst.
-    zuletzt_gedrueckt = _zuletzt_gedrueckt(session, geraet.id)
-    faehigkeiten = {
-        faehigkeit.code: faehigkeit for faehigkeit in session.scalars(select(DeviceCapability))
+    last_pressed = _last_pressed(session, device.id)
+    capabilities = {
+        capability.code: capability for capability in session.scalars(select(DeviceCapability))
     }
     unbekannte: set[str] = set()
-    for beobachtung in beobachtungen:
-        faehigkeit = faehigkeiten.get(beobachtung.faehigkeit)
-        if faehigkeit is None:
-            unbekannte.add(beobachtung.faehigkeit)
+    for reading in readings:
+        capability = capabilities.get(reading.capability)
+        if capability is None:
+            unbekannte.add(reading.capability)
             continue
         session.add(
             Measurement(
-                device_id=geraet.id,
-                capability_id=faehigkeit.id,
-                value_numeric=beobachtung.zahl,
-                value_text=beobachtung.text,
-                measured_at=beobachtung.gemessen_am,
+                device_id=device.id,
+                capability_id=capability.id,
+                value_numeric=reading.zahl,
+                value_text=reading.text,
+                measured_at=reading.gemessen_am,
                 received_at=empfangen_am,
             )
         )
@@ -136,23 +136,23 @@ def _zustand_verarbeiten(
             extra={"faehigkeitscode": code},
         )
 
-    gesund = session.get(DeviceHealth, geraet.id)
+    gesund = session.get(DeviceHealth, device.id)
     if gesund is None:
         gesund = DeviceHealth(
-            device_id=geraet.id,
+            device_id=device.id,
             last_payload_at=empfangen_am,
             payload_count=0,
         )
         session.add(gesund)
     gesund.last_payload_at = empfangen_am
     gesund.payload_count += 1
-    gesund.link_quality = _ganzzahl(beobachtungen, "link_quality", gesund.link_quality)
-    gesund.battery_percent = _dezimalzahl(beobachtungen, "battery", gesund.battery_percent)
-    geraet.last_seen_at = empfangen_am
-    _tastendruck_ausfuehren(session, geraet, beobachtungen, zuletzt_gedrueckt, empfangen_am)
+    gesund.link_quality = _ganzzahl(readings, "link_quality", gesund.link_quality)
+    gesund.battery_percent = _dezimalzahl(readings, "battery", gesund.battery_percent)
+    device.last_seen_at = empfangen_am
+    _execute_button_press(session, device, readings, last_pressed, empfangen_am)
 
 
-def _zuletzt_gedrueckt(session: Session, geraet_id: int) -> datetime | None:
+def _last_pressed(session: Session, device_id: int) -> datetime | None:
     """Wann dieses Geraet zuletzt eine Taste gemeldet hat -- vor dieser Nachricht.
 
     Der Schutz gegen doppelte Ausfuehrung: Zigbee2MQTT sendet Zustandsnachrichten
@@ -161,62 +161,62 @@ def _zuletzt_gedrueckt(session: Session, geraet_id: int) -> datetime | None:
     der Netzverbindung jedes Mal denselben Tastendruck erneut aus -- und ein Boost, den
     niemand gedrueckt hat, faellt erst auf, wenn es im Raum zu warm ist.
     """
-    faehigkeit_id = session.scalar(
+    capability_id = session.scalar(
         select(DeviceCapability.id).where(DeviceCapability.code == "action")
     )
-    if faehigkeit_id is None:
+    if capability_id is None:
         return None
     return session.scalar(
         select(Measurement.measured_at)
         .where(
-            Measurement.device_id == geraet_id,
-            Measurement.capability_id == faehigkeit_id,
+            Measurement.device_id == device_id,
+            Measurement.capability_id == capability_id,
         )
         .order_by(Measurement.measured_at.desc(), Measurement.id.desc())
         .limit(1)
     )
 
 
-def _tastendruck_ausfuehren(
+def _execute_button_press(
     session: Session,
-    geraet: Device,
-    beobachtungen: list[Beobachtung],
-    zuletzt: datetime | None,
+    device: Device,
+    readings: list[Reading],
+    last_seen: datetime | None,
     empfangen_am: datetime,
 ) -> None:
     """Fuehrt aus, was ein Tastendruck an einem Bediengeraet belegt hat."""
-    druck = next((b for b in beobachtungen if b.faehigkeit == "action" and b.text), None)
+    druck = next((b for b in readings if b.capability == "action" and b.text), None)
     if druck is None:
         return
-    if zuletzt is not None and druck.gemessen_am <= zuletzt:
+    if last_seen is not None and druck.gemessen_am <= last_seen:
         log.debug(
             "Tastendruck bereits verarbeitet, wird uebergangen",
-            extra={"geraet": geraet.display_name, "aktion": druck.text},
+            extra={"geraet": device.display_name, "aktion": druck.text},
         )
         return
     assert druck.text is not None
-    aktion_ausfuehren(session, geraet, druck.text, empfangen_am)
+    execute_aktion(session, device, druck.text, empfangen_am)
 
 
 def _dezimalzahl(
-    beobachtungen: list[Beobachtung], code: str, bisher: Decimal | None
+    readings: list[Reading], code: str, bisher: Decimal | None
 ) -> Decimal | None:
     return next(
-        (b.zahl for b in beobachtungen if b.faehigkeit == code and b.zahl is not None),
+        (b.zahl for b in readings if b.capability == code and b.zahl is not None),
         bisher,
     )
 
 
-def _ganzzahl(beobachtungen: list[Beobachtung], code: str, bisher: int | None) -> int | None:
-    wert = _dezimalzahl(beobachtungen, code, None)
-    return int(wert) if wert is not None else bisher
+def _ganzzahl(readings: list[Reading], code: str, bisher: int | None) -> int | None:
+    value = _dezimalzahl(readings, code, None)
+    return int(value) if value is not None else bisher
 
 
-def _erreichbarkeit_verarbeiten(
-    session: Session, name: str, nutzlast: bytes, empfangen_am: datetime
+def _process_availability(
+    session: Session, name: str, payload: bytes, empfangen_am: datetime
 ) -> None:
     try:
-        daten = json.loads(nutzlast)
+        daten = json.loads(payload)
     # Klammern, obwohl Python 3.14 sie hier nicht mehr verlangt (PEP 758): Ohne sie sieht
     # die Zeile genau aus wie die Python-2-Form, die etwas anderes bedeutete — dort band
     # der zweite Name die Ausnahme, statt eine zweite Klasse zu fangen. Wer das einmal
@@ -227,11 +227,11 @@ def _erreichbarkeit_verarbeiten(
     if not isinstance(daten, dict) or not isinstance(daten.get("state"), str):
         log.warning("Zigbee2MQTT-Erreichbarkeit enthaelt keinen Zustand")
         return
-    geraet = _geraet(session, name, empfangen_am)
-    gesund = session.get(DeviceHealth, geraet.id)
+    device = _device(session, name, empfangen_am)
+    gesund = session.get(DeviceHealth, device.id)
     if gesund is None:
         gesund = DeviceHealth(
-            device_id=geraet.id,
+            device_id=device.id,
             last_payload_at=empfangen_am,
             payload_count=0,
         )
@@ -239,132 +239,132 @@ def _erreichbarkeit_verarbeiten(
     gesund.availability = daten["state"]
 
 
-def nachricht_verarbeiten(
+def process_message(
     session: Session,
     topic: str,
-    nutzlast: bytes,
+    payload: bytes,
     *,
     basis: str,
     empfangen_am: datetime,
 ) -> None:
     """Schreibt eine empfangene Zigbee2MQTT-Nachricht in die Datenbank."""
     zuschnitt = zuschneiden(topic, basis)
-    if zuschnitt.art == Nachrichtenart.GERAETELISTE:
-        _geraeteliste_verarbeiten(session, nutzlast, empfangen_am)
-    elif zuschnitt.art == Nachrichtenart.GERAETEZUSTAND:
-        assert zuschnitt.geraetename is not None
-        _zustand_verarbeiten(session, zuschnitt.geraetename, nutzlast, empfangen_am)
-    elif zuschnitt.art == Nachrichtenart.ERREICHBARKEIT:
-        assert zuschnitt.geraetename is not None
-        _erreichbarkeit_verarbeiten(session, zuschnitt.geraetename, nutzlast, empfangen_am)
+    if zuschnitt.kind == MessageKind.DEVICE_LIST:
+        _process_device_list(session, payload, empfangen_am)
+    elif zuschnitt.kind == MessageKind.DEVICE_STATE:
+        assert zuschnitt.device_name is not None
+        _process_state(session, zuschnitt.device_name, payload, empfangen_am)
+    elif zuschnitt.kind == MessageKind.AVAILABILITY:
+        assert zuschnitt.device_name is not None
+        _process_availability(session, zuschnitt.device_name, payload, empfangen_am)
     else:
         log.info(
             "Zigbee2MQTT-Nachricht wird nicht verarbeitet",
-            extra={"nachrichtenart": zuschnitt.art.value, "topic": topic},
+            extra={"nachrichtenart": zuschnitt.kind.value, "topic": topic},
         )
 
 
-def zonenzustand_fortschreiben(session: Session, jetzt: datetime) -> None:
+def advance_zone_state(session: Session, now: datetime) -> None:
     """Leitet den aktuellen Zustand aller Zonen aus ihrer Temperaturquelle ab."""
-    temperatur = session.scalar(
+    temperature = session.scalar(
         select(DeviceCapability).where(DeviceCapability.code == "temperature")
     )
-    kontakt = session.scalar(select(DeviceCapability).where(DeviceCapability.code == "contact"))
-    fensterrolle = session.scalar(
+    contact = session.scalar(select(DeviceCapability).where(DeviceCapability.code == "contact"))
+    window_role = session.scalar(
         select(DeviceRole).where(DeviceRole.code == "window_contact")
     )
     status_ids = {status.code: status.id for status in session.scalars(select(SensorStatus))}
     for zone in session.scalars(select(Zone)):
-        messwert = None
-        if zone.temperature_source_device_id is not None and temperatur is not None:
-            messwert = session.scalar(
+        measurement = None
+        if zone.temperature_source_device_id is not None and temperature is not None:
+            measurement = session.scalar(
                 select(Measurement)
                 .where(
                     Measurement.device_id == zone.temperature_source_device_id,
-                    Measurement.capability_id == temperatur.id,
+                    Measurement.capability_id == temperature.id,
                 )
                 .order_by(Measurement.measured_at.desc(), Measurement.id.desc())
                 .limit(1)
             )
         code = (
-            KEINE_QUELLE
+            NO_SOURCE
             if zone.temperature_source_device_id is None
-            else sensorzustand(
-                messwert.measured_at if messwert is not None else None,
-                jetzt,
-                regelparameter(session, zone).sensor_timeout_seconds,
+            else sensor_state(
+                measurement.measured_at if measurement is not None else None,
+                now,
+                control_parameters(session, zone).sensor_timeout_seconds,
             )
         )
         status_id = status_ids.get(code)
         if status_id is None:  # pragma: no cover
             # Wie oben: Konsistenzpruefung gegen die Migration, nicht gegen Eingaben.
             raise RuntimeError(f"Sensorstatus {code} fehlt in der Nachschlagetabelle")
-        zustand = session.get(ZoneState, zone.id)
-        if zustand is None:
-            zustand = ZoneState(
+        state = session.get(ZoneState, zone.id)
+        if state is None:
+            state = ZoneState(
                 zone_id=zone.id,
                 sensor_status_id=status_id,
-                updated_at=jetzt,
+                updated_at=now,
             )
-            session.add(zustand)
-        zustand.temperature_c = messwert.value_numeric if messwert is not None else None
-        zustand.measured_at = messwert.measured_at if messwert is not None else None
-        zustand.sensor_status_id = status_id
-        zustand.window_open = _fenster_offen(
+            session.add(state)
+        state.temperature_c = measurement.value_numeric if measurement is not None else None
+        state.measured_at = measurement.measured_at if measurement is not None else None
+        state.sensor_status_id = status_id
+        state.window_open = _window_open(
             session,
             zone,
-            kontakt,
-            fensterrolle,
-            jetzt,
-            regelparameter(session, zone).sensor_timeout_seconds,
+            contact,
+            window_role,
+            now,
+            control_parameters(session, zone).sensor_timeout_seconds,
         )
-        zustand.updated_at = jetzt
+        state.updated_at = now
 
 
-def _fenster_offen(
+def _window_open(
     session: Session,
     zone: Zone,
-    kontakt: DeviceCapability | None,
-    fensterrolle: DeviceRole | None,
-    jetzt: datetime,
+    contact: DeviceCapability | None,
+    window_role: DeviceRole | None,
+    now: datetime,
     timeout_s: int,
 ) -> bool | None:
-    if kontakt is None or fensterrolle is None:
+    if contact is None or window_role is None:
         return None
-    geraete_ids = list(
+    devices_ids = list(
         session.scalars(
             select(ZoneDevice.device_id).where(
                 ZoneDevice.zone_id == zone.id,
-                ZoneDevice.device_role_id == fensterrolle.id,
+                ZoneDevice.device_role_id == window_role.id,
             )
         )
     )
-    if not geraete_ids:
+    if not devices_ids:
         # Unbekannt wird von der Regelung wie geschlossen behandelt. Sonst koennte eine
         # Anlage ohne Fensterkontakte grundsaetzlich nie heizen.
         return None
 
     unbekannt = False
-    for geraet_id in geraete_ids:
-        messwert = session.scalar(
+    for device_id in devices_ids:
+        measurement = session.scalar(
             select(Measurement)
             .where(
-                Measurement.device_id == geraet_id,
-                Measurement.capability_id == kontakt.id,
+                Measurement.device_id == device_id,
+                Measurement.capability_id == contact.id,
             )
             .order_by(Measurement.measured_at.desc(), Measurement.id.desc())
             .limit(1)
         )
         if (
-            messwert is None
-            or sensorzustand(messwert.measured_at, jetzt, timeout_s) != OK
-            or messwert.value_text not in {"true", "false"}
+            measurement is None
+            or sensor_state(measurement.measured_at, now, timeout_s) != OK
+            or measurement.value_text not in {"true", "false"}
         ):
             unbekannt = True
             continue
         # Zigbee2MQTT meldet `contact=true` fuer geschlossen und `false` fuer offen.
         # Die Umkehr bleibt bewusst hier, damit sie nicht in jedem Verbraucher erneut
         # und moeglicherweise widerspruechlich vorgenommen wird.
-        if messwert.value_text == "false":
+        if measurement.value_text == "false":
             return True
     return None if unbekannt else False

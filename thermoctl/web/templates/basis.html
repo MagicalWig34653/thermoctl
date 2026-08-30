@@ -64,11 +64,11 @@
 </head>
 <body hx-boost="true">
 {% set hier = request.url.path %}
-{% macro weg(ziel, beschriftung, genau=false) %}
-    {% set aktiv = hier == ziel if genau else (hier == ziel or hier.startswith(ziel ~ "/")) %}
+{% macro weg(ziel, label, genau=false) %}
+    {% set active = hier == ziel if genau else (hier == ziel or hier.startswith(ziel ~ "/")) %}
     <li class="nav-item">
-        <a class="nav-link{{ ' tc-hier' if aktiv }}" href="{{ ziel }}"
-           {% if aktiv %}aria-current="page"{% endif %}>{{ beschriftung }}</a>
+        <a class="nav-link{{ ' tc-hier' if active }}" href="{{ ziel }}"
+           {% if active %}aria-current="page"{% endif %}>{{ label }}</a>
     </li>
 {% endmacro %}
 <nav class="tc-kopf navbar sticky-top navbar-expand-lg py-2 mb-4">
@@ -98,12 +98,12 @@
                         Einstellungen
                     </button>
                     <ul class="dropdown-menu dropdown-menu-end">
-                        <li><a class="dropdown-item" href="/einstellungen">Regelvorgaben</a></li>
-                        <li><a class="dropdown-item" href="/modi">Sollwert-Modi</a></li>
-                        <li><a class="dropdown-item" href="/schnittstellen">Schnittstellen</a></li>
+                        <li><a class="dropdown-item" href="/settings">Regelvorgaben</a></li>
+                        <li><a class="dropdown-item" href="/modes">Sollwert-Modi</a></li>
+                        <li><a class="dropdown-item" href="/interfaces">Schnittstellen</a></li>
                         <li><hr class="dropdown-divider"></li>
-                        <li><a class="dropdown-item" href="/benutzer">Benutzer</a></li>
-                        <li><a class="dropdown-item" href="/gruppen">Gruppen</a></li>
+                        <li><a class="dropdown-item" href="/users">Benutzer</a></li>
+                        <li><a class="dropdown-item" href="/groups">Gruppen</a></li>
                         <li><a class="dropdown-item" href="/tokens">API-Tokens</a></li>
                         <li><a class="dropdown-item" href="/audit">Protokoll</a></li>
                     </ul>

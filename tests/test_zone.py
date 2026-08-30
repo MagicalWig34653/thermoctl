@@ -8,18 +8,18 @@ from thermoctl.db.models.lookup import OperatingMode
 from thermoctl.db.models.zone import SetpointMode, Zone, ZoneSetpoint
 
 
-def _betriebsart(session: Session) -> OperatingMode:
-    art = session.query(OperatingMode).filter_by(code="auto").one_or_none()
-    if art is None:
-        art = OperatingMode(code="auto", label="Automatik")
-        session.add(art)
+def _operating_mode(session: Session) -> OperatingMode:
+    kind = session.query(OperatingMode).filter_by(code="auto").one_or_none()
+    if kind is None:
+        kind = OperatingMode(code="auto", label="Automatik")
+        session.add(kind)
         session.flush()
-    return art
+    return kind
 
 
 def test_regelparameter_sind_standardmaessig_leer(session: Session) -> None:
     zone = Zone(name="wohnzimmer", display_name="Wohnzimmer",
-                operating_mode_id=_betriebsart(session).id)
+                operating_mode_id=_operating_mode(session).id)
     session.add(zone)
     session.flush()
     assert zone.hysteresis_k is None
@@ -28,24 +28,24 @@ def test_regelparameter_sind_standardmaessig_leer(session: Session) -> None:
 
 
 def test_zonenname_ist_eindeutig(session: Session) -> None:
-    art = _betriebsart(session).id
-    session.add(Zone(name="bad", display_name="Bad", operating_mode_id=art))
+    kind = _operating_mode(session).id
+    session.add(Zone(name="bad", display_name="Bad", operating_mode_id=kind))
     session.flush()
-    session.add(Zone(name="bad", display_name="Bad oben", operating_mode_id=art))
+    session.add(Zone(name="bad", display_name="Bad oben", operating_mode_id=kind))
     with pytest.raises(IntegrityError):
         session.flush()
 
 
 def test_ein_sollwert_je_zone_und_modus(session: Session) -> None:
     zone = Zone(name="kueche", display_name="Kueche",
-                operating_mode_id=_betriebsart(session).id)
-    modus = SetpointMode(code="tag", name="Tag")
-    session.add_all([zone, modus])
+                operating_mode_id=_operating_mode(session).id)
+    mode = SetpointMode(code="tag", name="Tag")
+    session.add_all([zone, mode])
     session.flush()
-    session.add(ZoneSetpoint(zone_id=zone.id, setpoint_mode_id=modus.id,
+    session.add(ZoneSetpoint(zone_id=zone.id, setpoint_mode_id=mode.id,
                              temperature_c=Decimal("21.0")))
     session.flush()
-    session.add(ZoneSetpoint(zone_id=zone.id, setpoint_mode_id=modus.id,
+    session.add(ZoneSetpoint(zone_id=zone.id, setpoint_mode_id=mode.id,
                              temperature_c=Decimal("22.0")))
     with pytest.raises(IntegrityError):
         session.flush()
@@ -53,11 +53,11 @@ def test_ein_sollwert_je_zone_und_modus(session: Session) -> None:
 
 def test_nachkommastelle_bleibt_erhalten(session: Session) -> None:
     zone = Zone(name="flur", display_name="Flur",
-                operating_mode_id=_betriebsart(session).id)
-    modus = SetpointMode(code="nacht", name="Nacht")
-    session.add_all([zone, modus])
+                operating_mode_id=_operating_mode(session).id)
+    mode = SetpointMode(code="nacht", name="Nacht")
+    session.add_all([zone, mode])
     session.flush()
-    session.add(ZoneSetpoint(zone_id=zone.id, setpoint_mode_id=modus.id,
+    session.add(ZoneSetpoint(zone_id=zone.id, setpoint_mode_id=mode.id,
                              temperature_c=Decimal("18.5")))
     session.commit()
     # Ohne expire_all() liefert die Abfrage das Objekt aus dem Speicher zurueck --

@@ -1,7 +1,7 @@
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerifyMismatchError
 
-MIN_PASSWORT_LAENGE = 12
+MIN_PASSWORD_LENGTH = 12
 
 _hasher = PasswordHasher()
 
@@ -10,17 +10,17 @@ class PasswordTooShort(ValueError):
     pass
 
 
-def hash_password(klartext: str) -> str:
-    if len(klartext) < MIN_PASSWORT_LAENGE:
+def hash_password(plaintext: str) -> str:
+    if len(plaintext) < MIN_PASSWORD_LENGTH:
         raise PasswordTooShort(
-            f"Das Passwort muss mindestens {MIN_PASSWORT_LAENGE} Zeichen haben."
+            f"Das Passwort muss mindestens {MIN_PASSWORD_LENGTH} Zeichen haben."
         )
-    return _hasher.hash(klartext)
+    return _hasher.hash(plaintext)
 
 
-def verify_password(klartext: str, hash_wert: str) -> bool:
+def verify_password(plaintext: str, hash_value: str) -> bool:
     """Prueft ein Passwort. Gibt False zurueck statt zu werfen — auch bei kaputtem Hash."""
     try:
-        return _hasher.verify(hash_wert, klartext)
+        return _hasher.verify(hash_value, plaintext)
     except (VerifyMismatchError, InvalidHashError, ValueError):
         return False

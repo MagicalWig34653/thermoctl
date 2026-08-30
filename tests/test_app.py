@@ -19,7 +19,7 @@ def client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
 
 
 @pytest.fixture
-def client_mit_benutzer(monkeypatch: pytest.MonkeyPatch, tmp_path) -> Iterator[TestClient]:
+def client_with_user(monkeypatch: pytest.MonkeyPatch, tmp_path) -> Iterator[TestClient]:
     """Wie ``client``, aber mit Schema und einem angelegten Benutzer.
 
     Die Fixture ``client`` oben baut die App gegen eine schemalose In-Memory-Datenbank --
@@ -40,53 +40,53 @@ def client_mit_benutzer(monkeypatch: pytest.MonkeyPatch, tmp_path) -> Iterator[T
     get_settings.cache_clear()
     app = create_app()
     Base.metadata.create_all(app.state.engine)
-    with Session(app.state.engine) as sitzung:
-        sitzung.add(
+    with Session(app.state.engine) as http_session:
+        http_session.add(
             User(
                 username="lino",
                 display_name="Lino",
                 password_hash=hash_password("passwort-lang-genug"),
             )
         )
-        sitzung.commit()
+        http_session.commit()
     yield TestClient(app)
     get_settings.cache_clear()
 
 
 def test_healthz_antwortet(client: TestClient) -> None:
-    antwort = client.get("/healthz")
-    assert antwort.status_code == 200
-    assert antwort.json()["status"] == "ok"
+    response = client.get("/healthz")
+    assert response.status_code == 200
+    assert response.json()["status"] == "ok"
 
 
 def test_jede_antwort_traegt_eine_anfrage_id(client: TestClient) -> None:
-    antwort = client.get("/healthz")
-    assert antwort.headers["X-Request-ID"]
+    response = client.get("/healthz")
+    assert response.headers["X-Request-ID"]
 
 
 def test_mitgegebene_anfrage_id_wird_uebernommen(client: TestClient) -> None:
-    antwort = client.get("/healthz", headers={"X-Request-ID": "vorgegeben"})
-    assert antwort.headers["X-Request-ID"] == "vorgegeben"
+    response = client.get("/healthz", headers={"X-Request-ID": "vorgegeben"})
+    assert response.headers["X-Request-ID"] == "vorgegeben"
 
 
 def test_zu_lange_anfrage_id_wird_ersetzt(client: TestClient) -> None:
     zu_lang = "a" * 65
-    antwort = client.get("/healthz", headers={"X-Request-ID": zu_lang})
-    assert antwort.headers["X-Request-ID"] != zu_lang
-    assert antwort.headers["X-Request-ID"]
+    response = client.get("/healthz", headers={"X-Request-ID": zu_lang})
+    assert response.headers["X-Request-ID"] != zu_lang
+    assert response.headers["X-Request-ID"]
 
 
 def test_anfrage_id_mit_zeilenumbruch_wird_ersetzt(client: TestClient) -> None:
-    mit_zeilenumbruch = "boese\nInjizierte-Zeile: ja"
-    antwort = client.get("/healthz", headers={"X-Request-ID": mit_zeilenumbruch})
-    assert "\n" not in antwort.headers["X-Request-ID"]
-    assert antwort.headers["X-Request-ID"] != mit_zeilenumbruch
+    mit_rownumbruch = "boese\nInjizierte-Zeile: ja"
+    response = client.get("/healthz", headers={"X-Request-ID": mit_rownumbruch})
+    assert "\n" not in response.headers["X-Request-ID"]
+    assert response.headers["X-Request-ID"] != mit_rownumbruch
 
 
 def test_anfrage_id_mit_sonderzeichen_wird_ersetzt(client: TestClient) -> None:
     mit_sonderzeichen = "abc$def!"
-    antwort = client.get("/healthz", headers={"X-Request-ID": mit_sonderzeichen})
-    assert antwort.headers["X-Request-ID"] != mit_sonderzeichen
+    response = client.get("/healthz", headers={"X-Request-ID": mit_sonderzeichen})
+    assert response.headers["X-Request-ID"] != mit_sonderzeichen
 
 
 def test_forbidden_wird_global_als_403_beantwortet(
@@ -109,27 +109,27 @@ def test_forbidden_wird_global_als_403_beantwortet(
         raise Forbidden("Recht fehlt")
 
     testclient = TestClient(app, raise_server_exceptions=False)
-    antwort = testclient.get("/wirft-forbidden")
-    assert antwort.status_code == 403
-    assert "Recht fehlt" in antwort.text
+    response = testclient.get("/wirft-forbidden")
+    assert response.status_code == 403
+    assert "Recht fehlt" in response.text
 
 
 def test_statische_dateien_werden_ausgeliefert(client: TestClient) -> None:
-    antwort = client.get("/static/vendor/bootstrap/bootstrap.min.css")
-    assert antwort.status_code == 200
-    antwort = client.get("/static/vendor/htmx/htmx.min.js")
-    assert antwort.status_code == 200
+    response = client.get("/static/vendor/bootstrap/bootstrap.min.css")
+    assert response.status_code == 200
+    response = client.get("/static/vendor/htmx/htmx.min.js")
+    assert response.status_code == 200
 
 
-def test_anmeldeseite_bindet_das_stylesheet_ein(client_mit_benutzer: TestClient) -> None:
-    antwort = client_mit_benutzer.get("/login")
-    assert "/static/vendor/bootstrap/bootstrap.min.css" in antwort.text
+def test_anmeldeseite_bindet_das_stylesheet_ein(client_with_user: TestClient) -> None:
+    response = client_with_user.get("/login")
+    assert "/static/vendor/bootstrap/bootstrap.min.css" in response.text
 
 
-def test_anmeldeseite_enthaelt_keine_navigationsleiste(client_mit_benutzer: TestClient) -> None:
-    antwort = client_mit_benutzer.get("/login")
-    assert antwort.status_code == 200
-    assert "<nav" not in antwort.text
+def test_anmeldeseite_enthaelt_keine_navigationsleiste(client_with_user: TestClient) -> None:
+    response = client_with_user.get("/login")
+    assert response.status_code == 200
+    assert "<nav" not in response.text
 
 
 def test_kopfleiste_traegt_blur_fuer_alle_browser() -> None:
@@ -156,8 +156,8 @@ def test_lifespan_erzeugt_einrichtungstoken_bei_fehlender_einrichtung(
     `with`-Block statt ueber die `client`-Fixture. `configure_logging()` ersetzt beim
     Start die Root-Handler (auch den von `caplog`), deshalb wird hier ueber `capsys`
     auf der tatsaechlichen Log-Ausgabe geprueft statt ueber `caplog`."""
-    db_pfad = tmp_path / "lifespan.db"
-    monkeypatch.setenv("THERMOCTL_DATABASE_URL", f"sqlite:///{db_pfad}")
+    db_path = tmp_path / "lifespan.db"
+    monkeypatch.setenv("THERMOCTL_DATABASE_URL", f"sqlite:///{db_path}")
     monkeypatch.setenv("THERMOCTL_SECRET_KEY", "a" * 32)
     from thermoctl.config import get_settings
     from thermoctl.db.base import Base
@@ -196,12 +196,12 @@ def test_anfrage_id_wird_nach_ausnahme_zurueckgesetzt(
     async def wirft_ausnahme() -> None:
         raise RuntimeError("absichtlicher Fehler fuer den Test")
 
-    ausgangswert = request_id_var.get()
+    initial_value = request_id_var.get()
     testclient = TestClient(app, raise_server_exceptions=False)
     try:
-        antwort = testclient.get("/wirft-ausnahme")
-        assert antwort.status_code == 500
-        assert request_id_var.get() == ausgangswert
+        response = testclient.get("/wirft-ausnahme")
+        assert response.status_code == 500
+        assert request_id_var.get() == initial_value
     finally:
         # Dieser Test baut eine eigene Anwendung samt Engine. Ohne Schliessen bleibt
         # eine Datenbankverbindung offen und die Suite meldet eine ResourceWarning --
@@ -214,10 +214,10 @@ def test_warnung_bei_netzbindung_ohne_secure_cookies(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     """Die Warnung ist der einzige Ort, an dem es auffaellt, bevor etwas passiert."""
-    from thermoctl.app import _warnen_wenn_ungeschuetzt_erreichbar
+    from thermoctl.app import _warn_if_reachable_unprotected
     from thermoctl.config import Settings
 
-    def _einstellungen(host: str, sicher: bool) -> Settings:
+    def _settings(host: str, sicher: bool) -> Settings:
         return Settings(
             _env_file=None, database_url="sqlite://", secret_key="s" * 32,
             bind_host=host, secure_cookies=sicher,
@@ -225,15 +225,15 @@ def test_warnung_bei_netzbindung_ohne_secure_cookies(
 
     with caplog.at_level(logging.WARNING, logger="thermoctl.app"):
         caplog.clear()
-        _warnen_wenn_ungeschuetzt_erreichbar(_einstellungen("0.0.0.0", False))  # noqa: S104
+        _warn_if_reachable_unprotected(_settings("0.0.0.0", False))  # noqa: S104
         assert "SECURE_COOKIES" in caplog.text
 
         caplog.clear()
-        _warnen_wenn_ungeschuetzt_erreichbar(_einstellungen("127.0.0.1", False))
+        _warn_if_reachable_unprotected(_settings("127.0.0.1", False))
         assert caplog.text == "", "Oertlich gebunden ist kein Grund zur Warnung."
 
         caplog.clear()
-        _warnen_wenn_ungeschuetzt_erreichbar(_einstellungen("0.0.0.0", True))  # noqa: S104
+        _warn_if_reachable_unprotected(_settings("0.0.0.0", True))  # noqa: S104
         assert caplog.text == "", "Mit secure_cookies ist alles in Ordnung."
 
 
@@ -247,9 +247,9 @@ def test_swagger_ui_haengt_an_keiner_fremden_adresse(client: TestClient) -> None
     """
     import re
 
-    antwort = client.get("/docs")
-    assert antwort.status_code == 200
-    ressourcen = re.findall(r'(?:src|href)="([^"]+)"', antwort.text)
+    response = client.get("/docs")
+    assert response.status_code == 200
+    ressourcen = re.findall(r'(?:src|href)="([^"]+)"', response.text)
     assert ressourcen, "Die Seite bindet gar nichts ein — dann prueft der Test nichts."
     fremde = [r for r in ressourcen if not r.startswith("/")]
     assert not fremde, "Diese Ressourcen kommen von auswaerts: " + ", ".join(fremde)
@@ -278,9 +278,9 @@ def test_openapi_kennt_das_token_als_sicherheitsverfahren(client: TestClient) ->
             "description": "API-Token, ausgestellt unter /tokens",
         }
     }
-    zonen = beschreibung["paths"]["/api/v1/zones"]["get"]
-    assert zonen["security"] == [{"HTTPBearer": []}]
-    assert "parameters" not in zonen, (
+    zones = beschreibung["paths"]["/api/v1/zones"]["get"]
+    assert zones["security"] == [{"HTTPBearer": []}]
+    assert "parameters" not in zones, (
         "Der Token-Header darf nicht zusaetzlich als gewoehnlicher Parameter dastehen."
     )
 
@@ -306,7 +306,7 @@ def test_start_gegen_leere_datenbank_meldet_die_fehlende_migration(
     Abbild migriert im Entrypoint, ein lokaler `uvicorn`-Start nicht -- genau dort tritt es
     auf. Geprueft wird die Logzeile, nicht nur die Ausnahme: Die Ausnahme allein sagt dem
     Betreiber nichts, wenn sie unter dem Traceback verschwindet."""
-    from thermoctl.db.schemastand import BEFEHL, SchemaPasstNicht
+    from thermoctl.db.schema_state import COMMAND, SchemaPasstNicht
 
     monkeypatch.setenv("THERMOCTL_DATABASE_URL", f"sqlite:///{tmp_path / 'leer.db'}")
     monkeypatch.setenv("THERMOCTL_SECRET_KEY", "a" * 32)
@@ -317,7 +317,7 @@ def test_start_gegen_leere_datenbank_meldet_die_fehlende_migration(
         with pytest.raises(SchemaPasstNicht), TestClient(create_app()):
             pass
         ausgabe = capsys.readouterr().out
-        assert BEFEHL in ausgabe
+        assert COMMAND in ausgabe
         assert "no such table" not in ausgabe
     finally:
         get_settings.cache_clear()
