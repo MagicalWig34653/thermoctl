@@ -45,7 +45,13 @@ def _moduswerte_pruefen(
 
 
 def modus_anlegen(
-    session: Session, *, code: str, name: str, sort_order: int, user_id: int
+    session: Session,
+    *,
+    code: str,
+    name: str,
+    sort_order: int,
+    user_id: int,
+    quelle: str = "web",
 ) -> SetpointMode:
     code, name, sort_order = _moduswerte_pruefen(
         session, code=code, name=name, sort_order=sort_order
@@ -55,7 +61,7 @@ def modus_anlegen(
     session.flush()
     audit.record(
         session,
-        source="web",
+        source=quelle,
         action="create",
         object_type="setpoint_mode",
         object_id=str(modus.id),
@@ -73,6 +79,7 @@ def modus_aendern(
     name: str,
     sort_order: int,
     user_id: int,
+    quelle: str = "web",
 ) -> None:
     code, name, sort_order = _moduswerte_pruefen(
         session, code=code, name=name, sort_order=sort_order, modus_id=modus.id
@@ -82,7 +89,7 @@ def modus_aendern(
     modus.sort_order = sort_order
     audit.record(
         session,
-        source="web",
+        source=quelle,
         action="update",
         object_type="setpoint_mode",
         object_id=str(modus.id),
@@ -123,7 +130,9 @@ def loeschsperre(session: Session, modus: SetpointMode) -> str | None:
     return None
 
 
-def modus_loeschen(session: Session, modus: SetpointMode, *, user_id: int) -> None:
+def modus_loeschen(
+    session: Session, modus: SetpointMode, *, user_id: int, quelle: str = "web"
+) -> None:
     sperre = loeschsperre(session, modus)
     if sperre is not None:
         raise Domaenenfehler("modus", sperre)
@@ -136,7 +145,7 @@ def modus_loeschen(session: Session, modus: SetpointMode, *, user_id: int) -> No
     session.delete(modus)
     audit.record(
         session,
-        source="web",
+        source=quelle,
         action="delete",
         object_type="setpoint_mode",
         object_id=str(modus_id),
@@ -164,6 +173,7 @@ def sollwerte_aendern(
     werte: dict[int, Decimal | None],
     *,
     user_id: int,
+    quelle: str = "web",
 ) -> None:
     # Erst alle Werte pruefen, dann irgendeine Zeile anfassen. Die Ansicht faengt den
     # Domaenenfehler und zeigt das Formular erneut; ohne diese Reihenfolge wuerde eine
@@ -200,7 +210,7 @@ def sollwerte_aendern(
     if geaendert:
         audit.record(
             session,
-            source="web",
+            source=quelle,
             action="update",
             object_type="zone_setpoint",
             object_id=str(zone.id),

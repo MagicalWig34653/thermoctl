@@ -48,6 +48,9 @@ prüft dasselbe Recht wie der entsprechende REST-Endpunkt.
 | `schattenentscheidungen(zone_id, anzahl=10)` | `zone.read` | die jüngsten Entscheidungen samt Grund |
 | `uebersteuern(zone_id, temperatur_c, endet_am)` | `override.create` | legt eine Übersteuerung an |
 | `uebersteuerung_aufheben(zone_id)` | `override.cancel` | beendet die laufende Übersteuerung |
+| `steuerung_lesen()` | `zone.read` | Betriebszustand und globale Vorgaben |
+| `trockenlauf_erzwingen(begruendung)` | `control.arm` | nimmt die Regelung in den Trockenlauf zurück |
+| `zeitplanpunkt_verschieben(zone_id, punkt_id, wochentag, minute)` | `schedule.manage` | setzt einen Punkt auf einen anderen Zeitpunkt |
 
 Eine nicht sichtbare Zone wird wie eine unbekannte behandelt — die Antwort verrät nicht,
 dass es sie gibt.
@@ -58,12 +61,25 @@ Regelentscheidung von Hand zusammenzusuchen.
 
 ## Was es bewusst nicht gibt
 
-**Kein Werkzeug schaltet etwas.** Der Trockenlauf gilt hier wie überall.
+**Kein Werkzeug schaltet die Anlage scharf.** `trockenlauf_erzwingen` gibt es, die
+Gegenrichtung nicht — obwohl die Oberfläche und die REST-Schnittstelle sie können.
 
-Schreibende Werkzeuge für die Konfiguration — Zonen, Zeitpläne, Sollwerte, Regelparameter —
-gibt es ebenfalls nicht. Für den täglichen Bedarf genügt `uebersteuern`, und je weniger ein
-Assistent ungefragt ändern kann, desto besser. Wer eine Zone umbaut, tut das in der
-Oberfläche oder über die REST-Schnittstelle, wo eine Person daneben sitzt.
+Der Grund: Die Domäne verlangt beim Scharfschalten eine Begründung, und für ein
+Sprachmodell ist das keine Hürde, sondern genau die Sorte Text, die es mühelos erzeugt. Die
+Sperre wäre hier eine Formalie statt einer Entscheidung. Zurück in den Trockenlauf ist
+dagegen immer die sichere Richtung und soll jedem offenstehen, der die Anlage bedienen darf.
+Wer scharf schalten will, tut das dort, wo ein Mensch am Knopf steht. Nachzulesen in
+[offene-entscheidungen.md](offene-entscheidungen.md).
+
+Schreibende Werkzeuge für die Konfiguration — Zonen, Sollwerte, Regelparameter — gibt es
+ebenfalls nicht. Je weniger ein Assistent ungefragt ändern kann, desto besser. Wer eine
+Zone umbaut, tut das in der Oberfläche oder über die REST-Schnittstelle, wo eine Person
+daneben sitzt.
+
+Beim Zeitplan gibt es eine Ausnahme: `zeitplanpunkt_verschieben` ändert einen **schon
+vorhandenen** Punkt, legt aber keinen an und löscht keinen. „Verschieb die Morgenheizung
+im Bad eine halbe Stunde nach hinten" ist eine alltägliche Bitte, und der Umfang des
+Schadens ist auf einen Zeitpunkt begrenzt.
 
 Die Grenzen für Übersteuerungen (5 bis 35 °C, eine Nachkommastelle) prüft die Domäne, nicht
 der Adapter. Ein Werkzeug, das `temperatur_c=99` schickt, bekommt einen Fehler — und zwar

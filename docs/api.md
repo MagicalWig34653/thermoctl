@@ -117,6 +117,45 @@ Löschen mit `204`.
 {"weekday": 1, "minute_of_day": 360, "mode_id": 2}
 ```
 
+`PUT /api/v1/zones/{zone_id}/schedule/{punkt_id}` verschiebt einen vorhandenen Punkt
+(`schedule.manage`) — das Gegenstück zum Ziehen in der Wochenansicht. Der Punkt **behält
+seine Kennung**, damit ein Aufrufer ihn weiterverfolgen kann, und das Audit-Protokoll
+zeigt eine Verschiebung statt eines Löschens mit anschließendem Anlegen.
+
+```json
+{"weekday": 4, "minute_of_day": 480}
+```
+
+Ein bereits belegter Zeitpunkt wird mit `422` abgelehnt.
+
+### Steuerung
+
+`GET /api/v1/control` (`zone.read`) liefert den Betriebszustand der Anlage und die
+globalen Vorgaben, von denen jede Zone erbt.
+
+```json
+{"control_armed": false, "timezone": "Europe/Berlin", "shadow_interval_seconds": 60, "…": "…"}
+```
+
+`PUT /api/v1/control/armed` legt den Riegel um, den die Datenbank hält. Das braucht
+**`control.arm`**, ein eigenes Recht — nicht `setting.manage`: Wer Zeitzone und
+Aufbewahrungsdauer pflegen darf, soll die Heizung nicht nebenbei scharf schalten können.
+
+```json
+{"armed": true, "begruendung": "Vier Tage Schattenlauf gegen das Altsystem verglichen"}
+```
+
+`begruendung` ist beim Scharfschalten Pflicht und geht ins Audit-Protokoll; beim
+Zurücknehmen in den Trockenlauf ist sie freiwillig, weil das der Weg ist, den jemand in
+Eile geht. Fehlt sie beim Scharfschalten, antwortet der Dienst mit `422`.
+
+**Scharfschalten hebt nur den Riegel, den die Datenbank hält.** Der zweite Riegel —
+`MqttClient(schalten_erlaubt=…)`, beim Bau des Clients gesetzt — bleibt davon unberührt.
+
+`PUT /api/v1/control/defaults` (`setting.manage`) schreibt die globalen Vorgaben. Alle
+Felder aus der Antwort von `GET /api/v1/control` außer `control_armed` sind Pflicht; die
+Grenzen prüft die Domäne, ein Verstoß ist `422`.
+
 ### Regelparameter
 
 `GET /api/v1/zones/{zone_id}/parameters` benötigt `zone.read`,

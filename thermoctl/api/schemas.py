@@ -126,3 +126,50 @@ class UebersteuerungAntwort(BaseModel):
     starts_at: datetime
     ends_at: datetime | None
     cancelled_at: datetime | None
+
+
+class SteuerungAntwort(BaseModel):
+    """Der Betriebszustand der Anlage samt der Vorgaben, von denen jede Zone erbt."""
+
+    control_armed: bool
+    timezone: str
+    polling_interval_seconds: int
+    shadow_interval_seconds: int
+    default_hysteresis_k: Decimal
+    default_min_on_seconds: int
+    default_min_off_seconds: int
+    default_sensor_timeout_seconds: int
+    default_window_resume_delay_seconds: int
+    measurement_retention_days: int
+    session_lifetime_seconds: int
+
+
+class ScharfSchalten(BaseModel):
+    """`begruendung` ist beim Scharfschalten Pflicht und beim Zuruecknehmen freiwillig --
+    die Pruefung dazu steht in der Domaene, nicht hier, damit sie fuer alle drei Adapter
+    dieselbe ist."""
+
+    armed: bool
+    begruendung: str = ""
+
+
+class SteuerungSchreiben(BaseModel):
+    """Die globalen Vorgaben. Die Grenzen prueft die Domaene: Ein `Field(ge=..., le=...)`
+    hier waere eine zweite Fassung derselben Zahlen, und zwei Fassungen laufen
+    auseinander."""
+
+    timezone: str = Field(min_length=1, max_length=64)
+    polling_interval_seconds: int
+    shadow_interval_seconds: int
+    default_hysteresis_k: Decimal
+    default_min_on_seconds: int
+    default_min_off_seconds: int
+    default_sensor_timeout_seconds: int
+    default_window_resume_delay_seconds: int
+    measurement_retention_days: int
+    session_lifetime_seconds: int
+
+
+class ZeitplanpunktVerschieben(BaseModel):
+    weekday: int = Field(ge=1, le=7)
+    minute_of_day: int = Field(ge=0, le=1439)

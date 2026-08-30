@@ -229,3 +229,43 @@ mehr als eines, das man später anlegt.
 **Für Phase 4:** Zuerst den Vergleichsbetrieb entwerfen (wie lange, welche Auflösung, welcher
 Bericht), dann das Schema danach bauen. Die beiden reinen Funktionen stehen bereits und
 ändern sich dadurch nicht.
+
+## Der MCP-Server kann zurücknehmen, aber nicht scharf schalten
+
+`trockenlauf_erzwingen` gibt es, die Gegenrichtung nicht — obwohl Oberfläche und
+REST-Schnittstelle beides können. Die drei Adapter stehen hier also **absichtlich** nicht
+gleich, entgegen Grundsatz 6.
+
+**Warum:** Die Domäne verlangt beim Scharfschalten eine Begründung. Für einen Menschen ist
+das ein Moment des Innehaltens; für ein Sprachmodell ist es genau die Sorte Text, die es
+mühelos erzeugt. Die Sperre wäre über MCP eine Formalie statt einer Entscheidung — und
+dahinter hängt eine echte Heizung (Grundsatz 7).
+
+Zurück in den Trockenlauf ist dagegen immer die sichere Richtung. Sie soll jedem
+offenstehen, der die Anlage bedienen darf, und darf an keiner Formalie scheitern.
+
+**Verworfen:** volle Symmetrie mit `control.arm` als einzigem Schutz. Das Recht schützt
+davor, dass *irgendein* Token scharf schaltet — nicht davor, dass das dafür vorgesehene
+Token es auf eine beiläufige Bitte hin tut.
+
+**Wer es anders will,** ergänzt in `thermoctl/mcp/server.py` ein Werkzeug, das
+`scharf_schalten(session, True, ...)` aufruft; die Domänenfunktion kann es bereits. Ein
+Test hält die heutige Entscheidung fest, damit sie nicht aus Symmetriegefühl kippt.
+
+## Die Audit-Quelle kommt vom Adapter, nicht aus der Domäne
+
+Jede schreibende Domänenfunktion nimmt `quelle: str = "web"` und reicht sie an
+`audit.record()` weiter; Web, REST und MCP setzen sie beim Aufruf.
+
+**Warum:** Vorher stand in jeder Funktion fest `source="web"`. Damit behauptete das
+Audit-Protokoll von jeder REST- und MCP-Änderung, sie sei über die Oberfläche gekommen —
+es beantwortete genau die Frage falsch, für die es da ist. `uebersteuerung_anlegen` hatte
+denselben Fehler spiegelverkehrt: dort stand fest `"api"`, also wurde eine Übersteuerung
+aus der Oberfläche als API-Aufruf verbucht.
+
+**Verworfen:** eine ContextVar, die der Adapter setzt und `audit.record()` liest. Das wäre
+ein Parameter weniger je Funktion, aber die Quelle stünde dann nirgends im Aufruf — und ein
+vergessenes Setzen fiele erst im Protokoll auf, wo es niemand nachprüft.
+
+**Nebenwirkung:** In `zeitplan_uebernehmen` heißt die Quellzone jetzt `vorlage`. Zwei
+Bedeutungen von `quelle` in einer Signatur wären eine Falle für den nächsten Aufrufer.

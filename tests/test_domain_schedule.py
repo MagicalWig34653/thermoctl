@@ -87,12 +87,29 @@ def test_naechster_punkt_ohne_punkte_gibt_es_nicht() -> None:
     assert naechster_punkt([], datetime(2026, 8, 31, 10, 0)) is None
 
 
-def test_uebersteuerung_anlegen_ohne_api_quelle_schlaegt_fehl(session: Session) -> None:
-    """Fehlt die Lookup-Zeile fuer die Quelle 'api', ist die Einrichtung unvollstaendig —
-    das soll laut und eindeutig scheitern statt eine Uebersteuerung ohne Quelle anzulegen."""
+def test_uebersteuerung_mit_unbekannter_quelle_schlaegt_fehl(session: Session) -> None:
+    """Eine Uebersteuerung ohne Quelle waere eine, bei der niemand mehr sagen kann,
+    worueber sie eingestellt wurde — das soll laut scheitern.
+
+    Frueher stand hier fest die Quelle 'api', auch wenn die Uebersteuerung aus der
+    Oberflaeche kam; der Test prueft deshalb jetzt die Ablehnung eines *unbekannten*
+    Namens statt das Fehlen genau einer Lookup-Zeile.
+    """
     zone = zone_anlegen(session, "ohne-quelle")
-    with pytest.raises(RuntimeError, match="api"):
-        uebersteuerung_anlegen(session, zone, Decimal("20.0"), None)
+    with pytest.raises(ValueError, match="rauchzeichen"):
+        uebersteuerung_anlegen(
+            session, zone, Decimal("20.0"), None, quelle="rauchzeichen"
+        )
+
+
+def test_uebersteuerung_merkt_sich_den_adapter(session: Session) -> None:
+    """Gegenprobe: Die drei Adapter muessen unterscheidbar bleiben, sonst beantwortet
+    `zone_override.source_id` die Frage 'worueber wurde das eingestellt' fuer zwei von
+    dreien falsch — genau der Zustand, den diese Aenderung behebt."""
+    zone = zone_anlegen(session, "adapterzone")
+    aus_web = uebersteuerung_anlegen(session, zone, Decimal("21.0"), None)
+    aus_mcp = uebersteuerung_anlegen(session, zone, Decimal("22.0"), None, quelle="mcp")
+    assert aus_web.source_id != aus_mcp.source_id
 
 
 def test_uebersteuerung_anlegen_legt_eine_neue_uebersteuerung_an(session: Session) -> None:

@@ -1,8 +1,10 @@
 from contextlib import nullcontext
 from datetime import datetime
 from decimal import Decimal
+from pathlib import Path
 
 import pytest
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from tests.hilfen import (
@@ -20,8 +22,12 @@ from thermoctl.auth.tokens import token_ausstellen
 from thermoctl.config import Settings
 from thermoctl.db.models.device import DeviceCapabilityLink
 from thermoctl.db.models.lookup import DeviceCapability
+from thermoctl.db.models.operations import Setting
 from thermoctl.db.models.override import ZoneOverride
+from thermoctl.db.models.schedule import SchedulePoint
+from thermoctl.db.models.zone import SetpointMode
 from thermoctl.domain.authz import Forbidden
+from thermoctl.domain.steuerung import scharf_schalten
 from thermoctl.mcp import server
 
 
@@ -206,6 +212,8 @@ def test_registrierte_mcp_werkzeuge_rufen_die_adapterfunktionen_auf(
         ("device.read", None),
         ("override.create", zone.id),
         ("override.cancel", zone.id),
+        ("schedule.manage", zone.id),
+        ("control.arm", None),
     ]
     klartext = _token(session, "registrierter-nutzer", rechte)
 
@@ -236,6 +244,9 @@ def test_registrierte_mcp_werkzeuge_rufen_die_adapterfunktionen_auf(
         "schattenentscheidungen",
         "uebersteuern",
         "uebersteuerung_aufheben",
+        "steuerung_lesen",
+        "trockenlauf_erzwingen",
+        "zeitplanpunkt_verschieben",
     }
     assert werkzeuge["zonen_auflisten"]()  # type: ignore[operator]
     assert werkzeuge["zonenzustand"](zone.id)  # type: ignore[operator]
@@ -246,6 +257,15 @@ def test_registrierte_mcp_werkzeuge_rufen_die_adapterfunktionen_auf(
     assert werkzeuge["schattenentscheidungen"](zone.id, 1)  # type: ignore[operator]
     assert werkzeuge["uebersteuern"](zone.id, Decimal("21.0"))  # type: ignore[operator]
     assert werkzeuge["uebersteuerung_aufheben"](zone.id)  # type: ignore[operator]
+    assert werkzeuge["steuerung_lesen"]()  # type: ignore[operator]
+    # `trockenlauf_erzwingen` meldet `geaendert: False`, wenn schon Trockenlauf herrscht --
+    # deshalb auf den Schluessel pruefen und nicht auf Wahrheit des Ergebnisses.
+    assert "scharf" in werkzeuge["trockenlauf_erzwingen"]()  # type: ignore[operator]
+    punkt = session.scalars(select(SchedulePoint).where(SchedulePoint.zone_id == zone.id)).first()
+    assert punkt is not None
+    assert werkzeuge["zeitplanpunkt_verschieben"](  # type: ignore[operator]
+        zone.id, punkt.id, 4, 480
+    )
 
 
 def test_unbekanntes_token_wird_abgewiesen(session: Session) -> None:
@@ -320,3 +340,91 @@ def test_uebersteuern_weist_unsinnige_temperatur_ab(session: Session) -> None:
     for wert in (Decimal("99"), Decimal("-5"), Decimal("21.55")):
         with pytest.raises(Domaenenfehler):
             server.uebersteuern(session, klartext, zone.id, wert, None)
+
+
+# --- Steuerung ueber MCP ---------------------------------------------------
+
+
+def test_steuerung_lesen_zeigt_den_betriebszustand(session: Session) -> None:
+    einstellungen_anlegen(session)
+    klartext = _token(session, "leser", [("zone.read", None)])
+    antwort = server.steuerung_lesen(session, klartext)
+    assert antwort["scharf"] is False
+    assert antwort["zeitzone"]
+
+
+def test_steuerung_lesen_braucht_zone_read(session: Session) -> None:
+    einstellungen_anlegen(session)
+    klartext = _token(session, "rechtlos", [("device.read", None)])
+    with pytest.raises(Forbidden):
+        server.steuerung_lesen(session, klartext)
+
+
+def test_trockenlauf_erzwingen_nimmt_die_anlage_zurueck(session: Session) -> None:
+    einstellungen_anlegen(session)
+    quelle(session, "mcp")
+    quelle(session, "web")
+    scharf_schalten(session, True, begruendung="von Hand", user_id=None)
+    klartext = _token(session, "notaus", [("zone.read", None), ("control.arm", None)])
+
+    antwort = server.trockenlauf_erzwingen(session, klartext, "Assistent nimmt zurück")
+    assert antwort == {"scharf": False, "geaendert": True}
+    assert session.get(Setting, 1).control_armed is False
+
+
+def test_mcp_kann_nicht_scharf_schalten(session: Session) -> None:
+    """Bewusste Asymmetrie zu REST und Oberflaeche, dokumentiert in
+    docs/offene-entscheidungen.md: Der MCP-Server spricht fuer ein Sprachmodell, und die
+    Begruendung, die die Domaene beim Scharfschalten verlangt, ist fuer ein Modell keine
+    Huerde. Es gibt hier deshalb kein Werkzeug in diese Richtung -- dieser Test haelt das
+    fest, damit es niemand aus Symmetriegefuehl nachtraegt."""
+    assert not [
+        name
+        for name in dir(server)
+        if "scharf" in name.lower() and name != "scharf_schalten"
+    ]
+    # `scharf_schalten` ist die importierte Domaenenfunktion, kein Werkzeug: Sie wird
+    # ausschliesslich mit `False` aufgerufen.
+    quelltext = (
+        Path(server.__file__).read_text(encoding="utf-8")  # type: ignore[arg-type]
+    )
+    assert quelltext.count("scharf_schalten(") == 1
+    assert "        False," in quelltext
+
+
+def test_zeitplanpunkt_verschieben_ueber_mcp(session: Session) -> None:
+    zone = zone_mit_zeitplan(session, "mcp-zeitplan", [(1, 360, "tag-mcp", Decimal("21.0"))])
+    quelle(session, "web")
+    punkt = session.scalars(
+        select(SchedulePoint).where(SchedulePoint.zone_id == zone.id)
+    ).one()
+    klartext = _token(
+        session, "planer", [("zone.read", None), ("schedule.manage", zone.id)]
+    )
+    antwort = server.zeitplanpunkt_verschieben(session, klartext, zone.id, punkt.id, 5, 450)
+    assert antwort["wochentag"] == 5
+    assert antwort["minute"] == 450
+    session.refresh(punkt)
+    assert punkt.id == antwort["punkt_id"]
+
+
+def test_verschieben_eines_fremden_punktes_scheitert(session: Session) -> None:
+    # `zone_mit_zeitplan` legt selbst die Einstellungszeile an und vertraegt deshalb
+    # nur einen Aufruf je Test; die zweite Zone bekommt ihren Punkt von Hand.
+    zone = zone_mit_zeitplan(session, "eigen", [(1, 360, "tag-eigen", Decimal("21.0"))])
+    fremde = zone_anlegen(session, "fremd")
+    fremder_punkt = SchedulePoint(
+        zone_id=fremde.id,
+        weekday=1,
+        minute_of_day=360,
+        setpoint_mode_id=session.scalars(select(SetpointMode)).first().id,
+    )
+    session.add(fremder_punkt)
+    session.flush()
+    klartext = _token(
+        session, "planer2", [("zone.read", zone.id), ("schedule.manage", zone.id)]
+    )
+    with pytest.raises(ValueError, match="nicht gefunden"):
+        server.zeitplanpunkt_verschieben(
+            session, klartext, zone.id, fremder_punkt.id, 5, 450
+        )

@@ -53,13 +53,14 @@ def regelparameter_speichern(
     *,
     user_id: int | None,
     token_id: int | None = None,
+    quelle: str = "web",
 ) -> None:
     """Speichert Zonenabweichungen; ``None`` stellt die Vererbung wieder her."""
     for name in Regelparameter.__dataclass_fields__:
         setattr(zone, name, werte[name])
     audit.record(
         session,
-        source="web",
+        source=quelle,
         action="update",
         object_type="zone_settings",
         object_id=str(zone.id),

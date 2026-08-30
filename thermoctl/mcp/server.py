@@ -27,6 +27,10 @@ from thermoctl.domain.schedule import (
 from thermoctl.domain.schedule import (
     uebersteuerung_aufheben as domaene_uebersteuerung_aufheben,
 )
+from thermoctl.domain.schedule import (
+    zeitplanpunkt_verschieben as domaene_zeitplanpunkt_verschieben,
+)
+from thermoctl.domain.steuerung import GRENZEN, einstellungen, scharf_schalten
 
 
 class _McpServer(Protocol):
@@ -226,6 +230,7 @@ def uebersteuern(
         endet_am,
         user_id=principal.user_id,
         token_id=token.id,
+        quelle="mcp",
     )
     return {
         "zone": zone.name,
@@ -241,6 +246,84 @@ def uebersteuerung_aufheben(session: Session, klartext: str, zone_id: int) -> di
     require(principal, "override.cancel", zone_id)
     aufgehoben = domaene_uebersteuerung_aufheben(session, zone)
     return {"zone": zone.name, "aufgehoben": aufgehoben is not None}
+
+
+def steuerung_lesen(session: Session, klartext: str) -> dict[str, object]:
+    """Der Betriebszustand der Anlage samt der Vorgaben, von denen jede Zone erbt.
+
+    Die wichtigste Frage, die ein Assistent ueber diese Anlage stellen kann, ist
+    "schaltet sie gerade wirklich?" -- eine Entscheidung im Schattenbetrieb ist eine
+    Behauptung, eine im scharfen Betrieb bewegt ein Ventil.
+    """
+    _token, principal = _anmelden(session, klartext)
+    require(principal, "zone.read")
+    zeile = einstellungen(session)
+    return {
+        "scharf": zeile.control_armed,
+        "zeitzone": zeile.timezone,
+        **{feld: str(getattr(zeile, feld)) for feld in GRENZEN},
+    }
+
+
+def trockenlauf_erzwingen(
+    session: Session, klartext: str, begruendung: str = ""
+) -> dict[str, object]:
+    """Nimmt die Regelung in den Trockenlauf zurueck.
+
+    **Nur diese Richtung.** Scharfschalten gibt es hier bewusst nicht, obwohl REST und
+    Oberflaeche es koennen: Der MCP-Server spricht fuer ein Sprachmodell, und die
+    Begruendung, die die Domaene beim Scharfschalten verlangt, ist fuer ein Modell keine
+    Huerde -- sie ist genau die Sorte Text, die es muehelos erzeugt. Die Sperre waere
+    damit eine Formalie statt einer Entscheidung. Zurueck in den Trockenlauf ist
+    dagegen immer die sichere Richtung und soll jedem offenstehen, der die Anlage
+    bedienen darf. Wer die Anlage scharf schalten will, tut das in der Oberflaeche oder
+    ueber die REST-Schnittstelle, wo ein Mensch am Knopf steht.
+    Nachzulesen in docs/offene-entscheidungen.md.
+    """
+    token, principal = _anmelden(session, klartext)
+    require(principal, "control.arm")
+    geaendert = scharf_schalten(
+        session,
+        False,
+        begruendung=begruendung,
+        user_id=principal.user_id,
+        token_id=token.id,
+        quelle="mcp",
+    )
+    return {"scharf": False, "geaendert": geaendert}
+
+
+def zeitplanpunkt_verschieben(
+    session: Session, klartext: str, zone_id: int, punkt_id: int, wochentag: int, minute: int
+) -> dict[str, object]:
+    """Setzt einen Zeitplanpunkt auf einen anderen Zeitpunkt.
+
+    Dieselbe Domaenenfunktion wie das Ziehen in der Wochenansicht -- der Punkt behaelt
+    seine Kennung, und das Audit-Protokoll zeigt eine Verschiebung statt eines Loeschens
+    mit anschliessendem Anlegen.
+    """
+    token, principal = _anmelden(session, klartext)
+    zone = _sichtbare_zone(session, principal, zone_id)
+    require(principal, "schedule.manage", zone_id)
+    punkt = session.get(SchedulePoint, punkt_id)
+    if punkt is None or punkt.zone_id != zone.id:
+        raise ValueError("Zeitplanpunkt nicht gefunden")
+    domaene_zeitplanpunkt_verschieben(
+        session,
+        zone,
+        punkt,
+        wochentag=wochentag,
+        minute=minute,
+        user_id=principal.user_id,
+        token_id=token.id,
+        quelle="mcp",
+    )
+    return {
+        "zone": zone.name,
+        "punkt_id": punkt.id,
+        "wochentag": punkt.weekday,
+        "minute": punkt.minute_of_day,
+    }
 
 
 def _mcp_server_klasse() -> Callable[[str], _McpServer]:
@@ -309,6 +392,25 @@ def _werkzeuge_registrieren(
     def mcp_uebersteuerung_aufheben(zone_id: int) -> dict[str, object]:
         with session_scope(factory) as session:
             return uebersteuerung_aufheben(session, klartext, zone_id)
+
+    @server.tool(name="steuerung_lesen")
+    def mcp_steuerung_lesen() -> dict[str, object]:
+        with session_scope(factory) as session:
+            return steuerung_lesen(session, klartext)
+
+    @server.tool(name="trockenlauf_erzwingen")
+    def mcp_trockenlauf_erzwingen(begruendung: str = "") -> dict[str, object]:
+        with session_scope(factory) as session:
+            return trockenlauf_erzwingen(session, klartext, begruendung)
+
+    @server.tool(name="zeitplanpunkt_verschieben")
+    def mcp_zeitplanpunkt_verschieben(
+        zone_id: int, punkt_id: int, wochentag: int, minute: int
+    ) -> dict[str, object]:
+        with session_scope(factory) as session:
+            return zeitplanpunkt_verschieben(
+                session, klartext, zone_id, punkt_id, wochentag, minute
+            )
 
 
 def main() -> None:

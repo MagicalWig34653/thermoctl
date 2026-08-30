@@ -138,6 +138,7 @@ def zeitplanpunkt_anlegen(
     modus_id: int,
     user_id: int | None,
     token_id: int | None = None,
+    quelle: str = "web",
 ) -> SchedulePoint:
     if not 1 <= wochentag <= 7:
         raise Zeitplanfehler("wochentag", "Bitte einen Wochentag auswählen.")
@@ -159,7 +160,7 @@ def zeitplanpunkt_anlegen(
             session.flush()
             audit.record(
                 session,
-                source="web",
+                source=quelle,
                 action="create",
                 object_type="schedule_point",
                 object_id=str(punkt.id),
@@ -184,6 +185,7 @@ def zeitplanpunkt_verschieben(
     minute: int,
     user_id: int | None,
     token_id: int | None = None,
+    quelle: str = "web",
 ) -> SchedulePoint:
     """Setzt einen vorhandenen Punkt auf einen anderen Zeitpunkt.
 
@@ -212,7 +214,7 @@ def zeitplanpunkt_verschieben(
             session.flush()
             audit.record(
                 session,
-                source="web",
+                source=quelle,
                 action="update",
                 object_type="schedule_point",
                 object_id=str(punkt.id),
@@ -236,12 +238,13 @@ def zeitplanpunkt_loeschen(
     *,
     user_id: int | None,
     token_id: int | None = None,
+    quelle: str = "web",
 ) -> None:
     punkt_id = punkt.id
     session.delete(punkt)
     audit.record(
         session,
-        source="web",
+        source=quelle,
         action="delete",
         object_type="schedule_point",
         object_id=str(punkt_id),
@@ -254,15 +257,19 @@ def zeitplanpunkt_loeschen(
 def zeitplan_uebernehmen(
     session: Session,
     ziel: Zone,
-    quelle: Zone,
+    # `vorlage` und nicht `quelle`: Der Name `quelle` steht im ganzen Projekt fuer die
+    # Herkunft eines Audit-Eintrags (web, api, mcp). Zwei Bedeutungen in einer Signatur
+    # waeren eine Falle fuer den naechsten Aufrufer.
+    vorlage: Zone,
     *,
     user_id: int | None,
     token_id: int | None = None,
+    quelle: str = "web",
 ) -> None:
     """Ersetzt den Zielplan atomar durch unabhängige Kopien des Quellplans."""
     quellpunkte = list(
         session.scalars(
-            select(SchedulePoint).where(SchedulePoint.zone_id == quelle.id)
+            select(SchedulePoint).where(SchedulePoint.zone_id == vorlage.id)
         )
     )
     session.execute(delete(SchedulePoint).where(SchedulePoint.zone_id == ziel.id))
@@ -277,13 +284,13 @@ def zeitplan_uebernehmen(
     )
     audit.record(
         session,
-        source="web",
+        source=quelle,
         action="update",
         object_type="schedule",
         object_id=str(ziel.id),
         summary=(
             f"Zeitplan für Zone '{ziel.display_name}' von "
-            f"'{quelle.display_name}' übernommen"
+            f"'{vorlage.display_name}' übernommen"
         ),
         user_id=user_id,
         token_id=token_id,
@@ -335,6 +342,7 @@ def uebersteuerung_anlegen(
     *,
     user_id: int | None = None,
     token_id: int | None = None,
+    quelle: str = "web",
 ) -> ZoneOverride:
     """Legt eine konkrete Uebersteuerung an; Web, API und MCP teilen diese Mutation.
 
@@ -346,9 +354,12 @@ def uebersteuerung_anlegen(
     Eingabegrenze, die von der Wahl des Adapters abhaengt, ist keine.
     """
     temperature_c = temperatur_pruefen(temperature_c)
-    quelle_id = session.scalar(select(ActorSource.id).where(ActorSource.code == "api"))
+    # Frueher fest "api", auch wenn die Uebersteuerung aus der Oberflaeche kam: Die
+    # Spalte `zone_override.source_id` beantwortet die Frage "worueber wurde das
+    # eingestellt", und sie beantwortete sie fuer zwei von drei Adaptern falsch.
+    quelle_id = session.scalar(select(ActorSource.id).where(ActorSource.code == quelle))
     if quelle_id is None:
-        raise RuntimeError("Actor-Quelle 'api' fehlt")
+        raise ValueError(f"Unbekannte Quelle {quelle!r}")
     eintrag = ZoneOverride(
         zone_id=zone.id,
         temperature_c=temperature_c,
