@@ -337,7 +337,9 @@ def test_uebersteuern_weist_unsinnige_temperatur_ab(session: Session) -> None:
     quelle(session, "mcp")
     klartext = _token(session, "uebersteuerer", [("override.create", None), ("zone.read", None)])
 
-    for wert in (Decimal("99"), Decimal("-5"), Decimal("21.55")):
+    # -5 ist seit der Absenkung auf -20 ein gueltiger Sollwert: "hier wird nicht
+    # geheizt". Unbrauchbar bleibt, was darunter liegt.
+    for wert in (Decimal("99"), Decimal("-30"), Decimal("21.55")):
         with pytest.raises(Domaenenfehler):
             server.uebersteuern(session, klartext, zone.id, wert, None)
 

@@ -198,7 +198,7 @@ def test_sollwert_ausserhalb_der_grenzen_wird_am_feld_abgewiesen(
     )
 
     assert antwort.status_code == 200
-    assert "zwischen 1,0 und 35,0 °C" in antwort.text
+    assert "zwischen -20,0 und 35,0 °C" in antwort.text
     assert 'value="36.0"' in antwort.text
     assert session.get(ZoneSetpoint, (zone.id, modus.id)) is None
 
@@ -395,27 +395,62 @@ def test_die_sollwertgrenze_steht_nur_an_einer_stelle() -> None:
     Der Test sucht darum nach nackten Grenzwerten ausserhalb der Domaene. Er ist grob --
     eine 5 in einer Zeile ueber Hysterese meint etwas anderes -- deshalb sucht er nur
     das Muster, in dem eine Temperaturgrenze auftritt.
+
+    **Auch in den Vorlagen.** Seine erste Fassung sah nur Python-Dateien und uebersah
+    `sollwerte.html`, wo `min="5"` und `max="35"` als Zeichenketten standen. Aufgefallen
+    ist das erst beim naechsten Verschieben der Grenze -- also genau dann, wenn der
+    Waechter es haette verhindern sollen.
     """
     import re
     from pathlib import Path
 
     wurzel = Path(__file__).resolve().parent.parent / "thermoctl"
-    muster = re.compile(
-        r"""(?:ge=|min=["']?|min_temp["']?\s*:\s*)"""
-        r"""(?:Decimal\(["'])?[15](?:\.0)?["']?\s*[,)]"""
-    )
     treffer = []
-    for datei in wurzel.rglob("*.py"):
+
+    # Vorlagen: Eine Seite, die Temperaturen erfragt, darf keine nackte Grenze
+    # enthalten -- weder als `min="5"` noch als Argument `"35"` an `zahlenfeld`.
+    # Erkannt wird eine solche Seite am Gradzeichen.
+    # Zwei Klassen: Die Obergrenze und die neue Untergrenze sind als Zahl eindeutig --
+    # eine `35` oder `-20` in Anfuehrungszeichen ist hier nie etwas anderes. Die alten
+    # Untergrenzen `5` und `1` stehen dagegen auch fuer Minuten oder Sortierung; sie
+    # zaehlen nur, wenn die Zeile selbst von Temperatur spricht. Genau daran ist die
+    # erste Fassung gescheitert: Sie meldete das Minutenfeld der Uebersteuerung.
+    eindeutig = {"35", "35.0", "-20", "-20.0"}
+    mehrdeutig = {"5", "5.0", "1", "1.0"}
+    zahl_in_anfuehrung = re.compile(r"""["'](-?\d{1,2}(?:\.\d)?)["']""")
+    for datei in sorted(wurzel.parent.rglob("web/templates/*.html")):
+        text = datei.read_text(encoding="utf-8")
+        if "°C" not in text:
+            continue
+        for nummer, zeile in enumerate(text.splitlines(), 1):
+            if "temperatur" in zeile.lower():
+                continue  # verweist auf die durchgereichten Konstanten
+            gefunden = set(zahl_in_anfuehrung.findall(zeile))
+            ueber_temperatur = "°C" in zeile or "sollwert" in zeile.lower()
+            if gefunden & eindeutig or (ueber_temperatur and gefunden & mehrdeutig):
+                treffer.append(f"{datei.name}:{nummer}: {zeile.strip()}")
+
+    # Python: eine Zahl an einer Stelle, an der eine Temperaturgrenze steht. Der
+    # Zusammenhang steckt oft in der Zeile davor (`temperature_c: Decimal = Field(`
+    # umbricht), deshalb ein kleines Fenster.
+    grenzstelle = re.compile(
+        r"""(?:ge=|le=|min_temp["']?\s*:\s*|max_temp["']?\s*:\s*)"""
+        r"""(?:Decimal\(["'])?-?\d+(?:\.\d+)?"""
+    )
+    for datei in sorted(wurzel.rglob("*.py")):
         if datei.name == "modi.py":
             continue  # dort gehoert sie hin
-        for nummer, zeile in enumerate(datei.read_text(encoding="utf-8").splitlines(), 1):
-            # Nur Zeilen, die auf die Konstanten verweisen, sind in Ordnung. Vorher
-            # stand hier `"temperatur" in zeile.lower()` -- das ueberging ausgerechnet
-            # `temperature_c: Decimal = Field(ge=1, ...)`, also genau den Fall, den der
-            # Test finden soll. Die Gegenprobe hat es gezeigt.
+        zeilen = datei.read_text(encoding="utf-8").splitlines()
+        for nummer, zeile in enumerate(zeilen, 1):
             if "MINDESTTEMPERATUR_C" in zeile or "HOECHSTTEMPERATUR_C" in zeile:
+                continue  # verweist auf die Konstanten
+            if not grenzstelle.search(zeile):
                 continue
-            if muster.search(zeile) and "temp" in zeile.lower():
+            # Eng auf das Sollwertfeld: Ein blosses "temp" im Umfeld traf auch
+            # `sensor_timeout_seconds` neben `temperature_offset_k` -- beides
+            # Temperaturnahes mit ganz anderen Grenzen.
+            umfeld = " ".join(zeilen[max(0, nummer - 3) : nummer + 1])
+            if "temperature_c" in umfeld or "min_temp" in umfeld or "max_temp" in umfeld:
                 treffer.append(f"{datei.relative_to(wurzel)}:{nummer}: {zeile.strip()}")
 
     assert not treffer, "Sollwertgrenze ausserhalb der Domaene:\n" + "\n".join(treffer)

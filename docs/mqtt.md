@@ -95,7 +95,7 @@ Je Zone trägt der Thermostat:
 | Anzeige „heizt / bereit" | `.../zustand/wuerde_heizen` |
 | Erreichbarkeit | `<präfix>/verfuegbarkeit` |
 
-Grenzen: 1 bis 35 °C, Schrittweite 0,5 K. Sie stehen in der Discovery-Nutzlast **und** in
+Grenzen: −20 bis 35 °C, Schrittweite 0,5 K. Sie stehen in der Discovery-Nutzlast **und** in
 der Domäne — Home Assistant zeigt sie an, abgewiesen wird an derselben Stelle wie ein
 Klick in der Oberfläche.
 
