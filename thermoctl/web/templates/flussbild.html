@@ -32,7 +32,7 @@ auf dem Anlagenbild waere ein Ablegeziel eine Zusage, die die Seite nicht einloe
 #}
 {% macro flussbild(z, ziehbar=false) %}
 <div class="tc-fluss">
-    <div class="tc-fluss-spalte{{ ' tc-ziel' if ziehbar }}"{% if ziehbar %} data-ziel="messquelle" data-zielname="Messquelle"{% endif %}>
+    <div class="tc-fluss-spalte{{ ' tc-ziel' if ziehbar }}"{% if ziehbar %} data-ziel="messquelle" data-zielname="Messquelle" data-braucht="temperature"{% endif %}>
         <p class="t-marke">Misst</p>
         {% if z.messquelle %}{{ geraetekarte(z.messquelle, "sensor") }}
         {% else %}{{ luecke("keine Messquelle") }}{% endif %}
@@ -55,7 +55,7 @@ auf dem Anlagenbild waere ein Ablegeziel eine Zusage, die die Seite nicht einloe
 
     <div class="tc-fluss-pfeil" aria-hidden="true"></div>
 
-    <div class="tc-fluss-spalte{{ ' tc-ziel' if ziehbar }}"{% if ziehbar %} data-ziel="actuator" data-zielname="Aktor"{% endif %}>
+    <div class="tc-fluss-spalte{{ ' tc-ziel' if ziehbar }}"{% if ziehbar %} data-ziel="actuator" data-zielname="Aktor" data-braucht="switch"{% endif %}>
         <p class="t-marke">Schaltet</p>
         {% if z.aktoren %}
         {% for g in z.aktoren %}{{ geraetekarte(g, "aktor") }}{% endfor %}
@@ -69,7 +69,7 @@ auf dem Anlagenbild waere ein Ablegeziel eine Zusage, die die Seite nicht einloe
 </div>
 
 {% if ziehbar %}
-<div class="tc-ziel tc-ziel-kontakt mt-2" data-ziel="window_contact" data-zielname="Fensterkontakt">
+<div class="tc-ziel tc-ziel-kontakt mt-2" data-ziel="window_contact" data-zielname="Fensterkontakt" data-braucht="contact">
     <p class="t-leise small mb-0">
         Fensterkontakte hierher ziehen — sie unterbrechen das Heizen, solange ein Fenster
         offen ist.

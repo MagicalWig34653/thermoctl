@@ -32,7 +32,15 @@ wirkungslos.
     </div>
     <div class="d-flex flex-wrap gap-2 mt-3">
         {% for geraet in geraete %}
-        <div class="tc-knoten tc-knoten-frei tc-ziehbar" data-geraet="{{ geraet.id }}">
+        {#
+        `data-kann` traegt die Faehigkeiten des Geraets. Das Skript blendet damit beim
+        Ziehen die Ziele aus, die dieses Geraet nicht ausfuellen kann -- derselbe
+        Massstab wie in der Domaene, nur vorher statt hinterher. Die Pruefung selbst
+        bleibt im Server: Was der Browser verhindert, ist Bequemlichkeit, was die Domaene
+        verhindert, ist die Regel.
+        #}
+        <div class="tc-knoten tc-knoten-frei tc-ziehbar" data-geraet="{{ geraet.id }}"
+             data-kann="{{ faehigkeiten.get(geraet.id, []) | join(' ') }}">
             <div class="tc-knoten-name">{{ geraet.display_name }}</div>
             {% if geraet.model %}
             <div class="t-leise" style="font-size: .68rem">{{ geraet.model }}</div>

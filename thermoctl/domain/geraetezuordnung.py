@@ -2,13 +2,80 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from thermoctl import audit
-from thermoctl.db.models.device import Device, ZoneDevice
-from thermoctl.db.models.lookup import DeviceRole
+from thermoctl.db.models.device import Device, DeviceCapabilityLink, ZoneDevice
+from thermoctl.db.models.lookup import DeviceCapability, DeviceRole
 from thermoctl.db.models.zone import Zone
 
 
 class ZuordnungBereitsVorhanden(Exception):
     """Das Geraet hat diese Rolle in der Zone bereits."""
+
+
+class FaehigkeitFehlt(Exception):
+    """Das Geraet kann nicht, was die Rolle von ihm verlangt."""
+
+    def __init__(self, meldung: str) -> None:
+        super().__init__(meldung)
+        self.meldung = meldung
+
+
+# Was eine Stelle in der Anlage von einem Geraet verlangt. Die Schluessel sind die Codes
+# der Rollen, dazu `"messquelle"` -- sie ist keine Rolle im Sinne von `device_role`,
+# sondern eine Spalte an der Zone, braucht aber dieselbe Pruefung.
+#
+# `controller` (Bediengeraet) steht bewusst nicht darin: Ein Geraet, das nur anzeigt,
+# muss dafuer nichts koennen, was sich in den Faehigkeiten niederschlaegt. Ein Aufrufer
+# mit `None` fragt nach einer Stelle ohne Anforderung.
+MESSQUELLE = "messquelle"
+
+ERFORDERLICHE_FAEHIGKEIT: dict[str, tuple[str, str]] = {
+    MESSQUELLE: ("temperature", "misst keine Temperatur"),
+    "actuator": ("switch", "hat keinen Schaltausgang"),
+    "window_contact": ("contact", "meldet keinen Kontakt"),
+}
+
+
+def _faehigkeiten(session: Session, geraet: Device) -> set[str]:
+    return set(
+        session.scalars(
+            select(DeviceCapability.code)
+            .join(
+                DeviceCapabilityLink,
+                DeviceCapabilityLink.capability_id == DeviceCapability.id,
+            )
+            .where(DeviceCapabilityLink.device_id == geraet.id)
+        )
+    )
+
+
+def faehigkeit_pruefen(session: Session, geraet: Device, stelle: str | None) -> None:
+    """Weist ein Geraet ab, das die Stelle nachweislich nicht ausfuellen kann.
+
+    Vorher liess sich ein Temperatursensor als Aktor zuordnen. Die Zuordnung sah danach
+    richtig aus, das Anlagenbild zeigte einen vollstaendigen Weg, und geschaltet haette
+    trotzdem nie etwas -- ein Fehler, der erst im Winter auffaellt und dann nach einem
+    Regelungsfehler aussieht.
+
+    **Nur bei nachweislichem Widerspruch.** Ein Geraet, von dem ueberhaupt keine
+    Faehigkeit bekannt ist, wird durchgelassen: Die Faehigkeiten stammen aus der
+    Geraeteliste der Bruecke, und wer ein Geraet einbindet, das sich dort sparsam
+    beschreibt, soll seine Anlage trotzdem einrichten koennen. Abgewiesen wird nur, wo
+    etwas bekannt ist **und** das Noetige nicht dabei ist.
+    """
+    verlangt = ERFORDERLICHE_FAEHIGKEIT.get(stelle or "")
+    if verlangt is None:
+        return
+    code, mangel = verlangt
+    vorhanden = _faehigkeiten(session, geraet)
+    if not vorhanden or code in vorhanden:
+        return
+    bezeichnung = session.scalar(
+        select(DeviceCapability.label).where(DeviceCapability.code == code)
+    )
+    raise FaehigkeitFehlt(
+        f"'{geraet.display_name}' {mangel} — für diese Stelle wird "
+        f"'{bezeichnung or code}' gebraucht."
+    )
 
 
 def geraet_zuordnen(
@@ -29,6 +96,7 @@ def geraet_zuordnen(
     )
     if vorhanden is not None:
         raise ZuordnungBereitsVorhanden
+    faehigkeit_pruefen(session, geraet, rolle.code)
     zuordnung = ZoneDevice(
         zone_id=zone.id, device_id=geraet.id, device_role_id=rolle.id
     )
@@ -85,6 +153,8 @@ def messquelle_setzen(
     akteur_id: int | None,
     quelle: str = "web",
 ) -> None:
+    if geraet is not None:
+        faehigkeit_pruefen(session, geraet, MESSQUELLE)
     zone.temperature_source_device_id = geraet.id if geraet is not None else None
     audit.record(
         session,
@@ -124,6 +194,17 @@ def geraet_tauschen(
     war_messquelle = zone.temperature_source_device_id == altes.id
     if not alte_zuordnungen and not war_messquelle:
         raise ValueError("Das alte Gerät ist dieser Zone nicht zugeordnet.")
+
+    # Vor dem ersten Schreibzugriff, und fuer **jede** Stelle, die uebergeht: Der Tausch
+    # ist der stillste Weg, ein unpassendes Geraet an eine Stelle zu setzen -- man waehlt
+    # zwei Namen aus und sieht gar nicht, welche Rollen dabei mitgehen. Erst pruefen,
+    # dann schreiben, sonst bliebe der Tausch nach einer Ablehnung halb ausgefuehrt.
+    if war_messquelle:
+        faehigkeit_pruefen(session, neues, MESSQUELLE)
+    for zuordnung in alte_zuordnungen:
+        rolle = session.get(DeviceRole, zuordnung.device_role_id)
+        if rolle is not None:
+            faehigkeit_pruefen(session, neues, rolle.code)
 
     vorhandene_rollen = set(
         session.scalars(

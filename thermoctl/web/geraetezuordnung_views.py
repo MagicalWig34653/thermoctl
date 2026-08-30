@@ -6,12 +6,13 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from thermoctl.auth.dependencies import aktueller_principal, csrf_schutz, get_session
-from thermoctl.db.models.device import Device, ZoneDevice
-from thermoctl.db.models.lookup import DeviceRole
+from thermoctl.db.models.device import Device, DeviceCapabilityLink, ZoneDevice
+from thermoctl.db.models.lookup import DeviceCapability, DeviceRole
 from thermoctl.db.models.zone import Zone
 from thermoctl.domain.anlagenbild import anlagenbild
 from thermoctl.domain.authz import hat_recht, visible_zones
 from thermoctl.domain.geraetezuordnung import (
+    FaehigkeitFehlt,
     ZuordnungBereitsVorhanden,
     geraet_loesen,
     geraet_tauschen,
@@ -55,8 +56,17 @@ def _kontext(session: Session, zone: Zone, **zusatz: object) -> dict[str, object
         if zone.temperature_source_device_id is not None
         else None
     )
+    faehigkeiten: dict[int, list[str]] = {}
+    for geraet_id, code in session.execute(
+        select(DeviceCapabilityLink.device_id, DeviceCapability.code).join(
+            DeviceCapability, DeviceCapability.id == DeviceCapabilityLink.capability_id
+        )
+    ):
+        faehigkeiten.setdefault(geraet_id, []).append(code)
+
     return {
         "zone": zone,
+        "faehigkeiten": faehigkeiten,
         # Dasselbe Flussbild wie auf /anlage, hier fuer diese eine Zone. Es steht ueber
         # den Formularen, weil es die Frage beantwortet, mit der man herkommt -- was ist
         # hier verdrahtet und was fehlt -- bevor man etwas aendert.
@@ -144,6 +154,10 @@ async def geraet_zuordnen_view(
                 "zuordnung": "Dieses Gerät ist der Zone in dieser Rolle bereits zugeordnet."
             },
         )
+    except FaehigkeitFehlt as exc:
+        return _antwort(
+            session, request, zone, darf_aendern=True, fehler={"zuordnung": exc.meldung}
+        )
     return RedirectResponse(f"/zonen/{zone.id}/geraete", status.HTTP_303_SEE_OTHER)
 
 
@@ -181,7 +195,12 @@ async def messquelle_setzen_view(
             darf_aendern=True,
             fehler={"messquelle": "Bitte ein bekanntes Gerät auswählen."},
         )
-    messquelle_setzen(session, zone, geraet, akteur_id=principal.user_id)
+    try:
+        messquelle_setzen(session, zone, geraet, akteur_id=principal.user_id)
+    except FaehigkeitFehlt as exc:
+        return _antwort(
+            session, request, zone, darf_aendern=True, fehler={"messquelle": exc.meldung}
+        )
     return RedirectResponse(f"/zonen/{zone.id}/geraete", status.HTTP_303_SEE_OTHER)
 
 
@@ -200,7 +219,7 @@ async def geraet_tauschen_view(
         geraet_tauschen(
             session, zone, altes, neues, akteur_id=principal.user_id
         )
-    except (HTTPException, ValueError) as exc:
+    except (HTTPException, ValueError, FaehigkeitFehlt) as exc:
         meldung = exc.detail if isinstance(exc, HTTPException) else str(exc)
         return _antwort(
             session,

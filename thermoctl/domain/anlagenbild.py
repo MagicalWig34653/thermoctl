@@ -25,6 +25,7 @@ from sqlalchemy.orm import Session
 from thermoctl.db.models.device import Device, DeviceCapabilityLink, ZoneDevice
 from thermoctl.db.models.lookup import DeviceCapability, DeviceRole
 from thermoctl.db.models.zone import Zone
+from thermoctl.domain.geraetezuordnung import ERFORDERLICHE_FAEHIGKEIT, MESSQUELLE
 
 
 @dataclass(frozen=True)
@@ -34,6 +35,10 @@ class Geraetebild:
     modell: str | None
     faehigkeiten: list[str]
     aktiv: bool
+    # Nur gesetzt, wenn dieses Geraet an dieser Stelle nachweislich nicht kann, was von
+    # ihm verlangt wird. Die Pruefung bei der Zuordnung verhindert neue solche Faelle;
+    # die alten stehen schon in der Datenbank und wuerden sonst nie auffallen.
+    ungeeignet: str | None = None
 
 
 @dataclass(frozen=True)
@@ -53,6 +58,9 @@ class Zonenbild:
             fehlt.append("keine Messquelle — ohne Ist-Wert entscheidet die Regelung nichts")
         if not self.aktoren:
             fehlt.append("kein Aktor — die Entscheidung erreicht kein Ventil")
+        for geraet in [self.messquelle, *self.fensterkontakte, *self.aktoren]:
+            if geraet is not None and geraet.ungeeignet:
+                fehlt.append(geraet.ungeeignet)
         return fehlt
 
 
@@ -62,13 +70,29 @@ class Anlagenbild:
     ohne_zone: list[Geraetebild]
 
 
-def _bild(geraet: Device, faehigkeiten: dict[int, list[str]]) -> Geraetebild:
+def _bild(
+    geraet: Device,
+    faehigkeiten: dict[int, list[str]],
+    codes: dict[int, set[str]],
+    stelle: str | None = None,
+) -> Geraetebild:
+    # `None` heisst "keine Anforderung" -- so stehen die Geraete ohne Zone da, an die
+    # niemand etwas verlangt. Ohne die Unterscheidung waere ein herrenloses Ventil als
+    # "misst keine Temperatur" markiert worden.
+    verlangt = ERFORDERLICHE_FAEHIGKEIT.get(stelle or "")
+    ungeeignet = None
+    kann = codes.get(geraet.id, set())
+    if verlangt is not None and kann and verlangt[0] not in kann:
+        ungeeignet = (
+            f"'{geraet.display_name}' {verlangt[1]} — diese Zuordnung wirkt nicht"
+        )
     return Geraetebild(
         id=geraet.id,
         name=geraet.display_name,
         modell=geraet.model,
         faehigkeiten=sorted(faehigkeiten.get(geraet.id, [])),
         aktiv=geraet.is_enabled,
+        ungeeignet=ungeeignet,
     )
 
 
@@ -82,6 +106,16 @@ def anlagenbild(session: Session, zonen: list[Zone]) -> Anlagenbild:
         )
     ):
         faehigkeiten.setdefault(geraet_id, []).append(bezeichnung)
+
+    # Die Codes getrennt von den Bezeichnungen: Die einen sind fuer den Leser da, die
+    # anderen fuer den Vergleich mit ERFORDERLICHE_FAEHIGKEIT.
+    codes: dict[int, set[str]] = {}
+    for geraet_id, code in session.execute(
+        select(DeviceCapabilityLink.device_id, DeviceCapability.code).join(
+            DeviceCapability, DeviceCapability.id == DeviceCapabilityLink.capability_id
+        )
+    ):
+        codes.setdefault(geraet_id, set()).add(code)
 
     rollen = {r.id: r.code for r in session.scalars(select(DeviceRole))}
     nach_zone: dict[int, dict[str, list[Geraetebild]]] = {
@@ -97,7 +131,9 @@ def anlagenbild(session: Session, zonen: list[Zone]) -> Anlagenbild:
         rolle = rollen.get(zuordnung.device_role_id)
         if geraet is None or rolle not in nach_zone[zuordnung.zone_id]:
             continue
-        nach_zone[zuordnung.zone_id][rolle].append(_bild(geraet, faehigkeiten))
+        nach_zone[zuordnung.zone_id][rolle].append(
+            _bild(geraet, faehigkeiten, codes, rolle)
+        )
         zugeordnet.add(geraet.id)
 
     bilder = []
@@ -109,7 +145,7 @@ def anlagenbild(session: Session, zonen: list[Zone]) -> Anlagenbild:
             Zonenbild(
                 zone_id=zone.id,
                 name=zone.display_name,
-                messquelle=_bild(quelle, faehigkeiten) if quelle else None,
+                messquelle=_bild(quelle, faehigkeiten, codes, MESSQUELLE) if quelle else None,
                 fensterkontakte=nach_zone[zone.id]["window_contact"],
                 aktoren=nach_zone[zone.id]["actuator"],
                 bediengeraete=nach_zone[zone.id]["controller"],
@@ -120,7 +156,7 @@ def anlagenbild(session: Session, zonen: list[Zone]) -> Anlagenbild:
     # Regelung sieht sie nicht -- und das ist der haeufigste Grund, warum ein neu
     # eingebundener Sensor "nicht ankommt".
     ohne_zone = [
-        _bild(geraet, faehigkeiten)
+        _bild(geraet, faehigkeiten, codes)
         for geraet in sorted(geraete.values(), key=lambda g: g.display_name)
         if geraet.id not in zugeordnet
     ]

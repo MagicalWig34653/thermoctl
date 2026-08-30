@@ -97,3 +97,48 @@ def test_faehigkeiten_stehen_am_geraet(session: Session) -> None:
     bild = anlagenbild(session, [zone]).zonen[0]
     assert bild.messquelle is not None
     assert bild.messquelle.faehigkeiten
+
+
+def test_eine_alte_fehlzuordnung_wird_als_mangel_gemeldet(session: Session) -> None:
+    """Die Pruefung bei der Zuordnung verhindert neue solche Faelle. Die alten stehen
+    schon in der Datenbank und wuerden sonst nie auffallen -- das Anlagenbild zeigte
+    einen vollstaendigen Weg, und geschaltet haette trotzdem nie etwas."""
+    zone = zone_anlegen(session, "altlast")
+    sensor = geraet_anlegen(session, "sensor-als-aktor")
+    session.add(
+        DeviceCapabilityLink(
+            device_id=sensor.id, capability_id=faehigkeit(session, "temperature").id
+        )
+    )
+    # Absichtlich an der Domaenenfunktion vorbei: So sieht ein Bestand aus, der vor der
+    # Pruefung entstanden ist.
+    session.add(
+        ZoneDevice(
+            zone_id=zone.id,
+            device_id=sensor.id,
+            device_role_id=rolle(session, "actuator").id,
+        )
+    )
+    session.flush()
+
+    bild = anlagenbild(session, [zone]).zonen[0]
+    assert bild.aktoren[0].ungeeignet is not None
+    assert any("Schaltausgang" in m or "keinen Schaltausgang" in m for m in bild.maengel)
+
+
+def test_ein_herrenloses_ventil_gilt_nicht_als_ungeeignet(session: Session) -> None:
+    """Gegenprobe zur Unterscheidung "Messquelle" gegen "keine Anforderung": An ein
+    Geraet ohne Zone stellt niemand eine Anforderung. Ohne sie waere jedes nicht
+    zugeordnete Ventil als "misst keine Temperatur" markiert."""
+    zone_anlegen(session, "leerzone")
+    ventil = geraet_anlegen(session, "herrenloses-ventil")
+    session.add(
+        DeviceCapabilityLink(
+            device_id=ventil.id, capability_id=faehigkeit(session, "switch").id
+        )
+    )
+    session.flush()
+
+    bild = anlagenbild(session, [])
+    frei = next(g for g in bild.ohne_zone if g.name == ventil.display_name)
+    assert frei.ungeeignet is None

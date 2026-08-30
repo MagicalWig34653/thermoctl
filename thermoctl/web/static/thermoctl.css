@@ -576,6 +576,10 @@ body {
     background: var(--waerme-flaeche);
 }
 
+.tc-ziel-unpassend {
+    opacity: 0.35;
+}
+
 .tc-ziel-kontakt {
     grid-column: 1 / -1;
 }
