@@ -2,7 +2,7 @@
 {% from "zone_header.html" import zonenkopf %}
 {% from "form.html" import number_field %}
 {% block title %}Sollwerte {{ zone.display_name }} – thermoctl{% endblock %}
-{% block inhalt %}
+{% block content %}
 {{ zonenkopf(zone, "Sollwerte") }}
 <form method="post" action="/zones/{{ zone.id }}/setpoints">
 {% for mode in modes %}

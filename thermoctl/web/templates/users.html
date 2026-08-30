@@ -1,7 +1,7 @@
 {% extends "base.html" if not is_htmx else "empty.html" %}
 {% from "form.html" import text_field, error_notice %}
 {% block title %}Benutzer – thermoctl{% endblock %}
-{% block inhalt %}
+{% block content %}
 <section id="user-list">
     <h1 class="mb-3">Benutzer</h1>
     {{ error_notice(hint) }}

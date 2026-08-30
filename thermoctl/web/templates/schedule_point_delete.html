@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% from "form.html" import delete_confirmation %}
 {% block title %}Schaltpunkt löschen – thermoctl{% endblock %}
-{% block inhalt %}
+{% block content %}
 {{ delete_confirmation(
     "Schaltpunkt löschen",
     "Soll der Schaltpunkt am " ~ weekdays[point.weekday] ~ " um " ~

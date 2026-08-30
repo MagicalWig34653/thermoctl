@@ -2,8 +2,8 @@
 {% from "form.html" import select_field, text_field %}
 {% from "zone_header.html" import zonenkopf %}
 {% block title %}Zeitplan {{ zone.display_name }} – thermoctl{% endblock %}
-{% block max_breite %}90rem{% endblock %}
-{% block inhalt %}
+{% block max_width %}90rem{% endblock %}
+{% block content %}
 {{ zonenkopf(zone, "Zeitplan") }}
 <div class="d-flex justify-content-between align-items-center mb-3">
     <div>

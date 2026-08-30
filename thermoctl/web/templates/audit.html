@@ -1,6 +1,6 @@
 {% extends "base.html" if not is_htmx else "empty.html" %}
 {% block title %}Audit-Protokoll – thermoctl{% endblock %}
-{% block inhalt %}
+{% block content %}
 <section id="audit-list">
   <h1 class="mb-3">Audit-Protokoll</h1>
   <form method="get" action="/audit" class="row g-3 mb-4">
