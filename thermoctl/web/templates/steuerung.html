@@ -81,7 +81,7 @@
     {% set zustand = zustaende.get(zone.id) %}
     {% set entscheidung = entscheidungen.get(zone.id) %}
     {% set soll = sollwerte.get(zone.id) %}
-    <article class="tc-zone" style="grid-template-columns: minmax(8rem, 1fr) 6.5rem 6.5rem minmax(12rem, 2.4fr)">
+    <article class="tc-zone tc-zone-betrieb">
         <div>
             <a class="tc-zone-name" href="/zonen/{{ zone.id }}/zeitplan">{{ zone.display_name }}</a>
         </div>

@@ -12,7 +12,7 @@ from thermoctl.db.models.messwert import DeviceHealth
 from thermoctl.db.models.zone import Zone
 from thermoctl.domain.authz import require
 from thermoctl.domain.principal import Principal
-from thermoctl.web import templates
+from thermoctl.web import ist_teilaustausch, templates
 
 # `include_in_schema=False`: Die OpenAPI-Beschreibung ist der Vertrag der
 # REST-Schnittstelle. Diese Wege liefern HTML fuer Menschen, und in der Oberflaeche
@@ -62,6 +62,6 @@ async def geraeteuebersicht(
             "geraete": geraete,
             "faehigkeiten": faehigkeiten,
             "zonen": zonen,
-            "ist_htmx": "HX-Request" in request.headers,
+            "ist_htmx": ist_teilaustausch(request),
         },
     )

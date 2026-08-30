@@ -32,7 +32,7 @@ from thermoctl.domain.passkey import (
     registrierung_beginnen,
 )
 from thermoctl.domain.principal import Principal
-from thermoctl.web import templates
+from thermoctl.web import ist_teilaustausch, templates
 
 router = APIRouter(dependencies=[Depends(csrf_schutz)], include_in_schema=False)
 
@@ -130,7 +130,7 @@ async def passkey_liste(
                 .order_by(UserPasskey.created_at)
             ).all(),
             "moeglich": get_settings().passkeys_moeglich(),
-            "ist_htmx": "HX-Request" in request.headers,
+            "ist_htmx": ist_teilaustausch(request),
         },
     )
 

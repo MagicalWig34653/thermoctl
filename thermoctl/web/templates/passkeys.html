@@ -17,6 +17,7 @@
     {% else %}
 
     {% if passkeys %}
+    <div class="table-responsive">
     <table class="table table-striped align-middle">
         <thead>
         <tr>
@@ -41,6 +42,7 @@
         {% endfor %}
         </tbody>
     </table>
+    </div>
     {% else %}
     <div class="alert alert-secondary" role="status">
         Noch kein Passkey hinterlegt. Solange keiner da ist, bleibt das Passwort der

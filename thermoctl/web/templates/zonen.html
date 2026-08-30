@@ -6,6 +6,8 @@
     {% if darf_anlegen %}<a class="btn btn-primary" href="/zonen/neu">Zone anlegen</a>{% endif %}
 </div>
 {% if zonen %}
+{# Scrollt in sich selbst statt die ganze Seite breit zu machen: Auf einem Telefon passt diese Tabelle nicht nebeneinander. #}
+<div class="table-responsive">
 <table class="table align-middle">
     <thead><tr><th>Name</th><th>Betriebsart</th><th>Sortierung</th><th></th></tr></thead>
     <tbody>
@@ -25,5 +27,6 @@
     {% endfor %}
     </tbody>
 </table>
+</div>
 {% else %}<p>Noch keine sichtbaren Zonen vorhanden.</p>{% endif %}
 {% endblock %}

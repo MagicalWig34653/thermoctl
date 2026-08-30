@@ -157,3 +157,71 @@ def test_passkey_skript_haengt_nicht_nur_an_domcontentloaded() -> None:
     ).read_text(encoding="utf-8")
     assert 'document.addEventListener("htmx:load"' in quelle
     assert 'document.addEventListener("DOMContentLoaded"' in quelle
+
+
+# --- Waechter fuer die Rahmenseiten ------------------------------------------
+
+
+@pytest.mark.parametrize("pfad", GESCHUETZTE_SEITEN)
+def test_geboostete_navigation_liefert_die_ganze_seite(
+    pfad: str, angemeldeter_client: TestClient, session: Session
+) -> None:
+    """Eine geboostete Navigation ist ein Seitenwechsel, kein Teilaustausch.
+
+    `hx-boost="true"` am <body> laesst jede Navigation einen `HX-Request`-Kopf tragen.
+    Sechs Ansichten hielten das fuer einen Teilaustausch und lieferten nur ihren Inhalt
+    ohne Rahmen: Wer ueber das Menue auf /geraete oder /audit ging, verlor die
+    Kopfleiste und kam nur durch Neuladen zurueck. Beim Direktaufruf war alles in
+    Ordnung -- deshalb fiel es niemandem auf, der die Seite zum Pruefen einfach aufrief.
+    """
+    zone = zone_anlegen(session, "boostzone")
+    einstellungen_anlegen(session)
+    antwort = angemeldeter_client.get(
+        pfad.format(zone_id=zone.id),
+        headers={"HX-Request": "true", "HX-Boosted": "true"},
+    )
+    assert antwort.status_code == 200
+    assert "tc-kopf" in antwort.text, f"{pfad} liefert geboostet keine Kopfleiste"
+
+
+@pytest.mark.parametrize("pfad", ["/geraete", "/audit", "/benutzer", "/gruppen", "/tokens"])
+def test_echter_teilaustausch_liefert_weiter_nur_den_inhalt(
+    pfad: str, angemeldeter_client: TestClient, session: Session
+) -> None:
+    """Gegenprobe: Ohne sie waere der Test oben auch von einer Fassung erfuellt, die den
+    Teilaustausch ganz abgeschafft hat -- und jede Aktualisierung einer Tabelle wuerde
+    die halbe Seite mitschicken."""
+    einstellungen_anlegen(session)
+    antwort = angemeldeter_client.get(pfad, headers={"HX-Request": "true"})
+    assert antwort.status_code == 200
+    assert "tc-kopf" not in antwort.text
+
+
+@pytest.mark.parametrize("vorlage", sorted(TEMPLATE_VERZEICHNIS.glob("*.html")))
+def test_jede_tabelle_scrollt_in_sich_selbst(vorlage: Path) -> None:
+    """Eine breite Tabelle darf die Seite nicht aufspannen.
+
+    Auf einem Telefon lief /benutzer 190 Pixel ueber den Rand, und die ganze Seite liess
+    sich seitwaerts schieben -- auch die Kopfleiste und jeder Text. Eine Tabelle in
+    `.table-responsive` scrollt stattdessen in ihrem eigenen Rahmen.
+    """
+    text = vorlage.read_text(encoding="utf-8")
+    if "<table" not in text:
+        return
+    for stelle in [t.start() for t in re.finditer(r"<table\b", text)]:
+        davor = text[:stelle]
+        assert "table-responsive" in davor[-400:], (
+            f"{vorlage.name}: Tabelle ohne .table-responsive-Rahmen"
+        )
+
+
+def test_kein_eigener_umschalter_fuer_das_farbschema() -> None:
+    """Das Farbschema folgt dem Betriebssystem, und zwar allein.
+
+    Ein eigener Umschalter war eine dritte Einstellung fuer etwas, das jedes Geraet schon
+    kennt, und ging beim naechsten Browser wieder verloren.
+    """
+    basis = (TEMPLATE_VERZEICHNIS / "basis.html").read_text(encoding="utf-8")
+    assert "prefers-color-scheme: dark" in basis
+    assert "localStorage" not in basis
+    assert "schema-umschalten" not in basis

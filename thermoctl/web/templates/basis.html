@@ -13,14 +13,25 @@
     <html>-Tag -- Bootstrap kennt diesen Wert nicht, das dunkle Schema war damit nie
     aktiv.
     #}
+    {#
+    Das Farbschema folgt dem Betriebssystem, und zwar allein. Ein eigener Umschalter war
+    eine dritte Einstellung fuer etwas, das jedes Geraet schon kennt -- und er ging beim
+    naechsten Browser wieder verloren. `data-bs-theme` bleibt gesetzt, weil Bootstrap
+    darauf hoert; es folgt jetzt der Medienabfrage statt einem gemerkten Wert.
+    Frueher stand hier `data-bs-theme="auto"` im <html>-Tag: Diesen Wert kennt Bootstrap
+    nicht, das dunkle Schema war damit nie aktiv.
+    #}
     <script>
         (function () {
-            var gemerkt = null;
-            try { gemerkt = localStorage.getItem("thermoctl-schema"); } catch (e) { /* egal */ }
-            var dunkel = gemerkt
-                ? gemerkt === "dunkel"
-                : window.matchMedia("(prefers-color-scheme: dark)").matches;
-            document.documentElement.setAttribute("data-bs-theme", dunkel ? "dark" : "light");
+            var abfrage = window.matchMedia("(prefers-color-scheme: dark)");
+            function setzen() {
+                document.documentElement.setAttribute(
+                    "data-bs-theme", abfrage.matches ? "dark" : "light");
+            }
+            setzen();
+            // Ohne das bliebe eine geoeffnete Seite hell, wenn das System abends
+            // umschaltet.
+            abfrage.addEventListener("change", setzen);
         })();
     </script>
     {#
@@ -35,7 +46,6 @@
     <script defer src="/static/vendor/htmx/htmx.min.js"></script>
     <script defer src="/static/passkey.js"></script>
     <script defer src="/static/zeitplan.js"></script>
-    <script defer src="/static/oberflaeche.js"></script>
     <script>
         // Am `document`, nicht am `document.body`: htmx-Ereignisse blubbern bis dorthin,
         // und der Rumpf existiert zum Zeitpunkt dieses Skripts noch gar nicht.
@@ -101,11 +111,6 @@
                     </button>
                     <ul class="dropdown-menu dropdown-menu-end">
                         <li><a class="dropdown-item" href="/passkeys">Passkeys</a></li>
-                        <li>
-                            <button class="dropdown-item" type="button" data-schema-umschalten>
-                                Farbschema wechseln
-                            </button>
-                        </li>
                         <li><hr class="dropdown-divider"></li>
                         <li>
                             <form hx-post="/logout">
