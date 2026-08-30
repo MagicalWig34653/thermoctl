@@ -269,3 +269,31 @@ vergessenes Setzen fiele erst im Protokoll auf, wo es niemand nachprüft.
 
 **Nebenwirkung:** In `zeitplan_uebernehmen` heißt die Quellzone jetzt `vorlage`. Zwei
 Bedeutungen von `quelle` in einer Signatur wären eine Falle für den nächsten Aufrufer.
+
+
+## 2026-08-30 — Der kleinste einstellbare Sollwert liegt bei 1 °C, nicht bei 5 °C
+
+**Entschieden:** `MINDESTTEMPERATUR_C` in `thermoctl/domain/modi.py` steht auf 1,0 °C.
+Auf Wunsch des Projektinhabers, damit sich ein Keller oder eine Garage wirklich kalt
+stellen lässt.
+
+**Was das bedeutet:** Die Grenze ist eine Grenze der *Eingabe*, keine der Physik. Wer den
+Sollwert eines Modus unter etwa 4 °C setzt, nimmt einfrierende Leitungen in Kauf — die
+Software hält ihn davon nicht mehr ab. Der Frostschutz bleibt als eigener Modus bestehen
+und greift weiter bei ausgefallenem Sensor und Betriebsart „Aus"; er schützt aber nicht
+davor, dass jemand *seinen* Sollwert tief einstellt.
+
+**Warum trotzdem so:** Eine Anlage, die einen unbeheizten Raum nicht abbilden kann, zwingt
+ihren Betreiber dazu, die Zone ganz auszuschalten — und dann fehlt auch die Überwachung.
+Ein tief eingestellter Sollwert ist die ehrlichere Abbildung dessen, was jemand will.
+
+**Verworfen:** die Grenze pro Zone einstellbar machen. Das wäre eine vierte Zahl, die
+irgendwo gepflegt werden muss, für einen Fall, der in einem Einfamilienhaus einmal
+vorkommt.
+
+**Nebenbefund:** Beim Verschieben stellte sich heraus, dass die Grenze wieder an vier
+Stellen stand — in der Domäne, noch einmal von Hand in `alltag_views.py`, in der
+Discovery-Nutzlast und im Markup des Übersteuerungsformulars. Genau der Fehler, den das
+Projekt schon einmal behoben hatte. Ein Wächtertest sucht jetzt nach nackten Grenzwerten
+außerhalb der Domäne; seine erste Fassung übersah ausgerechnet den Fall, den er finden
+sollte, und fiel erst bei der Gegenprobe auf.

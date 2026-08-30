@@ -253,7 +253,8 @@ def test_unsinnige_uebersteuerungen_werden_abgewiesen(session: Session, client_a
     client = client_als([("override.create", None), ("zone.read", None)])
     for daten in (
         {"temperature_c": "warm", "ende": "dauerhaft"},
-        {"temperature_c": "2.0", "ende": "dauerhaft"},
+        # Die Untergrenze liegt bei 1,0 Grad -- 2,0 ist seither gueltig.
+        {"temperature_c": "0.5", "ende": "dauerhaft"},
         {"temperature_c": "50", "ende": "dauerhaft"},
         {"temperature_c": "20", "ende": "dauer", "dauer_minuten": "0"},
         {"temperature_c": "20", "ende": "dauer", "dauer_minuten": "keine Zahl"},

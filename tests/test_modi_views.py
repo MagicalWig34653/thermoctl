@@ -198,7 +198,7 @@ def test_sollwert_ausserhalb_der_grenzen_wird_am_feld_abgewiesen(
     )
 
     assert antwort.status_code == 200
-    assert "zwischen 5,0 und 35,0 °C" in antwort.text
+    assert "zwischen 1,0 und 35,0 °C" in antwort.text
     assert 'value="36.0"' in antwort.text
     assert session.get(ZoneSetpoint, (zone.id, modus.id)) is None
 
@@ -381,3 +381,60 @@ def test_modus_aendern_mit_ungueltigem_wert_bleibt_im_formular(
     assert antwort.status_code == 200
     assert "Code darf nicht leer" in antwort.text
     assert modus.code == "aenderbar"
+
+
+def test_die_sollwertgrenze_steht_nur_an_einer_stelle() -> None:
+    """Die Grenze hat schon einmal an drei Stellen verschieden dagestanden.
+
+    Damals prueften die Oberflaeche von Hand ohne Nachkommastellen, die
+    REST-Schnittstelle ueber ihr Schema und der MCP-Server gar nicht. Sie liegt seither
+    in der Domaene -- aber eine abgeschriebene Zahl schleicht sich leicht zurueck:
+    beim Umstellen von 5 auf 1 Grad stand sie noch einmal in `alltag_views.py`, in der
+    Discovery-Nutzlast und im Markup des Formulars.
+
+    Der Test sucht darum nach nackten Grenzwerten ausserhalb der Domaene. Er ist grob --
+    eine 5 in einer Zeile ueber Hysterese meint etwas anderes -- deshalb sucht er nur
+    das Muster, in dem eine Temperaturgrenze auftritt.
+    """
+    import re
+    from pathlib import Path
+
+    wurzel = Path(__file__).resolve().parent.parent / "thermoctl"
+    muster = re.compile(
+        r"""(?:ge=|min=["']?|min_temp["']?\s*:\s*)"""
+        r"""(?:Decimal\(["'])?[15](?:\.0)?["']?\s*[,)]"""
+    )
+    treffer = []
+    for datei in wurzel.rglob("*.py"):
+        if datei.name == "modi.py":
+            continue  # dort gehoert sie hin
+        for nummer, zeile in enumerate(datei.read_text(encoding="utf-8").splitlines(), 1):
+            # Nur Zeilen, die auf die Konstanten verweisen, sind in Ordnung. Vorher
+            # stand hier `"temperatur" in zeile.lower()` -- das ueberging ausgerechnet
+            # `temperature_c: Decimal = Field(ge=1, ...)`, also genau den Fall, den der
+            # Test finden soll. Die Gegenprobe hat es gezeigt.
+            if "MINDESTTEMPERATUR_C" in zeile or "HOECHSTTEMPERATUR_C" in zeile:
+                continue
+            if muster.search(zeile) and "temp" in zeile.lower():
+                treffer.append(f"{datei.relative_to(wurzel)}:{nummer}: {zeile.strip()}")
+
+    assert not treffer, "Sollwertgrenze ausserhalb der Domaene:\n" + "\n".join(treffer)
+
+
+def test_die_meldung_nennt_die_geltende_grenze() -> None:
+    """Sie wird aus den Konstanten gebaut, nicht abgeschrieben -- sonst nennt sie nach
+    dem naechsten Verschieben eine Zahl, die nicht mehr gilt."""
+    import pytest as _pytest
+
+    from thermoctl.domain.modi import (
+        HOECHSTTEMPERATUR_C,
+        MINDESTTEMPERATUR_C,
+        Domaenenfehler,
+        temperatur_pruefen,
+    )
+
+    with _pytest.raises(Domaenenfehler) as fehler:
+        temperatur_pruefen(MINDESTTEMPERATUR_C - Decimal("0.1"))
+    meldung = fehler.value.meldung
+    assert f"{MINDESTTEMPERATUR_C:.1f}".replace(".", ",") in meldung
+    assert f"{HOECHSTTEMPERATUR_C:.1f}".replace(".", ",") in meldung

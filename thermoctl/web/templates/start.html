@@ -195,7 +195,7 @@ Seite ein Formularstapel, in dem die eigentliche Auskunft — wie warm ist es �
                     <div class="input-group input-group-sm" style="width: 9rem">
                         <input class="form-control t-wert{% if hat_fehler %} is-invalid{% endif %}"
                                id="temperature_c-{{ zone.id }}" name="temperature_c"
-                               type="number" min="5" max="35" step="0.1"
+                               type="number" min="{{ mindesttemperatur }}" max="{{ hoechsttemperatur }}" step="0.1"
                                value="{{ uebersteuerungswerte.get('temperature_c', '') if hat_fehler else '' }}" required>
                         <span class="input-group-text">°C</span>
                     </div>

@@ -219,7 +219,7 @@ Recht: `override.create` (für diese Zone). Antwort `201`.
 
 | Feld | Bedeutung |
 |---|---|
-| `temperature_c` | Pflicht, 5 bis 35 °C, eine Nachkommastelle |
+| `temperature_c` | Pflicht, 1 bis 35 °C, eine Nachkommastelle |
 | `dauer_minuten` | Ende in Minuten ab jetzt |
 | `bis_naechste_schaltung` | `true` = bis zum nächsten Punkt des Zeitplans |
 

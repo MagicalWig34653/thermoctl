@@ -3,6 +3,8 @@ from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from thermoctl.domain.modi import HOECHSTTEMPERATUR_C, MINDESTTEMPERATUR_C
+
 
 class ZoneAntwort(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -112,7 +114,11 @@ class TokenAntwort(BaseModel):
 
 
 class UebersteuerungAnlegen(BaseModel):
-    temperature_c: Decimal = Field(ge=5, le=35, decimal_places=1)
+    # Die Zahlen stehen in der Domaene; hier nur, damit sie in der
+    # OpenAPI-Beschreibung auftauchen. Weist ab tut die Domaene.
+    temperature_c: Decimal = Field(
+        ge=MINDESTTEMPERATUR_C, le=HOECHSTTEMPERATUR_C, decimal_places=1
+    )
     dauer_minuten: int | None = Field(default=None, gt=0)
     bis_naechste_schaltung: bool = False
 

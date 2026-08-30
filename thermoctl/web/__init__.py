@@ -77,7 +77,7 @@ def alter_in_worten(zeitpunkt: datetime | None, jetzt: datetime | None = None) -
 
 
 # Der Bereich, ueber den Temperaturen als Farbe dargestellt werden. Nicht die Grenzen
-# der Eingabe (5 bis 35 Grad), sondern der Bereich, in dem sich Wohnraumtemperaturen
+# der Eingabe, sondern der Bereich, in dem sich Wohnraumtemperaturen
 # tatsaechlich bewegen -- sonst laege alles in derselben blassen Mitte.
 SPUR_KALT = Decimal("15")
 SPUR_WARM = Decimal("23")

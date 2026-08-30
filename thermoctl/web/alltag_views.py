@@ -128,9 +128,11 @@ async def uebersteuerung_erstellen(
     temperatur_text = str(formular.get("temperature_c", "")).strip()
     art = str(formular.get("ende", "dauerhaft"))
     try:
+        # Nur noch die Zahl selbst. Die Grenze prueft `uebersteuerung_anlegen` weiter
+        # unten -- sie stand hier ein zweites Mal, mit eigenen Zahlen, und haette beim
+        # naechsten Verschieben abweichen muessen. Genau dieser Fehler ist dem Projekt
+        # schon einmal passiert; die Meldung kommt aus der Domaene.
         temperatur = Decimal(temperatur_text.replace(",", "."))
-        if temperatur < Decimal("5") or temperatur > Decimal("35"):
-            raise InvalidOperation
         if art == "naechste_schaltung":
             ende = ende_der_naechsten_schaltung(session, zone)
         elif art == "dauer":
@@ -242,7 +244,7 @@ async def thermostat_verstellen(
             session, zone, {modus_id: neu}, user_id=principal.user_id or 0
         )
     except Domaenenfehler as exc:
-        # An der Grenze angekommen (5 bis 35 Grad). Kein Fehlerzustand, sondern das
+        # An der Grenze angekommen. Kein Fehlerzustand, sondern das
         # Ende des Weges -- die Seite zeigt danach schlicht den unveraenderten Wert.
         parameter = urlencode({"thermostatfehler": exc.meldung, "zone_id": zone.id})
         return RedirectResponse(f"/?{parameter}", status.HTTP_303_SEE_OTHER)
