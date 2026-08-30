@@ -75,9 +75,8 @@
                     zwar sofort, ohne Neustart.</li>
                 <li>Tatsächlich <em>geschaltet</em> wird erst nach einem Neustart des
                     Dienstes: Der zweite Riegel sitzt im MQTT-Client und wird beim Start
-                    gelesen. Die Anbindung an Home Assistant läuft schon vorher — dort
-                    steht dann <span class="t-wert">(Trockenlauf)</span> hinter jedem
-                    Zonennamen.</li>
+                    gelesen. Die Anbindung an Home Assistant läuft schon vorher; dort
+                    sagt es die Entität <span class="t-wert">Regelung scharf</span>.</li>
             </ul>
             <form method="post" action="/steuerung/scharf">
                 <input type="hidden" name="scharf" value="ja">

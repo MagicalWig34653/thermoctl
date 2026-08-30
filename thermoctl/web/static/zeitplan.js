@@ -162,6 +162,27 @@
         });
     }
 
+    /** Zeigt im Gitter, welche Zeit gerade uebernommen wurde.
+     *
+     *  Die Rueckmeldung steht dort, wo der Zeiger ist, und nicht in einem Formular
+     *  weiter unten. Vorher holte `scrollIntoView` das Formular heran -- und riss dabei
+     *  das Gitter unter der Maus weg: Wer zwei Punkte nacheinander setzen wollte, klickte
+     *  beim zweiten Mal auf dieselbe Bildschirmstelle und traf eine voellig andere
+     *  Uhrzeit, weil die Seite in der Zwischenzeit um mehrere hundert Pixel gescrollt
+     *  war. Im Browser nachgemessen: ein Klick verschob das Gitter um 377 px, das sind
+     *  rund dreizehn Stunden.
+     */
+    function markieren(tag, minute) {
+        document.querySelectorAll(".zeitplan-marke").forEach(function (alte) {
+            alte.remove();
+        });
+        const marke = document.createElement("div");
+        marke.className = "zeitplan-marke";
+        marke.style.top = (minute / MINUTEN_PRO_TAG * 100) + "%";
+        marke.textContent = alsUhrzeit(minute);
+        tag.appendChild(marke);
+    }
+
     function vorbelegen(tag, y) {
         // Uebernimmt Tag und Uhrzeit ins Anlege-Formular, statt sofort einen Punkt
         // anzulegen: Ein Schaltpunkt ohne gewaehlten Modus waere keiner.
@@ -170,10 +191,20 @@
         if (!wochentagfeld || !uhrzeitfeld) {
             return;
         }
+        const minute = minuteIn(tag, y);
         wochentagfeld.value = tag.dataset.wochentag;
-        uhrzeitfeld.value = alsUhrzeit(minuteIn(tag, y));
-        uhrzeitfeld.focus();
-        uhrzeitfeld.scrollIntoView({ block: "center", behavior: "smooth" });
+        uhrzeitfeld.value = alsUhrzeit(minute);
+        markieren(tag, minute);
+        // Fokus nur, wenn das Feld ohnehin im Blick ist. `focus({preventScroll: true})`
+        // reicht dafuer nicht: In Chromium scrollte der Aufruf die Seite trotzdem um
+        // 377 px -- nachgemessen, mit Fokus 377, ohne 0. Ein Feld, das man nicht sieht,
+        // zu fokussieren bringt ohnehin nichts; die Rueckmeldung ist die Marke oben.
+        const rahmen = uhrzeitfeld.getBoundingClientRect();
+        const sichtbar = rahmen.top >= 0
+            && rahmen.bottom <= (window.innerHeight || document.documentElement.clientHeight);
+        if (sichtbar) {
+            uhrzeitfeld.focus({ preventScroll: true });
+        }
     }
 
     function einrichten() {

@@ -172,7 +172,13 @@ def betriebsart_setzen(
     if zone.operating_mode_id == art.id:
         return False
     vorher = zone.operating_mode.label
-    zone.operating_mode_id = art.id
+    # Die Beziehung setzen, nicht den Fremdschluessel: Wer nur `operating_mode_id`
+    # umschreibt, laesst ein bereits geladenes `zone.operating_mode` unveraendert
+    # stehen -- SQLAlchemy laedt es erst nach dem naechsten Commit neu. Der Dienst
+    # meldet den neuen Zustand aber sofort nach dem Befehl an Home Assistant, also
+    # noch vor dem Commit: Dort kam die alte Betriebsart an, und es sah aus, als
+    # liesse sie sich nicht umstellen.
+    zone.operating_mode = art
     session.flush()
     audit.record(
         session,

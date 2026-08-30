@@ -228,3 +228,30 @@ def test_kein_eigener_umschalter_fuer_das_farbschema() -> None:
     assert "prefers-color-scheme: dark" in basis
     assert "localStorage" not in basis
     assert "schema-umschalten" not in basis
+
+
+def test_zeitplan_reisst_das_gitter_nicht_unter_der_maus_weg() -> None:
+    """Ein Klick ins Zeitplangitter darf die Seite nicht scrollen.
+
+    Vorher holte `vorbelegen` das Anlege-Formular mit `scrollIntoView` heran. Wer zwei
+    Punkte nacheinander setzen wollte, klickte beim zweiten Mal auf dieselbe
+    Bildschirmstelle und traf eine voellig andere Uhrzeit: Im Browser gemessen verschob
+    ein einziger Klick das Gitter um 377 px, bei rund 415 px fuer den ganzen Tag also um
+    mehr als zwoelf Stunden. `focus({preventScroll: true})` genuegte dabei nicht -- der
+    Aufruf scrollte in Chromium trotzdem, gemessen 377 gegen 0 ohne ihn.
+
+    Der Test liest die Quelle, weil die Suite keinen Browser hat. Er haelt damit nur die
+    Invariante fest; nachgewiesen wurde sie mit Playwright.
+    """
+    quelle = (
+        Path(__file__).resolve().parent.parent / "thermoctl/web/static/zeitplan.js"
+    ).read_text(encoding="utf-8")
+    assert "scrollIntoView" not in quelle.replace("`scrollIntoView`", ""), (
+        "zeitplan.js scrollt wieder von sich aus"
+    )
+    # Fokus nur hinter der Sichtbarkeitspruefung -- sonst scrollt der Browser selbst.
+    assert "if (sichtbar) {" in quelle
+    vor_dem_fokus = quelle[: quelle.index(".focus(")]
+    assert "getBoundingClientRect" in vor_dem_fokus and "innerHeight" in vor_dem_fokus, (
+        "focus() steht nicht mehr hinter der Sichtbarkeitspruefung"
+    )

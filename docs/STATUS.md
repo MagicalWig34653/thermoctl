@@ -24,9 +24,9 @@ Vom Controller selbst nachgeprüft, nicht aus Berichten übernommen:
 
 | | |
 |---|---|
-| Tests | 932, grün unter SQLite **und** MariaDB |
-| Testabdeckung | 98,75 %, Mindestschwelle 97 % in der CI |
-| Ruff, mypy strict | ohne Befund, 86 Quelldateien |
+| Tests | 964, grün unter SQLite **und** MariaDB |
+| Testabdeckung | 98,93 %, Mindestschwelle 97 % in der CI |
+| Ruff, mypy strict | ohne Befund, 87 Quelldateien |
 | Migrationskette | linear, ein Kopf, vorwärts und rückwärts gegen beide Datenbanken |
 | CI und Container | grün |
 
@@ -76,6 +76,57 @@ dass die Liste ein Gerät für gesund hält, das die Regelung schon abgeschriebe
 Weggelassen ist alles, was sich auf jeder Zeile wiederholte — ein Kärtchen „Batteriestand"
 neben der Prozentzahl sagt nichts, was die Zahl nicht sagt, und „ohne Zone" bei jedem der
 vierunddreißig Geräte steht jetzt einmal oben als Zahl.
+
+**Home Assistant bedient jetzt wirklich eine Zone.** Bis hierher gab es dort einen
+Thermostat und sonst nichts. Jetzt ist jede Zone ein eigenes Gerät mit dreizehn Entitäten:
+Thermostat, **Boost**-Knopf, letzte Schaltung und nächster Moduswechsel als Zeitstempel, je
+Modus eine Solltemperatur und je Regelparameter eine Zahleneingabe. Was ein Befehl bewirkt,
+steht in `domain/fernbedienung.py` — dieselben Funktionen mit denselben Grenzen, die auch
+die Oberfläche benutzt.
+
+Vier Entscheidungen darin:
+
+- **Der Thermostat verstellt den Modus, nicht „jetzt gerade".** Vorher legte er eine
+  Übersteuerung an; die wäre nach dem nächsten Schaltpunkt weg gewesen, und der Regler
+  spränge scheinbar von selbst zurück.
+- **Boost zieht die nächste Schaltung vor** — was ohnehin käme, gilt ab sofort und genau
+  bis zu dem Zeitpunkt, an dem es planmäßig gekommen wäre. Ein Boost auf einen festen Wert
+  müsste raten, wie warm und wie lange.
+- **Der Trockenlauf steht nicht mehr im Zonennamen.** Home Assistant leitet die
+  Entitätskennung beim ersten Auftauchen aus dem Namen ab: Eine Zone, die zuerst im
+  Trockenlauf erschien, hieß danach für immer `climate.thermoctl_zone_1_trockenlauf`. Jetzt
+  sagt es eine eigene Entität für den ganzen Dienst, und die Discovery-Nutzlast ist
+  trocken und scharf Byte für Byte gleich — am Broker nachgemessen.
+- **Alles Bleibende geht mit retain hinaus**, und ein Befehl wird sofort beantwortet statt
+  erst im nächsten Regelzyklus.
+
+**Drei Fehler, die dabei aufgefallen sind:**
+
+1. **Die Moduswahl in Home Assistant tat scheinbar nichts.** Die Climate-Karte dort ist
+   nicht optimistisch — sie wartet auf den Zustand. Der kam erst im nächsten Regelzyklus,
+   also sprang die eben gewählte Betriebsart eine Minute lang zurück.
+2. **`betriebsart_setzen` setzte den Fremdschlüssel statt der Beziehung.** Ein bereits
+   geladenes `zone.operating_mode` blieb damit alt, und die neue Sofortantwort hätte den
+   *alten* Modus gemeldet. Gefunden vom Test der Sofortantwort, nicht beim Lesen.
+3. **`ende_der_naechsten_schaltung` griff zur echten Uhr**, während der Aufrufer mit einem
+   übergebenen Zeitpunkt rechnete. Für den Boost hieß das: Die Übersteuerung endete
+   irgendwann, nur nicht an ihrem Schaltpunkt. Fiel unter MariaDB zusätzlich auf, weil
+   dort `DATETIME` sekundengenau ist und zwei Übersteuerungen derselben Sekunde beliebig
+   sortierten — jetzt entscheidet die Kennung.
+
+**Der Zeitplan-Editor riss das Gitter unter der Maus weg.** Ein Klick holte das
+Anlege-Formular mit `scrollIntoView` heran; wer zwei Punkte nacheinander setzen wollte,
+klickte beim zweiten Mal auf dieselbe Bildschirmstelle und traf eine völlig andere Uhrzeit.
+Im Browser gemessen: ein Klick verschob das Gitter um 377 px, bei rund 415 px für den ganzen
+Tag also um mehr als zwölf Stunden. `focus({preventScroll: true})` genügte nicht — der
+Aufruf scrollte in Chromium trotzdem, gemessen 377 gegen 0 ohne ihn. Statt zu scrollen
+markiert ein Klick die Stelle jetzt im Gitter selbst, dort wo die Maus ist.
+
+**Vier Bezeichnungen tragen ihre Umlaute** — „Verbindungsqualität", „Beleuchtungsstärke",
+„Bediengerät", „Weboberfläche". Sie standen seit den Nachschlagetabellen transliteriert da
+und stehen auf jeder Gerätekarte, in der Rollenspalte und in jeder Audit-Zeile. Die
+Migration ändert nur, was noch den alten Wortlaut trägt: Wer eine Bezeichnung von Hand
+angepasst hat, behält seine.
 
 **Drei Fehler behoben, die nur beim Benutzen auffielen:** Die Kopfleiste verschwand auf
 sechs Seiten, sobald man sie über das Menü ansteuerte (`hx-boost` schickt bei jeder

@@ -132,7 +132,7 @@ class MqttClient:
             abstand = min(abstand * 2, 60.0)
 
     async def veroeffentlichen(
-        self, topic: str, nutzlast: str, *, schaltet: bool
+        self, topic: str, nutzlast: str, *, schaltet: bool, behalten: bool = False
     ) -> bool:
         """Sendet eine Nachricht. `schaltet=True` verlangt zusaetzlich den Riegel.
 
@@ -152,5 +152,11 @@ class MqttClient:
         if self._client is None:
             log.error("MQTT-Nachricht kann ohne Verbindung nicht veroeffentlicht werden")
             return False
-        await self._client.publish(topic, nutzlast)
+        # `behalten` gehoert an das Senden, nicht in die Discovery-Nutzlast: Der
+        # Schluessel `retain` dort heisst in Home Assistant "sende *Befehle* mit
+        # retain-Flag" -- ein behaltener Befehl wuerde bei jeder Neuverbindung erneut
+        # zugestellt und erneut ausgefuehrt. Behalten gehoert auf Anmeldung und
+        # Zustand: Ohne das steht in Home Assistant nach einem Neustart eine leere
+        # Karte, bis dieser Dienst das naechste Mal etwas sendet.
+        await self._client.publish(topic, nutzlast, retain=behalten)
         return True

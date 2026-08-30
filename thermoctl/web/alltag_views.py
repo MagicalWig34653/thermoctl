@@ -241,7 +241,7 @@ async def thermostat_verstellen(
     neu = jetziger + (THERMOSTATSCHRITT if richtung == "hoch" else -THERMOSTATSCHRITT)
     try:
         sollwerte_aendern(
-            session, zone, {modus_id: neu}, user_id=principal.user_id or 0
+            session, zone, {modus_id: neu}, user_id=principal.user_id
         )
     except Domaenenfehler as exc:
         # An der Grenze angekommen. Kein Fehlerzustand, sondern das

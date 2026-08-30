@@ -19,15 +19,27 @@ from decimal import Decimal, InvalidOperation
 # Nutzlast rechnet ihn deshalb schon in beide Richtungen um.
 BETRIEBSARTEN = {"auto", "manual", "off"}
 
-_MUSTER = re.compile(r"^(?P<praefix>[^/]+)/zonen/(?P<zone>\d+)/befehl/(?P<art>[a-z]+)$")
+# Der Unterschluessel traegt, worauf sich ein Befehl bezieht: die Kennung des Modus bei
+# `modus`, der Name des Regelparameters bei `parameter`. Sollwert, Betriebsart und Boost
+# beziehen sich auf die Zone als Ganzes und haben keinen.
+_MUSTER = re.compile(
+    r"^(?P<praefix>[^/]+)/zonen/(?P<zone>\d+)/befehl/(?P<art>[a-z]+)"
+    r"(?:/(?P<schluessel>[A-Za-z0-9_]+))?$"
+)
 
 
 @dataclass(frozen=True)
 class Befehl:
     zone_id: int
-    art: str  # "sollwert" oder "betriebsart"
+    # "sollwert", "betriebsart", "boost", "modus" oder "parameter"
+    art: str
     temperatur: Decimal | None = None
     betriebsart: str | None = None
+    # Worauf sich der Befehl bezieht: die Moduskennung bei "modus", der Parametername
+    # bei "parameter". Sonst None.
+    modus_id: int | None = None
+    parameter: str | None = None
+    zahl: Decimal | None = None
 
 
 class Befehlsfehler(ValueError):
@@ -65,22 +77,56 @@ def zerlegen(topic: str, nutzlast: bytes, praefix: str) -> Befehl:
         # angenommen werden.
         raise Befehlsfehler(f"Keine gueltige Zonenkennung: {zone_id}")
     art = treffer.group("art")
+    schluessel = treffer.group("schluessel")
     text = nutzlast.decode("utf-8", errors="replace").strip()
 
+    if art in ("sollwert", "betriebsart", "boost") and schluessel is not None:
+        raise Befehlsfehler(f"Die Befehlsart {art!r} kennt keinen Unterschluessel")
+
     if art == "sollwert":
-        try:
-            return Befehl(zone_id, art, temperatur=Decimal(text.replace(",", ".")))
-        except InvalidOperation as exc:
-            raise Befehlsfehler(f"Keine Temperatur: {text!r}") from exc
+        return Befehl(zone_id, art, temperatur=_zahl(text, "Temperatur"))
 
     if art == "betriebsart":
         if text not in BETRIEBSARTEN:
             raise Befehlsfehler(f"Unbekannte Betriebsart: {text!r}")
         return Befehl(zone_id, art, betriebsart=text)
 
+    if art == "boost":
+        # Die Nutzlast ist gleichgueltig: Ein Knopf hat keinen Wert, nur ein Ereignis.
+        # Home Assistant sendet `payload_press`; alles andere waere ebenso gemeint.
+        return Befehl(zone_id, art)
+
+    if art == "modus":
+        if schluessel is None or not schluessel.isdigit() or int(schluessel) < 1:
+            raise Befehlsfehler(f"Keine gueltige Moduskennung: {schluessel!r}")
+        return Befehl(
+            zone_id, art, modus_id=int(schluessel), temperatur=_zahl(text, "Temperatur")
+        )
+
+    if art == "parameter":
+        if schluessel is None or not re.fullmatch(r"[a-z][a-z0-9_]*", schluessel):
+            raise Befehlsfehler(f"Kein gueltiger Parametername: {schluessel!r}")
+        return Befehl(zone_id, art, parameter=schluessel, zahl=_zahl(text, "Zahl"))
+
     raise Befehlsfehler(f"Unbekannte Befehlsart: {art!r}")
 
 
-def befehls_abonnement(praefix: str) -> str:
-    """Das eine Abonnement, das alle Befehle abdeckt."""
-    return f"{praefix.strip('/')}/zonen/+/befehl/+"
+def _zahl(text: str, was: str) -> Decimal:
+    """Home Assistant sendet Punkt, ein Mensch auf der Kommandozeile auch mal Komma."""
+    try:
+        return Decimal(text.replace(",", "."))
+    except InvalidOperation as exc:
+        raise Befehlsfehler(f"Keine {was}: {text!r}") from exc
+
+
+def befehls_abonnements(praefix: str) -> list[str]:
+    """Die Abonnements, die alle Befehle abdecken.
+
+    Zwei statt eines: `+` in MQTT trifft **genau eine** Ebene, nie null und nie zwei.
+    Ein einzelnes `.../befehl/+` liesse deshalb jeden Befehl mit Unterschluessel
+    (`befehl/modus/3`) liegen -- die Drehregler je Modus haetten stumm nichts getan.
+    `#` statt der zweiten Zeile waere kuerzer und faenge auch alles darunter, beliebig
+    tief; die zwei Ebenen sind der ganze Vertrag, und mehr soll auch nicht ankommen.
+    """
+    basis = praefix.strip("/")
+    return [f"{basis}/zonen/+/befehl/+", f"{basis}/zonen/+/befehl/+/+"]

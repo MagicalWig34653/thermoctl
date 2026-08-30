@@ -27,19 +27,29 @@ from thermoctl.db.models.zone import Zone
 from thermoctl.db.models.zustand import ZoneState
 from thermoctl.db.schemastand import SchemaPasstNicht, schema_pruefen
 from thermoctl.domain.authz import Forbidden
-from thermoctl.domain.modi import Domaenenfehler
-from thermoctl.domain.schedule import uebersteuerung_anlegen
+from thermoctl.domain.fernbedienung import (
+    Fernbedienungsfehler,
+    boost,
+    sollwert_setzen,
+)
+from thermoctl.domain.modi import Domaenenfehler, sollwerte_aendern
 from thermoctl.domain.stoerungsmeldung import (
     Stoerungsmeldung,
     brueckenmeldung,
     sensormeldung,
 )
+from thermoctl.domain.zone_settings import (
+    Parametergrenze,
+    Parameterunbekannt,
+    parameter_setzen,
+)
 from thermoctl.domain.zonen import Betriebsartunbekannt, betriebsart_setzen
 from thermoctl.integrations.aktoren import schalten_erlaubt
 from thermoctl.integrations.benachrichtigung import senden
 from thermoctl.integrations.mqtt.befehle import (
+    Befehl,
     Befehlsfehler,
-    befehls_abonnement,
+    befehls_abonnements,
     ist_befehl,
     zerlegen,
 )
@@ -53,7 +63,7 @@ from thermoctl.logging import configure_logging, request_id_var
 from thermoctl.services.aufbewahrung import alte_messwerte_loeschen
 from thermoctl.services.ingest import nachricht_verarbeiten, zonenzustand_fortschreiben
 from thermoctl.services.schattenlauf import zyklus
-from thermoctl.services.veroeffentlichen import Veroeffentlichungsstand
+from thermoctl.services.veroeffentlichen import Veroeffentlichungsstand, zone_zustand_senden
 from thermoctl.services.veroeffentlichen import zyklus as veroeffentlichungszyklus
 from thermoctl.setup import einrichtung_noetig, setup_token_erzeugen
 from thermoctl.web import STATIC_DIR
@@ -187,44 +197,68 @@ async def _schattenschleife(app: FastAPI) -> None:
 
 def _befehl_ausfuehren(
     session: Session, topic: str, nutzlast: bytes, settings: Settings
-) -> None:
+) -> Zone | None:
     """Fuehrt einen von aussen gesendeten Befehl aus -- ueber die Domaene, wie jeder Adapter.
 
-    Home Assistant bekommt je Zone einen Thermostat; wer dort dreht, landet hier. Die
-    Grenzen und die Audit-Eintraege kommen aus der Domaene, damit ein
-    Befehl von aussen genau so viel darf wie ein Klick in der Oberflaeche -- und keinen
-    Deut mehr.
+    Home Assistant bekommt je Zone einen Thermostat, einen Boost-Knopf und je Modus und
+    Regelparameter einen Drehregler; wer dort dreht, landet hier. Die Grenzen und die
+    Audit-Eintraege kommen aus der Domaene, damit ein Befehl von aussen genau so viel darf
+    wie ein Klick in der Oberflaeche -- und keinen Deut mehr.
 
-    Ein Befehl hat keinen angemeldeten Benutzer. Er wird als Quelle `mqtt`... es gibt
-    keine solche Quelle: Er laeuft unter `system`, denn niemand hat sich dafuer
-    angemeldet, und das soll im Protokoll auch so dastehen.
+    Ein Befehl hat keinen angemeldeten Benutzer. Er laeuft unter der Quelle `system`,
+    denn niemand hat sich dafuer angemeldet, und das soll im Protokoll auch so dastehen.
+
+    Gibt die Zone zurueck, deren Zustand sich geaendert hat -- der Aufrufer meldet ihn
+    sofort zurueck, statt bis zum naechsten Regelzyklus zu warten.
     """
     try:
         befehl = zerlegen(topic, nutzlast, settings.mqtt_praefix)
     except Befehlsfehler as exc:
         log.warning("Unbrauchbarer Befehl verworfen: %s", exc, extra={"topic": topic})
-        return
+        return None
 
     zone = session.get(Zone, befehl.zone_id)
     if zone is None:
         log.warning("Befehl fuer unbekannte Zone verworfen", extra={"topic": topic})
-        return
+        return None
 
     try:
-        if befehl.art == "betriebsart" and befehl.betriebsart is not None:
-            betriebsart_setzen(
-                session, zone, befehl.betriebsart, akteur_id=None, quelle="system"
-            )
-        elif befehl.art == "sollwert" and befehl.temperatur is not None:
-            uebersteuerung_anlegen(
-                session, zone, befehl.temperatur, None, user_id=None, quelle="system"
-            )
-    except (Domaenenfehler, Betriebsartunbekannt) as exc:
+        _anwenden(session, zone, befehl)
+    except (
+        Domaenenfehler,
+        Betriebsartunbekannt,
+        Fernbedienungsfehler,
+        Parameterunbekannt,
+        Parametergrenze,
+    ) as exc:
         # Eine abgewiesene Eingabe ist keine Stoerung des Dienstes. Sie darf aber auch
         # nicht still verschwinden: Wer in Home Assistant 99 Grad einstellt, soll den
         # Grund im Protokoll finden.
-        log.warning(
-            "Befehl abgelehnt: %s", exc, extra={"topic": topic, "zone_id": zone.id}
+        log.warning("Befehl abgelehnt: %s", exc, extra={"topic": topic, "zone_id": zone.id})
+        return None
+    # Auch ein abgelehnter Befehl braucht streng genommen eine Antwort -- aber die
+    # richtige Antwort darauf ist der unveraenderte Zustand, und den schickt der
+    # Aufrufer ohnehin gleich mit.
+    return zone
+
+
+def _anwenden(session: Session, zone: Zone, befehl: Befehl) -> None:
+    """Was ein zerlegter Befehl bewirkt. Getrennt, damit die Fehlerbehandlung eine bleibt."""
+    jetzt = utcnow()
+    if befehl.art == "betriebsart" and befehl.betriebsart is not None:
+        betriebsart_setzen(session, zone, befehl.betriebsart, akteur_id=None, quelle="system")
+    elif befehl.art == "sollwert" and befehl.temperatur is not None:
+        sollwert_setzen(session, zone, befehl.temperatur, jetzt, quelle="system")
+    elif befehl.art == "boost":
+        boost(session, zone, jetzt, quelle="system")
+    elif befehl.art == "modus" and befehl.modus_id and befehl.temperatur is not None:
+        sollwerte_aendern(
+            session, zone, {befehl.modus_id: befehl.temperatur},
+            user_id=None, quelle="system",
+        )
+    elif befehl.art == "parameter" and befehl.parameter and befehl.zahl is not None:
+        parameter_setzen(
+            session, zone, befehl.parameter, befehl.zahl, user_id=None, quelle="system"
         )
 
 
@@ -243,7 +277,17 @@ async def _mqtt_nachricht_verarbeiten(
     # mit dem Zigbee2MQTT-Zuschnitt nichts zu tun.
     if ist_befehl(topic, settings.mqtt_praefix):
         with session_scope(app.state.session_factory) as session:
-            _befehl_ausfuehren(session, topic, nutzlast, settings)
+            zone = _befehl_ausfuehren(session, topic, nutzlast, settings)
+            # Sofort antworten, noch in derselben Sitzung. Die Climate-Karte in Home
+            # Assistant ist nicht optimistisch: Sie wartet auf den Zustand und zeigt bis
+            # dahin den alten. Kam der erst im naechsten Regelzyklus, sprang der eben
+            # gewaehlte Modus fuer eine Minute zurueck -- fuer den Benutzer sah es aus,
+            # als lasse sich die Betriebsart nicht umstellen.
+            veroeffentlicher = getattr(app.state, "veroeffentlicher", None)
+            if zone is not None and veroeffentlicher is not None:
+                await zone_zustand_senden(
+                    session, veroeffentlicher, zone, settings.mqtt_praefix, empfangen_am
+                )
         return
 
     zuschnitt = zuschneiden(topic, settings.mqtt_base_topic)
@@ -332,7 +376,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
             settings,
             lambda topic, nutzlast: _mqtt_nachricht_verarbeiten(app, settings, topic, nutzlast),
             schalten_erlaubt=app.state.senden_erlaubt,
-            zusatz_abonnements=[befehls_abonnement(settings.mqtt_praefix)],
+            zusatz_abonnements=befehls_abonnements(settings.mqtt_praefix),
         )
         app.state.veroeffentlicher = client
         hintergrundaufgaben.append(asyncio.create_task(client.laufen()))

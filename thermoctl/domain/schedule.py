@@ -389,7 +389,7 @@ def uebersteuerung_aufheben(session: Session, zone: Zone) -> ZoneOverride | None
     eintrag = session.scalars(
         select(ZoneOverride)
         .where(ZoneOverride.zone_id == zone.id, ZoneOverride.cancelled_at.is_(None))
-        .order_by(ZoneOverride.created_at.desc())
+        .order_by(ZoneOverride.created_at.desc(), ZoneOverride.id.desc())
     ).first()
     if eintrag is not None:
         eintrag.cancelled_at = utcnow()
@@ -432,7 +432,11 @@ def aufgeloester_sollwert(session: Session, zone: Zone, jetzt_utc: datetime) -> 
             ZoneOverride.cancelled_at.is_(None),
             ZoneOverride.starts_at <= jetzt_utc,
         )
-        .order_by(ZoneOverride.created_at.desc())
+        # `id` als zweites Merkmal: MariaDB legt DATETIME sekundengenau ab. Zwei
+        # Uebersteuerungen derselben Sekunde -- etwa eine, die eine andere ersetzt --
+        # haetten sonst denselben Zeitstempel, und welche gilt, entschiede die
+        # Datenbank nach Gutduenken.
+        .order_by(ZoneOverride.created_at.desc(), ZoneOverride.id.desc())
     ).first()
     if laufend is not None and (laufend.ends_at is None or laufend.ends_at > jetzt_utc):
         if laufend.temperature_c is not None:
@@ -471,7 +475,9 @@ def aufgeloester_sollwert(session: Session, zone: Zone, jetzt_utc: datetime) -> 
     )
 
 
-def ende_der_naechsten_schaltung(session: Session, zone: Zone) -> datetime | None:
+def ende_der_naechsten_schaltung(
+    session: Session, zone: Zone, jetzt_utc: datetime | None = None
+) -> datetime | None:
     """Wann die naechste Schaltung faellt, als naive UTC — oder None ohne Zeitplan.
 
     Liegt hier und nicht im Adapter, weil Oberflaeche und REST-Schnittstelle beide danach
@@ -479,10 +485,16 @@ def ende_der_naechsten_schaltung(session: Session, zone: Zone) -> datetime | Non
     beiden Adaptern getrennt: Eine spaetere Korrektur an der Zeitzonenbehandlung waere in
     einem Pfad nachgezogen und im anderen vergessen worden, und dieselbe Zone haette je
     nach Weg ein anderes Ende bekommen.
+
+    `jetzt_utc` ist ausdruecklich angebbar, weil der Boost beides zugleich braucht: den
+    Punkt, der als Naechstes kaeme, *und* seinen Zeitpunkt. Griff diese Funktion dabei
+    zur echten Uhr, waehrend der Aufrufer mit einem uebergebenen Zeitpunkt rechnet,
+    bezoegen sich beide Haelften auf verschiedene Augenblicke -- die Uebersteuerung
+    endete dann irgendwann, nur nicht an ihrem Schaltpunkt.
     """
     einstellungen = session.get(Setting, 1)
     zeitzone = ZoneInfo(einstellungen.timezone if einstellungen is not None else "Europe/Berlin")
-    lokal = utcnow().replace(tzinfo=ZoneInfo("UTC")).astimezone(zeitzone)
+    lokal = (jetzt_utc or utcnow()).replace(tzinfo=ZoneInfo("UTC")).astimezone(zeitzone)
     punkte = list(
         session.scalars(select(SchedulePoint).where(SchedulePoint.zone_id == zone.id))
     )
