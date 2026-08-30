@@ -1,4 +1,4 @@
-{% extends "basis.html" %}
+{% extends "base.html" %}
 {% block titel %}Bediengeräte – thermoctl{% endblock %}
 {% block inhalt %}
 <h1>Bediengeräte</h1>
@@ -8,7 +8,7 @@
 {% if not controllers %}<p>Noch kein Bediengerät ist einer sichtbaren Zone zugeordnet.</p>{% endif %}
 
 {% for device in controllers %}
-<section class="tc-tafel p-4 mb-4">
+<section class="tc-panel p-4 mb-4">
   <h2>{{ device.display_name }}</h2>
   <p class="t-leise">{{ device.model or "Modell unbekannt" }}</p>
 
@@ -36,7 +36,7 @@
   <div class="table-responsive"><table class="table align-middle"><thead><tr><th>Merkmal</th><th>Erlaubt</th><th>Quelle</th></tr></thead><tbody>
   {% for property in properties.get(device.id, []) if property.is_writable %}
   {% set channel = channels.get((device.id, property.name)) %}
-  <tr class="tc-ziel" data-ziel="kanal" data-form="channel-{{ device.id }}-{{ property.id }}"><td class="t-wert">{{ property.name }}</td><td>
+  <tr class="tc-target" data-target="kanal" data-form="channel-{{ device.id }}-{{ property.id }}"><td class="t-wert">{{ property.name }}</td><td>
     {% if property_values[property.id] %}{{ property_values[property.id]|join(", ") }}{% elif property.min_value is not none or property.max_value is not none %}{{ property.min_value|grad if property.min_value is not none else "…" }} bis {{ property.max_value|grad if property.max_value is not none else "…" }} {{ property.unit or "" }}{% else %}{{ property.value_type }}{% endif %}
   </td><td>
   {% if device.id in manageable_ids %}<form id="channel-{{ device.id }}-{{ property.id }}" method="post" action="/controllers/channel" class="row g-2">
@@ -56,5 +56,5 @@
   </td></tr>{% endfor %}</tbody></table></div>{% else %}<p class="t-leise">Noch keinen Tastendruck empfangen.</p>{% endif %}
 </section>{% endfor %}
 
-<section class="tc-tafel p-4" id="geraetevorrat"><h2 class="h5">Temperaturquellen</h2><p class="t-leise small" data-ziehhinweis hidden>Ein Gerät auf ein schreibbares Merkmal ziehen.</p><div class="d-flex flex-wrap gap-2">{% for source in devices %}<div class="tc-knoten tc-knoten-frei tc-ziehbar" data-geraet="{{ source.id }}"><div class="tc-knoten-name">{{ source.display_name }}</div></div>{% endfor %}</div></section>
+<section class="tc-panel p-4" id="device-pool"><h2 class="h5">Temperaturquellen</h2><p class="t-leise small" data-drag-hint hidden>Ein Gerät auf ein schreibbares Merkmal ziehen.</p><div class="d-flex flex-wrap gap-2">{% for source in devices %}<div class="tc-node tc-node-free tc-draggable" data-device="{{ source.id }}"><div class="tc-node-name">{{ source.display_name }}</div></div>{% endfor %}</div></section>
 {% endblock %}

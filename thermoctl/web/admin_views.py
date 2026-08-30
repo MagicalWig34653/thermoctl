@@ -47,7 +47,7 @@ def _user_list(
     values: dict[str, object] | None = None, hint: str | None = None,
 ) -> Response:
     return form_again(
-        request, "benutzer.html", values or {}, errors,
+        request, "users.html", values or {}, errors,
         user=session.scalars(select(User).order_by(User.username)).all(),
         groups=session.scalars(select(AccessGroup).order_by(AccessGroup.name)).all(),
         own_id=own_id,
@@ -185,7 +185,7 @@ def _group_list(
         for name, hint_text, codes in PERMISSION_AREAS
     ]
     return form_again(
-        request, "gruppen.html", values or {}, errors,
+        request, "groups.html", values or {}, errors,
         groups=groups,
         vergeben=vergeben,
         zusammenfassung=zusammenfassung,

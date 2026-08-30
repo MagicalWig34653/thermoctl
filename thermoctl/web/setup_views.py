@@ -31,7 +31,7 @@ async def setup_form(
     request: Request, session: Annotated[Session, Depends(get_session)]
 ) -> Response:
     _ensure_open(session)
-    return templates.TemplateResponse(request, "einrichtung.html", {"errors": {}})
+    return templates.TemplateResponse(request, "setup.html", {"errors": {}})
 
 
 @router.post("/setup")
@@ -67,7 +67,7 @@ async def setup(
         # back to the form with an understandable message instead of 500.
         return form_again(
             request,
-            "einrichtung.html",
+            "setup.html",
             form_values,
             password_form_error(exc),
         )

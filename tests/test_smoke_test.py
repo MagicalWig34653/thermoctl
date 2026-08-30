@@ -187,7 +187,7 @@ def test_boosted_navigation_returns_the_full_page(
         headers={"HX-Request": "true", "HX-Boosted": "true"},
     )
     assert response.status_code == 200
-    assert "tc-kopf" in response.text, f"{path} returns no header bar when boosted"
+    assert "tc-head" in response.text, f"{path} returns no header bar when boosted"
 
 
 @pytest.mark.parametrize("path", ["/devices", "/audit", "/users", "/groups", "/tokens"])
@@ -200,7 +200,7 @@ def test_a_real_partial_swap_still_returns_only_the_content(
     create_settings(session)
     response = angemeldeter_client.get(path, headers={"HX-Request": "true"})
     assert response.status_code == 200
-    assert "tc-kopf" not in response.text
+    assert "tc-head" not in response.text
 
 
 @pytest.mark.parametrize("template", sorted(TEMPLATES_DIR.glob("*.html")))
@@ -228,7 +228,7 @@ def test_no_custom_toggle_for_the_color_scheme() -> None:
     A custom toggle was a third setting for something every device already
     knows, and got lost again on the next browser.
     """
-    base = (TEMPLATES_DIR / "basis.html").read_text(encoding="utf-8")
+    base = (TEMPLATES_DIR / "base.html").read_text(encoding="utf-8")
     assert "prefers-color-scheme: dark" in base
     assert "localStorage" not in base
     assert "schema-umschalten" not in base
@@ -249,14 +249,97 @@ def test_the_schedule_grid_does_not_jump_out_from_under_the_mouse() -> None:
     pins down the invariant; it was verified with Playwright.
     """
     source = (
-        Path(__file__).resolve().parent.parent / "thermoctl/web/static/zeitplan.js"
+        Path(__file__).resolve().parent.parent / "thermoctl/web/static/schedule.js"
     ).read_text(encoding="utf-8")
     assert "scrollIntoView" not in source.replace("`scrollIntoView`", ""), (
-        "zeitplan.js scrolls on its own again"
+        "schedule.js scrolls on its own again"
     )
     # Focus only after the visibility check -- otherwise the browser scrolls by itself.
     assert "if (sichtbar) {" in source
     before_focus = source[: source.index(".focus(")]
     assert "getBoundingClientRect" in before_focus and "innerHeight" in before_focus, (
         "focus() no longer comes after the visibility check"
+    )
+
+
+def _csrf(client) -> dict[str, str]:  # type: ignore[no-untyped-def]
+    """Header with a valid CSRF token for mutating requests."""
+    from thermoctl.auth.csrf import csrf_token
+    from thermoctl.auth.sessions import COOKIE_NAME
+    from thermoctl.config import get_settings
+
+    secret = client.cookies[COOKIE_NAME]
+    return {"X-CSRF-Token": csrf_token(secret, get_settings().secret_key.get_secret_value())}
+
+
+def _rendered_form_fields(html: str, action: str) -> dict[str, str]:
+    """Fills the form whose `action` is given, exactly as a browser would.
+
+    The field **names** come out of the markup and are never supplied by the test --
+    that is the whole point. A `<select>` gets its first real option, a time field a
+    time, everything else keeps its rendered value.
+    """
+    import re
+
+    for form in re.findall(r"<form\b[^>]*>.*?</form>", html, re.DOTALL):
+        if f'action="{action}"' not in form:
+            continue
+        values: dict[str, str] = {}
+        for field in re.findall(r"<input\b[^>]*>", form):
+            name = re.search(r'name="([^"]+)"', field)
+            if name is None:
+                continue
+            typ = re.search(r'type="([^"]+)"', field)
+            rendered = re.search(r'value="([^"]*)"', field)
+            if typ and typ.group(1) == "time":
+                values[name.group(1)] = "07:15"
+            else:
+                values[name.group(1)] = rendered.group(1) if rendered else ""
+        for select in re.findall(r"<select\b[^>]*>.*?</select>", form, re.DOTALL):
+            name = re.search(r'name="([^"]+)"', select)
+            if name is None:
+                continue
+            optionen = [o for o in re.findall(r'<option value="([^"]*)"', select) if o]
+            values[name.group(1)] = optionen[0] if optionen else ""
+        return values
+    raise AssertionError(f"Kein Formular mit action={action!r} gefunden")
+
+
+def test_the_rendered_form_carries_the_field_names_the_view_reads(
+    client_als, session: Session
+) -> None:
+    """The fields a browser sends must be the ones the view looks for.
+
+    This gap has bitten twice, and both times no test noticed: the other tests post
+    `data={"time_of_day": …}` straight at the endpoint and walk past the template. In
+    the browser the field was still called `uhrzeit`, the view read `time_of_day`, and
+    a created schedule point vanished without an error message.
+
+    So this test does what a browser does: it takes the field **names** out of the
+    rendered form and fills only their values. Renaming a field on one side alone makes
+    it fail.
+    """
+    from sqlalchemy import select
+
+    from tests.helpers import create_mode, create_settings, create_zone, source
+    from thermoctl.db.models.schedule import SchedulePoint
+
+    create_settings(session)
+    source(session)
+    zone = create_zone(session, "formularzone")
+    create_mode(session, "tag")
+    client = client_als([("schedule.manage", zone.id), ("zone.read", zone.id)])
+
+    page = client.get(f"/zones/{zone.id}/schedule")
+    assert page.status_code == 200
+    fields = _rendered_form_fields(page.text, f"/zones/{zone.id}/schedule/points")
+
+    response = client.post(
+        f"/zones/{zone.id}/schedule/points", data=fields, headers=_csrf(client)
+    )
+
+    assert response.status_code in (200, 303)
+    points = session.scalars(select(SchedulePoint).where(SchedulePoint.zone_id == zone.id)).all()
+    assert [(p.weekday, p.minute_of_day) for p in points] == [(1, 7 * 60 + 15)], (
+        "Das Formular hat nichts angelegt — Feldnamen in Vorlage und Ansicht gehen auseinander"
     )

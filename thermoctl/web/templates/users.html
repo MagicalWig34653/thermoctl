@@ -1,8 +1,8 @@
-{% extends "basis.html" if not ist_htmx else "leer.html" %}
-{% from "formular.html" import textfeld, fehlerhinweis %}
+{% extends "base.html" if not ist_htmx else "empty.html" %}
+{% from "form.html" import textfeld, fehlerhinweis %}
 {% block titel %}Benutzer – thermoctl{% endblock %}
 {% block inhalt %}
-<section id="benutzerliste">
+<section id="user-list">
     <h1 class="mb-3">Benutzer</h1>
     {{ fehlerhinweis(hint) }}
     {# Scrollt in sich selbst statt die ganze Seite breit zu machen: Auf einem Telefon passt diese Tabelle nicht nebeneinander. #}
@@ -65,7 +65,7 @@
                 </option>
                 {% endfor %}
             </select>
-            <div id="gruppe_id-hilfe" class="form-text">
+            <div id="group_id-help" class="form-text">
                 Ohne Gruppe hat der Benutzer keinerlei Rechte.
             </div>
         </div>

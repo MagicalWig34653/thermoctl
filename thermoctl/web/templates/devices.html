@@ -1,4 +1,4 @@
-{% extends "basis.html" if not ist_htmx else "leer.html" %}
+{% extends "base.html" if not ist_htmx else "empty.html" %}
 {% block titel %}Geräte – thermoctl{% endblock %}
 {% block max_breite %}72rem{% endblock %}
 
@@ -18,21 +18,21 @@ keine Auskunft — sie steht deshalb einmal oben als Zahl.
 #}
 
 {% set marken = {
-    "offline":      "tc-chip-warnung",
-    "silent":        "tc-chip-warnung",
-    "disabled": "tc-chip-still",
-    "battery":     "tc-chip-warnung",
-    "radio":         "tc-chip-still",
+    "offline":      "tc-chip-warning",
+    "silent":        "tc-chip-warning",
+    "disabled": "tc-chip-quiet",
+    "battery":     "tc-chip-warning",
+    "radio":         "tc-chip-quiet",
 } %}
 
 {% macro geraetezeile(g) %}
-<article class="tc-zone tc-zone-geraet" data-geraetezeile
-         data-suchtext="{{ (g.name ~ ' ' ~ (g.modell or '') ~ ' ' ~ g.capabilities|join(' ') ~ ' ' ~ g.zones|join(' '))|lower }}">
+<article class="tc-zone tc-zone-device" data-device-row
+         data-search-text="{{ (g.name ~ ' ' ~ (g.modell or '') ~ ' ' ~ g.capabilities|join(' ') ~ ' ' ~ g.zones|join(' '))|lower }}">
     <div>
         <div class="tc-zone-name">
             {{ g.name }}
             {% if g.ist_group %}
-            <span class="tc-chip tc-chip-still align-middle">Gruppe</span>
+            <span class="tc-chip tc-chip-quiet align-middle">Gruppe</span>
             {% endif %}
         </div>
         <div class="t-leise" style="font-size: .72rem">
@@ -41,7 +41,7 @@ keine Auskunft — sie steht deshalb einmal oben als Zahl.
         {% if g.befunde %}
         <div class="d-flex flex-wrap gap-1 mt-2">
             {% for b in g.befunde %}
-            <span class="tc-chip {{ marken.get(b.kind, 'tc-chip-still') }}">{{ b.text }}</span>
+            <span class="tc-chip {{ marken.get(b.kind, 'tc-chip-quiet') }}">{{ b.text }}</span>
             {% endfor %}
         </div>
         {% endif %}
@@ -65,7 +65,7 @@ keine Auskunft — sie steht deshalb einmal oben als Zahl.
         {% if g.capabilities %}
         <div class="d-flex flex-wrap gap-1">
             {% for f in g.capabilities %}
-            <span class="tc-chip tc-chip-still">{{ f }}</span>
+            <span class="tc-chip tc-chip-quiet">{{ f }}</span>
             {% endfor %}
         </div>
         {% elif not g.quiet_capabilities %}
@@ -80,7 +80,7 @@ keine Auskunft — sie steht deshalb einmal oben als Zahl.
 {% endmacro %}
 
 {% block inhalt %}
-<section id="geraeteliste">
+<section id="device-list">
     <div class="d-flex justify-content-between align-items-baseline flex-wrap gap-2 mb-1">
         <h1 class="mb-0">Geräte</h1>
         <a class="btn btn-sm btn-outline-secondary" href="/plant">Anlagenbild</a>
@@ -98,7 +98,7 @@ keine Auskunft — sie steht deshalb einmal oben als Zahl.
         {% endif %}
     </p>
 
-    <input type="search" class="form-control form-control-sm mb-3" id="geraetesuche"
+    <input type="search" class="form-control form-control-sm mb-3" id="device-search"
            placeholder="Nach Name, Modell, Fähigkeit oder Zone filtern" hidden
            autocomplete="off" aria-label="Geräte filtern">
 
@@ -106,7 +106,7 @@ keine Auskunft — sie steht deshalb einmal oben als Zahl.
     <h2 class="t-abschnitt mb-2">
 {{ auffaellig|length }} {{ "davon fällt auf" if auffaellig|length == 1 else "davon fallen auf" }}
     </h2>
-    <div class="tc-tafel mb-4">
+    <div class="tc-panel mb-4">
         {% for g in auffaellig %}{{ geraetezeile(g) }}{% endfor %}
     </div>
     {% endif %}
@@ -115,14 +115,14 @@ keine Auskunft — sie steht deshalb einmal oben als Zahl.
     <h2 class="t-abschnitt mb-2">
         {% if auffaellig %}Der Rest meldet sich{% else %}Alle melden sich{% endif %}
     </h2>
-    <div class="tc-tafel">
+    <div class="tc-panel">
         {% for g in unauffaellig %}{{ geraetezeile(g) }}{% endfor %}
     </div>
     {% endif %}
 
-    <p class="t-leise small mt-3" id="ohne-treffer" hidden>Kein Gerät passt zum Filter.</p>
+    <p class="t-leise small mt-3" id="no-matches" hidden>Kein Gerät passt zum Filter.</p>
     {% else %}
-    <div class="tc-tafel p-4">
+    <div class="tc-panel p-4">
         <p class="t-abschnitt mb-1">Noch kein Gerät bekannt.</p>
         <p class="t-leise mb-0">
             Entweder ist MQTT nicht eingerichtet, oder es ist

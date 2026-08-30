@@ -158,15 +158,15 @@
     }
 
     function anmeldungVorbereiten() {
-        const knopf = document.getElementById("passkey-anmelden");
-        // `dataset.verdrahtet`: initialisieren() laeuft bei jedem Inhaltswechsel erneut.
+        const knopf = document.getElementById("passkey-login");
+        // `dataset.wired`: initialisieren() laeuft bei jedem Inhaltswechsel erneut.
         // Ohne die Marke bekaeme derselbe Knopf mehrere Klickbehandlungen und loeste
         // ebenso viele Authenticator-Anfragen aus.
-        if (!knopf || knopf.dataset.verdrahtet) {
+        if (!knopf || knopf.dataset.wired) {
             return;
         }
-        knopf.dataset.verdrahtet = "ja";
-        const hinweisfeld = document.getElementById("passkey-hinweis");
+        knopf.dataset.wired = "ja";
+        const hinweisfeld = document.getElementById("passkey-hint");
 
         function hinweis(text, istFehler) {
             if (hinweisfeld) {
@@ -210,12 +210,12 @@
     }
 
     function registrierungVorbereiten() {
-        const knopf = document.getElementById("passkey-hinterlegen");
-        if (!knopf || knopf.dataset.verdrahtet) {
+        const knopf = document.getElementById("passkey-register");
+        if (!knopf || knopf.dataset.wired) {
             return;
         }
-        knopf.dataset.verdrahtet = "ja";
-        const hinweisfeld = document.getElementById("passkey-registrierung-hinweis");
+        knopf.dataset.wired = "ja";
+        const hinweisfeld = document.getElementById("passkey-registration-hint");
 
         function hinweis(text, istFehler) {
             if (hinweisfeld) {
@@ -280,7 +280,7 @@
         document.querySelectorAll("[data-passkey]").forEach(function (element) {
             element.hidden = !kann;
         });
-        document.querySelectorAll("[data-ohne-passkey]").forEach(function (element) {
+        document.querySelectorAll("[data-without-passkey]").forEach(function (element) {
             element.hidden = kann;
         });
         if (!kann) {
@@ -296,7 +296,7 @@
         // Ein zweiter Aufruf wuerde eine zweite Anfrage aufmachen, und der Browser laesst
         // nur eine zu -- er wiese sie ab und beendete dabei die erste.
         if (!bedingteGestartet
-            && document.getElementById("passkey-anmelden")
+            && document.getElementById("passkey-login")
             && typeof window.PublicKeyCredential.isConditionalMediationAvailable === "function") {
             bedingteGestartet = true;
             window.PublicKeyCredential.isConditionalMediationAvailable()

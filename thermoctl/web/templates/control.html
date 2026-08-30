@@ -1,5 +1,5 @@
-{% extends "basis.html" %}
-{% from "formular.html" import textfeld %}
+{% extends "base.html" %}
+{% from "form.html" import textfeld %}
 {% block titel %}Betrieb – thermoctl{% endblock %}
 {% block max_breite %}68rem{% endblock %}
 {% block inhalt %}
@@ -15,17 +15,17 @@
 <div class="alert alert-warning" role="alert">{{ errors[""] }}</div>
 {% endif %}
 
-<section class="tc-tafel p-4 mb-4 {{ 'tc-scharf' if settings.control_armed }}">
+<section class="tc-panel p-4 mb-4 {{ 'tc-armed' if settings.control_armed }}">
     <div class="d-flex justify-content-between align-items-start flex-wrap gap-3">
         <div>
             {% if settings.control_armed %}
-            <span class="tc-chip tc-chip-waerme mb-2"><span class="tc-punkt"></span>Scharf</span>
+            <span class="tc-chip tc-chip-warm mb-2"><span class="tc-dot"></span>Scharf</span>
             <h2 class="mb-1">Die Regelung schaltet wirklich</h2>
             <p class="t-leise mb-0">
                 Jede Entscheidung unten geht an die Ventile. Dahinter hängt eine echte Heizung.
             </p>
             {% else %}
-            <span class="tc-chip tc-chip-still mb-2">Trockenlauf</span>
+            <span class="tc-chip tc-chip-quiet mb-2">Trockenlauf</span>
             <h2 class="mb-1">Die Regelung entscheidet, schaltet aber nicht</h2>
             <p class="t-leise mb-0">
                 Jede Entscheidung wird protokolliert und keine ausgeführt. Das ist der Zustand,
@@ -44,7 +44,7 @@
             </form>
             {% else %}
             <button class="btn btn-primary" type="button"
-                    data-bs-toggle="collapse" data-bs-target="#scharfschalten"
+                    data-bs-toggle="collapse" data-bs-target="#arm"
                     aria-expanded="{{ 'true' if errors.get('begruendung') else 'false' }}">
                 Scharf schalten …
             </button>
@@ -64,7 +64,7 @@
     {% endif %}
 
     {% if darf_scharf and not settings.control_armed %}
-    <div class="collapse mt-4 {{ 'show' if errors.get('begruendung') }}" id="scharfschalten">
+    <div class="collapse mt-4 {{ 'show' if errors.get('begruendung') }}" id="arm">
         <div class="border-top pt-3">
             <p class="t-marke">Vor dem Scharfschalten</p>
             <ul class="small t-leise">
@@ -80,7 +80,7 @@
             </ul>
             <form method="post" action="/control/arm">
                 <input type="hidden" name="armed" value="ja">
-                {{ textfeld("begruendung", "Worauf stützt sich das?",
+                {{ textfeld("reason", "Worauf stützt sich das?",
                             "", "Wird ins Protokoll geschrieben.",
                             errors.get("begruendung", ""), true) }}
                 <button class="btn btn-primary" type="submit">Jetzt scharf schalten</button>
@@ -92,12 +92,12 @@
 
 <p class="t-marke mb-2">Was die Regelung gerade entscheidet</p>
 {% if zones %}
-<div class="tc-tafel mb-3">
+<div class="tc-panel mb-3">
     {% for zone in zones %}
     {% set state = zustaende.get(zone.id) %}
     {% set entscheidung = entscheidungen.get(zone.id) %}
     {% set soll = setpoints.get(zone.id) %}
-    <article class="tc-zone tc-zone-betrieb">
+    <article class="tc-zone tc-zone-operation">
         <div>
             <a class="tc-zone-name" href="/zones/{{ zone.id }}/schedule">{{ zone.display_name }}</a>
         </div>
@@ -116,13 +116,13 @@
         <div>
             {% if entscheidung %}
             {% if entscheidung.would_heat %}
-            <span class="tc-chip tc-chip-waerme"><span class="tc-punkt"></span>Heizen</span>
+            <span class="tc-chip tc-chip-warm"><span class="tc-dot"></span>Heizen</span>
             {% else %}
-            <span class="tc-chip tc-chip-kuehle">Aus</span>
+            <span class="tc-chip tc-chip-cool">Aus</span>
             {% endif %}
             <div class="small t-leise mt-1">{{ entscheidung.reason }}</div>
             {% else %}
-            <span class="tc-chip tc-chip-still">Noch keine Entscheidung</span>
+            <span class="tc-chip tc-chip-quiet">Noch keine Entscheidung</span>
             {% endif %}
         </div>
     </article>
@@ -132,7 +132,7 @@
     Übersteuern und der Tagesplan stehen auf der <a href="/">Startseite</a>.
 </p>
 {% else %}
-<div class="tc-tafel p-4">
+<div class="tc-panel p-4">
     <p class="t-leise mb-0">Noch keine Zonen angelegt — es gibt nichts zu entscheiden.</p>
 </div>
 {% endif %}

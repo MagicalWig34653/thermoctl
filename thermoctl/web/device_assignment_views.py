@@ -73,7 +73,7 @@ def _kontext(session: Session, zone: Zone, **zusatz: object) -> dict[str, object
     # Per controller in this zone: which buttons it has sent and what they do.
     # Without this list, someone would have to know what their model calls its
     # buttons -- `single_plus`, `button_1_single`, `up_open`, depending on manufacturer.
-    controllere = [
+    controllers = [
         (device, gesehene_aktionen(session, device))
         for assignment, device, rolle in assignments
         if rolle.code == "controller"
@@ -82,7 +82,7 @@ def _kontext(session: Session, zone: Zone, **zusatz: object) -> dict[str, object
     return {
         "zone": zone,
         "capabilities": capabilities,
-        "controllere": controllere,
+        "controllers": controllers,
         "commands": session.scalars(
             select(ControllerCommand).order_by(ControllerCommand.id)
         ).all(),
@@ -101,7 +101,7 @@ def _kontext(session: Session, zone: Zone, **zusatz: object) -> dict[str, object
 
 def _response(session: Session, request: Request, zone: Zone, **zusatz: object) -> Response:
     return templates.TemplateResponse(
-        request, "geraetezuordnung.html", _kontext(session, zone, **zusatz)
+        request, "device_assignment.html", _kontext(session, zone, **zusatz)
     )
 
 

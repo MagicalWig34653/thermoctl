@@ -108,7 +108,7 @@ async def device_overview(
 
     return templates.TemplateResponse(
         request,
-        "geraete.html",
+        "devices.html",
         {
             "devices": schau,
             "auffaellig": [g for g in schau if not g.in_ordnung],
@@ -133,7 +133,7 @@ async def show_anlage(
     require(principal, "device.read")
     return templates.TemplateResponse(
         request,
-        "anlage.html",
+        "plant.html",
         {
             **plant_diagram(
                 session, visible_zones(session, principal, "zone.read")

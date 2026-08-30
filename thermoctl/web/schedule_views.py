@@ -101,7 +101,7 @@ def _schedulepage(
     }
     return templates.TemplateResponse(
         request,
-        "zeitplan.html",
+        "schedule.html",
         {
             "zone": zone,
             "points": points,
@@ -110,7 +110,7 @@ def _schedulepage(
             "segments": by_day,
             "waerme": waerme,
             "temperatures": temperatures,
-            "values": values or {"weekday": "1", "time_of_day": "06:00", "modus": ""},
+            "values": values or {"weekday": "1", "time_of_day": "06:00", "mode_id": ""},
             "errors": {errors.feld: errors.notice} if errors else {},
             # Its own channel, not `fehler`: a rejected move would otherwise show up
             # on the time field of the *creation* form -- both report "there's
@@ -146,7 +146,7 @@ async def create_schedule_point_view(
     form = await request.form()
     values = {
         name: str(form.get(name, "")).strip()
-        for name in ("weekday", "time_of_day", "modus")
+        for name in ("weekday", "time_of_day", "mode_id")
     }
     try:
         try:
@@ -157,7 +157,7 @@ async def create_schedule_point_view(
             ) from exc
         minute = time_of_day_in_minutes(values["time_of_day"])
         try:
-            mode_id = int(values["modus"])
+            mode_id = int(values["mode_id"])
         except ValueError as exc:
             raise ScheduleError("mode_id", "Bitte einen Modus auswählen.") from exc
         create_schedule_point(
@@ -251,7 +251,7 @@ async def schedule_point_delete_form(
     point = _point_or_404(session, zone, point_id)
     return templates.TemplateResponse(
         request,
-        "zeitplanpunkt_loeschen.html",
+        "schedule_point_delete.html",
         {"zone": zone, "point": point, "wochentage": dict(WEEKDAYS)},
     )
 
@@ -294,7 +294,7 @@ def _schedule_adopt_page(
     ]
     return templates.TemplateResponse(
         request,
-        "zeitplan_uebernehmen.html",
+        "schedule_adopt.html",
         {
             "zone": zone,
             "sources": sources,

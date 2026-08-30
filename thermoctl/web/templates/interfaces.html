@@ -1,4 +1,4 @@
-{% extends "basis.html" %}
+{% extends "base.html" %}
 {% block titel %}Schnittstellen – thermoctl{% endblock %}
 {% block max_breite %}58rem{% endblock %}
 
@@ -13,11 +13,11 @@ hätte er gewirkt, ist schlimmer als keiner.
 #}
 
 {% set marken = {
-    "laeuft":       ("tc-chip-waerme",  "Läuft"),
-    "eingerichtet": ("tc-chip-kuehle",  "Eingerichtet"),
-    "aus":          ("tc-chip-still",   "Aus"),
-    "fehlt":        ("tc-chip-warnung", "Kommt nicht zustande"),
-    "ungebaut":     ("tc-chip-still",   "Noch nicht gebaut"),
+    "laeuft":       ("tc-chip-warm",  "Läuft"),
+    "eingerichtet": ("tc-chip-cool",  "Eingerichtet"),
+    "aus":          ("tc-chip-quiet",   "Aus"),
+    "fehlt":        ("tc-chip-warning", "Kommt nicht zustande"),
+    "ungebaut":     ("tc-chip-quiet",   "Noch nicht gebaut"),
 } %}
 
 {% block inhalt %}
@@ -28,13 +28,13 @@ hätte er gewirkt, ist schlimmer als keiner.
 
 {% for s in interfaces %}
 {% set marker = marken[s.state] %}
-<article class="tc-tafel p-4 mb-3">
+<article class="tc-panel p-4 mb-3">
     <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
         <div>
             <h2 class="mb-1">
                 {{ s.name }}
                 <span class="tc-chip {{ marker[0] }} align-middle">
-                    {% if s.state == "laeuft" %}<span class="tc-punkt"></span>{% endif %}
+                    {% if s.state == "laeuft" %}<span class="tc-dot"></span>{% endif %}
                     {{ marker[1] }}
                 </span>
             </h2>
@@ -62,7 +62,7 @@ hätte er gewirkt, ist schlimmer als keiner.
                     {% if a.variable %}
                     <span class="t-wert t-leise" style="font-size: .7rem">{{ a.variable }}</span>
                     {% endif %}
-                    <span class="tc-chip tc-chip-still ms-1">{{ a.source }}</span>
+                    <span class="tc-chip tc-chip-quiet ms-1">{{ a.source }}</span>
                 </td>
             </tr>
             {% endfor %}
@@ -73,7 +73,7 @@ hätte er gewirkt, ist schlimmer als keiner.
 </article>
 {% endfor %}
 
-<div class="tc-tafel p-4">
+<div class="tc-panel p-4">
     <p class="t-marke mb-2">Warum hier keine Schalter stehen</p>
     <p class="t-leise mb-0">
         Diese Werte liest der Dienst beim Start aus der Umgebung — die MQTT-Verbindung

@@ -50,16 +50,16 @@
     }
 
     function absenden(punktId, wochentag, minute) {
-        const formular = document.getElementById("zeitplan-verschieben");
+        const formular = document.getElementById("schedule-move");
         if (!formular) {
             return;
         }
         // Die Kennung als Feld, nicht im Pfad: hx-boost liest die `action` eines
         // Formulars einmal beim Verarbeiten der Seite. Ein hier umgeschriebener Pfad
         // waere wirkungslos -- die Anfrage ginge an den Pfad von vorhin.
-        formular.elements.punkt_id.value = String(punktId);
-        formular.elements.wochentag.value = String(wochentag);
-        formular.elements.uhrzeit.value = alsUhrzeit(minute);
+        formular.elements.point_id.value = String(punktId);
+        formular.elements.weekday.value = String(wochentag);
+        formular.elements.time_of_day.value = alsUhrzeit(minute);
         // `requestSubmit()` und nicht `submit()`: Nur das feuert ein submit-Ereignis,
         // und nur darueber greift hx-boost -- das ist die Stelle, an der der
         // CSRF-Kopf aus dem Cookie gesetzt wird. Ein nacktes submit() ginge ohne ihn
@@ -79,7 +79,7 @@
             const griffX = ereignis.clientX;
             const griffY = ereignis.clientY;
             const griffversatz = ereignis.clientY - balken.getBoundingClientRect().top;
-            const uhrzeitfeld = balken.querySelector(".zeitplan-uhrzeit");
+            const uhrzeitfeld = balken.querySelector(".schedule-time");
             const urspruenglicheZeit = uhrzeitfeld ? uhrzeitfeld.textContent : "";
             let ziel = null;
             let bewegt = false;
@@ -90,7 +90,7 @@
             // landen pointermove und pointerup auf irgendeinem *anderen* Balken unter
             // dem Zeiger. Genau daran ist die erste Fassung gescheitert: Das Ziehen sah
             // richtig aus und schickte nichts ab.
-            balken.classList.add("zeitplan-in-bewegung");
+            balken.classList.add("schedule-dragging");
             // Waehrend des Ziehens durchlaessig, damit die Tagesspalte darunter
             // getroffen wird und nicht der Balken selbst.
             balken.style.pointerEvents = "none";
@@ -109,7 +109,7 @@
                     return;
                 }
                 const minute = minuteIn(tag, zweitesEreignis.clientY - griffversatz);
-                ziel = { wochentag: Number(tag.dataset.wochentag), minute: minute };
+                ziel = { wochentag: Number(tag.dataset.weekday), minute: minute };
                 if (uhrzeitfeld) {
                     uhrzeitfeld.textContent = alsUhrzeit(minute);
                 }
@@ -119,7 +119,7 @@
                 window.removeEventListener("pointermove", bewegen);
                 window.removeEventListener("pointerup", loslassen);
                 window.removeEventListener("pointercancel", abbrechen);
-                balken.classList.remove("zeitplan-in-bewegung");
+                balken.classList.remove("schedule-dragging");
                 balken.style.pointerEvents = "";
                 balken.style.transform = "";
             }
@@ -144,7 +144,7 @@
                     }
                     return;
                 }
-                absenden(balken.dataset.punkt, ziel.wochentag, ziel.minute);
+                absenden(balken.dataset.point, ziel.wochentag, ziel.minute);
             }
 
             function abbrechen() {
@@ -173,11 +173,11 @@
      *  rund dreizehn Stunden.
      */
     function markieren(tag, minute) {
-        document.querySelectorAll(".zeitplan-marke").forEach(function (alte) {
+        document.querySelectorAll(".schedule-marker").forEach(function (alte) {
             alte.remove();
         });
         const marke = document.createElement("div");
-        marke.className = "zeitplan-marke";
+        marke.className = "schedule-marker";
         marke.style.top = (minute / MINUTEN_PRO_TAG * 100) + "%";
         marke.textContent = alsUhrzeit(minute);
         tag.appendChild(marke);
@@ -186,13 +186,13 @@
     function vorbelegen(tag, y) {
         // Uebernimmt Tag und Uhrzeit ins Anlege-Formular, statt sofort einen Punkt
         // anzulegen: Ein Schaltpunkt ohne gewaehlten Modus waere keiner.
-        const wochentagfeld = document.querySelector('select[name="wochentag"]');
-        const uhrzeitfeld = document.getElementById("uhrzeit");
+        const wochentagfeld = document.querySelector('select[name="weekday"]');
+        const uhrzeitfeld = document.getElementById("time_of_day");
         if (!wochentagfeld || !uhrzeitfeld) {
             return;
         }
         const minute = minuteIn(tag, y);
-        wochentagfeld.value = tag.dataset.wochentag;
+        wochentagfeld.value = tag.dataset.weekday;
         uhrzeitfeld.value = alsUhrzeit(minute);
         markieren(tag, minute);
         // Fokus nur, wenn das Feld ohnehin im Blick ist. `focus({preventScroll: true})`
@@ -208,14 +208,14 @@
     }
 
     function einrichten() {
-        const gitter = document.getElementById("zeitplan-gitter");
-        if (!gitter || gitter.dataset.aenderbar !== "ja" || gitter.dataset.verdrahtet) {
+        const gitter = document.getElementById("schedule-grid");
+        if (!gitter || gitter.dataset.editable !== "ja" || gitter.dataset.wired) {
             return;
         }
-        gitter.dataset.verdrahtet = "ja";
+        gitter.dataset.wired = "ja";
 
-        const tage = Array.from(gitter.querySelectorAll(".zeitplan-tag"));
-        gitter.querySelectorAll(".zeitplan-ziehbar").forEach(function (balken) {
+        const tage = Array.from(gitter.querySelectorAll(".schedule-day"));
+        gitter.querySelectorAll(".schedule-draggable").forEach(function (balken) {
             balkenVerdrahten(balken, tage);
         });
         tage.forEach(function (tag) {
@@ -230,7 +230,7 @@
 
         // Der Hinweis steht im Markup ausgeblendet und wird erst hier sichtbar: Wer kein
         // JavaScript hat, soll nicht lesen, er koenne etwas ziehen, das sich nicht zieht.
-        const hinweis = document.querySelector("[data-zeitplan-hinweis]");
+        const hinweis = document.querySelector("[data-schedule-hint]");
         if (hinweis) {
             hinweis.hidden = false;
         }

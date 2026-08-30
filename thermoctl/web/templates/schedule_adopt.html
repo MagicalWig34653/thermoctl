@@ -1,5 +1,5 @@
-{% extends "basis.html" %}
-{% from "formular.html" import auswahl, fehlerhinweis %}
+{% extends "base.html" %}
+{% from "form.html" import auswahl, fehlerhinweis %}
 {% block titel %}Zeitplan übernehmen – thermoctl{% endblock %}
 {% block inhalt %}
 <h1>Zeitplan für {{ zone.display_name }} übernehmen</h1>
@@ -19,7 +19,7 @@
 <form method="post" action="/zones/{{ zone.id }}/schedule/adopt">
     {% set optionen = [] %}
     {% for source in sources %}{% set _ = optionen.append((source.id, source.display_name)) %}{% endfor %}
-    {{ auswahl("quelle_id", "Quellzone", optionen, source_id or "") }}
+    {{ auswahl("source_id", "Quellzone", optionen, source_id or "") }}
     <button class="btn btn-primary" type="submit">Zeitplan übernehmen</button>
     <a class="btn btn-secondary" href="/zones/{{ zone.id }}/schedule">Abbrechen</a>
 </form>

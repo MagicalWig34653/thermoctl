@@ -13,28 +13,28 @@
     "use strict";
 
     function einrichten() {
-        const feld = document.getElementById("geraetesuche");
-        if (!feld || feld.dataset.verdrahtet) {
+        const feld = document.getElementById("device-search");
+        if (!feld || feld.dataset.wired) {
             return;
         }
-        feld.dataset.verdrahtet = "ja";
+        feld.dataset.wired = "ja";
         feld.hidden = false;
-        const zeilen = Array.from(document.querySelectorAll("[data-geraetezeile]"));
-        const leermeldung = document.getElementById("ohne-treffer");
+        const zeilen = Array.from(document.querySelectorAll("[data-device-row]"));
+        const leermeldung = document.getElementById("no-matches");
 
         feld.addEventListener("input", function () {
             const suche = feld.value.trim().toLowerCase();
             let treffer = 0;
             zeilen.forEach(function (zeile) {
-                const passt = !suche || zeile.dataset.suchtext.includes(suche);
+                const passt = !suche || zeile.dataset.searchText.includes(suche);
                 zeile.hidden = !passt;
                 if (passt) {
                     treffer += 1;
                 }
             });
             // Eine Ueberschrift ohne Zeilen darunter sieht aus wie ein Fehler.
-            document.querySelectorAll(".tc-tafel").forEach(function (tafel) {
-                const sichtbar = tafel.querySelector("[data-geraetezeile]:not([hidden])");
+            document.querySelectorAll(".tc-panel").forEach(function (tafel) {
+                const sichtbar = tafel.querySelector("[data-device-row]:not([hidden])");
                 tafel.hidden = !sichtbar;
                 const ueberschrift = tafel.previousElementSibling;
                 if (ueberschrift && ueberschrift.classList.contains("t-abschnitt")) {

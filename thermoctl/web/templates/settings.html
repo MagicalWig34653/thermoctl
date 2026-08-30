@@ -1,5 +1,5 @@
-{% extends "basis.html" %}
-{% from "formular.html" import textfeld, zahlenfeld %}
+{% extends "base.html" %}
+{% from "form.html" import textfeld, zahlenfeld %}
 {% block titel %}Regelvorgaben – thermoctl{% endblock %}
 {% block max_breite %}52rem{% endblock %}
 {% block inhalt %}
@@ -12,7 +12,7 @@
 </p>
 
 {% if darf_aendern %}
-<form method="post" action="/settings" class="tc-tafel p-4">
+<form method="post" action="/settings" class="tc-panel p-4">
     <p class="t-marke mb-3">Regelung</p>
     <div class="row g-3">
         {% for feld, label, ganzzahlig in felder %}
@@ -29,7 +29,7 @@
     <button class="btn btn-primary mt-4" type="submit">Vorgaben speichern</button>
 </form>
 {% else %}
-<div class="tc-tafel p-4">
+<div class="tc-panel p-4">
     <dl class="row mb-0">
         {% for feld, label, ganzzahlig in felder %}
         <dt class="col-sm-7 fw-normal t-leise">{{ label }}</dt>

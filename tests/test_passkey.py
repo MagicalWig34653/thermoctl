@@ -371,9 +371,9 @@ def test_the_login_page_offers_passkeys_only_when_set_up(
     # `benutzer`: without one, /login redirects to setup, and the check below
     # would be green without ever having seen the login form.
     get_settings.cache_clear()
-    assert "passkey-anmelden" not in client.get("/login").text
+    assert "passkey-login" not in client.get("/login").text
 
     monkeypatch.setenv("THERMOCTL_PASSKEY_RP_ID", RP_ID)
     get_settings.cache_clear()
-    assert "passkey-anmelden" in client.get("/login").text
+    assert "passkey-login" in client.get("/login").text
     get_settings.cache_clear()

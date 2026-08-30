@@ -1,7 +1,7 @@
-{% extends "basis.html" if not ist_htmx else "leer.html" %}
+{% extends "base.html" if not ist_htmx else "empty.html" %}
 {% block titel %}Passkeys – thermoctl{% endblock %}
 {% block inhalt %}
-<section id="passkeyliste">
+<section id="passkey-list">
     <h1 class="mb-3">Passkeys</h1>
     <p class="text-body-secondary">
         Ein Passkey ersetzt das Passwort: Der geheime Teil verlässt Ihr Gerät nie, und er
@@ -50,7 +50,7 @@
     </div>
     {% endif %}
 
-    <div data-ohne-passkey hidden>
+    <div data-without-passkey hidden>
         <div class="alert alert-warning" role="status">
             Dieser Browser beherrscht keine Passkeys. WebAuthn verlangt außerdem eine
             verschlüsselte Verbindung — über <code>http://</code> geht es nur auf
@@ -70,10 +70,10 @@
                     hinterlegt, unterscheidet sie sonst nicht mehr.
                 </div>
             </div>
-            <button type="button" class="btn btn-primary" id="passkey-hinterlegen">
+            <button type="button" class="btn btn-primary" id="passkey-register">
                 Passkey hinterlegen
             </button>
-            <span id="passkey-registrierung-hinweis" class="form-text text-body-secondary"></span>
+            <span id="passkey-registration-hint" class="form-text text-body-secondary"></span>
         </div>
     </div>
     {% endif %}

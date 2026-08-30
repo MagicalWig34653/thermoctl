@@ -100,7 +100,7 @@ def _form_again(
 ) -> Response:
     return form_again(
         request,
-        "zone_formular.html",
+        "zone_form.html",
         values,
         errors,
         zone=zone,
@@ -117,7 +117,7 @@ async def zone_list_view(
     zones = visible_zones(session, principal, "zone.read")
     return templates.TemplateResponse(
         request,
-        "zonen.html",
+        "zones.html",
         {
             "zones": zones,
             "darf_anlegen": has_permission(principal, "zone.manage"),
@@ -137,7 +137,7 @@ async def zone_new(
     require(principal, "zone.manage")
     return templates.TemplateResponse(
         request,
-        "zone_formular.html",
+        "zone_form.html",
         {"zone": None, "values": {"sort_order": "0"}, "errors": {}, **_choice_values(session)},
     )
 
@@ -191,7 +191,7 @@ async def edit_zone(
     }
     return templates.TemplateResponse(
         request,
-        "zone_formular.html",
+        "zone_form.html",
         {"zone": zone, "values": values, "errors": {}, **_choice_values(session)},
     )
 
@@ -240,7 +240,7 @@ async def confirm_zone_delete(
     zone = _visible_zone(session, principal, zone_id)
     return templates.TemplateResponse(
         request,
-        "zone_loeschen.html",
+        "zone_delete.html",
         {"zone": zone, "abhaengigkeiten": zonedependencies(session, zone.id)},
     )
 

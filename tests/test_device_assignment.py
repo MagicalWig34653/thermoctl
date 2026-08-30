@@ -454,14 +454,14 @@ def test_drop_targets_only_with_device_manage(client_als, session: Session) -> N
     darf = client_als([("device.read", None), ("device.manage", zone.id), ("zone.read", None)])
     page = darf.get(f"/zones/{zone.id}/devices")
     assert page.status_code == 200
-    assert 'data-ziel="messquelle"' in page.text
-    assert "tc-ziehbar" in page.text
+    assert 'data-target="messquelle"' in page.text
+    assert "tc-draggable" in page.text
 
     read_only = client_als([("device.read", None), ("zone.read", None)])
     page = read_only.get(f"/zones/{zone.id}/devices")
     assert page.status_code == 200
-    assert "data-ziel=" not in page.text
-    assert "tc-ziehbar" not in page.text
+    assert "data-target=" not in page.text
+    assert "tc-draggable" not in page.text
 
 
 def test_the_plant_diagram_offers_no_drop_targets(client_als, session: Session) -> None:
@@ -472,7 +472,7 @@ def test_the_plant_diagram_offers_no_drop_targets(client_als, session: Session) 
         "/plant"
     )
     assert page.status_code == 200
-    assert "data-ziel=" not in page.text
+    assert "data-target=" not in page.text
 
 
 # --- Capability check --------------------------------------------------------
@@ -625,9 +625,9 @@ def test_zugeordnete_karten_tragen_ihre_kennung(client_als, session: Session) ->
         [("device.read", None), ("device.manage", None), ("zone.read", None)]
     )
     page = client.get(f"/zones/{zone.id}/devices")
-    assert f'data-zuordnung="{assignment.id}"' in page.text
-    assert 'data-messquelle="ja"' in page.text
-    assert 'data-ziel="entfernen"' in page.text
+    assert f'data-assignment="{assignment.id}"' in page.text
+    assert 'data-source="ja"' in page.text
+    assert 'data-target="entfernen"' in page.text
 
 
 def test_without_device_manage_nothing_can_be_dragged_out(client_als, session: Session) -> None:
@@ -646,8 +646,8 @@ def test_without_device_manage_nothing_can_be_dragged_out(client_als, session: S
     page = client_als([("device.read", None), ("zone.read", None)]).get(
         f"/zones/{zone.id}/devices"
     )
-    assert "tc-ziehbar" not in page.text
-    assert 'data-ziel="entfernen"' not in page.text
+    assert "tc-draggable" not in page.text
+    assert 'data-target="entfernen"' not in page.text
 
 
 def test_the_plant_diagram_carries_no_drag_handles(client_als, session: Session) -> None:
@@ -666,7 +666,7 @@ def test_the_plant_diagram_carries_no_drag_handles(client_als, session: Session)
     page = client_als(
         [("device.read", None), ("device.manage", None), ("zone.read", None)]
     ).get("/plant")
-    assert "tc-ziehbar" not in page.text
+    assert "tc-draggable" not in page.text
 
 
 def _controller_commands(session: Session) -> None:

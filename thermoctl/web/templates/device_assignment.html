@@ -1,13 +1,13 @@
-{% extends "basis.html" %}
-{% from "zonenkopf.html" import zonenkopf %}
-{% from "flussbild.html" import flussbild %}
+{% extends "base.html" %}
+{% from "zone_header.html" import zonenkopf %}
+{% from "flow_diagram.html" import flow_diagram %}
 {% block titel %}Geräte in {{ zone.display_name }} – thermoctl{% endblock %}
 {% block inhalt %}
 {{ zonenkopf(zone, "Geräte") }}
 <p><a href="/controllers">Bediengeräte, Anzeigen und Tasten konfigurieren</a></p>
 
-<section class="tc-tafel p-4 mb-4">
-    {{ flussbild(picture, ziehbar=darf_aendern) }}
+<section class="tc-panel p-4 mb-4">
+    {{ flow_diagram(picture, draggable=darf_aendern) }}
     <p class="t-leise small mb-0 mt-3">
         Dasselbe Bild für alle Zonen auf einmal: <a href="/plant">Anlagenbild</a>.
     </p>
@@ -28,11 +28,11 @@ wirkungslos.
 Der Vorrat ist zugleich Ablegeziel: Ein zugeordnetes Gerät hierher zurückziehen löst die
 Zuordnung. Hinein und hinaus ist damit derselbe Handgriff in zwei Richtungen.
 #}
-<section class="tc-tafel p-4 mb-4 tc-ziel" id="geraetevorrat"
-         data-ziel="entfernen" data-zielname="Geräte">
+<section class="tc-panel p-4 mb-4 tc-target" id="device-pool"
+         data-target="entfernen" data-target-name="Geräte">
     <div class="d-flex justify-content-between align-items-baseline flex-wrap gap-2">
         <h2 class="mb-0">Geräte</h2>
-        <span class="t-leise small" data-ziehhinweis hidden>
+        <span class="t-leise small" data-drag-hint hidden>
             Ein Gerät auf eine der Stufen oben ziehen — oder von dort hierher zurück,
             um es aus der Zone zu nehmen.
         </span>
@@ -40,15 +40,15 @@ Zuordnung. Hinein und hinaus ist damit derselbe Handgriff in zwei Richtungen.
     <div class="d-flex flex-wrap gap-2 mt-3">
         {% for device in devices %}
         {#
-        `data-kann` traegt die Faehigkeiten des Geraets. Das Skript blendet damit beim
+        `data-can` traegt die Faehigkeiten des Geraets. Das Skript blendet damit beim
         Ziehen die Ziele aus, die dieses Geraet nicht ausfuellen kann -- derselbe
         Massstab wie in der Domaene, nur vorher statt hinterher. Die Pruefung selbst
         bleibt im Server: Was der Browser verhindert, ist Bequemlichkeit, was die Domaene
         verhindert, ist die Regel.
         #}
-        <div class="tc-knoten tc-knoten-frei tc-ziehbar" data-geraet="{{ device.id }}"
-             data-kann="{{ capabilities.get(device.id, []) | join(' ') }}">
-            <div class="tc-knoten-name">{{ device.display_name }}</div>
+        <div class="tc-node tc-node-free tc-draggable" data-device="{{ device.id }}"
+             data-can="{{ capabilities.get(device.id, []) | join(' ') }}">
+            <div class="tc-node-name">{{ device.display_name }}</div>
             {% if device.model %}
             <div class="t-leise" style="font-size: .68rem">{{ device.model }}</div>
             {% endif %}
@@ -57,16 +57,16 @@ Zuordnung. Hinein und hinaus ist damit derselbe Handgriff in zwei Richtungen.
     </div>
 </section>
 
-<form id="zuordnung-messquelle" method="post" hidden hx-push-url="false"
+<form id="assignment-source" method="post" hidden hx-push-url="false"
       action="/zones/{{ zone.id }}/devices/source">
     <input type="hidden" name="device_id">
 </form>
-<form id="zuordnung-rolle" method="post" hidden hx-push-url="false"
+<form id="assignment-role" method="post" hidden hx-push-url="false"
       action="/zones/{{ zone.id }}/devices/assign">
     <input type="hidden" name="device_id">
     <input type="hidden" name="role_id">
 </form>
-<form id="zuordnung-loesen" method="post" hidden hx-push-url="false"
+<form id="assignment-detach" method="post" hidden hx-push-url="false"
       action="/zones/{{ zone.id }}/devices/detach">
     <input type="hidden" name="assignment_id">
 </form>
@@ -78,7 +78,7 @@ Skripts falsch rät.
 #}
 <div hidden>
     {% for rolle in rollen %}
-    <span data-rollencode="{{ rolle.code }}" data-rollenid="{{ rolle.id }}"></span>
+    <span data-role-code="{{ rolle.code }}" data-role-id="{{ rolle.id }}"></span>
     {% endfor %}
 </div>
 {% endif %}
@@ -124,17 +124,17 @@ Skripts falsch rät.
 </div>
 {% else %}<p>Noch keine Rollen zugeordnet.</p>{% endif %}
 
-{% if controllere %}
+{% if controllers %}
 <h2 class="h4 mt-4">Tastenbelegung</h2>
 <p class="t-leise">Die Bearbeitung ist zu <a href="/controllers">Bediengeräte</a> umgezogen.</p>
 {% if errors.button %}<div class="alert alert-danger">{{ errors.button }}</div>{% endif %}
-{% for device, belegungen in controllere %}
+{% for device, belegungen in controllers %}
   {% for binding in belegungen %}<span class="t-wert me-2">{{ binding.aktion }}</span>{% endfor %}
 {% endfor %}
 <span class="visually-hidden">{% for command in commands %}{{ command.label }} {% endfor %}</span>
 {% endif %}
 
-{% if false and controllere %}
+{% if false and controllers %}
 <h2 class="h4 mt-4">Tastenbelegung</h2>
 <p class="t-leise">
     Wie ein Gerät seine Tasten nennt, entscheidet Zigbee2MQTT je Modell — der eine schickt
@@ -144,8 +144,8 @@ Skripts falsch rät.
 </p>
 {% if errors.button %}<div class="alert alert-danger">{{ errors.button }}</div>{% endif %}
 
-{% for device, belegungen in controllere %}
-<div class="tc-tafel mb-3">
+{% for device, belegungen in controllers %}
+<div class="tc-panel mb-3">
     <div class="p-3 pb-0">
         <div class="tc-zone-name">{{ device.display_name }}</div>
         <div class="t-leise" style="font-size: .72rem">{{ device.model or "Modell unbekannt" }}</div>

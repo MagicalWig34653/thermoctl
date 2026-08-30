@@ -1,6 +1,6 @@
-{% extends "basis.html" %}
-{% from "zonenkopf.html" import zonenkopf %}
-{% from "formular.html" import zahlenfeld %}
+{% extends "base.html" %}
+{% from "zone_header.html" import zonenkopf %}
+{% from "form.html" import zahlenfeld %}
 {% block titel %}Sollwerte {{ zone.display_name }} – thermoctl{% endblock %}
 {% block inhalt %}
 {{ zonenkopf(zone, "Sollwerte") }}

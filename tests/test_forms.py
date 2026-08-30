@@ -16,7 +16,7 @@ def _request() -> Request:
 def test_form_again_shows_values_and_field_errors() -> None:
     response = form_again(
         _request(),
-        "einrichtung.html",
+        "setup.html",
         {"username": "eingegebener-name"},
         FormError("password", "Das Passwort ist zu kurz."),
     )
@@ -32,7 +32,7 @@ def test_form_again_never_returns_the_password() -> None:
     secret = "dieses-passwort-darf-nicht-zurueck"
     response = form_again(
         _request(),
-        "einrichtung.html",
+        "setup.html",
         {"username": "lino", "password": secret, "new_password": secret},
     )
 
@@ -43,7 +43,7 @@ def test_form_again_never_returns_the_password() -> None:
 
 def test_form_macros_link_labels_and_fields() -> None:
     template = templates.env.from_string(
-        """{% from 'formular.html' import textfeld, zahlenfeld, auswahl, umschalter %}
+        """{% from 'form.html' import textfeld, zahlenfeld, auswahl, umschalter %}
         {{ textfeld('name', 'Name') }}
         {{ zahlenfeld('temperatur', 'Temperatur') }}
         {{ auswahl('modus', 'Modus', [('tag', 'Tag')]) }}
@@ -58,7 +58,7 @@ def test_form_macros_link_labels_and_fields() -> None:
 
 def test_delete_confirmation_shows_dependencies() -> None:
     template = templates.env.from_string(
-        """{% from 'formular.html' import loeschbestaetigung %}
+        """{% from 'form.html' import loeschbestaetigung %}
         {{ loeschbestaetigung('Zone löschen', 'Wirklich löschen?',
                               '4 Schaltpunkte, 2 zugeordnete Geräte', '/zonen/1', '/zonen') }}"""
     )

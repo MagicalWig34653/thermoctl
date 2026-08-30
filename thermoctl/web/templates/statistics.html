@@ -1,4 +1,4 @@
-{% extends "basis.html" %}
+{% extends "base.html" %}
 {% block titel %}Statistik – thermoctl{% endblock %}
 {% block max_breite %}72rem{% endblock %}
 
@@ -32,11 +32,11 @@ Die Balken sind kupfern wie überall: Farbe ist hier Wärme, und nichts anderes.
 </p>
 
 {% if not zones %}
-<div class="tc-tafel p-4">
+<div class="tc-panel p-4">
     <p class="t-leise mb-0">Noch keine Zonen angelegt.</p>
 </div>
 {% elif maximum == 0 %}
-<div class="tc-tafel p-4">
+<div class="tc-panel p-4">
     <p class="t-abschnitt mb-1">In diesem Zeitraum wurde nicht geheizt.</p>
     <p class="t-leise mb-0">
         Entweder war es warm genug, oder der Regelzyklus lief noch nicht — er schreibt
@@ -46,7 +46,7 @@ Die Balken sind kupfern wie überall: Farbe ist hier Wärme, und nichts anderes.
 </div>
 {% else %}
 
-<div class="tc-tafel p-4">
+<div class="tc-panel p-4">
     {% for zone in zones %}
     {% set stat = values[zone.id] %}
     <section class="{{ 'mt-4 pt-4 border-top' if not loop.first }}">
@@ -57,14 +57,14 @@ Die Balken sind kupfern wie überall: Farbe ist hier Wärme, und nichts anderes.
                 <span class="t-leise" style="font-size: .75rem">gesamt</span>
             </span>
         </div>
-        <div class="tc-saeulen">
+        <div class="tc-bars">
             {% for day in stat.days %}
-            <div class="tc-saeule" title="{{ day.day.strftime('%d.%m.%Y') }}: {{ as_duration(day.seconds) }}">
-                <div class="tc-saeule-flaeche">
-                    <div class="tc-saeule-wert"
+            <div class="tc-bar" title="{{ day.day.strftime('%d.%m.%Y') }}: {{ as_duration(day.seconds) }}">
+                <div class="tc-bar-area">
+                    <div class="tc-bar-value"
                          style="height: {{ (day.seconds * 100 / maximum)|round(2) }}%"></div>
                 </div>
-                <div class="tc-saeule-marke t-wert t-leise">{{ day.day.strftime("%d.%m.") }}</div>
+                <div class="tc-bar-marker t-wert t-leise">{{ day.day.strftime("%d.%m.") }}</div>
             </div>
             {% endfor %}
         </div>

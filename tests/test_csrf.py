@@ -95,7 +95,7 @@ def test_base_template_carries_the_csrf_cookie_via_htmx() -> None:
     from pathlib import Path
 
     base_template = (
-        Path(__file__).parent.parent / "thermoctl" / "web" / "templates" / "basis.html"
+        Path(__file__).parent.parent / "thermoctl" / "web" / "templates" / "base.html"
     ).read_text(encoding="utf-8")
     assert 'hx-boost="true"' in base_template
     assert 'headers["X-CSRF-Token"]' in base_template
