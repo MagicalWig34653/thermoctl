@@ -1,6 +1,428 @@
-/* Eigene Ergaenzungen zu Bootstrap. Global eingebunden, nicht je Seite: Der Kopf wird
-   bei hx-boost nicht ausgetauscht, seitenweise eingebundenes CSS fehlte nach jeder
-   Navigation. */
+/* thermoctl — eigene Gestaltung über Bootstrap.
+ *
+ * Global eingebunden, nicht je Seite: Der Kopf wird bei hx-boost nicht ausgetauscht,
+ * seitenweise eingebundenes CSS fehlte nach jeder Navigation.
+ *
+ * ── Die Haltung ────────────────────────────────────────────────────────────────
+ * Diese Oberfläche bedient eine Heizung. Ihre einzige wirklich wichtige Aussage ist
+ * eine Temperatur, und ihr einziger wirklich wichtiger Unterschied ist der zwischen
+ * "wärmt gerade" und "wärmt nicht". Deshalb ist **Farbe hier keine Dekoration,
+ * sondern Messwert**: Die gesamte Fläche ist Schiefer und Papier, und die einzigen
+ * gesättigten Töne im ganzen Programm sind Kupfer (Wärme) und Stahlblau (Kühle).
+ * Eine Schaltfläche ist nie kupfern, ein Reiter nie blau — sonst verlöre die Farbe
+ * genau die Bedeutung, für die sie hier da ist.
+ *
+ * Kupfer, weil Heizungsrohre aus Kupfer sind; Schiefer, weil Heizkörper und
+ * Kesselblech so aussehen. Beides stammt aus der Sache selbst, nicht aus einer
+ * Farbpalette.
+ *
+ * ── Schrift ────────────────────────────────────────────────────────────────────
+ * Keine Webschrift. Der Dienst läuft selbst gehostet, oft in einem Netz ohne
+ * Internetzugang; eine Schrift von einem fremden Server wäre dort still weg, eine
+ * mitgelieferte kostete Bandbreite für wenig. Stattdessen zwei Register aus dem, was
+ * jedes System hat: eine Systemschrift für Sprache und eine dicktengleiche für
+ * **Instrumentwerte** — Temperaturen, Uhrzeiten, Dauern. Zahlen, die untereinander
+ * stehen, sollen auch untereinander stehen.
+ */
+
+:root {
+    color-scheme: light;
+
+    --grund: #f4f6f7;
+    --flaeche: #ffffff;
+    --flaeche-tief: #eceff1;
+    --tinte: #15181b;
+    --gedaempft: #5b656e;
+    --linie: #dde2e6;
+    --linie-stark: #c3cbd2;
+
+    /* Die einzigen gesättigten Töne. Beide bedeuten etwas. */
+    --waerme: #b4562f;
+    --waerme-flaeche: #f6e3da;
+    --kuehle: #3a6a89;
+    --kuehle-flaeche: #dfeaf1;
+    --warnung: #8a6212;
+    --warnung-flaeche: #f7ecd2;
+
+    --schrift-ui: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue",
+        Arial, sans-serif;
+    --schrift-instrument: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+        "Liberation Mono", monospace;
+
+    --rundung: 6px;
+    --rundung-klein: 4px;
+}
+
+[data-bs-theme="dark"] {
+    color-scheme: dark;
+
+    --grund: #121517;
+    --flaeche: #1a1e21;
+    --flaeche-tief: #24292d;
+    --tinte: #e6eaed;
+    --gedaempft: #9aa4ad;
+    --linie: #2b3136;
+    --linie-stark: #3c444b;
+
+    --waerme: #dd8055;
+    --waerme-flaeche: #3a2419;
+    --kuehle: #79aecd;
+    --kuehle-flaeche: #16272f;
+    --warnung: #d8a743;
+    --warnung-flaeche: #2f2612;
+}
+
+body {
+    background: var(--grund);
+    color: var(--tinte);
+    font-family: var(--schrift-ui);
+    -webkit-font-smoothing: antialiased;
+}
+
+/* ── Typografie ─────────────────────────────────────────────────────────────── */
+
+h1, .t-titel {
+    font-size: 1.6rem;
+    font-weight: 620;
+    letter-spacing: -0.015em;
+    text-wrap: balance;
+}
+
+h2, .t-abschnitt {
+    font-size: 1.05rem;
+    font-weight: 600;
+    letter-spacing: -0.005em;
+}
+
+/* Kleine Grossbuchstaben-Marke. Sparsam: Sie beschriftet Abschnitte, sie schmückt sie
+   nicht. */
+.t-marke {
+    font-size: 0.6875rem;
+    font-weight: 640;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--gedaempft);
+}
+
+.t-leise {
+    color: var(--gedaempft);
+}
+
+/* Das Instrument-Register: alles, was ein Messwert ist. */
+.t-wert {
+    font-family: var(--schrift-instrument);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em;
+}
+
+.t-gross {
+    font-size: 2rem;
+    font-weight: 500;
+    line-height: 1;
+}
+
+.t-einheit {
+    font-size: 0.55em;
+    font-weight: 400;
+    color: var(--gedaempft);
+    margin-left: 0.15em;
+}
+
+/* ── Navigation ─────────────────────────────────────────────────────────────── */
+
+.tc-kopf {
+    background: color-mix(in srgb, var(--flaeche) 72%, transparent);
+    backdrop-filter: blur(12px) saturate(140%);
+    -webkit-backdrop-filter: blur(12px) saturate(140%);
+    border-bottom: 1px solid var(--linie);
+}
+
+.tc-marke {
+    font-weight: 640;
+    letter-spacing: -0.02em;
+    color: var(--tinte);
+    text-decoration: none;
+}
+
+.tc-marke::before {
+    /* Ein Thermometerstrich statt eines Logos: zwei Zeichen, die aus der Sache kommen. */
+    content: "";
+    display: inline-block;
+    width: 3px;
+    height: 0.95em;
+    margin-right: 0.5rem;
+    vertical-align: -0.1em;
+    border-radius: 2px;
+    background: linear-gradient(to top, var(--kuehle), var(--waerme));
+}
+
+.tc-kopf .nav-link {
+    color: var(--gedaempft);
+    font-weight: 520;
+    padding-inline: 0.7rem;
+}
+
+.tc-kopf .nav-link:hover,
+.tc-kopf .nav-link:focus-visible {
+    color: var(--tinte);
+}
+
+.tc-kopf .nav-link.tc-hier {
+    color: var(--tinte);
+    box-shadow: inset 0 -2px 0 var(--tinte);
+}
+
+/* ── Flächen ────────────────────────────────────────────────────────────────── */
+
+.tc-tafel {
+    background: var(--flaeche);
+    border: 1px solid var(--linie);
+    border-radius: var(--rundung);
+}
+
+/* Die Systemzeile ganz oben: ein Satz über den Zustand der ganzen Anlage. */
+.tc-systemzeile {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem 1.25rem;
+    padding: 0.7rem 1rem;
+    border-radius: var(--rundung);
+    border: 1px solid var(--linie);
+    background: var(--flaeche);
+}
+
+.tc-systemzeile.tc-scharf {
+    border-color: color-mix(in srgb, var(--waerme) 45%, var(--linie));
+    background: var(--waerme-flaeche);
+}
+
+/* ── Zustandsmarken ─────────────────────────────────────────────────────────── */
+
+.tc-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.15rem 0.5rem;
+    border-radius: var(--rundung-klein);
+    font-size: 0.75rem;
+    font-weight: 600;
+    line-height: 1.4;
+    border: 1px solid transparent;
+    white-space: nowrap;
+}
+
+.tc-chip-waerme {
+    color: var(--waerme);
+    background: var(--waerme-flaeche);
+    border-color: color-mix(in srgb, var(--waerme) 25%, transparent);
+}
+
+.tc-chip-kuehle {
+    color: var(--kuehle);
+    background: var(--kuehle-flaeche);
+    border-color: color-mix(in srgb, var(--kuehle) 25%, transparent);
+}
+
+.tc-chip-warnung {
+    color: var(--warnung);
+    background: var(--warnung-flaeche);
+    border-color: color-mix(in srgb, var(--warnung) 30%, transparent);
+}
+
+.tc-chip-still {
+    color: var(--gedaempft);
+    background: var(--flaeche-tief);
+    border-color: var(--linie);
+}
+
+/* Ein Punkt, der pulst, solange wirklich geheizt wird. Das einzige bewegte Element im
+   ganzen Programm — es zeigt genau die eine Sache an, die gerade passiert. */
+.tc-punkt {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: currentColor;
+    flex: none;
+}
+
+.tc-chip-waerme .tc-punkt {
+    animation: tc-puls 2.4s ease-in-out infinite;
+}
+
+@keyframes tc-puls {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.35; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .tc-chip-waerme .tc-punkt { animation: none; }
+    * { scroll-behavior: auto !important; }
+}
+
+/* ── Die Tagesspur ──────────────────────────────────────────────────────────────
+ *
+ * Das Kennzeichen dieser Oberfläche: der Plan eines Tages als ein Band. Sie zeigt in
+ * einem Blick, was für diese Zone vorgesehen ist, wo im Tag wir gerade stehen und wie
+ * warm es an dieser Stelle sein soll. Kein Verlaufsdiagramm — der Plan, nicht die
+ * Vergangenheit. Genau das weiß dieses Programm und ein Thermometer nicht.
+ *
+ * Reines CSS, keine Bibliothek: Sie besteht aus abschnittsweise gesetzten Flächen,
+ * deren Farbe die Solltemperatur ist. */
+
+.tc-spur {
+    position: relative;
+    height: 2.25rem;
+    border-radius: var(--rundung-klein);
+    background: var(--flaeche-tief);
+    overflow: hidden;
+    border: 1px solid var(--linie);
+}
+
+.tc-spur-abschnitt {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    border-right: 1px solid color-mix(in srgb, var(--flaeche) 55%, transparent);
+}
+
+.tc-spur-abschnitt:last-child {
+    border-right: 0;
+}
+
+/* Der Plan gilt gerade nicht -- Betriebsart "Aus" oder eine laufende Uebersteuerung
+   setzen ihn ausser Kraft. Das Band zeigt dann weiter, was vorgesehen waere, aber
+   sichtbar entkraeftet: Ein satt gezeichneter Tagesplan an einer abgeschalteten Zone
+   wuerde das Gegenteil dessen behaupten, was die Anlage tut. */
+.tc-spur-ausgesetzt {
+    filter: grayscale(0.75);
+    opacity: 0.5;
+}
+
+.tc-spur-jetzt {
+    position: absolute;
+    top: -2px;
+    bottom: -2px;
+    width: 2px;
+    background: var(--tinte);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--flaeche) 70%, transparent);
+    z-index: 2;
+}
+
+.tc-spur-skala {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 0.2rem;
+    font-size: 0.65rem;
+}
+
+/* ── Zonenzeile ─────────────────────────────────────────────────────────────── */
+
+/* Feste Spaltenbreiten, keine `auto`-Spalten: Jede Zeile ist ein eigenes Grid, und
+   `auto` misst dann je Zeile neu. Die Folge waren Spalten, die von Zone zu Zone
+   sprangen -- ausgerechnet auf einer Seite, deren ganzer Zweck es ist, Zonen
+   untereinander vergleichbar zu machen. */
+.tc-zone {
+    display: grid;
+    grid-template-columns: minmax(9rem, 1fr) 9rem minmax(14rem, 2.4fr) 10.5rem;
+    gap: 1.25rem;
+    align-items: center;
+    padding: 1rem 1.15rem;
+    border-bottom: 1px solid var(--linie);
+}
+
+.tc-zone:last-child {
+    border-bottom: 0;
+}
+
+.tc-zone-name {
+    font-weight: 600;
+    color: var(--tinte);
+    text-decoration: none;
+}
+
+.tc-zone-name:hover {
+    text-decoration: underline;
+}
+
+@media (max-width: 62em) {
+    .tc-zone {
+        grid-template-columns: 1fr auto;
+        row-gap: 0.85rem;
+    }
+    .tc-zone > .tc-zone-spur {
+        grid-column: 1 / -1;
+    }
+}
+
+/* ── Formulare und Schaltflächen ────────────────────────────────────────────────
+ * Bewusst schiefergrau statt blau: Blau ist hier Kühle und damit ein Messwert. */
+
+.btn-primary {
+    --bs-btn-bg: #2f3941;
+    --bs-btn-border-color: #2f3941;
+    --bs-btn-hover-bg: #1f272d;
+    --bs-btn-hover-border-color: #1f272d;
+    --bs-btn-active-bg: #1f272d;
+    --bs-btn-active-border-color: #1f272d;
+}
+
+[data-bs-theme="dark"] .btn-primary {
+    --bs-btn-bg: #d7dde2;
+    --bs-btn-border-color: #d7dde2;
+    --bs-btn-color: #15181b;
+    --bs-btn-hover-bg: #eef1f4;
+    --bs-btn-hover-border-color: #eef1f4;
+    --bs-btn-hover-color: #15181b;
+    --bs-btn-active-bg: #eef1f4;
+    --bs-btn-active-color: #15181b;
+}
+
+.form-control, .form-select {
+    border-color: var(--linie-stark);
+}
+
+/* Bootstraps `secondary` ist im dunklen Schema fast unsichtbar. Beide Varianten
+   nehmen deshalb die eigenen Linien- und Textfarben. */
+.btn-outline-secondary {
+    --bs-btn-color: var(--tinte);
+    --bs-btn-border-color: var(--linie-stark);
+    --bs-btn-hover-color: var(--tinte);
+    --bs-btn-hover-bg: var(--flaeche-tief);
+    --bs-btn-hover-border-color: var(--linie-stark);
+    --bs-btn-active-color: var(--tinte);
+    --bs-btn-active-bg: var(--flaeche-tief);
+    --bs-btn-active-border-color: var(--linie-stark);
+}
+
+:focus-visible {
+    outline: 2px solid var(--kuehle);
+    outline-offset: 2px;
+}
+
+/* Die dritte und letzte Bedeutung von Farbe: "das loescht etwas". Sie erscheint
+   ausschliesslich auf Schaltflaechen, nie an einem Messwert -- Bootstraps volles Rot
+   waere neben dem Kupfer nur laut. */
+.btn-outline-danger {
+    --bs-btn-color: #9c4232;
+    --bs-btn-border-color: #d8b3ab;
+    --bs-btn-hover-bg: #9c4232;
+    --bs-btn-hover-border-color: #9c4232;
+    --bs-btn-active-bg: #9c4232;
+    --bs-btn-active-border-color: #9c4232;
+}
+
+[data-bs-theme="dark"] .btn-outline-danger {
+    --bs-btn-color: #e0907f;
+    --bs-btn-border-color: #5a342d;
+    --bs-btn-hover-bg: #7d3527;
+    --bs-btn-hover-border-color: #7d3527;
+    --bs-btn-hover-color: #ffffff;
+    --bs-btn-active-bg: #7d3527;
+    --bs-btn-active-border-color: #7d3527;
+}
+
+/* ── Zeitplan-Wochenansicht ─────────────────────────────────────────────────── */
 
 .zeitplan-ziehbar {
     cursor: grab;
@@ -10,10 +432,20 @@
 .zeitplan-in-bewegung {
     cursor: grabbing;
     z-index: 2;
-    opacity: .85;
-    box-shadow: 0 .25rem .75rem rgba(0, 0, 0, .35);
+    opacity: 0.85;
+    box-shadow: 0 0.25rem 0.75rem rgb(0 0 0 / 35%);
 }
 
 .zeitplan-tag {
     cursor: crosshair;
+    background: var(--flaeche-tief) !important;
+    border-color: var(--linie) !important;
+}
+
+/* Die Farbe kommt aus der Vorlage (Solltemperatur des Modus), deshalb hier keine.
+   Der Text steht auf hellen wie dunklen Flaechen -- Tinte statt Weiss. */
+.zeitplan-balken {
+    color: var(--tinte);
+    border-bottom-color: color-mix(in srgb, var(--tinte) 18%, transparent) !important;
+    line-height: 1.25;
 }

@@ -1,15 +1,16 @@
 {% extends "basis.html" %}
 {% from "formular.html" import auswahl, textfeld %}
+{% from "zonenkopf.html" import zonenkopf %}
 {% block titel %}Zeitplan {{ zone.display_name }} – thermoctl{% endblock %}
 {% block max_breite %}90rem{% endblock %}
 {% block inhalt %}
+{{ zonenkopf(zone, "Zeitplan") }}
 <div class="d-flex justify-content-between align-items-center mb-3">
     <div>
-        <h1>Zeitplan für {{ zone.display_name }}</h1>
-        <p class="text-muted mb-0">Lokale Zeit; ein Balken gilt bis zum nächsten Schaltpunkt.</p>
+        <p class="t-leise mb-0">Lokale Zeit; ein Balken gilt bis zum nächsten Schaltpunkt.</p>
     </div>
     {% if darf_aendern %}
-    <a class="btn btn-outline-primary" href="/zonen/{{ zone.id }}/zeitplan/uebernehmen">
+    <a class="btn btn-outline-secondary" href="/zonen/{{ zone.id }}/zeitplan/uebernehmen">
         Von anderer Zone übernehmen
     </a>
     {% endif %}
@@ -28,19 +29,26 @@
     <section class="col" style="min-width: 8rem;">
         <h2 class="h6 text-center">{{ tagname }}</h2>
         <div class="zeitplan-tag position-relative border rounded bg-light"
-             style="height: 36rem;" data-wochentag="{{ tag }}">
+             style="height: 26rem;" data-wochentag="{{ tag }}">
         {% for abschnitt in abschnitte[tag] %}
-            <div class="zeitplan-balken position-absolute start-0 end-0 border-bottom bg-primary text-white px-1 overflow-hidden{{ ' zeitplan-ziehbar' if abschnitt.punkt_id and darf_aendern }}"
+            <div class="zeitplan-balken position-absolute start-0 end-0 border-bottom px-1 overflow-hidden{{ ' zeitplan-ziehbar' if abschnitt.punkt_id and darf_aendern }}"
                  {% if abschnitt.punkt_id %}data-punkt="{{ abschnitt.punkt_id }}"{% endif %}
                  data-startminute="{{ abschnitt.startminute }}"
-                 style="top: {{ abschnitt.startminute / 40 }}rem;
-                        height: {{ (abschnitt.endminute - abschnitt.startminute) / 40 }}rem;"
+                 {% set w = waerme.get(abschnitt.modus_id, 0.5) %}
+                 style="top: {{ abschnitt.startminute / 55.4 }}rem;
+                        height: {{ (abschnitt.endminute - abschnitt.startminute) / 55.4 }}rem;
+                        background: color-mix(in oklab,
+                            var({{ '--waerme' if w >= 0.5 else '--kuehle' }})
+                            {{ (45 + (w - 0.5)|abs * 90)|round|int }}%, var(--flaeche));"
                  title="{{ abschnitt.modusname }} ab {{ "%02d:%02d"|format(
                      abschnitt.startminute // 60, abschnitt.startminute % 60
-                 ) }}">
-                <small><span class="zeitplan-uhrzeit">{{ "%02d:%02d"|format(
+                 ) }}{% if temperaturen.get(abschnitt.modus_id) %} – {{ temperaturen[abschnitt.modus_id]|grad }} °C{% endif %}">
+                {# Eine Zeile, nicht zwei: Ein Balken von zwei Stunden ist keine zwei
+                   Zeilen hoch, und die Beschriftung wurde unten abgeschnitten. #}
+                <small class="text-nowrap"><span class="zeitplan-uhrzeit t-wert">{{ "%02d:%02d"|format(
                     abschnitt.startminute // 60, abschnitt.startminute % 60
-                ) }}</span> {{ abschnitt.modusname }}</small>
+                ) }}</span> {{ abschnitt.modusname }}{% if temperaturen.get(abschnitt.modus_id) %}
+                    <span class="t-wert">{{ temperaturen[abschnitt.modus_id]|grad }}°</span>{% endif %}</small>
             </div>
         {% endfor %}
         </div>

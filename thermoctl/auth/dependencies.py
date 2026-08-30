@@ -53,6 +53,11 @@ def aktueller_principal(
     if benutzer is None or not benutzer.is_active:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=_NICHT_ANGEMELDET)
 
+    # Fuer die Kopfleiste, die auf jeder Seite den angemeldeten Namen tragen soll (siehe
+    # `_angemeldeter_benutzer` in thermoctl/web/__init__.py). Hier hinterlegt statt in
+    # jeder Ansicht: Sonst traegt die Leiste den Namen genau dort, wo eine Ansicht daran
+    # gedacht hat.
+    request.state.benutzer = benutzer
     return principal_fuer_benutzer(session, benutzer)
 
 

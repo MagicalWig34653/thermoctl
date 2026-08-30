@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="de" data-bs-theme="auto">
+<html lang="de">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -7,22 +7,21 @@
     <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="/static/vendor/bootstrap/bootstrap.min.css">
     <link rel="stylesheet" href="/static/thermoctl.css">
-    {#
-    Skripte gehoeren in den Kopf, nicht ans Ende des Rumpfes. `hx-boost` tauscht bei
-    jeder Navigation den Inhalt des <body> aus, und htmx fuehrt <script>-Tags im
-    eingetauschten Inhalt erneut aus. Bootstrap registriert seine Menuebehandlung dann
-    ein zweites Mal am `document`: Der Umschalter feuert doppelt, das Menue geht auf und
-    im selben Klick wieder zu -- es sieht aus, als ginge es gar nicht mehr auf. Der Kopf
-    wird nie ausgetauscht, also laeuft hier alles genau einmal.
-    `defer`, weil die Dateien damit erst nach dem Parsen laufen und ihre Reihenfolge
-    trotzdem erhalten bleibt.
-    #}
+    <script>
+        (function () {
+            var gemerkt = null;
+            try { gemerkt = localStorage.getItem("thermoctl-schema"); } catch (e) { /* egal */ }
+            var dunkel = gemerkt
+                ? gemerkt === "dunkel"
+                : window.matchMedia("(prefers-color-scheme: dark)").matches;
+            document.documentElement.setAttribute("data-bs-theme", dunkel ? "dark" : "light");
+        })();
+    </script>
+    {# Siehe basis.html: Skripte gehoeren in den Kopf, den hx-boost nie austauscht. #}
     <script defer src="/static/vendor/bootstrap/bootstrap.bundle.min.js"></script>
     <script defer src="/static/vendor/htmx/htmx.min.js"></script>
     <script defer src="/static/passkey.js"></script>
     <script>
-        // Am `document`, nicht am `document.body`: htmx-Ereignisse blubbern bis dorthin,
-        // und der Rumpf existiert zum Zeitpunkt dieses Skripts noch gar nicht.
         document.addEventListener("htmx:configRequest", function (ereignis) {
             const eintrag = document.cookie.split("; ").find(function (wert) {
                 return wert.startsWith("thermoctl_csrf=");
@@ -33,10 +32,21 @@
         });
     </script>
 </head>
-<body class="d-flex align-items-center py-4 bg-body-tertiary" style="min-height: 100vh">
-<main class="w-100 m-auto" style="max-width: 22rem">
-{% block inhalt %}{% endblock %}
-{% block passkey %}{% endblock %}
+{#
+Keine Navigationsleiste: Wer hier steht, ist nicht angemeldet und kann nirgends hin. Ein
+Menue voller Wege, die alle mit 401 antworten, ist keine Orientierung, sondern eine
+Einladung zum Danebengreifen.
+#}
+<body class="d-flex align-items-center py-5" style="min-height: 100vh">
+<main class="w-100 m-auto px-3" style="max-width: 23rem">
+    <div class="text-center mb-4">
+        <span class="tc-marke" style="font-size: 1.35rem">thermoctl</span>
+        <p class="t-leise small mb-0 mt-1">{% block untertitel %}Heizungssteuerung{% endblock %}</p>
+    </div>
+    <div class="tc-tafel p-4">
+        {% block inhalt %}{% endblock %}
+    </div>
+    {% block passkey %}{% endblock %}
 </main>
 </body>
 </html>

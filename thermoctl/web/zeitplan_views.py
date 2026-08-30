@@ -1,3 +1,4 @@
+from decimal import Decimal
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
@@ -7,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from thermoctl.auth.dependencies import aktueller_principal, csrf_schutz, get_session
 from thermoctl.db.models.schedule import SchedulePoint
-from thermoctl.db.models.zone import SetpointMode, Zone
+from thermoctl.db.models.zone import SetpointMode, Zone, ZoneSetpoint
 from thermoctl.domain.authz import hat_recht, visible_zones
 from thermoctl.domain.principal import Principal
 from thermoctl.domain.schedule import (
@@ -19,7 +20,7 @@ from thermoctl.domain.schedule import (
     zeitplanpunkt_loeschen,
     zeitplanpunkt_verschieben,
 )
-from thermoctl.web import templates
+from thermoctl.web import templates, waermeanteil
 
 # `include_in_schema=False`: Die OpenAPI-Beschreibung ist der Vertrag der
 # REST-Schnittstelle. Diese Wege liefern HTML fuer Menschen, und in der Oberflaeche
@@ -81,6 +82,19 @@ def _zeitplanseite(
     punkte = _punkte(session, zone.id)
     modi = _modi(session)
     abschnitte = wochenabschnitte(punkte, {modus.id: modus.name for modus in modi})
+    # Die Waerme je Modus, damit die Wochenansicht dieselbe Sprache spricht wie die
+    # Tagesspur der Startseite: waermer heisst waermer. Ohne sie waeren Tag und Nacht
+    # zwei gleich aussehende Balken -- und der Zeitplan zeigte nur, *dass* umgeschaltet
+    # wird, nicht wohin.
+    temperaturen: dict[int, Decimal] = {
+        modus_id: temperatur
+        for modus_id, temperatur in session.execute(
+            select(ZoneSetpoint.setpoint_mode_id, ZoneSetpoint.temperature_c).where(
+                ZoneSetpoint.zone_id == zone.id
+            )
+        )
+    }
+    waerme = {modus.id: waermeanteil(temperaturen.get(modus.id)) for modus in modi}
     nach_tag = {
         tag: [abschnitt for abschnitt in abschnitte if abschnitt.wochentag == tag]
         for tag, _name in WOCHENTAGE
@@ -94,6 +108,8 @@ def _zeitplanseite(
             "modi": modi,
             "wochentage": WOCHENTAGE,
             "abschnitte": nach_tag,
+            "waerme": waerme,
+            "temperaturen": temperaturen,
             "werte": werte or {"wochentag": "1", "uhrzeit": "06:00", "modus": ""},
             "fehler": {fehler.feld: fehler.meldung} if fehler else {},
             # Eigener Kanal, nicht `fehler`: Eine abgelehnte Verschiebung meldete sich

@@ -39,6 +39,7 @@ GESCHUETZTE_SEITEN = [
     "/zonen/{zone_id}/zeitplan/uebernehmen",
     "/zonen/{zone_id}/parameter",
     "/steuerung",
+    "/einstellungen",
 ]
 
 

@@ -1,0 +1,47 @@
+{% extends "basis.html" %}
+{% from "formular.html" import textfeld, zahlenfeld %}
+{% block titel %}Regelvorgaben – thermoctl{% endblock %}
+{% block max_breite %}52rem{% endblock %}
+{% block inhalt %}
+
+<h1 class="mb-1">Regelvorgaben</h1>
+<p class="t-leise mb-4">
+    Gelten für jede Zone, die nichts eigenes gesetzt hat. Eine Änderung wirkt damit sofort
+    auf alle Zonen, die den Wert erben — die Abweichungen einer einzelnen Zone stehen bei
+    der Zone selbst.
+</p>
+
+{% if darf_aendern %}
+<form method="post" action="/einstellungen" class="tc-tafel p-4">
+    <p class="t-marke mb-3">Regelung</p>
+    <div class="row g-3">
+        {% for feld, beschriftung, ganzzahlig in felder %}
+        <div class="col-sm-6">
+            {{ zahlenfeld(feld, beschriftung, werte.get(feld, ""), "",
+                          fehler.get(feld, ""), "1" if ganzzahlig else "0.1") }}
+        </div>
+        {% endfor %}
+        <div class="col-sm-6">
+            {{ textfeld("timezone", "Zeitzone", werte.get("timezone", ""),
+                        "Zum Beispiel Europe/Berlin.", fehler.get("timezone", ""), true) }}
+        </div>
+    </div>
+    <button class="btn btn-primary mt-4" type="submit">Vorgaben speichern</button>
+</form>
+{% else %}
+<div class="tc-tafel p-4">
+    <dl class="row mb-0">
+        {% for feld, beschriftung, ganzzahlig in felder %}
+        <dt class="col-sm-7 fw-normal t-leise">{{ beschriftung }}</dt>
+        <dd class="col-sm-5 t-wert">{{ werte.get(feld, "") }}</dd>
+        {% endfor %}
+        <dt class="col-sm-7 fw-normal t-leise">Zeitzone</dt>
+        <dd class="col-sm-5 t-wert mb-0">{{ werte.get("timezone", "") }}</dd>
+    </dl>
+</div>
+<p class="t-leise small mt-3">
+    Zum Ändern fehlt das Recht <span class="t-wert">setting.manage</span>.
+</p>
+{% endif %}
+
+{% endblock %}

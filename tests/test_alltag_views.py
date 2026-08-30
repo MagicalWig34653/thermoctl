@@ -121,8 +121,15 @@ def test_uebersteuerung_anzeigen_und_aufheben(session: Session, client_als) -> N
         headers=_csrf(client),
     )
     seite = client.get("/")
-    assert "Übersteuerung auf 22.0 °C" in seite.text
-    assert "manuell gewählte feste Temperatur" in seite.text
+    # Komma, nicht Punkt: Die Oberflaeche ist deutsch, und "22.0 °C" liest sich hier
+    # wie ein Tippfehler. Eingabefelder behalten den Punkt -- ein <input type="number">
+    # verwirft einen Wert mit Komma still.
+    assert "Übersteuerung auf 22,0 °C" in seite.text
+    # Frueher stand hier zusaetzlich der feste Satz "manuell gewaehlte feste Temperatur".
+    # Die Begruendung kommt jetzt aus der Domaene selbst -- derselbe Text, den auch das
+    # Schattenprotokoll und die REST-Antwort tragen, statt einer zweiten Formulierung
+    # allein fuer diese Seite.
+    assert "Uebersteuerung (feste Temperatur)" in seite.text
 
     antwort = client.post(
         f"/zonen/{zone.id}/uebersteuerung/aufheben",
@@ -179,11 +186,14 @@ def test_uebersicht_erklaert_fehlenden_messwert_und_zeigt_entscheidung(
     antwort = client.get("/")
 
     assert antwort.status_code == 200
-    assert "kein Messwert für die Temperatur" in antwort.text
+    assert "kein Messwert" in antwort.text
     assert "None" not in antwort.text
     assert ">0 °C" not in antwort.text
     assert "Kein verwertbarer Messwert" in antwort.text
-    assert "Betriebsart: auto" in antwort.text
+    # Die Betriebsart steht nur da, wenn sie vom Regelfall abweicht: "Automatik" unter
+    # jeder Zone waere Rauschen, "Aus" dagegen der Grund, warum es dort kalt bleibt.
+    # Siehe test_betriebsart_steht_nur_da_wenn_sie_abweicht.
+    assert "Betriebsart" not in antwort.text
 
 
 def test_uebersteuerung_bis_zur_naechsten_schaltung(session: Session, client_als) -> None:
@@ -284,3 +294,19 @@ def test_uebersteuerung_mit_zwei_nachkommastellen_wird_abgewiesen(
     assert antwort.status_code == 303
     assert "uebersteuerungsfehler" in (antwort.headers.get("location") or "")
     assert session.scalar(select(ZoneOverride).where(ZoneOverride.zone_id == zone.id)) is None
+
+
+def test_betriebsart_steht_nur_da_wenn_sie_abweicht(session: Session, client_als) -> None:
+    """Gegenprobe zur Zeile oben. Eine Zone auf "Aus" sieht sonst aus wie jede andere --
+    und genau sie ist der Grund, warum ein Raum kalt bleibt."""
+    from thermoctl.db.models.lookup import OperatingMode
+
+    zone = _grundlage(session)
+    aus = OperatingMode(code="off", label="Aus")
+    session.add(aus)
+    session.flush()
+    zone.operating_mode_id = aus.id
+    session.flush()
+
+    antwort = client_als([("zone.read", zone.id)]).get("/")
+    assert "Betriebsart: Aus" in antwort.text

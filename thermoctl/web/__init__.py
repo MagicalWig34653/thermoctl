@@ -1,12 +1,31 @@
 from datetime import datetime
+from decimal import Decimal
 from pathlib import Path
 
+from fastapi import Request
 from fastapi.templating import Jinja2Templates
 
 from thermoctl.db.base import utcnow
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
-templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+def _angemeldeter_benutzer(request: Request) -> dict[str, object]:
+    """Stellt jeder Vorlage den angemeldeten Benutzer bereit.
+
+    Ohne das trug die Kopfleiste auf der Startseite den Namen und ueberall sonst das
+    Wort "Konto" -- die Startseite war die einzige Ansicht, die `benutzer` in ihren
+    Kontext legte. Ein Bedienelement, das je nach Seite anders heisst, sieht aus wie ein
+    anderes Bedienelement.
+
+    Der Benutzer wird nicht erneut aufgeloest: Die Anmeldung hat ihn ohnehin schon
+    ermittelt und unter `request.state` hinterlegt. Fehlt er dort, steht schlicht nichts
+    da -- die Anmeldeseite hat keinen.
+    """
+    return {"kopf_benutzer": getattr(request.state, "benutzer", None)}
+
+
+templates = Jinja2Templates(
+    directory=str(TEMPLATES_DIR), context_processors=[_angemeldeter_benutzer]
+)
 
 # Bootstrap und HTMX liegen als Dateien in diesem Verzeichnis (siehe
 # static/HERKUNFT.md) und werden lokal ausgeliefert, nicht ueber ein CDN --
@@ -41,4 +60,37 @@ def alter_in_worten(zeitpunkt: datetime | None, jetzt: datetime | None = None) -
     return f"vor {tage} {'Tag' if tage == 1 else 'Tagen'}"
 
 
+# Der Bereich, ueber den Temperaturen als Farbe dargestellt werden. Nicht die Grenzen
+# der Eingabe (5 bis 35 Grad), sondern der Bereich, in dem sich Wohnraumtemperaturen
+# tatsaechlich bewegen -- sonst laege alles in derselben blassen Mitte.
+SPUR_KALT = Decimal("15")
+SPUR_WARM = Decimal("23")
+
+
+def waermeanteil(temperatur: Decimal | None) -> float:
+    """0 = kuehlster darstellbarer Sollwert, 1 = waermster. Ausserhalb wird gekappt.
+
+    Steht hier und nicht in einer der beiden Ansichten: Startseite und Wochenansicht
+    zeigen dieselbe Groesse, und zwei Skalen fuer dieselbe Aussage waeren zwei Skalen,
+    die auseinanderlaufen.
+    """
+    if temperatur is None:
+        return 0.5
+    anteil = (temperatur - SPUR_KALT) / (SPUR_WARM - SPUR_KALT)
+    return float(min(max(anteil, Decimal(0)), Decimal(1)))
+
+
+def grad(wert: Decimal | float | None, stellen: int = 1) -> str:
+    """Eine Temperatur, wie man sie im Deutschen schreibt: mit Komma.
+
+    Nur fuer die Anzeige. In `value`-Attributen von `<input type="number">` hat ein
+    Komma nichts zu suchen -- der Browser verwirft den Wert dann still, und das Feld
+    steht leer da, ohne dass jemand sagen kann warum.
+    """
+    if wert is None:
+        return "–"
+    return f"{wert:.{stellen}f}".replace(".", ",")
+
+
 templates.env.filters["alter"] = alter_in_worten
+templates.env.filters["grad"] = grad

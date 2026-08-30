@@ -1,8 +1,9 @@
 {% extends "basis.html" %}
+{% from "zonenkopf.html" import zonenkopf %}
 {% from "formular.html" import zahlenfeld %}
 {% block titel %}Sollwerte {{ zone.display_name }} – thermoctl{% endblock %}
 {% block inhalt %}
-<h1>Sollwerte für {{ zone.display_name }}</h1>
+{{ zonenkopf(zone, "Sollwerte") }}
 <form method="post" action="/zonen/{{ zone.id }}/sollwerte">
 {% for modus in modi %}
     {% set feld = "sollwert_" ~ modus.id %}
