@@ -424,3 +424,60 @@ def test_ohne_setpoint_write_steht_kein_thermostat_auf_der_seite(
 
     darf = client_als([("zone.read", zone.id), ("setpoint.write", zone.id)]).get("/")
     assert "tc-stufe" in darf.text
+
+
+def test_thermostat_wirkt_auch_ohne_hinterlegten_sollwert(
+    session: Session, client_als
+) -> None:
+    """Der Zustand einer frisch eingerichteten Anlage: keine Sollwerte gepflegt, kein
+    Zeitplan. Die Seite zeigt dann den Frostschutz-Notnagel von 16 Grad -- und das
+    Thermostat suchte eine Zeile, die es nicht gibt, und antwortete mit 404. Auf der
+    Seite sah es aus, als passiere beim Druecken nichts.
+    """
+    from sqlalchemy import select
+
+    from thermoctl.db.base import utcnow
+    from thermoctl.db.models.zone import ZoneSetpoint
+    from thermoctl.domain.schedule import aufgeloester_sollwert
+
+    zone = _grundlage(session)
+    session.query(ZoneSetpoint).filter_by(zone_id=zone.id).delete()
+    session.flush()
+    angezeigt = aufgeloester_sollwert(session, zone, utcnow())
+    assert angezeigt.modus_id is not None
+
+    client = client_als([("zone.read", zone.id), ("setpoint.write", zone.id)])
+    antwort = client.post(
+        f"/zonen/{zone.id}/thermostat",
+        data={"modus_id": str(angezeigt.modus_id), "richtung": "hoch"},
+        headers=_csrf(client),
+        follow_redirects=False,
+    )
+    assert antwort.status_code == 303
+
+    zeile = session.scalars(
+        select(ZoneSetpoint).where(
+            ZoneSetpoint.zone_id == zone.id,
+            ZoneSetpoint.setpoint_mode_id == angezeigt.modus_id,
+        )
+    ).one()
+    assert zeile.temperature_c == angezeigt.temperature_c + Decimal("0.5")
+
+
+def test_thermostat_fuer_einen_fremden_modus_bleibt_ein_404(
+    session: Session, client_als
+) -> None:
+    """Gegenprobe: Der Notnagel gilt nur fuer den Modus, den die Seite gerade anzeigt.
+    Ein beliebiger anderer bekommt weiter eine klare Absage statt eines aus dem Nichts
+    erfundenen Sollwerts."""
+    from tests.hilfen import modus_anlegen
+
+    zone = _grundlage(session)
+    fremder = modus_anlegen(session, "nie-benutzt")
+    client = client_als([("zone.read", zone.id), ("setpoint.write", zone.id)])
+    antwort = client.post(
+        f"/zonen/{zone.id}/thermostat",
+        data={"modus_id": str(fremder.id), "richtung": "hoch"},
+        headers=_csrf(client),
+    )
+    assert antwort.status_code == 404
