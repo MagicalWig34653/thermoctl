@@ -4,6 +4,7 @@ import asyncio
 import json
 from collections.abc import Mapping
 from dataclasses import dataclass
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Protocol
 from urllib import parse, request
 
@@ -58,6 +59,95 @@ class Zigbee2MqttValve:
 
     async def switching(self, on: bool) -> SwitchResult:
         payload = json.dumps({"state": "ON" if on else "OFF"})
+        message = f"{self._topic} mit Nutzlast {payload}"
+        if not switching_allowed(self._session):
+            return SwitchResult(False, f"Trockenlauf, haette gesendet: {message}")
+
+        try:
+            executed = await self._client.publishing(
+                self._topic, payload, switches=True
+            )
+        except Exception as exc:
+            return SwitchResult(False, message, str(exc))
+        if not executed:
+            return SwitchResult(
+                False, message, "MQTT-Client hat die Veroeffentlichung abgewiesen"
+            )
+        return SwitchResult(True, f"Gesendet: {message}")
+
+
+# The WT-A03E and similar Zigbee2MQTT thermostatic radiator valves accept
+# `occupied_heating_setpoint` in this range and this step size only. Anything else
+# is rejected by the device -- rejecting it here as well means the caller sees the
+# reason immediately instead of a silently ignored command or a device-side error
+# that never reaches this service.
+THERMOSTAT_MIN_SETPOINT_C = Decimal("5")
+THERMOSTAT_MAX_SETPOINT_C = Decimal("30")
+_THERMOSTAT_SETPOINT_STEP_C = Decimal("0.5")
+
+
+def _quantized_setpoint(value: Decimal) -> Decimal:
+    """Rounds to the nearest step the device actually accepts."""
+    steps = (value / _THERMOSTAT_SETPOINT_STEP_C).to_integral_value(rounding=ROUND_HALF_UP)
+    return steps * _THERMOSTAT_SETPOINT_STEP_C
+
+
+class Zigbee2MqttThermostat:
+    """Drives a Zigbee2MQTT thermostatic radiator valve (e.g. WT-A03E).
+
+    Unlike `Zigbee2MqttValve`, this device has no `state` topic to switch -- it has
+    no on/off output at all. It is driven through two features together:
+    `system_mode` (`heat` / `off`) and `occupied_heating_setpoint` (5-30 degrees C
+    in 0.5 degree steps). `switching(True)` arms heating at the given setpoint;
+    `switching(False)` turns the valve off. Both move the actual valve, so both go
+    through the same dry-run bolt as `Zigbee2MqttValve` -- `switches=True` here too.
+
+    The setpoint is passed in at construction, not hardcoded and not looked up by
+    this adapter itself: a thermostat adapter without a setpoint would have nothing
+    to arm heating at, and where that value comes from (a zone's current setpoint)
+    is the caller's business, not this adapter's.
+    """
+
+    def __init__(
+        self,
+        session: Session,
+        client: MqttPublisher,
+        base: str,
+        device_name: str,
+        setpoint_c: Decimal,
+    ) -> None:
+        self._session = session
+        self._client = client
+        self._topic = f"{base.rstrip('/')}/{device_name}/set"
+        self._device_name = device_name
+        self._setpoint_c = setpoint_c
+
+    def description(self) -> str:
+        return f"Zigbee2MQTT-Thermostat {self._device_name}"
+
+    async def switching(self, ein: bool) -> SwitchResult:
+        if not ein:
+            payload = json.dumps({"system_mode": "off"})
+        else:
+            if not (
+                THERMOSTAT_MIN_SETPOINT_C <= self._setpoint_c <= THERMOSTAT_MAX_SETPOINT_C
+            ):
+                return SwitchResult(
+                    False,
+                    (
+                        f"Sollwert {self._setpoint_c} liegt ausserhalb des am Geraet "
+                        f"zulaessigen Bereichs {THERMOSTAT_MIN_SETPOINT_C}-"
+                        f"{THERMOSTAT_MAX_SETPOINT_C} Grad C"
+                    ),
+                )
+            payload = json.dumps(
+                {
+                    "system_mode": "heat",
+                    "occupied_heating_setpoint": float(
+                        _quantized_setpoint(self._setpoint_c)
+                    ),
+                }
+            )
         message = f"{self._topic} mit Nutzlast {payload}"
         if not switching_allowed(self._session):
             return SwitchResult(False, f"Trockenlauf, haette gesendet: {message}")

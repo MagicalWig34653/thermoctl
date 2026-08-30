@@ -1,4 +1,5 @@
 import json
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
@@ -9,7 +10,11 @@ from tests.helpers import create_mode
 from thermoctl.config import Settings
 from thermoctl.db.models.operations import Setting
 from thermoctl.integrations import actuators as actuators_module
-from thermoctl.integrations.actuators import MerossSwitch, Zigbee2MqttValve
+from thermoctl.integrations.actuators import (
+    MerossSwitch,
+    Zigbee2MqttThermostat,
+    Zigbee2MqttValve,
+)
 
 
 class MqttStub:
@@ -327,6 +332,151 @@ def test_http_transport_rejects_non_object_responses() -> None:
         mp.setattr(actuators_module.request, "urlopen", lambda *_a, **_k: _List())
         with _pytest.raises(ValueError, match="kein Objekt"):
             transport._post_sync("https://example.invalid", {}, {})
+
+
+@pytest.mark.anyio
+async def test_thermostat_without_control_armed_sends_nothing(session: Session) -> None:
+    """The dry-run bolt covers the thermostat exactly like the plain valve.
+
+    A thermostatic radiator valve moves a real valve motor just like the switch it
+    replaces here -- it must not slip past the two dry-run bolts because it uses a
+    different payload shape.
+    """
+    mqtt = MqttStub()
+    result = await Zigbee2MqttThermostat(
+        session, mqtt, "zigbee2mqtt", "TRV-Wohnzimmer", Decimal("21.5")
+    ).switching(True)
+
+    assert mqtt.calls == []
+    assert result.executed is False
+    assert "zigbee2mqtt/TRV-Wohnzimmer/set" in result.description
+    assert "haette gesendet" in result.description
+
+
+@pytest.mark.anyio
+async def test_thermostat_peer_error_becomes_a_result_not_an_exception(
+    session: Session,
+) -> None:
+    """An MQTT-level failure must not abort the control cycle for every other
+    zone -- same requirement as for the plain valve, same code path."""
+    _armed(session)
+    mqtt = MqttStub(errors=ConnectionError("Broker weg"))
+    result = await Zigbee2MqttThermostat(
+        session, mqtt, "zigbee2mqtt", "TRV-Wohnzimmer", Decimal("21.5")
+    ).switching(True)
+    assert result.executed is False
+    assert result.errors is not None and "Broker weg" in result.errors
+
+
+@pytest.mark.anyio
+async def test_thermostat_reports_a_refused_publication(session: Session) -> None:
+    _armed(session)
+    rejected = MqttStub()
+    rejected.publishing = _reject_publication  # type: ignore[method-assign]
+    result = await Zigbee2MqttThermostat(
+        session, rejected, "zigbee2mqtt", "TRV-Wohnzimmer", Decimal("21.5")
+    ).switching(False)
+    assert result.executed is False
+    assert result.errors == "MQTT-Client hat die Veroeffentlichung abgewiesen"
+
+
+@pytest.mark.anyio
+async def test_armed_thermostat_switching_on_sends_system_mode_heat_and_setpoint(
+    session: Session,
+) -> None:
+    """The counter-proof to the dry run, for the thermostat adapter."""
+    _armed(session)
+    mqtt = MqttStub()
+    result = await Zigbee2MqttThermostat(
+        session, mqtt, "zigbee2mqtt", "TRV-Wohnzimmer", Decimal("21.5")
+    ).switching(True)
+
+    assert result.executed is True
+    assert mqtt.calls == [
+        (
+            "zigbee2mqtt/TRV-Wohnzimmer/set",
+            json.dumps({"system_mode": "heat", "occupied_heating_setpoint": 21.5}),
+            True,
+        )
+    ]
+
+
+@pytest.mark.anyio
+async def test_armed_thermostat_switching_off_sends_system_mode_off(
+    session: Session,
+) -> None:
+    """Switching off never needs a setpoint -- the valve just closes."""
+    _armed(session)
+    mqtt = MqttStub()
+    result = await Zigbee2MqttThermostat(
+        session, mqtt, "zigbee2mqtt", "TRV-Wohnzimmer", Decimal("21.5")
+    ).switching(False)
+
+    assert result.executed is True
+    assert mqtt.calls == [
+        (
+            "zigbee2mqtt/TRV-Wohnzimmer/set",
+            json.dumps({"system_mode": "off"}),
+            True,
+        )
+    ]
+
+
+@pytest.mark.anyio
+async def test_armed_thermostat_rounds_the_setpoint_to_the_devices_half_degree_step(
+    session: Session,
+) -> None:
+    """The device only accepts 0.5 degree steps -- a schedule value in between is
+    rounded, not rejected, since it is still a perfectly valid target temperature."""
+    _armed(session)
+    mqtt = MqttStub()
+    result = await Zigbee2MqttThermostat(
+        session, mqtt, "zigbee2mqtt", "TRV-Buero", Decimal("21.3")
+    ).switching(True)
+
+    assert result.executed is True
+    sent_payload = json.loads(mqtt.calls[0][1])
+    assert sent_payload["occupied_heating_setpoint"] == 21.5
+
+
+@pytest.mark.parametrize("out_of_range_setpoint", [Decimal("4.5"), Decimal("30.5")])
+@pytest.mark.anyio
+async def test_a_setpoint_outside_five_to_thirty_degrees_is_rejected(
+    session: Session, out_of_range_setpoint: Decimal
+) -> None:
+    """The WT-A03E accepts 5-30 degrees C only -- anything else must not be sent,
+    armed or not, since the device would reject it anyway."""
+    _armed(session)
+    mqtt = MqttStub()
+    result = await Zigbee2MqttThermostat(
+        session, mqtt, "zigbee2mqtt", "TRV-Bad", out_of_range_setpoint
+    ).switching(True)
+
+    assert result.executed is False
+    assert mqtt.calls == []
+    assert "ausserhalb" in result.description
+
+
+@pytest.mark.anyio
+async def test_thermostat_switching_on_at_exactly_the_boundary_is_accepted(
+    session: Session,
+) -> None:
+    """5 and 30 degrees themselves are valid -- the check must be inclusive."""
+    _armed(session)
+    mqtt = MqttStub()
+    result = await Zigbee2MqttThermostat(
+        session, mqtt, "zigbee2mqtt", "TRV-Flur", Decimal("5")
+    ).switching(True)
+
+    assert result.executed is True
+    sent_payload = json.loads(mqtt.calls[0][1])
+    assert sent_payload["occupied_heating_setpoint"] == 5.0
+
+
+def test_thermostat_description_names_the_device() -> None:
+    assert "TRV-Kueche" in Zigbee2MqttThermostat(
+        None, None, "zigbee2mqtt", "TRV-Kueche", Decimal("20")  # type: ignore[arg-type]
+    ).description()
 
 
 @pytest.fixture

@@ -521,6 +521,20 @@ def test_a_valve_can_be_assigned_as_an_actuator(session: Session) -> None:
     assert assignment.device_id == ventil.id
 
 
+def test_a_thermostat_can_be_assigned_as_an_actuator(session: Session) -> None:
+    """A Zigbee2MQTT TRV such as the WT-A03E has no switch output -- it is driven
+    through `system_mode` and `occupied_heating_setpoint` instead. It still moves a
+    real valve, so it must be able to fill the actuator slot."""
+    from thermoctl.domain.device_assignment import assign_device
+
+    zone = create_zone(session, "thermostatzone")
+    trv = _with_capability(session, "echtes-thermostatventil", "thermostat")
+    assignment = assign_device(
+        session, zone, trv, role(session, "actuator"), actor_id=None
+    )
+    assert assignment.device_id == trv.id
+
+
 def test_a_device_without_known_capabilities_is_let_through(session: Session) -> None:
     """The capabilities come from the bridge's device list. Anyone integrating a
     device that describes itself sparsely there should still be able to set up
