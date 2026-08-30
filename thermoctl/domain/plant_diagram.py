@@ -53,7 +53,7 @@ class ZonePicture:
     temperature_source: DevicePicture | None
     window_contacts: list[DevicePicture] = field(default_factory=list)
     actuators: list[DevicePicture] = field(default_factory=list)
-    controllere: list[DevicePicture] = field(default_factory=list)
+    controllers: list[DevicePicture] = field(default_factory=list)
 
     @property
     def maengel(self) -> list[str]:
@@ -157,7 +157,7 @@ def plant_diagram(session: Session, zones: list[Zone]) -> PlantDiagram:
                 ),
                 window_contacts=by_zone[zone.id]["window_contact"],
                 actuators=by_zone[zone.id]["actuator"],
-                controllere=by_zone[zone.id]["controller"],
+                controllers=by_zone[zone.id]["controller"],
             )
         )
 

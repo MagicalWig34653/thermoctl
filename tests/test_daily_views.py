@@ -424,10 +424,10 @@ def test_without_setpoint_write_no_thermostat_is_on_the_page(
     but no step buttons."""
     zone, _mode = _zone_with_mode(session)
     read_only = client_als([("zone.read", zone.id)]).get("/")
-    assert "tc-stufe" not in read_only.text
+    assert "tc-stage" not in read_only.text
 
     darf = client_als([("zone.read", zone.id), ("setpoint.write", zone.id)]).get("/")
-    assert "tc-stufe" in darf.text
+    assert "tc-stage" in darf.text
 
 
 def test_the_thermostat_works_even_without_a_stored_setpoint(

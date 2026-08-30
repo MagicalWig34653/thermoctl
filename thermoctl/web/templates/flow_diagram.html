@@ -1,0 +1,93 @@
+{#
+Das Flussbild: der Weg durch eine Zone, von links nach rechts.
+
+    Messquelle ─┐
+                ├→ Zone → Aktoren
+Fensterkontakte ┘
+
+Reines HTML und CSS, keine Bibliothek und kein Zeichenprogramm — die Anlage hat drei
+Stufen, und drei Spalten mit Verbindungslinien zeigen sie genauso gut wie ein Diagramm,
+das erst geladen werden müsste. Was fehlt, steht als Lücke da und nicht als leerer Kasten:
+Eine Zone ohne Messquelle regelt nichts, und das soll man sehen.
+#}
+{#
+`draggable` macht eine zugeordnete Karte herausziehbar: zurueck in den Geraetevorrat, und
+die Zuordnung ist geloest. Der Weg hinein und der Weg hinaus sind damit derselbe
+Handgriff in zwei Richtungen -- das ist die einzige Anordnung, die man sich nicht merken
+muss.
+#}
+{% macro device_card(g, kind, draggable=false, temperature_source=false) %}
+<div class="tc-node tc-node-{{ kind }}{{ ' tc-draggable' if draggable and (g.assignment_id or temperature_source) }}"
+     {% if g.assignment_id %}data-assignment="{{ g.assignment_id }}"{% endif %}
+     {% if temperature_source %}data-source="ja"{% endif %}>
+    <div class="tc-node-name">{{ g.name }}</div>
+    {% if g.capabilities %}
+    <div class="t-leise" style="font-size: .68rem">{{ g.capabilities | join(", ") }}</div>
+    {% endif %}
+    {% if not g.active %}
+    <span class="tc-chip tc-chip-warning mt-1">abgeschaltet</span>
+    {% endif %}
+</div>
+{% endmacro %}
+
+{% macro luecke(text) %}
+<div class="tc-node tc-node-gap">{{ text }}</div>
+{% endmacro %}
+
+{#
+`draggable` macht die drei Spalten zu Ablegezielen. Nur die Zuordnungsseite setzt es --
+auf dem Anlagenbild waere ein Ablegeziel eine Zusage, die die Seite nicht einloest.
+#}
+{% macro flow_diagram(z, draggable=false) %}
+<div class="tc-flow">
+    <div class="tc-flow-column{{ ' tc-target' if draggable }}"{% if draggable %} data-target="messquelle" data-target-name="Messquelle" data-requires="temperature"{% endif %}>
+        <p class="t-marke">Misst</p>
+        {% if z.temperature_source %}{{ device_card(z.temperature_source, "sensor", draggable, temperature_source=true) }}
+        {% else %}{{ luecke("keine Messquelle") }}{% endif %}
+
+        {% if z.window_contacts %}
+        <p class="t-marke mt-3">Unterbricht</p>
+        {% for g in z.window_contacts %}{{ device_card(g, "contact", draggable) }}{% endfor %}
+        {% endif %}
+    </div>
+
+    <div class="tc-flow-arrow" aria-hidden="true"></div>
+
+    <div class="tc-flow-column">
+        <p class="t-marke">Entscheidet</p>
+        <div class="tc-node tc-node-zone">
+            <div class="tc-node-name">{{ z.name }}</div>
+            <div class="t-leise" style="font-size: .68rem">Ist gegen Soll, mit Hysterese</div>
+        </div>
+    </div>
+
+    <div class="tc-flow-arrow" aria-hidden="true"></div>
+
+    <div class="tc-flow-column{{ ' tc-target' if draggable }}"{% if draggable %} data-target="actuator" data-target-name="Aktor" data-requires="switch"{% endif %}>
+        <p class="t-marke">Schaltet</p>
+        {% if z.actuators %}
+        {% for g in z.actuators %}{{ device_card(g, "actuator", draggable) }}{% endfor %}
+        {% else %}{{ luecke("kein Aktor") }}{% endif %}
+
+        {% if z.controllers %}
+        <p class="t-marke mt-3">Zeigt an</p>
+        {% for g in z.controllers %}{{ device_card(g, "display", draggable) }}{% endfor %}
+        {% endif %}
+    </div>
+</div>
+
+{% if draggable %}
+<div class="tc-target tc-target-contact mt-2" data-target="window_contact" data-target-name="Fensterkontakt" data-requires="contact">
+    <p class="t-leise small mb-0">
+        Fensterkontakte hierher ziehen — sie unterbrechen das Heizen, solange ein Fenster
+        offen ist.
+    </p>
+</div>
+{% endif %}
+
+{% if z.maengel %}
+<ul class="t-leise small mb-0 mt-2">
+    {% for m in z.maengel %}<li>{{ m }}</li>{% endfor %}
+</ul>
+{% endif %}
+{% endmacro %}

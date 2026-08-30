@@ -57,7 +57,7 @@ def test_creating_a_point_and_reporting_a_double_booking_understandably(
     zone = create_zone(session, "bad")
     mode = create_mode(session, "tag", "Tag")
     client = client_als([("schedule.manage", zone.id), ("zone.read", zone.id)])
-    daten = {"weekday": "2", "time_of_day": "03:15", "modus": str(mode.id)}
+    daten = {"weekday": "2", "time_of_day": "03:15", "mode_id": str(mode.id)}
 
     angelegt = client.post(
         f"/zones/{zone.id}/schedule/points",
@@ -87,7 +87,7 @@ def test_invalid_points_stay_in_the_form_with_their_input(
     client = client_als([("schedule.manage", zone.id)])
     response = client.post(
         f"/zones/{zone.id}/schedule/points",
-        data={"weekday": "2", "time_of_day": "25:61", "modus": "unbekannt"},
+        data={"weekday": "2", "time_of_day": "25:61", "mode_id": "unbekannt"},
         headers=_csrf(client),
     )
     assert response.status_code == 200
@@ -198,7 +198,7 @@ def test_permissions_and_foreign_zones_yield_404(client_als, session: Session) -
     assert (
         leser.post(
             f"/zones/{eigene.id}/schedule/points",
-            data={"weekday": "1", "time_of_day": "06:00", "modus": str(mode.id)},
+            data={"weekday": "1", "time_of_day": "06:00", "mode_id": str(mode.id)},
             headers=_csrf(leser),
         ).status_code
         == 404
@@ -230,8 +230,8 @@ def test_a_nonsensical_selection_when_creating_a_point(client_als, session: Sess
     kopf = _csrf(client)
 
     for daten, expected in (
-        ({"weekday": "Montag", "time_of_day": "06:00", "modus": str(mode.id)}, "Wochentag"),
-        ({"weekday": "1", "time_of_day": "06:00", "modus": "kein Modus"}, "Modus"),
+        ({"weekday": "Montag", "time_of_day": "06:00", "mode_id": str(mode.id)}, "Wochentag"),
+        ({"weekday": "1", "time_of_day": "06:00", "mode_id": "kein Modus"}, "Modus"),
     ):
         response = client.post(
             f"/zones/{zone.id}/schedule/points", data=daten, headers=kopf
@@ -348,7 +348,7 @@ def test_moving_onto_an_occupied_moment_is_refused(
     # The message belongs on the week view, not on the time-of-day field of the
     # create form: both paths report the same sentence, and in the first version
     # it ended up on a form the user had not even touched.
-    assert "data-verschiebefehler" in response.text
+    assert "data-move-error" in response.text
     assert "wurde nicht verschoben" in response.text
     session.refresh(beweglich)
     assert beweglich.minute_of_day == 360
@@ -424,8 +424,8 @@ def test_the_week_view_carries_the_point_identifier_for_dragging(
     response = client_als([("zone.read", None), ("schedule.manage", None)]).get(
         f"/zones/{zone.id}/schedule"
     )
-    assert f'data-punkt="{point.id}"' in response.text
-    assert "zeitplan-ziehbar" in response.text
+    assert f'data-point="{point.id}"' in response.text
+    assert "schedule-draggable" in response.text
 
 
 def test_without_schedule_manage_no_bar_can_be_dragged(
@@ -438,7 +438,7 @@ def test_without_schedule_manage_no_bar_can_be_dragged(
     _point(session, zone.id, 1, 360, day.id)
     response = client_als([("zone.read", None)]).get(f"/zones/{zone.id}/schedule")
     assert response.status_code == 200
-    assert "zeitplan-ziehbar" not in response.text
+    assert "schedule-draggable" not in response.text
 
 
 def test_the_create_route_still_reports_at_the_field(client_als, session: Session) -> None:
@@ -452,9 +452,9 @@ def test_the_create_route_still_reports_at_the_field(client_als, session: Sessio
 
     response = mandant.post(
         f"/zones/{zone.id}/schedule/points",
-        data={"weekday": "1", "time_of_day": "06:00", "modus": str(day.id)},
+        data={"weekday": "1", "time_of_day": "06:00", "mode_id": str(day.id)},
         headers=_csrf(mandant),
     )
     assert response.status_code == 200
     assert "bereits einen Punkt" in response.text
-    assert "data-verschiebefehler" not in response.text
+    assert "data-move-error" not in response.text

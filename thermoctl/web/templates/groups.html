@@ -1,5 +1,5 @@
-{% extends "basis.html" if not ist_htmx else "leer.html" %}
-{% from "formular.html" import textfeld, fehlerhinweis %}
+{% extends "base.html" if not ist_htmx else "empty.html" %}
+{% from "form.html" import textfeld, fehlerhinweis %}
 {% block titel %}Gruppen – thermoctl{% endblock %}
 {% block max_breite %}60rem{% endblock %}
 
@@ -18,11 +18,11 @@ der ganze Stand; die Domäne bildet die Differenz.
 
 {% macro rechtezeile(group, permission, alle_zonen, vergeben) %}
 {% set anlagenweit = (permission.code, None) in vergeben %}
-<div class="tc-recht">
-    <label class="tc-recht-marke">
+<div class="tc-permission">
+    <label class="tc-permission-marker">
         <input class="form-check-input mt-0" type="checkbox" name="permission"
                value="{{ permission.code }}"{{ " checked" if anlagenweit }}
-               data-recht="{{ permission.code }}" data-gruppe="{{ group.id }}">
+               data-permission="{{ permission.code }}" data-group="{{ group.id }}">
         <span>
             {{ permission.description }}
             <span class="t-wert t-leise d-block" style="font-size: .7rem">{{ permission.code }}</span>
@@ -36,10 +36,10 @@ der ganze Stand; die Domäne bildet die Differenz.
     eine Rechtevergabe, die aussieht, als hätte sie gewirkt, ist schlimmer als eine
     abgelehnte.
     #}
-    <div class="tc-recht-zonen{{ ' tc-verdeckt' if anlagenweit }}"
-         data-zonen-fuer="{{ permission.code }}-{{ group.id }}">
+    <div class="tc-permission-zones{{ ' tc-hidden' if anlagenweit }}"
+         data-zones-for="{{ permission.code }}-{{ group.id }}">
         {% for zone in alle_zonen %}
-        <label class="tc-chip tc-chip-still">
+        <label class="tc-chip tc-chip-quiet">
             <input class="form-check-input mt-0 me-1" type="checkbox" name="permission"
                    value="{{ permission.code }}:{{ zone.id }}"
                    {{ " checked" if (permission.code, zone.id) in vergeben }}>
@@ -52,7 +52,7 @@ der ganze Stand; die Domäne bildet die Differenz.
 {% endmacro %}
 
 {% block inhalt %}
-<section id="gruppenliste">
+<section id="group-list">
     <h1 class="mb-1">Gruppen</h1>
     <p class="t-leise mb-4">
         Rechte hängen an Gruppen, nicht an Personen. Wer in mehreren Gruppen ist, darf
@@ -61,13 +61,13 @@ der ganze Stand; die Domäne bildet die Differenz.
     {{ fehlerhinweis(hint) }}
 
     {% for group in groups %}
-    <article class="tc-tafel p-4 mb-3">
+    <article class="tc-panel p-4 mb-3">
         <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-1">
             <div>
                 <h2 class="mb-0">
                     {{ group.name }}
                     {% if group.is_builtin %}
-                    <span class="tc-chip tc-chip-still align-middle">eingebaut</span>
+                    <span class="tc-chip tc-chip-quiet align-middle">eingebaut</span>
                     {% endif %}
                 </h2>
                 {% if group.description %}
@@ -95,7 +95,7 @@ der ganze Stand; die Domäne bildet die Differenz.
             {% endif %}
         </p>
 
-        <details class="tc-rechteeditor mt-3">
+        <details class="tc-permission-editor mt-3">
             <summary>Rechte bearbeiten</summary>
         <form method="post" action="/groups/{{ group.id }}/permissions">
             {% for name, hint_text, permissions in bereiche %}
@@ -120,7 +120,7 @@ der ganze Stand; die Domäne bildet die Differenz.
     </article>
     {% endfor %}
 
-    <article class="tc-tafel p-4">
+    <article class="tc-panel p-4">
         <h2 class="mb-3">Gruppe anlegen</h2>
         <form method="post" action="/groups">
             {{ textfeld("name", "Name", values.get("name", ""), pflicht=true,

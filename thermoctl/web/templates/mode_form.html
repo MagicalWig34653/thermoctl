@@ -1,5 +1,5 @@
-{% extends "basis.html" %}
-{% from "formular.html" import textfeld, zahlenfeld %}
+{% extends "base.html" %}
+{% from "form.html" import textfeld, zahlenfeld %}
 {% block titel %}Sollwert-Modus – thermoctl{% endblock %}
 {% block inhalt %}
 <h1>{{ "Sollwert-Modus bearbeiten" if mode else "Sollwert-Modus anlegen" }}</h1>

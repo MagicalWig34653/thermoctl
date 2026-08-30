@@ -1,6 +1,6 @@
-{% extends "basis.html" %}
-{% from "zonenkopf.html" import zonenkopf %}
-{% from "formular.html" import textfeld, zahlenfeld, auswahl %}
+{% extends "base.html" %}
+{% from "zone_header.html" import zonenkopf %}
+{% from "form.html" import textfeld, zahlenfeld, auswahl %}
 {% block titel %}{% if zone %}Zone bearbeiten{% else %}Zone anlegen{% endif %} – thermoctl{% endblock %}
 {% block inhalt %}
 {% if zone %}{{ zonenkopf(zone, "Zonendaten") }}{% else %}<h1 class="mb-4">Zone anlegen</h1>{% endif %}

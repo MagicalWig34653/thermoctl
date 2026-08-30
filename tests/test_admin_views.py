@@ -183,7 +183,7 @@ def test_an_installation_wide_permission_on_one_zone_is_refused_in_the_view(
 def test_issuing_a_token_shows_the_plaintext_exactly_once(client_als, session: Session) -> None:
     c = client_als([("token.self", None), ("zone.read", None)])
     response = c.post(
-        "/tokens", data={"name": "Anzeigetafel", "code": "zone.read", "gueltig_tage": ""},
+        "/tokens", data={"name": "Anzeigetafel", "code": "zone.read", "valid_days": ""},
         headers=_with_csrf(c, session),
     )
     assert response.status_code == 200
@@ -195,7 +195,7 @@ def test_issuing_a_token_shows_the_plaintext_exactly_once(client_als, session: S
 def test_a_token_without_a_name_is_refused(client_als, session: Session) -> None:
     c = client_als([("token.self", None)])
     response = c.post(
-        "/tokens", data={"name": "  ", "code": "", "gueltig_tage": ""},
+        "/tokens", data={"name": "  ", "code": "", "valid_days": ""},
         headers=_with_csrf(c, session),
     )
     assert response.status_code == 200
@@ -210,7 +210,7 @@ def test_a_token_with_too_many_permissions_is_refused_understandably(
     ensure_permission(session, "zone.manage", zone_scoped=True)
     c = client_als([("token.self", None)])
     response = c.post(
-        "/tokens", data={"name": "Zuviel", "code": "zone.manage", "gueltig_tage": ""},
+        "/tokens", data={"name": "Zuviel", "code": "zone.manage", "valid_days": ""},
         headers=_with_csrf(c, session),
     )
     assert response.status_code == 200
@@ -233,7 +233,7 @@ def test_a_foreign_token_cannot_be_found(client_als, session: Session) -> None:
 
 def test_your_own_token_can_be_revoked(client_als, session: Session) -> None:
     c = client_als([("token.self", None)])
-    c.post("/tokens", data={"name": "Weg damit", "code": "", "gueltig_tage": "30"},
+    c.post("/tokens", data={"name": "Weg damit", "code": "", "valid_days": "30"},
            headers=_with_csrf(c, session))
     from sqlalchemy import select
 

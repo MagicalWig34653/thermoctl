@@ -62,7 +62,7 @@ async def login_form(
     if einrichtung_noetig(session):
         return RedirectResponse("/setup", status_code=status.HTTP_303_SEE_OTHER)
     return templates.TemplateResponse(
-        request, "anmeldung.html", {"passkeys_moeglich": get_settings().passkeys_moeglich()}
+        request, "login.html", {"passkeys_moeglich": get_settings().passkeys_moeglich()}
     )
 
 
@@ -101,7 +101,7 @@ async def login(
             object_id=username, summary=f"Anmeldung als '{username}' fehlgeschlagen",
         )
         return templates.TemplateResponse(
-            request, "anmeldung.html",
+            request, "login.html",
             {"errors": _ERROR_MESSAGE, "passkeys_moeglich": settings.passkeys_moeglich()},
             status_code=status.HTTP_401_UNAUTHORIZED,
         )

@@ -21,7 +21,7 @@
 
     /** Ist diese Karte bereits einer Stelle zugeordnet? Dann kann sie nur heraus. */
     function zugeordnet(karte) {
-        return Boolean(karte.dataset.zuordnung || karte.dataset.messquelle);
+        return Boolean(karte.dataset.assignment || karte.dataset.source);
     }
 
     /** Passt diese Karte auf dieses Ziel?
@@ -32,14 +32,14 @@
      *  ausschliesslich zurueck in den Vorrat.
      */
     function passt(karte, ziel) {
-        if (ziel.dataset.ziel === "entfernen") {
+        if (ziel.dataset.target === "entfernen") {
             return zugeordnet(karte);
         }
         if (zugeordnet(karte)) {
             return false;
         }
-        const braucht = ziel.dataset.braucht;
-        const kann = (karte.dataset.kann || "").split(" ").filter(Boolean);
+        const braucht = ziel.dataset.requires;
+        const kann = (karte.dataset.can || "").split(" ").filter(Boolean);
         return !braucht || kann.length === 0 || kann.includes(braucht);
     }
 
@@ -54,16 +54,16 @@
     }
 
     function loesen(karte) {
-        if (karte.dataset.messquelle) {
+        if (karte.dataset.source) {
             // Die Messquelle ist eine Spalte an der Zone, keine Zuordnungszeile. Ein
             // leeres Geraetefeld loescht sie -- derselbe Weg wie ueber das Formular.
-            const formular = document.getElementById("zuordnung-messquelle");
+            const formular = document.getElementById("assignment-source");
             formular.elements.device_id.value = "";
             formular.requestSubmit();
             return;
         }
-        const formular = document.getElementById("zuordnung-loesen");
-        formular.elements.zuordnung_id.value = karte.dataset.zuordnung;
+        const formular = document.getElementById("assignment-detach");
+        formular.elements.assignment_id.value = karte.dataset.assignment;
         formular.requestSubmit();
     }
 
@@ -79,19 +79,19 @@
             return;
         }
         if (zielart === "messquelle") {
-            const formular = document.getElementById("zuordnung-messquelle");
+            const formular = document.getElementById("assignment-source");
             formular.elements.device_id.value = geraetId;
             formular.requestSubmit();
             return;
         }
-        const eintrag = document.querySelector('[data-rollencode="' + zielart + '"]');
-        const rollenId = eintrag ? eintrag.dataset.rollenid : null;
+        const eintrag = document.querySelector('[data-role-code="' + zielart + '"]');
+        const rollenId = eintrag ? eintrag.dataset.roleId : null;
         if (!rollenId) {
             // Die Rolle gibt es in dieser Anlage nicht. Lieber nichts tun als eine
             // Anfrage schicken, die der Server als Formfehler zurueckweist.
             return;
         }
-        const formular = document.getElementById("zuordnung-rolle");
+        const formular = document.getElementById("assignment-role");
         formular.elements.device_id.value = geraetId;
         formular.elements.role_id.value = rollenId;
         formular.requestSubmit();
@@ -108,12 +108,12 @@
             let bewegt = false;
             let ziel = null;
 
-            karte.classList.add("tc-in-bewegung");
+            karte.classList.add("tc-dragging");
             karte.style.pointerEvents = "none";
             // Unpassende Ziele treten waehrend des Ziehens zurueck, statt erst beim
             // Loslassen mit einer Fehlermeldung zu antworten.
             ziele.forEach(function (z) {
-                z.classList.toggle("tc-ziel-unpassend", !passt(karte, z));
+                z.classList.toggle("tc-target-unfit", !passt(karte, z));
             });
 
             function bewegen(zweites) {
@@ -126,9 +126,9 @@
                 const unter = zielUnter(zweites.clientX, zweites.clientY, ziele);
                 const getroffen = unter && passt(karte, unter) ? unter : null;
                 if (getroffen !== ziel) {
-                    ziele.forEach(function (z) { z.classList.remove("tc-ziel-aktiv"); });
+                    ziele.forEach(function (z) { z.classList.remove("tc-target-active"); });
                     if (getroffen) {
-                        getroffen.classList.add("tc-ziel-aktiv");
+                        getroffen.classList.add("tc-target-active");
                     }
                     ziel = getroffen;
                 }
@@ -138,12 +138,12 @@
                 window.removeEventListener("pointermove", bewegen);
                 window.removeEventListener("pointerup", loslassen);
                 window.removeEventListener("pointercancel", aufraeumen);
-                karte.classList.remove("tc-in-bewegung");
+                karte.classList.remove("tc-dragging");
                 karte.style.pointerEvents = "";
                 karte.style.transform = "";
                 ziele.forEach(function (z) {
-                    z.classList.remove("tc-ziel-aktiv");
-                    z.classList.remove("tc-ziel-unpassend");
+                    z.classList.remove("tc-target-active");
+                    z.classList.remove("tc-target-unfit");
                 });
             }
 
@@ -153,10 +153,10 @@
                 if (!bewegt || !getroffen) {
                     return;
                 }
-                if (getroffen.dataset.ziel === "entfernen") {
+                if (getroffen.dataset.target === "entfernen") {
                     loesen(karte);
                 } else {
-                    absenden(karte.dataset.geraet, getroffen.dataset.ziel, getroffen);
+                    absenden(karte.dataset.device, getroffen.dataset.target, getroffen);
                 }
             }
 
@@ -167,21 +167,21 @@
     }
 
     function einrichten() {
-        const vorrat = document.getElementById("geraetevorrat");
-        if (!vorrat || vorrat.dataset.verdrahtet) {
+        const vorrat = document.getElementById("device-pool");
+        if (!vorrat || vorrat.dataset.wired) {
             return;
         }
-        vorrat.dataset.verdrahtet = "ja";
-        const ziele = Array.from(document.querySelectorAll("[data-ziel]"));
+        vorrat.dataset.wired = "ja";
+        const ziele = Array.from(document.querySelectorAll("[data-target]"));
         if (!ziele.length) {
             return;
         }
         // Beide Richtungen: die Karten im Vorrat und die bereits zugeordneten im
         // Flussbild.
-        document.querySelectorAll(".tc-ziehbar").forEach(function (karte) {
+        document.querySelectorAll(".tc-draggable").forEach(function (karte) {
             karteVerdrahten(karte, ziele);
         });
-        const hinweis = document.querySelector("[data-ziehhinweis]");
+        const hinweis = document.querySelector("[data-drag-hint]");
         if (hinweis) {
             hinweis.hidden = false;
         }

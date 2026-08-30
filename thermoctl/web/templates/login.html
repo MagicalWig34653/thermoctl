@@ -1,4 +1,4 @@
-{% extends "basis_schlicht.html" %}
+{% extends "base_plain.html" %}
 
 {% block titel %}Anmeldung – thermoctl{% endblock %}
 
@@ -36,10 +36,10 @@
 #}
 <div class="mt-3" data-passkey hidden>
     <div class="text-center small text-body-secondary my-2">oder</div>
-    <button class="btn btn-outline-secondary w-100" type="button" id="passkey-anmelden">
+    <button class="btn btn-outline-secondary w-100" type="button" id="passkey-login">
         Mit Passkey anmelden
     </button>
-    <span id="passkey-hinweis" class="form-text text-body-secondary"></span>
+    <span id="passkey-hint" class="form-text text-body-secondary"></span>
 </div>
 {% endif %}
 {% endblock %}

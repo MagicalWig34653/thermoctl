@@ -78,7 +78,7 @@ def _page(
 
     return templates.TemplateResponse(
         request,
-        "steuerung.html",
+        "control.html",
         {
             "settings": zeile,
             "zones": zones,
@@ -113,7 +113,7 @@ def _defaults_page(
         values["timezone"] = zeile.timezone
     return templates.TemplateResponse(
         request,
-        "einstellungen.html",
+        "settings.html",
         {
             "felder": [(feld, LABELS[feld], feld in GANZZAHLIG) for feld in LIMITS],
             "values": values,
@@ -208,7 +208,7 @@ async def show_interfaces(
     require(principal, "setting.manage")
     return templates.TemplateResponse(
         request,
-        "schnittstellen.html",
+        "interfaces.html",
         {
             "interfaces": uebersicht(
                 session,
@@ -266,7 +266,7 @@ async def show_statistics(
     )
     return templates.TemplateResponse(
         request,
-        "statistik.html",
+        "statistics.html",
         {
             "zones": zones,
             "values": values,

@@ -12,23 +12,23 @@
     "use strict";
 
     function nachfuehren(kaestchen) {
-        const kennung = kaestchen.dataset.recht + "-" + kaestchen.dataset.gruppe;
-        const zonen = document.querySelector('[data-zonen-fuer="' + kennung + '"]');
+        const kennung = kaestchen.dataset.permission + "-" + kaestchen.dataset.group;
+        const zonen = document.querySelector('[data-zones-for="' + kennung + '"]');
         if (zonen) {
-            zonen.classList.toggle("tc-verdeckt", kaestchen.checked);
+            zonen.classList.toggle("tc-hidden", kaestchen.checked);
         }
     }
 
     function einrichten() {
-        if (document.documentElement.dataset.rechteVerdrahtet) {
+        if (document.documentElement.dataset.permissionsWired) {
             return;
         }
-        document.documentElement.dataset.rechteVerdrahtet = "ja";
+        document.documentElement.dataset.permissionsWired = "ja";
         // Am `document`, einmal: Die Kaestchen werden bei jeder Navigation neu
         // eingesetzt, das `document` bleibt.
         document.addEventListener("change", function (ereignis) {
             const kaestchen = ereignis.target;
-            if (kaestchen && kaestchen.dataset && kaestchen.dataset.recht) {
+            if (kaestchen && kaestchen.dataset && kaestchen.dataset.permission) {
                 nachfuehren(kaestchen);
             }
         });

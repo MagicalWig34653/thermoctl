@@ -61,7 +61,7 @@ def _mode_form(
 ) -> Response:
     return templates.TemplateResponse(
         request,
-        "modus_formular.html",
+        "mode_form.html",
         {
             "values": values,
             "errors": {errors.feld: errors.notice} if errors is not None else {},
@@ -78,7 +78,7 @@ async def mode_list(
 ) -> Response:
     require(principal, "mode.manage")
     modes = _modes(session)
-    return templates.TemplateResponse(request, "modi.html", {"modes": modes})
+    return templates.TemplateResponse(request, "modes.html", {"modes": modes})
 
 
 @router.get("/modes/new")
@@ -166,7 +166,7 @@ async def mode_delete_form(
     mode = _mode_or_404(session, mode_id)
     return templates.TemplateResponse(
         request,
-        "modus_loeschen.html",
+        "mode_delete.html",
         {"mode": mode, "sperre": delete_guard(session, mode)},
     )
 
@@ -184,7 +184,7 @@ async def remove_mode(
         delete_mode(session, mode, user_id=principal.user_id)
     except DomainError as exc:
         return templates.TemplateResponse(
-            request, "modus_loeschen.html", {"mode": mode, "sperre": exc.notice}
+            request, "mode_delete.html", {"mode": mode, "sperre": exc.notice}
         )
     return RedirectResponse("/modes", status_code=status.HTTP_303_SEE_OTHER)
 
@@ -218,7 +218,7 @@ def _setpointpage(
         }
     return templates.TemplateResponse(
         request,
-        "sollwerte.html",
+        "setpoints.html",
         {
             # From the domain: numbers in the markup would be a second version of
             # the limit and would fall behind on the next change.

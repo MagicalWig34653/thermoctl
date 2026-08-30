@@ -130,21 +130,21 @@ h2, .t-abschnitt {
 
 /* ── Navigation ─────────────────────────────────────────────────────────────── */
 
-.tc-kopf {
+.tc-head {
     background: color-mix(in srgb, var(--flaeche) 72%, transparent);
     backdrop-filter: blur(12px) saturate(140%);
     -webkit-backdrop-filter: blur(12px) saturate(140%);
     border-bottom: 1px solid var(--linie);
 }
 
-.tc-marke {
+.tc-marker {
     font-weight: 640;
     letter-spacing: -0.02em;
     color: var(--tinte);
     text-decoration: none;
 }
 
-.tc-marke::before {
+.tc-marker::before {
     /* Ein Thermometerstrich statt eines Logos: zwei Zeichen, die aus der Sache kommen. */
     content: "";
     display: inline-block;
@@ -156,32 +156,32 @@ h2, .t-abschnitt {
     background: linear-gradient(to top, var(--kuehle), var(--waerme));
 }
 
-.tc-kopf .nav-link {
+.tc-head .nav-link {
     color: var(--gedaempft);
     font-weight: 520;
     padding-inline: 0.7rem;
 }
 
-.tc-kopf .nav-link:hover,
-.tc-kopf .nav-link:focus-visible {
+.tc-head .nav-link:hover,
+.tc-head .nav-link:focus-visible {
     color: var(--tinte);
 }
 
-.tc-kopf .nav-link.tc-hier {
+.tc-head .nav-link.tc-here {
     color: var(--tinte);
     box-shadow: inset 0 -2px 0 var(--tinte);
 }
 
 /* ── Flächen ────────────────────────────────────────────────────────────────── */
 
-.tc-tafel {
+.tc-panel {
     background: var(--flaeche);
     border: 1px solid var(--linie);
     border-radius: var(--rundung);
 }
 
 /* Die Systemzeile ganz oben: ein Satz über den Zustand der ganzen Anlage. */
-.tc-systemzeile {
+.tc-system-row {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
@@ -192,7 +192,7 @@ h2, .t-abschnitt {
     background: var(--flaeche);
 }
 
-.tc-systemzeile.tc-scharf {
+.tc-system-row.tc-armed {
     border-color: color-mix(in srgb, var(--waerme) 45%, var(--linie));
     background: var(--waerme-flaeche);
 }
@@ -212,25 +212,25 @@ h2, .t-abschnitt {
     white-space: nowrap;
 }
 
-.tc-chip-waerme {
+.tc-chip-warm {
     color: var(--waerme);
     background: var(--waerme-flaeche);
     border-color: color-mix(in srgb, var(--waerme) 25%, transparent);
 }
 
-.tc-chip-kuehle {
+.tc-chip-cool {
     color: var(--kuehle);
     background: var(--kuehle-flaeche);
     border-color: color-mix(in srgb, var(--kuehle) 25%, transparent);
 }
 
-.tc-chip-warnung {
+.tc-chip-warning {
     color: var(--warnung);
     background: var(--warnung-flaeche);
     border-color: color-mix(in srgb, var(--warnung) 30%, transparent);
 }
 
-.tc-chip-still {
+.tc-chip-quiet {
     color: var(--gedaempft);
     background: var(--flaeche-tief);
     border-color: var(--linie);
@@ -238,7 +238,7 @@ h2, .t-abschnitt {
 
 /* Ein Punkt, der pulst, solange wirklich geheizt wird. Das einzige bewegte Element im
    ganzen Programm — es zeigt genau die eine Sache an, die gerade passiert. */
-.tc-punkt {
+.tc-dot {
     width: 7px;
     height: 7px;
     border-radius: 50%;
@@ -246,17 +246,17 @@ h2, .t-abschnitt {
     flex: none;
 }
 
-.tc-chip-waerme .tc-punkt {
-    animation: tc-puls 2.4s ease-in-out infinite;
+.tc-chip-warm .tc-dot {
+    animation: tc-pulse 2.4s ease-in-out infinite;
 }
 
-@keyframes tc-puls {
+@keyframes tc-pulse {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.35; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .tc-chip-waerme .tc-punkt { animation: none; }
+    .tc-chip-warm .tc-dot { animation: none; }
     * { scroll-behavior: auto !important; }
 }
 
@@ -270,7 +270,7 @@ h2, .t-abschnitt {
  * Reines CSS, keine Bibliothek: Sie besteht aus abschnittsweise gesetzten Flächen,
  * deren Farbe die Solltemperatur ist. */
 
-.tc-spur {
+.tc-track {
     position: relative;
     height: 2.25rem;
     border-radius: var(--rundung-klein);
@@ -279,14 +279,14 @@ h2, .t-abschnitt {
     border: 1px solid var(--linie);
 }
 
-.tc-spur-abschnitt {
+.tc-track-segment {
     position: absolute;
     top: 0;
     bottom: 0;
     border-right: 1px solid color-mix(in srgb, var(--flaeche) 55%, transparent);
 }
 
-.tc-spur-abschnitt:last-child {
+.tc-track-segment:last-child {
     border-right: 0;
 }
 
@@ -294,12 +294,12 @@ h2, .t-abschnitt {
    setzen ihn ausser Kraft. Das Band zeigt dann weiter, was vorgesehen waere, aber
    sichtbar entkraeftet: Ein satt gezeichneter Tagesplan an einer abgeschalteten Zone
    wuerde das Gegenteil dessen behaupten, was die Anlage tut. */
-.tc-spur-ausgesetzt {
+.tc-track-suspended {
     filter: grayscale(0.75);
     opacity: 0.5;
 }
 
-.tc-spur-jetzt {
+.tc-track-now {
     position: absolute;
     top: -2px;
     bottom: -2px;
@@ -309,7 +309,7 @@ h2, .t-abschnitt {
     z-index: 2;
 }
 
-.tc-spur-skala {
+.tc-track-scale {
     display: flex;
     justify-content: space-between;
     margin-top: 0.2rem;
@@ -348,30 +348,30 @@ h2, .t-abschnitt {
 /* Eigene Klasse statt eines style-Attributs an der Zeile: Ein Attribut schlaegt jede
    Medienabfrage, und die Betriebsseite lief deshalb auf schmalen Geraeten 260 Pixel
    ueber den Rand hinaus. */
-.tc-zone-betrieb {
+.tc-zone-operation {
     grid-template-columns: minmax(8rem, 1fr) 6.5rem 6.5rem minmax(12rem, 2.4fr);
 }
 
 /* Geraeteliste: Name und Befund tragen das Gewicht, Zustandswerte und Faehigkeiten
    stehen daneben. */
-.tc-zone-geraet {
+.tc-zone-device {
     grid-template-columns: minmax(12rem, 2fr) 7rem minmax(10rem, 1.6fr) minmax(7rem, 1fr);
     align-items: start;
 }
 
 @media (max-width: 62em) {
     .tc-zone,
-    .tc-zone-betrieb,
-    .tc-zone-geraet {
+    .tc-zone-operation,
+    .tc-zone-device {
         grid-template-columns: 1fr auto;
         row-gap: 0.85rem;
     }
-    .tc-zone > .tc-zone-spur {
+    .tc-zone > .tc-zone-track {
         grid-column: 1 / -1;
     }
     /* Die Begruendung darf umbrechen; sie ist der laengste Text der Zeile. */
-    .tc-zone-betrieb > :last-child,
-    .tc-zone-geraet > :last-child {
+    .tc-zone-operation > :last-child,
+    .tc-zone-device > :last-child {
         grid-column: 1 / -1;
     }
 }
@@ -384,7 +384,7 @@ body {
 }
 
 /* Das Thermostat: zwei Stufentasten um den Sollwert des laufenden Modus. */
-.tc-thermostat .tc-stufe {
+.tc-thermostat .tc-stage {
     width: 2rem;
     padding-inline: 0;
     font-size: 1.1rem;
@@ -473,14 +473,14 @@ body {
 
 /* ── Flussbild ─────────────────────────────────────────────────────────────── */
 
-.tc-fluss {
+.tc-flow {
     display: grid;
     grid-template-columns: 1fr auto 1fr auto 1fr;
     align-items: start;
     gap: 0.75rem;
 }
 
-.tc-fluss-spalte {
+.tc-flow-column {
     display: flex;
     flex-direction: column;
     gap: 0.4rem;
@@ -489,14 +489,14 @@ body {
 
 /* Die Bereichsmarke traegt sonst Bootstraps Absatzabstand von einem ganzen rem und
    schiebt den ersten Knoten von den Pfeilen weg. */
-.tc-fluss-spalte > .t-marke {
+.tc-flow-column > .t-marke {
     margin-bottom: 0.1rem;
 }
 
 /* Der Pfeil zwischen zwei Stufen: eine Linie mit Spitze, aus zwei Rahmen gebaut.
    Kein Bild und kein SVG -- er hat genau eine Aufgabe und die Richtung ist das Einzige,
    was er sagen muss. */
-.tc-fluss-pfeil {
+.tc-flow-arrow {
     /* `start`, nicht `center`: Zentriert wuerde der Pfeil in der Mitte der *hoechsten*
        Spalte sitzen und mit jedem zusaetzlichen Geraet weiter nach unten wandern -- er
        zeigt aber auf die erste Stufe, nicht auf die Mitte einer Liste. */
@@ -512,7 +512,7 @@ body {
     margin-top: 2.7rem;
 }
 
-.tc-fluss-pfeil::after {
+.tc-flow-arrow::after {
     content: "";
     position: absolute;
     right: 0;
@@ -522,7 +522,7 @@ body {
     border-bottom: 4.5px solid transparent;
 }
 
-.tc-knoten {
+.tc-node {
     border: 1px solid var(--linie);
     border-left: 3px solid var(--linie-stark);
     border-radius: var(--rundung-klein);
@@ -530,26 +530,26 @@ body {
     padding: 0.45rem 0.6rem;
 }
 
-.tc-knoten-name {
+.tc-node-name {
     font-weight: 560;
     font-size: 0.875rem;
 }
 
 /* Die Farbe sagt, was der Knoten in der Kette ist -- Messung ist kuehl, Schalten ist
    warm, die Zone dazwischen bleibt neutral. Dieselbe Sprache wie ueberall. */
-.tc-knoten-sensor { border-left-color: var(--kuehle); }
-.tc-knoten-kontakt { border-left-color: var(--warnung); }
-.tc-knoten-aktor { border-left-color: var(--waerme); }
-.tc-knoten-zone {
+.tc-node-sensor { border-left-color: var(--kuehle); }
+.tc-node-contact { border-left-color: var(--warnung); }
+.tc-node-actuator { border-left-color: var(--waerme); }
+.tc-node-zone {
     border-left-color: var(--tinte);
     background: var(--flaeche-tief);
 }
-.tc-knoten-anzeige { border-left-color: var(--linie-stark); }
-.tc-knoten-frei { border-left-color: var(--linie-stark); }
+.tc-node-display { border-left-color: var(--linie-stark); }
+.tc-node-free { border-left-color: var(--linie-stark); }
 
 /* Eine Luecke ist kein Kasten mit leerem Inhalt, sondern sichtbar keiner: gestrichelt
    und in Warnfarbe. Ein leerer Kasten sieht aus wie ein Geraet ohne Namen. */
-.tc-knoten-luecke {
+.tc-node-gap {
     border: 1px dashed color-mix(in srgb, var(--warnung) 55%, var(--linie));
     border-radius: var(--rundung-klein);
     padding: 0.45rem 0.6rem;
@@ -561,10 +561,10 @@ body {
 @media (max-width: 48em) {
     /* Untereinander statt nebeneinander; die Pfeile entfallen, weil die Reihenfolge
        dann die Richtung ist. */
-    .tc-fluss {
+    .tc-flow {
         grid-template-columns: 1fr;
     }
-    .tc-fluss-pfeil {
+    .tc-flow-arrow {
         display: none;
     }
 }
@@ -572,34 +572,34 @@ body {
 /* Ablegeziele der Geraetezuordnung. Sie sind immer sichtbar umrandet, nicht erst
    waehrend des Ziehens: Ein Ziel, das erst erscheint, wenn man schon zieht, findet
    niemand, der nicht weiss, dass es da ist. */
-.tc-ziel {
+.tc-target {
     border: 1px dashed var(--linie-stark);
     border-radius: var(--rundung-klein);
     padding: 0.5rem;
     transition: background-color .12s ease, border-color .12s ease;
 }
 
-.tc-ziel-aktiv {
+.tc-target-active {
     border-color: var(--waerme);
     border-style: solid;
     background: var(--waerme-flaeche);
 }
 
-.tc-ziel-unpassend {
+.tc-target-unfit {
     opacity: 0.35;
 }
 
-.tc-ziel-kontakt {
+.tc-target-contact {
     grid-column: 1 / -1;
 }
 
-.tc-ziehbar {
+.tc-draggable {
     cursor: grab;
     touch-action: none;
     user-select: none;
 }
 
-.tc-in-bewegung {
+.tc-dragging {
     cursor: grabbing;
     position: relative;
     z-index: 5;
@@ -609,7 +609,7 @@ body {
 
 /* ── Statistik ─────────────────────────────────────────────────────────────── */
 
-.tc-saeulen {
+.tc-bars {
     display: flex;
     align-items: end;
     gap: 2px;
@@ -619,13 +619,13 @@ body {
     padding-bottom: 0.25rem;
 }
 
-.tc-saeule {
+.tc-bar {
     flex: 1 1 0;
     min-width: 0.6rem;
     text-align: center;
 }
 
-.tc-saeule-flaeche {
+.tc-bar-area {
     display: flex;
     align-items: end;
     height: 5rem;
@@ -633,14 +633,14 @@ body {
     border-radius: var(--rundung-klein) var(--rundung-klein) 0 0;
 }
 
-.tc-saeule-wert {
+.tc-bar-value {
     width: 100%;
     background: var(--waerme);
     border-radius: var(--rundung-klein) var(--rundung-klein) 0 0;
     min-height: 1px;
 }
 
-.tc-saeule-marke {
+.tc-bar-marker {
     font-size: 0.6rem;
     margin-top: 0.2rem;
     white-space: nowrap;
@@ -648,17 +648,17 @@ body {
 
 /* Bei vielen Tagen wird jede zweite Beschriftung ausgelassen -- sonst ueberlagern sie
    sich zu einem grauen Streifen. */
-.tc-saeulen:has(> :nth-child(15)) .tc-saeule:nth-child(even) .tc-saeule-marke {
+.tc-bars:has(> :nth-child(15)) .tc-bar:nth-child(even) .tc-bar-marker {
     visibility: hidden;
 }
 
-.tc-saeulen:has(> :nth-child(40)) .tc-saeule .tc-saeule-marke {
+.tc-bars:has(> :nth-child(40)) .tc-bar .tc-bar-marker {
     display: none;
 }
 
 /* ── Rechtevergabe ─────────────────────────────────────────────────────────── */
 
-.tc-rechteeditor > summary {
+.tc-permission-editor > summary {
     cursor: pointer;
     display: inline-block;
     padding: 0.25rem 0.7rem;
@@ -668,11 +668,11 @@ body {
     font-weight: 520;
 }
 
-.tc-rechteeditor[open] > summary {
+.tc-permission-editor[open] > summary {
     margin-bottom: 0.5rem;
 }
 
-.tc-recht {
+.tc-permission {
     display: flex;
     flex-wrap: wrap;
     align-items: start;
@@ -681,7 +681,7 @@ body {
     border-top: 1px solid var(--linie);
 }
 
-.tc-recht-marke {
+.tc-permission-marker {
     display: flex;
     align-items: start;
     gap: 0.55rem;
@@ -692,14 +692,14 @@ body {
 
 /* Die Zonenhaken eines Rechts. Sie stehen rechts daneben und nicht darunter: Ein Recht
    ist eine Zeile, und "wo gilt es" gehoert in dieselbe Zeile wie "gilt es". */
-.tc-recht-zonen {
+.tc-permission-zones {
     display: flex;
     flex-wrap: wrap;
     gap: 0.35rem;
     align-items: center;
 }
 
-.tc-recht-zonen .tc-chip {
+.tc-permission-zones .tc-chip {
     cursor: pointer;
     font-weight: 500;
 }
@@ -708,26 +708,26 @@ body {
    Recht deckt jede Zone ab. Sie bleiben sichtbar, aber gedaempft, statt zu
    verschwinden; ein Bedienelement, das beim Klicken verschwindet, laesst einen raten,
    ob man etwas kaputtgemacht hat. */
-.tc-verdeckt {
+.tc-hidden {
     opacity: 0.35;
     pointer-events: none;
 }
 
 /* ── Zeitplan-Wochenansicht ─────────────────────────────────────────────────── */
 
-.zeitplan-ziehbar {
+.schedule-draggable {
     cursor: grab;
     touch-action: none; /* Sonst scrollt das Ziehen auf dem Tablet die Seite. */
 }
 
-.zeitplan-in-bewegung {
+.schedule-dragging {
     cursor: grabbing;
     z-index: 2;
     opacity: 0.85;
     box-shadow: 0 0.25rem 0.75rem rgb(0 0 0 / 35%);
 }
 
-.zeitplan-tag {
+.schedule-day {
     cursor: crosshair;
     background: var(--flaeche-tief) !important;
     border-color: var(--linie) !important;
@@ -736,7 +736,7 @@ body {
 /* Die Stelle, die ein Klick ins Anlege-Formular uebernommen hat. Sie steht im Gitter,
    weil dort die Maus ist -- das Formular kann weit unten stehen, und es dorthin zu
    scrollen hat genau den Fehler erzeugt, den diese Marke ersetzt. */
-.zeitplan-marke {
+.schedule-marker {
     position: absolute;
     left: 0;
     right: 0;
@@ -752,7 +752,7 @@ body {
 
 /* Die Farbe kommt aus der Vorlage (Solltemperatur des Modus), deshalb hier keine.
    Der Text steht auf hellen wie dunklen Flaechen -- Tinte statt Weiss. */
-.zeitplan-balken {
+.schedule-bar {
     color: var(--tinte);
     border-bottom-color: color-mix(in srgb, var(--tinte) 18%, transparent) !important;
     line-height: 1.25;

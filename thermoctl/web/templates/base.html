@@ -45,10 +45,10 @@
     <script defer src="/static/vendor/bootstrap/bootstrap.bundle.min.js"></script>
     <script defer src="/static/vendor/htmx/htmx.min.js"></script>
     <script defer src="/static/passkey.js"></script>
-    <script defer src="/static/zeitplan.js"></script>
-    <script defer src="/static/rechte.js"></script>
-    <script defer src="/static/zuordnung.js"></script>
-    <script defer src="/static/geraetefilter.js"></script>
+    <script defer src="/static/schedule.js"></script>
+    <script defer src="/static/permissions.js"></script>
+    <script defer src="/static/assignment.js"></script>
+    <script defer src="/static/device_filter.js"></script>
     <script>
         // Am `document`, nicht am `document.body`: htmx-Ereignisse blubbern bis dorthin,
         // und der Rumpf existiert zum Zeitpunkt dieses Skripts noch gar nicht.
@@ -67,19 +67,19 @@
 {% macro weg(ziel, label, genau=false) %}
     {% set active = hier == ziel if genau else (hier == ziel or hier.startswith(ziel ~ "/")) %}
     <li class="nav-item">
-        <a class="nav-link{{ ' tc-hier' if active }}" href="{{ ziel }}"
+        <a class="nav-link{{ ' tc-here' if active }}" href="{{ ziel }}"
            {% if active %}aria-current="page"{% endif %}>{{ label }}</a>
     </li>
 {% endmacro %}
-<nav class="tc-kopf navbar sticky-top navbar-expand-lg py-2 mb-4">
+<nav class="tc-head navbar sticky-top navbar-expand-lg py-2 mb-4">
     <div class="container" style="max-width: 76rem;">
-        <a class="tc-marke navbar-brand" href="/">thermoctl</a>
+        <a class="tc-marker navbar-brand" href="/">thermoctl</a>
         <button class="navbar-toggler border-0" type="button" data-bs-toggle="collapse"
-                data-bs-target="#hauptnavigation" aria-controls="hauptnavigation"
+                data-bs-target="#main-navigation" aria-controls="main-navigation"
                 aria-expanded="false" aria-label="Navigation einblenden">
             <span class="navbar-toggler-icon"></span>
         </button>
-        <div class="collapse navbar-collapse" id="hauptnavigation">
+        <div class="collapse navbar-collapse" id="main-navigation">
             {#
             Vier Wege statt drei Sammelmenues. Frueher lagen Steuerung, Zonen, Geraete und
             Modi zusammen unter "Anlage" -- vier Dinge, die man unterschiedlich oft
@@ -93,7 +93,7 @@
                 {{ weg("/geraete", "Geräte") }}
                 {{ weg("/steuerung", "Betrieb") }}
                 <li class="nav-item dropdown">
-                    <button class="nav-link dropdown-toggle{{ ' tc-hier' if hier in ('/einstellungen', '/schnittstellen', '/benutzer', '/gruppen', '/audit', '/tokens') or hier.startswith('/modi') }}"
+                    <button class="nav-link dropdown-toggle{{ ' tc-here' if hier in ('/einstellungen', '/schnittstellen', '/benutzer', '/gruppen', '/audit', '/tokens') or hier.startswith('/modi') }}"
                             type="button" data-bs-toggle="dropdown" aria-expanded="false">
                         Einstellungen
                     </button>
@@ -110,7 +110,7 @@
                     </ul>
                 </li>
                 <li class="nav-item dropdown">
-                    <button class="nav-link dropdown-toggle{{ ' tc-hier' if hier == '/passkeys' }}"
+                    <button class="nav-link dropdown-toggle{{ ' tc-here' if hier == '/passkeys' }}"
                             type="button" data-bs-toggle="dropdown" aria-expanded="false">
                         {{ kopf_benutzer.display_name if kopf_benutzer else "Konto" }}
                     </button>

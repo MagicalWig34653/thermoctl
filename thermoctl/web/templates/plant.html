@@ -1,5 +1,5 @@
-{% extends "basis.html" %}
-{% from "flussbild.html" import flussbild, geraetekarte %}
+{% extends "base.html" %}
+{% from "flow_diagram.html" import flow_diagram, device_card %}
 {% block titel %}Anlagenbild – thermoctl{% endblock %}
 {% block max_breite %}72rem{% endblock %}
 {% block inhalt %}
@@ -10,10 +10,10 @@
     entscheidet, ein Aktor schaltet.
 </p>
 
-<section class="tc-tafel p-4 mb-4">
+<section class="tc-panel p-4 mb-4">
     <div class="d-flex align-items-center gap-3 flex-wrap">
-        <span class="tc-chip {{ 'tc-chip-waerme' if bridge is true else ('tc-chip-warnung' if bridge is false else 'tc-chip-still') }}">
-            {% if bridge is true %}<span class="tc-punkt"></span>Brücke meldet sich
+        <span class="tc-chip {{ 'tc-chip-warm' if bridge is true else ('tc-chip-warning' if bridge is false else 'tc-chip-quiet') }}">
+            {% if bridge is true %}<span class="tc-dot"></span>Brücke meldet sich
             {% elif bridge is false %}Brücke meldet sich nicht
             {% else %}Brücke: noch keine Meldung{% endif %}
         </span>
@@ -26,32 +26,32 @@
 </section>
 
 {% if not zones %}
-<div class="tc-tafel p-4">
+<div class="tc-panel p-4">
     <p class="t-leise mb-0">Noch keine Zonen angelegt.</p>
 </div>
 {% else %}
 {% for z in zones %}
-<article class="tc-tafel p-4 mb-3">
+<article class="tc-panel p-4 mb-3">
     <div class="d-flex justify-content-between align-items-baseline mb-3">
         <h2 class="mb-0">{{ z.name }}</h2>
         <a class="btn btn-sm btn-outline-secondary" href="/zones/{{ z.zone_id }}/devices">
             Zuordnung ändern
         </a>
     </div>
-    {{ flussbild(z) }}
+    {{ flow_diagram(z) }}
 </article>
 {% endfor %}
 {% endif %}
 
 {% if without_zone %}
-<article class="tc-tafel p-4">
+<article class="tc-panel p-4">
     <h2 class="mb-1">Ohne Zone</h2>
     <p class="t-leise">
         Diese Geräte melden sich, aber keine Zone benutzt sie — die Regelung sieht sie
         nicht. Der häufigste Grund, warum ein neu eingebundener Sensor „nicht ankommt".
     </p>
     <div class="d-flex flex-wrap gap-2">
-        {% for g in without_zone %}{{ geraetekarte(g, "frei") }}{% endfor %}
+        {% for g in without_zone %}{{ device_card(g, "free") }}{% endfor %}
     </div>
 </article>
 {% endif %}

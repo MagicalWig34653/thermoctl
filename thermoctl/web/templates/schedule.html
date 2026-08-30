@@ -1,6 +1,6 @@
-{% extends "basis.html" %}
-{% from "formular.html" import auswahl, textfeld %}
-{% from "zonenkopf.html" import zonenkopf %}
+{% extends "base.html" %}
+{% from "form.html" import auswahl, textfeld %}
+{% from "zone_header.html" import zonenkopf %}
 {% block titel %}Zeitplan {{ zone.display_name }} – thermoctl{% endblock %}
 {% block max_breite %}90rem{% endblock %}
 {% block inhalt %}
@@ -17,23 +17,23 @@
 </div>
 
 {% if move_error %}
-<div class="alert alert-warning" data-verschiebefehler role="alert">
+<div class="alert alert-warning" data-move-error role="alert">
     Der Schaltpunkt wurde nicht verschoben: {{ move_error }}
 </div>
 {% endif %}
 
 {% if points %}
-<div id="zeitplan-gitter" class="row g-2 mb-2"
-     data-zone="{{ zone.id }}" data-aenderbar="{{ 'ja' if darf_aendern else 'nein' }}">
+<div id="schedule-grid" class="row g-2 mb-2"
+     data-zone="{{ zone.id }}" data-editable="{{ 'ja' if darf_aendern else 'nein' }}">
 {% for day, tagname in wochentage %}
     <section class="col" style="min-width: 8rem;">
         <h2 class="h6 text-center">{{ tagname }}</h2>
-        <div class="zeitplan-tag position-relative border rounded bg-light"
-             style="height: 26rem;" data-wochentag="{{ day }}">
+        <div class="schedule-day position-relative border rounded bg-light"
+             style="height: 26rem;" data-weekday="{{ day }}">
         {% for segment in segments[day] %}
-            <div class="zeitplan-balken position-absolute start-0 end-0 border-bottom px-1 overflow-hidden{{ ' zeitplan-ziehbar' if segment.point_id and darf_aendern }}"
-                 {% if segment.point_id %}data-punkt="{{ segment.point_id }}"{% endif %}
-                 data-startminute="{{ segment.start_minute }}"
+            <div class="schedule-bar position-absolute start-0 end-0 border-bottom px-1 overflow-hidden{{ ' schedule-draggable' if segment.point_id and darf_aendern }}"
+                 {% if segment.point_id %}data-point="{{ segment.point_id }}"{% endif %}
+                 data-start-minute="{{ segment.start_minute }}"
                  {% set w = waerme.get(segment.mode_id, 0.5) %}
                  style="top: {{ segment.start_minute / 55.4 }}rem;
                         height: {{ (segment.endminute - segment.start_minute) / 55.4 }}rem;
@@ -45,7 +45,7 @@
                  ) }}{% if temperatures.get(segment.mode_id) %} – {{ temperatures[segment.mode_id]|grad }} °C{% endif %}">
                 {# Eine Zeile, nicht zwei: Ein Balken von zwei Stunden ist keine zwei
                    Zeilen hoch, und die Beschriftung wurde unten abgeschnitten. #}
-                <small class="text-nowrap"><span class="zeitplan-uhrzeit t-wert">{{ "%02d:%02d"|format(
+                <small class="text-nowrap"><span class="schedule-time t-wert">{{ "%02d:%02d"|format(
                     segment.start_minute // 60, segment.start_minute % 60
                 ) }}</span> {{ segment.mode_name }}{% if temperatures.get(segment.mode_id) %}
                     <span class="t-wert">{{ temperatures[segment.mode_id]|grad }}°</span>{% endif %}</small>
@@ -56,7 +56,7 @@
 {% endfor %}
 </div>
 {% if darf_aendern %}
-<p class="text-muted small mb-4" data-zeitplan-hinweis hidden>
+<p class="text-muted small mb-4" data-schedule-hint hidden>
     Balken lassen sich mit der Maus auf eine andere Zeit oder einen anderen Tag ziehen;
     ein Klick markiert eine Stelle und übernimmt Tag und Uhrzeit ins Formular unten.
     Der Balken ganz oben an einem Tag reicht vom Vortag herein und gehört dorthin.
@@ -71,7 +71,7 @@
    Verschiebung den POST-Pfad in die Adresszeile, und ein Neuladen liefe
    dann gegen einen Weg, den es fuer GET nicht gibt. Der erfolgreiche Fall
    leitet ohnehin auf die Zeitplanseite um. #}
-<form id="zeitplan-verschieben" method="post" hidden hx-push-url="false"
+<form id="schedule-move" method="post" hidden hx-push-url="false"
       action="/zones/{{ zone.id }}/schedule/points/move">
     <input type="hidden" name="point_id">
     <input type="hidden" name="weekday">
@@ -81,11 +81,11 @@
     <div class="col-lg-6">
         <h2 class="h4">Schaltpunkt anlegen</h2>
         <form method="post" action="/zones/{{ zone.id }}/schedule/points">
-            {{ auswahl("wochentag", "Tag", wochentage, values.weekday, "", errors.weekday) }}
-            {{ textfeld("uhrzeit", "Uhrzeit", values.time_of_day, "Lokale Zeit, zum Beispiel 06:30.", errors.time_of_day, true, "time") }}
+            {{ auswahl("weekday", "Tag", wochentage, values.weekday, "", errors.weekday) }}
+            {{ textfeld("time_of_day", "Uhrzeit", values.time_of_day, "Lokale Zeit, zum Beispiel 06:30.", errors.time_of_day, true, "time") }}
             {% set modusoptionen = [] %}
             {% for mode in modes %}{% set _ = modusoptionen.append((mode.id, mode.name)) %}{% endfor %}
-            {{ auswahl("modus", "Modus", modusoptionen, values.mode, "", errors.mode) }}
+            {{ auswahl("mode_id", "Modus", modusoptionen, values.mode, "", errors.mode) }}
             <button class="btn btn-primary" type="submit">Punkt anlegen</button>
         </form>
     </div>

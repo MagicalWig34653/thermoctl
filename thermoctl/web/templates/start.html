@@ -1,4 +1,4 @@
-{% extends "basis.html" %}
+{% extends "base.html" %}
 {% block titel %}thermoctl{% endblock %}
 {% block max_breite %}76rem{% endblock %}
 
@@ -13,11 +13,11 @@ Seite ein Formularstapel, in dem die eigentliche Auskunft — wie warm ist es �
 #}
 
 {% macro spur(segments, jetzt_anteil, gilt) %}
-<div class="tc-spur{{ '' if gilt else ' tc-spur-ausgesetzt' }}" role="img"
+<div class="tc-track{{ '' if gilt else ' tc-track-suspended' }}" role="img"
      aria-label="Tagesplan: {% for a in segments %}ab {{ "%02d:%02d"|format(a.start // 60, a.start % 60) }} {{ a.mode_name }}{% if a.temperature %} auf {{ a.temperature|grad }} Grad{% endif %}{{ ", " if not loop.last }}{% endfor %}"
 >
     {% for a in segments %}
-    <div class="tc-spur-abschnitt"
+    <div class="tc-track-segment"
          {#
          Zwei Toene statt eines Verlaufs. Ein Verlauf von Kupfer nach Stahlblau fuehrt
          durch deren Mitte, und die Mitte zweier fast gegenlaeufiger Farben ist Grau:
@@ -31,7 +31,7 @@ Seite ein Formularstapel, in dem die eigentliche Auskunft — wie warm ist es �
                     {{ (40 + (a.waerme - 0.5)|abs * 90)|round|int }}%, var(--flaeche));"
          title="{{ "%02d:%02d"|format(a.start // 60, a.start % 60) }} {{ a.mode_name }}{% if a.temperature %} – {{ a.temperature|grad }} °C{% endif %}"></div>
     {% endfor %}
-    <div class="tc-spur-jetzt" style="left: {{ "%.4f"|format(jetzt_anteil) }}%"></div>
+    <div class="tc-track-now" style="left: {{ "%.4f"|format(jetzt_anteil) }}%"></div>
 </div>
 {% endmacro %}
 
@@ -42,20 +42,20 @@ Seite ein Formularstapel, in dem die eigentliche Auskunft — wie warm ist es �
     <span class="t-leise small">{{ zones|length }} {{ "Zone" if zones|length == 1 else "Zonen" }}</span>
 </div>
 
-<section class="tc-systemzeile {{ 'tc-scharf' if armed }} mb-4">
+<section class="tc-system-row {{ 'tc-armed' if armed }} mb-4">
     {% if armed %}
-    <span class="tc-chip tc-chip-waerme"><span class="tc-punkt"></span>Scharf</span>
+    <span class="tc-chip tc-chip-warm"><span class="tc-dot"></span>Scharf</span>
     <span>Entscheidungen werden an die Ventile weitergegeben.</span>
     {% else %}
-    <span class="tc-chip tc-chip-still">Trockenlauf</span>
+    <span class="tc-chip tc-chip-quiet">Trockenlauf</span>
     <span>Es wird entschieden und protokolliert, aber nichts geschaltet.</span>
     {% endif %}
 
     {% if bridge is false %}
-    <span class="tc-chip tc-chip-warnung">Brücke nicht erreichbar</span>
+    <span class="tc-chip tc-chip-warning">Brücke nicht erreichbar</span>
     {% endif %}
     {% if stumme_sensoren %}
-    <span class="tc-chip tc-chip-warnung">
+    <span class="tc-chip tc-chip-warning">
         Kein Messwert: {{ stumme_sensoren|join(", ") }}
     </span>
     {% endif %}
@@ -66,7 +66,7 @@ Seite ein Formularstapel, in dem die eigentliche Auskunft — wie warm ist es �
 </section>
 
 {% if not zones %}
-<div class="tc-tafel p-4 text-center">
+<div class="tc-panel p-4 text-center">
     <p class="t-abschnitt mb-1">Noch keine Zone eingerichtet.</p>
     <p class="t-leise mb-3">
         Eine Zone ist ein Raum oder eine Gruppe von Räumen mit einem eigenen Sollwert.
@@ -76,7 +76,7 @@ Seite ein Formularstapel, in dem die eigentliche Auskunft — wie warm ist es �
 </div>
 {% else %}
 
-<div class="tc-tafel mb-4">
+<div class="tc-panel mb-4">
     {% for zone in zones %}
     {% set entry = zustaende.get(zone.id) %}
     {% set setpoint = setpoints[zone.id] %}
@@ -88,27 +88,27 @@ Seite ein Formularstapel, in dem die eigentliche Auskunft — wie warm ist es �
             <a class="tc-zone-name" href="/zones/{{ zone.id }}/schedule">{{ zone.display_name }}</a>
             <div class="mt-1 d-flex flex-wrap gap-1">
                 {% if entscheidung and entscheidung.would_heat %}
-                <span class="tc-chip tc-chip-waerme"><span class="tc-punkt"></span>Heizt</span>
+                <span class="tc-chip tc-chip-warm"><span class="tc-dot"></span>Heizt</span>
                 {% elif entscheidung %}
-                <span class="tc-chip tc-chip-kuehle">Aus</span>
+                <span class="tc-chip tc-chip-cool">Aus</span>
                 {% else %}
-                <span class="tc-chip tc-chip-still">Noch nicht entschieden</span>
+                <span class="tc-chip tc-chip-quiet">Noch nicht entschieden</span>
                 {% endif %}
                 {% if entry and entry[1].code != "ok" %}
-                <span class="tc-chip tc-chip-warnung">{{ entry[1].label }}</span>
+                <span class="tc-chip tc-chip-warning">{{ entry[1].label }}</span>
                 {% endif %}
                 {% if override %}
                 {# Wert und Ende gehoeren in die Marke, nicht nur das Wort: Eine
                    Uebersteuerung, deren Temperatur man nicht sieht, ist eine Warnung
                    ohne Inhalt. #}
-                <span class="tc-chip tc-chip-warnung t-wert">Übersteuerung auf {{ override.temperature_c|grad }} °C,
+                <span class="tc-chip tc-chip-warning t-wert">Übersteuerung auf {{ override.temperature_c|grad }} °C,
                     {% if override.ends_at %}endet {{ override.ends_at|age }}{% else %}auf Widerruf{% endif %}</span>
                 {% endif %}
                 {# Nur wenn sie vom Regelfall abweicht: "Automatik" an jeder Zone waere
                    Rauschen, "Aus" an einer Zone dagegen der Grund, warum es dort kalt
                    bleibt. #}
                 {% if zone.operating_mode.code != "auto" %}
-                <span class="tc-chip tc-chip-still">Betriebsart: {{ zone.operating_mode.label }}</span>
+                <span class="tc-chip tc-chip-quiet">Betriebsart: {{ zone.operating_mode.label }}</span>
                 {% endif %}
             </div>
         </div>
@@ -136,13 +136,13 @@ Seite ein Formularstapel, in dem die eigentliche Auskunft — wie warm ist es �
             {% if setpoint.mode_id and zone.id in darf_sollwert %}
             <form method="post" action="/zones/{{ zone.id }}/thermostat" class="d-flex align-items-center gap-1">
                 <input type="hidden" name="mode_id" value="{{ setpoint.mode_id }}">
-                <button class="btn btn-sm btn-outline-secondary tc-stufe" type="submit"
+                <button class="btn btn-sm btn-outline-secondary tc-stage" type="submit"
                         name="direction" value="runter" aria-label="Sollwert senken">−</button>
                 <div class="text-center" style="min-width: 4.5rem">
                     <div class="t-wert fw-medium">{{ setpoint.temperature_c|grad }} °C</div>
                     <div class="t-leise" style="font-size: .7rem">{{ mode_names.get(setpoint.mode_id, "Soll") }}</div>
                 </div>
-                <button class="btn btn-sm btn-outline-secondary tc-stufe" type="submit"
+                <button class="btn btn-sm btn-outline-secondary tc-stage" type="submit"
                         name="direction" value="hoch" aria-label="Sollwert anheben">+</button>
             </form>
             {% else %}
@@ -156,10 +156,10 @@ Seite ein Formularstapel, in dem die eigentliche Auskunft — wie warm ist es �
             {% endif %}
         </div>
 
-        <div class="tc-zone-spur">
+        <div class="tc-zone-track">
             {% set plan_gilt = zone.operating_mode.code == "auto" and not override %}
             {{ spur(tagesspuren.get(zone.id, []), jetzt_anteil, plan_gilt) }}
-            <div class="tc-spur-skala t-leise t-wert">
+            <div class="tc-track-scale t-leise t-wert">
                 <span>00</span><span>06</span><span>12</span><span>18</span><span>24</span>
             </div>
             <div class="small t-leise mt-1">
@@ -186,7 +186,7 @@ Seite ein Formularstapel, in dem die eigentliche Auskunft — wie warm ist es �
 
         {% if zone.id in darf_uebersteuern %}
         {% set hat_fehler = uebersteuerungsfehler and fehler_zone_id == zone.id|string %}
-        <div class="collapse{{ ' show' if hat_fehler }} tc-zone-spur" id="uebersteuern-{{ zone.id }}"
+        <div class="collapse{{ ' show' if hat_fehler }} tc-zone-track" id="uebersteuern-{{ zone.id }}"
              style="grid-column: 1 / -1">
             <form method="post" action="/zones/{{ zone.id }}/override"
                   class="d-flex flex-wrap align-items-end gap-2 pt-3 border-top">

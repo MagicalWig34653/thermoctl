@@ -20,12 +20,27 @@ MCP-Werkzeuge, Formularfelder, Spaltennamen, Kommentare, Docstrings und alle 794
 Deutsch geblieben ist, was ein Mensch liest — und ein Zitat: Der Defekt des Altsystems
 steht als `if ist < soll: an, sonst aus` im Test, weil das der Quelltext von dort ist.
 
-**Was in HTML und CSS noch deutsch ist:** rund 9 Element-Kennungen (`passkey-anmelden`,
-`passkey-hinterlegen`, …) und etwa 32 CSS-Klassen (`tc-ziehbar`, `zeitplan-balken`,
-`tc-knoten`, …). Sie sind Code, aber ein anderer Vertrag: Eine Klasse steht gleichzeitig
-in der Vorlage, im Stylesheet und im JavaScript, und wer eine davon vergisst, bekommt kein
-rotes Testergebnis, sondern eine Seite, die still anders aussieht. Das gehört als eigener
-Schritt gemacht, mit einem Blick in den Browser danach.
+**HTML und CSS sprechen jetzt auch Englisch.** Element-Kennungen, CSS-Klassen,
+`data-`-Attribute, die Vorlagen selbst (27 Dateien), die vier JavaScript-Dateien und die
+Jinja-Makros darin (`geraetekarte` → `device_card`, `flussbild` → `flow_diagram`) tragen
+englische Namen. Dieser Schritt hat keinen Testschutz: Eine Klasse steht gleichzeitig in
+Vorlage, Stylesheet und JavaScript, und wer eine Stelle vergisst, bekommt kein rotes
+Testergebnis, sondern eine Seite, die still anders aussieht. Genau das passierte zweimal:
+Das JavaScript las `dataset.aenderbar`, während die Vorlage schon `data-editable` schrieb —
+der Ziehhinweis im Zeitplan verschwand ersatzlos. Und das Formular zum Anlegen eines
+Schaltpunkts schickte `name="uhrzeit"`, während die View `time_of_day` liest; angelegt
+wurde stillschweigend nichts. Beides fand kein Test, sondern der Vergleich von
+Bildschirmfotos vor und nach der Umstellung und ein Klick im Browser.
+
+Der zweite Fall hat eine Ursache, die bleibt: Die Makros in `form.html` leiten `name=` und
+`id=` aus ihrem ersten Argument ab. Wer eine View umbenennt und die Vorlage vergisst,
+bricht das Formular, ohne eine einzige Zeile Formularcode anzufassen. Dagegen steht jetzt
+ein Wächtertest in `tests/test_smoke_test.py`, der die Feldnamen aus dem *gerenderten*
+Formular zieht und nur Werte beisteuert — er wurde von beiden Seiten gegengeprüft: Er wird
+rot, wenn die Vorlage abweicht, und er wird rot, wenn die View abweicht.
+
+Zehn der elf geprüften Seiten sind pixelgleich zu den Aufnahmen davor; die elfte
+unterscheidet sich in einem Satz, der eine Zeitspanne nennt.
 
 Die letzten deutschen Bezeichner im Schema sind weg: `user_passkey.bezeichnung` heißt
 `label`, `passkey_challenge.zeremonie` heißt `ceremony` (Migration `f2c6d90a41b8`, mit
@@ -349,4 +364,15 @@ verzögert hätte.
   Home-Assistant-Anbindung ist angeschlossen — sie meldet die Zonen an, veröffentlicht
   ihren Zustand und nimmt Sollwert und Betriebsart entgegen, sobald die Regelung scharf
   ist.
+- **Öffentliches Dashboard für ein Wandtablet** (Monitoring und Bedienung). Achtung,
+  Grundsatz 4: Eine wirklich unauthentifizierte Seite widerspricht ihm. Vorschlag ist ein
+  langlebiges, widerrufbares Kiosk-Token mit engem Rechtesatz — vor dem Bau bestätigen.
+- **Zigbee-Heizkörperthermostate (WT-A03E)** anbinden. Ein Thermostatventil ist kein
+  Schalter: Es braucht `system_mode` und `occupied_heating_setpoint` statt `state: ON`,
+  und beides bewegt ein Ventil — also `switches=True` und beide Riegel des Trockenlaufs.
+- **Optional: Sonnenprognose-Absenkung.** In der Übergangszeit soll eine Dachwohnung
+  morgens die Sonne nutzen statt der Heizung. Braucht eine Prognosequelle, eine
+  Zonen-Eigenschaft (welche Zone bekommt wie viel Sonne) und eine begrenzte Absenkung —
+  physisch wirksam, also Grundsatz 7.
+
 - **`vm130-nginx` bleibt bis zum abgeschlossenen Cutover unverändert die Rückfallebene.**
