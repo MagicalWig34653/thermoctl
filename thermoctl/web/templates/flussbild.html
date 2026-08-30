@@ -26,9 +26,13 @@ Eine Zone ohne Messquelle regelt nichts, und das soll man sehen.
 <div class="tc-knoten tc-knoten-luecke">{{ text }}</div>
 {% endmacro %}
 
-{% macro flussbild(z) %}
+{#
+`ziehbar` macht die drei Spalten zu Ablegezielen. Nur die Zuordnungsseite setzt es --
+auf dem Anlagenbild waere ein Ablegeziel eine Zusage, die die Seite nicht einloest.
+#}
+{% macro flussbild(z, ziehbar=false) %}
 <div class="tc-fluss">
-    <div class="tc-fluss-spalte">
+    <div class="tc-fluss-spalte{{ ' tc-ziel' if ziehbar }}"{% if ziehbar %} data-ziel="messquelle" data-zielname="Messquelle"{% endif %}>
         <p class="t-marke">Misst</p>
         {% if z.messquelle %}{{ geraetekarte(z.messquelle, "sensor") }}
         {% else %}{{ luecke("keine Messquelle") }}{% endif %}
@@ -51,7 +55,7 @@ Eine Zone ohne Messquelle regelt nichts, und das soll man sehen.
 
     <div class="tc-fluss-pfeil" aria-hidden="true"></div>
 
-    <div class="tc-fluss-spalte">
+    <div class="tc-fluss-spalte{{ ' tc-ziel' if ziehbar }}"{% if ziehbar %} data-ziel="actuator" data-zielname="Aktor"{% endif %}>
         <p class="t-marke">Schaltet</p>
         {% if z.aktoren %}
         {% for g in z.aktoren %}{{ geraetekarte(g, "aktor") }}{% endfor %}
@@ -63,6 +67,15 @@ Eine Zone ohne Messquelle regelt nichts, und das soll man sehen.
         {% endif %}
     </div>
 </div>
+
+{% if ziehbar %}
+<div class="tc-ziel tc-ziel-kontakt mt-2" data-ziel="window_contact" data-zielname="Fensterkontakt">
+    <p class="t-leise small mb-0">
+        Fensterkontakte hierher ziehen — sie unterbrechen das Heizen, solange ein Fenster
+        offen ist.
+    </p>
+</div>
+{% endif %}
 
 {% if z.maengel %}
 <ul class="t-leise small mb-0 mt-2">

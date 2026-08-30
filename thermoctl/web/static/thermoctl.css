@@ -427,6 +427,19 @@ body {
     outline-offset: 2px;
 }
 
+/* Bootstraps Warngelb passt nicht zum Messing dieser Oberflaeche. Es bleibt als Signal
+   erhalten -- "sieh genau hin" --, nur im richtigen Ton. */
+.btn-warning {
+    --bs-btn-bg: var(--warnung-flaeche);
+    --bs-btn-border-color: color-mix(in srgb, var(--warnung) 45%, transparent);
+    --bs-btn-color: var(--warnung);
+    --bs-btn-hover-bg: color-mix(in srgb, var(--warnung) 18%, var(--warnung-flaeche));
+    --bs-btn-hover-border-color: var(--warnung);
+    --bs-btn-hover-color: var(--warnung);
+    --bs-btn-active-bg: color-mix(in srgb, var(--warnung) 18%, var(--warnung-flaeche));
+    --bs-btn-active-color: var(--warnung);
+}
+
 /* Die dritte und letzte Bedeutung von Farbe: "das loescht etwas". Sie erscheint
    ausschliesslich auf Schaltflaechen, nie an einem Messwert -- Bootstraps volles Rot
    waere neben dem Kupfer nur laut. */
@@ -545,6 +558,40 @@ body {
     .tc-fluss-pfeil {
         display: none;
     }
+}
+
+/* Ablegeziele der Geraetezuordnung. Sie sind immer sichtbar umrandet, nicht erst
+   waehrend des Ziehens: Ein Ziel, das erst erscheint, wenn man schon zieht, findet
+   niemand, der nicht weiss, dass es da ist. */
+.tc-ziel {
+    border: 1px dashed var(--linie-stark);
+    border-radius: var(--rundung-klein);
+    padding: 0.5rem;
+    transition: background-color .12s ease, border-color .12s ease;
+}
+
+.tc-ziel-aktiv {
+    border-color: var(--waerme);
+    border-style: solid;
+    background: var(--waerme-flaeche);
+}
+
+.tc-ziel-kontakt {
+    grid-column: 1 / -1;
+}
+
+.tc-ziehbar {
+    cursor: grab;
+    touch-action: none;
+    user-select: none;
+}
+
+.tc-in-bewegung {
+    cursor: grabbing;
+    position: relative;
+    z-index: 5;
+    opacity: 0.9;
+    box-shadow: 0 0.25rem 0.75rem rgb(0 0 0 / 30%);
 }
 
 /* ── Statistik ─────────────────────────────────────────────────────────────── */

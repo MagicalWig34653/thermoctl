@@ -24,8 +24,8 @@ Vom Controller selbst nachgeprüft, nicht aus Berichten übernommen:
 
 | | |
 |---|---|
-| Tests | 776, grün unter SQLite **und** MariaDB |
-| Testabdeckung | 99,01 %, Mindestschwelle 97 % in der CI |
+| Tests | 877, grün unter SQLite **und** MariaDB |
+| Testabdeckung | 99 %, Mindestschwelle 97 % in der CI |
 | Ruff, mypy strict | ohne Befund, 74 Quelldateien |
 | Migrationskette | linear, ein Kopf, vorwärts und rückwärts gegen beide Datenbanken |
 | CI und Container | grün |
@@ -52,6 +52,22 @@ Trockenlauf hinter zwei Riegeln, Schattenprotokoll, Geräteübersicht.
 nichts zu protokollieren. Hysterese, Mindestschaltdauer, Fensterpause, Frostschutz bei
 Sensorausfall, als reine Funktion mit 33 Tests, darunter der Defekt des Altsystems
 ausdrücklich vorgeführt.
+
+**Was seither dazugekommen ist.** Ein **Thermostat** je Zone auf der Startseite, das den
+Sollwert des gerade geltenden Modus verstellt — dauerhaft, nicht als Übersteuerung; das
+**Anlagenbild** (`/anlage`), das den Weg Sensor → Zone → Aktor zeigt und die Lücken darin
+benennt; **Heizzeiten** (`/statistik`) je Zone und Tag, aus den Abständen im
+Schattenprotokoll gerechnet und mit gekappten Ausfalllücken; die
+**Schnittstellen-Übersicht** (`/schnittstellen`), die für jede Gegenstelle sagt, ob sie
+eingerichtet ist, ob sie läuft und woher jeder Wert kommt; eine neue **Rechtevergabe** mit
+einem Formular je Gruppe statt sechzehn Einzelklicks; und **Gerätezuordnung per Ziehen** auf
+das Flussbild.
+
+**Drei Fehler behoben, die nur beim Benutzen auffielen:** Die Kopfleiste verschwand auf
+sechs Seiten, sobald man sie über das Menü ansteuerte (`hx-boost` schickt bei jeder
+Navigation `HX-Request`, sechs Ansichten hielten das für einen Teilaustausch). Auf schmalen
+Geräten ließ sich die ganze Seite seitwärts schieben. Und das dunkle Schema folgt jetzt
+allein dem Betriebssystem, auch während die Seite offen ist.
 
 **Die Oberfläche ist neu gestaltet und neu aufgeteilt.** Farbe ist darin kein Schmuck,
 sondern Messwert: Die ganze Fläche ist Schiefer und Papier, und die einzigen gesättigten

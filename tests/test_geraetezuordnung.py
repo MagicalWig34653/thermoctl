@@ -432,3 +432,35 @@ def test_loesen_einer_fremden_zuordnung_wird_in_der_domaene_abgewiesen(
     with pytest.raises(ValueError, match="gehört nicht zu dieser Zone"):
         geraet_loesen(session, eine, zuordnung, akteur_id=None)
     assert session.get(ZoneDevice, zuordnung.id) is not None
+
+
+def test_ablegeziele_nur_mit_device_manage(client_als, session: Session) -> None:
+    """Das Ziehen ist eine zweite Bedienart derselben Aenderung -- es muss an derselben
+    Rechtepruefung haengen wie die Formulare. Ein Ablegeziel, das man sieht und nicht
+    benutzen darf, ist eine Einladung zu einer 403."""
+    zone = zone_anlegen(session, "ziehzone")
+    # Ohne ein Geraet gibt es nichts zu ziehen -- die Karten entstehen aus der Liste.
+    geraet_anlegen(session, "ziehbares-geraet")
+
+    darf = client_als([("device.read", None), ("device.manage", zone.id), ("zone.read", None)])
+    seite = darf.get(f"/zonen/{zone.id}/geraete")
+    assert seite.status_code == 200
+    assert 'data-ziel="messquelle"' in seite.text
+    assert "tc-ziehbar" in seite.text
+
+    nur_lesen = client_als([("device.read", None), ("zone.read", None)])
+    seite = nur_lesen.get(f"/zonen/{zone.id}/geraete")
+    assert seite.status_code == 200
+    assert "data-ziel=" not in seite.text
+    assert "tc-ziehbar" not in seite.text
+
+
+def test_anlagenbild_bietet_keine_ablegeziele(client_als, session: Session) -> None:
+    """Gegenprobe: Auf dem Anlagenbild waere ein Ablegeziel eine Zusage, die die Seite
+    nicht einloest -- dort gibt es keine Formulare, die es abschicken koennte."""
+    zone_anlegen(session, "bildzone")
+    seite = client_als([("device.read", None), ("device.manage", None), ("zone.read", None)]).get(
+        "/anlage"
+    )
+    assert seite.status_code == 200
+    assert "data-ziel=" not in seite.text
