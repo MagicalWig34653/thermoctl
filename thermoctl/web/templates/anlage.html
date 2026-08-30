@@ -1,0 +1,59 @@
+{% extends "basis.html" %}
+{% from "flussbild.html" import flussbild, geraetekarte %}
+{% block titel %}Anlagenbild – thermoctl{% endblock %}
+{% block max_breite %}72rem{% endblock %}
+{% block inhalt %}
+
+<h1 class="mb-1">Anlagenbild</h1>
+<p class="t-leise mb-4">
+    Welches Gerät wo etwas tut. Der Weg ist immer derselbe: Ein Sensor misst, die Zone
+    entscheidet, ein Aktor schaltet.
+</p>
+
+<section class="tc-tafel p-4 mb-4">
+    <div class="d-flex align-items-center gap-3 flex-wrap">
+        <span class="tc-chip {{ 'tc-chip-waerme' if bruecke is true else ('tc-chip-warnung' if bruecke is false else 'tc-chip-still') }}">
+            {% if bruecke is true %}<span class="tc-punkt"></span>Brücke meldet sich
+            {% elif bruecke is false %}Brücke meldet sich nicht
+            {% else %}Brücke: noch keine Meldung{% endif %}
+        </span>
+        <span class="t-leise">
+            Alle Geräte hängen an der Zigbee2MQTT-Brücke. Meldet sie sich nicht, kommt
+            von keinem einzigen etwas an — egal, wie die Zuordnung unten aussieht.
+        </span>
+        <a class="ms-auto btn btn-sm btn-outline-secondary" href="/schnittstellen">Schnittstellen</a>
+    </div>
+</section>
+
+{% if not zonen %}
+<div class="tc-tafel p-4">
+    <p class="t-leise mb-0">Noch keine Zonen angelegt.</p>
+</div>
+{% else %}
+{% for z in zonen %}
+<article class="tc-tafel p-4 mb-3">
+    <div class="d-flex justify-content-between align-items-baseline mb-3">
+        <h2 class="mb-0">{{ z.name }}</h2>
+        <a class="btn btn-sm btn-outline-secondary" href="/zonen/{{ z.zone_id }}/geraete">
+            Zuordnung ändern
+        </a>
+    </div>
+    {{ flussbild(z) }}
+</article>
+{% endfor %}
+{% endif %}
+
+{% if ohne_zone %}
+<article class="tc-tafel p-4">
+    <h2 class="mb-1">Ohne Zone</h2>
+    <p class="t-leise">
+        Diese Geräte melden sich, aber keine Zone benutzt sie — die Regelung sieht sie
+        nicht. Der häufigste Grund, warum ein neu eingebundener Sensor „nicht ankommt".
+    </p>
+    <div class="d-flex flex-wrap gap-2">
+        {% for g in ohne_zone %}{{ geraetekarte(g, "frei") }}{% endfor %}
+    </div>
+</article>
+{% endif %}
+
+{% endblock %}

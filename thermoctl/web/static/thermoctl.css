@@ -449,6 +449,104 @@ body {
     --bs-btn-active-border-color: #7d3527;
 }
 
+/* ── Flussbild ─────────────────────────────────────────────────────────────── */
+
+.tc-fluss {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr auto 1fr;
+    align-items: start;
+    gap: 0.75rem;
+}
+
+.tc-fluss-spalte {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    min-width: 0;
+}
+
+/* Die Bereichsmarke traegt sonst Bootstraps Absatzabstand von einem ganzen rem und
+   schiebt den ersten Knoten von den Pfeilen weg. */
+.tc-fluss-spalte > .t-marke {
+    margin-bottom: 0.1rem;
+}
+
+/* Der Pfeil zwischen zwei Stufen: eine Linie mit Spitze, aus zwei Rahmen gebaut.
+   Kein Bild und kein SVG -- er hat genau eine Aufgabe und die Richtung ist das Einzige,
+   was er sagen muss. */
+.tc-fluss-pfeil {
+    /* `start`, nicht `center`: Zentriert wuerde der Pfeil in der Mitte der *hoechsten*
+       Spalte sitzen und mit jedem zusaetzlichen Geraet weiter nach unten wandern -- er
+       zeigt aber auf die erste Stufe, nicht auf die Mitte einer Liste. */
+    align-self: start;
+    width: 2.5rem;
+    height: 1px;
+    background: var(--linie-stark);
+    position: relative;
+    /* Auf die Mitte des ersten Knotens: Marke (rund 1,1rem) plus die halbe Hoehe einer
+       Karte. Ein `align-items: center` ueber die ganze Spalte waere falsch, sobald eine
+       Spalte mehr Knoten traegt als die andere -- der Pfeil zeigt auf die erste Stufe,
+       nicht auf die Mitte einer Liste. */
+    margin-top: 2.7rem;
+}
+
+.tc-fluss-pfeil::after {
+    content: "";
+    position: absolute;
+    right: 0;
+    top: -4px;
+    border-left: 7px solid var(--linie-stark);
+    border-top: 4.5px solid transparent;
+    border-bottom: 4.5px solid transparent;
+}
+
+.tc-knoten {
+    border: 1px solid var(--linie);
+    border-left: 3px solid var(--linie-stark);
+    border-radius: var(--rundung-klein);
+    background: var(--flaeche);
+    padding: 0.45rem 0.6rem;
+}
+
+.tc-knoten-name {
+    font-weight: 560;
+    font-size: 0.875rem;
+}
+
+/* Die Farbe sagt, was der Knoten in der Kette ist -- Messung ist kuehl, Schalten ist
+   warm, die Zone dazwischen bleibt neutral. Dieselbe Sprache wie ueberall. */
+.tc-knoten-sensor { border-left-color: var(--kuehle); }
+.tc-knoten-kontakt { border-left-color: var(--warnung); }
+.tc-knoten-aktor { border-left-color: var(--waerme); }
+.tc-knoten-zone {
+    border-left-color: var(--tinte);
+    background: var(--flaeche-tief);
+}
+.tc-knoten-anzeige { border-left-color: var(--linie-stark); }
+.tc-knoten-frei { border-left-color: var(--linie-stark); }
+
+/* Eine Luecke ist kein Kasten mit leerem Inhalt, sondern sichtbar keiner: gestrichelt
+   und in Warnfarbe. Ein leerer Kasten sieht aus wie ein Geraet ohne Namen. */
+.tc-knoten-luecke {
+    border: 1px dashed color-mix(in srgb, var(--warnung) 55%, var(--linie));
+    border-radius: var(--rundung-klein);
+    padding: 0.45rem 0.6rem;
+    color: var(--warnung);
+    font-size: 0.8rem;
+    background: none;
+}
+
+@media (max-width: 48em) {
+    /* Untereinander statt nebeneinander; die Pfeile entfallen, weil die Reihenfolge
+       dann die Richtung ist. */
+    .tc-fluss {
+        grid-template-columns: 1fr;
+    }
+    .tc-fluss-pfeil {
+        display: none;
+    }
+}
+
 /* ── Statistik ─────────────────────────────────────────────────────────────── */
 
 .tc-saeulen {
