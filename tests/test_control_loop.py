@@ -1,8 +1,9 @@
-"""Tests fuer die reine Regelentscheidung `thermoctl.domain.regelung.entscheiden`.
+"""Tests for the pure control decision `thermoctl.domain.regelung.entscheiden`.
 
-Diese Aufgabe wird an ihren Tests gemessen (Auftragstext Aufgabe 6): jede der sechs Regeln
-einzeln, ihre Rangfolge gegeneinander, die Grenzfaelle exakt auf der Schwelle, und
-ausdruecklich der Defekt des Altsystems, den `thermoctl` nicht wiederholen darf.
+This task is measured by its tests (assignment task 6): each of the six rules
+individually, their precedence against one another, the edge cases exactly at
+the threshold, and explicitly the defect of the legacy system that `thermoctl`
+must not repeat.
 """
 
 from decimal import Decimal
@@ -70,16 +71,18 @@ def _lage(
 
 
 # ---------------------------------------------------------------------------
-# Regel 1 — Sensorausfall
+# Rule 1 — sensor failure
 # ---------------------------------------------------------------------------
 
 
 def test_rule1_a_stale_sensor_controls_to_frost_protection() -> None:
-    """Ein veralteter Messwert traegt keine normale Heizentscheidung mehr — aber Frostschutz.
+    """A stale reading no longer supports a normal heating decision — but it does
+    support frost protection.
 
-    Dauerhaft abschalten waere die gefaehrlichere Antwort: Genau so friert im Januar eine
-    Leitung ein. Stattdessen gilt der Frostschutz-Sollwert; er liegt tief genug, dass die
-    Anlage auf einem falschen Wert hoechstens auf ein unbedenkliches Niveau heizt.
+    Shutting off permanently would be the more dangerous answer: that is exactly
+    how a pipe freezes in January. Instead, the frost-protection setpoint
+    applies; it is low enough that the system, working off a wrong value, heats
+    at most to a harmless level.
     """
     e = entscheiden(
         _lage(sensor_status="veraltet", ist_c=Decimal("10.0"), soll_c=Decimal("21.0"),
@@ -91,47 +94,48 @@ def test_rule1_a_stale_sensor_controls_to_frost_protection() -> None:
 
 
 def test_rule1_a_stale_sensor_does_not_heat_to_the_normal_setpoint() -> None:
-    """Der eigentliche Sollwert gilt bei ausgefallenem Sensor ausdruecklich nicht mehr."""
+    """With a failed sensor, the actual setpoint explicitly no longer applies."""
     e = entscheiden(
         _lage(sensor_status="veraltet", ist_c=Decimal("18.0"), soll_c=Decimal("21.0"),
               frost_c=Decimal("16.0"))
     )
-    # Auf 21 °C wuerde bei 18 °C geheizt; auf den Frostschutzwert von 16 °C nicht.
+    # At 21 °C, 18 °C would trigger heating; at the frost-protection value of 16 °C it does not.
     assert e.heizen is False
     assert e.grund_code == REASON_CODE_FROST_SENSOR_FAILURE
 
 
 def test_rule1_no_source_does_not_heat() -> None:
-    """Ohne jeden Ist-Wert gibt es nichts, woran zu regeln waere — dann bleibt nur aus."""
+    """Without any measured value there is nothing to control against — then only off remains."""
     e = entscheiden(_lage(sensor_status="keine_quelle", ist_c=None))
     assert e.heizen is False
     assert e.grund_code == REASON_CODE_NO_SOURCE
 
 
 def test_rule1_a_stale_sensor_without_a_value_does_not_heat() -> None:
-    """Veraltet UND ohne Wert: auch der Frostschutz braucht etwas, woran er sich misst."""
+    """Stale AND without a value: even frost protection needs something to measure against."""
     e = entscheiden(_lage(sensor_status="veraltet", ist_c=None))
     assert e.heizen is False
     assert e.grund_code == REASON_CODE_NO_SOURCE
 
 
 def test_rule1_safety_net_status_ok_without_a_measured_value() -> None:
-    """Vertragsverletzung des Aufrufers (status 'ok', aber kein Ist-Wert) fuehrt nicht zum
-    Absturz, sondern zur selben sicheren Antwort wie 'keine_quelle'."""
+    """A contract violation by the caller (status 'ok', but no measured value) does
+    not lead to a crash, but to the same safe answer as 'keine_quelle'."""
     e = entscheiden(_lage(sensor_status="ok", ist_c=None))
     assert e.heizen is False
     assert e.grund_code == REASON_CODE_NO_SOURCE
 
 
 # ---------------------------------------------------------------------------
-# Regel 2 — Betriebsart 'off'
+# Rule 2 — operating mode 'off'
 # ---------------------------------------------------------------------------
 
 
 def test_rule2_off_runs_through_the_normal_rule() -> None:
-    """'off' heisst nicht stromlos: Der Aufrufer hat soll_c bereits auf den Frostschutzwert
-    aufgeloest (aufgeloester_sollwert), und ab hier gilt schlicht die normale Hysterese
-    darauf — bei ausreichend kaltem Ist-Wert wird auch im Zustand 'off' geheizt."""
+    """'off' does not mean powerless: the caller has already resolved soll_c to the
+    frost-protection value (aufgeloester_sollwert), and from here on the normal
+    hysteresis simply applies to it — with a sufficiently cold measured value,
+    heating happens even in state 'off'."""
     e = entscheiden(
         _lage(
             operating_mode="off",
@@ -159,7 +163,7 @@ def test_regel2_off_schaltet_auch_wieder_aus() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Regel 3 — Fenster offen
+# Rule 3 — window open
 # ---------------------------------------------------------------------------
 
 
@@ -170,13 +174,13 @@ def test_rule3_an_open_window_does_not_heat_despite_a_cold_room() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Regel 4 — Wiederanlaufverzoegerung
+# Rule 4 — restart delay
 # ---------------------------------------------------------------------------
 
 
 def test_regel4_wiederanlaufverzoegerung_haelt_ab() -> None:
-    """Fenster gerade erst wieder zu — die Anlage soll nicht sofort gegen den noch
-    auskuehlenden Raum anheizen."""
+    """Window only just closed again — the system should not immediately start
+    heating against a room that is still cooling down."""
     e = entscheiden(
         _lage(
             window_open=False,
@@ -205,8 +209,8 @@ def test_rule4_after_the_delay_expires_the_normal_rule_applies_again() -> None:
 
 
 def test_rule4_no_delay_without_a_known_closing_time() -> None:
-    """`fenster_zu_seit_s is None` heisst 'kein anstehender Nachlauf' (das Fenster war seit
-    Beginn der Aufzeichnung nie offen) — dann gibt es nichts abzuwarten."""
+    """`fenster_zu_seit_s is None` means 'no pending delay' (the window has never
+    been open since recording began) — then there is nothing to wait out."""
     e = entscheiden(
         _lage(
             window_open=False,
@@ -219,13 +223,13 @@ def test_rule4_no_delay_without_a_known_closing_time() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Regel 5 — Mindestschaltdauer
+# Rule 5 — minimum switching duration
 # ---------------------------------------------------------------------------
 
 
 def test_rule5_the_minimum_on_time_keeps_the_valve_open() -> None:
-    """Obwohl die Hysterese laengst 'aus' verlangt, bleibt eine gerade erst begonnene
-    Heizphase fuer min_on_seconds bestehen — Ventilschutz."""
+    """Even though the hysteresis has long demanded 'off', a heating phase that
+    has only just begun stays on for min_on_seconds — valve protection."""
     e = entscheiden(
         _lage(
             heizt_gerade=True,
@@ -254,11 +258,11 @@ def test_rule5_the_minimum_off_time_keeps_the_valve_closed() -> None:
 
 
 def test_rule5_an_unknown_elapsed_time_does_not_lift_the_block_artificially() -> None:
-    """`seit_s is None` heisst 'Dauer des aktuellen Zustands unbekannt', typischerweise der
-    erste Zyklus nach einem Neustart ohne Vorgeschichte. Eine Sperre auf eine unbekannte
-    Dauer waere selbst willkuerlich; deshalb greift sie hier nicht, und die Hysterese
-    entscheidet regulaer weiter — ein frisch gestarteter Dienst haengt nicht in einer nie
-    begonnenen Frist fest."""
+    """`seit_s is None` means 'duration of the current state unknown', typically the
+    first cycle after a restart with no history. A lock based on an unknown
+    duration would itself be arbitrary; so it does not apply here, and the
+    hysteresis continues to decide as usual — a freshly started service does not
+    get stuck in a deadline that never began."""
     e = entscheiden(
         _lage(
             heizt_gerade=True,
@@ -273,7 +277,7 @@ def test_rule5_an_unknown_elapsed_time_does_not_lift_the_block_artificially() ->
 
 
 # ---------------------------------------------------------------------------
-# Regel 6 — Hysterese, inklusive Grenzfaelle
+# Rule 6 — hysteresis, including edge cases
 # ---------------------------------------------------------------------------
 
 
@@ -304,7 +308,7 @@ def test_rule6_switches_off_above_setpoint_plus_hysteresis() -> None:
 
 
 def test_rule6_exactly_on_the_switch_on_threshold_does_not_switch_on_yet() -> None:
-    """ist == soll - h: exakt auf der Schwelle wird noch nicht eingeschaltet."""
+    """current == setpoint - h: exactly at the threshold, it does not yet switch on."""
     e = entscheiden(
         _lage(
             heizt_gerade=False,
@@ -318,7 +322,7 @@ def test_rule6_exactly_on_the_switch_on_threshold_does_not_switch_on_yet() -> No
 
 
 def test_rule6_exactly_on_the_switch_off_threshold_does_not_switch_off_yet() -> None:
-    """ist == soll + h: exakt auf der Schwelle wird noch nicht ausgeschaltet."""
+    """current == setpoint + h: exactly at the threshold, it does not yet switch off."""
     e = entscheiden(
         _lage(
             heizt_gerade=True,
@@ -344,17 +348,18 @@ def test_rule6_inside_the_hysteresis_nothing_changes_in_either_direction() -> No
 
 
 # ---------------------------------------------------------------------------
-# Der Defekt des Altsystems
+# The defect of the legacy system
 # ---------------------------------------------------------------------------
 
 
 def test_the_legacy_defect_no_constant_toggling_at_the_setpoint() -> None:
-    """Das Altsystem entscheidet `if ist < soll: an, sonst aus` — ohne Hysterese schaltet das
-    Ventil bei ist == soll in jedem Zyklus um (an, aus, an, aus, ...), weil Gleichheit jedes
-    Mal denselben Vergleich neu und ohne Gedaechtnis an den letzten Zustand auswertet. Dieser
-    Test laesst mehrere Zyklen mit exakt `ist == soll` laufen und belegt, dass `thermoctl`
-    dank Hysterese in jedem Zyklus beim zuletzt gewaehlten Zustand bleibt, ganz gleich, ob
-    dieser Zustand mit 'an' oder mit 'aus' begonnen hat.
+    """The legacy system decides `if ist < soll: an, sonst aus` — without hysteresis
+    the valve toggles on every cycle at ist == soll (on, off, on, off, ...),
+    because equality re-evaluates the same comparison each time with no memory
+    of the previous state. This test runs several cycles with exactly
+    `ist == soll` and shows that `thermoctl`, thanks to hysteresis, stays at the
+    last-chosen state on every cycle, regardless of whether that state started
+    as 'on' or 'off'.
     """
     ist_c = Decimal("21.0")
     soll_c = Decimal("21.0")
@@ -372,18 +377,19 @@ def test_the_legacy_defect_no_constant_toggling_at_the_setpoint() -> None:
                     parameter=parameter,
                 )
             )
-            assert e.heizen == start_state, f"Zyklus {cycle}: unerwartet umgeschaltet"
+            assert e.heizen == start_state, f"cycle {cycle}: switched unexpectedly"
             assert e.grund_code == REASON_CODE_UNCHANGED
             heizt_gerade = e.heizen
 
 
 # ---------------------------------------------------------------------------
-# Rangfolge gegeneinander — jedes Paar benachbarter Regeln
+# Precedence against one another — every pair of adjacent rules
 # ---------------------------------------------------------------------------
 
 
 def test_precedence_sensor_failure_beats_the_resolved_setpoint() -> None:
-    """Bei ausgefallenem Sensor gilt der Frostschutzwert, egal was der Zeitplan sagt."""
+    """With a failed sensor, the frost-protection value applies, no matter what
+    the schedule says."""
     e = entscheiden(
         _lage(sensor_status="veraltet", operating_mode="off", ist_c=Decimal("5.0"),
               soll_c=Decimal("21.0"), frost_c=Decimal("16.0"))
@@ -394,11 +400,11 @@ def test_precedence_sensor_failure_beats_the_resolved_setpoint() -> None:
 
 
 def test_precedence_an_open_window_beats_frost_protection_on_sensor_failure() -> None:
-    """Ein offenes Fenster gewinnt auch gegen den Frostschutz.
+    """An open window wins even against frost protection.
 
-    Das ist Absicht: Gegen ein offenes Fenster zu heizen hilft niemandem, und die Zone
-    kuehlt in der Zeit nicht auf Frostniveau ab. Sobald das Fenster zu ist, greift der
-    Frostschutz wieder.
+    That is intentional: heating against an open window helps no one, and the
+    zone does not cool down to frost level in that time. As soon as the window
+    is closed, frost protection kicks in again.
     """
     e = entscheiden(
         _lage(sensor_status="veraltet", ist_c=Decimal("5.0"), window_open=True)
@@ -408,7 +414,7 @@ def test_precedence_an_open_window_beats_frost_protection_on_sensor_failure() ->
 
 
 def test_precedence_sensor_failure_beats_an_open_window() -> None:
-    """Besonders im Auftrag verlangt: Sensorausfall gewinnt auch gegen ein offenes Fenster."""
+    """Specifically required in the assignment: sensor failure wins even against an open window."""
     e = entscheiden(
         _lage(sensor_status="keine_quelle", ist_c=None, window_open=True)
     )
@@ -416,13 +422,13 @@ def test_precedence_sensor_failure_beats_an_open_window() -> None:
 
 
 def test_precedence_operating_mode_off_loses_to_an_open_window() -> None:
-    """'off' fuehrt lediglich zum Frostschutz-Sollwert; ein offenes Fenster gewinnt trotzdem
-    gegen die daraus resultierende Heizabsicht der Hysterese."""
+    """'off' merely leads to the frost-protection setpoint; an open window still
+    wins against the resulting heating intent of the hysteresis."""
     e = entscheiden(
         _lage(
             operating_mode="off",
             soll_c=Decimal("16.0"),
-            ist_c=Decimal("5.0"),  # weit unter Soll — Hysterese wuerde fuer 'an' stimmen
+            ist_c=Decimal("5.0"),  # far below setpoint — hysteresis would call for 'on'
             window_open=True,
         )
     )
@@ -431,8 +437,8 @@ def test_precedence_operating_mode_off_loses_to_an_open_window() -> None:
 
 
 def test_precedence_an_open_window_beats_the_restart_delay() -> None:
-    """Widerspruechliche Eingabe (Fenster offen, aber auch eine 'zu seit'-Dauer gesetzt) —
-    Regel 3 gewinnt unabhaengig davon, was Regel 4 dazu sagen wuerde."""
+    """Contradictory input (window open, but a 'closed since' duration is also
+    set) — rule 3 wins regardless of what rule 4 would say about it."""
     e = entscheiden(
         _lage(
             window_open=True,
@@ -445,9 +451,9 @@ def test_precedence_an_open_window_beats_the_restart_delay() -> None:
 
 
 def test_precedence_the_restart_delay_beats_the_minimum_switch_time() -> None:
-    """Fenster gerade erst zu UND der aktuelle (Aus-)Zustand gilt auch noch keine
-    Mindestdauer — Regel 4 entscheidet mit ihrer eigenen Begruendung, nicht mit der aus
-    Regel 5."""
+    """Window only just closed AND the current (off) state has also not yet reached
+    the minimum duration — rule 4 decides with its own reasoning, not with that of
+    rule 5."""
     e = entscheiden(
         _lage(
             window_open=False,
@@ -464,8 +470,9 @@ def test_precedence_the_restart_delay_beats_the_minimum_switch_time() -> None:
 
 
 def test_precedence_the_minimum_switch_time_beats_the_hysteresis() -> None:
-    """Besonders im Auftrag verlangt (sinngemaess): eine noch laufende Mindestdauer haelt
-    den Zustand fest, obwohl die Hysterese laengst etwas anderes verlangt."""
+    """Specifically required in the assignment (in substance): a minimum duration
+    still in progress holds the state, even though the hysteresis has long
+    called for something else."""
     e = entscheiden(
         _lage(
             heizt_gerade=True,
@@ -480,8 +487,9 @@ def test_precedence_the_minimum_switch_time_beats_the_hysteresis() -> None:
 
 
 def test_precedence_an_open_window_beats_the_minimum_switch_time() -> None:
-    """Besonders im Auftrag verlangt: ein offenes Fenster gewinnt gegen eine laufende
-    Mindestschaltdauer, die sonst den Heizzustand haette festhalten koennen."""
+    """Specifically required in the assignment: an open window wins against a
+    minimum switching duration in progress that could otherwise have held the
+    heating state."""
     e = entscheiden(
         _lage(
             window_open=True,
@@ -496,13 +504,13 @@ def test_precedence_an_open_window_beats_the_minimum_switch_time() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Grenzfall Mindestschaltdauer: die Sperre endet genau zum angegebenen Zeitpunkt
+# Edge case minimum switching duration: the lock ends exactly at the stated time
 # ---------------------------------------------------------------------------
 
 
 def test_exactly_at_the_minimum_duration_the_block_is_over() -> None:
-    """seit_s == min_on_seconds: die Sperre ist zu diesem Zeitpunkt bereits vorbei
-    (`<` statt `<=` in der Bedingung), die Hysterese entscheidet wieder regulaer."""
+    """seit_s == min_on_seconds: the lock is already over at this point
+    (`<` instead of `<=` in the condition), the hysteresis decides normally again."""
     e = entscheiden(
         _lage(
             heizt_gerade=True,
@@ -518,13 +526,14 @@ def test_exactly_at_the_minimum_duration_the_block_is_over() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Der Offset wirkt
+# The offset has an effect
 # ---------------------------------------------------------------------------
 
 
 def test_the_offset_changes_the_decision_when_it_reaches_past_the_hysteresis() -> None:
-    """Derselbe rohe Ist-Wert fuehrt mit einem hinreichend grossen Offset zu einer anderen
-    Entscheidung — die Kalibrierung wirkt vor der Regel, wie in Abschnitt 6 gefordert."""
+    """The same raw measured value leads to a different decision with a
+    sufficiently large offset — calibration takes effect before the rule, as
+    required in section 6."""
     ohne_offset = entscheiden(
         _lage(
             ist_c=Decimal("20.0"),
@@ -547,7 +556,7 @@ def test_the_offset_changes_the_decision_when_it_reaches_past_the_hysteresis() -
 
 
 # ---------------------------------------------------------------------------
-# Die Begruendung enthaelt konkrete Zahlen, keine Schablone
+# The reasoning carries concrete numbers, not a template
 # ---------------------------------------------------------------------------
 
 

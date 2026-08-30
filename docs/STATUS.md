@@ -15,9 +15,11 @@ Zusicherung: `test_rule6_exactly_on_the_switch_on_threshold_does_not_switch_on_y
 dasselbe wie vorher, nicht weniger. Ein allgemeinerer Name wäre grün geblieben und hätte
 beim nächsten Lesen niemandem mehr verraten, was hier eigentlich zugesichert ist.
 
-**Was noch aussteht:** rund 280 von 830 Kommentar- und Docstringzeilen in `tests/` sind
-weiterhin deutsch, verteilt auf 16 Dateien. Betroffen sind vor allem `test_mcp.py` und
-`test_control_loop.py`. Das ist Prosa und kein Mangel an Zusicherung.
+Damit ist die Umstellung abgeschlossen: Bezeichner, Dateinamen, Endpunkte, MQTT-Topics,
+MCP-Werkzeuge, Formularfelder, Spaltennamen, Kommentare, Docstrings und alle 794 Testnamen
+sind englisch. Deutsch geblieben ist genau das, was ein Mensch liest — und ein Zitat: Der
+Defekt des Altsystems steht als `if ist < soll: an, sonst aus` im Test, weil das der
+Quelltext von dort ist.
 
 Die letzten deutschen Bezeichner im Schema sind weg: `user_passkey.bezeichnung` heißt
 `label`, `passkey_challenge.zeremonie` heißt `ceremony` (Migration `f2c6d90a41b8`, mit

@@ -41,17 +41,17 @@ def test_the_password_hash_appears_in_no_view(client_als) -> None:
 
 @pytest.fixture(autouse=True)
 def _actor_source(session: Session) -> None:
-    """Die Quelle `web` legt in Produktion die Referenzdatenmigration an.
+    """The source `web` is created in production by the reference data migration.
 
-    `Base.metadata.create_all()` in der Fixture `engine` legt nur das Schema an, keine
-    Referenzdaten — ohne diese Zeile scheitert jeder Audit-Eintrag der aendernden
-    Ansichten an der NOT-NULL-Bedingung auf `audit_event.source_id`.
+    `Base.metadata.create_all()` in the `engine` fixture only creates the schema, no
+    reference data -- without this line, every audit entry of the mutating views
+    would fail on the NOT NULL constraint on `audit_event.source_id`.
     """
     source(session, "web")
 
 
 def _with_csrf(client, session):  # type: ignore[no-untyped-def]
-    """Kopfzeile mit gueltigem CSRF-Token fuer aendernde Anfragen."""
+    """Header with a valid CSRF token for mutating requests."""
     from thermoctl.auth.csrf import csrf_token
     from thermoctl.auth.sessions import COOKIE_NAME
     from thermoctl.config import get_settings
@@ -78,7 +78,7 @@ def test_creating_a_user_through_the_interface(client_als, session: Session) -> 
 
 
 def test_a_password_that_is_too_short_returns_to_the_form(client_als, session: Session) -> None:
-    """Kein 500, keine leere Maske — und der Benutzername bleibt stehen."""
+    """No 500, no blank form -- and the username stays filled in."""
     c = client_als([("user.manage", None)])
     response = c.post(
         "/users",
@@ -106,7 +106,7 @@ def test_a_password_never_appears_in_the_response(client_als, session: Session) 
 def test_the_last_administrator_cannot_deactivate_themselves(
     client_als, session: Session
 ) -> None:
-    """Die Aussperrsperre wirkt auch ueber die Oberflaeche, nicht nur in der Domaene."""
+    """The lockout guard also works via the interface, not only in the domain."""
     from sqlalchemy import select
 
     from thermoctl.db.models.identity import User
@@ -146,8 +146,8 @@ def test_creating_a_group_and_granting_a_permission(client_als, session: Session
     group = session.scalar(select(AccessGroup).where(AccessGroup.name == "Gaeste"))
     assert group is not None
 
-    # Der Endpunkt nimmt den ganzen gewuenschten Stand entgegen, nicht ein einzelnes
-    # Recht: `recht=<code>` fuer die ganze Anlage, `recht=<code>:<zone>` fuer eine Zone.
+    # The endpoint accepts the entire desired state, not a single permission:
+    # `permission=<code>` for the whole installation, `permission=<code>:<zone>` for a zone.
     assert c.post(
         f"/groups/{group.id}/permissions", data={"permission": ["zone.read"]},
         headers=_with_csrf(c, session), follow_redirects=False,
@@ -188,7 +188,7 @@ def test_issuing_a_token_shows_the_plaintext_exactly_once(client_als, session: S
     )
     assert response.status_code == 200
     assert "tctl_" in response.text
-    # Beim naechsten Aufruf der Seite ist er weg — gespeichert wird nur der Hash.
+    # On the next call to the page it is gone -- only the hash is stored.
     assert "tctl_" not in c.get("/tokens").text
 
 
@@ -218,7 +218,7 @@ def test_a_token_with_too_many_permissions_is_refused_understandably(
 
 
 def test_a_foreign_token_cannot_be_found(client_als, session: Session) -> None:
-    """404 statt 403 — sonst verriete die Antwort, welche Kennungen es gibt."""
+    """404 instead of 403 -- otherwise the response would reveal which ids exist."""
     from tests.helpers import token_with_permissions, user_with_permissions
 
     fremder = user_with_permissions(session, "fremder", [("token.self", None)])
@@ -249,8 +249,8 @@ def test_your_own_token_can_be_revoked(client_als, session: Session) -> None:
 
 
 def test_changing_your_own_password_without_user_manage(client_als, session: Session) -> None:
-    """Wer nur sich selbst betrifft, braucht kein Verwaltungsrecht — sonst koennte
-    niemand sein eigenes Passwort wechseln, ohne Verwalter zu sein."""
+    """Anyone who only affects themselves needs no administration permission --
+    otherwise nobody could change their own password without being an administrator."""
     from sqlalchemy import select
 
     from thermoctl.auth.passwords import verify_password
@@ -314,8 +314,8 @@ def test_revoking_a_permission_through_the_interface(client_als, session: Sessio
         select(GroupPermission).where(GroupPermission.access_group_id == group.id)
     )
     assert entry is not None
-    # Entzogen wird durch Weglassen: Das Formular schickt den ganzen gewuenschten Stand,
-    # und was nicht darin steht, faellt weg. Ein leeres Formular nimmt der Gruppe alles.
+    # Revoking happens by omission: the form sends the entire desired state, and
+    # whatever is not in it falls away. An empty form takes everything from the group.
     assert c.post(
         f"/groups/{group.id}/permissions", data={},
         headers=_with_csrf(c, session), follow_redirects=False,
@@ -324,9 +324,9 @@ def test_revoking_a_permission_through_the_interface(client_als, session: Sessio
 
 
 def test_permissions_of_an_unknown_group_yield_404(client_als, session: Session) -> None:
-    """Frueher stand die Kennung des Rechteintrags im Pfad und der Test pruefte, dass ein
-    Eintrag einer fremden Gruppe nicht entzogen werden kann. Den Pfad gibt es nicht mehr
-    -- der Sammel-Endpunkt kennt nur die Gruppe, und die muss es geben."""
+    """The permission entry's id used to be in the path, and the test checked that an
+    entry belonging to another group could not be revoked. That path no longer exists
+    -- the collective endpoint only knows the group, and it has to exist."""
     from tests.helpers import ensure_permission
 
     ensure_permission(session, "device.read", zone_scoped=True)
@@ -360,7 +360,11 @@ def test_a_duplicate_group_name_stays_in_the_form(client_als, session: Session) 
 def test_the_group_holding_the_last_admin_permission_stays(
     client_als, session: Session
 ) -> None:
-    """Auch ueber die Oberflaeche laesst sich die letzte Quelle nicht entfernen."""
+    """The last group holding the admin permission cannot be deleted here either.
+
+    The German original said "the last source" -- vocabulary from the audit log,
+    where a source is something else entirely. The test always checked the group.
+    """
     from sqlalchemy import select
 
     from thermoctl.db.models.identity import AccessGroup
@@ -427,8 +431,8 @@ def test_a_password_change_for_an_unknown_user_yields_404(
 def test_the_last_admin_permission_cannot_be_revoked(
     client_als, session: Session
 ) -> None:
-    """Der zweite Weg in dieselbe Sackgasse: nicht die Gruppe loeschen, sondern ihr das
-    Recht nehmen. Beide muessen gesperrt sein, sonst ist die Sperre umgehbar."""
+    """The second path into the same dead end: not deleting the group, but taking
+    the permission away from it. Both must be blocked, or the guard can be sidestepped."""
     from sqlalchemy import select
 
     from thermoctl.db.models.identity import AccessGroup, GroupPermission
@@ -449,7 +453,7 @@ def test_the_last_admin_permission_cannot_be_revoked(
         )
     )
     assert entry is not None
-    # Weglassen ist der neue Weg zu entziehen -- die Sperre muss auch dort greifen.
+    # Omission is the new way to revoke -- the guard has to hold there too.
     response = c.post(
         f"/groups/{group.id}/permissions", data={"permission": ["group.manage"]},
         headers=_with_csrf(c, session),
@@ -462,9 +466,9 @@ def test_the_last_admin_permission_cannot_be_revoked(
 def test_setting_permissions_grants_and_revokes_in_one_step(
     client_als, session: Session
 ) -> None:
-    """Der eigentliche Gewinn des Sammel-Endpunkts: Eine Gruppe umzustellen ist ein
-    Vorgang, nicht eine Folge von Einzelschritten, zwischen denen sie halb eingerichtet
-    dasteht."""
+    """The real benefit of the collective endpoint: converting a group is one
+    operation, not a sequence of individual steps in between which it sits
+    half-configured."""
     from sqlalchemy import select
 
     from tests.helpers import create_zone, ensure_permission
@@ -501,9 +505,9 @@ def test_setting_permissions_grants_and_revokes_in_one_step(
 def test_the_group_page_shows_permissions_by_area_in_plain_words(
     client_als, session: Session
 ) -> None:
-    """Vorher stand dort eine flache Liste aus Codes. Der Code bleibt sichtbar -- er
-    steht in Fehlermeldungen und in der Dokumentation --, aber er ist nicht mehr das
-    Einzige, was dasteht."""
+    """Before, there was a flat list of codes there. The code stays visible -- it
+    appears in error messages and in the documentation -- but it is no longer the
+    only thing shown."""
     from tests.helpers import create_all_permissions
     from thermoctl.domain.authz import PERMISSION_AREAS
 
@@ -511,6 +515,6 @@ def test_the_group_page_shows_permissions_by_area_in_plain_words(
     page = client_als([("group.manage", None)]).get("/groups")
     assert page.status_code == 200
     for name, _hint, _codes in PERMISSION_AREAS:
-        assert name in page.text, f"Bereich '{name}' fehlt auf der Seite"
+        assert name in page.text, f"area '{name}' is missing from the page"
     assert "Zonen und ihren Zustand sehen" in page.text
     assert "zone.read" in page.text

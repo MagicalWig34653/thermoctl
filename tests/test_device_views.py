@@ -70,14 +70,14 @@ def test_the_device_page_shows_signs_of_life_capability_and_zone(
         "Gruppe",
     ):
         assert expected in response.text
-    # Gerundet: Ein Hundertstel Prozent Batterie ist Rauschen, und die Zahl steht hier,
-    # damit man sieht, ob bald eine Zelle faellig ist.
+    # Rounded: a hundredth of a percent of battery is noise, and the number is here
+    # so you can see whether a cell will soon need replacing.
     assert "72 %" in response.text
     assert "71.50" not in response.text
     assert "LQI 88" in response.text
-    # Erreichbarkeit steht nur noch da, wenn sie ein Problem ist. Eine Spalte, in der bei
-    # jedem gesunden Geraet "online" steht, traegt keine Auskunft -- sie verdeckt die
-    # zwei Zeilen, auf die es ankommt.
+    # Availability is only shown when it is a problem. A column that says "online"
+    # for every healthy device carries no information -- it buries the two rows
+    # that actually matter.
     assert "die Brücke führt es als offline" not in response.text
 
 
@@ -118,22 +118,22 @@ def test_the_start_page_shows_zone_state_without_a_zero_temperature(
     response = client_als([("zone.read", None)]).get("/")
 
     assert response.status_code == 200
-    # Auf eine Nachkommastelle gerundet: Ein Wohnraum ist nicht auf ein Hundertstel Grad
-    # bestimmt, und die zweite Stelle ist Rauschen im wichtigsten Wert der Seite.
+    # Rounded to one decimal place: a living room is not determined to a hundredth
+    # of a degree, and the second digit is noise in the page's most important value.
     assert "20,2" in response.text
     assert "20.25" not in response.text
     assert "20,25" not in response.text
-    # Beide Faelle -- Zustandszeile ohne Wert und gar keine Zustandszeile -- sagen dem
-    # Leser dasselbe und stehen deshalb gleich da.
+    # Both cases -- a state row without a value and no state row at all -- tell the
+    # reader the same thing and therefore appear the same way.
     assert response.text.count("kein Messwert") == 2
     assert zone_without_state.display_name in response.text
 
 
 def test_age_in_words_answers_the_question_of_freshness() -> None:
-    """Ein roher Zeitstempel mit Mikrosekunden verlangt Kopfrechnen.
+    """A raw timestamp with microseconds demands mental arithmetic.
 
-    Fuer eine Heizungssteuerung lautet die Frage aber immer: frisch oder liegengeblieben?
-    Deshalb steht in der Uebersicht das Alter und der Zeitstempel nur im Tooltip.
+    But for a heating control system the question is always: fresh or stale?
+    That is why the overview shows the age, and the timestamp only in the tooltip.
     """
     from datetime import datetime, timedelta
 
@@ -148,18 +148,18 @@ def test_age_in_words_answers_the_question_of_freshness() -> None:
     assert age_in_words(now - timedelta(hours=3), now) == "vor 3 Stunden"
     assert age_in_words(now - timedelta(days=1), now) == "vor 1 Tag"
     assert age_in_words(now - timedelta(days=9), now) == "vor 9 Tagen"
-    # Ein leicht falsch gestellter Sensor darf nicht 'in -3 Minuten' anzeigen.
+    # A slightly misconfigured sensor must not display 'in -3 minutes'.
     assert age_in_words(now + timedelta(minutes=3), now) == "gerade eben"
-    # Ohne ausdruecklichen Jetzt-Zeitpunkt greift die Uhr des Projekts.
+    # Without an explicit now-moment, the project's clock takes over.
     assert age_in_words(datetime(2000, 1, 1)).endswith("Tagen")
 
 
 def test_the_device_page_puts_conspicuous_devices_on_top(client_als, session: Session) -> None:
-    """Die Gegenprobe zur Rundung oben: Was nicht stimmt, muss auch wirklich dastehen.
+    """The counter-check to the rounding above: what is wrong must actually be shown.
 
-    Zwei Geraete, eines gesund und alphabetisch zuerst, eines mit leerer Batterie und von
-    der Bruecke als offline gefuehrt. Die Seite ist erst dann brauchbar, wenn das zweite
-    oben steht und seinen Befund im Klartext traegt.
+    Two devices, one healthy and alphabetically first, one with an empty battery and
+    reported as offline by the bridge. The page is only useful once the second one
+    sits on top and carries its finding in plain words.
     """
     beispiele = json.loads(
         (Path(__file__).parent / "daten/anlage-beispiele.json").read_text(encoding="utf-8")
@@ -189,11 +189,12 @@ def test_the_device_page_puts_conspicuous_devices_on_top(client_als, session: Se
 def test_battery_and_radio_appear_as_a_number_not_as_a_chip(
     client_als, session: Session
 ) -> None:
-    """Ein Kaertchen "Batteriestand" neben "58 %" sagt nichts, was die Zahl nicht sagt.
+    """A "battery level" chip next to "58 %" says nothing the number does not already say.
 
-    Die Gegenprobe steckt im zweiten Teil: Wer die Kaertchen unterdrueckt, darf daraus
-    nicht "keine Faehigkeiten gemeldet" machen. Ein Fernbedienungsknopf, der genau
-    Batterie und Funkguete meldet, kann etwas -- es steht nur schon rechts.
+    The counter-check is in the second part: whoever suppresses the chips must not
+    turn that into "no capabilities reported". A remote control button that reports
+    exactly battery and radio quality can do something -- it just already shows on
+    the right.
     """
     beispiele = json.loads(
         (Path(__file__).parent / "daten/anlage-beispiele.json").read_text(encoding="utf-8")
@@ -214,5 +215,5 @@ def test_battery_and_radio_appear_as_a_number_not_as_a_chip(
     text = client_als([("device.read", None)]).get("/devices").text
 
     assert "Batteriestand" not in text
-    # Genau einmal -- fuer das Geraet ohne jede Faehigkeit, nicht fuer das mit Batterie.
+    # Exactly once -- for the device without any capability, not for the one with battery.
     assert text.count("keine Fähigkeiten gemeldet") == 1

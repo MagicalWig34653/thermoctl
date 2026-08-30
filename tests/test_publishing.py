@@ -1,8 +1,9 @@
-"""Der Aufrufer, der den eigenen Zustand sendet und die Zonen bei Home Assistant anmeldet.
+"""The caller that sends its own state and registers the zones with Home Assistant.
 
-Die Nutzlasten selbst sind in `test_veroeffentlichung.py` geprueft. Hier geht es um die
-Fragen daneben: **wann** gesendet wird, **wie** der Betriebszustand dabei sichtbar bleibt,
-und wann abgemeldet wird.
+The payloads themselves are tested in `test_veroeffentlichung.py`. Here it is
+about the questions alongside that: **when** something is sent, **how** the
+operating state stays visible while doing so, and when something is
+deregistered.
 """
 
 from datetime import datetime
@@ -19,10 +20,11 @@ NOW = datetime(2026, 8, 31, 7, 0)
 
 
 class Mitschrift:
-    """Ein Veroeffentlicher, der nur mitschreibt.
+    """A publisher that only records.
 
-    Er sendet immer -- der Riegel des Trockenlaufs sitzt im echten Client und gilt allein
-    Schaltbefehlen. Hier wird geprueft, *was* der Dienst senden will.
+    It always sends -- the dry-run bolt sits in the real client and applies
+    solely to switching commands. Here what is checked is *what* the service
+    wants to send.
     """
 
     def __init__(self) -> None:
@@ -52,9 +54,9 @@ async def _run(session: Session, state: PublicationState) -> Mitschrift:
 
 @pytest.mark.anyio
 async def test_publishing_happens_in_dry_run(session: Session) -> None:
-    """Eine Zustandsmeldung bewegt nichts. Eine Anbindung, die man erst nach dem
-    Scharfschalten ausprobieren kann, laesst sich genau dann nicht mehr gefahrlos
-    pruefen, wenn ein Fehler noch folgenlos waere."""
+    """A state notice moves nothing. An integration that can only be tried out
+    after arming is exactly the one that can no longer be checked safely once an
+    error would still be without consequence."""
     create_settings(session)
     zone = create_zone(session, "probezone")
 
@@ -66,9 +68,9 @@ async def test_publishing_happens_in_dry_run(session: Session) -> None:
 
 @pytest.mark.anyio
 async def test_none_of_these_messages_switches(session: Session) -> None:
-    """Gegenprobe zur Zeile oben: Veroeffentlicht wird, geschaltet nicht. Ohne sie waere
-    der Test darueber auch von einer Fassung erfuellt, die im Trockenlauf Ventile
-    bewegt."""
+    """Counter-check to the line above: something is published, nothing is
+    switched. Without it, the test above it would also be satisfied by a
+    version that moves valves during a dry run."""
     create_settings(session)
     create_zone(session, "harmlos")
     client = await _run(session, PublicationState())
@@ -77,11 +79,11 @@ async def test_none_of_these_messages_switches(session: Session) -> None:
 
 @pytest.mark.anyio
 async def test_dry_run_no_longer_appears_in_the_name(session: Session) -> None:
-    """Er stand dort, weil es sichtbar war -- und war genau deshalb falsch.
+    """It used to be there because it was visible -- and exactly that made it wrong.
 
-    Home Assistant leitet die Entitaetskennung beim ersten Auftauchen aus dem Namen ab.
-    Eine Zone, die zuerst im Trockenlauf erschien, hiess danach fuer immer
-    `climate.thermoctl_zone_1_trockenlauf`, auch scharf geschaltet.
+    Home Assistant derives the entity identifier from the name the first time it
+    appears. A zone that first showed up during a dry run was afterwards forever
+    called `climate.thermoctl_zone_1_trockenlauf`, even once armed.
     """
     create_settings(session)
     zone = create_zone(session, "namenszone")
@@ -97,11 +99,11 @@ async def test_dry_run_no_longer_appears_in_the_name(session: Session) -> None:
 async def test_the_identifier_stays_the_same_across_arming(
     session: Session,
 ) -> None:
-    """Die Gegenprobe zur Zeile darueber, und die eigentliche Zusage.
+    """The counter-check to the line above, and the actual guarantee.
 
-    Verglichen wird die ganze Anmeldung, nicht nur der Name: Waere irgendetwas darin vom
-    Betriebszustand abhaengig, faende es dieser Test -- und die Entitaet in Home
-    Assistant haette sich mit dem Scharfschalten veraendert.
+    What is compared is the whole registration, not just the name: if anything
+    in it depended on the operating state, this test would find it -- and the
+    entity in Home Assistant would have changed upon arming.
     """
     create_settings(session)
     source(session, "web")
@@ -119,7 +121,7 @@ async def test_the_identifier_stays_the_same_across_arming(
 
 @pytest.mark.anyio
 async def test_the_operating_state_lives_in_its_own_entity(session: Session) -> None:
-    """Er muss sichtbar bleiben -- nur eben nicht im Namen einer anderen Entitaet."""
+    """It has to stay visible -- just not in the name of a different entity."""
     create_settings(session)
     source(session, "web")
     create_zone(session, "zustandszone")
@@ -135,10 +137,10 @@ async def test_the_operating_state_lives_in_its_own_entity(session: Session) -> 
 
 @pytest.mark.anyio
 async def test_discoveries_and_state_go_out_retained(session: Session) -> None:
-    """Ohne retain steht in Home Assistant nach jedem Neustart eine leere Karte.
+    """Without retain, Home Assistant shows an empty card after every restart.
 
-    Bis der Dienst das naechste Mal sendet, vergeht ein ganzer Regelzyklus -- und beim
-    Umschalten eines Modus sah es aus, als sei der Befehl verschluckt worden.
+    A whole control cycle passes before the service sends again -- and when
+    switching a mode, it looked as if the command had been swallowed.
     """
     create_settings(session)
     create_zone(session, "behaltene-zone")
@@ -151,7 +153,7 @@ async def test_discoveries_and_state_go_out_retained(session: Session) -> None:
 async def test_boost_timestamps_modes_and_parameters_are_offered_per_zone(
     session: Session,
 ) -> None:
-    """Was in Home Assistant je Zone bedienbar sein soll, muss auch angemeldet werden."""
+    """Whatever should be operable per zone in Home Assistant must also be registered."""
     create_settings(session)
     zone = create_zone(session, "vollausstattung")
     client = await _run(session, PublicationState())
@@ -161,19 +163,19 @@ async def test_boost_timestamps_modes_and_parameters_are_offered_per_zone(
     assert f"homeassistant/button/{identifier}_boost/config" in topics
     assert f"homeassistant/sensor/{identifier}_last_switch/config" in topics
     assert f"homeassistant/sensor/{identifier}_next_switch/config" in topics
-    # Je Regelparameter ein Drehregler, und der Zustand dazu.
+    # One dial per control parameter, and its state.
     for name in ("hysteresis_k", "min_on_seconds", "temperature_offset_k"):
         assert f"homeassistant/number/{identifier}_parameter_{name}/config" in topics
         assert f"thermoctl/zones/{zone.id}/state/parameter/{name}" in topics
-    # Je Modus ein Drehregler. Welche Modi es gibt, entscheidet die Anlage.
+    # One dial per mode. Which modes exist is decided by the plant.
     modes = [t for t in topics if t.startswith(f"homeassistant/number/{identifier}_modus_")]
-    assert modes, "kein Modus angemeldet"
+    assert modes, "no mode registered"
 
 
 @pytest.mark.anyio
 async def test_without_a_change_nothing_is_registered_again(session: Session) -> None:
-    """Sonst ginge je Zone und Minute eine Discovery-Nachricht hinaus -- viel Verkehr
-    fuer eine Aussage, die sich nicht geaendert hat."""
+    """Otherwise a discovery message would go out per zone and minute -- a lot of
+    traffic for a statement that has not changed."""
     create_settings(session)
     zone = create_zone(session, "einmal-zone")
     state = PublicationState()
@@ -186,9 +188,9 @@ async def test_without_a_change_nothing_is_registered_again(session: Session) ->
 
 @pytest.mark.anyio
 async def test_dry_run_does_not_deregister(session: Session) -> None:
-    """Abmelden und Neuanmelden bei jedem Umschalten liesse die Entitaet in Home
-    Assistant kurz verschwinden -- Verlaufsdaten und Automatisierungen liefen dort ins
-    Leere."""
+    """Deregistering and re-registering on every switch would make the entity
+    briefly disappear in Home Assistant -- history data and automations there
+    would run into a void."""
     create_settings(session)
     source(session, "web")
     zone = create_zone(session, "bleibende-zone")
@@ -206,8 +208,8 @@ async def test_dry_run_does_not_deregister(session: Session) -> None:
 
 @pytest.mark.anyio
 async def test_only_a_deleted_zone_is_deregistered(session: Session) -> None:
-    """Der einzige Grund fuer eine Abmeldung. Ohne sie bliebe in Home Assistant ein
-    Thermostat stehen, den niemand mehr bedient."""
+    """The only reason for a deregistration. Without it, a thermostat that no one
+    operates anymore would be left standing in Home Assistant."""
     create_settings(session)
     zone = create_zone(session, "verschwindende-zone")
     state = PublicationState()
@@ -217,8 +219,9 @@ async def test_only_a_deleted_zone_is_deregistered(session: Session) -> None:
     session.flush()
     client = await _run(session, state)
 
-    # Jede Entitaet der Zone, nicht nur der Thermostat: Sonst blieben Boost-Knopf und
-    # Drehregler einer geloeschten Zone in Home Assistant stehen.
+    # Every entity of the zone, not just the thermostat: otherwise the boost
+    # button and dials of a deleted zone would be left standing in Home
+    # Assistant.
     abgemeldet = {topic for topic, payload in client.messages if payload == ""}
     assert f"homeassistant/climate/thermoctl_zone_{zone.id}/config" in abgemeldet
     assert f"homeassistant/button/thermoctl_zone_{zone.id}_boost/config" in abgemeldet
@@ -229,8 +232,8 @@ async def test_only_a_deleted_zone_is_deregistered(session: Session) -> None:
 async def test_a_missing_reading_is_not_sent_as_an_empty_payload(
     session: Session,
 ) -> None:
-    """In MQTT loescht eine leere Nutzlast eine behaltene Nachricht. 'Noch kein
-    Messwert' ist etwas anderes als 'diesen Wert gibt es nicht mehr'."""
+    """In MQTT, an empty payload deletes a retained message. 'No reading yet' is
+    something different from 'this value no longer exists'."""
     create_settings(session)
     zone = create_zone(session, "messwertlose-zone")
 
@@ -240,8 +243,8 @@ async def test_a_missing_reading_is_not_sent_as_an_empty_payload(
 
 @pytest.mark.anyio
 async def test_the_setpoint_is_sent_with_a_decimal_point(session: Session) -> None:
-    """MQTT ist keine Oberflaeche: Home Assistant erwartet eine Zahl, kein deutsches
-    Komma."""
+    """MQTT is not a user interface: Home Assistant expects a number, not a German
+    comma."""
     create_settings(session)
     zone = create_zone(session, "punktzone")
     client = await _run(session, PublicationState())
@@ -252,11 +255,11 @@ async def test_the_setpoint_is_sent_with_a_decimal_point(session: Session) -> No
 
 @pytest.mark.anyio
 async def test_a_command_is_answered_immediately(session: Session) -> None:
-    """Die Climate-Karte in Home Assistant ist nicht optimistisch.
+    """The climate card in Home Assistant is not optimistic.
 
-    Sie wartet auf den Zustand und zeigt bis dahin den alten. Kam der erst im naechsten
-    Regelzyklus, sprang die eben gewaehlte Betriebsart fuer eine Minute zurueck -- und
-    fuer den Benutzer sah es aus, als lasse sie sich nicht umstellen.
+    It waits for the state and shows the old one until then. If it only arrived
+    on the next control cycle, the operating mode just chosen would jump back
+    for a minute -- and to the user it looked as if it could not be changed.
     """
     from types import SimpleNamespace
 
@@ -270,10 +273,11 @@ async def test_a_command_is_answered_immediately(session: Session) -> None:
     client = Mitschrift()
 
     class _Sessions:
-        """Gibt immer dieselbe Sitzung -- `session_scope` darf sie nicht schliessen.
+        """Always returns the same session -- `session_scope` must not close it.
 
-        Die Fixture haelt die Transaktion offen und raeumt hinterher selbst auf; ein
-        `close()` mittendrin loeste jedes bereits geladene Objekt von ihr.
+        The fixture keeps the transaction open and cleans up itself afterwards;
+        a `close()` in the middle would detach every already-loaded object from
+        it.
         """
 
         def __call__(self) -> Session:
@@ -289,15 +293,16 @@ async def test_a_command_is_answered_immediately(session: Session) -> None:
         app, umgebung, f"thermoctl/zones/{zone.id}/command/operating_mode", b"off"
     )
 
-    # Der neue Wert, nicht der alte: Wer nur den Fremdschluessel umschreibt, laesst ein
-    # bereits geladenes `zone.operating_mode` stehen -- und meldete hier "auto".
+    # The new value, not the old one: whoever only rewrites the foreign key
+    # leaves an already-loaded `zone.operating_mode` in place -- and used to
+    # report "auto" here.
     assert (f"thermoctl/zones/{zone.id}/state/operating_mode", "off") in client.messages
     assert zone.operating_mode.code == "off"
 
 
 @pytest.mark.anyio
 async def test_a_discarded_command_triggers_no_message(session: Session) -> None:
-    """Gegenprobe: Sonst antwortete der Dienst auch auf Unsinn und auf fremde Topics."""
+    """Counter-check: otherwise the service would also respond to nonsense and to foreign topics."""
     from types import SimpleNamespace
 
     from thermoctl.app import _process_mqtt_message
@@ -309,10 +314,11 @@ async def test_a_discarded_command_triggers_no_message(session: Session) -> None
     client = Mitschrift()
 
     class _Sessions:
-        """Gibt immer dieselbe Sitzung -- `session_scope` darf sie nicht schliessen.
+        """Always returns the same session -- `session_scope` must not close it.
 
-        Die Fixture haelt die Transaktion offen und raeumt hinterher selbst auf; ein
-        `close()` mittendrin loeste jedes bereits geladene Objekt von ihr.
+        The fixture keeps the transaction open and cleans up itself afterwards;
+        a `close()` in the middle would detach every already-loaded object from
+        it.
         """
 
         def __call__(self) -> Session:
@@ -333,10 +339,10 @@ async def test_a_discarded_command_triggers_no_message(session: Session) -> None
 
 @pytest.mark.anyio
 async def test_state_switch_times_and_sensor_situation_go_along(session: Session) -> None:
-    """Was Home Assistant je Zone anzeigen soll, muss auch gesendet werden.
+    """Whatever Home Assistant should display per zone must also be sent.
 
-    „Letzte Schaltung" ist dabei nicht der letzte Regelzyklus, sondern der letzte
-    *Wechsel*: Sonst stuende dort immer „vor einer Minute".
+    "Last switch" here is not the last control cycle, but the last *change*:
+    otherwise it would always say "a minute ago".
     """
     from tests.helpers import create_zone_state, sensorstatus
     from thermoctl.db.models.state import ShadowDecision
@@ -368,6 +374,6 @@ async def test_state_switch_times_and_sensor_situation_go_along(session: Session
     assert messages[f"{basis}/current_temperature"] == "20.5"
     assert messages[f"{basis}/sensor_state"] == "veraltet"
     assert messages[f"{basis}/would_heat"] == "true"
-    # 05:00, nicht 06:30: Um 06:30 wurde nur bestaetigt, was schon galt.
-    # Mit Zeitzone, weil `device_class: timestamp` sie verlangt.
+    # 05:00, not 06:30: at 06:30 only what already held was confirmed.
+    # With a time zone, because `device_class: timestamp` requires one.
     assert messages[f"{basis}/last_switch"] == "2026-08-31T05:00:00+00:00"

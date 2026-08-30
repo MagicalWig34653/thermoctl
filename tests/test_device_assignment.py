@@ -297,8 +297,8 @@ def test_the_writing_routes_and_their_permissions(client_als, session: Session) 
     )
     assert new_assignment is not None
 
-    # Die Kennung steht im Rumpf, nicht im Pfad: hx-boost liest die `action` eines
-    # Formulars einmal, deshalb benutzen Tabelle und Herausziehen denselben Endpunkt.
+    # The identifier lives in the body, not in the path: hx-boost reads a form's
+    # `action` once, so the table and the drag-out use the same endpoint.
     loesen = client.post(
         f"/zones/{eigene.id}/devices/detach",
         data={"assignment_id": str(new_assignment.id)},
@@ -317,14 +317,15 @@ def test_the_writing_routes_and_their_permissions(client_als, session: Session) 
 
 
 def test_invalid_input_when_assigning(client_als, session: Session) -> None:
-    """Jeder Fehlerweg der Zuordnungsseite — bisher war nur der Erfolgsfall belegt."""
+    """Every error path of the assignment page — until now only the success case
+    was covered."""
     source(session)
     zone = create_zone(session, "zone-fehlerwege")
     device = create_device(session, "vorhanden")
     client = client_als([("device.manage", None), ("device.read", None)])
     kopf = _csrf(client)
 
-    # Unbekanntes Geraet, unbekannte Rolle, gar keine Angabe.
+    # Unknown device, unknown role, no data at all.
     for daten in (
         {"device_id": "999999", "role_id": str(rolle(session, "actuator").id)},
         {"device_id": str(device.id), "role_id": "999999"},
@@ -339,7 +340,7 @@ def test_invalid_input_when_assigning(client_als, session: Session) -> None:
 
 
 def test_the_temperature_source_can_be_detached_again(client_als, session: Session) -> None:
-    """Leeres Feld heisst 'keine Messquelle' — die Zone gilt danach als ohne Quelle."""
+    """An empty field means 'no measurement source' — the zone then counts as having no source."""
     source(session)
     zone = create_zone(session, "zone-messquelle-weg")
     device = create_device(session, "quelle-weg")
@@ -373,7 +374,7 @@ def test_an_unknown_temperature_source_has_no_effect(client_als, session: Sessio
 def test_a_swap_with_nonsensical_devices_reports_understandably(
     client_als, session: Session
 ) -> None:
-    """Drei Faelle: gleiches Geraet, unbekanntes Geraet, ein Geraet ohne Zuordnung."""
+    """Three cases: the same device, an unknown device, a device with no assignment."""
     source(session)
     zone = create_zone(session, "zone-tausch-unsinn")
     eines = create_device(session, "eines")
@@ -394,7 +395,7 @@ def test_a_swap_with_nonsensical_devices_reports_understandably(
 
 
 def test_a_foreign_assignment_cannot_be_detached(client_als, session: Session) -> None:
-    """Eine Zuordnung einer anderen Zone ergibt 404, nicht 403."""
+    """An assignment belonging to another zone yields 404, not 403."""
     source(session)
     eigene = create_zone(session, "eigene-loesen")
     fremde = create_zone(session, "fremde-loesen")
@@ -418,10 +419,10 @@ def test_a_foreign_assignment_cannot_be_detached(client_als, session: Session) -
 def test_detaching_a_foreign_assignment_is_refused_in_the_domain(
     session: Session,
 ) -> None:
-    """Die Ansicht faengt den Fall schon mit 404 ab. Die Domaene prueft trotzdem selbst:
+    """The view already catches this case with a 404. The domain checks it anyway:
 
-    Sie wird spaeter auch von REST und MCP aufgerufen, und eine Regel, die nur in einem
-    Adapter steht, gilt nicht fuer die anderen.
+    It is also called later by REST and MCP, and a rule that lives in only one
+    adapter does not apply to the others.
     """
     import pytest
 
@@ -443,11 +444,11 @@ def test_detaching_a_foreign_assignment_is_refused_in_the_domain(
 
 
 def test_drop_targets_only_with_device_manage(client_als, session: Session) -> None:
-    """Das Ziehen ist eine zweite Bedienart derselben Aenderung -- es muss an derselben
-    Rechtepruefung haengen wie die Formulare. Ein Ablegeziel, das man sieht und nicht
-    benutzen darf, ist eine Einladung zu einer 403."""
+    """Dragging is a second way of operating the same change -- it must depend on
+    the same permission check as the forms. A drop target that is visible and
+    may not be used is an invitation to a 403."""
     zone = create_zone(session, "ziehzone")
-    # Ohne ein Geraet gibt es nichts zu ziehen -- die Karten entstehen aus der Liste.
+    # Without a device there is nothing to drag -- the cards are built from the list.
     create_device(session, "ziehbares-geraet")
 
     darf = client_als([("device.read", None), ("device.manage", zone.id), ("zone.read", None)])
@@ -464,8 +465,8 @@ def test_drop_targets_only_with_device_manage(client_als, session: Session) -> N
 
 
 def test_the_plant_diagram_offers_no_drop_targets(client_als, session: Session) -> None:
-    """Gegenprobe: Auf dem Anlagenbild waere ein Ablegeziel eine Zusage, die die Seite
-    nicht einloest -- dort gibt es keine Formulare, die es abschicken koennte."""
+    """Counter-check: on the plant diagram, a drop target would be a promise the
+    page does not keep -- there are no forms there that could submit it."""
     create_zone(session, "bildzone")
     page = client_als([("device.read", None), ("device.manage", None), ("zone.read", None)]).get(
         "/plant"
@@ -474,11 +475,11 @@ def test_the_plant_diagram_offers_no_drop_targets(client_als, session: Session) 
     assert "data-ziel=" not in page.text
 
 
-# --- Faehigkeitspruefung ----------------------------------------------------
+# --- Capability check --------------------------------------------------------
 
 
 def _with_capability(session: Session, name: str, *codes: str):
-    """Ein Geraet, dessen Faehigkeiten bekannt sind."""
+    """A device whose capabilities are known."""
     from tests.helpers import capability
     from thermoctl.db.models.device import DeviceCapabilityLink
 
@@ -494,9 +495,9 @@ def _with_capability(session: Session, name: str, *codes: str):
 
 
 def test_a_sensor_cannot_be_assigned_as_an_actuator(session: Session) -> None:
-    """Vorher ging das. Die Zuordnung sah danach richtig aus, das Anlagenbild zeigte
-    einen vollstaendigen Weg, und geschaltet haette trotzdem nie etwas -- ein Fehler, der
-    erst im Winter auffaellt und dann nach einem Regelungsfehler aussieht."""
+    """This used to be possible. The assignment then looked correct, the plant
+    diagram showed a complete path, and yet nothing would ever have switched --
+    an error that only shows up in winter and then looks like a control-logic bug."""
     from thermoctl.domain.device_assignment import CapabilityMissing, assign_device
 
     zone = create_zone(session, "faehigkeitszone")
@@ -508,8 +509,8 @@ def test_a_sensor_cannot_be_assigned_as_an_actuator(session: Session) -> None:
 
 
 def test_a_valve_can_be_assigned_as_an_actuator(session: Session) -> None:
-    """Gegenprobe. Ohne sie waere der Test oben auch von einer Fassung erfuellt, die
-    jede Zuordnung ablehnt."""
+    """Counter-check. Without it, the test above would also be satisfied by a
+    version that rejects every assignment."""
     from thermoctl.domain.device_assignment import assign_device
 
     zone = create_zone(session, "ventilzone")
@@ -521,9 +522,9 @@ def test_a_valve_can_be_assigned_as_an_actuator(session: Session) -> None:
 
 
 def test_a_device_without_known_capabilities_is_let_through(session: Session) -> None:
-    """Die Faehigkeiten stammen aus der Geraeteliste der Bruecke. Wer ein Geraet
-    einbindet, das sich dort sparsam beschreibt, soll seine Anlage trotzdem einrichten
-    koennen -- abgewiesen wird nur ein nachweislicher Widerspruch."""
+    """The capabilities come from the bridge's device list. Anyone integrating a
+    device that describes itself sparsely there should still be able to set up
+    their plant -- only a demonstrable contradiction is rejected."""
     from thermoctl.domain.device_assignment import assign_device
 
     zone = create_zone(session, "unbekanntzone")
@@ -552,8 +553,8 @@ def test_a_window_contact_must_report_a_contact(session: Session) -> None:
 
 
 def test_a_swap_checks_every_place_that_transfers(session: Session) -> None:
-    """Der stillste Weg, ein unpassendes Geraet an eine Stelle zu setzen: Man waehlt zwei
-    Namen aus und sieht gar nicht, welche Rollen dabei mitgehen."""
+    """The quietest way to put an unsuitable device in a place: you pick two
+    names and never even see which roles come along with them."""
     from thermoctl.domain.device_assignment import (
         CapabilityMissing,
         assign_device,
@@ -570,8 +571,8 @@ def test_a_swap_checks_every_place_that_transfers(session: Session) -> None:
 
 
 def test_a_refused_swap_leaves_nothing_half_done(session: Session) -> None:
-    """Erst pruefen, dann schreiben. Sonst bliebe die Messquelle beim neuen Geraet und
-    die Rolle beim alten."""
+    """Check first, then write. Otherwise the measurement source would stay with
+    the new device and the role with the old one."""
     from thermoctl.domain.device_assignment import (
         CapabilityMissing,
         assign_device,
@@ -592,8 +593,8 @@ def test_a_refused_swap_leaves_nothing_half_done(session: Session) -> None:
 
 
 def test_the_view_shows_the_reason_instead_of_an_error(client_als, session: Session) -> None:
-    """Ein 500 waere hier die schlechteste Antwort: Der Benutzer hat nichts falsch
-    gemacht ausser dem Falschen, und er soll erfahren, was gefehlt hat."""
+    """A 500 would be the worst answer here: the user did nothing wrong except
+    the wrong thing, and they should learn what was missing."""
     zone = create_zone(session, "ansichtszone")
     sensor = _with_capability(session, "ansichts-sensor", "temperature")
     c = client_als([("device.read", None), ("device.manage", None), ("zone.read", None)])
@@ -607,8 +608,8 @@ def test_the_view_shows_the_reason_instead_of_an_error(client_als, session: Sess
 
 
 def test_zugeordnete_karten_tragen_ihre_kennung(client_als, session: Session) -> None:
-    """Ohne sie liesse sich ein Geraet zwar hineinziehen, aber nicht wieder heraus --
-    der Weg hinein und der Weg hinaus waeren zwei verschiedene Handgriffe."""
+    """Without it, a device could be dragged in, but not out again -- the way in
+    and the way out would be two different actions."""
     from thermoctl.db.models.device import ZoneDevice
 
     zone = create_zone(session, "kennungszone")
@@ -630,7 +631,7 @@ def test_zugeordnete_karten_tragen_ihre_kennung(client_als, session: Session) ->
 
 
 def test_without_device_manage_nothing_can_be_dragged_out(client_als, session: Session) -> None:
-    """Gegenprobe: Wer nicht aendern darf, sieht dieselbe Karte ohne Griff."""
+    """Counter-check: whoever may not change it sees the same card without a handle."""
     from thermoctl.db.models.device import ZoneDevice
 
     zone = create_zone(session, "lesezone")
@@ -650,7 +651,7 @@ def test_without_device_manage_nothing_can_be_dragged_out(client_als, session: S
 
 
 def test_the_plant_diagram_carries_no_drag_handles(client_als, session: Session) -> None:
-    """Dort gibt es keine Formulare, die ein Herausziehen abschicken koennten."""
+    """There are no forms there that could submit a drag-out."""
     from thermoctl.db.models.device import ZoneDevice
 
     zone = create_zone(session, "bildzone-griffe")
@@ -678,10 +679,10 @@ def _controller_commands(session: Session) -> None:
 
 
 def test_the_page_shows_the_buttons_that_actually_arrived(client_als, session: Session) -> None:
-    """Nichts geraten: Wie ein Geraet seine Tasten nennt, entscheidet Zigbee2MQTT.
+    """Nothing guessed: how a device names its buttons is decided by Zigbee2MQTT.
 
-    Ohne diese Liste muesste jemand das Datenblatt seines Modells lesen -- und bei einem
-    Tippfehler taete die Taste stumm nichts.
+    Without this list, someone would have to read their model's datasheet -- and
+    with a typo the button would silently do nothing.
     """
     import json
 
@@ -710,7 +711,7 @@ def test_the_page_shows_the_buttons_that_actually_arrived(client_als, session: S
 def test_without_a_controller_there_is_no_button_binding_section(
     client_als, session: Session
 ) -> None:
-    """Gegenprobe: Ein Abschnitt, der bei jeder Zone steht, traegt keine Auskunft."""
+    """Counter-check: a section that appears for every zone carries no information."""
     _controller_commands(session)
     zone = create_zone(session, "tastenlos")
     device = create_device(session, "ventil")
@@ -747,7 +748,7 @@ def test_a_button_can_be_bound_and_released_again(
     )
     assert response.status_code == 303
     binding = session.scalars(select(ControllerBinding)).one()
-    # Komma wie im Formular ueblich, Punkt in der Datenbank.
+    # Comma as usual in the form, period in the database.
     assert binding.step_k == Decimal("1.0")
 
     client.post(

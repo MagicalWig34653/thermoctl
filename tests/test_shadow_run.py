@@ -1,9 +1,9 @@
-"""Tests fuer den Schattenlauf (`thermoctl.services.schattenlauf`).
+"""Tests for the shadow run (`thermoctl.services.shadow_run`).
 
-Diese Aufgabe wird an ihren Tests gemessen (Auftragstext Aufgabe 9): dass genau eine
-Zeile je Zone und Zyklus entsteht, dass die Mindestschaltdauer ueber `seit_s` wirklich
-etwas bewirkt, dass eine kaputte Zone die uebrigen nicht aufhaelt — und vor allem, dass
-in dieser Phase nirgends veroeffentlicht wird.
+This task is measured by its tests (assignment task 9): that exactly one row per zone
+and cycle is produced, that the minimum switching duration via `seit_s` really has an
+effect, that a broken zone does not hold up the rest — and above all, that in this
+phase nothing gets published anywhere.
 """
 
 import asyncio
@@ -49,12 +49,12 @@ DATENPFAD = Path(__file__).parent / "daten" / "anlage-beispiele.json"
 
 
 def _own_database(tmp_path: Path, name: str) -> tuple[Engine, sessionmaker[Session]]:
-    """Eine eigene, benannte SQLite-Datei je Test.
+    """A dedicated, named SQLite file per test.
 
-    `_schattenschleife` und `_mqtt_nachricht_verarbeiten` oeffnen ihre Sitzungen selbst
-    ueber `app.state.session_factory` -- die transaktionsisolierte Fixture ``session``
-    dieser Datei passt hier nicht, weil diese Funktionen commiten muessen, um etwas zu
-    bewirken, das eine zweite, unabhaengig geoeffnete Sitzung wieder sehen kann.
+    `_schattenschleife` and `_mqtt_nachricht_verarbeiten` open their own sessions
+    via `app.state.session_factory` -- the transaction-isolated `session` fixture
+    in this file does not fit here, because these functions have to commit to
+    achieve anything that a second, independently opened session can see again.
     """
     engine = create_engine(f"sqlite:///{tmp_path}/{name}.db", future=True)
     Base.metadata.create_all(engine)
@@ -96,7 +96,7 @@ def test_one_cycle_with_a_fresh_reading_writes_a_row_with_a_reason(
     assert zeile.would_heat is True
     assert zeile.outcome_code == "heizen"
     assert zeile.reason and "Ist" in zeile.reason
-    assert zeile.previous_would_heat is None  # keine Vorgeschichte im ersten Zyklus
+    assert zeile.previous_would_heat is None  # no history in the first cycle
     assert session.query(ShadowDecision).count() == 1
 
 
@@ -104,20 +104,21 @@ def test_several_cycles_with_an_unchanged_situation_yield_unchanged_without_a_fl
     session: Session,
 ) -> None:
     create_settings(session, hysteresis=Decimal("0.30"))
-    # Frostschutz-Rueckfall ist 16.0 °C (kein Zeitplan hinterlegt); 16.0 °C liegt
-    # innerhalb der Hysteresebandbreite von ±0.30 K und aendert deshalb nie etwas.
+    # Frost-protection fallback is 16.0 °C (no schedule configured); 16.0 °C sits
+    # inside the ±0.30 K hysteresis band and therefore never changes anything.
     zone = _zone_with_state(session, "flur", ist_c=Decimal("16.0"))
-    # Mindestschaltdauer auf 0 gesetzt: sonst griffe Regel 5 (Mindestschaltdauer) schon
-    # ab dem zweiten Zyklus und ergaebe 'gesperrt_mindestdauer' statt 'unveraendert' —
-    # unabhaengig davon, dass sich an der Lage nichts geaendert hat. Das ist hier nicht
-    # das Verhalten, das dieser Test belegen soll (das uebernimmt der naechste Test).
+    # Minimum switching duration set to 0: otherwise rule 5 (minimum switching
+    # duration) would already kick in from the second cycle and yield
+    # 'gesperrt_mindestdauer' instead of 'unveraendert' — regardless of the fact
+    # that nothing about the situation changed. That is not the behavior this
+    # test is meant to demonstrate here (the next test covers that).
     zone.min_on_seconds = 0
     zone.min_off_seconds = 0
     session.flush()
 
     for i in range(3):
         result = shadow_run.cycle(session, NOW + timedelta(minutes=i))
-        assert len(result) == 1  # genau eine Zeile je Zyklus, keine Luecke
+        assert len(result) == 1  # exactly one row per cycle, no gap
 
     zeilen = list(
         session.scalars(
@@ -126,7 +127,7 @@ def test_several_cycles_with_an_unchanged_situation_yield_unchanged_without_a_fl
             .order_by(ShadowDecision.decided_at)
         )
     )
-    assert len(zeilen) == 3  # keine Zeilenflut ueber die drei Zyklen hinweg
+    assert len(zeilen) == 3  # no flood of rows across the three cycles
     assert [z.outcome_code for z in zeilen] == ["unveraendert"] * 3
     assert [z.would_heat for z in zeilen] == [False, False, False]
 
@@ -134,13 +135,13 @@ def test_several_cycles_with_an_unchanged_situation_yield_unchanged_without_a_fl
 def test_the_elapsed_time_grows_across_cycles_and_resets_on_a_change(
     session: Session,
 ) -> None:
-    """Die Mindestschaltdauer wirkt nur, wenn `seit_s` ueber Zyklen hinweg mitwaechst.
+    """The minimum switching duration only works if `seit_s` keeps growing across cycles.
 
-    Ohne die Herleitung aus der eigenen Entscheidungskette waere `seit_s` bei jedem
-    Zyklus `None`, und Regel 5 (Mindestschaltdauer) griffe im Schattenbetrieb nie —
-    ohne dass ein einzelner Test das je auffiele. Der Ablauf hier zwingt die Regel
-    zweimal zum Entscheiden: einmal, waehrend die Mindestdauer noch nicht um ist
-    (Sperre haelt), einmal danach (Sperre faellt).
+    Without deriving it from the zone's own decision history, `seit_s` would be
+    `None` on every cycle, and rule 5 (minimum switching duration) would never
+    kick in during shadow operation — without a single test ever catching that.
+    The sequence here forces the rule to decide twice: once while the minimum
+    duration has not yet elapsed (the lock holds), once after (the lock lifts).
     """
     create_settings(session, hysteresis=Decimal("0.50"))
     zone = create_zone(session, "keller")
@@ -164,15 +165,15 @@ def test_the_elapsed_time_grows_across_cycles_and_resets_on_a_change(
         )
         session.flush()
 
-    # Zyklus 1 (t=0s): weit ueber dem Sollwert (Frostschutz-Rueckfall 16.0 °C) —
-    # keine Vorgeschichte, bleibt aus.
+    # Cycle 1 (t=0s): far above the setpoint (frost-protection fallback 16.0 °C) —
+    # no history, stays off.
     _state(Decimal("20.0"), NOW)
     z1 = shadow_run.cycle(session, NOW)[0]
     assert z1.would_heat is False
     assert z1.outcome_code == "unveraendert"
 
-    # Zyklus 2 (t=+10s): weit unter dem Sollwert. seit_s=10s reicht fuer
-    # min_off_seconds=5, die Hysterese schaltet ein.
+    # Cycle 2 (t=+10s): far below the setpoint. seit_s=10s is enough for
+    # min_off_seconds=5, the hysteresis switches on.
     moment_two = NOW + timedelta(seconds=10)
     _state(Decimal("5.0"), moment_two)
     z2 = shadow_run.cycle(session, moment_two)[0]
@@ -180,8 +181,9 @@ def test_the_elapsed_time_grows_across_cycles_and_resets_on_a_change(
     assert z2.outcome_code == "heizen"
     assert z2.previous_would_heat is False
 
-    # Zyklus 3 (t=+20s): wieder ueber dem Sollwert, aber die Heizphase begann erst vor
-    # 10s — bei min_on_seconds=100 haelt die Sperre, ungeachtet der Hysterese.
+    # Cycle 3 (t=+20s): above the setpoint again, but the heating phase only
+    # started 10s ago — with min_on_seconds=100 the lock holds, regardless of
+    # the hysteresis.
     moment_three = NOW + timedelta(seconds=20)
     _state(Decimal("20.0"), moment_three)
     z3 = shadow_run.cycle(session, moment_three)[0]
@@ -189,10 +191,11 @@ def test_the_elapsed_time_grows_across_cycles_and_resets_on_a_change(
     assert z3.outcome_code == "gesperrt_mindestdauer"
     assert z3.previous_would_heat is True
 
-    # Zyklus 4 (t=+130s): dieselbe Lage wie eben, aber die Heizphase (Beginn bei
-    # Zyklus 2) laeuft jetzt seit 120s — laenger als min_on_seconds=100. Die Sperre
-    # faellt, die Hysterese schaltet ab. Das waere unmoeglich, wenn `seit_s` nicht
-    # ueber alle drei vorangegangenen Zyklen hinweg mitgewachsen waere.
+    # Cycle 4 (t=+130s): the same situation as before, but the heating phase
+    # (started at cycle 2) has now been running for 120s — longer than
+    # min_on_seconds=100. The lock lifts, the hysteresis switches off. That
+    # would be impossible if `seit_s` had not kept growing across all three
+    # preceding cycles.
     moment_four = NOW + timedelta(seconds=130)
     _state(Decimal("20.0"), moment_four)
     z4 = shadow_run.cycle(session, moment_four)[0]
@@ -200,9 +203,10 @@ def test_the_elapsed_time_grows_across_cycles_and_resets_on_a_change(
     assert z4.outcome_code == "aus"
     assert z4.previous_would_heat is True
 
-    # Zyklus 5 (t=+131s): sofort nach dem Wechsel wieder unter dem Sollwert. seit_s
-    # faellt beim Wechsel auf 1s zurueck — zu kurz fuer min_off_seconds=5, die Sperre
-    # haelt erneut, obwohl dieselbe Zone Sekunden zuvor noch ungesperrt war.
+    # Cycle 5 (t=+131s): immediately after the switch, below the setpoint again.
+    # seit_s falls back to 1s on the change — too short for min_off_seconds=5,
+    # the lock holds again, even though the same zone was unlocked seconds
+    # earlier.
     moment_five = NOW + timedelta(seconds=131)
     _state(Decimal("5.0"), moment_five)
     z5 = shadow_run.cycle(session, moment_five)[0]
@@ -212,7 +216,7 @@ def test_the_elapsed_time_grows_across_cycles_and_resets_on_a_change(
 
 def test_a_zone_without_a_temperature_source_gets_a_no_source_row(session: Session) -> None:
     create_settings(session)
-    zone = create_zone(session, "abstellraum")  # keine ZoneState-Zeile ueberhaupt
+    zone = create_zone(session, "abstellraum")  # no ZoneState row at all
 
     zeilen = shadow_run.cycle(session, NOW)
 
@@ -289,13 +293,13 @@ def test_a_failing_zone_does_not_hold_up_the_others(
     create_settings(session)
     gesund = _zone_with_state(session, "gesund", ist_c=Decimal("10.0"))
     kaputt = _zone_with_state(session, "kaputt", ist_c=Decimal("10.0"))
-    assert kaputt.id > gesund.id  # Reihenfolge nach id, wie `zyklus()` sie durchgeht
+    assert kaputt.id > gesund.id  # order by id, the way `zyklus()` walks through them
 
     original = shadow_run.control_parameters
 
     def _manchmal_kaputt(session: Session, zone: Zone) -> object:
         if zone.id == kaputt.id:
-            raise RuntimeError("Simulierter Fehler in einer Zone")
+            raise RuntimeError("Simulated error in one zone")
         return original(session, zone)
 
     monkeypatch.setattr(shadow_run, "control_parameters", _manchmal_kaputt)
@@ -303,8 +307,8 @@ def test_a_failing_zone_does_not_hold_up_the_others(
     zeilen = shadow_run.cycle(session, NOW)
 
     assert [z.zone_id for z in zeilen] == [gesund.id]
-    # Der Fehlversuch der kaputten Zone hat keine (halbfertige) Zeile hinterlassen —
-    # das Savepoint je Zone hat ihn vollstaendig zurueckgenommen.
+    # The failed attempt of the broken zone left behind no (half-finished) row —
+    # the per-zone savepoint rolled it back completely.
     assert session.query(ShadowDecision).filter_by(zone_id=kaputt.id).count() == 0
     assert session.query(ShadowDecision).count() == 1
 
@@ -318,9 +322,9 @@ def anyio_backend() -> str:
 async def test_no_publishing_despite_a_heating_decision(
     session: Session, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Belegt die harte Grenze aus Abschnitt 1 der Spezifikation mit einem gefaelschten
-    Client: Ein voller Zyklus kommt zu 'wuerde heizen' — trotzdem bleibt jeder Versuch,
-    ueber den erreichbaren MQTT-Client zu veroeffentlichen, folgenlos.
+    """Demonstrates the hard boundary from section 1 of the spec with a fake
+    client: a full cycle arrives at 'would heat' -- yet every attempt to
+    publish via the reachable MQTT client remains without effect.
     """
 
     class GefaelschterClient:
@@ -333,7 +337,7 @@ async def test_no_publishing_despite_a_heating_decision(
     create_settings(session)
     _zone_with_state(session, "wohnzimmer", ist_c=Decimal("5.0"))
     zeilen = shadow_run.cycle(session, NOW)
-    assert zeilen[0].would_heat is True  # die Ausgangslage ist scharf: es wuerde heizen
+    assert zeilen[0].would_heat is True  # the starting situation is armed: it would heat
 
     monkeypatch.setattr(client_modul.aiomqtt, "Client", GefaelschterClient)
     settings = Settings(
@@ -362,13 +366,13 @@ async def test_no_publishing_despite_a_heating_decision(
 def test_the_background_run_does_not_start_without_mqtt(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Vorgabe aus dem Auftrag: ohne `mqtt_enabled` darf beim Start keine
-    Hintergrundaufgabe entstehen — die Testsuite baut die Anwendung staendig.
+    """Requirement from the assignment: without `mqtt_enabled`, no background task
+    may be created at startup -- the test suite builds the application constantly.
     """
-    # Eine benannte Datei statt 'sqlite://': Eine unbenannte In-Memory-Datenbank waere
-    # je Verbindung eine eigene, leere Datenbank -- die Anwendung und dieser Test
-    # saehen dann unterschiedliche, beide leere Datenbanken, ohne dass ein Fehler
-    # aufgetreten waere, der das erklaeren wuerde.
+    # A named file instead of 'sqlite://': an unnamed in-memory database would be
+    # its own, empty database per connection -- the application and this test
+    # would then see two different, both empty, databases, without any error
+    # having occurred that would explain it.
     datenbank_url = f"sqlite:///{tmp_path}/hintergrundlauf.db"
     own_engine = create_engine(datenbank_url, future=True)
     Base.metadata.create_all(own_engine)
@@ -379,7 +383,7 @@ def test_the_background_run_does_not_start_without_mqtt(
 
     def _should_not_have_started(*args: object, **kwargs: object) -> None:
         raise AssertionError(
-            "asyncio.create_task() wurde aufgerufen, obwohl mqtt_enabled=False ist"
+            "asyncio.create_task() was called even though mqtt_enabled=False"
         )
 
     monkeypatch.setattr(app_modul.asyncio, "create_task", _should_not_have_started)
@@ -400,9 +404,10 @@ def test_the_background_run_does_not_start_without_mqtt(
 async def test_the_shadow_loop_reads_the_interval_and_writes_a_result(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """`_schattenschleife` wartet den in `setting.shadow_interval_seconds` konfigurierten
-    Abstand ab und schreibt danach wirklich ein Ergebnis -- in einer eigenen Sitzung, wie
-    es der Auftrag verlangt (nicht in der Sitzung, die den Lifespan aufgebaut hat).
+    """`_schattenschleife` waits out the interval configured in
+    `setting.shadow_interval_seconds` and then really writes a result -- in its
+    own session, as the assignment requires (not in the session that set up the
+    lifespan).
     """
     engine, fabrik = _own_database(tmp_path, "schleife")
     with fabrik() as http_session:
@@ -410,7 +415,7 @@ async def test_the_shadow_loop_reads_the_interval_and_writes_a_result(
         settings = http_session.get(Setting, 1)
         assert settings is not None
         settings.shadow_interval_seconds = 42
-        sensorstatus(http_session, "keine_quelle")  # `zonenzustand_fortschreiben` braucht sie
+        sensorstatus(http_session, "keine_quelle")  # `zonenzustand_fortschreiben` needs it
         create_zone(http_session, "flur")
         http_session.commit()
 
@@ -420,8 +425,8 @@ async def test_the_shadow_loop_reads_the_interval_and_writes_a_result(
     async def _sleep(seconds: float) -> None:
         waited.append(seconds)
         if len(waited) == 2:
-            # Simuliert den Abbruch beim Herunterfahren, waehrend die Schleife im
-            # zweiten Durchlauf gerade wartet.
+            # Simulates the shutdown abort while the loop is waiting during the
+            # second pass.
             raise asyncio.CancelledError
 
     monkeypatch.setattr(app_modul.asyncio, "sleep", _sleep)
@@ -429,13 +434,13 @@ async def test_the_shadow_loop_reads_the_interval_and_writes_a_result(
     with pytest.raises(asyncio.CancelledError):
         await app_modul._shadowschleife(fake_app)  # type: ignore[arg-type]
 
-    assert waited[0] == 42  # aus setting.shadow_interval_seconds gelesen, nicht dem
-    # eingebauten Vorgabewert
+    assert waited[0] == 42  # read from setting.shadow_interval_seconds, not the
+    # built-in default value
 
     with fabrik() as http_session:
         zeilen = list(http_session.scalars(select(ShadowDecision)))
-    assert len(zeilen) == 1  # ein Durchlauf vor dem simulierten Abbruch
-    assert zeilen[0].outcome_code == "keine_quelle"  # die Zone hat keine Temperaturquelle
+    assert len(zeilen) == 1  # one pass before the simulated abort
+    assert zeilen[0].outcome_code == "keine_quelle"  # the zone has no temperature source
 
     engine.dispose()
 
@@ -444,9 +449,9 @@ async def test_the_shadow_loop_reads_the_interval_and_writes_a_result(
 async def test_the_shadow_loop_survives_a_missing_interval(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Ohne `setting`-Zeile (Einrichtung nicht abgeschlossen) darf die Schleife weder
-    abstuerzen noch haengen bleiben -- sie faellt auf den eingebauten Vorgabewert zurueck
-    und versucht es beim naechsten Mal erneut."""
+    """Without a `setting` row (setup not completed), the loop must neither crash
+    nor hang -- it falls back to the built-in default value and tries again next
+    time."""
     engine, fabrik = _own_database(tmp_path, "ohne-setting")
     fake_app = types.SimpleNamespace(state=types.SimpleNamespace(session_factory=fabrik))
     waited: list[float] = []
@@ -461,11 +466,11 @@ async def test_the_shadow_loop_survives_a_missing_interval(
     with pytest.raises(asyncio.CancelledError):
         await app_modul._shadowschleife(fake_app)  # type: ignore[arg-type]
 
-    assert waited == [60, 60]  # eingebauter Vorgabewert, zweimal in Folge
+    assert waited == [60, 60]  # built-in default value, twice in a row
 
     with fabrik() as http_session:
-        assert http_session.query(ShadowDecision).count() == 0  # kein Absturz, aber auch keine
-        # Zeile ohne eine Zone
+        assert http_session.query(ShadowDecision).count() == 0  # no crash, but also no
+        # row without a zone
 
     engine.dispose()
 
@@ -474,8 +479,8 @@ async def test_the_shadow_loop_survives_a_missing_interval(
 async def test_the_shadow_loop_survives_an_exception_in_the_cycle(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Ein Fehler in einem Zyklus (hier: `zonenzustand_fortschreiben` scheitert) beendet
-    die Schleife nicht -- protokollieren, weiter, der naechste Durchlauf kommt regulaer."""
+    """An error in one cycle (here: `zonenzustand_fortschreiben` fails) does not end
+    the loop -- log it, keep going, the next pass runs regularly."""
     engine, fabrik = _own_database(tmp_path, "fehler-im-zyklus")
     with fabrik() as http_session:
         create_settings(http_session)
@@ -492,7 +497,7 @@ async def test_the_shadow_loop_survives_an_exception_in_the_cycle(
         nonlocal aufrufe
         aufrufe += 1
         if aufrufe == 1:
-            raise ValueError("Simulierter Fehler im ersten Zyklus")
+            raise ValueError("Simulated error in the first cycle")
         original(session, now)
 
     monkeypatch.setattr(app_modul, "advance_zone_state", _first_attempt_fails)
@@ -509,9 +514,9 @@ async def test_the_shadow_loop_survives_an_exception_in_the_cycle(
     with pytest.raises(asyncio.CancelledError):
         await app_modul._shadowschleife(fake_app)  # type: ignore[arg-type]
 
-    assert aufrufe == 2  # der erste Versuch scheiterte, der zweite lief regulaer weiter
+    assert aufrufe == 2  # the first attempt failed, the second continued regularly
     with fabrik() as http_session:
-        assert http_session.query(ShadowDecision).count() == 1  # nur der zweite Zyklus schrieb
+        assert http_session.query(ShadowDecision).count() == 1  # only the second cycle wrote
 
     engine.dispose()
 
@@ -520,8 +525,8 @@ async def test_the_shadow_loop_survives_an_exception_in_the_cycle(
 async def test_the_shadow_loop_triggers_retention_once_a_day(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """`alte_messwerte_loeschen()` laeuft aus derselben Schleife, aber nur einmal je Tag
-    -- nicht in jedem Zyklus (Auftragstext, Abschnitt 'Aufbewahrung anstossen')."""
+    """`alte_messwerte_loeschen()` runs from the same loop, but only once per day
+    -- not on every cycle (assignment text, 'trigger retention' section)."""
     engine, fabrik = _own_database(tmp_path, "aufbewahrung")
     with fabrik() as http_session:
         create_settings(http_session)
@@ -531,9 +536,9 @@ async def test_the_shadow_loop_triggers_retention_once_a_day(
 
     fake_app = types.SimpleNamespace(state=types.SimpleNamespace(session_factory=fabrik))
 
-    # Erster Aufruf setzt 'naechste_aufbewahrung' auf JETZT+1 Tag; der zweite (der
-    # Messzeitpunkt des einzigen Zyklus vor dem Abbruch) liegt zwei Tage spaeter --
-    # deutlich darueber, die Aufbewahrung muss also genau einmal auftauchen.
+    # The first call sets 'naechste_aufbewahrung' to NOW+1 day; the second (the
+    # measurement time of the single cycle before the abort) is two days later --
+    # well above that, so retention must show up exactly once.
     moments = iter([NOW, NOW + timedelta(days=2)])
     monkeypatch.setattr(app_modul, "utcnow", lambda: next(moments))
 
@@ -569,8 +574,8 @@ async def test_the_shadow_loop_triggers_retention_once_a_day(
 async def test_processing_an_mqtt_message_writes_in_its_own_session(
     tmp_path: Path,
 ) -> None:
-    """Der MQTT-Handler des Lifespan verarbeitet eine Nachricht in einer frisch
-    geoeffneten Sitzung -- unabhaengig von der, die den Dienst gestartet hat."""
+    """The lifespan's MQTT handler processes a message in a freshly opened session
+    -- independent of the one that started the service."""
     engine, fabrik = _own_database(tmp_path, "mqtt-handler")
     with fabrik() as http_session:
         integration(http_session, "zigbee2mqtt")
@@ -600,10 +605,10 @@ async def test_processing_an_mqtt_message_writes_in_its_own_session(
 
 
 class _HangingStream:
-    """Ein MQTT-Nachrichtenstrom, der nie liefert -- wie eine echte, ruhige Verbindung.
+    """An MQTT message stream that never delivers -- like a real, quiet connection.
 
-    Bricht nur ab, wenn die Aufgabe von aussen abgebrochen wird. Genau dieser Fall soll
-    beim Herunterfahren zuverlaessig funktionieren: ohne haengenden Prozess.
+    It only breaks off when the task is cancelled from outside. That is exactly
+    the case that must reliably work on shutdown: without a hanging process.
     """
 
     def __aiter__(self) -> _HangingStream:
@@ -611,7 +616,7 @@ class _HangingStream:
 
     async def __anext__(self) -> object:
         await asyncio.Event().wait()
-        raise AssertionError("unerreichbar")  # pragma: no cover
+        raise AssertionError("unreachable")  # pragma: no cover
 
 
 class _FalscherAiomqttClient:
@@ -634,10 +639,9 @@ class _FalscherAiomqttClient:
 def test_the_lifespan_starts_and_stops_mqtt_and_the_shadow_loop_cleanly(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Der eigentliche Beleg fuer 'sauber beenden': Beide Hintergrundaufgaben laufen
-    (die MQTT-Verbindung haengt absichtlich in einer nie liefernden Nachrichtenschleife),
-    und `with TestClient(...)` kehrt trotzdem zurueck -- kein haengender Prozess beim
-    Herunterfahren."""
+    """The actual proof of 'clean shutdown': both background tasks run
+    (the MQTT connection deliberately hangs in a never-delivering message loop),
+    and `with TestClient(...)` still returns -- no hanging process on shutdown."""
     engine, fabrik = _own_database(tmp_path, "lifespan-mqtt")
     with fabrik() as http_session:
         sensorstatus(http_session, "keine_quelle")
@@ -656,7 +660,7 @@ def test_the_lifespan_starts_and_stops_mqtt_and_the_shadow_loop_cleanly(
     anwendung.state.session_factory = fabrik
 
     with TestClient(anwendung):
-        pass  # der Austritt aus diesem Block muss zurueckkehren, sonst haengt der Test
+        pass  # exiting this block must return, otherwise the test hangs
 
     engine.dispose()
     get_settings.cache_clear()
@@ -664,10 +668,11 @@ def test_the_lifespan_starts_and_stops_mqtt_and_the_shadow_loop_cleanly(
 
 @pytest.mark.anyio
 async def test_the_bridge_state_reports_only_the_change(tmp_path: Path) -> None:
-    """Zigbee2MQTT schickt `bridge/state` bei jeder Verbindung erneut.
+    """Zigbee2MQTT sends `bridge/state` again on every reconnect.
 
-    Gemeldet wird der Wechsel, nicht der Zustand — sonst haette man nach einer Nacht mit
-    wackeligem Funk hundert gleiche Meldungen und wuerde sie stummschalten.
+    What gets reported is the change, not the state — otherwise, after a night
+    with flaky radio, you would get a hundred identical notices and end up
+    muting them.
     """
     engine, fabrik = _own_database(tmp_path, "bridge_notice")
     with fabrik() as http_session:
@@ -690,18 +695,18 @@ async def test_the_bridge_state_reports_only_the_change(tmp_path: Path) -> None:
 
     with pytest.MonkeyPatch.context() as mp:
         mp.setattr(app_modul, "send", mitschreiben)
-        # Zweimal 'offline' — nur der erste Aufruf ist ein Wechsel.
+        # Two 'offline' calls — only the first one is a change.
         for _ in range(2):
             await app_modul._process_mqtt_message(
                 fake_app,  # type: ignore[arg-type]
                 settings, "testbasis/bridge/state", b'{"state": "offline"}',
             )
-        # Zurueck auf 'online': die Entwarnung.
+        # Back to 'online': the all-clear.
         await app_modul._process_mqtt_message(
             fake_app,  # type: ignore[arg-type]
             settings, "testbasis/bridge/state", b'{"state": "online"}',
         )
-        # Eine unlesbare Nutzlast aendert nichts und meldet nichts.
+        # An unreadable payload changes nothing and reports nothing.
         await app_modul._process_mqtt_message(
             fake_app,  # type: ignore[arg-type]
             settings, "testbasis/bridge/state", b"{kaputt",
@@ -710,7 +715,7 @@ async def test_the_bridge_state_reports_only_the_change(tmp_path: Path) -> None:
     assert [m.schwere for m in gesendet] == ["stoerung", "entwarnung"]  # type: ignore[attr-defined]
     with fabrik() as http_session:
         entries = http_session.query(AuditEvent).count()
-    assert entries == 2, "Jede versandte Meldung bekommt einen Audit-Eintrag."
+    assert entries == 2, "Every notice sent gets an audit entry."
 
     engine.dispose()
 
@@ -719,12 +724,12 @@ async def test_the_bridge_state_reports_only_the_change(tmp_path: Path) -> None:
 async def test_the_shadow_loop_reports_a_new_sensor_failure(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Die Meldung geht wirklich hinaus — bisher war nur belegt, dass sie entsteht.
+    """The notice really goes out — until now only that it was created was proven.
 
-    Die Zone startet im Zustand `ok` und verliert ihre Messquelle. Genau dieser Wechsel
-    ist meldungswuerdig; der zweite Zyklus mit unveraenderter Lage darf nicht erneut
-    melden. Ein Zustand ohne Vorgeschichte meldet ausdruecklich nicht — sonst feuerte
-    beim ersten Start jede noch unkonfigurierte Zone.
+    The zone starts in state `ok` and loses its measurement source. Exactly this
+    change is worth reporting; the second cycle with an unchanged situation must
+    not report again. A state with no history explicitly does not report --
+    otherwise every still-unconfigured zone would fire on the very first start.
     """
     engine, fabrik = _own_database(tmp_path, "schleife-meldung")
     with fabrik() as http_session:
@@ -733,7 +738,7 @@ async def test_the_shadow_loop_reports_a_new_sensor_failure(
         sensorstatus(http_session, "keine_quelle")
         sensorstatus(http_session, "ok")
         zone = create_zone(http_session, "flur-ohne-quelle")
-        create_zone_state(http_session, zone)  # startet als 'ok'
+        create_zone_state(http_session, zone)  # starts as 'ok'
         http_session.commit()
 
     gesendet: list[object] = []
@@ -755,14 +760,15 @@ async def test_the_shadow_loop_reports_a_new_sensor_failure(
     with pytest.raises(asyncio.CancelledError):
         await app_modul._shadowschleife(fake_app)  # type: ignore[arg-type]
 
-    # Der Versand laeuft seit dem Abschlussreview nebenher, damit ein haengender Webhook
-    # den Zyklustakt nicht verschiebt. Die noch offenen Aufgaben werden hier abgewartet,
-    # damit der Test nicht davon abhaengt, wann der Ereignisschleife danach ist.
+    # Sending has run alongside since the closing review, so that a hanging
+    # webhook does not shift the cycle cadence. The still-open tasks are
+    # awaited here so the test does not depend on when the event loop gets
+    # around to them.
     for aufgabe in list(app_modul._running_notices):
         await aufgabe
 
     assert len(gesendet) == 1, (
-        "Zwei Zyklen mit derselben Stoerung ergeben eine Meldung, nicht zwei."
+        "Two cycles with the same fault yield one notice, not two."
     )
 
     engine.dispose()

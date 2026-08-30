@@ -221,8 +221,8 @@ def test_the_adoption_form_and_a_faulty_selection(client_als, session: Session) 
 
 
 def test_a_nonsensical_selection_when_creating_a_point(client_als, session: Session) -> None:
-    """Wochentag und Modus kommen aus Auswahlfeldern — eine Anfrage muss sich daran
-    trotzdem nicht halten. Beide Wege werden hier bewusst umgangen."""
+    """Weekday and mode come from select fields -- a request still does not have to
+    stick to that. Both paths are deliberately bypassed here."""
     source(session)
     zone = create_zone(session, "zone-unsinn")
     mode = create_mode(session, "unsinn-tag", "Tag")
@@ -244,7 +244,7 @@ def test_a_nonsensical_selection_when_creating_a_point(client_als, session: Sess
 
 
 def test_a_foreign_schedule_point_yields_404(client_als, session: Session) -> None:
-    """Ein Punkt einer anderen Zone laesst sich nicht ueber die eigene loeschen."""
+    """A point belonging to another zone cannot be deleted via one's own."""
     source(session)
     eigene = create_zone(session, "eigene-zeitplan")
     fremde = create_zone(session, "fremde-zeitplan")
@@ -262,8 +262,8 @@ def test_a_foreign_schedule_point_yields_404(client_als, session: Session) -> No
 
 
 def test_adopting_from_itself_yields_404(client_als, session: Session) -> None:
-    """Eine Zone kann ihren Zeitplan nicht von sich selbst uebernehmen — das waere ein
-    Vorgang ohne Wirkung, der aussaehe, als haette er gewirkt."""
+    """A zone cannot adopt its schedule from itself -- that would be an operation
+    with no effect that would look as if it had one."""
     source(session)
     zone = create_zone(session, "zone-selbstuebernahme")
     client = client_als([("schedule.manage", None), ("zone.read", None)])
@@ -282,7 +282,7 @@ def test_an_unknown_schedule_point_yields_404(client_als, session: Session) -> N
     assert client.get(f"/zones/{zone.id}/schedule/points/999999/delete").status_code == 404
 
 
-# --- Verschieben (Ziel des Ziehens in der Wochenansicht) --------------------
+# --- Moving (the target of dragging in the week view) -----------------------
 
 
 def test_punkt_verschieben(client_als, session: Session) -> None:
@@ -306,8 +306,8 @@ def test_punkt_verschieben(client_als, session: Session) -> None:
 def test_moving_keeps_the_identifier_and_logs_where_from_and_to(
     client_als, session: Session
 ) -> None:
-    """Loeschen und neu Anlegen waere fachlich dasselbe, haette aber zwei
-    unzusammenhaengende Audit-Eintraege und zwischendurch eine Luecke im Plan."""
+    """Deleting and recreating would be functionally the same, but would produce two
+    unrelated audit entries and a gap in the schedule in between."""
     zone = create_zone(session, "bad")
     source(session, "web")
     day = create_mode(session, "tag", "Tag")
@@ -345,9 +345,9 @@ def test_moving_onto_an_occupied_moment_is_refused(
         headers=_csrf(mandant),
     )
     assert response.status_code == 200
-    # Die Meldung gehoert an die Wochenansicht, nicht an das Uhrzeitfeld des
-    # Anlege-Formulars: Beide Wege melden denselben Satz, und in der ersten Fassung
-    # landete er an einem Formular, das der Benutzer gar nicht angefasst hatte.
+    # The message belongs on the week view, not on the time-of-day field of the
+    # create form: both paths report the same sentence, and in the first version
+    # it ended up on a form the user had not even touched.
     assert "data-verschiebefehler" in response.text
     assert "wurde nicht verschoben" in response.text
     session.refresh(beweglich)
@@ -357,8 +357,8 @@ def test_moving_onto_an_occupied_moment_is_refused(
 def test_moving_onto_its_own_place_is_not_an_error(
     client_als, session: Session
 ) -> None:
-    """Beim Ziehen landet ein Balken leicht wieder dort, wo er war. Das darf nicht als
-    Kollision mit sich selbst durchfallen."""
+    """When dragging, a bar can easily land right back where it was. That must not
+    fail as a collision with itself."""
     zone = create_zone(session, "bad")
     source(session, "web")
     day = create_mode(session, "tag", "Tag")
@@ -416,8 +416,8 @@ def test_nonsensical_target_data_is_refused(client_als, session: Session) -> Non
 def test_the_week_view_carries_the_point_identifier_for_dragging(
     client_als, session: Session
 ) -> None:
-    """Ohne sie hat der Balken nichts, was er verschieben koennte -- und das Ziehen
-    waere still wirkungslos statt sichtbar kaputt."""
+    """Without it, the bar has nothing it could move -- and dragging would be silently
+    ineffective instead of visibly broken."""
     zone = create_zone(session, "bad")
     day = create_mode(session, "tag", "Tag")
     point = _point(session, zone.id, 1, 360, day.id)
@@ -431,8 +431,8 @@ def test_the_week_view_carries_the_point_identifier_for_dragging(
 def test_without_schedule_manage_no_bar_can_be_dragged(
     client_als, session: Session
 ) -> None:
-    """Gegenprobe: Sonst waere der obige Test auch von einer Fassung erfuellt, die
-    jeden Balken fuer jeden ziehbar macht."""
+    """Counter-check: otherwise the test above would also be satisfied by a version
+    that makes every bar draggable for everyone."""
     zone = create_zone(session, "bad")
     day = create_mode(session, "tag", "Tag")
     _point(session, zone.id, 1, 360, day.id)
@@ -442,8 +442,8 @@ def test_without_schedule_manage_no_bar_can_be_dragged(
 
 
 def test_the_create_route_still_reports_at_the_field(client_als, session: Session) -> None:
-    """Gegenprobe zum eigenen Kanal fuer Verschiebefehler: Der Weg ueber das Formular
-    soll seine Meldung weiterhin dort bekommen, wo die Eingabe steht."""
+    """Counter-check to the dedicated channel for move errors: the path via the form
+    should still get its message right where the input field is."""
     zone = create_zone(session, "bad")
     source(session, "web")
     day = create_mode(session, "tag", "Tag")
