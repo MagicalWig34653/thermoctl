@@ -90,6 +90,7 @@ def list_zones(session: Session, plaintext: str) -> list[dict[str, object]]:
             "name": zone.name,
             "display_name": zone.display_name,
             "operating_mode": zone.operating_mode.code,
+            "solar_gain_factor": str(zone.solar_gain_factor.quantize(Decimal("0.01"))),
         }
         for zone in zones
     ]
@@ -341,6 +342,12 @@ def read_control(session: Session, plaintext: str) -> dict[str, object]:
     return {
         "armed": row.control_armed,
         "timezone": row.timezone,
+        # The solar setback is reported alongside the defaults it modifies: an
+        # assistant asked why a zone is heating less than its schedule says should be
+        # able to see that a setback is switched on without a second call.
+        "solar_forecast_enabled": row.solar_forecast_enabled,
+        "solar_forecast_latitude": _decimal(row.solar_forecast_latitude),
+        "solar_forecast_longitude": _decimal(row.solar_forecast_longitude),
         **{field: str(getattr(row, field)) for field in LIMITS},
     }
 

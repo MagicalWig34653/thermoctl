@@ -518,3 +518,126 @@ def test_a_rest_change_is_logged_with_source_api(
     ).one()
     source_code = session.get(ActorSource, entry.source_id).code
     assert source_code == "api"
+
+
+def test_the_solar_location_can_be_set_and_read_back_over_rest(
+    client: TestClient, session: Session, api_token
+) -> None:
+    """The forecast location was reachable only through the web interface.
+
+    Every other plant setting is readable and writable through all three adapters;
+    a location that only the browser can set would make the REST view of the plant
+    lie by omission -- an assistant reading `/control` would see the setback's cap
+    and lookahead but never learn whether it is switched on at all.
+    """
+    create_settings(session)
+    source(session, "web")
+    head = api_token([("zone.read", None), ("setting.manage", None)])
+
+    before = client.get("/api/v1/control", headers=head)
+    assert before.status_code == 200
+    assert before.json()["solar_forecast_enabled"] is False
+    assert before.json()["solar_forecast_latitude"] is None
+
+    response = client.put(
+        "/api/v1/control/solar-location",
+        headers=head,
+        json={"enabled": True, "latitude": "52.520", "longitude": "13.405"},
+    )
+    assert response.status_code == 200
+    assert response.json()["solar_forecast_enabled"] is True
+    assert Decimal(response.json()["solar_forecast_latitude"]) == Decimal("52.520")
+
+    # Empty is a valid answer and means "no location" -- there is no default one.
+    cleared = client.put(
+        "/api/v1/control/solar-location",
+        headers=head,
+        json={"enabled": False, "latitude": "", "longitude": ""},
+    )
+    assert cleared.status_code == 200
+    assert cleared.json()["solar_forecast_latitude"] is None
+
+
+def test_an_impossible_coordinate_is_refused_by_the_domain_not_the_schema(
+    client: TestClient, session: Session, api_token
+) -> None:
+    """The limits live in one place. A `Field(ge=-90, le=90)` on the schema would be
+    a second copy of them, and two copies drift apart."""
+    create_settings(session)
+    source(session, "web")
+    head = api_token([("zone.read", None), ("setting.manage", None)])
+    response = client.put(
+        "/api/v1/control/solar-location",
+        headers=head,
+        json={"enabled": True, "latitude": "91", "longitude": "0"},
+    )
+    assert response.status_code == 422
+    assert "solar_forecast_latitude" in str(response.json()["detail"])
+
+
+def test_setting_the_solar_location_needs_setting_manage(
+    client: TestClient, session: Session, api_token
+) -> None:
+    create_settings(session)
+    source(session, "web")
+    head = api_token([("zone.read", None)])
+    assert (
+        client.put(
+            "/api/v1/control/solar-location",
+            headers=head,
+            json={"enabled": True, "latitude": "52.5", "longitude": "13.4"},
+        ).status_code
+        == 403
+    )
+
+
+def test_a_zone_carries_its_solar_profile_through_rest(
+    client: TestClient, session: Session, api_token
+) -> None:
+    """A caller that does not know about the setback must switch it off, not on.
+
+    Hence the default of 0 on `WriteZone`: leaving the field out of a zone update
+    written against the old schema turns the setback off for that zone rather than
+    silently enabling it at full strength.
+    """
+    create_settings(session)
+    source(session, "web")
+    head = api_token([("zone.read", None), ("zone.manage", None)])
+    mode = operating_mode(session)
+    created = client.post(
+        "/api/v1/zones",
+        headers=head,
+        json={
+            "name": "sonnenzone-api",
+            "display_name": "Sonnenzone",
+            "operating_mode_id": mode.id,
+            "solar_gain_factor": "0.75",
+        },
+    )
+    assert created.status_code == 201
+    assert Decimal(created.json()["solar_gain_factor"]) == Decimal("0.75")
+
+    zone_id = created.json()["id"]
+    unaware = client.put(
+        f"/api/v1/zones/{zone_id}",
+        headers=head,
+        json={
+            "name": "sonnenzone-api",
+            "display_name": "Sonnenzone",
+            "operating_mode_id": mode.id,
+        },
+    )
+    assert unaware.status_code == 200
+    assert Decimal(unaware.json()["solar_gain_factor"]) == Decimal("0")
+
+    beyond_one = client.post(
+        "/api/v1/zones",
+        headers=head,
+        json={
+            "name": "zu-viel-sonne",
+            "display_name": "Zu viel",
+            "operating_mode_id": mode.id,
+            "solar_gain_factor": "1.5",
+        },
+    )
+    assert beyond_one.status_code == 422

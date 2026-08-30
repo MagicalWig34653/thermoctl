@@ -156,6 +156,27 @@ Eile geht. Fehlt sie beim Scharfschalten, antwortet der Dienst mit `422`.
 Felder aus der Antwort von `GET /api/v1/control` außer `control_armed` sind Pflicht; die
 Grenzen prüft die Domäne, ein Verstoß ist `422`.
 
+### Sonnenabsenkung
+
+`PUT /api/v1/control/solar-location` (`setting.manage`) setzt Schalter und Standort für
+die Sonnenprognose. Die Koordinaten sind **Text**, nicht Zahlen: Die Grenzen prüft die
+Domäne, damit sie nur an einer Stelle stehen.
+
+```json
+{"enabled": true, "latitude": "52.520", "longitude": "13.405"}
+```
+
+Eine leere Koordinate ist eine gültige Antwort und heißt „kein Standort" — eine
+Vorgabe gibt es hier bewusst nicht (Grundsatz 1). Die Antwort ist dieselbe wie bei
+`GET /api/v1/control`; darin stehen `solar_forecast_enabled`,
+`solar_forecast_latitude` und `solar_forecast_longitude`, dazu
+`default_solar_setback_max_k` und `solar_setback_lookahead_hours`.
+
+Wie stark eine einzelne Zone von Sonne profitiert, steht als `solar_gain_factor`
+(0 bis 1) an der Zone selbst und wird über `POST`/`PUT /api/v1/zones` mitgeschrieben.
+**Fehlt das Feld, gilt 0** — ein Aufrufer, der die Absenkung nicht kennt, schaltet sie
+für diese Zone damit aus statt sie versehentlich ein.
+
 ### Regelparameter
 
 `GET /api/v1/zones/{zone_id}/parameters` benötigt `zone.read`,
