@@ -74,6 +74,64 @@ def test_a_negative_hysteresis_is_refused_but_the_offset_is_saved(
     assert zone.temperature_offset_k == Decimal("-1.25")
 
 
+def test_the_parameter_page_refuses_a_valve_run_longer_than_its_interval(
+    session: Session, client_als,
+) -> None:
+    zone = _grundlage(session)
+    client = client_als([("zone.manage", zone.id)])
+    response = client.post(
+        f"/zones/{zone.id}/parameters",
+        data={"valve_protection_interval_days": "1",
+              "valve_protection_duration_minutes": "1441"},
+        headers=_csrf(client),
+    )
+    assert response.status_code == 200
+    assert "darf nicht länger als der Abstand" in response.text
+    assert zone.valve_protection_duration_minutes == 10
+
+
+def test_the_rendered_parameter_form_carries_the_valve_protection_field_names(
+    session: Session, client_als,
+) -> None:
+    import re
+
+    zone = _grundlage(session)
+    client = client_als([("zone.manage", zone.id)])
+    path = f"/zones/{zone.id}/parameters"
+    page = client.get(path)
+    assert page.status_code == 200
+    form = re.search(
+        rf'<form\b[^>]*action="{re.escape(path)}"[^>]*>(.*?)</form>',
+        page.text,
+        re.DOTALL,
+    )
+    assert form is not None
+    fields: dict[str, str] = {}
+    rendered_names: set[str] = set()
+    for field in re.findall(r"<input\b[^>]*>", form.group(1)):
+        name = re.search(r'name="([^"]+)"', field)
+        if name is None:
+            continue
+        rendered_names.add(name.group(1))
+        if 'type="checkbox"' in field and " checked" not in field:
+            continue
+        rendered = re.search(r'value="([^"]*)"', field)
+        fields[name.group(1)] = rendered.group(1) if rendered else ""
+
+    assert {
+        "valve_protection_enabled",
+        "valve_protection_interval_days",
+        "valve_protection_duration_minutes",
+    }.issubset(rendered_names)
+    fields["valve_protection_interval_days"] = "20"
+    fields["valve_protection_duration_minutes"] = "15"
+    response = client.post(path, data=fields, headers=_csrf(client), follow_redirects=False)
+
+    assert response.status_code == 303
+    assert zone.valve_protection_interval_days == 20
+    assert zone.valve_protection_duration_minutes == 15
+
+
 def test_parameters_of_a_foreign_zone_yield_404(session: Session, client_als) -> None:
     eigene = _grundlage(session)
     fremde = create_zone(session, "fremd")

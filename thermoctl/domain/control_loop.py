@@ -23,6 +23,7 @@ REASON_CODE_BLOCKED_MINIMUM_DURATION = "gesperrt_mindestdauer"
 REASON_CODE_WINDOW_OPEN = "fenster_offen"
 REASON_CODE_FROST_SENSOR_FAILURE = "frostschutz_sensorausfall"
 REASON_CODE_NO_SOURCE = "keine_quelle"
+REASON_CODE_VALVE_PROTECTION = "ventilschutz"
 
 
 @dataclass(frozen=True)
@@ -44,6 +45,9 @@ class Situation:
     window_closed_for_s: int | None
     sensor_status: str  # ok | veraltet | keine_quelle
     parameter: ControlParameters
+    override_active: bool = False
+    valve_protection_due: bool = False
+    valve_protection_active: bool = False
 
 
 @dataclass(frozen=True)
@@ -146,7 +150,11 @@ def decide(situation: Situation) -> Decision:
         if situation.heating_now
         else situation.parameter.min_off_seconds
     )
-    if situation.held_for_s is not None and situation.held_for_s < minimum_duration:
+    if (
+        not situation.valve_protection_active
+        and situation.held_for_s is not None
+        and situation.held_for_s < minimum_duration
+    ):
         state = "Heizen" if situation.heating_now else "Aus"
         return Decision(
             heating=situation.heating_now,
@@ -162,7 +170,11 @@ def decide(situation: Situation) -> Decision:
     # (`if ist < soll: an, sonst aus`) and switches at the setpoint on every cycle;
     # `h` is exactly the band that prevents that.
     h = situation.parameter.hysteresis_k
-    if not situation.heating_now and measured_c < setpoint_c - h:
+    # A protection run is not evidence that normal control currently wants heat.
+    # Treat its temporary on-state as off for hysteresis, otherwise the ordinary
+    # "keep current state" branch would make the run endless after a restart.
+    regular_heating_now = situation.heating_now and not situation.valve_protection_active
+    if not regular_heating_now and measured_c < setpoint_c - h:
         return Decision(
             heating=True,
             reason_code=(
@@ -174,7 +186,7 @@ def decide(situation: Situation) -> Decision:
                 f"({setpoint_reason})."
             ),
         )
-    if situation.heating_now and measured_c > setpoint_c + h:
+    if regular_heating_now and measured_c > setpoint_c + h:
         return Decision(
             heating=False,
             reason_code=REASON_CODE_OFF,
@@ -183,8 +195,41 @@ def decide(situation: Situation) -> Decision:
                 f"({setpoint_reason})."
             ),
         )
+    if regular_heating_now:
+        return Decision(
+            heating=True,
+            reason_code=(
+                REASON_CODE_FROST_SENSOR_FAILURE if sensor_failed
+                else REASON_CODE_UNCHANGED
+            ),
+            reason=(
+                f"Ist {measured_c} °C innerhalb der Hysterese um Soll {setpoint_c} °C ± {h}K "
+                f"({setpoint_reason}) — Zustand bleibt."
+            ),
+        )
+
+    # Rule 7 — valve protection deliberately has the lowest precedence. Sensor
+    # failure, frost-protection mode, windows, overrides, minimum durations and every
+    # normal heating decision have already won above. An active run uses the same
+    # path after a restart; its persisted start time decides when it is no longer due.
+    protection_allowed = (
+        situation.parameter.valve_protection_enabled
+        and situation.sensor_status == "ok"
+        and situation.operating_mode != "off"
+        and not situation.override_active
+        and situation.valve_protection_due
+    )
+    if protection_allowed:
+        return Decision(
+            heating=True,
+            reason_code=REASON_CODE_VALVE_PROTECTION,
+            reason=(
+                "Ventilschutzlauf — Ventil wird unabhängig von der Raumregelung "
+                f"für {situation.parameter.valve_protection_duration_minutes} Minuten bewegt."
+            ),
+        )
     return Decision(
-        heating=situation.heating_now,
+        heating=False,
         reason_code=(
             REASON_CODE_FROST_SENSOR_FAILURE if sensor_failed
             else REASON_CODE_UNCHANGED

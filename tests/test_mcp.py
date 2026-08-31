@@ -494,6 +494,8 @@ def test_reading_control_parameters_returns_the_limits_as_well(session: Session)
     assert parameter["hysteresis_k"]["maximum"] == "5.0"
     # And whether the value belongs to this zone or comes from the global default.
     assert parameter["hysteresis_k"]["own_value"] is False
+    assert parameter["valve_protection_interval_days"]["value"] == "30"
+    assert parameter["valve_protection_duration_minutes"]["value"] == "10"
 
 
 def test_setting_a_control_parameter_leaves_the_others_inherited(session: Session) -> None:

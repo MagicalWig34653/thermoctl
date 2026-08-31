@@ -4,6 +4,10 @@ from decimal import Decimal
 from pydantic import BaseModel, ConfigDict, Field
 
 from thermoctl.domain.modes import MAXIMUM_TEMPERATURE_C, MINIMUM_TEMPERATURE_C
+from thermoctl.domain.zone_settings import (
+    MAXIMUM_VALVE_PROTECTION_DURATION_MINUTES,
+    MAXIMUM_VALVE_PROTECTION_INTERVAL_DAYS,
+)
 
 
 class ZoneResponse(BaseModel):
@@ -81,6 +85,13 @@ class WriteControlParameters(BaseModel):
     temperature_offset_k: Decimal | None = None
     window_resume_delay_seconds: int | None = Field(default=None, ge=0)
     solar_setback_max_k: Decimal | None = Field(default=None, ge=0)
+    valve_protection_enabled: bool = False
+    valve_protection_interval_days: int = Field(
+        default=30, gt=0, le=MAXIMUM_VALVE_PROTECTION_INTERVAL_DAYS
+    )
+    valve_protection_duration_minutes: int = Field(
+        default=10, gt=0, le=MAXIMUM_VALVE_PROTECTION_DURATION_MINUTES
+    )
 
 
 class ControlParametersResponse(WriteControlParameters):

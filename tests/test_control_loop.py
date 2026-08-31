@@ -8,6 +8,8 @@ must not repeat.
 
 from decimal import Decimal
 
+import pytest
+
 from thermoctl.domain.control_loop import (
     REASON_CODE_BLOCKED_MINIMUM_DURATION,
     REASON_CODE_FROST_SENSOR_FAILURE,
@@ -15,6 +17,7 @@ from thermoctl.domain.control_loop import (
     REASON_CODE_NO_SOURCE,
     REASON_CODE_OFF,
     REASON_CODE_UNCHANGED,
+    REASON_CODE_VALVE_PROTECTION,
     REASON_CODE_WINDOW_OPEN,
     Situation,
     decide,
@@ -31,6 +34,9 @@ def _parameter(
     temperature_offset_k: Decimal = Decimal("0.0"),
     window_resume_delay_seconds: int = 300,
     solar_setback_max_k: Decimal = Decimal("2.0"),
+    valve_protection_enabled: bool = False,
+    valve_protection_interval_days: int = 30,
+    valve_protection_duration_minutes: int = 10,
 ) -> ControlParameters:
     return ControlParameters(
         hysteresis_k=hysteresis_k,
@@ -40,6 +46,9 @@ def _parameter(
         temperature_offset_k=temperature_offset_k,
         window_resume_delay_seconds=window_resume_delay_seconds,
         solar_setback_max_k=solar_setback_max_k,
+        valve_protection_enabled=valve_protection_enabled,
+        valve_protection_interval_days=valve_protection_interval_days,
+        valve_protection_duration_minutes=valve_protection_duration_minutes,
     )
 
 
@@ -56,6 +65,9 @@ def _lage(
     window_closed_for_s: int | None = 1000,
     sensor_status: str = "ok",
     parameter: ControlParameters | None = None,
+    override_active: bool = False,
+    valve_protection_due: bool = False,
+    valve_protection_active: bool = False,
 ) -> Situation:
     return Situation(
         measured_c=measured_c,
@@ -69,7 +81,64 @@ def _lage(
         window_closed_for_s=window_closed_for_s,
         sensor_status=sensor_status,
         parameter=parameter or _parameter(),
+        override_active=override_active,
+        valve_protection_due=valve_protection_due,
+        valve_protection_active=valve_protection_active,
     )
+
+
+def test_rule7_a_due_valve_protection_run_heats_with_an_explicit_reason() -> None:
+    decision = decide(_lage(
+        measured_c=Decimal("21.0"), setpoint_c=Decimal("16.0"),
+        parameter=_parameter(valve_protection_enabled=True, min_off_seconds=0),
+        valve_protection_due=True,
+    ))
+    assert decision.heating is True
+    assert decision.reason_code == REASON_CODE_VALVE_PROTECTION
+    assert "Ventilschutzlauf" in decision.reason
+
+
+def test_rule7_a_stale_sensor_never_starts_valve_protection() -> None:
+    decision = decide(_lage(
+        measured_c=Decimal("21.0"), setpoint_c=Decimal("16.0"),
+        sensor_status="veraltet",
+        parameter=_parameter(valve_protection_enabled=True, min_off_seconds=0),
+        valve_protection_due=True,
+    ))
+
+    assert decision.heating is False
+    assert decision.reason_code == REASON_CODE_FROST_SENSOR_FAILURE
+
+
+@pytest.mark.parametrize(
+    ("changes", "reason_code"),
+    [
+        ({"sensor_status": "keine_quelle", "measured_c": None}, REASON_CODE_NO_SOURCE),
+        ({"operating_mode": "off"}, REASON_CODE_UNCHANGED),
+        ({"window_open": True}, REASON_CODE_WINDOW_OPEN),
+        ({"override_active": True}, REASON_CODE_UNCHANGED),
+    ],
+)
+def test_rule7_never_overrides_a_higher_priority_rule(
+    changes: dict[str, object], reason_code: str,
+) -> None:
+    arguments: dict[str, object] = {
+        "measured_c": Decimal("21.0"), "setpoint_c": Decimal("16.0"),
+        "parameter": _parameter(valve_protection_enabled=True, min_off_seconds=0),
+        "valve_protection_due": True,
+    }
+    arguments.update(changes)
+    decision = decide(_lage(**arguments))  # type: ignore[arg-type]
+    assert decision.heating is False
+    assert decision.reason_code == reason_code
+
+
+def test_rule7_is_off_by_default() -> None:
+    decision = decide(_lage(
+        measured_c=Decimal("21.0"), setpoint_c=Decimal("16.0"),
+        valve_protection_due=True, parameter=_parameter(min_off_seconds=0),
+    ))
+    assert decision.heating is False
 
 
 # ---------------------------------------------------------------------------

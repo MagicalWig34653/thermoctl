@@ -71,6 +71,15 @@ class Zone(TimestampMixin, Base):
     # like the six control parameters in `ControlParameters` above: empty means
     # `setting.default_solar_setback_max_k`.
     solar_setback_max_k: Mapped[Decimal | None] = mapped_column(Numeric(3, 1), nullable=True)
+    valve_protection_enabled: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=text("false"), nullable=False
+    )
+    valve_protection_interval_days: Mapped[int] = mapped_column(
+        Integer, default=30, server_default=text("30"), nullable=False
+    )
+    valve_protection_duration_minutes: Mapped[int] = mapped_column(
+        Integer, default=10, server_default=text("10"), nullable=False
+    )
 
 
 class ZoneSetpoint(Base):

@@ -12,6 +12,68 @@ def test_empty_zone_values_fall_back_to_the_default(session: Session) -> None:
     values = control_parameters(session, zone)
     assert values.hysteresis_k == Decimal("0.30")
     assert values.min_on_seconds == 300
+    assert values.valve_protection_enabled is False
+    assert values.valve_protection_interval_days == 30
+    assert values.valve_protection_duration_minutes == 10
+
+
+def test_valve_protection_duration_must_not_exceed_its_interval(session: Session) -> None:
+    import pytest
+
+    from thermoctl.domain.zone_settings import ParameterOutOfRange, save_control_parameters
+
+    create_settings(session)
+    zone = create_zone(session, "unplausibel")
+    with pytest.raises(ParameterOutOfRange, match="nicht länger"):
+        save_control_parameters(
+            session, zone,
+            {"valve_protection_interval_days": 1,
+             "valve_protection_duration_minutes": 1441},
+            user_id=None,
+        )
+    for values, message in (
+        ({"valve_protection_interval_days": 0,
+          "valve_protection_duration_minutes": 10}, "mindestens 1 Tag"),
+        ({"valve_protection_interval_days": 30,
+          "valve_protection_duration_minutes": 0}, "mindestens 1 Minute"),
+    ):
+        with pytest.raises(ParameterOutOfRange, match=message):
+            save_control_parameters(session, zone, values, user_id=None)
+
+
+def test_valve_protection_timing_rejects_values_above_the_domain_limits(
+    session: Session,
+) -> None:
+    import pytest
+
+    from thermoctl.domain.zone_settings import ParameterOutOfRange, save_control_parameters
+
+    create_settings(session)
+    zone = create_zone(session, "grenzschutz")
+    for values, message in (
+        ({"valve_protection_interval_days": 3651}, "höchstens 3650 Tage"),
+        (
+            {
+                "valve_protection_interval_days": 3650,
+                "valve_protection_duration_minutes": 5_256_001,
+            },
+            "höchstens 5256000 Minuten",
+        ),
+    ):
+        with pytest.raises(ParameterOutOfRange, match=message):
+            save_control_parameters(session, zone, values, user_id=None)
+
+    save_control_parameters(
+        session,
+        zone,
+        {
+            "valve_protection_interval_days": 3650,
+            "valve_protection_duration_minutes": 5_256_000,
+        },
+        user_id=None,
+    )
+    assert zone.valve_protection_interval_days == 3650
+    assert zone.valve_protection_duration_minutes == 5_256_000
 
 
 def test_a_zone_value_that_is_set_takes_precedence(session: Session) -> None:

@@ -13,6 +13,11 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ### Neu
 
+- **Ventilschutz je Zone.** Nach einer einstellbaren Zeit ohne reguläres Heizen kann das
+  Ventil für eine einstellbare Dauer bewegt werden, damit es über den Sommer nicht
+  festsitzt. Die Funktion ist standardmäßig aus und steht in der Regelkette hinter allen
+  bisherigen Entscheidungen; Konfiguration gibt es in Oberfläche, REST und MCP.
+
 - **Meross-Anbindung, beide Hälften.** Bisher gab es nur einen Schaltadapter und kein
   Gerät, auf das er gepasst hätte — Geräte entstanden ausschliesslich aus der
   Zigbee2MQTT-Liste, eine Meross-Steckdose konnte in der Anlage gar nicht auftauchen.
@@ -29,6 +34,12 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
   Sitzung des Schattenzyklus abgewartet. Damit kann die Fortschreibung einer
   Bedienersitzung parallel committen, statt mit `database is locked` in 401 oder 500 zu
   enden.
+- **Ventilschutz hält nun exakt die eingestellte Dauer ein.** Die Mindest-Einschaltdauer
+  wird nicht mehr als regulärer Heiznachweis missverstanden und verlängert oder verkürzt
+  keinen Schutzlauf. Der nächste Abstand beginnt am tatsächlichen Abschluss; gleiche
+  Dauer und gleicher Abstand erzeugen deshalb keinen endlosen Lauf. Betriebszeitstempel
+  behalten auch unter MariaDB ihre Mikrosekunden, und leere Alt-Historien werden nur
+  einmal verdichtet. Gemeinsame Obergrenzen gelten nun in Web, REST und MCP.
 - **Die Sonnenabsenkung liess sich nicht einschalten.** Das Formular schickt seit 0.2.0
   `value="yes"`, die Auswertung verglich weiter gegen `"on"` — den Vorgabewert eines
   Browsers für eine Checkbox ohne `value`. Der Haken wurde gesetzt, gespeichert und war

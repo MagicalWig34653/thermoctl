@@ -22,8 +22,10 @@ from thermoctl.domain.schedule import (
 )
 from thermoctl.domain.zone_settings import (
     ControlParameters,
+    ParameterOutOfRange,
     control_parameters,
     save_control_parameters,
+    validate_valve_protection,
 )
 from thermoctl.web.forms import FormError, form_again
 
@@ -41,6 +43,8 @@ FELDER = (
     "temperature_offset_k",
     "window_resume_delay_seconds",
     "solar_setback_max_k",
+    "valve_protection_interval_days",
+    "valve_protection_duration_minutes",
 )
 GANZZAHLEN = frozenset(FELDER) - {"hysteresis_k", "temperature_offset_k", "solar_setback_max_k"}
 
@@ -88,6 +92,7 @@ async def show_parameter(
         name: str(getattr(zone, name)) if getattr(zone, name) is not None else "" for name in FELDER
     }
     values["solar_gain_factor"] = str(zone.solar_gain_factor)
+    values["valve_protection_enabled"] = "yes" if zone.valve_protection_enabled else ""
     return _parameter_page(request, zone, control_parameters(session, zone), values)
 
 
@@ -134,10 +139,18 @@ async def save_parameter(
     zone = _zone_or_404(session, principal, zone_id, "zone.manage")
     form = await request.form()
     values = {name: str(form.get(name, "")).strip() for name in FELDER}
+    values["valve_protection_enabled"] = str(form.get("valve_protection_enabled", ""))
     raw_solar_gain_factor = str(form.get("solar_gain_factor", "")).strip()
     values["solar_gain_factor"] = raw_solar_gain_factor or str(zone.solar_gain_factor)
     try:
         checked = _check_parameters({name: values[name] for name in FELDER})
+        checked["valve_protection_enabled"] = bool(values["valve_protection_enabled"])
+        for name in (
+            "valve_protection_interval_days",
+            "valve_protection_duration_minutes",
+        ):
+            if checked[name] is None:
+                checked[name] = getattr(zone, name)
         # Missing/empty leaves the zone's current value untouched -- unlike the
         # fields in `FELDER`, an empty `solar_gain_factor` cannot mean "inherit",
         # so there is nothing sensible left for it to mean except "unchanged".
@@ -146,7 +159,10 @@ async def save_parameter(
             if not raw_solar_gain_factor
             else _check_solar_gain_factor(raw_solar_gain_factor)
         )
-    except FormError as exc:
+        validate_valve_protection(checked)
+    except (FormError, ParameterOutOfRange) as exc:
+        if isinstance(exc, ParameterOutOfRange):
+            exc = FormError("valve_protection_duration_minutes", str(exc))
         return _parameter_page(request, zone, control_parameters(session, zone), values, exc)
     # Set before `save_control_parameters` runs: that call also writes the audit
     # entry, and its `object_type="zone_settings"` covers this field too -- a second,
