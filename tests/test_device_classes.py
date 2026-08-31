@@ -7,6 +7,7 @@ from thermoctl.domain.device_classes import (
     DeviceDescription,
     capabilities_from_exposes,
     descriptions_from_bridge_list,
+    properties_from_exposes,
 )
 
 
@@ -312,3 +313,47 @@ def test_unknown_and_unstructured_exposes_are_skipped() -> None:
     ]
 
     assert capabilities_from_exposes(exposes) == frozenset()
+
+
+def test_an_unreadable_range_is_treated_as_no_range() -> None:
+    """Zigbee2MQTT does not promise that `value_min` is a number.
+
+    A device whose range cannot be read still has a usable property -- refusing the
+    whole device over one unparsable field would lose the parts that are fine. So the
+    range is dropped, not the property.
+    """
+    properties = properties_from_exposes(
+        [
+            {
+                "type": "numeric",
+                "property": "temperature",
+                "access": 1,
+                "value_min": "kalt",
+                "value_max": None,
+            }
+        ]
+    )
+    assert len(properties) == 1
+    assert properties[0].min_value is None
+    assert properties[0].max_value is None
+
+
+def test_entries_that_are_not_objects_are_skipped() -> None:
+    """The list comes from another program; nothing guarantees its shape.
+
+    A string where an expose belongs must not stop the walk -- the properties beside
+    it are still readable, and dropping them would silently shrink a device.
+    """
+    properties = properties_from_exposes(
+        [
+            "kein Objekt",  # type: ignore[list-item]
+            {
+                "type": "climate",
+                "features": [
+                    42,  # type: ignore[list-item]
+                    {"type": "numeric", "property": "local_temperature", "access": 1},
+                ],
+            },
+        ]
+    )
+    assert [p.name for p in properties] == ["local_temperature"]

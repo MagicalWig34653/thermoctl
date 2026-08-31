@@ -6,6 +6,7 @@ from tests.helpers import (
     token_with_permissions,
     user_with_permissions,
 )
+from thermoctl.auth.tokens import issue_token, resolve_token
 from thermoctl.domain.authz import (
     Forbidden,
     has_permission,
@@ -142,3 +143,26 @@ def test_every_permission_belongs_to_exactly_one_area() -> None:
         + " | unknown: " + ", ".join(sorted(set(categorized) - set(all_permissions)))
     )
     assert len(categorized) == len(set(categorized)), "A permission appears in two areas"
+
+
+def test_a_token_whose_owner_is_gone_carries_no_permissions(session: Session) -> None:
+    """A token is never more than its owner -- and an owner who no longer exists has
+    nothing to lend.
+
+    The scope is intersected with the owner's on every request precisely so that
+    losing a permission takes it away from the tokens too. A deleted account is the
+    extreme case of that, and it must end in an empty set rather than in the token's
+    own stored scope, which would otherwise outlive the person it belonged to.
+    """
+    owner = user_with_permissions(session, "verschwundener", [("zone.read", None)])
+    _token, plaintext = issue_token(session, owner, "sein-token", [("zone.read", None)], None)
+    session.flush()
+    token = resolve_token(session, plaintext)
+    assert token is not None
+
+    session.delete(owner)
+    session.flush()
+
+    principal = principal_for_token(session, token)
+    assert principal.grants == frozenset()
+    assert not has_permission(principal, "zone.read", None)
