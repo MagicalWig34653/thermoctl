@@ -294,6 +294,33 @@ Datenbanken. Ein Fehler von mir dabei: Ich habe die Gegenlesung auf `main` anges
 während ich dort selbst weiterarbeitete — der Bericht wundert sich zu Recht über
 Dateien, die sich unter ihm veränderten. Ein Review gehört auf einen festen Stand.
 
+**Heizkörperthermostate lassen sich jetzt auch wirklich zuziehen.** Die Domäne nahm
+`switch` **oder** `thermostat` für die Aktor-Stelle an — die Seite schrieb aber weiter
+`data-requires="switch"`, und das Ziehskript verglich gegen dieses eine Wort. Eine
+Thermostatkarte wurde also im Browser abgewiesen, bevor die Domäne sie je sah: Nichts war
+serverseitig falsch, die Zuordnung war nur unerreichbar. Die Anforderung kommt jetzt aus
+`REQUIRED_CAPABILITY` in die Vorlage statt ein zweites Mal hingeschrieben zu werden, und
+das Skript prüft eine Menge statt eines Wortes.
+
+**Dabei war die Erkennung zu streng für echte Hardware.** Sie verlangte einen
+schreibbaren `occupied_heating_setpoint` **und** ein `system_mode`. Ein Bosch BTH-RA — drei
+davon hängen in dieser Anlage — hat kein `system_mode` und wäre damit weiter abgewiesen
+worden, also genau das Gerät, für das die Funktion gebaut ist. Entscheidend ist jetzt der
+**schreibbare Sollwert**: Der allein bewegt ein Ventil. Vor einer bloßen Anzeige schützt
+nach wie vor die Schreibbarkeit, nicht das zweite Merkmal — ein Wandgerät, das einen
+Sollwert nur *meldet*, kommt nicht durch.
+
+Der Adapter schickt `system_mode` folgerichtig nur noch an Geräte, die es haben. Ein
+Ventil ohne wird ausgeschaltet, wie man es von Hand ausschaltet: mit dem niedrigsten
+Sollwert, den es annimmt. Das ist ein echter Verhaltensunterschied — `system_mode: off`
+schließt das Ventil, ein Minimalsollwert lässt es auf 5 °C weiterregeln —, deshalb sagt
+der Aufrufer, welches von beidem gilt.
+
+**Was nur der Projektinhaber prüfen kann:** Ob die drei BTH-RA nach der nächsten
+`bridge/devices`-Nachricht tatsächlich die Fähigkeit `thermostat` bekommen. Die
+Fähigkeiten werden erst dann neu berechnet; bis dahin stehen sie in der Datenbank noch
+ohne. Ein Neustart von Zigbee2MQTT genügt.
+
 **Sonnenprognose-Absenkung.** In der Übergangszeit heizt eine Dachwohnung morgens hoch,
 obwohl zwei Stunden später die Sonne durch die Dachfenster kommt. Verspricht die Vorhersage
 (Open-Meteo, kein Schlüssel nötig) in den nächsten Stunden nennenswerte Einstrahlung, wird

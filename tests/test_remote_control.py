@@ -17,7 +17,11 @@ from thermoctl.db.models.override import ZoneOverride
 from thermoctl.db.models.schedule import SchedulePoint
 from thermoctl.db.models.zone import ZoneSetpoint
 from thermoctl.domain.remote_control import RemoteControlError, boost, set_setpoint
-from thermoctl.domain.schedule import create_override, resolved_setpoint
+from thermoctl.domain.schedule import (
+    create_override,
+    resolved_setpoint,
+    temperature_for_mode,
+)
 
 # A Monday, 08:00 UTC. The settings are in UTC, so this is local time too.
 MONDAY_EIGHT = datetime(2026, 8, 31, 8, 0)
@@ -80,14 +84,28 @@ def test_a_running_override_is_changed_instead(session: Session) -> None:
     value at the next status report and look as if it had swallowed the
     command.
     """
-    zone, _, _ = _zone_with_plan(session)
+    zone, day, _ = _zone_with_plan(session)
+    # `now=` matters here: without it the override starts at the real clock and is not
+    # yet running at MONDAY_EIGHT. The test then took the *other* branch -- it changed
+    # the day mode, arrived at the same 23.0, and passed while the case it describes
+    # never happened.
     create_override(
-        session, zone, Decimal("19.0"), None, user_id=None, source="system"
+        session, zone, Decimal("19.0"), None, now=MONDAY_EIGHT, user_id=None,
+        source="system",
     )
+    before = temperature_for_mode(session, zone, day.id)
 
     set_setpoint(session, zone, Decimal("23.0"), MONDAY_EIGHT, source="system")
 
     assert resolved_setpoint(session, zone, MONDAY_EIGHT).temperature_c == Decimal("23.0")
+    entry = session.scalar(
+        select(ZoneOverride)
+        .where(ZoneOverride.zone_id == zone.id)
+        .order_by(ZoneOverride.id.desc())
+    )
+    assert entry is not None and entry.temperature_c == Decimal("23.0")
+    # And the mode was left alone -- that is what "no mode to change" means.
+    assert temperature_for_mode(session, zone, day.id) == before
 
 
 def test_boost_brings_forward_the_next_switch_point(session: Session) -> None:
@@ -140,3 +158,26 @@ def test_boost_without_settings_says_why(session: Session) -> None:
     zone = create_zone(session, "unfertig")
     with pytest.raises(RemoteControlError, match="unvollständig"):
         boost(session, zone, MONDAY_EIGHT, source="system")
+
+
+def test_a_boost_starts_at_the_moment_it_was_decided_for(session: Session) -> None:
+    """The override must start at the caller's `now`, not at whatever the clock says.
+
+    `create_override` used to stamp `starts_at` from the real clock while every caller
+    passed its own moment. In normal operation the two are milliseconds apart and
+    nothing shows; but `resolved_setpoint` only counts an override whose start has been
+    reached, so a boost stamped a hair later than the moment it was decided for simply
+    does not apply -- the user presses the button and nothing happens.
+
+    The same defect was fixed once in `end_of_next_switch`. This pins the other half:
+    the recorded start is the moment that was handed in, whatever time it is now.
+    """
+    zone, _, _ = _zone_with_plan(session)
+
+    boost(session, zone, MONDAY_EIGHT, source="system")
+
+    entry = session.scalar(select(ZoneOverride).where(ZoneOverride.zone_id == zone.id))
+    assert entry is not None
+    assert entry.starts_at == MONDAY_EIGHT
+    # And therefore it applies at that moment, which is the whole point.
+    assert resolved_setpoint(session, zone, MONDAY_EIGHT).temperature_c == Decimal("18.0")
