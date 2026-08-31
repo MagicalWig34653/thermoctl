@@ -2,6 +2,7 @@ import hashlib
 import hmac
 
 CSRF_HEADER = "X-CSRF-Token"
+CSRF_FIELD_NAME = "csrf_token"
 
 # Not httpOnly: the UI (HTMX) needs to be able to read the value to send it as a
 # header. Harmless, because the token itself does not reveal anything that could be

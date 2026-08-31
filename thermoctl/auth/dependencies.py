@@ -4,7 +4,7 @@ from typing import Annotated
 from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
-from thermoctl.auth.csrf import CSRF_HEADER, check_csrf
+from thermoctl.auth.csrf import CSRF_FIELD_NAME, CSRF_HEADER, check_csrf
 from thermoctl.auth.sessions import COOKIE_NAME, resolve_session
 from thermoctl.config import get_settings
 from thermoctl.db.models.identity import User
@@ -67,12 +67,12 @@ def current_principal(
 _SICHERE_METHODEN = frozenset({"GET", "HEAD", "OPTIONS", "TRACE"})
 
 
-def csrf_protection(request: Request) -> None:
+async def csrf_protection(request: Request) -> None:
     """Shared dependency for every state-changing route of the UI.
 
-    If the request carries a session cookie, it must bring the matching
-    ``X-CSRF-Token`` header — even when none was sent at all. A protection that could
-    be bypassed simply by omitting the header would be no protection at all.
+    If the request carries a session cookie, it must bring the matching token in the
+    ``X-CSRF-Token`` header or a form field. The latter keeps ordinary HTML forms
+    operable without JavaScript; a foreign origin can read neither value.
 
     Without a session cookie the protection does not apply: there is then nothing
     that a foreign origin could send along unnoticed. This covers the login itself
@@ -90,9 +90,12 @@ def csrf_protection(request: Request) -> None:
     if cookie_value is None:
         return
     settings = get_settings()
-    if not check_csrf(
-        request.headers.get(CSRF_HEADER), cookie_value, settings.secret_key.get_secret_value()
-    ):
+    submitted = request.headers.get(CSRF_HEADER)
+    if submitted is None:
+        form = await request.form()
+        value = form.get(CSRF_FIELD_NAME)
+        submitted = value if isinstance(value, str) else None
+    if not check_csrf(submitted, cookie_value, settings.secret_key.get_secret_value()):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Ungueltiges CSRF-Token"
         )

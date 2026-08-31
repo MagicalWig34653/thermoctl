@@ -49,6 +49,10 @@
                     segment.start_minute // 60, segment.start_minute % 60
                 ) }}</span> {{ segment.mode_name }}{% if temperatures.get(segment.mode_id) %}
                     <span class="t-value">{{ temperatures[segment.mode_id]|grad }}°</span>{% endif %}</small>
+                {% if segment.point_id and may_edit %}
+                <a class="btn btn-sm btn-light py-0 px-1" href="#point-mode-{{ segment.point_id }}"
+                   aria-label="Modus dieses Schaltpunkts ändern">Modus ändern</a>
+                {% endif %}
             </div>
         {% endfor %}
         </div>
@@ -94,12 +98,29 @@
         {% if points %}
         <ul class="list-group">
         {% for point in points %}
-            <li class="list-group-item d-flex justify-content-between align-items-center">
+            <li class="list-group-item" id="point-mode-{{ point.id }}">
+              <div class="d-flex justify-content-between align-items-center gap-2">
                 <span>{{ dict(weekdays)[point.weekday] }}
                     {{ "%02d:%02d"|format(point.minute_of_day // 60, point.minute_of_day % 60) }}
                 </span>
                 <a class="btn btn-sm btn-outline-danger"
                    href="/zones/{{ zone.id }}/schedule/points/{{ point.id }}/delete">Löschen</a>
+              </div>
+              <form class="mt-2 d-flex align-items-end gap-2" method="post"
+                    action="/zones/{{ zone.id }}/schedule/points/mode"
+                    hx-trigger="change from:select" hx-push-url="false">
+                <input type="hidden" name="csrf_token" value="{{ csrf }}">
+                <input type="hidden" name="point_id" value="{{ point.id }}">
+                <div class="flex-grow-1">
+                  <label class="form-label small mb-1" for="point-{{ point.id }}-mode">Modus</label>
+                  <select class="form-select form-select-sm" id="point-{{ point.id }}-mode" name="mode_id">
+                  {% for mode in modes %}
+                    <option value="{{ mode.id }}"{{ ' selected' if mode.id == point.setpoint_mode_id }}>{{ mode.name }}</option>
+                  {% endfor %}
+                  </select>
+                </div>
+                <button class="btn btn-sm btn-outline-primary" type="submit">Ändern</button>
+              </form>
             </li>
         {% endfor %}
         </ul>

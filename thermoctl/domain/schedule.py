@@ -241,6 +241,41 @@ def move_schedule_point(
     return point
 
 
+def change_schedule_point_mode(
+    session: Session,
+    zone: Zone,
+    point: SchedulePoint,
+    *,
+    mode_id: int,
+    user_id: int | None,
+    token_id: int | None = None,
+    source: str = "web",
+) -> SchedulePoint:
+    """Changes a point's mode without replacing the point."""
+    mode = session.get(SetpointMode, mode_id)
+    if mode is None:
+        raise ScheduleError("mode_id", "Dieser Modus ist nicht bekannt.")
+    if point.setpoint_mode_id == mode_id:
+        return point
+
+    previous_mode = session.get(SetpointMode, point.setpoint_mode_id)
+    previous_name = previous_mode.name if previous_mode is not None else str(point.setpoint_mode_id)
+    point.setpoint_mode_id = mode_id
+    session.flush()
+    audit.record(
+        session,
+        source=source,
+        action="update",
+        object_type="schedule_point",
+        object_id=str(point.id),
+        summary=f"Modus des Zeitplanpunkts für Zone '{zone.display_name}' geändert",
+        detail=f"{previous_name} → {mode.name}",
+        user_id=user_id,
+        token_id=token_id,
+    )
+    return point
+
+
 def delete_schedule_point(
     session: Session,
     zone: Zone,
