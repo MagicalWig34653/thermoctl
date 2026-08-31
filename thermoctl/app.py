@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 
 from fastapi import FastAPI, Request, Response
 from fastapi.openapi.docs import get_swagger_ui_html
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
@@ -17,6 +17,9 @@ from sqlalchemy.orm import Session, sessionmaker
 import thermoctl
 from thermoctl import audit
 from thermoctl.api.routes import router as api_router
+from thermoctl.auth.csrf import CSRF_COOKIE_NAME
+from thermoctl.auth.dependencies import StalePage
+from thermoctl.auth.sessions import COOKIE_NAME
 from thermoctl.config import Settings, get_settings
 from thermoctl.db.base import utcnow
 from thermoctl.db.engine import create_engine_from_settings, session_factory, session_scope
@@ -70,7 +73,7 @@ from thermoctl.services.publishing import cycle as publication_cycle
 from thermoctl.services.retention import delete_old_measurements
 from thermoctl.services.shadow_run import cycle
 from thermoctl.setup import create_setup_token, setup_needed
-from thermoctl.web import STATIC_DIR
+from thermoctl.web import STATIC_DIR, templates
 from thermoctl.web.admin_views import router as admin_router
 from thermoctl.web.audit_views import router as audit_router
 from thermoctl.web.auth_views import router as auth_router
@@ -580,6 +583,60 @@ def create_app() -> FastAPI:
     app.include_router(alltag_router)
     app.include_router(api_router)
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
+    @app.exception_handler(StalePage)
+    async def stale_page_handler(request: Request, exc: StalePage) -> Response:
+        """Answers a request whose page is older than the session behind it.
+
+        Two ways out, and both matter. On a recovery path (`/login`, `/logout`) the
+        session and CSRF cookies are cleared and the browser is sent to the login
+        form: the person wanted to leave or to come back in, and an outdated token
+        must not be what stops them. Reported from use -- a tab left open could
+        neither log out nor log in again, and the only escape was deleting exactly
+        the right cookie by hand.
+
+        Everywhere else the request stays refused, but a browser gets a page saying
+        so instead of `{"detail": "..."}`. Nothing about the check itself is relaxed:
+        a forged request still carries no valid token and still changes nothing.
+
+        What this does concede: someone else's page can now log a signed-in visitor
+        out (the cleared cookies). That is the usual trade for not stranding people,
+        it takes over no account, and it is written down here rather than left to be
+        discovered.
+        """
+        # htmx drives most controls of this interface. It follows a redirect
+        # transparently and would swap the login form into the middle of the old
+        # page without ever changing the address -- so htmx is told where to go
+        # through its own header instead.
+        from_htmx = request.headers.get("hx-request") is not None
+        if exc.recovery:
+            answer: Response = (
+                Response(status_code=204)
+                if from_htmx
+                else RedirectResponse("/login?stale=1", status_code=303)
+            )
+            if from_htmx:
+                answer.headers["HX-Redirect"] = "/login?stale=1"
+            answer.delete_cookie(COOKIE_NAME)
+            answer.delete_cookie(CSRF_COOKIE_NAME)
+            return answer
+        if from_htmx:
+            # htmx ignores the body of an error answer, so a message put there would
+            # be seen by nobody -- measured in the browser: the control simply did
+            # nothing, which is the very complaint this handler exists for. The page
+            # is not reloaded automatically either; that was tried and it can put a
+            # control that fires on restore into a loop of reload, refuse, reload.
+            # Instead a marker goes out that the small handler in `base.html` turns
+            # into a visible notice with a reload button -- the person decides when
+            # the page goes away, and an unsent change is not swallowed silently.
+            answer = JSONResponse(status_code=403, content={"detail": str(exc)})
+            answer.headers["HX-Stale-Page"] = "1"
+            return answer
+        if "text/html" not in request.headers.get("accept", ""):
+            return JSONResponse(status_code=403, content={"detail": str(exc)})
+        return templates.TemplateResponse(
+            request, "stale_page.html", {"path": request.url.path}, status_code=403
+        )
 
     @app.exception_handler(Forbidden)
     async def forbidden_handler(request: Request, exc: Forbidden) -> Response:

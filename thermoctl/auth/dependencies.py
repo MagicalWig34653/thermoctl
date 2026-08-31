@@ -66,6 +66,28 @@ def current_principal(
 # page request from the browser sends the cookie, but no header.
 _SICHERE_METHODEN = frozenset({"GET", "HEAD", "OPTIONS", "TRACE"})
 
+# The two routes that lead *out* of a stale page. They must never be the ones that a
+# stale token blocks -- otherwise a browser tab that sat open too long is in a dead
+# end: every form is refused, logging out is refused, and logging in again is refused
+# too as long as the old session cookie is still around. Reported from use, and the
+# only escape was deleting exactly the right cookie by hand.
+_RECOVERY_PATHS = frozenset({"/login", "/logout"})
+
+
+class StalePage(Exception):
+    """A browser sent a state-changing request carrying an outdated CSRF token.
+
+    Not an ordinary 403: the request was not forbidden because the caller lacks a
+    permission, but because the page it came from is older than the session it is
+    talking to. The answer belongs to the person in front of the browser, so
+    `app.py` turns this into something readable -- and on a recovery path into the
+    way out.
+    """
+
+    def __init__(self, *, recovery: bool) -> None:
+        super().__init__("Ungueltiges CSRF-Token")
+        self.recovery = recovery
+
 
 async def csrf_protection(request: Request) -> None:
     """Shared dependency for every state-changing route of the UI.
@@ -78,6 +100,9 @@ async def csrf_protection(request: Request) -> None:
     that a foreign origin could send along unnoticed. This covers the login itself
     and setup, which is secured via the one-time token, as well as the REST API,
     which only ever evaluates bearer tokens.
+
+    A failed check does not raise a plain 403 but `StalePage` -- see there for why
+    logging in and out have to survive an outdated token.
 
     Hung as ``dependencies=[Depends(csrf_schutz)]`` on the router, not on the
     individual route: a route added later is thereby protected automatically,
@@ -96,6 +121,4 @@ async def csrf_protection(request: Request) -> None:
         value = form.get(CSRF_FIELD_NAME)
         submitted = value if isinstance(value, str) else None
     if not check_csrf(submitted, cookie_value, settings.secret_key.get_secret_value()):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="Ungueltiges CSRF-Token"
-        )
+        raise StalePage(recovery=request.url.path in _RECOVERY_PATHS)
