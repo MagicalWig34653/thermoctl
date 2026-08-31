@@ -69,7 +69,10 @@ anzufassen**. Es wird gelesen und protokolliert, nichts geschaltet.
 - Sensor-Ingest aus Zigbee2MQTT: Ist-Temperaturen fortlaufend in die Zonen schreiben
 - Geräteerkennung: bekannte Zigbee2MQTT-Geräte einlesen und nach Fähigkeiten klassifizieren
   *(Idee aus dem Konzept-Dokument)*
-- Aktor-Adapter für Meross-Schalter und Zigbee-Ventile — vollständig, aber im Trockenlauf
+- Aktor-Adapter für Zigbee-Ventile — vollständig, aber im Trockenlauf
+- Aktor-Adapter für Meross-Schalter — **nur die schaltende Hälfte.** Es fehlt die
+  Geräteerkennung: Geräte entstehen ausschliesslich aus der Zigbee2MQTT-Liste, eine
+  Meross-Steckdose taucht in der Anlage also gar nicht erst auf
 - Fensterkontakte als Zustandsquelle *(Idee aus dem Konzept-Dokument)*
 - Sensor-Timeout: ein ausbleibender Messwert wird als Störung erkannt, nicht ignoriert
 - Messwert-Historie mit begrenzter Aufbewahrung
