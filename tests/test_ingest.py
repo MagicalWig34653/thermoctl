@@ -513,3 +513,92 @@ def test_a_property_named_twice_does_not_break_the_whole_device_list(
     # The decisive part: the device behind the duplicate arrived as well. Before the
     # fix the exception aborted the message and this row did not exist.
     assert session.scalar(select(Device).where(Device.external_id == "fuehler")) is not None
+
+
+def _regler_mit_merkmalen(session: Session, name: str, *properties: str) -> None:
+    """A device with the given properties -- plus `temperature`, deliberately.
+
+    The property values are only written when the message also carries a recognised
+    measurement; without one the whole block is skipped. A test built without it would
+    pass for a reason that has nothing to do with what it claims to check.
+    """
+    _capability(session, "temperature")
+    exposes: list[dict[str, object]] = [
+        {"type": "numeric", "property": "temperature", "access": 1}
+    ]
+    exposes += [{"type": "binary", "property": name_, "access": 3} for name_ in properties]
+    process_message(
+        session,
+        f"{BASIS}/bridge/devices",
+        json.dumps(
+            [{"friendly_name": name, "definition": {"model": "regler", "exposes": exposes}}]
+        ).encode(),
+        base=BASIS,
+        received_at=EMPFANGEN_AM,
+    )
+
+
+def test_a_broken_property_payload_leaves_the_stored_values_alone(
+    session: Session,
+) -> None:
+    """A device state that is not readable JSON must not clear what is known.
+
+    The reading path already logs the parse failure; here the point is the second
+    consequence: the stored property values stay as they were instead of being wiped
+    to "unknown" by a single garbled message.
+    """
+    integration(session)
+    _regler_mit_merkmalen(session, "wandregler", "child_lock")
+    process_message(
+        session, f"{BASIS}/wandregler", b'{"temperature": 20.0, "child_lock": true}',
+        base=BASIS, received_at=EMPFANGEN_AM,
+    )
+    session.flush()
+    prop = session.scalar(select(DeviceProperty).where(DeviceProperty.name == "child_lock"))
+    assert prop is not None and prop.last_value_text == "true"
+
+    process_message(
+        session, f"{BASIS}/wandregler", b"{kaputt",
+        base=BASIS, received_at=EMPFANGEN_AM + timedelta(minutes=1),
+    )
+    session.flush()
+    session.refresh(prop)
+    assert prop.last_value_text == "true"
+
+
+def test_a_state_that_is_not_an_object_changes_nothing(session: Session) -> None:
+    """Valid JSON, wrong shape -- a list carries no property values."""
+    integration(session)
+    _regler_mit_merkmalen(session, "listenregler", "child_lock")
+    process_message(
+        session, f"{BASIS}/listenregler", b'["kein", "objekt"]',
+        base=BASIS, received_at=EMPFANGEN_AM,
+    )
+    session.flush()
+    prop = session.scalar(select(DeviceProperty).where(DeviceProperty.name == "child_lock"))
+    assert prop is not None and prop.last_value_text is None
+
+
+def test_only_the_properties_present_in_the_message_are_updated(
+    session: Session,
+) -> None:
+    """Zigbee2MQTT sends what changed, not the whole device.
+
+    A property missing from the message keeps its last value -- treating absence as
+    "no longer known" would make a display flicker to empty on every partial update.
+    """
+    integration(session)
+    _regler_mit_merkmalen(session, "zweiwertig", "child_lock")
+    process_message(
+        session, f"{BASIS}/zweiwertig", b'{"temperature": 21.5, "child_lock": false}',
+        base=BASIS, received_at=EMPFANGEN_AM,
+    )
+    session.flush()
+
+    process_message(
+        session, f"{BASIS}/zweiwertig", b'{"temperature": 22.0}',
+        base=BASIS, received_at=EMPFANGEN_AM + timedelta(minutes=1),
+    )
+    session.flush()
+    lock = session.scalar(select(DeviceProperty).where(DeviceProperty.name == "child_lock"))
+    assert lock is not None and lock.last_value_text == "false"

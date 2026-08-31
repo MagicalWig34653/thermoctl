@@ -52,3 +52,9 @@ def test_bridge_state_accepts_text_and_object_but_no_guessing() -> None:
     assert bridge_reachable(b'{"state":"offline"}') is False
     assert bridge_reachable(b'{"state":"unbekannt"}') is None
     assert bridge_reachable(b"kein-json") is None
+    # Valid JSON of a shape that carries no state at all. `None` and not `False`:
+    # "we do not know" must not look like "the bridge is down", or an unreadable
+    # message would raise a fault notice all by itself.
+    assert bridge_reachable(b"[1, 2, 3]") is None
+    assert bridge_reachable(b'{"zustand":"online"}') is None
+    assert bridge_reachable(b"42") is None

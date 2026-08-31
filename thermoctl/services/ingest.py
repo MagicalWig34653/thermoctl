@@ -136,9 +136,13 @@ def _process_state(
     device = _device(session, name, received_at)
     try:
         raw_values = json.loads(payload, parse_float=Decimal, parse_int=Decimal)
-    except (json.JSONDecodeError, UnicodeDecodeError):  # bereits von readings protokolliert
+    except (json.JSONDecodeError, UnicodeDecodeError):  # pragma: no cover
+        # Unreachable through this function: `readings_from_payload` above parsed the
+        # very same bytes and returned nothing on a failure, so we are already gone.
+        # Kept as the second parse's own guard -- it does not get to assume that the
+        # first one ran.
         raw_values = {}
-    if not isinstance(raw_values, dict):
+    if not isinstance(raw_values, dict):  # pragma: no cover - same reason
         raw_values = {}
     # Read before inserting: afterwards our own new reading would be the most recent
     # one, and the comparison below would compare the message with itself.
