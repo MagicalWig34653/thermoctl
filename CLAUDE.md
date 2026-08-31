@@ -178,6 +178,16 @@ Aus der Umsetzung von Teilprojekt 1, damit es niemand erneut herausfinden muss:
   mitten in der Arbeit. Prozesse gezielt über ihre PID beenden.
 - **Bei parallelen Aufgaben bekommt jede eine eigene Testdatenbank.** Sonst legen mehrere
   Läufe dasselbe Schema an und räumen es einander weg; die Fehlschläge sind dann zufällig.
+- **Die Testsuite liest `THERMOCTL_TEST_DATABASE_URL`, nicht `THERMOCTL_DATABASE_URL`.**
+  Wer die zweite Variable setzt, läuft gegen SQLite und merkt nichts davon — der Lauf ist
+  grün und beweist nichts. Genau so ist eine ganze Sitzung lang „gegen beide Datenbanken
+  geprüft" berichtet worden, während jeder dieser Läufe SQLite war; aufgefallen ist es
+  einem Agenten, nicht der Hauptsession. Der MariaDB-Lauf lautet:
+  ```
+  THERMOCTL_TEST_DATABASE_URL="mysql+pymysql://root:pruefen@127.0.0.1:3306/<eigene_db>" \
+    .venv/bin/python -m pytest -q
+  ```
+  Die CI benutzt die richtige Variable und war nie betroffen.
 - **Migrationen vertragen keine echte Parallelität.** Zweigen zwei Aufgaben vom selben Stand
   ab, tragen beide dieselbe Vorgängerrevision, und die Historie hat zwei Köpfe. Die
   Hauptsession ordnet sie beim Zusammenführen; die Agents lassen `down_revision` in Ruhe.
