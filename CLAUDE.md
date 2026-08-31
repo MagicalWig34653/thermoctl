@@ -100,10 +100,26 @@ Zwei Defekte des Altsystems ausdrücklich **nicht** übernehmen:
 
 Verbindlich für alle Sessions.
 
-**Aufgaben gehen an Agents, nicht an die Hauptsession.** Grobe Zielverteilung: rund 60 % an
-Codex, der Rest an Claude-Code-Agents. Codex bekommt scharf umrissene, testbare Einheiten —
-Modelle, Migrationen, CRUD, Templates, Workflows. In der Hauptsession bleiben Auth- und
-Berechtigungslogik sowie das Zusammenführen.
+**Aufgaben gehen an Agents, nicht an die Hauptsession. Das ist eine Bedingung, keine
+Empfehlung.** Grobe Zielverteilung: rund 60 % an Codex, der Rest an Claude-Code-Agents.
+Codex bekommt scharf umrissene, testbare Einheiten — Modelle, Migrationen, CRUD,
+Templates, Workflows. In der Hauptsession bleiben **nur** diese vier Dinge:
+
+1. Auth- und Berechtigungslogik,
+2. das Zusammenführen von Zweigen und das Auflösen von Sammeldateien,
+3. das Gegenlesen von Sicherheitsrelevantem (Grundsatz 7),
+4. das Zerlegen der Arbeit in Aufträge und das Verteilen.
+
+**Alles andere wird verteilt, auch wenn es schneller ginge, es selbst zu tippen.** Genau
+dieser Gedanke ist der Grund, warum die Regel überhaupt hier steht: Er kommt bei jeder
+einzelnen Aufgabe, er stimmt bei jeder einzelnen Aufgabe, und in Summe landet trotzdem
+das ganze Teilprojekt in einer Sitzung. Zweimal ist das passiert — zuletzt bei der
+Meross-Anbindung in 0.3.0, die vollständig in der Hauptsession entstand und deren
+Kreuzreview deshalb nachträglich beauftragt werden musste.
+
+Prüffrage vor jeder Änderung an einer Quelldatei: **Steht diese Datei unter den vier
+Punkten oben?** Wenn nein, gehört die Änderung in einen Auftrag, nicht in die
+Hauptsession. Eine Ausnahme wird angesagt und begründet, nicht stillschweigend genommen.
 
 **Modelle:** Claude-Agents laufen auf Sonnet, Codex auf seinem Standardmodell. **Opus nur nach
 ausdrücklicher Genehmigung des Nutzers** — vorher fragen, nicht danach.

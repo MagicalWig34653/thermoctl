@@ -17,7 +17,7 @@ Beides zusammen macht diese Durchsicht zu mehr als einer Formalie.
 | Ändernde Routen ohne CSRF-Schutz | keine — `tests/test_csrf.py` hält das nach |
 | Ansichten ohne Rechteprüfung | keine; siehe Abschnitt 2 |
 | Geheimnisse im Log | maskiert; eine bewusste, dokumentierte Ausnahme |
-| Ausgehende Verbindungen | nur MQTT und Meross, beide nur bei hinterlegter Konfiguration |
+| Ausgehende Verbindungen | MQTT, Wetterdienst und Meross, alle nur bei hinterlegter Konfiguration |
 
 ## 2. Rechteprüfung je Adapter
 
@@ -112,9 +112,11 @@ Wand gut hüten könnte.
   öffentlich erreichbar soll er ohnehin nicht sein.
 - **Keine Kontosperre**, ausdrücklich: In einem Einhaushalt-System wäre sie vor allem eine
   bequeme Möglichkeit, sich selbst auszusperren.
-- **Der Meross-Nutzlastaufbau ist ungeprüft** — siehe
-  [offene-entscheidungen.md](offene-entscheidungen.md). Kein Sicherheitsmangel, aber ein
-  Punkt, an dem Zugangsdaten an einen fremden Dienst gehen, sobald er scharf ist.
+- **Meross-Zugangsdaten gehen an einen fremden Dienst**, sobald ein Konto hinterlegt ist
+  — seit der Anbindung stündlich, nicht erst beim Schalten. Über TLS, das Passwort
+  gehasht, und nur wenn der Betreiber es einträgt. Der App-Schlüssel `APP_SECRET` im
+  Quelltext ist eine öffentliche Protokollkonstante des Herstellers und kein
+  Zugangsdatum; ohne ihn lässt sich kein Umschlag signieren.
 - **Das Einrichtungs-Token steht im Log.** Bewusst, und der einzige Kanal dorthin. Wer
   Logs weiterleitet, leitet es mit weiter. In der Self-Hosting-Anleitung benannt.
 

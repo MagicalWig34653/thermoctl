@@ -222,14 +222,12 @@ def overview(
             "meross",
             "Meross",
             "Schaltsteckdosen als zweiter Aktortyp neben den Zigbee-Ventilen.",
-            # Immer "noch nicht gebaut", auch mit hinterlegten Zugangsdaten: Es fehlt
-            # nicht die Konfiguration, sondern die andere Hälfte der Anbindung. Geräte
-            # entstehen ausschliesslich aus der Zigbee2MQTT-Geräteliste; eine
-            # Meross-Steckdose kann in dieser Anlage gar nicht auftauchen. "Eingerichtet"
-            # hätte genau das verschwiegen, worauf es ankommt.
-            "not_built",
+            # Ohne Zugangsdaten ist die Anbindung nicht aus, sondern schlicht nicht
+            # eingerichtet -- es gibt nichts abzufragen. Mit Zugangsdaten laeuft sie:
+            # Der Abgleich haengt im Schattenzyklus und legt gefundene Steckdosen an.
+            "running" if hat_meross else "off",
             (
-                "Zugangsdaten hinterlegt — Geräte werden trotzdem keine gefunden."
+                "Zugangsdaten hinterlegt — Geräte werden stündlich abgeglichen."
                 if hat_meross
                 else "Keine Zugangsdaten hinterlegt."
             ),
@@ -239,14 +237,16 @@ def overview(
                 Detail("Passwort", _yes_no(settings.meross_password is not None),
                        "Umgebung" if settings.meross_password else "Standard",
                        "THERMOCTL_MEROSS_PASSWORD"),
+                Detail("Wolke", settings.meross_api_base, "Standard",
+                       "THERMOCTL_MEROSS_API_BASE"),
             ],
             hint=(
-                "Nur die schaltende Hälfte ist gebaut: Der Adapter kann eine bekannte "
-                "Steckdose ein- und ausschalten. Es gibt aber keine Geräteerkennung für "
-                "Meross — Geräte entstehen allein aus der Zigbee2MQTT-Liste, und von "
-                "Hand anlegen lässt sich keines. Solange das fehlt, ist keine "
-                "Meross-Steckdose einer Zone zuzuordnen. Der Nutzlastaufbau des Adapters "
-                "ist ausserdem eine begründete Annahme und lief nie gegen ein echtes Konto."
+                "Geräteerkennung und Schaltweg sind gebaut und gegen ein echtes Konto "
+                "geprüft: Anmeldung und Geräteliste über HTTP, das Schalten über MQTT. "
+                "Der frühere HTTP-Pfad zum Schalten existiert nicht — die Wolke "
+                "antwortet dort mit 404. Nachgemessen ist bisher nur das Lesen eines "
+                "Gerätezustands; das erste echte Schalten steht noch aus und passiert "
+                "ohnehin erst, wenn die Steuerung scharf geschaltet wird."
             ),
         )
     )

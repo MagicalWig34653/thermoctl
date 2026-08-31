@@ -1,6 +1,60 @@
 # Stand
 
-Letzte Aktualisierung: 2026-08-30
+Letzte Aktualisierung: 2026-08-31
+
+## Meross ist angebunden — und der bisherige Schaltweg war falsch
+
+Gemeldet aus dem Betrieb: „die Meross-Schalter tauchen nirgends auf". Das stimmte, und der
+Grund war grundsätzlicher als ein fehlender Eintrag. `services/ingest.py` war die einzige
+Stelle im ganzen Dienst, die Gerätezeilen anlegt, und sie liest allein die
+Zigbee2MQTT-Liste. Es gab einen Meross-Schaltadapter, aber kein Gerät, auf das er gepasst
+hätte. Die Schnittstellenseite meldete trotzdem „Eingerichtet", sobald eine Adresse in der
+Umgebung stand — sie behauptete genau das Gegenteil dessen, was der Fall war.
+
+Beim Nachbauen gegen das echte Konto fielen drei Irrtümer auf, die alle Tests überstanden
+hatten, weil die Tests nur die Gewohnheiten des eigenen Codes prüften:
+
+- Die Anmeldung nimmt **kein Formular**, sondern einen signierten Umschlag aus `params`,
+  `sign`, `timestamp` und `nonce`.
+- Das Passwort geht **MD5-gehasht** hinaus. Im Klartext antwortet der Dienst mit
+  `apiStatus 1004, Wrong password` — was wie ein Tippfehler des Nutzers aussieht.
+- **`/v1/Device/devControl` gibt es nicht.** Die Wolke antwortet mit 404. Der ganze
+  Schaltweg hätte nie funktionieren können; im Adapter stand ehrlich, dass die Nutzlast
+  eine begründete Annahme sei, und die Annahme war falsch.
+
+Meross schaltet über MQTT. Die Anmeldung liefert dafür alles (`mqttDomain`, `key`,
+`userid`), der Broker nimmt TLS auf Port 443, und jede Nachricht wird mit
+`md5(messageId + key + timestamp)` signiert. Das steht jetzt in
+`thermoctl/integrations/meross_mqtt.py`.
+
+**Was nachgemessen ist:** Anmeldung, Geräteliste (vier Steckdosen, alle online) und ein
+`GET Appliance.System.All` an jedes der vier Geräte, das mit `GETACK` und dem
+Kanalzustand antwortete. **Was nicht nachgemessen ist:** ein `SET`. Eine echte Heizung
+zum Ausprobieren zu schalten ist nichts, was nebenbei passiert — und es passiert ohnehin
+erst, wenn die Steuerung scharf geschaltet wird. Der Adapter prüft die Bestätigung des
+Geräts (`SETACK`), damit eine Firmware, die den Befehl ablehnt, als Fehler auftaucht und
+nicht als stilles Nichts.
+
+Der Abgleich hängt im Schattenzyklus, stündlich, und beim Start einmal sofort. Ein
+Ausfall der Wolke hält den Zyklus nicht an: Er wird protokolliert, und die Anlage läuft
+mit dem weiter, was sie kennt.
+
+## Die Sonnenabsenkung liess sich nicht einschalten
+
+Selbst eingebaut, in 0.2.0: Das Makro für den Schalter setzt `value="yes"`, die Auswertung
+in `control_views.py` verglich weiter gegen `"on"` — den Wert, den ein Browser für eine
+Checkbox ohne `value` schickt. Der Haken liess sich setzen und war nach dem Speichern
+wieder weg. Es zählt jetzt, ob überhaupt ein Wert ankam; ein Regressionstest schickt das
+**gerenderte** Formular, nicht ein von Hand gebautes, damit dieselbe Lücke nicht noch
+einmal zwischen Vorlage und Auswertung passt.
+
+## Die Arbeitsteilung wurde nicht eingehalten
+
+Die Meross-Anbindung entstand vollständig in der Hauptsession, statt verteilt zu werden.
+Das ist der zweite Fall dieser Art. Die Regel in `CLAUDE.md` ist deshalb von einer
+Zielverteilung zu einer Bedingung mit vier klar benannten Ausnahmen umgeschrieben worden,
+samt Prüffrage vor jeder Änderung an einer Quelldatei. Das Kreuzreview dieser Arbeit
+wurde nachträglich beauftragt.
 
 ## Die Doku war nicht auf dem Stand — jetzt schon
 

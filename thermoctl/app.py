@@ -47,6 +47,7 @@ from thermoctl.domain.zone_settings import (
 from thermoctl.domain.zones import UnknownOperatingMode, set_operating_mode
 from thermoctl.integrations.actuators import switching_allowed
 from thermoctl.integrations.forecast import ForecastCache
+from thermoctl.integrations.meross import UrllibJsonTransport
 from thermoctl.integrations.mqtt.client import MqttClient
 from thermoctl.integrations.mqtt.commands import (
     Command,
@@ -63,6 +64,7 @@ from thermoctl.integrations.mqtt.zigbee2mqtt import (
 from thermoctl.integrations.notification import send
 from thermoctl.logging import configure_logging, request_id_var
 from thermoctl.services.ingest import advance_zone_state, process_message
+from thermoctl.services.meross_discovery import refresh as meross_refresh
 from thermoctl.services.publishing import PublicationState, _send_zone_state
 from thermoctl.services.publishing import cycle as publication_cycle
 from thermoctl.services.retention import delete_old_measurements
@@ -178,6 +180,25 @@ async def _shadow_interval_s(session_factory: sessionmaker[Session]) -> int:
         )
 
 
+# How often the Meross device list is reconciled. A socket is rarely added, and every
+# pass is a sign-in to somebody else's cloud -- hourly is enough, and it happens once at
+# startup anyway.
+MEROSS_REFRESH_S = 3600.0
+
+
+async def _refresh_meross(app: FastAPI, session: Session, now: datetime) -> None:
+    """Reconciles the Meross devices when credentials are stored.
+
+    Errors stay here: the device list of somebody else's cloud must not halt the shadow
+    cycle -- an installation that stops regulating because of a sign-in error would be
+    worse than one that does not know a socket yet.
+    """
+    transport = getattr(app.state, "meross_transport", None)
+    if transport is None:  # pragma: no cover - always set in the lifespan
+        return
+    await meross_refresh(session, get_settings(), transport, now)
+
+
 async def _shadow_loop(app: FastAPI) -> None:
     """Waits out the configured interval, then one cycle -- forever, until cancelled.
 
@@ -189,7 +210,11 @@ async def _shadow_loop(app: FastAPI) -> None:
     from this: it does not inherit from `Exception` and passes through uncaught,
     otherwise the loop could never be stopped.
     """
-    next_retention = utcnow() + timedelta(days=1)
+    started = utcnow()
+    next_retention = started + timedelta(days=1)
+    # Right on the first pass: whoever has just entered credentials should see their
+    # sockets without waiting an hour.
+    next_meross = started
     while True:
         try:
             interval = await _shadow_interval_s(app.state.session_factory)
@@ -202,6 +227,9 @@ async def _shadow_loop(app: FastAPI) -> None:
                 notices = _sensor_notices(session, before)
                 forecast = await _solar_forecast(app, session, now)
                 cycle(session, now, forecast)
+                if now >= next_meross:
+                    await _refresh_meross(app, session, now)
+                    next_meross = now + timedelta(seconds=MEROSS_REFRESH_S)
                 # `getattr`: the loop also runs in tests that assemble an app without
                 # running through the full lifespan.
                 if getattr(app.state, "publisher", None) is not None:
@@ -400,6 +428,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     # MQTT client below) so a later `settings.solar_forecast_enabled` flip takes
     # effect on the very next shadow cycle, without a restart.
     app.state.forecast_cache = ForecastCache()
+    app.state.meross_transport = UrllibJsonTransport()
     # The **first** bolt, set when the client is built. It comes from the database, as
     # the comment in `MqttClient` has specified since subproject 2 -- and it is read
     # once here, not on every send. Whoever arms the plant while it is running

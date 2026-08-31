@@ -118,8 +118,14 @@ konfiguriert" und tut nichts.
 **Warum:** Die Meross-Cloud ist laut Roadmap eine Fremdabhängigkeit ohne Zusicherung. Eine
 Bibliothek dafür ins Projekt zu ziehen, das eine Heizung steuert, vergrößert die
 Angriffsfläche und die Abhängigkeitskette für einen Adapter, der in dieser Phase ohnehin
-nichts schaltet. Was wir wirklich brauchen — Geräteliste und Schaltbefehl — sind zwei
-HTTP-Aufrufe.
+nichts schaltet. Was wir wirklich brauchen — Geräteliste und Schaltbefehl — sind wenige
+Aufrufe.
+
+**Nachtrag vom 2026-08-31:** Die Entscheidung bleibt, ihre Begründung stimmt nur zur
+Hälfte. „Zwei HTTP-Aufrufe" waren es nicht: Anmeldung und Geräteliste gehen über HTTP mit
+signiertem Umschlag, das Schalten über MQTT. Der Aufwand lag also höher als angenommen —
+`meross_iot` einzubinden wäre trotzdem die grössere Abhängigkeit gewesen, und der jetzige
+Weg kommt mit `aiomqtt` aus, das der Dienst ohnehin mitbringt.
 
 **Verworfen:**
 - *`meross_iot` einbinden.* Bequemer, aber eine große Abhängigkeit für zwei Aufrufe, und
@@ -127,9 +133,8 @@ HTTP-Aufrufe.
 - *Meross vorerst weglassen.* Die Anlage schaltet über Meross-Steckdosen; ohne den Adapter
   fehlt der Hälfte der Aktoren die Anbindung, und Phase 4 stünde ohne sie da.
 
-**Offen für den Projektinhaber:** Die Zugangsdaten (E-Mail und Passwort des Meross-Kontos)
-gehören in `.env`. Ohne sie bleibt der Adapter unkonfiguriert — das ist in Phase 2 kein
-Mangel, in Phase 4 aber ein Blocker.
+**Erledigt:** Die Zugangsdaten stehen in der `.env` des Projektinhabers. Ohne sie meldet
+sich die Anbindung als „nicht eingerichtet" und fragt nichts ab.
 
 ---
 
@@ -185,23 +190,32 @@ und nicht nur im Quelltext.
 
 ---
 
-## 2026-08-29 — Der Meross-Nutzlastaufbau ist eine begründete Annahme, kein geprüfter Code
+## 2026-08-31 — Der Meross-Nutzlastaufbau war eine Annahme, und die Annahme war falsch
 
-**Festgehalten, nicht entschieden.** Der Meross-Adapter ist vollständig verdrahtet: Er
-prüft `control_armed`, bildet Anmeldung und Schaltaufruf, behandelt Fehler und ist im
-Trockenlauf getestet. Was er **nicht** ist: gegen ein echtes Meross-Konto ausgeführt.
+**Erledigt.** Hier stand bis heute, der Adapter sei vollständig verdrahtet, aber nie gegen
+ein echtes Konto ausgeführt, und der Aufruf gehöre vor dem Scharfschalten einmal geprüft.
+Genau das ist jetzt geschehen, und der Befund ist deutlicher als erwartet: Der Aufruf war
+in drei Punkten falsch.
 
-Der Grund ist die Phase selbst — es liegen keine Zugangsdaten vor, und der Trockenlauf
-verbietet den Versuch. Meross verlangt je nach Firmwarestand eine signierte Nutzlast
-(Zeitstempel, Nonce, Prüfsumme); ob der hier gebaute Aufruf so akzeptiert wird, ist offen.
+- Die Anmeldung nimmt keinen Formular-POST, sondern einen signierten Umschlag.
+- Das Passwort geht MD5-gehasht hinaus; im Klartext antwortet der Dienst mit
+  `apiStatus 1004, Wrong password`.
+- Den Pfad `/v1/Device/devControl` gibt es nicht. Die Wolke antwortet mit 404. Der
+  Schaltweg hätte in keiner Firmwareversion funktioniert.
 
-Das steht so im Docstring des Adapters und hier, statt dass der Code fertig aussieht und
-beim ersten scharfen Schalten scheitert. **Vor dem Scharfschalten in Phase 4 gehört genau
-dieser Aufruf einmal gegen die echte Cloud geprüft.**
+Meross schaltet über MQTT; die Anmeldung liefert dafür Broker, Schlüssel und Kontokennung.
+Der neue Weg steht in `thermoctl/integrations/meross_mqtt.py` und ist gegen das echte
+Konto geprüft — Anmeldung, Geräteliste und ein lesendes `GET` an jedes Gerät.
 
-**Was der Projektinhaber dafür braucht:** die Zugangsdaten des Meross-Kontos in `.env`
-(`THERMOCTL_MEROSS_EMAIL`, `THERMOCTL_MEROSS_PASSWORD`) und, falls die Geräte außerhalb
-Europas angemeldet sind, `THERMOCTL_MEROSS_API_BASE`.
+**Weiter offen, bewusst:** ein `SET`, also das erste echte Schalten. Eine Heizung zum
+Ausprobieren zu schalten ist keine Nebenbei-Handlung; es passiert beim Scharfschalten in
+Phase 4. Der Adapter besteht auf der Bestätigung des Geräts (`SETACK`), damit ein
+abgelehnter Befehl als Fehler auftaucht und nicht als stilles Nichts.
+
+**Die Lehre, die über Meross hinausgeht:** Der alte Adapter hatte Tests, und sie waren
+grün. Sie prüften den Code gegen sich selbst — dass er postet, was er zu posten meint. Ein
+Test kann eine falsche Annahme über einen fremden Dienst nicht widerlegen. Was gegen eine
+fremde Schnittstelle geht, muss einmal wirklich dorthin.
 
 ---
 

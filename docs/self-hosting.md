@@ -243,5 +243,5 @@ als eine, die eine Meldung verliert.
 
 Nichts. `thermoctl` ruft von sich aus keinen fremden Dienst auf, sendet keine Telemetrie
 und braucht kein Konto bei irgendwem. Ausgehende Verbindungen entstehen erst, wenn Sie
-einen MQTT-Broker, einen Webhook oder — später — die Meross-Cloud für Ihre Steckdosen
-eintragen. Alle drei sind Ihre Entscheidung und stehen in Ihrer `.env`.
+einen MQTT-Broker, einen Webhook oder die Meross-Cloud für Ihre Steckdosen
+eintragen. Die Meross-Wolke wird dann stündlich nach neuen Geräten gefragt. Alle drei sind Ihre Entscheidung und stehen in Ihrer `.env`.
