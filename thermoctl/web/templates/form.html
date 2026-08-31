@@ -41,12 +41,25 @@
 </div>
 {% endmacro %}
 
-{% macro toggle(name, label, checked=false, help_text="") %}
+{#
+`element_id` gibt es, weil derselbe Schalter mehrfach auf einer Seite stehen kann --
+einmal je Zeile einer Tabelle. Ohne eigene Kennung zeigten alle `label`-Elemente auf
+denselben Schalter, und ein Klick auf die Beschriftung der dritten Zeile schaltete die
+erste um.
+
+`submit_on_change` schickt das Formular beim Umlegen ab, statt einen zusaetzlichen
+Knopf zu verlangen. Ohne JavaScript passiert das nicht -- dafuer gehoert ein
+`<noscript>`-Knopf ins Formular.
+#}
+{% macro toggle(name, label, checked=false, help_text="", element_id="", submit_on_change=false) %}
+{% set field_id = element_id or name %}
 <div class="form-check form-switch mb-3">
-    <input class="form-check-input" type="checkbox" role="switch" id="{{ name }}" name="{{ name }}"
-           {% if checked %}checked{% endif %}{% if help_text %} aria-describedby="{{ name }}-hilfe"{% endif %}>
-    <label class="form-check-label" for="{{ name }}">{{ label }}</label>
-    {% if help_text %}<div id="{{ name }}-hilfe" class="form-text">{{ help_text }}</div>{% endif %}
+    <input class="form-check-input" type="checkbox" role="switch" id="{{ field_id }}" name="{{ name }}"
+           value="yes"{% if checked %} checked{% endif %}
+           {%- if submit_on_change %} data-submit-on-change{% endif %}
+           {%- if help_text %} aria-describedby="{{ field_id }}-hilfe"{% endif %}>
+    <label class="form-check-label" for="{{ field_id }}">{{ label }}</label>
+    {% if help_text %}<div id="{{ field_id }}-hilfe" class="form-text">{{ help_text }}</div>{% endif %}
 </div>
 {% endmacro %}
 
