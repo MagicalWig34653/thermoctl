@@ -458,3 +458,82 @@ def test_the_create_route_still_reports_at_the_field(client_als, session: Sessio
     assert response.status_code == 200
     assert "bereits einen Punkt" in response.text
     assert "data-move-error" not in response.text
+
+
+def test_moving_a_point_with_a_nonsensical_id_is_a_not_found(
+    angemeldeter_client: TestClient, session: Session
+) -> None:
+    """The drag script fills this field; anything can be posted by hand.
+
+    404 rather than 400, for the same reason as elsewhere: an unparsable id must not
+    be distinguishable from an id that simply is not there.
+    """
+    zone = create_zone(session, "verschiebezone")
+    session.flush()
+    response = angemeldeter_client.post(
+        f"/zones/{zone.id}/schedule/points/move",
+        data={"point_id": "keine Zahl", "weekday": "1", "time_of_day": "06:00"},
+        headers=_csrf(angemeldeter_client),
+        follow_redirects=False,
+    )
+    assert response.status_code == 404
+
+
+def test_moving_a_point_to_an_impossible_time_is_refused(
+    angemeldeter_client: TestClient, session: Session
+) -> None:
+    """1439 is the last minute of a day; 24:00 belongs to the next one.
+
+    The drag script snaps to 23:45 for exactly this reason, but the route is reachable
+    without it -- the browser is not the only caller.
+    """
+    zone = create_zone(session, "minutenzone")
+    mode = create_mode(session, "tag")
+    session.flush()
+    angemeldeter_client.post(
+        f"/zones/{zone.id}/schedule/points",
+        data={"weekday": "1", "time_of_day": "06:00", "mode_id": str(mode.id)},
+        headers=_csrf(angemeldeter_client),
+    )
+    point_id = session.scalar(select(SchedulePoint.id).where(SchedulePoint.zone_id == zone.id))
+    assert point_id is not None
+
+    response = angemeldeter_client.post(
+        f"/zones/{zone.id}/schedule/points/move",
+        data={"point_id": str(point_id), "weekday": "1", "time_of_day": "24:00"},
+        headers=_csrf(angemeldeter_client),
+        follow_redirects=True,
+    )
+    assert "gültige Uhrzeit" in response.text
+
+
+def test_moving_a_point_onto_an_occupied_time_names_the_conflict(
+    angemeldeter_client: TestClient, session: Session
+) -> None:
+    """Two points at the same minute would make the schedule ambiguous.
+
+    The database says so through its unique constraint; the view has to turn that into
+    a sentence rather than letting an IntegrityError become a 500.
+    """
+    zone = create_zone(session, "kollisionszone")
+    mode = create_mode(session, "tag")
+    session.flush()
+    for time_of_day in ("06:00", "07:00"):
+        angemeldeter_client.post(
+            f"/zones/{zone.id}/schedule/points",
+            data={"weekday": "1", "time_of_day": time_of_day, "mode_id": str(mode.id)},
+            headers=_csrf(angemeldeter_client),
+        )
+    first = session.scalar(
+        select(SchedulePoint.id)
+        .where(SchedulePoint.zone_id == zone.id, SchedulePoint.minute_of_day == 360)
+    )
+    assert first is not None
+
+    response = angemeldeter_client.post(
+        f"/zones/{zone.id}/schedule/points/move",
+        data={"point_id": str(first), "weekday": "1", "time_of_day": "07:00"},
+        headers=_csrf(angemeldeter_client),
+        follow_redirects=True,
+    )
+    assert "bereits einen Punkt" in response.text

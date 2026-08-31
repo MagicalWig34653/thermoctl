@@ -825,3 +825,45 @@ def test_button_binding_needs_device_manage(client_als, session: Session) -> Non
         data={"device_id": str(device.id), "action_code": "single_plus", "command": "boost"},
     )
     assert response.status_code == 404
+
+
+def test_a_detach_request_with_a_nonsensical_id_is_a_not_found(
+    angemeldeter_client: TestClient, session: Session
+) -> None:
+    """The id travels in the form body, so it can be anything.
+
+    Answered with 404, not 400: whether an assignment exists is not something an
+    unparsable id should be able to tell apart from a missing one.
+    """
+    zone = create_zone(session, "loeszone")
+    session.flush()
+    response = angemeldeter_client.post(
+        f"/zones/{zone.id}/devices/detach",
+        data={"assignment_id": "keine Zahl"},
+        headers=_csrf(angemeldeter_client),
+        follow_redirects=False,
+    )
+    assert response.status_code == 404
+
+
+def test_a_temperature_source_that_cannot_measure_comes_back_at_the_field(
+    angemeldeter_client: TestClient, session: Session
+) -> None:
+    """The same check as in the domain, shown where the user made the choice.
+
+    A valve as a temperature source would look like a complete plant and never
+    deliver a reading -- so the form has to come back with the reason on the field
+    rather than accepting it and failing silently in winter.
+    """
+    zone = create_zone(session, "quellzone")
+    valve = _with_capability(session, "ventil-ohne-fuehler", "switch")
+    session.flush()
+
+    response = angemeldeter_client.post(
+        f"/zones/{zone.id}/devices/source",
+        data={"device_id": str(valve.id)},
+        headers=_csrf(angemeldeter_client),
+        follow_redirects=False,
+    )
+    assert response.status_code == 200
+    assert "misst keine Temperatur" in response.text

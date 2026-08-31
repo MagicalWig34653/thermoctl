@@ -49,22 +49,42 @@ def kiosk_token_from_cookie(request: Request, session: Session) -> ApiToken | No
     return token
 
 
-def kiosk_csrf_protection(request: Request) -> None:
+CSRF_FIELD_NAME = "csrf_token"
+
+
+async def kiosk_csrf_protection(request: Request) -> None:
     """Same shape as `csrf_protection`, bound to the kiosk cookie instead of the session.
 
     Hung on the kiosk router's mutating routes: without a kiosk cookie there is
     nothing to forge (the request fails the token check right after anyway), and a
     safe method changes nothing regardless of origin.
+
+    **Accepts the token from a form field as well as from the header**, and that is
+    the difference to the logged-in interface. There, every form goes out through
+    hx-boost, which sets the header; here the buttons are plain HTML forms. They
+    posted without any header and were answered with "Ungueltiges CSRF-Token" -- the
+    dashboard displayed correctly, refreshed itself correctly, and neither of its two
+    buttons did anything.
+
+    A hidden field instead of hanging hx-boost on them: a device on the wall should
+    not need working JavaScript to turn the heating up. The token is the same value
+    either way, and it is not weaker in a field -- a foreign origin still cannot read
+    the cookie it would have to be derived from.
     """
     if request.method in _SAFE_METHODS:
         return
     cookie_value = request.cookies.get(KIOSK_COOKIE_NAME)
     if cookie_value is None:
         return
+    submitted = request.headers.get(CSRF_HEADER)
+    if submitted is None:
+        # Starlette caches the parsed form on the request, so the route reads the very
+        # same object afterwards -- this does not consume the body.
+        form = await request.form()
+        value = form.get(CSRF_FIELD_NAME)
+        submitted = value if isinstance(value, str) else None
     settings = get_settings()
-    if not check_csrf(
-        request.headers.get(CSRF_HEADER), cookie_value, settings.secret_key.get_secret_value()
-    ):
+    if not check_csrf(submitted, cookie_value, settings.secret_key.get_secret_value()):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Ungueltiges CSRF-Token"
         )

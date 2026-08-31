@@ -155,3 +155,4 @@ def test_an_override_on_a_mode_without_a_fixed_temperature(session: Session) -> 
     result = resolved_setpoint(session, zone, datetime(2026, 8, 31, 10, 0))
     assert result.temperature_c == Decimal("21.0")
     assert "Modus tag" in result.reason
+

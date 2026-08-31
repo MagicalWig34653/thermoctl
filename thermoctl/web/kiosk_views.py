@@ -60,6 +60,19 @@ def _kiosk_cookie_max_age_s(expires_at: datetime | None) -> int:
     return max(remaining, 0)
 
 
+def _kiosk_csrf(request: Request) -> str:
+    """The CSRF token belonging to this tablet's kiosk cookie.
+
+    Taken from the cookie the browser already sent rather than recomputed from the
+    plaintext: this way the page cannot hand out a token for a different credential
+    than the one the request actually carries.
+    """
+    plaintext = request.cookies.get(KIOSK_COOKIE_NAME)
+    if plaintext is None:  # pragma: no cover - _dashboard only runs with a valid cookie
+        return ""
+    return csrf_token(plaintext, get_settings().secret_key.get_secret_value())
+
+
 def _invalid_page(request: Request) -> Response:
     return templates.TemplateResponse(
         request, "kiosk_invalid.html", {}, status_code=status.HTTP_401_UNAUTHORIZED
@@ -148,6 +161,9 @@ def _dashboard(
             },
             "error": error,
             "error_zone_id": error_zone_id,
+            # Goes into the forms as a hidden field. The buttons are plain HTML and
+            # send no header of their own -- see `kiosk_csrf_protection`.
+            "csrf": _kiosk_csrf(request),
         },
     )
 
