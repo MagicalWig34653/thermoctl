@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from tests.helpers import create_settings, create_zone, source
+from tests.helpers import create_mode, create_settings, create_zone, source
 from thermoctl.auth.csrf import CSRF_HEADER, csrf_token
 from thermoctl.auth.sessions import COOKIE_NAME
 from thermoctl.config import get_settings
@@ -353,7 +353,7 @@ def test_the_thermostat_raises_the_setpoint_of_the_current_mode(
 
     response = client.post(
         f"/zones/{zone.id}/thermostat",
-        data={"mode_id": str(mode.id), "direction": "hoch"},
+        data={"mode_id": str(mode.id), "direction": "up"},
         headers=_csrf(client),
         follow_redirects=False,
     )
@@ -376,7 +376,7 @@ def test_two_clicks_are_two_steps(session: Session, client_als) -> None:
     for _ in range(2):
         client.post(
             f"/zones/{zone.id}/thermostat",
-            data={"mode_id": str(mode.id), "direction": "runter"},
+            data={"mode_id": str(mode.id), "direction": "down"},
             headers=_csrf(client),
         )
     row = session.scalars(
@@ -394,7 +394,7 @@ def test_the_thermostat_stops_at_the_limit(session: Session, client_als) -> None
     client = client_als([("zone.read", zone.id), ("setpoint.write", zone.id)])
     response = client.post(
         f"/zones/{zone.id}/thermostat",
-        data={"mode_id": str(mode.id), "direction": "hoch"},
+        data={"mode_id": str(mode.id), "direction": "up"},
         headers=_csrf(client),
         follow_redirects=False,
     )
@@ -411,7 +411,7 @@ def test_thermostat_braucht_setpoint_write(session: Session, client_als) -> None
     client = client_als([("zone.read", zone.id)])
     response = client.post(
         f"/zones/{zone.id}/thermostat",
-        data={"mode_id": str(mode.id), "direction": "hoch"},
+        data={"mode_id": str(mode.id), "direction": "up"},
         headers=_csrf(client),
     )
     assert response.status_code == 404
@@ -453,7 +453,7 @@ def test_the_thermostat_works_even_without_a_stored_setpoint(
     client = client_als([("zone.read", zone.id), ("setpoint.write", zone.id)])
     response = client.post(
         f"/zones/{zone.id}/thermostat",
-        data={"mode_id": str(shown.mode_id), "direction": "hoch"},
+        data={"mode_id": str(shown.mode_id), "direction": "up"},
         headers=_csrf(client),
         follow_redirects=False,
     )
@@ -481,7 +481,7 @@ def test_the_thermostat_for_a_foreign_mode_stays_a_404(
     client = client_als([("zone.read", zone.id), ("setpoint.write", zone.id)])
     response = client.post(
         f"/zones/{zone.id}/thermostat",
-        data={"mode_id": str(fremder.id), "direction": "hoch"},
+        data={"mode_id": str(fremder.id), "direction": "up"},
         headers=_csrf(client),
     )
     assert response.status_code == 404
@@ -527,10 +527,42 @@ def test_the_thermostat_goes_below_zero(session: Session, client_als) -> None:
     client = client_als([("zone.read", zone.id), ("setpoint.write", zone.id)])
     client.post(
         f"/zones/{zone.id}/thermostat",
-        data={"mode_id": str(mode.id), "direction": "runter"},
+        data={"mode_id": str(mode.id), "direction": "down"},
         headers=_csrf(client),
     )
     row = session.scalars(
         select(ZoneSetpoint).where(ZoneSetpoint.setpoint_mode_id == mode.id)
     ).one()
     assert row.temperature_c == Decimal("-0.5")
+
+
+def test_a_thermostat_request_with_a_nonsensical_mode_is_a_bad_request(
+    angemeldeter_client: TestClient, session: Session
+) -> None:
+    """Both fields come from a form, and a form can be replayed by hand.
+
+    Neither may end in a stack trace: an unparsable mode and an unknown direction are
+    caller errors, and the answer has to say so rather than turning into a 500.
+    """
+    zone = create_zone(session, "krummzone")
+    create_settings(session)
+    session.flush()
+    head = _csrf(angemeldeter_client)
+
+    kein_modus = angemeldeter_client.post(
+        f"/zones/{zone.id}/thermostat",
+        data={"mode_id": "kein Modus", "direction": "up"},
+        headers=head,
+        follow_redirects=False,
+    )
+    assert kein_modus.status_code == 400
+
+    mode = create_mode(session, "tag")
+    session.flush()
+    falsche_richtung = angemeldeter_client.post(
+        f"/zones/{zone.id}/thermostat",
+        data={"mode_id": str(mode.id), "direction": "seitwaerts"},
+        headers=_csrf(angemeldeter_client),
+        follow_redirects=False,
+    )
+    assert falsche_richtung.status_code == 400

@@ -532,3 +532,41 @@ def test_the_new_zone_form_posts_to_a_real_endpoint(
     )
     assert response.status_code != 404, f"{action.group(1)} fuehrt ins Leere"
     assert session.scalar(select(Zone).filter_by(name="smoketestzone")) is not None
+
+
+def test_the_thermostat_buttons_send_values_their_view_accepts(
+    angemeldeter_client: TestClient, session: Session
+) -> None:
+    """Takes the button values out of the rendered page instead of naming them here.
+
+    The sibling of the field-name guard above, for a value rather than a name. The
+    setpoint buttons post `direction=…`, and the view compares that against a fixed
+    pair. Renaming the pair in the view without touching the template leaves both
+    halves looking correct on their own -- and the buttons silently do nothing, which
+    is exactly what happened to the kiosk dashboard: the view was changed to
+    `up`/`down` while the page went on sending `hoch`/`runter`.
+
+    A test that writes the value itself cannot see that; it agrees with whichever half
+    it was written against.
+    """
+    from tests.helpers import create_mode, create_settings, create_zone
+
+    zone = create_zone(session, "knopfzone")
+    mode = create_mode(session, "tag")
+    create_settings(session)
+    session.flush()
+
+    page = angemeldeter_client.get("/")
+    directions = set(re.findall(r'name="direction" value="([^"]+)"', page.text))
+    assert directions, "Keine Sollwert-Knoepfe auf der Startseite gefunden"
+
+    for direction in sorted(directions):
+        answer = angemeldeter_client.post(
+            f"/zones/{zone.id}/thermostat",
+            data={"mode_id": str(mode.id), "direction": direction},
+            headers=_csrf(angemeldeter_client),
+            follow_redirects=False,
+        )
+        assert answer.status_code != 400, (
+            f"Die Startseite schickt direction={direction!r}, die View lehnt es ab"
+        )

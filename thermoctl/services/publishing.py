@@ -218,7 +218,10 @@ def _channel_value(session: Session, channel: ControllerChannel, kind: ChannelKi
             Measurement.capability_id == capability_id,
             Measurement.value_numeric.is_not(None),
         ).order_by(Measurement.measured_at.desc(), Measurement.id.desc()).limit(1))
-    if channel.zone_id is None:
+    if channel.zone_id is None:  # pragma: no cover - configure_channel demands a zone
+        # Guard, not a case: a zone kind without a zone is rejected at creation time.
+        # It stays because the alternative is `session.get(Zone, None)`, a lookup on a
+        # NULL primary key that SQLAlchemy rightly warns about.
         return None
     zone = session.get(Zone, channel.zone_id)
     if zone is None:  # pragma: no cover - the foreign key prevents this
@@ -228,7 +231,10 @@ def _channel_value(session: Session, channel: ControllerChannel, kind: ChannelKi
         return zone_state.temperature_c if zone_state is not None else None
     if kind.code == "zone_setpoint":
         return resolved_setpoint(session, zone, now).temperature_c
-    return None
+    # pragma: no cover - every write kind is handled above; this catches a future one
+    # that someone adds to WRITE_KINDS without handling it here. Sending nothing is
+    # the safe direction: a display stays stale, no value is invented.
+    return None  # pragma: no cover
 
 
 async def _send_controller_channels(

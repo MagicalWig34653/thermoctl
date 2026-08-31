@@ -24,6 +24,8 @@ from thermoctl.domain.control import (
     ControlError,
     arm,
     check_number,
+    save_settings,
+    save_solar_location,
 )
 
 ClientBuilder = Callable[[list[tuple[str, int | None]]], TestClient]
@@ -237,3 +239,35 @@ def test_the_hint_does_not_appear_in_dry_run(
     create_settings(session)
     page = client_als(ALL_PERMISSIONS).get("/control")
     assert "noch nichts geschaltet" not in page.text
+
+
+def test_an_empty_timezone_is_refused_with_its_field(session: Session) -> None:
+    """The timezone has no sensible default -- an empty one would silently shift every
+    schedule, because schedules are stored in local time."""
+    create_settings(session)
+    with pytest.raises(ControlError) as fehler:
+        save_settings(session, {}, "   ", user_id=None)
+    assert fehler.value.field == "timezone"
+
+
+@pytest.mark.parametrize("eingabe", ["keine Zahl", "12,5,7", ""])
+def test_a_coordinate_that_is_no_number_names_its_field(
+    session: Session, eingabe: str
+) -> None:
+    """The coordinate arrives as text from a form, so anything can be in it.
+
+    An empty one is the exception and means "no location" -- checked separately in the
+    REST tests. Everything else has to come back naming the field, so the page can mark
+    it, instead of raising a bare `InvalidOperation`.
+    """
+    create_settings(session)
+    if eingabe == "":
+        save_solar_location(
+            session, enabled=False, latitude_text="", longitude_text="", user_id=None
+        )
+        return
+    with pytest.raises(ControlError) as fehler:
+        save_solar_location(
+            session, enabled=True, latitude_text=eingabe, longitude_text="0", user_id=None
+        )
+    assert fehler.value.field == "solar_forecast_latitude"
