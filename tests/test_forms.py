@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from fastapi import Request
 
 from thermoctl.auth.passwords import PasswordTooShort
@@ -102,3 +104,16 @@ def test_error_classes_survive_being_raised_through_multiple_layers() -> None:
         # `__traceback__` on the exception while it is propagating.
         assert errors.value.__traceback__ is not None
         assert errors.value.notice == "meldung"
+
+
+def test_a_missing_temperature_shows_a_dash_not_an_empty_field() -> None:
+    """A zone without a reading has no temperature, and there is no stand-in.
+
+    Zero would read as freezing, an empty cell as a broken page. The dash says "not
+    known" and is the only honest answer.
+    """
+    from thermoctl.web import grad
+
+    assert grad(None) == "–"
+    assert grad(Decimal("21.5")) == "21,5"
+    assert grad(Decimal("21.5"), 2) == "21,50"

@@ -43,4 +43,4 @@ jobs:
       # hier statt in pyproject.toml -- sonst scheitert jeder Lauf einer einzelnen
       # Testdatei daran. Der Wert liegt knapp unter dem erreichten Stand: hoch genug,
       # dass ungetesteter Code auffaellt, niedrig genug, dass er nicht grundlos blockt.
-      - run: pytest -v --cov-fail-under=97
+      - run: pytest -v --cov-fail-under=100

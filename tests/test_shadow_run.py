@@ -772,3 +772,104 @@ async def test_the_shadow_loop_reports_a_new_sensor_failure(
     )
 
     engine.dispose()
+
+
+@pytest.mark.anyio
+async def test_the_shadow_loop_also_publishes_when_a_publisher_is_configured(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """With MQTT configured the cycle does two things, not one.
+
+    The other loop test builds an app without a publisher, which is what a test
+    harness looks like -- so the publishing half of the cycle never ran in any test,
+    even though it is the half that talks to the plant. Here the app carries one, and
+    it has to be used.
+    """
+    engine, fabrik = _own_database(tmp_path, "schleife-mit-veroeffentlichung")
+    with fabrik() as http_session:
+        create_settings(http_session)
+        sensor_status_of(http_session, "keine_quelle")
+        create_zone(http_session, "flur")
+        http_session.commit()
+
+    sent: list[tuple[str, str, bool]] = []
+
+    class Recorder:
+        async def publishing(
+            self, topic: str, payload: str, *, switches: bool, retained: bool = False
+        ) -> bool:
+            sent.append((topic, payload, switches))
+            return True
+
+    from thermoctl.services.publishing import PublicationState
+
+    fake_app = types.SimpleNamespace(
+        state=types.SimpleNamespace(
+            session_factory=fabrik,
+            publisher=Recorder(),
+            publication_state=PublicationState(),
+        )
+    )
+
+    # The loop waits first and cycles afterwards, so the abort belongs on the second
+    # wait -- exactly one pass runs.
+    waited: list[float] = []
+
+    async def _sleep(seconds: float) -> None:
+        waited.append(seconds)
+        if len(waited) == 2:
+            raise asyncio.CancelledError
+
+    monkeypatch.setattr(app_modul.asyncio, "sleep", _sleep)
+    with pytest.raises(asyncio.CancelledError):
+        await app_modul._shadow_loop(fake_app)  # type: ignore[arg-type]
+
+    # Nothing switched -- every message from the publication cycle is a state message.
+    assert sent, "Der Zyklus hat nichts veroeffentlicht"
+    assert all(switches is False for _topic, _payload, switches in sent)
+    engine.dispose()
+
+
+def test_a_plant_without_a_window_contact_reports_no_window(session: Session) -> None:
+    """A plant that has neither the capability nor the role knows of no window.
+
+    Not the same as "the window is closed for long enough": the second value stays
+    `None`, so the restart delay after closing cannot start counting from a window
+    that does not exist.
+    """
+    from thermoctl.services.shadow_run import _window_situation
+
+    zone = create_zone(session, "fensterlos")
+    create_settings(session)
+    state = create_zone_state(session, zone)
+    state.window_open = False
+    session.flush()
+
+    assert _window_situation(
+        session, zone, state, datetime(2026, 8, 30, 10, 0)
+    ) == (False, None)
+
+
+def test_a_window_that_was_never_seen_closed_reports_no_duration(
+    session: Session,
+) -> None:
+    """The contact exists and reports "closed", but nobody ever saw it change.
+
+    Without a closing moment there is no duration to compare the restart delay
+    against -- and inventing one would let the heating come back on immediately after
+    a restart, which is exactly what the delay is there to prevent.
+    """
+    from thermoctl.db.models.lookup import DeviceCapability, DeviceRole
+    from thermoctl.services.shadow_run import _window_situation
+
+    zone = create_zone(session, "fensterzone")
+    create_settings(session)
+    state = create_zone_state(session, zone)
+    state.window_open = False
+    session.add(DeviceCapability(code="contact", label="Kontakt"))
+    session.add(DeviceRole(code="window_contact", label="Fensterkontakt"))
+    session.flush()
+
+    assert _window_situation(
+        session, zone, state, datetime(2026, 8, 30, 10, 0)
+    ) == (False, None)

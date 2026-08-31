@@ -580,10 +580,12 @@ def override_zone(
             token_id=principal.token_id,
             source="api",
         )
-    except DomainError as exc:
-        # The schema already catches the value range; the domain has additionally
-        # checked it itself since the final review. If anything still slips through
-        # regardless, it's an input error, not a fault of the service.
+    except DomainError as exc:  # pragma: no cover
+        # Not reachable through this route: `CreateOverride` already enforces the
+        # bounds and the single decimal place, so nothing the domain would object to
+        # gets this far. It stays because the domain is the place that decides -- if
+        # the schema and the domain ever disagree, this turns the disagreement into a
+        # 422 instead of a 500.
         raise _domain_error(exc.field, exc.notice) from exc
 
 

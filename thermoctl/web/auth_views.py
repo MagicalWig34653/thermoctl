@@ -48,7 +48,7 @@ _VERGLEICHS_HASH = hash_password(secrets.token_urlsafe(32))
 def sleep(seconds: float) -> None:
     """A dedicated function instead of a direct `time.sleep()` call, so tests can
     replace the delay via `monkeypatch.setattr` without actually waiting."""
-    time.sleep(seconds)
+    time.sleep(seconds)  # pragma: no cover - every test replaces exactly this line
 
 
 @router.get("/login")

@@ -2,6 +2,37 @@
 
 Letzte Aktualisierung: 2026-08-30
 
+## Die Abdeckung steht auf 100 Prozent — und was das heißt
+
+Die Schwelle in der CI liegt jetzt bei 100. Das heißt **nicht**, dass jede Zeile geprüft
+ist, sondern: jede Zeile ist entweder geprüft **oder** trägt eine Begründung. Die
+Ausnahmen stehen als `# pragma: no cover` mit ihrem Grund im Quelltext — sichtbar und
+einzeln bestreitbar, statt als Prozentzahl, hinter der niemand mehr nachsieht, was fehlt.
+
+Es sind sechs, und sie zerfallen in zwei Sorten. Unerreichbar, weil eine frühere Prüfung
+schon greift: der zweite `json.loads` in `_process_state` (dieselben Bytes hat
+`readings_from_payload` bereits geparst), das `except DomainError` an der
+Übersteuerungs-Route (das REST-Schema hält Bereich und Nachkommastelle schon ab), der
+fehlende Rechte-Eintrag in der Gruppenübersicht (dieselbe Tabelle, aus der die Liste
+kommt), und der Nutzer-Guard in den Passkey-Routen (ein API-Token erreicht den
+Web-Router nicht). Und zwei, die eine Prüfung *bewusst* ersetzt: die echte
+`time.sleep`-Zeile, die jeder Test austauscht, und zwei Zweige in `_channel_value`, die
+`configure_channel` vorher ausschließt.
+
+Beim Hochziehen kamen Dinge ans Licht, die eine Prozentzahl nie gezeigt hätte:
+
+- **Ein Test prüfte nicht, was er behauptete.** Der Zähler-Test bei den Passkeys — die
+  einzige Klon-Erkennung, die das Verfahren kennt — erreichte die Zählerprüfung nie: Er
+  scheiterte vorher an der Signatur und war trotzdem grün. Er prüft jetzt die Meldung und
+  wird rot, wenn `credential_current_sign_count` aus dem Aufruf verschwindet, also genau
+  bei der Änderung, die die Erkennung abschalten würde.
+- **Umgekehrt sah echter Schutz wie toter Code aus.** Die eigene Zählerprüfung des
+  Projekts läuft nie, weil die Bibliothek davor abweist — sie ist trotzdem die zweite
+  Verteidigungslinie und wird jetzt mit einer nachsichtigen Bibliothek geprüft.
+- **`schedule.py` meldete einen Konflikt unter dem Feldnamen `uhrzeit`**, den das
+  Formular seit der Endpunkt-Umstellung nicht mehr kennt. Die Meldung „Zu diesem
+  Zeitpunkt gibt es bereits einen Punkt" wurde also nirgends angezeigt.
+
 ## Der Code spricht Englisch — die Prosa zur Hälfte
 
 Bezeichner, Modul- und Testdateinamen, Web-Endpunkte, MQTT-Topics, MCP-Werkzeuge und

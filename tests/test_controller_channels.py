@@ -824,3 +824,27 @@ async def test_a_device_that_became_an_actuator_is_no_longer_written_to(
         session, recorder, state, "zigbee2mqtt", datetime(2026, 8, 30, 10, 0)
     )
     assert recorder.messages == []
+
+
+def test_the_controllers_page_shows_a_configured_channel(
+    angemeldeter_client: TestClient, session: Session
+) -> None:
+    """An existing channel has to appear on the page it was set up on.
+
+    The page builds its table from the channels; with none stored the loop never ran,
+    so nobody had checked that a saved channel is actually shown again afterwards --
+    the one thing that tells a user their setting was kept.
+    """
+    _kinds(session)
+    zone = create_zone(session, "anzeigezone-seite")
+    device = create_device(session, "seitenregler")
+    _assign(session, zone.id, device.id, "controller")
+    _property(session, device.id)
+    configure_channel(
+        session, device, "external_temperature", "write", "fixed", fixed_number=Decimal("20")
+    )
+    session.flush()
+
+    response = angemeldeter_client.get("/controllers")
+    assert response.status_code == 200
+    assert "external_temperature" in response.text

@@ -107,7 +107,11 @@ async def finish_authentication(
 
 def _own_user(session: Session, principal: Principal) -> User:
     user = None if principal.user_id is None else session.get(User, principal.user_id)
-    if user is None:
+    if user is None:  # pragma: no cover
+        # A principal without a user is an API token, and an API token never reaches
+        # these routes: they hang on the web router, which authenticates by session
+        # cookie. The guard stays because "belongs to a person" is the assumption the
+        # rest of this function rests on, and it should say so rather than imply it.
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Nicht angemeldet")
     return user
 

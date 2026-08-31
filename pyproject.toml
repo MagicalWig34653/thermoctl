@@ -70,8 +70,13 @@ plugins = ["pydantic.mypy"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 # Der Abdeckungsbericht laeuft immer mit, die Mindestschwelle steht dagegen in der CI
-# (--cov-fail-under=97). Sonst scheitert jeder Lauf einer einzelnen Testdatei an einer
+# (--cov-fail-under=100). Sonst scheitert jeder Lauf einer einzelnen Testdatei an einer
 # Schwelle, die nur fuer die vollstaendige Suite gilt.
+#
+# 100 Prozent heisst hier nicht "jede Zeile ist geprueft", sondern "jede Zeile ist
+# entweder geprueft oder traegt eine Begruendung". Die Ausnahmen stehen als
+# `# pragma: no cover` samt Grund im Quelltext -- sichtbar und einzeln bestreitbar,
+# statt als Prozentsatz, hinter dem niemand mehr nachsieht, was fehlt.
 addopts = "-q --cov=thermoctl --cov-report=term-missing"
 markers = [
     "migration: laeuft Alembic als Unterprozess",

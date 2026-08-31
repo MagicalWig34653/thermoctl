@@ -1,4 +1,5 @@
 import pytest
+from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from tests.helpers import create_zone, source, user_with_permissions
@@ -518,3 +519,35 @@ def test_the_group_page_shows_permissions_by_area_in_plain_words(
         assert name in page.text, f"area '{name}' is missing from the page"
     assert "Zonen und ihren Zustand sehen" in page.text
     assert "zone.read" in page.text
+
+
+def test_an_unparsable_zone_in_a_permission_entry_is_a_bad_request(
+    angemeldeter_client: TestClient, session: Session
+) -> None:
+    """The checkboxes send `code:zone_id`; both halves come from the browser.
+
+    An empty code is skipped -- a stray separator should not decide anything -- but a
+    zone that is not a number is refused outright. Guessing what was meant would be
+    the one thing a permission form must never do.
+    """
+    from thermoctl.db.models.identity import AccessGroup
+
+    group = AccessGroup(name="Rechtegruppe", description="fuer den Test")
+    session.add(group)
+    session.flush()
+    response = angemeldeter_client.post(
+        f"/groups/{group.id}/permissions",
+        data={"permission": ["zone.read:keine-zahl"]},
+        headers=_with_csrf(angemeldeter_client, session),
+        follow_redirects=False,
+    )
+    assert response.status_code == 400
+
+    nur_trenner = angemeldeter_client.post(
+        f"/groups/{group.id}/permissions",
+        data={"permission": [":", "zone.read:"]},
+        headers=_with_csrf(angemeldeter_client, session),
+        follow_redirects=False,
+    )
+    assert nur_trenner.status_code in (200, 303)
+
