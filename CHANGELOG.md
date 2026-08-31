@@ -9,6 +9,36 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ---
 
+## Unveröffentlicht
+
+### Neu
+
+- **Meross-Anbindung, beide Hälften.** Bisher gab es nur einen Schaltadapter und kein
+  Gerät, auf das er gepasst hätte — Geräte entstanden ausschliesslich aus der
+  Zigbee2MQTT-Liste, eine Meross-Steckdose konnte in der Anlage gar nicht auftauchen.
+  Jetzt gleicht der Schattenzyklus die Geräteliste des Kontos stündlich ab und legt
+  gefundene Steckdosen an. Die Zuordnung hängt an der `uuid`, nicht am Namen: Wer in der
+  Meross-App umbenennt, verliert seine Zuordnung nicht. Gelöscht wird nie — ein Gerät,
+  das die Wolke gerade nicht nennt, ist meist offline.
+
+### Behoben
+
+- **Die Sonnenabsenkung liess sich nicht einschalten.** Das Formular schickt seit 0.2.0
+  `value="yes"`, die Auswertung verglich weiter gegen `"on"` — den Vorgabewert eines
+  Browsers für eine Checkbox ohne `value`. Der Haken wurde gesetzt, gespeichert und war
+  danach wieder weg. Gemeldet aus dem Betrieb.
+- **Der Meross-Schaltweg war falsch geraten.** Der Adapter postete an
+  `/v1/Device/devControl` — diesen Pfad gibt es nicht, die Wolke antwortet mit 404. Auch
+  die Anmeldung lag daneben: Sie verlangt einen signierten Umschlag, kein Formular, und
+  das Passwort MD5-gehasht statt im Klartext. Beides ist ersetzt und gegen ein echtes
+  Konto geprüft; geschaltet wird über MQTT, wie Meross es tatsächlich tut.
+
+### Geändert
+
+- **Die Schnittstellenseite meldet Meross nicht mehr als „noch nicht gebaut".** Sie sagt
+  jetzt, was geprüft ist (Anmeldung, Geräteliste, das Lesen eines Gerätezustands) und was
+  nicht (das erste echte Schalten).
+
 ## 0.2.0 — 2026-08-31
 
 Der Sprung von „Fundament" zu „im Alltag benutzbar". Räume, Geräte, Sollwerte und

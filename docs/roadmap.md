@@ -70,9 +70,9 @@ anzufassen**. Es wird gelesen und protokolliert, nichts geschaltet.
 - Geräteerkennung: bekannte Zigbee2MQTT-Geräte einlesen und nach Fähigkeiten klassifizieren
   *(Idee aus dem Konzept-Dokument)*
 - Aktor-Adapter für Zigbee-Ventile — vollständig, aber im Trockenlauf
-- Aktor-Adapter für Meross-Schalter — **nur die schaltende Hälfte.** Es fehlt die
-  Geräteerkennung: Geräte entstehen ausschliesslich aus der Zigbee2MQTT-Liste, eine
-  Meross-Steckdose taucht in der Anlage also gar nicht erst auf
+- Meross-Anbindung — Geräteerkennung **und** Schaltweg, gegen ein echtes Konto geprüft.
+  Der Schattenzyklus gleicht die Geräteliste stündlich ab; geschaltet wird über MQTT.
+  Ungeprüft bleibt bis Phase 4 nur das erste echte Schalten
 - Fensterkontakte als Zustandsquelle *(Idee aus dem Konzept-Dokument)*
 - Sensor-Timeout: ein ausbleibender Messwert wird als Störung erkannt, nicht ignoriert
 - Messwert-Historie mit begrenzter Aufbewahrung

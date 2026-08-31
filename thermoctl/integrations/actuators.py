@@ -1,17 +1,15 @@
 """Switching adapters with a database-backed dry-run bolt."""
 
-import asyncio
 import json
 from collections.abc import Mapping
 from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Protocol
-from urllib import parse, request
 
 from sqlalchemy.orm import Session
 
-from thermoctl.config import Settings
 from thermoctl.db.models.operations import Setting
+from thermoctl.integrations.meross_mqtt import MerossCommandTransport, toggle_payload
 
 
 @dataclass(frozen=True)
@@ -27,16 +25,15 @@ class Actuator(Protocol):
     async def switching(self, on: bool) -> SwitchResult: ...
 
 
-class HttpTransport(Protocol):
-    async def post(
-        self, url: str, data: Mapping[str, str], headers: Mapping[str, str]
-    ) -> Mapping[str, object]: ...
-
-
 class MqttPublisher(Protocol):
     async def publishing(
         self, topic: str, payload: str, *, switches: bool, retained: bool = False
     ) -> bool: ...
+
+
+# The namespace a socket switches under. Confirmed by the reply of a real device: its
+# `digest` reports its channel state as `togglex`.
+TOGGLE_NAMESPACE = "Appliance.Control.ToggleX"
 
 
 def switching_allowed(session: Session) -> bool:
@@ -185,109 +182,59 @@ class Zigbee2MqttThermostat:
         return SwitchResult(True, f"Gesendet: {message}")
 
 
-class UrllibHttpTransport:
-    """Small HTTP wrapper, so the adapter doesn't need another dependency."""
-
-    async def post(
-        self, url: str, data: Mapping[str, str], headers: Mapping[str, str]
-    ) -> Mapping[str, object]:
-        return await asyncio.to_thread(self._post_sync, url, data, headers)
-
-    @staticmethod
-    def _post_sync(
-        url: str, data: Mapping[str, str], headers: Mapping[str, str]
-    ) -> Mapping[str, object]:
-        http_request = request.Request(  # noqa: S310 -- URL comes from the adapter configuration
-            url,
-            data=parse.urlencode(data).encode(),
-            headers=dict(headers),
-            method="POST",
-        )
-        with request.urlopen(http_request, timeout=10) as response:  # noqa: S310
-            result = json.loads(response.read())
-        if not isinstance(result, dict):
-            raise ValueError("Meross-Antwort ist kein Objekt")
-        return result
-
-
 class MerossSwitch:
     """Switches a Meross socket that serves as a valve in the plant.
 
-    **Untested against the real cloud.** The structure of the two calls is derived
-    from the publicly documented interface, but has never been run against a real
-    account — at this stage there are no credentials, and the dry run forbids the
-    attempt. Depending on the firmware version, Meross additionally requires a signed
-    payload (timestamp, nonce, checksum); if that's missing here, it will surface on
-    the first real call.
+    The command goes over MQTT, not over HTTP. The earlier version posted to
+    `/v1/Device/devControl` and called its own payload an educated guess -- the guess
+    was wrong twice over: the path does not exist (the cloud answers 404), and the
+    envelope of the calls that *do* exist is signed. `integrations/meross_mqtt.py`
+    carries the path that was checked against a real account.
 
-    This is deliberately left as is and not presented as finished: the adapter is
-    fully wired up and verifiable in the dry run, but its payload is an educated
-    guess. **Before arming in phase 4, this exact call needs to be checked once
-    against the real cloud.** Noted in docs/offene-entscheidungen.md.
+    What is confirmed there is a `GET`. A `SET` -- actually switching a heater --
+    was deliberately not tried out; the answer to a command is checked here, so a
+    firmware that refuses it shows up as an error and not as a silent no-op.
     """
 
     def __init__(
         self,
         session: Session,
-        settings: Settings,
-        devices_id: str,
+        transport: MerossCommandTransport,
+        device_uuid: str,
         *,
         channel: int = 0,
-        transport: HttpTransport | None = None,
-        api_base: str | None = None,
     ) -> None:
         self._session = session
-        self._settings = settings
-        self._devices_id = devices_id
-        self._kanal = channel
-        self._transport = transport or UrllibHttpTransport()
-        self._api_basis = (api_base or settings.meross_api_base).rstrip("/")
+        self._transport = transport
+        self._device_uuid = device_uuid
+        self._channel = channel
 
     def description(self) -> str:
-        return f"Meross-Schalter {self._devices_id}"
+        return f"Meross-Schalter {self._device_uuid}"
 
     async def switching(self, on: bool) -> SwitchResult:
         command = "ON" if on else "OFF"
+        payload = toggle_payload(self._channel, on)
         message = (
-            f"{self._api_basis}/v1/Device/devControl: Geraet {self._devices_id}, "
-            f"Kanal {self._kanal}, Zustand {command}"
+            f"{TOGGLE_NAMESPACE} an {self._device_uuid}, "
+            f"Kanal {self._channel}, Zustand {command}"
         )
         if not switching_allowed(self._session):
             return SwitchResult(False, f"Trockenlauf, haette gesendet: {message}")
 
-        if self._settings.meross_email is None or self._settings.meross_password is None:
-            return SwitchResult(False, f"Nicht konfiguriert: {message}")
-
         try:
-            login = await self._transport.post(
-                f"{self._api_basis}/v1/Auth/signIn",
-                {
-                    "email": self._settings.meross_email,
-                    "password": self._settings.meross_password.get_secret_value(),
-                    "encryption": "1",
-                },
-                {},
-            )
-            token = _meross_token(login)
-            await self._transport.post(
-                f"{self._api_basis}/v1/Device/devControl",
-                {
-                    "uuid": self._devices_id,
-                    "channel": str(self._kanal),
-                    "action": command,
-                },
-                {"Authorization": f"Basic {token}"},
+            answer = await self._transport.send(
+                self._device_uuid, TOGGLE_NAMESPACE, "SET", payload
             )
         except Exception as exc:
             return SwitchResult(False, message, str(exc))
+
+        # The socket confirms with `SETACK`. Anything else is not a confirmation, and
+        # treating it as one would report a heater as switched that never was.
+        header = answer.get("header")
+        method = header.get("method") if isinstance(header, Mapping) else None
+        if method != "SETACK":
+            return SwitchResult(
+                False, message, f"Geraet bestaetigte nicht, sondern antwortete {method!r}"
+            )
         return SwitchResult(True, f"Gesendet: {message}")
-
-
-def _meross_token(response: Mapping[str, object]) -> str:
-    data = response.get("data")
-    if not isinstance(data, dict):
-        raise ValueError("Meross-Anmeldung lieferte kein Token")
-    token = data.get("token")
-    if not isinstance(token, str):
-        raise ValueError("Meross-Anmeldung lieferte kein Token")
-    return token

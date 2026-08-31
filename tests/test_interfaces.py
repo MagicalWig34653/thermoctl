@@ -124,17 +124,17 @@ def test_every_interface_has_a_known_state(session: Session) -> None:
                 assert s.state in known, f"{s.key}: {s.state}"
 
 
-def test_meross_says_it_is_not_built_even_with_credentials(session: Session) -> None:
-    """Zugangsdaten machen aus einer halben Anbindung keine ganze.
+def test_meross_says_it_runs_once_credentials_are_stored(session: Session) -> None:
+    """Der Gegentest zu dem, was hier lange stand.
 
-    Gebaut ist nur die schaltende Hälfte: Der Adapter kann eine bekannte Steckdose
-    ein- und ausschalten. Es gibt keine Geräteerkennung für Meross — Geräte entstehen
-    ausschliesslich aus der Zigbee2MQTT-Liste (`services/ingest.py` ist die einzige
-    Stelle, die `Device`-Zeilen anlegt), und von Hand anlegen lässt sich keines.
+    Bis 0.2.0 meldete die Seite „noch nicht gebaut", und das war richtig: Es gab keine
+    Geräteerkennung für Meross, Geräte entstanden ausschliesslich aus der
+    Zigbee2MQTT-Liste, und eine Steckdose konnte in dieser Anlage gar nicht auftauchen.
+    Aus dem Betrieb gemeldet als „die Meross-Schalter tauchen nirgends auf".
 
-    Die Seite meldete trotzdem „Eingerichtet", sobald eine Adresse in der Umgebung
-    stand. Aus dem Betrieb gemeldet als „die Meross-Schalter tauchen nirgends auf" —
-    und die Seite hatte genau das Gegenteil behauptet.
+    Beides ist jetzt da — Erkennung *und* Schaltweg, gegen ein echtes Konto geprüft.
+    Der Hinweis muss aber weiter sagen, was daran noch nicht nachgemessen ist: das
+    erste echte Schalten.
     """
     items = overview(
         session,
@@ -143,17 +143,30 @@ def test_meross_says_it_is_not_built_even_with_credentials(session: Session) -> 
     )
     meross = next(s for s in items if s.key == "meross")
 
-    assert meross.state == "not_built"
-    assert "keine gefunden" in meross.finding
-    assert meross.hint is not None and "keine Geräteerkennung" in meross.hint
+    assert meross.state == "running"
+    assert "abgeglichen" in meross.finding
+    assert meross.hint is not None
+    assert "404" in meross.hint, "Der tote HTTP-Pfad muss dokumentiert bleiben"
+    assert "erste echte Schalten" in meross.hint
 
 
-def test_no_device_can_enter_the_system_except_through_zigbee2mqtt(session: Session) -> None:
-    """Der Grund, warum Meross „noch nicht gebaut" heisst, an seiner Wurzel.
+def test_meross_without_credentials_is_off_not_broken(session: Session) -> None:
+    """Ohne Konto ist nichts abzugleichen — das ist kein Fehler, sondern der
+    Normalfall für alle, die Meross nicht benutzen."""
+    items = overview(session, _settings(), None)
+    meross = next(s for s in items if s.key == "meross")
 
-    Wenn irgendwann ein zweiter Weg entsteht — eine Meross-Erkennung, ein Formular zum
-    Anlegen von Hand —, muss dieser Test rot werden. Er ist die Stelle, an der jemand
-    dann merkt, dass die Schnittstellenseite nachzuziehen ist.
+    assert meross.state == "off"
+    assert "Keine Zugangsdaten" in meross.finding
+
+
+def test_devices_enter_the_system_only_on_the_two_known_paths(session: Session) -> None:
+    """Jeder Weg, auf dem ein Gerät entsteht, steht hier namentlich.
+
+    Der Test hiess einmal „nur über Zigbee2MQTT" und war damit richtig — bis die
+    Meross-Erkennung dazukam und ihn rot machte. Genau dafür ist er da: Entsteht ein
+    dritter Weg — ein Formular zum Anlegen von Hand, eine weitere Anbindung —, muss
+    jemand hier vorbei und die Schnittstellenseite nachziehen.
     """
     import re
     from pathlib import Path as _Path
@@ -167,6 +180,7 @@ def test_no_device_can_enter_the_system_except_through_zigbee2mqtt(session: Sess
         # und nicht die Klassendefinition selbst.
         if re.search(r"(?<![A-Za-z])Device\(", zeile) and not zeile.lstrip().startswith("class ")
     ]
-    assert stellen == ["thermoctl/services/ingest.py:54"], (
-        "Geraete entstehen an einer neuen Stelle: " + ", ".join(stellen)
-    )
+    assert stellen == [
+        "thermoctl/services/ingest.py:54",
+        "thermoctl/services/meross_discovery.py:68",
+    ], "Geraete entstehen an einer neuen Stelle: " + ", ".join(stellen)
