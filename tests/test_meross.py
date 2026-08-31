@@ -18,16 +18,20 @@ import json
 import types
 from collections.abc import Mapping
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 import pytest
-from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy import select, update
+from sqlalchemy.orm import Session, sessionmaker
 
-from tests.helpers import capability, create_device, integration
+from tests.helpers import capability, create_device, create_settings, integration
 from thermoctl import app as app_module
 from thermoctl.config import Settings
+from thermoctl.db.base import Base
+from thermoctl.db.engine import create_engine_from_settings, session_factory, session_scope
 from thermoctl.db.models.device import Device, DeviceCapabilityLink, DeviceProperty
+from thermoctl.db.models.operations import Setting
 from thermoctl.integrations import meross as meross_module
 from thermoctl.integrations.meross import (
     APP_SECRET,
@@ -38,7 +42,7 @@ from thermoctl.integrations.meross import (
     device_list,
     sign_in,
 )
-from thermoctl.services.meross_discovery import refresh, save_devices
+from thermoctl.services.meross_discovery import fetch_devices, save_devices
 
 NOW = datetime(2026, 8, 31, 18, 0)
 
@@ -535,54 +539,48 @@ def _settings_with_credentials() -> Settings:
 
 
 @pytest.mark.anyio
-async def test_the_refresh_does_nothing_without_credentials(session: Session) -> None:
+async def test_the_fetch_does_nothing_without_credentials() -> None:
     """Meross is optional -- whoever does not use it must not see a warning per pass."""
     transport = _FakeJsonTransport()
     # Explicitly empty: a bare `Settings()` reads the operator's `.env` and would carry
     # real credentials here -- the test would then pass for the wrong reason.
     without = Settings(meross_email=None, meross_password=None)
 
-    assert await refresh(session, without, transport, NOW) == 0
+    assert await fetch_devices(without, transport) is None
     assert transport.calls == []
 
 
 @pytest.mark.anyio
-async def test_the_refresh_signs_in_and_stores_what_it_finds(session: Session) -> None:
-    integration(session, "meross")
-    capability(session, "switch")
+async def test_the_fetch_signs_in_and_returns_what_it_finds() -> None:
     transport = _FakeJsonTransport(_SIGN_IN_ANSWER, _DEVICE_LIST_ANSWER)
 
-    new = await refresh(session, _settings_with_credentials(), transport, NOW)
-    session.flush()
+    devices = await fetch_devices(_settings_with_credentials(), transport)
 
-    assert new == 2
-    assert [d.external_id for d in _meross_devices(session)] == ["1111", "2222"]
+    assert devices is not None
+    assert [d.uuid for d in devices] == ["1111", "2222"]
 
 
 @pytest.mark.anyio
 async def test_a_refused_sign_in_leaves_the_installation_running(
-    session: Session, caplog: pytest.LogCaptureFixture
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
-    integration(session, "meross")
     transport = _FakeJsonTransport({"apiStatus": 1004, "info": "Wrong password"})
 
     with caplog.at_level("ERROR"):
-        assert await refresh(session, _settings_with_credentials(), transport, NOW) == 0
+        assert await fetch_devices(_settings_with_credentials(), transport) is None
 
     assert "Meross" in caplog.text
-    assert _meross_devices(session) == []
 
 
 @pytest.mark.anyio
 async def test_a_broken_connection_leaves_the_installation_running(
-    session: Session, caplog: pytest.LogCaptureFixture
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     """Not every failure is a `MerossError` -- a socket error must not stop the cycle."""
-    integration(session, "meross")
     transport = _FakeJsonTransport(OSError("Netz weg"))
 
     with caplog.at_level("ERROR"):
-        assert await refresh(session, _settings_with_credentials(), transport, NOW) == 0
+        assert await fetch_devices(_settings_with_credentials(), transport) is None
 
     assert "Meross" in caplog.text
 
@@ -631,10 +629,83 @@ async def test_the_loop_hook_reconciles_through_the_transport_on_app_state(
     integration(session, "meross")
     capability(session, "switch")
     transport = _FakeTransportCounting()
-    app = types.SimpleNamespace(state=types.SimpleNamespace(meross_transport=transport))
+    session.commit()
+    app = types.SimpleNamespace(
+        state=types.SimpleNamespace(
+            meross_transport=transport,
+            session_factory=lambda: Session(session.get_bind(), expire_on_commit=False),
+        )
+    )
 
-    await app_module._refresh_meross(app, session, NOW)  # type: ignore[arg-type]
-    session.flush()
+    await app_module._run_detached_meross_refresh(app, NOW)  # type: ignore[arg-type]
+    session.expire_all()
 
     assert transport.rounds == 1
     assert [d.external_id for d in _meross_devices(session)] == ["1111", "2222"]
+
+
+@pytest.mark.anyio
+async def test_meross_network_calls_run_without_an_open_database_session(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A concurrent SQLite writer commits while both Meross calls are in flight."""
+    database = tmp_path / "meross-lock.db"
+    engine = create_engine_from_settings(Settings(database_url=f"sqlite:///{database}"))
+    Base.metadata.create_all(engine)
+    writer_factory = session_factory(engine)
+    with session_scope(writer_factory) as setup_session:
+        integration(setup_session, "meross")
+        capability(setup_session, "switch")
+        create_settings(setup_session)
+
+    open_sessions: set[int] = set()
+
+    class _TrackedSession(Session):
+        def __init__(self, **kwargs: Any) -> None:
+            super().__init__(**kwargs)
+            open_sessions.add(id(self))
+
+        def close(self) -> None:
+            open_sessions.discard(id(self))
+            super().close()
+
+    tracked_factory = sessionmaker(
+        bind=engine, class_=_TrackedSession, expire_on_commit=False, future=True
+    )
+
+    def _tracked_factory() -> Session:
+        tracked = tracked_factory()
+        open_sessions.add(id(tracked))
+        return tracked
+
+    network_saw_open_session = False
+
+    class _WritingTransport(_FakeJsonTransport):
+        async def post_json(
+            self, url: str, body: Mapping[str, object], headers: Mapping[str, str]
+        ) -> Mapping[str, object]:
+            nonlocal network_saw_open_session
+            network_saw_open_session |= bool(open_sessions)
+            with session_scope(writer_factory) as writer:
+                writer.execute(
+                    update(Setting).where(Setting.id == 1).values(timezone="Europe/Berlin")
+                )
+            return await super().post_json(url, body, headers)
+
+    monkeypatch.setattr(app_module, "get_settings", _settings_with_credentials)
+    transport = _WritingTransport(_SIGN_IN_ANSWER, _DEVICE_LIST_ANSWER)
+    app = types.SimpleNamespace(
+        state=types.SimpleNamespace(
+            meross_transport=transport,
+            session_factory=_tracked_factory,
+        )
+    )
+
+    try:
+        await app_module._run_detached_meross_refresh(app, NOW)  # type: ignore[arg-type]
+    finally:
+        engine.dispose()
+
+    assert not open_sessions
+    assert network_saw_open_session is False
+    assert len(transport.calls) == 2
