@@ -115,8 +115,11 @@ Wand gut hüten könnte.
 - **Meross-Zugangsdaten gehen an einen fremden Dienst**, sobald ein Konto hinterlegt ist
   — seit der Anbindung stündlich, nicht erst beim Schalten. Über TLS, das Passwort
   gehasht, und nur wenn der Betreiber es einträgt. Der App-Schlüssel `APP_SECRET` im
-  Quelltext ist eine öffentliche Protokollkonstante des Herstellers und kein
-  Zugangsdatum; ohne ihn lässt sich kein Umschlag signieren.
+  Quelltext ist kein Zugangsdatum dieser Anlage; ohne ihn lässt sich kein Umschlag
+  signieren. Er ist aber auch keine vom Hersteller dokumentierte Protokollkonstante —
+  eine offizielle Spezifikation dieses Protokolls gibt es nicht. Öffentlich ist er
+  seit Jahren durch Reverse Engineering (u. a. das MerossIot-Projekt), nicht durch
+  eine Herstellerangabe.
 - **Das Einrichtungs-Token steht im Log.** Bewusst, und der einzige Kanal dorthin. Wer
   Logs weiterleitet, leitet es mit weiter. In der Self-Hosting-Anleitung benannt.
 

@@ -10,9 +10,10 @@ somewhere else.
 import pytest
 from sqlalchemy.orm import Session
 
-from tests.helpers import user_with_permissions
+from tests.helpers import integration, user_with_permissions
 from thermoctl.auth.tokens import issue_token
 from thermoctl.config import Settings
+from thermoctl.db.models.device import Device
 from thermoctl.domain.interfaces import overview
 
 
@@ -124,17 +125,13 @@ def test_every_interface_has_a_known_state(session: Session) -> None:
                 assert s.state in known, f"{s.key}: {s.state}"
 
 
-def test_meross_says_it_runs_once_credentials_are_stored(session: Session) -> None:
-    """Der Gegentest zu dem, was hier lange stand.
-
-    Bis 0.2.0 meldete die Seite „noch nicht gebaut", und das war richtig: Es gab keine
-    Geräteerkennung für Meross, Geräte entstanden ausschliesslich aus der
-    Zigbee2MQTT-Liste, und eine Steckdose konnte in dieser Anlage gar nicht auftauchen.
-    Aus dem Betrieb gemeldet als „die Meross-Schalter tauchen nirgends auf".
-
-    Beides ist jetzt da — Erkennung *und* Schaltweg, gegen ein echtes Konto geprüft.
-    Der Hinweis muss aber weiter sagen, was daran noch nicht nachgemessen ist: das
-    erste echte Schalten.
+def test_meross_with_credentials_but_no_device_yet_is_configured_not_running(
+    session: Session,
+) -> None:
+    """Kreuzreview-Befund 4: Zugangsdaten allein sagen nichts darüber, ob je ein
+    Abgleich gelang -- nur „hinterlegt", nicht „läuft". Ohne ein gefundenes Gerät (der
+    einzige Beleg, dass sich die Anmeldung je durchgesetzt hat) bleibt die Seite bei
+    „configured", nicht „running".
     """
     items = overview(
         session,
@@ -143,11 +140,49 @@ def test_meross_says_it_runs_once_credentials_are_stored(session: Session) -> No
     )
     meross = next(s for s in items if s.key == "meross")
 
+    assert meross.state == "configured"
+    assert "noch kein Gerät gefunden" in meross.finding
+
+
+def test_meross_says_it_runs_once_a_device_was_found(session: Session) -> None:
+    """Der Gegentest zu dem, was hier lange stand.
+
+    Bis 0.2.0 meldete die Seite „noch nicht gebaut", und das war richtig: Es gab keine
+    Geräteerkennung für Meross, Geräte entstanden ausschliesslich aus der
+    Zigbee2MQTT-Liste, und eine Steckdose konnte in dieser Anlage gar nicht auftauchen.
+    Aus dem Betrieb gemeldet als „die Meross-Schalter tauchen nirgends auf".
+
+    Beides ist jetzt da — Erkennung *und* Schaltweg, gegen ein echtes Konto geprüft.
+    „running" heisst hier aber erst etwas, wenn tatsächlich ein Gerät aus einem
+    Abgleich hervorgegangen ist -- Zugangsdaten allein reichen nicht mehr
+    (Kreuzreview-Befund 4). Der Hinweis muss weiter sagen, was daran noch nicht
+    verdrahtet ist: der Regelkreis selbst, nicht das Schalten (das ist inzwischen
+    nachgemessen).
+    """
+    anbindung = integration(session, "meross")
+    session.add(
+        Device(
+            integration_id=anbindung.id,
+            external_id="1111",
+            display_name="Wohnzimmer",
+            is_enabled=True,
+        )
+    )
+    session.flush()
+
+    items = overview(
+        session,
+        _settings(meross_email="jemand@example.invalid", meross_password="geheim"),
+        None,
+    )
+    meross = next(s for s in items if s.key == "meross")
+
     assert meross.state == "running"
-    assert "abgeglichen" in meross.finding
+    assert "gefunden" in meross.finding
     assert meross.hint is not None
     assert "404" in meross.hint, "Der tote HTTP-Pfad muss dokumentiert bleiben"
-    assert "erste echte Schalten" in meross.hint
+    assert "SETACK" in meross.hint, "Das nachgemessene SET muss dokumentiert bleiben"
+    assert "Regelkreis" in meross.hint, "Die fehlende Verdrahtung muss benannt bleiben"
 
 
 def test_meross_without_credentials_is_off_not_broken(session: Session) -> None:
@@ -158,6 +193,17 @@ def test_meross_without_credentials_is_off_not_broken(session: Session) -> None:
 
     assert meross.state == "off"
     assert "Keine Zugangsdaten" in meross.finding
+
+
+def test_meross_with_only_half_the_credentials_cannot_be_running(session: Session) -> None:
+    """Kreuzreview-Befund 4: `hat_meross` prüfte bisher nur die E-Mail-Adresse. Ein
+    Passwort ohne E-Mail -- oder umgekehrt -- kann sich nicht anmelden und darf nicht
+    als eingerichtet gelten."""
+    only_email = overview(session, _settings(meross_email="jemand@example.invalid"), None)
+    assert _state(only_email, "meross") == "missing"
+
+    only_password = overview(session, _settings(meross_password="geheim"), None)
+    assert _state(only_password, "meross") == "missing"
 
 
 def test_devices_enter_the_system_only_on_the_two_known_paths(session: Session) -> None:
@@ -182,5 +228,5 @@ def test_devices_enter_the_system_only_on_the_two_known_paths(session: Session) 
     ]
     assert stellen == [
         "thermoctl/services/ingest.py:54",
-        "thermoctl/services/meross_discovery.py:68",
+        "thermoctl/services/meross_discovery.py:89",
     ], "Geraete entstehen an einer neuen Stelle: " + ", ".join(stellen)

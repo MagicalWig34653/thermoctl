@@ -36,8 +36,23 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 ### Geändert
 
 - **Die Schnittstellenseite meldet Meross nicht mehr als „noch nicht gebaut".** Sie sagt
-  jetzt, was geprüft ist (Anmeldung, Geräteliste, das Lesen eines Gerätezustands) und was
-  nicht (das erste echte Schalten).
+  jetzt, was geprüft ist (Anmeldung, Geräteliste, das Lesen und Schalten eines
+  Gerätezustands über `SETACK`) und was noch nicht kommt (die Verdrahtung in den
+  Regelkreis, Teilprojekt 4). „running" zeigt sie erst, wenn ein Abgleich tatsächlich
+  ein Gerät gefunden hat — Zugangsdaten allein zeigen „configured".
+
+### Kreuzreview der Meross-Anbindung
+
+- **Nicht mehr jedes Meross-Gerät gilt als Schalter.** Nur die `mss`-Modellfamilie
+  (Steckdosen) bekommt die Fähigkeit `switch`; Hubs, Lampen, Thermostatventile und
+  Sensoren im selben Konto erscheinen weiter als Gerätezeile, aber ohne diesen
+  Anspruch. Die gemeldete Kanalzahl wird jetzt mitgeführt statt verworfen.
+- **Der Meross-Abgleich hält den Schattenzyklus nicht mehr auf.** Er läuft entkoppelt
+  in einer eigenen Sitzung statt innerhalb der Transaktion des Zyklus.
+- **Der Meross-Abgleich läuft jetzt auch ohne lokales MQTT** — vorausgesetzt, ein
+  vollständiges Konto (E-Mail und Passwort) ist hinterlegt.
+- **`APP_SECRET` heißt jetzt zutreffend, was er ist**: öffentlich seit Jahren durch
+  Reverse Engineering, keine vom Hersteller dokumentierte Konstante.
 
 ## 0.2.0 — 2026-08-31
 

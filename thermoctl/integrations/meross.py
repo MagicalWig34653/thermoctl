@@ -25,9 +25,15 @@ from dataclasses import dataclass
 from typing import Protocol, cast
 from urllib import request
 
-# The manufacturer's app secret. It is not a credential of this installation but a
-# publicly known constant of the Meross protocol -- without it the envelope cannot be
-# signed. Principle 2 is about credentials; this is none.
+from thermoctl.config import Settings
+
+# The manufacturer's app secret. Not a credential of this installation, and not
+# documented by the manufacturer either -- there is no official specification of this
+# protocol at all. It has been public for years regardless, recovered by reverse
+# engineering (the MerossIot project, among others) and reused unchanged there and
+# here. Principle 2 is about credentials of this installation; this is neither -- but
+# "publicly known" rests on other people's reverse engineering, not on a manufacturer
+# document, and is worded that way here on purpose.
 APP_SECRET = "23x17ahWarFH6w29"  # noqa: S105 -- protocol constant, not a credential
 
 LOGIN_PATH = "/v1/Auth/signIn"
@@ -69,6 +75,18 @@ class MerossSession:
     key: str
     user_id: str
     mqtt_domain: str
+
+
+def credentials_configured(settings: Settings) -> bool:
+    """Whether an account is set up at all -- email **and** password.
+
+    The single place both `services/meross_discovery.py` (whether to attempt a sign-in)
+    and `domain/interfaces.py` (whether the interfaces page may call the reconciliation
+    "running") ask this question, so they cannot drift apart on what "configured"
+    means. An email without a password, or the reverse, cannot sign in -- reporting
+    such a half-entered account as configured would be wrong in both places.
+    """
+    return settings.meross_email is not None and settings.meross_password is not None
 
 
 def _envelope(payload: Mapping[str, object]) -> dict[str, object]:

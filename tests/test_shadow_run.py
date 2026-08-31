@@ -9,6 +9,7 @@ phase nothing gets published anywhere.
 import asyncio
 import json
 import types
+from collections.abc import Mapping
 from datetime import datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
@@ -366,8 +367,11 @@ async def test_no_publishing_despite_a_heating_decision(
 def test_the_background_run_does_not_start_without_mqtt(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Requirement from the assignment: without `mqtt_enabled`, no background task
-    may be created at startup -- the test suite builds the application constantly.
+    """Requirement from the assignment: without `mqtt_enabled` **and** without Meross
+    credentials, no background task may be created at startup -- the test suite builds
+    the application constantly. (With Meross credentials alone the shadow loop does
+    start, deliberately, since finding 3 of the cross review -- see the two tests
+    below.)
     """
     # A named file instead of 'sqlite://': an unnamed in-memory database would be
     # its own, empty database per connection -- the application and this test
@@ -395,6 +399,78 @@ def test_the_background_run_does_not_start_without_mqtt(
 
     with TestClient(anwendung):
         pass
+
+    own_engine.dispose()
+    get_settings.cache_clear()
+
+
+@pytest.mark.parametrize(
+    ("mqtt_enabled", "meross_email", "meross_password", "expected"),
+    [
+        (False, None, None, False),
+        (True, None, None, True),
+        (False, "a@b.de", "geheim", True),
+        # An email without a password (or the reverse) cannot sign in -- reporting
+        # that as "configured" would start a loop with nothing to reconcile.
+        (False, "a@b.de", None, False),
+        (False, None, "geheim", False),
+    ],
+)
+def test_shadow_loop_needed_reflects_mqtt_and_meross_together(
+    mqtt_enabled: bool,
+    meross_email: str | None,
+    meross_password: str | None,
+    expected: bool,
+) -> None:
+    """Finding 3 of the cross review: the shadow loop is not gated behind
+    `mqtt_enabled` alone any more -- Meross credentials alone must start it too, since
+    the Meross cloud is independent of the local Zigbee2MQTT broker."""
+    settings = Settings(
+        _env_file=None,
+        database_url="sqlite://",
+        secret_key="p" * 32,
+        mqtt_enabled=mqtt_enabled,
+        meross_email=meross_email,
+        meross_password=meross_password,  # type: ignore[arg-type]
+    )
+    assert app_modul._shadow_loop_needed(settings) is expected
+
+
+def test_the_lifespan_starts_the_shadow_loop_for_meross_credentials_alone(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The gating decision proven above end to end: with `mqtt_enabled=False` but
+    Meross credentials set, the lifespan still starts exactly the shadow loop -- no
+    MQTT client, because there is no broker configured."""
+    datenbank_url = f"sqlite:///{tmp_path}/meross-ohne-mqtt.db"
+    own_engine = create_engine(datenbank_url, future=True)
+    Base.metadata.create_all(own_engine)
+    settings = Settings(_env_file=None, database_url=datenbank_url, secret_key="n" * 32)
+    monkeypatch.setenv("THERMOCTL_DATABASE_URL", settings.database_url)
+    monkeypatch.setenv("THERMOCTL_SECRET_KEY", settings.secret_key.get_secret_value())
+    monkeypatch.setenv("THERMOCTL_MEROSS_EMAIL", "a@b.de")
+    monkeypatch.setenv("THERMOCTL_MEROSS_PASSWORD", "geheim")
+    get_settings.cache_clear()
+
+    started: list[object] = []
+    original_create_task = app_modul.asyncio.create_task
+
+    def _recording_create_task(coro: object, *args: object, **kwargs: object) -> object:
+        started.append(coro)
+        return original_create_task(coro, *args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(app_modul.asyncio, "create_task", _recording_create_task)
+
+    anwendung = create_app()
+    anwendung.state.engine.dispose()
+    anwendung.state.engine = own_engine
+    anwendung.state.session_factory = lambda: Session(own_engine)
+
+    with TestClient(anwendung):
+        pass
+
+    assert len(started) == 1
+    assert started[0].cr_code.co_name == "_shadow_loop"  # type: ignore[attr-defined]
 
     own_engine.dispose()
     get_settings.cache_clear()
@@ -827,6 +903,93 @@ async def test_the_shadow_loop_also_publishes_when_a_publisher_is_configured(
     # Nothing switched -- every message from the publication cycle is a state message.
     assert sent, "Der Zyklus hat nichts veroeffentlicht"
     assert all(switches is False for _topic, _payload, switches in sent)
+    engine.dispose()
+
+
+@pytest.mark.anyio
+async def test_the_shadow_loop_commits_before_a_slow_meross_reconciliation_returns(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Finding 2 of the cross review: sign-in and the device list are two HTTP calls
+    to somebody else's cloud (each with a 20 second timeout) -- awaiting them inside
+    the cycle's own `session_scope`, as an earlier version did, would keep that
+    transaction open and delay the cycle's commit and its next `sleep` by however long
+    the cloud takes. A transport that hangs until released proves the fix: the cycle's
+    own result is committed, and the loop reaches its next wait, while the
+    reconciliation is still stuck.
+    """
+    engine, fabrik = _own_database(tmp_path, "meross-nicht-blockierend")
+    with fabrik() as http_session:
+        create_settings(http_session)
+        sensor_status_of(http_session, "keine_quelle")
+        create_zone(http_session, "flur")
+        http_session.commit()
+
+    entered = asyncio.Event()
+    release = asyncio.Event()
+
+    class _HangingTransport:
+        async def post_json(
+            self, url: str, body: Mapping[str, object], headers: Mapping[str, str]
+        ) -> Mapping[str, object]:
+            entered.set()
+            await release.wait()
+            # Only reached once the test releases the lock below, purely so the
+            # detached task can finish cleanly instead of hanging forever.
+            raise OSError("Netz weg")
+
+    fake_app = types.SimpleNamespace(
+        state=types.SimpleNamespace(
+            session_factory=fabrik, meross_transport=_HangingTransport()
+        )
+    )
+    monkeypatch.setattr(
+        app_modul,
+        "get_settings",
+        lambda: Settings(
+            _env_file=None,
+            database_url="sqlite://",
+            secret_key="q" * 32,
+            meross_email="a@b.de",
+            meross_password="geheim",  # type: ignore[arg-type]
+        ),
+    )
+
+    # Captured before `asyncio.sleep` is patched below -- `app_modul.asyncio` is the
+    # same module object as `asyncio` here, so patching one patches both; a plain
+    # function reference taken beforehand keeps working regardless.
+    real_sleep = asyncio.sleep
+
+    waited: list[float] = []
+
+    async def _sleep(seconds: float) -> None:
+        waited.append(seconds)
+        if len(waited) == 2:
+            raise asyncio.CancelledError
+
+    monkeypatch.setattr(app_modul.asyncio, "sleep", _sleep)
+
+    with pytest.raises(asyncio.CancelledError):
+        await app_modul._shadow_loop(fake_app)  # type: ignore[arg-type]
+
+    # The cycle's own result was committed and the loop reached its second wait --
+    # which it could not have done had it awaited the hanging transport inline, since
+    # nothing has released it yet at this point.
+    with fabrik() as http_session:
+        assert http_session.query(ShadowDecision).count() == 1
+
+    # Only now give the event loop a turn (the fake `sleep` above never truly
+    # suspends, so nothing scheduled via `create_task` inside the loop got to run
+    # before this point) -- proof that the detached reconciliation really was started,
+    # not merely never reached.
+    await real_sleep(0)
+    assert entered.is_set()
+
+    # Cleanup: release the transport and let the still-running detached task finish
+    # before the engine underneath it is disposed of.
+    release.set()
+    await real_sleep(0)
+
     engine.dispose()
 
 

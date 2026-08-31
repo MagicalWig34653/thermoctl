@@ -27,7 +27,7 @@ from sqlalchemy.orm import Session
 from tests.helpers import capability, create_device, integration
 from thermoctl import app as app_module
 from thermoctl.config import Settings
-from thermoctl.db.models.device import Device, DeviceCapabilityLink
+from thermoctl.db.models.device import Device, DeviceCapabilityLink, DeviceProperty
 from thermoctl.integrations import meross as meross_module
 from thermoctl.integrations.meross import (
     APP_SECRET,
@@ -330,6 +330,123 @@ def test_discovery_creates_a_device_per_uuid_with_the_switch_capability(
                 DeviceCapabilityLink.capability_id == switch.id,
             )
         )
+
+
+def test_a_device_that_is_not_a_switch_gets_no_switch_capability(
+    session: Session,
+) -> None:
+    """A Meross account also holds hubs, bulbs, garage openers, and thermostatic
+    valves -- only the `mss` (socket) family may be offered as a heating actuator.
+    The device row is still created: being visible is useful on its own.
+    """
+    integration(session, "meross")
+    switch = capability(session, "switch")
+
+    save_devices(
+        session,
+        [
+            MerossDevice(uuid="1111", name="Hub", model="msh300", online=True, channels=1),
+            MerossDevice(uuid="2222", name="Lampe", model="msl120", online=True, channels=1),
+            MerossDevice(uuid="3333", name="Ventil", model="mts200", online=True, channels=1),
+        ],
+        NOW,
+    )
+    session.flush()
+
+    devices = _meross_devices(session)
+    assert len(devices) == 3
+    for device in devices:
+        assert (
+            session.scalar(
+                select(DeviceCapabilityLink).where(
+                    DeviceCapabilityLink.device_id == device.id,
+                    DeviceCapabilityLink.capability_id == switch.id,
+                )
+            )
+            is None
+        )
+
+
+def test_the_model_check_is_case_insensitive(session: Session) -> None:
+    """The account is free to report the model in any case -- the real one is
+    lower-case (`mss710`), but nothing about the API contract promises that."""
+    integration(session, "meross")
+    switch = capability(session, "switch")
+
+    save_devices(
+        session,
+        [MerossDevice(uuid="1111", name="Wohnzimmer", model="MSS710", online=True, channels=1)],
+        NOW,
+    )
+    session.flush()
+
+    device = _meross_devices(session)[0]
+    assert session.scalar(
+        select(DeviceCapabilityLink).where(
+            DeviceCapabilityLink.device_id == device.id,
+            DeviceCapabilityLink.capability_id == switch.id,
+        )
+    )
+
+
+def test_the_channel_count_is_kept_as_a_device_property(session: Session) -> None:
+    """`MerossDevice.channels` must not be discarded -- a switching adapter built on
+    it later needs to know a multi-gang socket has more than channel 0."""
+    integration(session, "meross")
+    capability(session, "switch")
+
+    save_devices(
+        session,
+        [
+            MerossDevice(
+                uuid="1111", name="Doppelsteckdose", model="mss620", online=True, channels=2
+            )
+        ],
+        NOW,
+    )
+    session.flush()
+
+    device = _meross_devices(session)[0]
+    property_row = session.scalar(
+        select(DeviceProperty).where(
+            DeviceProperty.device_id == device.id, DeviceProperty.name == "channels"
+        )
+    )
+    assert property_row is not None
+    assert property_row.last_value_number == 2
+    assert property_row.last_value_at == NOW
+
+
+def test_the_channel_count_follows_a_later_change(session: Session) -> None:
+    """A second pass with a different reported count updates the same row instead of
+    creating a second one -- the same `DeviceProperty` unique constraint the
+    Zigbee2MQTT path relies on (`merkmal_je_geraet`)."""
+    integration(session, "meross")
+    capability(session, "switch")
+    save_devices(
+        session,
+        [MerossDevice(uuid="1111", name="Steckdose", model="mss710", online=True, channels=1)],
+        NOW,
+    )
+    session.flush()
+
+    save_devices(
+        session,
+        [MerossDevice(uuid="1111", name="Steckdose", model="mss710", online=True, channels=2)],
+        NOW,
+    )
+    session.flush()
+
+    device = _meross_devices(session)[0]
+    rows = list(
+        session.scalars(
+            select(DeviceProperty).where(
+                DeviceProperty.device_id == device.id, DeviceProperty.name == "channels"
+            )
+        )
+    )
+    assert len(rows) == 1
+    assert rows[0].last_value_number == 2
 
 
 def test_a_second_pass_renames_instead_of_duplicating(session: Session) -> None:

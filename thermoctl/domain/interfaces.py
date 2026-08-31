@@ -22,6 +22,9 @@ from sqlalchemy.orm import Session
 
 from thermoctl.config import Settings
 from thermoctl.db.models.credential import ApiToken
+from thermoctl.db.models.device import Device
+from thermoctl.db.models.lookup import Integration
+from thermoctl.integrations.meross import credentials_configured
 
 
 @dataclass(frozen=True)
@@ -216,24 +219,55 @@ def overview(
     )
 
     # --- Meross --------------------------------------------------------------
-    hat_meross = settings.meross_email is not None
+    # `hat_meross` braucht E-Mail **und** Passwort -- der Abgleich (services/
+    # meross_discovery.py) kann sich mit nur der Hälfte gar nicht erst anmelden.
+    email_hinterlegt = settings.meross_email is not None
+    hat_meross = credentials_configured(settings)
+    meross_integration = session.scalar(
+        select(Integration).where(Integration.code == "meross")
+    )
+    # Ob je ein Abgleich gelang, steht nirgends als eigener Zeitstempel -- aber ein
+    # Meross-Gerät kann nur über genau diesen Abgleich entstanden sein
+    # (services/ingest.py legt ausschliesslich Zigbee2MQTT-Geräte an). Mindestens eine
+    # Zeile hier ist also der Beleg, dass die Anmeldung mindestens einmal funktioniert
+    # hat -- nicht bloss, dass Zugangsdaten eingetragen wurden.
+    meross_geraet_gefunden = meross_integration is not None and (
+        session.scalar(
+            select(Device.id)
+            .where(Device.integration_id == meross_integration.id)
+            .limit(1)
+        )
+        is not None
+    )
+    if not email_hinterlegt and settings.meross_password is None:
+        meross_state, meross_finding = "off", "Keine Zugangsdaten hinterlegt."
+    elif not hat_meross:
+        meross_state, meross_finding = (
+            "missing",
+            "Nur die E-Mail-Adresse oder nur das Passwort ist hinterlegt — zum "
+            "Anmelden fehlt die jeweils andere Hälfte.",
+        )
+    elif meross_geraet_gefunden:
+        meross_state, meross_finding = (
+            "running",
+            "Zugangsdaten hinterlegt, mindestens ein Gerät wurde schon gefunden.",
+        )
+    else:
+        meross_state, meross_finding = (
+            "configured",
+            "Zugangsdaten hinterlegt; seit dem Start wurde noch kein Gerät gefunden — "
+            "der erste Abgleich steht noch aus oder ist bisher fehlgeschlagen.",
+        )
     items.append(
         Interface(
             "meross",
             "Meross",
             "Schaltsteckdosen als zweiter Aktortyp neben den Zigbee-Ventilen.",
-            # Ohne Zugangsdaten ist die Anbindung nicht aus, sondern schlicht nicht
-            # eingerichtet -- es gibt nichts abzufragen. Mit Zugangsdaten laeuft sie:
-            # Der Abgleich haengt im Schattenzyklus und legt gefundene Steckdosen an.
-            "running" if hat_meross else "off",
-            (
-                "Zugangsdaten hinterlegt — Geräte werden stündlich abgeglichen."
-                if hat_meross
-                else "Keine Zugangsdaten hinterlegt."
-            ),
+            meross_state,
+            meross_finding,
             [
                 Detail("Konto", settings.meross_email or "—",
-                       "Umgebung" if hat_meross else "Standard", "THERMOCTL_MEROSS_EMAIL"),
+                       "Umgebung" if email_hinterlegt else "Standard", "THERMOCTL_MEROSS_EMAIL"),
                 Detail("Passwort", _yes_no(settings.meross_password is not None),
                        "Umgebung" if settings.meross_password else "Standard",
                        "THERMOCTL_MEROSS_PASSWORD"),
@@ -244,9 +278,11 @@ def overview(
                 "Geräteerkennung und Schaltweg sind gebaut und gegen ein echtes Konto "
                 "geprüft: Anmeldung und Geräteliste über HTTP, das Schalten über MQTT. "
                 "Der frühere HTTP-Pfad zum Schalten existiert nicht — die Wolke "
-                "antwortet dort mit 404. Nachgemessen ist bisher nur das Lesen eines "
-                "Gerätezustands; das erste echte Schalten steht noch aus und passiert "
-                "ohnehin erst, wenn die Steuerung scharf geschaltet wird."
+                "antwortet dort mit 404. Nachgemessen sind Anmeldung, Geräteliste und "
+                "ein `SET Appliance.Control.ToggleX` gegen echte Geräte, bestätigt mit "
+                "`SETACK` und einem hochgezählten `lmTime`. Was noch aussteht, ist "
+                "nicht das Schalten selbst, sondern seine Verdrahtung in den "
+                "Regelkreis — die kommt erst mit dem Scharfschalten (Teilprojekt 4)."
             ),
         )
     )

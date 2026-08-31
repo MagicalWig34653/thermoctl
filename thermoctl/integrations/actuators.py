@@ -191,9 +191,20 @@ class MerossSwitch:
     envelope of the calls that *do* exist is signed. `integrations/meross_mqtt.py`
     carries the path that was checked against a real account.
 
-    What is confirmed there is a `GET`. A `SET` -- actually switching a heater --
-    was deliberately not tried out; the answer to a command is checked here, so a
-    firmware that refuses it shows up as an error and not as a silent no-op.
+    Checked there against real hardware: a `GET`, and since then also a `SET
+    Appliance.Control.ToggleX` against four sockets (all standing at `onoff=0`, set to
+    `onoff=0` -- chosen deliberately so nothing about the plant could move). All four
+    answered `SETACK` on the payload `toggle_payload` below builds, and the socket's
+    `lmTime` had advanced on a subsequent read. Payload shape, signature and
+    confirmation are therefore measured, not assumed.
+
+    **`executed=True` means the device confirmed the command with a matching
+    `SETACK` -- nothing more.** It is not a second read of the device's state after
+    the fact; a socket that accepted the command but, for whatever reason, did not
+    actually move its relay would still be reported as `executed=True` here. That is
+    judged acceptable for this adapter (a `SETACK` is what the manufacturer's own
+    apps treat as success too), but it is the honest boundary of the claim: this
+    checks that the socket *accepted* the command, not that the room got warmer.
     """
 
     def __init__(
