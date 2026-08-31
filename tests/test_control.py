@@ -6,6 +6,7 @@ The tests here therefore check not only that it works, but also that it
 into dry run fails on nothing.
 """
 
+import re
 from collections.abc import Callable
 from decimal import Decimal
 
@@ -271,3 +272,50 @@ def test_a_coordinate_that_is_no_number_names_its_field(
             session, enabled=True, latitude_text=eingabe, longitude_text="0", user_id=None
         )
     assert fehler.value.field == "solar_forecast_latitude"
+
+
+def test_the_solar_setback_can_be_switched_on_through_its_own_form(
+    angemeldeter_client: TestClient, session: Session
+) -> None:
+    """Abgeschickt wird, was die Seite wirklich rendert — Name **und** Wert.
+
+    Der Schalter trug einmal keinen `value`, dann schickte der Browser `"on"`, und die
+    View verglich damit. Seit das Makro `value="yes"` setzt, traf der Vergleich nie
+    mehr zu: Die Sonnenabsenkung liess sich nicht mehr einschalten, ohne dass irgendwo
+    ein Fehler erschien. Aus dem Betrieb gemeldet.
+
+    Ein Test, der den Wert selbst hinschreibt, haette das nicht gesehen — er stimmt
+    immer mit der Haelfte ueberein, gegen die er geschrieben wurde.
+    """
+    create_settings(session)
+    source(session, "web")
+    session.flush()
+
+    page = angemeldeter_client.get("/settings")
+    assert page.status_code == 200
+    formular = re.search(
+        r'<form[^>]*>(?:(?!</form>).)*name="solar_forecast_enabled".*?</form>',
+        page.text,
+        re.S,
+    )
+    assert formular is not None, "Kein Formular mit dem Sonnenschalter gefunden"
+    rumpf = formular.group(0)
+
+    daten = dict(re.findall(r'name="([^"]+)"[^>]*value="([^"]*)"', rumpf))
+    schalter = re.search(
+        r'name="solar_forecast_enabled"[^>]*value="([^"]*)"', rumpf
+    ) or re.search(r'value="([^"]*)"[^>]*name="solar_forecast_enabled"', rumpf)
+    assert schalter is not None, "Der Schalter rendert keinen Wert"
+    daten["solar_forecast_enabled"] = schalter.group(1)
+    daten["solar_forecast_latitude"] = "52.520"
+    daten["solar_forecast_longitude"] = "13.405"
+
+    antwort = angemeldeter_client.post(
+        "/settings", data=daten, headers=_csrf(angemeldeter_client), follow_redirects=False
+    )
+    assert antwort.status_code in (200, 303), antwort.text[:400]
+
+    row = session.get(Setting, 1)
+    assert row is not None
+    assert row.solar_forecast_enabled is True
+    assert row.solar_forecast_latitude == Decimal("52.520")

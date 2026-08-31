@@ -169,7 +169,11 @@ async def save_defaults(
         name: str(form.get(name, "")).strip()
         for name in (*LIMITS, "timezone", "solar_forecast_latitude", "solar_forecast_longitude")
     }
-    solar_enabled = str(form.get("solar_forecast_enabled", "")) == "on"
+    # Eine nicht angehakte Checkbox schickt gar nichts -- also zaehlt allein, ob
+    # ueberhaupt ein Wert ankam. Vorher stand hier `== "on"`, der Vorgabewert eines
+    # Browsers fuer eine Checkbox ohne `value`. Seit das Makro `value="yes"` setzt,
+    # traf das nie mehr zu: Die Sonnenabsenkung liess sich nicht mehr einschalten.
+    solar_enabled = form.get("solar_forecast_enabled") is not None
     try:
         # Validated -- but deliberately not yet written: `save_settings` below still
         # has to run its own check before either group's fields actually change, so
