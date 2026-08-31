@@ -6,7 +6,10 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from thermoctl.auth.csrf import csrf_token
 from thermoctl.auth.dependencies import csrf_protection, current_principal, get_session
+from thermoctl.auth.sessions import COOKIE_NAME
+from thermoctl.config import get_settings
 from thermoctl.db.models.schedule import SchedulePoint
 from thermoctl.db.models.zone import SetpointMode, Zone, ZoneSetpoint
 from thermoctl.domain.authz import has_permission, visible_zones
@@ -14,6 +17,7 @@ from thermoctl.domain.principal import Principal
 from thermoctl.domain.schedule import (
     ScheduleError,
     adopt_schedule,
+    change_schedule_point_mode,
     create_schedule_point,
     delete_schedule_point,
     move_schedule_point,
@@ -120,6 +124,10 @@ def _schedule_page(
             # test.
             "move_error": move_error,
             "may_edit": has_permission(principal, "schedule.manage", zone.id),
+            "csrf": csrf_token(
+                request.cookies[COOKIE_NAME],
+                get_settings().secret_key.get_secret_value(),
+            ),
         },
     )
 
@@ -227,6 +235,46 @@ async def reposition_schedule_point(
         return _schedule_page(
             request, session, zone, principal, move_error=exc.notice
         )
+    return RedirectResponse(
+        f"/zones/{zone.id}/schedule", status_code=status.HTTP_303_SEE_OTHER
+    )
+
+
+@router.post("/zones/{zone_id}/schedule/points/mode")
+async def change_schedule_point_mode_view(
+    zone_id: int,
+    request: Request,
+    principal: Annotated[Principal, Depends(current_principal)],
+    session: Annotated[Session, Depends(get_session)],
+) -> Response:
+    """Changes a point's mode through the same fixed-action form pattern as moving it.
+
+    The point id deliberately lives in the body: hx-boost reads a form action once
+    while processing the page, so changing an id in that path at submit time would
+    still send the request to the old target.
+    """
+    zone = _zone_or_404(session, principal, zone_id, "schedule.manage")
+    form = await request.form()
+    try:
+        point_id = int(str(form.get("point_id", "")).strip())
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND) from exc
+    point = _point_or_404(session, zone, point_id)
+    try:
+        try:
+            mode_id = int(str(form.get("mode_id", "")).strip())
+        except ValueError as exc:
+            raise ScheduleError("mode_id", "Bitte einen Modus auswählen.") from exc
+        change_schedule_point_mode(
+            session,
+            zone,
+            point,
+            mode_id=mode_id,
+            user_id=principal.user_id,
+            token_id=principal.token_id,
+        )
+    except ScheduleError as exc:
+        return _schedule_page(request, session, zone, principal, move_error=exc.notice)
     return RedirectResponse(
         f"/zones/{zone.id}/schedule", status_code=status.HTTP_303_SEE_OTHER
     )

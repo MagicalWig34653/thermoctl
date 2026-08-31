@@ -14,7 +14,7 @@ a matching header, because it never sees the cookie value it would have to sign.
 from fastapi import HTTPException, Request, status
 from sqlalchemy.orm import Session
 
-from thermoctl.auth.csrf import CSRF_HEADER, check_csrf
+from thermoctl.auth.csrf import CSRF_FIELD_NAME, CSRF_HEADER, check_csrf
 from thermoctl.auth.tokens import resolve_token
 from thermoctl.config import get_settings
 from thermoctl.db.models.credential import ApiToken
@@ -47,9 +47,6 @@ def kiosk_token_from_cookie(request: Request, session: Session) -> ApiToken | No
     if token is None or not token.is_kiosk:
         return None
     return token
-
-
-CSRF_FIELD_NAME = "csrf_token"
 
 
 async def kiosk_csrf_protection(request: Request) -> None:

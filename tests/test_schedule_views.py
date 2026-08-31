@@ -1,3 +1,5 @@
+import re
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
@@ -9,7 +11,11 @@ from thermoctl.auth.sessions import COOKIE_NAME
 from thermoctl.config import get_settings
 from thermoctl.db.models.operations import AuditEvent
 from thermoctl.db.models.schedule import SchedulePoint
-from thermoctl.domain.schedule import ScheduleError, move_schedule_point
+from thermoctl.domain.schedule import (
+    ScheduleError,
+    change_schedule_point_mode,
+    move_schedule_point,
+)
 
 
 def _csrf(client: TestClient) -> dict[str, str]:
@@ -601,3 +607,187 @@ def test_moving_a_point_onto_an_occupied_minute_names_the_field(
         move_schedule_point(session, zone, point, weekday=1, minute=420, user_id=None)
     assert fehler.value.field == "time_of_day"
     assert "bereits einen Punkt" in fehler.value.notice
+
+
+# --- Changing the mode -----------------------------------------------------
+
+
+def test_changing_a_point_mode_keeps_its_identifier_and_records_both_modes(
+    client_als, session: Session
+) -> None:
+    source(session, "web")
+    zone = create_zone(session, "moduswechsel")
+    comfort = create_mode(session, "komfort", "Komfort")
+    economy = create_mode(session, "sparen", "Sparen")
+    point = _point(session, zone.id, 1, 390, comfort.id)
+    point_id = point.id
+    client = client_als([("zone.read", zone.id), ("schedule.manage", zone.id)])
+
+    response = client.post(
+        f"/zones/{zone.id}/schedule/points/mode",
+        data={"point_id": str(point.id), "mode_id": str(economy.id)},
+        headers=_csrf(client),
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    session.refresh(point)
+    assert point.id == point_id
+    assert point.setpoint_mode_id == economy.id
+    event = session.scalars(
+        select(AuditEvent).where(AuditEvent.object_type == "schedule_point")
+    ).one()
+    assert "Modus" in event.summary and "geändert" in event.summary
+    assert event.detail == "Komfort → Sparen"
+
+
+def test_an_unknown_mode_is_rejected_by_the_domain(session: Session) -> None:
+    zone = create_zone(session, "unbekannter-modus")
+    comfort = create_mode(session, "komfort", "Komfort")
+    point = _point(session, zone.id, 1, 390, comfort.id)
+
+    with pytest.raises(ScheduleError) as error:
+        change_schedule_point_mode(
+            session, zone, point, mode_id=999999, user_id=None
+        )
+
+    assert error.value.field == "mode_id"
+    assert point.setpoint_mode_id == comfort.id
+
+
+def test_changing_to_the_current_mode_does_not_write_an_audit_event(
+    session: Session,
+) -> None:
+    source(session, "web")
+    zone = create_zone(session, "modus-unveraendert")
+    comfort = create_mode(session, "komfort", "Komfort")
+    point = _point(session, zone.id, 1, 390, comfort.id)
+
+    returned = change_schedule_point_mode(
+        session, zone, point, mode_id=comfort.id, user_id=None
+    )
+
+    assert returned is point
+    assert not session.scalars(
+        select(AuditEvent).where(AuditEvent.object_type == "schedule_point")
+    ).all()
+
+
+def test_a_point_from_another_zone_cannot_have_its_mode_changed(
+    client_als, session: Session
+) -> None:
+    own_zone = create_zone(session, "eigene-moduszone")
+    foreign_zone = create_zone(session, "fremde-moduszone")
+    comfort = create_mode(session, "komfort", "Komfort")
+    economy = create_mode(session, "sparen", "Sparen")
+    point = _point(session, foreign_zone.id, 1, 390, comfort.id)
+    client = client_als([("zone.read", own_zone.id), ("schedule.manage", own_zone.id)])
+
+    response = client.post(
+        f"/zones/{own_zone.id}/schedule/points/mode",
+        data={"point_id": str(point.id), "mode_id": str(economy.id)},
+        headers=_csrf(client),
+    )
+
+    assert response.status_code == 404
+    session.refresh(point)
+    assert point.setpoint_mode_id == comfort.id
+
+
+def test_changing_a_point_mode_requires_schedule_manage(client_als, session: Session) -> None:
+    zone = create_zone(session, "modus-ohne-recht")
+    comfort = create_mode(session, "komfort", "Komfort")
+    economy = create_mode(session, "sparen", "Sparen")
+    point = _point(session, zone.id, 1, 390, comfort.id)
+    client = client_als([("zone.read", zone.id)])
+
+    response = client.post(
+        f"/zones/{zone.id}/schedule/points/mode",
+        data={"point_id": str(point.id), "mode_id": str(economy.id)},
+        headers=_csrf(client),
+    )
+
+    assert response.status_code == 404
+    session.refresh(point)
+    assert point.setpoint_mode_id == comfort.id
+
+
+def test_changing_a_point_mode_without_csrf_is_rejected(client_als, session: Session) -> None:
+    zone = create_zone(session, "modus-ohne-csrf")
+    comfort = create_mode(session, "komfort", "Komfort")
+    economy = create_mode(session, "sparen", "Sparen")
+    point = _point(session, zone.id, 1, 390, comfort.id)
+    client = client_als([("zone.read", zone.id), ("schedule.manage", zone.id)])
+
+    response = client.post(
+        f"/zones/{zone.id}/schedule/points/mode",
+        data={"point_id": str(point.id), "mode_id": str(economy.id)},
+    )
+
+    assert response.status_code == 403
+    session.refresh(point)
+    assert point.setpoint_mode_id == comfort.id
+
+
+def test_invalid_mode_change_fields_are_rejected_understandably(
+    client_als, session: Session
+) -> None:
+    zone = create_zone(session, "ungueltiger-moduswechsel")
+    comfort = create_mode(session, "komfort", "Komfort")
+    point = _point(session, zone.id, 1, 390, comfort.id)
+    client = client_als([("zone.read", zone.id), ("schedule.manage", zone.id)])
+
+    invalid_point = client.post(
+        f"/zones/{zone.id}/schedule/points/mode",
+        data={"point_id": "keine Zahl", "mode_id": str(comfort.id)},
+        headers=_csrf(client),
+    )
+    missing_mode = client.post(
+        f"/zones/{zone.id}/schedule/points/mode",
+        data={"point_id": str(point.id), "mode_id": ""},
+        headers=_csrf(client),
+    )
+    unknown_mode = client.post(
+        f"/zones/{zone.id}/schedule/points/mode",
+        data={"point_id": str(point.id), "mode_id": "999999"},
+        headers=_csrf(client),
+    )
+
+    assert invalid_point.status_code == 404
+    assert "Bitte einen Modus auswählen." in missing_mode.text
+    assert "Dieser Modus ist nicht bekannt." in unknown_mode.text
+    session.refresh(point)
+    assert point.setpoint_mode_id == comfort.id
+
+
+def test_the_rendered_mode_form_changes_the_point_without_javascript(
+    client_als, session: Session
+) -> None:
+    source(session, "web")
+    zone = create_zone(session, "gerendertes-modusformular")
+    comfort = create_mode(session, "komfort", "Komfort")
+    economy = create_mode(session, "sparen", "Sparen")
+    point = _point(session, zone.id, 1, 390, comfort.id)
+    client = client_als([("zone.read", zone.id), ("schedule.manage", zone.id)])
+
+    page = client.get(f"/zones/{zone.id}/schedule")
+    match = re.search(
+        rf'<form[^>]*action="/zones/{zone.id}/schedule/points/mode"[^>]*>(.*?)</form>',
+        page.text,
+        re.S,
+    )
+    assert match is not None
+    body = match.group(1)
+    fields = dict(re.findall(r'name="([^"]+)" value="([^"]*)"', body))
+    fields["mode_id"] = str(economy.id)
+
+    response = client.post(
+        f"/zones/{zone.id}/schedule/points/mode",
+        data=fields,
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    session.refresh(point)
+    assert point.setpoint_mode_id == economy.id
+    assert 'type="submit">Ändern</button>' in body

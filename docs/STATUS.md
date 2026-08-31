@@ -2,6 +2,28 @@
 
 Letzte Aktualisierung: 2026-08-31
 
+## Der Modus eines Schaltpunkts lässt sich direkt ändern
+
+In der Zonen-Zeitplanansicht trägt die Liste „Schaltpunkte“ jetzt zu jedem Punkt den
+aktuellen Modus als Auswahl. Ein Wechsel wird mit HTMX unmittelbar abgeschickt; ein
+sichtbarer Knopf schickt dasselbe gewöhnliche Formular auch ohne JavaScript ab. Das
+Formular enthält sein CSRF-Token selbst, nach dem bereits in der Kiosk-Ansicht bewährten
+Muster. Der gemeinsame CSRF-Schutz der angemeldeten Oberfläche nimmt deshalb neben dem
+von HTMX gesetzten Header nun auch dieses versteckte Formularfeld an.
+
+Jeder echte Wechsel läuft durch die neue Domänenfunktion
+`change_schedule_point_mode`: Sie weist einen unbekannten Modus ab, behält die Kennung
+des Schaltpunkts und protokolliert Vorher und Nachher in genau einem Audit-Eintrag. Die
+Auswahl des bereits geltenden Modus erzeugt weder Änderung noch Protokolleintrag.
+
+Im Wochenraster führt ein kleiner, tastaturbedienbarer Link „Modus ändern“ an jedem
+eigenen Balken zur Auswahl desselben Punkts in der Liste. Bewusst liegt dort keine zweite
+Auswahl und kein Klick auf dem ganzen Balken: Beides nähme der großen Ziehfläche Platz
+oder konkurrierte mit ihrem Zeigerereignis. Das Ziehskript lässt interaktive Elemente im
+Balken ausdrücklich in Ruhe; seine Verdrahtung bleibt wie die übrigen Skripte in einem
+`WeakSet`, damit die Bedienung nach einer Wiederherstellung aus dem htmx-Verlauf weiter
+funktioniert.
+
 ## Meross ist angebunden — und der bisherige Schaltweg war falsch
 
 Gemeldet aus dem Betrieb: „die Meross-Schalter tauchen nirgends auf". Das stimmte, und der

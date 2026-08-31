@@ -78,6 +78,9 @@
 
     function wireBar(bar, days) {
         bar.addEventListener("pointerdown", function (event) {
+            if (event.target.closest("a, button, input, select, label")) {
+                return;
+            }
             // Primary button only. A right-click should open the context menu, not move
             // a bar.
             if (event.button !== 0) {
