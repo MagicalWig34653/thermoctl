@@ -321,6 +321,29 @@ der Aufrufer, welches von beidem gilt.
 Fähigkeiten werden erst dann neu berechnet; bis dahin stehen sie in der Datenbank noch
 ohne. Ein Neustart von Zigbee2MQTT genügt.
 
+**Nach dem Zurückgehen im Browser ließ sich nichts mehr ziehen.** Aus dem Betrieb
+gemeldet: ein Gerät per Ziehen zuordnen, auf eine Unterseite wechseln, zurück — und die
+Karten reagierten auf nichts mehr.
+
+htmx legt beim Navigieren eine Momentaufnahme der Seite in seinen Verlaufsspeicher und
+stellt sie beim Zurückgehen daraus wieder her. **Attribute überleben das,
+Ereignisbehandler nicht.** Die Skripte markierten sich mit `data-wired="yes"` im Markup,
+um sich nach jedem htmx-Tausch nicht doppelt zu verdrahten — diese Marke kam aus dem
+Speicher zurück, die Behandler nicht. `setUp()` sah die Marke, kehrte sofort um, und die
+Seite war tot.
+
+Die Marke liegt jetzt in einem `WeakSet` statt im Markup. Ein aus dem Speicher geparstes
+Element ist ein neues und wird neu verdrahtet; die Frage, ob ein Attribut eine
+Wiederherstellung übersteht, stellt sich gar nicht mehr. Alle fünf Skripte folgen
+derselben Regel — auch `permissions.js`, wo die Marke an einer Stelle saß, die htmx nicht
+austauscht. Sie war dort harmlos, aber nur solange das so bleibt, und niemand sollte sich
+das beim Lesen neu herleiten müssen.
+
+Ein Wächter in `tests/test_smoke_test.py` hält das Muster fern. Er liest den Quelltext,
+nicht das Verhalten — die Testsuite hat keinen Browser. Nachgemessen wurde von Hand:
+vorher zog die Karte nach dem Zurückgehen gar nicht mehr, nachher zieht sie, das Ziel
+hebt sich hervor, und Zuordnen wie Herausziehen kommen an.
+
 **Ein Thermostatventil kann jetzt auch selbst regeln.** Zwei Betriebsarten, und der
 Unterschied ist, wer entscheidet:
 

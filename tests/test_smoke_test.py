@@ -570,3 +570,32 @@ def test_the_thermostat_buttons_send_values_their_view_accepts(
         assert answer.status_code != 400, (
             f"Die Startseite schickt direction={direction!r}, die View lehnt es ab"
         )
+
+
+@pytest.mark.parametrize(
+    "script", sorted((TEMPLATES_DIR.parent / "static").glob("*.js"))
+)
+def test_no_script_marks_itself_wired_in_the_markup(script: Path) -> None:
+    """The "already wired" marker must not live in an attribute.
+
+    htmx stores a snapshot of the page in its history cache and restores it when the
+    browser goes back. Attributes survive that; event handlers do not. A `data-wired`
+    written by the script therefore came back **without** its handlers -- the marker
+    said "already wired", `setUp()` returned early, and from then on the page reacted
+    to nothing. Reported from use: after assigning a device by drag, going to another
+    page and coming back, nothing could be dragged any more.
+
+    A `WeakSet` cannot have that problem: it only ever contains elements of the current
+    document, and an element parsed back out of the cache is a new one.
+
+    Checked in the source rather than in a browser because the suite has no browser --
+    the behaviour itself was measured by hand, this only keeps the pattern from
+    returning.
+    """
+    text = script.read_text(encoding="utf-8")
+    offenders = re.findall(r"dataset\.\w*[Ww]ired\s*=", text)
+    assert not offenders, (
+        f"{script.name} schreibt seine Verdrahtungsmarke ins Markup: {offenders}. "
+        "Nach einer Wiederherstellung aus dem htmx-Verlauf ist die Marke da und der "
+        "Ereignisbehandler weg."
+    )

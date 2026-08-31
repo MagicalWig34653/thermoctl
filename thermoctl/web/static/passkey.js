@@ -21,6 +21,13 @@
 
     let conditionalRequest = null;
 
+    // Which buttons already carry a handler -- as a WeakSet, not as an attribute in the
+    // markup. htmx stores a snapshot of the page in its history cache and restores it
+    // when going back; attributes survive that, event handlers do not. A `data-wired`
+    // would come back without its handler, and the button would look wired while doing
+    // nothing at all.
+    const wired = new WeakSet();
+
     function isSupported() {
         return typeof window.PublicKeyCredential === "function"
             && typeof navigator.credentials === "object";
@@ -158,13 +165,13 @@
 
     function wireAuthentication() {
         const button = document.getElementById("passkey-login");
-        // `dataset.wired`: setUp() runs again on every content swap. Without the mark the
-        // same button would get several click handlers and trigger just as many
-        // authenticator requests.
-        if (!button || button.dataset.wired) {
+        // setUp() runs again on every content swap. Without the mark the same button
+        // would get several click handlers and trigger just as many authenticator
+        // requests.
+        if (!button || wired.has(button)) {
             return;
         }
-        button.dataset.wired = "yes";
+        wired.add(button);
         const hintField = document.getElementById("passkey-hint");
 
         function hint(text, isError) {
@@ -210,10 +217,10 @@
 
     function wireRegistration() {
         const button = document.getElementById("passkey-register");
-        if (!button || button.dataset.wired) {
+        if (!button || wired.has(button)) {
             return;
         }
-        button.dataset.wired = "yes";
+        wired.add(button);
         const hintField = document.getElementById("passkey-registration-hint");
 
         function hint(text, isError) {
