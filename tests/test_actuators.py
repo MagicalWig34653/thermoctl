@@ -354,6 +354,26 @@ async def test_thermostat_without_control_armed_sends_nothing(session: Session) 
 
 
 @pytest.mark.anyio
+async def test_thermostat_switching_off_is_bolted_shut_too(session: Session) -> None:
+    """Turning off moves the valve just as much as turning on.
+
+    Pointed out in a cross-review: the dry-run test covered only `switching(True)`.
+    `system_mode: off` closes a real valve motor, so it must not slip past the bolt
+    either -- and a valve that closes in the dry run is exactly as wrong as one that
+    opens.
+    """
+    mqtt = MqttStub()
+    result = await Zigbee2MqttThermostat(
+        session, mqtt, "zigbee2mqtt", "TRV-Wohnzimmer", Decimal("21.5")
+    ).switching(False)
+
+    assert mqtt.calls == []
+    assert result.executed is False
+    assert "haette gesendet" in result.description
+    assert "system_mode" in result.description
+
+
+@pytest.mark.anyio
 async def test_thermostat_peer_error_becomes_a_result_not_an_exception(
     session: Session,
 ) -> None:

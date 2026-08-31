@@ -90,14 +90,18 @@ def _collect_capabilities(
     return result
 
 
-def _feature_property_names(entries: list[object]) -> set[str]:
-    """Collects every `property` name anywhere in the expose tree, unfiltered.
+def _writable_property_names(entries: list[object]) -> set[str]:
+    """The names of the properties in one expose branch that can actually be **set**.
 
-    Separate from `_collect_capabilities`: that one only keeps names that already
-    map to a known capability. `system_mode` does not -- it is an operating mode,
-    not a measurable or switchable value by itself -- but its presence alongside
-    `occupied_heating_setpoint` is exactly what tells a thermostat apart from a
-    plain setpoint display.
+    Zigbee2MQTT states this in `access`, a bitmask: bit 1 means the value is published,
+    bit 2 that it can be written via `/set`. Only the second one matters here. A device
+    that merely *reports* `occupied_heating_setpoint` and `system_mode` -- a wall display
+    mirroring someone else's thermostat, for instance -- would otherwise be classified
+    as an actuator, and the service would send it commands it cannot obey. What that
+    looks like is a heating that never comes on, in winter, seeming like a bug in the
+    control logic (principle 7).
+
+    A property without `access` counts as not writable: an omission is not permission.
     """
     names: set[str] = set()
     for raw_item in entries:
@@ -105,12 +109,35 @@ def _feature_property_names(entries: list[object]) -> set[str]:
             continue
         entry = cast(Mapping[str, object], raw_item)
         property_name = _text(entry.get("property"))
-        if property_name is not None:
+        access = entry.get("access")
+        if property_name is not None and isinstance(access, int) and access & 2:
             names.add(property_name)
-        features = entry.get("features")
-        if isinstance(features, list):
-            names.update(_feature_property_names(cast(list[object], features)))
     return names
+
+
+def _is_thermostat(entries: list[object]) -> bool:
+    """Whether some expose describes a settable heating thermostat.
+
+    Both features have to sit in the **same** expose and both have to be writable.
+    Collecting names across the whole tree would let two unrelated branches -- an
+    unwritable setpoint here, some `system_mode` there -- add up to a thermostat that
+    exists nowhere on the device.
+    """
+    for raw_item in entries:
+        if not isinstance(raw_item, Mapping):
+            continue
+        entry = cast(Mapping[str, object], raw_item)
+        features = entry.get("features")
+        if not isinstance(features, list):
+            continue
+        branch = cast(list[object], features)
+        if _THERMOSTAT_FEATURES <= _writable_property_names(branch):
+            return True
+        # Nested composites: Zigbee2MQTT nests `climate` inside another expose for
+        # multi-endpoint devices.
+        if _is_thermostat(branch):
+            return True
+    return False
 
 
 def capabilities_from_exposes(
@@ -119,7 +146,7 @@ def capabilities_from_exposes(
     """Derives only explicitly agreed-upon capabilities from Zigbee2MQTT."""
     entries = cast(list[object], exposes)
     result = _collect_capabilities(entries)
-    if _THERMOSTAT_FEATURES <= _feature_property_names(entries):
+    if _is_thermostat(entries):
         result.add("thermostat")
     return frozenset(result)
 
