@@ -118,7 +118,10 @@ docker compose pull
 docker compose up -d
 ```
 
-Die Migrationen laufen beim Start von selbst. Der Weg zurück ist die vorherige Marke:
+Die Migrationen laufen beim Start von selbst. **Vorher einen Blick in
+[CHANGELOG.md](../CHANGELOG.md) werfen** — dort steht je Version, was beim Umstieg zu tun
+ist; zu 0.2.0 gehört etwa eine umbenannte Variable in der `.env`. Der Weg zurück ist die
+vorherige Marke:
 
 ```bash
 docker compose down
