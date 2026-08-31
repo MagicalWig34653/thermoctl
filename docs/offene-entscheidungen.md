@@ -9,8 +9,8 @@ verworfenen Alternativen festhalten, weiterarbeiten. Wer eine davon anders will,
 
 ## 2026-08-29 — CSRF-Schutz hängt am Router, nicht an der Route
 
-**Entschieden:** `csrf_schutz` ist eine FastAPI-Abhängigkeit, die über
-`APIRouter(dependencies=[Depends(csrf_schutz)])` an *jedem* Router der Oberfläche hängt.
+**Entschieden:** `csrf_protection` ist eine FastAPI-Abhängigkeit, die über
+`APIRouter(dependencies=[Depends(csrf_protection)])` an *jedem* Router der Oberfläche hängt.
 Sie greift nur bei zustandsändernden Methoden und nur, wenn die Anfrage ein Sitzungscookie
 trägt. Dazu kommt ein Wächtertest (`tests/test_csrf.py`), der jede zustandsändernde Route
 aufzählt und rot wird, sobald eine ohne diesen Schutz dazukommt.
@@ -41,7 +41,7 @@ Kein Ermessen, aber festhaltenswert, weil es die dritte Fehlerklasse derselben A
 
 Seit FastAPI 0.141 legt `include_router()` keine flache Routenliste mehr an: In
 `app.routes` steht ein `_IncludedRouter`, der den ursprünglichen Router unter
-`original_router` trägt. Beide Wächter — `test_endpunktabdeckung.py` und der neue
+`original_router` trägt. Beide Wächter — `test_endpoint_coverage.py` und der neue
 `test_csrf.py` — filterten `app.routes` auf `APIRoute` und fanden dadurch nur noch
 `/healthz`. Sie waren grün, weil sie nichts mehr prüften.
 
@@ -50,7 +50,7 @@ durch eine Gegenprobe für beide Wächter (Schutz entfernen beziehungsweise unge
 ergänzen — beide werden rot).
 
 Dabei fiel ein zweiter Mangel auf: Die Endpunktabdeckung wertete ihre Mitschrift **mitten
-im Lauf** aus, nach Dateinamen sortiert vor `test_rauchtest.py`. Sie hätte alles danach
+im Lauf** aus, nach Dateinamen sortiert vor `test_smoke_test.py`. Sie hätte alles danach
 Aufgerufene als ungeprüft gemeldet. `pytest_collection_modifyitems` zieht sie jetzt ans
 Ende des Laufs.
 
@@ -135,7 +135,7 @@ Mangel, in Phase 4 aber ein Blocker.
 
 ## 2026-08-29 — Die Regelentscheidung wird in Phase 2 gebaut, nicht erst in Phase 4
 
-**Entschieden:** `thermoctl/domain/regelung.py` — Hysterese, Mindestschaltdauer,
+**Entschieden:** `thermoctl/domain/control_loop.py` — Hysterese, Mindestschaltdauer,
 Fensterpause, Frostschutz bei Sensorausfall — entsteht in Phase 2 als reine Funktion und
 wird erschöpfend getestet. Geschaltet wird damit nichts.
 
@@ -273,7 +273,7 @@ Bedeutungen von `quelle` in einer Signatur wären eine Falle für den nächsten 
 
 ## 2026-08-30 — Sollwerte dürfen in den Minusbereich, bis −20 °C
 
-**Entschieden:** `MINDESTTEMPERATUR_C` in `thermoctl/domain/modi.py` steht auf −20,0 °C.
+**Entschieden:** `MINIMUM_TEMPERATURE_C` in `thermoctl/domain/modes.py` steht auf −20,0 °C.
 Auf Wunsch des Projektinhabers.
 
 **Warum nicht 1 °C, wie zuerst umgesetzt:** Mit einem Sollwert von 1 °C heizt die Anlage
@@ -301,10 +301,82 @@ vorkommt. Ebenso verworfen: gar keine Untergrenze — dann fällt eine kaputte N
 −273 nicht mehr auf.
 
 **Nebenbefund:** Beim Verschieben stellte sich heraus, dass die Grenze an **fünf** Stellen
-stand — in der Domäne, noch einmal von Hand in `alltag_views.py`, in der
+stand — in der Domäne, noch einmal von Hand in `daily_views.py`, in der
 Discovery-Nutzlast, im Markup des Übersteuerungsformulars und im Markup der
 Sollwertseite. Genau der Fehler, den das Projekt schon einmal behoben hatte. Ein
 Wächtertest sucht jetzt nach nackten Grenzwerten außerhalb der Domäne, in Python **und**
 in den Vorlagen; er brauchte drei Anläufe, und jeder Fehlgriff fiel erst bei der
 Gegenprobe auf — die erste Fassung übersprang die gesuchte Zeile, die zweite sah keine
 Vorlagen, die dritte meldete ein Minutenfeld.
+
+---
+
+## 2026-08-31 — Das Wandtablet bekommt ein Kiosk-Token statt gar keiner Anmeldung
+
+**Entschieden:** Der Wunsch lautete „öffentliches Dashboard". Gebaut ist ein langlebiges,
+widerrufbares **Kiosk-Token** mit engem Rechtesatz: sehen nur die zugewiesenen Zonen,
+bedienen nur `setpoint.write` und `override.create` und nur, wenn das beim Ausstellen
+erlaubt wurde. Es ist ein gewöhnlicher `ApiToken` und läuft durch dieselbe
+`Principal`-Maschinerie wie jeder andere Zugang.
+
+**Warum:** Eine wirklich unauthentifizierte Seite widerspricht Grundsatz 4. Im Altsystem war
+fehlende Auth eine akzeptierte Heimnetz-Eigenschaft, hier ausdrücklich nicht mehr — und ein
+Dashboard, das Sollwerte verstellen kann, ist kein Sonderfall davon, sondern genau der Fall,
+für den der Grundsatz da ist.
+
+**Verworfen:** Eine Freigabe nach IP-Bereich („alles aus dem Heimnetz darf"). Sie verlagert
+die Entscheidung ins Netz, wo sie niemand sieht, und ein Gastgerät im selben WLAN hätte
+dieselben Rechte wie das Tablet an der Wand.
+
+**Der Preis, ausdrücklich:** Wer das Tablet in der Hand hat, kann das Token aus dem Cookie
+auslesen und anderswo verwenden. Das ist die Eigenschaft eines Lesezeichens statt einer
+Anmeldung, abgefedert durch den engen Rechtesatz und die Widerrufbarkeit — keine
+Nachlässigkeit, aber auch nichts, was man übersehen sollte.
+
+---
+
+## 2026-08-31 — Ein Thermostatventil erkennt man am schreibbaren Sollwert, nicht am `system_mode`
+
+**Entschieden:** Als Thermostatventil gilt ein Gerät, dessen `occupied_heating_setpoint`
+Zigbee2MQTT als **beschreibbar** meldet. `system_mode` wird nicht verlangt.
+
+**Warum:** Die erste Fassung verlangte beides. Ein Bosch BTH-RA — drei davon hängen in
+dieser Anlage — hat kein `system_mode` und wäre damit als Aktor abgewiesen worden, also
+genau das Gerät, für das die Funktion gebaut ist. Was ein Ventil fahrbar macht, ist der
+schreibbare Sollwert; wie es ganz ausgeschaltet wird, ist die Frage des Adapters.
+
+**Was die Strenge ersetzt:** Die *Schreibbarkeit*. Eine Wandanzeige, die einen Sollwert nur
+meldet, kommt nicht durch — und das war die Sorge, die zur ersten Fassung geführt hatte.
+
+---
+
+## 2026-08-31 — Ein offenes Fenster senkt auch selbstregelnde Ventile
+
+**Entschieden:** Regelt ein Ventil selbst, schreibt thermoctl bei offenem Fenster den
+Frostschutz-Sollwert statt des geplanten.
+
+**Warum:** In dieser Betriebsart schaltet thermoctl nicht mehr — die einzige verbliebene
+Wirkung ist die Zahl, die es schreibt. Ohne diese Regel gälte „Fenster offen unterbricht
+das Heizen" für ausgerechnet die Zonen nicht mehr, in denen jemand ein modernes Ventil
+eingebaut hat. Das wäre ein Verlust, den niemand bestellt hat.
+
+**Verworfen:** Gar nichts zu schreiben, solange ein Fenster offen ist. Dann behielte das
+Ventil seinen letzten Sollwert und heizte weiter gegen das offene Fenster — schlechter als
+eine Zahl, die es kennt.
+
+---
+
+## 2026-08-31 — Bei doppelt genanntem Merkmal gewinnt das erste
+
+**Entschieden:** Nennt die Geräteliste dieselbe Eigenschaft mehrfach (mehrere Endpunkte,
+oder `switch` und `light` mit je einem `execute_if_off`), wird die **erste** übernommen und
+die weiteren verworfen.
+
+**Warum:** `device_property` hält eine Zeile je `(device_id, name)`. Zusammenführen hieße
+eine Regel zu erfinden, welche Grenze dann gilt — und eine aufgeweitete Grenze lässt später
+einen Wert durch, den das Gerät zurückweist. Die erste ist deterministisch und die, die ein
+Mensch beim Lesen der Geräteliste auch zuerst nennen würde.
+
+**Wie es auffiel:** Nicht durch Nachdenken, sondern im Betrieb — die UNIQUE-Bedingung brach
+die Verarbeitung der ganzen `bridge/devices`-Nachricht ab, und danach kam kein Gerät der
+Brücke mehr an.

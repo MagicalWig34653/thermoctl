@@ -35,21 +35,25 @@ def test_every_rest_endpoint_is_listed_in_the_documentation() -> None:
 
 
 def test_every_mcp_tool_is_listed_in_the_documentation() -> None:
-    from thermoctl.mcp import server
+    """The documented name has to be the **registered** one.
+
+    An assistant reads that table and calls what it says. This used to compare the
+    module's function names instead, and those are not what a client calls: the tool
+    registered as `override` is written `def mcp_override` and was reachable in the
+    module as `override_zone`. The documentation said `override_zone`, the test found
+    a function of that name, and everything looked consistent -- while every call
+    built from the documentation hit a tool that does not exist.
+    """
+    server_source = (ROOT / "thermoctl" / "mcp" / "server.py").read_text(encoding="utf-8")
+    registered = set(re.findall(r'@server\.tool\(name="([^"]+)"\)', server_source))
+    assert registered, "keine Werkzeuge gefunden — Muster veraltet?"
 
     text = (ROOT / "docs" / "mcp.md").read_text(encoding="utf-8")
-    # The module's public tool functions, excluding the `main` entry point.
-    tools = [
-        name
-        for name in dir(server)
-        if not name.startswith("_")
-        and name != "main"
-        and callable(getattr(server, name))
-        and getattr(getattr(server, name), "__module__", "") == server.__name__
-    ]
-    assert tools, "No tools were found at all -- the test would check nothing."
-    missing = [name for name in tools if f"`{name}(" not in text]
-    assert not missing, "docs/mcp.md does not describe these MCP tools: " + ", ".join(missing)
+    documented = set(re.findall(r"\| `(\w+)\(", text))
+    missing = sorted(registered - documented)
+    invented = sorted(documented - registered)
+    assert not missing, f"docs/mcp.md beschreibt diese MCP-Werkzeuge nicht: {missing}"
+    assert not invented, f"docs/mcp.md nennt Werkzeuge, die es nicht gibt: {invented}"
 
 
 def test_every_setting_is_listed_in_the_example_file() -> None:
@@ -63,3 +67,42 @@ def test_every_setting_is_listed_in_the_example_file() -> None:
     expected = {f"THERMOCTL_{name.upper()}" for name in Settings.model_fields}
     missing = sorted(expected - present)
     assert not missing, ".env.example does not know these settings: " + ", ".join(missing)
+
+
+
+LIVING_DOCS = [
+    "README.md",
+    "docs/STATUS.md",
+    "docs/api.md",
+    "docs/mcp.md",
+    "docs/mqtt.md",
+    "docs/offene-entscheidungen.md",
+    "docs/roadmap.md",
+    "docs/self-hosting.md",
+    "docs/sicherheitsdurchsicht.md",
+]
+
+
+def test_the_living_docs_name_no_file_that_no_longer_exists() -> None:
+    """A documentation that points at a renamed module sends the reader nowhere.
+
+    Only the *living* documents are checked -- the ones that describe the system as it
+    is now. The specs and plans under `docs/superpowers/` are deliberately left out:
+    they record what was decided at a point in time, and rewriting them to match
+    today's names would falsify the record. `bestandsaufnahme-altsystem.md` describes
+    the old system and is not ours to rename either.
+
+    Grew out of the English translation: half a dozen documents went on naming
+    `aktoren.py`, `fernbedienung.py` or `regelung.py` for two days after those files
+    had been renamed.
+    """
+    existing = {path.name for path in ROOT.rglob("*.py") if ".venv" not in path.parts}
+    existing |= {path.name for path in (ROOT / "thermoctl/web/static").glob("*.js")}
+
+    dead: list[str] = []
+    for name in LIVING_DOCS:
+        text = (ROOT / name).read_text(encoding="utf-8")
+        for mentioned in sorted(set(re.findall(r"`[\w/]*?(\w+\.(?:py|js))`", text))):
+            if mentioned not in existing:
+                dead.append(f"{name}: {mentioned}")
+    assert not dead, "Dokumentation nennt Dateien, die es nicht gibt:\n  " + "\n  ".join(dead)

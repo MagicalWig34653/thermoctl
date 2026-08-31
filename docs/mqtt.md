@@ -85,22 +85,22 @@ Angeschlossen. Sie behebt die drei Eigenheiten, die die
 [Bestandsaufnahme](bestandsaufnahme-altsystem.md) am gewachsenen Altsystem festhält.
 
 ```
-thermoctl/verfuegbarkeit                          online | offline  (Last Will)
-thermoctl/zustand/scharf                          true | false
-thermoctl/zonen/<id>/zustand/ist_temperatur
-thermoctl/zonen/<id>/zustand/sollwert
-thermoctl/zonen/<id>/zustand/betriebsart
-thermoctl/zonen/<id>/zustand/sensorzustand
-thermoctl/zonen/<id>/zustand/wuerde_heizen
-thermoctl/zonen/<id>/zustand/letzte_schaltung     ISO-8601 mit Zeitzone
-thermoctl/zonen/<id>/zustand/naechste_schaltung   ISO-8601 mit Zeitzone
-thermoctl/zonen/<id>/zustand/modus/<modus_id>     Solltemperatur dieses Modus
-thermoctl/zonen/<id>/zustand/parameter/<name>     wirksamer Regelparameter
-thermoctl/zonen/<id>/befehl/sollwert
-thermoctl/zonen/<id>/befehl/betriebsart
-thermoctl/zonen/<id>/befehl/boost                 zieht die nächste Schaltung vor
-thermoctl/zonen/<id>/befehl/modus/<modus_id>
-thermoctl/zonen/<id>/befehl/parameter/<name>
+thermoctl/availability                              online | offline  (Last Will)
+thermoctl/state/armed                               true | false
+thermoctl/zones/<id>/state/current_temperature
+thermoctl/zones/<id>/state/setpoint
+thermoctl/zones/<id>/state/operating_mode
+thermoctl/zones/<id>/state/sensor_state
+thermoctl/zones/<id>/state/would_heat
+thermoctl/zones/<id>/state/last_switch              ISO-8601 mit Zeitzone
+thermoctl/zones/<id>/state/next_switch              ISO-8601 mit Zeitzone
+thermoctl/zones/<id>/state/mode/<mode_id>           Solltemperatur dieses Modus
+thermoctl/zones/<id>/state/parameter/<name>         wirksamer Regelparameter
+thermoctl/zones/<id>/command/setpoint
+thermoctl/zones/<id>/command/operating_mode
+thermoctl/zones/<id>/command/boost                  zieht die nächste Schaltung vor
+thermoctl/zones/<id>/command/mode/<mode_id>
+thermoctl/zones/<id>/command/parameter/<name>
 ```
 
 **Alles Bleibende geht mit dem retain-Flag hinaus** — Anmeldungen wie Zustände. Ohne das
@@ -110,10 +110,10 @@ Der gleichnamige Schlüssel dort heißt in Home Assistant „sende *Befehle* mit
 und ein behaltener Befehl würde bei jeder Neuverbindung erneut zugestellt und erneut
 ausgeführt.
 
-**Abonniert werden zwei Muster**, `.../befehl/+` und `.../befehl/+/+`: `+` trifft in MQTT
-genau eine Ebene, nie null und nie zwei. Mit nur dem ersten käme `befehl/modus/3` nie an.
+**Abonniert werden zwei Muster**, `.../command/+` und `.../command/+/+`: `+` trifft in MQTT
+genau eine Ebene, nie null und nie zwei. Mit nur dem ersten käme `command/mode/3` nie an.
 
-Was ein Befehl bewirkt, steht in `domain/fernbedienung.py` — dieselben Funktionen, die auch
+Was ein Befehl bewirkt, steht in `domain/remote_control.py` — dieselben Funktionen, die auch
 die Oberfläche benutzt, mit denselben Grenzen:
 
 - **Sollwert** verstellt die Solltemperatur des Modus, der gerade gilt — nicht „jetzt
@@ -138,7 +138,7 @@ Drei Entscheidungen darin, jede mit Grund:
 
 - **Kein `/get`-Suffix an Zustands-Topics.** Das Altsystem hängt es an; es liest sich wie
   eine Aufforderung, ist aber eine Aussage.
-- **`zustand` und `befehl` in getrennten Teilbäumen.** Ein Abonnent, der den Zustandsbaum
+- **`state` und `command` in getrennten Teilbäumen.** Ein Abonnent, der den Zustandsbaum
   hört, bekommt nie seine eigenen Befehle zurück — der klassische Weg in eine
   Rückkopplung.
 - **Im Topic steht die Kennung der Zone, nicht ihr Name.** Namen dürfen Leerzeichen und
@@ -170,11 +170,11 @@ Je Zone trägt der Thermostat:
 
 | In Home Assistant | Kommt von / geht nach |
 |---|---|
-| Ist-Temperatur | `<präfix>/zonen/<id>/zustand/ist_temperatur` |
-| Soll-Temperatur (lesen und **setzen**) | `.../zustand/sollwert`, `.../befehl/sollwert` |
-| Betriebsart `auto`/`heat`/`off` (lesen und **setzen**) | `.../zustand/betriebsart`, `.../befehl/betriebsart` |
-| Anzeige „heizt / bereit" | `.../zustand/wuerde_heizen` |
-| Erreichbarkeit | `<präfix>/verfuegbarkeit` |
+| Ist-Temperatur | `<präfix>/zones/<id>/state/current_temperature` |
+| Soll-Temperatur (lesen und **setzen**) | `.../state/setpoint`, `.../command/setpoint` |
+| Betriebsart `auto`/`heat`/`off` (lesen und **setzen**) | `.../state/operating_mode`, `.../command/operating_mode` |
+| Anzeige „heizt / bereit" | `.../state/would_heat` |
+| Erreichbarkeit | `<präfix>/availability` |
 
 Grenzen: −20 bis 35 °C, Schrittweite 0,5 K. Sie stehen in der Discovery-Nutzlast **und** in
 der Domäne — Home Assistant zeigt sie an, abgewiesen wird an derselben Stelle wie ein
@@ -182,14 +182,44 @@ Klick in der Oberfläche.
 
 Was ein eingehender Befehl bewirkt:
 
-- **Soll-Temperatur** → eine Übersteuerung mit fester Temperatur, wie ein „Übersteuern"
-  auf der Startseite. Nicht der hinterlegte Sollwert des Modus: Wer am Thermostat dreht,
-  meint „jetzt", nicht „ab jetzt immer".
+- **Soll-Temperatur** → die Solltemperatur des Modus, der gerade gilt. Nicht eine
+  Übersteuerung: Die wäre nach dem nächsten Schaltpunkt wieder weg, und der Regler spränge
+  scheinbar von selbst zurück. Läuft eine Übersteuerung mit fester Temperatur, gibt es
+  keinen Modus zum Verstellen — dann wird sie selbst gesetzt. Dieselbe Regel wie in
+  Abschnitt 2; sie steht an einer Stelle im Code (`domain/remote_control.py`) und wird von
+  Oberfläche, REST, MCP und Home Assistant gleichermaßen benutzt.
 - **Betriebsart** → die Betriebsart der Zone (`auto`, `manual`, `off`).
 
 Beides läuft über dieselben Domänenfunktionen wie Oberfläche, REST und MCP und steht mit
 der Quelle `system` im Audit-Protokoll — niemand hat sich dafür angemeldet, und das soll
 dort auch so dastehen.
+
+## 4a. Schreiben an Geräte: der Zigbee2MQTT-Zweig
+
+Neben der eigenen Struktur schreibt der Dienst auch direkt an Geräte, und zwar in deren
+Zweig — `<basis>/<gerät>/set`, also dort, wo Zigbee2MQTT zuhört. Drei Fälle, und sie
+unterscheiden sich genau darin, ob etwas Physisches passiert:
+
+| Was | Nutzlast | `switches` |
+|---|---|---|
+| Anzeige auf einem Bediengerät | z. B. `{"external_temperature": 21.5}` | `False` |
+| Schaltbefehl an ein Ventil | `{"state": "ON"}` bzw. `{"state": "OFF"}` | `True` |
+| Sollwert an ein selbstregelndes Thermostatventil | `{"occupied_heating_setpoint": 21.0}`, dazu die gemessene Raumtemperatur, wo das Gerät sie annimmt | `True` |
+
+**Die dritte Zeile ist die, bei der man sich vertun kann.** Ein Sollwert sieht aus wie ein
+Anzeigewert — es ist eine Zahl, die auf einem Display landet. Er bewegt aber einen
+Ventilmotor, und deshalb trägt er `switches=True` und geht durch beide Riegel. Wäre er als
+Anzeige eingestuft, hätte der Trockenlauf ein Loch in genau der Größe dieser Funktion.
+
+Die zweite Zeile hat ihr Gegenstück für Thermostatventile: Die kennen kein `state`, sie
+werden über `system_mode` und `occupied_heating_setpoint` gefahren. Ein Ventil ohne
+`system_mode` — ein Bosch BTH-RA etwa — wird ausgeschaltet, indem sein Sollwert auf den
+niedrigsten Wert gesetzt wird, den es annimmt.
+
+Geschrieben wird nur, was das Gerät als beschreibbar meldet und was innerhalb der Grenzen
+liegt, die es angibt. Zigbee2MQTT verwirft eine Nutzlast außerhalb dieser Grenzen **ohne
+Fehler** — und verwirft die ganze Nachricht, nicht das einzelne Feld. Ein ungeprüfter
+Messwert hätte also auch den Sollwert gekostet.
 
 ## 5. Die beiden Riegel — und was sie *nicht* sperren
 
@@ -197,14 +227,16 @@ Sie gelten dem **Schalten**, nicht dem Melden:
 
 1. **Beim Bau des Clients**, aus `setting.control_armed` gelesen — einmal, beim Start.
 2. **Bei jedem Schaltbefehl**, ebenfalls aus `setting.control_armed`
-   (`integrations/aktoren.py`).
+   (`integrations/actuators.py`).
 
 Der zweite wirkt sofort, der erste erst nach einem Neustart. Wer die Anlage im laufenden
 Betrieb scharf schaltet, hat bis dahin einen Zustand, in dem scharf entschieden und
 trotzdem kein Ventil bewegt wird; die Betriebsseite sagt das ausdrücklich.
 
-Zustandsmeldungen und die Home-Assistant-Anmeldung gehen an beiden vorbei — sie bewegen
-nichts. Der Parameter am Client heißt deshalb `schaltet` und beschreibt, was eine Nachricht
+Zustandsmeldungen, die Home-Assistant-Anmeldung und Anzeigewerte auf Bediengeräten gehen an
+beiden vorbei — sie bewegen nichts. Der Sollwert an ein **selbstregelndes** Ventil dagegen
+nicht: Er bewegt einen Ventilmotor und liegt deshalb hinter denselben zwei Riegeln wie ein
+Schaltbefehl (Abschnitt 4a). Der Parameter am Client heißt deshalb `switches` und beschreibt, was eine Nachricht
 **bewirkt**, nicht wie dringend ein Aufrufer sie meint.
 
 ## 6. Abgemeldet wird nur, was es nicht mehr gibt

@@ -6,8 +6,14 @@ REST-Schnittstelle und einen MCP-Server.
 
 Was heute läuft: Sensoren werden über Zigbee2MQTT eingelesen, Messwerte fortgeschrieben,
 ausgefallene Sensoren erkannt und gemeldet. Räume, Geräte, Sollwerte und Zeitpläne lassen
-sich vollständig über die Oberfläche pflegen. Für jede Zone wird protokolliert, **was
-geschaltet würde und warum**.
+sich vollständig über die Oberfläche pflegen — Geräte per Ziehen und Ablegen. Für jede Zone
+wird protokolliert, **was geschaltet würde und warum**.
+
+Dazu: Bediengeräte und Zigbee-Heizkörperthermostate frei konfigurierbar (ein Thermostat
+kann das Ventil auch selbst regeln und bekommt dann nur Soll- und Ist-Temperatur), eine
+optionale Absenkung, wenn die Sonnenprognose sie erlaubt, ein Dashboard für ein Wandtablet
+hinter einem widerrufbaren Kiosk-Token, und die Home-Assistant-Anbindung über
+MQTT-Discovery.
 
 **Geschaltet wird noch nichts.** Das ist Absicht: Der Dienst läuft im Schattenbetrieb, bis
 seine Entscheidungen gegen die bestehende Anlage geprüft sind. Zwei unabhängige Riegel
@@ -84,7 +90,8 @@ Vergleichsbetrieb gegen die bestehende Anlage und die Übernahme der Altdaten. B
 `thermoctl` keine betriebsfertige Heizungssteuerung, sondern ein Beobachter, der mitschreibt,
 was er täte.
 
-Ebenfalls offen: die Home-Assistant-Anbindung (die Topic-Struktur ist entworfen, das
-Veröffentlichen wartet auf den scharfen Betrieb).
+Die Home-Assistant-Anbindung ist dagegen angeschlossen: Sie meldet die Zonen an,
+veröffentlicht ihren Zustand und nimmt Sollwert und Betriebsart entgegen — was davon ein
+Ventil bewegt, wartet wie alles andere auf den scharfen Betrieb.
 
 Der Stand im Einzelnen: [docs/STATUS.md](docs/STATUS.md) und [docs/roadmap.md](docs/roadmap.md).

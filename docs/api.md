@@ -150,7 +150,7 @@ Zurücknehmen in den Trockenlauf ist sie freiwillig, weil das der Weg ist, den j
 Eile geht. Fehlt sie beim Scharfschalten, antwortet der Dienst mit `422`.
 
 **Scharfschalten hebt nur den Riegel, den die Datenbank hält.** Der zweite Riegel —
-`MqttClient(schalten_erlaubt=…)`, beim Bau des Clients gesetzt — bleibt davon unberührt.
+`MqttClient(switching_allowed=…)`, beim Bau des Clients gesetzt — bleibt davon unberührt.
 
 `PUT /api/v1/control/defaults` (`setting.manage`) schreibt die globalen Vorgaben. Alle
 Felder aus der Antwort von `GET /api/v1/control` außer `control_armed` sind Pflicht; die

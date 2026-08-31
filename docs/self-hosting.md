@@ -146,6 +146,38 @@ Das Log ist strukturiert (`THERMOCTL_LOG_FORMAT=json`, für Menschen `text`) und
 Geheimnisse. Jede Antwort trägt eine `X-Request-ID`, die in jeder zugehörigen Logzeile
 wieder auftaucht — damit lässt sich ein einzelner Aufruf durch das ganze Log verfolgen.
 
+## 7a. Ein Wandtablet
+
+Unter `/kiosk` gibt es eine eigene, große Ansicht für ein Tablet an der Wand: je Zone
+Ist-Temperatur, Sollwert und Betriebsart, und — wenn erlaubt — zwei Knöpfe für den
+Sollwert und einer für den Boost.
+
+**Sie ist nicht öffentlich.** Ein Dashboard ohne Anmeldung widerspräche dem Grundsatz, dass
+Authentifizierung Pflicht ist. Stattdessen wird unter *Einstellungen → Kiosk-Tokens* ein
+Token ausgestellt:
+
+1. Namen vergeben, damit man das Gerät später wiedererkennt.
+2. Die Zonen ankreuzen, die das Tablet sehen darf.
+3. „Auch bedienen" nur setzen, wenn am Tablet wirklich verstellt werden soll — sonst zeigt
+   es nur an.
+4. Optional eine Gültigkeit in Tagen. Ein befristetes Token ist die sicherere Wahl.
+
+Die Adresse erscheint **einmal** im Klartext, in der Form `/kiosk/<token>`. Diese Adresse
+als Lesezeichen auf dem Tablet ablegen; danach lebt das Token nur noch in einem Cookie, und
+die Adresszeile zeigt das nackte `/kiosk`. Gespeichert wird nur ein Hash — geht die Adresse
+verloren, stellt man ein neues Token aus und widerruft das alte.
+
+Was ein Kiosk-Token **nicht** kann: Einstellungen, Benutzer, Geräte, Protokoll, andere
+Zonen, Scharfschalten. Es antwortet dort mit `401`.
+
+Zwei Dinge, die man wissen sollte:
+
+- **Wer das Tablet in der Hand hat, kann das Token auslesen.** Es steht im Cookie des
+  Browsers. Das ist der Preis eines Lesezeichens statt einer Anmeldung; abgefedert wird es
+  durch den engen Rechtesatz und dadurch, dass sich das Token jederzeit widerrufen lässt.
+- **Im Trockenlauf bewegt auch das Tablet nichts.** Ein dort verstellter Sollwert ändert
+  die Entscheidung, aber solange nicht scharf geschaltet ist, bewegt er kein Ventil.
+
 ## 8. Passkeys
 
 Ein Passkey ersetzt das Passwort: Der geheime Teil verlässt das Gerät nie, und er lässt

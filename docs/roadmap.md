@@ -19,7 +19,7 @@ Phase 1 geschehen ist. Features, die aus der unverbindlichen
 | 1 | Fundament | **umgesetzt**, `v0.1.0` | Nichts sichtbar, aber alles Weitere hängt daran |
 | 1a | Nacharbeiten | **umgesetzt** | Oberfläche benutzbar |
 | 2 | Geräte-Anbindung im Schattenbetrieb | **gebaut**, Laufzeit an der Anlage offen | Belegt gegen die echte Anlage, dass die Daten stimmen |
-| 3 | Konfigurations-Oberfläche | **umgesetzt** | Ende der SQL-Pflege — ab hier im Alltag nützlich |
+| 3 | Konfigurations-Oberfläche | **umgesetzt**, seither erweitert | Ende der SQL-Pflege — ab hier im Alltag nützlich |
 | 4 | Regelkreis und Cutover | Logik gebaut, **nichts scharf** | Heizt wirklich; Altsystem wird abgelöst |
 | 5 | Integrationen und Veröffentlichung | teilweise vorgezogen | Für Fremde aufsetzbar |
 
@@ -231,6 +231,33 @@ abgeschaltet ist.
 Vorgezogen wurde, was nicht auf Phase 4 wartet.
 
 **Fertig, wenn** jemand ohne Zutun des Autors eine eigene Instanz aufsetzen kann.
+
+---
+
+## Nach Phase 3 dazugekommen
+
+Nicht in den ursprünglichen Phasen vorgesehen, auf Zuruf gebaut. Alles davon steht und ist
+gegen beide Datenbanken geprüft; was noch an der echten Anlage nachzuweisen ist, steht in
+[STATUS.md](STATUS.md).
+
+- [x] **Bediengeräte konfigurierbar** — jedes Zigbee2MQTT-Gerät unter `/controllers`:
+      lesbare Merkmale auf Sollwert oder Betriebsart legen, schreibbare mit Sensor-,
+      Zonen- oder festen Werten belegen. Tastenbelegung dort statt an der Zone.
+- [x] **Zigbee-Heizkörperthermostate (WT-A03E, BTH-RA)** — als Aktor zuweisbar; ein
+      Thermostatventil ist kein Schalter und wird über Sollwert und, wo vorhanden,
+      `system_mode` gefahren.
+- [x] **Thermostatventile können selbst regeln** — dann schreibt thermoctl nur Soll- und,
+      wo das Gerät es annimmt, Ist-Temperatur; das Ventil regelt damit gegen den Raum
+      statt gegen den Heizkörper, an dem sein eigener Fühler sitzt.
+- [x] **Sonnenprognose-Absenkung** — senkt den Sollwert, wenn in den nächsten Stunden Sonne
+      zu erwarten ist. Je Zone gewichtet, begrenzt, Frostschutz bleibt Untergrenze.
+      Optional und ab Werk aus.
+- [x] **Wandtablet-Dashboard** unter `/kiosk` — mit widerrufbarem Kiosk-Token statt ohne
+      Anmeldung, siehe [self-hosting.md](self-hosting.md#7a-ein-wandtablet).
+- [x] **Alles außer der Prosa auf Englisch** — Bezeichner, Endpunkte, MQTT-Topics,
+      Vorlagen, CSS, Kommentare und Testnamen. Sichtbarer Text bleibt deutsch.
+- [x] **Testabdeckung auf 100 %** — jede Zeile geprüft oder mit begründeter Ausnahme; die
+      CI-Schwelle steht entsprechend.
 
 ---
 
