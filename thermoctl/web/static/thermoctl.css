@@ -758,6 +758,39 @@ body {
     line-height: 1.25;
 }
 
+/* Der Verweis "Modus aendern" in einem Balken der Wochenansicht. Er ist absolut in der
+   Ecke platziert statt in den Textfluss gestellt: so braucht er keine eigene Zeile und
+   damit keine eigene Hoehe -- ein Balken von 22:00 bis Mitternacht ist rund 2rem hoch
+   und haette Uhrzeit, Modus und einen zusaetzlichen Knopf darin nicht mehr aufnehmen
+   koennen. Im Ruhezustand ist er unsichtbar (opacity statt display/visibility, damit er
+   ueber Tab weiterhin erreichbar und fuer Screenreader vorhanden bleibt) und erscheint
+   erst bei Hover ueber dem Balken oder bei Tastaturfokus -- eine reine Hover-Loesung
+   waere ohne Maus nicht bedienbar gewesen. */
+.schedule-mode-link {
+    position: absolute;
+    top: 0.15rem;
+    right: 0.15rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.15rem;
+    height: 1.15rem;
+    line-height: 1;
+    font-size: 0.7rem;
+    border-radius: 0.2rem;
+    color: var(--ink);
+    background: color-mix(in srgb, var(--surface) 75%, transparent);
+    text-decoration: none;
+    opacity: 0;
+    transition: opacity 0.1s ease-in-out;
+}
+
+.schedule-bar:hover .schedule-mode-link,
+.schedule-bar:focus-within .schedule-mode-link,
+.schedule-mode-link:focus-visible {
+    opacity: 1;
+}
+
 /* ── Kiosk-Dashboard ────────────────────────────────────────────────────────────
  * Ein Wandtablett wird aus etwa zwei Metern gelesen, nicht von einer Handbreit
  * entfernt. Alles hier ist deshalb deutlich groesser als anderswo im Programm --
