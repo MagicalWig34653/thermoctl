@@ -46,6 +46,7 @@ from thermoctl.db.models.state import ShadowDecision, ZoneState
 from thermoctl.db.models.zone import SetpointMode, Zone, ZoneSetpoint
 from thermoctl.domain.controller_channels import may_be_written
 from thermoctl.domain.schedule import end_of_next_switch, resolved_setpoint
+from thermoctl.domain.self_regulating import SETPOINT_PROPERTY, valve_commands
 from thermoctl.domain.zone_settings import PARAMETERS, control_parameters
 from thermoctl.integrations.actuators import MqttPublisher, switching_allowed
 from thermoctl.integrations.mqtt.publication import (
@@ -84,6 +85,10 @@ class PublicationState:
     registered: dict[int, list[str]] = field(default_factory=dict)
     service_registered: bool = False
     controller_values: dict[int, object] = field(default_factory=dict)
+    # Per self-regulating valve, the payload last sent. Resending an unchanged one
+    # every cycle would fill the radio with commands that change nothing -- and a
+    # Zigbee device that gets a command every few seconds costs battery for it.
+    valve_commands: dict[int, str] = field(default_factory=dict)
 
 
 def _as_text(value: object) -> str:
@@ -161,7 +166,59 @@ async def cycle(
     for zone in zones:
         sent_count += await _send_zone_state(session, client, zone, prefix, now)
     sent_count += await _send_controller_channels(session, client, state, get_settings().mqtt_base_topic, now)
+    for zone in zones:
+        sent_count += await _send_self_regulating_valves(
+            session, client, state, get_settings().mqtt_base_topic, zone, now
+        )
     return sent_count
+
+
+async def _send_self_regulating_valves(
+    session: Session,
+    client: MqttPublisher,
+    state: PublicationState,
+    base: str,
+    zone: Zone,
+    now: datetime,
+) -> int:
+    """Tells every self-regulating valve of this zone what to aim for.
+
+    **These messages move a valve.** They carry `switches=True` and go through
+    `switching_allowed` first -- the same two bolts as an on/off command, because the
+    physical effect is the same. A setpoint written to a thermostatic valve is not a
+    display value, and treating it as one would be a way around the dry run.
+
+    Only what changed is sent. The setpoint stands still for hours at a time, and a
+    battery-powered valve should not receive the same number every cycle.
+    """
+    if not switching_allowed(session):
+        return 0
+
+    sent = 0
+    for command in valve_commands(session, zone, now):
+        payload_values: dict[str, object] = {
+            SETPOINT_PROPERTY: float(command.setpoint_c)
+        }
+        if command.temperature_property is not None and command.temperature_c is not None:
+            payload_values[command.temperature_property] = float(command.temperature_c)
+        payload = json.dumps(payload_values, ensure_ascii=False, separators=(",", ":"))
+        if state.valve_commands.get(command.device.id) == payload:
+            continue
+
+        topic = f"{base.rstrip('/')}/{command.device.external_id}/set"
+        if await client.publishing(topic, payload, switches=True):
+            state.valve_commands[command.device.id] = payload
+            sent += 1
+            log.info(
+                "Selbstregelndes Ventil gestellt",
+                extra={
+                    "zone_id": zone.id,
+                    "geraet": command.device.display_name,
+                    "sollwert": str(command.setpoint_c),
+                    "begruendung": command.reason,
+                },
+            )
+    return sent
 
 
 async def _register_zone(

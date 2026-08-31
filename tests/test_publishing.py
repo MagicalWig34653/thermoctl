@@ -6,10 +6,12 @@ operating state stays visible while doing so, and when something is
 deregistered.
 """
 
+import json
 from datetime import datetime
 from decimal import Decimal
 
 import pytest
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from tests.helpers import create_settings, create_zone, operating_mode, source
@@ -377,3 +379,159 @@ async def test_state_switch_times_and_sensor_situation_go_along(session: Session
     # 05:00, not 06:30: at 06:30 only what already held was confirmed.
     # With a time zone, because `device_class: timestamp` requires one.
     assert messages[f"{base}/last_switch"] == "2026-08-31T05:00:00+00:00"
+
+
+def _zone_with_self_regulating_valve(  # type: ignore[no-untyped-def]
+    session: Session, name: str, *, external_temperature: bool = False
+):
+    """A zone whose valve regulates itself, with a setpoint of 21 degrees."""
+    from decimal import Decimal as _Decimal
+
+    from tests.helpers import create_device, create_mode, role
+    from thermoctl.db.models.device import (
+        DeviceCapabilityLink,
+        DeviceProperty,
+        ZoneDevice,
+    )
+    from thermoctl.db.models.lookup import DeviceCapability
+    from thermoctl.db.models.schedule import SchedulePoint
+    from thermoctl.db.models.zone import ZoneSetpoint
+
+    zone = create_zone(session, name)
+    mode = create_mode(session, f"tag-{name}")
+    session.add(
+        ZoneSetpoint(zone_id=zone.id, setpoint_mode_id=mode.id, temperature_c=_Decimal("21.0"))
+    )
+    # Ohne Schaltpunkt faellt der Sollwert auf den Frostschutz zurueck -- der Test
+    # pruefte dann die Ausweichregel statt des Zeitplans.
+    session.add(
+        SchedulePoint(
+            zone_id=zone.id, weekday=NOW.isoweekday(), minute_of_day=0, setpoint_mode_id=mode.id
+        )
+    )
+    valve = create_device(session, f"{name}-ventil")
+    capability = session.scalar(
+        select(DeviceCapability).where(DeviceCapability.code == "thermostat")
+    )
+    if capability is None:
+        capability = DeviceCapability(code="thermostat", label="Thermostatventil")
+        session.add(capability)
+        session.flush()
+    session.add(DeviceCapabilityLink(device_id=valve.id, capability_id=capability.id))
+    session.add(
+        ZoneDevice(
+            zone_id=zone.id,
+            device_id=valve.id,
+            device_role_id=role(session, "actuator").id,
+            self_regulating=True,
+        )
+    )
+    session.add(
+        DeviceProperty(
+            device_id=valve.id,
+            name="occupied_heating_setpoint",
+            value_type="numeric",
+            unit="°C",
+            min_value=_Decimal("5"),
+            max_value=_Decimal("30"),
+            is_readable=True,
+            is_writable=True,
+        )
+    )
+    if external_temperature:
+        session.add(
+            DeviceProperty(
+                device_id=valve.id,
+                name="external_temperature_input",
+                value_type="numeric",
+                unit="°C",
+                min_value=_Decimal("-40"),
+                max_value=_Decimal("125"),
+                is_readable=True,
+                is_writable=True,
+            )
+        )
+    session.flush()
+    return zone
+
+
+@pytest.mark.anyio
+async def test_a_self_regulating_valve_is_not_written_to_in_the_dry_run(
+    session: Session,
+) -> None:
+    """The whole point of the two bolts, on the newest path to a valve.
+
+    A setpoint written to a thermostatic valve moves a valve motor. It is not a
+    display value, and treating it as one would be a way around the dry run -- so it
+    travels as a switching message and nothing at all leaves during the dry run.
+    """
+    create_settings(session)
+    source(session, "web")
+    _zone_with_self_regulating_valve(session, "trockenlaufzone")
+
+    client = Mitschrift()
+    await cycle(session, client, PublicationState(), "thermoctl", NOW)
+
+    assert [topic for topic in client.topics() if topic.endswith("/set")] == []
+    assert client.switched == []
+
+
+@pytest.mark.anyio
+async def test_an_armed_plant_tells_the_valve_its_setpoint_once(session: Session) -> None:
+    """Armed it goes out -- and only when something changed.
+
+    The setpoint stands still for hours; a battery-powered valve should not get the
+    same number every cycle.
+    """
+    create_settings(session)
+    source(session, "web")
+    _zone_with_self_regulating_valve(session, "scharfzone")
+    arm(session, True, reason="vier Tage verglichen", user_id=None)
+    session.flush()
+
+    client, state = Mitschrift(), PublicationState()
+    await cycle(session, client, state, "thermoctl", NOW)
+
+    commands = [(t, p) for t, p in client.messages if t.endswith("/set")]
+    assert len(commands) == 1
+    topic, payload = commands[0]
+    assert topic.endswith("/scharfzone-ventil/set")
+    assert json.loads(payload)["occupied_heating_setpoint"] == 21.0
+    # It moves a valve, so it is a switching message.
+    assert topic in client.switched
+
+    await cycle(session, client, state, "thermoctl", NOW)
+    assert len([t for t, _ in client.messages if t.endswith("/set")]) == 1
+
+
+@pytest.mark.anyio
+async def test_the_measured_room_temperature_goes_out_with_the_setpoint(
+    session: Session,
+) -> None:
+    """Both in one message, and that is deliberate.
+
+    The valve is meant to regulate against the room, not against the radiator it is
+    screwed to. Sent separately the two could arrive in either order, and a valve that
+    briefly has the new setpoint and the old temperature would act on a combination
+    that was never intended.
+    """
+    from tests.helpers import create_zone_state
+
+    create_settings(session)
+    source(session, "web")
+    zone = _zone_with_self_regulating_valve(
+        session, "aussenfuehlerzone", external_temperature=True
+    )
+    state = create_zone_state(session, zone)
+    state.temperature_c = Decimal("19.5")
+    arm(session, True, reason="vier Tage verglichen", user_id=None)
+    session.flush()
+
+    client = Mitschrift()
+    await cycle(session, client, PublicationState(), "thermoctl", NOW)
+
+    payload = next(p for t, p in client.messages if t.endswith("/set"))
+    assert json.loads(payload) == {
+        "occupied_heating_setpoint": 21.0,
+        "external_temperature_input": 19.5,
+    }

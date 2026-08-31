@@ -321,6 +321,52 @@ der Aufrufer, welches von beidem gilt.
 Fähigkeiten werden erst dann neu berechnet; bis dahin stehen sie in der Datenbank noch
 ohne. Ein Neustart von Zigbee2MQTT genügt.
 
+**Ein Thermostatventil kann jetzt auch selbst regeln.** Zwei Betriebsarten, und der
+Unterschied ist, wer entscheidet:
+
+- **thermoctl schaltet** (Vorgabe). Es rechnet an/aus mit Hysterese, Mindestschaltdauer
+  und Fensterkontakt und fährt das Ventil. Das Thermostat ist ein Schalter, der zufällig
+  Thermostat spricht.
+- **Das Ventil regelt selbst.** thermoctl sagt nur noch, worauf — den Sollwert und, wo das
+  Gerät ein Merkmal dafür anbietet, die anderswo gemessene Raumtemperatur. Das ist, wofür
+  ein Heizkörperthermostat gebaut ist, und es hat einen handfesten Vorteil: Sein eigener
+  Fühler sitzt am Heizkörper und misst mehrere Grad zu warm. Mit der Temperatur eines
+  Fühlers an der gegenüberliegenden Wand regelt es gegen den Raum statt gegen sich selbst.
+
+Umgeschaltet wird je Zuordnung auf der Geräteseite der Zone — die Angabe beschreibt, wie
+*diese* Zone *dieses* Ventil fährt. Angeboten nur dort, wo sie etwas bedeutet: bei einem
+Aktor, der ein Thermostat ist. Eine Steckdose regelt nicht selbst, und die Domäne weist
+den Versuch ab, nicht nur die Oberfläche. Die Umstellung steht im Protokoll, weil sie
+ändert, wie ein echtes Ventil gefahren wird.
+
+Drei Eigenschaften, auf die es ankommt:
+
+- **Ein geschriebener Sollwert bewegt ein Ventil.** Er ist kein Anzeigewert. Die Nachricht
+  trägt deshalb `switches=True` und geht durch beide Riegel des Trockenlaufs — im
+  Trockenlauf verlässt nichts das Haus. Wäre es anders, hätte der Trockenlauf ein Loch in
+  genau der Größe dieser Funktion.
+- **Ein offenes Fenster senkt den geschriebenen Sollwert auf den Frostschutz.** Sonst
+  gälte „Fenster offen unterbricht das Heizen" für ausgerechnet diese Zonen nicht mehr:
+  thermoctl schaltet sie ja nicht, die einzige verbliebene Wirkung ist die Zahl, die es
+  schreibt. Der Frostschutzwert kommt aus derselben Funktion wie überall — zweimal
+  gerechnet liefe er irgendwann auseinander, und der Unterschied wäre ein Raum, der auf
+  einem Weg einfriert und auf dem anderen nicht.
+- **Geschrieben wird nur, was das Gerät annimmt.** Zigbee2MQTT verwirft eine Nutzlast
+  außerhalb der angegebenen Grenzen ohne Fehler — und verwirft die *Nachricht*, nicht das
+  einzelne Feld. Ein unplausibler Messwert hätte also auch den Sollwert gekostet. Beide
+  Werte gehen in einer Nachricht hinaus, damit nie die neue Soll- mit der alten
+  Ist-Temperatur zusammentrifft, und Unverändertes wird gar nicht erst gesendet: Ein
+  batteriebetriebenes Ventil soll nicht jeden Zyklus dieselbe Zahl bekommen.
+
+Welches Merkmal die Ist-Temperatur aufnimmt, entscheidet das Gerät: `external_temperature_input`,
+`external_temperature`, `remote_temperature` oder `external_measured_room_sensor` — je
+nachdem, was es als beschreibbar meldet. Bietet es keines an, wird nur der Sollwert
+geschrieben. „Wenn möglich" heißt hier wörtlich das.
+
+**Was offen bleibt:** In dieser Betriebsart trifft thermoctl weiter Schattenentscheidungen,
+die nichts mehr fahren — sie sind dann eine Aussage über die Zone, kein Befehl. Ob das im
+Vergleichsbetrieb von Phase 4 stört, entscheidet sich, wenn dieser entworfen wird.
+
 **Sonnenprognose-Absenkung.** In der Übergangszeit heizt eine Dachwohnung morgens hoch,
 obwohl zwei Stunden später die Sonne durch die Dachfenster kommt. Verspricht die Vorhersage
 (Open-Meteo, kein Schlüssel nötig) in den nächsten Stunden nennenswerte Einstrahlung, wird

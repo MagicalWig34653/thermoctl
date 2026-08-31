@@ -22,6 +22,7 @@ from thermoctl.domain.device_assignment import (
     CapabilityMissing,
     assign_device,
     detach_device,
+    set_self_regulating,
     set_temperature_source,
     swap_device,
 )
@@ -213,6 +214,41 @@ async def device_detach_view(
     if assignment is None or assignment.zone_id != zone.id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Zuordnung nicht gefunden")
     detach_device(session, zone, assignment, actor_id=principal.user_id)
+    return RedirectResponse(f"/zones/{zone.id}/devices", status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/zones/{zone_id}/devices/regulation")
+async def device_regulation_view(
+    zone_id: int,
+    request: Request,
+    principal: Annotated[Principal, Depends(current_principal)],
+    session: Annotated[Session, Depends(get_session)],
+) -> Response:
+    """Switches a thermostatic valve between the two ways of running it.
+
+    Physically consequential, so it is written down: in self-regulating mode thermoctl
+    stops switching this valve. Hysteresis, minimum switching duration and the window
+    contact then no longer act through an on/off command -- only through the setpoint
+    that gets written. Whoever changes this should be able to find out later that they
+    did, and when.
+    """
+    zone = _visible_zone(session, principal, zone_id, "device.manage")
+    form = await request.form()
+    try:
+        assignment_id = int(str(form.get("assignment_id", "")))
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Zuordnung nicht gefunden") from exc
+    assignment = session.get(ZoneDevice, assignment_id)
+    if assignment is None or assignment.zone_id != zone.id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Zuordnung nicht gefunden")
+
+    set_self_regulating(
+        session,
+        zone,
+        assignment,
+        str(form.get("self_regulating", "")) == "yes",
+        actor_id=principal.user_id,
+    )
     return RedirectResponse(f"/zones/{zone.id}/devices", status.HTTP_303_SEE_OTHER)
 
 
