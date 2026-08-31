@@ -222,9 +222,14 @@ def overview(
             "meross",
             "Meross",
             "Schaltsteckdosen als zweiter Aktortyp neben den Zigbee-Ventilen.",
-            "configured" if hat_meross else "off",
+            # Immer "noch nicht gebaut", auch mit hinterlegten Zugangsdaten: Es fehlt
+            # nicht die Konfiguration, sondern die andere Hälfte der Anbindung. Geräte
+            # entstehen ausschliesslich aus der Zigbee2MQTT-Geräteliste; eine
+            # Meross-Steckdose kann in dieser Anlage gar nicht auftauchen. "Eingerichtet"
+            # hätte genau das verschwiegen, worauf es ankommt.
+            "not_built",
             (
-                "Zugangsdaten hinterlegt."
+                "Zugangsdaten hinterlegt — Geräte werden trotzdem keine gefunden."
                 if hat_meross
                 else "Keine Zugangsdaten hinterlegt."
             ),
@@ -236,8 +241,12 @@ def overview(
                        "THERMOCTL_MEROSS_PASSWORD"),
             ],
             hint=(
-                "Der Adapter ist gebaut, sein Nutzlastaufbau ist aber eine begründete "
-                "Annahme und lief nie gegen ein echtes Konto."
+                "Nur die schaltende Hälfte ist gebaut: Der Adapter kann eine bekannte "
+                "Steckdose ein- und ausschalten. Es gibt aber keine Geräteerkennung für "
+                "Meross — Geräte entstehen allein aus der Zigbee2MQTT-Liste, und von "
+                "Hand anlegen lässt sich keines. Solange das fehlt, ist keine "
+                "Meross-Steckdose einer Zone zuzuordnen. Der Nutzlastaufbau des Adapters "
+                "ist ausserdem eine begründete Annahme und lief nie gegen ein echtes Konto."
             ),
         )
     )

@@ -122,3 +122,51 @@ def test_every_interface_has_a_known_state(session: Session) -> None:
         for bridge in (None, True, False):
             for s in overview(session, _settings(**overrides), bridge):
                 assert s.state in known, f"{s.key}: {s.state}"
+
+
+def test_meross_says_it_is_not_built_even_with_credentials(session: Session) -> None:
+    """Zugangsdaten machen aus einer halben Anbindung keine ganze.
+
+    Gebaut ist nur die schaltende Hälfte: Der Adapter kann eine bekannte Steckdose
+    ein- und ausschalten. Es gibt keine Geräteerkennung für Meross — Geräte entstehen
+    ausschliesslich aus der Zigbee2MQTT-Liste (`services/ingest.py` ist die einzige
+    Stelle, die `Device`-Zeilen anlegt), und von Hand anlegen lässt sich keines.
+
+    Die Seite meldete trotzdem „Eingerichtet", sobald eine Adresse in der Umgebung
+    stand. Aus dem Betrieb gemeldet als „die Meross-Schalter tauchen nirgends auf" —
+    und die Seite hatte genau das Gegenteil behauptet.
+    """
+    items = overview(
+        session,
+        _settings(meross_email="jemand@example.invalid", meross_password="geheim"),
+        None,
+    )
+    meross = next(s for s in items if s.key == "meross")
+
+    assert meross.state == "not_built"
+    assert "keine gefunden" in meross.finding
+    assert meross.hint is not None and "keine Geräteerkennung" in meross.hint
+
+
+def test_no_device_can_enter_the_system_except_through_zigbee2mqtt(session: Session) -> None:
+    """Der Grund, warum Meross „noch nicht gebaut" heisst, an seiner Wurzel.
+
+    Wenn irgendwann ein zweiter Weg entsteht — eine Meross-Erkennung, ein Formular zum
+    Anlegen von Hand —, muss dieser Test rot werden. Er ist die Stelle, an der jemand
+    dann merkt, dass die Schnittstellenseite nachzuziehen ist.
+    """
+    import re
+    from pathlib import Path as _Path
+
+    quelle = _Path(__file__).resolve().parent.parent / "thermoctl"
+    stellen = [
+        f"{pfad.relative_to(quelle.parent)}:{nummer}"
+        for pfad in quelle.rglob("*.py")
+        for nummer, zeile in enumerate(pfad.read_text(encoding="utf-8").splitlines(), 1)
+        # `Device(` als Konstruktoraufruf: nicht `DeviceProperty(` und Verwandte,
+        # und nicht die Klassendefinition selbst.
+        if re.search(r"(?<![A-Za-z])Device\(", zeile) and not zeile.lstrip().startswith("class ")
+    ]
+    assert stellen == ["thermoctl/services/ingest.py:54"], (
+        "Geraete entstehen an einer neuen Stelle: " + ", ".join(stellen)
+    )

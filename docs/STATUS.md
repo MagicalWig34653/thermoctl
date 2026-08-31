@@ -825,8 +825,17 @@ verzögert hätte.
   nachvollziehbare Entscheidungen zeigt.
 - **Die Frostschutz-Entscheidung bestätigen**, bevor Phase 4 scharf schaltet — siehe
   [offene-entscheidungen.md](offene-entscheidungen.md). Sie hat körperliche Folgen.
-- **Meross-Zugangsdaten hinterlegen.** Der Adapter ist gebaut, sein Nutzlastaufbau ist eine
-  begründete Annahme und nie gegen ein echtes Konto gelaufen.
+- **Entscheiden, ob Meross überhaupt gebaut werden soll.** Bisher steht dort nur die
+  schaltende Hälfte, und das war in dieser Datei zu wohlwollend beschrieben: Der Adapter
+  kann eine *bekannte* Steckdose ein- und ausschalten, aber es gibt **keine
+  Geräteerkennung für Meross**. `services/ingest.py` ist die einzige Stelle im ganzen
+  Dienst, die `Device`-Zeilen anlegt, und sie liest ausschliesslich die
+  Zigbee2MQTT-Geräteliste. Eine Meross-Steckdose kann deshalb nirgends auftauchen und
+  keiner Zone zugeordnet werden — aufgefallen beim Ausprobieren des Release, nicht hier.
+  Die Schnittstellenseite behauptete obendrein „Eingerichtet", sobald eine Adresse in der
+  Umgebung stand; sie sagt jetzt „Noch nicht gebaut" und nennt den Grund.
+  Ein Test hält fest, dass es bei der einen Anlegestelle bleibt: Entsteht ein zweiter
+  Weg, wird er rot und erinnert daran, die Schnittstellenseite nachzuziehen.
 - **Das Repository öffentlich schalten** — ausdrücklich seine Entscheidung.
 - **Den Kiosk-Entwurf bestätigen oder verwerfen.** Der Wunsch lautete „öffentliches
   Dashboard"; gebaut ist ein Kiosk-Token mit engem, widerrufbarem Rechtesatz, weil eine

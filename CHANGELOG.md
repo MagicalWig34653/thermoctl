@@ -64,6 +64,15 @@ kommt der Vergleichsbetrieb gegen die bestehende Anlage.
 - **Störungserkennung** bei ausbleibenden Messwerten, gemeldet ins Log und optional an
   einen Webhook.
 
+### Bekannte Lücke
+
+- **Meross-Schaltsteckdosen sind nicht nutzbar.** Gebaut ist nur die schaltende Hälfte:
+  Der Adapter kann eine bekannte Steckdose ein- und ausschalten, aber es gibt keine
+  Geräteerkennung für Meross. Geräte entstehen ausschliesslich aus der
+  Zigbee2MQTT-Geräteliste, und von Hand anlegen lässt sich keines — eine Meross-Steckdose
+  taucht also gar nicht erst auf. Die Schnittstellenseite sagt das jetzt auch so, statt
+  „Eingerichtet" zu melden, sobald Zugangsdaten hinterlegt sind.
+
 ### Behoben
 
 - **Das Container-Abbild enthielt die halbe Anwendung nicht.** Ohne `package-data`
