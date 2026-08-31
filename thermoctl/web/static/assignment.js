@@ -203,6 +203,40 @@
         }
     }
 
-    document.addEventListener("DOMContentLoaded", setUp);
-    document.addEventListener("htmx:load", setUp);
+    /** Switches that apply themselves.
+     *
+     *  A switch that shows a state but only takes effect after a separate button is a
+     *  switch that lies for as long as nobody presses it. So it submits its own form.
+     *
+     *  `requestSubmit()` and not `submit()`: only that fires a submit event, and only
+     *  through it does hx-boost take hold -- which is where the CSRF header comes from.
+     *  A bare submit() would go out without it and be answered with 403.
+     *
+     *  Without JavaScript none of this happens; the form then carries a `<noscript>`
+     *  button instead.
+     */
+    function wireSwitches() {
+        document.querySelectorAll("[data-submit-on-change]").forEach(function (element) {
+            if (wired.has(element)) {
+                return;
+            }
+            wired.add(element);
+            element.addEventListener("change", function () {
+                if (element.form) {
+                    element.form.requestSubmit();
+                }
+            });
+        });
+    }
+
+    function start() {
+        setUp();
+        // Separate from setUp(): the switches also exist on a page whose device pool is
+        // missing -- someone without `device.manage` sees the table but no pool, and
+        // setUp() returns before it ever gets here.
+        wireSwitches();
+    }
+
+    document.addEventListener("DOMContentLoaded", start);
+    document.addEventListener("htmx:load", start);
 })();

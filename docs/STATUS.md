@@ -356,7 +356,24 @@ Unterschied ist, wer entscheidet:
   Fühler sitzt am Heizkörper und misst mehrere Grad zu warm. Mit der Temperatur eines
   Fühlers an der gegenüberliegenden Wand regelt es gegen den Raum statt gegen sich selbst.
 
-Umgeschaltet wird je Zuordnung auf der Geräteseite der Zone — die Angabe beschreibt, wie
+Umgeschaltet wird über einen **Schalter** in der Rollen-Tabelle, je Zuordnung auf der
+Geräteseite der Zone. Vorher stand dort ein Knopf, und der war zu Recht verwirrend: Seine
+Beschriftung nannte den Zustand, in den er *wechselt*, der Satz darunter den, der *gilt* —
+zwei gegenläufige Aussagen nebeneinander. Ein Schalter zeigt schlicht den aktuellen
+Zustand, und der Hilfetext erklärt, was er bedeutet.
+
+Er legt sich selbst um, statt einen zweiten Knopf zu verlangen: Ein Schalter, der einen
+Zustand zeigt und erst nach einem Klick woanders wirkt, lügt so lange, bis jemand diesen
+Klick tut. Ohne JavaScript passiert das nicht — dafür steht ein `<noscript>`-Knopf im
+Formular. Die Kennung ist je Zeile eindeutig; mit einer gemeinsamen zeigte jede
+Beschriftung auf den ersten Schalter, und ein Klick auf den Text der dritten Zeile legte
+das Ventil der ersten um.
+
+Der Zustand ist eine Checkbox, und das dreht die Bedeutung des Fehlens um: Angehakt
+schickt einen Wert, nicht angehakt schickt **gar nichts**. Falsch gelesen hieße das
+„unverändert", und Ausschalten täte still nichts. Ein Test hält beide Richtungen fest.
+
+Angeboten wird der Schalter je Zuordnung auf der Geräteseite der Zone — die Angabe beschreibt, wie
 *diese* Zone *dieses* Ventil fährt. Angeboten nur dort, wo sie etwas bedeutet: bei einem
 Aktor, der ein Thermostat ist. Eine Steckdose regelt nicht selbst, und die Domäne weist
 den Versuch ab, nicht nur die Oberfläche. Die Umstellung steht im Protokoll, weil sie

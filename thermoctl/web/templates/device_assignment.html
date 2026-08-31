@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% from "zone_header.html" import zonenkopf %}
 {% from "flow_diagram.html" import flow_diagram %}
+{% from "form.html" import toggle %}
 {% block title %}Geräte in {{ zone.display_name }} – thermoctl{% endblock %}
 {% block content %}
 {{ zonenkopf(zone, "Geräte") }}
@@ -120,26 +121,36 @@ Skripts falsch rät.
                 {% if may_edit %}
                 <form method="post" action="/zones/{{ zone.id }}/devices/regulation">
                     <input type="hidden" name="assignment_id" value="{{ assignment.id }}">
-                    <input type="hidden" name="self_regulating"
-                           value="{{ 'no' if assignment.self_regulating else 'yes' }}">
-                    <button class="btn btn-sm btn-outline-secondary" type="submit">
-                        {% if assignment.self_regulating %}
-                        thermoctl schalten lassen
-                        {% else %}
-                        Ventil selbst regeln lassen
-                        {% endif %}
-                    </button>
+                    {{ toggle(
+                        "self_regulating",
+                        "Ventil regelt selbst",
+                        assignment.self_regulating,
+                        help_text=(
+                            "thermoctl schreibt nur Soll- und, wenn das Gerät es "
+                            "annimmt, Ist-Temperatur; das Ventil regelt damit selbst."
+                            if assignment.self_regulating else
+                            "thermoctl schaltet das Ventil — mit Hysterese, "
+                            "Mindestschaltdauer und Fensterkontakt."
+                        ),
+                        element_id="self-regulating-" ~ assignment.id,
+                        submit_on_change=true,
+                    ) }}
+                    {# Ohne JavaScript legt der Schalter nichts um. #}
+                    <noscript>
+                        <button class="btn btn-sm btn-outline-secondary" type="submit">
+                            Übernehmen
+                        </button>
+                    </noscript>
                 </form>
-                {% endif %}
+                {% else %}
                 <span class="t-quiet small">
                     {% if assignment.self_regulating %}
-                    Regelt selbst — thermoctl schreibt nur Soll- und, wenn das Gerät es
-                    annimmt, Ist-Temperatur.
+                    Ventil regelt selbst.
                     {% else %}
-                    thermoctl schaltet — mit Hysterese, Mindestschaltdauer und
-                    Fensterkontakt.
+                    thermoctl schaltet das Ventil.
                     {% endif %}
                 </span>
+                {% endif %}
             </div>
             {% endif %}
         </td>

@@ -1070,3 +1070,59 @@ def test_an_assignment_of_another_zone_is_refused_in_the_domain(session: Session
     with pytest.raises(ValueError, match="gehört nicht zu dieser Zone"):
         set_self_regulating(session, zone, foreign, True, actor_id=None)
     assert foreign.self_regulating is False
+
+
+def test_the_regulation_switch_reads_as_a_checkbox(
+    angemeldeter_client: TestClient, session: Session
+) -> None:
+    """An unticked checkbox sends nothing at all -- that has to mean "off".
+
+    The switch used to be a button carrying a hidden field with the *opposite* state.
+    A checkbox works the other way round: ticked sends its value, unticked sends
+    nothing. Read wrongly, switching off would silently do nothing at all, because the
+    absent field would look like "unchanged".
+    """
+    zone, assignment = _thermostat_in_zone(session, "schalterzone")
+    assignment.self_regulating = True
+    session.flush()
+
+    off = angemeldeter_client.post(
+        f"/zones/{zone.id}/devices/regulation",
+        data={"assignment_id": str(assignment.id)},  # kein self_regulating -- wie ein
+        headers=_csrf(angemeldeter_client),          # nicht angehakter Schalter
+        follow_redirects=False,
+    )
+    assert off.status_code == 303
+    session.refresh(assignment)
+    assert assignment.self_regulating is False
+
+    on = angemeldeter_client.post(
+        f"/zones/{zone.id}/devices/regulation",
+        data={"assignment_id": str(assignment.id), "self_regulating": "yes"},
+        headers=_csrf(angemeldeter_client),
+        follow_redirects=False,
+    )
+    assert on.status_code == 303
+    session.refresh(assignment)
+    assert assignment.self_regulating is True
+
+
+def test_the_regulation_switch_is_rendered_with_its_own_id_and_a_fallback(
+    angemeldeter_client: TestClient, session: Session
+) -> None:
+    """Two things the page must get right, and both are invisible until they are wrong.
+
+    The id has to be unique per row: with a shared one every label would point at the
+    first switch, and clicking the third row's text would flip the first zone's valve.
+
+    And the form needs a `<noscript>` button. The switch applies itself through
+    JavaScript; without it, it would move under the finger and change nothing.
+    """
+    zone, assignment = _thermostat_in_zone(session, "renderzone")
+    page = angemeldeter_client.get(f"/zones/{zone.id}/devices")
+    assert page.status_code == 200
+
+    assert f'id="self-regulating-{assignment.id}"' in page.text
+    assert f'for="self-regulating-{assignment.id}"' in page.text
+    assert "data-submit-on-change" in page.text
+    assert "<noscript>" in page.text
