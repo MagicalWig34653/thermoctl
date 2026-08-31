@@ -6,12 +6,19 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from tests.helpers import create_device, create_zone, role
+from tests.helpers import (
+    create_device,
+    create_zone,
+    create_zone_state,
+    operating_mode,
+    role,
+)
 from thermoctl.auth.csrf import CSRF_HEADER, csrf_token
 from thermoctl.auth.sessions import COOKIE_NAME
 from thermoctl.config import get_settings
 from thermoctl.db.models.device import DeviceProperty, DevicePropertyValue, ZoneDevice
 from thermoctl.db.models.lookup import CHANNEL_KINDS, ChannelKind
+from thermoctl.db.models.zone import ZoneSetpoint
 from thermoctl.domain.controller_channels import ControllerChannelError, configure_channel
 from thermoctl.domain.device_classes import properties_from_exposes
 from thermoctl.services.publishing import PublicationState, _send_controller_channels
@@ -624,3 +631,196 @@ def test_a_controller_in_a_foreign_zone_is_not_found(client_als, session: Sessio
               "command": "boost"},
     )
     assert response.status_code == 404
+
+
+def _temperature_measurement(
+    session: Session, device_id: int, value: str, when: datetime
+) -> None:
+    from sqlalchemy import select
+
+    from thermoctl.db.models.lookup import DeviceCapability
+    from thermoctl.db.models.measurement import Measurement
+
+    capability = session.scalar(
+        select(DeviceCapability).where(DeviceCapability.code == "temperature")
+    )
+    if capability is None:
+        capability = DeviceCapability(code="temperature", label="Temperatur")
+        session.add(capability)
+        session.flush()
+    session.add(
+        Measurement(
+            device_id=device_id,
+            capability_id=capability.id,
+            value_numeric=Decimal(value),
+            measured_at=when,
+            received_at=when,
+        )
+    )
+    session.flush()
+
+
+@pytest.mark.anyio
+async def test_a_sensor_channel_sends_the_most_recent_measurement(session: Session) -> None:
+    """This is what a W100 shows on its display: the temperature of a chosen sensor.
+
+    The *most recent* one, and that is the point of the second measurement here -- a
+    display that shows an older reading than the one the control loop decides on would
+    make the plant look as if it were regulating to a value nobody set.
+    """
+    _kinds(session)
+    zone = create_zone(session, "wohnzimmer")
+    controller = create_device(session, "wandregler")
+    sensor = create_device(session, "fuehler")
+    _assign(session, zone.id, controller.id, "controller")
+    _property(session, controller.id)
+    _temperature_measurement(session, sensor.id, "19.5", datetime(2026, 8, 30, 8, 0))
+    _temperature_measurement(session, sensor.id, "21.5", datetime(2026, 8, 30, 9, 0))
+    configure_channel(
+        session, controller, "external_temperature", "write", "sensor_temperature",
+        source_device_id=sensor.id,
+    )
+
+    state, recorder = PublicationState(), Recorder()
+    await _send_controller_channels(
+        session, recorder, state, "zigbee2mqtt", datetime(2026, 8, 30, 10, 0)
+    )
+
+    assert recorder.messages == [
+        (
+            "zigbee2mqtt/wandregler/set",
+            json.dumps({"external_temperature": 21.5}, separators=(",", ":")),
+            False,
+        )
+    ]
+
+
+@pytest.mark.anyio
+async def test_a_sensor_channel_without_any_measurement_sends_nothing(
+    session: Session,
+) -> None:
+    """Better no value on the display than a made-up one.
+
+    A sensor that has never reported has no temperature, and there is no sensible
+    substitute -- zero would read as freezing, the setpoint as if it were measured.
+    """
+    _kinds(session)
+    zone = create_zone(session, "leerzone")
+    controller = create_device(session, "regler-ohne-wert")
+    sensor = create_device(session, "stummer-fuehler")
+    _assign(session, zone.id, controller.id, "controller")
+    _property(session, controller.id)
+    configure_channel(
+        session, controller, "external_temperature", "write", "sensor_temperature",
+        source_device_id=sensor.id,
+    )
+
+    state, recorder = PublicationState(), Recorder()
+    await _send_controller_channels(
+        session, recorder, state, "zigbee2mqtt", datetime(2026, 8, 30, 10, 0)
+    )
+    assert recorder.messages == []
+
+
+@pytest.mark.anyio
+async def test_a_zone_temperature_channel_sends_the_zone_state(session: Session) -> None:
+    """Not the same as a sensor channel: the zone value is the one the control loop
+    actually used, including the calibration offset applied to the raw reading."""
+    _kinds(session)
+    zone = create_zone(session, "zonentemperatur")
+    controller = create_device(session, "zonenregler")
+    _assign(session, zone.id, controller.id, "controller")
+    _property(session, controller.id)
+    zone_state = create_zone_state(session, zone)
+    zone_state.temperature_c = Decimal("22.5")
+    zone_state.measured_at = datetime(2026, 8, 30, 9, 0)
+    session.flush()
+    configure_channel(
+        session, controller, "external_temperature", "write", "zone_temperature",
+        zone_id=zone.id,
+    )
+
+    state, recorder = PublicationState(), Recorder()
+    await _send_controller_channels(
+        session, recorder, state, "zigbee2mqtt", datetime(2026, 8, 30, 10, 0)
+    )
+    assert recorder.messages == [
+        (
+            "zigbee2mqtt/zonenregler/set",
+            json.dumps({"external_temperature": 22.5}, separators=(",", ":")),
+            False,
+        )
+    ]
+
+
+@pytest.mark.anyio
+async def test_a_setpoint_channel_sends_the_setpoint_in_effect(session: Session) -> None:
+    """The value a thermostat on the wall should show as its target.
+
+    Deliberately the resolved setpoint, not the schedule's raw entry: an override or a
+    boost changes what the plant is actually aiming for, and a display showing the
+    schedule instead would contradict the plant it belongs to.
+    """
+    from tests.helpers import create_mode, create_settings, source
+
+    _kinds(session)
+    create_settings(session)
+    source(session, "web")
+    zone = create_zone(session, "sollwertzone")
+    mode = create_mode(session, "tag")
+    zone.operating_mode = operating_mode(session, "auto")
+    session.add(
+        ZoneSetpoint(zone_id=zone.id, setpoint_mode_id=mode.id, temperature_c=Decimal("21.0"))
+    )
+    controller = create_device(session, "sollwertregler")
+    _assign(session, zone.id, controller.id, "controller")
+    _property(session, controller.id, "occupied_heating_setpoint")
+    session.flush()
+    configure_channel(
+        session, controller, "occupied_heating_setpoint", "write", "zone_setpoint",
+        zone_id=zone.id,
+    )
+
+    state, recorder = PublicationState(), Recorder()
+    await _send_controller_channels(
+        session, recorder, state, "zigbee2mqtt", datetime(2026, 8, 30, 10, 0)
+    )
+
+    assert len(recorder.messages) == 1
+    topic, payload, switches = recorder.messages[0]
+    assert topic == "zigbee2mqtt/sollwertregler/set"
+    assert json.loads(payload)["occupied_heating_setpoint"] > 0
+    assert switches is False
+
+
+@pytest.mark.anyio
+async def test_a_device_that_became_an_actuator_is_no_longer_written_to(
+    session: Session,
+) -> None:
+    """The second bolt, checked here where it actually bites.
+
+    A channel is only accepted for a device that is a controller and **nowhere** an
+    actuator. But a role can change afterwards: the same thermostat can be hung into
+    another zone as an actuator later. From that moment its `occupied_heating_setpoint`
+    is no longer a display but a valve -- and a message carrying `switches=False` would
+    move it right past both dry-run bolts. So the publication cycle asks the same
+    question again before every send.
+    """
+    _kinds(session)
+    zone = create_zone(session, "anzeigezone")
+    other = create_zone(session, "ventilzone")
+    device = create_device(session, "erst-anzeige-dann-ventil")
+    _assign(session, zone.id, device.id, "controller")
+    _property(session, device.id)
+    configure_channel(
+        session, device, "external_temperature", "write", "fixed", fixed_number=Decimal("20")
+    )
+
+    # Only now does it also become an actuator -- the channel already exists.
+    _assign(session, other.id, device.id, "actuator")
+
+    state, recorder = PublicationState(), Recorder()
+    await _send_controller_channels(
+        session, recorder, state, "zigbee2mqtt", datetime(2026, 8, 30, 10, 0)
+    )
+    assert recorder.messages == []

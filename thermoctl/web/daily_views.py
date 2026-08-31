@@ -262,7 +262,7 @@ async def adjust_thermostat(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Kein Modus angegeben") from exc
 
     direction = str(form.get("direction", ""))
-    if direction not in ("hoch", "runter"):
+    if direction not in ("up", "down"):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Unbekannte Richtung")
 
     # The value the page shows -- not the stored row. The two are not the same: if a
@@ -279,7 +279,7 @@ async def adjust_thermostat(
     if current is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Für diesen Modus gibt es keinen Sollwert")
 
-    new = current + (THERMOSTAT_STEP if direction == "hoch" else -THERMOSTAT_STEP)
+    new = current + (THERMOSTAT_STEP if direction == "up" else -THERMOSTAT_STEP)
     try:
         update_setpoints(
             session, zone, {mode_id: new}, user_id=principal.user_id

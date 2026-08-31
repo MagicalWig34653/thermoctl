@@ -7,6 +7,7 @@ import pytest
 from thermoctl.config import Settings
 from thermoctl.logging import (
     JsonFormatter,
+    KioskPathFilter,
     MaskingFilter,
     configure_logging,
     mask,
@@ -221,3 +222,67 @@ def test_the_text_format_is_selected(monkeypatch: pytest.MonkeyPatch) -> None:
         configure_logging(settings)
         handler = py_logging.getLogger().handlers[0]
         assert isinstance(handler.formatter, JsonFormatter) is expected_json, format_choice
+
+
+def _access_record(path: str) -> logging.LogRecord:
+    """A record shaped the way uvicorn's access logger builds one.
+
+    That shape is the whole problem: uvicorn does not pass the request path as a
+    structured extra field but as one of `record.args`, formatted into the message
+    later. `MaskingFilter` only ever looks at extra fields and therefore cannot see it.
+    """
+    return logging.LogRecord(
+        "uvicorn.access",
+        logging.INFO,
+        "p",
+        1,
+        '%s - "%s %s HTTP/%s" %d',
+        ("127.0.0.1:1234", "GET", path, "1.1", 200),
+        None,
+    )
+
+
+def test_a_kiosk_token_never_reaches_the_access_log() -> None:
+    """The kiosk token travels in the URL once -- and would be logged on every visit.
+
+    `/kiosk/{token}` carries a live, if revocable, credential in the request line
+    itself. Principle 2 forbids that in the log, and this is the one channel the
+    masking filter above cannot reach.
+
+    Checked through `getMessage()`, not on the arguments: what matters is what a
+    handler would actually write out.
+    """
+    record = _access_record("/kiosk/tctl_abc_geheimespasswort")
+    assert KioskPathFilter().filter(record) is True
+    assert "geheimespasswort" not in record.getMessage()
+    assert "/kiosk/***" in record.getMessage()
+
+
+def test_the_filter_leaves_every_other_path_alone() -> None:
+    """A filter that rewrote more than the one path would make the log useless."""
+    record = _access_record("/zones/1/schedule")
+    KioskPathFilter().filter(record)
+    assert "/zones/1/schedule" in record.getMessage()
+
+
+def test_a_record_that_is_not_an_access_line_passes_through_untouched() -> None:
+    """Other loggers write records with no args at all -- the filter must not choke."""
+    record = logging.LogRecord("t", logging.INFO, "p", 1, "eine Meldung", None, None)
+    assert KioskPathFilter().filter(record) is True
+    assert record.getMessage() == "eine Meldung"
+
+
+def test_the_access_logger_carries_the_filter_after_configuration() -> None:
+    """The filter sits on the logger, not on a handler.
+
+    `Logger.filter()` runs before a record reaches any handler -- root's included --
+    which is where the token has to be gone. Hung on a handler instead, anything that
+    ships records past that handler would still see it.
+    """
+    settings = Settings(database_url="sqlite://", secret_key="s" * 40)
+    configure_logging(settings)
+    access = logging.getLogger("uvicorn.access")
+    assert any(isinstance(f, KioskPathFilter) for f in access.filters)
+    # Configured twice -- every TestClient builds a fresh app -- must not pile up.
+    configure_logging(settings)
+    assert sum(isinstance(f, KioskPathFilter) for f in access.filters) == 1

@@ -97,10 +97,10 @@
             <form method="post" action="/kiosk/zones/{{ zone.id }}/setpoint"
                   class="kiosk-setpoint">
                 <button class="btn btn-outline-secondary kiosk-stage" type="submit"
-                        name="direction" value="runter" aria-label="Sollwert senken">−</button>
+                        name="direction" value="down" aria-label="Sollwert senken">−</button>
                 <span class="t-value">{{ setpoint.temperature_c|grad }} °C</span>
                 <button class="btn btn-outline-secondary kiosk-stage" type="submit"
-                        name="direction" value="hoch" aria-label="Sollwert anheben">+</button>
+                        name="direction" value="up" aria-label="Sollwert anheben">+</button>
             </form>
             {% else %}
             <div class="kiosk-setpoint t-value">{{ setpoint.temperature_c|grad }} °C</div>

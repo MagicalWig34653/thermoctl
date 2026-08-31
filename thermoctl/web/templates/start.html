@@ -137,13 +137,13 @@ Seite ein Formularstapel, in dem die eigentliche Auskunft — wie warm ist es �
             <form method="post" action="/zones/{{ zone.id }}/thermostat" class="d-flex align-items-center gap-1">
                 <input type="hidden" name="mode_id" value="{{ setpoint.mode_id }}">
                 <button class="btn btn-sm btn-outline-secondary tc-stage" type="submit"
-                        name="direction" value="runter" aria-label="Sollwert senken">−</button>
+                        name="direction" value="down" aria-label="Sollwert senken">−</button>
                 <div class="text-center" style="min-width: 4.5rem">
                     <div class="t-value fw-medium">{{ setpoint.temperature_c|grad }} °C</div>
                     <div class="t-quiet" style="font-size: .7rem">{{ mode_names.get(setpoint.mode_id, "Soll") }}</div>
                 </div>
                 <button class="btn btn-sm btn-outline-secondary tc-stage" type="submit"
-                        name="direction" value="hoch" aria-label="Sollwert anheben">+</button>
+                        name="direction" value="up" aria-label="Sollwert anheben">+</button>
             </form>
             {% else %}
             <div class="text-center" style="min-width: 4.5rem">
