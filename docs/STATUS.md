@@ -2,6 +2,41 @@
 
 Letzte Aktualisierung: 2026-08-30
 
+## Die Doku war nicht auf dem Stand — jetzt schon
+
+Nachgefragt und nachgeprüft: `STATUS.md` und `api.md` waren aktuell, sechs weitere
+Dokumente nicht. Was gefunden wurde, war mehr als Kosmetik:
+
+- **`mqtt.md` beschrieb den deutschen Themenbaum** — `thermoctl/zonen/<id>/zustand/…`. Den
+  gibt es seit der Umstellung nicht mehr; er heißt `thermoctl/zones/<id>/state/…`. Wer sich
+  einen Abonnenten danach gebaut hätte, hätte nichts empfangen.
+- **`mqtt.md` widersprach sich selbst** beim Sollwert aus Home Assistant: einmal „verstellt
+  den geltenden Modus" (richtig), einmal „legt eine Übersteuerung an" (die alte Fassung).
+- **`mcp.md` nannte ein Werkzeug, das es nicht gibt** — `override_zone` statt `override`.
+  Ein Sprachmodell, das die Tabelle liest, ruft einen Namen auf, den der Server nicht kennt.
+  Der Wächtertest dazu prüfte die *Funktionsnamen des Moduls* statt der registrierten
+  Werkzeugnamen und war deshalb grün. Er prüft jetzt das, was ein Aufrufer sieht.
+- **Das Wandtablet stand in keiner Betriebsdoku.** Jetzt in `self-hosting.md`, samt der
+  Warnung, dass wer das Tablet in der Hand hat, das Token aus dem Cookie liest.
+- **Die Sicherheitsdurchsicht kannte nur drei Adapter** und listete die ungeprüften Routen
+  ohne den Kiosk-Einstieg. Beides ergänzt, mitsamt dem, was das Kiosk-Token kann und nicht
+  kann.
+- **Sechs Dokumente nannten Dateien, die es nicht mehr gibt** — `aktoren.py`,
+  `fernbedienung.py`, `regelung.py`, `alltag_views.py` und drei alte Testnamen.
+
+Dagegen stehen jetzt zwei Wächter: einer vergleicht die MCP-Werkzeugnamen mit den
+registrierten, einer prüft jeden in den lebenden Dokumenten genannten Dateinamen gegen den
+Baum. **Nicht geprüft werden die Spezifikationen und Pläne unter `docs/superpowers/`** —
+sie halten fest, was zu einem Zeitpunkt entschieden wurde, und sie auf heutige Namen
+umzuschreiben hieße, das Protokoll zu fälschen. Dasselbe gilt für die Bestandsaufnahme des
+Altsystems.
+
+Die vier Entscheidungen dieses Tages, die sonst eine Rückfrage gewesen wären, stehen in
+[offene-entscheidungen.md](offene-entscheidungen.md): das Kiosk-Token statt gar keiner
+Anmeldung, die Erkennung eines Thermostatventils am schreibbaren Sollwert, der Frostschutz
+bei offenem Fenster für selbstregelnde Ventile, und „der erste Treffer gewinnt" bei doppelt
+genannten Gerätemerkmalen.
+
 ## Die Abdeckung steht auf 100 Prozent — und was das heißt
 
 Die Schwelle in der CI liegt jetzt bei 100. Das heißt **nicht**, dass jede Zeile geprüft
@@ -589,7 +624,7 @@ vierunddreißig Geräte steht jetzt einmal oben als Zahl.
 Thermostat und sonst nichts. Jetzt ist jede Zone ein eigenes Gerät mit dreizehn Entitäten:
 Thermostat, **Boost**-Knopf, letzte Schaltung und nächster Moduswechsel als Zeitstempel, je
 Modus eine Solltemperatur und je Regelparameter eine Zahleneingabe. Was ein Befehl bewirkt,
-steht in `domain/fernbedienung.py` — dieselben Funktionen mit denselben Grenzen, die auch
+steht in `domain/remote_control.py` — dieselben Funktionen mit denselben Grenzen, die auch
 die Oberfläche benutzt.
 
 Vier Entscheidungen darin:
@@ -633,7 +668,7 @@ speisen. Unter welchem Schlüssel Zigbee2MQTT eine externe Temperatur für den W
 entgegennimmt, ist ohne das Gerät in der Hand nicht zu verifizieren.
 
 **Boost und die Regelparameter gibt es auch über REST und MCP.** Die Logik liegt in
-`domain/fernbedienung.py` und `domain/zone_settings.py`, die Adapter sind dünn —
+`domain/remote_control.py` und `domain/zone_settings.py`, die Adapter sind dünn —
 Grundsatz 6. Neu sind `POST /api/v1/zones/{id}/boost`,
 `PUT /api/v1/zones/{id}/parameters/{name}` sowie die MCP-Werkzeuge `boost`,
 `regelparameter_lesen` und `regelparameter_setzen`.
@@ -711,7 +746,7 @@ globalen Vorgaben, von denen jede Zone erbt. Scharfschalten hat ein **eigenes Re
 (`control.arm`) statt unter `setting.manage` mitzulaufen — wer Zeitzone und
 Aufbewahrungsdauer pflegen darf, soll die Heizung nicht nebenbei scharf schalten können.
 Es verlangt eine Begründung, die ins Audit-Protokoll geht, und ist mit einem Klick
-umkehrbar. **Der zweite Riegel bleibt unberührt:** `MqttClient(schalten_erlaubt=…)` wird
+umkehrbar. **Der zweite Riegel bleibt unberührt:** `MqttClient(switching_allowed=…)` wird
 beim Bau des Clients gesetzt, nicht von hier.
 
 **Vor der Einrichtung** führen `/` und `/login` zur Einrichtungsseite, statt ein Anmeldeformular zu zeigen, an dem sich mangels Benutzer niemand anmelden kann. Nach abgeschlossener Einrichtung gilt wieder der gewohnte Weg über `/login`; `/setup` ist dann dauerhaft geschlossen.

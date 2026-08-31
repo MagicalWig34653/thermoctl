@@ -21,11 +21,12 @@ Beides zusammen macht diese Durchsicht zu mehr als einer Formalie.
 
 ## 2. Rechteprüfung je Adapter
 
-Alle drei Adapter benutzen dieselben Funktionen — `require()`, `hat_recht()` und
-`visible_zones()` aus `thermoctl/domain/authz.py`. Es gibt keine zweite Umsetzung, und
+Alle Adapter benutzen dieselben Funktionen — `require()`, `has_permission()` und
+`visible_zones()` aus `thermoctl/domain/authz.py`. Seit dem Wandtablet sind es vier:
+Oberfläche, REST, MCP und das Kiosk-Dashboard. Es gibt keine zweite Umsetzung, und
 damit keinen Weg, der mehr darf als ein anderer.
 
-Nicht jede Route ruft `require()` selbst auf; einige gehen über `_sichtbare_zone()`, das
+Nicht jede Route ruft `require()` selbst auf; einige gehen über `_visible_zone()`, das
 `visible_zones()` mit dem passenden Recht filtert und sonst `404` liefert. Das ist
 Absicht: **Eine fremde Zone ist nicht auffindbar, nicht verboten** — ein `403` verriete,
 dass es sie gibt.
@@ -37,6 +38,13 @@ Ohne Prüfung sind ausschließlich:
   geschlossen, sobald ein Benutzer existiert.
 - `GET /` — filtert selbst über `visible_zones()` und leitet ohne Sitzung zur Anmeldung.
 - `GET /healthz` — verrät nur Zustand und Version.
+- `GET /kiosk/<token>` und `GET /kiosk` — **nicht ungeprüft, nur anders geprüft.** Statt
+  einer Sitzung zählt ein Kiosk-Token: bei jeder Anfrage neu aufgelöst, also sofort
+  wirksam widerrufbar und ablaufbar, und über `principal_for_token()` auf die Rechte
+  seines Ausstellers geschnitten. Sein Rechtesatz umfasst `zone.read` für die
+  zugewiesenen Zonen und, falls beim Ausstellen erlaubt, `setpoint.write` und
+  `override.create` für dieselben — sonst nichts. Zonen außerhalb sind wie überall
+  unauffindbar, nicht verboten.
 
 ## 3. Das Verhalten, auf das es ankommt
 
@@ -58,6 +66,26 @@ Ohne das wäre Argon2id selbst der Seitenkanal.
 
 **Nichts wird geschaltet.** Zwei unabhängige Riegel: `setting.control_armed` und ein
 Client, der nur scharf gebaut veröffentlicht. Tests belegen beide Richtungen.
+
+### Das Kiosk-Token im Einzelnen
+
+Es ist ein gewöhnlicher `ApiToken` mit einem Kennzeichen, kein zweiter Anmeldeweg. Drei
+Eigenschaften, die zusammengehören:
+
+- **Es steht genau einmal im Klartext da** — beim Ausstellen. Gespeichert wird ein Hash,
+  mit demselben Verfahren wie bei den übrigen Tokens.
+- **Es fährt einmal in der Adresse und danach im Cookie.** Der Einstieg leitet auf das
+  nackte `/kiosk` weiter, damit es weder in der Adresszeile noch in einem `Referer`-Kopf
+  stehen bleibt.
+- **Es steht nicht im Protokoll.** Die erste Anfrage trüge es in der Zugriffszeile, und der
+  vorhandene Maskierungsfilter erreicht sie nicht: uvicorn baut seine Meldung aus
+  `record.args`, nicht aus strukturierten Feldern. Ein eigener Filter am Logger schwärzt
+  den Pfad, bevor er formatiert wird.
+
+**Was bleibt:** Wer das Tablet in der Hand hat, liest das Cookie aus. Das ist die
+Eigenschaft eines Lesezeichens statt einer Anmeldung — abgefedert durch den engen
+Rechtesatz und die jederzeitige Widerrufbarkeit, aber kein Geheimnis, das ein Gerät an der
+Wand gut hüten könnte.
 
 ## 4. Kryptografie
 

@@ -39,28 +39,28 @@ prüft dasselbe Recht wie der entsprechende REST-Endpunkt.
 
 | Werkzeug | Recht | Was es liefert |
 |---|---|---|
-| `list_zones()` | `zone.read` | Name, Anzeigename und Betriebsart je sichtbarer Zone |
+| `list_zones()` | `zone.read` | Name, Anzeigename, Betriebsart und Sonnenprofil je sichtbarer Zone |
 | `zone_state(zone_id)` | `zone.read` | Ist-Temperatur, Messzeitpunkt, Sensorzustand |
 | `explain_setpoint(zone_id)` | `zone.read` | Sollwert **und Begründung**, aus derselben Funktion, die auch regelt |
 | `read_schedule(zone_id)` | `zone.read` | Schaltpunkte mit Wochentag, Minute im Tag und Modusnamen |
 | `read_setpoints(zone_id)` | `zone.read` | die gesetzte Temperatur je Modus |
 | `list_devices()` | `device.read` | Anbindung, Fähigkeiten, letzte Nachricht, Batterie |
 | `shadow_decisions(zone_id, count=10)` | `zone.read` | die jüngsten Entscheidungen samt Grund |
-| `override_zone(zone_id, temperature_c, ends_at)` | `override.create` | legt eine Übersteuerung an |
+| `override(zone_id, temperature_c, ends_at)` | `override.create` | legt eine Übersteuerung an |
 | `cancel_override(zone_id)` | `override.cancel` | beendet die laufende Übersteuerung |
 | `boost(zone_id)` | `override.create` | zieht die nächste Schaltung vor |
 | `read_control_parameters(zone_id)` | `zone.read` | wirksame Regelparameter **samt ihrer Grenzen** |
-| `set_control_parameters(zone_id, name, wert)` | `zone.manage` | setzt einen Parameter, lässt die übrigen |
-| `read_control()` | `zone.read` | Betriebszustand und globale Vorgaben |
-| `force_dry_run(begruendung)` | `control.arm` | nimmt die Regelung in den Trockenlauf zurück |
-| `move_schedule_point(zone_id, punkt_id, weekday, minute)` | `schedule.manage` | setzt einen Punkt auf einen anderen Zeitpunkt |
+| `set_control_parameters(zone_id, name, value)` | `zone.manage` | setzt einen Parameter, lässt die übrigen |
+| `read_control()` | `zone.read` | Betriebszustand, globale Vorgaben und die Sonnenabsenkung (an/aus, Standort, Vorlauf, Obergrenze) |
+| `force_dry_run(reason)` | `control.arm` | nimmt die Regelung in den Trockenlauf zurück |
+| `move_schedule_point(zone_id, point_id, weekday, minute)` | `schedule.manage` | setzt einen Punkt auf einen anderen Zeitpunkt |
 
 Eine nicht sichtbare Zone wird wie eine unbekannte behandelt — die Antwort verrät nicht,
 dass es sie gibt.
 
 **`boost` ist für ein Sprachmodell die verlässlichere Form von „mach es hier wärmer".** Es
 muss weder eine Temperatur noch eine Dauer raten, und nach dem Schaltpunkt räumt sich der
-Eingriff selbst weg. `override_zone` bleibt daneben für den Fall, dass jemand eine bestimmte
+Eingriff selbst weg. `override` bleibt daneben für den Fall, dass jemand eine bestimmte
 Temperatur nennt.
 
 **`read_control_parameters` liefert die Grenzen mit.** Ohne sie wäre jeder Schreibversuch ein
