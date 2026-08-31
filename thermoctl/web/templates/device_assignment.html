@@ -108,7 +108,41 @@ Skripts falsch rät.
     <tbody>
     {% for assignment, device, rolle in assignments %}
     <tr>
-        <td>{{ rolle.label }}</td><td>{{ device.display_name }}</td>
+        <td>{{ rolle.label }}</td>
+        <td>
+            {{ device.display_name }}
+            {#
+            Nur bei Thermostatventilen: Bei allem anderen gibt es nichts zu waehlen --
+            eine Steckdose regelt nicht selbst.
+            #}
+            {% if rolle.code == "actuator" and "thermostat" in capabilities.get(device.id, []) %}
+            <div class="mt-1">
+                {% if may_edit %}
+                <form method="post" action="/zones/{{ zone.id }}/devices/regulation">
+                    <input type="hidden" name="assignment_id" value="{{ assignment.id }}">
+                    <input type="hidden" name="self_regulating"
+                           value="{{ 'no' if assignment.self_regulating else 'yes' }}">
+                    <button class="btn btn-sm btn-outline-secondary" type="submit">
+                        {% if assignment.self_regulating %}
+                        thermoctl schalten lassen
+                        {% else %}
+                        Ventil selbst regeln lassen
+                        {% endif %}
+                    </button>
+                </form>
+                {% endif %}
+                <span class="t-quiet small">
+                    {% if assignment.self_regulating %}
+                    Regelt selbst — thermoctl schreibt nur Soll- und, wenn das Gerät es
+                    annimmt, Ist-Temperatur.
+                    {% else %}
+                    thermoctl schaltet — mit Hysterese, Mindestschaltdauer und
+                    Fensterkontakt.
+                    {% endif %}
+                </span>
+            </div>
+            {% endif %}
+        </td>
         <td class="text-end">
         {% if may_edit %}
         <form method="post" action="/zones/{{ zone.id }}/devices/detach">

@@ -421,6 +421,23 @@ def temperature_for_mode(session: Session, zone: Zone, mode_id: int) -> Decimal 
     )
 
 
+def frost_protection_temperature(session: Session, zone: Zone) -> Decimal:
+    """The zone's frost-protection setpoint.
+
+    Extracted because a second caller appeared: a self-regulating valve is told this
+    number when a window is open. Computed twice, the two would eventually differ, and
+    the difference would be a room that freezes in one path and not in the other.
+
+    The fallback of 16 degrees applies when the frost mode has no setpoint for this
+    zone -- a plant that is not fully set up should still not freeze.
+    """
+    settings = session.get(Setting, 1)
+    assert settings is not None, "setting-Zeile fehlt — Einrichtung unvollstaendig"
+    return temperature_for_mode(session, zone, settings.frost_protection_mode_id) or Decimal(
+        "16.0"
+    )
+
+
 def resolved_setpoint(session: Session, zone: Zone, now_utc: datetime) -> Setpoint:
     """Which setpoint currently applies, and why.
 
@@ -430,7 +447,7 @@ def resolved_setpoint(session: Session, zone: Zone, now_utc: datetime) -> Setpoi
     settings = session.get(Setting, 1)
     assert settings is not None, "setting-Zeile fehlt — Einrichtung unvollstaendig"
     frost_id = settings.frost_protection_mode_id
-    frost_temp = temperature_for_mode(session, zone, frost_id) or Decimal("16.0")
+    frost_temp = frost_protection_temperature(session, zone)
     frost_code = session.scalar(select(SetpointMode.code).where(SetpointMode.id == frost_id))
 
     if zone.operating_mode.code == "off":

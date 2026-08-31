@@ -155,6 +155,60 @@ def detach_device(
     )
 
 
+def set_self_regulating(
+    session: Session,
+    zone: Zone,
+    assignment: ZoneDevice,
+    self_regulating: bool,
+    *,
+    actor_id: int | None,
+    source: str = "web",
+) -> None:
+    """Switches a thermostatic valve between the two ways of running it.
+
+    Only for the actuator role, and only for a device that is a thermostat: nothing
+    else regulates on its own, and offering the choice there would promise something
+    that cannot happen.
+
+    Recorded in the audit log because it changes how a real valve is driven. In
+    self-regulating mode thermoctl stops switching this device -- hysteresis, minimum
+    switching duration and the window contact then act only through the setpoint that
+    is written, not through an on/off command. That is a decision somebody should be
+    able to look up afterwards.
+    """
+    if assignment.zone_id != zone.id:
+        raise ValueError("Die Zuordnung gehört nicht zu dieser Zone.")
+    role = session.get(DeviceRole, assignment.device_role_id)
+    device = session.get(Device, assignment.device_id)
+    if role is None or role.code != "actuator":
+        raise CapabilityMissing("Nur ein Aktor kann selbst regeln.")
+    if device is None or "thermostat" not in _capabilities(session, device):
+        raise CapabilityMissing(
+            "Nur ein Thermostatventil kann selbst regeln — dieses Gerät ist keines."
+        )
+
+    if assignment.self_regulating == self_regulating:
+        return
+    assignment.self_regulating = self_regulating
+    audit.record(
+        session,
+        source=source,
+        action="update",
+        object_type="zone_device",
+        object_id=str(assignment.id),
+        summary=(
+            f"'{device.display_name}' in '{zone.display_name}' regelt "
+            + ("jetzt selbst" if self_regulating else "nicht mehr selbst")
+        ),
+        detail=(
+            "thermoctl schreibt nur noch Soll- und Ist-Temperatur"
+            if self_regulating
+            else "thermoctl schaltet das Ventil wieder selbst"
+        ),
+        user_id=actor_id,
+    )
+
+
 def set_temperature_source(
     session: Session,
     zone: Zone,

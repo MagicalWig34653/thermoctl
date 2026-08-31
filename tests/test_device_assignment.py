@@ -23,7 +23,12 @@ from thermoctl.db.models.measurement import Measurement
 from thermoctl.db.models.operations import AuditEvent
 from thermoctl.db.models.schedule import SchedulePoint
 from thermoctl.db.models.zone import ZoneSetpoint
-from thermoctl.domain.device_assignment import REQUIRED_CAPABILITY, swap_device
+from thermoctl.domain.device_assignment import (
+    REQUIRED_CAPABILITY,
+    CapabilityMissing,
+    set_self_regulating,
+    swap_device,
+)
 
 
 def _csrf(client: TestClient) -> dict[str, str]:
@@ -916,3 +921,152 @@ def test_a_thermostat_can_be_dragged_onto_the_actuator_slot(
             ZoneDevice.zone_id == zone.id, ZoneDevice.device_id == trv.id
         )
     ) is not None
+
+
+def _thermostat_in_zone(session: Session, zone_name: str) -> tuple[object, object]:
+    """A zone with a thermostatic valve assigned as its actuator."""
+    zone = create_zone(session, zone_name)
+    valve = _with_capability(session, f"{zone_name}-ventil", "thermostat")
+    session.add(
+        ZoneDevice(
+            zone_id=zone.id, device_id=valve.id, device_role_id=role(session, "actuator").id
+        )
+    )
+    session.flush()
+    assignment = session.scalar(
+        select(ZoneDevice).where(
+            ZoneDevice.zone_id == zone.id, ZoneDevice.device_id == valve.id
+        )
+    )
+    assert assignment is not None
+    return zone, assignment
+
+
+def test_a_thermostat_can_be_switched_to_regulating_itself(
+    angemeldeter_client: TestClient, session: Session
+) -> None:
+    """Both directions, and the audit entry that says who decided it.
+
+    Physically consequential: in self-regulating mode thermoctl no longer switches
+    this valve at all, so the change has to be findable afterwards.
+    """
+    zone, assignment = _thermostat_in_zone(session, "regelzone")
+
+    on = angemeldeter_client.post(
+        f"/zones/{zone.id}/devices/regulation",
+        data={"assignment_id": str(assignment.id), "self_regulating": "yes"},
+        headers=_csrf(angemeldeter_client),
+        follow_redirects=False,
+    )
+    assert on.status_code == 303
+    session.refresh(assignment)
+    assert assignment.self_regulating is True
+
+    off = angemeldeter_client.post(
+        f"/zones/{zone.id}/devices/regulation",
+        data={"assignment_id": str(assignment.id), "self_regulating": "no"},
+        headers=_csrf(angemeldeter_client),
+        follow_redirects=False,
+    )
+    assert off.status_code == 303
+    session.refresh(assignment)
+    assert assignment.self_regulating is False
+
+    summaries = [e.summary or "" for e in session.scalars(select(AuditEvent))]
+    assert any("regelt jetzt selbst" in s for s in summaries)
+    assert any("nicht mehr selbst" in s for s in summaries)
+
+
+def test_a_plain_switch_cannot_be_told_to_regulate_itself(session: Session) -> None:
+    """A socket has nothing to regulate with.
+
+    Refused in the domain, not only hidden in the interface: the page is not the only
+    caller, and offering the choice at all would promise something that cannot happen.
+    """
+    zone = create_zone(session, "steckdosenzone")
+    socket = _with_capability(session, "steckdose", "switch")
+    session.add(
+        ZoneDevice(
+            zone_id=zone.id, device_id=socket.id, device_role_id=role(session, "actuator").id
+        )
+    )
+    session.flush()
+    assignment = session.scalar(
+        select(ZoneDevice).where(ZoneDevice.device_id == socket.id)
+    )
+    assert assignment is not None
+
+    with pytest.raises(CapabilityMissing, match="kein"):
+        set_self_regulating(session, zone, assignment, True, actor_id=None)
+
+
+def test_only_an_actuator_regulates_itself(session: Session) -> None:
+    """The same device as a controller is a display, not a valve."""
+    zone = create_zone(session, "anzeigenzone")
+    valve = _with_capability(session, "ventil-als-anzeige", "thermostat")
+    session.add(
+        ZoneDevice(
+            zone_id=zone.id, device_id=valve.id, device_role_id=role(session, "controller").id
+        )
+    )
+    session.flush()
+    assignment = session.scalar(select(ZoneDevice).where(ZoneDevice.device_id == valve.id))
+    assert assignment is not None
+
+    with pytest.raises(CapabilityMissing, match="Aktor"):
+        set_self_regulating(session, zone, assignment, True, actor_id=None)
+
+
+def test_switching_the_regulation_mode_to_what_it_already_is_writes_nothing(
+    session: Session,
+) -> None:
+    """No audit entry for a change that did not happen.
+
+    Otherwise every page reload with the same value would leave another line in the
+    log, and the entries that record a real decision would drown between them.
+    """
+    zone, assignment = _thermostat_in_zone(session, "unveraendertzone")
+    before = session.query(AuditEvent).count()
+
+    set_self_regulating(session, zone, assignment, False, actor_id=None)
+
+    assert assignment.self_regulating is False
+    assert session.query(AuditEvent).count() == before
+
+
+def test_the_regulation_mode_needs_an_assignment_of_this_zone(
+    angemeldeter_client: TestClient, session: Session
+) -> None:
+    """The id comes out of a form, so it can name anything -- including a valve in
+    someone else's zone."""
+    zone, _assignment = _thermostat_in_zone(session, "eigenezone")
+    _other, foreign = _thermostat_in_zone(session, "fremdezone")
+
+    unparsable = angemeldeter_client.post(
+        f"/zones/{zone.id}/devices/regulation",
+        data={"assignment_id": "keine-zahl", "self_regulating": "yes"},
+        headers=_csrf(angemeldeter_client),
+        follow_redirects=False,
+    )
+    assert unparsable.status_code == 404
+
+    other_zone = angemeldeter_client.post(
+        f"/zones/{zone.id}/devices/regulation",
+        data={"assignment_id": str(foreign.id), "self_regulating": "yes"},
+        headers=_csrf(angemeldeter_client),
+        follow_redirects=False,
+    )
+    assert other_zone.status_code == 404
+    session.refresh(foreign)
+    assert foreign.self_regulating is False
+
+
+def test_an_assignment_of_another_zone_is_refused_in_the_domain(session: Session) -> None:
+    """The web route checks this too, but the domain is the one that must not be
+    talked around -- REST and MCP reach the same function."""
+    zone, _assignment = _thermostat_in_zone(session, "hierzone")
+    other, foreign = _thermostat_in_zone(session, "dortzone")
+
+    with pytest.raises(ValueError, match="gehört nicht zu dieser Zone"):
+        set_self_regulating(session, zone, foreign, True, actor_id=None)
+    assert foreign.self_regulating is False

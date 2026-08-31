@@ -63,6 +63,19 @@ class ZoneDevice(Base):
     device_id: Mapped[int] = mapped_column(ForeignKey("device.id"), nullable=False)
     device_role_id: Mapped[int] = mapped_column(ForeignKey("device_role.id"), nullable=False)
     sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    # Only meaningful for the actuator role, and only for a thermostatic valve.
+    #
+    # `False` (the default): thermoctl decides on and off and drives the valve --
+    # hysteresis, minimum switching duration and window-open all apply, and the device
+    # is a dumb switch that happens to speak thermostat.
+    #
+    # `True`: the valve regulates itself. thermoctl then only tells it what to aim for
+    # -- the setpoint, and where the device accepts one, the room temperature measured
+    # elsewhere. That is what a radiator thermostat is built to do, and its own sensor
+    # sits on the radiator, where it reads several degrees too warm.
+    self_regulating: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=false(), nullable=False
+    )
 
 
 class ControllerBinding(Base):
