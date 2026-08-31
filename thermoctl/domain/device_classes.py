@@ -159,8 +159,24 @@ def _decimal(value: object) -> Decimal | None:
 
 
 def properties_from_exposes(exposes: list[dict[str, object]]) -> tuple[PropertyDescription, ...]:
-    """Reads properties recursively; containers with no property of their own are skipped."""
+    """Reads properties recursively; containers with no property of their own are skipped.
+
+    **Each name only once.** A real device list repeats one: a device with several
+    endpoints, or one whose `switch` and `light` exposes both carry `execute_if_off`,
+    names it in more than one branch. `device_property` holds one row per
+    `(device_id, name)`, so a second row of the same name broke the whole ingest with a
+    UNIQUE violation -- and with it the entire `bridge/devices` message, so no device
+    on the bridge was updated at all any more.
+
+    The first occurrence wins. That is a choice, not an obvious truth: two entries of
+    the same name may differ in their range or their access. Merging them would mean
+    inventing a rule for which limit applies -- and a widened limit is exactly the kind
+    of invention that later lets a value through that the device rejects. The first one
+    is deterministic, comes from the order Zigbee2MQTT itself reports, and is the one
+    a reader of the device list would name first, too.
+    """
     result: list[PropertyDescription] = []
+    seen: set[str] = set()
 
     def visit(entries: list[object]) -> None:
         for raw in entries:
@@ -175,6 +191,9 @@ def properties_from_exposes(exposes: list[dict[str, object]]) -> tuple[PropertyD
                 and kind in {"numeric", "binary", "enum", "text"}
                 and isinstance(access, int)
             ):
+                if name in seen:
+                    continue
+                seen.add(name)
                 raw_values = entry.get("values")
                 values = tuple(str(value) for value in raw_values) if isinstance(raw_values, list) else ()
                 bits = access

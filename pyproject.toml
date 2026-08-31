@@ -32,6 +32,16 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools.packages.find]
 include = ["thermoctl*"]
 
+# Vorlagen und statische Dateien sind kein Beiwerk, sondern die halbe Anwendung.
+# Ohne diesen Block installiert setuptools ausschliesslich `.py`-Dateien: Das
+# Container-Abbild baute sauber durch und startete dann mit
+# "Directory '.../thermoctl/web/static' does not exist" gar nicht erst -- und
+# haette, waere es weiter gekommen, keine einzige Seite rendern koennen. Der
+# CI-Schritt "Docker-Image-Build" weist das nicht nach; er beweist nur, dass sich
+# ein Abbild bauen laesst, nicht dass es laeuft.
+[tool.setuptools.package-data]
+thermoctl = ["web/templates/*.html", "web/static/*", "web/static/vendor/*/*"]
+
 [tool.ruff]
 line-length = 100
 target-version = "py314"
@@ -63,4 +73,7 @@ testpaths = ["tests"]
 # (--cov-fail-under=97). Sonst scheitert jeder Lauf einer einzelnen Testdatei an einer
 # Schwelle, die nur fuer die vollstaendige Suite gilt.
 addopts = "-q --cov=thermoctl --cov-report=term-missing"
-markers = ["migration: laeuft Alembic als Unterprozess"]
+markers = [
+    "migration: laeuft Alembic als Unterprozess",
+    "packaging: baut ein Wheel und sieht hinein",
+]
