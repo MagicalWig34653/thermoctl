@@ -50,8 +50,15 @@
                 ) }}</span> {{ segment.mode_name }}{% if temperatures.get(segment.mode_id) %}
                     <span class="t-value">{{ temperatures[segment.mode_id]|grad }}°</span>{% endif %}</small>
                 {% if segment.point_id and may_edit %}
-                <a class="btn btn-sm btn-light py-0 px-1" href="#point-mode-{{ segment.point_id }}"
-                   aria-label="Modus dieses Schaltpunkts ändern">Modus ändern</a>
+                {# Kein sichtbarer Knopf im Ruhezustand: In jedem Balken stand sonst ein
+                   Knopf so kraeftig wie der Balken selbst, sieben Spalten hoch -- aus der
+                   Wochenuebersicht wurde ein Knopffeld. Der Verweis bleibt im Markup und
+                   damit per Tab erreichbar; sichtbar wird er erst bei Hover oder Fokus
+                   (schedule-bar:hover / :focus-within in thermoctl.css), absolut
+                   positioniert in der Ecke, damit er auch in einem 2rem hohen Balken
+                   (22 Uhr bis Mitternacht) nichts verdraengt und nicht abgeschnitten wird. #}
+                <a class="schedule-mode-link" href="#point-mode-{{ segment.point_id }}"
+                   aria-label="Modus dieses Schaltpunkts ändern">✎</a>
                 {% endif %}
             </div>
         {% endfor %}
