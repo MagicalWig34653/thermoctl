@@ -144,6 +144,7 @@ Wahl, wenn der Dienst wirklich heizt.
 | Nach dem Neustart sind alle Benutzer weg | Die SQLite-URL ist relativ. Abschnitt 2, die Sache mit den vier Schrägstrichen. |
 | Kein Einrichtungs-Token im Log | Es gibt bereits einen Benutzer — dann ist die Einrichtung abgeschlossen und `/setup` zu Recht geschlossen. |
 | Anmeldung wirft die Sitzung sofort weg | `THERMOCTL_SECURE_COOKIES=true` ohne TLS davor. Entweder TLS einrichten oder die Einstellung zurücknehmen. |
+| `MQTT-Verbindung verloren` im Sekundentakt, oft mit `code:128 Unspecified error` | **Zwei Clients mit derselben Kennung.** Ein MQTT-Broker duldet eine Kennung nur einmal und wirft beim zweiten Verbinden den ersten hinaus — der verbindet erneut und wirft den zweiten hinaus, endlos. Häufigster Fall: Eine ältere Instanz läuft noch (lokal gestartet oder ein alter Container). Prüfen mit `docker ps` und einem Blick auf den Rechner, auf dem zuletzt entwickelt wurde. Sollen zwei Instanzen wirklich parallel an einen Broker, bekommt jede ihre eigene `THERMOCTL_MQTT_CLIENT_ID`. Der Dienst schreibt diesen Hinweis nach dem dritten sofortigen Abbruch selbst ins Log. |
 
 Das Log ist strukturiert (`THERMOCTL_LOG_FORMAT=json`, für Menschen `text`) und maskiert
 Geheimnisse. Jede Antwort trägt eine `X-Request-ID`, die in jeder zugehörigen Logzeile

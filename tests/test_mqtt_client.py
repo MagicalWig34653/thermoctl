@@ -239,7 +239,7 @@ async def test_the_password_shows_up_in_no_log_line(
 
 
 @pytest.mark.anyio
-async def test_the_backoff_falls_back_after_a_successful_connection(
+async def test_the_backoff_falls_back_after_a_connection_that_held(
     mqtt_settings: Settings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Otherwise the wait time would grow monotonically over the service's lifetime.
@@ -247,8 +247,15 @@ async def test_the_backoff_falls_back_after_a_successful_connection(
     A connection that drops once after running for days would then wait a minute
     instead of a second -- even though there is no series of faults at all. For a
     heating system in winter, that is the difference between a gap and a pause.
+
+    **Decisive is how long it held, not whether a message arrived.** That used to be
+    the rule, and it is exactly what a duplicate client id defeats: Zigbee2MQTT keeps
+    a retained message on `bridge/state`, so even a connection that is kicked a second
+    later has received something. The backoff was reset every time, and the service
+    reconnected once a second, forever.
     """
     waited: list[float] = []
+    uhr = iter([0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 120.0] + [0.0] * 20)
     FalscherClient.instanzen.clear()
 
     async def mitschreiben(seconds: float) -> None:
@@ -257,8 +264,9 @@ async def test_the_backoff_falls_back_after_a_successful_connection(
             raise Schleifenende
 
     monkeypatch.setattr(client_module, "sleep", mitschreiben)
-    # Three failed attempts in a row (1, 2, 4 s), then a connection that delivers
-    # messages and only afterwards drops -- the fourth interval must be 1 s again.
+    monkeypatch.setattr(client_module, "now", lambda: next(uhr))
+    # Drei kurzlebige Verbindungen (1, 2, 4 s), dann eine, die zwei Minuten haelt --
+    # das vierte Intervall muss wieder 1 s sein.
     FalscherClient.stroeme = [
         MessageStream([], ConnectionError("getrennt")),
         MessageStream([], ConnectionError("getrennt")),
@@ -270,6 +278,69 @@ async def test_the_backoff_falls_back_after_a_successful_connection(
         await MqttClient(mqtt_settings, _leerer_handler).run()
 
     assert waited == [1.0, 2.0, 4.0, 1.0]
+
+
+@pytest.mark.anyio
+async def test_a_message_alone_no_longer_resets_the_backoff(
+    mqtt_settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The case from the field, in one test.
+
+    Every connection receives the retained `bridge/state` and is thrown out right
+    after. Under the old rule the interval stayed at one second and the service
+    hammered the broker; now it backs off.
+    """
+    waited: list[float] = []
+    FalscherClient.instanzen.clear()
+
+    async def mitschreiben(seconds: float) -> None:
+        waited.append(seconds)
+        if len(waited) == 3:
+            raise Schleifenende
+
+    monkeypatch.setattr(client_module, "sleep", mitschreiben)
+    monkeypatch.setattr(client_module, "now", lambda: 0.0)  # jede Verbindung kurzlebig
+    FalscherClient.stroeme = [
+        MessageStream([Message("testbasis/bridge/state", b'"online"')], ConnectionError("weg"))
+        for _ in range(3)
+    ]
+
+    with pytest.raises(Schleifenende):
+        await MqttClient(mqtt_settings, _leerer_handler).run()
+
+    assert waited == [1.0, 2.0, 4.0]
+
+
+@pytest.mark.anyio
+async def test_repeated_instant_drops_name_the_likely_cause(
+    mqtt_settings: Settings, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A broker says "Unspecified error" and nothing else.
+
+    Finding out that two clients share an id took reproducing it against a real
+    broker. The service knows enough to say it itself -- and the log is where someone
+    looks first.
+    """
+    waited: list[float] = []
+    FalscherClient.instanzen.clear()
+
+    async def mitschreiben(seconds: float) -> None:
+        waited.append(seconds)
+        if len(waited) == 4:
+            raise Schleifenende
+
+    monkeypatch.setattr(client_module, "sleep", mitschreiben)
+    monkeypatch.setattr(client_module, "now", lambda: 0.0)
+    FalscherClient.stroeme = [
+        MessageStream([], ConnectionError("code 128")) for _ in range(4)
+    ]
+
+    with caplog.at_level(logging.ERROR), pytest.raises(Schleifenende):
+        await MqttClient(mqtt_settings, _leerer_handler).run()
+
+    hinweise = [r for r in caplog.records if "derselben Kennung" in r.getMessage()]
+    assert len(hinweise) == 1, "genau einmal, nicht bei jedem Versuch"
+    assert getattr(hinweise[0], "client_id", None) == mqtt_settings.mqtt_client_id
 
 
 async def _leerer_handler(_topic: str, _payload: bytes) -> None:

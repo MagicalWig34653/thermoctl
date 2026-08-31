@@ -3,6 +3,7 @@
 import asyncio
 import logging
 import ssl
+import time
 from collections.abc import Awaitable, Callable
 
 import aiomqtt
@@ -16,6 +17,30 @@ log = logging.getLogger(__name__)
 async def sleep(seconds: float) -> None:
     """Waits before the next connection attempt."""
     await asyncio.sleep(seconds)
+
+
+def now() -> float:
+    """Monotone Zeit für die Frage, wie lange eine Verbindung gehalten hat.
+
+    Eine eigene Funktion, damit Tests sie ersetzen können — wie `sleep` daneben.
+    Monoton und nicht die Uhrzeit: Eine Zeitumstellung darf die Bewertung einer
+    Verbindung nicht verändern.
+    """
+    return time.monotonic()
+
+
+# Ab dieser Dauer gilt eine Verbindung als getragen, und der Abstand fällt auf eine
+# Sekunde zurück. Vorher zählte stattdessen, ob eine Nachricht angekommen war -- und
+# genau daran ging die Erkennung vorbei: Zigbee2MQTT hält auf `bridge/state` eine
+# retained Nachricht, die bei **jedem** Verbindungsaufbau sofort zugestellt wird. Wer
+# gleich danach hinausgeworfen wird, hat trotzdem etwas empfangen, und der Abstand
+# wurde jedes Mal zurückgesetzt: eine Endlosschleife im Sekundentakt.
+STABLE_AFTER_S = 30.0
+
+# Nach so vielen kurzlebigen Verbindungen hintereinander wird der wahrscheinlichste
+# Grund einmal ausgeschrieben. Nicht bei der ersten -- ein einzelner Abbruch ist
+# Alltag --, und nicht bei jeder, sonst wäre der Hinweis selbst wieder das Rauschen.
+NAME_THE_CAUSE_AFTER = 3
 
 
 class MqttClient:
@@ -48,7 +73,7 @@ class MqttClient:
         # Beyond the Zigbee2MQTT subscriptions: our own command topics. They are not
         # in `abonnements()`, because that delivers the four deliberately narrow
         # Zigbee2MQTT topics and nothing else.
-        self._zusatz_abonnements = list(extra_subscriptions or [])
+        self._extra_subscriptions = list(extra_subscriptions or [])
         self._client: aiomqtt.Client | None = None
 
     def _tls_context(self) -> ssl.SSLContext | None:
@@ -81,10 +106,13 @@ class MqttClient:
             return
 
         interval = 1.0
+        short_lived = 0
         while True:
+            connected_at: float | None = None
             try:
                 client = self._newer_client()
                 async with client:
+                    connected_at = now()
                     self._client = client
                     log.info(
                         "MQTT-Verbindung hergestellt",
@@ -93,22 +121,10 @@ class MqttClient:
 
                     for topic in [
                         *subscriptions(self._settings.mqtt_base_topic),
-                        *self._zusatz_abonnements,
+                        *self._extra_subscriptions,
                     ]:
                         await client.subscribe(topic)
                     async for message in client.messages:
-                        # The interval only resets once something actually arrives, not
-                        # already on connection setup. Otherwise a broker that accepts
-                        # and immediately disconnects again would become an infinite
-                        # loop with no pause. Conversely, the interval must also not
-                        # keep growing monotonically over the service's lifetime: a
-                        # connection that drops once after days should come back after
-                        # a second, not after a minute.
-                        #
-                        # That something arrives at all is reliable: `bridge/devices`
-                        # carries a retained message that gets delivered immediately on
-                        # every connection.
-                        interval = 1.0
                         try:
                             await self._handler(str(message.topic), bytes(message.payload))
                         except Exception:
@@ -117,7 +133,11 @@ class MqttClient:
                                 extra={"topic": str(message.topic)},
                             )
             except Exception:
-                log.exception(
+                # Vollständiger Stapel nur beim ersten Mal einer Serie. Derselbe
+                # Traceback im Sekundentakt begräbt jede andere Meldung im Log -- und
+                # die eine Zeile, die zählt, steht dann weiter unten.
+                melden = log.exception if short_lived == 0 else log.error
+                melden(
                     "MQTT-Verbindung verloren; neuer Versuch folgt",
                     extra={
                         "host": self._settings.mqtt_host,
@@ -127,6 +147,27 @@ class MqttClient:
                 )
             finally:
                 self._client = None
+
+            held_s = 0.0 if connected_at is None else now() - connected_at
+            if held_s >= STABLE_AFTER_S:
+                # Eine Verbindung, die getragen hat, setzt den Abstand zurück: Wer nach
+                # Tagen einmal abbricht, soll nach einer Sekunde zurück sein, nicht
+                # nach einer Minute.
+                interval, short_lived = 1.0, 0
+            else:
+                short_lived += 1
+                if short_lived == NAME_THE_CAUSE_AFTER:
+                    log.error(
+                        "MQTT-Verbindung bricht sofort wieder ab. Haeufigste Ursache: "
+                        "ein zweiter Client mit derselben Kennung -- dann werfen sich "
+                        "beide gegenseitig hinaus, endlos. Jede Instanz braucht eine "
+                        "eigene THERMOCTL_MQTT_CLIENT_ID.",
+                        extra={
+                            "client_id": self._settings.mqtt_client_id,
+                            "host": self._settings.mqtt_host,
+                            "verbindungsdauer_s": round(held_s, 1),
+                        },
+                    )
 
             await sleep(interval)
             interval = min(interval * 2, 60.0)
