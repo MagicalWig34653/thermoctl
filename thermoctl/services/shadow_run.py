@@ -7,7 +7,7 @@ exact rows later become the basis for comparison against the old system (subproj
 """
 
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal
 
 from sqlalchemy import select
@@ -17,9 +17,15 @@ from thermoctl.db.models.device import ZoneDevice
 from thermoctl.db.models.lookup import DeviceCapability, DeviceRole, SensorStatus
 from thermoctl.db.models.measurement import Measurement
 from thermoctl.db.models.operations import Setting
+from thermoctl.db.models.override import ZoneOverride
 from thermoctl.db.models.state import ShadowDecision, ZoneState
 from thermoctl.db.models.zone import Zone, ZoneSetpoint
-from thermoctl.domain.control_loop import Situation, decide
+from thermoctl.domain.control_loop import (
+    REASON_CODE_BLOCKED_MINIMUM_DURATION,
+    REASON_CODE_VALVE_PROTECTION,
+    Situation,
+    decide,
+)
 from thermoctl.domain.fault import NO_SOURCE
 from thermoctl.domain.schedule import Setpoint, resolved_setpoint
 from thermoctl.domain.solar_setback import HourlyForecast, sun_expected
@@ -194,6 +200,48 @@ def _process_zone(
         setpoint, frost_c, zone, parameter, settings, forecast, now
     )
 
+    override_active = session.scalar(
+        select(ZoneOverride.id)
+        .where(
+            ZoneOverride.zone_id == zone.id,
+            ZoneOverride.cancelled_at.is_(None),
+            ZoneOverride.starts_at <= now,
+            (ZoneOverride.ends_at.is_(None) | (ZoneOverride.ends_at > now)),
+        )
+        .limit(1)
+    ) is not None
+    interval = timedelta(days=zone.valve_protection_interval_days)
+    run_duration = timedelta(minutes=zone.valve_protection_duration_minutes)
+    protection_started = state.valve_protection_started_at if state is not None else None
+    protection_active = (
+        protection_started is not None and now < protection_started + run_duration
+    )
+    if state is not None and protection_started is not None and not protection_active:
+        state.valve_protection_started_at = None
+        state.last_valve_protection_at = now
+    if state is not None and not state.regular_heat_history_compacted:
+        # One-time bridge for installations upgraded with existing shadow history.
+        # Afterwards the condensed marker is authoritative and survives retention.
+        state.last_regular_heat_at = session.scalar(
+            select(ShadowDecision.decided_at)
+            .where(
+                ShadowDecision.zone_id == zone.id,
+                ShadowDecision.would_heat.is_(True),
+                ShadowDecision.outcome_code != REASON_CODE_VALVE_PROTECTION,
+            )
+            .order_by(ShadowDecision.decided_at.desc(), ShadowDecision.id.desc())
+                .limit(1)
+        )
+        state.regular_heat_history_compacted = True
+    last_movement = max(
+        (moment for moment in (
+            zone.created_at,
+            state.last_regular_heat_at if state is not None else None,
+            state.last_valve_protection_at if state is not None else None,
+        ) if moment is not None),
+    )
+    protection_due = now >= last_movement + interval
+
     situation = Situation(
         measured_c=measured_c,
         setpoint_c=setpoint_c,
@@ -206,8 +254,26 @@ def _process_zone(
         window_closed_for_s=window_closed_for_s,
         sensor_status=sensor_status,
         parameter=parameter,
+        override_active=override_active,
+        valve_protection_due=protection_due,
+        # Also true in the first cycle at/after the deadline: the previous on-state
+        # still came from protection and must not turn into an endless hysteresis hold.
+        valve_protection_active=protection_started is not None,
     )
     decision = decide(situation)
+
+    if state is not None:
+        if decision.reason_code == REASON_CODE_VALVE_PROTECTION:
+            if state.valve_protection_started_at is None:
+                state.valve_protection_started_at = now
+        elif (
+            decision.heating
+            and decision.reason_code != REASON_CODE_BLOCKED_MINIMUM_DURATION
+        ):
+            # Persist normal heating separately from the retained shadow log. A true
+            # regular decision proves the valve was commanded open, and this marker
+            # survives deletion of shadow rows at the default 30-day retention edge.
+            state.last_regular_heat_at = now
 
     row = ShadowDecision(
         decided_at=now,

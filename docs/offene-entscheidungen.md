@@ -394,3 +394,22 @@ Mensch beim Lesen der Geräteliste auch zuerst nennen würde.
 **Wie es auffiel:** Nicht durch Nachdenken, sondern im Betrieb — die UNIQUE-Bedingung brach
 die Verarbeitung der ganzen `bridge/devices`-Nachricht ab, und danach kam kein Gerät der
 Brücke mehr an.
+## 2026-08-31 — Der Heiznachweis für den Ventilschutz liegt in `zone_state`
+
+**Entschieden:** `zone_state.last_regular_heat_at` wird bei jeder regulären positiven
+Schattenentscheidung fortgeschrieben. Schutzlaufentscheidungen zählen dabei ausdrücklich
+nicht als reguläres Heizen. Start und letzter Abschluss eines Schutzlaufs liegen ebenfalls
+in `zone_state`.
+
+**Warum:** `shadow_decision.would_heat` ist der fachliche Beleg, aber nicht der geeignete
+Langzeitspeicher: Die Aufbewahrung löscht alte Protokollzeilen, standardmäßig genau nach 30
+Tagen. Der verdichtete Zeitpunkt überlebt diese Löschung und lässt einen Neustart mitten im
+Lauf denselben Startzeitpunkt wieder aufnehmen. Eine positive reguläre Entscheidung ist
+ausreichend, weil sie genau den Befehl belegt, das Ventil zu öffnen; eine gemessene
+Ventilstellung ist nicht für jeden unterstützten Aktor verfügbar.
+
+**Verworfen:** Bei Fälligkeit das Schattenprotokoll über den ganzen Abstand abfragen. Das
+bekäme am Standardrand von 30 Tagen ein Loch. Ebenfalls verworfen wurde ein Feld in `zone`:
+Der Zeitpunkt ist Betriebszustand und keine Konfiguration.
+
+---

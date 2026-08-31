@@ -332,6 +332,52 @@ def test_a_single_parameter_leaves_the_others_inherited(client, token_fuer, sess
     assert zone.min_on_seconds is None, "an inherited value was pinned down"
 
 
+def test_rest_reads_and_writes_valve_protection_parameters(client, token_fuer, session) -> None:
+    _defaults(session)
+    head = token_fuer([("zone.read", "bad"), ("zone.manage", "bad")])
+    response = client.put(
+        "/api/v1/zones/1/parameters", headers=head,
+        json={"valve_protection_enabled": True,
+              "valve_protection_interval_days": 14,
+              "valve_protection_duration_minutes": 7},
+    )
+    assert response.status_code == 200
+    assert response.json()["valve_protection_enabled"] is True
+    assert response.json()["valve_protection_interval_days"] == 14
+    assert response.json()["valve_protection_duration_minutes"] == 7
+
+    invalid = client.put(
+        "/api/v1/zones/1/parameters", headers=head,
+        json={"valve_protection_enabled": True,
+              "valve_protection_interval_days": 1,
+              "valve_protection_duration_minutes": 1441},
+    )
+    assert invalid.status_code == 422
+    assert "nicht länger" in invalid.json()["detail"]
+
+
+def test_rest_schema_rejects_valve_protection_values_above_the_domain_limits(
+    client, token_fuer, session
+) -> None:
+    _defaults(session)
+    head = token_fuer([("zone.read", "bad"), ("zone.manage", "bad")])
+
+    for field, value in (
+        ("valve_protection_interval_days", 3651),
+        ("valve_protection_duration_minutes", 5_256_001),
+    ):
+        response = client.put(
+            "/api/v1/zones/1/parameters", headers=head, json={field: value}
+        )
+        assert response.status_code == 422, field
+
+    schema = client.get("/openapi.json").json()["components"]["schemas"][
+        "WriteControlParameters"
+    ]["properties"]
+    assert schema["valve_protection_interval_days"]["maximum"] == 3650
+    assert schema["valve_protection_duration_minutes"]["maximum"] == 5_256_000
+
+
 def test_an_unknown_parameter_name_lists_the_valid_ones(client, token_fuer, session) -> None:
     _defaults(session)
     head = token_fuer([("zone.read", "bad"), ("zone.manage", "bad")])

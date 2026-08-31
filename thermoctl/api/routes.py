@@ -365,14 +365,13 @@ def save_parameter(
 ) -> ControlParametersResponse:
     zone_obj = _visible_zone(session, principal, zone_id)
     _permission(principal, "zone.manage", zone_id)
-    save_control_parameters(
-        session,
-        zone_obj,
-        data.model_dump(),
-        user_id=principal.user_id,
-        token_id=principal.token_id,
-        source="api",
-    )
+    try:
+        save_control_parameters(
+            session, zone_obj, data.model_dump(), user_id=principal.user_id,
+            token_id=principal.token_id, source="api",
+        )
+    except ParameterOutOfRange as exc:
+        raise _domain_error("valve_protection_duration_minutes", str(exc)) from exc
     return ControlParametersResponse(**control_parameters(session, zone_obj).__dict__)
 
 

@@ -101,6 +101,167 @@ def test_one_cycle_with_a_fresh_reading_writes_a_row_with_a_reason(
     assert session.query(ShadowDecision).count() == 1
 
 
+def test_valve_protection_persists_for_its_duration_and_survives_a_restart(
+    session: Session,
+) -> None:
+    create_settings(session)
+    zone = _zone_with_state(session, "ventilschutz", measured_c=Decimal("21.0"))
+    zone.created_at = NOW - timedelta(days=31)
+    zone.valve_protection_enabled = True
+    zone.valve_protection_interval_days = 30
+    zone.valve_protection_duration_minutes = 10
+    zone.min_on_seconds = 0
+    zone.min_off_seconds = 0
+    session.flush()
+
+    first = shadow_run.cycle(session, NOW)[0]
+    middle = shadow_run.cycle(session, NOW + timedelta(minutes=5))[0]
+    session.expire_all()  # same persisted facts a newly started process would read
+    last_on = shadow_run.cycle(session, NOW + timedelta(minutes=9, seconds=59))[0]
+    state_at_end = session.get(ZoneState, zone.id)
+    assert state_at_end is not None
+    state_at_end.temperature_c = Decimal("16.0")  # inside hysteresis, normally "keep state"
+    ended = shadow_run.cycle(session, NOW + timedelta(minutes=10))[0]
+
+    assert [first.outcome_code, middle.outcome_code, last_on.outcome_code] == [
+        "ventilschutz", "ventilschutz", "ventilschutz",
+    ]
+    assert ended.would_heat is False
+    state = session.get(ZoneState, zone.id)
+    assert state is not None
+    assert state.valve_protection_started_at is None
+    assert state.last_valve_protection_at == NOW + timedelta(minutes=10)
+
+
+def test_valve_protection_duration_is_independent_of_minimum_on_time(
+    session: Session,
+) -> None:
+    create_settings(session)
+    zone = _zone_with_state(session, "exact-duration", measured_c=Decimal("21.0"))
+    zone.created_at = NOW - timedelta(days=2)
+    zone.valve_protection_enabled = True
+    zone.valve_protection_interval_days = 1
+    zone.valve_protection_duration_minutes = 10
+    zone.min_on_seconds = 300
+    zone.min_off_seconds = 0
+    session.flush()
+
+    moments = [
+        NOW,
+        NOW + timedelta(minutes=1),
+        NOW + timedelta(minutes=4, seconds=59),
+        NOW + timedelta(minutes=5),
+        NOW + timedelta(minutes=9, seconds=59),
+        NOW + timedelta(minutes=10),
+    ]
+    rows = [shadow_run.cycle(session, moment)[0] for moment in moments]
+
+    assert [row.outcome_code for row in rows[:-1]] == ["ventilschutz"] * 5
+    assert rows[-1].would_heat is False
+    state = session.get(ZoneState, zone.id)
+    assert state is not None
+    assert state.last_regular_heat_at is None
+    assert state.last_valve_protection_at == moments[-1]
+
+
+def test_equal_interval_and_duration_waits_a_full_interval_after_completion(
+    session: Session,
+) -> None:
+    create_settings(session)
+    zone = _zone_with_state(session, "equal", measured_c=Decimal("21.0"))
+    zone.created_at = NOW - timedelta(days=2)
+    zone.valve_protection_enabled = True
+    zone.valve_protection_interval_days = 1
+    zone.valve_protection_duration_minutes = 1440
+    zone.min_on_seconds = 0
+    zone.min_off_seconds = 0
+    session.flush()
+
+    started = shadow_run.cycle(session, NOW)[0]
+    ended = shadow_run.cycle(session, NOW + timedelta(days=1))[0]
+    next_cycle = shadow_run.cycle(session, NOW + timedelta(days=1, minutes=1))[0]
+
+    assert started.outcome_code == "ventilschutz"
+    assert ended.would_heat is False
+    assert next_cycle.would_heat is False
+    state = session.get(ZoneState, zone.id)
+    assert state is not None
+    assert state.valve_protection_started_at is None
+    assert state.last_valve_protection_at == NOW + timedelta(days=1)
+
+
+def test_recent_regular_heating_prevents_a_due_valve_protection_run(session: Session) -> None:
+    create_settings(session)
+    zone = _zone_with_state(session, "bewegt", measured_c=Decimal("21.0"))
+    zone.created_at = NOW - timedelta(days=90)
+    zone.valve_protection_enabled = True
+    zone.min_off_seconds = 0
+    session.add(ShadowDecision(
+        decided_at=NOW - timedelta(days=29), zone_id=zone.id,
+        temperature_c=Decimal("15.0"), setpoint_c=Decimal("16.0"),
+        setpoint_reason="Zeitplan", would_heat=True, previous_would_heat=False,
+        outcome_code="heizen", reason="Reguläres Heizen",
+    ))
+    session.flush()
+
+    row = shadow_run.cycle(session, NOW)[0]
+
+    assert row.would_heat is False
+    assert row.outcome_code != "ventilschutz"
+    state = session.get(ZoneState, zone.id)
+    assert state is not None
+    assert state.last_regular_heat_at == NOW - timedelta(days=29)
+
+
+def test_empty_regular_heat_history_is_compacted_only_once(
+    session: Session, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    create_settings(session)
+    zone = _zone_with_state(session, "never-heated", measured_c=Decimal("21.0"))
+    zone.min_on_seconds = 0
+    zone.min_off_seconds = 0
+    session.flush()
+    original_scalar = session.scalar
+    bridge_queries = 0
+
+    def counting_scalar(statement, *args, **kwargs):
+        nonlocal bridge_queries
+        sql = str(statement)
+        if "shadow_decision" in sql and "outcome_code" in sql:
+            bridge_queries += 1
+        return original_scalar(statement, *args, **kwargs)
+
+    monkeypatch.setattr(session, "scalar", counting_scalar)
+
+    for minute in range(3):
+        shadow_run.cycle(session, NOW + timedelta(minutes=minute))
+
+    state = session.get(ZoneState, zone.id)
+    assert state is not None
+    assert bridge_queries == 1
+    assert state.regular_heat_history_compacted is True
+    assert state.last_regular_heat_at is None
+
+
+def test_valve_protection_timestamps_keep_microseconds_after_a_database_roundtrip(
+    session: Session,
+) -> None:
+    create_settings(session)
+    moment = NOW.replace(microsecond=987654)
+    zone = _zone_with_state(session, "precise", measured_c=Decimal("21.0"), now=moment)
+    state = session.get(ZoneState, zone.id)
+    assert state is not None
+    state.last_regular_heat_at = moment
+    state.valve_protection_started_at = moment
+    state.last_valve_protection_at = moment
+    session.flush()
+    session.expire(state)
+
+    assert state.last_regular_heat_at == moment
+    assert state.valve_protection_started_at == moment
+    assert state.last_valve_protection_at == moment
+
+
 def test_several_cycles_with_an_unchanged_situation_yield_unchanged_without_a_flood_of_rows(
     session: Session,
 ) -> None:

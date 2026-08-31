@@ -22,6 +22,16 @@
     "Wie viel der Sollwert bei erwarteter Sonne höchstens absinken darf. Derzeit " ~ effective.solar_setback_max_k ~ " K" ~ (" aus dem globalen Standard." if not values.solar_setback_max_k else "."), errors.solar_setback_max_k, "0.1", "0") }}
   {{ number_field("solar_gain_factor", "Sonnenprofil (0 bis 1)", values.solar_gain_factor,
     "Wie stark diese Zone von Sonneneinstrahlung profitiert — 0 für gar nicht (z. B. ein Nordzimmer), 1 für stark (z. B. ein Zimmer mit Dachfenstern). Voreinstellung 0, also aus.", errors.solar_gain_factor, "0.05", "0", "1") }}
+  <div class="form-check mb-3">
+    <input class="form-check-input" type="checkbox" id="valve_protection_enabled"
+           name="valve_protection_enabled" value="yes"{% if values.valve_protection_enabled %} checked{% endif %}>
+    <label class="form-check-label" for="valve_protection_enabled">Ventilschutz einschalten</label>
+    <div class="form-text">Bewegt das Heizungsventil regelmäßig, damit es nach langer Ruhezeit nicht festsitzt.</div>
+  </div>
+  {{ number_field("valve_protection_interval_days", "Ventilschutz-Abstand (Tage)", values.valve_protection_interval_days,
+    "Nach so vielen Tagen ohne reguläres Heizen wird der Schutzlauf fällig.", errors.valve_protection_interval_days, "1", "1") }}
+  {{ number_field("valve_protection_duration_minutes", "Ventilschutz-Dauer (Minuten)", values.valve_protection_duration_minutes,
+    "So lange bleibt das Ventil während eines Schutzlaufs geöffnet.", errors.valve_protection_duration_minutes, "1", "1") }}
   <button class="btn btn-primary" type="submit">Speichern</button>
   <a class="btn btn-secondary" href="/">Abbrechen</a>
 </form>

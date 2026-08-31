@@ -2,6 +2,27 @@
 
 Letzte Aktualisierung: 2026-08-31
 
+## Ventilschutz ist je Zone konfigurierbar
+
+Eine Zone kann ihr Ventil nun nach einer einstellbaren Ruhezeit für eine einstellbare
+Dauer öffnen (Vorgabe: aus, 30 Tage, 10 Minuten). Der Schutzlauf ist die letzte Regel in
+`decide()`: Sensorausfall, Frostschutz, Fenster, Übersteuerung und die normale Hysterese
+behalten Vorrang. Die Mindestschaltdauer gilt für reguläres Heizen, verlängert oder
+verkürzt aber keinen Schutzlauf. Im Schattenprotokoll trägt dieser den eigenen Ausgang
+`ventilschutz` und eine eindeutige Begründung.
+
+Start, letzter Abschluss und der letzte reguläre Heiznachweis liegen als Betriebszustand
+in `zone_state`. Dadurch läuft ein begonnener Schutzlauf nach einem Dienstneustart weder
+neu noch endlos an, und der Heiznachweis bleibt erhalten, wenn die 30-Tage-Aufbewahrung
+alte Schattenentscheidungen löscht. Ein eigener Verdichtungsmarker verhindert dabei
+wiederholte Historienabfragen, wenn es noch nie reguläres Heizen gab. Die Zeitstempel
+bewahren auf SQLite und MariaDB Mikrosekunden; der nächste Abstand beginnt am Abschluss,
+nicht am Start eines Laufs.
+
+Weboberfläche, REST und MCP verwenden dieselbe Domänenvalidierung: Dauer und Abstand
+müssen positiv sein, die Dauer darf den Abstand nicht überschreiten; zusätzlich gelten
+3650 Tage und 5.256.000 Minuten als gemeinsame Obergrenzen.
+
 ## Kreuzreview der Meross-Anbindung nachgearbeitet
 
 ### Keine Netzwartezeit mehr in einer Datenbanktransaktion

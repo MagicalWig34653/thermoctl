@@ -7,6 +7,9 @@ from thermoctl import audit
 from thermoctl.db.models.operations import Setting
 from thermoctl.db.models.zone import Zone
 
+MAXIMUM_VALVE_PROTECTION_INTERVAL_DAYS = 3650
+MAXIMUM_VALVE_PROTECTION_DURATION_MINUTES = 5_256_000
+
 
 @dataclass(frozen=True)
 class ControlParameters:
@@ -19,6 +22,9 @@ class ControlParameters:
     # The zone's cap on the solar setback in Kelvin -- inherited from
     # `setting.default_solar_setback_max_k` exactly like the six fields above.
     solar_setback_max_k: Decimal
+    valve_protection_enabled: bool = False
+    valve_protection_interval_days: int = 30
+    valve_protection_duration_minutes: int = 10
 
 
 def _or_standard[T](zone_value: T | None, default: T) -> T:
@@ -49,21 +55,29 @@ def control_parameters(session: Session, zone: Zone) -> ControlParameters:
         solar_setback_max_k=_or_standard(
             zone.solar_setback_max_k, e.default_solar_setback_max_k
         ),
+        valve_protection_enabled=zone.valve_protection_enabled,
+        valve_protection_interval_days=zone.valve_protection_interval_days,
+        valve_protection_duration_minutes=zone.valve_protection_duration_minutes,
     )
 
 
 def save_control_parameters(
     session: Session,
     zone: Zone,
-    values: dict[str, Decimal | int | None],
+    values: dict[str, Decimal | int | bool | None],
     *,
     user_id: int | None,
     token_id: int | None = None,
     source: str = "web",
 ) -> None:
     """Saves zone deviations; ``None`` restores inheritance."""
+    complete = {
+        name: values.get(name, getattr(zone, name))
+        for name in ControlParameters.__dataclass_fields__
+    }
+    validate_valve_protection(complete)
     for name in ControlParameters.__dataclass_fields__:
-        setattr(zone, name, values[name])
+        setattr(zone, name, complete[name])
     audit.record(
         session,
         source=source,
@@ -74,6 +88,28 @@ def save_control_parameters(
         user_id=user_id,
         token_id=token_id,
     )
+
+
+def validate_valve_protection(values: dict[str, Decimal | int | bool | None]) -> None:
+    """Reject physically meaningless valve-protection timing for every adapter."""
+    interval = int(values["valve_protection_interval_days"] or 0)
+    duration = int(values["valve_protection_duration_minutes"] or 0)
+    if interval <= 0:
+        raise ParameterOutOfRange("Ventilschutz-Abstand muss mindestens 1 Tag betragen.")
+    if interval > MAXIMUM_VALVE_PROTECTION_INTERVAL_DAYS:
+        raise ParameterOutOfRange(
+            f"Ventilschutz-Abstand darf höchstens "
+            f"{MAXIMUM_VALVE_PROTECTION_INTERVAL_DAYS} Tage betragen."
+        )
+    if duration <= 0:
+        raise ParameterOutOfRange("Ventilschutz-Dauer muss mindestens 1 Minute betragen.")
+    if duration > MAXIMUM_VALVE_PROTECTION_DURATION_MINUTES:
+        raise ParameterOutOfRange(
+            f"Ventilschutz-Dauer darf höchstens "
+            f"{MAXIMUM_VALVE_PROTECTION_DURATION_MINUTES} Minuten betragen."
+        )
+    if duration > interval * 24 * 60:
+        raise ParameterOutOfRange("Ventilschutz-Dauer darf nicht länger als der Abstand sein.")
 
 
 class UnknownParameter(ValueError):
@@ -140,6 +176,18 @@ PARAMETERS: tuple[ParameterDescription, ...] = (
         "solar_setback_max_k", "Obergrenze Sonnenabsenkung", "K",
         Decimal("0.0"), Decimal("10.0"), Decimal("0.1"),
     ),
+    ParameterDescription(
+        "valve_protection_enabled", "Ventilschutz eingeschaltet", None,
+        Decimal(0), Decimal(1), Decimal(1),
+    ),
+    ParameterDescription(
+        "valve_protection_interval_days", "Ventilschutz-Abstand", "Tage",
+        Decimal(1), Decimal(MAXIMUM_VALVE_PROTECTION_INTERVAL_DAYS), Decimal(1),
+    ),
+    ParameterDescription(
+        "valve_protection_duration_minutes", "Ventilschutz-Dauer", "Minuten",
+        Decimal(1), Decimal(MAXIMUM_VALVE_PROTECTION_DURATION_MINUTES), Decimal(1),
+    ),
 )
 
 BY_NAME: dict[str, ParameterDescription] = {p.name: p for p in PARAMETERS}
@@ -176,10 +224,10 @@ def set_parameter(
     rounded = int(value) if description.integral else value
     # Take over the other fields exactly as they stand on the zone -- an inherited
     # None stays inherited. Only this one parameter gets fixed.
-    values: dict[str, Decimal | int | None] = {
+    values: dict[str, Decimal | int | bool | None] = {
         field: getattr(zone, field) for field in ControlParameters.__dataclass_fields__
     }
-    values[name] = rounded
+    values[name] = bool(rounded) if name == "valve_protection_enabled" else rounded
     save_control_parameters(
         session, zone, values, user_id=user_id, token_id=token_id, source=source
     )
