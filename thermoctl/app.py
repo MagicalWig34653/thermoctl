@@ -47,7 +47,7 @@ from thermoctl.domain.zone_settings import (
 from thermoctl.domain.zones import UnknownOperatingMode, set_operating_mode
 from thermoctl.integrations.actuators import switching_allowed
 from thermoctl.integrations.forecast import ForecastCache
-from thermoctl.integrations.meross import UrllibJsonTransport
+from thermoctl.integrations.meross import UrllibJsonTransport, credentials_configured
 from thermoctl.integrations.mqtt.client import MqttClient
 from thermoctl.integrations.mqtt.commands import (
     Command,
@@ -111,6 +111,10 @@ def _audit(session: Session, notice: FaultNotice) -> None:
 # Strong references to the running dispatch tasks. Without them the garbage collector
 # could collect a task before it finishes -- asyncio itself only holds weak references.
 _running_notices: set[asyncio.Task[None]] = set()
+
+# Same reason, for the detached Meross reconciliation started from the shadow loop
+# below (`_start_meross_refresh`).
+_running_meross_refreshes: set[asyncio.Task[None]] = set()
 
 
 def _sensor_states(session: Session) -> dict[int, str]:
@@ -199,6 +203,44 @@ async def _refresh_meross(app: FastAPI, session: Session, now: datetime) -> None
     await meross_refresh(session, get_settings(), transport, now)
 
 
+def _start_meross_refresh(app: FastAPI, now: datetime) -> None:
+    """Starts a Meross reconciliation detached from the shadow cycle.
+
+    Sign-in and the device list are two HTTP calls to somebody else's cloud, each with
+    a 20 second timeout (`integrations/meross.py`, `urlopen(..., timeout=20)`). Calling
+    `_refresh_meross` from inside the cycle's own `session_scope` and awaiting it there
+    -- as an earlier version did -- kept that transaction open for as long as the cloud
+    took to answer or time out, and delayed publication, retention, the commit itself,
+    and the next cycle behind it. The reconciliation needs none of that: it opens its
+    own session, exactly like the notice dispatch below does, and the cycle does not
+    wait for it.
+    """
+    task = asyncio.create_task(_run_detached_meross_refresh(app, now))
+    _running_meross_refreshes.add(task)
+    task.add_done_callback(_running_meross_refreshes.discard)
+
+
+async def _run_detached_meross_refresh(app: FastAPI, now: datetime) -> None:
+    with session_scope(app.state.session_factory) as session:
+        await _refresh_meross(app, session, now)
+
+
+def _shadow_loop_needed(settings: Settings) -> bool:
+    """Whether the shadow loop has anything to do at all.
+
+    Not simply `settings.mqtt_enabled`: the loop also carries the Meross
+    reconciliation (finding 3 of the cross review), and the Meross cloud is not the
+    local Zigbee2MQTT broker -- an installation with Meross credentials set and
+    `THERMOCTL_MQTT_ENABLED=false` still needs its startup and hourly reconciliation.
+    Everything else the loop does (sensor state, solar forecast, the dry-run decisions,
+    retention) is already independent of MQTT; publication is the one part that needs
+    a broker, and it already guards itself with `getattr(app.state, "publisher",
+    None)` -- `publisher` stays `None` when `mqtt_enabled` is off, so that branch
+    simply never runs.
+    """
+    return settings.mqtt_enabled or credentials_configured(settings)
+
+
 async def _shadow_loop(app: FastAPI) -> None:
     """Waits out the configured interval, then one cycle -- forever, until cancelled.
 
@@ -227,9 +269,6 @@ async def _shadow_loop(app: FastAPI) -> None:
                 notices = _sensor_notices(session, before)
                 forecast = await _solar_forecast(app, session, now)
                 cycle(session, now, forecast)
-                if now >= next_meross:
-                    await _refresh_meross(app, session, now)
-                    next_meross = now + timedelta(seconds=MEROSS_REFRESH_S)
                 # `getattr`: the loop also runs in tests that assemble an app without
                 # running through the full lifespan.
                 if getattr(app.state, "publisher", None) is not None:
@@ -243,6 +282,9 @@ async def _shadow_loop(app: FastAPI) -> None:
                 if now >= next_retention:
                     delete_old_measurements(session, now)
                     next_retention = now + timedelta(days=1)
+            if now >= next_meross:
+                next_meross = now + timedelta(seconds=MEROSS_REFRESH_S)
+                _start_meross_refresh(app, now)
             # Dispatch runs alongside, not in step with the cycle. `send` waits up to
             # ten seconds for a webhook; with several sensors failing at once that would
             # add up and delay the next control cycle. Once subproject 4 actually starts
@@ -416,9 +458,9 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
             # its name would be redacted there.
             log.info("Einrichtung erforderlich. Einmal-Token: %s", plaintext)
 
-    # Both background tasks run only with `mqtt_enabled` -- the test suite builds the
-    # application constantly (every `TestClient`), and doing so must not trigger
-    # either an infinite loop or a network connection.
+    # The MQTT client runs only with `mqtt_enabled` -- the test suite builds the
+    # application constantly (every `TestClient`), and doing so must not trigger a
+    # network connection. The shadow loop is broader than MQTT, though (see below).
     settings = get_settings()
     app.state.bridge_reachable = None
     app.state.publisher = None
@@ -447,6 +489,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         )
         app.state.publisher = client
         background_tasks.append(asyncio.create_task(client.run()))
+    if _shadow_loop_needed(settings):
         background_tasks.append(asyncio.create_task(_shadow_loop(app)))
 
     try:

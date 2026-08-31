@@ -2,6 +2,42 @@
 
 Letzte Aktualisierung: 2026-08-31
 
+## Kreuzreview der Meross-Anbindung nachgearbeitet
+
+Codex hatte die Anbindung aus 0.3.0 gegengelesen; sechs Befunde daraus sind
+umgesetzt:
+
+- **Nicht mehr jedes Gerät bekommt `switch`.** `services/meross_discovery.py` prüfte
+  den Gerätetyp bisher nie — ein Hub, ein Thermostatventil, eine Lampe im selben
+  Konto wären als Heizungsaktor angeboten worden. Jetzt entscheidet das Meross-eigene
+  Namensschema (`mss…` = Steckdose); alles andere bekommt weiterhin eine Gerätezeile
+  (sichtbar sein ist nützlich), aber keine `switch`-Fähigkeit. Die gemeldete
+  Kanalzahl wird als `DeviceProperty` mitgeführt statt verworfen — dieselbe
+  Ablage, die `services/ingest.py` für Zigbee2MQTT-Merkmale nutzt.
+- **Der Abgleich blockiert den Schattenzyklus nicht mehr.** Er lief bisher innerhalb
+  der Transaktion des Zyklus und wurde abgewartet — bei einer lahmenden Wolke (zwei
+  HTTP-Aufrufe mit je 20 Sekunden Zeitgrenze) hätte das Veröffentlichung, Aufbewahrung
+  und den Commit selbst verzögert. Er läuft jetzt entkoppelt, in einer eigenen Sitzung,
+  ohne dass der Zyklus auf ihn wartet.
+- **Der Abgleich läuft jetzt auch ohne lokales MQTT.** Bisher startete der gesamte
+  Schattenzyklus nur bei `THERMOCTL_MQTT_ENABLED=true` — wer Meross-Zugangsdaten
+  setzte, aber Zigbee2MQTT nicht nutzte, bekam nie einen Abgleich. Der Zyklus startet
+  jetzt, sobald MQTT **oder** vollständige Meross-Zugangsdaten vorliegen.
+- **Die Schnittstellenseite meldet „läuft" jetzt ehrlich.** Sie prüfte nur, ob eine
+  E-Mail-Adresse eingetragen war (ein Passwort allein reichte, um „läuft" zu zeigen).
+  Jetzt braucht es beide Felder, und „running" heißt erst etwas, wenn tatsächlich ein
+  Gerät aus einem Abgleich hervorgegangen ist — Zugangsdaten allein zeigen „configured".
+- **Der App-Schlüssel `APP_SECRET` heißt jetzt zutreffend, was er ist:** öffentlich seit
+  Jahren durch Reverse Engineering, nicht durch eine Herstellerangabe — eine offizielle
+  Spezifikation dieses Protokolls gibt es nicht.
+
+Dazwischen: Ein echtes `SET Appliance.Control.ToggleX` ist inzwischen gegen alle vier
+Steckdosen gelaufen — gefahrlos, weil alle auf `onoff=0` standen und auf `onoff=0`
+gesetzt wurden. Alle vier antworteten mit `SETACK` und einem hochgezählten `lmTime`.
+Nutzlastaufbau, Signatur und Bestätigung sind damit nachgemessen, keine Annahme mehr —
+was noch aussteht, ist die Verdrahtung von `MerossSwitch` in den Regelkreis, die
+weiterhin Teilprojekt 4 (Scharfschalten) bleibt.
+
 ## Der Modus eines Schaltpunkts lässt sich direkt ändern
 
 In der Zonen-Zeitplanansicht trägt die Liste „Schaltpunkte“ jetzt zu jedem Punkt den
@@ -16,10 +52,21 @@ Jeder echte Wechsel läuft durch die neue Domänenfunktion
 des Schaltpunkts und protokolliert Vorher und Nachher in genau einem Audit-Eintrag. Die
 Auswahl des bereits geltenden Modus erzeugt weder Änderung noch Protokolleintrag.
 
-Im Wochenraster führt ein kleiner, tastaturbedienbarer Link „Modus ändern“ an jedem
-eigenen Balken zur Auswahl desselben Punkts in der Liste. Bewusst liegt dort keine zweite
-Auswahl und kein Klick auf dem ganzen Balken: Beides nähme der großen Ziehfläche Platz
-oder konkurrierte mit ihrem Zeigerereignis. Das Ziehskript lässt interaktive Elemente im
+Im Wochenraster führt ein Verweis an jedem eigenen Balken zur Auswahl desselben Punkts
+in der Liste. Bewusst liegt dort keine zweite Auswahl und kein Klick auf dem ganzen
+Balken: Beides nähme der großen Ziehfläche Platz oder konkurrierte mit ihrem
+Zeigerereignis.
+
+Dieser Verweis war zunächst ein beschrifteter Knopf — und **das fiel erst beim ersten
+wirklichen Öffnen der Seite auf**: In jedem Balken stand er, sieben Spalten übereinander,
+optisch so kräftig wie der Balken selbst; aus der Wochenübersicht war ein Knopffeld
+geworden, und bei kurzen Balken (22 Uhr bis Mitternacht, rund 2 rem hoch) wurde die
+Beschriftung abgeschnitten. Tests, Ruff, mypy, 100 Prozent Abdeckung und ein Kreuzreview
+waren dabei grün. Der Verweis ist jetzt ein Stiftsymbol, sitzt absolut in der Balkenecke
+statt im Textfluss und erscheint erst bei Mauszeiger oder Tastaturfokus — `opacity` statt
+`display: none`, damit er per Tab erreichbar bleibt. **Bekannte Einschränkung:** Ohne
+Maus gibt es kein Hover; auf einem Tablet erscheint das Symbol nicht. Die Auswahl in der
+Liste bleibt dort der vollständige Weg, es fehlt nur die Abkürzung. Das Ziehskript lässt interaktive Elemente im
 Balken ausdrücklich in Ruhe; seine Verdrahtung bleibt wie die übrigen Skripte in einem
 `WeakSet`, damit die Bedienung nach einer Wiederherstellung aus dem htmx-Verlauf weiter
 funktioniert.
@@ -49,17 +96,20 @@ Meross schaltet über MQTT. Die Anmeldung liefert dafür alles (`mqttDomain`, `k
 `md5(messageId + key + timestamp)` signiert. Das steht jetzt in
 `thermoctl/integrations/meross_mqtt.py`.
 
-**Was nachgemessen ist:** Anmeldung, Geräteliste (vier Steckdosen, alle online) und ein
-`GET Appliance.System.All` an jedes der vier Geräte, das mit `GETACK` und dem
-Kanalzustand antwortete. **Was nicht nachgemessen ist:** ein `SET`. Eine echte Heizung
-zum Ausprobieren zu schalten ist nichts, was nebenbei passiert — und es passiert ohnehin
-erst, wenn die Steuerung scharf geschaltet wird. Der Adapter prüft die Bestätigung des
-Geräts (`SETACK`), damit eine Firmware, die den Befehl ablehnt, als Fehler auftaucht und
-nicht als stilles Nichts.
+**Was nachgemessen ist:** Anmeldung, Geräteliste (vier Steckdosen, alle online), ein
+`GET Appliance.System.All` an jedes der vier Geräte (Antwort `GETACK` mit dem
+Kanalzustand) — und inzwischen auch ein `SET Appliance.Control.ToggleX` gegen alle
+vier, gefahrlos auf `onoff=0` nach `onoff=0`: alle vier antworteten mit `SETACK` und
+einem hochgezählten `lmTime`. Der Adapter prüft die Bestätigung des Geräts (`SETACK`),
+damit eine Firmware, die den Befehl ablehnt, als Fehler auftaucht und nicht als
+stilles Nichts — geprüft wird damit, dass das Gerät den Befehl angenommen hat, nicht,
+dass die Heizung wirklich wärmer wurde.
 
-Der Abgleich hängt im Schattenzyklus, stündlich, und beim Start einmal sofort. Ein
-Ausfall der Wolke hält den Zyklus nicht an: Er wird protokolliert, und die Anlage läuft
-mit dem weiter, was sie kennt.
+Der Abgleich hängt im Schattenzyklus, stündlich, und beim Start einmal sofort — seit
+dem Kreuzreview-Nacharbeit entkoppelt von der Sitzung des Zyklus (eigene Transaktion,
+nicht abgewartet) und unabhängig von `THERMOCTL_MQTT_ENABLED`. Ein Ausfall der Wolke
+hält den Zyklus nicht an: Er wird protokolliert, und die Anlage läuft mit dem weiter,
+was sie kennt.
 
 ## Die Sonnenabsenkung liess sich nicht einschalten
 

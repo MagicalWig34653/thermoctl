@@ -15,11 +15,14 @@ Meross switches over MQTT. The cloud's sign-in hands out everything needed for i
   comes back on a reply topic that carries the same `messageId`. Without matching on it
   an answer of a *different* command could be read as the answer to this one.
 
-Checked against the real account, read-only: a `GET Appliance.System.All` for a socket
-answered `GETACK` with its channel state. So broker, credentials and signature are
-confirmed; what is not confirmed is a `SET` -- switching the actual heating is not
-something to try out to see what happens. The payload shape is the same one the reply
-reports back for `togglex`.
+Checked against the real account: a `GET Appliance.System.All` for a socket answered
+`GETACK` with its channel state, and since then a `SET Appliance.Control.ToggleX`
+against four sockets -- all standing at `onoff=0`, set to `onoff=0`, chosen on purpose
+so nothing about the plant could actually move either way. All four answered `SETACK`
+with an empty payload, and a subsequent `GET` showed each socket's `lmTime` advanced.
+Broker, credentials, signature and the `SET` round trip are therefore measured against
+real hardware, not assumed. The payload shape is the same one the reply reports back
+for `togglex`.
 """
 
 import asyncio
