@@ -258,3 +258,92 @@ def test_the_last_german_column_names_are_renamed_with_their_data(
         assert again.returncode == 0, again.stderr
     finally:
         werk.dispose()
+
+
+@pytest.mark.migration
+def test_the_thermostat_downgrade_survives_a_device_that_used_the_capability(
+    migrations_database_url: str,
+) -> None:
+    """Downgrading after the feature was actually used, not on an empty schema.
+
+    `test_migration_forward_and_backward` walks the whole history up and down, but
+    over a schema in which nobody ever stored anything. That is the one case in which
+    deleting a row from `device_capability` is harmless. In every other case
+    `device_capability_link.capability_id` and `measurement.capability_id` point at
+    it -- neither with `ON DELETE CASCADE` -- and the plain DELETE fails on the
+    foreign key. Which means it would fail exactly when someone needs the downgrade:
+    after a thermostat was recognised.
+
+    Found by a cross-review, not by the suite; the same thing had already been
+    noticed once in `d1a7c3e59b40`, whose downgrade clears its references first.
+    """
+    base = _alembic(migrations_database_url, "downgrade", "base")
+    assert base.returncode == 0, base.stderr
+    up = _alembic(migrations_database_url, "upgrade", "b6e9f14d2a83")
+    assert up.returncode == 0, up.stderr
+
+    db_engine = create_engine(migrations_database_url)
+    try:
+        with db_engine.begin() as connection:
+            integration_id = connection.execute(
+                text("SELECT id FROM integration LIMIT 1")
+            ).scalar_one()
+            connection.execute(
+                text(
+                    "INSERT INTO device (integration_id, external_id, display_name,"
+                    " is_enabled, is_group)"
+                    " VALUES (:integration_id, 'trv-1', 'Thermostatventil', 1, 0)"
+                ),
+                {"integration_id": integration_id},
+            )
+            device_id = connection.execute(
+                text("SELECT id FROM device WHERE external_id = 'trv-1'")
+            ).scalar_one()
+            for code in ("thermostat", "running_state"):
+                capability_id = connection.execute(
+                    text("SELECT id FROM device_capability WHERE code = :code"),
+                    {"code": code},
+                ).scalar_one()
+                connection.execute(
+                    text(
+                        "INSERT INTO device_capability_link (device_id, capability_id)"
+                        " VALUES (:device_id, :capability_id)"
+                    ),
+                    {"device_id": device_id, "capability_id": capability_id},
+                )
+            connection.execute(
+                text(
+                    "INSERT INTO measurement (device_id, capability_id, value_text,"
+                    " measured_at, received_at)"
+                    " VALUES (:device_id, :capability_id, 'heat',"
+                    " CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
+                ),
+                {"device_id": device_id, "capability_id": capability_id},
+            )
+
+        down = _alembic(migrations_database_url, "downgrade", "-1")
+        assert down.returncode == 0, down.stderr
+
+        with db_engine.connect() as connection:
+            assert connection.execute(
+                text("SELECT count(*) FROM device_capability WHERE code = 'thermostat'")
+            ).scalar_one() == 0
+            # The device itself stays -- only what pointed at the removed capability goes.
+            assert connection.execute(
+                text("SELECT count(*) FROM device WHERE id = :id"), {"id": device_id}
+            ).scalar_one() == 1
+            # Checked as *orphans*, not by expecting the downgrade to blow up. Under
+            # SQLite the alembic subprocess does not enforce foreign keys, so a plain
+            # DELETE on the lookup table succeeds there and leaves rows pointing at an
+            # id that no longer exists -- silently, and only until MariaDB refuses the
+            # same downgrade outright. Asking for orphans catches both.
+            for table in ("device_capability_link", "measurement"):
+                orphans = connection.execute(
+                    text(
+                        f"SELECT count(*) FROM {table} t WHERE NOT EXISTS "  # noqa: S608
+                        "(SELECT 1 FROM device_capability c WHERE c.id = t.capability_id)"
+                    )
+                ).scalar_one()
+                assert orphans == 0, f"{table} zeigt auf eine geloeschte Faehigkeit"
+    finally:
+        db_engine.dispose()

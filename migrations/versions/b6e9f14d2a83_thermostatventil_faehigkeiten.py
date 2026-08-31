@@ -45,6 +45,30 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """Removes the three capabilities -- and first everything that references them.
+
+    `device_capability_link.capability_id` und `measurement.capability_id` zeigen ohne
+    `ON DELETE CASCADE` auf `device_capability.id`. Ein blosses DELETE auf der
+    Nachschlagetabelle geht deshalb gut, solange niemand die Faehigkeiten benutzt hat,
+    und bricht mit einem Fremdschluesselfehler ab, sobald ein Thermostatventil erkannt
+    oder ein `running_state`/`window_open` gemessen wurde -- also genau dann, wenn
+    jemand das Downgrade wirklich braucht.
+
+    Dieselbe Reihenfolge wie in `d1a7c3e59b40`, wo es aus demselben Grund schon einmal
+    aufgefallen ist. Die Messwerte gehen dabei verloren; das ist die Kehrseite eines
+    Downgrades, das eine Faehigkeit zuruecknimmt, und besser als eine verwaiste Zeile,
+    die auf eine Faehigkeit zeigt, die es nicht mehr gibt.
+    """
     codes = [code for code, _label in NEW_CAPABILITIES]
     capabilities = _lookup_table("device_capability")
+    concerned = (
+        sa.select(sa.column("id"))
+        .select_from(sa.table("device_capability", sa.column("id"), sa.column("code")))
+        .where(sa.column("code").in_(codes))
+    )
+    for table in ("measurement", "device_capability_link"):
+        referencing = sa.table(table, sa.column("capability_id"))
+        op.execute(
+            sa.delete(referencing).where(referencing.c.capability_id.in_(concerned))
+        )
     op.execute(sa.delete(capabilities).where(capabilities.c.code.in_(codes)))

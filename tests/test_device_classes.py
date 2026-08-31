@@ -37,8 +37,14 @@ def test_a_window_contact_is_recognized() -> None:
 
 
 def test_a_thermostatic_radiator_valve_is_recognized_as_thermostat() -> None:
-    """A WT-A03E-style TRV has no `state` to switch -- it is `system_mode` plus
-    `occupied_heating_setpoint` together that mark it as an actual thermostat."""
+    """A WT-A03E-style TRV has no `state` to switch -- it is a writable `system_mode`
+    plus a writable `occupied_heating_setpoint` in the same expose that mark it as an
+    actual thermostat.
+
+    `access` is Zigbee2MQTT's bitmask: 1 published, 2 settable, 4 gettable. The values
+    below are what a real TRV reports -- 3 for the two it accepts commands on, 1 for
+    the ones it only publishes.
+    """
     exposes = [
         {
             "type": "climate",
@@ -46,18 +52,25 @@ def test_a_thermostatic_radiator_valve_is_recognized_as_thermostat() -> None:
                 {
                     "type": "numeric",
                     "property": "occupied_heating_setpoint",
+                    "access": 3,
                     "value_min": 5,
                     "value_max": 30,
                 },
-                {"type": "numeric", "property": "local_temperature"},
+                {"type": "numeric", "property": "local_temperature", "access": 1},
                 {
                     "type": "enum",
                     "property": "system_mode",
+                    "access": 3,
                     "values": ["off", "heat", "auto"],
                 },
-                {"type": "enum", "property": "running_state", "values": ["idle", "heat"]},
-                {"type": "numeric", "property": "position"},
-                {"type": "binary", "property": "window_open"},
+                {
+                    "type": "enum",
+                    "property": "running_state",
+                    "access": 1,
+                    "values": ["idle", "heat"],
+                },
+                {"type": "numeric", "property": "position", "access": 1},
+                {"type": "binary", "property": "window_open", "access": 1},
             ],
         }
     ]
@@ -72,6 +85,86 @@ def test_a_thermostatic_radiator_valve_is_recognized_as_thermostat() -> None:
             "window_open",
         }
     )
+
+
+def test_a_display_that_only_reports_a_setpoint_is_no_thermostat() -> None:
+    """The counter-check that matters, because getting it wrong is silent.
+
+    A device that merely *publishes* both features -- a wall display mirroring someone
+    else's thermostat -- would be admitted to the actuator slot, and the service would
+    send it commands it cannot obey. The plant diagram would show a complete path and
+    nothing would ever switch: a bug that surfaces in winter and looks like one in the
+    control logic.
+    """
+    exposes = [
+        {
+            "type": "climate",
+            "features": [
+                {"type": "numeric", "property": "occupied_heating_setpoint", "access": 1},
+                {"type": "enum", "property": "system_mode", "access": 1},
+            ],
+        }
+    ]
+    assert "thermostat" not in capabilities_from_exposes(exposes)
+
+
+def test_a_property_without_an_access_field_does_not_count_as_writable() -> None:
+    """An omission is not permission -- Zigbee2MQTT simply may not say."""
+    exposes = [
+        {
+            "type": "climate",
+            "features": [
+                {"type": "numeric", "property": "occupied_heating_setpoint"},
+                {"type": "enum", "property": "system_mode"},
+            ],
+        }
+    ]
+    assert "thermostat" not in capabilities_from_exposes(exposes)
+
+
+def test_the_two_features_must_sit_in_the_same_expose() -> None:
+    """Two unrelated branches must not add up to a thermostat that exists nowhere.
+
+    A multi-endpoint device can perfectly well carry a settable setpoint on one
+    endpoint and a `system_mode` belonging to something else on another. Collecting
+    names across the whole tree would fuse them into one device that is not there.
+    """
+    exposes = [
+        {
+            "type": "climate",
+            "features": [
+                {"type": "numeric", "property": "occupied_heating_setpoint", "access": 3},
+            ],
+        },
+        {
+            "type": "composite",
+            "features": [{"type": "enum", "property": "system_mode", "access": 3}],
+        },
+    ]
+    assert "thermostat" not in capabilities_from_exposes(exposes)
+
+
+def test_a_thermostat_nested_in_another_expose_is_still_found() -> None:
+    """Multi-endpoint devices nest `climate` one level deeper; that is still a valve."""
+    exposes = [
+        {
+            "type": "composite",
+            "features": [
+                {
+                    "type": "climate",
+                    "features": [
+                        {
+                            "type": "numeric",
+                            "property": "occupied_heating_setpoint",
+                            "access": 3,
+                        },
+                        {"type": "enum", "property": "system_mode", "access": 3},
+                    ],
+                }
+            ],
+        }
+    ]
+    assert "thermostat" in capabilities_from_exposes(exposes)
 
 
 def test_occupied_heating_setpoint_alone_is_not_enough_to_be_a_thermostat() -> None:

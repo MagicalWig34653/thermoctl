@@ -217,6 +217,52 @@ gemeinsam anbietet. Keines allein reicht: Einen Sollwert zeigt auch eine bloße 
 Die Aktor-Stelle verlangt seither `switch` **oder** `thermostat` — welche Fähigkeit ein Gerät
 hat, entscheidet nur, welcher Adapter den Befehl baut, nicht ob es die Stelle füllen darf.
 
+Zwei Befunde aus der Gegenlesung durch Codex sind eingearbeitet:
+
+- **Die Erkennung fragte nicht, ob die Merkmale beschreibbar sind.** Ein Gerät, das
+  `occupied_heating_setpoint` und `system_mode` nur *veröffentlicht* — eine Wandanzeige,
+  die ein fremdes Thermostat spiegelt — wäre als Aktor durchgegangen. Der Dienst hätte
+  ihm Befehle geschickt, die es nicht befolgen kann; das Anlagenbild zeigte einen
+  vollständigen Pfad, und geschaltet hätte nie etwas. Ein Fehler, der im Winter auftaucht
+  und wie einer in der Regellogik aussieht. Jetzt zählt nur, was Zigbee2MQTT in `access`
+  als schreibbar ausweist (Bit 2), und beide Merkmale müssen im **selben** Expose sitzen —
+  zwei unabhängige Zweige dürfen sich nicht zu einem Thermostat addieren, das es nirgends
+  gibt. Ein fehlendes `access` zählt als nicht schreibbar: Ein Auslassen ist keine
+  Erlaubnis.
+
+  Der Positivtest des Umsetzenden hatte in seinen Merkmalen **gar keine** `access`-Angaben
+  und war trotzdem grün — er sicherte die Eigenschaft also nicht, die er zu sichern
+  schien. Er ist jetzt mit echten Werten geschrieben, dazu drei Gegenproben.
+
+- **Das Downgrade der Migration löschte die Fähigkeiten, ohne aufzuräumen, was auf sie
+  zeigt.** `device_capability_link.capability_id` und `measurement.capability_id`
+  verweisen ohne `ON DELETE CASCADE` darauf. Unter MariaDB wäre das Downgrade an einem
+  Fremdschlüsselfehler abgebrochen, unter SQLite hätte es still verwaiste Zeilen
+  hinterlassen — beides genau dann, wenn jemand das Downgrade wirklich braucht, nämlich
+  nachdem die Fähigkeit benutzt wurde. Dieselbe Stelle war in `d1a7c3e59b40` schon einmal
+  aufgefallen; dort räumt das Downgrade seine Verweise zuerst weg. Jetzt hier auch.
+
+  Der generische Migrationstest läuft über ein leeres Schema und konnte das nicht sehen.
+  Der neue Test legt erst ein Gerät samt Verknüpfung und Messwert an. Er prüft
+  **auf verwaiste Zeilen**, nicht darauf, dass das Downgrade abbricht: Der
+  Alembic-Unterprozess erzwingt unter SQLite keine Fremdschlüssel, dort wäre der Fehler
+  sonst unsichtbar geblieben.
+
+Codex' dritter Punkt — der Adapter sei nirgends im Produktionscode verdrahtet — stimmt,
+ist aber kein Befund gegen diese Änderung: Der vorhandene `Zigbee2MqttValve` wird ebenso
+wenig instanziiert. Die Orchestrierung, die aus einer Entscheidung einen Ventilbefehl
+macht, gehört zu Phase 4 und existiert noch für **kein** Aktor-Modell. Ergänzt ist ein
+Trockenlauftest auch für `switching(False)` — `system_mode: off` bewegt das Ventil
+ebenso.
+
+Der Rest von Codex' Bericht ist nicht verwertbar: In seiner Umgebung ließ sich kein
+temporäres Verzeichnis anlegen, Docker war nicht erreichbar, und mypy brach intern ab —
+außer Ruff lief keine der verlangten Prüfungen. Sein Urteil „nicht freigebbar" stützt sich
+also allein auf Lektüre. Die Prüfungen sind hier unabhängig gelaufen, gegen beide
+Datenbanken. Ein Fehler von mir dabei: Ich habe die Gegenlesung auf `main` angesetzt,
+während ich dort selbst weiterarbeitete — der Bericht wundert sich zu Recht über
+Dateien, die sich unter ihm veränderten. Ein Review gehört auf einen festen Stand.
+
 **Sonnenprognose-Absenkung.** In der Übergangszeit heizt eine Dachwohnung morgens hoch,
 obwohl zwei Stunden später die Sonne durch die Dachfenster kommt. Verspricht die Vorhersage
 (Open-Meteo, kein Schlüssel nötig) in den nächsten Stunden nennenswerte Einstrahlung, wird
