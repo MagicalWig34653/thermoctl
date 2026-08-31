@@ -9,7 +9,29 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ---
 
-## Unveröffentlicht
+## 0.2.2 — 2026-08-31
+
+Eine Fassung, die vor allem geradezieht, was 0.2.0 behauptet hat: Meross ist jetzt
+wirklich angebunden statt halb, die Sonnenabsenkung lässt sich wieder einschalten, und
+zwei Fehler, die dem Bedienenden als Zufall erschienen (willkürliches Abgemeldetwerden,
+eine Seite, aus der es keinen Ausweg gab), sind gefunden und behoben. Dazu ein neues
+Stück Funktion: der Ventilschutz.
+
+**Geschaltet wird weiterhin nichts.** Der Trockenlauf steht.
+
+### Zu beachten beim Umstieg
+
+- **Eine Migration** läuft beim Start von selbst (Ventilschutz je Zone samt der
+  Betriebszeitstempel dazu). Der Weg von 0.2.0 aufwärts ist gegen SQLite und MariaDB
+  durchgespielt.
+- **Wer Meross-Zugangsdaten hinterlegt hat, bekommt jetzt Geräte** — der Abgleich läuft
+  beim Start und dann stündlich. Es entstehen Gerätezeilen, die es vorher nicht gab.
+- **Der Schattenzyklus startet nun auch ohne `THERMOCTL_MQTT_ENABLED=true`**, wenn ein
+  vollständiges Meross-Konto hinterlegt ist. Wer beides nicht nutzt, merkt keinen
+  Unterschied.
+- **Eine fremde Seite kann einen angemeldeten Besucher jetzt abmelden.** Bewusster Tausch
+  dafür, dass eine veraltete Seite keine Sackgasse mehr ist; ein Konto wird damit nicht
+  übernommen. Siehe *Behoben*.
 
 ### Neu
 
@@ -68,6 +90,19 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
   in einer eigenen Sitzung statt innerhalb der Transaktion des Zyklus.
 - **Der Meross-Abgleich läuft jetzt auch ohne lokales MQTT** — vorausgesetzt, ein
   vollständiges Konto (E-Mail und Passwort) ist hinterlegt.
+
+### Bedienung
+
+- **Der Modus eines Schaltpunkts lässt sich direkt im Zeitplan ändern**, statt den Punkt
+  zu löschen und neu anzulegen. Die Liste nennt den Modus jetzt überhaupt erst; der
+  Punkt behält seine Kennung, und das Protokoll bekommt einen Eintrag „Modus geändert"
+  statt zweier unzusammenhängender.
+- **Eine veraltete Seite ist keine Sackgasse mehr.** Vorher wies der CSRF-Schutz alles
+  ab — auch das Abmelden, und nach dem Löschen der Cookies auch das Anmelden. Sichtbar
+  wurde das als rohes `{"detail":"Ungueltiges CSRF-Token"}`. Jetzt räumen Anmelden und
+  Abmelden die Cookies und führen auf das Anmeldeformular, gewöhnliche Formulare
+  bekommen eine lesbare Seite, und Bedienelemente mit htmx zeigen einen Hinweis mit
+  Knopf zum Neuladen. Am Schutz selbst ändert sich nichts.
 - **`APP_SECRET` heißt jetzt zutreffend, was er ist**: öffentlich seit Jahren durch
   Reverse Engineering, keine vom Hersteller dokumentierte Konstante.
 

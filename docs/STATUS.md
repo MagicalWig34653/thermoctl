@@ -2,6 +2,47 @@
 
 Letzte Aktualisierung: 2026-08-31
 
+## v0.2.2 ist freigabefertig
+
+Zusammengeführt, gegengelesen und nachgemessen:
+
+- **Meross**, beide Hälften, gegen das echte Konto geprüft — inklusive eines echten
+  `SET`, das gefahrlos möglich war, weil alle vier Steckdosen aus waren und auf „aus"
+  gesetzt wurden.
+- **Ventilschutz je Zone**, mit der Vorrangregel ganz unten in der Kette.
+- **Sonnenabsenkung** wieder einschaltbar.
+- **Zwei Fehler, die dem Bedienenden als Zufall erschienen**: willkürliches
+  Abgemeldetwerden (eine Netzwartezeit sperrte die ganze SQLite-Datei) und eine
+  veraltete Seite, aus der es keinen Ausweg gab.
+
+Nachgemessen für die Freigabe: Ruff, mypy, vollständige Suite gegen SQLite **und**
+MariaDB bei 100 Prozent Abdeckung, die Migration vorwärts und rückwärts und erneut
+vorwärts auf beiden Datenbanken, das Container-Abbild gebaut, eine echte 0.2.0-Datenbank
+darin hochgezogen und die Seiten aufgerufen. `/healthz` meldet 0.2.2.
+
+**Nicht enthalten: der Malen-Editor für Zeitpläne.** Der Projektinhaber hat ihn gesehen
+und die Bedienung freigegeben, das Kreuzreview hat danach fünf schwere Befunde gefunden —
+darunter einen, bei dem eine Geste am Sonntag den Montagmodus verstellt, und einen, bei
+dem nach oben zu malen nichts speichert (das war vermutlich die gemeldete Beobachtung
+„ich kann keine Blöcke per Malen einfügen"; es war kein Bedienproblem). Ein Zeitplan
+bestimmt, wann geheizt wird — das geht nicht in eine Freigabe. Der Zweig `zeitplan-malen`
+bleibt bestehen, die Nacharbeit läuft.
+
+### Was diese Fassung über das Verfahren gelernt hat
+
+- **Der MariaDB-Lauf war eine Attrappe.** Die Suite liest `THERMOCTL_TEST_DATABASE_URL`;
+  gesetzt wurde durchgehend `THERMOCTL_DATABASE_URL`. Jeder dieser Läufe war SQLite, und
+  der Bericht „gegen beide Datenbanken geprüft" war hohl. Aufgefallen ist es einem
+  Agenten, nicht der Hauptsession. Steht jetzt in `CLAUDE.md`.
+- **Zwei Kreuzreviews haben Blocker gefunden, die beim eigenen Gegenlesen durchgingen** —
+  beim Ventilschutz eine Regel, die die eingestellte Dauer zerstörte, und eine, die einen
+  endlosen Lauf erzeugte. Beide waren mit Messwerten belegt.
+- **Tests, die nur sich selbst bestätigen, sind der Normalfall, nicht die Ausnahme.**
+  Dreimal in dieser Fassung: ein verstümmeltes Formularfeld liess 177 Tests grün, ein
+  entfernter Sensor-Riegel alle 39 Regelungstests, und ein Formular war ohne JavaScript
+  unbedienbar, während seine Tests die Felder selbst setzten. Was gegen ein gerendertes
+  Formular prüft, findet so etwas; was den Endpunkt direkt anspricht, nicht.
+
 ## Ventilschutz ist je Zone konfigurierbar
 
 Eine Zone kann ihr Ventil nun nach einer einstellbaren Ruhezeit für eine einstellbare
