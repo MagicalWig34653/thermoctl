@@ -412,13 +412,13 @@ async def test_armed_thermostat_switching_on_sends_system_mode_heat_and_setpoint
     ).switching(True)
 
     assert result.executed is True
-    assert mqtt.calls == [
-        (
-            "zigbee2mqtt/TRV-Wohnzimmer/set",
-            json.dumps({"system_mode": "heat", "occupied_heating_setpoint": 21.5}),
-            True,
-        )
-    ]
+    # Compared as parsed JSON: the order of keys in an object is not a promise this
+    # adapter makes, and pinning it turns a harmless reordering into a red test.
+    assert len(mqtt.calls) == 1
+    topic, payload, switches = mqtt.calls[0]
+    assert topic == "zigbee2mqtt/TRV-Wohnzimmer/set"
+    assert json.loads(payload) == {"system_mode": "heat", "occupied_heating_setpoint": 21.5}
+    assert switches is True
 
 
 @pytest.mark.anyio
@@ -502,3 +502,46 @@ def test_thermostat_description_names_the_device() -> None:
 @pytest.fixture
 def anyio_backend() -> str:
     return "asyncio"
+
+
+@pytest.mark.anyio
+async def test_a_valve_without_a_system_mode_is_switched_off_by_its_lowest_setpoint(
+    session: Session,
+) -> None:
+    """Not every TRV has a `system_mode` -- a Bosch BTH-RA does not.
+
+    Sending one anyway would put a key in the payload that Zigbee2MQTT rejects, and
+    the command would be lost without an error. Such a valve is switched off the way a
+    person switches it off: by turning it down to the lowest setpoint it accepts.
+    """
+    _armed(session)
+    mqtt = MqttStub()
+    adapter = Zigbee2MqttThermostat(
+        session, mqtt, "zigbee2mqtt", "BTH-RA-Flur", Decimal("21.0"),
+        has_system_mode=False,
+    )
+
+    result = await adapter.switching(False)
+    assert result.executed is True
+    topic, payload, switches = mqtt.calls[0]
+    assert json.loads(payload) == {"occupied_heating_setpoint": 5.0}
+    assert "system_mode" not in payload
+    assert switches is True  # this moves a valve like any other switch-off
+
+
+@pytest.mark.anyio
+async def test_a_valve_without_a_system_mode_still_heats_at_its_setpoint(
+    session: Session,
+) -> None:
+    """Switching on is the same either way -- only switching off differs."""
+    _armed(session)
+    mqtt = MqttStub()
+    adapter = Zigbee2MqttThermostat(
+        session, mqtt, "zigbee2mqtt", "BTH-RA-Flur", Decimal("21.5"),
+        has_system_mode=False,
+    )
+
+    await adapter.switching(True)
+    payload = json.loads(mqtt.calls[0][1])
+    assert payload["occupied_heating_setpoint"] == 21.5
+    assert "system_mode" not in payload

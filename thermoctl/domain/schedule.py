@@ -351,11 +351,21 @@ def create_override(
     temperature_c: Decimal,
     ends_at: datetime | None,
     *,
+    now: datetime | None = None,
     user_id: int | None = None,
     token_id: int | None = None,
     source: str = "web",
 ) -> ZoneOverride:
     """Creates a concrete override; web, API and MCP share this mutation.
+
+    `now` is the moment the override starts from, and callers that already have one
+    must pass it. Reading the clock again here looked harmless -- the two values are
+    milliseconds apart in normal operation -- but they are not the same value, and
+    `resolved_setpoint` only counts an override whose `starts_at` has already been
+    reached. A boost stamped a hair later than the moment the decision was made for
+    is an override that does not yet apply, and the caller sees its own change have
+    no effect. The same defect was fixed once already in `end_of_next_switch`; this
+    is the other half of it.
 
     The temperature bound is checked **here** and not in the adapter. Until the final
     review it appeared three different ways: the interface checked by hand with no
@@ -374,7 +384,7 @@ def create_override(
     entry = ZoneOverride(
         zone_id=zone.id,
         temperature_c=temperature_c,
-        starts_at=utcnow(),
+        starts_at=now if now is not None else utcnow(),
         ends_at=ends_at,
         created_by_user_id=user_id,
         created_by_token_id=token_id,

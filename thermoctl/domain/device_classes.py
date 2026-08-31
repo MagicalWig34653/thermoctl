@@ -57,7 +57,21 @@ _CAPABILITY_BY_FEATURE = {
 # valve: `occupied_heating_setpoint` alone is also exposed by a plain wall
 # thermostat display, and `system_mode` alone would be unusual but not impossible.
 # Only the combination is treated as proof of an actual thermostat.
-_THERMOSTAT_FEATURES = frozenset({"occupied_heating_setpoint", "system_mode"})
+# What makes a device a thermostatic valve: a setpoint it accepts commands on. That
+# alone moves a valve motor, and it is what the adapter drives.
+#
+# `system_mode` is deliberately **not** required. It was, briefly, and that was wrong
+# for real hardware: plenty of TRVs (a Bosch BTH-RA among them) expose a writable
+# `occupied_heating_setpoint` and no `system_mode` at all. They would have been
+# refused as actuators -- the very devices the feature exists for.
+#
+# What protects against a mere display is the *writability*, not the second feature: a
+# wall unit that only reports a setpoint never gets past `_writable_property_names`.
+_THERMOSTAT_SETPOINT = "occupied_heating_setpoint"
+# Turning off works through `system_mode` where it exists. Where it does not, the
+# adapter falls back to the lowest setpoint the device accepts -- see
+# `Zigbee2MqttThermostat`.
+_THERMOSTAT_MODE = "system_mode"
 
 
 def _text(value: object) -> str | None:
@@ -118,10 +132,11 @@ def _writable_property_names(entries: list[object]) -> set[str]:
 def _is_thermostat(entries: list[object]) -> bool:
     """Whether some expose describes a settable heating thermostat.
 
-    Both features have to sit in the **same** expose and both have to be writable.
-    Collecting names across the whole tree would let two unrelated branches -- an
-    unwritable setpoint here, some `system_mode` there -- add up to a thermostat that
-    exists nowhere on the device.
+    The setpoint has to be writable; reporting one is not enough. A wall unit that
+    merely mirrors someone else's thermostat would otherwise be admitted to the
+    actuator slot, the plant diagram would show a complete path, and nothing would
+    ever switch -- a fault that surfaces in winter and looks like one in the control
+    logic (principle 7).
     """
     for raw_item in entries:
         if not isinstance(raw_item, Mapping):
@@ -131,7 +146,7 @@ def _is_thermostat(entries: list[object]) -> bool:
         if not isinstance(features, list):
             continue
         branch = cast(list[object], features)
-        if _THERMOSTAT_FEATURES <= _writable_property_names(branch):
+        if _THERMOSTAT_SETPOINT in _writable_property_names(branch):
             return True
         # Nested composites: Zigbee2MQTT nests `climate` inside another expose for
         # multi-endpoint devices.

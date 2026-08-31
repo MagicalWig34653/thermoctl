@@ -7,7 +7,7 @@
 <p><a href="/controllers">Bediengeräte, Anzeigen und Tasten konfigurieren</a></p>
 
 <section class="tc-panel p-4 mb-4">
-    {{ flow_diagram(picture, draggable=may_edit) }}
+    {{ flow_diagram(picture, draggable=may_edit, requires=required_capabilities) }}
     <p class="t-quiet small mb-0 mt-3">
         Dasselbe Bild für alle Zonen auf einmal: <a href="/plant">Anlagenbild</a>.
     </p>

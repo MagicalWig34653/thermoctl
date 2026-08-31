@@ -96,11 +96,19 @@ class Zigbee2MqttThermostat:
     """Drives a Zigbee2MQTT thermostatic radiator valve (e.g. WT-A03E).
 
     Unlike `Zigbee2MqttValve`, this device has no `state` topic to switch -- it has
-    no on/off output at all. It is driven through two features together:
-    `system_mode` (`heat` / `off`) and `occupied_heating_setpoint` (5-30 degrees C
-    in 0.5 degree steps). `switching(True)` arms heating at the given setpoint;
+    no on/off output at all. It is driven through `occupied_heating_setpoint`
+    (5-30 degrees C in 0.5 degree steps) and, where the device has one, `system_mode`
+    (`heat` / `off`). `switching(True)` arms heating at the given setpoint;
     `switching(False)` turns the valve off. Both move the actual valve, so both go
     through the same dry-run bolt as `Zigbee2MqttValve` -- `switches=True` here too.
+
+    **`system_mode` is optional, and that is not a detail.** A Bosch BTH-RA has none;
+    sending it anyway would put a key in the payload that Zigbee2MQTT rejects, and the
+    command would be lost -- silently, because a rejected payload is not an error here.
+    Such a valve is switched off the way it is switched off by hand: by setting its
+    setpoint to the lowest value it accepts. That is a real difference in behaviour --
+    off through `system_mode` closes the valve, a minimum setpoint leaves it regulating
+    towards 5 degrees -- so the caller says which it is, and the description names it.
 
     The setpoint is passed in at construction, not hardcoded and not looked up by
     this adapter itself: a thermostat adapter without a setpoint would have nothing
@@ -115,19 +123,30 @@ class Zigbee2MqttThermostat:
         base: str,
         device_name: str,
         setpoint_c: Decimal,
+        *,
+        has_system_mode: bool = True,
     ) -> None:
         self._session = session
         self._client = client
         self._topic = f"{base.rstrip('/')}/{device_name}/set"
         self._device_name = device_name
         self._setpoint_c = setpoint_c
+        self._has_system_mode = has_system_mode
 
     def description(self) -> str:
         return f"Zigbee2MQTT-Thermostat {self._device_name}"
 
     async def switching(self, on: bool) -> SwitchResult:
         if not on:
-            payload = json.dumps({"system_mode": "off"})
+            payload = json.dumps(
+                {"system_mode": "off"}
+                if self._has_system_mode
+                # No `system_mode`: the lowest setpoint the device accepts is the only
+                # way to tell it to stop heating. Deliberately the same bound the
+                # range check above uses, so "off" cannot mean a value the device
+                # would refuse.
+                else {"occupied_heating_setpoint": float(THERMOSTAT_MIN_SETPOINT_C)}
+            )
         else:
             if not (
                 THERMOSTAT_MIN_SETPOINT_C <= self._setpoint_c <= THERMOSTAT_MAX_SETPOINT_C
@@ -140,14 +159,15 @@ class Zigbee2MqttThermostat:
                         f"{THERMOSTAT_MAX_SETPOINT_C} Grad C"
                     ),
                 )
-            payload = json.dumps(
-                {
-                    "system_mode": "heat",
-                    "occupied_heating_setpoint": float(
-                        _quantized_setpoint(self._setpoint_c)
-                    ),
-                }
-            )
+            command: dict[str, object] = {
+                "occupied_heating_setpoint": float(_quantized_setpoint(self._setpoint_c))
+            }
+            if self._has_system_mode:
+                # Only where the device knows it. Zigbee2MQTT rejects a payload with an
+                # unknown key, and it rejects it silently -- the command would simply
+                # not arrive, and the valve would stay wherever it was.
+                command["system_mode"] = "heat"
+            payload = json.dumps(command)
         message = f"{self._topic} mit Nutzlast {payload}"
         if not switching_allowed(self._session):
             return SwitchResult(False, f"Trockenlauf, haette gesendet: {message}")

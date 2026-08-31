@@ -1,3 +1,4 @@
+import re
 from datetime import datetime
 from decimal import Decimal
 
@@ -22,7 +23,7 @@ from thermoctl.db.models.measurement import Measurement
 from thermoctl.db.models.operations import AuditEvent
 from thermoctl.db.models.schedule import SchedulePoint
 from thermoctl.db.models.zone import ZoneSetpoint
-from thermoctl.domain.device_assignment import swap_device
+from thermoctl.domain.device_assignment import REQUIRED_CAPABILITY, swap_device
 
 
 def _csrf(client: TestClient) -> dict[str, str]:
@@ -867,3 +868,51 @@ def test_a_temperature_source_that_cannot_measure_comes_back_at_the_field(
     )
     assert response.status_code == 200
     assert "misst keine Temperatur" in response.text
+
+
+def test_a_thermostat_can_be_dragged_onto_the_actuator_slot(
+    angemeldeter_client: TestClient, session: Session
+) -> None:
+    """A radiator thermostat has to be droppable, not just acceptable.
+
+    The domain has taken `switch` **or** `thermostat` for the actuator slot since the
+    WT-A03E work. The page said `data-requires="switch"`, and the drag script compared
+    against that one word -- so a TRV card was refused in the browser before the
+    domain ever saw it, and the drop simply did nothing. Nothing was wrong on the
+    server; the assignment was unreachable.
+
+    Checked from the rendered page rather than against a fixed string: the requirement
+    now comes out of `REQUIRED_CAPABILITY`, and this asserts that it arrives complete.
+    """
+    zone = create_zone(session, "thermostatzone-ziehen")
+    trv = _with_capability(session, "wt-a03e", "thermostat")
+    session.flush()
+
+    page = angemeldeter_client.get(f"/zones/{zone.id}/devices")
+    assert page.status_code == 200
+
+    required = re.search(
+        r'data-target="actuator"[^>]*data-requires="([^"]*)"', page.text
+    )
+    assert required is not None, "Die Aktor-Spalte nennt keine Anforderung"
+    assert set(required.group(1).split()) == set(REQUIRED_CAPABILITY["actuator"][0])
+    assert "thermostat" in required.group(1)
+
+    # And the card really carries the capability the slot asks for.
+    card = re.search(rf'data-device="{trv.id}"[^>]*data-can="([^"]*)"', page.text)
+    assert card is not None, "Das Thermostatventil steht nicht im Vorrat"
+    assert "thermostat" in card.group(1)
+
+    # The drop posts this form; it must be accepted.
+    response = angemeldeter_client.post(
+        f"/zones/{zone.id}/devices/assign",
+        data={"device_id": str(trv.id), "role_id": str(role(session, "actuator").id)},
+        headers=_csrf(angemeldeter_client),
+        follow_redirects=False,
+    )
+    assert response.status_code in (200, 303)
+    assert session.scalar(
+        select(ZoneDevice).where(
+            ZoneDevice.zone_id == zone.id, ZoneDevice.device_id == trv.id
+        )
+    ) is not None

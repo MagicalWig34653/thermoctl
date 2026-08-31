@@ -123,24 +123,43 @@ def test_a_property_without_an_access_field_does_not_count_as_writable() -> None
     assert "thermostat" not in capabilities_from_exposes(exposes)
 
 
-def test_the_two_features_must_sit_in_the_same_expose() -> None:
-    """Two unrelated branches must not add up to a thermostat that exists nowhere.
+def test_a_valve_without_a_system_mode_is_still_a_thermostat() -> None:
+    """Not every TRV has a `system_mode` -- a Bosch BTH-RA does not.
 
-    A multi-endpoint device can perfectly well carry a settable setpoint on one
-    endpoint and a `system_mode` belonging to something else on another. Collecting
-    names across the whole tree would fuse them into one device that is not there.
+    Requiring one refused exactly the devices this feature exists for. The writable
+    setpoint is what makes a valve drivable; how it is switched off is the adapter's
+    problem, not the classification's.
     """
     exposes = [
         {
             "type": "climate",
             "features": [
-                {"type": "numeric", "property": "occupied_heating_setpoint", "access": 3},
+                {
+                    "type": "numeric",
+                    "property": "occupied_heating_setpoint",
+                    "access": 3,
+                    "value_min": 5,
+                    "value_max": 30,
+                },
+                {"type": "numeric", "property": "local_temperature", "access": 1},
+                {"type": "numeric", "property": "pi_heating_demand", "access": 1},
             ],
-        },
+        }
+    ]
+    assert "thermostat" in capabilities_from_exposes(exposes)
+
+
+def test_a_system_mode_alone_is_not_a_thermostat() -> None:
+    """Without a setpoint there is nothing to drive.
+
+    `system_mode` shows up on all sorts of devices; on its own it says nothing about
+    a heating valve.
+    """
+    exposes = [
         {
-            "type": "composite",
+            "type": "climate",
             "features": [{"type": "enum", "property": "system_mode", "access": 3}],
-        },
+        }
     ]
     assert "thermostat" not in capabilities_from_exposes(exposes)
 

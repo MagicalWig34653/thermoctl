@@ -38,9 +38,15 @@
         if (isAssigned(card)) {
             return false;
         }
-        const required = target.dataset.requires;
+        // A set, not one word: the actuator slot takes a switching output **or** a
+        // thermostat (a TRV has no `state` to switch). The list comes from the same
+        // `REQUIRED_CAPABILITY` the domain decides by -- written out here a second
+        // time, it went on refusing thermostats after the domain had accepted them.
+        const required = (target.dataset.requires || "").split(" ").filter(Boolean);
         const abilities = (card.dataset.can || "").split(" ").filter(Boolean);
-        return !required || abilities.length === 0 || abilities.includes(required);
+        return !required.length
+            || abilities.length === 0
+            || required.some(function (code) { return abilities.includes(code); });
     }
 
     function targetUnder(x, y, targets) {

@@ -38,9 +38,9 @@ muss.
 `draggable` macht die drei Spalten zu Ablegezielen. Nur die Zuordnungsseite setzt es --
 auf dem Anlagenbild waere ein Ablegeziel eine Zusage, die die Seite nicht einloest.
 #}
-{% macro flow_diagram(z, draggable=false) %}
+{% macro flow_diagram(z, draggable=false, requires={}) %}
 <div class="tc-flow">
-    <div class="tc-flow-column{{ ' tc-target' if draggable }}"{% if draggable %} data-target="temperature_source" data-target-name="Messquelle" data-requires="temperature"{% endif %}>
+    <div class="tc-flow-column{{ ' tc-target' if draggable }}"{% if draggable %} data-target="temperature_source" data-target-name="Messquelle" data-requires="{{ requires.get('temperature_source', '') }}"{% endif %}>
         <p class="t-label">Misst</p>
         {% if z.temperature_source %}{{ device_card(z.temperature_source, "sensor", draggable, temperature_source=true) }}
         {% else %}{{ luecke("keine Messquelle") }}{% endif %}
@@ -63,7 +63,7 @@ auf dem Anlagenbild waere ein Ablegeziel eine Zusage, die die Seite nicht einloe
 
     <div class="tc-flow-arrow" aria-hidden="true"></div>
 
-    <div class="tc-flow-column{{ ' tc-target' if draggable }}"{% if draggable %} data-target="actuator" data-target-name="Aktor" data-requires="switch"{% endif %}>
+    <div class="tc-flow-column{{ ' tc-target' if draggable }}"{% if draggable %} data-target="actuator" data-target-name="Aktor" data-requires="{{ requires.get('actuator', '') }}"{% endif %}>
         <p class="t-label">Schaltet</p>
         {% if z.actuators %}
         {% for g in z.actuators %}{{ device_card(g, "actuator", draggable) }}{% endfor %}
@@ -77,7 +77,7 @@ auf dem Anlagenbild waere ein Ablegeziel eine Zusage, die die Seite nicht einloe
 </div>
 
 {% if draggable %}
-<div class="tc-target tc-target-contact mt-2" data-target="window_contact" data-target-name="Fensterkontakt" data-requires="contact">
+<div class="tc-target tc-target-contact mt-2" data-target="window_contact" data-target-name="Fensterkontakt" data-requires="{{ requires.get('window_contact', '') }}">
     <p class="t-quiet small mb-0">
         Fensterkontakte hierher ziehen — sie unterbrechen das Heizen, solange ein Fenster
         offen ist.

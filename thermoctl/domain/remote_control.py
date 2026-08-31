@@ -80,7 +80,7 @@ def set_setpoint(
     if in_effect.mode_id is None:
         create_override(
             session, zone, temperature, _rounded_end(session, zone, now),
-            user_id=user_id, token_id=token_id, source=source,
+            now=now, user_id=user_id, token_id=token_id, source=source,
         )
         return temperature
     update_setpoints(
@@ -151,7 +151,7 @@ def boost(
 
     create_override(
         session, zone, temperature, end_at,
-        user_id=user_id, token_id=token_id, source=source,
+        now=now, user_id=user_id, token_id=token_id, source=source,
     )
     log.info(
         "Nächste Schaltung vorgezogen",
