@@ -60,6 +60,34 @@
                 ereignis.detail.headers["X-CSRF-Token"] = decodeURIComponent(eintrag.split("=")[1]);
             }
         });
+
+        // Eine veraltete Seite -- der Server hat die Anfrage abgelehnt, weil das
+        // Formular aelter ist als die Sitzung dahinter. htmx zeigt den Rumpf einer
+        // Fehlerantwort nicht an; ohne diesen Hinweis tut das Bedienelement schlicht
+        // nichts, und genau das wurde aus dem Betrieb gemeldet. Bewusst kein
+        // automatisches Neuladen: Ein Element, das beim Wiederherstellen erneut
+        // ausloest, geriete sonst in eine Schleife aus Neuladen und Ablehnen.
+        document.addEventListener("htmx:responseError", function (ereignis) {
+            if (ereignis.detail.xhr.getResponseHeader("HX-Stale-Page") === null) {
+                return;
+            }
+            if (document.getElementById("stale-page-notice")) {
+                return;
+            }
+            const hinweis = document.createElement("div");
+            hinweis.id = "stale-page-notice";
+            hinweis.className = "alert alert-warning position-fixed start-50 translate-middle-x shadow";
+            hinweis.style.cssText = "bottom: 1rem; z-index: 1080; max-width: 40rem;";
+            hinweis.setAttribute("role", "alert");
+            hinweis.innerHTML =
+                "<strong>Diese Seite ist veraltet.</strong> Die \u00c4nderung wurde nicht " +
+                "\u00fcbernommen \u2014 an Ihrer Anlage hat sich nichts ge\u00e4ndert. " +
+                "<button type=\"button\" class=\"btn btn-sm btn-primary ms-2\">Neu laden</button>";
+            hinweis.querySelector("button").addEventListener("click", function () {
+                window.location.reload();
+            });
+            document.body.appendChild(hinweis);
+        });
     </script>
 </head>
 <body hx-boost="true">

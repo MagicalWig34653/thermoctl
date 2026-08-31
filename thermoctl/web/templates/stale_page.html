@@ -1,0 +1,20 @@
+{% extends "base_plain.html" %}
+{% block title %}Seite veraltet – thermoctl{% endblock %}
+{% block content %}
+<div class="alert alert-warning" role="alert">
+    <h1 class="h4 alert-heading">Diese Seite ist veraltet</h1>
+    <p class="mb-2">
+        Die Seite war länger offen, als die Anmeldung gültig war. Die Änderung wurde
+        deshalb <strong>nicht</strong> übernommen — nichts an Ihrer Anlage hat sich
+        geändert.
+    </p>
+    <p class="mb-0">
+        Laden Sie die Seite neu, dann lässt sich die Änderung erneut abschicken.
+    </p>
+</div>
+<div class="d-flex gap-2">
+    <a class="btn btn-primary" href="{{ path }}">Seite neu laden</a>
+    <a class="btn btn-outline-secondary" href="/">Zur Startseite</a>
+    <a class="btn btn-outline-secondary" href="/login">Neu anmelden</a>
+</div>
+{% endblock %}
