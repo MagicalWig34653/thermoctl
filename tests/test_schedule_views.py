@@ -1,3 +1,4 @@
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -8,6 +9,7 @@ from thermoctl.auth.sessions import COOKIE_NAME
 from thermoctl.config import get_settings
 from thermoctl.db.models.operations import AuditEvent
 from thermoctl.db.models.schedule import SchedulePoint
+from thermoctl.domain.schedule import ScheduleError, move_schedule_point
 
 
 def _csrf(client: TestClient) -> dict[str, str]:
@@ -537,3 +539,65 @@ def test_moving_a_point_onto_an_occupied_time_names_the_conflict(
         follow_redirects=True,
     )
     assert "bereits einen Punkt" in response.text
+
+
+def _first_point(session: Session, zone_id: int, minute: int) -> SchedulePoint:
+    point = session.scalar(
+        select(SchedulePoint).where(
+            SchedulePoint.zone_id == zone_id, SchedulePoint.minute_of_day == minute
+        )
+    )
+    assert point is not None
+    return point
+
+
+def test_moving_a_point_beyond_the_end_of_the_day_is_refused(
+    angemeldeter_client: TestClient, session: Session
+) -> None:
+    """1439 is the last minute of a day; 1440 would be the next one's midnight.
+
+    Called through the domain rather than the form: the form's own time parsing
+    rejects "24:00" earlier, so the guard behind it would never be reached from
+    there -- and it is the one that also protects the REST and MCP adapters.
+    """
+    zone = create_zone(session, "minutenzone")
+    mode = create_mode(session, "tag")
+    session.flush()
+    angemeldeter_client.post(
+        f"/zones/{zone.id}/schedule/points",
+        data={"weekday": "1", "time_of_day": "06:00", "mode_id": str(mode.id)},
+        headers=_csrf(angemeldeter_client),
+    )
+    point = _first_point(session, zone.id, 360)
+
+    with pytest.raises(ScheduleError) as fehler:
+        move_schedule_point(session, zone, point, weekday=1, minute=1440, user_id=None)
+    assert fehler.value.field == "time_of_day"
+
+
+def test_moving_a_point_onto_an_occupied_minute_names_the_field(
+    angemeldeter_client: TestClient, session: Session
+) -> None:
+    """Two points at the same minute would make the schedule ambiguous.
+
+    The database says so through its unique constraint; the domain turns that into a
+    sentence. The field name matters as much as the sentence: keyed under anything the
+    form does not have, the message is rendered nowhere and the user sees a page that
+    simply did not do what they asked. It used to be keyed `uhrzeit` while the form
+    field had long been `time_of_day`.
+    """
+    zone = create_zone(session, "kollisionszone")
+    mode = create_mode(session, "tag")
+    session.flush()
+    for time_of_day in ("06:00", "07:00"):
+        angemeldeter_client.post(
+            f"/zones/{zone.id}/schedule/points",
+            data={"weekday": "1", "time_of_day": time_of_day, "mode_id": str(mode.id)},
+            headers=_csrf(angemeldeter_client),
+        )
+    point = _first_point(session, zone.id, 360)
+
+    with pytest.raises(ScheduleError) as fehler:
+        move_schedule_point(session, zone, point, weekday=1, minute=420, user_id=None)
+    assert fehler.value.field == "time_of_day"
+    assert "bereits einen Punkt" in fehler.value.notice

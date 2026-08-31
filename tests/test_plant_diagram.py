@@ -146,3 +146,38 @@ def test_an_orphaned_valve_does_not_count_as_unsuitable(session: Session) -> Non
     picture = plant_diagram(session, [])
     free_device = next(g for g in picture.without_zone if g.name == valve.display_name)
     assert free_device.unsuitable is None
+
+
+def test_an_assignment_in_a_role_the_diagram_does_not_show_is_skipped(
+    session: Session,
+) -> None:
+    """The plant diagram draws three slots; a device in a fourth role is not one of them.
+
+    Roles are rows in a lookup table, so a fourth can exist -- through a migration, or
+    through data from an older version. It must not end up in a column it does not
+    belong to, and it must not stop the diagram either: the zones around it are still
+    drawn.
+    """
+    from thermoctl.db.models.device import ZoneDevice
+    from thermoctl.db.models.lookup import DeviceRole
+
+    zone = create_zone(session, "sonderrolle")
+    device = create_device(session, "sondergeraet")
+    unknown_role = DeviceRole(code="beobachter", label="Beobachter")
+    session.add(unknown_role)
+    session.flush()
+    session.add(
+        ZoneDevice(zone_id=zone.id, device_id=device.id, device_role_id=unknown_role.id)
+    )
+    session.flush()
+
+    zone_picture = plant_diagram(session, [zone]).zones[0]
+    shown = [
+        g.display_name
+        for g in (
+            *zone_picture.actuators,
+            *zone_picture.window_contacts,
+            *zone_picture.controllers,
+        )
+    ]
+    assert device.display_name not in shown

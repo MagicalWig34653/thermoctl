@@ -171,7 +171,13 @@ def _group_list(
         sentence = []
         for code, zone_id in sorted(entries, key=lambda p: (p[0], p[1] or 0)):
             permission = permissions.get(code)
-            if permission is None:
+            if permission is None:  # pragma: no cover
+                # Unreachable: `taken` above was filled by joining `group_permission`
+                # against `permission`, and `permissions` is that same table read in
+                # full -- every code here has a row. The foreign key makes sure of it
+                # from the other side, too: a permission still granted somewhere
+                # cannot be deleted. Kept so the lookup does not silently rely on
+                # both of those staying true.
                 continue
             wo = f" ({zone_names.get(zone_id, 'unbekannte Zone')})" if zone_id else ""
             sentence.append(permission.description + wo)

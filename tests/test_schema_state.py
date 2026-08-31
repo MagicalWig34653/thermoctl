@@ -95,3 +95,16 @@ def test_the_migration_head_finds_the_real_revision() -> None:
 
     expected = ScriptDirectory.from_config(Config("alembic.ini")).get_heads()
     assert _migration_head() == expected[0]
+
+
+def test_without_a_migration_directory_the_comparison_is_skipped(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    """Installed as a plain wheel there is no `alembic.ini` -- and that is allowed.
+
+    The migration directory ships with the repository and the container image, not
+    with the package. Whoever embeds thermoctl differently must not be stopped at
+    startup by a comparison that cannot be made; the answer is "unknown", not "wrong".
+    """
+    from thermoctl.db.schema_state import _migration_head
+
+    monkeypatch.chdir(tmp_path)
+    assert _migration_head() is None

@@ -181,7 +181,7 @@ def create_schedule_point(
             session.flush()
     except IntegrityError as exc:
         raise ScheduleError(
-            "uhrzeit", "Zu diesem Zeitpunkt gibt es bereits einen Punkt."
+            "time_of_day", "Zu diesem Zeitpunkt gibt es bereits einen Punkt."
         ) from exc
     return point
 
@@ -236,7 +236,7 @@ def move_schedule_point(
             session.flush()
     except IntegrityError as exc:
         raise ScheduleError(
-            "uhrzeit", "Zu diesem Zeitpunkt gibt es bereits einen Punkt."
+            "time_of_day", "Zu diesem Zeitpunkt gibt es bereits einen Punkt."
         ) from exc
     return point
 

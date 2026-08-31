@@ -136,3 +136,37 @@ def test_nonsensical_times_are_rejected(input_value: str) -> None:
 
     with pytest.raises(ScheduleError):
         time_of_day_in_minutes(input_value)
+
+
+def test_a_time_slot_taken_concurrently_while_moving(
+    session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The same race as when creating, on the other route into the same table.
+
+    Dragging a bar checks the target minute first and writes afterwards; a second
+    request can take that minute in between. The pre-check then says "free" and the
+    unique constraint catches it -- and the error has to name `time_of_day`, because
+    that is the field the form can mark. It said `uhrzeit` for a while, a name the
+    form had not used since the endpoints were translated, so the message was
+    rendered nowhere at all.
+    """
+    zone = create_race_zone(session)
+    mode = create_mode(session, "wettlauf-verschieben", "Tag")
+    moving = SchedulePoint(
+        zone_id=zone.id, weekday=1, minute_of_day=360, setpoint_mode_id=mode.id
+    )
+    session.add(moving)
+    session.add(
+        SchedulePoint(
+            zone_id=zone.id, weekday=1, minute_of_day=420, setpoint_mode_id=mode.id
+        )
+    )
+    session.flush()
+    import thermoctl.domain.schedule as schedule_modul
+
+    monkeypatch.setattr(schedule_modul, "_moment_taken", lambda *a, **k: False)
+    with pytest.raises(ScheduleError) as fehler:
+        schedule_modul.move_schedule_point(
+            session, zone, moving, weekday=1, minute=420, user_id=None
+        )
+    assert fehler.value.field == "time_of_day"
