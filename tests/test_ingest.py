@@ -16,7 +16,12 @@ from tests.helpers import (
     role,
     sensor_status_of,
 )
-from thermoctl.db.models.device import Device, DeviceCapabilityLink, ZoneDevice
+from thermoctl.db.models.device import (
+    Device,
+    DeviceCapabilityLink,
+    DeviceProperty,
+    ZoneDevice,
+)
 from thermoctl.db.models.lookup import DeviceCapability, SensorStatus
 from thermoctl.db.models.measurement import DeviceHealth, Measurement
 from thermoctl.db.models.state import ZoneState
@@ -426,3 +431,85 @@ def test_the_first_sighting_is_filled_in_for_a_hand_created_device(
     session.flush()
     device = session.scalar(select(Device).where(Device.external_id == "Von Hand angelegt"))
     assert device is not None and device.first_seen_at == gesehen
+
+
+def test_a_property_named_twice_does_not_break_the_whole_device_list(
+    session: Session,
+) -> None:
+    """A real bridge list repeats a property name -- and that took down the ingest.
+
+    Zigbee2MQTT names the same property in more than one branch when a device has
+    several endpoints, or when its `switch` and `light` exposes both carry
+    `execute_if_off`. `device_property` holds one row per `(device_id, name)`, so the
+    second insert hit the UNIQUE constraint. Since `_process_device_list` handles the
+    whole message in one transaction, that did not just drop one property: the entire
+    `bridge/devices` message failed, and **no** device on the bridge was updated any
+    more. Taken from a real installation, where it appeared as
+
+        IntegrityError: UNIQUE constraint failed:
+        device_property.device_id, device_property.name
+
+    The first occurrence wins; the point of the test is that the ingest survives at
+    all and the other devices still arrive.
+    """
+    integration(session)
+    items = [
+        {
+            "ieee_address": "0x1111",
+            "friendly_name": "steckdose",
+            "definition": {
+                "model": "doppelt",
+                "exposes": [
+                    {
+                        "type": "switch",
+                        "features": [
+                            {"type": "binary", "property": "state", "access": 7},
+                            {
+                                "type": "binary",
+                                "property": "execute_if_off",
+                                "access": 2,
+                            },
+                        ],
+                    },
+                    {
+                        "type": "light",
+                        "features": [
+                            {
+                                "type": "binary",
+                                "property": "execute_if_off",
+                                "access": 2,
+                            },
+                        ],
+                    },
+                ],
+            },
+        },
+        {
+            "ieee_address": "0x2222",
+            "friendly_name": "fuehler",
+            "definition": {
+                "model": "einfach",
+                "exposes": [{"type": "numeric", "property": "temperature", "access": 1}],
+            },
+        },
+    ]
+
+    process_message(
+        session,
+        f"{BASIS}/bridge/devices",
+        json.dumps(items).encode(),
+        base=BASIS,
+        received_at=EMPFANGEN_AM,
+    )
+    session.flush()
+
+    device = session.scalar(select(Device).where(Device.external_id == "steckdose"))
+    assert device is not None
+    names = session.scalars(
+        select(DeviceProperty.name).where(DeviceProperty.device_id == device.id)
+    ).all()
+    assert sorted(names) == ["execute_if_off", "state"]
+
+    # The decisive part: the device behind the duplicate arrived as well. Before the
+    # fix the exception aborted the message and this row did not exist.
+    assert session.scalar(select(Device).where(Device.external_id == "fuehler")) is not None
