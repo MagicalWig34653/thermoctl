@@ -142,19 +142,20 @@ def save_devices(
     return new_devices
 
 
-async def refresh(
-    session: Session, settings: Settings, transport: JsonTransport, now: datetime
-) -> int:
-    """Fetches the device list and carries it forward. `0` if there was nothing to fetch.
+async def fetch_devices(
+    settings: Settings, transport: JsonTransport
+) -> list[MerossDevice] | None:
+    """Fetch the device list without touching the database.
 
-    Without credentials nothing happens, silently -- Meross is optional, and a warning
-    on every pass would be nothing but noise for everyone who does not use it.
+    `None` means that no reconciliation should be written: either Meross is not
+    configured or the cloud failed. An empty list is a successful response and must
+    stay distinguishable from a failure.
     """
     # Written as an explicit narrowing check, not `credentials_configured(settings)`:
     # mypy cannot follow a boolean helper's implication that both fields below are set,
     # and `sign_in` needs both narrowed to `str`, not `str | None`.
     if settings.meross_email is None or settings.meross_password is None:
-        return 0
+        return None
     try:
         account = await sign_in(
             transport,
@@ -165,14 +166,8 @@ async def refresh(
         devices = await device_list(transport, settings.meross_api_base, account)
     except MerossError as exc:
         log.error("Meross-Geräteliste nicht abrufbar", extra={"grund": str(exc)})
-        return 0
+        return None
     except Exception:
         log.exception("Meross-Geräteliste nicht abrufbar")
-        return 0
-
-    new_devices = save_devices(session, devices, now)
-    log.info(
-        "Meross-Geräte abgeglichen",
-        extra={"gefunden": len(devices), "neu": new_devices},
-    )
-    return new_devices
+        return None
+    return devices

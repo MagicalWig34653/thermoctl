@@ -23,6 +23,12 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ### Behoben
 
+- **SQLite sperrt Bedienanfragen nicht mehr während externer Netzabrufe.** Anmeldung und
+  Geräteliste von Meross werden jetzt ohne offene Datenbanksitzung geholt und erst danach
+  kurz gespeichert. Auch Open-Meteo wird nicht mehr aus der bereits schreibenden
+  Sitzung des Schattenzyklus abgewartet. Damit kann die Fortschreibung einer
+  Bedienersitzung parallel committen, statt mit `database is locked` in 401 oder 500 zu
+  enden.
 - **Die Sonnenabsenkung liess sich nicht einschalten.** Das Formular schickt seit 0.2.0
   `value="yes"`, die Auswertung verglich weiter gegen `"on"` — den Vorgabewert eines
   Browsers für eine Checkbox ohne `value`. Der Haken wurde gesetzt, gespeichert und war

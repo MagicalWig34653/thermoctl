@@ -7,12 +7,18 @@ no location configured, cache unavailable) and the one way it actually fetches.
 import types
 from datetime import datetime
 from decimal import Decimal
+from pathlib import Path
 
 import pytest
+from sqlalchemy import update
 from sqlalchemy.orm import Session
 
 from tests.helpers import create_settings
 from thermoctl import app as app_modul
+from thermoctl.config import Settings
+from thermoctl.db.base import Base
+from thermoctl.db.engine import create_engine_from_settings, session_factory, session_scope
+from thermoctl.db.models.operations import Setting
 from thermoctl.domain.solar_setback import HourlyForecast
 
 NOW = datetime(2026, 8, 30, 8, 0)
@@ -39,7 +45,7 @@ async def test_disabled_by_default_never_touches_the_cache(session: Session) -> 
     create_settings(session)  # solar_forecast_enabled defaults to False
     cache = _FakeCache([HourlyForecast(NOW, None, Decimal(300))])
 
-    result = await app_modul._solar_forecast(_fake_app(cache), session, NOW)  # type: ignore[arg-type]
+    result = await app_modul._solar_forecast(_fake_app(cache), lambda: session, NOW)  # type: ignore[arg-type]
 
     assert result is None
     assert cache.calls == []
@@ -54,7 +60,7 @@ async def test_enabled_but_without_a_location_stays_off(session: Session) -> Non
     session.flush()
     cache = _FakeCache([HourlyForecast(NOW, None, Decimal(300))])
 
-    result = await app_modul._solar_forecast(_fake_app(cache), session, NOW)  # type: ignore[arg-type]
+    result = await app_modul._solar_forecast(_fake_app(cache), lambda: session, NOW)  # type: ignore[arg-type]
 
     assert result is None
     assert cache.calls == []
@@ -70,7 +76,7 @@ async def test_enabled_and_configured_fetches_through_the_cache(session: Session
     forecast = [HourlyForecast(NOW, None, Decimal(300))]
     cache = _FakeCache(forecast)
 
-    result = await app_modul._solar_forecast(_fake_app(cache), session, NOW)  # type: ignore[arg-type]
+    result = await app_modul._solar_forecast(_fake_app(cache), lambda: session, NOW)  # type: ignore[arg-type]
 
     assert result == forecast
     assert cache.calls == [(Decimal("52.520"), Decimal("13.405"), NOW)]
@@ -81,7 +87,7 @@ async def test_no_setting_row_at_all_stays_off(session: Session) -> None:
     """Setup not completed yet -- must not raise, exactly like the rest of the
     shadow loop's degraded-startup handling."""
     result = await app_modul._solar_forecast(
-        _fake_app(_FakeCache([])), session, NOW  # type: ignore[arg-type]
+        _fake_app(_FakeCache([])), lambda: session, NOW  # type: ignore[arg-type]
     )
     assert result is None
 
@@ -97,9 +103,42 @@ async def test_a_missing_cache_is_treated_like_no_forecast(session: Session) -> 
     settings.solar_forecast_longitude = Decimal("13.405")
     session.flush()
 
-    result = await app_modul._solar_forecast(_fake_app(None), session, NOW)  # type: ignore[arg-type]
+    result = await app_modul._solar_forecast(_fake_app(None), lambda: session, NOW)  # type: ignore[arg-type]
 
     assert result is None
+
+
+@pytest.mark.anyio
+async def test_network_fetch_does_not_hold_a_sqlite_transaction(tmp_path: Path) -> None:
+    """A request updating the same SQLite file must commit while network I/O waits."""
+    database = tmp_path / "forecast-lock.db"
+    engine = create_engine_from_settings(Settings(database_url=f"sqlite:///{database}"))
+    Base.metadata.create_all(engine)
+    factory = session_factory(engine)
+    with session_scope(factory) as setup_session:
+        settings = create_settings(setup_session)
+        settings.solar_forecast_enabled = True
+        settings.solar_forecast_latitude = Decimal("52.520")
+        settings.solar_forecast_longitude = Decimal("13.405")
+
+    class _ConcurrentWriter:
+        async def get(
+            self, latitude: Decimal, longitude: Decimal, now: datetime
+        ) -> list[HourlyForecast]:
+            with session_scope(factory) as writer:
+                writer.execute(
+                    update(Setting).where(Setting.id == 1).values(timezone="Europe/Berlin")
+                )
+            return [HourlyForecast(NOW, None, Decimal(300))]
+
+    try:
+        result = await app_modul._solar_forecast(
+            _fake_app(_ConcurrentWriter()), factory, NOW  # type: ignore[arg-type]
+        )
+    finally:
+        engine.dispose()
+
+    assert result == [HourlyForecast(NOW, None, Decimal(300))]
 
 
 @pytest.fixture

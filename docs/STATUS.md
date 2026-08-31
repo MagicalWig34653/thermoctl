@@ -4,6 +4,21 @@ Letzte Aktualisierung: 2026-08-31
 
 ## Kreuzreview der Meross-Anbindung nachgearbeitet
 
+### Keine Netzwartezeit mehr in einer Datenbanktransaktion
+
+Der entkoppelte Meross-Abgleich hatte weiterhin eine eigene Sitzung geöffnet, bevor er
+Anmeldung und Geräteliste aus der Wolke abwartete. Der Ablauf ist jetzt vollständig
+getrennt: Zugangsdaten kommen aus der Konfiguration, beide HTTP-Aufrufe laufen ohne
+Datenbanksitzung, erst das fertige Ergebnis wird in einer kurzen Sitzung mit
+`save_devices` gespeichert und committet. Fehler der Wolke werden weiterhin nur
+protokolliert und beenden weder Abgleich noch Schattenzyklus.
+
+Dasselbe Sperrmuster steckte in der Sonnenprognose: Der Schattenzyklus hatte bereits
+Zonenzustände geschrieben, bevor er Open-Meteo abwartete. Die Koordinaten werden nun in
+einer kurzen Lesesitzung geholt; der Netzabruf findet vor der Schreibsitzung des Zyklus
+statt. Ein Regressionstest lässt während des simulierten Netzabrufs einen zweiten
+Schreiber auf derselben SQLite-Datei committen.
+
 Codex hatte die Anbindung aus 0.3.0 gegengelesen; sechs Befunde daraus sind
 umgesetzt:
 

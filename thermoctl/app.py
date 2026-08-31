@@ -67,7 +67,8 @@ from thermoctl.integrations.mqtt.zigbee2mqtt import (
 from thermoctl.integrations.notification import send
 from thermoctl.logging import configure_logging, request_id_var
 from thermoctl.services.ingest import advance_zone_state, process_message
-from thermoctl.services.meross_discovery import refresh as meross_refresh
+from thermoctl.services.meross_discovery import fetch_devices as fetch_meross_devices
+from thermoctl.services.meross_discovery import save_devices as save_meross_devices
 from thermoctl.services.publishing import PublicationState, _send_zone_state
 from thermoctl.services.publishing import cycle as publication_cycle
 from thermoctl.services.retention import delete_old_measurements
@@ -150,7 +151,7 @@ def _sensor_notices(
 
 
 async def _solar_forecast(
-    app: FastAPI, session: Session, now: datetime
+    app: FastAPI, session_factory: sessionmaker[Session], now: datetime
 ) -> list[HourlyForecast] | None:
     """The hourly forecast for the configured location, or `None`.
 
@@ -161,11 +162,12 @@ async def _solar_forecast(
     default location, principle 1), or `ForecastCache.get()` could not reach the
     source this cycle.
     """
-    settings_row = session.get(Setting, 1)
-    if settings_row is None or not settings_row.solar_forecast_enabled:
-        return None
-    latitude = settings_row.solar_forecast_latitude
-    longitude = settings_row.solar_forecast_longitude
+    with session_scope(session_factory) as session:
+        settings_row = session.get(Setting, 1)
+        if settings_row is None or not settings_row.solar_forecast_enabled:
+            return None
+        latitude = settings_row.solar_forecast_latitude
+        longitude = settings_row.solar_forecast_longitude
     if latitude is None or longitude is None:
         return None
     cache: ForecastCache | None = getattr(app.state, "forecast_cache", None)
@@ -193,19 +195,6 @@ async def _shadow_interval_s(session_factory: sessionmaker[Session]) -> int:
 MEROSS_REFRESH_S = 3600.0
 
 
-async def _refresh_meross(app: FastAPI, session: Session, now: datetime) -> None:
-    """Reconciles the Meross devices when credentials are stored.
-
-    Errors stay here: the device list of somebody else's cloud must not halt the shadow
-    cycle -- an installation that stops regulating because of a sign-in error would be
-    worse than one that does not know a socket yet.
-    """
-    transport = getattr(app.state, "meross_transport", None)
-    if transport is None:  # pragma: no cover - always set in the lifespan
-        return
-    await meross_refresh(session, get_settings(), transport, now)
-
-
 def _start_meross_refresh(app: FastAPI, now: datetime) -> None:
     """Starts a Meross reconciliation detached from the shadow cycle.
 
@@ -224,8 +213,18 @@ def _start_meross_refresh(app: FastAPI, now: datetime) -> None:
 
 
 async def _run_detached_meross_refresh(app: FastAPI, now: datetime) -> None:
+    transport = getattr(app.state, "meross_transport", None)
+    if transport is None:  # pragma: no cover - always set in the lifespan
+        return
+    devices = await fetch_meross_devices(get_settings(), transport)
+    if devices is None:
+        return
     with session_scope(app.state.session_factory) as session:
-        await _refresh_meross(app, session, now)
+        new_devices = save_meross_devices(session, devices, now)
+    log.info(
+        "Meross-Geräte abgeglichen",
+        extra={"gefunden": len(devices), "neu": new_devices},
+    )
 
 
 def _shadow_loop_needed(settings: Settings) -> bool:
@@ -266,11 +265,11 @@ async def _shadow_loop(app: FastAPI) -> None:
             await asyncio.sleep(interval)
             now = utcnow()
             notices: list[FaultNotice]
+            forecast = await _solar_forecast(app, app.state.session_factory, now)
             with session_scope(app.state.session_factory) as session:
                 before = _sensor_states(session)
                 advance_zone_state(session, now)
                 notices = _sensor_notices(session, before)
-                forecast = await _solar_forecast(app, session, now)
                 cycle(session, now, forecast)
                 # `getattr`: the loop also runs in tests that assemble an app without
                 # running through the full lifespan.
