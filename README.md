@@ -30,6 +30,8 @@ sorgen dafür, dass er es auch nicht versehentlich tut.
 - **[MQTT](docs/mqtt.md)** — was gelesen wird, und die entworfene eigene Topic-Struktur.
 - **[Sicherheitsdurchsicht](docs/sicherheitsdurchsicht.md)** — was geprüft wurde und was offen ist.
 - **[Roadmap](docs/roadmap.md)** und **[Stand](docs/STATUS.md)** — was da ist und was folgt.
+- **[Änderungen](CHANGELOG.md)** — was sich je Version geändert hat, samt dem, was beim
+  Umstieg zu beachten ist.
 - **[Beispiel-Compose](docker/compose.beispiel.yml)** — kopieren, `.env` ausfüllen, starten.
 
 ## Start mit Docker
