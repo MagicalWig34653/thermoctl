@@ -92,9 +92,16 @@ def test_the_living_docs_name_no_file_that_no_longer_exists() -> None:
     today's names would falsify the record. `bestandsaufnahme-altsystem.md` describes
     the old system and is not ours to rename either.
 
-    Grew out of the English translation: half a dozen documents went on naming
-    `aktoren.py`, `fernbedienung.py` or `regelung.py` for two days after those files
-    had been renamed.
+    Grew out of the English translation: half a dozen documents went on naming the
+    actuator, remote-control and control-loop modules under their old German file names
+    for two days after those files had been renamed.
+
+    **The convention this rests on:** a file name in backticks claims that the file
+    exists. A name that no longer does belongs in running text -- "die Aktoren hießen
+    einmal anders" -- not in backticks. Otherwise a document could not report its own
+    history without failing this test, which is exactly what happened the first time:
+    the passage in STATUS.md describing this very repair listed the old names in
+    backticks and went red.
     """
     existing = {path.name for path in ROOT.rglob("*.py") if ".venv" not in path.parts}
     existing |= {path.name for path in (ROOT / "thermoctl/web/static").glob("*.js")}

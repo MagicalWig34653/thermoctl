@@ -21,8 +21,11 @@ Dokumente nicht. Was gefunden wurde, war mehr als Kosmetik:
 - **Die Sicherheitsdurchsicht kannte nur drei Adapter** und listete die ungeprüften Routen
   ohne den Kiosk-Einstieg. Beides ergänzt, mitsamt dem, was das Kiosk-Token kann und nicht
   kann.
-- **Sechs Dokumente nannten Dateien, die es nicht mehr gibt** — `aktoren.py`,
-  `fernbedienung.py`, `regelung.py`, `alltag_views.py` und drei alte Testnamen.
+- **Sechs Dokumente nannten Dateien, die es nicht mehr gibt** — die Aktoren, die
+  Fernbedienung, die Regelung, die Alltagsansichten und drei alte Testnamen, alle noch
+  unter ihren deutschen Dateinamen. (Hier ohne Backticks geschrieben, und das ist die
+  Konvention: Ein Name in Backticks behauptet, dass es ihn gibt. Der Wächter unten prüft
+  genau diese Behauptung — historische Namen gehören deshalb in Fließtext.)
 
 Dagegen stehen jetzt zwei Wächter: einer vergleicht die MCP-Werkzeugnamen mit den
 registrierten, einer prüft jeden in den lebenden Dokumenten genannten Dateinamen gegen den
