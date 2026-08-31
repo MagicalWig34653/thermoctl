@@ -84,6 +84,12 @@ kommt der Vergleichsbetrieb gegen die bestehende Anlage.
 - Der Frostschutz greift jetzt auch in einer echten Anlage; das Schattenprotokoll folgt
   der Zone beim Löschen; ein Schema-Vergleich beim Start ersetzt den Traceback aus der
   Tiefe.
+- **Die MQTT-Wiederverbindung bremst wieder.** Der Abstand wurde zurückgesetzt, sobald
+  irgendeine Nachricht ankam — und Zigbee2MQTT stellt auf `bridge/state` eine retained
+  Nachricht bei *jedem* Verbindungsaufbau zu. Wer gleich danach hinausgeworfen wurde,
+  verband sich im Sekundentakt neu, mit vollem Traceback je Versuch. Jetzt entscheidet,
+  wie lange eine Verbindung gehalten hat. Bricht sie dreimal sofort ab, schreibt der
+  Dienst die häufigste Ursache aus: zwei Clients mit derselben Kennung.
 
 ### Geändert
 
