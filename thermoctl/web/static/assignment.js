@@ -19,6 +19,16 @@
 (function () {
     "use strict";
 
+    // Welche Elemente schon verdrahtet sind -- als WeakSet, nicht als Attribut im
+    // Markup. Der Unterschied ist nicht kosmetisch: htmx legt beim Navigieren eine
+    // Momentaufnahme der Seite in seinen Verlaufsspeicher und stellt sie beim
+    // Zurueckgehen daraus wieder her. Attribute ueberleben das, Ereignisbehandler
+    // nicht. Ein `data-wired` im Markup kam also zurueck, ohne dass noch ein Behandler
+    // daran hing -- die Marke sagte "schon verdrahtet", und die Seite reagierte auf
+    // nichts mehr. Ein WeakSet kennt nur Elemente dieses Dokumentzustands; ein aus dem
+    // Speicher geparstes Element ist ein neues und wird neu verdrahtet.
+    const wired = new WeakSet();
+
     /** Is this card already assigned to a slot? Then it can only go back out. */
     function isAssigned(card) {
         return Boolean(card.dataset.assignment || card.dataset.source);
@@ -174,10 +184,10 @@
 
     function setUp() {
         const pool = document.getElementById("device-pool");
-        if (!pool || pool.dataset.wired) {
+        if (!pool || wired.has(pool)) {
             return;
         }
-        pool.dataset.wired = "yes";
+        wired.add(pool);
         const targets = Array.from(document.querySelectorAll("[data-target]"));
         if (!targets.length) {
             return;
