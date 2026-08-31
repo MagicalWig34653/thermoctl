@@ -8,6 +8,7 @@ application. Every test here checks one boundary of that scope; the happy path
 (dashboard renders, controls work) is covered once each, not repeated per test.
 """
 
+import re
 from datetime import timedelta
 from decimal import Decimal
 
@@ -17,6 +18,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from tests.helpers import (
+    create_mode,
     create_settings,
     create_zone,
     source,
@@ -606,3 +608,62 @@ def test_revoking_an_ordinary_api_token_via_the_kiosk_endpoint_is_not_found(
         f"/kiosk-tokens/{developer_token.id}/revoke", headers=headers
     )
     assert response.status_code == status.HTTP_404_NOT_FOUND
+
+
+def _forms_on(page_text: str) -> list[tuple[str, dict[str, str]]]:
+    """Every form on the page: its action and the fields a browser would send.
+
+    Only hidden fields and the first submit button of each form -- which is exactly
+    what a tablet sends when someone taps it.
+    """
+    forms: list[tuple[str, dict[str, str]]] = []
+    for block in re.findall(r"<form[^>]*action=\"([^\"]+)\"[^>]*>(.*?)</form>", page_text, re.S):
+        action, body = block
+        hidden = r"<input[^>]*type=\"hidden\"[^>]*name=\"([^\"]+)\"[^>]*value=\"([^\"]*)\""
+        fields = dict(re.findall(hidden, body))
+        button = re.search(r"<button[^>]*name=\"([^\"]+)\"[^>]*value=\"([^\"]*)\"", body)
+        if button:
+            fields[button.group(1)] = button.group(2)
+        forms.append((action, fields))
+    return forms
+
+
+def test_the_buttons_on_the_dashboard_work_the_way_a_browser_sends_them(
+    client: TestClient, session: Session
+) -> None:
+    """Submits the rendered forms with **no** `X-CSRF-Token` header.
+
+    Every other test in this file passes that header by hand, which is what htmx does
+    for the page's own polling -- but the two buttons are plain HTML forms and htmx
+    never touches them. So the tests agreed with each other while both buttons
+    answered `{"detail": "Ungueltiges CSRF-Token"}` on a real tablet. Reported from a
+    running installation, not found here.
+
+    Taking the fields out of the rendered page is the point: a test that assembles the
+    body itself would have to be told about the hidden token, and would then pass even
+    if the page never rendered one.
+    """
+    create_settings(session)
+    source(session, "web")
+    zone = create_zone(session, "wandzone")
+    mode = create_mode(session, "tag")
+    session.add(
+        ZoneSetpoint(zone_id=zone.id, setpoint_mode_id=mode.id, temperature_c=Decimal("21.0"))
+    )
+    admin = _admin(session)
+    _token, plaintext = issue_kiosk_token(
+        session, admin, "Wandtablet", [zone.id], control_allowed=True, expires_at=None
+    )
+    _with_kiosk_cookie(client, plaintext)
+
+    page = client.get("/kiosk")
+    assert page.status_code == status.HTTP_200_OK
+    forms = _forms_on(page.text)
+    assert forms, "Keine Formulare auf dem Dashboard gefunden"
+
+    for action, fields in forms:
+        answer = client.post(action, data=fields, follow_redirects=False)
+        assert answer.status_code != status.HTTP_403_FORBIDDEN, (
+            f"{action} wird abgewiesen, wenn ein Browser es ganz normal abschickt: "
+            f"{answer.text}"
+        )
