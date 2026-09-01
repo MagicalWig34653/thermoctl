@@ -42,7 +42,7 @@ Selbst nachgeprüft, nicht aus Berichten übernommen (Stand 2026-09-01):
 
 | | |
 |---|---|
-| Tests | 1390 unter SQLite, 1389 plus ein Skip unter MariaDB |
+| Tests | 1398 unter SQLite, 1397 plus ein Skip unter MariaDB |
 | Testabdeckung | 100 %, Mindestschwelle 100 % in der CI |
 | Ruff, mypy strict | ohne Befund, 101 Quelldateien |
 | Migrationskette | linear, ein Kopf, vorwärts und rückwärts gegen beide Datenbanken |
@@ -53,8 +53,13 @@ die zweite setzt, läuft unbemerkt gegen SQLite und bekommt trotzdem einen grün
 
 ## v0.2.2 — Freigabe steht aus
 
-Zwei Freigabe-Reviews haben den Stand abgelehnt, beide zu Recht. **Alle Befunde sind
-behoben**; das dritte Review läuft noch. Was behoben wurde, steht im
+Das dritte Freigabe-Review hat den Stand abgelehnt. **Seine Befunde sind behoben**; ein
+erneutes Review steht aus. Die Oberfläche unterscheidet jetzt Trockenlauf, scharf ohne
+Neustart und scharf nach Neustart. Auch dann bezeichnet sie nur die freigegebene
+Sollwertausgabe an selbstregelnde Thermostatventile; Ein/Aus-Entscheidungen erreichen
+weiterhin keinen Aktor. Der Ventilschutz benennt sich als reine Schattenentscheidung.
+Sein Abschlussmarker taktet ausdrücklich nur die Simulation und ist kein Nachweis einer
+Ventilbewegung. Was behoben wurde, steht im
 [CHANGELOG](../CHANGELOG.md), die Einzelheiten in [verlauf.md](verlauf.md):
 
 - Rückgängig im Zeitplan betrachtet jetzt **jede** Änderung am Zeitplan einer Zone, nicht

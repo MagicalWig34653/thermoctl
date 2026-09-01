@@ -205,6 +205,7 @@ def start(
             # running, and are there sensors that stay silent? Exactly the three
             # things that make a display untrustworthy if you don't know them.
             "armed": bool(settings and settings.control_armed),
+            "sending_allowed": getattr(request.app.state, "sending_allowed", False),
             "bridge": getattr(request.app.state, "bridge_reachable", None),
             "silent_sensors": [
                 zone.display_name

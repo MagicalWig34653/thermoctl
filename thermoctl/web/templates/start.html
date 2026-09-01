@@ -43,12 +43,15 @@ Seite ein Formularstapel, in dem die eigentliche Auskunft — wie warm ist es �
 </div>
 
 <section class="tc-system-row {{ 'tc-armed' if armed }} mb-4">
-    {% if armed %}
-    <span class="tc-chip tc-chip-warm"><span class="tc-dot"></span>Scharf</span>
-    <span>Entscheidungen werden an die Ventile weitergegeben.</span>
+    {% if armed and sending_allowed %}
+    <span class="tc-chip tc-chip-warm"><span class="tc-dot"></span>Scharf und neu gestartet</span>
+    <span>Sollwertausgabe freigegeben: Sollwerte können an selbstregelnde Thermostatventile gesendet werden. Ein/Aus-Entscheidungen erreichen weiterhin keinen Aktor.</span>
+    {% elif armed %}
+    <span class="tc-chip tc-chip-warning">Scharf, Neustart fehlt</span>
+    <span>Der beim Start gebaute MQTT-Riegel ist noch zu. Bis zum Neustart werden keine Sollwerte an Ventile gesendet; Ein/Aus-Entscheidungen erreichen keinen Aktor.</span>
     {% else %}
     <span class="tc-chip tc-chip-quiet">Trockenlauf</span>
-    <span>Es wird entschieden und protokolliert, aber nichts geschaltet.</span>
+    <span>Regelentscheidungen werden protokolliert. Es werden keine Sollwerte an Ventile gesendet. Ein/Aus-Entscheidungen erreichen keinen Aktor.</span>
     {% endif %}
 
     {% if bridge is false %}

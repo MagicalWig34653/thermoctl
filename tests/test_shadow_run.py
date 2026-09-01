@@ -101,7 +101,7 @@ def test_one_cycle_with_a_fresh_reading_writes_a_row_with_a_reason(
     assert session.query(ShadowDecision).count() == 1
 
 
-def test_valve_protection_persists_for_its_duration_and_survives_a_restart(
+def test_shadow_valve_protection_closes_on_schedule_without_claiming_actuation(
     session: Session,
 ) -> None:
     create_settings(session)
@@ -131,6 +131,28 @@ def test_valve_protection_persists_for_its_duration_and_survives_a_restart(
     assert state is not None
     assert state.valve_protection_started_at is None
     assert state.last_valve_protection_at == NOW + timedelta(minutes=10)
+
+
+def test_completed_shadow_valve_protection_does_not_fill_every_following_cycle(
+    session: Session,
+) -> None:
+    create_settings(session)
+    zone = _zone_with_state(session, "shadow-cadence", measured_c=Decimal("21.0"))
+    zone.created_at = NOW - timedelta(days=2)
+    zone.valve_protection_enabled = True
+    zone.valve_protection_interval_days = 1
+    zone.valve_protection_duration_minutes = 10
+    zone.min_on_seconds = 0
+    zone.min_off_seconds = 0
+    session.flush()
+
+    started = shadow_run.cycle(session, NOW)[0]
+    ended = shadow_run.cycle(session, NOW + timedelta(minutes=10))[0]
+    following = shadow_run.cycle(session, NOW + timedelta(minutes=11))[0]
+
+    assert started.outcome_code == "ventilschutz"
+    assert ended.outcome_code != "ventilschutz"
+    assert following.outcome_code != "ventilschutz"
 
 
 def test_regular_heating_ends_protection_and_keeps_its_hysteresis_state(

@@ -6,7 +6,7 @@
 
 <h1 class="mb-1">Betrieb</h1>
 <p class="t-quiet mb-4">
-    Schaltet die Anlage wirklich, und was entscheidet sie gerade.
+    Was die Anlage nach aussen gibt, und was die Regelung gerade entscheidet.
     Die Regelvorgaben stehen unter <a href="/settings">Einstellungen</a>,
     die <a href="/statistics">Heizzeiten</a> der letzten Tage auf einer eigenen Seite.
 </p>
@@ -18,18 +18,24 @@
 <section class="tc-panel p-4 mb-4 {{ 'tc-armed' if settings.control_armed }}">
     <div class="d-flex justify-content-between align-items-start flex-wrap gap-3">
         <div>
-            {% if settings.control_armed %}
-            <span class="tc-chip tc-chip-warm mb-2"><span class="tc-dot"></span>Scharf</span>
-            <h2 class="mb-1">Die Regelung schaltet wirklich</h2>
+            {% if settings.control_armed and sending_allowed %}
+            <span class="tc-chip tc-chip-warm mb-2"><span class="tc-dot"></span>Scharf und neu gestartet</span>
+            <h2 class="mb-1">Sollwertausgabe freigegeben</h2>
             <p class="t-quiet mb-0">
-                Jede Entscheidung unten geht an die Ventile. Dahinter hängt eine echte Heizung.
+                Sollwerte können an selbstregelnde Thermostatventile gesendet werden. Ein/Aus-Entscheidungen erreichen weiterhin keinen Aktor.
+            </p>
+            {% elif settings.control_armed %}
+            <span class="tc-chip tc-chip-warning mb-2">Scharf, Neustart fehlt</span>
+            <h2 class="mb-1">Der MQTT-Riegel ist noch zu</h2>
+            <p class="t-quiet mb-0">
+                Der beim Start gebaute MQTT-Riegel ist noch zu. Bis zum Neustart werden keine Sollwerte an Ventile gesendet; Ein/Aus-Entscheidungen erreichen keinen Aktor.
             </p>
             {% else %}
             <span class="tc-chip tc-chip-quiet mb-2">Trockenlauf</span>
             <h2 class="mb-1">Die Regelung entscheidet, schaltet aber nicht</h2>
             <p class="t-quiet mb-0">
-                Jede Entscheidung wird protokolliert und keine ausgeführt. Das ist der Zustand,
-                in dem sich die Anlage gegen das Altsystem vergleichen lässt.
+                Regelentscheidungen werden protokolliert. Es werden keine Sollwerte an Ventile gesendet. Ein/Aus-Entscheidungen erreichen keinen Aktor.
+                In diesem Zustand lässt sich die Anlage gegen das Altsystem vergleichen.
             </p>
             {% endif %}
         </div>
@@ -53,16 +59,6 @@
         {% endif %}
     </div>
 
-    {% if settings.control_armed and not sending_allowed %}
-    <div class="alert alert-warning mt-3 mb-0" role="alert">
-        <strong>Scharf, aber es wird noch nichts geschaltet.</strong>
-        Der Dienst lief beim Start im Trockenlauf; dieser Riegel sitzt im MQTT-Client und
-        wird nur beim Start gelesen. Bis zum nächsten Neustart bleiben die Ventile
-        unberührt — zwei Riegel statt einem, weil dahinter eine echte Heizung hängt.
-        Zustandsmeldungen und die Home-Assistant-Anmeldung gehen davon unabhängig hinaus.
-    </div>
-    {% endif %}
-
     {% if may_arm and not settings.control_armed %}
     <div class="collapse mt-4 {{ 'show' if errors.get('reason') }}" id="arm">
         <div class="border-top pt-3">
@@ -73,10 +69,12 @@
                 <li>Das Altsystem bleibt die Rückfallebene und wird nicht abgeschaltet.</li>
                 <li>Umkehrbar: derselbe Knopf führt zurück in den Trockenlauf — und
                     zwar sofort, ohne Neustart.</li>
-                <li>Tatsächlich <em>geschaltet</em> wird erst nach einem Neustart des
-                    Dienstes: Der zweite Riegel sitzt im MQTT-Client und wird beim Start
-                    gelesen. Die Anbindung an Home Assistant läuft schon vorher; dort
-                    sagt es die Entität <span class="t-value">Regelung scharf</span>.</li>
+                <li>Sollwerte an selbstregelnde Thermostatventile werden erst nach einem
+                    Neustart des Dienstes freigegeben: Der zweite Riegel sitzt im
+                    MQTT-Client und wird beim Start gelesen. Ein/Aus-Entscheidungen
+                    erreichen auch danach keinen Aktor. Die Anbindung an Home Assistant
+                    läuft schon vorher; dort sagt es die Entität
+                    <span class="t-value">Regelung scharf</span>.</li>
             </ul>
             <form method="post" action="/control/arm">
                 <input type="hidden" name="armed" value="yes">

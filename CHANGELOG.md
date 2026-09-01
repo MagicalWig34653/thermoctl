@@ -33,9 +33,10 @@ passiert, ist mehrfach zu grob beschrieben worden — hier genau:
 
 ### Zu beachten beim Umstieg
 
-- **Eine Migration** läuft beim Start von selbst (Ventilschutz je Zone samt der
-  Betriebszeitstempel dazu). Der Weg von 0.2.0 aufwärts ist gegen SQLite und MariaDB
-  durchgespielt.
+- **Im Container läuft eine Migration beim Start von selbst** (Ventilschutz je Zone samt
+  der Betriebszeitstempel dazu). Ein örtlich gestarteter Dienst migriert nicht selbst und
+  verweigert mit einem alten Schema den Start. Der Weg von 0.2.0 aufwärts ist gegen SQLite
+  und MariaDB durchgespielt.
 - **Wer Meross-Zugangsdaten hinterlegt hat, bekommt jetzt Geräte** — der Abgleich läuft
   im ersten Schattenzyklus nach dem Start (also nach dem eingestellten Intervall, Vorgabe
   eine Minute) und danach stündlich. Es entstehen Gerätezeilen, die es vorher nicht gab.
