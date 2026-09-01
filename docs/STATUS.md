@@ -18,7 +18,7 @@ einmal und stand noch da.
 | 1a — Nacharbeiten | abgeschlossen |
 | 2 — Geräte-Anbindung im Schattenbetrieb | gebaut; der Nachweis über mehrere Tage braucht die echte Anlage |
 | 3 — Konfigurations-Oberfläche | abgeschlossen |
-| 4 — Regelkreis und Cutover | Logik und Tests stehen, die Verdrahtung fehlt (siehe unten) |
+| 4 — Regelkreis und Cutover | Zigbee2MQTT-Aktoren verdrahtet; Meross und ein Sonderfall offen (siehe unten) |
 | 5 — Integrationen und Veröffentlichung | Meross und Zeitplan-Bedienung erledigt, Freigabe von 0.2.2 offen |
 
 ## Was geschaltet wird — genau
@@ -32,9 +32,23 @@ Diese Frage ist mehrfach zu grob beantwortet worden, in beide Richtungen. Der St
 - **Der MQTT-Client trägt einen zweiten Riegel, der beim Start gebaut wird.** Wer scharf
   schaltet, muss den Dienst neu starten, bevor überhaupt etwas hinausgeht.
 - **Sind beide Riegel offen**, bekommen selbstregelnde Thermostatventile ihren Sollwert
-  veröffentlicht. **Normale Ein/Aus-Entscheidungen
-  gehen nirgendwohin** — weder `Zigbee2MqttValve` noch `MerossSwitch` werden im
-  Produktivcode konstruiert. Das ist die offene Arbeit von Phase 4.
+  veröffentlicht, **und jetzt auch ein gewöhnlicher (nicht selbstregelnder) Aktor an
+  Zigbee2MQTT sein Ein/Aus** (`services/publishing.py::_send_actuator_switches`, neu):
+  Rolle `actuator`, ohne `self_regulating`, mit der Fähigkeit `switch` — er bekommt, was
+  `shadow_run.cycle()` zuletzt für seine Zone entschieden hat, nur bei Änderung, mit
+  einem Eintrag im Schaltprotokoll für jeden Versuch (ausgeführt, unterdrückt oder
+  gescheitert).
+- **Ein Meross-Aktor bekommt weiterhin keinen Befehl** — bewusst, kein Versehen. Das
+  Schalten dort braucht eine Anmeldung gegen die Meross-Cloud, die nicht aus einer
+  offenen Datenbanktransaktion heraus abgewartet werden darf (das hat in dieser Fassung
+  schon einmal die ganze SQLite-Datei gesperrt). Jeder Zyklus, der einen Meross-Aktor
+  geschaltet hätte, schreibt stattdessen einen `failed`-Eintrag ins Schaltprotokoll.
+  Begründung in [offene-entscheidungen.md](offene-entscheidungen.md).
+- **Ein Zigbee2MQTT-Thermostatventil ohne `self_regulating`** (Fähigkeit `thermostat`
+  statt `switch`) bekommt ebenfalls noch keinen Befehl — `Zigbee2MqttThermostat` ist
+  gebaut und getestet, aber noch nicht verdrahtet. Anders als beim Meross-Fall entsteht
+  dafür heute **kein** Eintrag im Schaltprotokoll; siehe der Blocker-Eintrag vom
+  2026-09-01 in [offene-entscheidungen.md](offene-entscheidungen.md).
 
 ## Das Schaltprotokoll
 
@@ -57,13 +71,14 @@ an, nicht danach.
 
 ## Zahlen
 
-Selbst nachgeprüft, nicht aus Berichten übernommen (Stand 2026-09-01):
+Selbst nachgeprüft, nicht aus Berichten übernommen (Stand 2026-09-01, nach der
+Aktor-Verdrahtung):
 
 | | |
 |---|---|
-| Tests | 1417 unter SQLite, 1416 plus ein Skip unter MariaDB |
+| Tests | 1453 unter SQLite, 1452 plus ein Skip unter MariaDB |
 | Testabdeckung | 100 %, Mindestschwelle 100 % in der CI |
-| Ruff, mypy strict | ohne Befund, 101 Quelldateien |
+| Ruff, mypy strict | ohne Befund, 104 Quelldateien |
 | Migrationskette | linear, ein Kopf, vorwärts und rückwärts gegen beide Datenbanken |
 | Container | baut; eine echte 0.2.0-Datenbank wurde darin hochgezogen, `/healthz` meldet 0.2.2 |
 

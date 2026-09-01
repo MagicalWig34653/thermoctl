@@ -11,6 +11,21 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ## Unreleased
 
+**Gewöhnliche Aktoren sind jetzt mit dem Regelkreis verdrahtet.** Bisher erreichte eine
+Ein/Aus-Entscheidung kein Gerät: `Zigbee2MqttValve` und `MerossSwitch` waren gebaut,
+getestet und nirgends im Produktivcode konstruiert. Jetzt schaltet ein Zigbee2MQTT-Aktor
+(Rolle `actuator`, ohne `self_regulating`, mit der Fähigkeit `switch`) das, was die
+Regelung zuletzt für seine Zone entschieden hat — hinter denselben zwei Riegeln wie der
+Sollwert-Weg (`setting.control_armed` und der beim Start gebaute MQTT-Riegel), nur bei
+einer Änderung gesendet, und mit einem Eintrag im Schaltprotokoll für jeden Versuch.
+**Meross ist davon ausdrücklich nicht erfasst** — das Schalten dort braucht eine Anmeldung
+gegen die Meross-Cloud, die nicht aus einer offenen Datenbanktransaktion heraus abgewartet
+werden darf (genau dieser Fehler hat in dieser Fassung schon einmal die ganze
+SQLite-Datei gesperrt); ein Meross-Aktor bekommt bis auf Weiteres einen `failed`-Eintrag
+im Schaltprotokoll statt eines Befehls. Begründung und ein weiterer offener Fall (ein
+Zigbee2MQTT-Thermostatventil ohne `self_regulating`) in
+[docs/offene-entscheidungen.md](docs/offene-entscheidungen.md).
+
 **Neu: das Schaltprotokoll.** Bislang gab es zwei Aufzeichnungen — was die Regelung
 entschieden hat (`shadow_decision`) und was ein Mensch getan hat (`audit_event`) —, aber
 keine für das Dritte: was wirklich an ein Gerät hinausging. Die neue Ansicht unter

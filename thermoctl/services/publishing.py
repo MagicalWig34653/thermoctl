@@ -47,8 +47,9 @@ from thermoctl.db.models.zone import SetpointMode, Zone, ZoneSetpoint
 from thermoctl.domain.controller_channels import may_be_written
 from thermoctl.domain.schedule import end_of_next_switch, resolved_setpoint
 from thermoctl.domain.self_regulating import SETPOINT_PROPERTY, valve_commands
+from thermoctl.domain.switch_commands import switch_commands
 from thermoctl.domain.zone_settings import PARAMETERS, control_parameters
-from thermoctl.integrations.actuators import MqttPublisher, switching_allowed
+from thermoctl.integrations.actuators import MqttPublisher, Zigbee2MqttValve, switching_allowed
 from thermoctl.integrations.mqtt.publication import (
     DiscoveryMessage,
     armed_discovery,
@@ -94,6 +95,14 @@ class PublicationState:
     # the key: the same setpoint that was withheld during a dry run must go out
     # for real, and be logged again, the moment the plant is armed.
     valve_commands: dict[int, tuple[str, bool]] = field(default_factory=dict)
+    # Per ordinary (non-self-regulating) actuator, the (heating, armed) last acted
+    # on -- sent, withheld, or attempted and failed. Same reasoning as
+    # `valve_commands` above: the decision stands still for most of a cycle, and a
+    # command -- or a log entry -- every minute regardless would be unreadable and,
+    # for a battery device, costly. `armed` is part of the key for the same reason
+    # too: the same decision that was withheld during a dry run must go out for
+    # real, and be logged again, the moment the plant is armed.
+    switch_commands: dict[int, tuple[bool, bool]] = field(default_factory=dict)
 
 
 def _as_text(value: object) -> str:
@@ -175,6 +184,10 @@ async def cycle(
     sent_count += await _send_controller_channels(session, client, state, get_settings().mqtt_base_topic, now)
     for zone in zones:
         sent_count += await _send_self_regulating_valves(
+            session, client, state, get_settings().mqtt_base_topic, zone, now, source
+        )
+    for zone in zones:
+        sent_count += await _send_actuator_switches(
             session, client, state, get_settings().mqtt_base_topic, zone, now, source
         )
     return sent_count
@@ -287,6 +300,178 @@ async def _send_self_regulating_valves(
                 outcome=FAILED,
                 error="MQTT-Client hat die Veroeffentlichung abgewiesen",
                 reason=command.reason,
+            )
+    return sent
+
+
+# Integration codes an ordinary actuator can actually be switched through today.
+#
+# Meross needs a signed-in `MerossCommandTransport`
+# (`integrations/meross.py::sign_in`, `MerossConnection.build`) -- a call to the
+# manufacturer's cloud that must not be awaited from inside an open database
+# transaction. `app.py`'s detached Meross reconciliation
+# (`_run_detached_meross_refresh`) exists for exactly that reason: an earlier
+# version awaited such a call from inside `session_scope` and locked the whole
+# SQLite file for its duration, answering unrelated requests with 500 and 401.
+# Doing the same safely for switching -- a connection cached and periodically
+# refreshed, reached from outside this transaction, its own failure mode when the
+# cached session has gone stale -- is a piece of infrastructure this change does
+# not build; see docs/offene-entscheidungen.md. A Meross actuator is therefore
+# left unswitched rather than switched through a shortcut that risks repeating
+# that exact fault -- and every cycle that would have wanted to switch one says so
+# in the command log (`FAILED` once armed) instead of staying silent about it.
+_WIRED_INTEGRATIONS = frozenset({"zigbee2mqtt"})
+
+
+def _latest_decision(session: Session, zone_id: int) -> tuple[bool, str] | None:
+    """The most recent `heating`/`reason` this zone's control loop decided on.
+
+    Not passed in: `shadow_run.cycle()` and this publication cycle are two separate
+    calls (see `app.py::_shadow_loop`), the same reason `_would_heat` above reads it
+    back from the database rather than taking it as a parameter. `None` when no
+    decision has ever been logged for this zone -- a zone the control loop has never
+    run for has nothing here to act on, and inventing a state (heating or not) would
+    be a decision this module has no business making.
+    """
+    row = session.execute(
+        select(ShadowDecision.would_heat, ShadowDecision.reason)
+        .where(ShadowDecision.zone_id == zone_id)
+        .order_by(ShadowDecision.decided_at.desc(), ShadowDecision.id.desc())
+        .limit(1)
+    ).first()
+    return (row.would_heat, row.reason) if row is not None else None
+
+
+async def _send_actuator_switches(
+    session: Session,
+    client: MqttPublisher,
+    state: PublicationState,
+    base: str,
+    zone: Zone,
+    now: datetime,
+    source: str,
+) -> int:
+    """Turns every ordinary (non-self-regulating) actuator of a zone on or off.
+
+    The decision comes from `regelung.entscheiden()`, by way of the zone's latest
+    `shadow_decision` row (`_latest_decision` above) -- hysteresis, minimum
+    switching duration, window-open and the valve protection run are already
+    resolved into `would_heat` there; this function only carries that decision to
+    the device, unchanged, exactly as instructed. Reaching the adapter itself goes
+    through `switching_allowed` (`integrations/actuators.py`) inside
+    `Zigbee2MqttValve.switching()` -- the same dry-run bolt `_send_self_regulating_valves`
+    goes through, because the physical effect is the same. The MQTT client's own
+    second bolt applies on top of that, unconditionally, inside `client.publishing()`.
+
+    Only a changed decision -- or a changed outcome for the same decision -- sends
+    and logs again; see `PublicationState.switch_commands`. Because that cache
+    starts empty after every restart, the first cycle after a restart always acts
+    (sends for real once armed, logs a withheld attempt otherwise) for every
+    actuator, regardless of what was last sent before the restart: **what a real
+    device is currently doing is not remembered across a restart, and a relay or
+    valve left in an earlier state without being told again would silently stay
+    there.** The alternative -- staying silent until the decision changes -- trades
+    that for fewer redundant commands after every restart; deliberately not chosen
+    here, for the same reason `_send_self_regulating_valves` and the Home Assistant
+    registration above already resend unconditionally after one. See
+    docs/offene-entscheidungen.md.
+    """
+    armed = switching_allowed(session)
+    sent = 0
+    latest = _latest_decision(session, zone.id)
+    if latest is None:
+        return 0
+    heating, reason = latest
+
+    for command in switch_commands(session, zone):
+        device = command.device
+        cache_key = (heating, armed)
+        if state.switch_commands.get(device.id) == cache_key:
+            continue
+
+        if command.integration_code not in _WIRED_INTEGRATIONS:
+            state.switch_commands[device.id] = cache_key
+            log.error(
+                "Aktor an nicht verdrahteter Anbindung wird nicht geschaltet",
+                extra={
+                    "zone_id": zone.id,
+                    "geraet": device.display_name,
+                    "anbindung": command.integration_code,
+                },
+            )
+            record_command(
+                session,
+                now=now,
+                source=source,
+                zone=zone,
+                device=device,
+                command="switch",
+                payload=json.dumps({"state": "ON" if heating else "OFF"}),
+                outcome=SUPPRESSED if not armed else FAILED,
+                error=(
+                    None
+                    if not armed
+                    else (
+                        f"Anbindung {command.integration_code!r} ist fuer Schaltbefehle "
+                        "in dieser Fassung nicht verdrahtet"
+                    )
+                ),
+                reason=reason,
+            )
+            continue
+
+        actuator = Zigbee2MqttValve(session, client, base, device.external_id)
+        payload = json.dumps({"state": "ON" if heating else "OFF"})
+        result = await actuator.switching(heating)
+        state.switch_commands[device.id] = cache_key
+        if result.executed:
+            sent += 1
+            log.info(
+                "Aktor geschaltet",
+                extra={
+                    "zone_id": zone.id,
+                    "geraet": device.display_name,
+                    "zustand": "an" if heating else "aus",
+                    "begruendung": reason,
+                },
+            )
+            record_command(
+                session,
+                now=now,
+                source=source,
+                zone=zone,
+                device=device,
+                command="switch",
+                payload=payload,
+                outcome=EXECUTED,
+                reason=reason,
+            )
+        elif result.errors is None:
+            # `Zigbee2MqttValve.switching()` reports a `None` error exactly when it
+            # withheld the command itself, at the dry-run bolt.
+            record_command(
+                session,
+                now=now,
+                source=source,
+                zone=zone,
+                device=device,
+                command="switch",
+                payload=payload,
+                outcome=SUPPRESSED,
+                reason=reason,
+            )
+        else:
+            record_command(
+                session,
+                now=now,
+                source=source,
+                zone=zone,
+                device=device,
+                command="switch",
+                payload=payload,
+                outcome=FAILED,
+                error=result.errors,
+                reason=reason,
             )
     return sent
 
