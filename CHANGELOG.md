@@ -56,6 +56,11 @@ nicht und ist hier berichtigt.
 
 ### Behoben
 
+- **Reguläres Heizen verliert nach einem Ventilschutzlauf nicht mehr seine Hysterese.**
+  Sobald die normale Regelung das Heizen übernimmt, wird der Schutzmarker beendet. Ein
+  folgender Messwert innerhalb der Hysterese hält die Heizung damit wie vorgesehen an;
+  reine Schutzläufe behalten den Marker bis zu ihrem regulären Ende.
+
 - **Angezeigte Uhrzeiten verwenden die konfigurierte Zeitzone.** Die Kiosk-Uhr,
   die Jetztmarkierung des Tagesplans auf der Startseite sowie Ablaufzeiten von API-
   und Kiosk-Tokens rechnen die intern als naive UTC geführte Zeit erst für die

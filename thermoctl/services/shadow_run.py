@@ -270,6 +270,10 @@ def _process_zone(
             decision.heating
             and decision.reason_code != REASON_CODE_BLOCKED_MINIMUM_DURATION
         ):
+            # Normal control has taken ownership of the on-state. Keeping the
+            # protection marker would make the next hysteresis cycle treat that
+            # regular state as temporary protection and switch it off too early.
+            state.valve_protection_started_at = None
             # Persist normal heating separately from the retained shadow log. A true
             # regular decision proves the valve was commanded open, and this marker
             # survives deletion of shadow rows at the default 30-day retention edge.

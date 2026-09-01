@@ -1,6 +1,20 @@
 # Stand
 
-Letzte Aktualisierung: 2026-08-31
+Letzte Aktualisierung: 2026-09-01
+
+## Ventilschutz übergibt sauber an reguläres Heizen
+
+Wenn ein laufender Ventilschutz von einer normalen Heizanforderung abgelöst wird, endet
+sein persistierter Laufmarker jetzt sofort. Der folgende Messwert innerhalb der
+Hysterese hält deshalb das reguläre Heizen wie ohne vorausgegangenen Schutzlauf aufrecht,
+statt vorzeitig abzuschalten und zusätzlich zu takten. Der Marker bleibt während eines
+reinen Schutzlaufs bestehen und verhindert weiterhin, dass dessen Einschaltzustand über
+die gewöhnliche Hysterese-Regel endlos fortgeschrieben wird.
+
+Die Regelkombinationen aus aktuellem Heizstatus, Messwert unter, innerhalb und über der
+Hysterese sowie gesetztem oder fehlendem Schutzmarker sind vollständig als Tabelle
+geprüft. Ein eigener Ablauf-Test deckt die Übergabe vom Schutzlauf über reguläres Heizen
+bis zum folgenden Hysterese-Zyklus ab.
 
 ## Zeitpläne lassen sich als Zeiträume malen
 

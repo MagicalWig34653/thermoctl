@@ -133,6 +133,34 @@ def test_valve_protection_persists_for_its_duration_and_survives_a_restart(
     assert state.last_valve_protection_at == NOW + timedelta(minutes=10)
 
 
+def test_regular_heating_ends_protection_and_keeps_its_hysteresis_state(
+    session: Session,
+) -> None:
+    create_settings(session, hysteresis=Decimal("0.30"))
+    zone = _zone_with_state(session, "regular-takes-over", measured_c=Decimal("21.0"))
+    zone.created_at = NOW - timedelta(days=31)
+    zone.valve_protection_enabled = True
+    zone.valve_protection_interval_days = 30
+    zone.valve_protection_duration_minutes = 10
+    zone.min_on_seconds = 0
+    zone.min_off_seconds = 0
+    session.flush()
+
+    protection = shadow_run.cycle(session, NOW)[0]
+    state = session.get(ZoneState, zone.id)
+    assert state is not None
+    state.temperature_c = Decimal("15.0")
+    regular = shadow_run.cycle(session, NOW + timedelta(minutes=1))[0]
+    assert state.valve_protection_started_at is None
+    state.temperature_c = Decimal("16.0")
+    held_by_hysteresis = shadow_run.cycle(session, NOW + timedelta(minutes=2))[0]
+
+    assert protection.outcome_code == "ventilschutz"
+    assert regular.outcome_code == "heizen"
+    assert held_by_hysteresis.would_heat is True
+    assert held_by_hysteresis.outcome_code == "unveraendert"
+
+
 def test_valve_protection_duration_is_independent_of_minimum_on_time(
     session: Session,
 ) -> None:
