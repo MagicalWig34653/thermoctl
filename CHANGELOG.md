@@ -17,7 +17,12 @@ zwei Fehler, die dem Bedienenden als Zufall erschienen (willkürliches Abgemelde
 eine Seite, aus der es keinen Ausweg gab), sind gefunden und behoben. Dazu ein neues
 Stück Funktion: der Ventilschutz.
 
-**Geschaltet wird weiterhin nichts.** Der Trockenlauf steht.
+**Der Trockenlauf ist die Vorgabe und wird von zwei Riegeln gehalten** — geschaltet wird
+nichts, solange niemand scharf schaltet. Das *kann* man aber: `/control/arm` hat ein
+eigenes Recht (`control.arm`), und danach bewegen sich echte Ventile. Bei selbstregelnden
+Thermostaten genügt dafür schon das Veröffentlichen des Sollwerts. Frühere Fassungen
+dieses Abschnitts behaupteten pauschal „geschaltet wird weiterhin nichts"; das stimmte so
+nicht und ist hier berichtigt.
 
 ### Zu beachten beim Umstieg
 
@@ -25,7 +30,8 @@ Stück Funktion: der Ventilschutz.
   Betriebszeitstempel dazu). Der Weg von 0.2.0 aufwärts ist gegen SQLite und MariaDB
   durchgespielt.
 - **Wer Meross-Zugangsdaten hinterlegt hat, bekommt jetzt Geräte** — der Abgleich läuft
-  beim Start und dann stündlich. Es entstehen Gerätezeilen, die es vorher nicht gab.
+  im ersten Schattenzyklus nach dem Start (also nach dem eingestellten Intervall, Vorgabe
+  eine Minute) und danach stündlich. Es entstehen Gerätezeilen, die es vorher nicht gab.
 - **Der Schattenzyklus startet nun auch ohne `THERMOCTL_MQTT_ENABLED=true`**, wenn ein
   vollständiges Meross-Konto hinterlegt ist. Wer beides nicht nutzt, merkt keinen
   Unterschied.
@@ -97,6 +103,12 @@ Stück Funktion: der Ventilschutz.
 
 ### Bedienung
 
+- **Zeitpläne lassen sich als Zeiträume malen.** Über dem Wochenraster steht eine Palette
+  der Modi; man überstreicht einen Zeitraum in einer Tagesspalte, und er bekommt diesen
+  Modus. Dazu „auf Mo–Fr" und „auf alle Tage" je Tagesspalte und ein einstufiges
+  Rückgängig. Das bisherige Ziehen von Schaltpunkten bleibt vollständig erhalten — die
+  Palette schaltet zwischen beiden um. Ohne JavaScript bleibt alles über das Formular
+  darunter bedienbar.
 - **Der Modus eines Schaltpunkts lässt sich direkt im Zeitplan ändern**, statt den Punkt
   zu löschen und neu anzulegen. Die Liste nennt den Modus jetzt überhaupt erst; der
   Punkt behält seine Kennung, und das Protokoll bekommt einen Eintrag „Modus geändert"

@@ -5,8 +5,10 @@ Letzte Aktualisierung: 2026-08-31
 ## Zeitpläne lassen sich als Zeiträume malen
 
 Die Wochenansicht bietet das bisherige Ziehen von Schaltpunkten und das neue Malen
-nebeneinander an. Standardmäßig bleibt „Punkte ziehen“ aktiv; erst die Wahl eines Modus
-schaltet das Raster zur Malfläche um. Eine Geste rastet auf 15 Minuten ein, zeigt ihren
+nebeneinander an. **Vorgewählt ist der erste Heizmodus**, das Raster ist also sofort eine
+Malfläche; „Punkte ziehen" liegt daneben und schaltet auf das bisherige Verschieben um.
+Das war zunächst umgekehrt und wurde geändert, nachdem der Projektinhaber genau daran
+hängenblieb: Ein Zug über das Raster tat wortlos nichts, solange kein Modus gewählt war. Eine Geste rastet auf 15 Minuten ein, zeigt ihren
 Zeitraum und speichert beim Loslassen. Das normale Formular und die Schaltpunktliste
 bleiben vollständig erhalten.
 
@@ -49,13 +51,15 @@ MariaDB bei 100 Prozent Abdeckung, die Migration vorwärts und rückwärts und e
 vorwärts auf beiden Datenbanken, das Container-Abbild gebaut, eine echte 0.2.0-Datenbank
 darin hochgezogen und die Seiten aufgerufen. `/healthz` meldet 0.2.2.
 
-**Nicht enthalten: der Malen-Editor für Zeitpläne.** Der Projektinhaber hat ihn gesehen
-und die Bedienung freigegeben, das Kreuzreview hat danach fünf schwere Befunde gefunden —
-darunter einen, bei dem eine Geste am Sonntag den Montagmodus verstellt, und einen, bei
-dem nach oben zu malen nichts speichert (das war vermutlich die gemeldete Beobachtung
-„ich kann keine Blöcke per Malen einfügen"; es war kein Bedienproblem). Ein Zeitplan
-bestimmt, wann geheizt wird — das geht nicht in eine Freigabe. Der Zweig `zeitplan-malen`
-bleibt bestehen, die Nacharbeit läuft.
+**Der Malen-Editor ist enthalten** — nach einer zweiten Runde. Der Projektinhaber hatte
+die Bedienung freigegeben, das Kreuzreview fand danach fünf schwere Befunde: eine Geste
+am Sonntag bis 24:00 verstellte den Montagmodus, nach oben zu malen speicherte nichts
+(das war die gemeldete Beobachtung „ich kann keine Blöcke per Malen einfügen" — kein
+Bedienproblem, ein Fehler), „auf alle Tage" kopierte Montag 00:00 nicht, Rückgängig nahm
+einen alten Schnappschuss nach A→B→A an, und „Übertragen" war ohne JavaScript
+unerreichbar. Alle behoben und einzeln am laufenden Programm nachgeprüft, nicht nur im
+Test. Auf ausdrücklichen Wunsch gehört das Feature in diese Fassung; die Befunde waren
+vorher abzuarbeiten, nicht danach.
 
 ### Was diese Fassung über das Verfahren gelernt hat
 
