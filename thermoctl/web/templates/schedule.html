@@ -77,13 +77,13 @@
 {% for day, tagname in weekdays %}
     <section class="col schedule-day-column">
         <h2 class="h6 text-center">{{ tagname }}</h2>
-        {% if may_edit and points %}<details class="text-center mb-1">
+        {% if may_edit and points %}<details class="schedule-copy text-center mb-1">
           <summary class="btn btn-sm btn-outline-secondary">Übertragen</summary>
-          <div class="border rounded p-2 mt-1">
+          <div class="schedule-copy-menu tc-panel p-2 mt-1">
             {% for scope, label in (("workdays", "auf Mo–Fr"), ("all", "auf alle Tage")) %}
             <form method="post" action="/zones/{{ zone.id }}/schedule/copy-day" hx-push-url="false">
               <input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="weekday" value="{{ day }}"><input type="hidden" name="scope" value="{{ scope }}">
-              <button class="btn btn-sm btn-link" type="submit">{{ label }}</button>
+              <button class="btn btn-sm btn-outline-secondary w-100" type="submit">{{ label }}</button>
             </form>{% endfor %}
           </div>
         </details>{% endif %}

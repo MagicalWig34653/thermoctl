@@ -762,6 +762,60 @@ body {
     min-width: 7rem;
 }
 
+/* Das native details/summary bleibt ohne JavaScript bedienbar. Nur sein Inhalt wird
+   aus dem Fluss genommen, damit das offene Menue die Tagesraster nicht verschiebt. */
+.schedule-copy {
+    position: relative;
+    z-index: 5;
+}
+
+.schedule-copy > summary {
+    cursor: pointer;
+    list-style: none;
+}
+
+.schedule-copy > summary::-webkit-details-marker {
+    display: none;
+}
+
+.schedule-copy > summary::after {
+    content: "\25BE";
+    display: inline-block;
+    margin-left: 0.35rem;
+    font-size: 0.75em;
+}
+
+.schedule-copy[open] > summary {
+    background: var(--surface-deep);
+    border-color: var(--line-strong);
+}
+
+.schedule-copy[open] > summary::after {
+    content: "\25B4";
+}
+
+.schedule-copy-menu {
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    z-index: 6;
+    width: max-content;
+    min-width: 8.5rem;
+    transform: translateX(-50%);
+    box-shadow: 0 0.35rem 0.9rem rgb(0 0 0 / 18%);
+}
+
+.schedule-copy-menu form + form {
+    margin-top: 0.4rem;
+}
+
+/* Das letzte Menue waechst nach links in die Seite statt rechts aus dem Fenster. */
+.schedule-day-column:last-child .schedule-copy-menu {
+    right: 0;
+    left: auto;
+    transform: none;
+}
+
 @media (max-width: 60em) {
     .schedule-day-column {
         min-width: 0;

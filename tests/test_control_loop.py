@@ -418,6 +418,64 @@ def test_rule6_inside_the_hysteresis_nothing_changes_in_either_direction() -> No
     assert aus_bleibt_aus.reason_code == an_bleibt_an.reason_code == REASON_CODE_UNCHANGED
 
 
+@pytest.mark.parametrize(
+    ("heating_now", "measured_c", "protection_active", "expected_heating", "expected_reason"),
+    [
+        (False, Decimal("20.0"), False, True, REASON_CODE_HEATING),
+        (False, Decimal("21.0"), False, False, REASON_CODE_UNCHANGED),
+        (False, Decimal("22.0"), False, False, REASON_CODE_UNCHANGED),
+        (True, Decimal("20.0"), False, True, REASON_CODE_UNCHANGED),
+        (True, Decimal("21.0"), False, True, REASON_CODE_UNCHANGED),
+        (True, Decimal("22.0"), False, False, REASON_CODE_OFF),
+        (False, Decimal("20.0"), True, True, REASON_CODE_HEATING),
+        (False, Decimal("21.0"), True, True, REASON_CODE_VALVE_PROTECTION),
+        (False, Decimal("22.0"), True, True, REASON_CODE_VALVE_PROTECTION),
+        (True, Decimal("20.0"), True, True, REASON_CODE_HEATING),
+        (True, Decimal("21.0"), True, True, REASON_CODE_VALVE_PROTECTION),
+        (True, Decimal("22.0"), True, True, REASON_CODE_VALVE_PROTECTION),
+    ],
+    ids=[
+        "off-below-without-marker",
+        "off-inside-without-marker",
+        "off-above-without-marker",
+        "on-below-without-marker",
+        "on-inside-without-marker",
+        "on-above-without-marker",
+        "off-below-with-marker",
+        "off-inside-with-marker",
+        "off-above-with-marker",
+        "on-below-with-marker",
+        "on-inside-with-marker",
+        "on-above-with-marker",
+    ],
+)
+def test_valve_protection_marker_only_changes_decisions_that_keep_protection_heating(
+    heating_now: bool,
+    measured_c: Decimal,
+    protection_active: bool,
+    expected_heating: bool,
+    expected_reason: str,
+) -> None:
+    decision = decide(
+        _lage(
+            heating_now=heating_now,
+            measured_c=measured_c,
+            setpoint_c=Decimal("21.0"),
+            parameter=_parameter(
+                hysteresis_k=Decimal("0.5"),
+                min_on_seconds=0,
+                min_off_seconds=0,
+                valve_protection_enabled=True,
+            ),
+            valve_protection_due=protection_active,
+            valve_protection_active=protection_active,
+        )
+    )
+
+    assert decision.heating is expected_heating
+    assert decision.reason_code == expected_reason
+
+
 # ---------------------------------------------------------------------------
 # The defect of the legacy system
 # ---------------------------------------------------------------------------
