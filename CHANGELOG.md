@@ -131,6 +131,13 @@ passiert, ist mehrfach zu grob beschrieben worden — hier genau:
 - **Der Meross-Abgleich läuft jetzt auch ohne lokales MQTT** — vorausgesetzt, ein
   vollständiges Konto (E-Mail und Passwort) ist hinterlegt.
 
+### Bekannte Einschränkung
+
+- **Der Wirkungswächter erkennt deutsche Komposita ohne Trennzeichen nicht** —
+  `Zirkulationspumpe`, `Ölbrenner` — und kennt reine Temperaturaussagen („die
+  Raumtemperatur steigt") nicht. Heute kommt keiner dieser Begriffe im Projekt vor; es
+  ist eine Lücke im Prüfnetz für künftige Texte, kein falscher Text im jetzigen Stand.
+
 ### Bedienung
 
 - **Zeitpläne lassen sich als Zeiträume malen.** Über dem Wochenraster steht eine Palette

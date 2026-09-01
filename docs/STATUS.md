@@ -51,25 +51,25 @@ Selbst nachgeprüft, nicht aus Berichten übernommen (Stand 2026-09-01):
 **Die Suite liest `THERMOCTL_TEST_DATABASE_URL`**, nicht `THERMOCTL_DATABASE_URL`. Wer
 die zweite setzt, läuft unbemerkt gegen SQLite und bekommt trotzdem einen grünen Lauf.
 
-## v0.2.2 — Freigabe steht aus
+## v0.2.2 — freigegeben
 
-Das fünfte Freigabe-Review hat den Stand abgelehnt. **Seine Befunde sind behoben**; ein
-erneutes Review steht aus. Die Oberfläche unterscheidet jetzt Trockenlauf, scharf ohne
-Neustart und scharf nach Neustart. Auch dann bezeichnet sie nur die freigegebene
-Sollwertausgabe an selbstregelnde Thermostatventile; Ein/Aus-Entscheidungen erreichen
-weiterhin keinen Aktor. Der Ventilschutz benennt sich als reine Schattenentscheidung.
-Sein Abschlussmarker taktet ausdrücklich nur die Simulation und ist kein Nachweis einer
-Ventilbewegung. Was behoben wurde, steht im
-[CHANGELOG](../CHANGELOG.md), die Einzelheiten in [verlauf.md](verlauf.md):
+**Sieben Freigabe-Reviews, sechs Ablehnungen, das siebte gibt frei.** Was die sechs
+gefunden haben, steht im [CHANGELOG](../CHANGELOG.md) und ausführlich in
+[verlauf.md](verlauf.md). Der Verlauf in Kürze: ein Regelungsfehler, eine
+CSRF-Lücke in *jedem* ändernden Formular, ein Rückgängig, das einen veralteten
+Schnappschuss annahm — und viermal dieselbe Klasse, Texte, die eine Ventilbewegung
+versprechen, die es nicht gibt.
 
-- Rückgängig im Zeitplan betrachtet jetzt **jede** Änderung am Zeitplan einer Zone, nicht
-  nur die gemalten. Der Fall A→B→A über die gewöhnliche Punktbearbeitung wird abgewiesen.
-- **Jedes ändernde Formular der angemeldeten Oberfläche** trägt jetzt ein verstecktes
-  CSRF-Feld und funktioniert ohne JavaScript. Betroffen war nicht nur „Schaltpunkt
-  anlegen", sondern jedes Formular ausser den bereits abgesicherten des Zeitplans und
-  des Kiosks. Ein Wächter prüft das künftig für jedes POST- und `hx-post`-Formular.
-- Die toten CSS-Klassen sind ersetzt; ein Wächter vergleicht künftig jede in einer
-  Vorlage benutzte `t-`/`tc-`-Klasse mit den Regeln in `thermoctl.css`.
+Das siebte Review hat sechs gezielte Mutationen über Regelung, Zeitplan, CSRF, Anzeige
+und Rechte gesetzt; jedes Mal wurde **der inhaltlich richtige** Test rot. Dazu die
+Angriffsliste gegen den Wirkungswächter (18 von 18) und die Migrationskette vorwärts,
+rückwärts, vorwärts.
+
+**Ein Befund blieb, bewusst offen gelassen:** Der Wirkungswächter erkennt deutsche
+Komposita ohne Trennzeichen nicht (`Zirkulationspumpe`, `Ölbrenner`) und kennt reine
+Temperaturaussagen („die Raumtemperatur steigt") gar nicht. Nachgeprüft: Keiner dieser
+Begriffe kommt heute irgendwo vor — es ist also kein falscher Text, sondern eine Lücke im
+Netz für künftige. Das gehört in die nächste Fassung, nicht in diese.
 
 ## Offen, unabhängig von der Freigabe
 
