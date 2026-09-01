@@ -72,20 +72,47 @@ def test_logging_out_revokes_the_session(client: TestClient, user, session: Sess
     assert session.query(Session_).one().revoked_at is not None
 
 
-def test_a_change_without_a_csrf_token_is_rejected(client: TestClient, user) -> None:
+def test_a_logout_without_a_csrf_token_is_not_carried_out(
+    client: TestClient, user, session: Session
+) -> None:
+    """Refused as before -- but no longer a dead end.
+
+    These two tests asserted a plain 403, and that was exactly the behaviour reported
+    from use: with a stale page, the way *out* of it was blocked as well. `/logout` is
+    a recovery path now: the request is still not carried out (the session row keeps
+    its `revoked_at`), the cookies are cleared, and the browser lands on the login
+    form.
+    """
     client.post("/login", data={"username": "lino", "password": "passwort-lang-genug"})
-    response = client.post("/logout")
-    assert response.status_code == 403
+
+    response = client.post("/logout", follow_redirects=False)
+
+    assert response.status_code == 303
+    assert response.headers["location"] == "/login?stale=1"
+    assert session.query(Session_).one().revoked_at is None, (
+        "Ohne gueltiges Token darf keine Sitzung serverseitig widerrufen werden"
+    )
 
 
-def test_a_change_with_a_token_from_a_foreign_session_is_rejected(
+def test_a_logout_with_a_token_from_a_foreign_session_revokes_nothing(
     client: TestClient, user, session: Session, settings: Settings
 ) -> None:
+    """A foreign token proves nothing, so it must not end somebody else's session.
+
+    What it may do is clear the cookies of the browser it came from -- the deliberate
+    concession that keeps a stale page from stranding its user. Whose session dies is
+    the point here: nobody's.
+    """
     client.post("/login", data={"username": "lino", "password": "passwort-lang-genug"})
     _foreign_session, foreign_secret = create_session(session, user, 3600)
     foreign_token = csrf_token(foreign_secret, settings.secret_key.get_secret_value())
-    response = client.post("/logout", headers={"X-CSRF-Token": foreign_token})
-    assert response.status_code == 403
+
+    response = client.post(
+        "/logout", headers={"X-CSRF-Token": foreign_token}, follow_redirects=False
+    )
+
+    assert response.status_code == 303
+    assert [s.revoked_at for s in session.query(Session_).all()] == [None, None]
 
 
 def test_login_and_failed_attempt_land_in_the_audit_log(client: TestClient, user,
