@@ -70,8 +70,9 @@ die man beim Bauen nicht von selbst bedenkt:
 - Ein Zeitraum, der über Mitternacht hinausgeht (oder gar nicht erst zugelassen wird).
 - Ein Zeitraum, der einen bestehenden Abschnitt vollständig überdeckt.
 - Ein Zeitraum, der genau einen bestehenden trifft — dann darf nichts passieren.
-- Ein Zeitraum vor dem ersten Punkt der Woche: Davor gilt der Frostschutz, und das muss so
-  bleiben.
+- Ein Zeitraum vor dem ersten Punkt der Woche: Der Wochenplan ist ein Ring, daher gilt
+  dort der letzte Modus der Vorwoche. Frostschutz ist nur der Hintergrund, wenn der Plan
+  gar keinen Punkt enthält.
 - Derselbe Modus wie schon vorhanden: nichts tun, keinen Audit-Eintrag schreiben.
 - Ein leerer Zeitplan, in den zum ersten Mal gemalt wird.
 

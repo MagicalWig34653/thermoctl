@@ -2,6 +2,32 @@
 
 Letzte Aktualisierung: 2026-08-31
 
+## Zeitpläne lassen sich als Zeiträume malen
+
+Die Wochenansicht bietet das bisherige Ziehen von Schaltpunkten und das neue Malen
+nebeneinander an. Standardmäßig bleibt „Punkte ziehen“ aktiv; erst die Wahl eines Modus
+schaltet das Raster zur Malfläche um. Eine Geste rastet auf 15 Minuten ein, zeigt ihren
+Zeitraum und speichert beim Loslassen. Das normale Formular und die Schaltpunktliste
+bleiben vollständig erhalten.
+
+Die Domäne übersetzt einen gemalten, tagesgebundenen Zeitraum in eine minimale Folge von
+Schaltpunkten. Im leeren Plan bildet der konfigurierte Frostschutzmodus den Hintergrund,
+sodass ein erster endlicher Abschnitt auch vor seinem Beginn und nach seinem Ende sicher
+zum Frostschutz zurückkehrt. Gesten über Mitternacht werden bewusst abgewiesen und müssen
+tageweise gemalt werden. Ein unveränderter Zeitraum erzeugt weder Schreibzugriff noch
+Audit-Eintrag; jede echte Mal-, Übertragungs- oder Rückgängig-Geste erzeugt genau einen.
+
+Jede Tagesspalte kann auf Montag bis Freitag oder auf alle Tage übertragen werden. Der
+letzte Schritt lässt sich über einen signierten Vorher/Nachher-Schnappschuss rückgängig
+machen. Das Rückgängig schlägt verständlich fehl, wenn zwischenzeitlich jemand den Plan
+geändert hat, statt eine neuere Änderung aus einem alten Browser-Tab zu überschreiben.
+
+Die vorgeschriebene Browserprüfung konnte in der Codex-Sandbox nicht ausgeführt werden:
+Chromium wird beim Start vom macOS-Sandboxdienst am Mach-Port-Handshake mit
+`Permission denied (1100)` beendet. Die Funktions-, Vorlagen-, Routen-, CSRF- und
+Verlauf-Verdrahtung ist automatisiert geprüft; die sichtbare Abnahme mit den vorgegebenen
+Bestandsdaten bleibt deshalb ausdrücklich offen.
+
 ## v0.2.2 ist freigabefertig
 
 Zusammengeführt, gegengelesen und nachgemessen:

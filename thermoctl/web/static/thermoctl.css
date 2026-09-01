@@ -728,9 +728,51 @@ body {
 }
 
 .schedule-day {
-    cursor: crosshair;
+    cursor: not-allowed;
     background: var(--surface-deep) !important;
     border-color: var(--line) !important;
+}
+
+.schedule-painting .schedule-day,
+.schedule-painting .schedule-bar {
+    cursor: crosshair;
+    touch-action: none;
+}
+
+.schedule-carried {
+    cursor: not-allowed;
+    box-shadow: inset 0 0 0 1px rgb(255 255 255 / 45%);
+}
+
+.schedule-paint-preview {
+    position: absolute;
+    z-index: 4;
+    left: 0.15rem;
+    right: 0.15rem;
+    padding: 0.15rem;
+    border: 2px solid var(--warmth);
+    border-radius: 0.25rem;
+    color: var(--ink);
+    background: color-mix(in srgb, var(--warmth) 35%, var(--surface));
+    pointer-events: none;
+    font-size: 0.72rem;
+}
+
+.schedule-day-column {
+    min-width: 7rem;
+}
+
+@media (max-width: 60em) {
+    .schedule-day-column {
+        min-width: 0;
+    }
+    .schedule-day-column .dropdown-toggle {
+        font-size: 0;
+    }
+    .schedule-day-column .dropdown-toggle::before {
+        content: "↗";
+        font-size: 0.875rem;
+    }
 }
 
 /* Die Stelle, die ein Klick ins Anlege-Formular uebernommen hat. Sie steht im Gitter,
@@ -868,4 +910,3 @@ body {
     color: var(--waerme);
     font-size: 1rem;
 }
-

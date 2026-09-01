@@ -4,16 +4,177 @@ from decimal import Decimal
 import pytest
 from sqlalchemy.orm import Session
 
-from tests.helpers import create_zone, point, source, zone_with_schedule
+from tests.helpers import (
+    create_mode,
+    create_settings,
+    create_zone,
+    point,
+    source,
+    zone_with_schedule,
+)
 from thermoctl.db.models.override import ZoneOverride
+from thermoctl.db.models.schedule import SchedulePoint
 from thermoctl.db.models.zone import SetpointMode
 from thermoctl.domain.schedule import (
+    ScheduleError,
     cancel_override,
+    copy_schedule_day,
     create_override,
     current_point,
     next_point,
+    paint_schedule_interval,
     resolved_setpoint,
+    schedule_snapshot,
+    undo_schedule_gesture,
 )
+
+
+def _stored_point(
+    session: Session, zone_id: int, weekday: int, minute: int, mode_id: int
+) -> None:
+    session.add(
+        SchedulePoint(
+            zone_id=zone_id,
+            weekday=weekday,
+            minute_of_day=minute,
+            setpoint_mode_id=mode_id,
+        )
+    )
+    session.flush()
+
+
+def _stored_snapshot(session: Session, zone_id: int) -> tuple[tuple[int, int, int], ...]:
+    return schedule_snapshot(
+        list(session.query(SchedulePoint).filter_by(zone_id=zone_id).all())
+    )
+
+
+def test_painting_until_sunday_midnight_preserves_monday_mode(
+    session: Session,
+) -> None:
+    create_settings(session)
+    source(session)
+    zone = create_zone(session, "sunday-midnight-ring")
+    monday = create_mode(session, "monday-ring", "Montag")
+    sunday = create_mode(session, "sunday-ring", "Sonntag")
+    painted = create_mode(session, "painted-ring", "Gemalt")
+    _stored_point(session, zone.id, 1, 0, monday.id)
+    _stored_point(session, zone.id, 7, 1320, sunday.id)
+
+    paint_schedule_interval(
+        session,
+        zone,
+        weekday=7,
+        start_minute=1380,
+        end_minute=1440,
+        mode_id=painted.id,
+        user_id=None,
+    )
+
+    assert _stored_snapshot(session, zone.id) == (
+        (1, 0, monday.id),
+        (7, 1320, sunday.id),
+        (7, 1380, painted.id),
+    )
+
+
+def test_copying_tuesday_to_all_days_replaces_monday_midnight(
+    session: Session,
+) -> None:
+    create_settings(session)
+    source(session)
+    zone = create_zone(session, "copy-tuesday-ring")
+    monday = create_mode(session, "copy-old-monday", "A")
+    morning = create_mode(session, "copy-tuesday-morning", "B")
+    evening = create_mode(session, "copy-tuesday-evening", "C")
+    _stored_point(session, zone.id, 1, 0, monday.id)
+    _stored_point(session, zone.id, 2, 0, morning.id)
+    _stored_point(session, zone.id, 2, 600, evening.id)
+
+    copy_schedule_day(
+        session,
+        zone,
+        source_weekday=2,
+        target_weekdays=list(range(1, 8)),
+        user_id=None,
+    )
+
+    snapshot = _stored_snapshot(session, zone.id)
+    assert (1, 0, morning.id) in snapshot
+    assert (1, 600, evening.id) in snapshot
+    assert (1, 0, monday.id) not in snapshot
+
+
+def test_undo_rejects_an_aba_sequence(session: Session) -> None:
+    create_settings(session)
+    source(session)
+    zone = create_zone(session, "undo-aba")
+    mode_a = create_mode(session, "undo-aba-a", "A")
+    mode_b = create_mode(session, "undo-aba-b", "B")
+    first = paint_schedule_interval(
+        session,
+        zone,
+        weekday=1,
+        start_minute=360,
+        end_minute=480,
+        mode_id=mode_a.id,
+        user_id=None,
+    )
+    assert first is not None
+    before, after, revision = first
+    paint_schedule_interval(
+        session,
+        zone,
+        weekday=1,
+        start_minute=360,
+        end_minute=480,
+        mode_id=mode_b.id,
+        user_id=None,
+    )
+    paint_schedule_interval(
+        session,
+        zone,
+        weekday=1,
+        start_minute=360,
+        end_minute=480,
+        mode_id=mode_a.id,
+        user_id=None,
+    )
+    assert _stored_snapshot(session, zone.id) == after
+
+    with pytest.raises(ScheduleError, match="inzwischen"):
+        undo_schedule_gesture(
+            session,
+            zone,
+            before=before,
+            expected_after=after,
+            expected_revision=revision,
+            user_id=None,
+        )
+
+
+def test_painting_the_ring_mode_with_only_one_weekly_point_is_a_no_op(
+    session: Session,
+) -> None:
+    create_settings(session)
+    source(session)
+    zone = create_zone(session, "one-point-ring")
+    comfort = create_mode(session, "one-point-comfort", "Komfort")
+    _stored_point(session, zone.id, 3, 720, comfort.id)
+    before = _stored_snapshot(session, zone.id)
+
+    result = paint_schedule_interval(
+        session,
+        zone,
+        weekday=1,
+        start_minute=360,
+        end_minute=480,
+        mode_id=comfort.id,
+        user_id=None,
+    )
+
+    assert result is None
+    assert _stored_snapshot(session, zone.id) == before
 
 
 def test_a_point_holds_until_the_next_one() -> None:
@@ -155,4 +316,3 @@ def test_an_override_on_a_mode_without_a_fixed_temperature(session: Session) -> 
     result = resolved_setpoint(session, zone, datetime(2026, 8, 31, 10, 0))
     assert result.temperature_c == Decimal("21.0")
     assert "Modus tag" in result.reason
-

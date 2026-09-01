@@ -41,6 +41,92 @@
         return Math.min(Math.max(rounded, 0), MINUTES_PER_DAY - GRID);
     }
 
+    function snappedBoundary(minute) {
+        return Math.min(Math.max(Math.round(minute / GRID) * GRID, 0), MINUTES_PER_DAY);
+    }
+
+    function activePaintMode() {
+        const selected = document.querySelector('input[name="paint_tool"]:checked');
+        return selected && selected.value !== "move" ? Number(selected.value) : null;
+    }
+
+    function explainMoveTool() {
+        const hint = document.querySelector("[data-paint-tool-hint]");
+        if (hint) {
+            hint.textContent = "Hier lässt sich nichts ziehen. Bitte einen Balken mit "
+                + "Greifcursor wählen oder oben einen Modus zum Malen auswählen.";
+        }
+    }
+
+    function setPaintForm(weekday, start, end, modeId) {
+        const form = document.getElementById("schedule-paint");
+        if (!form) {
+            return;
+        }
+        form.elements.weekday.value = String(weekday);
+        form.elements.start_time.value = asTimeOfDay(start);
+        // A pointer exactly at the lower edge means the last representable minute.
+        form.elements.end_time.value = asTimeOfDay(Math.min(end, MINUTES_PER_DAY - GRID));
+        form.elements.end_boundary.checked = end === MINUTES_PER_DAY;
+        form.elements.mode_id.value = String(modeId);
+    }
+
+    function wirePainting(day) {
+        day.addEventListener("pointerdown", function (event) {
+            const modeId = activePaintMode();
+            if (event.button !== 0 || event.target.closest("a, button")) {
+                return;
+            }
+            if (modeId === null) {
+                if (!event.target.closest(".schedule-draggable")) {
+                    explainMoveTool();
+                }
+                return;
+            }
+            event.preventDefault();
+            event.stopPropagation();
+            const start = snappedBoundary(
+                (event.clientY - day.getBoundingClientRect().top)
+                / day.getBoundingClientRect().height * MINUTES_PER_DAY
+            );
+            let finish = Math.min(start + GRID, MINUTES_PER_DAY);
+            const preview = document.createElement("div");
+            preview.className = "schedule-paint-preview";
+            day.appendChild(preview);
+
+            function render(current) {
+                finish = current === start ? Math.min(start + GRID, MINUTES_PER_DAY) : current;
+                const low = Math.min(start, finish);
+                const high = Math.max(start, finish);
+                preview.style.top = (low / MINUTES_PER_DAY * 100) + "%";
+                preview.style.height = ((high - low) / MINUTES_PER_DAY * 100) + "%";
+                preview.textContent = asTimeOfDay(low) + "–"
+                    + (high === MINUTES_PER_DAY ? "24:00" : asTimeOfDay(high));
+            }
+            render(finish);
+
+            function onMove(moveEvent) {
+                const box = day.getBoundingClientRect();
+                render(snappedBoundary((moveEvent.clientY - box.top) / box.height * MINUTES_PER_DAY));
+            }
+            function finishGesture() {
+                window.removeEventListener("pointermove", onMove);
+                window.removeEventListener("pointerup", finishGesture);
+                const low = Math.min(start, finish);
+                const high = Math.max(start, finish);
+                preview.remove();
+                if (high <= low) {
+                    return;
+                }
+                const form = document.getElementById("schedule-paint");
+                setPaintForm(Number(day.dataset.weekday), low, high, modeId);
+                form.requestSubmit();
+            }
+            window.addEventListener("pointermove", onMove);
+            window.addEventListener("pointerup", finishGesture, { once: true });
+        }, true);
+    }
+
     /** The day the pointer is currently over -- or null outside the grid. */
     function dayUnder(x, y, days) {
         for (const day of days) {
@@ -229,6 +315,7 @@
             wireBar(bar, days);
         });
         days.forEach(function (day) {
+            wirePainting(day);
             // Free areas: there the click arrives quite normally. Bars handle their own
             // click, see onRelease().
             day.addEventListener("click", function (event) {
@@ -237,6 +324,26 @@
                 }
             });
         });
+
+        document.querySelectorAll('input[name="paint_tool"]').forEach(function (tool) {
+            tool.addEventListener("change", function () {
+                const paintMode = activePaintMode();
+                grid.classList.toggle("schedule-painting", paintMode !== null);
+                const modeField = document.querySelector('#schedule-paint input[name="mode_id"]');
+                if (modeField) {
+                    modeField.value = paintMode === null ? "" : String(paintMode);
+                }
+                const hint = document.querySelector("[data-paint-tool-hint]");
+                if (hint) {
+                    hint.textContent = paintMode === null
+                        ? "Nur Balken mit Greifcursor lassen sich verschieben."
+                        : "Ziehen im Raster malt mit dem gewählten Modus.";
+                }
+            });
+        });
+
+        const initialPaintMode = activePaintMode();
+        grid.classList.toggle("schedule-painting", initialPaintMode !== null);
 
         // The hint sits hidden in the markup and only becomes visible here: whoever has
         // no JavaScript should not read that they can drag something that does not drag.
