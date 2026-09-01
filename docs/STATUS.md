@@ -36,6 +36,25 @@ Diese Frage ist mehrfach zu grob beantwortet worden, in beide Richtungen. Der St
   gehen nirgendwohin** — weder `Zigbee2MqttValve` noch `MerossSwitch` werden im
   Produktivcode konstruiert. Das ist die offene Arbeit von Phase 4.
 
+## Das Schaltprotokoll
+
+Neu: `device_command` zeichnet jeden Befehl auf, der an ein Gerät hinausging oder im
+Trockenlauf unterdrückt oder verworfen wurde — Zeitpunkt, Zone, Gerät, Nutzlast, Ergebnis,
+Begründung, Auslöser. Der bestehende Sollwert-Weg an selbstregelnde Thermostatventile
+(`services/publishing.py::_send_self_regulating_valves`) schreibt dorthin; Ansicht unter
+„Einstellungen → Schaltprotokoll" (`/device-commands`, Recht `audit.read`). Anders als
+`shadow_decision` überlebt ein Eintrag das Löschen oder Umbenennen seiner Zone oder seines
+Geräts (`SET NULL` plus Namens-Momentaufnahme statt CASCADE), und unterliegt keiner
+automatischen Aufbewahrung — Begründung in
+[offene-entscheidungen.md](offene-entscheidungen.md). REST und MCP ziehen noch nicht nach;
+das war eine bewusste, im Auftrag benannte Entscheidung für diese Runde, keine Lücke, die
+übersehen wurde.
+
+Der Anlass: Der Projektinhaber will den Schattenbetrieb überspringen und direkt scharf
+schalten. Damit ist dieses Protokoll die einzige Stelle, an der später nachvollziehbar ist,
+was an der Heizung passiert ist — es stand deshalb vor der Verdrahtung der Aktoren (Phase 4)
+an, nicht danach.
+
 ## Zahlen
 
 Selbst nachgeprüft, nicht aus Berichten übernommen (Stand 2026-09-01):

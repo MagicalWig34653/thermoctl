@@ -14,7 +14,15 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from tests.helpers import create_settings, create_zone, operating_mode, source
+from tests.helpers import (
+    create_all_command_outcomes,
+    create_settings,
+    create_zone,
+    operating_mode,
+    source,
+)
+from thermoctl.db.models.lookup import CommandOutcome
+from thermoctl.db.models.state import DeviceCommand
 from thermoctl.domain.control import arm
 from thermoctl.services.publishing import PublicationState, cycle
 
@@ -537,3 +545,201 @@ async def test_the_measured_room_temperature_goes_out_with_the_setpoint(
         "occupied_heating_setpoint": 21.0,
         "external_temperature_input": 19.5,
     }
+
+
+class FailingClient:
+    """A publisher whose switching commands always raise -- the broker is gone."""
+
+    async def publishing(
+        self, topic: str, payload: str, *, switches: bool, retained: bool = False
+    ) -> bool:
+        if switches:
+            raise ConnectionError("Broker nicht erreichbar")
+        return True
+
+
+class RejectingClient:
+    """A publisher whose switching commands come back `False` -- no exception, no
+    confirmation. Distinct from `FailingClient`: this is the ordinary dry-run-bolt
+    rejection inside the real MQTT client (see `integrations/mqtt/client.py`), not
+    a broken connection."""
+
+    async def publishing(
+        self, topic: str, payload: str, *, switches: bool, retained: bool = False
+    ) -> bool:
+        return not switches
+
+
+def _command_log(session: Session) -> list[tuple[DeviceCommand, str]]:
+    rows = session.execute(
+        select(DeviceCommand, CommandOutcome.code)
+        .join(CommandOutcome, CommandOutcome.id == DeviceCommand.outcome_id)
+        .order_by(DeviceCommand.id)
+    ).all()
+    return [(entry, code) for entry, code in rows]
+
+
+@pytest.mark.anyio
+async def test_a_sent_setpoint_writes_exactly_one_executed_log_entry(
+    session: Session,
+) -> None:
+    """The requirement, stated plainly: one entry per command, with the right outcome."""
+    create_settings(session)
+    source(session, "system")
+    create_all_command_outcomes(session)
+    zone = _zone_with_self_regulating_valve(session, "protokollzone")
+    arm(session, True, reason="vier Tage verglichen", user_id=None)
+    session.flush()
+
+    await cycle(session, Mitschrift(), PublicationState(), "thermoctl", NOW)
+
+    entries = _command_log(session)
+    assert len(entries) == 1
+    entry, outcome_code = entries[0]
+    assert outcome_code == "executed"
+    assert entry.zone_id == zone.id
+    assert entry.zone_name == zone.display_name
+    assert entry.device_name == "protokollzone-ventil"
+    assert entry.command == "setpoint"
+    assert json.loads(entry.payload)["occupied_heating_setpoint"] == 21.0
+    assert entry.error is None
+    assert entry.reason
+
+
+@pytest.mark.anyio
+async def test_the_dry_run_writes_one_suppressed_entry_and_sends_nothing(
+    session: Session,
+) -> None:
+    """Without this the requirement to trace a *withheld* command would be untested."""
+    create_settings(session)
+    source(session, "system")
+    create_all_command_outcomes(session)
+    _zone_with_self_regulating_valve(session, "trockenlaufprotokollzone")
+    # Deliberately not armed.
+
+    client = Mitschrift()
+    await cycle(session, client, PublicationState(), "thermoctl", NOW)
+
+    assert [t for t in client.topics() if t.endswith("/set")] == []
+    entries = _command_log(session)
+    assert len(entries) == 1
+    entry, outcome_code = entries[0]
+    assert outcome_code == "suppressed"
+    assert entry.error is None
+
+
+@pytest.mark.anyio
+async def test_a_failed_send_writes_an_entry_naming_the_reason(session: Session) -> None:
+    create_settings(session)
+    source(session, "system")
+    create_all_command_outcomes(session)
+    _zone_with_self_regulating_valve(session, "fehlerzone")
+    arm(session, True, reason="vier Tage verglichen", user_id=None)
+    session.flush()
+
+    await cycle(session, FailingClient(), PublicationState(), "thermoctl", NOW)
+
+    entries = _command_log(session)
+    assert len(entries) == 1
+    entry, outcome_code = entries[0]
+    assert outcome_code == "failed"
+    assert entry.error is not None
+    assert "Broker nicht erreichbar" in entry.error
+
+
+@pytest.mark.anyio
+async def test_a_rejected_send_without_an_exception_also_writes_a_failed_entry(
+    session: Session,
+) -> None:
+    """Distinct from the exception path above: the client can also just say no."""
+    create_settings(session)
+    source(session, "system")
+    create_all_command_outcomes(session)
+    _zone_with_self_regulating_valve(session, "abgewiesenzone")
+    arm(session, True, reason="vier Tage verglichen", user_id=None)
+    session.flush()
+
+    await cycle(session, RejectingClient(), PublicationState(), "thermoctl", NOW)
+
+    entries = _command_log(session)
+    assert len(entries) == 1
+    entry, outcome_code = entries[0]
+    assert outcome_code == "failed"
+    assert entry.error == "MQTT-Client hat die Veroeffentlichung abgewiesen"
+
+
+@pytest.mark.anyio
+async def test_the_same_setpoint_sent_twice_writes_only_one_entry(session: Session) -> None:
+    create_settings(session)
+    source(session, "system")
+    create_all_command_outcomes(session)
+    _zone_with_self_regulating_valve(session, "wiederholungszone")
+    arm(session, True, reason="vier Tage verglichen", user_id=None)
+    session.flush()
+
+    client, state = Mitschrift(), PublicationState()
+    await cycle(session, client, state, "thermoctl", NOW)
+    await cycle(session, client, state, "thermoctl", NOW)
+
+    assert len(_command_log(session)) == 1
+
+
+@pytest.mark.anyio
+async def test_a_withheld_command_is_logged_again_once_armed(session: Session) -> None:
+    """The same setpoint, unchanged -- but the outcome changed, and that is a new fact."""
+    create_settings(session)
+    source(session, "system")
+    create_all_command_outcomes(session)
+    _zone_with_self_regulating_valve(session, "uebergangszone")
+
+    client, state = Mitschrift(), PublicationState()
+    await cycle(session, client, state, "thermoctl", NOW)
+    arm(session, True, reason="vier Tage verglichen", user_id=None)
+    session.flush()
+    await cycle(session, client, state, "thermoctl", NOW)
+
+    entries = _command_log(session)
+    assert [code for _entry, code in entries] == ["suppressed", "executed"]
+
+
+def test_deleting_a_zone_and_its_device_keeps_the_command_log_entry(session: Session) -> None:
+    """Unlike `shadow_decision` (CASCADE), this table is meant to answer questions
+    about a zone and device that no longer exist -- so the row must survive, and
+    keep saying what they were called."""
+    from tests.helpers import create_device
+
+    create_settings(session)
+    zone = create_zone(session, "loeschzone")
+    device = create_device(session, "loeschventil")
+    from tests.helpers import command_outcome
+
+    outcome_id = command_outcome(session, "executed").id
+    entry = DeviceCommand(
+        sent_at=NOW,
+        source_id=source(session, "system").id,
+        zone_id=zone.id,
+        zone_name=zone.display_name,
+        device_id=device.id,
+        device_name=device.display_name,
+        command="setpoint",
+        payload='{"occupied_heating_setpoint": 21.0}',
+        outcome_id=outcome_id,
+    )
+    session.add(entry)
+    session.flush()
+    entry_id, zone_name, device_name = entry.id, zone.display_name, device.display_name
+
+    session.delete(zone)
+    session.delete(device)
+    session.flush()
+    # Without expire_all() the query would return the object still held in memory
+    # -- with the reference values it had *before* the database applied ON DELETE
+    # SET NULL, as in `tests/test_zone.py`.
+    session.expire_all()
+
+    survivor = session.get(DeviceCommand, entry_id)
+    assert survivor is not None
+    assert survivor.zone_id is None
+    assert survivor.device_id is None
+    assert survivor.zone_name == zone_name
+    assert survivor.device_name == device_name

@@ -9,6 +9,21 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ---
 
+## Unreleased
+
+**Neu: das Schaltprotokoll.** Bislang gab es zwei Aufzeichnungen — was die Regelung
+entschieden hat (`shadow_decision`) und was ein Mensch getan hat (`audit_event`) —, aber
+keine für das Dritte: was wirklich an ein Gerät hinausging. Die neue Ansicht unter
+„Einstellungen → Schaltprotokoll" (`/device-commands`) zeigt zu jedem gesendeten Befehl
+Zeitpunkt, Zone, Gerät, Nutzlast, Ergebnis (ausgeführt, im Trockenlauf unterdrückt,
+gescheitert) und die Begründung der Regelung, gefiltert nach Zone, Ergebnis und Zeitraum.
+Der bestehende Sollwert-Weg an selbstregelnde Thermostatventile schreibt jetzt dorthin,
+statt nur ins flüchtige Anwendungsprotokoll. Anders als das Schattenprotokoll überlebt ein
+Eintrag das Löschen oder Umbenennen seiner Zone oder seines Geräts — Begründung in
+[docs/offene-entscheidungen.md](docs/offene-entscheidungen.md).
+
+---
+
 ## 0.2.2 — 2026-08-31
 
 Eine Fassung, die vor allem geradezieht, was 0.2.0 behauptet hat: Meross ist jetzt

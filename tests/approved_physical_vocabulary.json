@@ -15,6 +15,7 @@
       "- `/control/arm` kann das öffnen, mit eigenem Recht `control.arm`. „Geschaltet wird",
       "Aktor ist zu.",
       "Der Adapter kann eine bekannte Steckdose ein- und ausschalten, aber es gibt keine",
+      "Der bestehende Sollwert-Weg an selbstregelnde Thermostatventile schreibt jetzt dorthin,",
       "Ist-Temperatur. Der eigene Fühler eines Thermostats sitzt am Heizkörper und misst",
       "Konto geprüft; geschaltet wird über MQTT, wie Meross es tatsächlich tut.",
       "Palette schaltet zwischen beiden um. Ohne JavaScript bleibt alles über das Formular",
@@ -39,10 +40,13 @@
       "## Was geschaltet wird — genau",
       "- **Die Frostschutz-Entscheidung bestätigen**, bevor Phase 4 scharf schaltet — siehe",
       "- **Sind beide Riegel offen**, bekommen selbstregelnde Thermostatventile ihren Sollwert",
+      "Begründung, Auslöser. Der bestehende Sollwert-Weg an selbstregelnde Thermostatventile",
       "Schnappschuss annahm — und viermal dieselbe Klasse, Texte, die eine Ventilbewegung",
       "jeder Weg zu einem Aktor zu.",
+      "schalten. Damit ist dieses Protokoll die einzige Stelle, an der später nachvollziehbar ist,",
       "schaltet, muss den Dienst neu starten, bevor überhaupt etwas hinausgeht.",
-      "wahr, dass „weiterhin nichts geschaltet wird\" — das war eine Zusicherung ohne Deckung."
+      "wahr, dass „weiterhin nichts geschaltet wird\" — das war eine Zusicherung ohne Deckung.",
+      "was an der Heizung passiert ist — es stand deshalb vor der Verdrahtung der Aktoren (Phase 4)"
     ],
     "docs/api.md": [
       "**Fehlt das Feld, gilt 0** — ein Aufrufer, der die Absenkung nicht kennt, schaltet sie",
@@ -111,6 +115,7 @@
       "**Weiter offen, bewusst:** ein `SET`, also das erste echte Schalten. Eine Heizung zum",
       "- *Meross vorerst weglassen.* Die Anlage schaltet über Meross-Steckdosen; ohne den Adapter",
       "Aktor bestätigte Ausführung; erst deren Semantik darf über die nächste wirkliche Fälligkeit",
+      "Anlage direkt scharf zu schalten. Damit ist dieses Protokoll die **einzige** Stelle, an der",
       "Ausprobieren zu schalten ist keine Nebenbei-Handlung; es passiert beim Scharfschalten in",
       "Bibliothek dafür ins Projekt zu ziehen, das eine Heizung steuert, vergrößert die",
       "Datenbank — sie kann nichts anfassen. Phase 4 verdrahtet sie nur noch mit den Aktoren.",
@@ -135,7 +140,8 @@
       "noch eine Bewegung des Ventils.",
       "schreibbare Sollwert; wie es ganz ausgeschaltet wird, ist die Frage des Adapters.",
       "selben Zyklus erneut und schreibt danach dauerhaft Ventilschutz statt gewöhnlicher",
-      "signiertem Umschlag, das Schalten über MQTT. Der Aufwand lag also höher als angenommen —"
+      "signiertem Umschlag, das Schalten über MQTT. Der Aufwand lag also höher als angenommen —",
+      "später nachvollziehbar ist, was an einer echten Heizung passiert ist. Ein Eintrag, der beim"
     ],
     "docs/roadmap.md": [
       "**Ziel:** Regelung freigeben und anschließend Aktoren verdrahten. Die Freigabe allein",
@@ -320,6 +326,10 @@
       "Ventil regelt selbst.",
       "kein Aktor verdrahtet.",
       "{% if rolle.code == \"actuator\" and \"thermostat\" in capabilities.get(device.id, []) %}"
+    ],
+    "thermoctl/web/templates/device_commands.html": [
+      "Sollwerte können an selbstregelnde Thermostatventile gesendet werden. Ein/Aus-Entscheidungen",
+      "erreichen weiterhin keinen Aktor."
     ],
     "thermoctl/web/templates/flow_diagram.html": [
       "<div class=\"tc-flow-column{{ ' tc-target' if draggable }}\"{% if draggable %} data-target=\"actuator\" data-target-name=\"Aktor\" data-requires=\"{{ requires.get('actuator', '') }}\"{% endif %}>",

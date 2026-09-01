@@ -67,6 +67,17 @@ class ActorSource(_Lookup):
     __tablename__ = "actor_source"
 
 
+class CommandOutcome(_Lookup):
+    """What became of one command sent towards an actuator.
+
+    `executed`: actually sent, and the client confirmed it. `suppressed`: withheld
+    by a dry-run bolt -- the command was computed but deliberately not sent.
+    `failed`: sending was attempted and did not succeed.
+    """
+
+    __tablename__ = "command_outcome"
+
+
 class Permission(Base):
     __tablename__ = "permission"
 
@@ -132,6 +143,11 @@ ACTOR_SOURCES = [
     ("mcp", "MCP"),
     ("cli", "Kommandozeile"),
     ("system", "System"),
+]
+COMMAND_OUTCOMES = [
+    ("executed", "Ausgeführt"),
+    ("suppressed", "Unterdrückt (Trockenlauf)"),
+    ("failed", "Gescheitert"),
 ]
 # "kiosk" is deliberately NOT listed here, even though it is a fully real actor
 # source from here on (see the migration `d07073d9abdf`). The very first migration,

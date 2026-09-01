@@ -1,0 +1,86 @@
+{% extends "base.html" if not is_htmx else "empty.html" %}
+{% block title %}Schaltprotokoll – thermoctl{% endblock %}
+{% block content %}
+<section id="device-command-list">
+  <h1 class="mb-3">Schaltprotokoll</h1>
+  <p class="text-body-secondary">
+    Jeder Befehl, der wirklich an ein Gerät hinausging oder im Trockenlauf unterdrückt oder
+    verworfen wurde — mit Zeitpunkt, Zone, Gerät, Nutzlast, Ergebnis und Begründung.
+    Sollwerte können an selbstregelnde Thermostatventile gesendet werden. Ein/Aus-Entscheidungen
+    erreichen weiterhin keinen Aktor.
+  </p>
+  <form method="get" action="/device-commands" class="row g-3 mb-4">
+    <div class="col-sm-6 col-lg-3">
+      <label class="form-label" for="from_date">Von</label>
+      <input class="form-control{% if errors.from_date %} is-invalid{% endif %}" id="from_date"
+             name="from_date" type="date" value="{{ filter.from_date }}">
+      {% if errors.from_date %}<div class="invalid-feedback">{{ errors.from_date }}</div>{% endif %}
+    </div>
+    <div class="col-sm-6 col-lg-3">
+      <label class="form-label" for="to_date">Bis</label>
+      <input class="form-control{% if errors.to_date %} is-invalid{% endif %}" id="to_date"
+             name="to_date" type="date" value="{{ filter.to_date }}">
+      {% if errors.to_date %}<div class="invalid-feedback">{{ errors.to_date }}</div>{% endif %}
+    </div>
+    <div class="col-sm-6 col-lg-3">
+      <label class="form-label" for="zone">Zone</label>
+      <select class="form-select" id="zone" name="zone">
+        <option value="">Alle Zonen</option>
+        {% for name in zone_names %}
+        <option value="{{ name }}"{% if filter.zone == name %} selected{% endif %}>{{ name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-sm-6 col-lg-3">
+      <label class="form-label" for="outcome">Ergebnis</label>
+      <select class="form-select" id="outcome" name="outcome">
+        <option value="">Alle Ergebnisse</option>
+        {% for code, label in outcomes %}
+        <option value="{{ code }}"{% if filter.outcome == code %} selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-12">
+      <button class="btn btn-primary" type="submit">Filtern</button>
+      <a class="btn btn-outline-secondary" href="/device-commands">Zurücksetzen</a>
+    </div>
+  </form>
+
+  {% if errors.page %}<div class="alert alert-danger">{{ errors.page }}</div>{% endif %}
+  {% if entries %}
+  <div class="table-responsive">
+    <table class="table table-striped align-middle">
+      <thead><tr><th>Zeitpunkt</th><th>Quelle</th><th>Zone</th><th>Gerät</th><th>Befehl</th><th>Ergebnis</th><th>Begründung</th></tr></thead>
+      <tbody>
+      {% for entry, source, outcome in entries %}
+      <tr>
+        <td class="text-nowrap" title="{{ entry.sent_at.isoformat(sep=' ') }} UTC">{{ (entry.sent_at|localtime(timezone)).strftime("%d.%m.%Y %H:%M:%S") }}</td>
+        <td>{{ source.label }}</td>
+        <td>{{ entry.zone_name }}</td>
+        <td>{{ entry.device_name }}</td>
+        <td><code>{{ entry.command }}</code></td>
+        <td>
+          {{ outcome.label }}
+          {% if entry.error %}<div class="text-danger small">{{ entry.error }}</div>{% endif %}
+        </td>
+        <td>
+          {{ entry.reason or "–" }}
+          <details class="mt-1"><summary>Nutzlast anzeigen</summary><pre class="mt-2 text-wrap">{{ entry.payload }}</pre></details>
+        </td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% elif not errors %}
+  <div class="alert alert-secondary" role="status">Keine passenden Einträge gefunden.</div>
+  {% endif %}
+
+  {% if page > 1 or has_more %}
+  <nav aria-label="Seitennavigation" class="d-flex justify-content-between">
+    {% if page > 1 %}<a class="btn btn-outline-secondary" href="?{{ base_parameters }}&amp;seite={{ page - 1 }}">Neuere Einträge</a>{% else %}<span></span>{% endif %}
+    {% if has_more %}<a class="btn btn-outline-secondary" href="?{{ base_parameters }}&amp;seite={{ page + 1 }}">Ältere Einträge</a>{% endif %}
+  </nav>
+  {% endif %}
+</section>
+{% endblock %}

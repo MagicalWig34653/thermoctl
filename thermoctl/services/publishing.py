@@ -63,6 +63,7 @@ from thermoctl.integrations.mqtt.publication import (
     timestamp_discovery,
     zone_discovery,
 )
+from thermoctl.services.device_commands import EXECUTED, FAILED, SUPPRESSED, record_command
 
 log = logging.getLogger(__name__)
 
@@ -85,10 +86,14 @@ class PublicationState:
     registered: dict[int, list[str]] = field(default_factory=dict)
     service_registered: bool = False
     controller_values: dict[int, object] = field(default_factory=dict)
-    # Per self-regulating valve, the payload last sent. Resending an unchanged one
+    # Per self-regulating valve, the (payload, armed) last acted on -- sent,
+    # withheld, or attempted and failed. Resending (or re-logging) an unchanged one
     # every cycle would fill the radio with commands that change nothing -- and a
-    # Zigbee device that gets a command every few seconds costs battery for it.
-    valve_commands: dict[int, str] = field(default_factory=dict)
+    # Zigbee device that gets a command every few seconds costs battery for it --
+    # and would make the command log unreadable within a day. `armed` is part of
+    # the key: the same setpoint that was withheld during a dry run must go out
+    # for real, and be logged again, the moment the plant is armed.
+    valve_commands: dict[int, tuple[str, bool]] = field(default_factory=dict)
 
 
 def _as_text(value: object) -> str:
@@ -133,6 +138,8 @@ async def cycle(
     state: PublicationState,
     prefix: str,
     now: datetime,
+    *,
+    source: str = "system",
 ) -> int:
     """One publication cycle. Returns the number of messages sent."""
     armed = switching_allowed(session)
@@ -168,7 +175,7 @@ async def cycle(
     sent_count += await _send_controller_channels(session, client, state, get_settings().mqtt_base_topic, now)
     for zone in zones:
         sent_count += await _send_self_regulating_valves(
-            session, client, state, get_settings().mqtt_base_topic, zone, now
+            session, client, state, get_settings().mqtt_base_topic, zone, now, source
         )
     return sent_count
 
@@ -180,20 +187,23 @@ async def _send_self_regulating_valves(
     base: str,
     zone: Zone,
     now: datetime,
+    source: str,
 ) -> int:
     """Tells every self-regulating valve of this zone what to aim for.
 
     **These messages move a valve.** They carry `switches=True` and go through
-    `switching_allowed` first -- the same two bolts as an on/off command, because the
+    `switching_allowed` -- the same two bolts as an on/off command, because the
     physical effect is the same. A setpoint written to a thermostatic valve is not a
     display value, and treating it as one would be a way around the dry run.
 
-    Only what changed is sent. The setpoint stands still for hours at a time, and a
-    battery-powered valve should not receive the same number every cycle.
+    Only what changed is sent -- and logged. The setpoint stands still for hours at
+    a time; a log entry every cycle, armed or not, would be unreadable within a day.
+    `state.valve_commands` therefore gates both the send and the log entry: it is
+    updated whenever an entry is written, regardless of outcome (sent, withheld, or
+    failed), so a repeated identical outcome does not repeat the entry. Only a
+    changed payload -- or a changed outcome for the same payload -- writes again.
     """
-    if not switching_allowed(session):
-        return 0
-
+    armed = switching_allowed(session)
     sent = 0
     for command in valve_commands(session, zone, now):
         payload_values: dict[str, object] = {
@@ -202,12 +212,48 @@ async def _send_self_regulating_valves(
         if command.temperature_property is not None and command.temperature_c is not None:
             payload_values[command.temperature_property] = float(command.temperature_c)
         payload = json.dumps(payload_values, ensure_ascii=False, separators=(",", ":"))
-        if state.valve_commands.get(command.device.id) == payload:
+        topic = f"{base.rstrip('/')}/{command.device.external_id}/set"
+        cache_key = (payload, armed)
+        if state.valve_commands.get(command.device.id) == cache_key:
             continue
 
-        topic = f"{base.rstrip('/')}/{command.device.external_id}/set"
-        if await client.publishing(topic, payload, switches=True):
-            state.valve_commands[command.device.id] = payload
+        if not armed:
+            state.valve_commands[command.device.id] = cache_key
+            record_command(
+                session,
+                now=now,
+                source=source,
+                zone=zone,
+                device=command.device,
+                command="setpoint",
+                payload=payload,
+                outcome=SUPPRESSED,
+                reason=command.reason,
+            )
+            continue
+
+        try:
+            executed = await client.publishing(topic, payload, switches=True)
+        except Exception as exc:
+            # A broken broker connection must not abort the whole cycle -- other
+            # zones and the rest of this cycle (shadow decisions, retention) still
+            # need to run. The failure is recorded instead of raised.
+            state.valve_commands[command.device.id] = cache_key
+            record_command(
+                session,
+                now=now,
+                source=source,
+                zone=zone,
+                device=command.device,
+                command="setpoint",
+                payload=payload,
+                outcome=FAILED,
+                error=str(exc),
+                reason=command.reason,
+            )
+            continue
+        state.valve_commands[command.device.id] = cache_key
+        if executed:
             sent += 1
             log.info(
                 "Selbstregelndes Ventil gestellt",
@@ -217,6 +263,30 @@ async def _send_self_regulating_valves(
                     "sollwert": str(command.setpoint_c),
                     "begruendung": command.reason,
                 },
+            )
+            record_command(
+                session,
+                now=now,
+                source=source,
+                zone=zone,
+                device=command.device,
+                command="setpoint",
+                payload=payload,
+                outcome=EXECUTED,
+                reason=command.reason,
+            )
+        else:
+            record_command(
+                session,
+                now=now,
+                source=source,
+                zone=zone,
+                device=command.device,
+                command="setpoint",
+                payload=payload,
+                outcome=FAILED,
+                error="MQTT-Client hat die Veroeffentlichung abgewiesen",
+                reason=command.reason,
             )
     return sent
 

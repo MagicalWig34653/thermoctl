@@ -18,8 +18,10 @@ from thermoctl.db.models.credential import ApiToken, ApiTokenPermission
 from thermoctl.db.models.device import Device
 from thermoctl.db.models.identity import AccessGroup, GroupPermission, User, UserAccessGroup
 from thermoctl.db.models.lookup import (
+    COMMAND_OUTCOMES,
     PERMISSIONS,
     ActorSource,
+    CommandOutcome,
     DeviceCapability,
     DeviceRole,
     Integration,
@@ -113,6 +115,22 @@ def source(session: Session, code: str = "web") -> ActorSource:
         session.add(q)
         session.flush()
     return q
+
+
+def command_outcome(session: Session, code: str = "executed") -> CommandOutcome:
+    row = session.query(CommandOutcome).filter_by(code=code).one_or_none()
+    if row is None:
+        label = dict(COMMAND_OUTCOMES).get(code, code)
+        row = CommandOutcome(code=code, label=label)
+        session.add(row)
+        session.flush()
+    return row
+
+
+def create_all_command_outcomes(session: Session) -> None:
+    """Creates every outcome code, the way the migration does in a real database."""
+    for code, _label in COMMAND_OUTCOMES:
+        command_outcome(session, code)
 
 
 def integration(session: Session, code: str = "zigbee2mqtt") -> Integration:
