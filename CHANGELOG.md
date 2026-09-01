@@ -17,12 +17,19 @@ zwei Fehler, die dem Bedienenden als Zufall erschienen (willkürliches Abgemelde
 eine Seite, aus der es keinen Ausweg gab), sind gefunden und behoben. Dazu ein neues
 Stück Funktion: der Ventilschutz.
 
-**Der Trockenlauf ist die Vorgabe und wird von zwei Riegeln gehalten** — geschaltet wird
-nichts, solange niemand scharf schaltet. Das *kann* man aber: `/control/arm` hat ein
-eigenes Recht (`control.arm`), und danach bewegen sich echte Ventile. Bei selbstregelnden
-Thermostaten genügt dafür schon das Veröffentlichen des Sollwerts. Frühere Fassungen
-dieses Abschnitts behaupteten pauschal „geschaltet wird weiterhin nichts"; das stimmte so
-nicht und ist hier berichtigt.
+**Der Trockenlauf ist die Vorgabe und wird von zwei Riegeln gehalten.** Was danach
+passiert, ist mehrfach zu grob beschrieben worden — hier genau:
+
+- In einer neuen Anlage steht `setting.control_armed` auf `false`; jeder Weg zu einem
+  Aktor ist zu.
+- `/control/arm` kann das öffnen, mit eigenem Recht `control.arm`. „Geschaltet wird
+  weiterhin nichts" war deshalb eine Zusicherung ohne Deckung und stand hier zu Unrecht.
+- Der MQTT-Client trägt einen zweiten Riegel, der **beim Start** gebaut wird. Ohne
+  Neustart geht auch danach nichts hinaus.
+- Dann bewegt sich genau eines: **selbstregelnde Thermostatventile** bekommen ihren
+  Sollwert veröffentlicht. **Normale Ein/Aus-Entscheidungen gehen nirgendwohin** — weder
+  `Zigbee2MqttValve` noch `MerossSwitch` werden im Produktivcode konstruiert. Das ist die
+  offene Arbeit von Phase 4.
 
 ### Zu beachten beim Umstieg
 

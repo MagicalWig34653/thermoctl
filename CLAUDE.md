@@ -43,6 +43,13 @@ fremde Projekte erneut zu durchsuchen.
 ## Stand
 
 **Der aktuelle Stand steht in [`docs/STATUS.md`](docs/STATUS.md). Diese Datei zuerst lesen.**
+Sie sagt ausschliesslich, was *jetzt* gilt. Die Chronik — wie es dazu kam, welche Fehler
+wie gefunden wurden, warum etwas so entschieden ist — steht in
+[`docs/verlauf.md`](docs/verlauf.md). Die Trennung gibt es, seit `STATUS.md` auf über
+tausend Zeilen gewachsen war und gleichzeitig aktuelle und längst widerlegte Aussagen
+enthielt; ein Freigabe-Review konnte vier davon namentlich widerlegen. **Neues gehört
+oben in `STATUS.md`, Abgelöstes wandert nach `verlauf.md` — nicht beides in dieselbe
+Datei.**
 Sie sagt, welches Teilprojekt läuft, was zuletzt fertig wurde und was als Nächstes ansteht.
 
 Git allein reicht dafür nicht: Commits sagen, was getan wurde, aber nicht, was als Nächstes

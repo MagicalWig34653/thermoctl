@@ -1,0 +1,1133 @@
+# Verlauf
+
+**Dies ist eine Chronik, keine Statusaussage.** Jeder Abschnitt beschreibt den Stand zu
+dem Zeitpunkt, an dem er geschrieben wurde, neueste zuerst. Vieles davon ist inzwischen
+überholt — etwa Zahlenangaben zu Tests und Abdeckung, Aussagen darüber, was gebaut ist,
+und die Feststellung, es sei „nichts scharf".
+
+**Was jetzt gilt, steht in [STATUS.md](STATUS.md).** Wer hier etwas liest und es für den
+heutigen Stand hält, liegt womöglich falsch — das ist der Grund für die Trennung: Die
+Datei war auf über tausend Zeilen gewachsen und enthielt gleichzeitig aktuelle und längst
+widerlegte Aussagen. Ein Freigabe-Review hat vier davon namentlich benannt.
+
+Der Wert dieser Chronik liegt woanders: Sie hält fest, **warum** etwas so entschieden
+wurde und **welche Fehler wie gefunden wurden**. Das ist beim nächsten ähnlichen Fehler
+mehr wert als eine aufgeräumte Zusammenfassung.
+
+---
+
+## Ventilschutz übergibt sauber an reguläres Heizen
+
+Wenn ein laufender Ventilschutz von einer normalen Heizanforderung abgelöst wird, endet
+sein persistierter Laufmarker jetzt sofort. Der folgende Messwert innerhalb der
+Hysterese hält deshalb das reguläre Heizen wie ohne vorausgegangenen Schutzlauf aufrecht,
+statt vorzeitig abzuschalten und zusätzlich zu takten. Der Marker bleibt während eines
+reinen Schutzlaufs bestehen und verhindert weiterhin, dass dessen Einschaltzustand über
+die gewöhnliche Hysterese-Regel endlos fortgeschrieben wird.
+
+Die Regelkombinationen aus aktuellem Heizstatus, Messwert unter, innerhalb und über der
+Hysterese sowie gesetztem oder fehlendem Schutzmarker sind vollständig als Tabelle
+geprüft. Ein eigener Ablauf-Test deckt die Übergabe vom Schutzlauf über reguläres Heizen
+bis zum folgenden Hysterese-Zyklus ab.
+
+## Zeitpläne lassen sich als Zeiträume malen
+
+Die Wochenansicht bietet das bisherige Ziehen von Schaltpunkten und das neue Malen
+nebeneinander an. **Vorgewählt ist der erste Heizmodus**, das Raster ist also sofort eine
+Malfläche; „Punkte ziehen" liegt daneben und schaltet auf das bisherige Verschieben um.
+Das war zunächst umgekehrt und wurde geändert, nachdem der Projektinhaber genau daran
+hängenblieb: Ein Zug über das Raster tat wortlos nichts, solange kein Modus gewählt war. Eine Geste rastet auf 15 Minuten ein, zeigt ihren
+Zeitraum und speichert beim Loslassen. Das normale Formular und die Schaltpunktliste
+bleiben vollständig erhalten.
+
+Die Domäne übersetzt einen gemalten, tagesgebundenen Zeitraum in eine minimale Folge von
+Schaltpunkten. Im leeren Plan bildet der konfigurierte Frostschutzmodus den Hintergrund,
+sodass ein erster endlicher Abschnitt auch vor seinem Beginn und nach seinem Ende sicher
+zum Frostschutz zurückkehrt. Gesten über Mitternacht werden bewusst abgewiesen und müssen
+tageweise gemalt werden. Ein unveränderter Zeitraum erzeugt weder Schreibzugriff noch
+Audit-Eintrag; jede echte Mal-, Übertragungs- oder Rückgängig-Geste erzeugt genau einen.
+
+Jede Tagesspalte kann auf Montag bis Freitag oder auf alle Tage übertragen werden. Der
+letzte Schritt lässt sich über einen signierten Vorher/Nachher-Schnappschuss rückgängig
+machen. Das Rückgängig schlägt verständlich fehl, wenn zwischenzeitlich jemand den Plan
+geändert hat, statt eine neuere Änderung aus einem alten Browser-Tab zu überschreiben.
+
+Die vorgeschriebene Browserprüfung konnte in der Codex-Sandbox nicht ausgeführt werden:
+Chromium wird beim Start vom macOS-Sandboxdienst am Mach-Port-Handshake mit
+`Permission denied (1100)` beendet. Die Funktions-, Vorlagen-, Routen-, CSRF- und
+Verlauf-Verdrahtung ist automatisiert geprüft; die sichtbare Abnahme mit den vorgegebenen
+Bestandsdaten bleibt deshalb ausdrücklich offen.
+
+## v0.2.2 ist freigabefertig
+
+Zusammengeführt, gegengelesen und nachgemessen:
+
+- **Angezeigte Uhrzeiten in lokaler Zeit**: Kiosk-Uhr, Jetztmarkierung und Wochentag
+  des Tagesplans auf der Startseite sowie Ablaufzeiten von API- und Kiosk-Tokens
+  verwenden die konfigurierte Zeitzone statt der naiven internen UTC-Darstellung.
+- **Meross**, beide Hälften, gegen das echte Konto geprüft — inklusive eines echten
+  `SET`, das gefahrlos möglich war, weil alle vier Steckdosen aus waren und auf „aus"
+  gesetzt wurden.
+- **Ventilschutz je Zone**, mit der Vorrangregel ganz unten in der Kette.
+- **Sonnenabsenkung** wieder einschaltbar.
+- **Zwei Fehler, die dem Bedienenden als Zufall erschienen**: willkürliches
+  Abgemeldetwerden (eine Netzwartezeit sperrte die ganze SQLite-Datei) und eine
+  veraltete Seite, aus der es keinen Ausweg gab.
+
+Nachgemessen für die Freigabe: Ruff, mypy, vollständige Suite gegen SQLite **und**
+MariaDB bei 100 Prozent Abdeckung, die Migration vorwärts und rückwärts und erneut
+vorwärts auf beiden Datenbanken, das Container-Abbild gebaut, eine echte 0.2.0-Datenbank
+darin hochgezogen und die Seiten aufgerufen. `/healthz` meldet 0.2.2.
+
+**Der Malen-Editor ist enthalten** — nach einer zweiten Runde. Der Projektinhaber hatte
+die Bedienung freigegeben, das Kreuzreview fand danach fünf schwere Befunde: eine Geste
+am Sonntag bis 24:00 verstellte den Montagmodus, nach oben zu malen speicherte nichts
+(das war die gemeldete Beobachtung „ich kann keine Blöcke per Malen einfügen" — kein
+Bedienproblem, ein Fehler), „auf alle Tage" kopierte Montag 00:00 nicht, Rückgängig nahm
+einen alten Schnappschuss nach A→B→A an, und „Übertragen" war ohne JavaScript
+unerreichbar. Alle behoben und einzeln am laufenden Programm nachgeprüft, nicht nur im
+Test. Auf ausdrücklichen Wunsch gehört das Feature in diese Fassung; die Befunde waren
+vorher abzuarbeiten, nicht danach.
+
+### Was diese Fassung über das Verfahren gelernt hat
+
+- **Der MariaDB-Lauf war eine Attrappe.** Die Suite liest `THERMOCTL_TEST_DATABASE_URL`;
+  gesetzt wurde durchgehend `THERMOCTL_DATABASE_URL`. Jeder dieser Läufe war SQLite, und
+  der Bericht „gegen beide Datenbanken geprüft" war hohl. Aufgefallen ist es einem
+  Agenten, nicht der Hauptsession. Steht jetzt in `CLAUDE.md`.
+- **Zwei Kreuzreviews haben Blocker gefunden, die beim eigenen Gegenlesen durchgingen** —
+  beim Ventilschutz eine Regel, die die eingestellte Dauer zerstörte, und eine, die einen
+  endlosen Lauf erzeugte. Beide waren mit Messwerten belegt.
+- **Tests, die nur sich selbst bestätigen, sind der Normalfall, nicht die Ausnahme.**
+  Dreimal in dieser Fassung: ein verstümmeltes Formularfeld liess 177 Tests grün, ein
+  entfernter Sensor-Riegel alle 39 Regelungstests, und ein Formular war ohne JavaScript
+  unbedienbar, während seine Tests die Felder selbst setzten. Was gegen ein gerendertes
+  Formular prüft, findet so etwas; was den Endpunkt direkt anspricht, nicht.
+
+## Ventilschutz ist je Zone konfigurierbar
+
+Eine Zone kann ihr Ventil nun nach einer einstellbaren Ruhezeit für eine einstellbare
+Dauer öffnen (Vorgabe: aus, 30 Tage, 10 Minuten). Der Schutzlauf ist die letzte Regel in
+`decide()`: Sensorausfall, Frostschutz, Fenster, Übersteuerung und die normale Hysterese
+behalten Vorrang. Die Mindestschaltdauer gilt für reguläres Heizen, verlängert oder
+verkürzt aber keinen Schutzlauf. Im Schattenprotokoll trägt dieser den eigenen Ausgang
+`ventilschutz` und eine eindeutige Begründung.
+
+Start, letzter Abschluss und der letzte reguläre Heiznachweis liegen als Betriebszustand
+in `zone_state`. Dadurch läuft ein begonnener Schutzlauf nach einem Dienstneustart weder
+neu noch endlos an, und der Heiznachweis bleibt erhalten, wenn die 30-Tage-Aufbewahrung
+alte Schattenentscheidungen löscht. Ein eigener Verdichtungsmarker verhindert dabei
+wiederholte Historienabfragen, wenn es noch nie reguläres Heizen gab. Die Zeitstempel
+bewahren auf SQLite und MariaDB Mikrosekunden; der nächste Abstand beginnt am Abschluss,
+nicht am Start eines Laufs.
+
+Weboberfläche, REST und MCP verwenden dieselbe Domänenvalidierung: Dauer und Abstand
+müssen positiv sein, die Dauer darf den Abstand nicht überschreiten; zusätzlich gelten
+3650 Tage und 5.256.000 Minuten als gemeinsame Obergrenzen.
+
+## Kreuzreview der Meross-Anbindung nachgearbeitet
+
+### Keine Netzwartezeit mehr in einer Datenbanktransaktion
+
+Der entkoppelte Meross-Abgleich hatte weiterhin eine eigene Sitzung geöffnet, bevor er
+Anmeldung und Geräteliste aus der Wolke abwartete. Der Ablauf ist jetzt vollständig
+getrennt: Zugangsdaten kommen aus der Konfiguration, beide HTTP-Aufrufe laufen ohne
+Datenbanksitzung, erst das fertige Ergebnis wird in einer kurzen Sitzung mit
+`save_devices` gespeichert und committet. Fehler der Wolke werden weiterhin nur
+protokolliert und beenden weder Abgleich noch Schattenzyklus.
+
+Dasselbe Sperrmuster steckte in der Sonnenprognose: Der Schattenzyklus hatte bereits
+Zonenzustände geschrieben, bevor er Open-Meteo abwartete. Die Koordinaten werden nun in
+einer kurzen Lesesitzung geholt; der Netzabruf findet vor der Schreibsitzung des Zyklus
+statt. Ein Regressionstest lässt während des simulierten Netzabrufs einen zweiten
+Schreiber auf derselben SQLite-Datei committen.
+
+Codex hatte die Anbindung aus 0.3.0 gegengelesen; sechs Befunde daraus sind
+umgesetzt:
+
+- **Nicht mehr jedes Gerät bekommt `switch`.** `services/meross_discovery.py` prüfte
+  den Gerätetyp bisher nie — ein Hub, ein Thermostatventil, eine Lampe im selben
+  Konto wären als Heizungsaktor angeboten worden. Jetzt entscheidet das Meross-eigene
+  Namensschema (`mss…` = Steckdose); alles andere bekommt weiterhin eine Gerätezeile
+  (sichtbar sein ist nützlich), aber keine `switch`-Fähigkeit. Die gemeldete
+  Kanalzahl wird als `DeviceProperty` mitgeführt statt verworfen — dieselbe
+  Ablage, die `services/ingest.py` für Zigbee2MQTT-Merkmale nutzt.
+- **Der Abgleich blockiert den Schattenzyklus nicht mehr.** Er lief bisher innerhalb
+  der Transaktion des Zyklus und wurde abgewartet — bei einer lahmenden Wolke (zwei
+  HTTP-Aufrufe mit je 20 Sekunden Zeitgrenze) hätte das Veröffentlichung, Aufbewahrung
+  und den Commit selbst verzögert. Er läuft jetzt entkoppelt, in einer eigenen Sitzung,
+  ohne dass der Zyklus auf ihn wartet.
+- **Der Abgleich läuft jetzt auch ohne lokales MQTT.** Bisher startete der gesamte
+  Schattenzyklus nur bei `THERMOCTL_MQTT_ENABLED=true` — wer Meross-Zugangsdaten
+  setzte, aber Zigbee2MQTT nicht nutzte, bekam nie einen Abgleich. Der Zyklus startet
+  jetzt, sobald MQTT **oder** vollständige Meross-Zugangsdaten vorliegen.
+- **Die Schnittstellenseite meldet „läuft" jetzt ehrlich.** Sie prüfte nur, ob eine
+  E-Mail-Adresse eingetragen war (ein Passwort allein reichte, um „läuft" zu zeigen).
+  Jetzt braucht es beide Felder, und „running" heißt erst etwas, wenn tatsächlich ein
+  Gerät aus einem Abgleich hervorgegangen ist — Zugangsdaten allein zeigen „configured".
+- **Der App-Schlüssel `APP_SECRET` heißt jetzt zutreffend, was er ist:** öffentlich seit
+  Jahren durch Reverse Engineering, nicht durch eine Herstellerangabe — eine offizielle
+  Spezifikation dieses Protokolls gibt es nicht.
+
+Dazwischen: Ein echtes `SET Appliance.Control.ToggleX` ist inzwischen gegen alle vier
+Steckdosen gelaufen — gefahrlos, weil alle auf `onoff=0` standen und auf `onoff=0`
+gesetzt wurden. Alle vier antworteten mit `SETACK` und einem hochgezählten `lmTime`.
+Nutzlastaufbau, Signatur und Bestätigung sind damit nachgemessen, keine Annahme mehr —
+was noch aussteht, ist die Verdrahtung von `MerossSwitch` in den Regelkreis, die
+weiterhin Teilprojekt 4 (Scharfschalten) bleibt.
+
+## Der Modus eines Schaltpunkts lässt sich direkt ändern
+
+In der Zonen-Zeitplanansicht trägt die Liste „Schaltpunkte“ jetzt zu jedem Punkt den
+aktuellen Modus als Auswahl. Ein Wechsel wird mit HTMX unmittelbar abgeschickt; ein
+sichtbarer Knopf schickt dasselbe gewöhnliche Formular auch ohne JavaScript ab. Das
+Formular enthält sein CSRF-Token selbst, nach dem bereits in der Kiosk-Ansicht bewährten
+Muster. Der gemeinsame CSRF-Schutz der angemeldeten Oberfläche nimmt deshalb neben dem
+von HTMX gesetzten Header nun auch dieses versteckte Formularfeld an.
+
+Jeder echte Wechsel läuft durch die neue Domänenfunktion
+`change_schedule_point_mode`: Sie weist einen unbekannten Modus ab, behält die Kennung
+des Schaltpunkts und protokolliert Vorher und Nachher in genau einem Audit-Eintrag. Die
+Auswahl des bereits geltenden Modus erzeugt weder Änderung noch Protokolleintrag.
+
+Im Wochenraster führt ein Verweis an jedem eigenen Balken zur Auswahl desselben Punkts
+in der Liste. Bewusst liegt dort keine zweite Auswahl und kein Klick auf dem ganzen
+Balken: Beides nähme der großen Ziehfläche Platz oder konkurrierte mit ihrem
+Zeigerereignis.
+
+Dieser Verweis war zunächst ein beschrifteter Knopf — und **das fiel erst beim ersten
+wirklichen Öffnen der Seite auf**: In jedem Balken stand er, sieben Spalten übereinander,
+optisch so kräftig wie der Balken selbst; aus der Wochenübersicht war ein Knopffeld
+geworden, und bei kurzen Balken (22 Uhr bis Mitternacht, rund 2 rem hoch) wurde die
+Beschriftung abgeschnitten. Tests, Ruff, mypy, 100 Prozent Abdeckung und ein Kreuzreview
+waren dabei grün. Der Verweis ist jetzt ein Stiftsymbol, sitzt absolut in der Balkenecke
+statt im Textfluss und erscheint erst bei Mauszeiger oder Tastaturfokus — `opacity` statt
+`display: none`, damit er per Tab erreichbar bleibt. **Bekannte Einschränkung:** Ohne
+Maus gibt es kein Hover; auf einem Tablet erscheint das Symbol nicht. Die Auswahl in der
+Liste bleibt dort der vollständige Weg, es fehlt nur die Abkürzung. Das Ziehskript lässt interaktive Elemente im
+Balken ausdrücklich in Ruhe; seine Verdrahtung bleibt wie die übrigen Skripte in einem
+`WeakSet`, damit die Bedienung nach einer Wiederherstellung aus dem htmx-Verlauf weiter
+funktioniert.
+
+## Meross ist angebunden — und der bisherige Schaltweg war falsch
+
+Gemeldet aus dem Betrieb: „die Meross-Schalter tauchen nirgends auf". Das stimmte, und der
+Grund war grundsätzlicher als ein fehlender Eintrag. `services/ingest.py` war die einzige
+Stelle im ganzen Dienst, die Gerätezeilen anlegt, und sie liest allein die
+Zigbee2MQTT-Liste. Es gab einen Meross-Schaltadapter, aber kein Gerät, auf das er gepasst
+hätte. Die Schnittstellenseite meldete trotzdem „Eingerichtet", sobald eine Adresse in der
+Umgebung stand — sie behauptete genau das Gegenteil dessen, was der Fall war.
+
+Beim Nachbauen gegen das echte Konto fielen drei Irrtümer auf, die alle Tests überstanden
+hatten, weil die Tests nur die Gewohnheiten des eigenen Codes prüften:
+
+- Die Anmeldung nimmt **kein Formular**, sondern einen signierten Umschlag aus `params`,
+  `sign`, `timestamp` und `nonce`.
+- Das Passwort geht **MD5-gehasht** hinaus. Im Klartext antwortet der Dienst mit
+  `apiStatus 1004, Wrong password` — was wie ein Tippfehler des Nutzers aussieht.
+- **`/v1/Device/devControl` gibt es nicht.** Die Wolke antwortet mit 404. Der ganze
+  Schaltweg hätte nie funktionieren können; im Adapter stand ehrlich, dass die Nutzlast
+  eine begründete Annahme sei, und die Annahme war falsch.
+
+Meross schaltet über MQTT. Die Anmeldung liefert dafür alles (`mqttDomain`, `key`,
+`userid`), der Broker nimmt TLS auf Port 443, und jede Nachricht wird mit
+`md5(messageId + key + timestamp)` signiert. Das steht jetzt in
+`thermoctl/integrations/meross_mqtt.py`.
+
+**Was nachgemessen ist:** Anmeldung, Geräteliste (vier Steckdosen, alle online), ein
+`GET Appliance.System.All` an jedes der vier Geräte (Antwort `GETACK` mit dem
+Kanalzustand) — und inzwischen auch ein `SET Appliance.Control.ToggleX` gegen alle
+vier, gefahrlos auf `onoff=0` nach `onoff=0`: alle vier antworteten mit `SETACK` und
+einem hochgezählten `lmTime`. Der Adapter prüft die Bestätigung des Geräts (`SETACK`),
+damit eine Firmware, die den Befehl ablehnt, als Fehler auftaucht und nicht als
+stilles Nichts — geprüft wird damit, dass das Gerät den Befehl angenommen hat, nicht,
+dass die Heizung wirklich wärmer wurde.
+
+Der Abgleich hängt im Schattenzyklus, stündlich, und beim Start einmal sofort — seit
+dem Kreuzreview-Nacharbeit entkoppelt von der Sitzung des Zyklus (eigene Transaktion,
+nicht abgewartet) und unabhängig von `THERMOCTL_MQTT_ENABLED`. Ein Ausfall der Wolke
+hält den Zyklus nicht an: Er wird protokolliert, und die Anlage läuft mit dem weiter,
+was sie kennt.
+
+## Die Sonnenabsenkung liess sich nicht einschalten
+
+Selbst eingebaut, in 0.2.0: Das Makro für den Schalter setzt `value="yes"`, die Auswertung
+in `control_views.py` verglich weiter gegen `"on"` — den Wert, den ein Browser für eine
+Checkbox ohne `value` schickt. Der Haken liess sich setzen und war nach dem Speichern
+wieder weg. Es zählt jetzt, ob überhaupt ein Wert ankam; ein Regressionstest schickt das
+**gerenderte** Formular, nicht ein von Hand gebautes, damit dieselbe Lücke nicht noch
+einmal zwischen Vorlage und Auswertung passt.
+
+## Die Arbeitsteilung wurde nicht eingehalten
+
+Die Meross-Anbindung entstand vollständig in der Hauptsession, statt verteilt zu werden.
+Das ist der zweite Fall dieser Art. Die Regel in `CLAUDE.md` ist deshalb von einer
+Zielverteilung zu einer Bedingung mit vier klar benannten Ausnahmen umgeschrieben worden,
+samt Prüffrage vor jeder Änderung an einer Quelldatei. Das Kreuzreview dieser Arbeit
+wurde nachträglich beauftragt.
+
+## Die Doku war nicht auf dem Stand — jetzt schon
+
+Nachgefragt und nachgeprüft: `STATUS.md` und `api.md` waren aktuell, sechs weitere
+Dokumente nicht. Was gefunden wurde, war mehr als Kosmetik:
+
+- **`mqtt.md` beschrieb den deutschen Themenbaum** — `thermoctl/zonen/<id>/zustand/…`. Den
+  gibt es seit der Umstellung nicht mehr; er heißt `thermoctl/zones/<id>/state/…`. Wer sich
+  einen Abonnenten danach gebaut hätte, hätte nichts empfangen.
+- **`mqtt.md` widersprach sich selbst** beim Sollwert aus Home Assistant: einmal „verstellt
+  den geltenden Modus" (richtig), einmal „legt eine Übersteuerung an" (die alte Fassung).
+- **`mcp.md` nannte ein Werkzeug, das es nicht gibt** — `override_zone` statt `override`.
+  Ein Sprachmodell, das die Tabelle liest, ruft einen Namen auf, den der Server nicht kennt.
+  Der Wächtertest dazu prüfte die *Funktionsnamen des Moduls* statt der registrierten
+  Werkzeugnamen und war deshalb grün. Er prüft jetzt das, was ein Aufrufer sieht.
+- **Das Wandtablet stand in keiner Betriebsdoku.** Jetzt in `self-hosting.md`, samt der
+  Warnung, dass wer das Tablet in der Hand hat, das Token aus dem Cookie liest.
+- **Die Sicherheitsdurchsicht kannte nur drei Adapter** und listete die ungeprüften Routen
+  ohne den Kiosk-Einstieg. Beides ergänzt, mitsamt dem, was das Kiosk-Token kann und nicht
+  kann.
+- **Sechs Dokumente nannten Dateien, die es nicht mehr gibt** — die Aktoren, die
+  Fernbedienung, die Regelung, die Alltagsansichten und drei alte Testnamen, alle noch
+  unter ihren deutschen Dateinamen. (Hier ohne Backticks geschrieben, und das ist die
+  Konvention: Ein Name in Backticks behauptet, dass es ihn gibt. Der Wächter unten prüft
+  genau diese Behauptung — historische Namen gehören deshalb in Fließtext.)
+
+Dagegen stehen jetzt zwei Wächter: einer vergleicht die MCP-Werkzeugnamen mit den
+registrierten, einer prüft jeden in den lebenden Dokumenten genannten Dateinamen gegen den
+Baum. **Nicht geprüft werden die Spezifikationen und Pläne unter `docs/superpowers/`** —
+sie halten fest, was zu einem Zeitpunkt entschieden wurde, und sie auf heutige Namen
+umzuschreiben hieße, das Protokoll zu fälschen. Dasselbe gilt für die Bestandsaufnahme des
+Altsystems.
+
+Die vier Entscheidungen dieses Tages, die sonst eine Rückfrage gewesen wären, stehen in
+[offene-entscheidungen.md](offene-entscheidungen.md): das Kiosk-Token statt gar keiner
+Anmeldung, die Erkennung eines Thermostatventils am schreibbaren Sollwert, der Frostschutz
+bei offenem Fenster für selbstregelnde Ventile, und „der erste Treffer gewinnt" bei doppelt
+genannten Gerätemerkmalen.
+
+## Die Abdeckung steht auf 100 Prozent — und was das heißt
+
+Die Schwelle in der CI liegt jetzt bei 100. Das heißt **nicht**, dass jede Zeile geprüft
+ist, sondern: jede Zeile ist entweder geprüft **oder** trägt eine Begründung. Die
+Ausnahmen stehen als `# pragma: no cover` mit ihrem Grund im Quelltext — sichtbar und
+einzeln bestreitbar, statt als Prozentzahl, hinter der niemand mehr nachsieht, was fehlt.
+
+Es sind sechs, und sie zerfallen in zwei Sorten. Unerreichbar, weil eine frühere Prüfung
+schon greift: der zweite `json.loads` in `_process_state` (dieselben Bytes hat
+`readings_from_payload` bereits geparst), das `except DomainError` an der
+Übersteuerungs-Route (das REST-Schema hält Bereich und Nachkommastelle schon ab), der
+fehlende Rechte-Eintrag in der Gruppenübersicht (dieselbe Tabelle, aus der die Liste
+kommt), und der Nutzer-Guard in den Passkey-Routen (ein API-Token erreicht den
+Web-Router nicht). Und zwei, die eine Prüfung *bewusst* ersetzt: die echte
+`time.sleep`-Zeile, die jeder Test austauscht, und zwei Zweige in `_channel_value`, die
+`configure_channel` vorher ausschließt.
+
+Beim Hochziehen kamen Dinge ans Licht, die eine Prozentzahl nie gezeigt hätte:
+
+- **Ein Test prüfte nicht, was er behauptete.** Der Zähler-Test bei den Passkeys — die
+  einzige Klon-Erkennung, die das Verfahren kennt — erreichte die Zählerprüfung nie: Er
+  scheiterte vorher an der Signatur und war trotzdem grün. Er prüft jetzt die Meldung und
+  wird rot, wenn `credential_current_sign_count` aus dem Aufruf verschwindet, also genau
+  bei der Änderung, die die Erkennung abschalten würde.
+- **Umgekehrt sah echter Schutz wie toter Code aus.** Die eigene Zählerprüfung des
+  Projekts läuft nie, weil die Bibliothek davor abweist — sie ist trotzdem die zweite
+  Verteidigungslinie und wird jetzt mit einer nachsichtigen Bibliothek geprüft.
+- **`schedule.py` meldete einen Konflikt unter dem Feldnamen `uhrzeit`**, den das
+  Formular seit der Endpunkt-Umstellung nicht mehr kennt. Die Meldung „Zu diesem
+  Zeitpunkt gibt es bereits einen Punkt" wurde also nirgends angezeigt.
+
+## Der Code spricht Englisch — die Prosa zur Hälfte
+
+Bezeichner, Modul- und Testdateinamen, Web-Endpunkte, MQTT-Topics, MCP-Werkzeuge und
+Formularfelder sind englisch. **Der sichtbare Text bleibt deutsch** — nachgewiesen, nicht
+behauptet: Ein Vergleich aller Zeichenkettenliterale vor und nach der Umstellung zeigt
+unter `thermoctl/` **keine einzige** Änderung. Was sich geändert hat, sind Assertion-Texte
+in `tests/`.
+
+Kommentare, Docstrings und **alle 794 Testnamen** sind übersetzt. Ein Testname ist eine
+Zusicherung: `test_rule6_exactly_on_the_switch_on_threshold_does_not_switch_on_yet` sagt
+dasselbe wie vorher, nicht weniger. Ein allgemeinerer Name wäre grün geblieben und hätte
+beim nächsten Lesen niemandem mehr verraten, was hier eigentlich zugesichert ist.
+
+Englisch sind damit: Bezeichner, Datei- und Modulnamen, Web-Endpunkte, MQTT-Topics,
+MCP-Werkzeuge, Formularfelder, Spaltennamen, Kommentare, Docstrings und alle 794 Testnamen.
+Deutsch geblieben ist, was ein Mensch liest — und ein Zitat: Der Defekt des Altsystems
+steht als `if ist < soll: an, sonst aus` im Test, weil das der Quelltext von dort ist.
+
+**HTML und CSS sprechen jetzt auch Englisch.** Element-Kennungen, CSS-Klassen,
+`data-`-Attribute, die Vorlagen selbst (27 Dateien), die vier JavaScript-Dateien und die
+Jinja-Makros darin (`geraetekarte` → `device_card`, `flussbild` → `flow_diagram`) tragen
+englische Namen. Dieser Schritt hat keinen Testschutz: Eine Klasse steht gleichzeitig in
+Vorlage, Stylesheet und JavaScript, und wer eine Stelle vergisst, bekommt kein rotes
+Testergebnis, sondern eine Seite, die still anders aussieht. Genau das passierte zweimal:
+Das JavaScript las `dataset.aenderbar`, während die Vorlage schon `data-editable` schrieb —
+der Ziehhinweis im Zeitplan verschwand ersatzlos. Und das Formular zum Anlegen eines
+Schaltpunkts schickte `name="uhrzeit"`, während die View `time_of_day` liest; angelegt
+wurde stillschweigend nichts. Beides fand kein Test, sondern der Vergleich von
+Bildschirmfotos vor und nach der Umstellung und ein Klick im Browser.
+
+Der zweite Fall hat eine Ursache, die bleibt: Die Makros in `form.html` leiten `name=` und
+`id=` aus ihrem ersten Argument ab. Wer eine View umbenennt und die Vorlage vergisst,
+bricht das Formular, ohne eine einzige Zeile Formularcode anzufassen. Dagegen steht jetzt
+ein Wächtertest in `tests/test_smoke_test.py`, der die Feldnamen aus dem *gerenderten*
+Formular zieht und nur Werte beisteuert — er wurde von beiden Seiten gegengeprüft: Er wird
+rot, wenn die Vorlage abweicht, und er wird rot, wenn die View abweicht.
+
+**Nachtrag, und eine Korrektur an dieser Datei:** Der Satz, der Code spreche
+Englisch, stimmte für Python nicht ganz. Eine Zählung über den Syntaxbaum fand noch
+43 deutsche Bezeichner mit 167 Vorkommen — darunter der Kern der Regellogik (`Lage`,
+`entscheiden`, `Entscheidung`, `soll_c`, `ist_c`, `heizt_gerade`) und das Ventil
+(`Zigbee2MqttVentil`, `beschreibung`, `ausgefuehrt`). Sie sind jetzt übersetzt, wieder
+über Tokens statt über Text: Ein Vergleich aller 3036 Zeichenkettenliterale unter
+`thermoctl/` vor und nach der Umstellung zeigt **null** Unterschiede.
+
+Drei Brüche, die die Umbenennung erzeugte, und wie sie gefunden wurden:
+
+- `anfrage` → `request` verdeckte in `actuators.py` das importierte `urllib.request` —
+  der Adapter hätte beim ersten echten Schaltbefehl mit `UnboundLocalError` abgebrochen.
+  Gefunden hat es Ruff (`F823`), nicht ein Test: Der Meross-Pfad läuft mangels
+  Zugangsdaten ohnehin nicht. Der Name heißt jetzt `http_request`; in `zones.py` war
+  dasselbe Wort nie eine Anfrage, sondern ein `select()` — dort `query`.
+- `rolle` → `role` traf in einem Test den gleichnamigen Import aus `tests/helpers.py`.
+- **Die Vorlagen sieht ein Python-Werkzeug nicht.** `Setpoint.grund` heißt jetzt
+  `reason`, `start.html` las weiter `setpoint.grund` — Jinja liefert für Unbekanntes
+  die leere Zeichenkette, die Startseite zeigte die Begründung des Sollwerts also
+  einfach nicht mehr an. Das fing ein Test. Wer künftig ein Feld eines Datenmodells
+  umbenennt, greppt die Vorlagen nach dem alten Attributnamen.
+
+**Und noch ein Nachtrag: Der Rest war groesser als gedacht.** Eine zweite Zaehlung,
+diesmal jeden Bezeichner gegen ein Woerterbuch gehalten statt nach deutschen Woertern
+gesucht, fand rund 200 weitere. Dazu kamen die Stellen, die gar kein Python sind: die
+Kontextschluessel der Vorlagen (43), die Jinja-Makros und ihre Parameter, die CSS-Variablen
+(17), die vier JavaScript-Dateien mitsamt Kommentaren, und die Werte, die zwischen Vorlage
+und View verabredet sind (`ja`/`nein`, `naechste_schaltung`, `laeuft`/`eingerichtet`).
+Alles davon ist jetzt englisch. Der Nachweis ist derselbe wie oben: null Unterschiede in
+den 3036 Zeichenkettenliteralen unter `thermoctl/`.
+
+**Drei Defekte, die dabei ans Licht kamen — alle aelter als diese Umstellung:**
+
+- Das **Scharfschalt-Formular war kaputt.** Die View las `form.get("begruendung")`, die
+  Vorlage schickte seit der ersten Uebersetzung `name="reason"`. Scharfschalten verlangt
+  eine Begruendung, also waere jeder Versuch mit „Bitte kurz festhalten, worauf sich das
+  Scharfschalten stuetzt" abgeprallt — an einer Anlage, die niemand scharf schalten kann.
+- Die **Uebersteuerung auf der Startseite** schickte `naechste_schaltung`, `dauer`,
+  `dauerhaft`; die View kennt `next_switch`, `duration`, `permanent`. „Bis zur naechsten
+  Schaltung" und „fuer eine Dauer" fielen still auf „auf Widerruf" zurueck.
+- Die **Token-Gueltigkeit** und die **Uebersteuerungsdauer** lasen bei einer abgewiesenen
+  Eingabe Schluessel, die es nicht mehr gab (`gueltig_tage`, `dauer_minuten`) — das Feld
+  kam leer zurueck statt mit dem, was dort stand.
+
+Keiner der drei hatte einen roten Test. Alle drei fand erst der Abgleich Vorlage gegen
+View, den diese Umstellung erzwungen hat.
+
+**Eine Konfigurationsaenderung, die beim Umstieg zu beachten ist:**
+`THERMOCTL_MQTT_PRAEFIX` heisst jetzt `THERMOCTL_MQTT_PREFIX`. Wer eine `.env` hat, zieht
+das nach; sonst gilt wieder die Vorgabe `thermoctl` und der Dienst veroeffentlicht unter
+einem anderen Topic-Zweig als bisher.
+
+**Was der Vergleich der Bildschirmfotos gefangen hat:** Die CSS-Variablen und die Vorlagen
+gingen getrennt — `var(--warmth)` stand in der Vorlage, `--waerme` im Stylesheet. Die
+Zeitplan-Balken verloren dadurch ihre Waermefarbe und wurden grau. Kein Test hat das
+gesehen; die Seite antwortete mit 200 und sah nur anders aus.
+
+**Die Navigationsleiste zeigte ins Leere — auf jeder Seite.** `/zonen`, `/geraete`,
+`/steuerung`: alle drei seit der Endpunkt-Umstellung 404. Dazu die Formularziele zum
+Anlegen und Ändern einer Zone, eines Modus und zum Löschen — wer eine Zone anlegen wollte,
+bekam eine Fehlerseite. Die Anwendung sah dabei vollständig in Ordnung aus, solange man
+Adressen direkt eintippte, und genau das haben alle Prüfungen getan: die Bildschirmfotos,
+der Rauchtest und ich.
+
+Der vorhandene Verweis-Test liest den *Quelltext* der Vorlagen und überspringt alles, was
+`{{` oder `{%` enthält. Das ist fast alles: Die Navigationsleiste baut ihre Verweise über
+ein Makro, und jedes Formularziel setzt eine Zonen-Id ein. Die ganze Leiste war für ihn
+unsichtbar.
+
+Der neue Test liest stattdessen die **gerenderten** Seiten — dort sieht ein per Makro
+gebauter Verweis aus wie jeder andere — und folgt jedem `href`. Formularziele gleicht er
+gegen die Routentabelle ab, statt sie abzuschicken. Die erste Fassung schickte sie ab, mit
+leerem Rumpf, an jede Aktion jeder Seite; eine davon heißt „setze die Rechte dieser
+Gruppe", ein leerer Rumpf heißt „keine Rechte", und der Test entzog dem Konto, mit dem er
+angemeldet war, seine eigenen Rechte. Ein Test, der das verändert, was er prüft, berichtet
+über einen Zustand, den es nie gab.
+
+Beide Hälften sind von beiden Seiten gegengeprüft, und die Navigation ist danach im
+Browser einmal wirklich durchgeklickt worden — jeder Punkt der Leiste, jeder Eintrag des
+Untermenüs, jeder Reiter einer Zone.
+
+**Ein Waechter gegen genau diese Fehlerklasse.** Fuenfmal an einem Tag dasselbe
+Muster: Eine View wurde umbenannt, die Vorlage nicht, und Jinja beantwortet einen
+unbekannten Namen mit der leeren Zeichenkette. Die Seite antwortet weiter mit 200 und
+zeigt nur nichts mehr an — oder schickt, im schlimmeren Fall, einen Feldnamen, den die
+View nie liest, und das Anlegen tut still gar nichts.
+
+`tests/test_smoke_test.py` rendert jetzt jede Seite mit einem `Undefined`, das jeden
+*Zugriff* auf einen unbekannten Namen mitschreibt, und faellt beim ersten. Bewusst kein
+`StrictUndefined`: Etliche Vorlagen fragen zu Recht, ob ein optionaler Wert da ist. Rot
+wird nur, wer einen unbekannten Namen tatsaechlich *liest*.
+
+Der Waechter fand sofort den fuenften Fall: Die Modusauswahl im Zeitplan las
+`values.mode` und `errors.mode`, die View liefert `mode_id`. Der gewaehlte Modus kam nach
+einer abgewiesenen Eingabe nicht zurueck, und die Fehlermeldung am Feld erschien nie.
+Gegengeprueft von beiden Seiten: Mit dem alten Namen wird der Test rot, mit dem neuen
+gruen.
+
+**Der Rest, gefunden mit umgekehrter Suche.** Statt nach deutschen Woertern zu suchen,
+wurde jeder Bezeichner gegen ein Woerterbuch gehalten und alles Unbekannte angesehen. Das
+foerderte noch 23 Bezeichner zutage (`einordnung`, `abonnements`, `clientdaten`, `typ`,
+`roh`, `vorhanden`, …) und vier Makro-Parameter in den Vorlagen (`pflicht`, `typ`,
+`leer_erlaubt`, `an`). Damit ist der Vorrat leer: Was die Suche jetzt noch meldet, sind
+englische Woerter, die im Woerterbuch fehlen.
+
+Von 18 verglichenen Seiten sind 15 pixelgleich zur Fassung davor; zwei aendern sich schon
+zwischen zwei Aufnahmen desselben Standes (sie nennen Zeitspannen), und die dritte
+unterscheidet sich genau in dem umbenannten Variablennamen.
+
+Zehn der elf geprüften Seiten sind pixelgleich zu den Aufnahmen davor; die elfte
+unterscheidet sich in einem Satz, der eine Zeitspanne nennt.
+
+Die letzten deutschen Bezeichner im Schema sind weg: `user_passkey.bezeichnung` heißt
+`label`, `passkey_challenge.zeremonie` heißt `ceremony` (Migration `f2c6d90a41b8`, mit
+einem Test, der die Daten über beide Richtungen hinweg verfolgt — `batch_alter_table` baut
+die Tabelle unter SQLite neu, und eine misslungene Kopie sähe hinterher richtig aus und
+wäre leer). Dazu `NAMENSKONVENTION` → `NAMING_CONVENTION` und der JSON-Schlüssel der
+Passkey-Registrierung.
+
+## Das Wandtablet-Dashboard
+
+Unter `/kiosk` läuft eine eigene, große Ansicht für ein Tablet an der Wand: je Zone
+Ist-Temperatur, Sollwert, Betriebsart und, wenn erlaubt, zwei Knöpfe für den Sollwert und
+einer für den Boost.
+
+**Es ist nicht öffentlich, und das ist eine bewusste Abweichung vom Wortlaut des
+Wunsches.** Eine unauthentifizierte Seite widerspräche Grundsatz 4 — im Altsystem war
+fehlende Auth eine akzeptierte Heimnetz-Eigenschaft, hier ausdrücklich nicht mehr.
+Stattdessen gibt es ein **Kiosk-Token**: ein gewöhnlicher `ApiToken`, ausgestellt unter
+`/kiosk-tokens`, jederzeit widerrufbar, optional befristet, und mit einem Rechtesatz aus
+genau zwei Angaben — welche Zonen, und ob auch bedient werden darf. „Bedienen" heißt
+`setpoint.write` und `override.create`; ein Kiosk-Token kann damit genau das, was eine
+Home-Assistant-Thermostatkarte kann, und nichts darüber hinaus. Es läuft durch dieselbe
+`Principal`-Maschinerie wie jeder andere Zugang, nichts geht an `domain/authz.py` vorbei.
+
+Das Token fährt **einmal** in der Adresse (`/kiosk/<token>`, als Lesezeichen des Tablets)
+und danach nur noch im Cookie; der Einstieg leitet deshalb weiter, statt direkt zu
+rendern — so steht es weder in der Adresszeile noch in einem `Referer`-Kopf. Die erste
+Anfrage stünde allerdings in der Zugriffsprotokollierung, und die erreicht der vorhandene
+Maskierungsfilter **nicht**: uvicorn baut seine Meldung aus `record.args` statt aus
+strukturierten Feldern. Ein eigener Filter am Logger — nicht am Handler, damit er vor
+jedem Handler läuft — schwärzt den Pfad, bevor er formatiert wird. Ohne das hätte jeder
+Aufruf das Token im Klartext protokolliert, Grundsatz 2.
+
+Im Browser durchgespielt, nicht nur getestet: Token ausstellen, Adresse einmal im Klartext,
+Einstieg vom Tablet aus in einem frischen Browser ohne Anmeldung, Weiterleitung auf das
+nackte `/kiosk`, Sollwert verstellt — und dann die Gegenprobe, dass dasselbe Tablet auf
+`/settings`, `/users`, `/devices` und `/kiosk-tokens` mit **401** abprallt und auf `/`
+zur Anmeldung geschickt wird.
+
+**Was dabei auffiel und was noch offen ist:** Das Cookie trägt das Token im Klartext — wer
+das Tablet in der Hand hat, kann es auslesen und anderswo verwenden. Das ist der Preis
+eines Lesezeichens statt einer Anmeldung und durch den engen, widerrufbaren Rechtesatz
+abgefedert, aber es ist eine Eigenschaft, keine Nachlässigkeit. Und der Trockenlauf gilt
+auch hier: Ein am Tablet verstellter Sollwert ändert die Entscheidung, aber solange nicht
+scharf geschaltet ist, bewegt er kein Ventil.
+
+Auf dem großen Display fiel außerdem etwas auf, das vorher niemandem auffiel: Die
+Begründung des Sollwerts stand als „Uebersteuerung (feste Temperatur)" da — mit
+transliteriertem Umlaut, während dieselbe Anwendung an anderer Stelle „Übersteuerung"
+schreibt. Die sichtbaren Begründungen sind nachgezogen. **Der Rest steht noch:** Rund
+hundert weitere Zeichenketten im Projekt transliterieren Umlaute (`gueltig`, `naechster`,
+`geloescht`, …). Die meisten davon sind Protokollmeldungen, einige aber sind Fehlertexte,
+die ein Mensch zu sehen bekommt. Das ist eine eigene Aufräumarbeit und bewusst nicht
+nebenbei erledigt.
+
+## Zwei neue Fähigkeiten: Thermostatventile und die Sonne
+
+**Zigbee-Heizkörperthermostate (WT-A03E).** Ein Thermostatventil ist kein Schalter: Es hat
+gar keinen Schaltausgang, sondern wird über `system_mode` (`heat`/`off`) und
+`occupied_heating_setpoint` gefahren, 5–30 °C in halben Schritten. Beides bewegt ein echtes
+Ventil, also trägt die Nachricht `switches=True` und beide Riegel des Trockenlaufs greifen.
+
+Als Thermostat gilt ein Gerät nur, wenn es `occupied_heating_setpoint` **und** `system_mode`
+gemeinsam anbietet. Keines allein reicht: Einen Sollwert zeigt auch eine bloße Wandanzeige.
+Die Aktor-Stelle verlangt seither `switch` **oder** `thermostat` — welche Fähigkeit ein Gerät
+hat, entscheidet nur, welcher Adapter den Befehl baut, nicht ob es die Stelle füllen darf.
+
+Zwei Befunde aus der Gegenlesung durch Codex sind eingearbeitet:
+
+- **Die Erkennung fragte nicht, ob die Merkmale beschreibbar sind.** Ein Gerät, das
+  `occupied_heating_setpoint` und `system_mode` nur *veröffentlicht* — eine Wandanzeige,
+  die ein fremdes Thermostat spiegelt — wäre als Aktor durchgegangen. Der Dienst hätte
+  ihm Befehle geschickt, die es nicht befolgen kann; das Anlagenbild zeigte einen
+  vollständigen Pfad, und geschaltet hätte nie etwas. Ein Fehler, der im Winter auftaucht
+  und wie einer in der Regellogik aussieht. Jetzt zählt nur, was Zigbee2MQTT in `access`
+  als schreibbar ausweist (Bit 2), und beide Merkmale müssen im **selben** Expose sitzen —
+  zwei unabhängige Zweige dürfen sich nicht zu einem Thermostat addieren, das es nirgends
+  gibt. Ein fehlendes `access` zählt als nicht schreibbar: Ein Auslassen ist keine
+  Erlaubnis.
+
+  Der Positivtest des Umsetzenden hatte in seinen Merkmalen **gar keine** `access`-Angaben
+  und war trotzdem grün — er sicherte die Eigenschaft also nicht, die er zu sichern
+  schien. Er ist jetzt mit echten Werten geschrieben, dazu drei Gegenproben.
+
+- **Das Downgrade der Migration löschte die Fähigkeiten, ohne aufzuräumen, was auf sie
+  zeigt.** `device_capability_link.capability_id` und `measurement.capability_id`
+  verweisen ohne `ON DELETE CASCADE` darauf. Unter MariaDB wäre das Downgrade an einem
+  Fremdschlüsselfehler abgebrochen, unter SQLite hätte es still verwaiste Zeilen
+  hinterlassen — beides genau dann, wenn jemand das Downgrade wirklich braucht, nämlich
+  nachdem die Fähigkeit benutzt wurde. Dieselbe Stelle war in `d1a7c3e59b40` schon einmal
+  aufgefallen; dort räumt das Downgrade seine Verweise zuerst weg. Jetzt hier auch.
+
+  Der generische Migrationstest läuft über ein leeres Schema und konnte das nicht sehen.
+  Der neue Test legt erst ein Gerät samt Verknüpfung und Messwert an. Er prüft
+  **auf verwaiste Zeilen**, nicht darauf, dass das Downgrade abbricht: Der
+  Alembic-Unterprozess erzwingt unter SQLite keine Fremdschlüssel, dort wäre der Fehler
+  sonst unsichtbar geblieben.
+
+Codex' dritter Punkt — der Adapter sei nirgends im Produktionscode verdrahtet — stimmt,
+ist aber kein Befund gegen diese Änderung: Der vorhandene `Zigbee2MqttValve` wird ebenso
+wenig instanziiert. Die Orchestrierung, die aus einer Entscheidung einen Ventilbefehl
+macht, gehört zu Phase 4 und existiert noch für **kein** Aktor-Modell. Ergänzt ist ein
+Trockenlauftest auch für `switching(False)` — `system_mode: off` bewegt das Ventil
+ebenso.
+
+Der Rest von Codex' Bericht ist nicht verwertbar: In seiner Umgebung ließ sich kein
+temporäres Verzeichnis anlegen, Docker war nicht erreichbar, und mypy brach intern ab —
+außer Ruff lief keine der verlangten Prüfungen. Sein Urteil „nicht freigebbar" stützt sich
+also allein auf Lektüre. Die Prüfungen sind hier unabhängig gelaufen, gegen beide
+Datenbanken. Ein Fehler von mir dabei: Ich habe die Gegenlesung auf `main` angesetzt,
+während ich dort selbst weiterarbeitete — der Bericht wundert sich zu Recht über
+Dateien, die sich unter ihm veränderten. Ein Review gehört auf einen festen Stand.
+
+**Heizkörperthermostate lassen sich jetzt auch wirklich zuziehen.** Die Domäne nahm
+`switch` **oder** `thermostat` für die Aktor-Stelle an — die Seite schrieb aber weiter
+`data-requires="switch"`, und das Ziehskript verglich gegen dieses eine Wort. Eine
+Thermostatkarte wurde also im Browser abgewiesen, bevor die Domäne sie je sah: Nichts war
+serverseitig falsch, die Zuordnung war nur unerreichbar. Die Anforderung kommt jetzt aus
+`REQUIRED_CAPABILITY` in die Vorlage statt ein zweites Mal hingeschrieben zu werden, und
+das Skript prüft eine Menge statt eines Wortes.
+
+**Dabei war die Erkennung zu streng für echte Hardware.** Sie verlangte einen
+schreibbaren `occupied_heating_setpoint` **und** ein `system_mode`. Ein Bosch BTH-RA — drei
+davon hängen in dieser Anlage — hat kein `system_mode` und wäre damit weiter abgewiesen
+worden, also genau das Gerät, für das die Funktion gebaut ist. Entscheidend ist jetzt der
+**schreibbare Sollwert**: Der allein bewegt ein Ventil. Vor einer bloßen Anzeige schützt
+nach wie vor die Schreibbarkeit, nicht das zweite Merkmal — ein Wandgerät, das einen
+Sollwert nur *meldet*, kommt nicht durch.
+
+Der Adapter schickt `system_mode` folgerichtig nur noch an Geräte, die es haben. Ein
+Ventil ohne wird ausgeschaltet, wie man es von Hand ausschaltet: mit dem niedrigsten
+Sollwert, den es annimmt. Das ist ein echter Verhaltensunterschied — `system_mode: off`
+schließt das Ventil, ein Minimalsollwert lässt es auf 5 °C weiterregeln —, deshalb sagt
+der Aufrufer, welches von beidem gilt.
+
+**Was nur der Projektinhaber prüfen kann:** Ob die drei BTH-RA nach der nächsten
+`bridge/devices`-Nachricht tatsächlich die Fähigkeit `thermostat` bekommen. Die
+Fähigkeiten werden erst dann neu berechnet; bis dahin stehen sie in der Datenbank noch
+ohne. Ein Neustart von Zigbee2MQTT genügt.
+
+**Nach dem Zurückgehen im Browser ließ sich nichts mehr ziehen.** Aus dem Betrieb
+gemeldet: ein Gerät per Ziehen zuordnen, auf eine Unterseite wechseln, zurück — und die
+Karten reagierten auf nichts mehr.
+
+htmx legt beim Navigieren eine Momentaufnahme der Seite in seinen Verlaufsspeicher und
+stellt sie beim Zurückgehen daraus wieder her. **Attribute überleben das,
+Ereignisbehandler nicht.** Die Skripte markierten sich mit `data-wired="yes"` im Markup,
+um sich nach jedem htmx-Tausch nicht doppelt zu verdrahten — diese Marke kam aus dem
+Speicher zurück, die Behandler nicht. `setUp()` sah die Marke, kehrte sofort um, und die
+Seite war tot.
+
+Die Marke liegt jetzt in einem `WeakSet` statt im Markup. Ein aus dem Speicher geparstes
+Element ist ein neues und wird neu verdrahtet; die Frage, ob ein Attribut eine
+Wiederherstellung übersteht, stellt sich gar nicht mehr. Alle fünf Skripte folgen
+derselben Regel — auch `permissions.js`, wo die Marke an einer Stelle saß, die htmx nicht
+austauscht. Sie war dort harmlos, aber nur solange das so bleibt, und niemand sollte sich
+das beim Lesen neu herleiten müssen.
+
+Ein Wächter in `tests/test_smoke_test.py` hält das Muster fern. Er liest den Quelltext,
+nicht das Verhalten — die Testsuite hat keinen Browser. Nachgemessen wurde von Hand:
+vorher zog die Karte nach dem Zurückgehen gar nicht mehr, nachher zieht sie, das Ziel
+hebt sich hervor, und Zuordnen wie Herausziehen kommen an.
+
+**Ein Thermostatventil kann jetzt auch selbst regeln.** Zwei Betriebsarten, und der
+Unterschied ist, wer entscheidet:
+
+- **thermoctl schaltet** (Vorgabe). Es rechnet an/aus mit Hysterese, Mindestschaltdauer
+  und Fensterkontakt und fährt das Ventil. Das Thermostat ist ein Schalter, der zufällig
+  Thermostat spricht.
+- **Das Ventil regelt selbst.** thermoctl sagt nur noch, worauf — den Sollwert und, wo das
+  Gerät ein Merkmal dafür anbietet, die anderswo gemessene Raumtemperatur. Das ist, wofür
+  ein Heizkörperthermostat gebaut ist, und es hat einen handfesten Vorteil: Sein eigener
+  Fühler sitzt am Heizkörper und misst mehrere Grad zu warm. Mit der Temperatur eines
+  Fühlers an der gegenüberliegenden Wand regelt es gegen den Raum statt gegen sich selbst.
+
+Umgeschaltet wird über einen **Schalter** in der Rollen-Tabelle, je Zuordnung auf der
+Geräteseite der Zone. Vorher stand dort ein Knopf, und der war zu Recht verwirrend: Seine
+Beschriftung nannte den Zustand, in den er *wechselt*, der Satz darunter den, der *gilt* —
+zwei gegenläufige Aussagen nebeneinander. Ein Schalter zeigt schlicht den aktuellen
+Zustand, und der Hilfetext erklärt, was er bedeutet.
+
+Er legt sich selbst um, statt einen zweiten Knopf zu verlangen: Ein Schalter, der einen
+Zustand zeigt und erst nach einem Klick woanders wirkt, lügt so lange, bis jemand diesen
+Klick tut. Ohne JavaScript passiert das nicht — dafür steht ein `<noscript>`-Knopf im
+Formular. Die Kennung ist je Zeile eindeutig; mit einer gemeinsamen zeigte jede
+Beschriftung auf den ersten Schalter, und ein Klick auf den Text der dritten Zeile legte
+das Ventil der ersten um.
+
+Der Zustand ist eine Checkbox, und das dreht die Bedeutung des Fehlens um: Angehakt
+schickt einen Wert, nicht angehakt schickt **gar nichts**. Falsch gelesen hieße das
+„unverändert", und Ausschalten täte still nichts. Ein Test hält beide Richtungen fest.
+
+Angeboten wird der Schalter je Zuordnung auf der Geräteseite der Zone — die Angabe beschreibt, wie
+*diese* Zone *dieses* Ventil fährt. Angeboten nur dort, wo sie etwas bedeutet: bei einem
+Aktor, der ein Thermostat ist. Eine Steckdose regelt nicht selbst, und die Domäne weist
+den Versuch ab, nicht nur die Oberfläche. Die Umstellung steht im Protokoll, weil sie
+ändert, wie ein echtes Ventil gefahren wird.
+
+Drei Eigenschaften, auf die es ankommt:
+
+- **Ein geschriebener Sollwert bewegt ein Ventil.** Er ist kein Anzeigewert. Die Nachricht
+  trägt deshalb `switches=True` und geht durch beide Riegel des Trockenlaufs — im
+  Trockenlauf verlässt nichts das Haus. Wäre es anders, hätte der Trockenlauf ein Loch in
+  genau der Größe dieser Funktion.
+- **Ein offenes Fenster senkt den geschriebenen Sollwert auf den Frostschutz.** Sonst
+  gälte „Fenster offen unterbricht das Heizen" für ausgerechnet diese Zonen nicht mehr:
+  thermoctl schaltet sie ja nicht, die einzige verbliebene Wirkung ist die Zahl, die es
+  schreibt. Der Frostschutzwert kommt aus derselben Funktion wie überall — zweimal
+  gerechnet liefe er irgendwann auseinander, und der Unterschied wäre ein Raum, der auf
+  einem Weg einfriert und auf dem anderen nicht.
+- **Geschrieben wird nur, was das Gerät annimmt.** Zigbee2MQTT verwirft eine Nutzlast
+  außerhalb der angegebenen Grenzen ohne Fehler — und verwirft die *Nachricht*, nicht das
+  einzelne Feld. Ein unplausibler Messwert hätte also auch den Sollwert gekostet. Beide
+  Werte gehen in einer Nachricht hinaus, damit nie die neue Soll- mit der alten
+  Ist-Temperatur zusammentrifft, und Unverändertes wird gar nicht erst gesendet: Ein
+  batteriebetriebenes Ventil soll nicht jeden Zyklus dieselbe Zahl bekommen.
+
+Welches Merkmal die Ist-Temperatur aufnimmt, entscheidet das Gerät: `external_temperature_input`,
+`external_temperature`, `remote_temperature` oder `external_measured_room_sensor` — je
+nachdem, was es als beschreibbar meldet. Bietet es keines an, wird nur der Sollwert
+geschrieben. „Wenn möglich" heißt hier wörtlich das.
+
+**Was offen bleibt:** In dieser Betriebsart trifft thermoctl weiter Schattenentscheidungen,
+die nichts mehr fahren — sie sind dann eine Aussage über die Zone, kein Befehl. Ob das im
+Vergleichsbetrieb von Phase 4 stört, entscheidet sich, wenn dieser entworfen wird.
+
+**Sonnenprognose-Absenkung.** In der Übergangszeit heizt eine Dachwohnung morgens hoch,
+obwohl zwei Stunden später die Sonne durch die Dachfenster kommt. Verspricht die Vorhersage
+(Open-Meteo, kein Schlüssel nötig) in den nächsten Stunden nennenswerte Einstrahlung, wird
+der Sollwert abgesenkt — begrenzt durch eine Obergrenze in Kelvin und gewichtet mit einem
+Sonnenprofil je Zone (0 = gar nicht, etwa ein Nordzimmer; 1 = stark). Voreinstellung 0,
+also aus.
+
+Drei Eigenschaften, auf die es hier ankommt:
+
+- **`decide()` bleibt unangetastet.** Die Absenkung ist eine Korrektur am Sollwert *vor* dem
+  Bau der Situation, keine neue Regel. Die Rangfolge aus Frostschutz, Fenster offen,
+  Mindestschaltdauer und Hysterese ändert sich nicht — Grundsatz 7.
+- **Der Frostschutz ist eine absolute Untergrenze.** Die Absenkung wird auf genau den
+  Abstand nach oben begrenzt und fällt ganz weg, wenn keiner mehr da ist.
+- **Ein Ausfall der Quelle senkt nichts ab.** „Funktion aus", „kein Standort hinterlegt" und
+  „Quelle nicht erreichbar" fallen alle auf dasselbe `None` zusammen. Die Testsuite geht nie
+  ins Netz.
+
+Die Begründung des Sollwerts nennt die tatsächliche Absenkung in Kelvin (Grundsatz 5).
+
+Zwei Befunde kamen aus der Gegenlesung in der Hauptsession. Die Absenkung trug beliebig
+viele Nachkommastellen — ein Faktor 0,35 gegen 2 K hätte aus 21,0 still 20,30 gemacht, einen
+Sollwert, den die Oberfläche einem Menschen verweigert. Jetzt auf eine Nachkommastelle
+**abwärts** gerundet: Aufrunden könnte die eingestellte Obergrenze überschreiten, und die
+Obergrenze ist die Zusage dieser Funktion. Und beide Migrationen hingen an derselben
+Vorgängerrevision; die Historie hatte zwei Köpfe. Die Hauptsession hat sie geordnet, wie es
+die Arbeitsanweisung vorsieht.
+
+Die Sonnenabsenkung ist über alle drei Adapter erreichbar, nicht nur über die
+Oberfläche: `PUT /api/v1/control/solar-location` setzt Schalter und Standort,
+`GET /api/v1/control` und das MCP-Werkzeug `read_control` geben beides zurück, und der
+`solar_gain_factor` hängt an der Zone und geht über `POST`/`PUT /api/v1/zones` mit.
+Fehlt das Feld beim Schreiben, gilt 0 — ein Aufrufer, der die Absenkung nicht kennt,
+schaltet sie damit aus statt sie versehentlich ein. Die Koordinaten sind im REST-Schema
+absichtlich Text: Ein `Field(ge=-90, le=90)` wäre eine zweite Fassung der Grenzen, die
+in der Domäne stehen, und zwei Fassungen laufen auseinander.
+
+Dabei kam eine Datenbank-Abhängigkeit ans Licht, die nur der MariaDB-Lauf zeigt: SQLite
+gibt `Numeric(3,2)` als `0` zurück, MariaDB als `0.00`. Eine MCP-Ausgabe, die je nach
+Datenbank anders aussieht, ist keine Zusicherung — die Skala ist jetzt festgenagelt.
+
+**Was nur der Projektinhaber kann:** Eine echte Abfrage gegen Open-Meteo einmal laufen
+lassen — der Aufbau der Anfrage ist aus der Dokumentation gebaut, aber nie gegen den
+laufenden Dienst geprüft. Und am echten WT-A03E nachsehen, ob `system_mode` und
+`occupied_heating_setpoint` tatsächlich das tun, was hier angenommen wird.
+
+## Konfigurierbare Bediengeräte
+
+Zigbee2MQTT-Merkmale aus `bridge/devices` werden jetzt mit Zugriff, Typ, Einheit,
+Wertebereich und Auswahlwerten gespeichert. Unter `/controllers` lassen sich lesbare
+Merkmale auf Sollwert oder Betriebsart einer Zone und schreibbare Merkmale auf
+Sensor-/Zonentemperatur, Zonensollwert oder einen festen Wert legen. Die Tastenbelegung
+wird dort bearbeitet; die Zonenseite verweist nur noch auf die neue Stelle.
+
+Schreibkanäle sind doppelt abgesichert: Die Domäne nimmt sie ausschließlich für Geräte an,
+die Bediengerät und **nirgends Aktor** sind, und der Veröffentlichungszyklus prüft dieselbe
+Bedingung vor jedem Versand erneut.
+
+Die zweite Hälfte dieser Bedingung kam bei der Gegenlesung dazu und ist der Grund, warum es
+sie gibt: Zu prüfen, ob ein Gerät *irgendwo* Bediengerät ist, reicht nicht. Ein Thermostat
+kann in einer Zone Aktor sein und in einer anderen als Bediengerät hängen — es zeigt ja
+einen Sollwert an. Ein Schreibkanal auf sein `occupied_heating_setpoint` wäre dann als
+bloße Anzeige angemeldet und bewegte trotzdem ein Ventil, mit `switches=False` an beiden
+Riegeln des Trockenlaufs vorbei. Die MQTT-Nachricht trägt `switches=False` und wird nur bei einem
+geänderten Wert (oder nach Prozessneustart) gesendet. Lesekanäle verwenden wie
+Tastendrücke den Messzeitpunkt als Wiederholungsschutz.
+
+Was nur der Projektinhaber kann: Am echten Bediengerät prüfen, ob `sensor: external` und
+`external_temperature` tatsächlich auf dem Display erscheinen und ob ein am Gerät
+verstellter Sollwert zurück in die Zone gelangt.
+
+## Zigbee-Heizkörperthermostate (WT-A03E) angebunden
+
+Ein Thermostatventil ist kein Schalter. Der neue Adapter `Zigbee2MqttThermostat` in
+`thermoctl/integrations/actuators.py` fährt es über `system_mode` (`heat`/`off`) und
+`occupied_heating_setpoint` statt über `state: ON`/`OFF` — beides bewegt ein echtes
+Ventil, also `switches=True` an der MQTT-Veröffentlichung und beide Riegel des
+Trockenlaufs vor jedem Versand. Im Trockenlauf wird nichts gesendet, sondern wie beim
+vorhandenen Ventil-Adapter ein `SwitchResult(False, "Trockenlauf, haette gesendet: …")`
+geliefert. Ein Sollwert außerhalb 5–30 °C wird abgewiesen statt gesendet; ein Wert
+zwischen den 0,5-Grad-Schritten des Geräts wird gerundet, nicht verworfen.
+
+Erkennung des Gerätetyps: `capabilities_from_exposes` in
+`thermoctl/domain/device_classes.py` vergibt die neue Fähigkeit `thermostat`, wenn ein
+Gerät sowohl `occupied_heating_setpoint` als auch `system_mode` exponiert — erst die
+Kombination beweist ein echtes Thermostatventil, `occupied_heating_setpoint` allein
+trägt auch eine reine Sollwertanzeige. Migration `b6e9f14d2a83` trägt die neue Fähigkeit
+sowie `running_state` und `window_open` in `device_capability` nach. Die Aktor-Rolle in
+`thermoctl/domain/device_assignment.py` verlangt jetzt `switch` **oder** `thermostat` —
+beide bewegen ein Ventil, welcher Adapter zuständig ist, entscheidet nur, wie der Befehl
+aussieht. `thermoctl/domain/plant_diagram.py` mitgezogen, da es dieselbe
+`REQUIRED_CAPABILITY`-Struktur liest.
+
+Die übrigen lesbaren Merkmale des Geräts (`local_temperature`, `position`,
+`running_state`, `window_open`, `battery`) laufen über den vorhandenen Weg:
+`FIELD_TO_CAPABILITY` in `thermoctl/domain/reading.py` kennt jetzt `position` →
+`valve_position`, `running_state` und `window_open` zusätzlich zu den bereits
+vorhandenen Feldern — kein zweiter Aufnahmeweg neben `readings_from_payload`.
+
+Was nur der Projektinhaber kann: Ein echtes WT-A03E gegen einen laufenden Zigbee2MQTT
+anmelden und prüfen, ob die Fähigkeitserkennung, die Messwerte und — nach dem
+Scharfschalten in Phase 4 — der Schaltbefehl tatsächlich ankommen.
+
+## Wo wir stehen
+
+| Phase | Zustand |
+|---|---|
+| 1 — Fundament | abgeschlossen, veröffentlicht als `v0.1.0` |
+| 1a — Nacharbeiten | abgeschlossen |
+| 2 — Geräte-Anbindung im Schattenbetrieb | **gebaut**; der Nachweis über mehrere Tage braucht die Anlage |
+| 3 — Konfigurations-Oberfläche | **abgeschlossen**, Abnahmekriterium nachgewiesen |
+| 4 — Regelkreis und Cutover | Logik und Tests stehen, **nichts ist scharf** |
+| 5 — Integrationen und Veröffentlichung | bis auf zwei Punkte erledigt |
+
+`thermoctl` liest Sensoren, führt eine Messwert-Historie, erkennt ausgefallene Sensoren,
+meldet Störungen, und schreibt für jede Zone auf, **was es schalten würde und warum** —
+ohne je etwas zu schalten. Eine vollständige Anlage lässt sich über die Oberfläche
+einrichten, ohne einen einzigen SQL-Befehl.
+
+## Zahlen
+
+Vom Controller selbst nachgeprüft, nicht aus Berichten übernommen:
+
+| | |
+|---|---|
+| Tests | 1024, grün unter SQLite **und** MariaDB |
+| Testabdeckung | 98,55 %, Mindestschwelle 97 % in der CI |
+| Ruff, mypy strict | ohne Befund, 90 Quelldateien |
+| Migrationskette | linear, ein Kopf, vorwärts und rückwärts gegen beide Datenbanken |
+| CI und Container | grün |
+
+## Der Trockenlauf ist abgesichert, nicht zugesagt
+
+- `setting.control_armed` steht auf `false` und wird nirgends gesetzt.
+- Jeder Aktor prüft ihn als Erstes.
+- Der MQTT-Client verweigert das Veröffentlichen zusätzlich, solange er nicht scharf gebaut
+  wurde — auch wenn ein Aufrufer es ausdrücklich verlangt.
+- Tests belegen beides **und** den Gegenbeweis: Ein scharf gebauter Client sendet wirklich.
+  Ohne den belegte die Suite nur, dass nichts gesendet wird — auch dann, wenn das Senden
+  gar nicht gebaut wäre.
+
+## Was in diesem Lauf entstanden ist
+
+**Phase 2** — Nutzlast-Auswertung gegen die echten Anlagendaten, Geräteerkennung aus
+`bridge/devices` (erkennt Ventile und Fensterkontakte, ohne je eine Zustandsnachricht von
+ihnen gesehen zu haben), MQTT-Client mit TLS und Wiederverbindung, Ingest samt
+Messwert-Historie und Aufbewahrung, Störungserkennung, Fensterkontakte, Aktor-Adapter im
+Trockenlauf hinter zwei Riegeln, Schattenprotokoll, Geräteübersicht.
+
+**Die Regelentscheidung** ist aus Phase 4 vorgezogen — sonst hätte das Schattenprotokoll
+nichts zu protokollieren. Hysterese, Mindestschaltdauer, Fensterpause, Frostschutz bei
+Sensorausfall, als reine Funktion mit 33 Tests, darunter der Defekt des Altsystems
+ausdrücklich vorgeführt.
+
+**Was seither dazugekommen ist.** Ein **Thermostat** je Zone auf der Startseite, das den
+Sollwert des gerade geltenden Modus verstellt — dauerhaft, nicht als Übersteuerung; das
+**Anlagenbild** (`/anlage`), das den Weg Sensor → Zone → Aktor zeigt und die Lücken darin
+benennt; **Heizzeiten** (`/statistik`) je Zone und Tag, aus den Abständen im
+Schattenprotokoll gerechnet und mit gekappten Ausfalllücken; die
+**Schnittstellen-Übersicht** (`/schnittstellen`), die für jede Gegenstelle sagt, ob sie
+eingerichtet ist, ob sie läuft und woher jeder Wert kommt; eine neue **Rechtevergabe** mit
+einem Formular je Gruppe statt sechzehn Einzelklicks; und **Gerätezuordnung per Ziehen** auf
+das Flussbild — in beide Richtungen: Ein Gerät geht aus dem Vorrat auf eine Stufe und von
+dort auch wieder zurück, was es aus der Zone nimmt. Beides im Browser nachgestellt, für die
+Messquelle (eine Spalte an der Zone) wie für eine Rolle (eine eigene Zeile).
+
+**Die Geräteseite beantwortet jetzt die Frage, mit der man hinkommt.** Vorher stand dort
+eine Tabelle mit neun gleich gewichteten Spalten, in der die meisten Zellen ein
+Gedankenstrich waren; bei vierunddreißig Geräten fand man darin nichts. Jetzt trägt jedes
+Gerät seinen Befund im Klartext — offline, seit zwei Tagen still, Batterie bei 8 %,
+schwacher Funk —, das Auffällige steht in einem eigenen Block oben, und ein Suchfeld
+filtert nach Name, Modell, Fähigkeit oder Zone. Die Schwelle, ab der ein Gerät als stumm
+gilt, ist dieselbe, nach der die Regelung einen Sensor aufgibt: eine zweite Zahl hieße,
+dass die Liste ein Gerät für gesund hält, das die Regelung schon abgeschrieben hat.
+Weggelassen ist alles, was sich auf jeder Zeile wiederholte — ein Kärtchen „Batteriestand"
+neben der Prozentzahl sagt nichts, was die Zahl nicht sagt, und „ohne Zone" bei jedem der
+vierunddreißig Geräte steht jetzt einmal oben als Zahl.
+
+**Home Assistant bedient jetzt wirklich eine Zone.** Bis hierher gab es dort einen
+Thermostat und sonst nichts. Jetzt ist jede Zone ein eigenes Gerät mit dreizehn Entitäten:
+Thermostat, **Boost**-Knopf, letzte Schaltung und nächster Moduswechsel als Zeitstempel, je
+Modus eine Solltemperatur und je Regelparameter eine Zahleneingabe. Was ein Befehl bewirkt,
+steht in `domain/remote_control.py` — dieselben Funktionen mit denselben Grenzen, die auch
+die Oberfläche benutzt.
+
+Vier Entscheidungen darin:
+
+- **Der Thermostat verstellt den Modus, nicht „jetzt gerade".** Vorher legte er eine
+  Übersteuerung an; die wäre nach dem nächsten Schaltpunkt weg gewesen, und der Regler
+  spränge scheinbar von selbst zurück.
+- **Boost zieht die nächste Schaltung vor** — was ohnehin käme, gilt ab sofort und genau
+  bis zu dem Zeitpunkt, an dem es planmäßig gekommen wäre. Ein Boost auf einen festen Wert
+  müsste raten, wie warm und wie lange.
+- **Der Trockenlauf steht nicht mehr im Zonennamen.** Home Assistant leitet die
+  Entitätskennung beim ersten Auftauchen aus dem Namen ab: Eine Zone, die zuerst im
+  Trockenlauf erschien, hieß danach für immer `climate.thermoctl_zone_1_trockenlauf`. Jetzt
+  sagt es eine eigene Entität für den ganzen Dienst, und die Discovery-Nutzlast ist
+  trocken und scharf Byte für Byte gleich — am Broker nachgemessen.
+- **Alles Bleibende geht mit retain hinaus**, und ein Befehl wird sofort beantwortet statt
+  erst im nächsten Regelzyklus.
+
+**Bediengeräte tun etwas.** Die Rolle `controller` war bis hierher eine Zuordnung ohne
+Wirkung: Ein Gerät an der Wand konnte zugeordnet werden, aber ein Tastendruck fiel durch —
+das Feld `action` stand nicht in der Feldzuordnung. Jetzt landet jeder Druck als Messwert
+in der Datenbank, und was er auslöst, steht in `controller_binding`.
+
+**Es wird nicht geraten, sondern zugehört.** Wie ein Gerät seine Tasten nennt, entscheidet
+Zigbee2MQTT je Modell — `single_plus`, `button_1_single`, `up_open`. Eine Tabelle dieser
+Namen im Quelltext wäre harte Verdrahtung (Grundsatz 1) und für jedes Gerät falsch, das
+noch nicht darin steht. Stattdessen zeigt die Oberfläche unter *Zone → Geräte →
+Tastenbelegung*, welche Aktionen dieses Gerät **wirklich** geschickt hat: einmal jede Taste
+drücken, neu laden, zuordnen. Belegbar sind fünf Dinge — wärmer, kälter (Schrittweite je
+Taste), nächste Schaltung vorziehen, Aus, Automatik. Mehr gehört nicht auf einen Knopf, an
+dem man im Vorbeigehen nicht sieht, was man tut.
+
+Zwei Dinge, die dabei auffielen: Eine **behaltene Nachricht** wird bei jeder Neuverbindung
+erneut zugestellt — ohne Vergleich des Messzeitpunkts löste ein Wackelkontakt denselben
+Tastendruck immer wieder aus. Und eine **Schrittweite mit zwei Nachkommastellen** erzeugte
+Sollwerte, die die Domäne ablehnt; die Spalte trägt jetzt eine Stelle, so viel wie ein
+Sollwert auch.
+
+Was **nicht** gebaut ist: das Display eines Bediengeräts mit Werten aus thermoctl zu
+speisen. Unter welchem Schlüssel Zigbee2MQTT eine externe Temperatur für den W100
+entgegennimmt, ist ohne das Gerät in der Hand nicht zu verifizieren.
+
+**Boost und die Regelparameter gibt es auch über REST und MCP.** Die Logik liegt in
+`domain/remote_control.py` und `domain/zone_settings.py`, die Adapter sind dünn —
+Grundsatz 6. Neu sind `POST /api/v1/zones/{id}/boost`,
+`PUT /api/v1/zones/{id}/parameters/{name}` sowie die MCP-Werkzeuge `boost`,
+`regelparameter_lesen` und `regelparameter_setzen`.
+
+Zwei Entscheidungen dabei: Ein **einzelner** Parameter statt nur des PUT auf alle sechs —
+wer sonst nur die Hysterese ändern will, müsste erst alle lesen und wieder mitschicken und
+schriebe dabei jeden geerbten Wert als Zonenabweichung fest. Und `regelparameter_lesen`
+liefert die **Grenzen mit**: Ohne sie wäre für ein Sprachmodell jeder Schreibversuch ein
+Versuch, „0,05 Kelvin Hysterese" sieht so plausibel aus wie „0,5".
+
+**Drei Fehler, die dabei aufgefallen sind:**
+
+1. **Die Moduswahl in Home Assistant tat scheinbar nichts.** Die Climate-Karte dort ist
+   nicht optimistisch — sie wartet auf den Zustand. Der kam erst im nächsten Regelzyklus,
+   also sprang die eben gewählte Betriebsart eine Minute lang zurück.
+2. **`betriebsart_setzen` setzte den Fremdschlüssel statt der Beziehung.** Ein bereits
+   geladenes `zone.operating_mode` blieb damit alt, und die neue Sofortantwort hätte den
+   *alten* Modus gemeldet. Gefunden vom Test der Sofortantwort, nicht beim Lesen.
+3. **`ende_der_naechsten_schaltung` griff zur echten Uhr**, während der Aufrufer mit einem
+   übergebenen Zeitpunkt rechnete. Für den Boost hieß das: Die Übersteuerung endete
+   irgendwann, nur nicht an ihrem Schaltpunkt. Fiel unter MariaDB zusätzlich auf, weil
+   dort `DATETIME` sekundengenau ist und zwei Übersteuerungen derselben Sekunde beliebig
+   sortierten — jetzt entscheidet die Kennung.
+
+**Der Zeitplan-Editor riss das Gitter unter der Maus weg.** Ein Klick holte das
+Anlege-Formular mit `scrollIntoView` heran; wer zwei Punkte nacheinander setzen wollte,
+klickte beim zweiten Mal auf dieselbe Bildschirmstelle und traf eine völlig andere Uhrzeit.
+Im Browser gemessen: ein Klick verschob das Gitter um 377 px, bei rund 415 px für den ganzen
+Tag also um mehr als zwölf Stunden. `focus({preventScroll: true})` genügte nicht — der
+Aufruf scrollte in Chromium trotzdem, gemessen 377 gegen 0 ohne ihn. Statt zu scrollen
+markiert ein Klick die Stelle jetzt im Gitter selbst, dort wo die Maus ist.
+
+**Vier Bezeichnungen tragen ihre Umlaute** — „Verbindungsqualität", „Beleuchtungsstärke",
+„Bediengerät", „Weboberfläche". Sie standen seit den Nachschlagetabellen transliteriert da
+und stehen auf jeder Gerätekarte, in der Rollenspalte und in jeder Audit-Zeile. Die
+Migration ändert nur, was noch den alten Wortlaut trägt: Wer eine Bezeichnung von Hand
+angepasst hat, behält seine.
+
+**Drei Fehler behoben, die nur beim Benutzen auffielen:** Die Kopfleiste verschwand auf
+sechs Seiten, sobald man sie über das Menü ansteuerte (`hx-boost` schickt bei jeder
+Navigation `HX-Request`, sechs Ansichten hielten das für einen Teilaustausch). Auf schmalen
+Geräten ließ sich die ganze Seite seitwärts schieben. Und das dunkle Schema folgt jetzt
+allein dem Betriebssystem, auch während die Seite offen ist.
+
+**Die Oberfläche ist neu gestaltet und neu aufgeteilt.** Farbe ist darin kein Schmuck,
+sondern Messwert: Die ganze Fläche ist Schiefer und Papier, und die einzigen gesättigten
+Töne im Programm sind Kupfer (warm) und Stahlblau (kühl). Temperaturen stehen in einem
+eigenen dicktengleichen Register, damit Zahlen untereinander vergleichbar sind, und mit
+Komma statt Punkt. Ein dunkles Schema gibt es jetzt wirklich — vorher stand
+`data-bs-theme="auto"` im Markup, ein Wert, den Bootstrap nicht kennt.
+
+**Die Startseite ist eine Statustafel.** Eine Zeile je Zone, und je Zone ein **Tagesplan
+als Band**: der heutige Zeitplan über 24 Stunden, eingefärbt nach Solltemperatur, mit
+einem Strich für *jetzt*. Gilt der Plan gerade nicht — Betriebsart „Aus" oder eine laufende
+Übersteuerung —, wird das Band entkräftet und beschriftet, statt einen Plan zu behaupten,
+der nicht wirkt. Weggefallen sind die beiden Zählkacheln, darunter die Zahl der
+**Benutzer**: Wie viele Konten es gibt, sagt über eine Heizung nichts.
+
+**Neu aufgeteilt:** Was täglich gebraucht wird, steht offen in der Leiste (Start, Zonen,
+Geräte, Betrieb); was selten gebraucht wird, liegt unter Einstellungen. `/steuerung` heißt
+jetzt *Betrieb* und trägt nur noch den Betriebszustand — die Regelvorgaben sind nach
+`/einstellungen` gezogen. Die fünf Seiten einer Zone (Zeitplan, Sollwerte, Geräte,
+Regelparameter, Zonendaten) haben einen gemeinsamen Kopf und sind damit ein Ort statt fünf.
+
+**Zeitpläne lassen sich ziehen.** Ein Balken der Wochenansicht geht mit der Maus auf eine
+andere Zeit oder einen anderen Tag, im 15-Minuten-Raster; ein Klick übernimmt Tag und
+Uhrzeit ins Anlege-Formular. Das Ziehen ist eine zweite Bedienart derselben Änderung, keine
+eigene Schnittstelle: Beim Loslassen geht dasselbe Formular hinaus, das ohne JavaScript von
+Hand ausgefüllt würde — gleicher CSRF-Schutz, gleiche Rechteprüfung, gleiche Fehlerdarstellung.
+Ohne JavaScript bleibt der Zeitplan vollständig bedienbar.
+
+**Die Anlage lässt sich jetzt auch bedienen, nicht nur einrichten.** `/steuerung` zeigt
+den Betriebszustand, was die Regelung gerade für jede Zone entscheiden würde, und die
+globalen Vorgaben, von denen jede Zone erbt. Scharfschalten hat ein **eigenes Recht**
+(`control.arm`) statt unter `setting.manage` mitzulaufen — wer Zeitzone und
+Aufbewahrungsdauer pflegen darf, soll die Heizung nicht nebenbei scharf schalten können.
+Es verlangt eine Begründung, die ins Audit-Protokoll geht, und ist mit einem Klick
+umkehrbar. **Der zweite Riegel bleibt unberührt:** `MqttClient(switching_allowed=…)` wird
+beim Bau des Clients gesetzt, nicht von hier.
+
+**Vor der Einrichtung** führen `/` und `/login` zur Einrichtungsseite, statt ein Anmeldeformular zu zeigen, an dem sich mangels Benutzer niemand anmelden kann. Nach abgeschlossener Einrichtung gilt wieder der gewohnte Weg über `/login`; `/setup` ist dann dauerhaft geschlossen.
+
+**Phase 3** — Formularbausteine, Zonenverwaltung, Gerätezuordnung samt Tausch, Modi und
+Sollwerte, Zeitplan-Editor mit Wochenansicht, Übersteuern, Regelparameter je Zone,
+Benutzer-/Gruppen-/Tokenverwaltung, Audit-Ansicht, Übersichtsseite.
+
+**Aus Phase 5 vorgezogen** — MCP-Server als dritter Adapter, API-Dokumentation,
+Self-Hosting-Anleitung, Beispiel-Compose, Benachrichtigungen bei Störungen,
+[Sicherheitsdurchsicht](sicherheitsdurchsicht.md), und die REST-Endpunkte, mit denen die
+drei Adapter wieder auf demselben Stand sind.
+
+**Aus Phase 4 vorgebaut, ohne etwas scharf zu schalten** — die Umwandlung des alten
+Stundenrasters in Schaltpunkte (die Roadmap führte sie als ungeklärt; sie ist jetzt eine
+reine Funktion mit einer Rückprobe über alle 168 Wochenstunden) und die lesende Grundlage
+des Vergleichsbetriebs.
+
+## Zehn Fehler, die alle Tests und Reviews passiert hatten
+
+Alle in diesem Lauf gefunden:
+
+1. **Zwei Wächtertests prüften nichts.** Seit FastAPI 0.141 verschachtelt `include_router()`
+   die Routen; beide Wächter fanden nur noch `/healthz` und waren grün, weil sie leer
+   liefen.
+2. **Der Testlauf hing an einer zufällig vorhandenen `.env`.** Örtlich grün, in der CI wäre
+   der nächste Lauf rot geworden.
+3. **Die Startseite baute eine eigene Vorlagen-Umgebung mit relativem Pfad.** Im Container
+   liegt das Paket in `site-packages` und das Arbeitsverzeichnis ist `/app` — dort hätte
+   genau die Seite gefehlt, auf die Anmeldung und Navigation zeigen.
+4. **Ein zu kurzes Passwort hinterließ eine halb angelegte Einrichtung**, weil die Prüfung
+   erst nach den ersten Schreibzugriffen kam.
+5. **Der Downgrade der Phase-2-Migration scheiterte nur unter MariaDB** — dort wird der
+   Index für einen Fremdschlüssel gebraucht.
+6. **Die Frostschutz-Sperre griff in keiner echten Anlage.** Der Einrichtungsassistent legt
+   den Frostschutzmodus als eingebauten Modus an, und die allgemeine Sperre kam zuerst —
+   also bekam genau der wichtigste Modus die nichtssagende Meldung. Der zugehörige Test war
+   grün, weil seine Fixture einen Zustand herstellte, den es in keiner Instanz gibt.
+7. **`shadow_decision.zone_id` hatte als einziger Zonenbezug keine Kaskade**, wodurch sich
+   eine Zone nicht mehr löschen ließ, sobald ein Schattenlauf für sie gelaufen war.
+
+8. **Die Sollwertgrenze für Übersteuerungen galt nicht überall.** Sie stand dreimal
+   verschieden da — und der MCP-Server prüfte gar nicht. Übersteuerungen sind genau die
+   Eingabe, die in Phase 4 ungefiltert in die scharfe Regelentscheidung fließt. Die
+   Prüfung liegt jetzt in der Domäne.
+9. **Die Fehlerklassen waren eingefrorene Dataclasses.** Python hängt einer Ausnahme beim
+   Werfen ihren Traceback an, und eine eingefrorene Dataclass verweigert das — die
+   Ausnahme kam als `FrozenInstanceError` an, sobald sie tief genug durchgereicht wurde.
+
+10. **Ein Start ohne Migrationslauf endete in einem Traceback statt in einer Auskunft.**
+    Der Container migriert im Entrypoint, ein lokaler `uvicorn`-Aufruf nicht. Wer die
+    Datenbankdatei verschob und startete, bekam sechzig Zeilen SQLAlchemy mit
+    `no such table: user` als Kern — richtig, aber ohne einen Hinweis darauf, dass eine
+    Migration fehlt. Gefunden hat es der Projektinhaber, nicht die Suite: Kein Test
+    startete je gegen eine leere Datenbank, weil jede Fixture ihr Schema selbst anlegt.
+    Der Dienst prüft den Schemastand jetzt vor der ersten Abfrage und nennt den Befehl;
+    ein veraltetes Schema fällt dabei ebenfalls auf, statt später an einer fehlenden Spalte.
+
+Dazu vier Korrekturen aus der Gegenlesung in der Hauptsession: Frostschutz statt Abschalten
+bei Sensorausfall, ein MQTT-Wiederverbindungsabstand, der monoton wuchs, eine doppelt
+implementierte Zeitberechnung in zwei Adaptern, und ein Meldungsversand, der den Zyklustakt
+verzögert hätte.
+
+## Offen
+
+**Bei der Zeitzonenprüfung gefundene fachliche Grenzfehler:**
+
+- Die Statistik bildet Abfragegrenzen und Tages-Buckets weiterhin an UTC-Mitternacht;
+  ein lokaler Tag beginnt dadurch in Europe/Berlin um 01:00 beziehungsweise 02:00.
+- Der Datumsfilter des Auditprotokolls deutet lokale Formulardaten weiterhin als
+  UTC-Grenzen. Beides betrifft die fachliche Gruppierung beziehungsweise Abfrage und
+  ist mehr als eine reine Anzeigekorrektur.
+- Die Startseite beschreibt das Ende einer noch laufenden Übersteuerung mit dem
+  Vergangenheitsfilter `age` und zeigt deshalb „gerade eben" statt einer Zukunftsangabe.
+
+**Was nur der Projektinhaber kann:**
+
+- **Phase 2 wirklich abschließen** — Schritt für Schritt in
+  [inbetriebnahme-schattenbetrieb.md](inbetriebnahme-schattenbetrieb.md). Die Anlage muss
+  über mehrere Tage laufen:
+  `THERMOCTL_MQTT_ENABLED=true` samt Zugangsdaten in `.env`, dann Geduld. Erst dann steht
+  fest, dass plausible Ist-Temperaturen aller Zonen einlaufen und das Schattenprotokoll
+  nachvollziehbare Entscheidungen zeigt.
+- **Die Frostschutz-Entscheidung bestätigen**, bevor Phase 4 scharf schaltet — siehe
+  [offene-entscheidungen.md](offene-entscheidungen.md). Sie hat körperliche Folgen.
+- **Entscheiden, ob Meross überhaupt gebaut werden soll.** Bisher steht dort nur die
+  schaltende Hälfte, und das war in dieser Datei zu wohlwollend beschrieben: Der Adapter
+  kann eine *bekannte* Steckdose ein- und ausschalten, aber es gibt **keine
+  Geräteerkennung für Meross**. `services/ingest.py` ist die einzige Stelle im ganzen
+  Dienst, die `Device`-Zeilen anlegt, und sie liest ausschliesslich die
+  Zigbee2MQTT-Geräteliste. Eine Meross-Steckdose kann deshalb nirgends auftauchen und
+  keiner Zone zugeordnet werden — aufgefallen beim Ausprobieren des Release, nicht hier.
+  Die Schnittstellenseite behauptete obendrein „Eingerichtet", sobald eine Adresse in der
+  Umgebung stand; sie sagt jetzt „Noch nicht gebaut" und nennt den Grund.
+  Ein Test hält fest, dass es bei der einen Anlegestelle bleibt: Entsteht ein zweiter
+  Weg, wird er rot und erinnert daran, die Schnittstellenseite nachzuziehen.
+- **Das Repository öffentlich schalten** — ausdrücklich seine Entscheidung.
+- **Den Kiosk-Entwurf bestätigen oder verwerfen.** Der Wunsch lautete „öffentliches
+  Dashboard"; gebaut ist ein Kiosk-Token mit engem, widerrufbarem Rechtesatz, weil eine
+  unauthentifizierte Seite Grundsatz 4 widerspräche. Das ist eine Auslegung, keine
+  Rückfrage — wer es anders will, sagt es.
+
+**Was als Nächstes ansteht:**
+
+- Phase 4: Vergleichsbetrieb entwerfen (Dauer, Auflösung, Bericht), dann das Schema dafür
+  bauen — nicht umgekehrt. Datenübernahme aus dem Altschema. Scharfschalten hinter einem
+  Schalter, jederzeit umkehrbar.
+- Phase 5, Rest: altes Topic-Schema abkündigen (wartet auf den Cutover). Die
+  Home-Assistant-Anbindung ist angeschlossen — sie meldet die Zonen an, veröffentlicht
+  ihren Zustand und nimmt Sollwert und Betriebsart entgegen, sobald die Regelung scharf
+  ist.
+
+- **Die transliterierten Umlaute aufräumen.** Rund hundert Zeichenketten schreiben
+  `gueltig`, `naechster`, `geloescht`. Die meisten sind Protokollmeldungen, einige aber
+  Fehlertexte für Menschen. Die sichtbaren Sollwert-Begründungen sind erledigt.
+
+- **`vm130-nginx` bleibt bis zum abgeschlossenen Cutover unverändert die Rückfallebene.**

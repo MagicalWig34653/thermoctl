@@ -73,6 +73,7 @@ def test_every_setting_is_listed_in_the_example_file() -> None:
 LIVING_DOCS = [
     "README.md",
     "docs/STATUS.md",
+    "docs/verlauf.md",
     "docs/api.md",
     "docs/mcp.md",
     "docs/mqtt.md",
