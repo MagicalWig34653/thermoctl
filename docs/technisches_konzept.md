@@ -271,7 +271,10 @@ Anforderung an das Gerät: schaltbar über Zigbee2MQTT (Ein/Aus) und meldet sein
 
 ### 5.5 Fensterkontakt
 
-Optionaler Tür-/Fensterkontakt, der beim Öffnen die Heizung im zugeordneten Raum pausiert. Ein Raum kann mehrere Fensterkontakte haben (z. B. mehrere Fenster plus Terrassentür); es reicht, dass **eines** davon offen ist, damit die Heizung pausiert – erst wenn **alle** wieder geschlossen sind, läuft die Heizung nach kurzer Verzögerung weiter.
+Optionaler Tür-/Fensterkontakt, der beim Öffnen die Regelentscheidung im zugeordneten Raum
+pausieren soll. Ein Raum kann mehrere Fensterkontakte haben (z. B. mehrere Fenster plus
+Terrassentür); es reicht, dass **eines** davon offen ist. Erst wenn **alle** wieder geschlossen
+sind, soll die Regelentscheidung nach kurzer Verzögerung fortgesetzt werden.
 
 ### 5.6 Geräte, die (noch) nicht unterstützt werden
 

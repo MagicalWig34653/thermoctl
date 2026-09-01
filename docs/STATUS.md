@@ -31,8 +31,8 @@ Diese Frage ist mehrfach zu grob beantwortet worden, in beide Richtungen. Der St
   wahr, dass „weiterhin nichts geschaltet wird" — das war eine Zusicherung ohne Deckung.
 - **Der MQTT-Client trägt einen zweiten Riegel, der beim Start gebaut wird.** Wer scharf
   schaltet, muss den Dienst neu starten, bevor überhaupt etwas hinausgeht.
-- **Danach bewegt sich genau eines:** Selbstregelnde Thermostatventile bekommen ihren
-  Sollwert veröffentlicht, und das bewegt ein Ventil. **Normale Ein/Aus-Entscheidungen
+- **Sind beide Riegel offen**, bekommen selbstregelnde Thermostatventile ihren Sollwert
+  veröffentlicht. **Normale Ein/Aus-Entscheidungen
   gehen nirgendwohin** — weder `Zigbee2MqttValve` noch `MerossSwitch` werden im
   Produktivcode konstruiert. Das ist die offene Arbeit von Phase 4.
 
@@ -42,7 +42,7 @@ Selbst nachgeprüft, nicht aus Berichten übernommen (Stand 2026-09-01):
 
 | | |
 |---|---|
-| Tests | 1405 unter SQLite, 1404 plus ein Skip unter MariaDB |
+| Tests | 1417 unter SQLite, 1416 plus ein Skip unter MariaDB |
 | Testabdeckung | 100 %, Mindestschwelle 100 % in der CI |
 | Ruff, mypy strict | ohne Befund, 101 Quelldateien |
 | Migrationskette | linear, ein Kopf, vorwärts und rückwärts gegen beide Datenbanken |
@@ -53,7 +53,7 @@ die zweite setzt, läuft unbemerkt gegen SQLite und bekommt trotzdem einen grün
 
 ## v0.2.2 — Freigabe steht aus
 
-Das dritte Freigabe-Review hat den Stand abgelehnt. **Seine Befunde sind behoben**; ein
+Das fünfte Freigabe-Review hat den Stand abgelehnt. **Seine Befunde sind behoben**; ein
 erneutes Review steht aus. Die Oberfläche unterscheidet jetzt Trockenlauf, scharf ohne
 Neustart und scharf nach Neustart. Auch dann bezeichnet sie nur die freigegebene
 Sollwertausgabe an selbstregelnde Thermostatventile; Ein/Aus-Entscheidungen erreichen

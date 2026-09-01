@@ -201,10 +201,10 @@ def test_a_missing_mcp_package_is_reported_understandably(
         server._mcp_server_class()
 
 
-def test_the_registered_mcp_tools_call_the_adapter_functions(
+def test_the_registered_mcp_tools_have_descriptions_and_call_the_adapter_functions(
     session: Session, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The registered tools carry real schemas and are not just names."""
+    """The registered wrappers carry client descriptions, schemas, and behavior."""
     zone = zone_with_schedule(
         session, "registrierungszone", [(1, 0, "tag-registrierung", Decimal("20.0"))]
     )
@@ -257,6 +257,11 @@ def test_the_registered_mcp_tools_call_the_adapter_functions(
         "force_dry_run",
         "move_schedule_point",
     }
+    descriptions = {
+        name: getattr(tool, "__doc__", None) for name, tool in tools.items()
+    }
+    assert all(description and description.strip() for description in descriptions.values())
+    assert "MQTT-latch observability" in descriptions["read_control"]  # type: ignore[operator]
     assert tools["list_zones"]()  # type: ignore[operator]
     assert tools["zone_state"](zone.id)  # type: ignore[operator]
     assert tools["explain_setpoint"](zone.id)  # type: ignore[operator]
@@ -365,6 +370,7 @@ def test_reading_control_shows_the_operating_state(session: Session) -> None:
     plaintext = _token(session, "leser", [("zone.read", None)])
     response = server.read_control(session, plaintext)
     assert response["armed"] is False
+    assert response["mqtt_startup_latch_state"] == "unknown_from_mcp_process"
     assert response["timezone"]
 
 

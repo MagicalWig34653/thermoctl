@@ -5,9 +5,10 @@ may contain spaces or umlauts, stays in the payload. State and command sit in se
 subtrees. This way a subscription to ``zustand/#`` never catches a command, and state
 topics need no ambiguous ``/get`` suffix.
 
-These functions are only wired up to a sending adapter in phase 4/5. The contract is
-built already now, so topic structure and discovery can be fully verified without
-access to the real heating system.
+These functions provide topics and discovery payloads to the production MQTT service.
+State and discovery messages are sent in dry run as well. Setpoint commands for
+self-regulating valves pass through the separate persisted and startup-built latches;
+on/off decisions have no wired actuator.
 """
 
 import json
@@ -104,7 +105,7 @@ def parameter_topics(zone_id: int, name: str, prefix: str = "thermoctl") -> tupl
 
 
 def armed_topic(prefix: str = "thermoctl") -> str:
-    """Whether control is really switching -- one statement for the whole service.
+    """The persisted first control latch -- not a statement about actuator output.
 
     Up until this point the dry run lived in the *name* of every zone. That was clearly
     visible and wrong for exactly that reason: Home Assistant derives the entity id
@@ -359,7 +360,7 @@ def armed_discovery(prefix: str = "thermoctl") -> DiscoveryMessage:
         "availability_topic": availability_topic(prefix),
         "payload_available": "online",
         "payload_not_available": "offline",
-        "name": "Freigabe gespeichert",
+        "name": "Regelung scharf",
         "unique_id": object_id,
         "object_id": object_id,
         "state_topic": armed_topic(prefix),

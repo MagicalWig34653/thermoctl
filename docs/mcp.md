@@ -3,9 +3,11 @@
 Der dritte Adapter über derselben Domänenlogik, neben der Weboberfläche und der
 [REST-Schnittstelle](api.md). Er stellt Zonen, Geräte, Zeitpläne, Sollwerte samt
 Begründung und die Schattenentscheidungen bereit und kann übersteuern. `read_control()`
-zeigt den gespeicherten ersten Riegel. Im Trockenlauf gehen keine Sollwerte hinaus; nach
-dem Scharfschalten bleibt der beim Start gebaute MQTT-Riegel bis zum Neustart zu. Erst
-danach können Sollwerte an selbstregelnde Thermostatventile gesendet werden.
+zeigt den gespeicherten ersten Riegel. Der MCP-Prozess teilt den prozesslokalen MQTT-Riegel
+nicht mit dem Web-/MQTT-Prozess und liefert seinen Zustand deshalb ausdrücklich als
+`unknown_from_mcp_process`. Im Trockenlauf gehen keine Sollwerte hinaus; nach dem
+Scharfschalten bleibt der beim Start gebaute MQTT-Riegel bis zum Neustart zu. Erst danach
+können Sollwerte an selbstregelnde Thermostatventile gesendet werden.
 Ein/Aus-Entscheidungen erreichen keinen Aktor.
 
 Installation mit der optionalen Abhaengigkeit:
@@ -54,7 +56,7 @@ prüft dasselbe Recht wie der entsprechende REST-Endpunkt.
 | `boost(zone_id)` | `override.create` | zieht die nächste Schaltung vor |
 | `read_control_parameters(zone_id)` | `zone.read` | wirksame Regelparameter **samt ihrer Grenzen** |
 | `set_control_parameters(zone_id, name, value)` | `zone.manage` | setzt einen Parameter, lässt die übrigen |
-| `read_control()` | `zone.read` | Betriebszustand, globale Vorgaben und die Sonnenabsenkung (an/aus, Standort, Vorlauf, Obergrenze) |
+| `read_control()` | `zone.read` | gespeicherter Riegel, nicht feststellbarer MQTT-Riegel, globale Vorgaben und Sonnenabsenkung |
 | `force_dry_run(reason)` | `control.arm` | nimmt die Regelung in den Trockenlauf zurück |
 | `move_schedule_point(zone_id, point_id, weekday, minute)` | `schedule.manage` | setzt einen Punkt auf einen anderen Zeitpunkt |
 

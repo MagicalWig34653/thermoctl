@@ -320,10 +320,10 @@ Bedeutungen von `quelle` in einer Signatur wären eine Falle für den nächsten 
 **Entschieden:** `MINIMUM_TEMPERATURE_C` in `thermoctl/domain/modes.py` steht auf −20,0 °C.
 Auf Wunsch des Projektinhabers.
 
-**Warum nicht 1 °C, wie zuerst umgesetzt:** Mit einem Sollwert von 1 °C heizt die Anlage
-immer noch, sobald es kälter wird. Wer eine Garage oder einen Schuppen nur überwachen und
-nicht temperieren will, braucht einen Wert, den die Raumtemperatur nie unterschreitet —
-also einen im Minusbereich. „Untersteuern" heißt genau das.
+**Warum nicht 1 °C, wie zuerst umgesetzt:** Mit einem Sollwert von 1 °C fordert die
+Regelung immer noch Heizen an, sobald es kälter wird. Wer eine Garage oder einen Schuppen
+nur überwachen und nicht temperieren will, braucht einen Wert, den die Raumtemperatur nie
+unterschreitet — also einen im Minusbereich. „Untersteuern" heißt genau das.
 
 **Warum −20 und nicht beliebig tief:** Darunter liegt kein Wunsch mehr, sondern ein
 Tippfehler oder eine kaputte Nutzlast, und die soll weiter auffallen. Es ist zugleich der
@@ -404,8 +404,8 @@ Wirkung ist die Zahl, die es schreibt. Ohne diese Regel gälte „Fenster offen 
 das Heizen" für ausgerechnet die Zonen nicht mehr, in denen jemand ein modernes Ventil
 eingebaut hat. Das wäre ein Verlust, den niemand bestellt hat.
 
-**Verworfen:** Gar nichts zu schreiben, solange ein Fenster offen ist. Dann behielte das
-Ventil seinen letzten Sollwert und heizte weiter gegen das offene Fenster — schlechter als
+**Verworfen:** Gar nichts zu schreiben, solange ein Fenster offen ist. Dann würde das
+Ventil seinen letzten Sollwert behalten und gegen das offene Fenster weiterheizen — schlechter als
 eine Zahl, die es kennt.
 
 ---

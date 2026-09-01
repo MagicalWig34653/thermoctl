@@ -333,14 +333,15 @@ def read_control(session: Session, plaintext: str) -> dict[str, object]:
     """The plant's operating state along with the defaults every zone inherits from.
 
     This reports the persisted database latch. The startup-built MQTT latch belongs to
-    the separate web/MQTT process and is not visible here, so this response cannot tell
-    armed-before-restart from armed-after-restart. On/off decisions reach no actuator.
+    the separate web/MQTT process, so its state is explicitly reported as unknown from
+    this process instead of being omitted. On/off decisions reach no actuator.
     """
     _token, principal = _log_in(session, plaintext)
     require(principal, "zone.read")
     row = settings(session)
     return {
         "armed": row.control_armed,
+        "mqtt_startup_latch_state": "unknown_from_mcp_process",
         "timezone": row.timezone,
         # The solar setback is reported alongside the defaults it modifies: an
         # assistant asked why a zone is heating less than its schedule says should be
@@ -434,36 +435,43 @@ def _register_tools(
 ) -> None:
     @server.tool(name="list_zones")
     def mcp_list_zones() -> list[dict[str, object]]:
+        """Lists the zones visible to the authenticated token."""
         with session_scope(factory) as session:
             return list_zones(session, plaintext)
 
     @server.tool(name="zone_state")
     def mcp_zone_state(zone_id: int) -> dict[str, object]:
+        """Returns the latest derived temperature and sensor state of a visible zone."""
         with session_scope(factory) as session:
             return zone_state(session, plaintext, zone_id)
 
     @server.tool(name="explain_setpoint")
     def mcp_explain_setpoint(zone_id: int) -> dict[str, object]:
+        """Returns a visible zone's effective setpoint and the reason for it."""
         with session_scope(factory) as session:
             return explain_setpoint(session, plaintext, zone_id)
 
     @server.tool(name="read_schedule")
     def mcp_read_schedule(zone_id: int) -> list[dict[str, object]]:
+        """Reads the schedule points and mode names of a visible zone."""
         with session_scope(factory) as session:
             return read_schedule(session, plaintext, zone_id)
 
     @server.tool(name="read_setpoints")
     def mcp_read_setpoints(zone_id: int) -> list[dict[str, object]]:
+        """Reads the temperatures configured for each mode of a visible zone."""
         with session_scope(factory) as session:
             return read_setpoints(session, plaintext, zone_id)
 
     @server.tool(name="list_devices")
     def mcp_list_devices() -> list[dict[str, object]]:
+        """Lists devices with integrations, capabilities, and signs of life."""
         with session_scope(factory) as session:
             return list_devices(session, plaintext)
 
     @server.tool(name="shadow_decisions")
     def mcp_shadow_decisions(zone_id: int, count: int = 10) -> list[dict[str, object]]:
+        """Returns the latest reasoned shadow decisions of a visible zone."""
         with session_scope(factory) as session:
             return shadow_decisions(session, plaintext, zone_id, count)
 
@@ -471,36 +479,43 @@ def _register_tools(
     def mcp_override(
         zone_id: int, temperature_c: Decimal, ends_at: datetime | None = None
     ) -> dict[str, object]:
+        """Creates a temporary setpoint override for a visible zone."""
         with session_scope(factory) as session:
             return override_zone(session, plaintext, zone_id, temperature_c, ends_at)
 
     @server.tool(name="cancel_override")
     def mcp_cancel_override(zone_id: int) -> dict[str, object]:
+        """Cancels the active setpoint override of a visible zone."""
         with session_scope(factory) as session:
             return cancel_override(session, plaintext, zone_id)
 
     @server.tool(name="boost")
     def mcp_boost(zone_id: int) -> dict[str, object]:
+        """Pulls a visible zone's next scheduled setpoint switch forward."""
         with session_scope(factory) as session:
             return boost(session, plaintext, zone_id)
 
     @server.tool(name="read_control_parameters")
     def mcp_read_control_parameters(zone_id: int) -> dict[str, object]:
+        """Reads a visible zone's effective control parameters and their limits."""
         with session_scope(factory) as session:
             return read_control_parameters(session, plaintext, zone_id)
 
     @server.tool(name="set_control_parameters")
     def mcp_set_control_parameters(zone_id: int, name: str, value: Decimal) -> dict[str, object]:
+        """Sets one control parameter of a visible zone within its limits."""
         with session_scope(factory) as session:
             return set_control_parameters(session, plaintext, zone_id, name, value)
 
     @server.tool(name="read_control")
     def mcp_read_control() -> dict[str, object]:
+        """Reads the persisted latch, MQTT-latch observability, and global defaults."""
         with session_scope(factory) as session:
             return read_control(session, plaintext)
 
     @server.tool(name="force_dry_run")
     def mcp_force_dry_run(reason: str = "") -> dict[str, object]:
+        """Returns control to dry run; this tool cannot arm the installation."""
         with session_scope(factory) as session:
             return force_dry_run(session, plaintext, reason)
 
@@ -508,6 +523,7 @@ def _register_tools(
     def mcp_move_schedule_point(
         zone_id: int, point_id: int, weekday: int, minute: int
     ) -> dict[str, object]:
+        """Moves an existing schedule point of a visible zone to another time."""
         with session_scope(factory) as session:
             return move_schedule_point(
                 session, plaintext, zone_id, point_id, weekday, minute

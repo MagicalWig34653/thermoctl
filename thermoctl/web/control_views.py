@@ -1,8 +1,8 @@
 """Two pages that operate on the same settings row -- and still belong apart.
 
-`/steuerung` is **operations**: whether the plant is really switching right now, what
-it's currently deciding, and the button that flips both. This is what you look at when
-something's wrong.
+`/steuerung` is **operations**: whether the persisted and startup-built latches are open,
+what control is currently deciding, and the button for the persisted latch. This is what
+you look at when something's wrong.
 
 `/einstellungen` are the **control defaults**: hysteresis, minimum switch durations,
 cycle time, retention, timezone. You set these once and then not again for years.
