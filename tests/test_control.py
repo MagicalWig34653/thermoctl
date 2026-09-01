@@ -187,6 +187,9 @@ def test_arming_through_the_interface(
     assert session.get(Setting, 1).control_armed is True
     entry = session.scalars(select(AuditEvent).where(AuditEvent.action == "arm")).one()
     assert entry.detail == "Vier Tage Schattenlauf verglichen"
+    assert entry.summary == (
+        "Regelung scharf geschaltet — Sollwertausgabe erst nach Neustart freigegeben"
+    )
 
 
 def test_without_control_arm_the_installation_stays_in_dry_run(

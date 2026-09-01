@@ -4,8 +4,9 @@ Diese Anleitung ist für den Projektinhaber. Sie beschreibt den einen Schritt, d
 tun kann und der Teilprojekt 2 wirklich abschließt: die Anlage anschließen und mehrere Tage
 laufen lassen.
 
-**Der Dienst schaltet dabei nichts.** Er liest, schreibt mit, und protokolliert, was er
-täte. Das Altsystem bleibt unangetastet und regelt weiter.
+**Die Regelung bleibt dabei unscharf.** Sie liest, schreibt mit und protokolliert ihre
+Entscheidungen. Es werden keine Sollwerte an Ventile gesendet; Ein/Aus-Entscheidungen
+erreichen keinen Aktor. Das Altsystem bleibt unangetastet und regelt weiter.
 
 ## 1. Zugangsdaten eintragen
 

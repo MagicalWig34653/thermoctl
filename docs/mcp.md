@@ -2,8 +2,11 @@
 
 Der dritte Adapter über derselben Domänenlogik, neben der Weboberfläche und der
 [REST-Schnittstelle](api.md). Er stellt Zonen, Geräte, Zeitpläne, Sollwerte samt
-Begründung und die Schattenentscheidungen bereit und kann übersteuern — **geschaltet wird
-nichts.**
+Begründung und die Schattenentscheidungen bereit und kann übersteuern. `read_control()`
+zeigt den gespeicherten ersten Riegel. Im Trockenlauf gehen keine Sollwerte hinaus; nach
+dem Scharfschalten bleibt der beim Start gebaute MQTT-Riegel bis zum Neustart zu. Erst
+danach können Sollwerte an selbstregelnde Thermostatventile gesendet werden.
+Ein/Aus-Entscheidungen erreichen keinen Aktor.
 
 Installation mit der optionalen Abhaengigkeit:
 
@@ -34,7 +37,7 @@ Beispiel sind ausschliesslich Platzhalter.
 
 ## Die Werkzeuge
 
-Neun Stück, alle über dieselbe Domänenlogik wie Oberfläche und REST-Schnittstelle. Jedes
+15 Stück, alle über dieselbe Domänenlogik wie Oberfläche und REST-Schnittstelle. Jedes
 prüft dasselbe Recht wie der entsprechende REST-Endpunkt.
 
 | Werkzeug | Recht | Was es liefert |
@@ -85,10 +88,11 @@ dagegen immer die sichere Richtung und soll jedem offenstehen, der die Anlage be
 Wer scharf schalten will, tut das dort, wo ein Mensch am Knopf steht. Nachzulesen in
 [offene-entscheidungen.md](offene-entscheidungen.md).
 
-Schreibende Werkzeuge für die Konfiguration — Zonen, Sollwerte, Regelparameter — gibt es
-ebenfalls nicht. Je weniger ein Assistent ungefragt ändern kann, desto besser. Wer eine
-Zone umbaut, tut das in der Oberfläche oder über die REST-Schnittstelle, wo eine Person
-daneben sitzt.
+Schreibende Werkzeuge für Zonen und Sollwerte gibt es nicht. Regelparameter sind die
+bewusste Ausnahme: `set_control_parameters` setzt genau einen benannten Parameter innerhalb
+der von der Domäne vorgegebenen Grenzen und verlangt `zone.manage`. Wer eine Zone umbaut
+oder Sollwerte pflegt, tut das in der Oberfläche oder über die REST-Schnittstelle, wo eine
+Person daneben sitzt.
 
 Beim Zeitplan gibt es eine Ausnahme: `move_schedule_point` ändert einen **schon
 vorhandenen** Punkt, legt aber keinen an und löscht keinen. „Verschieb die Morgenheizung

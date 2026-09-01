@@ -640,8 +640,10 @@ def control_set_armed(
 ) -> ControlResponse:
     """Flips the bolt that the database holds.
 
-    Its own permission `control.arm`, not `setting.manage`: this here moves a valve.
-    The second bolt -- `MqttClient(switching_allowed=...)` -- stays untouched.
+    Its own permission `control.arm`, not `setting.manage`: this changes the persisted
+    first stage. The startup-built `MqttClient(switching_allowed=...)` gate stays
+    untouched, so setpoints are not released until a restart. On/off decisions do not
+    reach an actuator in either stage.
     """
     _permission(principal, "control.arm")
     try:

@@ -129,8 +129,9 @@ Skripts falsch rät.
                             "thermoctl schreibt nur Soll- und, wenn das Gerät es "
                             "annimmt, Ist-Temperatur; das Ventil regelt damit selbst."
                             if assignment.self_regulating else
-                            "thermoctl schaltet das Ventil — mit Hysterese, "
-                            "Mindestschaltdauer und Fensterkontakt."
+                            "thermoctl entscheidet über die Ein/Aus-Anforderung — mit "
+                            "Hysterese, Mindestschaltdauer und Fensterkontakt. Derzeit "
+                            "ist dafür kein Aktor verdrahtet."
                         ),
                         element_id="self-regulating-" ~ assignment.id,
                         submit_on_change=true,
@@ -147,7 +148,8 @@ Skripts falsch rät.
                     {% if assignment.self_regulating %}
                     Ventil regelt selbst.
                     {% else %}
-                    thermoctl schaltet das Ventil.
+                    thermoctl entscheidet über die Ein/Aus-Anforderung; derzeit ist dafür
+                    kein Aktor verdrahtet.
                     {% endif %}
                 </span>
                 {% endif %}

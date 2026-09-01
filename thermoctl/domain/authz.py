@@ -94,7 +94,9 @@ PERMISSION_AREAS: list[tuple[str, str, list[str]]] = [
     ),
     (
         "Betrieb der Anlage",
-        "Globale Vorgaben -- und der Riegel, hinter dem eine echte Heizung haengt.",
+        "Globale Vorgaben und die gespeicherte Freigabe. Erst nach einem Neustart "
+        "können Sollwerte an selbstregelnde Thermostatventile gesendet werden; "
+        "Ein/Aus-Entscheidungen erreichen keinen Aktor.",
         ["setting.manage", "control.arm"],
     ),
     (

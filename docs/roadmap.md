@@ -20,7 +20,7 @@ Phase 1 geschehen ist. Features, die aus der unverbindlichen
 | 1a | Nacharbeiten | **umgesetzt** | Oberfläche benutzbar |
 | 2 | Geräte-Anbindung im Schattenbetrieb | **gebaut**, Laufzeit an der Anlage offen | Belegt gegen die echte Anlage, dass die Daten stimmen |
 | 3 | Konfigurations-Oberfläche | **umgesetzt**, seither erweitert | Ende der SQL-Pflege — ab hier im Alltag nützlich |
-| 4 | Regelkreis und Cutover | Logik gebaut, **nichts scharf** | Heizt wirklich; Altsystem wird abgelöst |
+| 4 | Regelkreis und Cutover | Logik gebaut; Freigabe in drei Stufen | Aktoren verdrahten; Altsystem ablösen |
 | 5 | Integrationen und Veröffentlichung | teilweise vorgezogen | Für Fremde aufsetzbar |
 
 Die Reihenfolge ist nicht beliebig: Der Teil, der eine echte Heizung schaltet, kommt bewusst
@@ -61,8 +61,9 @@ erledigen.
 
 ## Phase 2 — Geräte-Anbindung im Schattenbetrieb
 
-**Ziel:** Beweisen, dass Gerätedaten und Adressierung stimmen, **ohne die Heizung
-anzufassen**. Es wird gelesen und protokolliert, nichts geschaltet.
+**Ziel:** Beweisen, dass Gerätedaten und Adressierung stimmen. In dieser Phase war die
+Regelung unscharf: Es wurden keine Sollwerte an Ventile gesendet und Ein/Aus-Entscheidungen
+erreichten keinen Aktor.
 
 ### Features
 
@@ -71,7 +72,8 @@ anzufassen**. Es wird gelesen und protokolliert, nichts geschaltet.
   *(Idee aus dem Konzept-Dokument)*
 - Aktor-Adapter für Zigbee-Ventile — vollständig, aber im Trockenlauf
 - Meross-Anbindung — Geräteerkennung **und** Schaltweg, gegen ein echtes Konto geprüft.
-  Der Schattenzyklus gleicht die Geräteliste stündlich ab; geschaltet wird über MQTT.
+  Der Schattenzyklus gleicht die Geräteliste stündlich ab; der unverdrahtete Schaltweg
+  verwendet MQTT.
   Ungeprüft bleibt bis Phase 4 nur das erste echte Schalten
 - Fensterkontakte als Zustandsquelle *(Idee aus dem Konzept-Dokument)*
 - Sensor-Timeout: ein ausbleibender Messwert wird als Störung erkannt, nicht ignoriert
@@ -108,7 +110,7 @@ Betriebs. Er braucht Laufzeit an der Anlage — Zugangsdaten in `.env`,
 - Zugangsdaten für Broker und Meross gehören in die Konfiguration, niemals ins Repo.
 
 **Fertig, wenn** über mehrere Tage plausible Ist-Temperaturen aller Zonen einlaufen und das
-Schattenprotokoll nachvollziehbare Entscheidungen zeigt, ohne dass je geschaltet wurde.
+Schattenprotokoll nachvollziehbare Entscheidungen zeigt.
 
 ---
 
@@ -158,7 +160,8 @@ Gruppe und Token — alles über die Oberfläche, kein SQL.
 
 ## Phase 4 — Regelkreis und Cutover
 
-**Ziel:** Der Teil, der wirklich heizt. Kommt zuletzt und mit Vergleichsdaten aus Phase 2.
+**Ziel:** Regelung freigeben und anschließend Aktoren verdrahten. Die Freigabe allein
+verdrahtet keinen Aktor.
 
 ### Features
 
@@ -174,9 +177,10 @@ Gruppe und Token — alles über die Oberfläche, kein SQL.
 
 ### Aufgaben
 
-Vier davon sind bereits gebaut — **ohne dass etwas scharf geschaltet wäre.** Der Auftrag für
-den autonomen Lauf deckte das ausdrücklich: „Bau die Logik und die Tests, aber schalte
-nichts scharf."
+Vier davon wurden zunächst bei unscharfer Regelung gebaut. Inzwischen gilt die dreistufige
+Freigabe: unscharf nur Protokoll, scharf vor Neustart weiterhin keine Ausgabe, scharf nach
+Neustart Sollwerte an selbstregelnde Thermostatventile. Ein/Aus-Aktoren sind noch nicht
+verdrahtet.
 
 - [x] 1 Regelentscheidung als reine Funktion, umfassend getestet *(in Phase 2 vorgezogen)*
 - [x] 2 Hysterese und Mindestschaltdauer
@@ -189,7 +193,9 @@ nichts scharf."
 - [ ] 7 Scharfschalten hinter einem Schalter, jederzeit umkehrbar
 - [ ] 8 Ablösung: Heizungsteil aus `vm130-nginx`, die vier Skripte aus dem Alt-Repo
 
-**`setting.control_armed` steht auf `false` und wurde in keinem dieser Schritte gesetzt.**
+**`setting.control_armed` allein belegt keine körperliche Wirkung.** Der beim Start gebaute
+MQTT-Riegel muss ebenfalls offen sein; auch dann erreichen Ein/Aus-Entscheidungen ohne
+Verdrahtung keinen Aktor.
 
 ### Risiken
 
@@ -223,7 +229,7 @@ abgeschaltet ist.
 - [x] 1 Neue MQTT-Topic-Struktur samt Discovery — **gebaut und angeschlossen**; das
       Veröffentlichen hängt am selben Riegel wie das Schalten, siehe [mqtt.md](mqtt.md)
 - [ ] 2 Altes Topic-Schema abkündigen — *wartet auf den Cutover*
-- [x] 3 MCP-Server — sieben Werkzeuge über derselben Domänenlogik, [Doku](mcp.md)
+- [x] 3 MCP-Server — 15 Werkzeuge über derselben Domänenlogik, [Doku](mcp.md)
 - [x] 4 API-Dokumentation — [docs/api.md](api.md)
 - [ ] 5 Setup-Assistent erweitern — *gehört zu Phase 3*
 - [x] 6 Self-Hosting-Dokumentation und Beispiel-Compose — [docs/self-hosting.md](self-hosting.md)

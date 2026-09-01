@@ -64,8 +64,11 @@ Ausstellen. Verliert der Besitzer ein Recht, verliert es das Token ebenfalls.
 Die Passwortprüfung läuft auch bei unbekanntem Benutzernamen, gegen einen Wegwerf-Hash.
 Ohne das wäre Argon2id selbst der Seitenkanal.
 
-**Nichts wird geschaltet.** Zwei unabhängige Riegel: `setting.control_armed` und ein
-Client, der nur scharf gebaut veröffentlicht. Tests belegen beide Richtungen.
+**Drei Stufen sind zu unterscheiden.** Unscharf werden Entscheidungen nur protokolliert.
+Nach dem Scharfschalten, aber vor dem Neustart, bleibt auch die Sollwertausgabe gesperrt.
+Erst scharf und danach neu gestartet können Sollwerte an selbstregelnde Thermostatventile
+gesendet werden; Ein/Aus-Entscheidungen erreichen weiterhin keinen Aktor. Tests belegen
+beide Riegel.
 
 ### Das Kiosk-Token im Einzelnen
 

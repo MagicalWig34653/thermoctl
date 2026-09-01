@@ -15,9 +15,11 @@ optionale Absenkung, wenn die Sonnenprognose sie erlaubt, ein Dashboard für ein
 hinter einem widerrufbaren Kiosk-Token, und die Home-Assistant-Anbindung über
 MQTT-Discovery.
 
-**Geschaltet wird noch nichts.** Das ist Absicht: Der Dienst läuft im Schattenbetrieb, bis
-seine Entscheidungen gegen die bestehende Anlage geprüft sind. Zwei unabhängige Riegel
-sorgen dafür, dass er es auch nicht versehentlich tut.
+Die Ausgabe hat drei klar getrennte Stufen: Im **Trockenlauf** werden Regelentscheidungen
+nur protokolliert. **Scharf ohne Neustart** ändert den gespeicherten ersten Riegel, der beim
+Start gebaute MQTT-Riegel bleibt aber zu. Erst **scharf und neu gestartet** können Sollwerte
+an selbstregelnde Thermostatventile gesendet werden. Ein/Aus-Entscheidungen erreichen in
+keiner Stufe einen Aktor.
 
 ## Weiterlesen
 
@@ -78,7 +80,7 @@ Container tritt das nicht auf, dort ist das Paket regulär installiert.
 THERMOCTL_TEST_DATABASE_URL=mysql+pymysql://… .venv/bin/pytest    # gegen MariaDB
 ```
 
-Die Suite läuft gegen beide Datenbanken; die CI verlangt mindestens 97 % Abdeckung.
+Die Suite läuft gegen beide Datenbanken; die CI verlangt 100 % Abdeckung.
 
 Beim ersten Start stehen die Datenbankmigrationen und anschließend der Dienststart an. Ist
 noch kein Benutzer vorhanden, erscheint das einmalig verwendbare Einrichtungs-Token im
@@ -87,13 +89,14 @@ Token sind wie Zugangsdaten zu schützen.
 
 ## Noch nicht enthalten
 
-Der Regelkreis ist gebaut und erschöpfend getestet, aber **nicht scharf**: Es fehlt der
-Vergleichsbetrieb gegen die bestehende Anlage und die Übernahme der Altdaten. Bis dahin ist
-`thermoctl` keine betriebsfertige Heizungssteuerung, sondern ein Beobachter, der mitschreibt,
-was er täte.
+Der Regelkreis ist gebaut und erschöpfend getestet. Sein gespeicherter erster Riegel lässt
+sich scharf schalten; Sollwerte an selbstregelnde Thermostatventile werden jedoch erst nach
+einem anschließenden Neustart freigegeben. Ein/Aus-Entscheidungen werden nur protokolliert,
+denn ein Aktor ist dafür noch nicht mit dem Regelkreis verdrahtet. Bis zum abgeschlossenen
+Vergleichsbetrieb ist `thermoctl` keine betriebsfertige Heizungssteuerung.
 
 Die Home-Assistant-Anbindung ist dagegen angeschlossen: Sie meldet die Zonen an,
-veröffentlicht ihren Zustand und nimmt Sollwert und Betriebsart entgegen — was davon ein
-Ventil bewegt, wartet wie alles andere auf den scharfen Betrieb.
+veröffentlicht ihren Zustand und nimmt Sollwert und Betriebsart entgegen. Die Ausgabe eines
+Sollwerts an ein selbstregelndes Thermostat folgt den drei Stufen oben.
 
 Der Stand im Einzelnen: [docs/STATUS.md](docs/STATUS.md) und [docs/roadmap.md](docs/roadmap.md).

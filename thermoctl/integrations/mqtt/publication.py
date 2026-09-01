@@ -348,7 +348,7 @@ def parameter_discovery(
 
 
 def armed_discovery(prefix: str = "thermoctl") -> DiscoveryMessage:
-    """Whether control is really switching, as its own entity for the whole service."""
+    """The persisted first control latch, as one entity for the whole service."""
     object_id = f"{_identifier(prefix)}_scharf"
     data: dict[str, Any] = {
         "device": {
@@ -359,7 +359,7 @@ def armed_discovery(prefix: str = "thermoctl") -> DiscoveryMessage:
         "availability_topic": availability_topic(prefix),
         "payload_available": "online",
         "payload_not_available": "offline",
-        "name": "Regelung scharf",
+        "name": "Freigabe gespeichert",
         "unique_id": object_id,
         "object_id": object_id,
         "state_topic": armed_topic(prefix),

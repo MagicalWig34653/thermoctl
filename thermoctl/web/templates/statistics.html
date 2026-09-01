@@ -22,13 +22,9 @@ Die Balken sind kupfern wie überall: Farbe ist hier Wärme, und nichts anderes.
     </nav>
 </div>
 <p class="t-quiet mb-4">
-    {% if armed %}
-    Wie lange die Regelung je Zone und Tag geheizt hat.
-    {% else %}
-    Wie lange die Regelung je Zone und Tag geheizt <strong>hätte</strong> — die Anlage
-    läuft im Trockenlauf und schaltet nichts. Die Zahlen entstehen an derselben Stelle wie
-    später die echten.
-    {% endif %}
+    Wie lange die Regelung je Zone und Tag eine Heizanforderung entschieden hat. Die Zahlen
+    zeigen Entscheidungen, keine bestätigte körperliche Wirkung: Ein/Aus-Entscheidungen
+    erreichen derzeit keinen Aktor.
 </p>
 
 {% if not zones %}
@@ -37,7 +33,7 @@ Die Balken sind kupfern wie überall: Farbe ist hier Wärme, und nichts anderes.
 </div>
 {% elif maximum == 0 %}
 <div class="tc-panel p-4">
-    <p class="t-section mb-1">In diesem Zeitraum wurde nicht geheizt.</p>
+    <p class="t-section mb-1">In diesem Zeitraum gab es keine Heizanforderung.</p>
     <p class="t-quiet mb-0">
         Entweder war es warm genug, oder der Regelzyklus lief noch nicht — er schreibt
         seine Entscheidungen nur mit eingeschaltetem MQTT.

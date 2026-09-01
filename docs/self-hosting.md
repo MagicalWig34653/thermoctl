@@ -179,8 +179,9 @@ Zwei Dinge, die man wissen sollte:
 - **Wer das Tablet in der Hand hat, kann das Token auslesen.** Es steht im Cookie des
   Browsers. Das ist der Preis eines Lesezeichens statt einer Anmeldung; abgefedert wird es
   durch den engen Rechtesatz und dadurch, dass sich das Token jederzeit widerrufen lässt.
-- **Im Trockenlauf bewegt auch das Tablet nichts.** Ein dort verstellter Sollwert ändert
-  die Entscheidung, aber solange nicht scharf geschaltet ist, bewegt er kein Ventil.
+- **Im Trockenlauf ändert das Tablet nur die Regelentscheidung.** Solange die Regelung
+  unscharf ist, werden keine Sollwerte an Ventile gesendet; Ein/Aus-Entscheidungen
+  erreichen keinen Aktor.
 
 ## 8. Passkeys
 

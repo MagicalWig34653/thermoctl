@@ -101,7 +101,9 @@ def overview(
         Interface(
             "mqtt",
             "Zigbee2MQTT",
-            "Die Quelle aller Messwerte und der Weg zu den Ventilen.",
+            "Empfängt Messwerte. Erst scharf und danach neu gestartet können Sollwerte "
+            "an selbstregelnde Thermostatventile gesendet werden; Ein/Aus-Entscheidungen "
+            "erreichen keinen Aktor.",
             mqtt_state,
             mqtt_finding,
             [
@@ -299,8 +301,10 @@ def overview(
                 "Läuft und nimmt Befehle entgegen — auch im Trockenlauf. Eine "
                 "Zustandsmeldung bewegt nichts, und eine Anbindung, die man erst nach "
                 "dem Scharfschalten ausprobieren kann, ließe sich genau dann nicht mehr "
-                "gefahrlos prüfen, wenn ein Fehler noch folgenlos wäre. Ob wirklich "
-                "geschaltet wird, sagt dort die Entität „Regelung scharf“."
+                "gefahrlos prüfen, wenn ein Fehler noch folgenlos wäre. Die Entität "
+                "„Regelung scharf“ zeigt nur den gespeicherten ersten Riegel. Erst nach "
+                "einem Neustart können Sollwerte an selbstregelnde Thermostatventile "
+                "gesendet werden; Ein/Aus-Entscheidungen erreichen keinen Aktor."
                 if settings.mqtt_enabled
                 else "Ohne MQTT gibt es keinen Weg zu Home Assistant."
             ),

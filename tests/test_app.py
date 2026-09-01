@@ -304,6 +304,16 @@ def test_openapi_describes_only_the_interface(client: TestClient) -> None:
     assert any(p.startswith("/api/") for p in paths), "It contains nothing at all."
 
 
+def test_openapi_explains_both_control_gates_and_the_missing_actuator(
+    client: TestClient,
+) -> None:
+    operation = client.get("/openapi.json").json()["paths"]["/api/v1/control/armed"]["put"]
+    description = " ".join(operation["description"].split())
+    assert "first stage" in description
+    assert "not released until a restart" in description
+    assert "do not reach an actuator" in description
+
+
 def test_starting_against_an_empty_database_reports_the_missing_migration(
     monkeypatch: pytest.MonkeyPatch, tmp_path, capsys: pytest.CaptureFixture[str]
 ) -> None:

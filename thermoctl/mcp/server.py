@@ -332,9 +332,9 @@ def set_control_parameters(
 def read_control(session: Session, plaintext: str) -> dict[str, object]:
     """The plant's operating state along with the defaults every zone inherits from.
 
-    The most important question an assistant can ask about this plant is "is it
-    actually switching right now?" -- a decision in shadow run is a claim, one in armed
-    operation moves a valve.
+    This reports the persisted database latch. The startup-built MQTT latch belongs to
+    the separate web/MQTT process and is not visible here, so this response cannot tell
+    armed-before-restart from armed-after-restart. On/off decisions reach no actuator.
     """
     _token, principal = _log_in(session, plaintext)
     require(principal, "zone.read")

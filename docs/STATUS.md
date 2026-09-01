@@ -42,7 +42,7 @@ Selbst nachgeprüft, nicht aus Berichten übernommen (Stand 2026-09-01):
 
 | | |
 |---|---|
-| Tests | 1398 unter SQLite, 1397 plus ein Skip unter MariaDB |
+| Tests | 1405 unter SQLite, 1404 plus ein Skip unter MariaDB |
 | Testabdeckung | 100 %, Mindestschwelle 100 % in der CI |
 | Ruff, mypy strict | ohne Befund, 101 Quelldateien |
 | Migrationskette | linear, ein Kopf, vorwärts und rückwärts gegen beide Datenbanken |

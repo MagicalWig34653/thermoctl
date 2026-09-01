@@ -64,7 +64,7 @@ auf dem Anlagenbild waere ein Ablegeziel eine Zusage, die die Seite nicht einloe
     <div class="tc-flow-arrow" aria-hidden="true"></div>
 
     <div class="tc-flow-column{{ ' tc-target' if draggable }}"{% if draggable %} data-target="actuator" data-target-name="Aktor" data-requires="{{ requires.get('actuator', '') }}"{% endif %}>
-        <p class="t-label">Schaltet</p>
+        <p class="t-label">Als Aktor zugeordnet</p>
         {% if z.actuators %}
         {% for g in z.actuators %}{{ device_card(g, "actuator", draggable) }}{% endfor %}
         {% else %}{{ luecke("kein Aktor") }}{% endif %}
