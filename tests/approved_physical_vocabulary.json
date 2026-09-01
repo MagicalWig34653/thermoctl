@@ -39,12 +39,10 @@
       "## Was geschaltet wird — genau",
       "- **Die Frostschutz-Entscheidung bestätigen**, bevor Phase 4 scharf schaltet — siehe",
       "- **Sind beide Riegel offen**, bekommen selbstregelnde Thermostatventile ihren Sollwert",
-      "Sollwertausgabe an selbstregelnde Thermostatventile; Ein/Aus-Entscheidungen erreichen",
-      "Ventilbewegung. Was behoben wurde, steht im",
+      "Schnappschuss annahm — und viermal dieselbe Klasse, Texte, die eine Ventilbewegung",
       "jeder Weg zu einem Aktor zu.",
       "schaltet, muss den Dienst neu starten, bevor überhaupt etwas hinausgeht.",
-      "wahr, dass „weiterhin nichts geschaltet wird\" — das war eine Zusicherung ohne Deckung.",
-      "weiterhin keinen Aktor. Der Ventilschutz benennt sich als reine Schattenentscheidung."
+      "wahr, dass „weiterhin nichts geschaltet wird\" — das war eine Zusicherung ohne Deckung."
     ],
     "docs/api.md": [
       "**Fehlt das Feld, gilt 0** — ein Aufrufer, der die Absenkung nicht kennt, schaltet sie",
