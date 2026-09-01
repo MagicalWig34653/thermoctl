@@ -3,14 +3,14 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from thermoctl import audit
 from thermoctl.db.base import utcnow
 from thermoctl.db.models.lookup import ActorSource
-from thermoctl.db.models.operations import Setting
+from thermoctl.db.models.operations import AuditEvent, Setting
 from thermoctl.db.models.override import ZoneOverride
 from thermoctl.db.models.schedule import SchedulePoint
 from thermoctl.db.models.zone import SetpointMode, Zone, ZoneSetpoint
@@ -60,6 +60,268 @@ class DaySegment:
     # previous day. The interface needs it to be able to drag a bar; a bar without its
     # own point belongs to another day and stays fixed.
     point_id: int | None = None
+
+
+ScheduleSnapshot = tuple[tuple[int, int, int], ...]
+ScheduleGesture = tuple[ScheduleSnapshot, ScheduleSnapshot, int]
+
+
+def schedule_snapshot(points: list[SchedulePoint]) -> ScheduleSnapshot:
+    """Returns the stable, identifier-free representation used for one-step undo."""
+    return tuple(
+        sorted(
+            (point.weekday, point.minute_of_day, point.setpoint_mode_id)
+            for point in points
+        )
+    )
+
+
+def _zone_points(session: Session, zone_id: int) -> list[SchedulePoint]:
+    return list(
+        session.scalars(
+            select(SchedulePoint)
+            .where(SchedulePoint.zone_id == zone_id)
+            .order_by(SchedulePoint.weekday, SchedulePoint.minute_of_day)
+        )
+    )
+
+
+def _mode_at(points: list[SchedulePoint], week_minute: int, fallback: int) -> int:
+    if not points:
+        return fallback
+    before = [point for point in points if _point_minute(point) <= week_minute]
+    return max(before or points, key=_point_minute).setpoint_mode_id
+
+
+def _replace_snapshot(
+    session: Session, zone: Zone, snapshot: ScheduleSnapshot
+) -> None:
+    session.execute(delete(SchedulePoint).where(SchedulePoint.zone_id == zone.id))
+    session.add_all(
+        SchedulePoint(
+            zone_id=zone.id,
+            weekday=weekday,
+            minute_of_day=minute,
+            setpoint_mode_id=mode_id,
+        )
+        for weekday, minute, mode_id in snapshot
+    )
+    session.flush()
+
+
+def _canonical_snapshot(entries: dict[int, int]) -> ScheduleSnapshot:
+    """Drops switches whose mode is already in effect on the weekly ring."""
+    ordered = sorted(entries.items())
+    while len(ordered) > 1 and ordered[0][1] == ordered[-1][1]:
+        ordered.pop(0)
+    reduced: list[tuple[int, int]] = []
+    for minute, mode_id in ordered:
+        if reduced and reduced[-1][1] == mode_id:
+            continue
+        reduced.append((minute, mode_id))
+    return tuple(
+        (minute // 1440 + 1, minute % 1440, mode_id)
+        for minute, mode_id in reduced
+    )
+
+
+def _schedule_revision(session: Session, event: AuditEvent) -> int:
+    """Returns the exact persisted revision created by this schedule gesture."""
+    session.flush()
+    revision = event.id
+    if revision is None:  # pragma: no cover - callers record before asking for it
+        raise RuntimeError("Die Zeitplanrevision fehlt.")
+    return revision
+
+
+def paint_schedule_interval(
+    session: Session,
+    zone: Zone,
+    *,
+    weekday: int,
+    start_minute: int,
+    end_minute: int,
+    mode_id: int,
+    user_id: int | None,
+    token_id: int | None = None,
+    source: str = "web",
+) -> ScheduleGesture | None:
+    """Paints one half-open interval and stores its minimal switch-point form.
+
+    Painting is deliberately confined to one day. An end at 24:00 is valid; an end
+    before or equal to the start would cross midnight and is rejected. The configured
+    frost-protection mode is the background of an empty schedule.
+    """
+    if not 1 <= weekday <= 7:
+        raise ScheduleError("weekday", "Bitte einen Wochentag auswählen.")
+    if not 0 <= start_minute < 1440 or not 0 < end_minute <= 1440:
+        raise ScheduleError("time_range", "Bitte einen gültigen Zeitraum auswählen.")
+    if end_minute <= start_minute:
+        raise ScheduleError(
+            "time_range", "Malen über Mitternacht ist nicht möglich; bitte tageweise malen."
+        )
+    if session.get(SetpointMode, mode_id) is None:
+        raise ScheduleError("mode_id", "Dieser Modus ist nicht bekannt.")
+    settings = session.get(Setting, 1)
+    if settings is None:  # pragma: no cover - setup and every normal request guarantee it
+        raise RuntimeError("Die Grundeinstellungen fehlen.")
+
+    points = _zone_points(session, zone.id)
+    before = schedule_snapshot(points)
+    absolute_start = (weekday - 1) * 1440 + start_minute
+    absolute_end = (weekday - 1) * 1440 + end_minute
+    fallback = settings.frost_protection_mode_id
+    # A one-point schedule applies that mode around the complete weekly ring. Painting
+    # the same mode on Monday therefore is a genuine no-op, even if its only stored
+    # point is on Wednesday: no effective minute would change.
+    if (
+        _mode_at(points, absolute_start, fallback) == mode_id
+        and all(
+            point.setpoint_mode_id == mode_id
+            for point in points
+            if absolute_start < _point_minute(point) < absolute_end
+        )
+    ):
+        return None
+    end_mode = _mode_at(points, absolute_end % MINUTES_PER_WEEK, fallback)
+    entries = {_point_minute(point): point.setpoint_mode_id for point in points}
+    for minute in [minute for minute in entries if absolute_start <= minute < absolute_end]:
+        del entries[minute]
+    entries[absolute_start] = mode_id
+    if absolute_end < MINUTES_PER_WEEK:
+        entries[absolute_end] = end_mode
+    else:
+        entries[0] = end_mode
+    after = _canonical_snapshot(entries)
+    # The semantic no-op is caught before rewriting `entries`. Keep the comparison as
+    # a final guard against a future normalization rule that produces the old plan.
+    if after == before:  # pragma: no cover - unreachable with today's normalization
+        return None
+    _replace_snapshot(session, zone, after)
+    event = audit.record(
+        session,
+        source=source,
+        action="update",
+        object_type="schedule",
+        object_id=str(zone.id),
+        summary=f"Zeitplan für Zone '{zone.display_name}' gemalt",
+        detail=(
+            f"{_DAYS[weekday]} {_label_time(start_minute)}–{_label_time(end_minute)}"
+        ),
+        user_id=user_id,
+        token_id=token_id,
+    )
+    return before, after, _schedule_revision(session, event)
+
+
+def _label_time(minute: int) -> str:
+    if minute == 1440:
+        return "24:00"
+    return f"{minute // 60:02d}:{minute % 60:02d}"
+
+
+def copy_schedule_day(
+    session: Session,
+    zone: Zone,
+    *,
+    source_weekday: int,
+    target_weekdays: list[int],
+    user_id: int | None,
+    token_id: int | None = None,
+    source: str = "web",
+) -> ScheduleGesture | None:
+    """Copies a source day's effective pattern to target days as one gesture."""
+    if not 1 <= source_weekday <= 7 or any(not 1 <= day <= 7 for day in target_weekdays):
+        raise ScheduleError("weekday", "Bitte einen Wochentag auswählen.")
+    points = _zone_points(session, zone.id)
+    if not points:
+        return None
+    before = schedule_snapshot(points)
+    entries = {_point_minute(point): point.setpoint_mode_id for point in points}
+
+    def day_pattern(weekday: int) -> list[tuple[int, int]]:
+        day_start = (weekday - 1) * 1440
+        pattern = [(0, _mode_at(points, day_start, 0))]
+        for point in points:
+            if (
+                point.weekday == weekday
+                and point.minute_of_day > 0
+                and point.setpoint_mode_id != pattern[-1][1]
+            ):
+                pattern.append((point.minute_of_day, point.setpoint_mode_id))
+        return pattern
+
+    source_pattern = day_pattern(source_weekday)
+    target_days = sorted(set(target_weekdays) - {source_weekday})
+    if all(day_pattern(day) == source_pattern for day in target_days):
+        return None
+    target_day_set = set(target_days)
+    for day in target_days:
+        day_start = (day - 1) * 1440
+        next_start = day_start + 1440
+        for minute in [minute for minute in entries if day_start <= minute < next_start]:
+            del entries[minute]
+        for offset, copied_mode in source_pattern:
+            entries[day_start + offset] = copied_mode
+    # Restore the old ring only where a copied day is followed by an untouched day.
+    # Writing every boundary while iterating would overwrite Monday 00:00 when Sunday
+    # happens to be the last copied target.
+    for day in target_days:
+        next_day = day % 7 + 1
+        if next_day not in target_day_set:
+            next_start = (day * 1440) % MINUTES_PER_WEEK
+            entries[next_start] = _mode_at(points, next_start, 0)
+    after = _canonical_snapshot(entries)
+    # The effective-pattern check catches current no-ops. Keep this final guard for
+    # future normalization changes that may arrive at the old storage representation.
+    if after == before:  # pragma: no cover
+        return None
+    _replace_snapshot(session, zone, after)
+    event = audit.record(
+        session, source=source, action="update", object_type="schedule",
+        object_id=str(zone.id),
+        summary=f"Tag im Zeitplan für Zone '{zone.display_name}' übertragen",
+        detail=(
+            f"{_DAYS[source_weekday]} → "
+            f"{', '.join(_DAYS[d] for d in sorted(set(target_weekdays)))}"
+        ),
+        user_id=user_id, token_id=token_id,
+    )
+    return before, after, _schedule_revision(session, event)
+
+
+def undo_schedule_gesture(
+    session: Session,
+    zone: Zone,
+    *,
+    before: ScheduleSnapshot,
+    expected_after: ScheduleSnapshot,
+    expected_revision: int,
+    user_id: int | None,
+    token_id: int | None = None,
+    source: str = "web",
+) -> None:
+    """Restores one gesture only if no later schedule edit has intervened."""
+    current_revision = session.scalar(
+        select(func.max(AuditEvent.id)).where(
+            AuditEvent.object_type == "schedule",
+            AuditEvent.object_id == str(zone.id),
+        )
+    )
+    if (
+        current_revision != expected_revision
+        or schedule_snapshot(_zone_points(session, zone.id)) != expected_after
+    ):
+        raise ScheduleError("undo", "Der Zeitplan wurde inzwischen geändert.")
+    _replace_snapshot(session, zone, before)
+    audit.record(
+        session, source=source, action="update", object_type="schedule",
+        object_id=str(zone.id),
+        summary=(
+            f"Letzte Zeitplangeste für Zone '{zone.display_name}' rückgängig gemacht"
+        ),
+        user_id=user_id, token_id=token_id,
+    )
 
 
 # Only for the readable audit text. The interface's labeling lives in the view; here

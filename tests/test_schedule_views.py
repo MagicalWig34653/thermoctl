@@ -1,11 +1,13 @@
+import base64
 import re
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from tests.helpers import create_mode, create_zone, source
+from tests.helpers import create_mode, create_settings, create_zone, source
 from thermoctl.auth.csrf import csrf_token
 from thermoctl.auth.sessions import COOKIE_NAME
 from thermoctl.config import get_settings
@@ -14,8 +16,586 @@ from thermoctl.db.models.schedule import SchedulePoint
 from thermoctl.domain.schedule import (
     ScheduleError,
     change_schedule_point_mode,
+    copy_schedule_day,
     move_schedule_point,
+    paint_schedule_interval,
+    schedule_snapshot,
+    undo_schedule_gesture,
 )
+from thermoctl.web import schedule_views
+
+
+def _snapshot(session: Session, zone_id: int) -> tuple[tuple[int, int, int], ...]:
+    return schedule_snapshot(list(session.scalars(
+        select(SchedulePoint).where(SchedulePoint.zone_id == zone_id)
+    )))
+
+
+def test_painting_an_empty_schedule_returns_to_frost_protection(
+    session: Session,
+) -> None:
+    settings = create_settings(session)
+    source(session)
+    zone = create_zone(session, "erste-malerei")
+    comfort = create_mode(session, "komfort", "Komfort")
+
+    result = paint_schedule_interval(
+        session, zone, weekday=1, start_minute=390, end_minute=480,
+        mode_id=comfort.id, user_id=None,
+    )
+
+    assert result is not None
+    assert _snapshot(session, zone.id) == (
+        (1, 390, comfort.id), (1, 480, settings.frost_protection_mode_id)
+    )
+
+
+def test_painting_over_a_whole_existing_section_minimizes_the_points(
+    session: Session,
+) -> None:
+    create_settings(session)
+    source(session)
+    zone = create_zone(session, "uebermalen")
+    night = create_mode(session, "nacht-ueber", "Nacht")
+    day = create_mode(session, "tag-ueber", "Tag")
+    away = create_mode(session, "weg-ueber", "Abwesend")
+    _point(session, zone.id, 1, 0, night.id)
+    _point(session, zone.id, 1, 360, day.id)
+    _point(session, zone.id, 1, 420, away.id)
+    _point(session, zone.id, 1, 600, night.id)
+
+    paint_schedule_interval(
+        session, zone, weekday=1, start_minute=330, end_minute=660,
+        mode_id=day.id, user_id=None,
+    )
+
+    assert _snapshot(session, zone.id) == ((1, 330, day.id), (1, 660, night.id))
+
+
+def test_painting_exactly_the_mode_already_there_is_a_no_op(session: Session) -> None:
+    create_settings(session)
+    source(session)
+    zone = create_zone(session, "gleich")
+    night = create_mode(session, "nacht-gleich", "Nacht")
+    day = create_mode(session, "tag-gleich", "Tag")
+    _point(session, zone.id, 1, 0, night.id)
+    _point(session, zone.id, 1, 360, day.id)
+    _point(session, zone.id, 1, 480, night.id)
+    before = _snapshot(session, zone.id)
+
+    assert paint_schedule_interval(
+        session, zone, weekday=1, start_minute=360, end_minute=480,
+        mode_id=day.id, user_id=None,
+    ) is None
+    assert _snapshot(session, zone.id) == before
+    entries = session.scalars(
+        select(AuditEvent).where(AuditEvent.object_type == "schedule")
+    ).all()
+    assert entries == []
+
+
+def test_painting_across_midnight_is_rejected(session: Session) -> None:
+    create_settings(session)
+    zone = create_zone(session, "mitternacht")
+    mode = create_mode(session, "nacht-mitternacht", "Nacht")
+    with pytest.raises(ScheduleError, match="Mitternacht"):
+        paint_schedule_interval(
+            session, zone, weekday=1, start_minute=1380, end_minute=60,
+            mode_id=mode.id, user_id=None,
+        )
+
+
+@pytest.mark.parametrize(
+    ("weekday", "start", "end", "mode_id"),
+    [(0, 60, 120, 1), (1, -1, 120, 1), (1, 60, 1441, 1), (1, 60, 120, 999999)],
+)
+def test_painting_rejects_invalid_domain_boundaries(
+    session: Session, weekday: int, start: int, end: int, mode_id: int,
+) -> None:
+    create_settings(session)
+    zone = create_zone(session, f"grenze-{weekday}-{start}-{end}-{mode_id}")
+    with pytest.raises(ScheduleError):
+        paint_schedule_interval(
+            session, zone, weekday=weekday, start_minute=start, end_minute=end,
+            mode_id=mode_id, user_id=None,
+        )
+
+
+def test_painting_to_end_of_sunday_restores_monday_mode(session: Session) -> None:
+    create_settings(session)
+    source(session)
+    zone = create_zone(session, "sonntag-ende")
+    night = create_mode(session, "sonntag-nacht", "Nacht")
+    comfort = create_mode(session, "sonntag-komfort", "Komfort")
+    _point(session, zone.id, 1, 0, night.id)
+    paint_schedule_interval(
+        session, zone, weekday=7, start_minute=1380, end_minute=1440,
+        mode_id=comfort.id, user_id=None,
+    )
+    assert (7, 1380, comfort.id) in _snapshot(session, zone.id)
+
+
+def test_copying_a_day_and_undoing_are_each_one_audited_gesture(session: Session) -> None:
+    create_settings(session)
+    source(session)
+    zone = create_zone(session, "tag-kopieren")
+    night = create_mode(session, "nacht-kopie", "Nacht")
+    day = create_mode(session, "tag-kopie", "Tag")
+    _point(session, zone.id, 1, 0, night.id)
+    _point(session, zone.id, 1, 360, day.id)
+    _point(session, zone.id, 1, 480, night.id)
+    snapshots = copy_schedule_day(
+        session, zone, source_weekday=1, target_weekdays=[1, 2, 3, 4, 5],
+        user_id=None,
+    )
+    assert snapshots is not None
+    before, after, revision = snapshots
+    assert all((day_number, 360, day.id) in after for day_number in range(1, 6))
+    undo_schedule_gesture(
+        session, zone, before=before, expected_after=after,
+        expected_revision=revision, user_id=None
+    )
+    assert _snapshot(session, zone.id) == before
+    entries = session.scalars(
+        select(AuditEvent).where(AuditEvent.object_type == "schedule")
+    ).all()
+    assert len(entries) == 2
+
+
+def test_undo_refuses_to_overwrite_a_later_edit(session: Session) -> None:
+    create_settings(session)
+    source(session)
+    zone = create_zone(session, "altes-undo")
+    mode = create_mode(session, "undo-mode", "Tag")
+    result = paint_schedule_interval(
+        session, zone, weekday=1, start_minute=360, end_minute=480,
+        mode_id=mode.id, user_id=None,
+    )
+    assert result is not None
+    before, after, revision = result
+    _point(session, zone.id, 2, 600, mode.id)
+    with pytest.raises(ScheduleError, match="inzwischen"):
+        undo_schedule_gesture(
+            session, zone, before=before, expected_after=after,
+            expected_revision=revision, user_id=None
+        )
+
+
+def test_copying_an_empty_or_only_source_day_is_a_no_op(session: Session) -> None:
+    create_settings(session)
+    zone = create_zone(session, "leere-kopie")
+    assert copy_schedule_day(
+        session, zone, source_weekday=1, target_weekdays=[2], user_id=None
+    ) is None
+    mode = create_mode(session, "nur-quelle", "Tag")
+    _point(session, zone.id, 1, 360, mode.id)
+    assert copy_schedule_day(
+        session, zone, source_weekday=1, target_weekdays=[1], user_id=None
+    ) is None
+    with pytest.raises(ScheduleError):
+        copy_schedule_day(
+            session, zone, source_weekday=8, target_weekdays=[1], user_id=None
+        )
+
+
+def test_copying_an_already_copied_pattern_is_idempotent(session: Session) -> None:
+    create_settings(session)
+    zone = create_zone(session, "idempotent-copy")
+    day = create_mode(session, "idempotent-copy-day", "Tag")
+    night = create_mode(session, "idempotent-copy-night", "Nacht")
+    _point(session, zone.id, 1, 540, day.id)
+    _point(session, zone.id, 1, 1080, night.id)
+
+    first = copy_schedule_day(
+        session, zone, source_weekday=1, target_weekdays=list(range(1, 8)), user_id=None
+    )
+    second = copy_schedule_day(
+        session, zone, source_weekday=1, target_weekdays=list(range(1, 8)), user_id=None
+    )
+
+    assert first is not None
+    assert second is None
+
+
+def test_paint_copy_and_undo_routes_use_normal_csrf_protected_forms(
+    client_als, session: Session,
+) -> None:
+    settings = create_settings(session)
+    zone = create_zone(session, "mal-routen")
+    comfort = create_mode(session, "komfort-routen", "Komfort")
+    client = client_als([("zone.read", zone.id), ("schedule.manage", zone.id)])
+
+    page = client.get(f"/zones/{zone.id}/schedule")
+    assert 'id="schedule-paint"' in page.text
+    assert 'name="csrf_token"' in page.text
+    painted = client.post(
+        f"/zones/{zone.id}/schedule/paint",
+        data={"weekday": "1", "start_time": "06:30", "end_time": "08:00",
+              "mode_id": str(comfort.id)}, headers=_csrf(client),
+    )
+    assert painted.status_code == 200 and "Rückgängig" in painted.text
+    assert _snapshot(session, zone.id) == (
+        (1, 390, comfort.id), (1, 480, settings.frost_protection_mode_id)
+    )
+    token = re.search(r'name="undo_token" value="([^"]+)"', painted.text)
+    assert token is not None
+    undone = client.post(
+        f"/zones/{zone.id}/schedule/undo",
+        data={"undo_token": token.group(1)}, headers=_csrf(client),
+    )
+    assert undone.status_code == 200 and _snapshot(session, zone.id) == ()
+
+
+def test_rendered_palette_defaults_to_painting_and_explains_move_only_gestures(
+    client_als, session: Session,
+) -> None:
+    create_settings(session)
+    zone = create_zone(session, "paint-default")
+    create_mode(session, "paint-default-mode", "Komfort")
+    client = client_als([("zone.read", zone.id), ("schedule.manage", zone.id)])
+
+    page = client.get(f"/zones/{zone.id}/schedule")
+    form = re.search(
+        rf'<form[^>]*action="/zones/{zone.id}/schedule/paint"[^>]*>(.*?)</form>',
+        page.text,
+        re.S,
+    )
+
+    assert form is not None
+    checked = re.findall(r'<input[^>]*name="paint_tool"[^>]*checked[^>]*>', form.group(1))
+    assert len(checked) == 1
+    assert 'value="move"' not in checked[0]
+    assert "Ziehen im Raster malt mit dem gewählten Modus" in form.group(1)
+
+
+def test_a_move_tool_gesture_on_a_fixed_area_has_live_feedback_and_no_action_cursor(
+    client_als, session: Session,
+) -> None:
+    create_settings(session)
+    zone = create_zone(session, "fixed-area-feedback")
+    client = client_als([("zone.read", zone.id), ("schedule.manage", zone.id)])
+
+    page = client.get(f"/zones/{zone.id}/schedule")
+    script = Path("thermoctl/web/static/schedule.js").read_text()
+    stylesheet = Path("thermoctl/web/static/thermoctl.css").read_text()
+
+    assert 'data-paint-tool-hint aria-live="polite"' in page.text
+    assert 'if (!event.target.closest(".schedule-draggable"))' in script
+    assert "explainMoveTool();" in script
+    assert ".schedule-day {\n    cursor: not-allowed;" in stylesheet
+    assert ".schedule-draggable {\n    cursor: grab;" in stylesheet
+    assert ".schedule-painting .schedule-bar {\n    cursor: crosshair;" in stylesheet
+
+
+def test_no_op_painting_reports_that_the_gesture_changed_nothing(
+    client_als, session: Session,
+) -> None:
+    create_settings(session)
+    zone = create_zone(session, "paint-no-op")
+    mode = create_mode(session, "paint-no-op-mode", "Komfort")
+    _point(session, zone.id, 1, 360, mode.id)
+    client = client_als([("zone.read", zone.id), ("schedule.manage", zone.id)])
+
+    response = client.post(
+        f"/zones/{zone.id}/schedule/paint",
+        data={"weekday": "1", "start_time": "06:00", "end_time": "07:00",
+              "mode_id": str(mode.id)},
+        headers=_csrf(client),
+    )
+
+    assert response.status_code == 200
+    assert 'data-gesture-notice' in response.text
+    assert "bereits genauso aus; es wurde nichts geändert" in response.text
+
+
+def test_the_rendered_paint_form_works_without_javascript(
+    client_als, session: Session,
+) -> None:
+    settings = create_settings(session)
+    zone = create_zone(session, "malen-ohne-javascript")
+    night = create_mode(session, "nacht-ohne-javascript", "Nacht")
+    client = client_als([("zone.read", zone.id), ("schedule.manage", zone.id)])
+
+    page = client.get(f"/zones/{zone.id}/schedule")
+    form = re.search(
+        rf'<form[^>]*action="/zones/{zone.id}/schedule/paint"[^>]*>(.*?)</form>',
+        page.text,
+        re.S,
+    )
+    assert form is not None
+    body = form.group(1)
+    fields = dict(re.findall(r'name="([^"]+)"[^>]*value="([^"]*)"', body))
+    # Unchecked checkboxes are not successful controls in a native form submission.
+    fields.pop("end_boundary", None)
+    night_tool = re.search(
+        rf'<input[^>]*name="([^"]+)"[^>]*value="({night.id})"[^>]*>', body
+    )
+    assert night_tool is not None
+    assert fields["mode_id"] == "", "mode_id must not hide a JavaScript dependency"
+    controls = {
+        element_id: re.search(
+            rf'<(?:input|select)[^>]*id="{element_id}"[^>]*name="([^"]+)"', body
+        )
+        for element_id in ("paint-weekday", "paint-start", "paint-end")
+    }
+    assert all(control is not None for control in controls.values())
+    fields[night_tool.group(1)] = night_tool.group(2)
+    fields[controls["paint-weekday"].group(1)] = "3"  # type: ignore[union-attr]
+    fields[controls["paint-start"].group(1)] = "09:00"  # type: ignore[union-attr]
+    fields[controls["paint-end"].group(1)] = "11:30"  # type: ignore[union-attr]
+
+    response = client.post(f"/zones/{zone.id}/schedule/paint", data=fields)
+
+    assert response.status_code == 200
+    assert "gültigen Zeitraum" not in response.text
+    assert _snapshot(session, zone.id) == (
+        (3, 540, night.id),
+        (3, 690, settings.frost_protection_mode_id),
+    )
+
+
+def test_painting_until_midnight_is_selectable_without_javascript(
+    client_als, session: Session,
+) -> None:
+    settings = create_settings(session)
+    zone = create_zone(session, "midnight-without-javascript")
+    night = create_mode(session, "midnight-form-mode", "Nacht")
+    client = client_als([("zone.read", zone.id), ("schedule.manage", zone.id)])
+
+    page = client.get(f"/zones/{zone.id}/schedule")
+    control = re.search(r'<input[^>]*id="paint-end-boundary"[^>]*>', page.text)
+    assert control is not None
+    assert 'name="end_boundary"' in control.group(0)
+    assert 'type="checkbox"' in control.group(0)
+    assert 'value="1440"' in control.group(0)
+    assert 'for="paint-end-boundary">Bis Tagesende (24:00)</label>' in page.text
+
+    response = client.post(
+        f"/zones/{zone.id}/schedule/paint",
+        data={
+            "weekday": "1", "start_time": "23:00", "end_time": "23:45",
+            "end_boundary": "1440", "paint_tool": str(night.id),
+        },
+        headers=_csrf(client),
+    )
+
+    assert response.status_code == 200
+    assert _snapshot(session, zone.id) == (
+        (1, 1380, night.id), (2, 0, settings.frost_protection_mode_id)
+    )
+
+
+def test_copy_controls_are_natively_operable_without_javascript(
+    client_als, session: Session,
+) -> None:
+    create_settings(session)
+    zone = create_zone(session, "kopieren-ohne-javascript")
+    day = create_mode(session, "copy-html-day", "Tag")
+    night = create_mode(session, "copy-html-night", "Nacht")
+    _point(session, zone.id, 3, 540, day.id)
+    _point(session, zone.id, 3, 1080, night.id)
+    client = client_als([("zone.read", zone.id), ("schedule.manage", zone.id)])
+
+    page = client.get(f"/zones/{zone.id}/schedule")
+    wednesday = re.search(
+        r'<h2[^>]*>Mittwoch</h2>\s*<details[^>]*>(.*?)</details>', page.text, re.S
+    )
+    assert wednesday is not None
+    assert "<summary" in wednesday.group(1)
+    assert ">Übertragen</summary>" in wednesday.group(1)
+    assert "dropdown-menu" not in wednesday.group(1)
+    assert "data-bs-toggle" not in wednesday.group(1)
+    forms = re.findall(
+        rf'<form[^>]*action="/zones/{zone.id}/schedule/copy-day"[^>]*>(.*?)</form>',
+        wednesday.group(1),
+        re.S,
+    )
+    fields = next(
+        dict(re.findall(r'name="([^"]+)"[^>]*value="([^"]*)"', body))
+        for body in forms
+        if 'name="weekday" value="3"' in body and 'name="scope" value="all"' in body
+    )
+
+    response = client.post(f"/zones/{zone.id}/schedule/copy-day", data=fields)
+
+    assert response.status_code == 200
+    assert "Der Tag wurde auf alle Tage übertragen" in response.text
+    snapshot = _snapshot(session, zone.id)
+    assert all((weekday, 540, day.id) in snapshot for weekday in range(1, 8))
+    assert all((weekday, 1080, night.id) in snapshot for weekday in range(1, 8))
+
+
+def test_painting_upwards_submits_the_lower_pointer_boundary() -> None:
+    script = Path("thermoctl/web/static/schedule.js").read_text()
+
+    assert "finish = current === start" in script
+    assert "const low = Math.min(start, finish);" in script
+    assert "const high = Math.max(start, finish);" in script
+    assert "finish = high === low" not in script
+
+
+def test_copying_to_identical_targets_reports_the_no_op(
+    client_als, session: Session,
+) -> None:
+    create_settings(session)
+    zone = create_zone(session, "copy-no-op")
+    day = create_mode(session, "copy-no-op-day", "Tag")
+    night = create_mode(session, "copy-no-op-night", "Nacht")
+    _point(session, zone.id, 1, 540, day.id)
+    _point(session, zone.id, 1, 1080, night.id)
+    client = client_als([("zone.read", zone.id), ("schedule.manage", zone.id)])
+    client.post(
+        f"/zones/{zone.id}/schedule/copy-day",
+        data={"weekday": "1", "scope": "all"}, headers=_csrf(client),
+    )
+
+    response = client.post(
+        f"/zones/{zone.id}/schedule/copy-day",
+        data={"weekday": "1", "scope": "all"}, headers=_csrf(client),
+    )
+
+    assert response.status_code == 200
+    notice = re.search(r'data-gesture-notice[^>]*>([^<]+)', response.text)
+    assert notice is not None
+    assert "Zieltage sehen bereits genauso aus; es wurde nichts geändert" in notice.group(1)
+
+
+def test_the_rendered_undo_form_works_without_javascript(
+    client_als, session: Session,
+) -> None:
+    create_settings(session)
+    zone = create_zone(session, "undo-ohne-javascript")
+    mode = create_mode(session, "undo-modus-ohne-javascript", "Tag")
+    client = client_als([("zone.read", zone.id), ("schedule.manage", zone.id)])
+    painted = client.post(
+        f"/zones/{zone.id}/schedule/paint",
+        data={
+            "csrf_token": csrf_token(
+                client.cookies[COOKIE_NAME],
+                get_settings().secret_key.get_secret_value(),
+            ),
+            "weekday": "1",
+            "start_time": "06:30",
+            "end_time": "08:00",
+            "paint_tool": str(mode.id),
+        },
+    )
+    changed = _snapshot(session, zone.id)
+    form = re.search(
+        rf'<form[^>]*action="/zones/{zone.id}/schedule/undo"[^>]*>(.*?)</form>',
+        painted.text,
+        re.S,
+    )
+    assert form is not None
+    fields = dict(
+        re.findall(r'name="([^"]+)"[^>]*value="([^"]*)"', form.group(1))
+    )
+
+    response = client.post(f"/zones/{zone.id}/schedule/undo", data=fields)
+
+    assert changed
+    assert response.status_code == 200
+    assert _snapshot(session, zone.id) == ()
+
+
+def test_copy_route_and_invalid_gesture_input_are_reported(client_als, session: Session) -> None:
+    create_settings(session)
+    zone = create_zone(session, "kopier-route")
+    mode = create_mode(session, "kopiermodus", "Tag")
+    night = create_mode(session, "kopiermodus-nacht", "Nacht")
+    _point(session, zone.id, 1, 360, mode.id)
+    _point(session, zone.id, 1, 480, night.id)
+    client = client_als([("zone.read", zone.id), ("schedule.manage", zone.id)])
+    invalid = client.post(
+        f"/zones/{zone.id}/schedule/paint",
+        data={"weekday": "x"}, headers=_csrf(client),
+    )
+    copied = client.post(
+        f"/zones/{zone.id}/schedule/copy-day",
+        data={"weekday": "1", "scope": "workdays"}, headers=_csrf(client),
+    )
+    assert invalid.status_code == 200 and "gültigen Zeitraum" in invalid.text
+    assert copied.status_code == 200
+    assert all((day, 360, mode.id) in _snapshot(session, zone.id) for day in range(1, 6))
+
+
+def test_an_invalid_undo_token_is_rejected(client_als, session: Session) -> None:
+    create_settings(session)
+    zone = create_zone(session, "undo-signatur")
+    client = client_als([("schedule.manage", zone.id)])
+    response = client.post(
+        f"/zones/{zone.id}/schedule/undo",
+        data={"undo_token": "manipulated"}, headers=_csrf(client),
+    )
+    assert response.status_code == 400
+
+
+def test_gesture_routes_reject_invalid_copy_and_domain_values(client_als, session: Session) -> None:
+    create_settings(session)
+    zone = create_zone(session, "ungueltige-gesten")
+    mode = create_mode(session, "ungueltiger-modus", "Tag")
+    client = client_als([("schedule.manage", zone.id)])
+    paint = client.post(
+        f"/zones/{zone.id}/schedule/paint",
+        data={"weekday": "9", "start_time": "06:00", "end_time": "07:00",
+              "mode_id": str(mode.id)}, headers=_csrf(client),
+    )
+    bad_day = client.post(
+        f"/zones/{zone.id}/schedule/copy-day",
+        data={"weekday": "not-a-day", "scope": "all"}, headers=_csrf(client),
+    )
+    bad_scope = client.post(
+        f"/zones/{zone.id}/schedule/copy-day",
+        data={"weekday": "1", "scope": "weekend"}, headers=_csrf(client),
+    )
+    domain_day = client.post(
+        f"/zones/{zone.id}/schedule/copy-day",
+        data={"weekday": "9", "scope": "all"}, headers=_csrf(client),
+    )
+    assert paint.status_code == 200 and "Wochentag" in paint.text
+    assert bad_day.status_code == bad_scope.status_code == 400
+    assert domain_day.status_code == 200 and "Wochentag" in domain_day.text
+
+
+def test_undo_token_parser_rejects_a_bad_signature_and_non_mapping(monkeypatch) -> None:
+    valid_shape = schedule_views._undo_token(1, ((), (), 1))
+    encoded, _signature = valid_shape.split(".", 1)
+    with pytest.raises(ValueError):
+        schedule_views._undo_payload(encoded + ".bad")
+
+    encoded_list = base64.urlsafe_b64encode(b"[]").decode().rstrip("=")
+    monkeypatch.setattr(schedule_views.hmac, "compare_digest", lambda _a, _b: True)
+    with pytest.raises(ValueError):
+        schedule_views._undo_payload(encoded_list + ".accepted-for-shape-test")
+
+
+def test_undo_route_rejects_another_zone_and_reports_a_later_edit(
+    client_als, session: Session,
+) -> None:
+    create_settings(session)
+    first = create_zone(session, "undo-erste-zone")
+    second = create_zone(session, "undo-zweite-zone")
+    mode = create_mode(session, "undo-route-mode", "Tag")
+    client = client_als([("schedule.manage", None)])
+    painted = client.post(
+        f"/zones/{first.id}/schedule/paint",
+        data={"weekday": "1", "start_time": "06:00", "end_time": "07:00",
+              "mode_id": str(mode.id)}, headers=_csrf(client),
+    )
+    token_match = re.search(r'name="undo_token" value="([^"]+)"', painted.text)
+    assert token_match is not None
+    token = token_match.group(1)
+    wrong_zone = client.post(
+        f"/zones/{second.id}/schedule/undo",
+        data={"undo_token": token}, headers=_csrf(client),
+    )
+    _point(session, first.id, 2, 600, mode.id)
+    stale = client.post(
+        f"/zones/{first.id}/schedule/undo",
+        data={"undo_token": token}, headers=_csrf(client),
+    )
+    assert wrong_zone.status_code == 400
+    assert stale.status_code == 200 and "inzwischen geändert" in stale.text
 
 
 def _csrf(client: TestClient) -> dict[str, str]:
@@ -434,6 +1014,26 @@ def test_the_week_view_carries_the_point_identifier_for_dragging(
     )
     assert f'data-point="{point.id}"' in response.text
     assert "schedule-draggable" in response.text
+
+
+def test_carried_segments_are_visibly_marked_as_not_draggable(
+    client_als, session: Session,
+) -> None:
+    zone = create_zone(session, "carried-segment")
+    day = create_mode(session, "carried-segment-mode", "Tag")
+    _point(session, zone.id, 1, 360, day.id)
+    response = client_als([("zone.read", None), ("schedule.manage", None)]).get(
+        f"/zones/{zone.id}/schedule"
+    )
+
+    carried = re.findall(
+        r'<div class="[^"]*schedule-carried[^"]*"[^>]*>(.*?)</div>',
+        response.text,
+        re.S,
+    )
+    assert len(carried) == 7
+    assert all("Vom Vortag übernommen" in segment for segment in carried)
+    assert all("schedule-draggable" not in segment for segment in carried)
 
 
 def test_without_schedule_manage_no_bar_can_be_dragged(

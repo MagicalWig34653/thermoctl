@@ -22,16 +22,75 @@
 </div>
 {% endif %}
 
-{% if points %}
+{% if gesture_error %}
+<div class="alert alert-warning" data-gesture-error role="alert">{{ gesture_error }}</div>
+{% endif %}
+{% if gesture_notice %}
+<div class="alert alert-info" data-gesture-notice role="status">{{ gesture_notice }}</div>
+{% endif %}
+{% if undo_token %}
+<form class="alert alert-success d-flex justify-content-between align-items-center gap-3"
+      method="post" action="/zones/{{ zone.id }}/schedule/undo" hx-push-url="false">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    <input type="hidden" name="undo_token" value="{{ undo_token }}">
+    <span>Die Zeitplangeste wurde gespeichert.</span>
+    <button class="btn btn-sm btn-outline-secondary" type="submit">Rückgängig</button>
+</form>
+{% endif %}
+
+{% if may_edit %}
+<form id="schedule-paint" class="schedule-palette mb-3" method="post"
+      action="/zones/{{ zone.id }}/schedule/paint" hx-push-url="false">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    <fieldset>
+      <legend class="h5">Zeit malen</legend>
+      <div class="d-flex flex-wrap gap-2 mb-3" role="radiogroup" aria-label="Werkzeug und Modus">
+        <input class="btn-check" type="radio" name="paint_tool" id="schedule-tool-move" value="move">
+        <label class="btn btn-outline-secondary" for="schedule-tool-move">Punkte ziehen</label>
+        {% for mode in modes %}
+        <input class="btn-check" type="radio" name="paint_tool" id="schedule-tool-mode-{{ mode.id }}" value="{{ mode.id }}"{{ ' checked' if loop.first }}>
+        <label class="btn btn-outline-secondary" for="schedule-tool-mode-{{ mode.id }}">{{ mode.name }}</label>
+        {% endfor %}
+      </div>
+    </fieldset>
+    <p class="form-text mb-2" data-paint-tool-hint aria-live="polite">
+      Ziehen im Raster malt mit dem gewählten Modus.
+    </p>
+    <div class="row g-2 align-items-end schedule-paint-fields">
+      <div class="col-sm"><label class="form-label" for="paint-weekday">Tag</label>
+        <select class="form-select" id="paint-weekday" name="weekday">{% for day, name in weekdays %}<option value="{{ day }}">{{ name }}</option>{% endfor %}</select></div>
+      <div class="col-sm"><label class="form-label" for="paint-start">Von</label><input class="form-control" id="paint-start" name="start_time" type="time" step="900" value="06:30"></div>
+      <div class="col-sm"><label class="form-label" for="paint-end">Bis</label><input class="form-control" id="paint-end" name="end_time" type="time" step="900" value="08:00"></div>
+      <input type="hidden" name="mode_id" value="">
+      <div class="col-sm-auto form-check mb-2">
+        <input class="form-check-input" id="paint-end-boundary" name="end_boundary" type="checkbox" value="1440">
+        <label class="form-check-label" for="paint-end-boundary">Bis Tagesende (24:00)</label>
+      </div>
+      <div class="col-sm-auto"><button class="btn btn-primary" type="submit">Zeitraum malen</button></div>
+    </div>
+    <p class="form-text mb-0">15-Minuten-Raster; ein Zeitraum bleibt innerhalb eines Tages.</p>
+  </form>
+{% endif %}
+
 <div id="schedule-grid" class="row g-2 mb-2"
      data-zone="{{ zone.id }}" data-editable="{{ 'yes' if may_edit else 'no' }}">
 {% for day, tagname in weekdays %}
-    <section class="col" style="min-width: 8rem;">
+    <section class="col schedule-day-column">
         <h2 class="h6 text-center">{{ tagname }}</h2>
+        {% if may_edit and points %}<details class="text-center mb-1">
+          <summary class="btn btn-sm btn-outline-secondary">Übertragen</summary>
+          <div class="border rounded p-2 mt-1">
+            {% for scope, label in (("workdays", "auf Mo–Fr"), ("all", "auf alle Tage")) %}
+            <form method="post" action="/zones/{{ zone.id }}/schedule/copy-day" hx-push-url="false">
+              <input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="weekday" value="{{ day }}"><input type="hidden" name="scope" value="{{ scope }}">
+              <button class="btn btn-sm btn-link" type="submit">{{ label }}</button>
+            </form>{% endfor %}
+          </div>
+        </details>{% endif %}
         <div class="schedule-day position-relative border rounded bg-light"
-             style="height: 26rem;" data-weekday="{{ day }}">
+             style="height: 26rem;" data-weekday="{{ day }}" tabindex="{{ '0' if may_edit else '-1' }}" aria-label="{{ tagname }}, Tagesraster">
         {% for segment in segments[day] %}
-            <div class="schedule-bar position-absolute start-0 end-0 border-bottom px-1 overflow-hidden{{ ' schedule-draggable' if segment.point_id and may_edit }}"
+            <div class="schedule-bar position-absolute start-0 end-0 border-bottom px-1 overflow-hidden{{ ' schedule-draggable' if segment.point_id and may_edit }}{{ ' schedule-carried' if not segment.point_id and may_edit }}"
                  {% if segment.point_id %}data-point="{{ segment.point_id }}"{% endif %}
                  data-start-minute="{{ segment.start_minute }}"
                  {% set w = warmth.get(segment.mode_id, 0.5) %}
@@ -40,12 +99,12 @@
                         background: color-mix(in oklab,
                             var({{ '--warmth' if w >= 0.5 else '--cool' }})
                             {{ (45 + (w - 0.5)|abs * 90)|round|int }}%, var(--surface));"
-                 title="{{ segment.mode_name }} ab {{ "%02d:%02d"|format(
+                 title="{{ 'Vom Vortag übernommen; dort verschieben. ' if not segment.point_id and may_edit }}{{ segment.mode_name }} ab {{ "%02d:%02d"|format(
                      segment.start_minute // 60, segment.start_minute % 60
                  ) }}{% if temperatures.get(segment.mode_id) %} – {{ temperatures[segment.mode_id]|grad }} °C{% endif %}">
                 {# Eine Zeile, nicht zwei: Ein Balken von zwei Stunden ist keine zwei
                    Zeilen hoch, und die Beschriftung wurde unten abgeschnitten. #}
-                <small class="text-nowrap"><span class="schedule-time t-value">{{ "%02d:%02d"|format(
+                <small class="text-nowrap">{% if not segment.point_id and may_edit %}<span aria-hidden="true">↶</span> <span class="visually-hidden">Vom Vortag übernommen. </span>{% endif %}<span class="schedule-time t-value">{{ "%02d:%02d"|format(
                     segment.start_minute // 60, segment.start_minute % 60
                 ) }}</span> {{ segment.mode_name }}{% if temperatures.get(segment.mode_id) %}
                     <span class="t-value">{{ temperatures[segment.mode_id]|grad }}°</span>{% endif %}</small>
@@ -73,7 +132,7 @@
     Der Balken ganz oben an einem Tag reicht vom Vortag herein und gehört dorthin.
 </p>
 {% endif %}
-{% else %}
+{% if not points %}
 <div class="alert alert-info">Noch kein Zeitplan vorhanden. Bis zum ersten Punkt gilt der Frostschutz.</div>
 {% endif %}
 
