@@ -28,13 +28,17 @@ PHYSICAL_VOCABULARY = {
         r"\bunderfloor\s+heating\b|\bstellantriebe?\b|\bboilers?\b|"
         r"\bbrenner\b|\bburners?\b|\b(?:umwälz)?pumpen?\b|\bpumps?\b"
     ),
+    # Separable-verb prefixes stack in German: "aufgeheizt" is auf + ge + heizt, not just
+    # one prefix. Both orders occur in the wild ("aufheizt" without "ge", "aufgeheizt"
+    # with it), so the inner "ge" is itself optional, on top of the outer prefix.
     "heating": (
-        r"\bheizung(?:en)?\b|\b(?:be|ge|weiter|auf)?heiz"
+        r"\bheizung(?:en)?\b|"
+        r"\b(?:be|ge|weiter|auf|vor|nach|er)?(?:ge)?heiz"
         r"(?:e|est|t|en|te|test|tet|ten|end\w*)\b|\bheat(?:s|ed|ing)?\b"
     ),
     "warmth": (
-        r"\b(?:er)?wärm(?:e|st|t|en|te|test|tet|ten|er)\b|"
-        r"\b(?:er)?waerm(?:e|st|t|en|te|test|tet|ten|er)\b|"
+        r"\b(?:be|ge|weiter|auf|vor|nach|er)?(?:ge)?wärm(?:e|st|t|en|te|test|tet|ten|er)\b|"
+        r"\b(?:be|ge|weiter|auf|vor|nach|er)?(?:ge)?waerm(?:e|st|t|en|te|test|tet|ten|er)\b|"
         r"\bwarm(?:e[rmns]?|er|ers|est|en|em|es|ed|ing|th)?\b"
     ),
     "switching": (
@@ -52,6 +56,14 @@ AMBIGUOUS_STATE_CHIP = re.compile(r">\s*Heiz(?:t|en)\s*<", re.IGNORECASE)
 def _user_visible_sources(root: Path = ROOT) -> list[Path]:
     sources = list((root / "thermoctl").rglob("*.py"))
     sources += list((root / "thermoctl/web/templates").rglob("*.html"))
+    # Own scripts only: the vendored bundles under static/vendor/ are third-party code we
+    # did not author and whose comments and identifiers are not our claims to review.
+    static_dir = root / "thermoctl/web/static"
+    sources += [
+        path
+        for path in static_dir.glob("*.js")
+        if path.is_file()
+    ]
     sources += [root / "README.md", root / "CHANGELOG.md"]
     sources += [
         path
@@ -103,6 +115,59 @@ def _python_text_fragments(path: Path) -> list[tuple[int, str]]:
     ]
 
 
+def _javascript_text_fragments(path: Path) -> list[tuple[int, str]]:
+    """Return string- and template-literal contents, not comments or identifiers.
+
+    A small hand-rolled scanner, not a full JS parser: it tracks line comments, block
+    comments, and single/double/backtick-quoted literals well enough for this codebase's
+    own scripts (checked to contain no backtick inside an actual template literal, only
+    inside comments). It exists because comments here carry design rationale in prose that
+    would otherwise trip the guard on words the user never sees.
+    """
+    text = path.read_text(encoding="utf-8")
+    fragments: list[tuple[int, str]] = []
+    line = 1
+    index = 0
+    length = len(text)
+    while index < length:
+        character = text[index]
+        if character == "\n":
+            line += 1
+            index += 1
+            continue
+        if character == "/" and index + 1 < length and text[index + 1] == "/":
+            newline = text.find("\n", index)
+            index = length if newline == -1 else newline
+            continue
+        if character == "/" and index + 1 < length and text[index + 1] == "*":
+            end = text.find("*/", index + 2)
+            end = length if end == -1 else end + 2
+            line += text.count("\n", index, end)
+            index = end
+            continue
+        if character in ("'", '"', "`"):
+            quote = character
+            start_line = line
+            cursor = index + 1
+            content: list[str] = []
+            while cursor < length and text[cursor] != quote:
+                if text[cursor] == "\\" and cursor + 1 < length:
+                    content.append(text[cursor + 1])
+                    if text[cursor + 1] == "\n":
+                        line += 1
+                    cursor += 2
+                    continue
+                if text[cursor] == "\n":
+                    line += 1
+                content.append(text[cursor])
+                cursor += 1
+            fragments.append((start_line, "".join(content)))
+            index = cursor + 1
+            continue
+        index += 1
+    return fragments
+
+
 def _blank_markdown_code(match: re.Match[str]) -> str:
     return "".join("\n" if character == "\n" else " " for character in match.group())
 
@@ -113,6 +178,13 @@ def _text_lines(path: Path) -> list[tuple[int, str, str]]:
         return [
             (first_line + offset, line, line)
             for first_line, fragment in _python_text_fragments(path)
+            for offset, line in enumerate(fragment.splitlines())
+        ]
+
+    if path.suffix == ".js":
+        return [
+            (first_line + offset, line, line)
+            for first_line, fragment in _javascript_text_fragments(path)
             for offset, line in enumerate(fragment.splitlines())
         ]
 
