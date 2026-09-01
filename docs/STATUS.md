@@ -51,19 +51,20 @@ Selbst nachgeprüft, nicht aus Berichten übernommen (Stand 2026-09-01):
 **Die Suite liest `THERMOCTL_TEST_DATABASE_URL`**, nicht `THERMOCTL_DATABASE_URL`. Wer
 die zweite setzt, läuft unbemerkt gegen SQLite und bekommt trotzdem einen grünen Lauf.
 
-## v0.2.2 — noch nicht freigegeben
+## v0.2.2 — Freigabe steht aus
 
-Zwei Freigabe-Reviews haben den Stand abgelehnt, beide zu Recht. Was daraus behoben ist,
-steht im [CHANGELOG](../CHANGELOG.md); was noch offen ist, hier:
+Zwei Freigabe-Reviews haben den Stand abgelehnt, beide zu Recht. **Alle Befunde sind
+behoben**; das dritte Review läuft noch. Was behoben wurde, steht im
+[CHANGELOG](../CHANGELOG.md), die Einzelheiten in [verlauf.md](verlauf.md):
 
-- **Rückgängig im Zeitplan nimmt einen veralteten Schnappschuss an**, wenn dazwischen
-  über die gewöhnliche Punktbearbeitung A→B→A geändert wurde. Die Revision zählt nur
-  Audit-Ereignisse vom Typ `schedule`, die normale Bearbeitung schreibt aber
-  `schedule_point`.
-- **Das Formular „Schaltpunkt anlegen" hat kein CSRF-Feld** und ist ohne JavaScript
-  nicht absendbar. Der Test, der das prüfen sollte, ergänzt den Header selbst.
-- **Tote CSS-Klassen** (`t-marke`, `t-leise` in `settings.html`) verändern still die
-  Darstellung der Sonnenabsenkung.
+- Rückgängig im Zeitplan betrachtet jetzt **jede** Änderung am Zeitplan einer Zone, nicht
+  nur die gemalten. Der Fall A→B→A über die gewöhnliche Punktbearbeitung wird abgewiesen.
+- **Jedes ändernde Formular der angemeldeten Oberfläche** trägt jetzt ein verstecktes
+  CSRF-Feld und funktioniert ohne JavaScript. Betroffen war nicht nur „Schaltpunkt
+  anlegen", sondern jedes Formular ausser den bereits abgesicherten des Zeitplans und
+  des Kiosks. Ein Wächter prüft das künftig für jedes POST- und `hx-post`-Formular.
+- Die toten CSS-Klassen sind ersetzt; ein Wächter vergleicht künftig jede in einer
+  Vorlage benutzte `t-`/`tc-`-Klasse mit den Regeln in `thermoctl.css`.
 
 ## Offen, unabhängig von der Freigabe
 

@@ -134,6 +134,46 @@ def _schedule_revision(session: Session, event: AuditEvent) -> int:
     return revision
 
 
+def _schedule_point_audit_id(zone_id: int, point_id: int) -> str:
+    """Keeps point audit entries attributable to their schedule after deletion."""
+    return f"{zone_id}:{point_id}"
+
+
+def _current_schedule_revision(session: Session, zone_id: int) -> int | None:
+    """Returns the latest audit event that changed one zone's schedule.
+
+    Schedule changes come from painting, copying a day, adopting another zone's
+    schedule, undoing a gesture, and creating, moving, deleting, or changing the
+    mode of an individual point. Whole-schedule operations use the zone id directly;
+    point operations use ``zone_id:point_id`` so even a deleted point remains
+    attributable to the correct schedule.
+    """
+    zone_key = str(zone_id)
+    point_prefix = f"{zone_id}:%"
+    return session.scalar(
+        select(func.max(AuditEvent.id)).where(
+            (
+                (AuditEvent.object_type == "schedule")
+                & (AuditEvent.object_id == zone_key)
+            )
+            | (
+                (AuditEvent.object_type == "schedule_point")
+                & AuditEvent.object_id.like(point_prefix)
+            )
+            # Before zone-qualified point ids were introduced, an audit entry only
+            # stored the point id. Such an entry cannot safely be assigned to a zone
+            # after that point was deleted. Include every legacy point event: this may
+            # reject an old undo token after an unrelated zone edit, but never accepts
+            # a stale token across an upgrade. New gestures have a later revision and
+            # therefore are unaffected by these fixed historical ids.
+            | (
+                (AuditEvent.object_type == "schedule_point")
+                & AuditEvent.object_id.not_like("%:%")
+            )
+        )
+    )
+
+
 def paint_schedule_interval(
     session: Session,
     zone: Zone,
@@ -302,12 +342,7 @@ def undo_schedule_gesture(
     source: str = "web",
 ) -> None:
     """Restores one gesture only if no later schedule edit has intervened."""
-    current_revision = session.scalar(
-        select(func.max(AuditEvent.id)).where(
-            AuditEvent.object_type == "schedule",
-            AuditEvent.object_id == str(zone.id),
-        )
-    )
+    current_revision = _current_schedule_revision(session, zone.id)
     if (
         current_revision != expected_revision
         or schedule_snapshot(_zone_points(session, zone.id)) != expected_after
@@ -436,7 +471,7 @@ def create_schedule_point(
                 source=source,
                 action="create",
                 object_type="schedule_point",
-                object_id=str(point.id),
+                object_id=_schedule_point_audit_id(zone.id, point.id),
                 summary=f"Zeitplanpunkt für Zone '{zone.display_name}' angelegt",
                 user_id=user_id,
                 token_id=token_id,
@@ -490,7 +525,7 @@ def move_schedule_point(
                 source=source,
                 action="update",
                 object_type="schedule_point",
-                object_id=str(point.id),
+                object_id=_schedule_point_audit_id(zone.id, point.id),
                 summary=f"Zeitplanpunkt für Zone '{zone.display_name}' verschoben",
                 detail=f"{before} → {after}",
                 user_id=user_id,
@@ -530,7 +565,7 @@ def change_schedule_point_mode(
         source=source,
         action="update",
         object_type="schedule_point",
-        object_id=str(point.id),
+        object_id=_schedule_point_audit_id(zone.id, point.id),
         summary=f"Modus des Zeitplanpunkts für Zone '{zone.display_name}' geändert",
         detail=f"{previous_name} → {mode.name}",
         user_id=user_id,
@@ -555,7 +590,7 @@ def delete_schedule_point(
         source=source,
         action="delete",
         object_type="schedule_point",
-        object_id=str(point_id),
+        object_id=_schedule_point_audit_id(zone.id, point_id),
         summary=f"Zeitplanpunkt für Zone '{zone.display_name}' gelöscht",
         user_id=user_id,
         token_id=token_id,

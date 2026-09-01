@@ -306,6 +306,34 @@ def _rendered_form_fields(html: str, action: str) -> dict[str, str]:
     raise AssertionError(f"Kein Formular mit action={action!r} gefunden")
 
 
+def test_every_mutating_html_form_has_a_non_javascript_csrf_field() -> None:
+    """Every POST form must remain usable when HTMX and JavaScript are absent."""
+    import re
+    from pathlib import Path
+
+    from thermoctl.web import templates
+
+    template_dir = Path(__file__).resolve().parent.parent / "thermoctl/web/templates"
+    for path in template_dir.glob("*.html"):
+        source = path.read_text(encoding="utf-8")
+        rendered_source = templates.env.preprocess(source, name=path.name)
+        forms = re.findall(r"<form\b[^>]*>.*?</form>", rendered_source, re.DOTALL | re.I)
+        for form in forms:
+            opening_tag = form[: form.index(">") + 1]
+            method = re.search(
+                r"\bmethod\s*=\s*(?:\"([^\"]*)\"|'([^']*)'|([^\s>]+))",
+                opening_tag,
+                re.I,
+            )
+            method_value = next((value for value in method.groups() if value), "") if method else ""
+            mutating = method_value.lower() == "post" or re.search(
+                r"\bhx-post(?:\s*=|\s|>)", opening_tag, re.I
+            )
+            if not mutating:
+                continue
+            assert 'name="csrf_token"' in form, f"CSRF field missing in {path.name}"
+
+
 def test_the_rendered_form_carries_the_field_names_the_view_reads(
     client_als, session: Session
 ) -> None:
@@ -335,9 +363,7 @@ def test_the_rendered_form_carries_the_field_names_the_view_reads(
     assert page.status_code == 200
     fields = _rendered_form_fields(page.text, f"/zones/{zone.id}/schedule/points")
 
-    response = client.post(
-        f"/zones/{zone.id}/schedule/points", data=fields, headers=_csrf(client)
-    )
+    response = client.post(f"/zones/{zone.id}/schedule/points", data=fields)
 
     assert response.status_code in (200, 303)
     points = session.scalars(select(SchedulePoint).where(SchedulePoint.zone_id == zone.id)).all()
