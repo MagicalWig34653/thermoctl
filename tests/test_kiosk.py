@@ -9,7 +9,7 @@ application. Every test here checks one boundary of that scope; the happy path
 """
 
 import re
-from datetime import timedelta
+from datetime import datetime, timedelta
 from decimal import Decimal
 
 import pytest
@@ -64,6 +64,40 @@ def _with_kiosk_cookie(client: TestClient, plaintext: str) -> TestClient:
         plaintext, get_settings().secret_key.get_secret_value()
     ))
     return client
+
+
+@pytest.mark.parametrize(
+    ("moment_utc", "timezone_name", "expected"),
+    [
+        (datetime(2026, 1, 15, 12, 5), "Europe/Berlin", "13:05"),
+        (datetime(2026, 8, 15, 12, 5), "Europe/Berlin", "14:05"),
+        (datetime(2026, 3, 29, 0, 30), "Europe/Berlin", "01:30"),
+        (datetime(2026, 3, 29, 1, 30), "Europe/Berlin", "03:30"),
+        (datetime(2026, 8, 15, 12, 5), "America/New_York", "08:05"),
+    ],
+)
+def test_the_rendered_kiosk_clock_uses_the_configured_timezone(
+    client: TestClient,
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+    moment_utc: datetime,
+    timezone_name: str,
+    expected: str,
+) -> None:
+    settings = create_settings(session)
+    settings.timezone = timezone_name
+    zone = create_zone(session, "flur")
+    admin = _admin(session)
+    _token, plaintext = issue_kiosk_token(
+        session, admin, "Flur", [zone.id], control_allowed=False, expires_at=None
+    )
+    _with_kiosk_cookie(client, plaintext)
+    monkeypatch.setattr("thermoctl.web.kiosk_views.utcnow", lambda: moment_utc)
+
+    response = client.get("/kiosk")
+
+    assert response.status_code == status.HTTP_200_OK
+    assert f'<span class="kiosk-clock">{expected}</span>' in response.text
 
 
 # --- Issuing ----------------------------------------------------------------------
@@ -458,6 +492,24 @@ def test_the_dashboard_shows_a_shadow_decision_once_one_exists(
     response = client.get("/kiosk")
     assert response.status_code == status.HTTP_200_OK
     assert "Heizt" in response.text
+
+
+def test_the_rendered_kiosk_token_expiry_uses_the_configured_timezone(
+    client_als, session: Session
+) -> None:
+    settings = create_settings(session)
+    settings.timezone = "America/New_York"
+    zone = create_zone(session, "flur")
+    admin = _admin(session)
+    issue_kiosk_token(
+        session, admin, "Ablauftest", [zone.id], control_allowed=False,
+        expires_at=datetime(2026, 8, 16, 12, 5),
+    )
+
+    response = client_als([("token.manage", None)]).get("/kiosk-tokens")
+
+    assert response.status_code == status.HTTP_200_OK
+    assert "16.08.2026 08:05" in response.text
 
 
 def test_an_unknown_direction_is_rejected_with_a_message(

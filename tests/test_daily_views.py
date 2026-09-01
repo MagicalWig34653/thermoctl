@@ -1,14 +1,22 @@
 from datetime import datetime
 from decimal import Decimal
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from tests.helpers import create_mode, create_settings, create_zone, source
+from tests.helpers import (
+    create_mode,
+    create_settings,
+    create_zone,
+    source,
+    zone_with_schedule,
+)
 from thermoctl.auth.csrf import CSRF_HEADER, csrf_token
 from thermoctl.auth.sessions import COOKIE_NAME
 from thermoctl.config import get_settings
+from thermoctl.db.models.operations import Setting
 from thermoctl.db.models.override import ZoneOverride
 from thermoctl.db.models.state import ShadowDecision
 
@@ -24,6 +32,35 @@ def _csrf(client: TestClient) -> dict[str, str]:
     http_session = client.cookies.get(COOKIE_NAME)
     assert http_session is not None
     return {CSRF_HEADER: csrf_token(http_session, get_settings().secret_key.get_secret_value())}
+
+
+@pytest.mark.parametrize(
+    "moment_utc",
+    [datetime(2026, 1, 4, 23, 30), datetime(2026, 8, 30, 22, 30)],
+)
+def test_the_start_page_uses_local_day_and_time_for_its_schedule_track(
+    session: Session,
+    client_als,
+    monkeypatch: pytest.MonkeyPatch,
+    moment_utc: datetime,
+) -> None:
+    zone = zone_with_schedule(
+        session,
+        "wohnzimmer",
+        [(7, 0, "sonntag", Decimal("18.0")), (1, 0, "montag", Decimal("21.0"))],
+    )
+    settings = session.get(Setting, 1)
+    assert settings is not None
+    settings.timezone = "Europe/Berlin"
+    client = client_als([("zone.read", zone.id)])
+    monkeypatch.setattr("thermoctl.web.start_views.utcnow", lambda: moment_utc)
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert "ab 00:00 Montag" in response.text
+    assert "ab 00:00 Sonntag" not in response.text
+    assert 'class="tc-track-now" style="left: 2.0833%"' in response.text
 
 
 def test_the_parameter_page_shows_inherited_values_and_empty_restores_inheritance(

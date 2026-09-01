@@ -24,7 +24,6 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
-from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -42,6 +41,7 @@ from thermoctl.domain.schedule import (
     resolved_setpoint,
     temperature_for_mode,
 )
+from thermoctl.domain.time import local_time
 
 log = logging.getLogger(__name__)
 
@@ -121,8 +121,7 @@ def boost(
     settings = session.get(Setting, 1)
     if settings is None:
         raise RemoteControlError("Die Einrichtung ist unvollständig.")
-    timezone_name = ZoneInfo(settings.timezone)
-    local = now.replace(tzinfo=ZoneInfo("UTC")).astimezone(timezone_name).replace(tzinfo=None)
+    local = local_time(now, settings.timezone).replace(tzinfo=None)
 
     points = list(
         session.scalars(select(SchedulePoint).where(SchedulePoint.zone_id == zone.id))

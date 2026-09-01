@@ -35,6 +35,7 @@ from thermoctl.auth.tokens import resolve_token
 from thermoctl.config import get_settings
 from thermoctl.db.base import utcnow
 from thermoctl.db.models.lookup import SensorStatus
+from thermoctl.db.models.operations import Setting
 from thermoctl.db.models.state import ShadowDecision, ZoneState
 from thermoctl.db.models.zone import Zone
 from thermoctl.domain.authz import has_permission, principal_for_token, require, visible_zones
@@ -130,6 +131,7 @@ def _dashboard(
     zones = visible_zones(session, principal, "zone.read")
     zone_ids = [zone.id for zone in zones]
     now = utcnow()
+    settings = session.get(Setting, 1)
 
     zustaende = {
         zone_id: (state, sensorstatus)
@@ -152,6 +154,7 @@ def _dashboard(
         "kiosk.html",
         {
             "now": now,
+            "timezone": settings.timezone if settings is not None else None,
             "zones": zones,
             "zustaende": zustaende,
             "setpoints": {zone.id: resolved_setpoint(session, zone, now) for zone in zones},
