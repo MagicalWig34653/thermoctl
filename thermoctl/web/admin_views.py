@@ -13,6 +13,7 @@ from thermoctl.db.base import utcnow
 from thermoctl.db.models.credential import ApiToken
 from thermoctl.db.models.identity import AccessGroup, GroupPermission, User
 from thermoctl.db.models.lookup import Permission
+from thermoctl.db.models.operations import Setting
 from thermoctl.db.models.zone import Zone
 from thermoctl.domain.administration import (
     AdministrationError,
@@ -301,6 +302,7 @@ def _token_list(
     errors: FormError | None = None, values: dict[str, object] | None = None,
     plaintext: str | None = None, hint: str | None = None,
 ) -> Response:
+    settings = session.get(Setting, 1)
     return form_again(
         request, "tokens.html", values or {}, errors,
         token=session.scalars(
@@ -311,6 +313,7 @@ def _token_list(
         alle_rechte=session.scalars(select(Permission).order_by(Permission.code)).all(),
         plaintext=plaintext,
         hint=hint,
+        timezone=settings.timezone if settings is not None else None,
         is_htmx=is_partial_swap(request),
     )
 

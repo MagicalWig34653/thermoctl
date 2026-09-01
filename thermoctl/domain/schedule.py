@@ -15,6 +15,7 @@ from thermoctl.db.models.override import ZoneOverride
 from thermoctl.db.models.schedule import SchedulePoint
 from thermoctl.db.models.zone import SetpointMode, Zone, ZoneSetpoint
 from thermoctl.domain.modes import check_temperature
+from thermoctl.domain.time import local_time
 
 MINUTES_PER_WEEK = 7 * 24 * 60
 
@@ -517,9 +518,7 @@ def resolved_setpoint(session: Session, zone: Zone, now_utc: datetime) -> Setpoi
 
     # Schedules are stored in local time, so the night setback does not shift when
     # clocks change for daylight saving.
-    local = now_utc.replace(tzinfo=ZoneInfo("UTC")).astimezone(
-        ZoneInfo(settings.timezone)
-    )
+    local = local_time(now_utc, settings.timezone)
     points = list(
         session.scalars(select(SchedulePoint).where(SchedulePoint.zone_id == zone.id))
     )
@@ -556,8 +555,9 @@ def end_of_next_switch(
     point, just not at its actual schedule point.
     """
     settings = session.get(Setting, 1)
-    timezone_name = ZoneInfo(settings.timezone if settings is not None else "Europe/Berlin")
-    local = (now_utc or utcnow()).replace(tzinfo=ZoneInfo("UTC")).astimezone(timezone_name)
+    configured_timezone = settings.timezone if settings is not None else "Europe/Berlin"
+    timezone_name = ZoneInfo(configured_timezone)
+    local = local_time(now_utc or utcnow(), configured_timezone)
     points = list(
         session.scalars(select(SchedulePoint).where(SchedulePoint.zone_id == zone.id))
     )

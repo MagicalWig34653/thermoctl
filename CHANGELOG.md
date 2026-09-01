@@ -50,6 +50,10 @@ Stück Funktion: der Ventilschutz.
 
 ### Behoben
 
+- **Angezeigte Uhrzeiten verwenden die konfigurierte Zeitzone.** Die Kiosk-Uhr,
+  die Jetztmarkierung des Tagesplans auf der Startseite sowie Ablaufzeiten von API-
+  und Kiosk-Tokens rechnen die intern als naive UTC geführte Zeit erst für die
+  Anzeige um; Sommerzeit und abweichende Zeitzonen werden dabei berücksichtigt.
 - **SQLite sperrt Bedienanfragen nicht mehr während externer Netzabrufe.** Anmeldung und
   Geräteliste von Meross werden jetzt ohne offene Datenbanksitzung geholt und erst danach
   kurz gespeichert. Auch Open-Meteo wird nicht mehr aus der bereits schreibenden

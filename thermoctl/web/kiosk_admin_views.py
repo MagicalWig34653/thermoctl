@@ -19,6 +19,7 @@ from thermoctl.auth.dependencies import csrf_protection, current_principal, get_
 from thermoctl.db.base import utcnow
 from thermoctl.db.models.credential import ApiToken
 from thermoctl.db.models.identity import User
+from thermoctl.db.models.operations import Setting
 from thermoctl.db.models.zone import Zone
 from thermoctl.domain.administration import revoke_token
 from thermoctl.domain.authz import require
@@ -37,6 +38,7 @@ def _kiosk_token_list(
     errors: FormError | None = None, values: dict[str, object] | None = None,
     plaintext: str | None = None, hint: str | None = None,
 ) -> Response:
+    settings = session.get(Setting, 1)
     token_rows = session.scalars(
         select(ApiToken).where(ApiToken.is_kiosk.is_(True)).order_by(ApiToken.name)
     ).all()
@@ -60,6 +62,7 @@ def _kiosk_token_list(
         zones=session.scalars(select(Zone).order_by(Zone.sort_order, Zone.name)).all(),
         plaintext=plaintext,
         hint=hint,
+        timezone=settings.timezone if settings is not None else None,
         ist_htmx=is_partial_swap(request),
     )
 

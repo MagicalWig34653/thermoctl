@@ -48,7 +48,7 @@
      hx-target="#kiosk-body" hx-swap="outerHTML">
     <div class="kiosk-heading">
         <span class="tc-marker" style="font-size: 1.75rem">thermoctl</span>
-        <span class="kiosk-clock">{{ now.strftime("%H:%M") }}</span>
+        <span class="kiosk-clock">{{ (now|localtime(timezone)).strftime("%H:%M") }}</span>
     </div>
 
     {% if not zones %}

@@ -35,6 +35,7 @@ from thermoctl.db.models.zone import SetpointMode, ZoneSetpoint
 from thermoctl.domain.authz import has_permission, principal_for_user, visible_zones
 from thermoctl.domain.modes import MAXIMUM_TEMPERATURE_C, MINIMUM_TEMPERATURE_C
 from thermoctl.domain.schedule import resolved_setpoint, week_segments
+from thermoctl.domain.time import local_time
 from thermoctl.setup import setup_needed
 from thermoctl.web import templates, warmth_fraction
 
@@ -123,6 +124,7 @@ def start(
     zones = visible_zones(session, principal, "zone.read")
     now = utcnow()
     settings = session.get(Setting, 1)
+    local_now = local_time(now, settings.timezone if settings is not None else None)
     states = {
         zone_id: (state, sensor_status_of)
         for zone_id, state, sensor_status_of in session.execute(
@@ -210,8 +212,10 @@ def start(
                 if zone.id in states and states[zone.id][1].code != "ok"
             ],
             "day_tracks": _day_track(
-                session, zone_ids, now.isoweekday()
+                session, zone_ids, local_now.isoweekday()
             ),
-            "now_fraction": (now.hour * 60 + now.minute) * 100 / MINUTES_PER_DAY,
+            "now_fraction": (
+                local_now.hour * 60 + local_now.minute
+            ) * 100 / MINUTES_PER_DAY,
         },
     )

@@ -6,6 +6,9 @@ Letzte Aktualisierung: 2026-08-31
 
 Zusammengeführt, gegengelesen und nachgemessen:
 
+- **Angezeigte Uhrzeiten in lokaler Zeit**: Kiosk-Uhr, Jetztmarkierung und Wochentag
+  des Tagesplans auf der Startseite sowie Ablaufzeiten von API- und Kiosk-Tokens
+  verwenden die konfigurierte Zeitzone statt der naiven internen UTC-Darstellung.
 - **Meross**, beide Hälften, gegen das echte Konto geprüft — inklusive eines echten
   `SET`, das gefahrlos möglich war, weil alle vier Steckdosen aus waren und auf „aus"
   gesetzt wurden.
@@ -1017,6 +1020,16 @@ implementierte Zeitberechnung in zwei Adaptern, und ein Meldungsversand, der den
 verzögert hätte.
 
 ## Offen
+
+**Bei der Zeitzonenprüfung gefundene fachliche Grenzfehler:**
+
+- Die Statistik bildet Abfragegrenzen und Tages-Buckets weiterhin an UTC-Mitternacht;
+  ein lokaler Tag beginnt dadurch in Europe/Berlin um 01:00 beziehungsweise 02:00.
+- Der Datumsfilter des Auditprotokolls deutet lokale Formulardaten weiterhin als
+  UTC-Grenzen. Beides betrifft die fachliche Gruppierung beziehungsweise Abfrage und
+  ist mehr als eine reine Anzeigekorrektur.
+- Die Startseite beschreibt das Ende einer noch laufenden Übersteuerung mit dem
+  Vergangenheitsfilter `age` und zeigt deshalb „gerade eben" statt einer Zukunftsangabe.
 
 **Was nur der Projektinhaber kann:**
 

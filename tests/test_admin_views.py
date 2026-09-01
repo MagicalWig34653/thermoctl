@@ -1,8 +1,10 @@
+from datetime import datetime
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from tests.helpers import create_zone, source, user_with_permissions
+from tests.helpers import create_settings, create_zone, source, user_with_permissions
 from thermoctl.auth.tokens import issue_token
 from thermoctl.domain.authz import Forbidden
 
@@ -191,6 +193,23 @@ def test_issuing_a_token_shows_the_plaintext_exactly_once(client_als, session: S
     assert "tctl_" in response.text
     # On the next call to the page it is gone -- only the hash is stored.
     assert "tctl_" not in c.get("/tokens").text
+
+
+def test_the_rendered_token_expiry_uses_the_configured_timezone(
+    client_als, session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    c = client_als([("token.self", None)])
+    settings = create_settings(session)
+    settings.timezone = "America/New_York"
+    monkeypatch.setattr(
+        "thermoctl.web.admin_views.utcnow", lambda: datetime(2026, 8, 15, 12, 5)
+    )
+    response = c.post(
+        "/tokens", data={"name": "Zeitzone", "code": "", "valid_days": "1"},
+        headers=_with_csrf(c, session),
+    )
+
+    assert "16.08.2026 08:05" in response.text
 
 
 def test_a_token_without_a_name_is_refused(client_als, session: Session) -> None:
@@ -550,4 +569,3 @@ def test_an_unparsable_zone_in_a_permission_entry_is_a_bad_request(
         follow_redirects=False,
     )
     assert nur_trenner.status_code in (200, 303)
-

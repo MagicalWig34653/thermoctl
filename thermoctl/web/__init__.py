@@ -6,6 +6,7 @@ from fastapi import Request
 from fastapi.templating import Jinja2Templates
 
 from thermoctl.db.base import utcnow
+from thermoctl.domain.time import local_time
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 def _logged_in_user(request: Request) -> dict[str, object]:
@@ -110,3 +111,4 @@ def grad(value: Decimal | float | None, digits: int = 1) -> str:
 
 templates.env.filters["age"] = age_in_words
 templates.env.filters["grad"] = grad
+templates.env.filters["localtime"] = local_time
