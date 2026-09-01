@@ -215,7 +215,7 @@ async def arm_view(
     principal: Annotated[Principal, Depends(current_principal)],
     session: Annotated[Session, Depends(get_session)],
 ) -> Response:
-    # Its own permission, not `setting.manage`: this here moves a valve.
+    # Its own permission, not `setting.manage`: this changes the first safety latch.
     require(principal, "control.arm")
     form = await request.form()
     armed = str(form.get("armed", "")) == "yes"

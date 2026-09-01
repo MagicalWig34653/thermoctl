@@ -130,6 +130,8 @@ async def test_the_operating_state_lives_in_its_own_entity(session: Session) -> 
 
     trocken = dict((await _run(session, PublicationState())).messages)
     assert "homeassistant/binary_sensor/thermoctl_scharf/config" in trocken
+    armed_config = json.loads(trocken["homeassistant/binary_sensor/thermoctl_scharf/config"])
+    assert armed_config["name"] == "Freigabe gespeichert"
     assert trocken["thermoctl/state/armed"] == "false"
 
     arm(session, True, reason="Test", user_id=None)

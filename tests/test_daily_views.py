@@ -297,6 +297,29 @@ def test_the_overview_explains_a_missing_reading_and_shows_the_decision(
     assert "Betriebsart" not in response.text
 
 
+def test_the_overview_labels_heating_as_a_decision(session: Session, client_als) -> None:
+    zone = _grundlage(session)
+    session.add(
+        ShadowDecision(
+            decided_at=datetime(2026, 8, 29, 7),
+            zone_id=zone.id,
+            temperature_c=Decimal("19.0"),
+            setpoint_c=Decimal("21.0"),
+            setpoint_reason="Zeitplan",
+            would_heat=True,
+            previous_would_heat=False,
+            outcome_code="would_heat",
+            reason="Unter Sollwert",
+        )
+    )
+    session.flush()
+
+    response = client_als([("zone.read", zone.id)]).get("/")
+
+    assert "Heizentscheidung" in response.text
+    assert ">Heizt<" not in response.text
+
+
 def test_an_override_until_the_next_switch(session: Session, client_als) -> None:
     """The end is computed and stored when creating it, not remembered as a rule —
     a later schedule change does not shift an override already in progress."""

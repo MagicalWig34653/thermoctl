@@ -246,7 +246,7 @@ def arm(
         object_type="setting",
         object_id="1",
         summary=(
-            "Regelung scharf geschaltet — ab jetzt wird wirklich geschaltet"
+            "Regelung scharf geschaltet — Sollwertausgabe erst nach Neustart freigegeben"
             if armed
             else "Regelung in den Trockenlauf zurückgenommen"
         ),

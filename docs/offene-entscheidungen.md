@@ -169,7 +169,8 @@ sich die Anbindung als „nicht eingerichtet" und fragt nichts ab.
 
 **Entschieden:** `thermoctl/domain/control_loop.py` — Hysterese, Mindestschaltdauer,
 Fensterpause, Frostschutz bei Sensorausfall — entsteht in Phase 2 als reine Funktion und
-wird erschöpfend getestet. Geschaltet wird damit nichts.
+wurde erschöpfend getestet. Die reine Funktion erzeugt nur eine Heizanforderung und keine
+körperliche Wirkung.
 
 **Warum:** Das Schattenprotokoll ist der erklärte Zweck dieser Phase, und es hat ohne eine
 Entscheidung nichts zu protokollieren. Die Funktion ist rein: kein Netz, keine Uhr, keine
@@ -188,7 +189,7 @@ der Vergleich wäre wertlos.
 **Entschieden:** Meldet die Störungserkennung `veraltet` — es liegt ein letzter bekannter
 Messwert vor, der aber zu alt ist —, ersetzt die Regelung den aufgelösten Sollwert durch
 den **Frostschutz-Sollwert** und regelt damit normal weiter. Nur wenn gar kein Wert
-vorliegt (`keine_quelle`), bleibt das Ventil zu.
+vorliegt (`keine_quelle`), bleibt die Heizanforderung aus.
 
 **Warum:** Die erste Umsetzung schaltete bei jedem Sensorausfall dauerhaft ab. Das klingt
 vorsichtig, ist aber die gefährlichere Antwort: Eine leere Batterie im Januar heißt dann,
@@ -204,7 +205,9 @@ unbedenkliches Niveau führt, hoch genug gegen Frost.
 **Restrisiko, benannt:** Bleibt ein Sensor dauerhaft bei einem zu kalten Wert stehen, hält
 die Anlage die Zone auf Frostschutzniveau, statt abzuschalten. Das kostet Energie und ist
 unangenehm, richtet aber keinen Schaden an. Eine Obergrenze für die ununterbrochene
-Heizdauer wäre die vollständige Antwort; sie gehört zu Phase 4, wo wirklich geschaltet wird.
+Heizdauer wäre die vollständige Antwort. Körperliche Ausgabe ist heute dreistufig: unscharf
+nur Protokoll, scharf vor Neustart weiterhin keine Ausgabe, scharf nach Neustart Sollwerte
+an selbstregelnde Thermostatventile. Ein/Aus-Entscheidungen erreichen keinen Aktor.
 
 **Verworfen:**
 - *Bei jedem Sensorausfall abschalten.* Die ursprüngliche Umsetzung; siehe oben.

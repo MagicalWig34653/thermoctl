@@ -491,7 +491,7 @@ def test_the_dashboard_shows_a_shadow_decision_once_one_exists(
 
     response = client.get("/kiosk")
     assert response.status_code == status.HTTP_200_OK
-    assert "Heizt" in response.text
+    assert "Heizanforderung" in response.text
 
 
 def test_the_rendered_kiosk_token_expiry_uses_the_configured_timezone(

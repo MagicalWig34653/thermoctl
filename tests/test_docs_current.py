@@ -55,6 +55,28 @@ def test_every_mcp_tool_is_listed_in_the_documentation() -> None:
     assert not missing, f"docs/mcp.md beschreibt diese MCP-Werkzeuge nicht: {missing}"
     assert not invented, f"docs/mcp.md nennt Werkzeuge, die es nicht gibt: {invented}"
 
+    prose_count = re.search(r"^([0-9]+) Stück,", text, re.MULTILINE)
+    assert prose_count, "docs/mcp.md nennt die Werkzeugzahl nicht im erwarteten Format"
+    assert int(prose_count.group(1)) == len(registered), (
+        "docs/mcp.md nennt im Fließtext eine falsche Werkzeugzahl: "
+        f"{prose_count.group(1)} statt {len(registered)}"
+    )
+
+
+def test_mcp_documentation_acknowledges_writable_control_parameters() -> None:
+    text = (ROOT / "docs" / "mcp.md").read_text(encoding="utf-8")
+    paragraph = next(
+        (
+            paragraph
+            for paragraph in text.split("\n\n")
+            if "set_control_parameters" in paragraph and "bewusste Ausnahme" in paragraph
+        ),
+        "",
+    )
+    assert "bewusste Ausnahme" in paragraph
+    assert "setzt genau einen benannten Parameter" in paragraph
+    assert "Schreibende Werkzeuge für die Konfiguration" not in text
+
 
 def test_every_setting_is_listed_in_the_example_file() -> None:
     """`.env.example` is the only list an operator ever gets to see.

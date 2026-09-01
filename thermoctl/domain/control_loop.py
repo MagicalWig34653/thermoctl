@@ -81,7 +81,7 @@ def decide(situation: Situation) -> Decision:
             reason_code=REASON_CODE_NO_SOURCE,
             reason=(
                 "Keine verwertbare Messung für die Zone — es gibt nichts, woran zu regeln "
-                "wäre. Ventil bleibt zu."
+                "wäre. Die Heizanforderung bleibt aus."
             ),
         )
 
@@ -162,7 +162,7 @@ def decide(situation: Situation) -> Decision:
             reason=(
                 f"Zustand '{state}' erst seit {situation.held_for_s}s, "
                 f"Mindestdauer {minimum_duration}s "
-                "— Ventil bleibt unangetastet."
+                "— die Heizanforderung bleibt unverändert."
             ),
         )
 
@@ -224,8 +224,10 @@ def decide(situation: Situation) -> Decision:
             heating=True,
             reason_code=REASON_CODE_VALVE_PROTECTION,
             reason=(
-                "Ventilschutzlauf — Ventil wird unabhängig von der Raumregelung "
-                f"für {situation.parameter.valve_protection_duration_minutes} Minuten bewegt."
+                "Ventilschutzlauf — die Regelung entscheidet unabhängig von der "
+                "Raumregelung für "
+                f"{situation.parameter.valve_protection_duration_minutes} Minuten auf "
+                "Heizen. Ein/Aus-Entscheidungen erreichen derzeit keinen Aktor."
             ),
         )
     return Decision(

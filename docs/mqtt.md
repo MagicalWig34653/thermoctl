@@ -13,8 +13,10 @@ Dass Senden und Entgegennehmen im Trockenlauf laufen, ist Absicht. Eine Zustands
 bewegt nichts, und eine Anbindung, die man erst nach dem Scharfschalten ausprobieren kann,
 lässt sich genau dann nicht mehr gefahrlos prüfen, wenn ein Fehler noch folgenlos wäre.
 
-Gelogen wird dabei nicht: Ob wirklich geschaltet wird, sagt eine eigene Entität für den
-ganzen Dienst — der `binary_sensor` **Regelung scharf**.
+Der `binary_sensor` **Regelung scharf** zeigt den gespeicherten ersten Riegel des ganzen
+Dienstes. Nach dem Scharfschalten bleibt der beim Start gebaute MQTT-Riegel bis zum
+Neustart zu. Erst danach können Sollwerte an selbstregelnde Thermostatventile gesendet
+werden; Ein/Aus-Entscheidungen erreichen keinen Aktor.
 
 Bis August 2026 stand der Trockenlauf stattdessen als `(Trockenlauf)` im *Namen* jeder
 Zone. Das war gut sichtbar und genau deshalb falsch: Home Assistant leitet die
