@@ -16,6 +16,27 @@ mehr wert als eine aufgeräumte Zusammenfassung.
 
 ---
 
+## Drittes Freigabe-Review von v0.2.2 nachgearbeitet
+
+Das Review fand keine neue fehlerhafte Regelentscheidung, sondern falsche Zusagen an den
+Bedienenden: Start- und Betriebsseite bezeichneten jede scharfe Anlage als wirklich
+schaltend, obwohl der beim Prozessstart gebaute MQTT-Riegel nach einem Scharfschalten noch
+geschlossen bleibt und auch nach dem Neustart nur Sollwerte an selbstregelnde Ventile
+hinausgehen können. Beide Seiten unterscheiden nun diese drei Betriebsstufen ausdrücklich;
+normale Ein/Aus-Entscheidungen werden in jeder Stufe als unverdrahtet benannt.
+
+Auch der Ventilschutz versprach eine körperliche Bewegung, obwohl er derzeit nur
+Schattenentscheidungen erzeugt. Seine Hilfetexte sagen das jetzt. Der bisherige
+Abschlusszeitpunkt bleibt bestehen, aber mit engerer Semantik: Er beendet das simulierte
+Entscheidungsfenster, nicht einen ausgeführten Ventillauf. Ohne ihn würde die weiter fällige
+Regel im Ablaufzyklus sofort neu starten und danach das Vergleichsprotokoll dauerhaft mit
+Ventilschutzentscheidungen füllen, ohne dadurch einen Aktor zu erreichen. Die ausführliche
+Abwägung und die Pflicht für einen späteren bestätigten Ausführungsnachweis stehen in
+`offene-entscheidungen.md`.
+
+Der Changelog schränkt außerdem die automatische Migration auf den Containerstart ein;
+ein lokal gestarteter Dienst migriert nicht selbst und verweigert ein veraltetes Schema.
+
 ## Zweites Freigabe-Review von v0.2.2 nachgearbeitet
 
 Die Rückgängig-Sperre betrachtet jetzt jede Änderung am Zeitplan einer Zone: Malen,

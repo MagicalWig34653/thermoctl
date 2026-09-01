@@ -121,6 +121,56 @@ def test_the_page_shows_the_dry_run(client_als: ClientBuilder, session: Session)
     assert "Trockenlauf" in response.text
 
 
+def test_operating_pages_describe_dry_run_truthfully(
+    client_als: ClientBuilder, session: Session
+) -> None:
+    create_settings(session)
+    client = client_als(ALL_PERMISSIONS)
+
+    for path in ("/", "/control"):
+        page = client.get(path)
+        assert page.status_code == 200
+        assert "Es werden keine Sollwerte an Ventile gesendet." in page.text
+        assert "Ein/Aus-Entscheidungen erreichen keinen Aktor." in page.text
+        assert "Sollwertausgabe freigegeben" not in page.text
+        assert "Tatsächlich <em>geschaltet</em> wird" not in page.text
+
+
+def test_operating_pages_describe_armed_before_restart_truthfully(
+    client_als: ClientBuilder, session: Session
+) -> None:
+    row = create_settings(session)
+    row.control_armed = True
+    session.flush()
+    client = client_als(ALL_PERMISSIONS)
+
+    for path in ("/", "/control"):
+        page = client.get(path)
+        assert page.status_code == 200
+        assert "Scharf, Neustart fehlt" in page.text
+        assert "Der beim Start gebaute MQTT-Riegel ist noch zu." in page.text
+        assert "Sollwertausgabe freigegeben" not in page.text
+
+
+def test_operating_pages_describe_armed_after_restart_truthfully(
+    client_als: ClientBuilder, session: Session
+) -> None:
+    row = create_settings(session)
+    row.control_armed = True
+    session.flush()
+    client = client_als(ALL_PERMISSIONS)
+    client.app.state.sending_allowed = True
+
+    for path in ("/", "/control"):
+        page = client.get(path)
+        assert page.status_code == 200
+        assert "Scharf und neu gestartet" in page.text
+        assert "Sollwertausgabe freigegeben" in page.text
+        assert "Sollwerte können an selbstregelnde Thermostatventile gesendet werden." in page.text
+        assert "Ein/Aus-Entscheidungen erreichen weiterhin keinen Aktor." in page.text
+        assert "Jede Entscheidung unten geht an die Ventile." not in page.text
+
+
 def test_arming_through_the_interface(
     client_als: ClientBuilder, session: Session
 ) -> None:
@@ -228,7 +278,7 @@ def test_the_operations_page_names_the_second_bolt(
 
     page = client_als(ALL_PERMISSIONS).get("/control")
     assert page.status_code == 200
-    assert "noch nichts geschaltet" in page.text
+    assert "Der beim Start gebaute MQTT-Riegel ist noch zu." in page.text
 
 
 def test_the_hint_does_not_appear_in_dry_run(
@@ -239,7 +289,7 @@ def test_the_hint_does_not_appear_in_dry_run(
     a warning that nobody reads any more."""
     create_settings(session)
     page = client_als(ALL_PERMISSIONS).get("/control")
-    assert "noch nichts geschaltet" not in page.text
+    assert "Der beim Start gebaute MQTT-Riegel ist noch zu." not in page.text
 
 
 def test_an_empty_timezone_is_refused_with_its_field(session: Session) -> None:

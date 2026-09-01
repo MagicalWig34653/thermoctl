@@ -7,6 +7,33 @@ verworfenen Alternativen festhalten, weiterarbeiten. Wer eine davon anders will,
 
 ---
 
+## 2026-09-01 — Der Abschlussmarker beendet den simulierten Ventilschutzlauf
+
+**Entschieden:** Nach Ablauf der konfigurierten Dauer setzt der Schattenlauf weiterhin
+`last_valve_protection_at`. Der Zeitpunkt bedeutet ausdrücklich: Die Simulation dieser
+Ventilschutz-Entscheidung ist abgeschlossen. Er bestätigt weder einen gesendeten Befehl
+noch eine Bewegung des Ventils.
+
+**Warum:** Ohne den Marker bleibt der Schutzlauf fällig. Die Regel startet ihn noch im
+selben Zyklus erneut und schreibt danach dauerhaft Ventilschutz statt gewöhnlicher
+Regelentscheidungen ins Schattenprotokoll. Das würde den Vergleichsbetrieb entwerten, ohne
+ein Ventil zuverlässiger zu schützen: Auch die beliebig oft wiederholte Entscheidung
+erreicht derzeit keinen Aktor. Der Marker bewahrt deshalb den konfigurierten Rhythmus der
+Simulation. Oberfläche und Codekommentar benennen seine eingeschränkte Aussage nun
+ausdrücklich.
+
+**Folge für Teilprojekt 4:** Die Aktorverdrahtung darf diesen Simulationsmarker nicht als
+Ausführungsnachweis übernehmen. Ein körperlich erfolgreicher Schutzlauf braucht eine vom
+Aktor bestätigte Ausführung; erst deren Semantik darf über die nächste wirkliche Fälligkeit
+entscheiden.
+
+**Verworfen:** *Den Abschlusszeitpunkt im Schattenbetrieb nicht setzen.* Das wäre als
+physische Buchführung ehrlicher, verwandelt aber jeden einmal fälligen Schutzlauf in eine
+Endlosschleife im Protokoll. Es erkennt den fehlenden Aktor nicht besser und verdeckt genau
+die normalen Entscheidungen, die der Schattenbetrieb beobachten soll.
+
+---
+
 ## 2026-08-29 — CSRF-Schutz hängt am Router, nicht an der Route
 
 **Entschieden:** `csrf_protection` ist eine FastAPI-Abhängigkeit, die über
@@ -401,12 +428,14 @@ Schattenentscheidung fortgeschrieben. Schutzlaufentscheidungen zählen dabei aus
 nicht als reguläres Heizen. Start und letzter Abschluss eines Schutzlaufs liegen ebenfalls
 in `zone_state`.
 
-**Warum:** `shadow_decision.would_heat` ist der fachliche Beleg, aber nicht der geeignete
-Langzeitspeicher: Die Aufbewahrung löscht alte Protokollzeilen, standardmäßig genau nach 30
-Tagen. Der verdichtete Zeitpunkt überlebt diese Löschung und lässt einen Neustart mitten im
-Lauf denselben Startzeitpunkt wieder aufnehmen. Eine positive reguläre Entscheidung ist
-ausreichend, weil sie genau den Befehl belegt, das Ventil zu öffnen; eine gemessene
-Ventilstellung ist nicht für jeden unterstützten Aktor verfügbar.
+**Warum:** `shadow_decision.would_heat` ist der fachliche Beleg für eine reguläre positive
+Schattenentscheidung, aber nicht der geeignete Langzeitspeicher: Die Aufbewahrung löscht
+alte Protokollzeilen, standardmäßig genau nach 30 Tagen. Der verdichtete Zeitpunkt überlebt
+diese Löschung und lässt einen Neustart mitten im Lauf denselben Startzeitpunkt wieder
+aufnehmen. Er belegt ausdrücklich weder einen gesendeten Befehl noch eine Ventilbewegung;
+im gegenwärtigen Schattenbetrieb dient er nur dem Rhythmus der Simulation. Ein späterer
+Ausführungsnachweis braucht die in der Entscheidung vom 2026-09-01 beschriebene
+Aktorbestätigung.
 
 **Verworfen:** Bei Fälligkeit das Schattenprotokoll über den ganzen Abstand abfragen. Das
 bekäme am Standardrand von 30 Tagen ein Loch. Ebenfalls verworfen wurde ein Feld in `zone`:

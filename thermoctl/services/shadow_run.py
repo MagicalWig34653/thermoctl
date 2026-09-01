@@ -218,6 +218,11 @@ def _process_zone(
     )
     if state is not None and protection_started is not None and not protection_active:
         state.valve_protection_started_at = None
+        # This timestamp closes a simulated shadow run, not a physical valve run.
+        # Keeping it preserves the intended cadence in the comparison log; without
+        # it, the still-due rule would restart in the same cycle and then forever
+        # displace ordinary decisions. Actuator wiring must not treat this marker as
+        # proof of movement; it will need its own confirmed-execution semantics.
         state.last_valve_protection_at = now
     if state is not None and not state.regular_heat_history_compacted:
         # One-time bridge for installations upgraded with existing shadow history.
@@ -274,9 +279,10 @@ def _process_zone(
             # protection marker would make the next hysteresis cycle treat that
             # regular state as temporary protection and switch it off too early.
             state.valve_protection_started_at = None
-            # Persist normal heating separately from the retained shadow log. A true
-            # regular decision proves the valve was commanded open, and this marker
-            # survives deletion of shadow rows at the default 30-day retention edge.
+            # Persist simulated regular heating separately from the retained shadow
+            # log. The marker records a regular heating decision, not a command or
+            # physical movement, and survives deletion of shadow rows at the default
+            # 30-day retention edge.
             state.last_regular_heat_at = now
 
     row = ShadowDecision(
