@@ -2,6 +2,7 @@ from datetime import datetime
 from decimal import Decimal
 
 import pytest
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from tests.helpers import (
@@ -12,12 +13,14 @@ from tests.helpers import (
     source,
     zone_with_schedule,
 )
+from thermoctl.db.models.operations import AuditEvent
 from thermoctl.db.models.override import ZoneOverride
 from thermoctl.db.models.schedule import SchedulePoint
 from thermoctl.db.models.zone import SetpointMode
 from thermoctl.domain.schedule import (
     ScheduleError,
     cancel_override,
+    change_schedule_point_mode,
     copy_schedule_day,
     create_override,
     current_point,
@@ -150,6 +153,87 @@ def test_undo_rejects_an_aba_sequence(session: Session) -> None:
             expected_after=after,
             expected_revision=revision,
             user_id=None,
+        )
+
+
+def test_undo_rejects_an_aba_sequence_from_point_mode_edits(session: Session) -> None:
+    create_settings(session)
+    source(session)
+    zone = create_zone(session, "undo-point-aba")
+    mode_a = create_mode(session, "undo-point-aba-a", "A")
+    mode_b = create_mode(session, "undo-point-aba-b", "B")
+    gesture = paint_schedule_interval(
+        session,
+        zone,
+        weekday=1,
+        start_minute=360,
+        end_minute=480,
+        mode_id=mode_a.id,
+        user_id=None,
+    )
+    assert gesture is not None
+    before, after, revision = gesture
+    point = session.scalar(
+        select(SchedulePoint).where(
+            SchedulePoint.zone_id == zone.id,
+            SchedulePoint.weekday == 1,
+            SchedulePoint.minute_of_day == 360,
+        )
+    )
+    assert point is not None
+    change_schedule_point_mode(
+        session, zone, point, mode_id=mode_b.id, user_id=None
+    )
+    change_schedule_point_mode(
+        session, zone, point, mode_id=mode_a.id, user_id=None
+    )
+    assert _stored_snapshot(session, zone.id) == after
+
+    with pytest.raises(ScheduleError, match="inzwischen"):
+        undo_schedule_gesture(
+            session,
+            zone,
+            before=before,
+            expected_after=after,
+            expected_revision=revision,
+            user_id=None,
+        )
+
+
+def test_undo_rejects_legacy_point_edits_made_before_an_upgrade(
+    session: Session,
+) -> None:
+    create_settings(session)
+    source(session)
+    zone = create_zone(session, "undo-legacy-point-aba")
+    mode_a = create_mode(session, "undo-legacy-point-a", "A")
+    mode_b = create_mode(session, "undo-legacy-point-b", "B")
+    gesture = paint_schedule_interval(
+        session, zone, weekday=1, start_minute=360, end_minute=480,
+        mode_id=mode_a.id, user_id=None,
+    )
+    assert gesture is not None
+    before, after, revision = gesture
+    point = session.scalar(
+        select(SchedulePoint).where(
+            SchedulePoint.zone_id == zone.id,
+            SchedulePoint.weekday == 1,
+            SchedulePoint.minute_of_day == 360,
+        )
+    )
+    assert point is not None
+    change_schedule_point_mode(session, zone, point, mode_id=mode_b.id, user_id=None)
+    change_schedule_point_mode(session, zone, point, mode_id=mode_a.id, user_id=None)
+    for event in session.scalars(
+        select(AuditEvent).where(AuditEvent.object_type == "schedule_point")
+    ):
+        event.object_id = str(point.id)
+    session.flush()
+
+    with pytest.raises(ScheduleError, match="inzwischen"):
+        undo_schedule_gesture(
+            session, zone, before=before, expected_after=after,
+            expected_revision=revision, user_id=None,
         )
 
 

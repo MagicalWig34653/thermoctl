@@ -63,6 +63,21 @@ passiert, ist mehrfach zu grob beschrieben worden — hier genau:
 
 ### Behoben
 
+- **Rückgängig erkennt jetzt auch gewöhnliche Schaltpunktänderungen.** Die Revision
+  eines Zonenzeitplans umfasst neben Malen, Tagesübertragung und Übernahme auch Anlegen,
+  Verschieben, Löschen und Moduswechsel einzelner Punkte. Dadurch wird ein alter
+  Schnappschuss auch nach einem Moduswechsel A→B→A sicher abgewiesen.
+
+- **Ändernde Formulare funktionieren ohne JavaScript.** Alle POST- und `hx-post`-Formulare
+  erhalten ein verstecktes CSRF-Feld; zuvor schlug unter anderem „Schaltpunkt anlegen“
+  ohne den von JavaScript gesetzten Header mit 403 fehl. Ein Wächtertest schützt alle
+  gegenwärtigen und künftigen Formulare vor derselben Lücke.
+
+- **Die Sonnenabsenkung verwendet wieder die beabsichtigten CSS-Klassen.** Zwei deutsche
+  Umbenennungsreste hatten keine Regel und veränderten die Darstellung still. Ein
+  projektweiter Test gleicht nun alle vollständigen `t-`-/`tc-`-Vorlagenklassen mit
+  `thermoctl.css` ab.
+
 - **Reguläres Heizen verliert nach einem Ventilschutzlauf nicht mehr seine Hysterese.**
   Sobald die normale Regelung das Heizen übernimmt, wird der Schutzmarker beendet. Ein
   folgender Messwert innerhalb der Hysterese hält die Heizung damit wie vorgesehen an;
