@@ -23,7 +23,7 @@ Phase 1 geschehen ist. Features, die aus der unverbindlichen
 | 4 | Regelkreis und Cutover | Logik gebaut; Freigabe in drei Stufen | Aktoren verdrahten; Altsystem ablösen |
 | 5 | Integrationen und Veröffentlichung | teilweise vorgezogen | Für Fremde aufsetzbar |
 
-Die Reihenfolge ist nicht beliebig: Der Teil, der eine echte Heizung schaltet, kommt bewusst
+Die Reihenfolge ist nicht beliebig: Der Teil, der eine echte Heizung schalten soll, kommt bewusst
 zuletzt und erst mit Vergleichsdaten aus Phase 2.
 
 ---
@@ -199,7 +199,7 @@ Verdrahtung keinen Aktor.
 
 ### Risiken
 
-- **Hier wird eine echte Wohnung geheizt.** Fehler haben körperliche Folgen; die Regellogik
+- **In dieser Phase soll eine echte Wohnung geheizt werden.** Fehler haben körperliche Folgen; die Regellogik
   ist besonders sorgfältig zu prüfen.
 - Die Umwandlung des unregelmäßigen Stundenrasters des Altsystems in Schaltpunkte ist
   ungeklärt und braucht echte Daten.

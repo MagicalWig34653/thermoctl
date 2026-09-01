@@ -7,17 +7,17 @@
 <p class="text-secondary">Ein leeres Feld verwendet den globalen Standard.</p>
 <form method="post" action="/zones/{{ zone.id }}/parameters">
   {{ number_field("hysteresis_k", "Hysterese (K)", values.hysteresis_k,
-    "Wie weit die Ist-Temperatur unter den Sollwert fallen darf, bevor geheizt wird. Zu klein heißt ständiges Ein- und Ausschalten. Derzeit " ~ effective.hysteresis_k ~ " K" ~ (" aus dem globalen Standard." if not values.hysteresis_k else "."), errors.hysteresis_k, "0.01", "0") }}
+    "Wie weit die Ist-Temperatur unter den Sollwert fallen darf, bevor die Regelung Heizen anfordert. Zu klein heißt ein ständiger Wechsel zwischen Ein- und Aus-Entscheidung. Derzeit " ~ effective.hysteresis_k ~ " K" ~ (" aus dem globalen Standard." if not values.hysteresis_k else "."), errors.hysteresis_k, "0.01", "0") }}
   {{ number_field("min_on_seconds", "Mindest-Einschaltdauer (Sekunden)", values.min_on_seconds,
-    "Wie lange die Heizung nach dem Einschalten mindestens an bleibt. Das schützt vor kurzen Schaltzyklen. Derzeit " ~ effective.min_on_seconds ~ " Sekunden" ~ (" aus dem globalen Standard." if not values.min_on_seconds else "."), errors.min_on_seconds, "1", "0") }}
+    "Wie lange eine Ein-Entscheidung mindestens bestehen bleibt. Das verhindert kurz aufeinanderfolgende Ein- und Aus-Entscheidungen. Derzeit " ~ effective.min_on_seconds ~ " Sekunden" ~ (" aus dem globalen Standard." if not values.min_on_seconds else "."), errors.min_on_seconds, "1", "0") }}
   {{ number_field("min_off_seconds", "Mindest-Ausschaltdauer (Sekunden)", values.min_off_seconds,
-    "Wie lange die Heizung nach dem Ausschalten mindestens aus bleibt. Das verhindert sofortiges Wiedereinschalten. Derzeit " ~ effective.min_off_seconds ~ " Sekunden" ~ (" aus dem globalen Standard." if not values.min_off_seconds else "."), errors.min_off_seconds, "1", "0") }}
+    "Wie lange eine Aus-Entscheidung mindestens bestehen bleibt. Das verhindert eine sofort folgende Ein-Entscheidung. Derzeit " ~ effective.min_off_seconds ~ " Sekunden" ~ (" aus dem globalen Standard." if not values.min_off_seconds else "."), errors.min_off_seconds, "1", "0") }}
   {{ number_field("sensor_timeout_seconds", "Sensor-Timeout (Sekunden)", values.sensor_timeout_seconds,
     "Nach dieser Zeit ohne neuen Messwert gilt der Sensor als ausgefallen und die Sicherheitsregel greift. Derzeit " ~ effective.sensor_timeout_seconds ~ " Sekunden" ~ (" aus dem globalen Standard." if not values.sensor_timeout_seconds else "."), errors.sensor_timeout_seconds, "1", "0") }}
   {{ number_field("temperature_offset_k", "Sensorkalibrierung (K)", values.temperature_offset_k,
     "Dieser Wert wird auf die gemessene Temperatur addiert, um eine bekannte Abweichung des Sensors auszugleichen. Negative Werte sind erlaubt. Derzeit " ~ effective.temperature_offset_k ~ " K" ~ (" aus dem globalen Standard." if not values.temperature_offset_k else "."), errors.temperature_offset_k, "0.01") }}
   {{ number_field("window_resume_delay_seconds", "Wiederanlauf nach Fenster (Sekunden)", values.window_resume_delay_seconds,
-    "So lange wartet die Heizung nach dem Schließen eines Fensters, bevor sie wieder anläuft. Derzeit " ~ effective.window_resume_delay_seconds ~ " Sekunden" ~ (" aus dem globalen Standard." if not values.window_resume_delay_seconds else "."), errors.window_resume_delay_seconds, "1", "0") }}
+    "So lange wartet die Regelung nach dem Schließen eines Fensters, bevor sie wieder eine Ein-Entscheidung treffen darf. Derzeit " ~ effective.window_resume_delay_seconds ~ " Sekunden" ~ (" aus dem globalen Standard." if not values.window_resume_delay_seconds else "."), errors.window_resume_delay_seconds, "1", "0") }}
   {{ number_field("solar_setback_max_k", "Sonnenabsenkung, Obergrenze (K)", values.solar_setback_max_k,
     "Wie viel der Sollwert bei erwarteter Sonne höchstens absinken darf. Derzeit " ~ effective.solar_setback_max_k ~ " K" ~ (" aus dem globalen Standard." if not values.solar_setback_max_k else "."), errors.solar_setback_max_k, "0.1", "0") }}
   {{ number_field("solar_gain_factor", "Sonnenprofil (0 bis 1)", values.solar_gain_factor,

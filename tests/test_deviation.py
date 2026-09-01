@@ -11,7 +11,7 @@ def test_both_heating_is_not_a_deviation() -> None:
         legacy_system_heating=True,
     )
     assert result.classification == Classification.UEBEREINSTIMMUNG
-    assert result.text == "thermoctl und das Altsystem heizen beide."
+    assert result.text == "thermoctl haette Heizen angefordert; das Altsystem heizte."
 
 
 def test_both_not_heating_is_not_a_deviation() -> None:
@@ -22,7 +22,9 @@ def test_both_not_heating_is_not_a_deviation() -> None:
         legacy_system_heating=False,
     )
     assert result.classification == Classification.UEBEREINSTIMMUNG
-    assert result.text == "thermoctl und das Altsystem heizen beide nicht."
+    assert result.text == (
+        "thermoctl haette kein Heizen angefordert; das Altsystem heizte nicht."
+    )
 
 
 def test_only_thermoctl_would_have_heated_is_a_deviation() -> None:

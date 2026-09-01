@@ -3,16 +3,17 @@
 Diese Anleitung richtet sich an jemanden, der `thermoctl` selbst betreibt und das Projekt
 nicht kennt. Sie setzt Docker voraus und dauert etwa zehn Minuten.
 
-> **Stand der Dinge.** `thermoctl` regelt noch keine Heizung. Fundament, Anmeldung, Rechte,
-> Verwaltung und REST-Schnittstelle stehen; die Geräte-Anbindung läuft im Schattenbetrieb,
-> der Regelkreis kommt danach. Wer heute eine betriebsfertige Steuerung sucht, ist noch zu
-> früh dran. Was jetzt schon geht, steht in der [Roadmap](roadmap.md).
+> **Stand der Dinge.** Regelkreis und Geräte-Anbindung sind vorhanden. Im voreingestellten
+> Trockenlauf werden Entscheidungen nur protokolliert. Sind der gespeicherte Riegel und der
+> beim Start gebaute MQTT-Riegel offen, können selbstregelnde Thermostatventile Sollwerte
+> erhalten; Ein/Aus-Entscheidungen erreichen noch keinen Aktor. Damit ist `thermoctl` noch
+> keine betriebsfertige Steuerung. Die Einzelheiten stehen in der [Roadmap](roadmap.md).
 
 ## 1. Was Sie brauchen
 
 - Docker mit Compose.
 - Einen Rechner, der durchläuft — eine Heizungssteuerung, die nachts aus ist, ist keine.
-- Später, für die Geräte-Anbindung: einen MQTT-Broker mit Zigbee2MQTT.
+- Für die Zigbee-Geräte-Anbindung: einen MQTT-Broker mit Zigbee2MQTT.
 
 Eine Datenbank brauchen Sie **nicht** mitzubringen. Voreingestellt ist SQLite in einer
 Datei; für eine Wohnung genügt das vollständig.

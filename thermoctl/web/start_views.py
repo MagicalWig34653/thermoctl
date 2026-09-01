@@ -201,9 +201,9 @@ def start(
             "override_errors": request.query_params.get("override_errors"),
             "error_zone_id": request.query_params.get("zone_id"),
             "override_values": request.query_params,
-            # The plant in one sentence: is it really switching, is the bridge
-            # running, and are there sensors that stay silent? Exactly the three
-            # things that make a display untrustworthy if you don't know them.
+            # The plant in one sentence: are both latches open, is the bridge running,
+            # and are there sensors that stay silent? Exactly the three things that make
+            # a display untrustworthy if you don't know them.
             "armed": bool(settings and settings.control_armed),
             "sending_allowed": getattr(request.app.state, "sending_allowed", False),
             "bridge": getattr(request.app.state, "bridge_reachable", None),

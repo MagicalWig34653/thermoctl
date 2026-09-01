@@ -26,8 +26,9 @@ passiert, ist mehrfach zu grob beschrieben worden — hier genau:
   weiterhin nichts" war deshalb eine Zusicherung ohne Deckung und stand hier zu Unrecht.
 - Der MQTT-Client trägt einen zweiten Riegel, der **beim Start** gebaut wird. Ohne
   Neustart geht auch danach nichts hinaus.
-- Dann bewegt sich genau eines: **selbstregelnde Thermostatventile** bekommen ihren
-  Sollwert veröffentlicht. **Normale Ein/Aus-Entscheidungen gehen nirgendwohin** — weder
+- Sind der gespeicherte Riegel und der beim Start gebaute MQTT-Riegel offen, bekommen
+  **selbstregelnde Thermostatventile** ihren Sollwert veröffentlicht. **Normale
+  Ein/Aus-Entscheidungen gehen nirgendwohin** — weder
   `Zigbee2MqttValve` noch `MerossSwitch` werden im Produktivcode konstruiert. Das ist die
   offene Arbeit von Phase 4.
 
@@ -49,10 +50,11 @@ passiert, ist mehrfach zu grob beschrieben worden — hier genau:
 
 ### Neu
 
-- **Ventilschutz je Zone.** Nach einer einstellbaren Zeit ohne reguläres Heizen kann das
-  Ventil für eine einstellbare Dauer bewegt werden, damit es über den Sommer nicht
-  festsitzt. Die Funktion ist standardmäßig aus und steht in der Regelkette hinter allen
-  bisherigen Entscheidungen; Konfiguration gibt es in Oberfläche, REST und MCP.
+- **Ventilschutz je Zone.** Nach einer einstellbaren Zeit ohne reguläres Heizen erzeugt
+  die Regelkette für eine einstellbare Dauer eine `Decision(heating=True)` und hält sie im
+  Schattenprotokoll fest. Dafür ist kein Ein/Aus-Aktor verdrahtet; die Funktion bewegt
+  derzeit kein Ventil. Sie ist standardmäßig aus; Konfiguration gibt es in Oberfläche,
+  REST und MCP.
 
 - **Meross-Anbindung, beide Hälften.** Bisher gab es nur einen Schaltadapter und kein
   Gerät, auf das er gepasst hätte — Geräte entstanden ausschliesslich aus der
@@ -81,8 +83,8 @@ passiert, ist mehrfach zu grob beschrieben worden — hier genau:
 
 - **Reguläres Heizen verliert nach einem Ventilschutzlauf nicht mehr seine Hysterese.**
   Sobald die normale Regelung das Heizen übernimmt, wird der Schutzmarker beendet. Ein
-  folgender Messwert innerhalb der Hysterese hält die Heizung damit wie vorgesehen an;
-  reine Schutzläufe behalten den Marker bis zu ihrem regulären Ende.
+  folgender Messwert innerhalb der Hysterese lässt die Ein-Entscheidung damit wie
+  vorgesehen bestehen; reine Schutzläufe behalten den Marker bis zu ihrem regulären Ende.
 
 - **Angezeigte Uhrzeiten verwenden die konfigurierte Zeitzone.** Die Kiosk-Uhr,
   die Jetztmarkierung des Tagesplans auf der Startseite sowie Ablaufzeiten von API-
