@@ -43,6 +43,7 @@ PROTECTED_PAGES = [
     "/settings",
     "/interfaces",
     "/statistics",
+    "/relay-wear",
     "/plant",
 ]
 

@@ -42,7 +42,13 @@ from thermoctl.domain.control import (
 from thermoctl.domain.interfaces import overview
 from thermoctl.domain.principal import Principal
 from thermoctl.domain.schedule import resolved_setpoint
-from thermoctl.domain.statistics import as_duration, heating_periods
+from thermoctl.domain.statistics import (
+    ASSUMED_RELAY_LIFETIME_OPERATIONS,
+    RelayDeviceStatistics,
+    as_duration,
+    heating_periods,
+    relay_operations,
+)
 from thermoctl.domain.time import local_day_start_utc, local_time
 from thermoctl.web import templates
 
@@ -321,5 +327,57 @@ async def show_statistics(
             "period": key,
             "armed": row.control_armed,
             "as_duration": as_duration,
+        },
+    )
+
+
+@router.get("/relay-wear")
+async def show_relay_wear(
+    request: Request,
+    principal: Annotated[Principal, Depends(current_principal)],
+    session: Annotated[Session, Depends(get_session)],
+) -> Response:
+    """Relay operations derived from the actuator command log.
+
+    This is deliberately separate from the heating-time page. Heating decisions are
+    zone state and need ``zone.read``; command history is an audit trail and retains
+    the existing plant-wide ``audit.read`` boundary. ``visible_zones`` additionally
+    limits the aggregation to zones the principal may read, so an audit reader with
+    only a zone-scoped ``zone.read`` grant cannot infer another zone's devices.
+    """
+    require(principal, "audit.read")
+    zones = visible_zones(session, principal, "zone.read")
+    row = settings(session)
+
+    key = request.query_params.get("period", "7")
+    if key not in ZEITRAEUME:
+        key = "7"
+    _label, days = ZEITRAEUME[key]
+    until = utcnow()
+    first_local_day = local_time(until, row.timezone).date() - timedelta(days=days - 1)
+    start_at = local_day_start_utc(first_local_day, row.timezone)
+    values = relay_operations(
+        session,
+        [zone.id for zone in zones],
+        start_at,
+        until,
+        timezone_name=row.timezone,
+    )
+    by_zone: dict[int, list[RelayDeviceStatistics]] = {zone.id: [] for zone in zones}
+    for value in values:
+        by_zone[value.zone_id].append(value)
+    for device_values in by_zone.values():
+        device_values.sort(key=lambda value: (-value.annual_projection, value.device_name))
+
+    return templates.TemplateResponse(
+        request,
+        "relay_wear.html",
+        {
+            "zones": zones,
+            "values": by_zone,
+            "periods": [(period_key, label) for period_key, (label, _days) in ZEITRAEUME.items()],
+            "period": key,
+            "assumed_lifetime": ASSUMED_RELAY_LIFETIME_OPERATIONS,
+            "has_values": bool(values),
         },
     )

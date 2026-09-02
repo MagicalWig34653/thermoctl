@@ -398,6 +398,10 @@
     "thermoctl/domain/self_regulating.py": [
       "actuator"
     ],
+    "thermoctl/domain/statistics.py": [
+      "switch",
+      "switch"
+    ],
     "thermoctl/domain/switch_commands.py": [
       "actuator",
       "actuator",
@@ -510,6 +514,10 @@
     "thermoctl/web/templates/plant.html": [
       "<span class=\"tc-chip {{ 'tc-chip-warm' if bridge is true else ('tc-chip-warning' if bridge is false else 'tc-chip-quiet') }}\">",
       "Ein/Aus-Befehle die zugeordneten Aktoren."
+    ],
+    "thermoctl/web/templates/relay_wear.html": [
+      "<p class=\"t-section mb-1\">In diesem Zeitraum wurden keine Schaltaktoren protokolliert.</p>",
+      "an Thermostatventile, im Trockenlauf unterdrückte und gescheiterte Befehle zählen"
     ],
     "thermoctl/web/templates/schedule.html": [
       "var({{ '--warmth' if w >= 0.5 else '--cool' }})",

@@ -75,6 +75,12 @@ NAVIGATION_ITEMS: tuple[NavigationItem, ...] = (
         "audit.read",
         "thermoctl.web.device_commands_views.device_command_list",
     ),
+    NavigationItem(
+        "/relay-wear",
+        "Relaisverschleiß",
+        "audit.read",
+        "thermoctl.web.control_views.show_relay_wear",
+    ),
 )
 
 

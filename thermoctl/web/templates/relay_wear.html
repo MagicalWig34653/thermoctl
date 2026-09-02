@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% block title %}Relaisverschleiß – thermoctl{% endblock %}
+{% block max_width %}76rem{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-baseline flex-wrap gap-2 mb-1">
+  <h1 class="mb-0">Schaltspiele und Relaisverschleiß</h1>
+  <nav class="d-flex gap-1" aria-label="Zeitraum">
+    {% for key, label in periods %}
+    <a class="btn btn-sm {{ 'btn-primary' if key == period else 'btn-outline-secondary' }}"
+       href="/relay-wear?period={{ key }}"
+       {% if key == period %}aria-current="page"{% endif %}>{{ label }}</a>
+    {% endfor %}
+  </nav>
+</div>
+<p class="t-quiet mb-3">
+  Ein Schaltspiel ist hier jeder erfolgreich befohlene Wechsel des Relais von Aus nach
+  Ein oder von Ein nach Aus. Wiederholungen desselben Zustands zählen nicht. Sollwerte
+  an Thermostatventile, im Trockenlauf unterdrückte und gescheiterte Befehle zählen
+  ebenfalls nicht.
+</p>
+
+<div class="alert alert-secondary mb-4" role="note">
+  <strong>Annahme, keine Meross-Herstellerangabe:</strong>
+  {{ "{:,}".format(assumed_lifetime).replace(",", ".") }} elektrische Betätigungen
+  unter Last. Das ist eine austauschbare Vergleichsgröße nach einem separaten
+  <a href="https://industry.panasonic.com/global/en/products/control/relay/power/number/alzn5b05w"
+     rel="noreferrer">Panasonic-16-A-Leistungsrelais</a>, keine zugesicherte Lebensdauer
+  der verbauten Steckdosen. Last, Einschaltstrom und Temperatur können die wirkliche
+  Lebensdauer deutlich verändern.
+</div>
+
+{% if not zones %}
+<div class="tc-panel p-4">
+  <p class="t-quiet mb-0">Keine für Sie sichtbaren Zonen.</p>
+</div>
+{% elif not has_values %}
+<div class="tc-panel p-4">
+  <p class="t-section mb-1">In diesem Zeitraum wurden keine Schaltaktoren protokolliert.</p>
+  <p class="t-quiet mb-0">
+    Die Auswertung beginnt mit dem ersten erfolgreich befohlenen Zustand als Ausgangslage.
+    <a href="/device-commands">Schaltprotokoll ansehen</a>
+  </p>
+</div>
+{% else %}
+  {% for zone in zones %}
+    {% if values[zone.id] %}
+    <section class="tc-panel p-4 mb-4">
+      <h2 class="mb-3">{{ zone.display_name }}</h2>
+      {% for stat in values[zone.id] %}
+      <article class="p-3 rounded border mb-3{% if stat.wear_level == 'danger' %} border-danger bg-danger-subtle{% elif stat.wear_level == 'warning' %} border-warning bg-warning-subtle{% endif %}">
+        <div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-3">
+          <div>
+            <h3 class="h5 mb-1">{{ stat.device_name }}</h3>
+            <span class="t-quiet">{{ stat.operations_total }} Wechsel in {{ stat.days | length }} Kalendertagen</span>
+          </div>
+          <div class="text-end">
+            <div class="t-value fs-4">{{ "{:,}".format(stat.annual_projection).replace(",", ".") }} / Jahr</div>
+            <div class="small">
+              {{ stat.assumed_lifetime_percent_per_year | round(1) }} % der angenommenen Lebensdauer je Jahr
+              {% if stat.assumed_lifetime_years is not none %}
+              · rechnerisch {{ stat.assumed_lifetime_years | round(1) }} Jahre bis {{ "{:,}".format(assumed_lifetime).replace(",", ".") }}
+              {% endif %}
+            </div>
+            {% if stat.wear_level == 'danger' %}
+            <strong class="text-danger">Auffällig hoch: mehr als eine angenommene Lebensdauer pro Jahr.</strong>
+            {% elif stat.wear_level == 'warning' %}
+            <strong>Erhöht: mehr als die Hälfte der angenommenen Lebensdauer pro Jahr.</strong>
+            {% else %}
+            <span class="t-quiet">Unter der Warnschwelle von 50 % pro Jahr.</span>
+            {% endif %}
+          </div>
+        </div>
+        <div class="table-responsive">
+          <table class="table table-sm mb-0">
+            <thead><tr><th>Tag</th><th class="text-end">Wechsel</th><th class="text-end">Tageswert hochgerechnet</th></tr></thead>
+            <tbody>
+            {% for day in stat.days %}
+            <tr>
+              <td>{{ day.day.strftime("%d.%m.%Y") }}</td>
+              <td class="text-end t-value">{{ day.operations }}</td>
+              <td class="text-end">{{ "{:,}".format(day.annual_projection).replace(",", ".") }} / Jahr</td>
+            </tr>
+            {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </article>
+      {% endfor %}
+    </section>
+    {% endif %}
+  {% endfor %}
+
+<p class="t-quiet small">
+  Die große Jahreszahl ist der Tagesdurchschnitt des gewählten Zeitraums mal 365; der
+  heutige Tag ist noch unvollständig. „Ausgeführt“ bestätigt nur den erfolgreich
+  gesendeten Befehl, nicht die körperliche Bewegung des Relais. Der erste bekannte
+  Zustand ist eine Ausgangslage und kein gezählter Wechsel. Gerätenamen stammen als
+  historische Abschriften aus dem Protokoll; eine Umbenennung kann deshalb zwei Reihen
+  erzeugen.
+</p>
+{% endif %}
+{% endblock %}
