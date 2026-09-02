@@ -1,6 +1,6 @@
 # Stand
 
-Letzte Aktualisierung: 2026-09-01
+Letzte Aktualisierung: 2026-09-02
 
 **Diese Datei sagt, was jetzt gilt — sonst nichts.** Wie es dazu kam, welche Fehler wie
 gefunden wurden und warum etwas so entschieden ist, steht in [verlauf.md](verlauf.md).
@@ -18,7 +18,7 @@ einmal und stand noch da.
 | 1a — Nacharbeiten | abgeschlossen |
 | 2 — Geräte-Anbindung im Schattenbetrieb | gebaut; der Nachweis über mehrere Tage braucht die echte Anlage |
 | 3 — Konfigurations-Oberfläche | abgeschlossen |
-| 4 — Regelkreis und Cutover | Zigbee2MQTT-Aktoren verdrahtet; Meross und ein Sonderfall offen (siehe unten) |
+| 4 — Regelkreis und Cutover | Alle sieben Aktortypen der echten Anlage verdrahtet: Zigbee2MQTT-Aktoren, Meross-Steckdosen, Zigbee2MQTT-Thermostatventile |
 | 5 — Integrationen und Veröffentlichung | Meross und Zeitplan-Bedienung erledigt, Freigabe von 0.2.2 offen |
 
 ## Was geschaltet wird — genau
@@ -38,17 +38,22 @@ Diese Frage ist mehrfach zu grob beantwortet worden, in beide Richtungen. Der St
   `shadow_run.cycle()` zuletzt für seine Zone entschieden hat, nur bei Änderung, mit
   einem Eintrag im Schaltprotokoll für jeden Versuch (ausgeführt, unterdrückt oder
   gescheitert).
-- **Ein Meross-Aktor bekommt weiterhin keinen Befehl** — bewusst, kein Versehen. Das
-  Schalten dort braucht eine Anmeldung gegen die Meross-Cloud, die nicht aus einer
-  offenen Datenbanktransaktion heraus abgewartet werden darf (das hat in dieser Fassung
-  schon einmal die ganze SQLite-Datei gesperrt). Jeder Zyklus, der einen Meross-Aktor
-  geschaltet hätte, schreibt stattdessen einen `failed`-Eintrag ins Schaltprotokoll.
-  Begründung in [offene-entscheidungen.md](offene-entscheidungen.md).
+- **Ein Meross-Aktor bekommt jetzt ebenfalls seinen Befehl.** Das Schalten dort braucht
+  eine Anmeldung gegen die Meross-Cloud; die läuft jetzt zwischengespeichert und
+  außerhalb jeder Datenbanktransaktion (`services/meross_session.py`,
+  `app.py::_shadow_loop`) — genau die Stelle, an der eine frühere Fassung die ganze
+  SQLite-Datei bis zu 40 Sekunden gesperrt hatte. Lehnt die Cloud die Anmeldung ab, oder
+  ist keine hinterlegt, schreibt jeder betroffene Zyklus stattdessen einen
+  `failed`-Eintrag ins Schaltprotokoll, ohne den Zyklus selbst anzuhalten. Begründung
+  und die gewählte Gültigkeitsdauer der Sitzung in
+  [offene-entscheidungen.md](offene-entscheidungen.md).
 - **Ein Zigbee2MQTT-Thermostatventil ohne `self_regulating`** (Fähigkeit `thermostat`
-  statt `switch`) bekommt ebenfalls noch keinen Befehl — `Zigbee2MqttThermostat` ist
-  gebaut und getestet, aber noch nicht verdrahtet. Anders als beim Meross-Fall entsteht
-  dafür heute **kein** Eintrag im Schaltprotokoll; siehe der Blocker-Eintrag vom
-  2026-09-01 in [offene-entscheidungen.md](offene-entscheidungen.md).
+  statt `switch`, von thermoctls eigener Hysterese statt eigener Regelung gesteuert)
+  bekommt jetzt ebenfalls seinen Befehl, über `Zigbee2MqttThermostat`: den aufgelösten
+  Zonensollwert und, wo das Gerät `system_mode` als beschreibbar meldet, `heat`/`off`
+  dazu. Ein Gerät ohne `system_mode` (Bosch BTH-RA) wird stattdessen auf seinen
+  niedrigsten Sollwert gefahren. Der frühere Blocker-Eintrag vom 2026-09-01 in
+  [offene-entscheidungen.md](offene-entscheidungen.md) ist als behoben vermerkt.
 
 ## Das Schaltprotokoll
 
@@ -71,14 +76,14 @@ an, nicht danach.
 
 ## Zahlen
 
-Selbst nachgeprüft, nicht aus Berichten übernommen (Stand 2026-09-01, nach der
-Aktor-Verdrahtung):
+Selbst nachgeprüft, nicht aus Berichten übernommen (Stand 2026-09-02, nach der
+Meross- und Thermostatventil-Verdrahtung):
 
 | | |
 |---|---|
-| Tests | 1453 unter SQLite, 1452 plus ein Skip unter MariaDB |
+| Tests | 1473 unter SQLite, 1472 plus ein Skip unter MariaDB |
 | Testabdeckung | 100 %, Mindestschwelle 100 % in der CI |
-| Ruff, mypy strict | ohne Befund, 104 Quelldateien |
+| Ruff, mypy strict | ohne Befund, 105 Quelldateien |
 | Migrationskette | linear, ein Kopf, vorwärts und rückwärts gegen beide Datenbanken |
 | Container | baut; eine echte 0.2.0-Datenbank wurde darin hochgezogen, `/healthz` meldet 0.2.2 |
 

@@ -5,6 +5,7 @@
       "**Geschaltet wird weiterhin nichts.** Der Trockenlauf steht, und das ist Absicht: Erst",
       "**Gewöhnliche Aktoren sind jetzt mit dem Regelkreis verdrahtet.** Bisher erreichte eine",
       "**Meross ist davon ausdrücklich nicht erfasst** — das Schalten dort braucht eine Anmeldung",
+      "**Meross und Zigbee2MQTT-Thermostatventile sind jetzt verdrahtet — beide zuvor offenen",
       "**selbstregelnde Thermostatventile** ihren Sollwert veröffentlicht. **Normale",
       "- **Die Sonnenabsenkung liess sich nicht einschalten.** Das Formular schickt seit 0.2.0",
       "- **Im Container läuft eine Migration beim Start von selbst** (Ventilschutz je Zone samt",
@@ -18,6 +19,7 @@
       "Aktor ist zu.",
       "Der Adapter kann eine bekannte Steckdose ein- und ausschalten, aber es gibt keine",
       "Der bestehende Sollwert-Weg an selbstregelnde Thermostatventile schreibt jetzt dorthin,",
+      "Fälle.** Ein Meross-Aktor bekommt seinen Befehl über eine bei Bedarf erneuerte,",
       "Ist-Temperatur. Der eigene Fühler eines Thermostats sitzt am Heizkörper und misst",
       "Konto geprüft; geschaltet wird über MQTT, wie Meross es tatsächlich tut.",
       "Palette schaltet zwischen beiden um. Ohne JavaScript bleibt alles über das Formular",
@@ -26,10 +28,12 @@
       "Sobald die normale Regelung das Heizen übernimmt, wird der Schutzmarker beendet. Ein",
       "Stück Funktion: der Ventilschutz.",
       "Zigbee2MQTT-Thermostatventil ohne `self_regulating`) in",
+      "betroffene Aktor diesen Zyklus einen `failed`-Eintrag im Schaltprotokoll, ohne den Zyklus",
       "derzeit kein Ventil. Sie ist standardmäßig aus; Konfiguration gibt es in Oberfläche,",
       "getestet und nirgends im Produktivcode konstruiert. Jetzt schaltet ein Zigbee2MQTT-Aktor",
       "jetzt, was geprüft ist (Anmeldung, Geräteliste, das Lesen und Schalten eines",
       "mehrere Grad zu warm; mit einem Wandfühler regelt es gegen den Raum.",
+      "selbst anzuhalten. Ein Zigbee2MQTT-Thermostatventil ohne `self_regulating` (Fähigkeit",
       "wirklich angebunden statt halb, die Sonnenabsenkung lässt sich wieder einschalten, und"
     ],
     "README.md": [
@@ -44,22 +48,19 @@
     "docs/STATUS.md": [
       "## Was geschaltet wird — genau",
       "- **Die Frostschutz-Entscheidung bestätigen**, bevor Phase 4 scharf schaltet — siehe",
-      "- **Ein Meross-Aktor bekommt weiterhin keinen Befehl** — bewusst, kein Versehen. Das",
+      "- **Ein Meross-Aktor bekommt jetzt ebenfalls seinen Befehl.** Das Schalten dort braucht",
       "- **Ein Zigbee2MQTT-Thermostatventil ohne `self_regulating`** (Fähigkeit `thermostat`",
       "- **Sind beide Riegel offen**, bekommen selbstregelnde Thermostatventile ihren Sollwert",
-      "Aktor-Verdrahtung):",
       "Begründung, Auslöser. Der bestehende Sollwert-Weg an selbstregelnde Thermostatventile",
-      "Schalten dort braucht eine Anmeldung gegen die Meross-Cloud, die nicht aus einer",
+      "Meross- und Thermostatventil-Verdrahtung):",
       "Schnappschuss annahm — und viermal dieselbe Klasse, Texte, die eine Ventilbewegung",
-      "geschaltet hätte, schreibt stattdessen einen `failed`-Eintrag ins Schaltprotokoll.",
       "jeder Weg zu einem Aktor zu.",
       "schalten. Damit ist dieses Protokoll die einzige Stelle, an der später nachvollziehbar ist,",
       "schaltet, muss den Dienst neu starten, bevor überhaupt etwas hinausgeht.",
-      "schon einmal die ganze SQLite-Datei gesperrt). Jeder Zyklus, der einen Meross-Aktor",
       "veröffentlicht, **und jetzt auch ein gewöhnlicher (nicht selbstregelnder) Aktor an",
       "wahr, dass „weiterhin nichts geschaltet wird\" — das war eine Zusicherung ohne Deckung.",
       "was an der Heizung passiert ist — es stand deshalb vor der Verdrahtung der Aktoren (Phase 4)",
-      "| 4 — Regelkreis und Cutover | Zigbee2MQTT-Aktoren verdrahtet; Meross und ein Sonderfall offen (siehe unten) |"
+      "| 4 — Regelkreis und Cutover | Alle sieben Aktortypen der echten Anlage verdrahtet: Zigbee2MQTT-Aktoren, Meross-Steckdosen, Zigbee2MQTT-Thermostatventile |"
     ],
     "docs/api.md": [
       "**Fehlt das Feld, gilt 0** — ein Aufrufer, der die Absenkung nicht kennt, schaltet sie",
@@ -155,6 +156,7 @@
       "dahinter hängt eine echte Heizung (Grundsatz 7).",
       "das Heizen\" für ausgerechnet die Zonen nicht mehr, in denen jemand ein modernes Ventil",
       "davor, dass *irgendein* Token scharf schaltet — nicht davor, dass das dafür vorgesehene",
+      "der auch die selbstregelnden Ventile ihn beziehen — und nicht aus einer zweiten,",
       "die erste ab — ein Gerät, das nur `thermostat` meldet (ein Zigbee2MQTT-Heizkörperthermostat",
       "dieser Anlage — hat kein `system_mode` und wäre damit als Aktor abgewiesen worden, also",
       "dieser Geräteart scharf geschaltet wird.** `domain/device_assignment.py` lässt die",
@@ -165,14 +167,17 @@
       "fehlt der Hälfte der Aktoren die Anbindung, und Phase 4 stünde ohne sie da.",
       "gebaut; stattdessen schreibt jeder Zyklus, der ihn geschaltet hätte, einen Eintrag ins",
       "genau das Gerät, für das die Funktion gebaut ist. Was ein Ventil fahrbar macht, ist der",
+      "gescheiterten Sendeversuch — für jedes Gerät, das über diese Sitzung hätte schalten",
       "nicht als reguläres Heizen. Start und letzter Abschluss eines Schutzlaufs liegen ebenfalls",
       "nichts schaltet. Was wir wirklich brauchen — Geräteliste und Schaltbefehl — sind wenige",
       "noch eine Bewegung des Ventils.",
       "schon bei den Sollwerten selbstregelnder Ventile). Nach jedem Neustart ist dieses",
       "schreibbare Sollwert; wie es ganz ausgeschaltet wird, ist die Frage des Adapters.",
+      "seinen niedrigsten Sollwert ausgeschaltet.",
       "selben Zyklus erneut und schreibt danach dauerhaft Ventilschutz statt gewöhnlicher",
       "signiertem Umschlag, das Schalten über MQTT. Der Aufwand lag also höher als angenommen —",
-      "später nachvollziehbar ist, was an einer echten Heizung passiert ist. Ein Eintrag, der beim"
+      "später nachvollziehbar ist, was an einer echten Heizung passiert ist. Ein Eintrag, der beim",
+      "über Ein/Aus, der Sollwert ist nur die Zahl, mit der das Ventil dabei fährt. Die Sorge um"
     ],
     "docs/roadmap.md": [
       "**Ziel:** Regelung freigeben und anschließend Aktoren verdrahten. Die Freigabe allein",
@@ -298,6 +303,8 @@
     ],
     "thermoctl/domain/switch_commands.py": [
       "actuator",
+      "actuator",
+      "switch",
       "switch"
     ],
     "thermoctl/domain/zone_settings.py": [
@@ -326,12 +333,16 @@
     "thermoctl/services/meross_discovery.py": [
       "switch"
     ],
+    "thermoctl/services/meross_session.py": [
+      "Meross-Anmeldung abgelehnt -- Aktoren bleiben diesen Zyklus unerreichbar"
+    ],
     "thermoctl/services/publishing.py": [
       "Aktor an nicht verdrahteter Anbindung wird nicht geschaltet",
       "Aktor geschaltet",
       "Selbstregelndes Ventil gestellt",
-      "switch",
-      "switch",
+      "Thermostatventil an nicht verdrahteter Anbindung wird nicht geschaltet",
+      "Thermostatventil geschaltet",
+      "heating",
       "switch",
       "switch"
     ],

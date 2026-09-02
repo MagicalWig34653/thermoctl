@@ -118,6 +118,24 @@ async def test_control_armed_sends_the_signed_toggle_command(session: Session) -
 
 
 @pytest.mark.anyio
+async def test_an_armed_switch_without_a_signed_in_session_fails_without_touching_the_network(
+    session: Session,
+) -> None:
+    """`transport=None` -- no account configured, or the cloud rejected the sign-in
+    this cycle (`services/meross_session.py`). Armed does not mean a network call is
+    attempted regardless: without a session there is nothing to send through, and
+    the adapter reports that as a failure of its own rather than raising."""
+    frost_protection = create_mode(session, "frostschutz")
+    session.add(Setting(id=1, control_armed=True, frost_protection_mode_id=frost_protection.id))
+    session.flush()
+
+    result = await MerossSwitch(session, None, "irgendein-geraet").switching(True)
+
+    assert result.executed is False
+    assert result.errors == "Keine gueltige Meross-Sitzung vorhanden"
+
+
+@pytest.mark.anyio
 async def test_switching_off_carries_onoff_zero(session: Session) -> None:
     """Off is a command of its own, not the absence of one."""
     _armed(session)

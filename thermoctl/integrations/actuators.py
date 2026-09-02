@@ -89,6 +89,38 @@ def _quantized_setpoint(value: Decimal) -> Decimal:
     return steps * _THERMOSTAT_SETPOINT_STEP_C
 
 
+def thermostat_payload(
+    on: bool, setpoint_c: Decimal, *, has_system_mode: bool
+) -> dict[str, object]:
+    """The exact payload `Zigbee2MqttThermostat.switching()` sends for this state.
+
+    Exposed as its own function so a caller that only wants to *log* what a decision
+    would send -- `services/publishing.py`'s command log entry -- writes down the same
+    JSON the adapter actually builds, not a separately maintained approximation that
+    could drift from it. `setpoint_c` is not quantised or range-checked here; the
+    adapter does that itself before calling this for the `on` case.
+    """
+    if not on:
+        return (
+            {"system_mode": "off"}
+            if has_system_mode
+            # No `system_mode`: the lowest setpoint the device accepts is the only
+            # way to tell it to stop heating. Deliberately the same bound the range
+            # check in `switching()` uses, so "off" cannot mean a value the device
+            # would refuse.
+            else {"occupied_heating_setpoint": float(THERMOSTAT_MIN_SETPOINT_C)}
+        )
+    command: dict[str, object] = {
+        "occupied_heating_setpoint": float(_quantized_setpoint(setpoint_c))
+    }
+    if has_system_mode:
+        # Only where the device knows it. Zigbee2MQTT rejects a payload with an
+        # unknown key, and it rejects it silently -- the command would simply not
+        # arrive, and the valve would stay wherever it was.
+        command["system_mode"] = "heat"
+    return command
+
+
 class Zigbee2MqttThermostat:
     """Drives a Zigbee2MQTT thermostatic radiator valve (e.g. WT-A03E).
 
@@ -134,37 +166,20 @@ class Zigbee2MqttThermostat:
         return f"Zigbee2MQTT-Thermostat {self._device_name}"
 
     async def switching(self, on: bool) -> SwitchResult:
-        if not on:
-            payload = json.dumps(
-                {"system_mode": "off"}
-                if self._has_system_mode
-                # No `system_mode`: the lowest setpoint the device accepts is the only
-                # way to tell it to stop heating. Deliberately the same bound the
-                # range check above uses, so "off" cannot mean a value the device
-                # would refuse.
-                else {"occupied_heating_setpoint": float(THERMOSTAT_MIN_SETPOINT_C)}
+        if on and not (
+            THERMOSTAT_MIN_SETPOINT_C <= self._setpoint_c <= THERMOSTAT_MAX_SETPOINT_C
+        ):
+            return SwitchResult(
+                False,
+                (
+                    f"Sollwert {self._setpoint_c} liegt ausserhalb des am Geraet "
+                    f"zulaessigen Bereichs {THERMOSTAT_MIN_SETPOINT_C}-"
+                    f"{THERMOSTAT_MAX_SETPOINT_C} Grad C"
+                ),
             )
-        else:
-            if not (
-                THERMOSTAT_MIN_SETPOINT_C <= self._setpoint_c <= THERMOSTAT_MAX_SETPOINT_C
-            ):
-                return SwitchResult(
-                    False,
-                    (
-                        f"Sollwert {self._setpoint_c} liegt ausserhalb des am Geraet "
-                        f"zulaessigen Bereichs {THERMOSTAT_MIN_SETPOINT_C}-"
-                        f"{THERMOSTAT_MAX_SETPOINT_C} Grad C"
-                    ),
-                )
-            command: dict[str, object] = {
-                "occupied_heating_setpoint": float(_quantized_setpoint(self._setpoint_c))
-            }
-            if self._has_system_mode:
-                # Only where the device knows it. Zigbee2MQTT rejects a payload with an
-                # unknown key, and it rejects it silently -- the command would simply
-                # not arrive, and the valve would stay wherever it was.
-                command["system_mode"] = "heat"
-            payload = json.dumps(command)
+        payload = json.dumps(
+            thermostat_payload(on, self._setpoint_c, has_system_mode=self._has_system_mode)
+        )
         message = f"{self._topic} mit Nutzlast {payload}"
         if not switching_allowed(self._session):
             return SwitchResult(False, f"Trockenlauf, haette gesendet: {message}")
@@ -210,7 +225,7 @@ class MerossSwitch:
     def __init__(
         self,
         session: Session,
-        transport: MerossCommandTransport,
+        transport: MerossCommandTransport | None,
         device_uuid: str,
         *,
         channel: int = 0,
@@ -232,6 +247,16 @@ class MerossSwitch:
         )
         if not switching_allowed(self._session):
             return SwitchResult(False, f"Trockenlauf, haette gesendet: {message}")
+
+        # No signed-in session to switch through -- the periodic sign-in
+        # (`services/meross_session.py`) either has not run yet or was rejected by
+        # the cloud. Reported the same way any other failed attempt is: `executed`
+        # stays `False`, the reason names it, and nothing here retries or blocks --
+        # the caller moves on to the next device.
+        if self._transport is None:
+            return SwitchResult(
+                False, message, "Keine gueltige Meross-Sitzung vorhanden"
+            )
 
         try:
             answer = await self._transport.send(

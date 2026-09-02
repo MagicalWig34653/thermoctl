@@ -8,6 +8,8 @@ a test explicitly arms it — CLAUDE.md forbids arming anything in this suite.
 
 import json
 from datetime import datetime
+from decimal import Decimal
+from typing import Any
 
 import pytest
 from sqlalchemy import select
@@ -21,11 +23,12 @@ from tests.helpers import (
     role,
     source,
 )
-from thermoctl.db.models.device import Device, DeviceCapabilityLink, ZoneDevice
+from thermoctl.db.models.device import Device, DeviceCapabilityLink, DeviceProperty, ZoneDevice
 from thermoctl.db.models.lookup import CommandOutcome, DeviceCapability
 from thermoctl.db.models.state import DeviceCommand, ShadowDecision
 from thermoctl.db.models.zone import Zone
 from thermoctl.domain.control import arm
+from thermoctl.services.meross_session import MerossSessionCache
 from thermoctl.services.publishing import PublicationState, cycle
 
 NOW = datetime(2026, 9, 1, 7, 0)
@@ -107,6 +110,109 @@ def _actuator_zone(
     )
     session.flush()
     return zone, device
+
+
+def _capability(session: Session, code: str, label: str) -> DeviceCapability:
+    existing = session.scalar(select(DeviceCapability).where(DeviceCapability.code == code))
+    if existing is not None:
+        return existing
+    capability = DeviceCapability(code=code, label=label)
+    session.add(capability)
+    session.flush()
+    return capability
+
+
+def _thermostat_actuator_zone(
+    session: Session,
+    name: str,
+    *,
+    integration_code: str = "zigbee2mqtt",
+    self_regulating: bool = False,
+    has_system_mode: bool = True,
+    also_switch_capable: bool = False,
+) -> tuple[Zone, Device]:
+    """A Zigbee2MQTT thermostatic actuator, run by thermoctl's own hysteresis
+    (`self_regulating=False`) -- the wiring `thermostat_commands()` and
+    `Zigbee2MqttThermostat` cover."""
+    zone = create_zone(session, name)
+    device = Device(
+        integration_id=integration(session, integration_code).id,
+        external_id=f"{name}-ventil",
+        display_name=f"{name}-ventil",
+    )
+    session.add(device)
+    session.flush()
+    session.add(
+        DeviceCapabilityLink(
+            device_id=device.id,
+            capability_id=_capability(session, "thermostat", "Thermostatausgang").id,
+        )
+    )
+    if also_switch_capable:
+        session.add(
+            DeviceCapabilityLink(
+                device_id=device.id, capability_id=_switch_capability(session).id
+            )
+        )
+    session.add(
+        DeviceProperty(
+            device_id=device.id,
+            name="occupied_heating_setpoint",
+            value_type="numeric",
+            unit="°C",
+            min_value=Decimal("5"),
+            max_value=Decimal("30"),
+            is_readable=True,
+            is_writable=True,
+        )
+    )
+    if has_system_mode:
+        session.add(
+            DeviceProperty(
+                device_id=device.id,
+                name="system_mode",
+                value_type="enum",
+                is_readable=True,
+                is_writable=True,
+            )
+        )
+    session.add(
+        ZoneDevice(
+            zone_id=zone.id,
+            device_id=device.id,
+            device_role_id=role(session, "actuator").id,
+            self_regulating=self_regulating,
+        )
+    )
+    session.flush()
+    return zone, device
+
+
+class MerossTransportStub:
+    """Stands in for a signed-in `MerossCommandTransport`; answers `SETACK` like a
+    real socket unless told to fail. Raising when never expected to be called would
+    prove a dry run reached the network -- exactly the property this suite must not
+    let slip through again."""
+
+    def __init__(self, *, method: str = "SETACK") -> None:
+        self.calls: list[tuple[str, str, str, dict[str, Any]]] = []
+        self.method = method
+
+    async def send(
+        self, device_uuid: str, namespace: str, method: str, payload: Any
+    ) -> dict[str, Any]:
+        self.calls.append((device_uuid, namespace, method, dict(payload)))
+        return {"header": {"method": self.method}, "payload": {}}
+
+
+class _NetworkForbidden:
+    """A transport that fails the test the moment anything calls it -- used to prove
+    a dry run never reaches the network at all."""
+
+    async def send(
+        self, device_uuid: str, namespace: str, method: str, payload: Any
+    ) -> dict[str, Any]:
+        raise AssertionError("Der Trockenlauf haette den Transport nicht anfassen duerfen")
 
 
 def _decision(session: Session, zone: Zone, *, heating: bool, reason: str = "Testgrund") -> None:
@@ -351,12 +457,42 @@ async def test_after_a_restart_the_state_is_sent_unconditionally(session: Sessio
 
 
 @pytest.mark.anyio
-async def test_a_meross_actuator_is_reported_as_not_wired_and_nothing_is_sent(
+async def test_a_switch_actuator_at_a_non_wired_integration_is_reported_not_sent(
     session: Session,
 ) -> None:
-    """Meross needs a signed-in cloud session and is explicitly out of scope for
-    this change (see docs/offene-entscheidungen.md) -- but the gap must be visible
-    in the command log once armed, not silent."""
+    """`_WIRED_INTEGRATIONS` today covers exactly `zigbee2mqtt` and `meross` -- a
+    switch-capability actuator at any other integration code has nothing built to
+    reach it, and that must show up in the command log once armed, not silently."""
+    create_settings(session)
+    source(session, "system")
+    create_all_command_outcomes(session)
+    zone, device = _actuator_zone(session, "unbekannteanbindungzone", integration_code="hue")
+    _decision(session, zone, heating=True)
+    arm(session, True, reason="vier Tage verglichen", user_id=None)
+    session.flush()
+
+    client = Mitschrift()
+    await cycle(session, client, PublicationState(), "thermoctl", NOW)
+
+    assert client.switched == []
+    entries = _command_log(session)
+    assert len(entries) == 1
+    entry, outcome_code = entries[0]
+    assert outcome_code == "failed"
+    assert entry.device_name == device.display_name
+    assert entry.error is not None
+    assert "nicht verdrahtet" in entry.error
+
+
+@pytest.mark.anyio
+async def test_a_meross_actuator_without_a_signed_in_session_fails_visibly(
+    session: Session,
+) -> None:
+    """Meross is wired now, but only through an already signed-in transport handed
+    in from outside (`app.py`'s `_shadow_loop`, `services/meross_session.py`). No
+    account configured, or a sign-in the cloud refused, means `meross_transport` is
+    `None` here -- and that must be visible in the command log once armed, not
+    silent."""
     create_settings(session)
     source(session, "system")
     create_all_command_outcomes(session)
@@ -374,8 +510,110 @@ async def test_a_meross_actuator_is_reported_as_not_wired_and_nothing_is_sent(
     entry, outcome_code = entries[0]
     assert outcome_code == "failed"
     assert entry.device_name == device.display_name
-    assert entry.error is not None
-    assert "meross" in entry.error.lower()
+    assert entry.error == "Keine gueltige Meross-Sitzung vorhanden"
+
+
+@pytest.mark.anyio
+async def test_a_meross_actuator_in_a_dry_run_never_touches_the_transport(
+    session: Session,
+) -> None:
+    """Gegenprobe for the dry-run bolt on the Meross path specifically: even with a
+    working, signed-in transport handed in, an unarmed cycle must not use it at
+    all -- `_NetworkForbidden` fails the test the instant anything calls `send()`."""
+    create_settings(session)
+    source(session, "system")
+    create_all_command_outcomes(session)
+    zone, _device = _actuator_zone(session, "merosstrockenlaufzone", integration_code="meross")
+    _decision(session, zone, heating=True)
+    # Deliberately not armed.
+
+    client = Mitschrift()
+    await cycle(
+        session,
+        client,
+        PublicationState(),
+        "thermoctl",
+        NOW,
+        meross_transport=_NetworkForbidden(),  # type: ignore[arg-type]
+    )
+
+    assert client.switched == []
+    entries = _command_log(session)
+    assert len(entries) == 1
+    entry, outcome_code = entries[0]
+    assert outcome_code == "suppressed"
+    assert entry.error is None
+
+
+@pytest.mark.anyio
+async def test_an_armed_meross_actuator_with_a_signed_in_session_really_sends(
+    session: Session,
+) -> None:
+    """The gegenbeweis for Meross: armed, with a signed-in transport handed in, a
+    heating decision really goes out over `Appliance.Control.ToggleX`, is reported
+    as executed, and is logged that way."""
+    create_settings(session)
+    source(session, "system")
+    create_all_command_outcomes(session)
+    zone, device = _actuator_zone(session, "merossscharfzone", integration_code="meross")
+    _decision(session, zone, heating=True, reason="Sollwert unterschritten")
+    arm(session, True, reason="vier Tage verglichen", user_id=None)
+    session.flush()
+
+    transport = MerossTransportStub()
+    client = Mitschrift()
+    sent = await cycle(
+        session,
+        client,
+        PublicationState(),
+        "thermoctl",
+        NOW,
+        meross_transport=transport,  # type: ignore[arg-type]
+    )
+
+    assert sent >= 1
+    assert transport.calls == [
+        (device.external_id, "Appliance.Control.ToggleX", "SET",
+         {"togglex": {"channel": 0, "onoff": 1}}),
+    ]
+    entries = _command_log(session)
+    assert len(entries) == 1
+    entry, outcome_code = entries[0]
+    assert outcome_code == "executed"
+    assert entry.command == "switch"
+    assert entry.device_name == device.display_name
+    assert entry.reason == "Sollwert unterschritten"
+    assert entry.error is None
+
+
+@pytest.mark.anyio
+async def test_a_failed_meross_send_invalidates_the_cached_session(session: Session) -> None:
+    """A real attempt that did not work marks the cached connection bad, so the
+    *next* cycle signs in again instead of trusting a connection already known not
+    to work for the rest of its TTL (`services/meross_session.py::invalidate`)."""
+    create_settings(session)
+    source(session, "system")
+    create_all_command_outcomes(session)
+    zone, _device = _actuator_zone(session, "merossfehlerzone", integration_code="meross")
+    _decision(session, zone, heating=True)
+    arm(session, True, reason="vier Tage verglichen", user_id=None)
+    session.flush()
+
+    transport = MerossTransportStub(method="ERROR")
+    cache = MerossSessionCache()
+    await cycle(
+        session,
+        Mitschrift(),
+        PublicationState(),
+        "thermoctl",
+        NOW,
+        meross_transport=transport,  # type: ignore[arg-type]
+        meross_session_cache=cache,
+    )
+
+    assert cache.invalid is True
+    entry, outcome_code = _command_log(session)[0]
+    assert outcome_code == "failed"
 
 
 @pytest.mark.anyio
@@ -405,3 +643,226 @@ async def test_the_minimum_switching_duration_still_applies(session: Session) ->
     assert json.loads(payload) == {"state": "ON"}
     entry, _outcome = _command_log(session)[0]
     assert "Mindestschaltdauer" in (entry.reason or "")
+
+
+# A zone with no schedule and no override falls back to frost protection
+# (`domain/schedule.py::resolved_setpoint`) -- `create_settings()` builds that mode
+# without a per-zone setpoint of its own, so `frost_protection_temperature()` falls
+# back further, to its own hardcoded 16.0 degrees. Deterministic without building a
+# schedule just for these tests, and exactly the number `Zigbee2MqttThermostat`
+# below is asked to arm.
+FROST_FALLBACK_SETPOINT_C = "16.0"
+
+
+@pytest.mark.anyio
+async def test_a_thermostat_actuator_in_a_dry_run_sends_nothing_and_the_log_shows_it(
+    session: Session,
+) -> None:
+    create_settings(session)
+    source(session, "system")
+    create_all_command_outcomes(session)
+    zone, _device = _thermostat_actuator_zone(session, "thermotrockenlaufzone")
+    _decision(session, zone, heating=True)
+    # Deliberately not armed.
+
+    client = Mitschrift()
+    await cycle(session, client, PublicationState(), "thermoctl", NOW)
+
+    assert client.switched == []
+    entries = _command_log(session)
+    assert len(entries) == 1
+    entry, outcome_code = entries[0]
+    assert outcome_code == "suppressed"
+    assert entry.command == "thermostat"
+    assert entry.error is None
+
+
+@pytest.mark.anyio
+async def test_an_armed_thermostat_actuator_with_system_mode_really_sends(
+    session: Session,
+) -> None:
+    """The gegenbeweis for the thermostatic-valve actuator path: armed, a heating
+    decision really arms the valve with the zone's resolved setpoint and
+    `system_mode: heat`, is reported as executed, and is logged that way."""
+    create_settings(session)
+    source(session, "system")
+    create_all_command_outcomes(session)
+    zone, device = _thermostat_actuator_zone(session, "thermoscharfzone")
+    _decision(session, zone, heating=True, reason="Sollwert unterschritten")
+    arm(session, True, reason="vier Tage verglichen", user_id=None)
+    session.flush()
+
+    client = Mitschrift()
+    sent = await cycle(session, client, PublicationState(), "thermoctl", NOW)
+
+    commands = [(t, p) for t, p in client.messages if t.endswith("/set")]
+    assert len(commands) == 1
+    topic, payload = commands[0]
+    assert topic.endswith(f"/{device.external_id}/set")
+    assert json.loads(payload) == {
+        "occupied_heating_setpoint": float(FROST_FALLBACK_SETPOINT_C),
+        "system_mode": "heat",
+    }
+    assert sent >= 1
+
+    entries = _command_log(session)
+    assert len(entries) == 1
+    entry, outcome_code = entries[0]
+    assert outcome_code == "executed"
+    assert entry.command == "thermostat"
+    assert entry.device_name == device.display_name
+    assert entry.reason == "Sollwert unterschritten"
+    assert entry.error is None
+
+
+@pytest.mark.anyio
+async def test_an_armed_thermostat_actuator_with_system_mode_switches_off_that_way(
+    session: Session,
+) -> None:
+    create_settings(session)
+    source(session, "system")
+    create_all_command_outcomes(session)
+    zone, device = _thermostat_actuator_zone(session, "thermoauszone")
+    _decision(session, zone, heating=False)
+    arm(session, True, reason="vier Tage verglichen", user_id=None)
+    session.flush()
+
+    client = Mitschrift()
+    await cycle(session, client, PublicationState(), "thermoctl", NOW)
+
+    topic, payload = next((t, p) for t, p in client.messages if t.endswith("/set"))
+    assert topic.endswith(f"/{device.external_id}/set")
+    assert json.loads(payload) == {"system_mode": "off"}
+
+
+@pytest.mark.anyio
+async def test_an_armed_thermostat_without_system_mode_heats_by_setpoint_alone(
+    session: Session,
+) -> None:
+    """A device without `system_mode` (a Bosch BTH-RA, see `docs/offene-entscheidungen.md`)
+    only ever gets `occupied_heating_setpoint` -- never a key it would silently reject."""
+    create_settings(session)
+    source(session, "system")
+    create_all_command_outcomes(session)
+    zone, device = _thermostat_actuator_zone(
+        session, "thermoohnemoduszone", has_system_mode=False
+    )
+    _decision(session, zone, heating=True)
+    arm(session, True, reason="vier Tage verglichen", user_id=None)
+    session.flush()
+
+    client = Mitschrift()
+    await cycle(session, client, PublicationState(), "thermoctl", NOW)
+
+    topic, payload = next((t, p) for t, p in client.messages if t.endswith("/set"))
+    assert topic.endswith(f"/{device.external_id}/set")
+    assert json.loads(payload) == {
+        "occupied_heating_setpoint": float(FROST_FALLBACK_SETPOINT_C)
+    }
+
+
+@pytest.mark.anyio
+async def test_an_armed_thermostat_without_system_mode_switches_off_by_its_minimum_setpoint(
+    session: Session,
+) -> None:
+    """The real difference `Zigbee2MqttThermostat` documents: off through
+    `system_mode` closes the valve; a device without one is switched off the way it
+    is switched off by hand, its lowest accepted setpoint."""
+    create_settings(session)
+    source(session, "system")
+    create_all_command_outcomes(session)
+    zone, device = _thermostat_actuator_zone(
+        session, "thermoohnemodusauszone", has_system_mode=False
+    )
+    _decision(session, zone, heating=False)
+    arm(session, True, reason="vier Tage verglichen", user_id=None)
+    session.flush()
+
+    client = Mitschrift()
+    await cycle(session, client, PublicationState(), "thermoctl", NOW)
+
+    topic, payload = next((t, p) for t, p in client.messages if t.endswith("/set"))
+    assert topic.endswith(f"/{device.external_id}/set")
+    assert json.loads(payload) == {"occupied_heating_setpoint": 5.0}
+
+
+@pytest.mark.anyio
+async def test_the_same_thermostat_decision_sent_twice_writes_only_one_command(
+    session: Session,
+) -> None:
+    create_settings(session)
+    source(session, "system")
+    create_all_command_outcomes(session)
+    zone, _device = _thermostat_actuator_zone(session, "thermowiederholungszone")
+    _decision(session, zone, heating=True)
+    arm(session, True, reason="vier Tage verglichen", user_id=None)
+    session.flush()
+
+    client, state = Mitschrift(), PublicationState()
+    await cycle(session, client, state, "thermoctl", NOW)
+    await cycle(session, client, state, "thermoctl", NOW)
+
+    commands = [(t, p) for t, p in client.messages if t.endswith("/set")]
+    assert len(commands) == 1
+    assert len(_command_log(session)) == 1
+
+
+@pytest.mark.anyio
+async def test_a_device_with_both_switch_and_thermostat_capability_only_gets_a_switch_command(
+    session: Session,
+) -> None:
+    """`thermostat_commands()` deliberately leaves a device alone when it also
+    carries the `switch` capability -- `switch_commands()` already claims it, and a
+    device is not meant to get two conflicting kinds of command in the same cycle."""
+    create_settings(session)
+    source(session, "system")
+    create_all_command_outcomes(session)
+    zone, device = _thermostat_actuator_zone(
+        session, "beideszone", also_switch_capable=True
+    )
+    _decision(session, zone, heating=True)
+    arm(session, True, reason="vier Tage verglichen", user_id=None)
+    session.flush()
+
+    client = Mitschrift()
+    await cycle(session, client, PublicationState(), "thermoctl", NOW)
+
+    entries = _command_log(session)
+    assert len(entries) == 1
+    entry, outcome_code = entries[0]
+    assert entry.command == "switch"
+    assert entry.device_name == device.display_name
+    topic, payload = next((t, p) for t, p in client.messages if t.endswith("/set"))
+    assert json.loads(payload) == {"state": "ON"}
+
+
+@pytest.mark.anyio
+async def test_a_thermostat_actuator_at_a_non_wired_integration_is_reported_not_sent(
+    session: Session,
+) -> None:
+    """Not observed on real hardware (only Zigbee2MQTT reports the `thermostat`
+    capability), guarded anyway -- the gap this replaces (a Zigbee2MQTT TRV without
+    `self_regulating` got no command *and* no log entry) must never repeat itself
+    silently for any other integration either."""
+    create_settings(session)
+    source(session, "system")
+    create_all_command_outcomes(session)
+    zone, device = _thermostat_actuator_zone(
+        session, "thermonichtverdrahtetzone", integration_code="meross"
+    )
+    _decision(session, zone, heating=True)
+    arm(session, True, reason="vier Tage verglichen", user_id=None)
+    session.flush()
+
+    client = Mitschrift()
+    await cycle(session, client, PublicationState(), "thermoctl", NOW)
+
+    assert client.switched == []
+    entries = _command_log(session)
+    assert len(entries) == 1
+    entry, outcome_code = entries[0]
+    assert outcome_code == "failed"
+    assert entry.command == "thermostat"
+    assert entry.device_name == device.display_name
+    assert entry.error is not None
+    assert "nicht verdrahtet" in entry.error

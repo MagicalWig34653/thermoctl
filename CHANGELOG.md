@@ -11,6 +11,21 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ## Unreleased
 
+**Meross und Zigbee2MQTT-Thermostatventile sind jetzt verdrahtet — beide zuvor offenen
+Fälle.** Ein Meross-Aktor bekommt seinen Befehl über eine bei Bedarf erneuerte,
+zwischengespeicherte Cloud-Sitzung (`services/meross_session.py`), signiert **ausserhalb**
+jeder Datenbanktransaktion — genau die Stelle, an der eine frühere Fassung die SQLite-Datei
+bis zu 40 Sekunden gesperrt hatte. Lehnt die Cloud die Anmeldung ab, bekommt jeder
+betroffene Aktor diesen Zyklus einen `failed`-Eintrag im Schaltprotokoll, ohne den Zyklus
+selbst anzuhalten. Ein Zigbee2MQTT-Thermostatventil ohne `self_regulating` (Fähigkeit
+`thermostat` statt `switch`, von thermoctls eigener Hysterese statt eigener Regelung
+gesteuert) bekommt jetzt über `Zigbee2MqttThermostat` den aufgelösten Zonensollwert und,
+wo das Gerät `system_mode` als beschreibbar meldet, `heat`/`off` dazu — ein Gerät ohne
+`system_mode` (Bosch BTH-RA) wird stattdessen auf seinen niedrigsten Sollwert gefahren.
+Beide Wege gehen durch dieselben zwei Riegel und dasselbe Schaltprotokoll wie der
+bestehende Zigbee2MQTT-Schaltweg. Begründungen in
+[docs/offene-entscheidungen.md](docs/offene-entscheidungen.md).
+
 **Gewöhnliche Aktoren sind jetzt mit dem Regelkreis verdrahtet.** Bisher erreichte eine
 Ein/Aus-Entscheidung kein Gerät: `Zigbee2MqttValve` und `MerossSwitch` waren gebaut,
 getestet und nirgends im Produktivcode konstruiert. Jetzt schaltet ein Zigbee2MQTT-Aktor

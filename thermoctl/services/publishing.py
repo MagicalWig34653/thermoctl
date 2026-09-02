@@ -47,9 +47,19 @@ from thermoctl.db.models.zone import SetpointMode, Zone, ZoneSetpoint
 from thermoctl.domain.controller_channels import may_be_written
 from thermoctl.domain.schedule import end_of_next_switch, resolved_setpoint
 from thermoctl.domain.self_regulating import SETPOINT_PROPERTY, valve_commands
-from thermoctl.domain.switch_commands import switch_commands
+from thermoctl.domain.switch_commands import switch_commands, thermostat_commands
 from thermoctl.domain.zone_settings import PARAMETERS, control_parameters
-from thermoctl.integrations.actuators import MqttPublisher, Zigbee2MqttValve, switching_allowed
+from thermoctl.integrations.actuators import (
+    Actuator,
+    MerossSwitch,
+    MqttPublisher,
+    SwitchResult,
+    Zigbee2MqttThermostat,
+    Zigbee2MqttValve,
+    switching_allowed,
+    thermostat_payload,
+)
+from thermoctl.integrations.meross_mqtt import MerossCommandTransport, toggle_payload
 from thermoctl.integrations.mqtt.publication import (
     DiscoveryMessage,
     armed_discovery,
@@ -65,6 +75,8 @@ from thermoctl.integrations.mqtt.publication import (
     zone_discovery,
 )
 from thermoctl.services.device_commands import EXECUTED, FAILED, SUPPRESSED, record_command
+from thermoctl.services.meross_session import MerossSessionCache
+from thermoctl.services.meross_session import invalidate as invalidate_meross_session
 
 log = logging.getLogger(__name__)
 
@@ -149,8 +161,19 @@ async def cycle(
     now: datetime,
     *,
     source: str = "system",
+    meross_transport: MerossCommandTransport | None = None,
+    meross_session_cache: MerossSessionCache | None = None,
 ) -> int:
-    """One publication cycle. Returns the number of messages sent."""
+    """One publication cycle. Returns the number of messages sent.
+
+    `meross_transport` is signed in (or not) before this function is ever called --
+    see `app.py`'s `_shadow_loop` and `services/meross_session.py`. Passing `None`
+    here (no account configured, or the cloud refused the sign-in) is not this
+    function's problem to solve: every attempt to reach a Meross actuator this cycle
+    is recorded as `failed` in the command log, same as any other failed send.
+    `meross_session_cache`, when given, is where a failed attempt is flagged so the
+    *next* cycle signs in again rather than trusting a connection already known bad.
+    """
     armed = switching_allowed(session)
     zones = list(session.scalars(select(Zone).order_by(Zone.id)))
     sent_count = 0
@@ -188,7 +211,15 @@ async def cycle(
         )
     for zone in zones:
         sent_count += await _send_actuator_switches(
-            session, client, state, get_settings().mqtt_base_topic, zone, now, source
+            session,
+            client,
+            state,
+            get_settings().mqtt_base_topic,
+            zone,
+            now,
+            source,
+            meross_transport,
+            meross_session_cache,
         )
     return sent_count
 
@@ -304,23 +335,80 @@ async def _send_self_regulating_valves(
     return sent
 
 
-# Integration codes an ordinary actuator can actually be switched through today.
+# Integration codes an ordinary (switch-capability) actuator can actually be switched
+# through today.
 #
-# Meross needs a signed-in `MerossCommandTransport`
-# (`integrations/meross.py::sign_in`, `MerossConnection.build`) -- a call to the
-# manufacturer's cloud that must not be awaited from inside an open database
-# transaction. `app.py`'s detached Meross reconciliation
-# (`_run_detached_meross_refresh`) exists for exactly that reason: an earlier
-# version awaited such a call from inside `session_scope` and locked the whole
-# SQLite file for its duration, answering unrelated requests with 500 and 401.
-# Doing the same safely for switching -- a connection cached and periodically
-# refreshed, reached from outside this transaction, its own failure mode when the
-# cached session has gone stale -- is a piece of infrastructure this change does
-# not build; see docs/offene-entscheidungen.md. A Meross actuator is therefore
-# left unswitched rather than switched through a shortcut that risks repeating
-# that exact fault -- and every cycle that would have wanted to switch one says so
-# in the command log (`FAILED` once armed) instead of staying silent about it.
-_WIRED_INTEGRATIONS = frozenset({"zigbee2mqtt"})
+# Meross switches through a `MerossCommandTransport` that must already be signed in --
+# `app.py`'s `_shadow_loop` gets one from `services/meross_session.py::ensure_transport`
+# *before* the transaction this cycle runs in ever opens, and hands it in here as
+# `meross_transport` (`None` when no account is configured or the cloud refused the
+# sign-in). That split exists because signing in is itself an HTTP call to the
+# manufacturer's cloud: an earlier version awaited it from inside this same
+# `session_scope` and locked the whole SQLite file for its duration, answering
+# unrelated requests with 500 and 401 (`_run_detached_meross_refresh`'s docstring in
+# `app.py` carries the same lesson for the device-list reconciliation).
+_WIRED_INTEGRATIONS = frozenset({"zigbee2mqtt", "meross"})
+
+
+def _record_switch_outcome(
+    session: Session,
+    *,
+    now: datetime,
+    source: str,
+    zone: Zone,
+    device: Device,
+    command_name: str,
+    payload: str,
+    result: SwitchResult,
+    reason: str,
+) -> bool:
+    """Writes one command-log entry for a switching attempt. Returns whether it sent.
+
+    Shared between the `switch` and `thermostat` command kinds below -- both adapters
+    report the same three outcomes through `SwitchResult`, and the command log does
+    not need to know which kind of device it was told about.
+    """
+    if result.executed:
+        record_command(
+            session,
+            now=now,
+            source=source,
+            zone=zone,
+            device=device,
+            command=command_name,
+            payload=payload,
+            outcome=EXECUTED,
+            reason=reason,
+        )
+        return True
+    if result.errors is None:
+        # An adapter reports a `None` error exactly when it withheld the command
+        # itself, at the dry-run bolt.
+        record_command(
+            session,
+            now=now,
+            source=source,
+            zone=zone,
+            device=device,
+            command=command_name,
+            payload=payload,
+            outcome=SUPPRESSED,
+            reason=reason,
+        )
+        return False
+    record_command(
+        session,
+        now=now,
+        source=source,
+        zone=zone,
+        device=device,
+        command=command_name,
+        payload=payload,
+        outcome=FAILED,
+        error=result.errors,
+        reason=reason,
+    )
+    return False
 
 
 def _latest_decision(session: Session, zone_id: int) -> tuple[bool, str] | None:
@@ -350,6 +438,8 @@ async def _send_actuator_switches(
     zone: Zone,
     now: datetime,
     source: str,
+    meross_transport: MerossCommandTransport | None,
+    meross_session_cache: MerossSessionCache | None,
 ) -> int:
     """Turns every ordinary (non-self-regulating) actuator of a zone on or off.
 
@@ -357,11 +447,19 @@ async def _send_actuator_switches(
     `shadow_decision` row (`_latest_decision` above) -- hysteresis, minimum
     switching duration, window-open and the valve protection run are already
     resolved into `would_heat` there; this function only carries that decision to
-    the device, unchanged, exactly as instructed. Reaching the adapter itself goes
-    through `switching_allowed` (`integrations/actuators.py`) inside
-    `Zigbee2MqttValve.switching()` -- the same dry-run bolt `_send_self_regulating_valves`
-    goes through, because the physical effect is the same. The MQTT client's own
-    second bolt applies on top of that, unconditionally, inside `client.publishing()`.
+    the device, unchanged, exactly as instructed. Reaching an adapter goes through
+    `switching_allowed` (`integrations/actuators.py`) inside its own `switching()` --
+    the same dry-run bolt `_send_self_regulating_valves` goes through, because the
+    physical effect is the same. The MQTT client's own second bolt applies on top of
+    that, unconditionally, inside `client.publishing()`.
+
+    Two kinds of ordinary actuator, covered in turn below: a plain on/off switch
+    (`switch_commands()`, `Zigbee2MqttValve` or `MerossSwitch`) and a Zigbee2MQTT
+    thermostatic valve run by thermoctl's own hysteresis instead of its own regulation
+    loop (`thermostat_commands()`, `Zigbee2MqttThermostat`) -- the latter has no on/off
+    output at all, so `switching(True)` also needs the zone's current target
+    (`resolved_setpoint()`, the same source `domain/self_regulating.py` uses for a
+    self-regulating valve).
 
     Only a changed decision -- or a changed outcome for the same decision -- sends
     and logs again; see `PublicationState.switch_commands`. Because that cache
@@ -420,11 +518,41 @@ async def _send_actuator_switches(
             )
             continue
 
-        actuator = Zigbee2MqttValve(session, client, base, device.external_id)
-        payload = json.dumps({"state": "ON" if heating else "OFF"})
+        actuator: Actuator
+        if command.integration_code == "zigbee2mqtt":
+            actuator = Zigbee2MqttValve(session, client, base, device.external_id)
+            payload = json.dumps({"state": "ON" if heating else "OFF"})
+        else:
+            # The only other member of `_WIRED_INTEGRATIONS`. `meross_transport` is
+            # `None` when no account is configured or the cloud rejected the sign-in
+            # this cycle -- `MerossSwitch.switching()` reports that as a failed
+            # attempt on its own, it does not need a special case here.
+            actuator = MerossSwitch(session, meross_transport, device.external_id)
+            payload = json.dumps(toggle_payload(0, heating))
+
         result = await actuator.switching(heating)
         state.switch_commands[device.id] = cache_key
-        if result.executed:
+        if (
+            command.integration_code == "meross"
+            and not result.executed
+            and result.errors is not None
+            and meross_session_cache is not None
+        ):
+            # A real attempt was made (not just withheld by the dry-run bolt) and it
+            # did not work -- the cached connection might be the reason, so the next
+            # cycle signs in again instead of trusting it for the rest of its TTL.
+            invalidate_meross_session(meross_session_cache)
+        if _record_switch_outcome(
+            session,
+            now=now,
+            source=source,
+            zone=zone,
+            device=device,
+            command_name="switch",
+            payload=payload,
+            result=result,
+            reason=reason,
+        ):
             sent += 1
             log.info(
                 "Aktor geschaltet",
@@ -435,43 +563,90 @@ async def _send_actuator_switches(
                     "begruendung": reason,
                 },
             )
+
+    thermostat_setpoint: Decimal | None = None
+    for thermostat_command in thermostat_commands(session, zone):
+        device = thermostat_command.device
+        cache_key = (heating, armed)
+        if state.switch_commands.get(device.id) == cache_key:
+            continue
+
+        if thermostat_command.integration_code != "zigbee2mqtt":
+            # Not observed on real hardware today (only Zigbee2MQTT reports the
+            # `thermostat` capability, see `services/ingest.py`), guarded anyway so a
+            # future integration cannot end up silently unswitched the way the
+            # blocker this replaces once did.
+            state.switch_commands[device.id] = cache_key
+            log.error(
+                "Thermostatventil an nicht verdrahteter Anbindung wird nicht geschaltet",
+                extra={
+                    "zone_id": zone.id,
+                    "geraet": device.display_name,
+                    "anbindung": thermostat_command.integration_code,
+                },
+            )
             record_command(
                 session,
                 now=now,
                 source=source,
                 zone=zone,
                 device=device,
-                command="switch",
-                payload=payload,
-                outcome=EXECUTED,
+                command="thermostat",
+                payload=json.dumps({"heating": heating}),
+                outcome=SUPPRESSED if not armed else FAILED,
+                error=(
+                    None
+                    if not armed
+                    else (
+                        f"Anbindung {thermostat_command.integration_code!r} ist fuer "
+                        "Thermostatbefehle in dieser Fassung nicht verdrahtet"
+                    )
+                ),
                 reason=reason,
             )
-        elif result.errors is None:
-            # `Zigbee2MqttValve.switching()` reports a `None` error exactly when it
-            # withheld the command itself, at the dry-run bolt.
-            record_command(
-                session,
-                now=now,
-                source=source,
-                zone=zone,
-                device=device,
-                command="switch",
-                payload=payload,
-                outcome=SUPPRESSED,
-                reason=reason,
+            continue
+
+        if thermostat_setpoint is None:
+            thermostat_setpoint = resolved_setpoint(session, zone, now).temperature_c
+
+        actuator = Zigbee2MqttThermostat(
+            session,
+            client,
+            base,
+            device.external_id,
+            thermostat_setpoint,
+            has_system_mode=thermostat_command.has_system_mode,
+        )
+        payload = json.dumps(
+            thermostat_payload(
+                heating,
+                thermostat_setpoint,
+                has_system_mode=thermostat_command.has_system_mode,
             )
-        else:
-            record_command(
-                session,
-                now=now,
-                source=source,
-                zone=zone,
-                device=device,
-                command="switch",
-                payload=payload,
-                outcome=FAILED,
-                error=result.errors,
-                reason=reason,
+        )
+        result = await actuator.switching(heating)
+        state.switch_commands[device.id] = cache_key
+        if _record_switch_outcome(
+            session,
+            now=now,
+            source=source,
+            zone=zone,
+            device=device,
+            command_name="thermostat",
+            payload=payload,
+            result=result,
+            reason=reason,
+        ):
+            sent += 1
+            log.info(
+                "Thermostatventil geschaltet",
+                extra={
+                    "zone_id": zone.id,
+                    "geraet": device.display_name,
+                    "zustand": "an" if heating else "aus",
+                    "sollwert": str(thermostat_setpoint),
+                    "begruendung": reason,
+                },
             )
     return sent
 

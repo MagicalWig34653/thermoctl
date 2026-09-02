@@ -1088,13 +1088,27 @@ async def test_the_shadow_loop_also_publishes_when_a_publisher_is_configured(
             sent.append((topic, payload, switches))
             return True
 
+    from thermoctl.services.meross_session import MerossSessionCache
     from thermoctl.services.publishing import PublicationState
+
+    class _UnusedJsonTransport:
+        """No Meross account is configured in this test's settings, so
+        `ensure_transport()` returns before ever calling this -- present only so the
+        `_shadow_loop` branch that fetches a Meross session alongside a real
+        publisher runs at all."""
+
+        async def post_json(self, *args: object, **kwargs: object) -> dict[str, object]:
+            raise AssertionError(
+                "Ohne Meross-Zugangsdaten haette hier nichts angerufen werden duerfen"
+            )
 
     fake_app = types.SimpleNamespace(
         state=types.SimpleNamespace(
             session_factory=fabrik,
             publisher=Recorder(),
             publication_state=PublicationState(),
+            meross_transport=_UnusedJsonTransport(),
+            meross_session_cache=MerossSessionCache(),
         )
     )
 

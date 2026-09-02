@@ -69,6 +69,7 @@ from thermoctl.logging import configure_logging, request_id_var
 from thermoctl.services.ingest import advance_zone_state, process_message
 from thermoctl.services.meross_discovery import fetch_devices as fetch_meross_devices
 from thermoctl.services.meross_discovery import save_devices as save_meross_devices
+from thermoctl.services.meross_session import MerossSessionCache, ensure_transport
 from thermoctl.services.publishing import PublicationState, _send_zone_state
 from thermoctl.services.publishing import cycle as publication_cycle
 from thermoctl.services.retention import delete_old_measurements
@@ -267,6 +268,19 @@ async def _shadow_loop(app: FastAPI) -> None:
             now = utcnow()
             notices: list[FaultNotice]
             forecast = await _solar_forecast(app, app.state.session_factory, now)
+            # Signing in (if due) happens here, before any transaction opens -- the
+            # same reason `forecast` above is fetched out here rather than inside
+            # `session_scope`. See `services/meross_session.py`.
+            meross_transport = None
+            # `getattr` twice over: the loop also runs in tests that assemble an app
+            # without running through the full lifespan, where neither attribute
+            # exists at all.
+            meross_http = getattr(app.state, "meross_transport", None)
+            meross_cache = getattr(app.state, "meross_session_cache", None)
+            if getattr(app.state, "publisher", None) is not None and meross_http is not None:
+                meross_transport = await ensure_transport(
+                    get_settings(), meross_http, meross_cache or MerossSessionCache(), now
+                )
             with session_scope(app.state.session_factory) as session:
                 before = _sensor_states(session)
                 advance_zone_state(session, now)
@@ -281,6 +295,7 @@ async def _shadow_loop(app: FastAPI) -> None:
                         app.state.publication_state,
                         get_settings().mqtt_prefix,
                         now,
+                        meross_transport=meross_transport,
                     )
                 if now >= next_retention:
                     delete_old_measurements(session, now)
@@ -474,6 +489,11 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     # effect on the very next shadow cycle, without a restart.
     app.state.forecast_cache = ForecastCache()
     app.state.meross_transport = UrllibJsonTransport()
+    # Signed-in Meross session, kept and refreshed outside every database transaction
+    # -- see `services/meross_session.py`. One cache for the whole process, mirroring
+    # `publication_state` above: both describe state this *run* has built up, empty
+    # again after a restart.
+    app.state.meross_session_cache = MerossSessionCache()
     # The **first** bolt, set when the client is built. It comes from the database, as
     # the comment in `MqttClient` has specified since subproject 2 -- and it is read
     # once here, not on every send. Whoever arms the plant while it is running
