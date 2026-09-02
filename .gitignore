@@ -35,3 +35,6 @@ htmlcov/
 .mcp.json
 .vscode/
 .DS_Store
+
+# iCloud-Konfliktdubletten ("Datei 2.py") -- nie Teil des Projekts
+*\ 2.*
