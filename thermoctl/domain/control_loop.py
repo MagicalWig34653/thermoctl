@@ -139,19 +139,44 @@ def decide(situation: Situation) -> Decision:
             ),
         )
 
+    # Whether rule 7 (valve protection) would win right now — computed once here so
+    # rule 5's exemption below and rule 7's own decision further down share exactly
+    # the same condition. `valve_protection_active` on its own is not enough for
+    # that: it only says a previous cycle's marker is still set, not that protection
+    # is still what wins this cycle. An override, a switch to operating mode 'off',
+    # or a failed sensor can make rule 7 lose mid-run without clearing the marker —
+    # the marker is only cleared once the run's persisted duration elapses, in
+    # `services/shadow_run.py`. Exempting rule 5 from the bare marker would let such
+    # a lapsed run bypass the minimum switch duration for the rest of that window —
+    # exactly what rule 5 exists to prevent.
+    protection_allowed = (
+        situation.parameter.valve_protection_enabled
+        and situation.sensor_status == "ok"
+        and situation.operating_mode != "off"
+        and not situation.override_active
+        and situation.valve_protection_due
+    )
+
     # Rule 5 — minimum switch duration protects the valve from short-cycling. 'None'
     # for seit_s means "duration of the current state unknown" — typically the first
     # cycle after a restart, with no history. Imposing a lock against a duration we do
     # not know would itself be arbitrary; so the lock only applies when seit_s is known
     # AND too short. A freshly started service may therefore decide by hysteresis right
     # away, instead of waiting out a deadline that never started running.
+    #
+    # A currently winning protection run (marker set AND rule 7 would still win) is
+    # exempt — it must not be blocked by a minimum switch duration left over from
+    # before the run started, including right after a restart, where the marker is
+    # the only memory of the run (see `valve_protection_active` on `Situation`). A
+    # run whose marker is set but that has since lost rule 7 gets no exemption and
+    # falls back to the minimum switch duration like any other decision.
     minimum_duration = (
         situation.parameter.min_on_seconds
         if situation.heating_now
         else situation.parameter.min_off_seconds
     )
     if (
-        not situation.valve_protection_active
+        not (situation.valve_protection_active and protection_allowed)
         and situation.held_for_s is not None
         and situation.held_for_s < minimum_duration
     ):
@@ -212,13 +237,8 @@ def decide(situation: Situation) -> Decision:
     # failure, frost-protection mode, windows, overrides, minimum durations and every
     # normal heating decision have already won above. An active run uses the same
     # path after a restart; its persisted start time decides when it is no longer due.
-    protection_allowed = (
-        situation.parameter.valve_protection_enabled
-        and situation.sensor_status == "ok"
-        and situation.operating_mode != "off"
-        and not situation.override_active
-        and situation.valve_protection_due
-    )
+    # `protection_allowed` is computed once, above rule 5, so both rules agree on
+    # exactly the same condition for "protection currently wins".
     if protection_allowed:
         return Decision(
             heating=True,

@@ -237,6 +237,49 @@ einem veralteten Temperaturwert nennt die Meldung ausdrücklich, dass die Zone b
 Weiteres gegen ihren konkreten Frostschutz-Sollwert regelt. Der Meldeweg ist unabhängig
 von den beiden Schalt-Riegeln und läuft nach Abschluss der Datenbanktransaktion.
 
+## Ein Fehler in der Regelkette — der Ventilschutz-Marker hob den Taktschutz auf
+
+Der erste echte Fehler in der Regellogik, den dieses Projekt gefunden hat. Alles zuvor
+waren Testlücken.
+
+Die Ausnahme von der Mindestschaltdauer hing an `valve_protection_active`. Dieses Feld
+sagt aber nur, dass der **Marker** gesetzt ist, nicht dass der Ventilschutz auch noch
+entscheidet. Verliert Regel 7 mitten im Lauf — durch Übersteuerung, Betriebsart „aus"
+oder Sensorausfall —, bleibt der Marker bis zum Ablauf der Laufdauer gesetzt. In diesem
+Fenster entschied die gewöhnliche Hysterese, **und die Mindestschaltdauern waren
+ausgehebelt**: bei 60 Sekunden Zykluszeit und 10 Minuten Laufdauer bis zu zehn
+ungebremste Schaltvorgänge an einem echten Relais. Genau der Taktschutz, den das
+Altsystem nicht hatte.
+
+`decide()` berechnet `protection_allowed` jetzt einmal oberhalb von Regel 5; beide Regeln
+teilen sich dieselbe Bedingung für „der Schutzlauf gewinnt gerade". Der echte Schutzlauf
+bleibt befreit, auch nach einem Neustart, wo der persistierte Marker die einzige
+Erinnerung an ihn ist. Ein zweiter Fall hat sich mit erledigt: Kommt die Übersteuerung
+während des Laufs, bleibt der Heizkörper jetzt bis zum Ablauf der Mindest-**Einschalt**dauer
+an, statt sofort abzuschalten.
+
+### Die Regelkette als vollständige Zustandstabelle
+
+`tests/test_control_loop_state_table.py` prüft die Vorrangkette über acht Achsen
+erschöpfend: 3.888 Rohkombinationen, **2.376 erreichbare geprüft**, 1.512 begründet
+ausgeschlossen (ohne Quelle gibt es keinen Messwert relativ zur Hysterese; ein Sensor
+`ok` oder `veraltet` hat einen). Die Erwartung ist von Hand aus der Spezifikation
+übertragen, nicht aus `decide()` abgeleitet.
+
+Ihre Prüfkraft ist gemessen, nicht behauptet — vier gezielte Sabotagen an
+`control_loop.py`:
+
+| Sabotage | gefangen | Zeilen |
+|---|---|---:|
+| Regel 5 wieder nur vom Marker ausgenommen | ja | 100 |
+| Obere Hysteresekante `>` statt `>=` | ja | 24 |
+| Übersteuerung aus `protection_allowed` entfernt | ja | 44 |
+| Fenster-offen hinter die Mindestschaltdauer verschoben | ja | 340 |
+
+Die zweite Zeile ist der Grund für die beiden Messwert-Ausprägungen genau **auf** den
+Bandkanten: Vorher lagen alle Messwerte 1,0 K neben dem Sollwert bei 0,5 K Hysterese, und
+eine vertauschte Vergleichsrichtung an der Kante blieb unbemerkt.
+
 ## Sicherheitsdurchsicht 2026-09-02 — vier Rechtefehler behoben
 
 Die Durchsicht wurde nicht fortgeschrieben, sondern **noch einmal von vorn** geführt, mit

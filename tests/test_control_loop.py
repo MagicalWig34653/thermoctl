@@ -448,6 +448,86 @@ def test_rule5_an_unknown_elapsed_time_does_not_lift_the_block_artificially() ->
     assert e.reason_code == REASON_CODE_OFF
 
 
+def test_rule5_a_protection_run_that_has_lost_rule7_falls_back_to_the_minimum_duration() -> (
+    None
+):
+    """`valve_protection_active` only says a previous cycle's marker is still set —
+    not that rule 7 still wins this cycle. Here an override starts while the marker
+    from an earlier, genuine protection run is still set (the marker itself is only
+    cleared once the run's persisted duration elapses, in `services/shadow_run.py`).
+    Rule 7 now loses to the override, so this is an interrupted run: it must fall
+    back to the minimum switch duration like any other decision, exactly as if the
+    marker had never been set (checked below as the counter-proof)."""
+    situation = _lage(
+        heating_now=False,
+        held_for_s=60,
+        measured_c=Decimal("5.0"),
+        setpoint_c=Decimal("21.0"),
+        parameter=_parameter(
+            hysteresis_k=Decimal("0.5"),
+            min_off_seconds=300,
+            valve_protection_enabled=True,
+        ),
+        override_active=True,
+        valve_protection_due=True,
+        valve_protection_active=True,
+    )
+    e = decide(situation)
+    assert e.heating is False
+    assert e.reason_code == REASON_CODE_BLOCKED_MINIMUM_DURATION
+
+    # Counter-proof: the identical situation but without the leftover marker reaches
+    # the same result. Marker set or not must not change the outcome once rule 7 no
+    # longer wins — that is exactly what the fix restores.
+    without_marker = _lage(
+        heating_now=False,
+        held_for_s=60,
+        measured_c=Decimal("5.0"),
+        setpoint_c=Decimal("21.0"),
+        parameter=_parameter(
+            hysteresis_k=Decimal("0.5"),
+            min_off_seconds=300,
+            valve_protection_enabled=True,
+        ),
+        override_active=True,
+        valve_protection_due=True,
+        valve_protection_active=False,
+    )
+    e_without_marker = decide(without_marker)
+    assert (e_without_marker.heating, e_without_marker.reason_code) == (
+        e.heating,
+        e.reason_code,
+    )
+
+
+def test_rule5_a_genuinely_still_winning_protection_run_overrides_the_minimum_duration() -> (
+    None
+):
+    """The counterpart to the test above: an undisturbed protection run — marker
+    set, rule 7 still wins — must still be exempt from a minimum switch duration
+    left over from before the run started. Otherwise the exemption meant to survive
+    a mid-run service restart (the marker is the only memory of the run then) would
+    be lost, and the whole point of rule 7 running independently of rule 5 would be
+    undone."""
+    situation = _lage(
+        heating_now=False,
+        held_for_s=60,
+        measured_c=Decimal("21.0"),
+        setpoint_c=Decimal("21.0"),
+        parameter=_parameter(
+            hysteresis_k=Decimal("0.5"),
+            min_off_seconds=300,
+            valve_protection_enabled=True,
+        ),
+        override_active=False,
+        valve_protection_due=True,
+        valve_protection_active=True,
+    )
+    e = decide(situation)
+    assert e.heating is True
+    assert e.reason_code == REASON_CODE_VALVE_PROTECTION
+
+
 # ---------------------------------------------------------------------------
 # Rule 6 — hysteresis, including edge cases
 # ---------------------------------------------------------------------------

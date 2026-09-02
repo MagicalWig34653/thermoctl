@@ -59,6 +59,7 @@
       "wird protokolliert, **was geschaltet würde und warum**."
     ],
     "docs/STATUS.md": [
+      "## Ein Fehler in der Regelkette — der Ventilschutz-Marker hob den Taktschutz auf",
       "## Was geschaltet wird — genau",
       "## v0.3.0 — die Fassung, in der thermoctl schaltet",
       "- **Ein Meross-Aktor bekommt jetzt ebenfalls seinen Befehl.** Das Schalten dort braucht",
@@ -72,12 +73,14 @@
       "Zigbee2MQTT-Thermostatventile). Ein Kreuzreview prüfte deshalb vor dem ersten",
       "jeder Weg zu einem Aktor zu.",
       "läuft als Erstes an einer echten Heizung (vier Meross-Steckdosen, drei",
+      "sagt aber nur, dass der **Marker** gesetzt ist, nicht dass der Ventilschutz auch noch",
       "schalten. Damit ist dieses Protokoll die einzige Stelle, an der später nachvollziehbar ist,",
       "schaltet, muss den Dienst neu starten, bevor überhaupt etwas hinausgeht.",
       "scharfen Betrieb noch einmal gezielt, ob geschaltet wird, wenn es soll — mit",
       "veröffentlicht, **und jetzt auch ein gewöhnlicher (nicht selbstregelnder) Aktor an",
       "wahr, dass „weiterhin nichts geschaltet wird\" — das war eine Zusicherung ohne Deckung.",
       "was an der Heizung passiert ist — es stand deshalb vor der Verdrahtung der Aktoren (Phase 4)",
+      "während des Laufs, bleibt der Heizkörper jetzt bis zum Ablauf der Mindest-**Einschalt**dauer",
       "| 4 — Regelkreis und Cutover | Alle sieben Aktortypen der echten Anlage verdrahtet: Zigbee2MQTT-Aktoren, Meross-Steckdosen, Zigbee2MQTT-Thermostatventile. Kreuzreview der Verdrahtung fand drei Befunde, alle behoben — siehe unten |"
     ],
     "docs/api.md": [
