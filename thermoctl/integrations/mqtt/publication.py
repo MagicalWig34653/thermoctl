@@ -7,8 +7,8 @@ topics need no ambiguous ``/get`` suffix.
 
 These functions provide topics and discovery payloads to the production MQTT service.
 State and discovery messages are sent in dry run as well. Setpoint commands for
-self-regulating valves pass through the separate persisted and startup-built latches;
-on/off decisions have no wired actuator.
+self-regulating valves and on/off commands for ordinary actuators pass through the
+separate persisted and startup-built latches.
 """
 
 import json

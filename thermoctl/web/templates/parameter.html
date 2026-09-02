@@ -26,12 +26,12 @@
     <input class="form-check-input" type="checkbox" id="valve_protection_enabled"
            name="valve_protection_enabled" value="yes"{% if values.valve_protection_enabled %} checked{% endif %}>
     <label class="form-check-label" for="valve_protection_enabled">Ventilschutz einschalten</label>
-    <div class="form-text">Erzeugt regelmäßig eine Ventilschutz-Entscheidung im Schattenprotokoll. Derzeit bewegt sie kein Ventil. Das geschieht erst, wenn die Regelung scharf geschaltet und mit einem Aktor verdrahtet ist.</div>
+    <div class="form-text">Erzeugt regelmäßig eine Ventilschutz-Entscheidung. Im Trockenlauf wird sie nur protokolliert; scharf und neu gestartet wird der zugeordnete Aktor angesteuert.</div>
   </div>
   {{ number_field("valve_protection_interval_days", "Ventilschutz-Abstand (Tage)", values.valve_protection_interval_days,
     "Nach so vielen Tagen ohne reguläres Heizen wird der Schutzlauf fällig.", errors.valve_protection_interval_days, "1", "1") }}
   {{ number_field("valve_protection_duration_minutes", "Ventilschutz-Dauer (Minuten)", values.valve_protection_duration_minutes,
-    "So lange würde der Schutzlauf ein geöffnetes Ventil anfordern. Derzeit wird diese Entscheidung nur im Schattenprotokoll festgehalten.", errors.valve_protection_duration_minutes, "1", "1") }}
+    "So lange fordert der Schutzlauf ein geöffnetes Ventil an. Im Trockenlauf wird die Entscheidung nur protokolliert; scharf und neu gestartet geht sie an den Aktor.", errors.valve_protection_duration_minutes, "1", "1") }}
   <button class="btn btn-primary" type="submit">Speichern</button>
   <a class="btn btn-secondary" href="/">Abbrechen</a>
 </form>

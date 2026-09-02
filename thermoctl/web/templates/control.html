@@ -20,21 +20,21 @@
         <div>
             {% if settings.control_armed and sending_allowed %}
             <span class="tc-chip tc-chip-warm mb-2"><span class="tc-dot"></span>Scharf und neu gestartet</span>
-            <h2 class="mb-1">Sollwertausgabe freigegeben</h2>
+            <h2 class="mb-1">Aktorausgabe freigegeben</h2>
             <p class="t-quiet mb-0">
-                Sollwerte können an selbstregelnde Thermostatventile gesendet werden. Ein/Aus-Entscheidungen erreichen weiterhin keinen Aktor.
+                Sollwerte gehen an selbstregelnde Thermostatventile; Ein/Aus-Befehle gehen an Zigbee2MQTT-Schalter, Zigbee2MQTT-Thermostatventile ohne eigene Regelung und Meross-Steckdosen.
             </p>
             {% elif settings.control_armed %}
             <span class="tc-chip tc-chip-warning mb-2">Scharf, Neustart fehlt</span>
             <h2 class="mb-1">Der MQTT-Riegel ist noch zu</h2>
             <p class="t-quiet mb-0">
-                Der beim Start gebaute MQTT-Riegel ist noch zu. Bis zum Neustart werden keine Sollwerte an Ventile gesendet; Ein/Aus-Entscheidungen erreichen keinen Aktor.
+                Der beim Start gebaute MQTT-Riegel ist noch zu. Bis zum Neustart gehen weder Sollwerte noch Ein/Aus-Befehle an Aktoren.
             </p>
             {% else %}
             <span class="tc-chip tc-chip-quiet mb-2">Trockenlauf</span>
             <h2 class="mb-1">Die Regelung entscheidet, schaltet aber nicht</h2>
             <p class="t-quiet mb-0">
-                Regelentscheidungen werden protokolliert. Es werden keine Sollwerte an Ventile gesendet. Ein/Aus-Entscheidungen erreichen keinen Aktor.
+                Regelentscheidungen werden protokolliert. Weder Sollwerte noch Ein/Aus-Befehle gehen an Aktoren.
                 In diesem Zustand lässt sich die Anlage gegen das Altsystem vergleichen.
             </p>
             {% endif %}
@@ -69,10 +69,9 @@
                 <li>Das Altsystem bleibt die Rückfallebene und wird nicht abgeschaltet.</li>
                 <li>Umkehrbar: derselbe Knopf führt zurück in den Trockenlauf — und
                     zwar sofort, ohne Neustart.</li>
-                <li>Sollwerte an selbstregelnde Thermostatventile werden erst nach einem
+                <li>Sollwerte und Ein/Aus-Befehle an Aktoren werden erst nach einem
                     Neustart des Dienstes freigegeben: Der zweite Riegel sitzt im
-                    MQTT-Client und wird beim Start gelesen. Ein/Aus-Entscheidungen
-                    erreichen auch danach keinen Aktor. Die Anbindung an Home Assistant
+                    MQTT-Client und wird beim Start gelesen. Die Anbindung an Home Assistant
                     läuft schon vorher; dort sagt es die Entität
                     <span class="t-value">Regelung scharf</span>.</li>
             </ul>

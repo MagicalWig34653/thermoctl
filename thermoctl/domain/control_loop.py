@@ -5,8 +5,8 @@ network, no clock. Everything the decision needs sits in `Lage`. That is exactly
 is exhaustively testable (`tests/test_regelung.py`), and exactly why sub-project 4 can
 arm it unchanged.
 
-In this phase nothing is actually switched (dry run, section 1 of the specification) —
-the result only ends up in the shadow log.
+This module only decides; `services/publishing.py` records the result and, once both
+control latches are open, sends it to the wired actuator.
 """
 
 from dataclasses import dataclass
@@ -227,7 +227,8 @@ def decide(situation: Situation) -> Decision:
                 "Ventilschutzlauf — die Regelung entscheidet unabhängig von der "
                 "Raumregelung für "
                 f"{situation.parameter.valve_protection_duration_minutes} Minuten auf "
-                "Heizen. Ein/Aus-Entscheidungen erreichen derzeit keinen Aktor."
+                "Heizen. Im Trockenlauf wird die Entscheidung nur protokolliert; im "
+                "scharfen Betrieb nach einem Neustart geht sie an den zugeordneten Aktor."
             ),
         )
     return Decision(

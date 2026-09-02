@@ -194,7 +194,8 @@ def test_rule7_a_due_valve_protection_run_heats_with_an_explicit_reason() -> Non
     assert decision.reason_code == REASON_CODE_VALVE_PROTECTION
     assert decision.reason == (
         "Ventilschutzlauf — die Regelung entscheidet unabhängig von der Raumregelung "
-        "für 10 Minuten auf Heizen. Ein/Aus-Entscheidungen erreichen derzeit keinen Aktor."
+        "für 10 Minuten auf Heizen. Im Trockenlauf wird die Entscheidung nur protokolliert; "
+        "im scharfen Betrieb nach einem Neustart geht sie an den zugeordneten Aktor."
     )
 
 

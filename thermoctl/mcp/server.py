@@ -387,7 +387,8 @@ def read_control(session: Session, plaintext: str) -> dict[str, object]:
 
     This reports the persisted database latch. The startup-built MQTT latch belongs to
     the separate web/MQTT process, so its state is explicitly reported as unknown from
-    this process instead of being omitted. On/off decisions reach no actuator.
+    this process instead of being omitted. Once both latches are open, setpoints reach
+    self-regulating valves and on/off commands reach ordinary actuators.
     """
     _token, principal = _log_in(session, plaintext)
     require(principal, "zone.read")

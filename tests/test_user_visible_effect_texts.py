@@ -2,7 +2,10 @@
 
 This guard does not understand language and does not prove that an approved statement is
 true. The registry only proves that somebody saw the exact occurrence and accepted it for
-the documented stage. Reviewers remain responsible for checking the statement itself.
+the documented stage. A previously approved statement can therefore become false when the
+implementation changes without the text changing. The narrow actuator-wiring counter-check
+below catches the known blanket denial while integrations are wired; it cannot establish
+the truth of arbitrary physical claims. Reviewers remain responsible for those.
 """
 
 import ast
@@ -12,6 +15,8 @@ from collections import Counter
 from pathlib import Path
 
 import pytest
+
+from thermoctl.services.publishing import _WIRED_INTEGRATIONS
 
 ROOT = Path(__file__).resolve().parent.parent
 APPROVED_OCCURRENCES = ROOT / "tests/approved_physical_vocabulary.json"
@@ -51,6 +56,11 @@ PHYSICAL_VOCABULARY_PATTERN = re.compile(
     re.IGNORECASE,
 )
 AMBIGUOUS_STATE_CHIP = re.compile(r">\s*Heiz(?:t|en)\s*<", re.IGNORECASE)
+BLANKET_ACTUATOR_DENIAL = re.compile(
+    r"(?:Ein/Aus-Entscheidungen|on/off decisions).*"
+    r"(?:erreichen|reach).*\b(?:kein(?:en|e[mrns]?)?|no)\b.*\b(?:Aktor\w*|actuator\w*)\b",
+    re.IGNORECASE,
+)
 
 
 def _user_visible_sources(root: Path = ROOT) -> list[Path]:
@@ -259,6 +269,23 @@ def test_physical_vocabulary_occurrences_are_explicitly_reviewed() -> None:
             "und aktualisiere das Verzeichnis bewusst:\n" + _format_occurrences(stale)
         )
     assert not problems, "\n\n".join(problems)
+
+
+def test_wired_integrations_forbid_a_blanket_denial_of_actuator_commands() -> None:
+    """Catch the known semantic drift that exact-line approval cannot detect."""
+    if not _WIRED_INTEGRATIONS:
+        return
+    denials = [
+        f"{path.relative_to(ROOT)}:{line_number}: {reviewed_line.strip()}"
+        for path in _user_visible_sources()
+        if path.is_relative_to(ROOT / "thermoctl")
+        for line_number, reviewed_line, searchable_line in _text_lines(path)
+        if BLANKET_ACTUATOR_DENIAL.search(searchable_line)
+    ]
+    assert not denials, (
+        "Verdrahtete Anbindungen widersprechen dieser pauschalen Aktor-Aussage:\n"
+        + "\n".join(denials)
+    )
 
 
 def test_state_chips_name_a_decision_instead_of_physical_heating() -> None:

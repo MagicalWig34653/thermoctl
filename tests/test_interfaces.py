@@ -116,7 +116,7 @@ def test_home_assistant_depends_on_mqtt(session: Session) -> None:
     home_assistant = next(s for s in with_mqtt if s.key == "homeassistant")
     assert "gespeicherten ersten Riegel" in home_assistant.finding
     assert "Erst nach einem Neustart" in home_assistant.finding
-    assert "Ein/Aus-Entscheidungen erreichen keinen Aktor" in home_assistant.finding
+    assert "Ein/Aus-Befehle an gewöhnliche Aktoren" in home_assistant.finding
 
 
 def test_every_interface_has_a_known_state(session: Session) -> None:

@@ -130,9 +130,8 @@ def test_operating_pages_describe_dry_run_truthfully(
     for path in ("/", "/control"):
         page = client.get(path)
         assert page.status_code == 200
-        assert "Es werden keine Sollwerte an Ventile gesendet." in page.text
-        assert "Ein/Aus-Entscheidungen erreichen keinen Aktor." in page.text
-        assert "Sollwertausgabe freigegeben" not in page.text
+        assert "Weder Sollwerte noch Ein/Aus-Befehle gehen an Aktoren." in page.text
+        assert "Aktorausgabe freigegeben" not in page.text
         assert "Tatsächlich <em>geschaltet</em> wird" not in page.text
 
 
@@ -149,7 +148,7 @@ def test_operating_pages_describe_armed_before_restart_truthfully(
         assert page.status_code == 200
         assert "Scharf, Neustart fehlt" in page.text
         assert "Der beim Start gebaute MQTT-Riegel ist noch zu." in page.text
-        assert "Sollwertausgabe freigegeben" not in page.text
+        assert "Aktorausgabe freigegeben" not in page.text
 
 
 def test_operating_pages_describe_armed_after_restart_truthfully(
@@ -165,9 +164,10 @@ def test_operating_pages_describe_armed_after_restart_truthfully(
         page = client.get(path)
         assert page.status_code == 200
         assert "Scharf und neu gestartet" in page.text
-        assert "Sollwertausgabe freigegeben" in page.text
-        assert "Sollwerte können an selbstregelnde Thermostatventile gesendet werden." in page.text
-        assert "Ein/Aus-Entscheidungen erreichen weiterhin keinen Aktor." in page.text
+        assert "Sollwerte gehen an selbstregelnde Thermostatventile" in page.text
+        assert "Ein/Aus-Befehle gehen an Zigbee2MQTT-Schalter" in page.text
+        assert "Zigbee2MQTT-Thermostatventile ohne eigene Regelung" in page.text
+        assert "Meross-Steckdosen" in page.text
         assert "Jede Entscheidung unten geht an die Ventile." not in page.text
 
 

@@ -101,9 +101,9 @@ def overview(
         Interface(
             "mqtt",
             "Zigbee2MQTT",
-            "Empfängt Messwerte. Erst scharf und danach neu gestartet können Sollwerte "
-            "an selbstregelnde Thermostatventile gesendet werden; Ein/Aus-Entscheidungen "
-            "erreichen keinen Aktor.",
+            "Empfängt Messwerte. Erst scharf und danach neu gestartet gehen Sollwerte "
+            "an selbstregelnde Thermostatventile und Ein/Aus-Befehle an gewöhnliche "
+            "Aktoren.",
             mqtt_state,
             mqtt_finding,
             [
@@ -282,9 +282,9 @@ def overview(
                 "Der frühere HTTP-Pfad zum Schalten existiert nicht — die Wolke "
                 "antwortet dort mit 404. Nachgemessen sind Anmeldung, Geräteliste und "
                 "ein `SET Appliance.Control.ToggleX` gegen echte Geräte, bestätigt mit "
-                "`SETACK` und einem hochgezählten `lmTime`. Was noch aussteht, ist "
-                "nicht das Schalten selbst, sondern seine Verdrahtung in den "
-                "Regelkreis — die kommt erst mit dem Scharfschalten (Teilprojekt 4)."
+                "`SETACK` und einem hochgezählten `lmTime`. Meross-Steckdosen sind mit "
+                "dem Regelkreis verdrahtet; Befehle gehen scharf und nach einem "
+                "Neustart über diesen Schaltweg hinaus."
             ),
         )
     )
@@ -303,8 +303,8 @@ def overview(
                 "dem Scharfschalten ausprobieren kann, ließe sich genau dann nicht mehr "
                 "gefahrlos prüfen, wenn ein Fehler noch folgenlos wäre. Die Entität "
                 "„Regelung scharf“ zeigt nur den gespeicherten ersten Riegel. Erst nach "
-                "einem Neustart können Sollwerte an selbstregelnde Thermostatventile "
-                "gesendet werden; Ein/Aus-Entscheidungen erreichen keinen Aktor."
+                "einem Neustart gehen Sollwerte an selbstregelnde Thermostatventile "
+                "und Ein/Aus-Befehle an gewöhnliche Aktoren."
                 if settings.mqtt_enabled
                 else "Ohne MQTT gibt es keinen Weg zu Home Assistant."
             ),

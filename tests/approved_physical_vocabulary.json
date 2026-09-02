@@ -298,7 +298,7 @@
       "switch"
     ],
     "thermoctl/domain/authz.py": [
-      "Globale Vorgaben und die gespeicherte Freigabe. Erst nach einem Neustart können Sollwerte an selbstregelnde Thermostatventile gesendet werden; Ein/Aus-Entscheidungen erreichen keinen Aktor.",
+      "Globale Vorgaben und die gespeicherte Freigabe. Erst nach einem Neustart gehen Sollwerte an selbstregelnde Thermostatventile und Ein/Aus-Befehle an gewöhnliche Aktoren.",
       "Sensoren, Ventile und ihre Zuordnung zu Zonen."
     ],
     "thermoctl/domain/control.py": [
@@ -306,7 +306,7 @@
     ],
     "thermoctl/domain/control_loop.py": [
       "Heizen",
-      "Minuten auf Heizen. Ein/Aus-Entscheidungen erreichen derzeit keinen Aktor.",
+      "Minuten auf Heizen. Im Trockenlauf wird die Entscheidung nur protokolliert; im scharfen Betrieb nach einem Neustart geht sie an den zugeordneten Aktor.",
       "Ventilschutzlauf — die Regelung entscheidet unabhängig von der Raumregelung für",
       "heizen",
       "ventilschutz"
@@ -327,7 +327,7 @@
       "actuator",
       "actuator",
       "switch",
-      "thermoctl entscheidet wieder selbst über die Ein/Aus-Anforderung; derzeit ist dafür kein Aktor verdrahtet"
+      "thermoctl entscheidet wieder selbst über die Ein/Aus-Anforderung und gibt sie im scharfen Betrieb nach einem Neustart an diesen Aktor aus"
     ],
     "thermoctl/domain/device_classes.py": [
       "switch",
@@ -341,9 +341,9 @@
     "thermoctl/domain/interfaces.py": [
       "Eingeschaltet",
       "Eingeschaltet, aber ohne Broker-Adresse — so kommt keine Verbindung zustande.",
-      "Empfängt Messwerte. Erst scharf und danach neu gestartet können Sollwerte an selbstregelnde Thermostatventile gesendet werden; Ein/Aus-Entscheidungen erreichen keinen Aktor.",
-      "Geräteerkennung und Schaltweg sind gebaut und gegen ein echtes Konto geprüft: Anmeldung und Geräteliste über HTTP, das Schalten über MQTT. Der frühere HTTP-Pfad zum Schalten existiert nicht — die Wolke antwortet dort mit 404. Nachgemessen sind Anmeldung, Geräteliste und ein `SET Appliance.Control.ToggleX` gegen echte Geräte, bestätigt mit `SETACK` und einem hochgezählten `lmTime`. Was noch aussteht, ist nicht das Schalten selbst, sondern seine Verdrahtung in den Regelkreis — die kommt erst mit dem Scharfschalten (Teilprojekt 4).",
-      "Läuft und nimmt Befehle entgegen — auch im Trockenlauf. Eine Zustandsmeldung bewegt nichts, und eine Anbindung, die man erst nach dem Scharfschalten ausprobieren kann, ließe sich genau dann nicht mehr gefahrlos prüfen, wenn ein Fehler noch folgenlos wäre. Die Entität „Regelung scharf“ zeigt nur den gespeicherten ersten Riegel. Erst nach einem Neustart können Sollwerte an selbstregelnde Thermostatventile gesendet werden; Ein/Aus-Entscheidungen erreichen keinen Aktor.",
+      "Empfängt Messwerte. Erst scharf und danach neu gestartet gehen Sollwerte an selbstregelnde Thermostatventile und Ein/Aus-Befehle an gewöhnliche Aktoren.",
+      "Geräteerkennung und Schaltweg sind gebaut und gegen ein echtes Konto geprüft: Anmeldung und Geräteliste über HTTP, das Schalten über MQTT. Der frühere HTTP-Pfad zum Schalten existiert nicht — die Wolke antwortet dort mit 404. Nachgemessen sind Anmeldung, Geräteliste und ein `SET Appliance.Control.ToggleX` gegen echte Geräte, bestätigt mit `SETACK` und einem hochgezählten `lmTime`. Meross-Steckdosen sind mit dem Regelkreis verdrahtet; Befehle gehen scharf und nach einem Neustart über diesen Schaltweg hinaus.",
+      "Läuft und nimmt Befehle entgegen — auch im Trockenlauf. Eine Zustandsmeldung bewegt nichts, und eine Anbindung, die man erst nach dem Scharfschalten ausprobieren kann, ließe sich genau dann nicht mehr gefahrlos prüfen, wenn ein Fehler noch folgenlos wäre. Die Entität „Regelung scharf“ zeigt nur den gespeicherten ersten Riegel. Erst nach einem Neustart gehen Sollwerte an selbstregelnde Thermostatventile und Ein/Aus-Befehle an gewöhnliche Aktoren.",
       "Schaltsteckdosen als zweiter Aktortyp neben den Zigbee-Ventilen.",
       "Scharf schalten kann der MCP-Server bewusst nicht — nur zurücknehmen."
     ],
@@ -422,27 +422,25 @@
     "thermoctl/web/templates/control.html": [
       "<button class=\"btn btn-primary\" type=\"submit\">Jetzt scharf schalten</button>",
       "<h2 class=\"mb-1\">Die Regelung entscheidet, schaltet aber nicht</h2>",
-      "<li>Sollwerte an selbstregelnde Thermostatventile werden erst nach einem",
+      "<li>Sollwerte und Ein/Aus-Befehle an Aktoren werden erst nach einem",
       "<span class=\"tc-chip tc-chip-warm mb-2\"><span class=\"tc-dot\"></span>Scharf und neu gestartet</span>",
       "<span class=\"tc-chip tc-chip-warm\"><span class=\"tc-dot\"></span>Heizanforderung</span>",
-      "Der beim Start gebaute MQTT-Riegel ist noch zu. Bis zum Neustart werden keine Sollwerte an Ventile gesendet; Ein/Aus-Entscheidungen erreichen keinen Aktor.",
-      "Regelentscheidungen werden protokolliert. Es werden keine Sollwerte an Ventile gesendet. Ein/Aus-Entscheidungen erreichen keinen Aktor.",
+      "Der beim Start gebaute MQTT-Riegel ist noch zu. Bis zum Neustart gehen weder Sollwerte noch Ein/Aus-Befehle an Aktoren.",
+      "Regelentscheidungen werden protokolliert. Weder Sollwerte noch Ein/Aus-Befehle gehen an Aktoren.",
       "Scharf schalten …",
-      "Sollwerte können an selbstregelnde Thermostatventile gesendet werden. Ein/Aus-Entscheidungen erreichen weiterhin keinen Aktor.",
-      "erreichen auch danach keinen Aktor. Die Anbindung an Home Assistant"
+      "Sollwerte gehen an selbstregelnde Thermostatventile; Ein/Aus-Befehle gehen an Zigbee2MQTT-Schalter, Zigbee2MQTT-Thermostatventile ohne eigene Regelung und Meross-Steckdosen."
     ],
     "thermoctl/web/templates/device_assignment.html": [
       "\"Ventil regelt selbst\",",
       "\"annimmt, Ist-Temperatur; das Ventil regelt damit selbst.\"",
-      "\"ist dafür kein Aktor verdrahtet.\"",
+      "\"sie im scharfen Betrieb nach einem Neustart an diesen Aktor aus.\"",
       "Nur bei Thermostatventilen: Bei allem anderen gibt es nichts zu waehlen --",
       "Ventil regelt selbst.",
-      "kein Aktor verdrahtet.",
+      "scharfen Betrieb nach einem Neustart an diesen Aktor aus.",
       "{% if rolle.code == \"actuator\" and \"thermostat\" in capabilities.get(device.id, []) %}"
     ],
     "thermoctl/web/templates/device_commands.html": [
-      "Sollwerte können an selbstregelnde Thermostatventile gesendet werden. Ein/Aus-Entscheidungen",
-      "erreichen weiterhin keinen Aktor."
+      "zugeordneten Aktoren."
     ],
     "thermoctl/web/templates/flow_diagram.html": [
       "<div class=\"tc-flow-column{{ ' tc-target' if draggable }}\"{% if draggable %} data-target=\"actuator\" data-target-name=\"Aktor\" data-requires=\"{{ requires.get('actuator', '') }}\"{% endif %}>",
@@ -465,16 +463,16 @@
     ],
     "thermoctl/web/templates/parameter.html": [
       "\"Nach so vielen Tagen ohne reguläres Heizen wird der Schutzlauf fällig.\", errors.valve_protection_interval_days, \"1\", \"1\") }}",
-      "\"So lange würde der Schutzlauf ein geöffnetes Ventil anfordern. Derzeit wird diese Entscheidung nur im Schattenprotokoll festgehalten.\", errors.valve_protection_duration_minutes, \"1\", \"1\") }}",
+      "\"So lange fordert der Schutzlauf ein geöffnetes Ventil an. Im Trockenlauf wird die Entscheidung nur protokolliert; scharf und neu gestartet geht sie an den Aktor.\", errors.valve_protection_duration_minutes, \"1\", \"1\") }}",
       "\"Wie weit die Ist-Temperatur unter den Sollwert fallen darf, bevor die Regelung Heizen anfordert. Zu klein heißt ein ständiger Wechsel zwischen Ein- und Aus-Entscheidung. Derzeit \" ~ effective.hysteresis_k ~ \" K\" ~ (\" aus dem globalen Standard.\" if not values.hysteresis_k else \".\"), errors.hysteresis_k, \"0.01\", \"0\") }}",
-      "<div class=\"form-text\">Erzeugt regelmäßig eine Ventilschutz-Entscheidung im Schattenprotokoll. Derzeit bewegt sie kein Ventil. Das geschieht erst, wenn die Regelung scharf geschaltet und mit einem Aktor verdrahtet ist.</div>",
+      "<div class=\"form-text\">Erzeugt regelmäßig eine Ventilschutz-Entscheidung. Im Trockenlauf wird sie nur protokolliert; scharf und neu gestartet wird der zugeordnete Aktor angesteuert.</div>",
       "<label class=\"form-check-label\" for=\"valve_protection_enabled\">Ventilschutz einschalten</label>",
       "{{ number_field(\"valve_protection_duration_minutes\", \"Ventilschutz-Dauer (Minuten)\", values.valve_protection_duration_minutes,",
       "{{ number_field(\"valve_protection_interval_days\", \"Ventilschutz-Abstand (Tage)\", values.valve_protection_interval_days,"
     ],
     "thermoctl/web/templates/plant.html": [
       "<span class=\"tc-chip {{ 'tc-chip-warm' if bridge is true else ('tc-chip-warning' if bridge is false else 'tc-chip-quiet') }}\">",
-      "entscheidet. Ein/Aus-Entscheidungen erreichen derzeit keinen Aktor."
+      "Ein/Aus-Befehle die zugeordneten Aktoren."
     ],
     "thermoctl/web/templates/schedule.html": [
       "var({{ '--warmth' if w >= 0.5 else '--cool' }})",
@@ -485,9 +483,9 @@
       "<div class=\"w-100 small\" style=\"color: var(--warmth)\">{{ override_errors }}</div>",
       "<span class=\"tc-chip tc-chip-warm\"><span class=\"tc-dot\"></span>Heizentscheidung</span>",
       "<span class=\"tc-chip tc-chip-warm\"><span class=\"tc-dot\"></span>Scharf und neu gestartet</span>",
-      "<span>Der beim Start gebaute MQTT-Riegel ist noch zu. Bis zum Neustart werden keine Sollwerte an Ventile gesendet; Ein/Aus-Entscheidungen erreichen keinen Aktor.</span>",
-      "<span>Regelentscheidungen werden protokolliert. Es werden keine Sollwerte an Ventile gesendet. Ein/Aus-Entscheidungen erreichen keinen Aktor.</span>",
-      "<span>Sollwertausgabe freigegeben: Sollwerte können an selbstregelnde Thermostatventile gesendet werden. Ein/Aus-Entscheidungen erreichen weiterhin keinen Aktor.</span>",
+      "<span>Ausgabe freigegeben: Sollwerte gehen an selbstregelnde Thermostatventile; Ein/Aus-Befehle gehen an Zigbee2MQTT-Schalter, Zigbee2MQTT-Thermostatventile ohne eigene Regelung und Meross-Steckdosen.</span>",
+      "<span>Der beim Start gebaute MQTT-Riegel ist noch zu. Bis zum Neustart gehen weder Sollwerte noch Ein/Aus-Befehle an Aktoren.</span>",
+      "<span>Regelentscheidungen werden protokolliert. Weder Sollwerte noch Ein/Aus-Befehle gehen an Aktoren.</span>",
       "Das Band je Zone zeigt den heutigen Zeitplan über 24 Stunden — je wärmer der Ton,",
       "Seite ein Formularstapel, in dem die eigentliche Auskunft — wie warm ist es — unterging.",
       "dauerhaft \"Tag soll waermer sein\", nicht \"jetzt einmal waermer\". Deshalb steht",
@@ -499,7 +497,7 @@
       "Die Balken sind kupfern wie überall: Farbe ist hier Wärme, und nichts anderes.",
       "Durchlauf, ob sie heizen würde. Gezählt werden die Abstände zwischen diesen",
       "Entweder war es warm genug, oder der Regelzyklus lief noch nicht — er schreibt",
-      "erreichen derzeit keinen Aktor."
+      "bestätigt nicht, dass ein Aktor die angeforderte Wirkung tatsächlich erzielt hat."
     ]
   },
   "version": 1

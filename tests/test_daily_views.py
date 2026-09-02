@@ -137,10 +137,10 @@ def test_the_rendered_parameter_form_carries_the_valve_protection_field_names(
     path = f"/zones/{zone.id}/parameters"
     page = client.get(path)
     assert page.status_code == 200
-    assert "Erzeugt regelmäßig eine Ventilschutz-Entscheidung im Schattenprotokoll" in page.text
-    assert "Derzeit bewegt sie kein Ventil" in page.text
-    assert "scharf geschaltet und mit einem Aktor verdrahtet" in page.text
-    assert "Derzeit wird diese Entscheidung nur im Schattenprotokoll festgehalten" in page.text
+    assert "Erzeugt regelmäßig eine Ventilschutz-Entscheidung" in page.text
+    assert "Im Trockenlauf wird sie nur protokolliert" in page.text
+    assert "scharf und neu gestartet wird der zugeordnete Aktor angesteuert" in page.text
+    assert "Im Trockenlauf wird die Entscheidung nur protokolliert" in page.text
     assert "Bewegt das Heizungsventil regelmäßig" not in page.text
     assert "So lange bleibt das Ventil" not in page.text
     form = re.search(

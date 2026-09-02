@@ -691,8 +691,9 @@ def control_set_armed(
 
     Its own permission `control.arm`, not `setting.manage`: this changes the persisted
     first stage. The startup-built `MqttClient(switching_allowed=...)` gate stays
-    untouched, so setpoints are not released until a restart. On/off decisions do not
-    reach an actuator in either stage.
+    untouched, so neither setpoints nor on/off commands are released until a restart.
+    After a restart, setpoints reach self-regulating valves and on/off commands reach
+    ordinary actuators.
     """
     _permission(principal, "control.arm")
     try:

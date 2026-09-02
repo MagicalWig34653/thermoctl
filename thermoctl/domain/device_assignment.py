@@ -203,8 +203,8 @@ def set_self_regulating(
         detail=(
             "thermoctl schreibt nur noch Soll- und Ist-Temperatur"
             if self_regulating
-            else "thermoctl entscheidet wieder selbst über die Ein/Aus-Anforderung; "
-            "derzeit ist dafür kein Aktor verdrahtet"
+            else "thermoctl entscheidet wieder selbst über die Ein/Aus-Anforderung und "
+            "gibt sie im scharfen Betrieb nach einem Neustart an diesen Aktor aus"
         ),
         user_id=actor_id,
     )
