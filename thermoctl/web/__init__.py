@@ -13,6 +13,7 @@ from thermoctl.auth.sessions import COOKIE_NAME
 from thermoctl.config import get_settings
 from thermoctl.db.base import utcnow
 from thermoctl.domain.time import local_time
+from thermoctl.web.navigation import visible_navigation
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 
@@ -67,9 +68,11 @@ def _logged_in_user(request: Request) -> dict[str, object]:
         if session_secret is not None
         else ""
     )
+    principal = getattr(request.state, "principal", None)
     return {
         "top_bar_user": getattr(request.state, "user", None),
         "session_csrf": session_csrf,
+        "navigation_items": visible_navigation(principal) if principal is not None else (),
     }
 
 

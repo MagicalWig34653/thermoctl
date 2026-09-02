@@ -121,6 +121,7 @@ def start(
 
     request.state.user = user
     principal = principal_for_user(session, user)
+    request.state.principal = principal
     zones = visible_zones(session, principal, "zone.read")
     now = utcnow()
     settings = session.get(Setting, 1)

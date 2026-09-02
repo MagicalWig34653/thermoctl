@@ -12,6 +12,13 @@ einmal und stand noch da.
 
 ## Wo das Projekt steht
 
+Die Hauptnavigation zeigt angemeldeten Benutzern nur Ziele, die sie tatsächlich öffnen
+können. Zonenfilternde Übersichten erscheinen bereits bei einem passenden Recht für eine
+einzelne Zone; anlagenweite Seiten erst bei einem anlagenweiten Recht. Die Zuordnung von
+Ziel und Recht steht zentral in `web/navigation.py`, und ein Wächtertest vergleicht sie mit
+der tatsächlichen Rechteprüfung der Zielansicht. Das Kiosk hat weiterhin seine getrennte
+Navigation und sein eigenes Rechtemodell.
+
 | Phase | Zustand |
 |---|---|
 | 1 — Fundament | abgeschlossen, veröffentlicht als `v0.1.0` |

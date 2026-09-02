@@ -58,7 +58,12 @@ def current_principal(
     # every view: otherwise the bar carries the name only where some view happened to
     # think of it.
     request.state.user = user
-    return principal_for_user(session, user)
+    principal = principal_for_user(session, user)
+    # Templates need the very same effective grants as the endpoint.  Keeping the
+    # resolved principal on the request avoids a second database query and, more
+    # importantly, avoids a second implementation of token/group intersection.
+    request.state.principal = principal
+    return principal
 
 
 # Safe methods change nothing and therefore need no CSRF proof. Without this

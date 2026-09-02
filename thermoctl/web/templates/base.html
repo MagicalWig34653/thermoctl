@@ -92,6 +92,8 @@
 </head>
 <body hx-boost="true">
 {% set here = request.url.path %}
+{% set main_navigation = navigation_items | selectattr("section", "equalto", "main") | list %}
+{% set settings_navigation = navigation_items | selectattr("section", "equalto", "settings") | list %}
 {% macro nav_link(target, label, exact=false) %}
     {% set active = here == target if exact else (here == target or here.startswith(target ~ "/")) %}
     <li class="nav-item">
@@ -117,28 +119,22 @@
             #}
             <ul class="navbar-nav ms-auto align-items-lg-center">
                 {{ nav_link("/", "Start", exact=true) }}
-                {{ nav_link("/zones", "Zonen") }}
-                {{ nav_link("/devices", "Geräte") }}
-                {{ nav_link("/control", "Betrieb") }}
+                {% for item in main_navigation %}
+                    {{ nav_link(item.path, item.label) }}
+                {% endfor %}
+                {% if settings_navigation %}
                 <li class="nav-item dropdown">
-                    <button class="nav-link dropdown-toggle{{ ' tc-here' if here in ('/settings', '/interfaces', '/users', '/groups', '/audit', '/device-commands', '/tokens', '/kiosk-tokens') or here.startswith('/modes') }}"
+                    <button class="nav-link dropdown-toggle{{ ' tc-here' if settings_navigation | selectattr('path', 'equalto', here) | list or (here.startswith('/modes/') and settings_navigation | selectattr('path', 'equalto', '/modes') | list) }}"
                             type="button" data-bs-toggle="dropdown" aria-expanded="false">
                         Einstellungen
                     </button>
                     <ul class="dropdown-menu dropdown-menu-end">
-                        <li><a class="dropdown-item" href="/settings">Regelvorgaben</a></li>
-                        <li><a class="dropdown-item" href="/modes">Sollwert-Modi</a></li>
-                        <li><a class="dropdown-item" href="/interfaces">Schnittstellen</a></li>
-                        <li><a class="dropdown-item" href="/controllers">Bediengeräte</a></li>
-                        <li><hr class="dropdown-divider"></li>
-                        <li><a class="dropdown-item" href="/users">Benutzer</a></li>
-                        <li><a class="dropdown-item" href="/groups">Gruppen</a></li>
-                        <li><a class="dropdown-item" href="/tokens">API-Tokens</a></li>
-                        <li><a class="dropdown-item" href="/kiosk-tokens">Kiosk-Tokens</a></li>
-                        <li><a class="dropdown-item" href="/audit">Protokoll</a></li>
-                        <li><a class="dropdown-item" href="/device-commands">Schaltprotokoll</a></li>
+                        {% for item in settings_navigation %}
+                        <li><a class="dropdown-item" href="{{ item.path }}">{{ item.label }}</a></li>
+                        {% endfor %}
                     </ul>
                 </li>
+                {% endif %}
                 <li class="nav-item dropdown">
                     <button class="nav-link dropdown-toggle{{ ' tc-here' if here == '/passkeys' }}"
                             type="button" data-bs-toggle="dropdown" aria-expanded="false">
