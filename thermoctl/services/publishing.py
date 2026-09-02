@@ -99,22 +99,25 @@ class PublicationState:
     registered: dict[int, list[str]] = field(default_factory=dict)
     service_registered: bool = False
     controller_values: dict[int, object] = field(default_factory=dict)
-    # Per self-regulating valve, the (payload, armed) last acted on -- sent,
-    # withheld, or attempted and failed. Resending (or re-logging) an unchanged one
-    # every cycle would fill the radio with commands that change nothing -- and a
-    # Zigbee device that gets a command every few seconds costs battery for it --
-    # and would make the command log unreadable within a day. `armed` is part of
-    # the key: the same setpoint that was withheld during a dry run must go out
-    # for real, and be logged again, the moment the plant is armed.
-    valve_commands: dict[int, tuple[str, bool]] = field(default_factory=dict)
-    # Per ordinary (non-self-regulating) actuator, the (heating, armed) last acted
-    # on -- sent, withheld, or attempted and failed. Same reasoning as
-    # `valve_commands` above: the decision stands still for most of a cycle, and a
-    # command -- or a log entry -- every minute regardless would be unreadable and,
-    # for a battery device, costly. `armed` is part of the key for the same reason
-    # too: the same decision that was withheld during a dry run must go out for
-    # real, and be logged again, the moment the plant is armed.
-    switch_commands: dict[int, tuple[bool, bool]] = field(default_factory=dict)
+    # Per self-regulating valve, the (payload, armed, outcome) last **logged** --
+    # sent, withheld, or attempted and failed. See docs/offene-entscheidungen.md
+    # ("Wiederholung nach einem gescheiterten Aktorbefehl") for the reasoning this
+    # key now has to carry, spelled out in full: a matching (payload, armed) alone
+    # used to be treated as "nothing to do", which silently also swallowed a
+    # *failed* attempt -- a broken broker connection then froze a zone's actuator
+    # forever, because the boolean decision that would unstick it does not usually
+    # change on its own. `outcome` fixes that: only a matching `EXECUTED` entry
+    # means "already achieved, skip both the send and the log". Anything else
+    # (never tried, or the last attempt failed) is retried on every armed cycle --
+    # but a *repeated identical* outcome for the same command is still not logged
+    # again, so a permanently unreachable device gets exactly one log entry per
+    # failure episode, not one per minute. `armed` stays part of the key for the
+    # same reason it always was: the same setpoint withheld during a dry run must
+    # go out for real, and be logged again, the moment the plant is armed.
+    valve_commands: dict[int, tuple[str, bool, str]] = field(default_factory=dict)
+    # Per ordinary (non-self-regulating) actuator, the (heating, armed, outcome)
+    # last **logged**. Same reasoning as `valve_commands` above.
+    switch_commands: dict[int, tuple[bool, bool, str]] = field(default_factory=dict)
 
 
 def _as_text(value: object) -> str:
@@ -163,6 +166,7 @@ async def cycle(
     source: str = "system",
     meross_transport: MerossCommandTransport | None = None,
     meross_session_cache: MerossSessionCache | None = None,
+    meross_switching_allowed: bool = False,
 ) -> int:
     """One publication cycle. Returns the number of messages sent.
 
@@ -173,6 +177,15 @@ async def cycle(
     is recorded as `failed` in the command log, same as any other failed send.
     `meross_session_cache`, when given, is where a failed attempt is flagged so the
     *next* cycle signs in again rather than trusting a connection already known bad.
+
+    `meross_switching_allowed` is the frozen, start-of-process bolt for the Meross
+    path -- see `MerossSwitch`'s docstring in `integrations/actuators.py`. Defaults
+    to `False` (dry run), the same safe default `MqttClient.__init__` chooses for
+    its own `switching_allowed`: a caller that forgets to pass this must get a
+    plant that never really switches, not one that does. `app.py` passes
+    `app.state.sending_allowed` here -- the very same value already frozen for
+    `MqttClient` at startup, since both bolts exist to answer the identical
+    question ("was the plant armed when this process started").
     """
     armed = switching_allowed(session)
     zones = list(session.scalars(select(Zone).order_by(Zone.id)))
@@ -220,6 +233,7 @@ async def cycle(
             source,
             meross_transport,
             meross_session_cache,
+            meross_switching_allowed,
         )
     return sent_count
 
@@ -240,12 +254,17 @@ async def _send_self_regulating_valves(
     physical effect is the same. A setpoint written to a thermostatic valve is not a
     display value, and treating it as one would be a way around the dry run.
 
-    Only what changed is sent -- and logged. The setpoint stands still for hours at
-    a time; a log entry every cycle, armed or not, would be unreadable within a day.
-    `state.valve_commands` therefore gates both the send and the log entry: it is
-    updated whenever an entry is written, regardless of outcome (sent, withheld, or
-    failed), so a repeated identical outcome does not repeat the entry. Only a
-    changed payload -- or a changed outcome for the same payload -- writes again.
+    Only what changed is sent -- and logged, but the two are no longer gated by the
+    same test. `state.valve_commands` holds the `(payload, armed, outcome)` last
+    *logged* for this device (see the field's docstring on `PublicationState` for
+    why `outcome` had to join the key). Skipping the send entirely only happens when
+    the last logged outcome for this exact `(payload, armed)` was `EXECUTED` --
+    already achieved, nothing to do. Any other last outcome (never tried, or a
+    failed attempt) means this cycle tries again -- a stuck actuator must keep being
+    given the chance to recover once the broker or the device comes back. The log
+    entry itself is still deduplicated: a repeated identical outcome for the same
+    command is not written again, so a persistently unreachable device produces one
+    log entry per failure episode, not one every cycle.
     """
     armed = switching_allowed(session)
     sent = 0
@@ -257,47 +276,56 @@ async def _send_self_regulating_valves(
             payload_values[command.temperature_property] = float(command.temperature_c)
         payload = json.dumps(payload_values, ensure_ascii=False, separators=(",", ":"))
         topic = f"{base.rstrip('/')}/{command.device.external_id}/set"
-        cache_key = (payload, armed)
-        if state.valve_commands.get(command.device.id) == cache_key:
-            continue
+        last_entry = state.valve_commands.get(command.device.id)
 
         if not armed:
-            state.valve_commands[command.device.id] = cache_key
-            record_command(
-                session,
-                now=now,
-                source=source,
-                zone=zone,
-                device=command.device,
-                command="setpoint",
-                payload=payload,
-                outcome=SUPPRESSED,
-                reason=command.reason,
-            )
+            new_entry: tuple[str, bool, str] = (payload, armed, SUPPRESSED)
+            if last_entry != new_entry:
+                state.valve_commands[command.device.id] = new_entry
+                record_command(
+                    session,
+                    now=now,
+                    source=source,
+                    zone=zone,
+                    device=command.device,
+                    command="setpoint",
+                    payload=payload,
+                    outcome=SUPPRESSED,
+                    reason=command.reason,
+                )
             continue
 
+        if last_entry == (payload, armed, EXECUTED):
+            # Already achieved for this exact setpoint -- nothing to send, nothing
+            # to log.
+            continue
+
+        outcome: str
+        error: str | None
         try:
             executed = await client.publishing(topic, payload, switches=True)
         except Exception as exc:
             # A broken broker connection must not abort the whole cycle -- other
             # zones and the rest of this cycle (shadow decisions, retention) still
             # need to run. The failure is recorded instead of raised.
-            state.valve_commands[command.device.id] = cache_key
-            record_command(
-                session,
-                now=now,
-                source=source,
-                zone=zone,
-                device=command.device,
-                command="setpoint",
-                payload=payload,
-                outcome=FAILED,
-                error=str(exc),
-                reason=command.reason,
+            outcome, error = FAILED, str(exc)
+        else:
+            outcome, error = (
+                (EXECUTED, None)
+                if executed
+                else (FAILED, "MQTT-Client hat die Veroeffentlichung abgewiesen")
             )
+
+        new_entry = (payload, armed, outcome)
+        if new_entry == last_entry:
+            # The attempt above still happened -- that is the fix: a stuck actuator
+            # keeps being retried every cycle. But the outcome is unchanged from
+            # what is already on record, and writing an identical log line every
+            # cycle would bury the one fact that matters (when the failure began)
+            # in noise within a day. See docs/offene-entscheidungen.md.
             continue
-        state.valve_commands[command.device.id] = cache_key
-        if executed:
+        state.valve_commands[command.device.id] = new_entry
+        if outcome == EXECUTED:
             sent += 1
             log.info(
                 "Selbstregelndes Ventil gestellt",
@@ -329,7 +357,7 @@ async def _send_self_regulating_valves(
                 command="setpoint",
                 payload=payload,
                 outcome=FAILED,
-                error="MQTT-Client hat die Veroeffentlichung abgewiesen",
+                error=error,
                 reason=command.reason,
             )
     return sent
@@ -350,6 +378,20 @@ async def _send_self_regulating_valves(
 _WIRED_INTEGRATIONS = frozenset({"zigbee2mqtt", "meross"})
 
 
+def _outcome_of(result: SwitchResult) -> str:
+    """The command-log outcome code a `SwitchResult` maps to.
+
+    A `None` error means the adapter withheld the command itself, at the dry-run
+    bolt -- that is `SUPPRESSED`, not `FAILED`. Anything else that did not execute
+    carries a real error and is `FAILED`.
+    """
+    if result.executed:
+        return EXECUTED
+    if result.errors is None:
+        return SUPPRESSED
+    return FAILED
+
+
 def _record_switch_outcome(
     session: Session,
     *,
@@ -368,34 +410,7 @@ def _record_switch_outcome(
     report the same three outcomes through `SwitchResult`, and the command log does
     not need to know which kind of device it was told about.
     """
-    if result.executed:
-        record_command(
-            session,
-            now=now,
-            source=source,
-            zone=zone,
-            device=device,
-            command=command_name,
-            payload=payload,
-            outcome=EXECUTED,
-            reason=reason,
-        )
-        return True
-    if result.errors is None:
-        # An adapter reports a `None` error exactly when it withheld the command
-        # itself, at the dry-run bolt.
-        record_command(
-            session,
-            now=now,
-            source=source,
-            zone=zone,
-            device=device,
-            command=command_name,
-            payload=payload,
-            outcome=SUPPRESSED,
-            reason=reason,
-        )
-        return False
+    outcome = _outcome_of(result)
     record_command(
         session,
         now=now,
@@ -404,11 +419,11 @@ def _record_switch_outcome(
         device=device,
         command=command_name,
         payload=payload,
-        outcome=FAILED,
-        error=result.errors,
+        outcome=outcome,
+        error=result.errors if outcome == FAILED else None,
         reason=reason,
     )
-    return False
+    return outcome == EXECUTED
 
 
 def _latest_decision(session: Session, zone_id: int) -> tuple[bool, str] | None:
@@ -440,6 +455,7 @@ async def _send_actuator_switches(
     source: str,
     meross_transport: MerossCommandTransport | None,
     meross_session_cache: MerossSessionCache | None,
+    meross_switching_allowed: bool,
 ) -> int:
     """Turns every ordinary (non-self-regulating) actuator of a zone on or off.
 
@@ -461,8 +477,14 @@ async def _send_actuator_switches(
     (`resolved_setpoint()`, the same source `domain/self_regulating.py` uses for a
     self-regulating valve).
 
-    Only a changed decision -- or a changed outcome for the same decision -- sends
-    and logs again; see `PublicationState.switch_commands`. Because that cache
+    A repeated identical outcome for the same decision is still not logged (or, for
+    a settled `EXECUTED` outcome, not even attempted) again -- see
+    `PublicationState.switch_commands`, and `_send_self_regulating_valves` above for
+    the same reasoning spelled out for the self-regulating case. Any *other* last
+    outcome -- never tried, or a failed attempt -- is retried on every armed cycle
+    regardless: a relay stuck on `failed` must keep being given the chance to
+    recover once the broker, or the Meross cloud, comes back, and finding A's fix
+    for `_send_self_regulating_valves` applies here identically. Because that cache
     starts empty after every restart, the first cycle after a restart always acts
     (sends for real once armed, logs a withheld attempt otherwise) for every
     actuator, regardless of what was last sent before the restart: **what a real
@@ -473,6 +495,15 @@ async def _send_actuator_switches(
     here, for the same reason `_send_self_regulating_valves` and the Home Assistant
     registration above already resend unconditionally after one. See
     docs/offene-entscheidungen.md.
+
+    `meross_switching_allowed` is the Meross path's own frozen, start-of-process
+    bolt -- the counterpart of `MqttClient`'s `_switching_allowed` for the
+    Zigbee2MQTT path, which `client.publishing()` already enforces unconditionally.
+    Without an equivalent here, the runtime-only `switching_allowed(session)` check
+    inside `MerossSwitch.switching()` would be the *only* bolt on the one path that
+    drives real hardware today -- a single forgotten caller away from switching
+    live, exactly the risk `MqttClient.__init__`'s docstring gives as the reason for
+    having two. See docs/offene-entscheidungen.md.
     """
     armed = switching_allowed(session)
     sent = 0
@@ -483,12 +514,14 @@ async def _send_actuator_switches(
 
     for command in switch_commands(session, zone):
         device = command.device
-        cache_key = (heating, armed)
-        if state.switch_commands.get(device.id) == cache_key:
-            continue
+        last_entry = state.switch_commands.get(device.id)
 
         if command.integration_code not in _WIRED_INTEGRATIONS:
-            state.switch_commands[device.id] = cache_key
+            outcome = SUPPRESSED if not armed else FAILED
+            new_entry = (heating, armed, outcome)
+            if new_entry == last_entry:
+                continue
+            state.switch_commands[device.id] = new_entry
             log.error(
                 "Aktor an nicht verdrahteter Anbindung wird nicht geschaltet",
                 extra={
@@ -505,7 +538,7 @@ async def _send_actuator_switches(
                 device=device,
                 command="switch",
                 payload=json.dumps({"state": "ON" if heating else "OFF"}),
-                outcome=SUPPRESSED if not armed else FAILED,
+                outcome=outcome,
                 error=(
                     None
                     if not armed
@@ -518,6 +551,9 @@ async def _send_actuator_switches(
             )
             continue
 
+        if last_entry == (heating, armed, EXECUTED):
+            continue
+
         actuator: Actuator
         if command.integration_code == "zigbee2mqtt":
             actuator = Zigbee2MqttValve(session, client, base, device.external_id)
@@ -527,21 +563,34 @@ async def _send_actuator_switches(
             # `None` when no account is configured or the cloud rejected the sign-in
             # this cycle -- `MerossSwitch.switching()` reports that as a failed
             # attempt on its own, it does not need a special case here.
-            actuator = MerossSwitch(session, meross_transport, device.external_id)
+            actuator = MerossSwitch(
+                session,
+                meross_transport,
+                device.external_id,
+                frozen_switching_allowed=meross_switching_allowed,
+            )
             payload = json.dumps(toggle_payload(0, heating))
 
         result = await actuator.switching(heating)
-        state.switch_commands[device.id] = cache_key
+        outcome = _outcome_of(result)
         if (
             command.integration_code == "meross"
             and not result.executed
             and result.errors is not None
             and meross_session_cache is not None
         ):
-            # A real attempt was made (not just withheld by the dry-run bolt) and it
+            # A real attempt was made (not just withheld by a dry-run bolt) and it
             # did not work -- the cached connection might be the reason, so the next
             # cycle signs in again instead of trusting it for the rest of its TTL.
             invalidate_meross_session(meross_session_cache)
+        new_entry = (heating, armed, outcome)
+        if new_entry == last_entry:
+            # Same outcome already on record for this decision -- the attempt above
+            # still happened (the retry that fixes finding A), but logging it again
+            # would only repeat what is already known. See
+            # docs/offene-entscheidungen.md.
+            continue
+        state.switch_commands[device.id] = new_entry
         if _record_switch_outcome(
             session,
             now=now,
@@ -567,16 +616,18 @@ async def _send_actuator_switches(
     thermostat_setpoint: Decimal | None = None
     for thermostat_command in thermostat_commands(session, zone):
         device = thermostat_command.device
-        cache_key = (heating, armed)
-        if state.switch_commands.get(device.id) == cache_key:
-            continue
+        last_entry = state.switch_commands.get(device.id)
 
         if thermostat_command.integration_code != "zigbee2mqtt":
             # Not observed on real hardware today (only Zigbee2MQTT reports the
             # `thermostat` capability, see `services/ingest.py`), guarded anyway so a
             # future integration cannot end up silently unswitched the way the
             # blocker this replaces once did.
-            state.switch_commands[device.id] = cache_key
+            outcome = SUPPRESSED if not armed else FAILED
+            new_entry = (heating, armed, outcome)
+            if new_entry == last_entry:
+                continue
+            state.switch_commands[device.id] = new_entry
             log.error(
                 "Thermostatventil an nicht verdrahteter Anbindung wird nicht geschaltet",
                 extra={
@@ -593,7 +644,7 @@ async def _send_actuator_switches(
                 device=device,
                 command="thermostat",
                 payload=json.dumps({"heating": heating}),
-                outcome=SUPPRESSED if not armed else FAILED,
+                outcome=outcome,
                 error=(
                     None
                     if not armed
@@ -604,6 +655,9 @@ async def _send_actuator_switches(
                 ),
                 reason=reason,
             )
+            continue
+
+        if last_entry == (heating, armed, EXECUTED):
             continue
 
         if thermostat_setpoint is None:
@@ -625,7 +679,11 @@ async def _send_actuator_switches(
             )
         )
         result = await actuator.switching(heating)
-        state.switch_commands[device.id] = cache_key
+        outcome = _outcome_of(result)
+        new_entry = (heating, armed, outcome)
+        if new_entry == last_entry:
+            continue
+        state.switch_commands[device.id] = new_entry
         if _record_switch_outcome(
             session,
             now=now,

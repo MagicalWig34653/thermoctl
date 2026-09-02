@@ -53,15 +53,19 @@ class Mitschrift:
 
 class FailingClient:
     """Every switching command raises -- the broker is gone. Non-switching messages
-    are still recorded, so a test can check that the rest of the cycle kept going."""
+    are still recorded, so a test can check that the rest of the cycle kept going.
+    `switch_attempts` counts every switching call, whether or not it raised --
+    needed to prove a retry actually reaches the client (finding A)."""
 
     def __init__(self) -> None:
         self.messages: list[tuple[str, str]] = []
+        self.switch_attempts = 0
 
     async def publishing(
         self, topic: str, payload: str, *, switches: bool, retained: bool = False
     ) -> bool:
         if switches:
+            self.switch_attempts += 1
             raise ConnectionError("Broker nicht erreichbar")
         self.messages.append((topic, payload))
         return True
@@ -410,6 +414,45 @@ async def test_a_failing_adapter_is_logged_and_does_not_stop_other_zones(
 
 
 @pytest.mark.anyio
+async def test_a_failed_switch_is_retried_every_cycle_but_logged_only_once(
+    session: Session,
+) -> None:
+    """Cross-review finding A, for an ordinary (non-self-regulating) actuator --
+    the twin of `test_publishing.py`'s test with the same name, for the code path
+    `_send_actuator_switches` covers instead of `_send_self_regulating_valves`.
+    Before the fix, an unchanged `(heating, armed)` cache key was written on a
+    failed attempt too, so the second and third cycle with the same broken client
+    and the same heating decision would skip the device outright -- not attempt
+    to send, and not log anything."""
+    create_settings(session)
+    source(session, "system")
+    create_all_command_outcomes(session)
+    zone, _device = _actuator_zone(session, "schalterwiederholzone")
+    _decision(session, zone, heating=True)
+    arm(session, True, reason="vier Tage verglichen", user_id=None)
+    session.flush()
+
+    failing_client = FailingClient()
+    state = PublicationState()
+    await cycle(session, failing_client, state, "thermoctl", NOW)
+    await cycle(session, failing_client, state, "thermoctl", NOW)
+    await cycle(session, failing_client, state, "thermoctl", NOW)
+
+    # Three cycles, three real attempts -- without the fix this would be 1.
+    assert failing_client.switch_attempts == 3
+    entries = _command_log(session)
+    assert [code for _entry, code in entries] == ["failed"]
+
+    # Gegenprobe: once the device answers again, exactly one further entry
+    # appears.
+    recovering_client = Mitschrift()
+    await cycle(session, recovering_client, state, "thermoctl", NOW)
+
+    entries = _command_log(session)
+    assert [code for _entry, code in entries] == ["failed", "executed"]
+
+
+@pytest.mark.anyio
 async def test_no_decision_yet_sends_nothing(session: Session) -> None:
     """A zone the control loop has never produced a decision for has nothing to
     act on -- inventing a state would be a decision this wiring has no business
@@ -485,6 +528,30 @@ async def test_a_switch_actuator_at_a_non_wired_integration_is_reported_not_sent
 
 
 @pytest.mark.anyio
+async def test_a_non_wired_switch_integration_is_logged_only_once_across_cycles(
+    session: Session,
+) -> None:
+    """A device at an integration this version does not switch through can never
+    recover on its own -- unlike a broken broker connection (finding A), retrying
+    the send would be pointless here, there is nothing to retry. But the *log
+    entry* dedup applies equally: an unchanged decision must not produce a fresh
+    'not wired' line every single cycle."""
+    create_settings(session)
+    source(session, "system")
+    create_all_command_outcomes(session)
+    zone, _device = _actuator_zone(session, "wiederholteanbindungzone", integration_code="hue")
+    _decision(session, zone, heating=True)
+    arm(session, True, reason="vier Tage verglichen", user_id=None)
+    session.flush()
+
+    state = PublicationState()
+    await cycle(session, Mitschrift(), state, "thermoctl", NOW)
+    await cycle(session, Mitschrift(), state, "thermoctl", NOW)
+
+    assert len(_command_log(session)) == 1
+
+
+@pytest.mark.anyio
 async def test_a_meross_actuator_without_a_signed_in_session_fails_visibly(
     session: Session,
 ) -> None:
@@ -502,7 +569,17 @@ async def test_a_meross_actuator_without_a_signed_in_session_fails_visibly(
     session.flush()
 
     client = Mitschrift()
-    await cycle(session, client, PublicationState(), "thermoctl", NOW)
+    await cycle(
+        session,
+        client,
+        PublicationState(),
+        "thermoctl",
+        NOW,
+        # The frozen, start-of-process bolt (finding C) -- also armed here, same
+        # as `setting.control_armed` above, so the runtime bolt does not mask
+        # the very failure this test is about.
+        meross_switching_allowed=True,
+    )
 
     assert client.switched == []
     entries = _command_log(session)
@@ -569,6 +646,9 @@ async def test_an_armed_meross_actuator_with_a_signed_in_session_really_sends(
         "thermoctl",
         NOW,
         meross_transport=transport,  # type: ignore[arg-type]
+        # The frozen, start-of-process bolt (finding C); the runtime bolt is
+        # already armed above.
+        meross_switching_allowed=True,
     )
 
     assert sent >= 1
@@ -583,6 +663,49 @@ async def test_an_armed_meross_actuator_with_a_signed_in_session_really_sends(
     assert entry.command == "switch"
     assert entry.device_name == device.display_name
     assert entry.reason == "Sollwert unterschritten"
+    assert entry.error is None
+
+
+@pytest.mark.anyio
+async def test_a_frozen_bolt_left_at_its_safe_default_blocks_meross_too(
+    session: Session,
+) -> None:
+    """Finding C, the property it must hold: `MqttClient` already freezes its own
+    switching bolt at process start and enforces it unconditionally in
+    `client.publishing()`, so a single forgotten caller elsewhere cannot switch a
+    Zigbee2MQTT device for real. Before this fix, the Meross path had no equivalent
+    -- only the runtime `setting.control_armed` gated it, checked fresh on every
+    call. This proves the frozen bolt now covers Meross the same way: even with the
+    runtime bolt armed *and* a working, signed-in transport handed in,
+    `meross_switching_allowed` left at its default (`False`, the same safe default
+    `MqttClient.__init__` chooses) must still keep the plant from switching for
+    real -- `_NetworkForbidden` fails the test the instant anything reaches the
+    transport."""
+    create_settings(session)
+    source(session, "system")
+    create_all_command_outcomes(session)
+    zone, _device = _actuator_zone(session, "eingefrorenerbolzenzone", integration_code="meross")
+    _decision(session, zone, heating=True)
+    arm(session, True, reason="vier Tage verglichen", user_id=None)
+    session.flush()
+
+    client = Mitschrift()
+    await cycle(
+        session,
+        client,
+        PublicationState(),
+        "thermoctl",
+        NOW,
+        meross_transport=_NetworkForbidden(),  # type: ignore[arg-type]
+        # `meross_switching_allowed` deliberately omitted -- proving the default
+        # itself is safe, not just an explicit `False`.
+    )
+
+    assert client.switched == []
+    entries = _command_log(session)
+    assert len(entries) == 1
+    entry, outcome_code = entries[0]
+    assert outcome_code == "suppressed"
     assert entry.error is None
 
 
@@ -609,6 +732,9 @@ async def test_a_failed_meross_send_invalidates_the_cached_session(session: Sess
         NOW,
         meross_transport=transport,  # type: ignore[arg-type]
         meross_session_cache=cache,
+        # The frozen, start-of-process bolt (finding C); the runtime bolt is
+        # already armed above.
+        meross_switching_allowed=True,
     )
 
     assert cache.invalid is True
@@ -866,3 +992,57 @@ async def test_a_thermostat_actuator_at_a_non_wired_integration_is_reported_not_
     assert entry.device_name == device.display_name
     assert entry.error is not None
     assert "nicht verdrahtet" in entry.error
+
+
+@pytest.mark.anyio
+async def test_a_non_wired_thermostat_integration_is_logged_only_once_across_cycles(
+    session: Session,
+) -> None:
+    """The thermostat twin of the same dedup property already checked for an
+    ordinary switch above."""
+    create_settings(session)
+    source(session, "system")
+    create_all_command_outcomes(session)
+    zone, _device = _thermostat_actuator_zone(
+        session, "thermowiederholteanbindungzone", integration_code="meross"
+    )
+    _decision(session, zone, heating=True)
+    arm(session, True, reason="vier Tage verglichen", user_id=None)
+    session.flush()
+
+    state = PublicationState()
+    await cycle(session, Mitschrift(), state, "thermoctl", NOW)
+    await cycle(session, Mitschrift(), state, "thermoctl", NOW)
+
+    assert len(_command_log(session)) == 1
+
+
+@pytest.mark.anyio
+async def test_a_failed_thermostat_command_is_retried_every_cycle_but_logged_once(
+    session: Session,
+) -> None:
+    """Finding A's fix, for the thermostat command kind -- the third of the three
+    places `PublicationState.switch_commands` gates a send in
+    `_send_actuator_switches` (plain switch, thermostat-kind, and the two
+    'not wired' branches share the same cache)."""
+    create_settings(session)
+    source(session, "system")
+    create_all_command_outcomes(session)
+    zone, _device = _thermostat_actuator_zone(session, "thermofehlerwiederholzone")
+    _decision(session, zone, heating=True)
+    arm(session, True, reason="vier Tage verglichen", user_id=None)
+    session.flush()
+
+    failing_client = FailingClient()
+    state = PublicationState()
+    await cycle(session, failing_client, state, "thermoctl", NOW)
+    await cycle(session, failing_client, state, "thermoctl", NOW)
+    await cycle(session, failing_client, state, "thermoctl", NOW)
+
+    assert failing_client.switch_attempts == 3
+    assert [code for _entry, code in _command_log(session)] == ["failed"]
+
+    recovering_client = Mitschrift()
+    await cycle(session, recovering_client, state, "thermoctl", NOW)
+
+    assert [code for _entry, code in _command_log(session)] == ["failed", "executed"]

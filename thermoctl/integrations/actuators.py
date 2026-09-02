@@ -220,6 +220,17 @@ class MerossSwitch:
     judged acceptable for this adapter (a `SETACK` is what the manufacturer's own
     apps treat as success too), but it is the honest boundary of the claim: this
     checks that the socket *accepted* the command, not that the room got warmer.
+
+    **Two bolts, like `MqttClient`.** `frozen_switching_allowed` is read once, at
+    process start, and handed in here unchanged for the adapter's whole lifetime --
+    the counterpart of the flag `MqttClient.__init__` freezes for the Zigbee2MQTT
+    path (see its docstring for why one caller relying on the runtime check alone
+    was judged too thin a margin for something that moves a real heater). This path
+    has no `MqttClient` to enforce that frozen bolt on its behalf -- the Meross
+    command goes out through `MerossCommandTransport.send()`, not through
+    `client.publishing()` -- so this adapter carries its own copy of the same
+    check instead of relying on `switching_allowed(session)` (the *runtime* bolt)
+    alone. Both must agree before anything reaches the transport.
     """
 
     def __init__(
@@ -229,11 +240,13 @@ class MerossSwitch:
         device_uuid: str,
         *,
         channel: int = 0,
+        frozen_switching_allowed: bool = False,
     ) -> None:
         self._session = session
         self._transport = transport
         self._device_uuid = device_uuid
         self._channel = channel
+        self._frozen_switching_allowed = frozen_switching_allowed
 
     def description(self) -> str:
         return f"Meross-Schalter {self._device_uuid}"
@@ -245,7 +258,7 @@ class MerossSwitch:
             f"{TOGGLE_NAMESPACE} an {self._device_uuid}, "
             f"Kanal {self._channel}, Zustand {command}"
         )
-        if not switching_allowed(self._session):
+        if not self._frozen_switching_allowed or not switching_allowed(self._session):
             return SwitchResult(False, f"Trockenlauf, haette gesendet: {message}")
 
         # No signed-in session to switch through -- the periodic sign-in

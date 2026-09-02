@@ -296,6 +296,25 @@ async def _shadow_loop(app: FastAPI) -> None:
                         get_settings().mqtt_prefix,
                         now,
                         meross_transport=meross_transport,
+                        # Without this, a failed Meross command never marks the
+                        # cached session bad (`services/meross_session.py::
+                        # invalidate`) -- the dead connection then sits in the
+                        # cache as "valid" for up to `SESSION_TTL` (six hours),
+                        # and every cycle in between reuses it and keeps
+                        # failing. Cross-review finding B: this parameter was
+                        # defined on `publication_cycle` but never actually
+                        # passed here.
+                        meross_session_cache=meross_cache,
+                        # The Meross path's own frozen, start-of-process bolt --
+                        # see `MerossSwitch`'s docstring. Reuses the exact value
+                        # already frozen for `MqttClient` above: both answer the
+                        # same question (was the plant armed when this process
+                        # started). `getattr`, like the others here: the loop
+                        # also runs in tests that assemble an app without
+                        # running through the full lifespan.
+                        meross_switching_allowed=getattr(
+                            app.state, "sending_allowed", False
+                        ),
                     )
                 if now >= next_retention:
                     delete_old_measurements(session, now)

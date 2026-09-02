@@ -18,7 +18,7 @@ einmal und stand noch da.
 | 1a — Nacharbeiten | abgeschlossen |
 | 2 — Geräte-Anbindung im Schattenbetrieb | gebaut; der Nachweis über mehrere Tage braucht die echte Anlage |
 | 3 — Konfigurations-Oberfläche | abgeschlossen |
-| 4 — Regelkreis und Cutover | Alle sieben Aktortypen der echten Anlage verdrahtet: Zigbee2MQTT-Aktoren, Meross-Steckdosen, Zigbee2MQTT-Thermostatventile |
+| 4 — Regelkreis und Cutover | Alle sieben Aktortypen der echten Anlage verdrahtet: Zigbee2MQTT-Aktoren, Meross-Steckdosen, Zigbee2MQTT-Thermostatventile. Kreuzreview der Verdrahtung fand drei Befunde, alle behoben — siehe unten |
 | 5 — Integrationen und Veröffentlichung | Meross und Zeitplan-Bedienung erledigt, Freigabe von 0.2.2 offen |
 
 ## Was geschaltet wird — genau
@@ -55,6 +55,41 @@ Diese Frage ist mehrfach zu grob beantwortet worden, in beide Richtungen. Der St
   niedrigsten Sollwert gefahren. Der frühere Blocker-Eintrag vom 2026-09-01 in
   [offene-entscheidungen.md](offene-entscheidungen.md) ist als behoben vermerkt.
 
+## Kreuzreview der Aktorverdrahtung — drei Befunde, alle behoben
+
+Der Projektinhaber hat den mehrtägigen Schattenbetrieb übersprungen; die Verdrahtung
+läuft als Erstes an einer echten Heizung (vier Meross-Steckdosen, drei
+Zigbee2MQTT-Thermostatventile). Ein Kreuzreview prüfte deshalb vor dem ersten
+scharfen Betrieb noch einmal gezielt, ob geschaltet wird, wenn es soll — mit
+„Nein" beantwortet. Alle drei Befunde sind jetzt behoben:
+
+- **Ein gescheiterter Befehl wurde nie wiederholt** (schwer). Der Zwischenspeicher
+  „nur bei Änderung senden" schrieb bei jedem Ausgang, auch bei einem gescheiterten
+  — der nächste Zyklus mit unveränderter Entscheidung übersprang das Gerät dann
+  komplett, kein neuer Versuch, kein neuer Log-Eintrag. Bei einer kalten, dauerhaft
+  unterversorgten Zone (deren Entscheidung sich gerade *nicht* ändert) hätte das im
+  Januar ein eingefrorenes Rohr bedeutet. Jetzt trägt der Zwischenspeicher das
+  Ergebnis im Schlüssel: ein gescheiterter Befehl wird jeden scharfen Zyklus erneut
+  versucht, aber nur einmal pro Ausfallepisode geloggt. Begründung in
+  [offene-entscheidungen.md](offene-entscheidungen.md).
+- **Die Entwertung der Meross-Sitzung war nie verdrahtet** (schwer). `app.py` übergab
+  `meross_transport`, aber nicht `meross_session_cache`, an den
+  Veröffentlichungszyklus — `invalidate_meross_session()` war damit im echten
+  Betrieb unerreichbar, eine tote Meross-Verbindung blieb bis zu sechs Stunden als
+  „gültig" im Zwischenspeicher stehen. Jetzt durchgereicht, mit einem Test, der den
+  tatsächlichen Aufruf in `app.py` prüft, nicht nur die Funktion isoliert.
+- **Der Meross-Weg hatte nur einen Riegel** (mittel). `MqttClient` friert seinen
+  eigenen Riegel beim Start ein; der Meross-Weg (`MerossSwitch`) prüfte nur den
+  Laufzeit-Riegel. Jetzt bekommt `MerossSwitch` denselben eingefrorenen Riegel
+  (`app.state.sending_allowed`, wiederverwendet statt eines zweiten unabhängigen
+  Werts). Begründung in [offene-entscheidungen.md](offene-entscheidungen.md).
+
+Zusätzlich abgesichert: eine Regression, bei der `ensure_transport()` in die offene
+Schreibtransaktion des Schattenzyklus verschoben wird (genau der Fehler, der einmal
+die SQLite-Datei 40 Sekunden gesperrt hatte) — bei der die gesamte Suite trotzdem grün
+blieb. Ein neuer Test prüft jetzt die Eigenschaft selbst („keine Schreibtransaktion
+offen während des Netzaufrufs"), nicht die Aufrufreihenfolge im Quelltext.
+
 ## Das Schaltprotokoll
 
 Neu: `device_command` zeichnet jeden Befehl auf, der an ein Gerät hinausging oder im
@@ -77,11 +112,11 @@ an, nicht danach.
 ## Zahlen
 
 Selbst nachgeprüft, nicht aus Berichten übernommen (Stand 2026-09-02, nach der
-Meross- und Thermostatventil-Verdrahtung):
+Behebung der drei Kreuzreview-Befunde):
 
 | | |
 |---|---|
-| Tests | 1473 unter SQLite, 1472 plus ein Skip unter MariaDB |
+| Tests | 1481 unter SQLite, 1480 plus ein Skip unter MariaDB |
 | Testabdeckung | 100 %, Mindestschwelle 100 % in der CI |
 | Ruff, mypy strict | ohne Befund, 105 Quelldateien |
 | Migrationskette | linear, ein Kopf, vorwärts und rückwärts gegen beide Datenbanken |

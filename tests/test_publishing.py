@@ -558,6 +558,23 @@ class FailingClient:
         return True
 
 
+class CountingFailingClient:
+    """Like `FailingClient`, but counts every switching attempt made through it --
+    needed to prove a retry actually happens (finding A), not just that the log
+    entry looks right."""
+
+    def __init__(self) -> None:
+        self.switch_attempts = 0
+
+    async def publishing(
+        self, topic: str, payload: str, *, switches: bool, retained: bool = False
+    ) -> bool:
+        if switches:
+            self.switch_attempts += 1
+            raise ConnectionError("Broker nicht erreichbar")
+        return True
+
+
 class RejectingClient:
     """A publisher whose switching commands come back `False` -- no exception, no
     confirmation. Distinct from `FailingClient`: this is the ordinary dry-run-bolt
@@ -700,6 +717,54 @@ async def test_a_withheld_command_is_logged_again_once_armed(session: Session) -
 
     entries = _command_log(session)
     assert [code for _entry, code in entries] == ["suppressed", "executed"]
+
+
+@pytest.mark.anyio
+async def test_a_failed_setpoint_is_retried_every_cycle_but_logged_only_once(
+    session: Session,
+) -> None:
+    """Cross-review finding A. Before the fix, the cache key was `(payload, armed)`
+    -- written on every outcome, including a failed one -- so a second cycle with
+    the same (unchanged) setpoint and the same broken client found an identical
+    cache entry and skipped the device entirely: no send attempt, no log line. A
+    zone that needs heat and cannot reach its actuator would then stay silent
+    until its boolean heating decision happened to flip, which for a cold,
+    persistently underserved zone is exactly the case that does not happen.
+
+    The fix retries the real send every armed cycle regardless of the last
+    outcome, but only *logs* a new entry when the outcome actually changes --
+    otherwise a permanently unreachable device would fill the command log with an
+    identical line every minute. This proves both halves: the attempt count keeps
+    climbing (recovery stays possible) while the log stays at one entry (no
+    spam) -- and that recovery, once the device answers again, produces exactly
+    one further entry."""
+    create_settings(session)
+    source(session, "system")
+    create_all_command_outcomes(session)
+    _zone_with_self_regulating_valve(session, "wiederholzone")
+    arm(session, True, reason="vier Tage verglichen", user_id=None)
+    session.flush()
+
+    failing_client = CountingFailingClient()
+    state = PublicationState()
+    await cycle(session, failing_client, state, "thermoctl", NOW)
+    await cycle(session, failing_client, state, "thermoctl", NOW)
+    await cycle(session, failing_client, state, "thermoctl", NOW)
+
+    # The property this test exists for: three cycles, three real attempts --
+    # without the fix this would be 1, because the second and third cycle would
+    # skip the device entirely.
+    assert failing_client.switch_attempts == 3
+    entries = _command_log(session)
+    assert [code for _entry, code in entries] == ["failed"]
+
+    # Gegenprobe for the other half: once the device answers again, exactly one
+    # further entry appears -- not one per cycle that failed before it.
+    recovering_client = Mitschrift()
+    await cycle(session, recovering_client, state, "thermoctl", NOW)
+
+    entries = _command_log(session)
+    assert [code for _entry, code in entries] == ["failed", "executed"]
 
 
 def test_deleting_a_zone_and_its_device_keeps_the_command_log_entry(session: Session) -> None:

@@ -11,6 +11,26 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ## Unreleased
 
+**Kreuzreview der Aktorverdrahtung: drei Befunde, alle behoben.** Vor dem ersten
+scharfen Betrieb an einer echten Heizung prüfte ein Kreuzreview gezielt, ob geschaltet
+wird, wenn es soll — mit „Nein" beantwortet, zwei der drei Befunde in der gefährlichen
+Richtung. **Ein gescheiterter Aktorbefehl wurde nie wiederholt:** Der Zwischenspeicher
+„nur bei Änderung senden" trug das Ergebnis nicht im Schlüssel, sodass ein gescheiterter
+Versuch beim nächsten Zyklus mit unveränderter Entscheidung komplett übersprungen wurde
+— kein neuer Versuch, kein neuer Log-Eintrag. Bei einer kalten, dauerhaft
+unterversorgten Zone (deren Entscheidung sich gerade nicht ändert) hätte das im Januar
+ein eingefrorenes Rohr bedeutet; jetzt wird jeden scharfen Zyklus erneut versucht, aber
+nur einmal pro Ausfallepisode geloggt. **Die Entwertung der Meross-Sitzung war nie
+verdrahtet:** `app.py` übergab `meross_transport`, aber nicht `meross_session_cache`, an
+den Veröffentlichungszyklus, sodass eine tote Verbindung bis zu sechs Stunden als
+„gültig" stehen blieb; jetzt durchgereicht. **Der Meross-Weg hatte nur einen Riegel:**
+`MerossSwitch` prüft jetzt zusätzlich denselben beim Start eingefrorenen Riegel wie der
+MQTT-Client. Begründungen in
+[docs/offene-entscheidungen.md](docs/offene-entscheidungen.md). Zusätzlich abgesichert:
+eine Regression, bei der der Meross-Anmeldeaufruf in eine offene Schreibtransaktion
+verschoben wird (der Fehler, der einmal die SQLite-Datei 40 Sekunden gesperrt hatte) —
+ein neuer Test prüft jetzt die Eigenschaft selbst, nicht die Aufrufreihenfolge.
+
 **Meross und Zigbee2MQTT-Thermostatventile sind jetzt verdrahtet — beide zuvor offenen
 Fälle.** Ein Meross-Aktor bekommt seinen Befehl über eine bei Bedarf erneuerte,
 zwischengespeicherte Cloud-Sitzung (`services/meross_session.py`), signiert **ausserhalb**

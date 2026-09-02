@@ -89,7 +89,9 @@ async def test_control_armed_sends_the_signed_toggle_command(session: Session) -
     base_topic = _settings().mqtt_base_topic
     meross = MerossStub()
 
-    result = await MerossSwitch(session, meross, devices_id, channel=2).switching(True)
+    result = await MerossSwitch(
+        session, meross, devices_id, channel=2, frozen_switching_allowed=True
+    ).switching(True)
 
     assert result.executed is True
     assert meross.calls == [
@@ -112,7 +114,10 @@ async def test_control_armed_sends_the_signed_toggle_command(session: Session) -
     assert mqtt_result.errors == "MQTT-Client hat die Veroeffentlichung abgewiesen"
 
     meross_error = await MerossSwitch(
-        session, MerossStub(errors=ConnectionError("Cloud nicht erreichbar")), devices_id
+        session,
+        MerossStub(errors=ConnectionError("Cloud nicht erreichbar")),
+        devices_id,
+        frozen_switching_allowed=True,
     ).switching(False)
     assert meross_error.errors == "Cloud nicht erreichbar"
 
@@ -129,7 +134,9 @@ async def test_an_armed_switch_without_a_signed_in_session_fails_without_touchin
     session.add(Setting(id=1, control_armed=True, frost_protection_mode_id=frost_protection.id))
     session.flush()
 
-    result = await MerossSwitch(session, None, "irgendein-geraet").switching(True)
+    result = await MerossSwitch(
+        session, None, "irgendein-geraet", frozen_switching_allowed=True
+    ).switching(True)
 
     assert result.executed is False
     assert result.errors == "Keine gueltige Meross-Sitzung vorhanden"
@@ -141,7 +148,9 @@ async def test_switching_off_carries_onoff_zero(session: Session) -> None:
     _armed(session)
     meross = MerossStub()
 
-    result = await MerossSwitch(session, meross, "geraet-1").switching(False)
+    result = await MerossSwitch(
+        session, meross, "geraet-1", frozen_switching_allowed=True
+    ).switching(False)
 
     assert result.executed is True
     assert meross.calls[0][3] == {"togglex": {"channel": 0, "onoff": 0}}
@@ -188,7 +197,10 @@ async def test_a_peer_error_becomes_a_result_not_an_exception(
     assert valve.errors is not None and "Broker weg" in valve.errors
 
     meross = await MerossSwitch(
-        session, MerossStub(errors=TimeoutError("Cloud antwortet nicht")), "geraet-1"
+        session,
+        MerossStub(errors=TimeoutError("Cloud antwortet nicht")),
+        "geraet-1",
+        frozen_switching_allowed=True,
     ).switching(True)
     assert meross.executed is False
     assert meross.errors is not None and "antwortet nicht" in meross.errors
@@ -223,7 +235,7 @@ async def test_a_command_the_device_does_not_confirm_is_not_reported_as_switched
     _armed(session)
 
     result = await MerossSwitch(
-        session, MerossStub(method="ERROR"), "geraet-1"
+        session, MerossStub(method="ERROR"), "geraet-1", frozen_switching_allowed=True
     ).switching(True)
 
     assert result.executed is False
@@ -238,7 +250,9 @@ async def test_an_answer_without_a_header_is_not_a_confirmation(session: Session
         async def send(self, *_a: object, **_k: object) -> dict[str, Any]:
             return {"payload": {}}
 
-    result = await MerossSwitch(session, _Headerless(), "geraet-1").switching(True)
+    result = await MerossSwitch(
+        session, _Headerless(), "geraet-1", frozen_switching_allowed=True
+    ).switching(True)
 
     assert result.executed is False
 

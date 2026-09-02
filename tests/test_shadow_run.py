@@ -7,9 +7,10 @@ phase nothing gets published anywhere.
 """
 
 import asyncio
+import contextlib
 import json
 import types
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from datetime import datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
@@ -1128,6 +1129,205 @@ async def test_the_shadow_loop_also_publishes_when_a_publisher_is_configured(
     # Nothing switched -- every message from the publication cycle is a state message.
     assert sent, "Der Zyklus hat nichts veroeffentlicht"
     assert all(switches is False for _topic, _payload, switches in sent)
+    engine.dispose()
+
+
+@pytest.mark.anyio
+async def test_the_shadow_loop_passes_the_meross_session_cache_and_frozen_bolt_through(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Cross-review finding B. `_shadow_loop`'s call to `publication_cycle()` used to
+    pass `meross_transport=meross_transport` and nothing else Meross-related --
+    `meross_session_cache` was simply missing from the call, even though the
+    function accepts it and `app.state.meross_session_cache` exists right there.
+    The practical effect: `invalidate_meross_session()` inside
+    `services/publishing.py` (finding A's own retry logic depends on it, for the
+    *next* sign-in) was never reachable in real operation, only in tests that call
+    `publication_cycle()` directly -- exactly the gap that let it go unnoticed.
+
+    Rather than reconstructing a full heating decision just to reach a live Meross
+    switch (a much heavier and more indirect way to prove the same fact),
+    `publication_cycle` itself is monkeypatched to record what it was called
+    with -- checking the actual wiring in `app.py`, not a reimplementation of it.
+    """
+    engine, fabrik = _own_database(tmp_path, "schleife-meross-cache")
+    with fabrik() as http_session:
+        create_settings(http_session)
+        sensor_status_of(http_session, "keine_quelle")
+        create_zone(http_session, "flur")
+        http_session.commit()
+
+    class Recorder:
+        async def publishing(
+            self, topic: str, payload: str, *, switches: bool, retained: bool = False
+        ) -> bool:
+            return True
+
+    from thermoctl.services.meross_session import MerossSessionCache
+    from thermoctl.services.publishing import PublicationState
+
+    class _UnusedJsonTransport:
+        """No Meross account is configured in this test's settings, so
+        `ensure_transport()` returns before ever calling this."""
+
+        async def post_json(self, *args: object, **kwargs: object) -> dict[str, object]:
+            raise AssertionError(
+                "Ohne Meross-Zugangsdaten haette hier nichts angerufen werden duerfen"
+            )
+
+    session_cache = MerossSessionCache()
+    fake_app = types.SimpleNamespace(
+        state=types.SimpleNamespace(
+            session_factory=fabrik,
+            publisher=Recorder(),
+            publication_state=PublicationState(),
+            meross_transport=_UnusedJsonTransport(),
+            meross_session_cache=session_cache,
+            # The frozen, start-of-process bolt (finding C) -- `_lifespan` always
+            # sets this before either background task starts; a bare
+            # `SimpleNamespace` here has to say so explicitly.
+            sending_allowed=True,
+        )
+    )
+
+    captured: dict[str, object] = {}
+    real_publication_cycle = app_modul.publication_cycle
+
+    async def _recording_publication_cycle(*args: object, **kwargs: object) -> int:
+        captured.update(kwargs)
+        return await real_publication_cycle(*args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(app_modul, "publication_cycle", _recording_publication_cycle)
+
+    waited: list[float] = []
+
+    async def _sleep(seconds: float) -> None:
+        waited.append(seconds)
+        if len(waited) == 2:
+            raise asyncio.CancelledError
+
+    monkeypatch.setattr(app_modul.asyncio, "sleep", _sleep)
+    with pytest.raises(asyncio.CancelledError):
+        await app_modul._shadow_loop(fake_app)  # type: ignore[arg-type]
+
+    # The property finding B is about: the cache and the frozen bolt actually
+    # reached `publication_cycle` -- not `None` and not the unhelpful default.
+    assert captured.get("meross_session_cache") is session_cache
+    assert captured.get("meross_switching_allowed") is True
+    engine.dispose()
+
+
+@pytest.mark.anyio
+async def test_the_meross_sign_in_never_happens_while_a_write_transaction_is_open(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Cross-review finding D. In an earlier version, awaiting the Meross sign-in
+    from *inside* the cycle's own `session_scope` kept the SQLite file locked for as
+    long as the cloud's HTTP call took (up to its own 20 second timeout) -- other
+    requests answered with 500 and 401 for the whole duration. `ensure_transport()`
+    is deliberately called before `with session_scope(...)` opens to avoid exactly
+    that (see the comment right above that call in `_shadow_loop`). The reviewer
+    reproduced the old bug by hand, moving that one call back inside the block, and
+    the entire test suite -- coverage unchanged at 100% -- stayed green: nothing
+    tests the property itself, only that some particular ordering happened to hold.
+
+    This tests the property directly instead of the call order in the source:
+    `session_scope` is wrapped to record whether a write transaction is open, and
+    the stand-in Meross transport checks that flag the instant its own network call
+    (`post_json`, from `sign_in()`) is reached. A regression that moves the
+    sign-in back inside `session_scope` -- by whatever means -- makes this fail,
+    without caring how the source happens to be structured to achieve that.
+    """
+    engine, fabrik = _own_database(tmp_path, "meross-vor-transaktion")
+    with fabrik() as http_session:
+        create_settings(http_session)
+        sensor_status_of(http_session, "keine_quelle")
+        create_zone(http_session, "flur")
+        http_session.commit()
+
+    session_open = False
+    violation_seen = False
+
+    real_session_scope = app_modul.session_scope
+
+    @contextlib.contextmanager
+    def _tracking_session_scope(
+        factory: sessionmaker[Session],
+    ) -> Iterator[Session]:
+        nonlocal session_open
+        with real_session_scope(factory) as http_session:
+            session_open = True
+            try:
+                yield http_session
+            finally:
+                session_open = False
+
+    monkeypatch.setattr(app_modul, "session_scope", _tracking_session_scope)
+
+    call_count = 0
+
+    class _CheckingTransport:
+        async def post_json(
+            self, url: str, body: Mapping[str, object], headers: Mapping[str, str]
+        ) -> Mapping[str, object]:
+            nonlocal violation_seen, call_count
+            call_count += 1
+            if session_open:
+                violation_seen = True
+            # Any failure is fine here -- the property under test is *when* this
+            # was reached, not what it returns. `ensure_transport()` treats a
+            # `MerossError` (which `sign_in()` raises for a malformed answer) the
+            # same as any other rejected sign-in: no transport, nothing cached.
+            return {"apiStatus": 5000, "info": "absichtlich kein Erfolg"}
+
+    class _Publisher:
+        """A stand-in publisher -- needed only so the guard around
+        `ensure_transport()` (`if ... publisher is not None and meross_http is not
+        None`) actually lets the call through; without it this test would exercise
+        nothing at all."""
+
+        async def publishing(
+            self, topic: str, payload: str, *, switches: bool, retained: bool = False
+        ) -> bool:
+            return True
+
+    from thermoctl.services.publishing import PublicationState
+
+    fake_app = types.SimpleNamespace(
+        state=types.SimpleNamespace(
+            session_factory=fabrik,
+            meross_transport=_CheckingTransport(),
+            publisher=_Publisher(),
+            publication_state=PublicationState(),
+        )
+    )
+    monkeypatch.setattr(
+        app_modul,
+        "get_settings",
+        lambda: Settings(
+            _env_file=None,
+            database_url="sqlite://",
+            secret_key="q" * 32,
+            meross_email="a@b.de",
+            meross_password="geheim",  # type: ignore[arg-type]
+        ),
+    )
+
+    waited: list[float] = []
+
+    async def _sleep(seconds: float) -> None:
+        waited.append(seconds)
+        if len(waited) == 2:
+            raise asyncio.CancelledError
+
+    monkeypatch.setattr(app_modul.asyncio, "sleep", _sleep)
+    with pytest.raises(asyncio.CancelledError):
+        await app_modul._shadow_loop(fake_app)  # type: ignore[arg-type]
+
+    assert call_count == 1, "Die Anmeldung wurde nie versucht -- der Test prueft nichts"
+    assert not violation_seen, (
+        "Die Meross-Anmeldung lief waehrend eine Schreibtransaktion offen war"
+    )
     engine.dispose()
 
 
