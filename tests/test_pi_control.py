@@ -19,6 +19,7 @@ the project has none installed, and a fixed seed keeps failures reproducible.
 
 from __future__ import annotations
 
+import dataclasses
 import random
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
@@ -985,3 +986,390 @@ class TestPiCycleSwitched:
         result = pi_cycle(state, _cycle(now, context="schedule:default", error_k="10"))
         assert result.heating is True
         assert result.switched is False
+
+
+# --------------------------------------------------------------------------- #
+# 6. Mutation-testing follow-up (cosmic-ray-pi-control.toml). Closes the 53
+# survivors from the second measurement -- see `cosmic-ray-pi-control-assessment.md`
+# for the full accounting, including which mutants are classified as equivalent
+# rather than tested here, and why.
+# --------------------------------------------------------------------------- #
+
+
+class TestFixedConstantsAndNeutralDefaults:
+    """Direct, literal checks of the module's few fixed numbers (section 3: 'nicht
+    ein dritter Tuning-Parameter') and of the neutral defaults a reset produces.
+    Each of these is read by a caller as a concrete fact -- not just a value that
+    happens to cancel out inside a larger calculation already covered elsewhere --
+    so a mutation to the literal itself must fail a test that pins the literal."""
+
+    def test_window_length_is_exactly_fifteen_minutes(self) -> None:
+        assert WINDOW_SECONDS == 900
+
+    def test_remainder_bound_matches_the_window_length(self) -> None:
+        assert REMAINDER_LIMIT_S == Decimal(900)
+
+    def test_activation_ceiling_is_exactly_sixty_seconds(self) -> None:
+        assert MAX_CONTROL_CYCLE_SECONDS == 60
+
+    def test_arming_waits_for_a_boundary_exactly_nine_hundred_seconds_out(self) -> None:
+        """Deliberately not built from the `WINDOW_SECONDS` import on the
+        expectation side too -- comparing a value against the very constant that
+        produced it proves nothing once that constant is the thing being mutated.
+        `_at(minute=45)` is a plain, independent literal."""
+        now = _at(minute=37)
+        state = reset_pi_state(RESET_REASON_ARMING, now=now, await_next_boundary=True)
+        assert state.awaiting_boundary_until == _at(minute=45)
+
+    def test_neutral_pi_state_starts_with_no_accumulated_error(self) -> None:
+        assert NEUTRAL_PI_STATE.integral == Decimal(0)
+
+    def test_neutral_modulator_state_starts_off(self) -> None:
+        """A freshly reset zone must not assume it is already heating."""
+        assert NEUTRAL_MODULATOR_STATE.on is False
+
+
+class TestPiDtOneSecondBoundary:
+    def test_a_one_second_gap_is_still_integrated(self) -> None:
+        previous = _at()
+        now = previous + timedelta(seconds=1)
+        assert pi_dt(previous_evaluated_at=previous, now=now, expected_cycle_seconds=60) == 1
+
+
+class TestPiArithmeticWindupBoundaries:
+    """The anti-windup freeze (section 2) must hold the integral at its *true*
+    prior value -- not merely land on the same clamped output that a non-frozen
+    step would also produce once the output is capped at 0 or 1 anyway. Every
+    existing windup test starts the integral already at the 0/1 ceiling, where
+    freezing and not-freezing are indistinguishable because the clamp masks the
+    difference; these start strictly inside (0, 1) so the two paths actually
+    diverge."""
+
+    def test_freeze_preserves_the_true_integral_with_a_large_saturating_error(self) -> None:
+        _, integral = pi_arithmetic(
+            integral=Decimal("0.9"),
+            error_k=Decimal("2"),
+            dt_seconds=Decimal(60),
+            gain_per_k=Decimal("0.25"),
+            integral_time_minutes=Decimal(180),
+        )
+        assert integral == Decimal("0.9")
+
+    def test_freeze_triggers_right_at_the_saturation_edge_not_only_far_past_it(self) -> None:
+        """error_k=0.5 alone would not saturate u -- only combined with the
+        existing integral does u_before reach exactly 1. A freeze condition that
+        only engages for much larger errors would miss this."""
+        _, integral = pi_arithmetic(
+            integral=Decimal("0.9"),
+            error_k=Decimal("0.5"),
+            dt_seconds=Decimal(60),
+            gain_per_k=Decimal("0.25"),
+            integral_time_minutes=Decimal(180),
+        )
+        assert integral == Decimal("0.9")
+
+    def test_freeze_preserves_the_true_integral_at_low_saturation(self) -> None:
+        _, integral = pi_arithmetic(
+            integral=Decimal("0.1"),
+            error_k=Decimal("-0.5"),
+            dt_seconds=Decimal(60),
+            gain_per_k=Decimal("0.25"),
+            integral_time_minutes=Decimal(180),
+        )
+        assert integral == Decimal("0.1")
+
+
+class TestWindowModulateValidationBoundaries:
+    def test_a_negative_u_raw_is_rejected(self) -> None:
+        with pytest.raises(ValueError):
+            window_modulate(
+                NEUTRAL_MODULATOR_STATE,
+                now=_at(),
+                u_raw=Decimal("-0.5"),
+                dt_seconds=Decimal(60),
+                pi_min_on_seconds=60,
+                pi_min_off_seconds=60,
+            )
+
+    def test_a_one_second_dt_is_accepted_and_integrated_exactly(self) -> None:
+        result = window_modulate(
+            NEUTRAL_MODULATOR_STATE,
+            now=_at(),
+            u_raw=Decimal("0.5"),
+            dt_seconds=Decimal(1),
+            pi_min_on_seconds=60,
+            pi_min_off_seconds=60,
+        )
+        assert result.state.remainder_s == Decimal("0.5")
+
+
+class TestWindowModulateCorruptedFrozenDuty:
+    def test_a_missing_frozen_duty_within_the_current_window_is_refrozen_not_left_none(
+        self,
+    ) -> None:
+        """A `window_start` that already matches the current boundary but a
+        missing `frozen_duty` describes a corrupted persisted row -- the two
+        fields are supposed to be set together every window. The modulator must
+        recover by freezing a fresh duty this cycle instead of operating on (and
+        eventually asserting against) a `None` duty."""
+        now = _at()
+        state = ModulatorState(
+            on=False,
+            held_for_s=None,
+            remainder_s=Decimal(0),
+            window_start=window_start_for(now),
+            frozen_duty=None,
+        )
+        result = window_modulate(
+            state,
+            now=now,
+            u_raw=Decimal("1"),
+            dt_seconds=Decimal(60),
+            pi_min_on_seconds=60,
+            pi_min_off_seconds=60,
+        )
+        assert result.on is True
+        assert result.state.frozen_duty == Decimal("1")
+
+
+class TestWindowModulateMinimumDurationBoundary:
+    def test_held_for_exactly_the_minimum_duration_is_no_longer_blocked(self) -> None:
+        """`held_for_s == pi_min_off_seconds` has already satisfied the minimum --
+        the modulator must decide by the remainder from here on, not stay held."""
+        state = ModulatorState(
+            on=False,
+            held_for_s=300,
+            remainder_s=Decimal(5),
+            window_start=_at(),
+            frozen_duty=Decimal("0.5"),
+        )
+        result = window_modulate(
+            state,
+            now=_at(minute=1),
+            u_raw=Decimal("0.5"),
+            dt_seconds=Decimal(60),
+            pi_min_on_seconds=300,
+            pi_min_off_seconds=300,
+        )
+        assert result.reason_code == MODULATOR_REASON_REGULAR
+        assert result.on is True  # remainder_s=5 > 0 favours on
+
+
+class TestWindowModulateRegularTieBreakBoundary:
+    def test_a_small_positive_remainder_between_zero_and_one_still_favours_on(self) -> None:
+        state = ModulatorState(
+            on=False,
+            held_for_s=1000,
+            remainder_s=Decimal("0.5"),
+            window_start=_at(),
+            frozen_duty=Decimal("0.5"),
+        )
+        result = window_modulate(
+            state,
+            now=_at(minute=1),
+            u_raw=Decimal("0.5"),
+            dt_seconds=Decimal(60),
+            pi_min_on_seconds=60,
+            pi_min_off_seconds=60,
+        )
+        assert result.on is True
+        assert result.reason_code == MODULATOR_REASON_REGULAR
+
+
+class TestWindowModulateRemainderThresholdBoundary:
+    """Section 3's remainder bound is exactly ±900 seconds (`REMAINDER_LIMIT_S`).
+    A below-minimum collision must hold exactly at the bound and only override
+    once it would be *exceeded* -- these four cases pin both the bound's own
+    value and the strict (not inclusive) comparison, on both signs. `duty=0.9` is
+    deliberately not 0 or 1, so these land in the ordinary below-minimum branch
+    rather than the separate 'duty is absolute' short-circuit above it."""
+
+    def test_a_projected_remainder_of_exactly_nine_hundred_still_holds(self) -> None:
+        state = ModulatorState(
+            on=False,
+            held_for_s=0,
+            remainder_s=Decimal(846),
+            window_start=_at(),
+            frozen_duty=Decimal("0.9"),
+        )
+        result = window_modulate(
+            state,
+            now=_at(minute=1),
+            u_raw=Decimal("0.9"),
+            dt_seconds=Decimal(60),
+            pi_min_on_seconds=300,
+            pi_min_off_seconds=300,
+        )
+        assert result.switched is False
+        assert result.reason_code == MODULATOR_REASON_HELD
+
+    def test_a_projected_remainder_of_nine_hundred_and_one_forces_the_switch(self) -> None:
+        state = ModulatorState(
+            on=False,
+            held_for_s=0,
+            remainder_s=Decimal(847),
+            window_start=_at(),
+            frozen_duty=Decimal("0.9"),
+        )
+        result = window_modulate(
+            state,
+            now=_at(minute=1),
+            u_raw=Decimal("0.9"),
+            dt_seconds=Decimal(60),
+            pi_min_on_seconds=300,
+            pi_min_off_seconds=300,
+        )
+        assert result.switched is True
+        assert result.on is True
+        assert result.reason_code == MODULATOR_REASON_TASTGRAD_VORRANG
+
+    def test_a_projected_remainder_of_exactly_minus_nine_hundred_still_holds(self) -> None:
+        state = ModulatorState(
+            on=True,
+            held_for_s=0,
+            remainder_s=Decimal(-894),
+            window_start=_at(),
+            frozen_duty=Decimal("0.9"),
+        )
+        result = window_modulate(
+            state,
+            now=_at(minute=1),
+            u_raw=Decimal("0.9"),
+            dt_seconds=Decimal(60),
+            pi_min_on_seconds=300,
+            pi_min_off_seconds=300,
+        )
+        assert result.switched is False
+        assert result.reason_code == MODULATOR_REASON_HELD
+
+    def test_a_projected_remainder_of_minus_nine_hundred_and_one_forces_the_switch(self) -> None:
+        state = ModulatorState(
+            on=True,
+            held_for_s=0,
+            remainder_s=Decimal(-895),
+            window_start=_at(),
+            frozen_duty=Decimal("0.9"),
+        )
+        result = window_modulate(
+            state,
+            now=_at(minute=1),
+            u_raw=Decimal("0.9"),
+            dt_seconds=Decimal(60),
+            pi_min_on_seconds=300,
+            pi_min_off_seconds=300,
+        )
+        assert result.switched is True
+        assert result.on is False
+        assert result.reason_code == MODULATOR_REASON_TASTGRAD_VORRANG
+
+
+class TestHeldForAccumulation:
+    def test_held_duration_accumulates_the_elapsed_seconds_across_cycles(self) -> None:
+        """`held_for_s` is the running count the PI minimum-duration check
+        compares against `pi_min_on_seconds` / `pi_min_off_seconds` -- it must add
+        each cycle's `dt` to the running total, not replace it or combine it with
+        a floor-division, shift, or bitwise operator."""
+        state = ModulatorState(
+            on=False,
+            held_for_s=7,
+            remainder_s=Decimal(0),
+            window_start=_at(),
+            frozen_duty=Decimal("0.5"),
+        )
+        result = window_modulate(
+            state,
+            now=_at(minute=1),
+            u_raw=Decimal("0.5"),
+            dt_seconds=Decimal(3),
+            pi_min_on_seconds=1000,
+            pi_min_off_seconds=1000,
+        )
+        assert result.switched is False
+        assert result.state.held_for_s == 10
+
+
+class TestPiEligibleControlCycleBoundaries:
+    _SWITCH_ONLY = ActuatorProfile(
+        self_regulating=False, has_switch_capability=True, has_thermostat_capability=False
+    )
+
+    def test_a_one_second_control_cycle_is_not_rejected_as_non_positive(self) -> None:
+        result = pi_eligible(
+            [self._SWITCH_ONLY],
+            control_cycle_seconds=1,
+            pi_min_on_seconds=60,
+            pi_min_off_seconds=60,
+        )
+        assert result.eligible is True
+
+    def test_sixty_one_seconds_is_over_the_activation_ceiling(self) -> None:
+        """A literal 61, not `MAX_CONTROL_CYCLE_SECONDS + 1` -- reusing the
+        mutated constant on both sides would prove nothing."""
+        result = pi_eligible(
+            [self._SWITCH_ONLY],
+            control_cycle_seconds=61,
+            pi_min_on_seconds=300,
+            pi_min_off_seconds=300,
+        )
+        assert result.eligible is False
+
+
+class TestDataclassesStayFrozen:
+    """The module docstring's purity guarantee -- 'no mutation of the arguments
+    (every dataclass is frozen)' -- only holds if a caller literally cannot
+    mutate a state or result object handed back to it, e.g. to keep a previous
+    cycle's `PiCycleOutput` around for a log line while `pi_cycle()` builds an
+    unrelated new one via `replace()` for the next one."""
+
+    def test_modulator_state_rejects_attribute_assignment(self) -> None:
+        with pytest.raises(dataclasses.FrozenInstanceError):
+            NEUTRAL_MODULATOR_STATE.on = True  # type: ignore[misc]
+
+    def test_modulator_result_rejects_attribute_assignment(self) -> None:
+        result = window_modulate(
+            NEUTRAL_MODULATOR_STATE,
+            now=_at(),
+            u_raw=Decimal("0.5"),
+            dt_seconds=Decimal(60),
+            pi_min_on_seconds=60,
+            pi_min_off_seconds=60,
+        )
+        with pytest.raises(dataclasses.FrozenInstanceError):
+            result.on = False  # type: ignore[misc]
+
+    def test_pi_state_rejects_attribute_assignment(self) -> None:
+        with pytest.raises(dataclasses.FrozenInstanceError):
+            NEUTRAL_PI_STATE.integral = Decimal(1)  # type: ignore[misc]
+
+    def test_pi_cycle_input_rejects_attribute_assignment(self) -> None:
+        cycle = _cycle(_at())
+        with pytest.raises(dataclasses.FrozenInstanceError):
+            cycle.error_k = Decimal(5)  # type: ignore[misc]
+
+    def test_pi_cycle_output_rejects_attribute_assignment(self) -> None:
+        result = pi_cycle(NEUTRAL_PI_STATE, _cycle(_at()))
+        with pytest.raises(dataclasses.FrozenInstanceError):
+            result.pi_available = True  # type: ignore[misc]
+
+    def test_actuator_profile_rejects_attribute_assignment(self) -> None:
+        profile = ActuatorProfile(
+            self_regulating=False, has_switch_capability=True, has_thermostat_capability=False
+        )
+        with pytest.raises(dataclasses.FrozenInstanceError):
+            profile.self_regulating = True  # type: ignore[misc]
+
+    def test_pi_eligibility_rejects_attribute_assignment(self) -> None:
+        result = pi_eligible(
+            [
+                ActuatorProfile(
+                    self_regulating=False,
+                    has_switch_capability=True,
+                    has_thermostat_capability=False,
+                )
+            ],
+            control_cycle_seconds=60,
+            pi_min_on_seconds=60,
+            pi_min_off_seconds=60,
+        )
+        with pytest.raises(dataclasses.FrozenInstanceError):
+            result.eligible = False  # type: ignore[misc]
