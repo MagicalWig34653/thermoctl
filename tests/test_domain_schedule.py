@@ -1,3 +1,4 @@
+from dataclasses import FrozenInstanceError
 from datetime import datetime
 from decimal import Decimal
 
@@ -17,8 +18,12 @@ from thermoctl.db.models.operations import AuditEvent
 from thermoctl.db.models.override import ZoneOverride
 from thermoctl.db.models.schedule import SchedulePoint
 from thermoctl.db.models.zone import SetpointMode
+from thermoctl.domain import schedule as schedule_module
 from thermoctl.domain.schedule import (
+    MINUTES_PER_WEEK,
+    DaySegment,
     ScheduleError,
+    Setpoint,
     cancel_override,
     change_schedule_point_mode,
     copy_schedule_day,
@@ -28,7 +33,9 @@ from thermoctl.domain.schedule import (
     paint_schedule_interval,
     resolved_setpoint,
     schedule_snapshot,
+    time_of_day_in_minutes,
     undo_schedule_gesture,
+    week_segments,
 )
 
 
@@ -49,6 +56,156 @@ def _stored_point(
 def _stored_snapshot(session: Session, zone_id: int) -> tuple[tuple[int, int, int], ...]:
     return schedule_snapshot(
         list(session.query(SchedulePoint).filter_by(zone_id=zone_id).all())
+    )
+
+
+def test_schedule_value_objects_are_immutable_with_documented_defaults() -> None:
+    setpoint = Setpoint(Decimal("20.5"), "test reason", "comfort")
+    segment = DaySegment(3, 17, 1439, "Comfort")
+
+    assert setpoint.mode_id is None
+    assert segment.mode_id == 0
+    assert segment.point_id is None
+    with pytest.raises(FrozenInstanceError):
+        setpoint.temperature_c = Decimal("19.0")
+    with pytest.raises(FrozenInstanceError):
+        segment.end_minute = 1440
+
+
+def test_week_constant_and_time_parser_preserve_real_calendar_values() -> None:
+    assert MINUTES_PER_WEEK == 10080
+    assert time_of_day_in_minutes("12:34") == 754
+    for invalid in ("24:00", "12:60", "12", "12:x"):
+        with pytest.raises(ScheduleError):
+            time_of_day_in_minutes(invalid)
+
+
+def test_calendar_helpers_represent_thursday_afternoon_without_aliasing() -> None:
+    point_at_thursday = SchedulePoint(
+        weekday=4, minute_of_day=17 * 60 + 23, setpoint_mode_id=9
+    )
+
+    assert schedule_module._week_minute(datetime(2026, 9, 3, 17, 23)) == 5363
+    assert schedule_module._point_minute(point_at_thursday) == 5363
+    assert schedule_module._label_time(17 * 60 + 23) == "17:23"
+    assert schedule_module._label_for(4, 17 * 60 + 23) == "Do 17:23"
+
+
+def test_canonical_schedule_removes_only_redundant_ring_switches() -> None:
+    assert schedule_module._canonical_snapshot(
+        {1563: 11, 2194: 22, 4520: 22, 6081: 11}
+    ) == ((2, 754, 22), (5, 321, 11))
+
+
+@pytest.mark.parametrize("weekday", [0, 8])
+def test_painting_rejects_each_weekday_outside_the_calendar(
+    session: Session, weekday: int
+) -> None:
+    create_settings(session)
+    zone = create_zone(session, f"invalid-paint-weekday-{weekday}")
+    mode = create_mode(session, f"invalid-paint-mode-{weekday}")
+    with pytest.raises(ScheduleError, match="Wochentag"):
+        paint_schedule_interval(
+            session, zone, weekday=weekday, start_minute=1, end_minute=1439,
+            mode_id=mode.id, user_id=None,
+        )
+
+
+@pytest.mark.parametrize(
+    ("start_minute", "end_minute"),
+    [(-1, 1), (1440, 1440), (0, 0), (0, 1441), (754, 754), (755, 754)],
+)
+def test_painting_rejects_every_open_interval_boundary_violation(
+    session: Session, start_minute: int, end_minute: int
+) -> None:
+    create_settings(session)
+    zone = create_zone(session, f"pr-{start_minute}-{end_minute}")
+    mode = create_mode(session, f"pm-{start_minute}-{end_minute}")
+    with pytest.raises(ScheduleError, match="Zeitraum|Mitternacht"):
+        paint_schedule_interval(
+            session, zone, weekday=4, start_minute=start_minute,
+            end_minute=end_minute, mode_id=mode.id, user_id=None,
+        )
+
+
+def test_week_segments_keep_non_monday_offsets_and_switch_ownership() -> None:
+    night = SchedulePoint(weekday=2, minute_of_day=123, setpoint_mode_id=11)
+    day = SchedulePoint(weekday=3, minute_of_day=754, setpoint_mode_id=22)
+    night.id = 101
+    day.id = 202
+
+    segments = week_segments([day, night], {11: "Night", 22: "Day"})
+
+    wednesday = [segment for segment in segments if segment.weekday == 3]
+    assert wednesday == [
+        DaySegment(3, 0, 754, "Night", 11, None),
+        DaySegment(3, 754, 1440, "Day", 22, 202),
+    ]
+    assert len(segments) == 9
+
+
+def test_current_and_next_point_use_weekday_and_minute_components() -> None:
+    tuesday = SchedulePoint(weekday=2, minute_of_day=123, setpoint_mode_id=1)
+    friday = SchedulePoint(weekday=5, minute_of_day=754, setpoint_mode_id=2)
+
+    moment = datetime(2026, 9, 4, 12, 33)
+    assert current_point([tuesday, friday], moment) is tuesday
+    assert next_point([tuesday, friday], moment) == datetime(2026, 9, 4, 12, 34)
+    assert next_point([tuesday, friday], datetime(2026, 9, 6, 23, 59)) == datetime(
+        2026, 9, 8, 2, 3
+    )
+
+
+def test_painting_a_non_monday_interval_preserves_exact_minute_boundaries(
+    session: Session,
+) -> None:
+    settings = create_settings(session)
+    source(session)
+    zone = create_zone(session, "calendar-paint")
+    comfort = create_mode(session, "calendar-comfort", "Comfort")
+
+    paint_schedule_interval(
+        session,
+        zone,
+        weekday=3,
+        start_minute=754,
+        end_minute=837,
+        mode_id=comfort.id,
+        user_id=None,
+    )
+
+    assert _stored_snapshot(session, zone.id) == (
+        (3, 754, comfort.id),
+        (3, 837, settings.frost_protection_mode_id),
+    )
+
+
+def test_copying_between_non_adjacent_days_replaces_only_the_target_day(
+    session: Session,
+) -> None:
+    create_settings(session)
+    source(session)
+    zone = create_zone(session, "calendar-copy")
+    night = create_mode(session, "calendar-night", "Night")
+    comfort = create_mode(session, "calendar-day", "Comfort")
+    _stored_point(session, zone.id, 2, 123, night.id)
+    _stored_point(session, zone.id, 2, 754, comfort.id)
+    _stored_point(session, zone.id, 4, 200, comfort.id)
+    _stored_point(session, zone.id, 5, 321, night.id)
+
+    copy_schedule_day(
+        session,
+        zone,
+        source_weekday=2,
+        target_weekdays=[4],
+        user_id=None,
+    )
+
+    assert _stored_snapshot(session, zone.id) == (
+        (2, 754, comfort.id),
+        (4, 0, night.id),
+        (4, 754, comfort.id),
+        (5, 321, night.id),
     )
 
 
