@@ -119,6 +119,92 @@ def set_user_active(
     )
 
 
+def _grants_admin_permission(session: Session, group_id: int | None) -> bool:
+    """Whether this group carries the plant-wide `user.manage` permission."""
+    if group_id is None:
+        return False
+    return (
+        session.scalar(
+            select(GroupPermission.id)
+            .join(Permission, Permission.id == GroupPermission.permission_id)
+            .where(
+                GroupPermission.access_group_id == group_id,
+                Permission.code == ADMIN_PERMISSION,
+                GroupPermission.zone_id.is_(None),
+            )
+            .limit(1)
+        )
+        is not None
+    )
+
+
+def set_user_group(
+    session: Session, user: User, group_id: int | None, *, actor_id: int | None,
+    source: str = "web",
+) -> None:
+    """Assigns a user to exactly one group, or to none at all.
+
+    The schema allows a user to belong to several groups at once (`UserAccessGroup`
+    is a plain many-to-many table), but the interface has only ever offered a single
+    `<select>` -- at creation, and now here as well. Kept that way deliberately:
+    "which group is this person in" stays a single, always-answerable question
+    instead of a set that could disagree with itself. Multiple concurrent group
+    memberships were not part of the reported gap and are not built speculatively;
+    whoever needs them can widen this function and the form that calls it later.
+    """
+    new_group: AccessGroup | None = None
+    if group_id is not None:
+        new_group = session.get(AccessGroup, group_id)
+        if new_group is None:
+            raise AdministrationError("Die Gruppe gibt es nicht.")
+
+    current = list(
+        session.scalars(
+            select(UserAccessGroup).where(UserAccessGroup.user_id == user.id)
+        )
+    )
+    old_ids = {m.access_group_id for m in current}
+    new_ids = {group_id} if group_id is not None else set()
+    if old_ids == new_ids:
+        return  # No change -- nothing to guard against, nothing to log.
+
+    # Same guard as `set_user_active`: the last active user carrying `user.manage`
+    # must not be moved into a group that no longer grants it -- otherwise nobody
+    # would be left to hand out permissions at all, recoverable only through the
+    # database.
+    if user.is_active and _last_administrator(session, user) and not _grants_admin_permission(
+        session, group_id
+    ):
+        raise AdministrationError(
+            f"'{user.username}' ist der letzte aktive Benutzer mit dem Recht "
+            f"{ADMIN_PERMISSION}. Diese Gruppe wuerde ihm das Recht nehmen, und "
+            "niemand koennte mehr Benutzer verwalten."
+        )
+
+    old_names = sorted(
+        name
+        for (name,) in session.execute(
+            select(AccessGroup.name)
+            .join(UserAccessGroup, UserAccessGroup.access_group_id == AccessGroup.id)
+            .where(UserAccessGroup.user_id == user.id)
+        )
+    )
+    old_label = ", ".join(old_names) if old_names else "ohne Gruppe"
+    new_label = new_group.name if new_group is not None else "ohne Gruppe"
+
+    for membership in current:
+        session.delete(membership)
+    if group_id is not None:
+        session.add(UserAccessGroup(user_id=user.id, access_group_id=group_id))
+    session.flush()
+    audit.record(
+        session, source=source, action="user.group_changed", object_type="user",
+        object_id=str(user.id),
+        summary=f"Gruppe von '{user.username}' geaendert: {old_label} -> {new_label}",
+        user_id=actor_id,
+    )
+
+
 def set_password(
     session: Session, user: User, new_password: str, *, actor_id: int | None,
     source: str = "web",

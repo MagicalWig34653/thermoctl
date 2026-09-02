@@ -11,7 +11,7 @@ from thermoctl.auth.passwords import PasswordTooShort
 from thermoctl.auth.tokens import issue_token
 from thermoctl.db.base import utcnow
 from thermoctl.db.models.credential import ApiToken
-from thermoctl.db.models.identity import AccessGroup, GroupPermission, User
+from thermoctl.db.models.identity import AccessGroup, GroupPermission, User, UserAccessGroup
 from thermoctl.db.models.lookup import Permission
 from thermoctl.db.models.operations import Setting
 from thermoctl.db.models.zone import Zone
@@ -24,6 +24,7 @@ from thermoctl.domain.administration import (
     set_group_permissions,
     set_password,
     set_user_active,
+    set_user_group,
 )
 from thermoctl.domain.authz import PERMISSION_AREAS, Forbidden, require
 from thermoctl.domain.principal import Principal
@@ -47,10 +48,23 @@ def _user_list(
     errors: FormError | None = None,
     values: dict[str, object] | None = None, hint: str | None = None,
 ) -> Response:
+    # One group id per user, for preselecting it in each row's form. A user could in
+    # principle carry more than one membership (the schema allows it, see
+    # `set_user_group`'s docstring); if that ever happens outside this interface, the
+    # lowest group id wins here so the preselection stays deterministic instead of
+    # depending on query order.
+    user_group_id: dict[int, int] = {
+        user_id: access_group_id
+        for user_id, access_group_id in session.execute(
+            select(UserAccessGroup.user_id, UserAccessGroup.access_group_id)
+            .order_by(UserAccessGroup.user_id, UserAccessGroup.access_group_id.desc())
+        )
+    }
     return form_again(
         request, "users.html", values or {}, errors,
         user=session.scalars(select(User).order_by(User.username)).all(),
         groups=session.scalars(select(AccessGroup).order_by(AccessGroup.name)).all(),
+        user_group_id=user_group_id,
         own_id=own_id,
         hint=hint,
         is_htmx=is_partial_swap(request),
@@ -117,6 +131,33 @@ async def user_active_view(
     except AdministrationError as exc:
         # The lockout guard is not a form error on a field but a statement about the
         # state of the plant -- it belongs as a hint above the list.
+        return _user_list(request, session, principal.user_id, hint=str(exc))
+    return RedirectResponse("/users", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/users/{user_id}/group")
+async def user_group_view(
+    request: Request,
+    user_id: int,
+    principal: Annotated[Principal, Depends(current_principal)],
+    session: Annotated[Session, Depends(get_session)],
+    group_id: Annotated[str, Form()] = "",
+) -> Response:
+    require(principal, "user.manage")
+    user_record = session.get(User, user_id)
+    if user_record is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Benutzer nicht gefunden")
+    try:
+        parsed_group_id = int(group_id) if group_id else None
+    except ValueError:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, "Unbrauchbare Gruppenangabe"
+        ) from None
+    try:
+        set_user_group(session, user_record, parsed_group_id, actor_id=principal.user_id)
+    except AdministrationError as exc:
+        # As with the lockout guard on deactivation: a statement about the state of
+        # the plant, not an error tied to a single form field.
         return _user_list(request, session, principal.user_id, hint=str(exc))
     return RedirectResponse("/users", status_code=status.HTTP_303_SEE_OTHER)
 

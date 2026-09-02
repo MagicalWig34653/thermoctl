@@ -39,7 +39,7 @@ Beispiel sind ausschliesslich Platzhalter.
 
 ## Die Werkzeuge
 
-15 Stück, alle über dieselbe Domänenlogik wie Oberfläche und REST-Schnittstelle. Jedes
+16 Stück, alle über dieselbe Domänenlogik wie Oberfläche und REST-Schnittstelle. Jedes
 prüft dasselbe Recht wie der entsprechende REST-Endpunkt.
 
 | Werkzeug | Recht | Was es liefert |
@@ -51,6 +51,7 @@ prüft dasselbe Recht wie der entsprechende REST-Endpunkt.
 | `read_setpoints(zone_id)` | `zone.read` | die gesetzte Temperatur je Modus |
 | `list_devices()` | `device.read` | Anbindung, Fähigkeiten, letzte Nachricht, Batterie |
 | `shadow_decisions(zone_id, count=10)` | `zone.read` | die jüngsten Entscheidungen samt Grund |
+| `device_commands(zone, outcome, from_at, to_at, limit=100)` | `audit.read` | das Schaltprotokoll — jeder gesendete, unterdrückte oder gescheiterte Befehl an ein Gerät |
 | `override(zone_id, temperature_c, ends_at)` | `override.create` | legt eine Übersteuerung an |
 | `cancel_override(zone_id)` | `override.cancel` | beendet die laufende Übersteuerung |
 | `boost(zone_id)` | `override.create` | zieht die nächste Schaltung vor |
@@ -62,6 +63,16 @@ prüft dasselbe Recht wie der entsprechende REST-Endpunkt.
 
 Eine nicht sichtbare Zone wird wie eine unbekannte behandelt — die Antwort verrät nicht,
 dass es sie gibt.
+
+**`device_commands` prüft `audit.read`, nicht `zone.read`.** Wie die gleichnamige Ansicht
+in der Oberfläche und der REST-Endpunkt ist das Schaltprotokoll ein Protokoll über die
+ganze Anlage, nicht über eine einzelne Zone — ein auf eine Zone eingeschränktes Recht
+genügt hier nicht. `zone` filtert gegen die Namens-Momentaufnahme der Zeile, nicht gegen
+die aktuelle Zone, und findet deshalb auch Einträge einer inzwischen gelöschten Zone.
+`limit` ist wie überall dort, wo eine Tabelle keiner Aufbewahrungsfrist unterliegt, auf
+höchstens 500 begrenzt (Vorgabe 100) — ein Wert ausserhalb löst einen Fehler aus. Jeder
+Zeitpunkt trägt die Zeitzone ausdrücklich (`+00:00`), damit ein Eintrag auch Wochen
+später noch eindeutig neben einem Vorfallsbericht aus einer anderen Zeitzone liegt.
 
 **`boost` ist für ein Sprachmodell die verlässlichere Form von „mach es hier wärmer".** Es
 muss weder eine Temperatur noch eine Dauer raten, und nach dem Schaltpunkt räumt sich der

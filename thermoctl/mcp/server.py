@@ -1,5 +1,5 @@
 from collections.abc import Callable
-from datetime import datetime
+from datetime import UTC, datetime
 from decimal import Decimal
 from importlib import import_module
 from typing import Any, Protocol, cast
@@ -20,6 +20,7 @@ from thermoctl.db.models.state import ShadowDecision, ZoneState
 from thermoctl.db.models.zone import SetpointMode, Zone, ZoneSetpoint
 from thermoctl.domain.authz import principal_for_token, require, visible_zones
 from thermoctl.domain.control import LIMITS, arm, settings
+from thermoctl.domain.device_commands import DEFAULT_LIMIT, list_commands, naive_utc
 from thermoctl.domain.principal import Principal
 from thermoctl.domain.remote_control import boost as domain_boost
 from thermoctl.domain.schedule import (
@@ -218,6 +219,58 @@ def shadow_decisions(
             "reason": row.reason,
         }
         for row in rows
+    ]
+
+
+def _moment_utc(value: datetime | None) -> str | None:
+    """Like `_moment`, but never ambiguous about the zone.
+
+    Every other timestamp in this module reports naive UTC as a bare `isoformat()`,
+    which reads as local time to a caller in a different zone. The command log is
+    the one place a language model may be asked to reconcile against an
+    incident report someone else wrote down in their own zone, so it always
+    carries the offset explicitly.
+    """
+    return None if value is None else value.replace(tzinfo=UTC).isoformat()
+
+
+def device_commands(
+    session: Session,
+    plaintext: str,
+    zone: str | None = None,
+    outcome: str | None = None,
+    from_at: datetime | None = None,
+    to_at: datetime | None = None,
+    limit: int = DEFAULT_LIMIT,
+) -> list[dict[str, object]]:
+    """Reads the actuator command log -- the same protocol as `/device-commands`.
+
+    `audit.read`, not a zone permission: like the web view and the REST endpoint,
+    this is a protocol over the whole plant, not over a single zone.
+    """
+    _token, principal = _log_in(session, plaintext)
+    require(principal, "audit.read")
+    entries = list_commands(
+        session,
+        zone_name=zone,
+        from_at=naive_utc(from_at),
+        to_at=naive_utc(to_at),
+        outcome=outcome,
+        limit=limit,
+    )
+    return [
+        {
+            "sent_at": _moment_utc(entry.sent_at),
+            "source": entry.source,
+            "zone": entry.zone_name,
+            "device": entry.device_name,
+            "command": entry.command,
+            "payload": entry.payload,
+            "outcome": entry.outcome,
+            "error": entry.error,
+            "reason": entry.reason,
+        }
+        for entry in entries
     ]
 
 
@@ -474,6 +527,18 @@ def _register_tools(
         """Returns the latest reasoned shadow decisions of a visible zone."""
         with session_scope(factory) as session:
             return shadow_decisions(session, plaintext, zone_id, count)
+
+    @server.tool(name="device_commands")
+    def mcp_device_commands(
+        zone: str | None = None,
+        outcome: str | None = None,
+        from_at: datetime | None = None,
+        to_at: datetime | None = None,
+        limit: int = DEFAULT_LIMIT,
+    ) -> list[dict[str, object]]:
+        """Reads the actuator command log, newest first, filtered and capped."""
+        with session_scope(factory) as session:
+            return device_commands(session, plaintext, zone, outcome, from_at, to_at, limit)
 
     @server.tool(name="override")
     def mcp_override(

@@ -28,6 +28,7 @@ from thermoctl.domain.administration import (
     revoke_permission,
     set_password,
     set_user_active,
+    set_user_group,
 )
 from thermoctl.domain.administration import (
     create_user as domain_create_user,
@@ -234,3 +235,121 @@ def test_revoking_twice_does_not_change_the_timestamp(session: Session) -> None:
     first = token.revoked_at
     revoke_token(session, token, actor_id=None)
     assert token.revoked_at == first
+
+
+def test_changing_a_users_group_changes_their_rights(session: Session) -> None:
+    """This is the reported gap itself: the group of an existing user can change,
+    and the change actually takes effect, not just the row in `user_access_group`."""
+    from thermoctl.domain.authz import has_permission, principal_for_user
+
+    user = user_with_permissions(session, "umgehaengt", [("zone.read", None)])
+    old_group = session.scalar(select(AccessGroup).where(AccessGroup.name == "gruppe-umgehaengt"))
+    assert old_group is not None
+    new_group = _group_with_permissions_helper(session, "ziel", [("token.self", None)])
+
+    set_user_group(session, user, new_group.id, actor_id=None)
+
+    assert has_permission(principal_for_user(session, user), "token.self") is True
+    assert has_permission(principal_for_user(session, user), "zone.read") is False
+    membership = list(
+        session.scalars(select(UserAccessGroup).where(UserAccessGroup.user_id == user.id))
+    )
+    assert [m.access_group_id for m in membership] == [new_group.id]
+
+
+def test_assigning_no_group_removes_all_rights(session: Session) -> None:
+    from thermoctl.domain.authz import has_permission, principal_for_user
+
+    user = user_with_permissions(session, "entrechtet", [("zone.read", None)])
+    set_user_group(session, user, None, actor_id=None)
+    assert has_permission(principal_for_user(session, user), "zone.read") is False
+    assert (
+        session.scalar(select(UserAccessGroup).where(UserAccessGroup.user_id == user.id))
+        is None
+    )
+
+
+def test_changing_a_users_group_writes_an_audit_entry_with_before_and_after(
+    session: Session,
+) -> None:
+    user = user_with_permissions(session, "protokolliert", [("zone.read", None)])
+    new_group = _group_with_permissions_helper(session, "neuegruppe", [])
+    set_user_group(session, user, new_group.id, actor_id=None)
+    entry = session.scalar(
+        select(AuditEvent).where(AuditEvent.action == "user.group_changed")
+    )
+    assert entry is not None
+    assert "gruppe-protokolliert" in entry.summary
+    assert "neuegruppe" in entry.summary
+
+
+def test_the_last_administrator_cannot_be_moved_out_of_the_management_group(
+    session: Session,
+) -> None:
+    administrator = user_with_permissions(session, "einzigerverwalter", [("user.manage", None)])
+    harmless = _group_with_permissions_helper(session, "harmlos", [("zone.read", None)])
+    with pytest.raises(AdministrationError, match="letzte aktive Benutzer"):
+        set_user_group(session, administrator, harmless.id, actor_id=None)
+    membership = session.scalar(
+        select(UserAccessGroup).where(UserAccessGroup.user_id == administrator.id)
+    )
+    assert membership is not None and membership.access_group_id != harmless.id
+
+
+def test_the_last_administrator_cannot_be_moved_to_no_group(session: Session) -> None:
+    """"Ohne Gruppe" is the other way to take `user.manage` away from the last
+    active administrator, not just moving them into some other group."""
+    administrator = user_with_permissions(session, "einzigohnegruppe", [("user.manage", None)])
+    with pytest.raises(AdministrationError, match="letzte aktive Benutzer"):
+        set_user_group(session, administrator, None, actor_id=None)
+    assert (
+        session.scalar(
+            select(UserAccessGroup).where(UserAccessGroup.user_id == administrator.id)
+        )
+        is not None
+    )
+
+
+def test_the_second_to_last_administrator_can_change_group(session: Session) -> None:
+    """The lock must only catch the truly last one -- otherwise it gets in the way."""
+    first = user_with_permissions(session, "verwaltera", [("user.manage", None)])
+    user_with_permissions(session, "verwalterb", [("user.manage", None)])
+    harmless = _group_with_permissions_helper(session, "harmlos2", [("zone.read", None)])
+    set_user_group(session, first, harmless.id, actor_id=None)
+    membership = session.scalar(
+        select(UserAccessGroup).where(UserAccessGroup.user_id == first.id)
+    )
+    assert membership is not None and membership.access_group_id == harmless.id
+
+
+def test_reassigning_the_same_group_is_a_no_op(session: Session) -> None:
+    """Resubmitting the group a user already has must not write a spurious audit
+    entry and must not trip the lockout guard either."""
+    administrator = user_with_permissions(session, "unveraendert", [("user.manage", None)])
+    current_group = session.scalar(
+        select(AccessGroup).where(AccessGroup.name == "gruppe-unveraendert")
+    )
+    assert current_group is not None
+    set_user_group(session, administrator, current_group.id, actor_id=None)
+    assert (
+        session.scalar(select(AuditEvent).where(AuditEvent.action == "user.group_changed"))
+        is None
+    )
+
+
+def test_an_unknown_group_id_is_rejected(session: Session) -> None:
+    user = create_user(session, "fuersonstwas")
+    with pytest.raises(AdministrationError, match="gibt es nicht"):
+        set_user_group(session, user, 999999, actor_id=None)
+
+
+def _group_with_permissions_helper(
+    session: Session, name: str, permissions: list[tuple[str, int | None]]
+) -> AccessGroup:
+    """Local wrapper so this file does not need to import the private helper
+    `tests.helpers._group_with_permissions` under its underscored name."""
+    group = create_group(session, name=name, description=None, actor_id=None)
+    for code, zone_id in permissions:
+        ensure_permission(session, code, zone_scoped=zone_id is not None)
+        grant_permission(session, group, code, zone_id, actor_id=None)
+    return group

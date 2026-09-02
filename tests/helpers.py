@@ -34,7 +34,7 @@ from thermoctl.db.models.operations import Setting
 from thermoctl.db.models.override import ZoneOverride
 from thermoctl.db.models.passkey import UserPasskey
 from thermoctl.db.models.schedule import SchedulePoint
-from thermoctl.db.models.state import ShadowDecision, ZoneState
+from thermoctl.db.models.state import DeviceCommand, ShadowDecision, ZoneState
 from thermoctl.db.models.zone import SetpointMode, Zone, ZoneSetpoint
 
 # A violated CHECK constraint arrives as a different exception depending on the
@@ -396,6 +396,33 @@ def create_shadow_decision(session: Session, zone: Zone) -> ShadowDecision:
     session.add(decision)
     session.flush()
     return decision
+
+
+def create_device_command(
+    session: Session,
+    zone: Zone,
+    device: Device,
+    *,
+    at: datetime = datetime(2026, 8, 29, 8, 0),
+    outcome_code: str = "executed",
+    source_code: str = "system",
+) -> DeviceCommand:
+    entry = DeviceCommand(
+        sent_at=at,
+        source_id=source(session, source_code).id,
+        zone_id=zone.id,
+        zone_name=zone.name,
+        device_id=device.id,
+        device_name=device.display_name,
+        command="setpoint",
+        payload='{"occupied_heating_setpoint": 21.0}',
+        outcome_id=command_outcome(session, outcome_code).id,
+        error=None,
+        reason="Zeitplan",
+    )
+    session.add(entry)
+    session.flush()
+    return entry
 
 
 def create_passkey(

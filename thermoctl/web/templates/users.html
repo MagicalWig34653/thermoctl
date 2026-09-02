@@ -13,6 +13,7 @@
             <th scope="col">Anzeigename</th>
             <th scope="col">Benutzername</th>
             <th scope="col">Status</th>
+            <th scope="col">Gruppe</th>
             <th scope="col">Letzte Anmeldung</th>
             <th scope="col"></th>
         </tr>
@@ -28,6 +29,25 @@
                 {% else %}
                 <span class="badge text-bg-secondary">inaktiv</span>
                 {% endif %}
+            </td>
+            <td>
+                <form method="post" action="/users/{{ person.id }}/group"
+                      class="d-flex gap-1 align-items-center">
+                    <select class="form-select form-select-sm" name="group_id"
+                            aria-label="Gruppe fuer {{ person.username }}">
+                        <option value=""
+                                {% if person.id not in user_group_id %}selected{% endif %}>
+                            ohne Gruppe
+                        </option>
+                        {% for group in groups %}
+                        <option value="{{ group.id }}"
+                                {% if user_group_id.get(person.id)|string == group.id|string %}selected{% endif %}>
+                            {{ group.name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                    <button type="submit" class="btn btn-sm btn-outline-secondary">Setzen</button>
+                </form>
             </td>
             <td title="{{ person.last_login_at or '' }} UTC">{{ person.last_login_at|age }}</td>
             <td class="text-end">
@@ -56,11 +76,11 @@
         <div class="mb-3">
             <label class="form-label" for="group_id">Gruppe</label>
             <select class="form-select" id="group_id" name="group_id"
-                    aria-describedby="gruppe_id-hilfe">
+                    aria-describedby="group_id-help">
                 <option value="">ohne Gruppe</option>
                 {% for group in groups %}
                 <option value="{{ group.id }}"
-                        {% if values.get("gruppe_id", "")|string == group.id|string %}selected{% endif %}>
+                        {% if values.get("group_id", "")|string == group.id|string %}selected{% endif %}>
                     {{ group.name }}
                 </option>
                 {% endfor %}

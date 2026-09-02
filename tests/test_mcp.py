@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from tests.helpers import (
     create_device,
+    create_device_command,
     create_device_state,
     create_settings,
     create_shadow_decision,
@@ -141,6 +142,66 @@ def test_shadow_decisions_returns_the_most_recent_reason(session: Session) -> No
     ]
 
 
+def test_device_commands_reports_an_explicit_utc_offset(session: Session) -> None:
+    """Same requirement as the REST endpoint -- see CLAUDE.md and `docs/mcp.md`."""
+    zone = create_zone(session, "schaltzone")
+    geraet = create_device(session, "schaltgeraet")
+    create_device_command(session, zone, geraet, at=datetime(2026, 8, 29, 8, 0))
+    plaintext = _token(session, "schaltleser", [("audit.read", None)])
+
+    result = server.device_commands(session, plaintext)
+
+    assert result == [
+        {
+            "sent_at": "2026-08-29T08:00:00+00:00",
+            "source": "system",
+            "zone": "schaltzone",
+            "device": "schaltgeraet",
+            "command": "setpoint",
+            "payload": '{"occupied_heating_setpoint": 21.0}',
+            "outcome": "executed",
+            "error": None,
+            "reason": "Zeitplan",
+        }
+    ]
+
+
+def test_device_commands_denies_a_missing_permission(session: Session) -> None:
+    zone = create_zone(session, "unbefugtzone")
+    geraet = create_device(session, "unbefugtgeraet")
+    create_device_command(session, zone, geraet)
+    plaintext = _token(session, "unbefugt", [("zone.read", None)])
+
+    with pytest.raises(Forbidden, match="audit.read"):
+        server.device_commands(session, plaintext)
+
+
+def test_device_commands_filters_by_zone_and_outcome(session: Session) -> None:
+    zone_a = create_zone(session, "zone-a")
+    zone_b = create_zone(session, "zone-b")
+    device_a = create_device(session, "geraet-a")
+    device_b = create_device(session, "geraet-b")
+    create_device_command(session, zone_a, device_a, outcome_code="executed")
+    create_device_command(session, zone_b, device_b, outcome_code="failed")
+    plaintext = _token(session, "filterleser", [("audit.read", None)])
+
+    result = server.device_commands(session, plaintext, zone="zone-a")
+    assert [entry["device"] for entry in result] == ["geraet-a"]
+
+    result = server.device_commands(session, plaintext, outcome="failed")
+    assert [entry["device"] for entry in result] == ["geraet-b"]
+
+
+def test_device_commands_refuses_a_nonsensical_limit(session: Session) -> None:
+    zone = create_zone(session, "grenzzone")
+    geraet = create_device(session, "grenzgeraet")
+    create_device_command(session, zone, geraet)
+    plaintext = _token(session, "grenzleser", [("audit.read", None)])
+
+    with pytest.raises(ValueError):
+        server.device_commands(session, plaintext, limit=0)
+
+
 def test_overriding_calls_the_domain_mutation_with_the_token_attached(session: Session) -> None:
     create_settings(session)
     source(session, "api")
@@ -211,10 +272,12 @@ def test_the_registered_mcp_tools_have_descriptions_and_call_the_adapter_functio
     source(session, "api")
     create_zone_state(session, zone)
     create_shadow_decision(session, zone)
-    create_device(session, "registrierungsgeraet")
+    geraet = create_device(session, "registrierungsgeraet")
+    create_device_command(session, zone, geraet)
     permissions = [
         ("zone.read", None),
         ("device.read", None),
+        ("audit.read", None),
         ("override.create", zone.id),
         ("override.cancel", zone.id),
         ("schedule.manage", zone.id),
@@ -248,6 +311,7 @@ def test_the_registered_mcp_tools_have_descriptions_and_call_the_adapter_functio
         "read_setpoints",
         "list_devices",
         "shadow_decisions",
+        "device_commands",
         "override",
         "cancel_override",
         "boost",
@@ -269,6 +333,7 @@ def test_the_registered_mcp_tools_have_descriptions_and_call_the_adapter_functio
     assert tools["read_setpoints"](zone.id)  # type: ignore[operator]
     assert tools["list_devices"]()  # type: ignore[operator]
     assert tools["shadow_decisions"](zone.id, 1)  # type: ignore[operator]
+    assert tools["device_commands"]()  # type: ignore[operator]
     assert tools["override"](zone.id, Decimal("21.0"))  # type: ignore[operator]
     assert tools["cancel_override"](zone.id)  # type: ignore[operator]
     assert tools["boost"](zone.id)  # type: ignore[operator]

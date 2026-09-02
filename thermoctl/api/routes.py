@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Annotated
 
@@ -14,6 +14,7 @@ from thermoctl.api.schemas import (
     CreateMode,
     CreateOverride,
     CreateSchedulePoint,
+    DeviceCommandResponse,
     DeviceResponse,
     ModeResponse,
     MoveSchedulePoint,
@@ -50,6 +51,7 @@ from thermoctl.domain.control import (
     save_solar_location,
     settings,
 )
+from thermoctl.domain.device_commands import DEFAULT_LIMIT, list_commands
 from thermoctl.domain.modes import DomainError, create_mode, update_setpoints
 from thermoctl.domain.principal import Principal
 from thermoctl.domain.remote_control import RemoteControlError
@@ -63,6 +65,7 @@ from thermoctl.domain.schedule import (
     end_of_next_switch,
     move_schedule_point,
 )
+from thermoctl.domain.time import local_time
 from thermoctl.domain.zone_settings import (
     PARAMETERS,
     ParameterOutOfRange,
@@ -499,6 +502,52 @@ def devices(
             zones=sorted(zones.get(device.id, set())),
         )
         for device, integration, state in rows
+    ]
+
+
+@router.get("/device-commands", response_model=list[DeviceCommandResponse])
+def device_commands(
+    session: Annotated[Session, Depends(get_session)],
+    principal: Annotated[Principal, Depends(_principal)],
+    zone: str | None = None,
+    from_at: datetime | None = None,
+    to_at: datetime | None = None,
+    outcome: str | None = None,
+    limit: int = DEFAULT_LIMIT,
+) -> list[DeviceCommandResponse]:
+    """The record of every command sent -- or withheld -- towards an actuator.
+
+    Same permission as the web view (`audit.read`): both are protocol views over the
+    whole plant, not over a single zone. Read-only -- a log that could be changed
+    through an interface would not be one. `limit` is capped in the domain: the table
+    has no retention and grows without bound for as long as the plant runs.
+    """
+    _permission(principal, "audit.read")
+    try:
+        entries = list_commands(
+            session,
+            zone_name=zone,
+            from_at=from_at,
+            to_at=to_at,
+            outcome=outcome,
+            limit=limit,
+        )
+    except ValueError as exc:
+        raise _domain_error("limit", str(exc)) from exc
+    return [
+        DeviceCommandResponse(
+            id=entry.id,
+            sent_at=local_time(entry.sent_at, None),
+            source=entry.source,
+            zone=entry.zone_name,
+            device=entry.device_name,
+            command=entry.command,
+            payload=entry.payload,
+            outcome=entry.outcome,
+            error=entry.error,
+            reason=entry.reason,
+        )
+        for entry in entries
     ]
 
 

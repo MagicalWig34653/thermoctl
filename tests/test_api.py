@@ -8,6 +8,7 @@ import pytest
 from sqlalchemy.orm import Session
 
 from tests.helpers import (
+    command_outcome,
     create_device,
     create_device_state,
     operating_mode,
@@ -19,7 +20,7 @@ from tests.helpers import (
 from thermoctl.auth.tokens import issue_token
 from thermoctl.db.models.device import DeviceCapabilityLink, ZoneDevice
 from thermoctl.db.models.lookup import DeviceCapability
-from thermoctl.db.models.state import ZoneState
+from thermoctl.db.models.state import DeviceCommand, ZoneState
 from thermoctl.db.models.zone import Zone
 
 
@@ -103,6 +104,116 @@ def test_the_device_list_reports_signs_of_life(client, token_fuer, session: Sess
     assert response.json()[0]["availability"] == "online"
     assert response.json()[0]["capabilities"] == ["temperature"]
     assert response.json()[0]["zones"] == ["andere", "bad"]
+
+
+def _befehl(
+    session: Session,
+    *,
+    device_name: str = "geraet",
+    zone_name: str = "bad",
+    at: datetime = datetime(2026, 8, 15, 12, 0, 0),
+    outcome_code: str = "executed",
+) -> DeviceCommand:
+    entry = DeviceCommand(
+        sent_at=at,
+        source_id=source(session, "system").id,
+        zone_id=None,
+        zone_name=zone_name,
+        device_id=None,
+        device_name=device_name,
+        command="setpoint",
+        payload='{"occupied_heating_setpoint": 21.0}',
+        outcome_id=command_outcome(session, outcome_code).id,
+        error=None,
+        reason="Zeitplan",
+    )
+    session.add(entry)
+    session.flush()
+    return entry
+
+
+def test_device_commands_needs_audit_read(client, token_fuer) -> None:
+    head = token_fuer([("zone.read", None)])
+    assert client.get("/api/v1/device-commands", headers=head).status_code == 403
+
+
+def test_device_commands_lists_with_an_explicit_utc_offset(
+    client, token_fuer, session: Session
+) -> None:
+    """`sent_at` must be unambiguous -- see CLAUDE.md and `docs/api.md`."""
+    _befehl(session)
+    head = token_fuer([("audit.read", None)])
+
+    response = client.get("/api/v1/device-commands", headers=head)
+
+    assert response.status_code == 200
+    entry = response.json()[0]
+    assert entry["sent_at"] == "2026-08-15T12:00:00Z"
+    assert entry["outcome"] == "executed"
+    assert entry["device"] == "geraet"
+    assert entry["zone"] == "bad"
+
+
+def test_device_commands_zone_filter_matches_the_name_snapshot(
+    client, token_fuer, session: Session
+) -> None:
+    _befehl(session, device_name="im-filter", zone_name="bad")
+    _befehl(session, device_name="ausserhalb", zone_name="andere")
+    head = token_fuer([("audit.read", None)])
+
+    response = client.get("/api/v1/device-commands?zone=bad", headers=head)
+
+    devices = [entry["device"] for entry in response.json()]
+    assert devices == ["im-filter"]
+
+
+def test_device_commands_outcome_filter(client, token_fuer, session: Session) -> None:
+    _befehl(session, device_name="ausgefuehrt", outcome_code="executed")
+    _befehl(session, device_name="gescheitert", outcome_code="failed")
+    head = token_fuer([("audit.read", None)])
+
+    response = client.get("/api/v1/device-commands?outcome=failed", headers=head)
+
+    devices = [entry["device"] for entry in response.json()]
+    assert devices == ["gescheitert"]
+
+
+def test_device_commands_date_range_filter(client, token_fuer, session: Session) -> None:
+    _befehl(session, device_name="zu-alt", at=datetime(2026, 8, 1))
+    _befehl(session, device_name="im-zeitraum", at=datetime(2026, 8, 15))
+    _befehl(session, device_name="zu-neu", at=datetime(2026, 9, 1))
+    head = token_fuer([("audit.read", None)])
+
+    response = client.get(
+        "/api/v1/device-commands"
+        "?from_at=2026-08-10T00:00:00&to_at=2026-08-20T00:00:00",
+        headers=head,
+    )
+
+    devices = [entry["device"] for entry in response.json()]
+    assert devices == ["im-zeitraum"]
+
+
+def test_device_commands_limit_out_of_bounds_is_rejected(
+    client, token_fuer, session: Session
+) -> None:
+    _befehl(session)
+    head = token_fuer([("audit.read", None)])
+
+    response = client.get("/api/v1/device-commands?limit=0", headers=head)
+
+    assert response.status_code == 422
+
+
+def test_device_commands_respects_the_limit(client, token_fuer, session: Session) -> None:
+    _befehl(session, device_name="eins", at=datetime(2026, 8, 15, 12, 0, 0))
+    _befehl(session, device_name="zwei", at=datetime(2026, 8, 15, 13, 0, 0))
+    head = token_fuer([("audit.read", None)])
+
+    response = client.get("/api/v1/device-commands?limit=1", headers=head)
+
+    assert len(response.json()) == 1
+    assert response.json()[0]["device"] == "zwei"
 
 
 def test_zone_state_is_readable_only_for_a_visible_zone(

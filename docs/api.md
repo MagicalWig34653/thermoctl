@@ -245,6 +245,35 @@ gemeldete Gesundheitswerte sind `null`, Zuordnungen und Fähigkeiten gegebenenfa
   "zones": ["zone-a"]}]
 ```
 
+### `GET /api/v1/device-commands` — Schaltprotokoll lesen
+
+Recht: `audit.read` — dasselbe wie unter „Einstellungen → Schaltprotokoll" in der
+Oberfläche. Beide sind Protokolle über die ganze Anlage, nicht über eine einzelne
+Zone; ein auf eine Zone eingeschränktes Token sieht hier nichts zusätzlich und nichts
+weniger als über dieses eine Recht bereits erlaubt ist. **Nur lesend** — ein
+Protokoll, das sich über eine Schnittstelle ändern liesse, wäre keins.
+
+```json
+[{"id": 42, "sent_at": "2026-08-29T08:15:02Z", "source": "system",
+  "zone": "wohnzimmer", "device": "ventil-wohnzimmer", "command": "setpoint",
+  "payload": "{\"occupied_heating_setpoint\": 21.0}", "outcome": "executed",
+  "error": null, "reason": "Zeitplan"}]
+```
+
+| Parameter | Bedeutung |
+|---|---|
+| `zone` | Zonenname, gegen die Namens-Momentaufnahme geprüft — findet auch Einträge einer inzwischen gelöschten Zone |
+| `outcome` | `executed`, `suppressed` oder `failed` |
+| `from_at`, `to_at` | Zeitpunkte, ISO 8601; ohne Zeitzonenangabe als UTC gelesen |
+| `limit` | höchstens 500, Vorgabe 100 |
+
+Ohne Aufbewahrungsfrist wächst diese Tabelle unbegrenzt (`docs/offene-entscheidungen.md`)
+— `limit` ist deshalb keine Bequemlichkeit, sondern eine Obergrenze je Abfrage. Ein Wert
+ausserhalb von 1 bis 500 ergibt `422`.
+
+`sent_at` trägt immer die Zeitzone (`Z`, also UTC), obwohl intern alles naives UTC ist:
+ein naiver Wert würde bei einem Aufrufer in einer anderen Zeitzone als Ortszeit gelesen.
+
 ### `GET /api/v1/me` — das eigene Token
 
 Recht: `token.self`. Nützlich, um in einem Skript zu prüfen, ob ein Token noch gilt und

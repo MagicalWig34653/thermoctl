@@ -122,6 +122,26 @@ class ZoneStateResponse(BaseModel):
     updated_at: datetime
 
 
+class DeviceCommandResponse(BaseModel):
+    """One entry of the actuator command log -- read-only, see `docs/api.md`.
+
+    `sent_at` is always timezone-aware UTC (serialized with a `Z` suffix), never a naive
+    value: the internal representation is naive UTC everywhere else in this project, and
+    a naive value handed to a caller in a different zone would be read as local time.
+    """
+
+    id: int
+    sent_at: datetime
+    source: str
+    zone: str
+    device: str
+    command: str
+    payload: str
+    outcome: str
+    error: str | None
+    reason: str | None
+
+
 class TokenResponse(BaseModel):
     id: int
     name: str

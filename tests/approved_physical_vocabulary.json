@@ -213,6 +213,39 @@
       "wo das Gerät es annimmt, Ist-Temperatur; das Ventil regelt damit gegen den Raum",
       "| 4 | Regelkreis und Cutover | Logik gebaut; Freigabe in drei Stufen | Aktoren verdrahten; Altsystem ablösen |"
     ],
+    "docs/scharfschalten.md": [
+      "# Ohne Schattenbetrieb scharf schalten",
+      "## 6. Woran man merkt, dass etwas nicht schaltet, obwohl es soll",
+      "**Ein unauffälliger Abend** zeigt für jede Zone mit aktivem Aktor wenige Einträge —",
+      "- Ein als Aktor zugeordnetes Gerät, das auch nach mehreren Regelzyklen **keinen einzigen**",
+      "- Ein als Aktor zugeordnetes Gerät, das über Tage überhaupt nicht im Protokoll auftaucht,",
+      "- Innerhalb des ersten Regelzyklus nach dem Neustart erscheint für jedes als Aktor",
+      "1. **Auf `Betrieb`, „Scharf schalten …\"** anklicken, eine Begründung eintragen (Pflicht)",
+      "1. **Selbstregelndes Thermostatventil** (Fähigkeit `thermostat`, `self_regulating`",
+      "2. **Gewöhnlicher Aktor** über Zigbee2MQTT (Rolle „Aktor\", Fähigkeit `switch`, nicht",
+      "4. **Zigbee2MQTT-Thermostatventil ohne Selbstregelung** (Fähigkeit `thermostat`, aber",
+      "Auf `Betrieb`, „Zurück in den Trockenlauf\" — derselbe Knopf, mit dem scharf geschaltet",
+      "Die gefährlichere Richtung: Eine Zone, die laut `Betrieb` heizen würde, tut es in",
+      "Für jede Zone lohnt der Blick, welche dieser vier Rollen ihr Aktor tatsächlich hat — auf",
+      "Geräte laut Schaltprotokoll zuletzt eingeschaltet wurden, und schaltet sie bei Bedarf",
+      "Grund für „nichts schaltet, obwohl scharf geschaltet wurde\" ist schlicht ein",
+      "Sollwert samt Begründung, ob geheizt würde. Das ist derselbe Blick, den der Schattenbetrieb",
+      "Ventil selbst). Es bekommt den aufgelösten Sollwert und, wo das Gerät das anbietet,",
+      "Vergleich überspringt und direkt scharf schaltet, tut das ohne die Sicherheit, die der",
+      "`Betrieb` scharf schaltet, ohne neu zu starten. **Das ist die Stelle, an der es aussieht,",
+      "ab, künftig neue Befehle zu senden — er schaltet kein einziges Gerät zurück. Ein Relais,",
+      "auf — hier fällt er erst auf, wenn die Zone entsprechend heizt oder eben nicht.",
+      "das im Moment des Zurücknehmens offen ist (die Heizung also läuft), **bleibt offen**, bis",
+      "dass die Anlage später erneut scharf geschaltet wird und eine neue Entscheidung sendet.",
+      "etwa nachts, wenn „würde heizen: nein\" gelten muss, wenn das nicht der Fall sein soll.",
+      "geschaltet — jeder betroffene Zyklus trägt stattdessen einen gescheiterten Versuch ins",
+      "nach dem Scharfschalten, damit er sich öffnet. Richtig ist: erst scharf schalten, dann",
+      "nach mehreren Tagen Schattenbetrieb gegen das Altsystem scharf zu schalten. Wer diesen",
+      "obwohl seine Zone laut `Betrieb` zwischen Heizen und Nicht-Heizen wechselt.",
+      "selbstregelnde Thermostatventile werden jetzt versendet, ebenso Ein/Aus an die übrigen",
+      "zeigt „würde heizen: ja\", die Ist-Temperatur der Zone bewegt sich aber nicht in Richtung",
+      "zugeordnete Aktor-Gerät einmal unbedingt** — unabhängig davon, ob sich gegenüber vorher"
+    ],
     "docs/self-hosting.md": [
       "**Ins offene Internet gehört dieser Dienst nicht.** Er steuert eine Heizung in einer",
       "> beim Start gebaute MQTT-Riegel offen, können selbstregelnde Thermostatventile Sollwerte",
@@ -341,7 +374,8 @@
       "{{ 'manual' if value == 'heat' else value }}"
     ],
     "thermoctl/mcp/server.py": [
-      "Pulls a visible zone's next scheduled setpoint switch forward."
+      "Pulls a visible zone's next scheduled setpoint switch forward.",
+      "Reads the actuator command log, newest first, filtered and capped."
     ],
     "thermoctl/services/meross_discovery.py": [
       "switch"

@@ -569,3 +569,236 @@ def test_an_unparsable_zone_in_a_permission_entry_is_a_bad_request(
         follow_redirects=False,
     )
     assert nur_trenner.status_code in (200, 303)
+
+
+def _rendered_group_form_fields(html: str, user_id: int) -> dict[str, str]:
+    """Fills the per-row group form for `user_id` exactly as a browser would.
+
+    Field **names** and the `<select>`'s **available options** come out of the
+    rendered markup and are never invented by the test. A `<select>` yields whatever
+    option carries `selected`, falling back to the first one, the way a real browser
+    resolves the control it shows -- so a test can still pick a *different* option
+    from the ones actually offered, the way clicking a dropdown does.
+    """
+    import re
+
+    action = f"/users/{user_id}/group"
+    for form in re.findall(r"<form\b[^>]*>.*?</form>", html, re.DOTALL):
+        if f'action="{action}"' not in form:
+            continue
+        values: dict[str, str] = {}
+        for field in re.findall(r"<input\b[^>]*>", form):
+            name = re.search(r'name="([^"]+)"', field)
+            if name is None:
+                continue
+            rendered = re.search(r'value="([^"]*)"', field)
+            values[name.group(1)] = rendered.group(1) if rendered else ""
+        for select in re.findall(r"<select\b[^>]*>.*?</select>", form, re.DOTALL):
+            name = re.search(r'name="([^"]+)"', select)
+            if name is None:
+                continue
+            options = re.findall(r'<option value="([^"]*)"(.*?)>', select, re.DOTALL)
+            selected = next((value for value, attrs in options if "selected" in attrs), None)
+            values[name.group(1)] = (
+                selected if selected is not None else (options[0][0] if options else "")
+            )
+            values[f"{name.group(1)}__options"] = ",".join(value for value, _ in options)
+        return values
+    raise AssertionError(f"Kein Formular mit action={action!r} gefunden")
+
+
+def test_the_rendered_group_form_changes_the_group_and_the_rights(
+    client_als, session: Session
+) -> None:
+    """Submits the per-row form exactly as the browser rendered it -- field names
+    and the chosen option both come out of the markup, none of them are supplied by
+    the test. This is the reported gap: an existing user's group could not be
+    changed through the interface at all.
+    """
+    from tests.helpers import create_user, ensure_permission
+    from thermoctl.db.models.identity import AccessGroup
+    from thermoctl.domain.authz import has_permission, principal_for_user
+
+    ensure_permission(session, "zone.read", zone_scoped=False)
+    ziel_gruppe = AccessGroup(name="Zielgruppe")
+    session.add(ziel_gruppe)
+    session.flush()
+    from thermoctl.domain.administration import grant_permission
+
+    grant_permission(session, ziel_gruppe, "zone.read", None, actor_id=None)
+
+    zielperson = create_user(session, "wechselperson")
+    c = client_als([("user.manage", None)])
+
+    page = c.get("/users")
+    assert page.status_code == 200
+    fields = _rendered_group_form_fields(page.text, zielperson.id)
+    options = fields.pop("group_id__options").split(",")
+    assert str(ziel_gruppe.id) in options, (
+        "The target group does not even appear as an option in the rendered form"
+    )
+    fields["group_id"] = str(ziel_gruppe.id)
+
+    response = c.post(f"/users/{zielperson.id}/group", data=fields, follow_redirects=False)
+    assert response.status_code == 303
+    assert has_permission(principal_for_user(session, zielperson), "zone.read") is True
+
+
+def test_removing_the_group_through_the_interface_removes_the_rights(
+    client_als, session: Session
+) -> None:
+    from sqlalchemy import select
+
+    from tests.helpers import ensure_permission, user_with_permissions
+    from thermoctl.db.models.identity import UserAccessGroup
+    from thermoctl.domain.authz import has_permission, principal_for_user
+
+    ensure_permission(session, "zone.read", zone_scoped=False)
+    person = user_with_permissions(session, "hatrechte", [("zone.read", None)])
+    c = client_als([("user.manage", None)])
+
+    response = c.post(
+        f"/users/{person.id}/group", data={"group_id": ""},
+        headers=_with_csrf(c, session), follow_redirects=False,
+    )
+    assert response.status_code == 303
+    assert has_permission(principal_for_user(session, person), "zone.read") is False
+    assert (
+        session.scalar(select(UserAccessGroup).where(UserAccessGroup.user_id == person.id))
+        is None
+    )
+
+
+def test_changing_a_group_needs_user_manage(client_als, session: Session) -> None:
+    from tests.helpers import create_user
+
+    person = create_user(session, "ohnerecht-ziel")
+    c = client_als([("zone.read", None)])
+    response = c.post(
+        f"/users/{person.id}/group", data={"group_id": ""},
+        headers=_with_csrf(c, session),
+    )
+    assert response.status_code == 403
+
+
+def test_changing_a_group_needs_a_csrf_token(client_als, session: Session) -> None:
+    from tests.helpers import create_user
+
+    person = create_user(session, "ohnetoken-ziel")
+    c = client_als([("user.manage", None)])
+    response = c.post(f"/users/{person.id}/group", data={"group_id": ""})
+    assert response.status_code == 403
+
+
+def test_changing_a_group_writes_an_audit_entry_naming_before_and_after(
+    client_als, session: Session
+) -> None:
+    from sqlalchemy import select
+
+    from tests.helpers import user_with_permissions
+    from thermoctl.db.models.identity import AccessGroup
+    from thermoctl.db.models.operations import AuditEvent
+
+    person = user_with_permissions(session, "protokolliert-web", [("zone.read", None)])
+    old_group = session.scalar(
+        select(AccessGroup).where(AccessGroup.name == "gruppe-protokolliert-web")
+    )
+    assert old_group is not None
+    neue_gruppe = AccessGroup(name="Neuegruppeweb")
+    session.add(neue_gruppe)
+    session.flush()
+
+    c = client_als([("user.manage", None)])
+    response = c.post(
+        f"/users/{person.id}/group", data={"group_id": str(neue_gruppe.id)},
+        headers=_with_csrf(c, session), follow_redirects=False,
+    )
+    assert response.status_code == 303
+
+    entry = session.scalar(
+        select(AuditEvent).where(AuditEvent.action == "user.group_changed")
+    )
+    assert entry is not None
+    assert old_group.name in entry.summary
+    assert neue_gruppe.name in entry.summary
+
+
+def test_an_unknown_user_yields_404_for_group_change(client_als, session: Session) -> None:
+    c = client_als([("user.manage", None)])
+    response = c.post(
+        "/users/999999/group", data={"group_id": ""}, headers=_with_csrf(c, session)
+    )
+    assert response.status_code == 404
+
+
+def test_an_unparsable_group_id_is_a_bad_request(client_als, session: Session) -> None:
+    """The field comes from a rendered `<select>` and should always be a number or
+    empty -- but a request need not come from that rendered form."""
+    from tests.helpers import create_user
+
+    person = create_user(session, "unparsierbar-ziel")
+    c = client_als([("user.manage", None)])
+    response = c.post(
+        f"/users/{person.id}/group", data={"group_id": "keine-zahl"},
+        headers=_with_csrf(c, session),
+    )
+    assert response.status_code == 400
+
+
+def test_the_last_administrator_cannot_lock_themselves_out_via_group_change(
+    client_als, session: Session
+) -> None:
+    """The interface-level twin of the domain guard: a group change that would take
+    the plant's only `user.manage` away must be refused, exactly like deactivation."""
+    from sqlalchemy import select as _select
+
+    from thermoctl.db.models.identity import AccessGroup, User
+
+    c = client_als([("user.manage", None)])
+    ich = session.scalar(_select(User).where(User.username.like("web-%")).order_by(User.id.desc()))
+    assert ich is not None
+    harmlos = AccessGroup(name="Harmlosweb")
+    session.add(harmlos)
+    session.flush()
+
+    response = c.post(
+        f"/users/{ich.id}/group", data={"group_id": str(harmlos.id)},
+        headers=_with_csrf(c, session),
+    )
+    assert response.status_code == 200
+    assert "letzte aktive Benutzer" in response.text
+
+
+def test_a_rejected_creation_keeps_the_chosen_group_preselected(
+    client_als, session: Session
+) -> None:
+    """The template bug: `values.get("gruppe_id")` never matched what the view
+    actually stored under `group_id`, so a rejected form always lost the choice."""
+    from thermoctl.db.models.identity import AccessGroup
+
+    gruppe = AccessGroup(name="Vorausgewaehlt")
+    session.add(gruppe)
+    session.flush()
+    c = client_als([("user.manage", None)])
+
+    response = c.post(
+        "/users",
+        data={"username": "kurzpass2", "display_name": "Kurz", "password": "kurz",
+              "group_id": str(gruppe.id)},
+        headers=_with_csrf(c, session),
+    )
+    assert response.status_code == 200
+    import re
+
+    # Scoped to the creation form specifically -- the page also carries one group
+    # `<select>` per existing user, and one of those could easily contain an
+    # `<option value="…">` matching the same group id by coincidence.
+    creation_forms = [
+        form for form in re.findall(r"<form\b[^>]*>.*?</form>", response.text, re.DOTALL)
+        if 'action="/users"' in form
+    ]
+    assert len(creation_forms) == 1, "Expected exactly one user-creation form on the page"
+    match = re.search(rf'<option value="{gruppe.id}"(.*?)>', creation_forms[0], re.DOTALL)
+    assert match is not None and "selected" in match.group(1), (
+        "The chosen group is no longer preselected after the rejected submission"
+    )
