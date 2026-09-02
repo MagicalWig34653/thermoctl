@@ -171,7 +171,7 @@
       "`Zigbee2MqttValve`. Ein Aktor an der Anbindung `meross` bekommt keinen `MerossSwitch`",
       "als Aktor zugewiesen hat, bekommt nach dem Scharfschalten dieser Fassung ebenfalls keine",
       "aufgelöste Zonensollwert, wie bei den selbstregelnden Ventilen — aber dort steuert das",
-      "aufnehmen. Er belegt ausdrücklich weder einen gesendeten Befehl noch eine Ventilbewegung;",
+      "weder einen gesendeten Befehl noch eine Ventilbewegung; im gegenwärtigen Schattenbetrieb",
       "dahinter hängt eine echte Heizung (Grundsatz 7).",
       "das Heizen\" für ausgerechnet die Zonen nicht mehr, in denen jemand ein modernes Ventil",
       "davor, dass *irgendein* Token scharf schaltet — nicht davor, dass das dafür vorgesehene",
