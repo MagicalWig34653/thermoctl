@@ -202,6 +202,18 @@ Aus der Umsetzung von Teilprojekt 1, damit es niemand erneut herausfinden muss:
   `db/models/__init__.py` werden von jeder Aufgabe ergänzt und kollidieren zuverlässig. Eine
   automatisch aufgelöste Fassung kann doppelte Definitionen enthalten und trotzdem grüne
   Tests liefern.
+- **Ein Mutationslauf im Worktree braucht dort einen `.venv`-Symlink, sonst luegt er.**
+  Alle `cosmic-ray-*.toml` verweisen relativ auf `.venv/bin/python`. Ein Worktree hat
+  keine eigene Umgebung; jeder Mutant wird dann `INCOMPETENT`, und cosmic-ray meldet
+  daraufhin **null Ueberlebende** — ein vollstaendig gescheiterter Lauf sieht aus wie
+  ein perfektes Ergebnis. Genau so entstand die Behauptung „662 Mutanten, 0
+  ueberlebende" fuer `pi_control.py`, wo es 53 waren. Vor jedem Lauf im Worktree:
+  `ln -s "<hauptrepo>/.venv" .venv`. **Und danach immer die worker_outcomes pruefen** —
+  ein Lauf mit auch nur einem `INCOMPETENT` ist ungueltig, unabhaengig davon, wie gut
+  die Ueberlebendenzahl aussieht:
+  ```
+  select test_outcome, count(*) from work_results group by test_outcome;
+  ```
 - **`cosmic-ray exec` niemals im Vordergrund unter einem Werkzeug-Timeout.** Cosmic Ray
   schreibt jede Mutation in die Datei und stellt sie nur über ein `finally` wieder her.
   Ein harter Abbruch überspringt das und hinterlässt **mutierten Produktionscode ohne

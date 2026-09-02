@@ -1,3 +1,8 @@
+# Achtung: Der Testbefehl unten verweist relativ auf .venv/bin/python. In einem
+# Worktree ohne eigene Umgebung wird dadurch jeder Mutant INCOMPETENT, und
+# cosmic-ray meldet null Ueberlebende -- ein gescheiterter Lauf sieht aus wie ein
+# perfektes Ergebnis. Vorher einen .venv-Symlink anlegen und hinterher pruefen,
+# dass kein test_outcome INCOMPETENT ist. Siehe CLAUDE.md.
 # Mutationstest für die reinen PI-/Fensterfunktionen (Schritt 3 der PI-Umsetzung,
 # docs/superpowers/specs/2026-09-02-pi-regelung-spezifikation.md, Abschnitt 9).
 # Wiederholbarer Lauf aus dem Repository-Wurzelverzeichnis:
