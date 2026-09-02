@@ -89,40 +89,110 @@ anhäufen kann ("Verworfen und schlecht lösbar", Abschnitt 3) — ein
 verschobener Wert von 899 oder 901 hätte genau diese Schutzwirkung
 unbemerkt verändert.
 
-## Als gleichwertig abgelegt — 8
+## Als gleichwertig abgelegt — 8, einzeln
 
-- **Zeilen 190, 235, 318, 509 (je 1):** Cosmic Ray ersetzt den
-  Signaturtrenner `*` durch `/`. Wie schon in
-  `cosmic-ray-domain-rest-assessment.md` und
-  `cosmic-ray-stage2-assessment.md` festgehalten: Alle produktiven Aufrufer
-  reichen diese Parameter bereits als Schlüsselwörter (geprüft per
-  `grep` über `thermoctl/`); Funktionskörper und Ergebnis bleiben in jedem
-  Fall gleich, nur zusätzlich erlaubte Aufrufsyntax ändert sich. Zeile 235
-  betrifft zusätzlich `settle()`, eine private, nur intern mit festen
-  Schlüsselwörtern aufgerufene Closure — von außen ohnehin nicht ansprechbar.
-- **Zeile 137, Spalte 43 (`error_k > 0` → `>= 0`) und Zeile 138, Spalte 42
-  (`error_k < 0` → `<= 0`):** Beide Vergleichsoperator-Mutationen können sich
-  ausschließlich an der Stelle `error_k == 0` auswirken — dem einzigen Punkt,
-  an dem `>` und `>=` (bzw. `<` und `<=`) verschiedene Wahrheitswerte liefern.
-  Der Zuwachs der Integralkomponente ist aber `(gain_per_k / ti_seconds) *
-  error_k * dt_seconds` — bei `error_k = 0` unabhängig vom gewählten Pfad
-  exakt null. Ob die Bedingung an dieser einen Stelle "eingefroren" oder
-  "normal fortgesetzt" entscheidet, das Ergebnis (`new_integral =
-  integral`) ist in beiden Fällen identisch, weil die Integralkomponente laut
-  Invariante immer in [0, 1] bleibt und `_clamp01` einer unveränderten Zahl
-  nichts hinzufügt.
-- **Zeile 137, Spalte 45 (die Variante `error_k > -1`) und Zeile 138, Spalte
-  44 (die Variante `error_k < 1`):** `stuck_high` verlangt zusätzlich
-  `u_before == 1`. Mit `integral ≤ 1`, `gain_per_k ≥ 0` (eine
-  Reglerverstärkung ist nach Auslegung dieses Moduls nie negativ — das
-  Vorzeichen prüft dieses Modul selbst nicht, sondern setzt es als
-  Konfigurationsinvariante voraus, ähnlich der Datenbank-Check-Constraint in
-  `cosmic-ray-stage2-assessment.md`) kann `gain_per_k * error_k + integral`
-  nur dann exakt die Sättigungsgrenze 1 erreichen, wenn `error_k ≥ 0` ist —
-  ein negativer Fehler kann die Summe nur nach unten drücken. Die Bedingung
-  `u_before == 1 and error_k > -1` unterscheidet sich deshalb im gesamten
-  erreichbaren Zustandsraum nicht von `u_before == 1 and error_k > 0`.
-  Symmetrisch für `u_before == 0 and error_k < 1` gegenüber `< 0`.
+Ausgelesen aus `/tmp/thermoctl-pi-control-new2.sqlite` (Abschlusslauf nach
+den 45 neuen Tests):
+
+```
+operator_name                          start_pos_row  occurrence
+core/ReplaceComparisonOperator_Gt_GtE  137            1
+core/NumberReplacer                    137            25
+core/ReplaceComparisonOperator_Lt_LtE  138            0
+core/NumberReplacer                    138            28
+core/ReplaceBinaryOperator_Mul_Div     190            9
+core/ReplaceBinaryOperator_Mul_Div     235            10
+core/ReplaceBinaryOperator_Mul_Div     318            13
+core/ReplaceBinaryOperator_Mul_Div     509            14
+```
+
+**1. Zeile 137, Spalte 43, `ReplaceComparisonOperator_Gt_GtE`, occurrence 1
+(`pi_arithmetic`).** `stuck_high = u_before == 1 and error_k > 0` wird zu
+`error_k >= 0`. Die beiden Operatoren unterscheiden sich einzig bei
+`error_k == 0`. Dort ist der Integral-Zuwachs `(gain_per_k / ti_seconds) *
+error_k * dt_seconds` unabhängig vom Faktor `error_k = 0` immer exakt null
+— ob die Bedingung an dieser Stelle "eingefroren" (`new_integral =
+integral`) oder "normal fortgesetzt" (`new_integral =
+clamp01(integral + 0) = integral`, weil die Integralkomponente laut
+Invariante stets in [0, 1] bleibt) entscheidet, das Ergebnis ist in beiden
+Zweigen identisch. Nachgerechnet für `error_k = 0`, jeden erreichbaren
+`integral` und jedes `gain_per_k`, nicht nur für einen Beispielwert.
+
+**2. Zeile 138, Spalte 42, `ReplaceComparisonOperator_Lt_LtE`, occurrence 0
+(`pi_arithmetic`).** Spiegelbildlich zu Nr. 1: `stuck_low = u_before == 0
+and error_k < 0` wird zu `error_k <= 0`. Dieselbe Begründung, gespiegelt:
+bei `error_k == 0` ist der Zuwachs unabhängig vom Vorzeichen des Vergleichs
+null.
+
+**3. Zeile 137, Spalte 45, `NumberReplacer`, occurrence 25
+(`pi_arithmetic`).** Dieselbe Zeile wie Nr. 1, aber die literale `0` in
+`error_k > 0` wird zu `-1`, nicht zu `>=`. Diese Mutation wirkt sich nur im
+Bereich `-1 < error_k <= 0` aus. Damit sie überhaupt beobachtbar wäre,
+müsste in diesem Bereich gleichzeitig `u_before == 1` gelten — also
+`gain_per_k * error_k + integral = 1` bei `error_k ≤ 0`. Mit
+`integral ≤ 1` (Invariante der Funktion, siehe oben) und `gain_per_k ≥ 0`
+(Datenbank-Check-Constraint `pi_gain_per_k BETWEEN 0.05 AND 0.50` in
+`thermoctl/db/models/zone.py:41-43`, außerhalb dieses Moduls erzwungen, hier
+nur vorausgesetzt) ist `gain_per_k * error_k ≤ 0`, also kann die Summe nur
+dann exakt 1 erreichen, wenn `gain_per_k * error_k = 0` **und** `integral =
+1` gilt. In diesem Fall ist aber der Zuwachs `(gain_per_k / ti_seconds) *
+error_k * dt_seconds = 0` — derselbe Faktor, der die Summe auf 0 gebracht
+hat, macht auch den Zuwachs zu null. Es gibt also keinen erreichbaren
+Zustand, in dem diese Mutation zu einem anderen `new_integral` führt als
+das Original. Einschränkung, offen benannt: Diese Herleitung hängt an der
+Prämisse `gain_per_k ≥ 0`. `pi_arithmetic()` selbst prüft das Vorzeichen
+nicht (reine Funktion, siehe Moduldocstring); die Prämisse kommt
+ausschließlich aus der Schema-Constraint des einzigen produktiven Aufrufers
+(`thermoctl/services/shadow_run.py:621`). Ein direkter, isolierter Aufruf
+von `pi_arithmetic()` mit negativem `gain_per_k` — den kein Test und kein
+produktiver Pfad je tut — würde die Äquivalenz aufheben.
+
+**4. Zeile 138, Spalte 44, `NumberReplacer`, occurrence 28
+(`pi_arithmetic`).** Spiegelbildlich zu Nr. 3: `error_k < 0` wird zu
+`error_k < 1`, wirkt sich nur im Bereich `0 <= error_k < 1` aus. Für
+`u_before == 0` bei `error_k ≥ 0` und `gain_per_k ≥ 0` gilt symmetrisch:
+`gain_per_k * error_k + integral = 0` mit `integral ≥ 0` und
+`gain_per_k * error_k ≥ 0` erzwingt `gain_per_k * error_k = 0` und
+`integral = 0` — wieder macht derselbe Faktor auch den Zuwachs null.
+Dieselbe Einschränkung wie bei Nr. 3 gilt hier ebenso.
+
+**5. Zeile 190, Spalte 4, `ReplaceBinaryOperator_Mul_Div`, occurrence 9
+(`window_modulate`).** Der Signaturtrenner `*,` wird zu `/,`; `state` wäre
+dann positionsonly statt die nachfolgenden Parameter schlüsselwortonly zu
+erzwingen. Geprüft per `grep -rn "window_modulate("
+--include="*.py" .`: Der einzige produktive Aufruf steht in
+`pi_control.py:446` selbst und reicht `now`, `u_raw`, `dt_seconds`,
+`pi_min_on_seconds`, `pi_min_off_seconds` bereits als Schlüsselwörter; jeder
+der zwölf Testaufrufe in `tests/test_pi_control.py` ebenso. Kein
+bestehender oder denkbarer Aufruf im Repository nutzt Positionsargumente
+für diese Parameter.
+
+**6. Zeile 318, Spalte 4, `ReplaceBinaryOperator_Mul_Div`, occurrence 13
+(`reset_pi_state`).** Dieselbe Mutation an `reset_pi_state(reason, *, now=
+None, await_next_boundary=False)`. Die drei produktiven Aufrufe
+(`pi_control.py:416,426`, `shadow_run.py:574,598`) und alle zwölf
+Testaufrufe reichen `now` / `await_next_boundary` durchweg als
+Schlüsselwörter; `reason` bleibt so oder so das einzige Positionsargument.
+
+**7. Zeile 509, Spalte 4, `ReplaceBinaryOperator_Mul_Div`, occurrence 14
+(`pi_eligible`).** Dieselbe Mutation an `pi_eligible(actuators, *,
+control_cycle_seconds, pi_min_on_seconds, pi_min_off_seconds)`. Der einzige
+produktive Aufruf (`shadow_run.py:557`) und alle neun Testaufrufe reichen
+die drei Zahlenparameter als Schlüsselwörter — bei drei gleichartig
+typisierten `int`-Parametern in Folge ist das zudem der Grund, warum die
+Schlüsselwortpflicht überhaupt im Quelltext steht (Vertauschungsschutz);
+nur die zusätzlich erlaubte, nirgends genutzte Aufrufsyntax ändert sich.
+
+**8. Zeile 235, Spalte 25, `ReplaceBinaryOperator_Mul_Div`, occurrence 10
+(`settle`).** Dieselbe Mutation an der verschachtelten Closure
+`settle(on: bool, *, reason: str)` innerhalb von `window_modulate`. `settle`
+ist nicht modulweit sichtbar (definiert und ausschließlich aufgerufen
+innerhalb von `window_modulate`, sieben Aufrufstellen, alle mit
+`reason=...`); es gibt keinen Aufrufer außerhalb dieser einen Funktion und
+keine Möglichkeit, sie von einem Test aus isoliert mit Positionsargumenten
+anzusprechen. Von den acht Überlebenden ist dies der am wenigsten
+interessante Fall: eine reine Implementierungsdetail-Closure, kein Teil
+irgendeiner Schnittstelle.
 
 ## Befunde in der Rechenlogik
 

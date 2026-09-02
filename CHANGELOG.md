@@ -9,6 +9,72 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ---
 
+## 0.5.0 — 2026-09-02
+
+**Die Fassung mit der PI-Regelung — als Beta, je Zone einschaltbar, aus als Vorgabe.**
+Wer nichts einschaltet, bekommt exakt das Verhalten von 0.4.0: Die PI-Entscheidung wird
+für eine Zone ohne den Schalter nicht einmal berechnet, und die Regelkette darunter ist
+unverändert.
+
+### PI-Regelung (Beta)
+
+Ein Zweipunktregler pendelt um den Sollwert; der Integralanteil beseitigt genau das. Das
+ist der ehrliche Nutzen, und alles andere, was man sich davon erhofft — weniger
+Verbrauch, schnelleres Aufheizen — folgt daraus nicht.
+
+- **Nur für gewöhnliche Schaltaktoren.** Thermostatventile und selbstregelnde Ventile
+  bleiben ausgeschlossen: Sie haben einen eigenen Regler, und PI darüber wären zwei
+  Integratoren auf derselben Regelstrecke. Eine Zone, die sich nicht eignet, sagt das
+  **vor** dem Einschalten mit Grund, statt still auf Hysterese zurückzufallen.
+- **Zeitproportional**, mit eigenen, kürzeren Mindestschaltdauern. Der Projektinhaber hat
+  entschieden, dass für PI die Genauigkeit die Mindestdauer überbieten darf — eine lange
+  Mindestdauer rundet einen kleinen Tastgrad sonst um 25 Prozent hoch (0,05 wird zu
+  0,0625). Mit 60 Sekunden wird er exakt getroffen.
+- **Die sieben Vorrangregeln behalten absoluten Vorrang.** Fenster offen, Frostschutz,
+  Sensorausfall, Übersteuerung, Boost, Ventilschutz — jede sagt weiterhin „nicht heizen",
+  und der Integrator wird je Regel einzeln behandelt, damit kein Windup entsteht. Ein
+  Wächtertest zwingt jeden Ergebniscode der Regelkette zu einer ausdrücklichen
+  Einordnung, damit ein künftig ergänzter nicht stillschweigend durchfällt.
+- **Ausschalten neutralisiert den Reglerzustand vollständig.** Ein späteres
+  Wiedereinschalten beginnt nicht mit Werten aus einem früheren Versuch.
+
+**Der Preis steht in der Oberfläche, am Schalter und nicht in einer Fußnote:** PI schaltet
+deutlich häufiger und verkürzt die Lebensdauer des Schaltaktors spürbar. Hinter einem
+Info-Zeichen die Rechnung — ungünstigster Fall 262.800 Schaltspiele im Jahr, bei
+30 Prozent Tastgrad simulierte 157.680, Hysterese höchstens 52.560. Mit einer
+ausdrücklich austauschbaren Annahme von 100.000 Betätigungen sind das rund 2,6
+Relaislebensdauern im Jahr; eine Meross-Herstellerangabe dazu gibt es nicht, und das
+steht dabei. Für einen Kessel oder Verdichter ohne eigenen Taktschutz ist PI ungeeignet.
+
+### Relaisverschleiß
+
+Eine neue Seite unter `/relay-wear` zeigt Schaltspiele je Gerät und Tag mit
+Jahreshochrechnung — auch ohne PI nützlich, denn Verschleiß entsteht auch durch
+Hysterese, nur langsamer. Gezählt wird der **bestätigte Zustandswechsel**; ein Befehl,
+der denselben Zustand nochmal setzt, ist keiner, und ein gescheiterter Befehl zählt
+nicht, weil niemand weiß, ob er Hardware bewegt hat. Das ergibt eine belastbare
+Untergrenze statt eines unsicheren Versuchs, der wie gemessener Verschleiß aussieht.
+Die Seite verlangt `audit.read` und zeigt nur Geräte aus lesbaren Zonen.
+
+### Zu beachten beim Umstieg
+
+- **Eine Migration** (`d2f4a7c91e63`) legt die PI-Felder an und setzt jede bestehende
+  Zone auf „PI aus". Das Container-Abbild führt sie beim Start selbst aus. Der Rückweg
+  auf 0.4.0 braucht wie immer vorher einen einmaligen `alembic downgrade` mit dem neuen
+  Abbild — siehe [„Aktualisieren und zurückgehen"](docs/self-hosting.md).
+- **Nichts schaltet sich von selbst ein.** PI ist je Zone aus, bis jemand es einschaltet.
+
+### Prüfkraft
+
+`domain/pi_control.py` wurde mit `cosmic-ray` gemessen: 664 Mutanten, zunächst 53
+Überlebende, nach dem Schließen von 45 echten Testlücken noch 8 — jeder einzeln als
+gleichwertig begründet. Dabei kam eine Falle heraus, die alle Mutationsläufe betraf: Die
+Konfigurationen verweisen relativ auf `.venv/bin/python`, das es in einem Worktree nicht
+gibt, und ein vollständig gescheiterter Lauf meldete daraufhin **null Überlebende** — ein
+perfektes Ergebnis, das keines war. Jede Konfiguration warnt jetzt davor.
+
+---
+
 ## 0.4.0 — 2026-09-02
 
 **Wer 0.3.0 scharf betreibt, sollte aktualisieren.** Diese Fassung behebt die ersten

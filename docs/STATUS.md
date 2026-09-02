@@ -10,6 +10,36 @@ längst überholte Angaben — „nichts ist scharf", „1024 Tests, 98,55 %", �
 wird nirgends gesetzt", „es gibt keine Geräteerkennung für Meross". Alles vier stimmte
 einmal und stand noch da.
 
+## v0.5.0 — PI-Regelung als Beta, je Zone einschaltbar
+
+**Wer nichts einschaltet, bekommt exakt das Verhalten von 0.4.0.** Für eine Zone ohne den
+Schalter wird die PI-Entscheidung nicht einmal berechnet: `_pi_outcome()` gibt die
+Hysterese-Entscheidung zurück, bevor irgendetwas anderes geschieht, und das
+Neutralisieren fasst ausschliesslich `pi_*`-Spalten an. Das ist strukturell so, nicht nur
+getestet — und zusätzlich gemessen, indem dieselben Zyklusfolgen gegen den alten und den
+neuen Stand liefen und Entscheidung wie Zonenzustand verglichen wurden.
+
+PI gilt nur für gewöhnliche Schaltaktoren. Eine ungeeignete Zone sagt vor dem Einschalten
+warum. Die sieben Vorrangregeln behalten absoluten Vorrang, und ein Wächtertest zwingt
+jeden Ergebniscode der Regelkette zu einer ausdrücklichen Einordnung — vorher war das Tor
+erlaubend per Vorgabe.
+
+**Der Preis steht am Schalter**, mit der Rechnung hinter einem Info-Zeichen: bis zu
+262.800 Schaltspiele im Jahr gegenüber höchstens 52.560 bei Hysterese. Der tatsächliche
+Verschleiss ist unter [/relay-wear](relay-wear) je Gerät ablesbar — neue Seite, auch ohne
+PI nützlich.
+
+### Was diese Fassung über das Messen gelehrt hat
+
+Über `domain/pi_control.py` wurde zuerst berichtet, sie habe 664 Mutanten und **null**
+Überlebende. Tatsächlich waren es 53. Die Ursache ist systemisch: Alle
+`cosmic-ray-*.toml` verweisen relativ auf `.venv/bin/python`, das es in einem Worktree
+nicht gibt — jeder Mutant wird `INCOMPETENT`, und cosmic-ray meldet daraufhin null
+Überlebende. **Ein vollständig gescheiterter Lauf sieht aus wie ein perfektes Ergebnis.**
+Jede Konfiguration warnt jetzt davor, und `CLAUDE.md` verlangt, nach jedem Lauf die
+`test_outcome`-Verteilung anzusehen. Nach dem Schliessen von 45 echten Lücken sind 8
+Überlebende übrig, jeder einzeln als gleichwertig begründet.
+
 ## v0.4.0 — die Fassung nach dem Komplettreview
 
 **Wer 0.3.0 scharf betreibt, sollte aktualisieren.** Sie behebt die ersten beiden echten
