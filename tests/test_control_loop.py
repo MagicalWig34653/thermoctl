@@ -529,6 +529,126 @@ def test_rule5_a_genuinely_still_winning_protection_run_overrides_the_minimum_du
 
 
 # ---------------------------------------------------------------------------
+# Rule 5 fix — a protection run's own duration must not be extended by
+# min_on_seconds (docs/offene-entscheidungen.md, 2026-09-02, "Ein
+# Ventilschutzlauf kann zu dauerhaftem Heizen werden")
+# ---------------------------------------------------------------------------
+
+
+def test_a_valve_protection_run_no_longer_turns_into_permanent_heating() -> None:
+    """Regression test for the exact five-cycle reproduction from the decision
+    entry: a zone whose min_on_seconds (1200s / 20 minutes) outlives its
+    protection run (10 minutes = 600s) — a legal configuration, since both are
+    independent per-zone settings — with the room already at setpoint and no
+    heat demand.
+
+    Before the fix, cycle 3 (the run's closing cycle) answered
+    'gesperrt_mindestdauer' with heating=True, because the minimum switch
+    duration held the valve open past the run's own end; from the next cycle
+    the marker was gone and the held-open state read as ordinary regular
+    heating, which the room's temperature then kept forever (matching the
+    documented cycles 4 and 5). This test proves cycle 3 now shuts off
+    instead, and that control then stays off exactly as ordinary hysteresis
+    with no demand would."""
+    parameter = _parameter(
+        hysteresis_k=Decimal("0.5"),
+        min_on_seconds=1200,
+        min_off_seconds=300,
+        valve_protection_enabled=True,
+        valve_protection_interval_days=30,
+        valve_protection_duration_minutes=10,
+    )
+    measured_c = Decimal("21.0")
+    setpoint_c = Decimal("21.0")  # at setpoint — no heat demand
+
+    # Cycle 1 — protection due, zone was off for a long time before.
+    cycle_1 = decide(_lage(
+        heating_now=False, held_for_s=100_000,
+        measured_c=measured_c, setpoint_c=setpoint_c, parameter=parameter,
+        valve_protection_due=True, valve_protection_active=False,
+    ))
+    assert (cycle_1.heating, cycle_1.reason_code) == (True, REASON_CODE_VALVE_PROTECTION)
+
+    # Cycle 2 — run ongoing, 5 minutes in.
+    cycle_2 = decide(_lage(
+        heating_now=True, held_for_s=300,
+        measured_c=measured_c, setpoint_c=setpoint_c, parameter=parameter,
+        valve_protection_due=True, valve_protection_active=True,
+    ))
+    assert (cycle_2.heating, cycle_2.reason_code) == (True, REASON_CODE_VALVE_PROTECTION)
+
+    # Cycle 3 — the run has just closed: `_advance_valve_protection` in
+    # services/shadow_run.py already cleared `valve_protection_started_at` and
+    # set `last_valve_protection_at` for this very cycle before calling
+    # decide(), so `valve_protection_due` is now False — but it still reports
+    # `valve_protection_active=True` for this one cycle, since that write
+    # happened *during* this cycle, not before it. Held for 10 of the
+    # required 20 minutes.
+    cycle_3 = decide(_lage(
+        heating_now=True, held_for_s=600,
+        measured_c=measured_c, setpoint_c=setpoint_c, parameter=parameter,
+        valve_protection_due=False, valve_protection_active=True,
+    ))
+    assert cycle_3.heating is False
+    assert cycle_3.reason_code == REASON_CODE_UNCHANGED
+
+    # Cycles 4 and 5 — the marker is gone from here on (as in the real
+    # system, `_apply_decision_to_state` never re-sets it for a heating=False
+    # decision); control genuinely stays off, both right after and much
+    # later, instead of latching into permanent heating.
+    for held_for_s in (0, 10_000_000):
+        later_cycle = decide(_lage(
+            heating_now=False, held_for_s=held_for_s,
+            measured_c=measured_c, setpoint_c=setpoint_c, parameter=parameter,
+            valve_protection_due=False, valve_protection_active=False,
+        ))
+        assert later_cycle.heating is False
+
+
+def test_min_on_seconds_still_holds_a_genuinely_regular_heating_state() -> None:
+    """The taktschutz counterpart to the fix above, and the reason the fix is
+    scoped to `valve_protection_active` rather than dropped altogether: an
+    on-state that is ordinary regular heating (no protection marker at all)
+    must keep respecting min_on_seconds, even though hysteresis alone would
+    already want to switch off. Losing this would make the fix worse than the
+    bug it replaces."""
+    e = decide(_lage(
+        heating_now=True, held_for_s=60,
+        measured_c=Decimal("30.0"), setpoint_c=Decimal("21.0"),
+        parameter=_parameter(hysteresis_k=Decimal("0.5"), min_on_seconds=1200),
+        valve_protection_active=False, valve_protection_due=False,
+    ))
+    assert e.heating is True
+    assert e.reason_code == REASON_CODE_BLOCKED_MINIMUM_DURATION
+
+
+def test_a_due_protection_run_still_starts_despite_a_running_minimum_off_duration() -> (
+    None
+):
+    """Requirement: a protection run must still be able to start while
+    min_off_seconds has not yet elapsed — unaffected by this fix, which only
+    loosens the min_on axis. Here the marker survived from before a restart
+    (`valve_protection_active=True` while `heating_now` is still False, the
+    scenario `test_rule5_a_genuinely_still_winning_protection_run_overrides_
+    the_minimum_duration` above also covers, here with different numbers to
+    exercise a second point on the same axis)."""
+    e = decide(_lage(
+        heating_now=False, held_for_s=59,
+        measured_c=Decimal("21.0"), setpoint_c=Decimal("21.0"),
+        parameter=_parameter(
+            hysteresis_k=Decimal("0.5"),
+            min_off_seconds=600,
+            valve_protection_enabled=True,
+        ),
+        override_active=False,
+        valve_protection_due=True,
+        valve_protection_active=True,
+    ))
+    assert e.heating is True
+    assert e.reason_code == REASON_CODE_VALVE_PROTECTION
+
+
+# ---------------------------------------------------------------------------
 # Rule 6 — hysteresis, including edge cases
 # ---------------------------------------------------------------------------
 
