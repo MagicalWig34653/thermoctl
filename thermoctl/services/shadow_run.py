@@ -23,6 +23,7 @@ from thermoctl.db.models.zone import Zone, ZoneSetpoint
 from thermoctl.domain.control_loop import (
     REASON_CODE_BLOCKED_MINIMUM_DURATION,
     REASON_CODE_VALVE_PROTECTION,
+    Decision,
     Situation,
     decide,
 )
@@ -172,35 +173,9 @@ def _with_solar_setback(
     )
 
 
-def _process_zone(
-    session: Session,
-    zone: Zone,
-    now: datetime,
-    forecast: list[HourlyForecast] | None = None,
-) -> ShadowDecision:
-    settings = session.get(Setting, 1)
-    assert settings is not None, "setting-Zeile fehlt — Einrichtung unvollstaendig"
-
-    state = session.get(ZoneState, zone.id)
-    if state is None:
-        measured_c = None
-        sensor_status = NO_SOURCE
-    else:
-        measured_c = state.temperature_c
-        sensor_status_row = session.get(SensorStatus, state.sensor_status_id)
-        assert sensor_status_row is not None, "sensor_status-Zeile fehlt zur Referenz"
-        sensor_status = sensor_status_row.code
-    window_open, window_closed_for_s = _window_situation(session, zone, state, now)
-
-    setpoint = resolved_setpoint(session, zone, now)
-    frost_c = _frost_setpoint(session, zone, settings)
-    parameter = control_parameters(session, zone)
-    heating_now, held_for_s, previous_would_heat = _previous_state(session, zone.id, now)
-    setpoint_c, setpoint_reason = _with_solar_setback(
-        setpoint, frost_c, zone, parameter, settings, forecast, now
-    )
-
-    override_active = session.scalar(
+def _override_active(session: Session, zone: Zone, now: datetime) -> bool:
+    """Whether an active override of this zone blocks valve protection right now."""
+    return session.scalar(
         select(ZoneOverride.id)
         .where(
             ZoneOverride.zone_id == zone.id,
@@ -210,6 +185,35 @@ def _process_zone(
         )
         .limit(1)
     ) is not None
+
+
+def _advance_valve_protection(
+    session: Session, zone: Zone, state: ZoneState | None, now: datetime
+) -> tuple[bool, bool]:
+    """Advances the valve protection bookkeeping in `state` and reports its due-ness.
+
+    Returns `(protection_due, protection_was_active)`. Two writes happen here, in the
+    same order as before this was split out of `_process_zone`: closing an expired
+    protection run, and the one-time bridge that condenses pre-existing shadow history
+    into `last_regular_heat_at` for installations upgraded with history already in
+    place. Both only ever touch `state`, so pulling them out changes nothing about when
+    they run relative to the rest of the cycle.
+
+    `protection_was_active` is deliberately the value of `protection_started is not
+    None` from *before* this function's own write closes an expired run -- not the
+    `protection_active` used internally to decide whether to close it. A cycle that
+    closes an expired run must still report the zone as having been under protection:
+    otherwise the previous on-state (which came from protection) would look like an
+    ordinary hold to the hysteresis rule.
+
+    That guard lasts exactly one cycle, and on its own it is not enough. If a zone's
+    minimum *on* duration outlives its protection run -- both are per-zone settings,
+    so `min_on_seconds=1200` together with a ten-minute run is a legal configuration
+    -- the closing cycle answers `gesperrt_mindestdauer` and keeps the valve open,
+    the marker is gone by the next cycle, and the protection on-state is then read as
+    regular heating from there on. That is a known defect of the control rules, not
+    of this bookkeeping; it is written up in `docs/offene-entscheidungen.md`.
+    """
     interval = timedelta(days=zone.valve_protection_interval_days)
     run_duration = timedelta(minutes=zone.valve_protection_duration_minutes)
     protection_started = state.valve_protection_started_at if state is not None else None
@@ -247,6 +251,67 @@ def _process_zone(
         ) if moment is not None),
     )
     protection_due = now >= last_movement + interval
+    return protection_due, protection_started is not None
+
+
+def _apply_decision_to_state(
+    state: ZoneState | None, decision: Decision, now: datetime
+) -> None:
+    """Writes the consequence of a decision back into `state`'s valve protection markers.
+
+    Split out of `_process_zone` because it is a separate concern from *making* the
+    decision: `decide()` above only looks at the situation as it stood at the start of
+    the cycle, this writes down what that decision means for the next one.
+    """
+    if state is None:
+        return
+    if decision.reason_code == REASON_CODE_VALVE_PROTECTION:
+        if state.valve_protection_started_at is None:
+            state.valve_protection_started_at = now
+    elif (
+        decision.heating
+        and decision.reason_code != REASON_CODE_BLOCKED_MINIMUM_DURATION
+    ):
+        # Normal control has taken ownership of the on-state. Keeping the
+        # protection marker would make the next hysteresis cycle treat that
+        # regular state as temporary protection and switch it off too early.
+        state.valve_protection_started_at = None
+        # Persist simulated regular heating as constant-size operating state,
+        # separately from the unbounded detailed shadow log. The marker records a
+        # regular heating decision, not a command or physical movement.
+        state.last_regular_heat_at = now
+
+
+def _process_zone(
+    session: Session,
+    zone: Zone,
+    now: datetime,
+    forecast: list[HourlyForecast] | None = None,
+) -> ShadowDecision:
+    settings = session.get(Setting, 1)
+    assert settings is not None, "setting-Zeile fehlt — Einrichtung unvollstaendig"
+
+    state = session.get(ZoneState, zone.id)
+    if state is None:
+        measured_c = None
+        sensor_status = NO_SOURCE
+    else:
+        measured_c = state.temperature_c
+        sensor_status_row = session.get(SensorStatus, state.sensor_status_id)
+        assert sensor_status_row is not None, "sensor_status-Zeile fehlt zur Referenz"
+        sensor_status = sensor_status_row.code
+    window_open, window_closed_for_s = _window_situation(session, zone, state, now)
+
+    setpoint = resolved_setpoint(session, zone, now)
+    frost_c = _frost_setpoint(session, zone, settings)
+    parameter = control_parameters(session, zone)
+    heating_now, held_for_s, previous_would_heat = _previous_state(session, zone.id, now)
+    setpoint_c, setpoint_reason = _with_solar_setback(
+        setpoint, frost_c, zone, parameter, settings, forecast, now
+    )
+
+    override_active = _override_active(session, zone, now)
+    protection_due, protection_was_active = _advance_valve_protection(session, zone, state, now)
 
     situation = Situation(
         measured_c=measured_c,
@@ -264,26 +329,10 @@ def _process_zone(
         valve_protection_due=protection_due,
         # Also true in the first cycle at/after the deadline: the previous on-state
         # still came from protection and must not turn into an endless hysteresis hold.
-        valve_protection_active=protection_started is not None,
+        valve_protection_active=protection_was_active,
     )
     decision = decide(situation)
-
-    if state is not None:
-        if decision.reason_code == REASON_CODE_VALVE_PROTECTION:
-            if state.valve_protection_started_at is None:
-                state.valve_protection_started_at = now
-        elif (
-            decision.heating
-            and decision.reason_code != REASON_CODE_BLOCKED_MINIMUM_DURATION
-        ):
-            # Normal control has taken ownership of the on-state. Keeping the
-            # protection marker would make the next hysteresis cycle treat that
-            # regular state as temporary protection and switch it off too early.
-            state.valve_protection_started_at = None
-            # Persist simulated regular heating as constant-size operating state,
-            # separately from the unbounded detailed shadow log. The marker records a
-            # regular heating decision, not a command or physical movement.
-            state.last_regular_heat_at = now
+    _apply_decision_to_state(state, decision, now)
 
     row = ShadowDecision(
         decided_at=now,
