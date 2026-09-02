@@ -26,7 +26,9 @@ from thermoctl.db.models.zone import ZoneSetpoint
 from thermoctl.domain.device_assignment import (
     REQUIRED_CAPABILITY,
     CapabilityMissing,
+    detach_device,
     set_self_regulating,
+    set_temperature_source,
     swap_device,
 )
 
@@ -221,6 +223,29 @@ def test_tausch_schreibt_audit(session: Session) -> None:
     assert entry is not None
     assert "audit-alt" in entry.summary
     assert "audit-neu" in entry.summary
+
+
+def test_detaching_names_the_device_and_role_in_the_audit_entry(session: Session) -> None:
+    source(session)
+    zone = create_zone(session, "detach-audit-zone")
+    device = create_device(session, "detach-audit-device")
+    actuator = role(session, "actuator")
+    assignment = ZoneDevice(
+        zone_id=zone.id, device_id=device.id, device_role_id=actuator.id
+    )
+    session.add(assignment)
+    session.flush()
+
+    detach_device(session, zone, assignment, actor_id=None)
+
+    entry = session.scalar(
+        select(AuditEvent).where(
+            AuditEvent.object_type == "zone_device", AuditEvent.action == "unassign"
+        )
+    )
+    assert entry is not None
+    assert device.display_name in entry.summary
+    assert actuator.label in entry.summary
 
 
 def test_the_page_shows_assignments_and_the_temperature_source(
@@ -508,7 +533,7 @@ def test_a_sensor_cannot_be_assigned_as_an_actuator(session: Session) -> None:
 
     zone = create_zone(session, "faehigkeitszone")
     sensor = _with_capability(session, "nur-thermometer", "temperature", "battery")
-    with pytest.raises(CapabilityMissing, match="Schaltausgang"):
+    with pytest.raises(CapabilityMissing, match="Schaltausgang.*switch oder thermostat"):
         assign_device(
             session, zone, sensor, role(session, "actuator"), actor_id=None
         )
@@ -561,6 +586,32 @@ def test_a_temperature_source_must_measure_temperature(session: Session) -> None
         set_temperature_source(session, zone, ventil, actor_id=None)
 
 
+def test_temperature_source_audit_distinguishes_assignment_from_removal(
+    session: Session,
+) -> None:
+    source(session)
+    zone = create_zone(session, "temperature-source-audit")
+    sensor = _with_capability(session, "temperature-source-sensor", "temperature")
+
+    set_temperature_source(session, zone, sensor, actor_id=None)
+    set_temperature_source(session, zone, None, actor_id=None)
+
+    entries = list(
+        session.scalars(
+            select(AuditEvent)
+            .where(AuditEvent.object_type == "zone_temperature_source")
+            .order_by(AuditEvent.id)
+        )
+    )
+    assert [(entry.action, entry.summary) for entry in entries] == [
+        (
+            "assign",
+            f"Messquelle von '{zone.display_name}' auf '{sensor.display_name}' gesetzt",
+        ),
+        ("unassign", f"Messquelle von '{zone.display_name}' gelöst"),
+    ]
+
+
 def test_a_window_contact_must_report_a_contact(session: Session) -> None:
     from thermoctl.domain.device_assignment import CapabilityMissing, assign_device
 
@@ -588,6 +639,46 @@ def test_a_swap_checks_every_place_that_transfers(session: Session) -> None:
 
     with pytest.raises(CapabilityMissing, match="Schaltausgang"):
         swap_device(session, zone, ventil, sensor, actor_id=None)
+
+
+def test_a_swap_checks_the_temperature_source_before_writing(session: Session) -> None:
+    source(session)
+    zone = create_zone(session, "swap-temperature-source")
+    sensor = _with_capability(session, "swap-old-sensor", "temperature")
+    switch = _with_capability(session, "swap-new-switch", "switch")
+    set_temperature_source(session, zone, sensor, actor_id=None)
+
+    with pytest.raises(CapabilityMissing, match="Temperatur"):
+        swap_device(session, zone, sensor, switch, actor_id=None)
+
+    assert zone.temperature_source_device_id == sensor.id
+
+
+def test_a_swap_merges_a_role_the_new_device_already_has(session: Session) -> None:
+    source(session)
+    zone = create_zone(session, "swap-existing-role")
+    old = create_device(session, "swap-existing-old")
+    new_link = create_device(session, "swap-existing-new")
+    _assign(session, zone.id, old.id, "actuator")
+    _assign(session, zone.id, new_link.id, "actuator")
+
+    swap_device(session, zone, old, new_link, actor_id=None)
+
+    assignments = list(
+        session.scalars(
+            select(ZoneDevice).where(
+                ZoneDevice.zone_id == zone.id,
+                ZoneDevice.device_id == new_link.id,
+                ZoneDevice.device_role_id == role(session, "actuator").id,
+            )
+        )
+    )
+    assert len(assignments) == 1
+    assert session.scalar(
+        select(ZoneDevice).where(
+            ZoneDevice.zone_id == zone.id, ZoneDevice.device_id == old.id
+        )
+    ) is None
 
 
 def test_a_refused_swap_leaves_nothing_half_done(session: Session) -> None:
@@ -972,9 +1063,28 @@ def test_a_thermostat_can_be_switched_to_regulating_itself(
     session.refresh(assignment)
     assert assignment.self_regulating is False
 
-    summaries = [e.summary or "" for e in session.scalars(select(AuditEvent))]
-    assert any("regelt jetzt selbst" in s for s in summaries)
-    assert any("nicht mehr selbst" in s for s in summaries)
+    entries = list(
+        session.scalars(
+            select(AuditEvent)
+            .where(
+                AuditEvent.object_type == "zone_device",
+                AuditEvent.object_id == str(assignment.id),
+                AuditEvent.action == "update",
+            )
+            .order_by(AuditEvent.id)
+        )
+    )
+    assert [(entry.summary, entry.detail) for entry in entries] == [
+        (
+            f"'regelzone-ventil' in '{zone.display_name}' regelt jetzt selbst",
+            "thermoctl schreibt nur noch Soll- und Ist-Temperatur",
+        ),
+        (
+            f"'regelzone-ventil' in '{zone.display_name}' regelt nicht mehr selbst",
+            "thermoctl entscheidet wieder selbst über die Ein/Aus-Anforderung und "
+            "gibt sie im scharfen Betrieb nach einem Neustart an diesen Aktor aus",
+        ),
+    ]
 
 
 def test_a_plain_switch_cannot_be_told_to_regulate_itself(session: Session) -> None:
