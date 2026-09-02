@@ -118,6 +118,16 @@
             <span class="tc-chip tc-chip-cool">Aus</span>
             {% endif %}
             <div class="small t-quiet mt-1">{{ entscheidung.reason }}</div>
+            {% if entscheidung.requested_controller == "pi" %}
+              {% if entscheidung.effective_controller == "pi" %}
+              <span class="tc-chip tc-chip-quiet mt-1">PI (Beta)</span>
+              {% else %}
+              <span class="tc-chip tc-chip-warning mt-1">Hysterese — PI-Rückfall</span>
+              <div class="small t-quiet">
+                {{ pi_fallback_labels.get(entscheidung.controller_fallback_reason, entscheidung.controller_fallback_reason) }}
+              </div>
+              {% endif %}
+            {% endif %}
             {% else %}
             <span class="tc-chip tc-chip-quiet">Noch keine Entscheidung</span>
             {% endif %}

@@ -385,7 +385,9 @@ def save_parameter(
             token_id=principal.token_id, source="api",
         )
     except ParameterOutOfRange as exc:
-        raise _domain_error("valve_protection_duration_minutes", str(exc)) from exc
+        # Not one specific field any more: valve-protection timing and PI (Beta)
+        # bounds/eligibility can each reject this combined write.
+        raise _domain_error("control_parameters", str(exc)) from exc
     return ControlParametersResponse(**control_parameters(session, zone_obj).__dict__)
 
 

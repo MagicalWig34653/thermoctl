@@ -1,11 +1,15 @@
 from dataclasses import dataclass
 from decimal import Decimal
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from thermoctl import audit
+from thermoctl.db.models.device import DeviceCapabilityLink, ZoneDevice
+from thermoctl.db.models.lookup import DeviceCapability, DeviceRole
 from thermoctl.db.models.operations import Setting
 from thermoctl.db.models.zone import Zone
+from thermoctl.domain.pi_control import ActuatorProfile, PiEligibility, pi_eligible
 
 MAXIMUM_VALVE_PROTECTION_INTERVAL_DAYS = 3650
 MAXIMUM_VALVE_PROTECTION_DURATION_MINUTES = 5_256_000
@@ -71,6 +75,111 @@ def control_parameters(session: Session, zone: Zone) -> ControlParameters:
     )
 
 
+def zone_actuator_profiles(session: Session, zone: Zone) -> list[ActuatorProfile]:
+    """Every device carrying the zone's ``actuator`` role, for the PI eligibility check.
+
+    Deliberately duplicated rather than imported from
+    ``services.shadow_run._pi_actuator_profiles``: that module holds the already-wired
+    control loop and CLAUDE.md asks that it stay untouched by this task, and this
+    query has to run for every adapter *before* PI is switched on, not just as part of
+    a control cycle. Keep both in step by hand if the zone/device schema changes.
+    """
+    actuator_role = session.scalar(select(DeviceRole).where(DeviceRole.code == "actuator"))
+    if actuator_role is None:
+        return []
+    switch = session.scalar(select(DeviceCapability).where(DeviceCapability.code == "switch"))
+    thermostat = session.scalar(
+        select(DeviceCapability).where(DeviceCapability.code == "thermostat")
+    )
+    rows = session.execute(
+        select(ZoneDevice.device_id, ZoneDevice.self_regulating).where(
+            ZoneDevice.zone_id == zone.id,
+            ZoneDevice.device_role_id == actuator_role.id,
+        )
+    )
+    profiles: list[ActuatorProfile] = []
+    for device_id, self_regulating in rows:
+        capability_ids = set(
+            session.scalars(
+                select(DeviceCapabilityLink.capability_id).where(
+                    DeviceCapabilityLink.device_id == device_id
+                )
+            )
+        )
+        profiles.append(
+            ActuatorProfile(
+                self_regulating=bool(self_regulating),
+                has_switch_capability=switch is not None and switch.id in capability_ids,
+                has_thermostat_capability=(
+                    thermostat is not None and thermostat.id in capability_ids
+                ),
+            )
+        )
+    return profiles
+
+
+def pi_eligibility(
+    session: Session, zone: Zone, *, pi_min_on_seconds: int, pi_min_off_seconds: int
+) -> PiEligibility:
+    """Whether ``zone`` may switch PI (Beta) on right now.
+
+    Shown before the switch is offered (specification section 6) and re-checked
+    whenever PI is actually turned on (section 3): a zone that was eligible when it
+    was enabled can become ineligible later by a device reassignment, and the
+    wired control loop then falls back to hysteresis on its own -- but nothing here
+    may let someone switch PI on for a zone that does not qualify in the first place.
+    """
+    row = session.get(Setting, 1)
+    assert row is not None, "setting-Zeile fehlt — Einrichtung unvollstaendig"
+    return pi_eligible(
+        zone_actuator_profiles(session, zone),
+        control_cycle_seconds=row.shadow_interval_seconds,
+        pi_min_on_seconds=pi_min_on_seconds,
+        pi_min_off_seconds=pi_min_off_seconds,
+    )
+
+
+def validate_pi_parameters(
+    session: Session, zone: Zone, values: dict[str, Decimal | int | bool | None]
+) -> None:
+    """Rejects PI (Beta) configuration a zone may not use (spec sections 3 and 7).
+
+    Runs from `save_control_parameters`, so web, REST and MCP share one bound and one
+    eligibility check -- the same reason `validate_valve_protection` lives here and
+    not in an adapter.
+    """
+    for name in (
+        "pi_gain_per_k",
+        "pi_integral_time_minutes",
+        "pi_min_on_seconds",
+        "pi_min_off_seconds",
+    ):
+        description = BY_NAME[name]
+        value = Decimal(values[name])  # type: ignore[arg-type]
+        if not description.minimum <= value <= description.maximum:
+            raise ParameterOutOfRange(
+                f"{description.label} muss zwischen {description.minimum} und "
+                f"{description.maximum} liegen."
+            )
+        steps = (value - description.minimum) / description.step
+        if steps != steps.to_integral_value():
+            raise ParameterOutOfRange(
+                f"{description.label} muss in Schritten von {description.step} liegen."
+            )
+    if values["pi_enabled"]:
+        eligibility = pi_eligibility(
+            session,
+            zone,
+            pi_min_on_seconds=int(values["pi_min_on_seconds"]),  # type: ignore[arg-type]
+            pi_min_off_seconds=int(values["pi_min_off_seconds"]),  # type: ignore[arg-type]
+        )
+        if not eligibility.eligible:
+            raise ParameterOutOfRange(
+                "PI-Regelung (Beta) kann für diese Zone nicht eingeschaltet werden: "
+                f"{eligibility.reason}"
+            )
+
+
 def save_control_parameters(
     session: Session,
     zone: Zone,
@@ -86,6 +195,7 @@ def save_control_parameters(
         for name in ControlParameters.__dataclass_fields__
     }
     validate_valve_protection(complete)
+    validate_pi_parameters(session, zone, complete)
     for name in ControlParameters.__dataclass_fields__:
         setattr(zone, name, complete[name])
     audit.record(
@@ -198,6 +308,28 @@ PARAMETERS: tuple[ParameterDescription, ...] = (
         "valve_protection_duration_minutes", "Ventilschutz-Dauer", "Minuten",
         Decimal(1), Decimal(MAXIMUM_VALVE_PROTECTION_DURATION_MINUTES), Decimal(1),
     ),
+    # Bounds and steps match the spec table exactly (section 7) and the zone's own
+    # `CheckConstraint`s in `db/models/zone.py` -- three places would otherwise drift.
+    ParameterDescription(
+        "pi_enabled", "PI-Regelung (Beta) eingeschaltet", None,
+        Decimal(0), Decimal(1), Decimal(1),
+    ),
+    ParameterDescription(
+        "pi_gain_per_k", "PI-Verstärkung Kp (Beta)", "1/K",
+        Decimal("0.05"), Decimal("0.50"), Decimal("0.05"),
+    ),
+    ParameterDescription(
+        "pi_integral_time_minutes", "PI-Nachstellzeit Ti (Beta)", "min",
+        Decimal(60), Decimal(720), Decimal(30),
+    ),
+    ParameterDescription(
+        "pi_min_on_seconds", "PI-Mindest-Einschaltdauer (Beta)", "s",
+        Decimal(60), Decimal(300), Decimal(30),
+    ),
+    ParameterDescription(
+        "pi_min_off_seconds", "PI-Mindest-Ausschaltdauer (Beta)", "s",
+        Decimal(60), Decimal(300), Decimal(30),
+    ),
 )
 
 BY_NAME: dict[str, ParameterDescription] = {p.name: p for p in PARAMETERS}
@@ -237,7 +369,9 @@ def set_parameter(
     values: dict[str, Decimal | int | bool | None] = {
         field: getattr(zone, field) for field in ControlParameters.__dataclass_fields__
     }
-    values[name] = bool(rounded) if name == "valve_protection_enabled" else rounded
+    values[name] = (
+        bool(rounded) if name in ("valve_protection_enabled", "pi_enabled") else rounded
+    )
     save_control_parameters(
         session, zone, values, user_id=user_id, token_id=token_id, source=source
     )

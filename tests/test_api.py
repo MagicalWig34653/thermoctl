@@ -8,9 +8,11 @@ import pytest
 from sqlalchemy.orm import Session
 
 from tests.helpers import (
+    capability,
     command_outcome,
     create_device,
     create_device_state,
+    integration,
     operating_mode,
     role,
     sensor_status_of,
@@ -18,10 +20,33 @@ from tests.helpers import (
     user_with_permissions,
 )
 from thermoctl.auth.tokens import issue_token
-from thermoctl.db.models.device import DeviceCapabilityLink, ZoneDevice
+from thermoctl.db.models.device import Device, DeviceCapabilityLink, ZoneDevice
 from thermoctl.db.models.lookup import DeviceCapability
 from thermoctl.db.models.state import DeviceCommand, ZoneState
 from thermoctl.db.models.zone import Zone
+
+
+def _assign_switch_actuator(session: Session, zone_id: int) -> None:
+    """The minimal assignment `pi_eligible()` accepts for a REST test zone."""
+    device = Device(
+        integration_id=integration(session).id,
+        external_id=f"zone-{zone_id}-relais",
+        display_name=f"zone-{zone_id}-relais",
+    )
+    session.add(device)
+    session.flush()
+    session.add(
+        DeviceCapabilityLink(device_id=device.id, capability_id=capability(session, "switch").id)
+    )
+    session.add(
+        ZoneDevice(
+            zone_id=zone_id,
+            device_id=device.id,
+            device_role_id=role(session, "actuator").id,
+            self_regulating=False,
+        )
+    )
+    session.flush()
 
 
 @pytest.fixture
@@ -456,6 +481,63 @@ def test_rest_reads_and_writes_valve_protection_parameters(client, token_fuer, s
     assert response.json()["valve_protection_enabled"] is True
     assert response.json()["valve_protection_interval_days"] == 14
     assert response.json()["valve_protection_duration_minutes"] == 7
+
+
+def test_rest_can_switch_pi_on_and_off_for_an_eligible_zone(client, token_fuer, session) -> None:
+    """The bulk PUT and the single-value PUT both go through
+    `domain.zone_settings.save_control_parameters`/`set_parameter` -- the same
+    functions `test_pi_schema.py` already proves for MCP."""
+    _defaults(session)
+    _assign_switch_actuator(session, 1)
+    head = token_fuer([("zone.read", "bad"), ("zone.manage", "bad")])
+
+    response = client.put(
+        "/api/v1/zones/1/parameters", headers=head,
+        json={"pi_enabled": True, "pi_gain_per_k": "0.30",
+              "pi_integral_time_minutes": 90, "pi_min_on_seconds": 90,
+              "pi_min_off_seconds": 90},
+    )
+    assert response.status_code == 200
+    assert response.json()["pi_enabled"] is True
+    assert response.json()["pi_gain_per_k"] == "0.30"
+    zone = session.get(Zone, 1)
+    assert zone is not None
+    assert zone.pi_enabled is True
+
+    single = client.put(
+        "/api/v1/zones/1/parameters/pi_enabled", headers=head, json={"value": "0"}
+    )
+    assert single.status_code == 200
+    assert single.json()["pi_enabled"] is False
+    assert zone.pi_enabled is False
+
+
+def test_rest_refuses_pi_for_a_zone_without_a_switch_actuator(client, token_fuer, session) -> None:
+    """Section 6 of the specification: rejected up front, not switched on and left
+    to fall back silently."""
+    _defaults(session)
+    head = token_fuer([("zone.read", "bad"), ("zone.manage", "bad")])
+
+    response = client.put(
+        "/api/v1/zones/1/parameters", headers=head, json={"pi_enabled": True}
+    )
+    assert response.status_code == 422
+    assert "PI-Regelung" in response.json()["detail"]
+    zone = session.get(Zone, 1)
+    assert zone is not None
+    assert zone.pi_enabled is False
+
+
+def test_rest_schema_rejects_a_pi_value_off_step(client, token_fuer, session) -> None:
+    _defaults(session)
+    _assign_switch_actuator(session, 1)
+    head = token_fuer([("zone.read", "bad"), ("zone.manage", "bad")])
+
+    response = client.put(
+        "/api/v1/zones/1/parameters", headers=head, json={"pi_gain_per_k": "0.32"}
+    )
+    assert response.status_code == 422
+    assert "Schritten" in response.json()["detail"]
 
     invalid = client.put(
         "/api/v1/zones/1/parameters", headers=head,

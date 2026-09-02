@@ -42,3 +42,32 @@ def test_the_operating_page_shows_the_most_recent_decision_per_zone(
     response = angemeldeter_client.get("/control")
     assert response.status_code == 200
     assert "betriebszone" in response.text.lower()
+
+
+def test_the_operating_page_shows_pi_and_its_fallback_reason(
+    angemeldeter_client: TestClient, session: Session
+) -> None:
+    """Specification section 6: whoever looks at a PI zone has to see the wirksamer
+    Reglertyp, and if it fell back to hysteresis, why -- not just the ordinary
+    hysteresis reason text, which never mentions PI at all."""
+    from tests.helpers import create_shadow_decision, create_zone
+
+    create_settings(session)
+    running = create_zone(session, "pi-laeuft")
+    decision = create_shadow_decision(session, running)
+    decision.requested_controller = "pi"
+    decision.effective_controller = "pi"
+
+    fallen_back = create_zone(session, "pi-zurueckgefallen")
+    fallback_decision = create_shadow_decision(session, fallen_back)
+    fallback_decision.requested_controller = "pi"
+    fallback_decision.effective_controller = "hysteresis"
+    fallback_decision.controller_fallback_reason = "pi_ungeeignet"
+    session.flush()
+
+    response = angemeldeter_client.get("/control")
+
+    assert response.status_code == 200
+    assert "PI (Beta)" in response.text
+    assert "PI-Rückfall" in response.text
+    assert "Die Zone erfüllt die PI-Voraussetzungen nicht (mehr)." in response.text
