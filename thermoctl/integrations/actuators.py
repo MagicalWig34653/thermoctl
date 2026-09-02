@@ -222,6 +222,21 @@ class MerossSwitch:
     judged acceptable for this adapter (a `SETACK` is what the manufacturer's own
     apps treat as success too), but it is the honest boundary of the claim: this
     checks that the socket *accepted* the command, not that the room got warmer.
+    Verifying that would take a `GET` after the fact -- deliberately not built here,
+    that is a separate feature, not this fix.
+
+    **What "accepted" is checked against.** `MerossCommandTransport.send()` (see
+    `meross_mqtt.py`) already discards any reply that does not carry a `messageId`
+    matching this command, a `sign` matching `md5(messageId + key + timestamp)`, and
+    a `namespace` matching the one that was asked -- a reply failing any of those is
+    treated as no answer at all, not as this command's answer. What is left to check
+    here is the method (`SETACK`) and, where the payload actually names one, the
+    confirmed channel and state. The protocol carries no device identifier in the
+    reply to compare against `device_uuid` -- each command opens its own connection
+    and answer topic (a fresh, single-use nonce derived per call, see
+    `MerossConnection.build`), so the reply channel is already scoped to this one
+    command; there is nothing further to check that address against without a
+    device-side `GET`.
 
     **Two bolts, like `MqttClient`.** `frozen_switching_allowed` is read once, at
     process start, and handed in here unchanged for the adapter's whole lifetime --
@@ -283,10 +298,39 @@ class MerossSwitch:
 
         # The socket confirms with `SETACK`. Anything else is not a confirmation, and
         # treating it as one would report a heater as switched that never was.
+        # `_transport.send()` already rejected an answer with the wrong signature or
+        # the wrong namespace before returning at all (see meross_mqtt.py) -- what is
+        # left to check here is specific to this command: the method, and, where the
+        # payload actually carries it, the state it confirms.
         header = answer.get("header")
         method = header.get("method") if isinstance(header, Mapping) else None
         if method != "SETACK":
             return SwitchResult(
                 False, message, f"Geraet bestaetigte nicht, sondern antwortete {method!r}"
             )
+
+        # A real socket answered with an empty payload in the one round trip this was
+        # measured against (see the module docstring) -- so a `SETACK` without a
+        # `togglex` confirmation is not itself suspicious. Where the payload *does*
+        # carry one, though, it has to name the channel and state that were actually
+        # sent; naming a different one is a mismatched command, not a confirmation of
+        # this one, and must not be counted as success. This does not confirm the
+        # relay physically moved -- only a state query would, and that is
+        # deliberately not built here (see this class's docstring).
+        answer_payload = answer.get("payload")
+        if isinstance(answer_payload, Mapping):
+            togglex = answer_payload.get("togglex")
+            if isinstance(togglex, Mapping):
+                confirmed_channel = togglex.get("channel")
+                confirmed_onoff = togglex.get("onoff")
+                expected_onoff = 1 if on else 0
+                if confirmed_channel != self._channel or confirmed_onoff != expected_onoff:
+                    return SwitchResult(
+                        False,
+                        message,
+                        (
+                            "Geraet bestaetigte einen anderen Zustand: Kanal "
+                            f"{confirmed_channel!r}, Zustand {confirmed_onoff!r}"
+                        ),
+                    )
         return SwitchResult(True, f"Gesendet: {message}")

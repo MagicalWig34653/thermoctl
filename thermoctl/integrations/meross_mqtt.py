@@ -170,7 +170,8 @@ class AiomqttCommandTransport:
             await client.publish(command_topic(device_uuid), message)
             try:
                 return await asyncio.wait_for(
-                    self._answer(client, message_id), timeout=ANSWER_TIMEOUT_S
+                    self._answer(client, conn, namespace, message_id),
+                    timeout=ANSWER_TIMEOUT_S,
                 )
             except TimeoutError as exc:
                 raise MerossError(
@@ -178,11 +179,23 @@ class AiomqttCommandTransport:
                 ) from exc
 
     @staticmethod
-    async def _answer(client: aiomqtt.Client, message_id: str) -> Mapping[str, object]:
+    async def _answer(
+        client: aiomqtt.Client,
+        connection: MerossConnection,
+        namespace: str,
+        message_id: str,
+    ) -> Mapping[str, object]:
         """Waits for the answer to *this* message, ignoring anything else.
 
         A socket also reports state on its own; matching on the `messageId` is what
-        keeps such a report from being read as a confirmation of the command.
+        keeps such a report from being read as a confirmation of the command. A
+        matching `messageId` alone is not authenticity, though -- it is the one part
+        of the outgoing message that was published in the clear (on the command
+        topic every subscriber to that topic can read). Whoever answers still has to
+        prove they hold the account `key`, the same way every outgoing message does,
+        and has to actually answer the namespace that was asked. Both are checked
+        before the answer is handed back; a mismatch here is treated as no answer at
+        all rather than a confirmation of anything.
         """
         async for incoming in client.messages:
             try:
@@ -192,9 +205,32 @@ class AiomqttCommandTransport:
             if not isinstance(answer, dict):  # pragma: no cover - broker sends objects
                 continue
             header = answer.get("header")
-            if isinstance(header, dict) and header.get("messageId") == message_id:
-                return cast(Mapping[str, object], answer)
+            if not isinstance(header, dict) or header.get("messageId") != message_id:
+                continue
+            _verify_answer_authenticity(connection, namespace, header)
+            return cast(Mapping[str, object], answer)
         # The stream ends when the connection drops. Without this the coroutine
         # would return `None` and the caller would read a dropped connection as a
         # confirmation.
         raise MerossError("Verbindung endete vor der Antwort")
+
+
+def _verify_answer_authenticity(
+    connection: MerossConnection, namespace: str, header: Mapping[str, object]
+) -> None:
+    """Rejects an answer that carries the right `messageId` but nothing else.
+
+    A `messageId` travels in the clear on the command topic, so it alone does not
+    prove the reply came from someone who actually holds the account `key`, nor
+    that it actually answers the namespace that was asked rather than some other
+    one addressed to the same reply topic. Both are re-derived the same way
+    `build_message` derives them for outgoing messages, and a mismatch in either
+    raises -- callers must not treat it as a confirmation.
+    """
+    if header.get("namespace") != namespace:
+        raise MerossError(
+            f"Antwort auf {namespace} nannte einen anderen Namespace"
+        )
+    expected_sign = _md5(f"{header.get('messageId')}{connection.key}{header.get('timestamp')}")
+    if header.get("sign") != expected_sign:
+        raise MerossError(f"Antwort auf {namespace} war nicht mit dem Kontoschluessel signiert")

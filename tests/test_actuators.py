@@ -32,11 +32,16 @@ class MerossStub:
     """Stands in for the MQTT command path, and answers `SETACK` like a real socket."""
 
     def __init__(
-        self, *, errors: Exception | None = None, method: str = "SETACK"
+        self,
+        *,
+        errors: Exception | None = None,
+        method: str = "SETACK",
+        confirmed_payload: dict[str, Any] | None = None,
     ) -> None:
         self.calls: list[tuple[str, str, str, dict[str, Any]]] = []
         self.errors = errors
         self.method = method
+        self.confirmed_payload = confirmed_payload
 
     async def send(
         self, device_uuid: str, namespace: str, method: str, payload: Any
@@ -44,7 +49,10 @@ class MerossStub:
         self.calls.append((device_uuid, namespace, method, dict(payload)))
         if self.errors:
             raise self.errors
-        return {"header": {"method": self.method}, "payload": {}}
+        return {
+            "header": {"method": self.method},
+            "payload": self.confirmed_payload if self.confirmed_payload is not None else {},
+        }
 
 
 def _settings(**values: object) -> Settings:
@@ -285,6 +293,73 @@ async def test_an_answer_without_a_header_is_not_a_confirmation(session: Session
     ).switching(True)
 
     assert result.executed is False
+
+
+@pytest.mark.anyio
+async def test_a_setack_confirming_the_state_that_was_sent_is_accepted(
+    session: Session,
+) -> None:
+    """The positive case: a `SETACK` that names the channel and state actually sent
+    is exactly what the manufacturer's own apps treat as success, and so is this."""
+    _armed(session)
+    meross = MerossStub(confirmed_payload={"togglex": {"channel": 2, "onoff": 1}})
+
+    result = await MerossSwitch(
+        session, meross, "geraet-1", channel=2, frozen_switching_allowed=True
+    ).switching(True)
+
+    assert result.executed is True
+
+
+@pytest.mark.anyio
+async def test_a_setack_confirming_a_different_state_is_not_a_confirmation(
+    session: Session,
+) -> None:
+    """A compromised or faulty peer could see the fresh `messageId` and answer
+    `SETACK` right away without the relay ever having moved. Naming a state that
+    was never asked for is how that shows up here, and it must not be logged as
+    success -- the outcome stays `FAILED`, so the next cycle retries."""
+    _armed(session)
+    meross = MerossStub(confirmed_payload={"togglex": {"channel": 0, "onoff": 0}})
+
+    result = await MerossSwitch(
+        session, meross, "geraet-1", channel=0, frozen_switching_allowed=True
+    ).switching(True)
+
+    assert result.executed is False
+    assert result.errors is not None and "anderen Zustand" in result.errors
+
+
+@pytest.mark.anyio
+async def test_a_setack_confirming_the_right_state_on_the_wrong_channel_is_not_a_confirmation(
+    session: Session,
+) -> None:
+    """Channel and state are checked together -- the right `onoff` on a channel
+    nobody asked to switch is not this command's confirmation either."""
+    _armed(session)
+    meross = MerossStub(confirmed_payload={"togglex": {"channel": 1, "onoff": 1}})
+
+    result = await MerossSwitch(
+        session, meross, "geraet-1", channel=2, frozen_switching_allowed=True
+    ).switching(True)
+
+    assert result.executed is False
+    assert result.errors is not None and "anderen Zustand" in result.errors
+
+
+@pytest.mark.anyio
+async def test_a_setack_with_an_empty_payload_is_still_accepted(session: Session) -> None:
+    """Measured against real hardware, every `SETACK` came back with an empty
+    payload (see the module docstring) -- that alone must not be treated as
+    suspicious, or this adapter would never report success against a real socket."""
+    _armed(session)
+    meross = MerossStub()
+
+    result = await MerossSwitch(
+        session, meross, "geraet-1", frozen_switching_allowed=True
+    ).switching(True)
+
+    assert result.executed is True
 
 
 @pytest.mark.anyio
