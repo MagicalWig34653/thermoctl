@@ -1,7 +1,19 @@
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, Numeric, String, Text, false
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    Numeric,
+    String,
+    Text,
+    false,
+    text,
+)
 from sqlalchemy.dialects import mysql
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -12,6 +24,17 @@ class ZoneState(Base):
     """The most recently derived zone state, used for decisions."""
 
     __tablename__ = "zone_state"
+    __table_args__ = (
+        CheckConstraint("pi_integral BETWEEN 0 AND 1", name="pi_integral_0_bis_1"),
+        CheckConstraint(
+            "pi_window_duty IS NULL OR pi_window_duty BETWEEN 0 AND 1",
+            name="pi_window_duty_0_bis_1",
+        ),
+        CheckConstraint(
+            "pi_time_balance_seconds BETWEEN -900 AND 900",
+            name="pi_time_balance_minus_900_bis_900",
+        ),
+    )
 
     zone_id: Mapped[int] = mapped_column(
         ForeignKey("zone.id", ondelete="CASCADE"), primary_key=True
@@ -33,6 +56,35 @@ class ZoneState(Base):
     last_valve_protection_at: Mapped[datetime | None] = mapped_column(
         DateTime().with_variant(mysql.DATETIME(fsp=6), "mysql", "mariadb"), nullable=True
     )
+    # Durable PI controller state. Unlike `shadow_decision`, this row is not subject
+    # to retention and therefore remains the single source for the next cycle.
+    pi_integral: Mapped[Decimal] = mapped_column(
+        Numeric(12, 6), default=Decimal("0"), server_default=text("0"), nullable=False
+    )
+    pi_last_evaluated_at: Mapped[datetime | None] = mapped_column(
+        DateTime().with_variant(mysql.DATETIME(fsp=6), "mysql", "mariadb"), nullable=True
+    )
+    pi_setpoint_context_key: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    pi_last_control_armed: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    pi_window_started_at: Mapped[datetime | None] = mapped_column(
+        DateTime().with_variant(mysql.DATETIME(fsp=6), "mysql", "mariadb"), nullable=True
+    )
+    pi_window_duty: Mapped[Decimal | None] = mapped_column(
+        Numeric(12, 6), nullable=True
+    )
+    pi_time_balance_seconds: Mapped[Decimal] = mapped_column(
+        Numeric(12, 6), default=Decimal("0"), server_default=text("0"), nullable=False
+    )
+    pi_last_switch_at: Mapped[datetime | None] = mapped_column(
+        DateTime().with_variant(mysql.DATETIME(fsp=6), "mysql", "mariadb"), nullable=True
+    )
+    pi_last_switch_heating: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    pi_awaiting_boundary_until: Mapped[datetime | None] = mapped_column(
+        DateTime().with_variant(mysql.DATETIME(fsp=6), "mysql", "mariadb"), nullable=True
+    )
+    # Also carries the reason of a visible fallback; both cases neutralise the same
+    # PI state and section 5 deliberately asks for one last-reason marker.
+    pi_last_reset_reason: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
 
 class ShadowDecision(Base):
@@ -50,6 +102,22 @@ class ShadowDecision(Base):
             "zone_id",
             "decided_at",
             "id",
+        ),
+        CheckConstraint(
+            "pi_integral_before IS NULL OR pi_integral_before BETWEEN 0 AND 1",
+            name="pi_integral_before_0_bis_1",
+        ),
+        CheckConstraint(
+            "pi_integral_after IS NULL OR pi_integral_after BETWEEN 0 AND 1",
+            name="pi_integral_after_0_bis_1",
+        ),
+        CheckConstraint(
+            "pi_raw_duty IS NULL OR pi_raw_duty BETWEEN 0 AND 1",
+            name="pi_raw_duty_0_bis_1",
+        ),
+        CheckConstraint(
+            "pi_frozen_duty IS NULL OR pi_frozen_duty BETWEEN 0 AND 1",
+            name="pi_frozen_duty_0_bis_1",
         ),
     )
 
@@ -69,6 +137,45 @@ class ShadowDecision(Base):
     previous_would_heat: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     outcome_code: Mapped[str] = mapped_column(String(32), nullable=False)
     reason: Mapped[str] = mapped_column(String(255), nullable=False)
+    # Structured PI diagnostics are snapshots only. The durable values that feed the
+    # next decision live above in `zone_state` and cannot disappear with retention.
+    requested_controller: Mapped[str] = mapped_column(
+        String(32), default="hysteresis", server_default=text("'hysteresis'"), nullable=False
+    )
+    effective_controller: Mapped[str] = mapped_column(
+        String(32), default="hysteresis", server_default=text("'hysteresis'"), nullable=False
+    )
+    controller_fallback_reason: Mapped[str | None] = mapped_column(
+        String(64), nullable=True
+    )
+    pi_error_k: Mapped[Decimal | None] = mapped_column(Numeric(12, 6), nullable=True)
+    pi_proportional_term: Mapped[Decimal | None] = mapped_column(
+        Numeric(12, 6), nullable=True
+    )
+    pi_integral_before: Mapped[Decimal | None] = mapped_column(
+        Numeric(12, 6), nullable=True
+    )
+    pi_integral_after: Mapped[Decimal | None] = mapped_column(
+        Numeric(12, 6), nullable=True
+    )
+    pi_raw_duty: Mapped[Decimal | None] = mapped_column(Numeric(12, 6), nullable=True)
+    pi_frozen_duty: Mapped[Decimal | None] = mapped_column(Numeric(12, 6), nullable=True)
+    pi_window_started_at: Mapped[datetime | None] = mapped_column(
+        DateTime().with_variant(mysql.DATETIME(fsp=6), "mysql", "mariadb"), nullable=True
+    )
+    pi_time_balance_before_seconds: Mapped[Decimal | None] = mapped_column(
+        Numeric(12, 6), nullable=True
+    )
+    pi_time_balance_after_seconds: Mapped[Decimal | None] = mapped_column(
+        Numeric(12, 6), nullable=True
+    )
+    pi_state_runtime_seconds: Mapped[Decimal | None] = mapped_column(
+        Numeric(12, 6), nullable=True
+    )
+    pi_integrator_action: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    pi_min_duration_decision: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    pi_reset_reason: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    pi_candidate_would_heat: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
 
 
 class DeviceCommand(Base):

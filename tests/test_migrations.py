@@ -1,6 +1,7 @@
 import os
 import subprocess
 import sys
+from decimal import Decimal
 
 import pytest
 from sqlalchemy import Engine, create_engine, text
@@ -54,6 +55,115 @@ def test_models_and_migrations_are_in_sync(migrations_database_url: str) -> None
     assert prep.returncode == 0, prep.stderr
     result = _alembic(migrations_database_url, "check")
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+@pytest.mark.migration
+def test_pi_migration_keeps_existing_zones_off_and_state_neutral(
+    migrations_database_url: str,
+) -> None:
+    before = _alembic(migrations_database_url, "downgrade", "f6a9d4c12b70")
+    assert before.returncode == 0, before.stderr
+
+    db_engine = create_engine(migrations_database_url)
+    try:
+        with db_engine.begin() as connection:
+            operating_mode_id = connection.execute(
+                text("SELECT id FROM operating_mode ORDER BY id LIMIT 1")
+            ).scalar_one()
+            sensor_status_id = connection.execute(
+                text("SELECT id FROM sensor_status WHERE code = 'ok'")
+            ).scalar_one()
+            connection.execute(
+                text(
+                    "INSERT INTO zone "
+                    "(name, display_name, operating_mode_id, sort_order, created_at, updated_at) "
+                    "VALUES ('pi-migration', 'PI-Migration', :mode_id, 0, "
+                    "'2026-09-02 10:00:00', '2026-09-02 10:00:00')"
+                ),
+                {"mode_id": operating_mode_id},
+            )
+            zone_id = connection.execute(
+                text("SELECT id FROM zone WHERE name = 'pi-migration'")
+            ).scalar_one()
+            connection.execute(
+                text(
+                    "INSERT INTO zone_state "
+                    "(zone_id, sensor_status_id, updated_at) "
+                    "VALUES (:zone_id, :status_id, '2026-09-02 10:00:00')"
+                ),
+                {"zone_id": zone_id, "status_id": sensor_status_id},
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO shadow_decision "
+                    "(decided_at, zone_id, setpoint_reason, would_heat, outcome_code, reason) "
+                    "VALUES ('2026-09-02 10:00:00', :zone_id, 'Zeitplan', false, "
+                    "'aus', 'Sollwert erreicht')"
+                ),
+                {"zone_id": zone_id},
+            )
+
+        up = _alembic(migrations_database_url, "upgrade", "head")
+        assert up.returncode == 0, up.stderr
+        with db_engine.connect() as connection:
+            configuration = connection.execute(
+                text(
+                    "SELECT pi_enabled, pi_gain_per_k, pi_integral_time_minutes, "
+                    "pi_min_on_seconds, pi_min_off_seconds FROM zone "
+                    "WHERE name = 'pi-migration'"
+                )
+            ).one()
+            state = connection.execute(
+                text(
+                    "SELECT pi_integral, pi_last_evaluated_at, pi_setpoint_context_key, "
+                    "pi_last_control_armed, pi_window_started_at, pi_window_duty, "
+                    "pi_time_balance_seconds, pi_last_switch_at, pi_last_switch_heating, "
+                    "pi_awaiting_boundary_until, pi_last_reset_reason FROM zone_state "
+                    "WHERE zone_id = :zone_id"
+                ),
+                {"zone_id": zone_id},
+            ).one()
+            snapshot = connection.execute(
+                text(
+                    "SELECT requested_controller, effective_controller, "
+                    "controller_fallback_reason, pi_error_k, "
+                    "pi_integral_before, pi_integral_after, pi_raw_duty, pi_frozen_duty "
+                    "FROM shadow_decision WHERE zone_id = :zone_id"
+                ),
+                {"zone_id": zone_id},
+            ).one()
+
+        assert tuple(configuration) == (False, Decimal("0.25"), 180, 60, 60)
+        assert tuple(state) == (
+            Decimal("0"),
+            None,
+            None,
+            None,
+            None,
+            None,
+            Decimal("0"),
+            None,
+            None,
+            None,
+            None,
+        )
+        assert tuple(snapshot) == (
+            "hysteresis",
+            "hysteresis",
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+
+        down = _alembic(migrations_database_url, "downgrade", "f6a9d4c12b70")
+        assert down.returncode == 0, down.stderr
+        up_again = _alembic(migrations_database_url, "upgrade", "head")
+        assert up_again.returncode == 0, up_again.stderr
+    finally:
+        db_engine.dispose()
 
 
 def test_foreign_keys_are_enforced_under_sqlite(engine: Engine) -> None:
