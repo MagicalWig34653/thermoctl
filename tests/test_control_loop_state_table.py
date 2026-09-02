@@ -155,13 +155,25 @@ def _expected_from_specification(row: StateRow) -> ExpectedDecision:
     )
 
     # Rule 5: only the timer of the current actuator state exists in Situation.  The
-    # axis therefore means min_on when heating and min_off when off.  A protection
-    # run is exempt from these regular timers only while it is genuinely still
-    # winning (marker "active" AND protection_allowed) — an interrupted run (marker
-    # still set but rule 7 no longer wins, e.g. because of the very override or mode
-    # this row tests) falls back to the regular timer like any other decision.
+    # axis therefore means min_on when heating and min_off when off.  The two axes
+    # are exempt from their timer under different conditions:
+    #
+    # - min_off (heating_now false): exempt only while a run is genuinely still
+    #   winning (marker "active" AND protection_allowed) — an interrupted run
+    #   (marker still set but rule 7 no longer wins, e.g. because of the very
+    #   override or mode this row tests) falls back to the regular timer like any
+    #   other decision. This protects a run's *start* from being blocked.
+    # - min_on (heating_now true): exempt whenever the marker is "active", full
+    #   stop — regardless of protection_allowed. min_on exists to stop the valve
+    #   from short-cycling, and a protection run does not short-cycle: it runs for
+    #   its own configured duration. A held-on state that traces back to a
+    #   protection run must not be kept open by min_on past the run's own end —
+    #   that was the actual bug (`docs/offene-entscheidungen.md`, 2026-09-02).
     protection_currently_winning = row.protection == "active" and protection_allowed
-    if not row.minimum_duration_expired and not protection_currently_winning:
+    protection_exempt = (
+        row.protection == "active" if row.heating_now else protection_currently_winning
+    )
+    if not row.minimum_duration_expired and not protection_exempt:
         return ExpectedDecision(row.heating_now, REASON_CODE_BLOCKED_MINIMUM_DURATION)
 
     # Rule 6: a protection-created on-state is not regular heating.  Below the lower

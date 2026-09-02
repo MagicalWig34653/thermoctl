@@ -165,18 +165,42 @@ def decide(situation: Situation) -> Decision:
     # away, instead of waiting out a deadline that never started running.
     #
     # A currently winning protection run (marker set AND rule 7 would still win) is
-    # exempt — it must not be blocked by a minimum switch duration left over from
-    # before the run started, including right after a restart, where the marker is
-    # the only memory of the run (see `valve_protection_active` on `Situation`). A
-    # run whose marker is set but that has since lost rule 7 gets no exemption and
+    # exempt from the *off* timer (`min_off_seconds`) — it must not be blocked from
+    # starting by a minimum switch duration left over from before the run started,
+    # including right after a restart, where the marker is the only memory of the
+    # run (see `valve_protection_active` on `Situation`). A run whose marker is set
+    # but that has since lost rule 7 gets no exemption from `min_off_seconds` and
     # falls back to the minimum switch duration like any other decision.
+    #
+    # The *on* timer (`min_on_seconds`) is different: it exists to protect against
+    # short-cycling the valve, and a protection run does not short-cycle — it runs
+    # for its own configured duration, once a month. So whenever the held-on state
+    # currently traces back to a protection run (`valve_protection_active`), the on
+    # timer does not apply, regardless of whether rule 7 would still win this cycle.
+    # This is deliberately looser than the off-timer exemption above: without it, a
+    # zone whose `min_on_seconds` outlives its protection run keeps the valve open
+    # by the minimum duration alone, on the very cycle the run closes — the marker
+    # is cleared right after in `services/shadow_run.py`, so the next cycle would
+    # misread the still-open valve as ordinary heating (see
+    # `docs/offene-entscheidungen.md`, 2026-09-02). The traded-off risk is bounded
+    # to the run's own duration: if an override, an off-mode switch, or a sensor
+    # failure makes rule 7 lose mid-run while the marker is still set, the on-state
+    # is no longer held for the usual minimum — it can now flip in the very next
+    # cycle where ordinary hysteresis would ask for that. That window is at most the
+    # configured protection-run duration, since the marker is unconditionally
+    # cleared once that elapses.
     minimum_duration = (
         situation.parameter.min_on_seconds
         if situation.heating_now
         else situation.parameter.min_off_seconds
     )
+    protection_exempt = (
+        situation.valve_protection_active
+        if situation.heating_now
+        else situation.valve_protection_active and protection_allowed
+    )
     if (
-        not (situation.valve_protection_active and protection_allowed)
+        not protection_exempt
         and situation.held_for_s is not None
         and situation.held_for_s < minimum_duration
     ):
