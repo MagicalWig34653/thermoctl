@@ -62,6 +62,7 @@
       "## Ein Fehler in der Regelkette — der Ventilschutz-Marker hob den Taktschutz auf",
       "## Was geschaltet wird — genau",
       "## v0.3.0 — die Fassung, in der thermoctl schaltet",
+      "**Ist die Mindest-Einschaltdauer einer Zone länger als ihr Ventilschutzlauf, wird der",
       "- **Ein Meross-Aktor bekommt jetzt ebenfalls seinen Befehl.** Das Schalten dort braucht",
       "- **Ein Zigbee2MQTT-Thermostatventil ohne `self_regulating`** (Fähigkeit `thermostat`",
       "- **Sind beide Riegel offen**, bekommen selbstregelnde Thermostatventile ihren Sollwert",
@@ -81,6 +82,7 @@
       "wahr, dass „weiterhin nichts geschaltet wird\" — das war eine Zusicherung ohne Deckung.",
       "was an der Heizung passiert ist — es stand deshalb vor der Verdrahtung der Aktoren (Phase 4)",
       "während des Laufs, bleibt der Heizkörper jetzt bis zum Ablauf der Mindest-**Einschalt**dauer",
+      "zeitlich begrenzte Lauf zu dauerhaftem Heizen.** Beides sind Einstellungen je Zone, die",
       "| 4 — Regelkreis und Cutover | Alle sieben Aktortypen der echten Anlage verdrahtet: Zigbee2MQTT-Aktoren, Meross-Steckdosen, Zigbee2MQTT-Thermostatventile. Kreuzreview der Verdrahtung fand drei Befunde, alle behoben — siehe unten |"
     ],
     "docs/api.md": [

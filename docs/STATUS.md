@@ -280,6 +280,47 @@ Die zweite Zeile ist der Grund für die beiden Messwert-Ausprägungen genau **au
 Bandkanten: Vorher lagen alle Messwerte 1,0 K neben dem Sollwert bei 0,5 K Hysterese, und
 eine vertauschte Vergleichsrichtung an der Kante blieb unbemerkt.
 
+## Runde 6 — ein Refactoring, das seine Prüfkraft nachweist
+
+`_process_zone` in der Regelschleife ist in drei benannte Funktionen zerlegt:
+`_override_active`, `_advance_valve_protection`, `_apply_decision_to_state`. Woran die
+Vermischung erkennbar war: Die lokale Variable `protection_started` wurde an zwei Stellen
+mit unterschiedlicher Bedeutung benutzt — einmal, um zu entscheiden, ob eine Schutzfahrt
+geschlossen wird, einmal roh als `valve_protection_active` für `decide()`. Dieser
+Unterschied ist jetzt ein benannter Rückgabewert mit Begründung.
+
+**Die Bedingung der Runde ist gemessen, nicht behauptet:** vorher 4 überlebende Mutanten,
+nachher 4 — und es sind dieselben vier, die beiden aus `_process_zone` mitgewandert in die
+beiden herausgezogenen Funktionen. Zusätzlich hat das Kreuzreview beide Fassungen gegen
+dieselbe Datenbanklage laufen lassen (kein `ZoneState`, laufender Schutzlauf, gerade
+abgelaufener Lauf, Übersteuerung, offenes Fenster, Sensorausfall) und `ShadowDecision` wie
+`ZoneState` verglichen: identisch. Alle unberührten Funktionen sind AST-gleich.
+
+Die drei übrigen Kandidaten (`app.py`, die fünf Frontend-Skripte, die Formularauswertung
+in zwei Views) sind bewusst nicht angefasst.
+
+### Ein zweiter Fehler in der Regelkette, noch offen
+
+Gefunden beim Kreuzreview, nicht von einem Test — wie schon der erste am selben Tag.
+**Ist die Mindest-Einschaltdauer einer Zone länger als ihr Ventilschutzlauf, wird der
+zeitlich begrenzte Lauf zu dauerhaftem Heizen.** Beides sind Einstellungen je Zone, die
+Kombination ist zulässig. Mit der Vorgabe tritt der Fehler nicht auf. Er ist in der
+Hauptsession nachgestellt, samt Gegenprobe, und steht mit drei Lösungswegen in
+[offene-entscheidungen.md](offene-entscheidungen.md). **Nicht behoben** — er gehört nicht
+in ein reines Refactoring.
+
+### Zwei Werkzeugfallen, beide bezahlt
+
+- **`cosmic-ray exec` darf nie im Vordergrund unter einem Werkzeug-Timeout laufen.** Ein
+  Abbruch mitten in einer Mutation überspringt die Wiederherstellung im `finally` und
+  hinterlässt **mutierten Produktionscode ohne Fehlermeldung**. Ein Folgelauf maß dann
+  gegen die kaputte Datei und lieferte ein vollständiges, aber ungültiges Ergebnis.
+- **iCloud legt im Documents-Ordner Kopien der Form `test_deviation 2.py` an.** Sie sind
+  alte Stände; `.gitignore` hält sie aus dem Repository, pytest sammelte sie aber ein und
+  ließ die Suite an Zusicherungen scheitern, die vor Wochen einmal gestimmt haben. Beide
+  Male sah es zuerst wie ein echter Fehlschlag aus. `--ignore-glob` in `pyproject.toml`
+  fängt das jetzt ab, nachgewiesen mit einer absichtlich fehlschlagenden Dublette.
+
 ## Sicherheitsdurchsicht 2026-09-02 — vier Rechtefehler behoben
 
 Die Durchsicht wurde nicht fortgeschrieben, sondern **noch einmal von vorn** geführt, mit
@@ -313,7 +354,7 @@ Für die letzte hält ein ausdrücklich als offen benannter Test die Lücke fest
 
 ## Offen
 
-**Das Komplettreview läuft.** Der Plan mit sieben Runden steht in
+**Das Komplettreview ist durch.** Alle sieben Runden sind abgeschlossen. Der Plan mit sieben Runden steht in
 [superpowers/plans/2026-09-01-komplettreview.md](superpowers/plans/2026-09-01-komplettreview.md).
 
 | Runde | Zustand |
@@ -323,7 +364,7 @@ Für die letzte hält ein ausdrücklich als offen benannter Test die Lücke fest
 | 3 — die Regelkette als Zustandstabelle | abgeschlossen, **ein Fehler gefunden** |
 | 4 — Musterjagd | abgeschlossen |
 | 5 — Messen vor Optimieren | abgeschlossen |
-| 6 — Aufräumen | nicht begonnen |
+| 6 — Aufräumen | abgeschlossen, **ein Bestandsfehler gefunden** |
 | 7 — Sicherheit von vorn | abgeschlossen, **vier Rechtefehler gefunden** |
 
 **Runde 1, Stufe 2** hat vier weitere Domänendateien gemessen: `schedule.py` (138

@@ -84,7 +84,12 @@ testpaths = ["tests"]
 # entweder geprueft oder traegt eine Begruendung". Die Ausnahmen stehen als
 # `# pragma: no cover` samt Grund im Quelltext -- sichtbar und einzeln bestreitbar,
 # statt als Prozentsatz, hinter dem niemand mehr nachsieht, was fehlt.
-addopts = "-q --cov=thermoctl --cov-report=term-missing"
+# `--ignore-glob`: iCloud legt beim Abgleich des Documents-Ordners Kopien der Form
+# "test_deviation 2.py" an. Sie sind alte Staende, .gitignore haelt sie aus dem
+# Repository heraus -- pytest sammelt sie aber trotzdem ein und laesst die Suite an
+# Zusicherungen scheitern, die vor Wochen einmal gestimmt haben. Genau das ist
+# zweimal passiert und hat beide Male erst wie ein echter Fehlschlag ausgesehen.
+addopts = "-q --cov=thermoctl --cov-report=term-missing --ignore-glob='* [0-9].py'"
 markers = [
     "migration: laeuft Alembic als Unterprozess",
     "packaging: baut ein Wheel und sieht hinein",
