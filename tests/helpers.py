@@ -160,8 +160,8 @@ def capability(session: Session, code: str) -> DeviceCapability:
     return f
 
 
-def create_device(session: Session, external_id: str) -> Device:
-    g = Device(integration_id=integration(session).id, external_id=external_id,
+def create_device(session: Session, external_id: str, code: str = "zigbee2mqtt") -> Device:
+    g = Device(integration_id=integration(session, code).id, external_id=external_id,
                display_name=external_id)
     session.add(g)
     session.flush()

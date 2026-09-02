@@ -1,5 +1,5 @@
 from collections.abc import Sequence
-from datetime import date, datetime, time, timedelta
+from datetime import date, timedelta
 from typing import Annotated
 from urllib.parse import urlencode
 
@@ -12,9 +12,10 @@ from thermoctl.auth.dependencies import csrf_protection, current_principal, get_
 from thermoctl.db.models.credential import ApiToken
 from thermoctl.db.models.identity import User
 from thermoctl.db.models.lookup import ActorSource
-from thermoctl.db.models.operations import AuditEvent
+from thermoctl.db.models.operations import AuditEvent, Setting
 from thermoctl.domain.authz import require
 from thermoctl.domain.principal import Principal
+from thermoctl.domain.time import local_day_start_utc
 from thermoctl.web import is_partial_swap, templates
 
 # `include_in_schema=False`: the OpenAPI description is the contract of the REST
@@ -62,6 +63,15 @@ async def audit_list(
         page_number = 1
         errors["page"] = "Die Seitennummer muss eine ganze Zahl sein."
 
+    # `occurred_at` is stored as naive UTC, but "from" and "to" are dates typed by a
+    # person looking at their own wall clock. Cutting them at UTC midnight -- as this
+    # used to -- reads a local day as starting one or two hours earlier than it does
+    # in `Europe/Berlin`, so the first entries of a local day silently fell under the
+    # previous day's filter, or vanished from both when only one side named that day.
+    # A missing `setting` row (incomplete setup) falls back to UTC, the same default
+    # `local_day_start_utc` uses for `timezone_name=None`.
+    timezone_name = getattr(session.get(Setting, 1), "timezone", None)
+
     query = (
         select(AuditEvent, ActorSource, User, ApiToken)
         .join(ActorSource, ActorSource.id == AuditEvent.source_id)
@@ -71,12 +81,12 @@ async def audit_list(
     if not errors:
         if from_day is not None:
             query = query.where(
-                AuditEvent.occurred_at >= datetime.combine(from_day, time.min)
+                AuditEvent.occurred_at >= local_day_start_utc(from_day, timezone_name)
             )
         if to_day is not None:
-            # An exclusive bound on the following day includes the whole "to" day
-            # and avoids database-specific date functions.
-            next_day = datetime.combine(to_day, time.min) + timedelta(days=1)
+            # An exclusive bound on the following local day includes the whole "to"
+            # day and avoids database-specific date functions.
+            next_day = local_day_start_utc(to_day + timedelta(days=1), timezone_name)
             query = query.where(AuditEvent.occurred_at < next_day)
         if user:
             query = query.where(

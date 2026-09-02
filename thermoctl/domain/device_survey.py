@@ -18,11 +18,27 @@ pages share the devices, but not the question.
 from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal
+from typing import Literal
 
 # From here down, a battery counts as weak. Not as empty: Zigbee devices report 100
 # percent for a long time and then drop quickly; twenty percent still leaves days to
 # get hold of a replacement cell.
 BATTERY_LOW_PERCENT = Decimal(20)
+
+# How often the Meross cloud is reconciled (`app.py::MEROSS_REFRESH_S`, defined here
+# instead so both places share one number instead of two that can drift apart --
+# `app.py` imports this constant rather than declaring its own).
+MEROSS_RECONCILE_INTERVAL_SECONDS = 3600
+
+# The threshold after which a Meross device counts as silent. Not the sensor timeout
+# used for Zigbee2MQTT: that number answers "how long may a sensor stay quiet before
+# control logic gives up on it", a question about the device itself. A Meross socket
+# is never heard from directly -- its freshness is entirely a property of the hourly
+# reconciliation (see the module docstring's note on `last_heard_kind`), so one missed
+# pass must not immediately read as a defective socket. Two reconciliation intervals
+# tolerate exactly one missed pass -- transient cloud errors, a restart during the
+# hour -- before flagging it.
+MEROSS_SILENT_AFTER_SECONDS = 2 * MEROSS_RECONCILE_INTERVAL_SECONDS
 
 # Below this radio quality, the connection becomes unreliable. Zigbee2MQTT reports it
 # as an LQI from 0 to 255; the threshold is experience, not a standard, which is why
@@ -96,24 +112,45 @@ def findings(
     radio_quality: int | None,
     silent_after_seconds: int,
     now: datetime,
+    last_heard_kind: Literal["gemeldet", "abgeglichen"] = "gemeldet",
 ) -> list[Finding]:
     """What stands out about a device. Empty means: nothing.
 
     `stumm_nach_sekunden` comes from the global defaults — the same threshold by which
     control logic considers a sensor failed. A second number just for this page would
     mean the device list considers a device healthy that control logic has already
-    given up on.
+    given up on. That reasoning holds for a Zigbee2MQTT device, which reports in on
+    its own; a caller passes a Meross-appropriate threshold instead, see
+    `MEROSS_SILENT_AFTER_SECONDS`.
+
+    `last_heard_kind` says what `last_heard` actually records, because the two
+    integrations mean different things by it and the wording must not blur them:
+
+    * `"gemeldet"` (the default): `last_heard` is the last message the device itself
+      sent -- Zigbee2MQTT. Silence here is a statement about the device: it has gone
+      quiet.
+    * `"abgeglichen"`: `last_heard` is the last time our own hourly reconciliation
+      confirmed the Meross cloud still calls the device online -- the device never
+      sends us anything directly. Silence here is a statement about the reconciliation
+      or the cloud's bookkeeping, not about the socket itself, and saying "hat sich
+      nie gemeldet" would claim a communication channel that does not exist.
     """
     found: list[Finding] = []
     if not active:
         found.append(Finding("disabled", "in der Brücke abgeschaltet"))
     if availability is not None and availability.lower() == "offline":
         found.append(Finding("offline", "die Brücke führt es als offline"))
+    if last_heard_kind == "abgeglichen":
+        never_text = "wurde noch nie als online abgeglichen"
+        stale_template = "seit {age} nicht mehr als online bestätigt"
+    else:
+        never_text = "hat sich noch nie gemeldet"
+        stale_template = "seit {age} still"
     if last_heard is None:
-        found.append(Finding("silent", "hat sich noch nie gemeldet"))
+        found.append(Finding("silent", never_text))
     elif (now - last_heard).total_seconds() > silent_after_seconds:
         age = _age_in_words((now - last_heard).total_seconds())
-        found.append(Finding("silent", f"seit {age} still"))
+        found.append(Finding("silent", stale_template.format(age=age)))
     if battery is not None and battery <= BATTERY_LOW_PERCENT:
         found.append(Finding("battery", f"Batterie bei {battery:.0f} %"))
     if radio_quality is not None and radio_quality < RADIO_WEAK_LQI:

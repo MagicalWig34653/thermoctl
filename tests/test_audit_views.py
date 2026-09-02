@@ -2,7 +2,7 @@ from datetime import datetime
 
 from sqlalchemy.orm import Session
 
-from tests.helpers import create_user, source
+from tests.helpers import create_settings, create_user, source
 from thermoctl.db.models.operations import AuditEvent
 
 
@@ -50,6 +50,30 @@ def test_to_filters_inclusive_of_the_whole_day(client_als, session: Session) -> 
     response = client_als([("audit.read", None)]).get("/audit?to_date=2026-08-02")
     assert "noch enthalten" in response.text
     assert "zu neu" not in response.text
+
+
+def test_the_date_filter_uses_the_configured_local_day_not_utc_midnight(
+    client_als, session: Session
+) -> None:
+    """`setting.timezone` defaults to `Europe/Berlin` (UTC+2 in August). Local
+
+    2026-08-02 00:00 is already 2026-08-01 22:00 UTC -- so an entry at
+    2026-08-01 23:30 UTC has already happened on the local *second* of August, two and
+    a half hours before its own UTC date rolls over. Cutting the filter at UTC
+    midnight, as this used to, put that entry in the wrong day on both sides: absent
+    from a `from_date=2026-08-02` search that should have found it, and present in a
+    `to_date=2026-08-01` search it should not have matched.
+    """
+    create_settings(session)
+    _entry(session, "kurz vor UTC-Mitternacht", at=datetime(2026, 8, 1, 23, 30))
+    _entry(session, "klar im Zeitraum", at=datetime(2026, 8, 2, 10, 0))
+
+    from_response = client_als([("audit.read", None)]).get("/audit?from_date=2026-08-02")
+    assert "kurz vor UTC-Mitternacht" in from_response.text
+    assert "klar im Zeitraum" in from_response.text
+
+    to_response = client_als([("audit.read", None)]).get("/audit?to_date=2026-08-01")
+    assert "kurz vor UTC-Mitternacht" not in to_response.text
 
 
 def test_user_actually_filters(client_als, session: Session) -> None:

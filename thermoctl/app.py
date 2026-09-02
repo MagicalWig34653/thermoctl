@@ -30,6 +30,7 @@ from thermoctl.db.models.state import ZoneState
 from thermoctl.db.models.zone import Zone
 from thermoctl.db.schema_state import SchemaMismatch, check_schema
 from thermoctl.domain.authz import Forbidden
+from thermoctl.domain.device_survey import MEROSS_RECONCILE_INTERVAL_SECONDS
 from thermoctl.domain.fault_notice import (
     FaultNotice,
     bridge_notice,
@@ -204,8 +205,10 @@ async def _shadow_interval_s(session_factory: sessionmaker[Session]) -> int:
 
 # How often the Meross device list is reconciled. A socket is rarely added, and every
 # pass is a sign-in to somebody else's cloud -- hourly is enough, and it happens once at
-# startup anyway.
-MEROSS_REFRESH_S = 3600.0
+# startup anyway. The number itself lives in `domain/device_survey.py`, because the
+# device page derives its Meross silence threshold from the same interval -- one
+# constant instead of two that could drift apart.
+MEROSS_REFRESH_S = float(MEROSS_RECONCILE_INTERVAL_SECONDS)
 
 
 def _start_meross_refresh(app: FastAPI, now: datetime) -> None:

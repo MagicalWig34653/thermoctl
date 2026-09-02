@@ -104,6 +104,19 @@ def is_partial_swap(request: Request) -> bool:
     return "HX-Request" in request.headers and "HX-Boosted" not in request.headers
 
 
+def _duration_in_words(seconds: float, *, prefix: str) -> str:
+    for limit, divisor, singular, plural in (
+        (60, 1, "Sekunde", "Sekunden"),
+        (3600, 60, "Minute", "Minuten"),
+        (86400, 3600, "Stunde", "Stunden"),
+    ):
+        if seconds < limit:
+            value = int(seconds // divisor)
+            return f"{prefix} {value} {singular if value == 1 else plural}"
+    days = int(seconds // 86400)
+    return f"{prefix} {days} {'Tag' if days == 1 else 'Tagen'}"
+
+
 def age_in_words(moment: datetime | None, now: datetime | None = None) -> str:
     """How long ago something was, in words — 'vor 3 Minuten' instead of a timestamp.
 
@@ -111,24 +124,21 @@ def age_in_words(moment: datetime | None, now: datetime | None = None) -> str:
     it been sitting there since yesterday? A raw timestamp with microseconds doesn't
     answer that, it demands mental arithmetic — and when in doubt, you get it wrong.
 
+    `moment` can also lie in the future — a running override's `ends_at`, for
+    instance. That is not "a slightly stale reading", it is a different statement
+    ("still running, for another 42 minutes" instead of "last seen 3 minutes ago"),
+    and used to collapse into the same wrong answer, "gerade eben", no matter how far
+    off it still was. The two are told apart here so nobody has to remember, at every
+    call site, that this filter only ever meant the past.
+
     All points in time are naive UTC, as throughout the whole project.
     """
     if moment is None:
         return "noch nie"
     elapsed = ((now or utcnow()) - moment).total_seconds()
     if elapsed < 0:
-        # A slightly misconfigured sensor must not display 'in -3 minutes'.
-        return "gerade eben"
-    for limit, divisor, singular, plural in (
-        (60, 1, "Sekunde", "Sekunden"),
-        (3600, 60, "Minute", "Minuten"),
-        (86400, 3600, "Stunde", "Stunden"),
-    ):
-        if elapsed < limit:
-            value = int(elapsed // divisor)
-            return f"vor {value} {singular if value == 1 else plural}"
-    days = int(elapsed // 86400)
-    return f"vor {days} {'Tag' if days == 1 else 'Tagen'}"
+        return _duration_in_words(-elapsed, prefix="noch")
+    return _duration_in_words(elapsed, prefix="vor")
 
 
 # The range over which temperatures are rendered as color. Not the input's limits,

@@ -27,6 +27,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from thermoctl.db.models.state import ShadowDecision
+from thermoctl.domain.time import local_time
 
 # How much larger than a cycle a gap is allowed to be before it counts as a gap.
 # Three cycles: a single missed pass is normal operation, three in a row is an outage.
@@ -56,18 +57,31 @@ def heating_periods(
     bis: datetime,
     *,
     cycle_seconds: int,
+    timezone_name: str | None = None,
 ) -> dict[int, ZoneStatistics]:
     """Heating duration per zone and day in the given period, in seconds.
 
-    `von` and `bis` are naive UTC like everything in this project. A segment is
-    attributed to the day of its **start**; with sampling on a minute cadence, the
-    error at a day boundary stays under a minute and thus below the resolution at
-    which the number is even displayed.
+    `von` and `bis` are naive UTC like everything in this project, but the **day** a
+    segment is attributed to, and the day labels the caller sees, are local --
+    `timezone_name` is the configured `setting.timezone`. Grouping by the UTC date
+    instead, as this used to, cut every local day at 01:00 or 02:00 in
+    `Europe/Berlin`: the first hour or two of a day's heating was counted against the
+    day before. A segment is attributed to the local day of its **start**; with
+    sampling on a minute cadence, the error at a day boundary stays under a minute and
+    thus below the resolution at which the number is even displayed.
+
+    Daylight saving time needs no special case here: a day with 23 or 25 wall-clock
+    hours falls out on its own once bucketing goes by local date instead of a fixed
+    24-hour span -- the extra or missing hour simply lands, correctly, in whichever
+    local calendar day it actually occurred on.
     """
     maximum_interval = max(cycle_seconds, 1) * GAP_FACTOR
     eimer: dict[int, dict[date, int]] = defaultdict(lambda: defaultdict(int))
     if not zone_ids:
         return {}
+
+    def local_date(moment: datetime) -> date:
+        return local_time(moment, timezone_name).date()
 
     previous: dict[int, tuple[datetime, bool]] = {}
     for zone_id, moment, heating in session.execute(
@@ -86,12 +100,13 @@ def heating_periods(
             last_seen, was_heating = last
             if was_heating:
                 interval = int((moment - last_seen).total_seconds())
-                eimer[zone_id][last_seen.date()] += min(interval, maximum_interval)
+                eimer[zone_id][local_date(last_seen)] += min(interval, maximum_interval)
         previous[zone_id] = (moment, heating)
 
+    start_day = local_date(start_at)
+    end_day = local_date(bis)
     days = [
-        (start_at + timedelta(days=offset)).date()
-        for offset in range((bis.date() - start_at.date()).days + 1)
+        start_day + timedelta(days=offset) for offset in range((end_day - start_day).days + 1)
     ]
     return {
         zone_id: ZoneStatistics(

@@ -242,6 +242,45 @@ def test_showing_and_cancelling_an_override(session: Session, client_als) -> Non
     assert entry is not None and entry.cancelled_at is not None
 
 
+def test_a_running_timed_override_describes_its_remaining_time_not_its_end_as_past(
+    session: Session, client_als, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The chip names the override's **end**, and that end is still in the future while
+
+    the override runs -- a duration override with 42 minutes left has an `ends_at`
+    42 minutes from now, not 42 minutes ago. The counter-check that fails without the
+    fix: `age` used to read every moment as elapsed and rendered this as "gerade
+    eben", which claims the override just finished rather than that it still has
+    42 minutes to go.
+
+    Both the moment the override is created and the moment the page is rendered are
+    pinned to the same instant -- otherwise the small, real delay between the two
+    requests could round 42 minutes remaining down to 41 and make this assertion
+    flaky through no fault of the code under test.
+    """
+    import thermoctl.domain.schedule as schedule_module
+    import thermoctl.web as web_module
+    import thermoctl.web.daily_views as daily_views_module
+    import thermoctl.web.start_views as start_views_module
+
+    frozen = datetime(2026, 8, 29, 12, 0, 0)
+    monkeypatch.setattr(schedule_module, "utcnow", lambda: frozen)
+    monkeypatch.setattr(daily_views_module, "utcnow", lambda: frozen)
+    monkeypatch.setattr(web_module, "utcnow", lambda: frozen)
+    monkeypatch.setattr(start_views_module, "utcnow", lambda: frozen)
+
+    zone = _grundlage(session)
+    client = client_als([("zone.read", zone.id), ("override.create", zone.id)])
+    client.post(
+        f"/zones/{zone.id}/override",
+        data={"temperature_c": "22", "end": "duration", "duration_minutes": "42"},
+        headers=_csrf(client),
+    )
+    page = client.get("/")
+    assert "endet noch 42 Minuten" in page.text
+    assert "gerade eben" not in page.text
+
+
 def test_an_override_on_a_foreign_zone_yields_404(session: Session, client_als) -> None:
     eigene = _grundlage(session)
     fremde = create_zone(session, "fremd")

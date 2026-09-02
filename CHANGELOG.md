@@ -11,6 +11,23 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ## Unreleased
 
+**Vier gemeldete Anzeigefehler behoben — einer davon eine falsche Aussage, nicht nur
+eine unschöne.** Ein Meross-Gerät stand dauerhaft als „hat sich noch nie gemeldet",
+obwohl der stündliche Abgleich es regelmässig fand: Die Geräteübersicht sah nur
+`device_health.last_payload_at` an, das ausschliesslich die Zigbee2MQTT-Aufnahme
+schreibt — ein Meross-Gerät schickt nie eine MQTT-Nachricht. Sie liest jetzt für
+Meross-Geräte `device.last_seen_at` und wählt die passende Formulierung
+(„abgeglichen" statt „gemeldet"), mit einer eigenen, grosszügigeren Stille-Schwelle
+für den stündlichen Abgleich (`MEROSS_SILENT_AFTER_SECONDS`, zwei Abgleichzyklen)
+statt der für einen selbstberichtenden Sensor gedachten. Die Statistik und der
+Datumsfilter des Auditprotokolls schnitten Tage an UTC-Mitternacht — ein lokaler Tag
+begann dadurch um 01:00 oder 02:00 in `Europe/Berlin`; beide benutzen jetzt
+`domain/time.py::local_day_start_utc` und sind gegen die Sommerzeit getestet (ein
+Tag mit 23 beziehungsweise 25 Stunden). Die Startseite beschrieb das Ende einer noch
+laufenden Übersteuerung mit dem Vergangenheitsfilter `age` und zeigte „gerade eben"
+statt der verbleibenden Zeit; `age` unterscheidet jetzt Vergangenheit („vor 3
+Minuten") von Zukunft („noch 42 Minuten").
+
 **Kreuzreview der Aktorverdrahtung: drei Befunde, alle behoben.** Vor dem ersten
 scharfen Betrieb an einer echten Heizung prüfte ein Kreuzreview gezielt, ob geschaltet
 wird, wenn es soll — mit „Nein" beantwortet, zwei der drei Befunde in der gefährlichen

@@ -68,6 +68,37 @@ def test_silent_only_after_the_configured_grace_period_and_with_age_in_plain_tex
         assert [b.text for b in found] == [word]
 
 
+def test_a_never_reconciled_meross_device_is_not_told_it_never_reported() -> None:
+    """A Meross socket never sends anything on its own -- it is only ever confirmed
+
+    online by our hourly cloud reconciliation. Wording it the Zigbee2MQTT way ("hat
+    sich noch nie gemeldet") claims a reporting channel that plain does not exist for
+    this integration, and is simply false when the reconciliation just hasn't run
+    yet, as opposed to the device being broken.
+    """
+    found = _findings(last_heard=None, last_heard_kind="abgeglichen")
+    assert [b.text for b in found] == ["wurde noch nie als online abgeglichen"]
+    assert "gemeldet" not in found[0].text
+
+
+def test_a_stale_meross_reconciliation_is_worded_as_a_reconciliation_not_a_silence() -> None:
+    """The same elapsed time reads differently depending on what `last_heard` means.
+
+    For Zigbee2MQTT it is "seit X still" -- the device itself has gone quiet. For
+    Meross it must not claim that, because the device may be perfectly reachable and
+    simply hasn't been reconciled -- or the cloud has stopped naming it. Both text and
+    finding stay distinct from the Zigbee2MQTT wording for the identical inputs.
+    """
+    zigbee = _findings(last_heard=NOW - timedelta(hours=5))
+    meross = _findings(last_heard=NOW - timedelta(hours=5), last_heard_kind="abgeglichen")
+    assert [b.text for b in zigbee] == ["seit 5 Stunden still"]
+    assert [b.text for b in meross] == ["seit 5 Stunden nicht mehr als online bestätigt"]
+    assert zigbee[0].text != meross[0].text
+    # Both remain "silent" findings for severity ranking -- the reader still needs
+    # to see it ranked as urgently as an offline Zigbee2MQTT device.
+    assert zigbee[0].kind == meross[0].kind == "silent"
+
+
 def test_severity_ranks_failure_before_early_warning() -> None:
     """A silent device ranks ahead of a weak battery.
 

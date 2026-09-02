@@ -1,5 +1,5 @@
 from collections import defaultdict
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Request, Response
 from sqlalchemy import select
@@ -13,9 +13,15 @@ from thermoctl.db.models.measurement import DeviceHealth
 from thermoctl.db.models.operations import Setting
 from thermoctl.db.models.zone import Zone
 from thermoctl.domain.authz import require, visible_zones
-from thermoctl.domain.device_survey import WITHOUT_CHIP, DeviceSurvey, findings
+from thermoctl.domain.device_survey import (
+    MEROSS_SILENT_AFTER_SECONDS,
+    WITHOUT_CHIP,
+    DeviceSurvey,
+    findings,
+)
 from thermoctl.domain.plant_diagram import plant_diagram
 from thermoctl.domain.principal import Principal
+from thermoctl.services.meross_discovery import INTEGRATION_CODE as MEROSS_INTEGRATION_CODE
 from thermoctl.web import is_partial_swap, templates
 
 # `include_in_schema=False`: the OpenAPI description is the contract of the REST
@@ -76,31 +82,58 @@ async def device_overview(
         else SILENT_WITHOUT_DEFAULTS_SECONDS
     )
     now = utcnow()
-    survey = [
-        DeviceSurvey(
-            device_id=device.id,
-            name=device.display_name,
-            model=device.model,
-            integration=integration.label,
-            ist_group=device.is_group,
-            capabilities=capabilities[device.id],
-            quiet_capabilities=still[device.id],
-            zones=sorted(zones[device.id]),
-            last_heard=state.last_payload_at if state else None,
-            battery=state.battery_percent if state else None,
-            radio_quality=state.link_quality if state else None,
-            findings=findings(
-                active=device.is_enabled,
-                last_heard=state.last_payload_at if state else None,
-                availability=state.availability if state else None,
+    survey = []
+    for device, integration, state in rows:
+        # A Meross socket never sends us anything on its own -- `device_health` stays
+        # empty for it forever, because `services/ingest.py` only ever writes there
+        # from an incoming Zigbee2MQTT message. Its only sign of life is
+        # `device.last_seen_at`, written by the hourly cloud reconciliation
+        # (`services/meross_discovery.py::save_devices`) whenever the cloud still
+        # calls it online. Reading `state.last_payload_at` for it, as this used to,
+        # meant every Meross socket showed "hat sich noch nie gemeldet" forever, no
+        # matter how often the reconciliation found it -- a wrong claim, not just an
+        # unhelpful one: the device *was* reporting in, just not over MQTT.
+        is_meross = integration.code == MEROSS_INTEGRATION_CODE
+        last_heard = (
+            device.last_seen_at
+            if is_meross
+            else (state.last_payload_at if state else None)
+        )
+        last_heard_kind: Literal["gemeldet", "abgeglichen"] = (
+            "abgeglichen" if is_meross else "gemeldet"
+        )
+        # The sensor timeout fits a device that is expected to speak up on its own
+        # schedule. A Meross socket only ever gets fresher once an hour, at the
+        # reconciliation's pace -- judging it by the sensor timeout would flag every
+        # single one as silent between reconciliations. See
+        # `MEROSS_SILENT_AFTER_SECONDS` for the reasoning behind the number used
+        # instead.
+        silent_after_for_device = MEROSS_SILENT_AFTER_SECONDS if is_meross else silent_after
+        survey.append(
+            DeviceSurvey(
+                device_id=device.id,
+                name=device.display_name,
+                model=device.model,
+                integration=integration.label,
+                ist_group=device.is_group,
+                capabilities=capabilities[device.id],
+                quiet_capabilities=still[device.id],
+                zones=sorted(zones[device.id]),
+                last_heard=last_heard,
                 battery=state.battery_percent if state else None,
                 radio_quality=state.link_quality if state else None,
-                silent_after_seconds=silent_after,
-                now=now,
-            ),
+                findings=findings(
+                    active=device.is_enabled,
+                    last_heard=last_heard,
+                    availability=state.availability if state else None,
+                    battery=state.battery_percent if state else None,
+                    radio_quality=state.link_quality if state else None,
+                    silent_after_seconds=silent_after_for_device,
+                    now=now,
+                    last_heard_kind=last_heard_kind,
+                ),
+            )
         )
-        for device, integration, state in rows
-    ]
     # Notable ones on top: the question someone arrives with is almost always "is
     # something wrong?" -- and the answer shouldn't be buried under twenty healthy
     # devices.

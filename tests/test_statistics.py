@@ -5,7 +5,7 @@ it. Heating that shows eight hours in the statistics because the service was
 down for eight hours would be worse than no statistics at all.
 """
 
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 
 from sqlalchemy.orm import Session
 
@@ -120,6 +120,170 @@ def test_a_zone_without_a_log_still_appears_with_zeros(session: Session) -> None
     assert zone.id in result
     assert len(result[zone.id].days) == 3
     assert result[zone.id].seconds_total == 0
+
+
+def test_a_day_boundary_follows_the_configured_timezone_not_utc(session: Session) -> None:
+    """Grouping used to cut every day at UTC midnight -- 01:00 or 02:00 local time in
+
+    `Europe/Berlin`, depending on daylight saving. The counter-check: a heating
+    segment entirely inside the last hour of a UTC day, but already past local
+    midnight, must be attributed to the *next* UTC date's local day, not the one UTC
+    thinks it is in.
+    """
+    zone = create_zone(session, "zeitzone")
+    # 2026-08-24 23:00 UTC is 2026-08-25 01:00 CEST (summer time, UTC+2): already the
+    # next local day, still the same UTC day.
+    late_utc = datetime(2026, 8, 24, 23, 0)
+    session.add_all(
+        [
+            ShadowDecision(
+                decided_at=late_utc,
+                zone_id=zone.id,
+                temperature_c=None,
+                setpoint_c=None,
+                setpoint_reason="Zeitplan",
+                would_heat=True,
+                previous_would_heat=None,
+                outcome_code="ok",
+                reason="Test",
+            ),
+            ShadowDecision(
+                decided_at=late_utc + timedelta(minutes=30),
+                zone_id=zone.id,
+                temperature_c=None,
+                setpoint_c=None,
+                setpoint_reason="Zeitplan",
+                would_heat=False,
+                previous_would_heat=None,
+                outcome_code="ok",
+                reason="Test",
+            ),
+        ]
+    )
+    session.flush()
+
+    result = heating_periods(
+        session,
+        [zone.id],
+        late_utc - timedelta(hours=1),
+        late_utc + timedelta(hours=1),
+        cycle_seconds=1800,
+        timezone_name="Europe/Berlin",
+    )
+    by_day = {t.day: t.seconds for t in result[zone.id].days}
+    # Attributed to 2026-08-25 (the local day), not 2026-08-24 (the UTC day the raw
+    # timestamp carries).
+    assert by_day.get(date(2026, 8, 25)) == 1800
+    assert by_day.get(date(2026, 8, 24), 0) == 0
+
+
+def test_a_spring_forward_day_is_23_hours_and_still_counted_whole(session: Session) -> None:
+    """2026-03-29 is the day Europe/Berlin's clocks jump from 02:00 CET to 03:00 CEST
+
+    -- a 23-hour local day. Bucketing by a fixed 24-hour span, or by UTC date, would
+    split this day's heating across two buckets or miscount its length; bucketing by
+    local calendar date does not, because the local day is the unit, not a duration.
+    """
+    zone = create_zone(session, "sommerzeit-beginn")
+    # Local midnight 2026-03-29 00:00 CET == 2026-03-28 23:00 UTC.
+    local_midnight_start = datetime(2026, 3, 28, 23, 0)
+    # The following local midnight, 2026-03-30 00:00 CEST == 2026-03-29 22:00 UTC --
+    # only 23 hours later in UTC, because the clocks skipped an hour in between.
+    local_midnight_end = datetime(2026, 3, 29, 22, 0)
+    session.add_all(
+        [
+            ShadowDecision(
+                decided_at=local_midnight_start,
+                zone_id=zone.id,
+                temperature_c=None,
+                setpoint_c=None,
+                setpoint_reason="Zeitplan",
+                would_heat=True,
+                previous_would_heat=None,
+                outcome_code="ok",
+                reason="Test",
+            ),
+            ShadowDecision(
+                decided_at=local_midnight_end,
+                zone_id=zone.id,
+                temperature_c=None,
+                setpoint_c=None,
+                setpoint_reason="Zeitplan",
+                would_heat=False,
+                previous_would_heat=None,
+                outcome_code="ok",
+                reason="Test",
+            ),
+        ]
+    )
+    session.flush()
+
+    result = heating_periods(
+        session,
+        [zone.id],
+        local_midnight_start,
+        local_midnight_end,
+        cycle_seconds=40000,
+        timezone_name="Europe/Berlin",
+    )
+    by_day = {t.day: t.seconds for t in result[zone.id].days}
+    # The whole 23-hour span lands on the local day it belongs to, not split across
+    # 2026-03-28 and 2026-03-29 the way a UTC-date grouping would have done.
+    assert by_day.get(date(2026, 3, 29)) == 23 * 3600
+    assert by_day.get(date(2026, 3, 28), 0) == 0
+
+
+def test_a_fall_back_day_is_25_hours_and_still_counted_whole(session: Session) -> None:
+    """The mirror case: 2026-10-25 has 25 wall-clock hours in Europe/Berlin. A gap
+
+    capped or grouped by a fixed 24-hour assumption would either lose the extra hour
+    or attribute it to the wrong day.
+    """
+    zone = create_zone(session, "sommerzeit-ende")
+    # Local midnight 2026-10-25 00:00 CEST == 2026-10-24 22:00 UTC.
+    local_midnight_start = datetime(2026, 10, 24, 22, 0)
+    # The following local midnight, 2026-10-26 00:00 CET == 2026-10-25 23:00 UTC --
+    # 25 hours later in UTC, because the clocks were set back an hour in between.
+    local_midnight_end = datetime(2026, 10, 25, 23, 0)
+    session.add_all(
+        [
+            ShadowDecision(
+                decided_at=local_midnight_start,
+                zone_id=zone.id,
+                temperature_c=None,
+                setpoint_c=None,
+                setpoint_reason="Zeitplan",
+                would_heat=True,
+                previous_would_heat=None,
+                outcome_code="ok",
+                reason="Test",
+            ),
+            ShadowDecision(
+                decided_at=local_midnight_end,
+                zone_id=zone.id,
+                temperature_c=None,
+                setpoint_c=None,
+                setpoint_reason="Zeitplan",
+                would_heat=False,
+                previous_would_heat=None,
+                outcome_code="ok",
+                reason="Test",
+            ),
+        ]
+    )
+    session.flush()
+
+    result = heating_periods(
+        session,
+        [zone.id],
+        local_midnight_start,
+        local_midnight_end,
+        cycle_seconds=40000,
+        timezone_name="Europe/Berlin",
+    )
+    by_day = {t.day: t.seconds for t in result[zone.id].days}
+    assert by_day.get(date(2026, 10, 25)) == 25 * 3600
+    assert by_day.get(date(2026, 10, 24), 0) == 0
 
 
 def test_duration_in_words() -> None:

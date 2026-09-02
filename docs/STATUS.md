@@ -112,11 +112,11 @@ an, nicht danach.
 ## Zahlen
 
 Selbst nachgeprüft, nicht aus Berichten übernommen (Stand 2026-09-02, nach der
-Behebung der drei Kreuzreview-Befunde):
+Behebung der vier gemeldeten Anzeigefehler):
 
 | | |
 |---|---|
-| Tests | 1481 unter SQLite, 1480 plus ein Skip unter MariaDB |
+| Tests | 1491 unter SQLite, 1490 plus ein Skip unter MariaDB |
 | Testabdeckung | 100 %, Mindestschwelle 100 % in der CI |
 | Ruff, mypy strict | ohne Befund, 105 Quelldateien |
 | Migrationskette | linear, ein Kopf, vorwärts und rückwärts gegen beide Datenbanken |
@@ -145,6 +145,45 @@ Temperaturaussagen („die Raumtemperatur steigt") gar nicht. Nachgeprüft: Kein
 Begriffe kommt heute irgendwo vor — es ist also kein falscher Text, sondern eine Lücke im
 Netz für künftige. Das gehört in die nächste Fassung, nicht in diese.
 
+## Vier gemeldete Anzeigefehler behoben
+
+- **Meross-Geräte galten dauerhaft als „hat sich noch nie gemeldet"**, obwohl der
+  stündliche Abgleich sie fand und die Wolke sie als online meldete. Ursache:
+  `web/device_views.py` sah für jedes Gerät nur `device_health.last_payload_at`
+  an — das schreibt ausschliesslich die Zigbee2MQTT-Aufnahme
+  (`services/ingest.py`) bei einer eingehenden MQTT-Nachricht, und ein
+  Meross-Gerät schickt nie eine. Die Übersicht liest jetzt für ein Meross-Gerät
+  `device.last_seen_at` (geschrieben vom stündlichen Abgleich,
+  `services/meross_discovery.py::save_devices`) und wählt die dazu passende
+  Formulierung: „abgeglichen" statt „gemeldet" — Stille bedeutet bei Meross, dass
+  der eigene Abgleich nicht lief oder die Wolke das Gerät nicht mehr nennt, nicht,
+  dass das Gerät selbst schweigt. Die Stille-Schwelle des selbstberichtenden
+  Sensors (`default_sensor_timeout_seconds`) passt nicht zu einem stündlichen
+  Abgleich; Meross bekam eine eigene, in `domain/device_survey.py`
+  begründete Schwelle (`MEROSS_SILENT_AFTER_SECONDS`, zwei Abgleichzyklen — ein
+  einzelner ausgefallener Durchlauf soll nicht sofort als defektes Gerät
+  erscheinen). `MerossDevice.online` bleibt bewusst ohne eigene Spalte: es
+  entscheidet weiterhin nur, ob `last_seen_at` bei diesem Durchlauf vorrückt, und
+  ein dauerhaft offline gemeldetes Gerät wird dadurch — korrekt — irgendwann
+  selbst als still erkannt.
+- **Die Statistik schnitt Tage an UTC-Mitternacht** — ein lokaler Tag begann
+  dadurch um 01:00 beziehungsweise 02:00 in `Europe/Berlin`. Neu:
+  `domain/time.py::local_day_start_utc` liefert die UTC-Entsprechung einer
+  lokalen Tagesgrenze; `domain/statistics.py::heating_periods` bucketiert danach
+  statt nach UTC-Datum, `web/control_views.py` baut die Abfragegrenze ebenso.
+  Gegen die Sommerzeit getestet: ein Tag mit 23 beziehungsweise 25 Stunden wird
+  vollständig und richtig einem einzigen lokalen Kalendertag zugeschlagen.
+- **Der Datumsfilter des Auditprotokolls deutete lokale Eingaben als
+  UTC-Tagesgrenzen** — dieselbe Klasse Fehler, dieselbe Lösung
+  (`local_day_start_utc`) in `web/audit_views.py`.
+- **Eine laufende Übersteuerung erschien als „gerade eben"** — die Startseite
+  beschrieb ihr **Ende** mit dem Vergangenheitsfilter `age`, der jeden
+  Zukunftszeitpunkt als „gerade eben" las. `age_in_words`
+  (`web/__init__.py`) unterscheidet jetzt Vergangenheit („vor 3 Minuten") von
+  Zukunft („noch 42 Minuten"); geprüft, dass `age` sonst nirgends auf einen
+  Zukunftszeitpunkt trifft — `override.ends_at` auf der Startseite war die
+  einzige Stelle.
+
 ## Sensorstörungsmeldungen
 
 Sensorstörungen und ihre Entwarnung erreichen jetzt neben Log und optionalem Webhook auch
@@ -157,11 +196,7 @@ von den beiden Schalt-Riegeln und läuft nach Abschluss der Datenbanktransaktion
 
 **Zeitzone — fachliche Grenzfehler, keine Anzeigefragen:**
 
-- Die Statistik bildet Abfragegrenzen und Tages-Buckets an UTC-Mitternacht; ein lokaler
-  Tag beginnt dadurch um 01:00 beziehungsweise 02:00.
-- Der Datumsfilter des Auditprotokolls deutet lokale Eingaben als UTC-Tagesgrenzen.
-- Die Startseite beschreibt das Ende einer laufenden Übersteuerung mit dem
-  Vergangenheitsfilter `age` und zeigt deshalb „gerade eben".
+## Offen, unabhängig von der Freigabe
 
 **Geplant, nicht begonnen:** ein Komplettreview des Projekts — Mutationstest,
 Zusicherungs-Audit, die Regelkette als Ganzes, Musterjagd, Messen vor Optimieren.

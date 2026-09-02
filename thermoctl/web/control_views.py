@@ -43,6 +43,7 @@ from thermoctl.domain.interfaces import overview
 from thermoctl.domain.principal import Principal
 from thermoctl.domain.schedule import resolved_setpoint
 from thermoctl.domain.statistics import as_duration, heating_periods
+from thermoctl.domain.time import local_day_start_utc, local_time
 from thermoctl.web import templates
 
 # `include_in_schema=False`: the OpenAPI description is the contract of the REST
@@ -289,13 +290,19 @@ async def show_statistics(
     _label, days = ZEITRAEUME[key]
 
     bis = utcnow()
-    start_at = (bis - timedelta(days=days - 1)).replace(hour=0, minute=0, second=0, microsecond=0)
+    # The local day, not the UTC one: a period of "7 Tage" means seven local
+    # calendar days including today, and its start is that first day's local
+    # midnight -- converted to UTC only at the very end, so the query and
+    # `heating_periods`' own bucketing agree on where a day begins.
+    first_local_day = local_time(bis, row.timezone).date() - timedelta(days=days - 1)
+    start_at = local_day_start_utc(first_local_day, row.timezone)
     values = heating_periods(
         session,
         [zone.id for zone in zones],
         start_at,
         bis,
         cycle_seconds=row.shadow_interval_seconds,
+        timezone_name=row.timezone,
     )
     # The single longest day value determines the height of the bars. Scaling per
     # zone would be more comfortable to read and would falsify the comparison

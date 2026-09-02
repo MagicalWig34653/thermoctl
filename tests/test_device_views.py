@@ -1,5 +1,5 @@
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 
@@ -81,6 +81,51 @@ def test_the_device_page_shows_signs_of_life_capability_and_zone(
     assert "die Brücke führt es als offline" not in response.text
 
 
+def test_a_meross_socket_recently_confirmed_online_is_not_flagged_as_never_reporting(
+    client_als, session: Session
+) -> None:
+    """A Meross socket sends nothing over MQTT -- `device_health` stays permanently
+
+    empty for it -- and used to be judged by that empty table alone, so every
+    Meross socket read "hat sich noch nie gemeldet" no matter how often the hourly
+    cloud reconciliation confirmed it. This is the counter-check: a device whose
+    reconciliation ran five minutes ago (`device.last_seen_at`, written by
+    `services/meross_discovery.py::save_devices`) must show up as fine, not silent,
+    even though it has no `device_health` row at all.
+    """
+    device = create_device(session, "meross-steckdose-1", code="meross")
+    device.display_name = "Heizungssteckdose"
+    device.last_seen_at = utcnow() - timedelta(minutes=5)
+    session.flush()
+
+    response = client_als([("device.read", None)]).get("/devices")
+
+    assert response.status_code == 200
+    assert "Heizungssteckdose" in response.text
+    assert "hat sich noch nie gemeldet" not in response.text
+    assert "wurde noch nie als online abgeglichen" not in response.text
+
+
+def test_a_meross_socket_never_reconciled_says_so_without_claiming_a_report(
+    client_als, session: Session
+) -> None:
+    """The other half of the same bug: a Meross socket that was never once
+
+    reconciled (`last_seen_at is None`) must not be worded as if it had a reporting
+    channel of its own -- Zigbee2MQTT's "hat sich noch nie gemeldet" would claim
+    exactly that.
+    """
+    device = create_device(session, "meross-steckdose-2", code="meross")
+    device.display_name = "Nie-abgeglichene-Steckdose"
+    session.flush()
+
+    response = client_als([("device.read", None)]).get("/devices")
+
+    assert response.status_code == 200
+    assert "wurde noch nie als online abgeglichen" in response.text
+    assert "hat sich noch nie gemeldet" not in response.text
+
+
 def test_the_start_page_shows_zone_state_without_a_zero_temperature(
     client_als, session: Session
 ) -> None:
@@ -148,10 +193,27 @@ def test_age_in_words_answers_the_question_of_freshness() -> None:
     assert age_in_words(now - timedelta(hours=3), now) == "vor 3 Stunden"
     assert age_in_words(now - timedelta(days=1), now) == "vor 1 Tag"
     assert age_in_words(now - timedelta(days=9), now) == "vor 9 Tagen"
-    # A slightly misconfigured sensor must not display 'in -3 minutes'.
-    assert age_in_words(now + timedelta(minutes=3), now) == "gerade eben"
     # Without an explicit now-moment, the project's clock takes over.
     assert age_in_words(datetime(2000, 1, 1)).endswith("Tagen")
+
+
+def test_age_in_words_gives_a_future_moment_its_own_wording() -> None:
+    """A still-running override's end lies in the future, and 'vor -42 Minuten' or
+
+    the older bug's 'gerade eben' both misreport that: the override has not just
+    ended, it still has 42 minutes left. The counter-check that would fail without
+    the fix: before it, every one of the asserts below returned 'gerade eben',
+    regardless of how far in the future the moment actually was.
+    """
+    from datetime import timedelta
+
+    from thermoctl.web import age_in_words
+
+    now = datetime(2026, 8, 29, 12, 0, 0)
+    assert age_in_words(now + timedelta(minutes=42), now) == "noch 42 Minuten"
+    assert age_in_words(now + timedelta(seconds=30), now) == "noch 30 Sekunden"
+    assert age_in_words(now + timedelta(hours=2), now) == "noch 2 Stunden"
+    assert age_in_words(now + timedelta(days=1), now) == "noch 1 Tag"
 
 
 def test_the_device_page_puts_conspicuous_devices_on_top(client_als, session: Session) -> None:
