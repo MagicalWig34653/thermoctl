@@ -128,6 +128,41 @@ def test_a_revoked_token_has_no_permissions(session: Session) -> None:
     assert has_permission(principal_for_token(session, token), "zone.read", bad.id) is False
 
 
+def test_a_token_expires_at_the_exact_boundary(session: Session, monkeypatch) -> None:
+    from datetime import UTC, datetime
+
+    boundary = datetime(2026, 9, 2, 12, tzinfo=UTC)
+    monkeypatch.setattr("thermoctl.domain.authz.utcnow", lambda: boundary)
+    zone = create_zone(session, "grenze")
+    user = user_with_permissions(session, "grenznutzer", [("zone.read", None)])
+    token = token_with_permissions(session, user, [("zone.read", None)])
+    token.expires_at = boundary
+    session.flush()
+
+    assert not has_permission(principal_for_token(session, token), "zone.read", zone.id)
+
+
+def test_visible_zones_ignores_grants_for_other_permission_codes(session: Session) -> None:
+    readable = create_zone(session, "lesbar")
+    manageable = create_zone(session, "nur-verwaltbar")
+    user = user_with_permissions(
+        session,
+        "getrennte-rechte",
+        [("zone.read", readable.id), ("zone.manage", manageable.id)],
+    )
+
+    visible = visible_zones(session, principal_for_user(session, user), "zone.read")
+
+    assert [zone.id for zone in visible] == [readable.id]
+
+
+def test_denial_message_names_even_a_zero_zone_id() -> None:
+    from thermoctl.domain.principal import Principal
+
+    with pytest.raises(Forbidden, match=r"Zone 0$"):
+        require(Principal(user_id=1, token_id=None, grants=frozenset()), "zone.read", 0)
+
+
 def test_every_permission_belongs_to_exactly_one_area() -> None:
     """The interface shows permissions grouped by area. A new permission belonging to
     no area would be invisible there -- it could then only be granted through the

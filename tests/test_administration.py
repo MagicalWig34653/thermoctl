@@ -26,6 +26,7 @@ from thermoctl.domain.administration import (
     delete_group,
     grant_permission,
     revoke_permission,
+    set_group_permissions,
     set_password,
     set_user_active,
     set_user_group,
@@ -322,6 +323,23 @@ def test_the_second_to_last_administrator_can_change_group(session: Session) -> 
     assert membership is not None and membership.access_group_id == harmless.id
 
 
+def test_the_last_administrator_can_move_to_another_management_group(
+    session: Session,
+) -> None:
+    """The guard protects the permission, not the identity of the old group."""
+    administrator = user_with_permissions(session, "wechseladmin", [("user.manage", None)])
+    replacement = _group_with_permissions_helper(
+        session, "andereverwaltung", [("user.manage", None)]
+    )
+
+    set_user_group(session, administrator, replacement.id, actor_id=None)
+
+    membership = session.scalar(
+        select(UserAccessGroup).where(UserAccessGroup.user_id == administrator.id)
+    )
+    assert membership is not None and membership.access_group_id == replacement.id
+
+
 def test_reassigning_the_same_group_is_a_no_op(session: Session) -> None:
     """Resubmitting the group a user already has must not write a spurious audit
     entry and must not trip the lockout guard either."""
@@ -341,6 +359,114 @@ def test_an_unknown_group_id_is_rejected(session: Session) -> None:
     user = create_user(session, "fuersonstwas")
     with pytest.raises(AdministrationError, match="gibt es nicht"):
         set_user_group(session, user, 999999, actor_id=None)
+
+
+def test_activation_audit_names_the_actual_new_state(session: Session) -> None:
+    """The audit trail must not claim the opposite account state."""
+    user = create_user(session, "audit-state")
+    set_user_active(session, user, False, actor_id=None)
+    set_user_active(session, user, True, actor_id=None)
+
+    events = list(
+        session.scalars(
+            select(AuditEvent)
+            .where(AuditEvent.object_id == str(user.id))
+            .order_by(AuditEvent.id)
+        )
+    )
+    assert [(event.action, event.summary) for event in events[-2:]] == [
+        ("user.deactivated", "Benutzer 'audit-state' deaktiviert"),
+        ("user.activated", "Benutzer 'audit-state' aktiviert"),
+    ]
+
+
+def test_zone_grants_are_distinct_and_the_audit_names_the_zone(session: Session) -> None:
+    """A grant for one room must neither mask nor misdescribe a grant for another."""
+    ensure_permission(session, "zone.read", zone_scoped=True)
+    first_zone = create_zone(session, "grant-first")
+    second_zone = create_zone(session, "grant-second")
+    group = create_group(session, name="zone-grants", description=None, actor_id=None)
+
+    first = grant_permission(session, group, "zone.read", first_zone.id, actor_id=None)
+    second = grant_permission(session, group, "zone.read", second_zone.id, actor_id=None)
+
+    assert first.id != second.id
+    event = session.scalar(
+        select(AuditEvent)
+        .where(AuditEvent.action == "group.permission_granted")
+        .order_by(AuditEvent.id.desc())
+    )
+    assert event is not None
+    assert event.detail == f"eingeschraenkt auf Zone {second_zone.id}"
+
+
+def test_revoking_a_non_admin_permission_from_the_only_admin_group_is_allowed(
+    session: Session,
+) -> None:
+    """The lockout guard applies only when the administration grant itself is removed."""
+    user_with_permissions(
+        session, "multi-right-admin", [("user.manage", None), ("zone.read", None)]
+    )
+    group = session.scalar(
+        select(AccessGroup).where(AccessGroup.name == "gruppe-multi-right-admin")
+    )
+    permission = session.scalar(select(Permission).where(Permission.code == "zone.read"))
+    assert group is not None and permission is not None
+    entry = session.scalar(
+        select(GroupPermission).where(
+            GroupPermission.access_group_id == group.id,
+            GroupPermission.permission_id == permission.id,
+        )
+    )
+    assert entry is not None
+
+    revoke_permission(session, entry, actor_id=None)
+
+    assert session.get(GroupPermission, entry.id) is None
+
+
+def test_an_admin_group_can_be_deleted_when_another_admin_source_remains(
+    session: Session,
+) -> None:
+    """The lockout guard must not prevent safe administrative cleanup."""
+    user_with_permissions(session, "admin-source-one", [("user.manage", None)])
+    user_with_permissions(session, "admin-source-two", [("user.manage", None)])
+    first_group = session.scalar(
+        select(AccessGroup).where(AccessGroup.name == "gruppe-admin-source-one")
+    )
+    assert first_group is not None
+
+    delete_group(session, first_group, actor_id=None)
+
+    assert session.get(AccessGroup, first_group.id) is None
+
+
+def test_setting_group_permissions_reports_and_applies_the_exact_difference(
+    session: Session,
+) -> None:
+    """Bulk editing grants and revokes each requested row exactly once."""
+    ensure_permission(session, "zone.read", zone_scoped=True)
+    ensure_permission(session, "device.read", zone_scoped=False)
+    zone = create_zone(session, "permission-difference")
+    group = create_group(session, name="permission-difference", description=None, actor_id=None)
+    grant_permission(session, group, "device.read", None, actor_id=None)
+
+    changed = set_group_permissions(
+        session,
+        group,
+        {("zone.read", zone.id)},
+        actor_id=None,
+    )
+
+    assert changed == (1, 1)
+    rows = list(
+        session.execute(
+            select(Permission.code, GroupPermission.zone_id)
+            .join(GroupPermission, GroupPermission.permission_id == Permission.id)
+            .where(GroupPermission.access_group_id == group.id)
+        )
+    )
+    assert rows == [("zone.read", zone.id)]
 
 
 def _group_with_permissions_helper(

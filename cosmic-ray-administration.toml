@@ -1,0 +1,24 @@
+# Runde 1, Stufe 4 des Komplettreviews. Fuer den ungefilterten Ausgangslauf
+# wird der Filter-Schritt ausgelassen.
+[cosmic-ray]
+module-path = "thermoctl/domain/administration.py"
+timeout = 10.0
+excluded-modules = []
+test-command = ".venv/bin/python -m pytest --no-cov tests/test_administration.py tests/test_admin_views.py"
+
+[cosmic-ray.distributor]
+name = "local"
+
+[cosmic-ray.distributor.local]
+max-workers = 16
+
+[cosmic-ray.filters.operators-filter]
+exclude-operators = [
+    "core/ReplaceBinaryOperator_BitOr_.*",
+    "core/ReplaceComparisonOperator_Eq_(Gt|GtE|Lt|LtE|Is|IsNot)",
+    "core/ReplaceComparisonOperator_NotEq_(Gt|GtE|Lt|LtE|Is|IsNot)",
+    "core/ReplaceComparisonOperator_Lt_(Eq|NotEq|Gt|GtE|Is|IsNot)",
+    "core/ReplaceComparisonOperator_LtE_(Eq|NotEq|Gt|GtE|Is|IsNot)",
+    "core/ReplaceComparisonOperator_Gt_(Eq|NotEq|Lt|LtE|Is|IsNot)",
+    "core/ReplaceComparisonOperator_GtE_(Eq|NotEq|Lt|LtE|Is|IsNot)",
+]

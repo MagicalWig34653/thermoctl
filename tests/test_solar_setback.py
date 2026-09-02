@@ -7,8 +7,11 @@ failure must not disturb control, the frost-protection floor is never crossed, a
 factor of zero leaves the setpoint untouched, and the configured cap holds.
 """
 
+from dataclasses import FrozenInstanceError
 from datetime import datetime
 from decimal import Decimal
+
+import pytest
 
 from thermoctl.domain.solar_setback import HourlyForecast, apply, sun_expected
 
@@ -57,6 +60,17 @@ def test_the_window_boundary_is_exclusive() -> None:
     """A bright hour exactly at the edge of the lookahead window is not 'soon'."""
     forecast = [_point(11, Decimal(500))]  # NOW + 3h exactly
     assert sun_expected(forecast, NOW, lookahead_hours=3) is False
+
+
+def test_the_current_hour_is_inside_the_window() -> None:
+    """A forecast point for now must affect the command being decided now."""
+    assert sun_expected([_point(8, Decimal(200))], NOW, lookahead_hours=3) is True
+
+
+def test_the_sunshine_threshold_itself_counts_as_sun() -> None:
+    """The documented physical threshold is inclusive and remains exactly 120 W/m²."""
+    assert sun_expected([_point(9, Decimal(120))], NOW, lookahead_hours=3) is True
+    assert sun_expected([_point(9, Decimal(119))], NOW, lookahead_hours=3) is False
 
 
 # --- apply --------------------------------------------------------------------------
@@ -169,3 +183,18 @@ def test_a_reduction_that_rounds_away_to_nothing_is_no_setback() -> None:
         )
         is None
     )
+
+
+def test_forecasts_and_setback_results_are_immutable() -> None:
+    """Inputs and decided physical corrections must remain stable after evaluation."""
+    point = _point(9, Decimal(200))
+    result = apply(
+        Decimal("21"), Decimal("16"),
+        factor=Decimal("1"), max_reduction_k=Decimal("2"), expects_sun=True,
+    )
+    assert result is not None
+
+    with pytest.raises(FrozenInstanceError):
+        point.shortwave_radiation_w_m2 = Decimal(0)
+    with pytest.raises(FrozenInstanceError):
+        result.setpoint_c = Decimal("21")

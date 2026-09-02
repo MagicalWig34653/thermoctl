@@ -171,6 +171,27 @@ def test_a_state_changing_route_with_a_valid_token_goes_through(
     assert response.status_code == status.HTTP_303_SEE_OTHER
 
 
+def test_a_valid_token_in_a_form_field_goes_through_without_a_header(
+    angemeldeter_client: TestClient,
+) -> None:
+    from thermoctl.config import get_settings
+
+    secret = angemeldeter_client.cookies[COOKIE_NAME]
+    token = csrf_token(secret, get_settings().secret_key.get_secret_value())
+
+    response = angemeldeter_client.post(
+        "/logout", data={"csrf_token": token}, follow_redirects=False
+    )
+
+    # Straight to `/login`, not to `/`: a logout that lands on the start page and is
+    # only redirected onward from there is followed invisibly by `hx-boost`, which
+    # swaps the content and leaves the address bar on `/`. Reported from use as "beim
+    # Abmelden wird man nicht zum Login geleitet" -- the page was right, the address
+    # was not.
+    assert response.status_code == status.HTTP_303_SEE_OTHER
+    assert response.headers["location"] == "/login"
+
+
 def test_without_a_session_cookie_the_protection_does_not_apply(client: TestClient) -> None:
     """Login itself carries no cookie and must not fail due to CSRF protection."""
     response = client.post("/login", data={"username": "gibtesnicht", "password": "x"})

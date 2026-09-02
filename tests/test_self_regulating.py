@@ -5,9 +5,11 @@ the target. Everything here decides a number that a valve then regulates towards
 the questions are which number, and whether it is one the device accepts at all.
 """
 
+from dataclasses import FrozenInstanceError
 from datetime import datetime
 from decimal import Decimal
 
+import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -250,3 +252,99 @@ def test_a_measured_temperature_outside_the_valve_s_range_is_left_out(
     assert command.temperature_property is None
     assert command.temperature_c is None
     assert command.setpoint_c > 0  # der Sollwert geht trotzdem hinaus
+
+
+def test_valve_commands_are_immutable(session: Session) -> None:
+    """A logged physical command must not change after it was decided."""
+    zone, _valve = _zone_with_valve(session, "immutable")
+    command = valve_commands(session, zone, NOW)[0]
+
+    with pytest.raises(FrozenInstanceError):
+        command.setpoint_c = Decimal("5")
+
+
+@pytest.mark.parametrize("limit", ["min", "max"])
+def test_a_setpoint_exactly_on_a_declared_limit_is_sent(
+    session: Session, limit: str
+) -> None:
+    """Device range endpoints are valid values, not rejection thresholds."""
+    zone, valve = _zone_with_valve(session, f"boundary-{limit}")
+    target = session.scalar(
+        select(DeviceProperty).where(DeviceProperty.device_id == valve.id)
+    )
+    assert target is not None
+    if limit == "min":
+        target.min_value = Decimal("16")
+    else:
+        target.max_value = Decimal("16")
+    session.flush()
+
+    assert valve_commands(session, zone, NOW)[0].setpoint_c == Decimal("16")
+
+
+def test_a_property_without_a_maximum_accepts_the_setpoint(session: Session) -> None:
+    """An omitted upper bound means unbounded, not unusable."""
+    zone, valve = _zone_with_valve(session, "unbounded")
+    target = session.scalar(
+        select(DeviceProperty).where(DeviceProperty.device_id == valve.id)
+    )
+    assert target is not None
+    target.max_value = None
+    session.flush()
+
+    assert len(valve_commands(session, zone, NOW)) == 1
+
+
+def test_a_missing_thermostat_capability_disables_valve_commands(session: Session) -> None:
+    """Capability metadata is a safety precondition for moving a valve."""
+    create_settings(session)
+    source(session, "web")
+    zone = create_zone(session, "missing-capability")
+    mode = create_mode(session, "tag-missing-capability")
+    session.add(
+        ZoneSetpoint(
+            zone_id=zone.id,
+            setpoint_mode_id=mode.id,
+            temperature_c=Decimal("21"),
+        )
+    )
+    valve = create_device(session, "uncapable-valve")
+    session.add(
+        ZoneDevice(
+            zone_id=zone.id,
+            device_id=valve.id,
+            device_role_id=role(session, "actuator").id,
+            self_regulating=True,
+        )
+    )
+    _property(session, valve.id, "occupied_heating_setpoint")
+    session.flush()
+
+    assert valve_commands(session, zone, NOW) == []
+
+
+def test_an_invalid_first_valve_does_not_hide_a_later_valid_valve(session: Session) -> None:
+    """One bad assignment must not leave the remaining radiators uncontrolled."""
+    zone, first = _zone_with_valve(session, "continue")
+    first_target = session.scalar(
+        select(DeviceProperty).where(DeviceProperty.device_id == first.id)
+    )
+    assert first_target is not None
+    first_target.is_writable = False
+
+    second = create_device(session, "continue-second")
+    session.add(
+        ZoneDevice(
+            zone_id=zone.id,
+            device_id=second.id,
+            device_role_id=role(session, "actuator").id,
+            self_regulating=True,
+            sort_order=1,
+        )
+    )
+    _property(session, second.id, "occupied_heating_setpoint")
+    session.flush()
+
+    assert [command.device.id for command in valve_commands(session, zone, NOW)] == [
+        second.id
+    ]

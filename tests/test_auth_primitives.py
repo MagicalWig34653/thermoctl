@@ -31,6 +31,11 @@ def test_a_too_short_password_is_rejected() -> None:
         hash_password("a" * (MIN_PASSWORD_LENGTH - 1))
 
 
+def test_the_documented_minimum_password_length_is_accepted() -> None:
+    assert MIN_PASSWORD_LENGTH == 12
+    assert verify_password("a" * 12, hash_password("a" * 12))
+
+
 def test_verification_against_a_nonsense_hash_does_not_raise() -> None:
     assert verify_password("egal-welches-passwort", "kein-gueltiger-hash") is False
 
@@ -39,6 +44,14 @@ def test_a_secret_is_long_enough_and_different_every_time() -> None:
     values = {new_secret() for _ in range(100)}
     assert len(values) == 100
     assert all(len(value) >= 43 for value in values)  # 256 bits base64url
+
+
+def test_a_secret_contains_exactly_256_bits_of_random_input() -> None:
+    import base64
+
+    value = new_secret()
+    padding = "=" * (-len(value) % 4)
+    assert len(base64.urlsafe_b64decode(value + padding)) == 32
 
 
 def test_secret_hash_is_stable_and_sixty_four_characters() -> None:

@@ -7,6 +7,7 @@ a test explicitly arms it — CLAUDE.md forbids arming anything in this suite.
 """
 
 import json
+from dataclasses import FrozenInstanceError
 from datetime import datetime
 from decimal import Decimal
 from typing import Any
@@ -28,6 +29,12 @@ from thermoctl.db.models.lookup import CommandOutcome, DeviceCapability
 from thermoctl.db.models.state import DeviceCommand, ShadowDecision
 from thermoctl.db.models.zone import Zone
 from thermoctl.domain.control import arm
+from thermoctl.domain.switch_commands import (
+    SwitchCommand,
+    ThermostatCommand,
+    switch_commands,
+    thermostat_commands,
+)
 from thermoctl.services.meross_session import MerossSessionCache
 from thermoctl.services.publishing import PublicationState, cycle
 
@@ -960,6 +967,104 @@ async def test_a_device_with_both_switch_and_thermostat_capability_only_gets_a_s
     assert entry.device_name == device.display_name
     topic, payload = next((t, p) for t, p in client.messages if t.endswith("/set"))
     assert json.loads(payload) == {"state": "ON"}
+
+
+def test_command_descriptions_are_immutable(session: Session) -> None:
+    """The selected physical target must not change after domain evaluation."""
+    switch_zone, switch_device = _actuator_zone(session, "immutable-switch")
+    thermostat_zone, thermostat_device = _thermostat_actuator_zone(
+        session, "immutable-thermostat"
+    )
+    switch_command = switch_commands(session, switch_zone)[0]
+    thermostat_command = thermostat_commands(session, thermostat_zone)[0]
+
+    with pytest.raises(FrozenInstanceError):
+        switch_command.integration_code = "other"
+    with pytest.raises(FrozenInstanceError):
+        thermostat_command.has_system_mode = False
+    assert isinstance(switch_command, SwitchCommand)
+    assert isinstance(thermostat_command, ThermostatCommand)
+
+
+def test_capability_joins_do_not_admit_devices_with_an_unrelated_capability(
+    session: Session,
+) -> None:
+    """A capability on some device is not evidence that this actuator supports it."""
+    switch_zone, switch_device = _actuator_zone(session, "join-switch")
+    switch_impostor = Device(
+        integration_id=integration(session, "zigbee2mqtt").id,
+        external_id="join-switch-impostor",
+        display_name="join-switch-impostor",
+    )
+    session.add(switch_impostor)
+    session.flush()
+    session.add(
+        DeviceCapabilityLink(
+            device_id=switch_impostor.id,
+            capability_id=_capability(session, "temperature", "Temperature").id,
+        )
+    )
+    session.add(
+        ZoneDevice(
+            zone_id=switch_zone.id,
+            device_id=switch_impostor.id,
+            device_role_id=role(session, "actuator").id,
+            self_regulating=False,
+        )
+    )
+
+    thermostat_zone, thermostat_device = _thermostat_actuator_zone(
+        session, "join-thermostat"
+    )
+    session.add(
+        DeviceCapabilityLink(
+            device_id=thermostat_device.id,
+            capability_id=_capability(session, "humidity", "Humidity").id,
+        )
+    )
+    session.flush()
+
+    assert [command.device.id for command in switch_commands(session, switch_zone)] == [
+        switch_device.id
+    ]
+    assert [command.device.id for command in thermostat_commands(session, thermostat_zone)] == [
+        thermostat_device.id
+    ]
+
+
+def test_a_dual_capability_thermostat_does_not_hide_a_later_plain_thermostat(
+    session: Session,
+) -> None:
+    """A conflicting first assignment must not suppress a later valid radiator."""
+    zone, dual = _thermostat_actuator_zone(
+        session, "dual-first", also_switch_capable=True
+    )
+    plain = Device(
+        integration_id=integration(session, "zigbee2mqtt").id,
+        external_id="plain-second",
+        display_name="plain-second",
+    )
+    session.add(plain)
+    session.flush()
+    session.add(
+        DeviceCapabilityLink(
+            device_id=plain.id,
+            capability_id=_capability(session, "thermostat", "Thermostatausgang").id,
+        )
+    )
+    session.add(
+        ZoneDevice(
+            zone_id=zone.id,
+            device_id=plain.id,
+            device_role_id=role(session, "actuator").id,
+            self_regulating=False,
+            sort_order=1,
+        )
+    )
+    session.flush()
+
+    assert [command.device.id for command in thermostat_commands(session, zone)] == [plain.id]
+    assert dual.id != plain.id
 
 
 @pytest.mark.anyio
