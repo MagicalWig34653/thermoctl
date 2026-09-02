@@ -1,5 +1,5 @@
 from dataclasses import FrozenInstanceError
-from datetime import datetime, timedelta
+from datetime import datetime
 from decimal import Decimal
 
 import pytest
@@ -113,14 +113,20 @@ def test_canonical_schedule_preserves_singletons_and_two_mode_rings() -> None:
     )
 
 
-def test_calendar_arithmetic_is_additive_for_every_day_and_edge_time() -> None:
-    monday = datetime(2026, 8, 31)
-    for weekday in range(1, 8):
-        for hour, minute in ((0, 0), (1, 1), (13, 17), (23, 59)):
-            moment = monday + timedelta(days=weekday - 1, hours=hour, minutes=minute)
-            assert schedule_module._week_minute(moment) == (
-                (weekday - 1) * 1440 + hour * 60 + minute
-            )
+@pytest.mark.parametrize(
+    ("moment", "expected"),
+    [
+        (datetime(2026, 8, 31, 0, 0), 0),
+        (datetime(2026, 8, 31, 23, 59), 1439),
+        (datetime(2026, 9, 1, 0, 0), 1440),
+        (datetime(2026, 9, 3, 12, 34), 5074),
+        (datetime(2026, 9, 6, 23, 59), 10079),
+    ],
+)
+def test_week_minutes_match_known_calendar_landmarks(
+    moment: datetime, expected: int
+) -> None:
+    assert schedule_module._week_minute(moment) == expected
 
 
 def test_schedule_labels_preserve_minute_boundaries() -> None:

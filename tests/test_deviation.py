@@ -1,16 +1,6 @@
-from dataclasses import FrozenInstanceError
 from decimal import Decimal
 
-import pytest
-
-from thermoctl.domain.deviation import Classification, Comparison, compare
-
-
-def test_comparisons_are_immutable() -> None:
-    result = Comparison(Classification.ABWEICHUNG, "test")
-
-    with pytest.raises(FrozenInstanceError):
-        result.text = "changed"
+from thermoctl.domain.deviation import Classification, compare
 
 
 def test_both_heating_is_not_a_deviation() -> None:

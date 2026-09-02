@@ -125,6 +125,11 @@ def test_a_zone_without_a_log_still_appears_with_zeros(session: Session) -> None
 
 
 def test_statistics_values_are_immutable() -> None:
+    """The view first derives one shared bar scale and then renders these values.
+
+    Mutable fields could break the result's zone identity or make totals, bars, and
+    labels describe different snapshots within the same response.
+    """
     day = DayValue(date(2026, 8, 24), 60)
     zone = ZoneStatistics(17, [day])
 
