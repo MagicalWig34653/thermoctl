@@ -1,6 +1,9 @@
 # Python
 __pycache__/
 *.py[cod]
+# Ohne Schraegstrich: .venv ist hier ein *Symlink* auf .venv.nosync, also eine Datei.
+# Mit ".venv/" allein war er nicht erfasst und wurde versehentlich eingecheckt.
+.venv
 .venv/
 venv/
 *.egg-info/
@@ -37,7 +40,7 @@ htmlcov/
 .DS_Store
 
 # iCloud-Konfliktdubletten ("Datei 2.py") -- nie Teil des Projekts
-*\ 2.*
+*\ [0-9].*
 
 # .venv liegt als .venv.nosync daneben, .venv ist ein Symlink darauf -- iCloud
 # ueberspringt alles, was auf .nosync endet. Siehe docs/self-hosting.md.
