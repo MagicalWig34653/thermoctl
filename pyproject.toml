@@ -73,6 +73,10 @@ ignore = ["S101"]  # assert ist in Tests erwünscht
 python_version = "3.14"
 strict = true
 plugins = ["pydantic.mypy"]
+# Dritter Riegel gegen dieselben iCloud-Konfliktkopien wie unten bei coverage und
+# pytest. Ohne ihn prueft mypy die Kopien mit -- am 2026-09-02 waren es 123 statt
+# 107 Dateien, mit einem Fehler in einer Datei, die niemand importiert.
+exclude = "(^|/)[^/]* [0-9]\\.py$"
 
 [tool.coverage.run]
 # Dieselben iCloud-Konfliktkopien wie beim --ignore-glob unten, hier aber aus einem

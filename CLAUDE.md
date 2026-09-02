@@ -218,7 +218,7 @@ Aus der Umsetzung von Teilprojekt 1, damit es niemand erneut herausfinden muss:
   Drive, und der Dienst legt bei schnellen Schreibvorgängen Konfliktkopien der Form
   `deviation 2.py` an — git-Operationen und Mutationsläufe erzeugen sie zuverlässig. Sie
   sind alte Stände. `.gitignore` hält sie aus dem Repository, `--ignore-glob` in
-  `pyproject.toml` aus dem Testlauf, und `.venv` liegt als `.venv.nosync` ausserhalb des
+  `pyproject.toml` aus dem Testlauf, und `.venv` liegt als `.venv.tmp` ausserhalb des
   Abgleichs. Wenn Tests an Zusicherungen scheitern, die vor Wochen gestimmt haben:
   zuerst `find . -name "* 2.*"` prüfen, bevor man den Fehler im Code sucht.
 - **Agents melden Blocker, statt zu raten** — das ist die wichtigste Regel im Auftragstext.
