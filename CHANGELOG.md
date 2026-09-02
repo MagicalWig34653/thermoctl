@@ -9,6 +9,108 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ---
 
+## 0.4.0 — 2026-09-02
+
+**Wer 0.3.0 scharf betreibt, sollte aktualisieren.** Diese Fassung behebt die ersten
+beiden echten Fehler in der Regelkette. Beide lagen an der Grenze zwischen Ventilschutz
+und Mindestschaltdauern, beide konnten das Verhalten von Relais und Ventilen verändern,
+und beide wurden erst gefunden, nachdem die Anlage bereits an einer echten Heizung lief.
+
+### Das Wichtigste zuerst
+
+- **Ein gesetzter Ventilschutz-Marker hob die Mindestschaltdauern auch dann noch auf,
+  wenn der Schutzlauf gar nicht mehr entschied.** Das betraf Zonen mit eingeschaltetem
+  Ventilschutz, wenn eine Übersteuerung, die Betriebsart „aus“ oder ein Sensorausfall
+  einen laufenden Schutzlauf verdrängte. Bis zum Ende der voreingestellten zehn Minuten
+  konnte ein Relais dadurch ohne seinen Taktschutz umschalten; bei einer Minute
+  Zykluszeit waren bis zu zehn Schaltvorgänge möglich. Jetzt gilt die Ausnahme nur,
+  solange der Ventilschutz den Ein-Zustand tatsächlich verlangt.
+- **Ein Ventilschutzlauf konnte danach zu regulärem Heizen werden.** Das betrifft nur
+  eine Zone, deren Mindest-Einschaltdauer **länger** ist als ihr Ventilschutzlauf: Nach
+  dem Lauf hielt die Mindestdauer das Ventil offen, danach übernahm die Hysterese den
+  Ein-Zustand als gewöhnliches Heizen. Mit den Vorgabewerten ist die Anlage von diesem
+  zweiten Fehler **nicht betroffen**: 300 Sekunden Mindest-EIN sind kürzer als der
+  600 Sekunden lange Schutzlauf. Wer die Werte umgekehrt eingestellt hat, ist betroffen
+  und sollte aktualisieren. Ein Schutzlauf endet jetzt mit seiner eigenen Laufdauer;
+  die Mindest-Einschaltdauer für reguläres Heizen bleibt erhalten.
+
+Beide Fehler sind durch eine vollständige Zustandstabelle der Regelkette abgesichert.
+Sie prüft 2.376 erreichbare Kombinationen aus den Vorrangregeln, statt nur einzelne
+Beispiele nachzustellen.
+
+### Zu beachten beim Umstieg
+
+- **Zwei Migrationen** laufen im Container beim Start von selbst: Die erste ersetzt den
+  Index der Schattenhistorie, die zweite (`f6a9d4c12b70`) ergänzt die Aufbewahrungsfrist.
+  Der Rückweg auf 0.3.0 braucht vor dem Wechsel des Abbilds einen einmaligen manuellen
+  Downgrade; die kopierbare Reihenfolge steht unter
+  [„Aktualisieren und zurückgehen“](docs/self-hosting.md#6-aktualisieren-und-zurückgehen).
+- **Das Schattenprotokoll wird jetzt voreingestellt 365 Tage aufbewahrt.** Wer eine
+  andere Frist braucht, stellt sie vor der ersten täglichen Bereinigung um. Bei zehn
+  Zonen und einem Zyklus je Minute entspricht ein Jahr gemessen rund 811 MiB.
+
+### Neu
+
+- **Eigene Aufbewahrungsfrist für das Schattenprotokoll.** Der bisher unbegrenzt
+  wachsende Entscheidungsverlauf wird täglich und blockweise bereinigt; einstellbar sind
+  1 bis 3.650 Tage, Vorgabe sind 365. Messwerte behalten ihre unabhängige Frist,
+  Audit- und Schaltprotokoll bleiben unbegrenzt. Der verdichtete Heiznachweis für den
+  Ventilschutz bleibt erhalten, sodass gelöschte Einzelentscheidungen dessen Fälligkeit
+  nicht verändern. Diese neue Betriebseinstellung ist der Grund für 0.4.0 statt 0.3.1.
+
+### Sicherheit und Rechte
+
+- **Vier Wege reichten für zonenbeschränkte Personen weiter als erlaubt.** Über einen
+  Bediengerätekanal ließ sich eine fremde Zone verändern; die Tastenbelegung eines
+  geteilten Reglers wirkte auch in nicht erlaubten Zonen; ein Kiosk-Token galt außerhalb
+  der engen Kioskoberfläche als vollwertiges REST- und MCP-Token; und die
+  Bediengeräteseite zeigte die gesamte Geräteliste auch ohne `device.read`. Alle vier
+  Wege verlangen jetzt die Rechte für das tatsächlich betroffene Ziel.
+- **Anmeldeversuche halten den Regelzyklus nicht mehr an.** Wartezeit und teure
+  Passwortprüfung blockierten zuvor dieselbe Ereignisschleife wie die Heizentscheidung;
+  der Fehlversuchsspeicher ist nun außerdem begrenzt.
+- **Ein Passwortwechsel beendet jetzt alle anderen Sitzungen.** Die aktuelle Sitzung
+  bleibt bestehen. Unter `/users` gibt es zusätzlich „Andere Sitzungen beenden“, ohne
+  dass dafür das Passwort geändert werden muss.
+- **Das Einrichtungs-Token läuft nach einer Stunde ab.** Ein altes oder weitergegebenes
+  Log kann damit nicht Wochen später noch zur Einrichtung des ersten Verwalters dienen;
+  nach Ablauf erzeugt ein Neustart ein neues Token.
+- **Meross-Antworten werden nicht mehr allein anhand der Nachrichtenkennung als Erfolg
+  verbucht.** Signatur und Befehlsart müssen passen; enthält die Antwort Kanal und
+  Schaltzustand, müssen auch sie dem gesendeten Befehl entsprechen. Ein Fehlschlag wird
+  im nächsten Zyklus erneut versucht. Eine leere `SETACK`-Antwort bleibt gültig, weil
+  die echte Hardware so antwortet; eine zusätzliche Zustandsabfrage ist nicht gebaut.
+- **Der Webhook folgt keiner Weiterleitung mehr.** Damit kann ein übernommenes Ziel den
+  Bearer-Token nicht per HTTP-Weiterleitung zu einem anderen Host oder einer internen
+  Adresse mitnehmen.
+- **Ein Wächter prüft jeden neuen Sitzungscookie auf die Einstellung für sichere
+  Cookies.** `THERMOCTL_SECURE_COOKIES` bleibt aus Rücksicht auf die Ersteinrichtung per
+  HTTP in der Vorgabe auf `false`; hinter TLS gehört es ausdrücklich auf `true`.
+
+### Betrieb und Einordnung
+
+- **Ein passender Index verkürzt den Regelzyklus bei großer Schattenhistorie deutlich.**
+  Gemessen mit 20 Zonen und einem Jahr Historie sank er unter SQLite von 3.656 auf
+  891 ms. Der alte Einzelindex auf dem Zeitpunkt fiel weg, weil keine Betriebsabfrage
+  ihn ohne gleichzeitige Eingrenzung auf eine Zone benutzt.
+- **Diese Korrekturdichte ist das Ergebnis eines Komplettreviews in sieben Runden.**
+  Geprüft wurden unter anderem Zusicherungen, wiederkehrende Fehlermuster, Rechte,
+  Sicherheitsgrenzen, Datenbankabfragen und die Aussagekraft der Tests. Die Aufzählung
+  oben ist deshalb kein Bündel zufälliger Einzelkorrekturen, sondern der Ertrag dieses
+  Reviews.
+
+### Bekannte Einschränkungen
+
+- **Der MQTT-Befehlsbaum ist ein vollwertiger Steuerweg ohne thermoctls Rechtemodell.**
+  Wer dort veröffentlichen darf, kann die ganze Anlage steuern; die Absicherung liegt
+  beim Broker. [docs/mqtt.md](docs/mqtt.md#den-broker-absichern-er-ist-eine-vertrauensgrenze)
+  enthält die benötigten Topic-Rechte und ein EMQX-Beispiel. Das ist benannt, nicht im
+  Dienst behoben.
+- **Sichere Cookies sind weiterhin nicht die Vorgabe.** Wer thermoctl hinter TLS
+  betreibt, muss `THERMOCTL_SECURE_COOKIES=true` selbst setzen. Der Dienst warnt beim
+  Start vor einer unsicheren Netzbindung, kann die richtige Einstellung aber nicht
+  erraten.
+
 ## 0.3.0 — 2026-09-02
 
 **Die Fassung, in der thermoctl anfängt zu schalten.** Bis 0.2.2 landete jede
