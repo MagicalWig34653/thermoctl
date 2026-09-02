@@ -18,6 +18,8 @@ from thermoctl.integrations.mqtt.publication import (
     discovery_config_topic,
     discovery_payload,
     discovery_removal,
+    fault_notice_discovery,
+    fault_notice_topics,
     states_topics,
     zone_discovery,
 )
@@ -140,6 +142,21 @@ def test_removal_uses_the_same_config_topic_and_an_empty_payload() -> None:
         "homeassistant/climate/haus_nord_zone_17/config", message.payload
     )
     assert discovery_removal(17, "haus_nord") == DiscoveryMessage(message.topic, "")
+
+
+def test_sensor_fault_is_a_persistent_problem_entity_for_automations() -> None:
+    topics = fault_notice_topics(17, "haus_nord")
+    message = fault_notice_discovery(17, _zone_name(), "haus_nord")
+    payload = json.loads(message.payload)
+
+    assert message.topic == (
+        "homeassistant/binary_sensor/haus_nord_zone_17_sensorstoerung/config"
+    )
+    assert payload["device_class"] == "problem"
+    assert payload["state_topic"] == topics.state
+    assert payload["json_attributes_topic"] == topics.attributes
+    assert payload["payload_on"] == "ON"
+    assert payload["payload_off"] == "OFF"
 
 
 def test_this_module_publishes_nothing() -> None:

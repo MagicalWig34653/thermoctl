@@ -286,6 +286,11 @@
       "switch",
       "switch"
     ],
+    "thermoctl/domain/fault_notice.py": [
+      "Der Temperaturwert ist veraltet. Die Zone regelt die Heizung bis auf Weiteres gegen den Frostschutz-Sollwert von",
+      "Der Zone ist keine Temperaturquelle zugeordnet. Ohne Temperaturwert kann sie die Heizung nicht gegen den Frostschutz-Sollwert von",
+      "Die Temperaturquelle liefert wieder aktuelle Werte. Die Zone regelt die Heizung wieder normal."
+    ],
     "thermoctl/domain/interfaces.py": [
       "Eingeschaltet",
       "Eingeschaltet, aber ohne Broker-Adresse — so kommt keine Verbindung zustande.",

@@ -45,6 +45,7 @@ from thermoctl.db.models.measurement import Measurement
 from thermoctl.db.models.state import ShadowDecision, ZoneState
 from thermoctl.db.models.zone import SetpointMode, Zone, ZoneSetpoint
 from thermoctl.domain.controller_channels import may_be_written
+from thermoctl.domain.fault_notice import FaultNotice
 from thermoctl.domain.schedule import end_of_next_switch, resolved_setpoint
 from thermoctl.domain.self_regulating import SETPOINT_PROPERTY, valve_commands
 from thermoctl.domain.switch_commands import switch_commands, thermostat_commands
@@ -66,6 +67,8 @@ from thermoctl.integrations.mqtt.publication import (
     armed_topic,
     availability_topic,
     boost_discovery,
+    fault_notice_discovery,
+    fault_notice_topics,
     mode_discovery,
     mode_topics,
     parameter_discovery,
@@ -138,6 +141,7 @@ def _discovery_messages(session: Session, zone: Zone, prefix: str) -> list[Disco
     messages = [
         zone_discovery(zone.id, name, prefix=prefix),
         boost_discovery(zone.id, name, prefix),
+        fault_notice_discovery(zone.id, name, prefix),
         timestamp_discovery(zone.id, name, "last_switch", "Letzte Schaltung", prefix),
         timestamp_discovery(
             zone.id, name, "next_switch", "Nächster Moduswechsel", prefix
@@ -154,6 +158,41 @@ def _discovery_messages(session: Session, zone: Zone, prefix: str) -> list[Disco
             )
         )
     return messages
+
+
+async def send_fault_notice(
+    client: MqttPublisher, notice: FaultNotice, prefix: str
+) -> None:
+    """Publishes a transition for Home Assistant without propagating failures.
+
+    This is intentionally called after the control transaction has closed. Both
+    messages are non-switching and bypass the actuator latches: a dry run must still
+    report why its computed control behavior changed.
+    """
+    try:
+        zone_id = int(notice.key.removeprefix("sensor:"))
+        topics = fault_notice_topics(zone_id, prefix)
+        state = "ON" if notice.severity == "stoerung" else "OFF"
+        attributes = json.dumps(
+            {
+                "schluessel": notice.key,
+                "schwere": notice.severity,
+                "titel": notice.title,
+                "text": notice.text,
+            },
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        )
+        await client.publishing(
+            topics.attributes, attributes, switches=False, retained=True
+        )
+        await client.publishing(topics.state, state, switches=False, retained=True)
+    except Exception:
+        log.exception(
+            "Störungsmeldung konnte nicht an Home Assistant gesendet werden",
+            extra={"schluessel": notice.key},
+        )
 
 
 async def cycle(

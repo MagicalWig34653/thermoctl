@@ -24,7 +24,8 @@ from tests.helpers import (
 from thermoctl.db.models.lookup import CommandOutcome
 from thermoctl.db.models.state import DeviceCommand
 from thermoctl.domain.control import arm
-from thermoctl.services.publishing import PublicationState, cycle
+from thermoctl.domain.fault_notice import FaultNotice
+from thermoctl.services.publishing import PublicationState, cycle, send_fault_notice
 
 NOW = datetime(2026, 8, 31, 7, 0)
 
@@ -73,6 +74,10 @@ async def test_publishing_happens_in_dry_run(session: Session) -> None:
     client = await _run(session, PublicationState())
 
     assert f"homeassistant/climate/thermoctl_zone_{zone.id}/config" in client.topics()
+    assert (
+        f"homeassistant/binary_sensor/thermoctl_zone_{zone.id}_sensorstoerung/config"
+        in client.topics()
+    )
     assert f"thermoctl/zones/{zone.id}/state/setpoint" in client.topics()
 
 
@@ -85,6 +90,58 @@ async def test_none_of_these_messages_switches(session: Session) -> None:
     create_zone(session, "harmlos")
     client = await _run(session, PublicationState())
     assert client.switched == []
+
+
+@pytest.mark.anyio
+async def test_fault_and_all_clear_reach_home_assistant_even_in_dry_run() -> None:
+    client = Mitschrift()
+    fault = FaultNotice(
+        "sensor:7",
+        "stoerung",
+        "Sensorstörung in Flur",
+        "Die Zone regelt gegen 16.0 °C.",
+    )
+    all_clear = FaultNotice(
+        "sensor:7",
+        "entwarnung",
+        "Sensor in Flur wieder in Ordnung",
+        "Die Zone regelt wieder normal.",
+    )
+
+    await send_fault_notice(client, fault, "thermoctl")
+    await send_fault_notice(client, all_clear, "thermoctl")
+
+    base = "thermoctl/zones/7/state/sensor_fault"
+    states = [payload for topic, payload in client.messages if topic == base]
+    attributes = [
+        json.loads(payload)
+        for topic, payload in client.messages
+        if topic == f"{base}/attributes"
+    ]
+    assert states == ["ON", "OFF"]
+    assert [item["schwere"] for item in attributes] == ["stoerung", "entwarnung"]
+    assert client.switched == []
+    assert client.fluechtig == []
+
+
+@pytest.mark.anyio
+async def test_a_home_assistant_notice_failure_does_not_escape() -> None:
+    class BrokenPublisher:
+        async def publishing(
+            self,
+            topic: str,
+            payload: str,
+            *,
+            switches: bool,
+            retained: bool = False,
+        ) -> bool:
+            raise OSError("Broker nicht erreichbar")
+
+    await send_fault_notice(
+        BrokenPublisher(),
+        FaultNotice("sensor:7", "stoerung", "Sensorstörung", "Text"),
+        "thermoctl",
+    )
 
 
 @pytest.mark.anyio

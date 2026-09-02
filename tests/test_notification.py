@@ -7,7 +7,13 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from tests.helpers import create_zone, create_zone_state, sensor_status_of, source
+from tests.helpers import (
+    create_settings,
+    create_zone,
+    create_zone_state,
+    sensor_status_of,
+    source,
+)
 from thermoctl import app as app_modul
 from thermoctl.config import Settings
 from thermoctl.db.models.operations import AuditEvent
@@ -117,6 +123,7 @@ def test_an_error_does_not_stop_the_caller_and_the_token_stays_out_of_the_log(
 def test_a_sensor_notice_gets_an_audit_entry_with_source_system(
     session: Session,
 ) -> None:
+    create_settings(session)
     source(session, "system")
     zone = create_zone(session, "Meldezone")
     state = create_zone_state(session, zone)

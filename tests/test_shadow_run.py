@@ -1030,9 +1030,27 @@ async def test_the_shadow_loop_reports_a_new_sensor_failure(
         http_session.commit()
 
     sent_count: list[object] = []
+    mqtt_notices: list[tuple[str, str, bool]] = []
 
     async def mitschreiben(_settings: object, notice: object) -> None:
         sent_count.append(notice)
+
+    class NoticePublisher:
+        async def publishing(
+            self,
+            topic: str,
+            payload: str,
+            *,
+            switches: bool,
+            retained: bool = False,
+        ) -> bool:
+            if "/state/sensor_fault" in topic:
+                # The audit row is committed before the detached MQTT notice starts.
+                # A network call inside the control transaction would not see it here.
+                with fabrik() as independent_session:
+                    assert independent_session.query(AuditEvent).count() == 1
+                mqtt_notices.append((topic, payload, switches))
+            return True
 
     waited: list[float] = []
 
@@ -1041,7 +1059,14 @@ async def test_the_shadow_loop_reports_a_new_sensor_failure(
         if len(waited) == 3:
             raise asyncio.CancelledError
 
-    fake_app = types.SimpleNamespace(state=types.SimpleNamespace(session_factory=fabrik))
+    fake_app = types.SimpleNamespace(
+        state=types.SimpleNamespace(
+            session_factory=fabrik,
+            publisher=NoticePublisher(),
+            publication_state=app_modul.PublicationState(),
+            sending_allowed=False,
+        )
+    )
     monkeypatch.setattr(app_modul.asyncio, "sleep", _sleep)
     monkeypatch.setattr(app_modul, "send", mitschreiben)
 
@@ -1058,6 +1083,13 @@ async def test_the_shadow_loop_reports_a_new_sensor_failure(
     assert len(sent_count) == 1, (
         "Two cycles with the same fault yield one notice, not two."
     )
+    notice_states = [
+        payload
+        for topic, payload, _ in mqtt_notices
+        if not topic.endswith("/attributes")
+    ]
+    assert notice_states == ["ON"]
+    assert all(switches is False for _, _, switches in mqtt_notices)
 
     engine.dispose()
 

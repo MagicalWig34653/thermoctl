@@ -1,6 +1,7 @@
 """Pure derivation of fault notices from state transitions."""
 
 from dataclasses import dataclass
+from decimal import Decimal
 
 
 @dataclass(frozen=True)
@@ -16,6 +17,7 @@ def sensor_notice(
     zone_name: str,
     before: str | None,
     after: str,
+    frost_protection_c: Decimal,
 ) -> FaultNotice | None:
     """Reports only entry into a sensor fault and its all-clear."""
     if (
@@ -24,9 +26,12 @@ def sensor_notice(
         and before != after
     ):
         reason = (
-            "Der Temperaturwert ist veraltet."
+            "Der Temperaturwert ist veraltet. Die Zone regelt die Heizung bis auf Weiteres "
+            f"gegen den Frostschutz-Sollwert von {frost_protection_c} °C."
             if after == "veraltet"
-            else "Der Zone ist keine Temperaturquelle zugeordnet."
+            else "Der Zone ist keine Temperaturquelle zugeordnet. Ohne Temperaturwert "
+            "kann sie die Heizung nicht gegen den Frostschutz-Sollwert von "
+            f"{frost_protection_c} °C regeln."
         )
         return FaultNotice(
             key=key,
@@ -39,7 +44,10 @@ def sensor_notice(
             key=key,
             severity="entwarnung",
             title=f"Sensor in {zone_name} wieder in Ordnung",
-            text="Die Temperaturquelle liefert wieder aktuelle Werte.",
+            text=(
+                "Die Temperaturquelle liefert wieder aktuelle Werte. "
+                "Die Zone regelt die Heizung wieder normal."
+            ),
         )
     return None
 

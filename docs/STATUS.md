@@ -145,6 +145,14 @@ Temperaturaussagen („die Raumtemperatur steigt") gar nicht. Nachgeprüft: Kein
 Begriffe kommt heute irgendwo vor — es ist also kein falscher Text, sondern eine Lücke im
 Netz für künftige. Das gehört in die nächste Fassung, nicht in diese.
 
+## Sensorstörungsmeldungen
+
+Sensorstörungen und ihre Entwarnung erreichen jetzt neben Log und optionalem Webhook auch
+Home Assistant: je Zone als binärer Problemsensor mit Meldungstext in den Attributen. Bei
+einem veralteten Temperaturwert nennt die Meldung ausdrücklich, dass die Zone bis auf
+Weiteres gegen ihren konkreten Frostschutz-Sollwert regelt. Der Meldeweg ist unabhängig
+von den beiden Schalt-Riegeln und läuft nach Abschluss der Datenbanktransaktion.
+
 ## Offen, unabhängig von der Freigabe
 
 **Zeitzone — fachliche Grenzfehler, keine Anzeigefragen:**

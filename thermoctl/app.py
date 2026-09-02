@@ -41,6 +41,7 @@ from thermoctl.domain.remote_control import (
     boost,
     set_setpoint,
 )
+from thermoctl.domain.schedule import frost_protection_temperature
 from thermoctl.domain.solar_setback import HourlyForecast
 from thermoctl.domain.zone_settings import (
     ParameterOutOfRange,
@@ -70,7 +71,11 @@ from thermoctl.services.ingest import advance_zone_state, process_message
 from thermoctl.services.meross_discovery import fetch_devices as fetch_meross_devices
 from thermoctl.services.meross_discovery import save_devices as save_meross_devices
 from thermoctl.services.meross_session import MerossSessionCache, ensure_transport
-from thermoctl.services.publishing import PublicationState, _send_zone_state
+from thermoctl.services.publishing import (
+    PublicationState,
+    _send_zone_state,
+    send_fault_notice,
+)
 from thermoctl.services.publishing import cycle as publication_cycle
 from thermoctl.services.retention import delete_old_measurements
 from thermoctl.services.shadow_run import cycle
@@ -145,7 +150,13 @@ def _sensor_notices(
             # `advance_zone_state` creates a row for every existing zone. Only a row
             # deleted or corrupted concurrently could be missing here.
             continue
-        notice = sensor_notice(f"sensor:{zone.id}", zone.name, before.get(zone.id), status)
+        notice = sensor_notice(
+            f"sensor:{zone.id}",
+            zone.name,
+            before.get(zone.id),
+            status,
+            frost_protection_temperature(session, zone),
+        )
         if notice is not None:
             _audit(session, notice)
             notices.append(notice)
@@ -332,6 +343,15 @@ async def _shadow_loop(app: FastAPI) -> None:
                 task = asyncio.create_task(send(get_settings(), notice))
                 _running_notices.add(task)
                 task.add_done_callback(_running_notices.discard)
+                publisher = getattr(app.state, "publisher", None)
+                if publisher is not None:
+                    mqtt_task = asyncio.create_task(
+                        send_fault_notice(
+                            publisher, notice, get_settings().mqtt_prefix
+                        )
+                    )
+                    _running_notices.add(mqtt_task)
+                    mqtt_task.add_done_callback(_running_notices.discard)
         except Exception:
             log.exception("Schattenzyklus fehlgeschlagen -- naechster Versuch folgt")
 

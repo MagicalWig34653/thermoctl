@@ -44,6 +44,14 @@ class CommandTopics:
 
 
 @dataclass(frozen=True)
+class FaultNoticeTopics:
+    """State and attributes of the zone's persistent problem entity."""
+
+    state: str
+    attributes: str
+
+
+@dataclass(frozen=True)
 class DiscoveryMessage:
     """Topic and payload of a discovery message to be sent later."""
 
@@ -86,6 +94,14 @@ def command_topics(zone_id: int, prefix: str = "thermoctl") -> CommandTopics:
         operating_mode=f"{base}/operating_mode",
         boost=f"{base}/boost",
     )
+
+
+def fault_notice_topics(
+    zone_id: int, prefix: str = "thermoctl"
+) -> FaultNoticeTopics:
+    """Builds the topics of a zone's sensor-fault notice."""
+    base = f"{_zone_base(zone_id, prefix)}/state/sensor_fault"
+    return FaultNoticeTopics(state=base, attributes=f"{base}/attributes")
 
 
 def mode_topics(zone_id: int, mode_id: int, prefix: str = "thermoctl") -> tuple[str, str]:
@@ -283,6 +299,33 @@ def timestamp_discovery(
     return DiscoveryMessage(_config_topic("sensor", object_id), _as_json(data))
 
 
+def fault_notice_discovery(
+    zone_id: int, zone_name: str, prefix: str = "thermoctl"
+) -> DiscoveryMessage:
+    """Registers one persistent problem entity per zone.
+
+    A binary sensor is deliberate: an automation can trigger on both edges and the
+    current fault remains visible after a Home Assistant restart. An MQTT event would
+    be transient, while a text sensor would make automations compare presentation text.
+    The attributes carry the human-readable notice without weakening the stable ON/OFF
+    contract used by an automation that sends a phone notification.
+    """
+    topics = fault_notice_topics(zone_id, prefix)
+    object_id = f"{_object_id(zone_id, prefix)}_sensorstoerung"
+    data: dict[str, Any] = {
+        **_skeleton(zone_id, zone_name, prefix),
+        "name": "Sensorstörung",
+        "unique_id": object_id,
+        "object_id": object_id,
+        "state_topic": topics.state,
+        "json_attributes_topic": topics.attributes,
+        "payload_on": "ON",
+        "payload_off": "OFF",
+        "device_class": "problem",
+    }
+    return DiscoveryMessage(_config_topic("binary_sensor", object_id), _as_json(data))
+
+
 def mode_discovery(
     zone_id: int,
     zone_name: str,
@@ -375,4 +418,5 @@ def alle_topics(zone_id: int, prefix: str = "thermoctl") -> tuple[str, ...]:
     """Returns all zone-related topics for contract checks."""
     state = asdict(states_topics(zone_id, prefix)).values()
     command = asdict(command_topics(zone_id, prefix)).values()
-    return (*state, *command)
+    notices = asdict(fault_notice_topics(zone_id, prefix)).values()
+    return (*state, *command, *notices)

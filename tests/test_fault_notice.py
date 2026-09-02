@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from thermoctl.domain.fault_notice import bridge_notice, sensor_notice
 from thermoctl.integrations.mqtt.zigbee2mqtt import bridge_reachable
 
@@ -6,7 +8,9 @@ def test_ten_identical_fault_states_produce_one_notice() -> None:
     previous: str | None = "ok"
     notices = []
     for _ in range(10):
-        notice = sensor_notice("sensor:1", "Testzone", previous, "veraltet")
+        notice = sensor_notice(
+            "sensor:1", "Testzone", previous, "veraltet", Decimal("16.0")
+        )
         if notice is not None:
             notices.append(notice)
         previous = "veraltet"
@@ -14,20 +18,36 @@ def test_ten_identical_fault_states_produce_one_notice() -> None:
     assert len(notices) == 1
     assert notices[0].severity == "stoerung"
     assert notices[0].key == "sensor:1"
+    assert notices[0].text == (
+        "Der Temperaturwert ist veraltet. Die Zone regelt die Heizung bis auf Weiteres gegen "
+        "den Frostschutz-Sollwert von 16.0 °C."
+    )
 
 
 def test_all_clear_only_on_transition_back_to_ok() -> None:
-    assert sensor_notice("sensor:1", "Testzone", "veraltet", "keine_quelle") is not None
-    all_clear = sensor_notice("sensor:1", "Testzone", "veraltet", "ok")
+    assert sensor_notice(
+        "sensor:1", "Testzone", "veraltet", "keine_quelle", Decimal("16.0")
+    ) is not None
+    all_clear = sensor_notice(
+        "sensor:1", "Testzone", "veraltet", "ok", Decimal("16.0")
+    )
     assert all_clear is not None
     assert all_clear.severity == "entwarnung"
-    assert sensor_notice("sensor:1", "Testzone", "ok", "ok") is None
-    assert sensor_notice("sensor:1", "Testzone", None, "ok") is None
+    assert all_clear.text == (
+        "Die Temperaturquelle liefert wieder aktuelle Werte. "
+        "Die Zone regelt die Heizung wieder normal."
+    )
+    assert sensor_notice("sensor:1", "Testzone", "ok", "ok", Decimal("16.0")) is None
+    assert sensor_notice("sensor:1", "Testzone", None, "ok", Decimal("16.0")) is None
 
 
 def test_first_sensor_state_is_not_yet_a_state_change() -> None:
-    assert sensor_notice("sensor:1", "Testzone", None, "veraltet") is None
-    assert sensor_notice("sensor:1", "Testzone", None, "keine_quelle") is None
+    assert sensor_notice(
+        "sensor:1", "Testzone", None, "veraltet", Decimal("16.0")
+    ) is None
+    assert sensor_notice(
+        "sensor:1", "Testzone", None, "keine_quelle", Decimal("16.0")
+    ) is None
 
 
 def test_bridge_reports_a_failure_and_exactly_one_recovery() -> None:
