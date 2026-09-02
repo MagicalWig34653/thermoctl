@@ -208,6 +208,7 @@ class ControlResponse(BaseModel):
     default_sensor_timeout_seconds: int
     default_window_resume_delay_seconds: int
     measurement_retention_days: int
+    shadow_decision_retention_days: int
     session_lifetime_seconds: int
     default_solar_setback_max_k: Decimal
     solar_setback_lookahead_hours: int
@@ -239,6 +240,7 @@ class WriteControl(BaseModel):
     default_sensor_timeout_seconds: int
     default_window_resume_delay_seconds: int
     measurement_retention_days: int
+    shadow_decision_retention_days: int
     session_lifetime_seconds: int
     default_solar_setback_max_k: Decimal
     solar_setback_lookahead_hours: int

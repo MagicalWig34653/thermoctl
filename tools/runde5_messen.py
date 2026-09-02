@@ -47,6 +47,7 @@ def _query_measurement(
     with Session(engine) as session:
         if baseline_before_index_migration:
             session.execute(text("DROP INDEX ix_shadow_decision_zone_decided_id"))
+            session.execute(text("DROP INDEX ix_shadow_decision_retention"))
             session.execute(
                 text(
                     "CREATE INDEX ix_shadow_decision_decided_at "
@@ -65,7 +66,10 @@ def _query_measurement(
         expected_indexes = (
             ["ix_shadow_decision_decided_at"]
             if baseline_before_index_migration
-            else ["ix_shadow_decision_zone_decided_id"]
+            else [
+                "ix_shadow_decision_retention",
+                "ix_shadow_decision_zone_decided_id",
+            ]
         )
         if shadow_indexes != expected_indexes:
             raise RuntimeError(
@@ -165,6 +169,12 @@ def _insert_measurement(rows: int, with_old_index: bool) -> dict[str, object]:
     """Measure only insertion and commit, after constructing the final schema."""
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)
+    # This command reproduces the round-5 comparison from before retention existed:
+    # composite production index versus the then-removed single-column date index.
+    # The new retention index would turn that historical comparison into a different
+    # benchmark, so leave it out of this subcommand deliberately.
+    with engine.begin() as connection:
+        connection.execute(text("DROP INDEX ix_shadow_decision_retention"))
     if with_old_index:
         with engine.begin() as connection:
             connection.execute(

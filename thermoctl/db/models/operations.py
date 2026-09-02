@@ -62,6 +62,9 @@ class Setting(Base):
     measurement_retention_days: Mapped[int] = mapped_column(
         Integer, default=30, server_default=text("30"), nullable=False
     )
+    shadow_decision_retention_days: Mapped[int] = mapped_column(
+        Integer, default=365, server_default=text("365"), nullable=False
+    )
     shadow_interval_seconds: Mapped[int] = mapped_column(
         Integer, default=60, server_default=text("60"), nullable=False
     )

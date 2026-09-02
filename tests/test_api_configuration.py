@@ -345,6 +345,7 @@ def _defaults(**abweichungen: object) -> dict[str, object]:
         "default_sensor_timeout_seconds": 1800,
         "default_window_resume_delay_seconds": 120,
         "measurement_retention_days": 30,
+        "shadow_decision_retention_days": 365,
         "session_lifetime_seconds": 1209600,
         "default_solar_setback_max_k": "2.0",
         "solar_setback_lookahead_hours": 3,
@@ -407,11 +408,12 @@ def test_vorgaben_schreiben(client: TestClient, session: Session, api_token) -> 
     head = api_token([("zone.read", None), ("setting.manage", None)])
     response = client.put(
         "/api/v1/control/defaults",
-        json=_defaults(shadow_interval_seconds=90),
+        json=_defaults(shadow_interval_seconds=90, shadow_decision_retention_days=730),
         headers=head,
     )
     assert response.status_code == 200
     assert response.json()["shadow_interval_seconds"] == 90
+    assert response.json()["shadow_decision_retention_days"] == 730
 
 
 def test_an_unusable_default_is_refused(

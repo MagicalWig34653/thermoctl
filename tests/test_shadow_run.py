@@ -1119,8 +1119,7 @@ async def test_the_shadow_loop_survives_an_exception_in_the_cycle(
 async def test_the_shadow_loop_triggers_retention_once_a_day(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """`alte_messwerte_loeschen()` runs from the same loop, but only once per day
-    -- not on every cycle (assignment text, 'trigger retention' section)."""
+    """Both retention jobs run from the same loop once per day, not every cycle."""
     engine, fabrik = _own_database(tmp_path, "aufbewahrung")
     with fabrik() as http_session:
         create_settings(http_session)
@@ -1136,14 +1135,20 @@ async def test_the_shadow_loop_triggers_retention_once_a_day(
     moments = iter([NOW, NOW + timedelta(days=2)])
     monkeypatch.setattr(app_modul, "utcnow", lambda: next(moments))
 
-    aufrufe: list[datetime] = []
-    delete_original = app_modul.delete_old_measurements
+    aufrufe: list[tuple[str, datetime]] = []
+    delete_measurements_original = app_modul.delete_old_measurements
+    delete_shadow_original = app_modul.delete_old_shadow_decisions
 
-    def _aufzeichnen(session: Session, now: datetime, **kwargs: object) -> int:
-        aufrufe.append(now)
-        return delete_original(session, now, **kwargs)  # type: ignore[arg-type]
+    def _measurements(session: Session, now: datetime, **kwargs: object) -> int:
+        aufrufe.append(("measurement", now))
+        return delete_measurements_original(session, now, **kwargs)  # type: ignore[arg-type]
 
-    monkeypatch.setattr(app_modul, "delete_old_measurements", _aufzeichnen)
+    def _shadow(session: Session, now: datetime, **kwargs: object) -> int:
+        aufrufe.append(("shadow_decision", now))
+        return delete_shadow_original(session, now, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(app_modul, "delete_old_measurements", _measurements)
+    monkeypatch.setattr(app_modul, "delete_old_shadow_decisions", _shadow)
 
     waited: list[float] = []
 
@@ -1157,7 +1162,10 @@ async def test_the_shadow_loop_triggers_retention_once_a_day(
     with pytest.raises(asyncio.CancelledError):
         await app_modul._shadow_loop(fake_app)  # type: ignore[arg-type]
 
-    assert aufrufe == [NOW + timedelta(days=2)]
+    assert aufrufe == [
+        ("measurement", NOW + timedelta(days=2)),
+        ("shadow_decision", NOW + timedelta(days=2)),
+    ]
 
     engine.dispose()
 

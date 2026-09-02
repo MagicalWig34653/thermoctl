@@ -108,7 +108,8 @@ def test_shadow_schema_reference_data_and_settings(
             setting = connection.execute(
                 text(
                     "SELECT timezone, control_armed, measurement_retention_days, "
-                    "shadow_interval_seconds FROM setting WHERE id = 1"
+                    "shadow_decision_retention_days, shadow_interval_seconds "
+                    "FROM setting WHERE id = 1"
                 )
             ).one()
         assert {
@@ -116,7 +117,7 @@ def test_shadow_schema_reference_data_and_settings(
             "valve_position", "setpoint", "availability",
         } <= capabilities
         assert status == {"ok", "veraltet", "keine_quelle"}
-        assert tuple(setting) == ("UTC", False, 30, 60)
+        assert tuple(setting) == ("UTC", False, 30, 365, 60)
 
         down = _alembic(migrations_database_url, "downgrade", "4d43756aecd3")
         assert down.returncode == 0, down.stderr

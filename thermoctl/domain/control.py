@@ -54,6 +54,7 @@ LIMITS: dict[str, tuple[Decimal, Decimal]] = {
     "default_sensor_timeout_seconds": (Decimal(60), Decimal(86400)),
     "default_window_resume_delay_seconds": (Decimal(0), Decimal(3600)),
     "measurement_retention_days": (Decimal(1), Decimal(3650)),
+    "shadow_decision_retention_days": (Decimal(1), Decimal(3650)),
     "session_lifetime_seconds": (Decimal(300), Decimal(31536000)),
     "default_solar_setback_max_k": (Decimal("0.0"), Decimal("10.0")),
     # A window of a day or more would predict "sun" far past the point where the
@@ -71,6 +72,7 @@ LABELS: dict[str, str] = {
     "default_sensor_timeout_seconds": "Sensor gilt als ausgefallen nach (Sekunden)",
     "default_window_resume_delay_seconds": "Nachlauf nach Fensterschluss (Sekunden)",
     "measurement_retention_days": "Messwerte aufbewahren (Tage)",
+    "shadow_decision_retention_days": "Schattenentscheidungen aufbewahren (Tage)",
     "session_lifetime_seconds": "Sitzungsdauer (Sekunden)",
     "default_solar_setback_max_k": "Sonnenabsenkung, Obergrenze (K)",
     "solar_setback_lookahead_hours": "Sonnenabsenkung, Vorschau (Stunden)",
