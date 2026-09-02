@@ -71,7 +71,11 @@
       "(Zigbee2MQTT-Schalter, Zigbee-Thermostatventile ohne eigene Regelung, Meross-Steckdosen).",
       "Dazu: Bediengeräte und Zigbee-Heizkörperthermostate frei konfigurierbar (ein Thermostat",
       "Meross-Steckdosen und selbstregelnde Ventile. Sein gespeicherter erster Riegel lässt sich",
+      "Schaltaktoren — selbstregelnde Ventile und Geräte mit `thermostat`-Fähigkeit sind",
+      "Schalter: PI schaltet deutlich häufiger und verkürzt die Lebensdauer eines Schaltaktors.",
+      "Wie oft eine Zone tatsächlich schaltet, zeigt die Seite **Relaisverschleiß** je Gerät und",
       "an einer echten Heizung.",
+      "beseitigt genau das. Weniger Verbrauch oder schnelleres Aufheizen folgt daraus nicht.",
       "kann das Ventil auch selbst regeln und bekommt dann nur Soll- und Ist-Temperatur), eine",
       "scharf schalten; wirklich gesendet wird aber erst nach einem anschließenden Neustart, der",
       "selbstregelnde Thermostatventile ebenso wie Ein/Aus-Befehle an gewöhnliche Aktoren",
@@ -115,7 +119,9 @@
     "docs/api.md": [
       "**Fehlt das Feld, gilt 0** — ein Aufrufer, der die Absenkung nicht kennt, schaltet sie",
       "Aufbewahrungsdauer pflegen darf, soll die Heizung nicht nebenbei scharf schalten können.",
-      "Wochen später nicht mehr zu klären, warum ein Raum in einer bestimmten Nacht warm war."
+      "Wochen später nicht mehr zu klären, warum ein Raum in einer bestimmten Nacht warm war.",
+      "selbstregelndes Ventil oder ein Gerät mit der Fähigkeit `thermostat` in derselben Zone",
+      "warum PI deutlich häufiger schaltet als die Hysterese — die Zahlen dazu stehen am Schalter"
     ],
     "docs/bestandsaufnahme-altsystem.md": [
       "\"Zigbee-Heizkörperthermostat\" ist — also eine Geräteeigenschaft, die als Thermostat-Typ",
@@ -137,7 +143,11 @@
       "**Kein Werkzeug schaltet die Anlage scharf.** `force_dry_run` gibt es, die",
       "**`boost` ist für ein Sprachmodell die verlässlichere Form von „mach es hier wärmer\".** Es",
       "Aktoren gesendet werden.",
+      "Ein Modell kann es über `set_control_parameters` einschalten, aber nur für eine Zone, die",
+      "PI schaltet deutlich häufiger als die Hysterese und verkürzt dadurch die Lebensdauer eines",
+      "Schaltaktors. Wer es über MCP einschaltet, umgeht den Warnhinweis, den die Oberfläche am",
       "Wer scharf schalten will, tut das dort, wo ein Mensch am Knopf steht. Nachzulesen in",
+      "dafür taugt — ein selbstregelndes Ventil oder ein Gerät mit der Fähigkeit `thermostat` in",
       "können Sollwerte an selbstregelnde Thermostatventile und Ein/Aus-Befehle an gewöhnliche"
     ],
     "docs/mqtt.md": [
@@ -304,11 +314,16 @@
       "zugeordnete Aktor-Gerät einmal unbedingt** — unabhängig davon, ob sich gegenüber vorher"
     ],
     "docs/self-hosting.md": [
+      "**Aus als Vorgabe, auch nach einer Aktualisierung** — nichts schaltet sich von selbst ein.",
+      "**Die Pruefung gilt fuer die ganze Zone, nicht je Geraet.** Ein einziges Thermostatventil",
       "**Ins offene Internet gehört dieser Dienst nicht.** Er steuert eine Heizung in einer",
+      "- *Ein selbstregelndes Ventil ist der Zone zugeordnet* — es hat einen eigenen Regler, und",
       "> Meross-Aktoren. Die Einzelheiten stehen in der [Roadmap](roadmap.md).",
       "> Sollwerte an selbstregelnde Thermostatventile und Ein/Aus-Befehle an Zigbee2MQTT- und",
       "Absicht: Wer stündlich dieselbe Meldung bekommt, schaltet sie ab und verpasst die nächste",
+      "Beim Einschalten ist ausserdem ein Haken zu bestaetigen, dass mehr Schaltspiele und die",
       "die ruhigere Wahl, wenn der Dienst wirklich heizt.",
+      "einer Zone auffaellig, schalten Sie PI dort wieder aus; der Reglerzustand wird dabei",
       "unscharf ist, werden weder Sollwerte noch Ein/Aus-Befehle an Aktoren gesendet."
     ],
     "docs/sicherheitsdurchsicht.md": [

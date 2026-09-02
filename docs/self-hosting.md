@@ -153,6 +153,34 @@ der Rückweg ist vorgesehen, aber absichtlich nicht automatisch.
 aus einer Veröffentlichung, nie aus einem Zwischenstand — eine feste Marke ist dennoch
 die ruhigere Wahl, wenn der Dienst wirklich heizt.
 
+## 6a. PI-Regelung (Beta) und Relaisverschleiss
+
+Seit 0.5.0 kann eine Zone statt der Hysterese einen Proportional-Integral-Regler benutzen.
+**Aus als Vorgabe, auch nach einer Aktualisierung** — nichts schaltet sich von selbst ein.
+
+Der Schalter steht bei den Regelparametern der Zone. Er ist **gesperrt**, wenn die Zone
+nicht dafuer taugt, und darueber steht der Grund. Es gibt genau drei:
+
+- *Kein gewoehnlicher Schaltaktor zugeordnet* — PI braucht etwas, das ein und aus kann.
+- *Ein selbstregelndes Ventil ist der Zone zugeordnet* — es hat einen eigenen Regler, und
+  PI darueber waeren zwei Integratoren auf derselben Regelstrecke.
+- *Ein Geraet mit der Faehigkeit `thermostat` ist der Zone zugeordnet* — derselbe Grund,
+  auch wenn es heute nicht als Thermostat betrieben wird.
+
+**Die Pruefung gilt fuer die ganze Zone, nicht je Geraet.** Ein einziges Thermostatventil
+neben einer Steckdose schliesst PI fuer diese Zone aus. Wer beides mischt und PI benutzen
+will, trennt die Steckdose in eine eigene Zone.
+
+Beim Einschalten ist ausserdem ein Haken zu bestaetigen, dass mehr Schaltspiele und die
+Folgen einer falschen Parametrierung verstanden sind. Ohne ihn wird das Formular mit einer
+Meldung abgewiesen.
+
+**Danach die Seite „Relaisverschleiss" ansehen.** Sie zeigt Schaltspiele je Geraet und Tag
+mit Jahreshochrechnung und braucht das Recht `audit.read`. Sie ist auch ohne PI nuetzlich —
+Verschleiss entsteht auch durch die Hysterese, nur langsamer. Wird die Jahreshochrechnung
+einer Zone auffaellig, schalten Sie PI dort wieder aus; der Reglerzustand wird dabei
+vollstaendig neutralisiert, ein spaeteres Wiedereinschalten faengt sauber an.
+
 ## 7. Wenn etwas nicht geht
 
 | Symptom | Ursache und Abhilfe |

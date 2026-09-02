@@ -185,8 +185,21 @@ für diese Zone damit aus statt sie versehentlich ein.
 ```json
 {"hysteresis_k": "0.30", "min_on_seconds": 300, "min_off_seconds": null,
  "sensor_timeout_seconds": null, "temperature_offset_k": "0.00",
- "window_resume_delay_seconds": null}
+ "window_resume_delay_seconds": null,
+ "pi_enabled": false, "pi_gain_per_k": "0.25", "pi_integral_time_minutes": 180,
+ "pi_min_on_seconds": 60, "pi_min_off_seconds": 60}
 ```
+
+Die fünf `pi_*`-Werte gehören zur **PI-Regelung (Beta)**, seit 0.5.0. `pi_enabled` ist je
+Zone aus als Vorgabe und lässt sich nur setzen, wenn die Zone dafür taugt: Ein
+selbstregelndes Ventil oder ein Gerät mit der Fähigkeit `thermostat` in derselben Zone
+schliesst PI aus, ebenso eine Zone ganz ohne gewöhnlichen Schaltaktor. Der Versuch wird mit
+einer Begründung abgewiesen, statt still auf Hysterese zurückzufallen.
+
+`pi_min_on_seconds` und `pi_min_off_seconds` sind **weiche** Untergrenzen: Die Genauigkeit
+des Tastgrads darf sie unterschreiten. Das ist eine bewusste Entscheidung und der Grund,
+warum PI deutlich häufiger schaltet als die Hysterese — die Zahlen dazu stehen am Schalter
+in der Oberfläche und im Eintrag zu 0.5.0 im [CHANGELOG](../CHANGELOG.md).
 
 `PUT /api/v1/zones/{zone_id}/parameters/{name}` setzt **einen** Parameter und lässt die
 übrigen, wie sie sind — auch die geerbten. Neben dem PUT auf alle, nicht statt seiner: Wer

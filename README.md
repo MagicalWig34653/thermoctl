@@ -15,6 +15,15 @@ optionale Absenkung, wenn die Sonnenprognose sie erlaubt, ein Dashboard für ein
 hinter einem widerrufbaren Kiosk-Token, und die Home-Assistant-Anbindung über
 MQTT-Discovery.
 
+Seit 0.5.0 gibt es zusätzlich eine **PI-Regelung als Beta**, je Zone einschaltbar und aus
+als Vorgabe. Sie ersetzt für eine eingeschaltete Zone die Hysterese durch einen
+Proportional-Integral-Regler mit zeitproportionalem Ausgang und gilt nur für gewöhnliche
+Schaltaktoren — selbstregelnde Ventile und Geräte mit `thermostat`-Fähigkeit sind
+ausgeschlossen, weil dort zwei Regler auf derselben Regelstrecke säßen. Der Preis steht am
+Schalter: PI schaltet deutlich häufiger und verkürzt die Lebensdauer eines Schaltaktors.
+Wie oft eine Zone tatsächlich schaltet, zeigt die Seite **Relaisverschleiß** je Gerät und
+Tag mit Jahreshochrechnung — auch ohne PI nützlich.
+
 Die Ausgabe hat drei klar getrennte Stufen: Im **Trockenlauf** werden Regelentscheidungen
 nur protokolliert. **Scharf ohne Neustart** ändert den gespeicherten ersten Riegel, der beim
 Start gebaute MQTT-Riegel bleibt aber zu — es wird weiterhin nichts gesendet. Erst **scharf
@@ -99,6 +108,11 @@ selbstregelnde Thermostatventile genauso wie für Ein/Aus-Befehle an gewöhnlich
 Der Trockenlauf bleibt die Vorgabe, und ein mehrtägiger Vergleichsbetrieb gegen das
 Altsystem wurde auf Wunsch des Projektinhabers übersprungen: Dieser Code läuft als Erstes
 an einer echten Heizung.
+
+Die **PI-Regelung ist ausdrücklich Beta**: keine bestätigte Relaisfreigabe, kein
+versprochener Verbrauchsvorteil, je Zone aus als Vorgabe und jederzeit rückgängig. Ihr
+Nutzen ist einer — ein Zweipunktregler pendelt um den Sollwert, der Integralanteil
+beseitigt genau das. Weniger Verbrauch oder schnelleres Aufheizen folgt daraus nicht.
 
 Die Home-Assistant-Anbindung ist dagegen angeschlossen: Sie meldet die Zonen an,
 veröffentlicht ihren Zustand und nimmt Sollwert und Betriebsart entgegen. Die Ausgabe eines

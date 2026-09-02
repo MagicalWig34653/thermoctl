@@ -85,6 +85,19 @@ Versuch: „0,05 Kelvin Hysterese" sieht für ein Modell so plausibel aus wie �
 Regelparameter wirkt dauerhaft und auf jede künftige Entscheidung, eine Übersteuerung nur
 bis zum nächsten Schaltpunkt.
 
+**Zu den `pi_*`-Parametern (Beta, seit 0.5.0):** `pi_enabled` ist je Zone aus als Vorgabe.
+Ein Modell kann es über `set_control_parameters` einschalten, aber nur für eine Zone, die
+dafür taugt — ein selbstregelndes Ventil oder ein Gerät mit der Fähigkeit `thermostat` in
+derselben Zone schliesst PI aus, ebenso eine Zone ohne gewöhnlichen Schaltaktor. Der
+Versuch wird dann mit einer Begründung abgewiesen. Das ist Absicht: Ein Modell soll den
+Rückfall nicht stillschweigend bekommen, sondern den Grund lesen können.
+
+PI schaltet deutlich häufiger als die Hysterese und verkürzt dadurch die Lebensdauer eines
+Schaltaktors. Wer es über MCP einschaltet, umgeht den Warnhinweis, den die Oberfläche am
+Schalter zeigt — die Zahlen stehen im Eintrag zu 0.5.0 im
+[CHANGELOG](../CHANGELOG.md), und der tatsächliche Verschleiss ist in der Oberfläche unter
+„Relaisverschleiss" ablesbar.
+
 **Der eigentliche Gewinn sind `explain_setpoint` und `shadow_decisions`.** Sie
 beantworten „warum ist es hier kalt?" in einem Aufruf, statt Ist-Wert, Zeitplan und
 Regelentscheidung von Hand zusammenzusuchen.
