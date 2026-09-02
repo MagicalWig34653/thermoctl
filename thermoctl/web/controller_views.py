@@ -17,8 +17,13 @@ from thermoctl.db.models.device import (
 )
 from thermoctl.db.models.lookup import ChannelKind, ControllerCommand, DeviceRole
 from thermoctl.db.models.zone import Zone
-from thermoctl.domain.authz import visible_zones
-from thermoctl.domain.controller import ControllerError, seen_actions, set_binding
+from thermoctl.domain.authz import require, visible_zones
+from thermoctl.domain.controller import (
+    ControllerError,
+    controller_zones,
+    seen_actions,
+    set_binding,
+)
 from thermoctl.domain.controller_channels import ControllerChannelError, configure_channel
 from thermoctl.domain.principal import Principal
 from thermoctl.web import templates
@@ -38,6 +43,40 @@ def _controllers(session: Session, zone_ids: list[int]) -> list[Device]:
     ).order_by(Device.display_name).distinct()))
 
 
+def _devices_in(session: Session, zone_ids: list[int]) -> list[Device]:
+    """Every device hanging in one of these zones, in any role.
+
+    Deliberately not the whole device table: the source-device picker used to list
+    every device in the installation, so a user with `device.read` for a single zone
+    learned the names of all the others -- and device names in this project carry
+    room, occupant and integration references.
+    """
+    if not zone_ids:
+        return []
+    return list(session.scalars(select(Device).join(ZoneDevice).where(
+        ZoneDevice.zone_id.in_(zone_ids)).order_by(Device.display_name).distinct()))
+
+
+def _require_manageable_zone(session: Session, principal: Principal, zone_id: int) -> None:
+    """The channel's target zone, checked against the principal -- not just the device.
+
+    A read channel on `zone_setpoint` or `operating_mode` writes into whatever zone it
+    names, so naming a zone here is control over that zone. Checking only that the
+    *device* sits in a manageable zone let `device.manage` for zone A point a channel
+    at zone B and switch B off from then on, on every turn of the dial.
+    """
+    require(principal, "device.manage", zone_id)
+
+
+def _require_readable_device(session: Session, principal: Principal, device_id: int) -> None:
+    """A channel's source device must sit in a zone the principal may read."""
+    zone_ids = [zone.id for zone in _zones(session, principal, "device.read")]
+    if zone_ids and session.scalar(select(Device.id).join(ZoneDevice).where(
+        Device.id == device_id, ZoneDevice.zone_id.in_(zone_ids))) is not None:
+        return
+    raise HTTPException(status.HTTP_404_NOT_FOUND, "Quellgerät nicht gefunden")
+
+
 def _context(session: Session, principal: Principal, **extra: object) -> dict[str, object]:
     readable_zones = _zones(session, principal, "device.read")
     manageable_ids = {zone.id for zone in _zones(session, principal, "device.manage")}
@@ -53,7 +92,7 @@ def _context(session: Session, principal: Principal, **extra: object) -> dict[st
     return {
         "controllers": controllers, "properties": properties, "property_values": values,
         "channels": channels, "zones": readable_zones, "manageable_ids": manageable_ids,
-        "devices": session.scalars(select(Device).order_by(Device.display_name)).all(),
+        "devices": _devices_in(session, [zone.id for zone in readable_zones]),
         "kinds": {kind.id: kind for kind in session.scalars(select(ChannelKind))},
         "commands": session.scalars(select(ControllerCommand).order_by(ControllerCommand.id)).all(),
         "bindings": {device.id: seen_actions(session, device) for device in controllers},
@@ -63,6 +102,11 @@ def _context(session: Session, principal: Principal, **extra: object) -> dict[st
 
 @router.get("/controllers")
 async def controllers(request: Request, principal: Annotated[Principal, Depends(current_principal)], session: Annotated[Session, Depends(get_session)]) -> Response:
+    # The navigation entry for this page has always claimed `device.read`; the page
+    # itself never checked it. A merely logged-in user could open it and read the
+    # device list -- the one thing on it that was not zone-filtered.
+    if not _zones(session, principal, "device.read"):
+        require(principal, "device.read")
     return templates.TemplateResponse(request, "controllers.html", _context(session, principal))
 
 
@@ -80,6 +124,10 @@ async def channel_set(request: Request, principal: Annotated[Principal, Depends(
     form = await request.form()
     try:
         device = _managed_device(session, principal, int(str(form.get("device_id", ""))))
+        if form.get("zone_id"):
+            _require_manageable_zone(session, principal, int(str(form["zone_id"])))
+        if form.get("source_device_id"):
+            _require_readable_device(session, principal, int(str(form["source_device_id"])))
         raw_number = str(form.get("fixed_number", "")).replace(",", ".").strip()
         configure_channel(
             session, device, str(form.get("property_name", "")), str(form.get("direction", "")), str(form.get("kind", "")),
@@ -97,6 +145,12 @@ async def channel_set(request: Request, principal: Annotated[Principal, Depends(
 async def button_set(request: Request, principal: Annotated[Principal, Depends(current_principal)], session: Annotated[Session, Depends(get_session)]) -> Response:
     form = await request.form()
     device = _managed_device(session, principal, int(str(form.get("device_id", ""))))
+    # A button binding fires in *every* zone the controller hangs in (see
+    # `domain/controller.py::execute_action`). Managing one of those zones is
+    # therefore not enough to change it -- otherwise `device.manage` for the
+    # shared hallway dial would reach every room it also controls.
+    for zone in controller_zones(session, device):
+        require(principal, "device.manage", zone.id)
     action = str(form.get("action_code", "")).strip()
     if not action:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Keine Aktion angegeben")

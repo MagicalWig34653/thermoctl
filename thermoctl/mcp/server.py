@@ -54,6 +54,11 @@ def _log_in(session: Session, plaintext: str) -> tuple[ApiToken, Principal]:
     token = resolve_token(session, plaintext)
     if token is None:
         raise PermissionError("Ungueltiges oder nicht mehr gueltiges MCP-Token")
+    if token.is_kiosk:
+        # Same reason as in the REST adapter: the kiosk page is what keeps a wall
+        # tablet's token harmless, and MCP offers the unrestricted override the
+        # kiosk deliberately does not.
+        raise PermissionError("Kiosk-Token sind nur an der Kioskoberflaeche gueltig")
     return token, principal_for_token(session, token)
 
 

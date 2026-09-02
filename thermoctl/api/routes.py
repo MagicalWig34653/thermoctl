@@ -101,6 +101,17 @@ def _token(
     token = resolve_token(session, access.credentials)
     if token is None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Ungueltiges Token")
+    if token.is_kiosk:
+        # A kiosk token lives on a wall tablet: whoever holds the tablet holds the
+        # token. What it may do is therefore bounded by the kiosk page, which only
+        # nudges a setpoint by a fixed step and boosts. Through REST the same token
+        # carried far more weight -- `setpoint.write` replaces every mode setpoint
+        # outright, and `override.create` accepts any temperature with no end time.
+        # The narrow surface was the security property; only the kiosk enforces it.
+        raise HTTPException(
+            status.HTTP_401_UNAUTHORIZED,
+            "Kiosk-Token sind nur an der Kioskoberflaeche gueltig",
+        )
     return token
 
 

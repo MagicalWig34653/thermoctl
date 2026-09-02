@@ -237,6 +237,37 @@ einem veralteten Temperaturwert nennt die Meldung ausdrücklich, dass die Zone b
 Weiteres gegen ihren konkreten Frostschutz-Sollwert regelt. Der Meldeweg ist unabhängig
 von den beiden Schalt-Riegeln und läuft nach Abschluss der Datenbanktransaktion.
 
+## Sicherheitsdurchsicht 2026-09-02 — vier Rechtefehler behoben
+
+Die Durchsicht wurde nicht fortgeschrieben, sondern **noch einmal von vorn** geführt, mit
+dem, was seit Teilprojekt 3 dazugekommen ist. Sie steht in
+[sicherheitsdurchsicht-2026-09-02.md](sicherheitsdurchsicht-2026-09-02.md). Behoben und
+mit Regressionstests belegt (`tests/test_security_review_2026_09_02.py`) sind vier
+Befunde, alle drei ersten mit körperlicher Wirkung:
+
+- **`device.manage` für eine Zone erreichte fremde Zonen.** Das Kanalformular prüfte
+  das Bediengerät gegen die eigenen Zonen, die eingesandte Zielzone aber gar nicht. Ein
+  bewusst auf eine Zone beschränkter Nutzer konnte einen fremden Raum abschalten — bei
+  jeder Drehung am Regler erneut.
+- **Eine Tastenbelegung wirkt in allen Zonen des Bediengeräts**, geprüft wurde nur eine.
+  Der geteilte Flurregler reichte damit in jedes Zimmer, an dem er ebenfalls hängt.
+  Jetzt braucht es das Recht für jede betroffene Zone.
+- **Kiosk-Token galten als vollwertige REST- und MCP-Token.** Die Kioskoberfläche
+  verstellt in festen Schritten; über REST setzte dasselbe Token jeden Sollwert und eine
+  unbefristete Übersteuerung auf 35 Grad. Die enge Bedienfläche war die
+  Sicherheitseigenschaft, und nur das Kiosk hat sie durchgesetzt. REST und MCP weisen
+  Kiosk-Token jetzt ab.
+- **Die Bediengeräteseite zeigte den gesamten Gerätebestand.** Gerätenamen tragen hier
+  Raum- und Bewohnerbezüge. Die Seite verlangt jetzt `device.read` — das Recht, das die
+  Navigation immer schon behauptet hat — und die Liste ist zonengefiltert.
+
+**Nicht behoben, bewusst offen** — mit Begründung in der Durchsicht: der MQTT-Befehlsweg
+(wer auf dem Broker veröffentlichen darf, steuert die Anlage ohne Konto — das ist eine
+Frage der Broker-Konfiguration, nicht des Codes), die Meross-Bestätigung ohne
+Zustandsprüfung, unbegrenzte Cloud-Antworten, das Einrichtungs-Token im Log,
+Sitzungswiderruf beim Passwortwechsel und die Webhook-Weiterleitung mit `Authorization`.
+Für die letzte hält ein ausdrücklich als offen benannter Test die Lücke fest.
+
 ## Offen
 
 **Das Komplettreview läuft.** Der Plan mit sieben Runden steht in

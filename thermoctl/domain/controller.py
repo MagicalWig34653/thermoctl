@@ -168,8 +168,13 @@ def set_binding(
     session.flush()
 
 
-def _zone(session: Session, device: Device) -> list[Zone]:
-    """The zones in which this device hangs as a controller."""
+def controller_zones(session: Session, device: Device) -> list[Zone]:
+    """The zones in which this device hangs as a controller.
+
+    Public because the permission check for button bindings needs exactly this set:
+    a binding fires in every one of these zones, so changing it requires the right
+    for every one of them, not just for the one the caller came in through.
+    """
     return list(
         session.scalars(
             select(Zone)
@@ -202,7 +207,7 @@ def execute_action(
     if command is None:  # pragma: no cover - foreign key prevents this
         raise ControllerError("Die Belegung zeigt auf einen Befehl, den es nicht gibt.")
 
-    zones = _zone(session, device)
+    zones = controller_zones(session, device)
     if not zones:
         # A controller without a zone is not a fault but an unfinished setup -- and the
         # most common reason why "the button does nothing".
