@@ -1,6 +1,6 @@
 [project]
 name = "thermoctl"
-version = "0.3.0"
+version = "0.4.0"
 requires-python = ">=3.14"
 dependencies = [
     "fastapi>=0.141",
@@ -73,6 +73,15 @@ ignore = ["S101"]  # assert ist in Tests erwünscht
 python_version = "3.14"
 strict = true
 plugins = ["pydantic.mypy"]
+
+[tool.coverage.run]
+# Dieselben iCloud-Konfliktkopien wie beim --ignore-glob unten, hier aber aus einem
+# anderen Grund: pytest sammelt nur Testdateien ein, die Abdeckungsmessung erfasst
+# dagegen jede .py unter thermoctl/. Eine Kopie wie "statistics 2.py" wird von
+# niemandem importiert, zaehlt aber als 42 ungepruefte Zeilen und drueckt die Suite
+# unter die Schwelle von 100 Prozent -- was aussieht wie eine fehlende Pruefung und
+# keine ist.
+omit = ["*/* [0-9].py"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

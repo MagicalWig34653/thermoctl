@@ -10,6 +10,18 @@ längst überholte Angaben — „nichts ist scharf", „1024 Tests, 98,55 %", �
 wird nirgends gesetzt", „es gibt keine Geräteerkennung für Meross". Alles vier stimmte
 einmal und stand noch da.
 
+## v0.4.0 — die Fassung nach dem Komplettreview
+
+**Wer 0.3.0 scharf betreibt, sollte aktualisieren.** Sie behebt die ersten beiden echten
+Fehler in der Regelkette, dazu vier Rechtefehler und sechs weitere Sicherheitsbefunde.
+Der vollständige Eintrag steht im [CHANGELOG](../CHANGELOG.md).
+
+Zwei Migrationen laufen im Container beim Start von selbst. **Der Rückweg nicht** —
+`alembic upgrade head` geht nur vorwärts, und der alte Code startet danach nicht mehr,
+weil `check_schema` das weitergewanderte Schema erkennt. Wer zurück will, downgraded
+einmal von Hand mit dem *neuen* Abbild, bevor er das alte startet; die Reihenfolge steht
+in [self-hosting.md](self-hosting.md).
+
 ## v0.3.0 — die Fassung, in der thermoctl schaltet
 
 Alle vier Aktorwege sind verdrahtet: Zigbee2MQTT-Schalter, Zigbee-Thermostatventile,
