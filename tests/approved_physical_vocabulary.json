@@ -382,6 +382,11 @@
     "thermoctl/domain/legacy_system.py": [
       "heizung"
     ],
+    "thermoctl/domain/pi_control.py": [
+      "Ein Aktor ohne die Fähigkeit 'switch' ist der Zone zugeordnet.",
+      "Ein selbstregelndes Ventil ist der Zone zugeordnet.",
+      "ventilschutz"
+    ],
     "thermoctl/domain/plant_diagram.py": [
       "actuator",
       "actuator",
