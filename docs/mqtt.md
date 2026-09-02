@@ -25,6 +25,103 @@ Trockenlauf erschien, hieß danach für immer `climate.thermoctl_zone_1_trockenl
 scharf geschaltet. Die Kennung bleibt jetzt über den ganzen Umstieg dieselbe; die
 Discovery-Nutzlast ist im Trockenlauf und scharf **Byte für Byte gleich**.
 
+## Den Broker absichern: Er ist eine Vertrauensgrenze
+
+Der MQTT-Befehlsbaum ist ein vollwertiger Steuerweg neben Oberfläche, REST und MCP,
+aber ohne deren Benutzer- und Rechtemodell. Eine Nachricht auf
+`<präfix>/zones/<id>/command/...` wird keiner angemeldeten Person zugeordnet und nicht
+gegen deren Zonenrechte geprüft. Wer auf diese Topics veröffentlichen darf, darf daher
+Betriebsart, Sollwerte, Boost und Regelparameter **jeder** Zone ändern. Im scharfen
+Betrieb kann ein zu weit berechtigter Broker-Zugang damit die ganze Heizungsanlage
+steuern. Gefälschte Nachrichten im Zigbee2MQTT-Zweig sind dieselbe Art von Problem:
+thermoctl vertraut darauf, dass der Broker nur dem echten Zigbee2MQTT-Client erlaubt,
+dort Gerätezustände zu veröffentlichen.
+
+`THERMOCTL_MQTT_USERNAME` und `THERMOCTL_MQTT_PASSWORD` sind deshalb bei aktiviertem
+MQTT keine Komfortoption. Der Broker muss Clients authentifizieren und standardmäßig
+abweisen, was keine Rechteregel ausdrücklich erlaubt. thermoctl und Home Assistant
+brauchen getrennte Zugänge: thermoctl muss Sensorzustände lesen, eigene Zustände und
+Gerätebefehle veröffentlichen sowie den eigenen Befehlsbaum abonnieren; Home Assistant
+muss diese Zustände lesen, darf in thermoctls Zweig aber ausschließlich Befehle
+veröffentlichen. Zigbee2MQTT bekommt ebenfalls einen eigenen Zugang. Ein gemeinsamer
+Benutzer würde diese Grenzen wieder zusammenlegen.
+
+Die folgende Aufstellung ist aus den Topic-Erzeugern in
+`thermoctl/integrations/mqtt/zigbee2mqtt.py`,
+`thermoctl/integrations/mqtt/commands.py` und
+`thermoctl/integrations/mqtt/publication.py` sowie den Veröffentlichungsstellen in
+`thermoctl/services/publishing.py` und `thermoctl/integrations/actuators.py` abgeleitet.
+`<basis>` bedeutet `THERMOCTL_MQTT_BASE_TOPIC`, `<präfix>` bedeutet
+`THERMOCTL_MQTT_PREFIX`.
+
+| Zugang | Operation | Topics, die der aktuelle Code tatsächlich braucht |
+|---|---|---|
+| thermoctl | abonnieren | `<basis>/bridge/devices`, `<basis>/bridge/state`, `<basis>/+`, `<basis>/+/availability` |
+| thermoctl | abonnieren | `<präfix>/zones/+/command/+`, `<präfix>/zones/+/command/+/+` |
+| thermoctl | veröffentlichen | `<präfix>/availability`, `<präfix>/state/armed`, `<präfix>/zones/+/state/#` |
+| thermoctl | veröffentlichen | `<basis>/+/set` für Anzeige-, Sollwert- und Schaltbefehle an Zigbee2MQTT-Geräte |
+| thermoctl | veröffentlichen | `homeassistant/climate/+/config`, `homeassistant/button/+/config`, `homeassistant/binary_sensor/+/config`, `homeassistant/sensor/+/config`, `homeassistant/number/+/config` |
+| Home Assistant | abonnieren | `<präfix>/availability`, `<präfix>/state/armed`, `<präfix>/zones/+/state/#` und für Discovery `homeassistant/#` |
+| Home Assistant | veröffentlichen | nur `<präfix>/zones/+/command/+` und `<präfix>/zones/+/command/+/+` |
+
+Der Zustandsbaum umfasst die sieben einfachen Zonenwerte
+`current_temperature`, `setpoint`, `operating_mode`, `sensor_state`, `would_heat`,
+`last_switch` und `next_switch`, außerdem `sensor_fault` samt `attributes`,
+`mode/<mode_id>` und `parameter/<name>`. Der Befehlsbaum nimmt genau `setpoint`,
+`operating_mode`, `boost`, `mode/<mode_id>` und `parameter/<name>` entgegen. Die beiden
+Abonnementmuster sind absichtlich getrennt: MQTT-`+` steht für genau eine Ebene.
+
+### Kurzes EMQX-Beispiel
+
+Für die Vorgabewerte `<basis> = zigbee2mqtt` und `<präfix> = thermoctl` kann die
+dateibasierte EMQX-Autorisierung so aussehen. Die Benutzernamen bezeichnen getrennte,
+zuvor in der EMQX-Authentifizierung angelegte Konten; Zugangsdaten gehören nicht in
+diese Datei. EMQX wertet diese Regeln von oben nach unten aus, die letzte Zeile sperrt
+alles nicht ausdrücklich Erlaubte:
+
+```erlang
+{allow, {username, "thermoctl"}, subscribe, [
+  "zigbee2mqtt/bridge/devices", "zigbee2mqtt/bridge/state",
+  "zigbee2mqtt/+", "zigbee2mqtt/+/availability",
+  "thermoctl/zones/+/command/+", "thermoctl/zones/+/command/+/+"
+]}.
+{allow, {username, "thermoctl"}, publish, [
+  "thermoctl/availability", "thermoctl/state/armed",
+  "thermoctl/zones/+/state/#", "zigbee2mqtt/+/set",
+  "homeassistant/climate/+/config", "homeassistant/button/+/config",
+  "homeassistant/binary_sensor/+/config", "homeassistant/sensor/+/config",
+  "homeassistant/number/+/config"
+]}.
+{allow, {username, "homeassistant"}, subscribe, [
+  "thermoctl/availability", "thermoctl/state/armed",
+  "thermoctl/zones/+/state/#", "homeassistant/#"
+]}.
+{allow, {username, "homeassistant"}, publish, [
+  "thermoctl/zones/+/command/+", "thermoctl/zones/+/command/+/+"
+]}.
+{deny, all}.
+```
+
+Das Beispiel ist bewusst ein ACL-Ausschnitt, keine vollständige EMQX-Konfiguration:
+Authentifizierungsquelle, Passwortablage und die nötigen Rechte des eigenen
+Zigbee2MQTT-Kontos hängen von der Installation ab. Auch die Stelle, an der die Regel
+eingetragen wird, unterscheidet sich zwischen EMQX-Versionen; maßgeblich ist die
+[EMQX-Dokumentation zum ACL-Dateiformat](https://docs.emqx.com/en/emqx/latest/access-control/authz/file.html).
+Entscheidend sind getrennte Konten, die gezeigten Aktionen und ein abschließendes
+`deny`; eine globale Freigabe für `#` hebt die ganze Aufstellung auf. Nach dem Einrichten
+sollte jede erlaubte und mindestens eine verbotene Veröffentlichung mit den jeweiligen
+Konten praktisch geprüft werden.
+
+TLS löst ein anderes Problem als die Rechteregeln: Es schützt Zugangsdaten und
+Nachrichten auf dem Transportweg. Der HTTPS-Reverse-Proxy vor der Weboberfläche schützt
+MQTT nicht automatisch, denn MQTT läuft über einen eigenen TCP-Listener. Sobald der Weg
+zum Broker nicht vollständig in einem gleichermaßen vertrauenswürdigen, abgeschotteten
+Netz liegt, braucht EMQX einen TLS-Listener oder einen ausdrücklich für MQTT
+eingerichteten TCP/TLS-Proxy; thermoctl verbindet sich dann mit
+`THERMOCTL_MQTT_TLS=true`, üblicherweise über Port 8883. Bei einer eigenen CA verweist
+`THERMOCTL_MQTT_CA_CERT` auf deren Zertifikat. TLS ersetzt weder Authentifizierung noch
+Topic-Rechte, und Topic-Rechte ersetzen keine Transportverschlüsselung.
+
 ## 1. Lesen: Zigbee2MQTT
 
 Konfiguriert wird über `.env` (siehe [self-hosting.md](self-hosting.md)). Abonniert werden
@@ -87,7 +184,7 @@ Angeschlossen. Sie behebt die drei Eigenheiten, die die
 [Bestandsaufnahme](bestandsaufnahme-altsystem.md) am gewachsenen Altsystem festhält.
 
 ```
-thermoctl/availability                              online | offline  (Last Will)
+thermoctl/availability                              online  (retained)
 thermoctl/state/armed                               true | false
 thermoctl/zones/<id>/state/current_temperature
 thermoctl/zones/<id>/state/setpoint
@@ -104,6 +201,11 @@ thermoctl/zones/<id>/command/boost                  zieht die nächste Schaltung
 thermoctl/zones/<id>/command/mode/<mode_id>
 thermoctl/zones/<id>/command/parameter/<name>
 ```
+
+Die Discovery-Nutzlasten kennen zwar auch `offline`, der aktuelle MQTT-Client richtet
+aber keinen Last Will ein und veröffentlicht diesen Wert daher nicht. Das ist eine
+offene Abweichung zwischen beabsichtigter Verfügbarkeitsanzeige und Implementierung,
+nicht etwas, das eine Broker-Rechteregel ergänzen könnte.
 
 **Alles Bleibende geht mit dem retain-Flag hinaus** — Anmeldungen wie Zustände. Ohne das
 steht in Home Assistant nach jedem Neustart eine leere Karte, bis dieser Dienst das nächste

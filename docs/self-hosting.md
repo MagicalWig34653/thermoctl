@@ -13,7 +13,10 @@ nicht kennt. Sie setzt Docker voraus und dauert etwa zehn Minuten.
 
 - Docker mit Compose.
 - Einen Rechner, der durchläuft — eine Heizungssteuerung, die nachts aus ist, ist keine.
-- Für die Zigbee-Geräte-Anbindung: einen MQTT-Broker mit Zigbee2MQTT.
+- Für die Zigbee-Geräte-Anbindung: einen MQTT-Broker mit Zigbee2MQTT. Sobald MQTT
+  aktiviert wird, braucht der Broker Authentifizierung, getrennte Zugänge und eng
+  begrenzte Topic-Rechte; [mqtt.md](mqtt.md#den-broker-absichern-er-ist-eine-vertrauensgrenze)
+  erklärt die Vertrauensgrenze und enthält eine Rechtematrix samt EMQX-Beispiel.
 
 Eine Datenbank brauchen Sie **nicht** mitzubringen. Voreingestellt ist SQLite in einer
 Datei; für eine Wohnung genügt das vollständig.
