@@ -5,13 +5,15 @@ it. Heating that shows eight hours in the statistics because the service was
 down for eight hours would be worse than no statistics at all.
 """
 
+from dataclasses import FrozenInstanceError
 from datetime import date, datetime, timedelta
 
+import pytest
 from sqlalchemy.orm import Session
 
 from tests.helpers import create_zone
 from thermoctl.db.models.state import ShadowDecision
-from thermoctl.domain.statistics import as_duration, heating_periods
+from thermoctl.domain.statistics import DayValue, ZoneStatistics, as_duration, heating_periods
 
 START = datetime(2026, 8, 24, 6, 0)
 
@@ -120,6 +122,73 @@ def test_a_zone_without_a_log_still_appears_with_zeros(session: Session) -> None
     assert zone.id in result
     assert len(result[zone.id].days) == 3
     assert result[zone.id].seconds_total == 0
+
+
+def test_statistics_values_are_immutable() -> None:
+    day = DayValue(date(2026, 8, 24), 60)
+    zone = ZoneStatistics(17, [day])
+
+    with pytest.raises(FrozenInstanceError):
+        day.seconds = 120
+    with pytest.raises(FrozenInstanceError):
+        zone.zone_id = 18
+
+
+@pytest.mark.parametrize("cycle_seconds", [0, 1])
+def test_non_positive_and_one_second_cycles_share_the_one_second_floor(
+    session: Session, cycle_seconds: int
+) -> None:
+    zone = create_zone(session, f"cycle-floor-{cycle_seconds}")
+    session.add_all(
+        [
+            ShadowDecision(
+                decided_at=START,
+                zone_id=zone.id,
+                temperature_c=None,
+                setpoint_c=None,
+                setpoint_reason="Test",
+                would_heat=True,
+                previous_would_heat=None,
+                outcome_code="ok",
+                reason="Test",
+            ),
+            ShadowDecision(
+                decided_at=START + timedelta(seconds=5),
+                zone_id=zone.id,
+                temperature_c=None,
+                setpoint_c=None,
+                setpoint_reason="Test",
+                would_heat=False,
+                previous_would_heat=None,
+                outcome_code="ok",
+                reason="Test",
+            ),
+        ]
+    )
+    session.flush()
+
+    result = heating_periods(
+        session,
+        [zone.id],
+        START,
+        START + timedelta(minutes=1),
+        cycle_seconds=cycle_seconds,
+    )
+
+    assert result[zone.id].seconds_total == 3
+
+
+def test_a_two_day_inclusive_range_contains_both_days(session: Session) -> None:
+    zone = create_zone(session, "two-day-range")
+
+    result = heating_periods(
+        session, [zone.id], START, START + timedelta(days=1), cycle_seconds=60
+    )
+
+    assert [value.day for value in result[zone.id].days] == [
+        START.date(),
+        (START + timedelta(days=1)).date(),
+    ]
 
 
 def test_a_day_boundary_follows_the_configured_timezone_not_utc(session: Session) -> None:
@@ -288,6 +357,11 @@ def test_a_fall_back_day_is_25_hours_and_still_counted_whole(session: Session) -
 
 def test_duration_in_words() -> None:
     assert as_duration(0) == "–"
+    assert as_duration(1) == "0m"
     assert as_duration(59) == "1m"
     assert as_duration(35 * 60) == "35m"
+    assert as_duration(59 * 60) == "59m"
+    assert as_duration(60 * 60) == "1h 00m"
+    assert as_duration(119 * 60) == "1h 59m"
+    assert as_duration(120 * 60) == "2h 00m"
     assert as_duration(4 * 3600 + 5 * 60) == "4h 05m"

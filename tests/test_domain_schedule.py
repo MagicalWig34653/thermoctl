@@ -1,5 +1,5 @@
 from dataclasses import FrozenInstanceError
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal
 
 import pytest
@@ -28,7 +28,10 @@ from thermoctl.domain.schedule import (
     change_schedule_point_mode,
     copy_schedule_day,
     create_override,
+    create_schedule_point,
     current_point,
+    frost_protection_temperature,
+    move_schedule_point,
     next_point,
     paint_schedule_interval,
     resolved_setpoint,
@@ -75,6 +78,7 @@ def test_schedule_value_objects_are_immutable_with_documented_defaults() -> None
 def test_week_constant_and_time_parser_preserve_real_calendar_values() -> None:
     assert MINUTES_PER_WEEK == 10080
     assert time_of_day_in_minutes("12:34") == 754
+    assert time_of_day_in_minutes("23:59") == 1439
     for invalid in ("24:00", "12:60", "12", "12:x"):
         with pytest.raises(ScheduleError):
             time_of_day_in_minutes(invalid)
@@ -95,6 +99,36 @@ def test_canonical_schedule_removes_only_redundant_ring_switches() -> None:
     assert schedule_module._canonical_snapshot(
         {1563: 11, 2194: 22, 4520: 22, 6081: 11}
     ) == ((2, 754, 22), (5, 321, 11))
+
+
+def test_canonical_schedule_preserves_singletons_and_two_mode_rings() -> None:
+    assert schedule_module._canonical_snapshot({1440: 11}) == ((2, 0, 11),)
+    assert schedule_module._canonical_snapshot({0: 11, 1440: 22}) == (
+        (1, 0, 11),
+        (2, 0, 22),
+    )
+    assert schedule_module._canonical_snapshot({0: 11, 1439: 22, 1440: 11}) == (
+        (1, 1439, 22),
+        (2, 0, 11),
+    )
+
+
+def test_calendar_arithmetic_is_additive_for_every_day_and_edge_time() -> None:
+    monday = datetime(2026, 8, 31)
+    for weekday in range(1, 8):
+        for hour, minute in ((0, 0), (1, 1), (13, 17), (23, 59)):
+            moment = monday + timedelta(days=weekday - 1, hours=hour, minutes=minute)
+            assert schedule_module._week_minute(moment) == (
+                (weekday - 1) * 1440 + hour * 60 + minute
+            )
+
+
+def test_schedule_labels_preserve_minute_boundaries() -> None:
+    assert schedule_module._label_time(1) == "00:01"
+    assert schedule_module._label_time(60) == "01:00"
+    assert schedule_module._label_time(1439) == "23:59"
+    assert schedule_module._label_time(1440) == "24:00"
+    assert schedule_module._label_for(7, 1439) == "So 23:59"
 
 
 @pytest.mark.parametrize("weekday", [0, 8])
@@ -144,6 +178,39 @@ def test_week_segments_keep_non_monday_offsets_and_switch_ownership() -> None:
     assert len(segments) == 9
 
 
+def test_week_segments_keep_midnight_and_minute_one_distinct_on_sunday() -> None:
+    midnight = SchedulePoint(weekday=7, minute_of_day=0, setpoint_mode_id=11)
+    minute_one = SchedulePoint(weekday=7, minute_of_day=1, setpoint_mode_id=22)
+    midnight.id = 101
+    minute_one.id = 202
+
+    sunday = [
+        segment
+        for segment in week_segments(
+            [minute_one, midnight], {11: "Midnight", 22: "Minute one"}
+        )
+        if segment.weekday == 7
+    ]
+
+    assert sunday == [
+        DaySegment(7, 0, 1, "Midnight", 11, 101),
+        DaySegment(7, 1, 1440, "Minute one", 22, 202),
+    ]
+
+
+def test_week_segments_place_a_thursday_switch_on_thursday() -> None:
+    wednesday = SchedulePoint(weekday=3, minute_of_day=100, setpoint_mode_id=11)
+    thursday = SchedulePoint(weekday=4, minute_of_day=200, setpoint_mode_id=22)
+    thursday.id = 202
+
+    segments = week_segments([thursday, wednesday], {11: "Before", 22: "After"})
+
+    assert [segment for segment in segments if segment.weekday == 4] == [
+        DaySegment(4, 0, 200, "Before", 11, None),
+        DaySegment(4, 200, 1440, "After", 22, 202),
+    ]
+
+
 def test_current_and_next_point_use_weekday_and_minute_components() -> None:
     tuesday = SchedulePoint(weekday=2, minute_of_day=123, setpoint_mode_id=1)
     friday = SchedulePoint(weekday=5, minute_of_day=754, setpoint_mode_id=2)
@@ -154,6 +221,16 @@ def test_current_and_next_point_use_weekday_and_minute_components() -> None:
     assert next_point([tuesday, friday], datetime(2026, 9, 6, 23, 59)) == datetime(
         2026, 9, 8, 2, 3
     )
+
+
+def test_next_point_skips_the_current_switch_and_chooses_the_nearest_later_one() -> None:
+    current = SchedulePoint(weekday=4, minute_of_day=754, setpoint_mode_id=1)
+    first_later = SchedulePoint(weekday=4, minute_of_day=755, setpoint_mode_id=2)
+    second_later = SchedulePoint(weekday=6, minute_of_day=1234, setpoint_mode_id=3)
+
+    assert next_point(
+        [second_later, current, first_later], datetime(2026, 9, 3, 12, 34)
+    ) == datetime(2026, 9, 3, 12, 35)
 
 
 def test_painting_a_non_monday_interval_preserves_exact_minute_boundaries(
@@ -177,6 +254,151 @@ def test_painting_a_non_monday_interval_preserves_exact_minute_boundaries(
     assert _stored_snapshot(session, zone.id) == (
         (3, 754, comfort.id),
         (3, 837, settings.frost_protection_mode_id),
+    )
+
+
+@pytest.mark.parametrize(
+    ("start_minute", "end_minute"),
+    [(0, 1), (1439, 1440)],
+)
+def test_painting_accepts_each_minimal_day_edge_interval(
+    session: Session, start_minute: int, end_minute: int
+) -> None:
+    settings = create_settings(session)
+    source(session)
+    zone = create_zone(session, f"paint-edge-{start_minute}")
+    comfort = create_mode(session, f"paint-edge-mode-{start_minute}", "Comfort")
+
+    paint_schedule_interval(
+        session,
+        zone,
+        weekday=4,
+        start_minute=start_minute,
+        end_minute=end_minute,
+        mode_id=comfort.id,
+        user_id=None,
+    )
+
+    expected = [(4, start_minute, comfort.id)]
+    if end_minute < 1440:
+        expected.append((4, end_minute, settings.frost_protection_mode_id))
+    else:
+        expected.append((5, 0, settings.frost_protection_mode_id))
+    assert _stored_snapshot(session, zone.id) == tuple(expected)
+
+
+def test_painting_replaces_every_switch_inside_but_preserves_the_end_mode(
+    session: Session,
+) -> None:
+    create_settings(session)
+    source(session)
+    zone = create_zone(session, "paint-over-switches")
+    before = create_mode(session, "paint-before", "Before")
+    painted = create_mode(session, "paint-new", "Painted")
+    inside = create_mode(session, "paint-inside", "Inside")
+    after = create_mode(session, "paint-after", "After")
+    _stored_point(session, zone.id, 5, 100, before.id)
+    _stored_point(session, zone.id, 5, 200, inside.id)
+    _stored_point(session, zone.id, 5, 300, after.id)
+
+    paint_schedule_interval(
+        session,
+        zone,
+        weekday=5,
+        start_minute=100,
+        end_minute=300,
+        mode_id=painted.id,
+        user_id=None,
+    )
+
+    assert _stored_snapshot(session, zone.id) == (
+        (5, 100, painted.id),
+        (5, 300, after.id),
+    )
+
+
+def test_painting_restores_the_local_end_mode_not_the_week_end_mode(
+    session: Session,
+) -> None:
+    create_settings(session)
+    source(session)
+    zone = create_zone(session, "paint-local-end")
+    local = create_mode(session, "paint-local-mode", "Local")
+    painted = create_mode(session, "paint-local-new", "Painted")
+    week_end = create_mode(session, "paint-week-end", "Week end")
+    _stored_point(session, zone.id, 4, 100, local.id)
+    _stored_point(session, zone.id, 7, 1000, week_end.id)
+
+    paint_schedule_interval(
+        session,
+        zone,
+        weekday=4,
+        start_minute=200,
+        end_minute=300,
+        mode_id=painted.id,
+        user_id=None,
+    )
+
+    assert _stored_snapshot(session, zone.id) == (
+        (4, 100, local.id),
+        (4, 200, painted.id),
+        (4, 300, local.id),
+        (7, 1000, week_end.id),
+    )
+
+
+def test_painting_does_not_treat_different_interior_modes_as_a_no_op(
+    session: Session,
+) -> None:
+    create_settings(session)
+    source(session)
+    zone = create_zone(session, "paint-interior-mode")
+    comfort = create_mode(session, "paint-interior-comfort", "Comfort")
+    setback = create_mode(session, "paint-interior-setback", "Setback")
+    _stored_point(session, zone.id, 3, 100, comfort.id)
+    _stored_point(session, zone.id, 3, 200, setback.id)
+    _stored_point(session, zone.id, 3, 300, comfort.id)
+
+    result = paint_schedule_interval(
+        session,
+        zone,
+        weekday=3,
+        start_minute=100,
+        end_minute=300,
+        mode_id=comfort.id,
+        user_id=None,
+    )
+
+    assert result is not None
+    assert _stored_snapshot(session, zone.id) == ((3, 300, comfort.id),)
+
+
+def test_sunday_midnight_restoration_does_not_overwrite_monday_minute_one(
+    session: Session,
+) -> None:
+    create_settings(session)
+    source(session)
+    zone = create_zone(session, "paint-week-ring-minute-one")
+    monday = create_mode(session, "paint-ring-monday", "Monday")
+    after_midnight = create_mode(session, "paint-ring-minute-one", "Minute one")
+    painted = create_mode(session, "paint-ring-sunday", "Sunday")
+    _stored_point(session, zone.id, 1, 0, monday.id)
+    _stored_point(session, zone.id, 1, 1, after_midnight.id)
+
+    paint_schedule_interval(
+        session,
+        zone,
+        weekday=7,
+        start_minute=1439,
+        end_minute=1440,
+        mode_id=painted.id,
+        user_id=None,
+    )
+
+    assert _stored_snapshot(session, zone.id) == (
+        (1, 0, monday.id),
+        (1, 1, after_midnight.id),
+        (7, 1439, painted.id),
     )
 
 
@@ -207,6 +429,200 @@ def test_copying_between_non_adjacent_days_replaces_only_the_target_day(
         (4, 754, comfort.id),
         (5, 321, night.id),
     )
+
+
+def test_copying_preserves_a_minute_one_switch_and_the_following_day(
+    session: Session,
+) -> None:
+    create_settings(session)
+    source(session)
+    zone = create_zone(session, "copy-minute-one")
+    night = create_mode(session, "copy-minute-night", "Night")
+    morning = create_mode(session, "copy-minute-morning", "Morning")
+    untouched = create_mode(session, "copy-minute-untouched", "Untouched")
+    _stored_point(session, zone.id, 2, 0, night.id)
+    _stored_point(session, zone.id, 2, 1, morning.id)
+    _stored_point(session, zone.id, 4, 0, untouched.id)
+    _stored_point(session, zone.id, 5, 17, night.id)
+
+    copy_schedule_day(
+        session,
+        zone,
+        source_weekday=2,
+        target_weekdays=[4],
+        user_id=None,
+    )
+
+    assert _stored_snapshot(session, zone.id) == (
+        (2, 1, morning.id),
+        (4, 0, night.id),
+        (4, 1, morning.id),
+        (5, 0, untouched.id),
+        (5, 17, night.id),
+    )
+
+
+def test_copying_sunday_to_monday_uses_the_week_ring_and_keeps_tuesday(
+    session: Session,
+) -> None:
+    create_settings(session)
+    source(session)
+    zone = create_zone(session, "copy-sunday-ring")
+    monday = create_mode(session, "copy-ring-monday", "Monday")
+    sunday = create_mode(session, "copy-ring-sunday", "Sunday")
+    late = create_mode(session, "copy-ring-late", "Late")
+    tuesday = create_mode(session, "copy-ring-tuesday", "Tuesday")
+    _stored_point(session, zone.id, 1, 0, monday.id)
+    _stored_point(session, zone.id, 2, 0, tuesday.id)
+    _stored_point(session, zone.id, 7, 0, sunday.id)
+    _stored_point(session, zone.id, 7, 1439, late.id)
+
+    copy_schedule_day(
+        session,
+        zone,
+        source_weekday=7,
+        target_weekdays=[1],
+        user_id=None,
+    )
+
+    assert _stored_snapshot(session, zone.id) == (
+        (1, 0, sunday.id),
+        (1, 1439, late.id),
+        (2, 0, tuesday.id),
+        (7, 0, sunday.id),
+        (7, 1439, late.id),
+    )
+
+
+def test_copying_to_consecutive_days_does_not_restore_between_them(
+    session: Session,
+) -> None:
+    create_settings(session)
+    source(session)
+    zone = create_zone(session, "copy-consecutive")
+    source_mode = create_mode(session, "copy-consecutive-source", "Source")
+    old_thursday = create_mode(session, "copy-consecutive-old", "Old")
+    following = create_mode(session, "copy-consecutive-following", "Following")
+    _stored_point(session, zone.id, 2, 0, source_mode.id)
+    _stored_point(session, zone.id, 3, 0, old_thursday.id)
+    _stored_point(session, zone.id, 4, 0, old_thursday.id)
+    _stored_point(session, zone.id, 5, 0, following.id)
+
+    copy_schedule_day(
+        session,
+        zone,
+        source_weekday=2,
+        target_weekdays=[3, 4],
+        user_id=None,
+    )
+
+    assert _stored_snapshot(session, zone.id) == (
+        (2, 0, source_mode.id),
+        (5, 0, following.id),
+    )
+
+
+def test_copying_to_an_odd_day_restores_the_untouched_following_day(
+    session: Session,
+) -> None:
+    create_settings(session)
+    source(session)
+    zone = create_zone(session, "copy-odd-target")
+    source_mode = create_mode(session, "copy-odd-source", "Source")
+    old_target = create_mode(session, "copy-odd-old", "Old target")
+    following = create_mode(session, "copy-odd-following", "Following")
+    _stored_point(session, zone.id, 2, 0, source_mode.id)
+    _stored_point(session, zone.id, 3, 0, old_target.id)
+    _stored_point(session, zone.id, 4, 0, following.id)
+
+    copy_schedule_day(
+        session,
+        zone,
+        source_weekday=2,
+        target_weekdays=[3],
+        user_id=None,
+    )
+
+    assert _stored_snapshot(session, zone.id) == (
+        (2, 0, source_mode.id),
+        (4, 0, following.id),
+    )
+
+
+def test_copying_to_an_odd_day_restores_a_carried_following_mode(
+    session: Session,
+) -> None:
+    create_settings(session)
+    source(session)
+    zone = create_zone(session, "copy-odd-carried-mode")
+    source_mode = create_mode(session, "copy-odd-carried-source", "Source")
+    carried = create_mode(session, "copy-odd-carried-old", "Carried")
+    later = create_mode(session, "copy-odd-carried-later", "Later")
+    _stored_point(session, zone.id, 1, 0, source_mode.id)
+    _stored_point(session, zone.id, 2, 0, carried.id)
+    _stored_point(session, zone.id, 5, 0, later.id)
+
+    copy_schedule_day(
+        session,
+        zone,
+        source_weekday=1,
+        target_weekdays=[3],
+        user_id=None,
+    )
+
+    assert _stored_snapshot(session, zone.id) == (
+        (1, 0, source_mode.id),
+        (2, 0, carried.id),
+        (3, 0, source_mode.id),
+        (4, 0, carried.id),
+        (5, 0, later.id),
+    )
+
+
+def test_copying_removes_a_target_switch_at_the_last_minute_of_day(
+    session: Session,
+) -> None:
+    create_settings(session)
+    source(session)
+    zone = create_zone(session, "copy-last-minute")
+    source_mode = create_mode(session, "copy-last-source", "Source")
+    obsolete = create_mode(session, "copy-last-obsolete", "Obsolete")
+    following = create_mode(session, "copy-last-following", "Following")
+    _stored_point(session, zone.id, 1, 0, source_mode.id)
+    _stored_point(session, zone.id, 2, 1439, obsolete.id)
+    _stored_point(session, zone.id, 3, 0, following.id)
+
+    copy_schedule_day(
+        session,
+        zone,
+        source_weekday=1,
+        target_weekdays=[2],
+        user_id=None,
+    )
+
+    assert _stored_snapshot(session, zone.id) == (
+        (1, 0, source_mode.id),
+        (3, 0, following.id),
+    )
+
+
+@pytest.mark.parametrize(
+    ("source_weekday", "target_weekdays"),
+    [(0, [1]), (8, [1]), (1, [0]), (1, [8])],
+)
+def test_copying_rejects_each_weekday_just_outside_the_calendar(
+    session: Session, source_weekday: int, target_weekdays: list[int]
+) -> None:
+    create_settings(session)
+    zone = create_zone(session, f"copy-invalid-{source_weekday}-{target_weekdays[0]}")
+    with pytest.raises(ScheduleError, match="Wochentag"):
+        copy_schedule_day(
+            session,
+            zone,
+            source_weekday=source_weekday,
+            target_weekdays=target_weekdays,
+            user_id=None,
+        )
 
 
 def test_painting_until_sunday_midnight_preserves_monday_mode(
@@ -418,6 +834,113 @@ def test_painting_the_ring_mode_with_only_one_weekly_point_is_a_no_op(
     assert _stored_snapshot(session, zone.id) == before
 
 
+def test_moment_taken_matches_all_three_coordinates(session: Session) -> None:
+    create_settings(session)
+    first_zone = create_zone(session, "moment-first-zone")
+    second_zone = create_zone(session, "moment-second-zone")
+    mode = create_mode(session, "moment-mode")
+    _stored_point(session, first_zone.id, 7, 1439, mode.id)
+    _stored_point(session, second_zone.id, 6, 1438, mode.id)
+
+    assert schedule_module._moment_taken(session, first_zone.id, 7, 1439)
+    assert not schedule_module._moment_taken(session, first_zone.id, 6, 1439)
+    assert not schedule_module._moment_taken(session, first_zone.id, 7, 1438)
+    assert not schedule_module._moment_taken(session, second_zone.id, 7, 1439)
+
+
+@pytest.mark.parametrize("weekday", [1, 7])
+@pytest.mark.parametrize("minute", [0, 1439])
+def test_creating_a_point_accepts_every_calendar_edge(
+    session: Session, weekday: int, minute: int
+) -> None:
+    create_settings(session)
+    source(session)
+    zone = create_zone(session, f"create-edge-{weekday}-{minute}")
+    mode = create_mode(session, f"create-edge-mode-{weekday}-{minute}")
+
+    created = create_schedule_point(
+        session,
+        zone,
+        weekday=weekday,
+        minute=minute,
+        mode_id=mode.id,
+        user_id=None,
+    )
+
+    assert (created.weekday, created.minute_of_day) == (weekday, minute)
+
+
+@pytest.mark.parametrize(("weekday", "minute"), [(0, 100), (8, 100), (2, -1), (2, 1440)])
+def test_creating_a_point_rejects_each_coordinate_just_outside_the_calendar(
+    session: Session, weekday: int, minute: int
+) -> None:
+    create_settings(session)
+    source(session)
+    zone = create_zone(session, f"create-invalid-{weekday}-{minute}")
+    mode = create_mode(session, f"create-invalid-mode-{weekday}-{minute}")
+
+    with pytest.raises(ScheduleError, match="Wochentag|Uhrzeit"):
+        create_schedule_point(
+            session,
+            zone,
+            weekday=weekday,
+            minute=minute,
+            mode_id=mode.id,
+            user_id=None,
+        )
+
+
+@pytest.mark.parametrize(("weekday", "minute"), [(0, 100), (8, 100), (2, -1), (2, 1440)])
+def test_moving_a_point_rejects_each_coordinate_just_outside_the_calendar(
+    session: Session, weekday: int, minute: int
+) -> None:
+    create_settings(session)
+    source(session)
+    zone = create_zone(session, f"move-invalid-{weekday}-{minute}")
+    mode = create_mode(session, f"move-invalid-mode-{weekday}-{minute}")
+    existing = SchedulePoint(
+        zone_id=zone.id, weekday=2, minute_of_day=100, setpoint_mode_id=mode.id
+    )
+    session.add(existing)
+    session.flush()
+
+    with pytest.raises(ScheduleError, match="Wochentag|Uhrzeit"):
+        move_schedule_point(
+            session,
+            zone,
+            existing,
+            weekday=weekday,
+            minute=minute,
+            user_id=None,
+        )
+
+
+@pytest.mark.parametrize(("weekday", "minute"), [(1, 0), (7, 1439)])
+def test_moving_a_point_accepts_every_calendar_edge(
+    session: Session, weekday: int, minute: int
+) -> None:
+    create_settings(session)
+    source(session)
+    zone = create_zone(session, f"move-edge-{weekday}-{minute}")
+    mode = create_mode(session, f"move-edge-mode-{weekday}-{minute}")
+    existing = SchedulePoint(
+        zone_id=zone.id, weekday=4, minute_of_day=700, setpoint_mode_id=mode.id
+    )
+    session.add(existing)
+    session.flush()
+
+    moved = move_schedule_point(
+        session,
+        zone,
+        existing,
+        weekday=weekday,
+        minute=minute,
+        user_id=None,
+    )
+
+    assert (moved.weekday, moved.minute_of_day) == (weekday, minute)
+
+
 def test_a_point_holds_until_the_next_one() -> None:
     points = [point(1, 360, "tag"), point(1, 1380, "nacht")]  # Mon 06:00 and 23:00
     monday_ten = datetime(2026, 8, 31, 10, 0)
@@ -454,6 +977,21 @@ def test_without_a_schedule_frost_protection_applies(session: Session) -> None:
     assert "Frostschutz" in result.reason
 
 
+def test_configured_frost_temperature_and_mode_identity_are_preserved(
+    session: Session,
+) -> None:
+    zone = zone_with_schedule(
+        session, "frost-identity", points=[], frost_protection=Decimal("15.5")
+    )
+
+    result = resolved_setpoint(session, zone, datetime(2026, 8, 31, 10, 0))
+
+    assert frost_protection_temperature(session, zone) == Decimal("15.5")
+    assert result.temperature_c == Decimal("15.5")
+    assert result.mode_code == "frost-frost-identity"
+    assert result.mode_id is not None
+
+
 def test_operating_mode_off_results_in_frost_protection(session: Session) -> None:
     zone = zone_with_schedule(session, "aus", points=[(1, 360, "tag", Decimal("21.0"))],
                              operating_mode="off", frost_protection=Decimal("16.0"))
@@ -478,11 +1016,57 @@ def test_an_expired_override_no_longer_applies(session: Session) -> None:
     assert result.temperature_c == Decimal("21.0")
 
 
+def test_an_override_expires_exactly_at_its_end(session: Session) -> None:
+    now = datetime(2026, 8, 31, 10, 0)
+    zone = zone_with_schedule(
+        session,
+        "expires-exactly",
+        points=[(1, 360, "tag", Decimal("21.0"))],
+        override=(Decimal("23.5"), now),
+    )
+
+    result = resolved_setpoint(session, zone, now)
+
+    assert result.temperature_c == Decimal("21.0")
+    assert result.mode_code == "tag"
+
+
 def test_the_reason_names_the_decision(session: Session) -> None:
     """Principle 5: traceable, why this setpoint applies."""
     zone = zone_with_schedule(session, "grund", points=[(1, 360, "tag", Decimal("21.0"))])
     result = resolved_setpoint(session, zone, datetime(2026, 8, 31, 10, 0))
     assert "Tag" in result.reason and "06:00" in result.reason
+
+
+def test_schedule_reason_preserves_non_round_switch_minutes(session: Session) -> None:
+    zone = zone_with_schedule(
+        session, "reason-minute", points=[(1, 119, "tag", Decimal("21.0"))]
+    )
+
+    result = resolved_setpoint(session, zone, datetime(2026, 8, 31, 3, 0))
+
+    assert "01:59" in result.reason
+
+
+def test_schedule_mode_without_a_zone_temperature_falls_back_to_frost(
+    session: Session,
+) -> None:
+    zone = zone_with_schedule(
+        session,
+        "missing-mode-temperature",
+        points=[(1, 360, "tag", Decimal("21.0"))],
+        frost_protection=Decimal("15.5"),
+    )
+    tag_mode = session.query(SetpointMode).filter_by(code="tag").one()
+    session.query(schedule_module.ZoneSetpoint).filter_by(
+        zone_id=zone.id, setpoint_mode_id=tag_mode.id
+    ).delete()
+    session.flush()
+
+    result = resolved_setpoint(session, zone, datetime(2026, 8, 31, 10, 0))
+
+    assert result.temperature_c == Decimal("15.5")
+    assert result.mode_code == "frost-missing-mode-temperature"
 
 
 def test_there_is_no_next_point_without_any_points() -> None:
