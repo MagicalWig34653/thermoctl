@@ -1,7 +1,7 @@
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, Numeric, String, Text, false
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, Numeric, String, Text, false
 from sqlalchemy.dialects import mysql
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -39,9 +39,17 @@ class ShadowDecision(Base):
     """Traceable result of a single shadow cycle."""
 
     __tablename__ = "shadow_decision"
+    __table_args__ = (
+        Index(
+            "ix_shadow_decision_zone_decided_id",
+            "zone_id",
+            "decided_at",
+            "id",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    decided_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)
+    decided_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     # CASCADE as with all other zone relationships. The shadow log is operational data
     # of a zone; if it is deleted, the log loses its reference. That the zone was
     # deleted is recorded in the audit log — that is the record meant to persist, and

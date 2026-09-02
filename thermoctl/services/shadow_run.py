@@ -226,7 +226,8 @@ def _process_zone(
         state.last_valve_protection_at = now
     if state is not None and not state.regular_heat_history_compacted:
         # One-time bridge for installations upgraded with existing shadow history.
-        # Afterwards the condensed marker is authoritative and survives retention.
+        # Afterwards the condensed marker is authoritative, so protection scheduling
+        # never has to reconstruct this operating state from the growing detailed log.
         state.last_regular_heat_at = session.scalar(
             select(ShadowDecision.decided_at)
             .where(
@@ -279,10 +280,9 @@ def _process_zone(
             # protection marker would make the next hysteresis cycle treat that
             # regular state as temporary protection and switch it off too early.
             state.valve_protection_started_at = None
-            # Persist simulated regular heating separately from the retained shadow
-            # log. The marker records a regular heating decision, not a command or
-            # physical movement, and survives deletion of shadow rows at the default
-            # 30-day retention edge.
+            # Persist simulated regular heating as constant-size operating state,
+            # separately from the unbounded detailed shadow log. The marker records a
+            # regular heating decision, not a command or physical movement.
             state.last_regular_heat_at = now
 
     row = ShadowDecision(
