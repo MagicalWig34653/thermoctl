@@ -318,17 +318,19 @@ Für die letzte hält ein ausdrücklich als offen benannter Test die Lücke fest
 
 | Runde | Zustand |
 |---|---|
-| 1 — Mutationstest | Stufe 1 abgeschlossen (siehe oben), Rest läuft |
+| 1 — Mutationstest | Stufe 1 und 2 abgeschlossen, im Kreuzreview |
 | 2 — Zusicherungs-Audit | abgeschlossen |
-| 3 — die Regelkette als Zustandstabelle | umgesetzt, im Kreuzreview |
+| 3 — die Regelkette als Zustandstabelle | abgeschlossen, **ein Fehler gefunden** |
 | 4 — Musterjagd | abgeschlossen |
-| 5 — Messen vor Optimieren | läuft |
-| 6 — Aufräumen | nicht begonnen, wartet auf die Mutationszahlen aus Runde 1 |
-| 7 — Sicherheit von vorn | läuft |
+| 5 — Messen vor Optimieren | abgeschlossen |
+| 6 — Aufräumen | nicht begonnen |
+| 7 — Sicherheit von vorn | abgeschlossen, **vier Rechtefehler gefunden** |
 
-Runde 3 hat **keine Befunde an der Regellogik** ergeben: Alle 1.260 erreichbaren
-Kombinationen der acht Entscheidungsachsen entsprechen der Spezifikation, `control_loop.py`
-blieb unverändert.
+**Runde 1, Stufe 2** hat vier weitere Domänendateien gemessen: `schedule.py` (138
+überlebende Mutanten), `device_assignment.py` (14), `statistics.py` (12), `deviation.py`
+(1). 115 wirksame Mutationen sind mit inhaltlichen Tests erschlagen, 50 als nachweislich
+gleichwertig begründet abgelegt. **Echte Fehler in der Produktionslogik: wieder keine** —
+über inzwischen sechs gemessene Dateien war jeder Befund eine Lücke in den Tests.
 
 **Die drei Zeitzonen-Grenzfehler sind behoben** — Statistik und Auditfilter rechnen
 Tagesgrenzen über `local_day_start_utc` in der konfigurierten Zeitzone, und der
