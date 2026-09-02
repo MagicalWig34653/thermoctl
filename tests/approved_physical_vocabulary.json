@@ -61,7 +61,6 @@
     "docs/STATUS.md": [
       "## Was geschaltet wird — genau",
       "## v0.3.0 — die Fassung, in der thermoctl schaltet",
-      "- **Die Frostschutz-Entscheidung bestätigen**, bevor Phase 4 scharf schaltet — siehe",
       "- **Ein Meross-Aktor bekommt jetzt ebenfalls seinen Befehl.** Das Schalten dort braucht",
       "- **Ein Zigbee2MQTT-Thermostatventil ohne `self_regulating`** (Fähigkeit `thermostat`",
       "- **Sind beide Riegel offen**, bekommen selbstregelnde Thermostatventile ihren Sollwert",

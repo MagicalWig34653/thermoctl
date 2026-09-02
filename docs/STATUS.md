@@ -237,24 +237,37 @@ einem veralteten Temperaturwert nennt die Meldung ausdrücklich, dass die Zone b
 Weiteres gegen ihren konkreten Frostschutz-Sollwert regelt. Der Meldeweg ist unabhängig
 von den beiden Schalt-Riegeln und läuft nach Abschluss der Datenbanktransaktion.
 
-## Offen, unabhängig von der Freigabe
+## Offen
 
-**Zeitzone — fachliche Grenzfehler, keine Anzeigefragen:**
-
-## Offen, unabhängig von der Freigabe
-
-**Geplant, nicht begonnen:** ein Komplettreview des Projekts — Mutationstest,
-Zusicherungs-Audit, die Regelkette als Ganzes, Musterjagd, Messen vor Optimieren.
-Der Plan steht in
+**Das Komplettreview läuft.** Der Plan mit sieben Runden steht in
 [superpowers/plans/2026-09-01-komplettreview.md](superpowers/plans/2026-09-01-komplettreview.md).
 
-**Was nur der Projektinhaber kann:**
+| Runde | Zustand |
+|---|---|
+| 1 — Mutationstest | Stufe 1 abgeschlossen (siehe oben), Rest läuft |
+| 2 — Zusicherungs-Audit | abgeschlossen |
+| 3 — die Regelkette als Zustandstabelle | umgesetzt, im Kreuzreview |
+| 4 — Musterjagd | abgeschlossen |
+| 5 — Messen vor Optimieren | läuft |
+| 6 — Aufräumen | nicht begonnen, wartet auf die Mutationszahlen aus Runde 1 |
+| 7 — Sicherheit von vorn | läuft |
 
+Runde 3 hat **keine Befunde an der Regellogik** ergeben: Alle 1.260 erreichbaren
+Kombinationen der acht Entscheidungsachsen entsprechen der Spezifikation, `control_loop.py`
+blieb unverändert.
+
+**Die drei Zeitzonen-Grenzfehler sind behoben** — Statistik und Auditfilter rechnen
+Tagesgrenzen über `local_day_start_utc` in der konfigurierten Zeitzone, und der
+`age`-Filter unterscheidet Zukunft von Vergangenheit, statt beides zu „gerade eben" zu
+verschmelzen.
+
+**Was nur der Projektinhaber entscheiden kann:**
+
+- **Proportional-Integral-Regelung: ja, nein, oder erst messen?** Die Bewertung steht in
+  [superpowers/specs/2026-09-02-pi-regelung-bewertung.md](superpowers/specs/2026-09-02-pi-regelung-bewertung.md).
+  Empfehlung: erst messen — die Daten dafür liegen seit 0.3.0 vor.
 - **Phase 2 wirklich abschliessen** — Schritt für Schritt in
   [inbetriebnahme-schattenbetrieb.md](inbetriebnahme-schattenbetrieb.md). Die Anlage muss
   über mehrere Tage laufen, bevor feststeht, dass plausible Ist-Temperaturen einlaufen
   und das Schattenprotokoll nachvollziehbare Entscheidungen zeigt.
-- **Die Frostschutz-Entscheidung bestätigen**, bevor Phase 4 scharf schaltet — siehe
-  [offene-entscheidungen.md](offene-entscheidungen.md). Sie hat körperliche Folgen.
 - **Entscheiden, ob das Repository öffentlich werden soll.**
-- **Den Tag setzen**, wenn 0.2.2 freigegeben ist — ein Tag veröffentlicht ein Abbild.
