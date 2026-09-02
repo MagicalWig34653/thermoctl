@@ -15,7 +15,8 @@ def test_queries_report_the_real_shadow_index_state(
     production = json.loads(capsys.readouterr().out)
     assert all(entry["composite_shadow_index_present"] for entry in production)
     assert all(
-        entry["shadow_indexes"] == ["ix_shadow_decision_zone_decided_id"]
+        entry["shadow_indexes"]
+        == ["ix_shadow_decision_retention", "ix_shadow_decision_zone_decided_id"]
         for entry in production
     )
 

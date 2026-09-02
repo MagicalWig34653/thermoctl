@@ -60,7 +60,7 @@ Wiederholung:
 Die Zeilenzahl ist gerechnet, nicht gemessen: `365 × 24 × 60 × 10 = 5.256.000` Zeilen
 je Tabelle und Jahr, falls jede Zone in jedem Minutenzyklus genau eine Zeile erzeugt.
 Die Größe je Zeile wurde dagegen gemessen: je Tabelle 100.000 repräsentative Zeilen in
-einer eigenen SQLite-Datei einschließlich der Produktionsindizes, anschließend
+einer eigenen SQLite-Datei einschließlich der damaligen Produktionsindizes, anschließend
 Dateigrößendifferenz geteilt durch 100.000.
 
 | Tabelle | gemessene Byte/Zeile | Hochrechnung für 5.256.000 Zeilen |
@@ -80,15 +80,22 @@ beginnt. Ein probeweise angelegter Index nur auf `measured_at` kostete 2,82 s Au
 wurde wegen `ORDER BY id` ebenfalls nicht gewählt und verkürzte den Lauf nur von 11,80
 auf 11,58 s (1,8 Prozent). Deshalb wurde dieser Index nicht übernommen.
 
-Die Aufbewahrung greift ausschließlich für `measurement`. In
-`services/retention.py` gibt es keine Löschung für `shadow_decision`; diese Tabelle
-wächst bei zehn Zonen gemessen hochgerechnet um rund 811 MiB/Jahr. Es wurde bewusst keine
-Aufbewahrung ergänzt: Datenlebensdauer ist eine fachliche Entscheidung. Der offene Punkt
-mit den Alternativen eigene Frist, `measurement_retention_days` mitbenutzen oder bewusst
-unbegrenzt behalten ist in `docs/offene-entscheidungen.md` festgehalten. `device_command`
-hat bewusst keine Aufbewahrung. Die 674-MiB-Jahreszahl ist eine Obergrenze unter der
+Zum Zeitpunkt dieser Messrunde griff die Aufbewahrung ausschließlich für `measurement`;
+die daraus entstandene offene Entscheidung ist inzwischen getroffen und umgesetzt:
+`shadow_decision_retention_days` hält standardmäßig 365 Tage, und die tägliche Bereinigung
+löscht ältere Schattenentscheidungen in Blöcken. Der dafür ergänzte Index
+`ix_shadow_decision_retention (decided_at, id)` gehört nicht zu den unten dokumentierten
+historischen Indexvergleichen. `device_command` hat weiterhin bewusst keine Aufbewahrung.
+Die 674-MiB-Jahreszahl ist eine Obergrenze unter der
 ausdrücklich genannten Annahme eines Befehls je Zone und Minute; im vorhandenen Code
 unterdrückt `PublicationState` unveränderte, bereits erfolgreiche Befehle.
+
+Nach der Umsetzung wurde die erste Schattenbereinigung mit genau 5.256.000 vollständig
+fälligen Zeilen und der Blockgröße 5000 auf derselben SQLite-Umgebung gemessen. Sie löschte
+alle Zeilen in 11,12 s; `EXPLAIN QUERY PLAN` meldete dabei
+`SEARCH shadow_decision USING COVERING INDEX ix_shadow_decision_retention (decided_at<?)`.
+Ein normaler täglicher Folgelauf hat bei zehn Zonen nur rund 14.400 statt einer ganzen
+Jahresmenge zu entfernen.
 
 Wiederholung (Zielverzeichnis muss leer oder neu sein):
 
@@ -141,14 +148,16 @@ Produktionscode, Tests, MCP-, Web- und REST-Schichten ergab folgende lesende Ste
 `start_views.py`, `control_views.py` und `kiosk_views.py` lesen für sichtbare Zonen;
 `mcp/server.py` liest genau eine Zone; `domain/statistics.py` filtert Zeitraum und eine
 `zone_id.in_(zone_ids)`-Liste; `domain/zones.py` zählt Abhängigkeiten einer konkreten
-Zone. Jede Abfrage, die nach `decided_at` filtert oder sortiert, schränkt zugleich über
-`zone_id` ein. Einige Tests zählen oder lesen die ganze Tabelle ohne Zeitfilter; dafür
-ist der Einzelindex ebenfalls nutzlos. Direkte REST-Abfragen auf die Tabelle gibt es
-nicht. Deshalb wurde `ix_shadow_decision_decided_at` aus Modell und bestehender,
-uncommitteter Migration entfernt; `downgrade()` stellt ihn wieder her.
+Zone. Jede damals vorhandene Abfrage, die nach `decided_at` filterte oder sortierte,
+schränkte zugleich über `zone_id` ein. Einige Tests zählten oder lasen die ganze Tabelle
+ohne Zeitfilter; dafür war der Einzelindex ebenfalls nutzlos. Direkte REST-Abfragen auf
+die Tabelle gab es nicht. Deshalb wurde `ix_shadow_decision_decided_at` aus Modell und
+bestehender, uncommitteter Migration entfernt; `downgrade()` stellt ihn wieder her. Die
+später beschlossene globale Aufbewahrung ist eine neue Abfrage ohne Zoneneinschränkung
+und begründet den neuen Retention-Index auf `(decided_at, id)`.
 
 Der Schreibaufwand wurde isoliert mit 500.000 Zeilen und sieben Wiederholungen gemessen.
-Der Median lag mit dem finalen Composite-Index allein bei 313,32 ms, mit zusätzlichem
+Der Median lag mit dem damals finalen Composite-Index allein bei 313,32 ms, mit zusätzlichem
 alten Einzelindex bei 365,20 ms: ohne den ungenutzten Index 14,2 Prozent weniger
 INSERT-Zeit. Das sind auf 20 Zeilen eines normalen Schattenzyklus umgerechnet nur rund
 0,002 ms; für den gesamten Zyklus wird deshalb keine merkliche Beschleunigung behauptet.
@@ -185,4 +194,6 @@ oder
 SQLite hatte danach ausschließlich `ix_shadow_decision_zone_decided_id`. Auf MariaDB
 lagen beim Downgrade der wiederhergestellte Einzelindex und der notwendige
 `ix_shadow_decision_zone_id_fk`; nach dem zweiten Upgrade blieben ausschließlich
-Composite-Index und Primärschlüssel.
+Composite-Index und Primärschlüssel. Das beschreibt bewusst den Stand jener
+Indexmigration; das heutige Schema ergänzt daneben `ix_shadow_decision_retention` für
+die globale Löschabfrage.

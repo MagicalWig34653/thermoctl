@@ -65,6 +65,9 @@ def test_checking_a_number_accepts_the_comma() -> None:
         ("default_min_on_seconds", "0"),
         ("default_hysteresis_k", "0"),
         ("shadow_interval_seconds", "0"),
+        ("shadow_decision_retention_days", "0"),
+        ("shadow_decision_retention_days", "-1"),
+        ("shadow_decision_retention_days", "3651"),
         ("default_min_on_seconds", "99999"),
         ("default_hysteresis_k", "keine Zahl"),
         ("default_min_on_seconds", "60,5"),
@@ -230,7 +233,11 @@ def test_saving_defaults(client_als: ClientBuilder, session: Session) -> None:
     client = client_als(ALL_PERMISSIONS)
     response = client.post(
         "/settings",
-        data=_defaults(default_hysteresis_k="0,4", shadow_interval_seconds="90"),
+        data=_defaults(
+            default_hysteresis_k="0,4",
+            shadow_interval_seconds="90",
+            shadow_decision_retention_days="730",
+        ),
         headers=_csrf(client),
         follow_redirects=False,
     )
@@ -238,6 +245,7 @@ def test_saving_defaults(client_als: ClientBuilder, session: Session) -> None:
     row = session.get(Setting, 1)
     assert row.default_hysteresis_k == Decimal("0.4")
     assert row.shadow_interval_seconds == 90
+    assert row.shadow_decision_retention_days == 730
 
 
 def test_a_rejected_default_leaves_nothing_half_written(

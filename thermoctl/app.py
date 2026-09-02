@@ -78,7 +78,7 @@ from thermoctl.services.publishing import (
     send_fault_notice,
 )
 from thermoctl.services.publishing import cycle as publication_cycle
-from thermoctl.services.retention import delete_old_measurements
+from thermoctl.services.retention import delete_old_measurements, delete_old_shadow_decisions
 from thermoctl.services.shadow_run import cycle
 from thermoctl.setup import SETUP_TOKEN_LIFETIME, create_setup_token, setup_needed
 from thermoctl.web import STATIC_DIR, templates
@@ -332,6 +332,7 @@ async def _shadow_loop(app: FastAPI) -> None:
                     )
                 if now >= next_retention:
                     delete_old_measurements(session, now)
+                    delete_old_shadow_decisions(session, now)
                     next_retention = now + timedelta(days=1)
             if now >= next_meross:
                 next_meross = now + timedelta(seconds=MEROSS_REFRESH_S)

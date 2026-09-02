@@ -41,6 +41,11 @@ class ShadowDecision(Base):
     __tablename__ = "shadow_decision"
     __table_args__ = (
         Index(
+            "ix_shadow_decision_retention",
+            "decided_at",
+            "id",
+        ),
+        Index(
             "ix_shadow_decision_zone_decided_id",
             "zone_id",
             "decided_at",

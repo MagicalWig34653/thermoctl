@@ -280,6 +280,49 @@ Die zweite Zeile ist der Grund für die beiden Messwert-Ausprägungen genau **au
 Bandkanten: Vorher lagen alle Messwerte 1,0 K neben dem Sollwert bei 0,5 K Hysterese, und
 eine vertauschte Vergleichsrichtung an der Kante blieb unbemerkt.
 
+## Die Anlage läuft scharf — und was der Projektinhaber daraufhin entschieden hat
+
+**Seit dem 2026-09-02 läuft v0.3.0 an der echten Heizung**, zum Zeitpunkt dieser Notiz
+seit rund fünf Stunden, ohne Anlass zum Abschalten. Das Altsystem läuft im
+Parallelbetrieb weiter und bleibt die Rückfallebene.
+
+Auf die offenen Punkte hat der Projektinhaber entschieden:
+
+| Punkt | Entscheidung | Stand |
+|---|---|---|
+| Ventilschutz wurde zu dauerhaftem Heizen | Mindest-Einschaltdauer gilt für einen Schutzlauf nicht | umgesetzt |
+| Aufbewahrung `shadow_decision` | ein Jahr | umgesetzt, Vorgabe 365 Tage |
+| PI-Regelung | optional je Zone, nur Schaltaktoren, zunächst Beta | Spezifikation liegt vor, **nicht gebaut** |
+| MQTT-Broker | EMQX mit Authentifizierung und Rechten ist vorhanden | dokumentiert, nicht erzwingbar |
+| Repository öffentlich | erst mit einer zumutbaren, getesteten Fassung | offen |
+
+### Sicherheitsbefunde: sechs behoben
+
+Aus der Durchsicht vom 2026-09-02, zusätzlich zu den vier Rechtefehlern:
+
+- **Anmeldeversuche konnten den Regelzyklus anhalten.** `time.sleep` und Argon2id liefen
+  im async-Handler auf derselben Ereignisschleife wie die Regelung. Jetzt `await` und ein
+  Thread. Der Fehlversuchszähler ist gedeckelt.
+- **Ein Passwortwechsel beendet jetzt die anderen Sitzungen**, die eigene bleibt. Dazu
+  „Andere Sitzungen beenden" unter `/users` — den Weg hatte der Docstring von
+  `set_password` behauptet, ohne dass es ihn gab.
+- **Das Einrichtungs-Token läuft nach einer Stunde ab.** Es steht weiterhin absichtlich im
+  Log — das ist der einzige Kanal dafür —, aber eines aus einem alten Log legt keinen
+  Administrator mehr an.
+- **Meross bestätigt jetzt den Zustand, nicht nur den Befehl.** Namespace und Signatur der
+  Antwort werden geprüft, und wo sie einen Schaltzustand mitliefert, muss er zum Befehl
+  passen. Eine nicht verifizierbare Bestätigung gilt als Fehlschlag und wird wiederholt.
+- **Der Webhook folgt keiner Weiterleitung mehr** und gibt den `Authorization`-Header
+  damit nicht an ein fremdes Ziel weiter.
+- **Sichere Cookies** waren bereits vollständig umgesetzt; alle sechs Cookies beachten den
+  Schalter. Was fehlt, ist `THERMOCTL_SECURE_COOKIES=true` in der Installation. Neu ist
+  ein Wächter, der jeden `set_cookie`-Aufruf im Quelltext über den AST prüft.
+
+**Weiterhin offen und benannt:** der MQTT-Befehlsweg (Broker-Sache, siehe
+[mqtt.md](mqtt.md)), die Vorgabe-Bindung an `0.0.0.0` ohne TLS (der Betrieb hier läuft
+hinter einem Reverse Proxy), und dass ein `SET` ohne anschließendes `GET` nicht beweist,
+dass ein Relais physisch geschaltet hat.
+
 ## Runde 6 — ein Refactoring, das seine Prüfkraft nachweist
 
 `_process_zone` in der Regelschleife ist in drei benannte Funktionen zerlegt:

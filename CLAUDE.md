@@ -202,6 +202,25 @@ Aus der Umsetzung von Teilprojekt 1, damit es niemand erneut herausfinden muss:
   `db/models/__init__.py` werden von jeder Aufgabe ergänzt und kollidieren zuverlässig. Eine
   automatisch aufgelöste Fassung kann doppelte Definitionen enthalten und trotzdem grüne
   Tests liefern.
+- **`cosmic-ray exec` niemals im Vordergrund unter einem Werkzeug-Timeout.** Cosmic Ray
+  schreibt jede Mutation in die Datei und stellt sie nur über ein `finally` wieder her.
+  Ein harter Abbruch überspringt das und hinterlässt **mutierten Produktionscode ohne
+  Fehlermeldung**; ein Folgelauf misst dann gegen die kaputte Datei und liefert ein
+  vollständiges, aber ungültiges Ergebnis. In der Regelkette ist das der schlimmste
+  denkbare Ausgang. Im Hintergrund starten und die Prüfsumme der Datei vor und nach dem
+  Lauf vergleichen.
+- **`pgrep -f <muster>` findet auch die eigene Warteschleife.** Eine Schleife wie
+  `while pgrep -f "cosmic-ray exec"; do sleep 30; done` trägt das Muster in ihrer eigenen
+  Kommandozeile, findet sich selbst und wartet ewig. Dasselbe Problem wie bei `pkill -f`,
+  nur stiller. Auf den Programmpfad prüfen (`pgrep -fl "bin/cosmic-ray"`) oder den
+  Prozess über seine PID verfolgen.
+- **Das Projekt liegt in einem iCloud-Ordner.** `~/Documents` ist ein Symlink nach iCloud
+  Drive, und der Dienst legt bei schnellen Schreibvorgängen Konfliktkopien der Form
+  `deviation 2.py` an — git-Operationen und Mutationsläufe erzeugen sie zuverlässig. Sie
+  sind alte Stände. `.gitignore` hält sie aus dem Repository, `--ignore-glob` in
+  `pyproject.toml` aus dem Testlauf, und `.venv` liegt als `.venv.nosync` ausserhalb des
+  Abgleichs. Wenn Tests an Zusicherungen scheitern, die vor Wochen gestimmt haben:
+  zuerst `find . -name "* 2.*"` prüfen, bevor man den Fehler im Code sucht.
 - **Agents melden Blocker, statt zu raten** — das ist die wichtigste Regel im Auftragstext.
   Fast alle Blocker in Teilprojekt 1 waren Fehler im Plan, nicht der Umsetzung. Ein Agent,
   der einen vorgegebenen Test „passend macht", verdeckt sie.
