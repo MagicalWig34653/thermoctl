@@ -95,9 +95,17 @@
     <h2 class="h5 mt-4">Eigenes Passwort ändern</h2>
     <form method="post" action="/users/{{ own_id }}/password">
         {{ text_field("password", "Neues Passwort", "", input_type="password", required=true,
-                    help_text="Mindestens 12 Zeichen. Bestehende Sitzungen bleiben gültig.",
+                    help_text="Mindestens 12 Zeichen. Alle anderen angemeldeten Geräte werden dabei abgemeldet; dieses bleibt angemeldet.",
                     errors=errors.get("password", "")) }}
         <button type="submit" class="btn btn-secondary">Passwort setzen</button>
+    </form>
+
+    <h2 class="h5 mt-4">Andere Sitzungen beenden</h2>
+    <p class="t-quiet small">Meldet alle anderen Geräte ab, die gerade mit diesem Konto
+        angemeldet sind — ohne das Passwort zu ändern. Sinnvoll, wenn ein Gerät verloren
+        ging oder in fremden Händen war.</p>
+    <form method="post" action="/users/sessions/revoke-others">
+        <button type="submit" class="btn btn-outline-secondary">Andere Sitzungen beenden</button>
     </form>
 </section>
 {% endblock %}

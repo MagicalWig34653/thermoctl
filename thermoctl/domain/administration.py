@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 
 from thermoctl import audit
 from thermoctl.auth.passwords import hash_password
+from thermoctl.auth.sessions import revoke_all_sessions
 from thermoctl.db.base import utcnow
 from thermoctl.db.models.credential import ApiToken
 from thermoctl.db.models.identity import (
@@ -207,20 +208,32 @@ def set_user_group(
 
 def set_password(
     session: Session, user: User, new_password: str, *, actor_id: int | None,
-    source: str = "web",
+    source: str = "web", keep_session_id: int | None = None,
 ) -> None:
-    """Sets a new password. Existing sessions remain valid.
+    """Sets a new password and ends this user's other sessions.
 
-    Deliberately so: in everyday use, a password change is usually not a reaction to a
-    suspicion. Whoever wants to end all sessions revokes them explicitly -- there is a
-    dedicated way to do that, instead of conflating two intents into one action.
+    The opposite stood here, with the argument that a password change is usually not a
+    reaction to a suspicion, and that whoever wants to end all sessions has a dedicated
+    way to do it. The second half was simply not true -- no such way existed -- and the
+    first half gets the trade backwards. If someone changes their password *because*
+    they suspect a stolen cookie, leaving that cookie alive defeats the whole point,
+    and they get no warning that it happened. The cost of the other choice is one
+    re-login on their other devices.
+
+    `keep_session_id` spares the session making the change, so the browser in front of
+    the user stays logged in. An administrator resetting someone else's password
+    passes nothing, and every session of that account ends.
     """
     user.password_hash = hash_password(new_password)
     session.flush()
+    beendet = revoke_all_sessions(session, user.id, keep_id=keep_session_id)
     audit.record(
         session, source=source, action="user.password_changed", object_type="user",
         object_id=str(user.id),
-        summary=f"Passwort von '{user.username}' geaendert", user_id=actor_id,
+        summary=(
+            f"Passwort von '{user.username}' geaendert, "
+            f"{beendet} weitere Sitzung(en) beendet"
+        ), user_id=actor_id,
     )
 
 

@@ -1,7 +1,8 @@
+import asyncio
 import secrets
-import time
 from typing import Annotated
 
+from anyio import to_thread
 from fastapi import APIRouter, Depends, Form, Request, Response, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy import select
@@ -36,6 +37,20 @@ router = APIRouter(dependencies=[Depends(csrf_protection)], include_in_schema=Fa
 # to lock yourself out.
 FEHLVERSUCHE: dict[str, int] = {}
 
+# The counter is keyed by whatever username was typed, so an unauthenticated
+# caller chooses the keys. Without a bound, a stream of invented names grows this
+# dict for as long as the process runs. The cap is generous next to the number of
+# accounts a household has, and evicting the oldest entry is the right trade: the
+# counter exists to slow down guessing at one name, not to remember every name
+# ever tried.
+_MAX_FEHLVERSUCHE_EINTRAEGE = 1024
+
+
+def _merke_fehlversuch(username: str, versuche: int) -> None:
+    FEHLVERSUCHE[username] = versuche
+    while len(FEHLVERSUCHE) > _MAX_FEHLVERSUCHE_EINTRAEGE:
+        FEHLVERSUCHE.pop(next(iter(FEHLVERSUCHE)))
+
 _ERROR_MESSAGE = "Benutzername oder Passwort falsch."
 
 
@@ -45,10 +60,10 @@ _ERROR_MESSAGE = "Benutzername oder Passwort falsch."
 _VERGLEICHS_HASH = hash_password(secrets.token_urlsafe(32))
 
 
-def sleep(seconds: float) -> None:
+async def sleep(seconds: float) -> None:
     """A dedicated function instead of a direct `time.sleep()` call, so tests can
     replace the delay via `monkeypatch.setattr` without actually waiting."""
-    time.sleep(seconds)  # pragma: no cover - every test replaces exactly this line
+    await asyncio.sleep(seconds)  # pragma: no cover - every test replaces this line
 
 
 @router.get("/login")
@@ -76,7 +91,11 @@ async def login(
     settings = get_settings()
 
     previous_failures = FEHLVERSUCHE.get(username, 0)
-    sleep(min(2**previous_failures, 5))
+    # `await`, not `time.sleep`: this handler runs on the same event loop as the
+    # control cycle. A blocking sleep here stops the loop for everyone, so an
+    # unauthenticated caller could delay heating decisions by hammering /login --
+    # the actuators would keep their last state while the controller is stalled.
+    await sleep(min(2**previous_failures, 5))
 
     user = session.scalar(select(User).where(User.username == username))
     # The password check ALWAYS runs, even for an unknown username -- then against a
@@ -86,13 +105,17 @@ async def login(
     # this computation time would reveal which accounts exist. The same message and
     # the same wait time alone are not enough for that.
     if user is None:
-        verify_password(password, _VERGLEICHS_HASH)
+        # Same reason as the sleep above: Argon2id is deliberately expensive, and
+        # that cost must not be paid on the event loop.
+        await to_thread.run_sync(verify_password, password, _VERGLEICHS_HASH)
         successful = False
     else:
-        successful = user.is_active and verify_password(password, user.password_hash)
+        successful = user.is_active and await to_thread.run_sync(
+            verify_password, password, user.password_hash
+        )
 
     if not successful:
-        FEHLVERSUCHE[username] = previous_failures + 1
+        _merke_fehlversuch(username, previous_failures + 1)
         # The same summary for existing and non-existing usernames alike — the audit
         # entry is allowed to reveal what happened, but the HTTP response to the
         # caller must not reveal whether the username exists.

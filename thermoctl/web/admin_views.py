@@ -6,8 +6,10 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from thermoctl import audit
 from thermoctl.auth.dependencies import csrf_protection, current_principal, get_session
 from thermoctl.auth.passwords import PasswordTooShort
+from thermoctl.auth.sessions import COOKIE_NAME, resolve_session, revoke_all_sessions
 from thermoctl.auth.tokens import issue_token
 from thermoctl.db.base import utcnow
 from thermoctl.db.models.credential import ApiToken
@@ -163,6 +165,41 @@ async def user_group_view(
     return RedirectResponse("/users", status_code=status.HTTP_303_SEE_OTHER)
 
 
+@router.post("/users/sessions/revoke-others")
+async def revoke_other_sessions_view(
+    request: Request,
+    principal: Annotated[Principal, Depends(current_principal)],
+    session: Annotated[Session, Depends(get_session)],
+) -> Response:
+    """Ends every session of the caller except the one they are using.
+
+    The counterpart to the password change: someone who suspects a stolen cookie but
+    does not want a new password needs a way to cut the other sessions loose. Until
+    now `set_password` claimed in its docstring that this existed; it did not.
+
+    Needs no permission -- it only ever touches the caller's own sessions, and
+    locking yourself out of your other browsers is not a privileged act.
+    """
+    if principal.user_id is None:  # pragma: no cover - kiosk tokens have no user
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Kein Benutzerkonto")
+    cookie = request.cookies.get(COOKIE_NAME)
+    laufende = resolve_session(session, cookie) if cookie else None
+    beendet = revoke_all_sessions(
+        session, principal.user_id,
+        keep_id=laufende.id if laufende is not None else None,
+    )
+    audit.record(
+        session, source="web", action="session.revoked_others",
+        object_type="user", object_id=str(principal.user_id),
+        summary=f"{beendet} weitere Sitzung(en) beendet",
+        user_id=principal.user_id,
+    )
+    return _user_list(
+        request, session, principal.user_id,
+        hint=f"{beendet} weitere Sitzung(en) beendet.",
+    )
+
+
 @router.post("/users/{user_id}/password")
 async def user_password_view(
     request: Request,
@@ -179,7 +216,18 @@ async def user_password_view(
     if user_record is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Benutzer nicht gefunden")
     try:
-        set_password(session, user_record, password, actor_id=principal.user_id)
+        # Beim eigenen Passwortwechsel bleibt die Sitzung vor dem Nutzer bestehen;
+        # jede andere endet. Setzt eine Verwaltung ein fremdes Passwort zurueck,
+        # endet auch die des Betroffenen -- das ist dort der Sinn der Sache.
+        eigene = None
+        if user_id == principal.user_id:
+            cookie = request.cookies.get(COOKIE_NAME)
+            laufende = resolve_session(session, cookie) if cookie else None
+            eigene = laufende.id if laufende is not None else None
+        set_password(
+            session, user_record, password,
+            actor_id=principal.user_id, keep_session_id=eigene,
+        )
     except PasswordTooShort as exc:
         return _user_list(
             request, session, principal.user_id, password_form_error(exc), {}

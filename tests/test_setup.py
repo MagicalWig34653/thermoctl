@@ -1,9 +1,19 @@
+from datetime import timedelta
+
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
+from thermoctl.db.base import utcnow
+from thermoctl.db.models.credential import SetupToken
 from thermoctl.db.models.identity import AccessGroup, User
 from thermoctl.db.models.operations import Setting
-from thermoctl.setup import create_setup_token, setup_needed
+from thermoctl.setup import (
+    SETUP_TOKEN_LIFETIME,
+    create_setup_token,
+    run_setup,
+    setup_needed,
+)
 
 
 def test_without_a_user_setup_is_needed(session: Session) -> None:
@@ -183,7 +193,10 @@ def test_post_login_without_a_user_is_not_redirected(
     """Deliberately only GET is redirected: a submitted login attempt should
     keep its identical error message, rather than letting the redirect
     target give away what the service knows about the username."""
-    monkeypatch.setattr("thermoctl.web.auth_views.sleep", lambda _: None)
+    async def ohne_wartezeit(_: float) -> None:
+        return None
+
+    monkeypatch.setattr("thermoctl.web.auth_views.sleep", ohne_wartezeit)
     response = client.post(
         "/login",
         data={"username": "gibtsnicht", "password": "falsch-aber-lang"},
@@ -191,3 +204,47 @@ def test_post_login_without_a_user_is_not_redirected(
     )
     assert response.status_code != 303
     assert "Benutzername oder Passwort falsch" in response.text
+
+
+def test_an_expired_setup_token_no_longer_sets_anything_up(session: Session) -> None:
+    """The one secret this project writes to the log must stop working quickly.
+
+    It is written there on purpose -- the log is the only channel through which the
+    operator gets it. What made that worse than necessary was that it never expired:
+    read out of an old log, or out of a forwarded log aggregation, it still created
+    the first administrator weeks later. Now it does not.
+    """
+    plaintext = create_setup_token(session)
+    marke = session.query(SetupToken).one()
+    marke.created_at = utcnow() - SETUP_TOKEN_LIFETIME - timedelta(minutes=1)
+    session.flush()
+
+    with pytest.raises(PermissionError, match="abgelaufenes"):
+        run_setup(
+            session,
+            username="lino",
+            display_name="Lino",
+            password="ein-langes-passwort",
+            timezone_name="Europe/Berlin",
+            token=plaintext,
+        )
+
+
+def test_a_fresh_setup_token_still_works(session: Session) -> None:
+    """The counter-test: an hour is plenty for whoever just started the container.
+
+    Without this, the test above would also pass if the token had stopped working
+    altogether.
+    """
+    plaintext = create_setup_token(session)
+
+    benutzer = run_setup(
+        session,
+        username="lino",
+        display_name="Lino",
+        password="ein-langes-passwort",
+        timezone_name="Europe/Berlin",
+        token=plaintext,
+    )
+
+    assert benutzer.username == "lino"

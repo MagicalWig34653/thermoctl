@@ -62,3 +62,35 @@ def resolve_session(session: Session, cookie_value: str) -> Session_ | None:
 
 def revoke_session(session: Session, http_session: Session_) -> None:
     http_session.revoked_at = utcnow()
+
+
+def revoke_all_sessions(
+    session: Session, user_id: int, *, keep_id: int | None = None
+) -> int:
+    """Ends every live session of this user, optionally sparing one.
+
+    Returns how many were ended. `keep_id` is for the session doing the asking: a
+    password change from the browser should not log that browser out mid-action,
+    while every *other* browser -- including one an attacker holds -- must lose
+    access. An administrator resetting somebody else's password passes nothing and
+    ends all of them.
+
+    Expired and already revoked rows are skipped, so the returned count is the number
+    of sessions that actually lost access, not the size of the table.
+    """
+    now = utcnow()
+    betroffen = session.scalars(
+        select(Session_).where(
+            Session_.user_id == user_id,
+            Session_.revoked_at.is_(None),
+            Session_.expires_at > now,
+        )
+    ).all()
+    beendet = 0
+    for eintrag in betroffen:
+        if keep_id is not None and eintrag.id == keep_id:
+            continue
+        eintrag.revoked_at = now
+        beendet += 1
+    session.flush()
+    return beendet

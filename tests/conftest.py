@@ -293,7 +293,10 @@ def _without_real_waiting(monkeypatch: pytest.MonkeyPatch) -> None:
     went from two seconds to thirty-three because of this, and a slow suite
     gets run less often.
     """
-    monkeypatch.setattr("thermoctl.web.auth_views.sleep", lambda seconds: None)
+    async def ohne_wartezeit(seconds: float) -> None:
+        return None
+
+    monkeypatch.setattr("thermoctl.web.auth_views.sleep", ohne_wartezeit)
 
 @pytest.fixture
 def angemeldeter_client(

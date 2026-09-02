@@ -1,4 +1,5 @@
 import logging
+from datetime import timedelta
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -27,6 +28,15 @@ EXAMPLE_GROUPS: dict[str, list[str]] = {
     "Nur lesen": ["zone.read", "device.read"],
     "Integration": ["zone.read"],
 }
+
+# The setup token is the one secret this project deliberately writes to the log --
+# it is the only channel through which the operator receives it. What made that
+# worse than it had to be was that the token never expired: one read out of an old
+# log, or out of a forwarded log aggregation, still created the first administrator
+# weeks later. An hour is plenty for the person who just started the container and
+# useless to anyone reading the log afterwards. Expired means a restart issues a
+# fresh one.
+SETUP_TOKEN_LIFETIME = timedelta(hours=1)
 
 BUILTIN_MODES = [("tag", "Tag", 0), ("nacht", "Nacht", 1), ("frostschutz", "Frostschutz", 2)]
 
@@ -58,10 +68,15 @@ def run_setup(
         select(SetupToken).where(
             SetupToken.token_hash == hash_secret(token),
             SetupToken.consumed_at.is_(None),
+            SetupToken.created_at > utcnow() - SETUP_TOKEN_LIFETIME,
         )
     )
     if marker is None:
-        raise PermissionError("Ungueltiges oder verbrauchtes Einrichtungs-Token.")
+        # One message for invalid, consumed and expired alike: which of the three
+        # it was is not something a caller without the token should learn.
+        raise PermissionError(
+            "Ungueltiges, verbrauchtes oder abgelaufenes Einrichtungs-Token."
+        )
 
     # Correctable input is validated before any part of the setup is created. The
     # view deliberately catches PasswordTooShort; later writes must therefore not

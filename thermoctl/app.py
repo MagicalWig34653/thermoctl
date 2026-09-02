@@ -80,7 +80,7 @@ from thermoctl.services.publishing import (
 from thermoctl.services.publishing import cycle as publication_cycle
 from thermoctl.services.retention import delete_old_measurements
 from thermoctl.services.shadow_run import cycle
-from thermoctl.setup import create_setup_token, setup_needed
+from thermoctl.setup import SETUP_TOKEN_LIFETIME, create_setup_token, setup_needed
 from thermoctl.web import STATIC_DIR, templates
 from thermoctl.web.admin_views import router as admin_router
 from thermoctl.web.audit_views import router as audit_router
@@ -475,10 +475,22 @@ async def _process_mqtt_message(
 
 
 def _unused_setup_token_exists(session: Session) -> bool:
-    """Prevents every restart from generating and logging another, unused token while
-    one is already pending."""
+    """Whether a setup token is still pending and still usable.
+
+    Prevents every restart from generating and logging another token while one is
+    already valid. An *expired* one does not count: it can no longer set anything up,
+    so a restart should issue a fresh one instead of leaving the operator with a token
+    that silently stopped working.
+    """
     return (
-        session.scalar(select(SetupToken.id).where(SetupToken.consumed_at.is_(None)).limit(1))
+        session.scalar(
+            select(SetupToken.id)
+            .where(
+                SetupToken.consumed_at.is_(None),
+                SetupToken.created_at > utcnow() - SETUP_TOKEN_LIFETIME,
+            )
+            .limit(1)
+        )
         is not None
     )
 
@@ -516,7 +528,11 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
             # message text instead of an `extra=` field: only the message text
             # escapes the redaction in logging.py, an extra field with "token" in
             # its name would be redacted there.
-            log.info("Einrichtung erforderlich. Einmal-Token: %s", plaintext)
+            log.info(
+                "Einrichtung erforderlich. Einmal-Token (gueltig %d Minuten): %s",
+                int(SETUP_TOKEN_LIFETIME.total_seconds() // 60),
+                plaintext,
+            )
 
     # The MQTT client runs only with `mqtt_enabled` -- the test suite builds the
     # application constantly (every `TestClient`), and doing so must not trigger a
