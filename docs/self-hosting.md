@@ -115,7 +115,7 @@ docker compose start thermoctl
 Der Dienst wird dafür angehalten: Eine SQLite-Datei, die währenddessen geschrieben wird,
 ergibt eine Sicherung, die erst beim Zurückspielen als unbrauchbar auffällt.
 
-## 6. Aktualisieren
+## 6. Aktualisieren und zurückgehen
 
 ```bash
 docker compose pull
@@ -124,19 +124,34 @@ docker compose up -d
 
 Die Migrationen laufen beim Start von selbst. **Vorher einen Blick in
 [CHANGELOG.md](../CHANGELOG.md) werfen** — dort steht je Version, was beim Umstieg zu tun
-ist; zu 0.2.0 gehört etwa eine umbenannte Variable in der `.env`. Der Weg zurück ist die
-vorherige Marke:
+ist; zu 0.2.0 gehört etwa eine umbenannte Variable in der `.env`.
+
+**Zurück von 0.4.0 auf 0.3.0: erst die Datenbank mit dem noch neuen Abbild
+zurücksetzen, dann das Abbild wechseln.** Zwischen diesen Fassungen liegen zwei
+Migrationen. Den Dienst anhalten und die Datenbank zielgenau auf den Kopf von 0.3.0
+zurücksetzen:
 
 ```bash
-docker compose down
-# in compose.yml die Marke festnageln, etwa :0.1.0 statt :latest
+docker compose stop thermoctl
+docker compose run --rm --no-deps --entrypoint alembic thermoctl downgrade 3a3e44c560fb
+```
+
+Erst danach in `compose.yml` die Marke des Dienstes `thermoctl` von `:latest` auf
+`:0.3.0` ändern und starten:
+
+```bash
 docker compose up -d
 ```
 
-**Vor einem Versionssprung sichern.** Eine Migration kann Spalten umbauen; zurück geht es
-dann nur über die Sicherung. Die Marke `latest` entsteht ausschließlich aus einer
-Veröffentlichung, nie aus einem Zwischenstand — trotzdem ist eine feste Marke die ruhigere
-Wahl, wenn der Dienst wirklich heizt.
+Nur das alte Abbild zu holen genügt nicht: Dessen `alembic upgrade head` geht nicht
+rückwärts. Die Datenbank bliebe auf der neueren Revision, und der alte Code verweigert
+mit beiden Revisionsnummern und dem nötigen Alembic-Befehl den Start. Migrationen werden
+in diesem Projekt ausdrücklich vorwärts und rückwärts gegen SQLite und MariaDB geprüft;
+der Rückweg ist vorgesehen, aber absichtlich nicht automatisch.
+
+**Vor einem Versionssprung trotzdem sichern.** Die Marke `latest` entsteht ausschließlich
+aus einer Veröffentlichung, nie aus einem Zwischenstand — eine feste Marke ist dennoch
+die ruhigere Wahl, wenn der Dienst wirklich heizt.
 
 ## 7. Wenn etwas nicht geht
 
