@@ -5,9 +5,9 @@ nicht kennt. Sie setzt Docker voraus und dauert etwa zehn Minuten.
 
 > **Stand der Dinge.** Regelkreis und Geräte-Anbindung sind vorhanden. Im voreingestellten
 > Trockenlauf werden Entscheidungen nur protokolliert. Sind der gespeicherte Riegel und der
-> beim Start gebaute MQTT-Riegel offen, können selbstregelnde Thermostatventile Sollwerte
-> erhalten; Ein/Aus-Entscheidungen erreichen noch keinen Aktor. Damit ist `thermoctl` noch
-> keine betriebsfertige Steuerung. Die Einzelheiten stehen in der [Roadmap](roadmap.md).
+> beim Start gebaute zweite Riegel offen, werden die Entscheidungen wirklich ausgegeben:
+> Sollwerte an selbstregelnde Thermostatventile und Ein/Aus-Befehle an Zigbee2MQTT- und
+> Meross-Aktoren. Die Einzelheiten stehen in der [Roadmap](roadmap.md).
 
 ## 1. Was Sie brauchen
 
@@ -181,8 +181,7 @@ Zwei Dinge, die man wissen sollte:
   Browsers. Das ist der Preis eines Lesezeichens statt einer Anmeldung; abgefedert wird es
   durch den engen Rechtesatz und dadurch, dass sich das Token jederzeit widerrufen lässt.
 - **Im Trockenlauf ändert das Tablet nur die Regelentscheidung.** Solange die Regelung
-  unscharf ist, werden keine Sollwerte an Ventile gesendet; Ein/Aus-Entscheidungen
-  erreichen keinen Aktor.
+  unscharf ist, werden weder Sollwerte noch Ein/Aus-Befehle an Aktoren gesendet.
 
 ## 8. Passkeys
 
@@ -243,7 +242,8 @@ als eine, die eine Meldung verliert.
 
 ## 11. Was der Dienst über Sie nach außen gibt
 
-Nichts. `thermoctl` ruft von sich aus keinen fremden Dienst auf, sendet keine Telemetrie
-und braucht kein Konto bei irgendwem. Ausgehende Verbindungen entstehen erst, wenn Sie
-einen MQTT-Broker, einen Webhook oder die Meross-Cloud für Ihre Steckdosen
-eintragen. Die Meross-Wolke wird dann stündlich nach neuen Geräten gefragt. Alle drei sind Ihre Entscheidung und stehen in Ihrer `.env`.
+Keine Telemetrie. Ausgehende Verbindungen entstehen erst durch eine hinterlegte
+Konfiguration: zum MQTT-Broker, zu einem Webhook, zur Meross-Cloud bei eingetragenem
+Meross-Konto oder zu Open-Meteo, wenn Sonnenprognose und Standort in den Einstellungen
+gesetzt sind. Die Meross-Wolke wird dann stündlich nach neuen Geräten gefragt. MQTT,
+Webhook und Meross stehen in `.env`; die Sonnenprognose wird in der Oberfläche aktiviert.

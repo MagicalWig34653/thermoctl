@@ -66,6 +66,7 @@ def _user_list(
         groups=session.scalars(select(AccessGroup).order_by(AccessGroup.name)).all(),
         user_group_id=user_group_id,
         own_id=own_id,
+        timezone=getattr(session.get(Setting, 1), "timezone", None),
         hint=hint,
         is_htmx=is_partial_swap(request),
     )

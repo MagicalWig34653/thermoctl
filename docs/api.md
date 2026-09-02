@@ -1,9 +1,9 @@
 # REST-Schnittstelle
 
 `thermoctl` hat drei Adapter über derselben Domänenlogik: die Weboberfläche, diese
-REST-Schnittstelle und den [MCP-Server](mcp.md). Eine Regel ist einmal implementiert; die
-Schnittstellen führen sie nur aus. Was hier möglich ist, ist deshalb genau das, was in der
-Oberfläche möglich ist, und umgekehrt.
+REST-Schnittstelle und den [MCP-Server](mcp.md). Gemeinsame Fähigkeiten benutzen dieselbe
+Domänenlogik; die Adapter bieten aber nicht denselben Umfang. Beispielsweise lassen sich
+Geräte derzeit in der Oberfläche, nicht über REST, anlegen und ändern.
 
 Grundadresse: `/api/v1`.
 

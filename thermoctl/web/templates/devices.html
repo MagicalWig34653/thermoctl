@@ -49,7 +49,7 @@ keine Auskunft — sie steht deshalb einmal oben als Zahl.
 
     <div class="text-end">
         {% if g.last_heard %}
-        <div class="t-quiet small" title="{{ g.last_heard }} UTC">{{ g.last_heard|age }}</div>
+        <div class="t-quiet small" title="{{ (g.last_heard|localtime(timezone)).strftime('%d.%m.%Y %H:%M:%S') }}">{{ g.last_heard|age }}</div>
         {% else %}
         <div class="t-quiet small">nie gehört</div>
         {% endif %}

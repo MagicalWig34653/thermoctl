@@ -334,6 +334,43 @@ def test_every_mutating_html_form_has_a_non_javascript_csrf_field() -> None:
             assert 'name="csrf_token"' in form, f"CSRF field missing in {path.name}"
 
 
+def test_empty_hidden_fields_are_confined_to_script_only_forms() -> None:
+    """An empty hidden value must not be the only usable control for a normal form."""
+    allowed = {
+        ("schedule.html", "point_id"),
+        ("schedule.html", "weekday"),
+        ("schedule.html", "time_of_day"),
+        ("device_assignment.html", "device_id"),
+        ("device_assignment.html", "role_id"),
+        ("device_assignment.html", "assignment_id"),
+    }
+    found: set[tuple[str, str]] = set()
+    template_dir = Path(__file__).resolve().parent.parent / "thermoctl/web/templates"
+    for path in template_dir.glob("*.html"):
+        source = path.read_text(encoding="utf-8")
+        for form in re.findall(r"<form\b[^>]*>.*?</form>", source, re.DOTALL | re.I):
+            for field in re.findall(r"<input\b[^>]*type=\"hidden\"[^>]*>", form, re.I):
+                name = re.search(r'name="([^"]+)"', field)
+                value = re.search(r'value="([^"]*)"', field)
+                if name is not None and (value is None or value.group(1) == ""):
+                    assert re.search(r"<form\b[^>]*\bhidden(?:\s|>)", form, re.I), (
+                        f"Empty hidden field {name.group(1)!r} in visible form {path.name}"
+                    )
+                    found.add((path.name, name.group(1)))
+    assert found == allowed
+
+
+def test_templates_do_not_label_stored_utc_as_display_time() -> None:
+    """Absolute browser times must cross the configured-local-time boundary."""
+    template_dir = Path(__file__).resolve().parent.parent / "thermoctl/web/templates"
+    offenders = [
+        path.name
+        for path in template_dir.glob("*.html")
+        if " UTC" in path.read_text(encoding="utf-8")
+    ]
+    assert offenders == []
+
+
 def test_the_rendered_form_carries_the_field_names_the_view_reads(
     client_als, session: Session
 ) -> None:

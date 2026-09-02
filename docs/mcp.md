@@ -7,8 +7,8 @@ zeigt den gespeicherten ersten Riegel. Der MCP-Prozess teilt den prozesslokalen 
 nicht mit dem Web-/MQTT-Prozess und liefert seinen Zustand deshalb ausdrücklich als
 `unknown_from_mcp_process`. Im Trockenlauf gehen keine Sollwerte hinaus; nach dem
 Scharfschalten bleibt der beim Start gebaute MQTT-Riegel bis zum Neustart zu. Erst danach
-können Sollwerte an selbstregelnde Thermostatventile gesendet werden.
-Ein/Aus-Entscheidungen erreichen keinen Aktor.
+können Sollwerte an selbstregelnde Thermostatventile und Ein/Aus-Befehle an gewöhnliche
+Aktoren gesendet werden.
 
 Installation mit der optionalen Abhaengigkeit:
 

@@ -17,9 +17,10 @@ MQTT-Discovery.
 
 Die Ausgabe hat drei klar getrennte Stufen: Im **Trockenlauf** werden Regelentscheidungen
 nur protokolliert. **Scharf ohne Neustart** ändert den gespeicherten ersten Riegel, der beim
-Start gebaute MQTT-Riegel bleibt aber zu. Erst **scharf und neu gestartet** können Sollwerte
-an selbstregelnde Thermostatventile gesendet werden. Ein/Aus-Entscheidungen erreichen in
-keiner Stufe einen Aktor.
+Start gebaute MQTT-Riegel bleibt aber zu — es wird weiterhin nichts gesendet. Erst **scharf
+und neu gestartet** öffnet auch diesen zweiten Riegel und sendet wirklich: Sollwerte an
+selbstregelnde Thermostatventile ebenso wie Ein/Aus-Befehle an gewöhnliche Aktoren
+(Zigbee2MQTT-Schalter, Zigbee-Thermostatventile ohne eigene Regelung, Meross-Steckdosen).
 
 ## Weiterlesen
 
@@ -89,11 +90,15 @@ Token sind wie Zugangsdaten zu schützen.
 
 ## Noch nicht enthalten
 
-Der Regelkreis ist gebaut und erschöpfend getestet. Sein gespeicherter erster Riegel lässt
-sich scharf schalten; Sollwerte an selbstregelnde Thermostatventile werden jedoch erst nach
-einem anschließenden Neustart freigegeben. Ein/Aus-Entscheidungen werden nur protokolliert,
-denn ein Aktor ist dafür noch nicht mit dem Regelkreis verdrahtet. Bis zum abgeschlossenen
-Vergleichsbetrieb ist `thermoctl` keine betriebsfertige Heizungssteuerung.
+Der Regelkreis ist gebaut und erschöpfend getestet, und alle vier Aktorwege sind mit ihm
+verdrahtet: Zigbee2MQTT-Schalter, Zigbee-Thermostatventile ohne eigene Regelung,
+Meross-Steckdosen und selbstregelnde Ventile. Sein gespeicherter erster Riegel lässt sich
+scharf schalten; wirklich gesendet wird aber erst nach einem anschließenden Neustart, der
+den zweiten, beim Prozessstart gebauten Riegel öffnet — das gilt für Sollwerte an
+selbstregelnde Thermostatventile genauso wie für Ein/Aus-Befehle an gewöhnliche Aktoren.
+Der Trockenlauf bleibt die Vorgabe, und ein mehrtägiger Vergleichsbetrieb gegen das
+Altsystem wurde auf Wunsch des Projektinhabers übersprungen: Dieser Code läuft als Erstes
+an einer echten Heizung.
 
 Die Home-Assistant-Anbindung ist dagegen angeschlossen: Sie meldet die Zonen an,
 veröffentlicht ihren Zustand und nimmt Sollwert und Betriebsart entgegen. Die Ausgabe eines

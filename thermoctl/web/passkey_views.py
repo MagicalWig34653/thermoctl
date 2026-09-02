@@ -21,6 +21,7 @@ from thermoctl.auth.sessions import COOKIE_NAME, create_session, session_lifetim
 from thermoctl.config import Settings, get_settings
 from thermoctl.db.base import utcnow
 from thermoctl.db.models.identity import User
+from thermoctl.db.models.operations import Setting
 from thermoctl.db.models.passkey import UserPasskey
 from thermoctl.domain.passkey import (
     PasskeyError,
@@ -134,6 +135,7 @@ async def passkey_list(
                 .order_by(UserPasskey.created_at)
             ).all(),
             "available": get_settings().passkeys_available(),
+            "timezone": getattr(session.get(Setting, 1), "timezone", None),
             "is_htmx": is_partial_swap(request),
         },
     )

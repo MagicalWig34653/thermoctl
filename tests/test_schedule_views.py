@@ -331,7 +331,7 @@ def test_the_rendered_paint_form_works_without_javascript(
         rf'<input[^>]*name="([^"]+)"[^>]*value="({night.id})"[^>]*>', body
     )
     assert night_tool is not None
-    assert fields["mode_id"] == "", "mode_id must not hide a JavaScript dependency"
+    assert "mode_id" not in fields, "mode_id must not hide a JavaScript dependency"
     controls = {
         element_id: re.search(
             rf'<(?:input|select)[^>]*id="{element_id}"[^>]*name="([^"]+)"', body

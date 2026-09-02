@@ -1,7 +1,7 @@
 # Sicherheitsdurchsicht
 
-Stand: 2026-08-29. Vor der Veröffentlichung erneut durchzugehen (Phase 5, Aufgabe 8) —
-diese Fassung deckt den Stand nach Teilprojekt 2 und dem größeren Teil von Teilprojekt 3 ab.
+Stand: 2026-09-02. Vor der Veröffentlichung erneut durchzugehen (Phase 5, Aufgabe 8) —
+diese Fassung deckt auch Aktorverdrahtung, Sonnenprognose und Meross-Anbindung ab.
 
 Der Dienst steuert eine Heizung in einer bewohnten Wohnung und soll öffentlich werden.
 Beides zusammen macht diese Durchsicht zu mehr als einer Formalie.
@@ -12,12 +12,12 @@ Beides zusammen macht diese Durchsicht zu mehr als einer Formalie.
 |---|---|
 | Zugangsdaten im Repo (Muster für Passwörter, Schlüssel, Tokens) | keine |
 | `.env` versehentlich eingecheckt | nein, nur `.env.example` ohne Werte |
-| Fremde Adressen im Quelltext | eine (Meross-Cloud), inzwischen konfigurierbar |
-| Roh-SQL oder zusammengebaute Abfragen | keine; alle Filter über SQLAlchemy-Ausdrücke |
+| Fremde Adressen im Quelltext | zwei Vorgaben: Meross-Cloud (konfigurierbar) und Open-Meteo (fester öffentlicher Dienst) |
+| Roh-SQL oder zusammengebaute Abfragen | zwei feste Infrastruktur-Anweisungen (`PRAGMA foreign_keys=ON`, Lesen von `alembic_version`); keine aus Eingaben zusammengesetzte Abfrage, fachliche Filter über SQLAlchemy-Ausdrücke |
 | Ändernde Routen ohne CSRF-Schutz | keine — `tests/test_csrf.py` hält das nach |
 | Ansichten ohne Rechteprüfung | keine; siehe Abschnitt 2 |
 | Geheimnisse im Log | maskiert; eine bewusste, dokumentierte Ausnahme |
-| Ausgehende Verbindungen | MQTT, Wetterdienst und Meross, alle nur bei hinterlegter Konfiguration |
+| Ausgehende Verbindungen | MQTT, Webhook, Wetterdienst und Meross, alle nur bei der jeweils hinterlegten Konfiguration |
 
 ## 2. Rechteprüfung je Adapter
 
@@ -67,8 +67,8 @@ Ohne das wäre Argon2id selbst der Seitenkanal.
 **Drei Stufen sind zu unterscheiden.** Unscharf werden Entscheidungen nur protokolliert.
 Nach dem Scharfschalten, aber vor dem Neustart, bleibt auch die Sollwertausgabe gesperrt.
 Erst scharf und danach neu gestartet können Sollwerte an selbstregelnde Thermostatventile
-gesendet werden; Ein/Aus-Entscheidungen erreichen weiterhin keinen Aktor. Tests belegen
-beide Riegel.
+und Ein/Aus-Befehle an gewöhnliche Aktoren gesendet werden. Zigbee2MQTT und Meross haben
+je einen beim Start eingefrorenen zweiten Riegel; Tests belegen beide Riegel.
 
 ### Das Kiosk-Token im Einzelnen
 
@@ -132,5 +132,5 @@ Wand gut hüten könnte.
 2. Die Git-Historie auf versehentlich eingecheckte Zugangsdaten prüfen — nicht nur den
    aktuellen Baum. Das Repo war bisher privat; was einmal in einem Commit steht, bleibt
    dort.
-3. Entscheiden, ob die Startwarnung aus Abschnitt 5 gebaut wird.
+3. Prüfen, ob die Startwarnung aus Abschnitt 5 weiterhin ausreicht.
 4. Die Abhängigkeiten auf bekannte Schwachstellen prüfen.

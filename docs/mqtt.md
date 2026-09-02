@@ -14,9 +14,9 @@ bewegt nichts, und eine Anbindung, die man erst nach dem Scharfschalten ausprobi
 lässt sich genau dann nicht mehr gefahrlos prüfen, wenn ein Fehler noch folgenlos wäre.
 
 Der `binary_sensor` **Regelung scharf** zeigt den gespeicherten ersten Riegel des ganzen
-Dienstes. Nach dem Scharfschalten bleibt der beim Start gebaute MQTT-Riegel bis zum
-Neustart zu. Erst danach können Sollwerte an selbstregelnde Thermostatventile gesendet
-werden; Ein/Aus-Entscheidungen erreichen keinen Aktor.
+Dienstes. Nach dem Scharfschalten bleiben die beim Start gebauten zweiten Riegel bis zum
+Neustart zu. Erst danach gehen Sollwerte an selbstregelnde Thermostatventile sowie
+Ein/Aus-Befehle an Zigbee2MQTT- und Meross-Aktoren hinaus.
 
 Bis August 2026 stand der Trockenlauf stattdessen als `(Trockenlauf)` im *Namen* jeder
 Zone. Das war gut sichtbar und genau deshalb falsch: Home Assistant leitet die

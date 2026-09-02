@@ -147,6 +147,7 @@ async def device_overview(
             "notable": [g for g in survey if not g.is_fine],
             "unremarkable": [g for g in survey if g.is_fine],
             "without_zone": sum(1 for g in survey if not g.zones),
+            "timezone": defaults.timezone if defaults is not None else None,
             "is_htmx": is_partial_swap(request),
         },
     )

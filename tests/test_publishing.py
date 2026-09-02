@@ -64,6 +64,26 @@ async def _run(session: Session, state: PublicationState) -> Mitschrift:
 
 
 @pytest.mark.anyio
+async def test_network_publication_never_sees_an_open_database_transaction(
+    session: Session,
+) -> None:
+    """Guard the actual publisher boundary, including queries between messages."""
+    create_settings(session)
+    create_zone(session, "transaction-boundary")
+
+    class TransactionGuard(Mitschrift):
+        async def publishing(
+            self, topic: str, payload: str, *, switches: bool, retained: bool = False
+        ) -> bool:
+            assert not session.in_transaction(), f"Open transaction while publishing {topic}"
+            return await super().publishing(
+                topic, payload, switches=switches, retained=retained
+            )
+
+    await cycle(session, TransactionGuard(), PublicationState(), "thermoctl", NOW)
+
+
+@pytest.mark.anyio
 async def test_publishing_happens_in_dry_run(session: Session) -> None:
     """A state notice moves nothing. An integration that can only be tried out
     after arming is exactly the one that can no longer be checked safely once an
@@ -253,6 +273,46 @@ async def test_without_a_change_nothing_is_registered_again(session: Session) ->
     zweiter = await _run(session, state)
     assert f"homeassistant/climate/thermoctl_zone_{zone.id}/config" not in zweiter.topics()
     assert f"thermoctl/zones/{zone.id}/state/setpoint" in zweiter.topics()
+
+
+@pytest.mark.anyio
+async def test_a_partly_failed_registration_retries_only_the_missing_topics(
+    session: Session,
+) -> None:
+    """One accepted discovery topic must not mark the whole zone as complete."""
+    create_settings(session)
+    zone = create_zone(session, "partial-registration")
+    state = PublicationState()
+
+    class FailsOnce(Mitschrift):
+        def __init__(self) -> None:
+            super().__init__()
+            self.failed_topic: str | None = None
+
+        async def publishing(
+            self, topic: str, payload: str, *, switches: bool, retained: bool = False
+        ) -> bool:
+            accepted = await super().publishing(
+                topic, payload, switches=switches, retained=retained
+            )
+            if (
+                self.failed_topic is None
+                and f"thermoctl_zone_{zone.id}" in topic
+                and topic.endswith("/config")
+            ):
+                self.failed_topic = topic
+                return False
+            return accepted
+
+    first = FailsOnce()
+    await cycle(session, first, state, "thermoctl", NOW)
+    assert first.failed_topic is not None
+    assert first.failed_topic not in state.registered[zone.id]
+
+    second = Mitschrift()
+    await cycle(session, second, state, "thermoctl", NOW)
+    assert second.topics().count(first.failed_topic) == 1
+    assert first.failed_topic in state.registered[zone.id]
 
 
 @pytest.mark.anyio

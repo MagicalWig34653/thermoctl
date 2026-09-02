@@ -31,8 +31,8 @@
         {% for entry in passkeys %}
         <tr>
             <td>{{ entry.label }}</td>
-            <td title="{{ entry.created_at }} UTC">{{ entry.created_at|age }}</td>
-            <td title="{{ entry.last_used_at or '' }} UTC">{{ entry.last_used_at|age }}</td>
+            <td title="{{ (entry.created_at|localtime(timezone)).strftime('%d.%m.%Y %H:%M:%S') }}">{{ entry.created_at|age }}</td>
+            <td title="{{ (entry.last_used_at|localtime(timezone)).strftime('%d.%m.%Y %H:%M:%S') if entry.last_used_at else '' }}">{{ entry.last_used_at|age }}</td>
             <td class="text-end">
                 <form method="post" action="/passkeys/{{ entry.id }}/remove">
                     <button type="submit" class="btn btn-sm btn-outline-danger">Entfernen</button>

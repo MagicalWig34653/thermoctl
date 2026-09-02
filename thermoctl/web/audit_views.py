@@ -139,6 +139,7 @@ async def audit_list(
             "page": page_number,
             "has_more": has_more,
             "base_parameters": urlencode(filter_values),
+            "timezone": timezone_name,
             "is_htmx": is_partial_swap(request),
         },
     )

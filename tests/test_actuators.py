@@ -123,6 +123,36 @@ async def test_control_armed_sends_the_signed_toggle_command(session: Session) -
 
 
 @pytest.mark.anyio
+async def test_actuator_io_never_sees_an_open_database_transaction(session: Session) -> None:
+    """Guard both externally visible actuator transports, not their callers."""
+    _armed(session)
+
+    class GuardedMqtt(MqttStub):
+        async def publishing(
+            self, topic: str, payload: str, *, switches: bool, retained: bool = False
+        ) -> bool:
+            assert not session.in_transaction()
+            return await super().publishing(topic, payload, switches=switches)
+
+    class GuardedMeross(MerossStub):
+        async def send(
+            self, device_uuid: str, namespace: str, method: str, payload: Any
+        ) -> dict[str, Any]:
+            assert not session.in_transaction()
+            return await super().send(device_uuid, namespace, method, payload)
+
+    mqtt_result = await Zigbee2MqttValve(
+        session, GuardedMqtt(), "zigbee2mqtt", "valve"
+    ).switching(True)
+    meross_result = await MerossSwitch(
+        session, GuardedMeross(), "socket", frozen_switching_allowed=True
+    ).switching(True)
+
+    assert mqtt_result.executed is True
+    assert meross_result.executed is True
+
+
+@pytest.mark.anyio
 async def test_an_armed_switch_without_a_signed_in_session_fails_without_touching_the_network(
     session: Session,
 ) -> None:

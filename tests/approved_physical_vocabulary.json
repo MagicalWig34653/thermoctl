@@ -47,12 +47,15 @@
       "„Die Zone regelt die Heizung bis auf Weiteres gegen den Frostschutz-Sollwert von"
     ],
     "README.md": [
+      "(Zigbee2MQTT-Schalter, Zigbee-Thermostatventile ohne eigene Regelung, Meross-Steckdosen).",
       "Dazu: Bediengeräte und Zigbee-Heizkörperthermostate frei konfigurierbar (ein Thermostat",
-      "an selbstregelnde Thermostatventile gesendet werden. Ein/Aus-Entscheidungen erreichen in",
-      "denn ein Aktor ist dafür noch nicht mit dem Regelkreis verdrahtet. Bis zum abgeschlossenen",
+      "Meross-Steckdosen und selbstregelnde Ventile. Sein gespeicherter erster Riegel lässt sich",
+      "an einer echten Heizung.",
       "kann das Ventil auch selbst regeln und bekommt dann nur Soll- und Ist-Temperatur), eine",
-      "keiner Stufe einen Aktor.",
-      "sich scharf schalten; Sollwerte an selbstregelnde Thermostatventile werden jedoch erst nach",
+      "scharf schalten; wirklich gesendet wird aber erst nach einem anschließenden Neustart, der",
+      "selbstregelnde Thermostatventile ebenso wie Ein/Aus-Befehle an gewöhnliche Aktoren",
+      "selbstregelnde Thermostatventile genauso wie für Ein/Aus-Befehle an gewöhnliche Aktoren.",
+      "verdrahtet: Zigbee2MQTT-Schalter, Zigbee-Thermostatventile ohne eigene Regelung,",
       "wird protokolliert, **was geschaltet würde und warum**."
     ],
     "docs/STATUS.md": [
@@ -102,9 +105,9 @@
     "docs/mcp.md": [
       "**Kein Werkzeug schaltet die Anlage scharf.** `force_dry_run` gibt es, die",
       "**`boost` ist für ein Sprachmodell die verlässlichere Form von „mach es hier wärmer\".** Es",
-      "Ein/Aus-Entscheidungen erreichen keinen Aktor.",
+      "Aktoren gesendet werden.",
       "Wer scharf schalten will, tut das dort, wo ein Mensch am Knopf steht. Nachzulesen in",
-      "können Sollwerte an selbstregelnde Thermostatventile gesendet werden."
+      "können Sollwerte an selbstregelnde Thermostatventile und Ein/Aus-Befehle an gewöhnliche"
     ],
     "docs/mqtt.md": [
       "- **Lesen** — Sensordaten aus Zigbee2MQTT aufnehmen. Läuft, sobald MQTT eingeschaltet ist.",
@@ -112,7 +115,8 @@
       "Die zweite Zeile hat ihr Gegenstück für Thermostatventile: Die kennen kein `state`, sie",
       "Gerät namens `thermoctl` mit je einem Thermostat darunter. Die einzelnen Ventile, Sensoren",
       "Neuanmelden bei jedem Umschalten ließe die Entität in Home Assistant kurz verschwinden, und",
-      "Neustart zu. Erst danach können Sollwerte an selbstregelnde Thermostatventile gesendet",
+      "Ein/Aus-Befehle an Zigbee2MQTT- und Meross-Aktoren hinaus.",
+      "Neustart zu. Erst danach gehen Sollwerte an selbstregelnde Thermostatventile sowie",
       "Sie gelten dem **Schalten**, nicht dem Melden:",
       "Ventilmotor, und deshalb trägt er `switches=True` und geht durch beide Riegel. Wäre er als",
       "Wärmer und kälter verstellen dabei den Sollwert des Modus, der gerade gilt — dasselbe wie",
@@ -126,7 +130,6 @@
       "sieht, was man tut: **Wärmer**, **Kälter** (Schrittweite je Taste einstellbar, Standard",
       "trotzdem kein Ventil bewegt wird; die Betriebsseite sagt das ausdrücklich.",
       "werden über `system_mode` und `occupied_heating_setpoint` gefahren. Ein Ventil ohne",
-      "werden; Ein/Aus-Entscheidungen erreichen keinen Aktor.",
       "| Anzeige „heizt / bereit\" | `.../state/would_heat` |",
       "| Schaltbefehl an ein Ventil | `{\"state\": \"ON\"}` bzw. `{\"state\": \"OFF\"}` | `True` |",
       "| Sollwert an ein selbstregelndes Thermostatventil | `{\"occupied_heating_setpoint\": 21.0}`, dazu die gemessene Raumtemperatur, wo das Gerät sie annimmt | `True` |",
@@ -167,7 +170,6 @@
       "Ventilschutz-Entscheidung ist abgeschlossen. Er bestätigt weder einen gesendeten Befehl",
       "`Zigbee2MqttValve`. Ein Aktor an der Anbindung `meross` bekommt keinen `MerossSwitch`",
       "als Aktor zugewiesen hat, bekommt nach dem Scharfschalten dieser Fassung ebenfalls keine",
-      "an selbstregelnde Thermostatventile. Ein/Aus-Entscheidungen erreichen keinen Aktor.",
       "aufgelöste Zonensollwert, wie bei den selbstregelnden Ventilen — aber dort steuert das",
       "aufnehmen. Er belegt ausdrücklich weder einen gesendeten Befehl noch eine Ventilbewegung;",
       "dahinter hängt eine echte Heizung (Grundsatz 7).",
@@ -180,7 +182,6 @@
       "ein Preis, den dieses Projekt schon für die Sollwerte selbstregelnder Ventile und die",
       "ein Ventil zuverlässiger zu schützen: Auch die beliebig oft wiederholte Entscheidung",
       "entweder ein Zigbee2MQTT-Ventil an dieser Stelle oder eine Folgeänderung, die",
-      "erreicht derzeit keinen Aktor. Der Marker bewahrt deshalb den konfigurierten Rhythmus der",
       "fehlt der Hälfte der Aktoren die Anbindung, und Phase 4 stünde ohne sie da.",
       "gebaut; stattdessen schreibt jeder Zyklus, der ihn geschaltet hätte, einen Eintrag ins",
       "genau das Gerät, für das die Funktion gebaut ist. Was ein Ventil fahrbar macht, ist der",
@@ -198,10 +199,12 @@
       "später nachvollziehbar ist, was an einer echten Heizung passiert ist. Ein Eintrag, der beim",
       "und Thermostatventil) — inklusive der beiden „nicht verdrahtete Anbindung\"-Zweige, wo",
       "verzögerten Wiederherstellung an einer echten Heizung.",
+      "Sollwerte an selbstregelnde Thermostatventile und Ein/Aus-Befehle an gewöhnliche Aktoren.",
+      "erreichte zum Zeitpunkt dieser Entscheidung keinen Aktor. Der Marker bewahrt deshalb den konfigurierten Rhythmus der",
       "über Ein/Aus, der Sollwert ist nur die Zahl, mit der das Ventil dabei fährt. Die Sorge um"
     ],
     "docs/roadmap.md": [
-      "**Ziel:** Regelung freigeben und anschließend Aktoren verdrahten. Die Freigabe allein",
+      "**Ziel:** Regelung freigeben, Aktoren verdrahten und das Altsystem ablösen.",
       "- **In dieser Phase soll eine echte Wohnung geheizt werden.** Fehler haben körperliche Folgen; die Regellogik",
       "- Aktor-Adapter für Zigbee-Ventile — vollständig, aber im Trockenlauf",
       "- Geräte zuordnen: Messquelle, Aktoren, Fensterkontakte, Bediengeräte",
@@ -213,18 +216,17 @@
       "- [x] **Zigbee-Heizkörperthermostate (WT-A03E, BTH-RA)** — als Aktor zuweisbar; ein",
       "- [x] 8 Aktor-Adapter im Trockenlauf, hinter zwei Riegeln",
       "Die Reihenfolge ist nicht beliebig: Der Teil, der eine echte Heizung schalten soll, kommt bewusst",
-      "Neustart Sollwerte an selbstregelnde Thermostatventile. Ein/Aus-Aktoren sind noch nicht",
+      "Aktoren.",
+      "Ein/Aus-Befehle die verdrahteten Aktoren.",
+      "Neustart Sollwerte an selbstregelnde Thermostatventile und Ein/Aus-Befehle an gewöhnliche",
       "Regelung unscharf: Es wurden keine Sollwerte an Ventile gesendet und Ein/Aus-Entscheidungen",
       "Thermostatventil ist kein Schalter und wird über Sollwert und, wo vorhanden,",
-      "Ungeprüft bleibt bis Phase 4 nur das erste echte Schalten",
-      "Verdrahtung keinen Aktor.",
+      "Ungeprüft bleibt das erste echte Schalten an der Anlage.",
       "Veröffentlichen hängt am selben Riegel wie das Schalten, siehe [mqtt.md](mqtt.md)",
       "dort schaltet das Ventil am Sollwert in jedem Zyklus um",
       "erreichten keinen Aktor.",
       "statt gegen den Heizkörper, an dem sein eigener Fühler sitzt.",
-      "verdrahtet keinen Aktor.",
-      "wo das Gerät es annimmt, Ist-Temperatur; das Ventil regelt damit gegen den Raum",
-      "| 4 | Regelkreis und Cutover | Logik gebaut; Freigabe in drei Stufen | Aktoren verdrahten; Altsystem ablösen |"
+      "wo das Gerät es annimmt, Ist-Temperatur; das Ventil regelt damit gegen den Raum"
     ],
     "docs/scharfschalten.md": [
       "# Ohne Schattenbetrieb scharf schalten",
@@ -236,6 +238,7 @@
       "1. **Auf `Betrieb`, „Scharf schalten …\"** anklicken, eine Begründung eintragen (Pflicht)",
       "1. **Selbstregelndes Thermostatventil** (Fähigkeit `thermostat`, `self_regulating`",
       "2. **Gewöhnlicher Aktor** über Zigbee2MQTT (Rolle „Aktor\", Fähigkeit `switch`, nicht",
+      "geschaltet — jeder betroffene Zyklus versucht es erneut, ohne den übrigen Betrieb",
       "4. **Zigbee2MQTT-Thermostatventil ohne Selbstregelung** (Fähigkeit `thermostat`, aber",
       "Auf `Betrieb`, „Zurück in den Trockenlauf\" — derselbe Knopf, mit dem scharf geschaltet",
       "Die gefährlichere Richtung: Eine Zone, die laut `Betrieb` heizen würde, tut es in",
@@ -251,7 +254,6 @@
       "das im Moment des Zurücknehmens offen ist (die Heizung also läuft), **bleibt offen**, bis",
       "dass die Anlage später erneut scharf geschaltet wird und eine neue Entscheidung sendet.",
       "etwa nachts, wenn „würde heizen: nein\" gelten muss, wenn das nicht der Fall sein soll.",
-      "geschaltet — jeder betroffene Zyklus trägt stattdessen einen gescheiterten Versuch ins",
       "nach dem Scharfschalten, damit er sich öffnet. Richtig ist: erst scharf schalten, dann",
       "nach mehreren Tagen Schattenbetrieb gegen das Altsystem scharf zu schalten. Wer diesen",
       "obwohl seine Zone laut `Betrieb` zwischen Heizen und Nicht-Heizen wechselt.",
@@ -261,17 +263,16 @@
     ],
     "docs/self-hosting.md": [
       "**Ins offene Internet gehört dieser Dienst nicht.** Er steuert eine Heizung in einer",
-      "> beim Start gebaute MQTT-Riegel offen, können selbstregelnde Thermostatventile Sollwerte",
-      "> erhalten; Ein/Aus-Entscheidungen erreichen noch keinen Aktor. Damit ist `thermoctl` noch",
+      "> Meross-Aktoren. Die Einzelheiten stehen in der [Roadmap](roadmap.md).",
+      "> Sollwerte an selbstregelnde Thermostatventile und Ein/Aus-Befehle an Zigbee2MQTT- und",
       "Absicht: Wer stündlich dieselbe Meldung bekommt, schaltet sie ab und verpasst die nächste",
       "Wahl, wenn der Dienst wirklich heizt.",
-      "erreichen keinen Aktor.",
-      "unscharf ist, werden keine Sollwerte an Ventile gesendet; Ein/Aus-Entscheidungen"
+      "unscharf ist, werden weder Sollwerte noch Ein/Aus-Befehle an Aktoren gesendet."
     ],
     "docs/sicherheitsdurchsicht.md": [
       "Der Dienst steuert eine Heizung in einer bewohnten Wohnung und soll öffentlich werden.",
       "Erst scharf und danach neu gestartet können Sollwerte an selbstregelnde Thermostatventile",
-      "gesendet werden; Ein/Aus-Entscheidungen erreichen weiterhin keinen Aktor. Tests belegen",
+      "und Ein/Aus-Befehle an gewöhnliche Aktoren gesendet werden. Zigbee2MQTT und Meross haben",
       "— seit der Anbindung stündlich, nicht erst beim Schalten. Über TLS, das Passwort"
     ],
     "docs/technisches_konzept.md": [

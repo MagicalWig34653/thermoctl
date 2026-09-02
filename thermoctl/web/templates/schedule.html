@@ -61,7 +61,6 @@
         <select class="form-select" id="paint-weekday" name="weekday">{% for day, name in weekdays %}<option value="{{ day }}">{{ name }}</option>{% endfor %}</select></div>
       <div class="col-sm"><label class="form-label" for="paint-start">Von</label><input class="form-control" id="paint-start" name="start_time" type="time" step="900" value="06:30"></div>
       <div class="col-sm"><label class="form-label" for="paint-end">Bis</label><input class="form-control" id="paint-end" name="end_time" type="time" step="900" value="08:00"></div>
-      <input type="hidden" name="mode_id" value="">
       <div class="col-sm-auto form-check mb-2">
         <input class="form-check-input" id="paint-end-boundary" name="end_boundary" type="checkbox" value="1440">
         <label class="form-check-label" for="paint-end-boundary">Bis Tagesende (24:00)</label>

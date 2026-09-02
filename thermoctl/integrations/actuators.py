@@ -61,6 +61,7 @@ class Zigbee2MqttValve:
             return SwitchResult(False, f"Trockenlauf, haette gesendet: {message}")
 
         try:
+            self._session.commit()
             executed = await self._client.publishing(
                 self._topic, payload, switches=True
             )
@@ -185,6 +186,7 @@ class Zigbee2MqttThermostat:
             return SwitchResult(False, f"Trockenlauf, haette gesendet: {message}")
 
         try:
+            self._session.commit()
             executed = await self._client.publishing(
                 self._topic, payload, switches=True
             )
@@ -272,6 +274,7 @@ class MerossSwitch:
             )
 
         try:
+            self._session.commit()
             answer = await self._transport.send(
                 self._device_uuid, TOGGLE_NAMESPACE, "SET", payload
             )

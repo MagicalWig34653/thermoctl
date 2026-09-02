@@ -148,13 +148,13 @@ def test_unreadable_filter_values_show_messages_instead_of_422(client_als) -> No
 
 def test_the_time_shown_is_local_not_utc(client_als, session: Session) -> None:
     """`timezone` defaults to Europe/Berlin in `create_settings`; in August that is
-    UTC+2, so 12:00 UTC must read 14:00 -- and the raw UTC value stays in `title`
-    for whoever hovers, the same pattern as `audit.html`."""
+    UTC+2, so 12:00 UTC must read 14:00 in both the cell and its tooltip."""
     create_settings(session)
     _entry(session, device_name="zeitzonenventil", at=datetime(2026, 8, 15, 12, 0, 0))
     response = client_als([("audit.read", None)]).get("/device-commands")
     assert "15.08.2026 14:00:00" in response.text
-    assert "2026-08-15 12:00:00 UTC" in response.text
+    assert 'title="15.08.2026 14:00:00"' in response.text
+    assert "2026-08-15 12:00:00 UTC" not in response.text
 
 
 def test_the_rendered_filter_form_actually_filters(client_als, session: Session) -> None:

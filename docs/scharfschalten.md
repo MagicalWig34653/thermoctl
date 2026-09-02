@@ -19,8 +19,9 @@ Vier Rollen kommen dafür infrage, und jede verhält sich nach dem Scharfschalte
    entschieden hat.
 3. **Meross-Steckdose.** Bekommt ebenfalls Ein/Aus, aber über eine Cloud-Anmeldung, die
    bei Bedarf erneuert wird. Ist die Anmeldung gerade nicht möglich, wird nicht
-   geschaltet — jeder betroffene Zyklus trägt stattdessen einen gescheiterten Versuch ins
-   Schaltprotokoll ein, ohne den übrigen Betrieb aufzuhalten.
+   geschaltet — jeder betroffene Zyklus versucht es erneut, ohne den übrigen Betrieb
+   aufzuhalten. Das Schaltprotokoll hält denselben Fehler nur einmal fest, bis sich das
+   Ergebnis ändert.
 4. **Zigbee2MQTT-Thermostatventil ohne Selbstregelung** (Fähigkeit `thermostat`, aber
    `self_regulating` nicht gesetzt — thermoctls eigene Hysterese entscheidet, nicht das
    Ventil selbst). Es bekommt den aufgelösten Sollwert und, wo das Gerät das anbietet,

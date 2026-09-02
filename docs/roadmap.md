@@ -1,6 +1,6 @@
 # Roadmap
 
-Stand: 2026-08-29
+Stand: 2026-09-02
 
 Diese Roadmap führt zusammen, was im [Rahmenentwurf](superpowers/specs/2026-08-28-thermoctl-neubau-design.md)
 in fünf Teilprojekte zerlegt ist, und konkretisiert es zu Features und Aufgaben. Sie ersetzt
@@ -20,7 +20,7 @@ Phase 1 geschehen ist. Features, die aus der unverbindlichen
 | 1a | Nacharbeiten | **umgesetzt** | Oberfläche benutzbar |
 | 2 | Geräte-Anbindung im Schattenbetrieb | **gebaut**, Laufzeit an der Anlage offen | Belegt gegen die echte Anlage, dass die Daten stimmen |
 | 3 | Konfigurations-Oberfläche | **umgesetzt**, seither erweitert | Ende der SQL-Pflege — ab hier im Alltag nützlich |
-| 4 | Regelkreis und Cutover | Logik gebaut; Freigabe in drei Stufen | Aktoren verdrahten; Altsystem ablösen |
+| 4 | Regelkreis und Cutover | Logik, Freigabe und Aktorverdrahtung gebaut; Cutover offen | Altsystem ablösen |
 | 5 | Integrationen und Veröffentlichung | teilweise vorgezogen | Für Fremde aufsetzbar |
 
 Die Reihenfolge ist nicht beliebig: Der Teil, der eine echte Heizung schalten soll, kommt bewusst
@@ -72,9 +72,8 @@ erreichten keinen Aktor.
   *(Idee aus dem Konzept-Dokument)*
 - Aktor-Adapter für Zigbee-Ventile — vollständig, aber im Trockenlauf
 - Meross-Anbindung — Geräteerkennung **und** Schaltweg, gegen ein echtes Konto geprüft.
-  Der Schattenzyklus gleicht die Geräteliste stündlich ab; der unverdrahtete Schaltweg
-  verwendet MQTT.
-  Ungeprüft bleibt bis Phase 4 nur das erste echte Schalten
+  Der Schattenzyklus gleicht die Geräteliste stündlich ab; der Schaltweg verwendet MQTT.
+  Ungeprüft bleibt das erste echte Schalten an der Anlage.
 - Fensterkontakte als Zustandsquelle *(Idee aus dem Konzept-Dokument)*
 - Sensor-Timeout: ein ausbleibender Messwert wird als Störung erkannt, nicht ignoriert
 - Messwert-Historie mit begrenzter Aufbewahrung
@@ -160,8 +159,7 @@ Gruppe und Token — alles über die Oberfläche, kein SQL.
 
 ## Phase 4 — Regelkreis und Cutover
 
-**Ziel:** Regelung freigeben und anschließend Aktoren verdrahten. Die Freigabe allein
-verdrahtet keinen Aktor.
+**Ziel:** Regelung freigeben, Aktoren verdrahten und das Altsystem ablösen.
 
 ### Features
 
@@ -179,8 +177,8 @@ verdrahtet keinen Aktor.
 
 Vier davon wurden zunächst bei unscharfer Regelung gebaut. Inzwischen gilt die dreistufige
 Freigabe: unscharf nur Protokoll, scharf vor Neustart weiterhin keine Ausgabe, scharf nach
-Neustart Sollwerte an selbstregelnde Thermostatventile. Ein/Aus-Aktoren sind noch nicht
-verdrahtet.
+Neustart Sollwerte an selbstregelnde Thermostatventile und Ein/Aus-Befehle an gewöhnliche
+Aktoren.
 
 - [x] 1 Regelentscheidung als reine Funktion, umfassend getestet *(in Phase 2 vorgezogen)*
 - [x] 2 Hysterese und Mindestschaltdauer
@@ -190,12 +188,12 @@ verdrahtet.
       offene Entscheidung, siehe [offene-entscheidungen.md](offene-entscheidungen.md)
 - [~] 6 Datenübernahme — die Umwandlung des Stundenrasters steht als reine Funktion, die
       Übernahme selbst braucht die Altdatenbank
-- [ ] 7 Scharfschalten hinter einem Schalter, jederzeit umkehrbar
+- [x] 7 Scharfschalten hinter einem Schalter, jederzeit umkehrbar
 - [ ] 8 Ablösung: Heizungsteil aus `vm130-nginx`, die vier Skripte aus dem Alt-Repo
 
-**`setting.control_armed` allein belegt keine körperliche Wirkung.** Der beim Start gebaute
-MQTT-Riegel muss ebenfalls offen sein; auch dann erreichen Ein/Aus-Entscheidungen ohne
-Verdrahtung keinen Aktor.
+**`setting.control_armed` allein belegt keine körperliche Wirkung.** Die beim Start
+gebauten zweiten Riegel müssen ebenfalls offen sein; erst dann erreichen Sollwerte und
+Ein/Aus-Befehle die verdrahteten Aktoren.
 
 ### Risiken
 
@@ -229,7 +227,7 @@ abgeschaltet ist.
 - [x] 1 Neue MQTT-Topic-Struktur samt Discovery — **gebaut und angeschlossen**; das
       Veröffentlichen hängt am selben Riegel wie das Schalten, siehe [mqtt.md](mqtt.md)
 - [ ] 2 Altes Topic-Schema abkündigen — *wartet auf den Cutover*
-- [x] 3 MCP-Server — 15 Werkzeuge über derselben Domänenlogik, [Doku](mcp.md)
+- [x] 3 MCP-Server — 16 Werkzeuge über derselben Domänenlogik, [Doku](mcp.md)
 - [x] 4 API-Dokumentation — [docs/api.md](api.md)
 - [ ] 5 Setup-Assistent erweitern — *gehört zu Phase 3*
 - [x] 6 Self-Hosting-Dokumentation und Beispiel-Compose — [docs/self-hosting.md](self-hosting.md)

@@ -49,7 +49,7 @@
                     <button type="submit" class="btn btn-sm btn-outline-secondary">Setzen</button>
                 </form>
             </td>
-            <td title="{{ person.last_login_at or '' }} UTC">{{ person.last_login_at|age }}</td>
+            <td title="{{ (person.last_login_at|localtime(timezone)).strftime('%d.%m.%Y %H:%M:%S') if person.last_login_at else '' }}">{{ person.last_login_at|age }}</td>
             <td class="text-end">
                 <form method="post" action="/users/{{ person.id }}/active" class="d-inline">
                     <input type="hidden" name="active" value="{{ 'no' if person.is_active else 'yes' }}">

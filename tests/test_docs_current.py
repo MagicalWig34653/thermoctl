@@ -17,6 +17,7 @@ from pathlib import Path
 from tests.helpers import alle_api_routen
 from thermoctl.app import create_app
 from thermoctl.config import Settings
+from thermoctl.mcp import server as mcp_server
 
 ROOT = Path(__file__).resolve().parent.parent
 WRITING_AND_READING = {"GET", "POST", "PUT", "DELETE", "PATCH"}
@@ -44,9 +45,22 @@ def test_every_mcp_tool_is_listed_in_the_documentation() -> None:
     a function of that name, and everything looked consistent -- while every call
     built from the documentation hit a tool that does not exist.
     """
-    server_source = (ROOT / "thermoctl" / "mcp" / "server.py").read_text(encoding="utf-8")
-    registered = set(re.findall(r'@server\.tool\(name="([^"]+)"\)', server_source))
-    assert registered, "keine Werkzeuge gefunden — Muster veraltet?"
+    registered: set[str] = set()
+
+    class RecordingServer:
+        def tool(self, name: str | None = None):  # type: ignore[no-untyped-def]
+            def decorator(function):  # type: ignore[no-untyped-def]
+                assert name is not None
+                registered.add(name)
+                return function
+
+            return decorator
+
+        def run(self, transport: str = "stdio", **kwargs: object) -> None:
+            raise AssertionError("The registration guard never starts a transport")
+
+    mcp_server._register_tools(RecordingServer(), object(), "unused")  # type: ignore[arg-type]
+    assert registered, "keine Werkzeuge registriert"
 
     text = (ROOT / "docs" / "mcp.md").read_text(encoding="utf-8")
     documented = set(re.findall(r"\| `(\w+)\(", text))
@@ -76,6 +90,122 @@ def test_mcp_documentation_acknowledges_writable_control_parameters() -> None:
     assert "bewusste Ausnahme" in paragraph
     assert "setzt genau einen benannten Parameter" in paragraph
     assert "Schreibende Werkzeuge für die Konfiguration" not in text
+
+
+def test_readme_actuator_claim_matches_what_is_actually_wired() -> None:
+    """README.md once claimed on/off decisions reach no actuator in any stage.
+
+    That was true until ordinary actuators were wired to the control loop
+    (`services/publishing.py::_WIRED_INTEGRATIONS`) -- after which it was quietly
+    false for a whole release, discovered only by a release review that happened to
+    read `services/publishing.py` next to the README. This ties the claim to the
+    set that actually decides it, so the next integration added there cannot repeat
+    that silently.
+    """
+    from thermoctl.integrations.actuators import (
+        MerossSwitch,
+        Zigbee2MqttThermostat,
+        Zigbee2MqttValve,
+    )
+    from thermoctl.services import publishing
+
+    text = (ROOT / "README.md").read_text(encoding="utf-8")
+    wired = publishing._WIRED_INTEGRATIONS
+    if wired:
+        assert "erreichen in keiner Stufe einen Aktor" not in text, (
+            "README.md behauptet weiterhin, Ein/Aus-Entscheidungen erreichten "
+            f"nie einen Aktor, dabei sind diese Anbindungen verdrahtet: {sorted(wired)}"
+        )
+        assert "noch nicht mit dem Regelkreis verdrahtet" not in text
+        assert "Ein/Aus-Befehle an gewöhnliche Aktoren" in text, (
+            "README.md sollte beschreiben, dass gewöhnliche Aktoren nach "
+            "'scharf und neu gestartet' geschaltet werden"
+        )
+    else:  # pragma: no cover - not the current state, kept for symmetry
+        assert "erreichen in keiner Stufe einen Aktor" in text
+
+    assert wired == {"zigbee2mqtt", "meross"}
+    assert publishing.Zigbee2MqttValve is Zigbee2MqttValve
+    assert publishing.Zigbee2MqttThermostat is Zigbee2MqttThermostat
+    assert publishing.MerossSwitch is MerossSwitch
+    for documented_path in (
+        "Zigbee2MQTT-Schalter",
+        "Zigbee-Thermostatventile ohne eigene Regelung",
+        "Meross-Steckdosen",
+        "selbstregelnde Ventile",
+    ):
+        assert documented_path in text
+
+
+def test_living_docs_do_not_restore_the_pre_actuator_state() -> None:
+    stale_claims = (
+        "Ein/Aus-Entscheidungen erreichen keinen Aktor",
+        "Ein/Aus-Entscheidungen erreichen noch keinen Aktor",
+        "Ein/Aus-Entscheidungen erreichen weiterhin keinen Aktor",
+        "Ein/Aus-Aktoren sind noch nicht verdrahtet",
+    )
+    current_sections = (
+        "README.md",
+        "docs/self-hosting.md",
+        "docs/mqtt.md",
+        "docs/mcp.md",
+        "docs/sicherheitsdurchsicht.md",
+        "docs/roadmap.md",
+    )
+    stale = [
+        f"{name}: {claim}"
+        for name in current_sections
+        for claim in stale_claims
+        if claim in (ROOT / name).read_text(encoding="utf-8")
+    ]
+    assert not stale, "Lebende Dokumentation beschreibt den alten Aktorstand: " + ", ".join(stale)
+
+
+def test_roadmap_uses_the_registered_mcp_tool_count() -> None:
+    server_source = (ROOT / "thermoctl" / "mcp" / "server.py").read_text(encoding="utf-8")
+    registered = set(re.findall(r'@server\.tool\(name="([^"]+)"\)', server_source))
+    text = (ROOT / "docs" / "roadmap.md").read_text(encoding="utf-8")
+    match = re.search(r"MCP-Server — ([0-9]+) Werkzeuge", text)
+    assert match
+    assert int(match.group(1)) == len(registered)
+
+
+def test_security_review_names_every_outbound_connection_kind() -> None:
+    from thermoctl.config import Settings
+    from thermoctl.integrations.forecast import OPEN_METEO_URL
+
+    text = (ROOT / "docs" / "sicherheitsdurchsicht.md").read_text(encoding="utf-8")
+    assert OPEN_METEO_URL in (
+        ROOT / "thermoctl" / "integrations" / "forecast.py"
+    ).read_text(encoding="utf-8")
+    assert Settings.model_fields.keys() >= {
+        "mqtt_host",
+        "notify_webhook",
+        "meross_api_base",
+        "meross_email",
+        "meross_password",
+    }
+    for connection in ("MQTT", "Webhook", "Wetterdienst", "Meross"):
+        assert connection in text
+    assert "Open-Meteo" in text
+
+
+def test_security_review_names_the_fixed_raw_sql_exceptions() -> None:
+    engine_source = (ROOT / "thermoctl" / "db" / "engine.py").read_text(encoding="utf-8")
+    schema_source = (ROOT / "thermoctl" / "db" / "schema_state.py").read_text(encoding="utf-8")
+    documented = (ROOT / "docs" / "sicherheitsdurchsicht.md").read_text(encoding="utf-8")
+
+    assert 'cursor.execute("PRAGMA foreign_keys=ON")' in engine_source
+    assert 'text("SELECT version_num FROM alembic_version")' in schema_source
+    assert "`PRAGMA foreign_keys=ON`" in documented
+    assert "`alembic_version`" in documented
+    assert "Roh-SQL oder zusammengebaute Abfragen | keine" not in documented
+
+
+def test_api_documentation_does_not_claim_identical_adapter_scope() -> None:
+    text = (ROOT / "docs" / "api.md").read_text(encoding="utf-8")
+    assert "genau das, was in der Oberfläche möglich ist, und umgekehrt" not in text
+    assert "nicht über REST" in text
 
 
 def test_every_setting_is_listed_in_the_example_file() -> None:

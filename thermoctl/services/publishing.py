@@ -84,6 +84,12 @@ from thermoctl.services.meross_session import invalidate as invalidate_meross_se
 log = logging.getLogger(__name__)
 
 
+def _finish_database_work(session: Session) -> None:
+    """Close the current transaction before waiting for an external system."""
+    if session.in_transaction():
+        session.commit()
+
+
 @dataclass
 class PublicationState:
     """Which config topics this run has sent, per zone.
@@ -231,6 +237,7 @@ async def cycle(
     sent_count = 0
 
     # Availability first: it's the statement "whatever comes next is current".
+    _finish_database_work(session)
     if await client.publishing(
         availability_topic(prefix), "online", switches=False, retained=True
     ):
@@ -238,19 +245,19 @@ async def cycle(
 
     if not state.service_registered:
         message = armed_discovery(prefix)
+        _finish_database_work(session)
         if await client.publishing(
             message.topic, message.payload, switches=False, retained=True
         ):
             state.service_registered = True
             sent_count += 1
+    _finish_database_work(session)
     if await client.publishing(
         armed_topic(prefix), _as_text(armed), switches=False, retained=True
     ):
         sent_count += 1
 
     for zone in zones:
-        if zone.id in state.registered:
-            continue
         sent_count += await _register_zone(session, client, state, zone, prefix)
 
     sent_count += await _deregister_deleted(client, state, {zone.id for zone in zones})
@@ -342,6 +349,7 @@ async def _send_self_regulating_valves(
         outcome: str
         error: str | None
         try:
+            _finish_database_work(session)
             executed = await client.publishing(topic, payload, switches=True)
         except Exception as exc:
             # A broken broker connection must not abort the whole cycle -- other
@@ -610,6 +618,7 @@ async def _send_actuator_switches(
             )
             payload = json.dumps(toggle_payload(0, heating))
 
+        _finish_database_work(session)
         result = await actuator.switching(heating)
         outcome = _outcome_of(result)
         if (
@@ -717,6 +726,7 @@ async def _send_actuator_switches(
                 has_system_mode=thermostat_command.has_system_mode,
             )
         )
+        _finish_database_work(session)
         result = await actuator.switching(heating)
         outcome = _outcome_of(result)
         new_entry = (heating, armed, outcome)
@@ -756,15 +766,17 @@ async def _register_zone(
     prefix: str,
 ) -> int:
     sent_count = 0
-    reported: list[str] = []
+    reported = state.registered.setdefault(zone.id, [])
     for message in _discovery_messages(session, zone, prefix):
+        if message.topic in reported:
+            continue
+        _finish_database_work(session)
         if await client.publishing(
             message.topic, message.payload, switches=False, retained=True
         ):
             reported.append(message.topic)
             sent_count += 1
-    if reported:
-        state.registered[zone.id] = reported
+    if sent_count:
         log.info(
             "Zone bei Home Assistant angemeldet",
             extra={"zone_id": zone.id, "entitaeten": len(reported)},
@@ -843,6 +855,7 @@ async def _send_controller_channels(
             continue
         payload_value: object = float(value) if isinstance(value, Decimal) else value
         payload = json.dumps({channel.property_name: payload_value}, ensure_ascii=False, separators=(",", ":"))
+        _finish_database_work(session)
         if await client.publishing(f"{base.rstrip('/')}/{device.external_id}/set", payload, switches=False):
             state.controller_values[channel.id] = value
             sent += 1
@@ -938,8 +951,8 @@ async def _send_zone_state(
         # An empty value is not sent: in MQTT an empty payload deletes a retained
         # message, and "no reading yet" is something different from "this value
         # doesn't exist anymore".
-        if value and await client.publishing(
-            topic, value, switches=False, retained=True
-        ):
+        if value:
+            _finish_database_work(session)
+        if value and await client.publishing(topic, value, switches=False, retained=True):
             sent_count += 1
     return sent_count

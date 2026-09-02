@@ -58,7 +58,7 @@
       <tbody>
       {% for entry, source, person, token in entries %}
       <tr>
-        <td class="text-nowrap" title="{{ entry.occurred_at.isoformat(sep=' ') }} UTC">{{ entry.occurred_at|age }}</td>
+        <td class="text-nowrap" title="{{ (entry.occurred_at|localtime(timezone)).strftime('%d.%m.%Y %H:%M:%S') }}">{{ entry.occurred_at|age }}</td>
         <td>{{ source.label }}</td>
         <td>{{ person.username if person else (token.name if token else "System") }}</td>
         <td><code>{{ entry.action }}</code></td>
