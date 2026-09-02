@@ -23,6 +23,7 @@ from starlette.testclient import TestClient
 
 from tests.helpers import (
     create_device,
+    create_mode,
     create_settings,
     create_zone,
     create_zone_state,
@@ -40,8 +41,9 @@ from thermoctl.db.models.device import ZoneDevice
 from thermoctl.db.models.lookup import DeviceCapability
 from thermoctl.db.models.measurement import Measurement
 from thermoctl.db.models.operations import AuditEvent, Setting
+from thermoctl.db.models.override import ZoneOverride
 from thermoctl.db.models.state import ShadowDecision, ZoneState
-from thermoctl.db.models.zone import Zone
+from thermoctl.db.models.zone import Zone, ZoneSetpoint
 from thermoctl.integrations.mqtt import client as client_modul
 from thermoctl.integrations.mqtt.client import MqttClient
 from thermoctl.services import shadow_run
@@ -100,6 +102,123 @@ def test_one_cycle_with_a_fresh_reading_writes_a_row_with_a_reason(
     assert row.reason and "Ist" in row.reason
     assert row.previous_would_heat is None  # no history in the first cycle
     assert session.query(ShadowDecision).count() == 1
+
+
+def test_frost_setpoint_is_selected_for_the_exact_zone_and_configured_mode(
+    session: Session,
+) -> None:
+    settings = create_settings(session)
+    other_mode = create_mode(session, "other")
+    target = create_zone(session, "target-frost")
+    other = create_zone(session, "other-frost")
+    session.add_all([
+        ZoneSetpoint(
+            zone_id=target.id,
+            setpoint_mode_id=settings.frost_protection_mode_id,
+            temperature_c=Decimal("12.0"),
+        ),
+        ZoneSetpoint(
+            zone_id=target.id,
+            setpoint_mode_id=other_mode.id,
+            temperature_c=Decimal("13.0"),
+        ),
+        ZoneSetpoint(
+            zone_id=other.id,
+            setpoint_mode_id=settings.frost_protection_mode_id,
+            temperature_c=Decimal("14.0"),
+        ),
+    ])
+    session.flush()
+
+    assert shadow_run._frost_setpoint(session, target, settings) == Decimal("12.0")
+
+
+def test_missing_zone_frost_setpoint_does_not_leak_from_neighbouring_rows(
+    session: Session,
+) -> None:
+    settings = create_settings(session)
+    lower = create_zone(session, "lower-frost")
+    target = create_zone(session, "missing-frost")
+    upper = create_zone(session, "upper-frost")
+    lower_mode = create_mode(session, "lower-mode")
+    upper_mode = create_mode(session, "upper-mode")
+    session.add_all([
+        ZoneSetpoint(
+            zone_id=lower.id,
+            setpoint_mode_id=settings.frost_protection_mode_id,
+            temperature_c=Decimal("10.0"),
+        ),
+        ZoneSetpoint(
+            zone_id=upper.id,
+            setpoint_mode_id=settings.frost_protection_mode_id,
+            temperature_c=Decimal("11.0"),
+        ),
+        ZoneSetpoint(
+            zone_id=target.id,
+            setpoint_mode_id=lower_mode.id,
+            temperature_c=Decimal("12.0"),
+        ),
+        ZoneSetpoint(
+            zone_id=target.id,
+            setpoint_mode_id=upper_mode.id,
+            temperature_c=Decimal("13.0"),
+        ),
+    ])
+    session.flush()
+
+    assert shadow_run._frost_setpoint(session, target, settings) == Decimal("16.0")
+
+
+def test_previous_state_uses_only_the_target_zones_latest_uninterrupted_run(
+    session: Session,
+) -> None:
+    create_settings(session)
+    target = create_zone(session, "target-history")
+    other = create_zone(session, "other-history")
+    for zone, moment, heating in (
+        (target, NOW - timedelta(seconds=40), False),
+        (target, NOW - timedelta(seconds=30), True),
+        (target, NOW - timedelta(seconds=10), True),
+        (other, NOW - timedelta(seconds=5), False),
+    ):
+        session.add(ShadowDecision(
+            decided_at=moment,
+            zone_id=zone.id,
+            temperature_c=Decimal("20.0"),
+            setpoint_c=Decimal("21.0"),
+            setpoint_reason="Test",
+            would_heat=heating,
+            previous_would_heat=None,
+            outcome_code="test",
+            reason="Test",
+        ))
+    session.flush()
+
+    assert shadow_run._previous_state(session, target.id, NOW) == (True, 30, True)
+
+
+def test_empty_previous_state_does_not_leak_from_lower_or_higher_zone_ids(
+    session: Session,
+) -> None:
+    create_settings(session)
+    lower = create_zone(session, "lower-history")
+    target = create_zone(session, "empty-history")
+    upper = create_zone(session, "upper-history")
+    for zone in (lower, upper):
+        session.add(ShadowDecision(
+            decided_at=NOW - timedelta(seconds=10),
+            zone_id=zone.id,
+            temperature_c=Decimal("20.0"),
+            setpoint_c=Decimal("21.0"),
+            setpoint_reason="Test",
+            would_heat=True,
+            previous_would_heat=None,
+            outcome_code="test",
+            reason="Test",
+        ))
+    session.flush()
+
+    assert shadow_run._previous_state(session, target.id, NOW) == (False, None, None)
 
 
 def test_shadow_valve_protection_closes_on_schedule_without_claiming_actuation(
@@ -239,6 +358,120 @@ def test_equal_interval_and_duration_waits_a_full_interval_after_completion(
     assert state is not None
     assert state.valve_protection_started_at is None
     assert state.last_valve_protection_at == NOW + timedelta(days=1)
+
+
+def test_expired_valve_protection_is_closed_even_after_missing_its_exact_deadline(
+    session: Session,
+) -> None:
+    create_settings(session)
+    zone = _zone_with_state(session, "late-protection-end", measured_c=Decimal("21.0"))
+    zone.created_at = NOW - timedelta(days=2)
+    zone.valve_protection_enabled = True
+    zone.valve_protection_interval_days = 1
+    zone.valve_protection_duration_minutes = 10
+    zone.min_on_seconds = 0
+    zone.min_off_seconds = 0
+    state = session.get(ZoneState, zone.id)
+    assert state is not None
+    state.valve_protection_started_at = NOW - timedelta(minutes=11)
+    session.flush()
+
+    row = shadow_run.cycle(session, NOW)[0]
+
+    assert row.outcome_code != "ventilschutz"
+    assert state.valve_protection_started_at is None
+    assert state.last_valve_protection_at == NOW
+
+
+def test_valve_protection_becomes_due_at_the_exact_interval_boundary(
+    session: Session,
+) -> None:
+    create_settings(session)
+    zone = _zone_with_state(session, "exact-protection-due", measured_c=Decimal("21.0"))
+    zone.created_at = NOW - timedelta(days=30)
+    zone.valve_protection_enabled = True
+    zone.valve_protection_interval_days = 30
+    zone.min_on_seconds = 0
+    zone.min_off_seconds = 0
+    session.flush()
+
+    row = shadow_run.cycle(session, NOW)[0]
+
+    assert row.outcome_code == "ventilschutz"
+
+
+def test_only_an_active_override_of_the_same_zone_blocks_valve_protection(
+    session: Session,
+) -> None:
+    create_settings(session)
+    target = _zone_with_state(session, "target-override", measured_c=Decimal("21.0"))
+    other = _zone_with_state(session, "other-override", measured_c=Decimal("21.0"))
+    for zone in (target, other):
+        zone.created_at = NOW - timedelta(days=31)
+        zone.valve_protection_enabled = True
+        zone.valve_protection_interval_days = 30
+        zone.min_on_seconds = 0
+        zone.min_off_seconds = 0
+    session.add_all([
+        ZoneOverride(
+            zone_id=target.id,
+            temperature_c=Decimal("21.0"),
+            starts_at=NOW - timedelta(hours=1),
+            ends_at=NOW + timedelta(hours=1),
+            source_id=source(session, "system").id,
+        ),
+        ZoneOverride(
+            zone_id=other.id,
+            temperature_c=Decimal("21.0"),
+            starts_at=NOW + timedelta(hours=1),
+            ends_at=None,
+            source_id=source(session, "system").id,
+        ),
+    ])
+    session.flush()
+
+    rows = shadow_run.cycle(session, NOW)
+    by_zone = {row.zone_id: row for row in rows}
+
+    assert by_zone[target.id].outcome_code != "ventilschutz"
+    assert by_zone[other.id].outcome_code == "ventilschutz"
+
+
+def test_override_is_active_at_its_start_and_inactive_at_its_end(
+    session: Session,
+) -> None:
+    create_settings(session)
+    starts_now = _zone_with_state(session, "override-start", measured_c=Decimal("21.0"))
+    ends_now = _zone_with_state(session, "override-end", measured_c=Decimal("21.0"))
+    for zone in (starts_now, ends_now):
+        zone.created_at = NOW - timedelta(days=31)
+        zone.valve_protection_enabled = True
+        zone.valve_protection_interval_days = 30
+        zone.min_on_seconds = 0
+        zone.min_off_seconds = 0
+    session.add_all([
+        ZoneOverride(
+            zone_id=starts_now.id,
+            temperature_c=Decimal("21.0"),
+            starts_at=NOW,
+            ends_at=NOW + timedelta(hours=1),
+            source_id=source(session, "system").id,
+        ),
+        ZoneOverride(
+            zone_id=ends_now.id,
+            temperature_c=Decimal("21.0"),
+            starts_at=NOW - timedelta(hours=1),
+            ends_at=NOW,
+            source_id=source(session, "system").id,
+        ),
+    ])
+    session.flush()
+
+    rows = shadow_run.cycle(session, NOW)
+    by_zone = {row.zone_id: row for row in rows}
+
+    assert by_zone[starts_now.id].outcome_code != "ventilschutz"
+    assert by_zone[ends_now.id].outcome_code == "ventilschutz"
 
 
 def test_recent_regular_heating_prevents_a_due_valve_protection_run(session: Session) -> None:
@@ -454,6 +687,31 @@ def test_a_zone_without_a_window_contact_heats_despite_an_unknown_window_state(
     assert row.outcome_code == "heizen"
 
 
+def test_window_state_is_safe_when_only_one_required_lookup_exists(session: Session) -> None:
+    create_settings(session)
+    zone = _zone_with_state(session, "missing-contact-lookup", measured_c=Decimal("5.0"))
+    state = session.get(ZoneState, zone.id)
+    assert state is not None
+    state.window_open = False
+    contact = session.scalar(
+        select(DeviceCapability).where(DeviceCapability.code == "contact")
+    )
+    if contact is not None:
+        session.delete(contact)
+        session.flush()
+
+    window_role = role(session, "window_contact")
+    device = create_device(session, "lookup-guard-contact")
+    session.add(ZoneDevice(
+        zone_id=zone.id,
+        device_id=device.id,
+        device_role_id=window_role.id,
+    ))
+    session.flush()
+
+    assert shadow_run._window_situation(session, zone, state, NOW) == (False, None)
+
+
 def test_closing_a_window_starts_a_growing_restart_delay(
     session: Session,
 ) -> None:
@@ -499,6 +757,33 @@ def test_closing_a_window_starts_a_growing_restart_delay(
     assert "Fenster seit 20s zu" in first.reason
     assert "Fenster seit 50s zu" in zweite.reason
 
+    # Repeating the already-current value is not another closing event.
+    repeated_at = NOW + timedelta(seconds=40)
+    session.add(Measurement(
+        device_id=device.id,
+        capability_id=contact.id,
+        value_text="true",
+        measured_at=repeated_at,
+        received_at=repeated_at,
+    ))
+    session.flush()
+    assert shadow_run._window_situation(session, zone, state, repeated_at) == (False, 60)
+
+    # A sensor timestamp can be slightly ahead of the cycle clock. Durations exposed
+    # to the control loop are clamped to zero, never made negative or rounded up.
+    future_false = NOW + timedelta(seconds=50)
+    future_true = NOW + timedelta(seconds=51)
+    for value, moment in (("false", future_false), ("true", future_true)):
+        session.add(Measurement(
+            device_id=device.id,
+            capability_id=contact.id,
+            value_text=value,
+            measured_at=moment,
+            received_at=moment,
+        ))
+    session.flush()
+    assert shadow_run._window_situation(session, zone, state, NOW) == (False, 0)
+
 
 def test_a_failing_zone_does_not_hold_up_the_others(
     session: Session, monkeypatch: pytest.MonkeyPatch
@@ -524,6 +809,27 @@ def test_a_failing_zone_does_not_hold_up_the_others(
     # the per-zone savepoint rolled it back completely.
     assert session.query(ShadowDecision).filter_by(zone_id=kaputt.id).count() == 0
     assert session.query(ShadowDecision).count() == 1
+
+
+def test_a_failing_first_zone_does_not_prevent_later_zones(
+    session: Session, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    create_settings(session)
+    broken = _zone_with_state(session, "broken-first", measured_c=Decimal("10.0"))
+    healthy = _zone_with_state(session, "healthy-second", measured_c=Decimal("10.0"))
+    assert broken.id < healthy.id
+    original = shadow_run.control_parameters
+
+    def fail_first(session: Session, zone: Zone) -> object:
+        if zone.id == broken.id:
+            raise RuntimeError("Simulated error in first zone")
+        return original(session, zone)
+
+    monkeypatch.setattr(shadow_run, "control_parameters", fail_first)
+
+    rows = shadow_run.cycle(session, NOW)
+
+    assert [row.zone_id for row in rows] == [healthy.id]
 
 
 @pytest.fixture

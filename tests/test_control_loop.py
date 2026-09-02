@@ -6,6 +6,7 @@ the threshold, and explicitly the defect of the legacy system that `thermoctl`
 must not repeat.
 """
 
+from dataclasses import FrozenInstanceError
 from decimal import Decimal
 
 import pytest
@@ -85,6 +86,102 @@ def _lage(
         valve_protection_due=valve_protection_due,
         valve_protection_active=valve_protection_active,
     )
+
+
+def test_control_inputs_and_outputs_are_immutable_and_safety_flags_default_off() -> None:
+    situation = Situation(
+        measured_c=Decimal("20.0"),
+        setpoint_c=Decimal("21.0"),
+        setpoint_reason="Schedule",
+        frost_c=Decimal("16.0"),
+        operating_mode="auto",
+        heating_now=False,
+        held_for_s=None,
+        window_open=False,
+        window_closed_for_s=None,
+        sensor_status="ok",
+        parameter=_parameter(),
+    )
+    decision = decide(situation)
+
+    assert situation.override_active is False
+    assert situation.valve_protection_due is False
+    assert situation.valve_protection_active is False
+    with pytest.raises(FrozenInstanceError):
+        situation.heating_now = True  # type: ignore[misc]
+    with pytest.raises(FrozenInstanceError):
+        decision.heating = not decision.heating  # type: ignore[misc]
+
+
+def test_status_and_mode_codes_are_compared_by_value_not_object_identity() -> None:
+    no_source = "_".join(("keine", "quelle"))
+    stale = "".join(("ver", "altet"))
+    off = "".join(("o", "ff"))
+
+    missing = decide(_lage(sensor_status=no_source, measured_c=Decimal("5.0")))
+    frost = decide(_lage(sensor_status=stale, measured_c=Decimal("15.0")))
+    no_protection = decide(_lage(
+        operating_mode=off,
+        measured_c=Decimal("21.0"),
+        setpoint_c=Decimal("16.0"),
+        parameter=_parameter(valve_protection_enabled=True, min_off_seconds=0),
+        valve_protection_due=True,
+    ))
+
+    assert missing.reason_code == REASON_CODE_NO_SOURCE
+    assert frost.reason_code == REASON_CODE_FROST_SENSOR_FAILURE
+    assert no_protection.reason_code != REASON_CODE_VALVE_PROTECTION
+
+
+def test_resume_delay_ends_exactly_at_its_configured_boundary() -> None:
+    decision = decide(_lage(
+        window_closed_for_s=300,
+        measured_c=Decimal("5.0"),
+        parameter=_parameter(window_resume_delay_seconds=300, min_off_seconds=0),
+    ))
+
+    assert decision.heating is True
+    assert decision.reason_code == REASON_CODE_HEATING
+
+
+@pytest.mark.parametrize(
+    ("heating_now", "expected_state"),
+    [(True, "Heizen"), (False, "Aus")],
+)
+def test_minimum_duration_reason_names_the_state_that_is_actually_held(
+    heating_now: bool, expected_state: str,
+) -> None:
+    decision = decide(_lage(
+        heating_now=heating_now,
+        held_for_s=1,
+        parameter=_parameter(min_on_seconds=300, min_off_seconds=300),
+    ))
+
+    assert decision.reason_code == REASON_CODE_BLOCKED_MINIMUM_DURATION
+    assert f"Zustand '{expected_state}'" in decision.reason
+
+
+def test_minimum_duration_uses_the_limit_for_the_current_state() -> None:
+    decision = decide(_lage(
+        heating_now=True,
+        held_for_s=20,
+        parameter=_parameter(min_on_seconds=30, min_off_seconds=10),
+    ))
+
+    assert decision.reason_code == REASON_CODE_BLOCKED_MINIMUM_DURATION
+
+
+def test_valve_protection_accepts_a_valid_status_code_built_at_runtime() -> None:
+    ok = "".join(("o", "k"))
+    decision = decide(_lage(
+        sensor_status=ok,
+        measured_c=Decimal("21.0"),
+        setpoint_c=Decimal("16.0"),
+        parameter=_parameter(valve_protection_enabled=True, min_off_seconds=0),
+        valve_protection_due=True,
+    ))
+
+    assert decision.reason_code == REASON_CODE_VALVE_PROTECTION
 
 
 def test_rule7_a_due_valve_protection_run_heats_with_an_explicit_reason() -> None:

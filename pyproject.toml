@@ -1,6 +1,6 @@
 [project]
 name = "thermoctl"
-version = "0.2.2"
+version = "0.3.0"
 requires-python = ">=3.14"
 dependencies = [
     "fastapi>=0.141",
@@ -18,7 +18,14 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=9.1", "pytest-cov>=6.0", "httpx2>=2.12", "ruff>=0.16", "mypy>=1.18"]
+dev = [
+    "pytest>=9.1",
+    "pytest-cov>=6.0",
+    "httpx2>=2.12",
+    "ruff>=0.16",
+    "mypy>=1.18",
+    "cosmic-ray>=8.7,<9",
+]
 mcp = ["mcp>=1.2"]
 
 [project.scripts]

@@ -1,0 +1,41 @@
+# Runde 1, Stufe 1 des Komplettreviews. Cosmic Ray akzeptiert genau einen Modulpfad
+# je Sitzung; deshalb hat jede der zwei Zieldateien eine eigene Konfiguration.
+# Wiederholbarer Gesamtlauf aus dem Repository-Wurzelverzeichnis:
+#
+#   .venv/bin/cosmic-ray init --force cosmic-ray-control-loop.toml /tmp/thermoctl-control-loop.sqlite
+#   .venv/bin/cr-filter-operators /tmp/thermoctl-control-loop.sqlite cosmic-ray-control-loop.toml
+#   .venv/bin/cosmic-ray exec cosmic-ray-control-loop.toml /tmp/thermoctl-control-loop.sqlite
+#   .venv/bin/cosmic-ray init --force cosmic-ray-shadow-run.toml /tmp/thermoctl-shadow-run.sqlite
+#   .venv/bin/cr-filter-operators /tmp/thermoctl-shadow-run.sqlite cosmic-ray-shadow-run.toml
+#   .venv/bin/cosmic-ray exec cosmic-ray-shadow-run.toml /tmp/thermoctl-shadow-run.sqlite
+#   .venv/bin/cr-report /tmp/thermoctl-control-loop.sqlite
+#   .venv/bin/cr-report /tmp/thermoctl-shadow-run.sqlite
+#
+# Die Sitzungsdatenbanken sind Laufartefakte und werden nicht eingecheckt.
+[cosmic-ray]
+module-path = "thermoctl/domain/control_loop.py"
+timeout = 10.0
+excluded-modules = []
+test-command = ".venv/bin/python -m pytest --no-cov tests/test_control_loop.py"
+
+[cosmic-ray.distributor]
+name = "local"
+
+[cosmic-ray.distributor.local]
+max-workers = 4
+
+# Cosmic Ray erzeugt zusaetzlich zu den ueblichen Grenz- und Negationsmutationen
+# Kreuztyp-Ersetzungen (etwa SQLAlchemy-`|` zu Division oder `==` zu `is`). Diese
+# sind keine plausiblen Python-Mutanten und erzeugen auf Typannotationen bzw. dem
+# SQLAlchemy-Ausdrucksbaum nur Werkzeugrauschen. Die Einzelbegruendung und Zaehlung
+# steht in cosmic-ray-stage1-assessment.md.
+[cosmic-ray.filters.operators-filter]
+exclude-operators = [
+    "core/ReplaceBinaryOperator_BitOr_.*",
+    "core/ReplaceComparisonOperator_Eq_(Gt|GtE|Lt|LtE|Is|IsNot)",
+    "core/ReplaceComparisonOperator_NotEq_(Gt|GtE|Lt|LtE|Is|IsNot)",
+    "core/ReplaceComparisonOperator_Lt_(Eq|NotEq|Gt|GtE|Is|IsNot)",
+    "core/ReplaceComparisonOperator_LtE_(Eq|NotEq|Gt|GtE|Is|IsNot)",
+    "core/ReplaceComparisonOperator_Gt_(Eq|NotEq|Lt|LtE|Is|IsNot)",
+    "core/ReplaceComparisonOperator_GtE_(Eq|NotEq|Lt|LtE|Is|IsNot)",
+]

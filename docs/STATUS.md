@@ -10,6 +10,44 @@ längst überholte Angaben — „nichts ist scharf", „1024 Tests, 98,55 %", �
 wird nirgends gesetzt", „es gibt keine Geräteerkennung für Meross". Alles vier stimmte
 einmal und stand noch da.
 
+## v0.3.0 — die Fassung, in der thermoctl schaltet
+
+Alle vier Aktorwege sind verdrahtet: Zigbee2MQTT-Schalter, Zigbee-Thermostatventile,
+Meross-Steckdosen, selbstregelnde Ventile. Bis 0.2.2 landete jede Regelentscheidung im
+Schattenprotokoll und sonst nirgends.
+
+**Der Trockenlauf bleibt die Vorgabe**, und das Scharfschalten wirkt erst nach einem
+Neustart — der zweite Riegel wird beim Prozessstart gebaut. Die Anleitung dafür steht in
+[scharfschalten.md](scharfschalten.md).
+
+**Kein Vergleichsbetrieb.** Der mehrtägige Schattenbetrieb gegen das Altsystem wurde auf
+Wunsch des Projektinhabers übersprungen. Dieser Code läuft als Erstes an einer echten
+Heizung.
+
+### Mutationstest, Runde 1
+
+Erstmals gemessen, was die Tests wirklich prüfen, statt nur welche Zeilen sie ausführen —
+auf `domain/control_loop.py` und `services/shadow_run.py`:
+
+| | Mutanten | überlebt |
+|---|---:|---:|
+| `control_loop.py` | 137 | 15 = 11 % |
+| `shadow_run.py` | 367 | **180 = 49 %** |
+
+Die 49 Prozent sind die Zahl, wegen der diese Runde gemacht wurde. Sie ist nicht so
+schlimm, wie sie aussieht — 127 der Überlebenden sind Mutationen an Typangaben und
+SQLAlchemy-Ausdrücken, die kein Verhalten ändern —, aber **64 waren echte Testlücken**
+und sind jetzt mit inhaltlichen Tests geschlossen. Übrig bleiben vier nachweislich
+gleichwertige Mutanten, jeder einzeln begründet abgelegt.
+
+Bezogen auf die 242 tatsächlich wirksamen Mutanten: 4 überleben, also 1,7 Prozent.
+**Echte Fehler in der Regellogik: keine.** Alle Befunde waren Lücken in den Tests, nicht
+im Code — das ist die beruhigende Hälfte des Ergebnisses.
+
+Wiederholbar über `cosmic-ray-control-loop.toml` und `cosmic-ray-shadow-run.toml`; die
+Einzelbewertung steht in `cosmic-ray-stage1-assessment.md`. Bewusst nicht in der CI — zu
+langsam für jeden Lauf.
+
 ## Wo das Projekt steht
 
 Die Hauptnavigation zeigt angemeldeten Benutzern nur Ziele, die sie tatsächlich öffnen
@@ -123,7 +161,7 @@ Behebung der vier gemeldeten Anzeigefehler):
 
 | | |
 |---|---|
-| Tests | 1491 unter SQLite, 1490 plus ein Skip unter MariaDB |
+| Tests | 1556 unter SQLite, 1555 plus ein Skip unter MariaDB |
 | Testabdeckung | 100 %, Mindestschwelle 100 % in der CI |
 | Ruff, mypy strict | ohne Befund, 105 Quelldateien |
 | Migrationskette | linear, ein Kopf, vorwärts und rückwärts gegen beide Datenbanken |

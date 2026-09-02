@@ -9,7 +9,82 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ---
 
-## Unreleased
+## 0.3.0 — 2026-09-02
+
+**Die Fassung, in der thermoctl anfängt zu schalten.** Bis 0.2.2 landete jede
+Regelentscheidung im Schattenprotokoll und sonst nirgends — die Adapter waren gebaut,
+getestet und mit nichts verbunden. Jetzt sind alle vier Aktorwege verdrahtet:
+Zigbee2MQTT-Schalter, Zigbee-Thermostatventile, Meross-Steckdosen und selbstregelnde
+Ventile.
+
+**Der Trockenlauf bleibt die Vorgabe.** Wer schalten will, öffnet `/control/arm` (eigenes
+Recht `control.arm`) **und startet den Dienst neu** — der zweite Riegel wird beim
+Prozessstart gebaut. Erst danach geht etwas hinaus.
+
+### Zu beachten beim Umstieg
+
+- **Zwei Migrationen** laufen im Container beim Start von selbst; ein örtlich gestarteter
+  Dienst verweigert bei altem Schema den Start und will `alembic upgrade head`.
+- **Nach dem Scharfschalten sendet der erste Zyklus für jedes Gerät einmal unbedingt.**
+  Was ein Gerät gerade tut, ist nach einem Neustart nicht bekannt, und ein Relais, das
+  offen ist, bleibt offen, wenn niemand es anspricht.
+- **Ein gescheiterter Befehl wird in jedem Zyklus erneut versucht**, ohne Backoff. Ins
+  Protokoll kommt er nur beim Wechsel des Ergebnisses — sonst wäre es nach einem Tag
+  unlesbar.
+- **Die Navigation zeigt nur noch, wofür jemand das Recht hat.** Wer bisher Einträge sah,
+  die ihn abwiesen, sieht sie nicht mehr. Das ist keine Rechteänderung, nur eine ehrliche
+  Anzeige.
+- **Es gibt eine Anleitung für die erste scharfe Nacht:**
+  [docs/scharfschalten.md](docs/scharfschalten.md). Wer den Vergleichsbetrieb überspringt,
+  sollte sie gelesen haben.
+
+### Neu
+
+- **Alle vier Aktorwege verdrahtet.** Ein selbstregelndes Ventil bekommt nie zusätzlich
+  einen Ein/Aus-Befehl; ein Gerät mit beiden Fähigkeiten läuft über den Schalterweg, nicht
+  über beide. Ein Thermostatventil ohne `system_mode` geht über seinen Mindestsollwert aus
+  und regelt dann auf fünf Grad weiter — eines mit `system_mode` schliesst wirklich. Der
+  Unterschied wird aus dem Datenmodell gelesen, nicht geraten.
+- **Schaltprotokoll.** Jeder Befehl an ein Gerät: wann, welches Gerät, welche Zone, was
+  gesendet, mit welchem Ergebnis, warum, wodurch ausgelöst. Es überlebt das Löschen von
+  Zone und Gerät und unterliegt bewusst keiner Aufbewahrungsfrist. Lesbar in der
+  Oberfläche, über REST und über MCP.
+- **Sensorstörungen melden sich an Home Assistant**, mit einer eigenen Problem-Entität je
+  Zone, zusätzlich zum bestehenden Webhook. Der Text nennt jetzt die Folge samt Zahl:
+  „Die Zone regelt die Heizung bis auf Weiteres gegen den Frostschutz-Sollwert von
+  16 °C." Die Meldung geht auch im Trockenlauf hinaus — sonst erführe niemand von einer
+  Störung, solange die Anlage noch nicht scharf ist.
+- **Die Gruppe eines Benutzers lässt sich ändern**, mit Audit-Eintrag und einem Riegel
+  gegen das Aussperren des letzten Verwalters.
+
+### Behoben
+
+- **Ein gescheiterter Schaltbefehl wurde nie wiederholt.** Der Zwischenspeicher merkte
+  sich Entscheidung und Riegel, nicht das Ergebnis. Ein einziger Netzfehler hätte eine
+  Zone bis zur nächsten Änderung der Heizentscheidung kalt gelassen — bei einer
+  unterversorgten Zone also unbegrenzt. Gefunden im Kreuzreview.
+- **Die Entwertung der Meross-Sitzung war nie verdrahtet**: Eine tote Verbindung galt bis
+  zu sechs Stunden als gültig. Zusammen mit dem vorigen Punkt hätte ein Netzfehler alle
+  Meross-Aktoren stundenlang stillgelegt.
+- **Der Meross-Weg hatte nur einen Riegel** statt zwei. Jetzt trägt er denselben beim
+  Start eingefrorenen Wert wie der MQTT-Client.
+- **Die Statistik schnitt Tage an UTC-Mitternacht**, der Protokollfilter ebenso — keine
+  Anzeigefragen, sondern falsche Gruppierungen. Eine laufende Übersteuerung erschien als
+  „gerade eben" statt „noch 42 Minuten".
+- **Meross-Geräte galten dauerhaft als „hat sich noch nie gemeldet".**
+- **Die Navigation zeigte Einträge, die den Benutzer abwiesen.**
+
+### Bekannte Einschränkung
+
+- Der Wirkungswächter erkennt deutsche Komposita ohne Trennzeichen nicht
+  (`Zirkulationspumpe`, `Ölbrenner`) und kennt reine Temperaturaussagen nicht. Keiner
+  dieser Begriffe kommt heute im Projekt vor; es ist eine Lücke im Prüfnetz für künftige
+  Texte.
+- **Kein Vergleichsbetrieb.** Der mehrtägige Schattenbetrieb gegen das Altsystem wurde auf
+  Wunsch des Projektinhabers übersprungen. Dieser Code läuft als Erstes an einer echten
+  Heizung.
+
+### Im Einzelnen
 
 **Vier gemeldete Anzeigefehler behoben — einer davon eine falsche Aussage, nicht nur
 eine unschöne.** Ein Meross-Gerät stand dauerhaft als „hat sich noch nie gemeldet",
