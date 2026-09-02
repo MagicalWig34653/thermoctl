@@ -25,6 +25,11 @@ class ControlParameters:
     valve_protection_enabled: bool = False
     valve_protection_interval_days: int = 30
     valve_protection_duration_minutes: int = 10
+    pi_enabled: bool = False
+    pi_gain_per_k: Decimal = Decimal("0.25")
+    pi_integral_time_minutes: int = 180
+    pi_min_on_seconds: int = 60
+    pi_min_off_seconds: int = 60
 
 
 def _or_standard[T](zone_value: T | None, default: T) -> T:
@@ -58,6 +63,11 @@ def control_parameters(session: Session, zone: Zone) -> ControlParameters:
         valve_protection_enabled=zone.valve_protection_enabled,
         valve_protection_interval_days=zone.valve_protection_interval_days,
         valve_protection_duration_minutes=zone.valve_protection_duration_minutes,
+        pi_enabled=zone.pi_enabled,
+        pi_gain_per_k=zone.pi_gain_per_k,
+        pi_integral_time_minutes=zone.pi_integral_time_minutes,
+        pi_min_on_seconds=zone.pi_min_on_seconds,
+        pi_min_off_seconds=zone.pi_min_off_seconds,
     )
 
 

@@ -37,6 +37,24 @@ class Zone(TimestampMixin, Base):
         CheckConstraint(
             "solar_gain_factor BETWEEN 0 AND 1", name="solar_gain_faktor_0_bis_1"
         ),
+        CheckConstraint(
+            "pi_gain_per_k BETWEEN 0.05 AND 0.50 "
+            "AND (pi_gain_per_k * 100) % 5 = 0",
+            name="pi_gain_per_k_bereich_und_schritt",
+        ),
+        CheckConstraint(
+            "pi_integral_time_minutes BETWEEN 60 AND 720 "
+            "AND pi_integral_time_minutes % 30 = 0",
+            name="pi_integral_time_bereich_und_schritt",
+        ),
+        CheckConstraint(
+            "pi_min_on_seconds BETWEEN 60 AND 300 AND pi_min_on_seconds % 30 = 0",
+            name="pi_min_on_bereich_und_schritt",
+        ),
+        CheckConstraint(
+            "pi_min_off_seconds BETWEEN 60 AND 300 AND pi_min_off_seconds % 30 = 0",
+            name="pi_min_off_bereich_und_schritt",
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -79,6 +97,25 @@ class Zone(TimestampMixin, Base):
     )
     valve_protection_duration_minutes: Mapped[int] = mapped_column(
         Integer, default=10, server_default=text("10"), nullable=False
+    )
+
+    # PI is deliberately zone-specific and does not inherit global defaults. The
+    # switch stays absent from every adapter until the complete controller, fallback
+    # and diagnostic path is connected in a later implementation step.
+    pi_enabled: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=text("false"), nullable=False
+    )
+    pi_gain_per_k: Mapped[Decimal] = mapped_column(
+        Numeric(3, 2), default=Decimal("0.25"), server_default=text("0.25"), nullable=False
+    )
+    pi_integral_time_minutes: Mapped[int] = mapped_column(
+        Integer, default=180, server_default=text("180"), nullable=False
+    )
+    pi_min_on_seconds: Mapped[int] = mapped_column(
+        Integer, default=60, server_default=text("60"), nullable=False
+    )
+    pi_min_off_seconds: Mapped[int] = mapped_column(
+        Integer, default=60, server_default=text("60"), nullable=False
     )
 
 
