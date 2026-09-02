@@ -40,6 +40,16 @@ from thermoctl.domain.control import (
     settings,
 )
 from thermoctl.domain.interfaces import overview
+from thermoctl.domain.pi_control import (
+    RESET_REASON_ARMING,
+    RESET_REASON_CONTEXT_CHANGE,
+    RESET_REASON_FROST,
+    RESET_REASON_INVALID_STATE,
+    RESET_REASON_SENSOR_FAILURE,
+    RESET_REASON_TIME_GAP,
+    RESET_REASON_VALVE_PROTECTION,
+    RESET_REASON_WINDOW_OPEN,
+)
 from thermoctl.domain.principal import Principal
 from thermoctl.domain.schedule import resolved_setpoint
 from thermoctl.domain.statistics import (
@@ -50,7 +60,24 @@ from thermoctl.domain.statistics import (
     relay_operations,
 )
 from thermoctl.domain.time import local_day_start_utc, local_time
+from thermoctl.services.shadow_run import PI_FALLBACK_INELIGIBLE
 from thermoctl.web import templates
+
+# Readable text for `shadow_decision.controller_fallback_reason` (specification
+# section 6: "einschliesslich Rueckfallgrund" has to be legible on the operating
+# page, not just as a code). Kept here, not in the domain: this is a display-only
+# translation, the same reasoning as `domain.control.LABELS`.
+PI_FALLBACK_LABELS: dict[str, str] = {
+    PI_FALLBACK_INELIGIBLE: "Die Zone erfüllt die PI-Voraussetzungen nicht (mehr).",
+    RESET_REASON_WINDOW_OPEN: "Ein Fenster ist offen.",
+    RESET_REASON_FROST: "Frostschutz ist wirksam.",
+    RESET_REASON_SENSOR_FAILURE: "Der Sensor gilt als ausgefallen.",
+    RESET_REASON_VALVE_PROTECTION: "Ein Ventilschutzlauf ist aktiv.",
+    RESET_REASON_CONTEXT_CHANGE: "Der Sollwertkontext hat gerade gewechselt.",
+    RESET_REASON_TIME_GAP: "Eine Zeitlücke seit der letzten Auswertung.",
+    RESET_REASON_ARMING: "Die Anlage wurde gerade scharf geschaltet.",
+    RESET_REASON_INVALID_STATE: "Der PI-Zustand war ungültig oder fehlte.",
+}
 
 # `include_in_schema=False`: the OpenAPI description is the contract of the REST
 # interface. These routes deliver HTML for humans, and in the interface under
@@ -98,6 +125,7 @@ def _page(
                 zone.id: resolved_setpoint(session, zone, now) for zone in zones
             },
             "errors": {errors.field: errors.notice} if errors else {},
+            "pi_fallback_labels": PI_FALLBACK_LABELS,
             "may_arm": has_permission(principal, "control.arm"),
             # The first bolt sits in the MQTT client's constructor and is read from
             # the database at startup. Whoever arms the plant while it is running

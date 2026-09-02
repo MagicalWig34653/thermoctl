@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from tests.helpers import (
+    capability,
     create_device,
     create_device_command,
     create_device_state,
@@ -15,21 +16,46 @@ from tests.helpers import (
     create_shadow_decision,
     create_zone,
     create_zone_state,
+    integration,
+    role,
     source,
     user_with_permissions,
     zone_with_schedule,
 )
 from thermoctl.auth.tokens import issue_token
 from thermoctl.config import Settings
-from thermoctl.db.models.device import DeviceCapabilityLink
+from thermoctl.db.models.device import Device, DeviceCapabilityLink, ZoneDevice
 from thermoctl.db.models.lookup import DeviceCapability
 from thermoctl.db.models.operations import Setting
 from thermoctl.db.models.override import ZoneOverride
 from thermoctl.db.models.schedule import SchedulePoint
-from thermoctl.db.models.zone import SetpointMode
+from thermoctl.db.models.zone import SetpointMode, Zone
 from thermoctl.domain.authz import Forbidden
 from thermoctl.domain.control import arm, save_solar_location
 from thermoctl.mcp import server
+
+
+def _assign_switch_actuator(session: Session, zone: Zone) -> None:
+    """The minimal assignment `pi_eligible()` accepts."""
+    device = Device(
+        integration_id=integration(session).id,
+        external_id=f"{zone.name}-relais",
+        display_name=f"{zone.name}-relais",
+    )
+    session.add(device)
+    session.flush()
+    session.add(
+        DeviceCapabilityLink(device_id=device.id, capability_id=capability(session, "switch").id)
+    )
+    session.add(
+        ZoneDevice(
+            zone_id=zone.id,
+            device_id=device.id,
+            device_role_id=role(session, "actuator").id,
+            self_regulating=False,
+        )
+    )
+    session.flush()
 
 
 def _token(session: Session, name: str, permissions: list[tuple[str, int | None]]) -> str:
@@ -583,6 +609,55 @@ def test_setting_a_control_parameter_leaves_the_others_inherited(session: Sessio
     assert result["value"] == "0.4"
     assert zone.hysteresis_k == Decimal("0.4")
     assert zone.min_on_seconds is None, "an inherited value was pinned down"
+
+
+def test_mcp_can_switch_pi_on_and_off_for_an_eligible_zone(session: Session) -> None:
+    """PI (Beta) is not a separate MCP tool -- it goes through the same
+    `set_control_parameters` tool as every other control parameter (specification
+    section 6, principle 6: implemented once, used by every adapter alike)."""
+    zone = zone_with_schedule(session, "pi-mcp-zone", [(1, 0, "tag-pi", Decimal("21.0"))])
+    _assign_switch_actuator(session, zone)
+    source(session, "mcp")
+    plaintext = _token(
+        session, "pi-schreiber", [("zone.read", zone.id), ("zone.manage", zone.id)]
+    )
+
+    result = server.set_control_parameters(
+        session, plaintext, zone.id, "pi_enabled", Decimal(1)
+    )
+
+    assert result["value"] == "1"
+    assert zone.pi_enabled is True
+
+    server.set_control_parameters(session, plaintext, zone.id, "pi_enabled", Decimal(0))
+    assert zone.pi_enabled is False
+
+
+def test_mcp_refuses_pi_for_an_ineligible_zone(session: Session) -> None:
+    """No switch actuator assigned -- rejected before anything is switched on."""
+    zone = zone_with_schedule(session, "pi-ungeeignet-mcp", [(1, 0, "tag-u", Decimal("21.0"))])
+    source(session, "mcp")
+    plaintext = _token(
+        session, "pi-schreiber-2", [("zone.read", zone.id), ("zone.manage", zone.id)]
+    )
+
+    with pytest.raises(ValueError, match="PI-Regelung"):
+        server.set_control_parameters(session, plaintext, zone.id, "pi_enabled", Decimal(1))
+    assert zone.pi_enabled is False
+
+
+def test_reading_control_parameters_lists_pi_with_its_bounds(session: Session) -> None:
+    """The Beta parameters are read the same way as every other one -- limits and
+    current value included, so a language model does not have to guess them."""
+    zone = zone_with_schedule(session, "pi-lesen", [(1, 0, "tag-l", Decimal("21.0"))])
+    plaintext = _token(session, "pi-leser", [("zone.read", zone.id)])
+
+    result = server.read_control_parameters(session, plaintext, zone.id)
+
+    parameter = {p["name"]: p for p in result["parameter"]}  # type: ignore[union-attr]
+    assert parameter["pi_gain_per_k"]["minimum"] == "0.05"
+    assert parameter["pi_gain_per_k"]["maximum"] == "0.50"
+    assert parameter["pi_enabled"]["value"] == "False"
 
 
 def test_regelparameter_setzen_braucht_zone_manage(session: Session) -> None:

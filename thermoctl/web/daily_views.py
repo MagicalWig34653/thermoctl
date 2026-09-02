@@ -24,7 +24,9 @@ from thermoctl.domain.zone_settings import (
     ControlParameters,
     ParameterOutOfRange,
     control_parameters,
+    pi_eligibility,
     save_control_parameters,
+    validate_pi_parameters,
     validate_valve_protection,
 )
 from thermoctl.web.forms import FormError, form_again
@@ -48,6 +50,19 @@ FELDER = (
 )
 GANZZAHLEN = frozenset(FELDER) - {"hysteresis_k", "temperature_offset_k", "solar_setback_max_k"}
 
+# PI (Beta), specification section 6/7. Handled like `valve_protection_interval_days`
+# above -- parsed through `_check_parameters` (so an empty field means "unchanged", not
+# "inherited": PI is a non-nullable, non-inherited zone field) -- and like
+# `valve_protection_enabled` for the switch itself, which is its own checkbox outside
+# `_check_parameters`.
+PI_FELDER = (
+    "pi_gain_per_k",
+    "pi_integral_time_minutes",
+    "pi_min_on_seconds",
+    "pi_min_off_seconds",
+)
+GANZZAHLEN = GANZZAHLEN | (frozenset(PI_FELDER) - {"pi_gain_per_k"})
+
 # Not part of `FELDER`: unlike the fields above, an empty value here does not mean
 # "inherited from the global default" -- there is no meaningful plant-wide default for
 # how much sun a particular room gets. It is its own, always-present, non-nullable
@@ -65,11 +80,21 @@ def _zone_or_404(session: Session, principal: Principal, zone_id: int, permissio
 
 def _parameter_page(
     request: Request,
+    session: Session,
     zone: Zone,
     effective: ControlParameters,
     values: dict[str, str],
     errors: FormError | None = None,
 ) -> Response:
+    # Shown *before* the switch can be offered (specification section 6): whether
+    # this zone's current device assignment and control cycle even qualify for PI,
+    # independent of whatever the form's own (possibly rejected) PI values say.
+    eligibility = pi_eligibility(
+        session,
+        zone,
+        pi_min_on_seconds=effective.pi_min_on_seconds,
+        pi_min_off_seconds=effective.pi_min_off_seconds,
+    )
     return form_again(
         request,
         "parameter.html",
@@ -77,6 +102,7 @@ def _parameter_page(
         errors,
         zone=zone,
         effective=effective,
+        pi_eligibility=eligibility,
     )
 
 
@@ -93,7 +119,11 @@ async def show_parameter(
     }
     values["solar_gain_factor"] = str(zone.solar_gain_factor)
     values["valve_protection_enabled"] = "yes" if zone.valve_protection_enabled else ""
-    return _parameter_page(request, zone, control_parameters(session, zone), values)
+    for name in PI_FELDER:
+        values[name] = str(getattr(zone, name))
+    values["pi_enabled"] = "yes" if zone.pi_enabled else ""
+    values["pi_confirm"] = ""
+    return _parameter_page(request, session, zone, control_parameters(session, zone), values)
 
 
 def _check_parameters(values: dict[str, str]) -> dict[str, Decimal | int | None]:
@@ -142,6 +172,10 @@ async def save_parameter(
     values["valve_protection_enabled"] = str(form.get("valve_protection_enabled", ""))
     raw_solar_gain_factor = str(form.get("solar_gain_factor", "")).strip()
     values["solar_gain_factor"] = raw_solar_gain_factor or str(zone.solar_gain_factor)
+    for name in PI_FELDER:
+        values[name] = str(form.get(name, "")).strip()
+    values["pi_enabled"] = str(form.get("pi_enabled", ""))
+    values["pi_confirm"] = str(form.get("pi_confirm", ""))
     try:
         checked = _check_parameters({name: values[name] for name in FELDER})
         checked["valve_protection_enabled"] = bool(values["valve_protection_enabled"])
@@ -160,10 +194,40 @@ async def save_parameter(
             else _check_solar_gain_factor(raw_solar_gain_factor)
         )
         validate_valve_protection(checked)
+
+        pi_checked = _check_parameters({name: values[name] for name in PI_FELDER})
+        for name in PI_FELDER:
+            if pi_checked[name] is None:
+                pi_checked[name] = getattr(zone, name)
+        checked.update(pi_checked)
+        pi_enabled = bool(values["pi_enabled"])
+        # The confirmation is only asked for the moment PI actually gets switched
+        # on for this zone (specification section 8) -- not on every later save of
+        # an already-enabled zone, and not when switching it back off.
+        if pi_enabled and not zone.pi_enabled and not values["pi_confirm"]:
+            raise FormError(
+                "pi_confirm",
+                "Bitte bestätigen, dass mehr Schaltspiele und eine falsche "
+                "Parametrierung verstanden wurden, bevor PI (Beta) eingeschaltet wird.",
+            )
+        checked["pi_enabled"] = pi_enabled
+        # Checked here, not just inside `save_control_parameters` below: that call
+        # only runs once `zone.solar_gain_factor` is already set, and a rejected PI
+        # value must not leave that already-committed the same way a bad valve-
+        # protection value above must not, either (`validate_valve_protection`'s own
+        # comment on `save_settings` for the same reasoning).
+        validate_pi_parameters(session, zone, checked)
     except (FormError, ParameterOutOfRange) as exc:
         if isinstance(exc, ParameterOutOfRange):
-            exc = FormError("valve_protection_duration_minutes", str(exc))
-        return _parameter_page(request, zone, control_parameters(session, zone), values, exc)
+            # Both `validate_valve_protection` and `validate_pi_parameters` raise
+            # this same plain exception type without naming a field (like every
+            # other multi-field domain check in this project) -- the message text
+            # is the only way to route it back to roughly the right input.
+            field = "pi_enabled" if "PI-" in str(exc) else "valve_protection_duration_minutes"
+            exc = FormError(field, str(exc))
+        return _parameter_page(
+            request, session, zone, control_parameters(session, zone), values, exc
+        )
     # Set before `save_control_parameters` runs: that call also writes the audit
     # entry, and its `object_type="zone_settings"` covers this field too -- a second,
     # near-identical entry right after it would only make the log harder to read.

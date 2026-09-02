@@ -409,6 +409,8 @@
       "switch"
     ],
     "thermoctl/domain/zone_settings.py": [
+      "PI-Regelung (Beta) eingeschaltet",
+      "PI-Regelung (Beta) kann für diese Zone nicht eingeschaltet werden:",
       "Ventilschutz eingeschaltet",
       "Ventilschutz-Abstand",
       "Ventilschutz-Abstand darf höchstens",
@@ -416,7 +418,9 @@
       "Ventilschutz-Dauer",
       "Ventilschutz-Dauer darf höchstens",
       "Ventilschutz-Dauer darf nicht länger als der Abstand sein.",
-      "Ventilschutz-Dauer muss mindestens 1 Minute betragen."
+      "Ventilschutz-Dauer muss mindestens 1 Minute betragen.",
+      "actuator",
+      "switch"
     ],
     "thermoctl/integrations/actuators.py": [
       "Zigbee2MQTT-Ventil",
@@ -511,8 +515,14 @@
       "\"Nach so vielen Tagen ohne reguläres Heizen wird der Schutzlauf fällig.\", errors.valve_protection_interval_days, \"1\", \"1\") }}",
       "\"So lange fordert der Schutzlauf ein geöffnetes Ventil an. Im Trockenlauf wird die Entscheidung nur protokolliert; scharf und neu gestartet geht sie an den Aktor.\", errors.valve_protection_duration_minutes, \"1\", \"1\") }}",
       "\"Wie weit die Ist-Temperatur unter den Sollwert fallen darf, bevor die Regelung Heizen anfordert. Zu klein heißt ein ständiger Wechsel zwischen Ein- und Aus-Entscheidung. Derzeit \" ~ effective.hysteresis_k ~ \" K\" ~ (\" aus dem globalen Standard.\" if not values.hysteresis_k else \".\"), errors.hysteresis_k, \"0.01\", \"0\") }}",
+      "<div class=\"form-check form-switch mb-3\">",
       "<div class=\"form-text\">Erzeugt regelmäßig eine Ventilschutz-Entscheidung. Im Trockenlauf wird sie nur protokolliert; scharf und neu gestartet wird der zugeordnete Aktor angesteuert.</div>",
+      "<input class=\"form-check-input\" type=\"checkbox\" role=\"switch\" id=\"pi_enabled\"",
+      "<label class=\"form-check-label\" for=\"pi_enabled\">PI-Regelung (Beta) einschalten</label>",
       "<label class=\"form-check-label\" for=\"valve_protection_enabled\">Ventilschutz einschalten</label>",
+      "<strong>PI (Beta) schaltet deutlich häufiger als die Hysterese und verkürzt dadurch",
+      "Aus ist die Vorgabe für jede Zone, auch nach einer Aktualisierung. Ausschalten",
+      "diese Zone tatsächlich schaltet, zeigt <a href=\"/relay-wear\">Relaisverschleiß</a>",
       "{{ number_field(\"valve_protection_duration_minutes\", \"Ventilschutz-Dauer (Minuten)\", values.valve_protection_duration_minutes,",
       "{{ number_field(\"valve_protection_interval_days\", \"Ventilschutz-Abstand (Tage)\", values.valve_protection_interval_days,"
     ],
@@ -563,6 +573,13 @@
       "- Eine riesige Antwort ist nicht begrenzt und kann Speicher oder Datenbank erschöpfen (`thermoctl/integrations/meross.py:223-234`, `thermoctl/services/meross_discovery.py:81-142`). Das kann den Dienst beenden und Aktoren im letzten Zustand lassen.",
       "- Fremde, formal gültige Geräte-IDs werden als neue Geräte angelegt; ein `mss...`-Modell erhält die Schaltfähigkeit (`thermoctl/services/meross_discovery.py:81-119`). Ohne anschließende privilegierte Zuordnung wird dadurch kein Aktor geschaltet. Metadaten eines bereits bekannten UUID-Eintrags werden aktualisiert.",
       "- Verhalten und Sicherheitszusagen der echten Meross-Cloud sowie ein Test gegen reale Aktoren; es wurde bewusst kein körperlicher Schaltversuch durchgeführt."
+    ],
+    "thermoctl/web/control_views.py": [
+      "Die Anlage wurde gerade scharf geschaltet.",
+      "Ein Ventilschutzlauf ist aktiv."
+    ],
+    "thermoctl/web/daily_views.py": [
+      "Bitte bestätigen, dass mehr Schaltspiele und eine falsche Parametrierung verstanden wurden, bevor PI (Beta) eingeschaltet wird."
     ]
   },
   "version": 1

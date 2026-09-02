@@ -656,6 +656,20 @@ body {
     display: none;
 }
 
+/* ── Aufklappbare Rechnung (z. B. Relais-Verschleiss bei PI-Beta) ────────────── */
+
+.tc-info-disclosure > summary {
+    cursor: pointer;
+    display: inline-block;
+    font-size: 0.875rem;
+    font-weight: 520;
+    color: var(--bs-emphasis-color, inherit);
+}
+
+.tc-info-disclosure[open] > summary {
+    margin-bottom: 0.25rem;
+}
+
 /* ── Rechtevergabe ─────────────────────────────────────────────────────────── */
 
 .tc-permission-editor > summary {

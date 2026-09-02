@@ -32,6 +32,91 @@
     "Nach so vielen Tagen ohne reguläres Heizen wird der Schutzlauf fällig.", errors.valve_protection_interval_days, "1", "1") }}
   {{ number_field("valve_protection_duration_minutes", "Ventilschutz-Dauer (Minuten)", values.valve_protection_duration_minutes,
     "So lange fordert der Schutzlauf ein geöffnetes Ventil an. Im Trockenlauf wird die Entscheidung nur protokolliert; scharf und neu gestartet geht sie an den Aktor.", errors.valve_protection_duration_minutes, "1", "1") }}
+
+  <div class="border-top pt-3 mt-4">
+    <p class="t-label mb-2">Experimentell: PI-Regelung (Beta)</p>
+    <p class="t-quiet small">
+      Ersetzt für diese Zone die Hysterese-Entscheidung durch einen PI-Regler mit
+      Tastgrad-Modulation. Beta heißt: keine bestätigte Relaisfreigabe, kein
+      versprochener Verbrauchsvorteil, jederzeit auf Knopfdruck rückgängig. Wirksamer
+      Reglertyp und ein etwaiger Rückfallgrund stehen laufend auf der
+      <a href="/control">Betriebsseite</a>.
+    </p>
+
+    <div class="alert alert-warning" role="alert">
+      <strong>PI (Beta) schaltet deutlich häufiger als die Hysterese und verkürzt dadurch
+      die Lebensdauer des Schaltaktors spürbar.</strong>
+      Das betrifft vor allem den ungünstigsten Fall — nicht den Regelbetrieb; wie oft
+      diese Zone tatsächlich schaltet, zeigt <a href="/relay-wear">Relaisverschleiß</a>
+      mit Jahreshochrechnung je Gerät. Für einen Kessel oder Verdichter ohne eigenen
+      Taktschutz ist PI ungeeignet — häufiges Takten kostet dort nicht nur Lebensdauer,
+      sondern auch Wirkungsgrad.
+      <details class="tc-info-disclosure mt-2">
+        <summary>ⓘ Rechnung ansehen</summary>
+        <div class="table-responsive mt-2">
+          <table class="table table-sm mb-2">
+            <thead>
+              <tr><th scope="col"></th><th scope="col" class="text-end">je Stunde</th><th scope="col" class="text-end">je Tag</th><th scope="col" class="text-end">je Jahr</th></tr>
+            </thead>
+            <tbody>
+              <tr><th scope="row">PI, ungünstigster Fall</th><td class="text-end">30</td><td class="text-end">720</td><td class="text-end">262.800</td></tr>
+              <tr><th scope="row">PI bei 30&nbsp;% Tastgrad (simuliert)</th><td class="text-end">18</td><td class="text-end">432</td><td class="text-end">157.680</td></tr>
+              <tr><th scope="row">Hysterese, höchstens</th><td class="text-end">6</td><td class="text-end">144</td><td class="text-end">52.560</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="small mb-0">
+          Schaltspiele, nicht Zustandswechsel. Mit einer austauschbaren Annahme von
+          100.000 elektrischen Betätigungen eines vergleichbaren 16-A-Leistungsrelais
+          (keine Meross-Herstellerangabe — öffentliche Daten dazu fehlen) entspricht der
+          ungünstigste Fall rund 2,6 solcher Relaislebensdauern im Jahr. Der
+          ungünstigste Fall ist ausdrücklich nicht der Regelfall; die simulierte
+          Spalte mit 30&nbsp;% Tastgrad und der tatsächliche, gemessene Verschleiß je
+          Gerät stehen unter <a href="/relay-wear">Relaisverschleiß</a>.
+        </p>
+      </details>
+    </div>
+
+    {% if not pi_eligibility.eligible %}
+    <div class="alert alert-secondary" role="alert">
+      Diese Zone eignet sich derzeit nicht für PI: {{ pi_eligibility.reason }}
+      Solange das so bleibt, regelt die Zone über Hysterese — unabhängig vom Schalter
+      unten.
+    </div>
+    {% endif %}
+
+    {{ number_field("pi_gain_per_k", "PI-Verstärkung Kp, Beta (1/K)", values.pi_gain_per_k,
+      "Wie stark der Regelfehler in die Stellgröße eingeht. Größer heißt kräftigere, aber unruhigere Reaktion. Vorgabe 0,25/K.", errors.pi_gain_per_k, "0.05", "0.05", "0.50") }}
+    {{ number_field("pi_integral_time_minutes", "PI-Nachstellzeit Ti, Beta (Minuten)", values.pi_integral_time_minutes,
+      "Wie schnell der Integralanteil eine bleibende Regelabweichung ausgleicht. Kleiner heißt schneller, aber näher am Überschwingen. Vorgabe 180 Minuten.", errors.pi_integral_time_minutes, "30", "60", "720") }}
+    {{ number_field("pi_min_on_seconds", "PI-Mindest-Einschaltdauer, Beta (Sekunden)", values.pi_min_on_seconds,
+      "Weiche Untergrenze für einen PI-Einschaltimpuls — die Regelung darf sie unterschreiten, wenn der Tastgrad es verlangt; solche Fälle stehen im Schattenprotokoll. Vorgabe 60 Sekunden, kein bestätigter Taktschutzwert.", errors.pi_min_on_seconds, "30", "60", "300") }}
+    {{ number_field("pi_min_off_seconds", "PI-Mindest-Ausschaltdauer, Beta (Sekunden)", values.pi_min_off_seconds,
+      "Weiche Untergrenze für eine PI-Ausschaltpause — dieselbe Ausnahme wie oben gilt auch hier. Vorgabe 60 Sekunden.", errors.pi_min_off_seconds, "30", "60", "300") }}
+
+    <div class="form-check mb-2">
+      <input class="form-check-input" type="checkbox" id="pi_confirm"
+             name="pi_confirm" value="yes"{% if values.pi_confirm %} checked{% endif %}>
+      <label class="form-check-label" for="pi_confirm">Ich habe verstanden, dass PI (Beta) mehr Schaltspiele erzeugt und eine falsch gewählte Parametrierung die Regelung verschlechtern kann.</label>
+      {% if errors.pi_confirm %}<div class="text-danger small">{{ errors.pi_confirm }}</div>{% endif %}
+    </div>
+
+    <div class="form-check form-switch mb-3">
+      <input class="form-check-input" type="checkbox" role="switch" id="pi_enabled"
+             name="pi_enabled" value="yes"{% if values.pi_enabled %} checked{% endif %}
+             {% if not pi_eligibility.eligible and not values.pi_enabled %}disabled{% endif %}>
+      <label class="form-check-label" for="pi_enabled">PI-Regelung (Beta) einschalten</label>
+      {% if errors.pi_enabled %}<div class="text-danger small">{{ errors.pi_enabled }}</div>{% endif %}
+      <div class="form-text">
+        Aus ist die Vorgabe für jede Zone, auch nach einer Aktualisierung. Ausschalten
+        wirkt sofort ab dem nächsten Regelzyklus, setzt den PI-Zustand zurück und die
+        Zone regelt danach wieder wie gewohnt über Hysterese — ohne Neustart und ohne
+        Rückmigration.
+        {% if not pi_eligibility.eligible and not values.pi_enabled %}Der Schalter ist gesperrt, solange die Zone dafür nicht geeignet ist.{% endif %}
+      </div>
+    </div>
+  </div>
+
   <button class="btn btn-primary" type="submit">Speichern</button>
   <a class="btn btn-secondary" href="/">Abbrechen</a>
 </form>

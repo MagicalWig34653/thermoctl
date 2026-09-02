@@ -92,6 +92,15 @@ class WriteControlParameters(BaseModel):
     valve_protection_duration_minutes: int = Field(
         default=10, gt=0, le=MAXIMUM_VALVE_PROTECTION_DURATION_MINUTES
     )
+    # PI (Beta), specification section 7: not inherited, not nullable. The exact
+    # bounds and steps live in the domain (`domain/zone_settings.PARAMETERS`) and are
+    # checked there -- a `Field(ge=..., le=...)` here would be a second version of
+    # the same numbers.
+    pi_enabled: bool = False
+    pi_gain_per_k: Decimal = Field(default=Decimal("0.25"), ge=0)
+    pi_integral_time_minutes: int = Field(default=180, ge=0)
+    pi_min_on_seconds: int = Field(default=60, ge=0)
+    pi_min_off_seconds: int = Field(default=60, ge=0)
 
 
 class ControlParametersResponse(WriteControlParameters):

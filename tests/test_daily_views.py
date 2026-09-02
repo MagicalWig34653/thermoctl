@@ -7,18 +7,23 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from tests.helpers import (
+    capability,
     create_mode,
     create_settings,
     create_zone,
+    integration,
+    role,
     source,
     zone_with_schedule,
 )
 from thermoctl.auth.csrf import CSRF_HEADER, csrf_token
 from thermoctl.auth.sessions import COOKIE_NAME
 from thermoctl.config import get_settings
-from thermoctl.db.models.operations import Setting
+from thermoctl.db.models.device import Device, DeviceCapabilityLink, ZoneDevice
+from thermoctl.db.models.operations import AuditEvent, Setting
 from thermoctl.db.models.override import ZoneOverride
 from thermoctl.db.models.state import ShadowDecision
+from thermoctl.db.models.zone import Zone
 
 
 def _grundlage(session: Session):
@@ -26,6 +31,29 @@ def _grundlage(session: Session):
     source(session, "api")
     create_settings(session)
     return create_zone(session, "wohnzimmer")
+
+
+def _assign_switch_actuator(session: Session, zone: Zone) -> None:
+    """The minimal assignment `pi_eligible()` accepts."""
+    device = Device(
+        integration_id=integration(session).id,
+        external_id=f"{zone.name}-relais",
+        display_name=f"{zone.name}-relais",
+    )
+    session.add(device)
+    session.flush()
+    session.add(
+        DeviceCapabilityLink(device_id=device.id, capability_id=capability(session, "switch").id)
+    )
+    session.add(
+        ZoneDevice(
+            zone_id=zone.id,
+            device_id=device.id,
+            device_role_id=role(session, "actuator").id,
+            self_regulating=False,
+        )
+    )
+    session.flush()
 
 
 def _csrf(client: TestClient) -> dict[str, str]:
@@ -173,6 +201,113 @@ def test_the_rendered_parameter_form_carries_the_valve_protection_field_names(
     assert response.status_code == 303
     assert zone.valve_protection_interval_days == 20
     assert zone.valve_protection_duration_minutes == 15
+
+
+def test_the_parameter_page_shows_the_pi_warning_with_the_switching_table_and_relay_wear_link(
+    session: Session, client_als
+) -> None:
+    """The wear warning has to be readable *at* the switch, not buried in a footnote
+    -- and the numbers behind the info disclosure are the ones from the specification
+    and from the project owner's explicit request, not invented ones."""
+    zone = _grundlage(session)
+    client = client_als([("zone.manage", zone.id)])
+
+    page = client.get(f"/zones/{zone.id}/parameters")
+
+    assert page.status_code == 200
+    assert "PI-Regelung (Beta)" in page.text
+    assert "verkürzt dadurch" in page.text and "Lebensdauer" in page.text
+    assert "262.800" in page.text  # worst case, per year
+    assert "52.560" in page.text  # hysteresis ceiling, per year
+    assert "100.000" in page.text
+    assert "rund 2,6" in page.text
+    assert 'href="/relay-wear"' in page.text
+    assert "Kessel oder Verdichter" in page.text
+
+
+def test_an_ineligible_zone_shows_the_reason_and_refuses_to_switch_pi_on(
+    session: Session, client_als
+) -> None:
+    zone = _grundlage(session)
+    zone.solar_gain_factor = Decimal("0.40")
+    client = client_als([("zone.manage", zone.id)])
+
+    page = client.get(f"/zones/{zone.id}/parameters")
+    assert page.status_code == 200
+    assert "eignet sich derzeit nicht für PI" in page.text
+    assert "Schaltaktor" in page.text
+
+    response = client.post(
+        f"/zones/{zone.id}/parameters",
+        data={"pi_enabled": "yes", "pi_confirm": "yes", "solar_gain_factor": "0.90"},
+        headers=_csrf(client),
+    )
+
+    assert response.status_code == 200
+    assert "PI-Regelung (Beta) kann für diese Zone nicht eingeschaltet werden" in response.text
+    assert zone.pi_enabled is False
+    # The rejected PI value must not have silently carried an unrelated field's
+    # change through -- `save_control_parameters` never ran.
+    assert zone.solar_gain_factor == Decimal("0.40")
+
+
+def test_switching_pi_on_needs_the_confirmation_checkbox_first(
+    session: Session, client_als
+) -> None:
+    zone = _grundlage(session)
+    _assign_switch_actuator(session, zone)
+    client = client_als([("zone.manage", zone.id)])
+
+    response = client.post(
+        f"/zones/{zone.id}/parameters",
+        data={"pi_enabled": "yes"},
+        headers=_csrf(client),
+    )
+
+    assert response.status_code == 200
+    assert "bestätigen" in response.text
+    assert zone.pi_enabled is False
+
+
+def test_switching_pi_on_and_off_through_the_interface_with_audit_entry(
+    session: Session, client_als
+) -> None:
+    zone = _grundlage(session)
+    _assign_switch_actuator(session, zone)
+    client = client_als([("zone.manage", zone.id)])
+
+    on = client.post(
+        f"/zones/{zone.id}/parameters",
+        data={
+            "pi_enabled": "yes",
+            "pi_confirm": "yes",
+            "pi_gain_per_k": "0.25",
+            "pi_integral_time_minutes": "180",
+            "pi_min_on_seconds": "60",
+            "pi_min_off_seconds": "60",
+        },
+        headers=_csrf(client),
+        follow_redirects=False,
+    )
+
+    assert on.status_code == 303
+    assert zone.pi_enabled is True
+    entry = session.scalar(
+        select(AuditEvent).where(AuditEvent.object_type == "zone_settings")
+    )
+    assert entry is not None
+    assert zone.display_name in entry.summary
+
+    # Turning it back off needs no re-confirmation, and the page says the zone
+    # regulates ordinarily again once it is off.
+    off = client.post(
+        f"/zones/{zone.id}/parameters",
+        data={},
+        headers=_csrf(client),
+        follow_redirects=True,
+    )
+    assert off.status_code == 200
+    assert zone.pi_enabled is False
 
 
 def test_parameters_of_a_foreign_zone_yield_404(session: Session, client_als) -> None:
