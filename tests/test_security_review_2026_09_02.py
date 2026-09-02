@@ -7,6 +7,7 @@ tut. Die Durchsicht selbst steht in `docs/sicherheitsdurchsicht-2026-09-02.md`.
 """
 
 from datetime import datetime
+from urllib.error import HTTPError
 from urllib.request import HTTPRedirectHandler, Request
 
 import pytest
@@ -33,6 +34,7 @@ from thermoctl.db.models.device import (
 from thermoctl.db.models.lookup import ChannelKind, ControllerCommand
 from thermoctl.domain.controller_channels import apply_read_channels
 from thermoctl.domain.kiosk import issue_kiosk_token
+from thermoctl.integrations.notification import _NoRedirectHandler
 from thermoctl.mcp import server as mcp_server
 
 
@@ -144,14 +146,16 @@ def test_device_manage_einer_zone_erreicht_keine_fremde_zone(
 
 
 def test_offen_webhook_redirect_nimmt_authorization_an_internes_ziel_mit() -> None:
-    """NOCH NICHT BEHOBEN -- dieser Test haelt eine offene Luecke fest, keine Korrektur.
+    """BEHOBEN -- hielt eine offene Luecke fest, haelt jetzt die Korrektur fest.
 
-    Der von `integrations/notification.py` benutzte Standard-URL-Handler behaelt bei
-    einem 302 auch ueber einen Hostwechsel hinweg alle Header ausser `Content-*` bei.
-    Wer den vom Betreiber konfigurierten Webhook kontrolliert, lenkt thermoctl damit
-    auf eine interne Adresse um und bekommt den Bearer gleich mitgeliefert. Schlaegt
-    dieser Test eines Tages fehl, ist die Luecke zu -- dann gehoert er umgeschrieben,
-    nicht geloescht.
+    Der Standard-`HTTPRedirectHandler` (unten weiter benutzt, um die Luecke selbst
+    zu belegen) behaelt bei einem 302 auch ueber einen Hostwechsel hinweg alle
+    Header ausser `Content-*` bei -- `Authorization` eingeschlossen. Genau deshalb
+    benutzt `integrations/notification.py` ihn nicht mehr: `_send_webhook` geht
+    seit der Korrektur ueber einen eigenen Opener mit
+    `notification._NoRedirectHandler`, der eine solche Weiterleitung gar nicht erst
+    in eine neue Anfrage uebersetzt, sondern ablehnt. Der zweite Teil dieses Tests
+    beweist genau das.
     """
     original = Request(
         "https://webhook.example/meldung",
@@ -160,6 +164,7 @@ def test_offen_webhook_redirect_nimmt_authorization_an_internes_ziel_mit() -> No
         method="POST",
     )
 
+    # Der Standardfall, unveraendert: das ist die Luecke, die es zu vermeiden galt.
     redirected = HTTPRedirectHandler().redirect_request(
         original,
         None,
@@ -168,11 +173,22 @@ def test_offen_webhook_redirect_nimmt_authorization_an_internes_ziel_mit() -> No
         {},
         "http://127.0.0.1:8080/intern",
     )
-
     assert redirected is not None
     assert redirected.full_url == "http://127.0.0.1:8080/intern"
     assert redirected.get_method() == "GET"
     assert redirected.get_header("Authorization") == "Bearer webhook-geheimnis"
+
+    # Der von thermoctl tatsaechlich benutzte Handler lehnt dieselbe Weiterleitung
+    # ab, statt eine Anfrage zu bauen, die den Header mitnehmen koennte.
+    with pytest.raises(HTTPError, match="Webhook-Weiterleitung abgelehnt"):
+        _NoRedirectHandler().redirect_request(
+            original,
+            None,
+            302,
+            "Found",
+            {},
+            "http://127.0.0.1:8080/intern",
+        )
 
 
 def test_tastenbelegung_verlangt_das_recht_fuer_jede_zone_des_geraets(

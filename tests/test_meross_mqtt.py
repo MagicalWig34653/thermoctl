@@ -142,6 +142,29 @@ class _FakeClient:
         return stream()
 
 
+def _valid_ack(
+    connection: MerossConnection,
+    namespace: str,
+    message_id: str,
+    *,
+    method: str = "SETACK",
+    timestamp: int = 1234,
+    payload: object | None = None,
+) -> dict[str, object]:
+    """An answer that passes every check `_verify_answer_authenticity` makes --
+    the fixture other tests build a broken variant from."""
+    return {
+        "header": {
+            "method": method,
+            "messageId": message_id,
+            "namespace": namespace,
+            "timestamp": timestamp,
+            "sign": _md5(f"{message_id}{connection.key}{timestamp}"),
+        },
+        "payload": payload if payload is not None else {},
+    }
+
+
 def _with_fake_client(
     monkeypatch: pytest.MonkeyPatch, answers: list[object]
 ) -> type[_FakeClient]:
@@ -175,7 +198,9 @@ async def test_a_command_connects_signs_publishes_and_returns_the_answer(
     def remember(*args: object, **kwargs: object) -> tuple[str, str]:
         raw, message_id = original(*args, **kwargs)  # type: ignore[arg-type]
         captured["id"] = message_id
-        answers.append({"header": {"method": "SETACK", "messageId": message_id}, "payload": {}})
+        answers.append(
+            _valid_ack(connection, "Appliance.Control.ToggleX", message_id)
+        )
         return raw, message_id
 
     monkeypatch.setattr(mqtt_module, "build_message", remember)
@@ -214,7 +239,9 @@ async def test_an_answer_to_another_command_is_not_read_as_this_one(
         answers.append(b"kein json")
         answers.append([1, 2])
         answers.append({"header": {"method": "PUSH", "messageId": "fremde-kennung"}})
-        answers.append({"header": {"method": "SETACK", "messageId": message_id}})
+        answers.append(
+            _valid_ack(connection, "Appliance.Control.ToggleX", message_id)
+        )
         return raw, message_id
 
     monkeypatch.setattr(mqtt_module, "build_message", remember)
@@ -260,4 +287,58 @@ async def test_a_device_that_stays_silent_becomes_an_error_not_a_hang(
     transport = AiomqttCommandTransport(MerossConnection.build(ACCOUNT))
 
     with pytest.raises(MerossError, match="1111.*nicht geantwortet"):
+        await transport.send("1111", "Appliance.Control.ToggleX", "SET", {})
+
+
+@pytest.mark.anyio
+async def test_a_setack_with_a_forged_signature_is_not_a_confirmation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The `messageId` a forged answer needs was published in the clear on the
+    command topic -- anyone watching that topic can read it and echo it straight
+    back. Only someone who actually holds the account `key` can produce the `sign`
+    that goes with it, so a `SETACK` that gets the identifier right but the
+    signature wrong must not be read as the socket having switched."""
+    connection = MerossConnection.build(ACCOUNT)
+    answers: list[object] = []
+    _with_fake_client(monkeypatch, answers)
+    transport = AiomqttCommandTransport(connection)
+
+    original = mqtt_module.build_message
+
+    def remember(*args: object, **kwargs: object) -> tuple[str, str]:
+        raw, message_id = original(*args, **kwargs)  # type: ignore[arg-type]
+        forged = _valid_ack(connection, "Appliance.Control.ToggleX", message_id)
+        forged["header"]["sign"] = "geraten"  # type: ignore[index]
+        answers.append(forged)
+        return raw, message_id
+
+    monkeypatch.setattr(mqtt_module, "build_message", remember)
+
+    with pytest.raises(MerossError, match="nicht mit dem Kontoschluessel signiert"):
+        await transport.send("1111", "Appliance.Control.ToggleX", "SET", {})
+
+
+@pytest.mark.anyio
+async def test_a_setack_for_the_wrong_namespace_is_not_a_confirmation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A reply correctly signed but for a different namespace than the one that was
+    asked answers some other question, not this command."""
+    connection = MerossConnection.build(ACCOUNT)
+    answers: list[object] = []
+    _with_fake_client(monkeypatch, answers)
+    transport = AiomqttCommandTransport(connection)
+
+    original = mqtt_module.build_message
+
+    def remember(*args: object, **kwargs: object) -> tuple[str, str]:
+        raw, message_id = original(*args, **kwargs)  # type: ignore[arg-type]
+        # Signed correctly, but for a namespace nobody asked about.
+        answers.append(_valid_ack(connection, "Appliance.System.All", message_id))
+        return raw, message_id
+
+    monkeypatch.setattr(mqtt_module, "build_message", remember)
+
+    with pytest.raises(MerossError, match="anderen Namespace"):
         await transport.send("1111", "Appliance.Control.ToggleX", "SET", {})

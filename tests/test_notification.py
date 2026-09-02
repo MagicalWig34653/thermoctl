@@ -1,6 +1,8 @@
 import asyncio
 import json
 import logging
+from typing import Any
+from urllib.error import HTTPError
 from urllib.request import Request
 
 import pytest
@@ -29,6 +31,17 @@ class _Response:
         return None
 
 
+class _Opener:
+    """Stands in for `notification._opener` — the object `_send_webhook` actually
+    calls `.open()` on since the redirect fix, not `urlopen` directly."""
+
+    def __init__(self, open_fn: Any) -> None:
+        self._open_fn = open_fn
+
+    def open(self, request: Request, timeout: int) -> _Response:
+        return self._open_fn(request, timeout)
+
+
 def _settings(**values: str) -> Settings:
     return Settings(
         _env_file=None,
@@ -52,8 +65,8 @@ def test_without_a_webhook_no_http_call_happens_at_all(
     calls: list[Request] = []
     monkeypatch.setattr(
         notification,
-        "urlopen",
-        lambda request, timeout: calls.append(request),
+        "_opener",
+        _Opener(lambda request, timeout: calls.append(request)),
     )
 
     asyncio.run(notification.send(_settings(), NOTICE))
@@ -70,7 +83,7 @@ def test_webhook_sends_the_expected_payload_exactly_once(
         calls.append((request, timeout))
         return _Response()
 
-    monkeypatch.setattr(notification, "urlopen", _open)
+    monkeypatch.setattr(notification, "_opener", _Opener(_open))
     asyncio.run(
         notification.send(
             _settings(notify_webhook="https://example.invalid/meldung"), NOTICE
@@ -100,7 +113,7 @@ def test_an_error_does_not_stop_the_caller_and_the_token_stays_out_of_the_log(
         seen.append(request.get_header("Authorization"))
         raise OSError("Gegenstelle nicht erreichbar")
 
-    monkeypatch.setattr(notification, "urlopen", _broken)
+    monkeypatch.setattr(notification, "_opener", _Opener(_broken))
     caplog.set_level(logging.WARNING)
 
     asyncio.run(
@@ -118,6 +131,40 @@ def test_an_error_does_not_stop_the_caller_and_the_token_stays_out_of_the_log(
     assert seen == [f"Bearer {token}"]
     assert "konnte nicht" in caplog.text
     assert token not in caplog.text
+
+
+def test_the_opener_carries_the_no_redirect_handler() -> None:
+    """`_send_webhook` goes through `_opener`, not the stdlib's default one -- this
+    is what makes that matter: the default `HTTPRedirectHandler` follows a redirect
+    and keeps `Authorization` across hosts, ours refuses to build the follow-up
+    request at all. See `test_offener_webhook_redirect_wird_jetzt_abgelehnt` below
+    for the behaviour this wiring produces."""
+    assert any(
+        isinstance(handler, notification._NoRedirectHandler)
+        for handler in notification._opener.handlers
+    )
+
+
+def test_offener_webhook_redirect_wird_jetzt_abgelehnt() -> None:
+    """War NOCH NICHT BEHOBEN (siehe Verlauf dieses Tests) -- jetzt behoben.
+
+    Der Standard-`HTTPRedirectHandler` haette aus dieser Antwort eine neue Anfrage
+    an `http://127.0.0.1:8080/intern` gebaut und dabei `Authorization` mitgenommen.
+    `notification._NoRedirectHandler` baut diese Anfrage gar nicht erst -- der
+    Header verlaesst den urspruenglichen Ursprung damit nie, gleich wohin
+    umgeleitet wird.
+    """
+    original = Request(
+        "https://webhook.example/meldung",
+        data=b"{}",
+        headers={"Authorization": "Bearer webhook-geheimnis"},
+        method="POST",
+    )
+
+    with pytest.raises(HTTPError, match="Webhook-Weiterleitung abgelehnt"):
+        notification._NoRedirectHandler().redirect_request(
+            original, None, 302, "Found", {}, "http://127.0.0.1:8080/intern"
+        )
 
 
 def test_a_sensor_notice_gets_an_audit_entry_with_source_system(
