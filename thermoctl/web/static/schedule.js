@@ -26,6 +26,25 @@
 
     const MINUTES_PER_DAY = 1440;
     const GRID = 15; // Minutes. Anything finer cannot be hit reliably with a mouse.
+    const PAINT_TOOL_KEY = "thermoctl.schedule.paint-tool";
+
+    function rememberedPaintTool() {
+        try {
+            return window.sessionStorage.getItem(PAINT_TOOL_KEY);
+        } catch (_error) {
+            // Storage can be disabled by browser policy. The server-rendered default
+            // remains usable, so persistence is an enhancement rather than a dependency.
+            return null;
+        }
+    }
+
+    function rememberPaintTool(value) {
+        try {
+            window.sessionStorage.setItem(PAINT_TOOL_KEY, value);
+        } catch (_error) {
+            // See rememberedPaintTool(): drawing and moving must still work without it.
+        }
+    }
 
     function twoDigits(number) {
         return String(number).padStart(2, "0");
@@ -58,23 +77,36 @@
         }
     }
 
-    function setPaintForm(weekday, start, end, modeId) {
+    function setPaintForm(weekday, start, end) {
         const form = document.getElementById("schedule-paint");
         if (!form) {
-            return;
+            return false;
         }
-        form.elements.weekday.value = String(weekday);
-        form.elements.start_time.value = asTimeOfDay(start);
+        const weekdayField = form.elements.namedItem("weekday");
+        const startField = form.elements.namedItem("start_time");
+        const endField = form.elements.namedItem("end_time");
+        const boundaryField = form.elements.namedItem("end_boundary");
+        if (!weekdayField || !startField || !endField || !boundaryField) {
+            return false;
+        }
+        weekdayField.value = String(weekday);
+        startField.value = asTimeOfDay(start);
         // A pointer exactly at the lower edge means the last representable minute.
-        form.elements.end_time.value = asTimeOfDay(Math.min(end, MINUTES_PER_DAY - GRID));
-        form.elements.end_boundary.checked = end === MINUTES_PER_DAY;
-        form.elements.mode_id.value = String(modeId);
+        endField.value = asTimeOfDay(Math.min(end, MINUTES_PER_DAY - GRID));
+        boundaryField.checked = end === MINUTES_PER_DAY;
+        return true;
     }
 
     function wirePainting(day) {
         day.addEventListener("pointerdown", function (event) {
             const modeId = activePaintMode();
             if (event.button !== 0 || event.target.closest("a, button")) {
+                return;
+            }
+            // A bar is an unambiguous handle even while a paint mode is selected.
+            // Leaving it to wireBar makes both common gestures work immediately;
+            // the tool choice remains useful for forcing paint on everything else.
+            if (event.target.closest(".schedule-draggable")) {
                 return;
             }
             if (modeId === null) {
@@ -119,8 +151,9 @@
                     return;
                 }
                 const form = document.getElementById("schedule-paint");
-                setPaintForm(Number(day.dataset.weekday), low, high, modeId);
-                form.requestSubmit();
+                if (form && setPaintForm(Number(day.dataset.weekday), low, high)) {
+                    form.requestSubmit();
+                }
             }
             window.addEventListener("pointermove", onMove);
             window.addEventListener("pointerup", finishGesture, { once: true });
@@ -149,12 +182,18 @@
         if (!form) {
             return;
         }
+        const pointField = form.elements.namedItem("point_id");
+        const weekdayField = form.elements.namedItem("weekday");
+        const timeField = form.elements.namedItem("time_of_day");
+        if (!pointField || !weekdayField || !timeField) {
+            return;
+        }
         // The identifier as a field, not in the path: hx-boost reads a form's `action`
         // once while processing the page. A path rewritten here would have no effect --
         // the request would go to the path from before.
-        form.elements.point_id.value = String(pointId);
-        form.elements.weekday.value = String(weekday);
-        form.elements.time_of_day.value = asTimeOfDay(minute);
+        pointField.value = String(pointId);
+        weekdayField.value = String(weekday);
+        timeField.value = asTimeOfDay(minute);
         // `requestSubmit()` and not `submit()`: only that fires a submit event, and only
         // through it does hx-boost take hold -- which is where the CSRF header is set
         // from the cookie. A bare submit() would go out without it and be rejected with
@@ -327,12 +366,9 @@
 
         document.querySelectorAll('input[name="paint_tool"]').forEach(function (tool) {
             tool.addEventListener("change", function () {
+                rememberPaintTool(tool.value);
                 const paintMode = activePaintMode();
                 grid.classList.toggle("schedule-painting", paintMode !== null);
-                const modeField = document.querySelector('#schedule-paint input[name="mode_id"]');
-                if (modeField) {
-                    modeField.value = paintMode === null ? "" : String(paintMode);
-                }
                 const hint = document.querySelector("[data-paint-tool-hint]");
                 if (hint) {
                     hint.textContent = paintMode === null
@@ -342,6 +378,21 @@
             });
         });
 
+        // htmx replaces the server-rendered form after every gesture. Remembering the
+        // choice in this tab avoids adding UI-only state to every schedule endpoint and
+        // form. Restore before deriving classes and hints; an unavailable/deleted mode
+        // simply leaves the valid server-rendered default in place.
+        const remembered = rememberedPaintTool();
+        if (remembered !== null) {
+            const tool = Array.from(
+                document.querySelectorAll('input[name="paint_tool"]')
+            ).find(function (candidate) {
+                return candidate.value === remembered;
+            });
+            if (tool) {
+                tool.checked = true;
+            }
+        }
         const initialPaintMode = activePaintMode();
         grid.classList.toggle("schedule-painting", initialPaintMode !== null);
 

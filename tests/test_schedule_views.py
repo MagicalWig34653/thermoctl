@@ -268,7 +268,7 @@ def test_rendered_palette_defaults_to_painting_and_explains_move_only_gestures(
     assert "Ziehen im Raster malt mit dem gewählten Modus" in form.group(1)
 
 
-def test_a_move_tool_gesture_on_a_fixed_area_has_live_feedback_and_no_action_cursor(
+def test_paint_mode_keeps_draggable_bars_movable_and_paints_everywhere_else(
     client_als, session: Session,
 ) -> None:
     create_settings(session)
@@ -280,11 +280,35 @@ def test_a_move_tool_gesture_on_a_fixed_area_has_live_feedback_and_no_action_cur
     stylesheet = Path("thermoctl/web/static/thermoctl.css").read_text()
 
     assert 'data-paint-tool-hint aria-live="polite"' in page.text
+    assert 'if (event.target.closest(".schedule-draggable"))' in script
     assert 'if (!event.target.closest(".schedule-draggable"))' in script
     assert "explainMoveTool();" in script
     assert ".schedule-day {\n    cursor: not-allowed;" in stylesheet
     assert ".schedule-draggable {\n    cursor: grab;" in stylesheet
-    assert ".schedule-painting .schedule-bar {\n    cursor: crosshair;" in stylesheet
+    assert ".schedule-painting .schedule-bar:not(.schedule-draggable) {" in stylesheet
+    assert ".schedule-painting .schedule-draggable {\n    cursor: grab;" in stylesheet
+
+
+def test_schedule_gestures_only_write_fields_that_are_present() -> None:
+    script = Path("thermoctl/web/static/schedule.js").read_text()
+
+    assert 'form.elements.namedItem("point_id")' in script
+    assert 'form.elements.namedItem("weekday")' in script
+    assert 'form.elements.namedItem("time_of_day")' in script
+    assert "if (!pointField || !weekdayField || !timeField)" in script
+    assert 'form.elements.namedItem("start_time")' in script
+    assert 'form.elements.namedItem("end_time")' in script
+    assert 'form.elements.namedItem("end_boundary")' in script
+    assert "form.elements.weekday.value" not in script
+
+
+def test_selected_schedule_tool_survives_htmx_page_replacements() -> None:
+    script = Path("thermoctl/web/static/schedule.js").read_text()
+
+    assert "rememberPaintTool(tool.value);" in script
+    assert "const remembered = rememberedPaintTool();" in script
+    assert "candidate.value === remembered" in script
+    assert "tool.checked = true" in script
 
 
 def test_no_op_painting_reports_that_the_gesture_changed_nothing(

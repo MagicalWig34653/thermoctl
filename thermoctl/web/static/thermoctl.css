@@ -734,9 +734,13 @@ body {
 }
 
 .schedule-painting .schedule-day,
-.schedule-painting .schedule-bar {
+.schedule-painting .schedule-bar:not(.schedule-draggable) {
     cursor: crosshair;
     touch-action: none;
+}
+
+.schedule-painting .schedule-draggable {
+    cursor: grab;
 }
 
 .schedule-carried {

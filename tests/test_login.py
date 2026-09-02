@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 import thermoctl.web.auth_views
 from tests.helpers import create_settings
 from thermoctl.auth.csrf import CSRF_COOKIE_NAME, csrf_token
-from thermoctl.auth.sessions import create_session
+from thermoctl.auth.sessions import COOKIE_NAME, create_session
 from thermoctl.config import Settings
 from thermoctl.db.base import utcnow
 from thermoctl.db.models.credential import Session_
@@ -70,6 +70,41 @@ def test_logging_out_revokes_the_session(client: TestClient, user, session: Sess
     token = client.cookies[CSRF_COOKIE_NAME]
     client.post("/logout", headers={"X-CSRF-Token": token})
     assert session.query(Session_).one().revoked_at is not None
+
+
+def test_logout_redirects_a_browser_directly_to_login_and_clears_both_cookies(
+    client: TestClient, user
+) -> None:
+    client.post("/login", data={"username": "lino", "password": "passwort-lang-genug"})
+    token = client.cookies[CSRF_COOKIE_NAME]
+
+    response = client.post(
+        "/logout", headers={"X-CSRF-Token": token}, follow_redirects=False
+    )
+
+    assert response.status_code == 303
+    assert response.headers["location"] == "/login"
+    cookies = response.headers.get_list("set-cookie")
+    assert any(COOKIE_NAME in entry and "Max-Age=0" in entry for entry in cookies)
+    assert any(CSRF_COOKIE_NAME in entry and "Max-Age=0" in entry for entry in cookies)
+
+
+def test_boosted_logout_uses_a_visible_browser_redirect(client: TestClient, user) -> None:
+    client.post("/login", data={"username": "lino", "password": "passwort-lang-genug"})
+    token = client.cookies[CSRF_COOKIE_NAME]
+
+    response = client.post(
+        "/logout",
+        headers={"X-CSRF-Token": token, "HX-Request": "true", "HX-Boosted": "true"},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 204
+    assert response.headers["HX-Redirect"] == "/login"
+    assert "location" not in response.headers
+    cookies = response.headers.get_list("set-cookie")
+    assert any(COOKIE_NAME in entry and "Max-Age=0" in entry for entry in cookies)
+    assert any(CSRF_COOKIE_NAME in entry and "Max-Age=0" in entry for entry in cookies)
 
 
 def test_a_logout_without_a_csrf_token_is_not_carried_out(

@@ -146,6 +146,15 @@ async def logout(request: Request, session: Annotated[Session, Depends(get_sessi
         if http_session is not None:
             revoke_session(session, http_session)
 
-    response = RedirectResponse("/", status_code=status.HTTP_303_SEE_OTHER)
+    # A boosted form follows ordinary redirects in the background and only swaps
+    # the response body.  The login form would then appear while the address still
+    # named the authenticated page.  Use htmx's navigation response for that path;
+    # a non-htmx client receives the ordinary direct redirect to the same target.
+    if request.headers.get("hx-request") is not None:
+        response: Response = Response(status_code=status.HTTP_204_NO_CONTENT)
+        response.headers["HX-Redirect"] = "/login"
+    else:
+        response = RedirectResponse("/login", status_code=status.HTTP_303_SEE_OTHER)
     response.delete_cookie(COOKIE_NAME)
+    response.delete_cookie(CSRF_COOKIE_NAME)
     return response
