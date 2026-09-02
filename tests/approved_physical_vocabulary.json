@@ -444,6 +444,11 @@
       "switch",
       "switch"
     ],
+    "thermoctl/services/shadow_run.py": [
+      "Heizen",
+      "actuator",
+      "switch"
+    ],
     "thermoctl/web/schedule_views.py": [
       "warmth"
     ],

@@ -372,6 +372,13 @@ class PiCycleOutput:
     duty_raw: Decimal | None
     reason_code: str | None
     integrator_action: str
+    # Whether the modulator's on/off output flipped *this* cycle -- lets a caller
+    # that persists "timestamp of the last switch" separately from the modulator's
+    # own `held_for_s` (see `ModulatorState`) tell a genuine flip apart from an
+    # ordinary continuing cycle, without reaching into `window_modulate()` itself.
+    # `False` whenever no modulator run happened this cycle (awaiting a window
+    # boundary, or a time gap/context reset that only resets state).
+    switched: bool
 
 
 def pi_cycle(state: PiState, cycle: PiCycleInput) -> PiCycleOutput:
@@ -397,6 +404,7 @@ def pi_cycle(state: PiState, cycle: PiCycleInput) -> PiCycleOutput:
             duty_raw=None,
             reason_code=state.last_reset_reason,
             integrator_action=INTEGRATOR_HOLD,
+            switched=False,
         )
 
     base = state
@@ -425,6 +433,7 @@ def pi_cycle(state: PiState, cycle: PiCycleInput) -> PiCycleOutput:
             duty_raw=None,
             reason_code=RESET_REASON_TIME_GAP,
             integrator_action=INTEGRATOR_RESET,
+            switched=False,
         )
 
     u, new_integral = pi_arithmetic(
@@ -464,6 +473,7 @@ def pi_cycle(state: PiState, cycle: PiCycleInput) -> PiCycleOutput:
         duty_raw=u,
         reason_code=modulator_result.reason_code,
         integrator_action=modulator_result.integrator_action,
+        switched=modulator_result.switched,
     )
 
 

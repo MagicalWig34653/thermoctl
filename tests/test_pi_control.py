@@ -922,3 +922,66 @@ class TestPiCycle:
         now += timedelta(seconds=60)
         result = pi_cycle(state, _cycle(now, context="schedule:default", error_k="1"))
         assert result.state.last_reset_reason != RESET_REASON_CONTEXT_CHANGE
+
+
+class TestPiCycleSwitched:
+    """`PiCycleOutput.switched` -- whether the modulator's on/off output flipped
+    this cycle. A caller (`services/shadow_run.py`) needs this to tell a genuine
+    flip apart from an ordinary continuing cycle when it persists the timestamp of
+    the last switch separately from `held_for_s`."""
+
+    def test_a_time_gap_reset_reports_unswitched(self) -> None:
+        now = _at()
+        state = pi_cycle(NEUTRAL_PI_STATE, _cycle(now)).state
+        now += timedelta(seconds=200)
+        result = pi_cycle(state, _cycle(now))
+        assert result.switched is False
+
+    def test_waiting_for_a_window_boundary_reports_unswitched(self) -> None:
+        now = _at(minute=5)
+        state = reset_pi_state(RESET_REASON_ARMING, now=now, await_next_boundary=True)
+        result = pi_cycle(state, _cycle(now + timedelta(seconds=60)))
+        assert result.switched is False
+
+    def test_a_duty_of_one_switches_a_previously_off_zone_on(self) -> None:
+        now = _at()
+        state = PiState(
+            integral=Decimal("1"),
+            last_evaluated_at=now,
+            setpoint_context_key="schedule:default",
+            modulator=ModulatorState(
+                on=False,
+                held_for_s=600,
+                remainder_s=Decimal(0),
+                window_start=window_start_for(now),
+                frozen_duty=Decimal("1"),
+            ),
+            awaiting_boundary_until=None,
+            last_reset_reason=None,
+        )
+        now += timedelta(seconds=60)
+        result = pi_cycle(state, _cycle(now, context="schedule:default", error_k="10"))
+        assert result.heating is True
+        assert result.switched is True
+        assert result.state.modulator.held_for_s == 60
+
+    def test_an_unchanged_on_off_output_reports_unswitched(self) -> None:
+        now = _at()
+        state = PiState(
+            integral=Decimal("1"),
+            last_evaluated_at=now,
+            setpoint_context_key="schedule:default",
+            modulator=ModulatorState(
+                on=True,
+                held_for_s=600,
+                remainder_s=Decimal(0),
+                window_start=window_start_for(now),
+                frozen_duty=Decimal("1"),
+            ),
+            awaiting_boundary_until=None,
+            last_reset_reason=None,
+        )
+        now += timedelta(seconds=60)
+        result = pi_cycle(state, _cycle(now, context="schedule:default", error_k="10"))
+        assert result.heating is True
+        assert result.switched is False
