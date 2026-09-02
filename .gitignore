@@ -38,3 +38,7 @@ htmlcov/
 
 # iCloud-Konfliktdubletten ("Datei 2.py") -- nie Teil des Projekts
 *\ 2.*
+
+# .venv liegt als .venv.nosync daneben, .venv ist ein Symlink darauf -- iCloud
+# ueberspringt alles, was auf .nosync endet. Siehe docs/self-hosting.md.
+.venv.nosync
