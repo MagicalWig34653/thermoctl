@@ -159,17 +159,25 @@ Seit 0.5.0 kann eine Zone statt der Hysterese einen Proportional-Integral-Regler
 **Aus als Vorgabe, auch nach einer Aktualisierung** — nichts schaltet sich von selbst ein.
 
 Der Schalter steht bei den Regelparametern der Zone. Er ist **gesperrt**, wenn die Zone
-nicht dafuer taugt, und darueber steht der Grund. Es gibt genau drei:
+nicht dafuer taugt, und darueber steht der Grund. Es gibt genau zwei:
 
 - *Kein gewoehnlicher Schaltaktor zugeordnet* — PI braucht etwas, das ein und aus kann.
-- *Ein selbstregelndes Ventil ist der Zone zugeordnet* — es hat einen eigenen Regler, und
-  PI darueber waeren zwei Integratoren auf derselben Regelstrecke.
-- *Ein Geraet mit der Faehigkeit `thermostat` ist der Zone zugeordnet* — derselbe Grund,
-  auch wenn es heute nicht als Thermostat betrieben wird.
+- *Ein Geraet mit der Faehigkeit `thermostat` ist der Zone zugeordnet* — ein
+  Thermostatventil ohne eigene Regelung bekaeme die PI-Entscheidung als Sollwertsprung
+  weitergereicht, und genau die schnelle Taktung von PI waere dafuer falsch.
 
-**Die Pruefung gilt fuer die ganze Zone, nicht je Geraet.** Ein einziges Thermostatventil
-neben einer Steckdose schliesst PI fuer diese Zone aus. Wer beides mischt und PI benutzen
-will, trennt die Steckdose in eine eigene Zone.
+**Die Pruefung ist geraetegenau, nicht zonenweit.** Ursprünglich schloss schon ein
+einziges selbstregelndes Ventil die ganze Zone von PI aus, unabhaengig davon, was sonst
+noch daran haengt. Das war strenger als noetig: Ein selbstregelndes Ventil bekommt seinen
+Sollwert ueber einen eigenen Weg (`domain/self_regulating.py`) und sieht die PI-Entscheidung
+nie — `switch_commands()` und `thermostat_commands()` (`domain/switch_commands.py`)
+schliessen es aus beiden Befehlswegen aus. Seit dieser Aenderung zaehlt nur noch, was die
+PI-Entscheidung tatsaechlich als Ein/Aus-Befehl erreichen wuerde: ein selbstregelndes
+Ventil **neben** einem gewoehnlichen Schaltaktor schliesst die Zone nicht mehr aus, PI
+steuert dann ausschliesslich den Schaltaktor an — etwa ein selbstregelndes
+Heizkoerperthermostat neben einem Meross-Schalter im selben Raum. Ein Thermostatventil
+**ohne** eigene Regelung bleibt weiterhin ein Ausschlussgrund, egal ob allein oder
+gemischt mit anderen Aktoren.
 
 Beim Einschalten ist ausserdem ein Haken zu bestaetigen, dass mehr Schaltspiele und die
 Folgen einer falschen Parametrierung verstanden sind. Ohne ihn wird das Formular mit einer

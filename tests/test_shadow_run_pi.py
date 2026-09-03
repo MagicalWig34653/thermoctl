@@ -75,12 +75,17 @@ def _ensure_settings(session: Session) -> Setting:
 
 
 def _assign_actuator(
-    session: Session, zone: Zone, *, self_regulating: bool = False, capability_code: str = "switch"
+    session: Session,
+    zone: Zone,
+    *,
+    self_regulating: bool = False,
+    capability_code: str = "switch",
+    suffix: str = "",
 ) -> Device:
     device = Device(
         integration_id=integration(session).id,
-        external_id=f"{zone.name}-relais",
-        display_name=f"{zone.name}-relais",
+        external_id=f"{zone.name}-relais{suffix}",
+        display_name=f"{zone.name}-relais{suffix}",
     )
     session.add(device)
     session.flush()
@@ -343,7 +348,14 @@ class TestNoZoneState:
 
 
 class TestIneligibilityFallsBackVisibly:
-    def test_a_self_regulating_valve_makes_the_zone_ineligible(self, session: Session) -> None:
+    def test_a_self_regulating_valve_alone_makes_the_zone_ineligible(
+        self, session: Session
+    ) -> None:
+        """A self-regulating valve is never counted as the required ordinary switch
+        actuator (`pi_eligible()` skips it) -- so a zone with nothing else assigned
+        stays ineligible for lack of a switch, not because the valve itself is
+        disqualifying (see `TestMixedZoneWithASelfRegulatingValve` below for the
+        case where a switch is also present)."""
         zone = _pi_zone(session, "selbstregelnd", with_actuator=False)
         _assign_actuator(session, zone, self_regulating=True)
 
@@ -365,6 +377,9 @@ class TestIneligibilityFallsBackVisibly:
     def test_a_thermostat_capable_device_makes_the_zone_ineligible(
         self, session: Session
     ) -> None:
+        """Not self-regulating, but carrying `thermostat` -- `thermostat_commands()`
+        would turn PI's `heating` into a setpoint jump, so the zone stays ineligible
+        regardless of what else is assigned to it."""
         zone = _pi_zone(session, "thermostatfaehig", with_actuator=False)
         _assign_actuator(session, zone, capability_code="thermostat")
 
@@ -377,6 +392,56 @@ class TestIneligibilityFallsBackVisibly:
         zone = _pi_zone(session, "kein-aktor", with_actuator=False)
         row = _row_for(shadow_run.cycle(session, NOW), zone)
         assert row.controller_fallback_reason == PI_FALLBACK_INELIGIBLE
+
+
+class TestMixedZoneWithASelfRegulatingValve:
+    """The case that changed the rule: the project owner's own room, one
+    self-regulating radiator thermostat next to one Meross switch. Only the switch
+    is meant to hear PI's decision -- see `pi_eligible()`'s docstring
+    (`thermoctl/domain/pi_control.py`) for why a self-regulating valve is safe to
+    ignore here: `switch_commands()`/`thermostat_commands()`
+    (`thermoctl/domain/switch_commands.py`) both filter it out of their own queries
+    via `ZoneDevice.self_regulating.is_(False)`, so it is structurally unreachable
+    from `publishing.py`'s `switch_commands` dispatch and only ever receives its own
+    setpoint through `domain/self_regulating.py`.
+    """
+
+    def test_a_self_regulating_thermostat_next_to_a_switch_lets_pi_decide(
+        self, session: Session
+    ) -> None:
+        zone = _pi_zone(session, "heizkoerper-und-meross", with_actuator=False)
+        # The self-regulating radiator thermostat -- excluded from both command
+        # queries by `self_regulating=True`, so it must not block PI eligibility.
+        _assign_actuator(
+            session,
+            zone,
+            self_regulating=True,
+            capability_code="thermostat",
+            suffix="-heizkoerper",
+        )
+        # The Meross switch -- the one actuator PI's decision can actually reach.
+        switch = _assign_actuator(session, zone, capability_code="switch", suffix="-meross")
+
+        rows = shadow_run.cycle(session, NOW)
+        row = _row_for(rows, zone)
+
+        # The zone is eligible: PI decides, hysteresis is not the fallback.
+        assert row.requested_controller == "pi"
+        assert row.effective_controller == "pi"
+        assert row.controller_fallback_reason is None
+        assert row.pi_candidate_would_heat is not None
+
+        # The command layer sends the on/off result to the switch alone -- the
+        # self-regulating valve is excluded by construction (`self_regulating.is_(False)`
+        # in both `switch_commands()` and `thermostat_commands()`), never by anything
+        # PI computes.
+        from thermoctl.domain.switch_commands import switch_commands, thermostat_commands
+
+        actual_zone = session.get(Zone, zone.id)
+        assert actual_zone is not None
+        switch_only = switch_commands(session, actual_zone)
+        assert [command.device.id for command in switch_only] == [switch.id]
+        assert thermostat_commands(session, actual_zone) == []
 
     def test_a_too_short_pi_minimum_against_the_control_cycle_is_ineligible(
         self, session: Session

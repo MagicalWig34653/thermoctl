@@ -245,10 +245,16 @@ def _pi_actuator_profiles(session: Session, zone: Zone) -> list[ActuatorProfile]
     """Every device carrying the zone's `actuator` role -- self-regulating or not.
 
     `domain.switch_commands.switch_commands()`/`thermostat_commands()` already
-    filter self-regulating devices out; `pi_eligible()` needs to see them anyway,
-    because a *mixed* zone must be rejected outright (the "Feststehender Zuschnitt"
-    section of the PI specification), not silently narrowed to its ordinary switch
-    actuators.
+    filter self-regulating devices out of their own results; `pi_eligible()` needs to
+    see them anyway, because its verdict is device-accurate rather than zone-wide
+    (the "Feststehender Zuschnitt" section of the PI specification, as amended): a
+    self-regulating valve never receives PI's `heating` decision at all, so
+    `pi_eligible()` has to know a profile is self-regulating in order to *skip* it,
+    not reject the zone for it -- while a non-self-regulating thermostat-capable
+    actuator still must reject the zone, since `thermostat_commands()` would turn
+    PI's decision into a setpoint jump. Handing over only the already-narrowed
+    switch actuators would hide exactly the distinction `pi_eligible()` needs to
+    draw.
     """
     actuator_role = session.scalar(select(DeviceRole).where(DeviceRole.code == "actuator"))
     if actuator_role is None:

@@ -513,23 +513,38 @@ def pi_eligible(
 ) -> PiEligibility:
     """Whether a zone may use PI at all ("Feststehender Zuschnitt" and section 3).
 
-    Strict on purpose, and zone-wide rather than per-device: a zone with even one
-    self-regulating valve or one device carrying the `thermostat` capability -- not
-    just one actually driven as a thermostat today -- is excluded outright, because a
-    mixed zone would still let the same PI result reach a thermostat valve in
-    `publishing.py`. A zone with no ordinary switch actuator at all is excluded the
-    same way, not silently.
+    Device-accurate, not zone-wide -- the project owner runs one room with a
+    self-regulating thermostatic valve *and* a Meross switch, and wants PI to govern
+    the switch alone. `domain/switch_commands.py` already draws that line for us:
+
+    - A **self-regulating** valve (`ZoneDevice.self_regulating`) never receives an
+      on/off command, whatever capabilities it declares -- `switch_commands()` and
+      `thermostat_commands()` both filter it out (`ZoneDevice.self_regulating.is_(False)`
+      in each query). It only ever gets a setpoint, from `domain/self_regulating.py`,
+      a path PI's `heating` decision never reaches. Such an actuator is therefore
+      skipped here: it neither excludes the zone nor counts toward the "at least one
+      switch actuator" requirement below.
+    - An actuator that is **not** self-regulating but carries the `thermostat`
+      capability is consumed by `thermostat_commands()`, which turns `heating` into
+      a setpoint jump -- exactly the fast on/off taktung PI must not feed it. Such a
+      zone stays excluded outright, regardless of what else is assigned to it.
+    - An actuator that is neither self-regulating nor carries `switch` is a
+      misconfigured actuator slot and excludes the zone the same way, not silently.
+    - The zone still needs **at least one** ordinary (non-self-regulating) switch
+      actuator -- that is the only kind of device PI's decision can actually reach.
 
     The control-cycle bound is section 3's activation condition: PI only makes sense
-    when the cycle can resolve to it own minimum durations without a third parameter.
+    when the cycle can resolve to its own minimum durations without a third parameter.
     """
     if not actuators:
         return PiEligibility(False, "Kein gewöhnlicher Schaltaktor zugeordnet.")
+    has_ordinary_switch = False
     for actuator in actuators:
         if actuator.self_regulating:
-            return PiEligibility(
-                False, "Ein selbstregelndes Ventil ist der Zone zugeordnet."
-            )
+            # Never reaches switch_commands() or thermostat_commands() -- see the
+            # docstring above. Neither excludes the zone nor satisfies the
+            # "at least one switch actuator" requirement.
+            continue
         if actuator.has_thermostat_capability:
             return PiEligibility(
                 False, "Ein Gerät mit der Fähigkeit 'thermostat' ist der Zone zugeordnet."
@@ -538,6 +553,9 @@ def pi_eligible(
             return PiEligibility(
                 False, "Ein Aktor ohne die Fähigkeit 'switch' ist der Zone zugeordnet."
             )
+        has_ordinary_switch = True
+    if not has_ordinary_switch:
+        return PiEligibility(False, "Kein gewöhnlicher Schaltaktor zugeordnet.")
     if control_cycle_seconds <= 0:
         return PiEligibility(False, "Der Regelzyklus ist ungültig.")
     if control_cycle_seconds > MAX_CONTROL_CYCLE_SECONDS:

@@ -87,9 +87,13 @@ bis zum nächsten Schaltpunkt.
 
 **Zu den `pi_*`-Parametern (Beta, seit 0.5.0):** `pi_enabled` ist je Zone aus als Vorgabe.
 Ein Modell kann es über `set_control_parameters` einschalten, aber nur für eine Zone, die
-dafür taugt — ein selbstregelndes Ventil oder ein Gerät mit der Fähigkeit `thermostat` in
-derselben Zone schliesst PI aus, ebenso eine Zone ohne gewöhnlichen Schaltaktor. Der
-Versuch wird dann mit einer Begründung abgewiesen. Das ist Absicht: Ein Modell soll den
+dafür taugt. Die Prüfung ist gerätegenau, nicht zonenweit — ein Gerät mit der Fähigkeit
+`thermostat`, das nicht selbstregelnd ist, schliesst PI aus, ebenso eine Zone ohne
+gewöhnlichen Schaltaktor. Ein **selbstregelndes** Ventil schliesst die Zone dagegen nicht
+aus: Es bekommt seinen Sollwert über einen eigenen Weg und sieht die PI-Entscheidung nie,
+sodass es neben einem gewöhnlichen Schaltaktor stehen darf — PI steuert dann nur diesen
+Schaltaktor an. Der Versuch wird bei fehlender Eignung mit einer Begründung abgewiesen.
+Das ist Absicht: Ein Modell soll den
 Rückfall nicht stillschweigend bekommen, sondern den Grund lesen können.
 
 PI schaltet deutlich häufiger als die Hysterese und verkürzt dadurch die Lebensdauer eines

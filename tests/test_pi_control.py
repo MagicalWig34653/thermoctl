@@ -580,12 +580,35 @@ class TestPiEligible:
         )
         assert result.eligible is False
 
-    def test_a_self_regulating_actuator_is_not_eligible(self) -> None:
+    def test_a_self_regulating_thermostat_and_a_switch_is_eligible(self) -> None:
+        """The project owner's own room: a self-regulating radiator thermostat next
+        to a Meross switch. `switch_commands()`/`thermostat_commands()`
+        (`domain/switch_commands.py`) both filter self-regulating devices out of
+        their queries -- such a valve only ever receives a setpoint via
+        `domain/self_regulating.py`, never PI's `heating` decision -- so the zone is
+        eligible, and PI will only ever reach the Meross switch."""
+        self_regulating_thermostat = ActuatorProfile(
+            self_regulating=True, has_switch_capability=False, has_thermostat_capability=True
+        )
+        meross_switch = ActuatorProfile(
+            self_regulating=False, has_switch_capability=True, has_thermostat_capability=False
+        )
+        result = pi_eligible(
+            [self_regulating_thermostat, meross_switch],
+            control_cycle_seconds=60,
+            pi_min_on_seconds=60,
+            pi_min_off_seconds=60,
+        )
+        assert result.eligible is True
+
+    def test_a_self_regulating_only_zone_without_a_switch_is_not_eligible(self) -> None:
+        """A self-regulating valve alone never counts as the required switch
+        actuator -- PI would have nothing left to drive."""
         actuator = ActuatorProfile(
             self_regulating=True, has_switch_capability=True, has_thermostat_capability=False
         )
         result = pi_eligible(
-            [self.SWITCH_ONLY, actuator],
+            [actuator],
             control_cycle_seconds=60,
             pi_min_on_seconds=60,
             pi_min_off_seconds=60,

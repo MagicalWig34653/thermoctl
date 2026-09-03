@@ -191,10 +191,15 @@ für diese Zone damit aus statt sie versehentlich ein.
 ```
 
 Die fünf `pi_*`-Werte gehören zur **PI-Regelung (Beta)**, seit 0.5.0. `pi_enabled` ist je
-Zone aus als Vorgabe und lässt sich nur setzen, wenn die Zone dafür taugt: Ein
-selbstregelndes Ventil oder ein Gerät mit der Fähigkeit `thermostat` in derselben Zone
-schliesst PI aus, ebenso eine Zone ganz ohne gewöhnlichen Schaltaktor. Der Versuch wird mit
-einer Begründung abgewiesen, statt still auf Hysterese zurückzufallen.
+Zone aus als Vorgabe und lässt sich nur setzen, wenn die Zone dafür taugt. Die Prüfung ist
+gerätegenau, nicht zonenweit: Ein Gerät mit der Fähigkeit `thermostat`, das nicht
+selbstregelnd ist, schliesst PI aus — es bekäme die Entscheidung als Sollwertsprung
+weitergereicht —, ebenso eine Zone ganz ohne gewöhnlichen Schaltaktor. Ein
+**selbstregelndes** Ventil dagegen schliesst die Zone nicht aus: Es bekommt seinen
+Sollwert über einen eigenen Weg und sieht die PI-Entscheidung nie, sodass es neben einem
+gewöhnlichen Schaltaktor stehen darf — PI steuert dann nur diesen Schaltaktor an. Der
+Versuch wird bei fehlender Eignung mit einer Begründung abgewiesen, statt still auf
+Hysterese zurückzufallen.
 
 `pi_min_on_seconds` und `pi_min_off_seconds` sind **weiche** Untergrenzen: Die Genauigkeit
 des Tastgrads darf sie unterschreiten. Das ist eine bewusste Entscheidung und der Grund,
