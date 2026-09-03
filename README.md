@@ -134,6 +134,11 @@ unmittelbar startet und nicht über das Zusatzpaket `pytest-playwright`.
 und *Browsertests sichtbar (Playwright)*. Sie stehen in `.idea/runConfigurations/` und sind
 damit örtlich — `.idea/` ist nicht im Repository.
 
+Wer sie nachbaut: Der Pfad zur Konfigurationsdatei muss dort **relativ** stehen
+(`-c browser_tests/pytest.ini`). PyCharm zerlegt die Zusatzargumente einer Testkonfiguration
+naiv an Leerzeichen, und ein absoluter Pfad zerbricht deshalb, sobald das Projekt in einem
+Verzeichnis mit Leerzeichen liegt — hier „Code Projekte".
+
 ## Noch nicht enthalten
 
 Der Regelkreis ist gebaut und erschöpfend getestet, und alle vier Aktorwege sind mit ihm
