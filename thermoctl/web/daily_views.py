@@ -11,6 +11,7 @@ from thermoctl.auth.dependencies import csrf_protection, current_principal, get_
 from thermoctl.db.base import utcnow
 from thermoctl.db.models.zone import Zone
 from thermoctl.domain.authz import visible_zones
+from thermoctl.domain.control import settings as control_settings
 from thermoctl.domain.modes import DomainError, update_setpoints
 from thermoctl.domain.principal import Principal
 from thermoctl.domain.schedule import (
@@ -103,6 +104,7 @@ def _parameter_page(
         zone=zone,
         effective=effective,
         pi_eligibility=eligibility,
+        assumed_lifetime_operations=control_settings(session).assumed_relay_lifetime_operations,
     )
 
 

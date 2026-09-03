@@ -166,6 +166,60 @@ def test_pi_migration_keeps_existing_zones_off_and_state_neutral(
         db_engine.dispose()
 
 
+@pytest.mark.migration
+def test_assumed_relay_lifetime_defaults_to_500000_for_existing_installations(
+    migrations_database_url: str,
+) -> None:
+    """The project owner's explicit request -- 500,000, not the 100,000 the retired
+    constant used to carry -- reaches an installation that existed before this
+    setting did, without anyone touching it."""
+    before = _alembic(migrations_database_url, "downgrade", "d2f4a7c91e63")
+    assert before.returncode == 0, before.stderr
+
+    db_engine = create_engine(migrations_database_url)
+    try:
+        with db_engine.begin() as connection:
+            connection.execute(
+                text(
+                    "INSERT INTO setpoint_mode "
+                    "(code, name, sort_order, is_builtin) "
+                    "VALUES ('relais-migration-frost', 'Migration Frost', 0, false)"
+                )
+            )
+            mode_id = connection.execute(
+                text(
+                    "SELECT id FROM setpoint_mode WHERE code = 'relais-migration-frost'"
+                )
+            ).scalar_one()
+            connection.execute(
+                text(
+                    "INSERT INTO setting "
+                    "(id, timezone, polling_interval_seconds, default_hysteresis_k, "
+                    "default_min_on_seconds, default_min_off_seconds, "
+                    "default_sensor_timeout_seconds, default_window_resume_delay_seconds, "
+                    "frost_protection_mode_id, session_lifetime_seconds, updated_at) "
+                    "VALUES (1, 'UTC', 30, 0.30, 300, 300, 1800, 120, :mode_id, "
+                    "1209600, '2026-09-03 08:00:00')"
+                ),
+                {"mode_id": mode_id},
+            )
+
+        up = _alembic(migrations_database_url, "upgrade", "head")
+        assert up.returncode == 0, up.stderr
+        with db_engine.connect() as connection:
+            value = connection.execute(
+                text("SELECT assumed_relay_lifetime_operations FROM setting WHERE id = 1")
+            ).scalar_one()
+        assert value == 500_000
+
+        down = _alembic(migrations_database_url, "downgrade", "d2f4a7c91e63")
+        assert down.returncode == 0, down.stderr
+        up_again = _alembic(migrations_database_url, "upgrade", "head")
+        assert up_again.returncode == 0, up_again.stderr
+    finally:
+        db_engine.dispose()
+
+
 def test_foreign_keys_are_enforced_under_sqlite(engine: Engine) -> None:
     if engine.dialect.name != "sqlite":
         pytest.skip("only meaningful for SQLite")

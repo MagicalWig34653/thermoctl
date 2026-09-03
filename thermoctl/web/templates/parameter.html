@@ -66,13 +66,16 @@
           </table>
         </div>
         <p class="small mb-0">
-          Schaltspiele, nicht Zustandswechsel. Mit einer austauschbaren Annahme von
-          100.000 elektrischen Betätigungen eines vergleichbaren 16-A-Leistungsrelais
-          (keine Meross-Herstellerangabe — öffentliche Daten dazu fehlen) entspricht der
-          ungünstigste Fall rund 2,6 solcher Relaislebensdauern im Jahr. Der
-          ungünstigste Fall ist ausdrücklich nicht der Regelfall; die simulierte
-          Spalte mit 30&nbsp;% Tastgrad und der tatsächliche, gemessene Verschleiß je
-          Gerät stehen unter <a href="/relay-wear">Relaisverschleiß</a>.
+          Schaltspiele, nicht Zustandswechsel. Mit der in den
+          <a href="/settings">Einstellungen</a> hinterlegten, austauschbaren Annahme
+          von derzeit {{ "{:,}".format(assumed_lifetime_operations).replace(",", ".") }}
+          elektrischen Betätigungen eines vergleichbaren 16-A-Leistungsrelais (keine
+          Meross-Herstellerangabe — öffentliche Daten dazu fehlen) entspricht der
+          ungünstigste Fall rund {{ ("%.2f" | format(262800 / assumed_lifetime_operations)).replace(".", ",") }}
+          solcher Relaislebensdauern im Jahr. Der ungünstigste Fall ist ausdrücklich nicht der
+          Regelfall; die simulierte Spalte mit 30&nbsp;% Tastgrad und der tatsächliche,
+          gemessene Verschleiß je Gerät stehen unter
+          <a href="/relay-wear">Relaisverschleiß</a>.
         </p>
       </details>
     </div>

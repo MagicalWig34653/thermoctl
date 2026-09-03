@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from tests.helpers import command_outcome, create_zone, source
 from thermoctl.db.models.state import DeviceCommand, ShadowDecision
 from thermoctl.domain.statistics import (
-    ASSUMED_RELAY_LIFETIME_OPERATIONS,
+    DEFAULT_ASSUMED_RELAY_LIFETIME_OPERATIONS,
     DayValue,
     RelayDayValue,
     RelayDeviceStatistics,
@@ -495,6 +495,28 @@ def test_unknown_switch_payloads_do_not_invent_relay_operations(
     assert values[0].operations_total == 0
 
 
+def test_relay_operations_passes_the_installations_assumption_through(
+    session: Session,
+) -> None:
+    """`relay_operations` reads no setting itself (it is a domain function); the
+    caller's value has to land, unmodified, on every returned device's statistics."""
+    zone = create_zone(session, "eigene-annahme")
+    start = datetime(2026, 8, 24)
+    _relay_command(session, zone.id, "Steckdose", start, '{"state":"ON"}')
+
+    default = relay_operations(session, [zone.id], start, start + timedelta(days=1))
+    assert default[0].assumed_lifetime_operations == 500_000
+
+    custom = relay_operations(
+        session,
+        [zone.id],
+        start,
+        start + timedelta(days=1),
+        assumed_lifetime_operations=250_000,
+    )
+    assert custom[0].assumed_lifetime_operations == 250_000
+
+
 def test_relay_statistics_handle_empty_ranges_and_explain_the_projection(
     session: Session,
 ) -> None:
@@ -503,21 +525,49 @@ def test_relay_statistics_handle_empty_ranges_and_explain_the_projection(
     assert relay_operations(session, [17], start, start - timedelta(seconds=1)) == []
     assert relay_operations(session, [17], start, start) == []
 
-    empty = RelayDeviceStatistics(1, "still", [])
-    normal = RelayDeviceStatistics(1, "normal", [RelayDayValue(start.date(), 100)])
-    warning = RelayDeviceStatistics(1, "warning", [RelayDayValue(start.date(), 137)])
-    danger = RelayDeviceStatistics(1, "danger", [RelayDayValue(start.date(), 274)])
+    # The thresholds themselves are exercised here against an explicit assumption of
+    # 100,000 -- independent of whatever the dataclass default happens to be, so this
+    # test still says something once that default changes again.
+    empty = RelayDeviceStatistics(1, "still", [], assumed_lifetime_operations=100_000)
+    normal = RelayDeviceStatistics(
+        1, "normal", [RelayDayValue(start.date(), 100)], assumed_lifetime_operations=100_000
+    )
+    warning = RelayDeviceStatistics(
+        1, "warning", [RelayDayValue(start.date(), 137)], assumed_lifetime_operations=100_000
+    )
+    danger = RelayDeviceStatistics(
+        1, "danger", [RelayDayValue(start.date(), 274)], assumed_lifetime_operations=100_000
+    )
 
     assert empty.annual_projection == 0
     assert empty.assumed_lifetime_years is None
     assert empty.wear_level == "normal"
     assert normal.days[0].annual_projection == 36_500
     assert normal.assumed_lifetime_percent_per_year == 36.5
-    assert normal.assumed_lifetime_years == pytest.approx(
-        ASSUMED_RELAY_LIFETIME_OPERATIONS / 36_500
-    )
+    assert normal.assumed_lifetime_years == pytest.approx(100_000 / 36_500)
     assert normal.wear_level == "normal"
     assert warning.annual_projection == 50_005
     assert warning.wear_level == "warning"
     assert danger.annual_projection == 100_010
     assert danger.wear_level == "danger"
+
+
+def test_relay_device_statistics_default_to_the_500000_assumption() -> None:
+    """The vorgabe the project owner asked for -- and it applies without a caller
+    having to know about it, exactly like the setting's own column default."""
+    stat = RelayDeviceStatistics(1, "vorgabe", [RelayDayValue(date(2026, 8, 24), 100)])
+    assert stat.assumed_lifetime_operations == DEFAULT_ASSUMED_RELAY_LIFETIME_OPERATIONS
+    assert stat.assumed_lifetime_operations == 500_000
+
+
+def test_the_same_switching_pattern_warns_at_100000_and_not_at_500000() -> None:
+    """The inhaltlicher Test the project owner asked for: identical switching counts,
+    only the assumed lifetime differs, and that alone flips the warning."""
+    days = [RelayDayValue(date(2026, 8, 24), 150)]  # annual_projection == 54,750
+
+    strict = RelayDeviceStatistics(1, "gerat", days, assumed_lifetime_operations=100_000)
+    lenient = RelayDeviceStatistics(1, "gerat", days, assumed_lifetime_operations=500_000)
+
+    assert strict.wear_level == "warning"
+    assert lenient.wear_level == "normal"
+    assert strict.assumed_lifetime_percent_per_year > lenient.assumed_lifetime_percent_per_year

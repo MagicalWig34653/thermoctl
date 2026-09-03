@@ -37,13 +37,20 @@ from thermoctl.domain.time import local_time
 GAP_FACTOR = 3
 
 # Meross publishes 16 A for a representative plug, but neither the exact installed
-# relay nor its electrical endurance. 100,000 electrical operations under load are
+# relay nor its electrical endurance. 500,000 electrical operations under load are
 # therefore an explicitly replaceable assumption, borrowed only as an order of
 # magnitude from Panasonic's separate 16-A ALZN5B05W power relay at 250 V resistive
 # load (the source is linked next to the value in the UI). It is not a Meross rating;
 # load current, inrush current, load type and temperature can change real endurance
 # substantially.
-ASSUMED_RELAY_LIFETIME_OPERATIONS = 100_000
+#
+# This module never reads `setting.assumed_relay_lifetime_operations` itself --
+# `relay_operations` below is a domain function and stays free of a database lookup
+# for a single scalar, the same reasoning `heating_periods` follows for
+# `cycle_seconds`. Callers (the web view, REST, MCP) read the setting and pass it in.
+# This constant remains only as the default for a caller that does not, and as the
+# value a fresh installation's migration seeds the setting with.
+DEFAULT_ASSUMED_RELAY_LIFETIME_OPERATIONS = 500_000
 DAYS_PER_YEAR = 365
 
 
@@ -79,6 +86,11 @@ class RelayDeviceStatistics:
     zone_id: int
     device_name: str
     days: list[RelayDayValue]
+    # The installation's own setting, passed in by the caller -- see the note next to
+    # `DEFAULT_ASSUMED_RELAY_LIFETIME_OPERATIONS` above for why this dataclass does
+    # not read it itself. The default here only covers a caller (tests, mostly) that
+    # does not care about the exact assumption.
+    assumed_lifetime_operations: int = DEFAULT_ASSUMED_RELAY_LIFETIME_OPERATIONS
 
     @property
     def operations_total(self) -> int:
@@ -96,19 +108,19 @@ class RelayDeviceStatistics:
 
     @property
     def assumed_lifetime_percent_per_year(self) -> float:
-        return self.annual_projection * 100 / ASSUMED_RELAY_LIFETIME_OPERATIONS
+        return self.annual_projection * 100 / self.assumed_lifetime_operations
 
     @property
     def assumed_lifetime_years(self) -> float | None:
         if self.annual_projection == 0:
             return None
-        return ASSUMED_RELAY_LIFETIME_OPERATIONS / self.annual_projection
+        return self.assumed_lifetime_operations / self.annual_projection
 
     @property
     def wear_level(self) -> Literal["normal", "warning", "danger"]:
-        if self.annual_projection >= ASSUMED_RELAY_LIFETIME_OPERATIONS:
+        if self.annual_projection >= self.assumed_lifetime_operations:
             return "danger"
-        if self.annual_projection * 2 >= ASSUMED_RELAY_LIFETIME_OPERATIONS:
+        if self.annual_projection * 2 >= self.assumed_lifetime_operations:
             return "warning"
         return "normal"
 
@@ -143,8 +155,15 @@ def relay_operations(
     until: datetime,
     *,
     timezone_name: str | None = None,
+    assumed_lifetime_operations: int = DEFAULT_ASSUMED_RELAY_LIFETIME_OPERATIONS,
 ) -> list[RelayDeviceStatistics]:
     """Confirmed commanded on/off state changes per device and local calendar day.
+
+    ``assumed_lifetime_operations`` is the installation's own
+    ``setting.assumed_relay_lifetime_operations``. This function stays free of a
+    database lookup for that single scalar -- the same reasoning ``heating_periods``
+    follows for ``cycle_seconds`` -- so the caller reads the setting and passes it
+    through; the default here only covers a caller that does not care.
 
     Only command kind ``switch`` is a relay operation. ``setpoint`` messages to a
     self-regulating valve and ``thermostat`` messages to a TRV without an on/off
@@ -238,6 +257,7 @@ def relay_operations(
                 zone_id=zone_id,
                 device_name=device_name,
                 days=[RelayDayValue(day, counts[day]) for day in days],
+                assumed_lifetime_operations=assumed_lifetime_operations,
             )
         )
     return statistics

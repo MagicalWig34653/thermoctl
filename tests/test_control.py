@@ -72,6 +72,10 @@ def test_checking_a_number_accepts_the_comma() -> None:
         ("default_hysteresis_k", "keine Zahl"),
         ("default_min_on_seconds", "60,5"),
         ("polling_interval_seconds", ""),
+        ("assumed_relay_lifetime_operations", "0"),
+        ("assumed_relay_lifetime_operations", "-1"),
+        ("assumed_relay_lifetime_operations", "100"),
+        ("assumed_relay_lifetime_operations", "1000000000"),
     ],
 )
 def test_unusable_defaults_are_rejected(field: str, input_value: str) -> None:
@@ -246,6 +250,25 @@ def test_saving_defaults(client_als: ClientBuilder, session: Session) -> None:
     assert row.default_hysteresis_k == Decimal("0.4")
     assert row.shadow_interval_seconds == 90
     assert row.shadow_decision_retention_days == 730
+
+
+def test_the_assumed_relay_lifetime_is_saved_through_the_same_form(
+    client_als: ClientBuilder, session: Session
+) -> None:
+    """It is a plant-wide default like the others, not a special case -- same form,
+    same domain check, same LIMITS bound."""
+    create_settings(session)
+    source(session, "web")
+    client = client_als(ALL_PERMISSIONS)
+    response = client.post(
+        "/settings",
+        data=_defaults(assumed_relay_lifetime_operations="250000"),
+        headers=_csrf(client),
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    row = session.get(Setting, 1)
+    assert row.assumed_relay_lifetime_operations == 250_000
 
 
 def test_a_rejected_default_leaves_nothing_half_written(

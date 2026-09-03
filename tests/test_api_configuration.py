@@ -349,6 +349,7 @@ def _defaults(**abweichungen: object) -> dict[str, object]:
         "session_lifetime_seconds": 1209600,
         "default_solar_setback_max_k": "2.0",
         "solar_setback_lookahead_hours": 3,
+        "assumed_relay_lifetime_operations": 500_000,
     }
     values.update(abweichungen)
     return values
@@ -360,6 +361,9 @@ def test_steuerung_lesen(client: TestClient, session: Session, api_token) -> Non
     response = client.get("/api/v1/control", headers=head)
     assert response.status_code == 200
     assert response.json()["control_armed"] is False
+    # The default a fresh installation starts from -- the project owner's explicit
+    # request, not the old 100,000 the constant used to carry.
+    assert response.json()["assumed_relay_lifetime_operations"] == 500_000
 
 
 def test_arming_and_taking_it_back(
@@ -427,6 +431,36 @@ def test_an_unusable_default_is_refused(
         headers=head,
     )
     assert response.status_code == 422
+
+
+def test_assumed_relay_lifetime_is_writable_and_bounded(
+    client: TestClient, session: Session, api_token
+) -> None:
+    """The same domain limit as everywhere else -- neither adapter invents its own."""
+    create_settings(session)
+    head = api_token([("zone.read", None), ("setting.manage", None)])
+
+    ok = client.put(
+        "/api/v1/control/defaults",
+        json=_defaults(assumed_relay_lifetime_operations=250_000),
+        headers=head,
+    )
+    assert ok.status_code == 200
+    assert ok.json()["assumed_relay_lifetime_operations"] == 250_000
+
+    too_small = client.put(
+        "/api/v1/control/defaults",
+        json=_defaults(assumed_relay_lifetime_operations=100),
+        headers=head,
+    )
+    assert too_small.status_code == 422
+
+    too_large = client.put(
+        "/api/v1/control/defaults",
+        json=_defaults(assumed_relay_lifetime_operations=1_000_000_000),
+        headers=head,
+    )
+    assert too_large.status_code == 422
 
 
 def test_moving_a_schedule_point(
