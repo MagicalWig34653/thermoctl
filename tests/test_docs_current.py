@@ -17,6 +17,7 @@ from pathlib import Path
 from tests.helpers import alle_api_routen
 from thermoctl.app import create_app
 from thermoctl.config import Settings
+from thermoctl.domain.control import LIMITS
 from thermoctl.mcp import server as mcp_server
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -219,6 +220,22 @@ def test_every_setting_is_listed_in_the_example_file() -> None:
     expected = {f"THERMOCTL_{name.upper()}" for name in Settings.model_fields}
     missing = sorted(expected - present)
     assert not missing, ".env.example does not know these settings: " + ", ".join(missing)
+
+
+def test_every_global_default_is_named_in_the_api_documentation() -> None:
+    """`assumed_relay_lifetime_operations` was added in 0.6.0 and reachable over
+
+    `PUT /api/v1/control/defaults`, over MCP's `read_control()`, and from the settings
+    page -- but the task that built it was deliberately kept away from `docs/api.md`
+    and `docs/mcp.md`, which belonged to a parallel task, and nobody closed the gap
+    afterwards. `docs/api.md` is the one place that lists every global default with
+    its name and bounds, so this checks it directly against `LIMITS` -- the same
+    dictionary the setting's own validation reads from -- instead of against a
+    hand-kept list that could quietly stop matching it.
+    """
+    text = (ROOT / "docs" / "api.md").read_text(encoding="utf-8")
+    missing = sorted(name for name in LIMITS if f"`{name}`" not in text)
+    assert not missing, "docs/api.md does not name these global defaults: " + ", ".join(missing)
 
 
 

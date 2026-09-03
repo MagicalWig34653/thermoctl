@@ -85,6 +85,12 @@ Versuch: „0,05 Kelvin Hysterese" sieht für ein Modell so plausibel aus wie �
 Regelparameter wirkt dauerhaft und auf jede künftige Entscheidung, eine Übersteuerung nur
 bis zum nächsten Schaltpunkt.
 
+**`read_control()` liefert unter anderem `assumed_relay_lifetime_operations`** — die
+angenommene Relais-Lebensdauer, Vorgabe 500.000, seit 0.6.0 unter
+`PUT /api/v1/control/defaults` einstellbar (nicht über MCP schreibbar, `read_control()`
+liest sie nur mit). Es ist eine Annahme, keine Herstellerangabe: öffentliche Meross-Daten
+nennen keine Relaislebensdauer.
+
 **Zu den `pi_*`-Parametern (Beta, seit 0.5.0):** `pi_enabled` ist je Zone aus als Vorgabe.
 Ein Modell kann es über `set_control_parameters` einschalten, aber nur für eine Zone, die
 dafür taugt. Die Prüfung ist gerätegenau, nicht zonenweit — ein Gerät mit der Fähigkeit

@@ -131,6 +131,7 @@
       "**Fehlt das Feld, gilt 0** — ein Aufrufer, der die Absenkung nicht kennt, schaltet sie",
       "**selbstregelndes** Ventil dagegen schliesst die Zone nicht aus: Es bekommt seinen",
       "Aufbewahrungsdauer pflegen darf, soll die Heizung nicht nebenbei scharf schalten können.",
+      "Verschleiss-Hochrechnung unter `/relay-wear` und in den Warnhinweis beim Einschalten der",
       "Wochen später nicht mehr zu klären, warum ein Raum in einer bestimmten Nacht warm war.",
       "warum PI deutlich häufiger schaltet als die Hysterese — die Zahlen dazu stehen am Schalter"
     ],
@@ -279,17 +280,22 @@
       "- [x] **Zigbee-Heizkörperthermostate (WT-A03E, BTH-RA)** — als Aktor zuweisbar; ein",
       "- [x] 8 Aktor-Adapter im Trockenlauf, hinter zwei Riegeln",
       "Aktoren.",
-      "Die Reihenfolge ist nicht beliebig: Der Teil, der eine echte Heizung schalten soll, kommt bewusst",
+      "Die Reihenfolge war ursprünglich so gedacht, dass der Teil, der eine echte Heizung schalten",
       "Ein/Aus-Befehle die verdrahteten Aktoren.",
       "Neustart Sollwerte an selbstregelnde Thermostatventile und Ein/Aus-Befehle an gewöhnliche",
+      "Proportional-Integral-Regler statt Hysterese, nur für gewöhnliche Schaltaktoren.",
       "Regelung unscharf: Es wurden keine Sollwerte an Ventile gesendet und Ein/Aus-Entscheidungen",
       "Thermostatventil ist kein Schalter und wird über Sollwert und, wo vorhanden,",
+      "Thermostatventil schließt PI nicht mehr für die ganze Zone aus, sondern darf",
       "Ungeprüft bleibt das erste echte Schalten an der Anlage.",
       "Veröffentlichen hängt am selben Riegel wie das Schalten, siehe [mqtt.md](mqtt.md)",
       "dort schaltet das Ventil am Sollwert in jedem Zyklus um",
+      "echten Heizung, das Altsystem als Rückfallebene. Begründung in",
       "erreichten keinen Aktor.",
       "statt gegen den Heizkörper, an dem sein eigener Fühler sitzt.",
-      "wo das Gerät es annimmt, Ist-Temperatur; das Ventil regelt damit gegen den Raum"
+      "wo das Gerät es annimmt, Ist-Temperatur; das Ventil regelt damit gegen den Raum",
+      "| 4 | Regelkreis und Cutover | schaltet seit `v0.3.0` scharf an der echten Anlage; Ablösung des Altsystems offen | Altsystem ablösen |",
+      "übersprungen** — thermoctl lief als Erstes direkt scharf an der echten Heizung, mit dem"
     ],
     "docs/scharfschalten.md": [
       "# Ohne Schattenbetrieb scharf schalten",

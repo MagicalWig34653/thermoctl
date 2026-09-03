@@ -156,6 +156,29 @@ Eile geht. Fehlt sie beim Scharfschalten, antwortet der Dienst mit `422`.
 Felder aus der Antwort von `GET /api/v1/control` außer `control_armed` sind Pflicht; die
 Grenzen prüft die Domäne, ein Verstoß ist `422`.
 
+Die einzelnen Felder, mit ihren Grenzen aus `domain/control.py::LIMITS`:
+
+| Feld | Bedeutung | Grenzen | Vorgabe |
+|---|---|---|---|
+| `polling_interval_seconds` | Abfrageintervall (Sekunden) | 5 – 3.600 | 30 |
+| `shadow_interval_seconds` | Regelzyklus (Sekunden) | 5 – 3.600 | 60 |
+| `default_hysteresis_k` | Hysterese (K) | 0,1 – 5,0 | 0,30 |
+| `default_min_on_seconds` | Mindest-Einschaltdauer (Sekunden) | 30 – 7.200 | 300 |
+| `default_min_off_seconds` | Mindest-Ausschaltdauer (Sekunden) | 30 – 7.200 | 300 |
+| `default_sensor_timeout_seconds` | Sensor gilt als ausgefallen nach (Sekunden) | 60 – 86.400 | 1.800 |
+| `default_window_resume_delay_seconds` | Nachlauf nach Fensterschluss (Sekunden) | 0 – 3.600 | 120 |
+| `measurement_retention_days` | Messwerte aufbewahren (Tage) | 1 – 3.650 | 30 |
+| `shadow_decision_retention_days` | Schattenentscheidungen aufbewahren (Tage) | 1 – 3.650 | 365 |
+| `session_lifetime_seconds` | Sitzungsdauer (Sekunden) | 300 – 31.536.000 | 1.209.600 (14 Tage) |
+| `assumed_relay_lifetime_operations` | angenommene Relais-Lebensdauer (Schaltspiele), Grundlage für die Verschleiss-Hochrechnung unter `/relay-wear` | 1.000 – 10.000.000 | 500.000 |
+| `default_solar_setback_max_k` | Sonnenabsenkung, Obergrenze (K) | 0,0 – 10,0 | 2,0 |
+| `solar_setback_lookahead_hours` | Sonnenabsenkung, Vorschau (Stunden) | 1 – 12 | 3 |
+
+**`assumed_relay_lifetime_operations` ist eine Annahme, keine Herstellerangabe** —
+öffentliche Meross-Daten nennen keine Relaislebensdauer. Sie geht in die
+Verschleiss-Hochrechnung unter `/relay-wear` und in den Warnhinweis beim Einschalten der
+PI-Regelung ein; wer sie ändert, ändert eine Annahme, keine Messung.
+
 ### Sonnenabsenkung
 
 `PUT /api/v1/control/solar-location` (`setting.manage`) setzt Schalter und Standort für
