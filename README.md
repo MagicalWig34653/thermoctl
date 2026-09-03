@@ -97,6 +97,28 @@ noch kein Benutzer vorhanden, erscheint das einmalig verwendbare Einrichtungs-To
 Container-Log. Damit wird die Einrichtung unter `/setup` abgeschlossen. Logs mit diesem
 Token sind wie Zugangsdaten zu schützen.
 
+### Browsertests
+
+Eine zweite, unabhängige Suite unter `browser_tests/` prüft im echten Browser (Playwright),
+was ein HTTP-Test nicht sehen kann: geladenes CSS, Fehler in der Browserkonsole, den
+Zeitplan-Editor, den PI-Schalter, das Kiosk-Dashboard. Sie startet einen echten Server gegen
+eine eigene, frische SQLite-Datenbank und läuft **nicht** in der gewöhnlichen Suite und
+**nicht** in der CI — ausschließlich lokal, auf Wunsch, mit beliebig vielen Tests.
+
+Einmalig einzurichten:
+
+```bash
+.venv/bin/pip install -e ".[browser-tests]"
+.venv/bin/python -m playwright install chromium
+```
+
+Aufruf (das Verzeichnis muss auf der Kommandozeile stehen — ohne es sucht pytest, wie unten
+in `browser_tests/pytest.ini` erklärt, im gesamten Arbeitsverzeichnis statt nur hier):
+
+```bash
+.venv/bin/pytest -c browser_tests/pytest.ini browser_tests
+```
+
 ## Noch nicht enthalten
 
 Der Regelkreis ist gebaut und erschöpfend getestet, und alle vier Aktorwege sind mit ihm
