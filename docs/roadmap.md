@@ -1,6 +1,6 @@
 # Roadmap
 
-Stand: 2026-09-02
+Stand: 2026-09-03
 
 Diese Roadmap führt zusammen, was im [Rahmenentwurf](superpowers/specs/2026-08-28-thermoctl-neubau-design.md)
 in fünf Teilprojekte zerlegt ist, und konkretisiert es zu Features und Aufgaben. Sie ersetzt
@@ -18,13 +18,16 @@ Phase 1 geschehen ist. Features, die aus der unverbindlichen
 |---|---|---|---|
 | 1 | Fundament | **umgesetzt**, `v0.1.0` | Nichts sichtbar, aber alles Weitere hängt daran |
 | 1a | Nacharbeiten | **umgesetzt** | Oberfläche benutzbar |
-| 2 | Geräte-Anbindung im Schattenbetrieb | **gebaut**, Laufzeit an der Anlage offen | Belegt gegen die echte Anlage, dass die Daten stimmen |
+| 2 | Geräte-Anbindung im Schattenbetrieb | **gebaut**, läuft seit dem 2026-09-02 an der echten Anlage | Belegt gegen die echte Anlage, dass die Daten stimmen |
 | 3 | Konfigurations-Oberfläche | **umgesetzt**, seither erweitert | Ende der SQL-Pflege — ab hier im Alltag nützlich |
-| 4 | Regelkreis und Cutover | Logik, Freigabe und Aktorverdrahtung gebaut; Cutover offen | Altsystem ablösen |
+| 4 | Regelkreis und Cutover | schaltet seit `v0.3.0` scharf an der echten Anlage; Ablösung des Altsystems offen | Altsystem ablösen |
 | 5 | Integrationen und Veröffentlichung | teilweise vorgezogen | Für Fremde aufsetzbar |
 
-Die Reihenfolge ist nicht beliebig: Der Teil, der eine echte Heizung schalten soll, kommt bewusst
-zuletzt und erst mit Vergleichsdaten aus Phase 2.
+Die Reihenfolge war ursprünglich so gedacht, dass der Teil, der eine echte Heizung schalten
+soll, zuletzt kommt und erst mit Vergleichsdaten aus einem mehrtägigen Schattenbetrieb gegen
+das Altsystem beginnt (Phase 2). **Der Projektinhaber hat diesen Vergleichsbetrieb bewusst
+übersprungen** — thermoctl lief als Erstes direkt scharf an der echten Heizung, mit dem
+Altsystem als Rückfallebene. Details und Begründung in [STATUS.md](STATUS.md).
 
 ---
 
@@ -169,7 +172,8 @@ Gruppe und Token — alles über die Oberfläche, kein SQL.
 - Fensterpause mit Wiederanlaufverzögerung
 - Rückfall auf Frostschutz bei Sensorausfall
 - Nachvollziehbare Schaltentscheidungen: warum wurde geschaltet oder nicht
-- Vergleichsbetrieb gegen das Altsystem, mit Abweichungsbericht
+- ~~Vergleichsbetrieb gegen das Altsystem, mit Abweichungsbericht~~ — **auf Wunsch des
+  Projektinhabers übersprungen**, siehe unten
 - Scharfschalten mit dem Altsystem als Rückfallebene
 - Datenübernahme aus `rooms`, `thermostate`, `heizung_conf`
 
@@ -184,12 +188,16 @@ Aktoren.
 - [x] 2 Hysterese und Mindestschaltdauer
 - [x] 3 Fensterpause und Sensorausfall
 - [x] 4 Schaltprotokoll mit Begründung *(als Schattenprotokoll)*
-- [~] 5 Vergleichsbetrieb — die lesende Grundlage steht, die Ablage der Altwerte ist eine
-      offene Entscheidung, siehe [offene-entscheidungen.md](offene-entscheidungen.md)
+- [x] ~~5 Vergleichsbetrieb~~ — **übersprungen.** Ursprünglich geplant: mehrtägiger
+      Schattenbetrieb gegen das Altsystem, dann scharf mit Abweichungsbericht. Geändert
+      auf Wunsch des Projektinhabers — thermoctl lief als Erstes direkt scharf an der
+      echten Heizung, das Altsystem als Rückfallebene. Begründung in
+      [offene-entscheidungen.md](offene-entscheidungen.md) und [STATUS.md](STATUS.md).
 - [~] 6 Datenübernahme — die Umwandlung des Stundenrasters steht als reine Funktion, die
       Übernahme selbst braucht die Altdatenbank
 - [x] 7 Scharfschalten hinter einem Schalter, jederzeit umkehrbar
-- [ ] 8 Ablösung: Heizungsteil aus `vm130-nginx`, die vier Skripte aus dem Alt-Repo
+- [ ] 8 Ablösung: Heizungsteil aus `vm130-nginx`, die vier Skripte aus dem Alt-Repo —
+      läuft parallel als Rückfallebene, noch nicht abgeschaltet
 
 **`setting.control_armed` allein belegt keine körperliche Wirkung.** Die beim Start
 gebauten zweiten Riegel müssen ebenfalls offen sein; erst dann erreichen Sollwerte und
@@ -265,6 +273,21 @@ gegen beide Datenbanken geprüft; was noch an der echten Anlage nachzuweisen ist
       Vorlagen, CSS, Kommentare und Testnamen. Sichtbarer Text bleibt deutsch.
 - [x] **Testabdeckung auf 100 %** — jede Zeile geprüft oder mit begründeter Ausnahme; die
       CI-Schwelle steht entsprechend.
+- [x] **PI-Regelung (Beta)**, seit `v0.5.0`, je Zone einschaltbar, ab Werk aus — ein
+      Proportional-Integral-Regler statt Hysterese, nur für gewöhnliche Schaltaktoren.
+      Seit `v0.6.0` ist die Eignungsprüfung gerätegenau: ein selbstregelndes
+      Thermostatventil schließt PI nicht mehr für die ganze Zone aus, sondern darf
+      neben einem Schaltaktor stehen. Siehe
+      [self-hosting.md](self-hosting.md#6a-pi-regelung-beta-und-relaisverschleiss).
+- [x] **Relaisverschleiß-Statistik** unter `/relay-wear`, seit `v0.5.0` — Schaltspiele je
+      Gerät und Tag mit Jahreshochrechnung, auch ohne PI nützlich. Die zugrundeliegende
+      angenommene Relais-Lebensdauer ist seit `v0.6.0` einstellbar
+      (`assumed_relay_lifetime_operations`, Vorgabe 500.000) — ausdrücklich eine
+      Annahme, keine Herstellerangabe.
+- [x] **Browsertests**, seit `v0.6.0`, ausschließlich örtlich unter `browser_tests/` —
+      dreizehn Playwright-Tests, die prüfen, was ein HTTP-Test nicht sieht: Stylesheet,
+      Browserkonsole, echte Zeigergesten. Nicht in der CI und nicht in der gewöhnlichen
+      Suite.
 
 ---
 

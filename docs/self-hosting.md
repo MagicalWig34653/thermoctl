@@ -189,6 +189,12 @@ Verschleiss entsteht auch durch die Hysterese, nur langsamer. Wird die Jahreshoc
 einer Zone auffaellig, schalten Sie PI dort wieder aus; der Reglerzustand wird dabei
 vollstaendig neutralisiert, ein spaeteres Wiedereinschalten faengt sauber an.
 
+Die Hochrechnung rechnet gegen eine **angenommene** Relais-Lebensdauer, Vorgabe
+500.000 Schaltspiele — keine Herstellerangabe, denn oeffentliche Meross-Daten nennen
+keine. Einstellbar unter „Regelvorgaben" (`/settings`) bzw. `PUT /api/v1/control/defaults`
+(`setting.manage`), Grenzen 1.000 bis 10.000.000. Wer sie aendert, aendert eine Annahme,
+keine Messung.
+
 ## 7. Wenn etwas nicht geht
 
 | Symptom | Ursache und Abhilfe |
