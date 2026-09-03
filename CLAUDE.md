@@ -203,7 +203,7 @@ Aus der Umsetzung von Teilprojekt 1, damit es niemand erneut herausfinden muss:
   automatisch aufgelöste Fassung kann doppelte Definitionen enthalten und trotzdem grüne
   Tests liefern.
 - **Ein Mutationslauf im Worktree braucht dort einen `.venv`-Symlink, sonst luegt er.**
-  Alle `cosmic-ray-*.toml` verweisen relativ auf `.venv/bin/python`. Ein Worktree hat
+  Alle `mutation/cosmic-ray-*.toml` verweisen relativ auf `.venv/bin/python`. Ein Worktree hat
   keine eigene Umgebung; jeder Mutant wird dann `INCOMPETENT`, und cosmic-ray meldet
   daraufhin **null Ueberlebende** — ein vollstaendig gescheiterter Lauf sieht aus wie
   ein perfektes Ergebnis. Genau so entstand die Behauptung „662 Mutanten, 0

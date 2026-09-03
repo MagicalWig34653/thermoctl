@@ -75,7 +75,7 @@ PI nützlich.
 
 Über `domain/pi_control.py` wurde zuerst berichtet, sie habe 664 Mutanten und **null**
 Überlebende. Tatsächlich waren es 53. Die Ursache ist systemisch: Alle
-`cosmic-ray-*.toml` verweisen relativ auf `.venv/bin/python`, das es in einem Worktree
+`mutation/cosmic-ray-*.toml` verweisen relativ auf `.venv/bin/python`, das es in einem Worktree
 nicht gibt — jeder Mutant wird `INCOMPETENT`, und cosmic-ray meldet daraufhin null
 Überlebende. **Ein vollständig gescheiterter Lauf sieht aus wie ein perfektes Ergebnis.**
 Jede Konfiguration warnt jetzt davor, und `CLAUDE.md` verlangt, nach jedem Lauf die
@@ -128,8 +128,8 @@ Bezogen auf die 242 tatsächlich wirksamen Mutanten: 4 überleben, also 1,7 Proz
 **Echte Fehler in der Regellogik: keine.** Alle Befunde waren Lücken in den Tests, nicht
 im Code — das ist die beruhigende Hälfte des Ergebnisses.
 
-Wiederholbar über `cosmic-ray-control-loop.toml` und `cosmic-ray-shadow-run.toml`; die
-Einzelbewertung steht in `cosmic-ray-stage1-assessment.md`. Bewusst nicht in der CI — zu
+Wiederholbar über `mutation/cosmic-ray-control-loop.toml` und `mutation/cosmic-ray-shadow-run.toml`; die
+Einzelbewertung steht in `mutation/cosmic-ray-stage1-assessment.md`. Bewusst nicht in der CI — zu
 langsam für jeden Lauf.
 
 ## Wo das Projekt steht

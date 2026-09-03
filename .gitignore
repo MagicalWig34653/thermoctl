@@ -40,9 +40,16 @@ htmlcov/
 .DS_Store
 
 # iCloud-Konfliktdubletten ("Datei 2.py") -- nie Teil des Projekts
-*\ [0-9].*
+# Erfasst beide Formen, die iCloud erzeugt: "deviation 2.py" mit Endung und
+# ".coverage 2" ohne. Das Muster stand hier zuerst nur mit Punkt -- 28 Dubletten
+# ohne Endung sind dadurch eingecheckt worden, darunter neunzehn .coverage und
+# sogar ein Abbild des .venv-Symlinks.
+*\ [0-9]*
 
 # .venv liegt als .venv.tmp daneben, .venv ist ein Symlink darauf. Der oft genannte
 # .nosync-Trick wirkt nur auf Dateien, nicht auf Ordner: In .venv.nosync lagen
 # weiterhin iCloud-Konfliktkopien. Fuer Ordner ist .tmp die Entsprechung.
 .venv.tmp
+
+# Zwischenspeicher des Code-Review-Werkzeugs, 6,5 MB
+.code-review-graph/
