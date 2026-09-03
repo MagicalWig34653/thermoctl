@@ -9,6 +9,70 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ---
 
+## 0.6.0 — 2026-09-03
+
+**Nacharbeiten an der PI-Regelung aus 0.5.0**, ausgelöst durch eine reale Anlage des
+Projektinhabers: ein Raum mit einem selbstregelnden Heizkörperthermostat neben einer
+Meross-Steckdose.
+
+### PI-Eignungsprüfung ist jetzt gerätegenau
+
+Bisher schloss ein einziges selbstregelndes Thermostatventil in einer Zone PI für die
+ganze Zone aus, unabhängig davon, was sonst noch daran hing. Ein selbstregelndes Ventil
+bekommt seinen Sollwert aber über einen eigenen Weg und sieht die PI-Entscheidung nie —
+`switch_commands()` und `thermostat_commands()` filtern beide mit
+`ZoneDevice.self_regulating.is_(False)`, ein selbstregelndes Ventil taucht in keiner der
+beiden Befehlslisten auf. **Ein selbstregelndes Ventil darf jetzt neben einem
+Schaltaktor in derselben Zone stehen**; PI steuert dann nur noch den Schaltaktor.
+
+**Was weiterhin ausschliesst:** ein Thermostatventil **ohne** eigene Regelung. Das
+bekommt die PI-Entscheidung sehr wohl, als Sollwertsprünge aus „heizen ja/nein" — dafür
+wäre die schnelle Taktung von PI falsch.
+
+### Angenommene Relaislebensdauer ist einstellbar
+
+Bisher stand die Zahl fest im Code, mit 100.000 Schaltungen. Jetzt eine anlagenweite
+Einstellung, Vorgabe **500.000**, Grenzen 1.000 bis 10.000.000. Der Warnhinweis am
+PI-Schalter rechnet live gegen den eingestellten Wert: Aus „rund 2,6 Relaislebensdauern
+im Jahr" im ungünstigsten Fall werden bei der neuen Vorgabe rund 0,53.
+
+**Die Zahl bleibt ausdrücklich eine Annahme, keine Herstellerangabe** — öffentliche
+Meross-Daten nennen keine Lebensdauer. Gerade weil sie jetzt einstellbar ist, bleibt
+wichtig, dass hier eine Annahme geändert wird und keine Messung.
+
+### Zu beachten beim Umstieg
+
+- **Eine Migration** (`635612893955`) legt die neue Einstellung an und setzt sie auf
+  500.000. Das Container-Abbild führt sie beim Start selbst aus. Der Rückweg auf 0.5.0
+  braucht wie immer vorher einen einmaligen `alembic downgrade` mit dem neuen Abbild —
+  eine Revision zurück, auf `d2f4a7c91e63`:
+
+  ```bash
+  docker compose stop thermoctl
+  docker compose run --rm --no-deps --entrypoint alembic thermoctl downgrade d2f4a7c91e63
+  ```
+
+  Danach in `compose.yml` die Marke des Dienstes von `:latest` auf `:0.5.0` ändern und
+  starten — siehe [„Aktualisieren und zurückgehen"](docs/self-hosting.md#6-aktualisieren-und-zurückgehen).
+- **Nichts schaltet sich von selbst ein.** PI bleibt je Zone aus.
+
+### Dokumentation nachgezogen
+
+PI und Relaisverschleiss standen bisher nur in `STATUS.md`. README, `docs/api.md`,
+`docs/mcp.md` und `docs/self-hosting.md` kennen sie jetzt.
+
+### Browsertests (nur örtlich)
+
+Dreizehn Playwright-Tests prüfen, was ein HTTP-Test nicht sieht — Stylesheet-Wirkung,
+Browserkonsole, Anmeldung über hx-boost, Zeitplan-Zeichnen, den PI-Schalter, Sichtbarkeit
+von Menüpunkten nach Recht, das Kiosk-Dashboard. Anlass war `CLAUDE.md`: Zweimal sind
+grundlegende Fehler durch alle Tests gerutscht und erst beim Öffnen der Seite aufgefallen.
+**Sie laufen nicht in der CI und nicht in der gewöhnlichen Suite** — wer nichts tut, merkt
+nichts davon, zahlt aber auch keine Startzeit. In der Oberfläche selbst wurde dabei kein
+Fehler gefunden.
+
+---
+
 ## 0.5.0 — 2026-09-02
 
 **Die Fassung mit der PI-Regelung — als Beta, je Zone einschaltbar, aus als Vorgabe.**

@@ -10,6 +10,48 @@ längst überholte Angaben — „nichts ist scharf", „1024 Tests, 98,55 %", �
 wird nirgends gesetzt", „es gibt keine Geräteerkennung für Meross". Alles vier stimmte
 einmal und stand noch da.
 
+## v0.6.0 — Nacharbeiten an PI, aus einer echten Anlage heraus
+
+**Die PI-Eignungsprüfung ist gerätegenau geworden.** Ein selbstregelndes Thermostatventil
+schliesst PI nicht mehr für die ganze Zone aus, sondern darf neben einem Schaltaktor
+stehen — PI steuert dann nur den Schaltaktor. Das ist im Code belegt und nicht bloss
+angenommen: `switch_commands()` und `thermostat_commands()` filtern beide mit
+`ZoneDevice.self_regulating.is_(False)`, ein selbstregelndes Ventil taucht in keiner der
+beiden Listen auf und bekommt seinen Sollwert über einen eigenen Weg. Ausgeschlossen
+bleibt ein Thermostatventil **ohne** eigene Regelung — das bekommt die Entscheidung als
+Sollwertsprünge und wäre von der schnellen Taktung betroffen.
+
+**Die angenommene Relaislebensdauer ist einstellbar**, Vorgabe 500.000 statt fest
+verdrahteter 100.000. Das ändert die Einschätzung des PI-Verschleisses erheblich: Aus rund
+2,6 Relaislebensdauern im Jahr im ungünstigsten Fall werden rund 0,53. Die Zahl bleibt
+ausdrücklich eine **Annahme** — auch und gerade, weil sie jetzt einstellbar ist.
+
+### Browsertests, ausschliesslich örtlich
+
+Dreizehn Playwright-Tests unter `browser_tests/`, nicht in der CI und nicht in der
+gewöhnlichen Suite. Sie prüfen, was ein HTTP-Test nicht sehen kann: ob das Stylesheet
+wirklich wirkt, ob die Browserkonsole fehlerfrei bleibt, ob eine echte Zeigergeste im
+Zeitplan-Editor ankommt. Der Anlass steht in [CLAUDE.md](../CLAUDE.md) — zweimal sind
+grundlegende Fehler durch alle Tests gerutscht und erst beim Öffnen der Seite aufgefallen.
+
+**Die JavaScript-Abdeckung ist gemessen und bewusst nicht auf 100 Prozent getrieben:**
+
+| Datei | Zeilen | abgedeckt |
+|---|---:|---:|
+| `schedule.js` | 412 | 16 % |
+| `passkey.js` | 329 | 28 % |
+| `assignment.js` | 243 | 32 % |
+| `device_filter.js` | 63 | 51 % |
+| `permissions.js` | 45 | 71 % |
+| **gesamt** | **1.092** | **28 %** |
+
+Der Weg auf 100 Prozent wurde geschätzt (zwei bis drei Wochen, das meiste davon in
+WebAuthn-Fehlerzweigen und im Zeitplan-Editor) und vom Projektinhaber verworfen. Die
+Messung selbst geht ohne npm über die V8-Abdeckung von Chromium; sie ist nicht fest
+eingebaut. **Achtung, falls jemand sie nachbaut:** V8 liefert verschachtelte Bereiche, und
+der äusserste umspannt die ganze Datei. Wer nur die Bereiche mit `count > 0` zählt, misst
+100 Prozent und nichts — gezählt werden müssen die mit `count == 0`.
+
 ## v0.5.0 — PI-Regelung als Beta, je Zone einschaltbar
 
 **Wer nichts einschaltet, bekommt exakt das Verhalten von 0.4.0.** Für eine Zone ohne den
