@@ -221,6 +221,7 @@ class ControlResponse(BaseModel):
     session_lifetime_seconds: int
     default_solar_setback_max_k: Decimal
     solar_setback_lookahead_hours: int
+    assumed_relay_lifetime_operations: int
     solar_forecast_enabled: bool
     solar_forecast_latitude: Decimal | None
     solar_forecast_longitude: Decimal | None
@@ -253,6 +254,7 @@ class WriteControl(BaseModel):
     session_lifetime_seconds: int
     default_solar_setback_max_k: Decimal
     solar_setback_lookahead_hours: int
+    assumed_relay_lifetime_operations: int
 
 
 class MoveSchedulePoint(BaseModel):

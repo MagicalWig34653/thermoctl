@@ -53,7 +53,6 @@ from thermoctl.domain.pi_control import (
 from thermoctl.domain.principal import Principal
 from thermoctl.domain.schedule import resolved_setpoint
 from thermoctl.domain.statistics import (
-    ASSUMED_RELAY_LIFETIME_OPERATIONS,
     RelayDeviceStatistics,
     as_duration,
     heating_periods,
@@ -390,6 +389,7 @@ async def show_relay_wear(
         start_at,
         until,
         timezone_name=row.timezone,
+        assumed_lifetime_operations=row.assumed_relay_lifetime_operations,
     )
     by_zone: dict[int, list[RelayDeviceStatistics]] = {zone.id: [] for zone in zones}
     for value in values:
@@ -405,7 +405,7 @@ async def show_relay_wear(
             "values": by_zone,
             "periods": [(period_key, label) for period_key, (label, _days) in ZEITRAEUME.items()],
             "period": key,
-            "assumed_lifetime": ASSUMED_RELAY_LIFETIME_OPERATIONS,
+            "assumed_lifetime": row.assumed_relay_lifetime_operations,
             "has_values": bool(values),
         },
     )

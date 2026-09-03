@@ -61,6 +61,13 @@ LIMITS: dict[str, tuple[Decimal, Decimal]] = {
     # forecast is still meaningful; below one hour there is nothing left to look
     # ahead to.
     "solar_setback_lookahead_hours": (Decimal(1), Decimal(12)),
+    # Order-of-magnitude sanity, not a manufacturer figure: relay datasheets for this
+    # current class state electrical endurance from the low tens of thousands up to a
+    # few million operations. 1,000 is implausibly fragile for anything sold as a
+    # switching relay; 10,000,000 exceeds even generously rated general-purpose power
+    # relays and is far more likely a missing-thousands-separator typo than a real
+    # value.
+    "assumed_relay_lifetime_operations": (Decimal(1_000), Decimal(10_000_000)),
 }
 
 LABELS: dict[str, str] = {
@@ -76,6 +83,7 @@ LABELS: dict[str, str] = {
     "session_lifetime_seconds": "Sitzungsdauer (Sekunden)",
     "default_solar_setback_max_k": "Sonnenabsenkung, Obergrenze (K)",
     "solar_setback_lookahead_hours": "Sonnenabsenkung, Vorschau (Stunden)",
+    "assumed_relay_lifetime_operations": "Angenommene Relais-Lebensdauer (Schaltspiele)",
 }
 
 # Which fields are integer-valued. The rest are decimal numbers.

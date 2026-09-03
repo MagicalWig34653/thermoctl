@@ -68,6 +68,14 @@ class Setting(Base):
     shadow_interval_seconds: Mapped[int] = mapped_column(
         Integer, default=60, server_default=text("60"), nullable=False
     )
+    # Replaces the module constant `domain.statistics.
+    # DEFAULT_ASSUMED_RELAY_LIFETIME_OPERATIONS` as the number the relay-wear
+    # statistic compares against. Still an explicitly replaceable assumption, not a
+    # measurement -- see the reasoning next to that constant and the bounds in
+    # `domain.control.LIMITS`.
+    assumed_relay_lifetime_operations: Mapped[int] = mapped_column(
+        Integer, default=500_000, server_default=text("500000"), nullable=False
+    )
     # --- Solar setback ---------------------------------------------------------
     # Off by default, and effectively off regardless of this flag while latitude or
     # longitude is unset (there is no sensible default location -- CLAUDE.md

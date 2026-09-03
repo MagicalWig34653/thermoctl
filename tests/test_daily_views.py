@@ -219,10 +219,30 @@ def test_the_parameter_page_shows_the_pi_warning_with_the_switching_table_and_re
     assert "verkürzt dadurch" in page.text and "Lebensdauer" in page.text
     assert "262.800" in page.text  # worst case, per year
     assert "52.560" in page.text  # hysteresis ceiling, per year
-    assert "100.000" in page.text
-    assert "rund 2,6" in page.text
+    # The vorgabe, 500,000 -- and the ratio recomputed against it (262,800 / 500,000).
+    assert "500.000" in page.text
+    assert "rund 0,53" in page.text
     assert 'href="/relay-wear"' in page.text
     assert "Kessel oder Verdichter" in page.text
+
+
+def test_the_pi_warning_ratio_follows_a_changed_assumption(
+    session: Session, client_als
+) -> None:
+    """The sentence is computed against the *setting*, not a fixed 2.6 -- change the
+    assumption and the stated ratio changes with it."""
+    zone = _grundlage(session)
+    row = session.get(Setting, 1)
+    row.assumed_relay_lifetime_operations = 100_000
+    session.flush()
+    client = client_als([("zone.manage", zone.id)])
+
+    page = client.get(f"/zones/{zone.id}/parameters")
+
+    assert page.status_code == 200
+    assert "100.000" in page.text
+    assert "500.000" not in page.text
+    assert "rund 2,63" in page.text
 
 
 def test_an_ineligible_zone_shows_the_reason_and_refuses_to_switch_pi_on(
