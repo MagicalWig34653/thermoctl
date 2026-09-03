@@ -119,6 +119,21 @@ in `browser_tests/pytest.ini` erklärt, im gesamten Arbeitsverzeichnis statt nur
 .venv/bin/pytest -c browser_tests/pytest.ini browser_tests
 ```
 
+**Zusehen statt raten.** Ein fehlgeschlagener Browsertest ist aus der Fehlermeldung oft
+nicht zu verstehen. `THERMOCTL_BROWSER_HEADED=1` öffnet deshalb ein echtes Fenster und
+verlangsamt jede Geste um `THERMOCTL_BROWSER_SLOWMO` Millisekunden (Vorgabe 300):
+
+```bash
+THERMOCTL_BROWSER_HEADED=1 .venv/bin/pytest -c browser_tests/pytest.ini browser_tests
+```
+
+Über eine Umgebungsvariable und nicht über `--headed`, weil diese Vorrichtung Playwright
+unmittelbar startet und nicht über das Zusatzpaket `pytest-playwright`.
+
+**In PyCharm** liegen dafür zwei Startkonfigurationen bereit: *Browsertests (Playwright)*
+und *Browsertests sichtbar (Playwright)*. Sie stehen in `.idea/runConfigurations/` und sind
+damit örtlich — `.idea/` ist nicht im Repository.
+
 ## Noch nicht enthalten
 
 Der Regelkreis ist gebaut und erschöpfend getestet, und alle vier Aktorwege sind mit ihm

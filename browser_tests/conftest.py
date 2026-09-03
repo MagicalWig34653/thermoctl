@@ -227,8 +227,20 @@ def live_server() -> Iterator[LiveServer]:
 
 @pytest.fixture(scope="session")
 def browser() -> Iterator[Browser]:
+    """Chromium, unsichtbar -- ausser jemand will zusehen.
+
+    `THERMOCTL_BROWSER_HEADED=1` oeffnet ein echtes Fenster und verlangsamt jede
+    Geste um `THERMOCTL_BROWSER_SLOWMO` Millisekunden (Vorgabe 300). Das ist der
+    einzige Weg, einen Browsertest zu verstehen, der fehlschlaegt: Zusehen, statt
+    aus einer Fehlermeldung zu raten. Ueber eine Umgebungsvariable und nicht ueber
+    einen Schalter auf der Kommandozeile, weil diese Vorrichtung Playwright
+    unmittelbar startet und nicht ueber das Zusatzpaket `pytest-playwright`, dessen
+    `--headed` es hier also gar nicht gibt.
+    """
+    sichtbar = bool(os.environ.get("THERMOCTL_BROWSER_HEADED"))
+    langsam = int(os.environ.get("THERMOCTL_BROWSER_SLOWMO", "300")) if sichtbar else 0
     with sync_playwright() as playwright:
-        instance = playwright.chromium.launch()
+        instance = playwright.chromium.launch(headless=not sichtbar, slow_mo=langsam)
         yield instance
         instance.close()
 
