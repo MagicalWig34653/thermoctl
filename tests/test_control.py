@@ -171,11 +171,34 @@ def test_operating_pages_describe_armed_after_restart_truthfully(
         page = client.get(path)
         assert page.status_code == 200
         assert "Scharf und neu gestartet" in page.text
-        assert "Sollwerte gehen an selbstregelnde Thermostatventile" in page.text
-        assert "Ein/Aus-Befehle gehen an Zigbee2MQTT-Schalter" in page.text
-        assert "Zigbee2MQTT-Thermostatventile ohne eigene Regelung" in page.text
-        assert "Meross-Steckdosen" in page.text
         assert "Jede Entscheidung unten geht an die Ventile." not in page.text
+
+    # "/control" keeps the long, explicit wording -- it is a dedicated operations
+    # page, not the at-a-glance dashboard, so the same message does not need to
+    # be shortened there.
+    control_page = client.get("/control")
+    assert "Sollwerte gehen an selbstregelnde Thermostatventile" in control_page.text
+    assert "Ein/Aus-Befehle gehen an Zigbee2MQTT-Schalter" in control_page.text
+    assert "Zigbee2MQTT-Thermostatventile ohne eigene Regelung" in control_page.text
+    assert "Meross-Steckdosen" in control_page.text
+
+    # "/" (the start page) shortens the message so it reads truthfully at a glance
+    # -- the earlier wording listed the two command *kinds* first and let
+    # self-regulating valves trail behind, which one operator of a plant built
+    # entirely from such valves read as "these are not actually driven". The
+    # replacement leads with the fact that every assigned actuator is driven, and
+    # puts which command kind goes where behind an explicit disclosure, checked
+    # for its content rather than its exact wording so a future rephrase does not
+    # break this test for its own sake.
+    start_page = client.get("/")
+    assert "alle zugeordneten Aktoren werden angesteuert" in start_page.text
+    assert "Sollwerte gehen an selbstregelnde Thermostatventile" not in start_page.text
+    disclosure_start = start_page.text.index('class="tc-info-disclosure"')
+    disclosure_text = start_page.text[disclosure_start : disclosure_start + 400]
+    assert "selbst" in disclosure_text  # self-regulating valves are not excluded
+    assert "Thermostatventile" in disclosure_text
+    assert "Sollwert" in disclosure_text
+    assert "Ein/Aus" in disclosure_text
 
 
 def test_arming_through_the_interface(

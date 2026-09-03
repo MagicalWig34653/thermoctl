@@ -45,7 +45,12 @@ Seite ein Formularstapel, in dem die eigentliche Auskunft — wie warm ist es �
 <section class="tc-system-row {{ 'tc-armed' if armed }} mb-4">
     {% if armed and sending_allowed %}
     <span class="tc-chip tc-chip-warm"><span class="tc-dot"></span>Scharf und neu gestartet</span>
-    <span>Ausgabe freigegeben: Sollwerte gehen an selbstregelnde Thermostatventile; Ein/Aus-Befehle gehen an Zigbee2MQTT-Schalter, Zigbee2MQTT-Thermostatventile ohne eigene Regelung und Meross-Steckdosen.</span>
+    <span>Ausgabe freigegeben — alle zugeordneten Aktoren werden angesteuert.</span>
+    <details class="tc-info-disclosure">
+        <summary>ⓘ welche Befehle</summary>
+        Selbstregelnde Thermostatventile bekommen einen Sollwert und regeln damit selbst;
+        Schalter, Steckdosen und Ventile ohne eigene Regelung bekommen Ein/Aus.
+    </details>
     {% elif armed %}
     <span class="tc-chip tc-chip-warning">Scharf, Neustart fehlt</span>
     <span>Der beim Start gebaute MQTT-Riegel ist noch zu. Bis zum Neustart gehen weder Sollwerte noch Ein/Aus-Befehle an Aktoren.</span>
