@@ -27,6 +27,10 @@ dev = [
     "cosmic-ray>=8.7,<9",
 ]
 mcp = ["mcp>=1.2"]
+# Eigene, von `dev` getrennte Gruppe: nur wer Browsertests laufen lassen will,
+# braucht Playwright (und danach einmalig `playwright install`, s. README.md). Ein
+# gewoehnlicher `pip install -e ".[dev]"` zieht das nicht mit.
+browser-tests = ["playwright>=1.48"]
 
 [project.scripts]
 thermoctl = "thermoctl.cli:main"
