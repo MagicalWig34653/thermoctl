@@ -83,7 +83,7 @@ def test_without_an_options_file_nothing_changes(tmp_path: Path) -> None:
 def test_options_file_is_translated_into_environment_variables(tmp_path: Path) -> None:
     options_file = tmp_path / "options.json"
     options_file.write_text(
-        json.dumps({"secret_key": "y" * 40, "log_level": "DEBUG", "mqtt": {"enabled": True}})
+        json.dumps({"secret_key": "y" * 40, "log_level": "DEBUG", "mqtt_enabled": True})
     )
     result = _run_entrypoint(tmp_path, {"THERMOCTL_ADDON_OPTIONS_FILE": str(options_file)})
     assert result.returncode == 0, result.stderr
