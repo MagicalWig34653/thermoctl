@@ -2,6 +2,8 @@
 name = "thermoctl"
 version = "0.6.0"
 requires-python = ">=3.14"
+license = "AGPL-3.0-only"
+license-files = ["LICENSE"]
 dependencies = [
     "fastapi>=0.141",
     "uvicorn[standard]>=0.52",
@@ -37,7 +39,9 @@ thermoctl = "thermoctl.cli:main"
 thermoctl-mcp = "thermoctl.mcp.server:main"
 
 [build-system]
-requires = ["setuptools>=75"]
+# Ab 77 versteht setuptools das SPDX-Feld "license" (PEP 639) -- ohne das baut
+# das Paket zwar noch, traegt dann aber keine maschinenlesbare Lizenzangabe.
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
