@@ -13,8 +13,18 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ### Hinzugefügt
 
+<<<<<<< HEAD
 - Kiosk-Dashboard: knapper AGPL-3.0-Quelltext-Verweis in der Kopfzeile (§13), öffnet
   in einem neuen Tab statt das Wandtablett-Dokument zu ersetzen.
+=======
+- Grundlage für einzeln schaltbare Benachrichtigungsarten: drei neue Spalten in
+  `setting` (`notify_sensor_faults`, `notify_bridge_faults`,
+  `notify_command_failures`, alle standardmäßig an) sowie der Zustellzustand des
+  Webhooks (`notify_last_attempt_at`, `notify_last_ok`, `notify_last_error`).
+  Neue Meldungsart „Schaltbefehl gescheitert“, die nur den Übergang in einen
+  fehlschlagenden Schaltversuch meldet, nicht jeden Zyklus. Reine Oberflächen-Teile
+  (Schalter, Testknopf, Anzeige) folgen in einem zweiten Schritt.
+>>>>>>> meldungen-modell
 - Neues Werkzeug `tools/env_nach_addon.py`: liest eine bestehende `.env` und erzeugt
   daraus die YAML-Konfiguration für das Home-Assistant-Add-on — für den Umstieg von
   `docker compose` auf das Add-on, ohne jede Einstellung von Hand zu übertragen. Siehe
