@@ -21,6 +21,17 @@ Vergleichssatz durch eine für jeden Betreiber gültige Aussage ersetzt (Entsche
 sich beobachten, bevor sie etwas schalten). Der nie erreichte Schnittstellen-Zustand
 `not_built` ist aus Domänenlogik, Vorlage und Test entfernt.
 
+### Quelltextverweis nach §13 AGPL, realer Hostname aus der Dokumentation entfernt
+
+Die Grundvorlagen `base.html` und `base_plain.html` tragen jetzt eine Fußzeile mit
+Lizenzangabe (AGPL-3.0) und der Repository-Adresse, wie es §13 AGPL für netzseitig
+genutzte Software verlangt — sichtbar auf jeder Seite, die eine der beiden Vorlagen
+nutzt, einschließlich der Anmeldeseite. Das Kiosk-Dashboard (eigene, bewusst schmale
+Vorlage) bleibt unverändert; ob es einen eigenen Hinweis braucht, ist offen. Außerdem:
+Der reale Rechnername des Altsystems (`vm130-nginx`) ist in `docs/roadmap.md`,
+`docs/inbetriebnahme-schattenbetrieb.md` und `docs/veroeffentlichung-durchsicht.md`
+durch eine neutrale Umschreibung ersetzt.
+
 ### Wirkungswächter erkennt deutsche Komposita ohne Trennzeichen
 
 `tests/test_user_visible_effect_texts.py` prüfte deutsche Komposita bisher nur, wenn sie

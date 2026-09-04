@@ -17,6 +17,23 @@ Der nie erreichbare Schnittstellen-Zustand `not_built` (Marke „Noch nicht geba
 `docs/scharfschalten.md` bleibt unverändert: Sie ist ausdrücklich für den Projektinhaber und
 beschreibt genau den Umstieg, den sie im Titel trägt.
 
+## §13 AGPL: Quelltextverweis in der Fußzeile, realer Hostname aus der Dokumentation entfernt
+
+`thermoctl/web/templates/base.html` und `base_plain.html` tragen jetzt eine Fußzeile mit
+Lizenzangabe (AGPL-3.0) und der Repository-Adresse
+(`https://github.com/MagicalWig34653/thermoctl`) — sie erscheint auf jeder Seite, die
+über diese beiden Grundvorlagen läuft, auch der Anmeldeseite. Das Repository ist derzeit
+noch privat; der Verweis führt vorerst ins Leere, ist aber die vom Projektinhaber
+freigegebene, korrekte Adresse. **Offen:** Das eigenständige Kiosk-Dashboard
+(`thermoctl/web/templates/kiosk.html`) erbt keine der beiden Grundvorlagen — bewusst
+schmale Bedienfläche fürs Wandtablet. Ob und wie es den §13-Hinweis bekommen soll, ohne
+die Fläche zu überladen, ist nicht entschieden; hier nicht angefasst.
+
+Außerdem: Der reale Rechnername `vm130-nginx` des Altsystems ist an allen fünf
+Fundstellen in `docs/roadmap.md`, `docs/inbetriebnahme-schattenbetrieb.md` und
+`docs/veroeffentlichung-durchsicht.md` durch eine neutrale Umschreibung („der Host des
+Altsystems") ersetzt.
+
 **Diese Datei sagt, was jetzt gilt — sonst nichts.** Wie es dazu kam, welche Fehler wie
 gefunden wurden und warum etwas so entschieden ist, wird hier nicht mitgeführt. Der
 Grund: Diese Datei war einmal auf über tausend Zeilen gewachsen und enthielt gleichzeitig
