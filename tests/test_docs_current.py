@@ -245,6 +245,7 @@ LIVING_DOCS = [
     "README.md",
     "docs/STATUS.md",
     "docs/api.md",
+    "docs/homebridge.md",
     "docs/mcp.md",
     "docs/mqtt.md",
     "docs/roadmap.md",
@@ -313,3 +314,54 @@ def test_no_tracked_file_carries_leftover_merge_conflict_markers() -> None:
         if any(marker[:-1] + " " in text for marker in markers):
             guilty.append(name)
     assert not guilty, f"Konfliktmarken stehen noch in: {', '.join(guilty)}"
+
+
+def test_homebridge_documentation_topics_match_the_code() -> None:
+    """docs/homebridge.md names six MQTT topics for the `mqtt-thing` accessory.
+
+    Written for exactly the failure mode this guard exists to catch: someone renames a
+    topic in `publication.py` (or its command counterpart), the tests around the topic
+    builders themselves stay green because they only check internal consistency, and
+    the Homebridge instructions quietly point at a topic that no longer exists. This
+    builds the same topics the production code builds -- not a copy of the string --
+    and requires every one of them to appear in the documentation text.
+    """
+    from thermoctl.integrations.mqtt.publication import command_topics, states_topics
+
+    text = (ROOT / "docs" / "homebridge.md").read_text(encoding="utf-8")
+    state = states_topics(1, "thermoctl")
+    command = command_topics(1, "thermoctl")
+    expected = {
+        "getCurrentTemperature": state.current_temperature,
+        "getTargetTemperature": state.setpoint,
+        "setTargetTemperature": command.setpoint,
+        "getCurrentHeatingCoolingState": state.would_heat,
+        "getTargetHeatingCoolingState": state.operating_mode,
+        "setTargetHeatingCoolingState": command.operating_mode,
+    }
+    missing = [f"{key} -> {topic}" for key, topic in expected.items() if topic not in text]
+    assert not missing, (
+        "docs/homebridge.md nennt diese von publication.py tatsächlich gebauten "
+        "Topics nicht (mehr): " + ", ".join(missing)
+    )
+
+
+def test_homebridge_documentation_operating_modes_match_the_code() -> None:
+    """The `apply` functions in docs/homebridge.md hard-code thermoctl's mode codes.
+
+    `commands.py::OPERATING_MODES` is the one place that defines which codes a
+    `command/operating_mode` message may carry. If a code there ever changes, the
+    JavaScript mapping tables quoted in the Homebridge instructions -- which a person
+    copies verbatim into `config.json` -- would silently stop matching what the broker
+    actually accepts.
+    """
+    from thermoctl.integrations.mqtt.commands import OPERATING_MODES
+
+    text = (ROOT / "docs" / "homebridge.md").read_text(encoding="utf-8")
+    missing = sorted(
+        mode for mode in OPERATING_MODES if f"'{mode}'" not in text and f'"{mode}"' not in text
+    )
+    assert not missing, (
+        "docs/homebridge.md nennt diese Betriebsart-Codes aus commands.py nicht: "
+        + ", ".join(missing)
+    )

@@ -161,6 +161,16 @@
       "warum PI deutlich häufiger schaltet als die Hysterese — die Zahlen dazu stehen am Schalter",
       "weitergereicht —, ebenso eine Zone ganz ohne gewöhnlichen Schaltaktor. Ein"
     ],
+    "docs/homebridge.md": [
+      "**„Heizen\" (1) ist `manual`, nicht `auto`.** In thermoctl bedeutet die manuelle",
+      "1 (Heizen) oder 0 (Aus/Bereit) ab. HomeKit zeigt bei „Bereit\" denselben Zustand wie bei",
+      "Bild, das HomeKits „Heizen\" nahelegt: ein Rad, an dem ich drehe und das genau diesen Wert",
+      "HomeKit kennt vier feste Heiz-/Kühlzustände: 0 Aus, 1 Heizen, 2 Kühlen, 3 Automatik.",
+      "ausschließlich Heizung; es gibt keine Betriebsart, die „Kühlen\" auch nur näherungsweise",
+      "ist: Aus, Heizen, Automatik. Der Zustand 2 (Kühlen) fehlt bewusst, siehe unten. Anders als",
+      "| 1 — Heizen | `operating_mode = manual` |",
+      "„Aus\", weil die Anzeige „heizt / bereit\" (mqtt.md, Abschnitt 4) selbst keine dritte Kategorie"
+    ],
     "docs/inbetriebnahme-schattenbetrieb.md": [
       "Aktoren und, falls vorhanden, Fensterkontakte.",
       "Entscheidungen. Es werden keine Sollwerte an Ventile gesendet; Ein/Aus-Entscheidungen",
