@@ -71,6 +71,7 @@
       "mehrere Grad zu warm; mit einem Wandfühler regelt es gegen den Raum.",
       "scharfen Betrieb an einer echten Heizung prüfte ein Kreuzreview gezielt, ob geschaltet",
       "selbst anzuhalten. Ein Zigbee2MQTT-Thermostatventil ohne `self_regulating` (Fähigkeit",
+      "sich beobachten, bevor sie etwas schalten). Der nie erreichte Schnittstellen-Zustand",
       "solange der Ventilschutz den Ein-Zustand tatsächlich verlangt.",
       "typischerweise als Zweitglied auftreten (Ventil, Aktor, Heizkörper, Heizkreis,",
       "und Mindestschaltdauern, beide konnten das Verhalten von Relais und Ventilen verändern,",
@@ -111,6 +112,7 @@
       "- **Sind beide Riegel offen**, bekommen selbstregelnde Thermostatventile ihren Sollwert",
       "Alle vier Aktorwege sind verdrahtet: Zigbee2MQTT-Schalter, Zigbee-Thermostatventile,",
       "Backoff mit steigendem Abstand, weil ein Aktor an einer echten Heizung die Chance zur",
+      "darauf, dass sich Entscheidungen beobachten lassen, bevor sie etwas schalten; die",
       "Begründung, Auslöser. Der bestehende Sollwert-Weg an selbstregelnde Thermostatventile",
       "Heizung.",
       "Meross-Steckdosen, selbstregelnde Ventile. Bis 0.2.2 landete jede Regelentscheidung im",
@@ -489,6 +491,7 @@
       "Der beim Start gebaute MQTT-Riegel ist noch zu. Bis zum Neustart gehen weder Sollwerte noch Ein/Aus-Befehle an Aktoren.",
       "Regelentscheidungen werden protokolliert. Weder Sollwerte noch Ein/Aus-Befehle gehen an Aktoren.",
       "Scharf schalten …",
+      "So lassen sich die Entscheidungen beobachten, bevor sie etwas schalten.",
       "Sollwerte gehen an selbstregelnde Thermostatventile; Ein/Aus-Befehle gehen an Zigbee2MQTT-Schalter, Zigbee2MQTT-Thermostatventile ohne eigene Regelung und Meross-Steckdosen."
     ],
     "thermoctl/web/templates/device_assignment.html": [
