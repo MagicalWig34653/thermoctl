@@ -6,10 +6,12 @@ untested exactly the path every real request takes.
 """
 
 from collections.abc import Iterator
+from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
 import pytest
+import yaml
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine, text
 from sqlalchemy.orm import Session
@@ -104,3 +106,32 @@ def test_cli_passes_the_settings_through_to_uvicorn(
     assert kwargs["factory"] is True
     assert kwargs["log_config"] is None, "otherwise uvicorn overwrites the JSON logging"
     assert isinstance(kwargs["port"], int)
+
+
+def test_workflow_job_ids_and_service_values_stay_ascii() -> None:
+    """GitHub lehnt eine Job-Kennung mit Umlaut ab -- und sagt nur "workflow file issue".
+
+    Geschrieben, nachdem genau das passiert ist: Der Umlaut-Durchgang zog `pruefen:`
+    zu `prüfen:`, und die CI fiel mit einer Meldung aus, die nicht sagt, welche Zeile
+    gemeint ist. Der Docker-Bau lief weiter, das Abbild entstand -- nur geprüft wurde
+    nichts mehr. Ein rotes Tor, das aussieht wie ein Werkzeugproblem, ist schlimmer als
+    eines, das den Fehler nennt.
+
+    Dieselbe Prüfung gilt für Werte, die als Zugangsdaten in einer Verbindungs-URL
+    landen: Ein Passwort mit Umlaut muss dort prozentkodiert werden, und wer das
+    vergisst, sucht den Fehler in der Datenbank statt im Workflow.
+    """
+    verzeichnis = Path(__file__).resolve().parent.parent / ".github" / "workflows"
+    schuldig: list[str] = []
+    for datei in sorted(verzeichnis.glob("*.yml")):
+        inhalt = yaml.safe_load(datei.read_text(encoding="utf-8"))
+        for job in inhalt.get("jobs", {}):
+            if not job.isascii():
+                schuldig.append(f"{datei.name}: Job-Kennung {job!r}")
+        for zeile in datei.read_text(encoding="utf-8").splitlines():
+            nackt = zeile.strip()
+            if nackt.startswith("#") or zeile.lstrip().startswith("#"):
+                continue
+            if ("PASSWORD" in nackt or "://" in nackt) and not nackt.isascii():
+                schuldig.append(f"{datei.name}: {nackt[:60]}")
+    assert not schuldig, "Nicht-ASCII an maschinenlesbaren Stellen:\n  " + "\n  ".join(schuldig)
