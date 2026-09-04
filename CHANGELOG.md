@@ -13,6 +13,14 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ### Hinzugefügt
 
+- Oberfläche für Störungsmeldungen unter „Einstellungen": drei anlagenweite Schalter
+  (Sensorstörung samt Entwarnung, Brücke oder Broker weg, Schaltbefehl gescheitert)
+  sowie ein Testknopf, der eine als Test gekennzeichnete Meldung über denselben Weg
+  wie eine echte Meldung an den hinterlegten Webhook schickt und Statuscode, Dauer
+  und im Fehlerfall den Grund unmittelbar auf der Seite zeigt. Zuletzt-Versuch und
+  Ergebnis stehen daneben, „Noch nie versucht" als eigener, nicht als Fehler
+  dargestellter Zustand. Voraussetzung: die drei Schalter- und drei Zustandsspalten
+  auf `setting`, die eine parallele Aufgabe nachzieht — siehe STATUS.md.
 - Neues Werkzeug `tools/env_nach_addon.py`: liest eine bestehende `.env` und erzeugt
   daraus die YAML-Konfiguration für das Home-Assistant-Add-on — für den Umstieg von
   `docker compose` auf das Add-on, ohne jede Einstellung von Hand zu übertragen. Siehe

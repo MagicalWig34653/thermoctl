@@ -22,6 +22,7 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from thermoctl import audit
 from thermoctl.auth.dependencies import csrf_protection, current_principal, get_session
 from thermoctl.config import get_settings
 from thermoctl.db.base import utcnow
@@ -59,6 +60,7 @@ from thermoctl.domain.statistics import (
     relay_operations,
 )
 from thermoctl.domain.time import local_day_start_utc, local_time
+from thermoctl.integrations import notification
 from thermoctl.services.shadow_run import PI_FALLBACK_INELIGIBLE
 from thermoctl.web import templates
 from thermoctl.web.urls import prefixed
@@ -145,6 +147,8 @@ def _defaults_page(
     values: dict[str, str] | None = None,
     solar_enabled: bool | None = None,
     errors: ControlError | None = None,
+    test_result: notification.WebhookTestResult | None = None,
+    test_notice: str | None = None,
 ) -> Response:
     row = settings(session)
     if values is None:
@@ -166,6 +170,21 @@ def _defaults_page(
             "solar_forecast_enabled": bool(solar_enabled),
             "errors": {errors.field: errors.notice} if errors else {},
             "may_edit": has_permission(principal, "setting.manage"),
+            # `getattr(row, ..., default)`, not a plain attribute read: these six
+            # columns are added by a task running in parallel (migration, model,
+            # the domain gate that checks them before sending a real notice) and do
+            # not exist in every worktree yet. Falling back keeps this page working
+            # meanwhile -- once the columns exist, `getattr` returns exactly what a
+            # direct read would have. See STATUS.md.
+            "notify_sensor_faults": getattr(row, "notify_sensor_faults", True),
+            "notify_bridge_faults": getattr(row, "notify_bridge_faults", True),
+            "notify_command_failures": getattr(row, "notify_command_failures", True),
+            "notify_last_attempt_at": getattr(row, "notify_last_attempt_at", None),
+            "notify_last_ok": getattr(row, "notify_last_ok", None),
+            "notify_last_error": getattr(row, "notify_last_error", None),
+            "webhook_configured": get_settings().notify_webhook is not None,
+            "test_result": test_result,
+            "test_notice": test_notice,
         },
     )
 
@@ -242,6 +261,97 @@ async def save_defaults(
             request, session, principal, values=values, solar_enabled=solar_enabled, errors=exc
         )
     return RedirectResponse(prefixed(request, "/settings"), status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/settings/notifications")
+async def save_notification_preferences(
+    request: Request,
+    principal: Annotated[Principal, Depends(current_principal)],
+    session: Annotated[Session, Depends(get_session)],
+) -> Response:
+    """Which of the three fault-notice kinds go out at all -- plant-wide, no per-zone
+    override. `setting.manage`, the same permission `/settings` and `/interfaces`
+    already require: whoever may not see the webhook target should not be able to
+    decide what gets sent to it either.
+
+    No validation is possible on three checkboxes, unlike `save_defaults` above --
+    there is nothing here that can be rejected, so unlike that route this one never
+    re-renders the page with an error.
+    """
+    require(principal, "setting.manage")
+    form = await request.form()
+    row = settings(session)
+    # A checkbox that isn't ticked sends nothing at all -- presence, not the value,
+    # is what counts. Same reasoning as `solar_forecast_enabled` above.
+    #
+    # `setattr`, not a direct attribute write: these three columns come from the
+    # parallel task described next to `_defaults_page` above and are not on
+    # `Setting` in every worktree yet. `setattr` writes them the same way a direct
+    # assignment would once they exist, without mypy rejecting a column it cannot
+    # see here. See STATUS.md.
+    setattr(row, "notify_sensor_faults", form.get("notify_sensor_faults") is not None)  # noqa: B010
+    setattr(row, "notify_bridge_faults", form.get("notify_bridge_faults") is not None)  # noqa: B010
+    setattr(  # noqa: B010
+        row, "notify_command_failures", form.get("notify_command_failures") is not None
+    )
+    audit.record(
+        session,
+        source="web",
+        action="update",
+        object_type="setting",
+        object_id="1",
+        summary="Einstellungen für Störungsmeldungen geändert",
+        user_id=principal.user_id,
+        token_id=principal.token_id,
+    )
+    return RedirectResponse(prefixed(request, "/settings"), status_code=status.HTTP_303_SEE_OTHER)
+
+
+# Below this, a repeated test button does nothing for a while rather than firing a
+# second outbound call: whoever is troubleshooting a webhook can fix an address and
+# try again in a moment, but nothing here should let an unattended tab hammer an
+# external target. Enforced on the same row the result is shown from, not a separate
+# store -- there is exactly one webhook target for the whole plant, so a plant-wide
+# cooldown on the same field the operator is already looking at is enough.
+_TEST_COOLDOWN = timedelta(seconds=10)
+
+
+@router.post("/settings/notifications/test")
+async def send_test_notification(
+    request: Request,
+    principal: Annotated[Principal, Depends(current_principal)],
+    session: Annotated[Session, Depends(get_session)],
+) -> Response:
+    """Sends a marked test notice over the real webhook path and shows what came back.
+
+    `setting.manage`: this is the same permission that can already see the webhook
+    address on `/interfaces` and change it via the environment -- nobody without
+    that should be able to trigger an outbound call to it, repeatedly, on demand.
+
+    Never redirects: a redirect would need the result carried in the URL or a
+    session flash, and the result is exactly the thing this route exists to show
+    immediately, on the same page, without a token or status text passing through
+    the address bar or being kept around longer than this one response.
+    """
+    require(principal, "setting.manage")
+    env_settings = get_settings()
+    row = settings(session)
+    result: notification.WebhookTestResult | None = None
+    notice: str | None = None
+    if env_settings.notify_webhook is None:
+        notice = "Ohne hinterlegten Webhook gibt es nichts zu testen."
+    else:
+        last_attempt = getattr(row, "notify_last_attempt_at", None)
+        now = utcnow()
+        if last_attempt is not None and now - last_attempt < _TEST_COOLDOWN:
+            notice = "Bitte kurz warten -- der letzte Versuch war gerade eben."
+        else:
+            result = await notification.send_test(env_settings)
+            # `setattr` for the same reason as in `save_notification_preferences` above.
+            setattr(row, "notify_last_attempt_at", now)  # noqa: B010
+            setattr(row, "notify_last_ok", result.ok)  # noqa: B010
+            setattr(row, "notify_last_error", None if result.ok else result.error)  # noqa: B010
+    return _defaults_page(request, session, principal, test_result=result, test_notice=notice)
 
 
 @router.post("/control/arm")

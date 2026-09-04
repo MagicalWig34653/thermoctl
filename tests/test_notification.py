@@ -24,6 +24,9 @@ from thermoctl.integrations import notification
 
 
 class _Response:
+    def __init__(self, status: int = 200) -> None:
+        self.status = status
+
     def __enter__(self) -> _Response:
         return self
 
@@ -165,6 +168,98 @@ def test_offener_webhook_redirect_wird_jetzt_abgelehnt() -> None:
         notification._NoRedirectHandler().redirect_request(
             original, None, 302, "Found", {}, "http://127.0.0.1:8080/intern"
         )
+
+
+def test_send_test_without_a_webhook_reports_that_plainly_instead_of_raising() -> None:
+    result = asyncio.run(notification.send_test(_settings()))
+
+    assert result.ok is False
+    assert result.status_code is None
+    assert result.error == "Kein Webhook hinterlegt."
+
+
+def test_send_test_reports_the_status_code_of_a_successful_call(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[Request] = []
+
+    def _open(request: Request, timeout: int) -> _Response:
+        calls.append(request)
+        return _Response(status=200)
+
+    monkeypatch.setattr(notification, "_opener", _Opener(_open))
+
+    result = asyncio.run(
+        notification.send_test(_settings(notify_webhook="https://example.invalid/meldung"))
+    )
+
+    assert len(calls) == 1
+    assert json.loads(calls[0].data or b"")["schwere"] == "test"
+    assert result.ok is True
+    assert result.status_code == 200
+    assert result.error is None
+    assert result.duration_seconds >= 0.0
+
+
+def test_send_test_reports_the_status_code_of_a_failed_call(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def _open(request: Request, timeout: int) -> _Response:
+        raise HTTPError(request.full_url, 404, "Not Found", None, None)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(notification, "_opener", _Opener(_open))
+
+    result = asyncio.run(
+        notification.send_test(_settings(notify_webhook="https://example.invalid/meldung"))
+    )
+
+    assert result.ok is False
+    assert result.status_code == 404
+    assert result.error == "Die Gegenstelle antwortete mit Status 404."
+
+
+def test_send_test_reports_an_unreachable_host_without_a_status_code(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from urllib.error import URLError
+
+    def _open(request: Request, timeout: int) -> _Response:
+        raise URLError("Name oder Dienst nicht bekannt")
+
+    monkeypatch.setattr(notification, "_opener", _Opener(_open))
+
+    result = asyncio.run(
+        notification.send_test(_settings(notify_webhook="https://example.invalid/meldung"))
+    )
+
+    assert result.ok is False
+    assert result.status_code is None
+    assert "nicht bekannt" in (result.error or "")
+
+
+def test_send_test_scrubs_the_token_and_shortens_an_unfamiliar_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    token = "auffaelliges-webhook-geheimnis"
+
+    def _open(request: Request, timeout: int) -> _Response:
+        raise OSError(f"Verbindung fehlgeschlagen, Token war {token}" + "x" * 400)
+
+    monkeypatch.setattr(notification, "_opener", _Opener(_open))
+
+    result = asyncio.run(
+        notification.send_test(
+            _settings(
+                notify_webhook="https://example.invalid/meldung",
+                notify_webhook_token=token,
+            )
+        )
+    )
+
+    assert result.ok is False
+    assert result.error is not None
+    assert token not in result.error
+    assert len(result.error) <= 200
 
 
 def test_a_sensor_notice_gets_an_audit_entry_with_source_system(

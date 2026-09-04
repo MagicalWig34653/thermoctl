@@ -2,6 +2,49 @@
 
 Letzte Aktualisierung: 2026-09-04
 
+## Oberfläche für Störungsmeldungen (Zweig `meldungen-oberflaeche`) -- wartet auf das Fundament
+
+Gebaut gegen eine Schnittstelle, die eine parallele Aufgabe erst noch liefert: sechs
+Spalten auf `setting` (`notify_sensor_faults`, `notify_bridge_faults`,
+`notify_command_failures`, `notify_last_attempt_at`, `notify_last_ok`,
+`notify_last_error`), plus Migration, Modellfelder und der Domänen-Torwaechter, der
+diese drei Schalter vor einer echten Meldung prueft. In diesem Zweig existierten sie
+zum Zeitpunkt der Umsetzung noch nicht.
+
+**Was steht:**
+- `thermoctl/web/templates/settings.html`: drei Schalter unter „Meldungen"
+  (`notify_sensor_faults`, `notify_bridge_faults`, `notify_command_failures`), je mit
+  eigenem Text, wann die Meldung kommt -- nicht nur ihr Name.
+- `POST /settings/notifications`: speichert die drei Schalter, Recht `setting.manage`,
+  eigener Audit-Eintrag.
+- `POST /settings/notifications/test`: schickt eine als Test gekennzeichnete Meldung
+  ueber `notification.send_test` -- denselben Anfrage-Aufbau, dieselbe
+  Weiterleitungs-Ablehnung, denselben Zeitablauf wie ein echter Versand
+  (`thermoctl/integrations/notification.py`), nicht einen zweiten Weg. Recht
+  `setting.manage` (dasselbe, das den Webhook auf `/interfaces` ueberhaupt sehen darf).
+  Ohne hinterlegten Webhook bietet die Seite den Knopf nicht an. Ein anlagenweiter
+  Zehn-Sekunden-Zeitabstand auf `notify_last_attempt_at` verhindert wiederholtes
+  Ausloesen, ohne eigene Infrastruktur dafuer.
+- Ergebnis (Status, Dauer, im Fehlerfall der -- gekuerzte, token-bereinigte -- Grund)
+  erscheint sofort auf derselben Seite, kein Redirect. Zustellzustand („Zuletzt
+  versucht" ueber den bestehenden `age`-Filter, Ergebnis-Chip, „Noch nie versucht" als
+  eigener Zustand) steht daneben.
+
+**Wie die fehlenden Spalten ueberbrueckt sind:** Lesen ueber
+`getattr(row, name, vorgabe)`, Schreiben ueber `setattr(row, name, wert)` -- damit
+lief die Oberflaeche in diesem Worktree bereits vollstaendig gegen echte Anfragen
+(SQLite und MariaDB, 100 % Testabdeckung, ruff und mypy sauber), obwohl die Spalten
+fehlten. Nach dem Zusammenfuehren mit dem Fundament-Zweig verhaelt sich das
+identisch zu einem direkten Attributzugriff; die `getattr`/`setattr`-Stellen koennen
+dann vereinfacht werden, muessen es aber nicht -- die Hauptsession entscheidet das
+beim Zusammenfuehren.
+
+**Noch zu tun nach dem Zusammenfuehren:** pruefen, ob der Domänen-Torwaechter der
+parallelen Aufgabe dieselben drei `notify_last_*`-Spalten fuer echte Meldungen
+beschreibt, die der Testknopf hier beschreibt (dieselbe Anzeige soll fuer beide
+gelten) -- und ob `tests/approved_physical_vocabulary.json` nach dem Merge noch
+zusammenpasst (zwei Zeilen aus `settings.html` sind dort neu eingetragen).
+
 ## `env_nach_addon.py`: Datenbank in der `.env` schlaegt eine bereits im Add-on eingetragene nicht mehr blind
 
 Der Projektinhaber betreibt seine Anlage mit MariaDB, deren Zugangsdaten schon im

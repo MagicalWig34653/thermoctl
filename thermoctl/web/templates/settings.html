@@ -59,6 +59,68 @@
     </div>
     <button class="btn btn-primary mt-4" type="submit">Sonnenabsenkung speichern</button>
 </form>
+
+<form method="post" action="{{ url_prefix }}/settings/notifications" class="tc-panel p-4 mt-4">
+    <p class="t-label mb-1">Meldungen</p>
+    <p class="t-quiet mb-3">
+        Gilt anlagenweit, nicht je Zone. Wohin eine Meldung geht, steht unter
+        <a href="{{ url_prefix }}/interfaces">Schnittstellen</a>.
+    </p>
+    {{ toggle("notify_sensor_faults", "Sensorstörung", notify_sensor_faults,
+        "Wenn ein Sensor sich nicht mehr meldet und die Zone deshalb gegen den Frostschutz-Sollwert regelt — und wenn er zurück ist.") }}
+    {{ toggle("notify_bridge_faults", "Brücke oder Broker weg", notify_bridge_faults,
+        "Wenn die Verbindung zur Zigbee2MQTT-Brücke oder zum MQTT-Broker abreisst — und wenn sie wieder steht.") }}
+    {{ toggle("notify_command_failures", "Schaltbefehl gescheitert", notify_command_failures,
+        "Wenn ein Befehl an einen Aktor nicht durchkommt.") }}
+    <button class="btn btn-primary mt-2" type="submit">Meldungen speichern</button>
+</form>
+
+<div class="tc-panel p-4 mt-4">
+    <p class="t-label mb-1">Webhook-Test</p>
+    {% if webhook_configured %}
+    <p class="t-quiet mb-3">
+        Schickt eine als Test gekennzeichnete Meldung an den unter
+        <a href="{{ url_prefix }}/interfaces">Schnittstellen</a> hinterlegten Webhook — über
+        denselben Weg wie eine echte Meldung.
+    </p>
+    <form method="post" action="{{ url_prefix }}/settings/notifications/test">
+        <button class="btn btn-outline-primary" type="submit">Testmeldung senden</button>
+    </form>
+    {% else %}
+    <p class="t-quiet mb-0">
+        Kein Webhook hinterlegt — dafür gibt es nichts zu testen. Ein Webhook wird über die
+        Umgebung eingerichtet, siehe <a href="{{ url_prefix }}/interfaces">Schnittstellen</a>.
+    </p>
+    {% endif %}
+
+    {% if test_notice %}
+    <p class="t-quiet small mt-3 mb-0">{{ test_notice }}</p>
+    {% elif test_result %}
+    <div class="alert {{ 'alert-success' if test_result.ok else 'alert-danger' }} mt-3 mb-0" role="alert">
+        {% if test_result.ok %}
+        Angekommen — Status {{ test_result.status_code }}, {{ (test_result.duration_seconds * 1000)|round|int }} ms.
+        {% else %}
+        Fehlgeschlagen{% if test_result.status_code %} (Status {{ test_result.status_code }}){% endif %},
+        {{ (test_result.duration_seconds * 1000)|round|int }} ms: {{ test_result.error }}
+        {% endif %}
+    </div>
+    {% endif %}
+
+    <dl class="row mb-0 mt-3">
+        <dt class="col-sm-5 fw-normal t-quiet">Letzter Versuch</dt>
+        <dd class="col-sm-7 t-value">{{ notify_last_attempt_at|age }}</dd>
+        <dt class="col-sm-5 fw-normal t-quiet">Ergebnis</dt>
+        <dd class="col-sm-7 mb-0">
+            {% if notify_last_ok is none %}
+            <span class="tc-chip tc-chip-quiet">Noch nie versucht</span>
+            {% elif notify_last_ok %}
+            <span class="tc-chip tc-chip-warm"><span class="tc-dot"></span>Angekommen</span>
+            {% else %}
+            <span class="tc-chip tc-chip-warning">Fehlgeschlagen{% if notify_last_error %}: {{ notify_last_error }}{% endif %}</span>
+            {% endif %}
+        </dd>
+    </dl>
+</div>
 {% else %}
 <div class="tc-panel p-4">
     <dl class="row mb-0">

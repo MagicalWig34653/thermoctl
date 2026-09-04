@@ -579,6 +579,10 @@
       "var({{ '--warmth' if w >= 0.5 else '--cool' }})",
       "{% set w = warmth.get(segment.mode_id, 0.5) %}"
     ],
+    "thermoctl/web/templates/settings.html": [
+      "\"Wenn ein Befehl an einen Aktor nicht durchkommt.\") }}",
+      "<span class=\"tc-chip tc-chip-warm\"><span class=\"tc-dot\"></span>Angekommen</span>"
+    ],
     "thermoctl/web/templates/start.html": [
       "<div class=\"small mt-1\" style=\"color: var(--warmth)\">{{ thermostat_errors }}</div>",
       "<div class=\"w-100 small\" style=\"color: var(--warmth)\">{{ override_errors }}</div>",
