@@ -96,8 +96,8 @@
       "## Was geschaltet wird — genau",
       "## v0.3.0 — die Fassung, in der thermoctl schaltet",
       "**Die PI-Eignungsprüfung ist gerätegenau geworden.** Ein selbstregelndes Thermostatventil",
-      "**Ist die Mindest-Einschaltdauer einer Zone länger als ihr Ventilschutzlauf, wird der",
       "**Seit dem 2026-09-02 läuft v0.3.0 an der echten Heizung**, zum Zeitpunkt dieser Notiz",
+      "**War: Ist die Mindest-Einschaltdauer einer Zone länger als ihr Ventilschutzlauf, wurde",
       "**Wer nichts einschaltet, bekommt exakt das Verhalten von 0.4.0.** Für eine Zone ohne den",
       "- **Ein Meross-Aktor bekommt jetzt ebenfalls seinen Befehl.** Das Schalten dort braucht",
       "- **Ein Zigbee2MQTT-Thermostatventil ohne `self_regulating`** (Fähigkeit `thermostat`",
@@ -112,6 +112,7 @@
       "`ZoneDevice.self_regulating.is_(False)`, ein selbstregelndes Ventil taucht in keiner der",
       "bleibt ein Thermostatventil **ohne** eigene Regelung — das bekommt die Entscheidung als",
       "dass ein Relais physisch geschaltet hat.",
+      "der zeitlich begrenzte Lauf zu dauerhaftem Heizen.** Behoben am 2026-09-02: Die Ausnahme",
       "jeder Weg zu einem Aktor zu.",
       "läuft als Erstes an einer echten Heizung (vier Meross-Steckdosen, drei",
       "sagt aber nur, dass der **Marker** gesetzt ist, nicht dass der Ventilschutz auch noch",
@@ -122,9 +123,8 @@
       "wahr, dass „weiterhin nichts geschaltet wird\" — das war eine Zusicherung ohne Deckung.",
       "was an der Heizung passiert ist — es stand deshalb vor der Verdrahtung der Aktoren (Phase 4)",
       "während des Laufs, bleibt der Heizkörper jetzt bis zum Ablauf der Mindest-**Einschalt**dauer",
-      "zeitlich begrenzte Lauf zu dauerhaftem Heizen.** Beides sind Einstellungen je Zone, die",
       "| 4 — Regelkreis und Cutover | Alle sieben Aktortypen der echten Anlage verdrahtet: Zigbee2MQTT-Aktoren, Meross-Steckdosen, Zigbee2MQTT-Thermostatventile. Kreuzreview der Verdrahtung fand drei Befunde, alle behoben — siehe unten |",
-      "| PI-Regelung | optional je Zone, nur Schaltaktoren, zunächst Beta | Spezifikation liegt vor, **nicht gebaut** |",
+      "| PI-Regelung | optional je Zone, nur Schaltaktoren, zunächst Beta | umgesetzt (v0.5.0, in v0.6.0 nachgearbeitet); **Schalter steht je Zone weiterhin auf aus** |",
       "| Ventilschutz wurde zu dauerhaftem Heizen | Mindest-Einschaltdauer gilt für einen Schutzlauf nicht | umgesetzt |"
     ],
     "docs/api.md": [
