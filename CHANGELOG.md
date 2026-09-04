@@ -9,7 +9,7 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ---
 
-## Unveröffentlicht
+## 0.6.4 — 2026-09-04
 
 ### Behoben
 
@@ -20,6 +20,16 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
   aber über `setpriv` an den unprivilegierten Benutzer ab, bevor Migration und Dienst
   laufen -- der laufende Dienst bleibt also unprivilegiert. Der gewöhnliche
   docker-compose-Betrieb mit explizit gesetztem `user:` ist unverändert.
+
+### Zu beachten beim Umstieg
+
+- **Keine Schemaänderung**, keine neue Migration.
+- **Wer das Abbild mit eigenem `user:` betreibt, merkt nichts** — der Rechteabgabe-Block
+  greift nur, wenn der Container als `root` startet. Ohne `user:` läuft er kurz als
+  `root` und fällt vor `alembic` auf den unprivilegierten Benutzer zurück; der laufende
+  Dienst ist in beiden Fällen unverändert unprivilegiert.
+
+---
 
 ## 0.6.3 — 2026-09-04
 
