@@ -85,11 +85,11 @@ def _context(session: Session, zone: Zone, **extra: object) -> dict[str, object]
     return {
         "zone": zone,
         "capabilities": capabilities,
-        # Welche Faehigkeit eine Stelle verlangt, entscheidet die Domaene -- die
+        # Welche Fähigkeit eine Stelle verlangt, entscheidet die Domäne -- die
         # Vorlage schreibt es nicht noch einmal hin. Die Aktor-Stelle nimmt seit den
         # Thermostatventilen `switch` **oder** `thermostat`; stand das in der Vorlage
-        # weiter als einzelnes Wort, wies das Ziehen ein Ventil ab, das die Domaene
-        # angenommen haette.
+        # weiter als einzelnes Wort, wies das Ziehen ein Ventil ab, das die Domäne
+        # angenommen hätte.
         "required_capabilities": {
             slot: " ".join(sorted(codes)) for slot, (codes, _) in REQUIRED_CAPABILITY.items()
         },

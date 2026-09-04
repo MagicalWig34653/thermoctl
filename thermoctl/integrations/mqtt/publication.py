@@ -62,13 +62,13 @@ class DiscoveryMessage:
 def _prefix_of(prefix: str) -> str:
     cleaned = prefix.strip("/")
     if not cleaned or any(character in cleaned for character in ("+", "#", "\0")):
-        raise ValueError("Das MQTT-Praefix muss gueltig sein und darf keine Wildcards enthalten")
+        raise ValueError("Das MQTT-Präfix muss gültig sein und darf keine Wildcards enthalten")
     return cleaned
 
 
 def _zone_base(zone_id: int, prefix: str) -> str:
     if zone_id < 1:
-        raise ValueError("Die Zonenkennung muss groesser als null sein")
+        raise ValueError("Die Zonenkennung muss größer als null sein")
     return f"{_prefix_of(prefix)}/zones/{zone_id}"
 
 
@@ -107,7 +107,7 @@ def fault_notice_topics(
 def mode_topics(zone_id: int, mode_id: int, prefix: str = "thermoctl") -> tuple[str, str]:
     """State and command for the setpoint of **one** mode of this zone."""
     if mode_id < 1:
-        raise ValueError("Die Moduskennung muss groesser als null sein")
+        raise ValueError("Die Moduskennung muss größer als null sein")
     base = _zone_base(zone_id, prefix)
     return (f"{base}/state/mode/{mode_id}", f"{base}/command/mode/{mode_id}")
 
@@ -115,7 +115,7 @@ def mode_topics(zone_id: int, mode_id: int, prefix: str = "thermoctl") -> tuple[
 def parameter_topics(zone_id: int, name: str, prefix: str = "thermoctl") -> tuple[str, str]:
     """State and command for **one** control parameter of this zone."""
     if not re.fullmatch(r"[a-z][a-z0-9_]*", name):
-        raise ValueError(f"Kein gueltiger Parametername: {name!r}")
+        raise ValueError(f"Kein gültiger Parametername: {name!r}")
     base = _zone_base(zone_id, prefix)
     return (f"{base}/state/parameter/{name}", f"{base}/command/parameter/{name}")
 
@@ -142,7 +142,7 @@ def _identifier(prefix: str) -> str:
     without_accents = unicodedata.normalize("NFKD", _prefix_of(prefix)).encode("ascii", "ignore")
     identifier = re.sub(rb"[^a-zA-Z0-9_-]+", b"_", without_accents).decode().strip("_").lower()
     if not identifier:
-        raise ValueError("Das MQTT-Praefix ergibt keine gueltige Discovery-Kennung")
+        raise ValueError("Das MQTT-Präfix ergibt keine gültige Discovery-Kennung")
     return identifier
 
 
@@ -203,7 +203,7 @@ def discovery_payload(
     if not zone_name.strip():
         raise ValueError("Der Zonenname darf nicht leer sein")
     if temp_step <= 0:
-        raise ValueError("Der Temperaturschritt muss groesser als null sein")
+        raise ValueError("Der Temperaturschritt muss größer als null sein")
 
     state = states_topics(zone_id, prefix)
     command = command_topics(zone_id, prefix)

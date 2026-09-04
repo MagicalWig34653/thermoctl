@@ -107,7 +107,7 @@ def set_user_active(
         raise AdministrationError(
             f"'{user.username}' ist der letzte aktive Benutzer mit dem Recht "
             f"{ADMIN_PERMISSION}. Wird er deaktiviert, kann niemand mehr Benutzer "
-            "verwalten — der Zugang waere nur noch ueber die Datenbank zu retten."
+            "verwalten — der Zugang wäre nur noch über die Datenbank zu retten."
         )
     user.is_active = active
     session.flush()
@@ -178,8 +178,8 @@ def set_user_group(
     ):
         raise AdministrationError(
             f"'{user.username}' ist der letzte aktive Benutzer mit dem Recht "
-            f"{ADMIN_PERMISSION}. Diese Gruppe wuerde ihm das Recht nehmen, und "
-            "niemand koennte mehr Benutzer verwalten."
+            f"{ADMIN_PERMISSION}. Diese Gruppe würde ihm das Recht nehmen, und "
+            "niemand könnte mehr Benutzer verwalten."
         )
 
     old_names = sorted(
@@ -201,7 +201,7 @@ def set_user_group(
     audit.record(
         session, source=source, action="user.group_changed", object_type="user",
         object_id=str(user.id),
-        summary=f"Gruppe von '{user.username}' geaendert: {old_label} -> {new_label}",
+        summary=f"Gruppe von '{user.username}' geändert: {old_label} -> {new_label}",
         user_id=actor_id,
     )
 
@@ -231,7 +231,7 @@ def set_password(
         session, source=source, action="user.password_changed", object_type="user",
         object_id=str(user.id),
         summary=(
-            f"Passwort von '{user.username}' geaendert, "
+            f"Passwort von '{user.username}' geändert, "
             f"{beendet} weitere Sitzung(en) beendet"
         ), user_id=actor_id,
     )
@@ -260,8 +260,8 @@ def delete_group(
 ) -> None:
     if group.is_builtin:
         raise AdministrationError(
-            f"'{group.name}' ist eine eingebaute Gruppe und kann nicht geloescht werden. "
-            "Ihre Rechte lassen sich aber aendern."
+            f"'{group.name}' ist eine eingebaute Gruppe und kann nicht gelöscht werden. "
+            "Ihre Rechte lassen sich aber ändern."
         )
     _without_this_group_no_administrator(session, group)
     name = group.name
@@ -269,7 +269,7 @@ def delete_group(
     session.flush()
     audit.record(
         session, source=source, action="group.deleted", object_type="access_group",
-        object_id=str(group.id), summary=f"Gruppe '{name}' geloescht", user_id=actor_id,
+        object_id=str(group.id), summary=f"Gruppe '{name}' gelöscht", user_id=actor_id,
     )
 
 
@@ -296,7 +296,7 @@ def _without_this_group_no_administrator(session: Session, group: AccessGroup) -
     )
     if other_source is None:
         raise AdministrationError(
-            f"Ueber '{group.name}' laeuft das einzige verbliebene {ADMIN_PERMISSION}. "
+            f"Über '{group.name}' läuft das einzige verbliebene {ADMIN_PERMISSION}. "
             "Ohne sie kann niemand mehr Benutzer verwalten."
         )
 
@@ -314,8 +314,8 @@ def grant_permission(
         # Granted with a zone, it would sit in the list and never take effect — a
         # grant that looks like it worked is worse than a rejected one.
         raise AdministrationError(
-            f"Das Recht '{code}' gilt fuer die ganze Anlage und laesst sich nicht auf "
-            "eine einzelne Zone einschraenken."
+            f"Das Recht '{code}' gilt für die ganze Anlage und lässt sich nicht auf "
+            "eine einzelne Zone einschränken."
         )
     present = session.scalar(
         select(GroupPermission).where(
@@ -336,7 +336,7 @@ def grant_permission(
         session, source=source, action="group.permission_granted",
         object_type="access_group", object_id=str(group.id),
         summary=f"Recht {code} an '{group.name}' vergeben",
-        detail=None if zone_id is None else f"eingeschraenkt auf Zone {zone_id}",
+        detail=None if zone_id is None else f"eingeschränkt auf Zone {zone_id}",
         user_id=actor_id,
     )
     return entry

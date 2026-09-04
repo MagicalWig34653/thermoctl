@@ -62,7 +62,7 @@ def test_a_retention_value_of_zero_keeps_the_entire_history(session: Session) ->
 
 
 def test_block_size_must_be_positive(session: Session) -> None:
-    with pytest.raises(ValueError, match="groesser als null"):
+    with pytest.raises(ValueError, match="größer als null"):
         delete_old_measurements(session, NOW, batch_size=0)
 
 
@@ -150,5 +150,5 @@ def test_shadow_retention_keeps_the_valve_protection_marker_authoritative(
 
 
 def test_shadow_block_size_must_be_positive(session: Session) -> None:
-    with pytest.raises(ValueError, match="groesser als null"):
+    with pytest.raises(ValueError, match="größer als null"):
         delete_old_shadow_decisions(session, NOW, batch_size=-1)

@@ -27,15 +27,15 @@ dev = [
     "ruff>=0.16",
     "mypy>=1.18",
     "cosmic-ray>=8.7,<9",
-    # Nur zum Pruefen, in Testcode: liest die von tools/env_nach_addon.py erzeugte
-    # YAML-Ausgabe wieder ein, um deren Gueltigkeit zu belegen. Das Skript selbst
-    # bleibt bewusst ohne diese Abhaengigkeit (siehe dessen Docstring).
+    # Nur zum Prüfen, in Testcode: liest die von tools/env_nach_addon.py erzeugte
+    # YAML-Ausgabe wieder ein, um deren Gültigkeit zu belegen. Das Skript selbst
+    # bleibt bewusst ohne diese Abhängigkeit (siehe dessen Docstring).
     "pyyaml>=6.0",
 ]
 mcp = ["mcp>=1.2"]
 # Eigene, von `dev` getrennte Gruppe: nur wer Browsertests laufen lassen will,
 # braucht Playwright (und danach einmalig `playwright install`, s. README.md). Ein
-# gewoehnlicher `pip install -e ".[dev]"` zieht das nicht mit.
+# gewöhnlicher `pip install -e ".[dev]"` zieht das nicht mit.
 browser-tests = ["playwright>=1.48"]
 
 [project.scripts]
@@ -44,7 +44,7 @@ thermoctl-mcp = "thermoctl.mcp.server:main"
 
 [build-system]
 # Ab 77 versteht setuptools das SPDX-Feld "license" (PEP 639) -- ohne das baut
-# das Paket zwar noch, traegt dann aber keine maschinenlesbare Lizenzangabe.
+# das Paket zwar noch, trägt dann aber keine maschinenlesbare Lizenzangabe.
 requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
@@ -52,12 +52,12 @@ build-backend = "setuptools.build_meta"
 include = ["thermoctl*"]
 
 # Vorlagen und statische Dateien sind kein Beiwerk, sondern die halbe Anwendung.
-# Ohne diesen Block installiert setuptools ausschliesslich `.py`-Dateien: Das
+# Ohne diesen Block installiert setuptools ausschließlich `.py`-Dateien: Das
 # Container-Abbild baute sauber durch und startete dann mit
 # "Directory '.../thermoctl/web/static' does not exist" gar nicht erst -- und
-# haette, waere es weiter gekommen, keine einzige Seite rendern koennen. Der
+# hätte, wäre es weiter gekommen, keine einzige Seite rendern können. Der
 # CI-Schritt "Docker-Image-Build" weist das nicht nach; er beweist nur, dass sich
-# ein Abbild bauen laesst, nicht dass es laeuft.
+# ein Abbild bauen lässt, nicht dass es läuft.
 [tool.setuptools.package-data]
 thermoctl = ["web/templates/*.html", "web/static/*", "web/static/vendor/*/*"]
 
@@ -86,7 +86,7 @@ python_version = "3.14"
 strict = true
 plugins = ["pydantic.mypy"]
 # Dritter Riegel gegen dieselben iCloud-Konfliktkopien wie unten bei coverage und
-# pytest. Ohne ihn prueft mypy die Kopien mit -- am 2026-09-02 waren es 123 statt
+# pytest. Ohne ihn prüft mypy die Kopien mit -- am 2026-09-02 waren es 123 statt
 # 107 Dateien, mit einem Fehler in einer Datei, die niemand importiert.
 exclude = "(^|/)[^/]* [0-9]\\.py$"
 
@@ -94,28 +94,28 @@ exclude = "(^|/)[^/]* [0-9]\\.py$"
 # Dieselben iCloud-Konfliktkopien wie beim --ignore-glob unten, hier aber aus einem
 # anderen Grund: pytest sammelt nur Testdateien ein, die Abdeckungsmessung erfasst
 # dagegen jede .py unter thermoctl/. Eine Kopie wie "statistics 2.py" wird von
-# niemandem importiert, zaehlt aber als 42 ungepruefte Zeilen und drueckt die Suite
-# unter die Schwelle von 100 Prozent -- was aussieht wie eine fehlende Pruefung und
+# niemandem importiert, zählt aber als 42 ungeprüfte Zeilen und drückt die Suite
+# unter die Schwelle von 100 Prozent -- was aussieht wie eine fehlende Prüfung und
 # keine ist.
 omit = ["*/* [0-9].py"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-# Der Abdeckungsbericht laeuft immer mit, die Mindestschwelle steht dagegen in der CI
+# Der Abdeckungsbericht läuft immer mit, die Mindestschwelle steht dagegen in der CI
 # (--cov-fail-under=100). Sonst scheitert jeder Lauf einer einzelnen Testdatei an einer
-# Schwelle, die nur fuer die vollstaendige Suite gilt.
+# Schwelle, die nur für die vollständige Suite gilt.
 #
-# 100 Prozent heisst hier nicht "jede Zeile ist geprueft", sondern "jede Zeile ist
-# entweder geprueft oder traegt eine Begruendung". Die Ausnahmen stehen als
+# 100 Prozent heißt hier nicht "jede Zeile ist geprüft", sondern "jede Zeile ist
+# entweder geprüft oder trägt eine Begründung". Die Ausnahmen stehen als
 # `# pragma: no cover` samt Grund im Quelltext -- sichtbar und einzeln bestreitbar,
 # statt als Prozentsatz, hinter dem niemand mehr nachsieht, was fehlt.
 # `--ignore-glob`: iCloud legt beim Abgleich des Documents-Ordners Kopien der Form
-# "test_deviation 2.py" an. Sie sind alte Staende, .gitignore haelt sie aus dem
-# Repository heraus -- pytest sammelt sie aber trotzdem ein und laesst die Suite an
+# "test_deviation 2.py" an. Sie sind alte Stände, .gitignore hält sie aus dem
+# Repository heraus -- pytest sammelt sie aber trotzdem ein und lässt die Suite an
 # Zusicherungen scheitern, die vor Wochen einmal gestimmt haben. Genau das ist
 # zweimal passiert und hat beide Male erst wie ein echter Fehlschlag ausgesehen.
 addopts = "-q --cov=thermoctl --cov-report=term-missing --ignore-glob='* [0-9].py'"
 markers = [
-    "migration: laeuft Alembic als Unterprozess",
+    "migration: läuft Alembic als Unterprozess",
     "packaging: baut ein Wheel und sieht hinein",
 ]

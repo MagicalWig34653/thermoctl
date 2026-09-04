@@ -242,7 +242,7 @@ def test_an_empty_setpoint_field_deletes_the_row(client_als, session: Session) -
 
 def test_fremde_zone_ergibt_404(client_als, session: Session) -> None:
     eigene = create_zone(session, "bad")
-    fremde = create_zone(session, "kueche")
+    fremde = create_zone(session, "küche")
     client = client_als([("setpoint.write", eigene.id)])
 
     assert client.get(f"/zones/{fremde.id}/setpoints").status_code == 404
@@ -293,14 +293,14 @@ def test_empty_and_overlong_mode_values_stay_in_the_form(
 ) -> None:
     source(session, "web")
     client = client_als([("mode.manage", None)])
-    faelle = [
+    fälle = [
         ({"code": "  ", "name": "Name", "sort_order": "0"}, "Code darf nicht leer"),
         ({"code": "c" * 33, "name": "Name", "sort_order": "0"}, "höchstens 32"),
         ({"code": "gut", "name": "  ", "sort_order": "0"}, "Name darf nicht leer"),
         ({"code": "gut", "name": "n" * 65, "sort_order": "0"}, "höchstens 64"),
         ({"code": "gut", "name": "Name", "sort_order": "keine Zahl"}, "ganze Zahl"),
     ]
-    for data, expected in faelle:
+    for data, expected in fälle:
         response = client.post("/modes", data=data, headers=_csrf(client))
         assert response.status_code == 200, data
         assert expected in response.text, data
@@ -311,8 +311,8 @@ def test_an_existing_setpoint_is_updated(client_als, session: Session) -> None:
     """The third case besides create and delete -- untested until now."""
     create_settings(session)
     source(session, "web")
-    day = create_mode(session, "tag-aendern", "Tag")
-    zone = create_zone(session, "zone-sollwert-aendern")
+    day = create_mode(session, "tag-ändern", "Tag")
+    zone = create_zone(session, "zone-sollwert-ändern")
     client = client_als([("setpoint.write", None), ("zone.read", None)])
     client.post(
         f"/zones/{zone.id}/setpoints", data={f"setpoint_{day.id}": "20.0"},
@@ -372,7 +372,7 @@ def test_updating_a_mode_with_an_invalid_value_stays_in_the_form(
     client_als, session: Session
 ) -> None:
     source(session, "web")
-    mode = create_mode(session, "aenderbar", "Aenderbar")
+    mode = create_mode(session, "änderbar", "Änderbar")
     client = client_als([("mode.manage", None)])
     response = client.post(
         f"/modes/{mode.id}",
@@ -381,7 +381,7 @@ def test_updating_a_mode_with_an_invalid_value_stays_in_the_form(
     )
     assert response.status_code == 200
     assert "Code darf nicht leer" in response.text
-    assert mode.code == "aenderbar"
+    assert mode.code == "änderbar"
 
 
 def test_the_setpoint_limit_exists_in_exactly_one_place() -> None:

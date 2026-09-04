@@ -1,5 +1,5 @@
 # ruff: noqa: E501
-"""Geraetemerkmale und Kanaele fuer Bediengeraete
+"""Geraetemerkmale und Kanäle für Bediengeräte
 
 Revision ID: e4b8a21c7f10
 Revises: d1a7c3e59b40

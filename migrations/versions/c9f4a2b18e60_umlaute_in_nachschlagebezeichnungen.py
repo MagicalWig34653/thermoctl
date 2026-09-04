@@ -1,13 +1,13 @@
 """Umlaute in den Nachschlagebezeichnungen
 
 Vier Bezeichnungen standen seit den Nachschlagetabellen transliteriert da --
-"Verbindungsqualitaet", "Beleuchtungsstaerke", "Bediengeraet", "Weboberflaeche". Sie sind
-keine Codes, sondern die Woerter, die in der Oberflaeche stehen: auf jeder Geraetekarte,
+"Verbindungsqualität", "Beleuchtungsstärke", "Bediengerät", "Weboberfläche". Sie sind
+keine Codes, sondern die Wörter, die in der Oberfläche stehen: auf jeder Geraetekarte,
 in der Rollenspalte der Zuordnung und in jeder Zeile des Audit-Protokolls. Aufgefallen ist
 es beim Ansehen der Geraeteseite, nicht in einem Test -- Tests lesen Codes.
 
-Die Codes bleiben unberuehrt. Geaendert wird nur, was noch den alten Wortlaut traegt:
-Wer eine Bezeichnung von Hand angepasst hat, behaelt seine.
+Die Codes bleiben unberührt. Geändert wird nur, was noch den alten Wortlaut trägt:
+Wer eine Bezeichnung von Hand angepasst hat, behält seine.
 
 Revision ID: c9f4a2b18e60
 Revises: c8e21a5f4d70
@@ -26,19 +26,19 @@ depends_on: str | Sequence[str] | None = None
 
 # (Tabelle, Code, alte Bezeichnung, neue Bezeichnung)
 BEZEICHNUNGEN = [
-    ("device_capability", "illuminance", "Beleuchtungsstaerke", "Beleuchtungsstärke"),
-    ("device_capability", "link_quality", "Verbindungsqualitaet", "Verbindungsqualität"),
-    ("device_role", "controller", "Bediengeraet", "Bediengerät"),
-    ("actor_source", "web", "Weboberflaeche", "Weboberfläche"),
+    ("device_capability", "illuminance", "Beleuchtungsstärke", "Beleuchtungsstärke"),
+    ("device_capability", "link_quality", "Verbindungsqualität", "Verbindungsqualität"),
+    ("device_role", "controller", "Bediengerät", "Bediengerät"),
+    ("actor_source", "web", "Weboberfläche", "Weboberfläche"),
 ]
 
 
 def _umbenennen(paare: list[tuple[str, str, str, str]]) -> None:
     verbindung = op.get_bind()
     for tabelle, code, alt, neu in paare:
-        # `label = :alt` als Bedingung, nicht nur der Code: Eine von Hand geaenderte
-        # Bezeichnung soll diese Revision nicht ueberschreiben -- und die Rueckwaerts-
-        # richtung soll nur zuruecknehmen, was sie selbst gesetzt hat.
+        # `label = :alt` als Bedingung, nicht nur der Code: Eine von Hand geänderte
+        # Bezeichnung soll diese Revision nicht überschreiben -- und die Rückwärts-
+        # richtung soll nur zurücknehmen, was sie selbst gesetzt hat.
         verbindung.execute(
             sa.text(
                 f"UPDATE {tabelle} SET label = :neu "  # noqa: S608 - Tabellennamen aus

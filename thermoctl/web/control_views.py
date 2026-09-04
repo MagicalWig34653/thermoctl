@@ -66,7 +66,7 @@ from thermoctl.web import templates
 from thermoctl.web.urls import prefixed
 
 # Readable text for `shadow_decision.controller_fallback_reason` (specification
-# section 6: "einschliesslich Rueckfallgrund" has to be legible on the operating
+# section 6: "einschließlich Rückfallgrund" has to be legible on the operating
 # page, not just as a code). Kept here, not in the domain: this is a display-only
 # translation, the same reasoning as `domain.control.LABELS`.
 PI_FALLBACK_LABELS: dict[str, str] = {
@@ -217,9 +217,9 @@ async def save_defaults(
         name: str(form.get(name, "")).strip()
         for name in (*LIMITS, "timezone", "solar_forecast_latitude", "solar_forecast_longitude")
     }
-    # Eine nicht angehakte Checkbox schickt gar nichts -- also zaehlt allein, ob
-    # ueberhaupt ein Wert ankam. Vorher stand hier `== "on"`, der Vorgabewert eines
-    # Browsers fuer eine Checkbox ohne `value`. Seit das Makro `value="yes"` setzt,
+    # Eine nicht angehakte Checkbox schickt gar nichts -- also zählt allein, ob
+    # überhaupt ein Wert ankam. Vorher stand hier `== "on"`, der Vorgabewert eines
+    # Browsers für eine Checkbox ohne `value`. Seit das Makro `value="yes"` setzt,
     # traf das nie mehr zu: Die Sonnenabsenkung liess sich nicht mehr einschalten.
     solar_enabled = form.get("solar_forecast_enabled") is not None
     try:

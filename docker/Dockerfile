@@ -14,13 +14,13 @@ COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 COPY docker/thermoctl_optionen.py /usr/local/bin/thermoctl_optionen.py
 COPY docker/thermoctl_ingress.py /usr/local/bin/thermoctl_ingress.py
 # Kein `USER thermoctl` hier: der Home-Assistant-Supervisor legt /data/options.json
-# selbst an -- root:root, nur fuer root lesbar -- und der Container muss sie lesen
-# koennen, bevor er ueberhaupt weiss, wie er sich konfigurieren soll. Das Abbild startet
-# deshalb als root; `docker/entrypoint.sh` liest die Optionsdatei, sorgt dafuer, dass
-# /data (SQLite-Datenbank inbegriffen) fuer den Dienst beschreibbar ist, und gibt die
+# selbst an -- root:root, nur für root lesbar -- und der Container muss sie lesen
+# können, bevor er überhaupt weiß, wie er sich konfigurieren soll. Das Abbild startet
+# deshalb als root; `docker/entrypoint.sh` liest die Optionsdatei, sorgt dafür, dass
+# /data (SQLite-Datenbank inbegriffen) für den Dienst beschreibbar ist, und gibt die
 # Rechte an den unprivilegierten Benutzer `thermoctl` ab, bevor `alembic` oder der
-# Dienst selbst laufen -- der laeuft also weiterhin unprivilegiert, wie zuvor.
-# Fuer den gewoehnlichen docker-compose-Betrieb ohne eigenes `user:` aendert das nichts
+# Dienst selbst laufen -- der läuft also weiterhin unprivilegiert, wie zuvor.
+# Für den gewöhnlichen docker-compose-Betrieb ohne eigenes `user:` ändert das nichts
 # am Ergebnis, nur den Zwischenschritt; ein Operator, der den Container heute explizit
 # mit `user:` festnagelt (etwa dem bisherigen Standard, uid 10001), startet weiterhin
 # direkt als dieser Benutzer, und der Rechteabgabe-Block in entrypoint.sh greift dann

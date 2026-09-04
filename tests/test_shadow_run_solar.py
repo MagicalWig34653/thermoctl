@@ -62,7 +62,7 @@ def test_a_forecast_without_expected_sun_leaves_the_setpoint_untouched(
     session: Session,
 ) -> None:
     create_settings(session)
-    zone = create_zone(session, "bewoelkt")
+    zone = create_zone(session, "bewölkt")
     zone.solar_gain_factor = Decimal("1.0")
     session.flush()
 
@@ -94,7 +94,7 @@ def test_expected_sun_reduces_a_setpoint_that_has_headroom_above_frost(
     *how much* the setpoint was lowered -- a number, not just 'because of the sun'."""
     settings = create_settings(session)
     settings.default_solar_setback_max_k = Decimal("2.0")
-    zone = create_zone(session, "dachzimmer-mit-uebersteuerung")
+    zone = create_zone(session, "dachzimmer-mit-übersteuerung")
     zone.solar_gain_factor = Decimal("1.0")
     _fixed_setpoint(session, zone, Decimal("21.0"))
     session.flush()
@@ -142,7 +142,7 @@ def test_the_setback_never_drops_the_setpoint_below_frost_protection(
     even with a generous per-zone cap and a strong factor."""
     settings = create_settings(session)
     settings.default_solar_setback_max_k = Decimal("5.0")
-    zone = create_zone(session, "knapp-ueber-frostschutz")
+    zone = create_zone(session, "knapp-über-frostschutz")
     zone.solar_gain_factor = Decimal("1.0")
     # Only 1 K of headroom above the 16.0 °C frost-protection fallback.
     _fixed_setpoint(session, zone, Decimal("17.0"))

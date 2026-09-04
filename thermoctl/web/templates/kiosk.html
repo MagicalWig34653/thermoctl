@@ -8,11 +8,11 @@
     <link rel="stylesheet" href="{{ url_prefix }}/static/vendor/bootstrap/bootstrap.min.css">
     <link rel="stylesheet" href="{{ url_prefix }}/static/thermoctl.css">
     {#
-    Eigener, schlanker Kopf statt base.html/base_plain.html: Beide sind fuer eine
+    Eigener, schlanker Kopf statt base.html/base_plain.html: Beide sind für eine
     schmale, mittig stehende Karte gebaut (Anmeldeformular, Einrichtung). Ein
-    Wandtablett braucht das Gegenteil -- ein Raster, das die ganze Flaeche nutzt --,
+    Wandtablett braucht das Gegenteil -- ein Raster, das die ganze Fläche nutzt --,
     darum ein eigenes Dokument. Kopfzeilen-Assets (Bootstrap, htmx, das Farbschema)
-    sind dieselben wie ueberall im Projekt.
+    sind dieselben wie überall im Projekt.
     #}
     <script>
         (function () {
@@ -31,7 +31,7 @@
         Eigenes Cookie, eigenes Skript: Der Kopf aus base.html liest
         "thermoctl_csrf" -- das Sitzungs-Cookie eines angemeldeten Benutzers. Am
         Kiosk gibt es keine Sitzung, nur das Kiosk-Cookie und sein eigenes
-        CSRF-Gegenstueck (thermoctl/auth/kiosk.py).
+        CSRF-Gegenstück (thermoctl/auth/kiosk.py).
         #}
         document.addEventListener("htmx:configRequest", function (ereignis) {
             const eintrag = document.cookie.split("; ").find(function (wert) {
@@ -50,17 +50,17 @@
         <span class="tc-marker" style="font-size: 1.75rem">thermoctl</span>
         <div class="d-flex align-items-baseline gap-3">
             {#
-            AGPL-3.0 §13 verlangt fuer netzseitig genutzte Software eine erreichbare
-            Moeglichkeit an den Quelltext zu kommen -- nicht, dass der Hinweis staendig
+            AGPL-3.0 §13 verlangt für netzseitig genutzte Software eine erreichbare
+            Möglichkeit an den Quelltext zu kommen -- nicht, dass der Hinweis ständig
             ins Auge faellt. Ein Wandtablett wird aus Distanz angesehen, nicht gelesen;
-            eine Fusszeile wie in base.html/base_plain.html wuerde hier dauerhaft
-            Anzeigeflaeche kosten, die das Raster fuer die Zonen braucht. Ein knapper
+            eine Fußzeile wie in base.html/base_plain.html würde hier dauerhaft
+            Anzeigefläche kosten, die das Raster für die Zonen braucht. Ein knapper
             Verweis in der Kopfzeile ist erreichbar (Rauchtest deckt ihn ab), verbraucht
-            aber praktisch keinen Platz. `target="_blank"` haelt das Kiosk-Dokument im
+            aber praktisch keinen Platz. `target="_blank"` hält das Kiosk-Dokument im
             Hintergrund geladen, statt es zu ersetzen -- ein Antippen auf dem Tablett
-            fuehrt sonst von der Anzeige weg, ohne einfachen Weg zurueck ausser einem
-            Neustart des Browsers. Fuehrt bewusst nach aussen: ein Kiosk-Token oeffnet
-            keine angemeldete Ansicht, darum bleibt dafuer nur der externe Verweis.
+            führt sonst von der Anzeige weg, ohne einfachen Weg zurück außer einem
+            Neustart des Browsers. Führt bewusst nach außen: ein Kiosk-Token öffnet
+            keine angemeldete Ansicht, darum bleibt dafür nur der externe Verweis.
             #}
             <a class="kiosk-source-link t-quiet" href="https://github.com/MagicalWig34653/thermoctl"
                target="_blank" rel="noopener">Quelltext (AGPL-3.0)</a>

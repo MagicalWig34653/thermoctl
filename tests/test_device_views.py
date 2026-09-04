@@ -38,9 +38,9 @@ def test_the_device_page_shows_signs_of_life_capability_and_zone(
     device.display_name = "Prüfsensor"
     device.model = "Modell A"
     device.is_group = True
-    zone = create_zone(session, "pruefzone")
+    zone = create_zone(session, "prüfzone")
     zone.temperature_source_device_id = device.id
-    second_zone = create_zone(session, "zweite-pruefzone")
+    second_zone = create_zone(session, "zweite-prüfzone")
     session.add(
         ZoneDevice(
             zone_id=second_zone.id,
@@ -65,8 +65,8 @@ def test_the_device_page_shows_signs_of_life_capability_and_zone(
         "Prüfsensor",
         "Modell A",
         "Temperaturmessung",
-        "Pruefzone",
-        "Zweite-pruefzone",
+        "Prüfzone",
+        "Zweite-prüfzone",
         "Gruppe",
     ):
         assert expected in response.text

@@ -113,7 +113,7 @@ Skripts falsch rät.
         <td>
             {{ device.display_name }}
             {#
-            Nur bei Thermostatventilen: Bei allem anderen gibt es nichts zu waehlen --
+            Nur bei Thermostatventilen: Bei allem anderen gibt es nichts zu wählen --
             eine Steckdose regelt nicht selbst.
             #}
             {% if rolle.code == "actuator" and "thermostat" in capabilities.get(device.id, []) %}

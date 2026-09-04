@@ -56,7 +56,7 @@ PHYSICAL_VOCABULARY = {
     "actuators": r"aktors?\b|aktoren\b|\bactuators?\b",
     "radiators": r"heizkörper\w*|\bradiators?\b",
     "heating_equipment": (
-        r"heizkreise?\b|fußbodenheizung\w*|fussbodenheizung\w*|"
+        r"heizkreise?\b|fußbodenheizung\w*|fußbodenheizung\w*|"
         r"\bunderfloor\s+heating\b|stellantriebe?\b|boilers?\b|"
         r"brenner\b|\bburners?\b|pumpen?\b|\bpumps?\b"
     ),
@@ -82,7 +82,7 @@ PHYSICAL_VOCABULARY = {
     # here rather than silently relied on.
     "warmth": (
         r"wärm(?:e|st|t|en|te|test|tet|ten|er)\b|"
-        r"waerm(?:e|st|t|en|te|test|tet|ten|er)\b|"
+        r"wärm(?:e|st|t|en|te|test|tet|ten|er)\b|"
         r"warm(?:e[rmns]?|er|ers|est|en|em|es|ed|ing|th)?\b"
     ),
     # Kept conservative on purpose. Unlike "heiz" and "warm", the suffix list here is
@@ -143,7 +143,7 @@ def _tracked_files(root: Path) -> frozenset[Path] | None:
     red local one -- the exact opposite of what this guard is for.
     """
     git = shutil.which("git")
-    if git is None:  # pragma: no cover -- ohne git laeuft dieses Repository ohnehin nicht
+    if git is None:  # pragma: no cover -- ohne git läuft dieses Repository ohnehin nicht
         return None
     try:
         listing = subprocess.run(  # noqa: S603 -- fester Befehl, kein Fremdeingang

@@ -1,19 +1,19 @@
 """Sonnenabsenkung: Zonenfaktor und Prognose-Einstellungen
 
-Fuegt hinzu:
+Fügt hinzu:
 
 * `zone.solar_gain_factor` (0..1) -- wie stark eine Zone von Sonneneinstrahlung
   profitiert. Voreinstellung 0, also aus wie das gesamte Merkmal.
 * `zone.solar_setback_max_k` -- die zonenspezifische Obergrenze der Absenkung in
-  Kelvin, nullable wie die uebrigen sechs Regelparameter der Zone: leer heisst
+  Kelvin, nullable wie die übrigen sechs Regelparameter der Zone: leer heißt
   globaler Standard.
 * `setting.solar_forecast_enabled`, `.solar_forecast_latitude`,
   `.solar_forecast_longitude`, `.solar_setback_lookahead_hours`,
-  `.default_solar_setback_max_k` -- ob die Funktion an ist, der Standort fuer den
+  `.default_solar_setback_max_k` -- ob die Funktion an ist, der Standort für den
   Open-Meteo-Abruf, das Vorschau-Zeitfenster und der anlagenweite Standardwert der
-  Obergrenze. Ohne Standort (Breite/Laenge NULL) bleibt die Funktion faktisch aus,
+  Obergrenze. Ohne Standort (Breite/Länge NULL) bleibt die Funktion faktisch aus,
   selbst wenn `solar_forecast_enabled` gesetzt ist -- es gibt keinen sinnvollen
-  Vorgabewert fuer einen Standort (CLAUDE.md Grundsatz 1).
+  Vorgabewert für einen Standort (CLAUDE.md Grundsatz 1).
 
 Revision ID: a3f7c9d2e1b6
 Revises: f2c6d90a41b8

@@ -9,6 +9,28 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ---
 
+## Unveröffentlicht
+
+### Geändert
+
+- Umlaute, die noch als `ae`/`oe`/`ue` umschrieben waren, sind jetzt echte Umlaute
+  (`ä`/`ö`/`ü`) bzw. `ß` wo passend — in Dokumentation, Kommentaren, Log- und
+  Fehlermeldungen, Oberflächentexten und Tests. Bezeichner (Funktions-, Variablen-,
+  Klassen-, Feld- und Spaltennamen), maschinell gelesene Schlüssel (YAML/JSON,
+  Umgebungsvariablen, Migrationskennungen) und Dateinamen blieben unangetastet.
+
+### Hinzugefügt
+
+- **Dezente Ladeanzeige** für laufende Anfragen: ein schmaler Balken über dem Inhalt,
+  global auf jeder angemeldeten Seite und der Anmeldung/Einrichtung. Erscheint erst nach
+  400 ms (kein Aufblitzen bei schnellen Antworten), verschwindet auch nach einem
+  Fehlschlag zuverlässig, respektiert `prefers-reduced-motion` und beide Farbschemata.
+  Anlass: der zusätzliche Proxy-Sprung im Home-Assistant-Add-on-Betrieb macht die
+  Oberfläche spürbar träger — die Latenz lässt sich nicht wegnehmen, aber sichtbar machen.
+  Der Webhook-Testknopf unter „Einstellungen" sperrt sich zusätzlich für die Dauer der
+  Anfrage. Bewusst nicht am Kiosk-Dashboard: dessen einzige htmx-Anfrage ist der
+  selbsttätige 20-Sekunden-Nachlader, den ein aufblitzender Balken eher stören würde.
+
 ## 0.6.4 — 2026-09-04
 
 ### Behoben
@@ -40,7 +62,7 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
   **Schaltbefehl gescheitert**. Alle drei sind ab Werk an — wer heute Meldungen
   bekommt, bekommt sie weiter. Die neue Art meldet nur den *Übergang* in einen
   fehlschlagenden Schaltversuch und dessen Entwarnung, nicht jeden Zyklus; bisher
-  stand ein gescheiterter Befehl ausschliesslich im Schaltprotokoll.
+  stand ein gescheiterter Befehl ausschließlich im Schaltprotokoll.
 - **Ein Testknopf für den Webhook.** Er schickt eine als Test gekennzeichnete Meldung
   über denselben Weg wie eine echte und zeigt Statuscode, Dauer und im Fehlerfall den
   Grund unmittelbar auf der Seite — ein Tippfehler in der Adresse fällt damit sofort
@@ -50,7 +72,7 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
   „Noch nie versucht" ist ein eigener Zustand und sieht nicht wie ein Fehlschlag aus.
   Dazu sechs neue Spalten auf `setting` und Migration `67e794059830`.
 - Das **Kiosk-Dashboard** trägt jetzt ebenfalls den AGPL-§13-Quelltextverweis — knapp
-  in der Kopfzeile statt als Fusszeile, und in einem neuen Tab, damit ein Antippen das
+  in der Kopfzeile statt als Fußzeile, und in einem neuen Tab, damit ein Antippen das
   Wandtablett nicht von der Anzeige wegführt.
 - Neues Werkzeug `tools/env_nach_addon.py`: liest eine bestehende `.env` und erzeugt
   daraus die YAML-Konfiguration für das Home-Assistant-Add-on — für den Umstieg von
@@ -156,19 +178,19 @@ Vorlagen nutzt, einschließlich der Anmeldeseite. **Offen:** Das eigenständige
 Kiosk-Dashboard (`kiosk.html`) erbt keine der beiden Grundvorlagen und hat noch keinen
 eigenen Hinweis.
 
-### Fix: die protokollierte Begründung bei „unveraendert" nannte oft nicht den echten Sachverhalt
+### Fix: die protokollierte Begründung bei „unverändert" nannte oft nicht den echten Sachverhalt
 
-Beide Zweige der Entscheidung `unveraendert` in `decide()` schrieben unabhängig vom
+Beide Zweige der Entscheidung `unverändert` in `decide()` schrieben unabhängig vom
 tatsächlichen Abstand denselben Satz „... innerhalb der Hysterese um Soll ... ± hK ... —
 Zustand bleibt.", wurden aber auch dann erreicht, wenn der Messwert weit jenseits der
 *gegenüberliegenden* Bandkante lag — die Entscheidung (Zustand halten) war dabei stets
-richtig, nur der Text falsch. An 18.527 echten `unveraendert`-Entscheidungen lag keine
-einzige tatsächlich im Band; mittlerer Abstand 5,90K, grösster 11,40K. Die Begründung
+richtig, nur der Text falsch. An 18.527 echten `unverändert`-Entscheidungen lag keine
+einzige tatsächlich im Band; mittlerer Abstand 5,90K, größter 11,40K. Die Begründung
 unterscheidet jetzt „echt im Band" von „jenseits der gegenüberliegenden Kante, Zustand
 bleibt, weil er schon lief bzw. schon aus war". **Keine Entscheidung hat sich geändert**
 (unveränderte 2.376-Kombinationen-Tabelle in `tests/test_control_loop_state_table.py`).
 **Alteinträge im Schattenprotokoll behalten den bisherigen, falschen Text** — sie werden
-nicht nachträglich korrigiert. Wer ältere `unveraendert`-Einträge liest, muss das wissen:
+nicht nachträglich korrigiert. Wer ältere `unverändert`-Einträge liest, muss das wissen:
 Der protokollierte Grund war dort systematisch falsch, die getroffene Entscheidung nicht.
 
 ### Oberfläche von Umstiegs-Jargon bereinigt
@@ -191,12 +213,12 @@ verhinderte, dass „Zirkulationspumpe" oder „Ölbrenner" als Treffer für „
 „brenner" erkannt wurden. Die führende Grenze fällt jetzt bei den Substantiven, die
 typischerweise als Zweitglied auftreten (Ventil, Aktor, Heizkörper, Heizkreis,
 Fußbodenheizung, Stellantrieb, Boiler, Brenner, Pumpe) sowie bei den Verb-/Adjektivstämmen
-`heiz`, `wärm`/`waerm` und `warm`, sodass ein Teilstring-Treffer jedes Kompositum fängt.
+`heiz`, `wärm`/`wärm` und `warm`, sodass ein Teilstring-Treffer jedes Kompositum fängt.
 `schalt` und `geschaltet` behalten ihre führende Grenze bewusst — ohne sie würde
 „Schaltfläche" (eine UI-Schaltfläche, keine physische Schaltbehauptung) mitgefangen. Die
 dadurch neu gemeldeten 27 Fundstellen wurden durchgesehen und in
 `tests/approved_physical_vocabulary.json` eingetragen; keine davon war eine falsche
-Wirkbehauptung. **Ausserdem:** Der Wächter durchsuchte bisher das Dateisystem statt die
+Wirkbehauptung. **Außerdem:** Der Wächter durchsuchte bisher das Dateisystem statt die
 Versionsverfolgung — als die Bauprozess-Dokumentation und die Altsystem-Bestandsaufnahme
 das Repository verliessen (siehe unten), meldete er deren Vorkommen fälschlich als
 ungeprüft, statt sie als nicht mehr vorhanden zu behandeln. Er fragt jetzt `git`, was
@@ -206,7 +228,7 @@ stillschweigend nichts.
 ### Bauprozess-Dokumentation und Altsystem-Bestandsaufnahme verlassen das Repository
 
 Verlauf, getroffene Entscheidungen, Spezifikationen, Pläne und das interne
-Umbenennungswerkzeug beschreiben ausschliesslich den eigenen Bauprozess; die
+Umbenennungswerkzeug beschreiben ausschließlich den eigenen Bauprozess; die
 Altsystem-Bestandsaufnahme beschreibt ein fremdes, reales System mit vollständigem
 Schema, MQTT-Topic-Vertrag und einer privaten IP-Adresse. Beides eignet sich nicht für
 ein öffentliches Repository und ist entfernt — die Dateien bleiben lokal liegen und
@@ -247,7 +269,7 @@ bekommt seinen Sollwert aber über einen eigenen Weg und sieht die PI-Entscheidu
 beiden Befehlslisten auf. **Ein selbstregelndes Ventil darf jetzt neben einem
 Schaltaktor in derselben Zone stehen**; PI steuert dann nur noch den Schaltaktor.
 
-**Was weiterhin ausschliesst:** ein Thermostatventil **ohne** eigene Regelung. Das
+**Was weiterhin ausschließt:** ein Thermostatventil **ohne** eigene Regelung. Das
 bekommt die PI-Entscheidung sehr wohl, als Sollwertsprünge aus „heizen ja/nein" — dafür
 wäre die schnelle Taktung von PI falsch.
 
@@ -280,7 +302,7 @@ wichtig, dass hier eine Annahme geändert wird und keine Messung.
 
 ### Dokumentation nachgezogen
 
-PI und Relaisverschleiss standen bisher nur in `STATUS.md`. README, `docs/api.md`,
+PI und Relaisverschleiß standen bisher nur in `STATUS.md`. README, `docs/api.md`,
 `docs/mcp.md` und `docs/self-hosting.md` kennen sie jetzt.
 
 ### Browsertests (nur örtlich)
@@ -497,7 +519,7 @@ Prozessstart gebaut. Erst danach geht etwas hinaus.
 - **Alle vier Aktorwege verdrahtet.** Ein selbstregelndes Ventil bekommt nie zusätzlich
   einen Ein/Aus-Befehl; ein Gerät mit beiden Fähigkeiten läuft über den Schalterweg, nicht
   über beide. Ein Thermostatventil ohne `system_mode` geht über seinen Mindestsollwert aus
-  und regelt dann auf fünf Grad weiter — eines mit `system_mode` schliesst wirklich. Der
+  und regelt dann auf fünf Grad weiter — eines mit `system_mode` schließt wirklich. Der
   Unterschied wird aus dem Datenmodell gelesen, nicht geraten.
 - **Schaltprotokoll.** Jeder Befehl an ein Gerät: wann, welches Gerät, welche Zone, was
   gesendet, mit welchem Ergebnis, warum, wodurch ausgelöst. Es überlebt das Löschen von
@@ -542,11 +564,11 @@ Prozessstart gebaut. Erst danach geht etwas hinaus.
 
 **Vier gemeldete Anzeigefehler behoben — einer davon eine falsche Aussage, nicht nur
 eine unschöne.** Ein Meross-Gerät stand dauerhaft als „hat sich noch nie gemeldet",
-obwohl der stündliche Abgleich es regelmässig fand: Die Geräteübersicht sah nur
-`device_health.last_payload_at` an, das ausschliesslich die Zigbee2MQTT-Aufnahme
+obwohl der stündliche Abgleich es regelmäßig fand: Die Geräteübersicht sah nur
+`device_health.last_payload_at` an, das ausschließlich die Zigbee2MQTT-Aufnahme
 schreibt — ein Meross-Gerät schickt nie eine MQTT-Nachricht. Sie liest jetzt für
 Meross-Geräte `device.last_seen_at` und wählt die passende Formulierung
-(„abgeglichen" statt „gemeldet"), mit einer eigenen, grosszügigeren Stille-Schwelle
+(„abgeglichen" statt „gemeldet"), mit einer eigenen, großzügigeren Stille-Schwelle
 für den stündlichen Abgleich (`MEROSS_SILENT_AFTER_SECONDS`, zwei Abgleichzyklen)
 statt der für einen selbstberichtenden Sensor gedachten. Die Statistik und der
 Datumsfilter des Auditprotokolls schnitten Tage an UTC-Mitternacht — ein lokaler Tag
@@ -578,7 +600,7 @@ ein neuer Test prüft jetzt die Eigenschaft selbst, nicht die Aufrufreihenfolge.
 
 **Meross und Zigbee2MQTT-Thermostatventile sind jetzt verdrahtet — beide zuvor offenen
 Fälle.** Ein Meross-Aktor bekommt seinen Befehl über eine bei Bedarf erneuerte,
-zwischengespeicherte Cloud-Sitzung (`services/meross_session.py`), signiert **ausserhalb**
+zwischengespeicherte Cloud-Sitzung (`services/meross_session.py`), signiert **außerhalb**
 jeder Datenbanktransaktion — genau die Stelle, an der eine frühere Fassung die SQLite-Datei
 bis zu 40 Sekunden gesperrt hatte. Lehnt die Cloud die Anmeldung ab, bekommt jeder
 betroffene Aktor diesen Zyklus einen `failed`-Eintrag im Schaltprotokoll, ohne den Zyklus
@@ -665,7 +687,7 @@ passiert, ist mehrfach zu grob beschrieben worden — hier genau:
   REST und MCP.
 
 - **Meross-Anbindung, beide Hälften.** Bisher gab es nur einen Schaltadapter und kein
-  Gerät, auf das er gepasst hätte — Geräte entstanden ausschliesslich aus der
+  Gerät, auf das er gepasst hätte — Geräte entstanden ausschließlich aus der
   Zigbee2MQTT-Liste, eine Meross-Steckdose konnte in der Anlage gar nicht auftauchen.
   Jetzt gleicht der Schattenzyklus die Geräteliste des Kontos stündlich ab und legt
   gefundene Steckdosen an. Die Zuordnung hängt an der `uuid`, nicht am Namen: Wer in der
@@ -760,7 +782,7 @@ passiert, ist mehrfach zu grob beschrieben worden — hier genau:
   statt zweier unzusammenhängender.
 - **Eine veraltete Seite ist keine Sackgasse mehr.** Vorher wies der CSRF-Schutz alles
   ab — auch das Abmelden, und nach dem Löschen der Cookies auch das Anmelden. Sichtbar
-  wurde das als rohes `{"detail":"Ungueltiges CSRF-Token"}`. Jetzt räumen Anmelden und
+  wurde das als rohes `{"detail":"Ungültiges CSRF-Token"}`. Jetzt räumen Anmelden und
   Abmelden die Cookies und führen auf das Anmeldeformular, gewöhnliche Formulare
   bekommen eine lesbare Seite, und Bedienelemente mit htmx zeigen einen Hinweis mit
   Knopf zum Neuladen. Am Schutz selbst ändert sich nichts.
@@ -783,7 +805,7 @@ kommt der Vergleichsbetrieb gegen die bestehende Anlage.
   `thermoctl`, und der Dienst veröffentlicht unter einem anderen Topic-Zweig als bisher.
 - **Der MQTT-Themenbaum ist englisch**: `thermoctl/zones/<id>/state/…` statt
   `thermoctl/zonen/<id>/zustand/…`, ebenso `command` statt `befehl` und
-  `availability` statt `verfuegbarkeit`. Wer eigene Abonnenten gebaut hat, passt sie an.
+  `availability` statt `verfügbarkeit`. Wer eigene Abonnenten gebaut hat, passt sie an.
   Dasselbe gilt für die Web-Endpunkte (`/zones` statt `/zonen`) und die REST-Pfade.
 - **Das MCP-Werkzeug heißt `override`**, nicht `override_zone`; die Dokumentation nannte
   zeitweise den falschen Namen.
@@ -826,7 +848,7 @@ kommt der Vergleichsbetrieb gegen die bestehende Anlage.
 
 - **Meross-Schaltsteckdosen sind nicht nutzbar.** Gebaut ist nur die schaltende Hälfte:
   Der Adapter kann eine bekannte Steckdose ein- und ausschalten, aber es gibt keine
-  Geräteerkennung für Meross. Geräte entstehen ausschliesslich aus der
+  Geräteerkennung für Meross. Geräte entstehen ausschließlich aus der
   Zigbee2MQTT-Geräteliste, und von Hand anlegen lässt sich keines — eine Meross-Steckdose
   taucht also gar nicht erst auf. Die Schnittstellenseite sagt das jetzt auch so, statt
   „Eingerichtet" zu melden, sobald Zugangsdaten hinterlegt sind.
@@ -847,7 +869,7 @@ kommt der Vergleichsbetrieb gegen die bestehende Anlage.
   nicht.
 - Das Scharfschalt-Formular, die Übersteuerung, die Token-Gültigkeit und die Modusauswahl
   im Zeitplan schickten Feldnamen oder Werte, die ihre View nicht mehr kannte.
-- Die Knöpfe im Kiosk-Dashboard wurden mit „Ungueltiges CSRF-Token" abgewiesen.
+- Die Knöpfe im Kiosk-Dashboard wurden mit „Ungültiges CSRF-Token" abgewiesen.
 - Der Frostschutz greift jetzt auch in einer echten Anlage; das Schattenprotokoll folgt
   der Zone beim Löschen; ein Schema-Vergleich beim Start ersetzt den Traceback aus der
   Tiefe.

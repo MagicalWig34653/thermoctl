@@ -12,8 +12,8 @@ jobs:
       packages: write
     steps:
       - uses: actions/checkout@v4
-      # Fuer linux/arm64 auf dem amd64-Laeufer: buildx allein baut nur fuer die
-      # Architektur des Laeufers, QEMU emuliert die fremde Architektur beim Bauen.
+      # Für linux/arm64 auf dem amd64-Läufer: buildx allein baut nur für die
+      # Architektur des Läufers, QEMU emuliert die fremde Architektur beim Bauen.
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
@@ -29,12 +29,12 @@ jobs:
             type=sha,prefix=sha-,enable=${{ github.ref == 'refs/heads/main' }}
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-            # latest entsteht ausschliesslich aus einem Tag v*, nie aus einem Push auf
-            # main. Wer das Image betreibt, zoege sonst mit jedem Zwischenstand einen
+            # latest entsteht ausschließlich aus einem Tag v*, nie aus einem Push auf
+            # main. Wer das Image betreibt, zöge sonst mit jedem Zwischenstand einen
             # unfertigen Stand -- und bei einer selbst gehosteten Heizungssteuerung ist
-            # das Image der Rueckfallpunkt, wenn ein Update schiefgeht.
+            # das Image der Rückfallpunkt, wenn ein Update schiefgeht.
             type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
-          # Schaltet nur die automatische latest-Vergabe ab; die Zeile darueber setzt sie
+          # Schaltet nur die automatische latest-Vergabe ab; die Zeile darüber setzt sie
           # gezielt.
           flavor: latest=false
       - uses: docker/build-push-action@v6
@@ -42,8 +42,8 @@ jobs:
           context: .
           file: docker/Dockerfile
           # aarch64 und amd64 -- die vom Projektinhaber entschiedenen Zielarchitekturen
-          # fuer das Home-Assistant-Add-on (Raspberry Pi 4/5 und x86_64-Server/-NAS).
-          # armv7 ausdruecklich nicht.
+          # für das Home-Assistant-Add-on (Raspberry Pi 4/5 und x86_64-Server/-NAS).
+          # armv7 ausdrücklich nicht.
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.marken.outputs.tags }}

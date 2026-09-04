@@ -19,11 +19,11 @@ Seite ein Formularstapel, in dem die eigentliche Auskunft — wie warm ist es �
     {% for a in segments %}
     <div class="tc-track-segment"
          {#
-         Zwei Toene statt eines Verlaufs. Ein Verlauf von Kupfer nach Stahlblau fuehrt
-         durch deren Mitte, und die Mitte zweier fast gegenlaeufiger Farben ist Grau:
-         Die Nachtabsenkung war damit nicht kuehl, sondern farblos. Ein Zeitplan hat
-         ohnehin nur eine Handvoll Modi -- die Farbe sagt "waermer" oder "kuehler", die
-         Saettigung sagt "wie deutlich".
+         Zwei Töne statt eines Verlaufs. Ein Verlauf von Kupfer nach Stahlblau führt
+         durch deren Mitte, und die Mitte zweier fast gegenläufiger Farben ist Grau:
+         Die Nachtabsenkung war damit nicht kühl, sondern farblos. Ein Zeitplan hat
+         ohnehin nur eine Handvoll Modi -- die Farbe sagt "wärmer" oder "kühler", die
+         Sättigung sagt "wie deutlich".
          #}
          style="left: {{ "%.4f"|format(a.left) }}%; width: {{ "%.4f"|format(a.width) }}%;
                 background: color-mix(in oklab,
@@ -106,13 +106,13 @@ Seite ein Formularstapel, in dem die eigentliche Auskunft — wie warm ist es �
                 <span class="tc-chip tc-chip-warning">{{ entry[1].label }}</span>
                 {% endif %}
                 {% if override %}
-                {# Wert und Ende gehoeren in die Marke, nicht nur das Wort: Eine
-                   Uebersteuerung, deren Temperatur man nicht sieht, ist eine Warnung
+                {# Wert und Ende gehören in die Marke, nicht nur das Wort: Eine
+                   Übersteuerung, deren Temperatur man nicht sieht, ist eine Warnung
                    ohne Inhalt. #}
                 <span class="tc-chip tc-chip-warning t-value">Übersteuerung auf {{ override.temperature_c|grad }} °C,
                     {% if override.ends_at %}endet {{ override.ends_at|age }}{% else %}auf Widerruf{% endif %}</span>
                 {% endif %}
-                {# Nur wenn sie vom Regelfall abweicht: "Automatik" an jeder Zone waere
+                {# Nur wenn sie vom Regelfall abweicht: "Automatik" an jeder Zone wäre
                    Rauschen, "Aus" an einer Zone dagegen der Grund, warum es dort kalt
                    bleibt. #}
                 {% if zone.operating_mode.code != "auto" %}
@@ -133,11 +133,11 @@ Seite ein Formularstapel, in dem die eigentliche Auskunft — wie warm ist es �
 
         {#
         Das Thermostat. Es verstellt den Sollwert des Modus, der **gerade gilt** -- also
-        dauerhaft "Tag soll waermer sein", nicht "jetzt einmal waermer". Deshalb steht
-        der Modusname daneben: Ohne ihn waere es dasselbe Bedienelement wie das
-        Uebersteuern und man traefe zwangslaeufig manchmal das Falsche.
+        dauerhaft "Tag soll wärmer sein", nicht "jetzt einmal wärmer". Deshalb steht
+        der Modusname daneben: Ohne ihn wäre es dasselbe Bedienelement wie das
+        Übersteuern und man träfe zwangsläufig manchmal das Falsche.
 
-        Ohne Modus (feste Uebersteuerung) gibt es nichts zu verstellen -- dann steht dort
+        Ohne Modus (feste Übersteuerung) gibt es nichts zu verstellen -- dann steht dort
         nur der Wert.
         #}
         <div class="tc-thermostat">
@@ -185,7 +185,7 @@ Seite ein Formularstapel, in dem die eigentliche Auskunft — wie warm ist es �
             </form>
             {% elif zone.id in may_override %}
             <button class="btn btn-sm btn-outline-secondary" type="button"
-                    data-bs-toggle="collapse" data-bs-target="#uebersteuern-{{ zone.id }}"
+                    data-bs-toggle="collapse" data-bs-target="#übersteuern-{{ zone.id }}"
                     aria-expanded="{{ 'true' if override_errors and error_zone_id == zone.id|string else 'false' }}">
                 Übersteuern
             </button>
@@ -194,7 +194,7 @@ Seite ein Formularstapel, in dem die eigentliche Auskunft — wie warm ist es �
 
         {% if zone.id in may_override %}
         {% set hat_fehler = override_errors and error_zone_id == zone.id|string %}
-        <div class="collapse{{ ' show' if hat_fehler }} tc-zone-track" id="uebersteuern-{{ zone.id }}"
+        <div class="collapse{{ ' show' if hat_fehler }} tc-zone-track" id="übersteuern-{{ zone.id }}"
              style="grid-column: 1 / -1">
             <form method="post" action="{{ url_prefix }}/zones/{{ zone.id }}/override"
                   class="d-flex flex-wrap align-items-end gap-2 pt-3 border-top">

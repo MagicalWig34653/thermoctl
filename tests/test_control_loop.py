@@ -722,7 +722,7 @@ def test_rule6_inside_the_hysteresis_nothing_changes_in_either_direction() -> No
 def test_rule6_unchanged_reason_names_the_true_gap_when_off_far_above_the_setpoint() -> None:
     """Reproduces the found defect: heating off, far *above* setpoint+h.
 
-    `unveraendert` (stay off) is reached whenever the lower band edge was not crossed
+    `unverändert` (stay off) is reached whenever the lower band edge was not crossed
     -- not only inside the band. Fed with the motivating production case (frost
     protection 16.0 °C, room at 27.40 °C, ± 0.10K) the old, single sentence claimed
     "innerhalb der Hysterese ... ± 0.10K", which is false by 11.3K. The reason must
@@ -749,7 +749,7 @@ def test_rule6_unchanged_reason_names_the_true_gap_when_off_far_above_the_setpoi
 def test_rule6_unchanged_reason_names_the_true_gap_when_on_far_below_the_setpoint() -> None:
     """Mirror of the above: heating already on, far *below* setpoint-h.
 
-    `unveraendert` (keep heating) is reached whenever the upper band edge was not
+    `unverändert` (keep heating) is reached whenever the upper band edge was not
     crossed -- not only inside the band. The reason must say the room is *below* the
     setpoint and that heating continues because it already was on, not that the value
     sits inside the band.

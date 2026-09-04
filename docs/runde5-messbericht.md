@@ -188,9 +188,9 @@ Die geänderte Migration lief mit
 `THERMOCTL_SECRET_KEY=01234567890123456789012345678901` auf beiden Datenbanken als
 `upgrade head`, `downgrade -1`, `upgrade head`; alle sechs Befehle hatten Exit 0. Die
 wörtlichen Schlusszeilen waren jeweils entweder
-`Running upgrade 3a3e44c560fb -> e8c21f4a9d70, Index fuer zonenweise Abfragen der Schattenhistorie.`
+`Running upgrade 3a3e44c560fb -> e8c21f4a9d70, Index für zonenweise Abfragen der Schattenhistorie.`
 oder
-`Running downgrade e8c21f4a9d70 -> 3a3e44c560fb, Index fuer zonenweise Abfragen der Schattenhistorie.`
+`Running downgrade e8c21f4a9d70 -> 3a3e44c560fb, Index für zonenweise Abfragen der Schattenhistorie.`
 SQLite hatte danach ausschließlich `ix_shadow_decision_zone_decided_id`. Auf MariaDB
 lagen beim Downgrade der wiederhergestellte Einzelindex und der notwendige
 `ix_shadow_decision_zone_id_fk`; nach dem zweiten Upgrade blieben ausschließlich

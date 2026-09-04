@@ -109,7 +109,7 @@ async def kiosk_token_issue_view(
     # identical comment on `/tokens` in admin_views.py.
     owner = session.get(User, principal.user_id)
     if owner is None:  # pragma: no cover
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Nur fuer angemeldete Benutzer")
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Nur für angemeldete Benutzer")
 
     expiry = utcnow() + timedelta(days=int(valid_days)) if valid_days else None
     try:

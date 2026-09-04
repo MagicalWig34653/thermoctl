@@ -84,7 +84,16 @@
         denselben Weg wie eine echte Meldung.
     </p>
     <form method="post" action="{{ url_prefix }}/settings/notifications/test">
-        <button class="btn btn-outline-primary" type="submit">Testmeldung senden</button>
+        {#
+        Diese Aktion wartet auf eine fremde Gegenstelle -- erkennbar langsamer als
+        der Rest der Oberfläche. `hx-disabled-elt` (die Seite ist über `hx-boost`
+        an base.html ohnehin schon an htmx angebunden) sperrt die Schaltfläche für
+        die Dauer der Anfrage, statt einen zweiten Klick eine zweite Testmeldung
+        lostreten zu lassen -- zusätzlich zur globalen Ladeanzeige.
+        #}
+        <button class="btn btn-outline-primary" type="submit" hx-disabled-elt="this">
+            Testmeldung senden
+        </button>
     </form>
     {% else %}
     <p class="t-quiet mb-0">

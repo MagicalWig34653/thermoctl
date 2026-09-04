@@ -1,7 +1,7 @@
 # Achtung: Der Testbefehl unten verweist relativ auf .venv/bin/python. In einem
 # Worktree ohne eigene Umgebung wird dadurch jeder Mutant INCOMPETENT, und
-# cosmic-ray meldet null Ueberlebende -- ein gescheiterter Lauf sieht aus wie ein
-# perfektes Ergebnis. Vorher einen .venv-Symlink anlegen und hinterher pruefen,
+# cosmic-ray meldet null Überlebende -- ein gescheiterter Lauf sieht aus wie ein
+# perfektes Ergebnis. Vorher einen .venv-Symlink anlegen und hinterher prüfen,
 # dass kein test_outcome INCOMPETENT ist. Siehe CLAUDE.md.
 # Runde 1, Stufe 1 des Komplettreviews. Cosmic Ray akzeptiert genau einen Modulpfad
 # je Sitzung; deshalb hat jede der zwei Zieldateien eine eigene Konfiguration.
@@ -29,10 +29,10 @@ name = "local"
 [cosmic-ray.distributor.local]
 max-workers = 4
 
-# Cosmic Ray erzeugt zusaetzlich zu den ueblichen Grenz- und Negationsmutationen
+# Cosmic Ray erzeugt zusätzlich zu den üblichen Grenz- und Negationsmutationen
 # Kreuztyp-Ersetzungen (etwa SQLAlchemy-`|` zu Division oder `==` zu `is`). Diese
 # sind keine plausiblen Python-Mutanten und erzeugen auf Typannotationen bzw. dem
-# SQLAlchemy-Ausdrucksbaum nur Werkzeugrauschen. Die Einzelbegruendung und Zaehlung
+# SQLAlchemy-Ausdrucksbaum nur Werkzeugrauschen. Die Einzelbegründung und Zählung
 # steht in cosmic-ray-stage1-assessment.md.
 [cosmic-ray.filters.operators-filter]
 exclude-operators = [

@@ -152,12 +152,12 @@ def test_meross_says_it_runs_once_a_device_was_found(session: Session) -> None:
     """Der Gegentest zu dem, was hier lange stand.
 
     Bis 0.2.0 meldete die Seite „noch nicht gebaut", und das war richtig: Es gab keine
-    Geräteerkennung für Meross, Geräte entstanden ausschliesslich aus der
+    Geräteerkennung für Meross, Geräte entstanden ausschließlich aus der
     Zigbee2MQTT-Liste, und eine Steckdose konnte in dieser Anlage gar nicht auftauchen.
     Aus dem Betrieb gemeldet als „die Meross-Schalter tauchen nirgends auf".
 
     Beides ist jetzt da — Erkennung *und* Schaltweg, gegen ein echtes Konto geprüft.
-    „running" heisst hier aber erst etwas, wenn tatsächlich ein Gerät aus einem
+    „running" heißt hier aber erst etwas, wenn tatsächlich ein Gerät aus einem
     Abgleich hervorgegangen ist -- Zugangsdaten allein reichen nicht mehr
     (Kreuzreview-Befund 4). Der Hinweis muss weiter sagen, was daran noch nicht
     verdrahtet ist: der Regelkreis selbst, nicht das Schalten (das ist inzwischen
@@ -213,7 +213,7 @@ def test_meross_with_only_half_the_credentials_cannot_be_running(session: Sessio
 def test_devices_enter_the_system_only_on_the_two_known_paths(session: Session) -> None:
     """Jeder Weg, auf dem ein Gerät entsteht, steht hier namentlich.
 
-    Der Test hiess einmal „nur über Zigbee2MQTT" und war damit richtig — bis die
+    Der Test hieß einmal „nur über Zigbee2MQTT" und war damit richtig — bis die
     Meross-Erkennung dazukam und ihn rot machte. Genau dafür ist er da: Entsteht ein
     dritter Weg — ein Formular zum Anlegen von Hand, eine weitere Anbindung —, muss
     jemand hier vorbei und die Schnittstellenseite nachziehen.

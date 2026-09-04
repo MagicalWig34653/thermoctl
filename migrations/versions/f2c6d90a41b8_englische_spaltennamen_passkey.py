@@ -8,12 +8,12 @@ Commit keine haben sollte.
 `bezeichnung` wird zu `label` -- wie in jeder Nachschlagetabelle des Projekts, wo dasselbe
 Wort dieselbe Sache benennt. `zeremonie` wird zu `ceremony`; sie bindet eine Challenge an
 ihren Zweck, und ohne diese Bindung liesse sich eine zur Anmeldung ausgegebene Challenge
-fuer eine Registrierung einreichen.
+für eine Registrierung einreichen.
 
 `batch_alter_table` und nicht `alter_column` direkt: Unter SQLite baut Alembic die Tabelle
-damit neu und nimmt Indizes und Fremdschluessel mit. Ein nacktes RENAME COLUMN kann SQLite
-zwar auch, aber die beiden Tabellen tragen `UNIQUE`- und Fremdschluesselbedingungen, und
-der Umweg ueber den Stapel ist der Weg, den dieses Projekt an den anderen zwei Stellen
+damit neu und nimmt Indizes und Fremdschlüssel mit. Ein nacktes RENAME COLUMN kann SQLite
+zwar auch, aber die beiden Tabellen tragen `UNIQUE`- und Fremdschlüsselbedingungen, und
+der Umweg über den Stapel ist der Weg, den dieses Projekt an den anderen zwei Stellen
 schon geht.
 
 Revision ID: f2c6d90a41b8

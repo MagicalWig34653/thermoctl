@@ -1,7 +1,7 @@
 # Achtung: Der Testbefehl unten verweist relativ auf .venv/bin/python. In einem
 # Worktree ohne eigene Umgebung wird dadurch jeder Mutant INCOMPETENT, und
-# cosmic-ray meldet null Ueberlebende -- ein gescheiterter Lauf sieht aus wie ein
-# perfektes Ergebnis. Vorher einen .venv-Symlink anlegen und hinterher pruefen,
+# cosmic-ray meldet null Überlebende -- ein gescheiterter Lauf sieht aus wie ein
+# perfektes Ergebnis. Vorher einen .venv-Symlink anlegen und hinterher prüfen,
 # dass kein test_outcome INCOMPETENT ist. Siehe CLAUDE.md.
 # Runde 1, Stufe 2 des Komplettreviews. Wiederholbarer Lauf aus dem
 # Repository-Wurzelverzeichnis:
@@ -11,7 +11,7 @@
 #   .venv/bin/cosmic-ray exec cosmic-ray-schedule.toml /tmp/thermoctl-schedule.sqlite
 #   .venv/bin/cr-report /tmp/thermoctl-schedule.sqlite
 #
-# Fuer den ungefilterten Ausgangslauf wird der Filter-Schritt ausgelassen.
+# Für den ungefilterten Ausgangslauf wird der Filter-Schritt ausgelassen.
 [cosmic-ray]
 module-path = "thermoctl/domain/schedule.py"
 timeout = 10.0

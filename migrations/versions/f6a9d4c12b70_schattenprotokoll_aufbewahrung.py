@@ -1,4 +1,4 @@
-"""Aufbewahrungsfrist fuer das Schattenprotokoll.
+"""Aufbewahrungsfrist für das Schattenprotokoll.
 
 Revision ID: f6a9d4c12b70
 Revises: e8c21f4a9d70

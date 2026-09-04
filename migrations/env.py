@@ -5,7 +5,7 @@ from sqlalchemy import engine_from_config, pool
 
 from thermoctl.config import get_settings
 from thermoctl.db.base import Base
-from thermoctl.db import models  # noqa: F401 — laedt alle Modelle in die Metadaten
+from thermoctl.db import models  # noqa: F401 — lädt alle Modelle in die Metadaten
 
 config = context.config
 if config.config_file_name is not None:
@@ -36,7 +36,7 @@ def run_migrations_online() -> None:
         context.configure(
             connection=verbindung,
             target_metadata=target_metadata,
-            # Pflicht fuer SQLite: dort gibt es kein ALTER TABLE fuer Constraints,
+            # Pflicht für SQLite: dort gibt es kein ALTER TABLE für Constraints,
             # Alembic baut die Tabelle stattdessen neu auf.
             render_as_batch=True,
         )

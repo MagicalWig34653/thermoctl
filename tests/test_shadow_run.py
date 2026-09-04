@@ -90,7 +90,7 @@ def test_one_cycle_with_a_fresh_reading_writes_a_row_with_a_reason(
     session: Session,
 ) -> None:
     create_settings(session, hysteresis=Decimal("0.30"))
-    zone = _zone_with_state(session, "buero", measured_c=Decimal("10.0"))
+    zone = _zone_with_state(session, "büro", measured_c=Decimal("10.0"))
 
     rows = shadow_run.cycle(session, NOW)
 
@@ -555,7 +555,7 @@ def test_several_cycles_with_an_unchanged_situation_yield_unchanged_without_a_fl
     zone = _zone_with_state(session, "flur", measured_c=Decimal("16.0"))
     # Minimum switching duration set to 0: otherwise rule 5 (minimum switching
     # duration) would already kick in from the second cycle and yield
-    # 'gesperrt_mindestdauer' instead of 'unveraendert' — regardless of the fact
+    # 'gesperrt_mindestdauer' instead of 'unverändert' — regardless of the fact
     # that nothing about the situation changed. That is not the behavior this
     # test is meant to demonstrate here (the next test covers that).
     zone.min_on_seconds = 0
@@ -871,15 +871,15 @@ async def test_no_publishing_despite_a_heating_decision(
         return None
 
     client = MqttClient(settings, leerer_handler)
-    gefaelscht = GefaelschterClient()
-    client._client = gefaelscht  # type: ignore[assignment]
+    gefälscht = GefaelschterClient()
+    client._client = gefälscht  # type: ignore[assignment]
 
     result = await client.publishing(
         "zigbee2mqtt/Ventil/set", '{"state": "ON"}', switches=True
     )
 
     assert result is False
-    assert gefaelscht.published == []
+    assert gefälscht.published == []
 
 
 def test_the_background_run_does_not_start_without_mqtt(
@@ -1640,7 +1640,7 @@ async def test_the_shadow_loop_also_publishes_when_a_publisher_is_configured(
     even though it is the half that talks to the plant. Here the app carries one, and
     it has to be used.
     """
-    engine, fabrik = _own_database(tmp_path, "schleife-mit-veroeffentlichung")
+    engine, fabrik = _own_database(tmp_path, "schleife-mit-veröffentlichung")
     with fabrik() as http_session:
         create_settings(http_session)
         sensor_status_of(http_session, "keine_quelle")
@@ -1667,7 +1667,7 @@ async def test_the_shadow_loop_also_publishes_when_a_publisher_is_configured(
 
         async def post_json(self, *args: object, **kwargs: object) -> dict[str, object]:
             raise AssertionError(
-                "Ohne Meross-Zugangsdaten haette hier nichts angerufen werden duerfen"
+                "Ohne Meross-Zugangsdaten hätte hier nichts angerufen werden dürfen"
             )
 
     fake_app = types.SimpleNamespace(
@@ -1694,7 +1694,7 @@ async def test_the_shadow_loop_also_publishes_when_a_publisher_is_configured(
         await app_modul._shadow_loop(fake_app)  # type: ignore[arg-type]
 
     # Nothing switched -- every message from the publication cycle is a state message.
-    assert sent, "Der Zyklus hat nichts veroeffentlicht"
+    assert sent, "Der Zyklus hat nichts veröffentlicht"
     assert all(switches is False for _topic, _payload, switches in sent)
     engine.dispose()
 
@@ -1739,7 +1739,7 @@ async def test_the_shadow_loop_passes_the_meross_session_cache_and_frozen_bolt_t
 
         async def post_json(self, *args: object, **kwargs: object) -> dict[str, object]:
             raise AssertionError(
-                "Ohne Meross-Zugangsdaten haette hier nichts angerufen werden duerfen"
+                "Ohne Meross-Zugangsdaten hätte hier nichts angerufen werden dürfen"
             )
 
     session_cache = MerossSessionCache()
@@ -1891,9 +1891,9 @@ async def test_the_meross_sign_in_never_happens_while_a_write_transaction_is_ope
     with pytest.raises(asyncio.CancelledError):
         await app_modul._shadow_loop(fake_app)  # type: ignore[arg-type]
 
-    assert call_count == 1, "Die Anmeldung wurde nie versucht -- der Test prueft nichts"
+    assert call_count == 1, "Die Anmeldung wurde nie versucht -- der Test prüft nichts"
     assert not violation_seen, (
-        "Die Meross-Anmeldung lief waehrend eine Schreibtransaktion offen war"
+        "Die Meross-Anmeldung lief während eine Schreibtransaktion offen war"
     )
     engine.dispose()
 

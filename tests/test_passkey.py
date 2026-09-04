@@ -112,7 +112,7 @@ def test_an_expired_challenge_is_refused(
 ) -> None:
     from datetime import timedelta
 
-    user_record = create_user(session, "spaet-nutzer")
+    user_record = create_user(session, "spät-nutzer")
     device = WebAuthnDevice()
     _register(session, passkey_settings, user_record, device)
 
@@ -196,7 +196,7 @@ def test_a_foreign_origin_is_refused(
 
     argumente = begin_authentication(session, passkey_settings)
     # The authenticator responds to a different site.
-    response = device.log_in(argumente, "https://boese.example")
+    response = device.log_in(argumente, "https://böse.example")
     with pytest.raises(PasskeyError):
         verify_authentication(session, passkey_settings, response)
 
@@ -242,8 +242,8 @@ def test_old_challenges_are_cleaned_up(
 
     entfernt = passkey_modul.cleanup_old_challenges(session)
     assert entfernt == 2
-    uebrig = session.scalars(select(PasskeyChallenge)).all()
-    assert len(uebrig) == 1 and uebrig[0].challenge == frisch["challenge"]
+    übrig = session.scalars(select(PasskeyChallenge)).all()
+    assert len(übrig) == 1 and übrig[0].challenge == frisch["challenge"]
 
 
 def test_without_a_relying_party_id_the_routes_do_not_exist(client: TestClient) -> None:
@@ -411,7 +411,7 @@ def test_the_own_counter_check_catches_what_the_library_would_let_through(
     library is replaced by one that waves the response through, and the service must
     still refuse it.
     """
-    user_record = create_user(session, "zweitpruefung")
+    user_record = create_user(session, "zweitprüfung")
     device = WebAuthnDevice()
     entry = _register(session, passkey_settings, user_record, device)
     argumente = begin_authentication(session, passkey_settings)
@@ -426,7 +426,7 @@ def test_the_own_counter_check_catches_what_the_library_would_let_through(
         passkey_modul, "verify_authentication_response", lambda **_: LenientResult()
     )
 
-    with pytest.raises(PasskeyError, match="Zaehler"):
+    with pytest.raises(PasskeyError, match="Zähler"):
         verify_authentication(session, passkey_settings, response)
 
 
@@ -439,7 +439,7 @@ def test_a_passkey_of_another_account_cannot_be_removed(
     anyone logged in could strip another account of its second factor and, with enough
     of them, lock that account out of passkey login entirely.
     """
-    owner = create_user(session, "eigentuemer")
+    owner = create_user(session, "eigentümer")
     stranger = create_user(session, "fremder")
     device = WebAuthnDevice()
     entry = _register(session, passkey_settings, owner, device)
@@ -520,7 +520,7 @@ def test_a_registration_the_library_rejects_becomes_a_readable_error(
     monkeypatch.setattr(passkey_modul, "verify_registration_response", refuse)
 
     with pytest.raises(PasskeyError, match="Registrierung nicht bestanden"):
-        finish_registration(session, passkey_settings, user_record, response, "Mein Schluessel")
+        finish_registration(session, passkey_settings, user_record, response, "Mein Schlüssel")
 
 
 def test_a_login_body_that_is_not_json_is_refused_like_any_other(
@@ -581,7 +581,7 @@ def test_a_registration_the_domain_rejects_returns_the_reason(
 
     response = client.post(
         "/passkey/registration/verify",
-        json={"label": "Mein Schluessel", "id": "quatsch", "response": {}},
+        json={"label": "Mein Schlüssel", "id": "quatsch", "response": {}},
         headers=_csrf(client),
     )
     assert response.status_code == 400

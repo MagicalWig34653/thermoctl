@@ -12,7 +12,7 @@ from thermoctl.domain.device_commands import MAX_LIMIT, list_commands, naive_utc
 
 def test_lists_newest_first(session: Session) -> None:
     zone = create_zone(session, "protokollzone")
-    geraet = create_device(session, "protokollgeraet")
+    geraet = create_device(session, "protokollgerät")
     create_device_command(session, zone, geraet, at=datetime(2026, 8, 15, 12, 0))
     create_device_command(session, zone, geraet, at=datetime(2026, 8, 15, 13, 0))
 
@@ -31,7 +31,7 @@ def test_zone_filter_matches_the_name_snapshot_of_a_deleted_zone(session: Sessio
         sent_at=datetime(2026, 8, 15, 12, 0),
         source_id=source(session, "system").id,
         zone_id=None,
-        zone_name="geloeschte-zone",
+        zone_name="gelöschte-zone",
         device_id=None,
         device_name="verwaistes-geraet",
         command="setpoint",
@@ -41,15 +41,15 @@ def test_zone_filter_matches_the_name_snapshot_of_a_deleted_zone(session: Sessio
     session.add(entry)
     session.flush()
 
-    result = list_commands(session, zone_name="geloeschte-zone")
+    result = list_commands(session, zone_name="gelöschte-zone")
 
     assert len(result) == 1
-    assert result[0].zone_name == "geloeschte-zone"
+    assert result[0].zone_name == "gelöschte-zone"
 
 
 def test_outcome_filter(session: Session) -> None:
     zone = create_zone(session, "ergebniszone")
-    geraet = create_device(session, "ergebnisgeraet")
+    geraet = create_device(session, "ergebnisgerät")
     create_device_command(session, zone, geraet, outcome_code="executed")
     create_device_command(session, zone, geraet, outcome_code="failed")
 
@@ -80,7 +80,7 @@ def test_a_nonsensical_limit_is_refused(session: Session, limit: int) -> None:
 
 def test_the_maximum_limit_is_accepted(session: Session) -> None:
     zone = create_zone(session, "obergrenzenzone")
-    geraet = create_device(session, "obergrenzengeraet")
+    geraet = create_device(session, "obergrenzengerät")
     create_device_command(session, zone, geraet)
 
     assert len(list_commands(session, limit=MAX_LIMIT)) == 1

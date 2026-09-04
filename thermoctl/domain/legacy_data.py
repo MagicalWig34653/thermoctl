@@ -24,7 +24,7 @@ def read_night_hours(blob: str) -> dict[int, frozenset[int]]:
     try:
         raw_entry: Any = json.loads(blob)
     except (json.JSONDecodeError, TypeError):
-        log.warning("Nachtstunden sind kein gueltiges JSON und werden als leer behandelt")
+        log.warning("Nachtstunden sind kein gültiges JSON und werden als leer behandelt")
         return result
 
     if not isinstance(raw_entry, list):
@@ -32,7 +32,7 @@ def read_night_hours(blob: str) -> dict[int, frozenset[int]]:
         return result
     if len(raw_entry) != DAYS_PER_WEEK + 1:
         log.warning(
-            "Nachtstunden haben %d statt acht Slots; lesbare Wochentage werden uebernommen",
+            "Nachtstunden haben %d statt acht Slots; lesbare Wochentage werden übernommen",
             len(raw_entry),
         )
 
@@ -48,7 +48,7 @@ def read_night_hours(blob: str) -> dict[int, frozenset[int]]:
             hour = _read_hour(value)
             if hour is None or hour in hours:
                 log.warning(
-                    "Ungueltige oder doppelte Nachtstunde in Slot %d wird verworfen",
+                    "Ungültige oder doppelte Nachtstunde in Slot %d wird verworfen",
                     weekday,
                 )
                 continue

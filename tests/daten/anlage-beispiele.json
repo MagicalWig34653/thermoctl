@@ -1,5 +1,5 @@
 {
- "hinweis": "Anonymisierte Fassung echter Anlagendaten. Struktur, Feldnamen und alle Werteigenheiten sind unveraendert uebernommen; nur die Geraetenamen sind ersetzt. Die Originaldatei liegt ausserhalb des Repos (.superpowers/sdd/anlage-beispiele.json, gitignored) und enthaelt echte Zimmernamen.",
+ "hinweis": "Anonymisierte Fassung echter Anlagendaten. Struktur, Feldnamen und alle Werteigenheiten sind unverändert übernommen; nur die Geraetenamen sind ersetzt. Die Originaldatei liegt außerhalb des Repos (.superpowers/sdd/anlage-beispiele.json, gitignored) und enthält echte Zimmernamen.",
  "geraete": [
   "Abstellraum Ladegerät",
   "Abstellraum Multisensor",

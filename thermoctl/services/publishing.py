@@ -1,7 +1,7 @@
 # ruff: noqa: E501
 """Publish our own state — and register the zones with Home Assistant.
 
-The contract lives in `integrations/mqtt/veroeffentlichung.py`: topics, discovery
+The contract lives in `integrations/mqtt/veröffentlichung.py`: topics, discovery
 payloads, registration and deregistration, with tests. This is the caller.
 
 **This also runs in the dry run** — deliberately. A state message doesn't move
@@ -453,7 +453,7 @@ async def _send_self_regulating_valves(
             outcome, error = (
                 (EXECUTED, None)
                 if executed
-                else (FAILED, "MQTT-Client hat die Veroeffentlichung abgewiesen")
+                else (FAILED, "MQTT-Client hat die Veröffentlichung abgewiesen")
             )
 
         _note_command_outcome(state, notices, session, command.device, outcome, setting_row)
@@ -475,7 +475,7 @@ async def _send_self_regulating_valves(
                     "zone_id": zone.id,
                     "geraet": command.device.display_name,
                     "sollwert": str(command.setpoint_c),
-                    "begruendung": command.reason,
+                    "begründung": command.reason,
                 },
             )
             record_command(
@@ -687,7 +687,7 @@ async def _send_actuator_switches(
                     None
                     if not armed
                     else (
-                        f"Anbindung {command.integration_code!r} ist fuer Schaltbefehle "
+                        f"Anbindung {command.integration_code!r} ist für Schaltbefehle "
                         "in dieser Fassung nicht verdrahtet"
                     )
                 ),
@@ -754,7 +754,7 @@ async def _send_actuator_switches(
                     "zone_id": zone.id,
                     "geraet": device.display_name,
                     "zustand": "an" if heating else "aus",
-                    "begruendung": reason,
+                    "begründung": reason,
                 },
             )
 
@@ -795,7 +795,7 @@ async def _send_actuator_switches(
                     None
                     if not armed
                     else (
-                        f"Anbindung {thermostat_command.integration_code!r} ist fuer "
+                        f"Anbindung {thermostat_command.integration_code!r} ist für "
                         "Thermostatbefehle in dieser Fassung nicht verdrahtet"
                     )
                 ),
@@ -851,7 +851,7 @@ async def _send_actuator_switches(
                     "geraet": device.display_name,
                     "zustand": "an" if heating else "aus",
                     "sollwert": str(thermostat_setpoint),
-                    "begruendung": reason,
+                    "begründung": reason,
                 },
             )
     return sent
@@ -899,7 +899,7 @@ async def _deregister_deleted(
             if await client.publishing(topic, "", switches=False, retained=True):
                 sent_count += 1
         del state.registered[zone_id]
-        log.info("Geloeschte Zone bei Home Assistant abgemeldet", extra={"zone_id": zone_id})
+        log.info("Gelöschte Zone bei Home Assistant abgemeldet", extra={"zone_id": zone_id})
     return sent_count
 
 
