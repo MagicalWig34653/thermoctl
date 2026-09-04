@@ -2,6 +2,34 @@
 
 Letzte Aktualisierung: 2026-09-04
 
+## Falsche Begründung bei `unveraendert` in `decide()` korrigiert
+
+Die beiden Zweige mit Ergebniscode `unveraendert` in `thermoctl/domain/control_loop.py`
+protokollierten unabhängig vom tatsächlichen Abstand denselben Satz „... innerhalb der
+Hysterese um Soll ... ± hK ... — Zustand bleibt.". Erreicht wurden sie aber nicht nur, wenn
+der Messwert wirklich im Band lag, sondern immer dann, wenn nur die *gegenüberliegende*
+Bandkante nicht überschritten war — an der tatsächlichen Kante konnte der Messwert beliebig
+weit entfernt sein. Gemessen an 18.527 echten `unveraendert`-Entscheidungen lag **keine
+einzige** tatsächlich im Band (≤ 0,5K); mittlerer Abstand 5,90K, grösster 11,40K
+(Extremfall: Ist 27.40 °C, Soll 16.0 °C ± 0.10K als „innerhalb" protokolliert). Die
+Entscheidung selbst war in jedem Fall richtig (korrekte Hysterese, nur an den Kanten
+umschalten) — falsch war ausschliesslich der protokollierte Text.
+
+Jeder der beiden Zweige ist jetzt in zwei Fälle aufgeteilt: echt im Band vs. jenseits der
+gegenüberliegenden Kante bei bereits laufendem bzw. bereits ausgeschaltetem Zustand. Kein
+`heating`-Ergebnis und kein `reason_code` hat sich geändert — belegt durch die unveränderte
+2.376-Kombinationen-Tabelle in `tests/test_control_loop_state_table.py` sowie drei neue
+Tests in `tests/test_control_loop.py`, die den gefundenen Fehlerfall nachbilden (weit über
+Soll bei Aus, weit unter Soll bei Heizen) und den echten Im-Band-Fall als Gegenprobe. Die
+18.527 alten, falschen Begründungssätze in der Produktivdatenbank bleiben unverändert
+stehen — sie sind Protokoll dessen, was war, siehe `CHANGELOG.md`.
+
+`thermoctl/domain/pi_control.py` hat einen eigenen Begründungsweg und trägt diesen Satz
+nicht — geprüft, keine Änderung nötig. Die übrigen Begründungstexte in `decide()`
+(Fensterzustand, Mindestschaltdauer, Sensorausfall, Ventilschutz, reguläres Heizen/Aus an
+den Kanten) wurden durchgesehen: Jeder benennt nur, was im jeweils erreichten Zweig
+zwingend gilt — kein weiterer Fund derselben Fehlerklasse.
+
 ## Oberfläche von Umstiegs-Jargon bereinigt
 
 Eine Durchsicht vor der Veröffentlichung fand vier Stellen, die den Entwicklungsstand oder
