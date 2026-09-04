@@ -9,7 +9,7 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ---
 
-## Unveröffentlicht
+## 0.6.3 — 2026-09-04
 
 ### Hinzugefügt
 
@@ -40,6 +40,25 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
   Ohne den Schalter gewinnt eine auskommentierte
   `THERMOCTL_DATABASE_URL=mysql+pymysql://...`-Zeile jetzt gegen eine aktive
   SQLite-URL, statt dass SQLite sie stillschweigend übertönt.
+
+### Zu beachten beim Umstieg
+
+- **Eine Migration** (`67e794059830`) legt sechs Spalten auf `setting` an: die drei
+  Schalter für die Meldungsarten (alle auf `true`, also unverändertes Verhalten) und
+  den Zustellzustand des Webhooks. Das Container-Abbild führt sie beim Start selbst
+  aus. Der Rückweg auf 0.6.2 braucht wie immer vorher einen einmaligen
+  `alembic downgrade` mit dem **neuen** Abbild — eine Revision zurück, auf
+  `635612893955`:
+
+  ```bash
+  docker compose stop thermoctl
+  docker compose run --rm --no-deps --entrypoint alembic thermoctl downgrade 635612893955
+  ```
+
+- **Es ändert sich nichts an dem, was gemeldet wird**, solange niemand einen der drei
+  Schalter umlegt.
+
+---
 
 ## 0.6.2 — 2026-09-04
 
