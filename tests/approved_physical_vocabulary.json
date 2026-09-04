@@ -142,7 +142,9 @@
       "während des Laufs, bleibt der Heizkörper jetzt bis zum Ablauf der Mindest-**Einschalt**dauer",
       "| 4 — Regelkreis und Cutover | Alle sieben Aktortypen der echten Anlage verdrahtet: Zigbee2MQTT-Aktoren, Meross-Steckdosen, Zigbee2MQTT-Thermostatventile. Kreuzreview der Verdrahtung fand drei Befunde, alle behoben — siehe unten |",
       "| PI-Regelung | optional je Zone, nur Schaltaktoren, zunächst Beta | umgesetzt (v0.5.0, in v0.6.0 nachgearbeitet); **Schalter steht je Zone weiterhin auf aus** |",
-      "| Ventilschutz wurde zu dauerhaftem Heizen | Mindest-Einschaltdauer gilt für einen Schutzlauf nicht | umgesetzt |"
+      "| Ventilschutz wurde zu dauerhaftem Heizen | Mindest-Einschaltdauer gilt für einen Schutzlauf nicht | umgesetzt |",
+      "Minuten Schattenphase, bevor ihr erster Befehl den echten Aktor erreichte. Die",
+      "und liefen deshalb nie im Schattenbetrieb — drei von vier Zonen mit Aktor hatten null"
     ],
     "docs/api.md": [
       "**Fehlt das Feld, gilt 0** — ein Aufrufer, der die Absenkung nicht kennt, schaltet sie",
@@ -199,6 +201,25 @@
       "| Schaltbefehl an ein Ventil | `{\"state\": \"ON\"}` bzw. `{\"state\": \"OFF\"}` | `True` |",
       "| Sollwert an ein selbstregelndes Thermostatventil | `{\"occupied_heating_setpoint\": 21.0}`, dazu die gemessene Raumtemperatur, wo das Gerät sie annimmt | `True` |",
       "übernommen, nur bewegt sich kein Ventil."
+    ],
+    "docs/phase-2-abnahme.md": [
+      "**Es fand in diesem Zeitraum praktisch kein Heizen statt** — Anfang September ist es",
+      "- **Keinen Beleg für „mehrtägigen Schattenbetrieb\".** Für drei von vier Zonen mit Aktor",
+      "2026-09-02 10:41 und 10:42 Uhr. Ihre ersten echten Aktor-Befehle folgten binnen",
+      "366 Einträge, davon 352 `setpoint`-Befehle an das selbstregelnde Thermostatventil in",
+      "Das ist an sich kein Fehler (beide Zonen haben keinen Aktor, insofern konsequent), aber",
+      "Fernbedienungstemperatur — Format und Kadenz plausibel für ein Zigbee-Heizkörperthermostat)",
+      "bleibt zu Recht aus, weil sie längst zu warm ist, nicht weil sie zufällig im",
+      "echten Aktor. Zonen E und F haben keinen Aktor zugeordnet und liefen die ganze Zeit über",
+      "für drei der vier Zonen mit Aktor praktisch nichts, für die vierte gut anderthalb Tage.",
+      "in allen vier Zonen mit Aktor unverändert (siehe Kriterium 2), sodass kein weiterer",
+      "nennt** („heizt nachts, obwohl Zeitplan Nacht sagt\"): Systematisch geprüft wurde, ob",
+      "nie geschaltet wurde.",
+      "und 14 `switch`-Befehle an gewöhnliche Aktoren in den Zonen A, B, C und D. Alle 366",
+      "warm genug, dass keine Zone real unter ihren Sollwert fiel. Die einzigen vier",
+      "| B | 28 | Automatik | ja (+ selbstregelndes Ventil) |",
+      "| Zone | Zeitplanpunkte | Betriebsart | Aktor vorhanden |",
+      "„längst zu warm\"-Szenario verglichen worden. Das betrifft **99,76 % aller bisher"
     ],
     "docs/roadmap.md": [
       "**Ziel:** Regelung freigeben, Aktoren verdrahten und das Altsystem ablösen.",

@@ -10,6 +10,21 @@ aktuelle und längst überholte Angaben — „nichts ist scharf", „1024 Tests
 vier stimmten einmal und standen noch da; ein Freigabe-Review konnte sie namentlich
 widerlegen.
 
+## Teilprojekt 2 — Auswertung der echten Betriebsdaten: nicht abnahmereif
+
+Ein Auszug der Produktivdatenbank wurde gegen die drei Abnahmekriterien aus Abschnitt 4
+von `docs/inbetriebnahme-schattenbetrieb.md` geprüft; Bericht in
+[`docs/phase-2-abnahme.md`](phase-2-abnahme.md). Zentraler Befund: Fünf der sechs Zonen
+wurden erst **nach** dem Scharfschalten (`control_armed`, 2026-09-01 19:20 Uhr) angelegt
+und liefen deshalb nie im Schattenbetrieb — drei von vier Zonen mit Aktor hatten null
+Minuten Schattenphase, bevor ihr erster Befehl den echten Aktor erreichte. Die
+Regelentscheidungen selbst waren in allen geprüften Fällen korrekt, aber die
+Begründungstexte bei „unverändert" (`control_loop.py`) sind in 99,76 % aller bisher
+geschriebenen Entscheidungen sachlich ungenau — sie behaupten „innerhalb der Hysterese",
+obwohl die Ist-Temperatur im Mittel 5,9 K vom Sollwert entfernt liegt. Kriterium 3
+(Altsystemvergleich) entfällt ersatzlos, weil der Vergleichsbetrieb bewusst übersprungen
+wurde. **Teilprojekt 2 gilt auf dieser Grundlage nicht als abgenommen.**
+
 ## Wirkungswächter erkennt Komposita ohne Trennzeichen
 
 **Die Lücke aus dem letzten Stand ist geschlossen.** `PHYSICAL_VOCABULARY` in

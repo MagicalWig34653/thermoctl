@@ -18,7 +18,7 @@ Phase 1 geschehen ist. Features, die aus der unverbindlichen
 |---|---|---|---|
 | 1 | Fundament | **umgesetzt**, `v0.1.0` | Nichts sichtbar, aber alles Weitere hängt daran |
 | 1a | Nacharbeiten | **umgesetzt** | Oberfläche benutzbar |
-| 2 | Geräte-Anbindung im Schattenbetrieb | **gebaut**, läuft seit dem 2026-09-02 an der echten Anlage | Belegt gegen die echte Anlage, dass die Daten stimmen |
+| 2 | Geräte-Anbindung im Schattenbetrieb | **gebaut, Abnahme anhand echter Betriebsdaten geprüft und nicht bestanden** | Belegt gegen die echte Anlage, dass die Daten stimmen |
 | 3 | Konfigurations-Oberfläche | **umgesetzt**, seither erweitert | Ende der SQL-Pflege — ab hier im Alltag nützlich |
 | 4 | Regelkreis und Cutover | schaltet seit `v0.3.0` scharf an der echten Anlage; Ablösung des Altsystems offen | Altsystem ablösen |
 | 5 | Integrationen und Veröffentlichung | teilweise vorgezogen | Für Fremde aufsetzbar |
@@ -100,9 +100,13 @@ Geschärft im eigenen Zyklus aus Spezifikation und Plan, wie bei jedem Teilproje
 - [x] 9 Schattenlauf
 - [x] 10 Geräteübersicht und lesende Endpunkte
 
-**Was nur der Projektinhaber abschließen kann:** der Nachweis über mehrere Tage echten
-Betriebs. Er braucht Laufzeit an der Anlage — Zugangsdaten in `.env`,
-`THERMOCTL_MQTT_ENABLED=true`, und dann Geduld.
+**Auswertung der echten Betriebsdaten (2026-09-04):** Bericht in
+[`docs/phase-2-abnahme.md`](phase-2-abnahme.md), Kurzfassung in `STATUS.md`. Ergebnis:
+**nicht abnahmereif.** Fünf der sechs Zonen wurden erst nach dem Scharfschalten
+(`control_armed`, 2026-09-01) angelegt und liefen deshalb nie im Schattenbetrieb; die
+Begründungstexte der Regel sind in 99,76 % der protokollierten Entscheidungen sachlich
+ungenau (behaupten „innerhalb der Hysterese" bei im Mittel 5,9 K Abstand); Kriterium 3
+(Altsystemvergleich) entfällt ersatzlos wegen des übersprungenen Vergleichsbetriebs.
 
 ### Risiken
 
