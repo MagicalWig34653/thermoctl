@@ -9,6 +9,18 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ---
 
+## Unveröffentlicht
+
+### Behoben
+
+- **Das Home-Assistant-Add-on kam nicht mehr hoch**: `/data/options.json nicht lesbar:
+  [Errno 13] Permission denied`. Der Supervisor legt diese Datei root:root, nur für root
+  lesbar, an; das Abbild lief aber unprivilegiert (`USER thermoctl`). Das Abbild startet
+  jetzt als root, liest die Optionsdatei und macht `/data` beschreibbar, gibt die Rechte
+  aber über `setpriv` an den unprivilegierten Benutzer ab, bevor Migration und Dienst
+  laufen -- der laufende Dienst bleibt also unprivilegiert. Der gewöhnliche
+  docker-compose-Betrieb mit explizit gesetztem `user:` ist unverändert.
+
 ## 0.6.3 — 2026-09-04
 
 ### Hinzugefügt

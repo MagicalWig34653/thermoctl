@@ -31,6 +31,13 @@ def _fake_bin(tmp_path: Path) -> Path:
     `thermoctl`, standing in for the real console script the entrypoint
     ultimately `exec`s. `thermoctl` prints every `THERMOCTL_*` variable it
     sees so the test can check what the options translation produced.
+
+    Also stand-ins for the privilege-drop machinery (`id`, `chown`, `setpriv`),
+    used only by the tests that simulate a root start -- see
+    ``THERMOCTL_TEST_ALS_ROOT`` and ``THERMOCTL_TEST_AUFRUFPROTOKOLL`` below.
+    Every other test leaves both unset, so `id -u` falls through to the real
+    binary (the test process's own, non-root uid) and `chown`/`setpriv` are
+    never reached -- entrypoint.sh's root branch only runs when `id -u` is `0`.
     """
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
@@ -41,8 +48,48 @@ def _fake_bin(tmp_path: Path) -> Path:
     )
     # sys.executable's path can contain spaces (this repo sits under a directory with
     # one), so it must be quoted -- an unquoted `exec` here fails with a confusing
-    # "No such file or directory" for a path prefix, not the whole path.
-    _make_executable(bin_dir / "python3", f'#!/bin/sh\nexec "{sys.executable}" "$@"\n')
+    # "No such file or directory" for a path prefix, not the whole path. Logs each
+    # invocation (script path only, never argv beyond that -- no values) so a test can
+    # check the options script does not run twice, e.g. once as root and once, doomed to
+    # fail, again after the privilege drop.
+    _make_executable(
+        bin_dir / "python3",
+        "#!/bin/sh\n"
+        'if [ -n "$THERMOCTL_TEST_AUFRUFPROTOKOLL" ]; then\n'
+        '    echo "python3 $1" >> "$THERMOCTL_TEST_AUFRUFPROTOKOLL"\n'
+        "fi\n"
+        f'exec "{sys.executable}" "$@"\n',
+    )
+    _make_executable(
+        bin_dir / "id",
+        '#!/bin/sh\n'
+        'if [ "$1" = "-u" ] && [ -n "$THERMOCTL_TEST_ALS_ROOT" ]; then\n'
+        "    echo 0\n"
+        "else\n"
+        '    exec /usr/bin/id "$@"\n'
+        "fi\n",
+    )
+    _make_executable(
+        bin_dir / "chown",
+        "#!/bin/sh\n"
+        'if [ -n "$THERMOCTL_TEST_AUFRUFPROTOKOLL" ]; then\n'
+        '    echo "chown $*" >> "$THERMOCTL_TEST_AUFRUFPROTOKOLL"\n'
+        "fi\n",
+    )
+    _make_executable(
+        bin_dir / "setpriv",
+        "#!/bin/sh\n"
+        'if [ -n "$THERMOCTL_TEST_AUFRUFPROTOKOLL" ]; then\n'
+        '    echo "setpriv $*" >> "$THERMOCTL_TEST_AUFRUFPROTOKOLL"\n'
+        "fi\n"
+        "while [ $# -gt 0 ]; do\n"
+        '    case "$1" in\n'
+        "        --reuid=*|--regid=*|--init-groups) shift ;;\n"
+        "        *) break ;;\n"
+        "    esac\n"
+        "done\n"
+        'exec sh "$@"\n',
+    )
     return bin_dir
 
 
@@ -135,6 +182,72 @@ def test_a_broken_options_file_aborts_the_start_instead_of_starting_half_configu
     result = _run_entrypoint(tmp_path, {"THERMOCTL_ADDON_OPTIONS_FILE": str(options_file)})
     assert result.returncode != 0
     assert "THERMOCTL_" not in result.stdout
+
+
+def test_an_unreadable_options_file_aborts_the_start_instead_of_starting_half_configured(
+    tmp_path: Path,
+) -> None:
+    """Der aus dem Betrieb gemeldete Fehler: der Supervisor legt options.json als root an,
+    nur fuer root lesbar. Solange der Container das nicht lesen kann, muss der Start
+    abbrechen, mit einer verstaendlichen Meldung -- und `alembic`/`thermoctl` duerfen
+    nicht laufen, auch nicht ohne eine einzige Einstellung."""
+    options_file = tmp_path / "options.json"
+    options_file.write_text(json.dumps({"secret_key": "x" * 32}))
+    options_file.chmod(0o000)
+    try:
+        result = _run_entrypoint(tmp_path, {"THERMOCTL_ADDON_OPTIONS_FILE": str(options_file)})
+    finally:
+        options_file.chmod(0o600)  # sonst kann pytest die Datei am Ende nicht aufraeumen
+    assert result.returncode != 0
+    assert "THERMOCTL_" not in result.stdout
+    assert "nicht lesbar" in result.stderr
+    assert "Permission denied" in result.stderr
+
+
+def test_a_root_start_drops_to_the_unprivileged_user_before_alembic_and_the_service(
+    tmp_path: Path,
+) -> None:
+    """Simuliert den Home-Assistant-Add-on-Betrieb: der Container startet als root (siehe
+    Dockerfile), damit er /data/options.json und /data selbst lesen bzw. beschreibbar
+    machen kann -- gibt die Rechte aber vor `alembic` und dem Dienst wieder ab. `id`,
+    `chown` und `setpriv` sind hier Attrappen (siehe `_fake_bin`): das Verhalten von
+    `setpriv` selbst zu pruefen ist nicht Aufgabe dieses Tests, wohl aber, dass
+    entrypoint.sh es mit dem richtigen Zielbenutzer aufruft, `chown` auf das
+    Datenverzeichnis anwendet, dabei nur einmal durchlaeuft (keine Endlosschleife durch
+    den Wiedereinstieg via `exec ... "$0"`) und die aus der Optionsdatei gelesenen Werte
+    danach immer noch beim Dienst ankommen.
+
+    Prueft zusaetzlich, dass die Optionsdatei dabei nur einmal gelesen wird -- als root,
+    vor dem Rechteabgeben. Ein zweiter Versuch nach dem Wiedereinstieg waere in der echten
+    Anlage der aus dem Betrieb gemeldete Fehler: die Datei ist dann root:root 600, fuer
+    den unprivilegierten Benutzer nicht mehr lesbar, und der zweite Versuch schluege fehl,
+    obwohl der erste (als root) schon erfolgreich war."""
+    options_file = tmp_path / "options.json"
+    options_file.write_text(json.dumps({"secret_key": "z" * 32, "log_level": "DEBUG"}))
+    aufrufprotokoll = tmp_path / "aufrufe.log"
+    result = _run_entrypoint(
+        tmp_path,
+        {
+            "THERMOCTL_ADDON_OPTIONS_FILE": str(options_file),
+            "THERMOCTL_TEST_ALS_ROOT": "1",
+            "THERMOCTL_TEST_AUFRUFPROTOKOLL": str(aufrufprotokoll),
+            "THERMOCTL_DATA_DIR": str(tmp_path / "data"),
+        },
+    )
+    assert result.returncode == 0, result.stderr
+    assert "THERMOCTL_SECRET_KEY=" + "z" * 32 in result.stdout
+    assert "THERMOCTL_LOG_LEVEL=DEBUG" in result.stdout
+
+    protokoll = aufrufprotokoll.read_text().splitlines()
+    assert protokoll.count(f"chown thermoctl:thermoctl {tmp_path / 'data'}") == 1
+    setpriv_aufrufe = [zeile for zeile in protokoll if zeile.startswith("setpriv ")]
+    assert len(setpriv_aufrufe) == 1
+    assert "--reuid=thermoctl" in setpriv_aufrufe[0]
+    assert "--regid=thermoctl" in setpriv_aufrufe[0]
+    assert "--init-groups" in setpriv_aufrufe[0]
+    python3_aufrufe = [zeile for zeile in protokoll if zeile.startswith("python3 ")]
+    assert python3_aufrufe.count(f"python3 {OPTIONEN_SKRIPT}") == 1
+    assert python3_aufrufe.count(f"python3 {INGRESS_SKRIPT}") == 1
 
 
 def test_the_script_that_ships_in_the_image_is_the_one_under_test() -> None:

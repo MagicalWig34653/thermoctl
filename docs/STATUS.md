@@ -2,6 +2,41 @@
 
 Letzte Aktualisierung: 2026-09-04
 
+## Add-on-Betrieb: Rechteproblem beim Start behoben
+
+Aus dem Betrieb gemeldet: Das Add-on kam unter Home Assistant nicht hoch --
+`/data/options.json nicht lesbar: [Errno 13] Permission denied`. Ursache: Der Supervisor
+legt diese Datei selbst an, root:root, nur für root lesbar; das Abbild lief aber als
+unprivilegierter Benutzer (`USER thermoctl`, uid 10001), der sie nie lesen konnte.
+
+Geprüft und **echt** (nicht nur behauptet): mit einer per Docker-Named-Volume angelegten,
+root:root 600 `options.json` bricht der alte Entrypoint korrekt mit dieser Meldung ab --
+`alembic`/`thermoctl` laufen dann nicht, `set -e` samt Zwischenvariable funktioniert wie
+im Kommentar behauptet. Der im Auftrag vermutete zweite Fehler (Start läuft trotzdem
+durch) trat in dieser Form nicht auf, dafür ein eigener, beim Bau des Fixes selbst
+eingeführter: ein naiver root-dann-abgeben-Entrypoint las die Optionsdatei nach dem
+Rechteabgeben ein zweites Mal -- als der jetzt unprivilegierte Benutzer, der sie
+ebenfalls nicht lesen kann. `THERMOCTL_ENTRYPOINT_UNPRIVILEGED` markiert seither, dass
+der Optionsblock schon einmal lief, bevor sich `entrypoint.sh` per `exec setpriv
+--reuid=thermoctl --regid=thermoctl --init-groups "$0"` selbst neu startet.
+
+**Lösung**: Kein `USER thermoctl` mehr im Dockerfile -- das Abbild startet als root.
+`entrypoint.sh` liest dort die Optionsdatei und den Ingress-Pfad, sorgt mit `chown` dafür,
+dass `/data` (SQLite-Datenbank inbegriffen) für den Dienst beschreibbar ist, und gibt die
+Rechte über `setpriv` (Teil von util-linux, schon im Basisabbild -- kein Zusatzpaket) an
+`thermoctl` ab, bevor `alembic` oder der Dienst selbst laufen. Der gewöhnliche
+docker-compose-Betrieb ist unverändert: startet ein Operator explizit mit `user:`
+(z.B. dem bisherigen Standard 10001), ist `id -u` im Entrypoint nie `0`, der
+Rechteabgabe-Block läuft dann gar nicht erst -- geprüft per Docker-Lauf mit
+`--user 10001:999`, identischer Ablauf wie vorher. Ohne `user:`-Angabe startet der
+Container jetzt kurz als root, fällt aber noch vor `alembic` zurück; der laufende Dienst
+ist in beiden Fällen unverändert unprivilegiert (mit `docker top` bestätigt: `USER 10001`).
+Kein Zugangsdatum gerät dabei ins Log.
+
+Neue Tests in `tests/test_docker_entrypoint.py`: unlesbare Optionsdatei bricht ab
+(`chmod 000`), der Rechteabgabe-Ablauf läuft genau einmal (nicht zweimal, das hätte den
+selbst eingeführten Fehler oben durchgelassen), mit Attrappen für `id`/`chown`/`setpriv`.
+
 ## Störungsmeldungen: drei Arten, einzeln abschaltbar, mit Testknopf
 
 Bisher gingen Meldungen ungefragt hinaus, und ob der Webhook sie annahm, stand nur im

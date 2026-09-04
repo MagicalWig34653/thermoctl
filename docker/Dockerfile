@@ -13,9 +13,20 @@ COPY alembic.ini /app/alembic.ini
 COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 COPY docker/thermoctl_optionen.py /usr/local/bin/thermoctl_optionen.py
 COPY docker/thermoctl_ingress.py /usr/local/bin/thermoctl_ingress.py
+# Kein `USER thermoctl` hier: der Home-Assistant-Supervisor legt /data/options.json
+# selbst an -- root:root, nur fuer root lesbar -- und der Container muss sie lesen
+# koennen, bevor er ueberhaupt weiss, wie er sich konfigurieren soll. Das Abbild startet
+# deshalb als root; `docker/entrypoint.sh` liest die Optionsdatei, sorgt dafuer, dass
+# /data (SQLite-Datenbank inbegriffen) fuer den Dienst beschreibbar ist, und gibt die
+# Rechte an den unprivilegierten Benutzer `thermoctl` ab, bevor `alembic` oder der
+# Dienst selbst laufen -- der laeuft also weiterhin unprivilegiert, wie zuvor.
+# Fuer den gewoehnlichen docker-compose-Betrieb ohne eigenes `user:` aendert das nichts
+# am Ergebnis, nur den Zwischenschritt; ein Operator, der den Container heute explizit
+# mit `user:` festnagelt (etwa dem bisherigen Standard, uid 10001), startet weiterhin
+# direkt als dieser Benutzer, und der Rechteabgabe-Block in entrypoint.sh greift dann
+# gar nicht erst.
 RUN chmod +x /usr/local/bin/entrypoint.sh && mkdir -p /data && chown thermoctl /data
 WORKDIR /app
-USER thermoctl
 VOLUME ["/data"]
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s \
