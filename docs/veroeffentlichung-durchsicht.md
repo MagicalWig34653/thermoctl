@@ -179,7 +179,7 @@ MariaDB-Instanz des Altsystems im Klartext: „MariaDB (`192.168.0.130`)".
 **Warum das fraglich ist:** Es ist eine private RFC1918-Adresse, aus dem offenen Internet
 nicht direkt erreichbar — kein Secret im engeren Sinn. Sie ist aber eine reale,
 identifizierende Eigenschaft der tatsächlichen Wohnung/Anlage (Netzwerk-Nummerierung,
-möglicherweise sogar Namensursprung von „vm130-nginx" im selben Dokument), und sie ist
+möglicherweise sogar Namensursprung des Hostnamens des Altsystems im selben Dokument), und sie ist
 für den Zweck des Dokuments — den Zustand des Altsystems für spätere Sessions
 festzuhalten — nicht notwendig. Sie fällt unter denselben Gedanken wie Grundsatz 2
 („keine Broker-Adressen … im Quelltext"), auch wenn es sich um Dokumentation statt Code

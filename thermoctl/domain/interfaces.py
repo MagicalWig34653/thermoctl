@@ -42,7 +42,7 @@ class Interface:
     key: str
     name: str
     purpose: str
-    state: str  # "running", "configured", "off", "missing", "not_built"
+    state: str  # "running", "configured", "off", "missing"
     finding: str
     details: list[Detail] = field(default_factory=list)
     hint: str | None = None

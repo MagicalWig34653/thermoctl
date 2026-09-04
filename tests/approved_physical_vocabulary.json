@@ -71,6 +71,7 @@
       "mehrere Grad zu warm; mit einem Wandfühler regelt es gegen den Raum.",
       "scharfen Betrieb an einer echten Heizung prüfte ein Kreuzreview gezielt, ob geschaltet",
       "selbst anzuhalten. Ein Zigbee2MQTT-Thermostatventil ohne `self_regulating` (Fähigkeit",
+      "sich beobachten, bevor sie etwas schalten). Der nie erreichte Schnittstellen-Zustand",
       "solange der Ventilschutz den Ein-Zustand tatsächlich verlangt.",
       "typischerweise als Zweitglied auftreten (Ventil, Aktor, Heizkörper, Heizkreis,",
       "und Mindestschaltdauern, beide konnten das Verhalten von Relais und Ventilen verändern,",
@@ -101,6 +102,7 @@
       "## Ein Fehler in der Regelkette — der Ventilschutz-Marker hob den Taktschutz auf",
       "## Was geschaltet wird — genau",
       "## v0.3.0 — die Fassung, in der thermoctl schaltet",
+      "(Fensterzustand, Mindestschaltdauer, Sensorausfall, Ventilschutz, reguläres Heizen/Aus an",
       "(`\\b`), wodurch deutsche Komposita wie „Zirkulationspumpe\" oder „Ölbrenner\" durchrutschten,",
       "**Die PI-Eignungsprüfung ist gerätegenau geworden.** Ein selbstregelndes Thermostatventil",
       "**Seit dem 2026-09-02 läuft v0.3.0 an der echten Heizung**, zum Zeitpunkt dieser Notiz",
@@ -117,10 +119,12 @@
       "PI gilt nur für gewöhnliche Schaltaktoren. Eine ungeeignete Zone sagt vor dem Einschalten",
       "Regelung kann sofort umschalten, in einem auf die Schutzlaufdauer begrenzten Zeitfenster.",
       "Schnappschuss annahm — und viermal dieselbe Klasse, Texte, die eine Ventilbewegung",
+      "Soll bei Aus, weit unter Soll bei Heizen) und den echten Im-Band-Fall als Gegenprobe. Die",
       "Zigbee2MQTT-Thermostatventile). Ein Kreuzreview prüfte deshalb vor dem ersten",
       "`ZoneDevice.self_regulating.is_(False)`, ein selbstregelndes Ventil taucht in keiner der",
       "`geschaltet`. Ein Test belegt, dass „Zirkulationspumpe\" und „Ölbrenner\" jetzt gefangen",
       "bleibt ein Thermostatventil **ohne** eigene Regelung — das bekommt die Entscheidung als",
+      "darauf, dass sich Entscheidungen beobachten lassen, bevor sie etwas schalten; die",
       "dass ein Relais physisch geschaltet hat.",
       "der zeitlich begrenzte Lauf zu dauerhaftem Heizen.** Behoben am 2026-09-02: Die Ausnahme",
       "jeder Weg zu einem Aktor zu.",
@@ -135,6 +139,7 @@
       "schliesst PI nicht mehr für die ganze Zone aus, sondern darf neben einem Schaltaktor",
       "selbstregelnden Thermostatventile schlicht falsch (zwei Regler auf derselben",
       "stehen — PI steuert dann nur den Schaltaktor. Das ist im Code belegt und nicht bloss",
+      "umschalten) — falsch war ausschliesslich der protokollierte Text.",
       "veröffentlicht, **und jetzt auch ein gewöhnlicher (nicht selbstregelnder) Aktor an",
       "wahr, dass „weiterhin nichts geschaltet wird\" — das war eine Zusicherung ohne Deckung.",
       "was an der Heizung passiert ist — es stand deshalb vor der Verdrahtung der Aktoren (Phase 4)",
@@ -361,6 +366,8 @@
       "Regelung scharf geschaltet — Sollwertausgabe erst nach Neustart freigegeben"
     ],
     "thermoctl/domain/control_loop.py": [
+      ") — Heizung ist bereits aus, Zustand bleibt.",
+      ") — Heizung läuft bereits, Zustand bleibt.",
       "Heizen",
       "Minuten auf Heizen. Im Trockenlauf wird die Entscheidung nur protokolliert; im scharfen Betrieb nach einem Neustart geht sie an den zugeordneten Aktor.",
       "Ventilschutzlauf — die Regelung entscheidet unabhängig von der Raumregelung für",
@@ -510,6 +517,7 @@
       "Der beim Start gebaute MQTT-Riegel ist noch zu. Bis zum Neustart gehen weder Sollwerte noch Ein/Aus-Befehle an Aktoren.",
       "Regelentscheidungen werden protokolliert. Weder Sollwerte noch Ein/Aus-Befehle gehen an Aktoren.",
       "Scharf schalten …",
+      "So lassen sich die Entscheidungen beobachten, bevor sie etwas schalten.",
       "Sollwerte gehen an selbstregelnde Thermostatventile; Ein/Aus-Befehle gehen an Zigbee2MQTT-Schalter, Zigbee2MQTT-Thermostatventile ohne eigene Regelung und Meross-Steckdosen."
     ],
     "thermoctl/web/templates/device_assignment.html": [

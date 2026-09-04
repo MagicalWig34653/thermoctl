@@ -11,6 +11,41 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ## Unveröffentlicht
 
+### Fix: die protokollierte Begründung bei „unveraendert" nannte oft nicht den echten Sachverhalt
+
+Beide Zweige der Entscheidung `unveraendert` in `decide()` schrieben unabhängig vom
+tatsächlichen Abstand denselben Satz „... innerhalb der Hysterese um Soll ... ± hK ... —
+Zustand bleibt.", wurden aber auch dann erreicht, wenn der Messwert weit jenseits der
+*gegenüberliegenden* Bandkante lag — die Entscheidung (Zustand halten) war dabei stets
+richtig, nur der Text falsch. An 18.527 echten `unveraendert`-Entscheidungen lag keine
+einzige tatsächlich im Band; mittlerer Abstand 5,90K, grösster 11,40K. Die Begründung
+unterscheidet jetzt „echt im Band" von „jenseits der gegenüberliegenden Kante, Zustand
+bleibt, weil er schon lief bzw. schon aus war". **Keine Entscheidung hat sich geändert**
+(unveränderte 2.376-Kombinationen-Tabelle in `tests/test_control_loop_state_table.py`).
+Alteinträge in der Produktivdatenbank behalten den bisherigen, falschen Text — sie werden
+nicht nachträglich korrigiert.
+
+### Oberfläche von Umstiegs-Jargon bereinigt
+
+`control.html` nannte den Trockenlauf-Vergleich einmal „gegen das Altsystem" und einmal
+„Schattenbetrieb", und die Checkliste vor dem Scharfschalten versprach, das Altsystem bleibe
+Rückfallebene — für einen Betreiber ohne Altsystem alles ohne Bedeutung. Beide Stellen nennen
+den Zustand jetzt einheitlich „Trockenlauf"; der Altsystem-Punkt ist ersatzlos gestrichen, der
+Vergleichssatz durch eine für jeden Betreiber gültige Aussage ersetzt (Entscheidungen lassen
+sich beobachten, bevor sie etwas schalten). Der nie erreichte Schnittstellen-Zustand
+`not_built` ist aus Domänenlogik, Vorlage und Test entfernt.
+
+### Quelltextverweis nach §13 AGPL, realer Hostname aus der Dokumentation entfernt
+
+Die Grundvorlagen `base.html` und `base_plain.html` tragen jetzt eine Fußzeile mit
+Lizenzangabe (AGPL-3.0) und der Repository-Adresse, wie es §13 AGPL für netzseitig
+genutzte Software verlangt — sichtbar auf jeder Seite, die eine der beiden Vorlagen
+nutzt, einschließlich der Anmeldeseite. Das Kiosk-Dashboard (eigene, bewusst schmale
+Vorlage) bleibt unverändert; ob es einen eigenen Hinweis braucht, ist offen. Außerdem:
+Der reale Rechnername des Altsystems (`vm130-nginx`) ist in `docs/roadmap.md`,
+`docs/inbetriebnahme-schattenbetrieb.md` und `docs/veroeffentlichung-durchsicht.md`
+durch eine neutrale Umschreibung ersetzt.
+
 ### Wirkungswächter erkennt deutsche Komposita ohne Trennzeichen
 
 `tests/test_user_visible_effect_texts.py` prüfte deutsche Komposita bisher nur, wenn sie

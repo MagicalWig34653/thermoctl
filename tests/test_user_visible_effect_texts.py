@@ -11,6 +11,8 @@ the truth of arbitrary physical claims. Reviewers remain responsible for those.
 import ast
 import json
 import re
+import shutil
+import subprocess
 from collections import Counter
 from pathlib import Path
 
@@ -122,12 +124,47 @@ def _user_visible_sources(root: Path = ROOT) -> list[Path]:
         if path.is_file()
     ]
     sources += [root / "README.md", root / "CHANGELOG.md"]
-    sources += [
+    sources += list((root / "docs").glob("*.md"))
+    return sorted(
         path
-        for path in (root / "docs").glob("*.md")
-        if path.name != "verlauf.md"
-    ]
-    return sorted(path for path in set(sources) if path.is_file())
+        for path in set(sources)
+        if path.is_file() and _is_tracked(path, root)
+    )
+
+
+def _tracked_files(root: Path) -> frozenset[Path] | None:
+    """Every path git tracks, or ``None`` when git cannot answer.
+
+    The guard reviews what the *repository* publishes, not what happens to lie in the
+    working tree. Since 2026-09-04 several documents live on the maintainer's disk but
+    deliberately outside version control (see `.gitignore`): they describe a foreign
+    real system and the build process. Their occurrences were removed from the registry
+    along with them, so scanning them by filesystem alone turns a green CI run into a
+    red local one -- the exact opposite of what this guard is for.
+    """
+    git = shutil.which("git")
+    if git is None:  # pragma: no cover -- ohne git laeuft dieses Repository ohnehin nicht
+        return None
+    try:
+        listing = subprocess.run(  # noqa: S603 -- fester Befehl, kein Fremdeingang
+            [git, "-C", str(root), "ls-files", "-z"],
+            capture_output=True,
+            check=True,
+        )
+    except (OSError, subprocess.CalledProcessError):
+        # No git, no working tree, or an export without history: fall back to reviewing
+        # everything rather than silently reviewing nothing.
+        return None
+    return frozenset(
+        root / name
+        for name in listing.stdout.decode("utf-8").split("\0")
+        if name
+    )
+
+
+def _is_tracked(path: Path, root: Path) -> bool:
+    tracked = _tracked_files(root)
+    return tracked is None or path in tracked
 
 
 def _registered_tool(function: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:

@@ -719,6 +719,83 @@ def test_rule6_inside_the_hysteresis_nothing_changes_in_either_direction() -> No
     assert aus_bleibt_aus.reason_code == an_bleibt_an.reason_code == REASON_CODE_UNCHANGED
 
 
+def test_rule6_unchanged_reason_names_the_true_gap_when_off_far_above_the_setpoint() -> None:
+    """Reproduces the found defect: heating off, far *above* setpoint+h.
+
+    `unveraendert` (stay off) is reached whenever the lower band edge was not crossed
+    -- not only inside the band. Fed with the motivating production case (frost
+    protection 16.0 °C, room at 27.40 °C, ± 0.10K) the old, single sentence claimed
+    "innerhalb der Hysterese ... ± 0.10K", which is false by 11.3K. The reason must
+    instead say the room is *above* the setpoint and that heating stays off because it
+    already was off -- and it must not claim the value sits inside the band.
+    """
+    e = decide(
+        _lage(
+            heating_now=False,
+            measured_c=Decimal("27.40"),
+            setpoint_c=Decimal("16.0"),
+            parameter=_parameter(hysteresis_k=Decimal("0.10")),
+        )
+    )
+    assert e.heating is False
+    assert e.reason_code == REASON_CODE_UNCHANGED
+    assert "27.40" in e.reason
+    assert "16.0" in e.reason
+    assert "über" in e.reason
+    assert "bereits aus" in e.reason
+    assert "innerhalb" not in e.reason
+
+
+def test_rule6_unchanged_reason_names_the_true_gap_when_on_far_below_the_setpoint() -> None:
+    """Mirror of the above: heating already on, far *below* setpoint-h.
+
+    `unveraendert` (keep heating) is reached whenever the upper band edge was not
+    crossed -- not only inside the band. The reason must say the room is *below* the
+    setpoint and that heating continues because it already was on, not that the value
+    sits inside the band.
+    """
+    e = decide(
+        _lage(
+            heating_now=True,
+            measured_c=Decimal("9.0"),
+            setpoint_c=Decimal("21.0"),
+            parameter=_parameter(hysteresis_k=Decimal("0.5")),
+        )
+    )
+    assert e.heating is True
+    assert e.reason_code == REASON_CODE_UNCHANGED
+    assert "9.0" in e.reason
+    assert "21.0" in e.reason
+    assert "unter" in e.reason
+    assert "läuft bereits" in e.reason
+    assert "innerhalb" not in e.reason
+
+
+def test_rule6_unchanged_reason_says_within_band_only_when_it_actually_is() -> None:
+    """Contrast case: genuinely inside the band, both directions."""
+    off = decide(
+        _lage(
+            heating_now=False,
+            measured_c=Decimal("20.8"),
+            setpoint_c=Decimal("21.0"),
+            parameter=_parameter(hysteresis_k=Decimal("0.5")),
+        )
+    )
+    on = decide(
+        _lage(
+            heating_now=True,
+            measured_c=Decimal("21.2"),
+            setpoint_c=Decimal("21.0"),
+            parameter=_parameter(hysteresis_k=Decimal("0.5")),
+        )
+    )
+    assert off.heating is False
+    assert on.heating is True
+    assert off.reason_code == on.reason_code == REASON_CODE_UNCHANGED
+    assert "innerhalb der Hysterese" in off.reason
+    assert "innerhalb der Hysterese" in on.reason
+
+
 @pytest.mark.parametrize(
     ("heating_now", "measured_c", "protection_active", "expected_heating", "expected_reason"),
     [

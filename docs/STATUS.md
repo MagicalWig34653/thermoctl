@@ -2,6 +2,66 @@
 
 Letzte Aktualisierung: 2026-09-04
 
+## Falsche Begründung bei `unveraendert` in `decide()` korrigiert
+
+Die beiden Zweige mit Ergebniscode `unveraendert` in `thermoctl/domain/control_loop.py`
+protokollierten unabhängig vom tatsächlichen Abstand denselben Satz „... innerhalb der
+Hysterese um Soll ... ± hK ... — Zustand bleibt.". Erreicht wurden sie aber nicht nur, wenn
+der Messwert wirklich im Band lag, sondern immer dann, wenn nur die *gegenüberliegende*
+Bandkante nicht überschritten war — an der tatsächlichen Kante konnte der Messwert beliebig
+weit entfernt sein. Gemessen an 18.527 echten `unveraendert`-Entscheidungen lag **keine
+einzige** tatsächlich im Band (≤ 0,5K); mittlerer Abstand 5,90K, grösster 11,40K
+(Extremfall: Ist 27.40 °C, Soll 16.0 °C ± 0.10K als „innerhalb" protokolliert). Die
+Entscheidung selbst war in jedem Fall richtig (korrekte Hysterese, nur an den Kanten
+umschalten) — falsch war ausschliesslich der protokollierte Text.
+
+Jeder der beiden Zweige ist jetzt in zwei Fälle aufgeteilt: echt im Band vs. jenseits der
+gegenüberliegenden Kante bei bereits laufendem bzw. bereits ausgeschaltetem Zustand. Kein
+`heating`-Ergebnis und kein `reason_code` hat sich geändert — belegt durch die unveränderte
+2.376-Kombinationen-Tabelle in `tests/test_control_loop_state_table.py` sowie drei neue
+Tests in `tests/test_control_loop.py`, die den gefundenen Fehlerfall nachbilden (weit über
+Soll bei Aus, weit unter Soll bei Heizen) und den echten Im-Band-Fall als Gegenprobe. Die
+18.527 alten, falschen Begründungssätze in der Produktivdatenbank bleiben unverändert
+stehen — sie sind Protokoll dessen, was war, siehe `CHANGELOG.md`.
+
+`thermoctl/domain/pi_control.py` hat einen eigenen Begründungsweg und trägt diesen Satz
+nicht — geprüft, keine Änderung nötig. Die übrigen Begründungstexte in `decide()`
+(Fensterzustand, Mindestschaltdauer, Sensorausfall, Ventilschutz, reguläres Heizen/Aus an
+den Kanten) wurden durchgesehen: Jeder benennt nur, was im jeweils erreichten Zweig
+zwingend gilt — kein weiterer Fund derselben Fehlerklasse.
+
+## Oberfläche von Umstiegs-Jargon bereinigt
+
+Eine Durchsicht vor der Veröffentlichung fand vier Stellen, die den Entwicklungsstand oder
+den Umstieg vom Altsystem des Projektinhabers durchscheinen liessen — für einen fremden
+Betreiber ohne Altsystem sinnlos bis verwirrend. Auf `Betrieb` (`control.html`) verweist der
+Trockenlauf-Absatz nicht mehr auf den Vergleich gegen das Altsystem, sondern allgemeingültig
+darauf, dass sich Entscheidungen beobachten lassen, bevor sie etwas schalten; die
+Checkliste vor dem Scharfschalten nennt den Zustand jetzt durchgehend „Trockenlauf" statt an
+einer Stelle „Schattenbetrieb", und der Punkt zum Altsystem als Rückfallebene ist entfallen.
+Der nie erreichbare Schnittstellen-Zustand `not_built` (Marke „Noch nicht gebaut") ist aus
+`thermoctl/domain/interfaces.py`, `interfaces.html` und `tests/test_interfaces.py` entfernt —
+`overview()` gab ihn für keine der sechs Gegenstellen je zurück, geprüft vor dem Entfernen.
+`docs/scharfschalten.md` bleibt unverändert: Sie ist ausdrücklich für den Projektinhaber und
+beschreibt genau den Umstieg, den sie im Titel trägt.
+
+## §13 AGPL: Quelltextverweis in der Fußzeile, realer Hostname aus der Dokumentation entfernt
+
+`thermoctl/web/templates/base.html` und `base_plain.html` tragen jetzt eine Fußzeile mit
+Lizenzangabe (AGPL-3.0) und der Repository-Adresse
+(`https://github.com/MagicalWig34653/thermoctl`) — sie erscheint auf jeder Seite, die
+über diese beiden Grundvorlagen läuft, auch der Anmeldeseite. Das Repository ist derzeit
+noch privat; der Verweis führt vorerst ins Leere, ist aber die vom Projektinhaber
+freigegebene, korrekte Adresse. **Offen:** Das eigenständige Kiosk-Dashboard
+(`thermoctl/web/templates/kiosk.html`) erbt keine der beiden Grundvorlagen — bewusst
+schmale Bedienfläche fürs Wandtablet. Ob und wie es den §13-Hinweis bekommen soll, ohne
+die Fläche zu überladen, ist nicht entschieden; hier nicht angefasst.
+
+Außerdem: Der reale Rechnername `vm130-nginx` des Altsystems ist an allen fünf
+Fundstellen in `docs/roadmap.md`, `docs/inbetriebnahme-schattenbetrieb.md` und
+`docs/veroeffentlichung-durchsicht.md` durch eine neutrale Umschreibung („der Host des
+Altsystems") ersetzt.
+
 **Diese Datei sagt, was jetzt gilt — sonst nichts.** Wie es dazu kam, welche Fehler wie
 gefunden wurden und warum etwas so entschieden ist, wird hier nicht mitgeführt. Der
 Grund: Diese Datei war einmal auf über tausend Zeilen gewachsen und enthielt gleichzeitig

@@ -198,7 +198,7 @@ Aktoren.
 - [~] 6 Datenübernahme — die Umwandlung des Stundenrasters steht als reine Funktion, die
       Übernahme selbst braucht die Altdatenbank
 - [x] 7 Scharfschalten hinter einem Schalter, jederzeit umkehrbar
-- [ ] 8 Ablösung: Heizungsteil aus `vm130-nginx`, die vier Skripte aus dem Alt-Repo —
+- [ ] 8 Ablösung: Heizungsteil aus dem Host des Altsystems, die vier Skripte aus dem Alt-Repo —
       läuft parallel als Rückfallebene, noch nicht abgeschaltet
 
 **`setting.control_armed` allein belegt keine körperliche Wirkung.** Die beim Start
@@ -211,7 +211,7 @@ Ein/Aus-Befehle die verdrahteten Aktoren.
   ist besonders sorgfältig zu prüfen.
 - Die Umwandlung des unregelmäßigen Stundenrasters des Altsystems in Schaltpunkte ist
   ungeklärt und braucht echte Daten.
-- **Bis der Cutover abgeschlossen ist, bleibt `vm130-nginx` unverändert die Rückfallebene.**
+- **Bis der Cutover abgeschlossen ist, bleibt der Host des Altsystems unverändert die Rückfallebene.**
 
 **Fertig, wenn** thermoctl über eine Heizperiode zuverlässig regelt und das Altsystem
 abgeschaltet ist.
@@ -300,4 +300,4 @@ gegen beide Datenbanken geprüft; was noch an der echten Anlage nachzuweisen ist
 - **Beide Datenbanken**, jede Schemaänderung als Migration.
 - **Domänenlogik gehört nicht in Adapter** — eine Regel, einmal implementiert.
 - **Debuggbarkeit ist ein Ziel**, kein Nebenprodukt.
-- **`vm130-nginx` bleibt bis zum abgeschlossenen Cutover unangetastet.**
+- **Der Host des Altsystems bleibt bis zum abgeschlossenen Cutover unangetastet.**

@@ -82,4 +82,4 @@ Altsystems stellen und die Abweichungen ansehen. Die lesende Grundlage dafür st
 was fehlt, ist die Ablage der Altwerte — und die sollte erst entworfen werden, wenn klar
 ist, wie lange und in welcher Auflösung verglichen wird.
 
-**Bis der Cutover abgeschlossen ist, bleibt `vm130-nginx` unverändert die Rückfallebene.**
+**Bis der Cutover abgeschlossen ist, bleibt der Host des Altsystems unverändert die Rückfallebene.**
