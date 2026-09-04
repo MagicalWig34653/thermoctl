@@ -2,6 +2,21 @@
 
 Letzte Aktualisierung: 2026-09-04
 
+## Oberfläche von Umstiegs-Jargon bereinigt
+
+Eine Durchsicht vor der Veröffentlichung fand vier Stellen, die den Entwicklungsstand oder
+den Umstieg vom Altsystem des Projektinhabers durchscheinen liessen — für einen fremden
+Betreiber ohne Altsystem sinnlos bis verwirrend. Auf `Betrieb` (`control.html`) verweist der
+Trockenlauf-Absatz nicht mehr auf den Vergleich gegen das Altsystem, sondern allgemeingültig
+darauf, dass sich Entscheidungen beobachten lassen, bevor sie etwas schalten; die
+Checkliste vor dem Scharfschalten nennt den Zustand jetzt durchgehend „Trockenlauf" statt an
+einer Stelle „Schattenbetrieb", und der Punkt zum Altsystem als Rückfallebene ist entfallen.
+Der nie erreichbare Schnittstellen-Zustand `not_built` (Marke „Noch nicht gebaut") ist aus
+`thermoctl/domain/interfaces.py`, `interfaces.html` und `tests/test_interfaces.py` entfernt —
+`overview()` gab ihn für keine der sechs Gegenstellen je zurück, geprüft vor dem Entfernen.
+`docs/scharfschalten.md` bleibt unverändert: Sie ist ausdrücklich für den Projektinhaber und
+beschreibt genau den Umstieg, den sie im Titel trägt.
+
 **Diese Datei sagt, was jetzt gilt — sonst nichts.** Wie es dazu kam, welche Fehler wie
 gefunden wurden und warum etwas so entschieden ist, wird hier nicht mitgeführt. Der
 Grund: Diese Datei war einmal auf über tausend Zeilen gewachsen und enthielt gleichzeitig
