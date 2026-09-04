@@ -48,7 +48,24 @@
      hx-target="#kiosk-body" hx-swap="outerHTML">
     <div class="kiosk-heading">
         <span class="tc-marker" style="font-size: 1.75rem">thermoctl</span>
-        <span class="kiosk-clock">{{ (now|localtime(timezone)).strftime("%H:%M") }}</span>
+        <div class="d-flex align-items-baseline gap-3">
+            {#
+            AGPL-3.0 §13 verlangt fuer netzseitig genutzte Software eine erreichbare
+            Moeglichkeit an den Quelltext zu kommen -- nicht, dass der Hinweis staendig
+            ins Auge faellt. Ein Wandtablett wird aus Distanz angesehen, nicht gelesen;
+            eine Fusszeile wie in base.html/base_plain.html wuerde hier dauerhaft
+            Anzeigeflaeche kosten, die das Raster fuer die Zonen braucht. Ein knapper
+            Verweis in der Kopfzeile ist erreichbar (Rauchtest deckt ihn ab), verbraucht
+            aber praktisch keinen Platz. `target="_blank"` haelt das Kiosk-Dokument im
+            Hintergrund geladen, statt es zu ersetzen -- ein Antippen auf dem Tablett
+            fuehrt sonst von der Anzeige weg, ohne einfachen Weg zurueck ausser einem
+            Neustart des Browsers. Fuehrt bewusst nach aussen: ein Kiosk-Token oeffnet
+            keine angemeldete Ansicht, darum bleibt dafuer nur der externe Verweis.
+            #}
+            <a class="kiosk-source-link t-quiet" href="https://github.com/MagicalWig34653/thermoctl"
+               target="_blank" rel="noopener">Quelltext (AGPL-3.0)</a>
+            <span class="kiosk-clock">{{ (now|localtime(timezone)).strftime("%H:%M") }}</span>
+        </div>
     </div>
 
     {% if not zones %}

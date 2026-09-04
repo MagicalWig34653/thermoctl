@@ -2,6 +2,16 @@
 
 Letzte Aktualisierung: 2026-09-04
 
+## Kiosk-Dashboard traegt jetzt den AGPL-Paragraf-13-Hinweis nach
+
+`kiosk.html` erbt weder `base.html` noch `base_plain.html` und hatte darum keinen der
+beiden dort eingefuehrten Fusszeilen-Hinweise auf Lizenz und Quelltext. Statt einer
+Fusszeile (Wandtablett wird angesehen, nicht gelesen -- die Flaeche gehoert dem
+Zonenraster) sitzt jetzt ein knapper Verweis "Quelltext (AGPL-3.0)" in der Kopfzeile
+neben der Uhr, `target="_blank" rel="noopener"`: erreichbar, ohne das Kiosk-Dokument im
+Tablett-Tab zu ersetzen. Kein Weg in die angemeldete Oberflaeche, keine zusaetzliche
+Bedienmoeglichkeit ueber das hinaus, was das Kiosk ohnehin kann.
+
 ## `env_nach_addon.py`: Datenbank in der `.env` schlaegt eine bereits im Add-on eingetragene nicht mehr blind
 
 Der Projektinhaber betreibt seine Anlage mit MariaDB, deren Zugangsdaten schon im
