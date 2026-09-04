@@ -254,6 +254,9 @@ Drei Entscheidungen darin, jede mit Grund:
 
 Das Präfix `thermoctl` ist einstellbar, damit zwei Instanzen an einem Broker möglich sind.
 
+Wer eine Zone in Homebridge als Thermostat einbinden will (Plugin `mqtt-thing`), findet
+die vollständige Konfiguration samt Wertzuordnung in [homebridge.md](homebridge.md).
+
 ## 3. Home-Assistant-Discovery
 
 Je Zone eine Nachricht auf `homeassistant/climate/thermoctl_zone_<id>/config`, die auf die
