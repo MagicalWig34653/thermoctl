@@ -26,7 +26,7 @@ def _issue_kiosk_token(admin_page: Page, zone_name: str) -> str:
     admin_page.goto("/kiosk-tokens")
     admin_page.get_by_label("Name").fill("Browsertest-Tablet")
     admin_page.get_by_text(zone_name, exact=False).click()
-    admin_page.get_by_label("Auch bedienen (Sollwert und Boost)").check()
+    admin_page.get_by_label("Auch bedienen (Sollwert, Boost und Übersteuerung aufheben)").check()
     admin_page.get_by_role("button", name="Ausstellen").click()
 
     entry = admin_page.locator("#new-kiosk-token")

@@ -90,7 +90,7 @@ class StalePage(Exception):
     """
 
     def __init__(self, *, recovery: bool) -> None:
-        super().__init__("Ungueltiges CSRF-Token")
+        super().__init__("Ungültiges CSRF-Token")
         self.recovery = recovery
 
 

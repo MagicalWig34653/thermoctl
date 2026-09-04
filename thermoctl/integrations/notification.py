@@ -174,7 +174,7 @@ _TEST_NOTICE = FaultNotice(
     key="test",
     severity="test",
     title="Testmeldung von thermoctl",
-    text="Dies ist eine Testmeldung. Keine Stoerung liegt vor.",
+    text="Dies ist eine Testmeldung. Keine Störung liegt vor.",
 )
 
 # How much of a failed webhook's own text ends up in the answer shown to the

@@ -85,8 +85,7 @@ Nachlässigkeit:
     },
     "restrictHeatingCoolingState": [0, 1, 3],
     "minTemperature": 10,
-    "maxTemperature": 30,
-    "temperatureDisplayUnitsValues": "CELSIUS"
+    "maxTemperature": 30
 }
 ```
 
@@ -117,6 +116,14 @@ Begründung brauchen:
 - **`minTemperature` / `maxTemperature`** unverändert bei 10/30 belassen — ein für Wohnräume
   sinnvoller Ausschnitt. thermoctl selbst akzeptiert −20 bis 35 °C (mqtt.md, Abschnitt 4);
   wer Frostschutzwerte in HomeKit sehen oder setzen will, weitet diesen Bereich entsprechend.
+- **`temperatureDisplayUnitsValues` entfällt**, anders als in der Altsystem-Konfiguration.
+  Die offizielle
+  [Accessories.md](https://github.com/arachnetech/homebridge-mqttthing/blob/master/docs/Accessories.md#thermostat)
+  beschreibt es als **Liste zweier Werte** (Celsius, Fahrenheit) — dort stand eine
+  einzelne Zeichenkette `"CELSIUS"`, was etwas anderes ist. Wirkung hatte es ohnehin
+  keine: Es gehört zu `get`/`setTemperatureDisplayUnits`, und diese Topics gibt es in
+  thermoctl nicht. Die Anzeigeeinheit richtet sich nach der Einstellung in der
+  Home-App.
 - **`mqttOptions.protocolVersion: 5`** unverändert aus der Altsystem-Konfiguration
   übernommen — betrifft die Verbindung zum Broker, nicht die Topics, und thermoctls eigener
   MQTT-Vertrag setzt keine bestimmte Protokollversion voraus.
@@ -222,3 +229,20 @@ Homebridge-Zugang mit derselben engen Zuschneidung entsteht pro Zone, die dort e
 erscheinen soll — mit `2`, `3`, … statt `1` in den Topic-Pfaden. Die allgemeine Regel steht
 in mqtt.md: getrennte Konten für getrennte Aufgaben, kein gemeinsamer Benutzer über
 Zwecke hinweg.
+
+## Womit diese Anleitung geprüft ist
+
+Die Topics und Betriebsart-Codes sind **gegen den Quelltext** geprüft, und zwei
+Wächtertests in `tests/test_docs_current.py` halten sie dort fest: Wer ein Topic
+umbenennt oder einen Betriebsart-Code ändert, ohne diese Datei nachzuziehen, bekommt
+einen roten Lauf.
+
+Die `mqtt-thing`-Seite selbst — Namen der Topic-Schlüssel, `restrictHeatingCoolingState`,
+die Form der `apply`-Funktionen mit `message` als Variable — ist gegen die offizielle
+Dokumentation des Plugins abgeglichen
+([Accessories.md](https://github.com/arachnetech/homebridge-mqttthing/blob/master/docs/Accessories.md#thermostat),
+[Configuration.md](https://github.com/arachnetech/homebridge-mqttthing/blob/master/docs/Configuration.md)).
+
+**Nicht geprüft ist der Lauf gegen ein echtes Homebridge.** Diese Konfiguration ist aus
+zwei Quellen abgeleitet, nicht aus einem Versuch. Wenn etwas nicht tut, ist der erste
+Blick wert: ob der Broker die Topics überhaupt an den Homebridge-Zugang ausliefert.

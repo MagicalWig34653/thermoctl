@@ -59,7 +59,7 @@ async def kiosk_csrf_protection(request: Request) -> None:
     **Accepts the token from a form field as well as from the header**, and that is
     the difference to the logged-in interface. There, every form goes out through
     hx-boost, which sets the header; here the buttons are plain HTML forms. They
-    posted without any header and were answered with "Ungueltiges CSRF-Token" -- the
+    posted without any header and were answered with "Ungültiges CSRF-Token" -- the
     dashboard displayed correctly, refreshed itself correctly, and neither of its two
     buttons did anything.
 
@@ -83,5 +83,5 @@ async def kiosk_csrf_protection(request: Request) -> None:
     settings = get_settings()
     if not check_csrf(submitted, cookie_value, settings.secret_key.get_secret_value()):
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="Ungueltiges CSRF-Token"
+            status_code=status.HTTP_403_FORBIDDEN, detail="Ungültiges CSRF-Token"
         )
