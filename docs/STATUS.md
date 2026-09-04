@@ -2,72 +2,59 @@
 
 Letzte Aktualisierung: 2026-09-04
 
-## Benachrichtigungen: Fundament fuer schaltbare Meldungsarten und Webhook-Zustellzustand (Auftrag 1 von 2)
+## Störungsmeldungen: drei Arten, einzeln abschaltbar, mit Testknopf
 
-Zwei Auftraege parallel: dieser das Fundament (Datenmodell, Domaenenlogik,
-Verdrahtung), der zweite -- ausdruecklich ohne Migration, Modell oder
-Domaenenlogik -- die Oberflaeche darauf (Schalter, Testknopf, Zustellanzeige).
+Bisher gingen Meldungen ungefragt hinaus, und ob der Webhook sie annahm, stand nur im
+Log. Drei Arten lassen sich jetzt anlagenweit einzeln abschalten — **Sensorstörung**
+samt Entwarnung, **Brücke oder Broker weg**, und neu **Schaltbefehl gescheitert**.
+Alle drei sind ab Werk an: Wer heute Meldungen bekommt, bekommt sie weiter.
 
-- `setting` traegt jetzt sechs neue Spalten, Migration `67e794059830` (voraus **und**
-  zurueck gegen SQLite und MariaDB geprueft): `notify_sensor_faults`,
-  `notify_bridge_faults`, `notify_command_failures` (`bool`, Vorgabe `True` --
-  wer heute Meldungen bekommt, bekommt sie unveraendert weiter) sowie
-  `notify_last_attempt_at`, `notify_last_ok`, `notify_last_error` fuer den
-  Zustellzustand des Webhooks.
-- `domain/fault_notice.py`: `FaultNotice` traegt jetzt ein Pflichtfeld `kind`
-  (`NOTICE_KIND_SENSOR_FAULT`, `NOTICE_KIND_BRIDGE_FAULT`,
-  `NOTICE_KIND_COMMAND_FAILURE` -- benannte Konstanten, keine losen Strings, damit
-  die kommende Oberflaeche dieselben Werte benutzt wie das Tor). Neue reine
-  Funktion `notice_enabled(kind, settings) -> bool` ist das Tor: eine Meldung wird
-  nur zugestellt, wenn ihre Art in `setting` aktiviert ist.
-- Neue Meldungsart „Schaltbefehl gescheitert" (`command_failure_notice`): meldet
-  nur den Uebergang in einen fehlschlagenden Schaltversuch und die Entwarnung,
-  nicht jeden Zyklus -- angeknuepft an dieselbe Unterscheidung, die
-  `services/publishing.py` fuer den Log-Eintrag pro Ausfallepisode schon kennt
-  (`PublicationState.command_failures`, neues Feld, unabhaengig vom bestehenden
-  `(payload, armed, outcome)`-Schluessel). Deckt auch den Fall einer nicht
-  verdrahteten Integration ab, nicht nur einen echten Sendefehler.
-- `integrations/notification.py::deliver(session_factory, settings, notice)`:
-  sendet wie das bisherige `send()` (Log + optionaler Webhook), schreibt danach
-  aber in einer **neuen, erst nach dem Netzaufruf geoeffneten** Transaktion
-  Zeitpunkt, Erfolg und eine kurze Fehlerbegruendung nach `setting` -- nie eine
-  Transaktion waehrend des Webhook-Aufrufs offen (eigener Test dafuer, nach
-  demselben Muster wie der Meross-Transaktionsgrenz-Test in
-  `test_shadow_run.py`). Von aussen aufrufbar fuer den Testknopf des zweiten
-  Auftrags.
-- `app.py` wendet das Tor genau vor der Webhook-Zustellung an (`_shadow_loop` und
-  `_process_mqtt_message`), **nicht** vor der Home-Assistant-Zustellung
-  (`send_fault_notice`) -- ein abgeschalteter Meldeweg darf Home Assistant nicht
-  mit abschalten, das hat einen eigenen Weg und ist bewusst nicht gekoppelt (siehe
-  `services/publishing.py`-Moduldocstring). Ohne vorhandene `setting`-Zeile (vor
-  Abschluss des Setups) faellt das Tor offen aus, statt Meldungen stillschweigend
-  zu verwerfen.
-- **Gegenlese-Fund, behoben:** Der Audit-Eintrag stand vor dem Tor, nicht dahinter
-  -- er behauptete `action="notification.sent"`, auch wenn die Meldungsart
-  abgeschaltet war und `deliver()` nie lief. Jetzt entscheidet die neue reine
-  Funktion `notification_audit_action(kind, settings)` in `domain/fault_notice.py`
-  den Aktionscode: `"notification.sent"` nur, wenn tatsaechlich zugestellt wird,
-  sonst `"notification.suppressed"` -- der Eintrag selbst bleibt in beiden Faellen
-  stehen (dass die Stoerung auftrat, gehoert ins Protokoll), nur die Aussage
-  stimmt jetzt. Die Auditseite braucht dafuer keine Anpassung: ihr Aktions-Filter
-  liest die vorkommenden Werte dynamisch aus der Tabelle. Scheitert eine
-  tatsaechlich zugestellte Meldung erst am Netz, bleibt es bei `"...sent"` -- das
-  Protokoll haelt fest, dass ein Zustellversuch losging, nicht ob er ankam; das
-  beantworten `notify_last_ok`/`notify_last_error`. Bei unterdrueckten Meldungen
-  bleiben `notify_last_attempt_at` und Geschwister unangetastet (eigene Tests
-  dafuer in allen drei betroffenen Pfaden: Bruecken-, Sensor- und
-  Schaltbefehl-Meldung).
-- REST- und MCP-Adapter unveraendert -- sie beruehren `FaultNotice` heute nicht.
+Die neue Art schliesst eine Lücke, die dieses Projekt schon einmal bezahlt hat: Ein
+gescheiterter Befehl landete ausschliesslich im Schaltprotokoll. An einer kalten Zone
+bedeutet das im Januar ein eingefrorenes Rohr. Gemeldet wird nur der **Übergang**, samt
+Entwarnung — die Unterscheidung dafür wird getrennt vom Log-Schlüssel geführt, damit
+sie auch greift, wenn sich Nutzlast oder Riegel gleichzeitig ändern.
 
-## Kiosk-Dashboard traegt jetzt den AGPL-Paragraf-13-Hinweis nach
+**Das Tor ist eine reine Funktion in der Domäne**, und die Meldungsart ist ein
+Pflichtfeld von `FaultNotice` — optional wäre eine Meldung ohne Art still daran
+vorbeigerutscht. Solange es keine `setting`-Zeile gibt, fällt es offen: Vor Abschluss
+der Einrichtung wird nichts unterdrückt, was niemand konfigurieren konnte.
+**Home Assistant bleibt entkoppelt**: Wer den Webhook stilllegt, verliert den
+Problemsensor dort nicht.
 
-`kiosk.html` erbt weder `base.html` noch `base_plain.html` und hatte darum keinen der
-beiden dort eingefuehrten Fusszeilen-Hinweise auf Lizenz und Quelltext. Statt einer
-Fusszeile (Wandtablett wird angesehen, nicht gelesen -- die Flaeche gehoert dem
-Zonenraster) sitzt jetzt ein knapper Verweis "Quelltext (AGPL-3.0)" in der Kopfzeile
-neben der Uhr, `target="_blank" rel="noopener"`: erreichbar, ohne das Kiosk-Dokument im
-Tablett-Tab zu ersetzen. Kein Weg in die angemeldete Oberflaeche, keine zusaetzliche
-Bedienmoeglichkeit ueber das hinaus, was das Kiosk ohnehin kann.
+**Der Testknopf** unter „Einstellungen" schickt eine gekennzeichnete Testmeldung über
+denselben Weg wie eine echte und zeigt Statuscode, Dauer und im Fehlerfall den Grund
+unmittelbar auf der Seite. Ohne hinterlegten Webhook wird er nicht angeboten; gegen
+wiederholtes Auslösen liegt ein Zeitabstand von zehn Sekunden davor. Daneben steht der
+**Zustellzustand** — wann zuletzt versucht, mit welchem Ergebnis, wobei „noch nie
+versucht" ein eigener Zustand ist und nicht wie ein Fehlschlag aussieht.
+
+Die Testmeldung trägt die Art `test` und geht bewusst **nicht** durch das Tor: Wer auf
+„Testen" drückt, will diese eine Meldung hinausschicken. `notice_enabled` wirft für
+diese Art weiterhin — landet eine Testmeldung je am Tor, ist das ein Fehler und soll
+auffallen.
+
+**Beim Gegenlesen gefunden und behoben:** Das Auditprotokoll schrieb
+`notification.sent` auch dann, wenn das Tor unterdrückt hatte. Wer später sucht, warum
+eine Störung niemanden erreichte, hätte dort „gesendet" gefunden. Es unterscheidet
+jetzt `sent` von `suppressed`. Scheitert die Zustellung am **Netz**, bleibt es bei
+`sent` — der Versuch ging los, und ob er ankam, beantwortet `notify_last_ok`.
+
+Sechs neue Spalten auf `setting`, Migration `67e794059830`, vorwärts und rückwärts
+gegen beide Datenbanken geprüft. Der Zustellzustand wird ausserhalb jeder
+Schreibtransaktion notiert; ein Test prüft die Eigenschaft selbst, nach dem Vorbild des
+Meross-Tests. Eine unterdrückte Meldung fasst ihn nicht an — es gab keinen Versuch.
+
+## Kiosk: der AGPL-§13-Hinweis, wie ein Wandtablett ihn verträgt
+
+`kiosk.html` erbt weder `base.html` noch `base_plain.html` und blieb beim
+Quelltextverweis aussen vor. Statt einer Fusszeile — ein Wandtablett wird aus Distanz
+angesehen, nicht gelesen, und die Fläche gehört dem Zonenraster — sitzt ein knapper
+Verweis „Quelltext (AGPL-3.0)" in der Kopfzeile neben der Uhr. `target="_blank"` hält
+die Anzeige geladen; ein Antippen führte sonst vom Kiosk weg, ohne einfachen Weg
+zurück ausser einem Neustart des Browsers. Der Verweis öffnet nichts, was das Kiosk
+nicht ohnehin kann — seine enge Bedienfläche ist eine Sicherheitseigenschaft und
+bleibt unberührt.
 
 ## `env_nach_addon.py`: Datenbank in der `.env` schlaegt eine bereits im Add-on eingetragene nicht mehr blind
 

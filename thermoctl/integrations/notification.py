@@ -3,7 +3,9 @@
 import asyncio
 import json
 import logging
-from urllib.error import HTTPError
+import time
+from dataclasses import dataclass
+from urllib.error import HTTPError, URLError
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 from sqlalchemy.orm import Session, sessionmaker
@@ -12,7 +14,7 @@ from thermoctl.config import Settings
 from thermoctl.db.base import utcnow
 from thermoctl.db.engine import session_scope
 from thermoctl.db.models.operations import Setting
-from thermoctl.domain.fault_notice import FaultNotice
+from thermoctl.domain.fault_notice import NOTICE_KIND_TEST, FaultNotice
 
 log = logging.getLogger(__name__)
 
@@ -55,7 +57,14 @@ class _NoRedirectHandler(HTTPRedirectHandler):
 _opener = build_opener(_NoRedirectHandler())
 
 
-def _send_webhook(settings: Settings, notice: FaultNotice) -> None:
+def _send_webhook(settings: Settings, notice: FaultNotice) -> int:
+    """Posts the notice and returns the webhook's HTTP status code.
+
+    Raises on any failure (a non-2xx status, a refused redirect, a timeout, an
+    unreachable host) -- callers decide for themselves whether that failure is
+    something to swallow (`send`, a real fault notice must never crash the caller)
+    or something to report back (`send_test`, that report is the whole point).
+    """
     data = json.dumps(
         {
             "schluessel": notice.key,
@@ -71,8 +80,8 @@ def _send_webhook(settings: Settings, notice: FaultNotice) -> None:
     request = Request(  # noqa: S310 -- address is operator configuration
         settings.notify_webhook or "", data=data, headers=headers, method="POST"
     )
-    with _opener.open(request, timeout=10):  # noqa: S310 -- URL was deliberately configured
-        pass
+    with _opener.open(request, timeout=10) as response:  # noqa: S310
+        return int(response.status)
 
 
 def _short_reason(exc: BaseException) -> str:
@@ -154,3 +163,102 @@ async def deliver(
             setting.notify_last_attempt_at = utcnow()
             setting.notify_last_ok = ok
             setting.notify_last_error = error
+
+
+# The notice a human explicitly asked for, not one control derived from a state
+# change. `severity="test"` keeps it out of `FaultNotice`'s two real categories
+# ("stoerung", "entwarnung") -- a receiving system that branches on `schwere`
+# should not mistake this for either.
+_TEST_NOTICE = FaultNotice(
+    kind=NOTICE_KIND_TEST,
+    key="test",
+    severity="test",
+    title="Testmeldung von thermoctl",
+    text="Dies ist eine Testmeldung. Keine Stoerung liegt vor.",
+)
+
+# How much of a failed webhook's own text ends up in the answer shown to the
+# operator. The far end is not a trusted source -- capped, so a webhook that
+# answers with megabytes of HTML cannot turn a settings page into a problem of
+# its own, and short enough that nothing worth hiding fits in it either.
+_ERROR_TEXT_LIMIT = 200
+
+
+@dataclass(frozen=True)
+class WebhookTestResult:
+    """What came back from a real send attempt against the configured webhook.
+
+    Meant for display, not for logs: `error` is already short and, where a
+    webhook token is configured, already has it removed -- see `_scrub`.
+    """
+
+    ok: bool
+    status_code: int | None
+    duration_seconds: float
+    error: str | None
+
+
+def _scrub(text: str, settings: Settings) -> str:
+    """Removes the webhook token from a piece of text, then shortens it.
+
+    The token only ever leaves as an `Authorization` header, never as part of a URL
+    or a message thermoctl itself builds -- this exists as a second line of defence
+    in case a future `urllib` exception ever echoes the request back verbatim.
+    """
+    if settings.notify_webhook_token is not None:
+        token = settings.notify_webhook_token.get_secret_value()
+        if token:
+            text = text.replace(token, "***")
+    return text[:_ERROR_TEXT_LIMIT]
+
+
+async def send_test(settings: Settings) -> WebhookTestResult:
+    """Sends a marked test notice over the exact path a real fault notice takes.
+
+    Not a second implementation of the webhook call: same request construction
+    (`_send_webhook`), same redirect refusal, same timeout. Only the notice content
+    differs, and what happens with the outcome -- `send` logs and swallows it,
+    this reports it back so a typo in the address shows up immediately instead of
+    only the next time a sensor actually fails.
+
+    Callers are expected to have checked `settings.notify_webhook is not None`
+    already (the interface hides or explains the button otherwise); called
+    without one configured, this reports that plainly instead of raising.
+    """
+    if settings.notify_webhook is None:
+        return WebhookTestResult(
+            ok=False,
+            status_code=None,
+            duration_seconds=0.0,
+            error="Kein Webhook hinterlegt.",
+        )
+    start = time.monotonic()
+    try:
+        status_code = await asyncio.to_thread(_send_webhook, settings, _TEST_NOTICE)
+    except HTTPError as exc:
+        return WebhookTestResult(
+            ok=False,
+            status_code=exc.code,
+            duration_seconds=time.monotonic() - start,
+            error=f"Die Gegenstelle antwortete mit Status {exc.code}.",
+        )
+    except URLError as exc:
+        return WebhookTestResult(
+            ok=False,
+            status_code=None,
+            duration_seconds=time.monotonic() - start,
+            error=_scrub(str(exc.reason), settings),
+        )
+    except Exception as exc:  # noqa: BLE001 -- an unfamiliar failure still needs an answer
+        return WebhookTestResult(
+            ok=False,
+            status_code=None,
+            duration_seconds=time.monotonic() - start,
+            error=_scrub(str(exc), settings),
+        )
+    return WebhookTestResult(
+        ok=True,
+        status_code=status_code,
+        duration_seconds=time.monotonic() - start,
+        error=None,
+    )

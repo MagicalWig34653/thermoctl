@@ -14,6 +14,15 @@ NOTICE_KIND_SENSOR_FAULT = "sensor_fault"
 NOTICE_KIND_BRIDGE_FAULT = "bridge_fault"
 NOTICE_KIND_COMMAND_FAILURE = "command_failure"
 
+#: Die Meldung, die ein Mensch ausdruecklich ausgeloest hat, nicht eine, die die
+#: Regelung aus einem Zustandswechsel abgeleitet hat. Sie geht bewusst **nicht**
+#: durch `notice_enabled`: Wer auf "Testen" drueckt, will genau diese eine Meldung
+#: hinausschicken -- ein Schalter, der sie unterdrueckt, wuerde die Frage
+#: beantworten, ob der Schalter steht, statt der, ob der Webhook erreichbar ist.
+#: `notice_enabled` wirft fuer diese Art darum absichtlich weiterhin -- landet eine
+#: Testmeldung je am Tor, ist das ein Fehler und soll auffallen, nicht durchrutschen.
+NOTICE_KIND_TEST = "test"
+
 
 @dataclass(frozen=True)
 class FaultNotice:
