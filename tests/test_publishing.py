@@ -24,7 +24,7 @@ from tests.helpers import (
 from thermoctl.db.models.lookup import CommandOutcome
 from thermoctl.db.models.state import DeviceCommand
 from thermoctl.domain.control import arm
-from thermoctl.domain.fault_notice import FaultNotice
+from thermoctl.domain.fault_notice import NOTICE_KIND_SENSOR_FAULT, FaultNotice
 from thermoctl.services.publishing import PublicationState, cycle, send_fault_notice
 
 NOW = datetime(2026, 8, 31, 7, 0)
@@ -120,12 +120,14 @@ async def test_fault_and_all_clear_reach_home_assistant_even_in_dry_run() -> Non
         "stoerung",
         "Sensorstörung in Flur",
         "Die Zone regelt gegen 16.0 °C.",
+        NOTICE_KIND_SENSOR_FAULT,
     )
     all_clear = FaultNotice(
         "sensor:7",
         "entwarnung",
         "Sensor in Flur wieder in Ordnung",
         "Die Zone regelt wieder normal.",
+        NOTICE_KIND_SENSOR_FAULT,
     )
 
     await send_fault_notice(client, fault, "thermoctl")
@@ -159,7 +161,7 @@ async def test_a_home_assistant_notice_failure_does_not_escape() -> None:
 
     await send_fault_notice(
         BrokenPublisher(),
-        FaultNotice("sensor:7", "stoerung", "Sensorstörung", "Text"),
+        FaultNotice("sensor:7", "stoerung", "Sensorstörung", "Text", NOTICE_KIND_SENSOR_FAULT),
         "thermoctl",
     )
 

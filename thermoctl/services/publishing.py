@@ -26,6 +26,14 @@ swallowed.
 **Only what no longer exists gets deregistered.** A deleted zone gets the empty payload
 on each of its config topics; otherwise a thermostat that belongs to nobody anymore
 would stay behind in Home Assistant.
+
+**`send_fault_notice` below is deliberately not gated by `domain.fault_notice.
+notice_enabled`.** That switch governs the generic delivery path (log and webhook,
+`integrations/notification.py`); Home Assistant is a separate integration with its
+own visibility into the plant regardless of whether the operator also wants a
+webhook call for the same event, and turning the webhook off must not blind Home
+Assistant as a side effect. The gate is applied once, by the caller
+(`app.py::_shadow_loop`), only in front of the webhook path.
 """
 
 import json
@@ -38,14 +46,20 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from thermoctl import audit
 from thermoctl.config import get_settings
 from thermoctl.db.models.device import ControllerChannel, Device
 from thermoctl.db.models.lookup import ChannelKind, DeviceCapability, SensorStatus
 from thermoctl.db.models.measurement import Measurement
+from thermoctl.db.models.operations import Setting
 from thermoctl.db.models.state import ShadowDecision, ZoneState
 from thermoctl.db.models.zone import SetpointMode, Zone, ZoneSetpoint
 from thermoctl.domain.controller_channels import may_be_written
-from thermoctl.domain.fault_notice import FaultNotice
+from thermoctl.domain.fault_notice import (
+    FaultNotice,
+    command_failure_notice,
+    notification_audit_action,
+)
 from thermoctl.domain.schedule import end_of_next_switch, resolved_setpoint
 from thermoctl.domain.self_regulating import SETPOINT_PROPERTY, valve_commands
 from thermoctl.domain.switch_commands import switch_commands, thermostat_commands
@@ -126,6 +140,60 @@ class PublicationState:
     # Per ordinary (non-self-regulating) actuator, the (heating, armed, outcome)
     # last **logged**. Same reasoning as `valve_commands` above.
     switch_commands: dict[int, tuple[bool, bool, str]] = field(default_factory=dict)
+    # Per device, whether its last *attempted* switching command (valve or
+    # ordinary actuator, any command kind) failed -- independent of `valve_commands`
+    # and `switch_commands` above, which are keyed on the full `(payload, armed,
+    # outcome)` tuple and therefore reset their own dedup whenever the setpoint or
+    # the armed flag changes. A "Schaltbefehl gescheitert" notice must fire on the
+    # transition itself even when those change at the same time, so it is tracked
+    # here on its own, by `_note_command_outcome` below. Absent means "no attempt
+    # made yet in this process" -- the same "not known to be failing" starting
+    # point `domain.fault_notice.command_failure_notice` already treats `None` as.
+    command_failures: dict[int, bool] = field(default_factory=dict)
+
+
+def _note_command_outcome(
+    state: PublicationState,
+    notices: list[FaultNotice],
+    session: Session,
+    device: Device,
+    outcome: str,
+    setting_row: Setting | None,
+) -> None:
+    """Turns one switching attempt's outcome into a "Schaltbefehl gescheitert"
+    notice, on the transition only -- called at every point in this module that
+    just attempted (or deliberately withheld) a command towards `device`.
+
+    `SUPPRESSED` (dry run, or an integration this version cannot switch through at
+    all) leaves `state.command_failures` untouched: nothing was actually attempted,
+    so nothing was learned about whether the device is currently reachable, and a
+    disarmed plant must not silently clear -- or raise -- an alert about hardware it
+    never touched.
+
+    `setting_row` decides the audit action via `notification_audit_action` --
+    "sent" only when the notice kind is actually switched on, "suppressed"
+    otherwise. The audit entry itself is still written either way: that the
+    command failed belongs in the log regardless of whether anyone was told.
+    """
+    if outcome == SUPPRESSED:
+        return
+    before_failed = state.command_failures.get(device.id)
+    after_failed = outcome == FAILED
+    notice = command_failure_notice(
+        f"schaltbefehl:{device.id}", device.display_name, before_failed, after_failed
+    )
+    state.command_failures[device.id] = after_failed
+    if notice is not None:
+        audit.record(
+            session,
+            source="system",
+            action=notification_audit_action(notice.kind, setting_row),
+            object_type="fault",
+            object_id=notice.key,
+            summary=notice.title,
+            detail=notice.text,
+        )
+        notices.append(notice)
 
 
 def _as_text(value: object) -> str:
@@ -211,8 +279,16 @@ async def cycle(
     meross_transport: MerossCommandTransport | None = None,
     meross_session_cache: MerossSessionCache | None = None,
     meross_switching_allowed: bool = False,
+    notices: list[FaultNotice] | None = None,
 ) -> int:
     """One publication cycle. Returns the number of messages sent.
+
+    `notices` collects any "Schaltbefehl gescheitert" transition raised this
+    cycle -- appended to in place, the same object the caller passed in, so the
+    return type stays `int` for every existing caller that does not care.
+    `app.py::_shadow_loop` passes its own list and dispatches what lands in it
+    after this whole cycle's `session_scope` has closed, exactly like the sensor
+    and bridge notices it already collects the same way.
 
     `meross_transport` is signed in (or not) before this function is ever called --
     see `app.py`'s `_shadow_loop` and `services/meross_session.py`. Passing `None`
@@ -234,6 +310,12 @@ async def cycle(
     armed = switching_allowed(session)
     zones = list(session.scalars(select(Zone).order_by(Zone.id)))
     sent_count = 0
+    notice_sink: list[FaultNotice] = [] if notices is None else notices
+    # Fetched once per cycle, not once per notice: the audit action
+    # (`notification_audit_action`) needs to know whether the notice kind is
+    # switched on at the moment the fault is recorded, and `setting` does not
+    # change mid-cycle.
+    setting_row = session.get(Setting, 1)
 
     # Availability first: it's the statement "whatever comes next is current".
     _finish_database_work(session)
@@ -265,7 +347,15 @@ async def cycle(
     sent_count += await _send_controller_channels(session, client, state, get_settings().mqtt_base_topic, now)
     for zone in zones:
         sent_count += await _send_self_regulating_valves(
-            session, client, state, get_settings().mqtt_base_topic, zone, now, source
+            session,
+            client,
+            state,
+            get_settings().mqtt_base_topic,
+            zone,
+            now,
+            source,
+            notice_sink,
+            setting_row,
         )
     for zone in zones:
         sent_count += await _send_actuator_switches(
@@ -279,6 +369,8 @@ async def cycle(
             meross_transport,
             meross_session_cache,
             meross_switching_allowed,
+            notice_sink,
+            setting_row,
         )
     return sent_count
 
@@ -291,6 +383,8 @@ async def _send_self_regulating_valves(
     zone: Zone,
     now: datetime,
     source: str,
+    notices: list[FaultNotice],
+    setting_row: Setting | None,
 ) -> int:
     """Tells every self-regulating valve of this zone what to aim for.
 
@@ -361,6 +455,8 @@ async def _send_self_regulating_valves(
                 if executed
                 else (FAILED, "MQTT-Client hat die Veroeffentlichung abgewiesen")
             )
+
+        _note_command_outcome(state, notices, session, command.device, outcome, setting_row)
 
         new_entry = (payload, armed, outcome)
         if new_entry == last_entry:
@@ -502,6 +598,8 @@ async def _send_actuator_switches(
     meross_transport: MerossCommandTransport | None,
     meross_session_cache: MerossSessionCache | None,
     meross_switching_allowed: bool,
+    notices: list[FaultNotice],
+    setting_row: Setting | None,
 ) -> int:
     """Turns every ordinary (non-self-regulating) actuator of a zone on or off.
 
@@ -563,6 +661,7 @@ async def _send_actuator_switches(
 
         if command.integration_code not in _WIRED_INTEGRATIONS:
             outcome = SUPPRESSED if not armed else FAILED
+            _note_command_outcome(state, notices, session, device, outcome, setting_row)
             new_entry = (heating, armed, outcome)
             if new_entry == last_entry:
                 continue
@@ -629,6 +728,7 @@ async def _send_actuator_switches(
             # did not work -- the cached connection might be the reason, so the next
             # cycle signs in again instead of trusting it for the rest of its TTL.
             invalidate_meross_session(meross_session_cache)
+        _note_command_outcome(state, notices, session, device, outcome, setting_row)
         new_entry = (heating, armed, outcome)
         if new_entry == last_entry:
             # Same outcome already on record for this decision -- the attempt above
@@ -669,6 +769,7 @@ async def _send_actuator_switches(
             # future integration cannot end up silently unswitched the way the
             # blocker this replaces once did.
             outcome = SUPPRESSED if not armed else FAILED
+            _note_command_outcome(state, notices, session, device, outcome, setting_row)
             new_entry = (heating, armed, outcome)
             if new_entry == last_entry:
                 continue
@@ -726,6 +827,7 @@ async def _send_actuator_switches(
         _finish_database_work(session)
         result = await actuator.switching(heating)
         outcome = _outcome_of(result)
+        _note_command_outcome(state, notices, session, device, outcome, setting_row)
         new_entry = (heating, armed, outcome)
         if new_entry == last_entry:
             continue

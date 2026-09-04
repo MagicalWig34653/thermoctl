@@ -26,9 +26,11 @@ from tests.helpers import (
 )
 from thermoctl.db.models.device import Device, DeviceCapabilityLink, DeviceProperty, ZoneDevice
 from thermoctl.db.models.lookup import CommandOutcome, DeviceCapability
+from thermoctl.db.models.operations import AuditEvent
 from thermoctl.db.models.state import DeviceCommand, ShadowDecision
 from thermoctl.db.models.zone import Zone
 from thermoctl.domain.control import arm
+from thermoctl.domain.fault_notice import NOTICE_KIND_COMMAND_FAILURE, FaultNotice
 from thermoctl.domain.switch_commands import (
     SwitchCommand,
     ThermostatCommand,
@@ -460,6 +462,73 @@ async def test_a_failed_switch_is_retried_every_cycle_but_logged_only_once(
 
 
 @pytest.mark.anyio
+async def test_a_failed_switch_raises_exactly_one_command_failure_notice_and_one_all_clear(
+    session: Session,
+) -> None:
+    """The counterpart to the test above, for the "Schaltbefehl gescheitert" notice
+    rather than the command log: three cycles with the same failing device produce
+    one notice, not three -- and recovery produces exactly one all-clear."""
+    create_settings(session)
+    source(session, "system")
+    create_all_command_outcomes(session)
+    zone, _device = _actuator_zone(session, "meldungswiederholzone")
+    _decision(session, zone, heating=True)
+    arm(session, True, reason="vier Tage verglichen", user_id=None)
+    session.flush()
+
+    failing_client = FailingClient()
+    state = PublicationState()
+    notices: list[FaultNotice] = []
+    await cycle(session, failing_client, state, "thermoctl", NOW, notices=notices)
+    await cycle(session, failing_client, state, "thermoctl", NOW, notices=notices)
+    await cycle(session, failing_client, state, "thermoctl", NOW, notices=notices)
+
+    assert len(notices) == 1
+    fault = notices[0]
+    assert fault.severity == "stoerung"
+    assert fault.kind == NOTICE_KIND_COMMAND_FAILURE
+
+    recovering_client = Mitschrift()
+    await cycle(session, recovering_client, state, "thermoctl", NOW, notices=notices)
+
+    assert len(notices) == 2
+    assert notices[1].severity == "entwarnung"
+    assert notices[1].kind == NOTICE_KIND_COMMAND_FAILURE
+
+
+@pytest.mark.anyio
+async def test_a_switched_off_command_failure_is_audited_as_suppressed(
+    session: Session,
+) -> None:
+    """Cross-review finding, for the command-failure path this module owns: the
+    audit entry `_note_command_outcome` writes must not claim
+    `action="notification.sent"` when `notify_command_failures` is off -- nothing
+    was sent, only recorded. `notify_last_*` must stay untouched: `deliver()` is
+    never invoked for a suppressed notice (that gate lives in `app.py`, one layer
+    up from this module), so there was no delivery attempt to report on."""
+    setting_row = create_settings(session)
+    setting_row.notify_command_failures = False
+    source(session, "system")
+    create_all_command_outcomes(session)
+    zone, _device = _actuator_zone(session, "meldungabgeschaltetzone")
+    _decision(session, zone, heating=True)
+    arm(session, True, reason="vier Tage verglichen", user_id=None)
+    session.flush()
+
+    notices: list[FaultNotice] = []
+    await cycle(session, FailingClient(), PublicationState(), "thermoctl", NOW, notices=notices)
+
+    assert len(notices) == 1
+    entry = (
+        session.query(AuditEvent).filter(AuditEvent.object_type == "fault").one()
+    )
+    assert entry.action == "notification.suppressed"
+    assert setting_row.notify_last_attempt_at is None
+    assert setting_row.notify_last_ok is None
+    assert setting_row.notify_last_error is None
+
+
+@pytest.mark.anyio
 async def test_no_decision_yet_sends_nothing(session: Session) -> None:
     """A zone the control loop has never produced a decision for has nothing to
     act on -- inventing a state would be a decision this wiring has no business
@@ -556,6 +625,32 @@ async def test_a_non_wired_switch_integration_is_logged_only_once_across_cycles(
     await cycle(session, Mitschrift(), state, "thermoctl", NOW)
 
     assert len(_command_log(session)) == 1
+
+
+@pytest.mark.anyio
+async def test_a_non_wired_switch_integration_also_raises_a_command_failure_notice(
+    session: Session,
+) -> None:
+    """A misconfigured actuator (an integration this version cannot switch
+    through at all) is just as much a "Schaltbefehl gescheitert" as a broken
+    broker connection -- both end up `failed` in the command log, and both are
+    worth an operator's attention. One notice across two cycles, same as above."""
+    create_settings(session)
+    source(session, "system")
+    create_all_command_outcomes(session)
+    zone, _device = _actuator_zone(session, "meldunganbindungzone", integration_code="hue")
+    _decision(session, zone, heating=True)
+    arm(session, True, reason="vier Tage verglichen", user_id=None)
+    session.flush()
+
+    state = PublicationState()
+    notices: list[FaultNotice] = []
+    await cycle(session, Mitschrift(), state, "thermoctl", NOW, notices=notices)
+    await cycle(session, Mitschrift(), state, "thermoctl", NOW, notices=notices)
+
+    assert len(notices) == 1
+    assert notices[0].severity == "stoerung"
+    assert notices[0].kind == NOTICE_KIND_COMMAND_FAILURE
 
 
 @pytest.mark.anyio

@@ -170,18 +170,12 @@ def _defaults_page(
             "solar_forecast_enabled": bool(solar_enabled),
             "errors": {errors.field: errors.notice} if errors else {},
             "may_edit": has_permission(principal, "setting.manage"),
-            # `getattr(row, ..., default)`, not a plain attribute read: these six
-            # columns are added by a task running in parallel (migration, model,
-            # the domain gate that checks them before sending a real notice) and do
-            # not exist in every worktree yet. Falling back keeps this page working
-            # meanwhile -- once the columns exist, `getattr` returns exactly what a
-            # direct read would have. See STATUS.md.
-            "notify_sensor_faults": getattr(row, "notify_sensor_faults", True),
-            "notify_bridge_faults": getattr(row, "notify_bridge_faults", True),
-            "notify_command_failures": getattr(row, "notify_command_failures", True),
-            "notify_last_attempt_at": getattr(row, "notify_last_attempt_at", None),
-            "notify_last_ok": getattr(row, "notify_last_ok", None),
-            "notify_last_error": getattr(row, "notify_last_error", None),
+            "notify_sensor_faults": row.notify_sensor_faults,
+            "notify_bridge_faults": row.notify_bridge_faults,
+            "notify_command_failures": row.notify_command_failures,
+            "notify_last_attempt_at": row.notify_last_attempt_at,
+            "notify_last_ok": row.notify_last_ok,
+            "notify_last_error": row.notify_last_error,
             "webhook_configured": get_settings().notify_webhook is not None,
             "test_result": test_result,
             "test_notice": test_notice,
@@ -283,17 +277,9 @@ async def save_notification_preferences(
     row = settings(session)
     # A checkbox that isn't ticked sends nothing at all -- presence, not the value,
     # is what counts. Same reasoning as `solar_forecast_enabled` above.
-    #
-    # `setattr`, not a direct attribute write: these three columns come from the
-    # parallel task described next to `_defaults_page` above and are not on
-    # `Setting` in every worktree yet. `setattr` writes them the same way a direct
-    # assignment would once they exist, without mypy rejecting a column it cannot
-    # see here. See STATUS.md.
-    setattr(row, "notify_sensor_faults", form.get("notify_sensor_faults") is not None)  # noqa: B010
-    setattr(row, "notify_bridge_faults", form.get("notify_bridge_faults") is not None)  # noqa: B010
-    setattr(  # noqa: B010
-        row, "notify_command_failures", form.get("notify_command_failures") is not None
-    )
+    row.notify_sensor_faults = form.get("notify_sensor_faults") is not None
+    row.notify_bridge_faults = form.get("notify_bridge_faults") is not None
+    row.notify_command_failures = form.get("notify_command_failures") is not None
     audit.record(
         session,
         source="web",
@@ -341,16 +327,16 @@ async def send_test_notification(
     if env_settings.notify_webhook is None:
         notice = "Ohne hinterlegten Webhook gibt es nichts zu testen."
     else:
-        last_attempt = getattr(row, "notify_last_attempt_at", None)
+        last_attempt = row.notify_last_attempt_at
         now = utcnow()
         if last_attempt is not None and now - last_attempt < _TEST_COOLDOWN:
             notice = "Bitte kurz warten -- der letzte Versuch war gerade eben."
         else:
             result = await notification.send_test(env_settings)
             # `setattr` for the same reason as in `save_notification_preferences` above.
-            setattr(row, "notify_last_attempt_at", now)  # noqa: B010
-            setattr(row, "notify_last_ok", result.ok)  # noqa: B010
-            setattr(row, "notify_last_error", None if result.ok else result.error)  # noqa: B010
+            row.notify_last_attempt_at = now
+            row.notify_last_ok = result.ok
+            row.notify_last_error = None if result.ok else result.error
     return _defaults_page(request, session, principal, test_result=result, test_notice=notice)
 
 

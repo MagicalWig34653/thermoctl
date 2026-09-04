@@ -13,14 +13,23 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ### Hinzugefügt
 
-- Oberfläche für Störungsmeldungen unter „Einstellungen": drei anlagenweite Schalter
-  (Sensorstörung samt Entwarnung, Brücke oder Broker weg, Schaltbefehl gescheitert)
-  sowie ein Testknopf, der eine als Test gekennzeichnete Meldung über denselben Weg
-  wie eine echte Meldung an den hinterlegten Webhook schickt und Statuscode, Dauer
-  und im Fehlerfall den Grund unmittelbar auf der Seite zeigt. Zuletzt-Versuch und
-  Ergebnis stehen daneben, „Noch nie versucht" als eigener, nicht als Fehler
-  dargestellter Zustand. Voraussetzung: die drei Schalter- und drei Zustandsspalten
-  auf `setting`, die eine parallele Aufgabe nachzieht — siehe STATUS.md.
+- **Störungsmeldungen lassen sich einzeln abschalten**, anlagenweit unter
+  „Einstellungen": Sensorstörung samt Entwarnung, Brücke oder Broker weg, und neu
+  **Schaltbefehl gescheitert**. Alle drei sind ab Werk an — wer heute Meldungen
+  bekommt, bekommt sie weiter. Die neue Art meldet nur den *Übergang* in einen
+  fehlschlagenden Schaltversuch und dessen Entwarnung, nicht jeden Zyklus; bisher
+  stand ein gescheiterter Befehl ausschliesslich im Schaltprotokoll.
+- **Ein Testknopf für den Webhook.** Er schickt eine als Test gekennzeichnete Meldung
+  über denselben Weg wie eine echte und zeigt Statuscode, Dauer und im Fehlerfall den
+  Grund unmittelbar auf der Seite — ein Tippfehler in der Adresse fällt damit sofort
+  auf, statt erst beim nächsten echten Sensorausfall. Ohne hinterlegten Webhook wird
+  der Knopf nicht angeboten.
+- **Der Zustellzustand ist sichtbar**: wann zuletzt versucht und mit welchem Ergebnis.
+  „Noch nie versucht" ist ein eigener Zustand und sieht nicht wie ein Fehlschlag aus.
+  Dazu sechs neue Spalten auf `setting` und Migration `67e794059830`.
+- Das **Kiosk-Dashboard** trägt jetzt ebenfalls den AGPL-§13-Quelltextverweis — knapp
+  in der Kopfzeile statt als Fusszeile, und in einem neuen Tab, damit ein Antippen das
+  Wandtablett nicht von der Anzeige wegführt.
 - Neues Werkzeug `tools/env_nach_addon.py`: liest eine bestehende `.env` und erzeugt
   daraus die YAML-Konfiguration für das Home-Assistant-Add-on — für den Umstieg von
   `docker compose` auf das Add-on, ohne jede Einstellung von Hand zu übertragen. Siehe

@@ -1284,7 +1284,9 @@ async def test_the_bridge_state_reports_only_the_change(tmp_path: Path) -> None:
 
     sent_count: list[object] = []
 
-    async def mitschreiben(_settings: object, notice: object) -> None:
+    async def mitschreiben(
+        _session_factory: object, _settings: object, notice: object
+    ) -> None:
         sent_count.append(notice)
 
     fake_app = types.SimpleNamespace(
@@ -1296,7 +1298,7 @@ async def test_the_bridge_state_reports_only_the_change(tmp_path: Path) -> None:
     )
 
     with pytest.MonkeyPatch.context() as mp:
-        mp.setattr(app_modul, "send", mitschreiben)
+        mp.setattr(app_modul, "deliver", mitschreiben)
         # Two 'offline' calls — only the first one is a change.
         for _ in range(2):
             await app_modul._process_mqtt_message(
@@ -1318,6 +1320,129 @@ async def test_the_bridge_state_reports_only_the_change(tmp_path: Path) -> None:
     with fabrik() as http_session:
         entries = http_session.query(AuditEvent).count()
     assert entries == 2, "Every notice sent gets an audit entry."
+
+    engine.dispose()
+
+
+@pytest.mark.anyio
+async def test_a_switched_off_notice_kind_is_not_delivered(tmp_path: Path) -> None:
+    """The gate (`domain.fault_notice.notice_enabled`), applied here in
+    `_process_mqtt_message`: with `notify_bridge_faults` off, the bridge notice is
+    still audited (the record of what happened stays complete) but never reaches
+    `deliver()` -- the generic log-and-webhook path this switch actually governs.
+
+    Cross-review finding: the audit entry used to claim `action="notification.sent"`
+    even here, which is not true -- nothing was sent. It must say
+    `"notification.suppressed"` instead, and `deliver()` never having run means
+    `notify_last_attempt_at` and friends must stay untouched: there was no attempt,
+    and the interface must not show a delivery state that never happened.
+    """
+    engine, fabrik = _own_database(tmp_path, "bridge_notice_aus")
+    with fabrik() as http_session:
+        integration(http_session, "zigbee2mqtt")
+        source(http_session, "system")
+        settings_row = create_settings(http_session)
+        settings_row.notify_bridge_faults = False
+        http_session.commit()
+
+    delivered: list[object] = []
+
+    async def mitschreiben(
+        _session_factory: object, _settings: object, notice: object
+    ) -> None:
+        delivered.append(notice)
+
+    fake_app = types.SimpleNamespace(
+        state=types.SimpleNamespace(session_factory=fabrik, bridge_reachable=True)
+    )
+    settings = Settings(
+        _env_file=None, database_url="sqlite://", secret_key="q" * 32,
+        mqtt_base_topic="testbasis",
+    )
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(app_modul, "deliver", mitschreiben)
+        await app_modul._process_mqtt_message(
+            fake_app,  # type: ignore[arg-type]
+            settings, "testbasis/bridge/state", b'{"state": "offline"}',
+        )
+
+    assert delivered == []
+    with fabrik() as http_session:
+        entry = http_session.query(AuditEvent).one()
+        assert entry.action == "notification.suppressed", (
+            "The audit trail stays complete even when delivery is switched off, "
+            "but it must not claim a notice was sent when it was not."
+        )
+        setting_row = http_session.get(Setting, 1)
+        assert setting_row is not None
+        assert setting_row.notify_last_attempt_at is None
+        assert setting_row.notify_last_ok is None
+        assert setting_row.notify_last_error is None
+
+    engine.dispose()
+
+
+@pytest.mark.anyio
+async def test_a_delivery_attempt_that_fails_over_the_network_is_still_audited_as_sent(
+    tmp_path: Path,
+) -> None:
+    """The other half of the fix above, and per the reviewer's request the more
+    interesting of the two: the notice kind is switched *on*, so `deliver()` is
+    actually invoked -- but the webhook itself is unreachable.
+
+    The audit entry still says `"notification.sent"` here, deliberately. The audit
+    trail records that this service dispatched a notification attempt, which is
+    true regardless of what happens on the wire afterwards; whether that attempt
+    actually reached its destination is a separate question with its own answer in
+    `setting.notify_last_ok`/`notify_last_error` (`integrations/notification.py::
+    deliver`), not something the audit trail re-derives from network timing it
+    cannot observe at the moment the fault itself is recorded. Renaming the action
+    to something like "attempted" for every dispatch would make the ordinary,
+    successful case read as tentative when it almost never is.
+    """
+    engine, fabrik = _own_database(tmp_path, "bridge_notice_scheitert")
+    with fabrik() as http_session:
+        integration(http_session, "zigbee2mqtt")
+        source(http_session, "system")
+        create_settings(http_session)  # all three switches default on
+        http_session.commit()
+
+    fake_app = types.SimpleNamespace(
+        state=types.SimpleNamespace(session_factory=fabrik, bridge_reachable=True)
+    )
+    settings = Settings(
+        _env_file=None, database_url="sqlite://", secret_key="q" * 32,
+        mqtt_base_topic="testbasis",
+        notify_webhook="https://example.invalid/meldung",
+    )
+
+    from thermoctl.integrations import notification as notification_modul
+
+    class _BrokenOpener:
+        def open(self, request: object, timeout: int) -> object:
+            raise OSError("Gegenstelle nicht erreichbar")
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(notification_modul, "_opener", _BrokenOpener())
+        # `_process_mqtt_message` awaits `deliver()` directly (unlike the shadow
+        # loop's fire-and-forget dispatch) -- nothing further to wait for here.
+        await app_modul._process_mqtt_message(
+            fake_app,  # type: ignore[arg-type]
+            settings, "testbasis/bridge/state", b'{"state": "offline"}',
+        )
+
+    with fabrik() as http_session:
+        entry = http_session.query(AuditEvent).one()
+        assert entry.action == "notification.sent", (
+            "An attempt really was dispatched -- the audit trail is not the "
+            "place that records whether the network call behind it succeeded."
+        )
+        setting_row = http_session.get(Setting, 1)
+        assert setting_row is not None
+        assert setting_row.notify_last_attempt_at is not None
+        assert setting_row.notify_last_ok is False
+        assert setting_row.notify_last_error is not None
 
     engine.dispose()
 
@@ -1346,7 +1471,9 @@ async def test_the_shadow_loop_reports_a_new_sensor_failure(
     sent_count: list[object] = []
     mqtt_notices: list[tuple[str, str, bool]] = []
 
-    async def mitschreiben(_settings: object, notice: object) -> None:
+    async def mitschreiben(
+        _session_factory: object, _settings: object, notice: object
+    ) -> None:
         sent_count.append(notice)
 
     class NoticePublisher:
@@ -1382,7 +1509,7 @@ async def test_the_shadow_loop_reports_a_new_sensor_failure(
         )
     )
     monkeypatch.setattr(app_modul.asyncio, "sleep", _sleep)
-    monkeypatch.setattr(app_modul, "send", mitschreiben)
+    monkeypatch.setattr(app_modul, "deliver", mitschreiben)
 
     with pytest.raises(asyncio.CancelledError):
         await app_modul._shadow_loop(fake_app)  # type: ignore[arg-type]
@@ -1404,6 +1531,100 @@ async def test_the_shadow_loop_reports_a_new_sensor_failure(
     ]
     assert notice_states == ["ON"]
     assert all(switches is False for _, _, switches in mqtt_notices)
+
+    engine.dispose()
+
+
+@pytest.mark.anyio
+async def test_a_switched_off_sensor_notice_still_reaches_home_assistant(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The requirement this exists to satisfy: turning the webhook path off for a
+    notice kind must not blind Home Assistant, which reaches the same event over
+    its own path (`services/publishing.py::send_fault_notice`). Same scenario as
+    the test above, `notify_sensor_faults` switched off.
+
+    Also covers the reviewer's finding for this path: the audit entry must say
+    `"notification.suppressed"`, not `"notification.sent"`, and `notify_last_*`
+    must stay untouched -- `deliver()` never ran, so there is no delivery outcome
+    to report.
+    """
+    engine, fabrik = _own_database(tmp_path, "schleife-meldung-aus")
+    with fabrik() as http_session:
+        settings_row = create_settings(http_session)
+        settings_row.notify_sensor_faults = False
+        source(http_session, "system")
+        sensor_status_of(http_session, "keine_quelle")
+        sensor_status_of(http_session, "ok")
+        zone = create_zone(http_session, "flur-ohne-quelle-aus")
+        create_zone_state(http_session, zone)  # starts as 'ok'
+        http_session.commit()
+
+    delivered: list[object] = []
+    mqtt_notices: list[tuple[str, str, bool]] = []
+
+    async def mitschreiben(
+        _session_factory: object, _settings: object, notice: object
+    ) -> None:
+        delivered.append(notice)
+
+    class NoticePublisher:
+        async def publishing(
+            self,
+            topic: str,
+            payload: str,
+            *,
+            switches: bool,
+            retained: bool = False,
+        ) -> bool:
+            if "/state/sensor_fault" in topic:
+                mqtt_notices.append((topic, payload, switches))
+            return True
+
+    waited: list[float] = []
+
+    async def _sleep(seconds: float) -> None:
+        waited.append(seconds)
+        if len(waited) == 2:
+            raise asyncio.CancelledError
+
+    fake_app = types.SimpleNamespace(
+        state=types.SimpleNamespace(
+            session_factory=fabrik,
+            publisher=NoticePublisher(),
+            publication_state=app_modul.PublicationState(),
+            sending_allowed=False,
+        )
+    )
+    monkeypatch.setattr(app_modul.asyncio, "sleep", _sleep)
+    monkeypatch.setattr(app_modul, "deliver", mitschreiben)
+
+    with pytest.raises(asyncio.CancelledError):
+        await app_modul._shadow_loop(fake_app)  # type: ignore[arg-type]
+
+    for task in list(app_modul._running_notices):
+        await task
+
+    assert delivered == [], "notify_sensor_faults=False must silence the webhook path."
+    notice_states = [
+        payload
+        for topic, payload, _ in mqtt_notices
+        if not topic.endswith("/attributes")
+    ]
+    assert notice_states == ["ON"], "Home Assistant is not coupled to that switch."
+
+    with fabrik() as http_session:
+        entry = (
+            http_session.query(AuditEvent)
+            .filter(AuditEvent.object_type == "fault")
+            .one()
+        )
+        assert entry.action == "notification.suppressed"
+        setting_row = http_session.get(Setting, 1)
+        assert setting_row is not None
+        assert setting_row.notify_last_attempt_at is None
+        assert setting_row.notify_last_ok is None
+        assert setting_row.notify_last_error is None
 
     engine.dispose()
 

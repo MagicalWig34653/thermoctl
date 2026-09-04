@@ -2,48 +2,59 @@
 
 Letzte Aktualisierung: 2026-09-04
 
-## Oberfläche für Störungsmeldungen (Zweig `meldungen-oberflaeche`) -- wartet auf das Fundament
+## Störungsmeldungen: drei Arten, einzeln abschaltbar, mit Testknopf
 
-Gebaut gegen eine Schnittstelle, die eine parallele Aufgabe erst noch liefert: sechs
-Spalten auf `setting` (`notify_sensor_faults`, `notify_bridge_faults`,
-`notify_command_failures`, `notify_last_attempt_at`, `notify_last_ok`,
-`notify_last_error`), plus Migration, Modellfelder und der Domänen-Torwaechter, der
-diese drei Schalter vor einer echten Meldung prueft. In diesem Zweig existierten sie
-zum Zeitpunkt der Umsetzung noch nicht.
+Bisher gingen Meldungen ungefragt hinaus, und ob der Webhook sie annahm, stand nur im
+Log. Drei Arten lassen sich jetzt anlagenweit einzeln abschalten — **Sensorstörung**
+samt Entwarnung, **Brücke oder Broker weg**, und neu **Schaltbefehl gescheitert**.
+Alle drei sind ab Werk an: Wer heute Meldungen bekommt, bekommt sie weiter.
 
-**Was steht:**
-- `thermoctl/web/templates/settings.html`: drei Schalter unter „Meldungen"
-  (`notify_sensor_faults`, `notify_bridge_faults`, `notify_command_failures`), je mit
-  eigenem Text, wann die Meldung kommt -- nicht nur ihr Name.
-- `POST /settings/notifications`: speichert die drei Schalter, Recht `setting.manage`,
-  eigener Audit-Eintrag.
-- `POST /settings/notifications/test`: schickt eine als Test gekennzeichnete Meldung
-  ueber `notification.send_test` -- denselben Anfrage-Aufbau, dieselbe
-  Weiterleitungs-Ablehnung, denselben Zeitablauf wie ein echter Versand
-  (`thermoctl/integrations/notification.py`), nicht einen zweiten Weg. Recht
-  `setting.manage` (dasselbe, das den Webhook auf `/interfaces` ueberhaupt sehen darf).
-  Ohne hinterlegten Webhook bietet die Seite den Knopf nicht an. Ein anlagenweiter
-  Zehn-Sekunden-Zeitabstand auf `notify_last_attempt_at` verhindert wiederholtes
-  Ausloesen, ohne eigene Infrastruktur dafuer.
-- Ergebnis (Status, Dauer, im Fehlerfall der -- gekuerzte, token-bereinigte -- Grund)
-  erscheint sofort auf derselben Seite, kein Redirect. Zustellzustand („Zuletzt
-  versucht" ueber den bestehenden `age`-Filter, Ergebnis-Chip, „Noch nie versucht" als
-  eigener Zustand) steht daneben.
+Die neue Art schliesst eine Lücke, die dieses Projekt schon einmal bezahlt hat: Ein
+gescheiterter Befehl landete ausschliesslich im Schaltprotokoll. An einer kalten Zone
+bedeutet das im Januar ein eingefrorenes Rohr. Gemeldet wird nur der **Übergang**, samt
+Entwarnung — die Unterscheidung dafür wird getrennt vom Log-Schlüssel geführt, damit
+sie auch greift, wenn sich Nutzlast oder Riegel gleichzeitig ändern.
 
-**Wie die fehlenden Spalten ueberbrueckt sind:** Lesen ueber
-`getattr(row, name, vorgabe)`, Schreiben ueber `setattr(row, name, wert)` -- damit
-lief die Oberflaeche in diesem Worktree bereits vollstaendig gegen echte Anfragen
-(SQLite und MariaDB, 100 % Testabdeckung, ruff und mypy sauber), obwohl die Spalten
-fehlten. Nach dem Zusammenfuehren mit dem Fundament-Zweig verhaelt sich das
-identisch zu einem direkten Attributzugriff; die `getattr`/`setattr`-Stellen koennen
-dann vereinfacht werden, muessen es aber nicht -- die Hauptsession entscheidet das
-beim Zusammenfuehren.
+**Das Tor ist eine reine Funktion in der Domäne**, und die Meldungsart ist ein
+Pflichtfeld von `FaultNotice` — optional wäre eine Meldung ohne Art still daran
+vorbeigerutscht. Solange es keine `setting`-Zeile gibt, fällt es offen: Vor Abschluss
+der Einrichtung wird nichts unterdrückt, was niemand konfigurieren konnte.
+**Home Assistant bleibt entkoppelt**: Wer den Webhook stilllegt, verliert den
+Problemsensor dort nicht.
 
-**Noch zu tun nach dem Zusammenfuehren:** pruefen, ob der Domänen-Torwaechter der
-parallelen Aufgabe dieselben drei `notify_last_*`-Spalten fuer echte Meldungen
-beschreibt, die der Testknopf hier beschreibt (dieselbe Anzeige soll fuer beide
-gelten) -- und ob `tests/approved_physical_vocabulary.json` nach dem Merge noch
-zusammenpasst (zwei Zeilen aus `settings.html` sind dort neu eingetragen).
+**Der Testknopf** unter „Einstellungen" schickt eine gekennzeichnete Testmeldung über
+denselben Weg wie eine echte und zeigt Statuscode, Dauer und im Fehlerfall den Grund
+unmittelbar auf der Seite. Ohne hinterlegten Webhook wird er nicht angeboten; gegen
+wiederholtes Auslösen liegt ein Zeitabstand von zehn Sekunden davor. Daneben steht der
+**Zustellzustand** — wann zuletzt versucht, mit welchem Ergebnis, wobei „noch nie
+versucht" ein eigener Zustand ist und nicht wie ein Fehlschlag aussieht.
+
+Die Testmeldung trägt die Art `test` und geht bewusst **nicht** durch das Tor: Wer auf
+„Testen" drückt, will diese eine Meldung hinausschicken. `notice_enabled` wirft für
+diese Art weiterhin — landet eine Testmeldung je am Tor, ist das ein Fehler und soll
+auffallen.
+
+**Beim Gegenlesen gefunden und behoben:** Das Auditprotokoll schrieb
+`notification.sent` auch dann, wenn das Tor unterdrückt hatte. Wer später sucht, warum
+eine Störung niemanden erreichte, hätte dort „gesendet" gefunden. Es unterscheidet
+jetzt `sent` von `suppressed`. Scheitert die Zustellung am **Netz**, bleibt es bei
+`sent` — der Versuch ging los, und ob er ankam, beantwortet `notify_last_ok`.
+
+Sechs neue Spalten auf `setting`, Migration `67e794059830`, vorwärts und rückwärts
+gegen beide Datenbanken geprüft. Der Zustellzustand wird ausserhalb jeder
+Schreibtransaktion notiert; ein Test prüft die Eigenschaft selbst, nach dem Vorbild des
+Meross-Tests. Eine unterdrückte Meldung fasst ihn nicht an — es gab keinen Versuch.
+
+## Kiosk: der AGPL-§13-Hinweis, wie ein Wandtablett ihn verträgt
+
+`kiosk.html` erbt weder `base.html` noch `base_plain.html` und blieb beim
+Quelltextverweis aussen vor. Statt einer Fusszeile — ein Wandtablett wird aus Distanz
+angesehen, nicht gelesen, und die Fläche gehört dem Zonenraster — sitzt ein knapper
+Verweis „Quelltext (AGPL-3.0)" in der Kopfzeile neben der Uhr. `target="_blank"` hält
+die Anzeige geladen; ein Antippen führte sonst vom Kiosk weg, ohne einfachen Weg
+zurück ausser einem Neustart des Browsers. Der Verweis öffnet nichts, was das Kiosk
+nicht ohnehin kann — seine enge Bedienfläche ist eine Sicherheitseigenschaft und
+bleibt unberührt.
 
 ## `env_nach_addon.py`: Datenbank in der `.env` schlaegt eine bereits im Add-on eingetragene nicht mehr blind
 
