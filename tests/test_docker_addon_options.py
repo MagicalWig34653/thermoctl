@@ -93,6 +93,26 @@ def test_an_empty_string_option_is_not_in_the_translation() -> None:
     assert "THERMOCTL_SECRET_KEY" not in optionen.translate(options)
 
 
+def test_mqtt_client_id_passes_through() -> None:
+    """Der eigentliche Anlass: EMQX-Broker binden Rechte oft an die Client-ID, und
+    ohne diese Option kam thermoctl an so einem Broker gar nicht erst durch."""
+    assert (
+        optionen.translate({"mqtt": {"client_id": "heizung-keller"}})["THERMOCTL_MQTT_CLIENT_ID"]
+        == "heizung-keller"
+    )
+
+
+def test_mqtt_ca_cert_passes_through() -> None:
+    assert (
+        optionen.translate({"mqtt": {"ca_cert": "/ssl/mqtt-ca.pem"}})["THERMOCTL_MQTT_CA_CERT"]
+        == "/ssl/mqtt-ca.pem"
+    )
+
+
+def test_log_format_passes_through() -> None:
+    assert optionen.translate({"log_format": "plain"})["THERMOCTL_LOG_FORMAT"] == "plain"
+
+
 def test_secret_key_and_meross_credentials_pass_through() -> None:
     options = {
         "secret_key": "x" * 40,
@@ -216,3 +236,40 @@ def test_main_never_prints_a_secret_value_to_stderr_on_success(tmp_path: Path) -
     )
     assert result.stderr == ""
     assert "s3hr-geheim" not in result.stderr
+
+
+def test_every_settings_field_is_translated_or_deliberately_excluded() -> None:
+    """The guard against the actual bug this task fixed.
+
+    The MQTT client id was missed not because nobody knew about it -- it was in
+    `thermoctl.config.Settings` and in `.env.example` all along -- but because
+    nothing compared the add-on translation against the source of truth for what
+    settings exist. This closes exactly that gap: every field on `Settings` must
+    show up either in `ABGEBILDETE_FELDER` (this script actually maps it) or in
+    `BEWUSST_AUSGELASSEN` (mapped nowhere, on purpose, with why). A new setting
+    landing in neither dict fails here before it ever reaches an operator's add-on
+    configuration screen missing an option they need.
+    """
+    from thermoctl.config import Settings
+
+    settings_fields = set(Settings.model_fields)
+    handled = set(optionen.ABGEBILDETE_FELDER)
+    excluded = set(optionen.BEWUSST_AUSGELASSEN)
+
+    overlap = handled & excluded
+    assert not overlap, (
+        "Felder sowohl als abgebildet als auch als bewusst ausgelassen gefuehrt: "
+        f"{sorted(overlap)}"
+    )
+
+    missing = settings_fields - handled - excluded
+    assert not missing, (
+        "Settings-Felder weder in ABGEBILDETE_FELDER noch in BEWUSST_AUSGELASSEN "
+        f"eingetragen: {sorted(missing)}"
+    )
+
+    stale = (handled | excluded) - settings_fields
+    assert not stale, (
+        "ABGEBILDETE_FELDER/BEWUSST_AUSGELASSEN verweisen auf Settings-Felder, die es "
+        f"nicht mehr gibt: {sorted(stale)}"
+    )

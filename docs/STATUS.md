@@ -2,6 +2,20 @@
 
 Letzte Aktualisierung: 2026-09-04
 
+## Add-on-Optionsübersetzung: MQTT-Client-ID, CA-Zertifikat und Log-Format nachgezogen
+
+Im echten Betrieb als Add-on fehlte die Möglichkeit, die MQTT-Client-ID zu setzen — an
+einem EMQX-Broker mit Rechteverwaltung ohne die kein Verbindungsaufbau. `docker/thermoctl_optionen.py`
+übersetzt jetzt zusätzlich `mqtt.client_id` → `THERMOCTL_MQTT_CLIENT_ID`,
+`mqtt.ca_cert` → `THERMOCTL_MQTT_CA_CERT` und `log_format` → `THERMOCTL_LOG_FORMAT` (die
+zweite Lücke, beim Durchsehen der gesamten Abbildung gegen `thermoctl/config.py`
+gefunden). Neu: `ABGEBILDETE_FELDER` und `BEWUSST_AUSGELASSEN` als Konstanten im Skript,
+gegen `Settings.model_fields` geprüft von
+`test_every_settings_field_is_translated_or_deliberately_excluded` — eine neue,
+nirgends eingeordnete Einstellung lässt diesen Test künftig fehlschlagen, statt
+stillschweigend zu fehlen. `.env.example` war bereits vollständig (eigener Wächter
+`test_every_setting_is_listed_in_the_example_file`), keine Änderung dort nötig.
+
 ## Home-Assistant-Add-on: Mehrarchitektur-Abbild und Optionsübersetzung
 
 `.github/workflows/docker.yml` baut jetzt für `linux/amd64` **und** `linux/arm64`

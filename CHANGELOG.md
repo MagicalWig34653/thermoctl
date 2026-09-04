@@ -17,6 +17,11 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
   Supervisor) in `THERMOCTL_*`-Umgebungsvariablen; ohne die Datei ändert sich am
   bisherigen `docker compose`-Betrieb nichts, eine vom Betreiber gesetzte Variable hat
   immer Vorrang.
+- Fix: Die Add-on-Optionsübersetzung kannte die MQTT-Client-ID nicht — an einem
+  EMQX-Broker mit Rechteverwaltung kam thermoctl dadurch gar nicht erst durch.
+  `mqtt.client_id`, `mqtt.ca_cert` und `log_format` werden jetzt mit übersetzt. Ein
+  neuer Test vergleicht die Übersetzung mit `thermoctl.config.Settings` und schlägt
+  fehl, sobald eine Einstellung weder abgebildet noch bewusst ausgelassen ist.
 
 ---
 
