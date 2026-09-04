@@ -3,7 +3,7 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
     <h1>Zonen</h1>
-    {% if may_create %}<a class="btn btn-primary" href="/zones/new">Zone anlegen</a>{% endif %}
+    {% if may_create %}<a class="btn btn-primary" href="{{ url_prefix }}/zones/new">Zone anlegen</a>{% endif %}
 </div>
 {% if zones %}
 {# Scrollt in sich selbst statt die ganze Seite breit zu machen: Auf einem Telefon passt diese Tabelle nicht nebeneinander. #}
@@ -18,10 +18,10 @@
         <td>{{ zone.sort_order }}</td>
         <td class="text-end">
             <a class="btn btn-sm btn-outline-secondary"
-               href="/zones/{{ zone.id }}/devices">Geräte</a>
+               href="{{ url_prefix }}/zones/{{ zone.id }}/devices">Geräte</a>
             <a class="btn btn-sm btn-outline-secondary"
-               href="/zones/{{ zone.id }}/schedule">Zeitplan</a>
-            {% if zone.id in may_edit %}<a class="btn btn-sm btn-outline-primary" href="/zones/{{ zone.id }}">Bearbeiten</a>{% endif %}
+               href="{{ url_prefix }}/zones/{{ zone.id }}/schedule">Zeitplan</a>
+            {% if zone.id in may_edit %}<a class="btn btn-sm btn-outline-primary" href="{{ url_prefix }}/zones/{{ zone.id }}">Bearbeiten</a>{% endif %}
         </td>
     </tr>
     {% endfor %}

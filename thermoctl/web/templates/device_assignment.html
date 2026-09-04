@@ -1,16 +1,16 @@
 {% extends "base.html" %}
-{% from "zone_header.html" import zonenkopf %}
+{% from "zone_header.html" import zonenkopf with context %}
 {% from "flow_diagram.html" import flow_diagram %}
 {% from "form.html" import toggle %}
 {% block title %}Geräte in {{ zone.display_name }} – thermoctl{% endblock %}
 {% block content %}
 {{ zonenkopf(zone, "Geräte") }}
-<p><a href="/controllers">Bediengeräte, Anzeigen und Tasten konfigurieren</a></p>
+<p><a href="{{ url_prefix }}/controllers">Bediengeräte, Anzeigen und Tasten konfigurieren</a></p>
 
 <section class="tc-panel p-4 mb-4">
     {{ flow_diagram(picture, draggable=may_edit, requires=required_capabilities) }}
     <p class="t-quiet small mb-0 mt-3">
-        Dasselbe Bild für alle Zonen auf einmal: <a href="/plant">Anlagenbild</a>.
+        Dasselbe Bild für alle Zonen auf einmal: <a href="{{ url_prefix }}/plant">Anlagenbild</a>.
     </p>
 </section>
 
@@ -59,16 +59,16 @@ Zuordnung. Hinein und hinaus ist damit derselbe Handgriff in zwei Richtungen.
 </section>
 
 <form id="assignment-source" method="post" hidden hx-push-url="false"
-      action="/zones/{{ zone.id }}/devices/source">
+      action="{{ url_prefix }}/zones/{{ zone.id }}/devices/source">
     <input type="hidden" name="device_id">
 </form>
 <form id="assignment-role" method="post" hidden hx-push-url="false"
-      action="/zones/{{ zone.id }}/devices/assign">
+      action="{{ url_prefix }}/zones/{{ zone.id }}/devices/assign">
     <input type="hidden" name="device_id">
     <input type="hidden" name="role_id">
 </form>
 <form id="assignment-detach" method="post" hidden hx-push-url="false"
-      action="/zones/{{ zone.id }}/devices/detach">
+      action="{{ url_prefix }}/zones/{{ zone.id }}/devices/detach">
     <input type="hidden" name="assignment_id">
 </form>
 {#
@@ -88,7 +88,7 @@ Skripts falsch rät.
 <p>Aktuell: <strong>{{ temperature_source.display_name if temperature_source else "Keine Messquelle" }}</strong></p>
 {% if may_edit %}
 {% if errors.temperature_source %}<div class="alert alert-danger">{{ errors.temperature_source }}</div>{% endif %}
-<form method="post" action="/zones/{{ zone.id }}/devices/source" class="row g-2 mb-4">
+<form method="post" action="{{ url_prefix }}/zones/{{ zone.id }}/devices/source" class="row g-2 mb-4">
     <div class="col">
         <select class="form-select" name="device_id" aria-label="Messquelle">
             <option value="">Keine Messquelle</option>
@@ -119,7 +119,7 @@ Skripts falsch rät.
             {% if rolle.code == "actuator" and "thermostat" in capabilities.get(device.id, []) %}
             <div class="mt-1">
                 {% if may_edit %}
-                <form method="post" action="/zones/{{ zone.id }}/devices/regulation">
+                <form method="post" action="{{ url_prefix }}/zones/{{ zone.id }}/devices/regulation">
                     <input type="hidden" name="assignment_id" value="{{ assignment.id }}">
                     {{ toggle(
                         "self_regulating",
@@ -158,7 +158,7 @@ Skripts falsch rät.
         </td>
         <td class="text-end">
         {% if may_edit %}
-        <form method="post" action="/zones/{{ zone.id }}/devices/detach">
+        <form method="post" action="{{ url_prefix }}/zones/{{ zone.id }}/devices/detach">
             <input type="hidden" name="assignment_id" value="{{ assignment.id }}">
             <button class="btn btn-sm btn-outline-danger" type="submit">Lösen</button>
         </form>
@@ -173,7 +173,7 @@ Skripts falsch rät.
 
 {% if controllers %}
 <h2 class="h4 mt-4">Tastenbelegung</h2>
-<p class="t-quiet">Die Bearbeitung ist zu <a href="/controllers">Bediengeräte</a> umgezogen.</p>
+<p class="t-quiet">Die Bearbeitung ist zu <a href="{{ url_prefix }}/controllers">Bediengeräte</a> umgezogen.</p>
 {% if errors.button %}<div class="alert alert-danger">{{ errors.button }}</div>{% endif %}
 {% for device, belegungen in controllers %}
   {% for binding in belegungen %}<span class="t-value me-2">{{ binding.action }}</span>{% endfor %}
@@ -210,7 +210,7 @@ Skripts falsch rät.
                 {% else %}<span title="Belegt, aber seit dem letzten Aufräumen der Messwerte nicht gesehen">—</span>{% endif %}
             </td>
             <td colspan="3">
-                <form method="post" action="/zones/{{ zone.id }}/devices/button" class="row g-2">
+                <form method="post" action="{{ url_prefix }}/zones/{{ zone.id }}/devices/button" class="row g-2">
                     <input type="hidden" name="device_id" value="{{ device.id }}">
                     <input type="hidden" name="action_code" value="{{ binding.action }}">
                     <div class="col-auto">
@@ -255,7 +255,7 @@ Skripts falsch rät.
 {% if may_edit %}
 <h2 class="h4 mt-4">Rolle zuordnen</h2>
 {% if errors.assignment %}<div class="alert alert-danger">{{ errors.assignment }}</div>{% endif %}
-<form method="post" action="/zones/{{ zone.id }}/devices/assign" class="row g-2 mb-4">
+<form method="post" action="{{ url_prefix }}/zones/{{ zone.id }}/devices/assign" class="row g-2 mb-4">
     <div class="col">
         <label class="form-label" for="device_id">Gerät</label>
         <select class="form-select" id="device_id" name="device_id" required>
@@ -276,7 +276,7 @@ Skripts falsch rät.
 <h2 class="h4 mt-4">Gerät tauschen</h2>
 <p class="text-muted">Alle Rollen und die Messquelle in dieser Zone gehen auf das neue Gerät über. Sollwerte, Zeitplan, Regelparameter und Messverlauf bleiben erhalten.</p>
 {% if errors.swap %}<div class="alert alert-danger">{{ errors.swap }}</div>{% endif %}
-<form method="post" action="/zones/{{ zone.id }}/devices/swap" class="row g-2 mb-4">
+<form method="post" action="{{ url_prefix }}/zones/{{ zone.id }}/devices/swap" class="row g-2 mb-4">
     <div class="col">
         <label class="form-label" for="old_device_id">Altes Gerät</label>
         <select class="form-select" id="old_device_id" name="old_device_id" required>

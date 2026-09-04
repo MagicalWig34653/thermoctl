@@ -10,7 +10,7 @@ dasselbe. Der Kopf macht daraus einen Ort.
 <nav aria-label="Zone {{ zone.display_name }}" class="mb-4">
     <div class="d-flex justify-content-between align-items-baseline flex-wrap gap-2">
         <h1 class="mb-0">{{ zone.display_name }}</h1>
-        <a class="small" href="/zones">Alle Zonen</a>
+        <a class="small" href="{{ url_prefix }}/zones">Alle Zonen</a>
     </div>
     <div class="d-flex flex-wrap gap-1 mt-2 border-bottom pb-2">
         {% for pfad, label in [
@@ -21,7 +21,7 @@ dasselbe. Der Kopf macht daraus einen Ort.
             ("/zones/" ~ zone.id, "Zonendaten"),
         ] %}
         <a class="btn btn-sm {{ 'btn-primary' if here == label else 'btn-outline-secondary' }}"
-           href="{{ pfad }}"{% if here == label %} aria-current="page"{% endif %}>{{ label }}</a>
+           href="{{ url_prefix }}{{ pfad }}"{% if here == label %} aria-current="page"{% endif %}>{{ label }}</a>
         {% endfor %}
     </div>
 </nav>

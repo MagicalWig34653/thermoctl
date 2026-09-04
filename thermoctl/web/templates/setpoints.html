@@ -1,10 +1,10 @@
 {% extends "base.html" %}
-{% from "zone_header.html" import zonenkopf %}
+{% from "zone_header.html" import zonenkopf with context %}
 {% from "form.html" import number_field %}
 {% block title %}Sollwerte {{ zone.display_name }} – thermoctl{% endblock %}
 {% block content %}
 {{ zonenkopf(zone, "Sollwerte") }}
-<form method="post" action="/zones/{{ zone.id }}/setpoints">
+<form method="post" action="{{ url_prefix }}/zones/{{ zone.id }}/setpoints">
 {% for mode in modes %}
     {% set field = "setpoint_" ~ mode.id %}
     {{ number_field(

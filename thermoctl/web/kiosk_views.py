@@ -45,6 +45,7 @@ from thermoctl.domain.remote_control import RemoteControlError, set_setpoint
 from thermoctl.domain.remote_control import boost as domain_boost
 from thermoctl.domain.schedule import resolved_setpoint
 from thermoctl.web import templates
+from thermoctl.web.urls import cookie_path, prefixed
 
 router = APIRouter(dependencies=[Depends(kiosk_csrf_protection)], include_in_schema=False)
 
@@ -112,14 +113,16 @@ async def kiosk_entry(
 
     settings = get_settings()
     max_age = _kiosk_cookie_max_age_s(token.expires_at)
-    response = RedirectResponse("/kiosk", status_code=status.HTTP_303_SEE_OTHER)
+    response = RedirectResponse(prefixed(request, "/kiosk"), status_code=status.HTTP_303_SEE_OTHER)
     response.set_cookie(
         KIOSK_COOKIE_NAME, plaintext, max_age=max_age,
         httponly=True, samesite="lax", secure=settings.secure_cookies,
+        path=cookie_path(request),
     )
     response.set_cookie(
         KIOSK_CSRF_COOKIE_NAME, csrf_token(plaintext, settings.secret_key.get_secret_value()),
         max_age=max_age, httponly=False, samesite="lax", secure=settings.secure_cookies,
+        path=cookie_path(request),
     )
     return response
 
@@ -222,8 +225,10 @@ async def kiosk_adjust_setpoint(
         set_setpoint(session, zone, updated, now, token_id=principal.token_id, source="kiosk")
     except DomainError as exc:
         query = urlencode({"error": exc.notice, "zone_id": zone_id})
-        return RedirectResponse(f"/kiosk?{query}", status_code=status.HTTP_303_SEE_OTHER)
-    return RedirectResponse("/kiosk", status_code=status.HTTP_303_SEE_OTHER)
+        return RedirectResponse(
+            prefixed(request, f"/kiosk?{query}"), status_code=status.HTTP_303_SEE_OTHER
+        )
+    return RedirectResponse(prefixed(request, "/kiosk"), status_code=status.HTTP_303_SEE_OTHER)
 
 
 @router.post("/kiosk/zones/{zone_id}/boost")
@@ -245,5 +250,7 @@ async def kiosk_boost(
         domain_boost(session, zone, utcnow(), token_id=principal.token_id, source="kiosk")
     except RemoteControlError as exc:
         query = urlencode({"error": str(exc), "zone_id": zone_id})
-        return RedirectResponse(f"/kiosk?{query}", status_code=status.HTTP_303_SEE_OTHER)
-    return RedirectResponse("/kiosk", status_code=status.HTTP_303_SEE_OTHER)
+        return RedirectResponse(
+            prefixed(request, f"/kiosk?{query}"), status_code=status.HTTP_303_SEE_OTHER
+        )
+    return RedirectResponse(prefixed(request, "/kiosk"), status_code=status.HTTP_303_SEE_OTHER)

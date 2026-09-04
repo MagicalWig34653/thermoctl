@@ -7,8 +7,8 @@
 <h1 class="mb-1">Betrieb</h1>
 <p class="t-quiet mb-4">
     Was die Anlage nach aussen gibt, und was die Regelung gerade entscheidet.
-    Die Regelvorgaben stehen unter <a href="/settings">Einstellungen</a>,
-    die <a href="/statistics">Heizzeiten</a> der letzten Tage auf einer eigenen Seite.
+    Die Regelvorgaben stehen unter <a href="{{ url_prefix }}/settings">Einstellungen</a>,
+    die <a href="{{ url_prefix }}/statistics">Heizzeiten</a> der letzten Tage auf einer eigenen Seite.
 </p>
 
 {% if errors.get("") %}
@@ -42,7 +42,7 @@
         {% if may_arm %}
         <div>
             {% if settings.control_armed %}
-            <form method="post" action="/control/arm">
+            <form method="post" action="{{ url_prefix }}/control/arm">
                 <input type="hidden" name="armed" value="no">
                 <button class="btn btn-outline-secondary" type="submit">
                     Zurück in den Trockenlauf
@@ -74,7 +74,7 @@
                     läuft schon vorher; dort sagt es die Entität
                     <span class="t-value">Regelung scharf</span>.</li>
             </ul>
-            <form method="post" action="/control/arm">
+            <form method="post" action="{{ url_prefix }}/control/arm">
                 <input type="hidden" name="armed" value="yes">
                 {{ text_field("reason", "Worauf stützt sich das?",
                             "", "Wird ins Protokoll geschrieben.",
@@ -95,7 +95,7 @@
     {% set soll = setpoints.get(zone.id) %}
     <article class="tc-zone tc-zone-operation">
         <div>
-            <a class="tc-zone-name" href="/zones/{{ zone.id }}/schedule">{{ zone.display_name }}</a>
+            <a class="tc-zone-name" href="{{ url_prefix }}/zones/{{ zone.id }}/schedule">{{ zone.display_name }}</a>
         </div>
         <div class="text-end t-value">
             {% if state and state[0].temperature_c is not none %}
@@ -135,7 +135,7 @@
     {% endfor %}
 </div>
 <p class="t-quiet small">
-    Übersteuern und der Tagesplan stehen auf der <a href="/">Startseite</a>.
+    Übersteuern und der Tagesplan stehen auf der <a href="{{ url_prefix }}/">Startseite</a>.
 </p>
 {% else %}
 <div class="tc-panel p-4">

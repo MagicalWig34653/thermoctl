@@ -12,7 +12,7 @@
 </p>
 
 {% if may_edit %}
-<form method="post" action="/settings" class="tc-panel p-4">
+<form method="post" action="{{ url_prefix }}/settings" class="tc-panel p-4">
     <p class="t-label mb-3">Regelung</p>
     <div class="row g-3">
         {% for field, label, integral in fields %}
@@ -29,7 +29,7 @@
     <button class="btn btn-primary mt-4" type="submit">Vorgaben speichern</button>
 </form>
 
-<form method="post" action="/settings" class="tc-panel p-4 mt-4">
+<form method="post" action="{{ url_prefix }}/settings" class="tc-panel p-4 mt-4">
     <p class="t-label mb-3">Sonnenabsenkung</p>
     <p class="t-quiet mb-3">
         Senkt den Sollwert einer Zone ab, wenn in den nächsten Stunden mit Sonne zu rechnen

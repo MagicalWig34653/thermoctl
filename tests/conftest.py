@@ -248,6 +248,35 @@ def client(
 
 
 @pytest.fixture
+def client_with_prefix(
+    settings: Settings, session: Session, monkeypatch: pytest.MonkeyPatch
+) -> Iterator[TestClient]:
+    """Like ``client``, but the app is built as if served behind a reverse-proxy
+    prefix (``THERMOCTL_ROOT_PATH``) -- the Home Assistant Ingress case.
+
+    Requests against this client are still made against the *bare*, un-prefixed
+    paths (``/login``, not ``/api/hassio_ingress/.../login``): that mirrors how
+    Ingress actually reaches the container -- Home Assistant strips its own prefix
+    before proxying the request on, so the path the app receives never carries it.
+    The prefix only has to show up in what the app *generates*: redirects, cookie
+    scope, and every link a rendered page carries -- which is exactly what the tests
+    using this fixture check.
+    """
+    monkeypatch.setenv("THERMOCTL_DATABASE_URL", settings.database_url)
+    monkeypatch.setenv("THERMOCTL_SECRET_KEY", settings.secret_key.get_secret_value())
+    monkeypatch.setenv("THERMOCTL_ROOT_PATH", "/api/hassio_ingress/A1b2C3d4e5")
+    get_settings.cache_clear()
+    app = create_app()
+
+    def _session_override() -> Iterator[Session]:
+        yield session
+
+    app.dependency_overrides[get_session] = _session_override
+    yield TestClient(app)
+    get_settings.cache_clear()
+
+
+@pytest.fixture
 def client_als(
     client: TestClient, session: Session
 ) -> Callable[[list[tuple[str, int | None]]], TestClient]:

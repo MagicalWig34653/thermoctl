@@ -11,12 +11,23 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ## Unveröffentlicht
 
+=======
+### Hinzugefügt
+
+- thermoctl läuft jetzt unter einem konfigurierbaren Pfadpräfix (`THERMOCTL_ROOT_PATH`)
+  — Voraussetzung für den Betrieb als Home-Assistant-Add-on hinter dessen Ingress-Proxy.
+  Weiterleitungen, Cookies, Vorlagen, eigenes JavaScript und statische Dateien tragen
+  den Präfix jetzt durchgehend; ohne gesetztes Präfix ändert sich nichts. Details in
+  [docs/STATUS.md](docs/STATUS.md).
+>>>>>>> ingress-praefix
+
 - Docker-Abbild wird jetzt für `linux/amd64` und `linux/arm64` gebaut (Home-Assistant-
   Add-on-Vorbereitung), `armv7` bewusst nicht.
 - `docker/entrypoint.sh` übersetzt eine vorhandene `/data/options.json` (Home-Assistant-
   Supervisor) in `THERMOCTL_*`-Umgebungsvariablen; ohne die Datei ändert sich am
   bisherigen `docker compose`-Betrieb nichts, eine vom Betreiber gesetzte Variable hat
   immer Vorrang.
+<<<<<<< HEAD
 - Fix: Die Add-on-Optionsübersetzung kannte die MQTT-Client-ID nicht — an einem
   EMQX-Broker mit Rechteverwaltung kam thermoctl dadurch gar nicht erst durch.
   `mqtt.client_id`, `mqtt.ca_cert` und `log_format` werden jetzt mit übersetzt. Ein

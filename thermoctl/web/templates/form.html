@@ -72,9 +72,9 @@ Knopf zu verlangen. Ohne JavaScript passiert das nicht -- dafuer gehoert ein
     <h1 class="mb-3">{{ title }}</h1>
     <p>{{ question }}</p>
     <div class="alert alert-warning" role="alert">{{ dependencies }}</div>
-    <form method="post" action="{{ target }}">
+    <form method="post" action="{{ url_prefix }}{{ target }}">
         <button type="submit" class="btn btn-danger">Löschen</button>
-        <a class="btn btn-secondary" href="{{ back }}">Abbrechen</a>
+        <a class="btn btn-secondary" href="{{ url_prefix }}{{ back }}">Abbrechen</a>
     </form>
 </section>
 {% endmacro %}

@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "zone_header.html" import zonenkopf %}
+{% from "zone_header.html" import zonenkopf with context %}
 {% from "form.html" import text_field, number_field, select_field %}
 {% block title %}{% if zone %}Zone bearbeiten{% else %}Zone anlegen{% endif %} – thermoctl{% endblock %}
 {% block content %}
@@ -18,7 +18,7 @@
                "Leer lassen, wenn noch kein Temperatursensor zugeordnet ist.",
                errors.temperature_source_device_id, true) }}
     <button type="submit" class="btn btn-primary">Speichern</button>
-    <a class="btn btn-secondary" href="/zones">Abbrechen</a>
-    {% if zone %}<a class="btn btn-outline-danger float-end" href="/zones/{{ zone.id }}/delete">Löschen</a>{% endif %}
+    <a class="btn btn-secondary" href="{{ url_prefix }}/zones">Abbrechen</a>
+    {% if zone %}<a class="btn btn-outline-danger float-end" href="{{ url_prefix }}/zones/{{ zone.id }}/delete">Löschen</a>{% endif %}
 </form>
 {% endblock %}

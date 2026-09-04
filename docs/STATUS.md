@@ -2,6 +2,58 @@
 
 Letzte Aktualisierung: 2026-09-04
 
+## Ingress-Präfix: thermoctl läuft jetzt unter einem beliebigen Pfadpräfix
+
+thermoctl ist als Home-Assistant-Add-on gedacht, das dort per Ingress unter einem
+zufälligen Pfad wie `/api/hassio_ingress/<token>/` eingebunden wird. Vorher kannte die
+Anwendung keinen Präfix: jeder absolute Verweis, jede Weiterleitung, jedes Formularziel
+und jede HTMX-Nachladung zeigte auf `/…` und landete damit außerhalb des Ingress-Pfads.
+
+Der Präfix kommt **ausschließlich aus Konfiguration** (`THERMOCTL_ROOT_PATH`,
+`Settings.root_path`, siehe `.env.example`), nicht aus der `X-Ingress-Path`-Kopfzeile —
+die wäre nicht vertrauenswürdige Eingabe von außen. Der Wert wird als FastAPIs eigenes
+ASGI-`root_path` gesetzt (`thermoctl/app.py::create_app`); von dort liest ihn alles
+andere zurück: `thermoctl/web/urls.py` (`prefixed()`, `cookie_path()`) für
+Weiterleitungen und Cookie-Gültigkeit, und ein Jinja-Kontextprozessor
+(`thermoctl/web/__init__.py`) stellt ihn allen Vorlagen als `url_prefix` bereit — jeder
+lokale `href`/`action`/`src`/`hx-*`-Wert in `thermoctl/web/templates/` ist jetzt
+`{{ url_prefix }}/…` statt hartem `/…`. `thermoctl/web/static/passkey.js` liest denselben
+Wert zur Laufzeit aus `<body data-url-prefix="…">`. Cookies tragen jetzt ein explizites
+`path` (Präfix statt `/`) — sonst würden zwei Add-ons hinter demselben Host sich
+gegenseitig die Sitzungscookies lesen.
+
+**Eigener Befund unterwegs:** Starlettes `Mount` (`app.mount("/static", StaticFiles(...))`)
+rechnet den `root_path` des Kind-Scopes als `root_path + gefundenes_präfix` — richtig nur,
+wenn der Proxy den vollen externen Pfad weiterreicht. Home-Assistant-Ingress entfernt
+seinen Präfix aber, bevor die Anfrage den Container erreicht (der ASGI-Definition von
+`root_path` entsprechend); jede statische Datei lieferte dann 404, obwohl der gerenderte
+Link im HTML korrekt aussah. Behoben durch einen eigenen, kleinen ASGI-Wrapper
+(`thermoctl/app.py::_serve_static`), der das Präfix selbst abschneidet statt sich auf
+Starlettes Akkumulation zu verlassen — nur beim `/static`-Mount betroffen, jede normale
+Route bleibt unberührt.
+
+Browsertests unter `browser_tests/test_ingress_prefix.py` laufen gegen eine Instanz
+hinter einem lokalen Gegenstück zum Ingress-Proxy (`browser_tests/_ingress_proxy.py`,
+entfernt den Präfix, bevor die Anfrage den echten Server erreicht) — Anmeldung,
+Abmeldung, eine geboostete Navigation, das Stylesheet, das Kiosk und eine Zeigergeste im
+Zeitplan-Editor, alles unter Präfix und mit derselben Konsolen-Fehler-Prüfung wie die
+übrige Suite. `tests/test_ingress_prefix.py` belegt auf HTTP-Ebene Weiterleitungsziele,
+Cookie-`Path`, gerenderte Verweise und die statische Datei selbst — je einmal mit und
+ohne Präfix, um zu zeigen, dass sich ohne Präfix nichts ändert.
+
+**Nicht angefasst:** die Anmeldung selbst (Grundsatz 4 gilt unverändert — Home Assistant
+authentifiziert nicht für thermoctl mit), `docker/`, `.github/workflows/docker.yml` und
+der Entrypoint (parallele Aufgabe). `/healthz` bleibt bewusst unpräfigiert — ein
+Docker-Healthcheck erreicht den Container direkt, nicht über Ingress.
+
+**Offen:** Der verpflichtende MariaDB-Lauf (`THERMOCTL_TEST_DATABASE_URL`) konnte nicht
+durchgeführt werden — der lokale MariaDB-Server meldet `errno 28 "No space left on
+device"` beim Anlegen jeder neuen Testdatenbank, unabhängig von dieser Änderung (rund
+100 verwaiste `thermoctl_*`/`tc_*`-Testdatenbanken früherer Sitzungen liegen auf dem
+Server). Die Änderungen selbst sind datenbankagnostisch — `root_path` betrifft
+ausschließlich Request-Verarbeitung und Linkerzeugung, keine Schemaänderung, keine
+datenbankspezifische Abfrage — ein Nachlauf gegen MariaDB ist trotzdem nachzuholen.
+
 ## Add-on-Optionsübersetzung: MQTT-Client-ID, CA-Zertifikat und Log-Format nachgezogen
 
 Im echten Betrieb als Add-on fehlte die Möglichkeit, die MQTT-Client-ID zu setzen — an

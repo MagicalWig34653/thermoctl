@@ -69,7 +69,7 @@ Seite ein Formularstapel, in dem die eigentliche Auskunft â€” wie warm ist es â€
     {% endif %}
 
     <span class="ms-auto small">
-        <a href="/statistics">Heizzeiten</a> Â· <a href="/control">Betrieb</a>
+        <a href="{{ url_prefix }}/statistics">Heizzeiten</a> Â· <a href="{{ url_prefix }}/control">Betrieb</a>
     </span>
 </section>
 
@@ -80,7 +80,7 @@ Seite ein Formularstapel, in dem die eigentliche Auskunft â€” wie warm ist es â€
         Eine Zone ist ein Raum oder eine Gruppe von RÃ¤umen mit einem eigenen Sollwert.
         Ohne mindestens eine gibt es nichts zu regeln.
     </p>
-    <a class="btn btn-primary" href="/zones/new">Erste Zone anlegen</a>
+    <a class="btn btn-primary" href="{{ url_prefix }}/zones/new">Erste Zone anlegen</a>
 </div>
 {% else %}
 
@@ -93,7 +93,7 @@ Seite ein Formularstapel, in dem die eigentliche Auskunft â€” wie warm ist es â€
     <article class="tc-zone">
 
         <div>
-            <a class="tc-zone-name" href="/zones/{{ zone.id }}/schedule">{{ zone.display_name }}</a>
+            <a class="tc-zone-name" href="{{ url_prefix }}/zones/{{ zone.id }}/schedule">{{ zone.display_name }}</a>
             <div class="mt-1 d-flex flex-wrap gap-1">
                 {% if entscheidung and entscheidung.would_heat %}
                 <span class="tc-chip tc-chip-warm"><span class="tc-dot"></span>Heizentscheidung</span>
@@ -142,7 +142,7 @@ Seite ein Formularstapel, in dem die eigentliche Auskunft â€” wie warm ist es â€
         #}
         <div class="tc-thermostat">
             {% if setpoint.mode_id and zone.id in may_edit_setpoint %}
-            <form method="post" action="/zones/{{ zone.id }}/thermostat" class="d-flex align-items-center gap-1">
+            <form method="post" action="{{ url_prefix }}/zones/{{ zone.id }}/thermostat" class="d-flex align-items-center gap-1">
                 <input type="hidden" name="mode_id" value="{{ setpoint.mode_id }}">
                 <button class="btn btn-sm btn-outline-secondary tc-stage" type="submit"
                         name="direction" value="down" aria-label="Sollwert senken">âˆ’</button>
@@ -178,7 +178,7 @@ Seite ein Formularstapel, in dem die eigentliche Auskunft â€” wie warm ist es â€
 
         <div class="text-end">
             {% if override and zone.id in may_cancel %}
-            <form method="post" action="/zones/{{ zone.id }}/override/cancel">
+            <form method="post" action="{{ url_prefix }}/zones/{{ zone.id }}/override/cancel">
                 <button class="btn btn-sm btn-outline-secondary" type="submit">
                     Ãœbersteuerung aufheben
                 </button>
@@ -196,7 +196,7 @@ Seite ein Formularstapel, in dem die eigentliche Auskunft â€” wie warm ist es â€
         {% set hat_fehler = override_errors and error_zone_id == zone.id|string %}
         <div class="collapse{{ ' show' if hat_fehler }} tc-zone-track" id="uebersteuern-{{ zone.id }}"
              style="grid-column: 1 / -1">
-            <form method="post" action="/zones/{{ zone.id }}/override"
+            <form method="post" action="{{ url_prefix }}/zones/{{ zone.id }}/override"
                   class="d-flex flex-wrap align-items-end gap-2 pt-3 border-top">
                 <div>
                     <label class="form-label small mb-1" for="temperature_c-{{ zone.id }}">Temperatur</label>

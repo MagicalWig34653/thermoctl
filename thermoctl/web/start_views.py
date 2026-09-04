@@ -38,6 +38,7 @@ from thermoctl.domain.schedule import resolved_setpoint, week_segments
 from thermoctl.domain.time import local_time
 from thermoctl.setup import setup_needed
 from thermoctl.web import templates, warmth_fraction
+from thermoctl.web.urls import prefixed
 
 # `include_in_schema=False`: the OpenAPI description is the contract of the REST
 # interface. These routes deliver HTML for humans, and in the interface under
@@ -111,13 +112,13 @@ def start(
     # itself depends on the one-time token from the log, not on the page's
     # reachability.
     if setup_needed(session):
-        return RedirectResponse("/setup", status_code=303)
+        return RedirectResponse(prefixed(request, "/setup"), status_code=303)
 
     cookie_value = request.cookies.get(COOKIE_NAME)
     http_session = resolve_session(session, cookie_value) if cookie_value else None
     user = session.get(User, http_session.user_id) if http_session else None
     if user is None or not user.is_active:
-        return RedirectResponse("/login", status_code=303)
+        return RedirectResponse(prefixed(request, "/login"), status_code=303)
 
     request.state.user = user
     principal = principal_for_user(session, user)

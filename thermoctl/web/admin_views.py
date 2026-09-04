@@ -32,6 +32,7 @@ from thermoctl.domain.authz import PERMISSION_AREAS, Forbidden, require
 from thermoctl.domain.principal import Principal
 from thermoctl.web import is_partial_swap
 from thermoctl.web.forms import FormError, form_again, password_form_error
+from thermoctl.web.urls import prefixed
 
 # `include_in_schema=False`: the OpenAPI description is the contract of the REST
 # interface. These routes deliver HTML for humans, and in the interface under
@@ -112,7 +113,7 @@ async def user_create_view(
         return _user_list(
             request, session, principal.user_id, FormError("username", str(exc)), values
         )
-    return RedirectResponse("/users", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(prefixed(request, "/users"), status_code=status.HTTP_303_SEE_OTHER)
 
 
 @router.post("/users/{user_id}/active")
@@ -135,7 +136,7 @@ async def user_active_view(
         # The lockout guard is not a form error on a field but a statement about the
         # state of the plant -- it belongs as a hint above the list.
         return _user_list(request, session, principal.user_id, hint=str(exc))
-    return RedirectResponse("/users", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(prefixed(request, "/users"), status_code=status.HTTP_303_SEE_OTHER)
 
 
 @router.post("/users/{user_id}/group")
@@ -162,7 +163,7 @@ async def user_group_view(
         # As with the lockout guard on deactivation: a statement about the state of
         # the plant, not an error tied to a single form field.
         return _user_list(request, session, principal.user_id, hint=str(exc))
-    return RedirectResponse("/users", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(prefixed(request, "/users"), status_code=status.HTTP_303_SEE_OTHER)
 
 
 @router.post("/users/sessions/revoke-others")
@@ -232,7 +233,7 @@ async def user_password_view(
         return _user_list(
             request, session, principal.user_id, password_form_error(exc), {}
         )
-    return RedirectResponse("/users", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(prefixed(request, "/users"), status_code=status.HTTP_303_SEE_OTHER)
 
 
 def _group_list(
@@ -322,7 +323,7 @@ async def group_create_view(
             request, session, FormError("name", str(exc)),
             {"name": name, "description": description},
         )
-    return RedirectResponse("/groups", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(prefixed(request, "/groups"), status_code=status.HTTP_303_SEE_OTHER)
 
 
 @router.post("/groups/{group_id}/delete")
@@ -340,7 +341,7 @@ async def group_delete_view(
         delete_group(session, group, actor_id=principal.user_id)
     except AdministrationError as exc:
         return _group_list(request, session, hint=str(exc))
-    return RedirectResponse("/groups", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(prefixed(request, "/groups"), status_code=status.HTTP_303_SEE_OTHER)
 
 
 @router.post("/groups/{group_id}/permissions")
@@ -384,7 +385,7 @@ async def permissions_set_view(
         )
     except AdministrationError as exc:
         return _group_list(request, session, hint=str(exc))
-    return RedirectResponse("/groups", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(prefixed(request, "/groups"), status_code=status.HTTP_303_SEE_OTHER)
 
 
 def _token_list(
@@ -472,4 +473,4 @@ async def token_revoke_view(
         # response would reveal which ids exist.
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Token nicht gefunden")
     revoke_token(session, token, actor_id=principal.user_id)
-    return RedirectResponse("/tokens", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(prefixed(request, "/tokens"), status_code=status.HTTP_303_SEE_OTHER)

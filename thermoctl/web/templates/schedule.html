@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% from "form.html" import select_field, text_field %}
-{% from "zone_header.html" import zonenkopf %}
+{% from "zone_header.html" import zonenkopf with context %}
 {% block title %}Zeitplan {{ zone.display_name }} – thermoctl{% endblock %}
 {% block max_width %}90rem{% endblock %}
 {% block content %}
@@ -10,7 +10,7 @@
         <p class="t-quiet mb-0">Lokale Zeit; ein Balken gilt bis zum nächsten Schaltpunkt.</p>
     </div>
     {% if may_edit %}
-    <a class="btn btn-outline-secondary" href="/zones/{{ zone.id }}/schedule/adopt">
+    <a class="btn btn-outline-secondary" href="{{ url_prefix }}/zones/{{ zone.id }}/schedule/adopt">
         Von anderer Zone übernehmen
     </a>
     {% endif %}
@@ -30,7 +30,7 @@
 {% endif %}
 {% if undo_token %}
 <form class="alert alert-success d-flex justify-content-between align-items-center gap-3"
-      method="post" action="/zones/{{ zone.id }}/schedule/undo" hx-push-url="false">
+      method="post" action="{{ url_prefix }}/zones/{{ zone.id }}/schedule/undo" hx-push-url="false">
     <input type="hidden" name="csrf_token" value="{{ csrf }}">
     <input type="hidden" name="undo_token" value="{{ undo_token }}">
     <span>Die Zeitplangeste wurde gespeichert.</span>
@@ -40,7 +40,7 @@
 
 {% if may_edit %}
 <form id="schedule-paint" class="schedule-palette mb-3" method="post"
-      action="/zones/{{ zone.id }}/schedule/paint" hx-push-url="false">
+      action="{{ url_prefix }}/zones/{{ zone.id }}/schedule/paint" hx-push-url="false">
     <input type="hidden" name="csrf_token" value="{{ csrf }}">
     <fieldset>
       <legend class="h5">Zeit malen</legend>
@@ -80,7 +80,7 @@
           <summary class="btn btn-sm btn-outline-secondary">Übertragen</summary>
           <div class="schedule-copy-menu tc-panel p-2 mt-1">
             {% for scope, label in (("workdays", "auf Mo–Fr"), ("all", "auf alle Tage")) %}
-            <form method="post" action="/zones/{{ zone.id }}/schedule/copy-day" hx-push-url="false">
+            <form method="post" action="{{ url_prefix }}/zones/{{ zone.id }}/schedule/copy-day" hx-push-url="false">
               <input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="weekday" value="{{ day }}"><input type="hidden" name="scope" value="{{ scope }}">
               <button class="btn btn-sm btn-outline-secondary w-100" type="submit">{{ label }}</button>
             </form>{% endfor %}
@@ -141,7 +141,7 @@
    dann gegen einen Weg, den es fuer GET nicht gibt. Der erfolgreiche Fall
    leitet ohnehin auf die Zeitplanseite um. #}
 <form id="schedule-move" method="post" hidden hx-push-url="false"
-      action="/zones/{{ zone.id }}/schedule/points/move">
+      action="{{ url_prefix }}/zones/{{ zone.id }}/schedule/points/move">
     <input type="hidden" name="point_id">
     <input type="hidden" name="weekday">
     <input type="hidden" name="time_of_day">
@@ -149,7 +149,7 @@
 <section class="row g-4">
     <div class="col-lg-6">
         <h2 class="h4">Schaltpunkt anlegen</h2>
-        <form method="post" action="/zones/{{ zone.id }}/schedule/points">
+        <form method="post" action="{{ url_prefix }}/zones/{{ zone.id }}/schedule/points">
             {{ select_field("weekday", "Tag", weekdays, values.weekday, "", errors.weekday) }}
             {{ text_field("time_of_day", "Uhrzeit", values.time_of_day, "Lokale Zeit, zum Beispiel 06:30.", errors.time_of_day, true, "time") }}
             {% set mode_options = [] %}
@@ -169,10 +169,10 @@
                     {{ "%02d:%02d"|format(point.minute_of_day // 60, point.minute_of_day % 60) }}
                 </span>
                 <a class="btn btn-sm btn-outline-danger"
-                   href="/zones/{{ zone.id }}/schedule/points/{{ point.id }}/delete">Löschen</a>
+                   href="{{ url_prefix }}/zones/{{ zone.id }}/schedule/points/{{ point.id }}/delete">Löschen</a>
               </div>
               <form class="mt-2 d-flex align-items-end gap-2" method="post"
-                    action="/zones/{{ zone.id }}/schedule/points/mode"
+                    action="{{ url_prefix }}/zones/{{ zone.id }}/schedule/points/mode"
                     hx-trigger="change from:select" hx-push-url="false">
                 <input type="hidden" name="csrf_token" value="{{ csrf }}">
                 <input type="hidden" name="point_id" value="{{ point.id }}">

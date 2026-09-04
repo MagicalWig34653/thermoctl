@@ -8,7 +8,7 @@
         Dieser Assistent legt den ersten Verwalter an. Er ist nur erreichbar, solange
         noch kein Benutzer existiert, und danach dauerhaft geschlossen.
     </p>
-    <form method="post" action="/setup">
+    <form method="post" action="{{ url_prefix }}/setup">
         <div class="mb-3">
             <label for="setup_token" class="form-label">Einrichtungs-Token</label>
             <input type="text" class="form-control" id="setup_token" name="setup_token"

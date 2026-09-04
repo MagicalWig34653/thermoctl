@@ -69,3 +69,50 @@ def test_notifications_have_no_webhook_by_default() -> None:
     s = Settings(_env_file=None, database_url="sqlite://", secret_key="f" * 32)
     assert s.notify_webhook is None
     assert s.notify_webhook_token is None
+
+
+def test_root_path_defaults_to_empty() -> None:
+    s = Settings(_env_file=None, database_url="sqlite://", secret_key="g" * 32)
+    assert s.root_path == ""
+
+
+def test_root_path_is_taken_as_configured() -> None:
+    s = Settings(
+        _env_file=None,
+        database_url="sqlite://",
+        secret_key="h" * 32,
+        root_path="/api/hassio_ingress/A1b2C3d4e5",
+    )
+    assert s.root_path == "/api/hassio_ingress/A1b2C3d4e5"
+
+
+def test_root_path_bare_slash_collapses_to_empty() -> None:
+    s = Settings(_env_file=None, database_url="sqlite://", secret_key="i" * 32, root_path="/")
+    assert s.root_path == ""
+
+
+def test_root_path_trailing_slash_is_stripped() -> None:
+    s = Settings(_env_file=None, database_url="sqlite://", secret_key="j" * 32, root_path="/foo/")
+    assert s.root_path == "/foo"
+
+
+def test_root_path_without_leading_slash_is_rejected() -> None:
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, database_url="sqlite://", secret_key="k" * 32, root_path="foo")
+
+
+def test_root_path_absolute_url_is_rejected() -> None:
+    with pytest.raises(ValidationError):
+        Settings(
+            _env_file=None,
+            database_url="sqlite://",
+            secret_key="l" * 32,
+            root_path="https://evil.example/",
+        )
+
+
+def test_root_path_with_line_break_is_rejected() -> None:
+    with pytest.raises(ValidationError):
+        Settings(
+            _env_file=None, database_url="sqlite://", secret_key="m" * 32, root_path="/foo\nbar"
+        )

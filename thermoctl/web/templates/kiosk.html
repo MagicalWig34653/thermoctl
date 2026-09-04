@@ -4,9 +4,9 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Kiosk – thermoctl</title>
-    <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
-    <link rel="stylesheet" href="/static/vendor/bootstrap/bootstrap.min.css">
-    <link rel="stylesheet" href="/static/thermoctl.css">
+    <link rel="icon" href="{{ url_prefix }}/static/favicon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="{{ url_prefix }}/static/vendor/bootstrap/bootstrap.min.css">
+    <link rel="stylesheet" href="{{ url_prefix }}/static/thermoctl.css">
     {#
     Eigener, schlanker Kopf statt base.html/base_plain.html: Beide sind fuer eine
     schmale, mittig stehende Karte gebaut (Anmeldeformular, Einrichtung). Ein
@@ -25,7 +25,7 @@
             abfrage.addEventListener("change", setzen);
         })();
     </script>
-    <script defer src="/static/vendor/htmx/htmx.min.js"></script>
+    <script defer src="{{ url_prefix }}/static/vendor/htmx/htmx.min.js"></script>
     <script>
         {#
         Eigenes Cookie, eigenes Skript: Der Kopf aus base.html liest
@@ -43,8 +43,8 @@
         });
     </script>
 </head>
-<body class="kiosk-page">
-<div id="kiosk-body" hx-get="/kiosk" hx-trigger="every 20s" hx-select="#kiosk-body"
+<body class="kiosk-page" data-url-prefix="{{ url_prefix }}">
+<div id="kiosk-body" hx-get="{{ url_prefix }}/kiosk" hx-trigger="every 20s" hx-select="#kiosk-body"
      hx-target="#kiosk-body" hx-swap="outerHTML">
     <div class="kiosk-heading">
         <span class="tc-marker" style="font-size: 1.75rem">thermoctl</span>
@@ -94,7 +94,7 @@
             same way regardless of which of the two currently applies.
             #}
             {% if zone.id in control_zone_ids %}
-            <form method="post" action="/kiosk/zones/{{ zone.id }}/setpoint"
+            <form method="post" action="{{ url_prefix }}/kiosk/zones/{{ zone.id }}/setpoint"
                   class="kiosk-setpoint">
                 <input type="hidden" name="csrf_token" value="{{ csrf }}">
                 <button class="btn btn-outline-secondary kiosk-stage" type="submit"
@@ -113,7 +113,7 @@
             {% endif %}
 
             {% if zone.id in control_zone_ids %}
-            <form method="post" action="/kiosk/zones/{{ zone.id }}/boost">
+            <form method="post" action="{{ url_prefix }}/kiosk/zones/{{ zone.id }}/boost">
                 <input type="hidden" name="csrf_token" value="{{ csrf }}">
                 <button class="btn btn-outline-secondary" type="submit">
                     Nächste Schaltung vorziehen

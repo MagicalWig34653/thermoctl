@@ -41,7 +41,7 @@
             </td>
             <td class="text-end">
                 {% if not entry.revoked_at %}
-                <form method="post" action="/tokens/{{ entry.id }}/revoke">
+                <form method="post" action="{{ url_prefix }}/tokens/{{ entry.id }}/revoke">
                     <button type="submit" class="btn btn-sm btn-outline-danger">Widerrufen</button>
                 </form>
                 {% endif %}
@@ -55,7 +55,7 @@
     <h2 class="h5 mt-4">Token ausstellen</h2>
     <p class="text-muted">Ein Token kann höchstens, was Sie selbst dürfen — und behält das
         auch dann nicht, wenn Sie ein Recht später verlieren.</p>
-    <form method="post" action="/tokens">
+    <form method="post" action="{{ url_prefix }}/tokens">
         {{ text_field("name", "Name", values.get("name", ""), required=true,
                     help_text="Wofür ist es gedacht? Später ist der Name das Einzige, woran Sie es erkennen.",
                     errors=errors.get("name", "")) }}

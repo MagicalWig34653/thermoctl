@@ -20,6 +20,7 @@ from thermoctl.domain.zones import (
 )
 from thermoctl.web import templates
 from thermoctl.web.forms import FormError, form_again
+from thermoctl.web.urls import prefixed
 
 # `include_in_schema=False`: the OpenAPI description is the contract of the REST
 # interface. These routes deliver HTML for humans, and in the interface under
@@ -171,7 +172,7 @@ async def create_zone_view(
         )
     except FormError as exc:
         return _form_again(request, session, values, exc, zone=None)
-    return RedirectResponse("/zones", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(prefixed(request, "/zones"), status_code=status.HTTP_303_SEE_OTHER)
 
 
 @router.get("/zones/{zone_id}")
@@ -227,7 +228,7 @@ async def save_zone(
         )
     except FormError as exc:
         return _form_again(request, session, values, exc, zone=zone)
-    return RedirectResponse("/zones", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(prefixed(request, "/zones"), status_code=status.HTTP_303_SEE_OTHER)
 
 
 @router.get("/zones/{zone_id}/delete")
@@ -248,9 +249,10 @@ async def confirm_zone_delete(
 @router.post("/zones/{zone_id}/delete")
 async def execute_zone_delete(
     zone_id: int,
+    request: Request,
     principal: Annotated[Principal, Depends(current_principal)],
     session: Annotated[Session, Depends(get_session)],
 ) -> Response:
     zone = _visible_zone(session, principal, zone_id)
     delete_zone(session, zone, principal)
-    return RedirectResponse("/zones", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(prefixed(request, "/zones"), status_code=status.HTTP_303_SEE_OTHER)

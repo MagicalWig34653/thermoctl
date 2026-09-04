@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "form.html" import delete_confirmation %}
+{% from "form.html" import delete_confirmation with context %}
 {% block title %}Schaltpunkt löschen – thermoctl{% endblock %}
 {% block content %}
 {{ delete_confirmation(
