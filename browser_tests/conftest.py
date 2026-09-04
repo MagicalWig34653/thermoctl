@@ -331,10 +331,21 @@ def _record_console_error(sink: list[str], message: ConsoleMessage) -> None:
     exactly the class of bug this fixture exists to catch. Without this filter,
     every test that visits an intentionally-rejected page would fail on a "console
     error" that was never a defect.
+
+    htmx itself adds a second, equally unavoidable source of the same kind: any
+    event it fires with an ``error`` detail (``htmx:responseError``,
+    ``htmx:sendError``, ...) goes through ``console.error`` unconditionally, inside
+    htmx's own trigger function, before any application code sees the event --
+    there is no way to opt out of it from outside htmx.min.js. A boosted request a
+    test deliberately fails (`browser_tests/test_loading_indicator.py`, the loading
+    bar must disappear again after a failure) always produces exactly this line, on
+    purpose, and it is filtered here for the same reason as the line above.
     """
     if message.type != "error":
         return
     if message.text.startswith("Failed to load resource:"):
+        return
+    if message.text.startswith("Response Status Error Code "):
         return
     sink.append(f"[console] {message.text}")
 

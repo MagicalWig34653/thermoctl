@@ -44,6 +44,7 @@
     #}
     <script defer src="{{ url_prefix }}/static/vendor/bootstrap/bootstrap.bundle.min.js"></script>
     <script defer src="{{ url_prefix }}/static/vendor/htmx/htmx.min.js"></script>
+    <script defer src="{{ url_prefix }}/static/loading_indicator.js"></script>
     <script defer src="{{ url_prefix }}/static/passkey.js"></script>
     <script defer src="{{ url_prefix }}/static/schedule.js"></script>
     <script defer src="{{ url_prefix }}/static/permissions.js"></script>
@@ -91,6 +92,14 @@
     </script>
 </head>
 <body hx-boost="true" data-url-prefix="{{ url_prefix }}">
+{#
+Rein optisch, kein Steuerelement -- `loading_indicator.js` fügt die sichtbare
+Klasse hinzu und nimmt sie wieder weg. `aria-hidden`, weil ein Balken ohne
+Aussagekraft für wen, der ihn nicht sehen kann; die eigentliche Wartezeit einer
+Anfrage bleibt für Screenreader wie bisher wahrnehmbar (die Seite antwortet
+einfach etwas später).
+#}
+<div id="tc-loading-bar" class="tc-loading-bar" aria-hidden="true"></div>
 {% set here = request.url.path %}
 {% set main_navigation = navigation_items | selectattr("section", "equalto", "main") | list %}
 {% set settings_navigation = navigation_items | selectattr("section", "equalto", "settings") | list %}
