@@ -23,6 +23,25 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
   Home-Assistant-Supervisor die Einstellungen ab) in `THERMOCTL_*`-Umgebungsvariablen.
   Ohne die Datei ändert sich am gewöhnlichen `docker compose`-Betrieb nichts, und eine
   vom Betreiber gesetzte Variable hat immer Vorrang.
+- Neue freie Add-on-Option `env`: Inhalt einer `.env`-Datei (eine Zuweisung je Zeile,
+  Kommentare mit `#`, `export ` am Zeilenanfang geduldet, umschließende
+  Anführungszeichen fallen weg). Damit erreicht ein Betreiber jede `THERMOCTL_*`-Variable,
+  auch eine ohne eigenes Add-on-Feld, ohne auf eine neue Add-on-Fassung zu warten. Gilt
+  nach den dedizierten Feldern und darf sie überschreiben; eine echte, vom Betreiber
+  gesetzte Umgebungsvariable gewinnt weiterhin gegen beides. Eine ungültige Zeile wird
+  verworfen, nie geloggt.
+
+### Geändert
+
+- **Das Add-on-Optionsschema ist jetzt vollständig flach**, keine verschachtelten
+  Gruppen mehr (`database_type`/`database_host`/… statt `database.type`/`database.host`,
+  `mqtt_enabled` statt `mqtt.enabled`, usw.). Grund: der Supervisor prüft die
+  *abgeschickte* Konfiguration, und die Add-on-Oberfläche lässt eine Gruppe, in der
+  niemand etwas ausgefüllt hat, beim Speichern weg — Ergebnis war
+  `Missing option 'notify' in root`, auch mit einer leeren Gruppe als Vorgabe, und der
+  Projektinhaber kam dadurch dreimal nicht durch die Konfiguration. `meross_api_base`
+  hat dabei kein eigenes Feld mehr (nur noch über `env` erreichbar) — eine
+  Regionswahl, die praktisch nie vom Standardwert abweicht.
 
 ### Behoben
 

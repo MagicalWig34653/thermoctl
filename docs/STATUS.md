@@ -2,6 +2,39 @@
 
 Letzte Aktualisierung: 2026-09-04
 
+## Add-on-Optionsschema jetzt flach, plus freies `env`-Feld
+
+Der Projektinhaber kam als Home-Assistant-Add-on-Betreiber dreimal nicht durch die
+Konfiguration: `Missing option 'notify' in root`, obwohl die Gruppe im Schema mit
+leerem Standardwert vorbelegt war. Ursache: der Supervisor prüft die *abgeschickte*
+Konfiguration, und die Add-on-Oberfläche lässt eine Gruppe, in der niemand etwas
+ausgefüllt hat, beim Speichern einfach weg. Verschachtelte Options-Gruppen sind damit
+grundsätzlich eine Falle, keine Add-on-spezifische Eigenheit.
+
+`docker/thermoctl_optionen.py` liest deshalb jetzt ein **flaches** Optionsschema:
+`secret_key`, `log_level`, `log_format`, `database_type`/`database_host`/
+`database_port`/`database_user`/`database_password`/`database_name`, `mqtt_enabled`/
+`mqtt_host`/`mqtt_port`/`mqtt_tls`/`mqtt_ca_cert`/`mqtt_username`/`mqtt_password`/
+`mqtt_client_id`/`mqtt_base_topic`/`mqtt_prefix`, `meross_email`/`meross_password`,
+`notify_webhook`/`notify_webhook_token`. `meross_api_base` hat kein eigenes Feld mehr
+(zu selten gebraucht) und steht jetzt in `BEWUSST_AUSGELASSEN`.
+
+Dazu ein neues, freies Feld **`env`**: der Inhalt einer `.env`-Datei, eine Zuweisung je
+Zeile (`NAME=WERT`), Kommentare und Leerzeilen übersprungen, `export ` am Zeilenanfang
+geduldet, umschließende Anführungszeichen entfernt, ein ungültiger Name verworfen.
+Damit erreicht ein Betreiber jede `THERMOCTL_*`-Variable ohne eigenes Add-on-Feld, ohne
+auf eine neue Add-on-Fassung zu warten. Reihenfolge: dedizierte Felder, dann `env`,
+dann — gewinnt gegen beides — eine echte, vom Betreiber gesetzte Umgebungsvariable.
+Weder ein Wert noch eine verworfene Zeile geraten ins Log.
+
+`ABGEBILDETE_FELDER`/`BEWUSST_AUSGELASSEN` und der Wächtertest
+(`test_every_settings_field_is_translated_or_deliberately_excluded`) sind auf die
+flache Form nachgezogen; `env` ist bewusst kein `Settings`-Feld und taucht in keinem
+der beiden Dicts auf, damit der Wächter dadurch nicht aufgeweicht wird. Das
+ausgelieferte Add-on-Abbild (v0.6.1) kennt `thermoctl_optionen.py` noch gar nicht, es
+muss ohnehin neu gebaut werden — Rücksicht auf die alte, verschachtelte Form war daher
+nicht nötig.
+
 ## Ingress-Präfix: thermoctl läuft jetzt unter einem beliebigen Pfadpräfix
 
 thermoctl ist als Home-Assistant-Add-on gedacht, das dort per Ingress unter einem
