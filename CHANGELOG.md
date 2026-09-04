@@ -11,14 +11,6 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ## Unveröffentlicht
 
-<<<<<<< HEAD
-- Docker-Abbild wird jetzt für `linux/amd64` und `linux/arm64` gebaut (Home-Assistant-
-  Add-on-Vorbereitung), `armv7` bewusst nicht.
-- `docker/entrypoint.sh` übersetzt eine vorhandene `/data/options.json` (Home-Assistant-
-  Supervisor) in `THERMOCTL_*`-Umgebungsvariablen; ohne die Datei ändert sich am
-  bisherigen `docker compose`-Betrieb nichts, eine vom Betreiber gesetzte Variable hat
-  immer Vorrang.
-=======
 ### Hinzugefügt
 
 - thermoctl läuft jetzt unter einem konfigurierbaren Pfadpräfix (`THERMOCTL_ROOT_PATH`)
@@ -26,7 +18,12 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
   Weiterleitungen, Cookies, Vorlagen, eigenes JavaScript und statische Dateien tragen
   den Präfix jetzt durchgehend; ohne gesetztes Präfix ändert sich nichts. Details in
   [docs/STATUS.md](docs/STATUS.md).
->>>>>>> ingress-praefix
+- Docker-Abbild wird jetzt für `linux/amd64` und `linux/arm64` gebaut (Home-Assistant-
+  Add-on-Vorbereitung), `armv7` bewusst nicht.
+- `docker/entrypoint.sh` übersetzt eine vorhandene `/data/options.json` (Home-Assistant-
+  Supervisor) in `THERMOCTL_*`-Umgebungsvariablen; ohne die Datei ändert sich am
+  bisherigen `docker compose`-Betrieb nichts, eine vom Betreiber gesetzte Variable hat
+  immer Vorrang.
 
 ---
 

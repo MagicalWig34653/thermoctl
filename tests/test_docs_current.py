@@ -12,6 +12,8 @@ correct is still something a person has to read.
 """
 
 import re
+import shutil
+import subprocess
 from pathlib import Path
 
 from tests.helpers import alle_api_routen
@@ -279,3 +281,35 @@ def test_the_living_docs_name_no_file_that_no_longer_exists() -> None:
             if mentioned not in existing:
                 dead.append(f"{name}: {mentioned}")
     assert not dead, "Dokumentation nennt Dateien, die es nicht gibt:\n  " + "\n  ".join(dead)
+
+
+def test_no_tracked_file_carries_leftover_merge_conflict_markers() -> None:
+    """A resolved merge leaves no markers behind -- and nothing else notices.
+
+    Written after exactly that happened here: a merge conflicted in two files, only
+    one was resolved by hand, and `git add -A` committed the markers in the other
+    straight to `main`. Every test stayed green, because no test reads the changelog,
+    and the next merge inherited them.
+
+    Only tracked files, for the same reason the physical-vocabulary guard asks git:
+    the working tree also holds agent reports and scratch notes that legitimately
+    contain rows of `=` characters. And only the two unambiguous markers -- a lone
+    `=======` is ordinary prose formatting, `<<<<<<<` is not.
+    """
+    listing = subprocess.run(  # noqa: S603 -- fester Befehl, kein Fremdeingang
+        [shutil.which("git") or "git", "-C", str(ROOT), "ls-files", "-z"],
+        capture_output=True,
+        check=True,
+    )
+    markers = ("<<<<<<<" "<", ">>>>>>>" ">")
+    guilty: list[str] = []
+    for name in listing.stdout.decode("utf-8").split("\0"):
+        if not name:
+            continue
+        path = ROOT / name
+        if not path.is_file() or path == Path(__file__):
+            continue
+        text = path.read_text(encoding="utf-8", errors="ignore")
+        if any(marker[:-1] + " " in text for marker in markers):
+            guilty.append(name)
+    assert not guilty, f"Konfliktmarken stehen noch in: {', '.join(guilty)}"
