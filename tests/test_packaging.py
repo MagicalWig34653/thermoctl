@@ -62,6 +62,17 @@ def _shipped_files() -> set[str]:
 
 
 @pytest.mark.packaging
+def _ist_konfliktkopie(name: str) -> bool:
+    """Erkennt die Kopien, die iCloud bei schnellen Schreibvorgaengen anlegt.
+
+    Dieselbe Form wie das ``--ignore-glob`` in ``pyproject.toml`` und der ``omit``
+    der Abdeckungsmessung: ein Leerzeichen, eine Zahl, dann die Endung.
+    """
+    stamm = name.rsplit(".", 1)[0]
+    teile = stamm.rsplit(" ", 1)
+    return len(teile) == 2 and teile[1].isdigit()
+
+
 def test_every_non_python_file_of_the_package_is_actually_shipped() -> None:
     """Templates and static files must be in the wheel, not just in the repository.
 
@@ -72,7 +83,17 @@ def test_every_non_python_file_of_the_package_is_actually_shipped() -> None:
     expected = {
         str(path.relative_to(PACKAGE))
         for path in PACKAGE.rglob("*")
-        if path.is_file() and path.suffix != ".py" and "__pycache__" not in path.parts
+        if path.is_file()
+        and path.suffix != ".py"
+        and "__pycache__" not in path.parts
+        # Nichts, was das Betriebssystem oder die Dateisynchronisation nebenher
+        # anlegt: .DS_Store legt der Finder in jedem Ordner an, den jemand oeffnet,
+        # und iCloud stellt Konfliktkopien der Form "datei 2.json" daneben. Beides
+        # gehoert nicht ins Wheel, und beides taucht ohne Zutun wieder auf -- ein
+        # Test, der daran scheitert, meldet den Zustand des Schreibtischs und nicht
+        # den des Pakets.
+        and path.name != ".DS_Store"
+        and not _ist_konfliktkopie(path.name)
     }
     assert expected, "keine Nicht-Python-Dateien gefunden — Pfad falsch?"
 
