@@ -1,6 +1,6 @@
 # Stand
 
-Letzte Aktualisierung: 2026-09-02
+Letzte Aktualisierung: 2026-09-04
 
 **Diese Datei sagt, was jetzt gilt — sonst nichts.** Wie es dazu kam, welche Fehler wie
 gefunden wurden und warum etwas so entschieden ist, steht in [verlauf.md](verlauf.md).
@@ -260,14 +260,13 @@ an, nicht danach.
 
 ## Zahlen
 
-Selbst nachgeprüft, nicht aus Berichten übernommen (Stand 2026-09-02, nach der
-Behebung der vier gemeldeten Anzeigefehler):
+Selbst nachgeprüft, nicht aus Berichten übernommen (Stand 2026-09-04):
 
 | | |
 |---|---|
-| Tests | 1556 unter SQLite, 1555 plus ein Skip unter MariaDB |
+| Tests | 4275 unter SQLite, 4274 plus ein Skip unter MariaDB |
 | Testabdeckung | 100 %, Mindestschwelle 100 % in der CI |
-| Ruff, mypy strict | ohne Befund, 105 Quelldateien |
+| Ruff, mypy strict | ohne Befund, 108 Quelldateien |
 | Migrationskette | linear, ein Kopf, vorwärts und rückwärts gegen beide Datenbanken |
 | Container | baut; eine echte 0.2.0-Datenbank wurde darin hochgezogen, `/healthz` meldet 0.2.2 |
 
@@ -396,7 +395,7 @@ Auf die offenen Punkte hat der Projektinhaber entschieden:
 |---|---|---|
 | Ventilschutz wurde zu dauerhaftem Heizen | Mindest-Einschaltdauer gilt für einen Schutzlauf nicht | umgesetzt |
 | Aufbewahrung `shadow_decision` | ein Jahr | umgesetzt, Vorgabe 365 Tage |
-| PI-Regelung | optional je Zone, nur Schaltaktoren, zunächst Beta | Spezifikation liegt vor, **nicht gebaut** |
+| PI-Regelung | optional je Zone, nur Schaltaktoren, zunächst Beta | umgesetzt (v0.5.0, in v0.6.0 nachgearbeitet); **Schalter steht je Zone weiterhin auf aus** |
 | MQTT-Broker | EMQX mit Authentifizierung und Rechten ist vorhanden | dokumentiert, nicht erzwingbar |
 | Repository öffentlich | erst mit einer zumutbaren, getesteten Fassung | offen |
 
@@ -446,15 +445,16 @@ abgelaufener Lauf, Übersteuerung, offenes Fenster, Sensorausfall) und `ShadowDe
 Die drei übrigen Kandidaten (`app.py`, die fünf Frontend-Skripte, die Formularauswertung
 in zwei Views) sind bewusst nicht angefasst.
 
-### Ein zweiter Fehler in der Regelkette, noch offen
+### Ein zweiter Fehler in der Regelkette, behoben
 
-Gefunden beim Kreuzreview, nicht von einem Test — wie schon der erste am selben Tag.
-**Ist die Mindest-Einschaltdauer einer Zone länger als ihr Ventilschutzlauf, wird der
-zeitlich begrenzte Lauf zu dauerhaftem Heizen.** Beides sind Einstellungen je Zone, die
-Kombination ist zulässig. Mit der Vorgabe tritt der Fehler nicht auf. Er ist in der
-Hauptsession nachgestellt, samt Gegenprobe, und steht mit drei Lösungswegen in
-[offene-entscheidungen.md](offene-entscheidungen.md). **Nicht behoben** — er gehört nicht
-in ein reines Refactoring.
+**War: Ist die Mindest-Einschaltdauer einer Zone länger als ihr Ventilschutzlauf, wurde
+der zeitlich begrenzte Lauf zu dauerhaftem Heizen.** Behoben am 2026-09-02: Die Ausnahme
+von der Mindestschaltdauer in Regel 5 (`thermoctl/domain/control_loop.py`,
+`protection_exempt`) gilt jetzt achsenabhängig — für einen gehaltenen Ein-Zustand reicht
+`valve_protection_active` allein, für den Aus-Timer weiterhin
+`valve_protection_active and protection_allowed`. Einzelheiten, verworfene Alternativen
+und die Nebenwirkung dieser Wahl stehen in
+[offene-entscheidungen.md](offene-entscheidungen.md).
 
 ### Zwei Werkzeugfallen, beide bezahlt
 

@@ -4,6 +4,8 @@
 
 Die Sicherheitsriegel am eigentlichen Aktorversand sind vorhanden, aber mehrere vorgelagerte Wege können eine scharf geschaltete Anlage trotzdem kalt oder heiß machen. Das größte unmittelbar ausnutzbare Risiko ist der MQTT-Befehlspfad: Wer auf dem Broker in den thermoctl-Befehlsbaum veröffentlichen darf, handelt ohne thermoctl-Benutzer oder zonenbezogene Rechte mit Anlagenvollmacht. Daneben erlauben ein zonenübergreifender Fehler bei Bediengerätekanälen und die Wiederverwendung von Kiosk-Token als normale REST-/MCP-Token mehr Heizungssteuerung, als die Oberfläche und die alte Durchsicht behaupten. Ein reales Installationsgeheimnis wurde im aktuellen Repository-Baum nicht gefunden; zwei Geheimnispfade in Laufzeitprotokolle bleiben dennoch bestehen.
 
+**Nachtrag (2026-09-04):** Die Marken „neu"/„behoben" je Befund unten sind gegen den aktuellen Code und die zugehörigen Tests nachgeprüft und, wo nötig, korrigiert — dieser einleitende Absatz beschreibt bewusst noch den Stand vom 2026-09-02 und bleibt unverändert stehen, weil er die Ausgangslage der Durchsicht ist. Kurzfassung des heutigen Standes: Von den acht Hoch-/Mittel-Befunden sind sechs behoben oder teilweise behoben (`device.manage` cross-Zone, Kiosk-Token als Bearer, Login-Blockade des Regelzyklus, Meross-Bestätigung, Webhook-Weiterleitung, Passwortwechsel/Sitzungswiderruf; das Einrichtungs-Token zusätzlich mit einer Ablaufzeit versehen). Weiterhin offen: der MQTT-Befehlspfad (jetzt dokumentiert, nicht im Code erzwingbar), unbegrenzte/unmaskierte Meross-Cloud-Antworten, das unbegrenzt wachsende Schaltprotokoll, die HTTP-Netzwerkvorgabe (`0.0.0.0` ohne TLS-Erzwingung) und die CSRF-Ausnahme für Login/Logout. Einzelheiten und Belege stehen bei jedem Befund als „Nachtrag (2026-09-04)".
+
 ## Befunde
 
 ### Hoch — MQTT-Veröffentlichungsrecht ist unbeschränkte Heizungssteuerung — **neu**
@@ -16,7 +18,7 @@ Die Sicherheitsriegel am eigentlichen Aktorversand sind vorhanden, aber mehrere 
 
 **Stand nach dem Dokumentationsnachtrag:** Der Befund bleibt bestehen und ist **nicht behoben**: Der Code verlangt weiterhin weder Broker-Zugangsdaten noch prüft er einen MQTT-Principal oder Zonenrechte. Die Installation des Projektinhabers verwendet EMQX mit Authentifizierung und Rechten; das entschärft den konkreten Betrieb erheblich. `.env.example`, [mqtt.md](mqtt.md#den-broker-absichern-er-ist-eine-vertrauensgrenze) und [self-hosting.md](self-hosting.md) benennen diese Broker-Vertrauensgrenze nun als Betriebsanforderung und dokumentieren getrennte Zugänge sowie die aus dem Code abgeleiteten Topic-Rechte. Dokumentiert heißt hier: Ein Betreiber kann die Grenze richtig absichern. thermoctl kann weder erzwingen noch feststellen, ob er es getan hat.
 
-### Hoch — `device.manage` einer Zone kann eine fremde Zone steuern — **neu**
+### Hoch — `device.manage` einer Zone kann eine fremde Zone steuern — **behoben**
 
 **Beleg:** `thermoctl/web/controller_views.py:69-92` prüft nur, ob das Bediengerät in irgendeiner verwaltbaren Zone hängt; die eingesandte `zone_id` wird nicht gegen den Principal geprüft. `thermoctl/domain/controller_channels.py:57-105` prüft nur die Existenz der Zielzone, und `thermoctl/domain/controller_channels.py:109-129` übernimmt den später gemeldeten Wert als Sollwert oder Betriebsart. Bei Tastenbelegungen wird es noch breiter: `thermoctl/domain/controller.py:171-181` ermittelt alle Zonen des Geräts und `thermoctl/domain/controller.py:184-247` führt die neue Belegung in allen aus. Der Beweis-Test `tests/test_security_review_2026_09_02.py:67-128` stellt mit `device.manage` nur für Zone A einen Kanal auf Zone B und schaltet B anschließend auf `off`.
 
@@ -24,7 +26,9 @@ Die Sicherheitsriegel am eigentlichen Aktorversand sind vorhanden, aber mehrere 
 
 **Empfehlung:** Zielzone und Quellgerät serverseitig gegen die Rechte des Principals prüfen. Eine Tastenbelegung eines gemeinsam genutzten Bediengeräts nur erlauben, wenn `device.manage` für sämtliche betroffenen Zonen vorliegt, oder die Belegung pro Zone speichern.
 
-### Hoch — Ein Kiosk-Token ist außerhalb des Kiosks ein wesentlich mächtigerer Bearer — **neu**
+**Nachtrag (2026-09-04), gegen den aktuellen Code nachgeprüft:** Behoben in Commit `8501b0e` ("fix: vier Rechtefehler aus der neuen Sicherheitsdurchsicht"). Zielzone und Quellgerät werden jetzt serverseitig gegen die Rechte des Principals geprüft; eine Tastenbelegung verlangt `device.manage` für jede betroffene Zone. Regressionstests: `tests/test_security_review_2026_09_02.py::test_device_manage_einer_zone_erreicht_keine_fremde_zone` (Kanal auf fremde Zone -> 403, kein Kanal entsteht, eine anschließende Gerätemeldung bewegt die fremde Zone nicht), `::test_tastenbelegung_verlangt_das_recht_fuer_jede_zone_des_geraets` (geteilter Regler, Recht nur für eine Zone -> 403, keine Bindung entsteht) und `::test_quellgeraet_eines_kanals_muss_lesbar_sein` (Sensorkanal von einem fremden Gerät -> 404).
+
+### Hoch — Ein Kiosk-Token ist außerhalb des Kiosks ein wesentlich mächtigerer Bearer — **behoben**
 
 **Beleg:** Der ausgestellte Rechtesatz ist in `thermoctl/domain/kiosk.py:30-34,63-73` zwar auf `zone.read`, `setpoint.write` und `override.create` begrenzt, aber `is_kiosk` ändert laut `thermoctl/auth/tokens.py:14-27` die Auswertung nicht. REST akzeptiert jedes auflösbare Token (`thermoctl/api/routes.py:95-111`), MCP ebenso (`thermoctl/mcp/server.py:53-57`). REST kann mit diesen Rechten sämtliche Modus-Sollwerte ersetzen (`thermoctl/api/routes.py:241-265`) und eine zeitlich unbegrenzte Übersteuerung anlegen (`thermoctl/api/routes.py:597-637`, `thermoctl/api/schemas.py:153-160`); MCP bietet dieselbe freie Übersteuerung (`thermoctl/mcp/server.py:277-301`). Der Beweis-Test `tests/test_security_review_2026_09_02.py:30-64` setzt mit einem Kiosk-Token über REST 35 °C ohne Endzeit.
 
@@ -32,13 +36,17 @@ Die Sicherheitsriegel am eigentlichen Aktorversand sind vorhanden, aber mehrere 
 
 **Empfehlung:** Kiosk-Token an REST und MCP grundsätzlich ablehnen oder eigene, semantisch enge Kiosk-Rechte und Endpunkte verwenden. `setpoint.write` und `override.create` sind für die behauptete Kiosk-Wirkung zu breit; eine serverseitige Schrittoperation und ein ausschließlich zeitplanbestimmter Boost wären die passende Grenze.
 
-### Hoch — Unangemeldete Login-Anfragen können den Regelzyklus blockieren — **neu**
+**Nachtrag (2026-09-04), gegen den aktuellen Code nachgeprüft:** Behoben in Commit `8501b0e`. REST und MCP weisen ein Kiosk-Token jetzt zurück, statt es als vollwertigen Bearer zu behandeln. Regressionstests: `tests/test_security_review_2026_09_02.py::test_kiosk_token_gilt_nicht_als_rest_bearer` (REST antwortet `401`, Meldungstext nennt „Kiosk") und `::test_kiosk_token_gilt_auch_bei_mcp_nicht` (`PermissionError`, Meldungstext nennt „Kiosk"). Die behauptete unbefristete 35-°C-Übersteuerung, die dieser Befund beschreibt, ist genau der Fall, den beide Tests jetzt verhindert sehen.
+
+### Hoch — Unangemeldete Login-Anfragen können den Regelzyklus blockieren — **behoben**
 
 **Beleg:** `thermoctl/web/auth_views.py:33-37` hält einen unbegrenzten, pro Prozess und Benutzernamen wachsenden Zähler. Der asynchrone Login-Handler ruft in `thermoctl/web/auth_views.py:69-95` vor jeder Passwortprüfung synchron `time.sleep()` über `sleep()` aus `thermoctl/web/auth_views.py:48-51` auf; schon der erste Versuch wartet eine Sekunde. Regelzyklus und Webanfragen laufen als Tasks derselben Ereignisschleife (`thermoctl/app.py:262-359`, `thermoctl/app.py:548-558`).
 
 **Angriff und Wirkung:** Ein unangemeldeter Angreifer schickt fortlaufend parallele Login-POSTs, wahlweise mit immer neuen Namen. Die synchronen Wartezeiten und Argon2-Prüfungen werden auf der Ereignisschleife seriell abgearbeitet; gleichzeitig wächst `FEHLVERSUCHE` ohne Grenze. Regel- und Publikationszyklen werden beliebig verspätet, sodass Aktoren in ihrem letzten Zustand bleiben: Die Wohnung kann weiterheizen oder auskühlen, obwohl die Regelung längst anders entscheiden müsste.
 
 **Empfehlung:** Nie synchron in einem `async`-Handler schlafen. Eine begrenzte, ablaufende Rate-Limit-Struktur nach Quelladresse und Konto verwenden, Verzögerung asynchron ausführen und die Passwortprüfung in einen begrenzten Worker auslagern. Zusätzlich den Regelprozess vom öffentlich erreichbaren Webprozess trennen oder mit einem unabhängigen Watchdog absichern.
+
+**Nachtrag (2026-09-04), gegen den aktuellen Code nachgeprüft:** Behoben in Commit `cd9563e` ("fix: vier Befunde an Anmeldung, Sitzungen und Einrichtungs-Token"). `thermoctl/web/auth_views.py` wartet jetzt über `await sleep(...)` statt `time.sleep()`, und die Passwortprüfung läuft über `anyio.to_thread.run_sync(verify_password, ...)` außerhalb der Ereignisschleife. `FEHLVERSUCHE` ist auf `_MAX_FEHLVERSUCHE_EINTRAEGE = 1024` Einträge gedeckelt, mit Verdrängung des ältesten Eintrags. Regressionstests: `tests/test_login.py::test_the_login_delay_does_not_block_the_event_loop` (eine zweite Aufgabe kommt während der Wartezeit zum Zug) und `::test_the_password_check_does_not_run_on_the_event_loop`.
 
 ### Hoch — Netzwerkweite HTTP-Vorgabe gibt Anmeldungen und Sitzungen preis — **schon in der alten Durchsicht**
 
@@ -48,6 +56,8 @@ Die Sicherheitsriegel am eigentlichen Aktorversand sind vorhanden, aber mehrere 
 
 **Empfehlung:** Standardmäßig nur an Loopback binden. Für nichtlokale Bindungen einen expliziten Unsicherheits-Opt-in verlangen und TLS am dokumentierten Reverse Proxy samt sicheren Cookies verbindlich machen.
 
+**Nachtrag (2026-09-04), gegen den aktuellen Code nachgeprüft:** Weiterhin **offen**. `thermoctl/config.py` setzt `bind_host: str = "0.0.0.0"` unverändert als Vorgabe (mit `# noqa: S104`, als beabsichtigt für den Container markiert), `secure_cookies` bleibt standardmäßig aus. Der Startup-Warnhinweis existiert weiterhin, ist aber nur ein Hinweis, keine Sperre.
+
 ### Hoch — Das Einrichtungs-Token wird absichtlich unmaskiert protokolliert — **schon in der alten Durchsicht**
 
 **Beleg:** `thermoctl/app.py:508-519` interpoliert das Klartext-Token ausdrücklich so in den Meldungstext, dass der Maskierungsfilter es nicht erfasst. `thermoctl/db/models/credential.py:69-77` kennt Verbrauch, aber keinen Ablaufzeitpunkt; `thermoctl/setup.py:38-47,50-64` akzeptiert jedes noch unverbrauchte Token. Der Maskierungsfilter erklärt in `thermoctl/logging.py:82-95`, dass Meldungstext nicht geschützt wird.
@@ -55,6 +65,8 @@ Die Sicherheitsriegel am eigentlichen Aktorversand sind vorhanden, aber mehrere 
 **Angriff und Wirkung:** Ein Leser lokaler, Container- oder zentral weitergeleiteter Logs nimmt vor der Ersteinrichtung das Token und richtet den ersten Administrator ein. Danach hat er vollständige Heizungs- und Benutzerverwaltung; das Token kann bis zum Verbrauch beliebig alt sein. Das verletzt den Projektgrundsatz „kein Geheimnis im Log“ ausdrücklich.
 
 **Empfehlung:** Token über einen eigens geschützten lokalen Einrichtungsweg, eine Datei mit restriktiven Rechten oder Standardausgabe nur bei interaktiver CLI ausgeben, mit kurzer Ablaufzeit versehen und bei Neustart rotieren. Niemals in normale, weiterleitbare Anwendungslogs schreiben.
+
+**Nachtrag (2026-09-04), gegen den aktuellen Code nachgeprüft:** **Teilweise behoben** in Commit `cd9563e`. `thermoctl/setup.py` führt jetzt `SETUP_TOKEN_LIFETIME = timedelta(hours=1)`; `_unused_setup_token_exists()` in `thermoctl/app.py` zählt ein abgelaufenes Token nicht mehr mit, sodass ein Neustart ein frisches ausgibt. Behoben ist damit der im Befund genannte Kernpunkt „das Token kann bis zum Verbrauch beliebig alt sein". **Nicht behoben und ausdrücklich beabsichtigt:** Das Token steht weiterhin im Klartext im Meldungstext (`thermoctl/app.py`, Kommentar dort: „Der einzige Kanal, über den der Betreiber es bekommt") und bleibt damit der eine dokumentierte Ausnahme vom Grundsatz „kein Geheimnis im Log" — innerhalb des jetzt einstündigen Fensters trägt ein weitergeleitetes oder zentral gesammeltes Log das Geheimnis unverändert weiter. Regressionstest für den Ablauf: `tests/test_setup.py::test_an_expired_setup_token_no_longer_sets_anything_up`.
 
 ### Mittel — Meross bestätigt den Befehl, nicht den Zielzustand — **behoben**
 
@@ -72,13 +84,17 @@ Die Sicherheitsriegel am eigentlichen Aktorversand sind vorhanden, aber mehrere 
 
 **Empfehlung:** Antwortgröße, Anzahl Geräte sowie Länge und Typ jedes Feldes vor Verarbeitung begrenzen. Fremde Fehlermeldungen nur als festen Statuscode oder hart gekürzt und geheimnisbereinigt protokollieren. Cloud-Geräte niemals allein aufgrund des gemeldeten Modellpräfixes als zuweisbaren Heizaktor einstufen.
 
-### Mittel — Passwortwechsel beendet gestohlene Sitzungen nicht, ein „Alle abmelden“ fehlt — **neu**
+**Nachtrag (2026-09-04), gegen den aktuellen Code nachgeprüft:** Weiterhin **offen**. `thermoctl/integrations/meross.py::UrllibJsonTransport._post_sync` liest die Antwort unverändert per `answer.read()` ohne Größenbegrenzung. `thermoctl/services/meross_discovery.py:168` und `thermoctl/services/meross_session.py:122` loggen `str(exc)` weiterhin unter dem Schlüssel `grund`, den `thermoctl/logging.py` nicht als sensiblen Schlüsselnamen kennt und folglich nicht maskiert.
+
+### Mittel — Passwortwechsel beendet gestohlene Sitzungen nicht, ein „Alle abmelden“ fehlt — **behoben**
 
 **Beleg:** Sitzungen gelten standardmäßig 14 Tage (`thermoctl/auth/sessions.py:14-29`) und konfigurierbar bis zu einem Jahr (`thermoctl/domain/control.py:48-63`). `thermoctl/domain/administration.py:208-224` lässt bestehende Sitzungen beim Passwortwechsel ausdrücklich gültig und behauptet einen gesonderten Widerrufsweg; tatsächlich gibt es nur den Widerruf der aktuellen Sitzung beim Logout (`thermoctl/web/auth_views.py:139-160`, `thermoctl/auth/sessions.py:53-64`). Die Benutzeroberfläche weist nur auf das Fortbestehen hin (`thermoctl/web/templates/users.html:95-100`).
 
 **Angriff und Wirkung:** Ein Angreifer stiehlt ein Sitzungscookie. Selbst nachdem Benutzer oder Administrator das Passwort als Reaktion ändern, kann er bis zum Ablauf mit allen bisherigen Rechten weitersteuern und die Wohnung kalt oder heiß machen. Deaktivieren des ganzen Kontos stoppt ihn, ist aber kein Ersatz für Sitzungswiderruf.
 
 **Empfehlung:** Beim administrativen Passwort-Reset alle Sitzungen und optional Passkeys widerrufen; beim eigenen Wechsel eine klare Wahl anbieten. Eine sichtbare Sitzungsübersicht mit „diese“ und „alle Sitzungen beenden“ implementieren.
+
+**Nachtrag (2026-09-04), gegen den aktuellen Code nachgeprüft:** Behoben in Commit `cd9563e`. `thermoctl/domain/administration.py::set_password` ruft jetzt `revoke_all_sessions(session, user.id, keep_id=keep_session_id)`; ein eigener Wechsel schont nur die aufrufende Sitzung, ein administrativer Reset beendet alle Sitzungen der betroffenen Person. Zusätzlich gibt es unter `/users` jetzt „Andere Sitzungen beenden“ unabhängig von einem Passwortwechsel. Der Hilfetext in `thermoctl/web/templates/users.html`, der zuvor „Bestehende Sitzungen bleiben gültig" behauptete, wurde entsprechend geändert. Regressionstests: `tests/test_login.py::test_changing_the_own_password_ends_the_other_sessions_only` und `::test_ending_the_other_sessions_without_changing_the_password`.
 
 ### Mittel — Das Schaltprotokoll wächst ohne Aufbewahrungsgrenze — **neu**
 
@@ -87,6 +103,8 @@ Die Sicherheitsriegel am eigentlichen Aktorversand sind vorhanden, aber mehrere 
 **Angriff und Wirkung:** Jeder neue Schaltzustand beziehungsweise neue Ergebniszustand erzeugt über die Lebensdauer weitere Zeilen. Ein Nutzer mit Steuerrechten oder ein Broker-Angreifer kann Zustände wiederholt ändern und das Wachstum beschleunigen. Füllt die Datenbank das Dateisystem, fallen Web- und Regeltransaktionen aus; Aktoren können im letzten heißen oder kalten Zustand stehen bleiben.
 
 **Empfehlung:** Eigene, standardmäßig endliche Aufbewahrung mit mengen- und zeitbegrenzter Löschung in kleinen Blöcken einführen, freien Speicher überwachen und bei Knappheit sicher unscharf schalten. Das Protokoll optional in einen separaten Speicher schreiben, damit sein Wachstum die Regelzustandsdatenbank nicht blockiert.
+
+**Nachtrag (2026-09-04), gegen den aktuellen Code nachgeprüft:** Weiterhin **offen**. `thermoctl/services/retention.py` enthält ausschließlich `delete_old_measurements` und `delete_old_shadow_decisions`; keine Funktion darin fasst `DeviceCommand`/`device_command`-Zeilen an.
 
 ### Niedrig — Webhook folgt beliebigen Zielen und nimmt `Authorization` über Hostwechsel mit — **behoben**
 
@@ -104,13 +122,17 @@ Die Sicherheitsriegel am eigentlichen Aktorversand sind vorhanden, aber mehrere 
 
 **Empfehlung:** Für Login und Logout zusätzlich `Origin` beziehungsweise `Sec-Fetch-Site` prüfen und eine eigene GET-Wiederherstellungsseite anbieten, die nur lokale Cookies verwirft. Die aktuelle Ausnahme nicht auf weitere Pfade ausdehnen.
 
-### Niedrig — Die Bediengeräteseite verrät alle Gerätenamen — **neu**
+**Nachtrag (2026-09-04), gegen den aktuellen Code nachgeprüft:** Weiterhin **offen**, unverändert. `thermoctl/auth/dependencies.py` führt `_RECOVERY_PATHS` weiterhin nur mit `/login` und `/logout`, ohne zusätzliche `Origin`-/`Sec-Fetch-Site`-Prüfung. Der Befund selbst stuft die körperliche Wirkung bereits als „höchstens indirekte Nichtbedienbarkeit" ein — vertretbar, aber nicht behoben.
+
+### Niedrig — Die Bediengeräteseite verrät alle Gerätenamen — **behoben**
 
 **Beleg:** `thermoctl/web/controller_views.py:41-60` filtert Bediengeräte nach sichtbaren Zonen, lädt für `devices` aber den vollständigen Gerätebestand. `thermoctl/web/templates/controllers.html:42-59` gibt diese Liste als Quellgeräte und Gerätepool aus. Schon eine beliebige gültige Sitzung erreicht `GET /controllers` (`thermoctl/web/controller_views.py:64-66`); ein ausdrückliches `device.read` am Endpunkt fehlt.
 
 **Angriff und Wirkung:** Ein angemeldeter Nutzer ohne Geräte-Leserecht erfährt Namen sämtlicher Geräte und damit möglicherweise Raum-, Bewohner- oder Integrationsbezüge. Meross-Zugangsdaten werden nicht ausgegeben und eine direkte Heizwirkung entsteht nicht; die Information erleichtert jedoch das Erraten von MQTT-Zielen und der Anlagenstruktur.
 
 **Empfehlung:** Den Endpunkt mindestens mit `device.read` schützen und Quellgeräte auf den wirksamen Zonenumfang beschränken. Für Schreibkanäle auch `source_device_id` serverseitig autorisieren.
+
+**Nachtrag (2026-09-04), gegen den aktuellen Code nachgeprüft:** Behoben in Commit `8501b0e`. `GET /controllers` verlangt jetzt `device.read`, und die Quellgeräteliste ist auf den sichtbaren Zonenumfang gefiltert. Regressionstests: `tests/test_security_review_2026_09_02.py::test_bediengeraeteseite_verraet_keine_fremden_geraetenamen` (fremder Gerätename erscheint nicht in der Antwort) und `::test_bediengeraeteseite_verlangt_geraeteleserecht` (nur `zone.read` -> `403`).
 
 ## Die drei Fragen aus dem Plan
 
