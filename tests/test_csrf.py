@@ -103,7 +103,7 @@ def test_a_stale_page_can_still_log_out_and_back_in(
 def test_a_browser_gets_a_readable_page_instead_of_json(
     angemeldeter_client: TestClient,
 ) -> None:
-    """`{"detail": "Ungueltiges CSRF-Token"}` tells nobody what to do next."""
+    """`{"detail": "Ungültiges CSRF-Token"}` tells nobody what to do next."""
     response = angemeldeter_client.post("/zones", headers={"Accept": "text/html"})
 
     assert response.status_code == status.HTTP_403_FORBIDDEN
@@ -129,7 +129,7 @@ def test_an_htmx_control_is_marked_so_the_page_can_say_something(
     assert response.status_code == status.HTTP_403_FORBIDDEN
     assert response.headers["HX-Stale-Page"] == "1"
     assert "HX-Refresh" not in response.headers
-    assert response.json() == {"detail": "Ungueltiges CSRF-Token"}
+    assert response.json() == {"detail": "Ungültiges CSRF-Token"}
 
 
 def test_the_base_template_turns_that_marker_into_something_visible() -> None:
