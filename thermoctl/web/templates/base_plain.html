@@ -31,6 +31,7 @@
     {# Siehe base.html: Skripte gehoeren in den Kopf, den hx-boost nie austauscht. #}
     <script defer src="{{ url_prefix }}/static/vendor/bootstrap/bootstrap.bundle.min.js"></script>
     <script defer src="{{ url_prefix }}/static/vendor/htmx/htmx.min.js"></script>
+    <script defer src="{{ url_prefix }}/static/loading_indicator.js"></script>
     <script defer src="{{ url_prefix }}/static/passkey.js"></script>
     <script>
         document.addEventListener("htmx:configRequest", function (ereignis) {
@@ -49,6 +50,8 @@ Menue voller Wege, die alle mit 401 antworten, ist keine Orientierung, sondern e
 Einladung zum Danebengreifen.
 #}
 <body class="d-flex align-items-center py-5" style="min-height: 100vh" data-url-prefix="{{ url_prefix }}">
+{# Siehe base.html: rein optisch, `loading_indicator.js` steuert die Sichtbarkeit. #}
+<div id="tc-loading-bar" class="tc-loading-bar" aria-hidden="true"></div>
 <main class="w-100 m-auto px-3" style="max-width: 23rem">
     <div class="text-center mb-4">
         <span class="tc-marker" style="font-size: 1.35rem">thermoctl</span>

@@ -9,6 +9,20 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ---
 
+## Unveröffentlicht
+
+### Hinzugefügt
+
+- **Dezente Ladeanzeige** für laufende Anfragen: ein schmaler Balken über dem Inhalt,
+  global auf jeder angemeldeten Seite und der Anmeldung/Einrichtung. Erscheint erst nach
+  400 ms (kein Aufblitzen bei schnellen Antworten), verschwindet auch nach einem
+  Fehlschlag zuverlässig, respektiert `prefers-reduced-motion` und beide Farbschemata.
+  Anlass: der zusätzliche Proxy-Sprung im Home-Assistant-Add-on-Betrieb macht die
+  Oberfläche spürbar träger — die Latenz lässt sich nicht wegnehmen, aber sichtbar machen.
+  Der Webhook-Testknopf unter „Einstellungen" sperrt sich zusätzlich für die Dauer der
+  Anfrage. Bewusst nicht am Kiosk-Dashboard: dessen einzige htmx-Anfrage ist der
+  selbsttätige 20-Sekunden-Nachlader, den ein aufblitzender Balken eher stören würde.
+
 ## 0.6.4 — 2026-09-04
 
 ### Behoben

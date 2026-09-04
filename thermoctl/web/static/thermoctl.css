@@ -79,6 +79,58 @@ body {
     -webkit-font-smoothing: antialiased;
 }
 
+/* ── Ladeanzeige ────────────────────────────────────────────────────────────────
+ * Ein schmaler Balken über dem Inhalt, nicht im Fluss -- er darf nichts
+ * verschieben. `loading_indicator.js` setzt die sichtbare Klasse erst nach einer
+ * kurzen Verzögerung, damit eine schnelle Antwort nicht aufblitzt; hier nur die
+ * Optik. Bewusst keiner der beiden gesättigten Töne (Kupfer/Stahlblau) -- die
+ * bedeuten in dieser Oberfläche ausschließlich Temperatur, ein Ladezustand ist
+ * keine Messgröße.
+ */
+.tc-loading-bar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 3px;
+    z-index: 1090;
+    overflow: hidden;
+    background: var(--line);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 150ms ease;
+}
+
+.tc-loading-bar-sichtbar {
+    opacity: 1;
+}
+
+.tc-loading-bar::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 100%;
+    width: 40%;
+    background: var(--muted);
+    animation: tc-loading-schwung 1.1s ease-in-out infinite;
+}
+
+@keyframes tc-loading-schwung {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(350%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    /* Keine Bewegung, aber weiterhin erkennbar: der Balken füllt sich komplett,
+     * statt über die Fläche zu wandern. */
+    .tc-loading-bar::after {
+        width: 100%;
+        animation: none;
+        transform: none;
+    }
+}
+
 /* ── Typografie ─────────────────────────────────────────────────────────────── */
 
 h1, .t-title {

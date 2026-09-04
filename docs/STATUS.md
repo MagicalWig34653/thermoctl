@@ -2,6 +2,31 @@
 
 Letzte Aktualisierung: 2026-09-04
 
+## Dezente Ladeanzeige gegen die Add-on-Latenz
+
+Rückmeldung aus dem Add-on-Betrieb (siehe Eintrag darunter): der zusätzliche Proxy-Sprung
+(Browser -> HA-Frontend -> Supervisor -> Add-on) macht die Oberfläche spürbar träger. Die
+Latenz lässt sich nicht wegnehmen, aber sichtbar machen -- ein schmaler Balken
+(`#tc-loading-bar`, `.tc-loading-bar` in `thermoctl.css`) über dem Inhalt, gesteuert von
+`static/loading_indicator.js` über die htmx-Ereignisse `htmx:beforeRequest`/
+`htmx:afterRequest`. Global auf `base.html` und `base_plain.html`, weil `hx-boost` auch
+einen Seitenwechsel zu einer htmx-Anfrage macht -- eine Stelle statt zwanzig einzelner
+Knöpfe. Erscheint erst nach 400 ms Verzögerung, damit eine schnelle Antwort nicht
+aufblitzt; verschwindet über einen einzigen `afterRequest`-Listener zuverlässig auch nach
+einem Fehlschlag (htmx feuert dieses Ereignis unabhängig vom Ausgang). Kein eigener Ton --
+die gesättigten Farben (Kupfer/Stahlblau) bedeuten in dieser Oberfläche ausschließlich
+Temperatur, der Balken benutzt `--muted`/`--line`. `prefers-reduced-motion` bekommt einen
+vollständig gefüllten, unbewegten Balken statt der wandernden Animation. Der
+Webhook-Testknopf unter „Einstellungen" bekommt zusätzlich `hx-disabled-elt="this"` und
+sperrt sich damit selbst für die Dauer der Anfrage an die fremde Gegenstelle.
+
+Bewusst **nicht** am Kiosk-Dashboard (`kiosk.html`): dessen einzige htmx-Anfrage ist der
+selbsttätige 20-Sekunden-Nachlader, kein Nutzerklick -- die Setpoint-/Boost-Knöpfe dort
+sind gewöhnliche, unboostede `<form method="post">` und lösen ohnehin die native
+Browser-Navigation aus. Ein Balken, der alle 20 Sekunden aufblitzt, wäre an einem
+Wandtablett aus Distanz eher störend als hilfreich -- genau das, was die Aufgabenstellung
+für diesen Fall vorwegnahm.
+
 ## Add-on-Betrieb: Rechteproblem beim Start behoben
 
 Aus dem Betrieb gemeldet: Das Add-on kam unter Home Assistant nicht hoch --
