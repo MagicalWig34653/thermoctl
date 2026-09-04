@@ -622,6 +622,65 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
                 await task
 
 
+# The header Home Assistant Core's own Ingress proxy sets on every request it
+# forwards -- unconditionally, for both plain HTTP and the websocket upgrade path
+# alike (`homeassistant/components/hassio/ingress.py::_init_header`, called from
+# both of that file's request handlers). Its value is built there as
+# `f"/api/hassio_ingress/{token}"`, from the same per-add-on token the Supervisor
+# also exposes as `ingress_entry` (`supervisor/apps/app.py::ingress_entry`) -- the
+# very value `docker/thermoctl_ingress.py` fetches at start-up and stores as
+# `THERMOCTL_ROOT_PATH`. The two are therefore expected to agree byte for byte
+# whenever a request has genuinely come through Ingress; see `_ingress_header_prefix`
+# below for what happens when they don't (or the header is missing outright).
+_INGRESS_PATH_HEADER = "X-Ingress-Path"
+
+
+def _ingress_header_prefix(request: Request, configured: str) -> str:
+    """The prefix that applies to *this* request -- `configured`, or `""`.
+
+    `configured` (`Settings.root_path`) is trustworthy: it was learned directly from
+    the Supervisor at start-up, never from a request. The `X-Ingress-Path` header on
+    an individual request is not -- it is exactly as trustworthy as any other header,
+    supplied by whoever is talking to the socket. Under real Ingress that is Home
+    Assistant Core (see the comment on `_INGRESS_PATH_HEADER` above); under this
+    task's whole reason for existing -- a reverse proxy or the local network pointed
+    directly at the exposed port -- it is anybody. Applying the header
+    unconditionally would turn every request into an open redirect: point the header
+    anywhere, and every link, redirect and cookie this process renders follows it.
+
+    The one comparison that closes that hole without also breaking Ingress: honour
+    the header only when it reproduces `configured` **exactly**. Deliberately a bare
+    `==` on two `str` -- no `.strip()`, no case-folding, no trailing-slash
+    tolerance on either side. `configured` never carries a trailing slash
+    (`Settings._normalise_root_path` strips it), so a header value that does is
+    already a mismatch, correctly. Do not "helpfully" loosen this comparison --
+    every loosening is a value Ingress itself would never send that would newly be
+    accepted, which is exactly the hole this function exists to keep closed.
+
+    An **unconfigured** instance (`configured == ""`) does not even read the header:
+    nothing here is safe to compare it against, and a request must never be able to
+    manufacture a prefix that was never configured at all -- so this returns `""`
+    immediately, before the header is consulted.
+
+    A request that came genuinely through Ingress but arrives here **without** the
+    header (the header got stripped somewhere, or a Home Assistant version predating
+    it) is treated the same as a direct request: no prefix. The header is set
+    unconditionally by Home Assistant Core on every request it proxies (see above),
+    so this path is not expected to be reached in practice. Between the two ways to
+    fail here, this is the deliberately chosen one: every rendered link, redirect and
+    static asset now points at a bare path Ingress itself still won't forward to
+    (Ingress keeps stripping its prefix before forwarding), so the failure is
+    immediately visible as broken navigation -- not a silently mis-scoped cookie or a
+    link that quietly steers to the wrong place. The alternative (fail open, apply
+    the prefix whenever `configured` is non-empty regardless of the header) is what
+    this whole change replaces, and reintroducing it here would silently make every
+    direct request behave as if it came through Ingress again.
+    """
+    if not configured:
+        return ""
+    return configured if request.headers.get(_INGRESS_PATH_HEADER) == configured else ""
+
+
 # Addresses under which the service is only reachable from the same machine. Anything
 # else means: someone on the network can reach it.
 _NUR_OERTLICH = frozenset({"127.0.0.1", "::1", "localhost"})
@@ -660,8 +719,9 @@ async def _serve_static(scope: Scope, receive: Receive, send: Send) -> None:
     forwards the *full* external path and merely also tells the app about the
     prefix, which is not what happens here: under Home Assistant's Ingress (and
     under the ASGI spec's own definition of `root_path`, which `thermoctl.config
-    .Settings.root_path`/`app`'s `root_path=` kwarg below follow), the proxy
-    *strips* its prefix before forwarding, so `path` never contains it.
+    .Settings.root_path` and the per-request value `resolve_root_path` below
+    computes both follow), the proxy *strips* its prefix before forwarding, so
+    `path` never contains it.
     `StaticFiles.get_path()` then computes an accumulated `root_path` that doesn't
     match `path` either, returns the wrong relative path, and every static asset
     404s -- caught during this task's own browser tests, which is the only place an
@@ -706,13 +766,17 @@ def create_app() -> FastAPI:
         lifespan=_lifespan,
         docs_url=None,
         redoc_url=None,
-        # Sets `scope["root_path"]` on every request (FastAPI's own `__call__`
-        # overwrites whatever an ASGI server would otherwise supply, whenever this is
-        # non-empty) -- the one place the configured Ingress/reverse-proxy prefix
-        # enters the request. Everything downstream (`request.url_for()`,
-        # `request.base_url`, the `url_prefix` template global, `thermoctl.web.urls`)
-        # reads it back out of there; nothing else needs to know the prefix itself.
-        root_path=settings.root_path,
+        # Deliberately **not** `root_path=settings.root_path` (an earlier version of
+        # this did exactly that): FastAPI's own `__call__` applies its `root_path`
+        # constructor argument to `scope["root_path"]` unconditionally, for every
+        # request the process receives -- Ingress or not. That is correct only as
+        # long as Ingress is the *only* way in; the moment the same container is also
+        # reachable directly (this task's whole reason for existing -- the add-on's
+        # port exposed to the operator's own reverse proxy), a direct request would
+        # carry the Ingress prefix in every rendered link too, none of which the
+        # direct path actually serves. The prefix is instead resolved per request by
+        # the `resolve_root_path` middleware below, which sets `scope["root_path"]`
+        # itself before anything else sees it.
         license_info={
             "name": "AGPL-3.0-only",
             "url": "https://www.gnu.org/licenses/agpl-3.0.html",
@@ -831,6 +895,32 @@ def create_app() -> FastAPI:
             request_id_var.reset(marker)
         response.headers["X-Request-ID"] = identifier
         return response
+
+    @app.middleware("http")
+    async def resolve_root_path(
+        request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
+        """Sets `scope["root_path"]` for *this* request -- see `_ingress_header_prefix`.
+
+        Added last among this function's `@app.middleware("http")` registrations on
+        purpose: Starlette applies middleware in the reverse order it was added
+        (`Starlette.add_middleware` inserts at the front of its list, and
+        `build_middleware_stack` then wraps in reverse, so the most recently added
+        middleware ends up outermost) -- the last one added is therefore the first to
+        see every request. Nothing downstream (`thermoctl.web.urls.prefixed`/
+        `cookie_path`, the `url_prefix` template global, FastAPI's own
+        `Request.url_for`) must ever read `root_path` before this has run.
+
+        Mutates `request.scope` in place rather than building a new scope: the same
+        `dict` object is threaded through every layer of the ASGI call for this
+        request, including the `Request` objects the router and the route handler
+        construct further down -- this is the same mechanism `request_id` above
+        relies on (via a context variable rather than scope, but the same "mutate
+        before `call_next`, downstream code sees it" pattern) and the standard way an
+        ASGI middleware hands information to what runs after it.
+        """
+        request.scope["root_path"] = _ingress_header_prefix(request, settings.root_path)
+        return await call_next(request)
 
     @app.get("/docs", include_in_schema=False)
     async def swagger_ui(request: Request) -> HTMLResponse:

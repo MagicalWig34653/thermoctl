@@ -9,6 +9,19 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ---
 
+## Unreleased
+
+### Geändert
+
+- Der Ingress-/Reverse-Proxy-Präfix wird jetzt **pro Anfrage** bestimmt statt einmal
+  für den ganzen Prozess: Läuft `thermoctl` als Home-Assistant-Add-on und ist der
+  freigegebene Container-Port zusätzlich über einen eigenen Reverse-Proxy direkt
+  erreichbar, funktionieren beide Zugänge gleichzeitig. Eine Anfrage über Ingress
+  trägt die Kopfzeile `X-Ingress-Path`, die Home Assistant selbst zuverlässig setzt;
+  stimmt sie exakt mit dem beim Start vom Supervisor ermittelten Pfad überein, gilt
+  der Präfix für diese Anfrage — sonst nicht. Näheres in
+  [docs/self-hosting.md](docs/self-hosting.md#6c-gleichzeitig-über-ingress-und-direkt-erreichbar).
+
 ## 0.7.0 — 2026-09-04
 
 ### Geändert

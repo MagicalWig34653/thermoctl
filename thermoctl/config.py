@@ -26,12 +26,27 @@ class Settings(BaseSettings):
     # running as a Home Assistant add-on: Home Assistant's Ingress proxies the
     # interface under `/api/hassio_ingress/<random-token>/` and expects every
     # generated link, redirect, cookie and static asset to stay under that same
-    # prefix. Read once at startup from configuration and passed to FastAPI's own
-    # `root_path` (`app.create_app()`) -- deliberately **not** taken from the
-    # `X-Ingress-Path` request header some proxies send instead: a header is input
-    # from whoever can reach the service directly, and trusting it would let them
-    # steer where every page on the site points (an open redirect on every link).
-    # Empty means "served at the domain root", the default and by far the common case.
+    # prefix. Read once at startup from configuration -- not from the request.
+    #
+    # This value is no longer applied to every request unconditionally (it was, up
+    # to the point the add-on's port was also exposed directly to a reverse proxy --
+    # see `docs/STATUS.md`). It is instead the one *trusted reference value* that
+    # `thermoctl.app.create_app()`'s `resolve_root_path` middleware compares an
+    # incoming request's `X-Ingress-Path` header against, request by request: the
+    # prefix only applies when the header reproduces this value exactly. The header
+    # itself stays untrusted input -- whoever reaches the service directly could set
+    # it to anything, and trusting it unconditionally would let them steer where
+    # every generated link, redirect and cookie points (an open redirect on every
+    # page). Comparing it against a value this same process already learned from the
+    # Supervisor at start-up (`docker/thermoctl_ingress.py`) closes that hole without
+    # giving up Ingress support. See `thermoctl.app._ingress_header_prefix` for the
+    # actual comparison and why it is exact, and why a request that comes in without
+    # this header (or with the wrong value) is treated as "no prefix" rather than
+    # trusting it or rejecting the request outright.
+    # Empty means "served at the domain root", the default and by far the common case
+    # (and also disables the header check above entirely -- an instance with nothing
+    # configured has nothing to compare a header against and must never gain a
+    # prefix from a request alone).
     root_path: str = ""
     log_level: str = "INFO"
     log_format: str = "json"

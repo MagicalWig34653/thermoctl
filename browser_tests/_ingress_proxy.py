@@ -9,6 +9,18 @@ something in front of the real server doing exactly that stripping -- otherwise 
 request to the prefixed address a page renders would 404 against routes that are
 only ever registered at their bare paths.
 
+It also adds the one header real Ingress adds and this task's whole change relies
+on: ``X-Ingress-Path``, set to `prefix` on every request whose path actually carries
+it -- exactly what Home Assistant Core's own Ingress proxy does unconditionally on
+every request it forwards (``homeassistant/components/hassio/ingress.py::
+_init_header``, both for plain HTTP and the websocket upgrade path). Without it,
+``thermoctl.app._ingress_header_prefix`` would treat every request through this
+stand-in the same as a direct one and never apply the prefix at all -- which would
+make this whole proxy pointless as a stand-in for the real thing. A request that
+does *not* carry `prefix` (see the docstring of `start_stripping_proxy` for when that
+happens) gets no such header either, for the same reason a real, un-prefixed request
+never carries it.
+
 This is deliberately not a general-purpose proxy: no persistent connections, no
 streaming, no chunked passthrough (the backend's own response is fully read and
 re-sent with a recomputed ``Content-Length``). It only has to survive what
@@ -43,7 +55,8 @@ def start_stripping_proxy(prefix: str, backend_base_url: str) -> tuple[http.serv
 
         def _forward(self) -> None:
             path = self.path
-            backend_path = path[len(prefix) :] if path.startswith(prefix) else path
+            carries_prefix = path.startswith(prefix)
+            backend_path = path[len(prefix) :] if carries_prefix else path
             if not backend_path.startswith("/"):
                 backend_path = "/" + backend_path
             content_length = int(self.headers.get("Content-Length", "0") or "0")
@@ -54,6 +67,9 @@ def start_stripping_proxy(prefix: str, backend_base_url: str) -> tuple[http.serv
                 for key, value in self.headers.items()
                 if key.lower() not in ({"host"} | _HOP_BY_HOP)
             }
+            if carries_prefix:
+                # Real Ingress sets this unconditionally -- see the module docstring.
+                forward_headers["X-Ingress-Path"] = prefix
             if body is not None:
                 forward_headers["Content-Length"] = str(len(body))
 

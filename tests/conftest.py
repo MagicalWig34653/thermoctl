@@ -247,6 +247,12 @@ def client(
     get_settings.cache_clear()
 
 
+#: Same literal value `tests/test_ingress_prefix.py::PREFIX` uses -- kept here too
+#: (rather than imported from there) so this fixture module has no dependency on a
+#: single test file.
+_INGRESS_PREFIX = "/api/hassio_ingress/A1b2C3d4e5"
+
+
 @pytest.fixture
 def client_with_prefix(
     settings: Settings, session: Session, monkeypatch: pytest.MonkeyPatch
@@ -261,10 +267,44 @@ def client_with_prefix(
     The prefix only has to show up in what the app *generates*: redirects, cookie
     scope, and every link a rendered page carries -- which is exactly what the tests
     using this fixture check.
+
+    Since the prefix is resolved per request from the ``X-Ingress-Path`` header
+    (``thermoctl.app._ingress_header_prefix``), this client carries that header,
+    matching the configured prefix, on every request by default -- exactly what real
+    Ingress does (``homeassistant/components/hassio/ingress.py::_init_header`` sets
+    it unconditionally on every request it proxies). ``TestClient(app, headers=...)``
+    merges these into every request the client makes; an individual test can still
+    override or drop it per call by passing its own ``headers=``.
     """
     monkeypatch.setenv("THERMOCTL_DATABASE_URL", settings.database_url)
     monkeypatch.setenv("THERMOCTL_SECRET_KEY", settings.secret_key.get_secret_value())
-    monkeypatch.setenv("THERMOCTL_ROOT_PATH", "/api/hassio_ingress/A1b2C3d4e5")
+    monkeypatch.setenv("THERMOCTL_ROOT_PATH", _INGRESS_PREFIX)
+    get_settings.cache_clear()
+    app = create_app()
+
+    def _session_override() -> Iterator[Session]:
+        yield session
+
+    app.dependency_overrides[get_session] = _session_override
+    yield TestClient(app, headers={"X-Ingress-Path": _INGRESS_PREFIX})
+    get_settings.cache_clear()
+
+
+@pytest.fixture
+def client_direct_with_ingress_configured(
+    settings: Settings, session: Session, monkeypatch: pytest.MonkeyPatch
+) -> Iterator[TestClient]:
+    """The same add-on process as ``client_with_prefix`` (``THERMOCTL_ROOT_PATH`` set,
+    as it would be running as a Home Assistant add-on), reached the *other* way: this
+    task's whole reason for existing -- a request that comes in directly (the
+    operator's own reverse proxy pointed at the exposed container port, or the local
+    network), carrying no ``X-Ingress-Path`` header at all. Must behave exactly like
+    the plain ``client`` fixture (no prefix in anything generated), proving the two
+    access paths work side by side against one and the same configuration.
+    """
+    monkeypatch.setenv("THERMOCTL_DATABASE_URL", settings.database_url)
+    monkeypatch.setenv("THERMOCTL_SECRET_KEY", settings.secret_key.get_secret_value())
+    monkeypatch.setenv("THERMOCTL_ROOT_PATH", _INGRESS_PREFIX)
     get_settings.cache_clear()
     app = create_app()
 
@@ -273,6 +313,32 @@ def client_with_prefix(
 
     app.dependency_overrides[get_session] = _session_override
     yield TestClient(app)
+    get_settings.cache_clear()
+
+
+@pytest.fixture
+def client_with_forged_prefix_header(
+    settings: Settings, session: Session, monkeypatch: pytest.MonkeyPatch
+) -> Iterator[TestClient]:
+    """Like ``client_direct_with_ingress_configured``, but the request carries an
+    ``X-Ingress-Path`` header anyway -- one a genuine Ingress request would never
+    send, since it does not match what this process learned from the Supervisor at
+    start-up. This is the open-redirect attempt the whole per-request check exists to
+    reject: whoever can reach the exposed port directly can send any header they
+    like. Must behave exactly like ``client_direct_with_ingress_configured`` (the
+    header is simply discarded), not like ``client_with_prefix``.
+    """
+    monkeypatch.setenv("THERMOCTL_DATABASE_URL", settings.database_url)
+    monkeypatch.setenv("THERMOCTL_SECRET_KEY", settings.secret_key.get_secret_value())
+    monkeypatch.setenv("THERMOCTL_ROOT_PATH", _INGRESS_PREFIX)
+    get_settings.cache_clear()
+    app = create_app()
+
+    def _session_override() -> Iterator[Session]:
+        yield session
+
+    app.dependency_overrides[get_session] = _session_override
+    yield TestClient(app, headers={"X-Ingress-Path": "/api/hassio_ingress/EinAnderesAddon"})
     get_settings.cache_clear()
 
 

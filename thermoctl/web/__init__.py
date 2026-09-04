@@ -73,9 +73,10 @@ def _logged_in_user(request: Request) -> dict[str, object]:
         "top_bar_user": getattr(request.state, "user", None),
         "session_csrf": session_csrf,
         "navigation_items": visible_navigation(principal) if principal is not None else (),
-        # The configured Ingress/reverse-proxy prefix (`Settings.root_path`, applied
-        # as `root_path=` in `app.create_app()`), or "" when the service is served at
-        # the domain root. Every absolute, same-origin link, form `action`, script
+        # The Ingress/reverse-proxy prefix that applies to *this* request (resolved
+        # per request by `app.create_app()`'s `resolve_root_path` middleware -- see
+        # there and `thermoctl.web.urls`), or "" when this request carries none.
+        # Every absolute, same-origin link, form `action`, script
         # `src` and htmx attribute in the templates is written as
         # `{{ url_prefix }}/...` for exactly this reason -- a hardcoded `/...` would
         # leave the prefix and land outside the Ingress path. `request.scope` rather
