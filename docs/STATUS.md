@@ -1,960 +1,188 @@
 # Stand
 
-Letzte Aktualisierung: 2026-09-04
-
-## Umlaute statt Umschreibung
-
-Textstellen, die `ae`/`oe`/`ue` statt `ä`/`ö`/`ü` schrieben (und `ss` statt `ß`, wo es
-passt), sind jetzt echte Umlaute — 157 Dateien betroffen: Dokumentation, Kommentare,
-Log- und Fehlermeldungen, Oberflächentexte, Tests. Wortweise geprüft gegen eine
-kuratierte Liste bestätigter deutscher Wörter, nicht per Buchstabenpaar-Muster — sonst
-wären englische Wörter wie *value*, *queue*, *true*, *issue* zerschossen worden.
-Bezeichner (Funktions-, Variablen-, Klassen-, Feld-, Spaltennamen), maschinell gelesene
-Schlüssel (YAML/JSON, Umgebungsvariablen, Migrationskennungen, ein `severity`-Wert nur
-dort belassen, wo er es schon vorher war) und Dateinamen blieben unangetastet. Der
-Wirkungswächter (`tests/test_user_visible_effect_texts.py`) zog `approved_physical_vocabulary.json`
-für jede geänderte benutzersichtbare Zeile mit; zwei Fallstricke unterwegs: ein
-Dateiname-Schlüssel im Wächter-Verzeichnis war versehentlich mitkonvertiert worden
-(zurückgesetzt), und ein `bytes`-Literal in einem Test verträgt keine Nicht-ASCII-Zeichen
-(dort blieb die ASCII-Schreibweise).
-
-## Dezente Ladeanzeige gegen die Add-on-Latenz
-
-Rückmeldung aus dem Add-on-Betrieb (siehe Eintrag darunter): der zusätzliche Proxy-Sprung
-(Browser -> HA-Frontend -> Supervisor -> Add-on) macht die Oberfläche spürbar träger. Die
-Latenz lässt sich nicht wegnehmen, aber sichtbar machen -- ein schmaler Balken
-(`#tc-loading-bar`, `.tc-loading-bar` in `thermoctl.css`) über dem Inhalt, gesteuert von
-`static/loading_indicator.js` über die htmx-Ereignisse `htmx:beforeRequest`/
-`htmx:afterRequest`. Global auf `base.html` und `base_plain.html`, weil `hx-boost` auch
-einen Seitenwechsel zu einer htmx-Anfrage macht -- eine Stelle statt zwanzig einzelner
-Knöpfe. Erscheint erst nach 400 ms Verzögerung, damit eine schnelle Antwort nicht
-aufblitzt; verschwindet über einen einzigen `afterRequest`-Listener zuverlässig auch nach
-einem Fehlschlag (htmx feuert dieses Ereignis unabhängig vom Ausgang). Kein eigener Ton --
-die gesättigten Farben (Kupfer/Stahlblau) bedeuten in dieser Oberfläche ausschließlich
-Temperatur, der Balken benutzt `--muted`/`--line`. `prefers-reduced-motion` bekommt einen
-vollständig gefüllten, unbewegten Balken statt der wandernden Animation. Der
-Webhook-Testknopf unter „Einstellungen" bekommt zusätzlich `hx-disabled-elt="this"` und
-sperrt sich damit selbst für die Dauer der Anfrage an die fremde Gegenstelle.
-
-Bewusst **nicht** am Kiosk-Dashboard (`kiosk.html`): dessen einzige htmx-Anfrage ist der
-selbsttätige 20-Sekunden-Nachlader, kein Nutzerklick -- die Setpoint-/Boost-Knöpfe dort
-sind gewöhnliche, unboostede `<form method="post">` und lösen ohnehin die native
-Browser-Navigation aus. Ein Balken, der alle 20 Sekunden aufblitzt, wäre an einem
-Wandtablett aus Distanz eher störend als hilfreich -- genau das, was die Aufgabenstellung
-für diesen Fall vorwegnahm.
-
-## Add-on-Betrieb: Rechteproblem beim Start behoben
-
-Aus dem Betrieb gemeldet: Das Add-on kam unter Home Assistant nicht hoch --
-`/data/options.json nicht lesbar: [Errno 13] Permission denied`. Ursache: Der Supervisor
-legt diese Datei selbst an, root:root, nur für root lesbar; das Abbild lief aber als
-unprivilegierter Benutzer (`USER thermoctl`, uid 10001), der sie nie lesen konnte.
-
-Geprüft und **echt** (nicht nur behauptet): mit einer per Docker-Named-Volume angelegten,
-root:root 600 `options.json` bricht der alte Entrypoint korrekt mit dieser Meldung ab --
-`alembic`/`thermoctl` laufen dann nicht, `set -e` samt Zwischenvariable funktioniert wie
-im Kommentar behauptet. Der im Auftrag vermutete zweite Fehler (Start läuft trotzdem
-durch) trat in dieser Form nicht auf, dafür ein eigener, beim Bau des Fixes selbst
-eingeführter: ein naiver root-dann-abgeben-Entrypoint las die Optionsdatei nach dem
-Rechteabgeben ein zweites Mal -- als der jetzt unprivilegierte Benutzer, der sie
-ebenfalls nicht lesen kann. `THERMOCTL_ENTRYPOINT_UNPRIVILEGED` markiert seither, dass
-der Optionsblock schon einmal lief, bevor sich `entrypoint.sh` per `exec setpriv
---reuid=thermoctl --regid=thermoctl --init-groups "$0"` selbst neu startet.
-
-**Lösung**: Kein `USER thermoctl` mehr im Dockerfile -- das Abbild startet als root.
-`entrypoint.sh` liest dort die Optionsdatei und den Ingress-Pfad, sorgt mit `chown` dafür,
-dass `/data` (SQLite-Datenbank inbegriffen) für den Dienst beschreibbar ist, und gibt die
-Rechte über `setpriv` (Teil von util-linux, schon im Basisabbild -- kein Zusatzpaket) an
-`thermoctl` ab, bevor `alembic` oder der Dienst selbst laufen. Der gewöhnliche
-docker-compose-Betrieb ist unverändert: startet ein Operator explizit mit `user:`
-(z.B. dem bisherigen Standard 10001), ist `id -u` im Entrypoint nie `0`, der
-Rechteabgabe-Block läuft dann gar nicht erst -- geprüft per Docker-Lauf mit
-`--user 10001:999`, identischer Ablauf wie vorher. Ohne `user:`-Angabe startet der
-Container jetzt kurz als root, fällt aber noch vor `alembic` zurück; der laufende Dienst
-ist in beiden Fällen unverändert unprivilegiert (mit `docker top` bestätigt: `USER 10001`).
-Kein Zugangsdatum gerät dabei ins Log.
-
-Neue Tests in `tests/test_docker_entrypoint.py`: unlesbare Optionsdatei bricht ab
-(`chmod 000`), der Rechteabgabe-Ablauf läuft genau einmal (nicht zweimal, das hätte den
-selbst eingeführten Fehler oben durchgelassen), mit Attrappen für `id`/`chown`/`setpriv`.
-
-## Störungsmeldungen: drei Arten, einzeln abschaltbar, mit Testknopf
-
-Bisher gingen Meldungen ungefragt hinaus, und ob der Webhook sie annahm, stand nur im
-Log. Drei Arten lassen sich jetzt anlagenweit einzeln abschalten — **Sensorstörung**
-samt Entwarnung, **Brücke oder Broker weg**, und neu **Schaltbefehl gescheitert**.
-Alle drei sind ab Werk an: Wer heute Meldungen bekommt, bekommt sie weiter.
-
-Die neue Art schließt eine Lücke, die dieses Projekt schon einmal bezahlt hat: Ein
-gescheiterter Befehl landete ausschließlich im Schaltprotokoll. An einer kalten Zone
-bedeutet das im Januar ein eingefrorenes Rohr. Gemeldet wird nur der **Übergang**, samt
-Entwarnung — die Unterscheidung dafür wird getrennt vom Log-Schlüssel geführt, damit
-sie auch greift, wenn sich Nutzlast oder Riegel gleichzeitig ändern.
-
-**Das Tor ist eine reine Funktion in der Domäne**, und die Meldungsart ist ein
-Pflichtfeld von `FaultNotice` — optional wäre eine Meldung ohne Art still daran
-vorbeigerutscht. Solange es keine `setting`-Zeile gibt, fällt es offen: Vor Abschluss
-der Einrichtung wird nichts unterdrückt, was niemand konfigurieren konnte.
-**Home Assistant bleibt entkoppelt**: Wer den Webhook stilllegt, verliert den
-Problemsensor dort nicht.
-
-**Der Testknopf** unter „Einstellungen" schickt eine gekennzeichnete Testmeldung über
-denselben Weg wie eine echte und zeigt Statuscode, Dauer und im Fehlerfall den Grund
-unmittelbar auf der Seite. Ohne hinterlegten Webhook wird er nicht angeboten; gegen
-wiederholtes Auslösen liegt ein Zeitabstand von zehn Sekunden davor. Daneben steht der
-**Zustellzustand** — wann zuletzt versucht, mit welchem Ergebnis, wobei „noch nie
-versucht" ein eigener Zustand ist und nicht wie ein Fehlschlag aussieht.
-
-Die Testmeldung trägt die Art `test` und geht bewusst **nicht** durch das Tor: Wer auf
-„Testen" drückt, will diese eine Meldung hinausschicken. `notice_enabled` wirft für
-diese Art weiterhin — landet eine Testmeldung je am Tor, ist das ein Fehler und soll
-auffallen.
-
-**Beim Gegenlesen gefunden und behoben:** Das Auditprotokoll schrieb
-`notification.sent` auch dann, wenn das Tor unterdrückt hatte. Wer später sucht, warum
-eine Störung niemanden erreichte, hätte dort „gesendet" gefunden. Es unterscheidet
-jetzt `sent` von `suppressed`. Scheitert die Zustellung am **Netz**, bleibt es bei
-`sent` — der Versuch ging los, und ob er ankam, beantwortet `notify_last_ok`.
-
-Sechs neue Spalten auf `setting`, Migration `67e794059830`, vorwärts und rückwärts
-gegen beide Datenbanken geprüft. Der Zustellzustand wird außerhalb jeder
-Schreibtransaktion notiert; ein Test prüft die Eigenschaft selbst, nach dem Vorbild des
-Meross-Tests. Eine unterdrückte Meldung fasst ihn nicht an — es gab keinen Versuch.
-
-## Kiosk: der AGPL-§13-Hinweis, wie ein Wandtablett ihn verträgt
-
-`kiosk.html` erbt weder `base.html` noch `base_plain.html` und blieb beim
-Quelltextverweis außen vor. Statt einer Fußzeile — ein Wandtablett wird aus Distanz
-angesehen, nicht gelesen, und die Fläche gehört dem Zonenraster — sitzt ein knapper
-Verweis „Quelltext (AGPL-3.0)" in der Kopfzeile neben der Uhr. `target="_blank"` hält
-die Anzeige geladen; ein Antippen führte sonst vom Kiosk weg, ohne einfachen Weg
-zurück außer einem Neustart des Browsers. Der Verweis öffnet nichts, was das Kiosk
-nicht ohnehin kann — seine enge Bedienfläche ist eine Sicherheitseigenschaft und
-bleibt unberührt.
-
-## `env_nach_addon.py`: Datenbank in der `.env` schlägt eine bereits im Add-on eingetragene nicht mehr blind
-
-Der Projektinhaber betreibt seine Anlage mit MariaDB, deren Zugangsdaten schon im
-Add-on stehen; seine `.env` enthält daneben noch eine
-`THERMOCTL_DATABASE_URL=sqlite:///...`-Zeile aus der Entwicklungsumgebung. Das
-Werkzeug hätte diese SQLite-Zeile unverändert übernommen und damit die im Add-on
-eingetragene MariaDB-Verbindung beim Einfügen überschrieben. Zwei Wege dagegen:
-
-- Neuer Schalter `--ohne-datenbank` lässt alle `database_*`-Felder in der Ausgabe
-  komplett weg -- der übliche Fall, wenn die Datenbank im Add-on bereits eingetragen
-  ist und so bleiben soll. SQLite bleibt dabei unverändert die Vorgabe des Add-ons
-  selbst; der Schalter ändert nur, was `env_nach_addon.py` ausgibt.
-- Ohne den Schalter: Liegt neben einer aktiven SQLite-`THERMOCTL_DATABASE_URL` eine
-  **auskommentierte** zweite Zeile mit `mysql+pymysql://...` (die übliche Art, sich
-  beim Wechseln zwischen SQLite und MariaDB die jeweils andere Verbindung
-  aufzubewahren), gewinnt diese gegen SQLite. Reicht sie nicht für eine vollständige
-  Verbindung, faellt das Werkzeug auf SQLite zurück und sagt auf der Fehlerausgabe
-  warum -- kein stilles Zurückfallen.
-
-Gibt das Werkzeug SQLite aus, nennt der zugehörige Hinweis auf der Fehlerausgabe
-jetzt auch `--ohne-datenbank`, falls die Zieldatenbank tatsächlich eine andere ist.
-Rundlauf-Test um beide Fälle ergänzt (`tests/test_tools_env_nach_addon.py`), für
-`--ohne-datenbank` als eigener, ausdrücklicher Fall statt eines Rundlauf-Vergleichs
--- die Datenbank fehlt dort naturgemäß.
-
-## Werkzeug für den Umstieg: `.env` -> Add-on-Konfiguration
-
-`tools/env_nach_addon.py` liest eine bestehende `.env` (`docker compose`-Betrieb) und
-erzeugt daraus die YAML-Konfiguration für das Home-Assistant-Add-on -- die
-Gegenrichtung von `docker/thermoctl_optionen.py`. Die Abbildung ist bewusst nicht
-zweimal aufgeschrieben: Das Skript importiert `ABGEBILDETE_FELDER` und
-`BEWUSST_AUSGELASSEN` aus `thermoctl_optionen.py` und kehrt sie um, statt sie
-abzuschreiben. Einzige Ausnahme ist `THERMOCTL_DATABASE_URL`, die dort aus fünf
-Optionen *zusammengesetzt* wird -- die Rücksrichtung *zerlegt* sie wieder, in einer
-eigenen Funktion (`datenbank_optionen_aus_url`), erkennt genau die beiden Formen, die
-die Vorwärtsrichtung erzeugen kann (SQLite unter `/data/thermoctl.db`,
-`mysql+pymysql://...` für MariaDB), und meldet jede andere URL als Fehler statt sie
-still zu verwerfen.
-
-Werte, die das Add-on nicht braucht (Bind-Adresse, Port, `secure_cookies`,
-Pfadpräfix), werden übersprungen; jede übrige, nicht dediziert abgebildete
-`THERMOCTL_*`-Variable landet im freien `env`-Feld des Add-ons. Ein
-Rundlauf-Test (`tests/test_tools_env_nach_addon.py`) belegt für jede dokumentierte
-Einstellung: `.env` -> Add-on-Optionen -> YAML -> zurückgelesen -> durch
-`thermoctl_optionen.translate()` -> dieselben `THERMOCTL_*`-Variablen wie am Anfang.
-Näheres in [`docs/self-hosting.md`](self-hosting.md#6b-umstieg-von-docker-compose-auf-das-home-assistant-add-on).
-
-## Add-on-Optionsschema jetzt flach, plus freies `env`-Feld
-
-Der Projektinhaber kam als Home-Assistant-Add-on-Betreiber dreimal nicht durch die
-Konfiguration: `Missing option 'notify' in root`, obwohl die Gruppe im Schema mit
-leerem Standardwert vorbelegt war. Ursache: der Supervisor prüft die *abgeschickte*
-Konfiguration, und die Add-on-Oberfläche lässt eine Gruppe, in der niemand etwas
-ausgefüllt hat, beim Speichern einfach weg. Verschachtelte Options-Gruppen sind damit
-grundsätzlich eine Falle, keine Add-on-spezifische Eigenheit.
-
-`docker/thermoctl_optionen.py` liest deshalb jetzt ein **flaches** Optionsschema:
-`secret_key`, `log_level`, `log_format`, `database_type`/`database_host`/
-`database_port`/`database_user`/`database_password`/`database_name`, `mqtt_enabled`/
-`mqtt_host`/`mqtt_port`/`mqtt_tls`/`mqtt_ca_cert`/`mqtt_username`/`mqtt_password`/
-`mqtt_client_id`/`mqtt_base_topic`/`mqtt_prefix`, `meross_email`/`meross_password`,
-`notify_webhook`/`notify_webhook_token`. `meross_api_base` hat kein eigenes Feld mehr
-(zu selten gebraucht) und steht jetzt in `BEWUSST_AUSGELASSEN`.
-
-Dazu ein neues, freies Feld **`env`**: der Inhalt einer `.env`-Datei, eine Zuweisung je
-Zeile (`NAME=WERT`), Kommentare und Leerzeilen übersprungen, `export ` am Zeilenanfang
-geduldet, umschließende Anführungszeichen entfernt, ein ungültiger Name verworfen.
-Damit erreicht ein Betreiber jede `THERMOCTL_*`-Variable ohne eigenes Add-on-Feld, ohne
-auf eine neue Add-on-Fassung zu warten. Reihenfolge: dedizierte Felder, dann `env`,
-dann — gewinnt gegen beides — eine echte, vom Betreiber gesetzte Umgebungsvariable.
-Weder ein Wert noch eine verworfene Zeile geraten ins Log.
-
-`ABGEBILDETE_FELDER`/`BEWUSST_AUSGELASSEN` und der Wächtertest
-(`test_every_settings_field_is_translated_or_deliberately_excluded`) sind auf die
-flache Form nachgezogen; `env` ist bewusst kein `Settings`-Feld und taucht in keinem
-der beiden Dicts auf, damit der Wächter dadurch nicht aufgeweicht wird. Das
-ausgelieferte Add-on-Abbild (v0.6.1) kennt `thermoctl_optionen.py` noch gar nicht, es
-muss ohnehin neu gebaut werden — Rücksicht auf die alte, verschachtelte Form war daher
-nicht nötig.
-
-## Ingress-Präfix: thermoctl läuft jetzt unter einem beliebigen Pfadpräfix
-
-thermoctl ist als Home-Assistant-Add-on gedacht, das dort per Ingress unter einem
-zufälligen Pfad wie `/api/hassio_ingress/<token>/` eingebunden wird. Vorher kannte die
-Anwendung keinen Präfix: jeder absolute Verweis, jede Weiterleitung, jedes Formularziel
-und jede HTMX-Nachladung zeigte auf `/…` und landete damit außerhalb des Ingress-Pfads.
-
-Der Präfix kommt **ausschließlich aus Konfiguration** (`THERMOCTL_ROOT_PATH`,
-`Settings.root_path`, siehe `.env.example`), nicht aus der `X-Ingress-Path`-Kopfzeile —
-die wäre nicht vertrauenswürdige Eingabe von außen. Der Wert wird als FastAPIs eigenes
-ASGI-`root_path` gesetzt (`thermoctl/app.py::create_app`); von dort liest ihn alles
-andere zurück: `thermoctl/web/urls.py` (`prefixed()`, `cookie_path()`) für
-Weiterleitungen und Cookie-Gültigkeit, und ein Jinja-Kontextprozessor
-(`thermoctl/web/__init__.py`) stellt ihn allen Vorlagen als `url_prefix` bereit — jeder
-lokale `href`/`action`/`src`/`hx-*`-Wert in `thermoctl/web/templates/` ist jetzt
-`{{ url_prefix }}/…` statt hartem `/…`. `thermoctl/web/static/passkey.js` liest denselben
-Wert zur Laufzeit aus `<body data-url-prefix="…">`. Cookies tragen jetzt ein explizites
-`path` (Präfix statt `/`) — sonst würden zwei Add-ons hinter demselben Host sich
-gegenseitig die Sitzungscookies lesen.
-
-**Eigener Befund unterwegs:** Starlettes `Mount` (`app.mount("/static", StaticFiles(...))`)
-rechnet den `root_path` des Kind-Scopes als `root_path + gefundenes_präfix` — richtig nur,
-wenn der Proxy den vollen externen Pfad weiterreicht. Home-Assistant-Ingress entfernt
-seinen Präfix aber, bevor die Anfrage den Container erreicht (der ASGI-Definition von
-`root_path` entsprechend); jede statische Datei lieferte dann 404, obwohl der gerenderte
-Link im HTML korrekt aussah. Behoben durch einen eigenen, kleinen ASGI-Wrapper
-(`thermoctl/app.py::_serve_static`), der das Präfix selbst abschneidet statt sich auf
-Starlettes Akkumulation zu verlassen — nur beim `/static`-Mount betroffen, jede normale
-Route bleibt unberührt.
-
-Browsertests unter `browser_tests/test_ingress_prefix.py` laufen gegen eine Instanz
-hinter einem lokalen Gegenstück zum Ingress-Proxy (`browser_tests/_ingress_proxy.py`,
-entfernt den Präfix, bevor die Anfrage den echten Server erreicht) — Anmeldung,
-Abmeldung, eine geboostete Navigation, das Stylesheet, das Kiosk und eine Zeigergeste im
-Zeitplan-Editor, alles unter Präfix und mit derselben Konsolen-Fehler-Prüfung wie die
-übrige Suite. `tests/test_ingress_prefix.py` belegt auf HTTP-Ebene Weiterleitungsziele,
-Cookie-`Path`, gerenderte Verweise und die statische Datei selbst — je einmal mit und
-ohne Präfix, um zu zeigen, dass sich ohne Präfix nichts ändert.
-
-**Nicht angefasst:** die Anmeldung selbst (Grundsatz 4 gilt unverändert — Home Assistant
-authentifiziert nicht für thermoctl mit), `docker/`, `.github/workflows/docker.yml` und
-der Entrypoint (parallele Aufgabe). `/healthz` bleibt bewusst unpräfigiert — ein
-Docker-Healthcheck erreicht den Container direkt, nicht über Ingress.
-
-**Offen:** Der verpflichtende MariaDB-Lauf (`THERMOCTL_TEST_DATABASE_URL`) konnte nicht
-durchgeführt werden — der lokale MariaDB-Server meldet `errno 28 "No space left on
-device"` beim Anlegen jeder neuen Testdatenbank, unabhängig von dieser Änderung (rund
-100 verwaiste `thermoctl_*`/`tc_*`-Testdatenbanken früherer Sitzungen liegen auf dem
-Server). Die Änderungen selbst sind datenbankagnostisch — `root_path` betrifft
-ausschließlich Request-Verarbeitung und Linkerzeugung, keine Schemaänderung, keine
-datenbankspezifische Abfrage — ein Nachlauf gegen MariaDB ist trotzdem nachzuholen.
-
-## Add-on-Optionsübersetzung: MQTT-Client-ID, CA-Zertifikat und Log-Format nachgezogen
-
-Im echten Betrieb als Add-on fehlte die Möglichkeit, die MQTT-Client-ID zu setzen — an
-einem EMQX-Broker mit Rechteverwaltung ohne die kein Verbindungsaufbau. `docker/thermoctl_optionen.py`
-übersetzt jetzt zusätzlich `mqtt.client_id` → `THERMOCTL_MQTT_CLIENT_ID`,
-`mqtt.ca_cert` → `THERMOCTL_MQTT_CA_CERT` und `log_format` → `THERMOCTL_LOG_FORMAT` (die
-zweite Lücke, beim Durchsehen der gesamten Abbildung gegen `thermoctl/config.py`
-gefunden). Neu: `ABGEBILDETE_FELDER` und `BEWUSST_AUSGELASSEN` als Konstanten im Skript,
-gegen `Settings.model_fields` geprüft von
-`test_every_settings_field_is_translated_or_deliberately_excluded` — eine neue,
-nirgends eingeordnete Einstellung lässt diesen Test künftig fehlschlagen, statt
-stillschweigend zu fehlen. `.env.example` war bereits vollständig (eigener Wächter
-`test_every_setting_is_listed_in_the_example_file`), keine Änderung dort nötig.
-
-## Home-Assistant-Add-on: Mehrarchitektur-Abbild und Optionsübersetzung
-
-`.github/workflows/docker.yml` baut jetzt für `linux/amd64` **und** `linux/arm64`
-(`docker/setup-qemu-action` neben dem vorhandenen buildx) — die vom Projektinhaber
-entschiedenen Zielarchitekturen für das Add-on, `armv7` ausdrücklich nicht. Die
-`latest`-Markenlogik (ausschließlich aus einem `v*`-Tag) ist unverändert.
-
-`docker/entrypoint.sh` versteht jetzt `/data/options.json`, wie der Home-Assistant-
-Supervisor sie ablegt: liegt sie vor, übersetzt `docker/thermoctl_optionen.py` (reine
-Standardbibliothek, kein `jq` im Abbild) ihre Felder in die `THERMOCTL_*`-Umgebungs-
-variablen aus `.env.example`/`thermoctl/config.py`. Eine vom Betreiber bereits gesetzte
-Umgebungsvariable gewinnt immer gegen die Optionsdatei. Ohne die Datei — der gewöhnliche
-`docker compose`-Betrieb — ändert sich nichts. Getestet in `tests/test_docker_addon_options.py`
-(reine Übersetzungslogik, per Unterprozess) und `tests/test_docker_entrypoint.py`
-(das Shell-Skript selbst, mit Fake-`alembic`/-`thermoctl` auf dem PATH), dazu ein
-manueller Rauchtest im echten Abbild. **Offen:** ob und wie das Add-on Zugangsdaten des
-Home-Assistant-eigenen MQTT-Brokers automatisch übernimmt (`services: ["mqtt:want"]`
-gewährt nur den Zugriff auf die Supervisor-API `/services/mqtt`, füllt aber nicht von
-selbst `options.json` — eine Anbindung dafür ist hier nicht gebaut). Der Entwurf des
-Add-on-Repositorys selbst (`config.yaml`, `DOCS.md`, …) liegt außerhalb dieses
-Repositorys, siehe Auftragsbericht.
-
-## v0.6.1 — die erste Fassung, die veröffentlicht wird
-
-Der Projektinhaber veröffentlicht das Repository mit dieser Fassung. Sie bringt deshalb
-vor allem, was dafür fehlte: eine Lizenz, und die Beseitigung von Spuren aus der eigenen
-Entwicklung, die für einen fremden Betreiber ohne Vorgeschichte sinnlos bis irreführend
-gewesen wären. Dazu ein Begründungstext-Fix in der Regelkette und die Erkenntnis aus einer
-ersten Auswertung der echten Anlage, dass Teilprojekt 2 formal noch nicht als abgenommen
-gilt. **Keine Schemaänderung** — diese Fassung fügt keine Migration hinzu.
-
-### thermoctl steht unter der AGPL-3.0
-
-`thermoctl/web/templates/base.html` und `base_plain.html` tragen jetzt eine Fußzeile mit
-Lizenzangabe (AGPL-3.0) und der Repository-Adresse
-(`https://github.com/MagicalWig34653/thermoctl`) — sie erscheint auf jeder Seite, die
-über diese beiden Grundvorlagen läuft, auch der Anmeldeseite. Der Verweis nennt die vom
-Projektinhaber freigegebene, korrekte Adresse; das Repository wird mit dieser Fassung
-öffentlich. **Offen:** Das eigenständige Kiosk-Dashboard (`thermoctl/web/templates/kiosk.html`)
-erbt keine der beiden Grundvorlagen — bewusst schmale Bedienfläche fürs Wandtablet. Ob und
-wie es den §13-Hinweis bekommen soll, ohne die Fläche zu überladen, ist nicht entschieden;
-hier nicht angefasst. `LICENSE` ist der unveränderte Wortlaut von gnu.org; `pyproject.toml`
-trägt die Lizenzangabe nach PEP 639, und das gebaute Paket weist `License-Expression:
-AGPL-3.0-only` nach.
-
-### Bauprozess-Dokumentation und Altsystem-Bestandsaufnahme aus dem Repository entfernt
-
-Verlauf, getroffene Entscheidungen, Spezifikationen, Pläne und das interne
-Umbenennungswerkzeug beschreiben ausschließlich den eigenen Bauprozess; die
-Altsystem-Bestandsaufnahme beschreibt ein fremdes, reales System mit vollständigem Schema,
-MQTT-Topic-Vertrag und einer privaten IP-Adresse. Beides eignet sich nicht für ein
-öffentliches Repository. Die Dateien bleiben lokal liegen und stehen in `.gitignore`; nur
-die Versionsverfolgung gibt sie auf, ihre Inhalte werden anschliessend aus der gesamten
-Historie getilgt. Rund fünfzig Verweise darauf im übrigen Repository sind aufgelöst — wo
-ein Kommentar im Quelltext auf `offene-entscheidungen.md` zeigte, weil dort die Begründung
-stand, steht die Begründung jetzt an Ort und Stelle. Der Quelltext des
-Altsystem-Vergleichs selbst (`legacy_system.py`, `deviation.py`) ist unangetastet.
-
-Außerdem: Der reale Rechnername `vm130-nginx` des Altsystems ist an allen fünf
-Fundstellen in `docs/roadmap.md`, `docs/inbetriebnahme-schattenbetrieb.md` und
-`docs/veröffentlichung-durchsicht.md` durch eine neutrale Umschreibung („der Host des
-Altsystems") ersetzt.
-
-### Falsche Begründung bei `unverändert` in `decide()` korrigiert
-
-Die beiden Zweige mit Ergebniscode `unverändert` in `thermoctl/domain/control_loop.py`
-protokollierten unabhängig vom tatsächlichen Abstand denselben Satz „... innerhalb der
-Hysterese um Soll ... ± hK ... — Zustand bleibt.". Erreicht wurden sie aber nicht nur, wenn
-der Messwert wirklich im Band lag, sondern immer dann, wenn nur die *gegenüberliegende*
-Bandkante nicht überschritten war — an der tatsächlichen Kante konnte der Messwert beliebig
-weit entfernt sein. Gemessen an 18.527 echten `unverändert`-Entscheidungen lag **keine
-einzige** tatsächlich im Band (≤ 0,5K); mittlerer Abstand 5,90K, größter 11,40K
-(Extremfall: Ist 27.40 °C, Soll 16.0 °C ± 0.10K als „innerhalb" protokolliert). Die
-Entscheidung selbst war in jedem Fall richtig (korrekte Hysterese, nur an den Kanten
-umschalten) — falsch war ausschließlich der protokollierte Text.
-
-Jeder der beiden Zweige ist jetzt in zwei Fälle aufgeteilt: echt im Band vs. jenseits der
-gegenüberliegenden Kante bei bereits laufendem bzw. bereits ausgeschaltetem Zustand. Kein
-`heating`-Ergebnis und kein `reason_code` hat sich geändert — belegt durch die unveränderte
-2.376-Kombinationen-Tabelle in `tests/test_control_loop_state_table.py` sowie drei neue
-Tests in `tests/test_control_loop.py`, die den gefundenen Fehlerfall nachbilden (weit über
-Soll bei Aus, weit unter Soll bei Heizen) und den echten Im-Band-Fall als Gegenprobe. Die
-18.527 alten, falschen Begründungssätze in der Produktivdatenbank bleiben unverändert
-stehen — sie sind Protokoll dessen, was war, siehe `CHANGELOG.md`.
-
-`thermoctl/domain/pi_control.py` hat einen eigenen Begründungsweg und trägt diesen Satz
-nicht — geprüft, keine Änderung nötig. Die übrigen Begründungstexte in `decide()`
-(Fensterzustand, Mindestschaltdauer, Sensorausfall, Ventilschutz, reguläres Heizen/Aus an
-den Kanten) wurden durchgesehen: Jeder benennt nur, was im jeweils erreichten Zweig
-zwingend gilt — kein weiterer Fund derselben Fehlerklasse.
-
-### Oberfläche von Umstiegs-Jargon bereinigt
-
-Eine Durchsicht vor der Veröffentlichung fand vier Stellen, die den Entwicklungsstand oder
-den Umstieg vom Altsystem des Projektinhabers durchscheinen liessen — für einen fremden
-Betreiber ohne Altsystem sinnlos bis verwirrend. Auf `Betrieb` (`control.html`) verweist der
-Trockenlauf-Absatz nicht mehr auf den Vergleich gegen das Altsystem, sondern allgemeingültig
-darauf, dass sich Entscheidungen beobachten lassen, bevor sie etwas schalten; die
-Checkliste vor dem Scharfschalten nennt den Zustand jetzt durchgehend „Trockenlauf" statt an
-einer Stelle „Schattenbetrieb", und der Punkt zum Altsystem als Rückfallebene ist entfallen.
-Der nie erreichbare Schnittstellen-Zustand `not_built` (Marke „Noch nicht gebaut") ist aus
-`thermoctl/domain/interfaces.py`, `interfaces.html` und `tests/test_interfaces.py` entfernt —
-`overview()` gab ihn für keine der sechs Gegenstellen je zurück, geprüft vor dem Entfernen.
-`docs/scharfschalten.md` bleibt unverändert: Sie ist ausdrücklich für den Projektinhaber und
-beschreibt genau den Umstieg, den sie im Titel trägt.
+Letzte Aktualisierung: 2026-09-04, Freigabe `v0.7.0`.
 
 **Diese Datei sagt, was jetzt gilt — sonst nichts.** Wie es dazu kam, welche Fehler wie
-gefunden wurden und warum etwas so entschieden ist, wird hier nicht mitgeführt. Der
-Grund: Diese Datei war einmal auf über tausend Zeilen gewachsen und enthielt gleichzeitig
-aktuelle und längst überholte Angaben — „nichts ist scharf", „1024 Tests, 98,55 %",
+gefunden wurden und warum etwas so entschieden ist, wird hier nicht mitgeführt; das
+gehört in `git log` und die Auftragsberichte. Der Grund für diese Trennung: Diese Datei
+ist zweimal auf über tausend Zeilen gewachsen und enthielt dabei gleichzeitig aktuelle und
+längst überholte Angaben — zuletzt „nichts ist scharf", „1024 Tests, 98,55 %",
 „`control_armed` wird nirgends gesetzt", „es gibt keine Geräteerkennung für Meross". Alle
 vier stimmten einmal und standen noch da; ein Freigabe-Review konnte sie namentlich
 widerlegen.
 
-### Teilprojekt 2 — Auswertung der echten Betriebsdaten: nicht abnahmereif
-
-Ein Auszug der Produktivdatenbank wurde gegen die drei Abnahmekriterien aus Abschnitt 4
-von `docs/inbetriebnahme-schattenbetrieb.md` geprüft; Bericht in
-[`docs/phase-2-abnahme.md`](phase-2-abnahme.md). Zentraler Befund: Fünf der sechs Zonen
-wurden erst **nach** dem Scharfschalten (`control_armed`, 2026-09-01 19:20 Uhr) angelegt
-und liefen deshalb nie im Schattenbetrieb — drei von vier Zonen mit Aktor hatten null
-Minuten Schattenphase, bevor ihr erster Befehl den echten Aktor erreichte. Die
-Regelentscheidungen selbst waren in allen geprüften Fällen korrekt, aber die
-Begründungstexte bei „unverändert" (`control_loop.py`) sind in 99,76 % aller bisher
-geschriebenen Entscheidungen sachlich ungenau — sie behaupten „innerhalb der Hysterese",
-obwohl die Ist-Temperatur im Mittel 5,9 K vom Sollwert entfernt liegt. Kriterium 3
-(Altsystemvergleich) entfällt ersatzlos, weil der Vergleichsbetrieb bewusst übersprungen
-wurde. **Teilprojekt 2 gilt auf dieser Grundlage nicht als abgenommen.**
-
-### Wirkungswächter erkennt Komposita ohne Trennzeichen und fragt jetzt git statt das Dateisystem
-
-**Die Lücke aus dem letzten Stand ist geschlossen.** `PHYSICAL_VOCABULARY` in
-`tests/test_user_visible_effect_texts.py` benutzte durchgängig eine führende Wortgrenze
-(`\b`), wodurch deutsche Komposita wie „Zirkulationspumpe" oder „Ölbrenner" durchrutschten,
-obwohl „pumpe" und „brenner" im Vokabular stehen. Entscheidung des Projektinhabers: Die
-führende Wortgrenze fällt bei den Substantiven, die als Zweitglied in Komposita auftreten
-(`ventil`, `aktor`, `heizkörper`, `heizkreis`, `fußbodenheizung`, `stellantrieb`, `boiler`,
-`brenner`, `pumpe`, `heizung`, `heiz`, `wärm`/`wärm`, `warm`), sodass ein Teilstring-Treffer
-jedes Kompositum fängt statt nur eine benannte Handvoll. Fehltreffer werden dafür in Kauf
-genommen. Ausdrücklich **nicht** angefasst: `schalt` (die führende Grenze bleibt, weil
-`Schaltfläche` sonst als physische Schaltbehauptung durchginge — die Zeichenkette kommt in
-`thermoctl/web/templates/login.html` und `docs/self-hosting.md` tatsächlich vor) und
-`geschaltet`. Ein Test belegt, dass „Zirkulationspumpe" und „Ölbrenner" jetzt gefangen
-werden, sowie dass „warm" nicht auf „vorwarnen"/„Warnung" anschlägt. Die dadurch neu
-gemeldeten 27 Fundstellen wurden persönlich durchgesehen und in
-`tests/approved_physical_vocabulary.json` eingetragen — durchweg bestehende, bereits
-zutreffende Aussagen zu `Schaltaktor`/`Heizungsaktor`, keine falsche Wirkbehauptung
-darunter.
-
-**Zweiter Fund, in derselben Fassung:** Der Wächter durchsuchte bisher das Dateisystem
-statt die Versionsverfolgung. Als die Bauprozess-Dokumentation und die
-Altsystem-Bestandsaufnahme das Repository verliessen (siehe oben), meldete er deren
-Vorkommen fälschlich als ungeprüft — in einem frischen CI-Klon ohne diese Dateien lief die
-Suite grün, auf der Platte des Projektinhabers scheiterte sie: genau die falsche Richtung
-für einen Wächter. Er fragt jetzt `git`, was tatsächlich verfolgt wird, und fällt ohne
-`git` darauf zurück, alles zu prüfen statt stillschweigend nichts. Die bisherige
-Sonderbehandlung für `verlauf.md` entfällt damit — sie war der erste Fall derselben
-Fehlerklasse.
-
-## v0.6.0 — Nacharbeiten an PI, aus einer echten Anlage heraus
-
-**Die PI-Eignungsprüfung ist gerätegenau geworden.** Ein selbstregelndes Thermostatventil
-schließt PI nicht mehr für die ganze Zone aus, sondern darf neben einem Schaltaktor
-stehen — PI steuert dann nur den Schaltaktor. Das ist im Code belegt und nicht bloß
-angenommen: `switch_commands()` und `thermostat_commands()` filtern beide mit
-`ZoneDevice.self_regulating.is_(False)`, ein selbstregelndes Ventil taucht in keiner der
-beiden Listen auf und bekommt seinen Sollwert über einen eigenen Weg. Ausgeschlossen
-bleibt ein Thermostatventil **ohne** eigene Regelung — das bekommt die Entscheidung als
-Sollwertsprünge und wäre von der schnellen Taktung betroffen.
-
-**Die angenommene Relaislebensdauer ist einstellbar**, Vorgabe 500.000 statt fest
-verdrahteter 100.000. Das ändert die Einschätzung des PI-Verschleißes erheblich: Aus rund
-2,6 Relaislebensdauern im Jahr im ungünstigsten Fall werden rund 0,53. Die Zahl bleibt
-ausdrücklich eine **Annahme** — auch und gerade, weil sie jetzt einstellbar ist.
-
-### Browsertests, ausschließlich örtlich
-
-Dreizehn Playwright-Tests unter `browser_tests/`, nicht in der CI und nicht in der
-gewöhnlichen Suite. Sie prüfen, was ein HTTP-Test nicht sehen kann: ob das Stylesheet
-wirklich wirkt, ob die Browserkonsole fehlerfrei bleibt, ob eine echte Zeigergeste im
-Zeitplan-Editor ankommt. Der Anlass steht in [CLAUDE.md](../CLAUDE.md) — zweimal sind
-grundlegende Fehler durch alle Tests gerutscht und erst beim Öffnen der Seite aufgefallen.
-
-**Die JavaScript-Abdeckung ist gemessen und bewusst nicht auf 100 Prozent getrieben:**
-
-| Datei | Zeilen | abgedeckt |
-|---|---:|---:|
-| `schedule.js` | 412 | 16 % |
-| `passkey.js` | 329 | 28 % |
-| `assignment.js` | 243 | 32 % |
-| `device_filter.js` | 63 | 51 % |
-| `permissions.js` | 45 | 71 % |
-| **gesamt** | **1.092** | **28 %** |
-
-Der Weg auf 100 Prozent wurde geschätzt (zwei bis drei Wochen, das meiste davon in
-WebAuthn-Fehlerzweigen und im Zeitplan-Editor) und vom Projektinhaber verworfen. Die
-Messung selbst geht ohne npm über die V8-Abdeckung von Chromium; sie ist nicht fest
-eingebaut. **Achtung, falls jemand sie nachbaut:** V8 liefert verschachtelte Bereiche, und
-der äusserste umspannt die ganze Datei. Wer nur die Bereiche mit `count > 0` zählt, misst
-100 Prozent und nichts — gezählt werden müssen die mit `count == 0`.
-
-## v0.5.0 — PI-Regelung als Beta, je Zone einschaltbar
-
-**Wer nichts einschaltet, bekommt exakt das Verhalten von 0.4.0.** Für eine Zone ohne den
-Schalter wird die PI-Entscheidung nicht einmal berechnet: `_pi_outcome()` gibt die
-Hysterese-Entscheidung zurück, bevor irgendetwas anderes geschieht, und das
-Neutralisieren fasst ausschließlich `pi_*`-Spalten an. Das ist strukturell so, nicht nur
-getestet — und zusätzlich gemessen, indem dieselben Zyklusfolgen gegen den alten und den
-neuen Stand liefen und Entscheidung wie Zonenzustand verglichen wurden.
-
-PI gilt nur für gewöhnliche Schaltaktoren. Eine ungeeignete Zone sagt vor dem Einschalten
-warum. Die sieben Vorrangregeln behalten absoluten Vorrang, und ein Wächtertest zwingt
-jeden Ergebniscode der Regelkette zu einer ausdrücklichen Einordnung — vorher war das Tor
-erlaubend per Vorgabe.
-
-**Der Preis steht am Schalter**, mit der Rechnung hinter einem Info-Zeichen: bis zu
-262.800 Schaltspiele im Jahr gegenüber höchstens 52.560 bei Hysterese. Der tatsächliche
-Verschleiß ist unter [/relay-wear](relay-wear) je Gerät ablesbar — neue Seite, auch ohne
-PI nützlich.
-
-### Was diese Fassung über das Messen gelehrt hat
-
-Über `domain/pi_control.py` wurde zuerst berichtet, sie habe 664 Mutanten und **null**
-Überlebende. Tatsächlich waren es 53. Die Ursache ist systemisch: Alle
-`mutation/cosmic-ray-*.toml` verweisen relativ auf `.venv/bin/python`, das es in einem Worktree
-nicht gibt — jeder Mutant wird `INCOMPETENT`, und cosmic-ray meldet daraufhin null
-Überlebende. **Ein vollständig gescheiterter Lauf sieht aus wie ein perfektes Ergebnis.**
-Jede Konfiguration warnt jetzt davor, und `CLAUDE.md` verlangt, nach jedem Lauf die
-`test_outcome`-Verteilung anzusehen. Nach dem Schließen von 45 echten Lücken sind 8
-Überlebende übrig, jeder einzeln als gleichwertig begründet.
-
-## v0.4.0 — die Fassung nach dem Komplettreview
-
-**Wer 0.3.0 scharf betreibt, sollte aktualisieren.** Sie behebt die ersten beiden echten
-Fehler in der Regelkette, dazu vier Rechtefehler und sechs weitere Sicherheitsbefunde.
-Der vollständige Eintrag steht im [CHANGELOG](../CHANGELOG.md).
-
-Zwei Migrationen laufen im Container beim Start von selbst. **Der Rückweg nicht** —
-`alembic upgrade head` geht nur vorwärts, und der alte Code startet danach nicht mehr,
-weil `check_schema` das weitergewanderte Schema erkennt. Wer zurück will, downgraded
-einmal von Hand mit dem *neuen* Abbild, bevor er das alte startet; die Reihenfolge steht
-in [self-hosting.md](self-hosting.md).
-
-## v0.3.0 — die Fassung, in der thermoctl schaltet
-
-Alle vier Aktorwege sind verdrahtet: Zigbee2MQTT-Schalter, Zigbee-Thermostatventile,
-Meross-Steckdosen, selbstregelnde Ventile. Bis 0.2.2 landete jede Regelentscheidung im
-Schattenprotokoll und sonst nirgends.
-
-**Der Trockenlauf bleibt die Vorgabe**, und das Scharfschalten wirkt erst nach einem
-Neustart — der zweite Riegel wird beim Prozessstart gebaut. Die Anleitung dafür steht in
-[scharfschalten.md](scharfschalten.md).
-
-**Kein Vergleichsbetrieb.** Der mehrtägige Schattenbetrieb gegen das Altsystem wurde auf
-Wunsch des Projektinhabers übersprungen. Dieser Code läuft als Erstes an einer echten
-Heizung.
-
-### Mutationstest, Runde 1
-
-Erstmals gemessen, was die Tests wirklich prüfen, statt nur welche Zeilen sie ausführen —
-auf `domain/control_loop.py` und `services/shadow_run.py`:
-
-| | Mutanten | überlebt |
-|---|---:|---:|
-| `control_loop.py` | 137 | 15 = 11 % |
-| `shadow_run.py` | 367 | **180 = 49 %** |
-
-Die 49 Prozent sind die Zahl, wegen der diese Runde gemacht wurde. Sie ist nicht so
-schlimm, wie sie aussieht — 127 der Überlebenden sind Mutationen an Typangaben und
-SQLAlchemy-Ausdrücken, die kein Verhalten ändern —, aber **64 waren echte Testlücken**
-und sind jetzt mit inhaltlichen Tests geschlossen. Übrig bleiben vier nachweislich
-gleichwertige Mutanten, jeder einzeln begründet abgelegt.
-
-Bezogen auf die 242 tatsächlich wirksamen Mutanten: 4 überleben, also 1,7 Prozent.
-**Echte Fehler in der Regellogik: keine.** Alle Befunde waren Lücken in den Tests, nicht
-im Code — das ist die beruhigende Hälfte des Ergebnisses.
-
-Wiederholbar über `mutation/cosmic-ray-control-loop.toml` und `mutation/cosmic-ray-shadow-run.toml`; die
-Einzelbewertung steht in `mutation/cosmic-ray-stage1-assessment.md`. Bewusst nicht in der CI — zu
-langsam für jeden Lauf.
-
 ## Wo das Projekt steht
 
-Die Hauptnavigation zeigt angemeldeten Benutzern nur Ziele, die sie tatsächlich öffnen
-können. Zonenfilternde Übersichten erscheinen bereits bei einem passenden Recht für eine
-einzelne Zone; anlagenweite Seiten erst bei einem anlagenweiten Recht. Die Zuordnung von
-Ziel und Recht steht zentral in `web/navigation.py`, und ein Wächtertest vergleicht sie mit
-der tatsächlichen Rechteprüfung der Zielansicht. Das Kiosk hat weiterhin seine getrennte
-Navigation und sein eigenes Rechtemodell.
+Die Anlage des Projektinhabers läuft seit dem 2026-09-02 scharf mit `thermoctl`, das
+Altsystem bleibt parallel als Rückfallebene. Das Repository ist seit `v0.6.1` öffentlich
+(`github.com/MagicalWig34653/thermoctl`), unter der AGPL-3.0. Der Betrieb läuft heute in
+zwei Formen: als eigener Docker-Container (`docker compose`) und als
+Home-Assistant-Add-on — Letzteres war im ursprünglichen Rahmenentwurf nicht vorgesehen,
+siehe [roadmap.md](roadmap.md).
 
 | Phase | Zustand |
 |---|---|
-| 1 — Fundament | abgeschlossen, veröffentlicht als `v0.1.0` |
-| 1a — Nacharbeiten | abgeschlossen |
-| 2 — Geräte-Anbindung im Schattenbetrieb | gebaut; der Nachweis über mehrere Tage braucht die echte Anlage |
+| 1 — Fundament | abgeschlossen |
+| 2 — Geräte-Anbindung im Schattenbetrieb | gebaut; die Abnahme anhand echter Betriebsdaten ist geprüft und **nicht bestanden** (siehe unten) |
 | 3 — Konfigurations-Oberfläche | abgeschlossen |
-| 4 — Regelkreis und Cutover | Alle sieben Aktortypen der echten Anlage verdrahtet: Zigbee2MQTT-Aktoren, Meross-Steckdosen, Zigbee2MQTT-Thermostatventile. Kreuzreview der Verdrahtung fand drei Befunde, alle behoben — siehe unten |
-| 5 — Integrationen und Veröffentlichung | Meross und Zeitplan-Bedienung erledigt, Freigabe von 0.2.2 offen |
+| 4 — Regelkreis und Cutover | schaltet scharf an der echten Anlage; Ablösung des Altsystems noch offen |
+| 5 — Integrationen und Veröffentlichung | Repository öffentlich, Add-on-Betrieb dazugekommen |
 
-## Was geschaltet wird — genau
-
-Diese Frage ist mehrfach zu grob beantwortet worden, in beide Richtungen. Der Stand:
-
-- **`setting.control_armed` steht in einer neuen Anlage auf `false`.** Solange bleibt
-  jeder Weg zu einem Aktor zu.
-- **`/control/arm` kann es öffnen**, mit eigenem Recht `control.arm`. Es ist also nicht
-  wahr, dass „weiterhin nichts geschaltet wird" — das war eine Zusicherung ohne Deckung.
-- **Der MQTT-Client trägt einen zweiten Riegel, der beim Start gebaut wird.** Wer scharf
-  schaltet, muss den Dienst neu starten, bevor überhaupt etwas hinausgeht.
-- **Sind beide Riegel offen**, bekommen selbstregelnde Thermostatventile ihren Sollwert
-  veröffentlicht, **und jetzt auch ein gewöhnlicher (nicht selbstregelnder) Aktor an
-  Zigbee2MQTT sein Ein/Aus** (`services/publishing.py::_send_actuator_switches`, neu):
-  Rolle `actuator`, ohne `self_regulating`, mit der Fähigkeit `switch` — er bekommt, was
-  `shadow_run.cycle()` zuletzt für seine Zone entschieden hat, nur bei Änderung, mit
-  einem Eintrag im Schaltprotokoll für jeden Versuch (ausgeführt, unterdrückt oder
-  gescheitert).
-- **Ein Meross-Aktor bekommt jetzt ebenfalls seinen Befehl.** Das Schalten dort braucht
-  eine Anmeldung gegen die Meross-Cloud; die läuft jetzt zwischengespeichert und
-  außerhalb jeder Datenbanktransaktion (`services/meross_session.py`,
-  `app.py::_shadow_loop`) — genau die Stelle, an der eine frühere Fassung die ganze
-  SQLite-Datei bis zu 40 Sekunden gesperrt hatte. Lehnt die Cloud die Anmeldung ab, oder
-  ist keine hinterlegt, schreibt jeder betroffene Zyklus stattdessen einen
-  `failed`-Eintrag ins Schaltprotokoll, ohne den Zyklus selbst anzuhalten. Die Sitzung
-  gilt sechs Stunden, bevor sie sich von selbst erneuert — eine bewusste Schätzung, keine
-  gemessene Zahl, weil Meross keine Token-Lebensdauer dokumentiert: lang genug, dass ein
-  gesundes Konto sich nur selten anmeldet, kurz genug, dass eine widerrufene Sitzung
-  binnen desselben Tages auffällt statt unbegrenzt an einer toten Verbindung
-  festzuhalten.
-- **Ein Zigbee2MQTT-Thermostatventil ohne `self_regulating`** (Fähigkeit `thermostat`
-  statt `switch`, von thermoctls eigener Hysterese statt eigener Regelung gesteuert)
-  bekommt jetzt ebenfalls seinen Befehl, über `Zigbee2MqttThermostat`: den aufgelösten
-  Zonensollwert und, wo das Gerät `system_mode` als beschreibbar meldet, `heat`/`off`
-  dazu. Ein Gerät ohne `system_mode` (Bosch BTH-RA) wird stattdessen auf seinen
-  niedrigsten Sollwert gefahren — der frühere Blocker dazu vom 2026-09-01 ist behoben.
-
-## Kreuzreview der Aktorverdrahtung — drei Befunde, alle behoben
-
-Der Projektinhaber hat den mehrtägigen Schattenbetrieb übersprungen; die Verdrahtung
-läuft als Erstes an einer echten Heizung (vier Meross-Steckdosen, drei
-Zigbee2MQTT-Thermostatventile). Ein Kreuzreview prüfte deshalb vor dem ersten
-scharfen Betrieb noch einmal gezielt, ob geschaltet wird, wenn es soll — mit
-„Nein" beantwortet. Alle drei Befunde sind jetzt behoben:
-
-- **Ein gescheiterter Befehl wurde nie wiederholt** (schwer). Der Zwischenspeicher
-  „nur bei Änderung senden" schrieb bei jedem Ausgang, auch bei einem gescheiterten
-  — der nächste Zyklus mit unveränderter Entscheidung übersprang das Gerät dann
-  komplett, kein neuer Versuch, kein neuer Log-Eintrag. Bei einer kalten, dauerhaft
-  unterversorgten Zone (deren Entscheidung sich gerade *nicht* ändert) hätte das im
-  Januar ein eingefrorenes Rohr bedeutet. Jetzt trägt der Zwischenspeicher das
-  Ergebnis im Schlüssel: ein gescheiterter Befehl wird jeden scharfen Zyklus erneut
-  versucht, aber nur einmal pro Ausfallepisode geloggt — unbegrenzt oft, bewusst ohne
-  Backoff mit steigendem Abstand, weil ein Aktor an einer echten Heizung die Chance zur
-  Erholung nicht verlieren soll, nur weil ein Backoff-Zähler noch wartet.
-- **Die Entwertung der Meross-Sitzung war nie verdrahtet** (schwer). `app.py` übergab
-  `meross_transport`, aber nicht `meross_session_cache`, an den
-  Veröffentlichungszyklus — `invalidate_meross_session()` war damit im echten
-  Betrieb unerreichbar, eine tote Meross-Verbindung blieb bis zu sechs Stunden als
-  „gültig" im Zwischenspeicher stehen. Jetzt durchgereicht, mit einem Test, der den
-  tatsächlichen Aufruf in `app.py` prüft, nicht nur die Funktion isoliert.
-- **Der Meross-Weg hatte nur einen Riegel** (mittel). `MqttClient` friert seinen
-  eigenen Riegel beim Start ein; der Meross-Weg (`MerossSwitch`) prüfte nur den
-  Laufzeit-Riegel. Jetzt bekommt `MerossSwitch` denselben eingefrorenen Riegel
-  (`app.state.sending_allowed`, wiederverwendet statt eines zweiten unabhängigen
-  Werts) — beide Riegel beantworten dieselbe Frage („war die Anlage scharf, als dieser
-  Prozess startete") und sollen deshalb denselben Wert tragen, statt als zwei
-  unabhängige Booleans unbemerkt auseinanderlaufen zu können.
-
-Zusätzlich abgesichert: eine Regression, bei der `ensure_transport()` in die offene
-Schreibtransaktion des Schattenzyklus verschoben wird (genau der Fehler, der einmal
-die SQLite-Datei 40 Sekunden gesperrt hatte) — bei der die gesamte Suite trotzdem grün
-blieb. Ein neuer Test prüft jetzt die Eigenschaft selbst („keine Schreibtransaktion
-offen während des Netzaufrufs"), nicht die Aufrufreihenfolge im Quelltext.
-
-## Das Schaltprotokoll
-
-Neu: `device_command` zeichnet jeden Befehl auf, der an ein Gerät hinausging oder im
-Trockenlauf unterdrückt oder verworfen wurde — Zeitpunkt, Zone, Gerät, Nutzlast, Ergebnis,
-Begründung, Auslöser. Der bestehende Sollwert-Weg an selbstregelnde Thermostatventile
-(`services/publishing.py::_send_self_regulating_valves`) schreibt dorthin; Ansicht unter
-„Einstellungen → Schaltprotokoll" (`/device-commands`, Recht `audit.read`). Anders als
-`shadow_decision` überlebt ein Eintrag das Löschen oder Umbenennen seiner Zone oder seines
-Geräts (`SET NULL` plus Namens-Momentaufnahme statt CASCADE), und unterliegt keiner
-automatischen Aufbewahrung — anders als Messwerte ist ein Schaltbefehl selten (nur bei
-Änderung gesendet) und jeder einzelne kann genau der Beleg sein, nach dem später jemand
-sucht; eine automatische Löschung nach der üblichen kurzen Frist würde ausgerechnet den
-Beweis entfernen, für den das Protokoll gebaut wurde. REST und MCP ziehen noch nicht nach;
-das war eine bewusste, im Auftrag benannte Entscheidung für diese Runde, keine Lücke, die
-übersehen wurde.
-
-Der Anlass: Der Projektinhaber will den Schattenbetrieb überspringen und direkt scharf
-schalten. Damit ist dieses Protokoll die einzige Stelle, an der später nachvollziehbar ist,
-was an der Heizung passiert ist — es stand deshalb vor der Verdrahtung der Aktoren (Phase 4)
-an, nicht danach.
+Details je Phase, Aufgabenlisten und was nicht ursprünglich vorgesehen war stehen in
+[roadmap.md](roadmap.md).
 
 ## Zahlen
 
-Selbst nachgeprüft, nicht aus Berichten übernommen (Stand 2026-09-04, Freigabe v0.6.1):
+Selbst nachgemessen für diese Freigabe (nicht aus einem früheren Bericht übernommen):
 
 | | |
 |---|---|
-| Tests | 4281 unter SQLite, 4280 plus ein Skip unter MariaDB |
+| Tests | 4488 unter SQLite, unverändert unter MariaDB (Exit 0, keine Skips) |
 | Testabdeckung | 100 %, Mindestschwelle 100 % in der CI |
-| Ruff, mypy strict | ohne Befund, 108 Quelldateien |
-| Migrationskette | linear, ein Kopf, vorwärts und rückwärts gegen beide Datenbanken geprüft; keine neue Migration in v0.6.1 |
-| Container | baut, Paket im Abbild trägt Version 0.6.1; ein Start örtlich nicht geprüft (Docker-VM-Speicher hier voll) |
+| Ruff, mypy strict | ohne Befund, 109 Quelldateien |
+| Migrationskette | linear, ein Kopf (`67e794059830`), vorwärts und rückwärts gegen beide Datenbanken geprüft; **keine neue Migration seit `v0.6.4`** |
+| Container | baut (`docker build -f docker/Dockerfile`), Exit 0 |
 
 **Die Suite liest `THERMOCTL_TEST_DATABASE_URL`**, nicht `THERMOCTL_DATABASE_URL`. Wer
 die zweite setzt, läuft unbemerkt gegen SQLite und bekommt trotzdem einen grünen Lauf.
 
-## v0.2.2 — freigegeben
+## Was geschaltet wird — genau
 
-**Sieben Freigabe-Reviews, sechs Ablehnungen, das siebte gibt frei.** Was die sechs
-gefunden haben, steht im [CHANGELOG](../CHANGELOG.md). In Kürze: ein Regelungsfehler, eine
-CSRF-Lücke in *jedem* ändernden Formular, ein Rückgängig, das einen veralteten
-Schnappschuss annahm — und viermal dieselbe Klasse, Texte, die eine Ventilbewegung
-versprechen, die es nicht gibt.
+- **`setting.control_armed`** ist der erste Riegel. Steht er auf `false`, geht an keinen
+  Aktor etwas hinaus — das ist der Zustand einer neuen Anlage. `/control/arm` öffnet ihn,
+  mit eigenem Recht `control.arm`.
+- **Der MQTT-Client trägt einen zweiten, unabhängigen Riegel**, der beim Prozessstart
+  gebaut wird. Scharfschalten wirkt deshalb erst nach einem Neustart.
+- **Sind beide Riegel offen**, veröffentlicht der Dienst: Sollwerte an selbstregelnde
+  Thermostatventile, Ein/Aus an gewöhnliche Zigbee2MQTT-Aktoren
+  (`services/publishing.py::_send_actuator_switches`), Sollwert und `system_mode`
+  (wo vorhanden) an Zigbee2MQTT-Thermostatventile ohne eigene Regelung
+  (`Zigbee2MqttThermostat`), und Schaltbefehle an Meross-Steckdosen über eine
+  zwischengespeicherte Cloud-Sitzung (`services/meross_session.py`), außerhalb jeder
+  Datenbanktransaktion.
+- **Ein gescheiterter Befehl wird jeden scharfen Zyklus erneut versucht** — unbegrenzt oft,
+  bewusst ohne Backoff — und nur einmal pro Ausfallepisode geloggt; der
+  Zwischenspeicher „nur bei Änderung senden" trägt das Ergebnis im Schlüssel, damit ein
+  gescheiterter Befehl das Gerät nicht dauerhaft überspringt.
+- **Das Schaltprotokoll** (`device_command`, `/device-commands`, Recht `audit.read`)
+  zeichnet jeden Befehl auf, der hinausging oder im Trockenlauf unterdrückt oder
+  verworfen wurde — Zeitpunkt, Zone, Gerät, Nutzlast, Ergebnis, Begründung, Auslöser.
+  Ein Eintrag überlebt das Löschen oder Umbenennen seiner Zone oder seines Geräts
+  (`SET NULL` plus Namens-Momentaufnahme) und unterliegt keiner automatischen
+  Aufbewahrung — anders als Messwerte ist ein Schaltbefehl selten und jeder einzelne
+  kann der Beleg sein, nach dem später jemand sucht. REST und MCP ziehen hier noch
+  nicht nach (bewusste Entscheidung, keine übersehene Lücke).
+- **`decide()` in `thermoctl/domain/control_loop.py`** berechnet `protection_allowed`
+  einmal, oberhalb der Mindestschaltdauer-Regel; die Ausnahme von der Mindestschaltdauer
+  gilt achsenabhängig — für einen gehaltenen Ein-Zustand reicht `valve_protection_active`
+  allein, für den Aus-Timer zusätzlich `protection_allowed`. Ein Ventilschutzlauf, der
+  seinen Vorrang mitten im Lauf verliert (Übersteuerung, „aus", Sensorausfall), hebt die
+  Mindestschaltdauer nicht mehr auf — dieser Zusammenhang war einmal ein echter Fehler in
+  der Regelkette (Taktschutz ausgehebelt für die Restdauer eines abgebrochenen
+  Schutzlaufs) und ist die Eigenschaft, die `tests/test_control_loop_state_table.py`
+  (2.376 erreichbare Kombinationen von 3.888 Rohkombinationen) mit erschöpft.
 
-Das siebte Review hat sechs gezielte Mutationen über Regelung, Zeitplan, CSRF, Anzeige
-und Rechte gesetzt; jedes Mal wurde **der inhaltlich richtige** Test rot. Dazu die
-Angriffsliste gegen den Wirkungswächter (18 von 18) und die Migrationskette vorwärts,
-rückwärts, vorwärts.
+## Add-on-Betrieb
 
-**Ein Befund blieb, bewusst offen gelassen:** Der Wirkungswächter erkennt deutsche
-Komposita ohne Trennzeichen nicht (`Zirkulationspumpe`, `Ölbrenner`) und kennt reine
-Temperaturaussagen („die Raumtemperatur steigt") gar nicht. Nachgeprüft: Keiner dieser
-Begriffe kommt heute irgendwo vor — es ist also kein falscher Text, sondern eine Lücke im
-Netz für künftige. Das gehört in die nächste Fassung, nicht in diese.
+- **Optionsschema ist flach**: `secret_key`, `log_level`, `log_format`,
+  `database_*` (fünf Felder), `mqtt_*` (neun Felder, inklusive `client_id` und
+  `ca_cert`), `meross_email`/`meross_password`, `notify_webhook*`. Dazu ein freies Feld
+  **`env`** (eine `NAME=WERT`-Zuweisung je Zeile) für jede `THERMOCTL_*`-Variable ohne
+  eigenes Feld. Reihenfolge bei Überschneidung: dedizierte Felder, dann `env`, dann —
+  gewinnt gegen beides — eine vom Betreiber tatsächlich gesetzte Umgebungsvariable.
+  `docker/thermoctl_optionen.py` übersetzt; `ABGEBILDETE_FELDER`/`BEWUSST_AUSGELASSEN`
+  dort sind gegen `Settings.model_fields` gewächtert
+  (`test_every_settings_field_is_translated_or_deliberately_excluded`).
+- **Das Abbild startet als root** und gibt die Rechte über `setpriv` an den
+  unprivilegierten Benutzer `thermoctl` ab, bevor Migration und Dienst laufen — nötig,
+  weil der Home-Assistant-Supervisor `/data/options.json` root:root anlegt. Der
+  gewöhnliche `docker compose`-Betrieb mit explizit gesetztem `user:` bleibt unverändert
+  unprivilegiert; ohne `user:`-Angabe läuft der Container kurz als root und fällt vor
+  `alembic` zurück.
+- **Ingress-Präfix**: `THERMOCTL_ROOT_PATH` (aus Konfiguration, nicht aus der
+  `X-Ingress-Path`-Kopfzeile) setzt FastAPIs `root_path`; jeder lokale Verweis in den
+  Vorlagen, Cookie-`path` und der `/static`-Mount respektieren ihn. `/healthz` bleibt
+  bewusst unpräfigiert — ein Docker-Healthcheck erreicht den Container direkt.
+- **Mehrarchitektur-Abbild**: `linux/amd64` und `linux/arm64`, `armv7` ausdrücklich
+  nicht.
+- **`tools/env_nach_addon.py`** übersetzt eine bestehende `.env` in die
+  Add-on-YAML-Konfiguration — die Gegenrichtung von `docker/thermoctl_optionen.py`,
+  aus denselben `ABGEBILDETE_FELDER`/`BEWUSST_AUSGELASSEN`-Konstanten abgeleitet statt
+  doppelt gepflegt. `--ohne-datenbank` lässt alle `database_*`-Felder weg, für den Fall,
+  dass die Datenbank im Add-on bereits eingetragen ist und nicht von einer
+  `.env`-SQLite-Zeile aus der Entwicklungsumgebung überschrieben werden soll. Näheres in
+  [self-hosting.md](self-hosting.md#6b-umstieg-von-docker-compose-auf-das-home-assistant-add-on).
+- **Offen:** Ob und wie das Add-on Zugangsdaten des Home-Assistant-eigenen
+  MQTT-Brokers automatisch übernimmt, ist nicht gebaut — `services: ["mqtt:want"]`
+  gewährt nur Zugriff auf die Supervisor-API, füllt `options.json` nicht von selbst.
 
-## Vier gemeldete Anzeigefehler behoben
+## Störungsmeldungen
 
-- **Meross-Geräte galten dauerhaft als „hat sich noch nie gemeldet"**, obwohl der
-  stündliche Abgleich sie fand und die Wolke sie als online meldete. Ursache:
-  `web/device_views.py` sah für jedes Gerät nur `device_health.last_payload_at`
-  an — das schreibt ausschließlich die Zigbee2MQTT-Aufnahme
-  (`services/ingest.py`) bei einer eingehenden MQTT-Nachricht, und ein
-  Meross-Gerät schickt nie eine. Die Übersicht liest jetzt für ein Meross-Gerät
-  `device.last_seen_at` (geschrieben vom stündlichen Abgleich,
-  `services/meross_discovery.py::save_devices`) und wählt die dazu passende
-  Formulierung: „abgeglichen" statt „gemeldet" — Stille bedeutet bei Meross, dass
-  der eigene Abgleich nicht lief oder die Wolke das Gerät nicht mehr nennt, nicht,
-  dass das Gerät selbst schweigt. Die Stille-Schwelle des selbstberichtenden
-  Sensors (`default_sensor_timeout_seconds`) passt nicht zu einem stündlichen
-  Abgleich; Meross bekam eine eigene, in `domain/device_survey.py`
-  begründete Schwelle (`MEROSS_SILENT_AFTER_SECONDS`, zwei Abgleichzyklen — ein
-  einzelner ausgefallener Durchlauf soll nicht sofort als defektes Gerät
-  erscheinen). `MerossDevice.online` bleibt bewusst ohne eigene Spalte: es
-  entscheidet weiterhin nur, ob `last_seen_at` bei diesem Durchlauf vorrückt, und
-  ein dauerhaft offline gemeldetes Gerät wird dadurch — korrekt — irgendwann
-  selbst als still erkannt.
-- **Die Statistik schnitt Tage an UTC-Mitternacht** — ein lokaler Tag begann
-  dadurch um 01:00 beziehungsweise 02:00 in `Europe/Berlin`. Neu:
-  `domain/time.py::local_day_start_utc` liefert die UTC-Entsprechung einer
-  lokalen Tagesgrenze; `domain/statistics.py::heating_periods` bucketiert danach
-  statt nach UTC-Datum, `web/control_views.py` baut die Abfragegrenze ebenso.
-  Gegen die Sommerzeit getestet: ein Tag mit 23 beziehungsweise 25 Stunden wird
-  vollständig und richtig einem einzigen lokalen Kalendertag zugeschlagen.
-- **Der Datumsfilter des Auditprotokolls deutete lokale Eingaben als
-  UTC-Tagesgrenzen** — dieselbe Klasse Fehler, dieselbe Lösung
-  (`local_day_start_utc`) in `web/audit_views.py`.
-- **Eine laufende Übersteuerung erschien als „gerade eben"** — die Startseite
-  beschrieb ihr **Ende** mit dem Vergangenheitsfilter `age`, der jeden
-  Zukunftszeitpunkt als „gerade eben" las. `age_in_words`
-  (`web/__init__.py`) unterscheidet jetzt Vergangenheit („vor 3 Minuten") von
-  Zukunft („noch 42 Minuten"); geprüft, dass `age` sonst nirgends auf einen
-  Zukunftszeitpunkt trifft — `override.ends_at` auf der Startseite war die
-  einzige Stelle.
+Drei Arten lassen sich anlagenweit einzeln abschalten, unter „Einstellungen" —
+**Sensorstörung** samt Entwarnung, **Brücke oder Broker weg**, und **Schaltbefehl
+gescheitert**. Alle drei sind ab Werk an. Gemeldet wird nur der Übergang, samt
+Entwarnung. Home Assistant bleibt entkoppelt: Wer den Webhook stilllegt, verliert den
+Problemsensor dort nicht.
 
-## Sensorstörungsmeldungen
+Ein **Testknopf** unter „Einstellungen" schickt eine gekennzeichnete Testmeldung über
+denselben Weg wie eine echte und zeigt Statuscode, Dauer und im Fehlerfall den Grund
+unmittelbar auf der Seite; ohne hinterlegten Webhook wird er nicht angeboten, gegen
+wiederholtes Auslösen liegt ein Zeitabstand von zehn Sekunden davor. Daneben steht der
+**Zustellzustand** — wann zuletzt versucht, mit welchem Ergebnis; „noch nie versucht"
+ist ein eigener Zustand. Das Audit-Protokoll unterscheidet `sent` (Versuch ging los,
+unabhängig vom Netzerfolg) von `suppressed` (durch einen abgeschalteten Schalter nie
+versucht).
 
-Sensorstörungen und ihre Entwarnung erreichen jetzt neben Log und optionalem Webhook auch
-Home Assistant: je Zone als binärer Problemsensor mit Meldungstext in den Attributen. Bei
-einem veralteten Temperaturwert nennt die Meldung ausdrücklich, dass die Zone bis auf
-Weiteres gegen ihren konkreten Frostschutz-Sollwert regelt. Der Meldeweg ist unabhängig
-von den beiden Schalt-Riegeln und läuft nach Abschluss der Datenbanktransaktion.
+Migration `67e794059830` (sechs neue Spalten auf `setting`) ist vor `v0.6.4` gelandet,
+in `v0.7.0` selbst kam keine neue Migration dazu.
 
-## Ein Fehler in der Regelkette — der Ventilschutz-Marker hob den Taktschutz auf
+## Kiosk, Ladeanzeige, Sprache
 
-Der erste echte Fehler in der Regellogik, den dieses Projekt gefunden hat. Alles zuvor
-waren Testlücken.
+- **`kiosk.html`** trägt den AGPL-§13-Quelltextverweis knapp in der Kopfzeile
+  (`target="_blank"`) statt einer Fußzeile — die einzige Ausnahme von `base.html`, weil
+  das Wandtablett aus Distanz angesehen wird und die Fläche dem Zonenraster gehört.
+- **Eine dezente Ladeanzeige** (`#tc-loading-bar`) läuft global auf jeder angemeldeten
+  Seite und der Anmeldung/Einrichtung, gesteuert über die htmx-Ereignisse
+  `htmx:beforeRequest`/`htmx:afterRequest`; erscheint erst nach 400 ms Verzögerung,
+  respektiert `prefers-reduced-motion`. Bewusst nicht am Kiosk-Dashboard, dessen einzige
+  htmx-Anfrage der selbsttätige 20-Sekunden-Nachlader ist.
+- **Benutzersichtbarer Text schreibt echte Umlaute** (`ä`/`ö`/`ü`/`ß`), nicht mehr
+  `ae`/`oe`/`ue`/`ss`. Bezeichner (Funktions-, Variablen-, Klassen-, Feld-,
+  Spaltennamen), maschinell gelesene Schlüssel (YAML/JSON, Umgebungsvariablen,
+  Migrationskennungen) und Dateinamen bleiben ASCII — das ist die Konvention für alles
+  Neue. Der Wirkungswächter (`tests/test_user_visible_effect_texts.py`) prüft jede
+  geänderte benutzersichtbare Zeile gegen `approved_physical_vocabulary.json` und fragt
+  dafür `git`, nicht das Dateisystem — wichtig, falls je wieder eine Datei aus dem
+  Repository entfernt wird, ohne aus der Versionsverfolgung zu verschwinden.
 
-Die Ausnahme von der Mindestschaltdauer hing an `valve_protection_active`. Dieses Feld
-sagt aber nur, dass der **Marker** gesetzt ist, nicht dass der Ventilschutz auch noch
-entscheidet. Verliert Regel 7 mitten im Lauf — durch Übersteuerung, Betriebsart „aus"
-oder Sensorausfall —, bleibt der Marker bis zum Ablauf der Laufdauer gesetzt. In diesem
-Fenster entschied die gewöhnliche Hysterese, **und die Mindestschaltdauern waren
-ausgehebelt**: bei 60 Sekunden Zykluszeit und 10 Minuten Laufdauer bis zu zehn
-ungebremste Schaltvorgänge an einem echten Relais. Genau der Taktschutz, den das
-Altsystem nicht hatte.
+## Homebridge
 
-`decide()` berechnet `protection_allowed` jetzt einmal oberhalb von Regel 5; beide Regeln
-teilen sich dieselbe Bedingung für „der Schutzlauf gewinnt gerade". Der echte Schutzlauf
-bleibt befreit, auch nach einem Neustart, wo der persistierte Marker die einzige
-Erinnerung an ihn ist. Ein zweiter Fall hat sich mit erledigt: Kommt die Übersteuerung
-während des Laufs, bleibt der Heizkörper jetzt bis zum Ablauf der Mindest-**Einschalt**dauer
-an, statt sofort abzuschalten.
+`docs/homebridge.md` beschreibt die Einbindung über den `mqtt-thing`-Zusatz gegen
+dieselben MQTT-Topics wie Home Assistant — keine eigene thermoctl-Integration, reine
+Dokumentation mit Wächtertests gegen den Topic-Vertrag.
 
-### Die Regelkette als vollständige Zustandstabelle
+## Was nur der Projektinhaber entscheiden kann
 
-`tests/test_control_loop_state_table.py` prüft die Vorrangkette über acht Achsen
-erschöpfend: 3.888 Rohkombinationen, **2.376 erreichbare geprüft**, 1.512 begründet
-ausgeschlossen (ohne Quelle gibt es keinen Messwert relativ zur Hysterese; ein Sensor
-`ok` oder `veraltet` hat einen). Die Erwartung ist von Hand aus der Spezifikation
-übertragen, nicht aus `decide()` abgeleitet.
+- **Phase 2 wirklich abschließen.** Ein Auszug der Produktivdatenbank wurde am
+  2026-09-04 gegen die drei Abnahmekriterien geprüft
+  ([phase-2-abnahme.md](phase-2-abnahme.md)) — **nicht abnahmereif**: Fünf der sechs
+  Zonen wurden erst nach dem Scharfschalten angelegt und liefen nie im
+  Schattenbetrieb; Kriterium 3 (Altsystemvergleich) entfällt ersatzlos, weil der
+  Vergleichsbetrieb übersprungen wurde. Eine Zone braucht mehrere Tage Schattenbetrieb
+  ab ihrer Anlage, bevor das Kriterium für sie erfüllbar ist.
+- **Die Ablösung des Altsystems** (Host, vier Skripte) ist noch nicht vollzogen; es
+  läuft weiter als Rückfallebene.
+- **Automatische Übernahme der Home-Assistant-eigenen MQTT-Broker-Zugangsdaten** ins
+  Add-on ist nicht gebaut (siehe oben).
 
-Ihre Prüfkraft ist gemessen, nicht behauptet — vier gezielte Sabotagen an
-`control_loop.py`:
-
-| Sabotage | gefangen | Zeilen |
-|---|---|---:|
-| Regel 5 wieder nur vom Marker ausgenommen | ja | 100 |
-| Obere Hysteresekante `>` statt `>=` | ja | 24 |
-| Übersteuerung aus `protection_allowed` entfernt | ja | 44 |
-| Fenster-offen hinter die Mindestschaltdauer verschoben | ja | 340 |
-
-Die zweite Zeile ist der Grund für die beiden Messwert-Ausprägungen genau **auf** den
-Bandkanten: Vorher lagen alle Messwerte 1,0 K neben dem Sollwert bei 0,5 K Hysterese, und
-eine vertauschte Vergleichsrichtung an der Kante blieb unbemerkt.
-
-## Die Anlage läuft scharf — und was der Projektinhaber daraufhin entschieden hat
-
-**Seit dem 2026-09-02 läuft v0.3.0 an der echten Heizung**, zum Zeitpunkt dieser Notiz
-seit rund fünf Stunden, ohne Anlass zum Abschalten. Das Altsystem läuft im
-Parallelbetrieb weiter und bleibt die Rückfallebene.
-
-Auf die offenen Punkte hat der Projektinhaber entschieden:
-
-| Punkt | Entscheidung | Stand |
-|---|---|---|
-| Ventilschutz wurde zu dauerhaftem Heizen | Mindest-Einschaltdauer gilt für einen Schutzlauf nicht | umgesetzt |
-| Aufbewahrung `shadow_decision` | ein Jahr | umgesetzt, Vorgabe 365 Tage |
-| PI-Regelung | optional je Zone, nur Schaltaktoren, zunächst Beta | umgesetzt (v0.5.0, in v0.6.0 nachgearbeitet); **Schalter steht je Zone weiterhin auf aus** |
-| MQTT-Broker | EMQX mit Authentifizierung und Rechten ist vorhanden | dokumentiert, nicht erzwingbar |
-| Repository öffentlich | erst mit einer zumutbaren, getesteten Fassung | offen |
-
-### Sicherheitsbefunde: sechs behoben
-
-Aus der Durchsicht vom 2026-09-02, zusätzlich zu den vier Rechtefehlern:
-
-- **Anmeldeversuche konnten den Regelzyklus anhalten.** `time.sleep` und Argon2id liefen
-  im async-Handler auf derselben Ereignisschleife wie die Regelung. Jetzt `await` und ein
-  Thread. Der Fehlversuchszähler ist gedeckelt.
-- **Ein Passwortwechsel beendet jetzt die anderen Sitzungen**, die eigene bleibt. Dazu
-  „Andere Sitzungen beenden" unter `/users` — den Weg hatte der Docstring von
-  `set_password` behauptet, ohne dass es ihn gab.
-- **Das Einrichtungs-Token läuft nach einer Stunde ab.** Es steht weiterhin absichtlich im
-  Log — das ist der einzige Kanal dafür —, aber eines aus einem alten Log legt keinen
-  Administrator mehr an.
-- **Meross bestätigt jetzt den Zustand, nicht nur den Befehl.** Namespace und Signatur der
-  Antwort werden geprüft, und wo sie einen Schaltzustand mitliefert, muss er zum Befehl
-  passen. Eine nicht verifizierbare Bestätigung gilt als Fehlschlag und wird wiederholt.
-- **Der Webhook folgt keiner Weiterleitung mehr** und gibt den `Authorization`-Header
-  damit nicht an ein fremdes Ziel weiter.
-- **Sichere Cookies** waren bereits vollständig umgesetzt; alle sechs Cookies beachten den
-  Schalter. Was fehlt, ist `THERMOCTL_SECURE_COOKIES=true` in der Installation. Neu ist
-  ein Wächter, der jeden `set_cookie`-Aufruf im Quelltext über den AST prüft.
-
-**Weiterhin offen und benannt:** der MQTT-Befehlsweg (Broker-Sache, siehe
-[mqtt.md](mqtt.md)), die Vorgabe-Bindung an `0.0.0.0` ohne TLS (der Betrieb hier läuft
-hinter einem Reverse Proxy), und dass ein `SET` ohne anschließendes `GET` nicht beweist,
-dass ein Relais physisch geschaltet hat.
-
-## Runde 6 — ein Refactoring, das seine Prüfkraft nachweist
-
-`_process_zone` in der Regelschleife ist in drei benannte Funktionen zerlegt:
-`_override_active`, `_advance_valve_protection`, `_apply_decision_to_state`. Woran die
-Vermischung erkennbar war: Die lokale Variable `protection_started` wurde an zwei Stellen
-mit unterschiedlicher Bedeutung benutzt — einmal, um zu entscheiden, ob eine Schutzfahrt
-geschlossen wird, einmal roh als `valve_protection_active` für `decide()`. Dieser
-Unterschied ist jetzt ein benannter Rückgabewert mit Begründung.
-
-**Die Bedingung der Runde ist gemessen, nicht behauptet:** vorher 4 überlebende Mutanten,
-nachher 4 — und es sind dieselben vier, die beiden aus `_process_zone` mitgewandert in die
-beiden herausgezogenen Funktionen. Zusätzlich hat das Kreuzreview beide Fassungen gegen
-dieselbe Datenbanklage laufen lassen (kein `ZoneState`, laufender Schutzlauf, gerade
-abgelaufener Lauf, Übersteuerung, offenes Fenster, Sensorausfall) und `ShadowDecision` wie
-`ZoneState` verglichen: identisch. Alle unberührten Funktionen sind AST-gleich.
-
-Die drei übrigen Kandidaten (`app.py`, die fünf Frontend-Skripte, die Formularauswertung
-in zwei Views) sind bewusst nicht angefasst.
-
-### Ein zweiter Fehler in der Regelkette, behoben
-
-**War: Ist die Mindest-Einschaltdauer einer Zone länger als ihr Ventilschutzlauf, wurde
-der zeitlich begrenzte Lauf zu dauerhaftem Heizen.** Behoben am 2026-09-02: Die Ausnahme
-von der Mindestschaltdauer in Regel 5 (`thermoctl/domain/control_loop.py`,
-`protection_exempt`) gilt jetzt achsenabhängig — für einen gehaltenen Ein-Zustand reicht
-`valve_protection_active` allein, für den Aus-Timer weiterhin
-`valve_protection_active and protection_allowed`. Erwogen und verworfen wurden zwei
-andere Wege: den Marker erst beim tatsächlichen Ende des Ein-Zustands zu löschen (trifft
-die Ursache genauer, macht die Marker-Semantik aber zustandsbehafteter), und die
-Konfiguration so einzuschränken, dass die Mindest-Einschaltdauer nie länger sein darf als
-die Schutzlaufdauer (verschiebt das Problem nur auf den Bedienenden). Nebenwirkung, bewusst
-in Kauf genommen: Verliert ein laufender Schutzlauf während seines Laufs Vorrang (Override,
-„aus", Sensorausfall), hält `min_on_seconds` den Ein-Zustand nicht mehr künstlich — die
-Regelung kann sofort umschalten, in einem auf die Schutzlaufdauer begrenzten Zeitfenster.
-
-### Zwei Werkzeugfallen, beide bezahlt
-
-- **`cosmic-ray exec` darf nie im Vordergrund unter einem Werkzeug-Timeout laufen.** Ein
-  Abbruch mitten in einer Mutation überspringt die Wiederherstellung im `finally` und
-  hinterlässt **mutierten Produktionscode ohne Fehlermeldung**. Ein Folgelauf maß dann
-  gegen die kaputte Datei und lieferte ein vollständiges, aber ungültiges Ergebnis.
-- **iCloud legt im Documents-Ordner Kopien der Form `test_deviation 2.py` an.** Sie sind
-  alte Stände; `.gitignore` hält sie aus dem Repository, pytest sammelte sie aber ein und
-  ließ die Suite an Zusicherungen scheitern, die vor Wochen einmal gestimmt haben. Beide
-  Male sah es zuerst wie ein echter Fehlschlag aus. `--ignore-glob` in `pyproject.toml`
-  fängt das jetzt ab, nachgewiesen mit einer absichtlich fehlschlagenden Dublette.
-
-## Sicherheitsdurchsicht 2026-09-02 — vier Rechtefehler behoben
-
-Die Durchsicht wurde nicht fortgeschrieben, sondern **noch einmal von vorn** geführt, mit
-dem, was seit Teilprojekt 3 dazugekommen ist. Sie steht in
-[sicherheitsdurchsicht-2026-09-02.md](sicherheitsdurchsicht-2026-09-02.md). Behoben und
-mit Regressionstests belegt (`tests/test_security_review_2026_09_02.py`) sind vier
-Befunde, alle drei ersten mit körperlicher Wirkung:
-
-- **`device.manage` für eine Zone erreichte fremde Zonen.** Das Kanalformular prüfte
-  das Bediengerät gegen die eigenen Zonen, die eingesandte Zielzone aber gar nicht. Ein
-  bewusst auf eine Zone beschränkter Nutzer konnte einen fremden Raum abschalten — bei
-  jeder Drehung am Regler erneut.
-- **Eine Tastenbelegung wirkt in allen Zonen des Bediengeräts**, geprüft wurde nur eine.
-  Der geteilte Flurregler reichte damit in jedes Zimmer, an dem er ebenfalls hängt.
-  Jetzt braucht es das Recht für jede betroffene Zone.
-- **Kiosk-Token galten als vollwertige REST- und MCP-Token.** Die Kioskoberfläche
-  verstellt in festen Schritten; über REST setzte dasselbe Token jeden Sollwert und eine
-  unbefristete Übersteuerung auf 35 Grad. Die enge Bedienfläche war die
-  Sicherheitseigenschaft, und nur das Kiosk hat sie durchgesetzt. REST und MCP weisen
-  Kiosk-Token jetzt ab.
-- **Die Bediengeräteseite zeigte den gesamten Gerätebestand.** Gerätenamen tragen hier
-  Raum- und Bewohnerbezüge. Die Seite verlangt jetzt `device.read` — das Recht, das die
-  Navigation immer schon behauptet hat — und die Liste ist zonengefiltert.
-
-**Nicht behoben, bewusst offen** — mit Begründung in der Durchsicht: der MQTT-Befehlsweg
-(wer auf dem Broker veröffentlichen darf, steuert die Anlage ohne Konto — das ist eine
-Frage der Broker-Konfiguration, nicht des Codes), die Meross-Bestätigung ohne
-Zustandsprüfung, unbegrenzte Cloud-Antworten, das Einrichtungs-Token im Log,
-Sitzungswiderruf beim Passwortwechsel und die Webhook-Weiterleitung mit `Authorization`.
-Für die letzte hält ein ausdrücklich als offen benannter Test die Lücke fest.
-
-## Offen
-
-**Das Komplettreview ist durch.** Alle sieben Runden sind abgeschlossen.
-
-| Runde | Zustand |
-|---|---|
-| 1 — Mutationstest | Stufe 1 und 2 abgeschlossen, im Kreuzreview |
-| 2 — Zusicherungs-Audit | abgeschlossen |
-| 3 — die Regelkette als Zustandstabelle | abgeschlossen, **ein Fehler gefunden** |
-| 4 — Musterjagd | abgeschlossen |
-| 5 — Messen vor Optimieren | abgeschlossen |
-| 6 — Aufräumen | abgeschlossen, **ein Bestandsfehler gefunden** |
-| 7 — Sicherheit von vorn | abgeschlossen, **vier Rechtefehler gefunden** |
-
-**Runde 1, Stufe 2** hat vier weitere Domänendateien gemessen: `schedule.py` (138
-überlebende Mutanten), `device_assignment.py` (14), `statistics.py` (12), `deviation.py`
-(1). 115 wirksame Mutationen sind mit inhaltlichen Tests erschlagen, 50 als nachweislich
-gleichwertig begründet abgelegt. **Echte Fehler in der Produktionslogik: wieder keine** —
-über inzwischen sechs gemessene Dateien war jeder Befund eine Lücke in den Tests.
-
-**Die drei Zeitzonen-Grenzfehler sind behoben** — Statistik und Auditfilter rechnen
-Tagesgrenzen über `local_day_start_utc` in der konfigurierten Zeitzone, und der
-`age`-Filter unterscheidet Zukunft von Vergangenheit, statt beides zu „gerade eben" zu
-verschmelzen.
-
-**Was nur der Projektinhaber entscheiden kann:**
-
-- **Proportional-Integral-Regelung: ja, nein, oder erst messen?** Ein Zweipunktregler
-  pendelt bei trägen Systemen (Fußbodenheizung) prinzipiell um den Sollwert; ein PI-Anteil
-  würde das beheben, ist aber riskant (Integrator-Windup bei jeder der sieben
-  Vorrangregeln — Fenster, Frostschutz, Sensorausfall — muss ihn zurücksetzen) und für die
-  selbstregelnden Thermostatventile schlicht falsch (zwei Regler auf derselben
-  Regelstrecke). Empfehlung: erst messen, wie weit die Anlage wirklich pendelt — die Daten
-  dafür liegen seit 0.3.0 vor, und erst danach entscheidet sich, ob PI den Aufwand lohnt
-  oder eine billigere Alternative (ein früheres Ausschalten, asymmetrische Hysterese)
-  reicht.
-- **Phase 2 wirklich abschließen** — Schritt für Schritt in
-  [inbetriebnahme-schattenbetrieb.md](inbetriebnahme-schattenbetrieb.md). Die Anlage muss
-  über mehrere Tage laufen, bevor feststeht, dass plausible Ist-Temperaturen einlaufen
-  und das Schattenprotokoll nachvollziehbare Entscheidungen zeigt.
-- **Entscheiden, ob das Repository öffentlich werden soll.**
+Der Sicherheitsstand steht in
+[sicherheitsdurchsicht-2026-09-02.md](sicherheitsdurchsicht-2026-09-02.md), am
+2026-09-04 gegen den aktuellen Code nachgeprüft (siehe deren einleitender Nachtrag):
+Von acht Hoch-/Mittel-Befunden sind sechs behoben oder teilweise behoben
+(`device.manage` zonenübergreifend, Kiosk-Token als Bearer-Ersatz, Login-Blockade des
+Regelzyklus, Meross-Bestätigung, Webhook-Weiterleitung, Passwortwechsel/Sitzungswiderruf;
+das Einrichtungs-Token zusätzlich befristet). **Weiterhin offen:** der MQTT-Befehlspfad
+(dokumentiert, im Code nicht erzwingbar — Frage der Broker-Konfiguration), unbegrenzte/
+unmaskierte Meross-Cloud-Antworten, das unbegrenzt wachsende Schaltprotokoll, die
+HTTP-Netzwerkvorgabe (`0.0.0.0` ohne TLS-Erzwingung), und die CSRF-Ausnahme für
+Login/Logout.
