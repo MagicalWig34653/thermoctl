@@ -64,12 +64,13 @@ Die folgende Aufstellung ist aus den Topic-Erzeugern in
 | Home Assistant | abonnieren | `<präfix>/availability`, `<präfix>/state/armed`, `<präfix>/zones/+/state/#` und für Discovery `homeassistant/#` |
 | Home Assistant | veröffentlichen | nur `<präfix>/zones/+/command/+` und `<präfix>/zones/+/command/+/+` |
 
-Der Zustandsbaum umfasst die sieben einfachen Zonenwerte
+Der Zustandsbaum umfasst die acht einfachen Zonenwerte
 `current_temperature`, `setpoint`, `operating_mode`, `sensor_state`, `would_heat`,
-`last_switch` und `next_switch`, außerdem `sensor_fault` samt `attributes`,
-`mode/<mode_id>` und `parameter/<name>`. Der Befehlsbaum nimmt genau `setpoint`,
-`operating_mode`, `boost`, `mode/<mode_id>` und `parameter/<name>` entgegen. Die beiden
-Abonnementmuster sind absichtlich getrennt: MQTT-`+` steht für genau eine Ebene.
+`last_switch`, `next_switch` und `override_active`, außerdem `sensor_fault` samt
+`attributes`, `mode/<mode_id>` und `parameter/<name>`. Der Befehlsbaum nimmt genau
+`setpoint`, `operating_mode`, `boost`, `cancel_override`, `mode/<mode_id>` und
+`parameter/<name>` entgegen. Die beiden Abonnementmuster sind absichtlich getrennt:
+MQTT-`+` steht für genau eine Ebene.
 
 ### Kurzes EMQX-Beispiel
 
@@ -195,11 +196,13 @@ thermoctl/zones/<id>/state/sensor_state
 thermoctl/zones/<id>/state/would_heat
 thermoctl/zones/<id>/state/last_switch              ISO-8601 mit Zeitzone
 thermoctl/zones/<id>/state/next_switch              ISO-8601 mit Zeitzone
+thermoctl/zones/<id>/state/override_active           true | false
 thermoctl/zones/<id>/state/mode/<mode_id>           Solltemperatur dieses Modus
 thermoctl/zones/<id>/state/parameter/<name>         wirksamer Regelparameter
 thermoctl/zones/<id>/command/setpoint
 thermoctl/zones/<id>/command/operating_mode
 thermoctl/zones/<id>/command/boost                  zieht die nächste Schaltung vor
+thermoctl/zones/<id>/command/cancel_override        hebt eine laufende Übersteuerung auf
 thermoctl/zones/<id>/command/mode/<mode_id>
 thermoctl/zones/<id>/command/parameter/<name>
 ```
@@ -232,12 +235,25 @@ die Oberfläche benutzt, mit denselben Grenzen:
   sofort — und genau bis zu dem Zeitpunkt, an dem es planmäßig gekommen wäre. Danach läuft
   der Plan weiter, als wäre nichts gewesen. Ein Boost auf einen festen Wert müsste dagegen
   raten, wie warm und wie lange.
+  Technisch ist ein Boost dieselbe Art Eintrag wie eine über `override` gesetzte
+  Übersteuerung, nur mit vorherbestimmtem Wert und Ende.
+- **`cancel_override`** beendet die laufende Übersteuerung, gleich ob sie durch `override`
+  oder durch `boost` entstand — dieselbe Domänenfunktion (`cancel_override`), die auch die
+  Oberfläche für den Knopf „Übersteuerung aufheben" und REST/MCP für ihr `DELETE`/
+  `cancel_override` benutzen. Läuft gerade keine, tut der Befehl nichts — kein Fehler, denn
+  ein Knopfdruck, der nichts vorfindet, ist kein abgelehnter Befehl. Die Nutzlast wird nicht
+  ausgewertet, wie bei `boost` auch: Ein Knopf hat keinen Wert, nur ein Ereignis.
 - **Regelparameter** werden als Zonenabweichung festgeschrieben. Eine `number`-Entität kann
   nicht leer sein, es gibt dort also kein „erbt vom globalen Standard"; wer die Vererbung
   zurückwill, leert das Feld in der Oberfläche.
 
+`state/override_active` zeigt, ob gerade eine Übersteuerung läuft — ein Boost eingerechnet.
+Ohne diesen Wert hätte, wer in Home Assistant den Knopf „Übersteuerung aufheben" sieht,
+keine Möglichkeit zu erkennen, ob es dort gerade etwas aufzuheben gibt.
+
 Je Zone entsteht in Home Assistant ein eigenes Gerät (`via_device` auf den Dienst) mit
-Thermostat, Boost-Knopf, zwei Zeitstempeln, je Modus einer Solltemperatur und je
+Thermostat, Boost-Knopf, dem Knopf „Übersteuerung aufheben", dem Diagnosewert
+„Übersteuerung aktiv", zwei Zeitstempeln, je Modus einer Solltemperatur und je
 Regelparameter einer Zahleneingabe.
 
 Drei Entscheidungen darin, jede mit Grund:

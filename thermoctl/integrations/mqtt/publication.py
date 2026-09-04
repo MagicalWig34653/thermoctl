@@ -32,6 +32,11 @@ class StateTopics:
     would_heat: str
     last_switch: str
     next_switch: str
+    # Whether a running override currently applies -- a boost counts, since it is
+    # one (`domain/remote_control.py::boost`). Without this, whoever sees the
+    # "Übersteuerung aufheben" button in Home Assistant has no way to tell whether
+    # there is anything for it to do before pressing it.
+    override_active: str
 
 
 @dataclass(frozen=True)
@@ -41,6 +46,7 @@ class CommandTopics:
     setpoint: str
     operating_mode: str
     boost: str
+    cancel_override: str
 
 
 @dataclass(frozen=True)
@@ -83,6 +89,7 @@ def states_topics(zone_id: int, prefix: str = "thermoctl") -> StateTopics:
         would_heat=f"{base}/would_heat",
         last_switch=f"{base}/last_switch",
         next_switch=f"{base}/next_switch",
+        override_active=f"{base}/override_active",
     )
 
 
@@ -93,6 +100,7 @@ def command_topics(zone_id: int, prefix: str = "thermoctl") -> CommandTopics:
         setpoint=f"{base}/setpoint",
         operating_mode=f"{base}/operating_mode",
         boost=f"{base}/boost",
+        cancel_override=f"{base}/cancel_override",
     )
 
 
@@ -270,6 +278,53 @@ def boost_discovery(
         "icon": "mdi:fast-forward",
     }
     return DiscoveryMessage(_config_topic("button", object_id), _as_json(data))
+
+
+def cancel_override_discovery(
+    zone_id: int, zone_name: str, prefix: str = "thermoctl"
+) -> DiscoveryMessage:
+    """The button that ends whatever override is currently running.
+
+    A boost from `boost_discovery` above is itself an override
+    (`domain/remote_control.py::boost`) and is undone the same way -- there is no
+    separate "undo boost" button, the same way there is only one cancel button on
+    the start page for both kinds of override.
+    """
+    object_id = f"{_object_id(zone_id, prefix)}_uebersteuerung_aufheben"
+    data: dict[str, Any] = {
+        **_skeleton(zone_id, zone_name, prefix),
+        "name": "Übersteuerung aufheben",
+        "unique_id": object_id,
+        "object_id": object_id,
+        "command_topic": command_topics(zone_id, prefix).cancel_override,
+        "payload_press": "cancel_override",
+        "icon": "mdi:cancel",
+    }
+    return DiscoveryMessage(_config_topic("button", object_id), _as_json(data))
+
+
+def override_active_discovery(
+    zone_id: int, zone_name: str, prefix: str = "thermoctl"
+) -> DiscoveryMessage:
+    """Whether an override -- a boost included -- currently applies to this zone.
+
+    Without this, whoever sees the cancel button above has no way to tell, from
+    inside Home Assistant, whether there is currently anything for it to do.
+    `entity_category: diagnostic` because this mirrors internal state, the same
+    reasoning `parameter_discovery` already applies to control parameters.
+    """
+    object_id = f"{_object_id(zone_id, prefix)}_uebersteuerung_aktiv"
+    data: dict[str, Any] = {
+        **_skeleton(zone_id, zone_name, prefix),
+        "name": "Übersteuerung aktiv",
+        "unique_id": object_id,
+        "object_id": object_id,
+        "state_topic": states_topics(zone_id, prefix).override_active,
+        "payload_on": "true",
+        "payload_off": "false",
+        "entity_category": "diagnostic",
+    }
+    return DiscoveryMessage(_config_topic("binary_sensor", object_id), _as_json(data))
 
 
 def timestamp_discovery(

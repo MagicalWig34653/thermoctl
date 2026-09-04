@@ -137,6 +137,21 @@
                 </button>
             </form>
             {% endif %}
+
+            {#
+            Nur sichtbar, wenn tatsächlich eine Übersteuerung läuft -- ein Boost ist
+            eine davon (domain/remote_control.py::boost). Ohne laufende
+            Übersteuerung gäbe es nichts aufzuheben, und der Knopf wäre einer ohne
+            Wirkung.
+            #}
+            {% if zone.id in running_overrides and zone.id in cancel_zone_ids %}
+            <form method="post" action="{{ url_prefix }}/kiosk/zones/{{ zone.id }}/override/cancel">
+                <input type="hidden" name="csrf_token" value="{{ csrf }}">
+                <button class="btn btn-outline-secondary" type="submit">
+                    Übersteuerung aufheben
+                </button>
+            </form>
+            {% endif %}
         </article>
         {% endfor %}
     </div>

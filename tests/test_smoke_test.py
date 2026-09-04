@@ -586,7 +586,10 @@ def test_kiosk_link_leads_to_an_actual_dashboard(
     zone = create_zone(session, "wandtablett")
     admin = user_with_permissions(
         session, "kiosk-admin",
-        [("zone.read", None), ("setpoint.write", None), ("override.create", None)],
+        [
+            ("zone.read", None), ("setpoint.write", None),
+            ("override.create", None), ("override.cancel", None),
+        ],
     )
     _token, plaintext = issue_kiosk_token(
         session, admin, "Flur", [zone.id], control_allowed=True, expires_at=None

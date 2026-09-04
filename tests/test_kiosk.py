@@ -43,7 +43,7 @@ from thermoctl.domain.schedule import resolved_setpoint
 # limit what they can hand out.
 _ADMIN_PERMISSIONS = [
     ("zone.read", None), ("setpoint.write", None), ("override.create", None),
-    ("token.manage", None),
+    ("override.cancel", None), ("token.manage", None),
 ]
 
 
@@ -409,6 +409,167 @@ def test_a_control_allowed_token_can_boost(client: TestClient, session: Session)
     assert entry.created_by_token_id is not None
 
 
+# --- Cancelling an override (the bug this file was written to close) ---------------
+
+
+def test_a_control_allowed_token_can_cancel_its_own_boost(
+    client: TestClient, session: Session
+) -> None:
+    """The reported defect: a boost triggered at the kiosk could not be undone there.
+
+    Reproduced first without any code change (see the report): a running override
+    existed, but neither a route nor a button on the kiosk dashboard could reach
+    `cancel_override`. This checks the fix end to end -- boost, then cancel, through
+    the actual HTTP routes a tablet uses.
+    """
+    zone = zone_with_schedule(
+        session, "flur",
+        [(1, 0, "tag", Decimal("21.0")), (1, 1320, "nacht", Decimal("18.0"))],
+    )
+    admin = _admin(session)
+    _token, plaintext = issue_kiosk_token(
+        session, admin, "Flur", [zone.id], control_allowed=True, expires_at=None
+    )
+    _with_kiosk_cookie(client, plaintext)
+
+    boosted = client.post(
+        f"/kiosk/zones/{zone.id}/boost", headers=_csrf_headers(plaintext), follow_redirects=False
+    )
+    assert boosted.status_code == status.HTTP_303_SEE_OTHER
+    entry = session.query(ZoneOverride).filter_by(zone_id=zone.id).one()
+    assert entry.cancelled_at is None
+
+    cancelled = client.post(
+        f"/kiosk/zones/{zone.id}/override/cancel",
+        headers=_csrf_headers(plaintext), follow_redirects=False,
+    )
+    assert cancelled.status_code == status.HTTP_303_SEE_OTHER
+    # Not `session.refresh(entry)`: refresh expires the object *first* and only then
+    # reloads it, discarding the very change just made through the shared, not yet
+    # committed test session before the SELECT ever runs -- a fresh query instead,
+    # which autoflushes pending changes before reading.
+    reloaded = session.query(ZoneOverride).filter_by(zone_id=zone.id).one()
+    assert reloaded.cancelled_at is not None
+
+
+def test_cancelling_without_a_running_override_is_a_harmless_no_op(
+    client: TestClient, session: Session
+) -> None:
+    zone = create_zone(session, "flur")
+    admin = _admin(session)
+    _token, plaintext = issue_kiosk_token(
+        session, admin, "Flur", [zone.id], control_allowed=True, expires_at=None
+    )
+    _with_kiosk_cookie(client, plaintext)
+
+    response = client.post(
+        f"/kiosk/zones/{zone.id}/override/cancel",
+        headers=_csrf_headers(plaintext), follow_redirects=False,
+    )
+    assert response.status_code == status.HTTP_303_SEE_OTHER
+    assert session.query(ZoneOverride).count() == 0
+
+
+def test_a_view_only_token_cannot_cancel_an_override(
+    client: TestClient, session: Session
+) -> None:
+    zone = create_zone(session, "flur")
+    admin = _admin(session)
+    session.add(ZoneOverride(
+        zone_id=zone.id, temperature_c=Decimal("22.0"), starts_at=utcnow(),
+        ends_at=None, source_id=source(session, "web").id,
+    ))
+    session.flush()
+    _token, plaintext = issue_kiosk_token(
+        session, admin, "Flur", [zone.id], control_allowed=False, expires_at=None
+    )
+    _with_kiosk_cookie(client, plaintext)
+
+    response = client.post(
+        f"/kiosk/zones/{zone.id}/override/cancel", headers=_csrf_headers(plaintext)
+    )
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+    assert session.query(ZoneOverride).filter_by(zone_id=zone.id).one().cancelled_at is None
+
+
+def test_a_token_cannot_cancel_an_override_outside_its_scope(
+    client: TestClient, session: Session
+) -> None:
+    assigned = create_zone(session, "flur")
+    other = create_zone(session, "keller")
+    admin = _admin(session)
+    session.add(ZoneOverride(
+        zone_id=other.id, temperature_c=Decimal("22.0"), starts_at=utcnow(),
+        ends_at=None, source_id=source(session, "web").id,
+    ))
+    session.flush()
+    _token, plaintext = issue_kiosk_token(
+        session, admin, "Flur", [assigned.id], control_allowed=True, expires_at=None
+    )
+    _with_kiosk_cookie(client, plaintext)
+
+    response = client.post(
+        f"/kiosk/zones/{other.id}/override/cancel", headers=_csrf_headers(plaintext)
+    )
+    assert response.status_code == status.HTTP_401_UNAUTHORIZED
+    assert session.query(ZoneOverride).filter_by(zone_id=other.id).one().cancelled_at is None
+
+
+def test_the_cancel_button_is_hidden_without_a_running_override(
+    client: TestClient, session: Session
+) -> None:
+    create_settings(session)
+    source(session, "web")
+    zone = create_zone(session, "flur")
+    mode = create_mode(session, "tag")
+    session.add(
+        ZoneSetpoint(zone_id=zone.id, setpoint_mode_id=mode.id, temperature_c=Decimal("21.0"))
+    )
+    admin = _admin(session)
+    _token, plaintext = issue_kiosk_token(
+        session, admin, "Flur", [zone.id], control_allowed=True, expires_at=None
+    )
+    _with_kiosk_cookie(client, plaintext)
+
+    page = client.get("/kiosk")
+    assert page.status_code == status.HTTP_200_OK
+    assert f"/kiosk/zones/{zone.id}/override/cancel" not in page.text
+
+
+def test_the_cancel_button_appears_once_a_boost_is_running(
+    client: TestClient, session: Session
+) -> None:
+    zone = zone_with_schedule(
+        session, "flur",
+        [(1, 0, "tag", Decimal("21.0")), (1, 1320, "nacht", Decimal("18.0"))],
+    )
+    admin = _admin(session)
+    _token, plaintext = issue_kiosk_token(
+        session, admin, "Flur", [zone.id], control_allowed=True, expires_at=None
+    )
+    _with_kiosk_cookie(client, plaintext)
+    client.post(f"/kiosk/zones/{zone.id}/boost", headers=_csrf_headers(plaintext))
+
+    page = client.get("/kiosk")
+    assert page.status_code == status.HTTP_200_OK
+    assert f"/kiosk/zones/{zone.id}/override/cancel" in page.text
+    assert "Übersteuerung aufheben" in page.text
+
+
+def test_a_mutation_without_the_csrf_header_is_rejected_for_cancel(
+    client: TestClient, session: Session
+) -> None:
+    zone = create_zone(session, "flur")
+    admin = _admin(session)
+    _token, plaintext = issue_kiosk_token(
+        session, admin, "Flur", [zone.id], control_allowed=True, expires_at=None
+    )
+    _with_kiosk_cookie(client, plaintext)
+
+    response = client.post(f"/kiosk/zones/{zone.id}/override/cancel")
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+
+
 # --- CSRF ---------------------------------------------------------------------------
 
 
@@ -470,7 +631,7 @@ def test_the_dashboard_without_any_cookie_shows_the_invalid_page(client: TestCli
     assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
 
-@pytest.mark.parametrize("action", ["setpoint", "boost"])
+@pytest.mark.parametrize("action", ["setpoint", "boost", "override/cancel"])
 def test_a_mutation_without_any_kiosk_cookie_shows_the_invalid_page(
     action: str, client: TestClient, session: Session
 ) -> None:

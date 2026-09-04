@@ -252,6 +252,8 @@ async def test_boost_timestamps_modes_and_parameters_are_offered_per_zone(
     identifier = f"thermoctl_zone_{zone.id}"
 
     assert f"homeassistant/button/{identifier}_boost/config" in topics
+    assert f"homeassistant/button/{identifier}_uebersteuerung_aufheben/config" in topics
+    assert f"homeassistant/binary_sensor/{identifier}_uebersteuerung_aktiv/config" in topics
     assert f"homeassistant/sensor/{identifier}_last_switch/config" in topics
     assert f"homeassistant/sensor/{identifier}_next_switch/config" in topics
     # One dial per control parameter, and its state.
@@ -508,6 +510,32 @@ async def test_state_switch_times_and_sensor_situation_go_along(session: Session
     # 05:00, not 06:30: at 06:30 only what already held was confirmed.
     # With a time zone, because `device_class: timestamp` requires one.
     assert messages[f"{base}/last_switch"] == "2026-08-31T05:00:00+00:00"
+
+
+@pytest.mark.anyio
+async def test_override_active_reflects_whether_one_is_actually_running(
+    session: Session,
+) -> None:
+    """Whoever sees the "Übersteuerung aufheben" button in Home Assistant needs a
+    way to tell, from there, whether there is currently anything for it to do -- a
+    boost counts, since it is an override like any other."""
+    from thermoctl.db.models.override import ZoneOverride
+
+    create_settings(session)
+    source(session, "web")
+    zone = create_zone(session, "uebersteuerte-zone")
+    base = f"thermoctl/zones/{zone.id}/state"
+
+    ohne = dict((await _run(session, PublicationState())).messages)
+    assert ohne[f"{base}/override_active"] == "false"
+
+    session.add(ZoneOverride(
+        zone_id=zone.id, temperature_c=Decimal("22.0"),
+        starts_at=NOW, ends_at=None, source_id=source(session, "web").id,
+    ))
+    session.flush()
+    mit = dict((await _run(session, PublicationState())).messages)
+    assert mit[f"{base}/override_active"] == "true"
 
 
 def _zone_with_self_regulating_valve(  # type: ignore[no-untyped-def]

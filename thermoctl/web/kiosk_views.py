@@ -20,7 +20,7 @@ from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, Form, Request, Response, status
 from fastapi.responses import RedirectResponse
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from thermoctl.auth.csrf import csrf_token
@@ -36,6 +36,7 @@ from thermoctl.config import get_settings
 from thermoctl.db.base import utcnow
 from thermoctl.db.models.lookup import SensorStatus
 from thermoctl.db.models.operations import Setting
+from thermoctl.db.models.override import ZoneOverride
 from thermoctl.db.models.state import ShadowDecision, ZoneState
 from thermoctl.db.models.zone import Zone
 from thermoctl.domain.authz import has_permission, principal_for_token, require, visible_zones
@@ -43,7 +44,7 @@ from thermoctl.domain.modes import DomainError
 from thermoctl.domain.principal import Principal
 from thermoctl.domain.remote_control import RemoteControlError, set_setpoint
 from thermoctl.domain.remote_control import boost as domain_boost
-from thermoctl.domain.schedule import resolved_setpoint
+from thermoctl.domain.schedule import cancel_override, resolved_setpoint
 from thermoctl.web import templates
 from thermoctl.web.urls import cookie_path, prefixed
 
@@ -152,6 +153,22 @@ def _dashboard(
     ):
         would_heat_je_zone.setdefault(decision.zone_id, decision.would_heat)
 
+    # Same query `start_views.py` runs for the logged-in start page: the running
+    # override, if any, per zone -- so the cancel button can be shown exactly where
+    # there is something to cancel, and nowhere else.
+    running_overrides: dict[int, ZoneOverride] = {}
+    for entry in session.scalars(
+        select(ZoneOverride)
+        .where(
+            ZoneOverride.zone_id.in_(zone_ids),
+            ZoneOverride.cancelled_at.is_(None),
+            ZoneOverride.starts_at <= now,
+            or_(ZoneOverride.ends_at.is_(None), ZoneOverride.ends_at > now),
+        )
+        .order_by(ZoneOverride.created_at.desc())
+    ):
+        running_overrides.setdefault(entry.zone_id, entry)
+
     return templates.TemplateResponse(
         request,
         "kiosk.html",
@@ -164,6 +181,15 @@ def _dashboard(
             "would_heat_je_zone": would_heat_je_zone,
             "control_zone_ids": {
                 zone.id for zone in zones if has_permission(principal, "setpoint.write", zone.id)
+            },
+            "running_overrides": running_overrides,
+            # `override.cancel` on purpose, not `override.create`: cancelling does
+            # not add any new power over the plant -- it only falls back to the
+            # schedule -- but it may undo an override someone *else* set, and
+            # `override.cancel` ("Fremde Übersteuerung aufheben") is exactly the
+            # permission that already exists for that on the start page.
+            "cancel_zone_ids": {
+                zone.id for zone in zones if has_permission(principal, "override.cancel", zone.id)
             },
             "error": error,
             "error_zone_id": error_zone_id,
@@ -253,4 +279,30 @@ async def kiosk_boost(
         return RedirectResponse(
             prefixed(request, f"/kiosk?{query}"), status_code=status.HTTP_303_SEE_OTHER
         )
+    return RedirectResponse(prefixed(request, "/kiosk"), status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/kiosk/zones/{zone_id}/override/cancel")
+async def kiosk_cancel_override(
+    zone_id: int,
+    request: Request,
+    session: Annotated[Session, Depends(get_session)],
+) -> Response:
+    """Ends a running override -- whichever one is running, boost included.
+
+    A boost is an override like any other (`domain/remote_control.py::boost`); this
+    is the one place in the kiosk that can undo it. Same permission as the start
+    page's equivalent button, `override.cancel` -- see the reasoning where
+    `cancel_zone_ids` is built in `_dashboard` above.
+    """
+    token = kiosk_token_from_cookie(request, session)
+    if token is None:
+        return _invalid_page(request)
+    principal = principal_for_token(session, token)
+    zone = _zone_or_none(session, principal, zone_id)
+    if zone is None:
+        return _invalid_page(request)
+    require(principal, "override.cancel", zone.id)
+
+    cancel_override(session, zone)
     return RedirectResponse(prefixed(request, "/kiosk"), status_code=status.HTTP_303_SEE_OTHER)
