@@ -100,6 +100,32 @@ def test_the_rendered_kiosk_clock_uses_the_configured_timezone(
     assert f'<span class="kiosk-clock">{expected}</span>' in response.text
 
 
+def test_the_dashboard_carries_an_agpl_source_link_that_stays_off_the_tablet(
+    client: TestClient, session: Session
+) -> None:
+    """§13 AGPL-3.0: a reachable way to the source, without leaving the tablet on it.
+
+    Not a footer like `base.html`/`base_plain.html` -- see `kiosk.html` for why. This
+    only checks the properties §13 actually needs: the exact repository address, and
+    `target="_blank" rel="noopener"` so tapping it opens a second tab instead of
+    replacing the kiosk document the tablet is meant to keep showing.
+    """
+    create_settings(session)
+    zone = create_zone(session, "flur")
+    admin = _admin(session)
+    _token, plaintext = issue_kiosk_token(
+        session, admin, "Flur", [zone.id], control_allowed=False, expires_at=None
+    )
+    _with_kiosk_cookie(client, plaintext)
+
+    response = client.get("/kiosk")
+
+    assert response.status_code == status.HTTP_200_OK
+    assert 'class="kiosk-source-link t-quiet"' in response.text
+    assert 'href="https://github.com/MagicalWig34653/thermoctl"' in response.text
+    assert 'target="_blank" rel="noopener"' in response.text
+
+
 # --- Issuing ----------------------------------------------------------------------
 
 

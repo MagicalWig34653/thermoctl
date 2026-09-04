@@ -13,6 +13,8 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ### Hinzugefügt
 
+- Kiosk-Dashboard: knapper AGPL-3.0-Quelltext-Verweis in der Kopfzeile (§13), öffnet
+  in einem neuen Tab statt das Wandtablett-Dokument zu ersetzen.
 - Neues Werkzeug `tools/env_nach_addon.py`: liest eine bestehende `.env` und erzeugt
   daraus die YAML-Konfiguration für das Home-Assistant-Add-on — für den Umstieg von
   `docker compose` auf das Add-on, ohne jede Einstellung von Hand zu übertragen. Siehe

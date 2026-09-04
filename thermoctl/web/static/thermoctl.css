@@ -982,3 +982,17 @@ body {
     color: var(--waerme);
     font-size: 1rem;
 }
+
+/* Der AGPL-Verweis (§13): erreichbar, aber bewusst zurueckhaltend -- ein
+ * Wandtablett wird angesehen, nicht gelesen, und der Hinweis soll neben der
+ * Uhr nicht mit ihr um Aufmerksamkeit konkurrieren. */
+.kiosk-source-link {
+    font-size: 0.8rem;
+    text-decoration: underline dotted;
+    text-underline-offset: 0.2em;
+}
+
+.kiosk-source-link:hover,
+.kiosk-source-link:focus-visible {
+    color: var(--tinte);
+}
