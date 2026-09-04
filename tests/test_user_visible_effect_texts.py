@@ -24,28 +24,75 @@ APPROVED_OCCURRENCES = ROOT / "tests/approved_physical_vocabulary.json"
 # Keep this vocabulary short and concrete. A term belongs here when its occurrence can turn
 # nearby prose into a claim about a physical heating effect. Adding vocabulary is cheap: the
 # registry failure presents every existing occurrence for individual review.
+#
+# German compounds don't take a delimiter ("Zirkulationspumpe", "Ölbrenner"): the leading
+# word boundary that used to sit in front of every noun below let those slip through,
+# because \b never fires between "pumpen" and the "s" in front of it inside a bigger word.
+# Decision (project owner): drop the *leading* \b on the German nouns that regularly serve
+# as the second element of a compound, so a bare substring match catches every compound
+# instead of only a hand-picked list of them. The *trailing* boundary stays, because it is
+# doing real work (it stops "pumpenhausstrasse"-style overshoot into a following word, and
+# keeps the suffix lists below exact). This trades precision for recall on purpose; stray
+# hits are meant to surface here and get reviewed once, not silently avoided. English nouns
+# keep their leading boundary — English does not compound this way, so the risk without the
+# matching payoff is not worth taking here.
+#
+# \b is also unreliable right at a German umlaut in Python's re (it's ASCII word-boundary
+# logic operating on a value where ö/ü/ä count as \w but the boundary calculation around them
+# doesn't always agree with intuition) — dropping the leading boundary sidesteps that entirely
+# for "Ölbrenner", which is covered explicitly by the "Ölbrenner" case in ATTACK_CASES below.
 PHYSICAL_VOCABULARY = {
-    "valves": r"\b(?:thermostat)?ventil\w*|\bvalves?\b",
-    "actuators": r"\baktors?\b|\baktoren\b|\bactuators?\b|\b(?:heizungs|schalt)?aktoren?\b",
-    "radiators": r"\bheizkörper\w*|\bradiators?\b",
+    "valves": r"(?:thermostat)?ventil\w*|\bvalves?\b",
+    # Accepted, standing risk: without a leading boundary this also matches inside any word
+    # ending "-faktor" — "Faktor", "Verstärkungsfaktor", "Korrekturfaktor",
+    # "Proportionalfaktor" all match today (verified). None of those occur in a visible
+    # source right now, and "solar_gain_faktor_0_bis_1" only escapes because of the
+    # following "_" — a coincidence, not a guarantee. This is a PI-controller project, and
+    # "Verstärkungsfaktor"/"Regelfaktor"/"Sicherheitsfaktor" are exactly the kind of word
+    # that could show up in future control-tuning prose without being a physical-actuator
+    # claim at all. Documented and accepted rather than reintroducing the leading \b.
+    "actuators": r"aktors?\b|aktoren\b|\bactuators?\b",
+    "radiators": r"heizkörper\w*|\bradiators?\b",
     "heating_equipment": (
-        r"\bheizkreise?\b|\bfußbodenheizung\w*|\bfussbodenheizung\w*|"
-        r"\bunderfloor\s+heating\b|\bstellantriebe?\b|\bboilers?\b|"
-        r"\bbrenner\b|\bburners?\b|\b(?:umwälz)?pumpen?\b|\bpumps?\b"
+        r"heizkreise?\b|fußbodenheizung\w*|fussbodenheizung\w*|"
+        r"\bunderfloor\s+heating\b|stellantriebe?\b|boilers?\b|"
+        r"brenner\b|\bburners?\b|pumpen?\b|\bpumps?\b"
     ),
     # Separable-verb prefixes stack in German: "aufgeheizt" is auf + ge + heizt, not just
     # one prefix. Both orders occur in the wild ("aufheizt" without "ge", "aufgeheizt"
-    # with it), so the inner "ge" is itself optional, on top of the outer prefix.
+    # with it). Dropping the leading \b on the stem makes enumerating prefixes unnecessary
+    # (any prefix, listed or not — "überheizt", "mitheizt", "Zusatzheizung" — now matches as
+    # a substring) and is the same compound-vs-precision trade as above: "heiz" only matches
+    # together with one of the specific verb suffixes, so the leading boundary was doing
+    # nothing but blocking legitimate compounds like "beheizt" already required listing "be"
+    # by hand. "heizung" the noun gets the same treatment for the same reason
+    # ("Zentralheizung", "Etagenheizungsanlage").
     "heating": (
-        r"\bheizung(?:en)?\b|"
-        r"\b(?:be|ge|weiter|auf|vor|nach|er)?(?:ge)?heiz"
-        r"(?:e|est|t|en|te|test|tet|ten|end\w*)\b|\bheat(?:s|ed|ing)?\b"
+        r"heizung(?:en)?\b|"
+        r"heiz(?:e|est|t|en|te|test|tet|ten|end\w*)\b|\bheat(?:s|ed|ing)?\b"
     ),
+    # Same compound argument as "heiz" above, and the same check applies: "warm" needs the
+    # letters w-a-r-m in that order, so it does not fire inside unrelated words such as
+    # "vorwarnen" (…w-a-r-n…, no m) — checked explicitly in
+    # test_warm_does_not_false_positive_on_the_unrelated_stem_warn below. Accepted, standing
+    # risk in the same vein as "-faktor" above: "Schwarm"/"schwärmen" (swarm/to rave about)
+    # also contain "warm" and would match. Not present in any visible source today; noted
+    # here rather than silently relied on.
     "warmth": (
-        r"\b(?:be|ge|weiter|auf|vor|nach|er)?(?:ge)?wärm(?:e|st|t|en|te|test|tet|ten|er)\b|"
-        r"\b(?:be|ge|weiter|auf|vor|nach|er)?(?:ge)?waerm(?:e|st|t|en|te|test|tet|ten|er)\b|"
-        r"\bwarm(?:e[rmns]?|er|ers|est|en|em|es|ed|ing|th)?\b"
+        r"wärm(?:e|st|t|en|te|test|tet|ten|er)\b|"
+        r"waerm(?:e|st|t|en|te|test|tet|ten|er)\b|"
+        r"warm(?:e[rmns]?|er|ers|est|en|em|es|ed|ing|th)?\b"
     ),
+    # Kept conservative on purpose. Unlike "heiz" and "warm", the suffix list here is
+    # narrower and a real UI term collides at the boundary: "Schaltfläche" (button) is not a
+    # physical-switching claim, it's an interface element, and it occurs in this codebase
+    # (thermoctl/web/templates/login.html, docs/self-hosting.md). It happens not to match
+    # today only because "fläche" isn't one of the enumerated verb suffixes — a coincidence
+    # of German grammar, not something to rely on if the suffix list ever grows. So the
+    # leading \b stays here: dropping it would buy compound coverage this vocabulary doesn't
+    # need (verbs like "schalten" aren't usually compounded the way nouns are) at the cost of
+    # a standing false-positive risk on ordinary UI prose. "geschaltet" keeps its own leading
+    # \b for the same reason — it stands for the same verb family.
     "switching": (
         r"\b(?:ein|aus|um)?schalt(?:e|est|et|en|ete|etest|etet|eten)\b|"
         r"\b(?:ein|aus|um)?geschaltet\b|\bswitch(?:es|ed|ing)?\b"
@@ -305,6 +352,12 @@ def test_mcp_control_description_names_the_explicit_unknown_startup_latch_state(
     assert "armed operation moves a valve" not in source
 
 
+def test_warm_does_not_false_positive_on_the_unrelated_stem_warn() -> None:
+    """Dropping the leading \\b on "warm" must not start matching "warnen" (to warn)."""
+    assert not PHYSICAL_VOCABULARY_PATTERN.search("Wir sollten den Nutzer vorwarnen.")
+    assert not PHYSICAL_VOCABULARY_PATTERN.search("Eine Warnung erscheint im Protokoll.")
+
+
 def test_effect_text_guard_covers_every_user_visible_source_category() -> None:
     sources = {str(path.relative_to(ROOT)) for path in _user_visible_sources()}
     assert "README.md" in sources
@@ -336,6 +389,11 @@ ATTACK_CASES = [
     ("thermoctl/integrations/mqtt/probe.py", "The radiator is warmed by the controller."),
     ("thermoctl/integrations/probe.py", "Heat flows into the room."),
     ("thermoctl/probe.py", "The home gets warmer."),
+    # German compounds carry no separator. These two regressed the guard once already: the
+    # vocabulary's word boundaries used to sit in front of "pumpe" and "brenner" too, so
+    # neither compound below was ever seen by the pattern.
+    ("thermoctl/domain/probe.py", "Die Zirkulationspumpe läuft an."),
+    ("thermoctl/integrations/probe.py", "Der Ölbrenner zündet."),
 ]
 
 
