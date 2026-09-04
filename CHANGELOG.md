@@ -11,6 +11,35 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ## Unveröffentlicht
 
+Nichts.
+
+---
+
+## 0.6.1 — 2026-09-04
+
+**Die erste Fassung, die Fremde zu Gesicht bekommen.** Sie macht das Repository
+veröffentlichbar — vor allem, weil es jetzt überhaupt eine Lizenz hat — und räumt eine
+Reihe von Spuren aus der Entwicklung beim Projektinhaber aus Oberfläche und Dokumentation.
+Am Regelverhalten selbst ändert diese Fassung nur eine protokollierte Begründung, keine
+Entscheidung.
+
+### thermoctl steht unter der AGPL-3.0
+
+Bisher hatte das Projekt gar keine Lizenz — damit galt striktes Urheberrecht, und niemand
+hätte die Software rechtmäßig benutzen dürfen. Das war der einzige harte Blocker vor einer
+Veröffentlichung. Die Wahl fällt auf die AGPL, weil `thermoctl` eine Weboberfläche ist:
+Ohne den Netzwerk-Zusatz aus §13 könnte jemand den Code nehmen, eine gehostete
+Heizungssteuerung als Bezahldienst betreiben und nie etwas zurückgeben — unter MIT wie
+unter gewöhnlicher GPL gleichermaßen zulässig, weil die Software dabei nie weitergegeben
+wird. `LICENSE` ist der unveränderte Wortlaut von gnu.org; `pyproject.toml` trägt die
+Lizenzangabe nach PEP 639, und das gebaute Paket weist `License-Expression:
+AGPL-3.0-only` nach. Dazu, wie es §13 AGPL für netzseitig genutzte Software verlangt: Die
+Grundvorlagen `base.html` und `base_plain.html` tragen jetzt eine Fußzeile mit
+Lizenzangabe und der Repository-Adresse — sichtbar auf jeder Seite, die eine der beiden
+Vorlagen nutzt, einschließlich der Anmeldeseite. **Offen:** Das eigenständige
+Kiosk-Dashboard (`kiosk.html`) erbt keine der beiden Grundvorlagen und hat noch keinen
+eigenen Hinweis.
+
 ### Fix: die protokollierte Begründung bei „unveraendert" nannte oft nicht den echten Sachverhalt
 
 Beide Zweige der Entscheidung `unveraendert` in `decide()` schrieben unabhängig vom
@@ -22,8 +51,9 @@ einzige tatsächlich im Band; mittlerer Abstand 5,90K, grösster 11,40K. Die Beg
 unterscheidet jetzt „echt im Band" von „jenseits der gegenüberliegenden Kante, Zustand
 bleibt, weil er schon lief bzw. schon aus war". **Keine Entscheidung hat sich geändert**
 (unveränderte 2.376-Kombinationen-Tabelle in `tests/test_control_loop_state_table.py`).
-Alteinträge in der Produktivdatenbank behalten den bisherigen, falschen Text — sie werden
-nicht nachträglich korrigiert.
+**Alteinträge im Schattenprotokoll behalten den bisherigen, falschen Text** — sie werden
+nicht nachträglich korrigiert. Wer ältere `unveraendert`-Einträge liest, muss das wissen:
+Der protokollierte Grund war dort systematisch falsch, die getroffene Entscheidung nicht.
 
 ### Oberfläche von Umstiegs-Jargon bereinigt
 
@@ -33,17 +63,8 @@ Rückfallebene — für einen Betreiber ohne Altsystem alles ohne Bedeutung. Bei
 den Zustand jetzt einheitlich „Trockenlauf"; der Altsystem-Punkt ist ersatzlos gestrichen, der
 Vergleichssatz durch eine für jeden Betreiber gültige Aussage ersetzt (Entscheidungen lassen
 sich beobachten, bevor sie etwas schalten). Der nie erreichte Schnittstellen-Zustand
-`not_built` ist aus Domänenlogik, Vorlage und Test entfernt.
-
-### Quelltextverweis nach §13 AGPL, realer Hostname aus der Dokumentation entfernt
-
-Die Grundvorlagen `base.html` und `base_plain.html` tragen jetzt eine Fußzeile mit
-Lizenzangabe (AGPL-3.0) und der Repository-Adresse, wie es §13 AGPL für netzseitig
-genutzte Software verlangt — sichtbar auf jeder Seite, die eine der beiden Vorlagen
-nutzt, einschließlich der Anmeldeseite. Das Kiosk-Dashboard (eigene, bewusst schmale
-Vorlage) bleibt unverändert; ob es einen eigenen Hinweis braucht, ist offen. Außerdem:
-Der reale Rechnername des Altsystems (`vm130-nginx`) ist in `docs/roadmap.md`,
-`docs/inbetriebnahme-schattenbetrieb.md` und `docs/veroeffentlichung-durchsicht.md`
+`not_built` ist aus Domänenlogik, Vorlage und Test entfernt. Zusätzlich ist der reale
+Rechnername des Altsystems (`vm130-nginx`) aus allen Fundstellen in der Dokumentation
 durch eine neutrale Umschreibung ersetzt.
 
 ### Wirkungswächter erkennt deutsche Komposita ohne Trennzeichen
@@ -59,7 +80,38 @@ Fußbodenheizung, Stellantrieb, Boiler, Brenner, Pumpe) sowie bei den Verb-/Adje
 „Schaltfläche" (eine UI-Schaltfläche, keine physische Schaltbehauptung) mitgefangen. Die
 dadurch neu gemeldeten 27 Fundstellen wurden durchgesehen und in
 `tests/approved_physical_vocabulary.json` eingetragen; keine davon war eine falsche
-Wirkbehauptung.
+Wirkbehauptung. **Ausserdem:** Der Wächter durchsuchte bisher das Dateisystem statt die
+Versionsverfolgung — als die Bauprozess-Dokumentation und die Altsystem-Bestandsaufnahme
+das Repository verliessen (siehe unten), meldete er deren Vorkommen fälschlich als
+ungeprüft, statt sie als nicht mehr vorhanden zu behandeln. Er fragt jetzt `git`, was
+tatsächlich verfolgt wird, und fällt ohne `git` darauf zurück, alles zu prüfen statt
+stillschweigend nichts.
+
+### Bauprozess-Dokumentation und Altsystem-Bestandsaufnahme verlassen das Repository
+
+Verlauf, getroffene Entscheidungen, Spezifikationen, Pläne und das interne
+Umbenennungswerkzeug beschreiben ausschliesslich den eigenen Bauprozess; die
+Altsystem-Bestandsaufnahme beschreibt ein fremdes, reales System mit vollständigem
+Schema, MQTT-Topic-Vertrag und einer privaten IP-Adresse. Beides eignet sich nicht für
+ein öffentliches Repository und ist entfernt — die Dateien bleiben lokal liegen und
+stehen in `.gitignore`. Rund fünfzig Verweise darauf im übrigen Repository sind aufgelöst,
+statt auf nicht mehr vorhandene Dateien zu zeigen.
+
+### Bekannt: Teilprojekt 2 gilt an der echten Anlage noch nicht als abgenommen
+
+Ein Abgleich der eigenen Anlage des Projektinhabers gegen die drei Abnahmekriterien aus
+`docs/inbetriebnahme-schattenbetrieb.md` (Bericht: `docs/phase-2-abnahme.md`) ergab: Der
+mehrtägige Schattenbetrieb vor dem Scharfschalten wurde für fünf von sechs Zonen
+tatsächlich übersprungen, sodass Teilprojekt 2 auf dieser Grundlage formal nicht als
+abgenommen gilt. Betroffen ist die Nachweisführung, nicht die Regellogik — in keinem
+geprüften Fall hat die Regelung falsch entschieden; der oben beschriebene
+Begründungstext-Fehler wurde bei genau dieser Auswertung gefunden.
+
+### Zu beachten beim Umstieg
+
+- **Keine Schemaänderung.** Diese Fassung bringt keine neue Migration mit; `alembic
+  upgrade head` bleibt bei der letzten Revision aus 0.6.0 (`635612893955`) stehen. Ein
+  Rückweg auf 0.6.0 braucht deshalb keinen Datenbank-Downgrade.
 
 ---
 

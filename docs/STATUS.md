@@ -2,7 +2,48 @@
 
 Letzte Aktualisierung: 2026-09-04
 
-## Falsche Begründung bei `unveraendert` in `decide()` korrigiert
+## v0.6.1 — die erste Fassung, die veröffentlicht wird
+
+Der Projektinhaber veröffentlicht das Repository mit dieser Fassung. Sie bringt deshalb
+vor allem, was dafür fehlte: eine Lizenz, und die Beseitigung von Spuren aus der eigenen
+Entwicklung, die für einen fremden Betreiber ohne Vorgeschichte sinnlos bis irreführend
+gewesen wären. Dazu ein Begründungstext-Fix in der Regelkette und die Erkenntnis aus einer
+ersten Auswertung der echten Anlage, dass Teilprojekt 2 formal noch nicht als abgenommen
+gilt. **Keine Schemaänderung** — diese Fassung fügt keine Migration hinzu.
+
+### thermoctl steht unter der AGPL-3.0
+
+`thermoctl/web/templates/base.html` und `base_plain.html` tragen jetzt eine Fußzeile mit
+Lizenzangabe (AGPL-3.0) und der Repository-Adresse
+(`https://github.com/MagicalWig34653/thermoctl`) — sie erscheint auf jeder Seite, die
+über diese beiden Grundvorlagen läuft, auch der Anmeldeseite. Der Verweis nennt die vom
+Projektinhaber freigegebene, korrekte Adresse; das Repository wird mit dieser Fassung
+öffentlich. **Offen:** Das eigenständige Kiosk-Dashboard (`thermoctl/web/templates/kiosk.html`)
+erbt keine der beiden Grundvorlagen — bewusst schmale Bedienfläche fürs Wandtablet. Ob und
+wie es den §13-Hinweis bekommen soll, ohne die Fläche zu überladen, ist nicht entschieden;
+hier nicht angefasst. `LICENSE` ist der unveränderte Wortlaut von gnu.org; `pyproject.toml`
+trägt die Lizenzangabe nach PEP 639, und das gebaute Paket weist `License-Expression:
+AGPL-3.0-only` nach.
+
+### Bauprozess-Dokumentation und Altsystem-Bestandsaufnahme aus dem Repository entfernt
+
+Verlauf, getroffene Entscheidungen, Spezifikationen, Pläne und das interne
+Umbenennungswerkzeug beschreiben ausschliesslich den eigenen Bauprozess; die
+Altsystem-Bestandsaufnahme beschreibt ein fremdes, reales System mit vollständigem Schema,
+MQTT-Topic-Vertrag und einer privaten IP-Adresse. Beides eignet sich nicht für ein
+öffentliches Repository. Die Dateien bleiben lokal liegen und stehen in `.gitignore`; nur
+die Versionsverfolgung gibt sie auf, ihre Inhalte werden anschliessend aus der gesamten
+Historie getilgt. Rund fünfzig Verweise darauf im übrigen Repository sind aufgelöst — wo
+ein Kommentar im Quelltext auf `offene-entscheidungen.md` zeigte, weil dort die Begründung
+stand, steht die Begründung jetzt an Ort und Stelle. Der Quelltext des
+Altsystem-Vergleichs selbst (`legacy_system.py`, `deviation.py`) ist unangetastet.
+
+Außerdem: Der reale Rechnername `vm130-nginx` des Altsystems ist an allen fünf
+Fundstellen in `docs/roadmap.md`, `docs/inbetriebnahme-schattenbetrieb.md` und
+`docs/veroeffentlichung-durchsicht.md` durch eine neutrale Umschreibung („der Host des
+Altsystems") ersetzt.
+
+### Falsche Begründung bei `unveraendert` in `decide()` korrigiert
 
 Die beiden Zweige mit Ergebniscode `unveraendert` in `thermoctl/domain/control_loop.py`
 protokollierten unabhängig vom tatsächlichen Abstand denselben Satz „... innerhalb der
@@ -30,7 +71,7 @@ nicht — geprüft, keine Änderung nötig. Die übrigen Begründungstexte in `d
 den Kanten) wurden durchgesehen: Jeder benennt nur, was im jeweils erreichten Zweig
 zwingend gilt — kein weiterer Fund derselben Fehlerklasse.
 
-## Oberfläche von Umstiegs-Jargon bereinigt
+### Oberfläche von Umstiegs-Jargon bereinigt
 
 Eine Durchsicht vor der Veröffentlichung fand vier Stellen, die den Entwicklungsstand oder
 den Umstieg vom Altsystem des Projektinhabers durchscheinen liessen — für einen fremden
@@ -45,23 +86,6 @@ Der nie erreichbare Schnittstellen-Zustand `not_built` (Marke „Noch nicht geba
 `docs/scharfschalten.md` bleibt unverändert: Sie ist ausdrücklich für den Projektinhaber und
 beschreibt genau den Umstieg, den sie im Titel trägt.
 
-## §13 AGPL: Quelltextverweis in der Fußzeile, realer Hostname aus der Dokumentation entfernt
-
-`thermoctl/web/templates/base.html` und `base_plain.html` tragen jetzt eine Fußzeile mit
-Lizenzangabe (AGPL-3.0) und der Repository-Adresse
-(`https://github.com/MagicalWig34653/thermoctl`) — sie erscheint auf jeder Seite, die
-über diese beiden Grundvorlagen läuft, auch der Anmeldeseite. Das Repository ist derzeit
-noch privat; der Verweis führt vorerst ins Leere, ist aber die vom Projektinhaber
-freigegebene, korrekte Adresse. **Offen:** Das eigenständige Kiosk-Dashboard
-(`thermoctl/web/templates/kiosk.html`) erbt keine der beiden Grundvorlagen — bewusst
-schmale Bedienfläche fürs Wandtablet. Ob und wie es den §13-Hinweis bekommen soll, ohne
-die Fläche zu überladen, ist nicht entschieden; hier nicht angefasst.
-
-Außerdem: Der reale Rechnername `vm130-nginx` des Altsystems ist an allen fünf
-Fundstellen in `docs/roadmap.md`, `docs/inbetriebnahme-schattenbetrieb.md` und
-`docs/veroeffentlichung-durchsicht.md` durch eine neutrale Umschreibung („der Host des
-Altsystems") ersetzt.
-
 **Diese Datei sagt, was jetzt gilt — sonst nichts.** Wie es dazu kam, welche Fehler wie
 gefunden wurden und warum etwas so entschieden ist, wird hier nicht mitgeführt. Der
 Grund: Diese Datei war einmal auf über tausend Zeilen gewachsen und enthielt gleichzeitig
@@ -70,7 +94,7 @@ aktuelle und längst überholte Angaben — „nichts ist scharf", „1024 Tests
 vier stimmten einmal und standen noch da; ein Freigabe-Review konnte sie namentlich
 widerlegen.
 
-## Teilprojekt 2 — Auswertung der echten Betriebsdaten: nicht abnahmereif
+### Teilprojekt 2 — Auswertung der echten Betriebsdaten: nicht abnahmereif
 
 Ein Auszug der Produktivdatenbank wurde gegen die drei Abnahmekriterien aus Abschnitt 4
 von `docs/inbetriebnahme-schattenbetrieb.md` geprüft; Bericht in
@@ -85,7 +109,7 @@ obwohl die Ist-Temperatur im Mittel 5,9 K vom Sollwert entfernt liegt. Kriterium
 (Altsystemvergleich) entfällt ersatzlos, weil der Vergleichsbetrieb bewusst übersprungen
 wurde. **Teilprojekt 2 gilt auf dieser Grundlage nicht als abgenommen.**
 
-## Wirkungswächter erkennt Komposita ohne Trennzeichen
+### Wirkungswächter erkennt Komposita ohne Trennzeichen und fragt jetzt git statt das Dateisystem
 
 **Die Lücke aus dem letzten Stand ist geschlossen.** `PHYSICAL_VOCABULARY` in
 `tests/test_user_visible_effect_texts.py` benutzte durchgängig eine führende Wortgrenze
@@ -104,6 +128,16 @@ gemeldeten 27 Fundstellen wurden persönlich durchgesehen und in
 `tests/approved_physical_vocabulary.json` eingetragen — durchweg bestehende, bereits
 zutreffende Aussagen zu `Schaltaktor`/`Heizungsaktor`, keine falsche Wirkbehauptung
 darunter.
+
+**Zweiter Fund, in derselben Fassung:** Der Wächter durchsuchte bisher das Dateisystem
+statt die Versionsverfolgung. Als die Bauprozess-Dokumentation und die
+Altsystem-Bestandsaufnahme das Repository verliessen (siehe oben), meldete er deren
+Vorkommen fälschlich als ungeprüft — in einem frischen CI-Klon ohne diese Dateien lief die
+Suite grün, auf der Platte des Projektinhabers scheiterte sie: genau die falsche Richtung
+für einen Wächter. Er fragt jetzt `git`, was tatsächlich verfolgt wird, und fällt ohne
+`git` darauf zurück, alles zu prüfen statt stillschweigend nichts. Die bisherige
+Sonderbehandlung für `verlauf.md` entfällt damit — sie war der erste Fall derselben
+Fehlerklasse.
 
 ## v0.6.0 — Nacharbeiten an PI, aus einer echten Anlage heraus
 
@@ -342,15 +376,15 @@ an, nicht danach.
 
 ## Zahlen
 
-Selbst nachgeprüft, nicht aus Berichten übernommen (Stand 2026-09-04):
+Selbst nachgeprüft, nicht aus Berichten übernommen (Stand 2026-09-04, Freigabe v0.6.1):
 
 | | |
 |---|---|
-| Tests | 4275 unter SQLite, 4274 plus ein Skip unter MariaDB |
+| Tests | 4281 unter SQLite, 4280 plus ein Skip unter MariaDB |
 | Testabdeckung | 100 %, Mindestschwelle 100 % in der CI |
 | Ruff, mypy strict | ohne Befund, 108 Quelldateien |
-| Migrationskette | linear, ein Kopf, vorwärts und rückwärts gegen beide Datenbanken |
-| Container | baut; eine echte 0.2.0-Datenbank wurde darin hochgezogen, `/healthz` meldet 0.2.2 |
+| Migrationskette | linear, ein Kopf, vorwärts und rückwärts gegen beide Datenbanken geprüft; keine neue Migration in v0.6.1 |
+| Container | baut, Paket im Abbild trägt Version 0.6.1; ein Start örtlich nicht geprüft (Docker-VM-Speicher hier voll) |
 
 **Die Suite liest `THERMOCTL_TEST_DATABASE_URL`**, nicht `THERMOCTL_DATABASE_URL`. Wer
 die zweite setzt, läuft unbemerkt gegen SQLite und bekommt trotzdem einen grünen Lauf.
