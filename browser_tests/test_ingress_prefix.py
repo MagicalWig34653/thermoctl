@@ -83,7 +83,7 @@ def test_the_stylesheet_still_applies_under_the_prefix(page_with_prefix: Page) -
     background = button.evaluate("el => getComputedStyle(el).backgroundColor")
     assert background == "rgb(47, 57, 65)", (
         f"Errechnete Hintergrundfarbe war {background!r} -- thermoctl.css scheint "
-        "unter dem Praefix nicht geladen zu sein (Bootstraps Standardblau waere "
+        "unter dem Präfix nicht geladen zu sein (Bootstraps Standardblau wäre "
         "rgb(13, 110, 253))."
     )
 
@@ -92,12 +92,12 @@ def test_kiosk_dashboard_works_end_to_end_under_the_prefix(
     admin_page_with_prefix: Page, live_server_with_prefix: LiveServer, browser
 ) -> None:
     with live_server_with_prefix.session() as session:
-        zone = seed.create_schedule_zone(session, "Kiosk-unter-Praefix")
+        zone = seed.create_schedule_zone(session, "Kiosk-unter-Präfix")
         session.commit()
         zone_display_name = zone.display_name
 
     admin_page_with_prefix.goto("kiosk-tokens")
-    admin_page_with_prefix.get_by_label("Name").fill("Praefix-Tablet")
+    admin_page_with_prefix.get_by_label("Name").fill("Präfix-Tablet")
     admin_page_with_prefix.get_by_text(zone_display_name, exact=False).click()
     admin_page_with_prefix.get_by_role("button", name="Ausstellen").click()
     entry = admin_page_with_prefix.locator("#new-kiosk-token")
@@ -126,7 +126,7 @@ def test_kiosk_dashboard_works_end_to_end_under_the_prefix(
 @pytest.fixture
 def schedule_zone_id_under_prefix(live_server_with_prefix: LiveServer) -> int:
     with live_server_with_prefix.session() as session:
-        zone = seed.create_schedule_zone(session, "Zeitplan-unter-Praefix")
+        zone = seed.create_schedule_zone(session, "Zeitplan-unter-Präfix")
         session.commit()
         return zone.id
 

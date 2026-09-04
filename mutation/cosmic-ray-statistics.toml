@@ -1,9 +1,9 @@
 # Achtung: Der Testbefehl unten verweist relativ auf .venv/bin/python. In einem
 # Worktree ohne eigene Umgebung wird dadurch jeder Mutant INCOMPETENT, und
-# cosmic-ray meldet null Ueberlebende -- ein gescheiterter Lauf sieht aus wie ein
-# perfektes Ergebnis. Vorher einen .venv-Symlink anlegen und hinterher pruefen,
+# cosmic-ray meldet null Überlebende -- ein gescheiterter Lauf sieht aus wie ein
+# perfektes Ergebnis. Vorher einen .venv-Symlink anlegen und hinterher prüfen,
 # dass kein test_outcome INCOMPETENT ist. Siehe CLAUDE.md.
-# Runde 1, Rest der Domaene. Wiederholbarer Lauf aus dem Repository-Wurzelverzeichnis:
+# Runde 1, Rest der Domäne. Wiederholbarer Lauf aus dem Repository-Wurzelverzeichnis:
 #
 #   .venv/bin/cosmic-ray init --force cosmic-ray-statistics.toml /tmp/thermoctl-statistics.sqlite
 #   .venv/bin/cr-filter-operators /tmp/thermoctl-statistics.sqlite cosmic-ray-statistics.toml

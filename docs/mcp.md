@@ -10,13 +10,13 @@ Scharfschalten bleibt der beim Start gebaute MQTT-Riegel bis zum Neustart zu. Er
 können Sollwerte an selbstregelnde Thermostatventile und Ein/Aus-Befehle an gewöhnliche
 Aktoren gesendet werden.
 
-Installation mit der optionalen Abhaengigkeit:
+Installation mit der optionalen Abhängigkeit:
 
 ```console
 pip install 'thermoctl[mcp]'
 ```
 
-Ein MCP-Client kann den Server beispielsweise so ueber stdio starten:
+Ein MCP-Client kann den Server beispielsweise so über stdio starten:
 
 ```json
 {
@@ -35,7 +35,7 @@ Ein MCP-Client kann den Server beispielsweise so ueber stdio starten:
 
 Das Token muss die Rechte der verwendeten Werkzeuge tragen. Ohne
 `THERMOCTL_MCP_TOKEN` verweigert der Server den Start. Token und Datenbankadresse im
-Beispiel sind ausschliesslich Platzhalter.
+Beispiel sind ausschließlich Platzhalter.
 
 ## Die Werkzeuge
 
@@ -70,7 +70,7 @@ ganze Anlage, nicht über eine einzelne Zone — ein auf eine Zone eingeschränk
 genügt hier nicht. `zone` filtert gegen die Namens-Momentaufnahme der Zeile, nicht gegen
 die aktuelle Zone, und findet deshalb auch Einträge einer inzwischen gelöschten Zone.
 `limit` ist wie überall dort, wo eine Tabelle keiner Aufbewahrungsfrist unterliegt, auf
-höchstens 500 begrenzt (Vorgabe 100) — ein Wert ausserhalb löst einen Fehler aus. Jeder
+höchstens 500 begrenzt (Vorgabe 100) — ein Wert außerhalb löst einen Fehler aus. Jeder
 Zeitpunkt trägt die Zeitzone ausdrücklich (`+00:00`), damit ein Eintrag auch Wochen
 später noch eindeutig neben einem Vorfallsbericht aus einer anderen Zeitzone liegt.
 
@@ -94,8 +94,8 @@ nennen keine Relaislebensdauer.
 **Zu den `pi_*`-Parametern (Beta, seit 0.5.0):** `pi_enabled` ist je Zone aus als Vorgabe.
 Ein Modell kann es über `set_control_parameters` einschalten, aber nur für eine Zone, die
 dafür taugt. Die Prüfung ist gerätegenau, nicht zonenweit — ein Gerät mit der Fähigkeit
-`thermostat`, das nicht selbstregelnd ist, schliesst PI aus, ebenso eine Zone ohne
-gewöhnlichen Schaltaktor. Ein **selbstregelndes** Ventil schliesst die Zone dagegen nicht
+`thermostat`, das nicht selbstregelnd ist, schließt PI aus, ebenso eine Zone ohne
+gewöhnlichen Schaltaktor. Ein **selbstregelndes** Ventil schließt die Zone dagegen nicht
 aus: Es bekommt seinen Sollwert über einen eigenen Weg und sieht die PI-Entscheidung nie,
 sodass es neben einem gewöhnlichen Schaltaktor stehen darf — PI steuert dann nur diesen
 Schaltaktor an. Der Versuch wird bei fehlender Eignung mit einer Begründung abgewiesen.
@@ -105,8 +105,8 @@ Rückfall nicht stillschweigend bekommen, sondern den Grund lesen können.
 PI schaltet deutlich häufiger als die Hysterese und verkürzt dadurch die Lebensdauer eines
 Schaltaktors. Wer es über MCP einschaltet, umgeht den Warnhinweis, den die Oberfläche am
 Schalter zeigt — die Zahlen stehen im Eintrag zu 0.5.0 im
-[CHANGELOG](../CHANGELOG.md), und der tatsächliche Verschleiss ist in der Oberfläche unter
-„Relaisverschleiss" ablesbar.
+[CHANGELOG](../CHANGELOG.md), und der tatsächliche Verschleiß ist in der Oberfläche unter
+„Relaisverschleiß" ablesbar.
 
 **Der eigentliche Gewinn sind `explain_setpoint` und `shadow_decisions`.** Sie
 beantworten „warum ist es hier kalt?" in einem Aufruf, statt Ist-Wert, Zeitplan und

@@ -1,20 +1,20 @@
-"""Bediengeraete: Tastendruecke aufzeichnen und belegen
+"""Bediengeräte: Tastendrücke aufzeichnen und belegen
 
-Ein Bediengeraet an der Wand -- etwa ein Aqara W100 -- schickt seine Tastendruecke als
+Ein Bediengerät an der Wand -- etwa ein Aqara W100 -- schickt seine Tastendrücke als
 Feld `action` in der Zustandsnachricht. Bis hierher fiel das Feld durch: Es stand nicht in
 `FELD_ZU_FAEHIGKEIT`, und die Rolle `controller` war eine Zuordnung ohne Wirkung.
 
 Drei Dinge kommen dazu:
 
-* die Faehigkeit `action`, damit jeder Tastendruck wie jeder andere Messwert abgelegt wird;
-* die Nachschlagetabelle `controller_command` mit dem, was eine Taste ausloesen kann;
+* die Fähigkeit `action`, damit jeder Tastendruck wie jeder andere Messwert abgelegt wird;
+* die Nachschlagetabelle `controller_command` mit dem, was eine Taste auslösen kann;
 * `controller_binding`, die Belegung je Geraet und Aktion.
 
 **Warum die Belegung in der Datenbank steht und nicht im Quelltext:** Wie ein Geraet seine
 Tasten benennt, entscheidet Zigbee2MQTT je Modell -- der eine schickt `single_plus`, der
-naechste `button_1_single`. Eine Tabelle im Code waere harte Verdrahtung (Grundsatz 1) und
-fuer jedes Geraet falsch, das noch nicht darin steht. Stattdessen zeichnet der Dienst auf,
-welche Aktionen ein Geraet tatsaechlich geschickt hat, und die Oberflaeche laesst sie
+nächste `button_1_single`. Eine Tabelle im Code wäre harte Verdrahtung (Grundsatz 1) und
+für jedes Geraet falsch, das noch nicht darin steht. Stattdessen zeichnet der Dienst auf,
+welche Aktionen ein Geraet tatsächlich geschickt hat, und die Oberfläche lässt sie
 zuordnen.
 
 Revision ID: d1a7c3e59b40
@@ -70,8 +70,8 @@ def upgrade() -> None:
             sa.text("INSERT INTO controller_command (code, label) VALUES (:code, :label)"),
             {"code": code, "label": bezeichnung},
         )
-    # Die Faehigkeit nur anlegen, wenn sie fehlt: Eine frisch eingerichtete Anlage
-    # bekommt sie schon beim Fuellen, weil die Seed-Revision die Konstanten aus dem
+    # Die Fähigkeit nur anlegen, wenn sie fehlt: Eine frisch eingerichtete Anlage
+    # bekommt sie schon beim Füllen, weil die Seed-Revision die Konstanten aus dem
     # Code liest.
     code, bezeichnung = AKTIONSFAEHIGKEIT
     vorhanden = verbindung.execute(
@@ -86,7 +86,7 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     verbindung = op.get_bind()
-    # Erst die Messwerte, dann die Faehigkeit: sonst haelt der Fremdschluessel dagegen.
+    # Erst die Messwerte, dann die Fähigkeit: sonst hält der Fremdschlüssel dagegen.
     verbindung.execute(
         sa.text(
             "DELETE FROM measurement WHERE capability_id IN "

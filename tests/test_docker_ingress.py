@@ -39,13 +39,13 @@ ingress = _load_module()
 
 @contextmanager
 def _stellvertreter_supervisor(
-    *, status: int = 200, body: bytes | None = b"", verzoegerung: float = 0.0
+    *, status: int = 200, body: bytes | None = b"", verzögerung: float = 0.0
 ) -> Iterator[tuple[str, dict[str, str]]]:
-    """Ein kleiner Stellvertreter fuer ``http://supervisor/addons/self/info``.
+    """Ein kleiner Stellvertreter für ``http://supervisor/addons/self/info``.
 
-    Laeuft lokal, beantwortet jede Anfrage mit dem vorgegebenen Status/Body und
-    merkt sich den empfangenen ``Authorization``-Header, damit ein Test pruefen kann,
-    was tatsaechlich beim (Fake-)Supervisor ankam -- ohne je einen echten Netzaufruf
+    Läuft lokal, beantwortet jede Anfrage mit dem vorgegebenen Status/Body und
+    merkt sich den empfangenen ``Authorization``-Header, damit ein Test prüfen kann,
+    was tatsächlich beim (Fake-)Supervisor ankam -- ohne je einen echten Netzaufruf
     zu machen.
     """
     empfangene_header: dict[str, str] = {}
@@ -53,8 +53,8 @@ def _stellvertreter_supervisor(
     class Handler(http.server.BaseHTTPRequestHandler):
         def do_GET(self) -> None:  # noqa: N802 -- von http.server vorgegebener Name
             empfangene_header["authorization"] = self.headers.get("Authorization", "")
-            if verzoegerung:
-                time.sleep(verzoegerung)
+            if verzögerung:
+                time.sleep(verzögerung)
             self.send_response(status)
             self.send_header("Content-Type", "application/json")
             self.end_headers()
@@ -62,7 +62,7 @@ def _stellvertreter_supervisor(
                 self.wfile.write(body)
 
         def log_message(self, format: str, *args: object) -> None:  # noqa: A002
-            pass  # keine Testausgabe zumuellen
+            pass  # keine Testausgabe zumüllen
 
     server = http.server.HTTPServer(("127.0.0.1", 0), Handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -101,9 +101,9 @@ def test_gueltige_pfade_werden_akzeptiert(wert: str) -> None:
         "/api/hassio_ingress/../../etc/passwd",
         "/mit\nzeilenumbruch",
         "/mit\rzeilenumbruch",
-        '/mit"anfuehrungszeichen',
-        "/mit'anfuehrungszeichen",
-        "kein-fuehrender-slash",
+        '/mit"anführungszeichen',
+        "/mit'anführungszeichen",
+        "kein-führender-slash",
         "//evil.example.com/",
     ],
 )
@@ -143,7 +143,7 @@ def test_gueltige_antwort_liefert_den_pfad() -> None:
         "http://fremd/",
         "/../etwas",
         "/mit\nzeilenumbruch",
-        '/mit"anfuehrungszeichen',
+        '/mit"anführungszeichen',
     ],
 )
 def test_boesartige_antwort_wird_verworfen(
@@ -192,7 +192,7 @@ def test_unerwartete_antwortform_liefert_none() -> None:
 def test_zeitueberschreitung_liefert_none_und_bricht_nicht_ab(
     capsys: pytest.CaptureFixture,
 ) -> None:
-    with _stellvertreter_supervisor(verzoegerung=1.0) as (url, _header):
+    with _stellvertreter_supervisor(verzögerung=1.0) as (url, _header):
         pfad = ingress.ermittle_root_path("mein-token", url=url, timeout=0.05)
     assert pfad is None
     fehlerausgabe = capsys.readouterr().err
@@ -203,7 +203,7 @@ def test_zeitueberschreitung_liefert_none_und_bricht_nicht_ab(
 def test_nicht_erreichbarer_supervisor_liefert_none_und_bricht_nicht_ab(
     capsys: pytest.CaptureFixture,
 ) -> None:
-    # Port, auf dem garantiert nichts lauscht -- steht fuer "kein Netz".
+    # Port, auf dem garantiert nichts lauscht -- steht für "kein Netz".
     pfad = ingress.ermittle_root_path(
         "mein-token", url="http://127.0.0.1:1/", timeout=0.5
     )
@@ -211,10 +211,10 @@ def test_nicht_erreichbarer_supervisor_liefert_none_und_bricht_nicht_ab(
     assert "mein-token" not in capsys.readouterr().err
 
 
-# --- main(), als eigener Prozess -- so, wie docker/entrypoint.sh es tatsaechlich
+# --- main(), als eigener Prozess -- so, wie docker/entrypoint.sh es tatsächlich
 # aufruft. Vermeidet auch, dass die einmal geladene Testmodul-Instanz (SUPERVISOR_URL
 # als Modulkonstante, einmal beim ersten Import aus der Umgebung gelesen) zwischen
-# Tests haengen bleibt -- ein frischer Prozess liest sie jedesmal neu.
+# Tests hängen bleibt -- ein frischer Prozess liest sie jedesmal neu.
 
 
 def _lauf(env: dict[str, str]) -> subprocess.CompletedProcess:
@@ -236,8 +236,8 @@ def test_main_ohne_supervisor_token_tut_nichts() -> None:
 
 def test_main_mit_bereits_gesetztem_root_path_fragt_nichts_ab() -> None:
     # Absichtlich eine Supervisor-Adresse, die garantiert nicht erreichbar ist --
-    # wuerde das Skript sie trotzdem abfragen, liefe dieser Test in die
-    # Zeitueberschreitung statt sofort durchzulaufen.
+    # würde das Skript sie trotzdem abfragen, liefe dieser Test in die
+    # Zeitüberschreitung statt sofort durchzulaufen.
     ergebnis = _lauf(
         {
             "PATH": "/usr/bin:/bin",

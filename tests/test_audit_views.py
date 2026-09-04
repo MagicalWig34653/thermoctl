@@ -13,7 +13,7 @@ def _entry(
     at: datetime = datetime(2026, 8, 15, 12),
     source_codes: str = "web",
     user_id: int | None = None,
-    action: str = "zone.geaendert",
+    action: str = "zone.geändert",
     object_type: str = "zone",
     object_id: str | None = "1",
 ) -> AuditEvent:
@@ -88,7 +88,7 @@ def test_user_actually_filters(client_als, session: Session) -> None:
 
 def test_action_actually_filters(client_als, session: Session) -> None:
     _entry(session, "Anmeldung", action="login")
-    _entry(session, "Zone entfernt", action="zone.geloescht")
+    _entry(session, "Zone entfernt", action="zone.gelöscht")
     response = client_als([("audit.read", None)]).get("/audit?action_code=login")
     assert "Anmeldung" in response.text
     assert "Zone entfernt" not in response.text

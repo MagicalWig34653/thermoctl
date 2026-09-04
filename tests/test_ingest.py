@@ -110,7 +110,7 @@ def test_a_missing_capability_does_not_discard_the_other_values(
     session.flush()
 
     assert [m.value_numeric for m in session.query(Measurement)] == [Decimal("20.500")]
-    assert "Messwertfaehigkeit fehlt" in caplog.text
+    assert "Messwertfähigkeit fehlt" in caplog.text
 
 
 def test_the_device_list_updates_the_device_and_sets_known_capabilities(

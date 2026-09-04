@@ -1,10 +1,10 @@
 """Kiosk als eigene Aktionsquelle
 
-Eine Sollwert-Aenderung oder ein Boost, ausgeloest ueber `/kiosk/...`, braucht einen
+Eine Sollwert-Aenderung oder ein Boost, ausgelöst über `/kiosk/...`, braucht einen
 Eintrag in `actor_source` -- `create_override()` und `update_setpoints()` lehnen jede
 Quelle ab, die dort nicht steht (siehe `ValueError` in
-`thermoctl/domain/schedule.py`). Weder "web" noch "api" passt: "web" heisst eine
-angemeldete Sitzung, die ein Kiosk-Token nicht hat, und "api" heisst ein Skript mit
+`thermoctl/domain/schedule.py`). Weder "web" noch "api" passt: "web" heißt eine
+angemeldete Sitzung, die ein Kiosk-Token nicht hat, und "api" heißt ein Skript mit
 einem `Authorization`-Header, nicht ein Knopf auf einem Wandtablett. Das Audit-Protokoll
 soll den Unterschied zeigen, nicht verwischen.
 
@@ -23,9 +23,9 @@ down_revision: str | Sequence[str] | None = "a84359d9d263"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
-# Ausgeschrieben statt aus dem Modell importiert -- siehe die Begruendung in
+# Ausgeschrieben statt aus dem Modell importiert -- siehe die Begründung in
 # 8b2d6e8a7f10_schema_schattenbetrieb.py: eine Migration beschreibt einen Zeitpunkt,
-# nicht eine Konstante, die spaeter weiterwaechst.
+# nicht eine Konstante, die später weiterwächst.
 _NEUE_QUELLE = ("kiosk", "Kiosk-Dashboard")
 
 

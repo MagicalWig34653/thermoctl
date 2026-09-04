@@ -109,12 +109,12 @@
                     <span class="t-value">{{ temperatures[segment.mode_id]|grad }}°</span>{% endif %}</small>
                 {% if segment.point_id and may_edit %}
                 {# Kein sichtbarer Knopf im Ruhezustand: In jedem Balken stand sonst ein
-                   Knopf so kraeftig wie der Balken selbst, sieben Spalten hoch -- aus der
-                   Wochenuebersicht wurde ein Knopffeld. Der Verweis bleibt im Markup und
+                   Knopf so kräftig wie der Balken selbst, sieben Spalten hoch -- aus der
+                   Wochenübersicht wurde ein Knopffeld. Der Verweis bleibt im Markup und
                    damit per Tab erreichbar; sichtbar wird er erst bei Hover oder Fokus
                    (schedule-bar:hover / :focus-within in thermoctl.css), absolut
                    positioniert in der Ecke, damit er auch in einem 2rem hohen Balken
-                   (22 Uhr bis Mitternacht) nichts verdraengt und nicht abgeschnitten wird. #}
+                   (22 Uhr bis Mitternacht) nichts verdrängt und nicht abgeschnitten wird. #}
                 <a class="schedule-mode-link" href="#point-mode-{{ segment.point_id }}"
                    aria-label="Modus dieses Schaltpunkts ändern">✎</a>
                 {% endif %}
@@ -138,7 +138,7 @@
 {% if may_edit %}
 {# `hx-push-url="false"`: Ohne das schiebt hx-boost bei einer abgelehnten
    Verschiebung den POST-Pfad in die Adresszeile, und ein Neuladen liefe
-   dann gegen einen Weg, den es fuer GET nicht gibt. Der erfolgreiche Fall
+   dann gegen einen Weg, den es für GET nicht gibt. Der erfolgreiche Fall
    leitet ohnehin auf die Zeitplanseite um. #}
 <form id="schedule-move" method="post" hidden hx-push-url="false"
       action="{{ url_prefix }}/zones/{{ zone.id }}/schedule/points/move">

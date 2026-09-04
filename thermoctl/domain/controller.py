@@ -143,7 +143,7 @@ def set_binding(
     if command is None:
         raise ControllerError(f"Den Befehl '{command_code}' gibt es nicht.")
     if step_k is not None and step_k <= 0:
-        raise ControllerError("Die Schrittweite muss groesser als null sein.")
+        raise ControllerError("Die Schrittweite muss größer als null sein.")
     if step_k is not None:
         exponent = step_k.as_tuple().exponent
         if isinstance(exponent, int) and exponent < -1:
@@ -220,7 +220,7 @@ def execute_action(
     for zone in zones:
         _apply_to_zone(session, zone, command.code, binding.step_k, now, source)
         log.info(
-            "Tastendruck ausgefuehrt",
+            "Tastendruck ausgeführt",
             extra={
                 "geraet": device.display_name,
                 "aktion": action,

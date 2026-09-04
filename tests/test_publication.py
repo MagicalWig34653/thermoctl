@@ -168,7 +168,7 @@ def test_this_module_publishes_nothing() -> None:
 
 @pytest.mark.parametrize("prefix", ["", "haus/+", "haus/#", "haus\0nord"])
 def test_an_invalid_prefix_is_rejected(prefix: str) -> None:
-    with pytest.raises(ValueError, match="MQTT-Praefix"):
+    with pytest.raises(ValueError, match="MQTT-Präfix"):
         availability_topic(prefix)
 
 

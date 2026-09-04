@@ -18,13 +18,13 @@ from thermoctl.db.models.credential import Session_
 from thermoctl.db.models.operations import AuditEvent
 
 # Beim Import festgehalten, bevor die autouse-Fixture aus conftest.py die Wartezeit
-# fuer jeden Test durch eine Attrappe ersetzt. Ein Test, der die echte Wartezeit
-# pruefen will, braucht genau diese Fassung -- sonst misst er die Attrappe.
+# für jeden Test durch eine Attrappe ersetzt. Ein Test, der die echte Wartezeit
+# prüfen will, braucht genau diese Fassung -- sonst misst er die Attrappe.
 _ECHTE_WARTEZEIT = thermoctl.web.auth_views.sleep
 
 
 def _csrf(client: TestClient, settings: Settings) -> dict[str, str]:
-    """Der Token, den die Oberflaeche aus dem Cookie liest und mitschickt.
+    """Der Token, den die Oberfläche aus dem Cookie liest und mitschickt.
 
     Nach einer echten Anmeldung steht er im CSRF-Cookie. Setzt ein Test seine
     Sitzung dagegen unmittelbar (client_als), gibt es das Cookie nicht -- dann
@@ -149,7 +149,7 @@ def test_a_logout_without_a_csrf_token_is_not_carried_out(
     assert response.status_code == 303
     assert response.headers["location"] == "/login?stale=1"
     assert session.query(Session_).one().revoked_at is None, (
-        "Ohne gueltiges Token darf keine Sitzung serverseitig widerrufen werden"
+        "Ohne gültiges Token darf keine Sitzung serverseitig widerrufen werden"
     )
 
 
@@ -275,9 +275,9 @@ def test_the_login_delay_does_not_block_the_event_loop() -> None:
                 await asyncio.sleep(0.005)
                 ticks += 1
 
-        laeuft = asyncio.create_task(ticker())
+        läuft = asyncio.create_task(ticker())
         await _ECHTE_WARTEZEIT(0.1)
-        laeuft.cancel()
+        läuft.cancel()
         return ticks
 
     assert asyncio.run(szenario()) > 0
@@ -322,7 +322,7 @@ def test_the_failure_counter_cannot_grow_without_bound(
         )
 
     assert len(thermoctl.web.auth_views.FEHLVERSUCHE) == 3
-    # Behalten wird das Juengste: der Zaehler soll das gerade laufende Raten bremsen.
+    # Behalten wird das Jüngste: der Zähler soll das gerade laufende Raten bremsen.
     assert "erfunden-9" in thermoctl.web.auth_views.FEHLVERSUCHE
 
 
@@ -406,7 +406,7 @@ def test_ending_the_other_sessions_without_changing_the_password(
     session.expire_all()
     assert session.get(Session_, verlorenes_geraet.id).revoked_at is not None
     assert session.get(Session_, eigene_kennung).revoked_at is None
-    # Und das Passwort ist unveraendert: die Anmeldung geht weiterhin.
+    # Und das Passwort ist unverändert: die Anmeldung geht weiterhin.
     assert client.post(
         "/login", data={"username": "lino", "password": "passwort-lang-genug"},
         follow_redirects=False,
@@ -422,7 +422,7 @@ def test_every_cookie_the_service_sets_honours_the_secure_flag() -> None:
     operator believes the setting covers them. Today all of them honour it; this test
     is here so the next one does too, in a file nobody thought to check.
     """
-    verstoesse: list[str] = []
+    verstöße: list[str] = []
     for quelle in Path("thermoctl").rglob("*.py"):
         baum = ast.parse(quelle.read_text(encoding="utf-8"))
         for knoten in ast.walk(baum):
@@ -433,8 +433,8 @@ def test_every_cookie_the_service_sets_honours_the_secure_flag() -> None:
                 continue
             benannt = {stichwort.arg for stichwort in knoten.keywords}
             if "secure" not in benannt:
-                verstoesse.append(f"{quelle}:{knoten.lineno}")
+                verstöße.append(f"{quelle}:{knoten.lineno}")
 
-    assert not verstoesse, (
-        "Diese set_cookie-Aufrufe setzen kein secure=: " + ", ".join(verstoesse)
+    assert not verstöße, (
+        "Diese set_cookie-Aufrufe setzen kein secure=: " + ", ".join(verstöße)
     )

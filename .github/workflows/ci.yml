@@ -7,7 +7,7 @@ permissions:
   contents: read
 
 jobs:
-  pruefen:
+  prüfen:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -17,7 +17,7 @@ jobs:
       mariadb:
         image: mariadb:11
         env:
-          MARIADB_ROOT_PASSWORD: pruefen
+          MARIADB_ROOT_PASSWORD: prüfen
           MARIADB_DATABASE: thermoctl_test
         ports: ["3306:3306"]
         options: >-
@@ -35,12 +35,12 @@ jobs:
           if [ "${{ matrix.datenbank }}" = "sqlite" ]; then
             echo "THERMOCTL_TEST_DATABASE_URL=sqlite:///./test.db" >> "$GITHUB_ENV"
           else
-            echo "THERMOCTL_TEST_DATABASE_URL=mysql+pymysql://root:pruefen@127.0.0.1:3306/thermoctl_test" >> "$GITHUB_ENV"
+            echo "THERMOCTL_TEST_DATABASE_URL=mysql+pymysql://root:prüfen@127.0.0.1:3306/thermoctl_test" >> "$GITHUB_ENV"
           fi
       - run: ruff check .
       - run: mypy thermoctl
-      # Die Mindestschwelle gilt nur fuer die vollstaendige Suite und steht deshalb
+      # Die Mindestschwelle gilt nur für die vollständige Suite und steht deshalb
       # hier statt in pyproject.toml -- sonst scheitert jeder Lauf einer einzelnen
       # Testdatei daran. Der Wert liegt knapp unter dem erreichten Stand: hoch genug,
-      # dass ungetesteter Code auffaellt, niedrig genug, dass er nicht grundlos blockt.
+      # dass ungetesteter Code auffällt, niedrig genug, dass er nicht grundlos blockt.
       - run: pytest -v --cov-fail-under=100

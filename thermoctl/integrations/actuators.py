@@ -58,7 +58,7 @@ class Zigbee2MqttValve:
         payload = json.dumps({"state": "ON" if on else "OFF"})
         message = f"{self._topic} mit Nutzlast {payload}"
         if not switching_allowed(self._session):
-            return SwitchResult(False, f"Trockenlauf, haette gesendet: {message}")
+            return SwitchResult(False, f"Trockenlauf, hätte gesendet: {message}")
 
         try:
             self._session.commit()
@@ -69,7 +69,7 @@ class Zigbee2MqttValve:
             return SwitchResult(False, message, str(exc))
         if not executed:
             return SwitchResult(
-                False, message, "MQTT-Client hat die Veroeffentlichung abgewiesen"
+                False, message, "MQTT-Client hat die Veröffentlichung abgewiesen"
             )
         return SwitchResult(True, f"Gesendet: {message}")
 
@@ -173,8 +173,8 @@ class Zigbee2MqttThermostat:
             return SwitchResult(
                 False,
                 (
-                    f"Sollwert {self._setpoint_c} liegt ausserhalb des am Geraet "
-                    f"zulaessigen Bereichs {THERMOSTAT_MIN_SETPOINT_C}-"
+                    f"Sollwert {self._setpoint_c} liegt außerhalb des am Geraet "
+                    f"zulässigen Bereichs {THERMOSTAT_MIN_SETPOINT_C}-"
                     f"{THERMOSTAT_MAX_SETPOINT_C} Grad C"
                 ),
             )
@@ -183,7 +183,7 @@ class Zigbee2MqttThermostat:
         )
         message = f"{self._topic} mit Nutzlast {payload}"
         if not switching_allowed(self._session):
-            return SwitchResult(False, f"Trockenlauf, haette gesendet: {message}")
+            return SwitchResult(False, f"Trockenlauf, hätte gesendet: {message}")
 
         try:
             self._session.commit()
@@ -194,7 +194,7 @@ class Zigbee2MqttThermostat:
             return SwitchResult(False, message, str(exc))
         if not executed:
             return SwitchResult(
-                False, message, "MQTT-Client hat die Veroeffentlichung abgewiesen"
+                False, message, "MQTT-Client hat die Veröffentlichung abgewiesen"
             )
         return SwitchResult(True, f"Gesendet: {message}")
 
@@ -276,7 +276,7 @@ class MerossSwitch:
             f"Kanal {self._channel}, Zustand {command}"
         )
         if not self._frozen_switching_allowed or not switching_allowed(self._session):
-            return SwitchResult(False, f"Trockenlauf, haette gesendet: {message}")
+            return SwitchResult(False, f"Trockenlauf, hätte gesendet: {message}")
 
         # No signed-in session to switch through -- the periodic sign-in
         # (`services/meross_session.py`) either has not run yet or was rejected by
@@ -285,7 +285,7 @@ class MerossSwitch:
         # the caller moves on to the next device.
         if self._transport is None:
             return SwitchResult(
-                False, message, "Keine gueltige Meross-Sitzung vorhanden"
+                False, message, "Keine gültige Meross-Sitzung vorhanden"
             )
 
         try:
@@ -306,7 +306,7 @@ class MerossSwitch:
         method = header.get("method") if isinstance(header, Mapping) else None
         if method != "SETACK":
             return SwitchResult(
-                False, message, f"Geraet bestaetigte nicht, sondern antwortete {method!r}"
+                False, message, f"Geraet bestätigte nicht, sondern antwortete {method!r}"
             )
 
         # A real socket answered with an empty payload in the one round trip this was
@@ -329,7 +329,7 @@ class MerossSwitch:
                         False,
                         message,
                         (
-                            "Geraet bestaetigte einen anderen Zustand: Kanal "
+                            "Geraet bestätigte einen anderen Zustand: Kanal "
                             f"{confirmed_channel!r}, Zustand {confirmed_onoff!r}"
                         ),
                     )

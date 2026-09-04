@@ -34,7 +34,7 @@
                 <form method="post" action="{{ url_prefix }}/users/{{ person.id }}/group"
                       class="d-flex gap-1 align-items-center">
                     <select class="form-select form-select-sm" name="group_id"
-                            aria-label="Gruppe fuer {{ person.username }}">
+                            aria-label="Gruppe für {{ person.username }}">
                         <option value=""
                                 {% if person.id not in user_group_id %}selected{% endif %}>
                             ohne Gruppe

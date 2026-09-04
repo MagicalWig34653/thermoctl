@@ -230,9 +230,9 @@ def overview(
     )
     # Ob je ein Abgleich gelang, steht nirgends als eigener Zeitstempel -- aber ein
     # Meross-Gerät kann nur über genau diesen Abgleich entstanden sein
-    # (services/ingest.py legt ausschliesslich Zigbee2MQTT-Geräte an). Mindestens eine
+    # (services/ingest.py legt ausschließlich Zigbee2MQTT-Geräte an). Mindestens eine
     # Zeile hier ist also der Beleg, dass die Anmeldung mindestens einmal funktioniert
-    # hat -- nicht bloss, dass Zugangsdaten eingetragen wurden.
+    # hat -- nicht bloß, dass Zugangsdaten eingetragen wurden.
     meross_geraet_gefunden = meross_integration is not None and (
         session.scalar(
             select(Device.id)

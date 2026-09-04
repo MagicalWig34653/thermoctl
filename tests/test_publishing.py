@@ -41,7 +41,7 @@ class Mitschrift:
     def __init__(self) -> None:
         self.messages: list[tuple[str, str]] = []
         self.switched: list[str] = []
-        self.fluechtig: list[str] = []
+        self.flüchtig: list[str] = []
 
     async def publishing(
         self, topic: str, payload: str, *, switches: bool, retained: bool = False
@@ -50,7 +50,7 @@ class Mitschrift:
         if switches:
             self.switched.append(topic)
         if not retained:
-            self.fluechtig.append(topic)
+            self.flüchtig.append(topic)
         return True
 
     def topics(self) -> list[str]:
@@ -143,7 +143,7 @@ async def test_fault_and_all_clear_reach_home_assistant_even_in_dry_run() -> Non
     assert states == ["ON", "OFF"]
     assert [item["schwere"] for item in attributes] == ["stoerung", "entwarnung"]
     assert client.switched == []
-    assert client.fluechtig == []
+    assert client.flüchtig == []
 
 
 @pytest.mark.anyio
@@ -237,7 +237,7 @@ async def test_discoveries_and_state_go_out_retained(session: Session) -> None:
     create_zone(session, "behaltene-zone")
     client = await _run(session, PublicationState())
     assert client.messages
-    assert client.fluechtig == []
+    assert client.flüchtig == []
 
 
 @pytest.mark.anyio
@@ -531,8 +531,8 @@ def _zone_with_self_regulating_valve(  # type: ignore[no-untyped-def]
     session.add(
         ZoneSetpoint(zone_id=zone.id, setpoint_mode_id=mode.id, temperature_c=_Decimal("21.0"))
     )
-    # Ohne Schaltpunkt faellt der Sollwert auf den Frostschutz zurueck -- der Test
-    # pruefte dann die Ausweichregel statt des Zeitplans.
+    # Ohne Schaltpunkt faellt der Sollwert auf den Frostschutz zurück -- der Test
+    # prüfte dann die Ausweichregel statt des Zeitplans.
     session.add(
         SchedulePoint(
             zone_id=zone.id, weekday=NOW.isoweekday(), minute_of_day=0, setpoint_mode_id=mode.id
@@ -649,7 +649,7 @@ async def test_the_measured_room_temperature_goes_out_with_the_setpoint(
     create_settings(session)
     source(session, "web")
     zone = _zone_with_self_regulating_valve(
-        session, "aussenfuehlerzone", external_temperature=True
+        session, "außenfühlerzone", external_temperature=True
     )
     state = create_zone_state(session, zone)
     state.temperature_c = Decimal("19.5")
@@ -801,7 +801,7 @@ async def test_a_rejected_send_without_an_exception_also_writes_a_failed_entry(
     assert len(entries) == 1
     entry, outcome_code = entries[0]
     assert outcome_code == "failed"
-    assert entry.error == "MQTT-Client hat die Veroeffentlichung abgewiesen"
+    assert entry.error == "MQTT-Client hat die Veröffentlichung abgewiesen"
 
 
 @pytest.mark.anyio
@@ -826,7 +826,7 @@ async def test_a_withheld_command_is_logged_again_once_armed(session: Session) -
     create_settings(session)
     source(session, "system")
     create_all_command_outcomes(session)
-    _zone_with_self_regulating_valve(session, "uebergangszone")
+    _zone_with_self_regulating_valve(session, "übergangszone")
 
     client, state = Mitschrift(), PublicationState()
     await cycle(session, client, state, "thermoctl", NOW)
@@ -893,8 +893,8 @@ def test_deleting_a_zone_and_its_device_keeps_the_command_log_entry(session: Ses
     from tests.helpers import create_device
 
     create_settings(session)
-    zone = create_zone(session, "loeschzone")
-    device = create_device(session, "loeschventil")
+    zone = create_zone(session, "löschzone")
+    device = create_device(session, "löschventil")
     from tests.helpers import command_outcome
 
     outcome_id = command_outcome(session, "executed").id

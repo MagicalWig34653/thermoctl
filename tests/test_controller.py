@@ -284,7 +284,7 @@ def test_unusable_bindings_are_rejected(session: Session) -> None:
     _zone, device = _installation(session)
     with pytest.raises(ControllerError, match="gibt es nicht"):
         set_binding(session, device, "single_plus", "gibtsnicht")
-    with pytest.raises(ControllerError, match="groesser als null"):
+    with pytest.raises(ControllerError, match="größer als null"):
         set_binding(session, device, "single_plus", "setpoint_up", Decimal(0))
     with pytest.raises(ControllerError, match="Nachkommastelle"):
         set_binding(session, device, "single_plus", "setpoint_up", Decimal("0.25"))

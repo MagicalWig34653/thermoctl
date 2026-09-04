@@ -2,6 +2,22 @@
 
 Letzte Aktualisierung: 2026-09-04
 
+## Umlaute statt Umschreibung
+
+Textstellen, die `ae`/`oe`/`ue` statt `ä`/`ö`/`ü` schrieben (und `ss` statt `ß`, wo es
+passt), sind jetzt echte Umlaute — 157 Dateien betroffen: Dokumentation, Kommentare,
+Log- und Fehlermeldungen, Oberflächentexte, Tests. Wortweise geprüft gegen eine
+kuratierte Liste bestätigter deutscher Wörter, nicht per Buchstabenpaar-Muster — sonst
+wären englische Wörter wie *value*, *queue*, *true*, *issue* zerschossen worden.
+Bezeichner (Funktions-, Variablen-, Klassen-, Feld-, Spaltennamen), maschinell gelesene
+Schlüssel (YAML/JSON, Umgebungsvariablen, Migrationskennungen, ein `severity`-Wert nur
+dort belassen, wo er es schon vorher war) und Dateinamen blieben unangetastet. Der
+Wirkungswächter (`tests/test_user_visible_effect_texts.py`) zog `approved_physical_vocabulary.json`
+für jede geänderte benutzersichtbare Zeile mit; zwei Fallstricke unterwegs: ein
+Dateiname-Schlüssel im Wächter-Verzeichnis war versehentlich mitkonvertiert worden
+(zurückgesetzt), und ein `bytes`-Literal in einem Test verträgt keine Nicht-ASCII-Zeichen
+(dort blieb die ASCII-Schreibweise).
+
 ## Add-on-Betrieb: Rechteproblem beim Start behoben
 
 Aus dem Betrieb gemeldet: Das Add-on kam unter Home Assistant nicht hoch --
@@ -44,8 +60,8 @@ Log. Drei Arten lassen sich jetzt anlagenweit einzeln abschalten — **Sensorst�
 samt Entwarnung, **Brücke oder Broker weg**, und neu **Schaltbefehl gescheitert**.
 Alle drei sind ab Werk an: Wer heute Meldungen bekommt, bekommt sie weiter.
 
-Die neue Art schliesst eine Lücke, die dieses Projekt schon einmal bezahlt hat: Ein
-gescheiterter Befehl landete ausschliesslich im Schaltprotokoll. An einer kalten Zone
+Die neue Art schließt eine Lücke, die dieses Projekt schon einmal bezahlt hat: Ein
+gescheiterter Befehl landete ausschließlich im Schaltprotokoll. An einer kalten Zone
 bedeutet das im Januar ein eingefrorenes Rohr. Gemeldet wird nur der **Übergang**, samt
 Entwarnung — die Unterscheidung dafür wird getrennt vom Log-Schlüssel geführt, damit
 sie auch greift, wenn sich Nutzlast oder Riegel gleichzeitig ändern.
@@ -76,67 +92,67 @@ jetzt `sent` von `suppressed`. Scheitert die Zustellung am **Netz**, bleibt es b
 `sent` — der Versuch ging los, und ob er ankam, beantwortet `notify_last_ok`.
 
 Sechs neue Spalten auf `setting`, Migration `67e794059830`, vorwärts und rückwärts
-gegen beide Datenbanken geprüft. Der Zustellzustand wird ausserhalb jeder
+gegen beide Datenbanken geprüft. Der Zustellzustand wird außerhalb jeder
 Schreibtransaktion notiert; ein Test prüft die Eigenschaft selbst, nach dem Vorbild des
 Meross-Tests. Eine unterdrückte Meldung fasst ihn nicht an — es gab keinen Versuch.
 
 ## Kiosk: der AGPL-§13-Hinweis, wie ein Wandtablett ihn verträgt
 
 `kiosk.html` erbt weder `base.html` noch `base_plain.html` und blieb beim
-Quelltextverweis aussen vor. Statt einer Fusszeile — ein Wandtablett wird aus Distanz
+Quelltextverweis außen vor. Statt einer Fußzeile — ein Wandtablett wird aus Distanz
 angesehen, nicht gelesen, und die Fläche gehört dem Zonenraster — sitzt ein knapper
 Verweis „Quelltext (AGPL-3.0)" in der Kopfzeile neben der Uhr. `target="_blank"` hält
 die Anzeige geladen; ein Antippen führte sonst vom Kiosk weg, ohne einfachen Weg
-zurück ausser einem Neustart des Browsers. Der Verweis öffnet nichts, was das Kiosk
+zurück außer einem Neustart des Browsers. Der Verweis öffnet nichts, was das Kiosk
 nicht ohnehin kann — seine enge Bedienfläche ist eine Sicherheitseigenschaft und
 bleibt unberührt.
 
-## `env_nach_addon.py`: Datenbank in der `.env` schlaegt eine bereits im Add-on eingetragene nicht mehr blind
+## `env_nach_addon.py`: Datenbank in der `.env` schlägt eine bereits im Add-on eingetragene nicht mehr blind
 
 Der Projektinhaber betreibt seine Anlage mit MariaDB, deren Zugangsdaten schon im
-Add-on stehen; seine `.env` enthaelt daneben noch eine
+Add-on stehen; seine `.env` enthält daneben noch eine
 `THERMOCTL_DATABASE_URL=sqlite:///...`-Zeile aus der Entwicklungsumgebung. Das
-Werkzeug haette diese SQLite-Zeile unveraendert uebernommen und damit die im Add-on
-eingetragene MariaDB-Verbindung beim Einfuegen ueberschrieben. Zwei Wege dagegen:
+Werkzeug hätte diese SQLite-Zeile unverändert übernommen und damit die im Add-on
+eingetragene MariaDB-Verbindung beim Einfügen überschrieben. Zwei Wege dagegen:
 
-- Neuer Schalter `--ohne-datenbank` laesst alle `database_*`-Felder in der Ausgabe
-  komplett weg -- der uebliche Fall, wenn die Datenbank im Add-on bereits eingetragen
-  ist und so bleiben soll. SQLite bleibt dabei unveraendert die Vorgabe des Add-ons
-  selbst; der Schalter aendert nur, was `env_nach_addon.py` ausgibt.
+- Neuer Schalter `--ohne-datenbank` lässt alle `database_*`-Felder in der Ausgabe
+  komplett weg -- der übliche Fall, wenn die Datenbank im Add-on bereits eingetragen
+  ist und so bleiben soll. SQLite bleibt dabei unverändert die Vorgabe des Add-ons
+  selbst; der Schalter ändert nur, was `env_nach_addon.py` ausgibt.
 - Ohne den Schalter: Liegt neben einer aktiven SQLite-`THERMOCTL_DATABASE_URL` eine
-  **auskommentierte** zweite Zeile mit `mysql+pymysql://...` (die uebliche Art, sich
+  **auskommentierte** zweite Zeile mit `mysql+pymysql://...` (die übliche Art, sich
   beim Wechseln zwischen SQLite und MariaDB die jeweils andere Verbindung
-  aufzubewahren), gewinnt diese gegen SQLite. Reicht sie nicht fuer eine vollstaendige
-  Verbindung, faellt das Werkzeug auf SQLite zurueck und sagt auf der Fehlerausgabe
-  warum -- kein stilles Zurueckfallen.
+  aufzubewahren), gewinnt diese gegen SQLite. Reicht sie nicht für eine vollständige
+  Verbindung, faellt das Werkzeug auf SQLite zurück und sagt auf der Fehlerausgabe
+  warum -- kein stilles Zurückfallen.
 
-Gibt das Werkzeug SQLite aus, nennt der zugehoerige Hinweis auf der Fehlerausgabe
-jetzt auch `--ohne-datenbank`, falls die Zieldatenbank tatsaechlich eine andere ist.
-Rundlauf-Test um beide Faelle ergaenzt (`tests/test_tools_env_nach_addon.py`), fuer
-`--ohne-datenbank` als eigener, ausdruecklicher Fall statt eines Rundlauf-Vergleichs
--- die Datenbank fehlt dort naturgemaess.
+Gibt das Werkzeug SQLite aus, nennt der zugehörige Hinweis auf der Fehlerausgabe
+jetzt auch `--ohne-datenbank`, falls die Zieldatenbank tatsächlich eine andere ist.
+Rundlauf-Test um beide Fälle ergänzt (`tests/test_tools_env_nach_addon.py`), für
+`--ohne-datenbank` als eigener, ausdrücklicher Fall statt eines Rundlauf-Vergleichs
+-- die Datenbank fehlt dort naturgemäß.
 
-## Werkzeug fuer den Umstieg: `.env` -> Add-on-Konfiguration
+## Werkzeug für den Umstieg: `.env` -> Add-on-Konfiguration
 
 `tools/env_nach_addon.py` liest eine bestehende `.env` (`docker compose`-Betrieb) und
-erzeugt daraus die YAML-Konfiguration fuer das Home-Assistant-Add-on -- die
+erzeugt daraus die YAML-Konfiguration für das Home-Assistant-Add-on -- die
 Gegenrichtung von `docker/thermoctl_optionen.py`. Die Abbildung ist bewusst nicht
 zweimal aufgeschrieben: Das Skript importiert `ABGEBILDETE_FELDER` und
 `BEWUSST_AUSGELASSEN` aus `thermoctl_optionen.py` und kehrt sie um, statt sie
-abzuschreiben. Einzige Ausnahme ist `THERMOCTL_DATABASE_URL`, die dort aus fuenf
-Optionen *zusammengesetzt* wird -- die Ruecksrichtung *zerlegt* sie wieder, in einer
+abzuschreiben. Einzige Ausnahme ist `THERMOCTL_DATABASE_URL`, die dort aus fünf
+Optionen *zusammengesetzt* wird -- die Rücksrichtung *zerlegt* sie wieder, in einer
 eigenen Funktion (`datenbank_optionen_aus_url`), erkennt genau die beiden Formen, die
-die Vorwaertsrichtung erzeugen kann (SQLite unter `/data/thermoctl.db`,
-`mysql+pymysql://...` fuer MariaDB), und meldet jede andere URL als Fehler statt sie
+die Vorwärtsrichtung erzeugen kann (SQLite unter `/data/thermoctl.db`,
+`mysql+pymysql://...` für MariaDB), und meldet jede andere URL als Fehler statt sie
 still zu verwerfen.
 
 Werte, die das Add-on nicht braucht (Bind-Adresse, Port, `secure_cookies`,
-Pfadpraefix), werden uebersprungen; jede uebrige, nicht dediziert abgebildete
+Pfadpräfix), werden übersprungen; jede übrige, nicht dediziert abgebildete
 `THERMOCTL_*`-Variable landet im freien `env`-Feld des Add-ons. Ein
-Rundlauf-Test (`tests/test_tools_env_nach_addon.py`) belegt fuer jede dokumentierte
-Einstellung: `.env` -> Add-on-Optionen -> YAML -> zurueckgelesen -> durch
+Rundlauf-Test (`tests/test_tools_env_nach_addon.py`) belegt für jede dokumentierte
+Einstellung: `.env` -> Add-on-Optionen -> YAML -> zurückgelesen -> durch
 `thermoctl_optionen.translate()` -> dieselben `THERMOCTL_*`-Variablen wie am Anfang.
-Naeheres in [`docs/self-hosting.md`](self-hosting.md#6b-umstieg-von-docker-compose-auf-das-home-assistant-add-on).
+Näheres in [`docs/self-hosting.md`](self-hosting.md#6b-umstieg-von-docker-compose-auf-das-home-assistant-add-on).
 
 ## Add-on-Optionsschema jetzt flach, plus freies `env`-Feld
 
@@ -242,7 +258,7 @@ stillschweigend zu fehlen. `.env.example` war bereits vollständig (eigener Wäc
 `.github/workflows/docker.yml` baut jetzt für `linux/amd64` **und** `linux/arm64`
 (`docker/setup-qemu-action` neben dem vorhandenen buildx) — die vom Projektinhaber
 entschiedenen Zielarchitekturen für das Add-on, `armv7` ausdrücklich nicht. Die
-`latest`-Markenlogik (ausschliesslich aus einem `v*`-Tag) ist unverändert.
+`latest`-Markenlogik (ausschließlich aus einem `v*`-Tag) ist unverändert.
 
 `docker/entrypoint.sh` versteht jetzt `/data/options.json`, wie der Home-Assistant-
 Supervisor sie ablegt: liegt sie vor, übersetzt `docker/thermoctl_optionen.py` (reine
@@ -256,7 +272,7 @@ manueller Rauchtest im echten Abbild. **Offen:** ob und wie das Add-on Zugangsda
 Home-Assistant-eigenen MQTT-Brokers automatisch übernimmt (`services: ["mqtt:want"]`
 gewährt nur den Zugriff auf die Supervisor-API `/services/mqtt`, füllt aber nicht von
 selbst `options.json` — eine Anbindung dafür ist hier nicht gebaut). Der Entwurf des
-Add-on-Repositorys selbst (`config.yaml`, `DOCS.md`, …) liegt ausserhalb dieses
+Add-on-Repositorys selbst (`config.yaml`, `DOCS.md`, …) liegt außerhalb dieses
 Repositorys, siehe Auftragsbericht.
 
 ## v0.6.1 — die erste Fassung, die veröffentlicht wird
@@ -285,7 +301,7 @@ AGPL-3.0-only` nach.
 ### Bauprozess-Dokumentation und Altsystem-Bestandsaufnahme aus dem Repository entfernt
 
 Verlauf, getroffene Entscheidungen, Spezifikationen, Pläne und das interne
-Umbenennungswerkzeug beschreiben ausschliesslich den eigenen Bauprozess; die
+Umbenennungswerkzeug beschreiben ausschließlich den eigenen Bauprozess; die
 Altsystem-Bestandsaufnahme beschreibt ein fremdes, reales System mit vollständigem Schema,
 MQTT-Topic-Vertrag und einer privaten IP-Adresse. Beides eignet sich nicht für ein
 öffentliches Repository. Die Dateien bleiben lokal liegen und stehen in `.gitignore`; nur
@@ -297,21 +313,21 @@ Altsystem-Vergleichs selbst (`legacy_system.py`, `deviation.py`) ist unangetaste
 
 Außerdem: Der reale Rechnername `vm130-nginx` des Altsystems ist an allen fünf
 Fundstellen in `docs/roadmap.md`, `docs/inbetriebnahme-schattenbetrieb.md` und
-`docs/veroeffentlichung-durchsicht.md` durch eine neutrale Umschreibung („der Host des
+`docs/veröffentlichung-durchsicht.md` durch eine neutrale Umschreibung („der Host des
 Altsystems") ersetzt.
 
-### Falsche Begründung bei `unveraendert` in `decide()` korrigiert
+### Falsche Begründung bei `unverändert` in `decide()` korrigiert
 
-Die beiden Zweige mit Ergebniscode `unveraendert` in `thermoctl/domain/control_loop.py`
+Die beiden Zweige mit Ergebniscode `unverändert` in `thermoctl/domain/control_loop.py`
 protokollierten unabhängig vom tatsächlichen Abstand denselben Satz „... innerhalb der
 Hysterese um Soll ... ± hK ... — Zustand bleibt.". Erreicht wurden sie aber nicht nur, wenn
 der Messwert wirklich im Band lag, sondern immer dann, wenn nur die *gegenüberliegende*
 Bandkante nicht überschritten war — an der tatsächlichen Kante konnte der Messwert beliebig
-weit entfernt sein. Gemessen an 18.527 echten `unveraendert`-Entscheidungen lag **keine
-einzige** tatsächlich im Band (≤ 0,5K); mittlerer Abstand 5,90K, grösster 11,40K
+weit entfernt sein. Gemessen an 18.527 echten `unverändert`-Entscheidungen lag **keine
+einzige** tatsächlich im Band (≤ 0,5K); mittlerer Abstand 5,90K, größter 11,40K
 (Extremfall: Ist 27.40 °C, Soll 16.0 °C ± 0.10K als „innerhalb" protokolliert). Die
 Entscheidung selbst war in jedem Fall richtig (korrekte Hysterese, nur an den Kanten
-umschalten) — falsch war ausschliesslich der protokollierte Text.
+umschalten) — falsch war ausschließlich der protokollierte Text.
 
 Jeder der beiden Zweige ist jetzt in zwei Fälle aufgeteilt: echt im Band vs. jenseits der
 gegenüberliegenden Kante bei bereits laufendem bzw. bereits ausgeschaltetem Zustand. Kein
@@ -374,7 +390,7 @@ wurde. **Teilprojekt 2 gilt auf dieser Grundlage nicht als abgenommen.**
 obwohl „pumpe" und „brenner" im Vokabular stehen. Entscheidung des Projektinhabers: Die
 führende Wortgrenze fällt bei den Substantiven, die als Zweitglied in Komposita auftreten
 (`ventil`, `aktor`, `heizkörper`, `heizkreis`, `fußbodenheizung`, `stellantrieb`, `boiler`,
-`brenner`, `pumpe`, `heizung`, `heiz`, `wärm`/`waerm`, `warm`), sodass ein Teilstring-Treffer
+`brenner`, `pumpe`, `heizung`, `heiz`, `wärm`/`wärm`, `warm`), sodass ein Teilstring-Treffer
 jedes Kompositum fängt statt nur eine benannte Handvoll. Fehltreffer werden dafür in Kauf
 genommen. Ausdrücklich **nicht** angefasst: `schalt` (die führende Grenze bleibt, weil
 `Schaltfläche` sonst als physische Schaltbehauptung durchginge — die Zeichenkette kommt in
@@ -399,8 +415,8 @@ Fehlerklasse.
 ## v0.6.0 — Nacharbeiten an PI, aus einer echten Anlage heraus
 
 **Die PI-Eignungsprüfung ist gerätegenau geworden.** Ein selbstregelndes Thermostatventil
-schliesst PI nicht mehr für die ganze Zone aus, sondern darf neben einem Schaltaktor
-stehen — PI steuert dann nur den Schaltaktor. Das ist im Code belegt und nicht bloss
+schließt PI nicht mehr für die ganze Zone aus, sondern darf neben einem Schaltaktor
+stehen — PI steuert dann nur den Schaltaktor. Das ist im Code belegt und nicht bloß
 angenommen: `switch_commands()` und `thermostat_commands()` filtern beide mit
 `ZoneDevice.self_regulating.is_(False)`, ein selbstregelndes Ventil taucht in keiner der
 beiden Listen auf und bekommt seinen Sollwert über einen eigenen Weg. Ausgeschlossen
@@ -408,11 +424,11 @@ bleibt ein Thermostatventil **ohne** eigene Regelung — das bekommt die Entsche
 Sollwertsprünge und wäre von der schnellen Taktung betroffen.
 
 **Die angenommene Relaislebensdauer ist einstellbar**, Vorgabe 500.000 statt fest
-verdrahteter 100.000. Das ändert die Einschätzung des PI-Verschleisses erheblich: Aus rund
+verdrahteter 100.000. Das ändert die Einschätzung des PI-Verschleißes erheblich: Aus rund
 2,6 Relaislebensdauern im Jahr im ungünstigsten Fall werden rund 0,53. Die Zahl bleibt
 ausdrücklich eine **Annahme** — auch und gerade, weil sie jetzt einstellbar ist.
 
-### Browsertests, ausschliesslich örtlich
+### Browsertests, ausschließlich örtlich
 
 Dreizehn Playwright-Tests unter `browser_tests/`, nicht in der CI und nicht in der
 gewöhnlichen Suite. Sie prüfen, was ein HTTP-Test nicht sehen kann: ob das Stylesheet
@@ -443,7 +459,7 @@ der äusserste umspannt die ganze Datei. Wer nur die Bereiche mit `count > 0` z�
 **Wer nichts einschaltet, bekommt exakt das Verhalten von 0.4.0.** Für eine Zone ohne den
 Schalter wird die PI-Entscheidung nicht einmal berechnet: `_pi_outcome()` gibt die
 Hysterese-Entscheidung zurück, bevor irgendetwas anderes geschieht, und das
-Neutralisieren fasst ausschliesslich `pi_*`-Spalten an. Das ist strukturell so, nicht nur
+Neutralisieren fasst ausschließlich `pi_*`-Spalten an. Das ist strukturell so, nicht nur
 getestet — und zusätzlich gemessen, indem dieselben Zyklusfolgen gegen den alten und den
 neuen Stand liefen und Entscheidung wie Zonenzustand verglichen wurden.
 
@@ -454,7 +470,7 @@ erlaubend per Vorgabe.
 
 **Der Preis steht am Schalter**, mit der Rechnung hinter einem Info-Zeichen: bis zu
 262.800 Schaltspiele im Jahr gegenüber höchstens 52.560 bei Hysterese. Der tatsächliche
-Verschleiss ist unter [/relay-wear](relay-wear) je Gerät ablesbar — neue Seite, auch ohne
+Verschleiß ist unter [/relay-wear](relay-wear) je Gerät ablesbar — neue Seite, auch ohne
 PI nützlich.
 
 ### Was diese Fassung über das Messen gelehrt hat
@@ -465,7 +481,7 @@ PI nützlich.
 nicht gibt — jeder Mutant wird `INCOMPETENT`, und cosmic-ray meldet daraufhin null
 Überlebende. **Ein vollständig gescheiterter Lauf sieht aus wie ein perfektes Ergebnis.**
 Jede Konfiguration warnt jetzt davor, und `CLAUDE.md` verlangt, nach jedem Lauf die
-`test_outcome`-Verteilung anzusehen. Nach dem Schliessen von 45 echten Lücken sind 8
+`test_outcome`-Verteilung anzusehen. Nach dem Schließen von 45 echten Lücken sind 8
 Überlebende übrig, jeder einzeln als gleichwertig begründet.
 
 ## v0.4.0 — die Fassung nach dem Komplettreview
@@ -670,7 +686,7 @@ Netz für künftige. Das gehört in die nächste Fassung, nicht in diese.
 - **Meross-Geräte galten dauerhaft als „hat sich noch nie gemeldet"**, obwohl der
   stündliche Abgleich sie fand und die Wolke sie als online meldete. Ursache:
   `web/device_views.py` sah für jedes Gerät nur `device_health.last_payload_at`
-  an — das schreibt ausschliesslich die Zigbee2MQTT-Aufnahme
+  an — das schreibt ausschließlich die Zigbee2MQTT-Aufnahme
   (`services/ingest.py`) bei einer eingehenden MQTT-Nachricht, und ein
   Meross-Gerät schickt nie eine. Die Übersicht liest jetzt für ein Meross-Gerät
   `device.last_seen_at` (geschrieben vom stündlichen Abgleich,
@@ -904,7 +920,7 @@ verschmelzen.
 **Was nur der Projektinhaber entscheiden kann:**
 
 - **Proportional-Integral-Regelung: ja, nein, oder erst messen?** Ein Zweipunktregler
-  pendelt bei trägen Systemen (Fussbodenheizung) prinzipiell um den Sollwert; ein PI-Anteil
+  pendelt bei trägen Systemen (Fußbodenheizung) prinzipiell um den Sollwert; ein PI-Anteil
   würde das beheben, ist aber riskant (Integrator-Windup bei jeder der sieben
   Vorrangregeln — Fenster, Frostschutz, Sensorausfall — muss ihn zurücksetzen) und für die
   selbstregelnden Thermostatventile schlicht falsch (zwei Regler auf derselben
@@ -912,7 +928,7 @@ verschmelzen.
   dafür liegen seit 0.3.0 vor, und erst danach entscheidet sich, ob PI den Aufwand lohnt
   oder eine billigere Alternative (ein früheres Ausschalten, asymmetrische Hysterese)
   reicht.
-- **Phase 2 wirklich abschliessen** — Schritt für Schritt in
+- **Phase 2 wirklich abschließen** — Schritt für Schritt in
   [inbetriebnahme-schattenbetrieb.md](inbetriebnahme-schattenbetrieb.md). Die Anlage muss
   über mehrere Tage laufen, bevor feststeht, dass plausible Ist-Temperaturen einlaufen
   und das Schattenprotokoll nachvollziehbare Entscheidungen zeigt.

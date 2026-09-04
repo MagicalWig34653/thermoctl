@@ -26,7 +26,7 @@ Code bzw. an der Stelle, an der sie wirkt — sie sind nirgends in Stein gemeiß
 ## Stand
 
 **Der aktuelle Stand steht in [`docs/STATUS.md`](docs/STATUS.md). Diese Datei zuerst lesen.**
-Sie sagt ausschliesslich, was *jetzt* gilt — kein Verlauf, keine Chronik, wie es dazu kam.
+Sie sagt ausschließlich, was *jetzt* gilt — kein Verlauf, keine Chronik, wie es dazu kam.
 Grund dafür: Die Datei war einmal auf über tausend Zeilen gewachsen und enthielt
 gleichzeitig aktuelle und längst widerlegte Aussagen; ein Freigabe-Review konnte vier davon
 namentlich widerlegen. **Neues gehört oben in `STATUS.md`; was durch Neueres ersetzt ist,
@@ -173,7 +173,7 @@ Aus der Umsetzung von Teilprojekt 1, damit es niemand erneut herausfinden muss:
   geprüft" berichtet worden, während jeder dieser Läufe SQLite war; aufgefallen ist es
   einem Agenten, nicht der Hauptsession. Der MariaDB-Lauf lautet:
   ```
-  THERMOCTL_TEST_DATABASE_URL="mysql+pymysql://root:pruefen@127.0.0.1:3306/<eigene_db>" \
+  THERMOCTL_TEST_DATABASE_URL="mysql+pymysql://root:prüfen@127.0.0.1:3306/<eigene_db>" \
     .venv/bin/python -m pytest -q
   ```
   Die CI benutzt die richtige Variable und war nie betroffen.
@@ -184,14 +184,14 @@ Aus der Umsetzung von Teilprojekt 1, damit es niemand erneut herausfinden muss:
   `db/models/__init__.py` werden von jeder Aufgabe ergänzt und kollidieren zuverlässig. Eine
   automatisch aufgelöste Fassung kann doppelte Definitionen enthalten und trotzdem grüne
   Tests liefern.
-- **Ein Mutationslauf im Worktree braucht dort einen `.venv`-Symlink, sonst luegt er.**
+- **Ein Mutationslauf im Worktree braucht dort einen `.venv`-Symlink, sonst lügt er.**
   Alle `mutation/cosmic-ray-*.toml` verweisen relativ auf `.venv/bin/python`. Ein Worktree hat
   keine eigene Umgebung; jeder Mutant wird dann `INCOMPETENT`, und cosmic-ray meldet
-  daraufhin **null Ueberlebende** — ein vollstaendig gescheiterter Lauf sieht aus wie
+  daraufhin **null Überlebende** — ein vollständig gescheiterter Lauf sieht aus wie
   ein perfektes Ergebnis. Genau so entstand die Behauptung „662 Mutanten, 0
-  ueberlebende" fuer `pi_control.py`, wo es 53 waren. Vor jedem Lauf im Worktree:
-  `ln -s "<hauptrepo>/.venv" .venv`. **Und danach immer die worker_outcomes pruefen** —
-  ein Lauf mit auch nur einem `INCOMPETENT` ist ungueltig, unabhaengig davon, wie gut
+  überlebende" für `pi_control.py`, wo es 53 waren. Vor jedem Lauf im Worktree:
+  `ln -s "<hauptrepo>/.venv" .venv`. **Und danach immer die worker_outcomes prüfen** —
+  ein Lauf mit auch nur einem `INCOMPETENT` ist ungültig, unabhängig davon, wie gut
   die Ueberlebendenzahl aussieht:
   ```
   select test_outcome, count(*) from work_results group by test_outcome;
@@ -212,7 +212,7 @@ Aus der Umsetzung von Teilprojekt 1, damit es niemand erneut herausfinden muss:
   Drive, und der Dienst legt bei schnellen Schreibvorgängen Konfliktkopien der Form
   `deviation 2.py` an — git-Operationen und Mutationsläufe erzeugen sie zuverlässig. Sie
   sind alte Stände. `.gitignore` hält sie aus dem Repository, `--ignore-glob` in
-  `pyproject.toml` aus dem Testlauf, und `.venv` liegt als `.venv.tmp` ausserhalb des
+  `pyproject.toml` aus dem Testlauf, und `.venv` liegt als `.venv.tmp` außerhalb des
   Abgleichs. Wenn Tests an Zusicherungen scheitern, die vor Wochen gestimmt haben:
   zuerst `find . -name "* 2.*"` prüfen, bevor man den Fehler im Code sucht.
 - **Agents melden Blocker, statt zu raten** — das ist die wichtigste Regel im Auftragstext.

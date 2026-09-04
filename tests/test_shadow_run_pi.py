@@ -213,18 +213,18 @@ class TestPiGateReasonClassifiesEveryReasonCode:
         # Ambiguous on its own (see `_BLOCKING`'s comment); the plain "stay off"
         # case it also covers is ordinary rule-6 territory.
         control_loop.REASON_CODE_OFF: (
-            "mehrdeutig -- der Wiederanlauf-Fall wird ueber resume_delay_active "
-            "erkannt, nicht ueber den Code."
+            "mehrdeutig -- der Wiederanlauf-Fall wird über resume_delay_active "
+            "erkannt, nicht über den Code."
         ),
         # Rule 6/7's "state holds" answer -- still ordinary territory, not one of
         # section 4's precedence rules.
-        control_loop.REASON_CODE_UNCHANGED: "gewoehnliche Hysterese-Fortschreibung.",
+        control_loop.REASON_CODE_UNCHANGED: "gewöhnliche Hysterese-Fortschreibung.",
         # The explicit, deliberate exception from the PI specification's section 2:
         # PI has its own, shorter minimum durations and its own tastgrad-vorrang
         # exception; the ordinary minimum-duration rule must not additionally hold
         # PI back.
         control_loop.REASON_CODE_BLOCKED_MINIMUM_DURATION: (
-            "PI hat eigene, kuerzere Mindestdauern (Spezifikation Abschnitt 2/3)."
+            "PI hat eigene, kürzere Mindestdauern (Spezifikation Abschnitt 2/3)."
         ),
     }
 
@@ -241,8 +241,8 @@ class TestPiGateReasonClassifiesEveryReasonCode:
             f"control_loop.py kennt Ergebniscode(s) {sorted(unclassified)}, die "
             "in diesem Test weder als blockierend noch als bewusst erlaubt "
             "eingeordnet sind. _pi_gate_reason() ist erlaubend per Vorgabe -- ein "
-            "unklassifizierter Code laesst PI stillschweigend entscheiden. Ordne "
-            "ihn hier in _BLOCKING oder _PERMITTED ein, mit Begruendung."
+            "unklassifizierter Code lässt PI stillschweigend entscheiden. Ordne "
+            "ihn hier in _BLOCKING oder _PERMITTED ein, mit Begründung."
         )
         stale = classified - known
         assert not stale, (
@@ -379,7 +379,7 @@ class TestIneligibilityFallsBackVisibly:
         """Not self-regulating, but carrying `thermostat` -- `thermostat_commands()`
         would turn PI's `heating` into a setpoint jump, so the zone stays ineligible
         regardless of what else is assigned to it."""
-        zone = _pi_zone(session, "thermostatfaehig", with_actuator=False)
+        zone = _pi_zone(session, "thermostatfähig", with_actuator=False)
         _assign_actuator(session, zone, capability_code="thermostat")
 
         row = _row_for(shadow_run.cycle(session, NOW), zone)
@@ -408,7 +408,7 @@ class TestMixedZoneWithASelfRegulatingValve:
     def test_a_self_regulating_thermostat_next_to_a_switch_lets_pi_decide(
         self, session: Session
     ) -> None:
-        zone = _pi_zone(session, "heizkoerper-und-meross", with_actuator=False)
+        zone = _pi_zone(session, "heizkörper-und-meross", with_actuator=False)
         # The self-regulating radiator thermostat -- excluded from both command
         # queries by `self_regulating=True`, so it must not block PI eligibility.
         _assign_actuator(
@@ -416,7 +416,7 @@ class TestMixedZoneWithASelfRegulatingValve:
             zone,
             self_regulating=True,
             capability_code="thermostat",
-            suffix="-heizkoerper",
+            suffix="-heizkörper",
         )
         # The Meross switch -- the one actuator PI's decision can actually reach.
         switch = _assign_actuator(session, zone, capability_code="switch", suffix="-meross")
@@ -461,7 +461,7 @@ class TestMixedZoneWithASelfRegulatingValve:
 
 class TestSafeStart:
     """Section 4's closing paragraph: "Dasselbe sichere Anlaufen gilt nach
-    fehlendem oder beschaedigtem PI-Zustand" -- a zone's very first PI cycle has
+    fehlendem oder beschädigtem PI-Zustand" -- a zone's very first PI cycle has
     exactly that (no prior `pi_last_control_armed`), and the transition from dry
     run to armed gets the same treatment (`RESET_REASON_ARMING`)."""
 
@@ -716,7 +716,7 @@ class TestPrecedenceRulesBeatPi:
     def test_starting_and_ending_an_override_resets_the_integral_but_pi_keeps_deciding(
         self, session: Session
     ) -> None:
-        zone = _pi_zone(session, "uebersteuerung", measured_c=WARM_C)
+        zone = _pi_zone(session, "übersteuerung", measured_c=WARM_C)
         now = NOW
         shadow_run.cycle(session, now)  # establish some integral first
 

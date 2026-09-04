@@ -136,8 +136,8 @@ def test_an_installation_wide_permission_cannot_be_restricted_to_a_zone(
 
 def test_a_zone_scoped_permission_may_carry_a_zone(session: Session) -> None:
     ensure_permission(session, "zone.read", zone_scoped=True)
-    zone = create_zone(session, "kueche")
-    group = create_group(session, name="Kuechenleser", description=None, actor_id=None)
+    zone = create_zone(session, "küche")
+    group = create_group(session, name="Küchenleser", description=None, actor_id=None)
     entry = grant_permission(session, group, "zone.read", zone.id, actor_id=None)
     assert entry.zone_id == zone.id
 
@@ -243,8 +243,8 @@ def test_changing_a_users_group_changes_their_rights(session: Session) -> None:
     and the change actually takes effect, not just the row in `user_access_group`."""
     from thermoctl.domain.authz import has_permission, principal_for_user
 
-    user = user_with_permissions(session, "umgehaengt", [("zone.read", None)])
-    old_group = session.scalar(select(AccessGroup).where(AccessGroup.name == "gruppe-umgehaengt"))
+    user = user_with_permissions(session, "umgehängt", [("zone.read", None)])
+    old_group = session.scalar(select(AccessGroup).where(AccessGroup.name == "gruppe-umgehängt"))
     assert old_group is not None
     new_group = _group_with_permissions_helper(session, "ziel", [("token.self", None)])
 
@@ -343,9 +343,9 @@ def test_the_last_administrator_can_move_to_another_management_group(
 def test_reassigning_the_same_group_is_a_no_op(session: Session) -> None:
     """Resubmitting the group a user already has must not write a spurious audit
     entry and must not trip the lockout guard either."""
-    administrator = user_with_permissions(session, "unveraendert", [("user.manage", None)])
+    administrator = user_with_permissions(session, "unverändert", [("user.manage", None)])
     current_group = session.scalar(
-        select(AccessGroup).where(AccessGroup.name == "gruppe-unveraendert")
+        select(AccessGroup).where(AccessGroup.name == "gruppe-unverändert")
     )
     assert current_group is not None
     set_user_group(session, administrator, current_group.id, actor_id=None)
@@ -356,7 +356,7 @@ def test_reassigning_the_same_group_is_a_no_op(session: Session) -> None:
 
 
 def test_an_unknown_group_id_is_rejected(session: Session) -> None:
-    user = create_user(session, "fuersonstwas")
+    user = create_user(session, "fürsonstwas")
     with pytest.raises(AdministrationError, match="gibt es nicht"):
         set_user_group(session, user, 999999, actor_id=None)
 
@@ -397,7 +397,7 @@ def test_zone_grants_are_distinct_and_the_audit_names_the_zone(session: Session)
         .order_by(AuditEvent.id.desc())
     )
     assert event is not None
-    assert event.detail == f"eingeschraenkt auf Zone {second_zone.id}"
+    assert event.detail == f"eingeschränkt auf Zone {second_zone.id}"
 
 
 def test_revoking_a_non_admin_permission_from_the_only_admin_group_is_allowed(

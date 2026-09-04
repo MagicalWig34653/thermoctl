@@ -32,7 +32,7 @@ optionen = _load_module()
 
 
 def test_empty_options_yield_the_default_sqlite_url_under_data() -> None:
-    """No `database_type`-Option gesetzt -> SQLite unter /data, wie fuer das Add-on verlangt."""
+    """No `database_type`-Option gesetzt -> SQLite unter /data, wie für das Add-on verlangt."""
     assert optionen.translate({}) == {"THERMOCTL_DATABASE_URL": "sqlite:////data/thermoctl.db"}
 
 
@@ -74,8 +74,8 @@ def test_mqtt_enabled_true_becomes_the_string_true() -> None:
 
 
 def test_mqtt_enabled_false_becomes_the_string_false() -> None:
-    """`False` ist kein leerer Wert -- er muss trotzdem uebertragen werden, sonst gilt der
-    Anwendungsvorgabewert, der zufaellig auch False ist, aber aus dem falschen Grund."""
+    """`False` ist kein leerer Wert -- er muss trotzdem übertragen werden, sonst gilt der
+    Anwendungsvorgabewert, der zufällig auch False ist, aber aus dem falschen Grund."""
     assert optionen.translate({"mqtt_enabled": False})["THERMOCTL_MQTT_ENABLED"] == "false"
 
 
@@ -89,13 +89,13 @@ def test_an_absent_option_is_not_in_the_translation() -> None:
 
 def test_an_empty_string_option_is_not_in_the_translation() -> None:
     """Ein im Add-on-UI leer gelassenes Feld ist JSON-technisch ein leerer String, kein
-    fehlender Schluessel -- muss ebenso wenig eine THERMOCTL_*-Variable erzeugen."""
+    fehlender Schlüssel -- muss ebenso wenig eine THERMOCTL_*-Variable erzeugen."""
     options = {"secret_key": ""}
     assert "THERMOCTL_SECRET_KEY" not in optionen.translate(options)
 
 
 def test_mqtt_client_id_passes_through() -> None:
-    """Der eigentliche Anlass des Vorgaengerauftrags: EMQX-Broker binden Rechte oft an
+    """Der eigentliche Anlass des Vorgängerauftrags: EMQX-Broker binden Rechte oft an
     die Client-ID, und ohne diese Option kam thermoctl an so einem Broker gar nicht
     erst durch."""
     assert (
@@ -167,7 +167,7 @@ def test_notify_options_pass_through() -> None:
 
 
 def test_meross_api_base_has_no_dedicated_option() -> None:
-    """meross_api_base ist bewusst kein flaches Add-on-Feld mehr -- nur ueber `env`
+    """meross_api_base ist bewusst kein flaches Add-on-Feld mehr -- nur über `env`
     oder eine echte Umgebungsvariable erreichbar, siehe BEWUSST_AUSGELASSEN."""
     assert "THERMOCTL_MEROSS_API_BASE" not in optionen.translate(
         {"meross_api_base": "https://iotx-us.meross.com"}
@@ -177,12 +177,12 @@ def test_meross_api_base_has_no_dedicated_option() -> None:
 #: THERMOCTL_DATABASE_URL is always in `translate()`'s output (SQLite defaults even for
 #: an empty options dict) -- tests that are not about the database mark it as
 #: already-set so it does not show up as noise in the lines under test.
-_DATABASE_ALREADY_SET = {"THERMOCTL_DATABASE_URL": "irrelevant-fuer-diesen-test"}
+_DATABASE_ALREADY_SET = {"THERMOCTL_DATABASE_URL": "irrelevant-für-diesen-test"}
 
 
 def test_an_environment_variable_already_set_by_the_operator_wins() -> None:
-    """Kern der Vorrangregel aus dem Auftrag: eine ausdruecklich gesetzte Umgebungsvariable
-    gewinnt gegen die Optionsdatei, unabhaengig davon, was darin steht."""
+    """Kern der Vorrangregel aus dem Auftrag: eine ausdrücklich gesetzte Umgebungsvariable
+    gewinnt gegen die Optionsdatei, unabhängig davon, was darin steht."""
     options = {"secret_key": "aus-der-optionsdatei"}
     environ = {"THERMOCTL_SECRET_KEY": "vom-betreiber-gesetzt", **_DATABASE_ALREADY_SET}
     assert optionen.exports_for(options, environ) == []
@@ -195,9 +195,9 @@ def test_an_unset_environment_variable_is_exported() -> None:
 
 
 def test_a_value_with_shell_special_characters_survives_a_round_trip_through_the_shell() -> None:
-    """Die eigentliche Probe fuer das Quoting: der Wert enthaelt Leerzeichen, ein
-    Anfuehrungszeichen und ein Dollarzeichen -- alles, was eine naive Einbettung in
-    `export NAME=$wert` zerlegen oder als Befehl ausfuehren wuerde."""
+    """Die eigentliche Probe für das Quoting: der Wert enthält Leerzeichen, ein
+    Anführungszeichen und ein Dollarzeichen -- alles, was eine naive Einbettung in
+    `export NAME=$wert` zerlegen oder als Befehl ausführen würde."""
     tricky = "geheimnis mit $VAR und 'Anführungszeichen' und \"noch mehr\""
     (line,) = optionen.exports_for({"secret_key": tricky}, dict(_DATABASE_ALREADY_SET))
     parsed = subprocess.run(  # noqa: S602,S603 -- fester Shell-Einzeiler, kein Fremdeingang
@@ -270,7 +270,7 @@ def test_env_field_strips_matching_surrounding_quotes() -> None:
 
 
 def test_env_field_keeps_inner_quotes_that_do_not_wrap_the_whole_value() -> None:
-    """Nur das aeusserste, passende Anfuehrungszeichenpaar faellt weg -- eines mittendrin
+    """Nur das äußerste, passende Anführungszeichenpaar faellt weg -- eines mittendrin
     bleibt stehen."""
     options = {"env": 'THERMOCTL_SECRET_KEY="a"b"'}
     (line,) = optionen.exports_for(options, dict(_DATABASE_ALREADY_SET))
@@ -291,7 +291,7 @@ def test_env_field_splits_only_on_the_first_equals_sign() -> None:
 
 def test_env_field_overrides_a_dedicated_option() -> None:
     """Reihenfolge aus dem Auftrag: `env` gilt nach den flachen Feldern und darf sie
-    ueberschreiben."""
+    überschreiben."""
     options = {"log_level": "INFO", "env": "THERMOCTL_LOG_LEVEL=DEBUG"}
     lines = optionen.exports_for(options, dict(_DATABASE_ALREADY_SET))
     assert lines == ["export THERMOCTL_LOG_LEVEL=DEBUG"]
@@ -304,7 +304,7 @@ def test_a_real_environment_variable_wins_over_the_env_field() -> None:
 
 
 def test_a_value_from_env_survives_a_round_trip_through_a_real_shell() -> None:
-    """Auch fuer Werte aus `env` gilt die volle Shell-Absicherung -- nicht nur fuer die
+    """Auch für Werte aus `env` gilt die volle Shell-Absicherung -- nicht nur für die
     dedizierten Felder."""
     options = {"env": "THERMOCTL_SECRET_KEY=geheimnis mit $VAR und 'Anführungszeichen'"}
     (line,) = optionen.exports_for(options, dict(_DATABASE_ALREADY_SET))
@@ -326,7 +326,7 @@ def test_env_field_absent_changes_nothing() -> None:
 
 
 def test_env_field_that_is_not_a_string_is_ignored() -> None:
-    """Ein Schemafehler oder Manipulationsversuch soll nicht abstuerzen."""
+    """Ein Schemafehler oder Manipulationsversuch soll nicht abstürzen."""
     options = {"secret_key": "x" * 32, "env": None}
     lines = optionen.exports_for(options, dict(_DATABASE_ALREADY_SET))
     assert lines == [f"export THERMOCTL_SECRET_KEY={shlex.quote('x' * 32)}"]
@@ -339,7 +339,7 @@ def test_parse_env_field_directly_covers_a_line_without_an_equals_sign() -> None
 
 
 def test_main_without_an_options_file_prints_nothing(tmp_path: Path) -> None:
-    """Der Normalfall ausserhalb eines Add-ons: keine Datei, kein Verhalten aendert sich."""
+    """Der Normalfall außerhalb eines Add-ons: keine Datei, kein Verhalten ändert sich."""
     missing = tmp_path / "options.json"
     result = subprocess.run(  # noqa: S603
         [sys.executable, str(SCRIPT)],
@@ -411,9 +411,9 @@ def test_main_rejects_a_json_array_as_the_options_file(tmp_path: Path) -> None:
 
 
 def test_main_never_prints_a_secret_value_to_stderr_on_success(tmp_path: Path) -> None:
-    """Grundsatz 2: selbst zu Debugzwecken duerfen Zugangsdaten nicht ins Log. Bei einem
+    """Grundsatz 2: selbst zu Debugzwecken dürfen Zugangsdaten nicht ins Log. Bei einem
     erfolgreichen Lauf bleibt stderr also leer, wie auch immer die Werte lauten -- auch
-    fuer eine ungueltige Zeile im `env`-Feld."""
+    für eine ungültige Zeile im `env`-Feld."""
     options_file = tmp_path / "options.json"
     options_file.write_text(
         json.dumps(
@@ -465,7 +465,7 @@ def test_every_settings_field_is_translated_or_deliberately_excluded() -> None:
 
     overlap = handled & excluded
     assert not overlap, (
-        "Felder sowohl als abgebildet als auch als bewusst ausgelassen gefuehrt: "
+        "Felder sowohl als abgebildet als auch als bewusst ausgelassen geführt: "
         f"{sorted(overlap)}"
     )
 

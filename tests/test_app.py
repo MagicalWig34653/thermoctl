@@ -197,7 +197,7 @@ def test_the_request_id_is_reset_after_an_exception(
 
     @app.get("/wirft-ausnahme")
     async def raises_an_exception() -> None:
-        raise RuntimeError("absichtlicher Fehler fuer den Test")
+        raise RuntimeError("absichtlicher Fehler für den Test")
 
     initial_value = request_id_var.get()
     testclient = TestClient(app, raise_server_exceptions=False)

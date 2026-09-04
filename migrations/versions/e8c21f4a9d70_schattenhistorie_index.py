@@ -1,4 +1,4 @@
-"""Index fuer zonenweise Abfragen der Schattenhistorie.
+"""Index für zonenweise Abfragen der Schattenhistorie.
 
 Revision ID: e8c21f4a9d70
 Revises: 3a3e44c560fb

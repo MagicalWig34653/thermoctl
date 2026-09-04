@@ -55,10 +55,10 @@ def test_painting_over_a_whole_existing_section_minimizes_the_points(
 ) -> None:
     create_settings(session)
     source(session)
-    zone = create_zone(session, "uebermalen")
-    night = create_mode(session, "nacht-ueber", "Nacht")
-    day = create_mode(session, "tag-ueber", "Tag")
-    away = create_mode(session, "weg-ueber", "Abwesend")
+    zone = create_zone(session, "übermalen")
+    night = create_mode(session, "nacht-über", "Nacht")
+    day = create_mode(session, "tag-über", "Tag")
+    away = create_mode(session, "weg-über", "Abwesend")
     _point(session, zone.id, 1, 0, night.id)
     _point(session, zone.id, 1, 360, day.id)
     _point(session, zone.id, 1, 420, away.id)
@@ -556,8 +556,8 @@ def test_an_invalid_undo_token_is_rejected(client_als, session: Session) -> None
 
 def test_gesture_routes_reject_invalid_copy_and_domain_values(client_als, session: Session) -> None:
     create_settings(session)
-    zone = create_zone(session, "ungueltige-gesten")
-    mode = create_mode(session, "ungueltiger-modus", "Tag")
+    zone = create_zone(session, "ungültige-gesten")
+    mode = create_mode(session, "ungültiger-modus", "Tag")
     client = client_als([("schedule.manage", zone.id)])
     paint = client.post(
         f"/zones/{zone.id}/schedule/paint",
@@ -791,13 +791,13 @@ def test_adopting_onto_an_existing_schedule_asks_first(
     assert "ersetzt ihn vollständig" in nachfrage.text
     assert session.get(SchedulePoint, old_point.id) is old_point
 
-    bestaetigt = client.post(
+    bestätigt = client.post(
         pfad,
         data={"source_id": str(source_zone.id), "confirmed": "yes"},
         headers=_csrf(client),
         follow_redirects=False,
     )
-    assert bestaetigt.status_code == 303
+    assert bestätigt.status_code == 303
     assert session.get(SchedulePoint, old_point.id) is None
 
 
@@ -877,7 +877,7 @@ def test_adopting_from_itself_yields_404(client_als, session: Session) -> None:
     """A zone cannot adopt its schedule from itself -- that would be an operation
     with no effect that would look as if it had one."""
     source(session)
-    zone = create_zone(session, "zone-selbstuebernahme")
+    zone = create_zone(session, "zone-selbstübernahme")
     client = client_als([("schedule.manage", None), ("zone.read", None)])
     response = client.post(
         f"/zones/{zone.id}/schedule/adopt",
@@ -1283,7 +1283,7 @@ def test_changing_to_the_current_mode_does_not_write_an_audit_event(
     session: Session,
 ) -> None:
     source(session, "web")
-    zone = create_zone(session, "modus-unveraendert")
+    zone = create_zone(session, "modus-unverändert")
     comfort = create_mode(session, "komfort", "Komfort")
     point = _point(session, zone.id, 1, 390, comfort.id)
 
@@ -1356,7 +1356,7 @@ def test_changing_a_point_mode_without_csrf_is_rejected(client_als, session: Ses
 def test_invalid_mode_change_fields_are_rejected_understandably(
     client_als, session: Session
 ) -> None:
-    zone = create_zone(session, "ungueltiger-moduswechsel")
+    zone = create_zone(session, "ungültiger-moduswechsel")
     comfort = create_mode(session, "komfort", "Komfort")
     point = _point(session, zone.id, 1, 390, comfort.id)
     client = client_als([("zone.read", zone.id), ("schedule.manage", zone.id)])

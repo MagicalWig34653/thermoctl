@@ -79,9 +79,9 @@ def test_zone_filter_matches_the_name_snapshot_of_a_deleted_zone(
     """The filter has to work on the snapshot, not a join to `zone` -- otherwise a
     deleted zone's entries could no longer be found by name at all."""
     create_settings(session)
-    zone = create_zone(session, "ueberlebende-zone")
+    zone = create_zone(session, "überlebende-zone")
     _entry(session, device_name="am-leben", zone_name=zone.display_name, zone_id=zone.id)
-    _entry(session, device_name="verwaist", zone_name="geloeschte-zone", zone_id=None)
+    _entry(session, device_name="verwaist", zone_name="gelöschte-zone", zone_id=None)
     response = client_als([("audit.read", None)]).get(
         f"/device-commands?zone={zone.display_name}"
     )
@@ -92,11 +92,11 @@ def test_zone_filter_matches_the_name_snapshot_of_a_deleted_zone(
 def test_outcome_filter_actually_filters(client_als, session: Session) -> None:
     create_settings(session)
     _entry(session, device_name="lief-durch", outcome_code="executed")
-    _entry(session, device_name="wurde-unterdrueckt", outcome_code="suppressed")
+    _entry(session, device_name="wurde-unterdrückt", outcome_code="suppressed")
     response = client_als([("audit.read", None)]).get(
         "/device-commands?outcome=suppressed"
     )
-    assert "wurde-unterdrueckt" in response.text
+    assert "wurde-unterdrückt" in response.text
     assert "lief-durch" not in response.text
 
 
@@ -106,11 +106,11 @@ def test_error_and_reason_are_shown(client_als, session: Session) -> None:
         session,
         device_name="fehlerventil",
         outcome_code="failed",
-        error="MQTT-Client hat die Veroeffentlichung abgewiesen",
+        error="MQTT-Client hat die Veröffentlichung abgewiesen",
         reason="Ist 19,2 unter Soll 21,0 minus Hysterese",
     )
     response = client_als([("audit.read", None)]).get("/device-commands")
-    assert "MQTT-Client hat die Veroeffentlichung abgewiesen" in response.text
+    assert "MQTT-Client hat die Veröffentlichung abgewiesen" in response.text
     assert "Ist 19,2 unter Soll 21,0 minus Hysterese" in response.text
 
 

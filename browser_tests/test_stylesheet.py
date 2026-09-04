@@ -1,7 +1,7 @@
 """Is the stylesheet actually applied -- not just present as a `<link>` in the HTML.
 
 This is the check that would have caught the second historical incident named in
-the task ("eine Oberflaeche ohne eingebundenes Stylesheet"): a smoke test that
+the task ("eine Oberfläche ohne eingebundenes Stylesheet"): a smoke test that
 merely greps the HTML for `<link rel="stylesheet">` still passes when the file
 404s, is empty, or never loaded because of a path typo. Only a real browser knows
 whether a rule actually took effect on a rendered element.
@@ -32,8 +32,8 @@ def test_the_primary_button_carries_thermoctls_own_colour_not_bootstraps_default
     background = button.evaluate("el => getComputedStyle(el).backgroundColor")
     assert background == _THERMOCTL_PRIMARY, (
         f"Errechnete Hintergrundfarbe war {background!r}, erwartet {_THERMOCTL_PRIMARY!r} "
-        f"(thermoctl.css). Bootstraps unveraendertes Standardblau waere "
-        f"{_BOOTSTRAP_DEFAULT_PRIMARY!r} -- das haette eine Seite, auf der "
+        f"(thermoctl.css). Bootstraps unverändertes Standardblau wäre "
+        f"{_BOOTSTRAP_DEFAULT_PRIMARY!r} -- das hätte eine Seite, auf der "
         "thermoctl.css nicht geladen ist."
     )
 
@@ -61,5 +61,5 @@ def test_the_instrument_font_differs_from_the_interface_font(page: Page) -> None
     )
     assert value_font != body_font, (
         f"Instrumentschrift ({value_font!r}) und Fliesstext ({body_font!r}) sind "
-        "gleich -- thermoctl.css scheint fuer .t-value keine eigene Schrift zu setzen."
+        "gleich -- thermoctl.css scheint für .t-value keine eigene Schrift zu setzen."
     )

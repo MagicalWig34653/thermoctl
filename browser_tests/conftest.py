@@ -193,7 +193,7 @@ def _live_server(root_path: str) -> Iterator[LiveServer]:
         token = None
         while time.monotonic() < deadline and token is None:
             for line in log_lines:
-                match = re.search(r"Einmal-Token \(gueltig \d+ Minuten\): (\S+)", line)
+                match = re.search(r"Einmal-Token \(gültig \d+ Minuten\): (\S+)", line)
                 if match:
                     token = match.group(1)
                     break
@@ -287,14 +287,14 @@ def live_server_with_prefix() -> Iterator[LiveServer]:
 
 @pytest.fixture(scope="session")
 def browser() -> Iterator[Browser]:
-    """Chromium, unsichtbar -- ausser jemand will zusehen.
+    """Chromium, unsichtbar -- außer jemand will zusehen.
 
-    `THERMOCTL_BROWSER_HEADED=1` oeffnet ein echtes Fenster und verlangsamt jede
+    `THERMOCTL_BROWSER_HEADED=1` öffnet ein echtes Fenster und verlangsamt jede
     Geste um `THERMOCTL_BROWSER_SLOWMO` Millisekunden (Vorgabe 300). Das ist der
-    einzige Weg, einen Browsertest zu verstehen, der fehlschlaegt: Zusehen, statt
-    aus einer Fehlermeldung zu raten. Ueber eine Umgebungsvariable und nicht ueber
+    einzige Weg, einen Browsertest zu verstehen, der fehlschlägt: Zusehen, statt
+    aus einer Fehlermeldung zu raten. Über eine Umgebungsvariable und nicht über
     einen Schalter auf der Kommandozeile, weil diese Vorrichtung Playwright
-    unmittelbar startet und nicht ueber das Zusatzpaket `pytest-playwright`, dessen
+    unmittelbar startet und nicht über das Zusatzpaket `pytest-playwright`, dessen
     `--headed` es hier also gar nicht gibt.
     """
     sichtbar = bool(os.environ.get("THERMOCTL_BROWSER_HEADED"))

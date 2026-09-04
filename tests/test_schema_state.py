@@ -78,7 +78,7 @@ def test_schema_without_a_stamp_is_not_a_reason_to_refuse_starting(
     Base.metadata.create_all(engine)
     with caplog.at_level(logging.WARNING):
         check_schema(engine)
-    assert "nicht ueber Alembic" in caplog.text
+    assert "nicht über Alembic" in caplog.text
 
 
 def test_database_state_reports_an_empty_file_as_unknown(tmp_path) -> None:

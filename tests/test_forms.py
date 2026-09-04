@@ -31,7 +31,7 @@ def test_form_again_shows_values_and_field_errors() -> None:
 
 
 def test_form_again_never_returns_the_password() -> None:
-    secret = "dieses-passwort-darf-nicht-zurueck"
+    secret = "dieses-passwort-darf-nicht-zurück"
     response = form_again(
         _request(),
         "setup.html",

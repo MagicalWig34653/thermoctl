@@ -27,7 +27,7 @@ def test_a_user_can_be_in_several_groups(session: Session) -> None:
 
 
 def test_a_permission_installation_wide_and_zone_scoped_side_by_side(session: Session) -> None:
-    """NULL in zone_id heisst anlagenweit; beides darf nebeneinander stehen."""
+    """NULL in zone_id heißt anlagenweit; beides darf nebeneinander stehen."""
     group = AccessGroup(name="Gemischt")
     session.add(group)
     session.flush()
@@ -46,7 +46,7 @@ def test_the_same_assignment_twice_is_ruled_out(session: Session) -> None:
     session.add(group)
     session.flush()
     read_only = ensure_permission(session, "zone.read", zone_scoped=True)
-    zone = create_zone(session, "kueche")
+    zone = create_zone(session, "küche")
     for _ in range(2):
         session.add(
             GroupPermission(access_group_id=group.id, permission_id=read_only.id, zone_id=zone.id)

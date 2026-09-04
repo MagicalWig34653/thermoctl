@@ -87,8 +87,8 @@ def upgrade() -> None:
     # ### end Alembic commands ###
     _fuellen("operating_mode", OPERATING_MODES)
     _fuellen("integration", INTEGRATIONS)
-    # Historische Migrationen muessen reproduzierbar bleiben, auch wenn die zentrale
-    # Liste spaeter erweitert wird. Teilprojekt 2 fuegt seine Codes in eigener Revision ein.
+    # Historische Migrationen müssen reproduzierbar bleiben, auch wenn die zentrale
+    # Liste später erweitert wird. Teilprojekt 2 fügt seine Codes in eigener Revision ein.
     _fuellen("device_capability", DEVICE_CAPABILITIES[:5])
     _fuellen("device_role", DEVICE_ROLES)
     _fuellen("actor_source", ACTOR_SOURCES)
@@ -101,9 +101,9 @@ def upgrade() -> None:
         ),
         [
             # Geschnitten wie DEVICE_CAPABILITIES daneben: Diese Revision muss den
-            # Stand von damals einspielen, auch wenn die zentrale Liste spaeter
-            # waechst. Sonst legt sie auf einer frischen Datenbank Codes an, die eine
-            # spaetere Revision noch einmal einfuegen will.
+            # Stand von damals einspielen, auch wenn die zentrale Liste später
+            # wächst. Sonst legt sie auf einer frischen Datenbank Codes an, die eine
+            # spätere Revision noch einmal einfügen will.
             {"code": c, "description": d, "is_zone_scoped": z}
             for c, d, z in PERMISSIONS[:15]
         ],

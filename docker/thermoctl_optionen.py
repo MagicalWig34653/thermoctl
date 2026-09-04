@@ -119,20 +119,20 @@ BEWUSST_AUSGELASSEN: dict[str, str] = {
     "secure_cookies": "Container-intern; das Add-on terminiert TLS nicht selbst, das "
     "übernimmt Ingress.",
     "meross_api_base": "Regionswahl (iotx-eu/us/ap), die so gut wie nie vom "
-    "Standardwert abweicht -- wer sie braucht, setzt sie ueber das freie `env`-Feld.",
+    "Standardwert abweicht -- wer sie braucht, setzt sie über das freie `env`-Feld.",
     "mcp_token": "Der MCP-Server ist eine optionale, separat betriebene Erweiterung "
     "(docs/mcp.md), keine Add-on-UI-Einstellung.",
     "passkey_rp_id": "Passkeys sind eine optionale Funktion, deren Relying-Party-Id an "
-    "einen konkreten Hostnamen gebunden ist -- ausserhalb dessen, was das Add-on-Setup "
+    "einen konkreten Hostnamen gebunden ist -- außerhalb dessen, was das Add-on-Setup "
     "sinnvoll vorbelegen kann.",
     "passkey_rp_name": "Folgt aus passkey_rp_id: ohne Relying-Party-Id ohnehin ohne "
     "Wirkung.",
     "passkey_origin": "Folgt aus passkey_rp_id: ohne Relying-Party-Id ohnehin ohne "
     "Wirkung.",
-    "root_path": "Keine vom Betreiber auszufuellende Option: unter Ingress vergibt der "
-    "Supervisor den Pfad selbst und teilt ihn nur zur Laufzeit ueber seine eigene API "
+    "root_path": "Keine vom Betreiber auszufüllende Option: unter Ingress vergibt der "
+    "Supervisor den Pfad selbst und teilt ihn nur zur Laufzeit über seine eigene API "
     "mit (docker/thermoctl_ingress.py, aus docker/entrypoint.sh aufgerufen) -- ein "
-    "Betreiber kennt den Wert vorab gar nicht und koennte ihn hier nicht sinnvoll "
+    "Betreiber kennt den Wert vorab gar nicht und könnte ihn hier nicht sinnvoll "
     "eintragen.",
 }
 

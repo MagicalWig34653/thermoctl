@@ -83,7 +83,7 @@ PERMISSION_AREAS: list[tuple[str, str, list[str]]] = [
         ["zone.read", "setpoint.write", "override.create", "override.cancel"],
     ),
     (
-        "Zonen und Zeitplaene",
+        "Zonen und Zeitpläne",
         "Die Anlage umbauen statt sie zu bedienen.",
         ["zone.manage", "schedule.manage", "mode.manage"],
     ),
@@ -126,7 +126,7 @@ def require(principal: Principal, code: str, zone_id: int | None = None) -> None
         # "no zone". Today both databases assign ids starting at 1, but that assumption
         # is not written down anywhere — and in an error message explaining a denied
         # permission, a missing zone reference would be misleading.
-        extra = f" fuer Zone {zone_id}" if zone_id is not None else ""
+        extra = f" für Zone {zone_id}" if zone_id is not None else ""
         raise Forbidden(f"Recht {code} fehlt{extra}")
 
 
