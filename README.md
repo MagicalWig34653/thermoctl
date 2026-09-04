@@ -36,7 +36,9 @@ selbstregelnde Thermostatventile ebenso wie Ein/Aus-Befehle an gewöhnliche Akto
 - **[Den Schattenbetrieb in Gang setzen](docs/inbetriebnahme-schattenbetrieb.md)** — der
   nächste Schritt an der echten Anlage.
 - **[Eine eigene Instanz betreiben](docs/self-hosting.md)** — Schritt für Schritt, mit
-  Sicherung, Aktualisierung und dem, was bei TLS zu beachten ist.
+  Sicherung, Aktualisierung, dem, was bei TLS zu beachten ist, und dem Werkzeug
+  `tools/env_nach_addon.py`, das eine bestehende `.env` in die Konfiguration des
+  Home-Assistant-Add-ons übersetzt.
 - **[REST-Schnittstelle](docs/api.md)** — Endpunkte, Tokens, Rechte.
 - **[MCP-Server](docs/mcp.md)** — derselbe Funktionsumfang für einen MCP-Client.
 - **[MQTT](docs/mqtt.md)** — was gelesen wird, und die entworfene eigene Topic-Struktur.

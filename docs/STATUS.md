@@ -2,6 +2,28 @@
 
 Letzte Aktualisierung: 2026-09-04
 
+## Werkzeug fuer den Umstieg: `.env` -> Add-on-Konfiguration
+
+`tools/env_nach_addon.py` liest eine bestehende `.env` (`docker compose`-Betrieb) und
+erzeugt daraus die YAML-Konfiguration fuer das Home-Assistant-Add-on -- die
+Gegenrichtung von `docker/thermoctl_optionen.py`. Die Abbildung ist bewusst nicht
+zweimal aufgeschrieben: Das Skript importiert `ABGEBILDETE_FELDER` und
+`BEWUSST_AUSGELASSEN` aus `thermoctl_optionen.py` und kehrt sie um, statt sie
+abzuschreiben. Einzige Ausnahme ist `THERMOCTL_DATABASE_URL`, die dort aus fuenf
+Optionen *zusammengesetzt* wird -- die Ruecksrichtung *zerlegt* sie wieder, in einer
+eigenen Funktion (`datenbank_optionen_aus_url`), erkennt genau die beiden Formen, die
+die Vorwaertsrichtung erzeugen kann (SQLite unter `/data/thermoctl.db`,
+`mysql+pymysql://...` fuer MariaDB), und meldet jede andere URL als Fehler statt sie
+still zu verwerfen.
+
+Werte, die das Add-on nicht braucht (Bind-Adresse, Port, `secure_cookies`,
+Pfadpraefix), werden uebersprungen; jede uebrige, nicht dediziert abgebildete
+`THERMOCTL_*`-Variable landet im freien `env`-Feld des Add-ons. Ein
+Rundlauf-Test (`tests/test_tools_env_nach_addon.py`) belegt fuer jede dokumentierte
+Einstellung: `.env` -> Add-on-Optionen -> YAML -> zurueckgelesen -> durch
+`thermoctl_optionen.translate()` -> dieselben `THERMOCTL_*`-Variablen wie am Anfang.
+Naeheres in [`docs/self-hosting.md`](self-hosting.md#6b-umstieg-von-docker-compose-auf-das-home-assistant-add-on).
+
 ## Add-on-Optionsschema jetzt flach, plus freies `env`-Feld
 
 Der Projektinhaber kam als Home-Assistant-Add-on-Betreiber dreimal nicht durch die

@@ -195,6 +195,31 @@ keine. Einstellbar unter „Regelvorgaben" (`/settings`) bzw. `PUT /api/v1/contr
 (`setting.manage`), Grenzen 1.000 bis 10.000.000. Wer sie aendert, aendert eine Annahme,
 keine Messung.
 
+## 6b. Umstieg von `docker compose` auf das Home-Assistant-Add-on
+
+Wer bislang per `docker compose` mit einer `.env` betreibt und auf das
+Home-Assistant-Add-on umsteigt, müsste jede Einstellung sonst von Hand in das
+Add-on-Konfigurationsformular übertragen. Das Werkzeug `tools/env_nach_addon.py`
+nimmt das ab: Es liest die vorhandene `.env` und erzeugt daraus den YAML-Block, den Sie
+unter *Add-on → Konfiguration → YAML bearbeiten* einfügen.
+
+```bash
+python3 tools/env_nach_addon.py .env
+```
+
+Auf der Standardausgabe erscheint ausschließlich die YAML-Konfiguration — leitbar in
+eine Datei (`python3 tools/env_nach_addon.py .env > addon-konfiguration.yaml`).
+Hinweise (übersprungene oder unbekannte Einstellungen) stehen getrennt davon auf der
+Fehlerausgabe. **Die Ausgabe enthält Zugangsdaten im Klartext** — genau wie die `.env`,
+aus der sie stammt: nicht committen, nicht offen liegen lassen.
+
+Werte wie Bind-Adresse, Port, `secure_cookies` oder der Pfadpräfix werden dabei
+übersprungen — hinter Ingress bedeutungslos oder vom Supervisor ohnehin automatisch
+ermittelt. Eine `THERMOCTL_*`-Variable ohne eigenes Add-on-Feld (etwa
+`THERMOCTL_MEROSS_API_BASE` oder `THERMOCTL_PASSKEY_RP_ID`) landet im freien
+`env`-Feld des Add-ons, das genau dafür da ist — Näheres zu diesem Feld in
+[`docs/STATUS.md`](STATUS.md).
+
 ## 7. Wenn etwas nicht geht
 
 | Symptom | Ursache und Abhilfe |
