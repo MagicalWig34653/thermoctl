@@ -247,6 +247,33 @@ Fehlerausgabe, warum. Gibt das Werkzeug SQLite aus, obwohl die Zieldatenbank
 möglicherweise eine andere ist, weist der zugehörige Hinweis auf der Fehlerausgabe auf
 `--ohne-datenbank` hin.
 
+## 6c. Gleichzeitig über Ingress und direkt erreichbar
+
+Das Add-on gibt Port 8000 des Containers frei (`ports: 8000/tcp`) — wer zusätzlich zu
+Ingress einen eigenen Reverse-Proxy direkt auf diesen Port zeigen lässt, muss dafür
+nichts umstellen. Der Präfix wird pro Anfrage bestimmt: Eine Anfrage über Ingress trägt
+die Kopfzeile `X-Ingress-Path`, die Home Assistant selbst setzt (zuverlässig, auf jeder
+über Ingress weitergereichten Anfrage) — stimmt sie mit dem Pfad überein, den der
+Supervisor beim Start dieser Instanz genannt hat (`THERMOCTL_ROOT_PATH`), gilt der
+Präfix für genau diese Anfrage. Jede andere Anfrage — ohne die Kopfzeile, oder mit
+einem abweichenden Wert — wird ohne Präfix behandelt, unabhängig davon, was
+konfiguriert ist. Die Kopfzeile ist damit nur innerhalb der eigenen, beim Start
+bestätigten Grenze wirksam; von außerhalb gesetzt bewirkt sie nichts.
+
+Sitzungscookies sind entsprechend auf ihren jeweiligen Pfad begrenzt — eine Anmeldung
+über Ingress und eine über den direkten Zugang stören sich nicht gegenseitig, solange
+beide unter unterschiedlichen Adressen erreichbar sind (der übliche Fall: Ingress läuft
+unter dem Hostnamen von Home Assistant, der eigene Reverse-Proxy meist unter einem
+eigenen). Zeigt der eigene Reverse-Proxy stattdessen auf denselben Hostnamen wie Home
+Assistant selbst (nur ein anderer Port), ignoriert der Browser beim Cookie-Abgleich den
+Port — im ungünstigen Fall verlangt das Ergebnis dann eine erneute Anmeldung, aber kein
+Konto wird dabei einem anderen zugänglich.
+
+**Passkeys** sind an einen einzigen Hostnamen gebunden (`THERMOCTL_PASSKEY_RP_ID`).
+Unterscheiden sich die Hostnamen von Ingress und direktem Zugang, funktioniert die
+Passkey-Anmeldung nur unter dem konfigurierten — unter dem jeweils anderen bleibt die
+Anmeldung mit Benutzername und Passwort möglich.
+
 ## 7. Wenn etwas nicht geht
 
 | Symptom | Ursache und Abhilfe |

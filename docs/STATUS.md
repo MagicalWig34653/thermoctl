@@ -11,6 +11,35 @@ längst überholte Angaben — zuletzt „nichts ist scharf", „1024 Tests, 98,
 vier stimmten einmal und standen noch da; ein Freigabe-Review konnte sie namentlich
 widerlegen.
 
+## Der Ingress-Präfix gilt jetzt pro Anfrage, nicht mehr pro Prozess
+
+Als Home-Assistant-Add-on ist `thermoctl` sowohl über Ingress als auch — der
+Container-Port ist freigegeben (`ports: 8000/tcp`) — direkt über einen eigenen
+Reverse-Proxy erreichbar, beides gleichzeitig, aus demselben laufenden Prozess.
+`thermoctl/app.py::create_app` entscheidet den Ingress-/Reverse-Proxy-Präfix dafür
+pro Anfrage (Middleware `resolve_root_path`), nicht mehr einmal für den ganzen
+Prozess über FastAPIs `root_path`-Konstruktorargument: Trägt die Anfrage die
+Kopfzeile `X-Ingress-Path` mit exakt dem Wert, den dieser Prozess beim Start vom
+Supervisor erfragt hat (`Settings.root_path`, gesetzt über
+`docker/thermoctl_ingress.py`), gilt der Präfix für diese Anfrage — sonst nicht,
+unabhängig davon, was konfiguriert ist (`thermoctl.app._ingress_header_prefix`).
+Ohne konfigurierten Präfix wird die Kopfzeile gar nicht erst gelesen. Recherchiert
+(Quelltext von `home-assistant/core`,
+`homeassistant/components/hassio/ingress.py::_init_header`): Home Assistant Core
+setzt diese Kopfzeile unbedingt auf jeder über Ingress weitergeleiteten Anfrage,
+HTTP wie WebSocket, mit exakt dem Wert, den der Supervisor als `ingress_entry`
+ausgibt — beide stimmen byteweise überein, wenn eine Anfrage tatsächlich über
+Ingress kam. Fehlt die Kopfzeile trotzdem, wird die Anfrage wie eine direkte
+behandelt: sichtbar unpräfigierte Navigation statt eines stillen
+Sicherheitsproblems.
+
+Sitzungscookies folgen demselben Präfix (`thermoctl/web/urls.py::cookie_path`) und
+sind dadurch ebenfalls pro Zugangsweg getrennt, solange beide unter
+unterschiedlichen Adressen erreichbar sind — der übliche Fall. Details, auch zum
+Randfall gleicher Hostname/unterschiedlicher Port, und zum Befund bei Passkeys (an
+den einen konfigurierten Hostnamen gebunden, nur untersucht, nicht gelöst) stehen in
+`docs/self-hosting.md`, Abschnitt 6c.
+
 ## Eine per Boost ausgelöste Übersteuerung liess sich nicht aufheben
 
 Boost gibt es an drei Stellen (Kiosk, MQTT/Home Assistant, REST/MCP); aufheben liess sich

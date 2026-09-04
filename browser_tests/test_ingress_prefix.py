@@ -34,6 +34,68 @@ pytestmark = pytest.mark.browser
 _PREFIXED_URL = re.compile(re.escape(INGRESS_PREFIX) + r"(/.*)?$")
 
 
+def test_direct_access_works_alongside_ingress_on_the_same_running_instance(
+    admin_page_with_prefix: Page,
+    admin_page_direct_via_prefixed_instance: Page,
+    live_server_with_prefix: LiveServer,
+) -> None:
+    """The actual point of this task: one running process, `THERMOCTL_ROOT_PATH`
+    configured for Ingress, reachable *both* ways at once -- not only each in its own
+    test (every other test in this file only ever opens one or the other), but here,
+    with both browser contexts open side by side against the identical instance.
+
+    `admin_page_with_prefix` is already signed in through the stripping proxy
+    (`X-Ingress-Path` included, `conftest.py`); `admin_page_direct_via_prefixed_
+    instance` signs in independently against `live_server_with_prefix.direct_base_url`
+    -- the same process's own port, no proxy, no header. Two entirely separate
+    `BrowserContext`s (separate cookie jars) so this proves the server side handles
+    both concurrently, not merely that a single browser profile can juggle two paths.
+    """
+    assert admin_page_with_prefix.url.startswith(live_server_with_prefix.base_url)
+    assert admin_page_direct_via_prefixed_instance.url == live_server_with_prefix.direct_base_url
+
+    # The Ingress-side page: every local link still carries the prefix.
+    admin_page_with_prefix.get_by_role("link", name="Zonen", exact=True).click()
+    expect(admin_page_with_prefix.get_by_role("heading", name="Zonen")).to_be_visible()
+    assert admin_page_with_prefix.url.endswith(f"{INGRESS_PREFIX}/zones")
+
+    # The direct-side page, navigated *after* the above, against the same server:
+    # still no prefix anywhere -- one request having resolved a prefix does not leak
+    # into the next.
+    admin_page_direct_via_prefixed_instance.get_by_role(
+        "link", name="Zonen", exact=True
+    ).click()
+    expect(
+        admin_page_direct_via_prefixed_instance.get_by_role("heading", name="Zonen")
+    ).to_be_visible()
+    assert admin_page_direct_via_prefixed_instance.url.endswith("/zones")
+    assert INGRESS_PREFIX not in admin_page_direct_via_prefixed_instance.url
+
+    # And the Ingress-side session is still exactly where it was -- the two contexts
+    # (separate cookie jars, separate logins) did not disturb one another.
+    assert admin_page_with_prefix.url.endswith(f"{INGRESS_PREFIX}/zones")
+
+
+def test_the_stylesheet_applies_on_direct_access_to_the_same_ingress_configured_instance(
+    page_direct_via_prefixed_instance: Page,
+) -> None:
+    """Mirrors `test_the_stylesheet_still_applies_under_the_prefix` below, against the
+    same running, Ingress-configured instance but the direct address -- the static
+    file must still resolve correctly with no prefix once a request without
+    `X-Ingress-Path` reaches it, not just when the whole process has no prefix
+    configured at all (already covered by `test_stylesheet.py`).
+    """
+    page_direct_via_prefixed_instance.goto("login")
+    button = page_direct_via_prefixed_instance.get_by_role("button", name="Anmelden")
+    expect(button).to_be_visible()
+    background = button.evaluate("el => getComputedStyle(el).backgroundColor")
+    assert background == "rgb(47, 57, 65)", (
+        f"Errechnete Hintergrundfarbe war {background!r} -- thermoctl.css scheint "
+        "beim direkten Zugriff auf die Ingress-konfigurierte Instanz nicht geladen "
+        "zu sein (Bootstraps Standardblau wäre rgb(13, 110, 253))."
+    )
+
+
 def test_login_reaches_the_dashboard_under_the_prefix(
     page_with_prefix: Page, live_server_with_prefix: LiveServer
 ) -> None:

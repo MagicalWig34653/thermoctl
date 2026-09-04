@@ -86,6 +86,13 @@ class LiveServer:
     database_url: str
     admin_username: str
     admin_password: str
+    # The bare, un-proxied address of the same running process -- `None` for `live_server`
+    # (there is no separate "direct" address there; `base_url` already is one). Set for
+    # `live_server_with_prefix` so a test can reach the *same* instance the Ingress-shaped
+    # `base_url` above goes through, but without the stripping proxy in front and without
+    # an `X-Ingress-Path` header -- exactly the reverse-proxy-on-the-exposed-port case this
+    # task is about, proven against the identical process rather than a second one.
+    direct_base_url: str | None = None
 
     def session(self) -> Session:
         """A short-lived SQLAlchemy session against the server's own database.
@@ -277,6 +284,14 @@ def live_server_with_prefix() -> Iterator[LiveServer]:
             database_url=backend.database_url,
             admin_username=backend.admin_username,
             admin_password=backend.admin_password,
+            # `backend.base_url` -- the real server's own port, with no proxy and no
+            # `X-Ingress-Path` header in front of it -- reached directly, exactly as a
+            # reverse proxy pointed straight at the exposed container port would.
+            # `THERMOCTL_ROOT_PATH` is still set for this same process (see
+            # `_live_server(INGRESS_PREFIX)` above); what makes this "direct" is only
+            # the absence of the header, same as `client_direct_with_ingress_
+            # configured` in `tests/conftest.py`.
+            direct_base_url=f"{backend.base_url}/",
         )
     finally:
         server.shutdown()
@@ -430,3 +445,55 @@ def admin_page_with_prefix(page_with_prefix: Page, live_server_with_prefix: Live
     page_with_prefix.get_by_role("button", name="Anmelden").click()
     page_with_prefix.locator(".tc-head").wait_for()
     return page_with_prefix
+
+
+# --- the same running instance, reached directly instead of through the proxy ---
+#
+# `live_server_with_prefix` fronts one running thermoctl process with two addresses:
+# `base_url` (through the stripping proxy, `X-Ingress-Path` included -- the fixtures
+# above) and `direct_base_url` (the process's own port, nothing in front). Both
+# fixtures below open a *second*, independent browser context against the very same
+# `direct_base_url` -- this is the actual proof this task asks for: not that direct
+# access works in isolation (that is already what the plain `page`/`admin_page`
+# fixtures against `live_server` show), but that it keeps working *at the same time*
+# as Ingress access against the identical configured, running process.
+
+
+@pytest.fixture
+def context_direct_via_prefixed_instance(
+    browser: Browser, live_server_with_prefix: LiveServer
+) -> Iterator[BrowserContext]:
+    assert live_server_with_prefix.direct_base_url is not None
+    ctx = browser.new_context(
+        base_url=live_server_with_prefix.direct_base_url, color_scheme="light"
+    )
+    yield ctx
+    ctx.close()
+
+
+@pytest.fixture
+def page_direct_via_prefixed_instance(
+    context_direct_via_prefixed_instance: BrowserContext, console_errors: list[str]
+) -> Iterator[Page]:
+    new_page = context_direct_via_prefixed_instance.new_page()
+    new_page.on("console", lambda message: _record_console_error(console_errors, message))
+    new_page.on("pageerror", lambda exc: console_errors.append(f"[pageerror] {exc}"))
+    yield new_page
+    new_page.close()
+    assert not console_errors, "Browserkonsole meldete Fehler:\n" + "\n".join(console_errors)
+
+
+@pytest.fixture
+def admin_page_direct_via_prefixed_instance(
+    page_direct_via_prefixed_instance: Page, live_server_with_prefix: LiveServer
+) -> Page:
+    page_direct_via_prefixed_instance.goto("login")
+    page_direct_via_prefixed_instance.get_by_label("Benutzername").fill(
+        live_server_with_prefix.admin_username
+    )
+    page_direct_via_prefixed_instance.get_by_label("Passwort").fill(
+        live_server_with_prefix.admin_password
+    )
+    page_direct_via_prefixed_instance.get_by_role("button", name="Anmelden").click()
+    page_direct_via_prefixed_instance.locator(".tc-head").wait_for()
+    return page_direct_via_prefixed_instance

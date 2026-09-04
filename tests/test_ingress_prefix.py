@@ -1,5 +1,8 @@
 """Runs the interface behind a configured path prefix -- the Home Assistant Ingress
-case (`docs/STATUS.md`, this task's design notes).
+case (`docs/STATUS.md`, this task's design notes) -- and, in the second half of this
+file, the same configured process reached *directly* instead, which is what actually
+makes this a per-request decision rather than a per-process one (see
+`thermoctl.app._ingress_header_prefix`).
 
 Home Assistant's Ingress proxy strips its own prefix (something like
 `/api/hassio_ingress/<random-token>`) before forwarding a request to the add-on's
@@ -7,11 +10,17 @@ container -- so the app only ever *receives* bare, un-prefixed paths (`/login`, 
 `/api/hassio_ingress/.../login`). What must change under a prefix is what the app
 *generates*: every `Location` header, every cookie's `path`, and every link a rendered
 page carries. `client_with_prefix` (`tests/conftest.py`) builds the app with
-`THERMOCTL_ROOT_PATH` set and issues requests at bare paths, exactly like Ingress would
-forward them.
+`THERMOCTL_ROOT_PATH` set, carries the matching `X-Ingress-Path` header Home
+Assistant Core itself sends on every proxied request, and issues requests at bare
+paths, exactly like Ingress would forward them.
 
 Every test here has a matching assertion against the plain `client` fixture (no
-prefix configured) to show the behaviour there is unchanged -- required by the task.
+prefix configured at all) to show the behaviour there is unchanged -- required by the
+task. The tests further below add a third case: the *same* `THERMOCTL_ROOT_PATH`
+configured, but the request reached the process directly (`client_direct_with_
+ingress_configured`) or carries a header that does not match what this process
+learned from the Supervisor (`client_with_forged_prefix_header`) -- both must behave
+exactly like the plain, unconfigured `client`, never like `client_with_prefix`.
 """
 
 from fastapi.testclient import TestClient
@@ -200,3 +209,121 @@ def test_mutating_view_redirect_is_prefixed(client_with_prefix: TestClient, sess
     )
     assert response.status_code == 303
     assert response.headers["location"] == f"{PREFIX}/modes"
+
+
+# --- the same configured process, reached directly (no, or a forged, header) ----
+#
+# `THERMOCTL_ROOT_PATH` is set exactly as for `client_with_prefix` above (both
+# fixtures build the app the same way an add-on with its port also exposed to a
+# reverse proxy would run) -- what differs is only what the *request* carries. Every
+# assertion below intentionally mirrors one above against `client`, to show that a
+# configured-but-unmatched prefix behaves identically to no prefix being configured
+# at all, not as some partial or inconsistent state.
+
+
+def test_login_redirect_direct_is_unprefixed_even_with_ingress_configured(
+    client_direct_with_ingress_configured: TestClient, user
+) -> None:
+    response = client_direct_with_ingress_configured.post(
+        "/login",
+        data={"username": "lino", "password": "passwort-lang-genug"},
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    assert response.headers["location"] == "/"
+
+
+def test_login_redirect_with_forged_header_is_unprefixed(
+    client_with_forged_prefix_header: TestClient, user
+) -> None:
+    response = client_with_forged_prefix_header.post(
+        "/login",
+        data={"username": "lino", "password": "passwort-lang-genug"},
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    assert response.headers["location"] == "/"
+
+
+def test_login_cookies_direct_are_scoped_to_the_root_even_with_ingress_configured(
+    client_direct_with_ingress_configured: TestClient, user
+) -> None:
+    response = client_direct_with_ingress_configured.post(
+        "/login",
+        data={"username": "lino", "password": "passwort-lang-genug"},
+        follow_redirects=False,
+    )
+    assert _cookie_paths(response, "thermoctl_session") == ["/"]
+    assert _cookie_paths(response, "thermoctl_csrf") == ["/"]
+
+
+def test_login_cookies_with_forged_header_are_scoped_to_the_root(
+    client_with_forged_prefix_header: TestClient, user
+) -> None:
+    response = client_with_forged_prefix_header.post(
+        "/login",
+        data={"username": "lino", "password": "passwort-lang-genug"},
+        follow_redirects=False,
+    )
+    assert _cookie_paths(response, "thermoctl_session") == ["/"]
+    assert _cookie_paths(response, "thermoctl_csrf") == ["/"]
+
+
+def test_rendered_page_direct_uses_bare_links_even_with_ingress_configured(
+    client_direct_with_ingress_configured: TestClient, session
+) -> None:
+    _logged_in(client_direct_with_ingress_configured, session, "web-direct-render")
+    response = client_direct_with_ingress_configured.get("/zones")
+    assert response.status_code == 200
+    body = response.text
+    assert 'href="/static/thermoctl.css"' in body
+    assert 'href="/zones/new"' in body
+    assert PREFIX not in body
+
+
+def test_rendered_page_with_forged_header_uses_bare_links(
+    client_with_forged_prefix_header: TestClient, session
+) -> None:
+    _logged_in(client_with_forged_prefix_header, session, "web-forged-render")
+    response = client_with_forged_prefix_header.get("/zones")
+    assert response.status_code == 200
+    body = response.text
+    assert 'href="/static/thermoctl.css"' in body
+    assert 'href="/zones/new"' in body
+    # The forged value must not appear anywhere in what got rendered either.
+    assert "EinAnderesAddon" not in body
+
+
+def test_static_asset_direct_is_served_unprefixed_even_with_ingress_configured(
+    client_direct_with_ingress_configured: TestClient,
+) -> None:
+    response = client_direct_with_ingress_configured.get("/static/thermoctl.css")
+    assert response.status_code == 200
+    assert len(response.content) > 0
+
+
+def test_ingress_configured_and_direct_access_work_side_by_side(
+    client_with_prefix: TestClient,
+    client_direct_with_ingress_configured: TestClient,
+    user,
+) -> None:
+    """The actual point of this whole change: one configuration, both access paths,
+    proven in the same test rather than only separately. `client_with_prefix` and
+    `client_direct_with_ingress_configured` are two different `TestClient`s (and
+    therefore two ASGI apps, `tests/conftest.py`), but built from the identical
+    `THERMOCTL_ROOT_PATH` -- exactly the situation an add-on with its port also
+    exposed to a reverse proxy is in: one running process, reached two ways.
+    """
+    via_ingress = client_with_prefix.post(
+        "/login",
+        data={"username": "lino", "password": "passwort-lang-genug"},
+        follow_redirects=False,
+    )
+    assert via_ingress.headers["location"] == f"{PREFIX}/"
+
+    direct = client_direct_with_ingress_configured.post(
+        "/login",
+        data={"username": "lino", "password": "passwort-lang-genug"},
+        follow_redirects=False,
+    )
+    assert direct.headers["location"] == "/"
