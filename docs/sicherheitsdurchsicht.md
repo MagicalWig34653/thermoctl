@@ -42,9 +42,9 @@ Ohne Prüfung sind ausschließlich:
   einer Sitzung zählt ein Kiosk-Token: bei jeder Anfrage neu aufgelöst, also sofort
   wirksam widerrufbar und ablaufbar, und über `principal_for_token()` auf die Rechte
   seines Ausstellers geschnitten. Sein Rechtesatz umfasst `zone.read` für die
-  zugewiesenen Zonen und, falls beim Ausstellen erlaubt, `setpoint.write` und
-  `override.create` für dieselben — sonst nichts. Zonen außerhalb sind wie überall
-  unauffindbar, nicht verboten.
+  zugewiesenen Zonen und, falls beim Ausstellen erlaubt, `setpoint.write`,
+  `override.create` und `override.cancel` für dieselben — sonst nichts. Zonen außerhalb
+  sind wie überall unauffindbar, nicht verboten.
 
 ## 3. Das Verhalten, auf das es ankommt
 

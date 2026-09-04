@@ -47,7 +47,7 @@ from thermoctl.domain.remote_control import (
     boost,
     set_setpoint,
 )
-from thermoctl.domain.schedule import frost_protection_temperature
+from thermoctl.domain.schedule import cancel_override, frost_protection_temperature
 from thermoctl.domain.solar_setback import HourlyForecast
 from thermoctl.domain.zone_settings import (
     ParameterOutOfRange,
@@ -439,6 +439,13 @@ def _apply(session: Session, zone: Zone, command: Command) -> None:
         set_setpoint(session, zone, command.temperature, now, source="system")
     elif command.kind == "boost":
         boost(session, zone, now, source="system")
+    elif command.kind == "cancel_override":
+        # No permission check to line up with here -- the same trust boundary as
+        # every other command topic (docs/mqtt.md, "Den Broker absichern"). Silently
+        # a no-op if nothing is running: `cancel_override` already returns `None`
+        # in that case rather than raising, and a button press that finds nothing
+        # to cancel is not a rejected command.
+        cancel_override(session, zone)
     elif command.kind == "mode" and command.mode_id and command.temperature is not None:
         update_setpoints(
             session, zone, {command.mode_id: command.temperature},

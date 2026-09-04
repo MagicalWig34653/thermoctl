@@ -86,7 +86,7 @@
             <div class="text-danger small mt-1">{{ errors.get("zone_id", "") }}</div>
             {% endif %}
         </div>
-        {{ toggle("control_allowed", "Auch bedienen (Sollwert und Boost)", checked=false,
+        {{ toggle("control_allowed", "Auch bedienen (Sollwert, Boost und Übersteuerung aufheben)", checked=false,
                       help_text="Ohne diesen Haken zeigt das Dashboard nur an. Eine nicht "
                             "angehakte Checkbox schickt gar kein Feld -- die Auswertung "
                             "prüft daher nur, ob überhaupt ein Wert ankam.") }}

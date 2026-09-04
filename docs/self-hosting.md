@@ -267,7 +267,8 @@ wieder auftaucht — damit lässt sich ein einzelner Aufruf durch das ganze Log 
 
 Unter `/kiosk` gibt es eine eigene, große Ansicht für ein Tablet an der Wand: je Zone
 Ist-Temperatur, Sollwert und Betriebsart, und — wenn erlaubt — zwei Knöpfe für den
-Sollwert und einer für den Boost.
+Sollwert, einer für den Boost, und, sobald tatsächlich eine Übersteuerung läuft, einer, um
+sie wieder aufzuheben — auch eine per Boost ausgelöste.
 
 **Sie ist nicht öffentlich.** Ein Dashboard ohne Anmeldung widerspräche dem Grundsatz, dass
 Authentifizierung Pflicht ist. Stattdessen wird unter *Einstellungen → Kiosk-Tokens* ein

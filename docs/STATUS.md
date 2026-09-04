@@ -11,6 +11,22 @@ längst überholte Angaben — zuletzt „nichts ist scharf", „1024 Tests, 98,
 vier stimmten einmal und standen noch da; ein Freigabe-Review konnte sie namentlich
 widerlegen.
 
+## Eine per Boost ausgelöste Übersteuerung liess sich nicht aufheben
+
+Boost gibt es an drei Stellen (Kiosk, MQTT/Home Assistant, REST/MCP); aufheben liess sich
+zuvor nur an einer, der Startseite der angemeldeten Oberfläche. REST und MCP hatten
+`cancel_override` bereits. Ergänzt: ein Kiosk-Knopf „Übersteuerung aufheben" (nur
+sichtbar, wenn eine Übersteuerung läuft; Recht `override.cancel`, nicht `override.create`
+-- er hebt womöglich die Übersteuerung eines anderen auf) und für Home Assistant der
+Befehl `command/cancel_override` samt Discovery-Knopf sowie der neue Zustandswert
+`state/override_active`, damit sichtbar ist, ob es dort überhaupt etwas aufzuheben gibt.
+`domain/schedule.py::running_override` ist die neue, einmal implementierte Abfrage dafür.
+Damit ein Kiosk-Token diesen Knopf je sehen kann, gehört `override.cancel` jetzt zu
+`domain/kiosk.py::KIOSK_CONTROL_PERMISSIONS` -- ohne das hätte `issue_kiosk_token`
+niemals ein Token damit ausgestattet, und der Knopf wäre für jedes Wandtablett
+unerreichbar geblieben. Neu ausgestellte Kiosk-Token bekommen das Recht automatisch;
+schon ausgestellte brauchen dafür eine erneute Ausstellung.
+
 ## Wo das Projekt steht
 
 Die Anlage des Projektinhabers läuft seit dem 2026-09-02 scharf mit `thermoctl`, das

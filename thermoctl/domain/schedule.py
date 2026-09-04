@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -738,6 +738,25 @@ def cancel_override(session: Session, zone: Zone) -> ZoneOverride | None:
     if entry is not None:
         entry.cancelled_at = utcnow()
     return entry
+
+
+def running_override(session: Session, zone: Zone, now: datetime) -> ZoneOverride | None:
+    """The override actually in effect at `now`, or None -- the same window
+    `resolved_setpoint` counts as running: not cancelled, already started, not yet
+    ended. A boost is an override like any other, so this is also the answer to
+    "is there a boost to undo right now" -- the question the kiosk's and Home
+    Assistant's cancel buttons need answered before they show themselves at all.
+    """
+    return session.scalars(
+        select(ZoneOverride)
+        .where(
+            ZoneOverride.zone_id == zone.id,
+            ZoneOverride.cancelled_at.is_(None),
+            ZoneOverride.starts_at <= now,
+            or_(ZoneOverride.ends_at.is_(None), ZoneOverride.ends_at > now),
+        )
+        .order_by(ZoneOverride.created_at.desc(), ZoneOverride.id.desc())
+    ).first()
 
 
 def temperature_for_mode(session: Session, zone: Zone, mode_id: int) -> Decimal | None:

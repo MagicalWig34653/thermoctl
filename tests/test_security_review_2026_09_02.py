@@ -57,6 +57,7 @@ def test_kiosk_token_gilt_nicht_als_rest_bearer(
             ("zone.read", zone.id),
             ("setpoint.write", zone.id),
             ("override.create", zone.id),
+            ("override.cancel", zone.id),
         ],
     )
     _token, plaintext = issue_kiosk_token(
@@ -350,6 +351,7 @@ def test_kiosk_token_gilt_auch_bei_mcp_nicht(session: Session) -> None:
             ("zone.read", zone.id),
             ("setpoint.write", zone.id),
             ("override.create", zone.id),
+            ("override.cancel", zone.id),
         ],
     )
     _token, plaintext = issue_kiosk_token(

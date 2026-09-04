@@ -30,7 +30,7 @@ _PATTERN = re.compile(
 @dataclass(frozen=True)
 class Command:
     zone_id: int
-    # "setpoint", "operating_mode", "boost", "mode", or "parameter"
+    # "setpoint", "operating_mode", "boost", "cancel_override", "mode", or "parameter"
     kind: str
     temperature: Decimal | None = None
     operating_mode: str | None = None
@@ -78,7 +78,7 @@ def split_topic(topic: str, payload: bytes, prefix: str) -> Command:
     key = match.group("schluessel")
     text = payload.decode("utf-8", errors="replace").strip()
 
-    if kind in ("setpoint", "operating_mode", "boost") and key is not None:
+    if kind in ("setpoint", "operating_mode", "boost", "cancel_override") and key is not None:
         raise CommandError(f"Die Befehlsart {kind!r} kennt keinen Unterschluessel")
 
     if kind == "setpoint":
@@ -92,6 +92,12 @@ def split_topic(topic: str, payload: bytes, prefix: str) -> Command:
     if kind == "boost":
         # The payload doesn't matter: a button has no value, only an event. Home
         # Assistant sends `payload_press`; anything else would mean the same thing.
+        return Command(zone_id, kind)
+
+    if kind == "cancel_override":
+        # Same reasoning as `boost` above: a button, no value to carry. Ends
+        # whatever override is currently running -- a boost included, since a boost
+        # *is* an override (`domain/remote_control.py::boost`).
         return Command(zone_id, kind)
 
     if kind == "mode":

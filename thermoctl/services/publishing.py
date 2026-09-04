@@ -60,7 +60,7 @@ from thermoctl.domain.fault_notice import (
     command_failure_notice,
     notification_audit_action,
 )
-from thermoctl.domain.schedule import end_of_next_switch, resolved_setpoint
+from thermoctl.domain.schedule import end_of_next_switch, resolved_setpoint, running_override
 from thermoctl.domain.self_regulating import SETPOINT_PROPERTY, valve_commands
 from thermoctl.domain.switch_commands import switch_commands, thermostat_commands
 from thermoctl.domain.zone_settings import PARAMETERS, control_parameters
@@ -81,10 +81,12 @@ from thermoctl.integrations.mqtt.publication import (
     armed_topic,
     availability_topic,
     boost_discovery,
+    cancel_override_discovery,
     fault_notice_discovery,
     fault_notice_topics,
     mode_discovery,
     mode_topics,
+    override_active_discovery,
     parameter_discovery,
     parameter_topics,
     states_topics,
@@ -214,6 +216,8 @@ def _discovery_messages(session: Session, zone: Zone, prefix: str) -> list[Disco
     messages = [
         zone_discovery(zone.id, name, prefix=prefix),
         boost_discovery(zone.id, name, prefix),
+        cancel_override_discovery(zone.id, name, prefix),
+        override_active_discovery(zone.id, name, prefix),
         fault_notice_discovery(zone.id, name, prefix),
         timestamp_discovery(zone.id, name, "last_switch", "Letzte Schaltung", prefix),
         timestamp_discovery(
@@ -1021,6 +1025,7 @@ async def _send_zone_state(
         (topics.would_heat, _as_text(_would_heat(session, zone.id))),
         (topics.last_switch, _as_text(_last_switch(session, zone.id))),
         (topics.next_switch, _as_text(end_of_next_switch(session, zone, now))),
+        (topics.override_active, _as_text(running_override(session, zone, now) is not None)),
     ]
 
     setpoints: dict[int, Decimal] = {

@@ -10,10 +10,14 @@ bypasses `thermoctl/domain/authz.py`.
 Its scope is deliberately narrow and is composed from exactly two facts an admin
 chooses: which zones it may see, and whether it may also operate them. "Operate" means
 what `thermoctl/domain/remote_control.py` offers a dial from outside: nudging the
-setpoint of the mode currently in effect, and boosting the next schedule point
-forward. Both are covered by permissions that already exist -- `setpoint.write` and
-`override.create` -- so a kiosk token that may operate a zone can do exactly what a
-Home Assistant thermostat card can do there, no more.
+setpoint of the mode currently in effect, boosting the next schedule point forward,
+and undoing an override once it is running -- a boost included, since a boost *is*
+one. Covered by permissions that already exist -- `setpoint.write`, `override.create`
+and `override.cancel` -- so a kiosk token that may operate a zone can do exactly what
+a Home Assistant thermostat card can do there, no more. `override.cancel` joined the
+other two once the kiosk dashboard grew its own "Übersteuerung aufheben" button
+(`web/kiosk_views.py::kiosk_cancel_override`): a wall tablet that can start a boost
+and never leave the room it started it in must also be able to end it there.
 """
 
 from datetime import datetime
@@ -31,7 +35,7 @@ from thermoctl.domain.authz import Forbidden
 # `zone.read` -- in particular nothing that would reach settings, users, devices, the
 # audit log, or arming, no matter which permissions the issuing admin happens to hold.
 KIOSK_VIEW_PERMISSION = "zone.read"
-KIOSK_CONTROL_PERMISSIONS = ("setpoint.write", "override.create")
+KIOSK_CONTROL_PERMISSIONS = ("setpoint.write", "override.create", "override.cancel")
 
 
 class KioskError(Exception):
@@ -73,9 +77,9 @@ def issue_kiosk_token(
         )
     except Forbidden as exc:
         # `owner` is always the admin issuing it, so this only fires if they
-        # themselves lack `zone.read`/`setpoint.write`/`override.create` for one of
-        # the chosen zones -- surfaced as a kiosk-specific message instead of the
-        # generic one from `issue_token`.
+        # themselves lack `zone.read`/`setpoint.write`/`override.create`/
+        # `override.cancel` for one of the chosen zones -- surfaced as a
+        # kiosk-specific message instead of the generic one from `issue_token`.
         raise KioskError(str(exc)) from exc
 
 

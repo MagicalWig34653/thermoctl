@@ -90,6 +90,14 @@ def test_the_new_command_kinds_are_read() -> None:
     )
 
 
+def test_the_cancel_override_command_is_read() -> None:
+    """A button, like `boost` -- the payload carries no value, only an event."""
+    cancel = split_topic(
+        "thermoctl/zones/4/command/cancel_override", b"cancel_override", "thermoctl"
+    )
+    assert (cancel.kind, cancel.zone_id) == ("cancel_override", 4)
+
+
 @pytest.mark.parametrize(
     "topic",
     [
@@ -97,6 +105,7 @@ def test_the_new_command_kinds_are_read() -> None:
         # would be a second, unchecked path to the same target.
         "thermoctl/zones/1/command/setpoint/17",
         "thermoctl/zones/1/command/boost/jetzt",
+        "thermoctl/zones/1/command/cancel_override/jetzt",
         # And the subkeys themselves must be valid.
         "thermoctl/zones/1/command/mode/0",
         "thermoctl/zones/1/command/mode/tag",
@@ -309,3 +318,71 @@ def test_the_boost_button_brings_forward_the_next_switch_point(session) -> None:
     assert entry.temperature_c == Decimal("18.0")
     # It ends at the switch point it brings forward -- not at some arbitrary time.
     assert entry.ends_at is not None
+
+
+def test_the_cancel_override_command_ends_a_running_boost(session) -> None:
+    """A boost *is* an override -- ending it needs no dedicated "undo boost" path,
+    only the ordinary cancel that already exists for every override."""
+    from datetime import datetime
+
+    from sqlalchemy import select
+
+    from tests.helpers import create_mode, create_settings, create_zone, source
+    from thermoctl.app import _execute_command
+    from thermoctl.config import Settings
+    from thermoctl.db.models.override import ZoneOverride
+    from thermoctl.db.models.schedule import SchedulePoint
+    from thermoctl.db.models.zone import ZoneSetpoint
+
+    create_settings(session).timezone = "UTC"
+    source(session, "system")
+    zone = create_zone(session, "aufhebzone")
+    night = create_mode(session, "nacht")
+    session.add_all(
+        [
+            SchedulePoint(
+                zone_id=zone.id, weekday=int(datetime.now().isoweekday()),
+                minute_of_day=1439, setpoint_mode_id=night.id,
+            ),
+            ZoneSetpoint(
+                zone_id=zone.id, setpoint_mode_id=night.id, temperature_c=Decimal("18.0")
+            ),
+        ]
+    )
+    session.flush()
+    environment = Settings(_env_file=None, database_url="sqlite://", secret_key="s" * 32)
+
+    _execute_command(session, f"thermoctl/zones/{zone.id}/command/boost", b"PRESS", environment)
+    entry = session.scalars(
+        select(ZoneOverride).where(ZoneOverride.zone_id == zone.id)
+    ).one()
+    assert entry.cancelled_at is None
+
+    _execute_command(
+        session, f"thermoctl/zones/{zone.id}/command/cancel_override", b"PRESS", environment
+    )
+    assert entry.cancelled_at is not None
+
+
+def test_cancelling_without_a_running_override_is_a_harmless_no_op(session) -> None:
+    """A button press finding nothing to cancel is not a rejected command --
+    it must not raise, and must leave the (empty) override table alone."""
+    from sqlalchemy import select
+
+    from tests.helpers import create_settings, create_zone, source
+    from thermoctl.app import _execute_command
+    from thermoctl.config import Settings
+    from thermoctl.db.models.override import ZoneOverride
+
+    create_settings(session)
+    source(session, "system")
+    zone = create_zone(session, "leerzone")
+    environment = Settings(_env_file=None, database_url="sqlite://", secret_key="s" * 32)
+
+    _execute_command(
+        session, f"thermoctl/zones/{zone.id}/command/cancel_override", b"PRESS", environment
+    )
+
+    assert not session.scalars(
+        select(ZoneOverride).where(ZoneOverride.zone_id == zone.id)
+    ).all()

@@ -44,6 +44,7 @@ def test_state_topics_have_no_get_suffix() -> None:
         would_heat="haus_nord/zones/17/state/would_heat",
         last_switch="haus_nord/zones/17/state/last_switch",
         next_switch="haus_nord/zones/17/state/next_switch",
+        override_active="haus_nord/zones/17/state/override_active",
     )
 
 
@@ -52,6 +53,7 @@ def test_command_topics_live_in_their_own_tree() -> None:
         setpoint="haus_nord/zones/17/command/setpoint",
         operating_mode="haus_nord/zones/17/command/operating_mode",
         boost="haus_nord/zones/17/command/boost",
+        cancel_override="haus_nord/zones/17/command/cancel_override",
     )
 
 
@@ -157,6 +159,36 @@ def test_sensor_fault_is_a_persistent_problem_entity_for_automations() -> None:
     assert payload["json_attributes_topic"] == topics.attributes
     assert payload["payload_on"] == "ON"
     assert payload["payload_off"] == "OFF"
+
+
+def test_cancel_override_button_targets_the_cancel_command_topic() -> None:
+    """The button that ends a running override -- a boost included."""
+    from thermoctl.integrations.mqtt.publication import cancel_override_discovery
+
+    message = cancel_override_discovery(17, _zone_name(), "haus_nord")
+    payload = json.loads(message.payload)
+
+    assert message.topic == (
+        "homeassistant/button/haus_nord_zone_17_uebersteuerung_aufheben/config"
+    )
+    assert payload["command_topic"] == command_topics(17, "haus_nord").cancel_override
+    assert payload["payload_press"] == "cancel_override"
+
+
+def test_override_active_sensor_mirrors_the_override_active_state_topic() -> None:
+    """Without this, whoever sees the cancel button in Home Assistant has no way to
+    tell whether there is anything for it to do before pressing it."""
+    from thermoctl.integrations.mqtt.publication import override_active_discovery
+
+    message = override_active_discovery(17, _zone_name(), "haus_nord")
+    payload = json.loads(message.payload)
+
+    assert message.topic == (
+        "homeassistant/binary_sensor/haus_nord_zone_17_uebersteuerung_aktiv/config"
+    )
+    assert payload["state_topic"] == states_topics(17, "haus_nord").override_active
+    assert payload["payload_on"] == "true"
+    assert payload["payload_off"] == "false"
 
 
 def test_this_module_publishes_nothing() -> None:
