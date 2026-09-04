@@ -381,6 +381,10 @@
       "| Heating-Controller-Weboberfläche | Räume einrichten, Zeitprogramme, erweiterte Einstellungen, Geräteübersicht | immer verfügbar |",
       "| Heizungsaktor | Schaltet den Heizkreis (Stellantrieb) | Ja, mindestens einer | Ja, beliebig viele | Zigbee-Schaltaktor + 230-V-Stellantrieb, Zigbee-Thermostatventil |"
     ],
+    "docs/veroeffentlichung-durchsicht.md": [
+      "öffentlich geschaltet wird — sie listet, was dem heute entgegensteht, damit der",
+      "eine Heizung in einer bewohnten Wohnung\" sowie „Ins offene Internet gehört dieser"
+    ],
     "thermoctl/db/models/lookup.py": [
       "Aktor",
       "Die Regelung scharf schalten",
