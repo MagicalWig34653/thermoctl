@@ -320,8 +320,8 @@ def _pi_gate_reason(
     reason_code: str, *, resume_delay_active: bool, frost_effective: bool
 ) -> str | None:
     """Which of section 4's PI-resetting precedence rules governs this cycle, if
-    any. `None` means none of them do -- exactly "wo die gewoehnliche Regelung
-    heizen wuerde" (rule 6's territory, including the plain "stay off" case rule 6
+    any. `None` means none of them do -- exactly "wo die gewöhnliche Regelung
+    heizen würde" (rule 6's territory, including the plain "stay off" case rule 6
     falls through to when rule 7 does not apply either): PI computes a real
     candidate for this cycle.
 
@@ -426,7 +426,7 @@ def _write_pi_state(
     this cycle: either the modulator itself flipped (`output.switched`), or its
     starting point was reset from under it by a setpoint-context change this same
     cycle (`old_state`'s context key differs from the new one -- section 2's
-    "Beginn und Ende einer Uebersteuerung", handled inside `pi_cycle()` itself, see
+    "Beginn und Ende einer Übersteuerung", handled inside `pi_cycle()` itself, see
     its docstring) even though the *chosen* on/off value happens not to have
     changed, or there was no previous run to speak of at all. Any other cycle
     leaves it untouched, so `_load_pi_state`'s derivation above keeps accumulating
@@ -583,7 +583,7 @@ def _pi_outcome(
         fields["pi_integrator_action"] = INTEGRATOR_RESET
         return (
             decision.heating,
-            f"PI-Rückfall: {reason}, wartet auf die naechste Fenstergrenze.",
+            f"PI-Rückfall: {reason}, wartet auf die nächste Fenstergrenze.",
             fields,
         )
 
@@ -769,7 +769,7 @@ def _process_zone(
     forecast: list[HourlyForecast] | None = None,
 ) -> ShadowDecision:
     settings = session.get(Setting, 1)
-    assert settings is not None, "setting-Zeile fehlt — Einrichtung unvollstaendig"
+    assert settings is not None, "setting-Zeile fehlt — Einrichtung unvollständig"
 
     state = session.get(ZoneState, zone.id)
     if state is None:
@@ -877,7 +877,7 @@ def cycle(
                 row = _process_zone(session, zone, now, forecast)
         except Exception:
             log.exception(
-                "Schattenzyklus fuer eine Zone gescheitert — uebrige Zonen laufen weiter",
+                "Schattenzyklus für eine Zone gescheitert — übrige Zonen laufen weiter",
                 extra={"zone_id": zone.id},
             )
             continue

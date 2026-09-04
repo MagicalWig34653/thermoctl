@@ -24,7 +24,7 @@ def test_the_page_renders_and_the_period_switch_changes_the_active_choice(
     period_nav = admin_page.get_by_role("navigation", name="Zeitraum")
     buttons = period_nav.get_by_role("link")
     count = buttons.count()
-    assert count >= 2, "Erwarte mehrere Zeitraum-Knoepfe, um den Wechsel zu pruefen."
+    assert count >= 2, "Erwarte mehrere Zeitraum-Knöpfe, um den Wechsel zu prüfen."
 
     currently_active = period_nav.locator("[aria-current='page']")
     expect(currently_active).to_have_count(1)

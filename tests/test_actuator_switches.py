@@ -225,7 +225,7 @@ class _NetworkForbidden:
     async def send(
         self, device_uuid: str, namespace: str, method: str, payload: Any
     ) -> dict[str, Any]:
-        raise AssertionError("Der Trockenlauf haette den Transport nicht anfassen duerfen")
+        raise AssertionError("Der Trockenlauf hätte den Transport nicht anfassen dürfen")
 
 
 def _decision(session: Session, zone: Zone, *, heating: bool, reason: str = "Testgrund") -> None:
@@ -378,7 +378,7 @@ async def test_a_device_without_the_switch_capability_gets_no_command(
     source(session, "system")
     create_all_command_outcomes(session)
     zone, _device = _actuator_zone(
-        session, "fehlendefaehigkeitzone", with_switch_capability=False
+        session, "fehlendefähigkeitzone", with_switch_capability=False
     )
     _decision(session, zone, heating=True)
     arm(session, True, reason="vier Tage verglichen", user_id=None)
@@ -689,7 +689,7 @@ async def test_a_meross_actuator_without_a_signed_in_session_fails_visibly(
     entry, outcome_code = entries[0]
     assert outcome_code == "failed"
     assert entry.device_name == device.display_name
-    assert entry.error == "Keine gueltige Meross-Sitzung vorhanden"
+    assert entry.error == "Keine gültige Meross-Sitzung vorhanden"
 
 
 @pytest.mark.anyio

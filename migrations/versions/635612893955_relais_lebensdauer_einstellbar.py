@@ -3,8 +3,8 @@
 War bisher die feste Konstante ``ASSUMED_RELAY_LIFETIME_OPERATIONS`` in
 ``domain/statistics.py``. Bestehende Anlagen erhalten mit dieser Migration den
 neuen Vorgabewert -- die alte Konstante stand ohnehin nur als austauschbare
-Annahme im Code, keine gemessene Groesse, die eine Anlage individuell haette
-einstellen koennen.
+Annahme im Code, keine gemessene Größe, die eine Anlage individuell hätte
+einstellen können.
 
 Revision ID: 635612893955
 Revises: d2f4a7c91e63

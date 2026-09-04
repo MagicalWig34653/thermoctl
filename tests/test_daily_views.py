@@ -521,7 +521,7 @@ def test_an_override_until_the_next_switch(session: Session, client_als) -> None
     from thermoctl.db.models.schedule import SchedulePoint
 
     zone = _grundlage(session)
-    mode = create_mode(session, "tag-uebersteuerung", "Tag")
+    mode = create_mode(session, "tag-übersteuerung", "Tag")
     session.add(
         SchedulePoint(zone_id=zone.id, weekday=1, minute_of_day=360, setpoint_mode_id=mode.id)
     )
@@ -879,7 +879,7 @@ def test_a_thermostat_request_with_a_nonsensical_mode_is_a_bad_request(
     session.flush()
     falsche_richtung = angemeldeter_client.post(
         f"/zones/{zone.id}/thermostat",
-        data={"mode_id": str(mode.id), "direction": "seitwaerts"},
+        data={"mode_id": str(mode.id), "direction": "seitwärts"},
         headers=_csrf(angemeldeter_client),
         follow_redirects=False,
     )

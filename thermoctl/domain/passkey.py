@@ -88,7 +88,7 @@ def _redeem_challenge(
     """
     candidate = client_data.get("challenge")
     if not isinstance(candidate, str):
-        raise PasskeyError("Die Antwort enthaelt keine Challenge.")
+        raise PasskeyError("Die Antwort enthält keine Challenge.")
 
     entry = session.scalar(
         select(PasskeyChallenge).where(PasskeyChallenge.challenge == candidate)
@@ -105,7 +105,7 @@ def _redeem_challenge(
 
     if ceremony_of_the_row != ceremony:
         raise PasskeyError(
-            f"Challenge war fuer '{ceremony_of_the_row}' ausgegeben, nicht fuer "
+            f"Challenge war für '{ceremony_of_the_row}' ausgegeben, nicht für "
             f"'{ceremony}'."
         )
     if age > CHALLENGE_GUELTIG:
@@ -266,15 +266,15 @@ def verify_authentication(
     if checked.new_sign_count and checked.new_sign_count <= passkey.sign_count:
         _log(
             session, passkey.user_id,
-            f"Zaehler zurueckgefallen ({checked.new_sign_count} <= {passkey.sign_count})",
+            f"Zähler zurückgefallen ({checked.new_sign_count} <= {passkey.sign_count})",
         )
-        raise PasskeyError("Der Zaehler des Authenticators ist zurueckgefallen.")
+        raise PasskeyError("Der Zähler des Authenticators ist zurückgefallen.")
 
     # The lock is evaluated AFTER the signature check -- the same ordering as in the
     # password path, so that behavior cannot reveal which accounts exist.
     user = session.get(User, passkey.user_id)
     if user is None or not user.is_active:
-        _log(session, passkey.user_id, "Konto gesperrt oder geloescht")
+        _log(session, passkey.user_id, "Konto gesperrt oder gelöscht")
         raise PasskeyError("Konto nicht nutzbar.")
 
     passkey.sign_count = checked.new_sign_count
@@ -294,7 +294,7 @@ def remove_passkey(
 ) -> None:
     """Removes a passkey belonging to the caller's own account."""
     if passkey.user_id != user.id:
-        raise PasskeyError("Dieser Passkey gehoert einem anderen Konto.")
+        raise PasskeyError("Dieser Passkey gehört einem anderen Konto.")
     label = passkey.label
     session.delete(passkey)
     session.flush()
@@ -309,7 +309,7 @@ def _client_data(response: dict[str, Any]) -> dict[str, Any]:
     """Reads `clientDataJSON` from the response -- only to find the challenge."""
     raw_entry = (response.get("response") or {}).get("clientDataJSON")
     if not isinstance(raw_entry, str):
-        raise PasskeyError("Die Antwort enthaelt keine clientDataJSON.")
+        raise PasskeyError("Die Antwort enthält keine clientDataJSON.")
     try:
         data = json.loads(base64url_to_bytes(raw_entry))
     except Exception as exc:

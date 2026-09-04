@@ -380,9 +380,9 @@ def test_arming_and_taking_it_back(
     assert armed.status_code == 200
     assert armed.json()["control_armed"] is True
 
-    zurueck = client.put("/api/v1/control/armed", json={"armed": False}, headers=head)
-    assert zurueck.status_code == 200
-    assert zurueck.json()["control_armed"] is False
+    zurück = client.put("/api/v1/control/armed", json={"armed": False}, headers=head)
+    assert zurück.status_code == 200
+    assert zurück.json()["control_armed"] is False
 
 
 def test_arming_without_a_reason_is_refused(

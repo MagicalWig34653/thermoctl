@@ -232,11 +232,11 @@ def test_invalid_input_returns_to_the_form(
     zone = create_zone(session, "bestehende-zone")
     client = client_als([("zone.manage", None), ("zone.read", None)])
 
-    gueltig = {
+    gültig = {
         "name": "neu", "display_name": "Neu", "operating_mode": str(kind.id),
         "sort_order": "0", "temperature_source_device_id": "",
     }
-    faelle = [
+    fälle = [
         ({"name": ""}, "technischen Namen"),
         ({"display_name": ""}, "Anzeigenamen"),
         ({"operating_mode": ""}, "Betriebsart auswählen"),
@@ -245,8 +245,8 @@ def test_invalid_input_returns_to_the_form(
         ({"temperature_source_device_id": "kein Gerät"}, "bekanntes Gerät"),
         ({"temperature_source_device_id": "999999"}, "nicht bekannt"),
     ]
-    for deviation, expected in faelle:
-        data = {**gueltig, **deviation}
+    for deviation, expected in fälle:
+        data = {**gültig, **deviation}
         create = client.post("/zones", data=data, headers=_csrf(client))
         assert create.status_code == 200, deviation
         assert expected in create.text, deviation
@@ -333,4 +333,4 @@ def test_an_unknown_operating_mode_is_refused(session: Session) -> None:
 
     zone = create_zone(session, "unbekanntbetrieb")
     with pytest.raises(UnknownOperatingMode):
-        set_operating_mode(session, zone, "gemuetlich", actor_id=None, source="system")
+        set_operating_mode(session, zone, "gemütlich", actor_id=None, source="system")

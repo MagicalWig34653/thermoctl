@@ -9,10 +9,10 @@
     <link rel="stylesheet" href="{{ url_prefix }}/static/thermoctl.css">
     {#
     Das Farbschema folgt dem Betriebssystem, und zwar allein. Ein eigener Umschalter war
-    eine dritte Einstellung fuer etwas, das jedes Geraet schon kennt -- und er ging beim
-    naechsten Browser wieder verloren. `data-bs-theme` bleibt gesetzt, weil Bootstrap
-    darauf hoert; es folgt jetzt der Medienabfrage statt einem gemerkten Wert.
-    Frueher stand hier `data-bs-theme="auto"` im <html>-Tag: Diesen Wert kennt Bootstrap
+    eine dritte Einstellung für etwas, das jedes Geraet schon kennt -- und er ging beim
+    nächsten Browser wieder verloren. `data-bs-theme` bleibt gesetzt, weil Bootstrap
+    darauf hört; es folgt jetzt der Medienabfrage statt einem gemerkten Wert.
+    Früher stand hier `data-bs-theme="auto"` im <html>-Tag: Diesen Wert kennt Bootstrap
     nicht, das dunkle Schema war damit nie aktiv.
     #}
     <script>
@@ -23,12 +23,12 @@
                     "data-bs-theme", abfrage.matches ? "dark" : "light");
             }
             setzen();
-            // Ohne das bliebe eine geoeffnete Seite hell, wenn das System abends
+            // Ohne das bliebe eine geöffnete Seite hell, wenn das System abends
             // umschaltet.
             abfrage.addEventListener("change", setzen);
         })();
     </script>
-    {# Siehe base.html: Skripte gehoeren in den Kopf, den hx-boost nie austauscht. #}
+    {# Siehe base.html: Skripte gehören in den Kopf, den hx-boost nie austauscht. #}
     <script defer src="{{ url_prefix }}/static/vendor/bootstrap/bootstrap.bundle.min.js"></script>
     <script defer src="{{ url_prefix }}/static/vendor/htmx/htmx.min.js"></script>
     <script defer src="{{ url_prefix }}/static/loading_indicator.js"></script>
@@ -46,7 +46,7 @@
 </head>
 {#
 Keine Navigationsleiste: Wer hier steht, ist nicht angemeldet und kann nirgends hin. Ein
-Menue voller Wege, die alle mit 401 antworten, ist keine Orientierung, sondern eine
+Menü voller Wege, die alle mit 401 antworten, ist keine Orientierung, sondern eine
 Einladung zum Danebengreifen.
 #}
 <body class="d-flex align-items-center py-5" style="min-height: 100vh" data-url-prefix="{{ url_prefix }}">

@@ -317,10 +317,10 @@ def test_umlauts_are_backfilled_into_existing_labels(
     assert before.returncode == 0, before.stderr
 
     old_spelling = [
-        ("device_capability", "link_quality", "Verbindungsqualitaet", "Verbindungsqualität"),
-        ("device_capability", "illuminance", "Beleuchtungsstaerke", "Beleuchtungsstärke"),
-        ("device_role", "controller", "Bediengeraet", "Bediengerät"),
-        ("actor_source", "web", "Weboberflaeche", "Weboberfläche"),
+        ("device_capability", "link_quality", "Verbindungsqualität", "Verbindungsqualität"),
+        ("device_capability", "illuminance", "Beleuchtungsstärke", "Beleuchtungsstärke"),
+        ("device_role", "controller", "Bediengerät", "Bediengerät"),
+        ("actor_source", "web", "Weboberfläche", "Weboberfläche"),
     ]
     db_engine = create_engine(migrations_database_url)
     try:
@@ -509,6 +509,6 @@ def test_the_thermostat_downgrade_survives_a_device_that_used_the_capability(
                         "(SELECT 1 FROM device_capability c WHERE c.id = t.capability_id)"
                     )
                 ).scalar_one()
-                assert orphans == 0, f"{table} zeigt auf eine geloeschte Faehigkeit"
+                assert orphans == 0, f"{table} zeigt auf eine gelöschte Fähigkeit"
     finally:
         db_engine.dispose()

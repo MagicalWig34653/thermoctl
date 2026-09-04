@@ -93,8 +93,8 @@ def _zone_with_valve(
         )
     )
     for property_name in properties:
-        # Sollwerte 5..30, Aussentemperatur -40..125 -- so gibt Zigbee2MQTT die
-        # Grenzen fuer diese Merkmale an.
+        # Sollwerte 5..30, Außentemperatur -40..125 -- so gibt Zigbee2MQTT die
+        # Grenzen für diese Merkmale an.
         low, high = ("5", "30") if "setpoint" in property_name else ("-40", "125")
         _property(session, valve.id, property_name, minimum=low, maximum=high)
     session.flush()
@@ -110,7 +110,7 @@ def test_a_self_regulating_valve_is_told_the_zone_setpoint(session: Session) -> 
     assert len(commands) == 1
     assert commands[0].device.id == valve.id
     assert commands[0].setpoint_c > 0
-    assert commands[0].temperature_property is None  # kein Merkmal dafuer angeboten
+    assert commands[0].temperature_property is None  # kein Merkmal dafür angeboten
 
 
 def test_a_valve_that_thermoctl_switches_is_not_told_anything(session: Session) -> None:
@@ -134,7 +134,7 @@ def test_the_measured_temperature_is_written_where_the_valve_accepts_one(
     """
     zone, _valve = _zone_with_valve(
         session,
-        "aussenfuehlerzone",
+        "außenfühlerzone",
         properties=("occupied_heating_setpoint", "external_temperature_input"),
     )
     state = create_zone_state(session, zone)
@@ -172,7 +172,7 @@ def test_an_open_window_lowers_the_valve_to_frost_protection(session: Session) -
     """
     zone, _valve = _zone_with_valve(session, "fensterzone")
     # Die Frostschutz-Betriebsart legt `create_settings` schon an; hier bekommt sie
-    # nur einen Sollwert fuer diese Zone.
+    # nur einen Sollwert für diese Zone.
     settings = session.get(Setting, 1)
     assert settings is not None
     session.add(
@@ -233,7 +233,7 @@ def test_a_measured_temperature_outside_the_valve_s_range_is_left_out(
     """
     zone, valve = _zone_with_valve(
         session,
-        "engefuehlerzone",
+        "engefühlerzone",
         properties=("occupied_heating_setpoint", "external_temperature_input"),
     )
     external = session.scalar(
@@ -245,7 +245,7 @@ def test_a_measured_temperature_outside_the_valve_s_range_is_left_out(
     assert external is not None
     external.min_value, external.max_value = Decimal("10"), Decimal("30")
     state = create_zone_state(session, zone)
-    state.temperature_c = Decimal("-5.0")  # ausserhalb dessen, was das Ventil annimmt
+    state.temperature_c = Decimal("-5.0")  # außerhalb dessen, was das Ventil annimmt
     session.flush()
 
     command = valve_commands(session, zone, NOW)[0]

@@ -146,7 +146,7 @@ h2, .t-section {
     letter-spacing: -0.005em;
 }
 
-/* Kleine Grossbuchstaben-Marke. Sparsam: Sie beschriftet Abschnitte, sie schmückt sie
+/* Kleine Großbuchstaben-Marke. Sparsam: Sie beschriftet Abschnitte, sie schmückt sie
    nicht. */
 .t-label {
     font-size: 0.6875rem;
@@ -342,10 +342,10 @@ h2, .t-section {
     border-right: 0;
 }
 
-/* Der Plan gilt gerade nicht -- Betriebsart "Aus" oder eine laufende Uebersteuerung
-   setzen ihn ausser Kraft. Das Band zeigt dann weiter, was vorgesehen waere, aber
-   sichtbar entkraeftet: Ein satt gezeichneter Tagesplan an einer abgeschalteten Zone
-   wuerde das Gegenteil dessen behaupten, was die Anlage tut. */
+/* Der Plan gilt gerade nicht -- Betriebsart "Aus" oder eine laufende Übersteuerung
+   setzen ihn außer Kraft. Das Band zeigt dann weiter, was vorgesehen wäre, aber
+   sichtbar entkräftet: Ein satt gezeichneter Tagesplan an einer abgeschalteten Zone
+   würde das Gegenteil dessen behaupten, was die Anlage tut. */
 .tc-track-suspended {
     filter: grayscale(0.75);
     opacity: 0.5;
@@ -397,14 +397,14 @@ h2, .t-section {
     text-decoration: underline;
 }
 
-/* Eigene Klasse statt eines style-Attributs an der Zeile: Ein Attribut schlaegt jede
+/* Eigene Klasse statt eines style-Attributs an der Zeile: Ein Attribut schlägt jede
    Medienabfrage, und die Betriebsseite lief deshalb auf schmalen Geraeten 260 Pixel
-   ueber den Rand hinaus. */
+   über den Rand hinaus. */
 .tc-zone-operation {
     grid-template-columns: minmax(8rem, 1fr) 6.5rem 6.5rem minmax(12rem, 2.4fr);
 }
 
-/* Geraeteliste: Name und Befund tragen das Gewicht, Zustandswerte und Faehigkeiten
+/* Geraeteliste: Name und Befund tragen das Gewicht, Zustandswerte und Fähigkeiten
    stehen daneben. */
 .tc-zone-device {
     grid-template-columns: minmax(12rem, 2fr) 7rem minmax(10rem, 1.6fr) minmax(7rem, 1fr);
@@ -421,7 +421,7 @@ h2, .t-section {
     .tc-zone > .tc-zone-track {
         grid-column: 1 / -1;
     }
-    /* Die Begruendung darf umbrechen; sie ist der laengste Text der Zeile. */
+    /* Die Begründung darf umbrechen; sie ist der längste Text der Zeile. */
     .tc-zone-operation > :last-child,
     .tc-zone-device > :last-child {
         grid-column: 1 / -1;
@@ -430,7 +430,7 @@ h2, .t-section {
 
 /* Letzte Sicherung: Kein einzelnes Wort und keine lange Kennung darf die Seite
    aufspannen. Das ersetzt keine der Ursachen oben -- es verhindert nur, dass die
-   naechste eine ganze Seite unbrauchbar macht. */
+   nächste eine ganze Seite unbrauchbar macht. */
 body {
     overflow-wrap: anywhere;
 }
@@ -488,7 +488,7 @@ body {
     outline-offset: 2px;
 }
 
-/* Bootstraps Warngelb passt nicht zum Messing dieser Oberflaeche. Es bleibt als Signal
+/* Bootstraps Warngelb passt nicht zum Messing dieser Oberfläche. Es bleibt als Signal
    erhalten -- "sieh genau hin" --, nur im richtigen Ton. */
 .btn-warning {
     --bs-btn-bg: var(--warning-area);
@@ -501,9 +501,9 @@ body {
     --bs-btn-active-color: var(--warning);
 }
 
-/* Die dritte und letzte Bedeutung von Farbe: "das loescht etwas". Sie erscheint
-   ausschliesslich auf Schaltflaechen, nie an einem Messwert -- Bootstraps volles Rot
-   waere neben dem Kupfer nur laut. */
+/* Die dritte und letzte Bedeutung von Farbe: "das löscht etwas". Sie erscheint
+   ausschließlich auf Schaltflächen, nie an einem Messwert -- Bootstraps volles Rot
+   wäre neben dem Kupfer nur laut. */
 .btn-outline-danger {
     --bs-btn-color: #9c4232;
     --bs-btn-border-color: #d8b3ab;
@@ -539,7 +539,7 @@ body {
     min-width: 0;
 }
 
-/* Die Bereichsmarke traegt sonst Bootstraps Absatzabstand von einem ganzen rem und
+/* Die Bereichsmarke trägt sonst Bootstraps Absatzabstand von einem ganzen rem und
    schiebt den ersten Knoten von den Pfeilen weg. */
 .tc-flow-column > .t-label {
     margin-bottom: 0.1rem;
@@ -549,17 +549,17 @@ body {
    Kein Bild und kein SVG -- er hat genau eine Aufgabe und die Richtung ist das Einzige,
    was er sagen muss. */
 .tc-flow-arrow {
-    /* `start`, nicht `center`: Zentriert wuerde der Pfeil in der Mitte der *hoechsten*
-       Spalte sitzen und mit jedem zusaetzlichen Geraet weiter nach unten wandern -- er
+    /* `start`, nicht `center`: Zentriert würde der Pfeil in der Mitte der *höchsten*
+       Spalte sitzen und mit jedem zusätzlichen Geraet weiter nach unten wandern -- er
        zeigt aber auf die erste Stufe, nicht auf die Mitte einer Liste. */
     align-self: start;
     width: 2.5rem;
     height: 1px;
     background: var(--line-strong);
     position: relative;
-    /* Auf die Mitte des ersten Knotens: Marke (rund 1,1rem) plus die halbe Hoehe einer
-       Karte. Ein `align-items: center` ueber die ganze Spalte waere falsch, sobald eine
-       Spalte mehr Knoten traegt als die andere -- der Pfeil zeigt auf die erste Stufe,
+    /* Auf die Mitte des ersten Knotens: Marke (rund 1,1rem) plus die halbe Höhe einer
+       Karte. Ein `align-items: center` über die ganze Spalte wäre falsch, sobald eine
+       Spalte mehr Knoten trägt als die andere -- der Pfeil zeigt auf die erste Stufe,
        nicht auf die Mitte einer Liste. */
     margin-top: 2.7rem;
 }
@@ -587,8 +587,8 @@ body {
     font-size: 0.875rem;
 }
 
-/* Die Farbe sagt, was der Knoten in der Kette ist -- Messung ist kuehl, Schalten ist
-   warm, die Zone dazwischen bleibt neutral. Dieselbe Sprache wie ueberall. */
+/* Die Farbe sagt, was der Knoten in der Kette ist -- Messung ist kühl, Schalten ist
+   warm, die Zone dazwischen bleibt neutral. Dieselbe Sprache wie überall. */
 .tc-node-sensor { border-left-color: var(--cool); }
 .tc-node-contact { border-left-color: var(--warning); }
 .tc-node-actuator { border-left-color: var(--warmth); }
@@ -599,7 +599,7 @@ body {
 .tc-node-display { border-left-color: var(--line-strong); }
 .tc-node-free { border-left-color: var(--line-strong); }
 
-/* Eine Luecke ist kein Kasten mit leerem Inhalt, sondern sichtbar keiner: gestrichelt
+/* Eine Lücke ist kein Kasten mit leerem Inhalt, sondern sichtbar keiner: gestrichelt
    und in Warnfarbe. Ein leerer Kasten sieht aus wie ein Geraet ohne Namen. */
 .tc-node-gap {
     border: 1px dashed color-mix(in srgb, var(--warning) 55%, var(--line));
@@ -622,8 +622,8 @@ body {
 }
 
 /* Ablegeziele der Geraetezuordnung. Sie sind immer sichtbar umrandet, nicht erst
-   waehrend des Ziehens: Ein Ziel, das erst erscheint, wenn man schon zieht, findet
-   niemand, der nicht weiss, dass es da ist. */
+   während des Ziehens: Ein Ziel, das erst erscheint, wenn man schon zieht, findet
+   niemand, der nicht weiß, dass es da ist. */
 .tc-target {
     border: 1px dashed var(--line-strong);
     border-radius: var(--radius-small);
@@ -698,7 +698,7 @@ body {
     white-space: nowrap;
 }
 
-/* Bei vielen Tagen wird jede zweite Beschriftung ausgelassen -- sonst ueberlagern sie
+/* Bei vielen Tagen wird jede zweite Beschriftung ausgelassen -- sonst überlagern sie
    sich zu einem grauen Streifen. */
 .tc-bars:has(> :nth-child(15)) .tc-bar:nth-child(even) .tc-bar-marker {
     visibility: hidden;
@@ -708,7 +708,7 @@ body {
     display: none;
 }
 
-/* ── Aufklappbare Rechnung (z. B. Relais-Verschleiss bei PI-Beta) ────────────── */
+/* ── Aufklappbare Rechnung (z. B. Relais-Verschleiß bei PI-Beta) ────────────── */
 
 .tc-info-disclosure > summary {
     cursor: pointer;
@@ -757,7 +757,7 @@ body {
 }
 
 /* Die Zonenhaken eines Rechts. Sie stehen rechts daneben und nicht darunter: Ein Recht
-   ist eine Zeile, und "wo gilt es" gehoert in dieselbe Zeile wie "gilt es". */
+   ist eine Zeile, und "wo gilt es" gehört in dieselbe Zeile wie "gilt es". */
 .tc-permission-zones {
     display: flex;
     flex-wrap: wrap;
@@ -771,8 +771,8 @@ body {
 }
 
 /* Anlagenweit vergeben: Die Zonenhaken sind dann gegenstandslos -- ein anlagenweites
-   Recht deckt jede Zone ab. Sie bleiben sichtbar, aber gedaempft, statt zu
-   verschwinden; ein Bedienelement, das beim Klicken verschwindet, laesst einen raten,
+   Recht deckt jede Zone ab. Sie bleiben sichtbar, aber gedämpft, statt zu
+   verschwinden; ein Bedienelement, das beim Klicken verschwindet, lässt einen raten,
    ob man etwas kaputtgemacht hat. */
 .tc-hidden {
     opacity: 0.35;
@@ -833,7 +833,7 @@ body {
 }
 
 /* Das native details/summary bleibt ohne JavaScript bedienbar. Nur sein Inhalt wird
-   aus dem Fluss genommen, damit das offene Menue die Tagesraster nicht verschiebt. */
+   aus dem Fluss genommen, damit das offene Menü die Tagesraster nicht verschiebt. */
 .schedule-copy {
     position: relative;
     z-index: 5;
@@ -879,7 +879,7 @@ body {
     margin-top: 0.4rem;
 }
 
-/* Das letzte Menue waechst nach links in die Seite statt rechts aus dem Fenster. */
+/* Das letzte Menü wächst nach links in die Seite statt rechts aus dem Fenster. */
 .schedule-day-column:last-child .schedule-copy-menu {
     right: 0;
     left: auto;
@@ -899,7 +899,7 @@ body {
     }
 }
 
-/* Die Stelle, die ein Klick ins Anlege-Formular uebernommen hat. Sie steht im Gitter,
+/* Die Stelle, die ein Klick ins Anlege-Formular übernommen hat. Sie steht im Gitter,
    weil dort die Maus ist -- das Formular kann weit unten stehen, und es dorthin zu
    scrollen hat genau den Fehler erzeugt, den diese Marke ersetzt. */
 .schedule-marker {
@@ -917,21 +917,21 @@ body {
 }
 
 /* Die Farbe kommt aus der Vorlage (Solltemperatur des Modus), deshalb hier keine.
-   Der Text steht auf hellen wie dunklen Flaechen -- Tinte statt Weiss. */
+   Der Text steht auf hellen wie dunklen Flächen -- Tinte statt Weiß. */
 .schedule-bar {
     color: var(--ink);
     border-bottom-color: color-mix(in srgb, var(--ink) 18%, transparent) !important;
     line-height: 1.25;
 }
 
-/* Der Verweis "Modus aendern" in einem Balken der Wochenansicht. Er ist absolut in der
+/* Der Verweis "Modus ändern" in einem Balken der Wochenansicht. Er ist absolut in der
    Ecke platziert statt in den Textfluss gestellt: so braucht er keine eigene Zeile und
-   damit keine eigene Hoehe -- ein Balken von 22:00 bis Mitternacht ist rund 2rem hoch
-   und haette Uhrzeit, Modus und einen zusaetzlichen Knopf darin nicht mehr aufnehmen
-   koennen. Im Ruhezustand ist er unsichtbar (opacity statt display/visibility, damit er
-   ueber Tab weiterhin erreichbar und fuer Screenreader vorhanden bleibt) und erscheint
-   erst bei Hover ueber dem Balken oder bei Tastaturfokus -- eine reine Hover-Loesung
-   waere ohne Maus nicht bedienbar gewesen. */
+   damit keine eigene Höhe -- ein Balken von 22:00 bis Mitternacht ist rund 2rem hoch
+   und hätte Uhrzeit, Modus und einen zusätzlichen Knopf darin nicht mehr aufnehmen
+   können. Im Ruhezustand ist er unsichtbar (opacity statt display/visibility, damit er
+   über Tab weiterhin erreichbar und für Screenreader vorhanden bleibt) und erscheint
+   erst bei Hover über dem Balken oder bei Tastaturfokus -- eine reine Hover-Lösung
+   wäre ohne Maus nicht bedienbar gewesen. */
 .schedule-mode-link {
     position: absolute;
     top: 0.15rem;
@@ -959,9 +959,9 @@ body {
 
 /* ── Kiosk-Dashboard ────────────────────────────────────────────────────────────
  * Ein Wandtablett wird aus etwa zwei Metern gelesen, nicht von einer Handbreit
- * entfernt. Alles hier ist deshalb deutlich groesser als anderswo im Programm --
- * dieselben Farben und Bausteine (tc-chip, tc-panel, --waerme/--kuehle), nur in
- * einem Massstab, der auf Distanz noch lesbar ist.
+ * entfernt. Alles hier ist deshalb deutlich größer als anderswo im Programm --
+ * dieselben Farben und Bausteine (tc-chip, tc-panel, --wärme/--kühle), nur in
+ * einem Maßstab, der auf Distanz noch lesbar ist.
  */
 
 .kiosk-page {
@@ -984,7 +984,7 @@ body {
     font-family: var(--schrift-instrument);
     font-variant-numeric: tabular-nums;
     font-size: 1.5rem;
-    color: var(--gedaempft);
+    color: var(--gedämpft);
 }
 
 .kiosk-grid {
@@ -1031,11 +1031,11 @@ body {
 }
 
 .kiosk-error {
-    color: var(--waerme);
+    color: var(--wärme);
     font-size: 1rem;
 }
 
-/* Der AGPL-Verweis (§13): erreichbar, aber bewusst zurueckhaltend -- ein
+/* Der AGPL-Verweis (§13): erreichbar, aber bewusst zurückhaltend -- ein
  * Wandtablett wird angesehen, nicht gelesen, und der Hinweis soll neben der
  * Uhr nicht mit ihr um Aufmerksamkeit konkurrieren. */
 .kiosk-source-link {

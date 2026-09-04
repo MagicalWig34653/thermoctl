@@ -9,16 +9,16 @@
     <link rel="stylesheet" href="{{ url_prefix }}/static/thermoctl.css">
     {#
     Vor dem ersten Anzeigen und ohne `defer`: Ein Farbschema, das erst nach dem Aufbau
-    gesetzt wird, blitzt einmal hell auf. `data-bs-theme="auto"` stand hier frueher im
+    gesetzt wird, blitzt einmal hell auf. `data-bs-theme="auto"` stand hier früher im
     <html>-Tag -- Bootstrap kennt diesen Wert nicht, das dunkle Schema war damit nie
     aktiv.
     #}
     {#
     Das Farbschema folgt dem Betriebssystem, und zwar allein. Ein eigener Umschalter war
-    eine dritte Einstellung fuer etwas, das jedes Geraet schon kennt -- und er ging beim
-    naechsten Browser wieder verloren. `data-bs-theme` bleibt gesetzt, weil Bootstrap
-    darauf hoert; es folgt jetzt der Medienabfrage statt einem gemerkten Wert.
-    Frueher stand hier `data-bs-theme="auto"` im <html>-Tag: Diesen Wert kennt Bootstrap
+    eine dritte Einstellung für etwas, das jedes Geraet schon kennt -- und er ging beim
+    nächsten Browser wieder verloren. `data-bs-theme` bleibt gesetzt, weil Bootstrap
+    darauf hört; es folgt jetzt der Medienabfrage statt einem gemerkten Wert.
+    Früher stand hier `data-bs-theme="auto"` im <html>-Tag: Diesen Wert kennt Bootstrap
     nicht, das dunkle Schema war damit nie aktiv.
     #}
     <script>
@@ -29,18 +29,18 @@
                     "data-bs-theme", abfrage.matches ? "dark" : "light");
             }
             setzen();
-            // Ohne das bliebe eine geoeffnete Seite hell, wenn das System abends
+            // Ohne das bliebe eine geöffnete Seite hell, wenn das System abends
             // umschaltet.
             abfrage.addEventListener("change", setzen);
         })();
     </script>
     {#
-    Skripte gehoeren in den Kopf, nicht ans Ende des Rumpfes. `hx-boost` tauscht bei
-    jeder Navigation den Inhalt des <body> aus, und htmx fuehrt <script>-Tags im
-    eingetauschten Inhalt erneut aus. Bootstrap registrierte seine Menuebehandlung dann
-    ein zweites Mal am `document`: Der Umschalter feuerte doppelt, das Menue ging auf und
+    Skripte gehören in den Kopf, nicht ans Ende des Rumpfes. `hx-boost` tauscht bei
+    jeder Navigation den Inhalt des <body> aus, und htmx führt <script>-Tags im
+    eingetauschten Inhalt erneut aus. Bootstrap registrierte seine Menübehandlung dann
+    ein zweites Mal am `document`: Der Umschalter feuerte doppelt, das Menü ging auf und
     im selben Klick wieder zu -- es sah aus, als ginge es gar nicht mehr auf. Der Kopf
-    wird nie ausgetauscht, also laeuft hier alles genau einmal.
+    wird nie ausgetauscht, also läuft hier alles genau einmal.
     #}
     <script defer src="{{ url_prefix }}/static/vendor/bootstrap/bootstrap.bundle.min.js"></script>
     <script defer src="{{ url_prefix }}/static/vendor/htmx/htmx.min.js"></script>
@@ -63,11 +63,11 @@
         });
 
         // Eine veraltete Seite -- der Server hat die Anfrage abgelehnt, weil das
-        // Formular aelter ist als die Sitzung dahinter. htmx zeigt den Rumpf einer
+        // Formular älter ist als die Sitzung dahinter. htmx zeigt den Rumpf einer
         // Fehlerantwort nicht an; ohne diesen Hinweis tut das Bedienelement schlicht
         // nichts, und genau das wurde aus dem Betrieb gemeldet. Bewusst kein
         // automatisches Neuladen: Ein Element, das beim Wiederherstellen erneut
-        // ausloest, geriete sonst in eine Schleife aus Neuladen und Ablehnen.
+        // auslöst, geriete sonst in eine Schleife aus Neuladen und Ablehnen.
         document.addEventListener("htmx:responseError", function (ereignis) {
             if (ereignis.detail.xhr.getResponseHeader("HX-Stale-Page") === null) {
                 return;
@@ -120,9 +120,9 @@ einfach etwas später).
         </button>
         <div class="collapse navbar-collapse" id="main-navigation">
             {#
-            Vier Wege statt drei Sammelmenues. Frueher lagen Steuerung, Zonen, Geraete und
+            Vier Wege statt drei Sammelmenüs. Früher lagen Steuerung, Zonen, Geraete und
             Modi zusammen unter "Anlage" -- vier Dinge, die man unterschiedlich oft
-            braucht, hinter einem Klick, den man jedes Mal machen muss. Was taeglich
+            braucht, hinter einem Klick, den man jedes Mal machen muss. Was täglich
             gebraucht wird, steht jetzt offen; was selten gebraucht wird, liegt unter
             "Einstellungen".
             #}

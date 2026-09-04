@@ -1,4 +1,4 @@
-"""Schema fuer den Schattenbetrieb
+"""Schema für den Schattenbetrieb
 
 Revision ID: 8b2d6e8a7f10
 Revises: 4d43756aecd3
@@ -16,8 +16,8 @@ branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
 # Die Listen stehen hier ausgeschrieben statt als Import aus dem Modell. Eine Migration
-# beschreibt, was zu EINEM Zeitpunkt geschah; zoege sie ihre Daten aus einer Konstanten,
-# die spaeter waechst, aenderte sich rueckwirkend, was dieser Schritt getan hat. Genau
+# beschreibt, was zu EINEM Zeitpunkt geschah; zöge sie ihre Daten aus einer Konstanten,
+# die später wächst, änderte sich rückwirkend, was dieser Schritt getan hat. Genau
 # dieser Fehler steckte in der Referenzdatenmigration aus Teilprojekt 1 und wurde dort
 # beim Bau dieser Revision mitbehoben.
 SENSOR_STATUS = [
@@ -28,9 +28,9 @@ SENSOR_STATUS = [
 
 NEUE_FAEHIGKEITEN = [
     ("humidity", "Luftfeuchtigkeit"),
-    ("illuminance", "Beleuchtungsstaerke"),
+    ("illuminance", "Beleuchtungsstärke"),
     ("occupancy", "Anwesenheit"),
-    ("link_quality", "Verbindungsqualitaet"),
+    ("link_quality", "Verbindungsqualität"),
     ("power", "Leistung"),
     ("energy", "Energie"),
     ("valve_position", "Ventilstellung"),
@@ -167,10 +167,10 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # Die Indizes werden bewusst NICHT einzeln entfernt: Beide Datenbanken raeumen sie mit
-    # der Tabelle mit ab, und unter MariaDB scheitert der ausdrueckliche Versuch sogar --
+    # Die Indizes werden bewusst NICHT einzeln entfernt: Beide Datenbanken räumen sie mit
+    # der Tabelle mit ab, und unter MariaDB scheitert der ausdrückliche Versuch sogar --
     # `ix_measurement_device_capability_measured` beginnt mit `device_id` und wird dort
-    # zur Durchsetzung des Fremdschluessels auf `device` gebraucht (Fehler 1553).
+    # zur Durchsetzung des Fremdschlüssels auf `device` gebraucht (Fehler 1553).
     # Aufgefallen erst im Lauf gegen MariaDB; unter SQLite geht beides.
     op.drop_table("shadow_decision")
     op.drop_table("zone_state")
@@ -183,6 +183,6 @@ def downgrade() -> None:
     with op.batch_alter_table("device") as batch_op:
         batch_op.drop_column("is_group")
     codes = [code for code, _label in NEUE_FAEHIGKEITEN]
-    faehigkeiten = _nachschlage_tabelle("device_capability")
-    op.execute(sa.delete(faehigkeiten).where(faehigkeiten.c.code.in_(codes)))
+    fähigkeiten = _nachschlage_tabelle("device_capability")
+    op.execute(sa.delete(fähigkeiten).where(fähigkeiten.c.code.in_(codes)))
     op.drop_table("sensor_status")

@@ -22,8 +22,8 @@
     // Welche Elemente schon verdrahtet sind -- als WeakSet, nicht als Attribut im
     // Markup. Der Unterschied ist nicht kosmetisch: htmx legt beim Navigieren eine
     // Momentaufnahme der Seite in seinen Verlaufsspeicher und stellt sie beim
-    // Zurueckgehen daraus wieder her. Attribute ueberleben das, Ereignisbehandler
-    // nicht. Ein `data-wired` im Markup kam also zurueck, ohne dass noch ein Behandler
+    // Zurückgehen daraus wieder her. Attribute überleben das, Ereignisbehandler
+    // nicht. Ein `data-wired` im Markup kam also zurück, ohne dass noch ein Behandler
     // daran hing -- die Marke sagte "schon verdrahtet", und die Seite reagierte auf
     // nichts mehr. Ein WeakSet kennt nur Elemente dieses Dokumentzustands; ein aus dem
     // Speicher geparstes Element ist ein neues und wird neu verdrahtet.

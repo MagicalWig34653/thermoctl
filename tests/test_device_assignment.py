@@ -330,13 +330,13 @@ def test_the_writing_routes_and_their_permissions(client_als, session: Session) 
 
     # The identifier lives in the body, not in the path: hx-boost reads a form's
     # `action` once, so the table and the drag-out use the same endpoint.
-    loesen = client.post(
+    lösen = client.post(
         f"/zones/{eigene.id}/devices/detach",
         data={"assignment_id": str(new_assignment.id)},
         headers=head,
         follow_redirects=False,
     )
-    assert loesen.status_code == 303
+    assert lösen.status_code == 303
     assert session.get(ZoneDevice, new_assignment.id) is None
 
     assert client.get(f"/zones/{fremde.id}/devices").status_code == 404
@@ -428,9 +428,9 @@ def test_a_swap_with_nonsensical_devices_reports_understandably(
 def test_a_foreign_assignment_cannot_be_detached(client_als, session: Session) -> None:
     """An assignment belonging to another zone yields 404, not 403."""
     source(session)
-    eigene = create_zone(session, "eigene-loesen")
-    fremde = create_zone(session, "fremde-loesen")
-    device = create_device(session, "fremdgeraet")
+    eigene = create_zone(session, "eigene-lösen")
+    fremde = create_zone(session, "fremde-lösen")
+    device = create_device(session, "fremdgerät")
     foreign_assignment = ZoneDevice(
         zone_id=fremde.id, device_id=device.id,
         device_role_id=role(session, "actuator").id,
@@ -460,9 +460,9 @@ def test_detaching_a_foreign_assignment_is_refused_in_the_domain(
     from thermoctl.domain.device_assignment import detach_device
 
     source(session)
-    eine = create_zone(session, "zone-loesen-a")
-    others = create_zone(session, "zone-loesen-b")
-    device = create_device(session, "geraet-loesen")
+    eine = create_zone(session, "zone-lösen-a")
+    others = create_zone(session, "zone-lösen-b")
+    device = create_device(session, "geraet-lösen")
     assignment = ZoneDevice(
         zone_id=others.id, device_id=device.id,
         device_role_id=role(session, "actuator").id,
@@ -531,7 +531,7 @@ def test_a_sensor_cannot_be_assigned_as_an_actuator(session: Session) -> None:
     an error that only shows up in winter and then looks like a control-logic bug."""
     from thermoctl.domain.device_assignment import CapabilityMissing, assign_device
 
-    zone = create_zone(session, "faehigkeitszone")
+    zone = create_zone(session, "fähigkeitszone")
     sensor = _with_capability(session, "nur-thermometer", "temperature", "battery")
     with pytest.raises(CapabilityMissing, match="Schaltausgang.*switch oder thermostat"):
         assign_device(
@@ -573,7 +573,7 @@ def test_a_device_without_known_capabilities_is_let_through(session: Session) ->
     from thermoctl.domain.device_assignment import assign_device
 
     zone = create_zone(session, "unbekanntzone")
-    schweigsam = create_device(session, "sagt-nichts-ueber-sich")
+    schweigsam = create_device(session, "sagt-nichts-über-sich")
     assign_device(session, zone, schweigsam, role(session, "actuator"), actor_id=None)
 
 
@@ -724,7 +724,7 @@ def test_zugeordnete_karten_tragen_ihre_kennung(client_als, session: Session) ->
     from thermoctl.db.models.device import ZoneDevice
 
     zone = create_zone(session, "kennungszone")
-    device = create_device(session, "kennungsgeraet")
+    device = create_device(session, "kennungsgerät")
     assignment = ZoneDevice(
         zone_id=zone.id, device_id=device.id, device_role_id=role(session, "actuator").id
     )
@@ -746,7 +746,7 @@ def test_without_device_manage_nothing_can_be_dragged_out(client_als, session: S
     from thermoctl.db.models.device import ZoneDevice
 
     zone = create_zone(session, "lesezone")
-    device = create_device(session, "lesegeraet")
+    device = create_device(session, "lesegerät")
     session.add(
         ZoneDevice(
             zone_id=zone.id, device_id=device.id, device_role_id=role(session, "actuator").id
@@ -766,7 +766,7 @@ def test_the_plant_diagram_carries_no_drag_handles(client_als, session: Session)
     from thermoctl.db.models.device import ZoneDevice
 
     zone = create_zone(session, "bildzone-griffe")
-    device = create_device(session, "bildgeraet")
+    device = create_device(session, "bildgerät")
     session.add(
         ZoneDevice(
             zone_id=zone.id, device_id=device.id, device_role_id=role(session, "actuator").id
@@ -932,7 +932,7 @@ def test_a_detach_request_with_a_nonsensical_id_is_a_not_found(
     Answered with 404, not 400: whether an assignment exists is not something an
     unparsable id should be able to tell apart from a missing one.
     """
-    zone = create_zone(session, "loeszone")
+    zone = create_zone(session, "löszone")
     session.flush()
     response = angemeldeter_client.post(
         f"/zones/{zone.id}/devices/detach",
@@ -953,7 +953,7 @@ def test_a_temperature_source_that_cannot_measure_comes_back_at_the_field(
     rather than accepting it and failing silently in winter.
     """
     zone = create_zone(session, "quellzone")
-    valve = _with_capability(session, "ventil-ohne-fuehler", "switch")
+    valve = _with_capability(session, "ventil-ohne-fühler", "switch")
     session.flush()
 
     response = angemeldeter_client.post(
@@ -1135,7 +1135,7 @@ def test_switching_the_regulation_mode_to_what_it_already_is_writes_nothing(
     Otherwise every page reload with the same value would leave another line in the
     log, and the entries that record a real decision would drown between them.
     """
-    zone, assignment = _thermostat_in_zone(session, "unveraendertzone")
+    zone, assignment = _thermostat_in_zone(session, "unverändertzone")
     before = session.query(AuditEvent).count()
 
     set_self_regulating(session, zone, assignment, False, actor_id=None)

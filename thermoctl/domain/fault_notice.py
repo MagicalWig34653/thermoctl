@@ -14,12 +14,12 @@ NOTICE_KIND_SENSOR_FAULT = "sensor_fault"
 NOTICE_KIND_BRIDGE_FAULT = "bridge_fault"
 NOTICE_KIND_COMMAND_FAILURE = "command_failure"
 
-#: Die Meldung, die ein Mensch ausdruecklich ausgeloest hat, nicht eine, die die
+#: Die Meldung, die ein Mensch ausdrücklich ausgelöst hat, nicht eine, die die
 #: Regelung aus einem Zustandswechsel abgeleitet hat. Sie geht bewusst **nicht**
-#: durch `notice_enabled`: Wer auf "Testen" drueckt, will genau diese eine Meldung
-#: hinausschicken -- ein Schalter, der sie unterdrueckt, wuerde die Frage
+#: durch `notice_enabled`: Wer auf "Testen" drückt, will genau diese eine Meldung
+#: hinausschicken -- ein Schalter, der sie unterdrückt, würde die Frage
 #: beantworten, ob der Schalter steht, statt der, ob der Webhook erreichbar ist.
-#: `notice_enabled` wirft fuer diese Art darum absichtlich weiterhin -- landet eine
+#: `notice_enabled` wirft für diese Art darum absichtlich weiterhin -- landet eine
 #: Testmeldung je am Tor, ist das ein Fehler und soll auffallen, nicht durchrutschen.
 NOTICE_KIND_TEST = "test"
 
@@ -79,7 +79,7 @@ def sensor_notice(
         return FaultNotice(
             key=key,
             severity="stoerung",
-            title=f"Sensorstoerung in {zone_name}",
+            title=f"Sensorstörung in {zone_name}",
             text=reason,
             kind=NOTICE_KIND_SENSOR_FAULT,
         )
@@ -103,18 +103,18 @@ def bridge_notice(
     """Reports failure and recovery of the Zigbee2MQTT bridge, each exactly once."""
     if not reachable_after and reachable_before is not False:
         return FaultNotice(
-            key="zigbee2mqtt:bruecke",
+            key="zigbee2mqtt:brücke",
             severity="stoerung",
-            title="Zigbee2MQTT-Bruecke nicht erreichbar",
-            text="Die Verbindung zur Zigbee2MQTT-Bruecke ist ausgefallen.",
+            title="Zigbee2MQTT-Brücke nicht erreichbar",
+            text="Die Verbindung zur Zigbee2MQTT-Brücke ist ausgefallen.",
             kind=NOTICE_KIND_BRIDGE_FAULT,
         )
     if reachable_after and reachable_before is False:
         return FaultNotice(
-            key="zigbee2mqtt:bruecke",
+            key="zigbee2mqtt:brücke",
             severity="entwarnung",
-            title="Zigbee2MQTT-Bruecke wieder erreichbar",
-            text="Die Verbindung zur Zigbee2MQTT-Bruecke ist wiederhergestellt.",
+            title="Zigbee2MQTT-Brücke wieder erreichbar",
+            text="Die Verbindung zur Zigbee2MQTT-Brücke ist wiederhergestellt.",
             kind=NOTICE_KIND_BRIDGE_FAULT,
         )
     return None
@@ -152,7 +152,7 @@ def command_failure_notice(
             key=key,
             severity="entwarnung",
             title=f"Schaltbefehl an {device_name} geht wieder durch",
-            text=f"Schaltbefehle an {device_name} werden wieder erfolgreich ausgefuehrt.",
+            text=f"Schaltbefehle an {device_name} werden wieder erfolgreich ausgeführt.",
             kind=NOTICE_KIND_COMMAND_FAILURE,
         )
     return None

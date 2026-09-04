@@ -10,7 +10,7 @@ Gerätekennungen und Seriennummern wurden nicht übernommen.
 ## Was geprüft wurde
 
 Grundlage ist ein vollständiger Export der Produktivdatenbank (MariaDB), eingespielt in
-eine separate Auswertungsdatenbank und ausschliesslich lesend ausgewertet. Der Export
+eine separate Auswertungsdatenbank und ausschließlich lesend ausgewertet. Der Export
 selbst wurde nicht verändert und ist nicht Teil dieses Repositories.
 
 Geprüft wurden die drei Abnahmekriterien aus Abschnitt 4 von
@@ -72,7 +72,7 @@ unabhängig vom scharfen Zustand fortlaufend geschrieben —, aber der knappe ze
 Rahmen relativiert jede Aussage über „mehrtägige Beobachtung im Schattenbetrieb".
 
 Eine weitere Beobachtung dazu: Die Tabelle `device_command` enthält für den gesamten
-Zeitraum **ausschliesslich** den Ergebniscode `executed` (366 von 366 Einträgen) — kein
+Zeitraum **ausschließlich** den Ergebniscode `executed` (366 von 366 Einträgen) — kein
 einziger `suppressed` (der Code, den ein im Trockenlauf unterdrückter Befehl bekäme) und
 kein `failed`. Der Trockenlauf-Pfad existiert im Code (`services/publishing.py`,
 Ergebniscode `SUPPRESSED`) und ist dort begründet, aber **diese Betriebsdaten zeigen
@@ -118,7 +118,7 @@ unmöglichen Sprünge gefunden (Prüfgrenze: mehr als 3 K Änderung innerhalb vo
    bei nur 22 Minuten, weit unter dem Störungs-Timeout von 30 Minuten
    (`default_sensor_timeout_seconds` = 1800 s) — die eingefrorenen Phasen bestehen aus
    dicht getakteten, aber identischen Werten, sie wären als „veraltet" nicht erkannt worden,
-   weil ja regelmässig ein (gleicher) Wert eintraf.
+   weil ja regelmäßig ein (gleicher) Wert eintraf.
 
 Keine Zone überschritt in diesem Zeitraum den Sensor-Timeout: In allen 18.571
 Schattenentscheidungen ist `temperature_c` durchgehend gesetzt, keine einzige NULL. Das
@@ -134,7 +134,7 @@ Exports standen alle sechs Zonen auf `ok`.
 
 | Ergebniscode | Anzahl | Anteil |
 |---|---|---|
-| `unveraendert` | 18.527 | 99,76 % |
+| `unverändert` | 18.527 | 99,76 % |
 | `gesperrt_mindestdauer` | 40 | 0,22 % |
 | `aus` | 2 | 0,01 % |
 | `heizen` | 2 | 0,01 % |
@@ -199,7 +199,7 @@ tatsächlichen Abstand zum Sollwert immer denselben Satz:
 > Ist *X* °C innerhalb der Hysterese um Soll *Y* °C ± 0.10K (…) — Zustand bleibt.
 
 Das stimmt nur, wenn *X* tatsächlich nahe an *Y* liegt. Ausgewertet über alle 18.527
-`unveraendert`-Entscheidungen: **in jeder einzelnen** liegt die Ist-Temperatur weiter als
+`unverändert`-Entscheidungen: **in jeder einzelnen** liegt die Ist-Temperatur weiter als
 die konfigurierte Hysterese (0,10 K) vom Sollwert entfernt — im Mittel 5,9 K, im
 Extremfall 11,4 K. Bei Zonen E und F etwa steht dort „innerhalb der Hysterese um Soll
 16,0 °C ± 0,10 K", während die Ist-Temperatur tatsächlich bei 22–24 °C liegt, also rund
@@ -207,7 +207,7 @@ Extremfall 11,4 K. Bei Zonen E und F etwa steht dort „innerhalb der Hysterese 
 bleibt zu Recht aus, weil sie längst zu warm ist, nicht weil sie zufällig im
 Hysteresefenster liegt —, aber der protokollierte *Grund* behauptet etwas anderes als das,
 was tatsächlich zutrifft. Kein Test im Repository prüft diesen Satz gegen einen Fall mit
-grossem Abstand zum Sollwert; er ist offenbar nie mit einem realistischen
+großem Abstand zum Sollwert; er ist offenbar nie mit einem realistischen
 „längst zu warm"-Szenario verglichen worden. Das betrifft **99,76 % aller bisher
 geschriebenen Schattenentscheidungen** und ist damit kein Rand-, sondern der Regelfall.
 Es handelt sich um einen Text-, keinen Regel-Fehler — die physische Entscheidung war in
@@ -261,7 +261,7 @@ Bedarfslosigkeit.
 - **Keine Historie der Sensorzustände** (`veraltet`/`keine_quelle`) über die Zeit — nur
   der aktuelle Stand ist gespeichert, kein Protokoll vergangener Wechsel.
 - **Keinen Nachweis, dass der Trockenlauf-Riegel im Feld je gegriffen hat** — im
-  verfügbaren Datenbestand ausschliesslich `executed`-Einträge, kein `suppressed`.
+  verfügbaren Datenbestand ausschließlich `executed`-Einträge, kein `suppressed`.
 
 ## Fazit
 

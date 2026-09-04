@@ -61,7 +61,7 @@ def test_the_default_value_means_continuous_day() -> None:
 @pytest.mark.parametrize(
     ("blob", "warning"),
     [
-        ("kein JSON", "kein gueltiges JSON"),
+        ("kein JSON", "kein gültiges JSON"),
         ('{"1": [2]}', "kein Array"),
     ],
 )

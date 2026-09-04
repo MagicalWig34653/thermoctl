@@ -110,8 +110,8 @@ def _run_entrypoint(tmp_path: Path, extra_env: dict[str, str]) -> subprocess.Com
 
 
 def test_without_an_options_file_nothing_changes(tmp_path: Path) -> None:
-    """Der gewoehnliche docker-compose-Betrieb: kein /data/options.json, also keine
-    Uebersetzung -- die Umgebungsvariablen, die schon gesetzt sind, kommen unveraendert
+    """Der gewöhnliche docker-compose-Betrieb: kein /data/options.json, also keine
+    Uebersetzung -- die Umgebungsvariablen, die schon gesetzt sind, kommen unverändert
     beim Anwendungsprozess an."""
     missing = tmp_path / "options.json"
     result = _run_entrypoint(
@@ -164,7 +164,7 @@ def test_a_value_with_shell_special_characters_arrives_intact(tmp_path: Path) ->
 
 
 def test_secrets_do_not_appear_on_stderr(tmp_path: Path) -> None:
-    """Kein `set -x` ueber dem Optionsblock, kein Echo der Werte (Grundsatz 2)."""
+    """Kein `set -x` über dem Optionsblock, kein Echo der Werte (Grundsatz 2)."""
     options_file = tmp_path / "options.json"
     options_file.write_text(json.dumps({"secret_key": "s3hr-geheim-und-lang-genug"}))
     result = _run_entrypoint(tmp_path, {"THERMOCTL_ADDON_OPTIONS_FILE": str(options_file)})
@@ -175,7 +175,7 @@ def test_secrets_do_not_appear_on_stderr(tmp_path: Path) -> None:
 def test_a_broken_options_file_aborts_the_start_instead_of_starting_half_configured(
     tmp_path: Path,
 ) -> None:
-    """`set -e` muss den fehlschlagenden Python-Aufruf tatsaechlich abbrechen -- nicht nur
+    """`set -e` muss den fehlschlagenden Python-Aufruf tatsächlich abbrechen -- nicht nur
     das `eval` mit leerem Text erfolgreich aussehen lassen."""
     options_file = tmp_path / "options.json"
     options_file.write_text("das ist kein json")
@@ -188,8 +188,8 @@ def test_an_unreadable_options_file_aborts_the_start_instead_of_starting_half_co
     tmp_path: Path,
 ) -> None:
     """Der aus dem Betrieb gemeldete Fehler: der Supervisor legt options.json als root an,
-    nur fuer root lesbar. Solange der Container das nicht lesen kann, muss der Start
-    abbrechen, mit einer verstaendlichen Meldung -- und `alembic`/`thermoctl` duerfen
+    nur für root lesbar. Solange der Container das nicht lesen kann, muss der Start
+    abbrechen, mit einer verständlichen Meldung -- und `alembic`/`thermoctl` dürfen
     nicht laufen, auch nicht ohne eine einzige Einstellung."""
     options_file = tmp_path / "options.json"
     options_file.write_text(json.dumps({"secret_key": "x" * 32}))
@@ -197,7 +197,7 @@ def test_an_unreadable_options_file_aborts_the_start_instead_of_starting_half_co
     try:
         result = _run_entrypoint(tmp_path, {"THERMOCTL_ADDON_OPTIONS_FILE": str(options_file)})
     finally:
-        options_file.chmod(0o600)  # sonst kann pytest die Datei am Ende nicht aufraeumen
+        options_file.chmod(0o600)  # sonst kann pytest die Datei am Ende nicht aufräumen
     assert result.returncode != 0
     assert "THERMOCTL_" not in result.stdout
     assert "nicht lesbar" in result.stderr
@@ -211,16 +211,16 @@ def test_a_root_start_drops_to_the_unprivileged_user_before_alembic_and_the_serv
     Dockerfile), damit er /data/options.json und /data selbst lesen bzw. beschreibbar
     machen kann -- gibt die Rechte aber vor `alembic` und dem Dienst wieder ab. `id`,
     `chown` und `setpriv` sind hier Attrappen (siehe `_fake_bin`): das Verhalten von
-    `setpriv` selbst zu pruefen ist nicht Aufgabe dieses Tests, wohl aber, dass
+    `setpriv` selbst zu prüfen ist nicht Aufgabe dieses Tests, wohl aber, dass
     entrypoint.sh es mit dem richtigen Zielbenutzer aufruft, `chown` auf das
-    Datenverzeichnis anwendet, dabei nur einmal durchlaeuft (keine Endlosschleife durch
+    Datenverzeichnis anwendet, dabei nur einmal durchläuft (keine Endlosschleife durch
     den Wiedereinstieg via `exec ... "$0"`) und die aus der Optionsdatei gelesenen Werte
     danach immer noch beim Dienst ankommen.
 
-    Prueft zusaetzlich, dass die Optionsdatei dabei nur einmal gelesen wird -- als root,
-    vor dem Rechteabgeben. Ein zweiter Versuch nach dem Wiedereinstieg waere in der echten
-    Anlage der aus dem Betrieb gemeldete Fehler: die Datei ist dann root:root 600, fuer
-    den unprivilegierten Benutzer nicht mehr lesbar, und der zweite Versuch schluege fehl,
+    Prüft zusätzlich, dass die Optionsdatei dabei nur einmal gelesen wird -- als root,
+    vor dem Rechteabgeben. Ein zweiter Versuch nach dem Wiedereinstieg wäre in der echten
+    Anlage der aus dem Betrieb gemeldete Fehler: die Datei ist dann root:root 600, für
+    den unprivilegierten Benutzer nicht mehr lesbar, und der zweite Versuch schlüge fehl,
     obwohl der erste (als root) schon erfolgreich war."""
     options_file = tmp_path / "options.json"
     options_file.write_text(json.dumps({"secret_key": "z" * 32, "log_level": "DEBUG"}))
@@ -251,7 +251,7 @@ def test_a_root_start_drops_to_the_unprivileged_user_before_alembic_and_the_serv
 
 
 def test_the_script_that_ships_in_the_image_is_the_one_under_test() -> None:
-    """Bindeglied zum Dockerfile: das Skript, das die Tests hier pruefen, ist dasselbe,
+    """Bindeglied zum Dockerfile: das Skript, das die Tests hier prüfen, ist dasselbe,
     das `docker/Dockerfile` in das Abbild kopiert -- unter demselben Pfad, den
     `docker/entrypoint.sh` aufruft."""
     dockerfile = (ROOT / "docker" / "Dockerfile").read_text()
@@ -262,7 +262,7 @@ def test_the_script_that_ships_in_the_image_is_the_one_under_test() -> None:
 
 
 def test_the_ingress_script_that_ships_in_the_image_is_the_one_under_test() -> None:
-    """Dasselbe Bindeglied wie oben, fuer das Ingress-Skript."""
+    """Dasselbe Bindeglied wie oben, für das Ingress-Skript."""
     dockerfile = (ROOT / "docker" / "Dockerfile").read_text()
     entrypoint = ENTRYPOINT.read_text()
     assert "docker/thermoctl_ingress.py /usr/local/bin/thermoctl_ingress.py" in dockerfile
@@ -271,7 +271,7 @@ def test_the_ingress_script_that_ships_in_the_image_is_the_one_under_test() -> N
 
 
 def test_without_supervisor_token_ingress_root_path_stays_unset(tmp_path: Path) -> None:
-    """Gewoehnlicher docker-compose-Betrieb ohne SUPERVISOR_TOKEN: keine Abfrage, kein
+    """Gewöhnlicher docker-compose-Betrieb ohne SUPERVISOR_TOKEN: keine Abfrage, kein
     THERMOCTL_ROOT_PATH in der Umgebung, mit der `thermoctl` gestartet wird."""
     missing = tmp_path / "options.json"
     result = _run_entrypoint(
@@ -288,9 +288,9 @@ def test_without_supervisor_token_ingress_root_path_stays_unset(tmp_path: Path) 
 
 def test_supervisor_token_but_operator_set_root_path_wins(tmp_path: Path) -> None:
     """Ein Betreiber, der THERMOCTL_ROOT_PATH selbst gesetzt hat, gewinnt -- auch wenn ein
-    SUPERVISOR_TOKEN vorhanden waere. Zeigt via eine garantiert unerreichbare
-    Supervisor-Adresse: wuerde trotzdem abgefragt, liefe der Test in die
-    Zeitueberschreitung statt sofort durchzulaufen."""
+    SUPERVISOR_TOKEN vorhanden wäre. Zeigt via eine garantiert unerreichbare
+    Supervisor-Adresse: würde trotzdem abgefragt, liefe der Test in die
+    Zeitüberschreitung statt sofort durchzulaufen."""
     missing = tmp_path / "options.json"
     result = _run_entrypoint(
         tmp_path,
@@ -309,7 +309,7 @@ def test_supervisor_token_but_operator_set_root_path_wins(tmp_path: Path) -> Non
 
 def test_supervisor_token_with_valid_ingress_entry_sets_root_path(tmp_path: Path) -> None:
     """End-zu-Ende durch die echte Shell: ein Stellvertreter-Supervisor liefert einen
-    gueltigen ingress_entry, der Werte kommt bis zum (Fake-)`thermoctl`-Prozess durch."""
+    gültigen ingress_entry, der Werte kommt bis zum (Fake-)`thermoctl`-Prozess durch."""
     import http.server
     import json as _json
     import threading
