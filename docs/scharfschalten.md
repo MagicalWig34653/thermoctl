@@ -46,10 +46,15 @@ auf — hier fällt er erst auf, wenn die Zone entsprechend heizt oder eben nich
 
 **Eine fachliche Entscheidung ausdrücklich bestätigen:** Fällt ein Sensor aus (Zustand
 „veraltet" statt „ok"), regelt die Anlage nicht ab, sondern auf einen Frostschutz-Sollwert
-weiter. Das ist Absicht — Begründung unter „Bei ausgefallenem Sensor wird auf Frostschutz
-geregelt, nicht abgeschaltet" in `offene-entscheidungen.md` —, wurde aber nie an der echten
-Anlage beobachtet. Wer diesem Verhalten nicht zustimmt, klärt das vor dem Scharfschalten,
-nicht danach.
+weiter. Das ist Absicht: Ein dauerhaftes Abschalten war die ursprüngliche Umsetzung, aber
+die gefährlichere Antwort — eine leere Batterie im Januar hieße dann, dass ein Raum
+unbegrenzt auskühlt, und genau daran friert eine Leitung ein. Auf dem letzten bekannten
+Sollwert weiterzuregeln wäre ebenso falsch, weil das genau der Wert ist, dem man gerade
+nicht mehr traut; der Frostschutz-Sollwert ist der Kompromiss — tief genug, dass ein
+falscher Messwert höchstens ein unbedenkliches Niveau erzeugt, hoch genug gegen Frost.
+Nur wenn gar kein Messwert vorliegt, bleibt die Heizanforderung aus. Dieses Verhalten
+wurde aber nie an der echten Anlage beobachtet. Wer diesem Verhalten nicht zustimmt,
+klärt das vor dem Scharfschalten, nicht danach.
 
 ## 2. Die Reihenfolge des Scharfschaltens
 

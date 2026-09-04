@@ -1,9 +1,8 @@
 """Tests for the pure PI and window functions (`thermoctl.domain.pi_control`).
 
-Specification: `docs/superpowers/specs/2026-09-02-pi-regelung-spezifikation.md`,
-sections 1-4 and 9. This module is **not** wired to `control_loop.decide()` yet
-(build order step 3, section 11) -- these tests only prove the pure functions
-themselves, grouped exactly as section 9 asks for:
+This module is **not** wired to `control_loop.decide()` yet (a separate, later
+build step) -- these tests only prove the pure functions themselves, grouped as
+follows:
 
 1. table tests for the PI arithmetic (`pi_arithmetic`, `pi_dt`),
 2. sequence and property tests for the window modulator (`window_modulate`),

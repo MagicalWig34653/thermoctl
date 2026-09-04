@@ -530,8 +530,8 @@ def test_rule5_a_genuinely_still_winning_protection_run_overrides_the_minimum_du
 
 # ---------------------------------------------------------------------------
 # Rule 5 fix — a protection run's own duration must not be extended by
-# min_on_seconds (docs/offene-entscheidungen.md, 2026-09-02, "Ein
-# Ventilschutzlauf kann zu dauerhaftem Heizen werden")
+# min_on_seconds (found and fixed 2026-09-02: a protection run was turning
+# into permanent heating)
 # ---------------------------------------------------------------------------
 
 

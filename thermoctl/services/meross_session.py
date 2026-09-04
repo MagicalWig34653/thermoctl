@@ -6,8 +6,8 @@ manufacturer's cloud. Doing that on every switching decision -- inside the same
 transaction that also holds the shadow cycle's database session -- is exactly the fault
 that once locked the whole SQLite file for up to 40 seconds while unrelated requests
 answered with 500 and 401 (`app.py`'s `_run_detached_meross_refresh` carries the same
-lesson for the device-list reconciliation; `docs/offene-entscheidungen.md` has the
-history). This module gives the shadow loop a place to sign in *once*, well before any
+lesson for the device-list reconciliation). This module gives the shadow loop a place
+to sign in *once*, well before any
 transaction opens, and reuse the result until it is due for a refresh or a command
 reports it invalid.
 
@@ -35,8 +35,7 @@ failure (the broker itself unreachable, say) also triggers a fresh sign-in every
 instead of backing off, because a `MerossError` from a failed send does not distinguish
 "the account needs a new session" from "the network is down right now". Accepted for
 this round because the operator sees every attempt in the command log regardless of the
-reason -- but noted here rather than left silently in the code, see
-`docs/offene-entscheidungen.md`.
+reason -- but noted here rather than left silently in the code.
 """
 
 from __future__ import annotations

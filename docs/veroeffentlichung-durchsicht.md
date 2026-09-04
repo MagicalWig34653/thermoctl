@@ -166,6 +166,11 @@ selben Commit nachgezogen wird — vergleichbar mit der Regel, die `CLAUDE.md` b
 
 ### Mittel — private IP-Adresse des Altsystems im Repository
 
+**Erledigt (2026-09-04):** `docs/bestandsaufnahme-altsystem.md` ist mitsamt den übrigen
+Projektinterna aus dem veröffentlichten Repository herausgelöst (bleibt lokal erhalten,
+siehe `.gitignore`). Die private IP ist damit nicht mehr Teil dessen, was veröffentlicht
+wird. Der Befund bleibt unten stehen, damit nachvollziehbar bleibt, dass er einmal bestand.
+
 **Was:** `docs/bestandsaufnahme-altsystem.md:159` nennt die interne Adresse der
 MariaDB-Instanz des Altsystems im Klartext: „MariaDB (`192.168.0.130`)".
 
@@ -285,9 +290,9 @@ MariaDB wiederholt, siehe „Was nicht geprüft wurde".
    aktuell verlinkt `README.md` nur die ältere.
 4. **Der GitHub-Kontoname in `docker/compose.beispiel.yml`** — Bestätigung, dass
    `magicalwig34653` der für dieses Projekt vorgesehene öffentliche Name ist.
-5. **Die private IP-Adresse des Altsystems** (`192.168.0.130`) — ob sie für den Zweck des
-   Dokuments als notwendig gilt oder entfernt wird, ist eine inhaltliche Abwägung, keine
-   rein technische.
+5. ~~Die private IP-Adresse des Altsystems~~ — **erledigt (2026-09-04):** Das Dokument, in
+   dem sie stand, ist mitsamt den Projektinterna aus dem Repository herausgelöst; die
+   Abwägung erübrigt sich damit.
 
 ---
 
@@ -307,8 +312,9 @@ das Repository einmal öffentlich war) und ist nach dieser Durchsicht nicht bele
   Hoch-/Mittel-Befunden dieser Durchsicht sind dagegen bereits behoben und mit
   Regressionstests belegt — die erste Fassung dieses Abschnitts hatte das falsch
   eingeschätzt, siehe der korrigierte Befund oben.
-- Ein Detail des realen Altsystems (private IP) ist ohne erkennbaren Nutzen für den
-  Dokumentationszweck im Repository.
+- ~~Ein Detail des realen Altsystems (private IP) ist ohne erkennbaren Nutzen für den
+  Dokumentationszweck im Repository.~~ **Erledigt (2026-09-04):** mit der Datei aus dem
+  Repository herausgelöst.
 
 **Was nicht entgegensteht:**
 

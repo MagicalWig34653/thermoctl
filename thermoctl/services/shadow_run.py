@@ -690,7 +690,9 @@ def _advance_valve_protection(
     -- the closing cycle answers `gesperrt_mindestdauer` and keeps the valve open,
     the marker is gone by the next cycle, and the protection on-state is then read as
     regular heating from there on. That is a known defect of the control rules, not
-    of this bookkeeping; it is written up in `docs/offene-entscheidungen.md`.
+    of this bookkeeping -- found and fixed 2026-09-02 in
+    `thermoctl.domain.control_loop.decide()`, which now exempts a held on-state from
+    `min_on_seconds` whenever it traces back to a protection run.
     """
     interval = timedelta(days=zone.valve_protection_interval_days)
     run_duration = timedelta(minutes=zone.valve_protection_duration_minutes)

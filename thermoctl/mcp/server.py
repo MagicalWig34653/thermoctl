@@ -425,7 +425,6 @@ def force_dry_run(
     always the safe direction and should be open to anyone allowed to operate the
     plant. Whoever wants to arm the plant does so in the interface or via the REST
     interface, where a human is at the button.
-    See docs/offene-entscheidungen.md for more.
     """
     token, principal = _log_in(session, plaintext)
     require(principal, "control.arm")

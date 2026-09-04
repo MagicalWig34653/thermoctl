@@ -109,9 +109,8 @@ class PublicationState:
     service_registered: bool = False
     controller_values: dict[int, object] = field(default_factory=dict)
     # Per self-regulating valve, the (payload, armed, outcome) last **logged** --
-    # sent, withheld, or attempted and failed. See docs/offene-entscheidungen.md
-    # ("Wiederholung nach einem gescheiterten Aktorbefehl") for the reasoning this
-    # key now has to carry, spelled out in full: a matching (payload, armed) alone
+    # sent, withheld, or attempted and failed. `outcome` had to join this key
+    # because a matching (payload, armed) alone
     # used to be treated as "nothing to do", which silently also swallowed a
     # *failed* attempt -- a broken broker connection then froze a zone's actuator
     # forever, because the boolean decision that would unstick it does not usually
@@ -369,7 +368,7 @@ async def _send_self_regulating_valves(
             # keeps being retried every cycle. But the outcome is unchanged from
             # what is already on record, and writing an identical log line every
             # cycle would bury the one fact that matters (when the failure began)
-            # in noise within a day. See docs/offene-entscheidungen.md.
+            # in noise within a day.
             continue
         state.valve_commands[command.device.id] = new_entry
         if outcome == EXECUTED:
@@ -540,8 +539,7 @@ async def _send_actuator_switches(
     there.** The alternative -- staying silent until the decision changes -- trades
     that for fewer redundant commands after every restart; deliberately not chosen
     here, for the same reason `_send_self_regulating_valves` and the Home Assistant
-    registration above already resend unconditionally after one. See
-    docs/offene-entscheidungen.md.
+    registration above already resend unconditionally after one.
 
     `meross_switching_allowed` is the Meross path's own frozen, start-of-process
     bolt -- the counterpart of `MqttClient`'s `_switching_allowed` for the
@@ -550,7 +548,7 @@ async def _send_actuator_switches(
     inside `MerossSwitch.switching()` would be the *only* bolt on the one path that
     drives real hardware today -- a single forgotten caller away from switching
     live, exactly the risk `MqttClient.__init__`'s docstring gives as the reason for
-    having two. See docs/offene-entscheidungen.md.
+    having two.
     """
     armed = switching_allowed(session)
     sent = 0
@@ -635,8 +633,7 @@ async def _send_actuator_switches(
         if new_entry == last_entry:
             # Same outcome already on record for this decision -- the attempt above
             # still happened (the retry that fixes finding A), but logging it again
-            # would only repeat what is already known. See
-            # docs/offene-entscheidungen.md.
+            # would only repeat what is already known.
             continue
         state.switch_commands[device.id] = new_entry
         if _record_switch_outcome(

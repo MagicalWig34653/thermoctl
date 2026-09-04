@@ -2,12 +2,11 @@
 
 > **Status: unverbindlich.** Dieses Dokument stammt aus einem anderen Kontext und ist eine
 > Ideensammlung, keine Vorgabe (Beschluss vom 2026-08-28). Es setzt Home Assistant als
-> Einstiegspunkt voraus — der [Rahmenentwurf](superpowers/specs/2026-08-28-thermoctl-neubau-design.md)
-> hat sowohl HA als Voraussetzung als auch ein HA-Add-on ausdrücklich verworfen. **Bei
-> Widerspruch gilt der Rahmenentwurf.** Vier Punkte wurden übernommen und stehen in der
-> [TP1-Spezifikation](superpowers/specs/2026-08-28-teilprojekt-1-fundament-design.md):
-> Regelparameter je Zone, Fensterkontakte als Geräterolle, die Betriebsart
-> Automatik/Manuell/Aus sowie Sensor-Timeout und Temperatur-Offset.
+> Einstiegspunkt voraus — der Rahmenentwurf hat sowohl HA als Voraussetzung als auch ein
+> HA-Add-on ausdrücklich verworfen (siehe `CLAUDE.md`, „Technischer Rahmen"). **Bei
+> Widerspruch gilt der technische Rahmen dort.** Vier Punkte wurden übernommen: Regelparameter
+> je Zone, Fensterkontakte als Geräterolle, die Betriebsart Automatik/Manuell/Aus sowie
+> Sensor-Timeout und Temperatur-Offset.
 
 Dieses Dokument ersetzt die vorherige, stark implementierungslastige Fassung des technischen Konzepts. Es legt bewusst **keine** Programmiersprache, Frameworks, Datenbank oder Programmierschnittstellen fest – das bleibt der Umsetzung überlassen. Stattdessen beschreibt es, wie der Nutzer das System einrichtet und bedient, welche Gerätetypen unterstützt werden und wie diese den Raumobjekten aus dem [Konzept](Konzept) zugeordnet werden. Es ist die fachliche/funktionale Ergänzung zum bestehenden Konzept-Dokument.
 

@@ -53,3 +53,14 @@ htmlcov/
 
 # Zwischenspeicher des Code-Review-Werkzeugs, 6,5 MB
 .code-review-graph/
+
+# Projektinterna: Bauprozess-Dokumentation und die Bestandsaufnahme eines fremden,
+# realen Systems (Schema, Topic-Vertrag, eine private IP). Das Repository soll
+# veröffentlicht werden, diese fünf Pfade nicht -- sie bleiben lokal erhalten, sind ab
+# hier aber nicht mehr Teil der Versionsverfolgung. Herausgelöst am 2026-09-04;
+# Einzelheiten in docs/veroeffentlichung-durchsicht.md.
+docs/bestandsaufnahme-altsystem.md
+docs/verlauf.md
+docs/offene-entscheidungen.md
+docs/superpowers/
+tools/umbenennung/

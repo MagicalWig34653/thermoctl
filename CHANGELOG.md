@@ -368,8 +368,7 @@ verdrahtet:** `app.py` übergab `meross_transport`, aber nicht `meross_session_c
 den Veröffentlichungszyklus, sodass eine tote Verbindung bis zu sechs Stunden als
 „gültig" stehen blieb; jetzt durchgereicht. **Der Meross-Weg hatte nur einen Riegel:**
 `MerossSwitch` prüft jetzt zusätzlich denselben beim Start eingefrorenen Riegel wie der
-MQTT-Client. Begründungen in
-[docs/offene-entscheidungen.md](docs/offene-entscheidungen.md). Zusätzlich abgesichert:
+MQTT-Client. Zusätzlich abgesichert:
 eine Regression, bei der der Meross-Anmeldeaufruf in eine offene Schreibtransaktion
 verschoben wird (der Fehler, der einmal die SQLite-Datei 40 Sekunden gesperrt hatte) —
 ein neuer Test prüft jetzt die Eigenschaft selbst, nicht die Aufrufreihenfolge.
@@ -386,8 +385,7 @@ gesteuert) bekommt jetzt über `Zigbee2MqttThermostat` den aufgelösten Zonensol
 wo das Gerät `system_mode` als beschreibbar meldet, `heat`/`off` dazu — ein Gerät ohne
 `system_mode` (Bosch BTH-RA) wird stattdessen auf seinen niedrigsten Sollwert gefahren.
 Beide Wege gehen durch dieselben zwei Riegel und dasselbe Schaltprotokoll wie der
-bestehende Zigbee2MQTT-Schaltweg. Begründungen in
-[docs/offene-entscheidungen.md](docs/offene-entscheidungen.md).
+bestehende Zigbee2MQTT-Schaltweg.
 
 **Gewöhnliche Aktoren sind jetzt mit dem Regelkreis verdrahtet.** Bisher erreichte eine
 Ein/Aus-Entscheidung kein Gerät: `Zigbee2MqttValve` und `MerossSwitch` waren gebaut,
@@ -400,9 +398,8 @@ einer Änderung gesendet, und mit einem Eintrag im Schaltprotokoll für jeden Ve
 gegen die Meross-Cloud, die nicht aus einer offenen Datenbanktransaktion heraus abgewartet
 werden darf (genau dieser Fehler hat in dieser Fassung schon einmal die ganze
 SQLite-Datei gesperrt); ein Meross-Aktor bekommt bis auf Weiteres einen `failed`-Eintrag
-im Schaltprotokoll statt eines Befehls. Begründung und ein weiterer offener Fall (ein
-Zigbee2MQTT-Thermostatventil ohne `self_regulating`) in
-[docs/offene-entscheidungen.md](docs/offene-entscheidungen.md).
+im Schaltprotokoll statt eines Befehls. Ein weiterer, zu diesem Zeitpunkt noch offener
+Fall: ein Zigbee2MQTT-Thermostatventil ohne `self_regulating`.
 
 **Neu: das Schaltprotokoll.** Bislang gab es zwei Aufzeichnungen — was die Regelung
 entschieden hat (`shadow_decision`) und was ein Mensch getan hat (`audit_event`) —, aber
@@ -412,8 +409,8 @@ Zeitpunkt, Zone, Gerät, Nutzlast, Ergebnis (ausgeführt, im Trockenlauf unterdr
 gescheitert) und die Begründung der Regelung, gefiltert nach Zone, Ergebnis und Zeitraum.
 Der bestehende Sollwert-Weg an selbstregelnde Thermostatventile schreibt jetzt dorthin,
 statt nur ins flüchtige Anwendungsprotokoll. Anders als das Schattenprotokoll überlebt ein
-Eintrag das Löschen oder Umbenennen seiner Zone oder seines Geräts — Begründung in
-[docs/offene-entscheidungen.md](docs/offene-entscheidungen.md).
+Eintrag das Löschen oder Umbenennen seiner Zone oder seines Geräts, weil ein Schaltbefehl
+selten und einzeln beweiskräftig ist und deshalb nicht mit der Zone verschwinden soll.
 
 ---
 
