@@ -17,6 +17,12 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
   daraus die YAML-Konfiguration für das Home-Assistant-Add-on — für den Umstieg von
   `docker compose` auf das Add-on, ohne jede Einstellung von Hand zu übertragen. Siehe
   [docs/self-hosting.md](docs/self-hosting.md#6b-umstieg-von-docker-compose-auf-das-home-assistant-add-on).
+- `env_nach_addon.py`: neuer Schalter `--ohne-datenbank`, der alle `database_*`-Felder
+  aus der Ausgabe weglässt — für den Fall, dass im Add-on bereits eine Datenbank
+  eingetragen ist (typischerweise MariaDB) und die `.env` unangetastet bleiben soll.
+  Ohne den Schalter gewinnt eine auskommentierte
+  `THERMOCTL_DATABASE_URL=mysql+pymysql://...`-Zeile jetzt gegen eine aktive
+  SQLite-URL, statt dass SQLite sie stillschweigend übertönt.
 
 ## 0.6.2 — 2026-09-04
 
