@@ -9,6 +9,25 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ---
 
+## Unveröffentlicht
+
+### Wirkungswächter erkennt deutsche Komposita ohne Trennzeichen
+
+`tests/test_user_visible_effect_texts.py` prüfte deutsche Komposita bisher nur, wenn sie
+namentlich im Vokabular standen — die führende Wortgrenze (`\b`) vor jedem Substantiv
+verhinderte, dass „Zirkulationspumpe" oder „Ölbrenner" als Treffer für „pumpe" bzw.
+„brenner" erkannt wurden. Die führende Grenze fällt jetzt bei den Substantiven, die
+typischerweise als Zweitglied auftreten (Ventil, Aktor, Heizkörper, Heizkreis,
+Fußbodenheizung, Stellantrieb, Boiler, Brenner, Pumpe) sowie bei den Verb-/Adjektivstämmen
+`heiz`, `wärm`/`waerm` und `warm`, sodass ein Teilstring-Treffer jedes Kompositum fängt.
+`schalt` und `geschaltet` behalten ihre führende Grenze bewusst — ohne sie würde
+„Schaltfläche" (eine UI-Schaltfläche, keine physische Schaltbehauptung) mitgefangen. Die
+dadurch neu gemeldeten 27 Fundstellen wurden durchgesehen und in
+`tests/approved_physical_vocabulary.json` eingetragen; keine davon war eine falsche
+Wirkbehauptung.
+
+---
+
 ## 0.6.0 — 2026-09-03
 
 **Nacharbeiten an der PI-Regelung aus 0.5.0**, ausgelöst durch eine reale Anlage des

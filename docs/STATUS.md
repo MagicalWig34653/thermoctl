@@ -10,6 +10,26 @@ längst überholte Angaben — „nichts ist scharf", „1024 Tests, 98,55 %", �
 wird nirgends gesetzt", „es gibt keine Geräteerkennung für Meross". Alles vier stimmte
 einmal und stand noch da.
 
+## Wirkungswächter erkennt Komposita ohne Trennzeichen
+
+**Die Lücke aus dem letzten Stand ist geschlossen.** `PHYSICAL_VOCABULARY` in
+`tests/test_user_visible_effect_texts.py` benutzte durchgängig eine führende Wortgrenze
+(`\b`), wodurch deutsche Komposita wie „Zirkulationspumpe" oder „Ölbrenner" durchrutschten,
+obwohl „pumpe" und „brenner" im Vokabular stehen. Entscheidung des Projektinhabers: Die
+führende Wortgrenze fällt bei den Substantiven, die als Zweitglied in Komposita auftreten
+(`ventil`, `aktor`, `heizkörper`, `heizkreis`, `fußbodenheizung`, `stellantrieb`, `boiler`,
+`brenner`, `pumpe`, `heizung`, `heiz`, `wärm`/`waerm`, `warm`), sodass ein Teilstring-Treffer
+jedes Kompositum fängt statt nur eine benannte Handvoll. Fehltreffer werden dafür in Kauf
+genommen. Ausdrücklich **nicht** angefasst: `schalt` (die führende Grenze bleibt, weil
+`Schaltfläche` sonst als physische Schaltbehauptung durchginge — die Zeichenkette kommt in
+`thermoctl/web/templates/login.html` und `docs/self-hosting.md` tatsächlich vor) und
+`geschaltet`. Ein Test belegt, dass „Zirkulationspumpe" und „Ölbrenner" jetzt gefangen
+werden, sowie dass „warm" nicht auf „vorwarnen"/„Warnung" anschlägt. Die dadurch neu
+gemeldeten 27 Fundstellen wurden persönlich durchgesehen und in
+`tests/approved_physical_vocabulary.json` eingetragen — durchweg bestehende, bereits
+zutreffende Aussagen zu `Schaltaktor`/`Heizungsaktor`, keine falsche Wirkbehauptung
+darunter.
+
 ## v0.6.0 — Nacharbeiten an PI, aus einer echten Anlage heraus
 
 **Die PI-Eignungsprüfung ist gerätegenau geworden.** Ein selbstregelndes Thermostatventil
