@@ -2,6 +2,31 @@
 
 Letzte Aktualisierung: 2026-09-04
 
+## `env_nach_addon.py`: Datenbank in der `.env` schlaegt eine bereits im Add-on eingetragene nicht mehr blind
+
+Der Projektinhaber betreibt seine Anlage mit MariaDB, deren Zugangsdaten schon im
+Add-on stehen; seine `.env` enthaelt daneben noch eine
+`THERMOCTL_DATABASE_URL=sqlite:///...`-Zeile aus der Entwicklungsumgebung. Das
+Werkzeug haette diese SQLite-Zeile unveraendert uebernommen und damit die im Add-on
+eingetragene MariaDB-Verbindung beim Einfuegen ueberschrieben. Zwei Wege dagegen:
+
+- Neuer Schalter `--ohne-datenbank` laesst alle `database_*`-Felder in der Ausgabe
+  komplett weg -- der uebliche Fall, wenn die Datenbank im Add-on bereits eingetragen
+  ist und so bleiben soll. SQLite bleibt dabei unveraendert die Vorgabe des Add-ons
+  selbst; der Schalter aendert nur, was `env_nach_addon.py` ausgibt.
+- Ohne den Schalter: Liegt neben einer aktiven SQLite-`THERMOCTL_DATABASE_URL` eine
+  **auskommentierte** zweite Zeile mit `mysql+pymysql://...` (die uebliche Art, sich
+  beim Wechseln zwischen SQLite und MariaDB die jeweils andere Verbindung
+  aufzubewahren), gewinnt diese gegen SQLite. Reicht sie nicht fuer eine vollstaendige
+  Verbindung, faellt das Werkzeug auf SQLite zurueck und sagt auf der Fehlerausgabe
+  warum -- kein stilles Zurueckfallen.
+
+Gibt das Werkzeug SQLite aus, nennt der zugehoerige Hinweis auf der Fehlerausgabe
+jetzt auch `--ohne-datenbank`, falls die Zieldatenbank tatsaechlich eine andere ist.
+Rundlauf-Test um beide Faelle ergaenzt (`tests/test_tools_env_nach_addon.py`), fuer
+`--ohne-datenbank` als eigener, ausdruecklicher Fall statt eines Rundlauf-Vergleichs
+-- die Datenbank fehlt dort naturgemaess.
+
 ## Werkzeug fuer den Umstieg: `.env` -> Add-on-Konfiguration
 
 `tools/env_nach_addon.py` liest eine bestehende `.env` (`docker compose`-Betrieb) und

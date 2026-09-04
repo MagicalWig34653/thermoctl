@@ -163,6 +163,137 @@ class TestRundlauf:
         zurueckgelesen = yaml.safe_load(yaml_text)
         assert zurueckgelesen == optionswerte
 
+    def test_auskommentierte_mariadb_gewinnt_gegen_aktives_sqlite(self) -> None:
+        """Der im Auftrag beschriebene Fall: eine ``.env``, die tatsaechlich gegen
+        MariaDB laeuft, aber noch eine SQLite-Zeile aus der Entwicklungsumgebung
+        aktiv hat, waehrend die echten Zugangsdaten daneben auskommentiert liegen.
+        Der Rundlauf muss die MariaDB-URL liefern, nicht die aktive SQLite-Zeile."""
+        env_text = (
+            "THERMOCTL_DATABASE_URL=sqlite:///./data/thermoctl.db\n"
+            "#THERMOCTL_DATABASE_URL=mysql+pymysql://nutzer:passwort@"
+            "host.example.org:3307/db_name\n"
+            "THERMOCTL_SECRET_KEY=" + "s" * 32 + "\n"
+        )
+        env_werte = optionen._parse_env_field(env_text)
+        kommentierte_url = werkzeug.auskommentierte_datenbank_url(env_text)
+        optionswerte, hinweise = werkzeug.addon_optionen(
+            env_werte, kommentierte_mariadb_url=kommentierte_url
+        )
+
+        assert optionswerte["database_type"] == "mariadb"
+        assert optionswerte["database_host"] == "host.example.org"
+        assert optionswerte["database_port"] == 3307
+        assert optionswerte["database_user"] == "nutzer"
+        assert optionswerte["database_password"] == "passwort"
+        assert optionswerte["database_name"] == "db_name"
+        assert any(
+            "MariaDB" in zeile and "verwendet" in zeile for zeile in hinweise
+        )
+
+        yaml_text = werkzeug.als_yaml(optionswerte)
+        zurueckgelesen = yaml.safe_load(yaml_text)
+        ergebnis = optionen.translate(zurueckgelesen)
+        assert ergebnis["THERMOCTL_DATABASE_URL"] == (
+            "mysql+pymysql://nutzer:passwort@host.example.org:3307/db_name"
+        )
+
+    def test_unvollstaendige_auskommentierte_mariadb_faellt_zurueck_auf_sqlite(
+        self,
+    ) -> None:
+        """Die auskommentierte Alternative reicht nicht fuer eine vollstaendige
+        Verbindung (hier: kein Passwort) -- das darf kein stilles Zurueckfallen sein,
+        sondern SQLite wird uebertragen und ein Hinweis nennt den Grund."""
+        env_text = (
+            "THERMOCTL_DATABASE_URL=sqlite:////data/thermoctl.db\n"
+            "#THERMOCTL_DATABASE_URL=mysql+pymysql://nutzer@host.example.org/db_name\n"
+            "THERMOCTL_SECRET_KEY=" + "s" * 32 + "\n"
+        )
+        env_werte = optionen._parse_env_field(env_text)
+        kommentierte_url = werkzeug.auskommentierte_datenbank_url(env_text)
+        optionswerte, hinweise = werkzeug.addon_optionen(
+            env_werte, kommentierte_mariadb_url=kommentierte_url
+        )
+
+        assert optionswerte["database_type"] == "sqlite"
+        assert any("unvollstaendig" in zeile for zeile in hinweise)
+        assert any("Passwort" in zeile for zeile in hinweise)
+
+    def test_ohne_datenbank_laesst_datenbankfelder_ganz_weg(self) -> None:
+        """Eigener, ausdruecklicher Fall statt eines Rundlauf-Vergleichs mit
+        ``translate()``: Mit ``--ohne-datenbank`` fehlt die Datenbank in der Ausgabe
+        *absichtlich* -- hier ist zu pruefen, dass sie nirgends mehr auftaucht, nicht
+        dass sie unveraendert zurueckkommt (das waere das Gegenteil des Auftrags)."""
+        env_werte = optionen._parse_env_field(_VOLLSTAENDIGE_ENV_MARIADB)
+        optionswerte, hinweise = werkzeug.addon_optionen(env_werte, ohne_datenbank=True)
+
+        assert not any(feld.startswith("database_") for feld in optionswerte)
+        assert any(
+            "THERMOCTL_DATABASE_URL" in zeile
+            and "uebersprungen" in zeile
+            and "ohne-datenbank" in zeile
+            for zeile in hinweise
+        )
+
+        # Die uebrigen Felder ueberleben den Rundlauf ganz normal, und die Ausgabe
+        # bleibt gueltiges YAML ohne jede database_*-Angabe.
+        yaml_text = werkzeug.als_yaml(optionswerte)
+        zurueckgelesen = yaml.safe_load(yaml_text)
+        assert "database_type" not in zurueckgelesen
+        assert zurueckgelesen["secret_key"] == env_werte["THERMOCTL_SECRET_KEY"]
+
+
+# --- auskommentierte_datenbank_url(): Verhalten im Einzelnen ------------------------
+
+
+class TestAuskommentierteDatenbankUrl:
+    def test_findet_auskommentierte_zeile_mit_fuehrender_raute(self) -> None:
+        text = (
+            "THERMOCTL_DATABASE_URL=sqlite:////data/thermoctl.db\n"
+            "#THERMOCTL_DATABASE_URL=mysql+pymysql://n:p@h:3306/db\n"
+        )
+        assert (
+            werkzeug.auskommentierte_datenbank_url(text)
+            == "mysql+pymysql://n:p@h:3306/db"
+        )
+
+    def test_findet_auskommentierte_zeile_mit_leerzeichen_nach_der_raute(self) -> None:
+        text = "#   THERMOCTL_DATABASE_URL=mysql+pymysql://n:p@h:3306/db\n"
+        assert (
+            werkzeug.auskommentierte_datenbank_url(text)
+            == "mysql+pymysql://n:p@h:3306/db"
+        )
+
+    def test_erkennt_export_und_anfuehrungszeichen_wie_eine_aktive_zeile(self) -> None:
+        text = '#export THERMOCTL_DATABASE_URL="mysql+pymysql://n:p@h:3306/db"\n'
+        assert (
+            werkzeug.auskommentierte_datenbank_url(text)
+            == "mysql+pymysql://n:p@h:3306/db"
+        )
+
+    def test_ohne_kommentarzeile_gibt_none(self) -> None:
+        text = "THERMOCTL_DATABASE_URL=sqlite:////data/thermoctl.db\n"
+        assert werkzeug.auskommentierte_datenbank_url(text) is None
+
+    def test_bei_mehreren_kommentarzeilen_gilt_die_letzte(self) -> None:
+        text = (
+            "#THERMOCTL_DATABASE_URL=mysql+pymysql://alt:pw@host-alt/db\n"
+            "#THERMOCTL_DATABASE_URL=mysql+pymysql://neu:pw@host-neu/db\n"
+        )
+        assert (
+            werkzeug.auskommentierte_datenbank_url(text)
+            == "mysql+pymysql://neu:pw@host-neu/db"
+        )
+
+    def test_kommentierte_sqlite_zeile_wird_nicht_als_mariadb_verwendet(self) -> None:
+        """Eine auskommentierte SQLite-Zeile ist keine MariaDB-Angabe -- sie darf die
+        aktive SQLite-URL nicht gegen sich selbst 'gewinnen' lassen."""
+        optionswerte, hinweise = werkzeug.addon_optionen(
+            {"THERMOCTL_DATABASE_URL": "sqlite:////data/thermoctl.db"},
+            kommentierte_mariadb_url="sqlite:///./anderswo.db",
+        )
+        assert optionswerte == {"database_type": "sqlite"}
+        assert not any("verworfen" in zeile for zeile in hinweise)
+
 
 # --- addon_optionen(): Verhalten im Einzelnen ---------------------------------------
 
@@ -226,6 +357,30 @@ class TestAddonOptionen:
         optionswerte, hinweise = werkzeug.addon_optionen({})
         assert optionswerte == {}
         assert hinweise == []
+
+    def test_ohne_datenbank_laesst_database_url_ganz_aus(self) -> None:
+        optionswerte, hinweise = werkzeug.addon_optionen(
+            {"THERMOCTL_DATABASE_URL": "sqlite:////data/thermoctl.db"},
+            ohne_datenbank=True,
+        )
+        assert optionswerte == {}
+        assert any(
+            "THERMOCTL_DATABASE_URL" in zeile and "ohne-datenbank" in zeile
+            for zeile in hinweise
+        )
+
+    def test_ohne_datenbank_ohne_datenbank_url_bleibt_wirkungslos(self) -> None:
+        optionswerte, hinweise = werkzeug.addon_optionen(
+            {"THERMOCTL_SECRET_KEY": "s" * 32}, ohne_datenbank=True
+        )
+        assert optionswerte == {"secret_key": "s" * 32}
+        assert hinweise == []
+
+    def test_sqlite_hinweis_nennt_den_ohne_datenbank_schalter(self) -> None:
+        _, hinweise = werkzeug.addon_optionen(
+            {"THERMOCTL_DATABASE_URL": "sqlite:////data/thermoctl.db"}
+        )
+        assert any("--ohne-datenbank" in zeile for zeile in hinweise)
 
 
 # --- datenbank_optionen_aus_url() ----------------------------------------------------
@@ -319,7 +474,88 @@ class TestHauptprogramm:
         with redirect_stderr(stderr):
             ergebnis = werkzeug.main(["env_nach_addon.py"])
         assert ergebnis == 2
+        stderr_text = stderr.getvalue()
+        assert "Aufruf" in stderr_text
+        # Der Hilfetext nennt den Schalter und den ueblichen Grund dafuer: eine
+        # Datenbank, die im Add-on schon eingetragen ist und so bleiben soll.
+        assert "--ohne-datenbank" in stderr_text
+        assert "bereits eine Datenbank eingetragen" in stderr_text
+
+    def test_unbekanntes_flag_zeigt_den_hilfetext_und_nennt_den_schalter(self) -> None:
+        stderr = io.StringIO()
+        with redirect_stderr(stderr):
+            ergebnis = werkzeug.main(["env_nach_addon.py", "--nicht-existent", "x.env"])
+        assert ergebnis == 2
+        stderr_text = stderr.getvalue()
+        assert "Aufruf" in stderr_text
+        assert "--ohne-datenbank" in stderr_text
+
+    def test_zu_viele_argumente_zeigen_den_hilfetext(self) -> None:
+        stderr = io.StringIO()
+        with redirect_stderr(stderr):
+            ergebnis = werkzeug.main(["env_nach_addon.py", "eins.env", "zwei.env"])
+        assert ergebnis == 2
         assert "Aufruf" in stderr.getvalue()
+
+    def test_ohne_datenbank_flag_laesst_datenbankfelder_in_der_ausgabe_weg(
+        self, tmp_path: Path
+    ) -> None:
+        env_datei = tmp_path / ".env"
+        env_datei.write_text(
+            "THERMOCTL_DATABASE_URL=sqlite:////data/thermoctl.db\n"
+            "THERMOCTL_SECRET_KEY=" + "s" * 32 + "\n"
+        )
+        stdout, stderr = io.StringIO(), io.StringIO()
+        with redirect_stdout(stdout), redirect_stderr(stderr):
+            ergebnis = werkzeug.main(
+                ["env_nach_addon.py", "--ohne-datenbank", str(env_datei)]
+            )
+        assert ergebnis == 0
+
+        ausgabe = yaml.safe_load(stdout.getvalue())
+        assert "database_type" not in ausgabe
+        assert ausgabe["secret_key"] == "s" * 32
+        assert "--ohne-datenbank" in stderr.getvalue()
+
+    def test_ohne_datenbank_flag_kann_vor_oder_nach_dem_pfad_stehen(
+        self, tmp_path: Path
+    ) -> None:
+        env_datei = tmp_path / ".env"
+        env_datei.write_text(
+            "THERMOCTL_DATABASE_URL=sqlite:////data/thermoctl.db\n"
+            "THERMOCTL_SECRET_KEY=" + "s" * 32 + "\n"
+        )
+        stdout = io.StringIO()
+        with redirect_stdout(stdout), redirect_stderr(io.StringIO()):
+            ergebnis = werkzeug.main(
+                ["env_nach_addon.py", str(env_datei), "--ohne-datenbank"]
+            )
+        assert ergebnis == 0
+        assert "database_type" not in yaml.safe_load(stdout.getvalue())
+
+    def test_auskommentierte_mariadb_wird_ueber_die_kommandozeile_bevorzugt(
+        self, tmp_path: Path
+    ) -> None:
+        env_datei = tmp_path / ".env"
+        env_datei.write_text(
+            "THERMOCTL_DATABASE_URL=sqlite:///./data/thermoctl.db\n"
+            "#THERMOCTL_DATABASE_URL=mysql+pymysql://nutzer:pw@"
+            "host.example.org:3306/db\n"
+            "THERMOCTL_SECRET_KEY=" + "s" * 32 + "\n"
+        )
+        stdout, stderr = io.StringIO(), io.StringIO()
+        with redirect_stdout(stdout), redirect_stderr(stderr):
+            ergebnis = werkzeug.main(["env_nach_addon.py", str(env_datei)])
+        assert ergebnis == 0
+
+        ausgabe = yaml.safe_load(stdout.getvalue())
+        assert ausgabe["database_type"] == "mariadb"
+        assert ausgabe["database_host"] == "host.example.org"
+        assert ausgabe["database_user"] == "nutzer"
+        assert any(
+            "MariaDB" in zeile and "verwendet" in zeile
+            for zeile in stderr.getvalue().splitlines()
+        )
 
     def test_fehlende_datei_meldet_sich_auf_stderr(self, tmp_path: Path) -> None:
         fehlend = tmp_path / "nicht-da.env"

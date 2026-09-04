@@ -220,6 +220,33 @@ ermittelt. Eine `THERMOCTL_*`-Variable ohne eigenes Add-on-Feld (etwa
 `env`-Feld des Add-ons, das genau dafür da ist — Näheres zu diesem Feld in
 [`docs/STATUS.md`](STATUS.md).
 
+### Wenn im Add-on schon eine eigene Datenbank steht
+
+Läuft die Anlage bereits mit einer eigenen Datenbank — üblicherweise MariaDB, im
+Add-on selbst eingetragen, etwa mit dem Host der offiziellen MariaDB-Erweiterung
+(`core-mariadb`, Port 3306) —, darf die erzeugte YAML-Konfiguration diese Einstellung
+nicht überschreiben, nur weil in der `.env` noch eine
+`THERMOCTL_DATABASE_URL=sqlite:///...`-Zeile aus einer lokalen Entwicklungsumgebung
+steht. Für genau diesen — üblichen — Fall gibt es den Schalter `--ohne-datenbank`:
+
+```bash
+python3 tools/env_nach_addon.py --ohne-datenbank .env
+```
+
+Die Ausgabe lässt dann sämtliche `database_*`-Felder aus. Beim Einfügen in
+*Add-on → Konfiguration → YAML bearbeiten* bleibt die dort bereits eingetragene
+Datenbank unangetastet — alle übrigen Einstellungen werden trotzdem übertragen.
+
+Ohne diesen Schalter gilt weiterhin: Enthält die `.env` eine aktive SQLite-Zeile,
+daneben aber eine **auskommentierte** `THERMOCTL_DATABASE_URL=mysql+pymysql://...`-Zeile
+— eine gängige Art, sich beim Wechseln zwischen SQLite und MariaDB die jeweils andere
+Verbindung aufzubewahren —, erkennt das Werkzeug das und verwendet die MariaDB-Angaben
+statt SQLite. Reicht die auskommentierte Zeile nicht für eine vollständige Verbindung
+(fehlt z. B. das Passwort), fällt das Werkzeug auf SQLite zurück und sagt auf der
+Fehlerausgabe, warum. Gibt das Werkzeug SQLite aus, obwohl die Zieldatenbank
+möglicherweise eine andere ist, weist der zugehörige Hinweis auf der Fehlerausgabe auf
+`--ohne-datenbank` hin.
+
 ## 7. Wenn etwas nicht geht
 
 | Symptom | Ursache und Abhilfe |

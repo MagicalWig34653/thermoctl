@@ -195,6 +195,100 @@ def datenbank_optionen_aus_url(datenbank_url: str) -> dict[str, str | int]:
     )
 
 
+def auskommentierte_datenbank_url(env_text: str) -> str | None:
+    """Sucht in der rohen ``.env``-Datei nach einer *auskommentierten*
+    ``THERMOCTL_DATABASE_URL``-Zuweisung und gibt deren Wert zurueck, wenn eine da ist.
+
+    ``optionen._parse_env_field`` verwirft Kommentarzeilen bewusst -- richtig fuer den
+    Normalfall, aber ein Betreiber, der zwischen SQLite und MariaDB wechselt,
+    kommentiert typischerweise die eine Zeile aus statt sie zu loeschen, genau um sich
+    die Alternative aufzubewahren:
+
+        THERMOCTL_DATABASE_URL=sqlite:///./data/thermoctl.db
+        #THERMOCTL_DATABASE_URL=mysql+pymysql://nutzer:pw@host:3306/db
+
+    Erkannt wird eine beliebige Anzahl fuehrender ``#`` (mit oder ohne Leerzeichen
+    danach), der Rest der Zeile wird wie eine aktive Zeile behandelt -- inklusive
+    ``export`` und Anfuehrungszeichen -- indem er derselben ``_parse_env_field``
+    vorgelegt wird, die auch aktive Zeilen liest. So entsteht keine zweite,
+    abweichende Parsing-Logik fuer denselben Zeilenaufbau.
+
+    Stehen mehrere solche Kommentarzeilen in der Datei, gilt die letzte -- dieselbe
+    Regel, die ``_parse_env_field`` fuer mehrfach zugewiesene aktive Variablen schon
+    anwendet.
+    """
+    entkommentierte_zeilen = []
+    for raw_line in env_text.splitlines():
+        line = raw_line.strip()
+        ohne_raute = line.lstrip("#").strip()
+        if ohne_raute == line:
+            continue  # keine Kommentarzeile
+        entkommentierte_zeilen.append(ohne_raute)
+    geparst: dict[str, str] = optionen._parse_env_field(  # noqa: SLF001
+        "\n".join(entkommentierte_zeilen)
+    )
+    return geparst.get("THERMOCTL_DATABASE_URL")
+
+
+def _datenbank_optionen(
+    wert: str, kommentierte_mariadb_url: str | None
+) -> tuple[dict[str, str | int], list[str]]:
+    """Wandelt ``THERMOCTL_DATABASE_URL`` in Add-on-Optionen um -- und laesst dabei
+    eine auskommentierte MariaDB-Alternative gegen eine aktive SQLite-URL gewinnen.
+
+    Der Anlass: Eine ``.env``, die tatsaechlich gegen MariaDB laeuft, kann trotzdem
+    ``THERMOCTL_DATABASE_URL=sqlite:///...`` als Ueberbleibsel einer fruehen
+    Entwicklungsumgebung enthalten, waehrend die echten Zugangsdaten daneben
+    auskommentiert liegen. Wird eine solche Zeile gefunden und laesst sie sich
+    vollstaendig lesen, gewinnt sie -- SQLite samt seiner Pfad-Warnung faellt dann
+    weg. Laesst sie sich nicht vollstaendig lesen, ist das ein Hinweis, kein stilles
+    Zurueckfallen: SQLite wird trotzdem uebertragen, aber mit einer zusaetzlichen
+    Zeile, die sagt, warum die auskommentierte Alternative nicht gezogen wurde.
+    """
+    hinweise: list[str] = []
+
+    ist_sqlite = False
+    try:
+        ist_sqlite = make_url(wert).drivername == "sqlite"
+    except Exception:  # noqa: BLE001 -- wird gleich unten noch einmal richtig gemeldet
+        ist_sqlite = False
+
+    kommentierter_treiber: str | None = None
+    if kommentierte_mariadb_url is not None:
+        try:
+            kommentierter_treiber = make_url(kommentierte_mariadb_url).drivername
+        except Exception:  # noqa: BLE001 -- unparsbare Kommentarzeile ist kein Fall hier
+            kommentierter_treiber = None
+
+    if ist_sqlite and kommentierter_treiber == "mysql+pymysql":
+        assert kommentierte_mariadb_url is not None  # fuer mypy, siehe oben
+        try:
+            mariadb_optionen = datenbank_optionen_aus_url(kommentierte_mariadb_url)
+        except UmwandlungsFehler as fehler:
+            hinweise.append(
+                "THERMOCTL_DATABASE_URL: SQLite ist aktiv, daneben liegt eine "
+                f"auskommentierte MariaDB-Zeile, die aber unvollstaendig ist ({fehler}) "
+                "-- SQLite wird uebertragen."
+            )
+        else:
+            hinweise.append(
+                "THERMOCTL_DATABASE_URL: SQLite ist aktiv, aber eine auskommentierte "
+                "MariaDB-Verbindung liegt daneben -- diese wird verwendet, SQLite "
+                "verworfen."
+            )
+            return mariadb_optionen, hinweise
+
+    ergebnis = datenbank_optionen_aus_url(wert)
+    if ergebnis.get("database_type") == "sqlite":
+        hinweise.append(
+            "THERMOCTL_DATABASE_URL: SQLite wird uebertragen. Ist im Add-on bereits "
+            "eine andere Datenbank eingetragen (typischerweise MariaDB) und soll das "
+            "so bleiben, das Datenbankfeld stattdessen ganz weglassen: "
+            "--ohne-datenbank."
+        )
+    return ergebnis, hinweise
+
+
 #: Umkehrung von ``ABGEBILDETE_FELDER`` (minus ``database_url``, das eine eigene
 #: Funktion bekommt): jede ``THERMOCTL_*``-Umgebungsvariable, die eine dedizierte
 #: Add-on-Option hat, auf den Settings-Feldnamen -- der zugleich der Optionsname ist,
@@ -227,13 +321,25 @@ _UEBERSPRUNGEN: dict[str, str] = {
 }
 
 
-def addon_optionen(env_werte: dict[str, str]) -> tuple[dict[str, Any], list[str]]:
+def addon_optionen(
+    env_werte: dict[str, str],
+    *,
+    ohne_datenbank: bool = False,
+    kommentierte_mariadb_url: str | None = None,
+) -> tuple[dict[str, Any], list[str]]:
     """Baut die Add-on-Optionen aus geparsten ``.env``-Werten.
 
     Gibt die Optionen (in Schema-Reihenfolge sortiert von der Aufruferin) und eine
     Liste von Hinweiszeilen fuer die Fehlerausgabe zurueck -- letztere nennen nur
     Variablennamen und Gruende, nie Werte, damit auch die Diagnose keine Zugangsdaten
     preisgibt.
+
+    ``ohne_datenbank`` laesst alle ``database_*``-Felder in der Ausgabe komplett weg
+    -- fuer den Fall, dass im Add-on bereits eine Datenbank eingetragen ist und die
+    ``.env`` unangetastet bleiben soll (siehe CLI-Hilfetext in ``main``).
+    ``kommentierte_mariadb_url`` ist das Ergebnis von ``auskommentierte_datenbank_url``
+    auf dem rohen ``.env``-Text und gewinnt gegen eine aktive SQLite-URL, siehe
+    ``_datenbank_optionen``.
     """
     optionswerte: dict[str, Any] = {}
     env_feld_zeilen: list[str] = []
@@ -241,7 +347,15 @@ def addon_optionen(env_werte: dict[str, str]) -> tuple[dict[str, Any], list[str]
 
     for name, wert in env_werte.items():
         if name == "THERMOCTL_DATABASE_URL":
-            optionswerte.update(datenbank_optionen_aus_url(wert))
+            if ohne_datenbank:
+                hinweise.append(
+                    f"{name}: uebersprungen -- --ohne-datenbank angegeben, die im "
+                    "Add-on bereits eingetragene Datenbank bleibt unangetastet."
+                )
+                continue
+            db_optionen, db_hinweise = _datenbank_optionen(wert, kommentierte_mariadb_url)
+            optionswerte.update(db_optionen)
+            hinweise.extend(db_hinweise)
             continue
         if name in _UEBERSPRUNGEN:
             hinweise.append(
@@ -315,12 +429,48 @@ def als_yaml(optionswerte: dict[str, Any]) -> str:
     return "\n".join(zeilen) + "\n"
 
 
+_OHNE_DATENBANK_FLAG = "--ohne-datenbank"
+
+
+def _aufruf_text(programmname: str) -> str:
+    """Der Hilfetext zum Aufruf -- auch das, was bei falschen Argumenten erscheint.
+
+    Nennt zuerst den Fall, der fuer einen Add-on-Betrieb mit eigener Datenbank der
+    uebliche ist: Die Datenbank steht schon im Add-on (typischerweise MariaDB) und
+    soll dort unangetastet bleiben, auch wenn die ``.env`` etwas anderes sagt --
+    z. B. eine ``sqlite:///...``-Zeile aus der lokalen Entwicklungsumgebung.
+    """
+    return (
+        f"Aufruf: {programmname} [{_OHNE_DATENBANK_FLAG}] <.env-Datei>\n"
+        "\n"
+        f"  {_OHNE_DATENBANK_FLAG}\n"
+        "      Laesst alle database_*-Felder in der Ausgabe komplett weg.\n"
+        "      Der uebliche Grund: Im Add-on ist bereits eine Datenbank eingetragen\n"
+        "      (typischerweise MariaDB) und soll so bleiben -- die .env enthaelt dann\n"
+        "      z. B. nur noch eine sqlite:///...-Zeile als Ueberbleibsel der lokalen\n"
+        "      Entwicklungsumgebung. Ohne diesen Schalter wuerde die erzeugte YAML\n"
+        "      die im Add-on eingetragene Datenbank beim Einfuegen ueberschreiben."
+    )
+
+
 def main(argv: list[str]) -> int:
-    if len(argv) != 2:
-        print(f"Aufruf: {argv[0]} <.env-Datei>", file=sys.stderr)
+    programmname = argv[0] if argv else "env_nach_addon.py"
+    ohne_datenbank = False
+    pfade: list[str] = []
+    unbekannte_flags: list[str] = []
+    for arg in argv[1:]:
+        if arg == _OHNE_DATENBANK_FLAG:
+            ohne_datenbank = True
+        elif arg.startswith("-"):
+            unbekannte_flags.append(arg)
+        else:
+            pfade.append(arg)
+
+    if unbekannte_flags or len(pfade) != 1:
+        print(_aufruf_text(programmname), file=sys.stderr)
         return 2
 
-    env_pfad = Path(argv[1])
+    env_pfad = Path(pfade[0])
     try:
         text = env_pfad.read_text()
     except OSError as error:
@@ -328,9 +478,14 @@ def main(argv: list[str]) -> int:
         return 1
 
     env_werte = optionen._parse_env_field(text)  # noqa: SLF001 -- bewusst dieselbe Funktion
+    kommentierte_mariadb_url = auskommentierte_datenbank_url(text)
 
     try:
-        optionswerte, hinweise = addon_optionen(env_werte)
+        optionswerte, hinweise = addon_optionen(
+            env_werte,
+            ohne_datenbank=ohne_datenbank,
+            kommentierte_mariadb_url=kommentierte_mariadb_url,
+        )
     except UmwandlungsFehler as error:
         print(f"env_nach_addon: {error}", file=sys.stderr)
         return 1
