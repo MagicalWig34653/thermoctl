@@ -27,6 +27,10 @@ dev = [
     "ruff>=0.16",
     "mypy>=1.18",
     "cosmic-ray>=8.7,<9",
+    # Nur zum Pruefen, in Testcode: liest die von tools/env_nach_addon.py erzeugte
+    # YAML-Ausgabe wieder ein, um deren Gueltigkeit zu belegen. Das Skript selbst
+    # bleibt bewusst ohne diese Abhaengigkeit (siehe dessen Docstring).
+    "pyyaml>=6.0",
 ]
 mcp = ["mcp>=1.2"]
 # Eigene, von `dev` getrennte Gruppe: nur wer Browsertests laufen lassen will,

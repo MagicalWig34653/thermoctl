@@ -9,6 +9,15 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ---
 
+## Unveröffentlicht
+
+### Hinzugefügt
+
+- Neues Werkzeug `tools/env_nach_addon.py`: liest eine bestehende `.env` und erzeugt
+  daraus die YAML-Konfiguration für das Home-Assistant-Add-on — für den Umstieg von
+  `docker compose` auf das Add-on, ohne jede Einstellung von Hand zu übertragen. Siehe
+  [docs/self-hosting.md](docs/self-hosting.md#6b-umstieg-von-docker-compose-auf-das-home-assistant-add-on).
+
 ## 0.6.2 — 2026-09-04
 
 ### Hinzugefügt
