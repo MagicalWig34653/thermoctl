@@ -16,6 +16,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 ENTRYPOINT = ROOT / "docker" / "entrypoint.sh"
 OPTIONEN_SKRIPT = ROOT / "docker" / "thermoctl_optionen.py"
+INGRESS_SKRIPT = ROOT / "docker" / "thermoctl_ingress.py"
 
 
 def _make_executable(path: Path, content: str) -> None:
@@ -50,6 +51,7 @@ def _run_entrypoint(tmp_path: Path, extra_env: dict[str, str]) -> subprocess.Com
     env = {
         "PATH": f"{bin_dir}:/usr/bin:/bin",
         "THERMOCTL_ADDON_OPTIONS_SCRIPT": str(OPTIONEN_SKRIPT),
+        "THERMOCTL_INGRESS_SCRIPT": str(INGRESS_SKRIPT),
         **extra_env,
     }
     return subprocess.run(  # noqa: S603
@@ -144,3 +146,94 @@ def test_the_script_that_ships_in_the_image_is_the_one_under_test() -> None:
     assert "docker/thermoctl_optionen.py /usr/local/bin/thermoctl_optionen.py" in dockerfile
     assert "/usr/local/bin/thermoctl_optionen.py" in entrypoint
     assert OPTIONEN_SKRIPT.exists()
+
+
+def test_the_ingress_script_that_ships_in_the_image_is_the_one_under_test() -> None:
+    """Dasselbe Bindeglied wie oben, fuer das Ingress-Skript."""
+    dockerfile = (ROOT / "docker" / "Dockerfile").read_text()
+    entrypoint = ENTRYPOINT.read_text()
+    assert "docker/thermoctl_ingress.py /usr/local/bin/thermoctl_ingress.py" in dockerfile
+    assert "/usr/local/bin/thermoctl_ingress.py" in entrypoint
+    assert INGRESS_SKRIPT.exists()
+
+
+def test_without_supervisor_token_ingress_root_path_stays_unset(tmp_path: Path) -> None:
+    """Gewoehnlicher docker-compose-Betrieb ohne SUPERVISOR_TOKEN: keine Abfrage, kein
+    THERMOCTL_ROOT_PATH in der Umgebung, mit der `thermoctl` gestartet wird."""
+    missing = tmp_path / "options.json"
+    result = _run_entrypoint(
+        tmp_path,
+        {
+            "THERMOCTL_ADDON_OPTIONS_FILE": str(missing),
+            "THERMOCTL_DATABASE_URL": "sqlite:///./eigene.db",
+            "THERMOCTL_SECRET_KEY": "x" * 32,
+        },
+    )
+    assert result.returncode == 0, result.stderr
+    assert "THERMOCTL_ROOT_PATH" not in result.stdout
+
+
+def test_supervisor_token_but_operator_set_root_path_wins(tmp_path: Path) -> None:
+    """Ein Betreiber, der THERMOCTL_ROOT_PATH selbst gesetzt hat, gewinnt -- auch wenn ein
+    SUPERVISOR_TOKEN vorhanden waere. Zeigt via eine garantiert unerreichbare
+    Supervisor-Adresse: wuerde trotzdem abgefragt, liefe der Test in die
+    Zeitueberschreitung statt sofort durchzulaufen."""
+    missing = tmp_path / "options.json"
+    result = _run_entrypoint(
+        tmp_path,
+        {
+            "THERMOCTL_ADDON_OPTIONS_FILE": str(missing),
+            "THERMOCTL_DATABASE_URL": "sqlite:///./eigene.db",
+            "THERMOCTL_SECRET_KEY": "x" * 32,
+            "THERMOCTL_ROOT_PATH": "/vom-betreiber-gesetzt",
+            "SUPERVISOR_TOKEN": "mein-token",
+            "THERMOCTL_INGRESS_SUPERVISOR_URL": "http://127.0.0.1:1/",
+        },
+    )
+    assert result.returncode == 0, result.stderr
+    assert "THERMOCTL_ROOT_PATH=/vom-betreiber-gesetzt" in result.stdout
+
+
+def test_supervisor_token_with_valid_ingress_entry_sets_root_path(tmp_path: Path) -> None:
+    """End-zu-Ende durch die echte Shell: ein Stellvertreter-Supervisor liefert einen
+    gueltigen ingress_entry, der Werte kommt bis zum (Fake-)`thermoctl`-Prozess durch."""
+    import http.server
+    import json as _json
+    import threading
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self) -> None:  # noqa: N802
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(
+                _json.dumps(
+                    {"result": "ok", "data": {"ingress_entry": "/api/hassio_ingress/deadbeef"}}
+                ).encode()
+            )
+
+        def log_message(self, format: str, *args: object) -> None:  # noqa: A002
+            pass
+
+    server = http.server.HTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        missing = tmp_path / "options.json"
+        result = _run_entrypoint(
+            tmp_path,
+            {
+                "THERMOCTL_ADDON_OPTIONS_FILE": str(missing),
+                "THERMOCTL_DATABASE_URL": "sqlite:///./eigene.db",
+                "THERMOCTL_SECRET_KEY": "x" * 32,
+                "SUPERVISOR_TOKEN": "mein-token",
+                "THERMOCTL_INGRESS_SUPERVISOR_URL": f"http://127.0.0.1:{server.server_port}/",
+            },
+        )
+    finally:
+        server.shutdown()
+        thread.join()
+    assert result.returncode == 0, result.stderr
+    assert "THERMOCTL_ROOT_PATH=/api/hassio_ingress/deadbeef" in result.stdout
+    assert "mein-token" not in result.stdout
+    assert "mein-token" not in result.stderr

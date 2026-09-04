@@ -122,6 +122,11 @@ BEWUSST_AUSGELASSEN: dict[str, str] = {
     "Wirkung.",
     "passkey_origin": "Folgt aus passkey_rp_id: ohne Relying-Party-Id ohnehin ohne "
     "Wirkung.",
+    "root_path": "Keine vom Betreiber auszufuellende Option: unter Ingress vergibt der "
+    "Supervisor den Pfad selbst und teilt ihn nur zur Laufzeit ueber seine eigene API "
+    "mit (docker/thermoctl_ingress.py, aus docker/entrypoint.sh aufgerufen) -- ein "
+    "Betreiber kennt den Wert vorab gar nicht und koennte ihn hier nicht sinnvoll "
+    "eintragen.",
 }
 
 

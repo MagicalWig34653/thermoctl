@@ -12,6 +12,7 @@ COPY migrations /app/migrations
 COPY alembic.ini /app/alembic.ini
 COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 COPY docker/thermoctl_optionen.py /usr/local/bin/thermoctl_optionen.py
+COPY docker/thermoctl_ingress.py /usr/local/bin/thermoctl_ingress.py
 RUN chmod +x /usr/local/bin/entrypoint.sh && mkdir -p /data && chown thermoctl /data
 WORKDIR /app
 USER thermoctl
