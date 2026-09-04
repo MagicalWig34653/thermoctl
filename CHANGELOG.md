@@ -11,6 +11,16 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ## Unveröffentlicht
 
+### Oberfläche von Umstiegs-Jargon bereinigt
+
+`control.html` nannte den Trockenlauf-Vergleich einmal „gegen das Altsystem" und einmal
+„Schattenbetrieb", und die Checkliste vor dem Scharfschalten versprach, das Altsystem bleibe
+Rückfallebene — für einen Betreiber ohne Altsystem alles ohne Bedeutung. Beide Stellen nennen
+den Zustand jetzt einheitlich „Trockenlauf"; der Altsystem-Punkt ist ersatzlos gestrichen, der
+Vergleichssatz durch eine für jeden Betreiber gültige Aussage ersetzt (Entscheidungen lassen
+sich beobachten, bevor sie etwas schalten). Der nie erreichte Schnittstellen-Zustand
+`not_built` ist aus Domänenlogik, Vorlage und Test entfernt.
+
 ### Wirkungswächter erkennt deutsche Komposita ohne Trennzeichen
 
 `tests/test_user_visible_effect_texts.py` prüfte deutsche Komposita bisher nur, wenn sie

@@ -122,7 +122,7 @@ def test_home_assistant_depends_on_mqtt(session: Session) -> None:
 def test_every_interface_has_a_known_state(session: Session) -> None:
     """Counter-check for the template: it looks the label up in a table and
     would respond with a KeyError on an unknown value."""
-    known = {"running", "configured", "off", "missing", "not_built"}
+    known = {"running", "configured", "off", "missing"}
     for overrides in ({}, {"mqtt_enabled": True, "mqtt_host": "b"}):
         for bridge in (None, True, False):
             for s in overview(session, _settings(**overrides), bridge):
