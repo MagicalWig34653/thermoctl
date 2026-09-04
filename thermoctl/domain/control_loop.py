@@ -244,7 +244,26 @@ def decide(situation: Situation) -> Decision:
                 f"({setpoint_reason})."
             ),
         )
+    # This branch is reached whenever heating is already on and the measured value has
+    # not crossed the *upper* band edge (checked above) — not only when it actually
+    # sits within the band. It can equally be reached far *below* the lower edge: the
+    # decision (keep heating) is correct either way, but the two situations are not the
+    # same fact and must not share one sentence (found 2026-09-04: 18,527 logged
+    # decisions claiming "within ± h" with a mean actual distance of 5.90K and a max of
+    # 11.40K from the setpoint).
     if regular_heating_now:
+        if measured_c < setpoint_c - h:
+            return Decision(
+                heating=True,
+                reason_code=(
+                    REASON_CODE_FROST_SENSOR_FAILURE if sensor_failed
+                    else REASON_CODE_UNCHANGED
+                ),
+                reason=(
+                    f"Ist {measured_c} °C unter Soll {setpoint_c} °C minus Hysterese {h}K "
+                    f"({setpoint_reason}) — Heizung läuft bereits, Zustand bleibt."
+                ),
+            )
         return Decision(
             heating=True,
             reason_code=(
@@ -273,6 +292,24 @@ def decide(situation: Situation) -> Decision:
                 f"{situation.parameter.valve_protection_duration_minutes} Minuten auf "
                 "Heizen. Im Trockenlauf wird die Entscheidung nur protokolliert; im "
                 "scharfen Betrieb nach einem Neustart geht sie an den zugeordneten Aktor."
+            ),
+        )
+    # Mirror image of the branch above: reached whenever heating is already off and the
+    # measured value has not crossed the *lower* band edge — not only when it sits
+    # within the band. It can equally be reached far *above* the upper edge (the
+    # motivating case: room at 27.40 °C against a 16.0 °C frost-protection setpoint,
+    # logged as "within ± 0.10K"). The decision (stay off) is correct; only the old,
+    # single sentence for both cases was not.
+    if measured_c > setpoint_c + h:
+        return Decision(
+            heating=False,
+            reason_code=(
+                REASON_CODE_FROST_SENSOR_FAILURE if sensor_failed
+                else REASON_CODE_UNCHANGED
+            ),
+            reason=(
+                f"Ist {measured_c} °C über Soll {setpoint_c} °C plus Hysterese {h}K "
+                f"({setpoint_reason}) — Heizung ist bereits aus, Zustand bleibt."
             ),
         )
     return Decision(

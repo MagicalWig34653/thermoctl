@@ -11,6 +11,20 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ## Unveröffentlicht
 
+### Fix: die protokollierte Begründung bei „unveraendert" nannte oft nicht den echten Sachverhalt
+
+Beide Zweige der Entscheidung `unveraendert` in `decide()` schrieben unabhängig vom
+tatsächlichen Abstand denselben Satz „... innerhalb der Hysterese um Soll ... ± hK ... —
+Zustand bleibt.", wurden aber auch dann erreicht, wenn der Messwert weit jenseits der
+*gegenüberliegenden* Bandkante lag — die Entscheidung (Zustand halten) war dabei stets
+richtig, nur der Text falsch. An 18.527 echten `unveraendert`-Entscheidungen lag keine
+einzige tatsächlich im Band; mittlerer Abstand 5,90K, grösster 11,40K. Die Begründung
+unterscheidet jetzt „echt im Band" von „jenseits der gegenüberliegenden Kante, Zustand
+bleibt, weil er schon lief bzw. schon aus war". **Keine Entscheidung hat sich geändert**
+(unveränderte 2.376-Kombinationen-Tabelle in `tests/test_control_loop_state_table.py`).
+Alteinträge in der Produktivdatenbank behalten den bisherigen, falschen Text — sie werden
+nicht nachträglich korrigiert.
+
 ### Oberfläche von Umstiegs-Jargon bereinigt
 
 `control.html` nannte den Trockenlauf-Vergleich einmal „gegen das Altsystem" und einmal
