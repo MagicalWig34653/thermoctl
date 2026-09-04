@@ -136,9 +136,10 @@ genau vier Topics:
 
 `<basis>` ist `THERMOCTL_MQTT_BASE_TOPIC`, standardmäßig `zigbee2mqtt`.
 
-**Nicht abonniert wird `heizung/#`** — die Topics des Altsystems. Der Grund steht in
-[offene-entscheidungen.md](offene-entscheidungen.md): Der Vergleichsbetrieb gehört zu
-Phase 4 und bekommt dort sein eigenes Datenmodell.
+**Nicht abonniert wird `heizung/#`** — die Topics des Altsystems. Lesen wäre gefahrlos
+und läge nicht im Weg des Trockenlaufs, aber der Vergleichsbetrieb gegen das Altsystem
+gehört zu Phase 4 und bekommt dort sein eigenes Datenmodell (Abweichungsbericht); Daten
+schon jetzt mitzuschreiben, die niemand auswertet, wäre Ballast.
 
 Ein Gerätename mit Schrägstrich entginge dem `+`-Platzhalter. In der Anlage kommt keiner
 vor; der Fall wird protokolliert statt stillschweigend verschluckt.
@@ -180,8 +181,9 @@ eine geratene Nutzlast wäre eine Zusage, die niemand geprüft hat.
 
 ## 2. Senden: die eigene Struktur
 
-Angeschlossen. Sie behebt die drei Eigenheiten, die die
-[Bestandsaufnahme](bestandsaufnahme-altsystem.md) am gewachsenen Altsystem festhält.
+Angeschlossen. Sie ersetzt die gewachsene, nicht entworfene Topic-Struktur des Altsystems
+(unter anderem ein unübliches `.../get`-Suffix an jedem State-Topic, keine
+Home-Assistant-Discovery) durch eine eigene, saubere Struktur mit echter Discovery.
 
 ```
 thermoctl/availability                              online  (retained)

@@ -3,12 +3,12 @@
 Letzte Aktualisierung: 2026-09-04
 
 **Diese Datei sagt, was jetzt gilt — sonst nichts.** Wie es dazu kam, welche Fehler wie
-gefunden wurden und warum etwas so entschieden ist, steht in [verlauf.md](verlauf.md).
-Die Trennung gibt es, seit ein Freigabe-Review vier Aussagen in dieser Datei widerlegen
-konnte: Sie war auf über tausend Zeilen gewachsen und enthielt gleichzeitig aktuelle und
-längst überholte Angaben — „nichts ist scharf", „1024 Tests, 98,55 %", „`control_armed`
-wird nirgends gesetzt", „es gibt keine Geräteerkennung für Meross". Alles vier stimmte
-einmal und stand noch da.
+gefunden wurden und warum etwas so entschieden ist, wird hier nicht mitgeführt. Der
+Grund: Diese Datei war einmal auf über tausend Zeilen gewachsen und enthielt gleichzeitig
+aktuelle und längst überholte Angaben — „nichts ist scharf", „1024 Tests, 98,55 %",
+„`control_armed` wird nirgends gesetzt", „es gibt keine Geräteerkennung für Meross". Alle
+vier stimmten einmal und standen noch da; ein Freigabe-Review konnte sie namentlich
+widerlegen.
 
 ## Wirkungswächter erkennt Komposita ohne Trennzeichen
 
@@ -193,16 +193,18 @@ Diese Frage ist mehrfach zu grob beantwortet worden, in beide Richtungen. Der St
   `app.py::_shadow_loop`) — genau die Stelle, an der eine frühere Fassung die ganze
   SQLite-Datei bis zu 40 Sekunden gesperrt hatte. Lehnt die Cloud die Anmeldung ab, oder
   ist keine hinterlegt, schreibt jeder betroffene Zyklus stattdessen einen
-  `failed`-Eintrag ins Schaltprotokoll, ohne den Zyklus selbst anzuhalten. Begründung
-  und die gewählte Gültigkeitsdauer der Sitzung in
-  [offene-entscheidungen.md](offene-entscheidungen.md).
+  `failed`-Eintrag ins Schaltprotokoll, ohne den Zyklus selbst anzuhalten. Die Sitzung
+  gilt sechs Stunden, bevor sie sich von selbst erneuert — eine bewusste Schätzung, keine
+  gemessene Zahl, weil Meross keine Token-Lebensdauer dokumentiert: lang genug, dass ein
+  gesundes Konto sich nur selten anmeldet, kurz genug, dass eine widerrufene Sitzung
+  binnen desselben Tages auffällt statt unbegrenzt an einer toten Verbindung
+  festzuhalten.
 - **Ein Zigbee2MQTT-Thermostatventil ohne `self_regulating`** (Fähigkeit `thermostat`
   statt `switch`, von thermoctls eigener Hysterese statt eigener Regelung gesteuert)
   bekommt jetzt ebenfalls seinen Befehl, über `Zigbee2MqttThermostat`: den aufgelösten
   Zonensollwert und, wo das Gerät `system_mode` als beschreibbar meldet, `heat`/`off`
   dazu. Ein Gerät ohne `system_mode` (Bosch BTH-RA) wird stattdessen auf seinen
-  niedrigsten Sollwert gefahren. Der frühere Blocker-Eintrag vom 2026-09-01 in
-  [offene-entscheidungen.md](offene-entscheidungen.md) ist als behoben vermerkt.
+  niedrigsten Sollwert gefahren — der frühere Blocker dazu vom 2026-09-01 ist behoben.
 
 ## Kreuzreview der Aktorverdrahtung — drei Befunde, alle behoben
 
@@ -219,8 +221,9 @@ scharfen Betrieb noch einmal gezielt, ob geschaltet wird, wenn es soll — mit
   unterversorgten Zone (deren Entscheidung sich gerade *nicht* ändert) hätte das im
   Januar ein eingefrorenes Rohr bedeutet. Jetzt trägt der Zwischenspeicher das
   Ergebnis im Schlüssel: ein gescheiterter Befehl wird jeden scharfen Zyklus erneut
-  versucht, aber nur einmal pro Ausfallepisode geloggt. Begründung in
-  [offene-entscheidungen.md](offene-entscheidungen.md).
+  versucht, aber nur einmal pro Ausfallepisode geloggt — unbegrenzt oft, bewusst ohne
+  Backoff mit steigendem Abstand, weil ein Aktor an einer echten Heizung die Chance zur
+  Erholung nicht verlieren soll, nur weil ein Backoff-Zähler noch wartet.
 - **Die Entwertung der Meross-Sitzung war nie verdrahtet** (schwer). `app.py` übergab
   `meross_transport`, aber nicht `meross_session_cache`, an den
   Veröffentlichungszyklus — `invalidate_meross_session()` war damit im echten
@@ -231,7 +234,9 @@ scharfen Betrieb noch einmal gezielt, ob geschaltet wird, wenn es soll — mit
   eigenen Riegel beim Start ein; der Meross-Weg (`MerossSwitch`) prüfte nur den
   Laufzeit-Riegel. Jetzt bekommt `MerossSwitch` denselben eingefrorenen Riegel
   (`app.state.sending_allowed`, wiederverwendet statt eines zweiten unabhängigen
-  Werts). Begründung in [offene-entscheidungen.md](offene-entscheidungen.md).
+  Werts) — beide Riegel beantworten dieselbe Frage („war die Anlage scharf, als dieser
+  Prozess startete") und sollen deshalb denselben Wert tragen, statt als zwei
+  unabhängige Booleans unbemerkt auseinanderlaufen zu können.
 
 Zusätzlich abgesichert: eine Regression, bei der `ensure_transport()` in die offene
 Schreibtransaktion des Schattenzyklus verschoben wird (genau der Fehler, der einmal
@@ -248,8 +253,10 @@ Begründung, Auslöser. Der bestehende Sollwert-Weg an selbstregelnde Thermostat
 „Einstellungen → Schaltprotokoll" (`/device-commands`, Recht `audit.read`). Anders als
 `shadow_decision` überlebt ein Eintrag das Löschen oder Umbenennen seiner Zone oder seines
 Geräts (`SET NULL` plus Namens-Momentaufnahme statt CASCADE), und unterliegt keiner
-automatischen Aufbewahrung — Begründung in
-[offene-entscheidungen.md](offene-entscheidungen.md). REST und MCP ziehen noch nicht nach;
+automatischen Aufbewahrung — anders als Messwerte ist ein Schaltbefehl selten (nur bei
+Änderung gesendet) und jeder einzelne kann genau der Beleg sein, nach dem später jemand
+sucht; eine automatische Löschung nach der üblichen kurzen Frist würde ausgerechnet den
+Beweis entfernen, für den das Protokoll gebaut wurde. REST und MCP ziehen noch nicht nach;
 das war eine bewusste, im Auftrag benannte Entscheidung für diese Runde, keine Lücke, die
 übersehen wurde.
 
@@ -276,8 +283,7 @@ die zweite setzt, läuft unbemerkt gegen SQLite und bekommt trotzdem einen grün
 ## v0.2.2 — freigegeben
 
 **Sieben Freigabe-Reviews, sechs Ablehnungen, das siebte gibt frei.** Was die sechs
-gefunden haben, steht im [CHANGELOG](../CHANGELOG.md) und ausführlich in
-[verlauf.md](verlauf.md). Der Verlauf in Kürze: ein Regelungsfehler, eine
+gefunden haben, steht im [CHANGELOG](../CHANGELOG.md). In Kürze: ein Regelungsfehler, eine
 CSRF-Lücke in *jedem* ändernden Formular, ein Rückgängig, das einen veralteten
 Schnappschuss annahm — und viermal dieselbe Klasse, Texte, die eine Ventilbewegung
 versprechen, die es nicht gibt.
@@ -452,9 +458,14 @@ der zeitlich begrenzte Lauf zu dauerhaftem Heizen.** Behoben am 2026-09-02: Die 
 von der Mindestschaltdauer in Regel 5 (`thermoctl/domain/control_loop.py`,
 `protection_exempt`) gilt jetzt achsenabhängig — für einen gehaltenen Ein-Zustand reicht
 `valve_protection_active` allein, für den Aus-Timer weiterhin
-`valve_protection_active and protection_allowed`. Einzelheiten, verworfene Alternativen
-und die Nebenwirkung dieser Wahl stehen in
-[offene-entscheidungen.md](offene-entscheidungen.md).
+`valve_protection_active and protection_allowed`. Erwogen und verworfen wurden zwei
+andere Wege: den Marker erst beim tatsächlichen Ende des Ein-Zustands zu löschen (trifft
+die Ursache genauer, macht die Marker-Semantik aber zustandsbehafteter), und die
+Konfiguration so einzuschränken, dass die Mindest-Einschaltdauer nie länger sein darf als
+die Schutzlaufdauer (verschiebt das Problem nur auf den Bedienenden). Nebenwirkung, bewusst
+in Kauf genommen: Verliert ein laufender Schutzlauf während seines Laufs Vorrang (Override,
+„aus", Sensorausfall), hält `min_on_seconds` den Ein-Zustand nicht mehr künstlich — die
+Regelung kann sofort umschalten, in einem auf die Schutzlaufdauer begrenzten Zeitfenster.
 
 ### Zwei Werkzeugfallen, beide bezahlt
 
@@ -501,8 +512,7 @@ Für die letzte hält ein ausdrücklich als offen benannter Test die Lücke fest
 
 ## Offen
 
-**Das Komplettreview ist durch.** Alle sieben Runden sind abgeschlossen. Der Plan mit sieben Runden steht in
-[superpowers/plans/2026-09-01-komplettreview.md](superpowers/plans/2026-09-01-komplettreview.md).
+**Das Komplettreview ist durch.** Alle sieben Runden sind abgeschlossen.
 
 | Runde | Zustand |
 |---|---|
@@ -527,9 +537,15 @@ verschmelzen.
 
 **Was nur der Projektinhaber entscheiden kann:**
 
-- **Proportional-Integral-Regelung: ja, nein, oder erst messen?** Die Bewertung steht in
-  [superpowers/specs/2026-09-02-pi-regelung-bewertung.md](superpowers/specs/2026-09-02-pi-regelung-bewertung.md).
-  Empfehlung: erst messen — die Daten dafür liegen seit 0.3.0 vor.
+- **Proportional-Integral-Regelung: ja, nein, oder erst messen?** Ein Zweipunktregler
+  pendelt bei trägen Systemen (Fussbodenheizung) prinzipiell um den Sollwert; ein PI-Anteil
+  würde das beheben, ist aber riskant (Integrator-Windup bei jeder der sieben
+  Vorrangregeln — Fenster, Frostschutz, Sensorausfall — muss ihn zurücksetzen) und für die
+  selbstregelnden Thermostatventile schlicht falsch (zwei Regler auf derselben
+  Regelstrecke). Empfehlung: erst messen, wie weit die Anlage wirklich pendelt — die Daten
+  dafür liegen seit 0.3.0 vor, und erst danach entscheidet sich, ob PI den Aufwand lohnt
+  oder eine billigere Alternative (ein früheres Ausschalten, asymmetrische Hysterese)
+  reicht.
 - **Phase 2 wirklich abschliessen** — Schritt für Schritt in
   [inbetriebnahme-schattenbetrieb.md](inbetriebnahme-schattenbetrieb.md). Die Anlage muss
   über mehrere Tage laufen, bevor feststeht, dass plausible Ist-Temperaturen einlaufen

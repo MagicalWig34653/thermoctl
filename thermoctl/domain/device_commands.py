@@ -7,9 +7,11 @@ out of scope for this change. `list_commands` is the read side for the two adapt
 added afterwards, so a filter added to one of them cannot silently behave differently
 from the other -- Grundsatz 6, applied to the two adapters this change actually owns.
 
-The table has no retention (`docs/offene-entscheidungen.md`, 2026-09-01) and grows
-without bound for as long as the plant runs, which is why `limit` is mandatory and
-capped rather than left to the caller.
+The table has no retention, deliberately: unlike a measurement, a command is rare
+(sent only on change) and any single row can be the one someone needs weeks later to
+explain an incident -- an automatic deletion would remove exactly the evidence this
+log was built for. It therefore grows without bound for as long as the plant runs,
+which is why `limit` is mandatory and capped rather than left to the caller.
 """
 
 from dataclasses import dataclass

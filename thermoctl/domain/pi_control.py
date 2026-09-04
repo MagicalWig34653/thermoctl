@@ -1,18 +1,16 @@
 """Pure PI and window functions for the optional per-zone PI controller (Beta).
 
-Specification: `docs/superpowers/specs/2026-09-02-pi-regelung-spezifikation.md`,
-sections 1 to 4. This module builds **step 3** of the build order in section 11:
-reine PI- und Fensterfunktionen. Nothing here is wired to
-`thermoctl.domain.control_loop.decide()` yet -- that is step 4, a separate task. The
+This module builds the pure PI and window functions as their own step, ahead of wiring
+them into the control loop. Nothing here is wired to
+`thermoctl.domain.control_loop.decide()` yet -- that is a separate, later task. The
 existing 2.376-line state-table test therefore stays the exhaustive specification of
 the precedence chain for `pi_enabled=False`, unaffected by this module.
 
-Purity (section 1 of the spec, and CLAUDE.md's ban on hidden state): every function
-here takes its previous state and every input value as an argument, and returns the
-new state and its result as a value. No clock, no database, no globals, no mutation of
-the arguments (every dataclass is frozen). The caller -- eventually
-`services/shadow_run.py` -- owns the actual `ControllerState` row and decides when to
-call which function below:
+Purity (CLAUDE.md's ban on hidden state): every function here takes its previous state
+and every input value as an argument, and returns the new state and its result as a
+value. No clock, no database, no globals, no mutation of the arguments (every
+dataclass is frozen). The caller -- eventually `services/shadow_run.py` -- owns the
+actual `ControllerState` row and decides when to call which function below:
 
 - A cycle where PI's own rules govern (nothing overrides it): `pi_cycle()`.
 - A cycle where an *earlier* precedence rule already decided the outcome and PI must

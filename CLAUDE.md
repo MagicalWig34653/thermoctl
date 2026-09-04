@@ -9,47 +9,28 @@ Raumregelung mit Zeitplänen, konfiguriert über eine Weboberfläche, ansprechba
 über REST-API und MCP-Server.
 
 **Das Projekt ist ein Neubau, kein Refactoring.** Es ersetzt vier gewachsene Python-Skripte
-und eine PHP-Oberfläche aus zwei anderen Projekten. Der Stand der Planung ist:
+und eine PHP-Oberfläche aus zwei anderen Projekten. Rahmenentwurf, die Spezifikationen und
+Implementierungspläne der einzelnen Teilprojekte, die Bestandsaufnahme des abzulösenden
+Altsystems (Services, vollständiges Ist-Schema, MQTT-Topic-Vertrag, bekannte Defekte) sowie
+die Sammlung ohne Rückfrage getroffener Entscheidungen samt Begründung liegen **nicht** in
+diesem Repository — sie dokumentieren den Bauprozess und ein fremdes, reales System und
+bleiben deshalb lokal. Wer eine dort getroffene Entscheidung anders will, ändert sie im
+Code bzw. an der Stelle, an der sie wirkt — sie sind nirgends in Stein gemeißelt.
 
-- [`docs/superpowers/specs/2026-08-28-thermoctl-neubau-design.md`](docs/superpowers/specs/2026-08-28-thermoctl-neubau-design.md)
-  — Rahmenentwurf: Ziele, getroffene Entscheidungen samt Begründung, verworfene Alternativen,
-  Zerlegung in fünf Teilprojekte.
-- [`docs/bestandsaufnahme-altsystem.md`](docs/bestandsaufnahme-altsystem.md) — das
-  abzulösende System: Services, vollständiges Ist-Schema, MQTT-Topic-Vertrag, bekannte Defekte.
-- [`docs/superpowers/specs/2026-08-28-teilprojekt-1-fundament-design.md`](docs/superpowers/specs/2026-08-28-teilprojekt-1-fundament-design.md)
-  — Spezifikation von Teilprojekt 1 (**umgesetzt**): Datenmodell, Auth- und Rechtemodell,
-  Konfiguration, Logging, Container, CI.
-- [`docs/superpowers/plans/2026-08-28-teilprojekt-1-fundament.md`](docs/superpowers/plans/2026-08-28-teilprojekt-1-fundament.md)
-  — Implementierungsplan dazu, 22 Aufgaben. Enthält in den *Global Constraints* die
-  Eigenheiten, die beide Datenbanken unterscheiden — wer am Schema arbeitet, liest sie zuerst.
-- [`docs/superpowers/specs/2026-08-29-teilprojekt-2-geraete-schattenbetrieb-design.md`](docs/superpowers/specs/2026-08-29-teilprojekt-2-geraete-schattenbetrieb-design.md)
-  und der [zugehörige Plan](docs/superpowers/plans/2026-08-29-teilprojekt-2-geraete-schattenbetrieb.md)
-  — Teilprojekt 2 (**umgesetzt**): Geräte-Anbindung im Schattenbetrieb. Enthält, warum der
-  Trockenlauf eine abgesicherte Eigenschaft ist und keine Absichtserklärung.
-- [`docs/superpowers/specs/2026-08-29-teilprojekt-3-konfigurationsoberflaeche-design.md`](docs/superpowers/specs/2026-08-29-teilprojekt-3-konfigurationsoberflaeche-design.md)
-  und der [zugehörige Plan](docs/superpowers/plans/2026-08-29-teilprojekt-3-konfigurationsoberflaeche.md)
-  — Teilprojekt 3 (**umgesetzt**): die Konfigurations-Oberfläche.
-- [`docs/offene-entscheidungen.md`](docs/offene-entscheidungen.md) — Entscheidungen, die
-  ohne Rückfrage getroffen wurden, mit Begründung und verworfenen Alternativen. **Wer eine
-  davon anders will, ändert sie** — sie sind dokumentiert, nicht in Stein.
 - [`docs/technisches_konzept.md`](docs/technisches_konzept.md) — **unverbindlich.** Fachliches
   Zielbild für Bedienung und Gerätetypen aus anderem Kontext. Setzt Home Assistant als
-  Einstiegspunkt voraus, was der Rahmenentwurf ausdrücklich verworfen hat. Bei Widerspruch
-  gilt der Rahmenentwurf. Übernommen wurden daraus vier Punkte, siehe TP1-Spezifikation.
-
-**Rahmenentwurf und Bestandsaufnahme vor der ersten Änderung lesen.** Sie ersparen es, zwei
-fremde Projekte erneut zu durchsuchen.
+  Einstiegspunkt voraus, was hier ausdrücklich verworfen wurde (siehe „Technischer Rahmen"
+  unten). Bei Widerspruch gilt der technische Rahmen dieser Datei. Vier Punkte daraus wurden
+  übernommen, dokumentiert an den jeweiligen Stellen im Quelltext.
 
 ## Stand
 
 **Der aktuelle Stand steht in [`docs/STATUS.md`](docs/STATUS.md). Diese Datei zuerst lesen.**
-Sie sagt ausschliesslich, was *jetzt* gilt. Die Chronik — wie es dazu kam, welche Fehler
-wie gefunden wurden, warum etwas so entschieden ist — steht in
-[`docs/verlauf.md`](docs/verlauf.md). Die Trennung gibt es, seit `STATUS.md` auf über
-tausend Zeilen gewachsen war und gleichzeitig aktuelle und längst widerlegte Aussagen
-enthielt; ein Freigabe-Review konnte vier davon namentlich widerlegen. **Neues gehört
-oben in `STATUS.md`, Abgelöstes wandert nach `verlauf.md` — nicht beides in dieselbe
-Datei.**
+Sie sagt ausschliesslich, was *jetzt* gilt — kein Verlauf, keine Chronik, wie es dazu kam.
+Grund dafür: Die Datei war einmal auf über tausend Zeilen gewachsen und enthielt
+gleichzeitig aktuelle und längst widerlegte Aussagen; ein Freigabe-Review konnte vier davon
+namentlich widerlegen. **Neues gehört oben in `STATUS.md`; was durch Neueres ersetzt ist,
+wird herausgenommen statt daneben stehen zu bleiben.**
 Sie sagt, welches Teilprojekt läuft, was zuletzt fertig wurde und was als Nächstes ansteht.
 
 Git allein reicht dafür nicht: Commits sagen, was getan wurde, aber nicht, was als Nächstes
@@ -68,8 +49,9 @@ nachgezogen, die sie beschreibt — nicht hinterher, sonst verfällt sie.
 | Betrieb | Eigener Docker-Container |
 | Home Assistant | Optionale Integration per MQTT, **keine** Voraussetzung |
 
-Begründungen und verworfene Alternativen stehen im Rahmenentwurf. Wenn eine dieser
-Entscheidungen im Weg steht, das ansprechen — nicht stillschweigend anders bauen.
+Begründungen und verworfene Alternativen zu diesen Entscheidungen sind nicht Teil dieses
+Repositories. Wenn eine dieser Entscheidungen im Weg steht, das ansprechen — nicht
+stillschweigend anders bauen.
 
 ## Grundsätze
 

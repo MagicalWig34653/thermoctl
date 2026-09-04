@@ -181,8 +181,8 @@ def decide(situation: Situation) -> Decision:
     # zone whose `min_on_seconds` outlives its protection run keeps the valve open
     # by the minimum duration alone, on the very cycle the run closes — the marker
     # is cleared right after in `services/shadow_run.py`, so the next cycle would
-    # misread the still-open valve as ordinary heating (see
-    # `docs/offene-entscheidungen.md`, 2026-09-02). The traded-off risk is bounded
+    # misread the still-open valve as ordinary heating (found and fixed 2026-09-02).
+    # The traded-off risk is bounded
     # to the run's own duration: if an override, an off-mode switch, or a sensor
     # failure makes rule 7 lose mid-run while the marker is still set, the on-state
     # is no longer held for the usual minimum — it can now flip in the very next

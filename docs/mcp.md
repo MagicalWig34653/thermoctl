@@ -121,8 +121,7 @@ Der Grund: Die Domäne verlangt beim Scharfschalten eine Begründung, und für e
 Sprachmodell ist das keine Hürde, sondern genau die Sorte Text, die es mühelos erzeugt. Die
 Sperre wäre hier eine Formalie statt einer Entscheidung. Zurück in den Trockenlauf ist
 dagegen immer die sichere Richtung und soll jedem offenstehen, der die Anlage bedienen darf.
-Wer scharf schalten will, tut das dort, wo ein Mensch am Knopf steht. Nachzulesen in
-[offene-entscheidungen.md](offene-entscheidungen.md).
+Wer scharf schalten will, tut das dort, wo ein Mensch am Knopf steht.
 
 Schreibende Werkzeuge für Zonen und Sollwerte gibt es nicht. Regelparameter sind die
 bewusste Ausnahme: `set_control_parameters` setzt genau einen benannten Parameter innerhalb

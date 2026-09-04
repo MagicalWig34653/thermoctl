@@ -872,7 +872,7 @@ async def test_an_armed_thermostat_actuator_with_system_mode_switches_off_that_w
 async def test_an_armed_thermostat_without_system_mode_heats_by_setpoint_alone(
     session: Session,
 ) -> None:
-    """A device without `system_mode` (a Bosch BTH-RA, see `docs/offene-entscheidungen.md`)
+    """A device without `system_mode` (a Bosch BTH-RA)
     only ever gets `occupied_heating_setpoint` -- never a key it would silently reject."""
     create_settings(session)
     source(session, "system")

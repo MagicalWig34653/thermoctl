@@ -1,10 +1,9 @@
 """Wiring the PI controller (`thermoctl.domain.pi_control`) into the shadow run.
 
-Steps 4 and 5 of the PI specification's build order
-(`docs/superpowers/specs/2026-09-02-pi-regelung-spezifikation.md`, section 11):
+The next two build steps after `thermoctl/domain/pi_control.py` itself:
 `services/shadow_run.py` loads a zone's `zone_state` PI columns, calls the pure
 functions from `domain/pi_control.py`, and -- once a zone is enabled for PI,
-eligible, and none of section 4's seven precedence rules override it -- the PI
+eligible, and none of the seven precedence rules override it -- the PI
 candidate becomes `ShadowDecision.would_heat`, the same field
 `services/publishing.py` reads back out unchanged. `domain.control_loop.decide()`
 itself is never touched; `tests/test_control_loop_state_table.py` stays the

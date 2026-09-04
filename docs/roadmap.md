@@ -2,9 +2,9 @@
 
 Stand: 2026-09-03
 
-Diese Roadmap führt zusammen, was im [Rahmenentwurf](superpowers/specs/2026-08-28-thermoctl-neubau-design.md)
-in fünf Teilprojekte zerlegt ist, und konkretisiert es zu Features und Aufgaben. Sie ersetzt
-den Rahmenentwurf nicht — bei Widerspruch gilt er.
+Diese Roadmap führt zusammen, was der Rahmenentwurf in fünf Teilprojekte zerlegt hat, und
+konkretisiert es zu Features und Aufgaben. Sie ersetzt den Rahmenentwurf nicht — bei
+Widerspruch gilt er (siehe `CLAUDE.md`, „Technischer Rahmen").
 
 **Was verbindlich ist und was nicht:** Die Phasen und ihre Reihenfolge stammen aus dem
 abgestimmten Rahmenentwurf. Die einzelnen Aufgaben darin sind ein Vorschlag; sie werden je
@@ -33,8 +33,7 @@ Altsystem als Rückfallebene. Details und Begründung in [STATUS.md](STATUS.md).
 
 ## Phase 1 — Fundament ✅
 
-Abgeschlossen am 2026-08-28. 22 Aufgaben, 142 Tests, Details in
-[STATUS.md](STATUS.md) und im [Implementierungsplan](superpowers/plans/2026-08-28-teilprojekt-1-fundament.md).
+Abgeschlossen am 2026-08-28. 22 Aufgaben, 142 Tests, Details in [STATUS.md](STATUS.md).
 
 Geliefert: Datenmodell ohne Hardcoding, Alembic-Migrationen, Konfiguration aus Umgebung und
 Datenbank, Benutzer mit auf Zonen einschränkbaren Rechten, Sitzungen und API-Tokens,
@@ -58,7 +57,9 @@ erledigen.
       dazu ein Wächtertest über alle zustandsändernden Routen
 - [x] Test für das Startverhalten: genau ein Einrichtungs-Token, beim zweiten Start keines mehr
 - [x] **Zwei Wächtertests repariert**, die seit dem FastAPI-Versionssprung nichts mehr
-      prüften — siehe [offene-entscheidungen.md](offene-entscheidungen.md)
+      prüften: Seit FastAPI 0.141 legt `include_router()` keine flache Routenliste mehr
+      an, wodurch beide Wächter (`test_endpoint_coverage.py`, `test_csrf.py`) nur noch
+      `/healthz` sahen und grün blieben, weil sie nichts mehr prüften
 
 ---
 
@@ -85,8 +86,7 @@ erreichten keinen Aktor.
 
 ### Aufgaben
 
-Geschärft im eigenen Zyklus, siehe [Spezifikation](superpowers/specs/2026-08-29-teilprojekt-2-geraete-schattenbetrieb-design.md)
-und [Plan](superpowers/plans/2026-08-29-teilprojekt-2-geraete-schattenbetrieb.md).
+Geschärft im eigenen Zyklus aus Spezifikation und Plan, wie bei jedem Teilprojekt.
 
 - [x] 1 Schema und Migration (Messwerte, Zonenzustand, Gerätezustand, Schattenprotokoll)
 - [x] 2 Nutzlast-Auswertung, gebaut gegen die echten Anlagendaten
@@ -106,7 +106,7 @@ Betriebs. Er braucht Laufzeit an der Anlage — Zugangsdaten in `.env`,
 
 ### Risiken
 
-- **Der MQTT-Topic-Vertrag ist gewachsen, nicht entworfen** (siehe Bestandsaufnahme). Ob die
+- **Der MQTT-Topic-Vertrag des Altsystems ist gewachsen, nicht entworfen.** Ob die
   alten Topics übergangsweise mitbedient werden, entscheidet diese Phase.
 - Die Meross-Cloud-API ist eine Fremdabhängigkeit ohne Zusicherung.
 - Zugangsdaten für Broker und Meross gehören in die Konfiguration, niemals ins Repo.
@@ -139,8 +139,7 @@ pflegen statt per SQL-Client.
 
 ### Aufgaben
 
-Geschärft im eigenen Zyklus, siehe [Spezifikation](superpowers/specs/2026-08-29-teilprojekt-3-konfigurationsoberflaeche-design.md)
-und [Plan](superpowers/plans/2026-08-29-teilprojekt-3-konfigurationsoberflaeche.md).
+Geschärft im eigenen Zyklus aus Spezifikation und Plan, wie bei jedem Teilprojekt.
 
 - [x] 1 Gemeinsame Formularbausteine, Fehlerdarstellung am Feld
 - [x] 2 Zonenverwaltung
@@ -191,8 +190,7 @@ Aktoren.
 - [x] ~~5 Vergleichsbetrieb~~ — **übersprungen.** Ursprünglich geplant: mehrtägiger
       Schattenbetrieb gegen das Altsystem, dann scharf mit Abweichungsbericht. Geändert
       auf Wunsch des Projektinhabers — thermoctl lief als Erstes direkt scharf an der
-      echten Heizung, das Altsystem als Rückfallebene. Begründung in
-      [offene-entscheidungen.md](offene-entscheidungen.md) und [STATUS.md](STATUS.md).
+      echten Heizung, das Altsystem als Rückfallebene. Details in [STATUS.md](STATUS.md).
 - [~] 6 Datenübernahme — die Umwandlung des Stundenrasters steht als reine Funktion, die
       Übernahme selbst braucht die Altdatenbank
 - [x] 7 Scharfschalten hinter einem Schalter, jederzeit umkehrbar

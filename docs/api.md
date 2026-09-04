@@ -308,9 +308,11 @@ Protokoll, das sich über eine Schnittstelle ändern liesse, wäre keins.
 | `from_at`, `to_at` | Zeitpunkte, ISO 8601; ohne Zeitzonenangabe als UTC gelesen |
 | `limit` | höchstens 500, Vorgabe 100 |
 
-Ohne Aufbewahrungsfrist wächst diese Tabelle unbegrenzt (`docs/offene-entscheidungen.md`)
-— `limit` ist deshalb keine Bequemlichkeit, sondern eine Obergrenze je Abfrage. Ein Wert
-ausserhalb von 1 bis 500 ergibt `422`.
+Diese Tabelle unterliegt bewusst keiner automatischen Aufbewahrungsfrist — anders als
+Messwerte ist ein Schaltbefehl selten und einzeln beweiskräftig, und eine automatische
+Löschung würde ausgerechnet den Beleg entfernen, für den das Protokoll gebaut wurde.
+Sie wächst dadurch unbegrenzt; `limit` ist deshalb keine Bequemlichkeit, sondern eine
+Obergrenze je Abfrage. Ein Wert ausserhalb von 1 bis 500 ergibt `422`.
 
 `sent_at` trägt immer die Zeitzone (`Z`, also UTC), obwohl intern alles naives UTC ist:
 ein naiver Wert würde bei einem Aufrufer in einer anderen Zeitzone als Ortszeit gelesen.

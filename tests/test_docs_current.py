@@ -242,11 +242,9 @@ def test_every_global_default_is_named_in_the_api_documentation() -> None:
 LIVING_DOCS = [
     "README.md",
     "docs/STATUS.md",
-    "docs/verlauf.md",
     "docs/api.md",
     "docs/mcp.md",
     "docs/mqtt.md",
-    "docs/offene-entscheidungen.md",
     "docs/roadmap.md",
     "docs/self-hosting.md",
     "docs/sicherheitsdurchsicht.md",
@@ -257,10 +255,8 @@ def test_the_living_docs_name_no_file_that_no_longer_exists() -> None:
     """A documentation that points at a renamed module sends the reader nowhere.
 
     Only the *living* documents are checked -- the ones that describe the system as it
-    is now. The specs and plans under `docs/superpowers/` are deliberately left out:
-    they record what was decided at a point in time, and rewriting them to match
-    today's names would falsify the record. `bestandsaufnahme-altsystem.md` describes
-    the old system and is not ours to rename either.
+    is now, not a historical or planning record that would be falsified by rewriting
+    it to match today's names.
 
     Grew out of the English translation: half a dozen documents went on naming the
     actuator, remote-control and control-loop modules under their old German file names

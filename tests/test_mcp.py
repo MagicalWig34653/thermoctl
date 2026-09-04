@@ -485,11 +485,11 @@ def test_forcing_dry_run_takes_the_installation_back(session: Session) -> None:
 
 
 def test_mcp_cannot_arm_the_control(session: Session) -> None:
-    """A deliberate asymmetry to REST and the UI, documented in
-    docs/offene-entscheidungen.md: the MCP server speaks for a language model, and
-    the justification the domain requires for arming is no hurdle at all for a
-    model. There is therefore no tool in this direction here -- this test records
-    that so nobody adds one later out of a sense of symmetry."""
+    """A deliberate asymmetry to REST and the UI: the MCP server speaks for a
+    language model, and the justification the domain requires for arming is no
+    hurdle at all for a model. There is therefore no tool in this direction here
+    -- this test records that so nobody adds one later out of a sense of
+    symmetry."""
     assert not [
         name
         for name in dir(server)

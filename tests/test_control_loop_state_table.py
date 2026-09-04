@@ -168,7 +168,7 @@ def _expected_from_specification(row: StateRow) -> ExpectedDecision:
     #   from short-cycling, and a protection run does not short-cycle: it runs for
     #   its own configured duration. A held-on state that traces back to a
     #   protection run must not be kept open by min_on past the run's own end —
-    #   that was the actual bug (`docs/offene-entscheidungen.md`, 2026-09-02).
+    #   that was the actual bug, found and fixed 2026-09-02.
     protection_currently_winning = row.protection == "active" and protection_allowed
     protection_exempt = (
         row.protection == "active" if row.heating_now else protection_currently_winning
