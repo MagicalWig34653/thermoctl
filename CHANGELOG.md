@@ -9,7 +9,7 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ---
 
-## Unveröffentlicht
+## 0.7.0 — 2026-09-04
 
 ### Geändert
 
@@ -30,6 +30,18 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
   Der Webhook-Testknopf unter „Einstellungen" sperrt sich zusätzlich für die Dauer der
   Anfrage. Bewusst nicht am Kiosk-Dashboard: dessen einzige htmx-Anfrage ist der
   selbsttätige 20-Sekunden-Nachlader, den ein aufblitzender Balken eher stören würde.
+- **[docs/homebridge.md](docs/homebridge.md)**: Anleitung, Zonen über den
+  `mqtt-thing`-Zusatz gegen dieselben MQTT-Topics wie Home Assistant in Apple Home
+  anzuzeigen und zu bedienen — keine eigene thermoctl-Integration nötig. Mit
+  Wächtertests gegen den Topic-Vertrag.
+
+### Zu beachten beim Umstieg
+
+- **Keine neue Migration seit `v0.6.4`** — die einzige Migration dieser Fassung
+  (`67e794059830`, sechs neue Spalten auf `setting` für Meldungsart-Schalter und
+  Zustellzustand) war bereits Teil von `v0.6.3`.
+- Sonst rein additiv: keine Einstellung wurde entfernt oder umbenannt, kein bestehendes
+  Verhalten geändert.
 
 ## 0.6.4 — 2026-09-04
 

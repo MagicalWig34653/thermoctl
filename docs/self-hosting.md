@@ -334,9 +334,9 @@ Dienst selbst und funktioniert deshalb auch ohne Internetzugang.
 
 ## 10. Benachrichtigungen
 
-Fällt ein Sensor aus oder ist die Zigbee2MQTT-Brücke nicht mehr erreichbar, schreibt der
-Dienst eine Warnung ins Log. Steht in `.env` zusätzlich eine Webhook-Adresse, geht dieselbe
-Meldung als JSON dorthin:
+Fällt ein Sensor aus, ist die Zigbee2MQTT-Brücke nicht mehr erreichbar, oder scheitert ein
+Schaltbefehl an einem Aktor, schreibt der Dienst eine Warnung ins Log. Steht in `.env`
+zusätzlich eine Webhook-Adresse, geht dieselbe Meldung als JSON dorthin:
 
 ```dotenv
 THERMOCTL_NOTIFY_WEBHOOK=https://…/hooks/heizung
@@ -347,6 +347,16 @@ THERMOCTL_NOTIFY_WEBHOOK_TOKEN=…      # optional, als Authorization: Bearer
 ergibt eine Meldung und später eine Entwarnung — nicht eine je Regelzyklus. Das ist
 Absicht: Wer stündlich dieselbe Meldung bekommt, schaltet sie ab und verpasst die nächste
 echte.
+
+**Drei Arten lassen sich unter „Einstellungen" einzeln abschalten**: Sensorstörung
+(samt Entwarnung), Brücke oder Broker weg, und gescheiterter Schaltbefehl. Alle drei sind
+ab Werk an. Wer den Webhook stilllegt, verliert deswegen nicht den zugehörigen
+Problemsensor in Home Assistant — die beiden Meldewege sind unabhängig.
+
+Ein **Testknopf** unter „Einstellungen" schickt eine gekennzeichnete Testmeldung über
+denselben Weg wie eine echte und zeigt Statuscode, Dauer und im Fehlerfall den Grund
+unmittelbar auf der Seite; ohne hinterlegten Webhook wird er nicht angeboten. Daneben
+steht der **Zustellzustand**: wann zuletzt versucht, mit welchem Ergebnis.
 
 Antwortet der Webhook nicht, wird das protokolliert und sonst nichts. Die Regelung läuft
 weiter — eine Heizungssteuerung, die stehenbleibt, weil ein Webhook hängt, ist schlimmer

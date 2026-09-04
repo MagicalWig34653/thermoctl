@@ -13,7 +13,14 @@ Dazu: Bediengeräte und Zigbee-Heizkörperthermostate frei konfigurierbar (ein T
 kann das Ventil auch selbst regeln und bekommt dann nur Soll- und Ist-Temperatur), eine
 optionale Absenkung, wenn die Sonnenprognose sie erlaubt, ein Dashboard für ein Wandtablet
 hinter einem widerrufbaren Kiosk-Token, und die Home-Assistant-Anbindung über
-MQTT-Discovery.
+MQTT-Discovery. Störungen — ausgefallene Sensoren, eine tote MQTT-Verbindung, ein
+gescheiterter Schaltbefehl — lassen sich einzeln per Webhook melden, mit Testknopf und
+sichtbarem Zustellzustand unter „Einstellungen".
+
+`thermoctl` läuft sowohl als eigener Docker-Container (`docker compose`) als auch als
+Home-Assistant-Add-on, mit Ingress-Einbindung und automatischer Rechteanpassung beim
+Start. Wer bereits per `docker compose` betreibt, findet den Umstiegsweg in
+[self-hosting.md](docs/self-hosting.md#6b-umstieg-von-docker-compose-auf-das-home-assistant-add-on).
 
 Seit 0.5.0 gibt es zusätzlich eine **PI-Regelung als Beta**, je Zone einschaltbar und aus
 als Vorgabe. Sie ersetzt für eine eingeschaltete Zone die Hysterese durch einen
@@ -42,6 +49,8 @@ selbstregelnde Thermostatventile ebenso wie Ein/Aus-Befehle an gewöhnliche Akto
 - **[REST-Schnittstelle](docs/api.md)** — Endpunkte, Tokens, Rechte.
 - **[MCP-Server](docs/mcp.md)** — derselbe Funktionsumfang für einen MCP-Client.
 - **[MQTT](docs/mqtt.md)** — was gelesen wird, und die entworfene eigene Topic-Struktur.
+- **[Homebridge](docs/homebridge.md)** — Zonen über `mqtt-thing` gegen dieselben Topics
+  in Apple Home anzeigen und bedienen.
 - **[Sicherheitsdurchsicht](docs/sicherheitsdurchsicht.md)** — was geprüft wurde und was offen ist.
 - **[Roadmap](docs/roadmap.md)** und **[Stand](docs/STATUS.md)** — was da ist und was folgt.
 - **[Änderungen](CHANGELOG.md)** — was sich je Version geändert hat, samt dem, was beim

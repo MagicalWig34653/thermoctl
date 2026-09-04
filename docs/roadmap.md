@@ -1,6 +1,6 @@
 # Roadmap
 
-Stand: 2026-09-03
+Stand: 2026-09-04
 
 Diese Roadmap führt zusammen, was der Rahmenentwurf in fünf Teilprojekte zerlegt hat, und
 konkretisiert es zu Features und Aufgaben. Sie ersetzt den Rahmenentwurf nicht — bei
@@ -21,7 +21,7 @@ Phase 1 geschehen ist. Features, die aus der unverbindlichen
 | 2 | Geräte-Anbindung im Schattenbetrieb | **gebaut, Abnahme anhand echter Betriebsdaten geprüft und nicht bestanden** | Belegt gegen die echte Anlage, dass die Daten stimmen |
 | 3 | Konfigurations-Oberfläche | **umgesetzt**, seither erweitert | Ende der SQL-Pflege — ab hier im Alltag nützlich |
 | 4 | Regelkreis und Cutover | schaltet seit `v0.3.0` scharf an der echten Anlage; Ablösung des Altsystems offen | Altsystem ablösen |
-| 5 | Integrationen und Veröffentlichung | teilweise vorgezogen | Für Fremde aufsetzbar |
+| 5 | Integrationen und Veröffentlichung | Repository ist öffentlich (seit `v0.6.1`); läuft zusätzlich als Home-Assistant-Add-on — **nicht ursprünglich vorgesehen**, siehe unten | Für Fremde aufsetzbar |
 
 Die Reihenfolge war ursprünglich so gedacht, dass der Teil, der eine echte Heizung schalten
 soll, zuletzt kommt und erst mit Vergleichsdaten aus einem mehrtägigen Schattenbetrieb gegen
@@ -242,8 +242,9 @@ abgeschaltet ist.
 - [ ] 5 Setup-Assistent erweitern — *gehört zu Phase 3*
 - [x] 6 Self-Hosting-Dokumentation und Beispiel-Compose — [docs/self-hosting.md](self-hosting.md)
 - [x] 7 Benachrichtigungswege — Log immer, Webhook optional; gemeldet wird der Wechsel
-- [x] 8 Sicherheitsdurchsicht — [docs/sicherheitsdurchsicht.md](sicherheitsdurchsicht.md), vor dem Öffentlichschalten erneut durchzugehen
-- [ ] 9 Repository öffentlich schalten — **Entscheidung des Projektinhabers**
+- [x] 8 Sicherheitsdurchsicht — [docs/sicherheitsdurchsicht.md](sicherheitsdurchsicht.md), vor dem Öffentlichschalten erneut durchgegangen ([sicherheitsdurchsicht-2026-09-02.md](sicherheitsdurchsicht-2026-09-02.md))
+- [x] 9 Repository öffentlich schalten — seit `v0.6.1` öffentlich unter
+      `github.com/MagicalWig34653/thermoctl`
 
 Vorgezogen wurde, was nicht auf Phase 4 wartet.
 
@@ -290,6 +291,25 @@ gegen beide Datenbanken geprüft; was noch an der echten Anlage nachzuweisen ist
       dreizehn Playwright-Tests, die prüfen, was ein HTTP-Test nicht sieht: Stylesheet,
       Browserkonsole, echte Zeigergesten. Nicht in der CI und nicht in der gewöhnlichen
       Suite.
+- [x] **Betrieb als Home-Assistant-Add-on** — im Rahmenentwurf nicht vorgesehen, weil
+      Home Assistant dort ausdrücklich keine Voraussetzung sein sollte. Der
+      Projektinhaber betreibt seine Anlage inzwischen so, `thermoctl` bleibt aber
+      unverändert auch als eigenständiger Container lauffähig. Dazu: ein
+      Mehrarchitektur-Abbild (`linux/amd64`, `linux/arm64`), Übersetzung der
+      Add-on-Optionen in `THERMOCTL_*`-Umgebungsvariablen
+      (`docker/thermoctl_optionen.py`), automatische Rechteanpassung beim Start für die
+      root-eigene `/data/options.json` des Supervisors, Lauf unter einem beliebigen
+      Ingress-Pfadpräfix, und `tools/env_nach_addon.py` für den Umstieg von einer
+      bestehenden `docker compose`-Installation. Details in [STATUS.md](STATUS.md).
+- [x] **Homebridge-Anbindung** — Zonen lassen sich über den `mqtt-thing`-Zusatz gegen
+      dieselben MQTT-Topics wie Home Assistant in Apple Home anzeigen und bedienen,
+      keine eigene thermoctl-Integration nötig. Dokumentiert in
+      [homebridge.md](homebridge.md), mit Wächtertests gegen den Topic-Vertrag.
+- [x] **Störungsmeldungen einzeln abschaltbar, mit Testknopf** — Sensorstörung,
+      Brücke/Broker weg und (neu) gescheiterter Schaltbefehl lassen sich anlagenweit
+      unabhängig voneinander abschalten; ein Testknopf unter „Einstellungen" schickt
+      eine Testmeldung über den Webhook und zeigt Statuscode, Dauer und
+      Zustellzustand an.
 
 ---
 
