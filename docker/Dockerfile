@@ -1,10 +1,11 @@
 FROM python:3.14-slim AS build
 WORKDIR /build
-COPY pyproject.toml ./
+COPY pyproject.toml LICENSE ./
 COPY thermoctl ./thermoctl
 RUN pip install --no-cache-dir --prefix=/install .
 
 FROM python:3.14-slim
+LABEL org.opencontainers.image.licenses="AGPL-3.0-only"
 RUN useradd --system --create-home --uid 10001 thermoctl
 COPY --from=build /install /usr/local
 COPY migrations /app/migrations

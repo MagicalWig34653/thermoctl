@@ -45,6 +45,18 @@ kann.
 
 ### Hoch — keine Lizenz
 
+**Nachtrag (2026-09-04): behoben.** Der Projektinhaber hat sich für die GNU Affero
+General Public License, Version 3 (AGPL-3.0-only) entschieden. `LICENSE` enthält jetzt
+den unveränderten Lizenztext von gnu.org, `pyproject.toml` trägt `license =
+"AGPL-3.0-only"` samt `license-files = ["LICENSE"]` (SPDX-Form, geprüft mit
+`setuptools>=77` — die Datei landet nachweislich unter `*.dist-info/licenses/LICENSE`
+im gebauten Wheel), `README.md` hat einen eigenen Abschnitt „Lizenz", und die
+OpenAPI-Beschreibung unter `/docs` führt die Lizenz ebenfalls. Offen bleibt §13 AGPL
+(Quelltext-Hinweis in der Oberfläche für netzseitige Nutzung) — dafür fehlt noch die
+öffentliche Repository-Adresse; das ist als eigener Punkt vorgemerkt, sobald sie
+feststeht. Der ursprüngliche Befund bleibt unten unverändert stehen, damit
+nachvollziehbar bleibt, dass er bestand.
+
 **Was:** Es gibt weder eine `LICENSE`-Datei im Repository-Wurzelverzeichnis noch ein
 `license`-Feld in `pyproject.toml`, noch eine Aussage in `README.md`, unter welchen
 Bedingungen der Code genutzt, verändert oder weiterverbreitet werden darf.
@@ -261,7 +273,8 @@ MariaDB wiederholt, siehe „Was nicht geprüft wurde".
 1. **Lizenzwahl.** Ob und unter welcher Lizenz (MIT, Apache 2.0, AGPL wegen des
    Netzwerkdienst-Charakters, oder etwas anderes) — das ist eine rechtliche und
    strategische Entscheidung, die diese Durchsicht nicht treffen kann. Ohne sie bleibt
-   der Befund „keine Lizenz" oben bestehen.
+   der Befund „keine Lizenz" oben bestehen. **Nachtrag (2026-09-04): entschieden** —
+   AGPL-3.0-only, siehe Nachtrag beim Befund oben.
 2. **Ob die vier offenen Hoch-Befunde aus der Sicherheitsdurchsicht vom 2026-09-02 vor
    der Veröffentlichung behoben werden müssen, oder ob eine dokumentierte, bekannte
    Einschränkung für eine erste öffentliche Fassung ausreicht.** Das ist eine Abwägung
@@ -286,7 +299,7 @@ das Repository einmal öffentlich war) und ist nach dieser Durchsicht nicht bele
 
 **Was heute entgegensteht:**
 
-- Es gibt keine Lizenz — rechtlich blockierend für eine sinnvolle Veröffentlichung, unabhängig vom technischen Zustand.
+- Es gibt keine Lizenz — rechtlich blockierend für eine sinnvolle Veröffentlichung, unabhängig vom technischen Zustand. **Nachtrag (2026-09-04): behoben**, AGPL-3.0-only, siehe Nachtrag beim Befund oben.
 - Drei tatsächlich noch offene Befunde (zwei Mittel, ein Niedrig) aus der letzten
   Sicherheitsdurchsicht sind einem fremden Leser von `README.md`/`docs/self-hosting.md`
   nicht zugänglich: unbegrenzte/unmaskierte Meross-Cloud-Antworten, das unbegrenzt

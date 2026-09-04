@@ -638,6 +638,10 @@ def create_app() -> FastAPI:
         lifespan=_lifespan,
         docs_url=None,
         redoc_url=None,
+        license_info={
+            "name": "AGPL-3.0-only",
+            "url": "https://www.gnu.org/licenses/agpl-3.0.html",
+        },
     )
     # The engine is stored alongside so callers can close it. Without this, every
     # created application leaves behind an open database connection -- in production

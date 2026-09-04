@@ -161,3 +161,11 @@ veröffentlicht ihren Zustand und nimmt Sollwert und Betriebsart entgegen. Die A
 Sollwerts an ein selbstregelndes Thermostat folgt den drei Stufen oben.
 
 Der Stand im Einzelnen: [docs/STATUS.md](docs/STATUS.md) und [docs/roadmap.md](docs/roadmap.md).
+
+## Lizenz
+
+`thermoctl` steht unter der [GNU Affero General Public License, Version 3](LICENSE)
+(AGPL-3.0-only). Praktisch bedeutet das: Wer den Code verändert und weitergibt, muss den
+veränderten Quelltext mitgeben. Und wer `thermoctl` anderen **über das Netz** zugänglich
+macht — auch ohne die Software selbst weiterzugeben —, muss ihnen ebenfalls den
+Quelltext anbieten, einschließlich eigener Änderungen.
