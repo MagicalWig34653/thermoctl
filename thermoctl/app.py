@@ -34,8 +34,11 @@ from thermoctl.db.schema_state import SchemaMismatch, check_schema
 from thermoctl.domain.authz import Forbidden
 from thermoctl.domain.device_survey import MEROSS_RECONCILE_INTERVAL_SECONDS
 from thermoctl.domain.fault_notice import (
+    NOTICE_KIND_COMMAND_FAILURE,
     FaultNotice,
     bridge_notice,
+    notice_enabled,
+    notification_audit_action,
     sensor_notice,
 )
 from thermoctl.domain.modes import DomainError, update_setpoints
@@ -68,7 +71,7 @@ from thermoctl.integrations.mqtt.zigbee2mqtt import (
     bridge_reachable,
     trim,
 )
-from thermoctl.integrations.notification import send
+from thermoctl.integrations.notification import deliver
 from thermoctl.logging import configure_logging, request_id_var
 from thermoctl.services.ingest import advance_zone_state, process_message
 from thermoctl.services.meross_discovery import fetch_devices as fetch_meross_devices
@@ -111,11 +114,11 @@ log = logging.getLogger(__name__)
 _SHADOW_INTERVAL_DEFAULT_S = 60
 
 
-def _audit(session: Session, notice: FaultNotice) -> None:
+def _audit(session: Session, notice: FaultNotice, setting_row: Setting | None) -> None:
     audit.record(
         session,
         source="system",
-        action="notification.sent",
+        action=notification_audit_action(notice.kind, setting_row),
         object_type="fault",
         object_id=notice.key,
         summary=notice.title,
@@ -144,7 +147,7 @@ def _sensor_states(session: Session) -> dict[int, str]:
 
 
 def _sensor_notices(
-    session: Session, before: dict[int, str]
+    session: Session, before: dict[int, str], setting_row: Setting | None
 ) -> list[FaultNotice]:
     after = _sensor_states(session)
     notices: list[FaultNotice] = []
@@ -162,7 +165,7 @@ def _sensor_notices(
             frost_protection_temperature(session, zone),
         )
         if notice is not None:
-            _audit(session, notice)
+            _audit(session, notice, setting_row)
             notices.append(notice)
     return notices
 
@@ -284,6 +287,8 @@ async def _shadow_loop(app: FastAPI) -> None:
             await asyncio.sleep(interval)
             now = utcnow()
             notices: list[FaultNotice]
+            command_notices: list[FaultNotice] = []
+            setting_row: Setting | None = None
             forecast = await _solar_forecast(app, app.state.session_factory, now)
             # Signing in (if due) happens here, before any transaction opens -- the
             # same reason `forecast` above is fetched out here rather than inside
@@ -299,9 +304,10 @@ async def _shadow_loop(app: FastAPI) -> None:
                     get_settings(), meross_http, meross_cache or MerossSessionCache(), now
                 )
             with session_scope(app.state.session_factory) as session:
+                setting_row = session.get(Setting, 1)
                 before = _sensor_states(session)
                 advance_zone_state(session, now)
-                notices = _sensor_notices(session, before)
+                notices = _sensor_notices(session, before, setting_row)
                 cycle(session, now, forecast)
                 # `getattr`: the loop also runs in tests that assemble an app without
                 # running through the full lifespan.
@@ -312,6 +318,7 @@ async def _shadow_loop(app: FastAPI) -> None:
                         app.state.publication_state,
                         get_settings().mqtt_prefix,
                         now,
+                        notices=command_notices,
                         meross_transport=meross_transport,
                         # Without this, a failed Meross command never marks the
                         # cached session bad (`services/meross_session.py::
@@ -340,18 +347,32 @@ async def _shadow_loop(app: FastAPI) -> None:
             if now >= next_meross:
                 next_meross = now + timedelta(seconds=MEROSS_REFRESH_S)
                 _start_meross_refresh(app, now)
-            # Dispatch runs alongside, not in step with the cycle. `send` waits up to
-            # ten seconds for a webhook; with several sensors failing at once that would
-            # add up and delay the next control cycle. Once subproject 4 actually starts
-            # switching, the cycle timing stops being a side concern.
-            # `send` catches its own errors; the task is deliberately not awaited, but
-            # kept referenced so it does not disappear via garbage collection.
-            for notice in notices:
-                task = asyncio.create_task(send(get_settings(), notice))
-                _running_notices.add(task)
-                task.add_done_callback(_running_notices.discard)
+            # Dispatch runs alongside, not in step with the cycle. `deliver` waits up
+            # to ten seconds for a webhook; with several sensors failing at once that
+            # would add up and delay the next control cycle. Once subproject 4
+            # actually starts switching, the cycle timing stops being a side concern.
+            # `deliver` catches its own errors; the task is deliberately not awaited,
+            # but kept referenced so it does not disappear via garbage collection.
+            for notice in notices + command_notices:
+                # The gate applies only to this generic path (log + webhook). Home
+                # Assistant, dispatched right below unconditionally, has its own
+                # visibility into the plant and is deliberately not coupled to this
+                # switch -- see `services/publishing.py`'s module docstring.
+                # `setting_row` is `None` before setup finishes (the `setting` row
+                # does not exist yet); fail open in that case rather than silently
+                # dropping a notice nobody has had the chance to configure yet.
+                if setting_row is None or notice_enabled(notice.kind, setting_row):
+                    task = asyncio.create_task(
+                        deliver(app.state.session_factory, get_settings(), notice)
+                    )
+                    _running_notices.add(task)
+                    task.add_done_callback(_running_notices.discard)
                 publisher = getattr(app.state, "publisher", None)
-                if publisher is not None:
+                # `send_fault_notice` publishes to a per-zone Home Assistant entity
+                # keyed by `sensor:<zone id>` -- there is no such entity for a
+                # command-failure notice (device-scoped, not zone-scoped), and none
+                # is added here; that is future work, not this one.
+                if publisher is not None and notice.kind != NOTICE_KIND_COMMAND_FAILURE:
                     mqtt_task = asyncio.create_task(
                         send_fault_notice(
                             publisher, notice, get_settings().mqtt_prefix
@@ -464,6 +485,7 @@ async def _process_mqtt_message(
         if reachable is not None:
             notice = bridge_notice(app.state.bridge_reachable, reachable)
             app.state.bridge_reachable = reachable
+    setting_row: Setting | None = None
     with session_scope(app.state.session_factory) as session:
         process_message(
             session,
@@ -473,9 +495,12 @@ async def _process_mqtt_message(
             received_at=received_at,
         )
         if notice is not None:
-            _audit(session, notice)
-    if notice is not None:
-        await send(settings, notice)
+            setting_row = session.get(Setting, 1)
+            _audit(session, notice, setting_row)
+    if notice is not None and (
+        setting_row is None or notice_enabled(notice.kind, setting_row)
+    ):
+        await deliver(app.state.session_factory, settings, notice)
 
 
 def _unused_setup_token_exists(session: Session) -> bool:

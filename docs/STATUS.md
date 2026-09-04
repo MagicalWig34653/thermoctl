@@ -2,6 +2,63 @@
 
 Letzte Aktualisierung: 2026-09-04
 
+## Benachrichtigungen: Fundament fuer schaltbare Meldungsarten und Webhook-Zustellzustand (Auftrag 1 von 2)
+
+Zwei Auftraege parallel: dieser das Fundament (Datenmodell, Domaenenlogik,
+Verdrahtung), der zweite -- ausdruecklich ohne Migration, Modell oder
+Domaenenlogik -- die Oberflaeche darauf (Schalter, Testknopf, Zustellanzeige).
+
+- `setting` traegt jetzt sechs neue Spalten, Migration `67e794059830` (voraus **und**
+  zurueck gegen SQLite und MariaDB geprueft): `notify_sensor_faults`,
+  `notify_bridge_faults`, `notify_command_failures` (`bool`, Vorgabe `True` --
+  wer heute Meldungen bekommt, bekommt sie unveraendert weiter) sowie
+  `notify_last_attempt_at`, `notify_last_ok`, `notify_last_error` fuer den
+  Zustellzustand des Webhooks.
+- `domain/fault_notice.py`: `FaultNotice` traegt jetzt ein Pflichtfeld `kind`
+  (`NOTICE_KIND_SENSOR_FAULT`, `NOTICE_KIND_BRIDGE_FAULT`,
+  `NOTICE_KIND_COMMAND_FAILURE` -- benannte Konstanten, keine losen Strings, damit
+  die kommende Oberflaeche dieselben Werte benutzt wie das Tor). Neue reine
+  Funktion `notice_enabled(kind, settings) -> bool` ist das Tor: eine Meldung wird
+  nur zugestellt, wenn ihre Art in `setting` aktiviert ist.
+- Neue Meldungsart „Schaltbefehl gescheitert" (`command_failure_notice`): meldet
+  nur den Uebergang in einen fehlschlagenden Schaltversuch und die Entwarnung,
+  nicht jeden Zyklus -- angeknuepft an dieselbe Unterscheidung, die
+  `services/publishing.py` fuer den Log-Eintrag pro Ausfallepisode schon kennt
+  (`PublicationState.command_failures`, neues Feld, unabhaengig vom bestehenden
+  `(payload, armed, outcome)`-Schluessel). Deckt auch den Fall einer nicht
+  verdrahteten Integration ab, nicht nur einen echten Sendefehler.
+- `integrations/notification.py::deliver(session_factory, settings, notice)`:
+  sendet wie das bisherige `send()` (Log + optionaler Webhook), schreibt danach
+  aber in einer **neuen, erst nach dem Netzaufruf geoeffneten** Transaktion
+  Zeitpunkt, Erfolg und eine kurze Fehlerbegruendung nach `setting` -- nie eine
+  Transaktion waehrend des Webhook-Aufrufs offen (eigener Test dafuer, nach
+  demselben Muster wie der Meross-Transaktionsgrenz-Test in
+  `test_shadow_run.py`). Von aussen aufrufbar fuer den Testknopf des zweiten
+  Auftrags.
+- `app.py` wendet das Tor genau vor der Webhook-Zustellung an (`_shadow_loop` und
+  `_process_mqtt_message`), **nicht** vor der Home-Assistant-Zustellung
+  (`send_fault_notice`) -- ein abgeschalteter Meldeweg darf Home Assistant nicht
+  mit abschalten, das hat einen eigenen Weg und ist bewusst nicht gekoppelt (siehe
+  `services/publishing.py`-Moduldocstring). Ohne vorhandene `setting`-Zeile (vor
+  Abschluss des Setups) faellt das Tor offen aus, statt Meldungen stillschweigend
+  zu verwerfen.
+- **Gegenlese-Fund, behoben:** Der Audit-Eintrag stand vor dem Tor, nicht dahinter
+  -- er behauptete `action="notification.sent"`, auch wenn die Meldungsart
+  abgeschaltet war und `deliver()` nie lief. Jetzt entscheidet die neue reine
+  Funktion `notification_audit_action(kind, settings)` in `domain/fault_notice.py`
+  den Aktionscode: `"notification.sent"` nur, wenn tatsaechlich zugestellt wird,
+  sonst `"notification.suppressed"` -- der Eintrag selbst bleibt in beiden Faellen
+  stehen (dass die Stoerung auftrat, gehoert ins Protokoll), nur die Aussage
+  stimmt jetzt. Die Auditseite braucht dafuer keine Anpassung: ihr Aktions-Filter
+  liest die vorkommenden Werte dynamisch aus der Tabelle. Scheitert eine
+  tatsaechlich zugestellte Meldung erst am Netz, bleibt es bei `"...sent"` -- das
+  Protokoll haelt fest, dass ein Zustellversuch losging, nicht ob er ankam; das
+  beantworten `notify_last_ok`/`notify_last_error`. Bei unterdrueckten Meldungen
+  bleiben `notify_last_attempt_at` und Geschwister unangetastet (eigene Tests
+  dafuer in allen drei betroffenen Pfaden: Bruecken-, Sensor- und
+  Schaltbefehl-Meldung).
+- REST- und MCP-Adapter unveraendert -- sie beruehren `FaultNotice` heute nicht.
+
 ## `env_nach_addon.py`: Datenbank in der `.env` schlaegt eine bereits im Add-on eingetragene nicht mehr blind
 
 Der Projektinhaber betreibt seine Anlage mit MariaDB, deren Zugangsdaten schon im

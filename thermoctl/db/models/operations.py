@@ -12,6 +12,7 @@ from sqlalchemy import (
     Text,
     false,
     text,
+    true,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -96,6 +97,38 @@ class Setting(Base):
     default_solar_setback_max_k: Mapped[Decimal] = mapped_column(
         Numeric(3, 1), default=Decimal("2.0"), server_default=text("2.0"), nullable=False
     )
+    # --- Benachrichtigungen -----------------------------------------------------
+    # One on/off switch per `domain.fault_notice` notice kind, anlagenweit -- not
+    # per zone, not per severity (the project owner's own words: "Einstellungen,
+    # welche Benachrichtigungen wobei gesendet werden"). Default `True` for all
+    # three: whoever gets notices today keeps getting them after an upgrade
+    # introduces these switches, instead of silently going quiet. Gated only in
+    # front of the generic delivery path (log + webhook,
+    # `integrations/notification.py`) -- Home Assistant has its own path for the
+    # notices it already reaches and is deliberately not coupled to these, see
+    # `services/publishing.py::send_fault_notice`.
+    notify_sensor_faults: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default=true(), nullable=False
+    )
+    notify_bridge_faults: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default=true(), nullable=False
+    )
+    notify_command_failures: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default=true(), nullable=False
+    )
+    # The webhook's delivery state -- what the interface's second part shows.
+    # `notify_last_attempt_at` and `notify_last_ok` are `NULL` together until the
+    # first attempt ever happens (no webhook configured, or the service has never
+    # tried to reach one yet); `notify_last_ok` alone tells success from failure
+    # once an attempt has happened. `notify_last_error` carries a short,
+    # operator-facing reason on failure -- deliberately shortened, and never the
+    # webhook's token or its full address, because this column is shown back in
+    # the interface (see `integrations/notification.py::deliver`).
+    notify_last_attempt_at: Mapped[datetime | None] = mapped_column(
+        DateTime, nullable=True
+    )
+    notify_last_ok: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    notify_last_error: Mapped[str | None] = mapped_column(String(255), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=utcnow, onupdate=utcnow, nullable=False
     )
