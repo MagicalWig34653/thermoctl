@@ -2,6 +2,28 @@
 
 Letzte Aktualisierung: 2026-09-04
 
+## Home-Assistant-Add-on: Mehrarchitektur-Abbild und Optionsübersetzung
+
+`.github/workflows/docker.yml` baut jetzt für `linux/amd64` **und** `linux/arm64`
+(`docker/setup-qemu-action` neben dem vorhandenen buildx) — die vom Projektinhaber
+entschiedenen Zielarchitekturen für das Add-on, `armv7` ausdrücklich nicht. Die
+`latest`-Markenlogik (ausschliesslich aus einem `v*`-Tag) ist unverändert.
+
+`docker/entrypoint.sh` versteht jetzt `/data/options.json`, wie der Home-Assistant-
+Supervisor sie ablegt: liegt sie vor, übersetzt `docker/thermoctl_optionen.py` (reine
+Standardbibliothek, kein `jq` im Abbild) ihre Felder in die `THERMOCTL_*`-Umgebungs-
+variablen aus `.env.example`/`thermoctl/config.py`. Eine vom Betreiber bereits gesetzte
+Umgebungsvariable gewinnt immer gegen die Optionsdatei. Ohne die Datei — der gewöhnliche
+`docker compose`-Betrieb — ändert sich nichts. Getestet in `tests/test_docker_addon_options.py`
+(reine Übersetzungslogik, per Unterprozess) und `tests/test_docker_entrypoint.py`
+(das Shell-Skript selbst, mit Fake-`alembic`/-`thermoctl` auf dem PATH), dazu ein
+manueller Rauchtest im echten Abbild. **Offen:** ob und wie das Add-on Zugangsdaten des
+Home-Assistant-eigenen MQTT-Brokers automatisch übernimmt (`services: ["mqtt:want"]`
+gewährt nur den Zugriff auf die Supervisor-API `/services/mqtt`, füllt aber nicht von
+selbst `options.json` — eine Anbindung dafür ist hier nicht gebaut). Der Entwurf des
+Add-on-Repositorys selbst (`config.yaml`, `DOCS.md`, …) liegt ausserhalb dieses
+Repositorys, siehe Auftragsbericht.
+
 ## v0.6.1 — die erste Fassung, die veröffentlicht wird
 
 Der Projektinhaber veröffentlicht das Repository mit dieser Fassung. Sie bringt deshalb
