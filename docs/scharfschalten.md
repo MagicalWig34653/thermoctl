@@ -62,11 +62,11 @@ klärt das vor dem Scharfschalten, nicht danach.
    und bestätigen. Die Seite zeigt danach sofort „Scharf, Neustart fehlt" — der beim
    Prozessstart gebaute zweite Riegel ist noch zu, es geht noch nichts hinaus.
 2. **Den Dienst neu starten.** Dieser Schritt ist keine Formsache: Der zweite Riegel wird
-   ausschliesslich beim Start des Prozesses aus dem zu diesem Zeitpunkt gespeicherten
+   ausschließlich beim Start des Prozesses aus dem zu diesem Zeitpunkt gespeicherten
    Zustand gebaut und danach nicht mehr angefasst — nicht einmal, wenn man später auf
    `Betrieb` scharf schaltet, ohne neu zu starten. **Das ist die Stelle, an der es aussieht,
    als sei etwas kaputt:** Die Oberfläche meldet „scharf", das Schaltprotokoll bleibt leer,
-   und nichts deutet auf einen fehlenden Schritt hin, ausser der Chip „Scharf, Neustart
+   und nichts deutet auf einen fehlenden Schritt hin, außer der Chip „Scharf, Neustart
    fehlt" auf genau dieser Seite.
 3. **Reihenfolge beachten.** Ein Neustart *vor* dem Scharfschalten bringt den Dienst im
    Trockenlauf hoch — der Riegel bleibt zu, und es braucht einen zweiten Neustart, diesmal
@@ -91,7 +91,7 @@ seltener, weil sich eine Ein/Aus- oder Sollwert-Entscheidung nur selten ändert.
   zugeordnete Gerät genau ein Eintrag im Schaltprotokoll.
 - Danach lange Zeit **keine** neuen Einträge für ein Gerät, dessen Zone durchgehend im
   selben Zustand bleibt (etwa dauerhaft „aus", weil der Sollwert erreicht ist). Das ist
-  keine Störung, sondern die Deduplizierung — Stille heisst hier „nichts hat sich
+  keine Störung, sondern die Deduplizierung — Stille heißt hier „nichts hat sich
   geändert", nicht „nichts wird mehr versucht".
 - Ein gescheiterter Befehl wird **in jedem** scharfen Zyklus erneut versucht, aber nur
   beim **Wechsel** des Ergebnisses erneut protokolliert. Ein einzelner `failed`-Eintrag,

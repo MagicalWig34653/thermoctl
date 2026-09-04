@@ -1,4 +1,4 @@
-"""Faehigkeiten fuer Thermostatventile (z.B. WT-A03E)
+"""Fähigkeiten für Thermostatventile (z.B. WT-A03E)
 
 Revision ID: b6e9f14d2a83
 Revises: f2c6d90a41b8
@@ -48,16 +48,16 @@ def downgrade() -> None:
     """Removes the three capabilities -- and first everything that references them.
 
     `device_capability_link.capability_id` und `measurement.capability_id` zeigen ohne
-    `ON DELETE CASCADE` auf `device_capability.id`. Ein blosses DELETE auf der
-    Nachschlagetabelle geht deshalb gut, solange niemand die Faehigkeiten benutzt hat,
-    und bricht mit einem Fremdschluesselfehler ab, sobald ein Thermostatventil erkannt
+    `ON DELETE CASCADE` auf `device_capability.id`. Ein bloßes DELETE auf der
+    Nachschlagetabelle geht deshalb gut, solange niemand die Fähigkeiten benutzt hat,
+    und bricht mit einem Fremdschlüsselfehler ab, sobald ein Thermostatventil erkannt
     oder ein `running_state`/`window_open` gemessen wurde -- also genau dann, wenn
     jemand das Downgrade wirklich braucht.
 
     Dieselbe Reihenfolge wie in `d1a7c3e59b40`, wo es aus demselben Grund schon einmal
     aufgefallen ist. Die Messwerte gehen dabei verloren; das ist die Kehrseite eines
-    Downgrades, das eine Faehigkeit zuruecknimmt, und besser als eine verwaiste Zeile,
-    die auf eine Faehigkeit zeigt, die es nicht mehr gibt.
+    Downgrades, das eine Fähigkeit zurücknimmt, und besser als eine verwaiste Zeile,
+    die auf eine Fähigkeit zeigt, die es nicht mehr gibt.
     """
     codes = [code for code, _label in NEW_CAPABILITIES]
     capabilities = _lookup_table("device_capability")

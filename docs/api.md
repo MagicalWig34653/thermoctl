@@ -170,13 +170,13 @@ Die einzelnen Felder, mit ihren Grenzen aus `domain/control.py::LIMITS`:
 | `measurement_retention_days` | Messwerte aufbewahren (Tage) | 1 – 3.650 | 30 |
 | `shadow_decision_retention_days` | Schattenentscheidungen aufbewahren (Tage) | 1 – 3.650 | 365 |
 | `session_lifetime_seconds` | Sitzungsdauer (Sekunden) | 300 – 31.536.000 | 1.209.600 (14 Tage) |
-| `assumed_relay_lifetime_operations` | angenommene Relais-Lebensdauer (Schaltspiele), Grundlage für die Verschleiss-Hochrechnung unter `/relay-wear` | 1.000 – 10.000.000 | 500.000 |
+| `assumed_relay_lifetime_operations` | angenommene Relais-Lebensdauer (Schaltspiele), Grundlage für die Verschleiß-Hochrechnung unter `/relay-wear` | 1.000 – 10.000.000 | 500.000 |
 | `default_solar_setback_max_k` | Sonnenabsenkung, Obergrenze (K) | 0,0 – 10,0 | 2,0 |
 | `solar_setback_lookahead_hours` | Sonnenabsenkung, Vorschau (Stunden) | 1 – 12 | 3 |
 
 **`assumed_relay_lifetime_operations` ist eine Annahme, keine Herstellerangabe** —
 öffentliche Meross-Daten nennen keine Relaislebensdauer. Sie geht in die
-Verschleiss-Hochrechnung unter `/relay-wear` und in den Warnhinweis beim Einschalten der
+Verschleiß-Hochrechnung unter `/relay-wear` und in den Warnhinweis beim Einschalten der
 PI-Regelung ein; wer sie ändert, ändert eine Annahme, keine Messung.
 
 ### Sonnenabsenkung
@@ -216,9 +216,9 @@ für diese Zone damit aus statt sie versehentlich ein.
 Die fünf `pi_*`-Werte gehören zur **PI-Regelung (Beta)**, seit 0.5.0. `pi_enabled` ist je
 Zone aus als Vorgabe und lässt sich nur setzen, wenn die Zone dafür taugt. Die Prüfung ist
 gerätegenau, nicht zonenweit: Ein Gerät mit der Fähigkeit `thermostat`, das nicht
-selbstregelnd ist, schliesst PI aus — es bekäme die Entscheidung als Sollwertsprung
+selbstregelnd ist, schließt PI aus — es bekäme die Entscheidung als Sollwertsprung
 weitergereicht —, ebenso eine Zone ganz ohne gewöhnlichen Schaltaktor. Ein
-**selbstregelndes** Ventil dagegen schliesst die Zone nicht aus: Es bekommt seinen
+**selbstregelndes** Ventil dagegen schließt die Zone nicht aus: Es bekommt seinen
 Sollwert über einen eigenen Weg und sieht die PI-Entscheidung nie, sodass es neben einem
 gewöhnlichen Schaltaktor stehen darf — PI steuert dann nur diesen Schaltaktor an. Der
 Versuch wird bei fehlender Eignung mit einer Begründung abgewiesen, statt still auf
@@ -312,7 +312,7 @@ Diese Tabelle unterliegt bewusst keiner automatischen Aufbewahrungsfrist — and
 Messwerte ist ein Schaltbefehl selten und einzeln beweiskräftig, und eine automatische
 Löschung würde ausgerechnet den Beleg entfernen, für den das Protokoll gebaut wurde.
 Sie wächst dadurch unbegrenzt; `limit` ist deshalb keine Bequemlichkeit, sondern eine
-Obergrenze je Abfrage. Ein Wert ausserhalb von 1 bis 500 ergibt `422`.
+Obergrenze je Abfrage. Ein Wert außerhalb von 1 bis 500 ergibt `422`.
 
 `sent_at` trägt immer die Zeitzone (`Z`, also UTC), obwohl intern alles naives UTC ist:
 ein naiver Wert würde bei einem Aufrufer in einer anderen Zeitzone als Ortszeit gelesen.

@@ -1,15 +1,15 @@
 """Schaltprotokoll: was wirklich an ein Geraet hinausging
 
-Bislang gibt es zwei Protokolle, und beide sind etwas anderes: `shadow_decision` haelt
-fest, was die Regelung entschieden haette oder hat -- eine Entscheidung ist keine
-Wirkung. `audit_event` haelt fest, was ein Mensch getan hat. Was fehlte, ist das
+Bislang gibt es zwei Protokolle, und beide sind etwas anderes: `shadow_decision` hält
+fest, was die Regelung entschieden hätte oder hat -- eine Entscheidung ist keine
+Wirkung. `audit_event` hält fest, was ein Mensch getan hat. Was fehlte, ist das
 Dritte: was wirklich an ein Geraet hinausgegangen ist, wann, mit welchem Ergebnis.
 
-`command_outcome` ist eine gewoehnliche Nachschlagetabelle (kein ENUM, Grundsatz 3).
-`device_command` haengt an Zone und Geraet -- anders als `shadow_decision` bewusst mit
+`command_outcome` ist eine gewöhnliche Nachschlagetabelle (kein ENUM, Grundsatz 3).
+`device_command` hängt an Zone und Geraet -- anders als `shadow_decision` bewusst mit
 `ondelete="SET NULL"` statt CASCADE, und mit einer Namens-Momentaufnahme
-(`zone_name`, `device_name`), damit der Eintrag auch nach dem Umbenennen oder Loeschen
-der Zone oder des Geraets noch sagt, was passiert ist. Begruendet im Docstring von
+(`zone_name`, `device_name`), damit der Eintrag auch nach dem Umbenennen oder Löschen
+der Zone oder des Geraets noch sagt, was passiert ist. Begründet im Docstring von
 `DeviceCommand`.
 
 Revision ID: 3a3e44c560fb
@@ -29,11 +29,11 @@ depends_on: str | Sequence[str] | None = None
 
 # Ausgeschrieben statt importiert, aus demselben Grund wie bei jeder Nachschlagetabelle
 # nach der allerersten Migration: Eine Migration beschreibt, was zu EINEM Zeitpunkt
-# geschah, und darf sich nicht rueckwirkend aendern, wenn die Konstante im Modell
-# spaeter waechst.
+# geschah, und darf sich nicht rückwirkend ändern, wenn die Konstante im Modell
+# später wächst.
 COMMAND_OUTCOMES = [
-    ("executed", "Ausgefuehrt"),
-    ("suppressed", "Unterdrueckt (Trockenlauf)"),
+    ("executed", "Ausgeführt"),
+    ("suppressed", "Unterdrückt (Trockenlauf)"),
     ("failed", "Gescheitert"),
 ]
 
@@ -92,7 +92,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # Der Index wird bewusst nicht einzeln entfernt -- beide Datenbanken raeumen ihn
+    # Der Index wird bewusst nicht einzeln entfernt -- beide Datenbanken räumen ihn
     # mit der Tabelle mit ab (siehe derselbe Kommentar in 8b2d6e8a7f10).
     op.drop_table("device_command")
     op.drop_table("command_outcome")

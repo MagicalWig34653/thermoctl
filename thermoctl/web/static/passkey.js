@@ -164,7 +164,7 @@
             // Conditional sign-in is an offer, not something anyone set in motion; it
             // therefore stays silent.
             if (!error || error.name !== "AbortError") {
-                console.debug("Bedingte Passkey-Anmeldung nicht moeglich:", error);
+                console.debug("Bedingte Passkey-Anmeldung nicht möglich:", error);
             }
         });
     }

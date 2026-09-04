@@ -58,9 +58,9 @@ def compare(
 
     if would_heat == legacy_system_heating:
         text = (
-            "thermoctl haette Heizen angefordert; das Altsystem heizte."
+            "thermoctl hätte Heizen angefordert; das Altsystem heizte."
             if would_heat
-            else "thermoctl haette kein Heizen angefordert; das Altsystem heizte nicht."
+            else "thermoctl hätte kein Heizen angefordert; das Altsystem heizte nicht."
         )
         return Comparison(Classification.UEBEREINSTIMMUNG, text)
 
@@ -68,12 +68,12 @@ def compare(
     setpoint_text = _temperature_text(setpoint_c)
     if would_heat:
         text = (
-            "thermoctl haette geheizt, das Altsystem heizte nicht — "
+            "thermoctl hätte geheizt, das Altsystem heizte nicht — "
             f"Ist {ist_text} °C, Soll {setpoint_text} °C."
         )
     else:
         text = (
-            "thermoctl haette nicht geheizt, das Altsystem heizte — "
+            "thermoctl hätte nicht geheizt, das Altsystem heizte — "
             f"Ist {ist_text} °C, Soll {setpoint_text} °C."
         )
     return Comparison(Classification.ABWEICHUNG, text)

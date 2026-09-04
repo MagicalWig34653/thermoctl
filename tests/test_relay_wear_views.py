@@ -108,7 +108,7 @@ def test_relay_wear_reflects_a_changed_assumption(
     row = create_settings(session)
     row.assumed_relay_lifetime_operations = 100_000
     session.flush()
-    visible = create_zone(session, "geaenderte-annahme")
+    visible = create_zone(session, "geänderte-annahme")
     days = [date(2026, 8, 27) + timedelta(days=offset) for offset in range(7)]
 
     def statistics_at_the_installations_assumption(

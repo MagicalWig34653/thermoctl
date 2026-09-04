@@ -1,18 +1,18 @@
 """Meldungsarten einzeln schaltbar, Zustellzustand des Webhooks
 
-Fuegt `setting` sechs Spalten hinzu, fuer die beiden im selben Auftrag gebauten
+Fügt `setting` sechs Spalten hinzu, für die beiden im selben Auftrag gebauten
 Teile der Benachrichtigungen -- Auslieferung ans Domänen-Tor
-(`domain.fault_notice.notice_enabled`) und Anzeige in der spaeteren Oberflaeche:
+(`domain.fault_notice.notice_enabled`) und Anzeige in der späteren Oberfläche:
 
 * `notify_sensor_faults`, `notify_bridge_faults`, `notify_command_failures`
   (`bool`, Vorgabe `True`) -- je ein Schalter pro Meldungsart aus
   `domain.fault_notice`, anlagenweit statt je Zone oder Schweregrad. Vorgabe
-  `True` in allen drei Faellen: eine Anlage, die heute Meldungen bekommt, bekommt
-  sie nach dieser Migration unveraendert weiter.
+  `True` in allen drei Fällen: eine Anlage, die heute Meldungen bekommt, bekommt
+  sie nach dieser Migration unverändert weiter.
 * `notify_last_attempt_at` (`DateTime`, nullable), `notify_last_ok` (`bool`,
   nullable), `notify_last_error` (`String(255)`, nullable) -- wann zuletzt
   versucht wurde, eine Meldung an den Webhook zu geben, ob es gelang, und im
-  Fehlerfall eine knappe, fuer die Oberflaeche taugliche Begruendung. Alle drei
+  Fehlerfall eine knappe, für die Oberfläche taugliche Begründung. Alle drei
   bleiben `NULL`, solange kein Webhook eingetragen ist oder noch nie ein Versuch
   stattfand.
 

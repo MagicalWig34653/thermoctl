@@ -62,7 +62,7 @@ def _settings(**values: str) -> Settings:
 NOTICE = FaultNotice(
     key="sensor:1",
     severity="stoerung",
-    title="Sensorstoerung",
+    title="Sensorstörung",
     text="Keine aktuellen Werte.",
     kind=NOTICE_KIND_SENSOR_FAULT,
 )
@@ -107,7 +107,7 @@ def test_webhook_sends_the_expected_payload_exactly_once(
     assert json.loads(request.data or b"") == {
         "schluessel": "sensor:1",
         "schwere": "stoerung",
-        "titel": "Sensorstoerung",
+        "titel": "Sensorstörung",
         "text": "Keine aktuellen Werte.",
     }
 
@@ -115,7 +115,7 @@ def test_webhook_sends_the_expected_payload_exactly_once(
 def test_an_error_does_not_stop_the_caller_and_the_token_stays_out_of_the_log(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
-    token = "auffaelliges-webhook-geheimnis"
+    token = "auffälliges-webhook-geheimnis"
     seen: list[str | None] = []
 
     def _broken(request: Request, timeout: int) -> _Response:
@@ -157,10 +157,10 @@ def test_the_opener_carries_the_no_redirect_handler() -> None:
 def test_offener_webhook_redirect_wird_jetzt_abgelehnt() -> None:
     """War NOCH NICHT BEHOBEN (siehe Verlauf dieses Tests) -- jetzt behoben.
 
-    Der Standard-`HTTPRedirectHandler` haette aus dieser Antwort eine neue Anfrage
+    Der Standard-`HTTPRedirectHandler` hätte aus dieser Antwort eine neue Anfrage
     an `http://127.0.0.1:8080/intern` gebaut und dabei `Authorization` mitgenommen.
     `notification._NoRedirectHandler` baut diese Anfrage gar nicht erst -- der
-    Header verlaesst den urspruenglichen Ursprung damit nie, gleich wohin
+    Header verlässt den ursprünglichen Ursprung damit nie, gleich wohin
     umgeleitet wird.
     """
     original = Request(
@@ -246,7 +246,7 @@ def test_send_test_reports_an_unreachable_host_without_a_status_code(
 def test_send_test_scrubs_the_token_and_shortens_an_unfamiliar_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    token = "auffaelliges-webhook-geheimnis"
+    token = "auffälliges-webhook-geheimnis"
 
     def _open(request: Request, timeout: int) -> _Response:
         raise OSError(f"Verbindung fehlgeschlagen, Token war {token}" + "x" * 400)

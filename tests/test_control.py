@@ -391,8 +391,8 @@ def test_the_solar_setback_can_be_switched_on_through_its_own_form(
     mehr zu: Die Sonnenabsenkung liess sich nicht mehr einschalten, ohne dass irgendwo
     ein Fehler erschien. Aus dem Betrieb gemeldet.
 
-    Ein Test, der den Wert selbst hinschreibt, haette das nicht gesehen — er stimmt
-    immer mit der Haelfte ueberein, gegen die er geschrieben wurde.
+    Ein Test, der den Wert selbst hinschreibt, hätte das nicht gesehen — er stimmt
+    immer mit der Hälfte überein, gegen die er geschrieben wurde.
     """
     create_settings(session)
     source(session, "web")

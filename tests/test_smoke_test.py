@@ -565,7 +565,7 @@ def test_every_link_and_form_on_a_rendered_page_leads_somewhere(
         for action in sorted(set(re.findall(r'action="(/[^"?]*)"', page.text))):
             if not _route_exists(angemeldeter_client.app, action):
                 dead.append(f"{path} -> POST {action}: keine solche Route")
-    assert not dead, "Verweise, die ins Leere fuehren:\n  " + "\n  ".join(dead)
+    assert not dead, "Verweise, die ins Leere führen:\n  " + "\n  ".join(dead)
 
 def test_kiosk_link_leads_to_an_actual_dashboard(
     client: TestClient, session: Session
@@ -637,7 +637,7 @@ def test_the_new_zone_form_posts_to_a_real_endpoint(
         headers=_csrf(angemeldeter_client),
         follow_redirects=False,
     )
-    assert response.status_code != 404, f"{action.group(1)} fuehrt ins Leere"
+    assert response.status_code != 404, f"{action.group(1)} führt ins Leere"
     assert session.scalar(select(Zone).filter_by(name="smoketestzone")) is not None
 
 
@@ -665,7 +665,7 @@ def test_the_thermostat_buttons_send_values_their_view_accepts(
 
     page = angemeldeter_client.get("/")
     directions = set(re.findall(r'name="direction" value="([^"]+)"', page.text))
-    assert directions, "Keine Sollwert-Knoepfe auf der Startseite gefunden"
+    assert directions, "Keine Sollwert-Knöpfe auf der Startseite gefunden"
 
     for direction in sorted(directions):
         answer = angemeldeter_client.post(

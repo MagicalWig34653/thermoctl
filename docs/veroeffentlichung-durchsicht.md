@@ -257,7 +257,7 @@ gewollt ist — sonst durch einen Platzhalter ersetzen.
 ## Prüflauf
 
 ```
-cd "/Users/linolaske/Documents/Code Projekte/PycharmProjects/thermoctl-worktrees/veroeffentlichung"
+cd "/Users/linolaske/Documents/Code Projekte/PycharmProjects/thermoctl-worktrees/veröffentlichung"
 .venv/bin/python -m pytest -q
 ```
 

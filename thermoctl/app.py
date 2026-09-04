@@ -381,7 +381,7 @@ async def _shadow_loop(app: FastAPI) -> None:
                     _running_notices.add(mqtt_task)
                     mqtt_task.add_done_callback(_running_notices.discard)
         except Exception:
-            log.exception("Schattenzyklus fehlgeschlagen -- naechster Versuch folgt")
+            log.exception("Schattenzyklus fehlgeschlagen -- nächster Versuch folgt")
 
 
 def _execute_command(
@@ -408,7 +408,7 @@ def _execute_command(
 
     zone = session.get(Zone, command.zone_id)
     if zone is None:
-        log.warning("Befehl fuer unbekannte Zone verworfen", extra={"topic": topic})
+        log.warning("Befehl für unbekannte Zone verworfen", extra={"topic": topic})
         return None
 
     try:
@@ -558,7 +558,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
             # escapes the redaction in logging.py, an extra field with "token" in
             # its name would be redacted there.
             log.info(
-                "Einrichtung erforderlich. Einmal-Token (gueltig %d Minuten): %s",
+                "Einrichtung erforderlich. Einmal-Token (gültig %d Minuten): %s",
                 int(SETUP_TOKEN_LIFETIME.total_seconds() // 60),
                 plaintext,
             )
@@ -633,8 +633,8 @@ def _warn_if_reachable_unprotected(settings: Settings) -> None:
         return
     log.warning(
         "Der Dienst ist im Netz erreichbar, aber THERMOCTL_SECURE_COOKIES ist aus. "
-        "Sitzungscookies gehen dann auch unverschluesselt hinaus. Hinter TLS gehoert "
-        "THERMOCTL_SECURE_COOKIES=true; ohne TLS gehoert die Bindung auf 127.0.0.1.",
+        "Sitzungscookies gehen dann auch unverschlüsselt hinaus. Hinter TLS gehört "
+        "THERMOCTL_SECURE_COOKIES=true; ohne TLS gehört die Bindung auf 127.0.0.1.",
         extra={"bind": f"{settings.bind_host}:{settings.bind_port}"},
     )
 

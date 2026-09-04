@@ -76,22 +76,22 @@ def check_schema(engine: Engine) -> None:
         if not inspect(engine).has_table("user"):
             raise SchemaMismatch(
                 f"Die Datenbank hat kein Schema. Vor dem ersten Start einmal '{COMMAND}' "
-                "ausfuehren; das Container-Abbild erledigt das selbst."
+                "ausführen; das Container-Abbild erledigt das selbst."
             )
         # Tables without an Alembic stamp: this is how the test suite creates its
         # schema (`Base.metadata.create_all()`). This is no reason to abort startup --
         # only the version comparison then has no basis.
         log.warning(
-            "Das Schema wurde nicht ueber Alembic angelegt, der Versionsvergleich entfaellt"
+            "Das Schema wurde nicht über Alembic angelegt, der Versionsvergleich entfällt"
         )
         return
 
     head = _migration_head()
     if head is None:
-        log.debug("Migrationsverzeichnis nicht gefunden, Versionsvergleich entfaellt")
+        log.debug("Migrationsverzeichnis nicht gefunden, Versionsvergleich entfällt")
         return
     if state != head:
         raise SchemaMismatch(
             f"Das Datenbankschema steht auf {state}, der Code erwartet {head}. "
-            f"'{COMMAND}' ausfuehren."
+            f"'{COMMAND}' ausführen."
         )

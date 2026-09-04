@@ -25,7 +25,7 @@ def _capability(session: Session) -> DeviceCapability:
 def test_measurement_requires_exactly_one_value_column(
     session: Session, number: Decimal | None, text: str | None
 ) -> None:
-    device = create_device(session, "messwert-pruefung")
+    device = create_device(session, "messwert-prüfung")
     capability = _capability(session)
     now = datetime(2026, 8, 29, 8, 0)
     session.add(
@@ -43,7 +43,7 @@ def test_measurement_requires_exactly_one_value_column(
 
 
 def test_measurements_disappear_with_the_device(session: Session) -> None:
-    device = create_device(session, "kaskaden-pruefung")
+    device = create_device(session, "kaskaden-prüfung")
     capability = _capability(session)
     now = datetime(2026, 8, 29, 8, 0)
     session.add(

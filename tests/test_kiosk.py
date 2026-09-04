@@ -553,7 +553,7 @@ def test_an_unknown_direction_is_rejected_with_a_message(
 
     response = client.post(
         f"/kiosk/zones/{zone.id}/setpoint",
-        data={"direction": "seitwaerts"},
+        data={"direction": "seitwärts"},
         headers=_csrf_headers(plaintext),
     )
     assert response.status_code == status.HTTP_200_OK
@@ -714,7 +714,7 @@ def test_the_buttons_on_the_dashboard_work_the_way_a_browser_sends_them(
     Every other test in this file passes that header by hand, which is what htmx does
     for the page's own polling -- but the two buttons are plain HTML forms and htmx
     never touches them. So the tests agreed with each other while both buttons
-    answered `{"detail": "Ungueltiges CSRF-Token"}` on a real tablet. Reported from a
+    answered `{"detail": "Ungültiges CSRF-Token"}` on a real tablet. Reported from a
     running installation, not found here.
 
     Taking the fields out of the rendered page is the point: a test that assembles the

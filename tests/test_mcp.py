@@ -125,14 +125,14 @@ def test_reading_schedule_and_setpoints_names_the_modes(session: Session) -> Non
 
 
 def test_listing_devices_returns_capabilities_and_health(session: Session) -> None:
-    device = create_device(session, "testgeraet")
+    device = create_device(session, "testgerät")
     capability = DeviceCapability(code="temperature", label="Temperatur")
     session.add(capability)
     session.flush()
     session.add(DeviceCapabilityLink(device_id=device.id, capability_id=capability.id))
     healthy = create_device_state(session, device)
     healthy.battery_percent = Decimal("87.50")
-    plaintext = _token(session, "geraeteleser", [("device.read", None)])
+    plaintext = _token(session, "geräteleser", [("device.read", None)])
 
     result = server.list_devices(session, plaintext)
 
@@ -142,7 +142,7 @@ def test_listing_devices_returns_capabilities_and_health(session: Session) -> No
 
 def test_listing_devices_denies_a_missing_permission(session: Session) -> None:
     create_device(session, "unsichtbares-geraet")
-    plaintext = _token(session, "ohnegeraeterecht", [("zone.read", None)])
+    plaintext = _token(session, "ohnegeräterecht", [("zone.read", None)])
 
     with pytest.raises(Forbidden, match="device.read"):
         server.list_devices(session, plaintext)
@@ -171,7 +171,7 @@ def test_shadow_decisions_returns_the_most_recent_reason(session: Session) -> No
 def test_device_commands_reports_an_explicit_utc_offset(session: Session) -> None:
     """Same requirement as the REST endpoint -- see CLAUDE.md and `docs/mcp.md`."""
     zone = create_zone(session, "schaltzone")
-    geraet = create_device(session, "schaltgeraet")
+    geraet = create_device(session, "schaltgerät")
     create_device_command(session, zone, geraet, at=datetime(2026, 8, 29, 8, 0))
     plaintext = _token(session, "schaltleser", [("audit.read", None)])
 
@@ -182,7 +182,7 @@ def test_device_commands_reports_an_explicit_utc_offset(session: Session) -> Non
             "sent_at": "2026-08-29T08:00:00+00:00",
             "source": "system",
             "zone": "schaltzone",
-            "device": "schaltgeraet",
+            "device": "schaltgerät",
             "command": "setpoint",
             "payload": '{"occupied_heating_setpoint": 21.0}',
             "outcome": "executed",
@@ -194,7 +194,7 @@ def test_device_commands_reports_an_explicit_utc_offset(session: Session) -> Non
 
 def test_device_commands_denies_a_missing_permission(session: Session) -> None:
     zone = create_zone(session, "unbefugtzone")
-    geraet = create_device(session, "unbefugtgeraet")
+    geraet = create_device(session, "unbefugtgerät")
     create_device_command(session, zone, geraet)
     plaintext = _token(session, "unbefugt", [("zone.read", None)])
 
@@ -220,7 +220,7 @@ def test_device_commands_filters_by_zone_and_outcome(session: Session) -> None:
 
 def test_device_commands_refuses_a_nonsensical_limit(session: Session) -> None:
     zone = create_zone(session, "grenzzone")
-    geraet = create_device(session, "grenzgeraet")
+    geraet = create_device(session, "grenzgerät")
     create_device_command(session, zone, geraet)
     plaintext = _token(session, "grenzleser", [("audit.read", None)])
 
@@ -231,10 +231,10 @@ def test_device_commands_refuses_a_nonsensical_limit(session: Session) -> None:
 def test_overriding_calls_the_domain_mutation_with_the_token_attached(session: Session) -> None:
     create_settings(session)
     source(session, "api")
-    zone = create_zone(session, "uebersteuerungszone")
+    zone = create_zone(session, "übersteuerungszone")
     plaintext = _token(
         session,
-        "uebersteuerer",
+        "übersteuerer",
         [("zone.read", zone.id), ("override.create", zone.id)],
     )
 
@@ -298,7 +298,7 @@ def test_the_registered_mcp_tools_have_descriptions_and_call_the_adapter_functio
     source(session, "api")
     create_zone_state(session, zone)
     create_shadow_decision(session, zone)
-    geraet = create_device(session, "registrierungsgeraet")
+    geraet = create_device(session, "registrierungsgerät")
     create_device_command(session, zone, geraet)
     permissions = [
         ("zone.read", None),
@@ -368,7 +368,7 @@ def test_the_registered_mcp_tools_have_descriptions_and_call_the_adapter_functio
         zone.id, "hysteresis_k", Decimal("0.4")
     )
     assert tools["read_control"]()  # type: ignore[operator]
-    # `trockenlauf_erzwingen` reports `geaendert: False` when dry run already applies --
+    # `trockenlauf_erzwingen` reports `geändert: False` when dry run already applies --
     # so check for the key, not for the truthiness of the result.
     assert "armed" in tools["force_dry_run"]()  # type: ignore[operator]
     point = session.scalars(select(SchedulePoint).where(SchedulePoint.zone_id == zone.id)).first()
@@ -389,7 +389,7 @@ def test_a_foreign_zone_cannot_be_found(session: Session) -> None:
     which zones exist. The REST adapter behaves the same way."""
     eigene = create_zone(session, "eigene-zone")
     fremde = create_zone(session, "fremde-zone")
-    plaintext = _token(session, "eingeschraenkt", [("zone.read", eigene.id)])
+    plaintext = _token(session, "eingeschränkt", [("zone.read", eigene.id)])
 
     with pytest.raises(LookupError):
         server.zone_state(session, plaintext, fremde.id)
@@ -444,7 +444,7 @@ def test_overriding_refuses_a_nonsensical_temperature(session: Session) -> None:
     zone = create_zone(session, "zone-mcp-grenze")
     create_settings(session)
     source(session, "mcp")
-    plaintext = _token(session, "uebersteuerer", [("override.create", None), ("zone.read", None)])
+    plaintext = _token(session, "übersteuerer", [("override.create", None), ("zone.read", None)])
 
     # -5 has been a valid setpoint since the lower limit was dropped to -20: "no
     # heating here". What lies below that stays unusable.
@@ -668,7 +668,7 @@ def test_regelparameter_setzen_braucht_zone_manage(session: Session) -> None:
     """
     zone = zone_with_schedule(session, "setzsperre", [(1, 0, "tag-ss", Decimal("21.0"))])
     plaintext = _token(
-        session, "uebersteuerer", [("zone.read", zone.id), ("override.create", zone.id)]
+        session, "übersteuerer", [("zone.read", zone.id), ("override.create", zone.id)]
     )
 
     with pytest.raises(Forbidden):

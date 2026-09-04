@@ -1,8 +1,8 @@
 """Eigenes Recht zum Scharfschalten der Regelung
 
-Bis hierher gab es nur `setting.manage` fuer alle globalen Einstellungen. Scharfschalten
+Bis hierher gab es nur `setting.manage` für alle globalen Einstellungen. Scharfschalten
 ist aber die einzige davon, deren Umlegen unmittelbar ein Ventil bewegt -- wer Zeitzone
-und Aufbewahrungsdauer pflegen darf, soll das nicht nebenbei koennen.
+und Aufbewahrungsdauer pflegen darf, soll das nicht nebenbei können.
 
 Das Recht bekommen alle Gruppen, die bereits `setting.manage` halten. Auf einer frisch
 eingerichteten Anlage ist das die Gruppe *Verwaltung*; bei einer bestehenden bleibt die
@@ -66,7 +66,7 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     verbindung = op.get_bind()
-    # Erst die Zuteilungen, dann das Recht: umgekehrt haelt der Fremdschluessel dagegen.
+    # Erst die Zuteilungen, dann das Recht: umgekehrt hält der Fremdschlüssel dagegen.
     verbindung.execute(
         sa.text(
             "DELETE FROM group_permission WHERE permission_id IN "

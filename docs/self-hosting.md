@@ -153,46 +153,46 @@ der Rückweg ist vorgesehen, aber absichtlich nicht automatisch.
 aus einer Veröffentlichung, nie aus einem Zwischenstand — eine feste Marke ist dennoch
 die ruhigere Wahl, wenn der Dienst wirklich heizt.
 
-## 6a. PI-Regelung (Beta) und Relaisverschleiss
+## 6a. PI-Regelung (Beta) und Relaisverschleiß
 
 Seit 0.5.0 kann eine Zone statt der Hysterese einen Proportional-Integral-Regler benutzen.
 **Aus als Vorgabe, auch nach einer Aktualisierung** — nichts schaltet sich von selbst ein.
 
 Der Schalter steht bei den Regelparametern der Zone. Er ist **gesperrt**, wenn die Zone
-nicht dafuer taugt, und darueber steht der Grund. Es gibt genau zwei:
+nicht dafür taugt, und darüber steht der Grund. Es gibt genau zwei:
 
-- *Kein gewoehnlicher Schaltaktor zugeordnet* — PI braucht etwas, das ein und aus kann.
-- *Ein Geraet mit der Faehigkeit `thermostat` ist der Zone zugeordnet* — ein
-  Thermostatventil ohne eigene Regelung bekaeme die PI-Entscheidung als Sollwertsprung
-  weitergereicht, und genau die schnelle Taktung von PI waere dafuer falsch.
+- *Kein gewöhnlicher Schaltaktor zugeordnet* — PI braucht etwas, das ein und aus kann.
+- *Ein Gerät mit der Fähigkeit `thermostat` ist der Zone zugeordnet* — ein
+  Thermostatventil ohne eigene Regelung bekäme die PI-Entscheidung als Sollwertsprung
+  weitergereicht, und genau die schnelle Taktung von PI wäre dafür falsch.
 
-**Die Pruefung ist geraetegenau, nicht zonenweit.** Ursprünglich schloss schon ein
-einziges selbstregelndes Ventil die ganze Zone von PI aus, unabhaengig davon, was sonst
-noch daran haengt. Das war strenger als noetig: Ein selbstregelndes Ventil bekommt seinen
-Sollwert ueber einen eigenen Weg (`domain/self_regulating.py`) und sieht die PI-Entscheidung
+**Die Prüfung ist gerätegenau, nicht zonenweit.** Ursprünglich schloss schon ein
+einziges selbstregelndes Ventil die ganze Zone von PI aus, unabhängig davon, was sonst
+noch daran hängt. Das war strenger als nötig: Ein selbstregelndes Ventil bekommt seinen
+Sollwert über einen eigenen Weg (`domain/self_regulating.py`) und sieht die PI-Entscheidung
 nie — `switch_commands()` und `thermostat_commands()` (`domain/switch_commands.py`)
-schliessen es aus beiden Befehlswegen aus. Seit dieser Aenderung zaehlt nur noch, was die
-PI-Entscheidung tatsaechlich als Ein/Aus-Befehl erreichen wuerde: ein selbstregelndes
-Ventil **neben** einem gewoehnlichen Schaltaktor schliesst die Zone nicht mehr aus, PI
-steuert dann ausschliesslich den Schaltaktor an — etwa ein selbstregelndes
-Heizkoerperthermostat neben einem Meross-Schalter im selben Raum. Ein Thermostatventil
+schließen es aus beiden Befehlswegen aus. Seit dieser Aenderung zählt nur noch, was die
+PI-Entscheidung tatsächlich als Ein/Aus-Befehl erreichen würde: ein selbstregelndes
+Ventil **neben** einem gewöhnlichen Schaltaktor schließt die Zone nicht mehr aus, PI
+steuert dann ausschließlich den Schaltaktor an — etwa ein selbstregelndes
+Heizkörperthermostat neben einem Meross-Schalter im selben Raum. Ein Thermostatventil
 **ohne** eigene Regelung bleibt weiterhin ein Ausschlussgrund, egal ob allein oder
 gemischt mit anderen Aktoren.
 
-Beim Einschalten ist ausserdem ein Haken zu bestaetigen, dass mehr Schaltspiele und die
+Beim Einschalten ist außerdem ein Haken zu bestätigen, dass mehr Schaltspiele und die
 Folgen einer falschen Parametrierung verstanden sind. Ohne ihn wird das Formular mit einer
 Meldung abgewiesen.
 
-**Danach die Seite „Relaisverschleiss" ansehen.** Sie zeigt Schaltspiele je Geraet und Tag
-mit Jahreshochrechnung und braucht das Recht `audit.read`. Sie ist auch ohne PI nuetzlich —
-Verschleiss entsteht auch durch die Hysterese, nur langsamer. Wird die Jahreshochrechnung
-einer Zone auffaellig, schalten Sie PI dort wieder aus; der Reglerzustand wird dabei
-vollstaendig neutralisiert, ein spaeteres Wiedereinschalten faengt sauber an.
+**Danach die Seite „Relaisverschleiß" ansehen.** Sie zeigt Schaltspiele je Gerät und Tag
+mit Jahreshochrechnung und braucht das Recht `audit.read`. Sie ist auch ohne PI nützlich —
+Verschleiß entsteht auch durch die Hysterese, nur langsamer. Wird die Jahreshochrechnung
+einer Zone auffällig, schalten Sie PI dort wieder aus; der Reglerzustand wird dabei
+vollständig neutralisiert, ein späteres Wiedereinschalten faengt sauber an.
 
 Die Hochrechnung rechnet gegen eine **angenommene** Relais-Lebensdauer, Vorgabe
-500.000 Schaltspiele — keine Herstellerangabe, denn oeffentliche Meross-Daten nennen
+500.000 Schaltspiele — keine Herstellerangabe, denn öffentliche Meross-Daten nennen
 keine. Einstellbar unter „Regelvorgaben" (`/settings`) bzw. `PUT /api/v1/control/defaults`
-(`setting.manage`), Grenzen 1.000 bis 10.000.000. Wer sie aendert, aendert eine Annahme,
+(`setting.manage`), Grenzen 1.000 bis 10.000.000. Wer sie ändert, ändert eine Annahme,
 keine Messung.
 
 ## 6b. Umstieg von `docker compose` auf das Home-Assistant-Add-on

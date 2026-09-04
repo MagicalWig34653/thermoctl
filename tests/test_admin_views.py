@@ -24,10 +24,10 @@ def test_a_token_with_more_permissions_than_its_owner_is_refused(session: Sessio
 
 def test_a_token_for_a_foreign_zone_is_refused(session: Session) -> None:
     bad = create_zone(session, "bad")
-    kueche = create_zone(session, "kueche")
+    küche = create_zone(session, "küche")
     user_record = user_with_permissions(session, "c", [("zone.read", bad.id), ("token.self", None)])
     with pytest.raises(Forbidden):
-        issue_token(session, user_record, "Fremd", [("zone.read", kueche.id)], None)
+        issue_token(session, user_record, "Fremd", [("zone.read", küche.id)], None)
 
 
 def test_the_user_list_needs_user_manage(client_als) -> None:
@@ -99,11 +99,11 @@ def test_a_password_never_appears_in_the_response(client_als, session: Session) 
     c = client_als([("user.manage", None)])
     response = c.post(
         "/users",
-        data={"username": "", "display_name": "X", "password": "ein-auffaelliges-geheimnis",
+        data={"username": "", "display_name": "X", "password": "ein-auffälliges-geheimnis",
               "group_id": ""},
         headers=_with_csrf(c, session),
     )
-    assert "ein-auffaelliges-geheimnis" not in response.text
+    assert "ein-auffälliges-geheimnis" not in response.text
 
 
 def test_the_last_administrator_cannot_deactivate_themselves(
@@ -143,10 +143,10 @@ def test_creating_a_group_and_granting_a_permission(client_als, session: Session
     ensure_permission(session, "zone.read", zone_scoped=True)
     c = client_als([("group.manage", None)])
     assert c.post(
-        "/groups", data={"name": "Gaeste", "description": "Nur schauen"},
+        "/groups", data={"name": "Gäste", "description": "Nur schauen"},
         headers=_with_csrf(c, session), follow_redirects=False,
     ).status_code == 303
-    group = session.scalar(select(AccessGroup).where(AccessGroup.name == "Gaeste"))
+    group = session.scalar(select(AccessGroup).where(AccessGroup.name == "Gäste"))
     assert group is not None
 
     # The endpoint accepts the entire desired state, not a single permission:
@@ -169,7 +169,7 @@ def test_an_installation_wide_permission_on_one_zone_is_refused_in_the_view(
     from thermoctl.db.models.identity import AccessGroup
 
     ensure_permission(session, "user.manage", zone_scoped=False)
-    zone = create_zone(session, "bad-fuer-rechte")
+    zone = create_zone(session, "bad-für-rechte")
     c = client_als([("group.manage", None)])
     c.post("/groups", data={"name": "Falsch", "description": ""},
            headers=_with_csrf(c, session))
@@ -551,7 +551,7 @@ def test_an_unparsable_zone_in_a_permission_entry_is_a_bad_request(
     """
     from thermoctl.db.models.identity import AccessGroup
 
-    group = AccessGroup(name="Rechtegruppe", description="fuer den Test")
+    group = AccessGroup(name="Rechtegruppe", description="für den Test")
     session.add(group)
     session.flush()
     response = angemeldeter_client.post(
@@ -776,7 +776,7 @@ def test_a_rejected_creation_keeps_the_chosen_group_preselected(
     actually stored under `group_id`, so a rejected form always lost the choice."""
     from thermoctl.db.models.identity import AccessGroup
 
-    gruppe = AccessGroup(name="Vorausgewaehlt")
+    gruppe = AccessGroup(name="Vorausgewählt")
     session.add(gruppe)
     session.flush()
     c = client_als([("user.manage", None)])

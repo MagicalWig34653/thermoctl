@@ -63,10 +63,10 @@ def token_fuer(session: Session) -> Callable[[list[tuple[str, str | None]]], dic
     def _token_fuer(permissions: list[tuple[str, str | None]]) -> dict[str, str]:
         nonlocal counter
         counter += 1
-        aufgeloest = [(code, bad.id if zone == "bad" else None) for code, zone in permissions]
-        owner = user_with_permissions(session, f"api-{counter}", aufgeloest)
+        aufgelöst = [(code, bad.id if zone == "bad" else None) for code, zone in permissions]
+        owner = user_with_permissions(session, f"api-{counter}", aufgelöst)
         _token, plaintext = issue_token(
-            session, owner, f"test-{counter}", aufgeloest, None
+            session, owner, f"test-{counter}", aufgelöst, None
         )
         return {"Authorization": f"Bearer {plaintext}"}
 
@@ -183,7 +183,7 @@ def test_device_commands_zone_filter_matches_the_name_snapshot(
     client, token_fuer, session: Session
 ) -> None:
     _befehl(session, device_name="im-filter", zone_name="bad")
-    _befehl(session, device_name="ausserhalb", zone_name="andere")
+    _befehl(session, device_name="außerhalb", zone_name="andere")
     head = token_fuer([("audit.read", None)])
 
     response = client.get("/api/v1/device-commands?zone=bad", headers=head)
@@ -193,7 +193,7 @@ def test_device_commands_zone_filter_matches_the_name_snapshot(
 
 
 def test_device_commands_outcome_filter(client, token_fuer, session: Session) -> None:
-    _befehl(session, device_name="ausgefuehrt", outcome_code="executed")
+    _befehl(session, device_name="ausgeführt", outcome_code="executed")
     _befehl(session, device_name="gescheitert", outcome_code="failed")
     head = token_fuer([("audit.read", None)])
 

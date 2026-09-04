@@ -53,12 +53,12 @@ def test_the_operating_page_shows_pi_and_its_fallback_reason(
     from tests.helpers import create_shadow_decision, create_zone
 
     create_settings(session)
-    running = create_zone(session, "pi-laeuft")
+    running = create_zone(session, "pi-läuft")
     decision = create_shadow_decision(session, running)
     decision.requested_controller = "pi"
     decision.effective_controller = "pi"
 
-    fallen_back = create_zone(session, "pi-zurueckgefallen")
+    fallen_back = create_zone(session, "pi-zurückgefallen")
     fallback_decision = create_shadow_decision(session, fallen_back)
     fallback_decision.requested_controller = "pi"
     fallback_decision.effective_controller = "hysteresis"

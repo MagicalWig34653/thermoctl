@@ -119,7 +119,7 @@ async def test_control_armed_sends_the_signed_toggle_command(session: Session) -
     mqtt_result = await Zigbee2MqttValve(
         session, rejected, base_topic, devices_id
     ).switching(False)
-    assert mqtt_result.errors == "MQTT-Client hat die Veroeffentlichung abgewiesen"
+    assert mqtt_result.errors == "MQTT-Client hat die Veröffentlichung abgewiesen"
 
     meross_error = await MerossSwitch(
         session,
@@ -177,7 +177,7 @@ async def test_an_armed_switch_without_a_signed_in_session_fails_without_touchin
     ).switching(True)
 
     assert result.executed is False
-    assert result.errors == "Keine gueltige Meross-Sitzung vorhanden"
+    assert result.errors == "Keine gültige Meross-Sitzung vorhanden"
 
 
 @pytest.mark.anyio
@@ -392,7 +392,7 @@ async def test_thermostat_without_control_armed_sends_nothing(session: Session) 
     assert mqtt.calls == []
     assert result.executed is False
     assert "zigbee2mqtt/TRV-Wohnzimmer/set" in result.description
-    assert "haette gesendet" in result.description
+    assert "hätte gesendet" in result.description
 
 
 @pytest.mark.anyio
@@ -411,7 +411,7 @@ async def test_thermostat_switching_off_is_bolted_shut_too(session: Session) -> 
 
     assert mqtt.calls == []
     assert result.executed is False
-    assert "haette gesendet" in result.description
+    assert "hätte gesendet" in result.description
     assert "system_mode" in result.description
 
 
@@ -439,7 +439,7 @@ async def test_thermostat_reports_a_refused_publication(session: Session) -> Non
         session, rejected, "zigbee2mqtt", "TRV-Wohnzimmer", Decimal("21.5")
     ).switching(False)
     assert result.executed is False
-    assert result.errors == "MQTT-Client hat die Veroeffentlichung abgewiesen"
+    assert result.errors == "MQTT-Client hat die Veröffentlichung abgewiesen"
 
 
 @pytest.mark.anyio
@@ -493,7 +493,7 @@ async def test_armed_thermostat_rounds_the_setpoint_to_the_devices_half_degree_s
     _armed(session)
     mqtt = MqttStub()
     result = await Zigbee2MqttThermostat(
-        session, mqtt, "zigbee2mqtt", "TRV-Buero", Decimal("21.3")
+        session, mqtt, "zigbee2mqtt", "TRV-Büro", Decimal("21.3")
     ).switching(True)
 
     assert result.executed is True
@@ -516,7 +516,7 @@ async def test_a_setpoint_outside_five_to_thirty_degrees_is_rejected(
 
     assert result.executed is False
     assert mqtt.calls == []
-    assert "ausserhalb" in result.description
+    assert "außerhalb" in result.description
 
 
 @pytest.mark.anyio
@@ -536,8 +536,8 @@ async def test_thermostat_switching_on_at_exactly_the_boundary_is_accepted(
 
 
 def test_thermostat_description_names_the_device() -> None:
-    assert "TRV-Kueche" in Zigbee2MqttThermostat(
-        None, None, "zigbee2mqtt", "TRV-Kueche", Decimal("20")  # type: ignore[arg-type]
+    assert "TRV-Küche" in Zigbee2MqttThermostat(
+        None, None, "zigbee2mqtt", "TRV-Küche", Decimal("20")  # type: ignore[arg-type]
     ).description()
 
 

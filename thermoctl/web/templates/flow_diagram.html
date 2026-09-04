@@ -11,8 +11,8 @@ das erst geladen werden müsste. Was fehlt, steht als Lücke da und nicht als le
 Eine Zone ohne Messquelle regelt nichts, und das soll man sehen.
 #}
 {#
-`draggable` macht eine zugeordnete Karte herausziehbar: zurueck in den Geraetevorrat, und
-die Zuordnung ist geloest. Der Weg hinein und der Weg hinaus sind damit derselbe
+`draggable` macht eine zugeordnete Karte herausziehbar: zurück in den Geraetevorrat, und
+die Zuordnung ist gelöst. Der Weg hinein und der Weg hinaus sind damit derselbe
 Handgriff in zwei Richtungen -- das ist die einzige Anordnung, die man sich nicht merken
 muss.
 #}
@@ -30,20 +30,20 @@ muss.
 </div>
 {% endmacro %}
 
-{% macro luecke(text) %}
+{% macro lücke(text) %}
 <div class="tc-node tc-node-gap">{{ text }}</div>
 {% endmacro %}
 
 {#
 `draggable` macht die drei Spalten zu Ablegezielen. Nur die Zuordnungsseite setzt es --
-auf dem Anlagenbild waere ein Ablegeziel eine Zusage, die die Seite nicht einloest.
+auf dem Anlagenbild wäre ein Ablegeziel eine Zusage, die die Seite nicht einlöst.
 #}
 {% macro flow_diagram(z, draggable=false, requires={}) %}
 <div class="tc-flow">
     <div class="tc-flow-column{{ ' tc-target' if draggable }}"{% if draggable %} data-target="temperature_source" data-target-name="Messquelle" data-requires="{{ requires.get('temperature_source', '') }}"{% endif %}>
         <p class="t-label">Misst</p>
         {% if z.temperature_source %}{{ device_card(z.temperature_source, "sensor", draggable, temperature_source=true) }}
-        {% else %}{{ luecke("keine Messquelle") }}{% endif %}
+        {% else %}{{ lücke("keine Messquelle") }}{% endif %}
 
         {% if z.window_contacts %}
         <p class="t-label mt-3">Unterbricht</p>
@@ -67,7 +67,7 @@ auf dem Anlagenbild waere ein Ablegeziel eine Zusage, die die Seite nicht einloe
         <p class="t-label">Als Aktor zugeordnet</p>
         {% if z.actuators %}
         {% for g in z.actuators %}{{ device_card(g, "actuator", draggable) }}{% endfor %}
-        {% else %}{{ luecke("kein Aktor") }}{% endif %}
+        {% else %}{{ lücke("kein Aktor") }}{% endif %}
 
         {% if z.controllers %}
         <p class="t-label mt-3">Zeigt an</p>

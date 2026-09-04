@@ -1,8 +1,8 @@
 # ruff: noqa: E501, S608
-"""Reproduzierbare Messungen fuer Runde 5 des Komplettreviews.
+"""Reproduzierbare Messungen für Runde 5 des Komplettreviews.
 
-Aufrufbeispiele stehen in ``docs/runde5-messbericht.md``. Das Werkzeug veraendert
-nur die explizit uebergebene SQLite-Datei.
+Aufrufbeispiele stehen in ``docs/runde5-messbericht.md``. Das Werkzeug verändert
+nur die explizit übergebene SQLite-Datei.
 """
 
 from __future__ import annotations
@@ -73,7 +73,7 @@ def _query_measurement(
         )
         if shadow_indexes != expected_indexes:
             raise RuntimeError(
-                "Unerwarteter Indexbestand fuer shadow_decision: "
+                "Unerwarteter Indexbestand für shadow_decision: "
                 f"{shadow_indexes!r}"
             )
 
@@ -197,7 +197,7 @@ def _insert_measurement(rows: int, with_old_index: bool) -> dict[str, object]:
         expected_indexes.insert(0, "ix_shadow_decision_decided_at")
     if indexes != expected_indexes:
         raise RuntimeError(
-            f"Unerwarteter Indexbestand fuer INSERT-Messung: {indexes!r}"
+            f"Unerwarteter Indexbestand für INSERT-Messung: {indexes!r}"
         )
     started = time.perf_counter()
     with engine.begin() as connection:
@@ -324,7 +324,7 @@ def _size_after_rows(path: Path, table: str, rows: int) -> int:
                 )
             )
             values = {
-                "value": "'2026-01-01 00:00:00', 1, 1, 'Wohnzimmer', 1, 'Heizkoerper Wohnzimmer', 'setpoint', '{}', 1, NULL, 'Sollwert aus Zeitplan'"
+                "value": "'2026-01-01 00:00:00', 1, 1, 'Wohnzimmer', 1, 'Heizkörper Wohnzimmer', 'setpoint', '{}', 1, NULL, 'Sollwert aus Zeitplan'"
             }
             connection.execute(text("CREATE INDEX ix_device_command_sent_at ON target (sent_at)"))
         # All fragments above are fixed literals selected by this tool, never input.

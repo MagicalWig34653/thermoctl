@@ -218,7 +218,7 @@ async def user_password_view(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Benutzer nicht gefunden")
     try:
         # Beim eigenen Passwortwechsel bleibt die Sitzung vor dem Nutzer bestehen;
-        # jede andere endet. Setzt eine Verwaltung ein fremdes Passwort zurueck,
+        # jede andere endet. Setzt eine Verwaltung ein fremdes Passwort zurück,
         # endet auch die des Betroffenen -- das ist dort der Sinn der Sache.
         eigene = None
         if user_id == principal.user_id:
@@ -434,14 +434,14 @@ async def token_issue_view(
     # here anyway because `token_ausstellen` needs an owner, and a `None` there would
     # be a silent failure instead of a clear response.
     if principal.user_id is None:  # pragma: no cover
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Nur fuer angemeldete Benutzer")
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Nur für angemeldete Benutzer")
     owner = session.get(User, principal.user_id)
     if owner is None:  # pragma: no cover
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Nur fuer angemeldete Benutzer")
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Nur für angemeldete Benutzer")
     if not name.strip():
         return _token_list(
             request, session, principal,
-            FormError("name", "Das Token braucht einen Namen, sonst ist es spaeter "
+            FormError("name", "Das Token braucht einen Namen, sonst ist es später "
                                    "nicht auseinanderzuhalten."),
             {"name": name, "code": code},
         )

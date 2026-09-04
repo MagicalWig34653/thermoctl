@@ -67,7 +67,7 @@ def _process_device_list(session: Session, payload: bytes, received_at: datetime
     try:
         descriptions = descriptions_from_bridge_list(payload)
     except ValueError:
-        log.warning("Zigbee2MQTT-Geraeteliste ist ungueltig")
+        log.warning("Zigbee2MQTT-Geraeteliste ist ungültig")
         return
 
     capabilities = {
@@ -185,7 +185,7 @@ def _process_state(
         )
     for code in sorted(unknown_ones):
         log.warning(
-            "Messwertfaehigkeit fehlt in der Nachschlagetabelle",
+            "Messwertfähigkeit fehlt in der Nachschlagetabelle",
             extra={"faehigkeitscode": code},
         )
 
@@ -244,7 +244,7 @@ def _execute_button_press(
         return
     if last_seen is not None and press.measured_at <= last_seen:
         log.debug(
-            "Tastendruck bereits verarbeitet, wird uebergangen",
+            "Tastendruck bereits verarbeitet, wird übergangen",
             extra={"geraet": device.display_name, "aktion": press.text},
         )
         return
@@ -277,10 +277,10 @@ def _process_availability(
     # catching a second class. Whoever misreads this once looks for the bug in the
     # wrong place.
     except (json.JSONDecodeError, UnicodeDecodeError):
-        log.warning("Zigbee2MQTT-Erreichbarkeit ist kein gueltiges JSON")
+        log.warning("Zigbee2MQTT-Erreichbarkeit ist kein gültiges JSON")
         return
     if not isinstance(data, dict) or not isinstance(data.get("state"), str):
-        log.warning("Zigbee2MQTT-Erreichbarkeit enthaelt keinen Zustand")
+        log.warning("Zigbee2MQTT-Erreichbarkeit enthält keinen Zustand")
         return
     device = _device(session, name, received_at)
     healthy = session.get(DeviceHealth, device.id)

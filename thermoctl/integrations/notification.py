@@ -116,7 +116,7 @@ async def _attempt_delivery(settings: Settings, notice: FaultNotice) -> tuple[bo
         await asyncio.to_thread(_send_webhook, settings, notice)
     except Exception as exc:
         log.exception(
-            "Stoerungsmeldung konnte nicht an den Webhook gesendet werden",
+            "Störungsmeldung konnte nicht an den Webhook gesendet werden",
             extra={"schluessel": notice.key},
         )
         return False, _short_reason(exc)

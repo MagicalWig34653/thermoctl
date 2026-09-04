@@ -1006,7 +1006,7 @@ def test_operating_mode_off_results_in_frost_protection(session: Session) -> Non
 
 
 def test_an_override_beats_the_schedule(session: Session) -> None:
-    zone = zone_with_schedule(session, "ueber", points=[(1, 360, "tag", Decimal("21.0"))],
+    zone = zone_with_schedule(session, "über", points=[(1, 360, "tag", Decimal("21.0"))],
                              override=(Decimal("23.5"), None))
     result = resolved_setpoint(session, zone, datetime(2026, 8, 31, 10, 0))
     assert result.temperature_c == Decimal("23.5")
@@ -1125,14 +1125,14 @@ def test_cancelling_an_override_ends_the_active_one(session: Session) -> None:
 
 
 def test_cancelling_without_an_active_override_returns_none(session: Session) -> None:
-    zone = create_zone(session, "keine-ueber")
+    zone = create_zone(session, "keine-über")
     assert cancel_override(session, zone) is None
 
 
 def test_an_override_on_a_mode_without_a_fixed_temperature(session: Session) -> None:
     """An override can point to a mode instead of a fixed temperature —
     the setpoint then comes from the zone's temperature for that mode."""
-    zone = zone_with_schedule(session, "modus-ueber", points=[(1, 360, "tag", Decimal("21.0"))])
+    zone = zone_with_schedule(session, "modus-über", points=[(1, 360, "tag", Decimal("21.0"))])
     tag_mode = session.query(SetpointMode).filter_by(code="tag").one()
     session.add(
         ZoneOverride(
