@@ -73,6 +73,58 @@ def _bool(value: Any) -> str | None:
     return "true" if value else "false"
 
 
+#: Maps every ``thermoctl.config.Settings`` field this script actually translates to
+#: the add-on option path it reads. ``database_url`` is here too even though it comes
+#: from the ``database`` option *group* via ``_database_url`` rather than a single
+#: ``_get`` call -- the guard test below cares about the Settings field, not the shape
+#: of the option that fills it.
+#:
+#: Kept as data, not just inline calls in ``translate``, so a test can compare it
+#: against ``Settings.model_fields`` and catch a field neither mapped here nor listed
+#: in ``BEWUSST_AUSGELASSEN`` -- which is exactly how the MQTT client id was missed:
+#: the setting existed in ``config.py`` and in ``.env.example``, just not here.
+ABGEBILDETE_FELDER: dict[str, str] = {
+    "database_url": "database.*",
+    "secret_key": "secret_key",
+    "log_level": "log_level",
+    "log_format": "log_format",
+    "mqtt_enabled": "mqtt.enabled",
+    "mqtt_host": "mqtt.host",
+    "mqtt_port": "mqtt.port",
+    "mqtt_tls": "mqtt.tls",
+    "mqtt_username": "mqtt.username",
+    "mqtt_password": "mqtt.password",
+    "mqtt_client_id": "mqtt.client_id",
+    "mqtt_base_topic": "mqtt.base_topic",
+    "mqtt_prefix": "mqtt.prefix",
+    "mqtt_ca_cert": "mqtt.ca_cert",
+    "meross_api_base": "meross.api_base",
+    "meross_email": "meross.email",
+    "meross_password": "meross.password",
+    "notify_webhook": "notify.webhook",
+    "notify_webhook_token": "notify.webhook_token",
+}
+
+#: Settings fields this script deliberately does *not* offer as an add-on option, with
+#: why -- read by the guard test so a field can be excluded on purpose instead of by
+#: oversight. Not every setting an operator could set belongs in the add-on UI.
+BEWUSST_AUSGELASSEN: dict[str, str] = {
+    "bind_host": "Container-intern; die Supervisor-Ingress-Anbindung legt das fest.",
+    "bind_port": "Container-intern; die Supervisor-Ingress-Anbindung legt das fest.",
+    "secure_cookies": "Container-intern; das Add-on terminiert TLS nicht selbst, das "
+    "übernimmt Ingress.",
+    "mcp_token": "Der MCP-Server ist eine optionale, separat betriebene Erweiterung "
+    "(docs/mcp.md), keine Add-on-UI-Einstellung.",
+    "passkey_rp_id": "Passkeys sind eine optionale Funktion, deren Relying-Party-Id an "
+    "einen konkreten Hostnamen gebunden ist -- ausserhalb dessen, was das Add-on-Setup "
+    "sinnvoll vorbelegen kann.",
+    "passkey_rp_name": "Folgt aus passkey_rp_id: ohne Relying-Party-Id ohnehin ohne "
+    "Wirkung.",
+    "passkey_origin": "Folgt aus passkey_rp_id: ohne Relying-Party-Id ohnehin ohne "
+    "Wirkung.",
+}
+
+
 def translate(options: dict[str, Any]) -> dict[str, str]:
     """Maps add-on options to ``THERMOCTL_*`` values. Pure, no I/O.
 
@@ -83,14 +135,17 @@ def translate(options: dict[str, Any]) -> dict[str, str]:
         "THERMOCTL_DATABASE_URL": _database_url(options),
         "THERMOCTL_SECRET_KEY": _get(options, "secret_key"),
         "THERMOCTL_LOG_LEVEL": _get(options, "log_level"),
+        "THERMOCTL_LOG_FORMAT": _get(options, "log_format"),
         "THERMOCTL_MQTT_ENABLED": _bool(_get(options, "mqtt", "enabled")),
         "THERMOCTL_MQTT_HOST": _get(options, "mqtt", "host"),
         "THERMOCTL_MQTT_PORT": _get(options, "mqtt", "port"),
         "THERMOCTL_MQTT_TLS": _bool(_get(options, "mqtt", "tls")),
         "THERMOCTL_MQTT_USERNAME": _get(options, "mqtt", "username"),
         "THERMOCTL_MQTT_PASSWORD": _get(options, "mqtt", "password"),
+        "THERMOCTL_MQTT_CLIENT_ID": _get(options, "mqtt", "client_id"),
         "THERMOCTL_MQTT_BASE_TOPIC": _get(options, "mqtt", "base_topic"),
         "THERMOCTL_MQTT_PREFIX": _get(options, "mqtt", "prefix"),
+        "THERMOCTL_MQTT_CA_CERT": _get(options, "mqtt", "ca_cert"),
         "THERMOCTL_MEROSS_EMAIL": _get(options, "meross", "email"),
         "THERMOCTL_MEROSS_PASSWORD": _get(options, "meross", "password"),
         "THERMOCTL_MEROSS_API_BASE": _get(options, "meross", "api_base"),

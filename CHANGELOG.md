@@ -16,16 +16,28 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 - thermoctl läuft jetzt unter einem konfigurierbaren Pfadpräfix (`THERMOCTL_ROOT_PATH`)
   — Voraussetzung für den Betrieb als Home-Assistant-Add-on hinter dessen Ingress-Proxy.
   Weiterleitungen, Cookies, Vorlagen, eigenes JavaScript und statische Dateien tragen
-  den Präfix jetzt durchgehend; ohne gesetztes Präfix ändert sich nichts. Details in
-  [docs/STATUS.md](docs/STATUS.md).
-- Docker-Abbild wird jetzt für `linux/amd64` und `linux/arm64` gebaut (Home-Assistant-
-  Add-on-Vorbereitung), `armv7` bewusst nicht.
-- `docker/entrypoint.sh` übersetzt eine vorhandene `/data/options.json` (Home-Assistant-
-  Supervisor) in `THERMOCTL_*`-Umgebungsvariablen; ohne die Datei ändert sich am
-  bisherigen `docker compose`-Betrieb nichts, eine vom Betreiber gesetzte Variable hat
-  immer Vorrang.
+  den Präfix durchgehend; ohne gesetztes Präfix ändert sich nichts.
+- Das Docker-Abbild wird für `linux/amd64` **und** `linux/arm64` gebaut, damit das
+  Add-on auch auf einem Raspberry Pi läuft. `armv7` bewusst nicht.
+- `docker/entrypoint.sh` übersetzt eine vorhandene `/data/options.json` (so legt der
+  Home-Assistant-Supervisor die Einstellungen ab) in `THERMOCTL_*`-Umgebungsvariablen.
+  Ohne die Datei ändert sich am gewöhnlichen `docker compose`-Betrieb nichts, und eine
+  vom Betreiber gesetzte Variable hat immer Vorrang.
 
----
+### Behoben
+
+- Die Optionsübersetzung des Add-ons kannte die **MQTT-Client-ID** nicht. An einem
+  Broker mit Rechteverwaltung, der seine Regeln an die Client-ID bindet, kam thermoctl
+  dadurch gar nicht erst durch. `mqtt.client_id`, `mqtt.ca_cert` und `log_format`
+  werden jetzt mit übersetzt; ein Wächtertest vergleicht die Übersetzung gegen
+  `thermoctl.config.Settings` und schlägt fehl, sobald eine Einstellung weder
+  abgebildet noch ausdrücklich ausgelassen ist.
+- Der Wächter, der jeden Verweis in einer Vorlage auf Erreichbarkeit prüft, war durch
+  die Präfix-Umstellung **stillschweigend abgeschaltet** — er fand null statt 58
+  Verweise und blieb grün. Er versteht jetzt beide Schreibweisen und fällt durch, wenn
+  er unerwartet wenige findet.
+- Konfliktmarken eines Merges standen unbemerkt im Changelog. Ein Wächtertest sucht sie
+  jetzt in allen verfolgten Dateien.
 
 ## 0.6.1 — 2026-09-04
 
