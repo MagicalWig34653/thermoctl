@@ -35,6 +35,16 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
   anzuzeigen und zu bedienen — keine eigene thermoctl-Integration nötig. Mit
   Wächtertests gegen den Topic-Vertrag.
 
+### Behoben
+
+- **Eine per Boost ausgelöste Übersteuerung liess sich nicht aufheben.** Boosten kann
+  man an drei Stellen — Kiosk, Home Assistant über MQTT, REST und MCP —, aufheben
+  konnte man bisher nur auf der Startseite der angemeldeten Oberfläche. Wer am
+  Wandtablett boostete, kam dort nicht mehr davon los. Das Kiosk hat jetzt einen
+  Knopf „Übersteuerung aufheben" (nur sichtbar, solange eine läuft), Home Assistant
+  einen Befehl samt Knopf, und der neue Zustand `state/override_active` zeigt dort
+  überhaupt erst an, ob es etwas aufzuheben gibt. REST und MCP konnten es bereits.
+
 ### Zu beachten beim Umstieg
 
 - **Keine neue Migration seit `v0.6.4`** — die einzige Migration dieser Fassung
