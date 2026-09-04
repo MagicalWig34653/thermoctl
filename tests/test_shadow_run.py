@@ -300,7 +300,7 @@ def test_regular_heating_ends_protection_and_keeps_its_hysteresis_state(
     assert protection.outcome_code == "ventilschutz"
     assert regular.outcome_code == "heizen"
     assert held_by_hysteresis.would_heat is True
-    assert held_by_hysteresis.outcome_code == "unverändert"
+    assert held_by_hysteresis.outcome_code == "unveraendert"
 
 
 def test_valve_protection_duration_is_independent_of_minimum_on_time(
@@ -574,7 +574,7 @@ def test_several_cycles_with_an_unchanged_situation_yield_unchanged_without_a_fl
         )
     )
     assert len(rows) == 3  # no flood of rows across the three cycles
-    assert [z.outcome_code for z in rows] == ["unverändert"] * 3
+    assert [z.outcome_code for z in rows] == ["unveraendert"] * 3
     assert [z.would_heat for z in rows] == [False, False, False]
 
 
@@ -616,7 +616,7 @@ def test_the_elapsed_time_grows_across_cycles_and_resets_on_a_change(
     _state(Decimal("20.0"), NOW)
     z1 = shadow_run.cycle(session, NOW)[0]
     assert z1.would_heat is False
-    assert z1.outcome_code == "unverändert"
+    assert z1.outcome_code == "unveraendert"
 
     # Cycle 2 (t=+10s): far below the setpoint. seit_s=10s is enough for
     # min_off_seconds=5, the hysteresis switches on.
