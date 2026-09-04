@@ -4,9 +4,9 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}thermoctl{% endblock %}</title>
-    <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
-    <link rel="stylesheet" href="/static/vendor/bootstrap/bootstrap.min.css">
-    <link rel="stylesheet" href="/static/thermoctl.css">
+    <link rel="icon" href="{{ url_prefix }}/static/favicon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="{{ url_prefix }}/static/vendor/bootstrap/bootstrap.min.css">
+    <link rel="stylesheet" href="{{ url_prefix }}/static/thermoctl.css">
     {#
     Das Farbschema folgt dem Betriebssystem, und zwar allein. Ein eigener Umschalter war
     eine dritte Einstellung fuer etwas, das jedes Geraet schon kennt -- und er ging beim
@@ -29,9 +29,9 @@
         })();
     </script>
     {# Siehe base.html: Skripte gehoeren in den Kopf, den hx-boost nie austauscht. #}
-    <script defer src="/static/vendor/bootstrap/bootstrap.bundle.min.js"></script>
-    <script defer src="/static/vendor/htmx/htmx.min.js"></script>
-    <script defer src="/static/passkey.js"></script>
+    <script defer src="{{ url_prefix }}/static/vendor/bootstrap/bootstrap.bundle.min.js"></script>
+    <script defer src="{{ url_prefix }}/static/vendor/htmx/htmx.min.js"></script>
+    <script defer src="{{ url_prefix }}/static/passkey.js"></script>
     <script>
         document.addEventListener("htmx:configRequest", function (ereignis) {
             const eintrag = document.cookie.split("; ").find(function (wert) {
@@ -48,7 +48,7 @@ Keine Navigationsleiste: Wer hier steht, ist nicht angemeldet und kann nirgends 
 Menue voller Wege, die alle mit 401 antworten, ist keine Orientierung, sondern eine
 Einladung zum Danebengreifen.
 #}
-<body class="d-flex align-items-center py-5" style="min-height: 100vh">
+<body class="d-flex align-items-center py-5" style="min-height: 100vh" data-url-prefix="{{ url_prefix }}">
 <main class="w-100 m-auto px-3" style="max-width: 23rem">
     <div class="text-center mb-4">
         <span class="tc-marker" style="font-size: 1.35rem">thermoctl</span>

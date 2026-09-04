@@ -22,7 +22,7 @@
             Alle Geräte hängen an der Zigbee2MQTT-Brücke. Meldet sie sich nicht, kommt
             von keinem einzigen etwas an — egal, wie die Zuordnung unten aussieht.
         </span>
-        <a class="ms-auto btn btn-sm btn-outline-secondary" href="/interfaces">Schnittstellen</a>
+        <a class="ms-auto btn btn-sm btn-outline-secondary" href="{{ url_prefix }}/interfaces">Schnittstellen</a>
     </div>
 </section>
 
@@ -35,7 +35,7 @@
 <article class="tc-panel p-4 mb-3">
     <div class="d-flex justify-content-between align-items-baseline mb-3">
         <h2 class="mb-0">{{ z.name }}</h2>
-        <a class="btn btn-sm btn-outline-secondary" href="/zones/{{ z.zone_id }}/devices">
+        <a class="btn btn-sm btn-outline-secondary" href="{{ url_prefix }}/zones/{{ z.zone_id }}/devices">
             Zuordnung ändern
         </a>
     </div>

@@ -13,8 +13,14 @@
 (function () {
     "use strict";
 
-    const AUTHENTICATION = "/passkey/authentication";
-    const REGISTRATION = "/passkey/registration";
+    // The Ingress/reverse-proxy prefix the page is served under (empty at the domain
+    // root). Templates render it into `<body data-url-prefix="...">` from the same
+    // `url_prefix` every template attribute is built from (see
+    // `thermoctl/web/__init__.py`); this script only builds its own request paths at
+    // runtime and can't reach that Jinja value any other way.
+    const URL_PREFIX = document.body.dataset.urlPrefix || "";
+    const AUTHENTICATION = URL_PREFIX + "/passkey/authentication";
+    const REGISTRATION = URL_PREFIX + "/passkey/registration";
     // The service's challenge is valid for two minutes. The conditional request runs
     // longer, so it is renewed with a fresh one before that.
     const RENEW_CHALLENGE_AFTER_MS = 90 * 1000;
@@ -114,7 +120,7 @@
                     : null
             }
         }).then(function (result) {
-            window.location.href = result.redirect || "/";
+            window.location.href = result.redirect || URL_PREFIX + "/";
         });
     }
 

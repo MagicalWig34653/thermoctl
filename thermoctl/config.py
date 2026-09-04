@@ -1,7 +1,7 @@
 import os
 from functools import lru_cache
 
-from pydantic import Field, SecretStr
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import make_url
 
@@ -21,6 +21,18 @@ class Settings(BaseSettings):
     secret_key: SecretStr = Field(min_length=32)
     bind_host: str = "0.0.0.0"  # noqa: S104 — intentional in the container
     bind_port: int = 8000
+    # Path prefix the interface is served under -- e.g. behind a reverse proxy that
+    # publishes it below a path instead of at the domain root. The motivating case is
+    # running as a Home Assistant add-on: Home Assistant's Ingress proxies the
+    # interface under `/api/hassio_ingress/<random-token>/` and expects every
+    # generated link, redirect, cookie and static asset to stay under that same
+    # prefix. Read once at startup from configuration and passed to FastAPI's own
+    # `root_path` (`app.create_app()`) -- deliberately **not** taken from the
+    # `X-Ingress-Path` request header some proxies send instead: a header is input
+    # from whoever can reach the service directly, and trusting it would let them
+    # steer where every page on the site points (an open redirect on every link).
+    # Empty means "served at the domain root", the default and by far the common case.
+    root_path: str = ""
     log_level: str = "INFO"
     log_format: str = "json"
     secure_cookies: bool = False
@@ -63,6 +75,27 @@ class Settings(BaseSettings):
     passkey_origin: str | None = None
     notify_webhook: str | None = None
     notify_webhook_token: SecretStr | None = None
+
+    @field_validator("root_path")
+    @classmethod
+    def _normalise_root_path(cls, value: str) -> str:
+        """Normalises the configured prefix and rejects anything that isn't one.
+
+        `""` and `"/"` both mean "no prefix" and collapse to `""`. Anything else must
+        start with `/` (a bare path, not an absolute URL) and must not carry a
+        trailing slash -- `request.scope["root_path"]` is conventionally without one,
+        and FastAPI's own link generation assumes that. Also rejects a line break:
+        this value can end up in log lines and, via `root_path`, in every `Location`
+        header the service sends.
+        """
+        value = value.strip()
+        if value in ("", "/"):
+            return ""
+        if "\n" in value or "\r" in value:
+            raise ValueError("THERMOCTL_ROOT_PATH darf keine Zeilenumbrueche enthalten")
+        if not value.startswith("/"):
+            raise ValueError("THERMOCTL_ROOT_PATH muss mit '/' beginnen (oder leer sein)")
+        return value.rstrip("/")
 
     def passkeys_available(self) -> bool:
         """Without a relying party id there are no passkeys — and none half-enabled."""

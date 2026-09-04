@@ -1,11 +1,11 @@
 {% extends "base.html" %}
-{% from "form.html" import delete_confirmation %}
+{% from "form.html" import delete_confirmation with context %}
 {% block title %}Sollwert-Modus löschen – thermoctl{% endblock %}
 {% block content %}
 {% if lock %}
 <h1>Sollwert-Modus nicht löschbar</h1>
 <div class="alert alert-warning" role="alert">{{ lock }}</div>
-<a class="btn btn-secondary" href="/modes/{{ mode.id }}">Zurück</a>
+<a class="btn btn-secondary" href="{{ url_prefix }}/modes/{{ mode.id }}">Zurück</a>
 {% else %}
 {{ delete_confirmation(
     "Sollwert-Modus löschen",

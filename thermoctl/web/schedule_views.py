@@ -34,6 +34,7 @@ from thermoctl.domain.schedule import (
     week_segments,
 )
 from thermoctl.web import templates, warmth_fraction
+from thermoctl.web.urls import prefixed
 
 # `include_in_schema=False`: the OpenAPI description is the contract of the REST
 # interface. These routes deliver HTML for humans, and in the interface under
@@ -237,7 +238,7 @@ async def create_schedule_point_view(
             request, session, zone, principal, values=values, errors=exc
         )
     return RedirectResponse(
-        f"/zones/{zone.id}/schedule", status_code=status.HTTP_303_SEE_OTHER
+        prefixed(request, f"/zones/{zone.id}/schedule"), status_code=status.HTTP_303_SEE_OTHER
     )
 
 
@@ -291,7 +292,7 @@ async def reposition_schedule_point(
             request, session, zone, principal, move_error=exc.notice
         )
     return RedirectResponse(
-        f"/zones/{zone.id}/schedule", status_code=status.HTTP_303_SEE_OTHER
+        prefixed(request, f"/zones/{zone.id}/schedule"), status_code=status.HTTP_303_SEE_OTHER
     )
 
 
@@ -443,7 +444,7 @@ async def change_schedule_point_mode_view(
     except ScheduleError as exc:
         return _schedule_page(request, session, zone, principal, move_error=exc.notice)
     return RedirectResponse(
-        f"/zones/{zone.id}/schedule", status_code=status.HTTP_303_SEE_OTHER
+        prefixed(request, f"/zones/{zone.id}/schedule"), status_code=status.HTTP_303_SEE_OTHER
     )
 
 
@@ -475,6 +476,7 @@ async def schedule_point_delete_form(
 async def remove_schedule_point(
     zone_id: int,
     point_id: int,
+    request: Request,
     principal: Annotated[Principal, Depends(current_principal)],
     session: Annotated[Session, Depends(get_session)],
 ) -> Response:
@@ -488,7 +490,7 @@ async def remove_schedule_point(
         token_id=principal.token_id,
     )
     return RedirectResponse(
-        f"/zones/{zone.id}/schedule", status_code=status.HTTP_303_SEE_OTHER
+        prefixed(request, f"/zones/{zone.id}/schedule"), status_code=status.HTTP_303_SEE_OTHER
     )
 
 
@@ -574,5 +576,5 @@ async def execute_schedule_adoption(
         token_id=principal.token_id,
     )
     return RedirectResponse(
-        f"/zones/{target.id}/schedule", status_code=status.HTTP_303_SEE_OTHER
+        prefixed(request, f"/zones/{target.id}/schedule"), status_code=status.HTTP_303_SEE_OTHER
     )

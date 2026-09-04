@@ -11,7 +11,13 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ## Unveröffentlicht
 
-Nichts.
+### Hinzugefügt
+
+- thermoctl läuft jetzt unter einem konfigurierbaren Pfadpräfix (`THERMOCTL_ROOT_PATH`)
+  — Voraussetzung für den Betrieb als Home-Assistant-Add-on hinter dessen Ingress-Proxy.
+  Weiterleitungen, Cookies, Vorlagen, eigenes JavaScript und statische Dateien tragen
+  den Präfix jetzt durchgehend; ohne gesetztes Präfix ändert sich nichts. Details in
+  [docs/STATUS.md](docs/STATUS.md).
 
 ---
 

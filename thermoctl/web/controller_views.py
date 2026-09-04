@@ -27,6 +27,7 @@ from thermoctl.domain.controller import (
 from thermoctl.domain.controller_channels import ControllerChannelError, configure_channel
 from thermoctl.domain.principal import Principal
 from thermoctl.web import templates
+from thermoctl.web.urls import prefixed
 
 router = APIRouter(dependencies=[Depends(csrf_protection)], include_in_schema=False)
 
@@ -138,7 +139,7 @@ async def channel_set(request: Request, principal: Annotated[Principal, Depends(
         )
     except (ValueError, InvalidOperation, ControllerChannelError) as exc:
         return templates.TemplateResponse(request, "controllers.html", _context(session, principal, errors={"channel": str(exc)}), status_code=400)
-    return RedirectResponse("/controllers", status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(prefixed(request, "/controllers"), status.HTTP_303_SEE_OTHER)
 
 
 @router.post("/controllers/button")
@@ -159,4 +160,4 @@ async def button_set(request: Request, principal: Annotated[Principal, Depends(c
         set_binding(session, device, action, str(form.get("command", "")).strip() or None, Decimal(raw_step) if raw_step else None)
     except (InvalidOperation, ControllerError) as exc:
         return templates.TemplateResponse(request, "controllers.html", _context(session, principal, errors={"button": str(exc)}), status_code=400)
-    return RedirectResponse("/controllers", status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(prefixed(request, "/controllers"), status.HTTP_303_SEE_OTHER)

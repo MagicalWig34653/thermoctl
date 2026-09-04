@@ -73,6 +73,17 @@ def _logged_in_user(request: Request) -> dict[str, object]:
         "top_bar_user": getattr(request.state, "user", None),
         "session_csrf": session_csrf,
         "navigation_items": visible_navigation(principal) if principal is not None else (),
+        # The configured Ingress/reverse-proxy prefix (`Settings.root_path`, applied
+        # as `root_path=` in `app.create_app()`), or "" when the service is served at
+        # the domain root. Every absolute, same-origin link, form `action`, script
+        # `src` and htmx attribute in the templates is written as
+        # `{{ url_prefix }}/...` for exactly this reason -- a hardcoded `/...` would
+        # leave the prefix and land outside the Ingress path. `request.scope` rather
+        # than `request.url_for(...)`: the latter needs every route to carry a name,
+        # which none of them do here, and would be a far larger change for the same
+        # value `request.base_url`/`url_for` already compute internally from this
+        # same scope entry.
+        "url_prefix": request.scope.get("root_path", ""),
     }
 
 

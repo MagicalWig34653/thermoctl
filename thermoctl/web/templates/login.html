@@ -12,7 +12,7 @@
     Formulare so (siehe formular.html); zwei Formularsprachen in einem Programm sind eine
     zu viel, und die Anmeldung ist die erste Seite, die jemand sieht.
     #}
-    <form method="post" action="/login">
+    <form method="post" action="{{ url_prefix }}/login">
         <div class="mb-3">
             <label class="form-label" for="username">Benutzername</label>
             <input type="text" class="form-control" id="username" name="username"

@@ -3,13 +3,13 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
     <h1 class="mb-0">Sollwert-Modi</h1>
-    <a class="btn btn-primary" href="/modes/new">Neuer Modus</a>
+    <a class="btn btn-primary" href="{{ url_prefix }}/modes/new">Neuer Modus</a>
 </div>
 {% if modes %}
 <div class="list-group">
 {% for mode in modes %}
     <a class="list-group-item list-group-item-action d-flex justify-content-between"
-       href="/modes/{{ mode.id }}">
+       href="{{ url_prefix }}/modes/{{ mode.id }}">
         <span>{{ mode.name }} <small class="text-body-secondary">{{ mode.code }}</small></span>
         <span class="badge text-bg-secondary">{{ mode.sort_order }}</span>
     </a>

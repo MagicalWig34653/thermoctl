@@ -13,6 +13,8 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
+from starlette.routing import Mount
+from starlette.types import Receive, Scope, Send
 
 import thermoctl
 from thermoctl import audit
@@ -98,6 +100,7 @@ from thermoctl.web.passkey_views import router as passkey_router
 from thermoctl.web.schedule_views import router as schedule_router
 from thermoctl.web.setup_views import router as setup_router
 from thermoctl.web.start_views import router as start_router
+from thermoctl.web.urls import cookie_path, prefixed
 from thermoctl.web.zone_views import router as zone_router
 
 log = logging.getLogger(__name__)
@@ -611,6 +614,39 @@ def _warn_if_reachable_unprotected(settings: Settings) -> None:
     )
 
 
+# The one directory served as-is: Bootstrap, htmx and our own CSS/JS (static/HERKUNFT.md).
+_static_files = StaticFiles(directory=str(STATIC_DIR))
+
+
+async def _serve_static(scope: Scope, receive: Receive, send: Send) -> None:
+    """Serves everything under `/static/` -- deliberately not `app.mount("/static", ...)`.
+
+    Starlette's `Mount` computes the child scope it hands to the mounted app as
+    `scope["root_path"] + matched_prefix` (`starlette/routing.py::Mount.matches`),
+    unconditionally -- correct only when the configured `root_path` really is a
+    literal prefix of the incoming `scope["path"]`. That holds for a proxy that
+    forwards the *full* external path and merely also tells the app about the
+    prefix, which is not what happens here: under Home Assistant's Ingress (and
+    under the ASGI spec's own definition of `root_path`, which `thermoctl.config
+    .Settings.root_path`/`app`'s `root_path=` kwarg below follow), the proxy
+    *strips* its prefix before forwarding, so `path` never contains it.
+    `StaticFiles.get_path()` then computes an accumulated `root_path` that doesn't
+    match `path` either, returns the wrong relative path, and every static asset
+    404s -- caught during this task's own browser tests, which is the only place an
+    actual asset fetch (not just an `href` in HTML) gets exercised end to end.
+    Every plain `@router.get(...)` route is unaffected -- FastAPI's own routing only
+    ever compares `root_path` against `path` once at the top level, and simply
+    doesn't strip anything when there is no literal match, exactly as intended.
+    This wrapper does the one `/static` prefix strip itself, using the literal path
+    rather than the `root_path` arithmetic, and resets `root_path` to empty before
+    handing off -- `StaticFiles` needs it for nothing else.
+    """
+    request_scope = dict(scope)
+    request_scope["path"] = scope["path"].removeprefix("/static") or "/"
+    request_scope["root_path"] = ""
+    await _static_files(request_scope, receive, send)
+
+
 def create_app() -> FastAPI:
     settings = get_settings()
     configure_logging(settings)
@@ -638,6 +674,13 @@ def create_app() -> FastAPI:
         lifespan=_lifespan,
         docs_url=None,
         redoc_url=None,
+        # Sets `scope["root_path"]` on every request (FastAPI's own `__call__`
+        # overwrites whatever an ASGI server would otherwise supply, whenever this is
+        # non-empty) -- the one place the configured Ingress/reverse-proxy prefix
+        # enters the request. Everything downstream (`request.url_for()`,
+        # `request.base_url`, the `url_prefix` template global, `thermoctl.web.urls`)
+        # reads it back out of there; nothing else needs to know the prefix itself.
+        root_path=settings.root_path,
         license_info={
             "name": "AGPL-3.0-only",
             "url": "https://www.gnu.org/licenses/agpl-3.0.html",
@@ -666,7 +709,9 @@ def create_app() -> FastAPI:
     app.include_router(schedule_router)
     app.include_router(alltag_router)
     app.include_router(api_router)
-    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+    app.router.routes.append(
+        Mount("/static", app=_serve_static, name="static")
+    )
 
     @app.exception_handler(StalePage)
     async def stale_page_handler(request: Request, exc: StalePage) -> Response:
@@ -693,16 +738,18 @@ def create_app() -> FastAPI:
         # page without ever changing the address -- so htmx is told where to go
         # through its own header instead.
         from_htmx = request.headers.get("hx-request") is not None
+        login_target = prefixed(request, "/login?stale=1")
         if exc.recovery:
             answer: Response = (
                 Response(status_code=204)
                 if from_htmx
-                else RedirectResponse("/login?stale=1", status_code=303)
+                else RedirectResponse(login_target, status_code=303)
             )
             if from_htmx:
-                answer.headers["HX-Redirect"] = "/login?stale=1"
-            answer.delete_cookie(COOKIE_NAME)
-            answer.delete_cookie(CSRF_COOKIE_NAME)
+                answer.headers["HX-Redirect"] = login_target
+            cookie_scope = cookie_path(request)
+            answer.delete_cookie(COOKIE_NAME, path=cookie_scope)
+            answer.delete_cookie(CSRF_COOKIE_NAME, path=cookie_scope)
             return answer
         if from_htmx:
             # htmx ignores the body of an error answer, so a message put there would
@@ -719,7 +766,10 @@ def create_app() -> FastAPI:
         if "text/html" not in request.headers.get("accept", ""):
             return JSONResponse(status_code=403, content={"detail": str(exc)})
         return templates.TemplateResponse(
-            request, "stale_page.html", {"path": request.url.path}, status_code=403
+            request,
+            "stale_page.html",
+            {"path": prefixed(request, request.url.path)},
+            status_code=403,
         )
 
     @app.exception_handler(Forbidden)
@@ -751,7 +801,7 @@ def create_app() -> FastAPI:
         return response
 
     @app.get("/docs", include_in_schema=False)
-    async def swagger_ui() -> HTMLResponse:
+    async def swagger_ui(request: Request) -> HTMLResponse:
         """The OpenAPI interface, served entirely from our own directory.
 
         Deliberately without a login: the description reveals which routes exist, but
@@ -760,11 +810,11 @@ def create_app() -> FastAPI:
         without a token; every call goes through the same check as anywhere else.
         """
         return get_swagger_ui_html(
-            openapi_url="/openapi.json",
+            openapi_url=prefixed(request, "/openapi.json"),
             title="thermoctl — REST-Schnittstelle",
-            swagger_js_url="/static/vendor/swagger-ui/swagger-ui-bundle.js",
-            swagger_css_url="/static/vendor/swagger-ui/swagger-ui.css",
-            swagger_favicon_url="/static/favicon.svg",
+            swagger_js_url=prefixed(request, "/static/vendor/swagger-ui/swagger-ui-bundle.js"),
+            swagger_css_url=prefixed(request, "/static/vendor/swagger-ui/swagger-ui.css"),
+            swagger_favicon_url=prefixed(request, "/static/favicon.svg"),
         )
 
     @app.get("/healthz")

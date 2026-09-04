@@ -34,6 +34,7 @@ from thermoctl.domain.passkey import (
 )
 from thermoctl.domain.principal import Principal
 from thermoctl.web import is_partial_swap, templates
+from thermoctl.web.urls import cookie_path, prefixed
 
 router = APIRouter(dependencies=[Depends(csrf_protection)], include_in_schema=False)
 
@@ -93,15 +94,17 @@ async def finish_authentication(
         user_agent=request.headers.get("user-agent"),
         ip=request.client.host if request.client is not None else None,
     )
-    result = JSONResponse({"status": "signed_in", "redirect": "/"})
+    result = JSONResponse({"status": "signed_in", "redirect": prefixed(request, "/")})
     result.set_cookie(
         COOKIE_NAME, secret, max_age=lifetime_s,
         httponly=True, samesite="lax", secure=settings.secure_cookies,
+        path=cookie_path(request),
     )
     result.set_cookie(
         CSRF_COOKIE_NAME, csrf_token(secret, settings.secret_key.get_secret_value()),
         max_age=lifetime_s, httponly=False, samesite="lax",
         secure=settings.secure_cookies,
+        path=cookie_path(request),
     )
     return result
 
@@ -185,6 +188,7 @@ async def save_registration(
 @router.post("/passkeys/{passkey_id}/remove")
 async def delete_passkey(
     passkey_id: int,
+    request: Request,
     principal: Annotated[Principal, Depends(current_principal)],
     session: Annotated[Session, Depends(get_session)],
 ) -> Response:
@@ -197,4 +201,4 @@ async def delete_passkey(
     if entry is None or entry.user_id != user.id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Passkey nicht gefunden")
     remove_passkey(session, user, entry)
-    return RedirectResponse("/passkeys", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(prefixed(request, "/passkeys"), status_code=status.HTTP_303_SEE_OTHER)

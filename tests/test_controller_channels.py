@@ -174,6 +174,31 @@ def test_the_controller_page_and_both_form_endpoints(client_als, session: Sessio
     assert response.status_code == 303
 
 
+def test_the_controllers_page_with_no_visible_zone_shows_nothing(
+    client_als, session: Session
+) -> None:
+    """A principal with global `device.read` but not a single zone in the whole
+    installation must see an empty page, not an error -- and, above all, not a query
+    that falls back to every device unfiltered because the zone list was empty.
+
+    `_controllers` and `_devices_in` both special-case an empty zone list into an
+    empty result rather than letting `Zone.id.in_(())` run: an unguarded `IN ()` is
+    itself always empty on every backend this project targets, so the visible symptom
+    would be identical -- but relying on that would leave the one place in this view
+    that is supposed to guarantee "nothing outside the principal's zones" resting on
+    a database quirk instead of on a checked condition. Device names carry room and
+    occupant references (see the 2026-09-02 security review), so this path is
+    security-relevant even though nothing is left in the database to leak here.
+    """
+    _kinds(session)
+    client = client_als([("device.read", None)])
+
+    response = client.get("/controllers")
+
+    assert response.status_code == 200
+    assert "Noch kein Bediengerät ist einer sichtbaren Zone zugeordnet." in response.text
+
+
 def test_a_device_that_is_also_an_actuator_gets_no_write_channel(session: Session) -> None:
     """A thermostat can be an actuator in one zone and a controller in another.
 

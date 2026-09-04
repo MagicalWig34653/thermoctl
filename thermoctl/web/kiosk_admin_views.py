@@ -27,6 +27,7 @@ from thermoctl.domain.kiosk import KioskError, issue_kiosk_token, kiosk_scope
 from thermoctl.domain.principal import Principal
 from thermoctl.web import is_partial_swap
 from thermoctl.web.forms import FormError, form_again
+from thermoctl.web.urls import prefixed
 
 # `include_in_schema=False`: see the same note in every other HTML-only router --
 # these are pages for humans, not the REST contract described under /docs.
@@ -136,4 +137,6 @@ async def kiosk_token_revoke_view(
     if token is None or not token.is_kiosk:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Kiosk-Token nicht gefunden")
     revoke_token(session, token, actor_id=principal.user_id)
-    return RedirectResponse("/kiosk-tokens", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(
+        prefixed(request, "/kiosk-tokens"), status_code=status.HTTP_303_SEE_OTHER
+    )

@@ -61,6 +61,7 @@ from thermoctl.domain.statistics import (
 from thermoctl.domain.time import local_day_start_utc, local_time
 from thermoctl.services.shadow_run import PI_FALLBACK_INELIGIBLE
 from thermoctl.web import templates
+from thermoctl.web.urls import prefixed
 
 # Readable text for `shadow_decision.controller_fallback_reason` (specification
 # section 6: "einschliesslich Rueckfallgrund" has to be legible on the operating
@@ -240,7 +241,7 @@ async def save_defaults(
         return _defaults_page(
             request, session, principal, values=values, solar_enabled=solar_enabled, errors=exc
         )
-    return RedirectResponse("/settings", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(prefixed(request, "/settings"), status_code=status.HTTP_303_SEE_OTHER)
 
 
 @router.post("/control/arm")
@@ -263,7 +264,7 @@ async def arm_view(
         )
     except ControlError as exc:
         return _page(request, session, principal, errors=exc)
-    return RedirectResponse("/control", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(prefixed(request, "/control"), status_code=status.HTTP_303_SEE_OTHER)
 
 
 @router.get("/interfaces")

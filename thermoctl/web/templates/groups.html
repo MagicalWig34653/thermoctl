@@ -75,7 +75,7 @@ der ganze Stand; die Domäne bildet die Differenz.
                 {% endif %}
             </div>
             {% if not group.is_builtin %}
-            <form method="post" action="/groups/{{ group.id }}/delete">
+            <form method="post" action="{{ url_prefix }}/groups/{{ group.id }}/delete">
                 <button type="submit" class="btn btn-sm btn-outline-danger">Gruppe löschen</button>
             </form>
             {% endif %}
@@ -97,7 +97,7 @@ der ganze Stand; die Domäne bildet die Differenz.
 
         <details class="tc-permission-editor mt-3">
             <summary>Rechte bearbeiten</summary>
-        <form method="post" action="/groups/{{ group.id }}/permissions">
+        <form method="post" action="{{ url_prefix }}/groups/{{ group.id }}/permissions">
             {% for name, hint_text, permissions in scopes %}
             <fieldset class="mt-4">
                 <legend class="t-label mb-1">{{ name }}</legend>
@@ -122,7 +122,7 @@ der ganze Stand; die Domäne bildet die Differenz.
 
     <article class="tc-panel p-4">
         <h2 class="mb-3">Gruppe anlegen</h2>
-        <form method="post" action="/groups">
+        <form method="post" action="{{ url_prefix }}/groups">
             {{ text_field("name", "Name", values.get("name", ""), required=true,
                         errors=errors.get("name", "")) }}
             {{ text_field("description", "Beschreibung", values.get("description", ""),

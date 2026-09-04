@@ -9,6 +9,7 @@ from thermoctl.auth.passwords import PasswordTooShort
 from thermoctl.setup import run_setup, setup_needed
 from thermoctl.web import templates
 from thermoctl.web.forms import form_again, password_form_error
+from thermoctl.web.urls import prefixed
 
 # `include_in_schema=False`: the OpenAPI description is the contract of the REST
 # interface. These routes deliver HTML for humans, and in the interface under
@@ -72,4 +73,4 @@ async def setup(
             password_form_error(exc),
         )
 
-    return RedirectResponse("/login", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(prefixed(request, "/login"), status_code=status.HTTP_303_SEE_OTHER)

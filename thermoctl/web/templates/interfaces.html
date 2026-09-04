@@ -40,7 +40,7 @@ hätte er gewirkt, ist schlimmer als keiner.
             <p class="t-quiet mb-0">{{ s.purpose }}</p>
         </div>
         {% if s.more %}
-        <a class="btn btn-sm btn-outline-secondary" href="{{ s.more[1] }}">{{ s.more[0] }}</a>
+        <a class="btn btn-sm btn-outline-secondary" href="{{ url_prefix }}{{ s.more[1] }}">{{ s.more[0] }}</a>
         {% endif %}
     </div>
 
@@ -79,7 +79,7 @@ hätte er gewirkt, ist schlimmer als keiner.
         etwa wird genau einmal aufgebaut. Ein Schalter an dieser Stelle würde erst nach
         einem Neustart wirken. Zum Ändern die genannte Variable in <span class="t-value">.env</span>
         setzen und den Dienst neu starten. Was sich im laufenden Betrieb umlegen lässt,
-        steht unter <a href="/control">Betrieb</a> und <a href="/settings">Einstellungen</a>.
+        steht unter <a href="{{ url_prefix }}/control">Betrieb</a> und <a href="{{ url_prefix }}/settings">Einstellungen</a>.
     </p>
 </div>
 {% endblock %}

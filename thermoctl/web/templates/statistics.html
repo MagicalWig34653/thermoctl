@@ -16,7 +16,7 @@ Die Balken sind kupfern wie überall: Farbe ist hier Wärme, und nichts anderes.
     <nav class="d-flex gap-1" aria-label="Zeitraum">
         {% for key, label in periods %}
         <a class="btn btn-sm {{ 'btn-primary' if key == period else 'btn-outline-secondary' }}"
-           href="/statistics?period={{ key }}"
+           href="{{ url_prefix }}/statistics?period={{ key }}"
            {% if key == period %}aria-current="page"{% endif %}>{{ label }}</a>
         {% endfor %}
     </nav>
@@ -37,7 +37,7 @@ Die Balken sind kupfern wie überall: Farbe ist hier Wärme, und nichts anderes.
     <p class="t-quiet mb-0">
         Entweder war es warm genug, oder der Regelzyklus lief noch nicht — er schreibt
         seine Entscheidungen nur mit eingeschaltetem MQTT.
-        <a href="/interfaces">Schnittstellen ansehen</a>
+        <a href="{{ url_prefix }}/interfaces">Schnittstellen ansehen</a>
     </p>
 </div>
 {% else %}
