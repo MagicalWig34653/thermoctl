@@ -31,6 +31,7 @@ from thermoctl.domain.zone_settings import (
     validate_valve_protection,
 )
 from thermoctl.web.forms import FormError, form_again
+from thermoctl.web.urls import prefixed
 
 # `include_in_schema=False`: the OpenAPI description is the contract of the REST
 # interface. These routes deliver HTML for humans, and in the interface under
@@ -237,7 +238,9 @@ async def save_parameter(
     save_control_parameters(
         session, zone, checked, user_id=principal.user_id, token_id=principal.token_id
     )
-    return RedirectResponse(f"/zones/{zone.id}/parameters", status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(
+        prefixed(request, f"/zones/{zone.id}/parameters"), status.HTTP_303_SEE_OTHER
+    )
 
 
 @router.post("/zones/{zone_id}/override")
@@ -280,7 +283,7 @@ async def create_override_view(
                 "duration_minutes": str(form.get("duration_minutes", "")),
             }
         )
-        return RedirectResponse(f"/?{parameter}", status.HTTP_303_SEE_OTHER)
+        return RedirectResponse(prefixed(request, f"/?{parameter}"), status.HTTP_303_SEE_OTHER)
     try:
         create_override(
             session, zone, temperature, end_at,
@@ -298,19 +301,20 @@ async def create_override_view(
                 "duration_minutes": str(form.get("duration_minutes", "")),
             }
         )
-        return RedirectResponse(f"/?{parameter}", status.HTTP_303_SEE_OTHER)
-    return RedirectResponse("/", status.HTTP_303_SEE_OTHER)
+        return RedirectResponse(prefixed(request, f"/?{parameter}"), status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(prefixed(request, "/"), status.HTTP_303_SEE_OTHER)
 
 
 @router.post("/zones/{zone_id}/override/cancel")
 async def end_override(
     zone_id: int,
+    request: Request,
     principal: Annotated[Principal, Depends(current_principal)],
     session: Annotated[Session, Depends(get_session)],
 ) -> Response:
     zone = _zone_or_404(session, principal, zone_id, "override.cancel")
     cancel_override(session, zone)
-    return RedirectResponse("/", status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(prefixed(request, "/"), status.HTTP_303_SEE_OTHER)
 
 
 # One click on the start page's thermostat. A half step, because below that a room
@@ -370,5 +374,5 @@ async def adjust_thermostat(
         # Reached the limit. Not an error state, but the end of the road -- the
         # page simply shows the unchanged value afterward.
         parameter = urlencode({"thermostat_errors": exc.notice, "zone_id": zone.id})
-        return RedirectResponse(f"/?{parameter}", status.HTTP_303_SEE_OTHER)
-    return RedirectResponse("/", status.HTTP_303_SEE_OTHER)
+        return RedirectResponse(prefixed(request, f"/?{parameter}"), status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(prefixed(request, "/"), status.HTTP_303_SEE_OTHER)

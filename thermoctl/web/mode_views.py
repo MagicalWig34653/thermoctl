@@ -22,6 +22,7 @@ from thermoctl.domain.modes import (
 )
 from thermoctl.domain.principal import Principal
 from thermoctl.web import templates
+from thermoctl.web.urls import prefixed
 
 # `include_in_schema=False`: the OpenAPI description is the contract of the REST
 # interface. These routes deliver HTML for humans, and in the interface under
@@ -111,7 +112,7 @@ async def create_mode_view(
         )
     except DomainError as exc:
         return _mode_form(request, values=values, errors=exc)
-    return RedirectResponse("/modes", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(prefixed(request, "/modes"), status_code=status.HTTP_303_SEE_OTHER)
 
 
 @router.get("/modes/{mode_id}")
@@ -152,7 +153,7 @@ async def save_mode(
         )
     except DomainError as exc:
         return _mode_form(request, mode=mode, values=values, errors=exc)
-    return RedirectResponse("/modes", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(prefixed(request, "/modes"), status_code=status.HTTP_303_SEE_OTHER)
 
 
 @router.get("/modes/{mode_id}/delete")
@@ -186,7 +187,7 @@ async def remove_mode(
         return templates.TemplateResponse(
             request, "mode_delete.html", {"mode": mode, "lock": exc.notice}
         )
-    return RedirectResponse("/modes", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(prefixed(request, "/modes"), status_code=status.HTTP_303_SEE_OTHER)
 
 
 def _zone_or_404(session: Session, principal: Principal, zone_id: int) -> Zone:
@@ -299,5 +300,5 @@ async def save_setpoints(
         # it surfaces here instead of silently producing a wrong field message.
         raise  # pragma: no cover
     return RedirectResponse(
-        f"/zones/{zone.id}/setpoints", status_code=status.HTTP_303_SEE_OTHER
+        prefixed(request, f"/zones/{zone.id}/setpoints"), status_code=status.HTTP_303_SEE_OTHER
     )

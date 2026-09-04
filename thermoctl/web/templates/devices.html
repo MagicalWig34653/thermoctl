@@ -83,7 +83,7 @@ keine Auskunft — sie steht deshalb einmal oben als Zahl.
 <section id="device-list">
     <div class="d-flex justify-content-between align-items-baseline flex-wrap gap-2 mb-1">
         <h1 class="mb-0">Geräte</h1>
-        <a class="btn btn-sm btn-outline-secondary" href="/plant">Anlagenbild</a>
+        <a class="btn btn-sm btn-outline-secondary" href="{{ url_prefix }}/plant">Anlagenbild</a>
     </div>
 
     {% if devices %}
@@ -92,7 +92,7 @@ keine Auskunft — sie steht deshalb einmal oben als Zahl.
         {% if without_zone %}
         {{ without_zone }} davon {{ "hängt" if without_zone == 1 else "hängen" }} an keiner Zone
         und {{ "tut" if without_zone == 1 else "tun" }} damit nichts —
-        <a href="/plant">im Anlagenbild zuordnen</a>.
+        <a href="{{ url_prefix }}/plant">im Anlagenbild zuordnen</a>.
         {% else %}
         Jedes hängt an einer Zone.
         {% endif %}
@@ -128,7 +128,7 @@ keine Auskunft — sie steht deshalb einmal oben als Zahl.
             Entweder ist MQTT nicht eingerichtet, oder es ist
             noch keine Gerätenachricht eingegangen.
             Der Zustand der Anbindung steht unter
-            <a href="/interfaces">Schnittstellen</a>.
+            <a href="{{ url_prefix }}/interfaces">Schnittstellen</a>.
         </p>
     </div>
     {% endif %}

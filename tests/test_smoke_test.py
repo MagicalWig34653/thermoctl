@@ -97,6 +97,31 @@ def test_without_a_user_the_home_page_leads_to_setup(client: TestClient) -> None
     assert "/setup" in str(response.url)
 
 
+# Every internal link has been written as ``{{ url_prefix }}/path`` rather than a
+# bare ``href="/path"`` since the ingress-prefix work (2026-09-04) -- the prefix
+# resolves to "" outside a reverse-proxy setup, so the two forms are equivalent at
+# runtime, but a scanner that only recognises the old, unprefixed spelling silently
+# stops finding anything once a template is rewritten to the new one. That is exactly
+# what happened here: this pattern used to be plain ``href="(/[^"]*)"`` and, after the
+# rewrite, matched zero links in every template while
+# `test_links_in_templates_point_to_existing_pages` kept reporting green -- it had
+# nothing left to check. Both spellings are matched here so a future rename of the
+# prefix variable cannot repeat that silently.
+_HREF_PATTERN = re.compile(r'href="(?:\{\{\s*url_prefix\s*\}\})?(/[^"]*)"')
+
+
+def _static_href_targets(text: str) -> set[str]:
+    """Static (non-templated) href targets found in raw Jinja source.
+
+    Skips anything still containing `{{` or `{%` after the (optional) leading
+    `{{ url_prefix }}` is accounted for -- those are per-object links such as
+    `/zones/{{ zone.id }}/schedule`, which this file-level scan cannot resolve
+    without a real object; `test_every_link_and_form_on_a_rendered_page_leads_somewhere`
+    covers those instead, against the rendered page.
+    """
+    return {z for z in _HREF_PATTERN.findall(text) if "{{" not in z and "{%" not in z}
+
+
 @pytest.mark.parametrize("template", sorted(TEMPLATES_DIR.glob("*.html")))
 def test_links_in_templates_point_to_existing_pages(
     template: Path, angemeldeter_client: TestClient, session: Session
@@ -110,17 +135,35 @@ def test_links_in_templates_point_to_existing_pages(
     # The settings row exists in every set-up installation -- setup creates
     # it. Without it, this test would check a state no instance ever has.
     create_settings(session)
-    targets = {
-        z
-        for z in re.findall(r'href="(/[^"]*)"', template.read_text(encoding="utf-8"))
-        if "{{" not in z and "{%" not in z
-    }
+    targets = _static_href_targets(template.read_text(encoding="utf-8"))
     dead = []
     for target in sorted(targets):
         response = angemeldeter_client.get(target, follow_redirects=True)
         if response.status_code >= 400:
             dead.append(f"{target}: HTTP {response.status_code}")
     assert not dead, f"Dead links in {template.name}: " + ", ".join(dead)
+
+
+def test_the_template_link_scanner_still_finds_a_realistic_number_of_links() -> None:
+    """Guards `_static_href_targets` itself against going blind again.
+
+    `test_links_in_templates_point_to_existing_pages` only fails on a *dead* link --
+    a scanner that stops recognising links altogether (as happened when every href
+    moved to `href="{{ url_prefix }}/…"` and the pattern only knew the bare form)
+    keeps passing green with nothing left to check, which is worse than no test at
+    all. 42 static, non-per-object hrefs exist across the templates as of this
+    writing; the floor here is well below that so a template rename or a template
+    added or removed does not make this test flaky, while a scanner regression that
+    finds only a handful -- or none -- still trips it.
+    """
+    total = sum(
+        len(_static_href_targets(t.read_text(encoding="utf-8")))
+        for t in TEMPLATES_DIR.glob("*.html")
+    )
+    assert total >= 30, (
+        f"Only {total} static href targets found across all templates -- "
+        "the scanner in _static_href_targets may no longer recognise how links are written"
+    )
 
 
 @pytest.mark.parametrize("template", sorted(TEMPLATES_DIR.glob("*.html")))

@@ -4,9 +4,9 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}thermoctl{% endblock %}</title>
-    <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
-    <link rel="stylesheet" href="/static/vendor/bootstrap/bootstrap.min.css">
-    <link rel="stylesheet" href="/static/thermoctl.css">
+    <link rel="icon" href="{{ url_prefix }}/static/favicon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="{{ url_prefix }}/static/vendor/bootstrap/bootstrap.min.css">
+    <link rel="stylesheet" href="{{ url_prefix }}/static/thermoctl.css">
     {#
     Vor dem ersten Anzeigen und ohne `defer`: Ein Farbschema, das erst nach dem Aufbau
     gesetzt wird, blitzt einmal hell auf. `data-bs-theme="auto"` stand hier frueher im
@@ -42,13 +42,13 @@
     im selben Klick wieder zu -- es sah aus, als ginge es gar nicht mehr auf. Der Kopf
     wird nie ausgetauscht, also laeuft hier alles genau einmal.
     #}
-    <script defer src="/static/vendor/bootstrap/bootstrap.bundle.min.js"></script>
-    <script defer src="/static/vendor/htmx/htmx.min.js"></script>
-    <script defer src="/static/passkey.js"></script>
-    <script defer src="/static/schedule.js"></script>
-    <script defer src="/static/permissions.js"></script>
-    <script defer src="/static/assignment.js"></script>
-    <script defer src="/static/device_filter.js"></script>
+    <script defer src="{{ url_prefix }}/static/vendor/bootstrap/bootstrap.bundle.min.js"></script>
+    <script defer src="{{ url_prefix }}/static/vendor/htmx/htmx.min.js"></script>
+    <script defer src="{{ url_prefix }}/static/passkey.js"></script>
+    <script defer src="{{ url_prefix }}/static/schedule.js"></script>
+    <script defer src="{{ url_prefix }}/static/permissions.js"></script>
+    <script defer src="{{ url_prefix }}/static/assignment.js"></script>
+    <script defer src="{{ url_prefix }}/static/device_filter.js"></script>
     <script>
         // Am `document`, nicht am `document.body`: htmx-Ereignisse blubbern bis dorthin,
         // und der Rumpf existiert zum Zeitpunkt dieses Skripts noch gar nicht.
@@ -90,20 +90,20 @@
         });
     </script>
 </head>
-<body hx-boost="true">
+<body hx-boost="true" data-url-prefix="{{ url_prefix }}">
 {% set here = request.url.path %}
 {% set main_navigation = navigation_items | selectattr("section", "equalto", "main") | list %}
 {% set settings_navigation = navigation_items | selectattr("section", "equalto", "settings") | list %}
 {% macro nav_link(target, label, exact=false) %}
     {% set active = here == target if exact else (here == target or here.startswith(target ~ "/")) %}
     <li class="nav-item">
-        <a class="nav-link{{ ' tc-here' if active }}" href="{{ target }}"
+        <a class="nav-link{{ ' tc-here' if active }}" href="{{ url_prefix }}{{ target }}"
            {% if active %}aria-current="page"{% endif %}>{{ label }}</a>
     </li>
 {% endmacro %}
 <nav class="tc-head navbar sticky-top navbar-expand-lg py-2 mb-4">
     <div class="container" style="max-width: 76rem;">
-        <a class="tc-marker navbar-brand" href="/">thermoctl</a>
+        <a class="tc-marker navbar-brand" href="{{ url_prefix }}/">thermoctl</a>
         <button class="navbar-toggler border-0" type="button" data-bs-toggle="collapse"
                 data-bs-target="#main-navigation" aria-controls="main-navigation"
                 aria-expanded="false" aria-label="Navigation einblenden">
@@ -130,7 +130,7 @@
                     </button>
                     <ul class="dropdown-menu dropdown-menu-end">
                         {% for item in settings_navigation %}
-                        <li><a class="dropdown-item" href="{{ item.path }}">{{ item.label }}</a></li>
+                        <li><a class="dropdown-item" href="{{ url_prefix }}{{ item.path }}">{{ item.label }}</a></li>
                         {% endfor %}
                     </ul>
                 </li>
@@ -141,10 +141,10 @@
                         {{ top_bar_user.display_name if top_bar_user else "Konto" }}
                     </button>
                     <ul class="dropdown-menu dropdown-menu-end">
-                        <li><a class="dropdown-item" href="/passkeys">Passkeys</a></li>
+                        <li><a class="dropdown-item" href="{{ url_prefix }}/passkeys">Passkeys</a></li>
                         <li><hr class="dropdown-divider"></li>
                         <li>
-                            <form hx-post="/logout">
+                            <form hx-post="{{ url_prefix }}/logout">
                                 <button class="dropdown-item" type="submit">Abmelden</button>
                             </form>
                         </li>

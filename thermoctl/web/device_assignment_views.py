@@ -29,6 +29,7 @@ from thermoctl.domain.device_assignment import (
 from thermoctl.domain.plant_diagram import plant_diagram
 from thermoctl.domain.principal import Principal
 from thermoctl.web import templates
+from thermoctl.web.urls import prefixed
 
 # `include_in_schema=False`: the OpenAPI description is the contract of the REST
 # interface. These routes deliver HTML for humans, and in the interface under
@@ -187,7 +188,9 @@ async def assign_device_view(
         return _response(
             session, request, zone, may_edit=True, errors={"assignment": exc.notice}
         )
-    return RedirectResponse(f"/zones/{zone.id}/devices", status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(
+        prefixed(request, f"/zones/{zone.id}/devices"), status.HTTP_303_SEE_OTHER
+    )
 
 
 @router.post("/zones/{zone_id}/devices/detach")
@@ -214,7 +217,9 @@ async def device_detach_view(
     if assignment is None or assignment.zone_id != zone.id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Zuordnung nicht gefunden")
     detach_device(session, zone, assignment, actor_id=principal.user_id)
-    return RedirectResponse(f"/zones/{zone.id}/devices", status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(
+        prefixed(request, f"/zones/{zone.id}/devices"), status.HTTP_303_SEE_OTHER
+    )
 
 
 @router.post("/zones/{zone_id}/devices/regulation")
@@ -249,7 +254,9 @@ async def device_regulation_view(
         str(form.get("self_regulating", "")) == "yes",
         actor_id=principal.user_id,
     )
-    return RedirectResponse(f"/zones/{zone.id}/devices", status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(
+        prefixed(request, f"/zones/{zone.id}/devices"), status.HTTP_303_SEE_OTHER
+    )
 
 
 @router.post("/zones/{zone_id}/devices/source")
@@ -277,7 +284,9 @@ async def temperature_source_set_view(
         return _response(
             session, request, zone, may_edit=True, errors={"temperature_source": exc.notice}
         )
-    return RedirectResponse(f"/zones/{zone.id}/devices", status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(
+        prefixed(request, f"/zones/{zone.id}/devices"), status.HTTP_303_SEE_OTHER
+    )
 
 
 @router.post("/zones/{zone_id}/devices/swap")
@@ -304,7 +313,9 @@ async def device_swap_view(
             may_edit=True,
             errors={"swap": notice},
         )
-    return RedirectResponse(f"/zones/{zone.id}/devices", status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(
+        prefixed(request, f"/zones/{zone.id}/devices"), status.HTTP_303_SEE_OTHER
+    )
 
 
 @router.post("/zones/{zone_id}/devices/button")
@@ -346,4 +357,6 @@ async def bind_button(
         return _response(
             session, request, zone, may_edit=True, errors={"button": str(exc)}
         )
-    return RedirectResponse(f"/zones/{zone.id}/devices", status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(
+        prefixed(request, f"/zones/{zone.id}/devices"), status.HTTP_303_SEE_OTHER
+    )

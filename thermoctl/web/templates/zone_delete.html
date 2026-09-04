@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "form.html" import delete_confirmation %}
+{% from "form.html" import delete_confirmation with context %}
 {% block title %}Zone löschen – thermoctl{% endblock %}
 {% block content %}
 {% set hint %}Abhängig sind {{ dependencies.schedule_points }} Schaltpunkte,

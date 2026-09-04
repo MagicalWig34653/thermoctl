@@ -22,7 +22,7 @@
     {% if property.last_value_at %}<span class="t-quiet small">({{ property.last_value_at|age }})</span>{% endif %}
   </td><td>
   {% if device.id in manageable_ids %}
-    <form method="post" action="/controllers/channel" class="row g-2">
+    <form method="post" action="{{ url_prefix }}/controllers/channel" class="row g-2">
       <input type="hidden" name="device_id" value="{{ device.id }}"><input type="hidden" name="property_name" value="{{ property.name }}"><input type="hidden" name="direction" value="read">
       <div class="col"><select class="form-select form-select-sm" name="kind"><option value="zone_setpoint">Sollwert der Zone</option><option value="operating_mode">Betriebsart der Zone</option></select></div>
       <div class="col"><select class="form-select form-select-sm" name="zone_id" required>{% for zone in zones if zone.id in manageable_ids %}<option value="{{ zone.id }}" {{ "selected" if channel and channel.zone_id == zone.id }}>{{ zone.display_name }}</option>{% endfor %}</select></div>
@@ -39,7 +39,7 @@
   <tr class="tc-target" data-target="channel" data-form="channel-{{ device.id }}-{{ property.id }}"><td class="t-value">{{ property.name }}</td><td>
     {% if property_values[property.id] %}{{ property_values[property.id]|join(", ") }}{% elif property.min_value is not none or property.max_value is not none %}{{ property.min_value|grad if property.min_value is not none else "…" }} bis {{ property.max_value|grad if property.max_value is not none else "…" }} {{ property.unit or "" }}{% else %}{{ property.value_type }}{% endif %}
   </td><td>
-  {% if device.id in manageable_ids %}<form id="channel-{{ device.id }}-{{ property.id }}" method="post" action="/controllers/channel" class="row g-2">
+  {% if device.id in manageable_ids %}<form id="channel-{{ device.id }}-{{ property.id }}" method="post" action="{{ url_prefix }}/controllers/channel" class="row g-2">
     <input type="hidden" name="device_id" value="{{ device.id }}"><input type="hidden" name="property_name" value="{{ property.name }}"><input type="hidden" name="direction" value="write">
     <div class="col"><select class="form-select form-select-sm" name="kind"><option value="sensor_temperature">Temperatur eines Geräts</option><option value="zone_temperature">Ist-Temperatur der Zone</option><option value="zone_setpoint">Sollwert der Zone</option><option value="fixed">Fester Wert</option></select></div>
     <div class="col"><select class="form-select form-select-sm" name="source_device_id"><option value="">Quellgerät</option>{% for source in devices %}<option value="{{ source.id }}">{{ source.display_name }}</option>{% endfor %}</select></div>
@@ -52,7 +52,7 @@
 
   <h3 class="h5 mt-4">Tastenbelegung</h3>
   {% if bindings[device.id] %}<div class="table-responsive"><table class="table align-middle"><tbody>{% for binding in bindings[device.id] %}<tr><td class="t-value">{{ binding.action }}</td><td>
-    <form method="post" action="/controllers/button" class="row g-2"><input type="hidden" name="device_id" value="{{ device.id }}"><input type="hidden" name="action_code" value="{{ binding.action }}"><div class="col"><select class="form-select form-select-sm" name="command"><option value="">— nichts —</option>{% for command in commands %}<option value="{{ command.code }}" {{ "selected" if command.code == binding.command_code }}>{{ command.label }}</option>{% endfor %}</select></div><div class="col"><input class="form-control form-control-sm" name="step_k" value="{{ binding.step_k|grad if binding.step_k is not none }}" placeholder="0,5 K"></div><div class="col-auto"><button class="btn btn-sm btn-outline-secondary">Übernehmen</button></div></form>
+    <form method="post" action="{{ url_prefix }}/controllers/button" class="row g-2"><input type="hidden" name="device_id" value="{{ device.id }}"><input type="hidden" name="action_code" value="{{ binding.action }}"><div class="col"><select class="form-select form-select-sm" name="command"><option value="">— nichts —</option>{% for command in commands %}<option value="{{ command.code }}" {{ "selected" if command.code == binding.command_code }}>{{ command.label }}</option>{% endfor %}</select></div><div class="col"><input class="form-control form-control-sm" name="step_k" value="{{ binding.step_k|grad if binding.step_k is not none }}" placeholder="0,5 K"></div><div class="col-auto"><button class="btn btn-sm btn-outline-secondary">Übernehmen</button></div></form>
   </td></tr>{% endfor %}</tbody></table></div>{% else %}<p class="t-quiet">Noch keinen Tastendruck empfangen.</p>{% endif %}
 </section>{% endfor %}
 

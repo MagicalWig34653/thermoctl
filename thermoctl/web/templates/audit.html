@@ -3,7 +3,7 @@
 {% block content %}
 <section id="audit-list">
   <h1 class="mb-3">Audit-Protokoll</h1>
-  <form method="get" action="/audit" class="row g-3 mb-4">
+  <form method="get" action="{{ url_prefix }}/audit" class="row g-3 mb-4">
     <div class="col-sm-6 col-lg-3">
       <label class="form-label" for="from_">Von</label>
       <input class="form-control{% if errors.from_date %} is-invalid{% endif %}" id="from_date"
@@ -46,7 +46,7 @@
     </div>
     <div class="col-12">
       <button class="btn btn-primary" type="submit">Filtern</button>
-      <a class="btn btn-outline-secondary" href="/audit">Zurücksetzen</a>
+      <a class="btn btn-outline-secondary" href="{{ url_prefix }}/audit">Zurücksetzen</a>
     </div>
   </form>
 

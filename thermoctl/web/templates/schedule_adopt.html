@@ -7,21 +7,21 @@
 <div class="alert alert-warning">
     Diese Zone hat bereits einen Zeitplan. Die Übernahme ersetzt ihn vollständig.
 </div>
-<form method="post" action="/zones/{{ zone.id }}/schedule/adopt">
+<form method="post" action="{{ url_prefix }}/zones/{{ zone.id }}/schedule/adopt">
     <input type="hidden" name="source_id" value="{{ source_id }}">
     <input type="hidden" name="confirmed" value="yes">
     <button class="btn btn-danger" type="submit">Vorhandenen Zeitplan ersetzen</button>
-    <a class="btn btn-secondary" href="/zones/{{ zone.id }}/schedule">Abbrechen</a>
+    <a class="btn btn-secondary" href="{{ url_prefix }}/zones/{{ zone.id }}/schedule">Abbrechen</a>
 </form>
 {% else %}
 {{ error_notice(errors) }}
 {% if sources %}
-<form method="post" action="/zones/{{ zone.id }}/schedule/adopt">
+<form method="post" action="{{ url_prefix }}/zones/{{ zone.id }}/schedule/adopt">
     {% set options = [] %}
     {% for source in sources %}{% set _ = options.append((source.id, source.display_name)) %}{% endfor %}
     {{ select_field("source_id", "Quellzone", options, source_id or "") }}
     <button class="btn btn-primary" type="submit">Zeitplan übernehmen</button>
-    <a class="btn btn-secondary" href="/zones/{{ zone.id }}/schedule">Abbrechen</a>
+    <a class="btn btn-secondary" href="{{ url_prefix }}/zones/{{ zone.id }}/schedule">Abbrechen</a>
 </form>
 {% else %}
 <div class="alert alert-info">Keine andere sichtbare Zone ist als Quelle verfügbar.</div>

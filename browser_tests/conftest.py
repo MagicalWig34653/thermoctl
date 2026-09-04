@@ -35,6 +35,8 @@ from playwright.sync_api import Browser, BrowserContext, ConsoleMessage, Page, s
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
+from browser_tests._ingress_proxy import start_stripping_proxy
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 # Reused instead of duplicated: these already know the schema's foreign-key order
@@ -105,8 +107,20 @@ def _read_stream(stream: object, sink: list[str]) -> None:
         sink.append(line)
 
 
-@pytest.fixture(scope="session")
-def live_server() -> Iterator[LiveServer]:
+# The prefix `live_server_with_prefix` (below) serves the interface under -- deliberately
+# not `/app` or another plausible-looking real path (the task asked for something
+# Ingress-like): Home Assistant's own prefix is `/api/hassio_ingress/<random-token>`.
+INGRESS_PREFIX = "/api/hassio_ingress/A1b2C3d4e5"
+
+
+def _live_server(root_path: str) -> Iterator[LiveServer]:
+    """Shared implementation behind `live_server` and `live_server_with_prefix`.
+
+    `root_path` becomes `THERMOCTL_ROOT_PATH` for the subprocess -- empty for the
+    plain fixture, `INGRESS_PREFIX` for the prefixed one. Everything else (database,
+    admin setup, teardown) is identical; only the environment and, in the prefixed
+    case, what fronts the server (see `live_server_with_prefix`) differ.
+    """
     workdir = Path(tempfile.mkdtemp(prefix="thermoctl-browsertests-"))
     db_path = workdir / "browsertests.db"
     database_url = f"sqlite:///{db_path}"
@@ -117,6 +131,7 @@ def live_server() -> Iterator[LiveServer]:
         **os.environ,
         "THERMOCTL_DATABASE_URL": database_url,
         "THERMOCTL_SECRET_KEY": "b" * 32,
+        "THERMOCTL_ROOT_PATH": root_path,
         # Cuts off a developer's own `.env`, exactly like `tests/conftest.py` does --
         # otherwise real MQTT or Meross credentials sitting there for local, manual
         # testing would reach this subprocess and it would reach out to the network.
@@ -226,6 +241,51 @@ def live_server() -> Iterator[LiveServer]:
 
 
 @pytest.fixture(scope="session")
+def live_server() -> Iterator[LiveServer]:
+    yield from _live_server("")
+
+
+@pytest.fixture(scope="session")
+def live_server_with_prefix() -> Iterator[LiveServer]:
+    """A `LiveServer` fronted by a small proxy that strips `INGRESS_PREFIX`.
+
+    `_live_server(INGRESS_PREFIX)` starts the real application with
+    `THERMOCTL_ROOT_PATH` set -- it still only ever *receives* bare paths on its own
+    port, exactly like the container would behind real Ingress. `start_stripping_proxy`
+    (`browser_tests/_ingress_proxy.py`) is what actually plays Home Assistant's part:
+    it listens on its own port, strips `INGRESS_PREFIX` from every incoming request
+    before forwarding it to the real server, and passes the response back unchanged.
+    `LiveServer.base_url` here points at the *proxy*, prefix included -- so
+    `page.goto("/login")` against this fixture's context resolves to
+    `.../api/hassio_ingress/A1b2C3d4e5/login`, precisely what a browser sees behind
+    real Ingress.
+    """
+    generator = _live_server(INGRESS_PREFIX)
+    backend = next(generator)
+    server, port = start_stripping_proxy(INGRESS_PREFIX, backend.base_url)
+    try:
+        yield LiveServer(
+            # Trailing slash, deliberately: Playwright's `base_url` context option
+            # resolves a relative `goto()` argument by ordinary URL-reference rules
+            # (RFC 3986) -- a value starting with "/" replaces the whole path
+            # (`goto("/login")` against ".../A1b2C3d4e5" would land on ".../login",
+            # losing the prefix entirely), and a value without a leading "/" only
+            # appends correctly if the base itself ends in "/". Every `goto()` call
+            # against this fixture must therefore use a *relative*, non-leading-slash
+            # path ("login", not "/login").
+            base_url=f"http://127.0.0.1:{port}{INGRESS_PREFIX}/",
+            database_url=backend.database_url,
+            admin_username=backend.admin_username,
+            admin_password=backend.admin_password,
+        )
+    finally:
+        server.shutdown()
+        server.server_close()
+        # Exhausts the generator so its own `finally` (process teardown) runs.
+        next(generator, None)
+
+
+@pytest.fixture(scope="session")
 def browser() -> Iterator[Browser]:
     """Chromium, unsichtbar -- ausser jemand will zusehen.
 
@@ -318,3 +378,44 @@ def admin_page(page: Page, live_server: LiveServer) -> Page:
     # the login.
     page.locator(".tc-head").wait_for()
     return page
+
+
+# --- the same three fixtures, against `live_server_with_prefix` -----------------
+#
+# Playwright's `base_url` context option is what makes a bare `page.goto("/login")`
+# resolve against a particular server -- there is no way to parametrize a single
+# `context`/`page` fixture by which `live_server` a given test wants without every
+# other test in this suite (which never mentions a prefix) having to say so too.
+# Duplicating the three fixtures below against `live_server_with_prefix` keeps every
+# existing test and fixture in this file untouched.
+
+
+@pytest.fixture
+def context_with_prefix(
+    browser: Browser, live_server_with_prefix: LiveServer
+) -> Iterator[BrowserContext]:
+    ctx = browser.new_context(base_url=live_server_with_prefix.base_url, color_scheme="light")
+    yield ctx
+    ctx.close()
+
+
+@pytest.fixture
+def page_with_prefix(
+    context_with_prefix: BrowserContext, console_errors: list[str]
+) -> Iterator[Page]:
+    new_page = context_with_prefix.new_page()
+    new_page.on("console", lambda message: _record_console_error(console_errors, message))
+    new_page.on("pageerror", lambda exc: console_errors.append(f"[pageerror] {exc}"))
+    yield new_page
+    new_page.close()
+    assert not console_errors, "Browserkonsole meldete Fehler:\n" + "\n".join(console_errors)
+
+
+@pytest.fixture
+def admin_page_with_prefix(page_with_prefix: Page, live_server_with_prefix: LiveServer) -> Page:
+    page_with_prefix.goto("login")
+    page_with_prefix.get_by_label("Benutzername").fill(live_server_with_prefix.admin_username)
+    page_with_prefix.get_by_label("Passwort").fill(live_server_with_prefix.admin_password)
+    page_with_prefix.get_by_role("button", name="Anmelden").click()
+    page_with_prefix.locator(".tc-head").wait_for()
+    return page_with_prefix

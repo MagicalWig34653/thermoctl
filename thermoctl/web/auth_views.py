@@ -24,6 +24,7 @@ from thermoctl.db.base import utcnow
 from thermoctl.db.models.identity import User
 from thermoctl.setup import setup_needed
 from thermoctl.web import templates
+from thermoctl.web.urls import cookie_path, prefixed
 
 # `include_in_schema=False`: the OpenAPI description is the contract of the REST
 # interface. These routes deliver HTML for humans, and in the interface under
@@ -75,7 +76,7 @@ async def login_form(
     # and that check should keep its identical error message, instead of letting the
     # redirect target reveal what the service knows.
     if setup_needed(session):
-        return RedirectResponse("/setup", status_code=status.HTTP_303_SEE_OTHER)
+        return RedirectResponse(prefixed(request, "/setup"), status_code=status.HTTP_303_SEE_OTHER)
     return templates.TemplateResponse(
         request, "login.html", {"passkeys_available": get_settings().passkeys_available()}
     )
@@ -145,16 +146,18 @@ async def login(
         user_id=user.id,
     )
 
-    response = RedirectResponse("/", status_code=status.HTTP_303_SEE_OTHER)
+    response = RedirectResponse(prefixed(request, "/"), status_code=status.HTTP_303_SEE_OTHER)
     response.set_cookie(
         COOKIE_NAME, secret, max_age=lifetime_s,
         httponly=True, samesite="lax", secure=settings.secure_cookies,
+        path=cookie_path(request),
     )
     # Not httpOnly: the interface (HTMX) reads the value and sends it along as an
     # `X-CSRF-Token` header.
     response.set_cookie(
         CSRF_COOKIE_NAME, csrf_token(secret, settings.secret_key.get_secret_value()),
         max_age=lifetime_s, httponly=False, samesite="lax", secure=settings.secure_cookies,
+        path=cookie_path(request),
     )
     return response
 
@@ -175,9 +178,11 @@ async def logout(request: Request, session: Annotated[Session, Depends(get_sessi
     # a non-htmx client receives the ordinary direct redirect to the same target.
     if request.headers.get("hx-request") is not None:
         response: Response = Response(status_code=status.HTTP_204_NO_CONTENT)
-        response.headers["HX-Redirect"] = "/login"
+        response.headers["HX-Redirect"] = prefixed(request, "/login")
     else:
-        response = RedirectResponse("/login", status_code=status.HTTP_303_SEE_OTHER)
-    response.delete_cookie(COOKIE_NAME)
-    response.delete_cookie(CSRF_COOKIE_NAME)
+        response = RedirectResponse(
+            prefixed(request, "/login"), status_code=status.HTTP_303_SEE_OTHER
+        )
+    response.delete_cookie(COOKIE_NAME, path=cookie_path(request))
+    response.delete_cookie(CSRF_COOKIE_NAME, path=cookie_path(request))
     return response

@@ -563,7 +563,7 @@
       "<strong>PI (Beta) schaltet deutlich häufiger als die Hysterese und verkürzt dadurch",
       "Aus ist die Vorgabe für jede Zone, auch nach einer Aktualisierung. Ausschalten",
       "die Lebensdauer des Schaltaktors spürbar.</strong>",
-      "diese Zone tatsächlich schaltet, zeigt <a href=\"/relay-wear\">Relaisverschleiß</a>",
+      "diese Zone tatsächlich schaltet, zeigt <a href=\"{{ url_prefix }}/relay-wear\">Relaisverschleiß</a>",
       "{{ number_field(\"valve_protection_duration_minutes\", \"Ventilschutz-Dauer (Minuten)\", values.valve_protection_duration_minutes,",
       "{{ number_field(\"valve_protection_interval_days\", \"Ventilschutz-Abstand (Tage)\", values.valve_protection_interval_days,"
     ],

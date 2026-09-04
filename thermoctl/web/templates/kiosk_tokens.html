@@ -52,7 +52,7 @@
             </td>
             <td class="text-end">
                 {% if not entry.revoked_at %}
-                <form method="post" action="/kiosk-tokens/{{ entry.id }}/revoke">
+                <form method="post" action="{{ url_prefix }}/kiosk-tokens/{{ entry.id }}/revoke">
                     <button type="submit" class="btn btn-sm btn-outline-danger">Widerrufen</button>
                 </form>
                 {% endif %}
@@ -67,7 +67,7 @@
     </div>
 
     <h2 class="h5 mt-4">Kiosk-Token ausstellen</h2>
-    <form method="post" action="/kiosk-tokens">
+    <form method="post" action="{{ url_prefix }}/kiosk-tokens">
         {{ text_field("name", "Name", values.get("name", ""), required=true,
                     help_text="Zum Beispiel 'Tablet Flur' — später ist der Name das Einzige, "
                           "woran Sie das Gerät wiedererkennen.",

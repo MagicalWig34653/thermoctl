@@ -8,7 +8,7 @@
   <nav class="d-flex gap-1" aria-label="Zeitraum">
     {% for key, label in periods %}
     <a class="btn btn-sm {{ 'btn-primary' if key == period else 'btn-outline-secondary' }}"
-       href="/relay-wear?period={{ key }}"
+       href="{{ url_prefix }}/relay-wear?period={{ key }}"
        {% if key == period %}aria-current="page"{% endif %}>{{ label }}</a>
     {% endfor %}
   </nav>
@@ -39,7 +39,7 @@
   <p class="t-section mb-1">In diesem Zeitraum wurden keine Schaltaktoren protokolliert.</p>
   <p class="t-quiet mb-0">
     Die Auswertung beginnt mit dem ersten erfolgreich befohlenen Zustand als Ausgangslage.
-    <a href="/device-commands">Schaltprotokoll ansehen</a>
+    <a href="{{ url_prefix }}/device-commands">Schaltprotokoll ansehen</a>
   </p>
 </div>
 {% else %}
