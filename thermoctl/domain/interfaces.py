@@ -15,6 +15,8 @@ lives under Operation and Settings, and is linked from here.
 never which one. Principle 2.
 """
 
+import json
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 
 from sqlalchemy import select
@@ -24,7 +26,9 @@ from thermoctl.config import Settings
 from thermoctl.db.models.credential import ApiToken
 from thermoctl.db.models.device import Device
 from thermoctl.db.models.lookup import Integration
+from thermoctl.db.models.zone import Zone
 from thermoctl.integrations.meross import credentials_configured
+from thermoctl.integrations.mqtt.publication import command_topics, states_topics
 
 
 @dataclass(frozen=True)
@@ -47,6 +51,94 @@ class Interface:
     details: list[Detail] = field(default_factory=list)
     hint: str | None = None
     more: tuple[str, str] | None = None  # (Beschriftung, Pfad)
+
+
+@dataclass(frozen=True)
+class HomebridgeZone:
+    """One zone's ready-to-copy `mqtt-thing` accessory configuration.
+
+    Everything but the placeholders (broker credentials) is built from what the
+    production MQTT client actually uses -- the zone's real topics from
+    `integrations/mqtt/publication.py` and, when configured, the real broker address.
+    See `docs/homebridge.md` for why the configuration looks exactly like this.
+    """
+
+    zone_id: int
+    zone_name: str
+    config_json: str
+
+
+def homebridge_broker_url(settings: Settings) -> str | None:
+    """The broker address Homebridge should connect to.
+
+    Homebridge talks to the *same* broker thermoctl itself connects to -- just with
+    its own, separately scoped account (docs/homebridge.md, "Broker-Rechte"). `None`
+    when no host is configured; the caller decides what placeholder to show instead.
+    """
+    if settings.mqtt_host is None:
+        return None
+    scheme = "mqtts" if settings.mqtt_tls else "mqtt"
+    return f"{scheme}://{settings.mqtt_host}:{settings.mqtt_port}"
+
+
+def homebridge_zone_configs(
+    zones: Sequence[Zone], settings: Settings
+) -> list[HomebridgeZone]:
+    """Builds one ready-to-copy `mqtt-thing` configuration per zone.
+
+    The topics come from `states_topics`/`command_topics` -- the same functions the
+    real MQTT client calls -- not from a second, hand-written copy of the strings.
+    That is the whole point: this is the one place besides the production client
+    itself that may know these paths, so the page and the wire can never disagree.
+    The value mapping (HomeKit's 0/1/3 against thermoctl's own `off`/`manual`/`auto`)
+    and the reasons behind every field are documented once, in `docs/homebridge.md`,
+    and not repeated here.
+
+    Broker credentials are never real: Homebridge needs its own, narrowly scoped
+    account (principle 2, and docs/mqtt.md, "Den Broker absichern"), not thermoctl's.
+    """
+    broker_url = homebridge_broker_url(settings) or "mqtts://<broker-adresse>:8883"
+    configs: list[HomebridgeZone] = []
+    for zone in zones:
+        state = states_topics(zone.id, settings.mqtt_prefix)
+        command = command_topics(zone.id, settings.mqtt_prefix)
+        payload = {
+            "accessory": "mqttthing",
+            "type": "thermostat",
+            "name": zone.display_name,
+            "url": broker_url,
+            "username": "homebridge",
+            "password": "<eigenes-broker-passwort>",
+            "mqttOptions": {"protocolVersion": 5},
+            "topics": {
+                "getCurrentTemperature": {"topic": state.current_temperature},
+                "getTargetTemperature": {"topic": state.setpoint},
+                "setTargetTemperature": {"topic": command.setpoint},
+                "getCurrentHeatingCoolingState": {
+                    "topic": state.would_heat,
+                    "apply": "return (message === 'true') ? 1 : 0;",
+                },
+                "getTargetHeatingCoolingState": {
+                    "topic": state.operating_mode,
+                    "apply": "return {auto: 3, manual: 1, off: 0}[message];",
+                },
+                "setTargetHeatingCoolingState": {
+                    "topic": command.operating_mode,
+                    "apply": "return {0: 'off', 1: 'manual', 3: 'auto'}[message];",
+                },
+            },
+            "restrictHeatingCoolingState": [0, 1, 3],
+            "minTemperature": 10,
+            "maxTemperature": 30,
+        }
+        configs.append(
+            HomebridgeZone(
+                zone_id=zone.id,
+                zone_name=zone.display_name,
+                config_json=json.dumps(payload, indent=4, ensure_ascii=False),
+            )
+        )
+    return configs
 
 
 def _yes_no(set_value: bool) -> str:

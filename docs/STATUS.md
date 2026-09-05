@@ -77,6 +77,27 @@ niemals ein Token damit ausgestattet, und der Knopf wäre für jedes Wandtablett
 unerreichbar geblieben. Neu ausgestellte Kiosk-Token bekommen das Recht automatisch;
 schon ausgestellte brauchen dafür eine erneute Ausstellung.
 
+## Homebridge-Konfiguration direkt auf der Schnittstellen-Seite
+
+`/interfaces` zeigt je sichtbarer Zone einen fertigen `mqtt-thing`-Block zum Kopieren.
+Die Topics baut `domain/interfaces.py` über dieselben Funktionen wie die
+Veröffentlichung selbst (`states_topics`/`command_topics`), mit dem tatsächlich
+konfigurierten MQTT-Präfix — kein zweites Mal abgeschrieben, und ein Wächtertest hält
+das gerenderte HTML gegen `publication.py`.
+
+**Zugangsdaten stehen nie darin.** Homebridge bekommt Platzhalter und den Hinweis, dass
+es einen eigenen Broker-Zugang mit engen Rechten braucht; die Erzeugung liest die
+eigenen MQTT-Zugangsdaten gar nicht erst.
+
+Die Seite verlangt weiterhin `setting.manage`, der Abschnitt zeigt aber nur Zonen, für
+die zusätzlich `zone.read` vorliegt — dieselbe Filterung, mit der die Bediengeräteseite
+ihren Befund von 2026-09-02 behoben hat.
+
+Der Kopierknopf kommt ohne Bibliothek aus. Die Zwischenablage-Schnittstelle des Browsers
+verlangt einen sicheren Kontext, den ein Heimnetz über schlichtes HTTP nicht bietet;
+dort greift ein Rückfallweg, und scheitert auch der, sagt der Knopf es, statt stumm zu
+bleiben.
+
 ## Wo das Projekt steht
 
 Die Anlage des Projektinhabers läuft seit dem 2026-09-02 scharf mit `thermoctl`, das

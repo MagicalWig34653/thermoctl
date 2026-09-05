@@ -232,6 +232,23 @@ h2, .t-section {
     border-radius: var(--radius);
 }
 
+/* A block of text meant to be copied verbatim (a Homebridge/mqtt-thing config, for
+   instance) -- set apart from ordinary prose. Wide content scrolls inside itself
+   instead of the page. */
+.tc-code-block {
+    background: var(--surface-deep);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-small);
+    padding: 0.6rem 0.75rem;
+    margin: 0;
+    overflow-x: auto;
+    max-height: 22rem;
+    overflow-y: auto;
+    white-space: pre;
+    font-family: var(--font-instrument);
+    font-size: 0.78rem;
+}
+
 /* Die Systemzeile ganz oben: ein Satz über den Zustand der ganzen Anlage. */
 .tc-system-row {
     display: flex;
