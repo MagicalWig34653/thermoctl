@@ -9,7 +9,7 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ---
 
-## Unveröffentlicht
+## 0.7.2 — 2026-09-05
 
 ### Hinzugefügt
 
@@ -18,6 +18,16 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
   `passkey_origin` und `mcp_token`. `docs/self-hosting.md` erklärt zu den Passkey-Feldern
   den Sonderfall hinter Ingress — welcher Hostname dort gilt und wann Passkeys dort
   grundsätzlich nicht funktionieren — und zu `mcp_token`, wofür es da ist.
+
+### Zu beachten beim Umstieg
+
+- **Keine Schemaänderung**, keine neue Migration.
+- Die vier neuen Felder erscheinen erst nach einer Aktualisierung des Add-ons auf
+  diese Fassung. Wer sie bisher über das freie `env`-Feld gesetzt hat, kann sie dort
+  stehen lassen — eine ausdrücklich gesetzte Umgebungsvariable gewinnt weiterhin
+  gegen die Felder — oder sie in die eigenen Felder übertragen.
+
+---
 
 ## 0.7.1 — 2026-09-05
 
