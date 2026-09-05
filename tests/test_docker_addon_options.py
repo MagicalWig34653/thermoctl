@@ -166,6 +166,37 @@ def test_notify_options_pass_through() -> None:
     assert result["THERMOCTL_NOTIFY_WEBHOOK_TOKEN"] == "tok"
 
 
+def test_mcp_token_passes_through() -> None:
+    """Anlass dieses Auftrags: das MCP-Token war nur über das freie `env`-Feld
+    erreichbar, obwohl es eine eigene Beschriftung im Add-on-UI verdient."""
+    assert optionen.translate({"mcp_token": "ein-token"})["THERMOCTL_MCP_TOKEN"] == "ein-token"
+
+
+def test_passkey_rp_id_passes_through() -> None:
+    assert (
+        optionen.translate({"passkey_rp_id": "heizung.example.org"})[
+            "THERMOCTL_PASSKEY_RP_ID"
+        ]
+        == "heizung.example.org"
+    )
+
+
+def test_passkey_rp_name_passes_through() -> None:
+    assert (
+        optionen.translate({"passkey_rp_name": "Heizung Keller"})["THERMOCTL_PASSKEY_RP_NAME"]
+        == "Heizung Keller"
+    )
+
+
+def test_passkey_origin_passes_through() -> None:
+    assert (
+        optionen.translate({"passkey_origin": "https://homeassistant.local:8123"})[
+            "THERMOCTL_PASSKEY_ORIGIN"
+        ]
+        == "https://homeassistant.local:8123"
+    )
+
+
 def test_meross_api_base_has_no_dedicated_option() -> None:
     """meross_api_base ist bewusst kein flaches Add-on-Feld mehr -- nur über `env`
     oder eine echte Umgebungsvariable erreichbar, siehe BEWUSST_AUSGELASSEN."""

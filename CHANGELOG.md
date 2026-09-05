@@ -9,6 +9,16 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ---
 
+## Unveröffentlicht
+
+### Hinzugefügt
+
+- Das Home-Assistant-Add-on bekommt vier bislang nur über das freie `env`-Feld
+  erreichbare Einstellungen als eigene Felder: `passkey_rp_id`, `passkey_rp_name`,
+  `passkey_origin` und `mcp_token`. `docs/self-hosting.md` erklärt zu den Passkey-Feldern
+  den Sonderfall hinter Ingress — welcher Hostname dort gilt und wann Passkeys dort
+  grundsätzlich nicht funktionieren — und zu `mcp_token`, wofür es da ist.
+
 ## 0.7.1 — 2026-09-05
 
 ### Geändert
