@@ -2,6 +2,40 @@
 
 Letzte Aktualisierung: 2026-09-05, Freigabe `v0.7.0`.
 
+## Zwei Fehler in der Homebridge-Konfiguration behoben
+
+Aus dem echten Betrieb gemeldet: ein Wechsel von Aus auf Automatik kam bei thermoctl nie
+an, und eine Zone ohne Messwert liess HomeKit mit `... number 0 exceeded minimum of 10`
+abstürzen. Beide Ursachen lagen in der Beispielkonfiguration für `mqtt-thing`
+(`thermoctl/domain/interfaces.py::homebridge_zone_configs`, `docs/homebridge.md`), nicht
+im MQTT-Vertrag selbst:
+
+- Die bisherigen `apply`-Funktionen für Ziel-Zustand rechneten mit HomeKit-Zahlen
+  (0/1/2/3) — aber `mqtt-thing`s `multiCharacteristic` übergibt beim Setzen bereits den
+  **Listenwert** aus `heatingCoolingStateValues` an `apply`, nicht die Zahl, und schlägt
+  beim Lesen `apply`s Rückgabe in derselben Liste nach. Die Zuordnung stand deshalb auf
+  keiner Seite je richtig. Behoben, indem `heatingCoolingStateValues` jetzt direkt
+  thermoctls eigenes Vokabular trägt (`off`/`manual`/`auto`); Ziel-Zustand braucht dadurch
+  gar kein `apply` mehr. Der Ist-Zustand (`would_heat`, `true`/`false`) bleibt die eine
+  Ausnahme mit eigenem `apply` — und das ruft jetzt `message.toString()` auf, weil
+  `apply` den rohen MQTT-`Buffer` bekommt, gegen den ein bloßes `=== 'true'` nie zutrifft.
+- Eine Zone ohne Messwert veröffentlicht bewusst eine leere Nutzlast
+  (`_as_text(None)`) — für Home Assistant richtig (dessen MQTT-Climate-Integration
+  ignoriert eine leere Nutzlast ausdrücklich), aber `mqtt-thing`s Fliesskommaparser macht
+  daraus `NaN`, was HomeKit unterhalb von `minTemperature` ablehnt. `publishing.py` bleibt
+  deshalb unverändert; `getCurrentTemperature` bekommt stattdessen ein `apply`, das bei
+  leerer Nutzlast `undefined` liefert.
+
+Beide Befunde sind gegen den Quelltext des Plugins geprüft (dessen index.js und
+libs/mqttlib.js, `arachnetech/homebridge-mqttthing`), nicht nur gegen dessen README. Vier neue
+Wächtertests in `tests/test_homebridge_interface.py` prüfen jetzt zusätzlich, dass Ziel-
+Zustand kein `apply` mehr trägt, dass `heatingCoolingStateValues` thermoctls Vokabular an
+den richtigen Indizes führt und Index 2 keinen gültigen Modus ist, dass der Ist-Zustands-
+`apply` in dieselbe Liste decodiert und `.toString()` aufruft, und dass der Temperatur-
+`apply` eine leere Nutzlast auf `undefined` abbildet — die bisherigen Tests prüften nur die
+Topic-*Pfade*, nie den Inhalt der `apply`-Funktionen oder `heatingCoolingStateValues`, und
+hätten diese Fehlerklasse deshalb nicht gefunden.
+
 ## Passkeys und MCP-Token haben jetzt eigene Add-on-Felder
 
 `docker/thermoctl_optionen.py`: `mcp_token`, `passkey_rp_id`, `passkey_rp_name` und

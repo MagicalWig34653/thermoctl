@@ -9,6 +9,34 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ---
 
+## Unveröffentlicht
+
+### Behoben
+
+- **Zwei Fehler in der Homebridge-Konfiguration aus dem echten Betrieb.** Ein Wechsel
+  von Aus auf Automatik kam bei thermoctl nie an, und eine Zone ohne Messwert liess
+  HomeKit mit `characteristic was supplied illegal value: number 0 exceeded minimum of
+  10` abstürzen.
+  - `mqtt-thing`s `multiCharacteristic` reicht beim Setzen den **Listenwert** aus
+    `heatingCoolingStateValues` an `apply` weiter, nicht HomeKits Zahl, und schlägt
+    beim Lesen `apply`s Rückgabe in derselben Liste nach. Die bisherigen `apply`-
+    Funktionen rechneten stattdessen mit HomeKit-Zahlen und trafen deshalb nie zu —
+    `mqtt-thing` brach das Veröffentlichen beim Setzen ab und verwarf die Meldung beim
+    Lesen. Die Konfiguration setzt `heatingCoolingStateValues` jetzt direkt auf
+    thermoctls eigenes Vokabular (`off`/`manual`/`auto`, Index 2 als bewusst
+    unerreichbarer Platzhalter); Ziel-Zustand braucht dadurch kein `apply` mehr, nur
+    der Ist-Zustand (`would_heat`) noch eines — und das ruft jetzt `message.toString()`
+    auf, weil `apply` den rohen `Buffer` bekommt, gegen den ein bloßes `=== 'true'`
+    nie zutrifft.
+  - Eine Zone ohne Messwert veröffentlicht bewusst eine leere Nutzlast
+    (`services/publishing.py::_as_text(None)`) — für Home Assistant richtig, das eine
+    leere Nutzlast ausdrücklich ignoriert. `mqtt-thing`s eigener Fliesskommaparser
+    macht daraus stattdessen `NaN`, HomeKit lehnt den daraus entstehenden Wert unter
+    `minTemperature` ab. `getCurrentTemperature` bekommt deshalb ein `apply`, das bei
+    leerer Nutzlast `undefined` liefert, statt einen ungültigen Wert durchzureichen.
+  - Betroffen: `thermoctl/domain/interfaces.py::homebridge_zone_configs` und
+    `docs/homebridge.md`, die dieselbe Konfiguration erzeugen bzw. beschreiben.
+
 ## 0.7.3 — 2026-09-05
 
 ### Hinzugefügt
