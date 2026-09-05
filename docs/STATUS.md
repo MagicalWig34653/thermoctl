@@ -1,6 +1,27 @@
 # Stand
 
-Letzte Aktualisierung: 2026-09-04, Freigabe `v0.7.0`.
+Letzte Aktualisierung: 2026-09-05, Freigabe `v0.7.0`.
+
+## Passkeys und MCP-Token haben jetzt eigene Add-on-Felder
+
+`docker/thermoctl_optionen.py`: `mcp_token`, `passkey_rp_id`, `passkey_rp_name` und
+`passkey_origin` sind aus `BEWUSST_AUSGELASSEN` in `ABGEBILDETE_FELDER` gewandert —
+bisher nur über das freie `env`-Feld erreichbar, jetzt mit eigener Beschriftung im
+Add-on-UI. `tools/env_nach_addon.py::_SCHEMA_REIHENFOLGE` musste dieselben vier
+Felder bekommen, sonst hätte `als_yaml` sie beim Umstieg von `.env` auf das Add-on
+stillschweigend verworfen, statt sie auszugeben — ein neuer Test
+(`test_jedes_dedizierte_feld_steht_in_der_schema_reihenfolge`) hält beide Listen
+seither zusammen.
+
+**Befund zu Passkeys hinter Ingress:** Sie funktionieren, solange Home Assistant
+selbst unter einem Hostnamen erreichbar ist — `passkey_rp_id`/`passkey_origin` müssen
+dann auf *diesen* Hostnamen zeigen, nicht auf einen des thermoctl-Containers, den der
+Browser unter Ingress nie sieht (Home Assistant Core reicht die Anfrage intern
+weiter, `X-Ingress-Path` gesetzt, siehe Abschnitt oben zum Ingress-Präfix). Bei
+reinem IP-Zugriff auf Home Assistant (kein Hostname) funktionieren Passkeys
+grundsätzlich nicht — WebAuthn verlangt einen gültigen Domainnamen als
+Relying-Party-Id, keine Einstellung kann das umgehen. Details in
+`docs/self-hosting.md`, Abschnitte 6c und 8.
 
 **Diese Datei sagt, was jetzt gilt — sonst nichts.** Wie es dazu kam, welche Fehler wie
 gefunden wurden und warum etwas so entschieden ist, wird hier nicht mitgeführt; das

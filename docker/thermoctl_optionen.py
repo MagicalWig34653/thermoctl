@@ -105,6 +105,10 @@ ABGEBILDETE_FELDER: dict[str, str] = {
     "meross_password": "meross_password",
     "notify_webhook": "notify_webhook",
     "notify_webhook_token": "notify_webhook_token",
+    "mcp_token": "mcp_token",
+    "passkey_rp_id": "passkey_rp_id",
+    "passkey_rp_name": "passkey_rp_name",
+    "passkey_origin": "passkey_origin",
 }
 
 #: Settings fields this script deliberately does *not* offer as a dedicated add-on
@@ -120,15 +124,6 @@ BEWUSST_AUSGELASSEN: dict[str, str] = {
     "übernimmt Ingress.",
     "meross_api_base": "Regionswahl (iotx-eu/us/ap), die so gut wie nie vom "
     "Standardwert abweicht -- wer sie braucht, setzt sie über das freie `env`-Feld.",
-    "mcp_token": "Der MCP-Server ist eine optionale, separat betriebene Erweiterung "
-    "(docs/mcp.md), keine Add-on-UI-Einstellung.",
-    "passkey_rp_id": "Passkeys sind eine optionale Funktion, deren Relying-Party-Id an "
-    "einen konkreten Hostnamen gebunden ist -- außerhalb dessen, was das Add-on-Setup "
-    "sinnvoll vorbelegen kann.",
-    "passkey_rp_name": "Folgt aus passkey_rp_id: ohne Relying-Party-Id ohnehin ohne "
-    "Wirkung.",
-    "passkey_origin": "Folgt aus passkey_rp_id: ohne Relying-Party-Id ohnehin ohne "
-    "Wirkung.",
     "root_path": "Keine vom Betreiber auszufüllende Option: unter Ingress vergibt der "
     "Supervisor den Pfad selbst und teilt ihn nur zur Laufzeit über seine eigene API "
     "mit (docker/thermoctl_ingress.py, aus docker/entrypoint.sh aufgerufen) -- ein "
@@ -163,6 +158,10 @@ def translate(options: dict[str, Any]) -> dict[str, str]:
         "THERMOCTL_MEROSS_PASSWORD": options.get("meross_password"),
         "THERMOCTL_NOTIFY_WEBHOOK": options.get("notify_webhook"),
         "THERMOCTL_NOTIFY_WEBHOOK_TOKEN": options.get("notify_webhook_token"),
+        "THERMOCTL_MCP_TOKEN": options.get("mcp_token"),
+        "THERMOCTL_PASSKEY_RP_ID": options.get("passkey_rp_id"),
+        "THERMOCTL_PASSKEY_RP_NAME": options.get("passkey_rp_name"),
+        "THERMOCTL_PASSKEY_ORIGIN": options.get("passkey_origin"),
     }
     return {name: str(value) for name, value in values.items() if value not in (None, "")}
 

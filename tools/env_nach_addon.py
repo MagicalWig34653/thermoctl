@@ -90,6 +90,10 @@ _SCHEMA_REIHENFOLGE = [
     "meross_password",
     "notify_webhook",
     "notify_webhook_token",
+    "mcp_token",
+    "passkey_rp_id",
+    "passkey_rp_name",
+    "passkey_origin",
     "env",
 ]
 

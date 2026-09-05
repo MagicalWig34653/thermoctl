@@ -216,9 +216,11 @@ aus der sie stammt: nicht committen, nicht offen liegen lassen.
 Werte wie Bind-Adresse, Port, `secure_cookies` oder der Pfadpräfix werden dabei
 übersprungen — hinter Ingress bedeutungslos oder vom Supervisor ohnehin automatisch
 ermittelt. Eine `THERMOCTL_*`-Variable ohne eigenes Add-on-Feld (etwa
-`THERMOCTL_MEROSS_API_BASE` oder `THERMOCTL_PASSKEY_RP_ID`) landet im freien
-`env`-Feld des Add-ons, das genau dafür da ist — Näheres zu diesem Feld in
-[`docs/STATUS.md`](STATUS.md).
+`THERMOCTL_MEROSS_API_BASE`) landet im freien `env`-Feld des Add-ons, das genau dafür
+da ist — Näheres zu diesem Feld in [`docs/STATUS.md`](STATUS.md). Passkeys
+(`passkey_rp_id`, `passkey_rp_name`, `passkey_origin`) und das MCP-Token
+(`mcp_token`) haben inzwischen eigene Add-on-Felder — siehe Abschnitt 6c für die
+Passkey-Besonderheit hinter Ingress und Abschnitt 8 für beide im Einzelnen.
 
 ### Wenn im Add-on schon eine eigene Datenbank steht
 
@@ -273,6 +275,37 @@ Konto wird dabei einem anderen zugänglich.
 Unterscheiden sich die Hostnamen von Ingress und direktem Zugang, funktioniert die
 Passkey-Anmeldung nur unter dem konfigurierten — unter dem jeweils anderen bleibt die
 Anmeldung mit Benutzername und Passwort möglich.
+
+**Wer die Seitenleiste (Ingress) benutzt, trägt dort den Hostnamen von Home
+Assistant ein — nicht den von thermoctl.** Unter Ingress lädt der Browser die Seite
+unter der Adresse von Home Assistant selbst (z. B. `https://homeassistant.local:8123`);
+Home Assistant Core reicht die Anfrage intern an den Add-on-Container weiter und
+setzt dabei die Kopfzeile `X-Ingress-Path` (siehe `docs/STATUS.md`, Abschnitt zum
+Ingress-Präfix, und `thermoctl/app.py::_ingress_header_prefix`). WebAuthn bindet einen
+Passkey an den Origin, den der Browser in der Adresszeile sieht — und das ist bei
+Ingress der von Home Assistant, nie der des Containers, den der Betreiber ohnehin
+nicht direkt anspricht. Praktisch heißt das:
+
+- `passkey_rp_id` bekommt den Hostnamen, unter dem Home Assistant selbst erreichbar
+  ist (etwa `homeassistant.local`, die eigene Domain hinter einem Reverse-Proxy vor
+  Home Assistant, oder die `*.ui.nabu.casa`-Adresse bei Nabu-Casa-Fernzugriff) —
+  **nicht** irgendein Hostname des thermoctl-Containers selbst, den der Browser unter
+  Ingress nie sieht.
+- `passkey_origin` trägt zusätzlich das Schema und, falls abweichend vom
+  Standardport, den Port, den der Browser tatsächlich in der Adresszeile hat — Home
+  Assistant läuft oft auf Port 8123, z. B. `https://homeassistant.local:8123`. Ohne
+  diese Angabe nimmt thermoctl `https://<passkey_rp_id>` ohne Port an, was bei einem
+  von 443 abweichenden Port fehlschlägt.
+- **Wird Home Assistant nur über eine nackte IP-Adresse aufgerufen** (kein
+  Hostname, etwa `http://192.168.1.20:8123`), funktionieren Passkeys unter Ingress
+  grundsätzlich nicht: WebAuthn verlangt für die Relying-Party-Id einen gültigen
+  Domainnamen, keine IP-Adresse, und das lässt sich durch keine Add-on-Einstellung
+  umgehen. In diesem Fall bleibt nur die Anmeldung mit Benutzername und Passwort,
+  oder ein Hostname für Home Assistant (DNS-Eintrag oder `.local`-Name).
+- Der direkte Zugang über den freigegebenen Port (Abschnitt 6c, oben) hat dagegen
+  seinen eigenen Hostnamen und braucht — falls dort ebenfalls Passkeys gewünscht
+  sind — eine eigene, davon unabhängige Relying-Party-Id; beide gleichzeitig gehen
+  nicht, siehe der vorige Absatz.
 
 ## 7. Wenn etwas nicht geht
 
@@ -353,6 +386,29 @@ Hinterlegt werden Passkeys nach der Anmeldung unter **`/passkeys`**, ein Gerät 
 Legen Sie mindestens zwei an, wenn Sie sich darauf verlassen wollen: Ein verlorenes Telefon
 ist sonst ein verlorener Zugang — das Passwort bleibt zwar bestehen, aber genau das wollten
 Sie ja loswerden.
+
+**Im Home-Assistant-Add-on** gibt es dafür die drei Felder `passkey_rp_id`,
+`passkey_rp_name` und `passkey_origin` — mit derselben Wirkung wie die drei
+gleichnamigen `THERMOCTL_*`-Variablen oben. Beim Betrieb über Ingress unbedingt
+zuerst Abschnitt 6c lesen: Dort steht, welcher Hostname dafür gilt — nicht der von
+thermoctl, sondern der von Home Assistant selbst — und der Fall, in dem Passkeys
+hinter Ingress grundsätzlich nicht funktionieren (reiner IP-Zugriff ohne Hostname).
+
+## 8a. Das MCP-Token
+
+`mcp_token` (Add-on) bzw. `THERMOCTL_MCP_TOKEN` (`.env`) ist das Geheimnis, mit dem
+sich der [MCP-Server](mcp.md) bei thermoctl anmeldet — im Add-on-Formular als
+Passwortfeld angelegt, der Supervisor zeigt es deshalb verdeckt an. Es ist ein
+gewöhnliches, unter „Einstellungen" ausgestelltes API-Token mit den Rechten der
+Werkzeuge, die der MCP-Server nutzen soll (siehe Abschnitt 9 und
+[`docs/api.md`](api.md) zur Token-Ausgabe).
+
+**Das Eintragen dieses Tokens allein startet keinen MCP-Server.** Der MCP-Server ist
+ein eigener, optionaler Einstiegspunkt (`thermoctl-mcp`, separate Abhängigkeit
+`thermoctl[mcp]`) und läuft nicht als Teil dieses Add-ons mit — Näheres zu Installation
+und Start in [`docs/mcp.md`](mcp.md). Das Feld sorgt lediglich dafür, dass ein an
+anderer Stelle betriebener MCP-Server, der auf dieselbe Datenbank zugreift, das
+richtige Token vorfindet, ohne über das freie `env`-Feld gehen zu müssen.
 
 ## 9. Die Schnittstelle ausprobieren
 

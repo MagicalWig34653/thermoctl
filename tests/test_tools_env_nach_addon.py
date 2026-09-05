@@ -464,6 +464,15 @@ class TestYamlAusgabe:
         assert "mqtt_enabled: true\n" in text
         assert "mqtt_port: 1883\n" in text
 
+    def test_jedes_dedizierte_feld_steht_in_der_schema_reihenfolge(self) -> None:
+        """Fehlt ein Feld aus ``ABGEBILDETE_FELDER`` hier, wird es von ``als_yaml``
+        stillschweigend verworfen, statt in der Ausgabe zu erscheinen -- genau der
+        Fehler, den dieser Test verhindert. ``database_url`` hat keinen eigenen
+        Optionsnamen (siehe ``_VARIABLE_ZU_FELD``), sondern zerfällt in die
+        database_*-Felder, die hier bereits einzeln stehen."""
+        dedizierte_felder = set(optionen.ABGEBILDETE_FELDER) - {"database_url"}
+        assert dedizierte_felder <= set(werkzeug._SCHEMA_REIHENFOLGE)  # noqa: SLF001
+
 
 # --- main() / CLI ----------------------------------------------------------------------
 
