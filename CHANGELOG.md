@@ -9,6 +9,29 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ---
 
+## 0.7.3 — 2026-09-05
+
+### Hinzugefügt
+
+- **Die Schnittstellen-Seite liefert die Homebridge-Konfiguration je Zone**, fertig zum
+  Kopieren. Der Block trägt die echten Topics der Zone und das tatsächlich konfigurierte
+  MQTT-Präfix; gebaut werden sie von derselben Funktion, die sie auch veröffentlicht, und
+  ein Wächtertest hält das gerenderte HTML dagegen. Jede Zone steckt in einem
+  zugeklappten Abschnitt, damit acht Zonen die Seite nicht füllen.
+- **Zugangsdaten stehen nie darin.** Homebridge braucht einen eigenen Broker-Zugang mit
+  engen Rechten; die Erzeugung liest die eigenen MQTT-Zugangsdaten gar nicht erst. Der
+  Abschnitt zeigt ausserdem nur Zonen, für die zusätzlich `zone.read` vorliegt.
+- Der Kopierknopf kommt ohne Bibliothek aus. Die Zwischenablage des Browsers verlangt
+  einen sicheren Kontext, den ein Heimnetz über schlichtes HTTP nicht bietet — dort
+  greift ein Rückfallweg, und scheitert auch der, sagt der Knopf es, statt stumm zu
+  bleiben.
+
+### Zu beachten beim Umstieg
+
+- **Keine Schemaänderung**, keine neue Migration.
+
+---
+
 ## 0.7.2 — 2026-09-05
 
 ### Hinzugefügt
