@@ -72,6 +72,63 @@ hätte er gewirkt, ist schlimmer als keiner.
 </article>
 {% endfor %}
 
+{#
+Eine Zone je <details>-Element, geschlossen zuerst: Bei acht Zonen wäre ein
+ausgeklappter JSON-Block je Zone eine halbe Bildschirmseite Text, durch die man
+scrollen müsste, um überhaupt die Liste der Zonen zu sehen. Zugeklappt zeigt der
+Abschnitt nur die Namen; wer eine bestimmte Zone einrichtet, klappt genau die eine
+auf. Native <details>/<summary> statt eines Bootstrap-Collapse, weil das ohne eigenes
+JavaScript funktioniert und mit der Tastatur bedienbar ist.
+#}
+<article class="tc-panel p-4 mb-3">
+    <h2 class="mb-1">Homebridge (<code>mqtt-thing</code>)</h2>
+    <p class="t-quiet mb-3">
+        Fertige Konfiguration je Zone für das Homebridge-Plugin
+        <a href="https://github.com/arachnetech/homebridge-mqttthing">mqtt-thing</a>,
+        mit den echten Topics dieser Anlage. Wertzuordnung, Begründung und die
+        nötigen Broker-Rechte stehen in <code>docs/homebridge.md</code>; wie ein
+        eigener, eng zugeschnittener Broker-Zugang entsteht, in <code>docs/mqtt.md</code>,
+        Abschnitt „Den Broker absichern".
+    </p>
+
+    {% if not homebridge_zones %}
+    <p class="t-quiet mb-0">
+        Keine Zone sichtbar. Dieser Abschnitt zeigt nur Zonen, für die zusätzlich zum
+        Recht dieser Seite auch <code>zone.read</code> vorliegt.
+    </p>
+    {% else %}
+
+    <p class="small mb-3">
+        <span class="tc-chip tc-chip-warning">Achtung</span>
+        <code>username</code> und <code>password</code> in jeder Konfiguration sind
+        Platzhalter. Homebridge braucht einen <strong>eigenen</strong> Broker-Zugang
+        mit möglichst engen Rechten — niemals den von thermoctl.
+        {% if not homebridge_broker_configured %}
+        Ohne eingetragene Broker-Adresse (<code>THERMOCTL_MQTT_HOST</code>) steht
+        auch <code>url</code> hier als Platzhalter; vor dem Einsatz durch die echte
+        Adresse ersetzen.
+        {% endif %}
+    </p>
+
+    {% for z in homebridge_zones %}
+    <details class="mb-2">
+        <summary>{{ z.zone_name }} <span class="t-quiet small">(Zone {{ z.zone_id }})</span></summary>
+        <div class="mt-2">
+            <pre id="hb-config-{{ z.zone_id }}" class="tc-code-block">{{ z.config_json }}</pre>
+            <div class="mt-2 d-flex align-items-center gap-2 flex-wrap">
+                <button type="button" class="btn btn-sm btn-outline-secondary"
+                        data-homebridge-copy="hb-config-{{ z.zone_id }}"
+                        data-homebridge-status="hb-status-{{ z.zone_id }}">
+                    Konfiguration kopieren
+                </button>
+                <span id="hb-status-{{ z.zone_id }}" class="small" hidden></span>
+            </div>
+        </div>
+    </details>
+    {% endfor %}
+    {% endif %}
+</article>
+
 <div class="tc-panel p-4">
     <p class="t-label mb-2">Warum hier keine Schalter stehen</p>
     <p class="t-quiet mb-0">

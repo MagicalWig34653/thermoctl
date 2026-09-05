@@ -40,7 +40,7 @@ from thermoctl.domain.control import (
     save_solar_location,
     settings,
 )
-from thermoctl.domain.interfaces import overview
+from thermoctl.domain.interfaces import homebridge_zone_configs, overview
 from thermoctl.domain.pi_control import (
     RESET_REASON_ARMING,
     RESET_REASON_CONTEXT_CHANGE,
@@ -374,17 +374,30 @@ async def show_interfaces(
     `setting.manage`, not `zone.read`: the page names broker addresses, webhook
     targets, and account names. None of that is a secret in the strict sense, but it's
     also nothing every operator of the heating needs to see.
+
+    The Homebridge section below additionally names every visible zone by name, which
+    `setting.manage` alone does not guarantee a right to see (a zone-scoped `zone.read`
+    grant, unlike a global one, only covers some zones -- the same distinction that
+    fixed the controller-device page's own zone-name leak, see
+    docs/sicherheitsdurchsicht-2026-09-02.md). `visible_zones` is the one place that
+    already draws this line correctly; used here instead of a second, page-local
+    filter.
     """
     require(principal, "setting.manage")
+    settings = get_settings()
     return templates.TemplateResponse(
         request,
         "interfaces.html",
         {
             "interfaces": overview(
                 session,
-                get_settings(),
+                settings,
                 getattr(request.app.state, "bridge_reachable", None),
             ),
+            "homebridge_zones": homebridge_zone_configs(
+                visible_zones(session, principal, "zone.read"), settings
+            ),
+            "homebridge_broker_configured": settings.mqtt_host is not None,
         },
     )
 
