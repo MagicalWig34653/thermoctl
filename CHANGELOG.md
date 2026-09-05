@@ -9,7 +9,7 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ---
 
-## Unveröffentlicht
+## 0.7.4 — 2026-09-05
 
 ### Behoben
 
@@ -36,6 +36,15 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
     leerer Nutzlast `undefined` liefert, statt einen ungültigen Wert durchzureichen.
   - Betroffen: `thermoctl/domain/interfaces.py::homebridge_zone_configs` und
     `docs/homebridge.md`, die dieselbe Konfiguration erzeugen bzw. beschreiben.
+
+### Zu beachten beim Umstieg
+
+- **Keine Schemaänderung**, keine neue Migration. Die Änderung betrifft ausschliesslich
+  die Homebridge-Konfiguration: Wer sie schon eingerichtet hat, holt sich den Block auf
+  der Schnittstellen-Seite neu und ersetzt den alten. An thermoctls eigenen Topics
+  ändert sich nichts, Home Assistant ist nicht betroffen.
+
+---
 
 ## 0.7.3 — 2026-09-05
 
