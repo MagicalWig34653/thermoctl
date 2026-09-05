@@ -96,6 +96,24 @@ def homebridge_zone_configs(
 
     Broker credentials are never real: Homebridge needs its own, narrowly scoped
     account (principle 2, and docs/mqtt.md, "Den Broker absichern"), not thermoctl's.
+
+    **Why `heatingCoolingStateValues` carries thermoctl's own vocabulary, not
+    HomeKit's numbers.** `mqtt-thing`'s `multiCharacteristic` (used for both the
+    current and the target heating/cooling state) looks up this *one* shared list
+    by HomeKit index to encode, and builds its reverse lookup from the same list to
+    decode -- `apply`, when present, runs *around* that lookup, not instead of it.
+    Setting the list itself to `["off", "manual", "<Platzhalter>", "auto"]` means
+    the target characteristic needs no `apply` at all: HomeKit's numeric set/get
+    already becomes exactly the string thermoctl's `command/operating_mode` and
+    `state/operating_mode` expect. Only the *current* state topic
+    (`state/would_heat`, `"true"`/`"false"`) speaks a different vocabulary from the
+    shared list, so it alone keeps an `apply` -- translating into the same list's
+    strings, never into a HomeKit number. The placeholder at index 2 (Kühlen) is a
+    value neither this `apply` nor thermoctl's own `operating_mode` topic ever
+    produces, and one `commands.py::OPERATING_MODES` does not accept either -- so
+    even a client that bypasses `restrictHeatingCoolingState` and sends index 2
+    anyway ends up with a command thermoctl safely rejects, not one that is
+    silently reinterpreted as a real mode.
     """
     broker_url = homebridge_broker_url(settings) or "mqtts://<broker-adresse>:8883"
     configs: list[HomebridgeZone] = []
@@ -111,22 +129,42 @@ def homebridge_zone_configs(
             "password": "<eigenes-broker-passwort>",
             "mqttOptions": {"protocolVersion": 5},
             "topics": {
-                "getCurrentTemperature": {"topic": state.current_temperature},
+                "getCurrentTemperature": {
+                    "topic": state.current_temperature,
+                    # An unmeasured zone publishes an empty payload (retain-clearing
+                    # `_as_text(None)`, services/publishing.py) -- Home Assistant
+                    # ignores that gracefully, but mqtt-thing's own float parser
+                    # turns it into 0, which HAP then rejects as below
+                    # `minTemperature`. Returning `undefined` here makes mqtt-thing
+                    # drop the message instead of acting on it (mqttlib.js: "stop
+                    # publish"/no-op on `decoded !== undefined`), leaving the last
+                    # known value in place.
+                    "apply": (
+                        "return (message.toString() === '') "
+                        "? undefined : parseFloat(message.toString());"
+                    ),
+                },
                 "getTargetTemperature": {"topic": state.setpoint},
                 "setTargetTemperature": {"topic": command.setpoint},
                 "getCurrentHeatingCoolingState": {
                     "topic": state.would_heat,
-                    "apply": "return (message === 'true') ? 1 : 0;",
+                    # `message` is the raw MQTT payload (a Buffer), not a string --
+                    # `.toString()` is required, a bare `message === 'true'` would
+                    # never match. Decodes into the *same* vocabulary as
+                    # `heatingCoolingStateValues` below, not into a HomeKit number.
+                    "apply": (
+                        "return (message.toString() === 'true') "
+                        "? 'manual' : 'off';"
+                    ),
                 },
-                "getTargetHeatingCoolingState": {
-                    "topic": state.operating_mode,
-                    "apply": "return {auto: 3, manual: 1, off: 0}[message];",
-                },
-                "setTargetHeatingCoolingState": {
-                    "topic": command.operating_mode,
-                    "apply": "return {0: 'off', 1: 'manual', 3: 'auto'}[message];",
-                },
+                "getTargetHeatingCoolingState": {"topic": state.operating_mode},
+                "setTargetHeatingCoolingState": {"topic": command.operating_mode},
             },
+            # Index 0/1/3 as thermoctl's own mode codes -- HomeKit's numeric
+            # get/set then needs no translating `apply` at all (see the docstring
+            # above). Index 2 (Kühlen) is deliberately a value nobody ever sends or
+            # accepts, not a copy of one of the other three.
+            "heatingCoolingStateValues": ["off", "manual", "kuehlen_nicht_unterstuetzt", "auto"],
             "restrictHeatingCoolingState": [0, 1, 3],
             "minTemperature": 10,
             "maxTemperature": 30,

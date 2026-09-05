@@ -115,6 +115,82 @@ def test_zone_configs_never_carry_a_real_broker_credential(session: Session) -> 
     assert payload["username"] != "thermoctl"
 
 
+def test_target_state_topics_carry_no_apply(session: Session) -> None:
+    """Regression guard for the bug where `apply` translated HomeKit's numeric
+    heating/cooling state (0/1/2/3) even though `mqtt-thing`'s `multiCharacteristic`
+    already looks the *list value* up for `setTargetHeatingCoolingState` (not the
+    number) and looks the decoded value back up in that same list for
+    `getTargetHeatingCoolingState`. An `apply` here that assumes it sees a HomeKit
+    number -- as the previous configuration did -- silently breaks both directions:
+    `mqtt-thing` aborts the publish on a mismatched set, and drops the read on a
+    mismatched get. `heatingCoolingStateValues` alone must carry this translation."""
+    zone = create_zone(session, "wohnzimmer")
+    session.flush()
+
+    payload = json.loads(homebridge_zone_configs([zone], _settings())[0].config_json)
+    assert "apply" not in payload["topics"]["getTargetHeatingCoolingState"]
+    assert "apply" not in payload["topics"]["setTargetHeatingCoolingState"]
+
+
+def test_heating_cooling_state_values_use_thermoctls_own_vocabulary(
+    session: Session,
+) -> None:
+    """`heatingCoolingStateValues` is the one list `mqtt-thing` shares between the
+    current and the target heating/cooling state (docs/homebridge.md, "Die
+    Wertzuordnung"). It must hold thermoctl's own mode codes at HomeKit's indices
+    0/1/3 -- and index 2 (Kühlen) must be something thermoctl's own
+    `operating_mode` topic and `OPERATING_MODES` never produce or accept, so a
+    stray HomeKit index 2 ends up rejected, not silently reinterpreted."""
+    from thermoctl.integrations.mqtt.commands import OPERATING_MODES
+
+    zone = create_zone(session, "wohnzimmer")
+    session.flush()
+
+    payload = json.loads(homebridge_zone_configs([zone], _settings())[0].config_json)
+    values = payload["heatingCoolingStateValues"]
+    assert values[0] == "off"
+    assert values[1] == "manual"
+    assert values[3] == "auto"
+    assert values[2] not in OPERATING_MODES
+
+
+def test_current_heating_cooling_state_apply_decodes_into_the_shared_vocabulary(
+    session: Session,
+) -> None:
+    """`getCurrentHeatingCoolingState`'s `apply` is the one exception that still
+    needs a translation (`would_heat`'s `true`/`false` speaks a different language
+    than `operating_mode`) -- but it must decode into `heatingCoolingStateValues`'
+    own strings, not into a HomeKit number, and it must call `.toString()` on the
+    incoming message: `mqtt-thing` hands `apply` the raw MQTT payload (a Buffer),
+    and a bare `message === 'true'` never matches one, regardless of content."""
+    zone = create_zone(session, "wohnzimmer")
+    session.flush()
+
+    payload = json.loads(homebridge_zone_configs([zone], _settings())[0].config_json)
+    apply = payload["topics"]["getCurrentHeatingCoolingState"]["apply"]
+    values = payload["heatingCoolingStateValues"]
+    assert "message.toString()" in apply
+    assert "'manual'" in apply and "manual" == values[1]
+    assert "'off'" in apply and "off" == values[0]
+
+
+def test_current_temperature_apply_skips_an_empty_payload(session: Session) -> None:
+    """A zone without a measurement publishes an empty payload on
+    `state/current_temperature` (`services/publishing.py::_as_text(None)`).
+    `mqtt-thing`'s own float parser turns that into `NaN`, which HAP then rejects
+    as a temperature below `minTemperature` -- this is exactly the
+    `characteristic was supplied illegal value: number 0 exceeded minimum of 10`
+    failure from the field. `apply` must return `undefined` for an empty payload
+    so `mqtt-thing` drops the message instead of acting on it."""
+    zone = create_zone(session, "wohnzimmer")
+    session.flush()
+
+    payload = json.loads(homebridge_zone_configs([zone], _settings())[0].config_json)
+    apply = payload["topics"]["getCurrentTemperature"]["apply"]
+    assert "undefined" in apply
+    assert "message.toString() === ''" in apply
+
+
 def test_zone_configs_placeholder_broker_when_none_is_configured(
     session: Session,
 ) -> None:

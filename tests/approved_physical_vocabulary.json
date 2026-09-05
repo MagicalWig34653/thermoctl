@@ -118,9 +118,10 @@
     ],
     "docs/homebridge.md": [
       "**„Heizen\" (1) ist `manual`, nicht `auto`.** In thermoctl bedeutet die manuelle",
-      "1 (Heizen) oder 0 (Aus/Bereit) ab. HomeKit zeigt bei „Bereit\" denselben Zustand wie bei",
+      "`'manual'` (Heizen, 1) oder `'off'` (Aus/Bereit, 0) ab — beides Werte aus derselben Liste,",
       "Bild, das HomeKits „Heizen\" nahelegt: ein Rad, an dem ich drehe und das genau diesen Wert",
       "HomeKit kennt vier feste Heiz-/Kühlzustände: 0 Aus, 1 Heizen, 2 Kühlen, 3 Automatik.",
+      "HomeKits Zahl: 0 Aus, 1 Heizen, 2 Kühlen, 3 Automatik. Ohne dieses Feld gilt die Vorgabe",
       "ausschließlich Heizung; es gibt keine Betriebsart, die „Kühlen\" auch nur näherungsweise",
       "ist: Aus, Heizen, Automatik. Der Zustand 2 (Kühlen) fehlt bewusst, siehe unten. Anders als",
       "| 1 — Heizen | `operating_mode = manual` |",
