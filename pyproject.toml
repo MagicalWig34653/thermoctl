@@ -1,6 +1,6 @@
 [project]
 name = "thermoctl"
-version = "0.7.0"
+version = "0.7.1"
 requires-python = ">=3.14"
 license = "AGPL-3.0-only"
 license-files = ["LICENSE"]

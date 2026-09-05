@@ -9,7 +9,7 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ---
 
-## Unreleased
+## 0.7.1 — 2026-09-05
 
 ### Geändert
 
@@ -21,6 +21,31 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
   stimmt sie exakt mit dem beim Start vom Supervisor ermittelten Pfad überein, gilt
   der Präfix für diese Anfrage — sonst nicht. Näheres in
   [docs/self-hosting.md](docs/self-hosting.md#6c-gleichzeitig-über-ingress-und-direkt-erreichbar).
+
+### Behoben
+
+- **Die Testmeldung an den Webhook schrieb „Keine Stoerung liegt vor".** Beim Umbau auf
+  echte Umlaute war der Satz ausgelassen worden, weil daneben der Schwere-*Wert*
+  `stoerung` steht — der bleibt bewusst ASCII, weil er in Vergleichen benutzt wird. Der
+  Satz ist Text und trägt jetzt den Umlaut, ebenso die Antwort „Ungültiges CSRF-Token".
+- Ein Browsertest suchte die Beschriftung der Kiosk-Checkbox in ihrer alten Fassung und
+  lief in einen Zeitablauf. Browsertests laufen ausschliesslich örtlich und sind nicht
+  Teil der CI — aufgefallen ist es beiläufig, nicht durch ein Tor.
+
+### Zu beachten beim Umstieg
+
+- **Keine Schemaänderung**, keine neue Migration.
+- **Der Container-Port ist im Add-on jetzt freigegeben** (`8000/tcp`), damit ein eigener
+  Reverse Proxy direkt auf thermoctl zeigen kann. In Home Assistant unter *Add-on →
+  Konfiguration → Netzwerk* änderbar oder leerzusetzen — dann bleibt es beim Ingress.
+  Wer diesen Weg nutzt, geht an der Anmeldung von Home Assistant vorbei; die eigene
+  Anmeldung von thermoctl gilt weiterhin, die Verbindung ist aber unverschlüsseltes
+  HTTP, solange kein Proxy davor TLS beendet.
+- **Passkeys** hängen an einem einzigen Hostnamen: Ist thermoctl über zwei verschiedene
+  Namen erreichbar, funktionieren sie nur unter dem konfigurierten. Die Anmeldung mit
+  Passwort geht unter beiden.
+
+---
 
 ## 0.7.0 — 2026-09-04
 
