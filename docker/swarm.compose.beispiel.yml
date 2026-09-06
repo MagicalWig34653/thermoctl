@@ -1,0 +1,48 @@
+# Beispiel-Stack für Docker Swarm mit Aktiv-Bereitschafts-Verbund: der Dienst selbst,
+# zwei Nachbildungen. Die Migration ist bewusst eine eigene Datei
+# (docker/swarm.migrate.compose.beispiel.yml) -- Begründung und Ausrollreihenfolge stehen
+# in docs/docker-swarm.md, Abschnitt "Migrationen beim Start".
+#
+# Kopieren, anpassen:
+#
+#   cp docker/swarm.compose.beispiel.yml compose.swarm.yml
+#   cp docker/swarm.migrate.compose.beispiel.yml compose.swarm-migrate.yml
+#   cp .env.example .env      # ausfüllen, siehe docs/self-hosting.md und docs/docker-swarm.md
+#
+# Es steht bewusst kein einziger Zugangswert in dieser Datei. Alles kommt aus `.env` bzw.
+# aus Docker Secrets (siehe docs/docker-swarm.md, Abschnitt "Zugangsdaten"), die nicht ins
+# Repository gehören. Der Verbund setzt MariaDB voraus -- eine eigene, geteilte SQLite-Datei
+# für zwei Nachbildungen gibt es nicht, siehe docs/self-hosting.md und docs/docker-swarm.md.
+
+services:
+  thermoctl:
+    image: ghcr.io/magicalwig34653/thermoctl:latest
+    env_file: .env
+    environment:
+      # Je Nachbildung ("Task") eine eigene MQTT-Client-Kennung, aus dem, was Swarm
+      # dafür anbietet: {{.Task.Slot}} zählt 1..N innerhalb dieses Dienstes, stabil über
+      # einen Neustart derselben Aufgabe hinweg (ein neuer Container derselben Aufgabe
+      # bekommt wieder denselben Slot). Sowohl `environment` als auch `hostname` werten
+      # dieses Templating aus -- geprüft mit einem echten `docker stack deploy` gegen
+      # zwei Nachbildungen, siehe docs/docker-swarm.md.
+      THERMOCTL_MQTT_CLIENT_ID: "thermoctl-{{.Task.Slot}}"
+      THERMOCTL_INSTANCE_ID: "swarm-{{.Task.Slot}}"
+    hostname: "thermoctl-{{.Task.Slot}}"
+    ports:
+      - "127.0.0.1:8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8000/healthz')"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+    deploy:
+      # Genau zwei: eine Nachbildung regelt, die andere steht bereit. Mehr bringen
+      # nichts -- je Regelzyklus entscheidet ohnehin nur eine einzige Instanz
+      # (docs/self-hosting.md, Abschnitt 6d). `max_replicas_per_node: 1` verteilt beide
+      # auf unterschiedliche Knoten -- ohne diese Angabe könnte der Scheduler beide auf
+      # denselben Knoten legen, und ein einzelner Rechnerausfall träfe dann beide zugleich.
+      replicas: 2
+      placement:
+        max_replicas_per_node: 1
+      restart_policy:
+        condition: any

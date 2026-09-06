@@ -378,6 +378,13 @@ Instanzen — inklusive je eines eigenen Webhook-Versands, falls einer eingerich
 ist. Selten genug (die Brücke fällt nicht laufend aus), dass dies bewusst offen
 gelassen wurde, statt die Nachrichtenverarbeitung zusätzlich zu verzweigen.
 
+**Unter einem Orchestrierer betrieben:** [docs/docker-swarm.md](docker-swarm.md) für
+Docker Swarm, [docs/kubernetes.md](kubernetes.md) für Kubernetes — beide bauen auf
+diesem Abschnitt auf und zeigen zusätzlich, wie sich je Nachbildung eine eigene
+MQTT-Client-Kennung ableiten lässt, warum die gleichzeitige Migration zweier
+Nachbildungen dort ein offener Punkt bleibt, und was `/healthz` auf der Bereitschaft
+antwortet.
+
 ## 7. Wenn etwas nicht geht
 
 | Symptom | Ursache und Abhilfe |

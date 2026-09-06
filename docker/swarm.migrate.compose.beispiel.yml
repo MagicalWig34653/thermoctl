@@ -1,0 +1,28 @@
+# Einmaliger Migrations-Job für den Swarm-Verbund. Läuft unter demselben Stack-Namen wie
+# docker/swarm.compose.beispiel.yml, aber als eigener Dienst mit `mode: replicated-job`
+# (Docker Engine 20.10+): Er beendet sich nach dem Exitcode 0 und bleibt danach als
+# "Complete" stehen, statt neu gestartet zu werden. Grund für die eigene Datei: `docker
+# stack deploy` bringt alle Dienste einer Datei gleichzeitig hoch, ohne Rücksicht auf
+# `depends_on` (das wirkt nur bei `docker compose up`, nicht im Swarm-Modus) -- zwei
+# gleichzeitig gestartete Nachbildungen des Hauptdienstes würden sonst beide unbedingt
+# `alembic upgrade head` ausführen. Ausrollreihenfolge in docs/docker-swarm.md.
+#
+#   docker stack deploy -c compose.swarm-migrate.yml thermoctl
+#   docker service ps thermoctl_migrieren      # warten, bis unter CURRENT STATE "Complete" steht
+#   docker stack deploy -c compose.swarm.yml thermoctl
+
+services:
+  migrieren:
+    image: ghcr.io/magicalwig34653/thermoctl:latest
+    # Bewusst ohne den regulären Entrypoint (der mündet unbedingt in `exec thermoctl`,
+    # das soll dieser Dienst nicht) -- ruft alembic direkt auf, als derselbe
+    # unprivilegierte Benutzer, der auch den Dienst selbst betreibt (Dockerfile, uid 10001).
+    entrypoint: ["alembic"]
+    command: ["upgrade", "head"]
+    user: "10001:10001"
+    env_file: .env
+    deploy:
+      mode: replicated-job
+      replicas: 1
+      restart_policy:
+        condition: none

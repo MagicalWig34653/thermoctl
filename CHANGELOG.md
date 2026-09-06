@@ -57,6 +57,9 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
   Anspruch sofort frei, statt die Bereitschaft die volle Frist warten zu lassen.
   Sichtbar auf der Startseite als eigener "Bereitschaft"-Chip. Details zur
   Einrichtung in `docs/self-hosting.md`, Abschnitt 6d.
+- **Anleitungen für den Verbund unter Docker Swarm und Kubernetes**
+  (`docs/docker-swarm.md`, `docs/kubernetes.md`), mit lauffähigen Beispieldateien
+  unter `docker/` bzw. `k8s/`.
 
 ---
 
