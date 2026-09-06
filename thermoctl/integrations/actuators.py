@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from thermoctl.db.models.operations import Setting
 from thermoctl.integrations.meross_mqtt import MerossCommandTransport, toggle_payload
+from thermoctl.services import cluster
 
 
 @dataclass(frozen=True)
@@ -37,9 +38,26 @@ TOGGLE_NAMESPACE = "Appliance.Control.ToggleX"
 
 
 def switching_allowed(session: Session) -> bool:
-    """Reads setting.control_armed. The only place that decides this."""
+    """Reads setting.control_armed -- and, the cluster's third bolt, whether this
+    process currently holds the active claim (`services/cluster.py`). The only
+    place that decides this; every switching adapter below (Zigbee2MQTT and
+    Meross alike) calls this one function, so the leadership check reaches
+    both without either needing its own copy.
+
+    In an Aktiv-Bereitschafts-Verbund, the shadow loop already skips the whole
+    control cycle -- and therefore every call into this module -- on the
+    instance that is not currently leading (`app.py::_shadow_loop`). The check
+    here is deliberately redundant with that: a bug in the loop's own gating
+    must not be the only thing standing between a standby instance and a real
+    relay. It also protects against the one case the loop-level gate cannot see
+    on its own: an instance that *was* leading when this cycle started but
+    lost the claim to a stale timeout partway through a long cycle -- the next
+    actuator this cycle reaches must still refuse to switch.
+    """
     setting = session.get(Setting, 1)
-    return setting is not None and setting.control_armed
+    if setting is None or not setting.control_armed:
+        return False
+    return cluster.is_leader(session, holder=cluster.instance_id())
 
 
 class Zigbee2MqttValve:

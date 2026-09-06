@@ -77,6 +77,7 @@
       "und Mindestschaltdauern, beide konnten das Verhalten von Relais und Ventilen verändern,",
       "und beide wurden erst gefunden, nachdem die Anlage bereits an einer echten Heizung lief.",
       "verhinderte, dass „Zirkulationspumpe\" oder „Ölbrenner\" als Treffer für „pumpe\" bzw.",
+      "dafür, dass eine Bereitschaft keinen Aktor erreicht, egal über welchen Pfad",
       "wirklich angebunden statt halb, die Sonnenabsenkung lässt sich wieder einschalten, und",
       "über beide. Ein Thermostatventil ohne `system_mode` geht über seinen Mindestsollwert aus",
       "„Die Zone regelt die Heizung bis auf Weiteres gegen den Frostschutz-Sollwert von",
@@ -104,6 +105,8 @@
       "Aktor etwas hinaus — das ist der Zustand einer neuen Anlage. `/control/arm` öffnet ihn,",
       "Thermostatventile, Ein/Aus an gewöhnliche Zigbee2MQTT-Aktoren",
       "allein, für den Aus-Timer zusätzlich `protection_allowed`. Ein Ventilschutzlauf, der",
+      "sicher entscheiden könnten, wer einen Heizkörper schalten darf; die Datenbank, die",
+      "verliert, den nächsten Aktor trotzdem nicht mehr anfasst. Erreicht damit sowohl den",
       "| 4 — Regelkreis und Cutover | schaltet scharf an der echten Anlage; Ablösung des Altsystems noch offen |"
     ],
     "docs/api.md": [
@@ -269,6 +272,7 @@
       "Thermostatventil ohne eigene Regelung bekäme die PI-Entscheidung als Sollwertsprung",
       "Ventil **neben** einem gewöhnlichen Schaltaktor schließt die Zone nicht mehr aus, PI",
       "die ruhigere Wahl, wenn der Dienst wirklich heizt.",
+      "einem Aktor (Zigbee2MQTT wie Meross) — geprüft bei jedem einzelnen Schaltversuch,",
       "einer Zone auffällig, schalten Sie PI dort wieder aus; der Reglerzustand wird dabei",
       "einziges selbstregelndes Ventil die ganze Zone von PI aus, unabhängig davon, was sonst",
       "gemischt mit anderen Aktoren.",
@@ -561,6 +565,7 @@
       "<span>Ausgabe freigegeben — alle zugeordneten Aktoren werden angesteuert.</span>",
       "<span>Der beim Start gebaute MQTT-Riegel ist noch zu. Bis zum Neustart gehen weder Sollwerte noch Ein/Aus-Befehle an Aktoren.</span>",
       "<span>Regelentscheidungen werden protokolliert. Weder Sollwerte noch Ein/Aus-Befehle gehen an Aktoren.</span>",
+      "Bereitschaft: Sie regelt nicht und schaltet nichts, unabhängig vom Zustand",
       "Das Band je Zone zeigt den heutigen Zeitplan über 24 Stunden — je wärmer der Ton,",
       "Schalter, Steckdosen und Ventile ohne eigene Regelung bekommen Ein/Aus.",
       "Seite ein Formularstapel, in dem die eigentliche Auskunft — wie warm ist es — unterging.",

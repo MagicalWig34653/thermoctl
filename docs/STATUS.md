@@ -50,6 +50,83 @@ Intervall, ein geänderter Wert aktualisiert sich ohne Zutun, ein aufgeklappter 
 samt begonnener Eingabe übersteht eine Aktualisierung, der Ladebalken bleibt dabei
 stumm — auch unter einer künstlich verzögerten Antwort).
 
+Letzte Aktualisierung: 2026-09-06.
+
+## Aktiv-Bereitschafts-Verbund: zwei Instanzen, eine Datenbank, ein Broker
+
+Zwei `thermoctl`-Instanzen können jetzt dieselbe Datenbank und denselben MQTT-Broker
+teilen — eine regelt, die andere steht bereit und übernimmt, wenn die erste ausfällt.
+Neu: `thermoctl/services/cluster.py` (die einzige Stelle, die die Tabelle
+`cluster_claim` liest oder schreibt), Migration `bb4a0ff63b2d` (legt die Tabelle an,
+mit einer unbeanspruchten Seed-Zeile, und `setting.cluster_takeover_cycles`, Vorgabe 5).
+
+**Der Anspruch wechselt durch eine einzige atomare `UPDATE`-Anweisung, nicht durch
+Lesen-Prüfen-Schreiben.** Zwei Instanzen, die gleichzeitig um einen abgelaufenen
+Anspruch konkurrieren, stellen beide dieselbe Anweisung — die Zeilensperre der
+Datenbank serialisiert sie, und nur wer als Erster drankommt, sieht seine
+`WHERE`-Bedingung noch zutreffen; der Verlierer betrifft null Zeilen und misslingt
+dadurch, nicht durch eine zusätzliche Prüfung. `tests/test_cluster.py::
+test_two_processes_racing_for_a_stale_claim_only_one_wins` lässt zwei Threads mit
+zwei echten, unabhängigen Datenbankverbindungen über eine `threading.Barrier`
+tatsächlich gleichzeitig antreten — nicht zwei Aufrufe nacheinander, die auch eine
+falsche Umsetzung bestehen würde. Läuft gegen SQLite **und** MariaDB grün; unter
+MariaDB ist es der Ernstfall (`REPEATABLE READ` verhält sich unter echter
+Nebenläufigkeit anders als SQLites Dateisperre).
+
+**Die Uhr, die zählt, ist die der Datenbank, nie die eines Hosts.** Jeder Vergleich
+und jede Erneuerung von `expires_at` geht über `sqlalchemy.func.now()` — ausgewertet
+von der Datenbank selbst. Zwei Maschinen stimmen ihre Uhren nie so genau ab, dass sie
+sicher entscheiden könnten, wer einen Heizkörper schalten darf; die Datenbank, die
+beide ohnehin teilen, ist die eine Uhr, auf die sich beide ohne Weiteres einigen.
+
+**Ein fehlender Anspruch-Datensatz heisst „Verbund nie eingerichtet"** und lässt jeden
+Aufrufer als Alleinbetreiber gelten (`cluster.is_leader`/`try_become_leader`, beide
+mit derselben Begründung dokumentiert). Genau dieser Fall gilt für die gesamte
+Testsuite: sie baut ihr Schema über `Base.metadata.create_all()`, nicht über die
+Migration, die die Seed-Zeile anlegt — ohne diesen bewussten Fehlschlag-offen-Fall
+hätte jeder bestehende Schalttest im Projekt einen Anspruch-Datensatz gebraucht, von
+dem er nie etwas wusste.
+
+**Drei Riegel jetzt, nicht mehr zwei**, alle an derselben Stelle
+(`integrations/actuators.py::switching_allowed`): `setting.control_armed`, der beim
+Prozessstart eingefrorene Bolzen (`MqttClient`/`meross_switching_allowed`), und jetzt
+`cluster.is_leader` — geprüft bei jedem einzelnen Schaltversuch, nicht nur einmal am
+Zyklusanfang, damit eine Instanz, die ihren Anspruch mitten in einem langen Zyklus
+verliert, den nächsten Aktor trotzdem nicht mehr anfasst. Erreicht damit sowohl den
+Zigbee2MQTT- als auch den Meross-Pfad, weil beide durch dieselbe Funktion gehen.
+
+**Der Regelzyklus selbst läuft auf der Bereitschaft gar nicht erst**
+(`app.py::_shadow_loop`): jeder Durchlauf versucht zuerst atomar, den Anspruch zu
+werden oder zu erneuern; nur wer gerade führt, macht mit dem restlichen Durchlauf
+weiter (Sensorzustand, Schattenentscheidungen, Veröffentlichung, Meross-Abgleich,
+Aufbewahrung). Eine Bereitschaft schreibt dadurch weder Schattenentscheidungen noch
+Zustände an Home Assistant — zwei Instanzen, die dieselben zurückbehaltenen
+Zustands-Topics beschreiben, wäre genau die Unschönheit, die dieses Verhalten
+vermeidet (die MQTT-Client-Kennung muss je Instanz ohnehin verschieden sein, siehe
+`docs/self-hosting.md`). Ein eingehender MQTT-Befehl (z. B. ein Moduswechsel aus Home
+Assistant) darf auf beiden Instanzen angewendet werden — eine Konfigurationsschreibung,
+kein Schaltvorgang, und ohnehin deckungsgleich, egal welche Instanz sie ausführt —,
+aber nur die führende bestätigt ihn zurück an Home Assistant.
+
+**Ein geordnetes Herunterfahren gibt den Anspruch sofort frei**
+(`cluster.release`, aufgerufen aus `_lifespan`s `finally`), statt die
+Bereitschaft die vollen fünf Zyklen warten zu lassen — der häufigste Fall ist ein
+Neustart der aktiven Instanz, und die weiss beim Beenden bereits, dass sie geht.
+
+**Sichtbar gemacht:** Die Startseite zeigt einen eigenen "Bereitschaft"-Chip, sobald
+diese Instanz nicht führt — unabhängig vom sonstigen scharf/Trockenlauf-Zustand.
+
+**Bewusst nicht gebaut:** Der Bereitschafts-MQTT-Client bleibt verbunden und nimmt
+weiter Messwerte auf (beide Instanzen müssen ihre Datenbank aktuell halten, damit,
+wer übernimmt, sofort mit frischen Daten arbeitet) — nur die Rückbestätigung eines
+Befehls und jede Veröffentlichung sind an die Führungsrolle gebunden. Eine
+gleichzeitige Bearbeitung derselben eingehenden Bruecken-/Störungsmeldung durch beide
+Instanzen (mit je einem eigenen Webhook-Versand) ist ein bekannter, dokumentierter
+Grenzfall und nicht gelöst — selten genug (die Brücke fällt nicht oft aus), dass er
+bewusst zurückgestellt wurde, statt die Befehlsverarbeitung selbst zu verkomplizieren.
+
+Details, inklusive Einrichtung je Instanz, in `docs/self-hosting.md`, Abschnitt 6d.
+
 ## Zwei Fehler in der Homebridge-Konfiguration behoben
 
 Aus dem echten Betrieb gemeldet: ein Wechsel von Aus auf Automatik kam bei thermoctl nie

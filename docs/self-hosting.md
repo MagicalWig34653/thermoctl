@@ -307,6 +307,77 @@ nicht direkt anspricht. Praktisch heißt das:
   sind — eine eigene, davon unabhängige Relying-Party-Id; beide gleichzeitig gehen
   nicht, siehe der vorige Absatz.
 
+## 6d. Aktiv-Bereitschafts-Verbund
+
+Zwei `thermoctl`-Instanzen können dieselbe Datenbank und denselben MQTT-Broker
+teilen: eine regelt (die *aktive*), die andere steht bereit (die *Bereitschaft*)
+und übernimmt, sobald die aktive ausbleibt. Das ist kein Cluster im Sinne mehrerer
+Datenbanken, die sich untereinander abgleichen — beide Instanzen sprechen dieselbe
+eine Datenbank an, die den Anspruch verwaltet, wer gerade regelt.
+
+**Einrichten:**
+
+1. Beide Instanzen zeigen auf **dieselbe** `THERMOCTL_DATABASE_URL`.
+2. Beide Instanzen zeigen auf **denselben** Broker, aber mit **je eigener**
+   `THERMOCTL_MQTT_CLIENT_ID` — sonst wirft der Broker sich gegenseitig
+   endlos hinaus (Abschnitt 7, "MQTT-Verbindung verloren im Sekundentakt").
+3. `THERMOCTL_INSTANCE_ID` ist optional, aber empfohlen: ein kurzer, für den
+   Betreiber sprechender Name je Instanz (z. B. `nas`, `rpi-ersatz`) — er
+   erscheint im Log bei jeder Übernahme und jedem Verlust der aktiven Rolle. Ohne
+   diese Einstellung erzeugt jede Instanz sich selbst eine zufällige Kennung beim
+   Start; die genügt dem Verbund selbst, macht das Log aber schwerer lesbar.
+4. Beide Instanzen migrieren beim Start automatisch (der Entrypoint ruft
+   `alembic upgrade head` unbedingt auf) — mit einer wichtigen Einschränkung, siehe
+   unten.
+5. Startreihenfolge spielt keine Rolle: Der Anspruch beginnt unbeansprucht, die
+   erste Instanz, die danach fragt, bekommt ihn sofort.
+
+**Wie die Übernahme funktioniert.** Jeder Regelzyklus (Dauer: `Einstellung ›
+shadow_interval_seconds`, Vorgabe 60 Sekunden) versucht zuerst, atomar den
+Anspruch zu werden oder zu erneuern — eine einzige `UPDATE`-Anweisung, gegen die
+Datenbank selbst geprüft und geschrieben, nie gegen die Uhr des jeweiligen
+Rechners (zwei Rechner stimmen ihre Uhren nie genau genug ab). Bleibt die aktive
+Instanz **fünf Zyklen** (`Einstellung › cluster_takeover_cycles`, einstellbar)
+ohne Erneuerung, gilt ihr Anspruch als abgelaufen, und die Bereitschaft übernimmt
+im nächsten eigenen Zyklus. Ein geordneter Neustart der aktiven Instanz gibt den
+Anspruch beim Herunterfahren sofort frei, statt die Bereitschaft die vollen fünf
+Zyklen warten zu lassen.
+
+**Was die Bereitschaft tut und was nicht.** Ansehen und Konfigurieren funktionieren
+auf beiden Instanzen gleich — beide arbeiten ohnehin auf derselben Datenbank.
+Verschlossen bleiben der Bereitschaft der Regelzyklus selbst (keine
+Schattenentscheidungen, keine Veröffentlichung an Home Assistant) und jeder Weg zu
+einem Aktor (Zigbee2MQTT wie Meross) — geprüft bei jedem einzelnen Schaltversuch,
+nicht nur einmal am Zyklusanfang. Die Startseite zeigt einen eigenen
+"Bereitschaft"-Chip, solange diese Instanz nicht führt.
+
+**Nur eine gleich neue oder neuere Version geht in Bereitschaft.** Trägt eine
+Instanz eine ältere Version als das Datenbankschema, verweigert bereits der
+bestehende Schema-Abgleich beim Start den Dienst ganz (`Das Datenbankschema
+steht auf …, der Code erwartet …`, Abschnitt 7) — sie migriert nicht und nimmt
+am Verbund gar nicht erst teil. Praktisch heißt das: **beide Instanzen auf
+demselben Stand halten**, bevor eine dritte Version dazukommt. Ein Update fährt
+man am einfachsten nacheinander — erst die Bereitschaft aktualisieren (sie
+migriert die gemeinsame Datenbank vor), dann die bis dahin noch aktive Instanz.
+
+**Was aus der Bereitschaft nicht ausgeliefert wird.** Der MQTT-Client bleibt auf
+beiden Instanzen verbunden und nimmt weiter Messwerte auf — beide müssen ihre
+eigene Kopie der Zonenzustände aktuell halten, damit, wer übernimmt, sofort mit
+frischen Daten arbeitet, nicht erst nach einer vollen Aufwärmphase. Ein
+eingehender Befehl aus Home Assistant (ein Moduswechsel, ein Sollwert) wird
+deshalb auf beiden Instanzen angewendet — das ist eine Konfigurationsschreibung,
+kein Schaltvorgang, und ergibt auf beiden Instanzen dieselbe Datenbankzeile.
+Zurückbestätigt an Home Assistant wird er aber nur von der Instanz, die gerade
+führt: Zwei Instanzen, die denselben zurückbehaltenen Zustands-Topic beschreiben,
+wäre die Art Unschönheit, die dieser Verbund vermeiden soll, und nur eine von
+beiden hat gerade tatsächlich entschieden, was gilt.
+
+Bekannter, unaufgelöster Grenzfall: Meldet die Zigbee2MQTT-Brücke einen
+Zustandswechsel (erreichbar/nicht erreichbar), verarbeiten ihn derzeit **beide**
+Instanzen — inklusive je eines eigenen Webhook-Versands, falls einer eingerichtet
+ist. Selten genug (die Brücke fällt nicht laufend aus), dass dies bewusst offen
+gelassen wurde, statt die Nachrichtenverarbeitung zusätzlich zu verzweigen.
+
 ## 7. Wenn etwas nicht geht
 
 | Symptom | Ursache und Abhilfe |

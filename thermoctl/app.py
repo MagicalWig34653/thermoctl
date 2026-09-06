@@ -73,6 +73,7 @@ from thermoctl.integrations.mqtt.zigbee2mqtt import (
 )
 from thermoctl.integrations.notification import deliver
 from thermoctl.logging import configure_logging, request_id_var
+from thermoctl.services import cluster
 from thermoctl.services.ingest import advance_zone_state, process_message
 from thermoctl.services.meross_discovery import fetch_devices as fetch_meross_devices
 from thermoctl.services.meross_discovery import save_devices as save_meross_devices
@@ -275,17 +276,48 @@ async def _shadow_loop(app: FastAPI) -> None:
     again. Cancellation (`asyncio.CancelledError`, on shutdown) is explicitly exempt
     from this: it does not inherit from `Exception` and passes through uncaught,
     otherwise the loop could never be stopped.
+
+    **In an Aktiv-Bereitschafts-Verbund, this is also where standby differs from
+    active.** Every pass, on both instances alike, first attempts to become (or
+    remain) the leader (`services/cluster.py::try_become_leader`) -- an atomic
+    database update, never a local decision. Only the instance that succeeds
+    runs the rest of this pass at all: no sensor-state advance, no shadow
+    decisions, no publication, no Meross reconciliation on a standby. That is
+    deliberately more than "don't switch anything" -- a standby's shadow
+    decisions would be exactly the kind of state subproject 4 compares the old
+    system against, and a standby computing its own would silently double that
+    log with decisions nobody armed the plant to act on.
     """
     started = utcnow()
     next_retention = started + timedelta(days=1)
     # Right on the first pass: whoever has just entered credentials should see their
     # sockets without waiting an hour.
     next_meross = started
+    holder = cluster.instance_id()
+    # Only used to log the transition itself, not every pass -- a standby waiting
+    # out five idle cycles before a takeover must not fill the log with "still in
+    # Bereitschaft" once per cycle.
+    was_leader = False
     while True:
         try:
             interval = await _shadow_interval_s(app.state.session_factory)
             await asyncio.sleep(interval)
             now = utcnow()
+            with session_scope(app.state.session_factory) as session:
+                timeout_seconds = cluster.takeover_timeout_seconds(session.get(Setting, 1))
+                became_leader = cluster.try_become_leader(
+                    session, holder=holder, timeout_seconds=timeout_seconds
+                )
+            if became_leader != was_leader:
+                log.info(
+                    "Verbund: aktive Rolle übernommen"
+                    if became_leader
+                    else "Verbund: aktive Rolle verloren -- jetzt in Bereitschaft",
+                    extra={"instanz": holder},
+                )
+                was_leader = became_leader
+            if not became_leader:
+                continue
             notices: list[FaultNotice]
             command_notices: list[FaultNotice] = []
             setting_row: Setting | None = None
@@ -479,7 +511,26 @@ async def _process_mqtt_message(
             # chosen would jump back for a minute -- to the user it looked as if the
             # operating mode could not be changed.
             publisher = getattr(app.state, "publisher", None)
-            if zone is not None and publisher is not None:
+            # In an Aktiv-Bereitschafts-Verbund both instances receive the same
+            # inbound command (each subscribes under its own MQTT client id --
+            # docs/self-hosting.md) and both are free to apply it: a command like
+            # "set operating mode X" is a configuration write, not a switch, and
+            # idempotent besides -- applying it on both sides leaves the same
+            # database row either way, at the cost of one duplicate audit entry.
+            # Confirming it back to Home Assistant is different: it is a publish,
+            # and two instances describing the same retained state topic is
+            # exactly the situation this whole feature exists to avoid (see
+            # `services/cluster.py`, and `docs/self-hosting.md`'s section on the
+            # cluster for the reasoning written out). Only the instance currently
+            # leading answers here; a standby leaves the confirmation to whichever
+            # instance is leading once it next publishes -- the leader's own next
+            # cycle if it is still up, or this same instance's first cycle after
+            # a takeover.
+            if (
+                zone is not None
+                and publisher is not None
+                and cluster.is_leader(session, holder=cluster.instance_id())
+            ):
                 await _send_zone_state(
                     session, publisher, zone, settings.mqtt_prefix, received_at
                 )
@@ -620,6 +671,15 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         for task in background_tasks:
             with contextlib.suppress(asyncio.CancelledError):
                 await task
+        if _shadow_loop_needed(settings):
+            # A graceful shutdown releases the claim immediately instead of
+            # leaving a standby to sit out the full takeover timeout for no
+            # reason -- the departing instance already knows it is leaving,
+            # which a crash never gets the chance to say. Only meaningful for
+            # an instance whose shadow loop actually ran in the first place;
+            # nothing here for one that never competed for the claim at all.
+            with session_scope(app.state.session_factory) as session:
+                cluster.release(session, holder=cluster.instance_id())
 
 
 # The header Home Assistant Core's own Ingress proxy sets on every request it
