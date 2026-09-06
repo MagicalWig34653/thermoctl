@@ -79,6 +79,17 @@ class ZoneState(Base):
     window_open_by_temperature: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default=false(), nullable=False
     )
+    # Cross-review addition: once `domain.window_temperature_drop.
+    # temperature_detection_cap_exceeded` fires, detection stands down until this
+    # deadline, regardless of any fresh drop -- its own clock, deliberately not
+    # `window_open_since`: silence must keep blocking detection even though the
+    # zone no longer counts as open during it, which `window_open_since` alone
+    # (cleared the moment `window_open` becomes `False`) could not express.
+    # `NULL` means "not currently silenced". Never read or written for a
+    # contact-governed zone.
+    window_temp_drop_silence_until: Mapped[datetime | None] = mapped_column(
+        DateTime().with_variant(mysql.DATETIME(fsp=6), "mysql", "mariadb"), nullable=True
+    )
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     last_regular_heat_at: Mapped[datetime | None] = mapped_column(
         DateTime().with_variant(mysql.DATETIME(fsp=6), "mysql", "mariadb"), nullable=True

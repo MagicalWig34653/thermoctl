@@ -120,16 +120,35 @@ WINDOW_TEMP_DROP_LIMITS: dict[str, tuple[Decimal, Decimal]] = {
     # "Stoßlüften" reasoning -- see
     # `domain.window_temperature_drop.WINDOW_TEMP_DROP_HOLD_MINUTES`.
     "window_temp_drop_hold_minutes": (Decimal(5), Decimal(240)),
+    # Cross-review addition, against the feedback loop the hold alone does not
+    # bound -- see `domain.window_temperature_drop.
+    # WINDOW_TEMP_DROP_MAX_SUSPECTED_MINUTES`. 30 minutes is one hold; 720 (12
+    # hours) is long enough that anything past it is no longer a bound at all.
+    "window_temp_drop_max_suspected_minutes": (Decimal(30), Decimal(720)),
+    # See `domain.window_temperature_drop.WINDOW_TEMP_DROP_SILENCE_MINUTES`. 15
+    # minutes is close to the shortest stretch of undisturbed control that could
+    # plausibly show anything about the room's real behaviour; 480 (8 hours)
+    # would silence detection for most of a working day over one cap breach.
+    "window_temp_drop_silence_minutes": (Decimal(15), Decimal(480)),
 }
 
 WINDOW_TEMP_DROP_LABELS: dict[str, str] = {
     "window_temp_drop_window_minutes": "Fenster-Erkennung, Zeitfenster (Minuten)",
     "window_temp_drop_threshold_k": "Fenster-Erkennung, Sturzschwelle (K)",
     "window_temp_drop_hold_minutes": "Fenster-Erkennung, Vermutung hält (Minuten)",
+    "window_temp_drop_max_suspected_minutes": (
+        "Fenster-Erkennung, Vermutung insgesamt höchstens (Minuten)"
+    ),
+    "window_temp_drop_silence_minutes": "Fenster-Erkennung, Zwangspause (Minuten)",
 }
 
 WINDOW_TEMP_DROP_GANZZAHLIG = frozenset(
-    {"window_temp_drop_window_minutes", "window_temp_drop_hold_minutes"}
+    {
+        "window_temp_drop_window_minutes",
+        "window_temp_drop_hold_minutes",
+        "window_temp_drop_max_suspected_minutes",
+        "window_temp_drop_silence_minutes",
+    }
 )
 
 LABELS: dict[str, str] = {

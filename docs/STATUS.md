@@ -14,17 +14,29 @@ unbekannt ist (stale/fehlend). Nur eine Zone ganz ohne Kontakt und mit eingescha
 Schalter wird über die Temperatur beurteilt (`_window_open_from_temperature`).
 
 **Kriterium** (`domain/window_temperature_drop.py::window_open_suspected`, im Aufbau
-gespiegelt an `domain.fault.stuck_reading`): der größte Temperaturwert im Verlauf der
-letzten `setting.window_temp_drop_window_minutes` (Vorgabe 15) minus dem aktuellen Wert
-erreicht `setting.window_temp_drop_threshold_k` (Vorgabe 1,5 K). Der Schwellwert ist ein
-begründeter, aber ausdrücklich **nicht anlagenspezifischer** Schätzwert — ohne Messdaten
-der echten Anlage lässt sich kein sicherer Wert herleiten; deshalb bleibt die Erkennung
-je Zone standardmäßig aus, und der Betreiber schaltet sie bewusst ein. Bewusst in Kauf
-genommene Fehlauslöser: eine geöffnete Tür, ein Luftzug, ein ungünstig platzierter
-Sensor — keiner davon ist mit reiner Temperaturmessung von einem echten Fensteröffnen zu
-unterscheiden. Ein langsames Auskühlen nach Heizende und das Ende einer Heizphase
-selbst bleiben unterhalb der Schwelle und lösen nicht aus (mit Tests belegt, nicht nur
-angenommen).
+gespiegelt an `domain.fault.stuck_reading`): der Median aller Temperaturwerte im Verlauf
+der letzten `setting.window_temp_drop_window_minutes` (Vorgabe 15) **vor** dem aktuellen
+Wert minus dem aktuellen Wert erreicht `setting.window_temp_drop_threshold_k` (Vorgabe
+1,5 K). Der Schwellwert ist ein begründeter, aber ausdrücklich **nicht
+anlagenspezifischer** Schätzwert — ohne Messdaten der echten Anlage lässt sich kein
+sicherer Wert herleiten; deshalb bleibt die Erkennung je Zone standardmäßig aus, und der
+Betreiber schaltet sie bewusst ein. Bewusst in Kauf genommene Fehlauslöser: eine
+geöffnete Tür, ein Luftzug, ein ungünstig platzierter Sensor — keiner davon ist mit
+reiner Temperaturmessung von einem echten Fensteröffnen zu unterscheiden. Ein langsames
+Auskühlen nach Heizende und das Ende einer Heizphase selbst bleiben unterhalb der
+Schwelle und lösen nicht aus (mit Tests belegt, nicht nur angenommen).
+
+**Kreuzreview-Nacharbeit (2026-09-06), Befund „Ausreisser nach oben":** ursprünglich
+verglich das Kriterium gegen den größten Wert im Fenster — ein einzelner verrauschter
+Messwert (Funkstörung, Zigbee-Reporting-Aussetzer) konnte diesen Wert aufblähen und
+einen Sturz vortäuschen, obwohl sich im Raum kaum etwas geändert hatte. Der Median über
+alle Werte vor dem aktuellen ist gegen einen einzelnen solchen Ausreisser robust (er wird
+bei drei oder mehr Vorwerten schlicht überstimmt), bleibt aber wie das Maximum unabhängig
+vom ältesten Wert des Fensters, sodass ein erst mitten im Fenster beginnender Sturz
+weiterhin erkannt wird. Bei nur einem Vorwert (die kleinste zulässige Fenstergröße) ist
+der Median genau dieser eine Wert — deckungsgleich mit dem alten, maximumbasierten
+Verhalten in diesem Minimalfall. Mit eigenem Test für den Ausreisser-Fall und für eine
+Meldelücke mitten in der Messreihe belegt.
 
 **Rücknahme.** Ein reines Sturzkriterium kennt kein Ende — ein bereits abgekühlter,
 stabil kalter Raum zeigt keinen neuen Sturz mehr, obwohl das Fenster noch offen sein
@@ -36,6 +48,28 @@ gebundene Haltedauer (`temperature_detection_still_holding`,
 Vermutung für diese Dauer weiter offen, auch ohne neuen Sturz, und fällt danach von
 selbst wieder ab, sofern in der Zwischenzeit kein frischer Sturz sie erneuert. Dieselbe
 Uhr wie beim echten Kontakt (`zone_state.window_open_since`) — kein zweiter Zeitstempel.
+
+**Kreuzreview-Nacharbeit (2026-09-06), Befund „Rückkopplung nach Ablauf des Halts":** der
+Halt allein schließt die Lücke nicht vollständig — nach seinem Ablauf wird ein frischer
+Sturz erneut geprüft, und die Heizung stand die ganze Zeit aus, wegen der eigenen
+Vermutung. Die Abschätzung „ein paar Zehntel Kelvin je 15 Minuten" im Quelltext gilt für
+normalen Betrieb mit periodischer Heizung, nicht für einen Raum, dem wiederholt die
+Wärme entzogen wurde — bei kaltem Wetter und mäßiger Dämmung kann er dann steiler
+auskühlen, ein frischer Sturz löst sofort wieder aus, und die Zone bleibt dauerhaft aus,
+obwohl das Fenster längst zu ist (nichts kann dabei einfrieren, die Frostschutz-Ausnahme
+greift weiterhin — aber der Raum bleibt kalt, ohne dass jemand sähe warum). Behoben durch
+eine zweite, unabhängige Grenze über dem Halt: `temperature_detection_cap_exceeded`
+misst die Dauer einer ununterbrochenen Vermutungssträhne an derselben Uhr
+(`zone_state.window_open_since`), die auch der Halt liest — sie läuft über einen
+erneuten Sturz genau am Halt-Ende unverändert weiter. Erreicht die Strähne
+`setting.window_temp_drop_max_suspected_minutes` (Vorgabe 90, drei Halte), erzwingt die
+Erkennung eine **Zwangspause**: für `setting.window_temp_drop_silence_minutes` (Vorgabe
+60) bleibt die Zone geschlossen, unabhängig von jedem weiteren Sturz
+(`temperature_detection_still_silenced`, eigene Frist `zone_state.
+window_temp_drop_silence_until`, nicht `window_open_since`, da die Pause auch dann
+weiterlaufen muss, wenn die Zone selbst nicht mehr als offen gilt). Danach darf die
+Erkennung wieder auslösen. Mit eigenen Tests für Obergrenze, Zwangspause während
+laufender Sturzverdachtsfälle und Ende der Zwangspause belegt.
 
 **Wirkt wie ein echter Kontakt.** `zone_state.window_open`/`window_open_since` werden für
 beide Quellen identisch gesetzt; `domain/control_loop.py` (Fensterabschaltung,
@@ -62,7 +96,7 @@ speist — nicht erreichen kann. In Home Assistant eine eigene, laufend gesendet
 Diagnose-Entität je Zone (`state/window_open_by_temperature`), kein eigenes
 Meldungssystem mit Zustellprotokoll wie beim Fenster-Alarm.
 
-Migration `e741133296d2`, Kopf danach unverändert einzügig.
+Migration `e741133296d2`, Kreuzreview-Nachträge in `1b7bad26c13a`, Kopf danach unverändert einzügig.
 
 ## Fenster: Frostschutz gewinnt, EIN/AUS-Aktoren schalten nicht ab
 

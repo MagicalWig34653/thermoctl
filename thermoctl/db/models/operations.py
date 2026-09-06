@@ -186,7 +186,7 @@ class Setting(Base):
     # Anlagenweit, like the window-alarm thresholds above -- there is exactly one
     # set of thresholds, but per-zone whether they are used at all
     # (`Zone.window_temp_drop_detection_enabled`, default off). See
-    # `domain.window_temperature_drop` for the full reasoning behind these three
+    # `domain.window_temperature_drop` for the full reasoning behind these five
     # values and their explicitly documented uncertainty; bounds in
     # `domain.control.WINDOW_TEMP_DROP_LIMITS`.
     window_temp_drop_window_minutes: Mapped[int] = mapped_column(
@@ -197,6 +197,17 @@ class Setting(Base):
     )
     window_temp_drop_hold_minutes: Mapped[int] = mapped_column(
         Integer, default=30, server_default=text("30"), nullable=False
+    )
+    # Cross-review addition: a hard cap on one uninterrupted streak of
+    # suspicion, closing the feedback loop the hold alone does not bound --
+    # `domain.window_temperature_drop.WINDOW_TEMP_DROP_MAX_SUSPECTED_MINUTES`.
+    window_temp_drop_max_suspected_minutes: Mapped[int] = mapped_column(
+        Integer, default=90, server_default=text("90"), nullable=False
+    )
+    # How long detection stands down once the cap above fires --
+    # `domain.window_temperature_drop.WINDOW_TEMP_DROP_SILENCE_MINUTES`.
+    window_temp_drop_silence_minutes: Mapped[int] = mapped_column(
+        Integer, default=60, server_default=text("60"), nullable=False
     )
     # The webhook's delivery state -- what the interface's second part shows.
     # `notify_last_attempt_at` and `notify_last_ok` are `NULL` together until the

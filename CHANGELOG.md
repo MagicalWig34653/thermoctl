@@ -19,17 +19,18 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
   (`domain/window_temperature_drop.py`). Je Zone einschaltbar
   (`Zone.window_temp_drop_detection_enabled`, Vorgabe **aus**); ein zugeordneter
   Fensterkontakt hat immer Vorrang und wird nicht durch die Temperatur ersetzt,
-  auch nicht während er gerade unbekannt ist. Kriterium: der größte
-  Temperaturwert im Verlauf der letzten `window_temp_drop_window_minutes`
-  (Vorgabe 15) minus dem aktuellen Wert erreicht `window_temp_drop_threshold_k`
-  (Vorgabe 1,5 K, ein begründeter, aber ausdrücklich nicht anlagenspezifischer
-  Schätzwert) — spiegelbildlich zu `domain.fault.stuck_reading`. Ein reines
-  Sturzkriterium kennt kein Ende: einmal ausgelöst, gilt die Vermutung
-  gebunden für `window_temp_drop_hold_minutes` (Vorgabe 30) und fällt danach
-  von selbst wieder ab, sofern kein neuer Sturz auftritt — eine
-  temperaturbasierte Rücknahme über „die Temperatur steigt wieder" wäre
-  zirkulär, weil die Erkennung selbst das Heizen abschaltet. Wirkt **wie ein
-  echter Fensterkontakt** auf `domain/control_loop.py` (unverändert, da beide
+  auch nicht während er gerade unbekannt ist. Kriterium: der Median aller
+  Temperaturwerte im Verlauf der letzten `window_temp_drop_window_minutes`
+  (Vorgabe 15) **vor** dem aktuellen Wert minus dem aktuellen Wert erreicht
+  `window_temp_drop_threshold_k` (Vorgabe 1,5 K, ein begründeter, aber
+  ausdrücklich nicht anlagenspezifischer Schätzwert) — spiegelbildlich zu
+  `domain.fault.stuck_reading`. Ein reines Sturzkriterium kennt kein Ende:
+  einmal ausgelöst, gilt die Vermutung gebunden für
+  `window_temp_drop_hold_minutes` (Vorgabe 30) und fällt danach von selbst
+  wieder ab, sofern kein neuer Sturz auftritt — eine temperaturbasierte
+  Rücknahme über „die Temperatur steigt wieder" wäre zirkulär, weil die
+  Erkennung selbst das Heizen abschaltet. Wirkt **wie ein echter
+  Fensterkontakt** auf `domain/control_loop.py` (unverändert, da beide
   Quellen `zone_state.window_open` gleich setzen) und auf den Kälte-Alarm
   (`domain/window_alarm.py`, ebenfalls unverändert und mit eigenem Test
   bestätigt statt nur angenommen). Bleibt im Protokoll und in der Oberfläche
@@ -41,6 +42,24 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
   Diagnose-Entität je Zone). **Bewusst nicht in REST, MCP oder Homebridge** —
   ausdrückliche Vorgabe des Projektinhabers für alles Neue rund ums Fenster,
   dieselbe Grenze wie beim Fenster-Alarm. Migration `e741133296d2`.
+
+  **Kreuzreview-Nacharbeit (2026-09-06):** zwei reale Schwächen behoben, nicht
+  nur dokumentiert (Grundsatz 7). Erstens, Ausreisser nach oben: das Kriterium
+  verglich ursprünglich gegen den größten Wert im Fenster, und ein einzelner
+  verrauschter Messwert (Funkstörung, Zigbee-Reporting-Aussetzer) konnte diesen
+  aufblähen und einen Sturz vortäuschen — jetzt der Median aller Werte vor dem
+  aktuellen, robust gegen einen solchen Ausreisser, bei nur einem Vorwert
+  deckungsgleich mit dem alten Verhalten. Zweitens, Rückkopplung nach Ablauf des
+  Halts: die Vermutung konnte sich durch ihre eigene Wirkung immer wieder neu
+  auslösen, weil ein Raum, dem die Erkennung selbst wiederholt die Wärme
+  entzogen hat, plausibel steiler auskühlt als die für normalen Betrieb
+  gedachte Abschätzung im Docstring annimmt — die Zone hätte dauerhaft aus
+  bleiben können, ohne dass jemand sähe warum (nichts konnte dabei einfrieren,
+  die Frostschutz-Ausnahme griff weiterhin). Behoben mit einer zweiten,
+  unabhängigen Obergrenze: `window_temp_drop_max_suspected_minutes` (Vorgabe
+  90, drei Halte) für eine ununterbrochene Vermutungssträhne, danach eine
+  Zwangspause von `window_temp_drop_silence_minutes` (Vorgabe 60), in der
+  jeder weitere Sturz ignoriert wird. Migration `1b7bad26c13a`.
 
 - **Außentemperatur und Fenster-Alarm.** Erstmals ein Begriff von Außentemperatur:
   eine anlagenweite Quelle (`setting.outdoor_temperature_source_device_id`),

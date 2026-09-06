@@ -709,6 +709,36 @@ def test_the_switch_on_without_a_temperature_source_never_opens_the_window(
     assert state.window_open_by_temperature is False
 
 
+def test_a_reporting_gap_mid_window_still_yields_a_correct_result(session: Session) -> None:
+    """Distinct from the short-history case above: there is plenty of history
+    here (readings well before the gap, and `history_covers_duration` is true),
+    just none *during* a stretch of the window -- a real Zigbee reporting
+    outage, not a sensor only just assigned. Only a handful of readings end up
+    inside the window either side of the gap; the query must work with exactly
+    those, without needing anything from inside the gap itself, and still reach
+    the correct verdict."""
+    zone, _settings, temperature = _temp_drop_zone(session, "meldeluecke-zone")
+    device_id = zone.temperature_source_device_id
+    assert device_id is not None
+    start = EMPFANGEN_AM - timedelta(minutes=_DROP_WINDOW_MINUTES)
+    _add_reading(session, device_id, temperature.id, Decimal("22.0"), start)
+    _add_reading(
+        session, device_id, temperature.id, Decimal("22.05"), start + timedelta(minutes=1)
+    )
+    # A reporting gap follows -- nothing stored for several minutes -- before a
+    # single reading right at "now" shows the drop.
+    _add_reading(
+        session, device_id, temperature.id, Decimal("22.0") - _DROP_THRESHOLD_K, EMPFANGEN_AM
+    )
+
+    advance_zone_state(session, EMPFANGEN_AM)
+
+    state = session.get(ZoneState, zone.id)
+    assert state is not None
+    assert state.window_open is True
+    assert state.window_open_by_temperature is True
+
+
 def test_a_triggered_suspicion_holds_without_a_fresh_drop_and_then_lapses(
     session: Session,
 ) -> None:
@@ -751,6 +781,132 @@ def test_a_triggered_suspicion_holds_without_a_fresh_drop_and_then_lapses(
     assert state.window_open is False
     assert state.window_open_by_temperature is False
     assert state.window_open_since is None
+
+
+def test_the_cap_forces_a_silence_once_a_streak_runs_too_long(session: Session) -> None:
+    """Cross-review finding: the hold alone lets the detection re-trigger off its
+    own withheld heat indefinitely, since a room the detection itself has kept
+    unheated can keep cooling steeply enough to cross the threshold again right
+    where each hold lapses. The cap (`setting.window_temp_drop_max_suspected_
+    minutes`) has to force a silence once one uninterrupted streak has run for
+    too long, even though a fresh drop is, on its own merits, still present."""
+    zone, settings, temperature = _temp_drop_zone(session, "obergrenze-zone")
+    cap_minutes = 25
+    silence_minutes = 15
+    settings.window_temp_drop_max_suspected_minutes = cap_minutes
+    settings.window_temp_drop_silence_minutes = silence_minutes
+    device_id = zone.temperature_source_device_id
+    assert device_id is not None
+    start = EMPFANGEN_AM - timedelta(minutes=_DROP_WINDOW_MINUTES)
+    _add_reading(session, device_id, temperature.id, Decimal("22.0"), start)
+    _add_reading(
+        session, device_id, temperature.id, Decimal("22.0") - _DROP_THRESHOLD_K, EMPFANGEN_AM
+    )
+    advance_zone_state(session, EMPFANGEN_AM)
+    state = session.get(ZoneState, zone.id)
+    assert state is not None and state.window_open is True
+    opened_at = EMPFANGEN_AM
+
+    # A fresh drop keeps appearing right at the cap boundary -- exactly the
+    # feedback loop the cap exists to break -- yet detection must now stand
+    # down instead of trusting it.
+    at_cap = opened_at + timedelta(minutes=cap_minutes)
+    _add_reading(
+        session,
+        device_id,
+        temperature.id,
+        Decimal("22.0"),
+        at_cap - timedelta(minutes=_DROP_WINDOW_MINUTES),
+    )
+    _add_reading(
+        session, device_id, temperature.id, Decimal("22.0") - _DROP_THRESHOLD_K, at_cap
+    )
+    advance_zone_state(session, at_cap)
+    state = session.get(ZoneState, zone.id)
+    assert state is not None
+    assert state.window_open is False
+    assert state.window_open_by_temperature is False
+    assert state.window_open_since is None
+    assert state.window_temp_drop_silence_until == at_cap + timedelta(minutes=silence_minutes)
+
+
+def test_silence_blocks_a_fresh_drop_then_lapses_and_trusts_one_again(
+    session: Session,
+) -> None:
+    zone, settings, temperature = _temp_drop_zone(session, "zwangspause-zone")
+    cap_minutes = 25
+    silence_minutes = 15
+    settings.window_temp_drop_max_suspected_minutes = cap_minutes
+    settings.window_temp_drop_silence_minutes = silence_minutes
+    device_id = zone.temperature_source_device_id
+    assert device_id is not None
+    start = EMPFANGEN_AM - timedelta(minutes=_DROP_WINDOW_MINUTES)
+    _add_reading(session, device_id, temperature.id, Decimal("22.0"), start)
+    _add_reading(
+        session, device_id, temperature.id, Decimal("22.0") - _DROP_THRESHOLD_K, EMPFANGEN_AM
+    )
+    advance_zone_state(session, EMPFANGEN_AM)
+
+    at_cap = EMPFANGEN_AM + timedelta(minutes=cap_minutes)
+    _add_reading(
+        session,
+        device_id,
+        temperature.id,
+        Decimal("22.0"),
+        at_cap - timedelta(minutes=_DROP_WINDOW_MINUTES),
+    )
+    _add_reading(
+        session, device_id, temperature.id, Decimal("22.0") - _DROP_THRESHOLD_K, at_cap
+    )
+    advance_zone_state(session, at_cap)
+    state = session.get(ZoneState, zone.id)
+    assert state is not None
+    silence_until = state.window_temp_drop_silence_until
+    assert silence_until == at_cap + timedelta(minutes=silence_minutes)
+
+    # Still inside the silence: an even steeper fresh drop must not reopen it,
+    # and the deadline itself must not move.
+    mid_silence = at_cap + timedelta(minutes=5)
+    _add_reading(
+        session,
+        device_id,
+        temperature.id,
+        Decimal("22.0"),
+        mid_silence - timedelta(minutes=_DROP_WINDOW_MINUTES),
+    )
+    _add_reading(
+        session,
+        device_id,
+        temperature.id,
+        Decimal("22.0") - _DROP_THRESHOLD_K - Decimal("2"),
+        mid_silence,
+    )
+    advance_zone_state(session, mid_silence)
+    state = session.get(ZoneState, zone.id)
+    assert state is not None
+    assert state.window_open is False
+    assert state.window_open_by_temperature is False
+    assert state.window_temp_drop_silence_until == silence_until
+
+    # Once the silence has lapsed, a fresh drop is trusted again.
+    after_silence = silence_until + timedelta(minutes=1)
+    _add_reading(
+        session,
+        device_id,
+        temperature.id,
+        Decimal("22.0"),
+        after_silence - timedelta(minutes=_DROP_WINDOW_MINUTES),
+    )
+    _add_reading(
+        session, device_id, temperature.id, Decimal("22.0") - _DROP_THRESHOLD_K, after_silence
+    )
+    advance_zone_state(session, after_silence)
+    state = session.get(ZoneState, zone.id)
+    assert state is not None
+    assert state.window_open is True
+    assert state.window_open_by_temperature is True
+    assert state.window_temp_drop_silence_until is None
+    assert state.window_open_since == after_silence
 
 
 def test_a_real_window_contact_governs_exclusively_even_when_it_reads_unknown(
