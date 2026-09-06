@@ -11,14 +11,17 @@ admin bootstrap in ``conftest.py``) gets its own function here.
 
 from __future__ import annotations
 
+from datetime import datetime
 from decimal import Decimal
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from tests.helpers import create_zone, user_with_permissions
+from tests.helpers import capability, create_device, create_zone, user_with_permissions
 from thermoctl.auth.passwords import hash_password
+from thermoctl.db.models.device import Device, DeviceCapabilityLink
 from thermoctl.db.models.identity import User
+from thermoctl.db.models.measurement import Measurement
 from thermoctl.db.models.schedule import SchedulePoint
 from thermoctl.db.models.zone import SetpointMode, Zone, ZoneSetpoint
 
@@ -92,3 +95,55 @@ def create_bare_zone(session: Session, name: str) -> Zone:
     "unsuitable zone", since eligibility already fails on the very first check.
     """
     return create_zone(session, name)
+
+
+def create_temperature_device(session: Session, external_id: str) -> Device:
+    """A device that genuinely measures temperature -- for the outdoor-temperature
+    source picker, which `domain.device_assignment.check_capability` rejects a
+    device for only when a *contradicting* capability is on record. A plain
+    device with no capability at all would pass that check for the wrong reason
+    (nothing known, so nothing to contradict) -- this one actually proves the
+    happy path.
+    """
+    device = create_device(session, external_id)
+    session.add(
+        DeviceCapabilityLink(
+            device_id=device.id, capability_id=capability(session, "temperature").id
+        )
+    )
+    session.flush()
+    return device
+
+
+def create_switch_only_device(session: Session, external_id: str) -> Device:
+    """A device on record as a plain switch and nothing else -- the counterexample
+    for the outdoor-temperature source: `check_capability` must reject exactly
+    this one, since a switch capability is known and temperature is not among it.
+    """
+    device = create_device(session, external_id)
+    session.add(
+        DeviceCapabilityLink(
+            device_id=device.id, capability_id=capability(session, "switch").id
+        )
+    )
+    session.flush()
+    return device
+
+
+def seed_outdoor_measurement(
+    session: Session, device: Device, *, value_c: Decimal, measured_at: datetime
+) -> Measurement:
+    """A single temperature reading from `device`, at a chosen instant -- unlike
+    ``tests.helpers.create_measurement``, whose fixed timestamp is only ever fresh
+    or stale by accident of when a test happens to run relative to it.
+    """
+    measurement = Measurement(
+        device_id=device.id,
+        capability_id=capability(session, "temperature").id,
+        value_numeric=value_c,
+        measured_at=measured_at,
+        received_at=measured_at,
+    )
+    session.add(measurement)
+    session.flush()
+    return measurement
