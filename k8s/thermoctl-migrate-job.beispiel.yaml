@@ -1,0 +1,40 @@
+# Einmaliger Migrations-Job. Läuft VOR dem StatefulSet, siehe docs/kubernetes.md,
+# Abschnitt "Migrationen beim Start" -- ein Job garantiert für sich allein keine
+# Reihenfolge gegenüber einem StatefulSet, das ist Sache des Ausrollens
+# (`kubectl apply` in der dort beschriebenen Reihenfolge, mit `kubectl wait` dazwischen).
+#
+# Bewusst ohne den regulären Container-Entrypoint (der mündet unbedingt in
+# `exec thermoctl`, das soll dieser Job nicht) -- ruft alembic direkt auf, als derselbe
+# unprivilegierte Benutzer, der auch den Dienst selbst betreibt (Dockerfile, uid 10001).
+#
+# `metadata.name` trägt bewusst keine Versionsnummer in dieser Beispieldatei. Bei einer
+# Aktualisierung diesen Job zuerst löschen (`kubectl delete job thermoctl-migrieren`,
+# Jobs sind nicht überschreibbar) und mit dem neuen Abbild neu anlegen -- siehe
+# docs/kubernetes.md.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: thermoctl-migrieren
+  labels:
+    app.kubernetes.io/name: thermoctl
+    app.kubernetes.io/component: migration
+spec:
+  backoffLimit: 2
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: thermoctl
+        app.kubernetes.io/component: migration
+    spec:
+      restartPolicy: Never
+      securityContext:
+        runAsUser: 10001
+        runAsGroup: 10001
+      containers:
+        - name: migrieren
+          image: ghcr.io/magicalwig34653/thermoctl:latest
+          command: ["alembic"]
+          args: ["upgrade", "head"]
+          envFrom:
+            - secretRef:
+                name: thermoctl-geheimnisse

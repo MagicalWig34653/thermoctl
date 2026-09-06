@@ -13,6 +13,7 @@
       "**selbstregelnde Thermostatventile** ihren Sollwert veröffentlicht. **Normale",
       "**vor** dem Einschalten mit Grund, statt still auf Hysterese zurückzufallen.",
       "- **Alle vier Aktorwege verdrahtet.** Ein selbstregelndes Ventil bekommt nie zusätzlich",
+      "- **Anleitungen für den Verbund unter Docker Swarm und Kubernetes**",
       "- **Ausschalten neutralisiert den Reglerzustand vollständig.** Ein späteres",
       "- **Die Sonnenabsenkung liess sich nicht einschalten.** Das Formular schickt seit 0.2.0",
       "- **Ein Ventilschutzlauf konnte danach zu regulärem Heizen werden.** Das betrifft nur",
@@ -59,6 +60,7 @@
       "beiden echten Fehler in der Regelkette. Beide lagen an der Grenze zwischen Ventilschutz",
       "bekommt die PI-Entscheidung sehr wohl, als Sollwertsprünge aus „heizen ja/nein\" — dafür",
       "betroffene Aktor diesen Zyklus einen `failed`-Eintrag im Schaltprotokoll, ohne den Zyklus",
+      "dafür, dass eine Bereitschaft keinen Aktor erreicht, egal über welchen Pfad",
       "dem Lauf hielt die Mindestdauer das Ventil offen, danach übernahm die Hysterese den",
       "derzeit kein Ventil. Sie ist standardmäßig aus; Konfiguration gibt es in Oberfläche,",
       "deutlich häufiger und verkürzt die Lebensdauer des Schaltaktors spürbar. Hinter einem",
@@ -77,7 +79,6 @@
       "und Mindestschaltdauern, beide konnten das Verhalten von Relais und Ventilen verändern,",
       "und beide wurden erst gefunden, nachdem die Anlage bereits an einer echten Heizung lief.",
       "verhinderte, dass „Zirkulationspumpe\" oder „Ölbrenner\" als Treffer für „pumpe\" bzw.",
-      "dafür, dass eine Bereitschaft keinen Aktor erreicht, egal über welchen Pfad",
       "wirklich angebunden statt halb, die Sonnenabsenkung lässt sich wieder einschalten, und",
       "über beide. Ein Thermostatventil ohne `system_mode` geht über seinen Mindestsollwert aus",
       "„Die Zone regelt die Heizung bis auf Weiteres gegen den Frostschutz-Sollwert von",
@@ -100,11 +101,15 @@
       "wird protokolliert, **was geschaltet würde und warum**."
     ],
     "docs/STATUS.md": [
+      "## Betrieb unter Docker Swarm und Kubernetes dokumentiert",
       "## Was geschaltet wird — genau",
+      "(Swarm: `mode: replicated-job`; Kubernetes: `Job`, mit `kubectl wait` vor dem",
       "(wo vorhanden) an Zigbee2MQTT-Thermostatventile ohne eigene Regelung",
       "Aktor etwas hinaus — das ist der Zustand einer neuen Anlage. `/control/arm` öffnet ihn,",
       "Thermostatventile, Ein/Aus an gewöhnliche Zigbee2MQTT-Aktoren",
+      "[`docs/docker-swarm.md`](docker-swarm.md) und [`docs/kubernetes.md`](kubernetes.md), je",
       "allein, für den Aus-Timer zusätzlich `protection_allowed`. Ein Ventilschutzlauf, der",
+      "gleichzeitig (Swarm: `docker stack deploy` ignoriert `depends_on`; Kubernetes: ein",
       "sicher entscheiden könnten, wer einen Heizkörper schalten darf; die Datenbank, die",
       "verliert, den nächsten Aktor trotzdem nicht mehr anfasst. Erreicht damit sowohl den",
       "| 4 — Regelkreis und Cutover | schaltet scharf an der echten Anlage; Ablösung des Altsystems noch offen |"
@@ -118,6 +123,23 @@
       "gewöhnlichen Schaltaktor stehen darf — PI steuert dann nur diesen Schaltaktor an. Der",
       "warum PI deutlich häufiger schaltet als die Hysterese — die Zahlen dazu stehen am Schalter",
       "weitergereicht —, ebenso eine Zone ganz ohne gewöhnlichen Schaltaktor. Ein"
+    ],
+    "docs/docker-swarm.md": [
+      "# Der Aktiv-Bereitschafts-Verbund unter Docker Swarm",
+      "- Einen initialisierten Swarm (`docker swarm init`), mit **mindestens zwei Knoten** — ein",
+      "Abschnitt 4. Der Proxy zeigt auf den Swarm-Ingress-Port des Dienstes (oder, bei",
+      "Aufgabe stabil — verliert ein Knoten seine Nachbildung und Swarm plant sie neu, behält",
+      "Diese Auswertung geschieht **vor** dem Start des Containers, durch die Swarm-Engine",
+      "Ein-Knoten-Swarm kann die beiden Nachbildungen nicht wie unten beschrieben trennen,",
+      "[Docker Secret](https://docs.docker.com/engine/swarm/secrets/) (`docker secret create`)",
+      "`code:128 Unspecified error`). Swarm bietet dafür ein eigenes, kleines Templating an, das",
+      "`endpoint_mode: vip`, die vom Swarm vergebene virtuelle Adresse) — welche der beiden",
+      "als eigener, ebenfalls unter Swarm verwalteter Dienst mit eigenem Volume, oder als",
+      "bei `docker compose up`, nicht im Swarm-Modus. Zwei gleichzeitig startende Nachbildungen",
+      "startet. Unter Swarm ist das nicht harmlos: `docker stack deploy` bringt alle Dienste",
+      "unterschiedlichen Rechnern laufen sollen; auf einem einzigen Rechner leistet Swarm",
+      "wofür der einfache Betrieb reicht. Swarm lohnt sich, sobald zwei Instanzen wirklich auf",
+      "wäre dahin. **Auf einem Swarm mit nur einem Knoten bleibt die zweite Nachbildung mit"
     ],
     "docs/homebridge.md": [
       "**„Heizen\" (1) ist `manual`, nicht `auto`.** In thermoctl bedeutet die manuelle",
@@ -135,6 +157,16 @@
       "Entscheidungen. Es werden keine Sollwerte an Ventile gesendet; Ein/Aus-Entscheidungen",
       "Zone nachts heizen würde, obwohl der Zeitplan Nacht sagt, stimmt etwas an der Zuordnung",
       "erreichen keinen Aktor. Das Altsystem bleibt unangetastet und regelt weiter."
+    ],
+    "docs/kubernetes.md": [
+      "**Der Verbund setzt MariaDB voraus**, aus demselben Grund wie unter Swarm",
+      "**Für wen das hier gedacht ist.** `thermoctl` steuert eine Heizung in einer bewohnten",
+      "Aktiv-Bereitschafts-Verbund allein, bei [Docker Swarm](docker-swarm.md) besser",
+      "Nachbildung mit dieser Angabe dauerhaft `Pending`** — dieselbe Falle wie unter Swarm",
+      "beobachten — anders als beim Docker-Swarm-Pendant (`docs/docker-swarm.md`), das gegen",
+      "einen echten, lokal initialisierten Swarm geprüft wurde.",
+      "startet. Unter Kubernetes ist das aus demselben Grund wie unter Swarm nicht harmlos:",
+      "unter Swarm (`docs/docker-swarm.md`, Abschnitt „Migrationen beim Start\") und im"
     ],
     "docs/mcp.md": [
       "**Kein Werkzeug schaltet die Anlage scharf.** `force_dry_run` gibt es, die",
@@ -262,11 +294,13 @@
     "docs/self-hosting.md": [
       "**Aus als Vorgabe, auch nach einer Aktualisierung** — nichts schaltet sich von selbst ein.",
       "**Ins offene Internet gehört dieser Dienst nicht.** Er steuert eine Heizung in einer",
+      "**Unter einem Orchestrierer betrieben:** [docs/docker-swarm.md](docker-swarm.md) für",
       "- *Kein gewöhnlicher Schaltaktor zugeordnet* — PI braucht etwas, das ein und aus kann.",
       "> Meross-Aktoren. Die Einzelheiten stehen in der [Roadmap](roadmap.md).",
       "> Sollwerte an selbstregelnde Thermostatventile und Ein/Aus-Befehle an Zigbee2MQTT- und",
       "Absicht: Wer stündlich dieselbe Meldung bekommt, schaltet sie ab und verpasst die nächste",
       "Beim Einschalten ist außerdem ein Haken zu bestätigen, dass mehr Schaltspiele und die",
+      "Docker Swarm, [docs/kubernetes.md](kubernetes.md) für Kubernetes — beide bauen auf",
       "Heizkörperthermostat neben einem Meross-Schalter im selben Raum. Ein Thermostatventil",
       "Schaltbefehl an einem Aktor, schreibt der Dienst eine Warnung ins Log. Steht in `.env`",
       "Thermostatventil ohne eigene Regelung bekäme die PI-Entscheidung als Sollwertsprung",

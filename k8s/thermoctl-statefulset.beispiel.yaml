@@ -1,0 +1,116 @@
+# Der Dienst selbst, als StatefulSet mit zwei Nachbildungen (Aktiv-Bereitschafts-Verbund,
+# siehe docs/self-hosting.md Abschnitt 6d und docs/kubernetes.md). Ein StatefulSet statt
+# eines Deployments, weil es jeder Nachbildung einen stabilen, durchnummerierten Namen gibt
+# (thermoctl-0, thermoctl-1) -- genau daraus leitet sich unten die je Nachbildung eigene
+# MQTT-Client-Kennung ab, siehe docs/kubernetes.md, Abschnitt "Die MQTT-Client-Kennung".
+#
+# Kein `volumeClaimTemplates`: Der Verbund setzt MariaDB voraus (docs/kubernetes.md,
+# Abschnitt "Die Datenbank"), thermoctl selbst legt in diesem Betrieb keine eigenen Daten
+# auf der Festplatte des Pods ab.
+#
+# Es steht bewusst kein einziger Zugangswert in dieser Datei -- beide kommen aus dem
+# Secret `thermoctl-geheimnisse`, das diese Datei nicht anlegt (docs/kubernetes.md,
+# Abschnitt "Zugangsdaten").
+apiVersion: v1
+kind: Service
+metadata:
+  name: thermoctl-headless
+  labels:
+    app.kubernetes.io/name: thermoctl
+spec:
+  clusterIP: None
+  selector:
+    app.kubernetes.io/name: thermoctl
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: thermoctl
+  labels:
+    app.kubernetes.io/name: thermoctl
+spec:
+  # Gewöhnlicher ClusterIP-Dienst für den Reverse-Proxy davor (docs/self-hosting.md,
+  # Abschnitt 4) -- verteilt auf beide Nachbildungen gleichermaßen. Das ist unschädlich:
+  # Ansehen und Konfigurieren funktionieren auf beiden gleich, nur der Regelzyklus selbst
+  # ist auf der Bereitschaft gesperrt (docs/self-hosting.md, Abschnitt 6d).
+  selector:
+    app.kubernetes.io/name: thermoctl
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: thermoctl
+  labels:
+    app.kubernetes.io/name: thermoctl
+spec:
+  serviceName: thermoctl-headless
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: thermoctl
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: thermoctl
+    spec:
+      # Beide Nachbildungen auf unterschiedliche Knoten -- ein einzelner Knotenausfall
+      # soll nicht gleich beide treffen. Ohne diese Angabe kann der Scheduler beide auf
+      # denselben Knoten legen; auf einem Ein-Knoten-Testcluster bleibt die zweite
+      # Nachbildung dann zwangsläufig ungeplant stehen, siehe docs/kubernetes.md.
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  app.kubernetes.io/name: thermoctl
+              topologyKey: kubernetes.io/hostname
+      containers:
+        - name: thermoctl
+          image: ghcr.io/magicalwig34653/thermoctl:latest
+          ports:
+            - name: http
+              containerPort: 8000
+          env:
+            # Downward API: der eigene, vom StatefulSet vergebene Pod-Name --
+            # "thermoctl-0", "thermoctl-1", stabil über einen Neustart desselben Platzes
+            # hinweg. Daraus je Nachbildung eine eigene MQTT-Client-Kennung ableiten
+            # (`$(POD_NAME)`-Ersetzung, von Kubernetes selbst ausgewertet, keine
+            # Shell-Interpolation) -- Begründung in docs/kubernetes.md.
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: THERMOCTL_MQTT_CLIENT_ID
+              value: "$(POD_NAME)"
+            - name: THERMOCTL_INSTANCE_ID
+              value: "$(POD_NAME)"
+          envFrom:
+            - secretRef:
+                name: thermoctl-geheimnisse
+          # Meldet auf beiden Nachbildungen gleichermaßen "ok": /healthz prüft, ob der
+          # Prozess läuft und die Datenbank erreichbar ist, nicht, ob diese Nachbildung
+          # gerade führt (thermoctl/app.py, Endpunkt "/healthz"). Ein Orchestrierer, der
+          # die Bereitschaft dafür als krank behandelt und neu startet, macht den Verbund
+          # kaputt -- hier tut er das nicht, siehe docs/kubernetes.md.
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8000
+            initialDelaySeconds: 20
+            periodSeconds: 30
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5

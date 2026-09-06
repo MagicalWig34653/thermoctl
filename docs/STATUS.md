@@ -2,6 +2,27 @@
 
 Letzte Aktualisierung: 2026-09-06, Freigabe `v0.7.0`.
 
+## Betrieb unter Docker Swarm und Kubernetes dokumentiert
+
+Zwei neue Anleitungen für den Aktiv-Bereitschafts-Verbund (Abschnitt 6d unten):
+[`docs/docker-swarm.md`](docker-swarm.md) und [`docs/kubernetes.md`](kubernetes.md), je
+mit lauffähigen Beispieldateien (`docker/swarm.compose.beispiel.yml`,
+`docker/swarm.migrate.compose.beispiel.yml`, `k8s/*.beispiel.yaml`). Zwei Dateien statt
+einer gemeinsamen, weil die Beispielmanifeste beider Systeme sonst dieselbe Anleitung mit
+zwei unvereinbaren YAML-Dialekten überladen hätten.
+
+**Offener Punkt, kein Dokumentationsfehler:** `docker/entrypoint.sh` führt
+`alembic upgrade head` unbedingt aus, ohne Sperre gegen eine zweite, gleichzeitig
+migrierende Nachbildung. Unter einem Orchestrierer starten zwei Nachbildungen leicht
+gleichzeitig (Swarm: `docker stack deploy` ignoriert `depends_on`; Kubernetes: ein
+Rolling Update lässt alte und neue Nachbildung kurz nebeneinander laufen). Beide
+Anleitungen umschiffen das über einen vorgeschalteten, einmaligen Migrations-Job
+(Swarm: `mode: replicated-job`; Kubernetes: `Job`, mit `kubectl wait` vor dem
+`StatefulSet`) — das behebt nicht, dass der Entrypoint selbst ungesichert ist. Eine
+Absicherung in `migrations/env.py` (z. B. eine Datenbank-Sperre) ist noch offen.
+
+Letzte Aktualisierung: 2026-09-06.
+
 ## Zeitplan-Vorschau: nächste 24 Stunden je Zone
 
 Die Zeitplanseite (`/zones/{id}/schedule`) zeigt jetzt oberhalb des Wochenrasters eine
