@@ -230,6 +230,10 @@ def test_a_pointer_drag_in_the_schedule_editor_reaches_the_server_under_the_pref
     tuesday = admin_page_with_prefix.locator('.schedule-day[data-weekday="2"]')
     expect(tuesday.locator(".schedule-draggable")).to_have_count(0)
 
+    # Gleicher Grund wie in test_schedule_editor.py: Die 24-Stunden-Vorschau ueber
+    # dem Raster schiebt die Spalte nach unten, und Zeigerpunkte rechnen gegen das
+    # Sichtfenster.
+    tuesday.scroll_into_view_if_needed()
     box = tuesday.bounding_box()
     assert box is not None
     x = box["x"] + box["width"] / 2

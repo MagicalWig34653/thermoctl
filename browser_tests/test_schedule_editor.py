@@ -76,6 +76,12 @@ def test_painting_a_new_block_creates_it_and_the_chosen_tool_survives_the_reload
     draggable_before = tuesday.locator(".schedule-draggable")
     expect(draggable_before).to_have_count(0)
 
+    # Ins Sichtfeld holen, bevor die Koordinaten gelesen werden: Playwright rechnet
+    # Zeigerpunkte gegen das Sichtfenster, `bounding_box()` liefert sie ebenso. Seit
+    # ueber dem Wochenraster die 24-Stunden-Vorschau steht, liegt die Dienstagsspalte
+    # ohne diesen Schritt teilweise unterhalb der Falz -- die Geste landete dann
+    # neben dem Raster, und der Test schlug fehl, obwohl der Editor in Ordnung ist.
+    tuesday.scroll_into_view_if_needed()
     box = tuesday.bounding_box()
     assert box is not None
     x = box["x"] + box["width"] / 2
@@ -120,6 +126,8 @@ def test_the_undo_button_reverts_the_last_gesture(
 
     wednesday = admin_page.locator('.schedule-day[data-weekday="3"]')
     expect(wednesday.locator(".schedule-draggable")).to_have_count(0)
+    # Gleicher Grund wie bei der Dienstagsspalte oben.
+    wednesday.scroll_into_view_if_needed()
     box = wednesday.bounding_box()
     assert box is not None
     x = box["x"] + box["width"] / 2
