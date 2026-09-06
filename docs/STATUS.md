@@ -1,5 +1,55 @@
 # Stand
 
+Letzte Aktualisierung: 2026-09-06, Freigabe `v0.7.0`.
+
+## Zeitplan-Vorschau: nächste 24 Stunden je Zone
+
+Die Zeitplanseite (`/zones/{id}/schedule`) zeigt jetzt oberhalb des Wochenrasters eine
+Leiste mit der Vorschau der nächsten 24 Stunden, sichtbar bereits mit `zone.read`
+(keine Änderungsrechte nötig). Die Berechnung sitzt in der Domäne
+(`thermoctl.domain.schedule.schedule_forecast`), nicht in der Ansicht: sie reicht
+über `resolved_setpoint`s eigene Rangfolge (Betriebsart Aus schlägt alles, dann eine
+laufende Übersteuerung bis zu ihrem Ende, dann der Zeitplan, zuletzt Frostschutz) und
+kann daher nie etwas zeigen, was zur Laufzeit nicht tatsächlich einträte. Sie rechnet
+in echten UTC-Instanzen statt in Ortszeit-Arithmetik und bleibt deshalb auch über
+Mitternacht, einen Wochentagswechsel und beide Sommerzeit-Umstellungen (23- bzw.
+25-Stunden-Tag) exakt — mit Tests, die diese Grenzfälle einzeln mit von Hand
+abgeleiteten Uhrzeiten belegen (`tests/test_domain_schedule.py`). REST und MCP bieten
+die Vorschau noch nicht an; das ist eine bewusste Auslassung dieser Aufgabe, keine
+technische Grenze — die Domänenfunktion ist adapterunabhängig nutzbar.
+
+Letzte Aktualisierung: 2026-09-06.
+
+## Liveaktualisierung der Startseite
+
+Ist-Wert, Sollwert samt Begründung, Sensorzustand und letzte Entscheidung je Zone
+zeigten sich bisher nur beim Neuladen. `start.html` fragt die Startseite jetzt im
+Stil des Kiosks periodisch selbst ab (`hx-get`/`hx-select`/`hx-swap="outerHTML"` auf
+`#tc-live`) — kein neues Werkzeug, HTMX war schon da.
+
+Das Intervall ist keine feste Zahl, sondern kommt aus `setting.shadow_interval_seconds`
+(`poll_interval_seconds` in `start_views.py`) — häufiger abzufragen als sich ein Wert
+ändern kann, wäre verschwendete Last, gerade hinter dem Ingress-Proxy. `[!document.hidden]`
+im `hx-trigger` pausiert den Abruf, solange der Tab im Hintergrund liegt.
+
+Zwei Dinge mussten dafür ausdrücklich abgesichert werden, nicht nur der Abruf selbst:
+
+- Ein aufgeklappter Übersteuern-Bereich und eine schon begonnene Eingabe dürfen den
+  Austausch nicht verlieren. Gelöst über `hx-preserve` auf dem Formular und dem
+  Auf/Zu-Knopf (beide mit stabiler `id`) — htmx lässt diese Elemente beim Swap
+  unangetastet stehen, statt sie durch eine frische, leere Fassung zu ersetzen.
+- Der globale Ladebalken (`loading_indicator.js`) darf für diesen Abruf nicht
+  aufblitzen — er würde jede Minute von selbst erscheinen, ohne dass irgendjemand auf
+  ihn wartet. Das auslösende Element trägt `data-tc-quiet-poll`; das Skript prüft
+  genau dieses Element (`ereignis.detail.elt`), nicht dessen Vorfahren, damit ein POST
+  aus einem Formular *innerhalb* des Bereichs (Übersteuern, Sollwert stellen) den
+  Balken weiterhin zeigt.
+
+Nachgewiesen in `browser_tests/test_start_page_live.py` (vier Tests: abgeleitetes
+Intervall, ein geänderter Wert aktualisiert sich ohne Zutun, ein aufgeklappter Bereich
+samt begonnener Eingabe übersteht eine Aktualisierung, der Ladebalken bleibt dabei
+stumm — auch unter einer künstlich verzögerten Antwort).
+
 Letzte Aktualisierung: 2026-09-06.
 
 ## Aktiv-Bereitschafts-Verbund: zwei Instanzen, eine Datenbank, ein Broker

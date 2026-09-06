@@ -28,6 +28,31 @@
 {% if gesture_notice %}
 <div class="alert alert-info" data-gesture-notice role="status">{{ gesture_notice }}</div>
 {% endif %}
+
+<section class="mb-4" data-schedule-forecast aria-label="Vorschau, nächste 24 Stunden">
+  <h2 class="h5">Nächste 24 Stunden</h2>
+  <div class="d-flex border rounded overflow-hidden" style="height: 2.5rem;">
+  {% for bar in forecast %}
+    <div class="d-flex align-items-center justify-content-center overflow-hidden text-nowrap px-1{{ ' schedule-forecast-current' if bar.is_current }}"
+         style="width: {{ bar.share_percent }}%;
+                background: color-mix(in oklab,
+                    var({{ '--warmth' if bar.warmth >= 0.5 else '--cool' }})
+                    {{ (45 + (bar.warmth - 0.5)|abs * 90)|round|int }}%, var(--surface));
+                {{ 'outline: 2px solid var(--bs-primary); outline-offset: -2px;' if bar.is_current }}"
+         title="{{ bar.reason }}{% if bar.is_current %} (jetzt){% endif %}">
+      <small>
+        <span class="t-value">{{ bar.label }}</span>
+        {{ bar.mode_name }}{% if bar.temperature_c is not none %} <span class="t-value">{{ bar.temperature_c|grad }}°</span>{% endif %}
+      </small>
+    </div>
+  {% endfor %}
+  </div>
+  <p class="form-text mb-0">
+    Lokale Zeit; der hervorgehobene Abschnitt gilt gerade jetzt. Eine laufende
+    Übersteuerung und die Betriebsart überschreiben den Zeitplan, wo zutreffend --
+    genau das zeigt diese Vorschau, nicht nur den gemalten Plan.
+  </p>
+</section>
 {% if undo_token %}
 <form class="alert alert-success d-flex justify-content-between align-items-center gap-3"
       method="post" action="{{ url_prefix }}/zones/{{ zone.id }}/schedule/undo" hx-push-url="false">

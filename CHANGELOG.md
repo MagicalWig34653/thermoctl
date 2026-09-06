@@ -13,6 +13,38 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ### Hinzugefügt
 
+- **Liveaktualisierung der Startseite.** Ist-Wert, Sollwert samt Begründung,
+  Sensorzustand und letzte Entscheidung je Zone aktualisieren sich jetzt von selbst,
+  ohne Neuladen — im Stil des Kiosks (`hx-get` auf sich selbst, `hx-select`/
+  `hx-swap="outerHTML"`), statt mit neuer Technik. Drei Abweichungen vom Kiosk:
+  - Das Intervall ist aus `setting.shadow_interval_seconds` abgeleitet
+    (`poll_interval_seconds` in `start_views.py`) statt fest eingetragen — häufiger
+    abzufragen als sich ein Wert ändern kann, wäre verschwendete Last, insbesondere
+    hinter dem Ingress-Proxy.
+  - `hx-trigger="every …s [!document.hidden]"` lässt den Abruf pausieren, solange der
+    Tab im Hintergrund liegt.
+  - Ein offener Übersteuern-Bereich und eine schon begonnene Eingabe überstehen den
+    Austausch unverändert (`hx-preserve` auf Formular und Auf/Zu-Knopf) — ein
+    gewöhnlicher Austausch hätte beides mitten im Tippen verworfen.
+  - `loading_indicator.js` blendet den globalen Ladebalken für genau diesen
+    selbstauslösenden Abruf aus (`data-tc-quiet-poll`, geprüft am auslösenden
+    Element, nicht an dessen Vorfahren) — ein Balken, der jede Minute von selbst
+    aufblitzt, wäre Unruhe statt Information. Ein POST aus einem Formular innerhalb
+    des Bereichs (Übersteuern, Sollwert stellen) bleibt weiterhin sichtbar.
+  - Nachgewiesen in `browser_tests/test_start_page_live.py`: ein geänderter Wert
+    aktualisiert sich ohne Zutun, ein aufgeklappter Bereich samt begonnener Eingabe
+    übersteht eine Aktualisierung, und der Ladebalken bleibt dabei stumm — auch unter
+    einer künstlich verzögerten Antwort, die ohne die Ausnahme sichtbar würde.
+- **Zeitplan-Vorschau.** Die Zeitplanseite zeigt jetzt je Zone eine Leiste über die
+  nächsten 24 Stunden: Uhrzeit, Modus und der Sollwert, der dann gilt, mit dem
+  laufenden Abschnitt hervorgehoben. Sichtbar mit `zone.read` allein — Ansehen setzt
+  keine Änderungsrechte voraus. Die Berechnung (`thermoctl.domain.schedule.
+  schedule_forecast`) berücksichtigt eine laufende Übersteuerung bis zu ihrem Ende,
+  die Betriebsart Aus (Frostschutz für das gesamte Fenster) und den Tagesübergang über
+  Mitternacht in einen anderen Wochentag; sie rechnet in UTC-Instanzen, nicht in
+  Ortszeit-Arithmetik, und bleibt deshalb auch an den beiden Sommerzeit-Umstellungen
+  exakt (23- bzw. 25-Stunden-Tag).
+
 - **Aktiv-Bereitschafts-Verbund.** Zwei Instanzen können jetzt dieselbe Datenbank und
   denselben MQTT-Broker teilen — eine regelt, die andere steht bereit und übernimmt
   atomar, wenn die aktive Instanz fünf Regelzyklen lang keine Erneuerung mehr
