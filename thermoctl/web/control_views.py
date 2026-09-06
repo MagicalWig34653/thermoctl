@@ -37,12 +37,16 @@ from thermoctl.domain.control import (
     WINDOW_ALARM_GANZZAHLIG,
     WINDOW_ALARM_LABELS,
     WINDOW_ALARM_LIMITS,
+    WINDOW_TEMP_DROP_GANZZAHLIG,
+    WINDOW_TEMP_DROP_LABELS,
+    WINDOW_TEMP_DROP_LIMITS,
     ControlError,
     arm,
     check_coordinate,
     save_settings,
     save_solar_location,
     save_window_alarm_settings,
+    save_window_temp_drop_settings,
     settings,
 )
 from thermoctl.domain.device_assignment import CapabilityMissing
@@ -159,6 +163,8 @@ def _defaults_page(
     outdoor_source_error: str | None = None,
     window_alarm_values: dict[str, str] | None = None,
     window_alarm_errors: ControlError | None = None,
+    window_temp_drop_values: dict[str, str] | None = None,
+    window_temp_drop_errors: ControlError | None = None,
 ) -> Response:
     row = settings(session)
     if values is None:
@@ -173,6 +179,10 @@ def _defaults_page(
         solar_enabled = row.solar_forecast_enabled
     if window_alarm_values is None:
         window_alarm_values = {field: str(getattr(row, field)) for field in WINDOW_ALARM_LIMITS}
+    if window_temp_drop_values is None:
+        window_temp_drop_values = {
+            field: str(getattr(row, field)) for field in WINDOW_TEMP_DROP_LIMITS
+        }
     outdoor_source = (
         session.get(Device, row.outdoor_temperature_source_device_id)
         if row.outdoor_temperature_source_device_id is not None
@@ -209,6 +219,19 @@ def _defaults_page(
             "window_alarm_errors": (
                 {window_alarm_errors.field: window_alarm_errors.notice}
                 if window_alarm_errors
+                else {}
+            ),
+            # Fenster-Erkennung aus einem Temperatursturz -- dieselbe Trennung wie
+            # der Fenster-Alarm oben und aus demselben Grund außerhalb von REST
+            # und MCP, siehe `domain.control.WINDOW_TEMP_DROP_LIMITS`.
+            "window_temp_drop_fields": [
+                (field, WINDOW_TEMP_DROP_LABELS[field], field in WINDOW_TEMP_DROP_GANZZAHLIG)
+                for field in WINDOW_TEMP_DROP_LIMITS
+            ],
+            "window_temp_drop_values": window_temp_drop_values,
+            "window_temp_drop_errors": (
+                {window_temp_drop_errors.field: window_temp_drop_errors.notice}
+                if window_temp_drop_errors
                 else {}
             ),
             "test_notice": test_notice,
@@ -324,6 +347,36 @@ async def save_window_alarm(
     except ControlError as exc:
         return _defaults_page(
             request, session, principal, window_alarm_values=values, window_alarm_errors=exc
+        )
+    return RedirectResponse(prefixed(request, "/settings"), status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/settings/window-temp-drop")
+async def save_window_temp_drop(
+    request: Request,
+    principal: Annotated[Principal, Depends(current_principal)],
+    session: Annotated[Session, Depends(get_session)],
+) -> Response:
+    """The temperature-based window detection's three thresholds -- its own route,
+    its own form, for the identical reason `save_window_alarm` above has one: these
+    fields must not reach REST or MCP either (`domain.control.WINDOW_TEMP_DROP_LIMITS`).
+    """
+    require(principal, "setting.manage")
+    form = await request.form()
+    values = {
+        name: str(form.get(name, "")).strip() for name in WINDOW_TEMP_DROP_LIMITS
+    }
+    try:
+        save_window_temp_drop_settings(
+            session, values, user_id=principal.user_id, token_id=principal.token_id
+        )
+    except ControlError as exc:
+        return _defaults_page(
+            request,
+            session,
+            principal,
+            window_temp_drop_values=values,
+            window_temp_drop_errors=exc,
         )
     return RedirectResponse(prefixed(request, "/settings"), status_code=status.HTTP_303_SEE_OTHER)
 

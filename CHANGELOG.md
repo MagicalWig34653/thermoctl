@@ -13,6 +13,35 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ### Hinzugefügt
 
+- **Fenster-Erkennung aus einem Temperatursturz.** Eine Zone ohne zugeordneten
+  Fensterkontakt kann jetzt trotzdem ein offenes Fenster erkennen — an einem
+  hinreichend steilen Abfall der eigenen Raumtemperatur
+  (`domain/window_temperature_drop.py`). Je Zone einschaltbar
+  (`Zone.window_temp_drop_detection_enabled`, Vorgabe **aus**); ein zugeordneter
+  Fensterkontakt hat immer Vorrang und wird nicht durch die Temperatur ersetzt,
+  auch nicht während er gerade unbekannt ist. Kriterium: der größte
+  Temperaturwert im Verlauf der letzten `window_temp_drop_window_minutes`
+  (Vorgabe 15) minus dem aktuellen Wert erreicht `window_temp_drop_threshold_k`
+  (Vorgabe 1,5 K, ein begründeter, aber ausdrücklich nicht anlagenspezifischer
+  Schätzwert) — spiegelbildlich zu `domain.fault.stuck_reading`. Ein reines
+  Sturzkriterium kennt kein Ende: einmal ausgelöst, gilt die Vermutung
+  gebunden für `window_temp_drop_hold_minutes` (Vorgabe 30) und fällt danach
+  von selbst wieder ab, sofern kein neuer Sturz auftritt — eine
+  temperaturbasierte Rücknahme über „die Temperatur steigt wieder" wäre
+  zirkulär, weil die Erkennung selbst das Heizen abschaltet. Wirkt **wie ein
+  echter Fensterkontakt** auf `domain/control_loop.py` (unverändert, da beide
+  Quellen `zone_state.window_open` gleich setzen) und auf den Kälte-Alarm
+  (`domain/window_alarm.py`, ebenfalls unverändert und mit eigenem Test
+  bestätigt statt nur angenommen). Bleibt im Protokoll und in der Oberfläche
+  **unterscheidbar** von einem echten Kontakt (`zone_state.
+  window_open_by_temperature`, eigener Hinweis in `shadow_decision.reason` und
+  eigener Status-Chip auf der Startseite, Grundsatz 5). Sichtbar in der
+  Oberfläche (Regelparameter-Seite je Zone, Regelvorgaben-Seite anlagenweit)
+  und in Home Assistant (`state/window_open_by_temperature`, eigene
+  Diagnose-Entität je Zone). **Bewusst nicht in REST, MCP oder Homebridge** —
+  ausdrückliche Vorgabe des Projektinhabers für alles Neue rund ums Fenster,
+  dieselbe Grenze wie beim Fenster-Alarm. Migration `e741133296d2`.
+
 - **Außentemperatur und Fenster-Alarm.** Erstmals ein Begriff von Außentemperatur:
   eine anlagenweite Quelle (`setting.outdoor_temperature_source_device_id`),
   ausgewählt aus den bekannten Zigbee2MQTT-Geräten wie die Messquelle einer Zone,

@@ -68,6 +68,17 @@ class ZoneState(Base):
     # `sensor_status_id` and `decide()` in `domain/control_loop.py`, the same
     # "melden, aber nicht regeln" shape `sensor_stuck` above already has.
     window_alarm: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    # Whether the current `window_open` (when `True`) came from the temperature-
+    # based guess (`domain.window_temperature_drop`) rather than a real window
+    # contact -- Grundsatz 5: a zone that shut off on an inference, not a
+    # measurement, has to stay distinguishable in the interface and in
+    # `shadow_decision.reason`, not just internally. Always `False` for a
+    # contact-governed zone and for any cycle where `window_open` is not `True`
+    # (`services/ingest.py::_window_open`/`advance_zone_state` set both
+    # together, so this never lags `window_open` by a cycle).
+    window_open_by_temperature: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=false(), nullable=False
+    )
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     last_regular_heat_at: Mapped[datetime | None] = mapped_column(
         DateTime().with_variant(mysql.DATETIME(fsp=6), "mysql", "mariadb"), nullable=True

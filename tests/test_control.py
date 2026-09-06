@@ -592,3 +592,61 @@ def test_the_window_alarm_thresholds_never_reach_limits_or_the_rest_schema() -> 
     for field in WINDOW_ALARM_LIMITS:
         assert field not in LIMITS
         assert field not in ControlResponse.model_fields
+
+
+def test_saving_the_window_temp_drop_thresholds(
+    client_als: ClientBuilder, session: Session
+) -> None:
+    create_settings(session)
+    source(session, "web")
+    client = client_als(ALL_PERMISSIONS)
+
+    response = client.post(
+        "/settings/window-temp-drop",
+        data={
+            "window_temp_drop_window_minutes": "20",
+            "window_temp_drop_threshold_k": "2,0",
+            "window_temp_drop_hold_minutes": "45",
+        },
+        headers=_csrf(client),
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    row = session.get(Setting, 1)
+    assert row.window_temp_drop_window_minutes == 20
+    assert row.window_temp_drop_threshold_k == Decimal("2.0")
+    assert row.window_temp_drop_hold_minutes == 45
+
+
+def test_an_unusable_window_temp_drop_threshold_is_rejected_and_names_its_field(
+    client_als: ClientBuilder, session: Session
+) -> None:
+    create_settings(session)
+    source(session, "web")
+    client = client_als(ALL_PERMISSIONS)
+
+    response = client.post(
+        "/settings/window-temp-drop",
+        data={
+            "window_temp_drop_window_minutes": "1",
+            "window_temp_drop_threshold_k": "0",
+            "window_temp_drop_hold_minutes": "1",
+        },
+        headers=_csrf(client),
+    )
+    assert response.status_code == 200
+    assert "window_temp_drop" in response.text or "zwischen" in response.text
+    # Nothing was half-written.
+    row = session.get(Setting, 1)
+    assert row.window_temp_drop_window_minutes == 15
+
+
+def test_the_window_temp_drop_thresholds_never_reach_limits_or_the_rest_schema() -> None:
+    """Same guard as `test_the_window_alarm_thresholds_never_reach_limits_or_the_rest_schema`
+    above, for the temperature-based window detection's own three thresholds."""
+    from thermoctl.api.schemas import ControlResponse
+    from thermoctl.domain.control import WINDOW_TEMP_DROP_LIMITS
+
+    for field in WINDOW_TEMP_DROP_LIMITS:
+        assert field not in LIMITS
+        assert field not in ControlResponse.model_fields

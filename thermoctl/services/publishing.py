@@ -97,6 +97,7 @@ from thermoctl.integrations.mqtt.publication import (
     timestamp_discovery,
     window_alarm_discovery,
     window_alarm_topics,
+    window_temperature_detected_discovery,
     zone_discovery,
 )
 from thermoctl.services.device_commands import EXECUTED, FAILED, SUPPRESSED, record_command
@@ -226,6 +227,7 @@ def _discovery_messages(session: Session, zone: Zone, prefix: str) -> list[Disco
         override_active_discovery(zone.id, name, prefix),
         fault_notice_discovery(zone.id, name, prefix),
         window_alarm_discovery(zone.id, name, prefix),
+        window_temperature_detected_discovery(zone.id, name, prefix),
         timestamp_discovery(zone.id, name, "last_switch", "Letzte Schaltung", prefix),
         timestamp_discovery(
             zone.id, name, "next_switch", "Nächster Moduswechsel", prefix
@@ -1081,6 +1083,10 @@ async def _send_zone_state(
         (topics.last_switch, _as_text(_last_switch(session, zone.id))),
         (topics.next_switch, _as_text(end_of_next_switch(session, zone, now))),
         (topics.override_active, _as_text(running_override(session, zone, now) is not None)),
+        (
+            topics.window_open_by_temperature,
+            _as_text(bool(state and state.window_open_by_temperature)),
+        ),
     ]
 
     setpoints: dict[int, Decimal] = {

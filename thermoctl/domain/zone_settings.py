@@ -180,6 +180,43 @@ def validate_pi_parameters(
             )
 
 
+def set_window_temp_drop_detection(
+    session: Session,
+    zone: Zone,
+    enabled: bool,
+    *,
+    user_id: int | None,
+    token_id: int | None = None,
+    source: str = "web",
+) -> None:
+    """The temperature-based window detection's per-zone switch (default off).
+
+    Deliberately its own tiny function, not folded into `save_control_parameters`
+    above: `Zone.window_temp_drop_detection_enabled` is not one of
+    `ControlParameters`' fields and must never become one -- that dataclass is
+    echoed verbatim onto REST (`api/routes.py::ControlParametersResponse`), and
+    the project owner's explicit instruction is that nothing new about the window
+    reaches REST, MCP, or Homebridge (see the column's own docstring in
+    `db/models/zone.py`).
+    """
+    if zone.window_temp_drop_detection_enabled == enabled:
+        return
+    zone.window_temp_drop_detection_enabled = enabled
+    audit.record(
+        session,
+        source=source,
+        action="update",
+        object_type="zone_settings",
+        object_id=str(zone.id),
+        summary=(
+            f"Fenster-Erkennung aus Temperatursturz für Zone '{zone.display_name}' "
+            + ("eingeschaltet" if enabled else "ausgeschaltet")
+        ),
+        user_id=user_id,
+        token_id=token_id,
+    )
+
+
 def save_control_parameters(
     session: Session,
     zone: Zone,

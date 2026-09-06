@@ -341,6 +341,106 @@ def test_parameters_of_a_foreign_zone_yield_404(session: Session, client_als) ->
     )
 
 
+def test_the_parameter_page_shows_the_window_temp_drop_switch_off_by_default(
+    session: Session, client_als
+) -> None:
+    zone = _grundlage(session)
+    client = client_als([("zone.manage", zone.id)])
+
+    response = client.get(f"/zones/{zone.id}/parameters")
+
+    assert response.status_code == 200
+    assert 'name="window_temp_drop_detection_enabled"' in response.text
+    after_name = response.text.split('name="window_temp_drop_detection_enabled"')[1]
+    assert "checked" not in after_name.split(">")[0]
+
+
+def test_turning_the_window_temp_drop_switch_on_and_off_is_audited(
+    session: Session, client_als
+) -> None:
+    zone = _grundlage(session)
+    assert zone.window_temp_drop_detection_enabled is False
+    client = client_als([("zone.manage", zone.id)])
+    path = f"/zones/{zone.id}/window-temp-drop-detection"
+
+    on = client.post(
+        path,
+        data={"window_temp_drop_detection_enabled": "yes"},
+        headers=_csrf(client),
+        follow_redirects=False,
+    )
+    assert on.status_code == 303
+    assert zone.window_temp_drop_detection_enabled is True
+    entry = session.scalars(
+        select(AuditEvent).where(AuditEvent.object_type == "zone_settings")
+    ).all()[-1]
+    assert "eingeschaltet" in entry.summary
+
+    off = client.post(path, data={}, headers=_csrf(client), follow_redirects=False)
+    assert off.status_code == 303
+    assert zone.window_temp_drop_detection_enabled is False
+    entry = session.scalars(
+        select(AuditEvent).where(AuditEvent.object_type == "zone_settings")
+    ).all()[-1]
+    assert "ausgeschaltet" in entry.summary
+
+
+def test_turning_the_window_temp_drop_switch_to_its_current_value_is_not_audited(
+    session: Session, client_als
+) -> None:
+    zone = _grundlage(session)
+    client = client_als([("zone.manage", zone.id)])
+    before = session.scalars(
+        select(AuditEvent).where(AuditEvent.object_type == "zone_settings")
+    ).all()
+
+    client.post(
+        f"/zones/{zone.id}/window-temp-drop-detection",
+        data={},
+        headers=_csrf(client),
+        follow_redirects=False,
+    )
+
+    after = session.scalars(
+        select(AuditEvent).where(AuditEvent.object_type == "zone_settings")
+    ).all()
+    assert len(after) == len(before)
+
+
+def test_the_window_temp_drop_switch_of_a_foreign_zone_yields_404(
+    session: Session, client_als
+) -> None:
+    eigene = _grundlage(session)
+    fremde = create_zone(session, "fremd")
+    client = client_als([("zone.manage", eigene.id)])
+    response = client.post(
+        f"/zones/{fremde.id}/window-temp-drop-detection",
+        data={"window_temp_drop_detection_enabled": "yes"},
+        headers=_csrf(client),
+    )
+    assert response.status_code == 404
+    assert fremde.window_temp_drop_detection_enabled is False
+
+
+def test_the_window_temp_drop_switch_is_not_part_of_control_parameters(
+    session: Session, client_als
+) -> None:
+    """Task instruction: this switch must never reach REST or MCP -- it must
+    therefore never be settable through `/zones/{id}/parameters`, which feeds
+    `ControlParametersResponse` verbatim from `ControlParameters`."""
+    zone = _grundlage(session)
+    client = client_als([("zone.manage", zone.id)])
+
+    client.post(
+        f"/zones/{zone.id}/parameters",
+        data={"window_temp_drop_detection_enabled": "yes"},
+        headers=_csrf(client),
+        follow_redirects=False,
+    )
+
+    assert zone.window_temp_drop_detection_enabled is False
+
+
 def test_an_override_from_the_interface_uses_the_same_data_model_as_rest(
     session: Session, client_als
 ) -> None:

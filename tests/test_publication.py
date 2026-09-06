@@ -49,6 +49,7 @@ def test_state_topics_have_no_get_suffix() -> None:
         last_switch="haus_nord/zones/17/state/last_switch",
         next_switch="haus_nord/zones/17/state/next_switch",
         override_active="haus_nord/zones/17/state/override_active",
+        window_open_by_temperature="haus_nord/zones/17/state/window_open_by_temperature",
     )
 
 
@@ -223,6 +224,24 @@ def test_override_active_sensor_mirrors_the_override_active_state_topic() -> Non
     assert payload["state_topic"] == states_topics(17, "haus_nord").override_active
     assert payload["payload_on"] == "true"
     assert payload["payload_off"] == "false"
+
+
+def test_window_temperature_detected_sensor_mirrors_its_own_state_topic() -> None:
+    """The Home Assistant counterpart of the interface's own status chip -- a
+    live, always-sent state like `override_active_discovery` above, not a
+    `FaultNoticeTopics`-shaped notice like `window_alarm_discovery`."""
+    from thermoctl.integrations.mqtt.publication import window_temperature_detected_discovery
+
+    message = window_temperature_detected_discovery(17, _zone_name(), "haus_nord")
+    payload = json.loads(message.payload)
+
+    assert message.topic == (
+        "homeassistant/binary_sensor/haus_nord_zone_17_fenster_temperatur_vermutet/config"
+    )
+    assert payload["state_topic"] == states_topics(17, "haus_nord").window_open_by_temperature
+    assert payload["payload_on"] == "true"
+    assert payload["payload_off"] == "false"
+    assert payload["entity_category"] == "diagnostic"
 
 
 def test_this_module_publishes_nothing() -> None:

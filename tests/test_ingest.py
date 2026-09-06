@@ -24,6 +24,7 @@ from thermoctl.db.models.device import (
 )
 from thermoctl.db.models.lookup import DeviceCapability, SensorStatus
 from thermoctl.db.models.measurement import DeviceHealth, Measurement
+from thermoctl.db.models.operations import Setting
 from thermoctl.db.models.state import ZoneState
 from thermoctl.db.models.zone import Zone
 from thermoctl.services.ingest import advance_zone_state, process_message
@@ -538,6 +539,339 @@ def test_window_open_since_clears_when_the_window_closes(session: Session) -> No
     state = session.get(ZoneState, zone.id)
     assert state is not None and state.window_open is False
     assert state.window_open_since is None
+
+
+# --- Fenster-Erkennung aus einem Temperatursturz -------------------------------
+
+# Small, easy-to-reason-about values instead of the production defaults -- the
+# defaults themselves are covered by `tests/test_window_temperature_drop.py` and
+# `tests/test_control.py`; these tests are about the wiring in `services/ingest.py`.
+_DROP_WINDOW_MINUTES = 10
+_DROP_THRESHOLD_K = Decimal("1.0")
+_DROP_HOLD_MINUTES = 20
+
+
+def _temp_drop_zone(session: Session, name: str) -> tuple[Zone, Setting, DeviceCapability]:
+    settings = create_settings(session)
+    settings.default_sensor_timeout_seconds = 86400
+    settings.window_temp_drop_window_minutes = _DROP_WINDOW_MINUTES
+    settings.window_temp_drop_threshold_k = _DROP_THRESHOLD_K
+    settings.window_temp_drop_hold_minutes = _DROP_HOLD_MINUTES
+    for code in ("ok", "veraltet", "keine_quelle"):
+        sensor_status_of(session, code)
+    temperature = _capability(session, "temperature")
+    device = create_device(session, _device_names()[0])
+    zone = create_zone(session, name)
+    zone.temperature_source_device_id = device.id
+    zone.window_temp_drop_detection_enabled = True
+    return zone, settings, temperature
+
+
+def _add_reading(
+    session: Session, device_id: int, capability_id: int, value: Decimal, at: datetime
+) -> None:
+    session.add(
+        Measurement(
+            device_id=device_id,
+            capability_id=capability_id,
+            value_numeric=value,
+            measured_at=at,
+            received_at=at,
+        )
+    )
+
+
+def test_a_drop_at_exactly_the_threshold_opens_the_window(session: Session) -> None:
+    zone, _settings, temperature = _temp_drop_zone(session, "sturz-an-schwelle-zone")
+    device_id = zone.temperature_source_device_id
+    assert device_id is not None
+    start = EMPFANGEN_AM - timedelta(minutes=_DROP_WINDOW_MINUTES)
+    _add_reading(session, device_id, temperature.id, Decimal("22.0"), start)
+    _add_reading(
+        session, device_id, temperature.id, Decimal("22.0") - _DROP_THRESHOLD_K, EMPFANGEN_AM
+    )
+
+    advance_zone_state(session, EMPFANGEN_AM)
+
+    state = session.get(ZoneState, zone.id)
+    assert state is not None
+    assert state.window_open is True
+    assert state.window_open_by_temperature is True
+    assert state.window_open_since == EMPFANGEN_AM
+
+
+def test_a_drop_just_under_the_threshold_does_not_open_the_window(session: Session) -> None:
+    zone, _settings, temperature = _temp_drop_zone(session, "sturz-knapp-darunter-zone")
+    device_id = zone.temperature_source_device_id
+    assert device_id is not None
+    start = EMPFANGEN_AM - timedelta(minutes=_DROP_WINDOW_MINUTES)
+    _add_reading(session, device_id, temperature.id, Decimal("22.0"), start)
+    _add_reading(
+        session,
+        device_id,
+        temperature.id,
+        Decimal("22.0") - _DROP_THRESHOLD_K + Decimal("0.01"),
+        EMPFANGEN_AM,
+    )
+
+    advance_zone_state(session, EMPFANGEN_AM)
+
+    state = session.get(ZoneState, zone.id)
+    assert state is not None
+    assert state.window_open is False
+    assert state.window_open_by_temperature is False
+    assert state.window_open_since is None
+
+
+def test_a_slow_cooldown_does_not_open_the_window(session: Session) -> None:
+    """The room drifting down a few tenths of a Kelvin once heating stops must
+    never be mistaken for an opened window."""
+    zone, _settings, temperature = _temp_drop_zone(session, "langsames-auskuehlen-zone")
+    device_id = zone.temperature_source_device_id
+    assert device_id is not None
+    start = EMPFANGEN_AM - timedelta(minutes=_DROP_WINDOW_MINUTES)
+    for step, value in enumerate(("21.00", "20.95", "20.90", "20.85")):
+        _add_reading(
+            session,
+            device_id,
+            temperature.id,
+            Decimal(value),
+            start + timedelta(minutes=step * (_DROP_WINDOW_MINUTES // 3)),
+        )
+
+    advance_zone_state(session, EMPFANGEN_AM)
+
+    state = session.get(ZoneState, zone.id)
+    assert state is not None and state.window_open is False
+
+
+def test_the_end_of_a_heating_phase_does_not_open_the_window(session: Session) -> None:
+    """Temperature climbing towards the setpoint while heating was on, then
+    levelling off as the heater switches off -- the room never actually falls,
+    so this must not read as a dropped, opened-window temperature."""
+    zone, _settings, temperature = _temp_drop_zone(session, "heizphasenende-zone")
+    device_id = zone.temperature_source_device_id
+    assert device_id is not None
+    start = EMPFANGEN_AM - timedelta(minutes=_DROP_WINDOW_MINUTES)
+    for step, value in enumerate(("20.50", "20.90", "21.00", "21.00")):
+        _add_reading(
+            session,
+            device_id,
+            temperature.id,
+            Decimal(value),
+            start + timedelta(minutes=step * (_DROP_WINDOW_MINUTES // 3)),
+        )
+
+    advance_zone_state(session, EMPFANGEN_AM)
+
+    state = session.get(ZoneState, zone.id)
+    assert state is not None and state.window_open is False
+
+
+def test_too_few_readings_in_the_history_does_not_open_the_window(session: Session) -> None:
+    zone, _settings, temperature = _temp_drop_zone(session, "zu-wenig-messwerte-zone")
+    device_id = zone.temperature_source_device_id
+    assert device_id is not None
+    # Only reaches back a couple of minutes, far short of the configured window.
+    _add_reading(
+        session,
+        device_id,
+        temperature.id,
+        Decimal("22.0"),
+        EMPFANGEN_AM - timedelta(minutes=2),
+    )
+    _add_reading(
+        session, device_id, temperature.id, Decimal("22.0") - _DROP_THRESHOLD_K, EMPFANGEN_AM
+    )
+
+    advance_zone_state(session, EMPFANGEN_AM)
+
+    state = session.get(ZoneState, zone.id)
+    assert state is not None
+    assert state.window_open is False
+    assert state.window_open_by_temperature is False
+
+
+def test_the_switch_on_without_a_temperature_source_never_opens_the_window(
+    session: Session,
+) -> None:
+    """The switch alone is not enough -- a zone still needs an actual temperature
+    source to reason about, exactly like `sensor_stuck` and the sensor-fault
+    detection already require one."""
+    zone, _settings, _temperature = _temp_drop_zone(session, "ohne-quelle-mit-schalter-zone")
+    zone.temperature_source_device_id = None
+
+    advance_zone_state(session, EMPFANGEN_AM)
+
+    state = session.get(ZoneState, zone.id)
+    assert state is not None
+    assert state.window_open is False
+    assert state.window_open_by_temperature is False
+
+
+def test_a_triggered_suspicion_holds_without_a_fresh_drop_and_then_lapses(
+    session: Session,
+) -> None:
+    zone, _settings, temperature = _temp_drop_zone(session, "vermutung-haelt-zone")
+    device_id = zone.temperature_source_device_id
+    assert device_id is not None
+    start = EMPFANGEN_AM - timedelta(minutes=_DROP_WINDOW_MINUTES)
+    _add_reading(session, device_id, temperature.id, Decimal("22.0"), start)
+    _add_reading(
+        session, device_id, temperature.id, Decimal("22.0") - _DROP_THRESHOLD_K, EMPFANGEN_AM
+    )
+
+    advance_zone_state(session, EMPFANGEN_AM)
+    state = session.get(ZoneState, zone.id)
+    assert state is not None and state.window_open is True
+    opened_at = EMPFANGEN_AM
+
+    # A later cycle, still inside the hold, with a flat reading (no fresh drop) --
+    # the suspicion must still hold, and the clock must not restart.
+    still_holding_at = opened_at + timedelta(minutes=_DROP_HOLD_MINUTES - 1)
+    _add_reading(
+        session, device_id, temperature.id, Decimal("21.0") - _DROP_THRESHOLD_K, still_holding_at
+    )
+    advance_zone_state(session, still_holding_at)
+    state = session.get(ZoneState, zone.id)
+    assert state is not None
+    assert state.window_open is True
+    assert state.window_open_by_temperature is True
+    assert state.window_open_since == opened_at
+
+    # Once the hold has fully elapsed and nothing in the trailing window shows a
+    # fresh drop (the reading has been flat since), the suspicion lapses on its
+    # own -- see `domain.window_temperature_drop`'s module docstring for why a
+    # bounded hold, not a recovery signal, is the release used here.
+    lapsed_at = opened_at + timedelta(minutes=_DROP_HOLD_MINUTES)
+    _add_reading(session, device_id, temperature.id, Decimal("21.0") - _DROP_THRESHOLD_K, lapsed_at)
+    advance_zone_state(session, lapsed_at)
+    state = session.get(ZoneState, zone.id)
+    assert state is not None
+    assert state.window_open is False
+    assert state.window_open_by_temperature is False
+    assert state.window_open_since is None
+
+
+def test_a_real_window_contact_governs_exclusively_even_when_it_reads_unknown(
+    session: Session,
+) -> None:
+    """Task instruction: once a zone has a window contact assigned, it decides
+    exclusively -- even while its own current reading is stale or missing. The
+    temperature guess must not step in during that outage, however steep the
+    zone's own recent temperature drop looks."""
+    zone, _settings, temperature = _temp_drop_zone(session, "kontakt-und-temperatur-zone")
+    device_id = zone.temperature_source_device_id
+    assert device_id is not None
+    start = EMPFANGEN_AM - timedelta(minutes=_DROP_WINDOW_MINUTES)
+    _add_reading(session, device_id, temperature.id, Decimal("22.0"), start)
+    _add_reading(
+        session,
+        device_id,
+        temperature.id,
+        Decimal("22.0") - _DROP_THRESHOLD_K - Decimal("2"),
+        EMPFANGEN_AM,
+    )
+    # A window contact assigned to the same zone, but stale -- old enough to read
+    # as unknown under the (very short) sensor timeout below.
+    contact = _capability(session, "contact")
+    contact_device = create_device(session, "kontakt-und-temperatur-zone-kontakt")
+    zone.sensor_timeout_seconds = 30
+    session.add(
+        ZoneDevice(
+            zone_id=zone.id,
+            device_id=contact_device.id,
+            device_role_id=role(session, "window_contact").id,
+        )
+    )
+    session.add(
+        Measurement(
+            device_id=contact_device.id,
+            capability_id=contact.id,
+            value_text="false",
+            measured_at=EMPFANGEN_AM - timedelta(seconds=31),
+            received_at=EMPFANGEN_AM,
+        )
+    )
+
+    advance_zone_state(session, EMPFANGEN_AM)
+
+    state = session.get(ZoneState, zone.id)
+    assert state is not None
+    assert state.window_open is None
+    assert state.window_open_by_temperature is False
+
+
+def test_the_switch_off_never_opens_the_window_from_temperature_alone(
+    session: Session,
+) -> None:
+    zone, _settings, temperature = _temp_drop_zone(session, "schalter-aus-zone")
+    zone.window_temp_drop_detection_enabled = False
+    device_id = zone.temperature_source_device_id
+    assert device_id is not None
+    start = EMPFANGEN_AM - timedelta(minutes=_DROP_WINDOW_MINUTES)
+    _add_reading(session, device_id, temperature.id, Decimal("22.0"), start)
+    _add_reading(
+        session,
+        device_id,
+        temperature.id,
+        Decimal("22.0") - _DROP_THRESHOLD_K - Decimal("2"),
+        EMPFANGEN_AM,
+    )
+
+    advance_zone_state(session, EMPFANGEN_AM)
+
+    state = session.get(ZoneState, zone.id)
+    assert state is not None
+    assert state.window_open is None
+    assert state.window_open_by_temperature is False
+
+
+def test_the_cold_window_alarm_applies_to_a_temperature_inferred_window_too(
+    session: Session,
+) -> None:
+    """Task instruction: verify, rather than assume, that `domain.window_alarm`
+    treats a temperature-inferred window exactly like a real one -- it reads only
+    `window_open`/`window_open_since`, which `advance_zone_state` sets identically
+    regardless of source, so this is expected to hold without any change there."""
+    zone, setting_row, temperature = _temp_drop_zone(session, "temperatur-fenster-alarm-zone")
+    setting_row.window_alarm_open_minutes = 30
+    setting_row.window_alarm_outdoor_threshold_c = Decimal("5.0")
+    setting_row.window_temp_drop_hold_minutes = 120
+    outdoor_device = create_device(session, "aussenfuehler-temp-erkennung")
+    setting_row.outdoor_temperature_source_device_id = outdoor_device.id
+    session.add(
+        Measurement(
+            device_id=outdoor_device.id,
+            capability_id=temperature.id,
+            value_numeric=Decimal("-2.0"),
+            measured_at=EMPFANGEN_AM,
+            received_at=EMPFANGEN_AM,
+        )
+    )
+    device_id = zone.temperature_source_device_id
+    assert device_id is not None
+    start = EMPFANGEN_AM - timedelta(minutes=_DROP_WINDOW_MINUTES)
+    _add_reading(session, device_id, temperature.id, Decimal("22.0"), start)
+    _add_reading(
+        session, device_id, temperature.id, Decimal("22.0") - _DROP_THRESHOLD_K, EMPFANGEN_AM
+    )
+
+    # Just triggered -- not yet long enough for the alarm.
+    advance_zone_state(session, EMPFANGEN_AM)
+    state = session.get(ZoneState, zone.id)
+    assert state is not None
+    assert state.window_open is True
+    assert state.window_open_by_temperature is True
+    assert state.window_alarm is False
+
+    # 40 minutes later, still cold outside and still held (hold set to 120
+    # minutes above so the suspicion has not lapsed on its own by then).
+    later = EMPFANGEN_AM + timedelta(minutes=40)
+    _add_reading(session, outdoor_device.id, temperature.id, Decimal("-2.0"), later)
+    advance_zone_state(session, later)
+    state = session.get(ZoneState, zone.id)
+    assert state is not None and state.window_alarm is True
 
 
 def test_window_alarm_is_unknown_without_an_outdoor_source(session: Session) -> None:

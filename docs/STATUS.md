@@ -2,6 +2,68 @@
 
 Letzte Aktualisierung: 2026-09-06.
 
+## Fenster-Erkennung aus einem Temperatursturz, ohne Kontakt
+
+Eine Zone ohne zugeordneten Fensterkontakt kann jetzt trotzdem ein offenes Fenster
+erkennen — an einem hinreichend steilen Abfall ihrer eigenen Raumtemperatur. Je Zone
+einschaltbar (`Zone.window_temp_drop_detection_enabled`, Vorgabe **aus**), Regelparameter-
+Seite der Zone. Ein zugeordneter Fensterkontakt hat immer Vorrang: `services/
+ingest.py::_window_open` fragt zuerst, ob der Zone Fensterkontakt-Geräte zugeordnet sind
+— ist das der Fall, entscheidet ausschließlich der Kontakt, auch während er gerade
+unbekannt ist (stale/fehlend). Nur eine Zone ganz ohne Kontakt und mit eingeschaltetem
+Schalter wird über die Temperatur beurteilt (`_window_open_from_temperature`).
+
+**Kriterium** (`domain/window_temperature_drop.py::window_open_suspected`, im Aufbau
+gespiegelt an `domain.fault.stuck_reading`): der größte Temperaturwert im Verlauf der
+letzten `setting.window_temp_drop_window_minutes` (Vorgabe 15) minus dem aktuellen Wert
+erreicht `setting.window_temp_drop_threshold_k` (Vorgabe 1,5 K). Der Schwellwert ist ein
+begründeter, aber ausdrücklich **nicht anlagenspezifischer** Schätzwert — ohne Messdaten
+der echten Anlage lässt sich kein sicherer Wert herleiten; deshalb bleibt die Erkennung
+je Zone standardmäßig aus, und der Betreiber schaltet sie bewusst ein. Bewusst in Kauf
+genommene Fehlauslöser: eine geöffnete Tür, ein Luftzug, ein ungünstig platzierter
+Sensor — keiner davon ist mit reiner Temperaturmessung von einem echten Fensteröffnen zu
+unterscheiden. Ein langsames Auskühlen nach Heizende und das Ende einer Heizphase
+selbst bleiben unterhalb der Schwelle und lösen nicht aus (mit Tests belegt, nicht nur
+angenommen).
+
+**Rücknahme.** Ein reines Sturzkriterium kennt kein Ende — ein bereits abgekühlter,
+stabil kalter Raum zeigt keinen neuen Sturz mehr, obwohl das Fenster noch offen sein
+könnte, und da die Erkennung selbst das Heizen abschaltet, gäbe es ohnehin keine aktive
+Wärmequelle, die einen Temperaturanstieg als Entwarnungssignal liefern könnte — eine
+Rücknahme über „die Temperatur steigt wieder" wäre also zirkulär. Gelöst über eine
+gebundene Haltedauer (`temperature_detection_still_holding`,
+`setting.window_temp_drop_hold_minutes`, Vorgabe 30): einmal ausgelöst, gilt die
+Vermutung für diese Dauer weiter offen, auch ohne neuen Sturz, und fällt danach von
+selbst wieder ab, sofern in der Zwischenzeit kein frischer Sturz sie erneuert. Dieselbe
+Uhr wie beim echten Kontakt (`zone_state.window_open_since`) — kein zweiter Zeitstempel.
+
+**Wirkt wie ein echter Kontakt.** `zone_state.window_open`/`window_open_since` werden für
+beide Quellen identisch gesetzt; `domain/control_loop.py` (Fensterabschaltung,
+Frostschutz-Ausnahme, EIN/AUS-Ausnahme, Wiederanlaufsperre) und
+`domain/window_alarm.py` (Kälte-Alarm) bleiben deshalb **unverändert** — mit eigenem
+Test belegt, dass Letzteres tatsächlich zutrifft, statt nur angenommen.
+
+**Bleibt unterscheidbar, Grundsatz 5.** Neue Spalte `zone_state.
+window_open_by_temperature`: `True` genau dann, wenn das aktuelle `window_open = true`
+aus der Temperaturvermutung stammt, nie aus einem echten Kontakt. `domain/
+control_loop.py::decide()` hängt jeder Begründung, bei der ein temperaturvermutetes
+Fenster mitentscheidet, einen kurzen Zusatzsatz an („Fenster nicht gemessen, sondern aus
+einem Temperatursturz vermutet."). Auf der Startseite ein eigener Status-Chip neben dem
+bestehenden Fenster-Alarm-Chip.
+
+**Nicht in REST, MCP oder Homebridge** — dieselbe, vom Projektinhaber vorgegebene Grenze
+wie beim Fenster-Alarm. Die drei anlagenweiten Schwellen liegen deshalb in einem eigenen
+`WINDOW_TEMP_DROP_LIMITS` (`domain/control.py`), nicht im von REST und MCP mitbenutzten
+`LIMITS`; der Zonen-Schalter ist keine `ControlParameters`-Spalte und hat eine eigene
+kleine Speicherfunktion (`domain/zone_settings.py::set_window_temp_drop_detection`) samt
+eigener Route (`/zones/{id}/window-temp-drop-detection`), damit er das Formular
+`/zones/{id}/parameters` — das die REST-Antwort `ControlParametersResponse` verbatim
+speist — nicht erreichen kann. In Home Assistant eine eigene, laufend gesendete
+Diagnose-Entität je Zone (`state/window_open_by_temperature`), kein eigenes
+Meldungssystem mit Zustellprotokoll wie beim Fenster-Alarm.
+
+Migration `e741133296d2`, Kopf danach unverändert einzügig.
+
 ## Fenster: Frostschutz gewinnt, EIN/AUS-Aktoren schalten nicht ab
 
 Zwei Entscheidungen des Projektinhabers an `domain/control_loop.py::decide()`.

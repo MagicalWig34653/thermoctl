@@ -852,6 +852,12 @@ def _process_zone(
         assert sensor_status_row is not None, "sensor_status-Zeile fehlt zur Referenz"
         sensor_status = sensor_status_row.code
     window_open, window_closed_for_s = _window_situation(session, zone, state, now)
+    # Read straight off the already-persisted state, not recomputed: `state`
+    # itself is `advance_zone_state`'s own result for this exact cycle, which set
+    # `window_open` and `window_open_by_temperature` together
+    # (`services/ingest.py`). `bool(state and ...)` matches `_window_situation`'s
+    # own `bool(state and state.window_open)` immediately above for a missing row.
+    window_open_by_temperature = bool(state and state.window_open_by_temperature)
 
     setpoint = resolved_setpoint(session, zone, now)
     frost_c = _frost_setpoint(session, zone, settings)
@@ -883,6 +889,7 @@ def _process_zone(
         held_for_s=held_for_s,
         window_open=window_open,
         window_closed_for_s=window_closed_for_s,
+        window_open_by_temperature=window_open_by_temperature,
         sensor_status=sensor_status,
         parameter=parameter,
         override_active=override_active,

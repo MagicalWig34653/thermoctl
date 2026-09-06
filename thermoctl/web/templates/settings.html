@@ -111,6 +111,28 @@
     <button class="btn btn-primary mt-4" type="submit">Fenster-Alarm speichern</button>
 </form>
 
+<form method="post" action="{{ url_prefix }}/settings/window-temp-drop" class="tc-panel p-4 mt-4">
+    <p class="t-label mb-3">Fenster-Erkennung aus einem Temperatursturz</p>
+    <p class="t-quiet mb-3">
+        Gilt nur für eine Zone ohne zugeordneten Fensterkontakt und mit eingeschaltetem
+        Schalter unter „Regelparameter" der Zone — ist ein Kontakt zugeordnet, entscheidet
+        der ausschließlich. Erkennt einen Sturz von mindestens der Sturzschwelle innerhalb
+        des Zeitfensters und hält die Vermutung dann so lange, wie unten angegeben, auch
+        wenn sich die Temperatur danach nicht mehr bewegt — siehe
+        <code>domain/window_temperature_drop.py</code> für die Begründung der Vorgaben.
+        Die Schwellen sind ein begründeter Schätzwert, keine Messung dieser Anlage.
+    </p>
+    <div class="row g-3">
+        {% for field, label, integral in window_temp_drop_fields %}
+        <div class="col-sm-4">
+            {{ number_field(field, label, window_temp_drop_values.get(field, ""), "",
+                          window_temp_drop_errors.get(field, ""), "1" if integral else "0.1") }}
+        </div>
+        {% endfor %}
+    </div>
+    <button class="btn btn-primary mt-4" type="submit">Fenster-Erkennung speichern</button>
+</form>
+
 <form method="post" action="{{ url_prefix }}/settings/notifications" class="tc-panel p-4 mt-4">
     <p class="t-label mb-1">Meldungen</p>
     <p class="t-quiet mb-3">
@@ -219,6 +241,15 @@
         {% for field, label, integral in window_alarm_fields %}
         <dt class="col-sm-7 fw-normal t-quiet">{{ label }}</dt>
         <dd class="col-sm-5 t-value{{ ' mb-0' if loop.last }}">{{ window_alarm_values.get(field, "") }}</dd>
+        {% endfor %}
+    </dl>
+</div>
+<div class="tc-panel p-4 mt-4">
+    <p class="t-label mb-1">Fenster-Erkennung aus einem Temperatursturz</p>
+    <dl class="row mb-0">
+        {% for field, label, integral in window_temp_drop_fields %}
+        <dt class="col-sm-7 fw-normal t-quiet">{{ label }}</dt>
+        <dd class="col-sm-5 t-value{{ ' mb-0' if loop.last }}">{{ window_temp_drop_values.get(field, "") }}</dd>
         {% endfor %}
     </dl>
 </div>

@@ -71,6 +71,7 @@ def _lage(
     valve_protection_due: bool = False,
     valve_protection_active: bool = False,
     on_off_actuators_only: bool = False,
+    window_open_by_temperature: bool = False,
 ) -> Situation:
     return Situation(
         measured_c=measured_c,
@@ -88,6 +89,7 @@ def _lage(
         valve_protection_due=valve_protection_due,
         valve_protection_active=valve_protection_active,
         on_off_actuators_only=on_off_actuators_only,
+        window_open_by_temperature=window_open_by_temperature,
     )
 
 
@@ -110,6 +112,8 @@ def test_control_inputs_and_outputs_are_immutable_and_safety_flags_default_off()
     assert situation.override_active is False
     assert situation.valve_protection_due is False
     assert situation.valve_protection_active is False
+    assert situation.on_off_actuators_only is False
+    assert situation.window_open_by_temperature is False
     with pytest.raises(FrozenInstanceError):
         situation.heating_now = True  # type: ignore[misc]
     with pytest.raises(FrozenInstanceError):
@@ -349,6 +353,43 @@ def test_rule3_an_open_window_does_not_heat_despite_a_cold_room() -> None:
     e = decide(_lage(window_open=True, measured_c=Decimal("18.0"), setpoint_c=Decimal("21.0")))
     assert e.heating is False
     assert e.reason_code == REASON_CODE_WINDOW_OPEN
+
+
+def test_rule3_a_temperature_inferred_window_shuts_off_exactly_like_a_real_one() -> None:
+    """Task instruction: the temperature-based guess must act like a real contact
+    -- same outcome, same reason code -- only the reason *text* may differ."""
+    real = decide(_lage(window_open=True, measured_c=Decimal("18.0"), setpoint_c=Decimal("21.0")))
+    guessed = decide(_lage(
+        window_open=True,
+        window_open_by_temperature=True,
+        measured_c=Decimal("18.0"),
+        setpoint_c=Decimal("21.0"),
+    ))
+    assert guessed.heating is real.heating is False
+    assert guessed.reason_code == real.reason_code == REASON_CODE_WINDOW_OPEN
+
+
+def test_rule3_a_temperature_inferred_window_says_so_in_its_own_reason() -> None:
+    """Grundsatz 5: whoever reads the logged reason later must be able to tell a
+    guess from a measurement, not just infer it from the interface's status chip."""
+    real = decide(_lage(window_open=True, measured_c=Decimal("18.0"), setpoint_c=Decimal("21.0")))
+    guessed = decide(_lage(
+        window_open=True,
+        window_open_by_temperature=True,
+        measured_c=Decimal("18.0"),
+        setpoint_c=Decimal("21.0"),
+    ))
+    assert "vermutet" in guessed.reason
+    assert "vermutet" not in real.reason
+
+
+def test_the_temperature_note_only_appears_while_the_window_is_actually_open() -> None:
+    """`window_open_by_temperature` alone, without `window_open`, must never leak
+    the note into an unrelated decision -- it cannot happen in practice (`services/
+    ingest.py` never sets one without the other), but the function must not rely
+    on that invariant holding elsewhere to stay honest on its own."""
+    e = decide(_lage(window_open=False, window_open_by_temperature=True))
+    assert "vermutet" not in e.reason
 
 
 # ---------------------------------------------------------------------------
@@ -982,6 +1023,24 @@ def test_precedence_frost_protection_now_beats_an_open_window_in_off_mode_too() 
     )
     assert e.heating is True
     assert e.reason_code == REASON_CODE_FROST_OVERRIDES_WINDOW
+
+
+def test_the_temperature_note_reaches_the_frost_override_reason_too() -> None:
+    """The note is appended at every reason site `on_off_zone_note` already
+    reaches, rule 6's frost-override branch included -- not only rule 3's own
+    direct 'window shuts off' return."""
+    e = decide(
+        _lage(
+            operating_mode="off",
+            setpoint_c=Decimal("16.0"),
+            measured_c=Decimal("5.0"),
+            window_open=True,
+            window_open_by_temperature=True,
+        )
+    )
+    assert e.heating is True
+    assert e.reason_code == REASON_CODE_FROST_OVERRIDES_WINDOW
+    assert "vermutet" in e.reason
 
 
 def test_precedence_an_open_window_beats_the_restart_delay() -> None:

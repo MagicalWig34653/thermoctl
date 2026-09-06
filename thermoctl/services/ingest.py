@@ -29,6 +29,11 @@ from thermoctl.domain.fault import NO_SOURCE, OK, sensor_state, stuck_reading
 from thermoctl.domain.outdoor import outdoor_reading
 from thermoctl.domain.reading import Reading, readings_from_payload
 from thermoctl.domain.window_alarm import window_alarm_state
+from thermoctl.domain.window_temperature_drop import (
+    temperature_detection_still_holding,
+    temperature_drop_history_cutoff,
+    window_open_suspected,
+)
 from thermoctl.domain.zone_settings import control_parameters
 from thermoctl.integrations.mqtt.zigbee2mqtt import MessageKind, trim
 
@@ -424,13 +429,16 @@ def advance_zone_state(session: Session, now: datetime) -> None:
             and temperature is not None
             and _stuck(session, zone, temperature, now, setting_row.stuck_reading_hours)
         )
-        new_window_open = _window_open(
+        new_window_open, detected_by_temperature = _window_open(
             session,
             zone,
             contact,
             window_role,
+            temperature,
             now,
             control_parameters(session, zone).sensor_timeout_seconds,
+            state,
+            setting_row,
         )
         # Only set a *new* clock when there isn't one already -- checking
         # `state.window_open_since is None` rather than "was the previous
@@ -450,6 +458,11 @@ def advance_zone_state(session: Session, now: datetime) -> None:
         elif new_window_open is False:
             state.window_open_since = None
         state.window_open = new_window_open
+        # Always in step with `new_window_open` above -- see the column's own
+        # docstring in `db/models/state.py`. Never `True` while `new_window_open`
+        # is not, since `_window_open` below only ever returns `True` for the
+        # temperature flag together with `True` for the window state itself.
+        state.window_open_by_temperature = detected_by_temperature
         state.window_alarm = window_alarm_state(
             window_open=new_window_open,
             window_open_since=state.window_open_since,
@@ -467,26 +480,57 @@ def _window_open(
     zone: Zone,
     contact: DeviceCapability | None,
     window_role: DeviceRole | None,
+    temperature: DeviceCapability | None,
+    now: datetime,
+    timeout_s: int,
+    previous_state: ZoneState | None,
+    setting_row: Setting,
+) -> tuple[bool | None, bool]:
+    """The zone's window state, and whether it came from the temperature guess.
+
+    Returns `(window_open, detected_by_temperature)`. A real window contact, once
+    assigned to the zone, decides **exclusively** -- task instruction, restated
+    here because it is easy to get backwards: even a currently-unknown contact
+    reading (stale, unreachable) must not fall through to the temperature guess,
+    or a zone with a merely offline contact would silently start being judged by
+    a completely different method mid-outage. Only a zone with *no* contact
+    assigned at all reaches `_window_open_from_temperature` below, and only if
+    the zone's own switch (`Zone.window_temp_drop_detection_enabled`) is on --
+    the project owner's explicit default is off.
+    """
+    if contact is not None and window_role is not None:
+        device_ids = list(
+            session.scalars(
+                select(ZoneDevice.device_id).where(
+                    ZoneDevice.zone_id == zone.id,
+                    ZoneDevice.device_role_id == window_role.id,
+                )
+            )
+        )
+        if device_ids:
+            return _contact_window_open(session, device_ids, contact, now, timeout_s), False
+
+    if not zone.window_temp_drop_detection_enabled:
+        # No contact, and the temperature-based approximation is off -- unknown,
+        # exactly like every zone without any window detection before this
+        # feature existed. Treated by the control logic like closed, same as the
+        # contact-less case below always was: otherwise a plant with no window
+        # contacts and the switch off could fundamentally never heat.
+        return None, False
+
+    detected = _window_open_from_temperature(session, zone, temperature, now, previous_state, setting_row)
+    return detected, detected
+
+
+def _contact_window_open(
+    session: Session,
+    device_ids: list[int],
+    contact: DeviceCapability,
     now: datetime,
     timeout_s: int,
 ) -> bool | None:
-    if contact is None or window_role is None:
-        return None
-    devices_ids = list(
-        session.scalars(
-            select(ZoneDevice.device_id).where(
-                ZoneDevice.zone_id == zone.id,
-                ZoneDevice.device_role_id == window_role.id,
-            )
-        )
-    )
-    if not devices_ids:
-        # Unknown is treated by the control logic like closed. Otherwise a plant
-        # without window contacts could fundamentally never heat.
-        return None
-
     unknown = False
-    for device_id in devices_ids:
+    for device_id in device_ids:
         measurement = session.scalar(
             select(Measurement)
             .where(
@@ -509,3 +553,69 @@ def _window_open(
         if measurement.value_text == "false":
             return True
     return None if unknown else False
+
+
+def _window_open_from_temperature(
+    session: Session,
+    zone: Zone,
+    temperature: DeviceCapability | None,
+    now: datetime,
+    previous_state: ZoneState | None,
+    setting_row: Setting,
+) -> bool:
+    """Whether a contact-less zone's own temperature currently suggests an open
+    window -- always a definite `True`/`False`, never unknown: unlike a contact
+    that can go stale, there is no separate "cannot currently tell" state here,
+    only "not enough history to say" (`window_open_suspected`'s own `False`).
+
+    See `domain.window_temperature_drop`'s module docstring for the full
+    reasoning behind both halves below: the drop trigger, and the bounded hold
+    that ends a triggered suspicion without relying on a recovery signal that a
+    withheld heat demand would make circular.
+    """
+    if temperature is None or zone.temperature_source_device_id is None:
+        return False
+
+    if previous_state is not None and previous_state.window_open_by_temperature:
+        if temperature_detection_still_holding(
+            previous_state.window_open_since,
+            now,
+            hold_minutes=setting_row.window_temp_drop_hold_minutes,
+        ):
+            return True
+
+    cutoff = temperature_drop_history_cutoff(
+        now, setting_row.window_temp_drop_window_minutes
+    )
+    history_covers_duration = (
+        session.scalar(
+            select(Measurement.id)
+            .where(
+                Measurement.device_id == zone.temperature_source_device_id,
+                Measurement.capability_id == temperature.id,
+                Measurement.measured_at <= cutoff,
+            )
+            .limit(1)
+        )
+        is not None
+    )
+    values = [
+        value
+        for value in session.scalars(
+            select(Measurement.value_numeric)
+            .where(
+                Measurement.device_id == zone.temperature_source_device_id,
+                Measurement.capability_id == temperature.id,
+                Measurement.measured_at >= cutoff,
+                Measurement.measured_at <= now,
+                Measurement.value_numeric.is_not(None),
+            )
+            .order_by(Measurement.measured_at.asc(), Measurement.id.asc())
+        )
+        if value is not None
+    ]
+    return window_open_suspected(
+        values,
+        history_covers_duration=history_covers_duration,
+        drop_threshold_k=setting_row.window_temp_drop_threshold_k,
+    )
