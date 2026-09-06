@@ -24,6 +24,10 @@ REASON_CODE_WINDOW_OPEN = "fenster_offen"
 REASON_CODE_FROST_SENSOR_FAILURE = "frostschutz_sensorausfall"
 REASON_CODE_NO_SOURCE = "keine_quelle"
 REASON_CODE_VALVE_PROTECTION = "ventilschutz"
+# Added 2026-09-06, by explicit decision of the project owner, alongside
+# `Situation.on_off_actuators_only` -- not part of the original specification's
+# section 4 table; see the build report of that date for the reasoning.
+REASON_CODE_FROST_OVERRIDES_WINDOW = "frostschutz_trotz_fenster_offen"
 
 
 @dataclass(frozen=True)
@@ -48,6 +52,16 @@ class Situation:
     override_active: bool = False
     valve_protection_due: bool = False
     valve_protection_active: bool = False
+    # Added 2026-09-06 (owner's decision): true exactly for a zone whose actuators are
+    # all plain on/off valves -- it has at least one actuator and none of them is
+    # `Device.self_regulating` (`db.models.device.ZoneDevice.self_regulating`, see
+    # `services/shadow_run.py::_process_zone` for how this is derived). Floor heating
+    # on such valves is too sluggish for a window-triggered shutoff to make sense, so
+    # rules 3 and 4 below skip it entirely -- window detection, recording and the cold
+    # alarm are untouched, only `decide()`'s own shutoff is. A zone with no actuators
+    # assigned, or with at least one self-regulating (thermostatic) valve, keeps the
+    # existing, more cautious behaviour -- default `False` is exactly that.
+    on_off_actuators_only: bool = False
 
 
 @dataclass(frozen=True)
@@ -110,24 +124,117 @@ def decide(situation: Situation) -> Decision:
         else situation.setpoint_reason
     )
 
-    # Rule 3 — window open: off, regardless of temperature.
-    if situation.window_open:
-        return Decision(
-            heating=False,
-            reason_code=REASON_CODE_WINDOW_OPEN,
-            reason=(
-                f"Fenster offen — Ist {measured_c} °C, "
-                f"Soll {setpoint_c} °C ({setpoint_reason})."
-            ),
+    # `h` (rule 6's hysteresis band) is needed already here, by rule 3's frost
+    # exception below — moved up from its original position directly above rule 6.
+    h = situation.parameter.hysteresis_k
+
+    # An EIN/AUS-zone (`on_off_actuators_only`, see the field's docstring) skips both
+    # rule 3 and rule 4 below entirely, unconditionally — the owner's decision this
+    # zone's actuators are too sluggish for a window-triggered shutoff to make sense
+    # (floor heating on plain on/off valves). Window detection, recording and the
+    # later cold alarm are untouched; only `decide()`'s own shutoff is skipped. The
+    # note below makes that visible in every reason this cycle falls through to,
+    # exactly when it actually applies (Grundsatz 5 — nothing about the decision may
+    # go unexplained).
+    # Kept short on purpose (found via a MariaDB-only failure, 2026-09-06):
+    # `shadow_decision.reason` is `String(255)`, and this note can end up appended
+    # to a decision PI still gets to extend with its own suffix afterwards
+    # (`services/shadow_run.py::_pi_outcome`) -- exactly the combination an
+    # EIN/AUS-only zone with an open window newly makes possible, since rule 3
+    # no longer applies to it at all and `_pi_gate_reason` therefore does not
+    # block PI here either. SQLite does not enforce the column length and stayed
+    # green; only the MariaDB run caught the truncation.
+    on_off_zone_note = (
+        " EIN/AUS-Aktor — Fensteröffnung wirkt hier nicht abschaltend."
+        if situation.window_open and situation.on_off_actuators_only
+        else ""
+    )
+
+    # Rule 3 — window open normally means off, regardless of temperature. One
+    # exception, decided by the project owner (2026-09-06): an open window must not
+    # be allowed to freeze the room. If the zone falls below its own frost-protection
+    # setpoint despite the open window, it heats anyway — heating against an open
+    # window is expensive, but a frozen pipe is more expensive still. Reached only for
+    # a zone that is not exempted from this rule altogether (see `on_off_zone_note`
+    # above).
+    if situation.window_open and not situation.on_off_actuators_only:
+        # The same hysteresis band as every other threshold in this function, against
+        # the frost-protection value instead of the normal setpoint, so the exception
+        # cannot flap at the frost value either. `already_engaged` reuses `heating_now`
+        # instead of separately persisted state, on the assumption that while the
+        # window stays open, `heating_now` can only be `True` because this exception
+        # engaged it -- but that assumption is NOT limited to "one cycle longer" as an
+        # earlier version of this comment claimed (found in review 2026-09-06,
+        # measured with `decide()` called repeatedly at a fixed measured_c inside the
+        # band: heating stayed on for every simulated cycle, not one). Two sources
+        # for `heating_now=True` outlive their own cycle here: a zone that was
+        # heating for an ordinary reason (rule 6) at the moment the window opens, or
+        # a valve-protection run (rule 7) already under way when it opens -- either
+        # way, if the room happens to sit inside the frost band when that happens,
+        # `already_engaged` reads `True` and keeps reading `True` for as long as
+        # `measured_c` stays inside the band, however many cycles that takes; it is
+        # not evidence the exception itself ever engaged for a frost reason. The
+        # heating outcome is still the safe direction to err in (the room is, after
+        # all, genuinely inside the frost band the whole time) -- but a run
+        # attributed here to `REASON_CODE_FROST_OVERRIDES_WINDOW` may actually be a
+        # valve-protection run continuing under a window-open cycle it would
+        # otherwise have been interrupted by (see the build report of that review
+        # for the case worked through in detail); the recorded reason then
+        # misattributes *why*, which Grundsatz 5 asks be accurate, not merely the
+        # direction of the outcome. Left unresolved here -- distinguishing the two
+        # would need its own persisted "engaged via frost" marker alongside
+        # `valve_protection_active`, which is a bigger change than a reviewer comment
+        # fix.
+        frost_low = situation.frost_c - h
+        frost_high = situation.frost_c + h
+        already_engaged = situation.heating_now and measured_c <= frost_high
+        wants_frost_heat = measured_c < frost_low or already_engaged
+        if not wants_frost_heat:
+            return Decision(
+                heating=False,
+                reason_code=REASON_CODE_WINDOW_OPEN,
+                reason=(
+                    f"Fenster offen — Ist {measured_c} °C, "
+                    f"Soll {setpoint_c} °C ({setpoint_reason})."
+                ),
+            )
+        # Falls through instead of returning: rule 4 below never applies here in
+        # practice (`window_closed_for_s` is always `None` while `window_open` is
+        # `True`, see `services/shadow_run.py::_window_situation`); rule 5's minimum
+        # switch duration still can hold the previous state unchanged — "Mindest-
+        # schaltdauern gelten unverändert weiter"; and rule 6 further down decides
+        # on/off exactly as it always does, just against the frost-protection value
+        # instead of the normal setpoint, which is why both are substituted here.
+        setpoint_c = situation.frost_c
+        # On a failed sensor `setpoint_reason` already names that (rule 1/2 above) and
+        # `setpoint_c` is already the frost value — append instead of replacing, so a
+        # doubly unusual cycle (stale sensor *and* an open window below frost) still
+        # says both, rather than the window exception silently displacing the sensor
+        # one.
+        setpoint_reason = (
+            f"{setpoint_reason} Zusätzlich Ausnahmeregel: Fenster offen, aber "
+            f"Frostschutz {situation.frost_c} °C unterschritten — es wird trotzdem "
+            "geheizt."
+            if sensor_failed
+            else (
+                f"Fenster offen, aber Frostschutz {situation.frost_c} °C unterschritten "
+                "— Ausnahmeregel: es wird trotz offenem Fenster geheizt, um ein "
+                "Einfrieren zu vermeiden."
+            )
         )
+        frost_override_active = True
+    else:
+        frost_override_active = False
 
     # Rule 4 — resume delay: the window is closed, but the room is still cooling down
     # from it. 'None' for fenster_zu_seit_s means "no pending resume delay" (the
     # window has never been open since recording began) — then there is nothing to
-    # wait out.
+    # wait out. Skipped for an EIN/AUS-zone exactly like rule 3 above — for the same
+    # reason: it never actually switched off, so there is nothing to resume from.
     delay = situation.parameter.window_resume_delay_seconds
     if (
-        situation.window_closed_for_s is not None
+        not situation.on_off_actuators_only
+        and situation.window_closed_for_s is not None
         and situation.window_closed_for_s < delay
     ):
         return Decision(
@@ -211,14 +318,14 @@ def decide(situation: Situation) -> Decision:
             reason=(
                 f"Zustand '{state}' erst seit {situation.held_for_s}s, "
                 f"Mindestdauer {minimum_duration}s "
-                "— die Heizanforderung bleibt unverändert."
+                "— die Heizanforderung bleibt unverändert." + on_off_zone_note
             ),
         )
 
     # Rule 6 — hysteresis. The legacy system does not have it
     # (`if ist < soll: an, sonst aus`) and switches at the setpoint on every cycle;
-    # `h` is exactly the band that prevents that.
-    h = situation.parameter.hysteresis_k
+    # `h` (computed above, ahead of rule 3's frost exception) is exactly the band
+    # that prevents that.
     # A protection run is not evidence that normal control currently wants heat.
     # Treat its temporary on-state as off for hysteresis, otherwise the ordinary
     # "keep current state" branch would make the run endless after a restart.
@@ -228,20 +335,24 @@ def decide(situation: Situation) -> Decision:
             heating=True,
             reason_code=(
                 REASON_CODE_FROST_SENSOR_FAILURE if sensor_failed
+                else REASON_CODE_FROST_OVERRIDES_WINDOW if frost_override_active
                 else REASON_CODE_HEATING
             ),
             reason=(
                 f"Ist {measured_c} °C unter Soll {setpoint_c} °C minus Hysterese {h}K "
-                f"({setpoint_reason})."
+                f"({setpoint_reason})." + on_off_zone_note
             ),
         )
     if regular_heating_now and measured_c > setpoint_c + h:
+        # Unreachable while `frost_override_active` is true: rule 3's own check above
+        # already established `measured_c <= setpoint_c(frost) + h` before falling
+        # through, so this branch cannot fire for the same cycle. No ternary needed.
         return Decision(
             heating=False,
             reason_code=REASON_CODE_OFF,
             reason=(
                 f"Ist {measured_c} °C über Soll {setpoint_c} °C plus Hysterese {h}K "
-                f"({setpoint_reason})."
+                f"({setpoint_reason})." + on_off_zone_note
             ),
         )
     # This branch is reached whenever heating is already on and the measured value has
@@ -257,22 +368,25 @@ def decide(situation: Situation) -> Decision:
                 heating=True,
                 reason_code=(
                     REASON_CODE_FROST_SENSOR_FAILURE if sensor_failed
+                    else REASON_CODE_FROST_OVERRIDES_WINDOW if frost_override_active
                     else REASON_CODE_UNCHANGED
                 ),
                 reason=(
                     f"Ist {measured_c} °C unter Soll {setpoint_c} °C minus Hysterese {h}K "
                     f"({setpoint_reason}) — Heizung läuft bereits, Zustand bleibt."
+                    + on_off_zone_note
                 ),
             )
         return Decision(
             heating=True,
             reason_code=(
                 REASON_CODE_FROST_SENSOR_FAILURE if sensor_failed
+                else REASON_CODE_FROST_OVERRIDES_WINDOW if frost_override_active
                 else REASON_CODE_UNCHANGED
             ),
             reason=(
                 f"Ist {measured_c} °C innerhalb der Hysterese um Soll {setpoint_c} °C ± {h}K "
-                f"({setpoint_reason}) — Zustand bleibt."
+                f"({setpoint_reason}) — Zustand bleibt." + on_off_zone_note
             ),
         )
 
@@ -292,6 +406,7 @@ def decide(situation: Situation) -> Decision:
                 f"{situation.parameter.valve_protection_duration_minutes} Minuten auf "
                 "Heizen. Im Trockenlauf wird die Entscheidung nur protokolliert; im "
                 "scharfen Betrieb nach einem Neustart geht sie an den zugeordneten Aktor."
+                + on_off_zone_note
             ),
         )
     # Mirror image of the branch above: reached whenever heating is already off and the
@@ -300,6 +415,9 @@ def decide(situation: Situation) -> Decision:
     # motivating case: room at 27.40 °C against a 16.0 °C frost-protection setpoint,
     # logged as "within ± 0.10K"). The decision (stay off) is correct; only the old,
     # single sentence for both cases was not.
+    # `frost_override_active` cannot be true in either branch from here on: rule 3
+    # only falls through once `measured_c <= setpoint_c(frost) + h` already holds,
+    # so both remaining "stay off" branches are unreachable for that cycle.
     if measured_c > setpoint_c + h:
         return Decision(
             heating=False,
@@ -310,6 +428,7 @@ def decide(situation: Situation) -> Decision:
             reason=(
                 f"Ist {measured_c} °C über Soll {setpoint_c} °C plus Hysterese {h}K "
                 f"({setpoint_reason}) — Heizung ist bereits aus, Zustand bleibt."
+                + on_off_zone_note
             ),
         )
     return Decision(
@@ -320,6 +439,6 @@ def decide(situation: Situation) -> Decision:
         ),
         reason=(
             f"Ist {measured_c} °C innerhalb der Hysterese um Soll {setpoint_c} °C ± {h}K "
-            f"({setpoint_reason}) — Zustand bleibt."
+            f"({setpoint_reason}) — Zustand bleibt." + on_off_zone_note
         ),
     )

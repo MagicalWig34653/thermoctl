@@ -26,7 +26,6 @@ from thermoctl.domain.control_loop import (
     REASON_CODE_FROST_SENSOR_FAILURE,
     REASON_CODE_NO_SOURCE,
     REASON_CODE_VALVE_PROTECTION,
-    REASON_CODE_WINDOW_OPEN,
     Decision,
     Situation,
     decide,
@@ -162,6 +161,29 @@ def _window_situation(
     return False, max(0, int((now - last_closed).total_seconds()))
 
 
+def _on_off_actuators_only(session: Session, zone: Zone) -> bool:
+    """True exactly when `Situation.on_off_actuators_only` should be — the zone has at
+    least one actuator and none of them is `ZoneDevice.self_regulating`.
+
+    Deliberately its own tiny query rather than reusing `_pi_actuator_profiles()`:
+    that one also resolves each device's capabilities for PI's own, unrelated
+    eligibility question, and calling it here would run that extra work on every
+    cycle for every zone, PI enabled or not, just to read the one flag this needs.
+    """
+    actuator_role = session.scalar(select(DeviceRole).where(DeviceRole.code == "actuator"))
+    if actuator_role is None:
+        return False
+    flags = list(
+        session.scalars(
+            select(ZoneDevice.self_regulating).where(
+                ZoneDevice.zone_id == zone.id,
+                ZoneDevice.device_role_id == actuator_role.id,
+            )
+        )
+    )
+    return bool(flags) and not any(flags)
+
+
 def _with_solar_setback(
     setpoint: Setpoint,
     frost_c: Decimal,
@@ -237,7 +259,13 @@ def _effective_override(session: Session, zone: Zone, now: datetime) -> ZoneOver
 # `tests/test_pi_schema.py`). PI replaces only what section 6, rule 6 of
 # `control_loop.decide()` would otherwise decide -- rules 1, 3, 4 and 7 keep
 # exactly the precedence they already have, because their conditions are read
-# from `Situation`/`decision.reason_code` here, never recomputed.
+# from `Situation`/`decision.reason_code` here, never recomputed. Rule 3's own
+# frost-overrides-window exception (2026-09-06) does not change this: it still
+# regulates against the frost setpoint on its own tight, hysteresis-only leash,
+# never against whatever PI would otherwise pursue -- `_pi_gate_reason`'s
+# `window_governs` keeps every cycle rule 3 actually applies to (window open, on a
+# zone rule 3 is not exempted from) out of PI's territory, exactly as an ordinary
+# window-open "off" already was.
 # --------------------------------------------------------------------------- #
 
 
@@ -317,7 +345,11 @@ def _pi_setpoint_context_key(setpoint: Setpoint, override: ZoneOverride | None) 
 
 
 def _pi_gate_reason(
-    reason_code: str, *, resume_delay_active: bool, frost_effective: bool
+    reason_code: str,
+    *,
+    window_governs: bool,
+    resume_delay_active: bool,
+    frost_effective: bool,
 ) -> str | None:
     """Which of section 4's PI-resetting precedence rules governs this cycle, if
     any. `None` means none of them do -- exactly "wo die gewöhnliche Regelung
@@ -330,8 +362,24 @@ def _pi_gate_reason(
     Quelle", `REASON_CODE_FROST_SENSOR_FAILURE` for a stale reading kept usable via
     the frost setpoint -- together exactly section 4's "Sensorausfall" row) and
     valve protection (`REASON_CODE_VALVE_PROTECTION`, unique to rule 7 winning) are
-    each produced by exactly one branch of `decide()`. Two of `decide()`'s codes are
-    *not* unique, though, and need the caller's own booleans instead:
+    each produced by exactly one branch of `decide()`. The rest need the caller's
+    own booleans instead:
+
+    `window_governs` -- `Situation.window_open and not Situation.on_off_actuators_only`,
+    i.e. rule 3's own condition for actually applying (added 2026-09-06 alongside the
+    frost-overrides-window exception and the EIN/AUS exemption) -- covers *every*
+    outcome rule 3 can now produce for such a cycle: the ordinary window-open "off"
+    (`REASON_CODE_WINDOW_OPEN`), the new frost-overrides-window heat
+    (`REASON_CODE_FROST_OVERRIDES_WINDOW`), and a minimum-switch-duration hold that
+    happened to interrupt the frost exception (`REASON_CODE_BLOCKED_MINIMUM_DURATION`
+    -- indistinguishable here from an unrelated one, but PI must not chase a target
+    the base decision itself was blocked from reaching). None of these are PI's
+    territory: the whole point of rule 3's frost exception is to regulate against the
+    frost setpoint on a tight, hysteresis-only leash, not against whatever PI would
+    otherwise pursue for the zone's actual schedule. An EIN/AUS-only zone is the
+    opposite case -- rule 3 never applies to it at all, window open or not, so PI
+    must keep running for it exactly as if there were no window.
+
     `REASON_CODE_OFF` is returned both by rule 4 (the window resume delay) and by
     rule 6's ordinary "off" branch -- only the former is one of section 4's rules,
     so `resume_delay_active` (computed the same way `Situation.window_closed_for_s`
@@ -351,7 +399,7 @@ def _pi_gate_reason(
     """
     if reason_code in (REASON_CODE_NO_SOURCE, REASON_CODE_FROST_SENSOR_FAILURE):
         return RESET_REASON_SENSOR_FAILURE
-    if reason_code == REASON_CODE_WINDOW_OPEN:
+    if window_governs:
         return RESET_REASON_WINDOW_OPEN
     if resume_delay_active:
         return RESET_REASON_WINDOW_OPEN
@@ -587,8 +635,15 @@ def _pi_outcome(
             fields,
         )
 
+    # Mirrors rule 4's own condition exactly, `on_off_actuators_only` exemption
+    # (2026-09-06) included -- without it, an EIN/AUS-only zone whose window
+    # recently closed would still have PI reset here even though `decide()` itself
+    # never even reaches rule 4 for such a zone (found while adding this exemption:
+    # `_pi_gate_reason` was computing this independently of `decide()`'s actual
+    # rule-4 outcome and had not been taught the same skip).
     resume_delay_active = (
-        situation.window_closed_for_s is not None
+        not situation.on_off_actuators_only
+        and situation.window_closed_for_s is not None
         and situation.window_closed_for_s < situation.parameter.window_resume_delay_seconds
     )
     frost_effective = (
@@ -597,6 +652,7 @@ def _pi_outcome(
     )
     gate = _pi_gate_reason(
         decision.reason_code,
+        window_governs=situation.window_open and not situation.on_off_actuators_only,
         resume_delay_active=resume_delay_active,
         frost_effective=frost_effective,
     )
@@ -793,6 +849,7 @@ def _process_zone(
     override = _effective_override(session, zone, now)
     override_active = override is not None
     protection_due, protection_was_active = _advance_valve_protection(session, zone, state, now)
+    on_off_actuators_only = _on_off_actuators_only(session, zone)
 
     situation = Situation(
         measured_c=measured_c,
@@ -811,6 +868,7 @@ def _process_zone(
         # Also true in the first cycle at/after the deadline: the previous on-state
         # still came from protection and must not turn into an endless hysteresis hold.
         valve_protection_active=protection_was_active,
+        on_off_actuators_only=on_off_actuators_only,
     )
     decision = decide(situation)
 

@@ -13,6 +13,7 @@ import pytest
 
 from thermoctl.domain.control_loop import (
     REASON_CODE_BLOCKED_MINIMUM_DURATION,
+    REASON_CODE_FROST_OVERRIDES_WINDOW,
     REASON_CODE_FROST_SENSOR_FAILURE,
     REASON_CODE_HEATING,
     REASON_CODE_NO_SOURCE,
@@ -69,6 +70,7 @@ def _lage(
     override_active: bool = False,
     valve_protection_due: bool = False,
     valve_protection_active: bool = False,
+    on_off_actuators_only: bool = False,
 ) -> Situation:
     return Situation(
         measured_c=measured_c,
@@ -85,6 +87,7 @@ def _lage(
         override_active=override_active,
         valve_protection_due=valve_protection_due,
         valve_protection_active=valve_protection_active,
+        on_off_actuators_only=on_off_actuators_only,
     )
 
 
@@ -340,7 +343,10 @@ def test_regel2_off_schaltet_auch_wieder_aus() -> None:
 
 
 def test_rule3_an_open_window_does_not_heat_despite_a_cold_room() -> None:
-    e = decide(_lage(window_open=True, measured_c=Decimal("5.0"), setpoint_c=Decimal("21.0")))
+    """Cold enough that the ordinary setpoint would call for heat, but still above
+    the frost-protection threshold (default 16.0 °C ± 0.5K here) -- the frost
+    exception (below) does not apply, so the window still wins."""
+    e = decide(_lage(window_open=True, measured_c=Decimal("18.0"), setpoint_c=Decimal("21.0")))
     assert e.heating is False
     assert e.reason_code == REASON_CODE_WINDOW_OPEN
 
@@ -906,18 +912,34 @@ def test_precedence_sensor_failure_beats_the_resolved_setpoint() -> None:
     assert "16.0" in e.reason
 
 
-def test_precedence_an_open_window_beats_frost_protection_on_sensor_failure() -> None:
-    """An open window wins even against frost protection.
-
-    That is intentional: heating against an open window helps no one, and the
-    zone does not cool down to frost level in that time. As soon as the window
-    is closed, frost protection kicks in again.
-    """
+def test_precedence_an_open_window_still_beats_frost_protection_above_the_frost_threshold(
+) -> None:
+    """An open window wins against frost protection as long as the room has not
+    actually fallen below the frost-protection setpoint (16.0 °C default here,
+    ± 0.5K) -- 5.0 °C is far below the ordinary setpoint the stale sensor falls back
+    to, so this alone must not heat; see the frost-breach counterpart below for what
+    the owner's 2026-09-06 decision changed."""
     e = decide(
-        _lage(sensor_status="veraltet", measured_c=Decimal("5.0"), window_open=True)
+        _lage(sensor_status="veraltet", measured_c=Decimal("18.0"), window_open=True)
     )
     assert e.heating is False
     assert e.reason_code == REASON_CODE_WINDOW_OPEN
+
+
+def test_precedence_frost_protection_now_beats_an_open_window_even_on_sensor_failure(
+) -> None:
+    """Reversed by the project owner's decision (2026-09-06): an open window no
+    longer wins unconditionally against frost protection. Heating against an open
+    window is expensive, but a frozen pipe is more expensive still -- so once the
+    room actually falls below the frost-protection setpoint, the zone heats
+    regardless of whether that setpoint is in force because of a stale sensor
+    (rule 1) or the frost exception's own check (rule 3): both read the same
+    `frost_c`, and here the room is 11K below it."""
+    e = decide(
+        _lage(sensor_status="veraltet", measured_c=Decimal("5.0"), window_open=True)
+    )
+    assert e.heating is True
+    assert e.reason_code == REASON_CODE_FROST_SENSOR_FAILURE
 
 
 def test_precedence_sensor_failure_beats_an_open_window() -> None:
@@ -928,14 +950,16 @@ def test_precedence_sensor_failure_beats_an_open_window() -> None:
     assert e.reason_code == REASON_CODE_NO_SOURCE
 
 
-def test_precedence_operating_mode_off_loses_to_an_open_window() -> None:
+def test_precedence_operating_mode_off_still_loses_to_an_open_window_above_frost(
+) -> None:
     """'off' merely leads to the frost-protection setpoint; an open window still
-    wins against the resulting heating intent of the hysteresis."""
+    wins as long as that setpoint (here also the frost value itself) is not
+    actually breached."""
     e = decide(
         _lage(
             operating_mode="off",
             setpoint_c=Decimal("16.0"),
-            measured_c=Decimal("5.0"),  # far below setpoint — hysteresis would call for 'on'
+            measured_c=Decimal("18.0"),  # below setpoint, but above the frost band
             window_open=True,
         )
     )
@@ -943,15 +967,34 @@ def test_precedence_operating_mode_off_loses_to_an_open_window() -> None:
     assert e.reason_code == REASON_CODE_WINDOW_OPEN
 
 
+def test_precedence_frost_protection_now_beats_an_open_window_in_off_mode_too() -> None:
+    """Reversed by the same 2026-09-06 decision: 'off' merely leads to the
+    frost-protection setpoint (rule 2), and now that setpoint's own frost
+    exception in rule 3 wins against the open window too, exactly as it does
+    against the ordinary schedule setpoint."""
+    e = decide(
+        _lage(
+            operating_mode="off",
+            setpoint_c=Decimal("16.0"),
+            measured_c=Decimal("5.0"),
+            window_open=True,
+        )
+    )
+    assert e.heating is True
+    assert e.reason_code == REASON_CODE_FROST_OVERRIDES_WINDOW
+
+
 def test_precedence_an_open_window_beats_the_restart_delay() -> None:
     """Contradictory input (window open, but a 'closed since' duration is also
-    set) — rule 3 wins regardless of what rule 4 would say about it."""
+    set) — rule 3 wins regardless of what rule 4 would say about it. Kept above the
+    frost band so rule 3's own frost exception does not engage and mask what this
+    test checks."""
     e = decide(
         _lage(
             window_open=True,
             window_closed_for_s=1,
             parameter=_parameter(window_resume_delay_seconds=300),
-            measured_c=Decimal("5.0"),
+            measured_c=Decimal("18.0"),
         )
     )
     assert e.reason_code == REASON_CODE_WINDOW_OPEN
@@ -1105,3 +1148,180 @@ def test_the_reason_carries_the_actual_numbers_of_the_restart_delay() -> None:
     )
     assert "17" in e.reason
     assert "300" in e.reason
+
+
+# ---------------------------------------------------------------------------
+# Frost protection overrides an open window (owner's decision, 2026-09-06):
+# a room must not be allowed to freeze just because a window was left open.
+# ---------------------------------------------------------------------------
+
+
+def test_frost_override_exactly_at_the_threshold_does_not_engage_yet() -> None:
+    """measured == frost_c - h: exactly at the threshold, the exception does not
+    yet engage -- mirrors rule 6's own '<' (not '<=') at its threshold."""
+    e = decide(_lage(
+        window_open=True,
+        heating_now=False,
+        measured_c=Decimal("15.5"),  # frost_c(16.0) - h(0.5)
+        frost_c=Decimal("16.0"),
+        parameter=_parameter(hysteresis_k=Decimal("0.5")),
+    ))
+    assert e.heating is False
+    assert e.reason_code == REASON_CODE_WINDOW_OPEN
+
+
+def test_frost_override_engages_just_below_the_threshold() -> None:
+    e = decide(_lage(
+        window_open=True,
+        heating_now=False,
+        measured_c=Decimal("15.4"),
+        frost_c=Decimal("16.0"),
+        parameter=_parameter(hysteresis_k=Decimal("0.5")),
+    ))
+    assert e.heating is True
+    assert e.reason_code == REASON_CODE_FROST_OVERRIDES_WINDOW
+    assert "Frostschutz" in e.reason
+    assert "Fenster" in e.reason
+
+
+def test_frost_override_does_not_flap_and_holds_heating_inside_its_own_band() -> None:
+    """Once engaged, the exception uses the same hysteresis as everywhere else in
+    this function -- it must not disengage the moment the room merely reaches the
+    frost value again, only once it clears frost_c + h."""
+    e = decide(_lage(
+        window_open=True,
+        heating_now=True,
+        measured_c=Decimal("15.9"),  # above frost_c, still inside the ± h band
+        frost_c=Decimal("16.0"),
+        parameter=_parameter(hysteresis_k=Decimal("0.5")),
+    ))
+    assert e.heating is True
+    assert e.reason_code == REASON_CODE_FROST_OVERRIDES_WINDOW
+
+
+def test_frost_override_disengages_only_once_above_frost_plus_hysteresis() -> None:
+    e = decide(_lage(
+        window_open=True,
+        heating_now=True,
+        measured_c=Decimal("16.6"),  # frost_c(16.0) + h(0.5) + 0.1
+        frost_c=Decimal("16.0"),
+        parameter=_parameter(hysteresis_k=Decimal("0.5")),
+    ))
+    assert e.heating is False
+    assert e.reason_code == REASON_CODE_WINDOW_OPEN
+
+
+def test_already_engaged_can_hold_heating_for_many_cycles_not_just_one() -> None:
+    """Regression for a review finding (2026-09-06): an earlier version of the
+    comment above `already_engaged` claimed the imprecise case -- regular heating
+    already on for an unrelated reason when the window opens, and the room happens
+    to sit inside the frost band -- only keeps heating "one cycle longer than
+    strictly required". That is not true: as long as `measured_c` stays inside the
+    band, `already_engaged` keeps reading `True` indefinitely, because it reuses
+    `heating_now` without recording that the exception itself, rather than the
+    unrelated reason, is what is holding the state. Not a safety problem (the room
+    genuinely is inside the frost band throughout), but the reason recorded
+    (`REASON_CODE_FROST_OVERRIDES_WINDOW`) then persists across cycles whose
+    original trigger for `heating_now=True` was something else entirely (ordinary
+    heating, or -- see the sibling case in the review report -- a valve-protection
+    run)."""
+    heating_now = True
+    measured_c = Decimal("15.9")  # inside frost_c(16.0) +/- h(0.5), started heating
+    for _ in range(5):
+        e = decide(_lage(
+            window_open=True,
+            heating_now=heating_now,
+            measured_c=measured_c,
+            frost_c=Decimal("16.0"),
+            parameter=_parameter(hysteresis_k=Decimal("0.5")),
+        ))
+        assert e.heating is True
+        assert e.reason_code == REASON_CODE_FROST_OVERRIDES_WINDOW
+        heating_now = e.heating
+
+
+def test_frost_override_still_respects_the_minimum_switch_duration() -> None:
+    """'Mindestschaltdauern gelten unverändert weiter': even a room well below frost
+    does not switch on before its minimum off duration has elapsed."""
+    e = decide(_lage(
+        window_open=True,
+        heating_now=False,
+        held_for_s=10,
+        measured_c=Decimal("10.0"),
+        frost_c=Decimal("16.0"),
+        parameter=_parameter(hysteresis_k=Decimal("0.5"), min_off_seconds=300),
+    ))
+    assert e.heating is False
+    assert e.reason_code == REASON_CODE_BLOCKED_MINIMUM_DURATION
+
+
+# ---------------------------------------------------------------------------
+# EIN/AUS-actuators are not switched off by an open window (owner's decision,
+# 2026-09-06): floor heating on plain on/off valves is too sluggish for a
+# window-triggered shutoff to make sense. Self-regulating (mixed) zones are
+# unaffected -- `on_off_actuators_only` defaults to `False` for them.
+# ---------------------------------------------------------------------------
+
+
+def test_on_off_zone_keeps_heating_despite_an_open_window() -> None:
+    e = decide(_lage(
+        window_open=True,
+        on_off_actuators_only=True,
+        measured_c=Decimal("20.0"),
+        setpoint_c=Decimal("21.0"),
+        parameter=_parameter(hysteresis_k=Decimal("0.5")),
+    ))
+    assert e.heating is True
+    assert e.reason_code == REASON_CODE_HEATING
+    assert "EIN/AUS" in e.reason
+
+
+def test_a_mixed_zone_still_switches_off_for_the_same_situation() -> None:
+    """Counter-proof for the test above: identical situation, but
+    `on_off_actuators_only=False` (a zone with at least one self-regulating valve,
+    or no actuators at all) — the window still wins, exactly as before."""
+    e = decide(_lage(
+        window_open=True,
+        on_off_actuators_only=False,
+        measured_c=Decimal("20.0"),
+        setpoint_c=Decimal("21.0"),
+        parameter=_parameter(hysteresis_k=Decimal("0.5")),
+    ))
+    assert e.heating is False
+    assert e.reason_code == REASON_CODE_WINDOW_OPEN
+
+
+def test_on_off_zone_also_skips_the_resume_delay() -> None:
+    """Rule 4 (the post-window cool-down wait) does not apply either -- an
+    EIN/AUS-zone never actually switched off, so there is nothing to resume from."""
+    e = decide(_lage(
+        window_open=False,
+        window_closed_for_s=100,
+        on_off_actuators_only=True,
+        measured_c=Decimal("5.0"),
+        setpoint_c=Decimal("21.0"),
+        parameter=_parameter(window_resume_delay_seconds=300, hysteresis_k=Decimal("0.5")),
+    ))
+    assert e.heating is True
+    assert e.reason_code == REASON_CODE_HEATING
+    assert "Wiederanlauf" not in e.reason
+
+
+def test_on_off_zone_targets_the_normal_setpoint_not_the_frost_value() -> None:
+    """The interplay of both changes: an EIN/AUS-zone with an open window and a
+    room far below frost protection still regulates against its ordinary setpoint,
+    not the frost value -- rule 3's frost-overrides-window exception is rule 3's
+    own exception, and this zone skips rule 3 entirely, never reaching it."""
+    e = decide(_lage(
+        window_open=True,
+        on_off_actuators_only=True,
+        measured_c=Decimal("5.0"),
+        setpoint_c=Decimal("21.0"),
+        frost_c=Decimal("16.0"),
+        parameter=_parameter(hysteresis_k=Decimal("0.5")),
+    ))
+    assert e.heating is True
+    assert e.reason_code == REASON_CODE_HEATING
+    assert e.reason_code != REASON_CODE_FROST_OVERRIDES_WINDOW
+    assert "21.0" in e.reason
+    assert "EIN/AUS" in e.reason

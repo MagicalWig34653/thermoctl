@@ -209,6 +209,12 @@ class TestPiGateReasonClassifiesEveryReasonCode:
         control_loop.REASON_CODE_NO_SOURCE: RESET_REASON_SENSOR_FAILURE,
         control_loop.REASON_CODE_FROST_SENSOR_FAILURE: RESET_REASON_SENSOR_FAILURE,
         control_loop.REASON_CODE_VALVE_PROTECTION: RESET_REASON_VALVE_PROTECTION,
+        # Added 2026-09-06 alongside rule 3's frost-overrides-window exception: this
+        # code is unique to that exception actually engaging while it governs (an
+        # EIN/AUS-only zone never produces it, since rule 3 never applies to one) --
+        # so it is covered the same way the ordinary window-open "off" is, via
+        # `window_governs`, not via its own separate branch in `_pi_gate_reason`.
+        control_loop.REASON_CODE_FROST_OVERRIDES_WINDOW: RESET_REASON_WINDOW_OPEN,
     }
 
     # Every code that must *not* block PI, with the reason each is deliberately
@@ -265,10 +271,22 @@ class TestPiGateReasonClassifiesEveryReasonCode:
         # cannot co-occur -- whichever rule actually won is the only one whose
         # condition is true this cycle). `TestPrecedenceRulesBeatPi` below exercises
         # `resume_delay_active` and `frost_effective` themselves, end to end.
+        # `window_governs` (added 2026-09-06 alongside rule 3's frost-overrides-window
+        # exception and the EIN/AUS exemption) replaces the old bare
+        # `reason_code == REASON_CODE_WINDOW_OPEN` check -- true here exactly for the
+        # one code it is meant to gate, mirroring how `_process_zone` derives it from
+        # `Situation.window_open and not Situation.on_off_actuators_only`.
+        window_governed_codes = (
+            control_loop.REASON_CODE_WINDOW_OPEN,
+            control_loop.REASON_CODE_FROST_OVERRIDES_WINDOW,
+        )
         for code, expected_reason in self._BLOCKING.items():
             assert (
                 shadow_run._pi_gate_reason(
-                    code, resume_delay_active=False, frost_effective=False
+                    code,
+                    window_governs=code in window_governed_codes,
+                    resume_delay_active=False,
+                    frost_effective=False,
                 )
                 == expected_reason
             )
@@ -277,10 +295,27 @@ class TestPiGateReasonClassifiesEveryReasonCode:
         for code in self._PERMITTED:
             assert (
                 shadow_run._pi_gate_reason(
-                    code, resume_delay_active=False, frost_effective=False
+                    code, window_governs=False, resume_delay_active=False,
+                    frost_effective=False,
                 )
                 is None
             )
+
+    def test_window_governing_gates_pi_even_for_an_otherwise_permitted_code(self) -> None:
+        """`window_governs=True` must win regardless of `reason_code` -- it covers
+        every outcome rule 3's frost exception can now produce for a cycle it
+        actually applies to, including a minimum-switch-duration hold
+        (`REASON_CODE_BLOCKED_MINIMUM_DURATION`) that happens to interrupt it, which
+        on its own is one of `_PERMITTED`'s codes."""
+        assert (
+            shadow_run._pi_gate_reason(
+                control_loop.REASON_CODE_BLOCKED_MINIMUM_DURATION,
+                window_governs=True,
+                resume_delay_active=False,
+                frost_effective=False,
+            )
+            == RESET_REASON_WINDOW_OPEN
+        )
 
 
 class TestZoneWithoutPiIsUnaffected:
@@ -531,7 +566,19 @@ class TestPrecedenceRulesBeatPi:
     single call, because windup only shows up over time."""
 
     def test_window_open_resets_every_cycle_for_two_hours(self, session: Session) -> None:
+        """A *mixed* zone (owner's decision, 2026-09-06): `_pi_zone()`'s own plain
+        switch actuator would, on its own, now make this an EIN/AUS-zone, which an
+        open window no longer switches off at all -- see
+        `TestOnOffOnlyZoneIgnoresTheWindow` below for exactly that case. Adding a
+        second, self-regulating actuator (the same fixture
+        `TestMixedZoneWithASelfRegulatingValve` uses) keeps this zone in the *more
+        cautious*, unaffected category, so this test still proves what it always
+        did: an open window resets PI every cycle."""
         zone = _pi_zone(session, "fenster-offen", measured_c=COLD_C)
+        _assign_actuator(
+            session, zone, self_regulating=True, capability_code="thermostat",
+            suffix="-heizkörper",
+        )
         state = session.get(ZoneState, zone.id)
         assert state is not None
         state.window_open = True
@@ -563,7 +610,14 @@ class TestPrecedenceRulesBeatPi:
     def test_the_window_resume_delay_also_resets_pi_not_just_the_open_window(
         self, session: Session
     ) -> None:
+        """A mixed zone, for the same reason as the test above: an EIN/AUS-only
+        zone skips rule 4 (the resume delay) entirely and is covered separately in
+        `TestOnOffOnlyZoneIgnoresTheWindow`."""
         zone = _pi_zone(session, "nachlauf", measured_c=COLD_C)
+        _assign_actuator(
+            session, zone, self_regulating=True, capability_code="thermostat",
+            suffix="-heizkörper",
+        )
         state = session.get(ZoneState, zone.id)
         assert state is not None
         # A window that has just closed -- `_window_situation` only derives this
@@ -755,6 +809,78 @@ class TestPrecedenceRulesBeatPi:
             ended = _row_for(shadow_run.cycle(session, now), zone)
         assert ended.effective_controller == "pi"
         assert ended.pi_reset_reason == RESET_REASON_CONTEXT_CHANGE
+
+
+class TestOnOffOnlyZoneIgnoresTheWindow:
+    """The owner's second 2026-09-06 decision, in its PI interplay: PI's own
+    eligibility (`pi_eligible()`) already requires at least one *ordinary*
+    (non-self-regulating) switch actuator and excludes any self-regulating one --
+    which is exactly `Situation.on_off_actuators_only`'s own condition. So every
+    PI-eligible zone built from `_pi_zone()`'s default, single plain-switch
+    actuator *is* an EIN/AUS-only zone: an open window no longer reaches rule 3 or
+    4 for it at all, and `_pi_gate_reason`'s `window_governs` is therefore always
+    `False` for it too -- PI keeps deciding, targeting the ordinary setpoint,
+    exactly as if there were no window."""
+
+    def test_pi_keeps_deciding_through_an_open_window(self, session: Session) -> None:
+        zone = _pi_zone(session, "einaus-fenster-offen", measured_c=COLD_C)
+        state = session.get(ZoneState, zone.id)
+        assert state is not None
+        state.window_open = True
+        session.flush()
+
+        row = _row_for(shadow_run.cycle(session, NOW), zone)
+        assert row.outcome_code != REASON_CODE_WINDOW_OPEN
+        assert row.effective_controller == "pi"
+        assert row.pi_reset_reason != RESET_REASON_WINDOW_OPEN
+        assert row.pi_candidate_would_heat is not None
+
+    def test_pi_is_unaffected_by_the_resume_delay_too(self, session: Session) -> None:
+        """Same device-history setup as
+        `TestPrecedenceRulesBeatPi::test_the_window_resume_delay_also_resets_pi_not_just_the_open_window`
+        (a window closed just 30s ago, with a 300s configured delay) -- there, on a
+        mixed zone, this resets PI; here, on the default EIN/AUS-only zone, rule 4
+        never applies at all, so PI is unaffected."""
+        zone = _pi_zone(session, "einaus-nachlauf", measured_c=COLD_C)
+        from thermoctl.db.models.device import Device as DeviceModel
+        from thermoctl.db.models.measurement import Measurement
+
+        contact_capability = capability(session, "contact")
+        window_role = role(session, "window_contact")
+        sensor = DeviceModel(
+            integration_id=integration(session).id,
+            external_id=f"{zone.name}-fenster",
+            display_name=f"{zone.name}-fenster",
+        )
+        session.add(sensor)
+        session.flush()
+        session.add(
+            ZoneDevice(zone_id=zone.id, device_id=sensor.id, device_role_id=window_role.id)
+        )
+        session.add(
+            Measurement(
+                device_id=sensor.id,
+                capability_id=contact_capability.id,
+                value_text="false",
+                measured_at=NOW - timedelta(minutes=30),
+                received_at=NOW - timedelta(minutes=30),
+            )
+        )
+        session.add(
+            Measurement(
+                device_id=sensor.id,
+                capability_id=contact_capability.id,
+                value_text="true",  # closed again 30s ago
+                measured_at=NOW - timedelta(seconds=30),
+                received_at=NOW - timedelta(seconds=30),
+            )
+        )
+        zone.window_resume_delay_seconds = 300
+        session.flush()
+
+        row = _row_for(shadow_run.cycle(session, NOW), zone)
+        assert row.effective_controller == "pi"
+        assert row.pi_reset_reason != RESET_REASON_WINDOW_OPEN
 
 
 class TestDisablingNeutralizes:

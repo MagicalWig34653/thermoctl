@@ -75,6 +75,23 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
   (`docs/docker-swarm.md`, `docs/kubernetes.md`), mit lauffähigen Beispieldateien
   unter `docker/` bzw. `k8s/`.
 
+### Geändert
+
+- **Fenster: Frostschutz schlägt das offene Fenster, EIN/AUS-Aktoren schalten nicht
+  mehr ab.** Zwei Entscheidungen des Projektinhabers an `domain/control_loop.py::
+  decide()`. Bisher schaltete ein offenes Fenster bedingungslos ab (Regel 3) — ein
+  Raum konnte dabei unter den Frostschutz fallen. Fällt die Zone trotz offenem
+  Fenster unter ihren Frostschutzwert, heizt sie jetzt wieder, mit derselben
+  Hysterese wie sonst und weiterhin unter der Mindestschaltdauer, eigener
+  `reason_code` `frostschutz_trotz_fenster_offen`. Zweitens: Zonen, deren Aktoren
+  ausschließlich EIN/AUS-Ventile sind (kein `Device.self_regulating`, etwa
+  Fußbodenheizung) schaltet das Fenster gar nicht mehr ab — zu träge, als dass es
+  etwas brächte. Gemischte Zonen (mindestens ein selbstregelndes Ventil) bleiben
+  beim bisherigen Verhalten. Fenstererkennung, -protokollierung und der Kälte-Alarm
+  bleiben in beiden Fällen unverändert; PI ist mitgezogen (`services/shadow_run.py::
+  _pi_gate_reason`). Details und die dabei gefundene MariaDB-spezifische
+  `reason`-Spaltenüberlänge in `docs/STATUS.md`.
+
 ---
 
 ## 0.7.4 — 2026-09-05

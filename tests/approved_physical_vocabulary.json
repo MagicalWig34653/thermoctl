@@ -82,7 +82,14 @@
       "wirklich angebunden statt halb, die Sonnenabsenkung lässt sich wieder einschalten, und",
       "über beide. Ein Thermostatventil ohne `system_mode` geht über seinen Mindestsollwert aus",
       "„Die Zone regelt die Heizung bis auf Weiteres gegen den Frostschutz-Sollwert von",
-      "„brenner\" erkannt wurden. Die führende Grenze fällt jetzt bei den Substantiven, die"
+      "„brenner\" erkannt wurden. Die führende Grenze fällt jetzt bei den Substantiven, die",
+      "- **Fenster: Frostschutz schlägt das offene Fenster, EIN/AUS-Aktoren schalten nicht",
+      "Fenster unter ihren Frostschutzwert, heizt sie jetzt wieder, mit derselben",
+      "Fußbodenheizung) schaltet das Fenster gar nicht mehr ab — zu träge, als dass es",
+      "`reason_code` `frostschutz_trotz_fenster_offen`. Zweitens: Zonen, deren Aktoren",
+      "ausschließlich EIN/AUS-Ventile sind (kein `Device.self_regulating`, etwa",
+      "decide()`. Bisher schaltete ein offenes Fenster bedingungslos ab (Regel 3) — ein",
+      "etwas brächte. Gemischte Zonen (mindestens ein selbstregelndes Ventil) bleiben"
     ],
     "README.md": [
       "(Zigbee2MQTT-Schalter, Zigbee-Thermostatventile ohne eigene Regelung, Meross-Steckdosen).",
@@ -112,7 +119,14 @@
       "gleichzeitig (Swarm: `docker stack deploy` ignoriert `depends_on`; Kubernetes: ein",
       "sicher entscheiden könnten, wer einen Heizkörper schalten darf; die Datenbank, die",
       "verliert, den nächsten Aktor trotzdem nicht mehr anfasst. Erreicht damit sowohl den",
-      "| 4 — Regelkreis und Cutover | schaltet scharf an der echten Anlage; Ablösung des Altsystems noch offen |"
+      "| 4 — Regelkreis und Cutover | schaltet scharf an der echten Anlage; Ablösung des Altsystems noch offen |",
+      "## Fenster: Frostschutz gewinnt, EIN/AUS-Aktoren schalten nicht ab",
+      "(nicht-selbstregelnde) Schaltaktoren — genau die Bedingung für",
+      "**EIN/AUS-Aktoren (Fußbodenheizung an reinen Ein/Aus-Ventilen) schaltet das Fenster",
+      "**Frostschutz schlägt das offene Fenster.** Bisher schaltete Regel 3 bei offenem",
+      "Erkennungsmerkmal: die Zone hat Aktoren, und keiner davon ist",
+      "ihren Frostschutzwert, heizt sie jetzt wieder: Heizen gegen ein offenes Fenster ist",
+      "selbstregelndes Ventil) bleiben beim bisherigen, vorsichtigeren Verhalten. Nur das"
     ],
     "docs/api.md": [
       "**Fehlt das Feld, gilt 0** — ein Aufrufer, der die Absenkung nicht kennt, schaltet sie",
@@ -374,10 +388,13 @@
     "thermoctl/domain/control_loop.py": [
       ") — Heizung ist bereits aus, Zustand bleibt.",
       ") — Heizung läuft bereits, Zustand bleibt.",
+      "EIN/AUS-Aktor — Fensteröffnung wirkt hier nicht abschaltend.",
       "Heizen",
       "Minuten auf Heizen. Im Trockenlauf wird die Entscheidung nur protokolliert; im scharfen Betrieb nach einem Neustart geht sie an den zugeordneten Aktor.",
       "Ventilschutzlauf — die Regelung entscheidet unabhängig von der Raumregelung für",
       "heizen",
+      "°C unterschritten — Ausnahmeregel: es wird trotz offenem Fenster geheizt, um ein Einfrieren zu vermeiden.",
+      "°C unterschritten — es wird trotzdem geheizt.",
       "ventilschutz"
     ],
     "thermoctl/domain/controller_channels.py": [
@@ -493,6 +510,7 @@
     "thermoctl/services/shadow_run.py": [
       "Heizen",
       "actuator",
+      "actuator",
       "switch"
     ],
     "thermoctl/web/control_views.py": [
@@ -545,7 +563,8 @@
       "{% else %}{{ lücke(\"kein Aktor\") }}{% endif %}",
       "{% for g in z.actuators %}{{ device_card(g, \"actuator\", draggable) }}{% endfor %}",
       "{% if z.actuators %}",
-      "├→ Zone → Aktoren"
+      "├→ Zone → Aktoren",
+      "die Zone hängt an reinen EIN/AUS-Ventilen (z. B. Fußbodenheizung)."
     ],
     "thermoctl/web/templates/form.html": [
       "<div class=\"form-check form-switch mb-3\">",
