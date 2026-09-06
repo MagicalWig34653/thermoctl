@@ -395,6 +395,13 @@ Zone in Betriebsart „Aus" bleibt während des Urlaubs aus, und eine bereits la
 Hand gesetzte Übersteuerung einer einzelnen Zone gilt weiter, bis sie selbst endet — der
 Urlaub übernimmt für diese Zone erst danach.
 
+`setback_temperature_c` gilt zwar für jede Zone gleich, wird aber je Zone gegen deren
+eigenen Frostschutz geprüft: unterschreitet der eingegebene Wert den Frostschutz einer
+Zone, regelt diese Zone auf ihren Frostschutz statt auf den eingegebenen Wert —
+derselbe absolute Frostschutz-Boden, den auch die solare Nachführung nie unterschreitet
+(siehe `domain/solar_setback.py`). Zonen mit unterschiedlichem Frostschutz können
+während desselben Urlaubs also auf unterschiedliche Temperaturen geregelt werden.
+
 ### `DELETE /api/v1/vacation` — Urlaub vorzeitig beenden
 
 Recht: `vacation.manage`. Antwort `204`. Beendet den laufenden oder noch nicht

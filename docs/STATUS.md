@@ -2,6 +2,21 @@
 
 Letzte Aktualisierung: 2026-09-06.
 
+## Urlaubsbetrieb: Absenkung deckelt nicht mehr unter den Frostschutz einer Zone
+
+Review-Befund, sicherheitsrelevant nach Grundsatz 7: `_vacation_setpoint()` gab den
+eingegebenen Absenkwert bislang ungeprüft zurück. Zone mit Frostschutz 16,0 °C,
+Urlaub mit 5,0 °C, Betriebsart `auto` → geregelt wurde auf 5,0 °C. Behoben in
+`domain/schedule.py::_vacation_setpoint()`: der Absenkwert wird jetzt je Zone auf
+`max(setback_temperature_c, Frostschutz dieser Zone)` gedeckelt — derselbe absolute
+Frostschutz-Boden, den `domain/solar_setback.py::apply()` für seine eigene Korrektur
+schon durchsetzt. Greift der Frostschutz, lautet die Begründung im `Setpoint`
+„Urlaubsbetrieb — Absenkung durch Frostschutz angehoben" statt der bisherigen, dann
+unehrlichen „Urlaubsbetrieb — Absenkung" (Grundsatz 5). `schedule_forecast()` heilt
+dadurch mit, da es denselben Weg über `resolved_setpoint()` nimmt — mit eigenem Test
+bestätigt statt nur angenommen. `docs/api.md` zieht die Grenze bei
+`setback_temperature_c` entsprechend nach.
+
 ## Urlaubsbetrieb: anlagenweite Absenkung über ein festes Zeitfenster
 
 Neue Tabelle `vacation` (Migration `4bfefd4c10a4`, Kopf jetzt hier): ein einziger

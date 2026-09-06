@@ -22,7 +22,10 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
   eine Zone in Betriebsart „Aus" bleibt aus. Neue Seite `/vacation`, ein Hinweis auf
   der Startseite solange ein Urlaub läuft oder erst geplant ist, sowie REST
   (`GET`/`POST`/`DELETE /api/v1/vacation`) und MCP (`read_vacation`, `vacation`,
-  `cancel_vacation`). Eigenes Recht `vacation.manage`. Migration `4bfefd4c10a4`.
+  `cancel_vacation`). Eigenes Recht `vacation.manage`. Migration `4bfefd4c10a4`. Der
+  eingegebene Absenkwert wird je Zone auf deren eigenen Frostschutz gedeckelt —
+  derselbe absolute Boden, den die solare Nachführung schon durchsetzt —, mit
+  entsprechend angepasster Begründung, falls der Frostschutz greift.
 - **Erkennung eines festhängenden Messwerts.** Ein Sensor, der zuverlässig alle paar
   Minuten dieselbe Zahl schickt, galt bisher dauerhaft als `ok` — die
   Störungserkennung prüfte nur das Alter der letzten Meldung. Jetzt gilt ein Messwert

@@ -1007,8 +1007,16 @@ def _schedule_setpoint(
     return Setpoint(temp, f"Zeitplan: Modus {mode.name} ab {time_of_day}", mode.code, mode.id)
 
 
-def _vacation_setpoint(session: Session, now_utc: datetime) -> Setpoint | None:
+def _vacation_setpoint(session: Session, zone: Zone, now_utc: datetime) -> Setpoint | None:
     """The plant-wide vacation setback in effect at `now_utc`, or `None`.
+
+    Frost protection is an absolute floor here, never a rule this function might
+    override (the same principle `solar_setback.apply` documents for its own
+    correction): the plant-wide setback is raised to *this* zone's own
+    frost-protection setpoint if it would otherwise fall below it. The setback is
+    entered once for the whole plant, but frost protection is configured per zone --
+    a zone whose frost protection sits above the entered setback must not be
+    regulated below its own floor just because another zone's floor is lower.
 
     A `mode_id` of `None`: like a fixed-temperature override, a vacation names a
     temperature directly, not a mode -- callers that key off a mode (the PI wiring's
@@ -1018,6 +1026,11 @@ def _vacation_setpoint(session: Session, now_utc: datetime) -> Setpoint | None:
     vacation = running_vacation(session, now_utc)
     if vacation is None:
         return None
+    frost_temp = frost_protection_temperature(session, zone)
+    if vacation.setback_temperature_c < frost_temp:
+        return Setpoint(
+            frost_temp, "Urlaubsbetrieb — Absenkung durch Frostschutz angehoben", None, None
+        )
     return Setpoint(vacation.setback_temperature_c, "Urlaubsbetrieb — Absenkung", None, None)
 
 
@@ -1051,7 +1064,7 @@ def resolved_setpoint(session: Session, zone: Zone, now_utc: datetime) -> Setpoi
     if override is not None:
         return override[0]
 
-    vacation_setpoint = _vacation_setpoint(session, now_utc)
+    vacation_setpoint = _vacation_setpoint(session, zone, now_utc)
     if vacation_setpoint is not None:
         return vacation_setpoint
 

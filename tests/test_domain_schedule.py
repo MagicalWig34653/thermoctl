@@ -1554,7 +1554,10 @@ def test_current_or_upcoming_vacation_also_matches_a_future_one(session: Session
 
 def test_a_vacation_beats_the_schedule(session: Session) -> None:
     zone = zone_with_schedule(
-        session, "urlaub-vs-zeitplan", points=[(1, 360, "tag", Decimal("21.0"))]
+        session,
+        "urlaub-vs-zeitplan",
+        points=[(1, 360, "tag", Decimal("21.0"))],
+        frost_protection=Decimal("10.0"),
     )
     create_vacation(
         session,
@@ -1567,6 +1570,82 @@ def test_a_vacation_beats_the_schedule(session: Session) -> None:
     assert result.temperature_c == Decimal("15.0")
     assert "Urlaub" in result.reason
     assert result.mode_id is None
+
+
+def test_a_vacation_setback_below_frost_protection_is_raised_to_it(
+    session: Session,
+) -> None:
+    """Reproduces the review finding: a vacation setback entered for the whole plant
+    must not push a zone below its own frost-protection floor -- the same absolute
+    floor `solar_setback.apply` enforces for its own correction."""
+    zone = zone_with_schedule(
+        session,
+        "urlaub-unter-frostschutz",
+        points=[(1, 360, "tag", Decimal("21.0"))],
+        frost_protection=Decimal("16.0"),
+    )
+    create_vacation(
+        session,
+        start_date=date(2026, 8, 31),
+        end_date=date(2026, 8, 31),
+        setback_temperature_c=Decimal("5.0"),
+        timezone_name="Europe/Berlin",
+    )
+    result = resolved_setpoint(session, zone, datetime(2026, 8, 31, 10, 0))
+    assert result.temperature_c == Decimal("16.0")
+    assert "Urlaub" in result.reason
+    assert "Frostschutz" in result.reason
+    assert result.mode_id is None
+
+
+def test_a_vacation_setback_above_frost_protection_is_passed_through_unchanged(
+    session: Session,
+) -> None:
+    """The normal case: the entered setback stays above frost protection and is
+    handed through exactly as entered, with the plain reason text -- the frost-floor
+    wording must not appear where the floor never had to act."""
+    zone = zone_with_schedule(
+        session,
+        "urlaub-ueber-frostschutz",
+        points=[(1, 360, "tag", Decimal("21.0"))],
+        frost_protection=Decimal("16.0"),
+    )
+    create_vacation(
+        session,
+        start_date=date(2026, 8, 31),
+        end_date=date(2026, 8, 31),
+        setback_temperature_c=Decimal("18.0"),
+        timezone_name="Europe/Berlin",
+    )
+    result = resolved_setpoint(session, zone, datetime(2026, 8, 31, 10, 0))
+    assert result.temperature_c == Decimal("18.0")
+    assert result.reason == "Urlaubsbetrieb — Absenkung"
+    assert result.mode_id is None
+
+
+def test_schedule_forecast_also_raises_a_vacation_setback_to_frost_protection(
+    session: Session,
+) -> None:
+    """`schedule_forecast` resolves every bar through `resolved_setpoint`, so the
+    same frost floor must show up there too -- confirmed here instead of assumed."""
+    zone = zone_with_schedule(
+        session,
+        "urlaub-vorschau-frost",
+        points=[(1, 360, "tag", Decimal("21.0"))],
+        frost_protection=Decimal("16.0"),
+    )
+    now = datetime(2026, 8, 31, 10, 0)
+    create_vacation(
+        session,
+        start_date=date(2026, 8, 31),
+        end_date=date(2026, 9, 5),
+        setback_temperature_c=Decimal("5.0"),
+        timezone_name="Europe/Berlin",
+    )
+    result = schedule_forecast(session, zone, now)
+    assert result
+    assert all(segment.setpoint.temperature_c == Decimal("16.0") for segment in result)
+    assert all("Frostschutz" in segment.setpoint.reason for segment in result)
 
 
 def test_a_running_override_beats_a_vacation(session: Session) -> None:
@@ -1667,7 +1746,10 @@ def test_create_vacation_across_the_spring_forward_gap_uses_real_utc_instants(
 
 def test_schedule_forecast_shows_a_vacation_starting_mid_horizon(session: Session) -> None:
     zone = zone_with_schedule(
-        session, "urlaub-vorschau-beginn", points=[(1, 360, "tag", Decimal("21.0"))]
+        session,
+        "urlaub-vorschau-beginn",
+        points=[(1, 360, "tag", Decimal("21.0"))],
+        frost_protection=Decimal("10.0"),
     )
     now = datetime(2026, 8, 31, 10, 0)
     vacation = create_vacation(
@@ -1692,7 +1774,10 @@ def test_schedule_forecast_shows_a_vacation_starting_mid_horizon(session: Sessio
 
 def test_schedule_forecast_shows_a_vacation_ending_mid_horizon(session: Session) -> None:
     zone = zone_with_schedule(
-        session, "urlaub-vorschau-ende", points=[(1, 360, "tag", Decimal("21.0"))]
+        session,
+        "urlaub-vorschau-ende",
+        points=[(1, 360, "tag", Decimal("21.0"))],
+        frost_protection=Decimal("10.0"),
     )
     now = datetime(2026, 8, 31, 10, 0)
     vacation = create_vacation(
