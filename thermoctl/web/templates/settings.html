@@ -60,6 +60,57 @@
     <button class="btn btn-primary mt-4" type="submit">Sonnenabsenkung speichern</button>
 </form>
 
+{% if outdoor_source_error %}<div class="alert alert-danger">{{ outdoor_source_error }}</div>{% endif %}
+<form method="post" action="{{ url_prefix }}/settings/outdoor-source" class="tc-panel p-4 mt-4">
+    <p class="t-label mb-1">Außentemperatur</p>
+    <p class="t-quiet mb-3">
+        Anlagenweit, kein Wert je Zone — genau ein „draußen" für die ganze Anlage. Ausgewählt
+        wie die Messquelle einer Zone: aus den bekannten Geräten, geprüft beim Speichern.
+    </p>
+    <p class="mb-3">
+        Aktuell:
+        <strong>
+        {% if outdoor_current.status == "keine_quelle" %}
+        keine Quelle gewählt
+        {% elif outdoor_current.status == "veraltet" %}
+        Wert veraltet ({{ outdoor_current.measured_at|age }})
+        {% else %}
+        {{ outdoor_current.temperature_c|grad }} °C ({{ outdoor_current.measured_at|age }})
+        {% endif %}
+        </strong>
+    </p>
+    <div class="row g-2 align-items-end">
+        <div class="col">
+            <label class="form-label" for="outdoor-source-device">Quelle</label>
+            <select class="form-select" id="outdoor-source-device" name="device_id" aria-label="Außentemperaturquelle">
+                <option value="">Keine Quelle</option>
+                {% for device in devices %}
+                <option value="{{ device.id }}"{% if outdoor_source and device.id == outdoor_source.id %} selected{% endif %}>{{ device.display_name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-auto"><button class="btn btn-primary" type="submit">Quelle speichern</button></div>
+    </div>
+</form>
+
+<form method="post" action="{{ url_prefix }}/settings/window-alarm" class="tc-panel p-4 mt-4">
+    <p class="t-label mb-3">Fenster-Alarm</p>
+    <p class="t-quiet mb-3">
+        Meldet, wenn ein Fenster einer Zone länger als die eingestellte Dauer offen steht und
+        die Außentemperatur unter der eingestellten Schwelle liegt. Ein- und ausgeschaltet
+        wird er unten unter „Meldungen".
+    </p>
+    <div class="row g-3">
+        {% for field, label, integral in window_alarm_fields %}
+        <div class="col-sm-6">
+            {{ number_field(field, label, window_alarm_values.get(field, ""), "",
+                          window_alarm_errors.get(field, ""), "1" if integral else "0.1") }}
+        </div>
+        {% endfor %}
+    </div>
+    <button class="btn btn-primary mt-4" type="submit">Fenster-Alarm speichern</button>
+</form>
+
 <form method="post" action="{{ url_prefix }}/settings/notifications" class="tc-panel p-4 mt-4">
     <p class="t-label mb-1">Meldungen</p>
     <p class="t-quiet mb-3">
@@ -74,6 +125,8 @@
         "Wenn ein Befehl an einen Aktor nicht durchkommt.") }}
     {{ toggle("notify_stuck_sensor", "Messwert bewegt sich nicht mehr", notify_stuck_sensor,
         "Wenn sich ein Messwert länger als oben unter „Messwert gilt als festhängend nach“ eingestellt nicht verändert — die Zone regelt unverändert mit diesem Wert weiter, das ist kein Ausfall.") }}
+    {{ toggle("notify_window_alarm", "Fenster vergessen offen", notify_window_alarm,
+        "Wenn ein Fenster einer Zone länger als oben unter „Fenster gilt als vergessen nach“ eingestellt offen steht und die Außentemperatur unter der eingestellten Schwelle liegt — und wenn beides nicht mehr zutrifft.") }}
     <button class="btn btn-primary mt-2" type="submit">Meldungen speichern</button>
 </form>
 
@@ -153,8 +206,24 @@
         <dd class="col-sm-5 t-value mb-0">{{ values.get("solar_forecast_longitude", "") }}</dd>
     </dl>
 </div>
+<div class="tc-panel p-4 mt-4">
+    <p class="t-label mb-1">Außentemperatur</p>
+    <dl class="row mb-0">
+        <dt class="col-sm-7 fw-normal t-quiet">Quelle</dt>
+        <dd class="col-sm-5 t-value mb-0">{{ outdoor_source.display_name if outdoor_source else "Keine Quelle gewählt" }}</dd>
+    </dl>
+</div>
+<div class="tc-panel p-4 mt-4">
+    <p class="t-label mb-1">Fenster-Alarm</p>
+    <dl class="row mb-0">
+        {% for field, label, integral in window_alarm_fields %}
+        <dt class="col-sm-7 fw-normal t-quiet">{{ label }}</dt>
+        <dd class="col-sm-5 t-value{{ ' mb-0' if loop.last }}">{{ window_alarm_values.get(field, "") }}</dd>
+        {% endfor %}
+    </dl>
+</div>
 <p class="t-quiet small mt-3">
-    
+
 <p class="t-quiet small mt-3">
     Zum Ändern fehlt das Recht <span class="t-value">setting.manage</span>.
 </p>

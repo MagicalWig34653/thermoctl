@@ -231,6 +231,6 @@ def test_devices_enter_the_system_only_on_the_two_known_paths(session: Session) 
         if re.search(r"(?<![A-Za-z])Device\(", zeile) and not zeile.lstrip().startswith("class ")
     ]
     assert stellen == [
-        "thermoctl/services/ingest.py:55",
+        "thermoctl/services/ingest.py:57",
         "thermoctl/services/meross_discovery.py:89",
     ], "Geraete entstehen an einer neuen Stelle: " + ", ".join(stellen)

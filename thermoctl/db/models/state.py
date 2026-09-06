@@ -52,6 +52,22 @@ class ZoneState(Base):
         Boolean, default=False, server_default=false(), nullable=False
     )
     window_open: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    # When the window most recently changed to open, tracked independently of
+    # `pi_window_started_at` (the PI controller's own, unrelated notion of a
+    # window). `services/ingest.py::advance_zone_state` sets it the moment
+    # `window_open` first becomes `True` and clears it the moment `window_open`
+    # stops being `True`. This is the clock `domain.window_alarm` reads; nothing
+    # in `domain/control_loop.py` reads it.
+    window_open_since: Mapped[datetime | None] = mapped_column(
+        DateTime().with_variant(mysql.DATETIME(fsp=6), "mysql", "mariadb"), nullable=True
+    )
+    # Tri-state, not `bool`: `None` is "unknown" (the outdoor reading is currently
+    # not trustworthy -- no source configured, or stale) and must never be read as
+    # either "alarm" or "all clear". See `domain.window_alarm.window_alarm_state`
+    # and `domain.fault_notice.window_alarm_notice`. Independent of
+    # `sensor_status_id` and `decide()` in `domain/control_loop.py`, the same
+    # "melden, aber nicht regeln" shape `sensor_stuck` above already has.
+    window_alarm: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     last_regular_heat_at: Mapped[datetime | None] = mapped_column(
         DateTime().with_variant(mysql.DATETIME(fsp=6), "mysql", "mariadb"), nullable=True

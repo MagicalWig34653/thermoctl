@@ -116,6 +116,27 @@ hier, sondern an der jeweiligen Stelle: `hx-preserve` an den
         Messwert unverändert, Regelung läuft normal weiter: {{ stuck_sensors|join(", ") }}
     </span>
     {% endif %}
+    {#
+    Die Außentemperatur -- anlagenweit, deshalb hier oben neben Brücke und
+    Scharfschaltung statt an einer einzelnen Zone. "Wert veraltet" und "keine
+    Quelle gewählt" sind ausdrücklich eigene Texte statt einer Zahl, die man mit
+    "es ist warm draußen" verwechseln könnte.
+    #}
+    {% if outdoor %}
+    {% if outdoor.status == "keine_quelle" %}
+    <span class="tc-chip tc-chip-quiet">Außentemperatur: keine Quelle gewählt</span>
+    {% elif outdoor.status == "veraltet" %}
+    <span class="tc-chip tc-chip-warning">Außentemperatur: Wert veraltet</span>
+    {% else %}
+    <span class="tc-chip tc-chip-quiet">Außentemperatur {{ outdoor.temperature_c|grad }} °C</span>
+    {% endif %}
+    {% endif %}
+    {% if window_alarm_zones %}
+    <span class="tc-chip tc-chip-warning"
+          title="Ein Fenster steht seit Längerem offen, während es draußen kalt genug ist.">
+        Fenster vergessen: {{ window_alarm_zones|join(", ") }}
+    </span>
+    {% endif %}
     {% if vacation %}
     <a href="{{ url_prefix }}/vacation" class="tc-chip {{ 'tc-chip-warm' if vacation_running else 'tc-chip-quiet' }}"
        title="{{ (vacation.starts_at|localtime(timezone)).strftime('%d.%m.%Y') }} – {{ (vacation.ends_at|localtime(timezone)).strftime('%d.%m.%Y') }}, {{ vacation.setback_temperature_c|grad }} °C">
@@ -165,6 +186,12 @@ hier, sondern an der jeweiligen Stelle: `hx-preserve` an den
                 <span class="tc-chip tc-chip-quiet"
                       title="Der Messwert bewegt sich seit längerem nicht. Die Zone regelt normal weiter, es ist kein Ausfall.">
                     Messwert unverändert
+                </span>
+                {% endif %}
+                {% if entry and entry[0].window_alarm %}
+                <span class="tc-chip tc-chip-warning"
+                      title="Ein Fenster steht seit Längerem offen, während es draußen kalt genug ist.">
+                    Fenster vergessen
                 </span>
                 {% endif %}
                 {% if override %}

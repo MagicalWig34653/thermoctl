@@ -26,6 +26,7 @@ from thermoctl import audit
 from thermoctl.auth.dependencies import csrf_protection, current_principal, get_session
 from thermoctl.config import get_settings
 from thermoctl.db.base import utcnow
+from thermoctl.db.models.device import Device
 from thermoctl.db.models.lookup import SensorStatus
 from thermoctl.db.models.state import ShadowDecision, ZoneState
 from thermoctl.domain.authz import has_permission, require, visible_zones
@@ -33,14 +34,20 @@ from thermoctl.domain.control import (
     GANZZAHLIG,
     LABELS,
     LIMITS,
+    WINDOW_ALARM_GANZZAHLIG,
+    WINDOW_ALARM_LABELS,
+    WINDOW_ALARM_LIMITS,
     ControlError,
     arm,
     check_coordinate,
     save_settings,
     save_solar_location,
+    save_window_alarm_settings,
     settings,
 )
+from thermoctl.domain.device_assignment import CapabilityMissing
 from thermoctl.domain.interfaces import homebridge_zone_configs, overview
+from thermoctl.domain.outdoor import outdoor_reading, set_outdoor_temperature_source
 from thermoctl.domain.pi_control import (
     RESET_REASON_ARMING,
     RESET_REASON_CONTEXT_CHANGE,
@@ -149,6 +156,9 @@ def _defaults_page(
     errors: ControlError | None = None,
     test_result: notification.WebhookTestResult | None = None,
     test_notice: str | None = None,
+    outdoor_source_error: str | None = None,
+    window_alarm_values: dict[str, str] | None = None,
+    window_alarm_errors: ControlError | None = None,
 ) -> Response:
     row = settings(session)
     if values is None:
@@ -161,6 +171,14 @@ def _defaults_page(
             str(row.solar_forecast_longitude) if row.solar_forecast_longitude is not None else ""
         )
         solar_enabled = row.solar_forecast_enabled
+    if window_alarm_values is None:
+        window_alarm_values = {field: str(getattr(row, field)) for field in WINDOW_ALARM_LIMITS}
+    outdoor_source = (
+        session.get(Device, row.outdoor_temperature_source_device_id)
+        if row.outdoor_temperature_source_device_id is not None
+        else None
+    )
+    outdoor_current = outdoor_reading(session, row, utcnow())
     return templates.TemplateResponse(
         request,
         "settings.html",
@@ -174,12 +192,35 @@ def _defaults_page(
             "notify_bridge_faults": row.notify_bridge_faults,
             "notify_command_failures": row.notify_command_failures,
             "notify_stuck_sensor": row.notify_stuck_sensor,
+            "notify_window_alarm": row.notify_window_alarm,
             "notify_last_attempt_at": row.notify_last_attempt_at,
             "notify_last_ok": row.notify_last_ok,
             "notify_last_error": row.notify_last_error,
             "webhook_configured": get_settings().notify_webhook is not None,
             "test_result": test_result,
+            # Fenster-Alarm -- ihre eigenen, kleinen `fields`/`values`, getrennt von
+            # den `LIMITS`-Feldern oben: diese zwei bleiben absichtlich außerhalb von
+            # REST und MCP, siehe `domain.control.WINDOW_ALARM_LIMITS`.
+            "window_alarm_fields": [
+                (field, WINDOW_ALARM_LABELS[field], field in WINDOW_ALARM_GANZZAHLIG)
+                for field in WINDOW_ALARM_LIMITS
+            ],
+            "window_alarm_values": window_alarm_values,
+            "window_alarm_errors": (
+                {window_alarm_errors.field: window_alarm_errors.notice}
+                if window_alarm_errors
+                else {}
+            ),
             "test_notice": test_notice,
+            # Außentemperatur -- selected exactly the way a zone's own temperature
+            # source is (`device_assignment.html`): every known device offered, the
+            # capability check happens on save, not by pre-filtering this list.
+            "devices": session.scalars(
+                select(Device).order_by(Device.display_name, Device.id)
+            ).all(),
+            "outdoor_source": outdoor_source,
+            "outdoor_source_error": outdoor_source_error,
+            "outdoor_current": outdoor_current,
         },
     )
 
@@ -258,18 +299,47 @@ async def save_defaults(
     return RedirectResponse(prefixed(request, "/settings"), status_code=status.HTTP_303_SEE_OTHER)
 
 
+@router.post("/settings/window-alarm")
+async def save_window_alarm(
+    request: Request,
+    principal: Annotated[Principal, Depends(current_principal)],
+    session: Annotated[Session, Depends(get_session)],
+) -> Response:
+    """The window alarm's two thresholds -- its own route, its own form.
+
+    Deliberately not folded into `save_defaults` above: those fields go out on
+    `PUT /api/v1/control/defaults` and the matching MCP tool, and the project
+    owner's explicit instruction is that nothing new about the window alarm
+    reaches either adapter.
+    """
+    require(principal, "setting.manage")
+    form = await request.form()
+    values = {
+        name: str(form.get(name, "")).strip() for name in WINDOW_ALARM_LIMITS
+    }
+    try:
+        save_window_alarm_settings(
+            session, values, user_id=principal.user_id, token_id=principal.token_id
+        )
+    except ControlError as exc:
+        return _defaults_page(
+            request, session, principal, window_alarm_values=values, window_alarm_errors=exc
+        )
+    return RedirectResponse(prefixed(request, "/settings"), status_code=status.HTTP_303_SEE_OTHER)
+
+
 @router.post("/settings/notifications")
 async def save_notification_preferences(
     request: Request,
     principal: Annotated[Principal, Depends(current_principal)],
     session: Annotated[Session, Depends(get_session)],
 ) -> Response:
-    """Which of the four fault-notice kinds go out at all -- plant-wide, no per-zone
+    """Which of the five fault-notice kinds go out at all -- plant-wide, no per-zone
     override. `setting.manage`, the same permission `/settings` and `/interfaces`
     already require: whoever may not see the webhook target should not be able to
     decide what gets sent to it either.
 
-    No validation is possible on four checkboxes, unlike `save_defaults` above --
+    No validation is possible on five checkboxes, unlike `save_defaults` above --
     there is nothing here that can be rejected, so unlike that route this one never
     re-renders the page with an error.
     """
@@ -282,6 +352,7 @@ async def save_notification_preferences(
     row.notify_bridge_faults = form.get("notify_bridge_faults") is not None
     row.notify_command_failures = form.get("notify_command_failures") is not None
     row.notify_stuck_sensor = form.get("notify_stuck_sensor") is not None
+    row.notify_window_alarm = form.get("notify_window_alarm") is not None
     audit.record(
         session,
         source="web",
@@ -292,6 +363,50 @@ async def save_notification_preferences(
         user_id=principal.user_id,
         token_id=principal.token_id,
     )
+    return RedirectResponse(prefixed(request, "/settings"), status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/settings/outdoor-source")
+async def save_outdoor_source(
+    request: Request,
+    principal: Annotated[Principal, Depends(current_principal)],
+    session: Annotated[Session, Depends(get_session)],
+) -> Response:
+    """Picks (or clears) the plant-wide outdoor temperature source.
+
+    Modelled directly on `device_assignment_views.py::temperature_source_set_view`
+    -- the same device list, the same "any device is offered, the capability is
+    checked on save" shape, just against `setting` instead of a `Zone`, since
+    there is exactly one outdoor reading for the whole plant.
+    """
+    require(principal, "setting.manage")
+    row = settings(session)
+    raw_value = (await request.form()).get("device_id")
+    device: Device | None = None
+    if raw_value:
+        try:
+            device_id = int(str(raw_value))
+        except ValueError:
+            return _defaults_page(
+                request,
+                session,
+                principal,
+                outdoor_source_error="Bitte ein bekanntes Gerät auswählen.",
+            )
+        device = session.get(Device, device_id)
+        if device is None:
+            return _defaults_page(
+                request,
+                session,
+                principal,
+                outdoor_source_error="Dieses Gerät ist nicht bekannt.",
+            )
+    try:
+        set_outdoor_temperature_source(
+            session, row, device, actor_id=principal.user_id
+        )
+    except CapabilityMissing as exc:
+        return _defaults_page(request, session, principal, outdoor_source_error=exc.notice)
     return RedirectResponse(prefixed(request, "/settings"), status_code=status.HTTP_303_SEE_OTHER)
 
 

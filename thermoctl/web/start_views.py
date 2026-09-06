@@ -34,7 +34,12 @@ from thermoctl.db.models.state import ShadowDecision, ZoneState
 from thermoctl.db.models.zone import SetpointMode, ZoneSetpoint
 from thermoctl.domain.authz import has_permission, principal_for_user, visible_zones
 from thermoctl.domain.modes import MAXIMUM_TEMPERATURE_C, MINIMUM_TEMPERATURE_C
-from thermoctl.domain.schedule import current_or_upcoming_vacation, resolved_setpoint, week_segments
+from thermoctl.domain.outdoor import outdoor_reading
+from thermoctl.domain.schedule import (
+    current_or_upcoming_vacation,
+    resolved_setpoint,
+    week_segments,
+)
 from thermoctl.domain.time import local_time
 from thermoctl.services import cluster
 from thermoctl.setup import setup_needed
@@ -128,6 +133,11 @@ def start(
     now = utcnow()
     settings = session.get(Setting, 1)
     local_now = local_time(now, settings.timezone if settings is not None else None)
+    # Anlagenweit, kein Wert je Zone -- deshalb ein einzelnes Ergebnis, nicht ein
+    # Wert je Zone wie `states` unten. `None` nur vor abgeschlossener Einrichtung
+    # (fehlende `setting`-Zeile), sonst antwortet `outdoor_reading` selbst mit
+    # "keine_quelle".
+    outdoor = outdoor_reading(session, settings, now) if settings is not None else None
     states = {
         zone_id: (state, sensor_status_of)
         for zone_id, state, sensor_status_of in session.execute(
@@ -236,6 +246,18 @@ def start(
                 zone.display_name
                 for zone in zones
                 if zone.id in states and states[zone.id][0].sensor_stuck
+            ],
+            # Die Außentemperatur -- anlagenweit, deshalb kein Eintrag je Zone,
+            # sondern ein einzelner Wert neben Brücke und Scharfschaltung oben.
+            "outdoor": outdoor,
+            # Ein Fenster ist seit Längerem offen und es ist kalt genug draußen --
+            # eine eigene Marke je Zone, nicht in `silent_sensors` oder
+            # `stuck_sensors` verwoben: der Sensor ist hier völlig in Ordnung, nur
+            # das Fenster steht offen.
+            "window_alarm_zones": [
+                zone.display_name
+                for zone in zones
+                if zone.id in states and states[zone.id][0].window_alarm
             ],
             "day_tracks": _day_track(
                 session, zone_ids, local_now.isoweekday()

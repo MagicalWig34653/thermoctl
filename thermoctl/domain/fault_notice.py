@@ -22,6 +22,10 @@ NOTICE_KIND_COMMAND_FAILURE = "command_failure"
 # case without also muting the "actually gone" one, which is exactly the case
 # that must keep reaching the fallback path.
 NOTICE_KIND_STUCK_SENSOR = "stuck_sensor"
+# A fifth kind: a window left open with cold air outside (`domain.window_alarm`).
+# Neither a sensor problem nor a stuck reading -- its own switch for the same
+# reason the fourth one got its own.
+NOTICE_KIND_WINDOW_ALARM = "window_alarm"
 
 #: Die Meldung, die ein Mensch ausdrücklich ausgelöst hat, nicht eine, die die
 #: Regelung aus einem Zustandswechsel abgeleitet hat. Sie geht bewusst **nicht**
@@ -63,6 +67,8 @@ def notice_enabled(kind: str, settings: Setting) -> bool:
         return settings.notify_command_failures
     if kind == NOTICE_KIND_STUCK_SENSOR:
         return settings.notify_stuck_sensor
+    if kind == NOTICE_KIND_WINDOW_ALARM:
+        return settings.notify_window_alarm
     raise ValueError(f"Unbekannte Meldungsart {kind!r}")
 
 
@@ -157,6 +163,51 @@ def stuck_sensor_notice(
                 "einen festhängenden Sensor."
             ),
             kind=NOTICE_KIND_STUCK_SENSOR,
+        )
+    return None
+
+
+def window_alarm_notice(
+    key: str, zone_name: str, before: bool | None, after: bool | None
+) -> FaultNotice | None:
+    """Reports only entry into, and recovery from, a forgotten open window.
+
+    `after=None` (the outdoor reading is currently unknown --
+    `domain.window_alarm.window_alarm_state`) never produces a notice, in either
+    direction: an unknown state is not "no alarm", so it must not be read as an
+    all-clear if an alarm was active a moment ago, and it obviously is not itself
+    a new alarm. Whatever `before` was, nothing fires while `after` is `None` --
+    the same reasoning `window_alarm_state`'s own docstring gives for why `None`
+    must never collapse into `False` upstream of this function either.
+
+    `before=None` counts as "not known to be alarming" (the usual case right
+    after a restart), the same convention every other transition notice in this
+    module uses for its own `before=None`.
+    """
+    if after is None:
+        return None
+    if after and before is not True:
+        return FaultNotice(
+            key=key,
+            severity="stoerung",
+            title=f"Fenster in {zone_name} vergessen offen",
+            text=(
+                "Ein Fenster steht seit Längerem offen, während es draußen kalt "
+                "genug ist, um den Raum in Richtung Frostschutz auskühlen zu "
+                "lassen."
+            ),
+            kind=NOTICE_KIND_WINDOW_ALARM,
+        )
+    if not after and before is True:
+        return FaultNotice(
+            key=key,
+            severity="entwarnung",
+            title=f"Fenster in {zone_name} nicht mehr auffällig",
+            text=(
+                "Entweder ist das Fenster wieder zu, oder die Außentemperatur "
+                "liegt wieder über der eingestellten Schwelle."
+            ),
+            kind=NOTICE_KIND_WINDOW_ALARM,
         )
     return None
 

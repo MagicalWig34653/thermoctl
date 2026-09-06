@@ -112,6 +112,22 @@ def fault_notice_topics(
     return FaultNoticeTopics(state=base, attributes=f"{base}/attributes")
 
 
+def window_alarm_topics(zone_id: int, prefix: str = "thermoctl") -> FaultNoticeTopics:
+    """Builds the topics of a zone's window-forgotten notice.
+
+    Its own topic (`window_alarm`, not `sensor_fault`), because unlike
+    `sensor_stuck` this condition can hold at the same time as a perfectly good
+    sensor reading -- the two must not share one Home Assistant entity.
+    """
+    base = f"{_zone_base(zone_id, prefix)}/state/window_alarm"
+    return FaultNoticeTopics(state=base, attributes=f"{base}/attributes")
+
+
+def outdoor_topic(prefix: str = "thermoctl") -> str:
+    """The plant-wide outdoor temperature -- one topic, not one per zone."""
+    return f"{_prefix_of(prefix)}/state/outdoor_temperature"
+
+
 def mode_topics(zone_id: int, mode_id: int, prefix: str = "thermoctl") -> tuple[str, str]:
     """State and command for the setpoint of **one** mode of this zone."""
     if mode_id < 1:
@@ -381,6 +397,31 @@ def fault_notice_discovery(
     return DiscoveryMessage(_config_topic("binary_sensor", object_id), _as_json(data))
 
 
+def window_alarm_discovery(
+    zone_id: int, zone_name: str, prefix: str = "thermoctl"
+) -> DiscoveryMessage:
+    """Registers one persistent "window forgotten" entity per zone.
+
+    Same shape as `fault_notice_discovery` above (a binary sensor for the same
+    reasons), its own entity: this condition can be true while the zone's own
+    sensor is perfectly fine, so it cannot share that entity's ON/OFF state.
+    """
+    topics = window_alarm_topics(zone_id, prefix)
+    object_id = f"{_object_id(zone_id, prefix)}_fensteralarm"
+    data: dict[str, Any] = {
+        **_skeleton(zone_id, zone_name, prefix),
+        "name": "Fenster vergessen offen",
+        "unique_id": object_id,
+        "object_id": object_id,
+        "state_topic": topics.state,
+        "json_attributes_topic": topics.attributes,
+        "payload_on": "ON",
+        "payload_off": "OFF",
+        "device_class": "problem",
+    }
+    return DiscoveryMessage(_config_topic("binary_sensor", object_id), _as_json(data))
+
+
 def mode_discovery(
     zone_id: int,
     zone_name: str,
@@ -469,9 +510,37 @@ def armed_discovery(prefix: str = "thermoctl") -> DiscoveryMessage:
     return DiscoveryMessage(_config_topic("binary_sensor", object_id), _as_json(data))
 
 
+def outdoor_discovery(prefix: str = "thermoctl") -> DiscoveryMessage:
+    """The plant-wide outdoor temperature, as one entity for the whole service.
+
+    Same shape as `armed_discovery` above -- there is exactly one outdoor reading
+    for the whole plant, not one per zone, so this is registered once, not
+    through `zone_discovery`'s per-zone loop in the calling service.
+    """
+    object_id = f"{_identifier(prefix)}_aussentemperatur"
+    data: dict[str, Any] = {
+        "device": {
+            "identifiers": [f"thermoctl:{_prefix_of(prefix)}"],
+            "name": "thermoctl",
+            "manufacturer": "thermoctl",
+        },
+        "availability_topic": availability_topic(prefix),
+        "payload_available": "online",
+        "payload_not_available": "offline",
+        "name": "Außentemperatur",
+        "unique_id": object_id,
+        "object_id": object_id,
+        "state_topic": outdoor_topic(prefix),
+        "unit_of_measurement": "°C",
+        "device_class": "temperature",
+    }
+    return DiscoveryMessage(_config_topic("sensor", object_id), _as_json(data))
+
+
 def alle_topics(zone_id: int, prefix: str = "thermoctl") -> tuple[str, ...]:
     """Returns all zone-related topics for contract checks."""
     state = asdict(states_topics(zone_id, prefix)).values()
     command = asdict(command_topics(zone_id, prefix)).values()
     notices = asdict(fault_notice_topics(zone_id, prefix)).values()
-    return (*state, *command, *notices)
+    window_alarm = asdict(window_alarm_topics(zone_id, prefix)).values()
+    return (*state, *command, *notices, *window_alarm)

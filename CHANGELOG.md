@@ -13,6 +13,24 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ### Hinzugefügt
 
+- **Außentemperatur und Fenster-Alarm.** Erstmals ein Begriff von Außentemperatur:
+  eine anlagenweite Quelle (`setting.outdoor_temperature_source_device_id`),
+  ausgewählt aus den bekannten Zigbee2MQTT-Geräten wie die Messquelle einer Zone,
+  über denselben Ingest-Pfad wie jeder andere Messwert (`domain/outdoor.py`).
+  Darauf ein Alarm, wenn ein Fenster einer Zone länger als
+  `window_alarm_open_minutes` (Vorgabe 30 Minuten) offen steht und die
+  Außentemperatur unter `window_alarm_outdoor_threshold_c` (Vorgabe 5,0 °C) liegt
+  (`domain/window_alarm.py`) — eine fünfte, eigene Meldungsart
+  (`notify_window_alarm`) neben den bestehenden vier, gemeldet nur beim Übergang,
+  samt Entwarnung. Fehlt die Außentemperatur oder ist sie veraltet, ist das
+  Ergebnis ausdrücklich unbekannt statt „kein Alarm" oder „Entwarnung"
+  (`zone_state.window_alarm`, tri-state). Sichtbar auf der Startseite und unter
+  `/settings`, per MQTT als eigene Home-Assistant-Entität je Zone bzw. für die
+  ganze Anlage. **Bewusst nicht in REST, MCP oder Homebridge** — ausdrückliche
+  Vorgabe des Projektinhabers. `domain/control_loop.py` und
+  `services/shadow_run.py` blieben unangetastet: der Alarm ist eine Meldung, kein
+  Eingriff in die Regelung. Migration `f18d4dcb3f5d`.
+
 - **Urlaubsbetrieb.** Ein einziger Absenkwert für die ganze Anlage über ein
   Zeitfenster mit fest eingegebenem Beginn und Ende (lokale Kalendertage, beide
   eingeschlossen); danach läuft der Zeitplan von selbst weiter, vorzeitiges Beenden

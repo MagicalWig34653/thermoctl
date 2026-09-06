@@ -124,6 +124,48 @@ Zweig hätte das den dortigen `assert` verletzt, sobald ein Urlaub auf einer
 PI-aktivierten Zone ohne laufende Übersteuerung greift — gefunden beim Nachvoll-
 ziehen der Vorrangkette, PI selbst hat noch keinen scharfen Betriebspfad.
 
+## Außentemperatur und Fenster-Alarm
+
+Zwei neue, zusammengehörige Stücke:
+
+**Außentemperatur.** `setting.outdoor_temperature_source_device_id` -- genau eine
+Quelle für die ganze Anlage, ausgewählt aus den bekannten Zigbee2MQTT-Geräten wie
+`zone.temperature_source_device_id` für eine Zone (`domain/outdoor.py`, Auswahl
+unter `/settings`). Alter und Ausfall werden wie bei einem Zonensensor beurteilt
+(`domain.fault.sensor_state`, gegen `setting.default_sensor_timeout_seconds`) --
+"keine Quelle gewählt" und "Wert veraltet" sind eigene Texte, keine Zahl, die man
+mit einem tatsächlichen Messwert verwechseln könnte. Sichtbar auf der Startseite
+und per MQTT als eigene, anlagenweite Home-Assistant-Entität (`sensor`,
+`aussentemperatur`).
+
+**Fenster-Alarm.** Eine fünfte, eigene Meldungsart (`notify_window_alarm`) neben
+den bestehenden vier -- meldet, wenn ein Fenster einer Zone länger als
+`setting.window_alarm_open_minutes` (Vorgabe 30) offen steht **und** die
+Außentemperatur unter `setting.window_alarm_outdoor_threshold_c` (Vorgabe 5,0 °C)
+liegt. Beide Bedingungen streng (`domain.window_alarm.window_alarm_state`):
+"seit mehr als", nicht "seit mindestens"; "unter", nicht "höchstens". Fehlt die
+Außentemperatur oder ist sie veraltet, ist das Ergebnis `None` -- ein
+unbekannter Zustand, der nie als Alarm **oder** als Entwarnung gilt
+(`zone_state.window_alarm`, tri-state). Gemeldet wird, wie beim festhängenden
+Messwert, nur der Übergang, samt Entwarnung (`domain.fault_notice.
+window_alarm_notice`) -- über eine eigene, von der Sensorstörung getrennte
+Home-Assistant-Entität je Zone (`fenster:<id>`, nicht `sensor:<id>`: die beiden
+Zustände können gleichzeitig gelten und dürfen sich nie überschreiben).
+
+**Bewusst nicht in REST, MCP oder Homebridge.** Ausdrückliche Vorgabe des
+Projektinhabers: Neues zu Fenster und Außenwert erscheint nur in der
+Oberfläche und in Home Assistant. Die beiden Fenster-Alarm-Schwellen liegen
+deshalb in einem eigenen `WINDOW_ALARM_LIMITS` (`domain/control.py`), nicht in
+dem von REST und MCP mitbenutzten `LIMITS` -- eine eigene, kleine
+Validierungsfunktion (`check_number`, jetzt parametrisiert) statt eines
+gemeinsamen Wertebereichs, der die beiden Schwellen versehentlich mit
+hinausgetragen hätte.
+
+Migration `f18d4dcb3f5d`, Kopf danach unverändert einzügig.
+`domain/control_loop.py` und `services/shadow_run.py` blieben unangetastet --
+der Alarm ist eine Meldung, kein Eingriff in die Regelung (das ist Gegenstand
+eines parallel laufenden Auftrags).
+
 ## Migrationssperre: gleichzeitige `alembic upgrade head`-Läufe abgesichert
 
 Der unten dokumentierte offene Punkt ist geschlossen. Nachgestellt, vor der
