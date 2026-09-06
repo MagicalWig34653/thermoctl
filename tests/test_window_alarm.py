@@ -14,6 +14,7 @@ THRESHOLD_C = Decimal("5.0")
 
 def _state(*, opened_minutes_ago: int, outdoor_c: Decimal, status: str = OK) -> bool | None:
     return window_alarm_state(
+        window_open=True,
         window_open_since=NOW - timedelta(minutes=opened_minutes_ago),
         now=NOW,
         open_after_minutes=OPEN_AFTER_MINUTES,
@@ -26,6 +27,7 @@ def _state(*, opened_minutes_ago: int, outdoor_c: Decimal, status: str = OK) -> 
 def test_no_window_open_is_no_alarm_even_when_cold() -> None:
     assert (
         window_alarm_state(
+            window_open=False,
             window_open_since=None,
             now=NOW,
             open_after_minutes=OPEN_AFTER_MINUTES,
@@ -70,6 +72,7 @@ def test_an_untrustworthy_outdoor_reading_is_unknown_not_no_alarm() -> None:
 def test_a_missing_temperature_value_is_also_unknown() -> None:
     assert (
         window_alarm_state(
+            window_open=True,
             window_open_since=NOW - timedelta(minutes=60),
             now=NOW,
             open_after_minutes=OPEN_AFTER_MINUTES,
@@ -78,4 +81,46 @@ def test_a_missing_temperature_value_is_also_unknown() -> None:
             threshold_c=THRESHOLD_C,
         )
         is None
+    )
+
+
+def test_an_unknown_window_contact_is_unknown_even_if_it_was_open_long_and_cold() -> None:
+    """The cross-review finding: a contact that goes stale mid-alarm must not
+    silently read as "confirmed still open" just because `window_open_since` is
+    still set from before the contact failed (`services/ingest.py::
+    advance_zone_state` deliberately leaves it untouched while the contact's
+    current state is unknown -- see that module's own test for the full
+    scenario). Every input this function depends on has its own "I don't know"
+    answer; the window contact's is no different from the outdoor reading's.
+    """
+    assert (
+        window_alarm_state(
+            window_open=None,
+            window_open_since=NOW - timedelta(hours=2),
+            now=NOW,
+            open_after_minutes=OPEN_AFTER_MINUTES,
+            outdoor_status=OK,
+            outdoor_temperature_c=Decimal("-5.0"),
+            threshold_c=THRESHOLD_C,
+        )
+        is None
+    )
+
+
+def test_a_confirmed_closed_window_is_no_alarm_even_with_a_stale_since_value() -> None:
+    """Defensive: `window_open_since` should already be cleared whenever
+    `window_open` is confirmed `False` (`advance_zone_state`), but this function
+    does not rely on that -- a confirmed closed window is never an alarm on its
+    own terms, regardless of what timestamp happens to still be attached."""
+    assert (
+        window_alarm_state(
+            window_open=False,
+            window_open_since=NOW - timedelta(hours=2),
+            now=NOW,
+            open_after_minutes=OPEN_AFTER_MINUTES,
+            outdoor_status=OK,
+            outdoor_temperature_c=Decimal("-5.0"),
+            threshold_c=THRESHOLD_C,
+        )
+        is False
     )

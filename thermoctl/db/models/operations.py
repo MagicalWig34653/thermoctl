@@ -170,11 +170,15 @@ class Setting(Base):
     window_alarm_open_minutes: Mapped[int] = mapped_column(
         Integer, default=30, server_default=text("30"), nullable=False
     )
-    # Below this outdoor temperature, an open window risks pulling a room towards
-    # frost. 5°C: comfortably above the frost-protection setpoints in use on this
-    # plant (see `zone_setpoint`), so the alarm reaches an operator before a room is
-    # anywhere near frost risk, not only once it already is. Bounds in
-    # `domain.control.LIMITS` (-20 to 15 °C).
+    # Below this outdoor temperature, an open window starts pulling real heat out
+    # of a room fast enough that leaving it open matters. 5°C is an outdoor-air
+    # figure and is deliberately not compared against a zone's frost-protection
+    # setpoint (16.0°C in `zone_setpoint`) -- that is a *room* temperature, a
+    # different quantity entirely, and the two are not on the same scale. The
+    # point of 5°C is to catch a forgotten window while there is still a wide
+    # margin before the room itself could ever approach frost, not to mark the
+    # outdoor temperature at which frost becomes likely. Bounds in
+    # `domain.control.WINDOW_ALARM_LIMITS` (-20 to 15 °C).
     window_alarm_outdoor_threshold_c: Mapped[Decimal] = mapped_column(
         Numeric(4, 1), default=Decimal("5.0"), server_default=text("5.0"), nullable=False
     )

@@ -29,6 +29,7 @@ from thermoctl.domain.fault_notice import (
     NOTICE_KIND_WINDOW_ALARM,
     FaultNotice,
 )
+from thermoctl.integrations.mqtt.publication import armed_discovery, outdoor_discovery
 from thermoctl.services.publishing import (
     PublicationState,
     cycle,
@@ -980,6 +981,93 @@ async def test_a_failed_setpoint_is_retried_every_cycle_but_logged_only_once(
 
     entries = _command_log(session)
     assert [code for _entry, code in entries] == ["failed", "executed"]
+
+
+class RejectingDiscoveryClient:
+    """A broker that swallows the one-time service discovery messages (`armed_discovery`
+    and `outdoor_discovery`) but accepts everything else -- the unreachable-broker case
+    that must keep `service_registered` at `False` so the next cycle retries.
+
+    Both `topic` filters are checked -- `_scharf` for the armed discovery, `_aussentemperatur`
+    for the outdoor one, see `publication.py`'s `armed_discovery`/`outdoor_discovery` -- so
+    this can also be configured to reject only one of the two.
+    """
+
+    def __init__(self, *, reject_armed: bool = True, reject_outdoor: bool = True) -> None:
+        self.reject_armed = reject_armed
+        self.reject_outdoor = reject_outdoor
+        self.attempts: dict[str, int] = {}
+
+    async def publishing(
+        self, topic: str, payload: str, *, switches: bool, retained: bool = False
+    ) -> bool:
+        self.attempts[topic] = self.attempts.get(topic, 0) + 1
+        if self.reject_armed and "_scharf" in topic:
+            return False
+        if self.reject_outdoor and "_aussentemperatur" in topic:
+            return False
+        return True
+
+
+@pytest.mark.anyio
+async def test_an_unreachable_broker_keeps_service_registered_false_and_is_retried(
+    session: Session,
+) -> None:
+    """Cross-review regression: the original code set `state.service_registered = True`
+    unconditionally after the discovery loop, even when the broker rejected both
+    messages -- so a plant that came up while the broker was down never announced
+    itself to Home Assistant again until the process restarted. Both discovery
+    messages must be attempted again on the following cycle."""
+    create_settings(session)
+
+    armed_topic = armed_discovery("thermoctl").topic
+    outdoor_topic = outdoor_discovery("thermoctl").topic
+
+    client = RejectingDiscoveryClient()
+    state = PublicationState()
+    await cycle(session, client, state, "thermoctl", NOW)
+
+    assert state.service_registered is False
+    assert client.attempts[armed_topic] == 1
+    assert client.attempts[outdoor_topic] == 1
+
+    await cycle(session, client, state, "thermoctl", NOW)
+
+    # Without the fix, `service_registered` would already be `True` and this second
+    # cycle would skip the registration block entirely -- both counts would stay at 1.
+    assert state.service_registered is False
+    assert client.attempts[armed_topic] == 2
+    assert client.attempts[outdoor_topic] == 2
+
+
+@pytest.mark.anyio
+async def test_only_one_rejected_discovery_message_still_blocks_registration(
+    session: Session,
+) -> None:
+    """Distinct from the test above: here the broker accepts the armed discovery and
+    rejects only the outdoor one. `registered` must still end up `False` -- an
+    unbalanced `else: registered = False` written after only the *last* iteration of
+    the loop would miss this, since the last message here is the one that fails."""
+    create_settings(session)
+
+    armed_topic = armed_discovery("thermoctl").topic
+    outdoor_topic = outdoor_discovery("thermoctl").topic
+
+    client = RejectingDiscoveryClient(reject_armed=False, reject_outdoor=True)
+    state = PublicationState()
+    await cycle(session, client, state, "thermoctl", NOW)
+
+    assert state.service_registered is False
+    assert client.attempts[armed_topic] == 1
+    assert client.attempts[outdoor_topic] == 1
+
+    await cycle(session, client, state, "thermoctl", NOW)
+
+    # Both messages are retried next cycle -- including the armed discovery, which
+    # already succeeded once. There is no per-message memory, only the one flag.
+    assert state.service_registered is False
+    assert client.attempts[armed_topic] == 2
+    assert client.attempts[outdoor_topic] == 2
 
 
 def test_deleting_a_zone_and_its_device_keeps_the_command_log_entry(session: Session) -> None:

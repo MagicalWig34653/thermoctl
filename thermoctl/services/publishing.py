@@ -364,14 +364,22 @@ async def cycle(
     if not state.service_registered:
         # `outdoor_discovery` alongside `armed_discovery`: both are one-time,
         # plant-wide registrations, not per-zone ones -- there is exactly one
-        # outdoor reading for the whole plant.
+        # outdoor reading for the whole plant. `service_registered` only becomes
+        # `True` once **every** message here actually went out this cycle -- the
+        # original, single-message version only set it inside a successful
+        # `publishing()`, and an unreachable broker must keep retrying every
+        # unset registration next cycle instead of silently marking them done.
+        registered = True
         for message in (armed_discovery(prefix), outdoor_discovery(prefix)):
             _finish_database_work(session)
             if await client.publishing(
                 message.topic, message.payload, switches=False, retained=True
             ):
                 sent_count += 1
-        state.service_registered = True
+            else:
+                registered = False
+        if registered:
+            state.service_registered = True
     _finish_database_work(session)
     if await client.publishing(
         armed_topic(prefix), _as_text(armed), switches=False, retained=True

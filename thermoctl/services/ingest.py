@@ -424,7 +424,6 @@ def advance_zone_state(session: Session, now: datetime) -> None:
             and temperature is not None
             and _stuck(session, zone, temperature, now, setting_row.stuck_reading_hours)
         )
-        previously_open = state.window_open is True
         new_window_open = _window_open(
             session,
             zone,
@@ -433,12 +432,26 @@ def advance_zone_state(session: Session, now: datetime) -> None:
             now,
             control_parameters(session, zone).sensor_timeout_seconds,
         )
-        if new_window_open is True and not previously_open:
+        # Only set a *new* clock when there isn't one already -- checking
+        # `state.window_open_since is None` rather than "was the previous
+        # cycle's `window_open` exactly `True`" survives an unknown (`None`)
+        # cycle in between without resetting: a contact that goes stale mid-
+        # alarm and then reports open again, still, must resume counting from
+        # the original opening, not restart at the moment it happened to
+        # recover. Only a *confirmed* closed window (`False`) clears the clock
+        # -- `None` (the contact went stale or missing mid-cycle) must leave it
+        # untouched, or `window_alarm_state` below would read "no window open"
+        # and silently report an all-clear for an alarm that, for all this
+        # cycle can tell, may still hold. See the cross-review finding this
+        # fixed: a contact failing mid-alarm used to flip the alarm straight
+        # to `False`.
+        if new_window_open is True and state.window_open_since is None:
             state.window_open_since = now
-        elif new_window_open is not True:
+        elif new_window_open is False:
             state.window_open_since = None
         state.window_open = new_window_open
         state.window_alarm = window_alarm_state(
+            window_open=new_window_open,
             window_open_since=state.window_open_since,
             now=now,
             open_after_minutes=setting_row.window_alarm_open_minutes,

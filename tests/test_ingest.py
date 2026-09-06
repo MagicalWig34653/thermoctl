@@ -597,6 +597,119 @@ def test_window_alarm_becomes_true_once_both_conditions_hold(session: Session) -
     assert state is not None and state.window_alarm is False
 
 
+def test_a_stale_window_contact_mid_alarm_turns_unknown_not_all_clear(
+    session: Session,
+) -> None:
+    """The cross-review finding: an active alarm's window contact going stale
+    (sensor timeout, not a real closing) must not be read as "window closed" --
+    that used to clear `window_open_since` and make the alarm silently drop to
+    `False`, exactly the false all-clear this test guards against. The correct
+    answer while the contact is unknown is `None`, and once the contact reports
+    fresh again -- still open, the whole time -- the alarm must reassert itself
+    from the *original* opening time, not from a clock that was reset in
+    between.
+    """
+    setting_row = create_settings(session)
+    setting_row.window_alarm_open_minutes = 30
+    setting_row.window_alarm_outdoor_threshold_c = Decimal("5.0")
+    # Short enough that the contact measurement below actually goes stale
+    # partway through the test -- this is exactly what is under test here,
+    # unlike the long timeout the test above deliberately avoids it with.
+    setting_row.default_sensor_timeout_seconds = 1800
+    sensor_status_of(session, "keine_quelle")
+    temperature = _capability(session, "temperature")
+    outdoor_device = create_device(session, "aussenfuehler-stale-kontakt")
+    setting_row.outdoor_temperature_source_device_id = outdoor_device.id
+    session.add(
+        Measurement(
+            device_id=outdoor_device.id,
+            capability_id=temperature.id,
+            value_numeric=Decimal("-2.0"),
+            measured_at=EMPFANGEN_AM,
+            received_at=EMPFANGEN_AM,
+        )
+    )
+    # Keep the outdoor reading fresh throughout -- this test is about the
+    # window contact going stale, not the outdoor source.
+    zone, device = _open_window_zone(session, "stale-kontakt-zone")
+    opened_at = EMPFANGEN_AM
+    _set_contact(session, device, "false", opened_at)
+    # Establishes `window_open_since == opened_at` on this very first cycle --
+    # without it, the *next* call below would be the first one to ever see the
+    # window open and would stamp `window_open_since` with its own `now`
+    # instead of `opened_at`.
+    advance_zone_state(session, opened_at)
+    assert session.get(ZoneState, zone.id).window_open_since == opened_at  # type: ignore[union-attr]
+
+    # 40 minutes later: open long enough, cold enough -- alarm active. The
+    # contact itself is refreshed here too (still open) so that this cycle
+    # alone is not already what makes it stale -- the clock's *origin*,
+    # `window_open_since`, is what must stay at `opened_at`, not the contact's
+    # own freshness.
+    active_at = opened_at + timedelta(minutes=40)
+    _set_contact(session, device, "false", active_at)
+    session.add(
+        Measurement(
+            device_id=outdoor_device.id,
+            capability_id=temperature.id,
+            value_numeric=Decimal("-2.0"),
+            measured_at=active_at,
+            received_at=active_at,
+        )
+    )
+    advance_zone_state(session, active_at)
+    state = session.get(ZoneState, zone.id)
+    assert state is not None and state.window_alarm is True
+    assert state.window_open_since == opened_at
+
+    # An hour later, without a fresh contact reading: the contact is now
+    # stale (over the 1800s timeout), so the window's own state is unknown.
+    stale_at = active_at + timedelta(hours=1)
+    session.add(
+        Measurement(
+            device_id=outdoor_device.id,
+            capability_id=temperature.id,
+            value_numeric=Decimal("-2.0"),
+            measured_at=stale_at,
+            received_at=stale_at,
+        )
+    )
+    advance_zone_state(session, stale_at)
+    state = session.get(ZoneState, zone.id)
+    assert state is not None
+    assert state.window_open is None, "the contact itself must read as unknown"
+    assert state.window_alarm is None, (
+        "an unknown contact must never be read as an all-clear for an "
+        "already-active alarm"
+    )
+    assert state.window_open_since == opened_at, (
+        "the clock must survive an unknown cycle unchanged -- it is not "
+        "confirmed closed, so it must not be cleared"
+    )
+
+    # The contact reports again -- still open, the whole time.
+    recovered_at = stale_at + timedelta(minutes=1)
+    _set_contact(session, device, "false", recovered_at)
+    session.add(
+        Measurement(
+            device_id=outdoor_device.id,
+            capability_id=temperature.id,
+            value_numeric=Decimal("-2.0"),
+            measured_at=recovered_at,
+            received_at=recovered_at,
+        )
+    )
+    advance_zone_state(session, recovered_at)
+    state = session.get(ZoneState, zone.id)
+    assert state is not None
+    assert state.window_open is True
+    assert state.window_open_since == opened_at, (
+        "the clock must resume from the original opening, not restart -- the "
+        "unknown interval never actually meant the window closed"
+    )
+    assert state.window_alarm is True
+
+
 def test_a_broken_availability_message_has_no_effect(session: Session) -> None:
     """The third message path needs the same protection as the other two.
 
