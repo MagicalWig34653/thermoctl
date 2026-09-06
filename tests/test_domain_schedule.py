@@ -1,5 +1,5 @@
 from dataclasses import FrozenInstanceError
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal
 
 import pytest
@@ -35,6 +35,7 @@ from thermoctl.domain.schedule import (
     next_point,
     paint_schedule_interval,
     resolved_setpoint,
+    schedule_forecast,
     schedule_snapshot,
     time_of_day_in_minutes,
     undo_schedule_gesture,
@@ -1147,3 +1148,250 @@ def test_an_override_on_a_mode_without_a_fixed_temperature(session: Session) -> 
     result = resolved_setpoint(session, zone, datetime(2026, 8, 31, 10, 0))
     assert result.temperature_c == Decimal("21.0")
     assert "Modus tag" in result.reason
+
+
+# --- schedule_forecast -------------------------------------------------------------
+#
+# The preview's whole point is to never show something that will not actually
+# happen -- so every one of these reuses `resolved_setpoint`'s own precedence
+# instead of asserting an independently reasoned expectation. Several exact
+# boundaries below (in particular the two daylight-saving tests) were derived by
+# running `current_point`/`next_point`/the local<->UTC conversion by hand against
+# these exact fixtures before writing the assertion, not the other way around --
+# see the task's own worktree notes for that derivation.
+
+
+def test_operating_mode_off_yields_one_unchanging_bar_for_the_whole_horizon(
+    session: Session,
+) -> None:
+    zone = zone_with_schedule(
+        session, "vorschau-aus", points=[(1, 360, "tag-vorschau-aus", Decimal("21.0"))],
+        operating_mode="off", frost_protection=Decimal("16.0"),
+    )
+    now = datetime(2026, 8, 31, 10, 0)
+
+    result = schedule_forecast(session, zone, now)
+
+    assert len(result) == 1
+    assert result[0].starts_at == now
+    assert result[0].ends_at == now + timedelta(hours=24)
+    assert result[0].setpoint.temperature_c == Decimal("16.0")
+    assert "Aus" in result[0].setpoint.reason
+
+
+def test_a_permanent_override_covers_the_entire_horizon(session: Session) -> None:
+    zone = zone_with_schedule(
+        session, "vorschau-dauerhaft",
+        points=[(1, 360, "tag-vorschau-dauerhaft", Decimal("21.0"))],
+        override=(Decimal("23.5"), None),
+    )
+    now = datetime(2026, 8, 31, 10, 0)
+
+    result = schedule_forecast(session, zone, now)
+
+    assert len(result) == 1
+    assert result[0].ends_at == now + timedelta(hours=24)
+    assert result[0].setpoint.temperature_c == Decimal("23.5")
+
+
+def test_an_override_ending_mid_horizon_hands_over_to_the_schedule(
+    session: Session,
+) -> None:
+    now = datetime(2026, 8, 31, 10, 0)
+    override_end = datetime(2026, 8, 31, 13, 0)
+    zone = zone_with_schedule(
+        session, "vorschau-uebergabe",
+        points=[(1, 360, "tag-vorschau-uebergabe", Decimal("21.0"))],
+        override=(Decimal("23.5"), override_end),
+    )
+
+    result = schedule_forecast(session, zone, now)
+
+    assert len(result) == 2
+    assert (result[0].starts_at, result[0].ends_at) == (now, override_end)
+    assert result[0].setpoint.temperature_c == Decimal("23.5")
+    assert (result[1].starts_at, result[1].ends_at) == (
+        override_end, now + timedelta(hours=24)
+    )
+    assert result[1].setpoint.temperature_c == Decimal("21.0")
+
+
+def test_an_override_on_a_mode_without_a_usable_temperature_is_skipped_in_the_forecast(
+    session: Session,
+) -> None:
+    """Parity with `resolved_setpoint`: an override that cannot resolve to a
+    temperature does not count, so the forecast must not draw a bar for it either
+    -- it must fall straight through to the schedule, from `now` on."""
+    now = datetime(2026, 8, 31, 10, 0)
+    zone = zone_with_schedule(
+        session, "vorschau-ohne-temp",
+        points=[(1, 360, "tag-vorschau-ohne-temp", Decimal("21.0"))],
+    )
+    ohne_temperatur = create_mode(session, "leer-vorschau-ohne-temp")
+    session.add(
+        ZoneOverride(
+            zone_id=zone.id,
+            setpoint_mode_id=ohne_temperatur.id,
+            starts_at=now,
+            ends_at=None,
+            source_id=source(session).id,
+        )
+    )
+    session.flush()
+
+    result = schedule_forecast(session, zone, now)
+
+    assert result[0].starts_at == now
+    assert result[0].setpoint.temperature_c == Decimal("21.0")
+    assert "Zeitplan" in result[0].setpoint.reason
+
+
+def test_a_zone_without_any_schedule_stays_at_frost_protection_for_the_whole_horizon(
+    session: Session,
+) -> None:
+    now = datetime(2026, 8, 31, 10, 0)
+    zone = zone_with_schedule(
+        session, "vorschau-ohne-plan", points=[], frost_protection=Decimal("16.0")
+    )
+
+    result = schedule_forecast(session, zone, now)
+
+    assert len(result) == 1
+    assert (result[0].starts_at, result[0].ends_at) == (now, now + timedelta(hours=24))
+    assert result[0].setpoint.temperature_c == Decimal("16.0")
+    assert "Frostschutz" in result[0].setpoint.reason
+
+
+def test_the_forecast_crosses_midnight_into_the_next_weekday(session: Session) -> None:
+    """Derived by hand against `current_point`/`next_point` beforehand: at local
+    Monday 20:00 the ring's last switch is last week's Tuesday 06:00 ('morgen'),
+    so the first bar is 'morgen', not 'abend' -- the exact crossing this test
+    exists to pin down."""
+    now = datetime(2026, 8, 31, 18, 0)  # local (Europe/Berlin, CEST) Mon 20:00
+    zone = zone_with_schedule(
+        session, "vorschau-mitternacht",
+        points=[
+            (1, 1320, "abend-vorschau-mitternacht", Decimal("18.0")),
+            (2, 360, "morgen-vorschau-mitternacht", Decimal("21.0")),
+        ],
+    )
+
+    result = schedule_forecast(session, zone, now)
+
+    assert len(result) == 3
+    assert (result[0].starts_at, result[0].ends_at) == (
+        now, datetime(2026, 8, 31, 20, 0)
+    )
+    assert result[0].setpoint.temperature_c == Decimal("21.0")
+    assert (result[1].starts_at, result[1].ends_at) == (
+        datetime(2026, 8, 31, 20, 0), datetime(2026, 9, 1, 4, 0)
+    )
+    assert result[1].setpoint.temperature_c == Decimal("18.0")
+    assert (result[2].starts_at, result[2].ends_at) == (
+        datetime(2026, 9, 1, 4, 0), now + timedelta(hours=24)
+    )
+    assert result[2].setpoint.temperature_c == Decimal("21.0")
+
+
+def test_adjacent_bars_resolving_to_the_same_setpoint_are_merged(session: Session) -> None:
+    """Two schedule points can carry the same mode back to back -- nothing in
+    `create_schedule_point` forbids it, unlike painting, which already collapses
+    that case. The preview must not show a seam where nothing actually changes."""
+    now = datetime(2026, 8, 30, 22, 0)  # local (CEST) Mon 00:00
+    zone = zone_with_schedule(
+        session, "vorschau-verschmelzen",
+        points=[
+            (1, 0, "a-vorschau-verschmelzen", Decimal("20.0")),
+            (1, 720, "b-vorschau-verschmelzen", Decimal("15.0")),
+        ],
+    )
+    # A second point carrying the *same* mode as the first -- added directly rather
+    # than through `zone_with_schedule` a second time, which would try to insert a
+    # second `ZoneSetpoint` row for the same (zone, mode) and collide with the
+    # unique constraint. Nothing forbids two schedule points sharing a mode; only
+    # painting happens to collapse that case, and this point is created by hand.
+    a_mode = session.query(SetpointMode).filter_by(code="a-vorschau-verschmelzen").one()
+    _stored_point(session, zone.id, 1, 360, a_mode.id)
+
+    result = schedule_forecast(session, zone, now)
+
+    assert len(result) == 2
+    assert (result[0].starts_at, result[0].ends_at) == (
+        now, datetime(2026, 8, 31, 10, 0)
+    )
+    assert result[0].setpoint.temperature_c == Decimal("20.0")
+    assert (result[1].starts_at, result[1].ends_at) == (
+        datetime(2026, 8, 31, 10, 0), now + timedelta(hours=24)
+    )
+    assert result[1].setpoint.temperature_c == Decimal("15.0")
+
+
+def test_the_forecast_survives_the_spring_forward_gap(session: Session) -> None:
+    """2026-03-29 is the day Europe/Berlin's clocks jump from 02:00 CET straight to
+    03:00 CEST -- the local day has 23 hours, and the wall clock never shows
+    02:00-03:00 at all. The middle bar below reads as a 3-hour local span
+    (01:00 to 04:00) but must be exactly 2 real hours in UTC -- the whole point of
+    working in UTC instants instead of local-clock arithmetic."""
+    now = datetime(2026, 3, 28, 23, 30)  # local Sun 00:30 CET, before the jump
+    zone = zone_with_schedule(
+        session, "vorschau-dst-vor",
+        points=[
+            (7, 60, "nacht-vorschau-dst-vor", Decimal("16.0")),
+            (7, 240, "tag-vorschau-dst-vor", Decimal("21.0")),
+        ],
+    )
+
+    result = schedule_forecast(session, zone, now)
+
+    assert len(result) == 3
+    assert (result[0].starts_at, result[0].ends_at) == (
+        now, datetime(2026, 3, 29, 0, 0)
+    )
+    assert result[0].setpoint.temperature_c == Decimal("21.0")
+    assert (result[1].starts_at, result[1].ends_at) == (
+        datetime(2026, 3, 29, 0, 0), datetime(2026, 3, 29, 2, 0)
+    )
+    assert result[1].setpoint.temperature_c == Decimal("16.0")
+    assert (result[1].ends_at - result[1].starts_at) == timedelta(hours=2)
+    assert (result[2].starts_at, result[2].ends_at) == (
+        datetime(2026, 3, 29, 2, 0), now + timedelta(hours=24)
+    )
+    assert result[2].setpoint.temperature_c == Decimal("21.0")
+    assert sum(
+        (segment.ends_at - segment.starts_at for segment in result), timedelta()
+    ) == timedelta(hours=24)
+
+
+def test_the_forecast_survives_the_autumn_fold(session: Session) -> None:
+    """2026-10-25 is the day Europe/Berlin's clocks fall back from 03:00 CEST to
+    02:00 CET -- the local day has 25 hours, and 02:00-03:00 happens twice. The
+    middle bar below reads as a 2-hour local span (01:30 to 03:30) but must be
+    exactly 3 real hours in UTC, because the repeated hour actually elapsed."""
+    now = datetime(2026, 10, 24, 22, 0)  # local Sun 00:00 CEST, before the fold
+    zone = zone_with_schedule(
+        session, "vorschau-dst-zurueck",
+        points=[
+            (7, 90, "nacht-vorschau-dst-zurueck", Decimal("16.0")),
+            (7, 210, "tag-vorschau-dst-zurueck", Decimal("21.0")),
+        ],
+    )
+
+    result = schedule_forecast(session, zone, now)
+
+    assert len(result) == 3
+    assert (result[0].starts_at, result[0].ends_at) == (
+        now, datetime(2026, 10, 24, 23, 30)
+    )
+    assert result[0].setpoint.temperature_c == Decimal("21.0")
+    assert (result[1].starts_at, result[1].ends_at) == (
+        datetime(2026, 10, 24, 23, 30), datetime(2026, 10, 25, 2, 30)
+    )
+    assert result[1].setpoint.temperature_c == Decimal("16.0")
+    assert (result[1].ends_at - result[1].starts_at) == timedelta(hours=3)
+    assert (result[2].starts_at, result[2].ends_at) == (
+        datetime(2026, 10, 25, 2, 30), now + timedelta(hours=24)
+    )
+    assert result[2].setpoint.temperature_c == Decimal("21.0")
+    assert sum(
+        (segment.ends_at - segment.starts_at for segment in result), timedelta()
+    ) == timedelta(hours=24)

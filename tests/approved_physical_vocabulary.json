@@ -464,6 +464,7 @@
       "Bitte bestätigen, dass mehr Schaltspiele und eine falsche Parametrierung verstanden wurden, bevor PI (Beta) eingeschaltet wird."
     ],
     "thermoctl/web/schedule_views.py": [
+      "warmth",
       "warmth"
     ],
     "thermoctl/web/start_views.py": [
@@ -544,7 +545,9 @@
     ],
     "thermoctl/web/templates/schedule.html": [
       "var({{ '--warmth' if w >= 0.5 else '--cool' }})",
-      "{% set w = warmth.get(segment.mode_id, 0.5) %}"
+      "var({{ '--warmth' if bar.warmth >= 0.5 else '--cool' }})",
+      "{% set w = warmth.get(segment.mode_id, 0.5) %}",
+      "{{ (45 + (bar.warmth - 0.5)|abs * 90)|round|int }}%, var(--surface));"
     ],
     "thermoctl/web/templates/settings.html": [
       "\"Wenn ein Befehl an einen Aktor nicht durchkommt.\") }}",

@@ -9,6 +9,20 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ---
 
+## Unveröffentlicht
+
+### Hinzugefügt
+
+- **Zeitplan-Vorschau.** Die Zeitplanseite zeigt jetzt je Zone eine Leiste über die
+  nächsten 24 Stunden: Uhrzeit, Modus und der Sollwert, der dann gilt, mit dem
+  laufenden Abschnitt hervorgehoben. Sichtbar mit `zone.read` allein — Ansehen setzt
+  keine Änderungsrechte voraus. Die Berechnung (`thermoctl.domain.schedule.
+  schedule_forecast`) berücksichtigt eine laufende Übersteuerung bis zu ihrem Ende,
+  die Betriebsart Aus (Frostschutz für das gesamte Fenster) und den Tagesübergang über
+  Mitternacht in einen anderen Wochentag; sie rechnet in UTC-Instanzen, nicht in
+  Ortszeit-Arithmetik, und bleibt deshalb auch an den beiden Sommerzeit-Umstellungen
+  exakt (23- bzw. 25-Stunden-Tag).
+
 ## 0.7.4 — 2026-09-05
 
 ### Behoben

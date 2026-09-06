@@ -1,6 +1,22 @@
 # Stand
 
-Letzte Aktualisierung: 2026-09-05, Freigabe `v0.7.0`.
+Letzte Aktualisierung: 2026-09-06, Freigabe `v0.7.0`.
+
+## Zeitplan-Vorschau: nächste 24 Stunden je Zone
+
+Die Zeitplanseite (`/zones/{id}/schedule`) zeigt jetzt oberhalb des Wochenrasters eine
+Leiste mit der Vorschau der nächsten 24 Stunden, sichtbar bereits mit `zone.read`
+(keine Änderungsrechte nötig). Die Berechnung sitzt in der Domäne
+(`thermoctl.domain.schedule.schedule_forecast`), nicht in der Ansicht: sie reicht
+über `resolved_setpoint`s eigene Rangfolge (Betriebsart Aus schlägt alles, dann eine
+laufende Übersteuerung bis zu ihrem Ende, dann der Zeitplan, zuletzt Frostschutz) und
+kann daher nie etwas zeigen, was zur Laufzeit nicht tatsächlich einträte. Sie rechnet
+in echten UTC-Instanzen statt in Ortszeit-Arithmetik und bleibt deshalb auch über
+Mitternacht, einen Wochentagswechsel und beide Sommerzeit-Umstellungen (23- bzw.
+25-Stunden-Tag) exakt — mit Tests, die diese Grenzfälle einzeln mit von Hand
+abgeleiteten Uhrzeiten belegen (`tests/test_domain_schedule.py`). REST und MCP bieten
+die Vorschau noch nicht an; das ist eine bewusste Auslassung dieser Aufgabe, keine
+technische Grenze — die Domänenfunktion ist adapterunabhängig nutzbar.
 
 ## Zwei Fehler in der Homebridge-Konfiguration behoben
 
