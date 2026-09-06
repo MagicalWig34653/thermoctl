@@ -72,6 +72,8 @@
         "Wenn die Verbindung zur Zigbee2MQTT-Brücke oder zum MQTT-Broker abreisst — und wenn sie wieder steht.") }}
     {{ toggle("notify_command_failures", "Schaltbefehl gescheitert", notify_command_failures,
         "Wenn ein Befehl an einen Aktor nicht durchkommt.") }}
+    {{ toggle("notify_stuck_sensor", "Messwert bewegt sich nicht mehr", notify_stuck_sensor,
+        "Wenn sich ein Messwert länger als oben unter „Messwert gilt als festhängend nach“ eingestellt nicht verändert — die Zone regelt unverändert mit diesem Wert weiter, das ist kein Ausfall.") }}
     <button class="btn btn-primary mt-2" type="submit">Meldungen speichern</button>
 </form>
 

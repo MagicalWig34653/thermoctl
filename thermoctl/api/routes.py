@@ -584,6 +584,7 @@ def zone_state(
         temperature_c=state.temperature_c,
         measured_at=state.measured_at,
         sensor_status=sensor_state.code,
+        sensor_stuck=state.sensor_stuck,
         window_open=state.window_open,
         updated_at=state.updated_at,
     )

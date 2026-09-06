@@ -49,6 +49,19 @@ class Setting(Base):
     default_window_resume_delay_seconds: Mapped[int] = mapped_column(
         Integer, default=120, nullable=False
     )
+    # How long a temperature reading may sit on exactly the same value before it
+    # counts as suspiciously "festhängend" (`domain.fault.stuck_reading`) --
+    # anlagenweit, no per-zone override, the same reach as `measurement_retention_days`
+    # below. 12 hours by default: the one real occurrence that prompted this feature
+    # ran for five hours in an unheated room at its thermal floor and was harmless
+    # (see STATUS.md) -- a threshold has to clear that comfortably or every winter
+    # night would false-alarm on exactly the rooms behaving correctly. Twelve hours
+    # keeps a wide margin above that observed harmless case while still surfacing a
+    # genuinely stuck sensor well within the same day, not after it has already been
+    # wrong for a week.
+    stuck_reading_hours: Mapped[int] = mapped_column(
+        Integer, default=12, server_default=text("12"), nullable=False
+    )
     frost_protection_mode_id: Mapped[int] = mapped_column(
         ForeignKey("setpoint_mode.id"), nullable=False
     )
@@ -125,6 +138,13 @@ class Setting(Base):
         Boolean, default=True, server_default=true(), nullable=False
     )
     notify_command_failures: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default=true(), nullable=False
+    )
+    # A fourth, deliberately separate kind (not folded into `notify_sensor_faults`):
+    # a stuck reading is not a sensor failure -- the zone keeps regulating on it
+    # (`services/ingest.py::advance_zone_state`, `sensor_stuck`) instead of falling
+    # back to frost protection -- and muting one must not silence the other.
+    notify_stuck_sensor: Mapped[bool] = mapped_column(
         Boolean, default=True, server_default=true(), nullable=False
     )
     # The webhook's delivery state -- what the interface's second part shows.

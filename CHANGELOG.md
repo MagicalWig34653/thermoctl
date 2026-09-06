@@ -13,6 +13,20 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ### Hinzugefügt
 
+- **Erkennung eines festhängenden Messwerts.** Ein Sensor, der zuverlässig alle paar
+  Minuten dieselbe Zahl schickt, galt bisher dauerhaft als `ok` — die
+  Störungserkennung prüfte nur das Alter der letzten Meldung. Jetzt gilt ein Messwert
+  auch als `festhängend`, wenn seine Spanne über `stuck_reading_hours` (Vorgabe 12
+  Stunden, anlagenweit) unter einer kleinen Schwelle bleibt — ein Sensor, der zwischen
+  zwei Auflösungsschritten pendelt, zählt nicht dazu. **Die Zone regelt dabei
+  unverändert mit diesem Wert weiter**, es findet kein Wechsel in den Frostschutz
+  statt (`domain/fault.py::stuck_reading`, `services/ingest.py::advance_zone_state`,
+  neue Spalte `zone_state.sensor_stuck`). Gemeldet wird nur der Übergang, samt
+  Entwarnung, als eigene, vierte Meldungsart (`notify_stuck_sensor`) neben den
+  bestehenden drei — eine Sensorstörung und ein festhängender Messwert schließen sich
+  gegenseitig aus und teilen sich deshalb bewusst keinen Schalter. Sichtbar auf der
+  Startseite, im Kiosk und über `sensor_stuck` in REST- und MCP-Zonenzustand.
+  Migration `afb9832fba99`.
 - **Liveaktualisierung der Startseite.** Ist-Wert, Sollwert samt Begründung,
   Sensorzustand und letzte Entscheidung je Zone aktualisieren sich jetzt von selbst,
   ohne Neuladen — im Stil des Kiosks (`hx-get` auf sich selbst, `hx-select`/

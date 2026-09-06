@@ -9,11 +9,13 @@ from thermoctl.domain.fault_notice import (
     NOTICE_KIND_BRIDGE_FAULT,
     NOTICE_KIND_COMMAND_FAILURE,
     NOTICE_KIND_SENSOR_FAULT,
+    NOTICE_KIND_STUCK_SENSOR,
     bridge_notice,
     command_failure_notice,
     notice_enabled,
     notification_audit_action,
     sensor_notice,
+    stuck_sensor_notice,
 )
 from thermoctl.integrations.mqtt.zigbee2mqtt import bridge_reachable
 
@@ -136,16 +138,49 @@ def _settings(**overrides: bool) -> Setting:
         "notify_sensor_faults": True,
         "notify_bridge_faults": True,
         "notify_command_failures": True,
+        "notify_stuck_sensor": True,
     }
     values.update(overrides)
     return Setting(**values)  # type: ignore[arg-type]
 
 
+def test_stuck_sensor_reports_only_the_transition_into_and_out_of_it() -> None:
+    fault = stuck_sensor_notice("sensor:1", "Testzone", False, True)
+    assert fault is not None
+    assert fault.severity == "stoerung"
+    assert fault.kind == NOTICE_KIND_STUCK_SENSOR
+    assert "Testzone" in fault.title
+    assert "regelt unverändert" in fault.text
+    assert "Frostschutz" in fault.text
+    # Still stuck the next cycle -- no repeated notice.
+    assert stuck_sensor_notice("sensor:1", "Testzone", True, True) is None
+
+    all_clear = stuck_sensor_notice("sensor:1", "Testzone", True, False)
+    assert all_clear is not None
+    assert all_clear.severity == "entwarnung"
+    assert all_clear.kind == NOTICE_KIND_STUCK_SENSOR
+    # Still fine the next cycle -- no repeated all-clear.
+    assert stuck_sensor_notice("sensor:1", "Testzone", False, False) is None
+
+
+def test_stuck_sensor_first_observed_as_stuck_is_not_suppressed() -> None:
+    """Same convention as `test_first_observed_bridge_failure_is_not_suppressed` and
+    `test_first_observed_command_failure_is_not_suppressed` above, not
+    `sensor_notice`'s: `before=None` (nothing tracked yet for this zone in this
+    process -- the usual case right after a restart, or an installation upgraded
+    with years of matching history already in place) counts as "not known to be
+    stuck", so a zone that is already stuck the first time this process computes it
+    still raises the alert."""
+    assert stuck_sensor_notice("sensor:1", "Testzone", None, True) is not None
+    assert stuck_sensor_notice("sensor:1", "Testzone", None, False) is None
+
+
 def test_the_gate_answers_per_kind_from_its_own_column() -> None:
-    settings = _settings(notify_bridge_faults=False)
+    settings = _settings(notify_bridge_faults=False, notify_stuck_sensor=False)
     assert notice_enabled(NOTICE_KIND_SENSOR_FAULT, settings) is True
     assert notice_enabled(NOTICE_KIND_BRIDGE_FAULT, settings) is False
     assert notice_enabled(NOTICE_KIND_COMMAND_FAILURE, settings) is True
+    assert notice_enabled(NOTICE_KIND_STUCK_SENSOR, settings) is False
 
 
 def test_the_gate_rejects_an_unknown_kind_instead_of_guessing() -> None:

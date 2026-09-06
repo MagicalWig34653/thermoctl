@@ -13,6 +13,15 @@ from thermoctl.db.models.operations import Setting
 NOTICE_KIND_SENSOR_FAULT = "sensor_fault"
 NOTICE_KIND_BRIDGE_FAULT = "bridge_fault"
 NOTICE_KIND_COMMAND_FAILURE = "command_failure"
+# A fourth kind, deliberately not folded into `NOTICE_KIND_SENSOR_FAULT`: a stuck
+# reading is not a sensor failure -- `sensor_status` (and therefore `decide()`'s
+# frost-protection fallback) is entirely untouched by it, the zone keeps regulating
+# on the same value throughout (see `services/ingest.py::advance_zone_state`,
+# `sensor_stuck`). Sharing one switch with real sensor failures would mean nobody
+# could mute the (usually harmless, sometimes days-long) "unmoving but present"
+# case without also muting the "actually gone" one, which is exactly the case
+# that must keep reaching the fallback path.
+NOTICE_KIND_STUCK_SENSOR = "stuck_sensor"
 
 #: Die Meldung, die ein Mensch ausdrücklich ausgelöst hat, nicht eine, die die
 #: Regelung aus einem Zustandswechsel abgeleitet hat. Sie geht bewusst **nicht**
@@ -52,6 +61,8 @@ def notice_enabled(kind: str, settings: Setting) -> bool:
         return settings.notify_bridge_faults
     if kind == NOTICE_KIND_COMMAND_FAILURE:
         return settings.notify_command_failures
+    if kind == NOTICE_KIND_STUCK_SENSOR:
+        return settings.notify_stuck_sensor
     raise ValueError(f"Unbekannte Meldungsart {kind!r}")
 
 
@@ -93,6 +104,59 @@ def sensor_notice(
                 "Die Zone regelt die Heizung wieder normal."
             ),
             kind=NOTICE_KIND_SENSOR_FAULT,
+        )
+    return None
+
+
+def stuck_sensor_notice(
+    key: str, zone_name: str, before: bool | None, after: bool
+) -> FaultNotice | None:
+    """Reports only entry into, and recovery from, a suspiciously unmoving reading.
+
+    The same "only the transition" shape as `sensor_notice` above, and the same
+    `key` convention (`f"sensor:{zone.id}"`) -- the two can never fire in the same
+    cycle for the same zone (`sensor_stuck` is only ever computed while
+    `sensor_status` reads `ok`, see `services/ingest.py::advance_zone_state`), so
+    sharing the key, and therefore the one Home Assistant entity it maps to
+    (`fault_notice_discovery`), never overwrites one notice with the other.
+
+    Deliberately **not** a fault in tone: `severity="stoerung"` still drives the
+    Home Assistant indicator and the audit trail the same way a real fault would
+    (the project owner's own words called it a "Störungsmeldung"), but the text
+    must make unmistakable that nothing about the regulation itself has changed --
+    otherwise whoever reads it goes looking for a stopped heater that isn't there.
+
+    `before=None` (nothing tracked yet for this zone in this process -- the usual
+    case right after a restart, or an installation upgraded straight into years of
+    matching history already sitting in `measurement`) counts as "not known to be
+    stuck", the same convention `bridge_notice` and `command_failure_notice` use for
+    their own `before=None` -- not `sensor_notice`'s, which suppresses a first
+    observation entirely. A zone already stuck the first time this process computes
+    it still raises the alert; it does not wait for a second cycle to notice.
+    """
+    if after and before is not True:
+        return FaultNotice(
+            key=key,
+            severity="stoerung",
+            title=f"Messwert in {zone_name} bewegt sich nicht mehr",
+            text=(
+                "Der Temperaturwert hat sich über die eingestellte Dauer nicht "
+                "verändert. Das kann ein hängender Sensor sein oder ein tatsächlich "
+                "sehr stabiler Raum — die Zone regelt unverändert mit diesem Wert "
+                "weiter, es findet kein Wechsel in den Frostschutz statt."
+            ),
+            kind=NOTICE_KIND_STUCK_SENSOR,
+        )
+    if not after and before is True:
+        return FaultNotice(
+            key=key,
+            severity="entwarnung",
+            title=f"Messwert in {zone_name} bewegt sich wieder",
+            text=(
+                "Der Temperaturwert verändert sich wieder — kein Hinweis mehr auf "
+                "einen festhängenden Sensor."
+            ),
+            kind=NOTICE_KIND_STUCK_SENSOR,
         )
     return None
 

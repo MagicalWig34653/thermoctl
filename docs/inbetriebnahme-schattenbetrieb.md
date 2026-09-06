@@ -59,9 +59,21 @@ Begründung**, Sensorzustand, und die letzte Schattenentscheidung.
 Über mehrere Tage sind drei Dinge zu prüfen — sie sind das Abnahmekriterium von
 Teilprojekt 2:
 
-1. **Laufen für jede Zone plausible Ist-Temperaturen ein?** Ein Wert, der stundenlang
-   gleich bleibt, ist verdächtig; die Störungserkennung meldet ihn ab dem eingestellten
-   Timeout als `veraltet`.
+1. **Laufen für jede Zone plausible Ist-Temperaturen ein?** Zwei getrennte Prüfungen
+   stehen dafür bereit. Bleibt eine Meldung ganz aus, gilt der Sensor nach dem
+   eingestellten Timeout als `veraltet`, und die Zone regelt bis auf Weiteres gegen den
+   Frostschutz-Sollwert. Kommen dagegen weiter Meldungen, aber immer mit demselben Wert
+   (genauer: die Spanne aller Werte der letzten `stuck_reading_hours` Stunden bleibt
+   unter einer kleinen Schwelle — ein Sensor, der zwischen zwei Auflösungsschritten
+   pendelt, zählt nicht dazu), gilt der Messwert als `festhängend`: **die Zone regelt
+   unverändert mit diesem Wert weiter**, es findet **kein** Wechsel in den Frostschutz
+   statt — nur die Oberfläche zeigt einen Hinweis, und optional geht eine Meldung
+   hinaus (siehe Abschnitt 5). Das ist Absicht: Ein echt stabiler, ungeheizter Raum an
+   seinem thermischen Boden sieht identisch aus wie ein hängender Sensor, und beide
+   sollen weiter geregelt werden, nicht in den Frostschutz fallen. Die Vorgabe von
+   zwölf Stunden liegt deutlich über dem beobachteten Fall (ein Raum stand fünf Stunden
+   am Stück auf demselben Wert und war dabei unauffällig), damit ein normaler Winterabend
+   keinen Fehlalarm auslöst.
 2. **Sind die Schattenentscheidungen nachvollziehbar?** Jede trägt ihren Grund. Wenn eine
    Zone nachts heizen würde, obwohl der Zeitplan Nacht sagt, stimmt etwas an der Zuordnung
    oder am Sollwert — nicht an der Regel.

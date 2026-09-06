@@ -1,13 +1,16 @@
 from datetime import datetime, timedelta
+from decimal import Decimal
 
 import pytest
 
 from thermoctl.domain.fault import (
     NO_SOURCE,
     OK,
+    STUCK_READING_SPAN_C,
     VERALTET,
     sensor_state,
     state_row,
+    stuck_reading,
 )
 
 NOW = datetime(2026, 8, 29, 12, 0)
@@ -74,3 +77,43 @@ def test_state_row_rejects_an_unknown_state() -> None:
 def test_state_row_requires_a_measurement_time_for_a_known_state() -> None:
     with pytest.raises(ValueError, match="erfordert einen Messzeitpunkt"):
         state_row(OK, None, NOW)
+
+
+# --- stuck_reading -----------------------------------------------------------
+
+
+def test_a_value_that_never_moves_at_all_is_stuck() -> None:
+    values = [Decimal("21.30")] * 5
+
+    assert stuck_reading(values, history_covers_duration=True) is True
+
+
+def test_a_sensor_oscillating_between_two_resolution_steps_is_not_stuck() -> None:
+    """22.7 / 22.8 °C is exactly the motivating case in the task: a sensor with 0.1 K
+    resolution that legitimately toggles between two adjacent raw values while the
+    room itself holds almost perfectly still must not be flagged."""
+    values = [Decimal("22.7"), Decimal("22.8"), Decimal("22.7"), Decimal("22.8")]
+
+    assert stuck_reading(values, history_covers_duration=True) is False
+
+
+def test_the_span_boundary_belongs_to_the_stuck_side() -> None:
+    low = Decimal("20.00")
+    at_threshold = [low, low + STUCK_READING_SPAN_C]
+    just_over = [low, low + STUCK_READING_SPAN_C + Decimal("0.01")]
+
+    assert stuck_reading(at_threshold, history_covers_duration=True) is True
+    assert stuck_reading(just_over, history_covers_duration=True) is False
+
+
+def test_insufficient_history_is_never_stuck_even_if_every_sample_is_equal() -> None:
+    """A zone whose source has only just been assigned has not 'held still for
+    twelve hours' -- it has simply never been asked the question yet."""
+    values = [Decimal("21.30")] * 5
+
+    assert stuck_reading(values, history_covers_duration=False) is False
+
+
+@pytest.mark.parametrize("values", [[], [Decimal("21.30")]])
+def test_fewer_than_two_samples_is_never_stuck(values: list[Decimal]) -> None:
+    assert stuck_reading(values, history_covers_duration=True) is False
