@@ -43,6 +43,15 @@ Seite ein Formularstapel, in dem die eigentliche Auskunft — wie warm ist es �
 </div>
 
 <section class="tc-system-row {{ 'tc-armed' if armed }} mb-4">
+    {% if cluster_standby %}
+    <span class="tc-chip tc-chip-warning"><span class="tc-dot"></span>Bereitschaft</span>
+    <span>
+        Diese Instanz ist Teil eines Aktiv-Bereitschafts-Verbunds und steht gerade in
+        Bereitschaft: Sie regelt nicht und schaltet nichts, unabhängig vom Zustand
+        unten. Ansehen und Konfigurieren ist möglich, beide Instanzen arbeiten auf
+        derselben Datenbank.
+    </span>
+    {% endif %}
     {% if armed and sending_allowed %}
     <span class="tc-chip tc-chip-warm"><span class="tc-dot"></span>Scharf und neu gestartet</span>
     <span>Ausgabe freigegeben — alle zugeordneten Aktoren werden angesteuert.</span>

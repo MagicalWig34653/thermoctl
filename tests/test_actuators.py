@@ -1,4 +1,5 @@
 import json
+from datetime import datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -8,12 +9,14 @@ from sqlalchemy.orm import Session
 
 from tests.helpers import create_mode
 from thermoctl.config import Settings
-from thermoctl.db.models.operations import Setting
+from thermoctl.db.base import utcnow
+from thermoctl.db.models.operations import ClusterClaim, Setting
 from thermoctl.integrations.actuators import (
     MerossSwitch,
     Zigbee2MqttThermostat,
     Zigbee2MqttValve,
 )
+from thermoctl.services import cluster
 
 
 class MqttStub:
@@ -587,3 +590,106 @@ async def test_a_valve_without_a_system_mode_still_heats_at_its_setpoint(
     payload = json.loads(mqtt.calls[0][1])
     assert payload["occupied_heating_setpoint"] == 21.5
     assert "system_mode" not in payload
+
+
+# --- Aktiv-Bereitschafts-Verbund: the third bolt ---------------------------------
+#
+# `switching_allowed()` (`integrations/actuators.py`) now also checks
+# `services/cluster.py::is_leader` -- see that function's docstring for why a
+# missing `cluster_claim` row (every other test above, and the whole rest of the
+# suite) fails open to "this process leads" rather than blocking every existing
+# switching test. These tests seed the row explicitly to prove the opposite case:
+# `control_armed=True` alone is not enough once a claim row exists and someone
+# else holds it.
+
+
+def _claimed_by_someone_else(session: Session) -> None:
+    """A fresh claim, held by an instance that is not this test process."""
+    session.add(
+        ClusterClaim(
+            id=1,
+            holder_id="eine-andere-instanz",
+            expires_at=datetime(2099, 1, 1),
+        )
+    )
+    session.flush()
+
+
+def _claimed_by_this_instance(session: Session) -> None:
+    session.add(
+        ClusterClaim(
+            id=1,
+            holder_id=cluster.instance_id(),
+            expires_at=utcnow() + timedelta(hours=1),
+        )
+    )
+    session.flush()
+
+
+@pytest.mark.anyio
+async def test_a_standby_zigbee2mqtt_valve_sends_nothing_even_when_armed(
+    session: Session,
+) -> None:
+    """The Zigbee2MQTT path sees the third bolt too, not only Meross."""
+    _armed(session)
+    _claimed_by_someone_else(session)
+    mqtt = MqttStub()
+
+    result = await Zigbee2MqttValve(session, mqtt, "zigbee2mqtt", "Ventil").switching(True)
+
+    assert mqtt.calls == []
+    assert result.executed is False
+    assert "hätte gesendet" in result.description
+
+
+@pytest.mark.anyio
+async def test_a_standby_thermostat_valve_sends_nothing_even_when_armed(
+    session: Session,
+) -> None:
+    _armed(session)
+    _claimed_by_someone_else(session)
+    mqtt = MqttStub()
+
+    result = await Zigbee2MqttThermostat(
+        session, mqtt, "zigbee2mqtt", "TRV-Wohnzimmer", Decimal("21.5")
+    ).switching(True)
+
+    assert mqtt.calls == []
+    assert result.executed is False
+
+
+@pytest.mark.anyio
+async def test_a_standby_meross_switch_sends_nothing_even_when_armed_and_frozen_bolt_open(
+    session: Session,
+) -> None:
+    """The Meross path checks `switching_allowed()` too (`frozen_switching_allowed`
+    is the *other*, process-frozen bolt -- both must agree, and this proves the
+    runtime one alone already refuses)."""
+    _armed(session)
+    _claimed_by_someone_else(session)
+    meross = MerossStub()
+
+    result = await MerossSwitch(
+        session, meross, "geraet-1", frozen_switching_allowed=True
+    ).switching(True)
+
+    assert meross.calls == []
+    assert result.executed is False
+
+
+@pytest.mark.anyio
+async def test_the_leading_instance_still_switches_with_a_claim_row_present(
+    session: Session,
+) -> None:
+    """Counter-check to the three tests above: a claim row alone must not block
+    switching -- only holding it for someone *else* does. Without this, the three
+    tests above could also be satisfied by a version that refuses to switch the
+    moment any `cluster_claim` row exists at all."""
+    _armed(session)
+    _claimed_by_this_instance(session)
+    mqtt = MqttStub()
+
+    result = await Zigbee2MqttValve(session, mqtt, "zigbee2mqtt", "Ventil").switching(True)
+
+    assert result.executed is True
+    assert mqtt.calls == [("zigbee2mqtt/Ventil/set", '{"state": "ON"}', True)]

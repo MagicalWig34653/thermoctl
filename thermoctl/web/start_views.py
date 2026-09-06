@@ -36,6 +36,7 @@ from thermoctl.domain.authz import has_permission, principal_for_user, visible_z
 from thermoctl.domain.modes import MAXIMUM_TEMPERATURE_C, MINIMUM_TEMPERATURE_C
 from thermoctl.domain.schedule import resolved_setpoint, week_segments
 from thermoctl.domain.time import local_time
+from thermoctl.services import cluster
 from thermoctl.setup import setup_needed
 from thermoctl.web import templates, warmth_fraction
 from thermoctl.web.urls import prefixed
@@ -208,6 +209,14 @@ def start(
             # a display untrustworthy if you don't know them.
             "armed": bool(settings and settings.control_armed),
             "sending_allowed": getattr(request.app.state, "sending_allowed", False),
+            # Aktiv-Bereitschafts-Verbund: whether *this* instance is currently the
+            # standby half. Deliberately must be visible everywhere the operating
+            # state is -- a standby that looks identical to the active instance is
+            # exactly the failure mode this banner exists to rule out. `False` for
+            # every single, unclustered installation (see `services/cluster.py`'s
+            # module docstring on the fail-open default).
+            "cluster_standby": not cluster.is_leader(session, holder=cluster.instance_id()),
+
             "bridge": getattr(request.app.state, "bridge_reachable", None),
             "silent_sensors": [
                 zone.display_name

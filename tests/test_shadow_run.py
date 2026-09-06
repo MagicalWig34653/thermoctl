@@ -40,13 +40,13 @@ from thermoctl.db.engine import session_factory
 from thermoctl.db.models.device import ZoneDevice
 from thermoctl.db.models.lookup import DeviceCapability
 from thermoctl.db.models.measurement import Measurement
-from thermoctl.db.models.operations import AuditEvent, Setting
+from thermoctl.db.models.operations import AuditEvent, ClusterClaim, Setting
 from thermoctl.db.models.override import ZoneOverride
 from thermoctl.db.models.state import ShadowDecision, ZoneState
 from thermoctl.db.models.zone import Zone, ZoneSetpoint
 from thermoctl.integrations.mqtt import client as client_modul
 from thermoctl.integrations.mqtt.client import MqttClient
-from thermoctl.services import shadow_run
+from thermoctl.services import cluster, shadow_run
 
 NOW = datetime(2026, 8, 29, 8, 0)
 DATENPFAD = Path(__file__).parent / "daten" / "anlage-beispiele.json"
@@ -1070,6 +1070,94 @@ async def test_the_shadow_loop_survives_a_missing_interval(
 
 
 @pytest.mark.anyio
+async def test_the_shadow_loop_runs_nothing_while_another_instance_leads(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Aktiv-Bereitschafts-Verbund: a standby's shadow loop still wakes up on
+    schedule, but must not advance sensor state, write a shadow decision, or touch
+    the claim it does not hold -- `try_become_leader` reports `False`, and that
+    alone must be enough to skip the entire rest of the pass."""
+    engine, fabrik = _own_database(tmp_path, "verbund-standby")
+    with fabrik() as http_session:
+        create_settings(http_session)
+        sensor_status_of(http_session, "keine_quelle")
+        create_zone(http_session, "flur")
+        http_session.add(
+            ClusterClaim(
+                id=1, holder_id="die-aktive-instanz", expires_at=datetime(2099, 1, 1)
+            )
+        )
+        http_session.commit()
+
+    fake_app = types.SimpleNamespace(state=types.SimpleNamespace(session_factory=fabrik))
+    waited: list[float] = []
+
+    async def _sleep(seconds: float) -> None:
+        waited.append(seconds)
+        if len(waited) == 2:
+            raise asyncio.CancelledError
+
+    monkeypatch.setattr(app_modul.asyncio, "sleep", _sleep)
+
+    with pytest.raises(asyncio.CancelledError):
+        await app_modul._shadow_loop(fake_app)  # type: ignore[arg-type]
+
+    assert len(waited) == 2  # one full standby pass ran before the simulated abort
+
+    with fabrik() as http_session:
+        assert http_session.query(ShadowDecision).count() == 0
+        claim = http_session.get(ClusterClaim, 1)
+        assert claim is not None
+        assert claim.holder_id == "die-aktive-instanz"  # untouched by the standby
+
+    engine.dispose()
+
+
+@pytest.mark.anyio
+async def test_the_shadow_loop_claims_an_unheld_row_and_runs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The counterpart: an expired (or never-claimed) row is exactly what a
+    takeover looks like -- this pass must claim it *and* still run the cycle
+    that same pass, not wait for the next one."""
+    engine, fabrik = _own_database(tmp_path, "verbund-uebernahme")
+    with fabrik() as http_session:
+        create_settings(http_session)
+        sensor_status_of(http_session, "keine_quelle")
+        create_zone(http_session, "flur")
+        http_session.add(
+            ClusterClaim(
+                id=1,
+                holder_id="eine-abgestuerzte-instanz",
+                expires_at=datetime(1970, 1, 1),
+            )
+        )
+        http_session.commit()
+
+    fake_app = types.SimpleNamespace(state=types.SimpleNamespace(session_factory=fabrik))
+    waited: list[float] = []
+
+    async def _sleep(seconds: float) -> None:
+        waited.append(seconds)
+        if len(waited) == 2:
+            raise asyncio.CancelledError
+
+    monkeypatch.setattr(app_modul.asyncio, "sleep", _sleep)
+
+    with pytest.raises(asyncio.CancelledError):
+        await app_modul._shadow_loop(fake_app)  # type: ignore[arg-type]
+
+    with fabrik() as http_session:
+        assert http_session.query(ShadowDecision).count() == 1
+        claim = http_session.get(ClusterClaim, 1)
+        assert claim is not None
+        assert claim.holder_id == cluster.instance_id()
+        assert claim.expires_at > datetime(2026, 1, 1)
+
+    engine.dispose()
+
+
+@pytest.mark.anyio
 async def test_the_shadow_loop_survives_an_exception_in_the_cycle(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1263,6 +1351,55 @@ def test_the_lifespan_starts_and_stops_mqtt_and_the_shadow_loop_cleanly(
 
     with TestClient(anwendung):
         pass  # exiting this block must return, otherwise the test hangs
+
+    engine.dispose()
+    get_settings.cache_clear()
+
+
+def test_the_lifespan_releases_the_cluster_claim_on_a_clean_shutdown(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The most common case in an Aktiv-Bereitschafts-Verbund: an orderly restart
+    of the active instance. It must give up the claim immediately on shutdown
+    instead of leaving a standby to sit out the full takeover timeout -- the
+    departing instance already knows it is leaving, a crash never gets that
+    chance. The loop's own sleep never actually elapses here (nothing shortens
+    the default 60 second interval), so whatever the row looks like after
+    shutdown was written by the release call in `_lifespan`'s `finally`, not by
+    an ordinary claim renewal mid-loop.
+    """
+    engine, fabrik = _own_database(tmp_path, "lifespan-release")
+    with fabrik() as http_session:
+        sensor_status_of(http_session, "keine_quelle")
+        http_session.commit()
+
+    monkeypatch.setattr(client_modul.aiomqtt, "Client", _FalscherAiomqttClient)
+    monkeypatch.setenv("THERMOCTL_DATABASE_URL", "sqlite://")
+    monkeypatch.setenv("THERMOCTL_SECRET_KEY", "r" * 32)
+    monkeypatch.setenv("THERMOCTL_MQTT_ENABLED", "true")
+    monkeypatch.setenv("THERMOCTL_MQTT_HOST", "mqtt.example.invalid")
+    get_settings.cache_clear()
+
+    anwendung = create_app()
+    anwendung.state.engine.dispose()
+    anwendung.state.engine = engine
+    anwendung.state.session_factory = fabrik
+
+    holder = cluster.instance_id()
+    with fabrik() as http_session:
+        http_session.add(
+            ClusterClaim(id=1, holder_id=holder, expires_at=datetime(2099, 1, 1))
+        )
+        http_session.commit()
+
+    with TestClient(anwendung):
+        pass
+
+    with fabrik() as http_session:
+        claim = http_session.get(ClusterClaim, 1)
+        assert claim is not None
+        assert claim.holder_id == ""  # released, immediately claimable again
+        assert claim.expires_at < datetime(2000, 1, 1)
 
     engine.dispose()
     get_settings.cache_clear()

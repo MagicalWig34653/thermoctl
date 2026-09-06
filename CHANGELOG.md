@@ -9,6 +9,25 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ---
 
+## Unveröffentlicht
+
+### Hinzugefügt
+
+- **Aktiv-Bereitschafts-Verbund.** Zwei Instanzen können jetzt dieselbe Datenbank und
+  denselben MQTT-Broker teilen — eine regelt, die andere steht bereit und übernimmt
+  atomar, wenn die aktive Instanz fünf Regelzyklen lang keine Erneuerung mehr
+  schreibt (einstellbar, `setting.cluster_takeover_cycles`). Der Anspruch wechselt
+  über eine einzige atomare Datenbank-`UPDATE`-Anweisung, geprüft und geschrieben
+  gegen die Uhr der Datenbank, nie gegen die eines der beiden Rechner. Ein
+  drittes Schaltverbot (`integrations/actuators.py::switching_allowed`) sorgt
+  dafür, dass eine Bereitschaft keinen Aktor erreicht, egal über welchen Pfad
+  (Zigbee2MQTT wie Meross); ein geordneter Neustart der aktiven Instanz gibt den
+  Anspruch sofort frei, statt die Bereitschaft die volle Frist warten zu lassen.
+  Sichtbar auf der Startseite als eigener "Bereitschaft"-Chip. Details zur
+  Einrichtung in `docs/self-hosting.md`, Abschnitt 6d.
+
+---
+
 ## 0.7.4 — 2026-09-05
 
 ### Behoben

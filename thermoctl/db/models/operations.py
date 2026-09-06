@@ -69,6 +69,17 @@ class Setting(Base):
     shadow_interval_seconds: Mapped[int] = mapped_column(
         Integer, default=60, server_default=text("60"), nullable=False
     )
+    # --- Aktiv-Bereitschafts-Verbund --------------------------------------------
+    # How many control cycles the active instance may miss its renewal before a
+    # standby takes over -- see `services/cluster.py`. The cycle length itself is
+    # `shadow_interval_seconds` above; the two multiply into the actual timeout
+    # (`cluster.takeover_timeout_seconds`). Five by the project owner's explicit
+    # request, kept adjustable rather than a constant: a flaky network between the
+    # database and the plant might need longer before a merely slow instance is
+    # taken for a dead one.
+    cluster_takeover_cycles: Mapped[int] = mapped_column(
+        Integer, default=5, server_default=text("5"), nullable=False
+    )
     # Replaces the module constant `domain.statistics.
     # DEFAULT_ASSUMED_RELAY_LIFETIME_OPERATIONS` as the number the relay-wear
     # statistic compares against. Still an explicitly replaceable assumption, not a
@@ -132,6 +143,45 @@ class Setting(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=utcnow, onupdate=utcnow, nullable=False
     )
+
+
+class ClusterClaim(Base):
+    """Exactly one row: who currently leads the Aktiv-Bereitschafts-Verbund.
+
+    Two instances share this database and the same MQTT broker; at most one of
+    them may run the control cycle and switch actuators at any moment. This row
+    is the single fact both sides check and update, and the transfer of
+    leadership is a single atomic ``UPDATE`` against it -- see
+    `services/cluster.py`, which is the only module allowed to touch it.
+
+    ``holder_id`` and ``expires_at`` are compared and written using the
+    database's own clock (``func.now()``), never a value either instance's own
+    host clock computed -- two machines never agree on the time closely enough
+    to arbitrate who gets to switch a heater, and the database they both already
+    share is the one clock both sides can agree on without needing to.
+
+    Seeded by the migration that introduces this table (``holder_id=""``,
+    ``expires_at`` far in the past -- unclaimed, so the first instance that ever
+    asks wins immediately). A schema built directly via
+    ``Base.metadata.create_all()`` -- every test in this suite -- has the table
+    but not the row; `services/cluster.py` treats that as "clustering was never
+    engaged" and fails open to "this process leads", so the whole existing test
+    suite keeps working unchanged. A real installation's schema carries the row
+    from this migration onward, and from that point on it governs strictly.
+    """
+
+    __tablename__ = "cluster_claim"
+    __table_args__ = (CheckConstraint("id = 1", name="genau_eine_zeile"),)
+
+    id: Mapped[int] = mapped_column(
+        Integer, primary_key=True, autoincrement=False, default=1
+    )
+    # The claiming instance's identity (`services/cluster.instance_id()`) --
+    # empty after an explicit release, never `NULL` (comparing `NULL` with `=`
+    # is never true in SQL, which would make an intentionally released claim
+    # unclaimable by the very check meant to detect that).
+    holder_id: Mapped[str] = mapped_column(String(64), default="", nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
 
 
 class AuditEvent(Base):
