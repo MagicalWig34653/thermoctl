@@ -49,6 +49,26 @@ Mindestschaltdauer, EIN/AUS- vs. gemischte Zone, Zusammenspiel beider Änderunge
 Vorrangkette weiterhin erschöpfend zu beweisen) und `tests/test_shadow_run_pi.py`
 (`_pi_gate_reason`-Klassifikation, End-zu-Ende gegen eine echte Zone, je eine
 gemischte und eine reine EIN/AUS-Zone).
+
+**Kreuzreview-Nacharbeit (2026-09-06):** `shadow_decision.reason` und
+`.setpoint_reason` sind jetzt `Text` statt `String(255)` — der Reviewer hat
+nachgemessen, dass ein 64 Zeichen langer Modusname zusammen mit Sonnenabsenkung,
+dem EIN/AUS-Hinweis und dem PI-Zusatztext 413 Zeichen erreicht; der Fehler lag
+schon auf `main`, nicht erst durch diese Änderung (Migration `c1a4e9d872b3`).
+Zweitens, Befund C: `already_engaged` nahm `heating_now` als Beleg dafür, dass die
+Frostschutz-Ausnahme schon aktiv war — lief dabei zufällig gerade ein
+Ventilschutzlauf und wurde ein Fenster geöffnet, während die Temperatur im
+Frostband lag, wurde der Schutzlauf fälschlich als `frostschutz_trotz_fenster_offen`
+protokolliert (Heizentscheidung richtig, Begründung falsch, Grundsatz 5). Behoben
+ohne eigenen Merker: `already_engaged` verlangt zusätzlich
+`not situation.valve_protection_active` — genau die Ausnahme, die Regel 6 über
+`regular_heating_now` für denselben Grund schon zieht. Getestet in
+`test_frost_override_is_not_attributed_to_an_interrupted_protection_run` und ihrem
+Gegenbeweis; die Zustandstabelle in `test_control_loop_state_table.py` zieht dieselbe
+Ausnahme jetzt ebenfalls. `_on_off_actuators_only()` hatte zudem keinen gezielten
+Test — nachgezogen in `tests/test_shadow_run.py` (ohne Aktor, gemischt, mehrere
+gleiche EIN/AUS-Aktoren).
+
 ## Urlaubsbetrieb: Absenkung deckelt nicht mehr unter den Frostschutz einer Zone
 
 Review-Befund, sicherheitsrelevant nach Grundsatz 7: `_vacation_setpoint()` gab den

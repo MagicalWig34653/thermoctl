@@ -163,31 +163,37 @@ def decide(situation: Situation) -> Decision:
         # cannot flap at the frost value either. `already_engaged` reuses `heating_now`
         # instead of separately persisted state, on the assumption that while the
         # window stays open, `heating_now` can only be `True` because this exception
-        # engaged it -- but that assumption is NOT limited to "one cycle longer" as an
-        # earlier version of this comment claimed (found in review 2026-09-06,
-        # measured with `decide()` called repeatedly at a fixed measured_c inside the
-        # band: heating stayed on for every simulated cycle, not one). Two sources
-        # for `heating_now=True` outlive their own cycle here: a zone that was
-        # heating for an ordinary reason (rule 6) at the moment the window opens, or
-        # a valve-protection run (rule 7) already under way when it opens -- either
-        # way, if the room happens to sit inside the frost band when that happens,
-        # `already_engaged` reads `True` and keeps reading `True` for as long as
-        # `measured_c` stays inside the band, however many cycles that takes; it is
-        # not evidence the exception itself ever engaged for a frost reason. The
-        # heating outcome is still the safe direction to err in (the room is, after
-        # all, genuinely inside the frost band the whole time) -- but a run
-        # attributed here to `REASON_CODE_FROST_OVERRIDES_WINDOW` may actually be a
-        # valve-protection run continuing under a window-open cycle it would
-        # otherwise have been interrupted by (see the build report of that review
-        # for the case worked through in detail); the recorded reason then
-        # misattributes *why*, which Grundsatz 5 asks be accurate, not merely the
-        # direction of the outcome. Left unresolved here -- distinguishing the two
-        # would need its own persisted "engaged via frost" marker alongside
-        # `valve_protection_active`, which is a bigger change than a reviewer comment
-        # fix.
+        # engaged it -- that assumption holds for as many cycles as `measured_c` stays
+        # inside the band, not just one (found in review 2026-09-06, corrected from an
+        # earlier version of this comment that claimed the opposite).
+        #
+        # Befund C (review 2026-09-06): that assumption is still not quite enough on
+        # its own. Two things outlive their own cycle here with `heating_now=True`: a
+        # zone that was heating for an ordinary reason (rule 6) at the moment the
+        # window opened, or a valve-protection run (rule 7) already under way when it
+        # did -- if either happens to sit inside the frost band right then,
+        # `already_engaged` would read `True` on nothing but that coincidence, and a
+        # continuing protection run would be misattributed to
+        # `REASON_CODE_FROST_OVERRIDES_WINDOW`: the heating outcome stays correct (the
+        # room genuinely is inside the frost band), but the recorded *reason* would be
+        # wrong, which Grundsatz 5 asks be accurate, not merely the direction of the
+        # outcome. Excluding a protection run is enough to close this: rule 6 already
+        # draws exactly this line for the identical reason, via `regular_heating_now`
+        # below -- a protection-created on-state is not evidence of ordinary demand,
+        # here not evidence of a frost-driven engagement either. The other source (an
+        # open window catching an ordinary rule-6 heat already running) needs no such
+        # exclusion: that heat is regular room heating with the window not yet
+        # accounted for, and re-attributing it to the frost exception the first time
+        # this rule runs is exactly what "the exception was already engaged" is
+        # supposed to mean once the room is inside the band -- there is no third,
+        # more original reason to misattribute it away from.
         frost_low = situation.frost_c - h
         frost_high = situation.frost_c + h
-        already_engaged = situation.heating_now and measured_c <= frost_high
+        already_engaged = (
+            situation.heating_now
+            and not situation.valve_protection_active
+            and measured_c <= frost_high
+        )
         wants_frost_heat = measured_c < frost_low or already_engaged
         if not wants_frost_heat:
             return Decision(

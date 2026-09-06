@@ -89,7 +89,8 @@
       "`reason_code` `frostschutz_trotz_fenster_offen`. Zweitens: Zonen, deren Aktoren",
       "ausschließlich EIN/AUS-Ventile sind (kein `Device.self_regulating`, etwa",
       "decide()`. Bisher schaltete ein offenes Fenster bedingungslos ab (Regel 3) — ein",
-      "etwas brächte. Gemischte Zonen (mindestens ein selbstregelndes Ventil) bleiben"
+      "etwas brächte. Gemischte Zonen (mindestens ein selbstregelndes Ventil) bleiben",
+      "gerade laufenden Ventilschutzlauf zugeschrieben, der zufällig mit offenem Fenster"
     ],
     "README.md": [
       "(Zigbee2MQTT-Schalter, Zigbee-Thermostatventile ohne eigene Regelung, Meross-Steckdosen).",
@@ -127,7 +128,10 @@
       "**Frostschutz schlägt das offene Fenster.** Bisher schaltete Regel 3 bei offenem",
       "Erkennungsmerkmal: die Zone hat Aktoren, und keiner davon ist",
       "ihren Frostschutzwert, heizt sie jetzt wieder: Heizen gegen ein offenes Fenster ist",
-      "selbstregelndes Ventil) bleiben beim bisherigen, vorsichtigeren Verhalten. Nur das"
+      "selbstregelndes Ventil) bleiben beim bisherigen, vorsichtigeren Verhalten. Nur das",
+      "Test — nachgezogen in `tests/test_shadow_run.py` (ohne Aktor, gemischt, mehrere",
+      "Ventilschutzlauf und wurde ein Fenster geöffnet, während die Temperatur im",
+      "gleiche EIN/AUS-Aktoren)."
     ],
     "docs/api.md": [
       "**Fehlt das Feld, gilt 0** — ein Aufrufer, der die Absenkung nicht kennt, schaltet sie",

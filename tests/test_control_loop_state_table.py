@@ -161,10 +161,17 @@ def _expected_from_specification(row: StateRow) -> ExpectedDecision:
     # engaged", exactly as in `control_loop.decide()` itself (this fixture's
     # `on_off_actuators_only` axis does not exist — every row here behaves like the
     # more cautious, non-EIN/AUS zone; that exemption has its own, separate tests).
+    # Befund C (review 2026-09-06): a protection-created on-state (`row.protection ==
+    # "active"`) is excluded from "already engaged" too — the same line rule 6 draws
+    # below via `regular_heating` for the identical reason: it is not evidence of a
+    # frost-driven engagement, only of a run that happened to coincide with the
+    # window opening while the room sat inside the frost band.
     frost_override_engaged = False
     if row.window == "open":
         assert measured_c is not None  # excluded rows rule this out (see above)
-        already_engaged = row.heating_now and measured_c <= frost_c + h
+        already_engaged = (
+            row.heating_now and row.protection != "active" and measured_c <= frost_c + h
+        )
         if measured_c >= frost_c - h and not already_engaged:
             return ExpectedDecision(False, REASON_CODE_WINDOW_OPEN)
         frost_override_engaged = True

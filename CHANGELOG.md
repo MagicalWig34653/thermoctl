@@ -102,8 +102,11 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
   etwas brächte. Gemischte Zonen (mindestens ein selbstregelndes Ventil) bleiben
   beim bisherigen Verhalten. Fenstererkennung, -protokollierung und der Kälte-Alarm
   bleiben in beiden Fällen unverändert; PI ist mitgezogen (`services/shadow_run.py::
-  _pi_gate_reason`). Details und die dabei gefundene MariaDB-spezifische
-  `reason`-Spaltenüberlänge in `docs/STATUS.md`.
+  _pi_gate_reason`). Kreuzreview-Nacharbeit: `shadow_decision.reason` und
+  `.setpoint_reason` sind jetzt `Text` statt `String(255)` (der zugrundeliegende
+  Überlauf lag schon auf `main`), und die Ausnahme wird nicht mehr fälschlich einem
+  gerade laufenden Ventilschutzlauf zugeschrieben, der zufällig mit offenem Fenster
+  und einer Temperatur im Frostband zusammenfällt. Details in `docs/STATUS.md`.
 
 ---
 

@@ -1255,6 +1255,46 @@ def test_frost_override_still_respects_the_minimum_switch_duration() -> None:
     assert e.reason_code == REASON_CODE_BLOCKED_MINIMUM_DURATION
 
 
+def test_frost_override_is_not_attributed_to_an_interrupted_protection_run() -> None:
+    """Befund C (review 2026-09-06): a valve-protection run already under way when
+    the window opens must not be misattributed to the frost exception merely
+    because the room happens to sit inside the frost band at that moment --
+    `heating_now=True` here traces back to the protection run
+    (`valve_protection_active=True`), not to any frost engagement. The window still
+    outranks an interrupted protection run exactly as it always did (rule 3 beats
+    rule 7): the room is not below the frost threshold, so the correct answer is
+    the ordinary window-open 'off', not 'heating stays on, frost override'."""
+    e = decide(_lage(
+        window_open=True,
+        heating_now=True,
+        held_for_s=1000,
+        measured_c=Decimal("16.0"),  # inside the frost band, not below it
+        frost_c=Decimal("16.0"),
+        valve_protection_active=True,
+        parameter=_parameter(hysteresis_k=Decimal("0.5")),
+    ))
+    assert e.heating is False
+    assert e.reason_code == REASON_CODE_WINDOW_OPEN
+
+
+def test_frost_override_still_engages_for_a_protection_run_genuinely_below_frost() -> None:
+    """Counter-proof: if the room is *genuinely* below the frost threshold, the
+    exception engages regardless of a coinciding protection run -- the first term
+    of `wants_frost_heat` (`measured_c < frost_low`) does not depend on
+    `valve_protection_active` at all, only the continuation term does."""
+    e = decide(_lage(
+        window_open=True,
+        heating_now=True,
+        held_for_s=1000,
+        measured_c=Decimal("10.0"),  # genuinely below frost_c - h
+        frost_c=Decimal("16.0"),
+        valve_protection_active=True,
+        parameter=_parameter(hysteresis_k=Decimal("0.5")),
+    ))
+    assert e.heating is True
+    assert e.reason_code == REASON_CODE_FROST_OVERRIDES_WINDOW
+
+
 # ---------------------------------------------------------------------------
 # EIN/AUS-actuators are not switched off by an open window (owner's decision,
 # 2026-09-06): floor heating on plain on/off valves is too sluggish for a
