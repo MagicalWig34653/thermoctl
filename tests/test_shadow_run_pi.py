@@ -131,6 +131,13 @@ def _pi_zone(
     )
     session.add(zone)
     session.flush()
+    # Ausdruecklich gesetzt, nicht dem Spaltenvorgabewert ueberlassen: `created_at`
+    # geht in die Faelligkeit des Ventilschutzes ein (`shadow_run.py`, `last_movement`),
+    # und der Vorgabewert ist die *echte* Uhr -- waehrend dieser Test mit dem festen
+    # `NOW` rechnet. Beides zusammen macht die Faelligkeit vom Kalendertag abhaengig,
+    # an dem die Suite laeuft: Der Ventilschutz-Test war am 05.09. gruen und am 06.09.
+    # rot, ohne dass sich eine Zeile Code geaendert haette.
+    zone.created_at = NOW - timedelta(days=30)
     mode = create_mode(session, f"heizen-{name}")
     session.add(ZoneSetpoint(zone_id=zone.id, setpoint_mode_id=mode.id, temperature_c=SETPOINT_C))
     session.add(
