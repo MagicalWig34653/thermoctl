@@ -77,21 +77,33 @@ inspect` bzw. `docker inspect` auf die entstandenen Container zeigt
 ## Migrationen beim Start
 
 `docker/entrypoint.sh` führt `alembic upgrade head` unbedingt aus, bevor der Dienst
-startet. Unter Swarm ist das nicht harmlos: `docker stack deploy` bringt alle Dienste
-einer Datei **gleichzeitig** hoch, ohne Rücksicht auf `depends_on` — das Feld wirkt nur
-bei `docker compose up`, nicht im Swarm-Modus. Zwei gleichzeitig startende Nachbildungen
-würden also beide gleichzeitig `alembic upgrade head` gegen dieselbe MariaDB ausführen.
-Die Migrationen selbst sichern das nicht ab (kein Sperr-Mechanismus in
-`migrations/env.py`); MySQL/MariaDB committen DDL zudem implizit, sodass eine
-Transaktion allein nicht schützt. Im günstigen Fall bricht die zweite Nachbildung mit
-einem Fehler wie „Table already exists" ab und startet neu; ein wirklich schädlicher
-Ausgang ist nicht ausgeschlossen. **Das ist ein offener Punkt am Code selbst** (der
-Entrypoint müsste die Migration gegen genau diesen Fall absichern, z. B. über eine
-Datenbank-Sperre) — diese Anleitung umschifft ihn nur für den Orchestrierer-Betrieb,
-löst ihn nicht.
+startet. Unter Swarm ist das für sich genommen nicht harmlos: `docker stack deploy`
+bringt alle Dienste einer Datei **gleichzeitig** hoch, ohne Rücksicht auf
+`depends_on` — das Feld wirkt nur bei `docker compose up`, nicht im Swarm-Modus. Zwei
+gleichzeitig startende Nachbildungen würden also beide gleichzeitig
+`alembic upgrade head` gegen dieselbe MariaDB ausführen, und MySQL/MariaDB committen
+DDL implizit, sodass eine Transaktion allein nicht schützt.
 
-Die Umgehung hier: Migration und Dienst sind **zwei getrennte Compose-Dateien**, unter
-demselben Stack-Namen, nacheinander ausgerollt.
+**Das ist inzwischen abgesichert:** `migrations/env.py` nimmt vor jedem Migrationslauf
+eine Datenbank-Sperre (`GET_LOCK()` unter MariaDB, eine Dateisperre unter SQLite) —
+wirkt für jeden Alembic-Aufruf, auch für diesen hier. Zwei gleichzeitig startende
+Nachbildungen migrieren dadurch nacheinander statt gegeneinander: Eine bekommt die
+Sperre und migriert, die andere wartet (mit einer Obergrenze,
+`THERMOCTL_MIGRATION_LOCK_TIMEOUT_SECONDS`, Vorgabe 60 Sekunden), findet die Datenbank
+danach bereits auf dem neuesten Stand vor und startet ganz normal weiter. Stirbt die
+migrierende Nachbildung mitten im Lauf, löst sich ihre Sperre mit der Verbindung von
+selbst — sie überlebt keinen Absturz und legt die Anlage nicht lahm. Ein gewöhnlicher
+`docker stack deploy` reicht also aus:
+
+```bash
+docker stack deploy -c compose.swarm.yml thermoctl
+```
+
+`docker/swarm.migrate.compose.beispiel.yml` (ein vorgeschalteter, einmaliger
+Migrations-Job über `deploy.mode: replicated-job`) ist damit **nicht mehr nötig, um
+die Datenbank vor gleichzeitiger Migration zu schützen** — das leistet die Sperre
+jetzt selbst. Die Datei bleibt für alle, denen es lieber ist, den Migrationsschritt
+als eigenen, sichtbaren Vorgang vor dem Ausrollen des Dienstes zu sehen:
 
 ```bash
 docker stack deploy -c compose.swarm-migrate.yml thermoctl

@@ -327,8 +327,9 @@ eine Datenbank an, die den Anspruch verwaltet, wer gerade regelt.
    diese Einstellung erzeugt jede Instanz sich selbst eine zufällige Kennung beim
    Start; die genügt dem Verbund selbst, macht das Log aber schwerer lesbar.
 4. Beide Instanzen migrieren beim Start automatisch (der Entrypoint ruft
-   `alembic upgrade head` unbedingt auf) — mit einer wichtigen Einschränkung, siehe
-   unten.
+   `alembic upgrade head` unbedingt auf). Starten beide gleichzeitig, sichert eine
+   Sperre in `migrations/env.py` das ab: Wer zuerst dran ist, migriert; die andere
+   wartet, findet danach nichts mehr zu tun und startet ganz normal weiter.
 5. Startreihenfolge spielt keine Rolle: Der Anspruch beginnt unbeansprucht, die
    erste Instanz, die danach fragt, bekommt ihn sofort.
 
@@ -381,9 +382,10 @@ gelassen wurde, statt die Nachrichtenverarbeitung zusätzlich zu verzweigen.
 **Unter einem Orchestrierer betrieben:** [docs/docker-swarm.md](docker-swarm.md) für
 Docker Swarm, [docs/kubernetes.md](kubernetes.md) für Kubernetes — beide bauen auf
 diesem Abschnitt auf und zeigen zusätzlich, wie sich je Nachbildung eine eigene
-MQTT-Client-Kennung ableiten lässt, warum die gleichzeitige Migration zweier
-Nachbildungen dort ein offener Punkt bleibt, und was `/healthz` auf der Bereitschaft
-antwortet.
+MQTT-Client-Kennung ableiten lässt, was `/healthz` auf der Bereitschaft antwortet,
+und dass die Migrationssperre oben auch dann greift, wenn ein Orchestrierer zwei
+Nachbildungen gleichzeitig startet (Swarm ignoriert `depends_on`, ein Kubernetes
+Rolling Update lässt alte und neue Nachbildung kurz nebeneinander laufen).
 
 ## 7. Wenn etwas nicht geht
 

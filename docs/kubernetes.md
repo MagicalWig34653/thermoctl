@@ -78,25 +78,42 @@ hinweg, weil das `StatefulSet` denselben Pod-Namen wiedervergibt.
 ## Migrationen beim Start
 
 `docker/entrypoint.sh` führt `alembic upgrade head` unbedingt aus, bevor der Dienst
-startet. Unter Kubernetes ist das aus demselben Grund wie unter Swarm nicht harmlos:
-Ein `StatefulSet` mit zwei Nachbildungen startet grundsätzlich der Reihe nach
-(`thermoctl-0` vor `thermoctl-1`, das ordnungsgemäße Standardverhalten eines
-`StatefulSet`) — das schützt vor zwei **gleichzeitig neu startenden** Migrationen bei
-einem ganz neuen Ausrollen, aber **nicht** bei einem Rolling Update: Kubernetes ersetzt
-dabei jede Nachbildung einzeln, aber die alte Nachbildung läuft dabei weiter, bis die neue
-bereit ist — für eine kurze Zeitspanne liefe eine alte und eine neue Fassung von
-`alembic upgrade head` nebeneinander, wenn beide beim Start migrierten. Die Migrationen
-selbst sichern das nicht ab (kein Sperr-Mechanismus in `migrations/env.py`); MySQL/MariaDB
-committen DDL zudem implizit, eine Transaktion allein schützt also nicht. **Das ist ein
-offener Punkt am Code selbst**, kein Kubernetes-Problem — dieselbe Einschränkung gilt
-unter Swarm (`docs/docker-swarm.md`, Abschnitt „Migrationen beim Start") und im
-Grunde bei jedem gleichzeitigen Start zweier Instanzen, gleich unter welchem
-Orchestrierer.
+startet. Unter Kubernetes ist das für sich genommen aus demselben Grund wie unter
+Swarm nicht harmlos: Ein `StatefulSet` mit zwei Nachbildungen startet grundsätzlich
+der Reihe nach (`thermoctl-0` vor `thermoctl-1`, das ordnungsgemäße Standardverhalten
+eines `StatefulSet`) — das schützt vor zwei **gleichzeitig neu startenden**
+Migrationen bei einem ganz neuen Ausrollen, aber **nicht** bei einem Rolling Update:
+Kubernetes ersetzt dabei jede Nachbildung einzeln, aber die alte Nachbildung läuft
+dabei weiter, bis die neue bereit ist — für eine kurze Zeitspanne liefe eine alte und
+eine neue Fassung von `alembic upgrade head` nebeneinander, wenn beide beim Start
+migrierten. MySQL/MariaDB committen DDL zudem implizit, eine Transaktion allein
+schützt also nicht.
 
-Die Umgehung hier: ein eigener `Job` (`k8s/thermoctl-migrate-job.beispiel.yaml`),
-angewendet **vor** dem `StatefulSet` und mit `kubectl wait` abgewartet — ein `Job`
-garantiert für sich allein keine Reihenfolge gegenüber einem gleichzeitig angewendeten
-`StatefulSet`, das übernimmt hier die Reihenfolge der `kubectl`-Aufrufe:
+**Das ist inzwischen abgesichert:** `migrations/env.py` nimmt vor jedem
+Migrationslauf eine Datenbank-Sperre (`GET_LOCK()` unter MariaDB, eine Dateisperre
+unter SQLite) — dieselbe Absicherung wie unter Swarm (`docs/docker-swarm.md`,
+Abschnitt „Migrationen beim Start"), weil sie im Alembic-Aufruf selbst sitzt und
+nicht im Entrypoint. Zwei gleichzeitig migrierende Nachbildungen laufen dadurch
+nacheinander statt gegeneinander: Eine bekommt die Sperre und migriert, die andere
+wartet (mit einer Obergrenze, `THERMOCTL_MIGRATION_LOCK_TIMEOUT_SECONDS`, Vorgabe 60
+Sekunden), findet die Datenbank danach bereits auf dem neuesten Stand vor und startet
+ganz normal weiter. Stirbt die migrierende Nachbildung mitten im Lauf, löst sich ihre
+Sperre mit der Verbindung von selbst.
+
+Ein einfaches `kubectl apply` auf das `StatefulSet` reicht also aus:
+
+```bash
+kubectl apply -f k8s/thermoctl-statefulset.beispiel.yaml
+```
+
+`k8s/thermoctl-migrate-job.beispiel.yaml` (ein vorgeschalteter, einmaliger
+Migrations-`Job`, mit `kubectl wait` abgewartet) ist damit **nicht mehr nötig, um die
+Datenbank vor gleichzeitiger Migration zu schützen** — das leistet die Sperre jetzt
+selbst. Die Datei bleibt für alle, denen es lieber ist, den Migrationsschritt als
+eigenen, sichtbaren Vorgang vor dem Ausrollen des `StatefulSet` zu sehen — ein `Job`
+garantiert für sich allein keine Reihenfolge gegenüber einem gleichzeitig
+angewendeten `StatefulSet`, das übernimmt hier die Reihenfolge der
+`kubectl`-Aufrufe:
 
 ```bash
 kubectl apply -f k8s/thermoctl-migrate-job.beispiel.yaml

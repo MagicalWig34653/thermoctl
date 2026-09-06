@@ -72,6 +72,9 @@ ignore = ["S101"]  # assert ist in Tests erwünscht
 "tests/*" = ["S105", "S106"]  # Testpasswörter im Klartext sind hier in Ordnung
 # Ruft Alembic bewusst als Unterprozess auf, um echte Migrationsläufe zu prüfen.
 "tests/test_migrations.py" = ["S603"]
+# Startet bewusst einen Unterprozess, der die Migrationssperre haelt und dann
+# hart abgeschossen wird -- fuer den Absturz-Nachweis (Grundsatz 7).
+"tests/test_migration_lock.py" = ["S603"]
 # Von Alembic erzeugte Migrationen: Importreihenfolge und die mitgenerierten, in leeren
 # Migrationen ungenutzten Importe `op`/`sa`. Bewusst nur diese beiden Regeln statt eines
 # vollständigen Ausschlusses — Migrationen enthalten ab Aufgabe 7 handgepflegten Code,

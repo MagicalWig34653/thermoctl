@@ -133,10 +133,10 @@
       "Ein-Knoten-Swarm kann die beiden Nachbildungen nicht wie unten beschrieben trennen,",
       "[Docker Secret](https://docs.docker.com/engine/swarm/secrets/) (`docker secret create`)",
       "`code:128 Unspecified error`). Swarm bietet dafür ein eigenes, kleines Templating an, das",
+      "`depends_on` — das Feld wirkt nur bei `docker compose up`, nicht im Swarm-Modus. Zwei",
       "`endpoint_mode: vip`, die vom Swarm vergebene virtuelle Adresse) — welche der beiden",
       "als eigener, ebenfalls unter Swarm verwalteter Dienst mit eigenem Volume, oder als",
-      "bei `docker compose up`, nicht im Swarm-Modus. Zwei gleichzeitig startende Nachbildungen",
-      "startet. Unter Swarm ist das nicht harmlos: `docker stack deploy` bringt alle Dienste",
+      "startet. Unter Swarm ist das für sich genommen nicht harmlos: `docker stack deploy`",
       "unterschiedlichen Rechnern laufen sollen; auf einem einzigen Rechner leistet Swarm",
       "wofür der einfache Betrieb reicht. Swarm lohnt sich, sobald zwei Instanzen wirklich auf",
       "wäre dahin. **Auf einem Swarm mit nur einem Knoten bleibt die zweite Nachbildung mit"
@@ -163,10 +163,10 @@
       "**Für wen das hier gedacht ist.** `thermoctl` steuert eine Heizung in einer bewohnten",
       "Aktiv-Bereitschafts-Verbund allein, bei [Docker Swarm](docker-swarm.md) besser",
       "Nachbildung mit dieser Angabe dauerhaft `Pending`** — dieselbe Falle wie unter Swarm",
+      "Swarm nicht harmlos: Ein `StatefulSet` mit zwei Nachbildungen startet grundsätzlich",
       "beobachten — anders als beim Docker-Swarm-Pendant (`docs/docker-swarm.md`), das gegen",
       "einen echten, lokal initialisierten Swarm geprüft wurde.",
-      "startet. Unter Kubernetes ist das aus demselben Grund wie unter Swarm nicht harmlos:",
-      "unter Swarm (`docs/docker-swarm.md`, Abschnitt „Migrationen beim Start\") und im"
+      "unter SQLite) — dieselbe Absicherung wie unter Swarm (`docs/docker-swarm.md`,"
     ],
     "docs/mcp.md": [
       "**Kein Werkzeug schaltet die Anlage scharf.** `force_dry_run` gibt es, die",
@@ -302,6 +302,7 @@
       "Beim Einschalten ist außerdem ein Haken zu bestätigen, dass mehr Schaltspiele und die",
       "Docker Swarm, [docs/kubernetes.md](kubernetes.md) für Kubernetes — beide bauen auf",
       "Heizkörperthermostat neben einem Meross-Schalter im selben Raum. Ein Thermostatventil",
+      "Nachbildungen gleichzeitig startet (Swarm ignoriert `depends_on`, ein Kubernetes",
       "Schaltbefehl an einem Aktor, schreibt der Dienst eine Warnung ins Log. Steht in `.env`",
       "Thermostatventil ohne eigene Regelung bekäme die PI-Entscheidung als Sollwertsprung",
       "Ventil **neben** einem gewöhnlichen Schaltaktor schließt die Zone nicht mehr aus, PI",

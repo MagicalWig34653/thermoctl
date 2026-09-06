@@ -20,6 +20,9 @@ dist/
 *.sqlite
 *.sqlite3
 data/
+# Sentinel-Datei der SQLite-Migrationssperre (thermoctl/db/migration_lock.py) --
+# liegt neben der Datenbankdatei, enthält selbst keine Daten.
+*.db.lock
 
 # Logs
 logs/
