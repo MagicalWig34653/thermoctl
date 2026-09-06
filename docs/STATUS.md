@@ -2,6 +2,73 @@
 
 Letzte Aktualisierung: 2026-09-06.
 
+## Fenster: Frostschutz gewinnt, EIN/AUS-Aktoren schalten nicht ab
+
+Zwei Entscheidungen des Projektinhabers an `domain/control_loop.py::decide()`.
+
+**Frostschutz schlägt das offene Fenster.** Bisher schaltete Regel 3 bei offenem
+Fenster bedingungslos ab — ein Raum konnte dabei tatsächlich unter den Frostschutz
+fallen (Lüften vergessen, draußen kalt). Fällt die Zone trotz offenem Fenster unter
+ihren Frostschutzwert, heizt sie jetzt wieder: Heizen gegen ein offenes Fenster ist
+teuer, eingefrorene Leitungen sind teurer. Die Prüfung sitzt an Regel 3 selbst (vor
+der bisherigen bedingungslosen Abschaltung), maßgeblich ist `frost_c`, nicht der
+aufgelöste Sollwert, mit derselben Hysterese wie der Normalfall (kein Flattern am
+Frostschutzwert) und weiterhin unter der Mindestschaltdauer aus Regel 5. Eigener
+`reason_code`: `frostschutz_trotz_fenster_offen`.
+
+**EIN/AUS-Aktoren (Fußbodenheizung an reinen Ein/Aus-Ventilen) schaltet das Fenster
+nicht mehr ab** — zu träge, als dass ein Abschalten beim Lüften etwas brächte.
+Erkennungsmerkmal: die Zone hat Aktoren, und keiner davon ist
+`Device.self_regulating` (`Situation.on_off_actuators_only`, hergeleitet in
+`services/shadow_run.py::_on_off_actuators_only`). Gemischte Zonen (mindestens ein
+selbstregelndes Ventil) bleiben beim bisherigen, vorsichtigeren Verhalten. Nur das
+Abschalten entfällt — Fenstererkennung, -protokollierung und der spätere
+Kälte-Alarm sind unverändert. Rule 4 (Wiederanlaufsperre) ist für solche Zonen aus
+demselben Grund mit ausgenommen: sie hat nie abgeschaltet, es gibt nichts, wovon sie
+sich erholen müsste.
+
+**PI-Zweig mitgezogen:** Jede PI-fähige Zone hat per Definition nur gewöhnliche
+(nicht-selbstregelnde) Schaltaktoren — genau die Bedingung für
+`on_off_actuators_only`. Ein offenes Fenster gated PI deshalb nur noch für
+gemischte Zonen; für eine reine EIN/AUS-Zone läuft PI unverändert weiter, als gäbe
+es kein Fenster (`services/shadow_run.py::_pi_gate_reason`, neuer Parameter
+`window_governs`). Beim Bau fiel dabei ein zweiter, unabhängiger Fehler auf:
+`_pi_outcome`s `resume_delay_active` berechnete rule 4s Bedingung nochmal selbst,
+ohne von der EIN/AUS-Ausnahme zu wissen — behoben in derselben Änderung.
+
+Beim Zusammenbau der Testfälle fiel ein `String(255)`-Überlauf von
+`shadow_decision.reason` auf, ausschließlich unter MariaDB (SQLite prüft die
+Spaltenlänge nicht und blieb grün): eine EIN/AUS-Zone mit offenem Fenster **und**
+PI kombiniert erstmals eine Regelkette-Begründung mit PI's eigenem Zusatztext — vor
+dieser Änderung unmöglich, weil ein offenes Fenster PI immer blockierte. Der neue
+Hinweistext (`on_off_zone_note`) ist deshalb bewusst kurz gehalten.
+
+Getestet in `tests/test_control_loop.py` (Schwellwert, Hysterese ohne Flattern,
+Mindestschaltdauer, EIN/AUS- vs. gemischte Zone, Zusammenspiel beider Änderungen),
+`tests/test_control_loop_state_table.py` (die vollständige Zustandstabelle, um die
+Vorrangkette weiterhin erschöpfend zu beweisen) und `tests/test_shadow_run_pi.py`
+(`_pi_gate_reason`-Klassifikation, End-zu-Ende gegen eine echte Zone, je eine
+gemischte und eine reine EIN/AUS-Zone).
+
+**Kreuzreview-Nacharbeit (2026-09-06):** `shadow_decision.reason` und
+`.setpoint_reason` sind jetzt `Text` statt `String(255)` — der Reviewer hat
+nachgemessen, dass ein 64 Zeichen langer Modusname zusammen mit Sonnenabsenkung,
+dem EIN/AUS-Hinweis und dem PI-Zusatztext 413 Zeichen erreicht; der Fehler lag
+schon auf `main`, nicht erst durch diese Änderung (Migration `c1a4e9d872b3`).
+Zweitens, Befund C: `already_engaged` nahm `heating_now` als Beleg dafür, dass die
+Frostschutz-Ausnahme schon aktiv war — lief dabei zufällig gerade ein
+Ventilschutzlauf und wurde ein Fenster geöffnet, während die Temperatur im
+Frostband lag, wurde der Schutzlauf fälschlich als `frostschutz_trotz_fenster_offen`
+protokolliert (Heizentscheidung richtig, Begründung falsch, Grundsatz 5). Behoben
+ohne eigenen Merker: `already_engaged` verlangt zusätzlich
+`not situation.valve_protection_active` — genau die Ausnahme, die Regel 6 über
+`regular_heating_now` für denselben Grund schon zieht. Getestet in
+`test_frost_override_is_not_attributed_to_an_interrupted_protection_run` und ihrem
+Gegenbeweis; die Zustandstabelle in `test_control_loop_state_table.py` zieht dieselbe
+Ausnahme jetzt ebenfalls. `_on_off_actuators_only()` hatte zudem keinen gezielten
+Test — nachgezogen in `tests/test_shadow_run.py` (ohne Aktor, gemischt, mehrere
+gleiche EIN/AUS-Aktoren).
+
 ## Urlaubsbetrieb: Absenkung deckelt nicht mehr unter den Frostschutz einer Zone
 
 Review-Befund, sicherheitsrelevant nach Grundsatz 7: `_vacation_setpoint()` gab den

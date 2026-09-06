@@ -14,6 +14,7 @@ import pytest
 
 from thermoctl.domain.control_loop import (
     REASON_CODE_BLOCKED_MINIMUM_DURATION,
+    REASON_CODE_FROST_OVERRIDES_WINDOW,
     REASON_CODE_FROST_SENSOR_FAILURE,
     REASON_CODE_HEATING,
     REASON_CODE_NO_SOURCE,
@@ -124,6 +125,17 @@ ROWS = [row for row in ALL_ROWS if _exclusion_reason(row) is None]
 EXCLUDED_ROWS = [row for row in ALL_ROWS if _exclusion_reason(row) is not None]
 
 
+def _measured_value(measurement: MeasurementState, base: Decimal, h: Decimal) -> Decimal | None:
+    return {
+        "below": base - Decimal("1.0"),
+        "at_lower_edge": base - h,
+        "inside": base,
+        "at_upper_edge": base + h,
+        "above": base + Decimal("1.0"),
+        "unavailable": None,
+    }[measurement]
+
+
 def _expected_from_specification(row: StateRow) -> ExpectedDecision:
     """Apply the hand-written specification table, in documented priority order."""
     sensor_failed = row.sensor == "veraltet"
@@ -136,12 +148,40 @@ def _expected_from_specification(row: StateRow) -> ExpectedDecision:
 
     # Rule 2 changes the effective setpoint for mode off upstream.  The fixture models
     # that setpoint explicitly, so no decision is returned at this point.
+    frost_c = Decimal("16.0")
+    h = _parameters().hysteresis_k
+    effective_setpoint = frost_c if sensor_failed or row.mode == "off" else Decimal("21.0")
+    measured_c = _measured_value(row.measurement, effective_setpoint, h)
 
-    # Rules 3 and 4: an open window and its finite restart delay outrank every timer,
-    # ordinary demand, override, and protection-run state.
+    # Rule 3 (owner's decision, 2026-09-06): an open window normally outranks every
+    # timer, ordinary demand, override, and protection-run state below — except that
+    # the zone must not be allowed to freeze. Falling below the frost-protection
+    # setpoint despite the open window heats anyway, on the same hysteresis band as
+    # everywhere else: `row.heating_now` doubles as "the exception was already
+    # engaged", exactly as in `control_loop.decide()` itself (this fixture's
+    # `on_off_actuators_only` axis does not exist — every row here behaves like the
+    # more cautious, non-EIN/AUS zone; that exemption has its own, separate tests).
+    # Befund C (review 2026-09-06): a protection-created on-state (`row.protection ==
+    # "active"`) is excluded from "already engaged" too — the same line rule 6 draws
+    # below via `regular_heating` for the identical reason: it is not evidence of a
+    # frost-driven engagement, only of a run that happened to coincide with the
+    # window opening while the room sat inside the frost band.
+    frost_override_engaged = False
     if row.window == "open":
-        return ExpectedDecision(False, REASON_CODE_WINDOW_OPEN)
-    if row.window == "restarting":
+        assert measured_c is not None  # excluded rows rule this out (see above)
+        already_engaged = (
+            row.heating_now and row.protection != "active" and measured_c <= frost_c + h
+        )
+        if measured_c >= frost_c - h and not already_engaged:
+            return ExpectedDecision(False, REASON_CODE_WINDOW_OPEN)
+        frost_override_engaged = True
+        effective_setpoint = frost_c  # rule 6 below now regulates against frost, not
+        # the ordinary setpoint -- a no-op numerically whenever `effective_setpoint`
+        # already was `frost_c` (sensor_failed or mode off), since only those rows
+        # can engage the exception in the first place (see the module docstring's
+        # reasoning in `control_loop.py`).
+    # Rule 4: the finite restart delay after the window closes again.
+    elif row.window == "restarting":
         return ExpectedDecision(False, REASON_CODE_OFF)
 
     # Whether rule 7 would currently win, independent of the "active" marker alone —
@@ -180,22 +220,35 @@ def _expected_from_specification(row: StateRow) -> ExpectedDecision:
     # edge starts ordinary (or stale-sensor frost) heating; above the upper edge stops
     # regular heating; inside the band, and exactly on either edge, preserves regular
     # heating — the comparisons in control_loop.py are strict (`<` and `>`), so the
-    # edge values themselves never trigger a switch.
+    # edge values themselves never trigger a switch. `effective_setpoint`/`measured_c`
+    # are the window-open exception's frost values whenever it engaged above; the
+    # comparisons themselves are otherwise unchanged.
     regular_heating = row.heating_now and row.protection != "active"
-    if row.measurement == "below" and not regular_heating:
-        return ExpectedDecision(
-            True, failed_reason if sensor_failed else REASON_CODE_HEATING
-        )
-    if row.measurement == "above" and regular_heating:
+    heating_reason = (
+        failed_reason if sensor_failed
+        else REASON_CODE_FROST_OVERRIDES_WINDOW if frost_override_engaged
+        else REASON_CODE_HEATING
+    )
+    unchanged_heating_reason = (
+        failed_reason if sensor_failed
+        else REASON_CODE_FROST_OVERRIDES_WINDOW if frost_override_engaged
+        else REASON_CODE_UNCHANGED
+    )
+    assert measured_c is not None  # "unavailable" only ever pairs with keine_quelle
+    if measured_c < effective_setpoint - h and not regular_heating:
+        return ExpectedDecision(True, heating_reason)
+    if measured_c > effective_setpoint + h and regular_heating:
+        # Unreachable together with `frost_override_engaged`: engaging it above
+        # already established `measured_c <= frost_c + h == effective_setpoint + h`.
         return ExpectedDecision(False, REASON_CODE_OFF)
     if regular_heating:
-        return ExpectedDecision(
-            True, failed_reason if sensor_failed else REASON_CODE_UNCHANGED
-        )
+        return ExpectedDecision(True, unchanged_heating_reason)
 
     # Rule 7: this table enables protection in every row so that its three states are
-    # observable.  Only a due/active run with a healthy sensor, a non-off mode, and no
-    # override may win after ordinary hysteresis has declined to heat.
+    # observable. Only a due/active run with a healthy sensor, a non-off mode, and no
+    # override may win after ordinary hysteresis has declined to heat -- and, as
+    # established above, this point is never reached while the window-open frost
+    # exception is engaged (it always resolves to heat first).
     if protection_allowed:
         return ExpectedDecision(True, REASON_CODE_VALVE_PROTECTION)
     return ExpectedDecision(
@@ -228,14 +281,7 @@ def _situation(row: StateRow) -> Situation:
         else Decimal("21.0")
     )
     h = _parameters().hysteresis_k
-    measured_c = {
-        "below": effective_setpoint - Decimal("1.0"),
-        "at_lower_edge": effective_setpoint - h,
-        "inside": effective_setpoint,
-        "at_upper_edge": effective_setpoint + h,
-        "above": effective_setpoint + Decimal("1.0"),
-        "unavailable": None,
-    }[row.measurement]
+    measured_c = _measured_value(row.measurement, effective_setpoint, h)
     return Situation(
         measured_c=measured_c,
         setpoint_c=Decimal("16.0") if row.mode == "off" else Decimal("21.0"),
