@@ -34,7 +34,7 @@ from thermoctl.db.models.state import ShadowDecision, ZoneState
 from thermoctl.db.models.zone import SetpointMode, ZoneSetpoint
 from thermoctl.domain.authz import has_permission, principal_for_user, visible_zones
 from thermoctl.domain.modes import MAXIMUM_TEMPERATURE_C, MINIMUM_TEMPERATURE_C
-from thermoctl.domain.schedule import resolved_setpoint, week_segments
+from thermoctl.domain.schedule import current_or_upcoming_vacation, resolved_setpoint, week_segments
 from thermoctl.domain.time import local_time
 from thermoctl.services import cluster
 from thermoctl.setup import setup_needed
@@ -157,6 +157,11 @@ def start(
     ):
         decisions.setdefault(decision.zone_id, decision)
 
+    # Running or merely planned, both count: whoever opens the start page in January
+    # and does not see that tomorrow's setback is coming has exactly the problem this
+    # banner exists to rule out (the project owner's own wording).
+    vacation = current_or_upcoming_vacation(session, now)
+
     return templates.TemplateResponse(
         request,
         "start.html",
@@ -235,6 +240,9 @@ def start(
             "day_tracks": _day_track(
                 session, zone_ids, local_now.isoweekday()
             ),
+            "vacation": vacation,
+            "vacation_running": vacation is not None and vacation.starts_at <= now,
+            "timezone": settings.timezone if settings is not None else "UTC",
             "now_fraction": (
                 local_now.hour * 60 + local_now.minute
             ) * 100 / MINUTES_PER_DAY,

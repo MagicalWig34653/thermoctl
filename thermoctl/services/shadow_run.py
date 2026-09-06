@@ -20,6 +20,7 @@ from thermoctl.db.models.measurement import Measurement
 from thermoctl.db.models.operations import Setting
 from thermoctl.db.models.override import ZoneOverride
 from thermoctl.db.models.state import ShadowDecision, ZoneState
+from thermoctl.db.models.vacation import Vacation
 from thermoctl.db.models.zone import Zone, ZoneSetpoint
 from thermoctl.domain.control_loop import (
     REASON_CODE_BLOCKED_MINIMUM_DURATION,
@@ -49,7 +50,7 @@ from thermoctl.domain.pi_control import (
     pi_eligible,
     reset_pi_state,
 )
-from thermoctl.domain.schedule import Setpoint, resolved_setpoint
+from thermoctl.domain.schedule import Setpoint, resolved_setpoint, running_vacation
 from thermoctl.domain.solar_setback import HourlyForecast, sun_expected
 from thermoctl.domain.solar_setback import apply as apply_solar_setback
 from thermoctl.domain.zone_settings import ControlParameters, control_parameters
@@ -290,7 +291,9 @@ def _pi_actuator_profiles(session: Session, zone: Zone) -> list[ActuatorProfile]
     return profiles
 
 
-def _pi_setpoint_context_key(setpoint: Setpoint, override: ZoneOverride | None) -> str:
+def _pi_setpoint_context_key(
+    setpoint: Setpoint, override: ZoneOverride | None, vacation: Vacation | None
+) -> str:
     """A stable key for "which setpoint context is in effect" (section 2 of the PI
     specification): its origin and identity, never the free-text reason -- the
     specification explicitly rules out comparing `setpoint.reason`.
@@ -301,17 +304,28 @@ def _pi_setpoint_context_key(setpoint: Setpoint, override: ZoneOverride | None) 
     `_pi_outcome`) -- so unlike `resolved_setpoint()`'s own precedence, this
     function never needs an 'off' or "no schedule at all" branch of its own: by the
     time it runs, `setpoint.mode_id` is always set (`resolved_setpoint()` never
-    returns `None` there except for a fixed-temperature override, already handled
-    by the `override is not None` branch below). It still adds the override's own
-    id as an extra axis on top of `setpoint.mode_id`: that alone cannot tell an
+    returns `None` there except for a fixed-temperature override or a running
+    vacation, each handled by its own branch below). It still adds the override's
+    own id as an extra axis on top of `setpoint.mode_id`: that alone cannot tell an
     override apart from a schedule point naming the same mode, and section 2
     explicitly requires a reset on both the start and the end of an override even
     then. Boost needs no separate case -- the specification is explicit that boost
     is technically an override (`ZoneOverride`), so it already goes through the
     `override` branch.
+
+    The vacation branch exists for the same reason as the override one: a vacation
+    also resolves to a fixed temperature with `mode_id=None` (see
+    `domain.schedule._vacation_setpoint`), and without its own key here the
+    `assert` below would fire the first time a vacation ran on a PI-enabled zone
+    with no override active. Its own id, not a fixed string, for the same reason
+    the override branch uses `override.id` and not merely `"override"`: two
+    successive vacations must reset the integral between them exactly as two
+    successive overrides do.
     """
     if override is not None:
         return f"override:{override.id}"
+    if vacation is not None:
+        return f"urlaub:{vacation.id}"
     assert setpoint.mode_id is not None  # see docstring: ruled out by the caller's gate
     return f"zeitplan:{setpoint.mode_id}"
 
@@ -525,6 +539,7 @@ def _pi_outcome(
     settings: Setting,
     setpoint: Setpoint,
     override: ZoneOverride | None,
+    vacation: Vacation | None,
     now: datetime,
 ) -> tuple[bool, str | None, dict[str, object]]:
     """Everything PI contributes to one zone's cycle.
@@ -611,7 +626,7 @@ def _pi_outcome(
     # give -- see `_pi_gate_reason`'s docstring) -- PI computes a real candidate.
     assert situation.measured_c is not None  # the sensor gate above already excludes this
     pi_state = _load_pi_state(state)
-    context_key = _pi_setpoint_context_key(setpoint, override)
+    context_key = _pi_setpoint_context_key(setpoint, override, vacation)
     calibrated_c = situation.measured_c + parameter.temperature_offset_k
     error_k = situation.setpoint_c - calibrated_c
     fields["pi_error_k"] = error_k
@@ -792,6 +807,13 @@ def _process_zone(
 
     override = _effective_override(session, zone, now)
     override_active = override is not None
+    # Deliberately not folded into `override_active`/`Situation`: the project owner's
+    # explicit requirement is that window handling, sensor-failure fallback, minimum
+    # switch durations and valve protection all keep applying during a vacation
+    # exactly as they do outside one -- `decide()` itself must not learn a vacation
+    # exists. This value only feeds the PI setpoint-context key below, a concern
+    # `decide()` never sees.
+    vacation = running_vacation(session, now)
     protection_due, protection_was_active = _advance_valve_protection(session, zone, state, now)
 
     situation = Situation(
@@ -821,7 +843,17 @@ def _process_zone(
     # above, stays exactly the ordinary hysteresis path; nothing here feeds back
     # into `decide()`.
     effective_heating, pi_reason_suffix, pi_fields = _pi_outcome(
-        session, zone, state, situation, decision, parameter, settings, setpoint, override, now
+        session,
+        zone,
+        state,
+        situation,
+        decision,
+        parameter,
+        settings,
+        setpoint,
+        override,
+        vacation,
+        now,
     )
     effective_decision = (
         decision

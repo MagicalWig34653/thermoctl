@@ -9,6 +9,7 @@ from thermoctl.db.models import (
     passkey,
     schedule,
     state,
+    vacation,
     zone,
 )
 
@@ -24,4 +25,5 @@ __all__ = [
     "schedule",
     "zone",
     "state",
+    "vacation",
 ]

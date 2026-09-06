@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from zoneinfo import ZoneInfo
 
@@ -13,9 +13,10 @@ from thermoctl.db.models.lookup import ActorSource
 from thermoctl.db.models.operations import AuditEvent, Setting
 from thermoctl.db.models.override import ZoneOverride
 from thermoctl.db.models.schedule import SchedulePoint
+from thermoctl.db.models.vacation import Vacation
 from thermoctl.db.models.zone import SetpointMode, Zone, ZoneSetpoint
 from thermoctl.domain.modes import check_temperature
-from thermoctl.domain.time import UTC, local_time
+from thermoctl.domain.time import UTC, local_day_start_utc, local_time
 
 MINUTES_PER_WEEK = 7 * 24 * 60
 
@@ -759,6 +760,142 @@ def running_override(session: Session, zone: Zone, now: datetime) -> ZoneOverrid
     ).first()
 
 
+def create_vacation(
+    session: Session,
+    *,
+    start_date: date,
+    end_date: date,
+    setback_temperature_c: Decimal,
+    timezone_name: str,
+    now: datetime | None = None,
+    user_id: int | None = None,
+    token_id: int | None = None,
+    source: str = "web",
+) -> Vacation:
+    """Creates the plant-wide vacation window; web, API and MCP share this mutation.
+
+    `start_date`/`end_date` are local calendar dates, inclusive on both ends -- "from
+    the 1st to the 10th" means ten full local days off, not nine. Converted through
+    `local_day_start_utc` exactly once each, the same conversion `statistics` and the
+    audit log already use for a local day's boundary, so a vacation set across the
+    daylight-saving change gets the same correct, DST-safe instants they do instead
+    of a second, hand-rolled version of the same arithmetic.
+
+    Only one vacation may be pending or running at a time. Two overlapping windows
+    would leave `resolved_setpoint()` an arbitrary choice between two setback values
+    with nothing in the data explaining which one a caller should have expected --
+    the caller has to cancel the existing one first, exactly like a still-running
+    schedule gesture has to be undone before a new one paints over it.
+
+    `now` is the moment the overlap check is judged from and defaults to the real
+    clock; a caller that already has one (or a test that needs a fixed one instead
+    of the wall clock racing against dates chosen for the scenario) passes it
+    explicitly -- the same reasoning `create_override` documents for its own `now`.
+    """
+    if end_date < start_date:
+        raise ScheduleError("end_date", "Das Ende darf nicht vor dem Beginn liegen.")
+    setback_temperature_c = check_temperature(setback_temperature_c)
+    now = now if now is not None else utcnow()
+    existing = current_or_upcoming_vacation(session, now)
+    if existing is not None:
+        raise ScheduleError(
+            "start_date",
+            "Es gibt bereits einen laufenden oder geplanten Urlaub -- "
+            "erst den bestehenden beenden.",
+        )
+    starts_at = local_day_start_utc(start_date, timezone_name)
+    ends_at = local_day_start_utc(end_date + timedelta(days=1), timezone_name)
+    source_id = session.scalar(select(ActorSource.id).where(ActorSource.code == source))
+    if source_id is None:
+        raise ValueError(f"Unbekannte Quelle {source!r}")
+    entry = Vacation(
+        starts_at=starts_at,
+        ends_at=ends_at,
+        setback_temperature_c=setback_temperature_c,
+        created_by_user_id=user_id,
+        created_by_token_id=token_id,
+        source_id=source_id,
+    )
+    session.add(entry)
+    session.flush()
+    audit.record(
+        session,
+        source=source,
+        action="create",
+        object_type="vacation",
+        object_id=str(entry.id),
+        summary="Urlaubsbetrieb angesetzt",
+        detail=f"{start_date.isoformat()} – {end_date.isoformat()}, {setback_temperature_c} °C",
+        user_id=user_id,
+        token_id=token_id,
+    )
+    return entry
+
+
+def cancel_vacation(
+    session: Session,
+    *,
+    now: datetime | None = None,
+    user_id: int | None = None,
+    token_id: int | None = None,
+    source: str = "web",
+) -> Vacation | None:
+    """Ends the pending or running vacation early, without deleting history.
+
+    Cancelling before the vacation has even started is deliberately allowed --
+    "vorzeitig beenden" (the project owner's own requirement) does not distinguish
+    between undoing a mistake before it takes effect and cutting a running one
+    short, and a caller who only just noticed a wrong date should not have to wait
+    for the start to arrive before they can take it back.
+    """
+    now = now if now is not None else utcnow()
+    entry = current_or_upcoming_vacation(session, now)
+    if entry is not None:
+        entry.cancelled_at = now
+        audit.record(
+            session,
+            source=source,
+            action="update",
+            object_type="vacation",
+            object_id=str(entry.id),
+            summary="Urlaubsbetrieb vorzeitig beendet",
+            user_id=user_id,
+            token_id=token_id,
+        )
+    return entry
+
+
+def running_vacation(session: Session, now_utc: datetime) -> Vacation | None:
+    """The vacation actually in effect at `now_utc`, or None -- not cancelled,
+    already started, not yet ended. Mirrors `running_override()`'s window exactly,
+    the same "is this actually in force right now" question for the plant-wide case.
+    """
+    return session.scalars(
+        select(Vacation)
+        .where(
+            Vacation.cancelled_at.is_(None),
+            Vacation.starts_at <= now_utc,
+            Vacation.ends_at > now_utc,
+        )
+        .order_by(Vacation.starts_at)
+    ).first()
+
+
+def current_or_upcoming_vacation(session: Session, now_utc: datetime) -> Vacation | None:
+    """The vacation that still matters going forward: running now, or scheduled to
+    start later. Cancelled and already-ended rows never match.
+
+    This is what the interface needs to show the "a vacation is running or planned"
+    banner without anyone having to look for it (the project owner's own wording),
+    and what `create_vacation()` uses to refuse a second, overlapping window.
+    """
+    return session.scalars(
+        select(Vacation)
+        .where(Vacation.cancelled_at.is_(None), Vacation.ends_at > now_utc)
+        .order_by(Vacation.starts_at)
+    ).first()
+
+
 def temperature_for_mode(session: Session, zone: Zone, mode_id: int) -> Decimal | None:
     """The temperature stored for this zone for a mode, or None.
 
@@ -870,11 +1007,49 @@ def _schedule_setpoint(
     return Setpoint(temp, f"Zeitplan: Modus {mode.name} ab {time_of_day}", mode.code, mode.id)
 
 
+def _vacation_setpoint(session: Session, zone: Zone, now_utc: datetime) -> Setpoint | None:
+    """The plant-wide vacation setback in effect at `now_utc`, or `None`.
+
+    Frost protection is an absolute floor here, never a rule this function might
+    override (the same principle `solar_setback.apply` documents for its own
+    correction): the plant-wide setback is raised to *this* zone's own
+    frost-protection setpoint if it would otherwise fall below it. The setback is
+    entered once for the whole plant, but frost protection is configured per zone --
+    a zone whose frost protection sits above the entered setback must not be
+    regulated below its own floor just because another zone's floor is lower.
+
+    A `mode_id` of `None`: like a fixed-temperature override, a vacation names a
+    temperature directly, not a mode -- callers that key off a mode (the PI wiring's
+    setpoint-context key in `services/shadow_run.py`) tell the two apart by asking
+    whether a vacation is running, exactly as they already do for a fixed override.
+    """
+    vacation = running_vacation(session, now_utc)
+    if vacation is None:
+        return None
+    frost_temp = frost_protection_temperature(session, zone)
+    if vacation.setback_temperature_c < frost_temp:
+        return Setpoint(
+            frost_temp, "Urlaubsbetrieb — Absenkung durch Frostschutz angehoben", None, None
+        )
+    return Setpoint(vacation.setback_temperature_c, "Urlaubsbetrieb — Absenkung", None, None)
+
+
 def resolved_setpoint(session: Session, zone: Zone, now_utc: datetime) -> Setpoint:
     """Which setpoint currently applies, and why.
 
-    Precedence: operating mode 'off' beats everything, then a running override, then
-    the schedule, and last of all frost protection.
+    Precedence: operating mode 'off' beats everything; then a running per-zone
+    override -- set by hand, so it must not silently vanish under a vacation that
+    starts while it is already running; then the plant-wide vacation setback; then
+    the schedule; and last of all frost protection.
+
+    The existing precedence chain in `control_loop.decide()` is untouched by this:
+    vacation only changes which temperature `resolved_setpoint()` hands to it. A
+    zone whose operating mode is 'off' returns above, before the vacation check is
+    even reached, and therefore stays off during a vacation exactly as it does
+    outside one -- the project owner's explicit requirement. Window handling,
+    sensor-failure fallback, minimum switch durations and valve protection all run
+    in `decide()` on whatever setpoint arrives here, unaware that a vacation exists
+    at all, the same way they are unaware an override does.
     """
     settings = session.get(Setting, 1)
     assert settings is not None, "setting-Zeile fehlt — Einrichtung unvollstaendig"
@@ -888,6 +1063,10 @@ def resolved_setpoint(session: Session, zone: Zone, now_utc: datetime) -> Setpoi
     override = _override_setpoint(session, zone, now_utc)
     if override is not None:
         return override[0]
+
+    vacation_setpoint = _vacation_setpoint(session, zone, now_utc)
+    if vacation_setpoint is not None:
+        return vacation_setpoint
 
     schedule_setpoint = _schedule_setpoint(session, zone, settings, now_utc)
     if schedule_setpoint is not None:
@@ -956,6 +1135,13 @@ def schedule_forecast(
     returns `None`, the loop below draws one bar for the remaining window, and
     `resolved_setpoint` resolves it to frost protection precisely as it would for
     that zone at any single instant.
+
+    A plant-wide vacation is drawn the same way an override is, except it can begin
+    *inside* the window instead of only being checked at its start: the loop below
+    adds the vacation's own start and end as extra bar boundaries next to the next
+    schedule switch, so a vacation beginning or ending between two schedule points
+    still shows up as its own bar instead of being silently absorbed into whichever
+    schedule bar happens to span that moment.
     """
     window_end = now_utc + horizon
     if zone.operating_mode.code == "off":
@@ -981,6 +1167,18 @@ def schedule_forecast(
     )
     timezone_name = ZoneInfo(settings.timezone)
 
+    # Fetched once, up front: at most one non-cancelled vacation can be running or
+    # upcoming at any instant (`create_vacation` refuses a second, overlapping one),
+    # so its own start and end -- if either falls inside this window -- are two more
+    # candidate bar boundaries alongside the next schedule switch. Without them, a
+    # vacation that begins or ends between two schedule switches would not show up
+    # as its own bar at all: `resolved_setpoint` already returns the right value at
+    # the cursor position where each bar starts, but the bar's *width* was, until
+    # this looked at vacation boundaries too, decided purely by when the schedule
+    # itself next changes, and would silently paint straight through the moment a
+    # vacation starts or ends in between.
+    vacation = current_or_upcoming_vacation(session, cursor)
+
     remaining_switches = _MAX_FORECAST_SWITCHES
     while cursor < window_end:
         setpoint = resolved_setpoint(session, zone, cursor)
@@ -1002,6 +1200,11 @@ def schedule_forecast(
                 # that case draws one wider bar instead of looping forever.
                 if next_utc > cursor:
                     boundary = min(next_utc, window_end)
+        if vacation is not None:
+            if cursor < vacation.starts_at < boundary:
+                boundary = vacation.starts_at
+            elif cursor < vacation.ends_at < boundary:
+                boundary = vacation.ends_at
         segments.append(ForecastSegment(cursor, boundary, setpoint))
         cursor = boundary
 

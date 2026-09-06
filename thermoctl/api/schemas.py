@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -182,6 +182,31 @@ class OverrideResponse(BaseModel):
     temperature_c: Decimal | None
     starts_at: datetime
     ends_at: datetime | None
+    cancelled_at: datetime | None
+
+
+class CreateVacation(BaseModel):
+    """Local calendar dates, inclusive on both ends -- see `create_vacation()`'s
+    docstring for why: `domain.schedule` converts them to UTC instants through
+    `local_day_start_utc`, using the plant's configured timezone, the same
+    conversion the rest of the project already relies on for a local day's
+    boundary.
+    """
+
+    start_date: date
+    end_date: date
+    setback_temperature_c: Decimal = Field(
+        ge=MINIMUM_TEMPERATURE_C, le=MAXIMUM_TEMPERATURE_C, decimal_places=1
+    )
+
+
+class VacationResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    starts_at: datetime
+    ends_at: datetime
+    setback_temperature_c: Decimal
     cancelled_at: datetime | None
 
 
