@@ -1,6 +1,36 @@
 # Stand
 
-Letzte Aktualisierung: 2026-09-05, Freigabe `v0.7.0`.
+Letzte Aktualisierung: 2026-09-06.
+
+## Liveaktualisierung der Startseite
+
+Ist-Wert, Sollwert samt Begründung, Sensorzustand und letzte Entscheidung je Zone
+zeigten sich bisher nur beim Neuladen. `start.html` fragt die Startseite jetzt im
+Stil des Kiosks periodisch selbst ab (`hx-get`/`hx-select`/`hx-swap="outerHTML"` auf
+`#tc-live`) — kein neues Werkzeug, HTMX war schon da.
+
+Das Intervall ist keine feste Zahl, sondern kommt aus `setting.shadow_interval_seconds`
+(`poll_interval_seconds` in `start_views.py`) — häufiger abzufragen als sich ein Wert
+ändern kann, wäre verschwendete Last, gerade hinter dem Ingress-Proxy. `[!document.hidden]`
+im `hx-trigger` pausiert den Abruf, solange der Tab im Hintergrund liegt.
+
+Zwei Dinge mussten dafür ausdrücklich abgesichert werden, nicht nur der Abruf selbst:
+
+- Ein aufgeklappter Übersteuern-Bereich und eine schon begonnene Eingabe dürfen den
+  Austausch nicht verlieren. Gelöst über `hx-preserve` auf dem Formular und dem
+  Auf/Zu-Knopf (beide mit stabiler `id`) — htmx lässt diese Elemente beim Swap
+  unangetastet stehen, statt sie durch eine frische, leere Fassung zu ersetzen.
+- Der globale Ladebalken (`loading_indicator.js`) darf für diesen Abruf nicht
+  aufblitzen — er würde jede Minute von selbst erscheinen, ohne dass irgendjemand auf
+  ihn wartet. Das auslösende Element trägt `data-tc-quiet-poll`; das Skript prüft
+  genau dieses Element (`ereignis.detail.elt`), nicht dessen Vorfahren, damit ein POST
+  aus einem Formular *innerhalb* des Bereichs (Übersteuern, Sollwert stellen) den
+  Balken weiterhin zeigt.
+
+Nachgewiesen in `browser_tests/test_start_page_live.py` (vier Tests: abgeleitetes
+Intervall, ein geänderter Wert aktualisiert sich ohne Zutun, ein aufgeklappter Bereich
+samt begonnener Eingabe übersteht eine Aktualisierung, der Ladebalken bleibt dabei
+stumm — auch unter einer künstlich verzögerten Antwort).
 
 ## Zwei Fehler in der Homebridge-Konfiguration behoben
 

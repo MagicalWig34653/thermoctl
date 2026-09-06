@@ -220,5 +220,18 @@ def start(
             "now_fraction": (
                 local_now.hour * 60 + local_now.minute
             ) * 100 / MINUTES_PER_DAY,
+            # How often the page re-fetches itself (see the `hx-trigger` on
+            # `#tc-live` in start.html). Derived from the setting that actually
+            # bounds how often a value here *can* change -- the regulation cycle
+            # (`setting.shadow_interval_seconds`) -- rather than a second, hard-coded
+            # number that could drift from it. Polling faster than the plant itself
+            # decides would only add load for no new information, which matters
+            # more here than at the kiosk (fixed 20 s): behind the Ingress proxy
+            # every extra request takes an extra hop. `60` mirrors the column
+            # default and `app.py`'s own `_SHADOW_INTERVAL_DEFAULT_S` for the same
+            # not-yet-configured case.
+            "poll_interval_seconds": (
+                settings.shadow_interval_seconds if settings is not None else 60
+            ),
         },
     )

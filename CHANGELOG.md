@@ -9,6 +9,33 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ---
 
+## Unveröffentlicht
+
+### Hinzugefügt
+
+- **Liveaktualisierung der Startseite.** Ist-Wert, Sollwert samt Begründung,
+  Sensorzustand und letzte Entscheidung je Zone aktualisieren sich jetzt von selbst,
+  ohne Neuladen — im Stil des Kiosks (`hx-get` auf sich selbst, `hx-select`/
+  `hx-swap="outerHTML"`), statt mit neuer Technik. Drei Abweichungen vom Kiosk:
+  - Das Intervall ist aus `setting.shadow_interval_seconds` abgeleitet
+    (`poll_interval_seconds` in `start_views.py`) statt fest eingetragen — häufiger
+    abzufragen als sich ein Wert ändern kann, wäre verschwendete Last, insbesondere
+    hinter dem Ingress-Proxy.
+  - `hx-trigger="every …s [!document.hidden]"` lässt den Abruf pausieren, solange der
+    Tab im Hintergrund liegt.
+  - Ein offener Übersteuern-Bereich und eine schon begonnene Eingabe überstehen den
+    Austausch unverändert (`hx-preserve` auf Formular und Auf/Zu-Knopf) — ein
+    gewöhnlicher Austausch hätte beides mitten im Tippen verworfen.
+  - `loading_indicator.js` blendet den globalen Ladebalken für genau diesen
+    selbstauslösenden Abruf aus (`data-tc-quiet-poll`, geprüft am auslösenden
+    Element, nicht an dessen Vorfahren) — ein Balken, der jede Minute von selbst
+    aufblitzt, wäre Unruhe statt Information. Ein POST aus einem Formular innerhalb
+    des Bereichs (Übersteuern, Sollwert stellen) bleibt weiterhin sichtbar.
+  - Nachgewiesen in `browser_tests/test_start_page_live.py`: ein geänderter Wert
+    aktualisiert sich ohne Zutun, ein aufgeklappter Bereich samt begonnener Eingabe
+    übersteht eine Aktualisierung, und der Ladebalken bleibt dabei stumm — auch unter
+    einer künstlich verzögerten Antwort, die ohne die Ausnahme sichtbar würde.
+
 ## 0.7.4 — 2026-09-05
 
 ### Behoben
