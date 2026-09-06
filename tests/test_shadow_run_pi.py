@@ -810,6 +810,40 @@ class TestPrecedenceRulesBeatPi:
         assert ended.effective_controller == "pi"
         assert ended.pi_reset_reason == RESET_REASON_CONTEXT_CHANGE
 
+    def test_starting_and_ending_a_vacation_resets_the_integral_but_pi_keeps_deciding(
+        self, session: Session
+    ) -> None:
+        """Same reasoning as the override case above: a vacation resolves to a fixed
+        temperature with `mode_id=None` too (`domain.schedule._vacation_setpoint`),
+        so without its own branch in `_pi_setpoint_context_key` this would trip the
+        function's `assert` instead of resetting cleanly."""
+        from thermoctl.domain.schedule import cancel_vacation, create_vacation
+
+        zone = _pi_zone(session, "urlaub-pi", measured_c=WARM_C)
+        now = NOW
+        shadow_run.cycle(session, now)  # establish some integral first
+
+        now += timedelta(seconds=60)
+        vacation = create_vacation(
+            session,
+            start_date=now.date(),
+            end_date=now.date() + timedelta(days=5),
+            setback_temperature_c=Decimal("15.0"),
+            timezone_name="Europe/Berlin",
+            now=now,
+        )
+        assert vacation.starts_at <= now < vacation.ends_at
+
+        started = _row_for(shadow_run.cycle(session, now), zone)
+        assert started.effective_controller == "pi"  # not a fallback -- PI keeps deciding
+        assert started.pi_reset_reason == RESET_REASON_CONTEXT_CHANGE
+
+        now += timedelta(seconds=60)
+        cancel_vacation(session, now=now)
+        ended = _row_for(shadow_run.cycle(session, now), zone)
+        assert ended.effective_controller == "pi"
+        assert ended.pi_reset_reason == RESET_REASON_CONTEXT_CHANGE
+
 
 class TestOnOffOnlyZoneIgnoresTheWindow:
     """The owner's second 2026-09-06 decision, in its PI interplay: PI's own

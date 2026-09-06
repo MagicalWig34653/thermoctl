@@ -45,6 +45,9 @@ NAVIGATION_ITEMS: tuple[NavigationItem, ...] = (
     NavigationItem(
         "/settings", "Regelvorgaben", "zone.read", "thermoctl.web.control_views.show_settings"
     ),
+    NavigationItem(
+        "/vacation", "Urlaub", "zone.read", "thermoctl.web.vacation_views.show_vacation"
+    ),
     NavigationItem("/modes", "Sollwert-Modi", "mode.manage", "thermoctl.web.mode_views.mode_list"),
     NavigationItem(
         "/interfaces",

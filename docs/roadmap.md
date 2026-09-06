@@ -237,7 +237,7 @@ abgeschaltet ist.
 - [x] 1 Neue MQTT-Topic-Struktur samt Discovery — **gebaut und angeschlossen**; das
       Veröffentlichen hängt am selben Riegel wie das Schalten, siehe [mqtt.md](mqtt.md)
 - [ ] 2 Altes Topic-Schema abkündigen — *wartet auf den Cutover*
-- [x] 3 MCP-Server — 16 Werkzeuge über derselben Domänenlogik, [Doku](mcp.md)
+- [x] 3 MCP-Server — 19 Werkzeuge über derselben Domänenlogik, [Doku](mcp.md)
 - [x] 4 API-Dokumentation — [docs/api.md](api.md)
 - [ ] 5 Setup-Assistent erweitern — *gehört zu Phase 3*
 - [x] 6 Self-Hosting-Dokumentation und Beispiel-Compose — [docs/self-hosting.md](self-hosting.md)

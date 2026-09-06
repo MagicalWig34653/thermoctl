@@ -113,6 +113,7 @@
       "(Swarm: `mode: replicated-job`; Kubernetes: `Job`, mit `kubectl wait` vor dem",
       "(wo vorhanden) an Zigbee2MQTT-Thermostatventile ohne eigene Regelung",
       "Aktor etwas hinaus — das ist der Zustand einer neuen Anlage. `/control/arm` öffnet ihn,",
+      "Sensorausfall, Mindestschaltdauern und Ventilschutz laufen unwissend vom Urlaub",
       "Thermostatventile, Ein/Aus an gewöhnliche Zigbee2MQTT-Aktoren",
       "[`docs/docker-swarm.md`](docker-swarm.md) und [`docs/kubernetes.md`](kubernetes.md), je",
       "allein, für den Aus-Timer zusätzlich `protection_allowed`. Ein Ventilschutzlauf, der",
@@ -191,6 +192,7 @@
       "Schaltaktor an. Der Versuch wird bei fehlender Eignung mit einer Begründung abgewiesen.",
       "Schaltaktors. Wer es über MCP einschaltet, umgeht den Warnhinweis, den die Oberfläche am",
       "Wer scharf schalten will, tut das dort, wo ein Mensch am Knopf steht.",
+      "die Heizung auf 15 Grad runter\": eine einzige, plant-weite Angabe statt einer Übersteuerung",
       "gewöhnlichen Schaltaktor. Ein **selbstregelndes** Ventil schließt die Zone dagegen nicht",
       "können Sollwerte an selbstregelnde Thermostatventile und Ein/Aus-Befehle an gewöhnliche",
       "sodass es neben einem gewöhnlichen Schaltaktor stehen darf — PI steuert dann nur diesen",
@@ -325,6 +327,7 @@
       "einer Zone auffällig, schalten Sie PI dort wieder aus; der Reglerzustand wird dabei",
       "einziges selbstregelndes Ventil die ganze Zone von PI aus, unabhängig davon, was sonst",
       "gemischt mit anderen Aktoren.",
+      "gesondert anzufassen: Fenster, Sensorausfall, Mindestschaltdauern und Ventilschutz",
       "noch daran hängt. Das war strenger als nötig: Ein selbstregelndes Ventil bekommt seinen",
       "steuert dann ausschließlich den Schaltaktor an — etwa ein selbstregelndes",
       "unscharf ist, werden weder Sollwerte noch Ein/Aus-Befehle an Aktoren gesendet."
@@ -611,7 +614,12 @@
       "\"Wenn ein Befehl an einen Aktor nicht durchkommt.\") }}",
       "<span class=\"tc-chip tc-chip-warm\"><span class=\"tc-dot\"></span>Angekommen</span>"
     ],
+    "thermoctl/web/templates/vacation.html": [
+      "<span class=\"tc-chip tc-chip-warm\"><span class=\"tc-dot\"></span>Läuft</span>",
+      "Mindestschaltdauern und Ventilschutz gelten unverändert weiter, und eine Zone in"
+    ],
     "thermoctl/web/templates/start.html": [
+      "<a href=\"{{ url_prefix }}/vacation\" class=\"tc-chip {{ 'tc-chip-warm' if vacation_running else 'tc-chip-quiet' }}\"",
       "<div class=\"small mt-1\" style=\"color: var(--warmth)\">{{ thermostat_errors }}</div>",
       "<div class=\"w-100 small\" style=\"color: var(--warmth)\">{{ override_errors }}</div>",
       "<span class=\"tc-chip tc-chip-warm\"><span class=\"tc-dot\"></span>Heizentscheidung</span>",

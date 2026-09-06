@@ -366,6 +366,49 @@ Aktion.
 Übersteuerungen werden nie gelöscht, nur beendet: Sie sind die Historie, und ohne sie ist
 Wochen später nicht mehr zu klären, warum ein Raum in einer bestimmten Nacht warm war.
 
+### `GET /api/v1/vacation` — laufenden oder geplanten Urlaub abfragen
+
+Recht: `zone.read`. Antwort `200` mit dem Urlaub, oder `null`, wenn keiner läuft oder
+ansteht. Anders als bei der Übersteuerung gibt es hier keine Zonen-Angabe im Pfad — ein
+Urlaub gilt für die ganze Anlage, siehe unten.
+
+### `POST /api/v1/vacation` — Urlaub ansetzen
+
+Recht: `vacation.manage` — anlagenweit, nicht `override.create`, obwohl ein Urlaub sich
+wie eine Übersteuerung über alle Zonen auswirkt (siehe `domain/schedule.py`):
+`override.create` gilt je Zone, ein Urlaub nie nur für eine. Antwort `201`.
+
+```json
+{"start_date": "2026-12-23", "end_date": "2027-01-02", "setback_temperature_c": 15.0}
+```
+
+| Feld | Bedeutung |
+|---|---|
+| `start_date`, `end_date` | Pflicht, lokale Kalendertage, beide eingeschlossen |
+| `setback_temperature_c` | Pflicht, −20 bis 35 °C, eine Nachkommastelle, gilt für jede Zone |
+
+Beginn und Ende werden über die konfigurierte Zeitzone der Anlage in UTC umgerechnet —
+`start_date` beginnt um lokal Mitternacht, `end_date` endet mit lokal Mitternacht des
+folgenden Tages. Nur ein Urlaub darf gleichzeitig laufen oder geplant sein; ein zweiter
+Aufruf während eines bestehenden schlägt mit `422` fehl, bis der erste beendet ist. Eine
+Zone in Betriebsart „Aus" bleibt während des Urlaubs aus, und eine bereits laufende, von
+Hand gesetzte Übersteuerung einer einzelnen Zone gilt weiter, bis sie selbst endet — der
+Urlaub übernimmt für diese Zone erst danach.
+
+`setback_temperature_c` gilt zwar für jede Zone gleich, wird aber je Zone gegen deren
+eigenen Frostschutz geprüft: unterschreitet der eingegebene Wert den Frostschutz einer
+Zone, regelt diese Zone auf ihren Frostschutz statt auf den eingegebenen Wert —
+derselbe absolute Frostschutz-Boden, den auch die solare Nachführung nie unterschreitet
+(siehe `domain/solar_setback.py`). Zonen mit unterschiedlichem Frostschutz können
+während desselben Urlaubs also auf unterschiedliche Temperaturen geregelt werden.
+
+### `DELETE /api/v1/vacation` — Urlaub vorzeitig beenden
+
+Recht: `vacation.manage`. Antwort `204`. Beendet den laufenden oder noch nicht
+begonnenen Urlaub. Gab es keinen, ist der Aufruf trotzdem erfolgreich.
+
+Urlaube werden nie gelöscht, nur beendet — dieselbe Historie wie bei Übersteuerungen.
+
 ## Beispiel
 
 ```bash
