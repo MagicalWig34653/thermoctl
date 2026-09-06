@@ -21,6 +21,16 @@
  * gleichzeitig lostreten (zum Beispiel ein vorausgeladener Link neben einer
  * gerade laufenden Navigation). Der Balken darf erst verschwinden, wenn wirklich
  * keine Anfrage mehr läuft.
+ *
+ * Ausnahme: die Liveaktualisierung der Startseite (`#tc-live` in start.html)
+ * fragt sich von selbst neu ab, einmal je Regelzyklus. Ein Balken, der dabei
+ * jede Minute von selbst aufblitzt, wäre Unruhe statt Information -- anders als
+ * bei einer echten Nutzeraktion gibt es hier niemanden, der auf das Ergebnis
+ * wartet. Das auslösende Element trägt dafür `data-tc-quiet-poll`; geprüft wird
+ * nur *dieses* Element (`ereignis.detail.elt`, von htmx selbst gesetzt), nicht
+ * seine Vorfahren -- ein POST aus einem Formular innerhalb dieses Bereichs
+ * (Übersteuern, Sollwert stellen) hat ein anderes auslösendes Element (das
+ * Formular selbst) und bleibt dadurch weiterhin sichtbar.
  */
 (function () {
     "use strict";
@@ -66,7 +76,19 @@
         }
     }
 
-    document.addEventListener("htmx:beforeRequest", function () {
+    // Nur das auslösende Element selbst zählt (`closest` würde auch jedes
+    // Formular *innerhalb* von `#tc-live` stumm schalten, etwa die
+    // Übersteuern-Eingabe oder den Sollwert-Stufenschalter -- deren Anfragen
+    // sollen den Balken weiterhin zeigen).
+    function istStillerAbruf(ereignis) {
+        var element = ereignis.detail && ereignis.detail.elt;
+        return !!(element && element.hasAttribute && element.hasAttribute("data-tc-quiet-poll"));
+    }
+
+    document.addEventListener("htmx:beforeRequest", function (ereignis) {
+        if (istStillerAbruf(ereignis)) {
+            return;
+        }
         laufende_anfragen += 1;
         anzeigenPlanen();
     });
@@ -77,7 +99,10 @@
     // Ausgang). Ein einziger Listener hier reicht deshalb, damit der Balken auch
     // nach einer gescheiterten Anfrage wieder verschwindet, statt ewig weiter zu
     // laufen und einen Ladezustand vorzutäuschen, der nicht mehr stimmt.
-    document.addEventListener("htmx:afterRequest", function () {
+    document.addEventListener("htmx:afterRequest", function (ereignis) {
+        if (istStillerAbruf(ereignis)) {
+            return;
+        }
         laufende_anfragen = Math.max(0, laufende_anfragen - 1);
         if (laufende_anfragen === 0) {
             anzeigenAbbrechen();

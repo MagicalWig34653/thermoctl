@@ -42,6 +42,40 @@ Seite ein Formularstapel, in dem die eigentliche Auskunft — wie warm ist es �
     <span class="t-quiet small">{{ zones|length }} {{ "Zone" if zones|length == 1 else "Zonen" }}</span>
 </div>
 
+{#
+Liveaktualisierung im Stil des Kiosks (kiosk.html): Ein Element ruft sich per
+`hx-get` selbst ab und tauscht sich per `hx-select`/`hx-swap="outerHTML"` gegen die
+frische Fassung derselben Route aus -- keine zweite Route, keine zweite Vorlage,
+kein neues Werkzeug neben htmx.
+
+Drei Abweichungen vom Kiosk, jede aus einem anderen Grund dieser Seite:
+
+- Das Intervall ist keine feste Zahl, sondern `poll_interval_seconds`
+  (start_views.py) -- abgeleitet aus dem Regelzyklus. Häufiger abzufragen als sich
+  ein Wert ändern kann, wäre verschwendete Last, insbesondere hinter dem
+  Ingress-Proxy.
+- `[!document.hidden]` filtert den Abruf: Ein Tab, der im Hintergrund liegt,
+  fragt nicht weiter ab (htmx wertet diesen Ausdruck vor jedem Zyklus neu aus,
+  über die Page-Visibility-API des Browsers). Beim Zurückkehren in den
+  Vordergrund greift der nächste turnusmäßige Abruf ohnehin wieder -- kein
+  Nachholbedarf nötig, ein verpasster Zyklus zeigt lediglich einen Moment lang
+  einen leicht veralteten Stand.
+- `data-tc-quiet-poll`: `loading_indicator.js` blendet den Ladebalken für genau
+  diesen selbstauslösenden Abruf aus (er prüft das Attribut am auslösenden
+  Element, nicht an der ganzen Seite) -- ein Balken, der jede Minute von selbst
+  aufblitzt, wäre Unruhe statt Information. Ein POST aus einem Formular *innerhalb*
+  dieses Bereichs (Übersteuern, Sollwert stellen) löst weiterhin den gewöhnlichen
+  Balken aus, weil dessen auslösendes Element -- das Formular -- dieses Attribut
+  nicht selbst trägt.
+
+Was innerhalb dieses Bereichs beim Austausch erhalten bleiben muss, steht nicht
+hier, sondern an der jeweiligen Stelle: `hx-preserve` an den
+Übersteuern-Schaltflächen und -Formularen weiter unten.
+#}
+<div id="tc-live" data-tc-quiet-poll="true"
+     hx-get="{{ url_prefix }}/" hx-trigger="every {{ poll_interval_seconds }}s [!document.hidden]"
+     hx-select="#tc-live" hx-target="#tc-live" hx-swap="outerHTML">
+
 <section class="tc-system-row {{ 'tc-armed' if armed }} mb-4">
     {% if armed and sending_allowed %}
     <span class="tc-chip tc-chip-warm"><span class="tc-dot"></span>Scharf und neu gestartet</span>
@@ -184,7 +218,16 @@ Seite ein Formularstapel, in dem die eigentliche Auskunft — wie warm ist es �
                 </button>
             </form>
             {% elif zone.id in may_override %}
+            {#
+            `hx-preserve`: ohne diese Marke ersetzt jeder Liveabruf auch diesen
+            Knopf durch eine frische Fassung -- mit `aria-expanded="false"`, egal
+            ob der aufklappbare Bereich gerade offen steht (Bootstrap trägt "offen"
+            nur im DOM ein, nicht im gerenderten HTML). Das erhaltene Original
+            bleibt mit dem Bereich, den es öffnet, im selben (korrekten)
+            Zustand synchron.
+            #}
             <button class="btn btn-sm btn-outline-secondary" type="button"
+                    id="übersteuern-knopf-{{ zone.id }}" hx-preserve="true"
                     data-bs-toggle="collapse" data-bs-target="#übersteuern-{{ zone.id }}"
                     aria-expanded="{{ 'true' if override_errors and error_zone_id == zone.id|string else 'false' }}">
                 Übersteuern
@@ -194,8 +237,17 @@ Seite ein Formularstapel, in dem die eigentliche Auskunft — wie warm ist es �
 
         {% if zone.id in may_override %}
         {% set hat_fehler = override_errors and error_zone_id == zone.id|string %}
+        {#
+        `hx-preserve`: Dieser Bereich trägt ein Formular mit eventuell schon
+        eingetippten Werten und (per Bootstrap-Collapse) einen Auf/Zu-Zustand, der
+        nirgends sonst gespeichert ist. Ein gewöhnlicher Austausch beim Liveabruf
+        würde beides verwerfen -- wer gerade eine Übersteuerung einträgt oder den
+        Bereich aufgeklappt hat, verlöre die Eingabe mitten im Tippen. `hx-preserve`
+        lässt htmx dieses Element unverändert stehen (samt DOM-Zustand) und ersetzt
+        nur das, was drumherum liegt.
+        #}
         <div class="collapse{{ ' show' if hat_fehler }} tc-zone-track" id="übersteuern-{{ zone.id }}"
-             style="grid-column: 1 / -1">
+             hx-preserve="true" style="grid-column: 1 / -1">
             <form method="post" action="{{ url_prefix }}/zones/{{ zone.id }}/override"
                   class="d-flex flex-wrap align-items-end gap-2 pt-3 border-top">
                 <div>
@@ -242,4 +294,6 @@ Seite ein Formularstapel, in dem die eigentliche Auskunft — wie warm ist es �
     desto höher der Sollwert. Der senkrechte Strich ist jetzt.
 </p>
 {% endif %}
+
+</div>
 {% endblock %}
