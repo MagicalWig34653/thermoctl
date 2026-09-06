@@ -24,8 +24,17 @@ from tests.helpers import (
 from thermoctl.db.models.lookup import CommandOutcome
 from thermoctl.db.models.state import DeviceCommand
 from thermoctl.domain.control import arm
-from thermoctl.domain.fault_notice import NOTICE_KIND_SENSOR_FAULT, FaultNotice
-from thermoctl.services.publishing import PublicationState, cycle, send_fault_notice
+from thermoctl.domain.fault_notice import (
+    NOTICE_KIND_SENSOR_FAULT,
+    NOTICE_KIND_WINDOW_ALARM,
+    FaultNotice,
+)
+from thermoctl.services.publishing import (
+    PublicationState,
+    cycle,
+    send_fault_notice,
+    send_window_alarm_notice,
+)
 
 NOW = datetime(2026, 8, 31, 7, 0)
 
@@ -162,6 +171,65 @@ async def test_a_home_assistant_notice_failure_does_not_escape() -> None:
     await send_fault_notice(
         BrokenPublisher(),
         FaultNotice("sensor:7", "stoerung", "Sensorstörung", "Text", NOTICE_KIND_SENSOR_FAULT),
+        "thermoctl",
+    )
+
+
+@pytest.mark.anyio
+async def test_window_alarm_and_all_clear_reach_home_assistant_on_their_own_topic() -> None:
+    """Its own topic, not `sensor_fault`'s -- see `send_window_alarm_notice`'s
+    docstring for why the two entities must never be shared."""
+    client = Mitschrift()
+    fault = FaultNotice(
+        "fenster:7",
+        "stoerung",
+        "Fenster in Flur vergessen offen",
+        "Text",
+        NOTICE_KIND_WINDOW_ALARM,
+    )
+    all_clear = FaultNotice(
+        "fenster:7",
+        "entwarnung",
+        "Fenster in Flur nicht mehr auffällig",
+        "Text",
+        NOTICE_KIND_WINDOW_ALARM,
+    )
+
+    await send_window_alarm_notice(client, fault, "thermoctl")
+    await send_window_alarm_notice(client, all_clear, "thermoctl")
+
+    base = "thermoctl/zones/7/state/window_alarm"
+    states = [payload for topic, payload in client.messages if topic == base]
+    attributes = [
+        json.loads(payload)
+        for topic, payload in client.messages
+        if topic == f"{base}/attributes"
+    ]
+    assert states == ["ON", "OFF"]
+    assert [item["schwere"] for item in attributes] == ["stoerung", "entwarnung"]
+    # Not published under the sensor-fault entity -- the two conditions are
+    # unrelated and must never be confused with each other.
+    assert not any(
+        topic.startswith("thermoctl/zones/7/state/sensor_fault") for topic, _ in client.messages
+    )
+
+
+@pytest.mark.anyio
+async def test_a_window_alarm_home_assistant_failure_does_not_escape() -> None:
+    class BrokenPublisher:
+        async def publishing(
+            self,
+            topic: str,
+            payload: str,
+            *,
+            switches: bool,
+            retained: bool = False,
+        ) -> bool:
+            raise OSError("Broker nicht erreichbar")
+
+    await send_window_alarm_notice(
+        BrokenPublisher(),
+        FaultNotice("fenster:7", "stoerung", "Fenster vergessen", "Text", NOTICE_KIND_WINDOW_ALARM),
         "thermoctl",
     )
 

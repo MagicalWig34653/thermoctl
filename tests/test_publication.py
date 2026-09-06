@@ -20,7 +20,11 @@ from thermoctl.integrations.mqtt.publication import (
     discovery_removal,
     fault_notice_discovery,
     fault_notice_topics,
+    outdoor_discovery,
+    outdoor_topic,
     states_topics,
+    window_alarm_discovery,
+    window_alarm_topics,
     zone_discovery,
 )
 
@@ -159,6 +163,36 @@ def test_sensor_fault_is_a_persistent_problem_entity_for_automations() -> None:
     assert payload["json_attributes_topic"] == topics.attributes
     assert payload["payload_on"] == "ON"
     assert payload["payload_off"] == "OFF"
+
+
+def test_window_alarm_is_its_own_persistent_entity_not_shared_with_sensor_fault() -> None:
+    """Unlike `sensor_stuck`, a window alarm can be active while the zone's own
+    sensor reads perfectly fine -- the two must never share one topic or entity."""
+    topics = window_alarm_topics(17, "haus_nord")
+    message = window_alarm_discovery(17, _zone_name(), "haus_nord")
+    payload = json.loads(message.payload)
+
+    assert topics.state != fault_notice_topics(17, "haus_nord").state
+    assert message.topic == (
+        "homeassistant/binary_sensor/haus_nord_zone_17_fensteralarm/config"
+    )
+    assert payload["device_class"] == "problem"
+    assert payload["state_topic"] == topics.state
+    assert payload["json_attributes_topic"] == topics.attributes
+    assert payload["payload_on"] == "ON"
+    assert payload["payload_off"] == "OFF"
+
+
+def test_outdoor_temperature_is_one_entity_for_the_whole_plant_not_per_zone() -> None:
+    message = outdoor_discovery("haus_nord")
+    payload = json.loads(message.payload)
+
+    assert message.topic == "homeassistant/sensor/haus_nord_aussentemperatur/config"
+    assert payload["state_topic"] == outdoor_topic("haus_nord")
+    assert payload["device_class"] == "temperature"
+    assert payload["unit_of_measurement"] == "°C"
+    # No zone id anywhere -- there is exactly one outdoor reading for the plant.
+    assert "zones" not in outdoor_topic("haus_nord")
 
 
 def test_cancel_override_button_targets_the_cancel_command_topic() -> None:

@@ -590,7 +590,8 @@
     ],
     "thermoctl/web/templates/settings.html": [
       "\"Wenn ein Befehl an einen Aktor nicht durchkommt.\") }}",
-      "<span class=\"tc-chip tc-chip-warm\"><span class=\"tc-dot\"></span>Angekommen</span>"
+      "<span class=\"tc-chip tc-chip-warm\"><span class=\"tc-dot\"></span>Angekommen</span>",
+      "die Außentemperatur unter der eingestellten Schwelle liegt. Ein- und ausgeschaltet"
     ],
     "thermoctl/web/templates/start.html": [
       "<div class=\"small mt-1\" style=\"color: var(--warmth)\">{{ thermostat_errors }}</div>",
@@ -607,6 +608,7 @@
       "Selbstregelnde Thermostatventile bekommen einen Sollwert und regeln damit selbst;",
       "dauerhaft \"Tag soll wärmer sein\", nicht \"jetzt einmal wärmer\". Deshalb steht",
       "ohnehin nur eine Handvoll Modi -- die Farbe sagt \"wärmer\" oder \"kühler\", die",
+      "\"es ist warm draußen\" verwechseln könnte.",
       "var({{ '--warmth' if a.warmth >= 0.5 else '--cool' }})",
       "{{ (40 + (a.warmth - 0.5)|abs * 90)|round|int }}%, var(--surface));\""
     ],

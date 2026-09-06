@@ -74,6 +74,32 @@ LIMITS: dict[str, tuple[Decimal, Decimal]] = {
     "assumed_relay_lifetime_operations": (Decimal(1_000), Decimal(10_000_000)),
 }
 
+# Deliberately its own dict, not folded into `LIMITS` above: `LIMITS` is shared with
+# REST (`api/routes.py`) and MCP (`mcp/server.py`), and the project owner's explicit
+# instruction is that anything new about the window alarm and the outdoor source
+# stays out of those two adapters -- only the interface and Home Assistant get it.
+# Folding these two fields into `LIMITS` would put them on `PUT /api/v1/control/
+# defaults` and the matching MCP tool for free, which is exactly what must not
+# happen. `check_number` below takes the bounds dict as a parameter for this
+# reason -- one validation function, two independent sets of fields.
+WINDOW_ALARM_LIMITS: dict[str, tuple[Decimal, Decimal]] = {
+    # Five minutes is close to the shortest a deliberate "Stoßlüften" is ever
+    # recommended to last; four hours is long enough that anything shorter would
+    # start flagging ordinary, brief airing as forgotten.
+    "window_alarm_open_minutes": (Decimal(5), Decimal(240)),
+    # -20°C is colder than this plant's climate ever reasonably gets; 15°C is above
+    # any outdoor temperature an open window could meaningfully be called a frost
+    # risk at.
+    "window_alarm_outdoor_threshold_c": (Decimal("-20.0"), Decimal("15.0")),
+}
+
+WINDOW_ALARM_LABELS: dict[str, str] = {
+    "window_alarm_open_minutes": "Fenster gilt als vergessen nach (Minuten)",
+    "window_alarm_outdoor_threshold_c": "Fenster-Alarm unter Außentemperatur (°C)",
+}
+
+WINDOW_ALARM_GANZZAHLIG = frozenset({"window_alarm_open_minutes"})
+
 LABELS: dict[str, str] = {
     "polling_interval_seconds": "Abfrageintervall (Sekunden)",
     "shadow_interval_seconds": "Regelzyklus (Sekunden)",
@@ -102,12 +128,20 @@ def settings(session: Session) -> Setting:
     return row
 
 
-def check_number(field: str, input_value: str) -> Decimal:
+def check_number(
+    field: str,
+    input_value: str,
+    *,
+    limits: dict[str, tuple[Decimal, Decimal]] = LIMITS,
+    ganzzahlig: frozenset[str] = GANZZAHLIG,
+) -> Decimal:
     """Checks a single value against its bounds.
 
     Its own function, because the same check is called from the interface, from REST
     and from MCP -- and because a bound that lives in three places drifts in three
-    places.
+    places. `limits`/`ganzzahlig` default to the shared `LIMITS`/`GANZZAHLIG` those
+    three adapters use; `save_window_alarm_settings` below passes its own, smaller
+    pair instead, since those two fields must not appear in REST or MCP at all.
     """
     text = input_value.strip().replace(",", ".")
     if not text:
@@ -116,9 +150,9 @@ def check_number(field: str, input_value: str) -> Decimal:
         value = Decimal(text)
     except InvalidOperation as exc:
         raise ControlError(field, "Bitte eine Zahl angeben.") from exc
-    if field in GANZZAHLIG and value != value.to_integral_value():
+    if field in ganzzahlig and value != value.to_integral_value():
         raise ControlError(field, "Bitte eine ganze Zahl angeben.")
-    lower, upper = LIMITS[field]
+    lower, upper = limits[field]
     if not (lower <= value <= upper):
         raise ControlError(
             field, f"Bitte einen Wert zwischen {_short(lower)} und {_short(upper)} angeben."
@@ -224,6 +258,44 @@ def save_solar_location(
         object_type="setting",
         object_id="1",
         summary="Standort und Schalter für die Sonnenprognose geändert",
+        user_id=user_id,
+        token_id=token_id,
+    )
+
+
+def save_window_alarm_settings(
+    session: Session,
+    values: dict[str, str],
+    *,
+    user_id: int | None,
+    token_id: int | None = None,
+    source: str = "web",
+) -> None:
+    """The window alarm's two thresholds -- deliberately apart from `save_settings`.
+
+    Not folded into `LIMITS`/`save_settings`: those two are shared with REST and
+    MCP, and the project owner's explicit instruction is that nothing new about
+    the window alarm reaches those two adapters -- only the interface. Using
+    `WINDOW_ALARM_LIMITS` here instead keeps that boundary in the data, not just
+    in a comment someone has to remember to honour.
+    """
+    checked = {
+        field: check_number(
+            field, values.get(field, ""),
+            limits=WINDOW_ALARM_LIMITS, ganzzahlig=WINDOW_ALARM_GANZZAHLIG,
+        )
+        for field in WINDOW_ALARM_LIMITS
+    }
+    row = settings(session)
+    for field, value in checked.items():
+        setattr(row, field, value if field not in WINDOW_ALARM_GANZZAHLIG else int(value))
+    audit.record(
+        session,
+        source=source,
+        action="update",
+        object_type="setting",
+        object_id="1",
+        summary="Schwellen des Fenster-Alarms geändert",
         user_id=user_id,
         token_id=token_id,
     )

@@ -35,12 +35,14 @@ from thermoctl.domain.authz import Forbidden
 from thermoctl.domain.device_survey import MEROSS_RECONCILE_INTERVAL_SECONDS
 from thermoctl.domain.fault_notice import (
     NOTICE_KIND_COMMAND_FAILURE,
+    NOTICE_KIND_WINDOW_ALARM,
     FaultNotice,
     bridge_notice,
     notice_enabled,
     notification_audit_action,
     sensor_notice,
     stuck_sensor_notice,
+    window_alarm_notice,
 )
 from thermoctl.domain.modes import DomainError, update_setpoints
 from thermoctl.domain.remote_control import (
@@ -83,6 +85,7 @@ from thermoctl.services.publishing import (
     PublicationState,
     _send_zone_state,
     send_fault_notice,
+    send_window_alarm_notice,
 )
 from thermoctl.services.publishing import cycle as publication_cycle
 from thermoctl.services.retention import delete_old_measurements, delete_old_shadow_decisions
@@ -199,6 +202,46 @@ def _stuck_notices(
             # would be missing here.
             continue
         notice = stuck_sensor_notice(f"sensor:{zone.id}", zone.name, before.get(zone.id), stuck)
+        if notice is not None:
+            _audit(session, notice, setting_row)
+            notices.append(notice)
+    return notices
+
+
+def _window_alarm_states(session: Session) -> dict[int, bool | None]:
+    return {
+        zone_id: alarm
+        for zone_id, alarm in session.execute(
+            select(ZoneState.zone_id, ZoneState.window_alarm)
+        )
+    }
+
+
+def _window_alarm_notices(
+    session: Session, before: dict[int, bool | None], setting_row: Setting | None
+) -> list[FaultNotice]:
+    """The window-forgotten counterpart of `_sensor_notices`/`_stuck_notices` above.
+
+    Its own key prefix (`fenster:<zone id>`, not `sensor:<zone id>`): unlike
+    `sensor_stuck`, this condition can hold at the same time as a perfectly good
+    sensor reading, so it cannot share the entity `send_fault_notice` keys by
+    `sensor:<zone id>` -- see `send_window_alarm_notice` in `services/publishing.py`.
+
+    `zone.id not in after` (rather than `after.get(zone.id) is None`, which
+    `_stuck_notices` above can use) matters here specifically: `window_alarm` is a
+    tri-state column, and a legitimately unknown value (`None`) must be looked up
+    and passed through to `window_alarm_notice`, not mistaken for a missing row.
+    """
+    after = _window_alarm_states(session)
+    notices: list[FaultNotice] = []
+    for zone in session.scalars(select(Zone).order_by(Zone.id)):
+        if zone.id not in after:  # pragma: no cover
+            # Same reasoning as `_sensor_notices`: only a concurrently deleted row
+            # would be missing here.
+            continue
+        notice = window_alarm_notice(
+            f"fenster:{zone.id}", zone.name, before.get(zone.id), after[zone.id]
+        )
         if notice is not None:
             _audit(session, notice, setting_row)
             notices.append(notice)
@@ -373,9 +416,11 @@ async def _shadow_loop(app: FastAPI) -> None:
                 setting_row = session.get(Setting, 1)
                 before = _sensor_states(session)
                 stuck_before = _stuck_states(session)
+                window_alarm_before = _window_alarm_states(session)
                 advance_zone_state(session, now)
                 notices = _sensor_notices(session, before, setting_row)
                 notices += _stuck_notices(session, stuck_before, setting_row)
+                notices += _window_alarm_notices(session, window_alarm_before, setting_row)
                 cycle(session, now, forecast)
                 # `getattr`: the loop also runs in tests that assemble an app without
                 # running through the full lifespan.
@@ -439,8 +484,19 @@ async def _shadow_loop(app: FastAPI) -> None:
                 # `send_fault_notice` publishes to a per-zone Home Assistant entity
                 # keyed by `sensor:<zone id>` -- there is no such entity for a
                 # command-failure notice (device-scoped, not zone-scoped), and none
-                # is added here; that is future work, not this one.
-                if publisher is not None and notice.kind != NOTICE_KIND_COMMAND_FAILURE:
+                # is added here; that is future work, not this one. A window alarm
+                # has its own, separately keyed entity (`fenster:<zone id>`) and
+                # therefore its own dispatch function -- see
+                # `services/publishing.py::send_window_alarm_notice`.
+                if publisher is not None and notice.kind == NOTICE_KIND_WINDOW_ALARM:
+                    mqtt_task = asyncio.create_task(
+                        send_window_alarm_notice(
+                            publisher, notice, get_settings().mqtt_prefix
+                        )
+                    )
+                    _running_notices.add(mqtt_task)
+                    mqtt_task.add_done_callback(_running_notices.discard)
+                elif publisher is not None and notice.kind != NOTICE_KIND_COMMAND_FAILURE:
                     mqtt_task = asyncio.create_task(
                         send_fault_notice(
                             publisher, notice, get_settings().mqtt_prefix

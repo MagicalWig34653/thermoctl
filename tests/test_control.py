@@ -426,3 +426,169 @@ def test_the_solar_setback_can_be_switched_on_through_its_own_form(
     assert row is not None
     assert row.solar_forecast_enabled is True
     assert row.solar_forecast_latitude == Decimal("52.520")
+
+
+# --- Außentemperatur und Fenster-Alarm --------------------------------------
+
+
+def test_the_outdoor_source_can_be_set_and_cleared(
+    client_als: ClientBuilder, session: Session
+) -> None:
+    from tests.helpers import capability, create_device
+    from thermoctl.db.models.device import DeviceCapabilityLink
+
+    create_settings(session)
+    source(session, "web")
+    device = create_device(session, "aussenfuehler-form")
+    session.add(
+        DeviceCapabilityLink(
+            device_id=device.id, capability_id=capability(session, "temperature").id
+        )
+    )
+    session.flush()
+    client = client_als(ALL_PERMISSIONS)
+
+    response = client.post(
+        "/settings/outdoor-source",
+        data={"device_id": str(device.id)},
+        headers=_csrf(client),
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    assert session.get(Setting, 1).outdoor_temperature_source_device_id == device.id
+
+    response = client.post(
+        "/settings/outdoor-source",
+        data={"device_id": ""},
+        headers=_csrf(client),
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    assert session.get(Setting, 1).outdoor_temperature_source_device_id is None
+
+
+def test_a_device_without_temperature_capability_is_rejected_as_outdoor_source(
+    client_als: ClientBuilder, session: Session
+) -> None:
+    from tests.helpers import capability, create_device
+    from thermoctl.db.models.device import DeviceCapabilityLink
+
+    create_settings(session)
+    source(session, "web")
+    ventil = create_device(session, "ventil-als-aussenfuehler-form")
+    session.add(
+        DeviceCapabilityLink(
+            device_id=ventil.id, capability_id=capability(session, "switch").id
+        )
+    )
+    session.flush()
+    client = client_als(ALL_PERMISSIONS)
+
+    response = client.post(
+        "/settings/outdoor-source",
+        data={"device_id": str(ventil.id)},
+        headers=_csrf(client),
+    )
+    assert response.status_code == 200
+    assert "Temperatur" in response.text
+    assert session.get(Setting, 1).outdoor_temperature_source_device_id is None
+
+
+def test_a_non_numeric_outdoor_source_device_id_is_rejected(
+    client_als: ClientBuilder, session: Session
+) -> None:
+    create_settings(session)
+    source(session, "web")
+    client = client_als(ALL_PERMISSIONS)
+
+    response = client.post(
+        "/settings/outdoor-source",
+        data={"device_id": "kein-gerät"},
+        headers=_csrf(client),
+    )
+    assert response.status_code == 200
+    assert "bekanntes Gerät" in response.text
+    assert session.get(Setting, 1).outdoor_temperature_source_device_id is None
+
+
+def test_an_unknown_outdoor_source_device_id_is_rejected(
+    client_als: ClientBuilder, session: Session
+) -> None:
+    create_settings(session)
+    source(session, "web")
+    client = client_als(ALL_PERMISSIONS)
+
+    response = client.post(
+        "/settings/outdoor-source",
+        data={"device_id": "999999"},
+        headers=_csrf(client),
+    )
+    assert response.status_code == 200
+    assert "nicht bekannt" in response.text
+    assert session.get(Setting, 1).outdoor_temperature_source_device_id is None
+
+
+def test_the_settings_page_shows_the_outdoor_source_selection(
+    client_als: ClientBuilder, session: Session
+) -> None:
+    create_settings(session)
+    response = client_als(ALL_PERMISSIONS).get("/settings")
+    assert response.status_code == 200
+    assert 'name="device_id"' in response.text
+    assert "Außentemperatur" in response.text
+
+
+def test_saving_the_window_alarm_thresholds(
+    client_als: ClientBuilder, session: Session
+) -> None:
+    create_settings(session)
+    source(session, "web")
+    client = client_als(ALL_PERMISSIONS)
+
+    response = client.post(
+        "/settings/window-alarm",
+        data={
+            "window_alarm_open_minutes": "45",
+            "window_alarm_outdoor_threshold_c": "2,5",
+        },
+        headers=_csrf(client),
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    row = session.get(Setting, 1)
+    assert row.window_alarm_open_minutes == 45
+    assert row.window_alarm_outdoor_threshold_c == Decimal("2.5")
+
+
+def test_an_unusable_window_alarm_threshold_is_rejected_and_names_its_field(
+    client_als: ClientBuilder, session: Session
+) -> None:
+    create_settings(session)
+    source(session, "web")
+    client = client_als(ALL_PERMISSIONS)
+
+    response = client.post(
+        "/settings/window-alarm",
+        data={"window_alarm_open_minutes": "1", "window_alarm_outdoor_threshold_c": "0"},
+        headers=_csrf(client),
+    )
+    assert response.status_code == 200
+    assert "window_alarm_open_minutes" in response.text or "zwischen" in response.text
+    # Nothing was half-written.
+    row = session.get(Setting, 1)
+    assert row.window_alarm_open_minutes == 30
+
+
+def test_the_window_alarm_thresholds_never_reach_limits_or_the_rest_schema() -> None:
+    """The project owner's explicit instruction: nothing new about the window
+    alarm reaches REST or MCP. Both adapters build their field list from
+    `LIMITS` (`api/schemas.py::ControlResponse`, `mcp/server.py`), so keeping the
+    two thresholds out of `LIMITS` is what keeps them out of both -- this is the
+    guard that would catch an accidental merge of `WINDOW_ALARM_LIMITS` into it.
+    """
+    from thermoctl.api.schemas import ControlResponse
+    from thermoctl.domain.control import WINDOW_ALARM_LIMITS
+
+    for field in WINDOW_ALARM_LIMITS:
+        assert field not in LIMITS
+        assert field not in ControlResponse.model_fields

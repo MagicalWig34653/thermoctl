@@ -58,16 +58,22 @@ Die folgende Aufstellung ist aus den Topic-Erzeugern in
 |---|---|---|
 | thermoctl | abonnieren | `<basis>/bridge/devices`, `<basis>/bridge/state`, `<basis>/+`, `<basis>/+/availability` |
 | thermoctl | abonnieren | `<präfix>/zones/+/command/+`, `<präfix>/zones/+/command/+/+` |
-| thermoctl | veröffentlichen | `<präfix>/availability`, `<präfix>/state/armed`, `<präfix>/zones/+/state/#` |
+| thermoctl | veröffentlichen | `<präfix>/availability`, `<präfix>/state/armed`, `<präfix>/state/outdoor_temperature`, `<präfix>/zones/+/state/#` |
 | thermoctl | veröffentlichen | `<basis>/+/set` für Anzeige-, Sollwert- und Schaltbefehle an Zigbee2MQTT-Geräte |
 | thermoctl | veröffentlichen | `homeassistant/climate/+/config`, `homeassistant/button/+/config`, `homeassistant/binary_sensor/+/config`, `homeassistant/sensor/+/config`, `homeassistant/number/+/config` |
-| Home Assistant | abonnieren | `<präfix>/availability`, `<präfix>/state/armed`, `<präfix>/zones/+/state/#` und für Discovery `homeassistant/#` |
+| Home Assistant | abonnieren | `<präfix>/availability`, `<präfix>/state/armed`, `<präfix>/state/outdoor_temperature`, `<präfix>/zones/+/state/#` und für Discovery `homeassistant/#` |
 | Home Assistant | veröffentlichen | nur `<präfix>/zones/+/command/+` und `<präfix>/zones/+/command/+/+` |
 
 Der Zustandsbaum umfasst die acht einfachen Zonenwerte
 `current_temperature`, `setpoint`, `operating_mode`, `sensor_state`, `would_heat`,
-`last_switch`, `next_switch` und `override_active`, außerdem `sensor_fault` samt
-`attributes`, `mode/<mode_id>` und `parameter/<name>`. Der Befehlsbaum nimmt genau
+`last_switch`, `next_switch` und `override_active`, außerdem `sensor_fault` und
+`window_alarm` je samt eigenem `attributes`, `mode/<mode_id>` und
+`parameter/<name>`. `sensor_fault` und `window_alarm` sind bewusst getrennte
+Entitäten -- ein Fenster-Alarm kann gelten, während der Sensor der Zone
+einwandfrei meldet, und die beiden dürfen sich deshalb nie gegenseitig
+überschreiben. `<präfix>/state/outdoor_temperature` liegt außerhalb des
+Zonenbaums: es gibt genau eine Außentemperatur für die ganze Anlage, keine je
+Zone. Der Befehlsbaum nimmt genau
 `setpoint`, `operating_mode`, `boost`, `cancel_override`, `mode/<mode_id>` und
 `parameter/<name>` entgegen. Die beiden Abonnementmuster sind absichtlich getrennt:
 MQTT-`+` steht für genau eine Ebene.
@@ -88,6 +94,7 @@ alles nicht ausdrücklich Erlaubte:
 ]}.
 {allow, {username, "thermoctl"}, publish, [
   "thermoctl/availability", "thermoctl/state/armed",
+  "thermoctl/state/outdoor_temperature",
   "thermoctl/zones/+/state/#", "zigbee2mqtt/+/set",
   "homeassistant/climate/+/config", "homeassistant/button/+/config",
   "homeassistant/binary_sensor/+/config", "homeassistant/sensor/+/config",
@@ -95,6 +102,7 @@ alles nicht ausdrücklich Erlaubte:
 ]}.
 {allow, {username, "homeassistant"}, subscribe, [
   "thermoctl/availability", "thermoctl/state/armed",
+  "thermoctl/state/outdoor_temperature",
   "thermoctl/zones/+/state/#", "homeassistant/#"
 ]}.
 {allow, {username, "homeassistant"}, publish, [
@@ -189,6 +197,7 @@ Home-Assistant-Discovery) durch eine eigene, saubere Struktur mit echter Discove
 ```
 thermoctl/availability                              online  (retained)
 thermoctl/state/armed                               true | false
+thermoctl/state/outdoor_temperature                 °C, eine Quelle für die ganze Anlage
 thermoctl/zones/<id>/state/current_temperature
 thermoctl/zones/<id>/state/setpoint
 thermoctl/zones/<id>/state/operating_mode
@@ -197,6 +206,8 @@ thermoctl/zones/<id>/state/would_heat
 thermoctl/zones/<id>/state/last_switch              ISO-8601 mit Zeitzone
 thermoctl/zones/<id>/state/next_switch              ISO-8601 mit Zeitzone
 thermoctl/zones/<id>/state/override_active           true | false
+thermoctl/zones/<id>/state/sensor_fault             ON | OFF, samt .../attributes
+thermoctl/zones/<id>/state/window_alarm             ON | OFF, samt .../attributes -- eigene Entität, teilt sich nichts mit sensor_fault
 thermoctl/zones/<id>/state/mode/<mode_id>           Solltemperatur dieses Modus
 thermoctl/zones/<id>/state/parameter/<name>         wirksamer Regelparameter
 thermoctl/zones/<id>/command/setpoint
@@ -282,6 +293,13 @@ Climate-Entität.
 **Die Abmeldung gehört dazu**: Eine gelöschte Zone bekommt eine leere Nutzlast auf
 demselben Config-Topic. Ohne sie bleibt sie in Home Assistant als Leiche stehen — der Teil,
 den man beim ersten Bauen vergisst.
+
+Je Zone kommen außerdem zwei `binary_sensor`-Entitäten hinzu: `sensor_fault`
+(„Sensorstörung", bereits vorhanden) und `window_alarm` („Fenster vergessen offen",
+neu — eigenes Topic, eigene Entität, teilt sich nichts mit `sensor_fault`, weil
+beide Zustände gleichzeitig gelten können). Anlagenweit, nicht je Zone, kommt eine
+`sensor`-Entität „Außentemperatur" hinzu, registriert einmalig zusammen mit der
+Entität „Regelung scharf".
 
 ## 4. Was Home Assistant bekommt
 

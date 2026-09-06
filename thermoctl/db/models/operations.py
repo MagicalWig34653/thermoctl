@@ -147,6 +147,37 @@ class Setting(Base):
     notify_stuck_sensor: Mapped[bool] = mapped_column(
         Boolean, default=True, server_default=true(), nullable=False
     )
+    # A fifth kind, again its own: a forgotten open window with cold air outside
+    # (`domain.window_alarm`) is neither a sensor problem nor a stuck reading, and
+    # muting either of those two must not also mute this one.
+    notify_window_alarm: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default=true(), nullable=False
+    )
+    # --- Außentemperatur und Fenster-Alarm --------------------------------------
+    # Same pattern as `zone.temperature_source_device_id` -- picked from the known
+    # Zigbee2MQTT devices with a `temperature` capability -- but exactly one for the
+    # whole plant, not one per zone: there is only one outside. `SET NULL`, like the
+    # zone column, so deleting the device does not also delete this row.
+    outdoor_temperature_source_device_id: Mapped[int | None] = mapped_column(
+        ForeignKey("device.id", ondelete="SET NULL"), nullable=True
+    )
+    # How long a window may stay open before it counts, together with cold outdoor
+    # air, as "forgotten" rather than "airing out". 30 minutes: a deliberate airing
+    # ("Stoßlüften") is commonly recommended for five to ten minutes; thirty is
+    # comfortably longer than any ordinary airing while still catching a forgotten
+    # window well within the hour, not after the room has already cooled down for
+    # half a day. Bounds in `domain.control.LIMITS` (5 to 240 minutes).
+    window_alarm_open_minutes: Mapped[int] = mapped_column(
+        Integer, default=30, server_default=text("30"), nullable=False
+    )
+    # Below this outdoor temperature, an open window risks pulling a room towards
+    # frost. 5°C: comfortably above the frost-protection setpoints in use on this
+    # plant (see `zone_setpoint`), so the alarm reaches an operator before a room is
+    # anywhere near frost risk, not only once it already is. Bounds in
+    # `domain.control.LIMITS` (-20 to 15 °C).
+    window_alarm_outdoor_threshold_c: Mapped[Decimal] = mapped_column(
+        Numeric(4, 1), default=Decimal("5.0"), server_default=text("5.0"), nullable=False
+    )
     # The webhook's delivery state -- what the interface's second part shows.
     # `notify_last_attempt_at` and `notify_last_ok` are `NULL` together until the
     # first attempt ever happens (no webhook configured, or the service has never

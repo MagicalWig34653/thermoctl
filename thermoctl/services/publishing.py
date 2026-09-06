@@ -60,6 +60,7 @@ from thermoctl.domain.fault_notice import (
     command_failure_notice,
     notification_audit_action,
 )
+from thermoctl.domain.outdoor import outdoor_reading
 from thermoctl.domain.schedule import end_of_next_switch, resolved_setpoint, running_override
 from thermoctl.domain.self_regulating import SETPOINT_PROPERTY, valve_commands
 from thermoctl.domain.switch_commands import switch_commands, thermostat_commands
@@ -77,6 +78,7 @@ from thermoctl.integrations.actuators import (
 from thermoctl.integrations.meross_mqtt import MerossCommandTransport, toggle_payload
 from thermoctl.integrations.mqtt.publication import (
     DiscoveryMessage,
+    FaultNoticeTopics,
     armed_discovery,
     armed_topic,
     availability_topic,
@@ -86,11 +88,15 @@ from thermoctl.integrations.mqtt.publication import (
     fault_notice_topics,
     mode_discovery,
     mode_topics,
+    outdoor_discovery,
+    outdoor_topic,
     override_active_discovery,
     parameter_discovery,
     parameter_topics,
     states_topics,
     timestamp_discovery,
+    window_alarm_discovery,
+    window_alarm_topics,
     zone_discovery,
 )
 from thermoctl.services.device_commands import EXECUTED, FAILED, SUPPRESSED, record_command
@@ -219,6 +225,7 @@ def _discovery_messages(session: Session, zone: Zone, prefix: str) -> list[Disco
         cancel_override_discovery(zone.id, name, prefix),
         override_active_discovery(zone.id, name, prefix),
         fault_notice_discovery(zone.id, name, prefix),
+        window_alarm_discovery(zone.id, name, prefix),
         timestamp_discovery(zone.id, name, "last_switch", "Letzte Schaltung", prefix),
         timestamp_discovery(
             zone.id, name, "next_switch", "Nächster Moduswechsel", prefix
@@ -237,6 +244,25 @@ def _discovery_messages(session: Session, zone: Zone, prefix: str) -> list[Disco
     return messages
 
 
+async def _publish_notice(
+    client: MqttPublisher, topics: FaultNoticeTopics, notice: FaultNotice
+) -> None:
+    state = "ON" if notice.severity == "stoerung" else "OFF"
+    attributes = json.dumps(
+        {
+            "schluessel": notice.key,
+            "schwere": notice.severity,
+            "titel": notice.title,
+            "text": notice.text,
+        },
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    )
+    await client.publishing(topics.attributes, attributes, switches=False, retained=True)
+    await client.publishing(topics.state, state, switches=False, retained=True)
+
+
 async def send_fault_notice(
     client: MqttPublisher, notice: FaultNotice, prefix: str
 ) -> None:
@@ -248,26 +274,33 @@ async def send_fault_notice(
     """
     try:
         zone_id = int(notice.key.removeprefix("sensor:"))
-        topics = fault_notice_topics(zone_id, prefix)
-        state = "ON" if notice.severity == "stoerung" else "OFF"
-        attributes = json.dumps(
-            {
-                "schluessel": notice.key,
-                "schwere": notice.severity,
-                "titel": notice.title,
-                "text": notice.text,
-            },
-            ensure_ascii=False,
-            separators=(",", ":"),
-            sort_keys=True,
-        )
-        await client.publishing(
-            topics.attributes, attributes, switches=False, retained=True
-        )
-        await client.publishing(topics.state, state, switches=False, retained=True)
+        await _publish_notice(client, fault_notice_topics(zone_id, prefix), notice)
     except Exception:
         log.exception(
             "Störungsmeldung konnte nicht an Home Assistant gesendet werden",
+            extra={"schluessel": notice.key},
+        )
+
+
+async def send_window_alarm_notice(
+    client: MqttPublisher, notice: FaultNotice, prefix: str
+) -> None:
+    """The window-alarm counterpart of `send_fault_notice` above.
+
+    Its own function, not a branch inside `send_fault_notice`: the two publish to
+    different topics (`window_alarm_topics`, not `fault_notice_topics`) because a
+    window alarm can be active while the zone's own sensor entity stays `OFF` --
+    they are unrelated conditions and must never share one Home Assistant entity.
+    The key carries a `fenster:` prefix instead of `sensor:` for exactly that
+    reason; see `domain.fault_notice.window_alarm_notice` and
+    `app.py::_window_alarm_notices`.
+    """
+    try:
+        zone_id = int(notice.key.removeprefix("fenster:"))
+        await _publish_notice(client, window_alarm_topics(zone_id, prefix), notice)
+    except Exception:
+        log.exception(
+            "Fenster-Alarm konnte nicht an Home Assistant gesendet werden",
             extra={"schluessel": notice.key},
         )
 
@@ -329,18 +362,32 @@ async def cycle(
         sent_count += 1
 
     if not state.service_registered:
-        message = armed_discovery(prefix)
-        _finish_database_work(session)
-        if await client.publishing(
-            message.topic, message.payload, switches=False, retained=True
-        ):
-            state.service_registered = True
-            sent_count += 1
+        # `outdoor_discovery` alongside `armed_discovery`: both are one-time,
+        # plant-wide registrations, not per-zone ones -- there is exactly one
+        # outdoor reading for the whole plant.
+        for message in (armed_discovery(prefix), outdoor_discovery(prefix)):
+            _finish_database_work(session)
+            if await client.publishing(
+                message.topic, message.payload, switches=False, retained=True
+            ):
+                sent_count += 1
+        state.service_registered = True
     _finish_database_work(session)
     if await client.publishing(
         armed_topic(prefix), _as_text(armed), switches=False, retained=True
     ):
         sent_count += 1
+    if setting_row is not None:
+        outdoor_value = _as_text(outdoor_reading(session, setting_row, now).temperature_c)
+        # An empty value is not sent, same reasoning as `_send_zone_state` below:
+        # in MQTT an empty payload deletes a retained message, and "no reading"
+        # is a different fact than "this value doesn't exist anymore".
+        if outdoor_value:
+            _finish_database_work(session)
+            if await client.publishing(
+                outdoor_topic(prefix), outdoor_value, switches=False, retained=True
+            ):
+                sent_count += 1
 
     for zone in zones:
         sent_count += await _register_zone(session, client, state, zone, prefix)

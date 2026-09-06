@@ -1762,6 +1762,156 @@ async def test_the_shadow_loop_reports_a_newly_stuck_reading(
 
 
 @pytest.mark.anyio
+async def test_the_shadow_loop_reports_a_forgotten_open_window(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The window-alarm counterpart of the two notice tests above -- same "notice
+    really goes out, only once" proof, for `notify_window_alarm` and its own
+    `fenster:<zone id>` key and `.../state/window_alarm` topic (not `sensor:<zone
+    id>`/`.../state/sensor_fault`: this condition can hold while the zone's own
+    sensor is perfectly fine, so it must never share that entity).
+
+    The zone's window has already been open for an hour before the loop ever
+    runs (`ZoneState` seeded directly, the same way `create_zone_state` seeds a
+    fresh row for other tests) -- `window_open_since` must survive unchanged
+    across `advance_zone_state`, and the alarm condition already holds on the very
+    first cycle.
+    """
+    engine, fabrik = _own_database(tmp_path, "schleife-fensteralarm")
+    with fabrik() as http_session:
+        settings_row = create_settings(http_session)
+        settings_row.window_alarm_open_minutes = 10
+        settings_row.window_alarm_outdoor_threshold_c = Decimal("5.0")
+        settings_row.default_sensor_timeout_seconds = 86400
+        source(http_session, "system")
+        sensor_status_of(http_session, "keine_quelle")
+        sensor_status_of(http_session, "ok")
+        temperature = DeviceCapability(code="temperature", label="Temperaturmessung")
+        contact = DeviceCapability(code="contact", label="Kontakt")
+        http_session.add_all([temperature, contact])
+        http_session.flush()
+
+        outdoor_device = create_device(http_session, "aussenfuehler")
+        settings_row.outdoor_temperature_source_device_id = outdoor_device.id
+        http_session.add(
+            Measurement(
+                device_id=outdoor_device.id,
+                capability_id=temperature.id,
+                value_numeric=Decimal("-2.0"),
+                measured_at=NOW,
+                received_at=NOW,
+            )
+        )
+
+        zone = create_zone(http_session, "fenster-alarm-zone")
+        window_device = create_device(http_session, "fenster-kontakt")
+        http_session.add(
+            ZoneDevice(
+                zone_id=zone.id,
+                device_id=window_device.id,
+                device_role_id=role(http_session, "window_contact").id,
+            )
+        )
+        opened_at = NOW - timedelta(hours=1)
+        http_session.add(
+            Measurement(
+                device_id=window_device.id,
+                capability_id=contact.id,
+                # "false" is an open contact -- see
+                # `test_zone_state_inverts_the_zigbee_contact_value_exactly_once`
+                # in `test_ingest.py`.
+                value_text="false",
+                measured_at=opened_at,
+                received_at=opened_at,
+            )
+        )
+        http_session.add(
+            ZoneState(
+                zone_id=zone.id,
+                sensor_status_id=sensor_status_of(http_session, "keine_quelle").id,
+                window_open=True,
+                window_open_since=opened_at,
+                window_alarm=False,
+                updated_at=opened_at,
+            )
+        )
+        http_session.commit()
+
+    sent_count: list[object] = []
+    mqtt_notices: list[tuple[str, str, bool]] = []
+
+    async def mitschreiben(
+        _session_factory: object, _settings: object, notice: object
+    ) -> None:
+        sent_count.append(notice)
+
+    class NoticePublisher:
+        async def publishing(
+            self,
+            topic: str,
+            payload: str,
+            *,
+            switches: bool,
+            retained: bool = False,
+        ) -> bool:
+            if "/state/window_alarm" in topic:
+                mqtt_notices.append((topic, payload, switches))
+            return True
+
+    waited: list[float] = []
+
+    async def _sleep(seconds: float) -> None:
+        waited.append(seconds)
+        if len(waited) == 2:
+            raise asyncio.CancelledError
+
+    fake_app = types.SimpleNamespace(
+        state=types.SimpleNamespace(
+            session_factory=fabrik,
+            publisher=NoticePublisher(),
+            publication_state=app_modul.PublicationState(),
+            sending_allowed=False,
+        )
+    )
+    monkeypatch.setattr(app_modul.asyncio, "sleep", _sleep)
+    monkeypatch.setattr(app_modul, "deliver", mitschreiben)
+    # Every cycle sees the same `now` -- `opened_at` above is anchored to the
+    # fixed `NOW`, not the real wall clock `_shadow_loop` would otherwise ask
+    # `utcnow()` for.
+    monkeypatch.setattr(app_modul, "utcnow", lambda: NOW)
+
+    with pytest.raises(asyncio.CancelledError):
+        await app_modul._shadow_loop(fake_app)  # type: ignore[arg-type]
+
+    for task in list(app_modul._running_notices):
+        await task
+
+    assert len(sent_count) == 1, (
+        "Two cycles with the same active window alarm yield one notice, not two."
+    )
+    assert sent_count[0].kind == "window_alarm"  # type: ignore[attr-defined]
+    assert sent_count[0].severity == "stoerung"  # type: ignore[attr-defined]
+    assert sent_count[0].key == f"fenster:{zone.id}"  # type: ignore[attr-defined]
+
+    notice_states = [
+        payload for topic, payload, _ in mqtt_notices if not topic.endswith("/attributes")
+    ]
+    assert notice_states == ["ON"]
+    assert all(switches is False for _, _, switches in mqtt_notices)
+
+    with fabrik() as http_session:
+        state = http_session.get(ZoneState, zone.id)
+        assert state is not None
+        assert state.window_alarm is True
+        assert state.window_open_since == opened_at, (
+            "The window has stayed open the whole time -- the clock must not "
+            "have been reset by the cycle that just confirmed the alarm."
+        )
+
+    engine.dispose()
+
+
+@pytest.mark.anyio
 async def test_a_switched_off_sensor_notice_still_reaches_home_assistant(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

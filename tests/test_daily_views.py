@@ -884,3 +884,75 @@ def test_a_thermostat_request_with_a_nonsensical_mode_is_a_bad_request(
         follow_redirects=False,
     )
     assert falsche_richtung.status_code == 400
+
+
+# --- Außentemperatur und Fenster-Alarm auf der Startseite -------------------
+
+
+def test_the_start_page_shows_the_outdoor_temperature(
+    angemeldeter_client: TestClient, session: Session
+) -> None:
+    from thermoctl.db.models.measurement import Measurement
+
+    row = create_settings(session)
+    device = Device(
+        integration_id=integration(session).id,
+        external_id="draussen",
+        display_name="draussen",
+    )
+    session.add(device)
+    session.flush()
+    session.add(
+        DeviceCapabilityLink(
+            device_id=device.id, capability_id=capability(session, "temperature").id
+        )
+    )
+    row.outdoor_temperature_source_device_id = device.id
+    session.add(
+        Measurement(
+            device_id=device.id,
+            capability_id=capability(session, "temperature").id,
+            value_numeric=Decimal("3.2"),
+            measured_at=datetime.now(),
+            received_at=datetime.now(),
+        )
+    )
+    session.flush()
+
+    response = angemeldeter_client.get("/")
+    assert response.status_code == 200
+    assert "3,2" in response.text
+    assert "Außentemperatur" in response.text
+
+
+def test_the_start_page_names_no_source_and_stale_distinctly_from_a_value(
+    angemeldeter_client: TestClient, session: Session
+) -> None:
+    """"keine Quelle gewählt" and "Wert veraltet" must read as prose, not as a
+    number someone could mistake for a real temperature."""
+    create_settings(session)
+    response = angemeldeter_client.get("/")
+    assert response.status_code == 200
+    assert "keine Quelle gewählt" in response.text
+
+
+def test_the_start_page_shows_a_forgotten_window_chip(
+    angemeldeter_client: TestClient, session: Session
+) -> None:
+    from tests.helpers import sensor_status_of
+    from thermoctl.db.models.state import ZoneState
+
+    zone = _grundlage(session)
+    session.add(
+        ZoneState(
+            zone_id=zone.id,
+            sensor_status_id=sensor_status_of(session, "keine_quelle").id,
+            window_alarm=True,
+            updated_at=datetime.now(),
+        )
+    )
+    session.flush()
+
+    response = angemeldeter_client.get("/")
+    assert response.status_code == 200
+    assert "Fenster vergessen" in response.text

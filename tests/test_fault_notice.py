@@ -10,12 +10,14 @@ from thermoctl.domain.fault_notice import (
     NOTICE_KIND_COMMAND_FAILURE,
     NOTICE_KIND_SENSOR_FAULT,
     NOTICE_KIND_STUCK_SENSOR,
+    NOTICE_KIND_WINDOW_ALARM,
     bridge_notice,
     command_failure_notice,
     notice_enabled,
     notification_audit_action,
     sensor_notice,
     stuck_sensor_notice,
+    window_alarm_notice,
 )
 from thermoctl.integrations.mqtt.zigbee2mqtt import bridge_reachable
 
@@ -139,6 +141,7 @@ def _settings(**overrides: bool) -> Setting:
         "notify_bridge_faults": True,
         "notify_command_failures": True,
         "notify_stuck_sensor": True,
+        "notify_window_alarm": True,
     }
     values.update(overrides)
     return Setting(**values)  # type: ignore[arg-type]
@@ -176,11 +179,45 @@ def test_stuck_sensor_first_observed_as_stuck_is_not_suppressed() -> None:
 
 
 def test_the_gate_answers_per_kind_from_its_own_column() -> None:
-    settings = _settings(notify_bridge_faults=False, notify_stuck_sensor=False)
+    settings = _settings(
+        notify_bridge_faults=False, notify_stuck_sensor=False, notify_window_alarm=False
+    )
     assert notice_enabled(NOTICE_KIND_SENSOR_FAULT, settings) is True
     assert notice_enabled(NOTICE_KIND_BRIDGE_FAULT, settings) is False
     assert notice_enabled(NOTICE_KIND_COMMAND_FAILURE, settings) is True
     assert notice_enabled(NOTICE_KIND_STUCK_SENSOR, settings) is False
+    assert notice_enabled(NOTICE_KIND_WINDOW_ALARM, settings) is False
+
+
+def test_window_alarm_reports_only_the_transition_into_and_out_of_it() -> None:
+    fault = window_alarm_notice("fenster:1", "Testzone", False, True)
+    assert fault is not None
+    assert fault.severity == "stoerung"
+    assert fault.kind == NOTICE_KIND_WINDOW_ALARM
+    assert "Testzone" in fault.title
+    # Still alarming the next cycle -- no repeated notice.
+    assert window_alarm_notice("fenster:1", "Testzone", True, True) is None
+
+    all_clear = window_alarm_notice("fenster:1", "Testzone", True, False)
+    assert all_clear is not None
+    assert all_clear.severity == "entwarnung"
+    assert all_clear.kind == NOTICE_KIND_WINDOW_ALARM
+    # Still fine the next cycle -- no repeated all-clear.
+    assert window_alarm_notice("fenster:1", "Testzone", False, False) is None
+
+
+def test_window_alarm_first_observed_as_active_is_not_suppressed() -> None:
+    assert window_alarm_notice("fenster:1", "Testzone", None, True) is not None
+    assert window_alarm_notice("fenster:1", "Testzone", None, False) is None
+
+
+def test_window_alarm_an_unknown_outdoor_reading_never_produces_a_notice() -> None:
+    """`after=None` -- the outdoor reading is currently unknown -- must never be
+    read as an all-clear (even coming from an active alarm) and obviously is not
+    itself a new alarm either."""
+    assert window_alarm_notice("fenster:1", "Testzone", True, None) is None
+    assert window_alarm_notice("fenster:1", "Testzone", False, None) is None
+    assert window_alarm_notice("fenster:1", "Testzone", None, None) is None
 
 
 def test_the_gate_rejects_an_unknown_kind_instead_of_guessing() -> None:

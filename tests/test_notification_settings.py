@@ -90,6 +90,41 @@ def test_saving_notification_preferences_persists_all_three(
     assert row.notify_command_failures is False
 
 
+def test_the_settings_page_shows_the_window_alarm_toggle(
+    client_als: ClientBuilder, session: Session
+) -> None:
+    create_settings(session)
+    response = client_als(ALL_PERMISSIONS).get("/settings")
+    assert response.status_code == 200
+    assert 'name="notify_window_alarm"' in response.text
+
+
+def test_saving_notification_preferences_also_persists_the_window_alarm_toggle(
+    client_als: ClientBuilder, session: Session
+) -> None:
+    row = create_settings(session)
+    source(session, "web")
+    client = client_als(ALL_PERMISSIONS)
+
+    response = client.post(
+        "/settings/notifications",
+        data={},  # nothing checked
+        headers=_csrf(client),
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    assert row.notify_window_alarm is False
+
+    response = client.post(
+        "/settings/notifications",
+        data={"notify_window_alarm": "yes"},
+        headers=_csrf(client),
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    assert row.notify_window_alarm is True
+
+
 def test_saving_notification_preferences_keeps_a_ticked_box_on(
     client_als: ClientBuilder, session: Session
 ) -> None:

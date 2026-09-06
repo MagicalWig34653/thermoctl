@@ -26,7 +26,9 @@ from thermoctl.domain.device_classes import (
     descriptions_from_bridge_list,
 )
 from thermoctl.domain.fault import NO_SOURCE, OK, sensor_state, stuck_reading
+from thermoctl.domain.outdoor import outdoor_reading
 from thermoctl.domain.reading import Reading, readings_from_payload
+from thermoctl.domain.window_alarm import window_alarm_state
 from thermoctl.domain.zone_settings import control_parameters
 from thermoctl.integrations.mqtt.zigbee2mqtt import MessageKind, trim
 
@@ -377,6 +379,10 @@ def advance_zone_state(session: Session, now: datetime) -> None:
     status_ids = {status.code: status.id for status in session.scalars(select(SensorStatus))}
     setting_row = session.get(Setting, 1)
     assert setting_row is not None, "setting-Zeile fehlt — Einrichtung unvollständig"
+    # Computed once per cycle, not once per zone: there is exactly one outside for
+    # the whole plant, and `window_alarm_state` below needs the same reading for
+    # every zone evaluated this cycle.
+    outdoor = outdoor_reading(session, setting_row, now)
     for zone in session.scalars(select(Zone)):
         measurement = None
         if zone.temperature_source_device_id is not None and temperature is not None:
@@ -418,13 +424,27 @@ def advance_zone_state(session: Session, now: datetime) -> None:
             and temperature is not None
             and _stuck(session, zone, temperature, now, setting_row.stuck_reading_hours)
         )
-        state.window_open = _window_open(
+        previously_open = state.window_open is True
+        new_window_open = _window_open(
             session,
             zone,
             contact,
             window_role,
             now,
             control_parameters(session, zone).sensor_timeout_seconds,
+        )
+        if new_window_open is True and not previously_open:
+            state.window_open_since = now
+        elif new_window_open is not True:
+            state.window_open_since = None
+        state.window_open = new_window_open
+        state.window_alarm = window_alarm_state(
+            window_open_since=state.window_open_since,
+            now=now,
+            open_after_minutes=setting_row.window_alarm_open_minutes,
+            outdoor_status=outdoor.status,
+            outdoor_temperature_c=outdoor.temperature_c,
+            threshold_c=setting_row.window_alarm_outdoor_threshold_c,
         )
         state.updated_at = now
 

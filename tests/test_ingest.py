@@ -463,6 +463,140 @@ def test_a_missing_or_stale_window_contact_stays_unknown(
     assert old_state is not None and old_state.window_open is None
 
 
+def _open_window_zone(session: Session, name: str) -> tuple[Zone, Device]:
+    _capability(session, "contact")
+    zone = create_zone(session, name)
+    device = create_device(session, f"{name}-kontakt")
+    session.add(
+        ZoneDevice(
+            zone_id=zone.id,
+            device_id=device.id,
+            device_role_id=role(session, "window_contact").id,
+        )
+    )
+    return zone, device
+
+
+def _set_contact(
+    session: Session, device: Device, value: str, at: datetime
+) -> None:
+    contact = session.query(DeviceCapability).filter_by(code="contact").one()
+    session.add(
+        Measurement(
+            device_id=device.id,
+            capability_id=contact.id,
+            value_text=value,
+            measured_at=at,
+            received_at=at,
+        )
+    )
+
+
+def test_window_open_since_starts_when_the_window_first_opens(session: Session) -> None:
+    setting_row = create_settings(session)
+    # Long enough that the artificial time jumps below do not make the contact
+    # reading itself count as stale (`sensor_state`) -- this test is about
+    # `window_open_since`, not about the sensor-timeout interaction.
+    setting_row.default_sensor_timeout_seconds = 86400
+    sensor_status_of(session, "keine_quelle")
+    zone, device = _open_window_zone(session, "fenster-seit-zone")
+    _set_contact(session, device, "true", EMPFANGEN_AM)
+
+    advance_zone_state(session, EMPFANGEN_AM)
+    state = session.get(ZoneState, zone.id)
+    assert state is not None and state.window_open is False
+    assert state.window_open_since is None
+
+    opened_at = EMPFANGEN_AM + timedelta(minutes=1)
+    _set_contact(session, device, "false", opened_at)
+    advance_zone_state(session, opened_at)
+    state = session.get(ZoneState, zone.id)
+    assert state is not None and state.window_open is True
+    assert state.window_open_since == opened_at
+
+    # A later cycle where the window is still open must not reset the clock --
+    # otherwise the window alarm's "open for longer than X minutes" could never
+    # trigger, since every cycle would restart the count from zero.
+    later = opened_at + timedelta(minutes=40)
+    advance_zone_state(session, later)
+    state = session.get(ZoneState, zone.id)
+    assert state is not None and state.window_open_since == opened_at
+
+
+def test_window_open_since_clears_when_the_window_closes(session: Session) -> None:
+    create_settings(session)
+    sensor_status_of(session, "keine_quelle")
+    zone, device = _open_window_zone(session, "fenster-schliesst-zone")
+    opened_at = EMPFANGEN_AM
+    _set_contact(session, device, "false", opened_at)
+    advance_zone_state(session, opened_at)
+    assert session.get(ZoneState, zone.id).window_open_since == opened_at  # type: ignore[union-attr]
+
+    closed_at = opened_at + timedelta(minutes=10)
+    _set_contact(session, device, "true", closed_at)
+    advance_zone_state(session, closed_at)
+    state = session.get(ZoneState, zone.id)
+    assert state is not None and state.window_open is False
+    assert state.window_open_since is None
+
+
+def test_window_alarm_is_unknown_without_an_outdoor_source(session: Session) -> None:
+    """No outdoor source configured is an unknown state, not "no alarm" --
+    `domain.window_alarm.window_alarm_state`'s own contract."""
+    create_settings(session)
+    sensor_status_of(session, "keine_quelle")
+    zone, device = _open_window_zone(session, "kein-aussenwert-zone")
+    opened_at = EMPFANGEN_AM
+    _set_contact(session, device, "false", opened_at)
+
+    advance_zone_state(session, opened_at + timedelta(hours=1))
+    state = session.get(ZoneState, zone.id)
+    assert state is not None and state.window_alarm is None
+
+
+def test_window_alarm_becomes_true_once_both_conditions_hold(session: Session) -> None:
+    setting_row = create_settings(session)
+    setting_row.window_alarm_open_minutes = 30
+    setting_row.window_alarm_outdoor_threshold_c = Decimal("5.0")
+    # Long enough that the artificial time jumps below do not make the window
+    # contact's or the outdoor sensor's own reading count as stale.
+    setting_row.default_sensor_timeout_seconds = 86400
+    sensor_status_of(session, "keine_quelle")
+    temperature = _capability(session, "temperature")
+    outdoor_device = create_device(session, "aussenfuehler")
+    setting_row.outdoor_temperature_source_device_id = outdoor_device.id
+    session.add(
+        Measurement(
+            device_id=outdoor_device.id,
+            capability_id=temperature.id,
+            value_numeric=Decimal("-2.0"),
+            measured_at=EMPFANGEN_AM,
+            received_at=EMPFANGEN_AM,
+        )
+    )
+    zone, device = _open_window_zone(session, "fenster-alarm-zone")
+    opened_at = EMPFANGEN_AM
+    _set_contact(session, device, "false", opened_at)
+
+    # Window just opened -- not yet long enough.
+    advance_zone_state(session, opened_at)
+    state = session.get(ZoneState, zone.id)
+    assert state is not None and state.window_alarm is False
+
+    # 40 minutes later, still open and still cold outside.
+    later = opened_at + timedelta(minutes=40)
+    advance_zone_state(session, later)
+    state = session.get(ZoneState, zone.id)
+    assert state is not None and state.window_alarm is True
+
+    # The window closes -- the alarm clears in the same cycle.
+    closed_at = later + timedelta(minutes=1)
+    _set_contact(session, device, "true", closed_at)
+    advance_zone_state(session, closed_at)
+    state = session.get(ZoneState, zone.id)
+    assert state is not None and state.window_alarm is False
+
+
 def test_a_broken_availability_message_has_no_effect(session: Session) -> None:
     """The third message path needs the same protection as the other two.
 
