@@ -157,11 +157,16 @@ class ShadowDecision(Base):
     )
     temperature_c: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), nullable=True)
     setpoint_c: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), nullable=True)
-    setpoint_reason: Mapped[str] = mapped_column(String(255), nullable=False)
+    # Protokolltext für Grundsatz 5 (Debuggbarkeit), keine fachliche Datenmodellspalte
+    # -- daher `Text` statt einer willkürlichen Obergrenze. War `String(255)`, bis ein
+    # frei benennbarer Zeitplan-Modus zusammen mit Sonnenabsenkung, der Fensterausnahme
+    # für Frostschutz und dem PI-Zusatz gemessen über 400 Zeichen erreichte (Migration
+    # `c1a4e9d872b3`).
+    setpoint_reason: Mapped[str] = mapped_column(Text, nullable=False)
     would_heat: Mapped[bool] = mapped_column(Boolean, nullable=False)
     previous_would_heat: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     outcome_code: Mapped[str] = mapped_column(String(32), nullable=False)
-    reason: Mapped[str] = mapped_column(String(255), nullable=False)
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
     # Structured PI diagnostics are snapshots only. The durable values that feed the
     # next decision live above in `zone_state` and cannot disappear with retention.
     requested_controller: Mapped[str] = mapped_column(
