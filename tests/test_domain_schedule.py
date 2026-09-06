@@ -1467,6 +1467,21 @@ def test_create_vacation_refuses_a_second_overlapping_one(session: Session) -> N
         )
 
 
+def test_create_vacation_with_an_unknown_source_fails(session: Session) -> None:
+    """Same reasoning as `test_an_override_with_an_unknown_source_fails`: a vacation
+    with no source would be one where nobody could say afterward how it was set."""
+    zone_with_schedule(session, "urlaub-ohne-quelle", points=[])
+    with pytest.raises(ValueError, match="rauchzeichen"):
+        create_vacation(
+            session,
+            start_date=date(2026, 8, 1),
+            end_date=date(2026, 8, 2),
+            setback_temperature_c=Decimal("15.0"),
+            timezone_name="Europe/Berlin",
+            source="rauchzeichen",
+        )
+
+
 def test_cancel_vacation_ends_the_running_one(session: Session) -> None:
     zone_with_schedule(session, "urlaub-abbrechen", points=[])
     now = datetime(2026, 8, 1, 0, 0)

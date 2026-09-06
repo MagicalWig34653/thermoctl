@@ -595,6 +595,10 @@
       "\"Wenn ein Befehl an einen Aktor nicht durchkommt.\") }}",
       "<span class=\"tc-chip tc-chip-warm\"><span class=\"tc-dot\"></span>Angekommen</span>"
     ],
+    "thermoctl/web/templates/vacation.html": [
+      "<span class=\"tc-chip tc-chip-warm\"><span class=\"tc-dot\"></span>Läuft</span>",
+      "Mindestschaltdauern und Ventilschutz gelten unverändert weiter, und eine Zone in"
+    ],
     "thermoctl/web/templates/start.html": [
       "<a href=\"{{ url_prefix }}/vacation\" class=\"tc-chip {{ 'tc-chip-warm' if vacation_running else 'tc-chip-quiet' }}\"",
       "<div class=\"small mt-1\" style=\"color: var(--warmth)\">{{ thermostat_errors }}</div>",

@@ -12,6 +12,7 @@ from tests.helpers import (
     command_outcome,
     create_device,
     create_device_state,
+    create_settings,
     integration,
     operating_mode,
     role,
@@ -601,3 +602,129 @@ def test_a_single_parameter_needs_zone_manage(client, token_fuer, session) -> No
         "/api/v1/zones/1/parameters/hysteresis_k", headers=head, json={"value": "0.4"}
     )
     assert response.status_code == 403
+
+
+# --- Vacation --------------------------------------------------------------------
+#
+# Plant-wide: unlike override, `vacation.manage` and `zone.read` here are granted with
+# no zone (`token_fuer([("zone.read", None), ...])`), the same reasoning
+# `domain.schedule.create_vacation`'s docstring gives for the permission itself.
+
+
+def test_reading_the_vacation_needs_zone_read(client, token_fuer) -> None:
+    head = token_fuer([("vacation.manage", None)])
+    response = client.get("/api/v1/vacation", headers=head)
+    assert response.status_code == 403
+
+
+def test_reading_the_vacation_returns_null_when_none_is_set(client, token_fuer) -> None:
+    head = token_fuer([("zone.read", None)])
+    response = client.get("/api/v1/vacation", headers=head)
+    assert response.status_code == 200
+    assert response.json() is None
+
+
+def test_creating_a_vacation_needs_the_permission(client, token_fuer, session) -> None:
+    create_settings(session)
+    head = token_fuer([("zone.read", None)])
+    response = client.post(
+        "/api/v1/vacation",
+        headers=head,
+        json={
+            "start_date": "2030-08-01",
+            "end_date": "2030-08-10",
+            "setback_temperature_c": "15.0",
+        },
+    )
+    assert response.status_code == 403
+
+
+def test_creating_a_vacation_creates_an_entry(client, token_fuer, session) -> None:
+    from thermoctl.db.models.vacation import Vacation
+
+    create_settings(session)
+    head = token_fuer([("zone.read", None), ("vacation.manage", None)])
+    response = client.post(
+        "/api/v1/vacation",
+        headers=head,
+        json={
+            "start_date": "2030-08-01",
+            "end_date": "2030-08-10",
+            "setback_temperature_c": "15.0",
+        },
+    )
+    assert response.status_code == 201
+    body = response.json()
+    assert body["setback_temperature_c"] == "15.0"
+    assert body["cancelled_at"] is None
+    entry = session.query(Vacation).one()
+    assert entry.created_by_token_id is not None
+
+
+def test_creating_a_vacation_rejects_an_end_before_the_start(
+    client, token_fuer, session
+) -> None:
+    create_settings(session)
+    head = token_fuer([("zone.read", None), ("vacation.manage", None)])
+    response = client.post(
+        "/api/v1/vacation",
+        headers=head,
+        json={
+            "start_date": "2030-08-10",
+            "end_date": "2030-08-01",
+            "setback_temperature_c": "15.0",
+        },
+    )
+    assert response.status_code == 422
+    assert "Ende" in response.json()["detail"]
+
+
+def test_creating_a_vacation_refuses_a_second_overlapping_one(
+    client, token_fuer, session
+) -> None:
+    create_settings(session)
+    head = token_fuer([("zone.read", None), ("vacation.manage", None)])
+    payload = {
+        "start_date": "2030-08-01",
+        "end_date": "2030-08-10",
+        "setback_temperature_c": "15.0",
+    }
+    first = client.post("/api/v1/vacation", headers=head, json=payload)
+    assert first.status_code == 201
+    second = client.post(
+        "/api/v1/vacation",
+        headers=head,
+        json={**payload, "start_date": "2030-09-01", "end_date": "2030-09-10"},
+    )
+    assert second.status_code == 422
+    assert "laufend" in second.json()["detail"] or "geplant" in second.json()["detail"]
+
+
+def test_cancelling_a_vacation_needs_the_permission(client, token_fuer) -> None:
+    head = token_fuer([("zone.read", None)])
+    response = client.delete("/api/v1/vacation", headers=head)
+    assert response.status_code == 403
+
+
+def test_cancelling_a_vacation_ends_the_running_one(client, token_fuer, session) -> None:
+    from thermoctl.db.models.vacation import Vacation
+
+    create_settings(session)
+    head = token_fuer([("zone.read", None), ("vacation.manage", None)])
+    client.post(
+        "/api/v1/vacation",
+        headers=head,
+        json={
+            "start_date": "2030-08-01",
+            "end_date": "2030-08-10",
+            "setback_temperature_c": "15.0",
+        },
+    )
+    response = client.delete("/api/v1/vacation", headers=head)
+    assert response.status_code == 204
+    entry = session.query(Vacation).one()
+    assert entry.cancelled_at is not None
+    # And the plant-wide GET now reflects that too, closing the loop between the
+    # three endpoints instead of only checking the row in the database.
+    after = client.get("/api/v1/vacation", headers=head)
+    assert after.json() is None
