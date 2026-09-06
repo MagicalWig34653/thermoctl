@@ -1,10 +1,12 @@
 import os
 import subprocess
 import sys
+import threading
+import time
 from decimal import Decimal
 
 import pytest
-from sqlalchemy import Engine, create_engine, text
+from sqlalchemy import Engine, create_engine, make_url, text
 
 
 def _alembic(url: str, *arguments: str) -> subprocess.CompletedProcess[str]:
@@ -512,3 +514,93 @@ def test_the_thermostat_downgrade_survives_a_device_that_used_the_capability(
                 assert orphans == 0, f"{table} zeigt auf eine gelöschte Fähigkeit"
     finally:
         db_engine.dispose()
+
+
+@pytest.mark.migration
+def test_two_concurrent_upgrade_head_runs_do_not_collide(
+    migrations_database_url: str,
+) -> None:
+    """Two ``alembic upgrade head`` subprocesses, released at the same instant
+    against the same, fresh MariaDB -- not two calls made one after another,
+    which would pass even without any lock at all. Two threads with a barrier
+    (same technique as ``tests/test_cluster.py``'s racing-claim test), each
+    driving its own real ``alembic`` subprocess (same technique as every other
+    test in this file).
+
+    Without the lock in `migrations/env.py`, this reliably goes wrong: built
+    against a real MariaDB while writing that lock, the second of two
+    concurrently started ``upgrade head`` runs failed with
+    ``Table 'alembic_version' already exists`` at the very first statement of
+    the run -- the *best* case, since MariaDB commits DDL implicitly and
+    nothing rules out a worse interleaving further into a run with several DDL
+    statements. With the lock, one of the two must simply wait for the other,
+    find nothing left to do, and return successfully -- both processes exit
+    0, and the schema ends up at head exactly once.
+    """
+    if make_url(migrations_database_url).get_backend_name() == "sqlite":
+        pytest.skip("Der Ernstfall ist MariaDB, siehe Auftrag -- SQLite ist Einzelbetrieb")
+
+    base = _alembic(migrations_database_url, "downgrade", "base")
+    assert base.returncode == 0, base.stderr
+
+    barrier = threading.Barrier(2)
+    results: dict[int, subprocess.CompletedProcess[str]] = {}
+    errors: list[BaseException] = []
+
+    def run(index: int) -> None:
+        try:
+            barrier.wait(timeout=10)
+            results[index] = _alembic(migrations_database_url, "upgrade", "head")
+        except BaseException as exc:  # pragma: no cover - only on an actual failure
+            errors.append(exc)
+
+    threads = [threading.Thread(target=run, args=(index,)) for index in range(2)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        # Generous: this run can legitimately spend most of the migration
+        # lock's own timeout waiting its turn, on top of actually migrating.
+        thread.join(timeout=150)
+
+    assert not errors, errors
+    assert set(results) == {0, 1}
+    for index, result in results.items():
+        assert result.returncode == 0, f"Lauf {index}: {result.stderr}"
+
+    db_engine = create_engine(migrations_database_url)
+    try:
+        with db_engine.connect() as connection:
+            versions = connection.execute(
+                text("SELECT version_num FROM alembic_version")
+            ).scalars().all()
+    finally:
+        db_engine.dispose()
+    # Migrated exactly once, by whichever of the two got there -- not twice,
+    # and not left half-done by an interleaving that snuck past the lock.
+    assert len(versions) == 1
+
+    check = _alembic(migrations_database_url, "check")
+    assert check.returncode == 0, check.stdout + check.stderr
+
+
+@pytest.mark.migration
+def test_upgrade_head_against_an_already_current_database_is_a_quick_no_op(
+    migrations_database_url: str,
+) -> None:
+    """The lock must cost nothing in the common case: a single instance
+    starting against a database that is already at head takes the lock
+    uncontended and finds nothing to migrate -- fast, and without emitting a
+    single "Running upgrade" line.
+    """
+    first = _alembic(migrations_database_url, "upgrade", "head")
+    assert first.returncode == 0, first.stderr
+
+    started = time.monotonic()
+    second = _alembic(migrations_database_url, "upgrade", "head")
+    elapsed = time.monotonic() - started
+
+    assert second.returncode == 0, second.stderr
+    assert "Running upgrade" not in second.stdout + second.stderr
+    # Nowhere near the migration lock's own default timeout (60s) -- a
+    # no-op run against an uncontended lock must not even come close.
+    assert elapsed < 20, elapsed

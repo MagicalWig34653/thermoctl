@@ -2,6 +2,46 @@
 
 Letzte Aktualisierung: 2026-09-06, Freigabe `v0.7.0`.
 
+## Migrationssperre: gleichzeitige `alembic upgrade head`-Läufe abgesichert
+
+Der unten dokumentierte offene Punkt ist geschlossen. Nachgestellt, vor der
+Absicherung: Zwei gleichzeitig gegen dieselbe, frische Datenbank gestartete
+`alembic upgrade head`-Läufe (nicht zwei nacheinander, sondern gleichzeitig
+gestartet) scheiterten beide Male mit dem zweiten Lauf verlässlich an
+`Table 'alembic_version' already exists` (MariaDB) bzw.
+`table alembic_version already exists` (SQLite) — im günstigsten Fall, da
+beide Läufe hier zufällig am allerersten Statement kollidierten. MariaDB
+committet DDL implizit; ein schlimmerer Ausgang bei einer Kollision mitten in
+einer mehrschrittigen Migration war nicht ausgeschlossen.
+
+`migrations/env.py` nimmt jetzt vor jedem Migrationslauf eine Datenbank-Sperre
+(neu: `thermoctl/db/migration_lock.py`) — wirkt für **jeden** Alembic-Aufruf,
+auch von Hand, nicht nur beim Containerstart, weil sie dort und nicht im
+Entrypoint sitzt. MariaDB und SQLite bekommen bewusst unterschiedliche, aber
+je backend-eigene Mittel statt eines erzwungenen gemeinsamen: `GET_LOCK()`
+(MariaDB, session-gebunden, mit eigenem Timeout) bzw. eine `flock`-Dateisperre
+neben der Datenbankdatei (SQLite; eine In-Memory-Datenbank braucht keine, sie
+gehört ohnehin nur einem Prozess). Beide lösen sich beim Absturz des Halters
+von selbst — kein Risiko, dass eine tote Sperre die Anlage stilllegt
+(Grundsatz 7). Wer die Sperre nicht bekommt, wartet bis zu
+`THERMOCTL_MIGRATION_LOCK_TIMEOUT_SECONDS` (Vorgabe 60s) und bricht dann mit
+einer klaren Fehlermeldung ab, statt endlos zu hängen; der Normalfall (unbesetzte
+Sperre) kostet nichts Messbares. Die vorgeschalteten Einmal-Jobs in
+`docs/docker-swarm.md` und `docs/kubernetes.md` sind dadurch für die
+Absicherung selbst entbehrlich geworden (Anleitungen entsprechend angepasst),
+bleiben aber als Option für alle, die den Migrationsschritt trotzdem sichtbar
+getrennt vom Ausrollen des Dienstes sehen wollen.
+
+Nachgewiesen in `tests/test_migrations.py`
+(`test_two_concurrent_upgrade_head_runs_do_not_collide`, zwei echte
+`alembic`-Unterprozesse gegen MariaDB, per Barriere gleichzeitig losgelassen,
+und `test_upgrade_head_against_an_already_current_database_is_a_quick_no_op`)
+und in `tests/test_migration_lock.py` (Erwerb, Freigabe, Warten mit
+Zeitüberschreitung, Absturz des Halters — je gegen SQLite **und** MariaDB,
+unabhängig vom Backend des jeweiligen Testlaufs).
+
+Letzte Aktualisierung: 2026-09-06.
+
 ## Betrieb unter Docker Swarm und Kubernetes dokumentiert
 
 Zwei neue Anleitungen für den Aktiv-Bereitschafts-Verbund (Abschnitt 6d unten):
