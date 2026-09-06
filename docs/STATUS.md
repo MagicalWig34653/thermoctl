@@ -1,6 +1,61 @@
 # Stand
 
-Letzte Aktualisierung: 2026-09-06, Freigabe `v0.7.0`.
+Letzte Aktualisierung: 2026-09-06.
+
+## Urlaubsbetrieb: Absenkung deckelt nicht mehr unter den Frostschutz einer Zone
+
+Review-Befund, sicherheitsrelevant nach Grundsatz 7: `_vacation_setpoint()` gab den
+eingegebenen Absenkwert bislang ungeprüft zurück. Zone mit Frostschutz 16,0 °C,
+Urlaub mit 5,0 °C, Betriebsart `auto` → geregelt wurde auf 5,0 °C. Behoben in
+`domain/schedule.py::_vacation_setpoint()`: der Absenkwert wird jetzt je Zone auf
+`max(setback_temperature_c, Frostschutz dieser Zone)` gedeckelt — derselbe absolute
+Frostschutz-Boden, den `domain/solar_setback.py::apply()` für seine eigene Korrektur
+schon durchsetzt. Greift der Frostschutz, lautet die Begründung im `Setpoint`
+„Urlaubsbetrieb — Absenkung durch Frostschutz angehoben" statt der bisherigen, dann
+unehrlichen „Urlaubsbetrieb — Absenkung" (Grundsatz 5). `schedule_forecast()` heilt
+dadurch mit, da es denselben Weg über `resolved_setpoint()` nimmt — mit eigenem Test
+bestätigt statt nur angenommen. `docs/api.md` zieht die Grenze bei
+`setback_temperature_c` entsprechend nach.
+
+## Urlaubsbetrieb: anlagenweite Absenkung über ein festes Zeitfenster
+
+Neue Tabelle `vacation` (Migration `4bfefd4c10a4`, Kopf jetzt hier): ein einziger
+Absenkwert für die ganze Anlage über ein Zeitfenster mit fest eingegebenem Beginn
+und Ende, danach läuft der Zeitplan von selbst weiter. Umgesetzt als eigener
+Zustand, den `domain/schedule.py::resolved_setpoint()` direkt abfragt — nicht als
+je-Zone angelegte `ZoneOverride`-Zeilen (die verworfene Alternative): Eine später
+angelegte Zone wäre sonst nicht erfasst, und das Aufheben einer einzelnen
+Override-Zeile hätte diese Zone stillschweigend aus dem Urlaub herausgenommen,
+ohne dass irgendwo stünde, dass das passiert ist.
+
+Vorrangkette in `resolved_setpoint()`: Betriebsart „Aus" > laufende, von Hand
+gesetzte Zonen-Übersteuerung > Urlaub > Zeitplan > Frostschutz. Eine laufende
+Übersteuerung geht beim Start eines Urlaubs also nicht verloren; eine Zone auf
+„Aus" bleibt aus. `control_loop.decide()` selbst ist unverändert — Fenster,
+Sensorausfall, Mindestschaltdauern und Ventilschutz laufen unwissend vom Urlaub
+genau wie bei jeder Übersteuerung. `schedule_forecast()` zieht Beginn und Ende
+des Urlaubs als zusätzliche Balkengrenzen neben dem nächsten Zeitplan-Schaltpunkt,
+damit die 24-Stunden-Vorschau einen mitten in ihr beginnenden oder endenden
+Urlaub nicht in einen falsch breiten Zeitplan-Balken auflöst.
+
+Ein- und Ausgabe lokal, Speicherung über `domain/time.py::local_day_start_utc` in
+UTC — DST-sicher, dieselbe Umrechnung wie Statistik und Audit-Log. Beginn und Ende
+sind volle lokale Kalendertage, beide eingeschlossen. Eigenes Recht
+`vacation.manage` statt `setting.manage` oder dem zonenbezogenen
+`override.create` — Begründung in `db/models/lookup.py`. Oberfläche: eigene Seite
+`/vacation` (Lesen `zone.read`, Ändern `vacation.manage`), zusätzlich ein Hinweis
+auf der Startseite, sichtbar sowohl während ein Urlaub läuft als auch, solange
+er erst geplant ist. REST (`GET`/`POST`/`DELETE /api/v1/vacation`) und MCP
+(`read_vacation`, `vacation`, `cancel_vacation`) bekommen die Funktion
+gleichermaßen — Grundsatz 6.
+
+`services/shadow_run.py`: die PI-Sollwertkontext-Funktion
+(`_pi_setpoint_context_key`) kannte bislang nur Zeitplan-Modus oder Zonen-
+Übersteuerung als Ursprung eines Sollwerts; ein Urlaub liefert wie eine feste
+Übersteuerung `mode_id=None`, ohne eine Übersteuerungs-Zeile zu sein. Ohne eigenen
+Zweig hätte das den dortigen `assert` verletzt, sobald ein Urlaub auf einer
+PI-aktivierten Zone ohne laufende Übersteuerung greift — gefunden beim Nachvoll-
+ziehen der Vorrangkette, PI selbst hat noch keinen scharfen Betriebspfad.
 
 ## Außentemperatur und Fenster-Alarm
 

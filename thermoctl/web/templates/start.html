@@ -137,9 +137,16 @@ hier, sondern an der jeweiligen Stelle: `hx-preserve` an den
         Fenster vergessen: {{ window_alarm_zones|join(", ") }}
     </span>
     {% endif %}
+    {% if vacation %}
+    <a href="{{ url_prefix }}/vacation" class="tc-chip {{ 'tc-chip-warm' if vacation_running else 'tc-chip-quiet' }}"
+       title="{{ (vacation.starts_at|localtime(timezone)).strftime('%d.%m.%Y') }} – {{ (vacation.ends_at|localtime(timezone)).strftime('%d.%m.%Y') }}, {{ vacation.setback_temperature_c|grad }} °C">
+        {% if vacation_running %}<span class="tc-dot"></span>Urlaub läuft{% else %}Urlaub geplant{% endif %}
+    </a>
+    {% endif %}
 
     <span class="ms-auto small">
-        <a href="{{ url_prefix }}/statistics">Heizzeiten</a> · <a href="{{ url_prefix }}/control">Betrieb</a>
+        <a href="{{ url_prefix }}/statistics">Heizzeiten</a> · <a href="{{ url_prefix }}/control">Betrieb</a> ·
+        <a href="{{ url_prefix }}/vacation">Urlaub</a>
     </span>
 </section>
 

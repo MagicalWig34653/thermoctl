@@ -1,5 +1,5 @@
 from contextlib import nullcontext
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
 
@@ -310,6 +310,7 @@ def test_the_registered_mcp_tools_have_descriptions_and_call_the_adapter_functio
         ("schedule.manage", zone.id),
         ("zone.manage", zone.id),
         ("control.arm", None),
+        ("vacation.manage", None),
     ]
     plaintext = _token(session, "registrierter-nutzer", permissions)
 
@@ -347,6 +348,9 @@ def test_the_registered_mcp_tools_have_descriptions_and_call_the_adapter_functio
         "read_control",
         "force_dry_run",
         "move_schedule_point",
+        "read_vacation",
+        "vacation",
+        "cancel_vacation",
     }
     descriptions = {
         name: getattr(tool, "__doc__", None) for name, tool in tools.items()
@@ -377,6 +381,13 @@ def test_the_registered_mcp_tools_have_descriptions_and_call_the_adapter_functio
     assert tools["move_schedule_point"](  # type: ignore[operator]
         zone.id, point.id, 4, 480
     )
+    assert tools["read_vacation"]() is None  # type: ignore[operator]
+    created = tools["vacation"](  # type: ignore[operator]
+        date(2027, 1, 1), date(2027, 1, 10), Decimal("15.0")
+    )
+    assert created["setback_temperature_c"] == "15.0"
+    assert tools["read_vacation"]() is not None  # type: ignore[operator]
+    assert tools["cancel_vacation"]()["cancelled"] is True  # type: ignore[operator]
 
 
 def test_an_unknown_token_is_refused(session: Session) -> None:

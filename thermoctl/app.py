@@ -109,6 +109,7 @@ from thermoctl.web.schedule_views import router as schedule_router
 from thermoctl.web.setup_views import router as setup_router
 from thermoctl.web.start_views import router as start_router
 from thermoctl.web.urls import cookie_path, prefixed
+from thermoctl.web.vacation_views import router as vacation_router
 from thermoctl.web.zone_views import router as zone_router
 
 log = logging.getLogger(__name__)
@@ -956,6 +957,7 @@ def create_app() -> FastAPI:
     app.include_router(passkey_router)
     app.include_router(schedule_router)
     app.include_router(alltag_router)
+    app.include_router(vacation_router)
     app.include_router(api_router)
     app.router.routes.append(
         Mount("/static", app=_serve_static, name="static")

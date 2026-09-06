@@ -39,7 +39,7 @@ Beispiel sind ausschließlich Platzhalter.
 
 ## Die Werkzeuge
 
-16 Stück, alle über dieselbe Domänenlogik wie Oberfläche und REST-Schnittstelle. Jedes
+19 Stück, alle über dieselbe Domänenlogik wie Oberfläche und REST-Schnittstelle. Jedes
 prüft dasselbe Recht wie der entsprechende REST-Endpunkt.
 
 | Werkzeug | Recht | Was es liefert |
@@ -55,6 +55,9 @@ prüft dasselbe Recht wie der entsprechende REST-Endpunkt.
 | `override(zone_id, temperature_c, ends_at)` | `override.create` | legt eine Übersteuerung an |
 | `cancel_override(zone_id)` | `override.cancel` | beendet die laufende Übersteuerung |
 | `boost(zone_id)` | `override.create` | zieht die nächste Schaltung vor |
+| `read_vacation()` | `zone.read` | laufenden oder geplanten Urlaub, oder nichts |
+| `vacation(start_date, end_date, setback_temperature_c)` | `vacation.manage` | setzt den anlagenweiten Urlaub |
+| `cancel_vacation()` | `vacation.manage` | beendet den Urlaub vorzeitig |
 | `read_control_parameters(zone_id)` | `zone.read` | wirksame Regelparameter **samt ihrer Grenzen** |
 | `set_control_parameters(zone_id, name, value)` | `zone.manage` | setzt einen Parameter, lässt die übrigen |
 | `read_control()` | `zone.read` | gespeicherter Riegel, nicht feststellbarer MQTT-Riegel, globale Vorgaben und Sonnenabsenkung |
@@ -78,6 +81,16 @@ später noch eindeutig neben einem Vorfallsbericht aus einer anderen Zeitzone li
 muss weder eine Temperatur noch eine Dauer raten, und nach dem Schaltpunkt räumt sich der
 Eingriff selbst weg. `override` bleibt daneben für den Fall, dass jemand eine bestimmte
 Temperatur nennt.
+
+**`vacation` verlangt `vacation.manage`, nicht `override.create`.** Ein Urlaub wirkt wie
+eine Übersteuerung, aber über alle Zonen gleichzeitig statt über eine benannte — das
+zonenbezogene `override.create` passt weder in der Zone noch in der Bedeutung. Für ein
+Sprachmodell ist das der natürliche Weg für „ich bin ab dem 23. bis Dreikönig weg, stell
+die Heizung auf 15 Grad runter": eine einzige, plant-weite Angabe statt einer Übersteuerung
+je Zone. `start_date`/`end_date` sind lokale Kalendertage, beide eingeschlossen; die
+Zeitzone der Anlage entscheidet, wann genau das lokal beginnt und endet. Eine bereits
+laufende, von Hand gesetzte Übersteuerung einer einzelnen Zone bleibt davon unberührt, bis
+sie selbst endet — siehe `domain/schedule.py`.
 
 **`read_control_parameters` liefert die Grenzen mit.** Ohne sie wäre jeder Schreibversuch ein
 Versuch: „0,05 Kelvin Hysterese" sieht für ein Modell so plausibel aus wie „0,5".

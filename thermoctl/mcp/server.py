@@ -1,5 +1,5 @@
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from importlib import import_module
 from typing import Any, Protocol, cast
@@ -27,7 +27,12 @@ from thermoctl.domain.schedule import (
     cancel_override as domain_cancel_override,
 )
 from thermoctl.domain.schedule import (
+    cancel_vacation as domain_cancel_vacation,
+)
+from thermoctl.domain.schedule import (
     create_override,
+    create_vacation,
+    current_or_upcoming_vacation,
     resolved_setpoint,
 )
 from thermoctl.domain.schedule import (
@@ -324,6 +329,70 @@ def cancel_override(session: Session, plaintext: str, zone_id: int) -> dict[str,
     return {"zone": zone.name, "cancelled": cancelled is not None}
 
 
+def read_vacation(session: Session, plaintext: str) -> dict[str, object] | None:
+    """The plant-wide vacation currently running or still upcoming, or `None`.
+
+    `zone.read`, the same right the equivalent REST route uses: seeing whether the
+    plant is about to run down for an absence is part of "seeing the plant", not a
+    separate management capability.
+    """
+    _token, principal = _log_in(session, plaintext)
+    require(principal, "zone.read")
+    entry = current_or_upcoming_vacation(session, utcnow())
+    if entry is None:
+        return None
+    return {
+        "starts_at": _moment(entry.starts_at),
+        "ends_at": _moment(entry.ends_at),
+        "setback_temperature_c": _decimal(entry.setback_temperature_c),
+    }
+
+
+def set_vacation(
+    session: Session,
+    plaintext: str,
+    start_date: date,
+    end_date: date,
+    setback_temperature_c: Decimal,
+) -> dict[str, object]:
+    """Sets the plant-wide vacation via the shared domain function.
+
+    Its own permission `vacation.manage`, not `override.create`: a vacation covers
+    every zone at once, an override only the one it names -- see the reasoning in
+    `db/models/lookup.py`. A useful case for a language model in particular: "I'll be
+    away from the 23rd to Epiphany, turn the heating down to 15" needs no per-zone
+    reasoning at all.
+    """
+    token, principal = _log_in(session, plaintext)
+    require(principal, "vacation.manage")
+    row = settings(session)
+    entry = create_vacation(
+        session,
+        start_date=start_date,
+        end_date=end_date,
+        setback_temperature_c=setback_temperature_c,
+        timezone_name=row.timezone,
+        user_id=principal.user_id,
+        token_id=token.id,
+        source="mcp",
+    )
+    return {
+        "starts_at": _moment(entry.starts_at),
+        "ends_at": _moment(entry.ends_at),
+        "setback_temperature_c": _decimal(entry.setback_temperature_c),
+    }
+
+
+def cancel_vacation(session: Session, plaintext: str) -> dict[str, object]:
+    """Ends the running or planned vacation early via the shared domain function."""
+    token, principal = _log_in(session, plaintext)
+    require(principal, "vacation.manage")
+    cancelled = domain_cancel_vacation(
+        session, user_id=principal.user_id, token_id=token.id, source="mcp"
+    )
+    return {"cancelled": cancelled is not None}
+
+
 def boost(session: Session, plaintext: str, zone_id: int) -> dict[str, object]:
     """Pulls the next switch forward -- via the shared domain function.
 
@@ -573,6 +642,26 @@ def _register_tools(
         """Pulls a visible zone's next scheduled setpoint switch forward."""
         with session_scope(factory) as session:
             return boost(session, plaintext, zone_id)
+
+    @server.tool(name="read_vacation")
+    def mcp_read_vacation() -> dict[str, object] | None:
+        """Reads the plant-wide vacation currently running or still upcoming, if any."""
+        with session_scope(factory) as session:
+            return read_vacation(session, plaintext)
+
+    @server.tool(name="vacation")
+    def mcp_vacation(
+        start_date: date, end_date: date, setback_temperature_c: Decimal
+    ) -> dict[str, object]:
+        """Sets a plant-wide vacation setback over a fixed local calendar range."""
+        with session_scope(factory) as session:
+            return set_vacation(session, plaintext, start_date, end_date, setback_temperature_c)
+
+    @server.tool(name="cancel_vacation")
+    def mcp_cancel_vacation() -> dict[str, object]:
+        """Ends the running or planned plant-wide vacation early."""
+        with session_scope(factory) as session:
+            return cancel_vacation(session, plaintext)
 
     @server.tool(name="read_control_parameters")
     def mcp_read_control_parameters(zone_id: int) -> dict[str, object]:

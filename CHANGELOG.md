@@ -31,6 +31,19 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
   `services/shadow_run.py` blieben unangetastet: der Alarm ist eine Meldung, kein
   Eingriff in die Regelung. Migration `f18d4dcb3f5d`.
 
+- **Urlaubsbetrieb.** Ein einziger Absenkwert für die ganze Anlage über ein
+  Zeitfenster mit fest eingegebenem Beginn und Ende (lokale Kalendertage, beide
+  eingeschlossen); danach läuft der Zeitplan von selbst weiter, vorzeitiges Beenden
+  ist jederzeit möglich. Wirkt wie eine Übersteuerung über alle Zonen, ohne die
+  bestehende Vorrangkette in `control_loop.decide()` anzufassen: eine laufende, von
+  Hand gesetzte Übersteuerung einer einzelnen Zone geht dabei nicht verloren, und
+  eine Zone in Betriebsart „Aus" bleibt aus. Neue Seite `/vacation`, ein Hinweis auf
+  der Startseite solange ein Urlaub läuft oder erst geplant ist, sowie REST
+  (`GET`/`POST`/`DELETE /api/v1/vacation`) und MCP (`read_vacation`, `vacation`,
+  `cancel_vacation`). Eigenes Recht `vacation.manage`. Migration `4bfefd4c10a4`. Der
+  eingegebene Absenkwert wird je Zone auf deren eigenen Frostschutz gedeckelt —
+  derselbe absolute Boden, den die solare Nachführung schon durchsetzt —, mit
+  entsprechend angepasster Begründung, falls der Frostschutz greift.
 - **Erkennung eines festhängenden Messwerts.** Ein Sensor, der zuverlässig alle paar
   Minuten dieselbe Zahl schickt, galt bisher dauerhaft als `ok` — die
   Störungserkennung prüfte nur das Alter der letzten Meldung. Jetzt gilt ein Messwert

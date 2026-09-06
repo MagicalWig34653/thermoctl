@@ -185,4 +185,11 @@ PERMISSIONS: list[tuple[str, str, bool]] = [
     # whose flip immediately moves a valve. Whoever is allowed to maintain time zone and
     # retention period should not incidentally be able to arm the heating with it.
     ("control.arm", "Die Regelung scharf schalten", False),
+    # Not `setting.manage`: a vacation acts as an override over every zone at once
+    # (see `domain.schedule`), which is closer to `override.create` in kind than to a
+    # global default -- but `override.create` is zone-scoped and a vacation is not,
+    # so neither existing permission fits without either narrowing it to one zone or
+    # widening an all-zone grant to cover something it was never meant to. Its own,
+    # plant-wide permission instead.
+    ("vacation.manage", "Urlaubsbetrieb ansetzen und vorzeitig beenden", False),
 ]

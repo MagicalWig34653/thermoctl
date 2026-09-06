@@ -490,6 +490,27 @@ und Start in [`docs/mcp.md`](mcp.md). Das Feld sorgt lediglich dafür, dass ein 
 anderer Stelle betriebener MCP-Server, der auf dieselbe Datenbank zugreift, das
 richtige Token vorfindet, ohne über das freie `env`-Feld gehen zu müssen.
 
+## 8b. Urlaubsbetrieb
+
+Unter „Urlaub" (auch von der Startseite aus verlinkt, dort außerdem als Hinweis
+sichtbar, solange einer läuft oder erst geplant ist) lässt sich ein einziger
+Absenkwert für **die ganze Anlage** über einen festen Zeitraum ansetzen — erster und
+letzter Tag jeweils in Ortszeit, beide eingeschlossen. Der Zeitplan läuft danach von
+selbst weiter; ein vorzeitiges Beenden ist jederzeit möglich.
+
+Der Urlaub wirkt wie eine Übersteuerung über alle Zonen, ohne eine einzelne Zone
+gesondert anzufassen: Fenster, Sensorausfall, Mindestschaltdauern und Ventilschutz
+gelten unverändert weiter, und eine Zone in Betriebsart „Aus" bleibt aus. Eine bereits
+laufende, von Hand gesetzte Übersteuerung einer einzelnen Zone geht dabei **nicht**
+verloren — sie gilt weiter, bis sie selbst endet, erst danach übernimmt der Urlaub
+auch für diese Zone. Es kann immer nur ein Urlaub gleichzeitig laufen oder geplant
+sein; ein zweiter muss den bestehenden erst beenden.
+
+Eigenes Recht `vacation.manage`, nicht das zonenbezogene `override.create` — ein
+Urlaub gilt nie für eine einzelne Zone. REST (`GET`/`POST`/`DELETE /api/v1/vacation`,
+siehe [`docs/api.md`](api.md)) und MCP (`read_vacation`, `vacation`,
+`cancel_vacation`, siehe [`docs/mcp.md`](mcp.md)) bieten dieselbe Funktion.
+
 ## 9. Die Schnittstelle ausprobieren
 
 Unter `/docs` liegt eine Swagger-Oberfläche: jeder Weg der REST-Schnittstelle zum
