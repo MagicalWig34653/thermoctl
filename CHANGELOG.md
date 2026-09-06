@@ -13,7 +13,6 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ### Hinzugefügt
 
-<<<<<<< HEAD
 - **Liveaktualisierung der Startseite.** Ist-Wert, Sollwert samt Begründung,
   Sensorzustand und letzte Entscheidung je Zone aktualisieren sich jetzt von selbst,
   ohne Neuladen — im Stil des Kiosks (`hx-get` auf sich selbst, `hx-select`/
@@ -36,7 +35,6 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
     aktualisiert sich ohne Zutun, ein aufgeklappter Bereich samt begonnener Eingabe
     übersteht eine Aktualisierung, und der Ladebalken bleibt dabei stumm — auch unter
     einer künstlich verzögerten Antwort, die ohne die Ausnahme sichtbar würde.
-=======
 - **Zeitplan-Vorschau.** Die Zeitplanseite zeigt jetzt je Zone eine Leiste über die
   nächsten 24 Stunden: Uhrzeit, Modus und der Sollwert, der dann gilt, mit dem
   laufenden Abschnitt hervorgehoben. Sichtbar mit `zone.read` allein — Ansehen setzt
@@ -46,7 +44,6 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
   Mitternacht in einen anderen Wochentag; sie rechnet in UTC-Instanzen, nicht in
   Ortszeit-Arithmetik, und bleibt deshalb auch an den beiden Sommerzeit-Umstellungen
   exakt (23- bzw. 25-Stunden-Tag).
->>>>>>> zeitplan-vorschau
 
 ## 0.7.4 — 2026-09-05
 
