@@ -110,6 +110,12 @@ hier, sondern an der jeweiligen Stelle: `hx-preserve` an den
         Kein Messwert: {{ silent_sensors|join(", ") }}
     </span>
     {% endif %}
+    {% if stuck_sensors %}
+    <span class="tc-chip tc-chip-quiet"
+          title="Der Messwert bewegt sich seit längerem nicht. Die Zone regelt normal weiter, es ist kein Ausfall.">
+        Messwert unverändert, Regelung läuft normal weiter: {{ stuck_sensors|join(", ") }}
+    </span>
+    {% endif %}
 
     <span class="ms-auto small">
         <a href="{{ url_prefix }}/statistics">Heizzeiten</a> · <a href="{{ url_prefix }}/control">Betrieb</a>
@@ -147,6 +153,12 @@ hier, sondern an der jeweiligen Stelle: `hx-preserve` an den
                 {% endif %}
                 {% if entry and entry[1].code != "ok" %}
                 <span class="tc-chip tc-chip-warning">{{ entry[1].label }}</span>
+                {% endif %}
+                {% if entry and entry[0].sensor_stuck %}
+                <span class="tc-chip tc-chip-quiet"
+                      title="Der Messwert bewegt sich seit längerem nicht. Die Zone regelt normal weiter, es ist kein Ausfall.">
+                    Messwert unverändert
+                </span>
                 {% endif %}
                 {% if override %}
                 {# Wert und Ende gehören in die Marke, nicht nur das Wort: Eine

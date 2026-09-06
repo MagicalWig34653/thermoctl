@@ -127,6 +127,11 @@ class ZoneStateResponse(BaseModel):
     temperature_c: Decimal | None
     measured_at: datetime | None
     sensor_status: str
+    # Independent of `sensor_status` above: `True` only while the reading is
+    # otherwise `ok` but has not moved for longer than configured
+    # (`stuck_reading_hours`) -- the zone keeps regulating on it normally, see
+    # `domain/fault_notice.py::stuck_sensor_notice`.
+    sensor_stuck: bool
     window_open: bool | None
     updated_at: datetime
 
@@ -216,6 +221,7 @@ class ControlResponse(BaseModel):
     default_min_off_seconds: int
     default_sensor_timeout_seconds: int
     default_window_resume_delay_seconds: int
+    stuck_reading_hours: int
     measurement_retention_days: int
     shadow_decision_retention_days: int
     session_lifetime_seconds: int
@@ -249,6 +255,7 @@ class WriteControl(BaseModel):
     default_min_off_seconds: int
     default_sensor_timeout_seconds: int
     default_window_resume_delay_seconds: int
+    stuck_reading_hours: int
     measurement_retention_days: int
     shadow_decision_retention_days: int
     session_lifetime_seconds: int

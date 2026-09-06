@@ -344,6 +344,7 @@ def _defaults(**abweichungen: object) -> dict[str, object]:
         "default_min_off_seconds": 300,
         "default_sensor_timeout_seconds": 1800,
         "default_window_resume_delay_seconds": 120,
+        "stuck_reading_hours": 12,
         "measurement_retention_days": 30,
         "shadow_decision_retention_days": 365,
         "session_lifetime_seconds": 1209600,

@@ -221,6 +221,148 @@ def test_zone_state_accounts_for_source_age_and_the_zone_timeout(
     assert states == {frisch.id: "ok", alt.id: "veraltet", ohne.id: "keine_quelle"}
 
 
+# --- sensor_stuck --------------------------------------------------------------
+
+
+def _identical_history(
+    session: Session, temperature: DeviceCapability, device: Device, *, value: Decimal
+) -> None:
+    """Ten readings, six minutes apart, spanning three hours -- the same cadence
+    the real occurrence that prompted this feature reported at."""
+    for step in range(31):
+        session.add(
+            Measurement(
+                device_id=device.id,
+                capability_id=temperature.id,
+                value_numeric=value,
+                measured_at=EMPFANGEN_AM - timedelta(hours=3) + timedelta(minutes=6 * step),
+                received_at=EMPFANGEN_AM,
+            )
+        )
+
+
+def test_a_reading_unchanged_for_longer_than_the_configured_duration_is_stuck(
+    session: Session,
+) -> None:
+    settings = create_settings(session)
+    settings.stuck_reading_hours = 2
+    for code in ("ok", "veraltet", "keine_quelle"):
+        sensor_status_of(session, code)
+    temperature = _capability(session, "temperature")
+    device = create_device(session, _device_names()[0])
+    zone = create_zone(session, "starre-zone")
+    zone.temperature_source_device_id = device.id
+    _identical_history(session, temperature, device, value=Decimal("22.70"))
+
+    advance_zone_state(session, EMPFANGEN_AM)
+
+    state = session.get(ZoneState, zone.id)
+    assert state is not None and state.sensor_stuck is True
+
+
+def test_a_sensor_oscillating_between_two_resolution_steps_is_not_stuck(
+    session: Session,
+) -> None:
+    """The exact motivating counter-example: a sensor with 0.1 K resolution that
+    keeps toggling between two adjacent values must not be flagged, even though it
+    never leaves that pair for hours."""
+    settings = create_settings(session)
+    settings.stuck_reading_hours = 2
+    for code in ("ok", "veraltet", "keine_quelle"):
+        sensor_status_of(session, code)
+    temperature = _capability(session, "temperature")
+    device = create_device(session, _device_names()[0])
+    zone = create_zone(session, "pendel-zone")
+    zone.temperature_source_device_id = device.id
+    for step in range(31):
+        value = Decimal("22.70") if step % 2 == 0 else Decimal("22.80")
+        session.add(
+            Measurement(
+                device_id=device.id,
+                capability_id=temperature.id,
+                value_numeric=value,
+                measured_at=EMPFANGEN_AM - timedelta(hours=3) + timedelta(minutes=6 * step),
+                received_at=EMPFANGEN_AM,
+            )
+        )
+
+    advance_zone_state(session, EMPFANGEN_AM)
+
+    state = session.get(ZoneState, zone.id)
+    assert state is not None and state.sensor_stuck is False
+
+
+def test_history_shorter_than_the_configured_duration_is_not_yet_stuck(
+    session: Session,
+) -> None:
+    """A zone whose source was only just assigned has not 'held still for the
+    configured duration' -- it has simply never been asked that question yet."""
+    settings = create_settings(session)
+    settings.stuck_reading_hours = 12
+    for code in ("ok", "veraltet", "keine_quelle"):
+        sensor_status_of(session, code)
+    temperature = _capability(session, "temperature")
+    device = create_device(session, _device_names()[0])
+    zone = create_zone(session, "junge-zone")
+    zone.temperature_source_device_id = device.id
+    # Only reaches back one hour, far short of the configured twelve.
+    _identical_history(session, temperature, device, value=Decimal("22.70"))
+
+    advance_zone_state(session, EMPFANGEN_AM)
+
+    state = session.get(ZoneState, zone.id)
+    assert state is not None and state.sensor_stuck is False
+
+
+def test_a_stale_source_is_never_checked_for_being_stuck(session: Session) -> None:
+    """Task instructions, section 4: a zone with an already-failed sensor is not a
+    case for this check at all -- the existing staleness indicator already covers
+    it, and the two must not be conflated."""
+    settings = create_settings(session)
+    settings.stuck_reading_hours = 1
+    for code in ("ok", "veraltet", "keine_quelle"):
+        sensor_status_of(session, code)
+    temperature = _capability(session, "temperature")
+    device = create_device(session, _device_names()[0])
+    zone = create_zone(session, "abgelaufene-zone")
+    zone.temperature_source_device_id = device.id
+    zone.sensor_timeout_seconds = 30
+    # Identical readings, but the most recent one is already older than the timeout
+    # -- `sensor_state()` reads `veraltet`, not `ok`.
+    for step in range(20):
+        session.add(
+            Measurement(
+                device_id=device.id,
+                capability_id=temperature.id,
+                value_numeric=Decimal("22.70"),
+                measured_at=EMPFANGEN_AM - timedelta(hours=2) + timedelta(minutes=5 * step),
+                received_at=EMPFANGEN_AM,
+            )
+        )
+
+    advance_zone_state(session, EMPFANGEN_AM)
+
+    codes = {status.id: status.code for status in session.query(SensorStatus)}
+    state = session.get(ZoneState, zone.id)
+    assert state is not None
+    assert codes[state.sensor_status_id] == "veraltet"
+    assert state.sensor_stuck is False
+
+
+def test_a_zone_without_a_temperature_source_is_never_checked_for_being_stuck(
+    session: Session,
+) -> None:
+    create_settings(session)
+    for code in ("ok", "veraltet", "keine_quelle"):
+        sensor_status_of(session, code)
+    zone = create_zone(session, "quellenlose-zone")
+
+    advance_zone_state(session, EMPFANGEN_AM)
+
+    state = session.get(ZoneState, zone.id)
+    assert state is not None and state.sensor_stuck is False
+
+
 @pytest.mark.parametrize(("contact_value", "expected"), [("true", False), ("false", True)])
 def test_zone_state_inverts_the_zigbee_contact_value_exactly_once(
     session: Session, contact_value: str, expected: bool

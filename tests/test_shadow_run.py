@@ -38,7 +38,7 @@ from thermoctl.config import Settings, get_settings
 from thermoctl.db.base import Base
 from thermoctl.db.engine import session_factory
 from thermoctl.db.models.device import ZoneDevice
-from thermoctl.db.models.lookup import DeviceCapability
+from thermoctl.db.models.lookup import DeviceCapability, SensorStatus
 from thermoctl.db.models.measurement import Measurement
 from thermoctl.db.models.operations import AuditEvent, ClusterClaim, Setting
 from thermoctl.db.models.override import ZoneOverride
@@ -1668,6 +1668,95 @@ async def test_the_shadow_loop_reports_a_new_sensor_failure(
     ]
     assert notice_states == ["ON"]
     assert all(switches is False for _, _, switches in mqtt_notices)
+
+    engine.dispose()
+
+
+@pytest.mark.anyio
+async def test_the_shadow_loop_reports_a_newly_stuck_reading(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The stuck-reading counterpart of `test_the_shadow_loop_reports_a_new_sensor_failure`
+    above -- same "notice really goes out, only once" proof, for
+    `notify_stuck_sensor` instead of `notify_sensor_faults`.
+
+    The zone's source has reported the same value every six minutes for well over
+    the configured `stuck_reading_hours`, and its most recent reading is fresh
+    enough that `sensor_status` still reads `ok` -- exactly the case the project
+    owner's decision governs: reported, but `decide()` is never touched by it (that
+    guarantee is proven separately, in `test_control_loop_state_table.py`, which
+    never gained a `sensor_stuck` parameter at all).
+    """
+    engine, fabrik = _own_database(tmp_path, "schleife-festhaengend")
+    with fabrik() as http_session:
+        settings_row = create_settings(http_session)
+        settings_row.stuck_reading_hours = 1
+        source(http_session, "system")
+        sensor_status_of(http_session, "keine_quelle")
+        sensor_status_of(http_session, "veraltet")
+        sensor_status_of(http_session, "ok")
+        temperature = DeviceCapability(code="temperature", label="Temperaturmessung")
+        http_session.add(temperature)
+        http_session.flush()
+        device = create_device(http_session, "starrer-fuehler")
+        zone = create_zone(http_session, "starre-zone")
+        zone.temperature_source_device_id = device.id
+        for step in range(20):
+            http_session.add(
+                Measurement(
+                    device_id=device.id,
+                    capability_id=temperature.id,
+                    value_numeric=Decimal("22.70"),
+                    measured_at=NOW - timedelta(hours=2) + timedelta(minutes=6 * step),
+                    received_at=NOW,
+                )
+            )
+        http_session.commit()
+
+    sent_count: list[object] = []
+
+    async def mitschreiben(
+        _session_factory: object, _settings: object, notice: object
+    ) -> None:
+        sent_count.append(notice)
+
+    waited: list[float] = []
+
+    async def _sleep(seconds: float) -> None:
+        waited.append(seconds)
+        if len(waited) == 3:
+            raise asyncio.CancelledError
+
+    fake_app = types.SimpleNamespace(state=types.SimpleNamespace(session_factory=fabrik))
+    monkeypatch.setattr(app_modul.asyncio, "sleep", _sleep)
+    monkeypatch.setattr(app_modul, "deliver", mitschreiben)
+    # Every cycle sees the same `now` -- the measurement history above is anchored
+    # to the fixed `NOW`, not the real wall clock `_shadow_loop` would otherwise ask
+    # `utcnow()` for.
+    monkeypatch.setattr(app_modul, "utcnow", lambda: NOW)
+
+    with pytest.raises(asyncio.CancelledError):
+        await app_modul._shadow_loop(fake_app)  # type: ignore[arg-type]
+
+    for task in list(app_modul._running_notices):
+        await task
+
+    assert len(sent_count) == 1, (
+        "Two cycles with the same stuck reading yield one notice, not two."
+    )
+    assert sent_count[0].kind == "stuck_sensor"  # type: ignore[attr-defined]
+    assert sent_count[0].severity == "stoerung"  # type: ignore[attr-defined]
+    assert "regelt unverändert" in sent_count[0].text  # type: ignore[attr-defined]
+
+    with fabrik() as http_session:
+        state = http_session.get(ZoneState, zone.id)
+        assert state is not None and state.sensor_stuck is True
+        codes = {row.id: row.code for row in http_session.query(SensorStatus)}
+        assert codes[state.sensor_status_id] == "ok", (
+            "The reading counts as suspiciously unmoving, but it is still current "
+            "-- sensor_status itself, and therefore decide()'s frost-protection "
+            "fallback, must stay untouched."
+        )
 
     engine.dispose()
 

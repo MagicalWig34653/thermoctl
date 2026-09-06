@@ -94,6 +94,7 @@ def test_zone_state_returns_the_reading_and_the_sensor_state(session: Session) -
         "temperature_c": "20.25",
         "measured_at": "2026-08-29T07:30:00",
         "sensor_state": "ok",
+        "sensor_stuck": False,
     }
 
 
@@ -416,6 +417,7 @@ def test_zone_state_without_a_measurement_reports_empty_values(session: Session)
         "temperature_c": None,
         "measured_at": None,
         "sensor_state": None,
+        "sensor_stuck": False,
     }
 
 

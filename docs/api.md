@@ -167,6 +167,7 @@ Die einzelnen Felder, mit ihren Grenzen aus `domain/control.py::LIMITS`:
 | `default_min_off_seconds` | Mindest-Ausschaltdauer (Sekunden) | 30 – 7.200 | 300 |
 | `default_sensor_timeout_seconds` | Sensor gilt als ausgefallen nach (Sekunden) | 60 – 86.400 | 1.800 |
 | `default_window_resume_delay_seconds` | Nachlauf nach Fensterschluss (Sekunden) | 0 – 3.600 | 120 |
+| `stuck_reading_hours` | Messwert gilt als festhängend nach (Stunden) | 1 – 168 | 12 |
 | `measurement_retention_days` | Messwerte aufbewahren (Tage) | 1 – 3.650 | 30 |
 | `shadow_decision_retention_days` | Schattenentscheidungen aufbewahren (Tage) | 1 – 3.650 | 365 |
 | `session_lifetime_seconds` | Sitzungsdauer (Sekunden) | 300 – 31.536.000 | 1.209.600 (14 Tage) |
@@ -267,9 +268,15 @@ Fensterzustand und Aktualisierungszeitpunkt. Fehlende Werte sind `null`; insbeso
 bedeutet eine fehlende Temperatur nicht 0 °C. `404`, wenn die Zone nicht sichtbar ist
 oder noch keinen abgeleiteten Zustand hat.
 
+`sensor_stuck` steht unabhängig von `sensor_status`: `true` nur, solange der Messwert
+sonst `ok` ist, sich aber seit mindestens `stuck_reading_hours` nicht bewegt hat — die
+Zone regelt in diesem Fall unverändert mit diesem Wert weiter, es ist kein Ausfall
+(siehe `domain/fault_notice.py::stuck_sensor_notice`).
+
 ```json
 {"zone_id": 1, "temperature_c": "20.25", "measured_at": "2026-08-29T08:15:00",
- "sensor_status": "ok", "window_open": false, "updated_at": "2026-08-29T08:15:02"}
+ "sensor_status": "ok", "sensor_stuck": false, "window_open": false,
+ "updated_at": "2026-08-29T08:15:02"}
 ```
 
 ### `GET /api/v1/devices` — Geräte auflisten

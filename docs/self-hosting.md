@@ -512,10 +512,16 @@ ergibt eine Meldung und später eine Entwarnung — nicht eine je Regelzyklus. D
 Absicht: Wer stündlich dieselbe Meldung bekommt, schaltet sie ab und verpasst die nächste
 echte.
 
-**Drei Arten lassen sich unter „Einstellungen" einzeln abschalten**: Sensorstörung
-(samt Entwarnung), Brücke oder Broker weg, und gescheiterter Schaltbefehl. Alle drei sind
-ab Werk an. Wer den Webhook stilllegt, verliert deswegen nicht den zugehörigen
-Problemsensor in Home Assistant — die beiden Meldewege sind unabhängig.
+**Vier Arten lassen sich unter „Einstellungen" einzeln abschalten**: Sensorstörung
+(samt Entwarnung), Brücke oder Broker weg, gescheiterter Schaltbefehl, und ein Messwert,
+der sich länger als eingestellt nicht bewegt. Alle vier sind ab Werk an. Wer den Webhook
+stilllegt, verliert deswegen nicht den zugehörigen Problemsensor in Home Assistant — die
+beiden Meldewege sind unabhängig.
+
+Die vierte Art ist bewusst **keine** Sensorstörung: Die Zone regelt unverändert mit dem
+festhängenden Wert weiter, es findet **kein** Wechsel in den Frostschutz statt — anders
+als bei einer echten Sensorstörung. Siehe `docs/inbetriebnahme-schattenbetrieb.md`,
+Abschnitt 4.
 
 Ein **Testknopf** unter „Einstellungen" schickt eine gekennzeichnete Testmeldung über
 denselben Weg wie eine echte und zeigt Statuscode, Dauer und im Fehlerfall den Grund

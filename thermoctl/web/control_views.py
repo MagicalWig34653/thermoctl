@@ -173,6 +173,7 @@ def _defaults_page(
             "notify_sensor_faults": row.notify_sensor_faults,
             "notify_bridge_faults": row.notify_bridge_faults,
             "notify_command_failures": row.notify_command_failures,
+            "notify_stuck_sensor": row.notify_stuck_sensor,
             "notify_last_attempt_at": row.notify_last_attempt_at,
             "notify_last_ok": row.notify_last_ok,
             "notify_last_error": row.notify_last_error,
@@ -263,12 +264,12 @@ async def save_notification_preferences(
     principal: Annotated[Principal, Depends(current_principal)],
     session: Annotated[Session, Depends(get_session)],
 ) -> Response:
-    """Which of the three fault-notice kinds go out at all -- plant-wide, no per-zone
+    """Which of the four fault-notice kinds go out at all -- plant-wide, no per-zone
     override. `setting.manage`, the same permission `/settings` and `/interfaces`
     already require: whoever may not see the webhook target should not be able to
     decide what gets sent to it either.
 
-    No validation is possible on three checkboxes, unlike `save_defaults` above --
+    No validation is possible on four checkboxes, unlike `save_defaults` above --
     there is nothing here that can be rejected, so unlike that route this one never
     re-renders the page with an error.
     """
@@ -280,6 +281,7 @@ async def save_notification_preferences(
     row.notify_sensor_faults = form.get("notify_sensor_faults") is not None
     row.notify_bridge_faults = form.get("notify_bridge_faults") is not None
     row.notify_command_failures = form.get("notify_command_failures") is not None
+    row.notify_stuck_sensor = form.get("notify_stuck_sensor") is not None
     audit.record(
         session,
         source="web",
