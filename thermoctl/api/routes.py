@@ -14,6 +14,7 @@ from thermoctl.api.schemas import (
     CreateMode,
     CreateOverride,
     CreateSchedulePoint,
+    CreateVacation,
     DeviceCommandResponse,
     DeviceResponse,
     ModeResponse,
@@ -23,6 +24,7 @@ from thermoctl.api.schemas import (
     SetArmed,
     SetpointResponse,
     TokenResponse,
+    VacationResponse,
     WriteControl,
     WriteControlParameters,
     WriteParameter,
@@ -59,8 +61,11 @@ from thermoctl.domain.remote_control import boost as domain_boost
 from thermoctl.domain.schedule import (
     ScheduleError,
     cancel_override,
+    cancel_vacation,
     create_override,
     create_schedule_point,
+    create_vacation,
+    current_or_upcoming_vacation,
     delete_schedule_point,
     end_of_next_switch,
     move_schedule_point,
@@ -663,6 +668,57 @@ def delete_override(
     except Forbidden as exc:
         raise HTTPException(status.HTTP_403_FORBIDDEN, str(exc)) from exc
     cancel_override(session, zone_obj)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+# --- Vacation -------------------------------------------------------------------
+#
+# Plant-wide, unlike `override` above -- there is no `{zone_id}` in the path, and the
+# permission is `vacation.manage`, its own and not zone-scoped. See the reasoning in
+# `db/models/lookup.py` and `domain.schedule.create_vacation`'s docstring.
+
+
+@router.get("/vacation", response_model=VacationResponse | None)
+def get_vacation(
+    session: Annotated[Session, Depends(get_session)],
+    principal: Annotated[Principal, Depends(_principal)],
+) -> object:
+    _permission(principal, "zone.read")
+    return current_or_upcoming_vacation(session, utcnow())
+
+
+@router.post(
+    "/vacation", response_model=VacationResponse, status_code=status.HTTP_201_CREATED
+)
+def post_vacation(
+    data: CreateVacation,
+    session: Annotated[Session, Depends(get_session)],
+    principal: Annotated[Principal, Depends(_principal)],
+) -> object:
+    _permission(principal, "vacation.manage")
+    row = settings(session)
+    try:
+        return create_vacation(
+            session,
+            start_date=data.start_date,
+            end_date=data.end_date,
+            setback_temperature_c=data.setback_temperature_c,
+            timezone_name=row.timezone,
+            user_id=principal.user_id,
+            token_id=principal.token_id,
+            source="api",
+        )
+    except (ScheduleError, DomainError) as exc:
+        raise _domain_error(exc.field, exc.notice) from exc
+
+
+@router.delete("/vacation", status_code=status.HTTP_204_NO_CONTENT)
+def delete_vacation(
+    session: Annotated[Session, Depends(get_session)],
+    principal: Annotated[Principal, Depends(_principal)],
+) -> Response:
+    _permission(principal, "vacation.manage")
+    cancel_vacation(session, user_id=principal.user_id, token_id=principal.token_id, source="api")
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
