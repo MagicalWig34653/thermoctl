@@ -15,7 +15,7 @@ from thermoctl.db.models.override import ZoneOverride
 from thermoctl.db.models.schedule import SchedulePoint
 from thermoctl.db.models.zone import SetpointMode, Zone, ZoneSetpoint
 from thermoctl.domain.modes import check_temperature
-from thermoctl.domain.time import local_time
+from thermoctl.domain.time import UTC, local_time
 
 MINUTES_PER_WEEK = 7 * 24 * 60
 
@@ -790,6 +790,86 @@ def frost_protection_temperature(session: Session, zone: Zone) -> Decimal:
     )
 
 
+def _running_override(session: Session, zone: Zone, now_utc: datetime) -> ZoneOverride | None:
+    """The override row that would win at `now_utc`, ignoring whether it actually
+    resolves to a usable temperature -- that check is `_override_setpoint`'s job.
+    Split out because the forecast needs the row's own `ends_at` (to know *when* the
+    override stops applying), which the resolved `Setpoint` below no longer carries.
+    """
+    return session.scalars(
+        select(ZoneOverride)
+        .where(
+            ZoneOverride.zone_id == zone.id,
+            ZoneOverride.cancelled_at.is_(None),
+            ZoneOverride.starts_at <= now_utc,
+        )
+        # `id` as a second criterion: MariaDB stores DATETIME with second precision.
+        # Two overrides within the same second -- say, one replacing another -- would
+        # otherwise share the same timestamp, and which one applies would be decided
+        # by the database at its own discretion.
+        .order_by(ZoneOverride.created_at.desc(), ZoneOverride.id.desc())
+    ).first()
+
+
+def _override_setpoint(
+    session: Session, zone: Zone, now_utc: datetime
+) -> tuple[Setpoint, datetime | None] | None:
+    """The override in effect at `now_utc`, together with when it stops applying
+    (`None` meaning it does not end on its own) -- or `None` if no override applies,
+    whether because none is running or because a running one has neither a fixed
+    temperature nor a usable mode temperature (then the schedule takes over, exactly
+    as it always has).
+
+    Shared by `resolved_setpoint` and `schedule_forecast`, so the two can never
+    disagree about when an override counts -- a forecast that used its own,
+    slightly different copy of this precedence could show a bar the live decision
+    would never actually produce.
+    """
+    running = _running_override(session, zone, now_utc)
+    if running is None or not (running.ends_at is None or running.ends_at > now_utc):
+        return None
+    if running.temperature_c is not None:
+        return (
+            Setpoint(running.temperature_c, "Übersteuerung (feste Temperatur)", None, None),
+            running.ends_at,
+        )
+    temp = temperature_for_mode(session, zone, running.setpoint_mode_id or 0)
+    code = session.scalar(
+        select(SetpointMode.code).where(SetpointMode.id == running.setpoint_mode_id)
+    )
+    if temp is not None:
+        return (
+            Setpoint(temp, f"Übersteuerung auf Modus {code}", code, running.setpoint_mode_id),
+            running.ends_at,
+        )
+    return None
+
+
+def _schedule_setpoint(
+    session: Session, zone: Zone, settings: Setting, now_utc: datetime
+) -> Setpoint | None:
+    """The schedule's own answer at `now_utc`, or `None` if no point applies or the
+    point in effect has no usable zone temperature -- then frost protection is the
+    caller's own responsibility, exactly as before this was split out of
+    `resolved_setpoint`.
+    """
+    # Schedules are stored in local time, so the night setback does not shift when
+    # clocks change for daylight saving.
+    local = local_time(now_utc, settings.timezone)
+    points = list(
+        session.scalars(select(SchedulePoint).where(SchedulePoint.zone_id == zone.id))
+    )
+    gilt = current_point(points, local.replace(tzinfo=None))
+    if gilt is None:
+        return None
+    temp = temperature_for_mode(session, zone, gilt.setpoint_mode_id)
+    mode = session.get(SetpointMode, gilt.setpoint_mode_id)
+    if temp is None or mode is None:
+        return None
+    time_of_day = f"{gilt.minute_of_day // 60:02d}:{gilt.minute_of_day % 60:02d}"
+    return Setpoint(temp, f"Zeitplan: Modus {mode.name} ab {time_of_day}", mode.code, mode.id)
+
+
 def resolved_setpoint(session: Session, zone: Zone, now_utc: datetime) -> Setpoint:
     """Which setpoint currently applies, and why.
 
@@ -805,52 +885,150 @@ def resolved_setpoint(session: Session, zone: Zone, now_utc: datetime) -> Setpoi
     if zone.operating_mode.code == "off":
         return Setpoint(frost_temp, "Betriebsart Aus — Frostschutz", frost_code, frost_id)
 
-    running = session.scalars(
-        select(ZoneOverride)
-        .where(
-            ZoneOverride.zone_id == zone.id,
-            ZoneOverride.cancelled_at.is_(None),
-            ZoneOverride.starts_at <= now_utc,
-        )
-        # `id` as a second criterion: MariaDB stores DATETIME with second precision.
-        # Two overrides within the same second -- say, one replacing another -- would
-        # otherwise share the same timestamp, and which one applies would be decided
-        # by the database at its own discretion.
-        .order_by(ZoneOverride.created_at.desc(), ZoneOverride.id.desc())
-    ).first()
-    if running is not None and (running.ends_at is None or running.ends_at > now_utc):
-        if running.temperature_c is not None:
-            return Setpoint(
-                running.temperature_c, "Übersteuerung (feste Temperatur)", None, None
-            )
-        temp = temperature_for_mode(session, zone, running.setpoint_mode_id or 0)
-        code = session.scalar(
-            select(SetpointMode.code).where(SetpointMode.id == running.setpoint_mode_id)
-        )
-        if temp is not None:
-            return Setpoint(
-                temp, f"Übersteuerung auf Modus {code}", code, running.setpoint_mode_id
-            )
+    override = _override_setpoint(session, zone, now_utc)
+    if override is not None:
+        return override[0]
 
-    # Schedules are stored in local time, so the night setback does not shift when
-    # clocks change for daylight saving.
-    local = local_time(now_utc, settings.timezone)
-    points = list(
-        session.scalars(select(SchedulePoint).where(SchedulePoint.zone_id == zone.id))
-    )
-    gilt = current_point(points, local.replace(tzinfo=None))
-    if gilt is not None:
-        temp = temperature_for_mode(session, zone, gilt.setpoint_mode_id)
-        mode = session.get(SetpointMode, gilt.setpoint_mode_id)
-        if temp is not None and mode is not None:
-            time_of_day = f"{gilt.minute_of_day // 60:02d}:{gilt.minute_of_day % 60:02d}"
-            return Setpoint(
-                temp, f"Zeitplan: Modus {mode.name} ab {time_of_day}", mode.code, mode.id
-            )
+    schedule_setpoint = _schedule_setpoint(session, zone, settings, now_utc)
+    if schedule_setpoint is not None:
+        return schedule_setpoint
 
     return Setpoint(
         frost_temp, "Kein Zeitplan hinterlegt — Frostschutz", frost_code, frost_id
     )
+
+
+# How far ahead the schedule preview looks -- a full day, so whoever opens it in the
+# evening still sees tomorrow morning's wake-up temperature, the exact question the
+# feature exists to answer without doing the arithmetic by hand.
+FORECAST_HORIZON = timedelta(hours=24)
+
+# Safety bound on how many schedule switches `schedule_forecast` will walk through
+# per zone. A week has at most `MINUTES_PER_WEEK / 15` switches at the finest grid
+# the interface offers (15 minutes); no real 24h forecast needs anywhere near that
+# many, but a future bug in `next_point` producing a boundary that fails to advance
+# must not turn into an infinite loop instead of a slightly wrong bar.
+_MAX_FORECAST_SWITCHES = MINUTES_PER_WEEK // 15
+
+
+@dataclass(frozen=True)
+class ForecastSegment:
+    """One bar of the schedule preview: what applies, from when to when.
+
+    Both timestamps are naive UTC, the project's stored representation -- the
+    interface converts to local time for display, the same way every other view
+    does.
+    """
+
+    starts_at: datetime
+    ends_at: datetime
+    setpoint: Setpoint
+
+
+def schedule_forecast(
+    session: Session,
+    zone: Zone,
+    now_utc: datetime,
+    horizon: timedelta = FORECAST_HORIZON,
+) -> list[ForecastSegment]:
+    """What will apply for this zone over the next `horizon` (a day by default),
+    cut into bars at every moment the effective setpoint changes.
+
+    Deliberately reuses `resolved_setpoint`'s own precedence through the two helpers
+    above instead of re-deriving it: operating mode 'off' beats everything and is
+    shown as a single, unchanging bar for the whole window (an operator flips it by
+    hand; nothing in the data says it will flip again within the horizon). Otherwise
+    a running override is shown until it ends (or the horizon runs out, whichever is
+    sooner) -- a boost due to end at 03:00 must not be drawn as if it lasted the
+    whole night, that would show a warm room that will in fact be cold by then. What
+    follows is the schedule, walked switch by switch with `next_point`, in local
+    time -- exactly as `resolved_setpoint` itself resolves it -- so a day boundary or
+    a weekday with a different plan falls out of the same weekly-ring model the rest
+    of the schedule already uses, with no separate midnight-crossing logic here to
+    drift out of sync with it. Summer time needs no special case either: `now_utc`
+    and the horizon are real UTC instants (24 real hours, not "24 on the wall
+    clock"), and every local-time lookup along the way goes through `zoneinfo` via
+    `local_time`/`next_point`'s caller below, the same conversion `resolved_setpoint`
+    and `end_of_next_switch` already rely on -- so a 23- or 25-hour local day changes
+    how many bars come out, never whether the instants themselves are correct.
+
+    A zone without any schedule point is not a special case either: `next_point`
+    returns `None`, the loop below draws one bar for the remaining window, and
+    `resolved_setpoint` resolves it to frost protection precisely as it would for
+    that zone at any single instant.
+    """
+    window_end = now_utc + horizon
+    if zone.operating_mode.code == "off":
+        return [ForecastSegment(now_utc, window_end, resolved_setpoint(session, zone, now_utc))]
+
+    segments: list[ForecastSegment] = []
+    cursor = now_utc
+
+    override = _override_setpoint(session, zone, cursor)
+    if override is not None:
+        setpoint, ends_at = override
+        boundary = min(ends_at, window_end) if ends_at is not None else window_end
+        segments.append(ForecastSegment(cursor, boundary, setpoint))
+        cursor = boundary
+
+    if cursor >= window_end:
+        return segments
+
+    settings = session.get(Setting, 1)
+    assert settings is not None, "setting-Zeile fehlt — Einrichtung unvollstaendig"
+    points = list(
+        session.scalars(select(SchedulePoint).where(SchedulePoint.zone_id == zone.id))
+    )
+    timezone_name = ZoneInfo(settings.timezone)
+
+    remaining_switches = _MAX_FORECAST_SWITCHES
+    while cursor < window_end:
+        setpoint = resolved_setpoint(session, zone, cursor)
+        boundary = window_end
+        if points and remaining_switches > 0:
+            local_naive = local_time(cursor, settings.timezone).replace(tzinfo=None)
+            next_local = next_point(points, local_naive)
+            remaining_switches -= 1
+            if next_local is not None:
+                next_utc = (
+                    next_local.replace(tzinfo=timezone_name)
+                    .astimezone(UTC)
+                    .replace(tzinfo=None)
+                )
+                # `next_utc <= cursor` would mean the walk stopped advancing --
+                # reachable only if a future change to `next_point` ever returns a
+                # non-later instant, or a daylight-saving fold resolves a repeated
+                # local hour "backwards". Falling through to the full window in
+                # that case draws one wider bar instead of looping forever.
+                if next_utc > cursor:
+                    boundary = min(next_utc, window_end)
+        segments.append(ForecastSegment(cursor, boundary, setpoint))
+        cursor = boundary
+
+    return _merge_adjacent_forecast_segments(segments)
+
+
+def _merge_adjacent_forecast_segments(
+    segments: list[ForecastSegment],
+) -> list[ForecastSegment]:
+    """Collapses neighbouring bars that resolve to the same setpoint into one.
+
+    Two schedule points can carry the same mode back to back -- nothing forbids it,
+    it just never happens through painting, which already collapses that case. The
+    preview should not show a seam where nothing actually changes.
+    """
+    merged: list[ForecastSegment] = []
+    for segment in segments:
+        previous = merged[-1] if merged else None
+        if (
+            previous is not None
+            and previous.setpoint.temperature_c == segment.setpoint.temperature_c
+            and previous.setpoint.mode_id == segment.setpoint.mode_id
+        ):
+            merged[-1] = ForecastSegment(previous.starts_at, segment.ends_at, previous.setpoint)
+        else:
+            merged.append(segment)
+    return merged
 
 
 def end_of_next_switch(

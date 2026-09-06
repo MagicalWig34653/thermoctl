@@ -14,6 +14,8 @@ from thermoctl.auth.csrf import csrf_token
 from thermoctl.auth.dependencies import csrf_protection, current_principal, get_session
 from thermoctl.auth.sessions import COOKIE_NAME
 from thermoctl.config import get_settings
+from thermoctl.db.base import utcnow
+from thermoctl.db.models.operations import Setting
 from thermoctl.db.models.schedule import SchedulePoint
 from thermoctl.db.models.zone import SetpointMode, Zone, ZoneSetpoint
 from thermoctl.domain.authz import has_permission, visible_zones
@@ -29,10 +31,12 @@ from thermoctl.domain.schedule import (
     delete_schedule_point,
     move_schedule_point,
     paint_schedule_interval,
+    schedule_forecast,
     time_of_day_in_minutes,
     undo_schedule_gesture,
     week_segments,
 )
+from thermoctl.domain.time import local_time
 from thermoctl.web import templates, warmth_fraction
 from thermoctl.web.urls import prefixed
 
@@ -83,6 +87,56 @@ def _modes(session: Session) -> list[SetpointMode]:
     )
 
 
+# The forecast's own horizon, in minutes -- kept next to the domain's
+# `FORECAST_HORIZON` (24h) purely so the bar widths below add up to exactly 100%;
+# it is not a second definition of "how far ahead" the feature reasons about, only
+# of "how wide the drawn strip is", which happens to be the same number.
+_FORECAST_HORIZON_MINUTES = 24 * 60
+
+# Same short German forms as `domain.schedule._DAYS`, which stays private to that
+# module -- duplicated rather than imported, because the two round differently:
+# the domain's is for audit text, this one labels a bar the visitor is looking at
+# right now, keyed by `isoweekday()` (`local_time(...).isoweekday()`), not by the
+# schedule's own 1=Monday weekday column.
+_WEEKDAY_SHORT = {1: "Mo", 2: "Di", 3: "Mi", 4: "Do", 5: "Fr", 6: "Sa", 7: "So"}
+
+
+def _forecast_bars(
+    session: Session, zone: Zone, mode_names: dict[int, str]
+) -> list[dict[str, object]]:
+    """The next-24h preview, rendered as bars with a local-time label and a share
+    of the strip's width -- everything the template needs, so it stays a dumb loop
+    over rows instead of repeating the timezone conversion or precedence itself.
+
+    The running bar is always index 0: `schedule_forecast` starts its first segment
+    exactly at `now_utc`, by construction.
+    """
+    settings = session.get(Setting, 1)
+    assert settings is not None, "setting-Zeile fehlt — Einrichtung unvollstaendig"
+    now = utcnow()
+    bars: list[dict[str, object]] = []
+    for index, segment in enumerate(schedule_forecast(session, zone, now)):
+        duration = (segment.ends_at - segment.starts_at).total_seconds() / 60
+        local_start = local_time(segment.starts_at, settings.timezone)
+        bars.append(
+            {
+                "label": f"{_WEEKDAY_SHORT[local_start.isoweekday()]} "
+                f"{local_start.strftime('%H:%M')}",
+                "mode_name": (
+                    mode_names.get(segment.setpoint.mode_id, "")
+                    if segment.setpoint.mode_id is not None
+                    else ""
+                ),
+                "reason": segment.setpoint.reason,
+                "temperature_c": segment.setpoint.temperature_c,
+                "warmth": warmth_fraction(segment.setpoint.temperature_c),
+                "share_percent": max(duration, 0) / _FORECAST_HORIZON_MINUTES * 100,
+                "is_current": index == 0,
+            }
+        )
+    return bars
+
+
 def _schedule_page(
     request: Request,
     session: Session,
@@ -98,7 +152,8 @@ def _schedule_page(
 ) -> Response:
     points = _points(session, zone.id)
     modes = _modes(session)
-    segments = week_segments(points, {mode.id: mode.name for mode in modes})
+    mode_names = {mode.id: mode.name for mode in modes}
+    segments = week_segments(points, mode_names)
     # The warmth per mode, so the week view speaks the same language as the start
     # page's day track: warmer means warmer. Without it, day and night would be two
     # identical-looking bars -- and the schedule would only show *that* it switches,
@@ -125,6 +180,7 @@ def _schedule_page(
             "modes": modes,
             "weekdays": WEEKDAYS,
             "segments": by_day,
+            "forecast": _forecast_bars(session, zone, mode_names),
             "warmth": warmth,
             "temperatures": temperatures,
             "values": values or {"weekday": "1", "time_of_day": "06:00", "mode_id": ""},

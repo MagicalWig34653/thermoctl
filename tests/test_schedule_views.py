@@ -1,5 +1,6 @@
 import base64
 import re
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
@@ -11,8 +12,11 @@ from tests.helpers import create_mode, create_settings, create_zone, source
 from thermoctl.auth.csrf import csrf_token
 from thermoctl.auth.sessions import COOKIE_NAME
 from thermoctl.config import get_settings
+from thermoctl.db.base import utcnow
 from thermoctl.db.models.operations import AuditEvent
+from thermoctl.db.models.override import ZoneOverride
 from thermoctl.db.models.schedule import SchedulePoint
+from thermoctl.db.models.zone import ZoneSetpoint
 from thermoctl.domain.schedule import (
     ScheduleError,
     change_schedule_point_mode,
@@ -646,6 +650,7 @@ def _point(session: Session, zone_id: int, day: int, minute: int, mode_id: int) 
 def test_the_week_view_shows_the_wraparound_from_sunday_to_monday(
     client_als, session: Session
 ) -> None:
+    create_settings(session)
     zone = create_zone(session, "bad")
     day = create_mode(session, "tag", "Tag")
     night = create_mode(session, "nacht", "Nacht")
@@ -665,6 +670,7 @@ def test_the_week_view_shows_the_wraparound_from_sunday_to_monday(
 def test_creating_a_point_and_reporting_a_double_booking_understandably(
     client_als, session: Session
 ) -> None:
+    create_settings(session)
     source(session)
     zone = create_zone(session, "bad")
     mode = create_mode(session, "tag", "Tag")
@@ -695,6 +701,7 @@ def test_creating_a_point_and_reporting_a_double_booking_understandably(
 def test_invalid_points_stay_in_the_form_with_their_input(
     client_als, session: Session
 ) -> None:
+    create_settings(session)
     zone = create_zone(session, "bad")
     client = client_als([("schedule.manage", zone.id)])
     response = client.post(
@@ -835,6 +842,7 @@ def test_the_adoption_form_and_a_faulty_selection(client_als, session: Session) 
 def test_a_nonsensical_selection_when_creating_a_point(client_als, session: Session) -> None:
     """Weekday and mode come from select fields -- a request still does not have to
     stick to that. Both paths are deliberately bypassed here."""
+    create_settings(session)
     source(session)
     zone = create_zone(session, "zone-unsinn")
     mode = create_mode(session, "unsinn-tag", "Tag")
@@ -920,6 +928,7 @@ def test_moving_keeps_the_identifier_and_logs_where_from_and_to(
 ) -> None:
     """Deleting and recreating would be functionally the same, but would produce two
     unrelated audit entries and a gap in the schedule in between."""
+    create_settings(session)
     zone = create_zone(session, "bad")
     source(session, "web")
     day = create_mode(session, "tag", "Tag")
@@ -943,6 +952,7 @@ def test_moving_keeps_the_identifier_and_logs_where_from_and_to(
 def test_moving_onto_an_occupied_moment_is_refused(
     client_als, session: Session
 ) -> None:
+    create_settings(session)
     zone = create_zone(session, "bad")
     source(session, "web")
     day = create_mode(session, "tag", "Tag")
@@ -1005,6 +1015,7 @@ def test_verschieben_braucht_schedule_manage(client_als, session: Session) -> No
 
 
 def test_nonsensical_target_data_is_refused(client_als, session: Session) -> None:
+    create_settings(session)
     zone = create_zone(session, "bad")
     day = create_mode(session, "tag", "Tag")
     point = _point(session, zone.id, 1, 360, day.id)
@@ -1030,6 +1041,7 @@ def test_the_week_view_carries_the_point_identifier_for_dragging(
 ) -> None:
     """Without it, the bar has nothing it could move -- and dragging would be silently
     ineffective instead of visibly broken."""
+    create_settings(session)
     zone = create_zone(session, "bad")
     day = create_mode(session, "tag", "Tag")
     point = _point(session, zone.id, 1, 360, day.id)
@@ -1043,6 +1055,7 @@ def test_the_week_view_carries_the_point_identifier_for_dragging(
 def test_carried_segments_are_visibly_marked_as_not_draggable(
     client_als, session: Session,
 ) -> None:
+    create_settings(session)
     zone = create_zone(session, "carried-segment")
     day = create_mode(session, "carried-segment-mode", "Tag")
     _point(session, zone.id, 1, 360, day.id)
@@ -1065,6 +1078,7 @@ def test_without_schedule_manage_no_bar_can_be_dragged(
 ) -> None:
     """Counter-check: otherwise the test above would also be satisfied by a version
     that makes every bar draggable for everyone."""
+    create_settings(session)
     zone = create_zone(session, "bad")
     day = create_mode(session, "tag", "Tag")
     _point(session, zone.id, 1, 360, day.id)
@@ -1076,6 +1090,7 @@ def test_without_schedule_manage_no_bar_can_be_dragged(
 def test_the_create_route_still_reports_at_the_field(client_als, session: Session) -> None:
     """Counter-check to the dedicated channel for move errors: the path via the form
     should still get its message right where the input field is."""
+    create_settings(session)
     zone = create_zone(session, "bad")
     source(session, "web")
     day = create_mode(session, "tag", "Tag")
@@ -1119,6 +1134,7 @@ def test_moving_a_point_to_an_impossible_time_is_refused(
     The drag script snaps to 23:45 for exactly this reason, but the route is reachable
     without it -- the browser is not the only caller.
     """
+    create_settings(session)
     zone = create_zone(session, "minutenzone")
     mode = create_mode(session, "tag")
     session.flush()
@@ -1147,6 +1163,7 @@ def test_moving_a_point_onto_an_occupied_time_names_the_conflict(
     The database says so through its unique constraint; the view has to turn that into
     a sentence rather than letting an IntegrityError become a 500.
     """
+    create_settings(session)
     zone = create_zone(session, "kollisionszone")
     mode = create_mode(session, "tag")
     session.flush()
@@ -1190,6 +1207,7 @@ def test_moving_a_point_beyond_the_end_of_the_day_is_refused(
     rejects "24:00" earlier, so the guard behind it would never be reached from
     there -- and it is the one that also protects the REST and MCP adapters.
     """
+    create_settings(session)
     zone = create_zone(session, "minutenzone")
     mode = create_mode(session, "tag")
     session.flush()
@@ -1216,6 +1234,7 @@ def test_moving_a_point_onto_an_occupied_minute_names_the_field(
     simply did not do what they asked. It used to be keyed `uhrzeit` while the form
     field had long been `time_of_day`.
     """
+    create_settings(session)
     zone = create_zone(session, "kollisionszone")
     mode = create_mode(session, "tag")
     session.flush()
@@ -1356,6 +1375,7 @@ def test_changing_a_point_mode_without_csrf_is_rejected(client_als, session: Ses
 def test_invalid_mode_change_fields_are_rejected_understandably(
     client_als, session: Session
 ) -> None:
+    create_settings(session)
     zone = create_zone(session, "ungültiger-moduswechsel")
     comfort = create_mode(session, "komfort", "Komfort")
     point = _point(session, zone.id, 1, 390, comfort.id)
@@ -1387,6 +1407,7 @@ def test_invalid_mode_change_fields_are_rejected_understandably(
 def test_the_rendered_mode_form_changes_the_point_without_javascript(
     client_als, session: Session
 ) -> None:
+    create_settings(session)
     source(session, "web")
     zone = create_zone(session, "gerendertes-modusformular")
     comfort = create_mode(session, "komfort", "Komfort")
@@ -1415,3 +1436,70 @@ def test_the_rendered_mode_form_changes_the_point_without_javascript(
     session.refresh(point)
     assert point.setpoint_mode_id == economy.id
     assert 'type="submit">Ändern</button>' in body
+
+
+# --- schedule preview (24h forecast) -----------------------------------------------
+
+
+def test_the_forecast_is_visible_with_only_zone_read(client_als, session: Session) -> None:
+    """Principle: viewing the preview does not require the right to change the
+    plan -- unlike the paint form, which stays hidden without `schedule.manage`."""
+    create_settings(session)
+    zone = create_zone(session, "vorschau-nur-lesen")
+    day = create_mode(session, "vorschau-nur-lesen-tag", "Tag")
+    _point(session, zone.id, 1, 360, day.id)
+    client = client_als([("zone.read", zone.id)])
+
+    page = client.get(f"/zones/{zone.id}/schedule")
+
+    assert page.status_code == 200
+    assert "data-schedule-forecast" in page.text
+    assert 'id="schedule-paint"' not in page.text
+
+
+def test_the_forecast_shows_the_running_bar_and_its_temperature(
+    client_als, session: Session
+) -> None:
+    create_settings(session)
+    zone = create_zone(session, "vorschau-anzeige")
+    day = create_mode(session, "vorschau-anzeige-tag", "Tag")
+    point = _point(session, zone.id, 1, 360, day.id)
+    session.add(
+        ZoneSetpoint(zone_id=zone.id, setpoint_mode_id=day.id, temperature_c=Decimal("21.0"))
+    )
+    session.flush()
+    client = client_als([("zone.read", zone.id)])
+
+    page = client.get(f"/zones/{zone.id}/schedule")
+
+    assert page.status_code == 200
+    assert "schedule-forecast-current" in page.text
+    assert "21,0°" in page.text
+    assert point.id is not None  # keeps the point referenced for readability
+
+
+def test_the_forecast_shows_a_fixed_temperature_override_with_no_mode_name(
+    client_als, session: Session
+) -> None:
+    """The mode-less branch of the forecast bar: a fixed-temperature override has
+    no `mode_id`, so the bar must still render (an empty mode name), not crash."""
+    create_settings(session)
+    zone = create_zone(session, "vorschau-feste-uebersteuerung")
+    now = utcnow()
+    session.add(
+        ZoneOverride(
+            zone_id=zone.id,
+            temperature_c=Decimal("23.5"),
+            starts_at=now,
+            ends_at=None,
+            source_id=source(session, "web").id,
+        )
+    )
+    session.flush()
+    client = client_als([("zone.read", zone.id)])
+
+    page = client.get(f"/zones/{zone.id}/schedule")
+
+    assert page.status_code == 200
+    assert "23,5°" in page.text
+    assert "Übersteuerung" in page.text
