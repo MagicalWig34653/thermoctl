@@ -23,6 +23,27 @@ Absicherung in `migrations/env.py` (z. B. eine Datenbank-Sperre) ist noch offen.
 
 Letzte Aktualisierung: 2026-09-06.
 
+## Erkennung eines festhängenden Messwerts
+
+`domain/fault.py::sensor_state` prüfte bisher nur das Alter der letzten Meldung — ein
+Sensor, der zuverlässig alle paar Minuten dieselbe Zahl schickt, galt dauerhaft als
+`ok`. Neu: `stuck_reading()` vergleicht die Spanne aller Messwerte der letzten
+`stuck_reading_hours` Stunden (Vorgabe 12, anlagenweit) gegen eine kleine Schwelle
+(0,05 °C) — nicht bitgleiche Werte, sonst zählte ein Sensor, der zwischen zwei
+Auflösungsschritten pendelt (22,7/22,8 °C), fälschlich als festhängend. Ist die
+Historie kürzer als die Schwelle, gibt es keinen Verdacht, keinen Fehlalarm.
+
+**Entscheidung des Projektinhabers: melden, aber weiterregeln.** `zone_state.sensor_stuck`
+ist von `sensor_status_id` und damit von `decide()` in `domain/control_loop.py` komplett
+unabhängig — die Regelentscheidung ändert sich nicht, eine Zone fällt deswegen nicht in
+den Frostschutz. Nur berechnet, solange der Sensor sonst `ok` ist (eine ausgefallene
+oder fehlende Quelle hat ihre eigene, unveränderte Erkennung). Eine vierte, eigene
+Meldungsart (`notify_stuck_sensor`) statt ein Zusatz zur Sensorstörung — beide schließen
+sich gegenseitig aus und ein gemeinsamer Schalter würde eine harmlose, oft tagelange
+Beobachtung mit einem echten Sensorausfall verkoppeln. Sichtbar auf Startseite und
+Kiosk, sowie über `sensor_stuck` in REST- und MCP-Zonenzustand. Migration `afb9832fba99`,
+Kopf danach unverändert einzügig.
+
 ## Zeitplan-Vorschau: nächste 24 Stunden je Zone
 
 Die Zeitplanseite (`/zones/{id}/schedule`) zeigt jetzt oberhalb des Wochenrasters eine

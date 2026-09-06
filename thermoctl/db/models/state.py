@@ -42,6 +42,15 @@ class ZoneState(Base):
     temperature_c: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), nullable=True)
     measured_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     sensor_status_id: Mapped[int] = mapped_column(ForeignKey("sensor_status.id"), nullable=False)
+    # Independent of `sensor_status_id` above -- `decide()` in `domain/control_loop.py`
+    # never reads this column, and never will: the project owner's explicit decision
+    # is "melden, aber weiterregeln". Only ever computed while `sensor_status_id`
+    # reads `ok` (`services/ingest.py::advance_zone_state`) -- a zone without a
+    # reading, or with a stale one, already has its own established indicator and is
+    # not a case for this one.
+    sensor_stuck: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=false(), nullable=False
+    )
     window_open: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     last_regular_heat_at: Mapped[datetime | None] = mapped_column(

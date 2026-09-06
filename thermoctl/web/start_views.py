@@ -223,6 +223,15 @@ def start(
                 for zone in zones
                 if zone.id in states and states[zone.id][1].code != "ok"
             ],
+            # Deliberately its own banner, not folded into `silent_sensors` above:
+            # a stuck reading is present and current, the zone keeps regulating on
+            # it normally -- lumping it in with a silent sensor would suggest the
+            # same fallback to frost protection that only actually applies there.
+            "stuck_sensors": [
+                zone.display_name
+                for zone in zones
+                if zone.id in states and states[zone.id][0].sensor_stuck
+            ],
             "day_tracks": _day_track(
                 session, zone_ids, local_now.isoweekday()
             ),

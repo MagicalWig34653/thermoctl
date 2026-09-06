@@ -101,6 +101,12 @@
             {% if entry and entry[1].code != "ok" %}
             <span class="tc-chip tc-chip-warning align-self-start">{{ entry[1].label }}</span>
             {% endif %}
+            {% if entry and entry[0].sensor_stuck %}
+            <span class="tc-chip tc-chip-quiet align-self-start"
+                  title="Der Messwert bewegt sich seit längerem nicht. Die Zone regelt normal weiter, es ist kein Ausfall.">
+                Messwert unverändert
+            </span>
+            {% endif %}
 
             {#
             No mode_id field: `set_setpoint` (thermoctl/domain/remote_control.py)

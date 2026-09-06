@@ -1,7 +1,7 @@
 # ruff: noqa: E501
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal
 
 from sqlalchemy import delete, select
@@ -16,6 +16,7 @@ from thermoctl.db.models.device import (
 )
 from thermoctl.db.models.lookup import DeviceCapability, DeviceRole, Integration, SensorStatus
 from thermoctl.db.models.measurement import DeviceHealth, Measurement
+from thermoctl.db.models.operations import Setting
 from thermoctl.db.models.state import ZoneState
 from thermoctl.db.models.zone import Zone
 from thermoctl.domain.controller import execute_action
@@ -24,7 +25,7 @@ from thermoctl.domain.device_classes import (
     DeviceDescription,
     descriptions_from_bridge_list,
 )
-from thermoctl.domain.fault import NO_SOURCE, OK, sensor_state
+from thermoctl.domain.fault import NO_SOURCE, OK, sensor_state, stuck_reading
 from thermoctl.domain.reading import Reading, readings_from_payload
 from thermoctl.domain.zone_settings import control_parameters
 from thermoctl.integrations.mqtt.zigbee2mqtt import MessageKind, trim
@@ -319,6 +320,51 @@ def process_message(
         )
 
 
+def _stuck(
+    session: Session,
+    zone: Zone,
+    temperature: DeviceCapability,
+    now: datetime,
+    duration_hours: int,
+) -> bool:
+    """Whether the zone's current temperature source counts as `festhängend`.
+
+    Only ever called while `sensor_state()` already reads `ok` for this zone (see
+    `advance_zone_state` below) -- a missing or stale source has its own,
+    established indicator and is not a case for this one (task instructions,
+    section 4).
+    """
+    assert zone.temperature_source_device_id is not None  # guaranteed by the caller
+    cutoff = now - timedelta(hours=duration_hours)
+    history_covers_duration = (
+        session.scalar(
+            select(Measurement.id)
+            .where(
+                Measurement.device_id == zone.temperature_source_device_id,
+                Measurement.capability_id == temperature.id,
+                Measurement.measured_at <= cutoff,
+            )
+            .limit(1)
+        )
+        is not None
+    )
+    values = [
+        value
+        for value in session.scalars(
+            select(Measurement.value_numeric)
+            .where(
+                Measurement.device_id == zone.temperature_source_device_id,
+                Measurement.capability_id == temperature.id,
+                Measurement.measured_at >= cutoff,
+                Measurement.measured_at <= now,
+                Measurement.value_numeric.is_not(None),
+            )
+        )
+        if value is not None
+    ]
+    return stuck_reading(values, history_covers_duration=history_covers_duration)
+
+
 def advance_zone_state(session: Session, now: datetime) -> None:
     """Derives the current state of all zones from their temperature source."""
     temperature = session.scalar(
@@ -329,6 +375,8 @@ def advance_zone_state(session: Session, now: datetime) -> None:
         select(DeviceRole).where(DeviceRole.code == "window_contact")
     )
     status_ids = {status.code: status.id for status in session.scalars(select(SensorStatus))}
+    setting_row = session.get(Setting, 1)
+    assert setting_row is not None, "setting-Zeile fehlt — Einrichtung unvollständig"
     for zone in session.scalars(select(Zone)):
         measurement = None
         if zone.temperature_source_device_id is not None and temperature is not None:
@@ -365,6 +413,11 @@ def advance_zone_state(session: Session, now: datetime) -> None:
         state.temperature_c = measurement.value_numeric if measurement is not None else None
         state.measured_at = measurement.measured_at if measurement is not None else None
         state.sensor_status_id = status_id
+        state.sensor_stuck = (
+            code == OK
+            and temperature is not None
+            and _stuck(session, zone, temperature, now, setting_row.stuck_reading_hours)
+        )
         state.window_open = _window_open(
             session,
             zone,

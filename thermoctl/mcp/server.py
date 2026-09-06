@@ -108,12 +108,21 @@ def zone_state(session: Session, plaintext: str, zone_id: int) -> dict[str, obje
     zone = _visible_zone(session, principal, zone_id)
     row = session.get(ZoneState, zone.id)
     if row is None:
-        return {"temperature_c": None, "measured_at": None, "sensor_state": None}
+        return {
+            "temperature_c": None,
+            "measured_at": None,
+            "sensor_state": None,
+            "sensor_stuck": False,
+        }
     status = session.get(SensorStatus, row.sensor_status_id)
     return {
         "temperature_c": _decimal(row.temperature_c),
         "measured_at": _moment(row.measured_at),
         "sensor_state": None if status is None else status.code,
+        # Independent of `sensor_state` above -- see
+        # `domain/fault_notice.py::stuck_sensor_notice` for why the two never both
+        # describe a problem for the same zone at once.
+        "sensor_stuck": row.sensor_stuck,
     }
 
 

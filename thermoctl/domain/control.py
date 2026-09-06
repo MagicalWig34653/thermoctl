@@ -53,6 +53,10 @@ LIMITS: dict[str, tuple[Decimal, Decimal]] = {
     "default_min_off_seconds": (Decimal(30), Decimal(7200)),
     "default_sensor_timeout_seconds": (Decimal(60), Decimal(86400)),
     "default_window_resume_delay_seconds": (Decimal(0), Decimal(3600)),
+    # An hour is the shortest span for which "unmoving" is still a meaningful claim
+    # about a room's temperature at all; a week is long enough that anything longer
+    # would stop being a diagnostic and start being silence.
+    "stuck_reading_hours": (Decimal(1), Decimal(168)),
     "measurement_retention_days": (Decimal(1), Decimal(3650)),
     "shadow_decision_retention_days": (Decimal(1), Decimal(3650)),
     "session_lifetime_seconds": (Decimal(300), Decimal(31536000)),
@@ -78,6 +82,7 @@ LABELS: dict[str, str] = {
     "default_min_off_seconds": "Mindest-Ausschaltdauer (Sekunden)",
     "default_sensor_timeout_seconds": "Sensor gilt als ausgefallen nach (Sekunden)",
     "default_window_resume_delay_seconds": "Nachlauf nach Fensterschluss (Sekunden)",
+    "stuck_reading_hours": "Messwert gilt als festhängend nach (Stunden)",
     "measurement_retention_days": "Messwerte aufbewahren (Tage)",
     "shadow_decision_retention_days": "Schattenentscheidungen aufbewahren (Tage)",
     "session_lifetime_seconds": "Sitzungsdauer (Sekunden)",

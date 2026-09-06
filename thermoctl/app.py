@@ -40,6 +40,7 @@ from thermoctl.domain.fault_notice import (
     notice_enabled,
     notification_audit_action,
     sensor_notice,
+    stuck_sensor_notice,
 )
 from thermoctl.domain.modes import DomainError, update_setpoints
 from thermoctl.domain.remote_control import (
@@ -165,6 +166,39 @@ def _sensor_notices(
             status,
             frost_protection_temperature(session, zone),
         )
+        if notice is not None:
+            _audit(session, notice, setting_row)
+            notices.append(notice)
+    return notices
+
+
+def _stuck_states(session: Session) -> dict[int, bool]:
+    return {
+        zone_id: stuck
+        for zone_id, stuck in session.execute(
+            select(ZoneState.zone_id, ZoneState.sensor_stuck)
+        )
+    }
+
+
+def _stuck_notices(
+    session: Session, before: dict[int, bool], setting_row: Setting | None
+) -> list[FaultNotice]:
+    """The stuck-reading counterpart of `_sensor_notices` above -- same "before this
+    cycle's `advance_zone_state`, after it" shape, its own state (`sensor_stuck`
+    instead of `sensor_status`), and the same `sensor:<zone id>` key: the two can
+    never both fire for the same zone in the same cycle (see `stuck_sensor_notice`'s
+    docstring), so sharing the key never overwrites one notice with the other.
+    """
+    after = _stuck_states(session)
+    notices: list[FaultNotice] = []
+    for zone in session.scalars(select(Zone).order_by(Zone.id)):
+        stuck = after.get(zone.id)
+        if stuck is None:  # pragma: no cover
+            # Same reasoning as `_sensor_notices`: only a concurrently deleted row
+            # would be missing here.
+            continue
+        notice = stuck_sensor_notice(f"sensor:{zone.id}", zone.name, before.get(zone.id), stuck)
         if notice is not None:
             _audit(session, notice, setting_row)
             notices.append(notice)
@@ -338,8 +372,10 @@ async def _shadow_loop(app: FastAPI) -> None:
             with session_scope(app.state.session_factory) as session:
                 setting_row = session.get(Setting, 1)
                 before = _sensor_states(session)
+                stuck_before = _stuck_states(session)
                 advance_zone_state(session, now)
                 notices = _sensor_notices(session, before, setting_row)
+                notices += _stuck_notices(session, stuck_before, setting_row)
                 cycle(session, now, forecast)
                 # `getattr`: the loop also runs in tests that assemble an app without
                 # running through the full lifespan.
