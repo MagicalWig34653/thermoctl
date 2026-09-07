@@ -906,3 +906,87 @@ def test_the_buttons_on_the_dashboard_work_the_way_a_browser_sends_them(
             f"{action} wird abgewiesen, wenn ein Browser es ganz normal abschickt: "
             f"{answer.text}"
         )
+
+
+# --- Regression nach dem UI-Redesign v0.9.0 --------------------------------------
+#
+# Der Kiosk ist ein eigener Zugangsweg mit eigener Hülle. Beim Redesign sind daneben
+# zwei neue Oberflächen entstanden (Anlagensicht und Wohnungssicht) samt einem
+# Profil-Wächter an den Anlagenseiten. Nichts davon darf den Kiosk berühren -- weder
+# als Hülle, noch als Navigation, noch als zusätzliche Bedingung vor seiner
+# Tokenprüfung. Die Tests hier halten genau das fest.
+
+
+def _kiosk_page(client: TestClient, session: Session) -> str:
+    zone = create_zone(session, "wandtablett")
+    create_settings(session)
+    admin = _admin(session)
+    _token, plaintext = issue_kiosk_token(
+        session, admin, "Wandtablett", [zone.id], control_allowed=True, expires_at=None
+    )
+    _with_kiosk_cookie(client, plaintext)
+    response = client.get("/kiosk")
+    assert response.status_code == status.HTTP_200_OK
+    return response.text
+
+
+def test_the_kiosk_uses_neither_of_the_two_app_shells(
+    client: TestClient, session: Session
+) -> None:
+    """`base_plain.html`, nicht `base_admin.html` oder `base_tenant.html`.
+
+    Ein Wandtablett wird aus Entfernung angesehen und hat weder Seitenleiste noch
+    Kontomenü. Erbte es eine der beiden Hüllen, stünde dort plötzlich eine
+    Navigation, deren Ziele der Kiosk-Principal gar nicht öffnen kann.
+    """
+    page = _kiosk_page(client, session)
+    for marker in ("tc-sidenav", "tc-topbar", "tc-tnav", "tc-bottomnav", "tc-shell"):
+        assert marker not in page, marker
+
+
+def test_the_kiosk_carries_no_loading_bar(client: TestClient, session: Session) -> None:
+    """Bewusst kein Ladebalken: das Tablett lädt sich alle 20 Sekunden selbst neu,
+    ein bei jedem Durchgang aufblitzender Balken wäre reine Unruhe an der Wand."""
+    assert "tc-loading-bar" not in _kiosk_page(client, session)
+
+
+def test_the_kiosk_keeps_its_own_fixed_refresh(
+    client: TestClient, session: Session
+) -> None:
+    """Feste zwanzig Sekunden -- anders als die Startseite, die ihr Intervall aus
+    `setting.shadow_interval_seconds` bezieht. Der Kiosk hat keinen Bediener, der
+    eine veraltete Anzeige bemerken würde."""
+    assert 'hx-trigger="every 20s"' in _kiosk_page(client, session)
+
+
+def test_the_ui_profile_of_the_issuer_does_not_reach_the_kiosk(
+    client: TestClient, session: Session
+) -> None:
+    """Ein Kiosk-Token erbt zwar das Profil seines Ausstellers (es entsteht über
+    `principal_for_token`), aber der Kiosk rendert davon unabhängig immer seine
+    eigene Ansicht. Ein Aussteller mit Mieterprofil darf das Wandtablett nicht in
+    eine Wohnungsansicht verwandeln -- und ein Profil-Wächter darf es nicht
+    aussperren.
+    """
+    from thermoctl.domain.ui_profile import WebUiProfile
+
+    zone = create_zone(session, "kiosk-profil")
+    create_settings(session)
+    source(session, "kiosk")
+    source(session, "web")
+    issuer = user_with_permissions(
+        session, "kiosk-mieter",
+        [("token.manage", None), ("zone.read", None), ("setpoint.write", None),
+         ("override.create", None), ("override.cancel", None)],
+        ui_profile=WebUiProfile.TENANT,
+    )
+    _token, plaintext = issue_kiosk_token(
+        session, issuer, "Kiosk", [zone.id], control_allowed=True, expires_at=None
+    )
+    _with_kiosk_cookie(client, plaintext)
+
+    response = client.get("/kiosk")
+
+    assert response.status_code == status.HTTP_200_OK
+    assert "tc-tnav" not in response.text
+    assert "kiosk" in response.text.lower()
