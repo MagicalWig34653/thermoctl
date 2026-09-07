@@ -1327,3 +1327,19 @@ def test_a_room_taken_away_afterwards_no_longer_appears_in_the_absence_banner(
     page = client.get("/").text
     assert "Abwesenheit läuft" in page
     assert "Bad" not in page
+
+
+def test_the_tenant_shell_carries_the_stale_page_handling_and_the_loading_bar(
+    tenant_client: Client, session: Session
+) -> None:
+    """Beide gehören zum gemeinsamen Kern (`base_core.html`) und dürfen der
+    Wohnungssicht nicht abhandenkommen.
+
+    Beides sind aus dem Betrieb gemeldete Fehler, keine Zierde: ohne den
+    stale-page-Hinweis tut ein Bedienelement stumm nichts, ohne den Ladebalken
+    wirkt eine langsame Antwort wie ein Ausfall.
+    """
+    mine, _theirs = _wohnung(session)
+    page = _tenant(tenant_client, mine).get("/").text
+    assert "HX-Stale-Page" in page
+    assert 'id="tc-loading-bar"' in page
