@@ -221,7 +221,12 @@ hier, sondern an der jeweiligen Stelle: `hx-preserve` an den
 </div>
 {% else %}
 
-<div class="tc-panel mb-4">
+{#
+Ein Kartenraster, kein Zeilenband: eine Zone ist der Zustand eines Raums und
+bekommt ihre eigene Fläche -- so führt es auch die Admin-Demo. Zwei Karten
+nebeneinander ab knapp 48 rem, darunter einspaltig.
+#}
+<div class="tc-zones mb-4">
     {% for zone in zones %}
     {% set entry = states.get(zone.id) %}
     {% set setpoint = setpoints[zone.id] %}
@@ -276,7 +281,7 @@ hier, sondern an der jeweiligen Stelle: `hx-preserve` an den
             </div>
         </div>
 
-        <div class="text-end">
+        <div class="tc-zone-value">
             {% if entry and entry[0].temperature_c is not none %}
             <div class="t-value t-large">{{ entry[0].temperature_c|grad }}<span class="t-unit">°C</span></div>
             <div class="t-quiet small">{{ entry[0].measured_at|age }}</div>
@@ -295,6 +300,7 @@ hier, sondern an der jeweiligen Stelle: `hx-preserve` an den
         Ohne Modus (feste Übersteuerung) gibt es nichts zu verstellen -- dann steht dort
         nur der Wert.
         #}
+        <div class="tc-zone-controls">
         <div class="tc-thermostat">
             {% if setpoint.mode_id and zone.id in may_edit_setpoint %}
             <form method="post" action="{{ url_prefix }}/zones/{{ zone.id }}/thermostat" class="d-flex align-items-center gap-1">
@@ -319,19 +325,7 @@ hier, sondern an der jeweiligen Stelle: `hx-preserve` an den
             {% endif %}
         </div>
 
-        <div class="tc-zone-track">
-            {% set plan_gilt = zone.operating_mode.code == "auto" and not override %}
-            {{ spur(day_tracks.get(zone.id, []), now_fraction, plan_gilt) }}
-            <div class="tc-track-scale t-quiet t-value">
-                <span>00</span><span>06</span><span>12</span><span>18</span><span>24</span>
-            </div>
-            <div class="small t-quiet mt-1">
-                {% if not plan_gilt %}<strong>Plan ausgesetzt</strong> · {% endif %}
-                {{ setpoint.reason }}{% if entscheidung %} · {{ entscheidung.reason }}{% endif %}
-            </div>
-        </div>
-
-        <div class="text-end">
+        <div>
             {% if override and zone.id in may_cancel %}
             <form method="post" action="{{ url_prefix }}/zones/{{ zone.id }}/override/cancel">
                 <button class="btn btn-sm btn-outline-secondary" type="submit">
@@ -354,6 +348,19 @@ hier, sondern an der jeweiligen Stelle: `hx-preserve` an den
                 Übersteuern
             </button>
             {% endif %}
+        </div>
+        </div>
+
+        <div class="tc-zone-track">
+            {% set plan_gilt = zone.operating_mode.code == "auto" and not override %}
+            {{ spur(day_tracks.get(zone.id, []), now_fraction, plan_gilt) }}
+            <div class="tc-track-scale t-quiet t-value">
+                <span>00</span><span>06</span><span>12</span><span>18</span><span>24</span>
+            </div>
+            <div class="small t-quiet mt-1">
+                {% if not plan_gilt %}<strong>Plan ausgesetzt</strong> · {% endif %}
+                {{ setpoint.reason }}{% if entscheidung %} · {{ entscheidung.reason }}{% endif %}
+            </div>
         </div>
 
         {% if zone.id in may_override %}

@@ -24,6 +24,7 @@ from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import RedirectResponse
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from thermoctl.auth.dependencies import csrf_protection, current_principal, get_session
@@ -32,7 +33,7 @@ from thermoctl.db.models.lookup import SensorStatus
 from thermoctl.db.models.operations import Setting
 from thermoctl.db.models.schedule import SchedulePoint
 from thermoctl.db.models.state import ZoneState
-from thermoctl.db.models.zone import SetpointMode, Zone
+from thermoctl.db.models.zone import SetpointMode, Zone, ZoneSetpoint
 from thermoctl.domain.absence import absence_zones, end_absence, running_absence, start_absence
 from thermoctl.domain.authz import has_permission, visible_zones
 from thermoctl.domain.modes import DomainError
@@ -58,7 +59,7 @@ from thermoctl.domain.statistics import (
     period_days,
 )
 from thermoctl.domain.time import local_day_start_utc, local_time
-from thermoctl.web import templates
+from thermoctl.web import templates, warmth_fraction
 from thermoctl.web.guards import tenant_ui_only
 from thermoctl.web.schedule_views import (
     WEEKDAYS,
@@ -225,6 +226,19 @@ def _tenant_schedule_page(
     )
     modes = {m.id: m.name for m in session.query(SetpointMode)}
     segments = week_segments(points, modes)
+    # Die Wärme je Modus -- dieselbe Skala wie die Tagesspur der Startseite und die
+    # Wochenansicht der Anlagensicht. Ohne sie müsste die Vorlage die Farbe raten
+    # ("der erste Abschnitt wird schon der kühle sein"), und der Wochenplan zeigte
+    # dann *dass* umgeschaltet wird, aber nicht wohin -- gelegentlich sogar falsch
+    # herum.
+    warmth = {
+        mode_id: warmth_fraction(temperature)
+        for mode_id, temperature in session.execute(
+            select(ZoneSetpoint.setpoint_mode_id, ZoneSetpoint.temperature_c).where(
+                ZoneSetpoint.zone_id == zone.id
+            )
+        )
+    }
     by_day = {
         day: [segment for segment in segments if segment.weekday == day]
         for day, _name in WEEKDAYS
@@ -254,6 +268,7 @@ def _tenant_schedule_page(
             "segments": by_day,
             "day_points": day_points,
             "modes": modes,
+            "warmth": warmth,
             "forecast": _forecast_bars(session, zone, modes),
             "may_edit": may_edit,
             "gesture_error": gesture_error,

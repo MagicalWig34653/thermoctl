@@ -130,6 +130,7 @@
       "Ventilschutzlauf und wurde ein Fenster geöffnet, während die Temperatur im",
       "[`docs/docker-swarm.md`](docker-swarm.md) und [`docs/kubernetes.md`](kubernetes.md), je",
       "allein, für den Aus-Timer zusätzlich `protection_allowed`. Ein Ventilschutzlauf, der",
+      "benutzen jetzt dieselbe zweiseitige Skala: unter der Mitte kühl, darüber warm, die",
       "dauerhaften ±0,5-K-Schritt am laufenden Modus, „Für eine Weile wärmer\" und „Zur",
       "deshalb bleibt die Erkennung je Zone standardmäßig aus, und der Betreiber schaltet sie",
       "echten Fensteröffnen zu unterscheiden. Ein langsames Auskühlen nach Heizende und das Ende",
@@ -690,8 +691,11 @@
       "<h1 class=\"tc-h1\">{{ zone.display_name }}: wann soll es warm sein?</h1>",
       "<p class=\"t-quiet small\">Warm am Morgen und Abend, nachts automatisch kühler.</p>",
       "Du legst nur deine Komfortzeiten fest. Alles Weitere übernimmt die Heizung.",
+      "Startseite: unter der Mitte kühl, darüber warm, und die",
       "background: color-mix(in srgb, var(--warmth) {{ (bar.warmth * 100)|round|int }}%, var(--cool-area));\">",
-      "background: var({{ '--warmth-area' if not loop.first else '--cool-area' }});\"></span>",
+      "die Nachtstunden hier warm aussehen -- drei Ansichten",
+      "var({{ '--warmth' if warmth.get(segment.mode_id, 0.5) >= 0.5 else '--cool' }})",
+      "{{ (40 + (warmth.get(segment.mode_id, 0.5) - 0.5)|abs * 90)|round|int }}%, var(--surface));\"></span>",
       "„Für eine Weile wärmer“ verändert diesen Wochenplan nicht. Nach Ablauf gilt"
     ],
     "thermoctl/web/templates/tenant_schedule_empty.html": [
@@ -705,14 +709,16 @@
       "Für eine Weile wärmer",
       "Seit {{ notice.measured_at|age }} kam keine neue Temperatur. Die Heizung",
       "Solange ein Fenster offen steht, wird in diesem Raum nicht geheizt.",
-      "background: color-mix(in srgb, var(--warmth) {{ (segment.warmth * 100)|round|int }}%, var(--cool-area));\"></span>"
+      "var({{ '--warmth' if segment.warmth >= 0.5 else '--cool' }})",
+      "{{ (40 + (segment.warmth - 0.5)|abs * 90)|round|int }}%, var(--surface));\"></span>"
     ],
     "thermoctl/web/templates/vacation.html": [
       "<span class=\"tc-chip tc-chip-warm\"><span class=\"tc-dot\"></span>Läuft</span>",
       "Mindestschaltdauern und Ventilschutz gelten unverändert weiter, und eine Zone in"
     ],
     "thermoctl/web/tenant_views.py": [
-      "/heating-time"
+      "/heating-time",
+      "warmth"
     ]
   },
   "version": 1

@@ -139,6 +139,72 @@ MariaDB-Lauf hat dabei zwei Dinge gefunden, die unter SQLite unsichtbar blieben:
   `setpoint_mode.code` über der Spaltenlänge von 32 Zeichen. SQLite nimmt ihn
   klaglos, MariaDB nicht.
 
+## Optik: die Palette und die Formen der Demos übernommen
+
+Bis hierher trug das Redesign die Informationsarchitektur der Demos, aber die alte,
+kantige Gestaltung -- Kupfer und Schiefer, 6-px-Ecken, keine Schatten. Das war eine
+bewusste Entscheidung und die falsche; der Projektinhaber hat sie zurückgenommen.
+
+Übernommen ist jetzt die Gestaltung beider Demos, über die **Tokens**: dieselben
+Namen wie vorher, andere Werte, sodass der gesamte Bestand ihnen folgt. Die
+Anlagensicht führt Blau als Primärfarbe (`#2463eb`), die Wohnungssicht gedämpftes
+Grün (`#236248`) -- gesetzt am Rumpf über `.tc-tenant`, damit beide Hüllen dieselben
+Bausteine benutzen und nur ihre Werte tauschen. Dazu: Ecken von 16 bzw. 20 px,
+getragene Schatten, Zustandsmarken als Pillen in kleinen Versalien, große und eng
+gesetzte Seitenüberschriften, Tabellenköpfe auf eigener Fläche, Zonen als
+**Kartenraster** statt als Zeilenband.
+
+Die eine Aussage, die dabei erhalten bleibt: **Farbe ist hier ein Messwert.**
+`--warmth` (Orange) und `--cool` (Blau) stehen ausschließlich in
+Temperaturflächen -- Tagesspur, Wochenplan, Vorschau -- und nie auf einer
+Schaltfläche; umgekehrt erscheint die Primärfarbe nie an einem Messwert. Alle drei
+Ansichten desselben Zeitplans (Startseite, Admin-Wochenplan, Mieter-Wochenplan)
+benutzen jetzt dieselbe zweiseitige Skala: unter der Mitte kühl, darüber warm, die
+Sättigung sagt wie deutlich. Der Mieter-Wochenplan riet die Farbe vorher („der erste
+Abschnitt wird schon der kühle sein") und lag damit gelegentlich falsch herum.
+
+Nebenbei repariert: vier tote Kürzel im Kiosk-CSS (`--schrift-instrument`,
+`--gedämpft`, `--tinte`, `--wärme`) aus der Umbenennung ins Englische. Eine
+CSS-Eigenschaft mit unbekannter Variable wird ohne Fehlermeldung verworfen -- die Uhr
+des Wandtabletts lief seither in der Fließtextschrift statt in der Instrumentschrift.
+
+## Ein Recht war beim Einrichten verschwunden
+
+Die Seed-Revision `3685e30419a4_nachschlagetabellen` spielte den Stand von damals
+über einen **positionellen** Schnitt in die lebende Liste `PERMISSIONS` ein
+(`[:15]`). Das ging so lange gut, wie neue Rechte hinten angehängt wurden. Beim
+Einsortieren von `report.create` in die Mitte rutschte `audit.read` aus dem Schnitt:
+eine frisch eingerichtete Anlage hatte danach **kein einziges Konto**, das Protokoll,
+Schaltprotokoll oder Relaisverschleiß öffnen konnte. Nichts schlug fehl -- weder die
+Migration noch die Einrichtung noch die Testsuite. Nur drei Seiten antworteten jedem
+mit 403.
+
+Gefunden hat es ein **Browsertest**, weil dort ein echter Server frisch eingerichtet
+wird; die HTTP-Suite legt ihr Schema über `create_all` an und sieht die Migration
+gar nicht. Behoben durch eine feste Liste in der Revision statt des Schnitts,
+`report.create` ans Ende von `PERMISSIONS` verschoben, und ein Wächtertest
+(`test_migrations.py::test_every_permission_exists_after_a_full_upgrade`) prüft
+künftig nach jedem vollständigen Upgrade, dass jedes Recht aus `PERMISSIONS`
+tatsächlich in der Tabelle steht.
+
+## Browsertests
+
+`browser_tests/` (Playwright) ist auf die neue Oberfläche gezogen: `.tc-head` gibt es
+nicht mehr, der Anker ist `.tc-topbar` (nicht `.tc-sidebar` -- die klappt unter 992 px
+weg), das Sammelmenü „Einstellungen" ist durch die Seitenleiste ersetzt. Neu:
+`test_tenant_ui.py` mit sechs Tests der Wohnungssicht (richtige Hülle, vier Bereiche
+erreichbar, Sollwert-Stepper rechnet serverseitig, `/settings` ergibt 403, Fußleiste
+auf 390 px, Ladebalken vorhanden) und ein Test, dass die Seitenleiste auf schmalem
+Bildschirm über den Knopf auf- und zugeht.
+
+Die drei Tests, die prüfen, ob `thermoctl.css` überhaupt wirkt, hängen nicht mehr an
+einem festen Farbwert -- der scheitert bei jeder gewollten Farbanpassung und damit
+aus dem falschen Grund, und seit dem Redesign wäre er zusätzlich stumpf, weil die
+Primärfarbe selbst ein Blau ist. Geprüft wird jetzt, dass die Gestaltungsvariablen
+auf `:root` überhaupt ankommen; die kennt nur diese Datei.
+
+Stand: **56 Browsertests grün.**
+
 **Sicherheitsdurchsicht (unabhängig, 2026-09-07): kein Befund.** Ein Gegenleser, der
 nicht umgesetzt hat, hat elf Punkte am Code geprüft -- Mieter an Anlagenrouten, ob der
 Profil-Wächter irgendwo eine Rechteprüfung ersetzt, Zonen-Leaks über Titel, Selects,

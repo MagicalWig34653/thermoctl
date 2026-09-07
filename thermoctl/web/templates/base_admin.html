@@ -28,11 +28,16 @@ zeigt sie nur an.
             <span>thermoctl</span>
         </a>
         <nav class="tc-sidenav" aria-label="Hauptnavigation">
-            {{ nav_link("/", "Übersicht", exact=true) }}
+            {#
+            "Übersicht" steht **innerhalb** des ersten Blocks, nicht darüber: eine
+            Abschnittsüberschrift, unter der der erste Eintrag fehlt, ordnet nichts --
+            sie sieht nur so aus.
+            #}
             {% for title, items in sections %}
-            {% if items %}
+            {% if items or loop.first %}
             <p class="tc-navsec" id="tc-navsec-{{ loop.index }}">{{ title }}</p>
             <div role="group" aria-labelledby="tc-navsec-{{ loop.index }}">
+                {% if loop.first %}{{ nav_link("/", "Übersicht", exact=true) }}{% endif %}
                 {% for item in items %}{{ nav_link(item.path, item.label) }}{% endfor %}
             </div>
             {% endif %}
@@ -44,7 +49,14 @@ zeigt sie nur an.
             <button class="tc-iconbtn d-lg-none" type="button" data-bs-toggle="collapse"
                     data-bs-target="#tc-sidebar" aria-controls="tc-sidebar"
                     aria-expanded="false">Navigation</button>
-            <h1 class="tc-pagetitle">{% block page_title %}{{ self.title() }}{% endblock %}</h1>
+            {#
+            Kein <h1>: die Seite hat ihre eigene Überschrift, und zwei davon sind
+            weder für ein Vorlesewerkzeug noch für die Gliederung einer Seite
+            richtig -- die Kopfzeile wiederholt nur, wo man gerade ist. `role` und
+            `aria-hidden` bleiben deshalb weg; der Text steht ohnehin gleich
+            darunter noch einmal als echte Überschrift.
+            #}
+            <p class="tc-pagetitle">{% block page_title %}{{ self.title() }}{% endblock %}</p>
             <div class="dropdown ms-auto">
                 <button class="tc-iconbtn dropdown-toggle" type="button"
                         data-bs-toggle="dropdown" aria-expanded="false">

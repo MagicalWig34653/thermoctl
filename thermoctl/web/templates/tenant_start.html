@@ -180,8 +180,11 @@ Server; das Formular trägt bewusst keine Zonenauswahl.
              aria-label="Tagesverlauf für {{ zone.display_name }}">
             {% for segment in track %}
             <span class="tc-timeline-part"
+                  {# Dieselbe Skala wie überall sonst, siehe `start.html`. #}
                   style="left: {{ segment.left }}%; width: {{ segment.width }}%;
-                         background: color-mix(in srgb, var(--warmth) {{ (segment.warmth * 100)|round|int }}%, var(--cool-area));"></span>
+                         background: color-mix(in oklab,
+                             var({{ '--warmth' if segment.warmth >= 0.5 else '--cool' }})
+                             {{ (40 + (segment.warmth - 0.5)|abs * 90)|round|int }}%, var(--surface));"></span>
             {% endfor %}
             <span class="tc-timeline-now" style="left: {{ now_fraction }}%"></span>
         </div>

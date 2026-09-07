@@ -51,8 +51,32 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
   Konto kein privilegierter Vorgang ist; bis hierher lagen die beiden Funktionen auf
   der Benutzerverwaltungsseite und wären für ein Mieterprofil unerreichbar gewesen.
 
+### Behoben
+
+- **Eine frisch eingerichtete Anlage hatte kein Konto mehr für Protokoll,
+  Schaltprotokoll und Relaisverschleiß.** Die Seed-Revision der Nachschlagetabellen
+  spielte den Rechtestand von damals über einen *positionellen* Schnitt in die
+  lebende Liste `PERMISSIONS` ein. Ein während dieser Fassung in die Mitte
+  einsortiertes Recht schob `audit.read` aus dem Schnitt — die Migration lief durch,
+  die Einrichtung lief durch, und die drei Seiten antworteten danach jedem mit 403.
+  Die Revision trägt den Stand jetzt als feste Liste; ein Wächtertest prüft nach
+  jedem vollständigen Upgrade, dass jedes Recht aus `PERMISSIONS` auch wirklich in
+  der Tabelle steht. Betrifft nur Installationen, die während der Entwicklung von
+  0.9.0 neu eingerichtet wurden — eine bestehende Anlage hat ihr `audit.read`.
+- **Vier wirkungslose Gestaltungsregeln am Kiosk.** Reste der Umbenennung ins
+  Englische (`--schrift-instrument`, `--gedämpft`, `--tinte`, `--wärme`); eine
+  CSS-Eigenschaft mit unbekannter Variable wird ohne Fehlermeldung verworfen. Die Uhr
+  des Wandtabletts lief seither in der Fließtext- statt in der Instrumentschrift.
+
 ### Geändert
 
+- **Die Gestaltung folgt jetzt den Demos.** Blau als Primärfarbe in der
+  Anlagensicht, gedämpftes Grün in der Wohnungssicht, weiche Ecken, getragene
+  Schatten, Zustandsmarken als Pillen, Zonen als Kartenraster. Die eine Aussage
+  bleibt: Farbe ist hier ein Messwert — Orange und Blau stehen ausschließlich in
+  Temperaturflächen, nie auf einer Schaltfläche. Alle drei Ansichten desselben
+  Zeitplans benutzen dieselbe Skala; der Mieter-Wochenplan riet seine Farbe vorher
+  und lag gelegentlich falsch herum.
 - **Die Anlagenoberfläche hat eine Seitenleiste** (mobil eine reduzierte Fußleiste)
   statt der Kopfleiste, geordnet nach Hauptbereich, Analyse, System und Zugängen.
   Gemeinsamer Kern in `base_core.html`, darauf `base_admin.html` und

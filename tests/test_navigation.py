@@ -58,11 +58,18 @@ def test_no_section_heading_remains_when_none_of_its_entries_is_available(
     client_als: Callable[[list[tuple[str, int | None]]], TestClient],
 ) -> None:
     """Eine Überschrift ohne einen einzigen Eintrag darunter ist eine leere
-    Behauptung, hier gäbe es etwas."""
+    Behauptung, hier gäbe es etwas.
+
+    „Hauptbereich" ist davon ausgenommen und bleibt stehen: „Übersicht" steht dort
+    fest und ist für jeden Angemeldeten erreichbar -- die Überschrift hat also
+    immer mindestens einen Eintrag unter sich.
+    """
     page = client_als([]).get("/").text
     navigation = _navigation(page)
-    for title in ("Hauptbereich", "Analyse", "System", "Zugänge"):
+    for title in ("Analyse", "System", "Zugänge"):
         assert title not in navigation
+    assert "Hauptbereich" in navigation
+    assert 'href="/"' in navigation
     assert "dropdown-menu" in page  # Das Kontomenü gibt es weiterhin.
 
 

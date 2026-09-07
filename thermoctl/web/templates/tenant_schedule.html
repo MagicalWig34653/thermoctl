@@ -80,7 +80,16 @@ selbst gesetzt hat, ist hier kein Nachweis für gar nichts.
             <span class="tc-daybar-part"
                   style="left: {{ segment.start_minute * 100 / 1440 }}%;
                          width: {{ (segment.end_minute - segment.start_minute) * 100 / 1440 }}%;
-                         background: var({{ '--warmth-area' if not loop.first else '--cool-area' }});"></span>
+                         {#
+                         Dieselbe zweiseitige Skala wie die Tagesspur der
+                         Startseite: unter der Mitte kühl, darüber warm, und die
+                         Sättigung sagt, wie deutlich. Ein einseitiges Mischen ließ
+                         die Nachtstunden hier warm aussehen -- drei Ansichten
+                         desselben Zeitplans dürfen nicht drei Sprachen sprechen.
+                         #}
+                         background: color-mix(in oklab,
+                             var({{ '--warmth' if warmth.get(segment.mode_id, 0.5) >= 0.5 else '--cool' }})
+                             {{ (40 + (warmth.get(segment.mode_id, 0.5) - 0.5)|abs * 90)|round|int }}%, var(--surface));"></span>
             {% endfor %}
         </div>
         <span class="tc-daytimes t-value">
