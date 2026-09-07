@@ -251,7 +251,6 @@ def start(
         "start.html",
         {
             **context,
-            "user": user,
             "zones": zones,
             "thermostat_errors": request.query_params.get("thermostat_errors"),
             "may_edit_parameters": {

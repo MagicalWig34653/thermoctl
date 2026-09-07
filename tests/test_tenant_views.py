@@ -1343,3 +1343,70 @@ def test_the_tenant_shell_carries_the_stale_page_handling_and_the_loading_bar(
     page = _tenant(tenant_client, mine).get("/").text
     assert "HX-Stale-Page" in page
     assert 'id="tc-loading-bar"' in page
+
+
+# -- Die Zeitplan-Übernahme prüft das Recht am Ziel, nicht an der Quelle ---------
+
+
+def test_the_adoption_offers_only_rooms_the_tenant_may_actually_write(
+    tenant_client: Client, session: Session
+) -> None:
+    """Ein angebotenes Ziel, das mit 404 endet, ist schlimmer als kein Angebot.
+
+    Der Endpunkt verlangt `schedule.manage` am **Ziel**; die Quelle braucht nur
+    `zone.read`. Die Auswahl bot vorher alle lesbaren Räume an und hing zugleich am
+    Schreibrecht des gerade angezeigten -- bei zonenbezogenen Rechten also gleich
+    doppelt falsch.
+    """
+    mine, _theirs = _wohnung(session)
+    nur_lesbar = create_zone(session, "flur")
+    nur_lesbar.display_name = "Flur"
+    session.flush()
+    client = tenant_client(
+        [("zone.read", mine.id), ("zone.read", nur_lesbar.id),
+         ("schedule.manage", mine.id)]
+    )
+    page = client.get(f"/schedule?zone={mine.id}").text
+    # Der einzige beschreibbare Raum ist der angezeigte selbst -- es bleibt kein Ziel
+    # übrig, also darf gar keine Auswahl erscheinen.
+    assert "/schedule/adopt" not in page
+
+
+def test_the_adoption_appears_even_when_seen_from_a_read_only_room(
+    tenant_client: Client, session: Session
+) -> None:
+    """Die Gegenprobe: vom nur lesbaren Raum aus ist „diesen Plan nach A übernehmen"
+    erlaubt -- der Knopf blieb vorher trotzdem verborgen."""
+    mine, _theirs = _wohnung(session)
+    nur_lesbar = create_zone(session, "flur")
+    nur_lesbar.display_name = "Flur"
+    session.flush()
+    client = tenant_client(
+        [("zone.read", mine.id), ("zone.read", nur_lesbar.id),
+         ("schedule.manage", mine.id)]
+    )
+    page = client.get(f"/schedule?zone={nur_lesbar.id}").text
+    assert "/schedule/adopt" in page
+    assert f'<option value="{mine.id}"' in page
+
+    response = client.post(
+        "/schedule/adopt",
+        data={"zone_id": str(mine.id), "source_id": str(nur_lesbar.id)},
+        headers=_csrf(client), follow_redirects=False,
+    )
+    assert response.status_code == 303
+
+
+def test_a_room_without_write_permission_is_never_offered_as_a_target(
+    tenant_client: Client, session: Session
+) -> None:
+    mine, _theirs = _wohnung(session)
+    nur_lesbar = create_zone(session, "flur")
+    nur_lesbar.display_name = "Flur"
+    session.flush()
+    client = tenant_client(
+        [("zone.read", mine.id), ("zone.read", nur_lesbar.id),
+         ("schedule.manage", mine.id)]
+    )
+    page = client.get(f"/schedule?zone={nur_lesbar.id}").text
+    assert f'<option value="{nur_lesbar.id}"' not in page

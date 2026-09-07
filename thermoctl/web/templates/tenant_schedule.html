@@ -135,7 +135,12 @@ selbst gesetzt hat, ist hier kein Nachweis für gar nichts.
     {% endfor %}
 </section>
 
-{% if may_edit and sources %}
+{#
+Gezeigt, sobald es überhaupt einen Raum gibt, in den geschrieben werden darf --
+unabhängig davon, ob der gerade angezeigte einer davon ist. Der angezeigte Raum ist
+hier die Quelle und braucht nur Leserecht.
+#}
+{% if adopt_targets %}
 <section class="tc-panel p-3 mt-3">
     <h2 class="h5">Auf einen anderen Raum übernehmen</h2>
     <p class="t-quiet small">
@@ -151,7 +156,7 @@ selbst gesetzt hat, ist hier kein Nachweis für gar nichts.
         <input type="hidden" name="source_id" value="{{ zone.id }}">
         <label class="visually-hidden" for="uebernehmen-ziel">Zielraum</label>
         <select class="form-select w-auto" id="uebernehmen-ziel" name="zone_id">
-            {% for other in sources %}
+            {% for other in adopt_targets %}
             <option value="{{ other.id }}">{{ other.display_name }}</option>
             {% endfor %}
         </select>

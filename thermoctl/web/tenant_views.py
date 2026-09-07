@@ -140,7 +140,6 @@ def render_home(request: Request, session: Session, principal: Principal) -> Res
         "tenant_start.html",
         {
             **context,
-            "user": getattr(request.state, "user", None),
             "zones": zones,
             "notice": _home_notice(zones, states),
             "next_switches": next_switches,
@@ -255,7 +254,21 @@ def _tenant_schedule_page(
         day_list.sort(key=lambda p: p.minute_of_day)
 
     may_edit = has_permission(principal, "schedule.manage", zone.id)
-    sources = [other for other in zones if other.id != zone.id]
+    # Die Ziele einer Übernahme sind die Räume, in die geschrieben werden **darf** --
+    # nicht die, die man lesen darf. Das ist genau die Zone, an der der Endpunkt
+    # `schedule.manage` verlangt (`adopt_tenant_schedule` weiter unten); die Quelle
+    # braucht nur `zone.read`.
+    #
+    # Vorher stand hier "alle anderen sichtbaren Räume", und ob das Formular
+    # überhaupt erschien, hing am Schreibrecht der **angezeigten** Zone. Bei
+    # zonenbezogenen Rechten war das gleich doppelt falsch: ein angebotenes Ziel
+    # ohne Schreibrecht endete mit 404, und eine erlaubte Übernahme blieb verborgen,
+    # sobald man sie vom nur lesbaren Raum aus ansah.
+    adopt_targets = [
+        other
+        for other in visible_zones(session, principal, "schedule.manage")
+        if other.id != zone.id
+    ]
 
     return templates.TemplateResponse(
         request,
@@ -263,7 +276,7 @@ def _tenant_schedule_page(
         {
             "zone": zone,
             "zones": zones,
-            "sources": sources,
+            "adopt_targets": adopt_targets,
             "weekdays": WEEKDAYS,
             "segments": by_day,
             "day_points": day_points,

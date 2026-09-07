@@ -718,3 +718,66 @@ def test_no_script_marks_itself_wired_in_the_markup(script: Path) -> None:
         "Nach einer Wiederherstellung aus dem htmx-Verlauf ist die Marke da und der "
         "Ereignisbehandler weg."
     )
+
+
+# --- Die Wohnungssicht: dieselbe Frage noch einmal, für die zweite Oberfläche ----
+#
+# `PROTECTED_PAGES` oben kann diese Seiten nicht mitnehmen: sie antworten einem
+# Administrator mit 403, weil sie zum Mieterprofil gehören. Sie brauchen deshalb
+# ihren eigenen Durchgang mit einem Mieterkonto -- und sie brauchen ihn aus genau
+# demselben Grund, aus dem es diese Datei überhaupt gibt. Eine fehlende Seite, ein
+# vertippter Formularpfad oder ein Kontextname, den die Vorlage erwartet und die
+# View nicht liefert, fällt in keinem der einzelnen Tests auf.
+
+TENANT_PAGES = ["/", "/schedule", "/heating-time", "/account", "/account/help"]
+
+
+def _mieter_client(tenant_client, session: Session):  # type: ignore[no-untyped-def]
+    zone = create_zone(session, "rauchtest-wohnung")
+    zone.display_name = "Rauchtest-Wohnung"
+    create_settings(session)
+    session.flush()
+    return tenant_client(
+        [
+            ("zone.read", zone.id),
+            ("setpoint.write", zone.id),
+            ("override.create", zone.id),
+            ("override.cancel", zone.id),
+            ("schedule.manage", zone.id),
+            ("report.create", zone.id),
+        ]
+    )
+
+
+@pytest.mark.parametrize("path", TENANT_PAGES)
+def test_every_tenant_page_answers(tenant_client, session: Session, path: str) -> None:  # type: ignore[no-untyped-def]
+    client = _mieter_client(tenant_client, session)
+    assert client.get(path).status_code == 200
+
+
+def test_every_link_and_form_on_the_tenant_pages_leads_somewhere(
+    tenant_client, session: Session  # type: ignore[no-untyped-def]
+) -> None:
+    """Dieselbe Prüfung wie für die Anlagensicht, für die Wohnungssicht.
+
+    Sie hätte den einzigen Formularpfad ohne `url_prefix` nicht gefunden (der ist
+    ohne Präfix gültig), aber jeden Verweis auf eine Seite, die es gar nicht gibt --
+    und genau daran ist dieses Projekt schon einmal gescheitert.
+    """
+    client = _mieter_client(tenant_client, session)
+    ziele: set[str] = set()
+    for path in TENANT_PAGES:
+        seite = client.get(path).text
+        ziele |= {
+            treffer
+            for treffer in re.findall(r'(?:href|action)="(/[^"#?]*)', seite)
+            if not treffer.startswith("/static/")
+        }
+    errors = []
+    for ziel in sorted(ziele):
+        antwort = client.get(ziel)
+        # 405 heißt: die Adresse gibt es, sie nimmt nur kein GET entgegen -- das ist
+        # bei einem Formularziel der Normalfall und kein Fehler.
+        if antwort.status_code not in (200, 303, 403, 405):
+            errors.append(f"{ziel}: HTTP {antwort.status_code}")
+    assert not errors, "Verweise ins Leere: " + ", ".join(errors)
