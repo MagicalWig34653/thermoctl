@@ -8,6 +8,8 @@ from decimal import Decimal
 import pytest
 from sqlalchemy import Engine, create_engine, make_url, text
 
+from thermoctl.db.models.lookup import PERMISSIONS
+
 
 def _alembic(url: str, *arguments: str) -> subprocess.CompletedProcess[str]:
     """Calls Alembic as a subprocess so real migration runs are exercised.
@@ -787,3 +789,43 @@ def test_the_report_permission_reaches_no_group_by_itself(
             )
     finally:
         db_engine.dispose()
+
+
+@pytest.mark.migration
+def test_every_permission_exists_after_a_full_upgrade(
+    migrations_database_url: str,
+) -> None:
+    """Nach `alembic upgrade head` steht **jedes** Recht aus `PERMISSIONS` in der
+    Tabelle -- sonst gibt es Seiten, die niemand öffnen kann.
+
+    Der Test hat einen konkreten Anlass. Die Seed-Revision
+    `3685e30419a4_nachschlagetabellen` spielte den Stand von damals über einen
+    *positionellen* Schnitt in die lebende Liste ein (`PERMISSIONS[:15]`). Beim
+    Einsortieren eines neuen Rechts in die Mitte rutschte `audit.read` aus dem
+    Schnitt: eine frisch eingerichtete Anlage hatte danach kein Konto mehr, das
+    Protokoll, Schaltprotokoll oder Relaisverschleiß öffnen konnte. Nichts schlug
+    dabei fehl -- weder die Migration noch die Einrichtung noch die Testsuite. Nur
+    drei Seiten antworteten jedem mit 403.
+
+    Gefunden hat es ein Browsertest, weil dort ein echter Server frisch eingerichtet
+    wird. Dieser Test hier findet dasselbe eine Ebene tiefer und ohne Browser.
+    """
+    up = _alembic(migrations_database_url, "upgrade", "head")
+    assert up.returncode == 0, up.stderr
+
+    db_engine = create_engine(migrations_database_url)
+    try:
+        with db_engine.connect() as connection:
+            vorhanden = {
+                row[0]
+                for row in connection.execute(text("SELECT code FROM permission"))
+            }
+    finally:
+        db_engine.dispose()
+
+    fehlend = {code for code, _beschreibung, _zonenbezogen in PERMISSIONS} - vorhanden
+    assert not fehlend, (
+        "Diese Rechte stehen in PERMISSIONS, legt aber keine Migration an: "
+        f"{sorted(fehlend)}. Ein neues Recht gehört ans **Ende** von PERMISSIONS "
+        "und braucht seine eigene Migration."
+    )

@@ -172,10 +172,6 @@ PERMISSIONS: list[tuple[str, str, bool]] = [
     ("schedule.manage", "Zeitpläne ändern", True),
     ("override.create", "Übersteuern", True),
     ("override.cancel", "Fremde Übersteuerung aufheben", True),
-    # Eigenes Schreibrecht und nicht `zone.read`: eine Problemmeldung verlässt die
-    # Anlage über den konfigurierten Webhook. Etwas nach außen auszulösen darf nicht
-    # aus einem reinen Leserecht folgen.
-    ("report.create", "Ein Problem aus einem Raum melden", True),
     ("device.read", "Geräte und Zuordnungen sehen", True),
     ("device.manage", "Geräte zuordnen, tauschen, entfernen", True),
     ("mode.manage", "Sollwert-Modi anlegen und ändern", False),
@@ -196,4 +192,19 @@ PERMISSIONS: list[tuple[str, str, bool]] = [
     # widening an all-zone grant to cover something it was never meant to. Its own,
     # plant-wide permission instead.
     ("vacation.manage", "Urlaubsbetrieb ansetzen und vorzeitig beenden", False),
+    # Eigenes Schreibrecht und nicht `zone.read`: eine Problemmeldung verlässt die
+    # Anlage über den konfigurierten Webhook. Etwas nach außen auszulösen darf nicht
+    # aus einem reinen Leserecht folgen.
+    #
+    # **Angehängt, nicht einsortiert.** Ein neues Recht gehört ans Ende dieser Liste,
+    # auch wenn es thematisch woandershin passte: die Seed-Migration
+    # `3685e30419a4_nachschlagetabellen` spielte den Stand von damals einmal über
+    # einen *positionellen* Schnitt in genau diese Liste ein. Ein in der Mitte
+    # eingefügtes Recht schob das letzte aus dem Schnitt heraus, und die frisch
+    # eingerichtete Anlage bekam es nie -- genau so ist `audit.read` in der
+    # Entwicklung von v0.9.0 verschwunden, samt Protokoll, Schaltprotokoll und
+    # Relaisverschleiß. Der Schnitt ist inzwischen durch eine feste Liste ersetzt,
+    # die Regel gilt trotzdem weiter: ein neues Recht kommt ans Ende und bekommt
+    # seine eigene Migration.
+    ("report.create", "Ein Problem aus einem Raum melden", True),
 ]
