@@ -120,6 +120,7 @@
       "**Frostschutz schlägt das offene Fenster.** Bisher schaltete Regel 3 bei offenem",
       "Ablauf wird ein frischer Sturz erneut geprüft, und die Heizung stand die ganze Zeit aus,",
       "Aktor etwas hinaus — das ist der Zustand einer neuen Anlage. `/control/arm` öffnet ihn,",
+      "Die Palette bleibt, wie sie war (Kupfer = Wärme, Stahlblau = Kühle, sonst Schiefer",
       "Erkennungsmerkmal: die Zone hat Aktoren, und keiner davon ist",
       "Quelltext gilt für normalen Betrieb mit periodischer Heizung, nicht für einen Raum, dem",
       "Sensorausfall, Mindestschaltdauern und Ventilschutz laufen unwissend vom Urlaub",
