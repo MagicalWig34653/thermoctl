@@ -10,11 +10,13 @@ from sqlalchemy.orm import Session
 from thermoctl.auth.dependencies import csrf_protection, current_principal, get_session
 from thermoctl.db.base import utcnow
 from thermoctl.db.models.zone import Zone
+from thermoctl.domain import schedule as schedule_domain
 from thermoctl.domain.authz import visible_zones
 from thermoctl.domain.control import settings as control_settings
 from thermoctl.domain.modes import DomainError, update_setpoints
 from thermoctl.domain.principal import Principal
 from thermoctl.domain.schedule import (
+    ScheduleError,
     cancel_override,
     create_override,
     end_of_next_switch,
@@ -417,5 +419,63 @@ async def adjust_thermostat(
         # Reached the limit. Not an error state, but the end of the road -- the
         # page simply shows the unchanged value afterward.
         parameter = urlencode({"thermostat_errors": exc.notice, "zone_id": zone.id})
+        return RedirectResponse(prefixed(request, f"/?{parameter}"), status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(prefixed(request, "/"), status.HTTP_303_SEE_OTHER)
+
+
+@shared_router.post("/zones/{zone_id}/jump-next")
+async def jump_to_next_switch_view(
+    zone_id: int,
+    request: Request,
+    principal: Annotated[Principal, Depends(current_principal)],
+    session: Annotated[Session, Depends(get_session)],
+) -> Response:
+    """„Zur nächsten Schaltzeit springen" -- zieht die nächste reguläre
+    Zeitplan-Phase sofort vor, aber nur bis zu dem Zeitpunkt, an dem sie regulär
+    begonnen hätte. Der Wochenplan selbst bleibt unverändert.
+
+    Ruft ausschließlich `thermoctl.domain.schedule.jump_to_next_switch` -- keine
+    eigene Berechnung des nächsten Sollwerts hier (Grundsatz 6). Diese
+    Domänenfunktion stammt aus einem parallel laufenden Auftrag und lag zum
+    Zeitpunkt dieser Änderung noch nicht im Worktree; deshalb der defensive Zugriff
+    über `getattr` statt eines gewöhnlichen Imports -- ein fehlender Import hätte
+    das gesamte Modul, und damit Übersteuern und Sollwert-Stepper gleich mit,
+    unbenutzbar gemacht. Sobald die Funktion vorliegt, braucht diese Route keine
+    weitere Änderung.
+    """
+    zone = _zone_or_404(session, principal, zone_id, "override.create")
+    form = await request.form()
+    replace = str(form.get("replace", "")) == "1"
+
+    jump_to_next_switch = getattr(schedule_domain, "jump_to_next_switch", None)
+    if jump_to_next_switch is None:  # pragma: no cover - Blocker, siehe Docstring oben
+        raise HTTPException(
+            status.HTTP_501_NOT_IMPLEMENTED,
+            "Zur nächsten Schaltzeit springen ist noch nicht verfügbar.",
+        )
+    already_running_type = getattr(schedule_domain, "OverrideAlreadyRunning", ())
+    try:
+        jump_to_next_switch(
+            session,
+            zone,
+            replace=replace,
+            user_id=principal.user_id,
+            token_id=principal.token_id,
+            source="web",
+        )
+    except already_running_type as exc:
+        running = exc.running_override
+        parameter = urlencode(
+            {
+                "jump_next_errors": (
+                    f"Es läuft bereits eine Übersteuerung auf {running.temperature_c} °C. "
+                    "Bitte erst beenden oder ersetzen."
+                ),
+                "zone_id": zone.id,
+            }
+        )
+        return RedirectResponse(prefixed(request, f"/?{parameter}"), status.HTTP_303_SEE_OTHER)
+    except ScheduleError as exc:
+        parameter = urlencode({"jump_next_errors": exc.notice, "zone_id": zone.id})
         return RedirectResponse(prefixed(request, f"/?{parameter}"), status.HTTP_303_SEE_OTHER)
     return RedirectResponse(prefixed(request, "/"), status.HTTP_303_SEE_OTHER)

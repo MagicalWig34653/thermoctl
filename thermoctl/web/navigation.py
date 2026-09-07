@@ -10,7 +10,11 @@ from thermoctl.domain.ui_profile import WebUiProfile
 class NavigationItem:
     path: str
     label: str
-    permission: str
+    # `None` ausschließlich für einen Bereich, der kein Recht braucht, weil er zum
+    # eigenen Konto gehört (`/account` -- jeder Angemeldete kommt an sein eigenes
+    # Konto, unabhängig von jedem Grant). Jeder andere Eintrag trägt weiterhin ein
+    # echtes Recht.
+    permission: str | None
     endpoint: str
     scope: Literal["plant", "any_zone"] = "plant"
     # Der Abschnitt der Admin-Seitenleiste, in dem der Eintrag steht. "main" ist der
@@ -153,6 +157,37 @@ NAVIGATION_ITEMS: tuple[NavigationItem, ...] = (
         "thermoctl.web.kiosk_admin_views.kiosk_token_list",
         section="access",
     ),
+    # -- Mieteroberfläche ----------------------------------------------------------
+    NavigationItem(
+        "/schedule",
+        "Zeitplan",
+        "zone.read",
+        "thermoctl.web.tenant_views.show_tenant_schedule",
+        "any_zone",
+        "tenant",
+        profile=WebUiProfile.TENANT,
+    ),
+    NavigationItem(
+        "/heating-time",
+        "Heizzeit",
+        "zone.read",
+        "thermoctl.web.tenant_views.show_heating_time",
+        "any_zone",
+        "tenant",
+        profile=WebUiProfile.TENANT,
+    ),
+    NavigationItem(
+        "/account",
+        "Mehr",
+        # Kein Recht: `/account` ist der eigene, persönliche Bereich -- jeder
+        # Angemeldete kommt daran, unabhängig von jedem Grant (siehe
+        # `web/account_views.py`s eigene Begründung). Der Wächtertest unten
+        # überspringt genau diesen Eintrag deshalb bewusst.
+        None,
+        "thermoctl.web.account_views.show_account",
+        section="tenant",
+        profile=WebUiProfile.TENANT,
+    ),
 )
 
 
@@ -173,7 +208,8 @@ def visible_navigation(principal: Principal) -> tuple[NavigationItem, ...]:
         for item in NAVIGATION_ITEMS
         if item.profile is principal.ui_profile
         and (
-            has_permission(principal, item.permission)
+            item.permission is None
+            or has_permission(principal, item.permission)
             or (
                 item.scope == "any_zone"
                 and any(code == item.permission for code, _zone_id in principal.grants)
