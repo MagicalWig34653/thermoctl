@@ -119,7 +119,10 @@ def test_a_user_without_vacation_manage_sees_the_state_but_not_the_form(
     page.get_by_label("Benutzername").fill("browsertest-ohne-urlaubsrecht")
     page.get_by_label("Passwort").fill(_PASSWORD)
     page.get_by_role("button", name="Anmelden").click()
-    expect(page.locator(".tc-head")).to_be_visible()
+    # `.tc-topbar` statt der seit v0.9.0 entfallenen `.tc-head` -- dieselbe
+    # Aussage ("angemeldet, Anlagenhuelle sichtbar"), an einem Element, das
+    # auf jeder Bildschirmbreite sichtbar bleibt.
+    expect(page.locator(".tc-topbar")).to_be_visible()
 
     page.goto("/vacation")
     expect(page.get_by_role("heading", name="Urlaubsbetrieb")).to_be_visible()

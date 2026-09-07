@@ -399,10 +399,14 @@ def admin_page(page: Page, live_server: LiveServer) -> Page:
     # Not `wait_for_url`: the login form has no `hx-post` of its own, but `hx-boost`
     # on <body> still upgrades it to a fetch that follows the redirect and swaps the
     # page in via `pushState` -- indistinguishable from a real navigation by URL
-    # alone. The navigation bar only exists on `base.html`, never on the login
-    # page's `base_plain.html`, so its presence is the actual proof of being past
-    # the login.
-    page.locator(".tc-head").wait_for()
+    # alone. `.tc-topbar` only exists on the logged-in shells (`base_admin.html`,
+    # `base_tenant.html`), never on the login page's `base_plain.html`, so its
+    # presence is the actual proof of being past the login. Was `.tc-head` before
+    # v0.9.0's redesign replaced the single header bar with a sidebar/topbar
+    # split (`base_admin.html`) -- `.tc-topbar` is used here, not `.tc-sidebar`,
+    # because the sidebar collapses away on narrow viewports while the topbar
+    # stays visible at every width, same as `.tc-head` always was.
+    page.locator(".tc-topbar").wait_for()
     return page
 
 
@@ -443,7 +447,9 @@ def admin_page_with_prefix(page_with_prefix: Page, live_server_with_prefix: Live
     page_with_prefix.get_by_label("Benutzername").fill(live_server_with_prefix.admin_username)
     page_with_prefix.get_by_label("Passwort").fill(live_server_with_prefix.admin_password)
     page_with_prefix.get_by_role("button", name="Anmelden").click()
-    page_with_prefix.locator(".tc-head").wait_for()
+    # See the comment on `admin_page` above for why `.tc-topbar` replaces the
+    # former `.tc-head`.
+    page_with_prefix.locator(".tc-topbar").wait_for()
     return page_with_prefix
 
 
@@ -495,5 +501,7 @@ def admin_page_direct_via_prefixed_instance(
         live_server_with_prefix.admin_password
     )
     page_direct_via_prefixed_instance.get_by_role("button", name="Anmelden").click()
-    page_direct_via_prefixed_instance.locator(".tc-head").wait_for()
+    # See the comment on `admin_page` above for why `.tc-topbar` replaces the
+    # former `.tc-head`.
+    page_direct_via_prefixed_instance.locator(".tc-topbar").wait_for()
     return page_direct_via_prefixed_instance

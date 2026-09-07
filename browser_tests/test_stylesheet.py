@@ -14,27 +14,67 @@ from playwright.sync_api import Page, expect
 
 pytestmark = pytest.mark.browser
 
-# thermoctl/web/static/thermoctl.css overrides Bootstrap's default primary button
-# colour (`#0d6efd`, rgb(13, 110, 253)) with a deliberately un-blue slate
-# (`--bs-btn-bg: #2f3941`). If thermoctl.css failed to load, the button would keep
-# Bootstrap's own blue -- a difference visible in the computed style, not the markup.
-_THERMOCTL_PRIMARY = "rgb(47, 57, 65)"
-_BOOTSTRAP_DEFAULT_PRIMARY = "rgb(13, 110, 253)"
+# Woran man erkennt, dass `thermoctl.css` wirklich gewirkt hat.
+#
+# Ein fester Farbwert taugt dafür nicht: er scheitert bei jeder gewollten
+# Farbanpassung, obwohl das Stylesheet einwandfrei geladen ist -- und ein Test,
+# der aus dem falschen Grund rot wird, wird irgendwann angepasst statt gelesen.
+# Seit dem Redesign v0.9.0 wäre er zusätzlich stumpf: die Primärfarbe ist jetzt
+# selbst ein Blau (#2463eb) und liegt damit nah an Bootstraps eigenem (#0d6efd).
+#
+# Stattdessen eine Eigenschaft, die **nur** dieses Stylesheet überhaupt setzt: die
+# Gestaltungsvariablen auf `:root`. Bootstrap kennt sie nicht, der Browser bringt
+# sie nicht mit -- fehlt `thermoctl.css`, sind sie schlicht leer. Das ist genau die
+# Aussage, für die dieser Test da ist, und sie überlebt jede Farbänderung.
+_THERMOCTL_TOKENS = ("--warmth", "--cool", "--ink", "--surface", "--radius")
 
 
-def test_the_primary_button_carries_thermoctls_own_colour_not_bootstraps_default(
-    page: Page,
-) -> None:
+def _tokens(page: Page) -> dict[str, str]:
+    return page.evaluate(
+        """(names) => {
+            const wurzel = getComputedStyle(document.documentElement);
+            return Object.fromEntries(
+                names.map((name) => [name, wurzel.getPropertyValue(name).trim()])
+            );
+        }""",
+        list(_THERMOCTL_TOKENS),
+    )
+
+
+def test_the_stylesheets_own_design_tokens_actually_reach_the_page(page: Page) -> None:
+    page.goto("/login")
+    expect(page.get_by_role("button", name="Anmelden")).to_be_visible()
+
+    werte = _tokens(page)
+    leer = [name for name, wert in werte.items() if not wert]
+    assert not leer, (
+        f"Diese Gestaltungsvariablen sind leer: {leer}. Sie stehen ausschließlich in "
+        "thermoctl.css -- fehlen sie, ist das Stylesheet nicht geladen (404, "
+        "Pfadfehler, leere Datei), und die Seite trägt nur noch Bootstraps eigene "
+        "Gestaltung."
+    )
+
+
+def test_the_primary_button_is_not_bootstraps_untouched_default(page: Page) -> None:
+    """Zweiter, unabhängiger Nachweis: die Variablen oben zeigen, dass die Datei
+    geladen ist -- dieser hier, dass ihre Regeln auch tatsächlich greifen.
+
+    Ein völlig ungestylter Knopf ist in Chromium durchsichtig; Bootstraps eigener
+    ist `#0d6efd`. Beides hätte eine Seite ohne wirksames thermoctl.css.
+    """
     page.goto("/login")
     button = page.get_by_role("button", name="Anmelden")
     expect(button).to_be_visible()
 
     background = button.evaluate("el => getComputedStyle(el).backgroundColor")
-    assert background == _THERMOCTL_PRIMARY, (
-        f"Errechnete Hintergrundfarbe war {background!r}, erwartet {_THERMOCTL_PRIMARY!r} "
-        f"(thermoctl.css). Bootstraps unverändertes Standardblau wäre "
-        f"{_BOOTSTRAP_DEFAULT_PRIMARY!r} -- das hätte eine Seite, auf der "
-        "thermoctl.css nicht geladen ist."
+    radius = button.evaluate("el => getComputedStyle(el).borderRadius")
+    assert background not in ("rgb(13, 110, 253)", "rgba(0, 0, 0, 0)"), background
+    # `--radius-small` (10 px) statt Bootstraps 0.375 rem (6 px): eine Regel dieses
+    # Stylesheets, die keine Farbe ist und deshalb von einer Palettenänderung
+    # unberührt bleibt.
+    assert radius.startswith("10px"), (
+        f"Eckenradius war {radius!r}, erwartet 10px aus `--radius-small`. "
+        "Bootstraps unveränderter Wert wäre 6px."
     )
 
 
