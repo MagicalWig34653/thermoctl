@@ -147,8 +147,17 @@ def render_home(request: Request, session: Session, principal: Principal) -> Res
             # sie sichtbar ist und sich in einem Schritt beenden lässt, statt in
             # jedem Raum einzeln.
             "absence": absence,
+            # Durch `visible_zones` gefiltert, obwohl die Abwesenheit nur Räume
+            # enthält, die der Anlegende damals bedienen durfte: Rechte können
+            # zurückgenommen werden, während eine Abwesenheit läuft. Der Name eines
+            # Raums, den jemand heute nicht mehr sehen darf, hat auch dann nichts in
+            # einer Antwort zu suchen, wenn er ihn gestern selbst abgesenkt hat.
             "absence_zone_names": (
-                [zone.display_name for zone in absence_zones(session, absence)]
+                [
+                    zone.display_name
+                    for zone in absence_zones(session, absence)
+                    if zone.id in {visible.id for visible in zones}
+                ]
                 if absence is not None
                 else []
             ),

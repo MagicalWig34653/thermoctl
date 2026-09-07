@@ -1285,3 +1285,45 @@ def test_ending_an_absence_that_is_not_running_is_reported(
     )
     assert response.status_code == 303
     assert "absence_errors" in response.headers["location"]
+
+
+def test_a_room_taken_away_afterwards_no_longer_appears_in_the_absence_banner(
+    tenant_client: Client, session: Session
+) -> None:
+    """Rechte können zurückgenommen werden, während eine Abwesenheit läuft.
+
+    Der Name eines Raums, den jemand heute nicht mehr sehen darf, hat auch dann
+    nichts in einer Antwort zu suchen, wenn er ihn gestern selbst abgesenkt hat.
+    """
+    from thermoctl.db.models.identity import GroupPermission
+    from thermoctl.db.models.lookup import Permission
+
+    mine, _theirs = _wohnung(session)
+    second = create_zone(session, "bad")
+    second.display_name = "Bad"
+    session.flush()
+    client = tenant_client(
+        [("zone.read", mine.id), ("zone.read", second.id),
+         ("override.create", mine.id), ("override.create", second.id)]
+    )
+    client.post(
+        "/absence", data={"return_on": "2030-01-05", "temperature_c": "17"},
+        headers=_csrf(client), follow_redirects=False,
+    )
+    assert "Bad" in client.get("/").text
+
+    # Das Leserecht für den zweiten Raum wird zurückgenommen.
+    read = session.scalars(
+        select(Permission).where(Permission.code == "zone.read")
+    ).one()
+    session.execute(
+        GroupPermission.__table__.delete().where(
+            GroupPermission.permission_id == read.id,
+            GroupPermission.zone_id == second.id,
+        )
+    )
+    session.flush()
+
+    page = client.get("/").text
+    assert "Abwesenheit läuft" in page
+    assert "Bad" not in page
