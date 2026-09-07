@@ -2,6 +2,39 @@
 
 Letzte Aktualisierung: 2026-09-07.
 
+## v0.8.2 -- die Anlage schaltete nichts: der Anlaufriegel ging nie mehr auf
+
+Aus der echten Anlage gemeldet, nicht in einem Test gefunden: Schaltbefehle
+scheiterten, die Oberflaeche zeigte dauerhaft "Scharf, Neustart fehlt", und nach einem
+Neustart stand dort "Bereitschaft". Eine einzige Ursache erklaerte alle drei
+Beobachtungen. `app.py`s Lifespan setzt den einmaligen, prozessweiten Riegel
+`app.state.sending_allowed` aus `switching_allowed()` -- und die prueft seit dem
+Aktiv-Bereitschafts-Verbund auch die Fuehrung. An dieser Stelle hat der Prozess den
+Anspruch noch nie gestellt, die Schattenschleife startet erst danach; der Riegel war
+also immer zu und wurde nur einmal je Prozess gelesen. Behoben mit
+`control_armed_at_startup()` (`integrations/actuators.py`), die nur `control_armed`
+liest. `switching_allowed()` selbst ist unveraendert: die Fuehrung wird weiterhin vor
+jedem Sendevorgang geprueft, und die Schattenschleife ueberspringt ihren ganzen
+Durchlauf, wenn sie nicht fuehrt -- eine Instanz in Bereitschaft schaltet nichts.
+Zweitens stellt `_shadow_loop` den Anspruch jetzt vor dem ersten Schlafen statt danach,
+in einem eigenen `try`, damit ein Datenbankfehler beim Start die Schleife nicht ohne
+Wiederholungsversuch beendet.
+
+**Der eigentliche Befund ist die Blindheit der Suite.** Sie baut ihr Schema ueber
+`Base.metadata.create_all()`; die Migration `bb4a0ff63b2d` legt in jeder echten Anlage
+eine `cluster_claim`-Zeile an, `create_all()` nicht, und `cluster.is_leader` faellt bei
+fehlender Zeile bewusst offen aus. Dieselbe Funktion lieferte im Test `True` und in der
+Anlage `False`. Die Fixtures wurden bewusst *nicht* pauschal umgestellt -- das haette
+hunderte unbeteiligte Tests mit Verbund-Beiwerk zugestellt und dabei fail-open in
+fail-closed verkehrt. Stattdessen ein gezielter Riegel gegen genau diese Kluft:
+`tests/test_migrations.py::test_migrated_cluster_claim_does_not_freeze_the_startup_
+bolt_closed` baut das Schema ueber `alembic upgrade head`, laeuft durch den echten
+`_lifespan` und einen echten ersten Regelzyklus. **Wo eine Aussage von der Zeile
+abhaengt, die nur die Migration legt, taugt ein `create_all()`-Test nicht als Beleg.**
+
+Ausserdem: `CLAUDE.md` nannte das MariaDB-Testpasswort falsch (`prüfen` statt
+`pruefen`, wie Container und CI es benutzen).
+
 ## v0.8.1 -- SQLite-Sperrfehler im Verbund-Anspruch behoben
 
 CI schlug nach v0.8.0 zeitweise fehl: `tests/test_cluster.py::test_two_processes_

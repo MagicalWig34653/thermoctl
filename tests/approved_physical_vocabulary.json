@@ -15,6 +15,7 @@
       "- **Alle vier Aktorwege verdrahtet.** Ein selbstregelndes Ventil bekommt nie zusätzlich",
       "- **Anleitungen für den Verbund unter Docker Swarm und Kubernetes**",
       "- **Ausschalten neutralisiert den Reglerzustand vollständig.** Ein späteres",
+      "- **Die Anlage schaltete überhaupt nichts mehr.** Der beim Prozessstart einmalig",
       "- **Die Sonnenabsenkung liess sich nicht einschalten.** Das Formular schickt seit 0.2.0",
       "- **Ein Ventilschutzlauf konnte danach zu regulärem Heizen werden.** Das betrifft nur",
       "- **Ein gesetzter Ventilschutz-Marker hob die Mindestschaltdauern auch dann noch auf,",
@@ -35,6 +36,7 @@
       "Der Adapter kann eine bekannte Steckdose ein- und ausschalten, aber es gibt keine",
       "Der bestehende Sollwert-Weg an selbstregelnde Thermostatventile schreibt jetzt dorthin,",
       "Ein-Zustand als gewöhnliches Heizen. Mit den Vorgabewerten ist die Anlage von diesem",
+      "Eine Instanz in Bereitschaft schaltet also weiterhin nichts.",
       "Erkennung selbst das Heizen abschaltet. Wirkt **wie ein echter",
       "Fall: ein Zigbee2MQTT-Thermostatventil ohne `self_regulating`.",
       "Fenster unter ihren Frostschutzwert, heizt sie jetzt wieder, mit derselben",
@@ -57,6 +59,7 @@
       "Ventilschutz bleibt erhalten, sodass gelöschte Einzelentscheidungen dessen Fälligkeit",
       "Ventilschutz, wenn eine Übersteuerung, die Betriebsart „aus“ oder ein Sensorausfall",
       "Verbrauch, schnelleres Aufheizen — folgt daraus nicht.",
+      "Veröffentlichung ab (Meldung „Schaltbefehl gescheitert\" je Aktor), die Oberfläche",
       "Wer nichts einschaltet, bekommt exakt das Verhalten von 0.4.0: Die PI-Entscheidung wird",
       "Zigbee2MQTT-Schalter, Zigbee-Thermostatventile, Meross-Steckdosen und selbstregelnde",
       "`ZoneDevice.self_regulating.is_(False)`, ein selbstregelndes Ventil taucht in keiner der",
@@ -113,6 +116,7 @@
       "## Betrieb unter Docker Swarm und Kubernetes dokumentiert",
       "## Fenster: Frostschutz gewinnt, EIN/AUS-Aktoren schalten nicht ab",
       "## Was geschaltet wird — genau",
+      "## v0.8.2 -- die Anlage schaltete nichts: der Anlaufriegel ging nie mehr auf",
       "(Swarm: `mode: replicated-job`; Kubernetes: `Job`, mit `kubectl wait` vor dem",
       "(nicht-selbstregelnde) Schaltaktoren — genau die Bedingung für",
       "(wo vorhanden) an Zigbee2MQTT-Thermostatventile ohne eigene Regelung",
@@ -120,6 +124,7 @@
       "**Frostschutz schlägt das offene Fenster.** Bisher schaltete Regel 3 bei offenem",
       "Ablauf wird ein frischer Sturz erneut geprüft, und die Heizung stand die ganze Zeit aus,",
       "Aktor etwas hinaus — das ist der Zustand einer neuen Anlage. `/control/arm` öffnet ihn,",
+      "Durchlauf, wenn sie nicht fuehrt -- eine Instanz in Bereitschaft schaltet nichts.",
       "Erkennungsmerkmal: die Zone hat Aktoren, und keiner davon ist",
       "Quelltext gilt für normalen Betrieb mit periodischer Heizung, nicht für einen Raum, dem",
       "Sensorausfall, Mindestschaltdauern und Ventilschutz laufen unwissend vom Urlaub",
@@ -630,10 +635,6 @@
       "<span class=\"tc-chip tc-chip-warm\"><span class=\"tc-dot\"></span>Angekommen</span>",
       "die Außentemperatur unter der eingestellten Schwelle liegt. Ein- und ausgeschaltet"
     ],
-    "thermoctl/web/templates/vacation.html": [
-      "<span class=\"tc-chip tc-chip-warm\"><span class=\"tc-dot\"></span>Läuft</span>",
-      "Mindestschaltdauern und Ventilschutz gelten unverändert weiter, und eine Zone in"
-    ],
     "thermoctl/web/templates/start.html": [
       "<a href=\"{{ url_prefix }}/vacation\" class=\"tc-chip {{ 'tc-chip-warm' if vacation_running else 'tc-chip-quiet' }}\"",
       "<div class=\"small mt-1\" style=\"color: var(--warmth)\">{{ thermostat_errors }}</div>",
@@ -659,6 +660,10 @@
       "Durchlauf, ob sie heizen würde. Gezählt werden die Abstände zwischen diesen",
       "Entweder war es warm genug, oder der Regelzyklus lief noch nicht — er schreibt",
       "bestätigt nicht, dass ein Aktor die angeforderte Wirkung tatsächlich erzielt hat."
+    ],
+    "thermoctl/web/templates/vacation.html": [
+      "<span class=\"tc-chip tc-chip-warm\"><span class=\"tc-dot\"></span>Läuft</span>",
+      "Mindestschaltdauern und Ventilschutz gelten unverändert weiter, und eine Zone in"
     ]
   },
   "version": 1
