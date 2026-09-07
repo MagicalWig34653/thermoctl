@@ -40,17 +40,24 @@ def _fuellen(tabellenname: str, zeilen: list[tuple[str, str]]) -> None:
 
 #: Der Stand der Rechtetabelle zum Zeitpunkt dieser Revision. Bewusst ausgeschrieben
 #: statt aus `PERMISSIONS` geschnitten -- siehe die Begründung in `upgrade()`.
+#:
+#: **Ohne Umlaute, und das ist kein Versehen.** Zu dieser Revision waren die
+#: Beschreibungen in ASCII geschrieben; die Umlaute kamen erst mit
+#: `c8e21a5f4d70_rechtebeschreibungen_mit_umlauten`. Wer nur bis hierher migriert,
+#: soll den Datenstand von hier bekommen und nicht den von später -- sonst wäre die
+#: nachfolgende Umlaut-Revision auf einer frischen Datenbank ein Selbstläufer, der
+#: nichts mehr ändert, und der Unterschied zwischen beiden Ständen ginge verloren.
 _RECHTE_BEI_DIESER_REVISION: list[tuple[str, str, bool]] = [
     ("zone.read", "Zonen und ihren Zustand sehen", True),
-    ("zone.manage", "Zonen anlegen, ändern, löschen", True),
-    ("setpoint.write", "Sollwerte je Modus ändern", True),
-    ("schedule.manage", "Zeitpläne ändern", True),
-    ("override.create", "Übersteuern", True),
-    ("override.cancel", "Fremde Übersteuerung aufheben", True),
-    ("device.read", "Geräte und Zuordnungen sehen", True),
-    ("device.manage", "Geräte zuordnen, tauschen, entfernen", True),
-    ("mode.manage", "Sollwert-Modi anlegen und ändern", False),
-    ("setting.manage", "Globale Einstellungen ändern", False),
+    ("zone.manage", "Zonen anlegen, aendern, loeschen", True),
+    ("setpoint.write", "Sollwerte je Modus aendern", True),
+    ("schedule.manage", "Zeitplaene aendern", True),
+    ("override.create", "Uebersteuern", True),
+    ("override.cancel", "Fremde Uebersteuerung aufheben", True),
+    ("device.read", "Geraete und Zuordnungen sehen", True),
+    ("device.manage", "Geraete zuordnen, tauschen, entfernen", True),
+    ("mode.manage", "Sollwert-Modi anlegen und aendern", False),
+    ("setting.manage", "Globale Einstellungen aendern", False),
     ("user.manage", "Benutzer verwalten", False),
     ("group.manage", "Gruppen und Rechte verwalten", False),
     ("token.self", "Eigene Tokens ausstellen und widerrufen", False),

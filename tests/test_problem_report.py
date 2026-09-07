@@ -316,3 +316,59 @@ def test_every_offered_kind_is_accepted_by_the_domain(session: Session) -> None:
             session, mine, code, "", now=datetime(2026, 1, 5, 8, 0), user=None
         )
         assert notice.kind == "tenant_report"
+
+
+def test_the_free_text_loses_every_invisible_control_character(session: Session) -> None:
+    """Nicht nur Zeilenumbrüche.
+
+    Die Richtungsumschalter (U+202E und Verwandte) können die Anzeige einer Meldung
+    im Posteingang des Betreibers umdrehen oder Teile davon umsortieren -- eine
+    Meldung, die auf den ersten Blick etwas anderes sagt als das, was jemand
+    geschrieben hat. Ein Filter auf `character < " "` erwischte sie nicht.
+    """
+    mine, _other = _zones(session)
+    boesartig = (
+        "harmlos\u202egerdeht \u2066isoliert\u2069 \u0081c1 \u200dfuge"
+    )
+    notice = build_report(
+        session, mine, "other", boesartig, now=datetime(2026, 1, 5, 8, 0), user=None
+    )
+    hint = notice.text.split("Hinweis: ", 1)[1]
+    for codepoint in ("\u202e", "\u2066", "\u2069", "\u0081", "\u200d"):
+        assert codepoint not in hint, hex(ord(codepoint))
+    # Der lesbare Text bleibt erhalten -- gefiltert wird das Unsichtbare, nicht
+    # der Inhalt.
+    assert "harmlos" in hint
+    assert "isoliert" in hint
+
+
+def test_the_free_text_is_cut_at_a_character_not_inside_one(session: Session) -> None:
+    """Ein Schnitt zwischen Buchstabe und Akzent hinterlässt einen anderen
+    Buchstaben als den getippten. Dann fällt der Buchstabe mit weg."""
+    mine, _other = _zones(session)
+    notice = build_report(
+        session, mine, "other", "x" * (NOTE_LIMIT - 1) + "e\u0301",
+        now=datetime(2026, 1, 5, 8, 0), user=None,
+    )
+    hint = notice.text.split("Hinweis: ", 1)[1]
+    assert hint == "x" * (NOTE_LIMIT - 1)
+    assert not hint.endswith("e")
+
+
+def test_several_accents_on_one_letter_are_dropped_together(session: Session) -> None:
+    """Ein Buchstabe kann mehrere kombinierende Zeichen tragen.
+
+    Fällt der Schnitt zwischen sie, muss die ganze Zeichengruppe weg -- sonst bliebe
+    ein Buchstabe mit der halben Anzahl Akzente stehen, also wieder ein anderes
+    Zeichen als das getippte.
+    """
+    mine, _other = _zones(session)
+    marken = "\u0301\u0304\u0308"          # Akut, Makron, Trema
+    notice = build_report(
+        session, mine, "other", "x" * (NOTE_LIMIT - 3) + "e" + marken,
+        now=datetime(2026, 1, 5, 8, 0), user=None,
+    )
+    hint = notice.text.split("Hinweis: ", 1)[1]
+    assert hint == "x" * (NOTE_LIMIT - 3)
+    for marke in marken:
+        assert marke not in hint

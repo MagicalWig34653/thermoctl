@@ -22,6 +22,7 @@ eine Eigenschaft der Meldung ist und nicht eine des Formulars; ein Test in
 prüft, dass er im Text nicht vorkommt.
 """
 
+import unicodedata
 from datetime import datetime
 
 from sqlalchemy import select
@@ -54,15 +55,53 @@ REPORT_KINDS: tuple[tuple[str, str], ...] = (
 NOTE_LIMIT = 200
 
 
+#: Unicode-Kategorien, die kein sichtbares Zeichen sind: Steuerzeichen, Formatzeichen
+#: (darunter die Richtungsumschalter **und** der Zusammenfüger U+200D), Surrogate und
+#: Privatgebrauch.
+_UNSICHTBAR = frozenset({"Cc", "Cf", "Cs", "Co"})
+
+#: Kombinierende Zeichen -- sie gehören zum Zeichen davor und dürfen bei einer
+#: Kürzung nicht von ihm getrennt werden.
+_KOMBINIEREND = frozenset({"Mn", "Mc", "Me"})
+
+
 def _clean_note(text: str) -> str:
     """Der Freitext, so wie er hinausgehen darf.
 
     Zeilenumbrüche und Steuerzeichen fallen weg: der Text landet in einer
     HTTP-Nutzlast an ein fremdes System, und was dort eine Zeile beginnt, entscheidet
     nicht der Absender einer Meldung.
+
+    Geprüft wird über die Unicode-Kategorie, nicht über `character < " "`. Letzteres
+    erwischt nur die C0-Steuerzeichen und ließ genau die durch, auf die es ankommt:
+    die Richtungsumschalter (U+202E und Verwandte) können die Anzeige einer Meldung
+    im Posteingang des Betreibers umdrehen oder Teile davon umsortieren, und die
+    C1-Zeichen ab U+0080 gelten in manchen Anzeigen ebenfalls als Steuerzeichen.
+    Derselbe Filter entfernt auch den Zusammenfüger U+200D -- ein aus mehreren
+    Teilen bestehendes Emoji zerfällt dabei in seine Teile. Das ist in einem
+    Meldungstext das kleinere Übel gegenüber einer Zeichenfolge, deren Anzeige
+    niemand vorhersagen kann.
+
+    Gekürzt wird an einer **Zeichengrenze**: fiele der Schnitt zwischen einen
+    Buchstaben und den Akzent, der zu ihm gehört, stünde am Ende ein anderer
+    Buchstabe als der getippte. Dann fällt der Buchstabe mit weg.
     """
-    flattened = "".join(" " if character < " " else character for character in text)
-    return " ".join(flattened.split())[:NOTE_LIMIT]
+    flattened = "".join(
+        " " if unicodedata.category(character) in _UNSICHTBAR else character
+        for character in text
+    )
+    collapsed = " ".join(flattened.split())
+    if len(collapsed) <= NOTE_LIMIT:
+        return collapsed
+    cut = collapsed[:NOTE_LIMIT]
+    # Hängt hinter dem Schnitt noch ein kombinierendes Zeichen, war der Schnitt
+    # mitten in einem Zeichen -- dann muss auch dessen Basis weg. Danach kann
+    # dasselbe für das nun letzte Zeichen gelten (mehrere Akzente auf einer Basis).
+    while cut and unicodedata.category(collapsed[len(cut) : len(cut) + 1]) in _KOMBINIEREND:
+        cut = cut[:-1]
+        while cut and unicodedata.category(cut[-1]) in _KOMBINIEREND:
+            cut = cut[:-1]
+    return cut.rstrip()
 
 
 def build_report(
