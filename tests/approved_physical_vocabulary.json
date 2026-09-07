@@ -543,7 +543,7 @@
     "thermoctl/web/start_views.py": [
       "warmth"
     ],
-    "thermoctl/web/templates/base.html": [
+    "thermoctl/web/templates/base_core.html": [
       "// umschaltet."
     ],
     "thermoctl/web/templates/base_plain.html": [
@@ -586,6 +586,14 @@
       "<div class=\"form-check form-switch mb-3\">",
       "<input class=\"form-check-input\" type=\"checkbox\" role=\"switch\" id=\"{{ field_id }}\" name=\"{{ name }}\"",
       "denselben Schalter, und ein Klick auf die Beschriftung der dritten Zeile schaltete die"
+    ],
+    "thermoctl/web/templates/help.html": [
+      "<h2 class=\"h5\">Für eine Weile wärmer</h2>",
+      "<h2 class=\"h5\">Heizt / wartet</h2>",
+      "Der Temperaturfühler hat sich länger nicht gemeldet. Die Heizung regelt",
+      "Der Wochenplan legt fest, ab wann es morgens warm und ab wann es abends",
+      "erwärmt. „Wartet\" heißt: der Sollwert ist erreicht. Beides wechselt im",
+      "„Heizt\" heißt: dein Raum ist kühler als der Sollwert und wird gerade"
     ],
     "thermoctl/web/templates/interfaces.html": [
       "\"running\":       (\"tc-chip-warm\",  \"Läuft\"),"
@@ -630,10 +638,6 @@
       "<span class=\"tc-chip tc-chip-warm\"><span class=\"tc-dot\"></span>Angekommen</span>",
       "die Außentemperatur unter der eingestellten Schwelle liegt. Ein- und ausgeschaltet"
     ],
-    "thermoctl/web/templates/vacation.html": [
-      "<span class=\"tc-chip tc-chip-warm\"><span class=\"tc-dot\"></span>Läuft</span>",
-      "Mindestschaltdauern und Ventilschutz gelten unverändert weiter, und eine Zone in"
-    ],
     "thermoctl/web/templates/start.html": [
       "<a href=\"{{ url_prefix }}/vacation\" class=\"tc-chip {{ 'tc-chip-warm' if vacation_running else 'tc-chip-quiet' }}\"",
       "<div class=\"small mt-1\" style=\"color: var(--warmth)\">{{ thermostat_errors }}</div>",
@@ -659,6 +663,10 @@
       "Durchlauf, ob sie heizen würde. Gezählt werden die Abstände zwischen diesen",
       "Entweder war es warm genug, oder der Regelzyklus lief noch nicht — er schreibt",
       "bestätigt nicht, dass ein Aktor die angeforderte Wirkung tatsächlich erzielt hat."
+    ],
+    "thermoctl/web/templates/vacation.html": [
+      "<span class=\"tc-chip tc-chip-warm\"><span class=\"tc-dot\"></span>Läuft</span>",
+      "Mindestschaltdauern und Ventilschutz gelten unverändert weiter, und eine Zone in"
     ]
   },
   "version": 1

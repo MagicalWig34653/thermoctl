@@ -1,0 +1,67 @@
+{% extends shell %}
+{% block title %}Konto und Sicherheit{% endblock %}
+{% from "form.html" import text_field, error_notice %}
+{% block content %}
+<h1 class="tc-h1">Konto und Sicherheit</h1>
+<p class="t-quiet">
+    Angemeldet als <strong>{{ account.display_name }}</strong> ({{ account.username }}).
+    Hier stehen nur persönliche Einstellungen — keine Anlagenparameter.
+</p>
+
+{% if hint %}
+<div class="alert alert-success" role="status">{{ hint }}</div>
+{% endif %}
+
+<article class="tc-panel p-4 mb-3">
+    <h2 class="h5">Passwort ändern</h2>
+    <p class="t-quiet small">
+        Nach der Änderung bleibt nur dieses Gerät angemeldet. Auf allen anderen ist
+        eine neue Anmeldung nötig.
+    </p>
+    <form method="post" action="{{ url_prefix }}/account/password">
+        {{ text_field("password", "Neues Passwort", "", errors=errors.get("password", ""),
+                      required=true, input_type="password") }}
+        <button type="submit" class="btn btn-primary">Passwort speichern</button>
+    </form>
+</article>
+
+<article class="tc-panel p-4 mb-3">
+    <h2 class="h5">Andere Sitzungen beenden</h2>
+    <p class="t-quiet small">
+        Meldet dieses Konto auf allen anderen Geräten ab. Dieses Gerät bleibt
+        angemeldet.
+    </p>
+    <form method="post" action="{{ url_prefix }}/account/sessions/revoke-others">
+        <button type="submit" class="btn btn-outline-secondary">
+            Andere Sitzungen beenden
+        </button>
+    </form>
+</article>
+
+{% if passkeys_available %}
+<article class="tc-panel p-4 mb-3">
+    <h2 class="h5">Passkey</h2>
+    <p class="t-quiet small">
+        Anmelden ohne Passwort, mit Fingerabdruck, Gesicht oder Geräte-PIN.
+    </p>
+    <a class="btn btn-outline-secondary" href="{{ url_prefix }}/passkeys">Passkeys verwalten</a>
+</article>
+{% endif %}
+
+<article class="tc-panel p-4 mb-3">
+    <h2 class="h5">Hilfe</h2>
+    <p class="t-quiet small">
+        Was Sollwert, Heizstatus, Zeitplan und Sensorhinweise bedeuten.
+    </p>
+    <a class="btn btn-outline-secondary" href="{{ url_prefix }}/account/help">
+        Was bedeuten die Anzeigen?
+    </a>
+</article>
+
+<article class="tc-panel p-4">
+    <h2 class="h5">Abmelden</h2>
+    <form method="post" action="{{ url_prefix }}/logout">
+        <button type="submit" class="btn btn-outline-danger">Abmelden</button>
+    </form>
+</article>
+{% endblock %}

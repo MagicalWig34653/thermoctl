@@ -85,6 +85,11 @@ def _logged_in_user(request: Request) -> dict[str, object]:
         # value `request.base_url`/`url_for` already compute internally from this
         # same scope entry.
         "url_prefix": request.scope.get("root_path", ""),
+        # Ohne konfigurierte Relying-Party-Id existieren die Passkey-Routen gar
+        # nicht (siehe `web/passkey_views.py`). Beide Hüllen fragen das ab, bevor
+        # sie den Eintrag ins Kontomenü stellen -- ein Menüpunkt, der auf einen 404
+        # führt, ist schlimmer als keiner.
+        "passkeys_available": get_settings().passkeys_available(),
     }
 
 

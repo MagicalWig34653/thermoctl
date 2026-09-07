@@ -1,0 +1,46 @@
+{% extends "base_core.html" %}
+{#
+Die Wohnungssicht. Mobile first: vier Bereiche, unten erreichbar, oben dieselben vier
+als Textnavigation ab Tablettbreite. Keine Seitenleiste, keine Anlagenbegriffe --
+was hier steht, betrifft die eigene Wohnung.
+
+Die Einträge stehen ebenfalls in `web/navigation.py` (Profil `tenant`), damit es auch
+für diese Oberfläche genau eine Stelle gibt, an der Pfad, Beschriftung und Recht
+zusammenstehen und an der der Wächtertest ansetzt.
+#}
+{% block body_class %}tc-tenant{% endblock %}
+{% block shell %}
+{% set here = request.url.path %}
+{% macro nav_link(item_path, label, exact=false, css="tc-tnav-item") %}
+    {% set active = here == item_path if exact else (here == item_path or here.startswith(item_path ~ "/")) %}
+    <a class="{{ css }}{{ ' tc-here' if active }}" href="{{ url_prefix }}{{ item_path }}"
+       {% if active %}aria-current="page"{% endif %}>{{ label }}</a>
+{% endmacro %}
+<div class="tc-tshell">
+    <header class="tc-theader">
+        <a class="tc-brand" href="{{ url_prefix }}/">
+            <span class="tc-brandmark" aria-hidden="true">tc</span>
+            <span>thermoctl</span>
+        </a>
+        <nav class="tc-tnav d-none d-sm-flex" aria-label="Hauptnavigation">
+            {{ nav_link("/", "Zuhause", exact=true) }}
+            {% for item in navigation_items %}
+            {{ nav_link(item.path, item.label) }}
+            {% endfor %}
+        </nav>
+    </header>
+    <main class="tc-tmain" id="tc-main">
+        {% block content %}{% endblock %}
+    </main>
+    <footer class="tc-footer">
+        thermoctl steht unter der AGPL-3.0. Quelltext:
+        <a href="https://github.com/MagicalWig34653/thermoctl">github.com/MagicalWig34653/thermoctl</a>
+    </footer>
+</div>
+<nav class="tc-tbottomnav d-sm-none" aria-label="Navigation">
+    {{ nav_link("/", "Zuhause", exact=true, css="tc-tbottomnav-item") }}
+    {% for item in navigation_items %}
+    {{ nav_link(item.path, item.label, css="tc-tbottomnav-item") }}
+    {% endfor %}
+</nav>
+{% endblock %}

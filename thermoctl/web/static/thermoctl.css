@@ -1065,3 +1065,303 @@ body {
 .kiosk-source-link:focus-visible {
     color: var(--tinte);
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+ * Die beiden Hüllen (v0.9.0)
+ *
+ * Zwei Oberflächen auf einem Farb- und Schriftsystem. Die Palette oben bleibt
+ * unverändert gültig -- Kupfer und Stahlblau bedeuten weiterhin Wärme und Kühle und
+ * werden hier nirgends als Schmuck verwendet. Was sich unterscheidet, ist die
+ * Anordnung: die Anlagensicht ist ein Arbeitsplatz mit Seitenleiste und dichten
+ * Tabellen, die Wohnungssicht eine ruhige, einspaltige Ansicht fürs Telefon.
+ *
+ * Die Demos unter docs/ui-redesign/ setzen Blau bzw. Grün als Akzent. Übernommen ist
+ * ihre Informationsarchitektur, nicht ihre Palette: die hiesige Palette trägt eine
+ * Aussage (Farbe = Messwert), eine zweite Akzentfarbe daneben würde genau die
+ * verwässern. Siehe die Prioritätenliste der Arbeitsanweisung -- bestehende Semantik
+ * vor pixelgenauer Optik.
+ * ═══════════════════════════════════════════════════════════════════════════════ */
+
+.tc-skip-link {
+    position: absolute;
+    left: -999px;
+    top: 0;
+    z-index: 1100;
+    background: var(--surface);
+    color: var(--ink);
+    padding: 0.5rem 0.9rem;
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius);
+}
+
+.tc-skip-link:focus-visible {
+    left: 0.5rem;
+    top: 0.5rem;
+}
+
+.tc-brand {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    text-decoration: none;
+    color: var(--ink);
+}
+
+.tc-brandmark {
+    width: 1.9rem;
+    height: 1.9rem;
+    border-radius: var(--radius);
+    display: grid;
+    place-items: center;
+    background: var(--surface-deep);
+    border: 1px solid var(--line-strong);
+    font-family: var(--font-instrument);
+    font-size: 0.75rem;
+}
+
+/* ── Anlagensicht ──────────────────────────────────────────────────────────── */
+
+/* Die Marke am <body>. Sie schaltet keine Farben um, sondern erlaubt einzelnen
+ * Regeln weiter unten, sich auf eine der beiden Oberflächen zu beziehen -- und sie
+ * sagt beim Hineinsehen in eine gerenderte Seite, welche Hülle das ist. */
+.tc-admin {
+    background: var(--ground);
+}
+
+.tc-shell {
+    display: flex;
+    min-height: 100vh;
+    align-items: stretch;
+}
+
+.tc-sidebar {
+    flex: 0 0 15rem;
+    border-right: 1px solid var(--line);
+    background: var(--surface);
+    padding: 1rem 0.75rem;
+}
+
+.tc-sidenav {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+    margin-top: 1rem;
+}
+
+/* Die Überschrift eines Blocks. Kein eigenes Bedienelement -- sie ordnet nur, und
+ * eine Überschrift ohne Einträge darunter rendert die Vorlage gar nicht erst. */
+.tc-navsec {
+    margin: 1rem 0 0.25rem;
+    padding: 0 0.6rem;
+    font-size: 0.72rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+}
+
+.tc-nav-item {
+    display: block;
+    padding: 0.42rem 0.6rem;
+    border-radius: var(--radius-small);
+    color: var(--ink);
+    text-decoration: none;
+    font-size: 0.94rem;
+}
+
+.tc-nav-item:hover {
+    background: var(--surface-deep);
+}
+
+/* Der aktive Eintrag trägt zusätzlich zur Fläche eine Kante -- Zustand nie allein
+ * über Farbe, damit er auch ohne Farbwahrnehmung und im Kontrastmodus erkennbar
+ * bleibt. `aria-current="page"` setzt die Vorlage ohnehin. */
+.tc-nav-item.tc-here {
+    background: var(--surface-deep);
+    font-weight: 600;
+    box-shadow: inset 3px 0 0 var(--line-strong);
+}
+
+.tc-frame {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.tc-topbar {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.6rem 1.25rem;
+    border-bottom: 1px solid var(--line);
+    background: var(--surface);
+    position: sticky;
+    top: 0;
+    z-index: 30;
+}
+
+.tc-pagetitle {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 600;
+}
+
+.tc-iconbtn {
+    border: 1px solid var(--line-strong);
+    background: var(--surface);
+    color: var(--ink);
+    border-radius: var(--radius-small);
+    padding: 0.3rem 0.7rem;
+    font-size: 0.88rem;
+    min-height: 2.25rem;
+}
+
+.tc-main {
+    flex: 1 1 auto;
+    width: 100%;
+    padding: 1.5rem 1.25rem 4.5rem;
+}
+
+.tc-footer {
+    padding: 0 1.25rem 1.5rem;
+    color: var(--muted);
+    font-size: 0.82rem;
+}
+
+.tc-h1 {
+    font-size: 1.5rem;
+    font-weight: 650;
+    margin-bottom: 0.35rem;
+}
+
+/* Eine Taste im Fließtext ("die Knöpfe − und +"). Kein Bedienelement. */
+.tc-key {
+    font-family: var(--font-instrument);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-small);
+    padding: 0 0.3rem;
+}
+
+.tc-bottomnav,
+.tc-tbottomnav {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 40;
+    display: flex;
+    background: var(--surface);
+    border-top: 1px solid var(--line);
+}
+
+.tc-bottomnav-item,
+.tc-tbottomnav-item {
+    flex: 1 1 0;
+    /* Mindestens 48 px hoch: das ist die Fläche, die ein Daumen sicher trifft. */
+    min-height: 3rem;
+    display: grid;
+    place-items: center;
+    border: 0;
+    background: transparent;
+    color: var(--ink);
+    text-decoration: none;
+    font-size: 0.8rem;
+    padding: 0.4rem 0.2rem;
+}
+
+.tc-bottomnav-item.tc-here,
+.tc-tbottomnav-item.tc-here {
+    font-weight: 650;
+    box-shadow: inset 0 2px 0 var(--line-strong);
+}
+
+@media (max-width: 991.98px) {
+    .tc-shell {
+        display: block;
+    }
+
+    /* Die Seitenleiste klappt über Bootstraps `collapse` auf; ohne aufgeklappten
+     * Zustand steht sie nicht im Weg. `.collapse.show` kommt von Bootstrap. */
+    .tc-sidebar {
+        border-right: 0;
+        border-bottom: 1px solid var(--line);
+        display: none;
+    }
+
+    .tc-sidebar.show {
+        display: block;
+    }
+
+    .tc-main {
+        padding-bottom: 5.5rem;
+    }
+}
+
+@media (min-width: 992px) {
+    /* Am Desktop steht die Seitenleiste immer -- Bootstraps `collapse` blendet ein
+     * Element ohne `.show` sonst auch dort aus. */
+    .tc-sidebar {
+        display: block !important;
+    }
+}
+
+/* ── Wohnungssicht ─────────────────────────────────────────────────────────── */
+
+.tc-tshell {
+    width: min(60rem, 100%);
+    margin: 0 auto;
+    padding: 0 1rem 6rem;
+}
+
+.tc-theader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    min-height: 4rem;
+    position: sticky;
+    top: 0;
+    z-index: 30;
+    background: var(--ground);
+}
+
+.tc-tnav {
+    display: flex;
+    gap: 0.25rem;
+}
+
+.tc-tnav-item {
+    padding: 0.45rem 0.8rem;
+    border-radius: var(--radius);
+    color: var(--ink);
+    text-decoration: none;
+    min-height: 2.75rem;
+    display: inline-flex;
+    align-items: center;
+}
+
+.tc-tnav-item:hover {
+    background: var(--surface-deep);
+}
+
+.tc-tnav-item.tc-here {
+    background: var(--surface);
+    border: 1px solid var(--line-strong);
+    font-weight: 600;
+}
+
+.tc-tmain {
+    padding-top: 0.5rem;
+}
+
+/* Die Wohnungssicht setzt größere Grundflächen: sie wird im Stehen und mit dem
+ * Daumen bedient, nicht am Schreibtisch. */
+.tc-tenant .tc-panel {
+    padding: 1.1rem;
+}
+
+.tc-tenant .btn {
+    min-height: 2.75rem;
+}

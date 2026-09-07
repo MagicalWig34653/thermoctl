@@ -33,10 +33,34 @@ Eintrag und ist nach den vier Blöcken der Admin-Demo geordnet (Hauptbereich,
 Analyse, System, Zugänge). Die Startseite und `/statistics` sind dabei neu in die
 Tabelle gekommen.
 
-**Noch offen** (Reihenfolge nach `docs/ui-redesign/IMPLEMENTATION.md` §23): gemeinsame
-Template-Basis, Admin-Shell, Mieter-Shell samt Startseite, Mieter-Zeitplan,
-Heizzeit, Kontobereich, „Zur nächsten Schaltzeit springen", Abwesenheit,
-Kiosk-Regression, Sicherheitsdurchsicht.
+**Fertig: die Hüllen.** `base_core.html` trägt, was beide Oberflächen teilen --
+Kopfbereich, Farbschema, Assets, HTMX, CSRF-Weitergabe, Ladeanzeige, der Hinweis auf
+eine veraltete Seite. Darauf setzen `base_admin.html` (Seitenleiste am Desktop,
+reduzierte Fußleiste mobil) und `base_tenant.html` (mobile first). `base.html` ist
+nur noch ein Name für die Anlagenhülle, damit die vorhandenen Seiten während der
+Umstellung unverändert weiterlaufen; sie verschwindet, sobald keine Vorlage mehr auf
+sie zeigt. `base_plain.html` (Kiosk) bleibt bewusst daneben und erbt nichts davon --
+ein Wandtablett hat weder Navigation noch Ladebalken, und seine CSRF-Behandlung ist
+eine andere.
+
+Die Palette bleibt, wie sie war (Kupfer = Wärme, Stahlblau = Kühle, sonst Schiefer
+und Papier). Die Demos schlagen Blau bzw. Grün als Akzent vor; übernommen ist ihre
+Informationsarchitektur, nicht ihre Palette -- eine zweite Akzentfarbe würde genau
+die Aussage verwässern, für die Farbe hier da ist.
+
+**Fertig: der persönliche Bereich** `/account` (`web/account_views.py`) -- eigenes
+Passwort, andere Sitzungen beenden, Passkeys, Hilfe, Abmelden. Ohne Profil-Wächter,
+weil er beiden Oberflächen gehört, und ohne jedes Recht: das eigene Passwort zu
+ändern ist kein privilegierter Vorgang. Bis hierher lagen diese beiden Funktionen auf
+der Benutzerverwaltungsseite und wären für ein Mieterprofil unerreichbar gewesen.
+`/account/help` erklärt die Anzeigen in Alltagssprache und liest dafür ausdrücklich
+nichts aus der Datenbank -- eine Seite ohne Rechteprüfung darf keine Zonennamen
+zeigen.
+
+**Noch offen** (Reihenfolge nach `docs/ui-redesign/IMPLEMENTATION.md` §23):
+Mieter-Startseite, Mieter-Zeitplan, Heizzeit, „Zur nächsten Schaltzeit springen",
+Abwesenheit, Überarbeitung der Admin-Seiten im neuen Raster, Kiosk-Regression,
+Sicherheitsdurchsicht.
 
 ## v0.8.1 -- SQLite-Sperrfehler im Verbund-Anspruch behoben
 

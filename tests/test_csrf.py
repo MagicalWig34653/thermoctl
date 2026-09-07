@@ -138,7 +138,7 @@ def test_the_base_template_turns_that_marker_into_something_visible() -> None:
 
     base = (
         _Path(__file__).parent.parent
-        / "thermoctl" / "web" / "templates" / "base.html"
+        / "thermoctl" / "web" / "templates" / "base_core.html"
     ).read_text(encoding="utf-8")
 
     assert "htmx:responseError" in base
@@ -213,7 +213,7 @@ def test_base_template_carries_the_csrf_cookie_via_htmx() -> None:
     from pathlib import Path
 
     base_template = (
-        Path(__file__).parent.parent / "thermoctl" / "web" / "templates" / "base.html"
+        Path(__file__).parent.parent / "thermoctl" / "web" / "templates" / "base_core.html"
     ).read_text(encoding="utf-8")
     assert 'hx-boost="true"' in base_template
     assert 'headers["X-CSRF-Token"]' in base_template

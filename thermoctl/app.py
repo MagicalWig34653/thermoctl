@@ -92,6 +92,7 @@ from thermoctl.services.retention import delete_old_measurements, delete_old_sha
 from thermoctl.services.shadow_run import cycle
 from thermoctl.setup import SETUP_TOKEN_LIFETIME, create_setup_token, setup_needed
 from thermoctl.web import STATIC_DIR, templates
+from thermoctl.web.account_views import router as account_router
 from thermoctl.web.admin_views import router as admin_router
 from thermoctl.web.audit_views import router as audit_router
 from thermoctl.web.auth_views import router as auth_router
@@ -947,6 +948,7 @@ def create_app() -> FastAPI:
     app.include_router(auth_router)
     app.include_router(setup_router)
     app.include_router(admin_router)
+    app.include_router(account_router)
     app.include_router(kiosk_admin_router)
     app.include_router(kiosk_router)
     app.include_router(audit_router)

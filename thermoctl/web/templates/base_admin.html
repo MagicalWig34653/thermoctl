@@ -1,0 +1,92 @@
+{% extends "base_core.html" %}
+{#
+Die Anlagensicht: Seitenleiste am Desktop, reduzierte Fußleiste auf kleinen
+Bildschirmen. Vier Blöcke in genau der Reihenfolge der Navigationstabelle
+(`web/navigation.py`) -- Hauptbereich, Analyse, System, Zugänge. Die Tabelle bleibt
+die einzige Stelle, an der Pfad, Beschriftung und Recht zusammenstehen; diese Vorlage
+zeigt sie nur an.
+#}
+{% block body_class %}tc-admin{% endblock %}
+{% block shell %}
+{% set here = request.url.path %}
+{% set sections = [
+    ("Hauptbereich", navigation_items | selectattr("section", "equalto", "main") | list),
+    ("Analyse", navigation_items | selectattr("section", "equalto", "analysis") | list),
+    ("System", navigation_items | selectattr("section", "equalto", "system") | list),
+    ("Zugänge", navigation_items | selectattr("section", "equalto", "access") | list),
+] %}
+{% set bottom_items = navigation_items | selectattr("in_bottom_navigation") | list %}
+{% macro nav_link(target, label, exact=false, css="tc-nav-item") %}
+    {% set active = here == target if exact else (here == target or here.startswith(target ~ "/")) %}
+    <a class="{{ css }}{{ ' tc-here' if active }}" href="{{ url_prefix }}{{ target }}"
+       {% if active %}aria-current="page"{% endif %}>{{ label }}</a>
+{% endmacro %}
+<div class="tc-shell">
+    <aside class="tc-sidebar" id="tc-sidebar">
+        <a class="tc-brand" href="{{ url_prefix }}/">
+            <span class="tc-brandmark" aria-hidden="true">tc</span>
+            <span>thermoctl</span>
+        </a>
+        <nav class="tc-sidenav" aria-label="Hauptnavigation">
+            {{ nav_link("/", "Übersicht", exact=true) }}
+            {% for title, items in sections %}
+            {% if items %}
+            <p class="tc-navsec" id="tc-navsec-{{ loop.index }}">{{ title }}</p>
+            <div role="group" aria-labelledby="tc-navsec-{{ loop.index }}">
+                {% for item in items %}{{ nav_link(item.path, item.label) }}{% endfor %}
+            </div>
+            {% endif %}
+            {% endfor %}
+        </nav>
+    </aside>
+    <div class="tc-frame">
+        <header class="tc-topbar">
+            <button class="tc-iconbtn d-lg-none" type="button" data-bs-toggle="collapse"
+                    data-bs-target="#tc-sidebar" aria-controls="tc-sidebar"
+                    aria-expanded="false">Navigation</button>
+            <h1 class="tc-pagetitle">{% block page_title %}{{ self.title() }}{% endblock %}</h1>
+            <div class="dropdown ms-auto">
+                <button class="tc-iconbtn dropdown-toggle" type="button"
+                        data-bs-toggle="dropdown" aria-expanded="false">
+                    {{ top_bar_user.display_name if top_bar_user else "Konto" }}
+                </button>
+                <ul class="dropdown-menu dropdown-menu-end">
+                    <li><a class="dropdown-item" href="{{ url_prefix }}/account">Konto und Sicherheit</a></li>
+                    {% if passkeys_available %}
+                    <li><a class="dropdown-item" href="{{ url_prefix }}/passkeys">Passkeys</a></li>
+                    {% endif %}
+                    <li><hr class="dropdown-divider"></li>
+                    <li>
+                        <form hx-post="{{ url_prefix }}/logout">
+                            <button class="dropdown-item" type="submit">Abmelden</button>
+                        </form>
+                    </li>
+                </ul>
+            </div>
+        </header>
+        <main class="tc-main" id="tc-main" style="max-width: {% block max_width %}76rem{% endblock %};">
+            {% block content %}{% endblock %}
+        </main>
+        <footer class="tc-footer">
+            thermoctl steht unter der AGPL-3.0. Quelltext:
+            <a href="https://github.com/MagicalWig34653/thermoctl">github.com/MagicalWig34653/thermoctl</a>
+        </footer>
+    </div>
+</div>
+{#
+Auf kleinen Bildschirmen tritt die Seitenleiste zurück und unten steht das Wenige,
+was unterwegs wirklich gebraucht wird. "Mehr" führt in die aufklappbare Seitenleiste
+statt in eine zweite, eigene Liste -- sonst gäbe es zwei Navigationen, die
+auseinanderlaufen können.
+#}
+<nav class="tc-bottomnav d-lg-none" aria-label="Navigation">
+    {{ nav_link("/", "Übersicht", exact=true, css="tc-bottomnav-item") }}
+    {% for item in bottom_items %}
+    {{ nav_link(item.path, item.label, css="tc-bottomnav-item") }}
+    {% endfor %}
+    <button class="tc-bottomnav-item" type="button" data-bs-toggle="collapse"
+            data-bs-target="#tc-sidebar" aria-controls="tc-sidebar" aria-expanded="false">
+        Mehr
+    </button>
+</nav>
+{% endblock %}

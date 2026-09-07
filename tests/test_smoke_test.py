@@ -232,7 +232,11 @@ def test_boosted_navigation_returns_the_full_page(
         headers={"HX-Request": "true", "HX-Boosted": "true"},
     )
     assert response.status_code == 200
-    assert "tc-head" in response.text, f"{path} returns no header bar when boosted"
+    # `tc-topbar` ist die Kopfzeile der Anlagenhülle (`base_admin.html`). Bis zum
+    # Redesign hieß der Anker `tc-head`; die Aussage ist dieselbe geblieben --
+    # eine geboostete Navigation muss die ganze Seite samt Rahmen liefern, nicht
+    # nur den Inhalt.
+    assert "tc-topbar" in response.text, f"{path} returns no header bar when boosted"
 
 
 @pytest.mark.parametrize("path", ["/devices", "/audit", "/users", "/groups", "/tokens"])
@@ -245,7 +249,7 @@ def test_a_real_partial_swap_still_returns_only_the_content(
     create_settings(session)
     response = angemeldeter_client.get(path, headers={"HX-Request": "true"})
     assert response.status_code == 200
-    assert "tc-head" not in response.text
+    assert "tc-topbar" not in response.text
 
 
 @pytest.mark.parametrize("template", sorted(TEMPLATES_DIR.glob("*.html")))
@@ -273,10 +277,15 @@ def test_no_custom_toggle_for_the_color_scheme() -> None:
     A custom toggle was a third setting for something every device already
     knows, and got lost again on the next browser.
     """
-    base = (TEMPLATES_DIR / "base.html").read_text(encoding="utf-8")
-    assert "prefers-color-scheme: dark" in base
-    assert "localStorage" not in base
-    assert "schema-umschalten" not in base
+    # Der Kopfbereich liegt seit dem Redesign in `base_core.html` -- beide
+    # Oberflächen erben ihn von dort, und ein Umschalter könnte deshalb nur noch
+    # hier stehen. Der Kiosk hat seinen eigenen Kopf und wird mitgeprüft, damit die
+    # Aussage nicht an ihm vorbeigeht.
+    for name in ("base_core.html", "base_plain.html"):
+        base = (TEMPLATES_DIR / name).read_text(encoding="utf-8")
+        assert "prefers-color-scheme: dark" in base, name
+        assert "localStorage" not in base, name
+        assert "schema-umschalten" not in base, name
 
 
 def test_the_schedule_grid_does_not_jump_out_from_under_the_mouse() -> None:
