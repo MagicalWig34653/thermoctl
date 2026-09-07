@@ -1,5 +1,6 @@
-{% extends "base.html" if not is_htmx else "empty.html" %}
+{% extends "base_admin.html" if not is_htmx else "empty.html" %}
 {% block title %}Schaltprotokoll – thermoctl{% endblock %}
+{% block page_title %}Schaltprotokoll{% endblock %}
 {% block content %}
 <section id="device-command-list">
   <h1 class="mb-3">Schaltprotokoll</h1>

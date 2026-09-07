@@ -1,6 +1,7 @@
-{% extends "base.html" %}
+{% extends "base_admin.html" %}
 {% from "form.html" import text_field, number_field %}
 {% block title %}Sollwert-Modus – thermoctl{% endblock %}
+{% block page_title %}Sollwert-Modus{% endblock %}
 {% block content %}
 <h1>{{ "Sollwert-Modus bearbeiten" if mode else "Sollwert-Modus anlegen" }}</h1>
 <form method="post" action="{{ url_prefix }}{{ '/modes/' ~ mode.id if mode else '/modes' }}">
