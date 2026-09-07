@@ -22,6 +22,14 @@ Home-Assistant-Add-on, mit Ingress-Einbindung und automatischer Rechteanpassung 
 Start. Wer bereits per `docker compose` betreibt, findet den Umstiegsweg in
 [self-hosting.md](docs/self-hosting.md#6b-umstieg-von-docker-compose-auf-das-home-assistant-add-on).
 
+Seit 0.9.0 gibt es **zwei Weboberflächen statt einer**. Welche jemand bekommt, hängt an
+seiner Gruppe: die **Anlagensicht** mit Betrieb, Geräten, Protokollen und Rechten, oder
+die **Wohnungssicht** — nur die eigenen Räume, in Alltagssprache, mit Temperatur,
+Wochenplan, Heizzeit, „für eine Weile wärmer", „zur nächsten Schaltzeit springen" und
+einem Abwesenheitszeitraum. Das Profil entscheidet allein, *was zu sehen ist*; *was
+erlaubt ist*, entscheiden weiterhin die Rechte, und beide Prüfungen laufen
+hintereinander. Beim Upgrade bleibt jede bestehende Gruppe in der Anlagensicht.
+
 Seit 0.5.0 gibt es zusätzlich eine **PI-Regelung als Beta**, je Zone einschaltbar und aus
 als Vorgabe. Sie ersetzt für eine eingeschaltete Zone die Hysterese durch einen
 Proportional-Integral-Regler mit zeitproportionalem Ausgang und gilt nur für gewöhnliche

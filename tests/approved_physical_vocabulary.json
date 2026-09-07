@@ -100,6 +100,7 @@
       "Schaltaktoren — selbstregelnde Ventile und Geräte mit `thermostat`-Fähigkeit sind",
       "Schalter: PI schaltet deutlich häufiger und verkürzt die Lebensdauer eines Schaltaktors.",
       "Wie oft eine Zone tatsächlich schaltet, zeigt die Seite **Relaisverschleiß** je Gerät und",
+      "Wochenplan, Heizzeit, „für eine Weile wärmer\", „zur nächsten Schaltzeit springen\" und",
       "an einer echten Heizung.",
       "beseitigt genau das. Weniger Verbrauch oder schnelleres Aufheizen folgt daraus nicht.",
       "kann das Ventil auch selbst regeln und bekommt dann nur Soll- und Ist-Temperatur), eine",
@@ -463,6 +464,12 @@
       "actuator",
       "actuator",
       "kein Aktor — die Entscheidung erreicht kein Ventil"
+    ],
+    "thermoctl/domain/problem_report.py": [
+      "Raum wird nicht warm",
+      "Raum zu warm",
+      "not_warm",
+      "too_warm"
     ],
     "thermoctl/domain/reading.py": [
       "switch"

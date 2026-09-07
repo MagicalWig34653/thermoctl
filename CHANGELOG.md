@@ -9,6 +9,75 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ---
 
+## 0.9.0 — 2026-09-07
+
+### Hinzugefügt
+
+- **Zwei Weboberflächen statt einer: Anlage und Wohnung.** Eine Gruppe trägt jetzt
+  ein UI-Profil (`access_group.ui_profile`, `admin` oder `tenant`), das entscheidet,
+  **welche** Oberfläche ihre Mitglieder bekommen. Ausdrücklich **keine**
+  Berechtigung: was jemand darf, steht weiterhin allein in seinen Rechten, und jede
+  vorhandene Prüfung im Endpunkt bleibt bestehen. Beim Upgrade bekommen alle
+  bestehenden Gruppen `admin` — auch eine, die „Mieter“ heißt; ein Name ist kein
+  Modell, und eine Anlage, die nach `alembic upgrade head` ihre Verwaltung verliert,
+  wäre der teuerste denkbare Migrationsfehler. Die Einrichtung legt zusätzlich die
+  Vorlage „Wohnung“ an: Mieterprofil, aber kein einziges Recht.
+- **Die Wohnungssicht.** Startseite mit einer Karte je eigenem Raum (Temperatur samt
+  Alter, Modus, Sollwert mit verständlicher Begründung, Tagesverlauf, „Als
+  Nächstes“), dazu Wochenplan (`/schedule`) und Heizzeit (`/heating-time`). Alltags-
+  sprache statt Anlagenbegriffen: kein MQTT, kein Broker, keine Aktorfreigabe, keine
+  Verbundrolle. Ein Problem wird als **Wirkung** erklärt, nicht als Ursache.
+- **„Zur nächsten Schaltzeit springen“.** Die nächste reguläre Zeitplanphase gilt
+  sofort — aber nur bis zu dem Moment, an dem sie regulär begonnen hätte. Der
+  Wochenplan bleibt unverändert, danach läuft alles von selbst normal weiter.
+  Gerechnet in der Domäne (`domain/schedule.py::jump_to_next_switch`), nicht im
+  Browser. Läuft schon eine Übersteuerung, wird sie angezeigt statt still verdoppelt;
+  ersetzen ist eine ausdrückliche zweite Aktion.
+- **Abwesenheit für die eigenen Räume.** Ein Zeitraum, in dem die eigenen Räume
+  sparsamer geregelt werden, umgesetzt über die vorhandene Übersteuerungs-Domäne mit
+  der neuen Tabelle `absence` als Klammer. Welche Räume betroffen sind, entscheidet
+  ausschließlich der Server. Alles oder nichts — eine halb abgesenkte Wohnung, die
+  niemand mehr auflösen kann, ist ausgeschlossen. Ausdrücklich **nicht** der
+  anlagenweite Urlaubsbetrieb: der senkt auch die Räume anderer Mieter ab.
+- **„Problem melden“ — echt, nicht als Attrappe.** Die Meldung geht über dieselbe,
+  vom Betreiber konfigurierte Meldekette wie jede Störungsmeldung und steht im Audit.
+  Eigenes zonenbezogenes Recht **`report.create`**, das die Migration keiner
+  bestehenden Gruppe automatisch gibt: eine Wirkung nach außen darf nicht aus einem
+  Leserecht folgen. Sechster Meldungsschalter unter *Regelvorgaben*. Ohne
+  eingerichteten Webhook wird die Meldung trotzdem protokolliert, und der Melder
+  erfährt genau das — statt eines stillen Erfolgs.
+- **Ein persönlicher Bereich `/account`** für beide Oberflächen: eigenes Passwort,
+  andere Sitzungen beenden, Passkeys, Hilfe, Abmelden. Ohne Recht, weil das eigene
+  Konto kein privilegierter Vorgang ist; bis hierher lagen die beiden Funktionen auf
+  der Benutzerverwaltungsseite und wären für ein Mieterprofil unerreichbar gewesen.
+
+### Geändert
+
+- **Die Anlagenoberfläche hat eine Seitenleiste** (mobil eine reduzierte Fußleiste)
+  statt der Kopfleiste, geordnet nach Hauptbereich, Analyse, System und Zugängen.
+  Gemeinsamer Kern in `base_core.html`, darauf `base_admin.html` und
+  `base_tenant.html`; `base.html` ist entfallen. Der Kiosk bleibt unberührt daneben.
+- **Die drei Betriebsriegel stehen auf der Startseite getrennt nebeneinander** —
+  Aktorfreigabe, MQTT-Ausgabe und Rolle im Verbund. Sie beantworten drei
+  verschiedene Fragen und dürfen nicht zu einem „System OK“ verschmelzen; die
+  gewachsenen Formulierungen sind Wort für Wort erhalten.
+- **Keine Emojis und keine emojiartigen Piktogramme mehr** in der Oberfläche. Das
+  Bleistiftsymbol im Wochenplan ist jetzt das Wort „ändern“, die Übernahme-Marke eine
+  gezeichnete Ecke. Ein Wächtertest hält das fest. Einfache Richtungspfeile im
+  ASCII-Anlagenbild bleiben — sie tragen keine Aussage, die ein Vorlesewerkzeug
+  falsch benennen könnte.
+- Die drei Auswertungszeiträume (7/30/90 Tage) stehen jetzt einmal in der Domäne
+  (`domain/statistics.py::PERIODS`) statt zweimal in der Weboberfläche.
+
+### Nicht enthalten
+
+- **Persönliche Störungsbenachrichtigungen je Mieter.** thermoctl hat keinen
+  individuellen Zustellkanal — der Webhook ist anlagenweit und geht an den Betreiber.
+  Ein Schalter dafür wäre eine funktionslose Einstellung; die Hinweise erscheinen
+  stattdessen in der Oberfläche selbst.
+
+---
+
 ## 0.8.1 — 2026-09-07
 
 ### Behoben
