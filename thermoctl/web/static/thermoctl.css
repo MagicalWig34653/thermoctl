@@ -1170,13 +1170,20 @@ body {
     flex-direction: column;
 }
 
+/* Die Kopfzeile steht fest und lässt den Inhalt darunter durchscheinen. Das
+ * `-webkit-`-Präfix ist kein Überbleibsel: Safari braucht es bis heute, und ohne
+ * es ist die Leiste dort schlicht durchsichtig und der Text darunter kaum zu
+ * lesen (`tests/test_app.py::test_the_header_bar_carries_blur_for_every_browser`
+ * hält das fest). */
 .tc-topbar {
     display: flex;
     align-items: center;
     gap: 0.75rem;
     padding: 0.6rem 1.25rem;
     border-bottom: 1px solid var(--line);
-    background: var(--surface);
+    background: color-mix(in srgb, var(--surface) 78%, transparent);
+    backdrop-filter: blur(12px) saturate(140%);
+    -webkit-backdrop-filter: blur(12px) saturate(140%);
     position: sticky;
     top: 0;
     z-index: 30;
@@ -1304,7 +1311,9 @@ body {
     position: sticky;
     top: 0;
     z-index: 30;
-    background: var(--ground);
+    background: color-mix(in srgb, var(--ground) 85%, transparent);
+    backdrop-filter: blur(12px) saturate(140%);
+    -webkit-backdrop-filter: blur(12px) saturate(140%);
 }
 
 .tc-tnav {
