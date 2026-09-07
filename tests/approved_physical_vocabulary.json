@@ -129,6 +129,7 @@
       "Ventilschutzlauf und wurde ein Fenster geöffnet, während die Temperatur im",
       "[`docs/docker-swarm.md`](docker-swarm.md) und [`docs/kubernetes.md`](kubernetes.md), je",
       "allein, für den Aus-Timer zusätzlich `protection_allowed`. Ein Ventilschutzlauf, der",
+      "dauerhaften ±0,5-K-Schritt am laufenden Modus, „Für eine Weile wärmer\" und „Zur",
       "deshalb bleibt die Erkennung je Zone standardmäßig aus, und der Betreiber schaltet sie",
       "echten Fensteröffnen zu unterscheiden. Ein langsames Auskühlen nach Heizende und das Ende",
       "gleiche EIN/AUS-Aktoren).",
@@ -137,6 +138,7 @@
       "könnte, und da die Erkennung selbst das Heizen abschaltet, gäbe es ohnehin keine aktive",
       "selbstregelndes Ventil) bleiben beim bisherigen, vorsichtigeren Verhalten. Nur das",
       "sicher entscheiden könnten, wer einen Heizkörper schalten darf; die Datenbank, die",
+      "sichtbare Räume, ausdrücklich „Heizzeit\" und im Trockenlauf „hätte geheizt\").",
       "verliert, den nächsten Aktor trotzdem nicht mehr anfasst. Erreicht damit sowohl den",
       "wiederholt die Wärme entzogen wurde — bei kaltem Wetter und mäßiger Dämmung kann er dann",
       "| 4 — Regelkreis und Cutover | schaltet scharf an der echten Anlage; Ablösung des Altsystems noch offen |"
@@ -669,6 +671,34 @@
       "Durchlauf, ob sie heizen würde. Gezählt werden die Abstände zwischen diesen",
       "Entweder war es warm genug, oder der Regelzyklus lief noch nicht — er schreibt",
       "bestätigt nicht, dass ein Aktor die angeforderte Wirkung tatsächlich erzielt hat."
+    ],
+    "thermoctl/web/templates/tenant_heating_time.html": [
+      "<h1 class=\"tc-h1\">Wie viel wurde geheizt?</h1>",
+      "<strong>Die Anlage schaltet derzeit nicht.</strong>",
+      "Die Balken zeigen, wann sie geheizt <em>hätte</em>.",
+      "Trockenlauf: die Werte zeigen, wann die Anlage geheizt **hätte**. Als Text und",
+      "href=\"{{ url_prefix }}/heating-time?period={{ code }}\""
+    ],
+    "thermoctl/web/templates/tenant_schedule.html": [
+      "<h1 class=\"tc-h1\">{{ zone.display_name }}: wann soll es warm sein?</h1>",
+      "<p class=\"t-quiet small\">Warm am Morgen und Abend, nachts automatisch kühler.</p>",
+      "Du legst nur deine Komfortzeiten fest. Alles Weitere übernimmt die Heizung.",
+      "background: color-mix(in srgb, var(--warmth) {{ (bar.warmth * 100)|round|int }}%, var(--cool-area));\">",
+      "background: var({{ '--warmth-area' if not loop.first else '--cool-area' }});\"></span>",
+      "„Für eine Weile wärmer“ verändert diesen Wochenplan nicht. Nach Ablauf gilt"
+    ],
+    "thermoctl/web/templates/tenant_schedule_empty.html": [
+      "<h1 class=\"tc-h1\">Wann soll es warm sein?</h1>"
+    ],
+    "thermoctl/web/templates/tenant_start.html": [
+      "<p class=\"tc-notice-title\">Heizung läuft normal</p>",
+      "<span class=\"tc-chip tc-chip-quiet\"><span class=\"tc-dot\"></span>keine Wärme angefordert</span>",
+      "<span class=\"tc-chip tc-chip-warm\"><span class=\"tc-dot\"></span>Wärme angefordert</span>",
+      "Behauptung über die Temperatur des Heizkörpers. \"heizt\" wäre beides",
+      "Für eine Weile wärmer",
+      "Seit {{ notice.measured_at|age }} kam keine neue Temperatur. Die Heizung",
+      "Solange ein Fenster offen steht, wird in diesem Raum nicht geheizt.",
+      "background: color-mix(in srgb, var(--warmth) {{ (segment.warmth * 100)|round|int }}%, var(--cool-area));\"></span>"
     ],
     "thermoctl/web/templates/vacation.html": [
       "<span class=\"tc-chip tc-chip-warm\"><span class=\"tc-dot\"></span>Läuft</span>",

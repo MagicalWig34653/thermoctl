@@ -1819,3 +1819,62 @@ body {
     border-radius: 2px 2px 0 0;
     min-height: 1px;
 }
+
+/* Die Abwesenheit gilt für alle Räume zugleich und steht deshalb über den
+ * Raumkarten -- nicht in einer davon, wo sie wie eine Eigenschaft dieses einen
+ * Raums aussähe. */
+.tc-absence {
+    display: block;
+    margin-bottom: 1rem;
+    padding: 0.9rem 1rem;
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius);
+    background: var(--surface);
+}
+
+.tc-absence > summary {
+    cursor: pointer;
+    font-weight: 600;
+    min-height: 2.75rem;
+    display: flex;
+    align-items: center;
+}
+
+.tc-absenceform {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: end;
+    gap: 0.75rem;
+}
+
+.tc-absenceform .form-control {
+    width: auto;
+}
+
+/* „Problem melden" -- zugeklappt, weil es der seltenste Fall ist, aber ohne
+ * JavaScript erreichbar (<details>, tastaturbedienbar). */
+.tc-report {
+    margin-top: 0.9rem;
+    border-top: 1px solid var(--line);
+    padding-top: 0.75rem;
+}
+
+.tc-report > summary {
+    cursor: pointer;
+    min-height: 2.75rem;
+    display: flex;
+    align-items: center;
+}
+
+.tc-reportform {
+    display: grid;
+    gap: 0.6rem;
+}
+
+.tc-reportform fieldset {
+    border: 0;
+    padding: 0;
+    margin: 0;
+    display: grid;
+    gap: 0.25rem;
+}

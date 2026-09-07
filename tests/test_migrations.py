@@ -712,3 +712,78 @@ def test_absence_migration_keeps_existing_override_unassigned(
         assert up_again.returncode == 0, up_again.stderr
     finally:
         db_engine.dispose()
+
+
+@pytest.mark.migration
+def test_the_report_permission_reaches_no_group_by_itself(
+    migrations_database_url: str,
+) -> None:
+    """Ein Recht, das eine Meldung nach außen auslöst, darf niemand geschenkt kriegen.
+
+    `control.arm` ging seinerzeit ausdrücklich an alle Gruppen mit `setting.manage`
+    -- dort war es die Fortsetzung eines Rechts, das dieselben Leute schon hatten.
+    Hier ist es das Gegenteil: eine bestehende Gruppe mit `zone.read` bekäme über
+    Nacht die Möglichkeit, den Webhook des Betreibers zu bedienen. Der Test hält
+    fest, dass die Migration genau das nicht tut.
+    """
+    before = _alembic(migrations_database_url, "downgrade", "c724de89a13f")
+    assert before.returncode == 0, before.stderr
+
+    db_engine = create_engine(migrations_database_url)
+    try:
+        with db_engine.begin() as connection:
+            connection.execute(
+                text(
+                    "INSERT INTO access_group (name, description, is_builtin) "
+                    "VALUES ('Bestandsgruppe', 'darf lesen', false)"
+                )
+            )
+            group_id = connection.execute(
+                text("SELECT id FROM access_group WHERE name = 'Bestandsgruppe'")
+            ).scalar_one()
+            read_id = connection.execute(
+                text("SELECT id FROM permission WHERE code = 'zone.read'")
+            ).scalar_one()
+            connection.execute(
+                text(
+                    "INSERT INTO group_permission (access_group_id, permission_id, zone_id) "
+                    "VALUES (:group_id, :permission_id, NULL)"
+                ),
+                {"group_id": group_id, "permission_id": read_id},
+            )
+
+        up = _alembic(migrations_database_url, "upgrade", "head")
+        assert up.returncode == 0, up.stderr
+        with db_engine.connect() as connection:
+            exists = connection.execute(
+                text("SELECT is_zone_scoped FROM permission WHERE code = 'report.create'")
+            ).scalar_one()
+            assigned = connection.execute(
+                text(
+                    "SELECT count(*) FROM group_permission gp "
+                    "JOIN permission p ON p.id = gp.permission_id "
+                    "WHERE p.code = 'report.create'"
+                )
+            ).scalar_one()
+        assert bool(exists) is True
+        assert assigned == 0
+
+        down = _alembic(migrations_database_url, "downgrade", "c724de89a13f")
+        assert down.returncode == 0, down.stderr
+        with db_engine.connect() as connection:
+            gone = connection.execute(
+                text("SELECT count(*) FROM permission WHERE code = 'report.create'")
+            ).scalar_one()
+        assert gone == 0
+        up_again = _alembic(migrations_database_url, "upgrade", "head")
+        assert up_again.returncode == 0, up_again.stderr
+        with db_engine.begin() as connection:
+            connection.execute(
+                text("DELETE FROM group_permission WHERE access_group_id = :group_id"),
+                {"group_id": group_id},
+            )
+            connection.execute(
+                text("DELETE FROM access_group WHERE name = 'Bestandsgruppe'")
+            )
+    finally:
+        db_engine.dispose()

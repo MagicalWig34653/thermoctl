@@ -212,6 +212,7 @@ def _defaults_page(
             "notify_command_failures": row.notify_command_failures,
             "notify_stuck_sensor": row.notify_stuck_sensor,
             "notify_window_alarm": row.notify_window_alarm,
+            "notify_tenant_reports": row.notify_tenant_reports,
             "notify_last_attempt_at": row.notify_last_attempt_at,
             "notify_last_ok": row.notify_last_ok,
             "notify_last_error": row.notify_last_error,
@@ -415,6 +416,7 @@ async def save_notification_preferences(
     row.notify_command_failures = form.get("notify_command_failures") is not None
     row.notify_stuck_sensor = form.get("notify_stuck_sensor") is not None
     row.notify_window_alarm = form.get("notify_window_alarm") is not None
+    row.notify_tenant_reports = form.get("notify_tenant_reports") is not None
     audit.record(
         session,
         source="web",

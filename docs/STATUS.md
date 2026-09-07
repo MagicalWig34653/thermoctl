@@ -89,9 +89,44 @@ gründlichsten prüft: jede Zonen-Id aus Pfad oder Formular wird erneut gegen
 zwischen „gibt es nicht" und „gehört jemand anderem" verriete. Geprüft wird auf
 Anzeigename **und** Id im gesamten HTML, auch als Quelle einer Übernahme.
 
-**Noch offen** (Reihenfolge nach `docs/ui-redesign/IMPLEMENTATION.md` §23):
-Abwesenheit in der Oberfläche, „Problem melden", Sicherheitsdurchsicht,
-Versionsmetadaten und CHANGELOG für v0.9.0.
+**Fertig: Abwesenheit.** Ein Mieter setzt einen Zeitraum an, in dem seine Räume
+sparsamer geregelt werden -- `POST /absence`, beendet über `POST /absence/end`.
+Welche Räume betroffen sind, entscheidet **ausschließlich der Server**
+(`visible_zones(..., "override.create")`); es gibt bewusst kein Formularfeld dafür.
+Ausdrücklich nicht der anlagenweite Urlaubsbetrieb: der senkt auch die Räume anderer
+Mieter ab. Umgesetzt über die vorhandene Übersteuerungs-Domäne, mit `absence` als
+Klammer darum (`zone_override.absence_id`), damit sich die Gruppe als *eine*
+Abwesenheit anzeigen und in *einem* Schritt beenden lässt. Alles oder nichts:
+entweder entstehen Klammer und alle Übersteuerungen, oder gar nichts.
+
+**Fertig: „Problem melden".** Keine Attrappe -- die Meldung geht über dieselbe
+Meldekette wie jede Störungsmeldung (der vom Betreiber konfigurierte Webhook) und
+steht im Audit. Eigenes zonenbezogenes Recht **`report.create`** (Migration
+`d31f6a04c7e9`), ausdrücklich nicht `zone.read`: etwas nach außen auszulösen darf
+nicht aus einem Leserecht folgen. Die Migration teilt das Recht **keiner** Gruppe
+automatisch zu. Sechster Meldungsschalter `setting.notify_tenant_reports` auf
+`/settings`. Ist kein Webhook eingerichtet oder der Schalter aus, wird die Meldung
+trotzdem im Audit festgehalten und der Mieter erfährt ehrlich, dass es keine
+automatische Weiterleitung gibt.
+
+Was der Bericht enthält, steht abschließend im Docstring von
+`domain/problem_report.py` -- Raum, Problemart, Hinweis, Zeitpunkt, letzter
+Messwert, Sollwert samt Begründung, Modus, Melder. Und nichts sonst: keine
+Zugangsdaten, keine Brokeradressen, keine Gerätebezeichner, nichts aus einer anderen
+Zone. Ein Test legt eine zweite Zone mit auffälligem Namen an und prüft es.
+
+`age_in_words` ist dabei von `web/__init__.py` nach `domain/time.py` gewandert: die
+Meldung braucht dieselbe Formulierung, und die Domäne darf keinen Adapter
+importieren (`test_architecture.py::test_the_domain_knows_no_adapter`).
+
+**Verschoben, mit Begründung:** persönliche Störungsbenachrichtigungen je Mieter.
+thermoctl hat keinen individuellen Zustellkanal -- der Webhook ist anlagenweit und
+geht an den Betreiber, nicht an einzelne Bewohner. Ein Schalter „Wichtige Störungen"
+in der Wohnungssicht wäre eine funktionslose Einstellung. Die Hinweise erscheinen
+stattdessen in der Oberfläche selbst (Startseite, oberer Hinweisbereich). Ein echter
+persönlicher Kanal wäre eine eigene Aufgabe.
+
+**Noch offen:** Sicherheitsdurchsicht, Versionsmetadaten und CHANGELOG für v0.9.0.
 
 ## v0.8.1 -- SQLite-Sperrfehler im Verbund-Anspruch behoben
 

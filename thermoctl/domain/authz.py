@@ -118,7 +118,10 @@ PERMISSION_AREAS: list[tuple[str, str, list[str]]] = [
     (
         "Sehen und bedienen",
         "Was im Alltag gebraucht wird.",
-        ["zone.read", "setpoint.write", "override.create", "override.cancel"],
+        [
+            "zone.read", "setpoint.write", "override.create", "override.cancel",
+            "report.create",
+        ],
     ),
     (
         "Zonen und Zeitpläne",

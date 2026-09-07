@@ -1130,3 +1130,158 @@ def test_a_weekday_outside_the_week_is_shown_as_a_correctable_input(
     )
     assert page.status_code == 200
     assert "alert-warning" in page.text
+
+
+# -- Abwesenheit ---------------------------------------------------------------
+
+
+def test_absence_covers_exactly_the_rooms_the_server_allows(
+    tenant_client: Client, session: Session
+) -> None:
+    """Der Kern der Funktion: welche Räume betroffen sind, entscheidet der Server.
+
+    Der Mieter darf hier zwei Räume sehen, aber nur einen bedienen. Die Abwesenheit
+    darf deshalb genau einen absenken -- und den fremden Raum ohnehin nicht.
+    """
+    mine, theirs = _wohnung(session)
+    read_only = create_zone(session, "flur")
+    read_only.display_name = "Flur"
+    session.flush()
+    client = tenant_client(
+        [("zone.read", mine.id), ("zone.read", read_only.id),
+         ("override.create", mine.id), ("override.cancel", mine.id)]
+    )
+    response = client.post(
+        "/absence",
+        data={"return_on": "2030-01-05", "temperature_c": "17"},
+        headers=_csrf(client), follow_redirects=False,
+    )
+    assert response.status_code == 303
+
+    affected = {
+        entry.zone_id
+        for entry in session.scalars(
+            select(ZoneOverride).where(ZoneOverride.absence_id.is_not(None))
+        )
+    }
+    assert affected == {mine.id}
+    assert theirs.id not in affected
+    assert read_only.id not in affected
+
+
+def test_a_running_absence_is_visible_and_can_be_ended_in_one_step(
+    tenant_client: Client, session: Session
+) -> None:
+    mine, _theirs = _wohnung(session)
+    second = create_zone(session, "bad")
+    second.display_name = "Bad"
+    session.flush()
+    client = tenant_client(
+        [("zone.read", mine.id), ("zone.read", second.id),
+         ("override.create", mine.id), ("override.create", second.id)]
+    )
+    client.post(
+        "/absence", data={"return_on": "2030-01-05", "temperature_c": "17"},
+        headers=_csrf(client), follow_redirects=False,
+    )
+    page = client.get("/").text
+    assert "Abwesenheit läuft" in page
+    assert mine.display_name in page
+    assert second.display_name in page
+
+    client.post("/absence/end", headers=_csrf(client), follow_redirects=False)
+    still_running = [
+        entry
+        for entry in session.scalars(
+            select(ZoneOverride).where(ZoneOverride.absence_id.is_not(None))
+        )
+        if entry.cancelled_at is None
+    ]
+    assert still_running == []
+    assert "Abwesenheit läuft" not in client.get("/").text
+
+
+def test_an_absence_leaves_an_unrelated_override_alone(
+    tenant_client: Client, session: Session
+) -> None:
+    """`end_absence` beendet nur die Übersteuerungen dieser Klammer -- nicht die
+    jeweils jüngste einer Zone, die inzwischen aus einem anderen Grund entstanden
+    sein kann."""
+    mine, _theirs = _wohnung(session)
+    second = create_zone(session, "bad")
+    session.flush()
+    client = tenant_client(
+        [("zone.read", mine.id), ("zone.read", second.id),
+         ("override.create", mine.id)]
+    )
+    client.post(
+        "/absence", data={"return_on": "2030-01-05", "temperature_c": "17"},
+        headers=_csrf(client), follow_redirects=False,
+    )
+    # Eine eigenständige Übersteuerung, die nichts mit der Abwesenheit zu tun hat.
+    client.post(
+        f"/zones/{mine.id}/override",
+        data={"temperature_c": "23.0", "end": "duration", "duration_minutes": "60"},
+        headers=_csrf(client), follow_redirects=False,
+    )
+    client.post("/absence/end", headers=_csrf(client), follow_redirects=False)
+    loose = session.scalars(
+        select(ZoneOverride).where(ZoneOverride.absence_id.is_(None))
+    ).all()
+    assert [entry.cancelled_at for entry in loose] == [None]
+
+
+@pytest.mark.parametrize(
+    "data",
+    [
+        {"return_on": "morgen", "temperature_c": "17"},
+        {"return_on": "2030-01-05", "temperature_c": "warm"},
+        {"return_on": "", "temperature_c": ""},
+    ],
+)
+def test_an_unusable_absence_input_changes_nothing_and_says_so(
+    tenant_client: Client, session: Session, data: dict[str, str]
+) -> None:
+    mine, _theirs = _wohnung(session)
+    client = _tenant(tenant_client, mine, ["override.create"])
+    response = client.post(
+        "/absence", data=data, headers=_csrf(client), follow_redirects=False
+    )
+    assert response.status_code == 303
+    assert "absence_errors" in response.headers["location"]
+    assert not list(session.scalars(select(ZoneOverride)))
+
+
+def test_a_return_date_in_the_past_is_refused_by_the_domain(
+    tenant_client: Client, session: Session
+) -> None:
+    mine, _theirs = _wohnung(session)
+    client = _tenant(tenant_client, mine, ["override.create"])
+    response = client.post(
+        "/absence", data={"return_on": "2020-01-05", "temperature_c": "17"},
+        headers=_csrf(client), follow_redirects=False,
+    )
+    assert response.status_code == 303
+    assert "absence_errors" in response.headers["location"]
+    assert not list(session.scalars(select(ZoneOverride)))
+
+
+def test_a_tenant_without_a_controllable_room_gets_no_absence_form(
+    tenant_client: Client, session: Session
+) -> None:
+    """Nur lesen zu dürfen heißt nicht, absenken zu dürfen."""
+    mine, _theirs = _wohnung(session)
+    page = _tenant(tenant_client, mine).get("/").text
+    assert "Abwesenheit einstellen" not in page
+
+
+def test_ending_an_absence_that_is_not_running_is_reported(
+    tenant_client: Client, session: Session
+) -> None:
+    mine, _theirs = _wohnung(session)
+    client = _tenant(tenant_client, mine, ["override.create"])
+    response = client.post(
+        "/absence/end", headers=_csrf(client), follow_redirects=False
+    )
+    assert response.status_code == 303
+    assert "absence_errors" in response.headers["location"]

@@ -36,6 +36,16 @@ NOTICE_KIND_WINDOW_ALARM = "window_alarm"
 #: Testmeldung je am Tor, ist das ein Fehler und soll auffallen, nicht durchrutschen.
 NOTICE_KIND_TEST = "test"
 
+#: Eine sechste Art: ein Mieter hat aus seinem Raum heraus ein Problem gemeldet
+#: (`domain.problem_report`). Anders als die fünf oben leitet sie die Regelung nicht
+#: aus einem Zustandswechsel ab -- ein Mensch hat sie ausgelöst. Trotzdem geht sie
+#: durch dasselbe Tor: eine Anlage, deren Betreiber keine Mietermeldungen bekommen
+#: will, muss sie abschalten können, ohne dafür den ganzen Webhook abzuräumen. Und
+#: anders als die Testmeldung ist sie keine Antwort auf einen Knopf des Betreibers
+#: selbst, sondern kommt von jemand anderem -- deshalb ein Schalter und keine
+#: Ausnahme.
+NOTICE_KIND_TENANT_REPORT = "tenant_report"
+
 
 @dataclass(frozen=True)
 class FaultNotice:
@@ -69,6 +79,8 @@ def notice_enabled(kind: str, settings: Setting) -> bool:
         return settings.notify_stuck_sensor
     if kind == NOTICE_KIND_WINDOW_ALARM:
         return settings.notify_window_alarm
+    if kind == NOTICE_KIND_TENANT_REPORT:
+        return settings.notify_tenant_reports
     raise ValueError(f"Unbekannte Meldungsart {kind!r}")
 
 

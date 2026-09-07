@@ -17,8 +17,10 @@ Domänenfunktionen wie der Admin-Editor (`domain.schedule`). Diese Seite ist nur
 eine einfachere Oberfläche auf dieselben Daten.
 """
 
-from datetime import timedelta
+from datetime import date, timedelta
+from decimal import Decimal, InvalidOperation
 from typing import Annotated, cast
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import RedirectResponse
@@ -31,8 +33,11 @@ from thermoctl.db.models.operations import Setting
 from thermoctl.db.models.schedule import SchedulePoint
 from thermoctl.db.models.state import ZoneState
 from thermoctl.db.models.zone import SetpointMode, Zone
+from thermoctl.domain.absence import absence_zones, end_absence, running_absence, start_absence
 from thermoctl.domain.authz import has_permission, visible_zones
+from thermoctl.domain.modes import DomainError
 from thermoctl.domain.principal import Principal
+from thermoctl.domain.problem_report import REPORT_KINDS
 from thermoctl.domain.schedule import (
     ScheduleError,
     ScheduleSnapshot,
@@ -127,6 +132,7 @@ def render_home(request: Request, session: Session, principal: Principal) -> Res
     # Sprung zur nächsten Schaltzeit benutzt: was die Karte ankündigt und was der
     # Knopf daneben tut, kann so nicht auseinanderlaufen.
     next_switches = {zone.id: next_switch(session, zone, now) for zone in zones}
+    absence = running_absence(session, principal.user_id, now)
 
     return templates.TemplateResponse(
         request,
@@ -137,6 +143,28 @@ def render_home(request: Request, session: Session, principal: Principal) -> Res
             "zones": zones,
             "notice": _home_notice(zones, states),
             "next_switches": next_switches,
+            # Die laufende Abwesenheit dieses Benutzers samt ihrer Räume -- damit
+            # sie sichtbar ist und sich in einem Schritt beenden lässt, statt in
+            # jedem Raum einzeln.
+            "absence": absence,
+            "absence_zone_names": (
+                [zone.display_name for zone in absence_zones(session, absence)]
+                if absence is not None
+                else []
+            ),
+            "absence_errors": request.query_params.get("absence_errors"),
+            "report_errors": request.query_params.get("report_errors"),
+            "report_notice": request.query_params.get("report_notice"),
+            # Die Problemarten kommen aus der Domäne, nicht aus der Vorlage: der
+            # Server prüft die gewählte gegen dieselbe Liste.
+            "report_kinds": REPORT_KINDS,
+            "may_report": {
+                zone.id
+                for zone in visible_zones(session, principal, "report.create")
+            },
+            "absence_zone_count": len(
+                visible_zones(session, principal, "override.create")
+            ),
             "timezone": context["timezone"],
             "thermostat_errors": request.query_params.get("thermostat_errors"),
             "override_errors": request.query_params.get("override_errors"),
@@ -453,4 +481,88 @@ async def show_heating_time(
             "armed": armed,
             "as_duration": as_duration,
         },
+    )
+
+
+# -- Abwesenheit ----------------------------------------------------------------
+
+
+@router.post("/absence")
+async def start_absence_view(
+    request: Request,
+    principal: Annotated[Principal, Depends(current_principal)],
+    session: Annotated[Session, Depends(get_session)],
+) -> Response:
+    """„Ich bin bis Samstag weg -- regelt meine Räume bis dahin sparsamer."
+
+    Welche Räume das sind, entscheidet **ausschließlich der Server**:
+    `visible_zones(..., "override.create")` liefert genau die Räume, für die dieser
+    Principal übersteuern darf. Es gibt hier bewusst kein Formularfeld für die
+    Zonenauswahl -- ein Feld wäre eine Angabe, der man nicht glauben darf, und ein
+    zweiter Weg, an dem eine Prüfung fehlen könnte.
+
+    Die Domäne legt Klammer und Übersteuerungen in einem Zug an oder gar nicht
+    (`domain.absence.start_absence`). Eine halb abgesenkte Wohnung, die niemand mehr
+    auflösen kann, ist ausdrücklich ausgeschlossen.
+    """
+    form = await request.form()
+    zones = visible_zones(session, principal, "override.create")
+    now = utcnow()
+    settings = session.get(Setting, 1)
+    timezone_name = settings.timezone if settings is not None else "UTC"
+
+    try:
+        temperature = Decimal(str(form.get("temperature_c", "")).replace(",", "."))
+        # Der Mieter gibt sein Rückkehrdatum in Ortszeit an -- gespeichert wird wie
+        # überall im Projekt naives UTC.
+        ends_at = local_day_start_utc(
+            date.fromisoformat(str(form.get("return_on", ""))), timezone_name
+        )
+    except (InvalidOperation, ValueError):
+        return _home_with_error(
+            request, session, principal,
+            "Bitte Rückkehrdatum und Temperatur prüfen.",
+        )
+    try:
+        start_absence(
+            session, zones, temperature, ends_at,
+            now=now, user_id=principal.user_id, token_id=principal.token_id,
+        )
+    except DomainError as exc:
+        return _home_with_error(request, session, principal, exc.notice)
+    return RedirectResponse(prefixed(request, "/"), status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/absence/end")
+async def end_absence_view(
+    request: Request,
+    principal: Annotated[Principal, Depends(current_principal)],
+    session: Annotated[Session, Depends(get_session)],
+) -> Response:
+    """Beendet die eigene laufende Abwesenheit vorzeitig.
+
+    Ohne Id im Formular: es gibt je Benutzer höchstens eine laufende, und der Server
+    sucht sie selbst. Eine fremde Abwesenheit ist damit gar nicht adressierbar.
+    """
+    running = running_absence(session, principal.user_id, utcnow())
+    if running is None:
+        return _home_with_error(
+            request, session, principal, "Es läuft gerade keine Abwesenheit."
+        )
+    end_absence(session, running)
+    return RedirectResponse(prefixed(request, "/"), status.HTTP_303_SEE_OTHER)
+
+
+def _home_with_error(
+    request: Request, session: Session, principal: Principal, notice: str
+) -> Response:
+    """Der Fehlerfall der Abwesenheit landet als Meldung auf der Startseite.
+
+    Über einen Abfrageparameter und eine Weiterleitung -- dasselbe Muster, das die
+    Übersteuerung schon benutzt, damit ein Neuladen nicht dieselbe Aktion erneut
+    auslöst.
+    """
+    return RedirectResponse(
+        prefixed(request, "/?" + urlencode({"absence_errors": notice})),
+        status.HTTP_303_SEE_OTHER,
     )

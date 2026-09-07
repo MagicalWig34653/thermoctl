@@ -107,6 +107,7 @@ from thermoctl.web.kiosk_admin_views import router as kiosk_admin_router
 from thermoctl.web.kiosk_views import router as kiosk_router
 from thermoctl.web.mode_views import router as modes_router
 from thermoctl.web.passkey_views import router as passkey_router
+from thermoctl.web.report_views import router as report_router
 from thermoctl.web.schedule_views import router as schedule_router
 from thermoctl.web.setup_views import router as setup_router
 from thermoctl.web.start_views import router as start_router
@@ -963,6 +964,7 @@ def create_app() -> FastAPI:
     app.include_router(alltag_router)
     app.include_router(alltag_shared_router)
     app.include_router(tenant_router)
+    app.include_router(report_router)
     app.include_router(vacation_router)
     app.include_router(api_router)
     app.router.routes.append(

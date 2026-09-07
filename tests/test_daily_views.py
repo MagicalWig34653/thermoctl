@@ -513,15 +513,18 @@ def test_a_running_timed_override_describes_its_remaining_time_not_its_end_as_pa
     requests could round 42 minutes remaining down to 41 and make this assertion
     flaky through no fault of the code under test.
     """
+    # `age_in_words` liegt seit v0.9.0 in `domain.time` statt in `web`: die
+    # Problemmeldung (`domain.problem_report`) braucht dieselbe Formulierung, und
+    # die Domäne darf keinen Adapter importieren.
     import thermoctl.domain.schedule as schedule_module
-    import thermoctl.web as web_module
+    import thermoctl.domain.time as time_module
     import thermoctl.web.daily_views as daily_views_module
     import thermoctl.web.start_views as start_views_module
 
     frozen = datetime(2026, 8, 29, 12, 0, 0)
     monkeypatch.setattr(schedule_module, "utcnow", lambda: frozen)
     monkeypatch.setattr(daily_views_module, "utcnow", lambda: frozen)
-    monkeypatch.setattr(web_module, "utcnow", lambda: frozen)
+    monkeypatch.setattr(time_module, "utcnow", lambda: frozen)
     monkeypatch.setattr(start_views_module, "utcnow", lambda: frozen)
 
     zone = _grundlage(session)

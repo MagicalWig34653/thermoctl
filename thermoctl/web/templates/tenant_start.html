@@ -54,8 +54,64 @@ Minute grundlos ein Ladebalken aufblitzt.
 </div>
 {% endif %}
 
+{% if absence_errors %}
+<div class="alert alert-warning" role="alert">{{ absence_errors }}</div>
+{% endif %}
+
+{#
+Die Abwesenheit gilt für **alle** Räume dieser Wohnung zugleich und steht deshalb
+über den Raumkarten, nicht in einer davon. Welche Räume das sind, entscheidet der
+Server; das Formular trägt bewusst keine Zonenauswahl.
+#}
+{% if absence %}
+<section class="tc-absence" role="status">
+    <p class="tc-notice-title">Abwesenheit läuft</p>
+    <p class="t-quiet small">
+        Bis {{ (absence.ends_at|localtime(timezone)).strftime("%d.%m.%Y, %H:%M") }} werden
+        {{ absence_zone_names|join(", ") }} auf
+        <strong class="t-value">{{ absence.setback_temperature_c|grad }} °C</strong>
+        gehalten. Danach gilt wieder dein Zeitplan.
+    </p>
+    <form method="post" action="{{ url_prefix }}/absence/end">
+        <button class="btn btn-sm btn-outline-secondary" type="submit">
+            Abwesenheit beenden
+        </button>
+    </form>
+</section>
+{% elif absence_zone_count %}
+<details class="tc-absence">
+    <summary>Abwesenheit einstellen</summary>
+    <p class="t-quiet small">
+        Alle deine Räume werden bis zu deiner Rückkehr sparsamer geregelt und
+        danach automatisch wieder normal. Der Wochenplan bleibt unverändert.
+    </p>
+    <form method="post" action="{{ url_prefix }}/absence" class="tc-absenceform">
+        <div>
+            <label class="form-label" for="abwesend-bis">Zurück am</label>
+            <input class="form-control" type="date" id="abwesend-bis" name="return_on" required>
+        </div>
+        <div>
+            {#
+            Ohne `min`/`max` im Markup: die Grenzen prüft die Domäne beim Anlegen
+            der Übersteuerungen. Eine zweite Zahl hier wäre eine zweite Wahrheit.
+            #}
+            <label class="form-label" for="abwesend-temperatur">Temperatur in °C</label>
+            <input class="form-control" type="number" step="0.5" value="17"
+                   id="abwesend-temperatur" name="temperature_c" required>
+        </div>
+        <button class="btn btn-primary" type="submit">Abwesenheit aktivieren</button>
+    </form>
+</details>
+{% endif %}
+
 {% if jump_next_errors %}
 <div class="alert alert-warning" role="alert">{{ jump_next_errors }}</div>
+{% endif %}
+{% if report_errors %}
+<div class="alert alert-warning" role="alert">{{ report_errors }}</div>
+{% endif %}
+{% if report_notice %}
+<div class="alert alert-success" role="status">{{ report_notice }}</div>
 {% endif %}
 
 {% if not zones %}
@@ -206,6 +262,41 @@ Minute grundlos ein Ladebalken aufblitzt.
             {% endif %}
             {% endif %}
         </div>
+
+        {#
+        Problem melden. Eigenes Recht `report.create`, ausdrücklich nicht
+        `zone.read`: die Meldung verlässt die Anlage über den Webhook des
+        Betreibers. Wer nur lesen darf, sieht diesen Bereich deshalb gar nicht --
+        und der Endpunkt weist ihn zusätzlich ab.
+        #}
+        {% if zone.id in may_report %}
+        <details class="tc-report">
+            <summary>Problem melden</summary>
+            <p class="t-quiet small">
+                Raum, letzter Messwert, Sollwert und Zeitpunkt werden automatisch
+                ergänzt. Technische Angaben sind nicht nötig.
+            </p>
+            <form method="post" action="{{ url_prefix }}/zones/{{ zone.id }}/report"
+                  class="tc-reportform">
+                <fieldset>
+                    <legend class="form-label">Was ist los?</legend>
+                    {% for code, label in report_kinds %}
+                    <label class="tc-choice">
+                        <input type="radio" name="kind" value="{{ code }}"
+                               {{ "checked" if loop.first }}>
+                        <span>{{ label }}</span>
+                    </label>
+                    {% endfor %}
+                </fieldset>
+                <label class="form-label" for="hinweis-{{ zone.id }}">
+                    Hinweis (optional)
+                </label>
+                <input class="form-control" id="hinweis-{{ zone.id }}" name="note"
+                       maxlength="200" placeholder="z. B. seit heute Morgen">
+                <button class="btn btn-outline-secondary" type="submit">Melden</button>
+            </form>
+        </details>
+        {% endif %}
 
         {% if zone.id in may_override %}
         {% set has_error = override_errors and error_zone_id == zone.id|string %}

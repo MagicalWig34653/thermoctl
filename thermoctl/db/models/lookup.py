@@ -172,6 +172,10 @@ PERMISSIONS: list[tuple[str, str, bool]] = [
     ("schedule.manage", "Zeitpläne ändern", True),
     ("override.create", "Übersteuern", True),
     ("override.cancel", "Fremde Übersteuerung aufheben", True),
+    # Eigenes Schreibrecht und nicht `zone.read`: eine Problemmeldung verlässt die
+    # Anlage über den konfigurierten Webhook. Etwas nach außen auszulösen darf nicht
+    # aus einem reinen Leserecht folgen.
+    ("report.create", "Ein Problem aus einem Raum melden", True),
     ("device.read", "Geräte und Zuordnungen sehen", True),
     ("device.manage", "Geräte zuordnen, tauschen, entfernen", True),
     ("mode.manage", "Sollwert-Modi anlegen und ändern", False),
