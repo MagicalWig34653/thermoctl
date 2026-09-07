@@ -139,6 +139,21 @@ MariaDB-Lauf hat dabei zwei Dinge gefunden, die unter SQLite unsichtbar blieben:
   `setpoint_mode.code` über der Spaltenlänge von 32 Zeichen. SQLite nimmt ihn
   klaglos, MariaDB nicht.
 
+**Sicherheitsdurchsicht (unabhängig, 2026-09-07): kein Befund.** Ein Gegenleser, der
+nicht umgesetzt hat, hat elf Punkte am Code geprüft -- Mieter an Anlagenrouten, ob der
+Profil-Wächter irgendwo eine Rechteprüfung ersetzt, Zonen-Leaks über Titel, Selects,
+versteckte Felder und Weiterleitungsziele, die Bulk-Aktion Abwesenheit samt
+Teilzuständen und gelöschten Zonen, Schreibrechte, den Inhalt der Problemmeldung samt
+Manipulation über den Freitext, CSRF, die drei Migrationen, den Kiosk, das
+Token-Profil in REST und MCP, und Domänenlogik im Browser -- und die Suite selbst
+ausgeführt. Ruff und mypy sauber, Suite grün bei 100 % Abdeckung.
+
+Zwei Punkte hat die Durchsicht ausdrücklich nachgerechnet statt geglaubt: dass
+`end_absence` nur Übersteuerungen mit passender `absence_id` beendet und deshalb nie
+eine fremde trifft, und dass eine während einer Abwesenheit gelöschte Zone über
+`ondelete="CASCADE"` sauber herausfällt, ohne die Klammer für die übrigen Räume zu
+beschädigen.
+
 Nebenbei: **das MariaDB-Passwort in `CLAUDE.md` war `prüfen` und ist `pruefen`** --
 die CI (`.github/workflows/ci.yml`) benutzt seit jeher die ASCII-Fassung. Ein Lauf
 mit der falschen Fassung scheitert an `Access denied` und sieht aus wie ein
