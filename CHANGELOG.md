@@ -9,6 +9,29 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ---
 
+## 0.8.1 — 2026-09-07
+
+### Behoben
+
+- **SQLite-Sperrfehler im Verbund-Anspruch.** Zwei Instanzen (oder zwei Threads in
+  der Testsuite), die gleichzeitig um den Aktiv-Bereitschafts-Anspruch
+  (`services/cluster.py::try_become_leader`) konkurrierten, konnten unter SQLite
+  statt der erwarteten, sauber entschiedenen Niederlage einen
+  `OperationalError: database is locked` bekommen — auf der CI zeitweise
+  reproduzierbar, lokal selten. Ursache: die Funktion las vor dem Schreiben
+  (Existenzprüfung, Datenbankzeit); eine solche Transaktion hält unter SQLite nur
+  eine SHARED-Sperre und muss beim anschließenden Schreiben auf eine RESERVED
+  hochstufen — lesen zwei Verbindungen gleichzeitig zuerst, geraten beide beim
+  Hochstufen in einen Fall, den SQLites Busy-Handler grundsätzlich nicht auflöst
+  (`busy_timeout` eingeschlossen), sondern sofort mit einem Fehler beantwortet.
+  `try_become_leader` schreibt jetzt zuerst und liest nur noch bei Bedarf
+  nachträglich. Zusätzlich `db/engine.py`: expliziter `busy_timeout` (macht das
+  bisherige Verhalten unabhängig vom Vorgabewert des Treibers) und WAL-
+  Journalmodus für dateibasierte SQLite-Datenbanken. Einzelheiten in
+  [docs/STATUS.md](docs/STATUS.md).
+
+---
+
 ## 0.8.0 — 2026-09-07
 
 ### Hinzugefügt

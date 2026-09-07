@@ -23,6 +23,13 @@ data/
 # Sentinel-Datei der SQLite-Migrationssperre (thermoctl/db/migration_lock.py) --
 # liegt neben der Datenbankdatei, enthält selbst keine Daten.
 *.db.lock
+# Begleitdateien des WAL-Journalmodus (thermoctl/db/engine.py) und des
+# klassischen Rollback-Journals -- liegen neben der Datenbankdatei, ohne
+# eigenen Namen davor, und entstehen bei jedem Testlauf und jeder echten
+# Schreibnebenläufigkeit neu.
+*.db-wal
+*.db-shm
+*.db-journal
 
 # Logs
 logs/
