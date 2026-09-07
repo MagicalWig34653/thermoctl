@@ -27,6 +27,7 @@ from thermoctl.domain.zone_settings import (
     control_parameters,
     pi_eligibility,
     save_control_parameters,
+    set_window_temp_drop_detection,
     validate_pi_parameters,
     validate_valve_protection,
 )
@@ -106,6 +107,7 @@ def _parameter_page(
         effective=effective,
         pi_eligibility=eligibility,
         assumed_lifetime_operations=control_settings(session).assumed_relay_lifetime_operations,
+        window_temp_drop_detection_enabled=zone.window_temp_drop_detection_enabled,
     )
 
 
@@ -237,6 +239,29 @@ async def save_parameter(
     zone.solar_gain_factor = solar_gain_factor
     save_control_parameters(
         session, zone, checked, user_id=principal.user_id, token_id=principal.token_id
+    )
+    return RedirectResponse(
+        prefixed(request, f"/zones/{zone.id}/parameters"), status.HTTP_303_SEE_OTHER
+    )
+
+
+@router.post("/zones/{zone_id}/window-temp-drop-detection")
+async def save_window_temp_drop_detection(
+    zone_id: int,
+    request: Request,
+    principal: Annotated[Principal, Depends(current_principal)],
+    session: Annotated[Session, Depends(get_session)],
+) -> Response:
+    """The per-zone switch alone -- its own tiny route and form, deliberately not
+    folded into `save_parameter` above: `Zone.window_temp_drop_detection_enabled`
+    is not a `ControlParameters` field and must stay that way (see
+    `domain.zone_settings.set_window_temp_drop_detection`'s own docstring).
+    """
+    zone = _zone_or_404(session, principal, zone_id, "zone.manage")
+    form = await request.form()
+    enabled = str(form.get("window_temp_drop_detection_enabled", "")) != ""
+    set_window_temp_drop_detection(
+        session, zone, enabled, user_id=principal.user_id, token_id=principal.token_id
     )
     return RedirectResponse(
         prefixed(request, f"/zones/{zone.id}/parameters"), status.HTTP_303_SEE_OTHER

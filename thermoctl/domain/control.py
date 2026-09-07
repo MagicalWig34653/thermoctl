@@ -100,6 +100,68 @@ WINDOW_ALARM_LABELS: dict[str, str] = {
 
 WINDOW_ALARM_GANZZAHLIG = frozenset({"window_alarm_open_minutes"})
 
+# A third such dict, same rationale as `WINDOW_ALARM_LIMITS` above: the temperature-
+# based window detection (`domain.window_temperature_drop`) is new, about the
+# window, and the project owner's explicit instruction covers it the same way --
+# it stays out of `LIMITS`, REST, and MCP.
+WINDOW_TEMP_DROP_LIMITS: dict[str, tuple[Decimal, Decimal]] = {
+    # Five minutes is close to the shortest span over which "steep" is still a
+    # meaningful claim from a handful of Zigbee samples; an hour is long enough
+    # that the "drop", by then, is really just describing ordinary cooling.
+    "window_temp_drop_window_minutes": (Decimal(5), Decimal(60)),
+    # See `domain.window_temperature_drop.WINDOW_TEMP_DROP_THRESHOLD_K` for the
+    # reasoning behind the default -- and the explicit admission that it is a
+    # documented guess, not a measurement of any real installation. 0.3 K is close
+    # to the smallest drop that could plausibly be called "steep" rather than
+    # sensor noise; 5.0 K is a swing an ordinary window opening could only produce
+    # over a much longer span than this feature ever measures.
+    "window_temp_drop_threshold_k": (Decimal("0.3"), Decimal("5.0")),
+    # Same order of magnitude as `window_alarm_open_minutes` above, for the same
+    # "Stoßlüften" reasoning -- see
+    # `domain.window_temperature_drop.WINDOW_TEMP_DROP_HOLD_MINUTES`.
+    "window_temp_drop_hold_minutes": (Decimal(5), Decimal(240)),
+    # Second cross-review addition: the gap tolerance the cumulative streak
+    # measurement bridges -- see `domain.window_temperature_drop.
+    # WINDOW_TEMP_DROP_GAP_TOLERANCE_MINUTES`. Zero would mean "no tolerance at
+    # all" (the exact defect that let a single noisy cycle reset the cap
+    # forever); 60 would make the tolerance as long as the hold itself, no
+    # longer a short bridge but a second hold.
+    "window_temp_drop_gap_tolerance_minutes": (Decimal(0), Decimal(60)),
+    # Cross-review addition, against the feedback loop the hold alone does not
+    # bound -- see `domain.window_temperature_drop.
+    # WINDOW_TEMP_DROP_MAX_SUSPECTED_MINUTES`. 30 minutes is one hold; 720 (12
+    # hours) is long enough that anything past it is no longer a bound at all.
+    "window_temp_drop_max_suspected_minutes": (Decimal(30), Decimal(720)),
+    # See `domain.window_temperature_drop.WINDOW_TEMP_DROP_SILENCE_MINUTES`. 15
+    # minutes is close to the shortest stretch of undisturbed control that could
+    # plausibly show anything about the room's real behaviour; 480 (8 hours)
+    # would silence detection for most of a working day over one cap breach.
+    "window_temp_drop_silence_minutes": (Decimal(15), Decimal(480)),
+}
+
+WINDOW_TEMP_DROP_LABELS: dict[str, str] = {
+    "window_temp_drop_window_minutes": "Fenster-Erkennung, Zeitfenster (Minuten)",
+    "window_temp_drop_threshold_k": "Fenster-Erkennung, Sturzschwelle (K)",
+    "window_temp_drop_hold_minutes": "Fenster-Erkennung, Vermutung hält (Minuten)",
+    "window_temp_drop_gap_tolerance_minutes": (
+        "Fenster-Erkennung, tolerierte Unterbrechung (Minuten)"
+    ),
+    "window_temp_drop_max_suspected_minutes": (
+        "Fenster-Erkennung, Vermutung insgesamt höchstens (Minuten)"
+    ),
+    "window_temp_drop_silence_minutes": "Fenster-Erkennung, Zwangspause (Minuten)",
+}
+
+WINDOW_TEMP_DROP_GANZZAHLIG = frozenset(
+    {
+        "window_temp_drop_window_minutes",
+        "window_temp_drop_hold_minutes",
+        "window_temp_drop_gap_tolerance_minutes",
+        "window_temp_drop_max_suspected_minutes",
+        "window_temp_drop_silence_minutes",
+    }
+)
+
 LABELS: dict[str, str] = {
     "polling_interval_seconds": "Abfrageintervall (Sekunden)",
     "shadow_interval_seconds": "Regelzyklus (Sekunden)",
@@ -296,6 +358,42 @@ def save_window_alarm_settings(
         object_type="setting",
         object_id="1",
         summary="Schwellen des Fenster-Alarms geändert",
+        user_id=user_id,
+        token_id=token_id,
+    )
+
+
+def save_window_temp_drop_settings(
+    session: Session,
+    values: dict[str, str],
+    *,
+    user_id: int | None,
+    token_id: int | None = None,
+    source: str = "web",
+) -> None:
+    """The temperature-based window detection's three thresholds.
+
+    Same shape and reasoning as `save_window_alarm_settings` above -- its own
+    route and its own bounds dict, kept apart from `save_settings`, because
+    those three fields must not reach REST or MCP either.
+    """
+    checked = {
+        field: check_number(
+            field, values.get(field, ""),
+            limits=WINDOW_TEMP_DROP_LIMITS, ganzzahlig=WINDOW_TEMP_DROP_GANZZAHLIG,
+        )
+        for field in WINDOW_TEMP_DROP_LIMITS
+    }
+    row = settings(session)
+    for field, value in checked.items():
+        setattr(row, field, value if field not in WINDOW_TEMP_DROP_GANZZAHLIG else int(value))
+    audit.record(
+        session,
+        source=source,
+        action="update",
+        object_type="setting",
+        object_id="1",
+        summary="Schwellen der Fenster-Temperaturerkennung geändert",
         user_id=user_id,
         token_id=token_id,
     )

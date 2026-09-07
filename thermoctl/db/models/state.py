@@ -68,6 +68,48 @@ class ZoneState(Base):
     # `sensor_status_id` and `decide()` in `domain/control_loop.py`, the same
     # "melden, aber nicht regeln" shape `sensor_stuck` above already has.
     window_alarm: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    # Whether the current `window_open` (when `True`) came from the temperature-
+    # based guess (`domain.window_temperature_drop`) rather than a real window
+    # contact -- Grundsatz 5: a zone that shut off on an inference, not a
+    # measurement, has to stay distinguishable in the interface and in
+    # `shadow_decision.reason`, not just internally. Always `False` for a
+    # contact-governed zone and for any cycle where `window_open` is not `True`
+    # (`services/ingest.py::_window_open`/`advance_zone_state` set both
+    # together, so this never lags `window_open` by a cycle).
+    window_open_by_temperature: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=false(), nullable=False
+    )
+    # Cross-review addition: once `domain.window_temperature_drop.
+    # temperature_detection_cap_exceeded` fires, detection stands down until this
+    # deadline, regardless of any fresh drop -- its own clock, deliberately not
+    # `window_open_since`: silence must keep blocking detection even though the
+    # zone no longer counts as open during it, which `window_open_since` alone
+    # (cleared the moment `window_open` becomes `False`) could not express.
+    # `NULL` means "not currently silenced". Never read or written for a
+    # contact-governed zone.
+    window_temp_drop_silence_until: Mapped[datetime | None] = mapped_column(
+        DateTime().with_variant(mysql.DATETIME(fsp=6), "mysql", "mariadb"), nullable=True
+    )
+    # Second cross-review addition: the cumulative streak's own clock, tracked
+    # deliberately apart from `window_open_since` -- that clock is cleared on
+    # every cycle the zone is not currently judged open (see
+    # `domain.window_temperature_drop.temperature_detection_gap_within_
+    # tolerance`'s docstring for why that made the cap in `window_temp_drop_
+    # silence_until` above unreachable under realistic noise). `NULL` means
+    # "no streak currently running". Never read or written for a
+    # contact-governed zone.
+    window_temp_drop_streak_started_at: Mapped[datetime | None] = mapped_column(
+        DateTime().with_variant(mysql.DATETIME(fsp=6), "mysql", "mariadb"), nullable=True
+    )
+    # The streak's own clock needs a second timestamp alongside it: not just
+    # "when did the streak start" but "when was it last actually detected",
+    # since a fresh detection only continues the streak (rather than starting
+    # a new one) when the gap since this moment is still within
+    # `setting.window_temp_drop_gap_tolerance_minutes`. `NULL` alongside a
+    # `NULL` streak start; the two are always set and cleared together.
+    window_temp_drop_last_detected_at: Mapped[datetime | None] = mapped_column(
+        DateTime().with_variant(mysql.DATETIME(fsp=6), "mysql", "mariadb"), nullable=True
+    )
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     last_regular_heat_at: Mapped[datetime | None] = mapped_column(
         DateTime().with_variant(mysql.DATETIME(fsp=6), "mysql", "mariadb"), nullable=True

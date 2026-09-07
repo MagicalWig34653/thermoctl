@@ -37,6 +37,13 @@ class StateTopics:
     # "Übersteuerung aufheben" button in Home Assistant has no way to tell whether
     # there is anything for it to do before pressing it.
     override_active: str
+    # Whether the zone's current `window_open` came from the temperature-based
+    # guess (`domain.window_temperature_drop`) rather than a real window contact
+    # -- Grundsatz 5, the Home Assistant counterpart of the interface's own status
+    # chip (`start.html`). A plain state topic like `override_active` above, not
+    # a `FaultNoticeTopics` pair like `window_alarm` below: this is not a "notice"
+    # with its own audit/webhook path, just a live status sent out every cycle.
+    window_open_by_temperature: str
 
 
 @dataclass(frozen=True)
@@ -90,6 +97,7 @@ def states_topics(zone_id: int, prefix: str = "thermoctl") -> StateTopics:
         last_switch=f"{base}/last_switch",
         next_switch=f"{base}/next_switch",
         override_active=f"{base}/override_active",
+        window_open_by_temperature=f"{base}/window_open_by_temperature",
     )
 
 
@@ -336,6 +344,35 @@ def override_active_discovery(
         "unique_id": object_id,
         "object_id": object_id,
         "state_topic": states_topics(zone_id, prefix).override_active,
+        "payload_on": "true",
+        "payload_off": "false",
+        "entity_category": "diagnostic",
+    }
+    return DiscoveryMessage(_config_topic("binary_sensor", object_id), _as_json(data))
+
+
+def window_temperature_detected_discovery(
+    zone_id: int, zone_name: str, prefix: str = "thermoctl"
+) -> DiscoveryMessage:
+    """Whether the zone's current window state is a temperature-based guess.
+
+    Same shape as `override_active_discovery` above (a plain, always-sent
+    state, `entity_category: diagnostic`) -- not `fault_notice_discovery`'s or
+    `window_alarm_discovery`'s shape, since this has no separate attributes
+    payload and no notice/audit path of its own: it is a live status alongside
+    `state/window_open_by_temperature`, exactly like the interface's own status
+    chip on the start page (Grundsatz 5). `window_open` itself has never had its
+    own Home Assistant entity (`docs/mqtt.md`: contacts are Home Assistant's own
+    business); this one exists only because a temperature-inferred window is not
+    something a contact device already tells Home Assistant about.
+    """
+    object_id = f"{_object_id(zone_id, prefix)}_fenster_temperatur_vermutet"
+    data: dict[str, Any] = {
+        **_skeleton(zone_id, zone_name, prefix),
+        "name": "Fenster vermutlich offen (Temperatur)",
+        "unique_id": object_id,
+        "object_id": object_id,
+        "state_topic": states_topics(zone_id, prefix).window_open_by_temperature,
         "payload_on": "true",
         "payload_off": "false",
         "entity_category": "diagnostic",

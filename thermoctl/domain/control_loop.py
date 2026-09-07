@@ -62,6 +62,16 @@ class Situation:
     # assigned, or with at least one self-regulating (thermostatic) valve, keeps the
     # existing, more cautious behaviour -- default `False` is exactly that.
     on_off_actuators_only: bool = False
+    # Added 2026-09-06 (task: temperature-based window detection): true exactly
+    # when `window_open` above is `True` **and** that came from a temperature-
+    # drop guess (`domain.window_temperature_drop`) rather than a real window
+    # contact (`zone_state.window_open_by_temperature`, set in
+    # `services/ingest.py::advance_zone_state`). Never changes what `decide()`
+    # does -- a temperature-inferred window shuts a zone off exactly like a real
+    # one, task instruction -- only what it *says* about why (`window_temp_note`
+    # below), Grundsatz 5. Default `False` matches every zone unaffected by this:
+    # one with a real contact, or with the per-zone switch off.
+    window_open_by_temperature: bool = False
 
 
 @dataclass(frozen=True)
@@ -150,6 +160,18 @@ def decide(situation: Situation) -> Decision:
         else ""
     )
 
+    # Same append pattern as `on_off_zone_note` immediately above, and appended
+    # alongside it everywhere: Grundsatz 5 asks that a reason built while
+    # `window_open` is true always say whether that came from a measurement or a
+    # guess, not only the interface's own status chip. See `Situation.
+    # window_open_by_temperature`'s own docstring for why this can never change
+    # the *decision* -- only this note.
+    window_temp_note = (
+        " Fenster nicht gemessen, sondern aus einem Temperatursturz vermutet."
+        if situation.window_open and situation.window_open_by_temperature
+        else ""
+    )
+
     # Rule 3 — window open normally means off, regardless of temperature. One
     # exception, decided by the project owner (2026-09-06): an open window must not
     # be allowed to freeze the room. If the zone falls below its own frost-protection
@@ -201,7 +223,7 @@ def decide(situation: Situation) -> Decision:
                 reason_code=REASON_CODE_WINDOW_OPEN,
                 reason=(
                     f"Fenster offen — Ist {measured_c} °C, "
-                    f"Soll {setpoint_c} °C ({setpoint_reason})."
+                    f"Soll {setpoint_c} °C ({setpoint_reason})." + window_temp_note
                 ),
             )
         # Falls through instead of returning: rule 4 below never applies here in
@@ -324,7 +346,7 @@ def decide(situation: Situation) -> Decision:
             reason=(
                 f"Zustand '{state}' erst seit {situation.held_for_s}s, "
                 f"Mindestdauer {minimum_duration}s "
-                "— die Heizanforderung bleibt unverändert." + on_off_zone_note
+                "— die Heizanforderung bleibt unverändert." + on_off_zone_note + window_temp_note
             ),
         )
 
@@ -346,7 +368,7 @@ def decide(situation: Situation) -> Decision:
             ),
             reason=(
                 f"Ist {measured_c} °C unter Soll {setpoint_c} °C minus Hysterese {h}K "
-                f"({setpoint_reason})." + on_off_zone_note
+                f"({setpoint_reason})." + on_off_zone_note + window_temp_note
             ),
         )
     if regular_heating_now and measured_c > setpoint_c + h:
@@ -358,7 +380,7 @@ def decide(situation: Situation) -> Decision:
             reason_code=REASON_CODE_OFF,
             reason=(
                 f"Ist {measured_c} °C über Soll {setpoint_c} °C plus Hysterese {h}K "
-                f"({setpoint_reason})." + on_off_zone_note
+                f"({setpoint_reason})." + on_off_zone_note + window_temp_note
             ),
         )
     # This branch is reached whenever heating is already on and the measured value has
@@ -380,7 +402,7 @@ def decide(situation: Situation) -> Decision:
                 reason=(
                     f"Ist {measured_c} °C unter Soll {setpoint_c} °C minus Hysterese {h}K "
                     f"({setpoint_reason}) — Heizung läuft bereits, Zustand bleibt."
-                    + on_off_zone_note
+                    + on_off_zone_note + window_temp_note
                 ),
             )
         return Decision(
@@ -392,7 +414,7 @@ def decide(situation: Situation) -> Decision:
             ),
             reason=(
                 f"Ist {measured_c} °C innerhalb der Hysterese um Soll {setpoint_c} °C ± {h}K "
-                f"({setpoint_reason}) — Zustand bleibt." + on_off_zone_note
+                f"({setpoint_reason}) — Zustand bleibt." + on_off_zone_note + window_temp_note
             ),
         )
 
@@ -412,7 +434,7 @@ def decide(situation: Situation) -> Decision:
                 f"{situation.parameter.valve_protection_duration_minutes} Minuten auf "
                 "Heizen. Im Trockenlauf wird die Entscheidung nur protokolliert; im "
                 "scharfen Betrieb nach einem Neustart geht sie an den zugeordneten Aktor."
-                + on_off_zone_note
+                + on_off_zone_note + window_temp_note
             ),
         )
     # Mirror image of the branch above: reached whenever heating is already off and the
@@ -434,7 +456,7 @@ def decide(situation: Situation) -> Decision:
             reason=(
                 f"Ist {measured_c} °C über Soll {setpoint_c} °C plus Hysterese {h}K "
                 f"({setpoint_reason}) — Heizung ist bereits aus, Zustand bleibt."
-                + on_off_zone_note
+                + on_off_zone_note + window_temp_note
             ),
         )
     return Decision(
@@ -445,6 +467,6 @@ def decide(situation: Situation) -> Decision:
         ),
         reason=(
             f"Ist {measured_c} °C innerhalb der Hysterese um Soll {setpoint_c} °C ± {h}K "
-            f"({setpoint_reason}) — Zustand bleibt." + on_off_zone_note
+            f"({setpoint_reason}) — Zustand bleibt." + on_off_zone_note + window_temp_note
         ),
     )

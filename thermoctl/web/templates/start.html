@@ -207,6 +207,12 @@ hier, sondern an der jeweiligen Stelle: `hx-preserve` an den
                     Fenster vergessen
                 </span>
                 {% endif %}
+                {% if entry and entry[0].window_open and entry[0].window_open_by_temperature %}
+                <span class="tc-chip tc-chip-warning"
+                      title="Kein Fensterkontakt zugeordnet — aus einem steilen Temperatursturz vermutet, nicht gemessen. Wirkt wie ein echter Kontakt, kann aber falsch auslösen.">
+                    Fenster vermutlich offen (Temperatur)
+                </span>
+                {% endif %}
                 {% if override %}
                 {# Wert und Ende gehören in die Marke, nicht nur das Wort: Eine
                    Übersteuerung, deren Temperatur man nicht sieht, ist eine Warnung

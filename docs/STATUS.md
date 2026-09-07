@@ -2,6 +2,214 @@
 
 Letzte Aktualisierung: 2026-09-06.
 
+## Fenster-Erkennung aus einem Temperatursturz, ohne Kontakt
+
+Eine Zone ohne zugeordneten Fensterkontakt kann jetzt trotzdem ein offenes Fenster
+erkennen — an einem hinreichend steilen Abfall ihrer eigenen Raumtemperatur. Je Zone
+einschaltbar (`Zone.window_temp_drop_detection_enabled`, Vorgabe **aus**), Regelparameter-
+Seite der Zone. Ein zugeordneter Fensterkontakt hat immer Vorrang: `services/
+ingest.py::_window_open` fragt zuerst, ob der Zone Fensterkontakt-Geräte zugeordnet sind
+— ist das der Fall, entscheidet ausschließlich der Kontakt, auch während er gerade
+unbekannt ist (stale/fehlend). Nur eine Zone ganz ohne Kontakt und mit eingeschaltetem
+Schalter wird über die Temperatur beurteilt (`_window_open_from_temperature`).
+
+**Kriterium** (`domain/window_temperature_drop.py::window_open_suspected`, im Aufbau
+gespiegelt an `domain.fault.stuck_reading`): der Referenzwert im Verlauf der letzten
+`setting.window_temp_drop_window_minutes` (Vorgabe 15) **vor** dem aktuellen Wert minus
+dem aktuellen Wert erreicht `setting.window_temp_drop_threshold_k` (Vorgabe 1,5 K). Der
+Schwellwert ist ein begründeter, aber ausdrücklich **nicht anlagenspezifischer**
+Schätzwert — ohne Messdaten der echten Anlage lässt sich kein sicherer Wert herleiten;
+deshalb bleibt die Erkennung je Zone standardmäßig aus, und der Betreiber schaltet sie
+bewusst ein. Bewusst in Kauf genommene Fehlauslöser: eine geöffnete Tür, ein Luftzug, ein
+ungünstig platzierter Sensor — keiner davon ist mit reiner Temperaturmessung von einem
+echten Fensteröffnen zu unterscheiden. Ein langsames Auskühlen nach Heizende und das Ende
+einer Heizphase selbst bleiben unterhalb der Schwelle und lösen nicht aus (mit Tests
+belegt, nicht nur angenommen).
+
+**Zweite Kreuzreview-Runde (2026-09-07), Befund „Ausreisser nach oben", zwei
+Durchgänge.** Erster Durchgang: das Kriterium verglich gegen den größten Wert im
+Fenster — ein einzelner verrauschter Messwert (Funkstörung, Zigbee-Reporting-Aussetzer)
+konnte diesen Wert aufblähen und einen Sturz vortäuschen. Ersetzt durch den Median aller
+Vorwerte. Zweiter Durchgang, vom Reviewer nachgerechnet: der Median braucht eine
+**Mehrheit** an Vorwerten nach Sturzbeginn, um ihn überhaupt widerzuspiegeln — genau
+rückwärts für ein kurzes Fenster, in dem kurz nach dem Öffnen erst ein oder zwei
+Messwerte den Sturz zeigen können. Reviewer-Beispiel `[20.00, 20.10, 18.60]` (Schwelle
+1,5 K): 1,50 K gegen das Maximum (erkannt), aber nur 1,45 K gegen den Median der zwei
+Vorwerte (verpasst) — genau der Moment, in dem schnelle Erkennung am wichtigsten wäre.
+Der zuvor ersetzte Test verdeckte das: er stellte dem Median eine bequeme Mehrheit
+gleicher Plateauwerte gegenüber und bestand deshalb auch unter dem fehlerhaften Code.
+
+Jetzige Kennzahl: der **Referenzwert ist das Maximum der Vorwerte, es sei denn es gibt
+mindestens drei — dann ist es deren zweithöchster Wert**. Mit weniger als drei Vorwerten
+gibt es nichts, das sich gefahrlos verwerfen ließe, ohne genau die Werte zu verlieren,
+die einen frühen Sturz überhaupt zeigen könnten — der Referenzwert bleibt dort ihr
+Maximum, deckungsgleich mit der allerersten Fassung dieser Funktion und mit dem
+Reviewer-Beispiel oben (1,50 K, erkannt). Ab drei Vorwerten wird ein einzelner
+verrauschter Ausreisser vom zweithöchsten Wert einfach überstimmt, während zwei oder
+mehr echte Vorwerte auf dem tatsächlichen Sturzniveau den Vergleich weiterhin tragen —
+ohne die Mehrheitsanforderung des Medians. **Bewusst bleibende Lücke, mit eigenem Test
+festgehalten:** bei nur einem oder zwei Vorwerten (die kürzeste unterstützte
+Fenstergröße, oder ein dünn besetztes Fenster nach einer Meldelücke) kann ein einzelner
+Ausreisser weiterhin täuschen, genau wie bei der ursprünglichen, unreparierten
+Maximum-Fassung — das Schließen dieser Lücke würde genau die Daten kosten, die ein
+kurzes Fenster nicht übrig hat. Mit eigenen Tests für das Reviewer-Beispiel, den
+Ausreisser-Fall ab drei Vorwerten, die bewusst bleibende Lücke bei ein bis zwei
+Vorwerten und eine Meldelücke mitten in der Messreihe belegt.
+
+**Dritte Kreuzreview-Runde (2026-09-07), bisher nirgends benannt: zwei
+gleichzeitige Ausreisser.** Der zweithöchste Wert *ist* selbst ein Ausreisser,
+wenn es zwei davon gibt. Vom Reviewer am laufenden Code nachgerechnet:
+Vorwerte `[21.0, 30.0, 29.0]`, aktuell `21.0` — Referenz `29.0`, Sturz 8,0 K,
+Fehlalarm, obwohl sich im Raum nichts geändert hat; mit vier Vorwerten
+genauso. Zwei aufeinanderfolgende verrauschte Meldungen sind bei Funk nicht
+exotisch, und jede weitere Kennzahl, die nur gegen eine feste Anzahl
+Ausreisser robust gemacht wird, ist beim nächsten Fund wieder zu wenig.
+
+Behoben durch eine harte **Plausibilitätsgrenze** auf den berechneten Sturz
+selbst, unabhängig davon, welche Referenzmethode ihn geliefert hat
+(`WINDOW_TEMP_DROP_MAX_PLAUSIBLE_DROP_K`, 6,0 K): ein Sturz, der grösser ist,
+als ein echtes Fensterereignis in dieser Zeitspanne plausibel zeigen könnte,
+spricht eher für einen defekten Sensor als für ein Fenster. Die Zahl ist
+nicht frei erfunden, sondern an einen bereits im Quelltext festgeschriebenen
+Wert angelehnt: `domain.control.WINDOW_TEMP_DROP_LIMITS` begrenzt die vom
+Betreiber einstellbare Sturzschwelle bereits auf höchstens 5,0 K, dort schon
+begründet als „ein Sprung, den ein gewöhnliches Fensteröffnen erst über eine
+deutlich längere Spanne als dieses Merkmal misst erreichen könnte" — diese
+Anlage erklärt also bereits vor dieser Behebung, dass mehr als 5,0 K
+innerhalb des Zeitfensters kein plausibles Sturzereignis mehr ist. 6,0 K
+liegt ein Kelvin über dieser gesamten einstellbaren Spanne: hoch genug, um
+niemals eine Schwelle zu verdecken, die ein Betreiber tatsächlich einstellen
+darf (die höchste erlaubte, 5,0 K, liegt bereits ein volles Kelvin darunter),
+niedrig genug, um den vom Reviewer gefundenen Fehlalarm mit Abstand
+abzuweisen. Ein echtes, weit geöffnetes Fenster bei Frost, für das ein
+Betreiber die Sturzschwelle bewusst auf ihr Maximum gestellt hat, ist damit
+nicht gefährdet: nichts, was dieses Merkmal überhaupt erkennen soll, verlangt
+je mehr als 5,0 K — ein echtes Ereignis dieser Schwere hätte 6,0 K nie
+überschreiten müssen, um erkannt zu werden; nur eine Messreihe, die
+schwerwiegender wirkt als die empfindlichste Einstellung des Merkmals selbst,
+kann die Grenze je überschreiten, und genau diese Behauptung misstraut die
+neue Prüfung. Mit eigenen Tests belegt: dem Reviewer-Beispiel mit drei und
+mit vier Vorwerten, einer Gegenprobe, die den unbereinigten Sturz (8,0 K)
+gegen dieselbe Referenzlogik nachrechnet, der Grenzwert selbst an seiner
+Schwelle, einer einstellbaren eigenen Grenze im Test, sowie einer
+Konsistenzprüfung, dass die Plausibilitätsgrenze stets über der höchsten
+einstellbaren Sturzschwelle bleibt.
+
+**Rücknahme.** Ein reines Sturzkriterium kennt kein Ende — ein bereits abgekühlter,
+stabil kalter Raum zeigt keinen neuen Sturz mehr, obwohl das Fenster noch offen sein
+könnte, und da die Erkennung selbst das Heizen abschaltet, gäbe es ohnehin keine aktive
+Wärmequelle, die einen Temperaturanstieg als Entwarnungssignal liefern könnte — eine
+Rücknahme über „die Temperatur steigt wieder" wäre also zirkulär. Gelöst über eine
+gebundene Haltedauer (`temperature_detection_still_holding`,
+`setting.window_temp_drop_hold_minutes`, Vorgabe 30): einmal ausgelöst, gilt die
+Vermutung für diese Dauer weiter offen, auch ohne neuen Sturz, und fällt danach von
+selbst wieder ab, sofern in der Zwischenzeit kein frischer Sturz sie erneuert. Dieselbe
+Uhr wie beim echten Kontakt (`zone_state.window_open_since`) — kein zweiter Zeitstempel.
+
+**Kreuzreview-Nacharbeit (2026-09-06), Befund „Rückkopplung nach Ablauf des Halts",
+erster Durchgang:** der Halt allein schließt die Lücke nicht vollständig — nach seinem
+Ablauf wird ein frischer Sturz erneut geprüft, und die Heizung stand die ganze Zeit aus,
+wegen der eigenen Vermutung. Die Abschätzung „ein paar Zehntel Kelvin je 15 Minuten" im
+Quelltext gilt für normalen Betrieb mit periodischer Heizung, nicht für einen Raum, dem
+wiederholt die Wärme entzogen wurde — bei kaltem Wetter und mäßiger Dämmung kann er dann
+steiler auskühlen, ein frischer Sturz löst sofort wieder aus, und die Zone bleibt
+dauerhaft aus, obwohl das Fenster längst zu ist (nichts kann dabei einfrieren, die
+Frostschutz-Ausnahme greift weiterhin — aber der Raum bleibt kalt, ohne dass jemand sähe
+warum). Erster Behebungsversuch: eine zweite, unabhängige Grenze über dem Halt,
+`temperature_detection_cap_exceeded`, gemessen an derselben Uhr wie der Halt
+(`zone_state.window_open_since`).
+
+**Zweite Kreuzreview-Runde (2026-09-07), derselbe Befund, am laufenden Code
+durchgespielt:** genau diese Uhr wird in `advance_zone_state` in jedem Zyklus ohne
+erkannten Sturz auf `NULL` gesetzt — und das passiert am Rand des Halts regelmäßig,
+durch genau das Messrauschen, das der Schwellenwert-Docstring von Anfang an einkalkuliert
+(ein einzelner verrauschter Zyklus, der knapp unter der Schwelle bleibt). Der Reviewer
+ließ 20 Durchläufe über 420 simulierte Minuten laufen: die Zwangspause feuerte kein
+einziges Mal, obwohl die Zone praktisch durchgehend als offen geführt wurde — die
+Obergrenze schloss nur den Fall des glatten, monotonen Auskühlens, den der Commit
+beschrieb, nicht den verrauschten.
+
+Behoben durch eine **kumulative** Zählung auf einer eigenen, von `window_open_since`
+unabhängigen Uhr: `zone_state.window_temp_drop_streak_started_at` (seit wann die
+Strähne läuft) und `zone_state.window_temp_drop_last_detected_at` (wann sie zuletzt
+tatsächlich erkannt wurde). Ein frischer Sturz setzt die Strähne genau dann fort, statt
+sie neu zu beginnen, wenn die Lücke seit der letzten Erkennung höchstens
+`setting.window_temp_drop_gap_tolerance_minutes` (Vorgabe 10) beträgt
+(`temperature_detection_gap_within_tolerance`) — kurz genug, um nur den einzelnen
+verrauschten Ausreißer am Halt-Rand zu überbrücken, deutlich kürzer als der Halt selbst,
+damit daraus kein zweiter Halt wird. Während der Halt selbst noch greift (`still_
+holding`), braucht es diese Toleranzprüfung gar nicht — die Strähne läuft dort
+ohnehin ununterbrochen weiter, bestätigt durch den Halt selbst, nicht nur vermutet aus
+einer Lücke. Erreicht die Strähne `setting.window_temp_drop_max_suspected_minutes`
+(Vorgabe 90, drei Halte), erzwingt die Erkennung eine **Zwangspause**: für
+`setting.window_temp_drop_silence_minutes` (Vorgabe 60) bleibt die Zone geschlossen,
+unabhängig von jedem weiteren Sturz (`temperature_detection_still_silenced`, eigene
+Frist `zone_state.window_temp_drop_silence_until`). Danach darf die Erkennung wieder
+auslösen, mit zurückgesetzter Strähne.
+
+**Bewusst bleibende Lücke:** eine tolerierte kurze Unterbrechung ist nicht dasselbe wie
+eine unbegrenzte — überschreitet die Lücke zwischen zwei erkannten Zyklen die Toleranz
+tatsächlich (eine echte Erholung, oder eine längere Serie verrauschter Fehlschläge),
+gilt die Strähne als beendet, und ein späteres erneutes Auslösen zählt wieder bei null.
+Ein Raum, dessen Fehlauslöser zufällig weiter auseinanderliegen als die Toleranz, könnte
+das im Prinzip unbegrenzt fortsetzen. Bewusst nicht geschlossen: eine deutlich längere
+Toleranz würde beginnen, echte, voneinander unabhängige Episoden zu verschmelzen.
+
+Mit eigenen Tests belegt: dem Reviewer-Szenario nachgestellt (ein einzelner Ausreißer
+genau am Halt-Rand übersteht die Strähne unverändert), 20 simulierte Durchläufe über
+420 Minuten mit demselben Ausreißer-Muster (die Zwangspause feuert; eine Gegenprobe mit
+Toleranz null — dem alten, entfernten Verhalten entsprechend — feuert absichtlich nie),
+sowie Obergrenze, Zwangspause während laufender Sturzverdachtsfälle und Ende der
+Zwangspause wie zuvor.
+
+**Dritte Kreuzreview-Runde (2026-09-07): dieselbe bewusst bleibende Lücke,
+jetzt mit Test statt nur Prosa.** Der Reviewer hat sie mit realistischer
+Abfrage alle fünf Minuten nachgestellt: Auslöser, voller Halt, eine echte
+Erholung knapp über der Zehn-Minuten-Toleranz, wieder ein Auslöser —
+wiederholt über mehrere Stunden. Die Zwangspause feuert dabei kein einziges
+Mal, während die Zone weiterhin für die Mehrheit der Zeit als offen gilt,
+weil jede Erholung die Strähne bei null neu beginnen lässt. Der Reviewer hält
+diesen Kompromiss für vertretbar — ihn vollständig zu schließen, würde
+entweder eine deutlich längere Toleranz kosten (die dann echte, voneinander
+unabhängige Episoden verschmilzt) oder eine über unabhängige Episoden hinweg
+laufende Gesamtzeit, die den Begriff „eine Strähne" aufgäbe — verlangt aber,
+dass er verankert wird, so wie die Lücke bei ein bis zwei Vorwerten es schon
+ist, statt nur hier zu stehen. Neuer Test
+(`tests/test_window_temperature_drop.py::
+test_a_recovery_just_over_the_tolerance_lets_every_streak_restart`): Halt 20
+Minuten, danach eine Erholung von exakt 15 Minuten (über der Zehn-Minuten-
+Vorgabe), 14 Wiederholungen über sieben Stunden — die Zwangspause feuert
+nachweislich nie, während die Zone rechnerisch für zwei Drittel der Zeit als
+offen gilt. Ein künftiger Umbau an Toleranz, Halt oder Obergrenze, der dieses
+Verhalten unbemerkt verschlimmert, lässt jetzt einen Test fehlschlagen.
+
+**Wirkt wie ein echter Kontakt.** `zone_state.window_open`/`window_open_since` werden für
+beide Quellen identisch gesetzt; `domain/control_loop.py` (Fensterabschaltung,
+Frostschutz-Ausnahme, EIN/AUS-Ausnahme, Wiederanlaufsperre) und
+`domain/window_alarm.py` (Kälte-Alarm) bleiben deshalb **unverändert** — mit eigenem
+Test belegt, dass Letzteres tatsächlich zutrifft, statt nur angenommen.
+
+**Bleibt unterscheidbar, Grundsatz 5.** Neue Spalte `zone_state.
+window_open_by_temperature`: `True` genau dann, wenn das aktuelle `window_open = true`
+aus der Temperaturvermutung stammt, nie aus einem echten Kontakt. `domain/
+control_loop.py::decide()` hängt jeder Begründung, bei der ein temperaturvermutetes
+Fenster mitentscheidet, einen kurzen Zusatzsatz an („Fenster nicht gemessen, sondern aus
+einem Temperatursturz vermutet."). Auf der Startseite ein eigener Status-Chip neben dem
+bestehenden Fenster-Alarm-Chip.
+
+**Nicht in REST, MCP oder Homebridge** — dieselbe, vom Projektinhaber vorgegebene Grenze
+wie beim Fenster-Alarm. Die drei anlagenweiten Schwellen liegen deshalb in einem eigenen
+`WINDOW_TEMP_DROP_LIMITS` (`domain/control.py`), nicht im von REST und MCP mitbenutzten
+`LIMITS`; der Zonen-Schalter ist keine `ControlParameters`-Spalte und hat eine eigene
+kleine Speicherfunktion (`domain/zone_settings.py::set_window_temp_drop_detection`) samt
+eigener Route (`/zones/{id}/window-temp-drop-detection`), damit er das Formular
+`/zones/{id}/parameters` — das die REST-Antwort `ControlParametersResponse` verbatim
+speist — nicht erreichen kann. In Home Assistant eine eigene, laufend gesendete
+Diagnose-Entität je Zone (`state/window_open_by_temperature`), kein eigenes
+Meldungssystem mit Zustellprotokoll wie beim Fenster-Alarm.
+
+Migration `e741133296d2`, Kreuzreview-Nachträge in `1b7bad26c13a` und `43aa18ba1c12`, Kopf danach unverändert einzügig.
+
 ## Fenster: Frostschutz gewinnt, EIN/AUS-Aktoren schalten nicht ab
 
 Zwei Entscheidungen des Projektinhabers an `domain/control_loop.py::decide()`.

@@ -607,6 +607,35 @@ async def test_override_active_reflects_whether_one_is_actually_running(
     assert mit[f"{base}/override_active"] == "true"
 
 
+@pytest.mark.anyio
+async def test_window_open_by_temperature_reflects_zone_state(session: Session) -> None:
+    """The Home Assistant counterpart of the interface's own status chip
+    (`start.html`) -- Grundsatz 5, the same reasoning `zone_state.
+    window_open_by_temperature`'s own docstring gives."""
+    from tests.helpers import sensor_status_of
+    from thermoctl.db.models.state import ZoneState
+
+    create_settings(session)
+    zone = create_zone(session, "temperatur-fenster-zone")
+    base = f"thermoctl/zones/{zone.id}/state"
+
+    ohne = dict((await _run(session, PublicationState())).messages)
+    assert ohne[f"{base}/window_open_by_temperature"] == "false"
+
+    session.add(
+        ZoneState(
+            zone_id=zone.id,
+            sensor_status_id=sensor_status_of(session, "keine_quelle").id,
+            window_open=True,
+            window_open_by_temperature=True,
+            updated_at=NOW,
+        )
+    )
+    session.flush()
+    mit = dict((await _run(session, PublicationState())).messages)
+    assert mit[f"{base}/window_open_by_temperature"] == "true"
+
+
 def _zone_with_self_regulating_valve(  # type: ignore[no-untyped-def]
     session: Session, name: str, *, external_temperature: bool = False
 ):

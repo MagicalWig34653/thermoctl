@@ -66,12 +66,18 @@ Die folgende Aufstellung ist aus den Topic-Erzeugern in
 
 Der Zustandsbaum umfasst die acht einfachen Zonenwerte
 `current_temperature`, `setpoint`, `operating_mode`, `sensor_state`, `would_heat`,
-`last_switch`, `next_switch` und `override_active`, außerdem `sensor_fault` und
-`window_alarm` je samt eigenem `attributes`, `mode/<mode_id>` und
-`parameter/<name>`. `sensor_fault` und `window_alarm` sind bewusst getrennte
-Entitäten -- ein Fenster-Alarm kann gelten, während der Sensor der Zone
-einwandfrei meldet, und die beiden dürfen sich deshalb nie gegenseitig
-überschreiben. `<präfix>/state/outdoor_temperature` liegt außerhalb des
+`last_switch`, `next_switch`, `override_active` und `window_open_by_temperature`,
+außerdem `sensor_fault` und `window_alarm` je samt eigenem `attributes`,
+`mode/<mode_id>` und `parameter/<name>`. `sensor_fault` und `window_alarm` sind
+bewusst getrennte Entitäten -- ein Fenster-Alarm kann gelten, während der Sensor
+der Zone einwandfrei meldet, und die beiden dürfen sich deshalb nie gegenseitig
+überschreiben. `window_open_by_temperature` ist wie `override_active` ein
+schlichter, laufend gesendeter Zustand, keine eigene Meldungsart mit
+Zustellprotokoll: ob das aktuelle `window_open` der Zone aus einem
+Temperatursturz vermutet wurde statt aus einem echten Fensterkontakt zu stammen
+(`domain.window_temperature_drop`, je Zone einschaltbar, Vorgabe aus) -- die
+Home-Assistant-Entsprechung des Hinweischips auf der Startseite.
+`<präfix>/state/outdoor_temperature` liegt außerhalb des
 Zonenbaums: es gibt genau eine Außentemperatur für die ganze Anlage, keine je
 Zone. Der Befehlsbaum nimmt genau
 `setpoint`, `operating_mode`, `boost`, `cancel_override`, `mode/<mode_id>` und
@@ -206,6 +212,7 @@ thermoctl/zones/<id>/state/would_heat
 thermoctl/zones/<id>/state/last_switch              ISO-8601 mit Zeitzone
 thermoctl/zones/<id>/state/next_switch              ISO-8601 mit Zeitzone
 thermoctl/zones/<id>/state/override_active           true | false
+thermoctl/zones/<id>/state/window_open_by_temperature true | false, kein echter Kontakt -- aus Temperatursturz vermutet
 thermoctl/zones/<id>/state/sensor_fault             ON | OFF, samt .../attributes
 thermoctl/zones/<id>/state/window_alarm             ON | OFF, samt .../attributes -- eigene Entität, teilt sich nichts mit sensor_fault
 thermoctl/zones/<id>/state/mode/<mode_id>           Solltemperatur dieses Modus
@@ -262,10 +269,18 @@ die Oberfläche benutzt, mit denselben Grenzen:
 Ohne diesen Wert hätte, wer in Home Assistant den Knopf „Übersteuerung aufheben" sieht,
 keine Möglichkeit zu erkennen, ob es dort gerade etwas aufzuheben gibt.
 
+`state/window_open_by_temperature` zeigt, ob das aktuelle `window_open` der Zone aus
+einem steilen Temperatursturz vermutet wurde statt von einem echten Fensterkontakt zu
+stammen (`domain.window_temperature_drop`) -- nur wirksam für eine Zone ohne
+zugeordneten Fensterkontakt und mit eingeschaltetem Schalter. Ein schlichter,
+laufend gesendeter Diagnosewert wie `override_active` oben, keine eigene fünfte
+Meldungsart mit Zustellprotokoll: die Vermutung wirkt zwar wie ein echter Kontakt auf
+die Regelung, bekommt aber keinen eigenen Webhook-Alarm.
+
 Je Zone entsteht in Home Assistant ein eigenes Gerät (`via_device` auf den Dienst) mit
-Thermostat, Boost-Knopf, dem Knopf „Übersteuerung aufheben", dem Diagnosewert
-„Übersteuerung aktiv", zwei Zeitstempeln, je Modus einer Solltemperatur und je
-Regelparameter einer Zahleneingabe.
+Thermostat, Boost-Knopf, dem Knopf „Übersteuerung aufheben", den Diagnosewerten
+„Übersteuerung aktiv" und „Fenster vermutlich offen (Temperatur)", zwei Zeitstempeln,
+je Modus einer Solltemperatur und je Regelparameter einer Zahleneingabe.
 
 Drei Entscheidungen darin, jede mit Grund:
 
@@ -294,10 +309,13 @@ Climate-Entität.
 demselben Config-Topic. Ohne sie bleibt sie in Home Assistant als Leiche stehen — der Teil,
 den man beim ersten Bauen vergisst.
 
-Je Zone kommen außerdem zwei `binary_sensor`-Entitäten hinzu: `sensor_fault`
-(„Sensorstörung", bereits vorhanden) und `window_alarm` („Fenster vergessen offen",
-neu — eigenes Topic, eigene Entität, teilt sich nichts mit `sensor_fault`, weil
-beide Zustände gleichzeitig gelten können). Anlagenweit, nicht je Zone, kommt eine
+Je Zone kommen außerdem drei `binary_sensor`-Entitäten hinzu: `sensor_fault`
+(„Sensorstörung", bereits vorhanden), `window_alarm` („Fenster vergessen offen",
+eigenes Topic, eigene Entität, teilt sich nichts mit `sensor_fault`, weil
+beide Zustände gleichzeitig gelten können) und `window_open_by_temperature`
+(„Fenster vermutlich offen (Temperatur)", `entity_category: diagnostic` wie
+„Übersteuerung aktiv" — ein laufend gesendeter Zustand, keine eigene Meldungsart mit
+Zustellprotokoll wie die beiden anderen). Anlagenweit, nicht je Zone, kommt eine
 `sensor`-Entität „Außentemperatur" hinzu, registriert einmalig zusammen mit der
 Entität „Regelung scharf".
 

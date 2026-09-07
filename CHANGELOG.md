@@ -13,6 +13,93 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ### Hinzugefügt
 
+- **Fenster-Erkennung aus einem Temperatursturz.** Eine Zone ohne zugeordneten
+  Fensterkontakt kann jetzt trotzdem ein offenes Fenster erkennen — an einem
+  hinreichend steilen Abfall der eigenen Raumtemperatur
+  (`domain/window_temperature_drop.py`). Je Zone einschaltbar
+  (`Zone.window_temp_drop_detection_enabled`, Vorgabe **aus**); ein zugeordneter
+  Fensterkontakt hat immer Vorrang und wird nicht durch die Temperatur ersetzt,
+  auch nicht während er gerade unbekannt ist. Kriterium: der Referenzwert im
+  Verlauf der letzten `window_temp_drop_window_minutes` (Vorgabe 15) **vor**
+  dem aktuellen Wert (deren Maximum, ab drei Vorwerten deren zweithöchster
+  Wert) minus dem aktuellen Wert erreicht `window_temp_drop_threshold_k`
+  (Vorgabe 1,5 K, ein begründeter, aber ausdrücklich nicht anlagenspezifischer
+  Schätzwert) — spiegelbildlich zu `domain.fault.stuck_reading`. Ein reines Sturzkriterium kennt kein Ende:
+  einmal ausgelöst, gilt die Vermutung gebunden für
+  `window_temp_drop_hold_minutes` (Vorgabe 30) und fällt danach von selbst
+  wieder ab, sofern kein neuer Sturz auftritt — eine temperaturbasierte
+  Rücknahme über „die Temperatur steigt wieder" wäre zirkulär, weil die
+  Erkennung selbst das Heizen abschaltet. Wirkt **wie ein echter
+  Fensterkontakt** auf `domain/control_loop.py` (unverändert, da beide
+  Quellen `zone_state.window_open` gleich setzen) und auf den Kälte-Alarm
+  (`domain/window_alarm.py`, ebenfalls unverändert und mit eigenem Test
+  bestätigt statt nur angenommen). Bleibt im Protokoll und in der Oberfläche
+  **unterscheidbar** von einem echten Kontakt (`zone_state.
+  window_open_by_temperature`, eigener Hinweis in `shadow_decision.reason` und
+  eigener Status-Chip auf der Startseite, Grundsatz 5). Sichtbar in der
+  Oberfläche (Regelparameter-Seite je Zone, Regelvorgaben-Seite anlagenweit)
+  und in Home Assistant (`state/window_open_by_temperature`, eigene
+  Diagnose-Entität je Zone). **Bewusst nicht in REST, MCP oder Homebridge** —
+  ausdrückliche Vorgabe des Projektinhabers für alles Neue rund ums Fenster,
+  dieselbe Grenze wie beim Fenster-Alarm. Migration `e741133296d2`.
+
+  **Kreuzreview-Nacharbeit (2026-09-06), erste Runde:** zwei reale Schwächen
+  behoben, nicht nur dokumentiert (Grundsatz 7). Erstens, Ausreisser nach
+  oben: das Kriterium verglich ursprünglich gegen den größten Wert im
+  Fenster, und ein einzelner verrauschter Messwert (Funkstörung,
+  Zigbee-Reporting-Aussetzer) konnte diesen aufblähen und einen Sturz
+  vortäuschen — ersetzt durch den Median aller Werte vor dem aktuellen.
+  Zweitens, Rückkopplung nach Ablauf des Halts: die Vermutung konnte sich
+  durch ihre eigene Wirkung immer wieder neu auslösen. Erster
+  Behebungsversuch: `window_temp_drop_max_suspected_minutes` (Vorgabe 90,
+  drei Halte) als Obergrenze für eine ununterbrochene Vermutungssträhne,
+  danach eine Zwangspause von `window_temp_drop_silence_minutes` (Vorgabe
+  60). Migration `1b7bad26c13a`.
+
+  **Zweite Kreuzreview-Runde (2026-09-07), am laufenden Code durchgespielt,
+  beide Behebungen griffen zu kurz.** Der Median braucht eine **Mehrheit** an
+  Vorwerten nach Sturzbeginn, um ihn widerzuspiegeln — rückwärts für ein
+  kurzes Fenster, in dem kurz nach dem Öffnen erst ein oder zwei Messwerte
+  den Sturz zeigen können. Reviewer-Beispiel `[20.00, 20.10, 18.60]`: 1,50 K
+  gegen das Maximum (erkannt), nur 1,45 K gegen den Median von zwei Vorwerten
+  (verpasst) — genau der Moment, in dem schnelle Erkennung am wichtigsten
+  wäre; der zuvor ersetzte Test verdeckte das mit einer bequemen Mehrheit
+  gleicher Plateauwerte. Jetzt: Referenzwert das Maximum der Vorwerte, ab
+  drei Vorwerten deren zweithöchster — robust gegen einen einzelnen
+  Ausreisser, ohne die Mehrheitsanforderung des Medians; bei ein bis zwei
+  Vorwerten bleibt die Lücke bewusst offen und mit eigenem Test festgehalten,
+  statt sie stillschweigend zu verlieren. Und die Obergrenze hing an
+  `zone_state.window_open_since`, derselben Uhr, die bei jedem Zyklus ohne
+  erkannten Sturz auf `NULL` gesetzt wird — genau am Rand des Halts, durch
+  das Messrauschen, das der Schwellenwert selbst einkalkuliert. 20 simulierte
+  Durchläufe über 420 Minuten liessen die Zwangspause kein einziges Mal
+  feuern. Behoben durch eine kumulative Zählung auf einer eigenen Uhr
+  (`zone_state.window_temp_drop_streak_started_at`/`_last_detected_at`): ein
+  frischer Sturz setzt die Strähne fort, wenn die Lücke seit der letzten
+  Erkennung höchstens `window_temp_drop_gap_tolerance_minutes` (Vorgabe 10)
+  beträgt — kurz genug für einen einzelnen Ausreisser, deutlich kürzer als
+  der Halt. Bewusst bleibende Lücke: eine tatsächlich längere Unterbrechung
+  beendet die Strähne weiterhin, ein späteres Auslösen zählt dann wieder bei
+  null. Migration `43aa18ba1c12`.
+
+  **Dritte Kreuzreview-Runde (2026-09-07), freigegeben unter Auflage.**
+  Erstens, bisher nirgends benannt: zwei gleichzeitige Ausreisser hebeln den
+  zweithöchsten Wert aus, da er dann selbst einer der Ausreisser ist —
+  Reviewer-Beispiel `[21.0, 30.0, 29.0]`, aktuell `21.0`, Referenz 29.0, Sturz
+  8,0 K, Fehlalarm ohne jede reale Änderung; mit vier Vorwerten genauso.
+  Behoben mit einer harten Plausibilitätsgrenze auf den berechneten Sturz
+  selbst (`WINDOW_TEMP_DROP_MAX_PLAUSIBLE_DROP_K`, 6,0 K, ein Kelvin über der
+  bereits bestehenden, höchsten einstellbaren Sturzschwelle von 5,0 K) —
+  schließt die ganze Fehlerklasse statt nur den nächsten Einzelfall, und
+  gefährdet keine legitime Einstellung, da nichts, was dieses Merkmal
+  überhaupt erkennen soll, je mehr als 5,0 K verlangt. Zweitens: die bereits
+  dokumentierte, bewusst bleibende Lücke der Zehn-Minuten-Toleranz (eine
+  Erholung, die knapp darüber liegt, lässt jede Strähne bei null neu
+  beginnen) war nur Prosa, kein Test — anders als die gleichwertige Lücke bei
+  ein bis zwei Vorwerten. Jetzt mit eigenem Test verankert
+  (`test_a_recovery_just_over_the_tolerance_lets_every_streak_restart`), der
+  fehlschlägt, sollte ein künftiger Umbau das unbemerkt verschlimmern.
+
 - **Außentemperatur und Fenster-Alarm.** Erstmals ein Begriff von Außentemperatur:
   eine anlagenweite Quelle (`setting.outdoor_temperature_source_device_id`),
   ausgewählt aus den bekannten Zigbee2MQTT-Geräten wie die Messquelle einer Zone,

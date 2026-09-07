@@ -77,6 +77,24 @@ class Zone(TimestampMixin, Base):
     temperature_offset_k: Mapped[Decimal | None] = mapped_column(Numeric(4, 2), nullable=True)
     window_resume_delay_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
+    # Whether this zone infers a probably-open window from its own temperature
+    # history when it has no window contact assigned at all
+    # (`services/ingest.py::_window_open`, `domain.window_temperature_drop`).
+    # Default off (project owner's explicit decision): a real contact is a
+    # measurement, this is a guess from a handful of readings, and the operator
+    # decides per zone whether that trade-off is worth it. Deliberately its own
+    # plain column, not one of the six nullable "inherits the global default"
+    # fields above and not part of `ControlParameters` in `domain/zone_settings.py`
+    # -- the three thresholds it uses (`setting.window_temp_drop_*`) are
+    # anlagenweit with no per-zone override, and `ControlParameters` is echoed
+    # verbatim onto REST
+    # (`api/routes.py::ControlParametersResponse(**control_parameters(...).__dict__)`),
+    # which this switch must never reach (task instruction: nothing new about the
+    # window in REST, MCP, or Homebridge).
+    window_temp_drop_detection_enabled: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=text("false"), nullable=False
+    )
+
     # How strongly this zone profits from sunshine, 0 (not at all, e.g. a north-facing
     # room) to 1 (strongly, e.g. a room with roof windows). Default 0 -- off, like the
     # rest of the solar setback feature until an operator explicitly configures it.
