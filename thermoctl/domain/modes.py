@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from decimal import Decimal
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
 
 from thermoctl import audit
@@ -250,3 +250,112 @@ def update_setpoints(
             summary=f"Sollwerte für Zone '{zone.display_name}' geändert",
             user_id=user_id,
         )
+
+
+#: Ein Schritt am Thermostat. Ein halbes Grad, weil ein Raum darunter nicht spürbar
+#: anders wird und man sonst zu oft klicken müsste.
+SETPOINT_STEP = Decimal("0.5")
+
+
+def step_setpoint(
+    session: Session,
+    zone: Zone,
+    mode_id: int,
+    direction: int,
+    *,
+    fallback: Decimal | None = None,
+    user_id: int | None = None,
+    source: str = "web",
+) -> Decimal:
+    """Verstellt den gespeicherten Sollwert eines Modus um einen halben Schritt.
+
+    Gibt den **neuen** Wert zurück.
+
+    **Als eine einzige Anweisung**, nicht als Lesen-Rechnen-Schreiben. Der alte Weg
+    las den Wert, rechnete in Python und schrieb das Ergebnis zurück -- zwei
+    gleichzeitige Anfragen lasen dann beide 21,0 und schrieben beide 21,5. Zwei
+    Klicks ergaben einen Schritt, und niemand bekam das mit: es gab keinen Fehler,
+    nur einen um ein halbes Grad zu niedrigen Sollwert an einer echten Heizung.
+    Genau die Zusicherung "zwei Klicks sind zwei Schritte" steht seit jeher im
+    Docstring der Weboberfläche.
+
+    Die Grenzen stehen in derselben Anweisung: schlägt sie fehl (`rowcount == 0`),
+    lag der Zielwert außerhalb -- **oder** es gibt für diesen Modus noch keine Zeile.
+    Erst danach wird gelesen, um die beiden Fälle zu unterscheiden. Dasselbe Muster
+    wie `services/cluster.py::try_become_leader`, und aus demselben Grund: unter
+    SQLite kann eine Transaktion, die erst liest und dann schreibt, beim Hochstufen
+    der Sperre scheitern, ohne dass der Busy-Handler das auflöst.
+
+    `fallback` ist der Wert, den die Oberfläche anzeigt, wenn für diesen Modus noch
+    nichts gespeichert ist (etwa der Frostschutz-Rückfall). Ist er gesetzt und fehlt
+    die Zeile, wird sie mit `fallback ± Schritt` angelegt -- sonst könnte man einen
+    Sollwert, den man sieht, nicht verstellen.
+    """
+    schritt = SETPOINT_STEP if direction > 0 else -SETPOINT_STEP
+    ergebnis = session.execute(
+        update(ZoneSetpoint)
+        .where(
+            ZoneSetpoint.zone_id == zone.id,
+            ZoneSetpoint.setpoint_mode_id == mode_id,
+            ZoneSetpoint.temperature_c + schritt >= MINIMUM_TEMPERATURE_C,
+            ZoneSetpoint.temperature_c + schritt <= MAXIMUM_TEMPERATURE_C,
+        )
+        .values(temperature_c=ZoneSetpoint.temperature_c + schritt)
+    )
+    # `rowcount` gibt es nur auf `CursorResult`, nicht auf dem allgemeinen `Result`;
+    # bei einem UPDATE ist es immer eines (dieselbe Begründung wie in
+    # `services/cluster.py` und `domain/passkey.py`).
+    if int(ergebnis.rowcount):  # type: ignore[attr-defined]
+        session.flush()
+        neu = _stored_setpoint(session, zone, mode_id)
+        assert neu is not None, "gerade geschrieben, also vorhanden"
+        _record_step(session, zone, user_id, source)
+        return neu
+
+    # Nichts geändert: entweder gibt es die Zeile nicht, oder der Schritt hätte die
+    # Grenze überschritten. Jetzt erst nachsehen -- das ist der eine Fall, in dem
+    # gelesen wird, und er schreibt nichts mehr.
+    vorhanden = _stored_setpoint(session, zone, mode_id)
+    if vorhanden is None:
+        if fallback is None:
+            raise DomainError(
+                "mode_id", "Für diesen Modus gibt es keinen Sollwert."
+            )
+        neu = check_temperature(fallback + schritt)
+        session.add(
+            ZoneSetpoint(zone_id=zone.id, setpoint_mode_id=mode_id, temperature_c=neu)
+        )
+        session.flush()
+        _record_step(session, zone, user_id, source)
+        return neu
+    # Die Zeile gibt es, der Schritt ging über die Grenze. `check_temperature` liefert
+    # den Text -- die Grenze steht damit an genau einer Stelle.
+    return check_temperature(vorhanden + schritt)
+
+
+def _stored_setpoint(session: Session, zone: Zone, mode_id: int) -> Decimal | None:
+    """Der gespeicherte Sollwert dieses Modus, oder `None`.
+
+    Hier noch einmal statt aus `domain.schedule.temperature_for_mode`: dieses Modul
+    liegt unter `schedule`, das seinerseits von hier importiert -- der Weg zurück
+    wäre ein Kreis. Zwei Zeilen SELECT sind das kleinere Übel.
+    """
+    return session.scalar(
+        select(ZoneSetpoint.temperature_c).where(
+            ZoneSetpoint.zone_id == zone.id, ZoneSetpoint.setpoint_mode_id == mode_id
+        )
+    )
+
+
+def _record_step(
+    session: Session, zone: Zone, user_id: int | None, source: str
+) -> None:
+    audit.record(
+        session,
+        source=source,
+        action="update",
+        object_type="zone_setpoint",
+        object_id=str(zone.id),
+        summary=f"Sollwerte für Zone '{zone.display_name}' geändert",
+        user_id=user_id,
+    )

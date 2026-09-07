@@ -12,7 +12,7 @@ from thermoctl.db.base import utcnow
 from thermoctl.db.models.zone import Zone
 from thermoctl.domain.authz import visible_zones
 from thermoctl.domain.control import settings as control_settings
-from thermoctl.domain.modes import DomainError, update_setpoints
+from thermoctl.domain.modes import DomainError, step_setpoint
 from thermoctl.domain.principal import Principal
 from thermoctl.domain.schedule import (
     OverrideAlreadyRunning,
@@ -22,7 +22,6 @@ from thermoctl.domain.schedule import (
     end_of_next_switch,
     jump_to_next_switch,
     resolved_setpoint,
-    temperature_for_mode,
 )
 from thermoctl.domain.zone_settings import (
     ControlParameters,
@@ -363,11 +362,6 @@ async def end_override(
     return RedirectResponse(prefixed(request, "/"), status.HTTP_303_SEE_OTHER)
 
 
-# One click on the start page's thermostat. A half step, because below that a room
-# doesn't perceptibly change and you would otherwise click too often.
-THERMOSTAT_STEP = Decimal("0.5")
-
-
 @shared_router.post("/zones/{zone_id}/thermostat")
 async def adjust_thermostat(
     zone_id: int,
@@ -397,26 +391,29 @@ async def adjust_thermostat(
     if direction not in ("up", "down"):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Unbekannte Richtung")
 
-    # The value the page shows -- not the stored row. The two are not the same: if a
-    # zone has no own setpoint for frost protection, `aufgeloester_sollwert` shows the
-    # fallback of 16 degrees. The thermostat used to look up the row, find none, and
-    # respond with 404 -- on the page it looked as if nothing happened when pressed.
-    # That is exactly the state of a freshly set-up plant where nobody has maintained
-    # setpoints yet.
-    current = temperature_for_mode(session, zone, mode_id)
-    if current is None:
-        shown = resolved_setpoint(session, zone, utcnow())
-        if shown.mode_id == mode_id:
-            current = shown.temperature_c
-    if current is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Für diesen Modus gibt es keinen Sollwert")
-
-    new = current + (THERMOSTAT_STEP if direction == "up" else -THERMOSTAT_STEP)
+    # Der Wert, den die Seite anzeigt -- nicht die gespeicherte Zeile. Die beiden
+    # sind nicht dasselbe: hat eine Zone für den Frostschutz keinen eigenen Sollwert,
+    # zeigt `resolved_setpoint` den Rückfall von 16 Grad. Das Thermostat schlug
+    # früher die Zeile nach, fand keine und antwortete mit 404 -- auf der Seite sah
+    # es aus, als täte der Knopf nichts. Genau der Zustand einer frisch
+    # eingerichteten Anlage, in der noch niemand Sollwerte gepflegt hat.
+    shown = resolved_setpoint(session, zone, utcnow())
+    fallback = shown.temperature_c if shown.mode_id == mode_id else None
     try:
-        update_setpoints(
-            session, zone, {mode_id: new}, user_id=principal.user_id
+        # Der Schritt selbst liegt in der Domäne und ist **eine** Anweisung: zwei
+        # schnelle Klicks sind sonst nur ein Schritt, weil beide denselben Wert
+        # lesen und beide dasselbe Ergebnis zurückschreiben.
+        step_setpoint(
+            session, zone, mode_id,
+            1 if direction == "up" else -1,
+            fallback=fallback,
+            user_id=principal.user_id,
         )
     except DomainError as exc:
+        if exc.field == "mode_id":
+            raise HTTPException(
+                status.HTTP_404_NOT_FOUND, "Für diesen Modus gibt es keinen Sollwert"
+            ) from exc
         # Reached the limit. Not an error state, but the end of the road -- the
         # page simply shows the unchanged value afterward.
         parameter = urlencode({"thermostat_errors": exc.notice, "zone_id": zone.id})
