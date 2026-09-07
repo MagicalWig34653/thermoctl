@@ -74,7 +74,20 @@ hier, sondern an der jeweiligen Stelle: `hx-preserve` an den
 #}
 <div id="tc-live" data-tc-quiet-poll="true"
      hx-get="{{ url_prefix }}/" hx-trigger="every {{ poll_interval_seconds }}s [!document.hidden]"
-     hx-select="#tc-live" hx-target="#tc-live" hx-swap="outerHTML">
+     hx-select="#tc-live" hx-target="#tc-live" hx-swap="outerHTML"
+     {#
+     Ohne dieses Attribut erben jeder boostete Link *innerhalb* dieses Bereichs
+     (Zonenname, "Heizzeiten"/"Betrieb"/"Urlaub", der Urlaub-Chip) `hx-select`,
+     `hx-target` und `hx-swap` von diesem Element -- htmx vererbt diese drei
+     Attribute standardmäßig an Nachkommen. Ein Klick auf einen solchen Link
+     schickt dann zwar die Anfrage und schreibt die neue Adresse in die
+     Adresszeile (`hx-push-url`, Teil von `hx-boost`), versucht die Antwort
+     aber weiterhin nach `#tc-live` einzusetzen -- ein Element, das auf der
+     Zielseite gar nicht existiert. Ergebnis: die Adresse wechselt, der
+     Bildschirminhalt bleibt unverändert die alte Startseite. Gefunden beim
+     Bau des Urlaubsbetrieb-Browsertests, der genau diesen Link anklickt.
+     #}
+     hx-disinherit="hx-select hx-target hx-swap">
 
 <section class="tc-system-row {{ 'tc-armed' if armed }} mb-4">
     {% if cluster_standby %}
