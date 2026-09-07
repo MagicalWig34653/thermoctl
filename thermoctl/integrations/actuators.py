@@ -37,6 +37,50 @@ class MqttPublisher(Protocol):
 TOGGLE_NAMESPACE = "Appliance.Control.ToggleX"
 
 
+def control_armed_at_startup(session: Session) -> bool:
+    """Reads only `setting.control_armed` -- the question the frozen, once-per-process
+    bolt in `app.py`'s lifespan is actually supposed to answer: *was the plant armed
+    when this process started?*
+
+    Deliberately not `switching_allowed` below, and not a thinner version of it either.
+    `switching_allowed` also asks whether this process currently *leads* the
+    Aktiv-Bereitschafts-Verbund (`services/cluster.py::is_leader`) -- a question the
+    lifespan cannot answer yet at the point it calls this, because it runs before the
+    shadow loop has started, and only that loop claims and renews leadership
+    (`app.py::_shadow_loop`, `cluster.try_become_leader`). Freezing `switching_allowed`'s
+    answer at that moment would freeze `is_leader` at `False` for the rest of the
+    process -- exactly the bug this function exists to avoid: on any clustered
+    installation (i.e. any real one; see `services/cluster.py`'s module docstring on
+    the migration seeding the claim row) the frozen bolt would never open again, no
+    matter which instance actually leads later, because it is read only this once.
+
+    Splitting the two questions apart does not loosen anything: nothing that reads
+    this frozen bolt (`MqttClient`'s own copy, `MerossSwitch.__init__`'s
+    `frozen_switching_allowed`) is the last word on whether a command actually goes
+    out. Two things still stand in the way of a standby instance switching anything,
+    both checked at runtime, independently of this bolt:
+
+    1. `app.py::_shadow_loop` claims leadership once per pass, before doing anything
+       else, and skips the *entire* rest of the pass -- sensor advance, shadow
+       decisions, publication -- on the instance that does not currently hold it.
+       A standby's cycle never reaches an actuator at all.
+    2. Every actuator that does run (`Zigbee2MqttValve.switching`,
+       `Zigbee2MqttThermostat.switching`, `MerossSwitch.switching`) calls
+       `switching_allowed(session)` immediately before it would otherwise send --
+       and that function, unlike this one, checks `cluster.is_leader` fresh, on
+       every call, against the database's own clock. A leadership change mid-cycle
+       (the loop-level gate above cannot see that; see `switching_allowed`'s own
+       docstring) still gets caught here.
+
+    So a standby instance switches nothing regardless of what this function -- or the
+    frozen bolt it feeds -- returns; this function only ever widens *whose* startup
+    intent a correctly-armed, currently-leading process gets to see reflected in its
+    frozen bolt, immediately instead of never.
+    """
+    setting = session.get(Setting, 1)
+    return setting is not None and setting.control_armed
+
+
 def switching_allowed(session: Session) -> bool:
     """Reads setting.control_armed -- and, the cluster's third bolt, whether this
     process currently holds the active claim (`services/cluster.py`). The only

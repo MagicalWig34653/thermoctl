@@ -1204,6 +1204,110 @@ async def test_the_shadow_loop_claims_an_unheld_row_and_runs(
 
 
 @pytest.mark.anyio
+async def test_the_shadow_loop_leads_before_its_first_sleep(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Ursache B. A freshly started instance must not sit out a whole interval
+    in Bereitschaft (`web/start_views.py`'s `cluster_standby`) when nothing
+    stands in its way: the claim is unheld, exactly as a real installation's
+    migration seeds it (`bb4a0ff63b2d`, `holder_id=""`). Before the fix, the
+    loop only ever called `try_become_leader` *after* its first
+    `asyncio.sleep(interval)` -- so the claim stayed unheld, and `is_leader`
+    (what `web/start_views.py` and every actuator's `switching_allowed` check
+    actually ask) read `False`, for the whole first interval. This test proves
+    the claim is already held by this instance by the time the loop's very
+    first `asyncio.sleep` call happens -- inspected from inside the
+    monkeypatched `sleep` itself, before it has a chance to return."""
+    engine, fabrik = _own_database(tmp_path, "verbund-sofort-fuehrend")
+    with fabrik() as http_session:
+        create_settings(http_session)
+        http_session.add(ClusterClaim(id=1, holder_id="", expires_at=datetime(1970, 1, 1)))
+        http_session.commit()
+
+    fake_app = types.SimpleNamespace(state=types.SimpleNamespace(session_factory=fabrik))
+    holder_seen_before_first_sleep_returns: list[str | None] = []
+
+    async def _sleep(seconds: float) -> None:
+        with fabrik() as http_session:
+            claim = http_session.get(ClusterClaim, 1)
+            holder_seen_before_first_sleep_returns.append(
+                claim.holder_id if claim is not None else None
+            )
+        raise asyncio.CancelledError
+
+    monkeypatch.setattr(app_modul.asyncio, "sleep", _sleep)
+
+    with pytest.raises(asyncio.CancelledError):
+        await app_modul._shadow_loop(fake_app)  # type: ignore[arg-type]
+
+    assert holder_seen_before_first_sleep_returns == [cluster.instance_id()]
+
+    engine.dispose()
+
+
+@pytest.mark.anyio
+async def test_an_exception_in_the_initial_claim_does_not_end_the_loop(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Cross-review finding on Ursache B: the pre-loop claim added above sits
+    in its own `try/except Exception`, deliberately -- without it, a database
+    hiccup right at startup (not yet reachable, connection reset) would end the
+    whole background task without a retry: it runs
+    before the loop's own `try/except`, and a task that dies this way raises
+    no regular pass. The exception may only surface when `_lifespan` awaits the
+    task during shutdown. This raises on the very first claim
+    attempt and proves the loop logs it, keeps running, and still leads on
+    its first regular pass -- exactly as if the initial claim had never been
+    attempted at all."""
+    engine, fabrik = _own_database(tmp_path, "anspruch-schlaegt-fehl")
+    with fabrik() as http_session:
+        create_settings(http_session)
+        sensor_status_of(http_session, "keine_quelle")
+        create_zone(http_session, "flur")
+        http_session.add(ClusterClaim(id=1, holder_id="", expires_at=datetime(1970, 1, 1)))
+        http_session.commit()
+
+    fake_app = types.SimpleNamespace(state=types.SimpleNamespace(session_factory=fabrik))
+
+    original_try_become_leader = cluster.try_become_leader
+    calls = 0
+
+    def _first_attempt_fails(
+        session: Session, *, holder: str, timeout_seconds: int
+    ) -> bool:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise RuntimeError("Simulated database failure during the initial claim")
+        return original_try_become_leader(
+            session, holder=holder, timeout_seconds=timeout_seconds
+        )
+
+    monkeypatch.setattr(cluster, "try_become_leader", _first_attempt_fails)
+
+    waited: list[float] = []
+
+    async def _sleep(seconds: float) -> None:
+        waited.append(seconds)
+        if len(waited) == 2:
+            raise asyncio.CancelledError
+
+    monkeypatch.setattr(app_modul.asyncio, "sleep", _sleep)
+
+    with pytest.raises(asyncio.CancelledError):
+        await app_modul._shadow_loop(fake_app)  # type: ignore[arg-type]
+
+    assert calls == 2  # the initial attempt failed, the first regular pass tried again
+    with fabrik() as http_session:
+        claim = http_session.get(ClusterClaim, 1)
+        assert claim is not None
+        assert claim.holder_id == cluster.instance_id()  # led on the first regular pass
+        assert http_session.query(ShadowDecision).count() == 1  # and the cycle actually ran
+
+    engine.dispose()
+
+
+@pytest.mark.anyio
 async def test_the_shadow_loop_survives_an_exception_in_the_cycle(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

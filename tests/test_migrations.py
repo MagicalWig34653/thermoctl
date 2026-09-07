@@ -1,3 +1,4 @@
+import asyncio
 import os
 import subprocess
 import sys
@@ -7,6 +8,14 @@ from decimal import Decimal
 
 import pytest
 from sqlalchemy import Engine, create_engine, make_url, text
+from sqlalchemy.orm import Session
+
+import thermoctl.app as app_module
+from thermoctl.config import get_settings
+from thermoctl.db.models.operations import ClusterClaim, Setting
+from thermoctl.db.models.zone import SetpointMode
+from thermoctl.services import cluster
+from thermoctl.services.shadow_run import cycle as shadow_cycle
 
 
 def _alembic(url: str, *arguments: str) -> subprocess.CompletedProcess[str]:
@@ -57,6 +66,96 @@ def test_models_and_migrations_are_in_sync(migrations_database_url: str) -> None
     assert prep.returncode == 0, prep.stderr
     result = _alembic(migrations_database_url, "check")
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+@pytest.mark.anyio
+@pytest.mark.migration
+async def test_migrated_cluster_claim_does_not_freeze_the_startup_bolt_closed(
+    migrations_database_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Exercises startup and the first shadow pass on a genuinely migrated schema.
+
+    The migration seed is essential: an empty ``cluster_claim`` table deliberately
+    fails open, which made every ``Base.metadata.create_all()`` test miss the
+    production-only startup deadlock this test guards against.
+    """
+    reset = _alembic(migrations_database_url, "downgrade", "base")
+    assert reset.returncode == 0, reset.stderr
+    upgrade = _alembic(migrations_database_url, "upgrade", "head")
+    assert upgrade.returncode == 0, upgrade.stderr
+
+    db_engine = create_engine(migrations_database_url)
+    app = None
+    try:
+        with Session(db_engine) as session:
+            frost_mode = SetpointMode(
+                code="frostschutz", name="Frostschutz", sort_order=0, is_builtin=True
+            )
+            session.add(frost_mode)
+            session.flush()
+            session.add(
+                Setting(
+                    id=1,
+                    control_armed=True,
+                    frost_protection_mode_id=frost_mode.id,
+                )
+            )
+            session.commit()
+
+        monkeypatch.setenv("THERMOCTL_DATABASE_URL", migrations_database_url)
+        monkeypatch.setenv("THERMOCTL_SECRET_KEY", "t" * 32)
+        get_settings.cache_clear()
+        monkeypatch.setattr(app_module, "_shadow_loop_needed", lambda settings: True)
+        monkeypatch.setattr(app_module, "_start_meross_refresh", lambda app, now: None)
+
+        first_pass_finished = asyncio.Event()
+        hold_second_pass = asyncio.Event()
+        claim_attempts = 0
+        interval_reads = 0
+        original_try_become_leader = cluster.try_become_leader
+
+        def observed_try_become_leader(
+            session: Session, *, holder: str, timeout_seconds: int
+        ) -> bool:
+            nonlocal claim_attempts
+            result = original_try_become_leader(
+                session, holder=holder, timeout_seconds=timeout_seconds
+            )
+            claim_attempts += 1
+            return result
+
+        def observed_cycle(*args: object, **kwargs: object) -> object:
+            result = shadow_cycle(*args, **kwargs)  # type: ignore[arg-type]
+            first_pass_finished.set()
+            return result
+
+        async def immediate_first_interval(session_factory: object) -> int:
+            nonlocal interval_reads
+            interval_reads += 1
+            if interval_reads > 1:
+                await hold_second_pass.wait()
+            return 0
+
+        monkeypatch.setattr(cluster, "try_become_leader", observed_try_become_leader)
+        monkeypatch.setattr(app_module, "cycle", observed_cycle)
+        monkeypatch.setattr(app_module, "_shadow_interval_s", immediate_first_interval)
+
+        app = app_module.create_app()
+        async with app_module._lifespan(app):
+            await asyncio.wait_for(first_pass_finished.wait(), timeout=2)
+            assert app.state.sending_allowed is True
+            assert claim_attempts == 2
+            with Session(app.state.engine) as session:
+                claim = session.get(ClusterClaim, 1)
+                assert claim is not None
+                assert claim.holder_id == cluster.instance_id()
+    finally:
+        get_settings.cache_clear()
+        if app is not None:
+            app.state.engine.dispose()
+        db_engine.dispose()
+        _alembic(migrations_database_url, "downgrade", "base")
+        _alembic(migrations_database_url, "upgrade", "head")
 
 
 @pytest.mark.migration

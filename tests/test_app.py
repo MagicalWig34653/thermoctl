@@ -1,8 +1,11 @@
 import logging
 from collections.abc import Iterator
+from datetime import datetime
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy.engine import Engine
+from sqlalchemy.orm import Session
 
 from thermoctl.app import create_app
 from thermoctl.logging import request_id_var
@@ -312,6 +315,113 @@ def test_openapi_explains_both_control_gates_and_wired_actuators(
     assert "first stage" in description
     assert "neither setpoints nor on/off commands are released until a restart" in description
     assert "on/off commands reach ordinary actuators" in description
+
+
+# --- Aktiv-Bereitschafts-Verbund: the frozen startup bolt (Ursache A) -----------
+#
+# `app.py`'s lifespan reads the once-per-process arm bolt (`app.state.
+# sending_allowed`) exactly once, before the shadow loop's first pass ever runs.
+# `Base.metadata.create_all()` -- used everywhere else in this file -- never seeds
+# the `cluster_claim` row a real installation's migration (`bb4a0ff63b2d`) does, so
+# these tests seed it by hand to reproduce the schema an actual installation has,
+# not the accidentally more permissive one the rest of the suite builds.
+
+
+def _seed_a_real_installations_schema(
+    engine: Engine, *, control_armed: bool, claim_holder_id: str, claim_expires_at: datetime
+) -> None:
+    from tests.helpers import create_mode
+    from thermoctl.db.base import Base
+    from thermoctl.db.models.operations import ClusterClaim, Setting
+
+    Base.metadata.create_all(engine)
+    with Session(engine) as setup_session:
+        frost_protection = create_mode(setup_session, "frostschutz")
+        setup_session.add(
+            Setting(
+                id=1,
+                control_armed=control_armed,
+                frost_protection_mode_id=frost_protection.id,
+            )
+        )
+        setup_session.add(
+            ClusterClaim(id=1, holder_id=claim_holder_id, expires_at=claim_expires_at)
+        )
+        setup_session.commit()
+
+
+def test_the_arm_bolt_opens_at_startup_with_a_real_installations_claim_row(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    """Ursache A. A real installation carries the `cluster_claim` row the
+    migration seeds, unclaimed (`holder_id=""`) -- exactly as it is right after
+    `alembic upgrade head`, before any instance has ever asked for leadership.
+    `control_armed=True` alone must be enough for the startup bolt to open;
+    before the fix it never did, because the lifespan asked `switching_allowed`
+    (which also checks cluster leadership) at a point where this process could
+    not possibly hold the claim yet -- the shadow loop, the only place that claims
+    and renews it, has not started. This test was run against the
+    unfixed `app.py` (importing `switching_allowed` instead of
+    `control_armed_at_startup` for the lifespan's bolt) and failed with
+    `assert False is True` on the `sending_allowed` assertion below, exactly the
+    symptom reported from the real installation ("Scharf, Neustart fehlt" that
+    never clears)."""
+    db_path = tmp_path / "verbund-riegel-offen.db"
+    monkeypatch.setenv("THERMOCTL_DATABASE_URL", f"sqlite:///{db_path}")
+    monkeypatch.setenv("THERMOCTL_SECRET_KEY", "a" * 32)
+    from thermoctl.config import get_settings
+    from thermoctl.db.engine import create_engine_from_settings
+
+    get_settings.cache_clear()
+    engine = create_engine_from_settings(get_settings())
+    _seed_a_real_installations_schema(
+        engine, control_armed=True, claim_holder_id="", claim_expires_at=datetime(1970, 1, 1)
+    )
+    engine.dispose()
+
+    app = create_app()
+    with TestClient(app):
+        assert app.state.sending_allowed is True
+
+
+def test_an_open_arm_bolt_still_refuses_to_switch_while_in_standby(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    """The safety claim behind the fix above, nailed down rather than left in a
+    docstring: opening the frozen startup bolt for a correctly armed process must
+    not by itself let a standby instance switch anything. Every actuator still
+    calls the runtime check (`switching_allowed`, which does check leadership)
+    immediately before it would otherwise send -- see that function's docstring
+    and the adapter standby tests for the adapters themselves.
+    This test seeds a claim already held by a different instance, so this
+    process is a standby despite being armed, and proves the runtime gate still
+    reads `False` even though the startup bolt opened."""
+    from thermoctl.integrations.actuators import switching_allowed
+
+    db_path = tmp_path / "verbund-standby-trotz-riegel.db"
+    monkeypatch.setenv("THERMOCTL_DATABASE_URL", f"sqlite:///{db_path}")
+    monkeypatch.setenv("THERMOCTL_SECRET_KEY", "a" * 32)
+    from thermoctl.config import get_settings
+    from thermoctl.db.engine import create_engine_from_settings
+
+    get_settings.cache_clear()
+    engine = create_engine_from_settings(get_settings())
+    _seed_a_real_installations_schema(
+        engine,
+        control_armed=True,
+        claim_holder_id="eine-andere-instanz",
+        claim_expires_at=datetime(2099, 1, 1),
+    )
+    engine.dispose()
+
+    app = create_app()
+    with TestClient(app):
+        # The startup bolt opens -- Ursache A's fix.
+        assert app.state.sending_allowed is True
+        # But the runtime check every actuator calls right before it would
+        # otherwise send still refuses: this process does not hold the claim.
+        with Session(app.state.engine) as http_session:
+            assert switching_allowed(http_session) is False
 
 
 def test_starting_against_an_empty_database_reports_the_missing_migration(

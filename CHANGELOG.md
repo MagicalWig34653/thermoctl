@@ -9,6 +9,51 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ---
 
+## 0.8.2 — 2026-09-07
+
+### Behoben
+
+- **Die Anlage schaltete überhaupt nichts mehr.** Der beim Prozessstart einmalig
+  gesetzte Riegel (`app.state.sending_allowed`) las `switching_allowed()` — und die
+  Funktion prüft seit 0.7.0 zusätzlich, ob dieser Prozess den Aktiv-Bereitschafts-
+  Anspruch hält. An dieser Stelle im Lifespan hat der Prozess ihn aber noch nie
+  gestellt: die Schattenschleife startet erst danach. Der Riegel war deshalb **immer**
+  zu, und weil er nur einmal je Prozess gelesen wird, ging er auch durch keinen
+  Neustart wieder auf. Folgen an der echten Anlage: der MQTT-Client wies jede
+  Veröffentlichung ab (Meldung „Schaltbefehl gescheitert" je Aktor), die Oberfläche
+  zeigte dauerhaft „Scharf, Neustart fehlt". Behoben durch `control_armed_at_startup()`
+  in `integrations/actuators.py`, die nur die Frage beantwortet, die der eingefrorene
+  Riegel stellen soll — *war die Anlage scharf, als dieser Prozess startete*. Die
+  Verbundführung bleibt, wo sie hingehört: `switching_allowed()` selbst ist
+  unverändert und wird vor jedem einzelnen Sendevorgang frisch geprüft, ebenso wie die
+  Schattenschleife den ganzen Durchlauf weiterhin überspringt, wenn sie nicht führt.
+  Eine Instanz in Bereitschaft schaltet also weiterhin nichts.
+- **Nach jedem Neustart eine Runde Bereitschaft.** `_shadow_loop` schlief das volle
+  Intervall ab, bevor es zum ersten Mal um den Anspruch bat; die Startseite meldete
+  so lange „Bereitschaft", und es lief kein Regelzyklus. Der Anspruch wird jetzt vor
+  dem ersten Schlafen gestellt — abgesichert durch ein eigenes `try`, damit ein
+  Datenbankfehler beim Start die Schleife nicht ohne Wiederholungsversuch beendet.
+  Die Kadenz „schlafen, dann ein Durchlauf" ist unverändert; eine Übernahme nach
+  einem Absturz wird nicht beschleunigt (ohne gesetztes `THERMOCTL_INSTANCE_ID` ist
+  der neue Prozess ein anderer Anspruchsinhaber und wartet weiterhin das Ablaufdatum
+  ab).
+- **Falsches Passwort in der Arbeitsanweisung.** `CLAUDE.md` nannte das MariaDB-
+  Testpasswort als `prüfen`; Container und CI benutzen `pruefen`. Jeder Agent lief
+  damit einmal in einen Fehlschlag.
+
+### Warum die Tests das nicht gefunden haben
+
+Die Suite baut ihr Schema über `Base.metadata.create_all()`. Die Migration
+`bb4a0ff63b2d` legt in jeder echten Anlage genau eine `cluster_claim`-Zeile an,
+`create_all()` tut das nicht — und `cluster.is_leader` fällt bei fehlender Zeile
+bewusst offen aus. `switching_allowed()` lieferte im Test also `True` und in der
+Anlage `False`; kein einziger Test konnte den Fehler sehen. `tests/test_migrations.py::
+test_migrated_cluster_claim_does_not_freeze_the_startup_bolt_closed` schließt diese
+Kluft: echtes Schema über `alembic upgrade head`, echter `_lifespan`, echter erster
+Regelzyklus. Der Test ist auf dem alten Stand nachweislich rot.
+
+---
+
 ## 0.8.1 — 2026-09-07
 
 ### Behoben

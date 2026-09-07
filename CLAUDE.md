@@ -173,7 +173,7 @@ Aus der Umsetzung von Teilprojekt 1, damit es niemand erneut herausfinden muss:
   geprüft" berichtet worden, während jeder dieser Läufe SQLite war; aufgefallen ist es
   einem Agenten, nicht der Hauptsession. Der MariaDB-Lauf lautet:
   ```
-  THERMOCTL_TEST_DATABASE_URL="mysql+pymysql://root:prüfen@127.0.0.1:3306/<eigene_db>" \
+  THERMOCTL_TEST_DATABASE_URL="mysql+pymysql://root:pruefen@127.0.0.1:3306/<eigene_db>" \
     .venv/bin/python -m pytest -q
   ```
   Die CI benutzt die richtige Variable und war nie betroffen.

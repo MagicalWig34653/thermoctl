@@ -58,7 +58,7 @@ from thermoctl.domain.zone_settings import (
     set_parameter,
 )
 from thermoctl.domain.zones import UnknownOperatingMode, set_operating_mode
-from thermoctl.integrations.actuators import switching_allowed
+from thermoctl.integrations.actuators import control_armed_at_startup
 from thermoctl.integrations.forecast import ForecastCache
 from thermoctl.integrations.meross import UrllibJsonTransport, credentials_configured
 from thermoctl.integrations.mqtt.client import MqttClient
@@ -372,10 +372,49 @@ async def _shadow_loop(app: FastAPI) -> None:
     # sockets without waiting an hour.
     next_meross = started
     holder = cluster.instance_id()
-    # Only used to log the transition itself, not every pass -- a standby waiting
-    # out five idle cycles before a takeover must not fill the log with "still in
-    # Bereitschaft" once per cycle.
+    # Claims leadership before the loop's first sleep, not after it. Without this, a
+    # freshly started instance reports itself in Bereitschaft (`web/start_views.py`'s
+    # `cluster_standby`) for a full interval even when nothing stands in its way -- a
+    # cleanly stopped predecessor already released the claim (`cluster.release`),
+    # which makes it immediately claimable no matter who asks. This only helps that
+    # one case, deliberately not more: a crashed and restarted instance is a
+    # *different* `holder` unless `THERMOCTL_INSTANCE_ID` is set to a stable value
+    # (`cluster.instance_id()`'s own docstring -- left unset, a fresh random identity
+    # is drawn on every process start), so without that variable a crash-restart
+    # still only takes over once the stale claim's `expires_at` has actually passed,
+    # exactly as it did before this change; this fix does not shorten that wait.
+    # Only the claim moves earlier; the cadence below ("sleep, then one pass") is
+    # unchanged -- the first actual cycle (sensor advance, shadow decisions,
+    # publication) still waits out the first interval, as it always has.
+    # `was_leader` starts holding this claim's real outcome (or the loop's original
+    # `False` default if the attempt below fails -- see the `except` clause) so the
+    # loop's own transition log further down still fires exactly once per change,
+    # not once more for a "transition" that already happened here.
     was_leader = False
+    try:
+        with session_scope(app.state.session_factory) as session:
+            timeout_seconds = cluster.takeover_timeout_seconds(session.get(Setting, 1))
+            was_leader = cluster.try_become_leader(
+                session, holder=holder, timeout_seconds=timeout_seconds
+            )
+        if was_leader:
+            log.info("Verbund: aktive Rolle übernommen", extra={"instanz": holder})
+    except Exception:
+        # Deliberately caught here too, not just inside the `while` loop below --
+        # this runs before that loop's own `try/except Exception` and would
+        # otherwise end the whole task without another attempt on a database hiccup at startup
+        # (not yet reachable, connection reset, a migration still running). A
+        # cancelled task's `CancelledError` only gets suppressed, never logged, by
+        # the `finally` block in `_lifespan` that awaits it on shutdown -- so an
+        # unguarded failure here would stop regulation until restart; depending on
+        # task/shutdown handling, the exception might only surface much later.
+        # `was_leader`
+        # stays at its safe default (`False`); the loop below tries again on its
+        # own first pass, same as it always has.
+        log.exception(
+            "Anspruch auf die aktive Rolle vor dem ersten Schattenzyklus "
+            "fehlgeschlagen -- nächster Versuch mit dem ersten Durchlauf"
+        )
     while True:
         try:
             interval = await _shadow_interval_s(app.state.session_factory)
@@ -738,8 +777,17 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     # therefore has to restart the service once before anything is actually sent; the
     # operations page says so too. The second bolt (`setting.control_armed`, checked on
     # every send) takes effect immediately, on the other hand -- in the safe direction.
+    #
+    # Deliberately `control_armed_at_startup`, not `switching_allowed`: at this point
+    # in the lifespan the shadow loop has not run its first pass yet, so this process
+    # has never claimed cluster leadership -- `switching_allowed`'s leadership check
+    # would read `False` here on every single startup, on any clustered installation,
+    # and freeze this bolt shut for the rest of the process regardless of which
+    # instance actually leads once the loop starts. See `control_armed_at_startup`'s
+    # docstring for why that split does not loosen anything: leadership is still
+    # enforced at runtime, on every send, by `switching_allowed` itself.
     with session_scope(app.state.session_factory) as session:
-        app.state.sending_allowed = switching_allowed(session)
+        app.state.sending_allowed = control_armed_at_startup(session)
     background_tasks: list[asyncio.Task[None]] = []
     if settings.mqtt_enabled:
         client = MqttClient(
