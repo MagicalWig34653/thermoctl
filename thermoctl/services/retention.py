@@ -10,6 +10,24 @@ from thermoctl.db.models.state import ShadowDecision
 
 log = logging.getLogger(__name__)
 
+# Bekannter, dokumentierter Vorbehalt (v0.8.1, siehe docs/STATUS.md): Beide
+# Funktionen hier lesen vor jedem Löschblock (`session.get(Setting, 1)`,
+# die anschließende SELECT-Auswahl der zu löschenden IDs) und schreiben erst
+# danach. Unter SQLite hält eine Transaktion, die zuerst liest, nur eine
+# SHARED-Sperre; will sie danach schreiben, muss sie auf eine RESERVED-Sperre
+# hochstufen. Läuft zeitgleich eine zweite, unabhängige Verbindung (Webzugriff,
+# Regelschleife) durch denselben Ablauf, können beide gleichzeitig auf SHARED
+# sitzen und beide beim Hochstufen scheitern -- sofort, nicht nach Wartezeit,
+# denn genau diesen Fall retten SQLites Busy-Handler und damit auch der in
+# db/engine.py gesetzte busy_timeout nicht. Siehe
+# services/cluster.py::try_become_leader für die Herleitung und das
+# Referenzmuster der Lösung: dort schreibt die Funktion inzwischen zuerst und
+# liest nur noch nachträglich, wo nötig. Hier bewusst nicht nachgezogen -- das
+# Fenster ist eng (zwei nebenläufige Aufräumläufe oder ein Aufräumlauf, der
+# genau eine laufende Schreiboperation trifft), und die sichtbare Folge ist ein
+# einzelner fehlgeschlagener Aufräumlauf mit Logeintrag, kein stiller
+# Datenfehler -- der nächste geplante Lauf holt das Übersprungene nach.
+
 
 def delete_old_measurements(session: Session, now: datetime, *, batch_size: int = 5000) -> int:
     """Deletes expired measurements in short, database-agnostic blocks."""

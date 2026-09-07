@@ -15,7 +15,7 @@ import threading
 from datetime import datetime
 
 import pytest
-from sqlalchemy import Engine, delete
+from sqlalchemy import Engine, delete, event
 from sqlalchemy.orm import Session
 
 from thermoctl.db.models.operations import ClusterClaim
@@ -215,3 +215,42 @@ def test_two_processes_racing_for_a_stale_claim_only_one_wins(engine: Engine) ->
     with Session(engine) as db_session:
         assert cluster.is_leader(db_session, holder=winner) is True
         assert cluster.is_leader(db_session, holder=loser) is False
+
+
+def test_try_become_leader_writes_before_it_reads_cluster_claim(engine: Engine) -> None:
+    """Pins the actual fix behind the test above, independent of any timing: a
+    `SELECT` against `cluster_claim` before the `UPDATE` is exactly what made the
+    race above fail with "database is locked" on SQLite reliably, not just on a
+    slow runner -- see `try_become_leader`'s own docstring for the mechanism
+    (a SHARED lock on both sides, escalated to a RESERVED one at the same moment,
+    a case SQLite refuses to resolve via `busy_timeout`). `_claim_exists`'s read
+    for the "clustering never engaged" case must therefore come *after* the
+    write attempt, not before it, regardless of which branch that write takes.
+
+    Verified here by recording, via SQLAlchemy's own instrumentation rather than
+    by timing two threads against each other, which statement against
+    `cluster_claim` a single call to `try_become_leader` issues first -- the row
+    exists in this case, so the behaviour is unchanged (a normal takeover) and
+    only the order is examined. `try_become_leader` also runs `SELECT func.now()`
+    to read the database's own clock; that statement has no `FROM` clause, never
+    touches `cluster_claim` at all and so never takes the SHARED lock this test
+    is about -- it is filtered out here rather than the fix being weakened to
+    avoid it.
+    """
+    _seed(engine)
+    statements: list[str] = []
+
+    def _record(conn, cursor, statement, parameters, context, executemany):  # type: ignore[no-untyped-def]
+        if "cluster_claim" in statement:
+            statements.append(statement.strip().split()[0].upper())
+
+    event.listen(engine, "before_cursor_execute", _record)
+    try:
+        with Session(engine) as db_session:
+            cluster.try_become_leader(db_session, holder="a", timeout_seconds=_TIMEOUT_S)
+            db_session.commit()
+    finally:
+        event.remove(engine, "before_cursor_execute", _record)
+
+    assert statements, "try_become_leader issued no statement against cluster_claim at all"
+    assert statements[0] == "UPDATE", statements

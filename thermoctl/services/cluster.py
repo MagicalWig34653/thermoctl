@@ -123,9 +123,31 @@ def try_become_leader(session: Session, *, holder: str, timeout_seconds: int) ->
     the database's row lock still only lets one of the two `UPDATE`s actually
     take hold, and the loser's `rowcount` comes back 0. See the module
     docstring for why a missing row instead returns `True` unconditionally.
+
+    **The `UPDATE` runs before any read of `cluster_claim`, deliberately.**
+    An earlier version checked `_claim_exists` first and only then wrote --
+    correct in isolation, but under SQLite it reproduced the exact "database is
+    locked" CI failure this function's own test
+    (`tests/test_cluster.py::test_two_processes_racing_for_a_stale_claim_
+    only_one_wins`) exists to catch, on every run where two threads' reads
+    landed close together, not just on a slow runner. A `SELECT` against the
+    table first takes SQLite's SHARED lock; when both processes read before
+    writing, both hold a SHARED lock and both then try to escalate to a
+    RESERVED one at the same moment. SQLite does not resolve that through its
+    busy handler at all -- `busy_timeout` (see `db/engine.py`) included --
+    because waiting there could deadlock two connections each holding what the
+    other needs, so it fails with `SQLITE_BUSY` immediately instead. Attempting
+    the write as the very first statement sidesteps the trap entirely: this
+    connection never holds a SHARED lock to escalate from, so a competing
+    writer's own attempt is the ordinary "someone else already holds the write
+    lock" case `busy_timeout` is built to retry. `_claim_exists` still runs,
+    but only afterwards and only to tell apart the one case the `UPDATE`
+    itself cannot distinguish -- a genuine loss (`rowcount == 0` because
+    someone else holds a still-fresh claim) from clustering never having been
+    engaged at all (`rowcount == 0` because the table has no row to match) --
+    and by then this connection already holds the lock the `UPDATE` needed, so
+    the read after it is free.
     """
-    if not _claim_exists(session):
-        return True
     database_now = session.execute(select(func.now())).scalar()
     assert database_now is not None  # pragma: no cover - every real backend answers this
     new_expiry = database_now + timedelta(seconds=timeout_seconds)
@@ -143,7 +165,13 @@ def try_become_leader(session: Session, *, holder: str, timeout_seconds: int) ->
     # `rowcount` only exists on `CursorResult`, not on the general `Result` type;
     # for an `UPDATE` it is always a `CursorResult` (same reasoning as
     # `domain/passkey.py`'s own `rowcount` use).
-    return int(result.rowcount) == 1  # type: ignore[attr-defined]
+    if int(result.rowcount) == 1:  # type: ignore[attr-defined]
+        return True
+    # rowcount == 0: either someone else already holds a still-fresh claim, or
+    # the row does not exist at all (clustering was never engaged -- see the
+    # module docstring, fail open). Telling these apart needs a read, but only
+    # here, off the hot path two racing processes actually hit.
+    return not _claim_exists(session)
 
 
 def is_leader(session: Session, *, holder: str) -> bool:

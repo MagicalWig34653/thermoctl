@@ -1,6 +1,34 @@
 # Stand
 
-Letzte Aktualisierung: 2026-09-06.
+Letzte Aktualisierung: 2026-09-07.
+
+## v0.8.1 -- SQLite-Sperrfehler im Verbund-Anspruch behoben
+
+CI schlug nach v0.8.0 zeitweise fehl: `tests/test_cluster.py::test_two_processes_
+racing_for_a_stale_claim_only_one_wins` scheiterte auf einem langsamen Läufer mit
+`OperationalError: database is locked` statt der erwarteten Niederlage
+(`rowcount == 0`). `busy_timeout` allein behob es nicht (Python setzt ihn über den
+Treiber ohnehin schon auf 5 s; `db/engine.py`s eigenes `PRAGMA busy_timeout=5000`
+macht das nur ausdrücklich, ändert nichts). Ursache: `services/cluster.py::
+try_become_leader` las vor dem Schreiben (Existenzprüfung, Datenbankzeit) --
+unter SQLite hält eine solche Transaktion dabei nur eine SHARED-Sperre und muss
+zum Schreiben auf RESERVED hochstufen. Zwei Prozesse, die beide erst lesen,
+geraten beim gleichzeitigen Hochstufen in einen Fall, den SQLites Busy-Handler
+grundsätzlich nicht auflöst (auch nicht mit `busy_timeout`) -- sofortiger Fehler
+statt kurzer Wartezeit. Behoben, indem `try_become_leader` jetzt zuerst schreibt
+und nur bei `rowcount == 0` nachträglich liest, um "verloren" von "Verbund nie
+aktiviert" zu unterscheiden -- siehe die Funktion selbst und
+`tests/test_cluster.py::test_try_become_leader_writes_before_it_reads_cluster_
+claim`. Zusätzlich WAL-Journalmodus für dateibasierte SQLite-Datenbanken
+(`db/engine.py`), mit Erkennung auch der URI-Speicherform
+(`file::memory:?...&uri=true`).
+
+**Bekannter, dokumentierter Vorbehalt, kein eigener Auftrag:** Dasselbe
+Lese-vor-Schreiben-Muster steckt auch anderswo (z. B. `services/retention.py`,
+siehe dortiger Kommentar) -- real, aber selten, mit einem einzelnen
+fehlgeschlagenen Zyklus oder Zugriff als sichtbarer Folge, keinem stillen
+Datenfehler. `try_become_leader` ist das Referenzmuster für eine Lösung, falls
+das je zum echten Problem wird.
 
 ## Fenster-Erkennung aus einem Temperatursturz, ohne Kontakt
 
