@@ -98,56 +98,69 @@ hier, sondern an der jeweiligen Stelle: `hx-preserve` an den
     Punkt 3).
     #}
     <div class="tc-latches">
+        {#
+        Riegel 1 -- der tatsächliche Ausgabeweg. Der Text ist Wort für Wort der
+        gewachsene: er unterscheidet "gespeicherte Freigabe steht" von "geht
+        tatsächlich hinaus", und genau diese Unterscheidung hat schon einmal
+        stundenlanges Fehlersuchen gekostet. `tests/test_control.py` hält die drei
+        Sätze fest; wer sie ändert, ändert eine Aussage über eine echte Heizung.
+        #}
         <span class="tc-latch">
-            <span class="tc-chip {{ 'tc-chip-warm' if armed else 'tc-chip-quiet' }}">
-                <span class="tc-dot"></span>{{ 'Aktorfreigabe: scharf' if armed else 'Aktorfreigabe: Trockenlauf' }}
-            </span>
-            <span class="t-quiet small">
-                {% if armed %}
-                Regelentscheidungen dürfen Aktoren tatsächlich schalten.
-                {% else %}
-                Regelentscheidungen werden nur protokolliert, kein Aktor wird angesteuert.
-                {% endif %}
-            </span>
+            <span class="t-label">Aktorfreigabe</span>
+            {% if armed and sending_allowed %}
+            <span class="tc-chip tc-chip-warm"><span class="tc-dot"></span>Scharf und neu gestartet</span>
+            <span class="t-quiet small">Ausgabe freigegeben — alle zugeordneten Aktoren werden angesteuert.</span>
+            <details class="tc-info-disclosure">
+                <summary>welche Befehle</summary>
+                Selbstregelnde Thermostatventile bekommen einen Sollwert und regeln damit selbst;
+                Schalter, Steckdosen und Ventile ohne eigene Regelung bekommen Ein/Aus.
+            </details>
+            {% elif armed %}
+            <span class="tc-chip tc-chip-warning"><span class="tc-dot"></span>Scharf, Neustart fehlt</span>
+            <span class="t-quiet small">Der beim Start gebaute MQTT-Riegel ist noch zu. Bis zum Neustart gehen weder Sollwerte noch Ein/Aus-Befehle an Aktoren.</span>
+            {% else %}
+            <span class="tc-chip tc-chip-quiet"><span class="tc-dot"></span>Trockenlauf</span>
+            <span class="t-quiet small">Regelentscheidungen werden protokolliert. Weder Sollwerte noch Ein/Aus-Befehle gehen an Aktoren.</span>
+            {% endif %}
         </span>
+        {#
+        Riegel 2 -- der MQTT-Riegel für sich, getrennt sichtbar. Er wird beim
+        Prozessstart eingefroren; ohne diesen Satz sucht jemand den Fehler bei der
+        gespeicherten Freigabe, die längst umgelegt ist.
+        #}
         <span class="tc-latch">
+            <span class="t-label">MQTT-Ausgabe</span>
             <span class="tc-chip {{ 'tc-chip-warm' if sending_allowed else 'tc-chip-warning' }}">
-                <span class="tc-dot"></span>{{ 'MQTT-Ausgabe: frei' if sending_allowed else 'MQTT-Ausgabe: gesperrt' }}
+                <span class="tc-dot"></span>{{ 'frei' if sending_allowed else 'gesperrt' }}
             </span>
             <span class="t-quiet small">
-                {% if sending_allowed %}
-                Sollwerte und Ein/Aus-Befehle gehen tatsächlich an den Broker hinaus.
-                {% else %}
-                Es gehen weder Sollwerte noch Ein/Aus-Befehle an den Broker hinaus.
-                {% endif %}
-                Dieser Riegel wird beim Prozessstart eingefroren — eine Änderung an der
-                Einstellung wirkt erst nach einem Neustart des Prozesses.
+                Dieser Riegel entsteht beim Prozessstart. Eine Änderung an der
+                gespeicherten Freigabe wirkt hier erst nach einem Neustart.
             </span>
         </span>
+        {#
+        Riegel 3 -- die Rolle im Aktiv-Bereitschafts-Verbund. Eine Bereitschaft, die
+        aussieht wie die aktive Instanz, ist genau der Fehlerfall, den dieser Riegel
+        ausschließen soll: sie regelt nicht, egal was die beiden anderen sagen.
+        #}
         <span class="tc-latch">
+            <span class="t-label">Rolle im Verbund</span>
             <span class="tc-chip {{ 'tc-chip-warning' if cluster_standby else 'tc-chip-quiet' }}">
-                <span class="tc-dot"></span>{{ 'Verbund: Bereitschaft' if cluster_standby else 'Verbund: führt bzw. Alleinbetrieb' }}
+                <span class="tc-dot"></span>{{ 'Bereitschaft' if cluster_standby else 'Führend oder Alleinbetrieb' }}
             </span>
             <span class="t-quiet small">
                 {% if cluster_standby %}
                 Diese Instanz ist Teil eines Aktiv-Bereitschafts-Verbunds und steht
                 gerade in Bereitschaft: Sie regelt nicht und schaltet nichts,
-                unabhängig von den beiden Riegeln oben. Ansehen und Konfigurieren ist
-                möglich, beide Instanzen arbeiten auf derselben Datenbank.
+                unabhängig von den beiden Riegeln daneben. Ansehen und Konfigurieren
+                ist möglich, beide Instanzen arbeiten auf derselben Datenbank.
                 {% else %}
-                Diese Instanz regelt aktiv (kein Verbund konfiguriert, oder sie führt
-                gerade darin).
+                Diese Instanz regelt. Entweder ist kein Verbund eingerichtet, oder sie
+                führt ihn gerade.
                 {% endif %}
             </span>
         </span>
     </div>
-    {% if armed and sending_allowed %}
-    <details class="tc-info-disclosure">
-        <summary>ⓘ welche Befehle</summary>
-        Selbstregelnde Thermostatventile bekommen einen Sollwert und regeln damit selbst;
-        Schalter, Steckdosen und Ventile ohne eigene Regelung bekommen Ein/Aus.
-    </details>
-    {% endif %}
 
     {% if bridge is false %}
     <span class="tc-chip tc-chip-warning">Brücke nicht erreichbar</span>

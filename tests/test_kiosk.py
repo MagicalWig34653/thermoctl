@@ -105,7 +105,7 @@ def test_the_dashboard_carries_an_agpl_source_link_that_stays_off_the_tablet(
 ) -> None:
     """§13 AGPL-3.0: a reachable way to the source, without leaving the tablet on it.
 
-    Not a footer like `base.html`/`base_plain.html` -- see `kiosk.html` for why. This
+    Not a footer like `base_admin.html`/`base_plain.html` -- see `kiosk.html` for why. This
     only checks the properties §13 actually needs: the exact repository address, and
     `target="_blank" rel="noopener"` so tapping it opens a second tab instead of
     replacing the kiosk document the tablet is meant to keep showing.

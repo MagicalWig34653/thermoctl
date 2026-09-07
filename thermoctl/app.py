@@ -1011,7 +1011,7 @@ def create_app() -> FastAPI:
             # nothing, which is the very complaint this handler exists for. The page
             # is not reloaded automatically either; that was tried and it can put a
             # control that fires on restore into a loop of reload, refuse, reload.
-            # Instead a marker goes out that the small handler in `base.html` turns
+            # Instead a marker goes out that the small handler in `base_core.html` turns
             # into a visible notice with a reload button -- the person decides when
             # the page goes away, and an unsent change is not swallowed silently.
             answer = JSONResponse(status_code=403, content={"detail": str(exc)})

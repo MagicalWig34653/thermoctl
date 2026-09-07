@@ -659,3 +659,24 @@ def test_the_window_temp_drop_thresholds_never_reach_limits_or_the_rest_schema()
     for field in WINDOW_TEMP_DROP_LIMITS:
         assert field not in LIMITS
         assert field not in ControlResponse.model_fields
+
+
+def test_the_start_page_keeps_the_three_latches_apart(
+    client_als: ClientBuilder, session: Session
+) -> None:
+    """Die drei Riegel sind drei Aussagen, nicht eine.
+
+    Aktorfreigabe, MQTT-Ausgabe und Verbundrolle antworten auf drei verschiedene
+    Fragen und können unabhängig voneinander schiefstehen: scharf, aber der beim
+    Start gebaute Riegel ist zu; oder beides offen, aber diese Instanz ist die
+    Bereitschaft und regelt gar nicht. Ein zusammengefasstes "System OK" wäre in
+    jedem dieser Fälle wahr und trotzdem irreführend -- der Grund, aus dem die
+    Bestandsaufnahme diese Trennung ausdrücklich als "darf nicht verlorengehen"
+    führt.
+    """
+    create_settings(session)
+    page = client_als(ALL_PERMISSIONS).get("/").text
+    for label in ("Aktorfreigabe", "MQTT-Ausgabe", "Rolle im Verbund"):
+        assert label in page, label
+    # Drei getrennte Blöcke, nicht drei Wörter in einem Satz.
+    assert page.count('class="tc-latch"') == 3

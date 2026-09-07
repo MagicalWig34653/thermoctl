@@ -911,7 +911,7 @@ body {
         font-size: 0;
     }
     .schedule-day-column .dropdown-toggle::before {
-        content: "↗";
+        content: "\2026";
         font-size: 0.875rem;
     }
 }
@@ -1364,4 +1364,41 @@ body {
 
 .tc-tenant .btn {
     min-height: 2.75rem;
+}
+
+/* Der Balken, der aus dem Vortag hereinragt: kein Zeichen, sondern eine gezeichnete
+ * Ecke. Ein Piktogramm wie "↶" wird von einem Vorlesewerkzeug als Name ausgesprochen
+ * ("Pfeil nach links mit Haken") mitten in der Uhrzeit; die Aussage steht deshalb als
+ * echter Text daneben und ist hier nur noch optisch. */
+.schedule-carryover {
+    display: inline-block;
+    width: 0;
+    height: 0;
+    vertical-align: baseline;
+    border-top: 0.3em solid transparent;
+    border-bottom: 0.3em solid transparent;
+    border-right: 0.35em solid currentColor;
+    opacity: 0.55;
+}
+
+/* ── Die drei Riegel auf der Startseite ────────────────────────────────────────
+ *
+ * Aktorfreigabe, MQTT-Ausgabe und Verbundrolle stehen nebeneinander und bleiben
+ * drei getrennte Aussagen -- nicht ein zusammengefasstes "System OK". Jede trägt
+ * neben ihrer Marke einen eigenen Satz Klartext: eine Bereitschaftsinstanz, die
+ * aussieht wie die aktive, ist genau der Fehlerfall, den diese Trennung
+ * ausschließen soll. Auf schmalen Bildschirmen untereinander statt gequetscht --
+ * lieber drei volle Zeilen als drei abgeschnittene Sätze. */
+.tc-latches {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr));
+    gap: 0.75rem 1.25rem;
+    width: 100%;
+}
+
+.tc-latch {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    align-items: flex-start;
 }
