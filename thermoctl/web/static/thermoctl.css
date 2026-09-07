@@ -182,13 +182,9 @@ h2, .t-section {
 
 /* ── Navigation ─────────────────────────────────────────────────────────────── */
 
-.tc-head {
-    background: color-mix(in srgb, var(--surface) 72%, transparent);
-    backdrop-filter: blur(12px) saturate(140%);
-    -webkit-backdrop-filter: blur(12px) saturate(140%);
-    border-bottom: 1px solid var(--line);
-}
-
+/* Die Wortmarke des Kiosks. Die angemeldete Oberfläche trägt seit v0.9.0 statt
+ * ihrer den Strich allein (`.tc-brandmark` weiter unten); das Wandtablett behält
+ * den ausgeschriebenen Namen, weil es aus Entfernung angesehen wird. */
 .tc-marker {
     font-weight: 640;
     letter-spacing: -0.02em;
@@ -206,22 +202,6 @@ h2, .t-section {
     vertical-align: -0.1em;
     border-radius: 2px;
     background: linear-gradient(to top, var(--cool), var(--warmth));
-}
-
-.tc-head .nav-link {
-    color: var(--muted);
-    font-weight: 520;
-    padding-inline: 0.7rem;
-}
-
-.tc-head .nav-link:hover,
-.tc-head .nav-link:focus-visible {
-    color: var(--ink);
-}
-
-.tc-head .nav-link.tc-here {
-    color: var(--ink);
-    box-shadow: inset 0 -2px 0 var(--ink);
 }
 
 /* ── Flächen ────────────────────────────────────────────────────────────────── */
@@ -1109,16 +1089,16 @@ body {
     color: var(--ink);
 }
 
+/* Ein Thermometerstrich statt eines Logos -- er kommt aus der Sache selbst, ist
+ * kein Piktogramm, das ein Vorlesewerkzeug benennen müsste, und braucht weder
+ * Bilddatei noch Schriftart. Er stand vorher an der alten Wortmarke der
+ * Kopfleiste und ist mit ihr hierher gewandert. */
 .tc-brandmark {
-    width: 1.9rem;
-    height: 1.9rem;
-    border-radius: var(--radius);
-    display: grid;
-    place-items: center;
-    background: var(--surface-deep);
-    border: 1px solid var(--line-strong);
-    font-family: var(--font-instrument);
-    font-size: 0.75rem;
+    display: inline-block;
+    width: 3px;
+    height: 1.05em;
+    border-radius: 2px;
+    background: linear-gradient(to top, var(--cool), var(--warmth));
 }
 
 /* ── Anlagensicht ──────────────────────────────────────────────────────────── */
