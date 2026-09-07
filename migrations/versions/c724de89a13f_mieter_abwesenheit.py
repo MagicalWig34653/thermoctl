@@ -1,5 +1,15 @@
 """Abwesenheit eines Mieters für eigene Räume
 
+Legt die Tabelle `absence` an -- die Klammer über den Übersteuerungen, die eine
+Abwesenheit ausmachen -- und hängt `zone_override.absence_id` als Zuordnung daran.
+Bestehende Übersteuerungen bleiben `NULL` und gehören damit zu keiner Abwesenheit;
+sonst ließen sie sich später über „Abwesenheit beenden" mitbeenden, ohne dass sie
+je eine gewesen wären.
+
+Ausdrücklich **nicht** derselbe Vorgang wie der anlagenweite Urlaubsbetrieb
+(Tabelle `vacation`): der senkt jede Zone der Anlage ab, eine Abwesenheit nur die
+Räume, die der Handelnde bedienen darf. Siehe `thermoctl/domain/absence.py`.
+
 Revision ID: c724de89a13f
 Revises: c4d18b7e2a95
 Create Date: 2026-09-07
@@ -45,9 +55,17 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     with op.batch_alter_table("zone_override") as batch_op:
-        batch_op.drop_index(batch_op.f("ix_zone_override_absence_id"))
+        # **Reihenfolge:** erst der Fremdschlüssel, dann der Index. Umgekehrt
+        # scheitert der Rückbau unter MariaDB mit
+        # `Cannot drop index 'ix_zone_override_absence_id': needed in a foreign key
+        # constraint` -- InnoDB braucht für jeden Fremdschlüssel einen Index und
+        # lässt den letzten passenden nicht fallen, solange die Bedingung steht.
+        # Unter SQLite fiel das nicht auf: `batch_alter_table` baut die Tabelle dort
+        # ohnehin neu und kennt das Problem nicht. Genau dafür läuft die Suite gegen
+        # beide Datenbanken.
         batch_op.drop_constraint(
             batch_op.f("fk_zone_override_absence_id_absence"), type_="foreignkey"
         )
+        batch_op.drop_index(batch_op.f("ix_zone_override_absence_id"))
         batch_op.drop_column("absence_id")
     op.drop_table("absence")

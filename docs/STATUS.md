@@ -126,7 +126,23 @@ in der Wohnungssicht wäre eine funktionslose Einstellung. Die Hinweise erschein
 stattdessen in der Oberfläche selbst (Startseite, oberer Hinweisbereich). Ein echter
 persönlicher Kanal wäre eine eigene Aufgabe.
 
-**Noch offen:** Sicherheitsdurchsicht, Versionsmetadaten und CHANGELOG für v0.9.0.
+**Gegen beide Datenbanken geprüft** (SQLite und MariaDB, je 100 % Abdeckung). Der
+MariaDB-Lauf hat dabei zwei Dinge gefunden, die unter SQLite unsichtbar blieben:
+
+* Der **Rückbau der Abwesenheitsmigration** scheiterte an
+  `Cannot drop index 'ix_zone_override_absence_id': needed in a foreign key
+  constraint`. InnoDB braucht für jeden Fremdschlüssel einen Index und gibt den
+  letzten passenden nicht her, solange die Bedingung steht -- erst der
+  Fremdschlüssel, dann der Index. SQLites `batch_alter_table` baut die Tabelle
+  ohnehin neu und kennt das Problem nicht.
+* Ein **zu langer Zonenname in einem Test** ergab über `zone_with_schedule` einen
+  `setpoint_mode.code` über der Spaltenlänge von 32 Zeichen. SQLite nimmt ihn
+  klaglos, MariaDB nicht.
+
+Nebenbei: **das MariaDB-Passwort in `CLAUDE.md` war `prüfen` und ist `pruefen`** --
+die CI (`.github/workflows/ci.yml`) benutzt seit jeher die ASCII-Fassung. Ein Lauf
+mit der falschen Fassung scheitert an `Access denied` und sieht aus wie ein
+Codefehler. Korrigiert.
 
 ## v0.8.1 -- SQLite-Sperrfehler im Verbund-Anspruch behoben
 

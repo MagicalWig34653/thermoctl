@@ -2038,7 +2038,11 @@ def test_next_switch_ignores_a_running_override(session: Session) -> None:
     -- es muss der Zeitplanwert der nächsten Phase bleiben."""
     zone = zone_with_schedule(
         session,
-        "vorschau-ignoriert-uebersteuerung",
+        # Kurz halten: `zone_with_schedule` baut daraus `frost-<name>` für
+        # `setpoint_mode.code`, und die Spalte fasst 32 Zeichen. Unter SQLite
+        # ginge ein längerer Name durch, MariaDB lehnt ihn ab -- genau der Fall,
+        # für den die Suite gegen beide Datenbanken läuft.
+        "vorschau-ohne-ueberst",
         points=[(1, 360, "tag", Decimal("21.0")), (1, 1200, "nacht", Decimal("18.0"))],
         override=(Decimal("24.0"), None),
     )

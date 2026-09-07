@@ -173,10 +173,13 @@ Aus der Umsetzung von Teilprojekt 1, damit es niemand erneut herausfinden muss:
   geprüft" berichtet worden, während jeder dieser Läufe SQLite war; aufgefallen ist es
   einem Agenten, nicht der Hauptsession. Der MariaDB-Lauf lautet:
   ```
-  THERMOCTL_TEST_DATABASE_URL="mysql+pymysql://root:prüfen@127.0.0.1:3306/<eigene_db>" \
+  THERMOCTL_TEST_DATABASE_URL="mysql+pymysql://root:pruefen@127.0.0.1:3306/<eigene_db>" \
     .venv/bin/python -m pytest -q
   ```
-  Die CI benutzt die richtige Variable und war nie betroffen.
+  Die CI benutzt die richtige Variable und war nie betroffen. **Das Passwort ist
+  `pruefen`, ohne Umlaut** -- hier stand bis v0.9.0 `prüfen`, und ein Lauf damit
+  scheitert an `Access denied` statt an einem Fehler im Code;
+  `.github/workflows/ci.yml` benutzt seit jeher die ASCII-Fassung.
 - **Migrationen vertragen keine echte Parallelität.** Zweigen zwei Aufgaben vom selben Stand
   ab, tragen beide dieselbe Vorgängerrevision, und die Historie hat zwei Köpfe. Die
   Hauptsession ordnet sie beim Zusammenführen; die Agents lassen `down_revision` in Ruhe.
