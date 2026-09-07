@@ -2,6 +2,42 @@
 
 Letzte Aktualisierung: 2026-09-07.
 
+## v0.9.0 in Arbeit -- UI-Redesign mit getrennter Admin- und Mieteroberfläche
+
+Branch `feature/v0.9.0-ui-redesign`. Die Arbeitsanweisung liegt unter
+`docs/ui-redesign/` (Zielbild als HTML-Demos, Bestandsaufnahme der heutigen WebUI,
+`IMPLEMENTATION.md` mit der Definition of Done).
+
+**Fertig: das UI-Profil.** `access_group.ui_profile` (`admin` / `tenant`, Migration
+`c4d18b7e2a95`) entscheidet, **welche** Oberfläche jemand bekommt -- ausdrücklich
+nicht, **was** er darf. Das bleibt allein Sache der Grants. Beide Prüfungen laufen
+hintereinander: der Wächter `web/guards.py::require_web_ui_profile` hängt als
+Router-Dependency vor den Anlagenseiten, jede vorhandene `require(...)`- und
+`visible_zones(...)`-Prüfung in den Endpunkten bleibt unverändert bestehen.
+
+Warum das Profil an der Gruppe hängt und nicht am Benutzer: dort hängen schon die
+Rechte, und ein zweiter Zuordnungsweg wäre eine zweite Wahrheit darüber, wer wozu
+gehört. Ein Benutzer in mehreren Gruppen ist nur dann Mieter, wenn **alle** seine
+Gruppen Mietergruppen sind (`domain/ui_profile.py::combined_profile`).
+
+**Beim Upgrade wird nichts umklassifiziert.** Bestehende Gruppen bekommen `admin` --
+auch eine, die "Mieter" heißt. Ein Name ist kein Modell, und eine Anlage, die nach
+`alembic upgrade head` ihre Verwaltung verliert, wäre der teuerste denkbare
+Migrationsfehler (Test: `test_migrations.py::
+test_existing_groups_keep_the_admin_interface_on_upgrade`). Die Einrichtung legt
+zusätzlich die Vorlage "Wohnung" an -- Mieterprofil, aber **kein einziges Recht**;
+welche Zonen dazugehören, trägt die Verwaltung danach ein.
+
+Die Navigationstabelle (`web/navigation.py`) trägt jetzt Abschnitt und Profil je
+Eintrag und ist nach den vier Blöcken der Admin-Demo geordnet (Hauptbereich,
+Analyse, System, Zugänge). Die Startseite und `/statistics` sind dabei neu in die
+Tabelle gekommen.
+
+**Noch offen** (Reihenfolge nach `docs/ui-redesign/IMPLEMENTATION.md` §23): gemeinsame
+Template-Basis, Admin-Shell, Mieter-Shell samt Startseite, Mieter-Zeitplan,
+Heizzeit, Kontobereich, „Zur nächsten Schaltzeit springen", Abwesenheit,
+Kiosk-Regression, Sicherheitsdurchsicht.
+
 ## v0.8.1 -- SQLite-Sperrfehler im Verbund-Anspruch behoben
 
 CI schlug nach v0.8.0 zeitweise fehl: `tests/test_cluster.py::test_two_processes_

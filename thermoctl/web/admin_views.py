@@ -24,21 +24,31 @@ from thermoctl.domain.administration import (
     delete_group,
     revoke_token,
     set_group_permissions,
+    set_group_ui_profile,
     set_password,
     set_user_active,
     set_user_group,
 )
 from thermoctl.domain.authz import PERMISSION_AREAS, Forbidden, require
 from thermoctl.domain.principal import Principal
+from thermoctl.domain.ui_profile import WebUiProfile, parse_profile
 from thermoctl.web import is_partial_swap
 from thermoctl.web.forms import FormError, form_again, password_form_error
+from thermoctl.web.guards import admin_ui_only
 from thermoctl.web.urls import prefixed
 
 # `include_in_schema=False`: the OpenAPI description is the contract of the REST
 # interface. These routes deliver HTML for humans, and in the interface under
 # /docs there would otherwise be a form route next to every real endpoint whose
 # 'Try it out' triggers a real change.
-router = APIRouter(dependencies=[Depends(csrf_protection)], include_in_schema=False)
+# `admin_ui_only`: diese Seiten gehören zur Anlagensicht. Ein Mieterprofil wird
+# hier schon vor der Rechteprüfung abgewiesen -- eine ausgeblendete Verknüpfung
+# in der Navigation ist kein Riegel (siehe `web/guards.py`). Die bestehenden
+# Rechteprüfungen in den Endpunkten bleiben davon unberührt bestehen.
+router = APIRouter(
+    dependencies=[Depends(csrf_protection), Depends(admin_ui_only)],
+    include_in_schema=False,
+)
 
 # `require()` raises `Forbidden` when a permission is missing -- the global handler
 # in `thermoctl/app.py` translates that uniformly into 403. No route here catches
@@ -289,6 +299,14 @@ def _group_list(
         summary=summary,
         scopes=scopes,
         all_zones=session.scalars(select(Zone).order_by(Zone.name)).all(),
+        # Die Oberfläche, die die Mitglieder dieser Gruppe bekommen. Ausdrücklich
+        # keine Berechtigung -- die Vorlage schreibt das auch dazu, sonst liest sich
+        # eine Auswahl neben der Rechtematrix wie eine weitere Rechtevergabe.
+        ui_profiles={group.id: parse_profile(group.ui_profile) for group in groups},
+        profile_choices=[
+            (WebUiProfile.ADMIN.value, "Anlage (Administration)"),
+            (WebUiProfile.TENANT.value, "Wohnung (Mieter)"),
+        ],
         hint=hint,
         is_htmx=is_partial_swap(request),
     )
@@ -311,18 +329,51 @@ async def group_create_view(
     session: Annotated[Session, Depends(get_session)],
     name: Annotated[str, Form()] = "",
     description: Annotated[str, Form()] = "",
+    ui_profile: Annotated[str, Form()] = "",
 ) -> Response:
     require(principal, "group.manage")
     try:
         create_group(
             session, name=name, description=description or None,
             actor_id=principal.user_id,
+            # `parse_profile` und nicht `WebUiProfile(...)`: ein unbekannter Wert aus
+            # dem Formular soll die Gruppe als Anlagengruppe anlegen, nicht die
+            # Anfrage mit einem 500 beenden.
+            ui_profile=parse_profile(ui_profile or None),
         )
     except AdministrationError as exc:
         return _group_list(
             request, session, FormError("name", str(exc)),
-            {"name": name, "description": description},
+            {"name": name, "description": description, "ui_profile": ui_profile},
         )
+    return RedirectResponse(prefixed(request, "/groups"), status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/groups/{group_id}/ui-profile")
+async def group_ui_profile_view(
+    request: Request,
+    group_id: int,
+    principal: Annotated[Principal, Depends(current_principal)],
+    session: Annotated[Session, Depends(get_session)],
+    ui_profile: Annotated[str, Form()] = "",
+) -> Response:
+    """Stellt die Oberfläche einer Gruppe um.
+
+    Dasselbe Recht wie die Rechtematrix (`group.manage`): wer entscheiden darf, was
+    eine Gruppe kann, entscheidet auch, welche Oberfläche sie dafür bekommt. Ein
+    eigenes Recht hätte den umgekehrten Fehler -- jemand könnte einer Gruppe die
+    Anlagensicht geben, ohne über ihre Rechte zu bestimmen.
+    """
+    require(principal, "group.manage")
+    group = session.get(AccessGroup, group_id)
+    if group is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Gruppe nicht gefunden")
+    try:
+        set_group_ui_profile(
+            session, group, parse_profile(ui_profile or None), actor_id=principal.user_id
+        )
+    except AdministrationError as exc:
+        return _group_list(request, session, hint=str(exc))
     return RedirectResponse(prefixed(request, "/groups"), status_code=status.HTTP_303_SEE_OTHER)
 
 

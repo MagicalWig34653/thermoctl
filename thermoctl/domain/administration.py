@@ -29,6 +29,7 @@ from thermoctl.db.models.identity import (
     UserAccessGroup,
 )
 from thermoctl.db.models.lookup import Permission
+from thermoctl.domain.ui_profile import DEFAULT_PROFILE, WebUiProfile, parse_profile
 
 
 class AdministrationError(Exception):
@@ -239,20 +240,54 @@ def set_password(
 
 def create_group(
     session: Session, *, name: str, description: str | None, actor_id: int | None,
-    source: str = "web",
+    source: str = "web", ui_profile: WebUiProfile = DEFAULT_PROFILE,
 ) -> AccessGroup:
     if not name.strip():
         raise AdministrationError("Der Gruppenname darf nicht leer sein.")
     if session.scalar(select(AccessGroup).where(AccessGroup.name == name)) is not None:
         raise AdministrationError(f"Die Gruppe '{name}' gibt es bereits.")
-    group = AccessGroup(name=name, description=description, is_builtin=False)
+    group = AccessGroup(
+        name=name, description=description, is_builtin=False,
+        ui_profile=ui_profile.value,
+    )
     session.add(group)
     session.flush()
     audit.record(
         session, source=source, action="group.created", object_type="access_group",
-        object_id=str(group.id), summary=f"Gruppe '{name}' angelegt", user_id=actor_id,
+        object_id=str(group.id),
+        summary=f"Gruppe '{name}' angelegt ({ui_profile.value})", user_id=actor_id,
     )
     return group
+
+
+def set_group_ui_profile(
+    session: Session, group: AccessGroup, ui_profile: WebUiProfile, *,
+    actor_id: int | None, source: str = "web",
+) -> None:
+    """Stellt die Oberfläche einer Gruppe um -- Anlagensicht oder Wohnungssicht.
+
+    Ausdrücklich keine Rechteänderung: die Mitglieder behalten jedes Recht, das sie
+    hatten. Was sich ändert, ist allein, welche Seiten ihnen die Weboberfläche zeigt
+    und öffnet (`domain.ui_profile`, `web.guards`).
+
+    Der letzte Weg in die Verwaltung darf dabei nicht zufallen: eine Gruppe, ohne die
+    kein Benutzer mit `group.manage` mehr eine Admin-Oberfläche hätte, lässt sich
+    nicht auf Mieter umstellen. Sonst wäre die Rechtematrix zwar noch vergeben, aber
+    für niemanden mehr erreichbar -- derselbe Grund, aus dem `delete_group` die
+    letzte Verwaltungsgruppe nicht löschen lässt.
+    """
+    if parse_profile(group.ui_profile) is ui_profile:
+        return
+    if ui_profile is WebUiProfile.TENANT:
+        _without_this_group_no_administrator(session, group)
+    group.ui_profile = ui_profile.value
+    session.flush()
+    audit.record(
+        session, source=source, action="group.ui_profile_changed",
+        object_type="access_group", object_id=str(group.id),
+        summary=f"Oberfläche von '{group.name}' auf {ui_profile.value} gestellt",
+        user_id=actor_id,
+    )
 
 
 def delete_group(

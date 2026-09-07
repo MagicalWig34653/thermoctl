@@ -74,6 +74,7 @@ from thermoctl.domain.time import local_day_start_utc, local_time
 from thermoctl.integrations import notification
 from thermoctl.services.shadow_run import PI_FALLBACK_INELIGIBLE
 from thermoctl.web import templates
+from thermoctl.web.guards import admin_ui_only
 from thermoctl.web.urls import prefixed
 
 # Readable text for `shadow_decision.controller_fallback_reason` (specification
@@ -96,7 +97,14 @@ PI_FALLBACK_LABELS: dict[str, str] = {
 # interface. These routes deliver HTML for humans, and in the interface under
 # /docs there would otherwise be a form route next to every real endpoint whose
 # 'Try it out' triggers a real change.
-router = APIRouter(dependencies=[Depends(csrf_protection)], include_in_schema=False)
+# `admin_ui_only`: diese Seiten gehören zur Anlagensicht. Ein Mieterprofil wird
+# hier schon vor der Rechteprüfung abgewiesen -- eine ausgeblendete Verknüpfung
+# in der Navigation ist kein Riegel (siehe `web/guards.py`). Die bestehenden
+# Rechteprüfungen in den Endpunkten bleiben davon unberührt bestehen.
+router = APIRouter(
+    dependencies=[Depends(csrf_protection), Depends(admin_ui_only)],
+    include_in_schema=False,
+)
 
 
 def _page(

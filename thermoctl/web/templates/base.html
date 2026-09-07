@@ -103,7 +103,18 @@ einfach etwas später).
 <div id="tc-loading-bar" class="tc-loading-bar" aria-hidden="true"></div>
 {% set here = request.url.path %}
 {% set main_navigation = navigation_items | selectattr("section", "equalto", "main") | list %}
-{% set settings_navigation = navigation_items | selectattr("section", "equalto", "settings") | list %}
+{#
+Die drei hinteren Blöcke der Seitenleiste (Analyse, System, Zugänge) liegen in der
+schmalen Kopfleiste zusammen unter "Einstellungen". Getrennte Untertitel statt einer
+Liste aus zwölf Einträgen: die Reihenfolge der Blöcke ist dieselbe wie in der
+Navigationstabelle, damit beides nicht auseinanderläuft.
+#}
+{% set navigation_sections = [
+    ("Analyse", navigation_items | selectattr("section", "equalto", "analysis") | list),
+    ("System", navigation_items | selectattr("section", "equalto", "system") | list),
+    ("Zugänge", navigation_items | selectattr("section", "equalto", "access") | list),
+] %}
+{% set settings_navigation = navigation_sections | map(attribute=1) | sum(start=[]) %}
 {% macro nav_link(target, label, exact=false) %}
     {% set active = here == target if exact else (here == target or here.startswith(target ~ "/")) %}
     <li class="nav-item">
@@ -139,8 +150,13 @@ einfach etwas später).
                         Einstellungen
                     </button>
                     <ul class="dropdown-menu dropdown-menu-end">
-                        {% for item in settings_navigation %}
+                        {% for title, items in navigation_sections %}
+                        {% if items %}
+                        <li><h6 class="dropdown-header">{{ title }}</h6></li>
+                        {% for item in items %}
                         <li><a class="dropdown-item" href="{{ url_prefix }}{{ item.path }}">{{ item.label }}</a></li>
+                        {% endfor %}
+                        {% endif %}
                         {% endfor %}
                     </ul>
                 </li>

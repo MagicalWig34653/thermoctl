@@ -74,12 +74,36 @@ der ganze Stand; die Domäne bildet die Differenz.
                 <p class="t-quiet mb-0">{{ group.description }}</p>
                 {% endif %}
             </div>
+            <div class="d-flex align-items-center gap-2 flex-wrap">
+            {#
+            Die Oberfläche der Gruppe. Bewusst neben und nicht in der Rechtematrix:
+            sie vergibt kein Recht, sie entscheidet nur, welche Seiten die Mitglieder
+            zu sehen bekommen. Der Hinweistext sagt das, weil eine Auswahl an dieser
+            Stelle sonst wie eine weitere Rechtevergabe gelesen wird.
+            #}
+            <form method="post" action="{{ url_prefix }}/groups/{{ group.id }}/ui-profile"
+                  class="d-flex align-items-center gap-2">
+                <label class="t-label mb-0" for="ui-profile-{{ group.id }}">Oberfläche</label>
+                <select class="form-select form-select-sm w-auto" id="ui-profile-{{ group.id }}"
+                        name="ui_profile">
+                    {% for value, label in profile_choices %}
+                    <option value="{{ value }}"
+                            {{ "selected" if ui_profiles[group.id].value == value }}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+                <button type="submit" class="btn btn-sm btn-outline-secondary">Übernehmen</button>
+            </form>
             {% if not group.is_builtin %}
             <form method="post" action="{{ url_prefix }}/groups/{{ group.id }}/delete">
                 <button type="submit" class="btn btn-sm btn-outline-danger">Gruppe löschen</button>
             </form>
             {% endif %}
+            </div>
         </div>
+        <p class="t-quiet small mb-0 mt-1">
+            Die Oberfläche entscheidet, welche Seiten die Mitglieder zu sehen bekommen —
+            nicht, was sie dürfen. Das steht weiterhin allein in den Rechten darunter.
+        </p>
 
         {#
         Die Zusammenfassung steht offen, der Editor klappt auf. Ohne das war die Seite
@@ -127,6 +151,19 @@ der ganze Stand; die Domäne bildet die Differenz.
                         errors=errors.get("name", "")) }}
             {{ text_field("description", "Beschreibung", values.get("description", ""),
                         help_text="Wofür ist diese Gruppe gedacht?") }}
+            <div class="mb-3">
+                <label class="form-label" for="new-group-ui-profile">Oberfläche</label>
+                <select class="form-select" id="new-group-ui-profile" name="ui_profile">
+                    {% for value, label in profile_choices %}
+                    <option value="{{ value }}"
+                            {{ "selected" if values.get("ui_profile", "admin") == value }}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+                <div class="form-text">
+                    „Wohnung“ zeigt die verständliche Mieteransicht mit Räumen, Zeitplan und
+                    Heizzeit. Welche Räume das sind, entscheiden die Rechte dieser Gruppe.
+                </div>
+            </div>
             <button type="submit" class="btn btn-primary">Anlegen</button>
         </form>
     </article>

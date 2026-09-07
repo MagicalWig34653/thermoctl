@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from thermoctl.db.base import utcnow
 from thermoctl.db.models.credential import ApiToken, ApiTokenPermission
 from thermoctl.db.models.identity import (
+    AccessGroup,
     GroupPermission,
     User,
     UserAccessGroup,
@@ -11,6 +12,12 @@ from thermoctl.db.models.identity import (
 from thermoctl.db.models.lookup import Permission
 from thermoctl.db.models.zone import Zone
 from thermoctl.domain.principal import Principal
+from thermoctl.domain.ui_profile import (
+    DEFAULT_PROFILE,
+    WebUiProfile,
+    combined_profile,
+    parse_profile,
+)
 
 
 class Forbidden(Exception):
@@ -32,8 +39,30 @@ def _user_permissions(session: Session, user: User) -> frozenset[tuple[str, int 
     return frozenset((code, zone_id) for code, zone_id in rows)
 
 
+def _user_profile(session: Session, user: User) -> WebUiProfile:
+    """Das UI-Profil eines Benutzers aus den Profilen seiner Gruppen.
+
+    Ein inaktiver Benutzer bekommt gar keine Oberfläche zu sehen (die Anmeldung
+    lehnt ihn ab); der Vorgabewert hier ist deshalb keine Aussage über ihn, sondern
+    nur ein definierter Wert für einen Principal, der ohnehin nichts darf.
+    """
+    if not user.is_active:
+        return DEFAULT_PROFILE
+    rows = session.execute(
+        select(AccessGroup.ui_profile)
+        .join(UserAccessGroup, UserAccessGroup.access_group_id == AccessGroup.id)
+        .where(UserAccessGroup.user_id == user.id)
+    ).all()
+    return combined_profile([parse_profile(value) for (value,) in rows])
+
+
 def principal_for_user(session: Session, user: User) -> Principal:
-    return Principal(user_id=user.id, token_id=None, grants=_user_permissions(session, user))
+    return Principal(
+        user_id=user.id,
+        token_id=None,
+        grants=_user_permissions(session, user),
+        ui_profile=_user_profile(session, user),
+    )
 
 
 def principal_for_token(session: Session, token: ApiToken) -> Principal:
@@ -52,6 +81,10 @@ def principal_for_token(session: Session, token: ApiToken) -> Principal:
     if owner is None:
         return Principal(user_id=token.user_id, token_id=token.id, grants=frozenset())
     from_owner = _user_permissions(session, owner)
+    # Ein Token erbt das Profil seines Besitzers, wie es auch dessen Rechte erbt. Für
+    # REST und MCP spielt es keine Rolle -- dort wird kein HTML gerendert -- wohl aber
+    # für den Kiosk, dessen Principal über denselben Weg entsteht.
+    profile = _user_profile(session, owner)
 
     rows = session.execute(
         select(Permission.code, ApiTokenPermission.zone_id)
@@ -65,7 +98,12 @@ def principal_for_token(session: Session, token: ApiToken) -> Principal:
         for code, zone_id in from_token
         if (code, zone_id) in from_owner or (code, None) in from_owner
     }
-    return Principal(user_id=token.user_id, token_id=token.id, grants=frozenset(effective))
+    return Principal(
+        user_id=token.user_id,
+        token_id=token.id,
+        grants=frozenset(effective),
+        ui_profile=profile,
+    )
 
 
 # The permissions, sorted by area the way a human looks for them -- not alphabetically

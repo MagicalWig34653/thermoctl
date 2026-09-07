@@ -36,6 +36,7 @@ from thermoctl.db.models.passkey import UserPasskey
 from thermoctl.db.models.schedule import SchedulePoint
 from thermoctl.db.models.state import DeviceCommand, ShadowDecision, ZoneState
 from thermoctl.db.models.zone import SetpointMode, Zone, ZoneSetpoint
+from thermoctl.domain.ui_profile import WebUiProfile
 
 # A violated CHECK constraint arrives as a different exception depending on the
 # database: SQLite reports IntegrityError, MariaDB reports error 4025, which
@@ -203,9 +204,12 @@ def create_user(session: Session, name: str) -> User:
 
 
 def _group_with_permissions(
-    session: Session, name: str, permissions: list[tuple[str, int | None]]
+    session: Session,
+    name: str,
+    permissions: list[tuple[str, int | None]],
+    ui_profile: WebUiProfile = WebUiProfile.ADMIN,
 ) -> AccessGroup:
-    group = AccessGroup(name=name)
+    group = AccessGroup(name=name, ui_profile=ui_profile.value)
     session.add(group)
     session.flush()
     for code, zone_id in permissions:
@@ -224,14 +228,22 @@ def user_with_permissions(
     name: str,
     permissions: list[tuple[str, int | None]],
     second_group: list[tuple[str, int | None]] | None = None,
+    ui_profile: WebUiProfile = WebUiProfile.ADMIN,
 ) -> User:
     """Creates a user and attaches them to one (or two) access group(s) with the
-    given ``(code, zone_id)`` permissions."""
+    given ``(code, zone_id)`` permissions.
+
+    ``ui_profile`` decides which web interface the user gets -- deliberately a
+    separate argument from the permissions, exactly as the two are separate in the
+    model: a tenant profile takes no permission away and grants none.
+    """
     user_record = create_user(session, name)
-    group = _group_with_permissions(session, f"gruppe-{name}", permissions)
+    group = _group_with_permissions(session, f"gruppe-{name}", permissions, ui_profile)
     session.add(UserAccessGroup(user_id=user_record.id, access_group_id=group.id))
     if second_group is not None:
-        group_two = _group_with_permissions(session, f"gruppe-{name}-2", second_group)
+        group_two = _group_with_permissions(
+            session, f"gruppe-{name}-2", second_group, ui_profile
+        )
         session.add(UserAccessGroup(user_id=user_record.id, access_group_id=group_two.id))
     session.flush()
     return user_record

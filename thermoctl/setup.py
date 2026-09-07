@@ -17,6 +17,7 @@ from thermoctl.db.models.identity import (
 from thermoctl.db.models.lookup import Permission
 from thermoctl.db.models.operations import Setting
 from thermoctl.db.models.zone import SetpointMode
+from thermoctl.domain.ui_profile import DEFAULT_PROFILE, WebUiProfile
 
 log = logging.getLogger(__name__)
 
@@ -27,6 +28,19 @@ EXAMPLE_GROUPS: dict[str, list[str]] = {
                   "token.self"],
     "Nur lesen": ["zone.read", "device.read"],
     "Integration": ["zone.read"],
+    # Die Vorlage für eine Wohnung. Bewusst **ohne** jedes Recht: welche Zonen ein
+    # Mieter sehen und bedienen darf, ist die eine Angabe, die niemand raten kann --
+    # und ein anlagenweites `zone.read` in einer Vorlage wäre genau der Fehler, gegen
+    # den die zonenbezogenen Rechte überhaupt eingeführt wurden. Die Verwaltung trägt
+    # nach der Einrichtung die Zonen dieser Wohnung ein. Der Unterschied zu den
+    # anderen Vorlagen liegt allein im UI-Profil (siehe `EXAMPLE_GROUP_PROFILES`).
+    "Wohnung": [],
+}
+
+# Welche Oberfläche die Beispielgruppen bekommen. Alles, was nicht hier steht, ist
+# `admin` -- derselbe Vorgabewert wie in der Migration für bestehende Installationen.
+EXAMPLE_GROUP_PROFILES: dict[str, WebUiProfile] = {
+    "Wohnung": WebUiProfile.TENANT,
 }
 
 # The setup token is the one secret this project deliberately writes to the log --
@@ -93,11 +107,18 @@ def run_setup(
     alle = {p.code: p for p in session.scalars(select(Permission))}
     groups: dict[str, AccessGroup] = {}
     for name, codes in EXAMPLE_GROUPS.items():
-        group = AccessGroup(name=name, is_builtin=True)
+        group = AccessGroup(
+            name=name,
+            is_builtin=True,
+            ui_profile=EXAMPLE_GROUP_PROFILES.get(name, DEFAULT_PROFILE).value,
+        )
         session.add(group)
         session.flush()
         groups[name] = group
-        for code in codes or alle:
+        # `codes or alle` hieße für die leere Liste "alle Rechte". Für "Verwaltung"
+        # ist das gemeint, für "Wohnung" ausdrücklich nicht -- eine Mietervorlage mit
+        # allen Rechten wäre das Gegenteil dessen, wozu sie da ist.
+        for code in codes or (() if name in EXAMPLE_GROUP_PROFILES else alle):
             session.add(
                 GroupPermission(access_group_id=group.id, permission_id=alle[code].id,
                                 zone_id=None)

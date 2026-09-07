@@ -604,3 +604,49 @@ def test_upgrade_head_against_an_already_current_database_is_a_quick_no_op(
     # Nowhere near the migration lock's own default timeout (60s) -- a
     # no-op run against an uncontended lock must not even come close.
     assert elapsed < 20, elapsed
+
+
+@pytest.mark.migration
+def test_existing_groups_keep_the_admin_interface_on_upgrade(
+    migrations_database_url: str,
+) -> None:
+    """Der eine Punkt, an dem diese Migration schiefgehen könnte.
+
+    Eine bestehende Installation hat ihre Gruppen nie als Mietergruppe
+    gekennzeichnet -- es gab das Feld nicht. Bekämen sie beim Upgrade `tenant`,
+    verlöre die laufende Anlage mit einem Aufruf von `alembic upgrade head` ihre
+    gesamte Verwaltung, ohne dass jemand etwas geändert hätte. Deshalb wird hier
+    eine Gruppe *vor* der Migration angelegt und danach nachgesehen.
+
+    Und zwar eine, deren Name nach Mieter klingt: die Migration darf ausdrücklich
+    nicht anhand des Namens klassifizieren -- ein Name ist kein Modell.
+    """
+    before = _alembic(migrations_database_url, "downgrade", "43aa18ba1c12")
+    assert before.returncode == 0, before.stderr
+
+    db_engine = create_engine(migrations_database_url)
+    try:
+        with db_engine.begin() as connection:
+            connection.execute(
+                text(
+                    "INSERT INTO access_group (name, description, is_builtin) "
+                    "VALUES ('Mieter', 'klingt nach Wohnung, ist aber Verwaltung', false)"
+                )
+            )
+
+        up = _alembic(migrations_database_url, "upgrade", "head")
+        assert up.returncode == 0, up.stderr
+        with db_engine.connect() as connection:
+            profile = connection.execute(
+                text("SELECT ui_profile FROM access_group WHERE name = 'Mieter'")
+            ).scalar_one()
+        assert profile == "admin"
+
+        down = _alembic(migrations_database_url, "downgrade", "43aa18ba1c12")
+        assert down.returncode == 0, down.stderr
+        up_again = _alembic(migrations_database_url, "upgrade", "head")
+        assert up_again.returncode == 0, up_again.stderr
+        with db_engine.begin() as connection:
+            connection.execute(text("DELETE FROM access_group WHERE name = 'Mieter'"))
+    finally:
+        db_engine.dispose()

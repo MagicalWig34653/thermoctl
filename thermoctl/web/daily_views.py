@@ -32,13 +32,31 @@ from thermoctl.domain.zone_settings import (
     validate_valve_protection,
 )
 from thermoctl.web.forms import FormError, form_again
+from thermoctl.web.guards import admin_ui_only
 from thermoctl.web.urls import prefixed
 
 # `include_in_schema=False`: the OpenAPI description is the contract of the REST
 # interface. These routes deliver HTML for humans, and in the interface under
 # /docs there would otherwise be a form route next to every real endpoint whose
 # 'Try it out' triggers a real change.
-router = APIRouter(dependencies=[Depends(csrf_protection)], include_in_schema=False)
+# Zwei Router, weil dieses Modul zwei verschiedene Dinge enthält.
+#
+# `router` trägt die Regelparameter einer Zone -- Hysterese, Mindestschaltdauern,
+# PI-Regelung. Das ist Anlagenkonfiguration und gehört in die Admin-Oberfläche;
+# deshalb hängt hier `admin_ui_only`.
+#
+# `shared_router` trägt die drei Alltagsaktionen an einer Zone: Sollwert des
+# laufenden Modus verstellen, übersteuern, Übersteuerung beenden. Die braucht die
+# Mieteroberfläche genauso wie die Admin-Oberfläche, und sie sind vollständig über
+# zonenbezogene Rechte abgesichert (`setpoint.write`, `override.create`,
+# `override.cancel`). Ein Profil-Wächter davor würde nichts absichern, was die
+# Rechteprüfung nicht schon absichert, aber die Mieteroberfläche funktionsunfähig
+# machen.
+router = APIRouter(
+    dependencies=[Depends(csrf_protection), Depends(admin_ui_only)],
+    include_in_schema=False,
+)
+shared_router = APIRouter(dependencies=[Depends(csrf_protection)], include_in_schema=False)
 
 FELDER = (
     "hysteresis_k",
@@ -268,7 +286,7 @@ async def save_window_temp_drop_detection(
     )
 
 
-@router.post("/zones/{zone_id}/override")
+@shared_router.post("/zones/{zone_id}/override")
 async def create_override_view(
     zone_id: int,
     request: Request,
@@ -330,7 +348,7 @@ async def create_override_view(
     return RedirectResponse(prefixed(request, "/"), status.HTTP_303_SEE_OTHER)
 
 
-@router.post("/zones/{zone_id}/override/cancel")
+@shared_router.post("/zones/{zone_id}/override/cancel")
 async def end_override(
     zone_id: int,
     request: Request,
@@ -347,7 +365,7 @@ async def end_override(
 THERMOSTAT_STEP = Decimal("0.5")
 
 
-@router.post("/zones/{zone_id}/thermostat")
+@shared_router.post("/zones/{zone_id}/thermostat")
 async def adjust_thermostat(
     zone_id: int,
     request: Request,

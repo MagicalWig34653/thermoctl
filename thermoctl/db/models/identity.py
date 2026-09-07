@@ -34,6 +34,15 @@ class AccessGroup(Base):
     name: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
     description: Mapped[str | None] = mapped_column(String(255), nullable=True)
     is_builtin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # Welche Oberfläche die Mitglieder dieser Gruppe bekommen -- "admin" oder
+    # "tenant", siehe `domain.ui_profile`. Ausdrücklich keine Berechtigung: was ein
+    # Mitglied darf, steht weiterhin allein in `group_permission`. Als Zeichenkette
+    # und nicht als ENUM, weil das Projekt datenbankagnostisch bleibt (Grundsatz 3);
+    # gelesen wird sie über `parse_profile`, das einen unbekannten Wert auf den
+    # Vorgabewert zurückfallen lässt.
+    ui_profile: Mapped[str] = mapped_column(
+        String(16), default="admin", server_default="admin", nullable=False
+    )
 
 
 class UserAccessGroup(Base):
