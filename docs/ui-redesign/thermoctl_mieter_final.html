@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>thermoctl – Mieter Demo</title>
+<style>
+:root{
+  color-scheme:light dark;
+  --bg:#f5f6f4;--surface:#ffffff;--surface2:#f8f9f7;--text:#1d2420;--muted:#68736c;
+  --line:#dde3de;--accent:#236248;--accent2:#174a35;--accent-soft:#e6f1eb;
+  --warm:#bf642d;--warm-soft:#fff0e6;--cool:#58748c;--cool-soft:#ebf2f7;
+  --warn:#99621e;--warn-soft:#fff4d9;--danger:#ae4945;--danger-soft:#fff0ef;
+  --shadow:0 18px 50px rgba(25,38,30,.08);--r-xl:28px;--r-lg:20px;--r-md:14px;
+}
+@media(prefers-color-scheme:dark){:root{
+  --bg:#111512;--surface:#191f1b;--surface2:#202722;--text:#f2f5f3;--muted:#9fa9a2;--line:#303934;
+  --accent:#8fc9ac;--accent2:#b0ddc2;--accent-soft:#20362b;--warm:#f0a06d;--warm-soft:#3b281d;
+  --cool:#9db9cf;--cool-soft:#20303c;--warn:#efc16f;--warn-soft:#3b3119;--danger:#ee8c86;--danger-soft:#3b2423;
+  --shadow:0 18px 50px rgba(0,0,0,.26);
+}}
+*{box-sizing:border-box} html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--text);font-family:ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+button,input,select{font:inherit;color:inherit}.app{min-height:100vh}.shell{width:min(1080px,100%);margin:auto;padding:0 24px 110px}
+header{height:78px;display:flex;align-items:center;justify-content:space-between;gap:18px;position:sticky;top:0;z-index:30;background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:blur(16px)}
+.brand{display:flex;align-items:center;gap:10px;font-weight:850;letter-spacing:-.03em}.brandmark{width:34px;height:34px;border-radius:12px;display:grid;place-items:center;background:var(--accent);color:#fff}.brandmark svg{width:18px}
+.topnav{display:flex;gap:4px;padding:4px;background:var(--surface2);border:1px solid var(--line);border-radius:14px}.topnav button{border:0;background:transparent;padding:9px 13px;border-radius:10px;font-size:13px;font-weight:750;color:var(--muted);cursor:pointer}.topnav button.active{background:var(--surface);color:var(--text);box-shadow:0 2px 8px rgba(0,0,0,.05)}
+.userbtn{border:1px solid var(--line);background:var(--surface);border-radius:50%;width:38px;height:38px;font-weight:800;cursor:pointer}
+main{padding-top:26px}.view{display:none}.view.active{display:block}.eyebrow{font-size:12px;letter-spacing:.09em;text-transform:uppercase;color:var(--accent);font-weight:850}
+h1{font-size:clamp(34px,6vw,56px);line-height:1.02;letter-spacing:-.055em;margin:7px 0 8px}.lead{color:var(--muted);font-size:16px;line-height:1.55;max-width:680px;margin:0}
+.hero{padding:12px 0 24px}.status-banner{display:flex;gap:12px;align-items:flex-start;padding:14px 16px;border:1px solid color-mix(in srgb,var(--accent) 24%,var(--line));background:var(--accent-soft);border-radius:var(--r-md);margin:0 0 22px}.dot{width:10px;height:10px;border-radius:50%;background:currentColor;flex:none;margin-top:5px;box-shadow:0 0 0 5px color-mix(in srgb,currentColor 14%,transparent)}.status-banner strong{display:block;font-size:14px}.status-banner span{display:block;font-size:13px;color:var(--muted);margin-top:2px;line-height:1.4}.status-banner .last{margin-left:auto;font-size:12px;color:var(--muted);white-space:nowrap}
+.quickgrid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:22px}.quick{border:1px solid var(--line);background:var(--surface);border-radius:var(--r-lg);padding:18px;text-align:left;cursor:pointer;box-shadow:var(--shadow)}.quick .icon{font-size:22px}.quick strong{display:block;font-size:15px;margin-top:8px}.quick span{display:block;color:var(--muted);font-size:13px;margin-top:4px;line-height:1.35}.concept{display:inline-flex;align-items:center;padding:3px 7px;border-radius:999px;background:var(--cool-soft);color:var(--cool);font-size:10px;font-weight:850;letter-spacing:.04em;text-transform:uppercase;margin-left:6px;vertical-align:middle}
+.section-head{display:flex;align-items:end;justify-content:space-between;gap:16px;margin:32px 0 14px}.section-head h2{margin:0;font-size:22px;letter-spacing:-.03em}.section-head p{margin:4px 0 0;color:var(--muted);font-size:13px}.linkbtn{border:0;background:transparent;color:var(--accent);font-weight:800;font-size:13px;cursor:pointer}
+.rooms{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.room{position:relative;overflow:hidden;border:1px solid var(--line);border-radius:var(--r-xl);background:var(--surface);box-shadow:var(--shadow);padding:22px}.room.heating:after{content:"";position:absolute;right:-80px;top:-90px;width:190px;height:190px;border-radius:50%;background:color-mix(in srgb,var(--warm) 11%,transparent);pointer-events:none}
+.roomhead{display:flex;align-items:center;justify-content:space-between;gap:10px;position:relative;z-index:1}.roomname{font-size:20px;font-weight:830;letter-spacing:-.03em}.chip{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:6px 9px;font-size:10px;font-weight:850;letter-spacing:.05em;text-transform:uppercase;background:var(--surface2);color:var(--muted)}.chip.warm{background:var(--warm-soft);color:var(--warm)}.chip.warn{background:var(--warn-soft);color:var(--warn)}
+.temp{text-align:center;padding:25px 0 18px}.temp .big{font-size:72px;font-weight:630;letter-spacing:-.075em;line-height:.95;font-variant-numeric:tabular-nums}.temp .big small{font-size:.38em;color:var(--muted);vertical-align:top;position:relative;top:.14em}.temp .sub{color:var(--muted);font-size:12px;margin-top:9px}.facts{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:2px 0 16px}.fact{background:var(--surface2);border-radius:12px;padding:11px 12px}.fact span{display:block;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:800}.fact strong{display:block;margin-top:4px;font-size:13px}.fact.wide{grid-column:1/-1}
+.timeline{position:relative;height:14px;border-radius:99px;background:linear-gradient(90deg,var(--cool-soft) 0 20%,var(--warm-soft) 20% 77%,var(--cool-soft) 77% 100%);overflow:hidden;margin:10px 0 4px}.now{position:absolute;top:-2px;bottom:-2px;width:2px;background:var(--text);left:64%}.now:before{content:"";position:absolute;width:7px;height:7px;border-radius:50%;background:var(--text);top:-1px;left:-2.5px}.timeline-labels{display:flex;justify-content:space-between;font-size:10px;color:var(--muted)}
+.controlbox{border-top:1px solid var(--line);margin-top:17px;padding-top:17px}.controltop{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:12px}.controltop strong{font-size:14px}.controltop span{display:block;font-size:11px;color:var(--muted);margin-top:3px;line-height:1.35}.stepper{display:grid;grid-template-columns:52px 1fr 52px;gap:8px;align-items:center}.stepper button{height:50px;border:1px solid var(--line);border-radius:13px;background:var(--surface2);font-size:24px;cursor:pointer}.target{text-align:center;font-size:20px;font-weight:850;font-variant-numeric:tabular-nums}.actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}.btn{min-height:46px;border-radius:13px;border:1px solid var(--line);background:var(--surface2);font-weight:800;font-size:13px;cursor:pointer;padding:10px 13px}.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}.btn.warm{background:var(--warm-soft);border-color:color-mix(in srgb,var(--warm) 24%,var(--line));color:var(--warm)}.btn.danger{background:var(--danger-soft);color:var(--danger)}.btn:disabled{opacity:.6;cursor:default}
+.nextline{display:flex;align-items:center;gap:9px;color:var(--muted);font-size:12px;margin-top:13px}.nextline b{color:var(--text)}
+.override{margin-top:12px;padding:12px;border-radius:13px;background:var(--warm-soft);color:var(--warm);font-size:12px;display:none;justify-content:space-between;gap:10px;align-items:center}.override.show{display:flex}.override button{border:0;background:transparent;color:inherit;font-weight:850;cursor:pointer}
+.alert{display:flex;gap:12px;padding:15px;border-radius:var(--r-md);background:var(--warn-soft);color:var(--warn);border:1px solid color-mix(in srgb,var(--warn) 18%,var(--line));margin-bottom:18px}.alert strong{display:block;font-size:14px}.alert p{margin:3px 0 0;color:color-mix(in srgb,var(--warn) 74%,var(--text));font-size:12px;line-height:1.4}.alert .btn{margin-left:auto;min-height:38px;white-space:nowrap;background:transparent;border-color:color-mix(in srgb,var(--warn) 25%,var(--line));color:inherit}
+.card{border:1px solid var(--line);background:var(--surface);border-radius:var(--r-lg);box-shadow:var(--shadow);padding:20px}.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}.roomtabs{display:flex;gap:6px;margin:18px 0}.roomtabs button,.seg button{border:1px solid var(--line);background:var(--surface2);border-radius:999px;padding:9px 13px;font-size:12px;font-weight:800;cursor:pointer}.roomtabs button.active,.seg button.active{background:var(--accent);border-color:var(--accent);color:white}
+.forecast{padding:18px;border-radius:var(--r-lg);background:var(--surface);border:1px solid var(--line);box-shadow:var(--shadow)}.forecast h3{margin:0 0 5px;font-size:16px}.forecast p{margin:0;color:var(--muted);font-size:12px}.forecastbar{display:flex;height:62px;margin:18px 0 8px;border-radius:14px;overflow:hidden;border:1px solid var(--line)}.forecastseg{display:flex;align-items:center;justify-content:center;text-align:center;padding:6px;font-size:11px;font-weight:800}.forecastseg small{display:block;font-size:9px;font-weight:650;margin-top:2px}.night{background:var(--cool-soft);color:var(--cool)}.comfort{background:var(--warm-soft);color:var(--warm)}
+.week{margin-top:16px}.dayrow{display:grid;grid-template-columns:64px 1fr auto;gap:12px;align-items:center;padding:12px 0;border-top:1px solid var(--line)}.dayrow:first-child{border-top:0}.day{font-weight:850;font-size:13px}.daybar{height:16px;border-radius:99px;background:linear-gradient(90deg,var(--cool-soft) 0 25%,var(--warm-soft) 25% 75%,var(--cool-soft) 75% 100%);position:relative}.daytimes{font-size:11px;color:var(--muted);white-space:nowrap}.dayrow button{border:0;background:transparent;color:var(--accent);font-weight:850;cursor:pointer}
+.tip{border-radius:var(--r-lg);padding:18px;background:var(--accent-soft);border:1px solid color-mix(in srgb,var(--accent) 18%,var(--line));margin-top:16px}.tip strong{display:block;font-size:14px;color:var(--accent2)}.tip p{margin:5px 0 0;color:var(--muted);font-size:12px;line-height:1.45}
+.stats-head{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:14px}.seg{display:flex;gap:5px}.chart{height:230px;display:flex;align-items:end;gap:10px;padding:18px 4px 0;border-top:1px solid var(--line)}.barwrap{flex:1;text-align:center;min-width:0}.bar{width:100%;max-width:44px;margin:0 auto;border-radius:8px 8px 3px 3px;background:var(--accent);min-height:6px}.barwarm{background:var(--warm)}.barwrap span{display:block;font-size:10px;color:var(--muted);margin-top:6px}.legend{display:flex;gap:18px;flex-wrap:wrap;margin-top:13px;font-size:11px;color:var(--muted)}.legend i{display:inline-block;width:9px;height:9px;border-radius:3px;background:var(--accent);margin-right:6px}.legend i.w{background:var(--warm)}
+.metricrow{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:16px 0}.metric{background:var(--surface2);border-radius:13px;padding:14px}.metric span{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:800}.metric strong{display:block;font-size:21px;margin-top:4px;letter-spacing:-.03em}.fine{font-size:11px;color:var(--muted);line-height:1.45}
+.list{border:1px solid var(--line);border-radius:var(--r-lg);background:var(--surface);overflow:hidden}.row{display:flex;align-items:center;gap:14px;padding:16px 18px;border-top:1px solid var(--line)}.row:first-child{border-top:0}.row .ico{width:38px;height:38px;border-radius:12px;background:var(--surface2);display:grid;place-items:center;flex:none}.rowmain{min-width:0}.rowmain strong{font-size:14px;display:block}.rowmain span{font-size:12px;color:var(--muted);display:block;margin-top:3px;line-height:1.35}.row .chev{margin-left:auto;color:var(--muted)}.switch{margin-left:auto;width:44px;height:26px;border-radius:99px;background:var(--line);position:relative;cursor:pointer}.switch:after{content:"";position:absolute;width:20px;height:20px;border-radius:50%;background:white;top:3px;left:3px;box-shadow:0 1px 4px rgba(0,0,0,.25);transition:.2s}.switch.on{background:var(--accent)}.switch.on:after{left:21px}
+.bottomnav{display:none;position:fixed;left:0;right:0;bottom:0;z-index:50;background:color-mix(in srgb,var(--surface) 94%,transparent);backdrop-filter:blur(18px);border-top:1px solid var(--line);padding:7px max(8px,env(safe-area-inset-left)) calc(7px + env(safe-area-inset-bottom))}.bottomnav button{flex:1;border:0;background:transparent;color:var(--muted);padding:7px 2px;font-size:10px;font-weight:800;cursor:pointer}.bottomnav button b{display:block;font-size:18px;line-height:1.1;margin-bottom:2px}.bottomnav button.active{color:var(--accent)}
+.dialogback{position:fixed;inset:0;background:rgba(0,0,0,.42);display:none;align-items:end;justify-content:center;z-index:100;padding:18px}.dialogback.show{display:flex}.dialog{width:min(520px,100%);background:var(--surface);border:1px solid var(--line);border-radius:26px;padding:22px;box-shadow:0 28px 80px rgba(0,0,0,.28);max-height:88vh;overflow:auto}.dialog h3{margin:0;font-size:21px;letter-spacing:-.03em}.dialog .desc{margin:6px 0 18px;color:var(--muted);font-size:13px;line-height:1.45}.choicegrid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}.choice{border:1px solid var(--line);border-radius:13px;background:var(--surface2);padding:13px;text-align:left;cursor:pointer}.choice.active{border-color:var(--accent);background:var(--accent-soft)}.choice strong{display:block;font-size:13px}.choice span{display:block;font-size:11px;color:var(--muted);margin-top:3px}.field{margin:14px 0}.field label{display:block;font-size:12px;font-weight:800;margin-bottom:6px}.field input,.field select{width:100%;border:1px solid var(--line);background:var(--surface2);border-radius:12px;padding:12px}.dialog-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:18px}.toast{position:fixed;left:50%;bottom:92px;transform:translate(-50%,20px);background:#1f2923;color:#fff;padding:11px 15px;border-radius:12px;font-size:12px;font-weight:750;opacity:0;pointer-events:none;transition:.25s;z-index:120;box-shadow:0 12px 40px rgba(0,0,0,.28)}.toast.show{opacity:1;transform:translate(-50%,0)}
+@media(max-width:760px){.shell{padding:0 16px 100px}header{height:66px}.topnav{display:none}.rooms,.quickgrid,.grid2{grid-template-columns:1fr}.room{padding:19px;border-radius:23px}.temp .big{font-size:66px}.hero{padding-top:8px}.status-banner .last{display:none}.bottomnav{display:flex}.metricrow{grid-template-columns:1fr 1fr}.metric:last-child{grid-column:1/-1}.dayrow{grid-template-columns:46px 1fr auto}.daytimes{display:none}.alert{align-items:flex-start}.alert .btn{display:none}.choicegrid{grid-template-columns:1fr 1fr}}
+@media(min-width:761px){.dialogback{align-items:center}.dialog{border-radius:22px}}
+@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important}}
+
+.role-label{font-size:10px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);padding-left:2px}
+.quick{position:relative;padding:20px}.quick:before{content:"";display:block;width:28px;height:3px;border-radius:3px;background:var(--accent);margin-bottom:12px}.quick strong{margin-top:0}
+.alert-tag{flex:none;border:1px solid color-mix(in srgb,var(--warn) 30%,var(--line));border-radius:999px;padding:4px 8px;font-size:9px;font-weight:850;letter-spacing:.06em;text-transform:uppercase}
+.nextline{padding-top:2px}.row{padding-left:20px}.rowmain{flex:1}.bottomnav button{min-height:48px;font-size:11px}.bottomnav button.active{position:relative}.bottomnav button.active:before{content:"";position:absolute;top:-7px;left:28%;right:28%;height:2px;background:var(--accent);border-radius:2px}
+</style>
+</head>
+<body>
+<div class="app">
+<div class="shell">
+<header>
+  <div class="brand"><span class="brandmark">tc</span><span>thermoctl</span><span class="role-label">Mieter</span></div>
+  <nav class="topnav" aria-label="Hauptnavigation">
+    <button class="active" data-view="home">Zuhause</button>
+    <button data-view="schedule">Zeitplan</button>
+    <button data-view="stats">Heizzeit</button>
+    <button data-view="more">Mehr</button>
+  </nav>
+  <button class="userbtn" data-view="more" aria-label="Mein Konto">M</button>
+</header>
+
+<main>
+<section class="view active" id="home">
+  <div class="hero"><div class="eyebrow">Meine Wohnung</div><h1>Angenehm zuhause.</h1><p>Temperaturen sehen, für eine Weile ändern oder den normalen Wochenplan anpassen – ohne technische Anlageneinstellungen.</p></div>
+
+  <div class="status-banner"><span class="dot"></span><div><strong>Heizung läuft normal</strong><span>Alle Räume werden wie geplant geregelt.</span></div><div class="last">vor 12 Sek.</div></div>
+
+  <div class="quickgrid">
+    <button class="quick" onclick="openAway()"><strong>Abwesenheit einstellen</strong><span>Alle Räume bis zu deiner Rückkehr sparsamer regeln.</span></button>
+    <button class="quick" onclick="go('schedule')"><strong>Wochenplan</strong><span>Festlegen, wann es morgens warm und abends kühler werden soll.</span></button>
+  </div>
+
+  <div class="alert">
+    <div class="alert-tag">Hinweis</div><div><strong>Bad: Messwert möglicherweise nicht aktuell</strong><p>Seit 24 Minuten kam keine neue Temperatur. Die Heizung regelt weiter, aber der angezeigte Wert kann veraltet sein.</p></div><button class="btn" onclick="showToast('Hinweis geöffnet')">Was bedeutet das?</button>
+  </div>
+
+  <div class="section-head"><div><h2>Deine Räume</h2><p>Die normale Temperatur gilt für den aktuell laufenden Modus.</p></div><button class="linkbtn" onclick="go('schedule')">Zeitplan ansehen</button></div>
+  <div class="rooms">
+    <article class="room heating" data-room="living" data-next-temp="18" data-next-time="23:00" data-next-mode="Nacht">
+      <div class="roomhead"><div class="roomname">Wohnzimmer</div><span class="chip warm">heizt</span></div>
+      <div class="temp"><div class="big">20,6<small>°C</small></div><div class="sub">gemessen vor wenigen Sekunden</div></div>
+      <div class="facts"><div class="fact"><span>Gerade</span><strong>Komfort</strong></div><div class="fact"><span>Soll</span><strong class="targetFact">21,0 °C</strong></div><div class="fact wide"><span>Warum?</span><strong>Zeitplan · werktags ab 06:30</strong></div></div>
+      <div class="timeline"><div class="now"></div></div><div class="timeline-labels"><span>Nacht</span><span>Komfort</span><span>Nacht</span></div>
+      <div class="controlbox">
+        <div class="controltop"><div><strong>Normale Komforttemperatur</strong><span>Ändert den Wert dauerhaft für „Komfort“ – nicht nur für heute.</span></div></div>
+        <div class="stepper"><button onclick="step(this,-.5)">−</button><div class="target" data-value="21">21,0 °C</div><button onclick="step(this,.5)">+</button></div>
+        <div class="actions"><button class="btn warm" onclick="openBoost('Wohnzimmer',this)">Für eine Weile wärmer</button><button class="btn jump-next" onclick="jumpNext(this)">Zur nächsten Schaltzeit springen</button></div>
+        <div class="override"><span><b>22,5 °C</b> bis 19:30</span><button onclick="cancelBoost(this)">Beenden</button></div>
+        <div class="nextline"><span>Als Nächstes: <b>18,0 °C um 23:00</b></span></div>
+      </div>
+    </article>
+
+    <article class="room" data-room="bed" data-next-temp="20" data-next-time="06:30" data-next-mode="Komfort">
+      <div class="roomhead"><div class="roomname">Schlafzimmer</div><span class="chip">wartet</span></div>
+      <div class="temp"><div class="big">19,1<small>°C</small></div><div class="sub">Sensor in Ordnung</div></div>
+      <div class="facts"><div class="fact"><span>Gerade</span><strong>Nacht</strong></div><div class="fact"><span>Soll</span><strong class="targetFact">18,0 °C</strong></div><div class="fact wide"><span>Warum?</span><strong>Zeitplan · Nachtmodus</strong></div></div>
+      <div class="timeline" style="background:linear-gradient(90deg,var(--cool-soft) 0 70%,var(--warm-soft) 70% 100%)"><div class="now" style="left:54%"></div></div><div class="timeline-labels"><span>Nacht</span><span></span><span>Komfort</span></div>
+      <div class="controlbox">
+        <div class="controltop"><div><strong>Normale Nachttemperatur</strong><span>Ändert den Wert dauerhaft für „Nacht“.</span></div></div>
+        <div class="stepper"><button onclick="step(this,-.5)">−</button><div class="target" data-value="18">18,0 °C</div><button onclick="step(this,.5)">+</button></div>
+        <div class="actions"><button class="btn warm" onclick="openBoost('Schlafzimmer',this)">Für eine Weile wärmer</button><button class="btn jump-next" onclick="jumpNext(this)">Zur nächsten Schaltzeit springen</button></div>
+        <div class="override"><span><b>20,0 °C</b> bis 20:30</span><button onclick="cancelBoost(this)">Beenden</button></div>
+        <div class="nextline"><span>Als Nächstes: <b>20,0 °C um 06:30</b></span></div>
+      </div>
+    </article>
+
+    <article class="room" data-room="bath">
+      <div class="roomhead"><div class="roomname">Bad</div><span class="chip warn">! Sensor prüfen</span></div>
+      <div class="temp"><div class="big">20,0<small>°C</small></div><div class="sub">letzter Messwert vor 24 Minuten</div></div>
+      <div class="facts"><div class="fact"><span>Gerade</span><strong>Komfort</strong></div><div class="fact"><span>Soll</span><strong class="targetFact">22,0 °C</strong></div><div class="fact wide"><span>Status</span><strong>Regelung läuft weiter · Anzeige kann veraltet sein</strong></div></div>
+      <div class="timeline"><div class="now" style="left:61%"></div></div><div class="timeline-labels"><span>Nacht</span><span>Komfort</span><span>Nacht</span></div>
+      <div class="controlbox"><div class="controltop"><div><strong>Normale Komforttemperatur</strong><span>Ändert „Komfort“ dauerhaft.</span></div></div><div class="stepper"><button onclick="step(this,-.5)">−</button><div class="target" data-value="22">22,0 °C</div><button onclick="step(this,.5)">+</button></div><div class="actions"><button class="btn warm" onclick="openBoost('Bad',this)">Für eine Weile wärmer</button><button class="btn" onclick="openReport()">Problem melden</button></div><div class="override"><span><b>23,0 °C</b> bis 19:30</span><button onclick="cancelBoost(this)">Beenden</button></div><div class="nextline"><span>Als Nächstes: <b>18,0 °C um 22:30</b></span></div></div>
+    </article>
+  </div>
+</section>
+
+<section class="view" id="schedule">
+  <div class="hero"><div class="eyebrow">Zeitplan</div><h1>Wann soll es warm sein?</h1><p>Du legst nur deine Komfortzeiten fest. thermoctl übernimmt die Schaltlogik im Hintergrund.</p></div>
+  <div class="roomtabs"><button class="active">Wohnzimmer</button><button>Schlafzimmer</button><button>Bad</button></div>
+  <div class="forecast"><h3>Die nächsten 24 Stunden</h3><p>So würde die Temperatur tatsächlich laufen – einschließlich einer aktiven Übersteuerung.</p><div class="forecastbar"><div class="forecastseg comfort" style="flex:4">Komfort<br><small>21 °C</small></div><div class="forecastseg night" style="flex:7">Nacht<br><small>18 °C · 23:00</small></div><div class="forecastseg comfort" style="flex:5">Komfort<br><small>21 °C · 06:30</small></div></div><div class="timeline-labels"><span>jetzt</span><span>23:00</span><span>06:30</span><span>morgen</span></div></div>
+  <div class="card week"><div class="section-head" style="margin:0 0 8px"><div><h2>Deine Woche</h2><p>Warm am Morgen und Abend, nachts automatisch kühler.</p></div></div>
+    <div class="dayrow"><div class="day">Mo</div><div><div class="daybar"></div></div><button onclick="editDay('Montag')">06:30 – 23:00</button></div>
+    <div class="dayrow"><div class="day">Di</div><div><div class="daybar"></div></div><button onclick="editDay('Dienstag')">06:30 – 23:00</button></div>
+    <div class="dayrow"><div class="day">Mi</div><div><div class="daybar"></div></div><button onclick="editDay('Mittwoch')">06:30 – 23:00</button></div>
+    <div class="dayrow"><div class="day">Do</div><div><div class="daybar"></div></div><button onclick="editDay('Donnerstag')">06:30 – 23:00</button></div>
+    <div class="dayrow"><div class="day">Fr</div><div><div class="daybar"></div></div><button onclick="editDay('Freitag')">06:30 – 23:30</button></div>
+    <div class="dayrow"><div class="day">Sa</div><div><div class="daybar" style="background:linear-gradient(90deg,var(--cool-soft) 0 32%,var(--warm-soft) 32% 80%,var(--cool-soft) 80% 100%)"></div></div><button onclick="editDay('Samstag')">08:00 – 23:30</button></div>
+    <div class="dayrow"><div class="day">So</div><div><div class="daybar" style="background:linear-gradient(90deg,var(--cool-soft) 0 32%,var(--warm-soft) 32% 76%,var(--cool-soft) 76% 100%)"></div></div><button onclick="editDay('Sonntag')">08:00 – 22:30</button></div>
+  </div>
+  <div class="grid2" style="margin-top:16px"><button class="quick" onclick="showToast('Montag auf Dienstag bis Freitag kopiert')"><div class="icon"></div><strong>Werktage gleich machen</strong><span>Montag auf Dienstag bis Freitag kopieren.</span></button><button class="quick" onclick="showToast('Wohnzimmer-Zeitplan auf Bad übernommen')"><div class="icon">↔</div><strong>Auf anderen Raum übernehmen</strong><span>Einmal einstellen und bei Bedarf auf weitere Räume übertragen.</span></button></div>
+  <div class="tip"><strong>Temporäre Änderungen bleiben getrennt.</strong><p>„Für eine Weile wärmer“ verändert diesen Wochenplan nicht. Nach Ablauf gilt automatisch wieder der Zeitplan.</p></div>
+</section>
+
+<section class="view" id="stats">
+  <div class="hero"><div class="eyebrow">Heizzeit</div><h1>Wie viel wurde geheizt?</h1><p>Eine einfache Orientierung über deine Räume. Das ist Heizdauer – kein Energie- oder Kostenmesser.</p></div>
+  <div class="card">
+    <div class="stats-head"><div><strong>Letzte 7 Tage</strong><div class="fine">Wohnzimmer und Bad</div></div><div class="seg"><button class="active">7 Tage</button><button>30 Tage</button><button>90 Tage</button></div></div>
+    <div class="metricrow"><div class="metric"><span>Wohnzimmer</span><strong>18,4 h</strong></div><div class="metric"><span>Bad</span><strong>11,2 h</strong></div><div class="metric"><span>Heute</span><strong>2,1 h</strong></div></div>
+    <div class="chart"><div class="barwrap"><div class="bar" style="height:52%"></div><span>Mo</span></div><div class="barwrap"><div class="barwarm bar" style="height:32%"></div><span></span></div><div class="barwrap"><div class="bar" style="height:68%"></div><span>Di</span></div><div class="barwrap"><div class="barwarm bar" style="height:41%"></div><span></span></div><div class="barwrap"><div class="bar" style="height:49%"></div><span>Mi</span></div><div class="barwrap"><div class="barwarm bar" style="height:26%"></div><span></span></div><div class="barwrap"><div class="bar" style="height:79%"></div><span>Do</span></div><div class="barwrap"><div class="barwarm bar" style="height:55%"></div><span></span></div><div class="barwrap"><div class="bar" style="height:60%"></div><span>Fr</span></div><div class="barwrap"><div class="barwarm bar" style="height:44%"></div><span></span></div><div class="barwrap"><div class="bar" style="height:37%"></div><span>Sa</span></div><div class="barwrap"><div class="barwarm bar" style="height:30%"></div><span></span></div><div class="barwrap"><div class="bar" style="height:46%"></div><span>So</span></div><div class="barwrap"><div class="barwarm bar" style="height:33%"></div><span></span></div></div>
+    <div class="legend"><span><i></i>Wohnzimmer</span><span><i class="w"></i>Bad</span></div>
+    <p class="fine" style="margin-top:18px">Die Balken zeigen nur Heizzeit. Außentemperatur, Gebäudezustand und Lüften beeinflussen die Werte; daraus lässt sich kein genauer Verbrauch ableiten.</p>
+  </div>
+</section>
+
+<section class="view" id="more">
+  <div class="hero"><div class="eyebrow">Mehr</div><h1>Dein Zugang.</h1><p>Nur persönliche Einstellungen und Hilfe – keine technischen Anlagenparameter.</p></div>
+  <div class="section-head"><div><h2>Konto & Sicherheit</h2></div></div>
+  <div class="list"><div class="row"><div class="rowmain"><strong>Passkey</strong><span>Schneller und sicherer anmelden.</span></div><span class="chev">&gt;</span></div><div class="row"><div class="rowmain"><strong>Passwort ändern</strong><span>Passwort für dein persönliches Konto.</span></div><span class="chev">&gt;</span></div><div class="row"><div class="rowmain"><strong>Andere Sitzungen beenden</strong><span>Auf anderen Geräten abmelden.</span></div><span class="chev">&gt;</span></div></div>
+
+  <div class="section-head"><div><h2>Hinweise</h2><p>Persönliche Benachrichtigungen, Abwesenheit und Hilfe.</p></div></div>
+  <div class="list"><div class="row"><div class="rowmain"><strong>Wichtige Störungen</strong><span>Benachrichtigung, wenn dein Raum längere Zeit keine Messwerte liefert.</span></div><div class="switch on" onclick="this.classList.toggle('on')"></div></div><div class="row"><div class="rowmain"><strong>Abwesenheit</strong><span>Ein gemeinsamer Zeitraum für alle eigenen Räume.</span></div><span class="chev">&gt;</span></div><div class="row"><div class="rowmain"><strong>Problem melden</strong><span>Raumzustand und Zeitpunkt direkt mitsenden, ohne technische Details abschreiben zu müssen.</span></div><span class="chev">&gt;</span></div></div>
+
+  <div class="section-head"><div><h2>Systeminformation</h2></div></div>
+  <div class="list"><div class="row"><div class="rowmain"><strong>Heizung erreichbar</strong><span>Letzte Aktualisierung vor 12 Sekunden.</span></div></div><div class="row"><div class="rowmain"><strong>Was bedeuten die Anzeigen?</strong><span>Kurze Erklärung zu Sollwert, Zeitplan, Heizstatus und Sensorwarnungen.</span></div><span class="chev">&gt;</span></div></div>
+</section>
+</main>
+</div>
+
+<nav class="bottomnav" aria-label="Mobile Navigation"><button class="active" data-view="home">Zuhause</button><button data-view="schedule">Zeitplan</button><button data-view="stats">Heizzeit</button><button data-view="more">Mehr</button></nav>
+</div>
+
+<div class="dialogback" id="boostDialog" onclick="backdropClose(event,'boostDialog')"><div class="dialog"><h3 id="boostTitle">Für eine Weile wärmer</h3><p class="desc">Das ist nur vorübergehend. Danach gilt automatisch wieder dein normaler Zeitplan.</p><div class="field"><label>Temperatur</label><div class="stepper"><button onclick="boostStep(-.5)">−</button><div class="target" id="boostTarget" data-value="22.5">22,5 °C</div><button onclick="boostStep(.5)">+</button></div></div><label style="font-size:12px;font-weight:800">Wie lange?</label><div class="choicegrid" style="margin-top:7px"><button class="choice active" onclick="pickChoice(this)"><strong>30 Minuten</strong><span>Kurz gemütlicher</span></button><button class="choice" onclick="pickChoice(this)"><strong>1 Stunde</strong><span>Für den Abend</span></button><button class="choice" onclick="pickChoice(this)"><strong>2 Stunden</strong><span>Länger zuhause</span></button><button class="choice" onclick="pickChoice(this)"><strong>Bis zur nächsten Umschaltung</strong><span>Danach Zeitplan</span></button></div><div class="dialog-actions"><button class="btn" onclick="closeDialog('boostDialog')">Abbrechen</button><button class="btn primary" onclick="applyBoost()">Übernehmen</button></div></div></div>
+
+<div class="dialogback" id="dayDialog" onclick="backdropClose(event,'dayDialog')"><div class="dialog"><h3 id="dayTitle">Montag</h3><p class="desc">Einfach festlegen, wann der Komfortmodus beginnt und wann nachts abgesenkt wird.</p><div class="field"><label>Warm ab</label><input type="time" value="06:30"></div><div class="field"><label>Nacht ab</label><input type="time" value="23:00"></div><div class="dialog-actions"><button class="btn" onclick="closeDialog('dayDialog')">Abbrechen</button><button class="btn primary" onclick="saveDay()">Speichern</button></div></div></div>
+
+<div class="dialogback" id="awayDialog" onclick="backdropClose(event,'awayDialog')"><div class="dialog"><h3>Ich bin länger weg</h3><p class="desc">Ein gemeinsamer Abwesenheitszeitraum gilt für alle eigenen Räume und endet automatisch bei der Rückkehr.</p><div class="field"><label>Zurück am</label><input type="date" value="2026-09-12"></div><div class="field"><label>Temperatur während der Abwesenheit</label><select><option>16,0 °C</option><option selected>17,0 °C</option><option>18,0 °C</option></select></div><div class="dialog-actions"><button class="btn" onclick="closeDialog('awayDialog')">Abbrechen</button><button class="btn primary" onclick="applyAway()">Abwesenheit aktivieren</button></div></div></div>
+
+<div class="dialogback" id="reportDialog" onclick="backdropClose(event,'reportDialog')"><div class="dialog"><h3>Problem im Bad melden</h3><p class="desc">Raum, letzter Messwert und Zeitpunkt werden automatisch ergänzt. Technische Angaben sind nicht nötig.</p><div class="choicegrid"><button class="choice active" onclick="pickChoice(this)"><strong>Raum wird nicht warm</strong></button><button class="choice" onclick="pickChoice(this)"><strong>Temperatur wirkt falsch</strong></button><button class="choice" onclick="pickChoice(this)"><strong>Heizung zu warm</strong></button><button class="choice" onclick="pickChoice(this)"><strong>Anderes Problem</strong></button></div><div class="field"><label>Optionaler Hinweis</label><input placeholder="z. B. seit heute Morgen"></div><div class="dialog-actions"><button class="btn" onclick="closeDialog('reportDialog')">Abbrechen</button><button class="btn primary" onclick="submitReport()">Melden</button></div></div></div>
+
+<div class="toast" id="toast">Gespeichert</div>
+<script>
+let boostRoom='',boostCard=null;
+function go(id){document.querySelectorAll('.view').forEach(v=>v.classList.toggle('active',v.id===id));document.querySelectorAll('[data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view===id));window.scrollTo({top:0,behavior:'smooth'})}
+document.querySelectorAll('[data-view]').forEach(b=>b.addEventListener('click',()=>go(b.dataset.view)));
+function format(v){return v.toFixed(1).replace('.',',')+' °C'}
+function step(btn,d){const card=btn.closest('.room'),t=card.querySelector('.target');let v=parseFloat(t.dataset.value)+d;v=Math.min(26,Math.max(12,v));t.dataset.value=v;t.textContent=format(v);card.querySelector('.targetFact').textContent=format(v);showToast('Normale Temperatur gespeichert')}
+function openBoost(room,el){boostRoom=room;boostCard=el.closest('.room');document.getElementById('boostTitle').textContent=room+': für eine Weile wärmer';document.getElementById('boostDialog').classList.add('show')}
+function boostStep(d){const t=document.getElementById('boostTarget');let v=parseFloat(t.dataset.value)+d;v=Math.min(27,Math.max(12,v));t.dataset.value=v;t.textContent=format(v)}
+function pickChoice(el){el.parentElement.querySelectorAll('.choice').forEach(x=>x.classList.remove('active'));el.classList.add('active')}
+function applyBoost(){const v=document.getElementById('boostTarget').textContent;const o=boostCard.querySelector('.override');o.querySelector('b').textContent=v;o.classList.add('show');closeDialog('boostDialog');showToast(boostRoom+' vorübergehend geändert')}
+function jumpNext(btn){
+  const card=btn.closest('.room');
+  const temp=parseFloat(card.dataset.nextTemp), time=card.dataset.nextTime, mode=card.dataset.nextMode;
+  const facts=card.querySelectorAll('.facts .fact strong');
+  const reason=card.querySelector('.facts .fact.wide strong');
+  if(!card.dataset.baseMode) card.dataset.baseMode=facts[0].textContent;
+  if(!card.dataset.baseReason && reason) card.dataset.baseReason=reason.textContent;
+  facts[0].textContent=mode+' vorgezogen';
+  card.querySelector('.targetFact').textContent=format(temp);
+  if(reason) reason.textContent='Nächste Schaltzeit vorgezogen · regulär um '+time;
+  const o=card.querySelector('.override');
+  o.querySelector('span').innerHTML='<b>'+format(temp)+'</b> bis '+time+'<br><small>Nächste Schaltzeit vorgezogen</small>';
+  o.classList.add('show');
+  card.dataset.jumpActive='1';
+  btn.textContent='Schaltzeit vorgezogen';
+  btn.disabled=true;
+  showToast('Nächste Schaltzeit wurde vorgezogen');
+}
+function cancelBoost(btn){
+  const card=btn.closest('.room');
+  btn.closest('.override').classList.remove('show');
+  if(card.dataset.jumpActive==='1'){
+    const facts=card.querySelectorAll('.facts .fact strong');
+    const reason=card.querySelector('.facts .fact.wide strong');
+    if(card.dataset.baseMode) facts[0].textContent=card.dataset.baseMode;
+    const normal=card.querySelector('.target');
+    if(normal) card.querySelector('.targetFact').textContent=format(parseFloat(normal.dataset.value));
+    if(reason && card.dataset.baseReason) reason.textContent=card.dataset.baseReason;
+    const jump=card.querySelector('.jump-next');
+    if(jump){jump.textContent='Zur nächsten Schaltzeit springen';jump.disabled=false;}
+    delete card.dataset.jumpActive;
+  }
+  showToast('Übersteuerung beendet – Zeitplan gilt wieder');
+}
+function editDay(d){document.getElementById('dayTitle').textContent=d;document.getElementById('dayDialog').classList.add('show')}
+function saveDay(){closeDialog('dayDialog');showToast('Zeitplan gespeichert')}
+function openAway(){document.getElementById('awayDialog').classList.add('show')}
+function applyAway(){closeDialog('awayDialog');showToast('Abwesenheit aktiviert')}
+function openReport(){document.getElementById('reportDialog').classList.add('show')}
+function submitReport(){closeDialog('reportDialog');showToast('Problem gemeldet')}
+function closeDialog(id){document.getElementById(id).classList.remove('show')}
+function backdropClose(e,id){if(e.target.id===id)closeDialog(id)}
+function showToast(t){const el=document.getElementById('toast');el.textContent=t;el.classList.add('show');clearTimeout(window._tt);window._tt=setTimeout(()=>el.classList.remove('show'),2200)}
+document.querySelectorAll('.roomtabs button,.seg button').forEach(b=>b.addEventListener('click',()=>{b.parentElement.querySelectorAll('button').forEach(x=>x.classList.remove('active'));b.classList.add('active')}));
+document.querySelectorAll('.switch').forEach(s=>s.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){s.classList.toggle('on')}}));
+</script>
+</body>
+</html>

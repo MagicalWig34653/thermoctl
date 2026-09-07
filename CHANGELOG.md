@@ -9,7 +9,7 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ---
 
-## Unveröffentlicht
+## 0.8.0 — 2026-09-07
 
 ### Hinzugefügt
 

@@ -1,0 +1,1073 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>thermoctl – Admin Demo</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #f4f6f8;
+      --panel: #ffffff;
+      --panel-2: #f8fafb;
+      --text: #18212b;
+      --muted: #687482;
+      --line: #dfe4e8;
+      --line-strong: #c9d0d6;
+      --primary: #2463eb;
+      --primary-strong: #1647b8;
+      --primary-soft: #eaf0ff;
+      --success: #198754;
+      --success-soft: #e9f7ef;
+      --warning: #b7791f;
+      --warning-soft: #fff6df;
+      --danger: #c53939;
+      --danger-soft: #fff0f0;
+      --heat: #dd6b20;
+      --heat-soft: #fff1e7;
+      --cool: #2377c9;
+      --shadow: 0 10px 28px rgba(21, 35, 50, .08);
+      --radius: 16px;
+      --radius-sm: 10px;
+      --sidebar: 246px;
+      --topbar: 70px;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0f1419;
+        --panel: #151b22;
+        --panel-2: #1a222b;
+        --text: #f2f5f7;
+        --muted: #9ba8b5;
+        --line: #29333d;
+        --line-strong: #3a4753;
+        --primary: #73a1ff;
+        --primary-strong: #9bbaff;
+        --primary-soft: #17284c;
+        --success: #5fc28a;
+        --success-soft: #143222;
+        --warning: #e8b760;
+        --warning-soft: #3c2e11;
+        --danger: #ff8686;
+        --danger-soft: #3d1d1d;
+        --heat: #ff9c56;
+        --heat-soft: #3d2718;
+        --cool: #78b5ef;
+        --shadow: 0 12px 34px rgba(0,0,0,.26);
+      }
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+    button, input, select { font: inherit; }
+    button { color: inherit; }
+    a { color: inherit; text-decoration: none; }
+
+    .app {
+      min-height: 100vh;
+      display: grid;
+      grid-template-columns: var(--sidebar) minmax(0,1fr);
+      grid-template-rows: var(--topbar) minmax(0,1fr);
+    }
+
+    .topbar {
+      grid-column: 1 / -1;
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      display: grid;
+      grid-template-columns: var(--sidebar) minmax(0,1fr);
+      height: var(--topbar);
+      border-bottom: 1px solid var(--line);
+      background: color-mix(in srgb, var(--panel) 92%, transparent);
+      backdrop-filter: blur(18px);
+    }
+    .brand-wrap {
+      display: flex;
+      align-items: center;
+      gap: 11px;
+      padding: 0 20px;
+      border-right: 1px solid var(--line);
+      font-weight: 800;
+      letter-spacing: -.02em;
+    }
+    .brand-mark {
+      width: 30px;
+      height: 30px;
+      border-radius: 9px;
+      display: grid;
+      place-items: center;
+      background: linear-gradient(135deg, var(--primary), #72a0ff);
+      color: #fff;
+      box-shadow: 0 5px 14px rgba(36,99,235,.28);
+    }
+    .topbar-main {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+      padding: 0 24px;
+    }
+    .system-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--success);
+      background: var(--success-soft);
+      padding: 8px 11px;
+      border-radius: 999px;
+      border: 1px solid color-mix(in srgb, var(--success) 30%, transparent);
+    }
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: currentColor;
+      box-shadow: 0 0 0 4px color-mix(in srgb, currentColor 16%, transparent);
+    }
+    .user-menu {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+    }
+    .avatar {
+      width: 34px;
+      height: 34px;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      background: var(--panel-2);
+      border: 1px solid var(--line);
+      font-size: 13px;
+      font-weight: 800;
+    }
+    .user-copy { line-height: 1.15; }
+    .user-copy strong { display:block; font-size:13px; }
+    .user-copy span { display:block; color:var(--muted); font-size:11px; margin-top:3px; }
+
+    .sidebar {
+      position: sticky;
+      top: var(--topbar);
+      height: calc(100vh - var(--topbar));
+      overflow-y: auto;
+      padding: 18px 14px 24px;
+      background: var(--panel);
+      border-right: 1px solid var(--line);
+    }
+    .nav-section { margin-top: 18px; }
+    .nav-section:first-child { margin-top: 0; }
+    .nav-label {
+      padding: 0 10px 7px;
+      font-size: 10px;
+      letter-spacing: .11em;
+      text-transform: uppercase;
+      color: var(--muted);
+      font-weight: 800;
+    }
+    .nav-item {
+      width: 100%;
+      border: 0;
+      background: transparent;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 11px;
+      margin: 2px 0;
+      border-radius: 10px;
+      cursor: pointer;
+      color: var(--muted);
+      font-weight: 650;
+      text-align: left;
+    }
+    .nav-item:hover { background: var(--panel-2); color:var(--text); }
+    .nav-item.active { background: var(--primary-soft); color:var(--primary-strong); }
+    .nav-icon {
+      width: 20px;
+      height: 20px;
+      display: grid;
+      place-items: center;
+      flex: none;
+    }
+    .nav-icon svg { width: 19px; height: 19px; stroke-width: 1.85; }
+    .nav-badge {
+      margin-left: auto;
+      min-width: 20px;
+      height: 20px;
+      padding: 0 6px;
+      border-radius: 999px;
+      display: inline-grid;
+      place-items:center;
+      background: var(--danger-soft);
+      color: var(--danger);
+      font-size: 10px;
+      font-weight: 800;
+    }
+
+    main {
+      min-width: 0;
+      padding: 30px clamp(18px, 3vw, 42px) 64px;
+    }
+    .page {
+      display: none;
+      width: min(1420px, 100%);
+      margin: 0 auto;
+      animation: pageIn .22s ease;
+    }
+    .page.active { display:block; }
+    @keyframes pageIn {
+      from { opacity: 0; transform: translateY(3px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .page-heading {
+      display:flex;
+      align-items:flex-start;
+      justify-content:space-between;
+      gap: 20px;
+      margin-bottom: 22px;
+    }
+    .page-heading h1 {
+      margin:0;
+      font-size: clamp(28px, 3vw, 38px);
+      letter-spacing:-.035em;
+      line-height:1.08;
+    }
+    .page-heading p {
+      margin:8px 0 0;
+      color:var(--muted);
+      max-width:720px;
+      line-height:1.55;
+    }
+    .heading-actions { display:flex; gap:10px; flex-wrap:wrap; }
+
+    .btn {
+      border: 1px solid var(--line-strong);
+      background: var(--panel);
+      padding: 10px 14px;
+      min-height: 42px;
+      border-radius: 10px;
+      font-weight: 750;
+      cursor:pointer;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      gap:8px;
+    }
+    .btn:hover { border-color: color-mix(in srgb, var(--primary) 50%, var(--line-strong)); }
+    .btn.primary { background:var(--primary); border-color:var(--primary); color:#fff; }
+    .btn.ghost { border-color:transparent; background:transparent; }
+    .btn.danger { color:var(--danger); background:var(--danger-soft); border-color: color-mix(in srgb,var(--danger) 25%,transparent); }
+
+    .stale-banner {
+      display:none;
+      margin-bottom:18px;
+      padding:13px 15px;
+      border-radius:12px;
+      border:1px solid color-mix(in srgb,var(--warning) 35%,transparent);
+      background:var(--warning-soft);
+      color:var(--text);
+      align-items:center;
+      gap:12px;
+    }
+    .stale-banner.show { display:flex; }
+    .stale-banner strong { display:block; font-size:13px; }
+    .stale-banner span { display:block; color:var(--muted); font-size:12px; margin-top:2px; }
+    .stale-banner .btn { margin-left:auto; min-height:34px; padding:6px 10px; background:transparent; }
+
+    .gate-grid {
+      display:grid;
+      grid-template-columns: repeat(3, minmax(0,1fr));
+      gap:12px;
+      margin-bottom:18px;
+    }
+    .gate {
+      background:var(--panel);
+      border:1px solid var(--line);
+      border-radius:14px;
+      padding:14px 15px;
+      display:flex;
+      align-items:center;
+      gap:12px;
+      box-shadow:0 1px 0 rgba(0,0,0,.02);
+    }
+    .gate-icon {
+      width:35px;
+      height:35px;
+      border-radius:10px;
+      display:grid;
+      place-items:center;
+      flex:none;
+      color:var(--success);
+      background:var(--success-soft);
+    }
+    .gate.warning .gate-icon { color:var(--warning); background:var(--warning-soft); }
+    .gate strong { display:block; font-size:13px; }
+    .gate span { display:block; margin-top:2px; color:var(--muted); font-size:11px; }
+
+    .alert {
+      display:flex;
+      gap:12px;
+      align-items:flex-start;
+      padding:14px 15px;
+      border-radius:14px;
+      margin: 0 0 18px;
+      border: 1px solid color-mix(in srgb, var(--warning) 32%, transparent);
+      background: var(--warning-soft);
+    }
+    .alert-icon {
+      width:30px;height:30px;border-radius:9px;display:grid;place-items:center;
+      background:color-mix(in srgb,var(--warning) 12%,transparent);
+      color:var(--warning);flex:none;
+    }
+    .alert strong { display:block; font-size:13px; }
+    .alert p { margin:3px 0 0; color:var(--muted); font-size:12px; line-height:1.45; }
+    .alert-actions { margin-left:auto; display:flex; gap:8px; }
+    .alert .btn { min-height:34px; padding:6px 9px; font-size:12px; }
+
+    .zone-grid {
+      display:grid;
+      grid-template-columns: repeat(2, minmax(0,1fr));
+      gap:18px;
+    }
+    .zone-card {
+      position:relative;
+      overflow:hidden;
+      background:var(--panel);
+      border:1px solid var(--line);
+      border-radius:var(--radius);
+      padding:19px;
+      box-shadow:var(--shadow);
+    }
+    .zone-card::before {
+      content:"";
+      position:absolute;
+      top:0;left:0;right:0;
+      height:3px;
+      background:transparent;
+    }
+    .zone-card.heating::before { background:var(--heat); }
+    .zone-head {
+      display:flex;
+      justify-content:space-between;
+      align-items:flex-start;
+      gap:15px;
+      margin-bottom:14px;
+    }
+    .zone-title h2 { margin:0; font-size:18px; letter-spacing:-.015em; }
+    .zone-title span { display:block; color:var(--muted); font-size:11px; margin-top:4px; }
+    .state-chip {
+      flex:none;
+      display:inline-flex;
+      align-items:center;
+      gap:7px;
+      padding:7px 9px;
+      border-radius:999px;
+      font-size:10px;
+      letter-spacing:.04em;
+      text-transform:uppercase;
+      font-weight:850;
+      color:var(--muted);
+      background:var(--panel-2);
+      border:1px solid var(--line);
+    }
+    .state-chip.heating { color:var(--heat); background:var(--heat-soft); border-color:color-mix(in srgb,var(--heat) 28%,transparent); }
+    .state-chip.override { color:var(--primary-strong); background:var(--primary-soft); border-color:color-mix(in srgb,var(--primary) 28%,transparent); }
+
+    .temperature-block { display:grid; place-items:center; padding: 10px 0 8px; }
+    .temperature {
+      font-size: clamp(48px, 6vw, 67px);
+      line-height:1;
+      font-weight:760;
+      letter-spacing:-.055em;
+    }
+    .temperature sup { font-size:.36em; top:-1.2em; position:relative; margin-left:2px; letter-spacing:0; }
+    .temperature-label { color:var(--muted); font-size:11px; margin-top:8px; }
+
+    .zone-metrics {
+      display:grid;
+      grid-template-columns: repeat(2,minmax(0,1fr));
+      gap:10px;
+      margin:10px 0 14px;
+    }
+    .metric {
+      padding:10px 11px;
+      border-radius:11px;
+      background:var(--panel-2);
+      border:1px solid var(--line);
+    }
+    .metric-label { color:var(--muted); font-size:10px; text-transform:uppercase; letter-spacing:.06em; font-weight:800; }
+    .metric-value { margin-top:5px; font-size:13px; font-weight:750; }
+
+    .timeline {
+      padding:13px 0 7px;
+    }
+    .timeline-track {
+      position:relative;
+      height:10px;
+      border-radius:999px;
+      overflow:visible;
+      background:linear-gradient(90deg, var(--primary-soft) 0 22%, var(--heat-soft) 22% 69%, var(--primary-soft) 69% 100%);
+      border:1px solid var(--line);
+    }
+    .timeline-now {
+      position:absolute;
+      left:58%;
+      top:-5px;
+      width:2px;
+      height:20px;
+      border-radius:99px;
+      background:var(--text);
+    }
+    .timeline-now::after {
+      content:"Jetzt";
+      position:absolute;
+      top:21px;
+      left:50%;
+      transform:translateX(-50%);
+      font-size:9px;
+      color:var(--muted);
+      font-weight:700;
+    }
+    .timeline-meta {
+      margin-top:23px;
+      display:flex;
+      justify-content:space-between;
+      gap:12px;
+      color:var(--muted);
+      font-size:10px;
+    }
+
+    .setpoint {
+      margin-top:16px;
+      padding-top:15px;
+      border-top:1px solid var(--line);
+    }
+    .setpoint-caption {
+      text-align:center;
+      color:var(--muted);
+      font-size:11px;
+      margin-bottom:10px;
+    }
+    .stepper {
+      display:grid;
+      grid-template-columns:44px minmax(90px,1fr) 44px;
+      align-items:center;
+      gap:10px;
+      max-width:270px;
+      margin:0 auto;
+    }
+    .stepper button {
+      height:44px;
+      border-radius:12px;
+      border:1px solid var(--line-strong);
+      background:var(--panel-2);
+      cursor:pointer;
+      font-size:21px;
+    }
+    .stepper button:hover { border-color:var(--primary); color:var(--primary-strong); }
+    .setpoint-value { text-align:center; font-weight:820; font-size:21px; }
+    .setpoint-mode { text-align:center; color:var(--muted); font-size:10px; margin-top:8px; }
+    .zone-actions {
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap:10px;
+      margin-top:16px;
+    }
+    .link-btn {
+      border:0;background:transparent;color:var(--primary-strong);font-weight:750;cursor:pointer;padding:8px 4px;
+    }
+
+    .section-card {
+      background:var(--panel);
+      border:1px solid var(--line);
+      border-radius:var(--radius);
+      box-shadow:var(--shadow);
+      overflow:hidden;
+    }
+    .section-card + .section-card { margin-top:18px; }
+    .section-card-head {
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap:18px;
+      padding:17px 18px;
+      border-bottom:1px solid var(--line);
+    }
+    .section-card-head h2 { margin:0; font-size:16px; }
+    .section-card-head p { margin:4px 0 0; color:var(--muted); font-size:11px; }
+
+    .segmented {
+      display:inline-flex;
+      background:var(--panel-2);
+      border:1px solid var(--line);
+      border-radius:10px;
+      padding:3px;
+    }
+    .segmented button {
+      border:0;
+      background:transparent;
+      padding:7px 10px;
+      border-radius:7px;
+      color:var(--muted);
+      font-weight:700;
+      cursor:pointer;
+      font-size:12px;
+    }
+    .segmented button.active { background:var(--panel); color:var(--text); box-shadow:0 1px 4px rgba(0,0,0,.08); }
+
+    .table-wrap { overflow:auto; }
+    table { width:100%; border-collapse:collapse; min-width:760px; }
+    th, td { padding:13px 16px; text-align:left; border-bottom:1px solid var(--line); vertical-align:middle; }
+    th { color:var(--muted); font-size:10px; text-transform:uppercase; letter-spacing:.06em; font-weight:800; background:var(--panel-2); }
+    td { font-size:12px; }
+    tbody tr:last-child td { border-bottom:0; }
+    .device-name { font-weight:760; }
+    .device-sub { color:var(--muted); font-size:10px; margin-top:3px; }
+    .health { display:inline-flex; align-items:center; gap:7px; font-weight:700; }
+    .health.warn { color:var(--warning); }
+    .health.bad { color:var(--danger); }
+    .health.ok { color:var(--success); }
+
+    .control-flow {
+      display:grid;
+      gap:0;
+      padding:20px;
+    }
+    .flow-step {
+      display:grid;
+      grid-template-columns:42px minmax(0,1fr) auto;
+      gap:12px;
+      align-items:center;
+      position:relative;
+      padding:10px 0;
+    }
+    .flow-step:not(:last-child)::after {
+      content:"";
+      position:absolute;
+      left:20px;
+      top:48px;
+      width:2px;
+      height:24px;
+      background:var(--line-strong);
+    }
+    .flow-number {
+      width:40px;height:40px;border-radius:12px;display:grid;place-items:center;
+      background:var(--panel-2);border:1px solid var(--line);font-weight:850;color:var(--muted);
+    }
+    .flow-copy strong { display:block; font-size:13px; }
+    .flow-copy span { display:block; color:var(--muted); font-size:11px; margin-top:3px; }
+    .flow-status { font-size:11px; font-weight:800; color:var(--success); }
+
+    .settings-grid {
+      display:grid;
+      grid-template-columns: repeat(2,minmax(0,1fr));
+      gap:18px;
+    }
+    .setting-group { padding:18px; }
+    .setting-group h3 { margin:0 0 5px; font-size:15px; }
+    .setting-group > p { margin:0 0 18px; color:var(--muted); font-size:11px; line-height:1.5; }
+    .form-row { display:grid; grid-template-columns:minmax(0,1fr) 130px; gap:18px; align-items:center; padding:12px 0; border-top:1px solid var(--line); }
+    .form-row:first-of-type { border-top:0; }
+    .form-row label strong { display:block; font-size:12px; }
+    .form-row label span { display:block; margin-top:3px; color:var(--muted); font-size:10px; line-height:1.4; }
+    .input {
+      width:100%;
+      min-height:38px;
+      border:1px solid var(--line-strong);
+      border-radius:9px;
+      background:var(--panel-2);
+      color:var(--text);
+      padding:8px 10px;
+    }
+    .switch {
+      appearance:none;
+      width:42px;height:24px;border-radius:999px;background:var(--line-strong);position:relative;cursor:pointer;border:0;
+    }
+    .switch::after { content:"";position:absolute;width:18px;height:18px;left:3px;top:3px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.3);transition:.18s; }
+    .switch:checked { background:var(--primary); }
+    .switch:checked::after { transform:translateX(18px); }
+
+    .schedule-preview { padding:18px; }
+    .schedule-line {
+      display:grid;
+      grid-template-columns: 18% 42% 26% 14%;
+      height:38px;
+      border-radius:12px;
+      overflow:hidden;
+      border:1px solid var(--line);
+      position:relative;
+    }
+    .schedule-line > div { display:flex; align-items:center; padding:0 12px; font-size:10px; font-weight:800; }
+    .s-night { background:var(--primary-soft); color:var(--primary-strong); }
+    .s-comfort { background:var(--heat-soft); color:var(--heat); }
+    .schedule-marker { position:absolute; left:34%; top:-5px; bottom:-5px; width:2px; background:var(--text); z-index:2; }
+    .schedule-marker::before { content:"Jetzt"; position:absolute; top:-18px; left:50%; transform:translateX(-50%); color:var(--muted); font-size:9px; font-weight:800; }
+
+    .week-grid { display:grid; grid-template-columns:70px minmax(720px,1fr); overflow:auto; }
+    .week-labels, .week-lines { display:grid; grid-template-rows:repeat(7,48px); }
+    .week-labels div { display:flex;align-items:center;padding:0 16px;border-top:1px solid var(--line);font-size:11px;font-weight:800;color:var(--muted); }
+    .week-row { position:relative; border-top:1px solid var(--line); background:linear-gradient(to right, transparent 24.8%, var(--line) 25%, transparent 25.2%, transparent 49.8%, var(--line) 50%, transparent 50.2%, transparent 74.8%, var(--line) 75%, transparent 75.2%); }
+    .week-block { position:absolute; top:10px; bottom:10px; border-radius:8px; display:flex; align-items:center; padding:0 10px; font-size:9px; font-weight:800; overflow:hidden; white-space:nowrap; }
+    .week-block.night { background:var(--primary-soft); color:var(--primary-strong); }
+    .week-block.comfort { background:var(--heat-soft); color:var(--heat); }
+
+    .mobile-nav { display:none; }
+
+    .modal-backdrop {
+      position:fixed; inset:0; background:rgba(8,12,18,.48); backdrop-filter:blur(4px); z-index:100;
+      display:none; align-items:center; justify-content:center; padding:18px;
+    }
+    .modal-backdrop.show { display:flex; }
+    .modal {
+      width:min(460px,100%); background:var(--panel); border:1px solid var(--line); border-radius:20px; box-shadow:0 28px 80px rgba(0,0,0,.35); overflow:hidden;
+    }
+    .modal-head { padding:18px 20px; border-bottom:1px solid var(--line); display:flex; align-items:flex-start; justify-content:space-between; gap:12px; }
+    .modal-head h2 { margin:0; font-size:18px; }
+    .modal-head p { margin:4px 0 0; color:var(--muted); font-size:11px; }
+    .icon-btn { width:34px;height:34px;border-radius:9px;border:1px solid var(--line);background:var(--panel-2);cursor:pointer; }
+    .modal-body { padding:20px; }
+    .override-temp { display:flex; justify-content:center; margin-bottom:22px; }
+    .radio-list { display:grid; gap:8px; }
+    .radio-option { display:flex; align-items:center; gap:10px; padding:11px 12px; border:1px solid var(--line); border-radius:11px; cursor:pointer; }
+    .radio-option:has(input:checked) { border-color:var(--primary); background:var(--primary-soft); }
+    .radio-option input { accent-color:var(--primary); }
+    .modal-actions { padding:14px 20px 20px; display:flex; justify-content:flex-end; gap:9px; }
+
+    .toast {
+      position:fixed; right:24px; bottom:24px; z-index:150; display:none; align-items:center; gap:12px;
+      padding:12px 14px; border-radius:12px; background:var(--text); color:var(--panel); box-shadow:var(--shadow); font-size:12px; font-weight:700;
+    }
+    .toast.show { display:flex; animation:toastIn .2s ease; }
+    @keyframes toastIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:none} }
+    .toast button { border:0; background:transparent; color:inherit; text-decoration:underline; font-weight:800; cursor:pointer; }
+
+    .demo-note {
+      margin-top:24px;
+      color:var(--muted);
+      font-size:10px;
+      text-align:center;
+    }
+
+    @media (max-width: 980px) {
+      :root { --sidebar: 210px; }
+      .zone-grid, .settings-grid { grid-template-columns:1fr; }
+      .gate-grid { grid-template-columns:1fr; }
+      .user-copy { display:none; }
+    }
+
+    @media (max-width: 760px) {
+      :root { --topbar: 62px; }
+      body { padding-bottom:70px; }
+      .app { display:block; }
+      .topbar { position:sticky; display:flex; height:var(--topbar); }
+      .brand-wrap { border-right:0; padding-left:16px; }
+      .brand-wrap span:last-child { display:none; }
+      .topbar-main { flex:1; padding:0 14px 0 4px; }
+      .system-pill { font-size:11px; padding:7px 9px; }
+      .sidebar { display:none; }
+      main { padding:20px 14px 34px; }
+      .page-heading { margin-bottom:16px; }
+      .page-heading h1 { font-size:28px; }
+      .page-heading p { font-size:13px; }
+      .heading-actions { display:none; }
+      .zone-grid { grid-template-columns:1fr; gap:14px; }
+      .zone-card { padding:16px; }
+      .gate-grid { gap:8px; }
+      .gate { padding:11px 12px; }
+      .alert { flex-wrap:wrap; }
+      .alert-actions { width:100%; margin-left:42px; }
+      .temperature { font-size:54px; }
+      .mobile-nav {
+        position:fixed;
+        left:0;right:0;bottom:0;
+        z-index:80;
+        height:68px;
+        display:grid;
+        grid-template-columns:repeat(4,1fr);
+        background:color-mix(in srgb,var(--panel) 94%,transparent);
+        backdrop-filter:blur(16px);
+        border-top:1px solid var(--line);
+      }
+      .mobile-nav button {
+        border:0;background:transparent;color:var(--muted);font-size:10px;font-weight:750;display:grid;place-items:center;align-content:center;gap:4px;
+      }
+      .mobile-nav button.active { color:var(--primary-strong); }
+      .mobile-nav svg { width:19px;height:19px; }
+      .modal-backdrop { align-items:flex-end; padding:0; }
+      .modal { width:100%; border-radius:20px 20px 0 0; }
+      .toast { right:12px; left:12px; bottom:82px; justify-content:space-between; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      * { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; scroll-behavior:auto !important; }
+    }
+  
+.nav-item{position:relative;gap:0;padding-left:14px}.nav-item.active:before{content:"";position:absolute;left:2px;top:9px;bottom:9px;width:3px;border-radius:3px;background:var(--primary)}
+.status-dot-css{width:9px;height:9px;border-radius:50%;display:block;background:var(--success);box-shadow:0 0 0 5px color-mix(in srgb,var(--success) 12%,transparent)}
+.mobile-nav button{font-size:11px;font-weight:750;position:relative}.mobile-nav button.active:before{content:"";position:absolute;top:0;left:28%;right:28%;height:2px;border-radius:2px;background:var(--primary)}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <div class="brand-wrap">
+      <div class="brand-mark" aria-hidden="true">t</div>
+      <span>thermoctl</span>
+    </div>
+    <div class="topbar-main">
+      <div class="system-pill"><span class="dot"></span> Anlage aktiv</div>
+      <div class="user-menu">
+        <div class="avatar">MK</div>
+        <div class="user-copy"><strong>Max Keller</strong><span>Administrator</span></div>
+      </div>
+    </div>
+  </header>
+
+  <aside class="sidebar">
+    <nav>
+      <div class="nav-section">
+        <div class="nav-label">Hauptbereich</div>
+        <button class="nav-item active" data-page="dashboard">Übersicht</button>
+        <button class="nav-item" data-page="zones">Zonen</button>
+        <button class="nav-item" data-page="devices">Geräte<span class="nav-badge">3</span></button>
+        <button class="nav-item" data-page="control">Betrieb</button>
+      </div>
+      <div class="nav-section">
+        <div class="nav-label">Analyse</div>
+        <button class="nav-item" data-page="statistics">Heizstatistik</button>
+        <button class="nav-item" data-page="relay">Relaisverschleiß</button>
+        <button class="nav-item" data-page="audit">Protokolle</button>
+      </div>
+      <div class="nav-section">
+        <div class="nav-label">System</div>
+        <button class="nav-item" data-page="settings">Regelvorgaben</button>
+        <button class="nav-item" data-page="modes">Sollwert-Modi</button>
+        <button class="nav-item" data-page="schedule">Zeitplan</button>
+        <button class="nav-item" data-page="interfaces">Schnittstellen</button>
+        <button class="nav-item" data-page="controllers">Bediengeräte</button>
+      </div>
+      <div class="nav-section">
+        <div class="nav-label">Zugänge</div>
+        <button class="nav-item" data-page="users">Benutzer</button>
+        <button class="nav-item" data-page="groups">Gruppen</button>
+        <button class="nav-item" data-page="tokens">API-Tokens</button>
+        <button class="nav-item" data-page="kiosk">Kiosk-Tokens</button>
+      </div>
+    </nav>
+  </aside>
+
+  <main>
+    <div class="stale-banner" id="staleBanner">
+      <div class="alert-icon">!</div>
+      <div><strong>Diese Ansicht ist nicht mehr aktuell.</strong><span>Einige Aktionen wurden deshalb nicht ausgeführt.</span></div>
+      <button class="btn" onclick="hideStale()">Neu laden</button>
+    </div>
+
+    <section class="page active" id="page-dashboard">
+      <div class="page-heading">
+        <div>
+          <h1>Zuhause</h1>
+          <p>Alles läuft wie vorgesehen. Hier siehst du, was die Heizung gerade tut und warum.</p>
+        </div>
+        <div class="heading-actions"><button class="btn" onclick="showStale()">Stale-State testen</button></div>
+      </div>
+
+      <div class="gate-grid">
+        <div class="gate"><div class="gate-icon"><span class="status-dot-css"></span></div><div><strong>Aktorausgabe freigegeben</strong><span>Schaltbefehle dürfen ausgegeben werden</span></div></div>
+        <div class="gate"><div class="gate-icon"><span class="status-dot-css"></span></div><div><strong>MQTT-Ausgabe freigegeben</strong><span>Broker-Riegel ist geöffnet</span></div></div>
+        <div class="gate"><div class="gate-icon"><span class="status-dot-css"></span></div><div><strong>Aktive Instanz</strong><span>Diese Instanz führt den Verbund</span></div></div>
+      </div>
+
+      <div class="alert">
+        <div class="alert-icon">!</div>
+        <div><strong>Sensor im Bad seit 18 Minuten ohne Messwert</strong><p>Die Regelung verwendet derzeit den letzten gültigen Wert. Die Zone regelt weiter.</p></div>
+        <div class="alert-actions"><button class="btn" onclick="openPage('devices')">Geräte prüfen</button></div>
+      </div>
+
+      <div class="zone-grid">
+        <article class="zone-card heating" data-zone="Wohnzimmer">
+          <div class="zone-head"><div class="zone-title"><h2>Wohnzimmer</h2><span>Sensor: Aqara Wohnzimmer</span></div><div class="state-chip heating"><span class="dot"></span>heizt</div></div>
+          <div class="temperature-block"><div class="temperature">21,4<sup>°C</sup></div><div class="temperature-label">aktuell gemessen</div></div>
+          <div class="zone-metrics"><div class="metric"><div class="metric-label">Sollwert</div><div class="metric-value" data-target>21,0 °C</div></div><div class="metric"><div class="metric-label">Grund</div><div class="metric-value">Komfort · Zeitplan</div></div></div>
+          <div class="timeline"><div class="timeline-track"><span class="timeline-now"></span></div><div class="timeline-meta"><span>Nacht 18°</span><span>Komfort 21°</span><span>Nacht 18°</span></div></div>
+          <div class="setpoint"><div class="setpoint-caption">Sollwert des laufenden Modus dauerhaft ändern</div><div class="stepper"><button onclick="stepSetpoint(this,-0.5)" aria-label="Sollwert senken">−</button><div class="setpoint-value">21,0 °C</div><button onclick="stepSetpoint(this,0.5)" aria-label="Sollwert erhöhen">+</button></div><div class="setpoint-mode">Modus: Komfort</div></div>
+          <div class="zone-actions"><button class="btn" onclick="openOverride('Wohnzimmer',21.0)">Übersteuern</button><button class="link-btn" onclick="openPage('zones')">Details →</button></div>
+        </article>
+
+        <article class="zone-card" data-zone="Schlafzimmer">
+          <div class="zone-head"><div class="zone-title"><h2>Schlafzimmer</h2><span>Sensor: Thermostat Schlafzimmer</span></div><div class="state-chip">aus</div></div>
+          <div class="temperature-block"><div class="temperature">19,8<sup>°C</sup></div><div class="temperature-label">aktuell gemessen</div></div>
+          <div class="zone-metrics"><div class="metric"><div class="metric-label">Sollwert</div><div class="metric-value" data-target>18,0 °C</div></div><div class="metric"><div class="metric-label">Grund</div><div class="metric-value">Nacht · Zeitplan</div></div></div>
+          <div class="timeline"><div class="timeline-track" style="background:linear-gradient(90deg,var(--primary-soft) 0 48%,var(--heat-soft) 48% 72%,var(--primary-soft) 72% 100%)"><span class="timeline-now" style="left:58%"></span></div><div class="timeline-meta"><span>Nacht 18°</span><span>Komfort 20°</span><span>Nacht 18°</span></div></div>
+          <div class="setpoint"><div class="setpoint-caption">Sollwert des laufenden Modus dauerhaft ändern</div><div class="stepper"><button onclick="stepSetpoint(this,-0.5)">−</button><div class="setpoint-value">18,0 °C</div><button onclick="stepSetpoint(this,0.5)">+</button></div><div class="setpoint-mode">Modus: Nacht</div></div>
+          <div class="zone-actions"><button class="btn" onclick="openOverride('Schlafzimmer',18.0)">Übersteuern</button><button class="link-btn" onclick="openPage('zones')">Details →</button></div>
+        </article>
+      </div>
+      <div class="demo-note">Demo-Daten · Die eigentliche Anwendung würde Werte weiterhin serverseitig über Jinja/HTMX liefern.</div>
+    </section>
+
+    <section class="page" id="page-zones">
+      <div class="page-heading"><div><h1>Zonen</h1><p>Räume, Betriebsarten, Temperaturquellen und zonenspezifische Einstellungen.</p></div><div class="heading-actions"><button class="btn primary">+ Zone hinzufügen</button></div></div>
+      <div class="section-card">
+        <div class="section-card-head"><div><h2>Alle Zonen</h2><p>3 Zonen · nach Sortierung</p></div></div>
+        <div class="table-wrap"><table><thead><tr><th>Zone</th><th>Betriebsart</th><th>Temperaturquelle</th><th>Status</th><th></th></tr></thead><tbody>
+          <tr><td><div class="device-name">Wohnzimmer</div><div class="device-sub">wohnzimmer</div></td><td>Heizen</td><td>Aqara Wohnzimmer</td><td><span class="health ok">● In Ordnung</span></td><td><button class="btn" onclick="openPage('schedule')">Öffnen</button></td></tr>
+          <tr><td><div class="device-name">Schlafzimmer</div><div class="device-sub">schlafzimmer</div></td><td>Heizen</td><td>Thermostat Schlafzimmer</td><td><span class="health ok">● In Ordnung</span></td><td><button class="btn">Öffnen</button></td></tr>
+          <tr><td><div class="device-name">Bad</div><div class="device-sub">bad</div></td><td>Heizen</td><td>Aqara Bad</td><td><span class="health warn">● Sensor still</span></td><td><button class="btn">Öffnen</button></td></tr>
+        </tbody></table></div>
+      </div>
+    </section>
+
+    <section class="page" id="page-devices">
+      <div class="page-heading"><div><h1>Geräte</h1><p>Auffällige Geräte zuerst – Batterie, Funkqualität, Verfügbarkeit und letzte Aktivität auf einen Blick.</p></div></div>
+      <div class="section-card">
+        <div class="section-card-head"><div><h2>Geräteübersicht</h2><p>28 Geräte · 3 auffällig · 2 ohne Zone</p></div><div class="segmented"><button class="active">Liste</button><button>Anlagenbild</button></div></div>
+        <div class="table-wrap"><table><thead><tr><th>Gerät</th><th>Zone</th><th>Status</th><th>Batterie</th><th>Signal</th><th>Zuletzt</th></tr></thead><tbody>
+          <tr><td><div class="device-name">Thermostat Bad</div><div class="device-sub">Temperaturquelle</div></td><td>Bad</td><td><span class="health warn">● Batterie niedrig</span></td><td>14 %</td><td>−73 dBm</td><td>vor 18 Min.</td></tr>
+          <tr><td><div class="device-name">Fenstersensor Küche</div><div class="device-sub">Kontakt</div></td><td>Küche</td><td><span class="health bad">● Keine Verbindung</span></td><td>62 %</td><td>—</td><td>vor 2 Std.</td></tr>
+          <tr><td><div class="device-name">Relais Keller</div><div class="device-sub">Aktor</div></td><td>Ohne Zone</td><td><span class="health warn">● Nicht zugeordnet</span></td><td>Netz</td><td>−61 dBm</td><td>vor 4 Min.</td></tr>
+          <tr><td><div class="device-name">Aqara Wohnzimmer</div><div class="device-sub">Temperaturquelle</div></td><td>Wohnzimmer</td><td><span class="health ok">● Online</span></td><td>82 %</td><td>−58 dBm</td><td>vor 12 Sek.</td></tr>
+          <tr><td><div class="device-name">Relais Wohnzimmer</div><div class="device-sub">Aktor</div></td><td>Wohnzimmer</td><td><span class="health ok">● Online</span></td><td>Netz</td><td>−64 dBm</td><td>vor 8 Sek.</td></tr>
+        </tbody></table></div>
+      </div>
+    </section>
+
+    <section class="page" id="page-control">
+      <div class="page-heading"><div><h1>Betrieb</h1><p>Zeigt getrennt, ob die Regelung entscheidet, Aktoren freigegeben sind und MQTT tatsächlich senden darf.</p></div><div class="heading-actions"><button class="btn danger">Aktorausgabe sperren</button></div></div>
+      <div class="section-card">
+        <div class="section-card-head"><div><h2>Ausgabeweg</h2><p>Alle Riegel sind geöffnet.</p></div></div>
+        <div class="control-flow">
+          <div class="flow-step"><div class="flow-number">1</div><div class="flow-copy"><strong>Regelung</strong><span>Berechnet Sollwerte und Entscheidungen</span></div><div class="flow-status">● aktiv</div></div>
+          <div class="flow-step"><div class="flow-number">2</div><div class="flow-copy"><strong>Aktorfreigabe</strong><span>Schaltbefehle dürfen ausgegeben werden</span></div><div class="flow-status">● freigegeben</div></div>
+          <div class="flow-step"><div class="flow-number">3</div><div class="flow-copy"><strong>MQTT-Ausgabe</strong><span>Riegel wurde beim Prozessstart geöffnet</span></div><div class="flow-status">● freigegeben</div></div>
+          <div class="flow-step"><div class="flow-number">4</div><div class="flow-copy"><strong>Geräte</strong><span>Befehle erreichen die Aktoren</span></div><div class="flow-status">● erreichbar</div></div>
+        </div>
+      </div>
+      <div class="section-card">
+        <div class="section-card-head"><div><h2>Zonenentscheidungen</h2><p>Aktueller Zustand der Regelung.</p></div></div>
+        <div class="table-wrap"><table><thead><tr><th>Zone</th><th>Ist</th><th>Soll</th><th>Entscheidung</th><th>Aktor</th></tr></thead><tbody>
+          <tr><td>Wohnzimmer</td><td>21,4 °C</td><td>21,0 °C</td><td>Heizen</td><td><span class="health ok">● EIN</span></td></tr>
+          <tr><td>Schlafzimmer</td><td>19,8 °C</td><td>18,0 °C</td><td>Warten</td><td>AUS</td></tr>
+          <tr><td>Bad</td><td>20,3 °C</td><td>21,5 °C</td><td>Heizen</td><td><span class="health ok">● EIN</span></td></tr>
+        </tbody></table></div>
+      </div>
+    </section>
+
+    <section class="page" id="page-settings">
+      <div class="page-heading"><div><h1>Regelvorgaben</h1><p>Anlagenweite Vorgaben für Regelung, Datenhaltung, Solarprognose und Störungsmeldungen.</p></div><div class="heading-actions"><button class="btn primary">Änderungen speichern</button></div></div>
+      <div class="settings-grid">
+        <div class="section-card setting-group"><h3>Regelverhalten</h3><p>Grundwerte, die Zonen übernehmen können.</p>
+          <div class="form-row"><label><strong>Hysterese</strong><span>Temperaturabstand vor einem Zustandswechsel.</span></label><input class="input" value="0,3 K"></div>
+          <div class="form-row"><label><strong>Mindest-Einschaltdauer</strong><span>Verhindert unnötig kurze Schaltzyklen.</span></label><input class="input" value="180 s"></div>
+          <div class="form-row"><label><strong>Mindest-Ausschaltdauer</strong><span>Pause zwischen zwei Heizphasen.</span></label><input class="input" value="180 s"></div>
+          <div class="form-row"><label><strong>Zykluszeit</strong><span>Intervall der Regelungsberechnung.</span></label><input class="input" value="30 s"></div>
+        </div>
+        <div class="section-card setting-group"><h3>Störungsmeldungen</h3><p>Welche Störungen an den konfigurierten Webhook gesendet werden.</p>
+          <div class="form-row"><label><strong>Sensorstörung</strong><span>Fehlende oder ungültige Messwerte.</span></label><input class="switch" type="checkbox" checked></div>
+          <div class="form-row"><label><strong>Brücke / Broker weg</strong><span>Kommunikationsweg ist nicht erreichbar.</span></label><input class="switch" type="checkbox" checked></div>
+          <div class="form-row"><label><strong>Schaltbefehl fehlgeschlagen</strong><span>Ein Aktor hat einen Befehl nicht ausgeführt.</span></label><input class="switch" type="checkbox" checked></div>
+          <div class="form-row"><label><strong>Festhängender Messwert</strong><span>Messwert verändert sich unplausibel lange nicht.</span></label><input class="switch" type="checkbox" checked></div>
+        </div>
+        <div class="section-card setting-group"><h3>Zeit & Daten</h3><p>Zeitzone und Aufbewahrung historischer Daten.</p>
+          <div class="form-row"><label><strong>Zeitzone</strong><span>Lokale Zeit für Zeitpläne und Statistiken.</span></label><select class="input"><option>Europe/Berlin</option></select></div>
+          <div class="form-row"><label><strong>Aufbewahrung</strong><span>Historische Heiz- und Ereignisdaten.</span></label><select class="input"><option>90 Tage</option></select></div>
+        </div>
+        <div class="section-card setting-group"><h3>Webhook</h3><p>Zustellstatus und Test der bestehenden Benachrichtigungskette.</p>
+          <div class="form-row"><label><strong>Letzte Zustellung</strong><span>Heute 14:38 · erfolgreich · 184 ms</span></label><span class="health ok">● erfolgreich</span></div>
+          <div class="form-row"><label><strong>Testmeldung</strong><span>Verwendet denselben Weg wie eine echte Meldung.</span></label><button class="btn" onclick="toast('Testmeldung gesendet · HTTP 204 · 172 ms')">Test senden</button></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="page" id="page-schedule">
+      <div class="page-heading"><div><h1>Zeitplan · Wohnzimmer</h1><p>Vorschau und Wochenraster verwenden dieselbe serverseitige Zeitplanlogik wie die laufende Regelung.</p></div><div class="heading-actions"><button class="btn">Von Zone übernehmen</button><button class="btn primary" onclick="toast('Schaltpunkt angelegt · Rückgängig verfügbar')">+ Schaltpunkt</button></div></div>
+      <div class="section-card">
+        <div class="section-card-head"><div><h2>Nächste 24 Stunden</h2><p>Die aktuell geltende Phase ist markiert.</p></div></div>
+        <div class="schedule-preview"><div class="schedule-line"><div class="s-night">Nacht · 18°</div><div class="s-comfort">Komfort · 21°</div><div class="s-night">Nacht · 18°</div><div class="s-comfort">Komfort</div><span class="schedule-marker"></span></div></div>
+      </div>
+      <div class="section-card">
+        <div class="section-card-head"><div><h2>Wochenplan</h2><p>Schaltpunkte bearbeiten, Intervall malen oder Tag kopieren.</p></div><div class="heading-actions" style="display:flex"><button class="btn">Intervall malen</button><button class="btn">Tag kopieren</button></div></div>
+        <div class="week-grid"><div class="week-labels"><div>Mo</div><div>Di</div><div>Mi</div><div>Do</div><div>Fr</div><div>Sa</div><div>So</div></div><div class="week-lines">
+          <div class="week-row"><span class="week-block night" style="left:0;width:27%">Nacht</span><span class="week-block comfort" style="left:27%;width:64%">Komfort</span><span class="week-block night" style="left:91%;width:9%">Nacht</span></div>
+          <div class="week-row"><span class="week-block night" style="left:0;width:27%">Nacht</span><span class="week-block comfort" style="left:27%;width:64%">Komfort</span><span class="week-block night" style="left:91%;width:9%">Nacht</span></div>
+          <div class="week-row"><span class="week-block night" style="left:0;width:27%">Nacht</span><span class="week-block comfort" style="left:27%;width:64%">Komfort</span><span class="week-block night" style="left:91%;width:9%">Nacht</span></div>
+          <div class="week-row"><span class="week-block night" style="left:0;width:27%">Nacht</span><span class="week-block comfort" style="left:27%;width:64%">Komfort</span><span class="week-block night" style="left:91%;width:9%">Nacht</span></div>
+          <div class="week-row"><span class="week-block night" style="left:0;width:27%">Nacht</span><span class="week-block comfort" style="left:27%;width:69%">Komfort</span><span class="week-block night" style="left:96%;width:4%">Nacht</span></div>
+          <div class="week-row"><span class="week-block night" style="left:0;width:33%">Nacht</span><span class="week-block comfort" style="left:33%;width:63%">Komfort</span><span class="week-block night" style="left:96%;width:4%">Nacht</span></div>
+          <div class="week-row"><span class="week-block night" style="left:0;width:33%">Nacht</span><span class="week-block comfort" style="left:33%;width:58%">Komfort</span><span class="week-block night" style="left:91%;width:9%">Nacht</span></div>
+        </div></div>
+      </div>
+    </section>
+
+    <section class="page" id="page-statistics">
+      <div class="page-heading"><div><h1>Heizstatistik</h1><p>Heizzeiten je Zone über bewusst feste Vergleichszeiträume.</p></div></div>
+      <div class="section-card"><div class="section-card-head"><div><h2>Heizzeit</h2><p>Alle Zonen verwenden dieselbe Skala.</p></div><div class="segmented"><button class="active">7 Tage</button><button>30 Tage</button><button>90 Tage</button></div></div><div style="padding:22px">
+        <div style="display:grid;gap:14px">
+          <div><div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:6px"><strong>Wohnzimmer</strong><span>16,4 h</span></div><div style="height:16px;border-radius:8px;background:var(--panel-2);overflow:hidden"><div style="width:72%;height:100%;background:var(--heat);border-radius:inherit"></div></div></div>
+          <div><div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:6px"><strong>Bad</strong><span>10,8 h</span></div><div style="height:16px;border-radius:8px;background:var(--panel-2);overflow:hidden"><div style="width:48%;height:100%;background:var(--heat);border-radius:inherit"></div></div></div>
+          <div><div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:6px"><strong>Schlafzimmer</strong><span>6,3 h</span></div><div style="height:16px;border-radius:8px;background:var(--panel-2);overflow:hidden"><div style="width:29%;height:100%;background:var(--heat);border-radius:inherit"></div></div></div>
+        </div>
+      </div></div>
+    </section>
+
+    <section class="page" id="page-relay"><div class="page-heading"><div><h1>Relaisverschleiß</h1><p>Schaltspiele und Jahreshochrechnung pro Gerät.</p></div></div><div class="section-card"><div class="table-wrap"><table><thead><tr><th>Gerät</th><th>Schaltspiele</th><th>Hochrechnung / Jahr</th><th>Lebensdauer</th></tr></thead><tbody><tr><td>Relais Wohnzimmer</td><td>4.920</td><td>18.400</td><td><span class="health ok">● unkritisch</span></td></tr><tr><td>Relais Bad</td><td>7.812</td><td>31.900</td><td><span class="health warn">● beobachten</span></td></tr></tbody></table></div></div></section>
+    <section class="page" id="page-interfaces"><div class="page-heading"><div><h1>Schnittstellen</h1><p>MQTT, Webhook und externe Konten – Status vor Konfigurationsdetails.</p></div></div><div class="zone-grid"><div class="section-card setting-group"><h3>MQTT-Broker</h3><p>Lokaler Broker für Gerätekommunikation.</p><div class="form-row"><label><strong>Status</strong><span>mqtt://broker.local:1883</span></label><span class="health ok">● verbunden</span></div></div><div class="section-card setting-group"><h3>Webhook</h3><p>Ziel für Störungsmeldungen.</p><div class="form-row"><label><strong>Status</strong><span>Letzte Zustellung erfolgreich</span></label><span class="health ok">● bereit</span></div></div></div></section>
+
+    <section class="page" id="page-modes">
+      <div class="page-heading"><div><h1>Sollwert-Modi</h1><p>Zentrale Temperaturprofile, die Zeitpläne und Zonen verwenden.</p></div><div class="heading-actions"><button class="btn primary" onclick="toast('Neuer Sollwert-Modus vorbereitet')">Modus anlegen</button></div></div>
+      <div class="section-card"><div class="table-wrap"><table><thead><tr><th>Modus</th><th>Verwendung</th><th>Zonen</th><th>Status</th></tr></thead><tbody>
+        <tr><td><strong>Komfort</strong><div class="device-sub">Normale Anwesenheit</div></td><td>Zeitplan und manuelle Sollwertänderung</td><td>6</td><td><span class="health ok">aktiv</span></td></tr>
+        <tr><td><strong>Nacht</strong><div class="device-sub">Abgesenkter Betrieb</div></td><td>Zeitplan</td><td>6</td><td><span class="health ok">aktiv</span></td></tr>
+        <tr><td><strong>Frostschutz</strong><div class="device-sub">Fallback der Regelung</div></td><td>System</td><td>6</td><td><span class="health ok">aktiv</span></td></tr>
+      </tbody></table></div></div>
+    </section>
+
+    <section class="page" id="page-controllers">
+      <div class="page-heading"><div><h1>Bediengeräte</h1><p>Was von Wandthermostaten ankommt, welche Werte zurückgesendet werden und wie Tasten gebunden sind.</p></div></div>
+      <div class="section-card"><div class="table-wrap"><table><thead><tr><th>Bediengerät</th><th>Zone</th><th>Eingang</th><th>Ausgabe</th><th>Tasten</th></tr></thead><tbody>
+        <tr><td>Thermostat Wohnzimmer</td><td>Wohnzimmer</td><td>20,6 °C</td><td>Soll 21,0 °C</td><td>Plus / Minus gebunden</td></tr>
+        <tr><td>Thermostat Bad</td><td>Bad</td><td>20,0 °C</td><td>Soll 22,0 °C</td><td>Boost gebunden</td></tr>
+        <tr><td>Wandpanel Flur</td><td>Flur</td><td>keine Temperaturquelle</td><td>Soll 20,0 °C</td><td>2 freie Tasten</td></tr>
+      </tbody></table></div></div>
+    </section>
+
+    <section class="page" id="page-groups">
+      <div class="page-heading"><div><h1>Gruppen</h1><p>Rollen und Rechte werden als Matrix verwaltet; die Endpunkte prüfen die Rechte weiterhin serverseitig.</p></div><div class="heading-actions"><button class="btn primary" onclick="toast('Neue Gruppe vorbereitet')">Gruppe anlegen</button></div></div>
+      <div class="section-card"><div class="table-wrap"><table><thead><tr><th>Gruppe</th><th>Zonen lesen</th><th>Sollwert ändern</th><th>Zonen verwalten</th><th>Benutzer verwalten</th></tr></thead><tbody>
+        <tr><td>Administratoren</td><td>Ja</td><td>Ja</td><td>Ja</td><td>Ja</td></tr>
+        <tr><td>Mieter</td><td>zugewiesene Zonen</td><td>Ja</td><td>Nein</td><td>Nein</td></tr>
+        <tr><td>Service</td><td>zugewiesene Zonen</td><td>Nein</td><td>Ja</td><td>Nein</td></tr>
+      </tbody></table></div></div>
+    </section>
+
+    <section class="page" id="page-tokens">
+      <div class="page-heading"><div><h1>API-Tokens</h1><p>Persönliche Tokens ausstellen und widerrufen. Der Klartext wird nur einmal gezeigt.</p></div><div class="heading-actions"><button class="btn primary" onclick="toast('Token erstellt; Klartext würde jetzt einmalig angezeigt')">Token erstellen</button></div></div>
+      <div class="section-card"><div class="table-wrap"><table><thead><tr><th>Name</th><th>Erstellt</th><th>Zuletzt verwendet</th><th>Status</th></tr></thead><tbody>
+        <tr><td>Home Assistant</td><td>12.08.2026</td><td>vor 2 Min.</td><td><span class="health ok">aktiv</span></td></tr>
+        <tr><td>Wartungsskript</td><td>04.07.2026</td><td>vor 6 Tagen</td><td><span class="health ok">aktiv</span></td></tr>
+      </tbody></table></div></div>
+    </section>
+
+    <section class="page" id="page-kiosk">
+      <div class="page-heading"><div><h1>Kiosk-Tokens</h1><p>Gerätebezogene Zugänge für Wandtablets, getrennt von persönlichen API-Tokens.</p></div><div class="heading-actions"><button class="btn primary" onclick="toast('Kiosk-Token vorbereitet')">Kiosk-Token anlegen</button></div></div>
+      <div class="section-card"><div class="table-wrap"><table><thead><tr><th>Name</th><th>Zonen</th><th>Bedienung</th><th>Ablauf</th><th>Status</th></tr></thead><tbody>
+        <tr><td>Tablet Wohnung 2</td><td>Wohnzimmer, Schlafzimmer, Bad</td><td>Sollwert und Übersteuerung</td><td>31.12.2027</td><td><span class="health ok">aktiv</span></td></tr>
+        <tr><td>Flur-Display</td><td>Flur, Küche</td><td>nur lesen</td><td>kein Ablauf</td><td><span class="health ok">aktiv</span></td></tr>
+      </tbody></table></div></div>
+    </section>
+
+    <section class="page" id="page-users"><div class="page-heading"><div><h1>Benutzer</h1><p>Benutzerkonten, Gruppenzuordnung, Passwort und Sitzungen.</p></div><div class="heading-actions"><button class="btn primary">+ Benutzer</button></div></div><div class="section-card"><div class="table-wrap"><table><thead><tr><th>Benutzer</th><th>Gruppe</th><th>Status</th><th>Letzte Anmeldung</th></tr></thead><tbody><tr><td>Max Keller</td><td>Administratoren</td><td><span class="health ok">● aktiv</span></td><td>heute 15:12</td></tr><tr><td>Wandtablet</td><td>—</td><td>Kiosk-Token</td><td>vor 8 Min.</td></tr></tbody></table></div></div></section>
+    <section class="page" id="page-audit"><div class="page-heading"><div><h1>Protokolle</h1><p>Audit-Protokoll und Schaltprotokoll in einer Diagnoseansicht. Trockenlauf wird ausdrücklich gekennzeichnet.</p></div></div><div class="section-card"><div class="section-card-head"><div><h2>Letzte Ereignisse</h2><p>50 Einträge pro Seite</p></div><div class="segmented"><button class="active">Audit</button><button>Schaltprotokoll</button></div></div><div class="table-wrap"><table><thead><tr><th>Zeit</th><th>Bereich</th><th>Ereignis</th><th>Ergebnis</th></tr></thead><tbody><tr><td>15:32:08</td><td>Wohnzimmer</td><td>Relais EIN · Sollwert 21,0 °C</td><td><span class="health ok">● gesendet</span></td></tr><tr><td>15:18:42</td><td>Bad</td><td>Sensor still erkannt</td><td><span class="health warn">● Warnung</span></td></tr><tr><td>14:38:12</td><td>Webhook</td><td>Störungsmeldung zugestellt</td><td><span class="health ok">● HTTP 204</span></td></tr></tbody></table></div></div></section>
+  </main>
+</div>
+
+<nav class="mobile-nav" aria-label="Mobile Navigation">
+  <button class="active" data-page="dashboard"><span>Übersicht</span></button>
+  <button data-page="zones"><span>Zonen</span></button>
+  <button data-page="devices"><span>Geräte</span></button>
+  <button data-page="settings"><span>Mehr</span></button>
+</nav>
+
+<div class="modal-backdrop" id="overrideModal" onclick="if(event.target===this)closeOverride()">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="overrideTitle">
+    <div class="modal-head"><div><h2 id="overrideTitle">Übersteuerung</h2><p id="overrideSubtitle">Wohnzimmer</p></div><button class="icon-btn" onclick="closeOverride()">×</button></div>
+    <div class="modal-body">
+      <div class="override-temp"><div class="stepper" style="width:260px"><button onclick="overrideStep(-0.5)">−</button><div class="setpoint-value" id="overrideTemp">22,0 °C</div><button onclick="overrideStep(0.5)">+</button></div></div>
+      <div style="font-size:11px;font-weight:800;margin-bottom:8px">Dauer</div>
+      <div class="radio-list">
+        <label class="radio-option"><input type="radio" name="duration" checked><span>Bis zum nächsten Schaltpunkt</span></label>
+        <label class="radio-option"><input type="radio" name="duration"><span>30 Minuten</span></label>
+        <label class="radio-option"><input type="radio" name="duration"><span>60 Minuten</span></label>
+        <label class="radio-option"><input type="radio" name="duration"><span>Dauerhaft</span></label>
+      </div>
+    </div>
+    <div class="modal-actions"><button class="btn" onclick="closeOverride()">Abbrechen</button><button class="btn primary" onclick="applyOverride()">Übernehmen</button></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"><span id="toastText">Gespeichert</span><button onclick="hideToast()">Schließen</button></div>
+
+<script>
+  const pages = [...document.querySelectorAll('.page')];
+  const navButtons = [...document.querySelectorAll('[data-page]')];
+  let overrideValue = 22;
+  let overrideZone = '';
+
+  function openPage(name) {
+    const target = document.getElementById('page-' + name);
+    if (!target) return;
+    pages.forEach(p => p.classList.toggle('active', p === target));
+    navButtons.forEach(b => b.classList.toggle('active', b.dataset.page === name));
+    window.scrollTo({top:0, behavior:'smooth'});
+    history.replaceState(null, '', '#' + name);
+  }
+
+  navButtons.forEach(b => b.addEventListener('click', () => openPage(b.dataset.page)));
+
+  function parseTemp(text) {
+    return Number(String(text).replace(',', '.').replace(/[^0-9.-]/g,''));
+  }
+  function fmtTemp(n) { return n.toFixed(1).replace('.', ',') + ' °C'; }
+
+  function stepSetpoint(button, delta) {
+    const card = button.closest('.zone-card');
+    const valueEl = card.querySelector('.setpoint-value');
+    const targetEl = card.querySelector('[data-target]');
+    let v = parseTemp(valueEl.textContent) + delta;
+    v = Math.max(5, Math.min(30, v));
+    valueEl.textContent = fmtTemp(v);
+    targetEl.textContent = fmtTemp(v);
+    toast('Sollwert gespeichert · Modus dauerhaft geändert');
+  }
+
+  function openOverride(zone, current) {
+    overrideZone = zone;
+    overrideValue = current + 1;
+    document.getElementById('overrideSubtitle').textContent = zone;
+    document.getElementById('overrideTemp').textContent = fmtTemp(overrideValue);
+    document.getElementById('overrideModal').classList.add('show');
+  }
+  function closeOverride() { document.getElementById('overrideModal').classList.remove('show'); }
+  function overrideStep(delta) {
+    overrideValue = Math.max(5, Math.min(30, overrideValue + delta));
+    document.getElementById('overrideTemp').textContent = fmtTemp(overrideValue);
+  }
+  function applyOverride() {
+    closeOverride();
+    const card = [...document.querySelectorAll('.zone-card')].find(c => c.dataset.zone === overrideZone);
+    if (card) {
+      const chip = card.querySelector('.state-chip');
+      chip.className = 'state-chip override';
+      chip.textContent = 'Übersteuerung';
+    }
+    toast('Übersteuerung für ' + overrideZone + ' aktiviert');
+  }
+
+  function toast(message) {
+    const el = document.getElementById('toast');
+    document.getElementById('toastText').textContent = message;
+    el.classList.add('show');
+    clearTimeout(window.__toastTimer);
+    window.__toastTimer = setTimeout(hideToast, 3400);
+  }
+  function hideToast(){ document.getElementById('toast').classList.remove('show'); }
+  function showStale(){ document.getElementById('staleBanner').classList.add('show'); }
+  function hideStale(){ document.getElementById('staleBanner').classList.remove('show'); toast('Ansicht aktualisiert'); }
+
+  const initial = location.hash.slice(1);
+  if (initial && document.getElementById('page-' + initial)) openPage(initial);
+</script>
+</body>
+</html>
