@@ -1,6 +1,7 @@
-{% extends "base.html" if not is_htmx else "empty.html" %}
+{% extends "base_admin.html" if not is_htmx else "empty.html" %}
 {% from "form.html" import text_field, error_notice %}
 {% block title %}Gruppen – thermoctl{% endblock %}
+{% block page_title %}Gruppen{% endblock %}
 {% block max_width %}60rem{% endblock %}
 
 {#

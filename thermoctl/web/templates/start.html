@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+{% extends "base_admin.html" %}
 {% block title %}thermoctl{% endblock %}
 {% block max_width %}76rem{% endblock %}
 
@@ -90,29 +90,63 @@ hier, sondern an der jeweiligen Stelle: `hx-preserve` an den
      hx-disinherit="hx-select hx-target hx-swap">
 
 <section class="tc-system-row {{ 'tc-armed' if armed }} mb-4">
-    {% if cluster_standby %}
-    <span class="tc-chip tc-chip-warning"><span class="tc-dot"></span>Bereitschaft</span>
-    <span>
-        Diese Instanz ist Teil eines Aktiv-Bereitschafts-Verbunds und steht gerade in
-        Bereitschaft: Sie regelt nicht und schaltet nichts, unabhängig vom Zustand
-        unten. Ansehen und Konfigurieren ist möglich, beide Instanzen arbeiten auf
-        derselben Datenbank.
-    </span>
-    {% endif %}
+    {#
+    Die drei Riegel -- bewusst drei getrennte Aussagen mit eigenem Text statt eines
+    zusammengefassten "System OK": eine Bereitschaftsinstanz, die aussieht wie die
+    aktive, oder ein Scharf-Zustand, der eine zu wartende MQTT-Sperre verdeckt, ist
+    genau der Fehlerfall, den diese Trennung ausschließen soll (Bestandsaufnahme §4,
+    Punkt 3).
+    #}
+    <div class="tc-latches">
+        <span class="tc-latch">
+            <span class="tc-chip {{ 'tc-chip-warm' if armed else 'tc-chip-quiet' }}">
+                <span class="tc-dot"></span>{{ 'Aktorfreigabe: scharf' if armed else 'Aktorfreigabe: Trockenlauf' }}
+            </span>
+            <span class="t-quiet small">
+                {% if armed %}
+                Regelentscheidungen dürfen Aktoren tatsächlich schalten.
+                {% else %}
+                Regelentscheidungen werden nur protokolliert, kein Aktor wird angesteuert.
+                {% endif %}
+            </span>
+        </span>
+        <span class="tc-latch">
+            <span class="tc-chip {{ 'tc-chip-warm' if sending_allowed else 'tc-chip-warning' }}">
+                <span class="tc-dot"></span>{{ 'MQTT-Ausgabe: frei' if sending_allowed else 'MQTT-Ausgabe: gesperrt' }}
+            </span>
+            <span class="t-quiet small">
+                {% if sending_allowed %}
+                Sollwerte und Ein/Aus-Befehle gehen tatsächlich an den Broker hinaus.
+                {% else %}
+                Es gehen weder Sollwerte noch Ein/Aus-Befehle an den Broker hinaus.
+                {% endif %}
+                Dieser Riegel wird beim Prozessstart eingefroren — eine Änderung an der
+                Einstellung wirkt erst nach einem Neustart des Prozesses.
+            </span>
+        </span>
+        <span class="tc-latch">
+            <span class="tc-chip {{ 'tc-chip-warning' if cluster_standby else 'tc-chip-quiet' }}">
+                <span class="tc-dot"></span>{{ 'Verbund: Bereitschaft' if cluster_standby else 'Verbund: führt bzw. Alleinbetrieb' }}
+            </span>
+            <span class="t-quiet small">
+                {% if cluster_standby %}
+                Diese Instanz ist Teil eines Aktiv-Bereitschafts-Verbunds und steht
+                gerade in Bereitschaft: Sie regelt nicht und schaltet nichts,
+                unabhängig von den beiden Riegeln oben. Ansehen und Konfigurieren ist
+                möglich, beide Instanzen arbeiten auf derselben Datenbank.
+                {% else %}
+                Diese Instanz regelt aktiv (kein Verbund konfiguriert, oder sie führt
+                gerade darin).
+                {% endif %}
+            </span>
+        </span>
+    </div>
     {% if armed and sending_allowed %}
-    <span class="tc-chip tc-chip-warm"><span class="tc-dot"></span>Scharf und neu gestartet</span>
-    <span>Ausgabe freigegeben — alle zugeordneten Aktoren werden angesteuert.</span>
     <details class="tc-info-disclosure">
         <summary>ⓘ welche Befehle</summary>
         Selbstregelnde Thermostatventile bekommen einen Sollwert und regeln damit selbst;
         Schalter, Steckdosen und Ventile ohne eigene Regelung bekommen Ein/Aus.
     </details>
-    {% elif armed %}
-    <span class="tc-chip tc-chip-warning">Scharf, Neustart fehlt</span>
-    <span>Der beim Start gebaute MQTT-Riegel ist noch zu. Bis zum Neustart gehen weder Sollwerte noch Ein/Aus-Befehle an Aktoren.</span>
-    {% else %}
-    <span class="tc-chip tc-chip-quiet">Trockenlauf</span>
-    <span>Regelentscheidungen werden protokolliert. Weder Sollwerte noch Ein/Aus-Befehle gehen an Aktoren.</span>
     {% endif %}
 
     {% if bridge is false %}
