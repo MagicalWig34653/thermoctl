@@ -932,6 +932,20 @@ def _running_override(session: Session, zone: Zone, now_utc: datetime) -> ZoneOv
     resolves to a usable temperature -- that check is `_override_setpoint`'s job.
     Split out because the forecast needs the row's own `ends_at` (to know *when* the
     override stops applying), which the resolved `Setpoint` below no longer carries.
+
+    **Es zählt nur, was gerade wirklich läuft.** Die Bedingung auf `ends_at` stand
+    bis v0.9.0 nicht hier, sondern erst eine Ebene höher in `_override_setpoint`:
+    diese Abfrage nahm die jüngste *begonnene* Zeile, und wenn die abgelaufen war,
+    gab der Aufrufer schlicht `None` zurück -- ohne auf eine ältere, noch laufende
+    zurückzufallen. Zwei sich überlappende Übersteuerungen genügten also, damit die
+    ältere lautlos aufhörte zu wirken, sobald die jüngere endete.
+
+    Das war lange folgenlos, weil sich Übersteuerungen selten überlappten. Mit der
+    Abwesenheit (`domain/absence.py`) ist die Überlappung der Normalfall: wer
+    während seiner Abwesenheit einen Raum kurz aufheizt, bekam ihn danach für den
+    **Rest der Abwesenheit** normal beheizt, obwohl die Absenkung noch lief. Der
+    Filter gehört deshalb in die Auswahl selbst -- dann übernimmt beim Ablauf der
+    jüngeren wieder die ältere, die ja weiterhin gilt.
     """
     return session.scalars(
         select(ZoneOverride)
@@ -939,6 +953,7 @@ def _running_override(session: Session, zone: Zone, now_utc: datetime) -> ZoneOv
             ZoneOverride.zone_id == zone.id,
             ZoneOverride.cancelled_at.is_(None),
             ZoneOverride.starts_at <= now_utc,
+            or_(ZoneOverride.ends_at.is_(None), ZoneOverride.ends_at > now_utc),
         )
         # `id` as a second criterion: MariaDB stores DATETIME with second precision.
         # Two overrides within the same second -- say, one replacing another -- would
@@ -962,8 +977,12 @@ def _override_setpoint(
     slightly different copy of this precedence could show a bar the live decision
     would never actually produce.
     """
+    # `_running_override` filtert das Ende inzwischen selbst -- was hier ankommt,
+    # läuft tatsächlich. Die zweite Prüfung stand hier, solange die Abfrage auch
+    # abgelaufene Zeilen lieferte; sie war genau die Stelle, an der eine ältere,
+    # noch laufende Übersteuerung verlorenging (siehe dort).
     running = _running_override(session, zone, now_utc)
-    if running is None or not (running.ends_at is None or running.ends_at > now_utc):
+    if running is None:
         return None
     if running.temperature_c is not None:
         return (
