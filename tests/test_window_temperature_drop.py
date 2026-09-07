@@ -4,7 +4,10 @@ from decimal import Decimal
 import pytest
 
 from thermoctl.domain.window_temperature_drop import (
+    WINDOW_TEMP_DROP_GAP_TOLERANCE_MINUTES,
+    WINDOW_TEMP_DROP_HOLD_MINUTES,
     WINDOW_TEMP_DROP_MAX_PLAUSIBLE_DROP_K,
+    WINDOW_TEMP_DROP_MAX_SUSPECTED_MINUTES,
     WINDOW_TEMP_DROP_THRESHOLD_K,
     temperature_detection_cap_exceeded,
     temperature_detection_gap_within_tolerance,
@@ -379,7 +382,10 @@ def test_never_detected_before_is_never_within_tolerance() -> None:
 
 
 def _replay_hold_boundary_flickers(
-    *, gap_tolerance_minutes: int, hold_minutes: int = 30, max_suspected_minutes: int = 90
+    *,
+    gap_tolerance_minutes: int,
+    hold_minutes: int = WINDOW_TEMP_DROP_HOLD_MINUTES,
+    max_suspected_minutes: int = WINDOW_TEMP_DROP_MAX_SUSPECTED_MINUTES,
 ) -> bool:
     """Replays several hours of cycles every 5 minutes, detected every cycle
     except for a single missed one at every hold boundary -- the exact noisy
@@ -437,32 +443,57 @@ def test_a_recovery_just_over_the_tolerance_lets_every_streak_restart() -> None:
     docstring's own section on it) was prose, not a test -- unlike the
     short-history gap in the reference statistic, which already has one. A
     reviewer replayed it with realistic five-minute polling: a full hold,
-    then a genuine recovery just over the default ten-minute tolerance,
-    then a fresh trigger -- repeated many times over several hours. Every
-    recovery exceeds the tolerance, so every streak restarts at zero and the
-    cap never fires, even though the zone still reads open for the majority
-    of the replay (roughly the fraction of each repeating cycle the hold
-    occupies). This is the accepted trade-off the module docstring names --
-    this test exists so an unrelated future change to the tolerance, the
-    hold, or the cap cannot silently make it worse without a test noticing,
-    the same protection the short-history gap already has.
-    """
-    hold_minutes = 20
-    cycle_minutes = 30  # hold_minutes, then a real recovery of exactly 15
-    # minutes before the next trigger: the last detected cycle of one
-    # repetition sits at `hold_minutes - step`, so the gap to the very next
-    # repetition's first detected cycle (at `cycle_minutes`) is
-    # `cycle_minutes - (hold_minutes - step)` -- 15 minutes with a 5-minute
-    # step, comfortably over the 10-minute default tolerance.
-    step_minutes = 5
-    gap_tolerance_minutes = 10
-    max_suspected_minutes = 90
-    repetitions = 14  # 14 * 30 = 420 minutes, seven hours, matching the
-    # reviewer's own replay length.
+    then a genuine recovery just over the default tolerance, then a fresh
+    trigger -- repeated many times over several hours. Every recovery
+    exceeds the tolerance, so every streak restarts at zero and the cap
+    never fires, even though the zone still reads open for the majority of
+    the replay (roughly the fraction of each repeating cycle the hold
+    occupies).
 
+    Fourth cross-review round: the first version of this test used its own
+    locally hardcoded stand-ins for the hold and the tolerance instead of the
+    real module constants -- a reviewer raised `WINDOW_TEMP_DROP_GAP_
+    TOLERANCE_MINUTES` from 10 to 20 (which would genuinely close this gap in
+    production) and not one assertion here noticed, because the test was
+    never actually looking at that constant. Coupled to the real constants
+    now, the same way the plausibility-cap tests above are: `hold_minutes`
+    and `max_suspected_minutes` are the real defaults, and `recovery_minutes`
+    is derived from the real `gap_tolerance_minutes` (one polling step above
+    it) rather than written down as a bare "15". The `recovery_minutes == 15`
+    assertion just below is the tripwire this needs anyway -- today's
+    concrete value, pinned so that raising the default tolerance changes what
+    `recovery_minutes` derives to and fails *that* assertion immediately,
+    rather than leaving a scenario that quietly stops matching production.
+    """
+    hold_minutes = WINDOW_TEMP_DROP_HOLD_MINUTES
+    gap_tolerance_minutes = WINDOW_TEMP_DROP_GAP_TOLERANCE_MINUTES
+    max_suspected_minutes = WINDOW_TEMP_DROP_MAX_SUSPECTED_MINUTES
+    step_minutes = 5  # a realistic control-cycle length, not derived from
+    # anything above -- see `domain.window_temperature_drop`'s own reasoning
+    # for why the tolerance is sized to bridge a handful of steps like this.
+
+    # A real recovery just over the tolerance: the smallest one full polling
+    # step can show. Derived from the live constant, not hardcoded, so a
+    # changed default tolerance changes this scenario's recovery too.
+    recovery_minutes = gap_tolerance_minutes + step_minutes
+    assert recovery_minutes == 15, (
+        "Die Toleranz-Vorgabe hat sich geändert -- prüfe, ob dieses Szenario "
+        "(eine Erholung von 'ein Schritt über der Toleranz') noch die reale "
+        "Lücke beschreibt, und zieh die Zahl hier bewusst nach."
+    )
+
+    # `hold_minutes` and `recovery_minutes` together give the length of one
+    # repeating cycle: a full hold, then the recovery, then the next trigger.
+    # The last detected step of one repetition sits at `hold_minutes -
+    # step_minutes` (the last poll strictly inside the hold); the gap to the
+    # very next repetition's first detected step is therefore exactly
+    # `recovery_minutes` by construction of `cycle_minutes` below.
+    cycle_minutes = hold_minutes + recovery_minutes - step_minutes
     gap_between_detections = cycle_minutes - (hold_minutes - step_minutes)
-    assert gap_between_detections == 15
+    assert gap_between_detections == recovery_minutes
     assert gap_between_detections > gap_tolerance_minutes
+
+    repetitions = 20
 
     streak_started_at: datetime | None = None
     last_detected_at: datetime | None = None
