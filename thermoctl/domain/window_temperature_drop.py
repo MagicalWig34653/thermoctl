@@ -52,19 +52,58 @@ historical readings `[20.00, 20.10]` are too few to filter, so the reference
 stays their maximum (20.10), the drop against 18.60 is 1.50 K, and it is
 detected exactly as the very first version of this function did.
 
+**Third cross-review round: two simultaneous outliers defeat the second-
+highest defense too.** Not previously named. The second-highest reference is
+only an out-vote against a *single* spurious reading -- with two of them
+(`[21.0, 30.0, 29.0]`, current `21.0`, reviewer's own numbers, and equally with
+four historical readings), the second-highest value **is itself** one of the
+two outliers: reference 29.0, drop 8.0 K, a fault that looks like a severe
+window opening even though the room never actually moved. Two consecutive
+noisy Zigbee reports are not exotic; the second-highest fix alone cannot
+out-vote a pair.
+
+Rather than keep making the reference statistic robust against ever more
+simultaneous outliers -- each fix only ever handles one more than the last,
+and is never the last word -- this closes the class of failure instead of the
+specific instance: `WINDOW_TEMP_DROP_MAX_PLAUSIBLE_DROP_K` below caps how
+large a *computed* drop is ever trusted as real, independent of which
+reference method produced it. A drop bigger than any real single-window event
+in this timeframe could plausibly produce says more about the sensor than
+about the window -- exactly the reviewer's own framing. The line is derived
+from a value this codebase already committed to, not invented fresh: `domain.
+control.WINDOW_TEMP_DROP_LIMITS` already bounds the operator's own configurable
+`window_temp_drop_threshold_k` at 5.0 K, documented there as already "a swing
+an ordinary window opening could only produce over a much longer span than
+this feature ever measures" -- i.e. this codebase already asserts nothing
+past 5.0 K is a plausible same-window event, before this fix ever existed.
+6.0 K sits one Kelvin above that entire configurable range: high enough that
+it can never mask any threshold an operator is actually permitted to set (the
+highest of which, 5.0 K, already sits a full Kelvin below it), low enough to
+reject the reviewer's 8.0 K fault with room to spare. A genuine, extreme,
+wide-open window in frost that an operator deliberately configured
+`window_temp_drop_threshold_k` at its maximum to catch is therefore never at
+risk: nothing this feature is built to detect ever asks for more than 5.0 K,
+so a real event this severe was never going to need to cross 6.0 K to be
+caught -- only a reading claiming to be *more* severe than the feature's own
+most sensitive setting can ever exceed the cap, and that claim is exactly the
+one this fix distrusts.
+
 **The residual gap, stated plainly rather than hidden.** With only one or two
 readings before the current one -- the shortest supported window, or a sparse
 one after a reporting gap -- there are not enough historical readings to
-out-vote anything, and a single spurious high reading in that short history can
-still fake a drop exactly as the unfixed `max()`-only version always could.
-This is an accepted trade-off, not an oversight: demanding at least three
-historical readings before discarding one is what keeps a drop beginning right
-at the window's edge detectable at all (see the paragraph above); protecting
-the two- and one-reading case as well would need discarding data these short
-windows do not have to spare. A window with only sparse history is already the
-less certain case (`history_covers_duration`), and the operator who turns this
-feature on at all has already accepted that a temperature-only guess can be
-wrong in ways a real contact never is (see below).
+out-vote anything, and a single spurious high reading in that short history,
+**up to the plausibility cap above**, can still fake a drop exactly as the
+unfixed `max()`-only version always could. This is an accepted trade-off, not
+an oversight: demanding at least three historical readings before discarding
+one is what keeps a drop beginning right at the window's edge detectable at
+all (see the paragraph above); protecting the two- and one-reading case as
+well would need discarding data these short windows do not have to spare. A
+window with only sparse history is already the less certain case
+(`history_covers_duration`), and the operator who turns this feature on at all
+has already accepted that a temperature-only guess can be wrong in ways a real
+contact never is (see below). The plausibility cap narrows this gap -- an
+outlier can no longer fake an arbitrarily large drop, only one up to 6.0 K --
+without closing it outright.
 
 **What this deliberately cannot rule out** (the project owner asked this be
 written down, not glossed over): a door opened near the sensor, a draught from
@@ -182,6 +221,21 @@ unrelated episodes forever (which no longer describes "one streak" at all).
 Sixty minutes of silence and ninety of cap, like the threshold and the hold
 above, are reasoned choices rather than measured ones, and every figure here is
 adjustable with bounds in `domain.control.WINDOW_TEMP_DROP_LIMITS`.
+
+**Third cross-review round: this gap was prose, not a test.** A reviewer
+replayed it with realistic five-minute polling: trigger, a full hold, a
+15-minute genuine recovery -- just over the ten-minute default tolerance --
+trigger again, repeated across many hours. The cap never fired, and the zone
+still read open for the majority of that time, since every recovery restarts
+the streak at zero. The reviewer judged the trade-off itself acceptable
+(closing it fully would cost exactly what the paragraph above says it would),
+but pointed out the difference from the short-history gap above: that one is
+anchored by its own test; this one was not, and an unrelated future change
+could quietly make it worse without anything noticing.
+`tests/test_window_temperature_drop.py::
+test_a_recovery_just_over_the_tolerance_lets_every_streak_restart` now pins
+the exact shape of this trade-off down as a passing test, the same way the
+short-history gap already is, rather than leaving it only in this paragraph.
 """
 
 from collections.abc import Sequence
@@ -212,6 +266,20 @@ WINDOW_TEMP_DROP_WINDOW_MINUTES = 15
 # defaults to **off** and the switch lives with the operator, not with this
 # default. Bounds in `domain.control.WINDOW_TEMP_DROP_LIMITS`.
 WINDOW_TEMP_DROP_THRESHOLD_K = Decimal("1.5")
+
+# Third cross-review round: a hard ceiling on how large a *computed* drop is
+# ever trusted, regardless of which reference method (`window_open_suspected`
+# below) produced it -- closes the class of "N simultaneous outliers" rather
+# than chasing it one outlier at a time. See the module docstring's "two
+# simultaneous outliers" section for the full derivation. Anchored to a value
+# this codebase already committed to: `domain.control.WINDOW_TEMP_DROP_LIMITS`
+# bounds the operator's own configurable threshold at 5.0 K, already
+# documented there as beyond what an ordinary same-window event could
+# plausibly show. 6.0 K sits one Kelvin above that entire configurable range
+# -- never masking a threshold an operator may actually set, while still
+# rejecting a reading that claims to be more severe than the feature's own
+# most sensitive setting.
+WINDOW_TEMP_DROP_MAX_PLAUSIBLE_DROP_K = Decimal("6.0")
 
 # How long a temperature-triggered suspicion is trusted without a fresh drop before
 # it automatically lapses -- see the module docstring's "Ending the suspicion"
@@ -260,6 +328,7 @@ def window_open_suspected(
     *,
     history_covers_duration: bool,
     drop_threshold_k: Decimal = WINDOW_TEMP_DROP_THRESHOLD_K,
+    max_plausible_drop_k: Decimal = WINDOW_TEMP_DROP_MAX_PLAUSIBLE_DROP_K,
 ) -> bool:
     """Whether the trailing temperature history looks like a just-opened window.
 
@@ -274,6 +343,14 @@ def window_open_suspected(
     three historical readings there is nothing to safely discard without also
     losing the only readings that could show an early drop at all, so a single
     outlier can still fool it there exactly as a plain maximum always could.
+
+    A computed drop of more than `max_plausible_drop_k` is never trusted,
+    however it was reached -- see the module docstring's "two simultaneous
+    outliers" section for why the second-highest reference alone is not
+    enough once more than one reading is spurious, and for the derivation of
+    the default. This check applies regardless of how many historical
+    readings there were, closing part of the residual gap above too: even a
+    single outlier can no longer fake an arbitrarily large drop.
 
     Returns `False` -- nothing suspected, not a verdict -- whenever the window
     itself cannot be trusted: fewer than two samples, or `history_covers_duration`
@@ -291,6 +368,8 @@ def window_open_suspected(
         else sorted(historical, reverse=True)[1]
     )
     drop = reference - current
+    if drop >= max_plausible_drop_k:
+        return False
     return drop >= drop_threshold_k
 
 

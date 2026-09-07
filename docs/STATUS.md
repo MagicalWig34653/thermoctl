@@ -56,6 +56,45 @@ kurzes Fenster nicht übrig hat. Mit eigenen Tests für das Reviewer-Beispiel, d
 Ausreisser-Fall ab drei Vorwerten, die bewusst bleibende Lücke bei ein bis zwei
 Vorwerten und eine Meldelücke mitten in der Messreihe belegt.
 
+**Dritte Kreuzreview-Runde (2026-09-07), bisher nirgends benannt: zwei
+gleichzeitige Ausreisser.** Der zweithöchste Wert *ist* selbst ein Ausreisser,
+wenn es zwei davon gibt. Vom Reviewer am laufenden Code nachgerechnet:
+Vorwerte `[21.0, 30.0, 29.0]`, aktuell `21.0` — Referenz `29.0`, Sturz 8,0 K,
+Fehlalarm, obwohl sich im Raum nichts geändert hat; mit vier Vorwerten
+genauso. Zwei aufeinanderfolgende verrauschte Meldungen sind bei Funk nicht
+exotisch, und jede weitere Kennzahl, die nur gegen eine feste Anzahl
+Ausreisser robust gemacht wird, ist beim nächsten Fund wieder zu wenig.
+
+Behoben durch eine harte **Plausibilitätsgrenze** auf den berechneten Sturz
+selbst, unabhängig davon, welche Referenzmethode ihn geliefert hat
+(`WINDOW_TEMP_DROP_MAX_PLAUSIBLE_DROP_K`, 6,0 K): ein Sturz, der grösser ist,
+als ein echtes Fensterereignis in dieser Zeitspanne plausibel zeigen könnte,
+spricht eher für einen defekten Sensor als für ein Fenster. Die Zahl ist
+nicht frei erfunden, sondern an einen bereits im Quelltext festgeschriebenen
+Wert angelehnt: `domain.control.WINDOW_TEMP_DROP_LIMITS` begrenzt die vom
+Betreiber einstellbare Sturzschwelle bereits auf höchstens 5,0 K, dort schon
+begründet als „ein Sprung, den ein gewöhnliches Fensteröffnen erst über eine
+deutlich längere Spanne als dieses Merkmal misst erreichen könnte" — diese
+Anlage erklärt also bereits vor dieser Behebung, dass mehr als 5,0 K
+innerhalb des Zeitfensters kein plausibles Sturzereignis mehr ist. 6,0 K
+liegt ein Kelvin über dieser gesamten einstellbaren Spanne: hoch genug, um
+niemals eine Schwelle zu verdecken, die ein Betreiber tatsächlich einstellen
+darf (die höchste erlaubte, 5,0 K, liegt bereits ein volles Kelvin darunter),
+niedrig genug, um den vom Reviewer gefundenen Fehlalarm mit Abstand
+abzuweisen. Ein echtes, weit geöffnetes Fenster bei Frost, für das ein
+Betreiber die Sturzschwelle bewusst auf ihr Maximum gestellt hat, ist damit
+nicht gefährdet: nichts, was dieses Merkmal überhaupt erkennen soll, verlangt
+je mehr als 5,0 K — ein echtes Ereignis dieser Schwere hätte 6,0 K nie
+überschreiten müssen, um erkannt zu werden; nur eine Messreihe, die
+schwerwiegender wirkt als die empfindlichste Einstellung des Merkmals selbst,
+kann die Grenze je überschreiten, und genau diese Behauptung misstraut die
+neue Prüfung. Mit eigenen Tests belegt: dem Reviewer-Beispiel mit drei und
+mit vier Vorwerten, einer Gegenprobe, die den unbereinigten Sturz (8,0 K)
+gegen dieselbe Referenzlogik nachrechnet, der Grenzwert selbst an seiner
+Schwelle, einer einstellbaren eigenen Grenze im Test, sowie einer
+Konsistenzprüfung, dass die Plausibilitätsgrenze stets über der höchsten
+einstellbaren Sturzschwelle bleibt.
+
 **Rücknahme.** Ein reines Sturzkriterium kennt kein Ende — ein bereits abgekühlter,
 stabil kalter Raum zeigt keinen neuen Sturz mehr, obwohl das Fenster noch offen sein
 könnte, und da die Erkennung selbst das Heizen abschaltet, gäbe es ohnehin keine aktive
@@ -122,6 +161,27 @@ genau am Halt-Rand übersteht die Strähne unverändert), 20 simulierte Durchlä
 Toleranz null — dem alten, entfernten Verhalten entsprechend — feuert absichtlich nie),
 sowie Obergrenze, Zwangspause während laufender Sturzverdachtsfälle und Ende der
 Zwangspause wie zuvor.
+
+**Dritte Kreuzreview-Runde (2026-09-07): dieselbe bewusst bleibende Lücke,
+jetzt mit Test statt nur Prosa.** Der Reviewer hat sie mit realistischer
+Abfrage alle fünf Minuten nachgestellt: Auslöser, voller Halt, eine echte
+Erholung knapp über der Zehn-Minuten-Toleranz, wieder ein Auslöser —
+wiederholt über mehrere Stunden. Die Zwangspause feuert dabei kein einziges
+Mal, während die Zone weiterhin für die Mehrheit der Zeit als offen gilt,
+weil jede Erholung die Strähne bei null neu beginnen lässt. Der Reviewer hält
+diesen Kompromiss für vertretbar — ihn vollständig zu schließen, würde
+entweder eine deutlich längere Toleranz kosten (die dann echte, voneinander
+unabhängige Episoden verschmilzt) oder eine über unabhängige Episoden hinweg
+laufende Gesamtzeit, die den Begriff „eine Strähne" aufgäbe — verlangt aber,
+dass er verankert wird, so wie die Lücke bei ein bis zwei Vorwerten es schon
+ist, statt nur hier zu stehen. Neuer Test
+(`tests/test_window_temperature_drop.py::
+test_a_recovery_just_over_the_tolerance_lets_every_streak_restart`): Halt 20
+Minuten, danach eine Erholung von exakt 15 Minuten (über der Zehn-Minuten-
+Vorgabe), 14 Wiederholungen über sieben Stunden — die Zwangspause feuert
+nachweislich nie, während die Zone rechnerisch für zwei Drittel der Zeit als
+offen gilt. Ein künftiger Umbau an Toleranz, Halt oder Obergrenze, der dieses
+Verhalten unbemerkt verschlimmert, lässt jetzt einen Test fehlschlagen.
 
 **Wirkt wie ein echter Kontakt.** `zone_state.window_open`/`window_open_since` werden für
 beide Quellen identisch gesetzt; `domain/control_loop.py` (Fensterabschaltung,

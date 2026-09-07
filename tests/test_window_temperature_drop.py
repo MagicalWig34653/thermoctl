@@ -4,6 +4,7 @@ from decimal import Decimal
 import pytest
 
 from thermoctl.domain.window_temperature_drop import (
+    WINDOW_TEMP_DROP_MAX_PLAUSIBLE_DROP_K,
     WINDOW_TEMP_DROP_THRESHOLD_K,
     temperature_detection_cap_exceeded,
     temperature_detection_gap_within_tolerance,
@@ -123,12 +124,13 @@ def test_a_single_outlier_can_still_fool_a_short_history() -> None:
     """The accepted residual gap, held down by a test rather than left only in
     the docstring: with just two readings before the current one, there is
     nothing to out-vote a single spurious high value with, so it can still
-    fake a drop here exactly as an unfixed `max()`-only version always could.
-    This is the deliberate trade-off documented in the module docstring's
-    "residual gap" section, not an oversight -- protecting the two- and
-    one-reading case too would mean discarding data these short windows do
-    not have to spare, and would cost exactly the sensitivity the previous
-    test above depends on."""
+    fake a drop here exactly as an unfixed `max()`-only version always could
+    -- up to the plausibility cap below, which this outlier deliberately
+    stays under. This is the deliberate trade-off documented in the module
+    docstring's "residual gap" section, not an oversight -- protecting the
+    two- and one-reading case too would mean discarding data these short
+    windows do not have to spare, and would cost exactly the sensitivity the
+    previous test above depends on."""
     values = [
         Decimal("20.90"),
         Decimal("20.90") + WINDOW_TEMP_DROP_THRESHOLD_K + Decimal("1"),  # the sole outlier
@@ -136,6 +138,100 @@ def test_a_single_outlier_can_still_fool_a_short_history() -> None:
     ]
 
     assert window_open_suspected(values, history_covers_duration=True) is True
+
+
+def test_two_simultaneous_outliers_defeat_the_second_highest_defense() -> None:
+    """Third cross-review round, not previously named: with two spurious high
+    readings instead of one, the second-highest value *is* the second
+    outlier, and the out-vote the previous fix relies on never happens.
+    Reviewer's own numbers, computed by hand against the running code: a
+    reference of 29.0 against a current reading of 21.0 is an 8.0 K drop --
+    a false alarm, even though the room never actually moved. The
+    plausibility cap (below the module's threshold-derived ceiling) is what
+    catches this, not the reference statistic."""
+    values = [Decimal("21.0"), Decimal("30.0"), Decimal("29.0"), Decimal("21.0")]
+
+    assert window_open_suspected(values, history_covers_duration=True) is False
+
+
+def test_two_simultaneous_outliers_would_have_triggered_without_the_cap() -> None:
+    """Pins the regression down, not just its fix -- the same discipline
+    `test_the_reviewers_own_numbers_are_not_detected_by_a_plain_median` above
+    already applies to the median regression: recomputes the reviewer's own
+    8.0 K by hand, against the exact reference logic `window_open_suspected`
+    uses (the second-highest of the historical readings), to prove the
+    plausibility cap is genuinely what rejects the case above, not some
+    unrelated effect of the numbers chosen."""
+    historical = [Decimal("21.0"), Decimal("30.0"), Decimal("29.0")]
+    current = Decimal("21.0")
+
+    reference = sorted(historical, reverse=True)[1]
+    drop_without_the_cap = reference - current
+
+    assert drop_without_the_cap == Decimal("8.0")
+    assert drop_without_the_cap >= WINDOW_TEMP_DROP_THRESHOLD_K
+    assert drop_without_the_cap >= WINDOW_TEMP_DROP_MAX_PLAUSIBLE_DROP_K
+
+
+def test_two_simultaneous_outliers_with_four_historical_readings_too() -> None:
+    """The reviewer's own second example: the same failure with a fourth,
+    unremarkable historical reading added, confirming the plausibility cap
+    catches it regardless of how many historical readings there happen to
+    be, not only in the exact three-reading case above."""
+    values = [
+        Decimal("21.0"),
+        Decimal("21.1"),
+        Decimal("30.0"),
+        Decimal("29.0"),
+        Decimal("21.0"),
+    ]
+
+    assert window_open_suspected(values, history_covers_duration=True) is False
+
+
+def test_the_plausibility_cap_boundary_belongs_to_the_implausible_side() -> None:
+    """The same boundary convention every other threshold in this module
+    uses. Two historical readings, so the reference is their plain maximum --
+    isolates the cap itself from the second-highest logic exercised above."""
+    just_under = [
+        Decimal("21.0"),
+        Decimal("21.0") + WINDOW_TEMP_DROP_MAX_PLAUSIBLE_DROP_K - Decimal("0.01"),
+        Decimal("21.0"),
+    ]
+    exactly_at = [
+        Decimal("21.0"),
+        Decimal("21.0") + WINDOW_TEMP_DROP_MAX_PLAUSIBLE_DROP_K,
+        Decimal("21.0"),
+    ]
+
+    assert window_open_suspected(just_under, history_covers_duration=True) is True
+    assert window_open_suspected(exactly_at, history_covers_duration=True) is False
+
+
+def test_a_custom_plausibility_cap_is_honoured() -> None:
+    values = [Decimal("21.0"), Decimal("25.0"), Decimal("21.0")]
+
+    assert window_open_suspected(
+        values, history_covers_duration=True, max_plausible_drop_k=Decimal("3.0")
+    ) is False
+    assert window_open_suspected(
+        values, history_covers_duration=True, max_plausible_drop_k=Decimal("5.0")
+    ) is True
+
+
+def test_the_plausibility_cap_never_masks_the_highest_configurable_threshold() -> None:
+    """The invariant the module docstring's derivation depends on: the cap
+    must sit strictly above the highest `window_temp_drop_threshold_k` an
+    operator could ever configure (`domain.control.WINDOW_TEMP_DROP_LIMITS`),
+    or a legitimately configured, maximally-conservative threshold could be
+    silently defeated by the very cap meant to protect detection, not gut
+    it. Imported locally to keep this module's own tests free of a dependency
+    on `domain.control` everywhere else."""
+    from thermoctl.domain.control import WINDOW_TEMP_DROP_LIMITS
+
+    _minimum, maximum_threshold_k = WINDOW_TEMP_DROP_LIMITS["window_temp_drop_threshold_k"]
+
+    assert WINDOW_TEMP_DROP_MAX_PLAUSIBLE_DROP_K > maximum_threshold_k
 
 
 def test_insufficient_history_is_never_suspected_even_with_a_steep_drop() -> None:
@@ -334,3 +430,72 @@ def test_the_same_replay_never_caps_without_any_gap_tolerance() -> None:
     default tolerance was quietly set to zero, or a future change reintroduced
     exactly the defect this module exists to have fixed."""
     assert _replay_hold_boundary_flickers(gap_tolerance_minutes=0) is False
+
+
+def test_a_recovery_just_over_the_tolerance_lets_every_streak_restart() -> None:
+    """Third cross-review round: the residual gap in the cap (see the module
+    docstring's own section on it) was prose, not a test -- unlike the
+    short-history gap in the reference statistic, which already has one. A
+    reviewer replayed it with realistic five-minute polling: a full hold,
+    then a genuine recovery just over the default ten-minute tolerance,
+    then a fresh trigger -- repeated many times over several hours. Every
+    recovery exceeds the tolerance, so every streak restarts at zero and the
+    cap never fires, even though the zone still reads open for the majority
+    of the replay (roughly the fraction of each repeating cycle the hold
+    occupies). This is the accepted trade-off the module docstring names --
+    this test exists so an unrelated future change to the tolerance, the
+    hold, or the cap cannot silently make it worse without a test noticing,
+    the same protection the short-history gap already has.
+    """
+    hold_minutes = 20
+    cycle_minutes = 30  # hold_minutes, then a real recovery of exactly 15
+    # minutes before the next trigger: the last detected cycle of one
+    # repetition sits at `hold_minutes - step`, so the gap to the very next
+    # repetition's first detected cycle (at `cycle_minutes`) is
+    # `cycle_minutes - (hold_minutes - step)` -- 15 minutes with a 5-minute
+    # step, comfortably over the 10-minute default tolerance.
+    step_minutes = 5
+    gap_tolerance_minutes = 10
+    max_suspected_minutes = 90
+    repetitions = 14  # 14 * 30 = 420 minutes, seven hours, matching the
+    # reviewer's own replay length.
+
+    gap_between_detections = cycle_minutes - (hold_minutes - step_minutes)
+    assert gap_between_detections == 15
+    assert gap_between_detections > gap_tolerance_minutes
+
+    streak_started_at: datetime | None = None
+    last_detected_at: datetime | None = None
+    cap_fired = False
+    open_steps = 0
+    total_steps = 0
+
+    for repetition in range(repetitions):
+        cycle_start = repetition * cycle_minutes
+        minutes = 0
+        while minutes < cycle_minutes:
+            moment = NOW + timedelta(minutes=cycle_start + minutes)
+            detected = minutes < hold_minutes
+            total_steps += 1
+            if detected:
+                open_steps += 1
+                continues = (
+                    streak_started_at is not None
+                    and temperature_detection_gap_within_tolerance(
+                        last_detected_at, moment, gap_tolerance_minutes=gap_tolerance_minutes
+                    )
+                )
+                streak_started_at = streak_started_at if continues else moment
+                last_detected_at = moment
+                if temperature_detection_cap_exceeded(
+                    streak_started_at, moment, max_suspected_minutes=max_suspected_minutes
+                ):
+                    cap_fired = True
+            minutes += step_minutes
+
+    assert cap_fired is False
+    fraction_open = open_steps / total_steps
+    # Every streak restarts well before it could ever reach the cap, yet the
+    # zone still reads open for the clear majority of the replay -- the
+    # accepted trade-off, not a coincidence of these particular numbers.
+    assert fraction_open > 0.5

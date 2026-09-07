@@ -82,6 +82,24 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
   beendet die Strähne weiterhin, ein späteres Auslösen zählt dann wieder bei
   null. Migration `43aa18ba1c12`.
 
+  **Dritte Kreuzreview-Runde (2026-09-07), freigegeben unter Auflage.**
+  Erstens, bisher nirgends benannt: zwei gleichzeitige Ausreisser hebeln den
+  zweithöchsten Wert aus, da er dann selbst einer der Ausreisser ist —
+  Reviewer-Beispiel `[21.0, 30.0, 29.0]`, aktuell `21.0`, Referenz 29.0, Sturz
+  8,0 K, Fehlalarm ohne jede reale Änderung; mit vier Vorwerten genauso.
+  Behoben mit einer harten Plausibilitätsgrenze auf den berechneten Sturz
+  selbst (`WINDOW_TEMP_DROP_MAX_PLAUSIBLE_DROP_K`, 6,0 K, ein Kelvin über der
+  bereits bestehenden, höchsten einstellbaren Sturzschwelle von 5,0 K) —
+  schließt die ganze Fehlerklasse statt nur den nächsten Einzelfall, und
+  gefährdet keine legitime Einstellung, da nichts, was dieses Merkmal
+  überhaupt erkennen soll, je mehr als 5,0 K verlangt. Zweitens: die bereits
+  dokumentierte, bewusst bleibende Lücke der Zehn-Minuten-Toleranz (eine
+  Erholung, die knapp darüber liegt, lässt jede Strähne bei null neu
+  beginnen) war nur Prosa, kein Test — anders als die gleichwertige Lücke bei
+  ein bis zwei Vorwerten. Jetzt mit eigenem Test verankert
+  (`test_a_recovery_just_over_the_tolerance_lets_every_streak_restart`), der
+  fehlschlägt, sollte ein künftiger Umbau das unbemerkt verschlimmern.
+
 - **Außentemperatur und Fenster-Alarm.** Erstmals ein Begriff von Außentemperatur:
   eine anlagenweite Quelle (`setting.outdoor_temperature_source_device_id`),
   ausgewählt aus den bekannten Zigbee2MQTT-Geräten wie die Messquelle einer Zone,
