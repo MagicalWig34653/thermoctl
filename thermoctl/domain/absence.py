@@ -19,7 +19,7 @@ dieses Modul nichts.
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from thermoctl import audit
@@ -100,12 +100,17 @@ def end_absence(
     """
     moment = now if now is not None else utcnow()
     absence.cancelled_at = moment
+    # Kein Filter auf `starts_at`: eine Übersteuerung dieser Klammer, die erst
+    # später beginnt, muss ebenfalls beendet werden -- sonst senkt sie den Raum ab,
+    # nachdem der Benutzer die Abwesenheit längst beendet hat. Der reguläre Weg legt
+    # solche Zeilen zwar nicht an, aber `resolved_setpoint` fragt `absence.cancelled_at`
+    # nicht ab; die einzige Stelle, an der eine beendete Abwesenheit unwirksam wird,
+    # sind ihre Übersteuerungen.
     overrides = session.scalars(
         select(ZoneOverride).where(
             ZoneOverride.absence_id == absence.id,
             ZoneOverride.cancelled_at.is_(None),
-            ZoneOverride.starts_at <= moment,
-            ZoneOverride.ends_at > moment,
+            or_(ZoneOverride.ends_at.is_(None), ZoneOverride.ends_at > moment),
         )
     )
     for override in overrides:
@@ -121,18 +126,40 @@ def end_absence(
     )
 
 
-def running_absence(session: Session, user_id: int, now: datetime) -> Absence | None:
-    """Liefert die derzeit laufende Abwesenheit genau dieses Benutzers."""
-    return session.scalars(
-        select(Absence)
-        .where(
-            Absence.created_by_user_id == user_id,
-            Absence.cancelled_at.is_(None),
-            Absence.starts_at <= now,
-            Absence.ends_at > now,
+def running_absences(session: Session, user_id: int, now: datetime) -> list[Absence]:
+    """**Alle** laufenden Abwesenheiten dieses Benutzers, jüngste zuerst.
+
+    Normalerweise ist das höchstens eine -- `start_absence` lehnt eine zweite ab.
+    Diese Prüfung ist aber ein Nachsehen vor dem Schreiben ohne Sperre: zwei
+    gleichzeitig abgeschickte Formulare können beide "keine laufende" sehen und
+    beide eine anlegen. Eine Datenbankbedingung dagegen gibt es nicht portabel --
+    "höchstens eine laufende" hängt vom aktuellen Zeitpunkt ab und lässt sich nicht
+    als statische UNIQUE-Bedingung formulieren.
+
+    Deshalb wird das Rennen nicht verhindert, sondern seine Folge: "Abwesenheit
+    beenden" beendet **jede** laufende. Sonst bliebe die zweite Klammer stehen und
+    die Wohnung abgesenkt, obwohl der Benutzer sie beendet hat -- und niemand käme
+    an sie heran, weil die Oberfläche nur eine anzeigt.
+    """
+    return list(
+        session.scalars(
+            select(Absence)
+            .where(
+                Absence.created_by_user_id == user_id,
+                Absence.cancelled_at.is_(None),
+                Absence.starts_at <= now,
+                Absence.ends_at > now,
+            )
+            .order_by(Absence.starts_at.desc(), Absence.id.desc())
         )
-        .order_by(Absence.starts_at.desc(), Absence.id.desc())
-    ).first()
+    )
+
+
+def running_absence(session: Session, user_id: int, now: datetime) -> Absence | None:
+    """Die jüngste laufende Abwesenheit dieses Benutzers -- die, die die Oberfläche
+    anzeigt. Zum Beenden benutzt sie `running_absences`, siehe dort."""
+    laufende = running_absences(session, user_id, now)
+    return laufende[0] if laufende else None
 
 
 def absence_zones(session: Session, absence: Absence) -> list[Zone]:

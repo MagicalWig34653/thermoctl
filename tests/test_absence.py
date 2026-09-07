@@ -13,7 +13,13 @@ from thermoctl.db.models.override import ZoneOverride
 from thermoctl.db.models.schedule import SchedulePoint
 from thermoctl.db.models.zone import Zone, ZoneSetpoint
 from thermoctl.domain import absence as absence_module
-from thermoctl.domain.absence import absence_zones, end_absence, running_absence, start_absence
+from thermoctl.domain.absence import (
+    absence_zones,
+    end_absence,
+    running_absence,
+    running_absences,
+    start_absence,
+)
 from thermoctl.domain.modes import DomainError
 from thermoctl.domain.schedule import create_override, resolved_setpoint
 
@@ -192,3 +198,67 @@ def test_end_absence_reports_a_missing_source(session: Session) -> None:
     )
     with pytest.raises(ValueError, match="Quelle"):
         end_absence(session, entry, now=NOW)
+
+
+def test_ending_clears_every_running_absence_not_only_the_newest(
+    session: Session,
+) -> None:
+    """Das Rennen lässt sich nicht portabel verhindern -- seine Folge schon.
+
+    `start_absence` sieht vor dem Schreiben nach, ob schon eine läuft; das ist eine
+    Prüfung ohne Sperre. Zwei gleichzeitig abgeschickte Formulare können beide
+    "keine laufende" sehen und beide eine Klammer anlegen. Bliebe beim Beenden die
+    zweite stehen, wäre die Wohnung weiter abgesenkt, obwohl der Benutzer die
+    Abwesenheit beendet hat -- und die Oberfläche zeigte nur eine, an die andere
+    käme niemand heran.
+    """
+    first, second, _third = scheduled_zones(session)
+    owner = user(session, "doppelt")
+    eine = start_absence(session, [first], Decimal("17"), END, now=NOW, user_id=owner.id)
+    # Die zweite entsteht am Vorabschnitt vorbei -- genau so, wie sie im Rennen
+    # entstünde.
+    andere = start_absence(
+        session, [second], Decimal("18"), END, now=NOW, user_id=None
+    )
+    andere.created_by_user_id = owner.id
+    session.flush()
+
+    for absence in running_absences(session, owner.id, NOW):
+        end_absence(session, absence, now=NOW)
+
+    session.expire_all()
+    assert eine.cancelled_at is not None
+    assert andere.cancelled_at is not None
+    noch_laufend = [
+        entry
+        for entry in session.scalars(
+            select(ZoneOverride).where(ZoneOverride.absence_id.is_not(None))
+        )
+        if entry.cancelled_at is None
+    ]
+    assert noch_laufend == []
+
+
+def test_ending_also_cancels_a_child_override_that_has_not_started_yet(
+    session: Session,
+) -> None:
+    """`resolved_setpoint` fragt `absence.cancelled_at` nicht ab -- die einzige
+    Stelle, an der eine beendete Abwesenheit unwirksam wird, sind ihre
+    Übersteuerungen. Eine, die erst später beginnt, senkt den Raum sonst ab,
+    nachdem der Benutzer die Abwesenheit längst beendet hat."""
+    first, _second, _third = scheduled_zones(session)
+    owner = user(session, "zukunft")
+    absence = start_absence(
+        session, [first], Decimal("17"), END, now=NOW, user_id=owner.id
+    )
+    # Ein Kind, das erst morgen beginnt -- so entsteht es über den regulären Weg
+    # nicht, wohl aber bei importierten oder von Hand geänderten Daten.
+    spaet = session.scalars(
+        select(ZoneOverride).where(ZoneOverride.absence_id == absence.id)
+    ).one()
+    spaet.starts_at = NOW + timedelta(days=1)
+    session.flush()
+
+    end_absence(session, absence, now=NOW)
+    session.expire_all()
+    assert spaet.cancelled_at is not None

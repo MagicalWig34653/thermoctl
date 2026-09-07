@@ -34,7 +34,13 @@ from thermoctl.db.models.operations import Setting
 from thermoctl.db.models.schedule import SchedulePoint
 from thermoctl.db.models.state import ZoneState
 from thermoctl.db.models.zone import SetpointMode, Zone, ZoneSetpoint
-from thermoctl.domain.absence import absence_zones, end_absence, running_absence, start_absence
+from thermoctl.domain.absence import (
+    absence_zones,
+    end_absence,
+    running_absence,
+    running_absences,
+    start_absence,
+)
 from thermoctl.domain.authz import has_permission, visible_zones
 from thermoctl.domain.modes import DomainError
 from thermoctl.domain.principal import Principal
@@ -581,12 +587,18 @@ async def end_absence_view(
     Ohne Id im Formular: es gibt je Benutzer höchstens eine laufende, und der Server
     sucht sie selbst. Eine fremde Abwesenheit ist damit gar nicht adressierbar.
     """
-    running = running_absence(session, principal.user_id, utcnow())
-    if running is None:
+    # **Alle** laufenden, nicht nur die angezeigte: zwei gleichzeitig abgeschickte
+    # Formulare können zwei Klammern anlegen (siehe `running_absences`). Bliebe die
+    # zweite stehen, wäre die Wohnung nach dem Beenden weiter abgesenkt und niemand
+    # käme an sie heran.
+    now = utcnow()
+    laufende = running_absences(session, principal.user_id, now)
+    if not laufende:
         return _home_with_error(
             request, session, principal, "Es läuft gerade keine Abwesenheit."
         )
-    end_absence(session, running)
+    for absence in laufende:
+        end_absence(session, absence, now=now)
     return RedirectResponse(prefixed(request, "/"), status.HTTP_303_SEE_OTHER)
 
 
