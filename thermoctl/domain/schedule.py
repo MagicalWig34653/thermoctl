@@ -1292,20 +1292,23 @@ def next_switch(session: Session, zone: Zone, now_utc: datetime) -> NextSwitch |
     wird -- sonst würde ein Sprung, der einen Sollwert vorzieht, im Kreis auf sich
     selbst zeigen.
 
-    Abgefragt wird `_schedule_setpoint` nicht exakt bei `at`, sondern eine Minute
-    danach: `end_of_next_switch` rechnet über `next_point` und eine
-    Zeitzonenumrechnung, und die Umwandlung zurück nach UTC rundet auf die Sekunde.
-    Exakt bei `at` bestünde deshalb ein winziges Risiko, wegen einer solchen
-    Rundung noch die alte statt der neuen Phase zu treffen. Eine Minute ist dafür
-    reichlich, ohne Gefahr zu laufen, schon in eine übernächste Phase zu geraten --
-    Zeitplanpunkte werden nie enger als minutengenau gesetzt.
+    Abgefragt wird `_schedule_setpoint` nicht exakt bei `at`, sondern eine Sekunde
+    danach. Der Grund ist die Rundung: `end_of_next_switch` rechnet über `next_point`
+    und zwei Zeitzonenumrechnungen, und exakt auf der Grenze bestünde ein winziges
+    Risiko, noch die alte statt der neuen Phase zu treffen.
+
+    Eine **Sekunde**, nicht eine Minute. Zeitplanpunkte sind minutengenau, zwei
+    davon können also eine Minute auseinanderliegen -- mit einem Abstand von einer
+    Minute läge die Abfrage dann schon in der übernächsten Phase, und der Sprung
+    zöge den falschen Sollwert vor. Eine Sekunde kann eine Phase dieser kürzesten
+    möglichen Länge nicht überspringen und reicht gegen jede Rundung.
     """
     at = end_of_next_switch(session, zone, now_utc)
     if at is None:
         return None
     settings = session.get(Setting, 1)
     assert settings is not None, "setting-Zeile fehlt — Einrichtung unvollstaendig"
-    setpoint = _schedule_setpoint(session, zone, settings, at + timedelta(minutes=1))
+    setpoint = _schedule_setpoint(session, zone, settings, at + timedelta(seconds=1))
     if setpoint is None:
         return None
     return NextSwitch(at, setpoint)

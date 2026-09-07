@@ -2048,3 +2048,29 @@ def test_next_switch_ignores_a_running_override(session: Session) -> None:
 
     assert preview is not None
     assert preview.setpoint.temperature_c == Decimal("18.0")
+
+
+def test_next_switch_does_not_skip_a_phase_that_lasts_a_single_minute(
+    session: Session,
+) -> None:
+    """Der Grund für den Abstand von einer Sekunde statt einer Minute.
+
+    Schaltpunkte sind minutengenau, zwei davon können also unmittelbar
+    aufeinanderfolgen. Wird der Sollwert eine Minute nach dem Schaltzeitpunkt
+    abgefragt, liegt die Abfrage bereits in der übernächsten Phase -- der Sprung zöge
+    dann den falschen Wert vor, und zwar lautlos: es entstünde eine gültige
+    Übersteuerung mit einer Temperatur, die zu diesem Zeitpunkt gar nicht gilt.
+    """
+    zone = zone_with_schedule(
+        session,
+        "minutenphase",
+        [
+            (1, 6 * 60, "nacht", Decimal("18.0")),
+            (1, 8 * 60, "kurz", Decimal("23.0")),
+            (1, 8 * 60 + 1, "spaeter", Decimal("20.0")),
+        ],
+    )
+    # Montag, 07:00 Ortszeit (Europe/Berlin, Sommerzeit) = 05:00 UTC.
+    result = next_switch(session, zone, datetime(2026, 8, 31, 5, 0))
+    assert result is not None
+    assert result.setpoint.temperature_c == Decimal("23.0")

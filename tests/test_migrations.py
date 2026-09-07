@@ -650,3 +650,65 @@ def test_existing_groups_keep_the_admin_interface_on_upgrade(
             connection.execute(text("DELETE FROM access_group WHERE name = 'Mieter'"))
     finally:
         db_engine.dispose()
+
+
+@pytest.mark.migration
+def test_absence_migration_keeps_existing_override_unassigned(
+    migrations_database_url: str,
+) -> None:
+    """Eine Übersteuerung, die es vor der Abwesenheit schon gab, gehört zu keiner.
+
+    Die Zuordnung `zone_override.absence_id` ist nullbar, damit genau das gilt.
+    Bekämen bestehende Zeilen beim Upgrade eine Klammer, ließe sich eine einzelne
+    Übersteuerung anschließend über "Abwesenheit beenden" mitbeenden, ohne dass
+    jemand sie je zu einer Abwesenheit erklärt hätte.
+    """
+    before = _alembic(migrations_database_url, "downgrade", "c4d18b7e2a95")
+    assert before.returncode == 0, before.stderr
+
+    db_engine = create_engine(migrations_database_url)
+    try:
+        with db_engine.begin() as connection:
+            mode_id = connection.execute(
+                text("SELECT id FROM operating_mode ORDER BY id LIMIT 1")
+            ).scalar_one()
+            source_id = connection.execute(
+                text("SELECT id FROM actor_source WHERE code = 'web'")
+            ).scalar_one()
+            connection.execute(
+                text(
+                    "INSERT INTO zone "
+                    "(name, display_name, operating_mode_id, sort_order, created_at, updated_at) "
+                    "VALUES ('absence-migration', 'Abwesenheit Migration', :mode_id, 0, "
+                    "'2026-09-07 08:00:00', '2026-09-07 08:00:00')"
+                ),
+                {"mode_id": mode_id},
+            )
+            zone_id = connection.execute(
+                text("SELECT id FROM zone WHERE name = 'absence-migration'")
+            ).scalar_one()
+            connection.execute(
+                text(
+                    "INSERT INTO zone_override "
+                    "(zone_id, temperature_c, starts_at, ends_at, created_at, source_id) "
+                    "VALUES (:zone_id, 17.0, '2026-09-07 08:00:00', "
+                    "'2026-09-08 08:00:00', '2026-09-07 08:00:00', :source_id)"
+                ),
+                {"zone_id": zone_id, "source_id": source_id},
+            )
+
+        up = _alembic(migrations_database_url, "upgrade", "head")
+        assert up.returncode == 0, up.stderr
+        with db_engine.connect() as connection:
+            absence_id = connection.execute(
+                text("SELECT absence_id FROM zone_override WHERE zone_id = :zone_id"),
+                {"zone_id": zone_id},
+            ).scalar_one()
+        assert absence_id is None
+
+        down = _alembic(migrations_database_url, "downgrade", "c4d18b7e2a95")
+        assert down.returncode == 0, down.stderr
+        up_again = _alembic(migrations_database_url, "upgrade", "head")
+        assert up_again.returncode == 0, up_again.stderr
+    finally:
+        db_engine.dispose()

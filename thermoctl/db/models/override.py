@@ -30,6 +30,9 @@ class ZoneOverride(Base):
     zone_id: Mapped[int] = mapped_column(
         ForeignKey("zone.id", ondelete="CASCADE"), nullable=False, index=True
     )
+    absence_id: Mapped[int | None] = mapped_column(
+        ForeignKey("absence.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     setpoint_mode_id: Mapped[int | None] = mapped_column(
         ForeignKey("setpoint_mode.id"), nullable=True
     )
