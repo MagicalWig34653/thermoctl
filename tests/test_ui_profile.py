@@ -360,3 +360,119 @@ def test_the_page_explains_why_the_last_admin_group_stays_an_admin_group(
     assert page.status_code == 200
     session.refresh(only_group)
     assert only_group.ui_profile == "admin"
+
+
+# -- Der Wächtertest über alle HTML-Routen -------------------------------------
+
+#: Die HTML-Routen, die **absichtlich** keinen Profil-Wächter tragen, mit dem Grund.
+#: Jede andere Route muss einen haben. Der Test darunter vergleicht die Liste mit der
+#: gebauten Anwendung: wer eine Anlagenseite hinzufügt und den Wächter vergisst,
+#: scheitert hier -- und wer bewusst eine Ausnahme braucht, trägt sie samt Begründung
+#: ein, statt sie unbemerkt entstehen zu lassen.
+WITHOUT_PROFILE_GUARD: dict[tuple[str, str], str] = {
+    ("GET", "/"): "verzweigt selbst nach dem Profil -- eine Adresse, zwei Ansichten",
+    ("GET", "/docs"): "die OpenAPI-Oberfläche der REST-Schnittstelle, kein HTML der UI",
+    # Der persönliche Bereich gehört beiden Oberflächen und braucht kein Recht.
+    ("GET", "/account"): "eigenes Konto",
+    ("GET", "/account/help"): "reiner Erklärtext, liest nichts aus der Datenbank",
+    ("POST", "/account/password"): "eigenes Konto",
+    ("POST", "/account/sessions/revoke-others"): "eigenes Konto",
+    # Anmeldung, Abmeldung und Einrichtung stehen vor jedem Profil.
+    ("GET", "/login"): "vor der Anmeldung gibt es kein Profil",
+    ("POST", "/login"): "vor der Anmeldung gibt es kein Profil",
+    ("POST", "/logout"): "muss aus jeder Oberfläche gehen",
+    ("GET", "/setup"): "Erstinbetriebnahme, es gibt noch keine Gruppe",
+    ("POST", "/setup"): "Erstinbetriebnahme, es gibt noch keine Gruppe",
+    ("GET", "/passkeys"): "eigenes Konto",
+    ("POST", "/passkeys/{passkey_id}/remove"): "eigenes Konto",
+    ("POST", "/passkey/authentication/options"): "vor der Anmeldung",
+    ("POST", "/passkey/authentication/verify"): "vor der Anmeldung",
+    ("POST", "/passkey/registration/options"): "eigenes Konto",
+    ("POST", "/passkey/registration/verify"): "eigenes Konto",
+    # Der Kiosk ist ein eigener Zugangsweg mit eigenem Principal und eigener Hülle.
+    ("GET", "/kiosk"): "eigener Zugangsweg, eigener Principal",
+    ("GET", "/kiosk/{plaintext}"): "eigener Zugangsweg, eigener Principal",
+    ("POST", "/kiosk/zones/{zone_id}/boost"): "eigener Zugangsweg",
+    ("POST", "/kiosk/zones/{zone_id}/override/cancel"): "eigener Zugangsweg",
+    ("POST", "/kiosk/zones/{zone_id}/setpoint"): "eigener Zugangsweg",
+    # Die Alltagsaktionen an einer Zone. Beide Oberflächen brauchen sie, und sie
+    # sind vollständig über zonenbezogene Rechte abgesichert; ein Profil-Wächter
+    # davor würde nichts absichern, was die Rechteprüfung nicht schon absichert.
+    ("POST", "/zones/{zone_id}/thermostat"): "zonenbezogenes setpoint.write",
+    ("POST", "/zones/{zone_id}/override"): "zonenbezogenes override.create",
+    ("POST", "/zones/{zone_id}/override/cancel"): "zonenbezogenes override.cancel",
+    ("POST", "/zones/{zone_id}/jump-next"): "zonenbezogenes override.create",
+    ("POST", "/zones/{zone_id}/report"): "zonenbezogenes report.create",
+}
+
+
+def _dependency_names(dependant: object) -> list[str]:
+    call = getattr(dependant, "call", None)
+    found = [getattr(call, "__qualname__", str(call))]
+    for nested in getattr(dependant, "dependencies", []):
+        found += _dependency_names(nested)
+    return found
+
+
+def test_every_admin_page_carries_the_profile_guard() -> None:
+    """Der eigentliche Riegel, über **alle** HTML-Routen auf einmal.
+
+    Eine ausgeblendete Verknüpfung ist keine Absicherung; der Wächter am Router ist
+    es. Ohne diesen Test fällt eine neu hinzugefügte Anlagenseite ohne Wächter
+    nirgends auf -- sie sieht in jedem anderen Test genauso aus wie eine mit.
+    """
+    from tests.helpers import alle_api_routen
+    from thermoctl.app import create_app
+
+    unguarded: list[str] = []
+    for route in alle_api_routen(create_app()):
+        if route.include_in_schema:
+            continue  # REST -- dort gibt es bewusst kein UI-Profil.
+        for method in route.methods:
+            if method in {"HEAD", "OPTIONS"}:
+                continue
+            if any("guard" in name for name in _dependency_names(route.dependant)):
+                continue
+            if (method, route.path) in WITHOUT_PROFILE_GUARD:
+                continue
+            unguarded.append(f"{method} {route.path}")
+    assert not unguarded, (
+        "HTML-Routen ohne Profil-Wächter und ohne begründete Ausnahme:\n"
+        + "\n".join(sorted(unguarded))
+    )
+
+
+def test_the_list_of_exceptions_has_no_leftovers() -> None:
+    """Die Gegenprobe: eine Ausnahme für eine Route, die es nicht mehr gibt, wäre
+    eine Erlaubnis, an die sich niemand mehr erinnert."""
+    from tests.helpers import alle_api_routen
+    from thermoctl.app import create_app
+
+    existing = {
+        (method, route.path)
+        for route in alle_api_routen(create_app())
+        for method in route.methods
+    }
+    assert set(WITHOUT_PROFILE_GUARD) <= existing, sorted(
+        set(WITHOUT_PROFILE_GUARD) - existing
+    )
+
+
+def test_every_mutating_html_route_still_carries_the_csrf_protection() -> None:
+    """`tests/test_csrf.py` prüft dasselbe für den Bestand -- hier noch einmal über
+    alle Routen, damit die neuen Router der Wohnungssicht und der Problemmeldung
+    nicht daran vorbeigehen."""
+    from tests.helpers import alle_api_routen
+    from thermoctl.app import create_app
+
+    unprotected: list[str] = []
+    for route in alle_api_routen(create_app()):
+        if route.include_in_schema:
+            continue
+        for method in route.methods:
+            if method in {"GET", "HEAD", "OPTIONS"}:
+                continue
+            names = [name.lower() for name in _dependency_names(route.dependant)]
+            if not any("csrf" in name for name in names):
+                unprotected.append(f"{method} {route.path}")
+    assert not unprotected, "\n".join(sorted(unprotected))
