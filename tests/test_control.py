@@ -607,6 +607,7 @@ def test_saving_the_window_temp_drop_thresholds(
             "window_temp_drop_window_minutes": "20",
             "window_temp_drop_threshold_k": "2,0",
             "window_temp_drop_hold_minutes": "45",
+            "window_temp_drop_gap_tolerance_minutes": "12",
             "window_temp_drop_max_suspected_minutes": "120",
             "window_temp_drop_silence_minutes": "90",
         },
@@ -618,6 +619,7 @@ def test_saving_the_window_temp_drop_thresholds(
     assert row.window_temp_drop_window_minutes == 20
     assert row.window_temp_drop_threshold_k == Decimal("2.0")
     assert row.window_temp_drop_hold_minutes == 45
+    assert row.window_temp_drop_gap_tolerance_minutes == 12
     assert row.window_temp_drop_max_suspected_minutes == 120
     assert row.window_temp_drop_silence_minutes == 90
 
@@ -635,6 +637,7 @@ def test_an_unusable_window_temp_drop_threshold_is_rejected_and_names_its_field(
             "window_temp_drop_window_minutes": "1",
             "window_temp_drop_threshold_k": "0",
             "window_temp_drop_hold_minutes": "1",
+            "window_temp_drop_gap_tolerance_minutes": "-1",
             "window_temp_drop_max_suspected_minutes": "1",
             "window_temp_drop_silence_minutes": "1",
         },
@@ -649,7 +652,7 @@ def test_an_unusable_window_temp_drop_threshold_is_rejected_and_names_its_field(
 
 def test_the_window_temp_drop_thresholds_never_reach_limits_or_the_rest_schema() -> None:
     """Same guard as `test_the_window_alarm_thresholds_never_reach_limits_or_the_rest_schema`
-    above, for the temperature-based window detection's own five thresholds."""
+    above, for the temperature-based window detection's own six thresholds."""
     from thermoctl.api.schemas import ControlResponse
     from thermoctl.domain.control import WINDOW_TEMP_DROP_LIMITS
 

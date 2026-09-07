@@ -120,6 +120,13 @@ WINDOW_TEMP_DROP_LIMITS: dict[str, tuple[Decimal, Decimal]] = {
     # "Stoßlüften" reasoning -- see
     # `domain.window_temperature_drop.WINDOW_TEMP_DROP_HOLD_MINUTES`.
     "window_temp_drop_hold_minutes": (Decimal(5), Decimal(240)),
+    # Second cross-review addition: the gap tolerance the cumulative streak
+    # measurement bridges -- see `domain.window_temperature_drop.
+    # WINDOW_TEMP_DROP_GAP_TOLERANCE_MINUTES`. Zero would mean "no tolerance at
+    # all" (the exact defect that let a single noisy cycle reset the cap
+    # forever); 60 would make the tolerance as long as the hold itself, no
+    # longer a short bridge but a second hold.
+    "window_temp_drop_gap_tolerance_minutes": (Decimal(0), Decimal(60)),
     # Cross-review addition, against the feedback loop the hold alone does not
     # bound -- see `domain.window_temperature_drop.
     # WINDOW_TEMP_DROP_MAX_SUSPECTED_MINUTES`. 30 minutes is one hold; 720 (12
@@ -136,6 +143,9 @@ WINDOW_TEMP_DROP_LABELS: dict[str, str] = {
     "window_temp_drop_window_minutes": "Fenster-Erkennung, Zeitfenster (Minuten)",
     "window_temp_drop_threshold_k": "Fenster-Erkennung, Sturzschwelle (K)",
     "window_temp_drop_hold_minutes": "Fenster-Erkennung, Vermutung hält (Minuten)",
+    "window_temp_drop_gap_tolerance_minutes": (
+        "Fenster-Erkennung, tolerierte Unterbrechung (Minuten)"
+    ),
     "window_temp_drop_max_suspected_minutes": (
         "Fenster-Erkennung, Vermutung insgesamt höchstens (Minuten)"
     ),
@@ -146,6 +156,7 @@ WINDOW_TEMP_DROP_GANZZAHLIG = frozenset(
     {
         "window_temp_drop_window_minutes",
         "window_temp_drop_hold_minutes",
+        "window_temp_drop_gap_tolerance_minutes",
         "window_temp_drop_max_suspected_minutes",
         "window_temp_drop_silence_minutes",
     }

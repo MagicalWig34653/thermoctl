@@ -198,7 +198,13 @@ class Setting(Base):
     window_temp_drop_hold_minutes: Mapped[int] = mapped_column(
         Integer, default=30, server_default=text("30"), nullable=False
     )
-    # Cross-review addition: a hard cap on one uninterrupted streak of
+    # Second cross-review addition: how long a gap between two detected cycles
+    # is still tolerated as the same cumulative streak continuing --
+    # `domain.window_temperature_drop.WINDOW_TEMP_DROP_GAP_TOLERANCE_MINUTES`.
+    window_temp_drop_gap_tolerance_minutes: Mapped[int] = mapped_column(
+        Integer, default=10, server_default=text("10"), nullable=False
+    )
+    # Cross-review addition: a hard cap on one cumulative streak of
     # suspicion, closing the feedback loop the hold alone does not bound --
     # `domain.window_temperature_drop.WINDOW_TEMP_DROP_MAX_SUSPECTED_MINUTES`.
     window_temp_drop_max_suspected_minutes: Mapped[int] = mapped_column(

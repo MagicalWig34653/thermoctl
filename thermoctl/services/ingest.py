@@ -1,6 +1,7 @@
 # ruff: noqa: E501
 import json
 import logging
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from decimal import Decimal
 
@@ -31,6 +32,7 @@ from thermoctl.domain.reading import Reading, readings_from_payload
 from thermoctl.domain.window_alarm import window_alarm_state
 from thermoctl.domain.window_temperature_drop import (
     temperature_detection_cap_exceeded,
+    temperature_detection_gap_within_tolerance,
     temperature_detection_still_holding,
     temperature_detection_still_silenced,
     temperature_drop_history_cutoff,
@@ -431,7 +433,13 @@ def advance_zone_state(session: Session, now: datetime) -> None:
             and temperature is not None
             and _stuck(session, zone, temperature, now, setting_row.stuck_reading_hours)
         )
-        new_window_open, detected_by_temperature, new_silence_until = _window_open(
+        (
+            new_window_open,
+            detected_by_temperature,
+            new_silence_until,
+            new_streak_started_at,
+            new_last_detected_at,
+        ) = _window_open(
             session,
             zone,
             contact,
@@ -471,6 +479,14 @@ def advance_zone_state(session: Session, now: datetime) -> None:
         # cycle the cap fires, and cleared (`None`) in every other case --
         # `_window_open` decides all three, this only stores its answer.
         state.window_temp_drop_silence_until = new_silence_until
+        # The cumulative streak's own bookkeeping -- see `domain.
+        # window_temperature_drop`'s "why the first version of the cap never
+        # actually fired" section. Deliberately independent of
+        # `window_open_since` above, which the hold reads and which this same
+        # loop clears on any cycle the zone is not currently judged open;
+        # these two persist across exactly that kind of brief interruption.
+        state.window_temp_drop_streak_started_at = new_streak_started_at
+        state.window_temp_drop_last_detected_at = new_last_detected_at
         state.window_alarm = window_alarm_state(
             window_open=new_window_open,
             window_open_since=state.window_open_since,
@@ -483,6 +499,22 @@ def advance_zone_state(session: Session, now: datetime) -> None:
         state.updated_at = now
 
 
+@dataclass(frozen=True)
+class _TemperatureWindowJudgement:
+    """Everything `_window_open_from_temperature` decides in one cycle.
+
+    `streak_started_at`/`last_detected_at` are the cumulative streak's own
+    bookkeeping (`zone_state.window_temp_drop_streak_started_at`/`_last_
+    detected_at`) -- see `domain.window_temperature_drop`'s module docstring
+    for why these are deliberately independent of `window_open_since`.
+    """
+
+    open: bool
+    silence_until: datetime | None
+    streak_started_at: datetime | None
+    last_detected_at: datetime | None
+
+
 def _window_open(
     session: Session,
     zone: Zone,
@@ -493,10 +525,13 @@ def _window_open(
     timeout_s: int,
     previous_state: ZoneState | None,
     setting_row: Setting,
-) -> tuple[bool | None, bool, datetime | None]:
-    """The zone's window state, whether it came from the temperature guess, and
-    the cap-driven silence deadline to persist (`zone_state.
-    window_temp_drop_silence_until`, `None` unless currently silenced).
+) -> tuple[bool | None, bool, datetime | None, datetime | None, datetime | None]:
+    """The zone's window state, whether it came from the temperature guess, the
+    cap-driven silence deadline to persist (`zone_state.
+    window_temp_drop_silence_until`, `None` unless currently silenced), and the
+    cumulative streak's own bookkeeping (`zone_state.
+    window_temp_drop_streak_started_at`/`_last_detected_at`, `None` outside the
+    temperature path).
 
     A real window contact, once assigned to the zone, decides **exclusively** --
     task instruction, restated here because it is easy to get backwards: even a
@@ -506,10 +541,11 @@ def _window_open(
     Only a zone with *no* contact assigned at all reaches
     `_window_open_from_temperature` below, and only if the zone's own switch
     (`Zone.window_temp_drop_detection_enabled`) is on -- the project owner's
-    explicit default is off. Silence is a purely temperature-side concern and
-    is always cleared (`None`) outside that path -- a zone that later loses its
-    temperature source, its switch, or gains a contact must not carry a stale
-    deadline forward that nothing will ever read again.
+    explicit default is off. Silence and the streak bookkeeping are purely
+    temperature-side concerns and are always cleared (`None`) outside that
+    path -- a zone that later loses its temperature source, its switch, or
+    gains a contact must not carry a stale deadline or streak forward that
+    nothing will ever read again.
     """
     if contact is not None and window_role is not None:
         device_ids = list(
@@ -521,7 +557,8 @@ def _window_open(
             )
         )
         if device_ids:
-            return _contact_window_open(session, device_ids, contact, now, timeout_s), False, None
+            contact_open = _contact_window_open(session, device_ids, contact, now, timeout_s)
+            return contact_open, False, None, None, None
 
     if not zone.window_temp_drop_detection_enabled:
         # No contact, and the temperature-based approximation is off -- unknown,
@@ -529,12 +566,18 @@ def _window_open(
         # feature existed. Treated by the control logic like closed, same as the
         # contact-less case below always was: otherwise a plant with no window
         # contacts and the switch off could fundamentally never heat.
-        return None, False, None
+        return None, False, None, None, None
 
-    detected, silence_until = _window_open_from_temperature(
+    judgement = _window_open_from_temperature(
         session, zone, temperature, now, previous_state, setting_row
     )
-    return detected, detected, silence_until
+    return (
+        judgement.open,
+        judgement.open,
+        judgement.silence_until,
+        judgement.streak_started_at,
+        judgement.last_detected_at,
+    )
 
 
 def _contact_window_open(
@@ -577,31 +620,47 @@ def _window_open_from_temperature(
     now: datetime,
     previous_state: ZoneState | None,
     setting_row: Setting,
-) -> tuple[bool, datetime | None]:
+) -> _TemperatureWindowJudgement:
     """Whether a contact-less zone's own temperature currently suggests an open
-    window, and the silence deadline to carry forward (see `_window_open`
-    above). The window state itself is always a definite `True`/`False`, never
-    unknown: unlike a contact that can go stale, there is no separate "cannot
-    currently tell" state here, only "not enough history to say"
-    (`window_open_suspected`'s own `False`).
+    window, and the bookkeeping to carry forward (see `_window_open` above and
+    `_TemperatureWindowJudgement`). The window state itself is always a
+    definite `True`/`False`, never unknown: unlike a contact that can go
+    stale, there is no separate "cannot currently tell" state here, only "not
+    enough history to say" (`window_open_suspected`'s own `False`).
 
     See `domain.window_temperature_drop`'s module docstring for the full
-    reasoning behind all three parts below: the drop trigger, the bounded hold
-    that ends a triggered suspicion without relying on a recovery signal that a
-    withheld heat demand would make circular, and the cap-plus-silence that
+    reasoning behind every part below: the drop trigger, the bounded hold that
+    ends a triggered suspicion without relying on a recovery signal that a
+    withheld heat demand would make circular, and the cap-plus-silence
+    (measured off its own cumulative streak, not off the hold's clock) that
     closes the feedback loop the hold alone leaves open.
     """
     if temperature is None or zone.temperature_source_device_id is None:
-        return False, None
+        return _TemperatureWindowJudgement(False, None, None, None)
 
     previous_silence_until = (
         previous_state.window_temp_drop_silence_until if previous_state is not None else None
     )
     if temperature_detection_still_silenced(previous_silence_until, now):
         # Standing down regardless of the current temperature -- the whole
-        # point of the cap. Carries the same deadline forward unchanged; only
-        # the cycle that actually reaches it (below) sets a new one.
-        return False, previous_silence_until
+        # point of the cap. Carries the silence deadline and the streak
+        # bookkeeping forward unchanged: by the time the silence lapses,
+        # `last_detected_at` will be far older than the gap tolerance, so
+        # whatever triggers next is correctly treated as a new streak without
+        # any special-casing here.
+        previous_streak_started_at = (
+            previous_state.window_temp_drop_streak_started_at
+            if previous_state is not None
+            else None
+        )
+        previous_last_detected_at = (
+            previous_state.window_temp_drop_last_detected_at
+            if previous_state is not None
+            else None
+        )
+        return _TemperatureWindowJudgement(
+            False, previous_silence_until, previous_streak_started_at, previous_last_detected_at
+        )
 
     already_open = previous_state is not None and previous_state.window_open_by_temperature
     still_holding = already_open and temperature_detection_still_holding(
@@ -610,8 +669,22 @@ def _window_open_from_temperature(
         hold_minutes=setting_row.window_temp_drop_hold_minutes,
     )
 
+    previous_streak_started_at = (
+        previous_state.window_temp_drop_streak_started_at if previous_state is not None else None
+    )
+    previous_last_detected_at = (
+        previous_state.window_temp_drop_last_detected_at if previous_state is not None else None
+    )
+
+    streak_started_at: datetime
+    last_detected_at: datetime
     if still_holding:
-        detected = True
+        # Still within the hold -- this is unambiguously the same streak
+        # continuing, confirmed by the hold itself, not merely inferred from a
+        # gap: no tolerance check needed or wanted here, only the fresh
+        # re-check right after a hold lapses (below) can ever actually flicker.
+        streak_started_at = previous_streak_started_at if previous_streak_started_at else now
+        last_detected_at = now
     else:
         cutoff = temperature_drop_history_cutoff(
             now, setting_row.window_temp_drop_window_minutes
@@ -649,22 +722,42 @@ def _window_open_from_temperature(
             drop_threshold_k=setting_row.window_temp_drop_threshold_k,
         )
 
-    if not detected:
-        return False, None
+        if not detected:
+            # Not detected this cycle -- but the cumulative streak is not
+            # necessarily over: a brief, tolerated interruption (see `domain.
+            # window_temperature_drop.temperature_detection_gap_within_
+            # tolerance`) must not reset it, only a genuinely long gap should.
+            # Carry the bookkeeping forward unchanged; the next actual
+            # detection, if any, decides whether the gap since
+            # `last_detected_at` was too long.
+            return _TemperatureWindowJudgement(
+                False, None, previous_streak_started_at, previous_last_detected_at
+            )
 
-    # The streak's start: the existing `window_open_since` if this continues an
-    # already-open episode (held, or freshly re-triggered right where the
-    # previous one lapsed -- either way `previous_state.window_open_since` is
-    # still the original moment, never reset while `window_open_by_temperature`
-    # stays true, see `db/models/state.py`), otherwise this is a brand new
-    # streak starting now, which can never already exceed the cap.
-    streak_started_at = previous_state.window_open_since if already_open else now  # type: ignore[union-attr]
+        # Detected via a fresh check right after the hold lapsed -- exactly
+        # the moment a single noisy miss could have reset everything under the
+        # old design. Decide whether this continues the existing cumulative
+        # streak (the gap since it was last detected is still within
+        # tolerance) or starts a brand new one.
+        if previous_streak_started_at is not None and temperature_detection_gap_within_tolerance(
+            previous_last_detected_at,
+            now,
+            gap_tolerance_minutes=setting_row.window_temp_drop_gap_tolerance_minutes,
+        ):
+            streak_started_at = previous_streak_started_at
+        else:
+            streak_started_at = now
+        last_detected_at = now
+
     if temperature_detection_cap_exceeded(
         streak_started_at,
         now,
         max_suspected_minutes=setting_row.window_temp_drop_max_suspected_minutes,
     ):
         silence_until = now + timedelta(minutes=setting_row.window_temp_drop_silence_minutes)
-        return False, silence_until
+        # The cap fired and a silence begins -- reset the streak bookkeeping to
+        # a clean slate, so whatever triggers next after the silence starts
+        # counting from zero (see the module docstring).
+        return _TemperatureWindowJudgement(False, silence_until, None, None)
 
-    return True, None
+    return _TemperatureWindowJudgement(True, None, streak_started_at, last_detected_at)

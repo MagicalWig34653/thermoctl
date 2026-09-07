@@ -783,13 +783,95 @@ def test_a_triggered_suspicion_holds_without_a_fresh_drop_and_then_lapses(
     assert state.window_open_since is None
 
 
+def test_a_single_flicker_at_the_hold_boundary_does_not_reset_the_streak(
+    session: Session,
+) -> None:
+    """Second cross-review round, Befund 1: the first version of the cap
+    measured its streak off `window_open_since`, which this very module clears
+    on every cycle the zone is not currently judged open -- including the
+    single noisy re-check that can flicker to 'not detected' right when a hold
+    lapses, even while the room keeps genuinely cooling. That reset the entire
+    cumulative measurement every time, and a reviewer replaying 20 runs of 420
+    simulated minutes never saw the cap fire even once. The streak's own clock
+    (`window_temp_drop_streak_started_at`) must survive exactly this: a single
+    missed cycle at the hold boundary, followed by a resumed detection shortly
+    after (within `window_temp_drop_gap_tolerance_minutes`)."""
+    zone, _settings, temperature = _temp_drop_zone(session, "einzelner-ausreisser-zone")
+    device_id = zone.temperature_source_device_id
+    assert device_id is not None
+    start = EMPFANGEN_AM - timedelta(minutes=_DROP_WINDOW_MINUTES)
+    _add_reading(session, device_id, temperature.id, Decimal("22.0"), start)
+    _add_reading(
+        session, device_id, temperature.id, Decimal("22.0") - _DROP_THRESHOLD_K, EMPFANGEN_AM
+    )
+    advance_zone_state(session, EMPFANGEN_AM)
+    opened_at = EMPFANGEN_AM
+
+    # A cycle still inside the hold -- a real periodic control loop would run
+    # many of these; this is the one that keeps `last_detected_at` recent
+    # enough for the tolerance check three steps below to matter at all.
+    advance_zone_state(session, opened_at + timedelta(minutes=15))
+
+    # The hold lapses here (20 minutes in) and a fresh check runs -- and, this
+    # time, the room's own noise makes it miss: the current reading matches
+    # its own recent history instead of showing a further drop.
+    flicker_at = opened_at + timedelta(minutes=_DROP_HOLD_MINUTES)
+    _add_reading(
+        session,
+        device_id,
+        temperature.id,
+        Decimal("22.0"),
+        flicker_at - timedelta(minutes=_DROP_WINDOW_MINUTES),
+    )
+    _add_reading(session, device_id, temperature.id, Decimal("22.0"), flicker_at)
+    advance_zone_state(session, flicker_at)
+    state = session.get(ZoneState, zone.id)
+    assert state is not None
+    assert state.window_open is False
+    # The reported state lapsed for this one cycle -- but the streak's own
+    # bookkeeping must not have moved: this is exactly what used to reset to
+    # `None`/`now` here and is the regression this test pins down.
+    assert state.window_temp_drop_streak_started_at == opened_at
+    assert state.window_temp_drop_last_detected_at == opened_at + timedelta(minutes=15)
+
+    # Five minutes later -- well within the default ten-minute tolerance -- a
+    # genuine drop is detected again.
+    resumed_at = flicker_at + timedelta(minutes=5)
+    _add_reading(
+        session,
+        device_id,
+        temperature.id,
+        Decimal("22.0"),
+        resumed_at - timedelta(minutes=_DROP_WINDOW_MINUTES),
+    )
+    _add_reading(
+        session, device_id, temperature.id, Decimal("22.0") - _DROP_THRESHOLD_K, resumed_at
+    )
+    advance_zone_state(session, resumed_at)
+    state = session.get(ZoneState, zone.id)
+    assert state is not None
+    assert state.window_open is True
+    assert state.window_open_by_temperature is True
+    # The streak survived the flicker: it still traces back to the original
+    # trigger, not to this resumed cycle.
+    assert state.window_temp_drop_streak_started_at == opened_at
+    assert state.window_temp_drop_last_detected_at == resumed_at
+
+
 def test_the_cap_forces_a_silence_once_a_streak_runs_too_long(session: Session) -> None:
     """Cross-review finding: the hold alone lets the detection re-trigger off its
     own withheld heat indefinitely, since a room the detection itself has kept
     unheated can keep cooling steeply enough to cross the threshold again right
     where each hold lapses. The cap (`setting.window_temp_drop_max_suspected_
-    minutes`) has to force a silence once one uninterrupted streak has run for
-    too long, even though a fresh drop is, on its own merits, still present."""
+    minutes`) has to force a silence once one cumulative streak has run for
+    too long, even though a fresh drop is, on its own merits, still present.
+
+    The intermediate cycle at `+15` minutes is not decorative: it is what a
+    real, periodically-running control loop would do during the hold, and it
+    is what keeps `window_temp_drop_last_detected_at` recent enough that the
+    final cycle's gap to it still counts as the *same* cumulative streak --
+    see `test_a_single_flicker_at_the_hold_boundary_does_not_reset_the_streak`
+    below for that mechanism in isolation."""
     zone, settings, temperature = _temp_drop_zone(session, "obergrenze-zone")
     cap_minutes = 25
     silence_minutes = 15
@@ -806,6 +888,12 @@ def test_the_cap_forces_a_silence_once_a_streak_runs_too_long(session: Session) 
     state = session.get(ZoneState, zone.id)
     assert state is not None and state.window_open is True
     opened_at = EMPFANGEN_AM
+
+    # A cycle still inside the hold -- no fresh drop needed, the hold's own
+    # shortcut answers it -- but it refreshes `last_detected_at`, exactly as a
+    # real periodic control loop would.
+    still_holding_at = opened_at + timedelta(minutes=15)
+    advance_zone_state(session, still_holding_at)
 
     # A fresh drop keeps appearing right at the cap boundary -- exactly the
     # feedback loop the cap exists to break -- yet detection must now stand
@@ -828,6 +916,8 @@ def test_the_cap_forces_a_silence_once_a_streak_runs_too_long(session: Session) 
     assert state.window_open_by_temperature is False
     assert state.window_open_since is None
     assert state.window_temp_drop_silence_until == at_cap + timedelta(minutes=silence_minutes)
+    assert state.window_temp_drop_streak_started_at is None
+    assert state.window_temp_drop_last_detected_at is None
 
 
 def test_silence_blocks_a_fresh_drop_then_lapses_and_trusts_one_again(
@@ -846,6 +936,12 @@ def test_silence_blocks_a_fresh_drop_then_lapses_and_trusts_one_again(
         session, device_id, temperature.id, Decimal("22.0") - _DROP_THRESHOLD_K, EMPFANGEN_AM
     )
     advance_zone_state(session, EMPFANGEN_AM)
+
+    # A cycle still inside the hold, refreshing `last_detected_at` the way a
+    # real periodic control loop would -- see `test_the_cap_forces_a_silence_
+    # once_a_streak_runs_too_long` above for why this is required, not
+    # decorative.
+    advance_zone_state(session, EMPFANGEN_AM + timedelta(minutes=15))
 
     at_cap = EMPFANGEN_AM + timedelta(minutes=cap_minutes)
     _add_reading(
