@@ -18,9 +18,7 @@ eine einfachere Oberfläche auf dieselben Daten.
 """
 
 from datetime import timedelta
-from decimal import Decimal
-from typing import Annotated
-from urllib.parse import urlencode
+from typing import Annotated, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import RedirectResponse
@@ -28,26 +26,34 @@ from sqlalchemy.orm import Session
 
 from thermoctl.auth.dependencies import csrf_protection, current_principal, get_session
 from thermoctl.db.base import utcnow
+from thermoctl.db.models.lookup import SensorStatus
 from thermoctl.db.models.operations import Setting
 from thermoctl.db.models.schedule import SchedulePoint
+from thermoctl.db.models.state import ZoneState
 from thermoctl.db.models.zone import SetpointMode, Zone
 from thermoctl.domain.authz import has_permission, visible_zones
 from thermoctl.domain.principal import Principal
 from thermoctl.domain.schedule import (
     ScheduleError,
+    ScheduleSnapshot,
     adopt_schedule,
     copy_schedule_day,
     create_schedule_point,
     delete_schedule_point,
     move_schedule_point,
-    schedule_forecast,
+    next_switch,
     time_of_day_in_minutes,
     undo_schedule_gesture,
     week_segments,
 )
-from thermoctl.domain.statistics import ZEITRAEUME_TAGE, as_duration, heating_periods
+from thermoctl.domain.statistics import (
+    PERIODS,
+    as_duration,
+    heating_periods,
+    period_days,
+)
 from thermoctl.domain.time import local_day_start_utc, local_time
-from thermoctl.web import templates, warmth_fraction
+from thermoctl.web import templates
 from thermoctl.web.guards import tenant_ui_only
 from thermoctl.web.schedule_views import (
     WEEKDAYS,
@@ -76,7 +82,9 @@ def _zone_or_404(session: Session, principal: Principal, zone_id: int, permissio
     return zone
 
 
-def _home_notice(zones: list[Zone], states: dict[int, object]) -> dict[str, object] | None:
+def _home_notice(
+    zones: list[Zone], states: dict[int, tuple[ZoneState, SensorStatus]]
+) -> dict[str, object] | None:
     """Der für den Mieter relevante Effekt eines Problems -- nicht die Ursache.
 
     Erlaubt sind ausschließlich ein stiller/festhängender Sensor und ein offenes
@@ -88,7 +96,7 @@ def _home_notice(zones: list[Zone], states: dict[int, object]) -> dict[str, obje
         entry = states.get(zone.id)
         if entry is None:
             continue
-        zone_state, sensor_status = entry  # type: ignore[misc]
+        zone_state, sensor_status = entry
         if sensor_status.code != "ok":
             return {
                 "kind": "sensor",
@@ -99,7 +107,7 @@ def _home_notice(zones: list[Zone], states: dict[int, object]) -> dict[str, obje
         entry = states.get(zone.id)
         if entry is None:
             continue
-        zone_state, _sensor_status = entry  # type: ignore[misc]
+        zone_state, _sensor_status = entry
         if zone_state.window_open:
             return {"kind": "window", "zone_name": zone.display_name}
     return None
@@ -113,7 +121,12 @@ def render_home(request: Request, session: Session, principal: Principal) -> Res
     now = utcnow()
     settings = session.get(Setting, 1)
     context = zone_status_context(session, principal, zones, now, settings)
-    states = context["states"]
+    states = cast("dict[int, tuple[ZoneState, SensorStatus]]", context["states"])
+    # "Als Nächstes: 18,0 °C um 23:00" -- aus der Domäne, nicht aus einer zweiten
+    # Rechnung in der Vorlage oder im Browser. Dieselbe Funktion, die auch der
+    # Sprung zur nächsten Schaltzeit benutzt: was die Karte ankündigt und was der
+    # Knopf daneben tut, kann so nicht auseinanderlaufen.
+    next_switches = {zone.id: next_switch(session, zone, now) for zone in zones}
 
     return templates.TemplateResponse(
         request,
@@ -122,7 +135,9 @@ def render_home(request: Request, session: Session, principal: Principal) -> Res
             **context,
             "user": getattr(request.state, "user", None),
             "zones": zones,
-            "notice": _home_notice(zones, states),  # type: ignore[arg-type]
+            "notice": _home_notice(zones, states),
+            "next_switches": next_switches,
+            "timezone": context["timezone"],
             "thermostat_errors": request.query_params.get("thermostat_errors"),
             "override_errors": request.query_params.get("override_errors"),
             "jump_next_errors": request.query_params.get("jump_next_errors"),
@@ -309,7 +324,9 @@ async def copy_tenant_schedule_day(
             user_id=principal.user_id, token_id=principal.token_id,
         )
     except ScheduleError as exc:
-        return _tenant_schedule_page(request, session, principal, zone, zones, gesture_error=exc.notice)
+        return _tenant_schedule_page(
+            request, session, principal, zone, zones, gesture_error=exc.notice
+        )
     return _tenant_schedule_page(
         request, session, principal, zone, zones,
         undo_token=_undo_token(zone.id, snapshot) if snapshot else "",
@@ -335,7 +352,6 @@ async def adopt_tenant_schedule(
     Formularfeld ist kein Nachweis, dass die Zone tatsächlich sichtbar ist.
     """
     form = await request.form()
-    zones = visible_zones(session, principal, "zone.read")
     try:
         zone_id = int(str(form.get("zone_id", "")))
         source_id = int(str(form.get("source_id", "")))
@@ -371,19 +387,23 @@ async def undo_tenant_schedule(
         payload = _undo_payload(str(form.get("undo_token", "")))
         if payload["zone_id"] != zone.id:
             raise ValueError("wrong zone")
-        before = tuple(tuple(point) for point in payload["before"])  # type: ignore[union-attr]
-        after = tuple(tuple(point) for point in payload["after"])  # type: ignore[union-attr]
-        revision = int(payload["revision"])  # type: ignore[arg-type]
+        raw_before = cast(list[list[int]], payload["before"])
+        raw_after = cast(list[list[int]], payload["after"])
+        revision = int(cast(int, payload["revision"]))
+        before = cast(ScheduleSnapshot, tuple(tuple(point) for point in raw_before))
+        after = cast(ScheduleSnapshot, tuple(tuple(point) for point in raw_after))
     except (KeyError, TypeError, ValueError):
         raise HTTPException(status.HTTP_400_BAD_REQUEST) from None
     try:
         undo_schedule_gesture(
-            session, zone, before=before, expected_after=after,  # type: ignore[arg-type]
+            session, zone, before=before, expected_after=after,
             expected_revision=revision,
             user_id=principal.user_id, token_id=principal.token_id,
         )
     except ScheduleError as exc:
-        return _tenant_schedule_page(request, session, principal, zone, zones, gesture_error=exc.notice)
+        return _tenant_schedule_page(
+            request, session, principal, zone, zones, gesture_error=exc.notice
+        )
     return _tenant_schedule_page(request, session, principal, zone, zones)
 
 
@@ -404,9 +424,9 @@ async def show_heating_time(
     armed = bool(settings and settings.control_armed)
 
     key = request.query_params.get("period", "7")
-    if key not in ZEITRAEUME_TAGE:
+    if key not in PERIODS:
         key = "7"
-    days = ZEITRAEUME_TAGE[key]
+    _label, days = period_days(key)
 
     bis = utcnow()
     first_local_day = local_time(bis, timezone_name).date() - timedelta(days=days - 1)
@@ -428,7 +448,7 @@ async def show_heating_time(
             "zones": zones,
             "values": values,
             "maximum": maximum,
-            "periods": list(ZEITRAEUME_TAGE.items()),
+            "periods": [(code, label) for code, (label, _days) in PERIODS.items()],
             "period": key,
             "armed": armed,
             "as_duration": as_duration,

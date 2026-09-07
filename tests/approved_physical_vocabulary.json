@@ -537,6 +537,9 @@
     "thermoctl/web/daily_views.py": [
       "Bitte bestätigen, dass mehr Schaltspiele und eine falsche Parametrierung verstanden wurden, bevor PI (Beta) eingeschaltet wird."
     ],
+    "thermoctl/web/navigation.py": [
+      "/heating-time"
+    ],
     "thermoctl/web/schedule_views.py": [
       "warmth",
       "warmth"
@@ -670,6 +673,9 @@
     "thermoctl/web/templates/vacation.html": [
       "<span class=\"tc-chip tc-chip-warm\"><span class=\"tc-dot\"></span>Läuft</span>",
       "Mindestschaltdauern und Ventilschutz gelten unverändert weiter, und eine Zone in"
+    ],
+    "thermoctl/web/tenant_views.py": [
+      "/heating-time"
     ]
   },
   "version": 1

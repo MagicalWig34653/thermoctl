@@ -1402,3 +1402,420 @@ body {
     gap: 0.25rem;
     align-items: flex-start;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+ * Die Wohnungssicht (v0.9.0)
+ *
+ * Mobile first: eine Spalte, große Zahlen, Flächen, die ein Daumen sicher trifft.
+ * Dieselbe Palette wie die Anlagensicht -- Kupfer bedeutet auch hier Wärme, und
+ * eine Raumkarte, die aus einem anderen Farbsystem stammte, würde genau die
+ * Aussage verlieren, für die Farbe in diesem Programm da ist.
+ * ═══════════════════════════════════════════════════════════════════════════════ */
+
+.tc-tenant {
+    background: var(--ground);
+}
+
+.tc-hero {
+    padding: 0.5rem 0 1.25rem;
+}
+
+.tc-eyebrow {
+    margin: 0;
+    font-size: 0.75rem;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--muted);
+}
+
+/* Der eine ruhige Satz oben: läuft alles, oder betrifft etwas diese Wohnung? */
+.tc-notice {
+    border: 1px solid var(--line-strong);
+    border-left-width: 4px;
+    border-radius: var(--radius);
+    background: var(--surface);
+    padding: 0.85rem 1rem;
+    margin-bottom: 1rem;
+}
+
+.tc-notice-calm {
+    border-left-color: var(--line-strong);
+}
+
+.tc-notice-title {
+    margin: 0 0 0.15rem;
+    font-weight: 600;
+}
+
+.tc-empty {
+    border: 1px dashed var(--line-strong);
+    border-radius: var(--radius);
+    padding: 1.5rem 1rem;
+    text-align: center;
+    color: var(--muted);
+}
+
+.tc-rooms {
+    display: grid;
+    gap: 1rem;
+    grid-template-columns: 1fr;
+}
+
+@media (min-width: 62rem) {
+    /* Erst ab Tablettbreite zwei Spalten. Auf dem Telefon bleibt eine Karte eine
+     * Karte -- nebeneinander wären die Temperaturen zu klein für den Zweck. */
+    .tc-rooms {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+.tc-room {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 1.1rem;
+}
+
+.tc-room-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+}
+
+.tc-room-name {
+    margin: 0;
+    font-size: 1.05rem;
+    font-weight: 600;
+}
+
+.tc-room-temp {
+    margin: 0.6rem 0 0;
+    line-height: 1;
+}
+
+.tc-big {
+    font-size: 2.6rem;
+    font-weight: 600;
+}
+
+.tc-unit {
+    font-size: 1rem;
+    color: var(--muted);
+    margin-left: 0.15rem;
+}
+
+.tc-facts {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.5rem 1rem;
+    margin: 0.9rem 0;
+}
+
+.tc-facts div {
+    min-width: 0;
+}
+
+.tc-facts dt {
+    font-size: 0.72rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted);
+    font-weight: 400;
+}
+
+.tc-facts dd {
+    margin: 0;
+    font-weight: 600;
+}
+
+.tc-fact-wide {
+    grid-column: 1 / -1;
+}
+
+.tc-fact-wide dd {
+    font-weight: 400;
+}
+
+/* Der Tagesverlauf als Streifen mit Jetzt-Marke. Die Abschnitte kommen fertig
+ * gerechnet aus der Domäne; hier wird nichts hergeleitet, nur gezeichnet. */
+.tc-timeline {
+    position: relative;
+    height: 0.75rem;
+    border-radius: 999px;
+    background: var(--surface-deep);
+    overflow: hidden;
+}
+
+.tc-timeline-part {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+}
+
+.tc-timeline-now {
+    position: absolute;
+    top: -0.15rem;
+    bottom: -0.15rem;
+    width: 2px;
+    background: var(--ink);
+}
+
+.tc-nextline {
+    margin: 0.6rem 0 0;
+    color: var(--muted);
+}
+
+.tc-override {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    margin-top: 0.75rem;
+    padding: 0.6rem 0.8rem;
+    border-radius: var(--radius);
+    background: var(--warmth-area);
+    border: 1px solid color-mix(in srgb, var(--warmth) 35%, var(--line));
+}
+
+.tc-controlbox {
+    margin-top: 0.9rem;
+    padding-top: 0.9rem;
+    border-top: 1px solid var(--line);
+}
+
+.tc-controltop {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+    margin-bottom: 0.6rem;
+}
+
+/* Der dauerhafte Sollwert des laufenden Abschnitts. Große Flächen: das hier wird
+ * im Vorbeigehen mit dem Daumen bedient, nicht mit einer Maus. */
+.tc-stepper {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.tc-stepbtn {
+    width: 3rem;
+    height: 3rem;
+    border-radius: 999px;
+    border: 1px solid var(--line-strong);
+    background: var(--surface);
+    color: var(--ink);
+    font-size: 1.35rem;
+    line-height: 1;
+}
+
+.tc-stepbtn:hover {
+    background: var(--surface-deep);
+}
+
+.tc-stepvalue {
+    font-size: 1.25rem;
+    font-weight: 600;
+    min-width: 5.5rem;
+    text-align: center;
+}
+
+.tc-room-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 0.9rem;
+}
+
+.tc-room-actions .btn {
+    min-height: 2.75rem;
+}
+
+.tc-inline-error {
+    margin: 0.5rem 0 0;
+    color: var(--warmth);
+}
+
+.tc-boostform {
+    display: grid;
+    gap: 0.6rem;
+    margin-top: 0.9rem;
+    padding: 0.9rem;
+    border-radius: var(--radius);
+    background: var(--surface-deep);
+}
+
+.tc-durations {
+    border: 0;
+    padding: 0;
+    margin: 0;
+    display: grid;
+    gap: 0.35rem;
+}
+
+.tc-choice {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-height: 2.75rem;
+}
+
+/* ── Mieter-Zeitplan ───────────────────────────────────────────────────────── */
+
+.tc-roomtabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    margin-bottom: 1rem;
+}
+
+.tc-roomtab {
+    padding: 0.5rem 0.9rem;
+    min-height: 2.75rem;
+    display: inline-flex;
+    align-items: center;
+    border-radius: 999px;
+    border: 1px solid var(--line-strong);
+    background: var(--surface);
+    color: var(--ink);
+    text-decoration: none;
+}
+
+.tc-roomtab.tc-here {
+    background: var(--surface-deep);
+    font-weight: 600;
+    box-shadow: inset 0 0 0 1px var(--line-strong);
+}
+
+.tc-forecast {
+    display: flex;
+    min-height: 4rem;
+    border-radius: var(--radius);
+    overflow: hidden;
+    border: 1px solid var(--line);
+}
+
+.tc-forecast-part {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 0.4rem 0.5rem;
+    min-width: 0;
+    overflow: hidden;
+}
+
+.tc-forecast-part.tc-here {
+    box-shadow: inset 0 0 0 2px var(--line-strong);
+}
+
+.tc-forecast-label {
+    font-weight: 600;
+    font-size: 0.82rem;
+}
+
+.tc-dayrow {
+    display: grid;
+    grid-template-columns: 2.5rem 1fr auto;
+    align-items: center;
+    gap: 0.5rem 0.75rem;
+    padding: 0.5rem 0;
+    border-top: 1px solid var(--line);
+}
+
+.tc-dayname {
+    font-weight: 600;
+}
+
+.tc-daybar {
+    position: relative;
+    height: 0.7rem;
+    border-radius: 999px;
+    background: var(--surface-deep);
+    overflow: hidden;
+}
+
+.tc-daybar-part {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+}
+
+.tc-daytimes {
+    white-space: nowrap;
+}
+
+.tc-dayedit {
+    grid-column: 1 / -1;
+}
+
+.tc-dayform {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: end;
+    gap: 0.5rem;
+    margin: 0.6rem 0;
+}
+
+.tc-dayform .form-control,
+.tc-dayform .form-select {
+    width: auto;
+}
+
+.tc-tip {
+    margin-top: 1rem;
+    padding: 0.9rem 1rem;
+    border-radius: var(--radius);
+    background: var(--surface-deep);
+    color: var(--muted);
+}
+
+/* ── Heizzeit ──────────────────────────────────────────────────────────────── */
+
+.tc-segments {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    margin-bottom: 1rem;
+}
+
+.tc-segment {
+    padding: 0.5rem 0.9rem;
+    min-height: 2.75rem;
+    display: inline-flex;
+    align-items: center;
+    border-radius: 999px;
+    border: 1px solid var(--line-strong);
+    background: var(--surface);
+    color: var(--ink);
+    text-decoration: none;
+}
+
+.tc-segment.tc-here {
+    background: var(--surface-deep);
+    font-weight: 600;
+}
+
+.tc-bars {
+    display: flex;
+    align-items: flex-end;
+    gap: 3px;
+    height: 6rem;
+    margin: 0.75rem 0;
+}
+
+.tc-barwrap {
+    flex: 1 1 0;
+    display: flex;
+    align-items: flex-end;
+    height: 100%;
+    min-width: 2px;
+}
+
+.tc-bar {
+    width: 100%;
+    background: var(--warmth);
+    border-radius: 2px 2px 0 0;
+    min-height: 1px;
+}

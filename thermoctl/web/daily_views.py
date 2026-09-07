@@ -10,16 +10,17 @@ from sqlalchemy.orm import Session
 from thermoctl.auth.dependencies import csrf_protection, current_principal, get_session
 from thermoctl.db.base import utcnow
 from thermoctl.db.models.zone import Zone
-from thermoctl.domain import schedule as schedule_domain
 from thermoctl.domain.authz import visible_zones
 from thermoctl.domain.control import settings as control_settings
 from thermoctl.domain.modes import DomainError, update_setpoints
 from thermoctl.domain.principal import Principal
 from thermoctl.domain.schedule import (
+    OverrideAlreadyRunning,
     ScheduleError,
     cancel_override,
     create_override,
     end_of_next_switch,
+    jump_to_next_switch,
     resolved_setpoint,
     temperature_for_mode,
 )
@@ -434,26 +435,20 @@ async def jump_to_next_switch_view(
     Zeitplan-Phase sofort vor, aber nur bis zu dem Zeitpunkt, an dem sie regulär
     begonnen hätte. Der Wochenplan selbst bleibt unverändert.
 
-    Ruft ausschließlich `thermoctl.domain.schedule.jump_to_next_switch` -- keine
-    eigene Berechnung des nächsten Sollwerts hier (Grundsatz 6). Diese
-    Domänenfunktion stammt aus einem parallel laufenden Auftrag und lag zum
-    Zeitpunkt dieser Änderung noch nicht im Worktree; deshalb der defensive Zugriff
-    über `getattr` statt eines gewöhnlichen Imports -- ein fehlender Import hätte
-    das gesamte Modul, und damit Übersteuern und Sollwert-Stepper gleich mit,
-    unbenutzbar gemacht. Sobald die Funktion vorliegt, braucht diese Route keine
-    weitere Änderung.
+    Ruft ausschließlich `domain.schedule.jump_to_next_switch` -- der nächste
+    Schaltpunkt, der Zielmodus und der Zielsollwert werden hier nirgends selbst
+    ausgerechnet (Grundsatz 6).
+
+    Läuft bereits eine Übersteuerung, legt die Domäne **keine** zweite still
+    daneben, sondern meldet die laufende. Die Seite zeigt sie daraufhin an und
+    bietet zwei ausdrückliche Wege: beenden, oder mit `replace=1` ersetzen. Ein
+    stillschweigendes Verdoppeln wäre ein Rennen zwischen zwei Zeilen, dessen
+    Ausgang niemand vorhersagen könnte.
     """
     zone = _zone_or_404(session, principal, zone_id, "override.create")
     form = await request.form()
     replace = str(form.get("replace", "")) == "1"
 
-    jump_to_next_switch = getattr(schedule_domain, "jump_to_next_switch", None)
-    if jump_to_next_switch is None:  # pragma: no cover - Blocker, siehe Docstring oben
-        raise HTTPException(
-            status.HTTP_501_NOT_IMPLEMENTED,
-            "Zur nächsten Schaltzeit springen ist noch nicht verfügbar.",
-        )
-    already_running_type = getattr(schedule_domain, "OverrideAlreadyRunning", ())
     try:
         jump_to_next_switch(
             session,
@@ -463,13 +458,13 @@ async def jump_to_next_switch_view(
             token_id=principal.token_id,
             source="web",
         )
-    except already_running_type as exc:
-        running = exc.running_override
+    except OverrideAlreadyRunning as exc:
+        running = f"{exc.running_override.temperature_c:.1f}".replace(".", ",")
         parameter = urlencode(
             {
                 "jump_next_errors": (
-                    f"Es läuft bereits eine Übersteuerung auf {running.temperature_c} °C. "
-                    "Bitte erst beenden oder ersetzen."
+                    f"Für diesen Raum läuft bereits eine Änderung auf {running} °C. "
+                    "Bitte zuerst beenden oder ausdrücklich ersetzen."
                 ),
                 "zone_id": zone.id,
             }

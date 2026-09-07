@@ -138,7 +138,11 @@ def test_a_tenant_sees_no_plant_navigation(session: Session) -> None:
     )
     # Ausdrücklich mit weitreichenden Rechten: die Einträge dürfen am Profil
     # scheitern, nicht bloß an fehlenden Rechten.
-    assert visible_navigation(principal_for_user(session, tenant)) == ()
+    paths = {item.path for item in visible_navigation(principal_for_user(session, tenant))}
+    for plant_path in ("/users", "/audit", "/settings", "/control", "/devices", "/zones"):
+        assert plant_path not in paths, plant_path
+    # Was übrig bleibt, gehört zur Wohnung -- und nur das.
+    assert paths == {"/schedule", "/heating-time", "/account"}
 
 
 def test_an_administrator_still_sees_the_plant_navigation(session: Session) -> None:

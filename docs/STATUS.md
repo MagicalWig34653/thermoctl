@@ -57,10 +57,41 @@ der Benutzerverwaltungsseite und wären für ein Mieterprofil unerreichbar gewes
 nichts aus der Datenbank -- eine Seite ohne Rechteprüfung darf keine Zonennamen
 zeigen.
 
+**Fertig: die Wohnungssicht.** `/` verzweigt nach `principal.ui_profile` --
+dieselbe Adresse, zwei Oberflächen. Dazu `/schedule` (Wochenplan je eigenem Raum,
+24-Stunden-Vorschau aus `schedule_forecast`) und `/heating-time` (7/30/90 Tage, nur
+sichtbare Räume, ausdrücklich „Heizzeit" und im Trockenlauf „hätte geheizt").
+Alle drei mit dem Wächter `tenant_ui_only`.
+
+Die Raumkarte zeigt Raumname, Entscheidung, Isttemperatur samt Alter, Modus,
+Sollwert mit verständlicher Begründung, Tagesverlauf, „Als Nächstes", den
+dauerhaften ±0,5-K-Schritt am laufenden Modus, „Für eine Weile wärmer" und „Zur
+nächsten Schaltzeit springen". **Thermostat und Übersteuerung bleiben auch hier
+getrennt**, samt der Beschriftung, welcher Modus dauerhaft geändert wird.
+
+Die Bedienelemente rufen die vorhandenen Endpunkte aus `daily_views.shared_router`
+-- derselbe Weg wie die Anlagensicht, über zonenbezogene Rechte abgesichert und ohne
+Profil-Wächter, weil sie beiden Oberflächen gehören. Neu dort:
+`POST /zones/{id}/jump-next` über `domain.schedule.jump_to_next_switch`.
+
+Der Zeitplan der Wohnungssicht ruft **dieselben** Domänenfunktionen wie der
+Admin-Editor (`copy_schedule_day`, `adopt_schedule`, `undo_schedule_gesture`,
+`move_schedule_point` …) -- eine einfachere Oberfläche auf dieselben Daten, keine
+zweite Zeitplanmechanik. Geschrieben wird mit `schedule.manage` **je Zone**; ein
+Mieter bekommt dafür ausdrücklich kein `zone.manage`.
+
+`domain.statistics.PERIODS` hält die drei Zeiträume jetzt an einer Stelle für beide
+Auswertungen.
+
+**Zonenisolation** ist die Zusicherung, die `tests/test_tenant_views.py` am
+gründlichsten prüft: jede Zonen-Id aus Pfad oder Formular wird erneut gegen
+`visible_zones` geprüft und ergibt sonst **404** -- nie 403, das den Unterschied
+zwischen „gibt es nicht" und „gehört jemand anderem" verriete. Geprüft wird auf
+Anzeigename **und** Id im gesamten HTML, auch als Quelle einer Übernahme.
+
 **Noch offen** (Reihenfolge nach `docs/ui-redesign/IMPLEMENTATION.md` §23):
-Mieter-Startseite, Mieter-Zeitplan, Heizzeit, „Zur nächsten Schaltzeit springen",
-Abwesenheit, Überarbeitung der Admin-Seiten im neuen Raster, Kiosk-Regression,
-Sicherheitsdurchsicht.
+Abwesenheit in der Oberfläche, „Problem melden", Sicherheitsdurchsicht,
+Versionsmetadaten und CHANGELOG für v0.9.0.
 
 ## v0.8.1 -- SQLite-Sperrfehler im Verbund-Anspruch behoben
 

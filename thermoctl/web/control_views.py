@@ -65,6 +65,7 @@ from thermoctl.domain.pi_control import (
 from thermoctl.domain.principal import Principal
 from thermoctl.domain.schedule import resolved_setpoint
 from thermoctl.domain.statistics import (
+    PERIODS,
     RelayDeviceStatistics,
     as_duration,
     heating_periods,
@@ -582,11 +583,10 @@ async def show_interfaces(
 
 # Time ranges people actually want to know about. No free-form date field: the
 # question is "this week" or "this month", not "from the 14th to the 23rd".
-ZEITRAEUME: dict[str, tuple[str, int]] = {
-    "7": ("7 Tage", 7),
-    "30": ("30 Tage", 30),
-    "90": ("90 Tage", 90),
-}
+# Die Zeiträume stehen seit v0.9.0 in der Domäne: die Heizzeit-Ansicht der
+# Wohnungssicht benutzt dieselben drei. Der Name hier bleibt, damit die Seite und
+# ihre Tests nicht an einer Umbenennung hängen.
+ZEITRAEUME = PERIODS
 
 
 @router.get("/statistics")
