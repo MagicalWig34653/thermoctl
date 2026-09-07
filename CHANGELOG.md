@@ -53,6 +53,26 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ### Behoben
 
+- **Zwei schnelle Klicks am Thermostat wurden zu einem Schritt.** Der Sollwertschritt
+  las den Wert, rechnete und schrieb zurück; zwei gleichzeitige Anfragen lasen beide
+  denselben Wert. Ohne Fehlermeldung, mit einem um ein halbes Grad zu niedrigen
+  Sollwert als Folge. Der Schritt ist jetzt eine einzige Anweisung, mit den Grenzen
+  darin.
+- **Eine abgelaufene Übersteuerung verdrängte eine ältere, noch laufende dauerhaft.**
+  Lief über einer langen Absenkung kurz eine zweite und endete sie, fiel die Regelung
+  auf den Zeitplan statt auf die weiterhin gültige Absenkung zurück — wer während
+  seiner Abwesenheit einen Raum kurz aufheizte, bekam ihn danach für den Rest der
+  Abwesenheit normal beheizt.
+- **Zonen anlegen und speichern ging hinter dem Home-Assistant-Ingress ins Leere.**
+  Das Zonenformular war das einzige ohne Pfadpräfix; als Add-on endete es beim
+  Wurzelpfad des Hosts. Ein Wächtertest prüft das jetzt für alle Vorlagen.
+- **Die Zeitplan-Übernahme prüfte das Recht an der falschen Zone** und bot Ziele an,
+  die mit 404 endeten, während erlaubte Übernahmen verborgen blieben.
+- **„Abwesenheit beenden" beendet jetzt jede laufende Abwesenheit** und auch eine
+  zugehörige Absenkung, die noch nicht begonnen hat.
+- **Der Freitext einer Problemmeldung verliert jetzt auch unsichtbare
+  Steuerzeichen** (Richtungsumschalter und Verwandte) und wird an einer
+  Zeichengrenze gekürzt statt mitten in einem Zeichen.
 - **Eine frisch eingerichtete Anlage hatte kein Konto mehr für Protokoll,
   Schaltprotokoll und Relaisverschleiß.** Die Seed-Revision der Nachschlagetabellen
   spielte den Rechtestand von damals über einen *positionellen* Schnitt in die

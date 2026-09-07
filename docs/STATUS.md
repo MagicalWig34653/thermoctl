@@ -205,6 +205,66 @@ auf `:root` überhaupt ankommen; die kennt nur diese Datei.
 
 Stand: **56 Browsertests grün.**
 
+## Codex-Durchsicht des Branches: sechs Befunde, alle behoben
+
+Zwei getrennte Codex-Durchgänge über den ganzen Branch -- einer auf Verdrahtung und
+Routen, einer auf Domänenlogik. Sie haben gefunden, was weder die Testsuite noch die
+Sicherheitsdurchsicht davor gesehen hat:
+
+**Hoch.** *Zonen anlegen und speichern ging hinter dem Ingress ins Leere.* Das
+Zonenformular war das einzige im Projekt ohne `url_prefix`; als Home-Assistant-Add-on
+endete „Zone anlegen" beim Wurzelpfad des Hosts. Ein Wächtertest prüft das jetzt für
+**alle** Vorlagen, an der Vorlage selbst statt an der gerenderten Seite.
+
+**Hoch.** *Zwei schnelle Klicks am Thermostat wurden zu einem Schritt.* Der Weg war
+Lesen-Rechnen-Schreiben; zwei gleichzeitige Anfragen lasen beide denselben Wert und
+schrieben beide dasselbe Ergebnis. Kein Fehler, kein Eintrag, nur ein um ein halbes
+Grad zu niedriger Sollwert an einer echten Heizung -- und das ausgerechnet gegen die
+Zusicherung, die seit jeher im Docstring steht. Der Schritt liegt jetzt als
+`domain/modes.py::step_setpoint` in der Domäne und ist **eine** Anweisung, mit den
+Grenzen in derselben; das Muster stammt von `services/cluster.py::try_become_leader`.
+
+**Mittel, mit Heizwirkung.** *Eine abgelaufene Übersteuerung verdrängte eine ältere,
+noch laufende dauerhaft.* `_running_override` nahm die jüngste **begonnene** Zeile
+ohne Rücksicht auf ihr Ende; war sie abgelaufen, fiel die Regelung auf den Zeitplan
+statt auf die ältere, weiterhin gültige zurück. Mit der Abwesenheit ist die
+Überlappung der Normalfall geworden: wer während seiner Abwesenheit einen Raum kurz
+aufheizte, bekam ihn danach für den **Rest der Abwesenheit** normal beheizt. Der
+Filter steht jetzt in der Auswahl selbst.
+
+**Mittel.** *Die Zeitplan-Übernahme prüfte das Recht an der falschen Zone.* Der
+Endpunkt verlangt `schedule.manage` am Ziel, die Ansicht prüfte es an der Quelle --
+angebotene Ziele endeten mit 404, erlaubte Übernahmen blieben verborgen.
+
+**Mittel.** *Zwei gleichzeitig abgeschickte Abwesenheiten konnten zwei Klammern
+anlegen.* Eine portable Datenbankbedingung dagegen gibt es nicht („höchstens eine
+laufende" hängt vom Zeitpunkt ab). Verhindert wird deshalb nicht das Rennen, sondern
+seine Folge: „Abwesenheit beenden" beendet jede laufende. Ebenso beendet es jetzt
+auch ein Kind, das noch nicht begonnen hat -- `resolved_setpoint` fragt
+`absence.cancelled_at` nicht ab, die Übersteuerungen sind die einzige Stelle, an der
+eine beendete Abwesenheit unwirksam wird.
+
+**Niedrig.** *Der Freitextfilter der Problemmeldung ließ unsichtbare Steuerzeichen
+durch* (Richtungsumschalter, Isolate, C1) und schnitt mitten in einem Zeichen ab.
+Gefiltert wird jetzt über die Unicode-Kategorie, gekürzt an einer Zeichengrenze.
+*Und:* die eingefrorene Rechteliste der Seed-Revision trug die heutigen
+Beschreibungen mit Umlauten statt der damaligen in ASCII -- wer nur bis dorthin
+migriert, bekam einen Stand, den es nie gab.
+
+Ohne Befund blieben: Routenregistrierung, toter Code, Vorlagen-Kontrakt,
+Navigationstabelle gegen die Endpunkte, der Profil-Wächter samt Ausnahmeliste, die
+neun Erhaltungspunkte der Bestandsaufnahme, die drei neuen Migrationen, der
+Savepoint-Block der Abwesenheit (mit injiziertem Fehler nachgestellt), Sommerzeit und
+Tagesgrenzen im Sprung zur nächsten Schaltzeit, und die gemeinsamen Zeiträume der
+beiden Auswertungen.
+
+**Bewusst nicht geändert:** REST, MCP und Kiosk benutzen für „nächste Schaltung
+vorziehen" weiterhin `domain/remote_control.py::boost`, das bei einer laufenden
+Übersteuerung still eine zweite danebenlegt, während die neue Oberfläche über
+`jump_to_next_switch` eine ausdrückliche Ersetzung verlangt. Das anzugleichen wäre
+eine Verhaltensänderung am REST-Vertrag und gehört nicht in dieses Teilprojekt --
+festgehalten als eigene Folgearbeit.
+
 **Sicherheitsdurchsicht (unabhängig, 2026-09-07): kein Befund.** Ein Gegenleser, der
 nicht umgesetzt hat, hat elf Punkte am Code geprüft -- Mieter an Anlagenrouten, ob der
 Profil-Wächter irgendwo eine Rechteprüfung ersetzt, Zonen-Leaks über Titel, Selects,
