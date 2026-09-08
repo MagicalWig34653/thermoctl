@@ -69,7 +69,18 @@ selbst gesetzt hat, ist hier kein Nachweis für gar nichts.
 
 <section class="tc-panel p-3">
     <h2 class="h5">Deine Woche</h2>
+    {#
+    Der Satz beschreibt einen Verlauf. Gibt es keinen, wäre er eine Behauptung über
+    etwas, das nicht da ist -- dann steht dort, was tatsächlich gilt.
+    #}
+    {% if day_points.values() | map("length") | sum %}
     <p class="t-quiet small">Warm am Morgen und Abend, nachts automatisch kühler.</p>
+    {% else %}
+    <p class="t-quiet small">
+        Für diesen Raum ist noch keine Schaltzeit festgelegt. Bis dahin hält die
+        Heizung ihn auf dem Frostschutzwert.
+    </p>
+    {% endif %}
     {% for day, day_name in weekdays %}
     {% set points = day_points.get(day, []) %}
     <div class="tc-dayrow">
@@ -125,6 +136,33 @@ selbst gesetzt hat, ist hier kein Nachweis für gar nichts.
                         name="scope" value="all">Auf alle Tage übertragen</button>
             </form>
         </details>
+        {% elif may_edit and not points and empty_day_modes %}
+        {#
+        Ein Tag ohne jede Schaltzeit -- bei einem frisch angelegten Raum der
+        Normalfall. Dieselben zwei Felder wie oben, nur legen sie an statt zu
+        verschieben. Welche zwei Modi das sind, entscheidet der Server; das
+        Formular schickt nur die Zeiten.
+        #}
+        <details class="tc-dayedit">
+            <summary>Einrichten</summary>
+            <form method="post" action="{{ url_prefix }}/schedule/day" class="tc-dayform">
+                <input type="hidden" name="zone_id" value="{{ zone.id }}">
+                <input type="hidden" name="weekday" value="{{ day }}">
+                {% for mode_id, mode_name in empty_day_modes %}
+                <label class="form-label" for="neu-{{ day }}-{{ loop.index }}">
+                    {{ mode_name }} ab
+                </label>
+                <input class="form-control" type="time" id="neu-{{ day }}-{{ loop.index }}"
+                       name="time_{{ loop.index }}" value="{{ suggested_times[loop.index0] }}">
+                {% endfor %}
+                <button class="btn btn-sm btn-primary" type="submit">Einrichten</button>
+            </form>
+        </details>
+        {% elif may_edit and not points %}
+        <span class="t-quiet small">
+            Für diesen Raum sind noch keine zwei Temperaturen hinterlegt — ohne sie
+            gibt es nichts, wozwischen ein Tag umschalten könnte.
+        </span>
         {% elif may_edit %}
         <span class="t-quiet small">
             Dieser Tag hat {{ points|length }} Schaltzeiten und lässt sich hier nicht

@@ -205,6 +205,28 @@ auf `:root` überhaupt ankommen; die kennt nur diese Datei.
 
 Stand: **56 Browsertests grün.**
 
+## Der Mieter kann einen leeren Tag jetzt selbst einrichten
+
+Der vereinfachte Zeitplan-Editor bildet zwei Schaltzeiten je Tag ab („warm ab",
+„kühler ab") und verschob bisher nur **vorhandene** Punkte. Ein frisch angelegter
+Raum hat aber keine: `create_zone` legt keine Schaltpunkte an. Ein Mieter mit genau
+einem solchen Raum kam damit an seinen Zeitplan überhaupt nicht heran -- jemand mit
+der Anlagensicht hätte die ersten zwei Zeiten erst setzen müssen. Die Einschränkung
+war beabsichtigt (eine dritte Schaltzeit ließe sich mit zwei Feldern nicht ehrlich
+abbilden), der leere Tag war der übersehene Fall: dort gibt es nichts zu verwerfen.
+
+Hat ein Tag **keine** Schaltzeit, bietet die Seite jetzt dieselben zwei Felder an und
+legt beide Punkte an. **Welche zwei Modi das sind, entscheidet der Server**
+(`_modes_for_an_empty_day`): die beiden wärmsten Sollwerte dieser Zone, der wärmere
+zuerst, der Frostschutz ausgenommen -- er ist die untere Schranke der Regelung und
+kein Abschnitt eines Tagesablaufs. Eine Modus-Id aus dem Formular wird ignoriert; sie
+wäre eine weitere Angabe, der man nicht glauben darf, und brächte nichts, was der
+Server nicht ohnehin weiß.
+
+Sind für den Raum noch keine zwei Temperaturen hinterlegt, erscheint kein Knopf,
+sondern der Grund. Tage mit einer anderen Punktzahl als null oder zwei bleiben
+weiterhin lesbar, aber ohne die vereinfachte Bearbeitung.
+
 ## Codex-Durchsicht des Branches: sechs Befunde, alle behoben
 
 Zwei getrennte Codex-Durchgänge über den ganzen Branch -- einer auf Verdrahtung und

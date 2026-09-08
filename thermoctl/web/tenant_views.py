@@ -17,6 +17,7 @@ Domänenfunktionen wie der Admin-Editor (`domain.schedule`). Diese Seite ist nur
 eine einfachere Oberfläche auf dieselben Daten.
 """
 
+from collections.abc import Mapping
 from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
 from typing import Annotated, cast
@@ -75,6 +76,50 @@ from thermoctl.web.schedule_views import (
 )
 from thermoctl.web.start_views import zone_status_context
 from thermoctl.web.urls import prefixed
+
+#: Die beiden Zeiten, die ein noch leerer Tag vorschlägt. Nur ein Startpunkt zum
+#: Überschreiben, keine fachliche Aussage -- deshalb hier und nicht in der Domäne.
+SUGGESTED_TIMES = (6 * 60 + 30, 22 * 60)
+
+
+def _modes_for_an_empty_day(
+    session: Session, zone: Zone
+) -> tuple[tuple[int, str], tuple[int, str]] | None:
+    """Die zwei Modi, mit denen ein noch leerer Tag angelegt wird -- oder `None`.
+
+    Der vereinfachte Editor hat zwei Felder, „warm ab" und „kühler ab". Welche zwei
+    Modi das für **diesen** Raum sind, kann er nicht raten: Modi sind frei
+    benannt und je Zone mit eigenen Sollwerten hinterlegt. Genommen werden deshalb
+    die beiden wärmsten Sollwerte dieser Zone -- der wärmere für das erste Feld, der
+    nächstkühlere für das zweite. Das ist dieselbe Ordnung, die der Mieter auf der
+    Seite ohnehin sieht.
+
+    Der Frostschutz bleibt außen vor: er ist die untere Schranke der Regelung und
+    kein Abschnitt eines Tagesablaufs.
+
+    `None`, wenn dafür nicht genug da ist -- dann bietet die Seite den Editor für
+    einen leeren Tag gar nicht erst an und sagt, was fehlt. Die Modi werden hier
+    **serverseitig** bestimmt und nicht aus dem Formular gelesen: eine Modus-Id aus
+    dem Browser wäre eine weitere Angabe, die geprüft werden müsste, und sie brächte
+    nichts, was der Server nicht ohnehin weiß.
+    """
+    settings = session.get(Setting, 1)
+    frost_id = settings.frost_protection_mode_id if settings is not None else None
+    rows = session.execute(
+        select(SetpointMode.id, SetpointMode.name, ZoneSetpoint.temperature_c)
+        .join(ZoneSetpoint, ZoneSetpoint.setpoint_mode_id == SetpointMode.id)
+        .where(ZoneSetpoint.zone_id == zone.id)
+    ).all()
+    usable = sorted(
+        ((mode_id, name, temperature) for mode_id, name, temperature in rows
+         if mode_id != frost_id),
+        key=lambda row: row[2],
+        reverse=True,
+    )
+    if len(usable) < 2:
+        return None
+    return (usable[0][0], usable[0][1]), (usable[1][0], usable[1][1])
+
 
 # `include_in_schema=False`: siehe die Begründung in jedem anderen HTML-Router
 # dieses Projekts -- die OpenAPI-Beschreibung ist der Vertrag der REST-Schnittstelle.
@@ -290,6 +335,14 @@ def _tenant_schedule_page(
             "warmth": warmth,
             "forecast": _forecast_bars(session, zone, modes),
             "may_edit": may_edit,
+            # Für einen Tag ohne jede Schaltzeit: mit welchen zwei Modi er angelegt
+            # würde, und welche Zeiten das Formular vorschlägt. `None` heißt, dass
+            # für diesen Raum noch keine zwei Sollwerte hinterlegt sind -- dann gibt
+            # es nichts anzulegen, und die Seite sagt das.
+            "empty_day_modes": _modes_for_an_empty_day(session, zone),
+            "suggested_times": [
+                f"{minute // 60:02d}:{minute % 60:02d}" for minute in SUGGESTED_TIMES
+            ],
             "gesture_error": gesture_error,
             "gesture_notice": gesture_notice,
             "undo_token": undo_token,
@@ -323,6 +376,13 @@ async def edit_tenant_schedule_day(
         weekday = int(str(form.get("weekday", "")))
     except ValueError as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND) from exc
+
+    # Ein Tag ohne jede Schaltzeit wird **angelegt** statt verschoben. Ohne diesen
+    # Zweig käme ein Mieter an einen frisch angelegten Raum gar nicht heran: dort
+    # gibt es keine Punkte, also nichts zu verschieben, und jemand mit der
+    # Anlagensicht hätte die ersten zwei erst setzen müssen.
+    if not str(form.get("point_id_1", "")).strip():
+        return _create_day(request, session, principal, zone, zones, weekday, form)
 
     edits: list[tuple[SchedulePoint, int]] = []
     try:
@@ -360,6 +420,78 @@ async def edit_tenant_schedule_day(
             point, minute = changed[0]
             move_schedule_point(
                 session, zone, point, weekday=weekday, minute=minute,
+                user_id=principal.user_id, token_id=principal.token_id,
+            )
+    except ScheduleError as exc:
+        return _tenant_schedule_page(
+            request, session, principal, zone, zones, day_error=exc.notice
+        )
+    return RedirectResponse(
+        prefixed(request, f"/schedule?zone={zone.id}"), status.HTTP_303_SEE_OTHER
+    )
+
+
+def _create_day(
+    request: Request,
+    session: Session,
+    principal: Principal,
+    zone: Zone,
+    zones: list[Zone],
+    weekday: int,
+    form: Mapping[str, object],
+) -> Response:
+    """Legt die beiden Schaltzeiten eines noch leeren Tages an.
+
+    Die **Modi bestimmt der Server** (`_modes_for_an_empty_day`), nicht das
+    Formular -- eine Modus-Id aus dem Browser wäre eine weitere Angabe, der man
+    nicht glauben darf, und sie brächte nichts, was der Server nicht ohnehin weiß.
+
+    Hat der Tag entgegen der Annahme doch schon Schaltzeiten -- zwei Fenster
+    nebeneinander, im zweiten steht das alte Formular --, wird nichts angelegt: sonst
+    stünden danach vier Punkte an einem Tag, den der Mieter mit zwei Feldern nicht
+    mehr bearbeiten könnte.
+    """
+    vorhanden = session.scalars(
+        select(SchedulePoint).where(
+            SchedulePoint.zone_id == zone.id, SchedulePoint.weekday == weekday
+        )
+    ).first()
+    if vorhanden is not None:
+        return _tenant_schedule_page(
+            request, session, principal, zone, zones,
+            day_error=(
+                "Dieser Tag hat inzwischen Schaltzeiten. Bitte die Seite neu laden."
+            ),
+        )
+
+    modi = _modes_for_an_empty_day(session, zone)
+    if modi is None:
+        return _tenant_schedule_page(
+            request, session, principal, zone, zones,
+            day_error=(
+                "Für diesen Raum sind noch keine zwei Temperaturen hinterlegt -- "
+                "ohne sie gibt es nichts, wozwischen ein Tag umschalten könnte."
+            ),
+        )
+
+    try:
+        zeiten = [
+            time_of_day_in_minutes(str(form.get(f"time_{index}", ""))) for index in (1, 2)
+        ]
+    except ScheduleError as exc:
+        return _tenant_schedule_page(
+            request, session, principal, zone, zones, day_error=exc.notice
+        )
+    if zeiten[0] == zeiten[1]:
+        return _tenant_schedule_page(
+            request, session, principal, zone, zones,
+            day_error="Die beiden Zeiten müssen sich unterscheiden.",
+        )
+
+    try:
+        for (mode_id, _name), minute in zip(modi, zeiten, strict=True):
+            create_schedule_point(
+                session, zone, weekday=weekday, minute=minute, mode_id=mode_id,
                 user_id=principal.user_id, token_id=principal.token_id,
             )
     except ScheduleError as exc:

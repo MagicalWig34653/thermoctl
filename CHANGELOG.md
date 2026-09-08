@@ -53,6 +53,11 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ### Behoben
 
+- **Ein Mieter kann den Zeitplan eines noch leeren Raums jetzt selbst einrichten.**
+  Der vereinfachte Editor verschob nur vorhandene Schaltzeiten; ein frisch angelegter
+  Raum hat keine. Wer nur einen solchen Raum hatte, kam an seinen Zeitplan gar nicht
+  heran. Hat ein Tag keine Schaltzeit, legt dasselbe Formular beide an — mit den
+  beiden wärmsten Sollwerten des Raums, vom Server bestimmt.
 - **Zwei schnelle Klicks am Thermostat wurden zu einem Schritt.** Der Sollwertschritt
   las den Wert, rechnete und schrieb zurück; zwei gleichzeitige Anfragen lasen beide
   denselben Wert. Ohne Fehlermeldung, mit einem um ein halbes Grad zu niedrigen

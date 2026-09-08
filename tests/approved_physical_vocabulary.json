@@ -123,6 +123,7 @@
       "**Frostschutz schlägt das offene Fenster.** Bisher schaltete Regel 3 bei offenem",
       "Ablauf wird ein frischer Sturz erneut geprüft, und die Heizung stand die ganze Zeit aus,",
       "Aktor etwas hinaus — das ist der Zustand einer neuen Anlage. `/control/arm` öffnet ihn,",
+      "Der vereinfachte Zeitplan-Editor bildet zwei Schaltzeiten je Tag ab („warm ab\",",
       "Die Palette bleibt, wie sie war (Kupfer = Wärme, Stahlblau = Kühle, sonst Schiefer",
       "Erkennungsmerkmal: die Zone hat Aktoren, und keiner davon ist",
       "Grad zu niedriger Sollwert an einer echten Heizung -- und das ausgerechnet gegen die",
@@ -695,9 +696,11 @@
       "<h1 class=\"tc-h1\">{{ zone.display_name }}: wann soll es warm sein?</h1>",
       "<p class=\"t-quiet small\">Warm am Morgen und Abend, nachts automatisch kühler.</p>",
       "Du legst nur deine Komfortzeiten fest. Alles Weitere übernimmt die Heizung.",
+      "Heizung ihn auf dem Frostschutzwert.",
       "Startseite: unter der Mitte kühl, darüber warm, und die",
       "background: color-mix(in srgb, var(--warmth) {{ (bar.warmth * 100)|round|int }}%, var(--cool-area));\">",
       "die Nachtstunden hier warm aussehen -- drei Ansichten",
+      "gibt es nichts, wozwischen ein Tag umschalten könnte.",
       "var({{ '--warmth' if warmth.get(segment.mode_id, 0.5) >= 0.5 else '--cool' }})",
       "{{ (40 + (warmth.get(segment.mode_id, 0.5) - 0.5)|abs * 90)|round|int }}%, var(--surface));\"></span>",
       "„Für eine Weile wärmer“ verändert diesen Wochenplan nicht. Nach Ablauf gilt"
@@ -722,6 +725,7 @@
     ],
     "thermoctl/web/tenant_views.py": [
       "/heating-time",
+      "Für diesen Raum sind noch keine zwei Temperaturen hinterlegt -- ohne sie gibt es nichts, wozwischen ein Tag umschalten könnte.",
       "warmth"
     ]
   },

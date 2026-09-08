@@ -1410,3 +1410,291 @@ def test_a_room_without_write_permission_is_never_offered_as_a_target(
     )
     page = client.get(f"/schedule?zone={nur_lesbar.id}").text
     assert f'<option value="{nur_lesbar.id}"' not in page
+
+
+# -- Ein noch leerer Tag lässt sich einrichten ----------------------------------
+
+
+def _leerer_raum(session: Session) -> Zone:
+    """Ein frisch angelegter Raum: zwei Sollwerte, aber kein einziger Schaltpunkt.
+
+    Genau der Zustand nach `create_zone` -- die Funktion legt keine Schaltpunkte an.
+    """
+    create_settings(session)
+    zone = create_zone(session, "arbeitszimmer")
+    zone.display_name = "Arbeitszimmer"
+    comfort = create_mode(session, "tag", "Komfort")
+    night = create_mode(session, "nacht", "Nacht")
+    session.add(
+        ZoneSetpoint(zone_id=zone.id, setpoint_mode_id=comfort.id,
+                     temperature_c=Decimal("21.0"))
+    )
+    session.add(
+        ZoneSetpoint(zone_id=zone.id, setpoint_mode_id=night.id,
+                     temperature_c=Decimal("18.0"))
+    )
+    session.flush()
+    return zone
+
+
+def test_a_room_without_any_switch_time_can_be_set_up_by_the_tenant(
+    tenant_client: Client, session: Session
+) -> None:
+    """Der Fall, der vorher gar nicht ging.
+
+    Ein frisch angelegter Raum hat null Schaltpunkte -- der vereinfachte Editor
+    verschiebt aber nur vorhandene. Ein Mieter mit genau einem solchen Raum kam
+    damit an seinen Zeitplan überhaupt nicht heran; jemand mit der Anlagensicht
+    hätte die ersten zwei Zeiten erst setzen müssen.
+    """
+    zone = _leerer_raum(session)
+    client = tenant_client([("zone.read", zone.id), ("schedule.manage", zone.id)])
+
+    page = client.get(f"/schedule?zone={zone.id}").text
+    assert "Einrichten" in page
+
+    response = client.post(
+        "/schedule/day",
+        data={"zone_id": str(zone.id), "weekday": "1",
+              "time_1": "06:30", "time_2": "22:00"},
+        headers=_csrf(client), follow_redirects=False,
+    )
+    assert response.status_code == 303
+
+    monday = sorted(
+        session.scalars(
+            select(SchedulePoint).where(
+                SchedulePoint.zone_id == zone.id, SchedulePoint.weekday == 1
+            )
+        ),
+        key=lambda point: point.minute_of_day,
+    )
+    assert [point.minute_of_day for point in monday] == [6 * 60 + 30, 22 * 60]
+    # Der wärmere Sollwert steht vorn -- "warm ab", dann "kühler ab".
+    warm, kuehl = monday
+    assert warm.setpoint_mode_id != kuehl.setpoint_mode_id
+    temperaturen = {
+        mode_id: temperature
+        for mode_id, temperature in session.execute(
+            select(ZoneSetpoint.setpoint_mode_id, ZoneSetpoint.temperature_c).where(
+                ZoneSetpoint.zone_id == zone.id
+            )
+        )
+    }
+    assert temperaturen[warm.setpoint_mode_id] > temperaturen[kuehl.setpoint_mode_id]
+
+
+def test_setting_up_one_day_leaves_the_other_days_empty(
+    tenant_client: Client, session: Session
+) -> None:
+    """Eingerichtet wird der Tag, auf dessen Knopf jemand drückt -- nicht die Woche."""
+    zone = _leerer_raum(session)
+    client = tenant_client([("zone.read", zone.id), ("schedule.manage", zone.id)])
+    client.post(
+        "/schedule/day",
+        data={"zone_id": str(zone.id), "weekday": "1",
+              "time_1": "06:30", "time_2": "22:00"},
+        headers=_csrf(client), follow_redirects=False,
+    )
+    uebrige = session.scalars(
+        select(SchedulePoint).where(
+            SchedulePoint.zone_id == zone.id, SchedulePoint.weekday != 1
+        )
+    ).all()
+    assert uebrige == []
+
+
+def test_the_modes_come_from_the_server_not_from_the_form(
+    tenant_client: Client, session: Session
+) -> None:
+    """Eine Modus-Id aus dem Browser wäre eine weitere Angabe, der man nicht glauben
+    darf. Der Server bestimmt sie selbst und ignoriert, was mitgeschickt wird."""
+    zone = _leerer_raum(session)
+    fremd = create_mode(session, "sauna", "Sauna")
+    session.flush()
+    client = tenant_client([("zone.read", zone.id), ("schedule.manage", zone.id)])
+    client.post(
+        "/schedule/day",
+        data={"zone_id": str(zone.id), "weekday": "1",
+              "time_1": "06:30", "time_2": "22:00",
+              "mode_id_1": str(fremd.id), "mode_id_2": str(fremd.id)},
+        headers=_csrf(client), follow_redirects=False,
+    )
+    modi = {
+        point.setpoint_mode_id
+        for point in session.scalars(
+            select(SchedulePoint).where(SchedulePoint.zone_id == zone.id)
+        )
+    }
+    assert fremd.id not in modi
+
+
+def test_the_frost_protection_mode_is_never_used_for_a_new_day(
+    tenant_client: Client, session: Session
+) -> None:
+    """Der Frostschutz ist die untere Schranke der Regelung, kein Abschnitt eines
+    Tagesablaufs."""
+    from thermoctl.db.models.operations import Setting
+
+    zone = _leerer_raum(session)
+    row = session.get(Setting, 1)
+    assert row is not None
+    frost_id = row.frost_protection_mode_id
+    session.add(
+        ZoneSetpoint(zone_id=zone.id, setpoint_mode_id=frost_id,
+                     temperature_c=Decimal("30.0"))  # absichtlich der wärmste Wert
+    )
+    session.flush()
+    client = tenant_client([("zone.read", zone.id), ("schedule.manage", zone.id)])
+    client.post(
+        "/schedule/day",
+        data={"zone_id": str(zone.id), "weekday": "1",
+              "time_1": "06:30", "time_2": "22:00"},
+        headers=_csrf(client), follow_redirects=False,
+    )
+    modi = {
+        point.setpoint_mode_id
+        for point in session.scalars(
+            select(SchedulePoint).where(SchedulePoint.zone_id == zone.id)
+        )
+    }
+    assert frost_id not in modi
+
+
+def test_a_room_with_fewer_than_two_setpoints_says_what_is_missing(
+    tenant_client: Client, session: Session
+) -> None:
+    """Ohne zwei Temperaturen gibt es nichts, wozwischen ein Tag umschalten könnte --
+    und dann darf dort auch kein Knopf stehen, der es verspricht."""
+    create_settings(session)
+    zone = create_zone(session, "kammer")
+    zone.display_name = "Kammer"
+    einziger = create_mode(session, "tag", "Komfort")
+    session.add(
+        ZoneSetpoint(zone_id=zone.id, setpoint_mode_id=einziger.id,
+                     temperature_c=Decimal("21.0"))
+    )
+    session.flush()
+    client = tenant_client([("zone.read", zone.id), ("schedule.manage", zone.id)])
+
+    page = client.get(f"/schedule?zone={zone.id}").text
+    assert "noch keine zwei Temperaturen hinterlegt" in page
+    assert "Einrichten</summary>" not in page
+
+    response = client.post(
+        "/schedule/day",
+        data={"zone_id": str(zone.id), "weekday": "1",
+              "time_1": "06:30", "time_2": "22:00"},
+        headers=_csrf(client),
+    )
+    assert response.status_code == 200
+    assert "noch keine zwei Temperaturen" in response.text
+    assert not list(
+        session.scalars(select(SchedulePoint).where(SchedulePoint.zone_id == zone.id))
+    )
+
+
+def test_setting_up_a_day_that_meanwhile_has_switch_times_changes_nothing(
+    tenant_client: Client, session: Session
+) -> None:
+    """Zwei Fenster nebeneinander, im zweiten steht das alte Formular. Ohne diese
+    Prüfung stünden danach vier Punkte an einem Tag -- den der Mieter mit zwei
+    Feldern nicht mehr bearbeiten könnte."""
+    zone = _leerer_raum(session)
+    client = tenant_client([("zone.read", zone.id), ("schedule.manage", zone.id)])
+    client.post(
+        "/schedule/day",
+        data={"zone_id": str(zone.id), "weekday": "1",
+              "time_1": "06:30", "time_2": "22:00"},
+        headers=_csrf(client), follow_redirects=False,
+    )
+    zweites_fenster = client.post(
+        "/schedule/day",
+        data={"zone_id": str(zone.id), "weekday": "1",
+              "time_1": "07:00", "time_2": "23:00"},
+        headers=_csrf(client),
+    )
+    assert zweites_fenster.status_code == 200
+    assert "neu laden" in zweites_fenster.text
+    minuten = sorted(
+        point.minute_of_day
+        for point in session.scalars(
+            select(SchedulePoint).where(SchedulePoint.zone_id == zone.id)
+        )
+    )
+    assert minuten == [6 * 60 + 30, 22 * 60]
+
+
+def test_two_identical_times_are_refused_with_a_readable_message(
+    tenant_client: Client, session: Session
+) -> None:
+    zone = _leerer_raum(session)
+    client = tenant_client([("zone.read", zone.id), ("schedule.manage", zone.id)])
+    response = client.post(
+        "/schedule/day",
+        data={"zone_id": str(zone.id), "weekday": "1",
+              "time_1": "06:30", "time_2": "06:30"},
+        headers=_csrf(client),
+    )
+    assert response.status_code == 200
+    assert "unterscheiden" in response.text
+    assert not list(
+        session.scalars(select(SchedulePoint).where(SchedulePoint.zone_id == zone.id))
+    )
+
+
+def test_an_unusable_time_when_setting_up_is_shown_as_a_correctable_input(
+    tenant_client: Client, session: Session
+) -> None:
+    zone = _leerer_raum(session)
+    client = tenant_client([("zone.read", zone.id), ("schedule.manage", zone.id)])
+    response = client.post(
+        "/schedule/day",
+        data={"zone_id": str(zone.id), "weekday": "1",
+              "time_1": "25:99", "time_2": "22:00"},
+        headers=_csrf(client),
+    )
+    assert response.status_code == 200
+    assert "alert-warning" in response.text
+    assert not list(
+        session.scalars(select(SchedulePoint).where(SchedulePoint.zone_id == zone.id))
+    )
+
+
+def test_without_the_permission_no_setup_button_and_the_endpoint_refuses(
+    tenant_client: Client, session: Session
+) -> None:
+    zone = _leerer_raum(session)
+    client = tenant_client([("zone.read", zone.id)])
+    assert "Einrichten</summary>" not in client.get(f"/schedule?zone={zone.id}").text
+    response = client.post(
+        "/schedule/day",
+        data={"zone_id": str(zone.id), "weekday": "1",
+              "time_1": "06:30", "time_2": "22:00"},
+        headers=_csrf(client),
+    )
+    assert response.status_code == 404
+    assert not list(
+        session.scalars(select(SchedulePoint).where(SchedulePoint.zone_id == zone.id))
+    )
+
+
+def test_setting_up_a_day_outside_the_week_is_shown_as_a_correctable_input(
+    tenant_client: Client, session: Session
+) -> None:
+    """Eine Zahl, die kein Wochentag ist, kommt an der Zahlprüfung vorbei und wird
+    erst von der Domäne abgelehnt -- die Seite zeigt deren Text, statt mit einem
+    Serverfehler zu antworten."""
+    zone = _leerer_raum(session)
+    client = tenant_client([("zone.read", zone.id), ("schedule.manage", zone.id)])
+    response = client.post(
+        "/schedule/day",
+        data={"zone_id": str(zone.id), "weekday": "9",
+              "time_1": "06:30", "time_2": "22:00"},
+        headers=_csrf(client),
+    )
+    assert response.status_code == 200
+    assert "alert-warning" in response.text
+    assert not list(
+        session.scalars(select(SchedulePoint).where(SchedulePoint.zone_id == zone.id))
+    )
