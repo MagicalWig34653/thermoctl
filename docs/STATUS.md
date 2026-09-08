@@ -205,6 +205,23 @@ auf `:root` überhaupt ankommen; die kennt nur diese Datei.
 
 Stand: **56 Browsertests grün.**
 
+## Der Zeitplan war änderbar, sah aber nicht so aus
+
+Aus dem Betrieb gemeldet: „Im UI für den Mieter sehe ich keine Möglichkeit, den
+Zeitplan zu ändern." Die Funktion war da, zwei Dinge verdeckten sie:
+
+* **`/schedule` landete auf dem ersten *lesbaren* Raum**, nicht auf dem ersten
+  bearbeitbaren. Wer zwei Räume hat und den alphabetisch ersten nur ansehen darf,
+  bekam eine Seite ganz ohne Bedienelemente -- korrekt, aber ununterscheidbar von
+  „geht grundsätzlich nicht". Ohne ausdrückliche Wahl wird jetzt der erste Raum mit
+  `schedule.manage` gezeigt.
+* **Der Auf/Zu-Knopf einer Tageszeile war ein nackter `<summary>`**: ein kleines
+  Dreieck und ein Wort, unterhalb der Zeile, in derselben Farbe wie der Text daneben.
+  Er sieht jetzt aus wie ein Bedienelement.
+
+Dazu sagt ein nur lesbarer Raum das jetzt ausdrücklich -- und nennt die Räume, in
+denen es geht.
+
 ## Der Mieter kann einen leeren Tag jetzt selbst einrichten
 
 Der vereinfachte Zeitplan-Editor bildet zwei Schaltzeiten je Tag ab („warm ab",

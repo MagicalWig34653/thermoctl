@@ -70,6 +70,19 @@ selbst gesetzt hat, ist hier kein Nachweis für gar nichts.
 <section class="tc-panel p-3">
     <h2 class="h5">Deine Woche</h2>
     {#
+    Wer den Raum nur ansehen darf, soll das lesen können -- eine Seite ohne
+    Bedienelemente sieht sonst aus, als ließe sich der Zeitplan grundsätzlich nicht
+    ändern.
+    #}
+    {% if not may_edit %}
+    <p class="t-quiet small">
+        Diesen Raum kannst du ansehen, aber nicht ändern.
+        {% if adopt_targets %}
+        Ändern lässt sich {{ adopt_targets | map(attribute="display_name") | join(", ") }}.
+        {% endif %}
+    </p>
+    {% endif %}
+    {#
     Der Satz beschreibt einen Verlauf. Gibt es keinen, wäre er eine Behauptung über
     etwas, das nicht da ist -- dann steht dort, was tatsächlich gilt.
     #}

@@ -1698,3 +1698,63 @@ def test_setting_up_a_day_outside_the_week_is_shown_as_a_correctable_input(
     assert not list(
         session.scalars(select(SchedulePoint).where(SchedulePoint.zone_id == zone.id))
     )
+
+
+# -- Der Zeitplan muss als änderbar erkennbar sein -------------------------------
+
+
+def test_the_schedule_lands_on_a_room_the_tenant_may_actually_edit(
+    tenant_client: Client, session: Session
+) -> None:
+    """Ohne `?zone=` der erste **bearbeitbare** Raum, nicht der erste lesbare.
+
+    Aus dem Betrieb gemeldet: „Im UI für den Mieter sehe ich keine Möglichkeit, den
+    Zeitplan zu ändern." Ursache war die Landung auf einem nur lesbaren Raum -- die
+    Seite zeigte dort korrekt keine Bedienelemente, und das sah aus, als ließe sich
+    der Zeitplan grundsätzlich nicht ändern.
+    """
+    mine, _theirs = _wohnung(session)
+    # Alphabetisch vor "Wohnzimmer", und nur lesbar.
+    nur_lesbar = create_zone(session, "bad")
+    nur_lesbar.display_name = "Bad"
+    session.flush()
+    client = tenant_client(
+        [("zone.read", mine.id), ("zone.read", nur_lesbar.id),
+         ("schedule.manage", mine.id)]
+    )
+    page = client.get("/schedule").text
+    assert f"{mine.display_name}: wann soll es warm sein?" in page
+    assert "/schedule/day" in page
+
+
+def test_a_read_only_room_says_so_instead_of_showing_nothing(
+    tenant_client: Client, session: Session
+) -> None:
+    """Eine Seite ohne Bedienelemente sieht aus wie eine Seite ohne Funktion."""
+    mine, _theirs = _wohnung(session)
+    nur_lesbar = create_zone(session, "bad")
+    nur_lesbar.display_name = "Bad"
+    session.flush()
+    client = tenant_client(
+        [("zone.read", mine.id), ("zone.read", nur_lesbar.id),
+         ("schedule.manage", mine.id)]
+    )
+    page = client.get(f"/schedule?zone={nur_lesbar.id}").text
+    assert "ansehen, aber nicht ändern" in page
+    # Und er sagt, wo es geht.
+    assert mine.display_name in page
+
+
+def test_the_edit_control_is_a_control_not_a_line_of_text(
+    tenant_client: Client, session: Session
+) -> None:
+    """Der Auf/Zu-Knopf stand als nackter `<summary>` da -- ein Wort in derselben
+    Farbe wie der Text daneben. Er trägt jetzt eine eigene Klasse, an der das CSS
+    ihn zu einer Fläche macht; ein Wächtertest hält fest, dass jede benutzte
+    `tc-*`-Klasse eine Regel hat (`tests/test_architecture.py`).
+    """
+    mine, _theirs = _wohnung(session)
+    client = tenant_client([("zone.read", mine.id), ("schedule.manage", mine.id)])
+    page = client.get(f"/schedule?zone={mine.id}").text
+    assert 'class="tc-dayedit"' in page
+    assert "<summary>Bearbeiten</summary>" in page

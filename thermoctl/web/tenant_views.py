@@ -246,7 +246,13 @@ async def show_tenant_schedule(
         return templates.TemplateResponse(request, "tenant_schedule_empty.html", {})
 
     requested = request.query_params.get("zone")
-    zone = zones[0]
+    # Ohne ausdrückliche Wahl der erste Raum, den dieses Konto auch **bearbeiten**
+    # darf -- nicht einfach der erste lesbare. Sonst landet ein Mieter, dessen
+    # alphabetisch erster Raum nur lesbar ist, auf einer Seite ganz ohne
+    # Bedienelemente und hält den Zeitplan für unveränderlich. Genau so ist es
+    # gemeldet worden.
+    editable = visible_zones(session, principal, "schedule.manage")
+    zone = editable[0] if editable else zones[0]
     if requested is not None:
         try:
             requested_id = int(requested)

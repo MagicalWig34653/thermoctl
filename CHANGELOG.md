@@ -53,6 +53,10 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ### Behoben
 
+- **Der Mieter-Zeitplan war änderbar, sah aber nicht so aus.** `/schedule` landete
+  auf dem ersten lesbaren statt auf dem ersten bearbeitbaren Raum, und der
+  Auf/Zu-Knopf einer Tageszeile war ein nacktes Wort statt einer Fläche. Ein nur
+  lesbarer Raum sagt das jetzt ausdrücklich und nennt die Räume, in denen es geht.
 - **Ein Mieter kann den Zeitplan eines noch leeren Raums jetzt selbst einrichten.**
   Der vereinfachte Editor verschob nur vorhandene Schaltzeiten; ein frisch angelegter
   Raum hat keine. Wer nur einen solchen Raum hatte, kam an seinen Zeitplan gar nicht

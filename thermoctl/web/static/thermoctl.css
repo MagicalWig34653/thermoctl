@@ -2197,3 +2197,55 @@ body {
     display: grid;
     gap: 0.25rem;
 }
+
+/* Der Auf/Zu-Knopf einer Tageszeile. Er stand als nackter `<summary>` da -- ein
+ * kleines Dreieck und ein Wort, unterhalb der Zeile, in derselben Farbe wie der
+ * Fließtext daneben. Gemeldet worden ist genau das: "Ich sehe keine Möglichkeit,
+ * den Zeitplan zu ändern." Ein Bedienelement muss wie eines aussehen. */
+.tc-dayedit {
+    grid-column: 1 / -1;
+    margin-top: 0.35rem;
+}
+
+.tc-dayedit > summary {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    min-height: 2.25rem;
+    padding: 0.35rem 0.8rem;
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-small);
+    background: var(--surface);
+    color: var(--ink);
+    font-size: 0.85rem;
+    font-weight: 650;
+    cursor: pointer;
+    list-style: none;
+}
+
+/* Das eigene Dreieck weg -- die Kante des Knopfes trägt die Aussage, und in
+ * Safari sitzt der Marker sonst außerhalb der Fläche. */
+.tc-dayedit > summary::-webkit-details-marker {
+    display: none;
+}
+
+.tc-dayedit > summary::after {
+    content: "\+";
+    font-weight: 700;
+    color: var(--muted);
+}
+
+.tc-dayedit[open] > summary::after {
+    content: "\2212";
+}
+
+.tc-dayedit > summary:hover {
+    background: var(--surface-deep);
+    border-color: color-mix(in srgb, var(--primary) 50%, var(--line-strong));
+}
+
+.tc-dayedit[open] > summary {
+    background: var(--primary-area);
+    border-color: color-mix(in srgb, var(--primary) 35%, transparent);
+    color: var(--primary-strong);
+}
