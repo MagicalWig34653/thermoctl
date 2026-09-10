@@ -9,7 +9,7 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ---
 
-## 0.9.0 — 2026-09-07
+## 0.9.0 — 2026-09-10
 
 ### Hinzugefügt
 
@@ -27,6 +27,12 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
   Nächstes“), dazu Wochenplan (`/schedule`) und Heizzeit (`/heating-time`). Alltags-
   sprache statt Anlagenbegriffen: kein MQTT, kein Broker, keine Aktorfreigabe, keine
   Verbundrolle. Ein Problem wird als **Wirkung** erklärt, nicht als Ursache.
+- **Ein vereinfachter Zeitplan-Editor für Mieter.** Zwei Schaltzeiten je Tag lassen
+  sich über „Bearbeiten“ verschieben; ein leerer Tag lässt sich mit „Einrichten“
+  selbst anlegen. Dafür müssen zwei Temperaturen im Raum hinterlegt
+  sein: der Server wählt die beiden wärmsten Sollwerte außer Frostschutz. Die
+  Wochenansicht öffnet bevorzugt einen bearbeitbaren Raum; bei einem nur lesbaren
+  Raum erklärt sie die Einschränkung und nennt die bearbeitbaren Räume.
 - **„Zur nächsten Schaltzeit springen“.** Die nächste reguläre Zeitplanphase gilt
   sofort — aber nur bis zu dem Moment, an dem sie regulär begonnen hätte. Der
   Wochenplan bleibt unverändert, danach läuft alles von selbst normal weiter.
@@ -53,15 +59,6 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ### Behoben
 
-- **Der Mieter-Zeitplan war änderbar, sah aber nicht so aus.** `/schedule` landete
-  auf dem ersten lesbaren statt auf dem ersten bearbeitbaren Raum, und der
-  Auf/Zu-Knopf einer Tageszeile war ein nacktes Wort statt einer Fläche. Ein nur
-  lesbarer Raum sagt das jetzt ausdrücklich und nennt die Räume, in denen es geht.
-- **Ein Mieter kann den Zeitplan eines noch leeren Raums jetzt selbst einrichten.**
-  Der vereinfachte Editor verschob nur vorhandene Schaltzeiten; ein frisch angelegter
-  Raum hat keine. Wer nur einen solchen Raum hatte, kam an seinen Zeitplan gar nicht
-  heran. Hat ein Tag keine Schaltzeit, legt dasselbe Formular beide an — mit den
-  beiden wärmsten Sollwerten des Raums, vom Server bestimmt.
 - **Zwei schnelle Klicks am Thermostat wurden zu einem Schritt.** Der Sollwertschritt
   las den Wert, rechnete und schrieb zurück; zwei gleichzeitige Anfragen lasen beide
   denselben Wert. Ohne Fehlermeldung, mit einem um ein halbes Grad zu niedrigen
@@ -75,23 +72,6 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 - **Zonen anlegen und speichern ging hinter dem Home-Assistant-Ingress ins Leere.**
   Das Zonenformular war das einzige ohne Pfadpräfix; als Add-on endete es beim
   Wurzelpfad des Hosts. Ein Wächtertest prüft das jetzt für alle Vorlagen.
-- **Die Zeitplan-Übernahme prüfte das Recht an der falschen Zone** und bot Ziele an,
-  die mit 404 endeten, während erlaubte Übernahmen verborgen blieben.
-- **„Abwesenheit beenden" beendet jetzt jede laufende Abwesenheit** und auch eine
-  zugehörige Absenkung, die noch nicht begonnen hat.
-- **Der Freitext einer Problemmeldung verliert jetzt auch unsichtbare
-  Steuerzeichen** (Richtungsumschalter und Verwandte) und wird an einer
-  Zeichengrenze gekürzt statt mitten in einem Zeichen.
-- **Eine frisch eingerichtete Anlage hatte kein Konto mehr für Protokoll,
-  Schaltprotokoll und Relaisverschleiß.** Die Seed-Revision der Nachschlagetabellen
-  spielte den Rechtestand von damals über einen *positionellen* Schnitt in die
-  lebende Liste `PERMISSIONS` ein. Ein während dieser Fassung in die Mitte
-  einsortiertes Recht schob `audit.read` aus dem Schnitt — die Migration lief durch,
-  die Einrichtung lief durch, und die drei Seiten antworteten danach jedem mit 403.
-  Die Revision trägt den Stand jetzt als feste Liste; ein Wächtertest prüft nach
-  jedem vollständigen Upgrade, dass jedes Recht aus `PERMISSIONS` auch wirklich in
-  der Tabelle steht. Betrifft nur Installationen, die während der Entwicklung von
-  0.9.0 neu eingerichtet wurden — eine bestehende Anlage hat ihr `audit.read`.
 - **Vier wirkungslose Gestaltungsregeln am Kiosk.** Reste der Umbenennung ins
   Englische (`--schrift-instrument`, `--gedämpft`, `--tinte`, `--wärme`); eine
   CSS-Eigenschaft mit unbekannter Variable wird ohne Fehlermeldung verworfen. Die Uhr
@@ -101,11 +81,9 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 - **Die Gestaltung folgt jetzt den Demos.** Blau als Primärfarbe in der
   Anlagensicht, gedämpftes Grün in der Wohnungssicht, weiche Ecken, getragene
-  Schatten, Zustandsmarken als Pillen, Zonen als Kartenraster. Die eine Aussage
-  bleibt: Farbe ist hier ein Messwert — Orange und Blau stehen ausschließlich in
-  Temperaturflächen, nie auf einer Schaltfläche. Alle drei Ansichten desselben
-  Zeitplans benutzen dieselbe Skala; der Mieter-Wochenplan riet seine Farbe vorher
-  und lag gelegentlich falsch herum.
+  Schatten, Zustandsmarken als Pillen, Zonen als Kartenraster. Temperaturflächen
+  zeigen Wärme weiterhin in Orange und Kühle in Blau. Alle drei Ansichten desselben
+  Zeitplans benutzen dieselbe Skala.
 - **Die Anlagenoberfläche hat eine Seitenleiste** (mobil eine reduzierte Fußleiste)
   statt der Kopfleiste, geordnet nach Hauptbereich, Analyse, System und Zugängen.
   Gemeinsamer Kern in `base_core.html`, darauf `base_admin.html` und

@@ -1,10 +1,10 @@
 # Stand
 
-Letzte Aktualisierung: 2026-09-07.
+Letzte Aktualisierung: 2026-09-10.
 
-## v0.9.0 in Arbeit -- UI-Redesign mit getrennter Admin- und Mieteroberfläche
+## v0.9.0 -- Freigabevorbereitung: getrennte Admin- und Mieteroberfläche
 
-Branch `feature/v0.9.0-ui-redesign`. Die Arbeitsanweisung liegt unter
+Die Arbeitsanweisung zum Redesign liegt unter
 `docs/ui-redesign/` (Zielbild als HTML-Demos, Bestandsaufnahme der heutigen WebUI,
 `IMPLEMENTATION.md` mit der Definition of Done).
 
@@ -36,17 +36,11 @@ Tabelle gekommen.
 **Fertig: die Hüllen.** `base_core.html` trägt, was beide Oberflächen teilen --
 Kopfbereich, Farbschema, Assets, HTMX, CSRF-Weitergabe, Ladeanzeige, der Hinweis auf
 eine veraltete Seite. Darauf setzen `base_admin.html` (Seitenleiste am Desktop,
-reduzierte Fußleiste mobil) und `base_tenant.html` (mobile first). `base.html` ist
-nur noch ein Name für die Anlagenhülle, damit die vorhandenen Seiten während der
-Umstellung unverändert weiterlaufen; sie verschwindet, sobald keine Vorlage mehr auf
-sie zeigt. `base_plain.html` (Kiosk) bleibt bewusst daneben und erbt nichts davon --
+reduzierte Fußleiste mobil) und `base_tenant.html` (mobile first). Die bisherige
+base.html ist entfernt; alle Vorlagen verwenden die jeweiligen Hüllen.
+`base_plain.html` (Kiosk) bleibt bewusst daneben und erbt nichts davon --
 ein Wandtablett hat weder Navigation noch Ladebalken, und seine CSRF-Behandlung ist
 eine andere.
-
-Die Palette bleibt, wie sie war (Kupfer = Wärme, Stahlblau = Kühle, sonst Schiefer
-und Papier). Die Demos schlagen Blau bzw. Grün als Akzent vor; übernommen ist ihre
-Informationsarchitektur, nicht ihre Palette -- eine zweite Akzentfarbe würde genau
-die Aussage verwässern, für die Farbe hier da ist.
 
 **Fertig: der persönliche Bereich** `/account` (`web/account_views.py`) -- eigenes
 Passwort, andere Sitzungen beenden, Passkeys, Hilfe, Abmelden. Ohne Profil-Wächter,
@@ -126,24 +120,11 @@ in der Wohnungssicht wäre eine funktionslose Einstellung. Die Hinweise erschein
 stattdessen in der Oberfläche selbst (Startseite, oberer Hinweisbereich). Ein echter
 persönlicher Kanal wäre eine eigene Aufgabe.
 
-**Gegen beide Datenbanken geprüft** (SQLite und MariaDB, je 100 % Abdeckung). Der
-MariaDB-Lauf hat dabei zwei Dinge gefunden, die unter SQLite unsichtbar blieben:
-
-* Der **Rückbau der Abwesenheitsmigration** scheiterte an
-  `Cannot drop index 'ix_zone_override_absence_id': needed in a foreign key
-  constraint`. InnoDB braucht für jeden Fremdschlüssel einen Index und gibt den
-  letzten passenden nicht her, solange die Bedingung steht -- erst der
-  Fremdschlüssel, dann der Index. SQLites `batch_alter_table` baut die Tabelle
-  ohnehin neu und kennt das Problem nicht.
-* Ein **zu langer Zonenname in einem Test** ergab über `zone_with_schedule` einen
-  `setpoint_mode.code` über der Spaltenlänge von 32 Zeichen. SQLite nimmt ihn
-  klaglos, MariaDB nicht.
+Der Rückbau der Abwesenheitsmigration entfernt zuerst den Fremdschlüssel und dann
+den zugehörigen Index, wie InnoDB es verlangt. Die aktuellen Prüfergebnisse stehen
+unter „Zahlen“.
 
 ## Optik: die Palette und die Formen der Demos übernommen
-
-Bis hierher trug das Redesign die Informationsarchitektur der Demos, aber die alte,
-kantige Gestaltung -- Kupfer und Schiefer, 6-px-Ecken, keine Schatten. Das war eine
-bewusste Entscheidung und die falsche; der Projektinhaber hat sie zurückgenommen.
 
 Übernommen ist jetzt die Gestaltung beider Demos, über die **Tokens**: dieselben
 Namen wie vorher, andere Werte, sodass der gesamte Bestand ihnen folgt. Die
@@ -154,38 +135,24 @@ getragene Schatten, Zustandsmarken als Pillen in kleinen Versalien, große und e
 gesetzte Seitenüberschriften, Tabellenköpfe auf eigener Fläche, Zonen als
 **Kartenraster** statt als Zeilenband.
 
-Die eine Aussage, die dabei erhalten bleibt: **Farbe ist hier ein Messwert.**
-`--warmth` (Orange) und `--cool` (Blau) stehen ausschließlich in
-Temperaturflächen -- Tagesspur, Wochenplan, Vorschau -- und nie auf einer
-Schaltfläche; umgekehrt erscheint die Primärfarbe nie an einem Messwert. Alle drei
+Temperaturflächen -- Tagesspur, Wochenplan, Vorschau -- verwenden
+`--warmth` (Orange) und `--cool` (Blau) als Messwertskala. Die Primärfarbe für
+Bedienelemente ist davon getrennt; in der Anlagensicht ist auch sie blau. Alle drei
 Ansichten desselben Zeitplans (Startseite, Admin-Wochenplan, Mieter-Wochenplan)
 benutzen jetzt dieselbe zweiseitige Skala: unter der Mitte kühl, darüber warm, die
-Sättigung sagt wie deutlich. Der Mieter-Wochenplan riet die Farbe vorher („der erste
-Abschnitt wird schon der kühle sein") und lag damit gelegentlich falsch herum.
+Sättigung sagt wie deutlich.
 
-Nebenbei repariert: vier tote Kürzel im Kiosk-CSS (`--schrift-instrument`,
-`--gedämpft`, `--tinte`, `--wärme`) aus der Umbenennung ins Englische. Eine
-CSS-Eigenschaft mit unbekannter Variable wird ohne Fehlermeldung verworfen -- die Uhr
-des Wandtabletts lief seither in der Fließtextschrift statt in der Instrumentschrift.
+Der Kiosk verwendet dieselben gültigen Gestaltungsvariablen; die Uhr des
+Wandtabletts nutzt die Instrumentschrift.
 
-## Ein Recht war beim Einrichten verschwunden
+## Vollständige Rechte nach der Einrichtung
 
-Die Seed-Revision `3685e30419a4_nachschlagetabellen` spielte den Stand von damals
-über einen **positionellen** Schnitt in die lebende Liste `PERMISSIONS` ein
-(`[:15]`). Das ging so lange gut, wie neue Rechte hinten angehängt wurden. Beim
-Einsortieren von `report.create` in die Mitte rutschte `audit.read` aus dem Schnitt:
-eine frisch eingerichtete Anlage hatte danach **kein einziges Konto**, das Protokoll,
-Schaltprotokoll oder Relaisverschleiß öffnen konnte. Nichts schlug fehl -- weder die
-Migration noch die Einrichtung noch die Testsuite. Nur drei Seiten antworteten jedem
-mit 403.
-
-Gefunden hat es ein **Browsertest**, weil dort ein echter Server frisch eingerichtet
-wird; die HTTP-Suite legt ihr Schema über `create_all` an und sieht die Migration
-gar nicht. Behoben durch eine feste Liste in der Revision statt des Schnitts,
-`report.create` ans Ende von `PERMISSIONS` verschoben, und ein Wächtertest
-(`test_migrations.py::test_every_permission_exists_after_a_full_upgrade`) prüft
-künftig nach jedem vollständigen Upgrade, dass jedes Recht aus `PERMISSIONS`
-tatsächlich in der Tabelle steht.
+Die Seed-Revision `3685e30419a4_nachschlagetabellen` enthält eine feste Liste der
+ursprünglichen Rechte mit ihren damaligen ASCII-Beschreibungen. `report.create`
+steht am Ende von `PERMISSIONS` und wird über seine eigene Migration ergänzt.
+`test_migrations.py::test_every_permission_exists_after_a_full_upgrade` prüft
+nach einem vollständigen Upgrade, dass jedes Recht aus `PERMISSIONS` in der
+Tabelle steht; damit ist auch `audit.read` bei einer frischen Einrichtung vorhanden.
 
 ## Browsertests
 
@@ -203,34 +170,18 @@ aus dem falschen Grund, und seit dem Redesign wäre er zusätzlich stumpf, weil 
 Primärfarbe selbst ein Blau ist. Geprüft wird jetzt, dass die Gestaltungsvariablen
 auf `:root` überhaupt ankommen; die kennt nur diese Datei.
 
-Stand: **56 Browsertests grün.**
+Bisher dokumentierter Prüfstand: **56 Browsertests grün**; bei dieser
+Dokumentationsfreigabe nicht erneut ausgeführt.
 
-## Der Zeitplan war änderbar, sah aber nicht so aus
+## Mieter-Zeitplan: bearbeiten und leere Tage einrichten
 
-Aus dem Betrieb gemeldet: „Im UI für den Mieter sehe ich keine Möglichkeit, den
-Zeitplan zu ändern." Die Funktion war da, zwei Dinge verdeckten sie:
+Ohne ausdrückliche Raumwahl zeigt `/schedule` bevorzugt den ersten Raum mit
+`schedule.manage`, sonst den ersten lesbaren Raum. Der Auf/Zu-Knopf einer Tageszeile ist als Bedienelement gestaltet.
+Ein nur lesbarer Raum nennt die Einschränkung ausdrücklich und verweist auf die
+bearbeitbaren Räume.
 
-* **`/schedule` landete auf dem ersten *lesbaren* Raum**, nicht auf dem ersten
-  bearbeitbaren. Wer zwei Räume hat und den alphabetisch ersten nur ansehen darf,
-  bekam eine Seite ganz ohne Bedienelemente -- korrekt, aber ununterscheidbar von
-  „geht grundsätzlich nicht". Ohne ausdrückliche Wahl wird jetzt der erste Raum mit
-  `schedule.manage` gezeigt.
-* **Der Auf/Zu-Knopf einer Tageszeile war ein nackter `<summary>`**: ein kleines
-  Dreieck und ein Wort, unterhalb der Zeile, in derselben Farbe wie der Text daneben.
-  Er sieht jetzt aus wie ein Bedienelement.
-
-Dazu sagt ein nur lesbarer Raum das jetzt ausdrücklich -- und nennt die Räume, in
-denen es geht.
-
-## Der Mieter kann einen leeren Tag jetzt selbst einrichten
-
-Der vereinfachte Zeitplan-Editor bildet zwei Schaltzeiten je Tag ab („warm ab",
-„kühler ab") und verschob bisher nur **vorhandene** Punkte. Ein frisch angelegter
-Raum hat aber keine: `create_zone` legt keine Schaltpunkte an. Ein Mieter mit genau
-einem solchen Raum kam damit an seinen Zeitplan überhaupt nicht heran -- jemand mit
-der Anlagensicht hätte die ersten zwei Zeiten erst setzen müssen. Die Einschränkung
-war beabsichtigt (eine dritte Schaltzeit ließe sich mit zwei Feldern nicht ehrlich
-abbilden), der leere Tag war der übersehene Fall: dort gibt es nichts zu verwerfen.
+Der vereinfachte Editor bietet zwei Schaltzeiten je Tag („warm ab“, „kühler ab“).
+Ein frisch angelegter Raum hat noch keine Schaltpunkte.
 
 Hat ein Tag **keine** Schaltzeit, bietet die Seite jetzt dieselben zwei Felder an und
 legt beide Punkte an. **Welche zwei Modi das sind, entscheidet der Server**
@@ -244,58 +195,29 @@ Sind für den Raum noch keine zwei Temperaturen hinterlegt, erscheint kein Knopf
 sondern der Grund. Tage mit einer anderen Punktzahl als null oder zwei bleiben
 weiterhin lesbar, aber ohne die vereinfachte Bearbeitung.
 
-## Codex-Durchsicht des Branches: sechs Befunde, alle behoben
+## Abgesicherte Randfälle der neuen Oberfläche
 
-Zwei getrennte Codex-Durchgänge über den ganzen Branch -- einer auf Verdrahtung und
-Routen, einer auf Domänenlogik. Sie haben gefunden, was weder die Testsuite noch die
-Sicherheitsdurchsicht davor gesehen hat:
+- Alle lokalen Formularziele berücksichtigen `url_prefix`, einschließlich des
+  Zonenformulars. Ein Wächtertest prüft dies direkt an allen Vorlagen.
+- `domain/modes.py::step_setpoint` ändert den Sollwert samt Grenzen mit einer
+  atomaren Anweisung; gleichzeitige Thermostat-Klicks gehen nicht verloren.
+- Die Auswahl der laufenden Übersteuerung berücksichtigt Beginn und Ende. Nach
+  einer kurzen Übersteuerung gilt eine ältere, weiterhin laufende wieder.
+- Die Zeitplan-Übernahme prüft `schedule.manage` an der Zielzone.
+- „Abwesenheit beenden“ beendet alle laufenden Abwesenheiten und auch deren noch
+  nicht begonnene Übersteuerungen. Gleichzeitige Anfragen können weiterhin mehrere
+  Abwesenheitsklammern anlegen; die Beendigung macht sie gemeinsam unwirksam.
+  `resolved_setpoint` liest dafür die Übersteuerungen, nicht `absence.cancelled_at`.
+- Der Freitextfilter der Problemmeldung entfernt unsichtbare Steuerzeichen anhand
+  ihrer Unicode-Kategorie und kürzt an Zeichengrenzen.
 
-**Hoch.** *Zonen anlegen und speichern ging hinter dem Ingress ins Leere.* Das
-Zonenformular war das einzige im Projekt ohne `url_prefix`; als Home-Assistant-Add-on
-endete „Zone anlegen" beim Wurzelpfad des Hosts. Ein Wächtertest prüft das jetzt für
-**alle** Vorlagen, an der Vorlage selbst statt an der gerenderten Seite.
-
-**Hoch.** *Zwei schnelle Klicks am Thermostat wurden zu einem Schritt.* Der Weg war
-Lesen-Rechnen-Schreiben; zwei gleichzeitige Anfragen lasen beide denselben Wert und
-schrieben beide dasselbe Ergebnis. Kein Fehler, kein Eintrag, nur ein um ein halbes
-Grad zu niedriger Sollwert an einer echten Heizung -- und das ausgerechnet gegen die
-Zusicherung, die seit jeher im Docstring steht. Der Schritt liegt jetzt als
-`domain/modes.py::step_setpoint` in der Domäne und ist **eine** Anweisung, mit den
-Grenzen in derselben; das Muster stammt von `services/cluster.py::try_become_leader`.
-
-**Mittel, mit Heizwirkung.** *Eine abgelaufene Übersteuerung verdrängte eine ältere,
-noch laufende dauerhaft.* `_running_override` nahm die jüngste **begonnene** Zeile
-ohne Rücksicht auf ihr Ende; war sie abgelaufen, fiel die Regelung auf den Zeitplan
-statt auf die ältere, weiterhin gültige zurück. Mit der Abwesenheit ist die
-Überlappung der Normalfall geworden: wer während seiner Abwesenheit einen Raum kurz
-aufheizte, bekam ihn danach für den **Rest der Abwesenheit** normal beheizt. Der
-Filter steht jetzt in der Auswahl selbst.
-
-**Mittel.** *Die Zeitplan-Übernahme prüfte das Recht an der falschen Zone.* Der
-Endpunkt verlangt `schedule.manage` am Ziel, die Ansicht prüfte es an der Quelle --
-angebotene Ziele endeten mit 404, erlaubte Übernahmen blieben verborgen.
-
-**Mittel.** *Zwei gleichzeitig abgeschickte Abwesenheiten konnten zwei Klammern
-anlegen.* Eine portable Datenbankbedingung dagegen gibt es nicht („höchstens eine
-laufende" hängt vom Zeitpunkt ab). Verhindert wird deshalb nicht das Rennen, sondern
-seine Folge: „Abwesenheit beenden" beendet jede laufende. Ebenso beendet es jetzt
-auch ein Kind, das noch nicht begonnen hat -- `resolved_setpoint` fragt
-`absence.cancelled_at` nicht ab, die Übersteuerungen sind die einzige Stelle, an der
-eine beendete Abwesenheit unwirksam wird.
-
-**Niedrig.** *Der Freitextfilter der Problemmeldung ließ unsichtbare Steuerzeichen
-durch* (Richtungsumschalter, Isolate, C1) und schnitt mitten in einem Zeichen ab.
-Gefiltert wird jetzt über die Unicode-Kategorie, gekürzt an einer Zeichengrenze.
-*Und:* die eingefrorene Rechteliste der Seed-Revision trug die heutigen
-Beschreibungen mit Umlauten statt der damaligen in ASCII -- wer nur bis dorthin
-migriert, bekam einen Stand, den es nie gab.
-
-Ohne Befund blieben: Routenregistrierung, toter Code, Vorlagen-Kontrakt,
-Navigationstabelle gegen die Endpunkte, der Profil-Wächter samt Ausnahmeliste, die
-neun Erhaltungspunkte der Bestandsaufnahme, die drei neuen Migrationen, der
-Savepoint-Block der Abwesenheit (mit injiziertem Fehler nachgestellt), Sommerzeit und
-Tagesgrenzen im Sprung zur nächsten Schaltzeit, und die gemeinsamen Zeiträume der
-beiden Auswertungen.
+**Unabhängig sicherheitsdurchgesehen, kein Befund.** Ein Gegenleser, der nicht
+umgesetzt hat, hat elf Punkte am Code geprüft: Mieter an Anlagenrouten, ob der
+Profil-Wächter irgendwo eine Rechteprüfung ersetzt, Zonen-Leaks über Titel, Auswahlfelder,
+versteckte Felder und Weiterleitungsziele, die Bulk-Aktion Abwesenheit samt Teilzuständen
+und gelöschten Zonen, Schreibrechte, den Inhalt der Problemmeldung samt Manipulation über
+den Freitext, CSRF, die drei Migrationen, den Kiosk, das Token-Profil in REST und MCP, und
+Domänenlogik im Browser -- und die Suite selbst ausgeführt.
 
 **Bewusst nicht geändert:** REST, MCP und Kiosk benutzen für „nächste Schaltung
 vorziehen" weiterhin `domain/remote_control.py::boost`, das bei einer laufenden
@@ -304,25 +226,9 @@ vorziehen" weiterhin `domain/remote_control.py::boost`, das bei einer laufenden
 eine Verhaltensänderung am REST-Vertrag und gehört nicht in dieses Teilprojekt --
 festgehalten als eigene Folgearbeit.
 
-**Sicherheitsdurchsicht (unabhängig, 2026-09-07): kein Befund.** Ein Gegenleser, der
-nicht umgesetzt hat, hat elf Punkte am Code geprüft -- Mieter an Anlagenrouten, ob der
-Profil-Wächter irgendwo eine Rechteprüfung ersetzt, Zonen-Leaks über Titel, Selects,
-versteckte Felder und Weiterleitungsziele, die Bulk-Aktion Abwesenheit samt
-Teilzuständen und gelöschten Zonen, Schreibrechte, den Inhalt der Problemmeldung samt
-Manipulation über den Freitext, CSRF, die drei Migrationen, den Kiosk, das
-Token-Profil in REST und MCP, und Domänenlogik im Browser -- und die Suite selbst
-ausgeführt. Ruff und mypy sauber, Suite grün bei 100 % Abdeckung.
-
-Zwei Punkte hat die Durchsicht ausdrücklich nachgerechnet statt geglaubt: dass
-`end_absence` nur Übersteuerungen mit passender `absence_id` beendet und deshalb nie
-eine fremde trifft, und dass eine während einer Abwesenheit gelöschte Zone über
-`ondelete="CASCADE"` sauber herausfällt, ohne die Klammer für die übrigen Räume zu
-beschädigen.
-
-Nebenbei: **das MariaDB-Passwort in `CLAUDE.md` war `prüfen` und ist `pruefen`** --
-die CI (`.github/workflows/ci.yml`) benutzt seit jeher die ASCII-Fassung. Ein Lauf
-mit der falschen Fassung scheitert an `Access denied` und sieht aus wie ein
-Codefehler. Korrigiert.
+`end_absence` beendet nur Übersteuerungen mit passender `absence_id`. Eine während
+der Abwesenheit gelöschte Zone fällt über `ondelete="CASCADE"` heraus, ohne die
+Klammer für die übrigen Räume zu beschädigen.
 
 ## v0.8.1 -- SQLite-Sperrfehler im Verbund-Anspruch behoben
 
@@ -376,74 +282,30 @@ echten Fensteröffnen zu unterscheiden. Ein langsames Auskühlen nach Heizende u
 einer Heizphase selbst bleiben unterhalb der Schwelle und lösen nicht aus (mit Tests
 belegt, nicht nur angenommen).
 
-**Zweite Kreuzreview-Runde (2026-09-07), Befund „Ausreisser nach oben", zwei
-Durchgänge.** Erster Durchgang: das Kriterium verglich gegen den größten Wert im
-Fenster — ein einzelner verrauschter Messwert (Funkstörung, Zigbee-Reporting-Aussetzer)
-konnte diesen Wert aufblähen und einen Sturz vortäuschen. Ersetzt durch den Median aller
-Vorwerte. Zweiter Durchgang, vom Reviewer nachgerechnet: der Median braucht eine
-**Mehrheit** an Vorwerten nach Sturzbeginn, um ihn überhaupt widerzuspiegeln — genau
-rückwärts für ein kurzes Fenster, in dem kurz nach dem Öffnen erst ein oder zwei
-Messwerte den Sturz zeigen können. Reviewer-Beispiel `[20.00, 20.10, 18.60]` (Schwelle
-1,5 K): 1,50 K gegen das Maximum (erkannt), aber nur 1,45 K gegen den Median der zwei
-Vorwerte (verpasst) — genau der Moment, in dem schnelle Erkennung am wichtigsten wäre.
-Der zuvor ersetzte Test verdeckte das: er stellte dem Median eine bequeme Mehrheit
-gleicher Plateauwerte gegenüber und bestand deshalb auch unter dem fehlerhaften Code.
-
 Jetzige Kennzahl: der **Referenzwert ist das Maximum der Vorwerte, es sei denn es gibt
 mindestens drei — dann ist es deren zweithöchster Wert**. Mit weniger als drei Vorwerten
 gibt es nichts, das sich gefahrlos verwerfen ließe, ohne genau die Werte zu verlieren,
 die einen frühen Sturz überhaupt zeigen könnten — der Referenzwert bleibt dort ihr
-Maximum, deckungsgleich mit der allerersten Fassung dieser Funktion und mit dem
-Reviewer-Beispiel oben (1,50 K, erkannt). Ab drei Vorwerten wird ein einzelner
+Maximum. Bei `[20.00, 20.10, 18.60]` wird damit ein Sturz von 1,50 K erkannt.
+Ab drei Vorwerten wird ein einzelner
 verrauschter Ausreisser vom zweithöchsten Wert einfach überstimmt, während zwei oder
 mehr echte Vorwerte auf dem tatsächlichen Sturzniveau den Vergleich weiterhin tragen —
 ohne die Mehrheitsanforderung des Medians. **Bewusst bleibende Lücke, mit eigenem Test
 festgehalten:** bei nur einem oder zwei Vorwerten (die kürzeste unterstützte
 Fenstergröße, oder ein dünn besetztes Fenster nach einer Meldelücke) kann ein einzelner
-Ausreisser weiterhin täuschen, genau wie bei der ursprünglichen, unreparierten
-Maximum-Fassung — das Schließen dieser Lücke würde genau die Daten kosten, die ein
-kurzes Fenster nicht übrig hat. Mit eigenen Tests für das Reviewer-Beispiel, den
+Ausreisser weiterhin täuschen — das Schließen dieser Lücke würde genau die Daten
+kosten, die ein kurzes Fenster nicht übrig hat. Mit eigenen Tests für das Reviewer-Beispiel, den
 Ausreisser-Fall ab drei Vorwerten, die bewusst bleibende Lücke bei ein bis zwei
 Vorwerten und eine Meldelücke mitten in der Messreihe belegt.
 
-**Dritte Kreuzreview-Runde (2026-09-07), bisher nirgends benannt: zwei
-gleichzeitige Ausreisser.** Der zweithöchste Wert *ist* selbst ein Ausreisser,
-wenn es zwei davon gibt. Vom Reviewer am laufenden Code nachgerechnet:
-Vorwerte `[21.0, 30.0, 29.0]`, aktuell `21.0` — Referenz `29.0`, Sturz 8,0 K,
-Fehlalarm, obwohl sich im Raum nichts geändert hat; mit vier Vorwerten
-genauso. Zwei aufeinanderfolgende verrauschte Meldungen sind bei Funk nicht
-exotisch, und jede weitere Kennzahl, die nur gegen eine feste Anzahl
-Ausreisser robust gemacht wird, ist beim nächsten Fund wieder zu wenig.
-
-Behoben durch eine harte **Plausibilitätsgrenze** auf den berechneten Sturz
-selbst, unabhängig davon, welche Referenzmethode ihn geliefert hat
-(`WINDOW_TEMP_DROP_MAX_PLAUSIBLE_DROP_K`, 6,0 K): ein Sturz, der grösser ist,
-als ein echtes Fensterereignis in dieser Zeitspanne plausibel zeigen könnte,
-spricht eher für einen defekten Sensor als für ein Fenster. Die Zahl ist
-nicht frei erfunden, sondern an einen bereits im Quelltext festgeschriebenen
-Wert angelehnt: `domain.control.WINDOW_TEMP_DROP_LIMITS` begrenzt die vom
-Betreiber einstellbare Sturzschwelle bereits auf höchstens 5,0 K, dort schon
-begründet als „ein Sprung, den ein gewöhnliches Fensteröffnen erst über eine
-deutlich längere Spanne als dieses Merkmal misst erreichen könnte" — diese
-Anlage erklärt also bereits vor dieser Behebung, dass mehr als 5,0 K
-innerhalb des Zeitfensters kein plausibles Sturzereignis mehr ist. 6,0 K
-liegt ein Kelvin über dieser gesamten einstellbaren Spanne: hoch genug, um
-niemals eine Schwelle zu verdecken, die ein Betreiber tatsächlich einstellen
-darf (die höchste erlaubte, 5,0 K, liegt bereits ein volles Kelvin darunter),
-niedrig genug, um den vom Reviewer gefundenen Fehlalarm mit Abstand
-abzuweisen. Ein echtes, weit geöffnetes Fenster bei Frost, für das ein
-Betreiber die Sturzschwelle bewusst auf ihr Maximum gestellt hat, ist damit
-nicht gefährdet: nichts, was dieses Merkmal überhaupt erkennen soll, verlangt
-je mehr als 5,0 K — ein echtes Ereignis dieser Schwere hätte 6,0 K nie
-überschreiten müssen, um erkannt zu werden; nur eine Messreihe, die
-schwerwiegender wirkt als die empfindlichste Einstellung des Merkmals selbst,
-kann die Grenze je überschreiten, und genau diese Behauptung misstraut die
-neue Prüfung. Mit eigenen Tests belegt: dem Reviewer-Beispiel mit drei und
-mit vier Vorwerten, einer Gegenprobe, die den unbereinigten Sturz (8,0 K)
-gegen dieselbe Referenzlogik nachrechnet, der Grenzwert selbst an seiner
-Schwelle, einer einstellbaren eigenen Grenze im Test, sowie einer
-Konsistenzprüfung, dass die Plausibilitätsgrenze stets über der höchsten
-einstellbaren Sturzschwelle bleibt.
+**Plausibilitätsgrenze:** Ein berechneter Sturz ab 6,0 K wird nicht als
+Fensterereignis gewertet (`WINDOW_TEMP_DROP_MAX_PLAUSIBLE_DROP_K`). Auch der
+zweithöchste Vorwert kann bei mehreren Ausreißern verfälscht sein, etwa bei
+Vorwerten `[21.0, 30.0, 29.0]` und aktuellem Wert `21.0` (scheinbarer Sturz 8,0 K).
+Die Grenze liegt über der höchsten einstellbaren Sturzschwelle von 5,0 K;
+sie ist eine begründete Plausibilitätsannahme, keine Messung der echten Anlage.
+Tests prüfen Mehrfachausreißer, den Grenzwert und den Abstand zur einstellbaren
+Schwelle. Ausreißer unterhalb der Plausibilitätsgrenze bleiben möglich.
 
 **Rücknahme.** Ein reines Sturzkriterium kennt kein Ende — ein bereits abgekühlter,
 stabil kalter Raum zeigt keinen neuen Sturz mehr, obwohl das Fenster noch offen sein
@@ -456,30 +318,9 @@ Vermutung für diese Dauer weiter offen, auch ohne neuen Sturz, und fällt danac
 selbst wieder ab, sofern in der Zwischenzeit kein frischer Sturz sie erneuert. Dieselbe
 Uhr wie beim echten Kontakt (`zone_state.window_open_since`) — kein zweiter Zeitstempel.
 
-**Kreuzreview-Nacharbeit (2026-09-06), Befund „Rückkopplung nach Ablauf des Halts",
-erster Durchgang:** der Halt allein schließt die Lücke nicht vollständig — nach seinem
-Ablauf wird ein frischer Sturz erneut geprüft, und die Heizung stand die ganze Zeit aus,
-wegen der eigenen Vermutung. Die Abschätzung „ein paar Zehntel Kelvin je 15 Minuten" im
-Quelltext gilt für normalen Betrieb mit periodischer Heizung, nicht für einen Raum, dem
-wiederholt die Wärme entzogen wurde — bei kaltem Wetter und mäßiger Dämmung kann er dann
-steiler auskühlen, ein frischer Sturz löst sofort wieder aus, und die Zone bleibt
-dauerhaft aus, obwohl das Fenster längst zu ist (nichts kann dabei einfrieren, die
-Frostschutz-Ausnahme greift weiterhin — aber der Raum bleibt kalt, ohne dass jemand sähe
-warum). Erster Behebungsversuch: eine zweite, unabhängige Grenze über dem Halt,
-`temperature_detection_cap_exceeded`, gemessen an derselben Uhr wie der Halt
-(`zone_state.window_open_since`).
-
-**Zweite Kreuzreview-Runde (2026-09-07), derselbe Befund, am laufenden Code
-durchgespielt:** genau diese Uhr wird in `advance_zone_state` in jedem Zyklus ohne
-erkannten Sturz auf `NULL` gesetzt — und das passiert am Rand des Halts regelmäßig,
-durch genau das Messrauschen, das der Schwellenwert-Docstring von Anfang an einkalkuliert
-(ein einzelner verrauschter Zyklus, der knapp unter der Schwelle bleibt). Der Reviewer
-ließ 20 Durchläufe über 420 simulierte Minuten laufen: die Zwangspause feuerte kein
-einziges Mal, obwohl die Zone praktisch durchgehend als offen geführt wurde — die
-Obergrenze schloss nur den Fall des glatten, monotonen Auskühlens, den der Commit
-beschrieb, nicht den verrauschten.
-
-Behoben durch eine **kumulative** Zählung auf einer eigenen, von `window_open_since`
+**Schutz gegen Rückkopplung:** Eine aufgrund der Vermutung abgeschaltete Heizung
+kann weiteres Auskühlen und damit erneute Erkennung verursachen. Der Halt allein
+begrenzt diese Folge nicht. Dagegen wirkt eine **kumulative** Zählung auf einer eigenen, von `window_open_since`
 unabhängigen Uhr: `zone_state.window_temp_drop_streak_started_at` (seit wann die
 Strähne läuft) und `zone_state.window_temp_drop_last_detected_at` (wann sie zuletzt
 tatsächlich erkannt wurde). Ein frischer Sturz setzt die Strähne genau dann fort, statt
@@ -512,26 +353,11 @@ Toleranz null — dem alten, entfernten Verhalten entsprechend — feuert absich
 sowie Obergrenze, Zwangspause während laufender Sturzverdachtsfälle und Ende der
 Zwangspause wie zuvor.
 
-**Dritte Kreuzreview-Runde (2026-09-07): dieselbe bewusst bleibende Lücke,
-jetzt mit Test statt nur Prosa.** Der Reviewer hat sie mit realistischer
-Abfrage alle fünf Minuten nachgestellt: Auslöser, voller Halt, eine echte
-Erholung knapp über der Zehn-Minuten-Toleranz, wieder ein Auslöser —
-wiederholt über mehrere Stunden. Die Zwangspause feuert dabei kein einziges
-Mal, während die Zone weiterhin für die Mehrheit der Zeit als offen gilt,
-weil jede Erholung die Strähne bei null neu beginnen lässt. Der Reviewer hält
-diesen Kompromiss für vertretbar — ihn vollständig zu schließen, würde
-entweder eine deutlich längere Toleranz kosten (die dann echte, voneinander
-unabhängige Episoden verschmilzt) oder eine über unabhängige Episoden hinweg
-laufende Gesamtzeit, die den Begriff „eine Strähne" aufgäbe — verlangt aber,
-dass er verankert wird, so wie die Lücke bei ein bis zwei Vorwerten es schon
-ist, statt nur hier zu stehen. Neuer Test
-(`tests/test_window_temperature_drop.py::
-test_a_recovery_just_over_the_tolerance_lets_every_streak_restart`): Halt 20
-Minuten, danach eine Erholung von exakt 15 Minuten (über der Zehn-Minuten-
-Vorgabe), 14 Wiederholungen über sieben Stunden — die Zwangspause feuert
-nachweislich nie, während die Zone rechnerisch für zwei Drittel der Zeit als
-offen gilt. Ein künftiger Umbau an Toleranz, Halt oder Obergrenze, der dieses
-Verhalten unbemerkt verschlimmert, lässt jetzt einen Test fehlschlagen.
+Die bleibende Lücke ist in `tests/test_window_temperature_drop.py::
+test_a_recovery_just_over_the_tolerance_lets_every_streak_restart` verankert:
+20 Minuten Halt, danach 15 Minuten Erholung, 14 Wiederholungen über sieben Stunden.
+Die Zwangspause greift dabei nie, während die Zone für zwei Drittel der Zeit als
+offen gilt.
 
 **Wirkt wie ein echter Kontakt.** `zone_state.window_open`/`window_open_since` werden für
 beide Quellen identisch gesetzt; `domain/control_loop.py` (Fensterabschaltung,
@@ -548,7 +374,7 @@ einem Temperatursturz vermutet."). Auf der Startseite ein eigener Status-Chip ne
 bestehenden Fenster-Alarm-Chip.
 
 **Nicht in REST, MCP oder Homebridge** — dieselbe, vom Projektinhaber vorgegebene Grenze
-wie beim Fenster-Alarm. Die drei anlagenweiten Schwellen liegen deshalb in einem eigenen
+wie beim Fenster-Alarm. Die anlagenweiten Parameter liegen deshalb in einem eigenen
 `WINDOW_TEMP_DROP_LIMITS` (`domain/control.py`), nicht im von REST und MCP mitbenutzten
 `LIMITS`; der Zonen-Schalter ist keine `ControlParameters`-Spalte und hat eine eigene
 kleine Speicherfunktion (`domain/zone_settings.py::set_window_temp_drop_detection`) samt
@@ -558,7 +384,7 @@ speist — nicht erreichen kann. In Home Assistant eine eigene, laufend gesendet
 Diagnose-Entität je Zone (`state/window_open_by_temperature`), kein eigenes
 Meldungssystem mit Zustellprotokoll wie beim Fenster-Alarm.
 
-Migration `e741133296d2`, Kreuzreview-Nachträge in `1b7bad26c13a` und `43aa18ba1c12`, Kopf danach unverändert einzügig.
+Migrationen: `e741133296d2`, `1b7bad26c13a` und `43aa18ba1c12`.
 
 ## Fenster: Frostschutz gewinnt, EIN/AUS-Aktoren schalten nicht ab
 
@@ -594,12 +420,9 @@ es kein Fenster (`services/shadow_run.py::_pi_gate_reason`, neuer Parameter
 `_pi_outcome`s `resume_delay_active` berechnete rule 4s Bedingung nochmal selbst,
 ohne von der EIN/AUS-Ausnahme zu wissen — behoben in derselben Änderung.
 
-Beim Zusammenbau der Testfälle fiel ein `String(255)`-Überlauf von
-`shadow_decision.reason` auf, ausschließlich unter MariaDB (SQLite prüft die
-Spaltenlänge nicht und blieb grün): eine EIN/AUS-Zone mit offenem Fenster **und**
-PI kombiniert erstmals eine Regelkette-Begründung mit PI's eigenem Zusatztext — vor
-dieser Änderung unmöglich, weil ein offenes Fenster PI immer blockierte. Der neue
-Hinweistext (`on_off_zone_note`) ist deshalb bewusst kurz gehalten.
+`shadow_decision.reason` und `.setpoint_reason` sind `Text` statt `String(255)`
+(Migration `c1a4e9d872b3`), damit kombinierte Begründungen auch unter MariaDB Platz
+haben. Der Hinweistext `on_off_zone_note` bleibt kurz.
 
 Getestet in `tests/test_control_loop.py` (Schwellwert, Hysterese ohne Flattern,
 Mindestschaltdauer, EIN/AUS- vs. gemischte Zone, Zusammenspiel beider Änderungen),
@@ -608,24 +431,12 @@ Vorrangkette weiterhin erschöpfend zu beweisen) und `tests/test_shadow_run_pi.p
 (`_pi_gate_reason`-Klassifikation, End-zu-Ende gegen eine echte Zone, je eine
 gemischte und eine reine EIN/AUS-Zone).
 
-**Kreuzreview-Nacharbeit (2026-09-06):** `shadow_decision.reason` und
-`.setpoint_reason` sind jetzt `Text` statt `String(255)` — der Reviewer hat
-nachgemessen, dass ein 64 Zeichen langer Modusname zusammen mit Sonnenabsenkung,
-dem EIN/AUS-Hinweis und dem PI-Zusatztext 413 Zeichen erreicht; der Fehler lag
-schon auf `main`, nicht erst durch diese Änderung (Migration `c1a4e9d872b3`).
-Zweitens, Befund C: `already_engaged` nahm `heating_now` als Beleg dafür, dass die
-Frostschutz-Ausnahme schon aktiv war — lief dabei zufällig gerade ein
-Ventilschutzlauf und wurde ein Fenster geöffnet, während die Temperatur im
-Frostband lag, wurde der Schutzlauf fälschlich als `frostschutz_trotz_fenster_offen`
-protokolliert (Heizentscheidung richtig, Begründung falsch, Grundsatz 5). Behoben
-ohne eigenen Merker: `already_engaged` verlangt zusätzlich
-`not situation.valve_protection_active` — genau die Ausnahme, die Regel 6 über
-`regular_heating_now` für denselben Grund schon zieht. Getestet in
-`test_frost_override_is_not_attributed_to_an_interrupted_protection_run` und ihrem
-Gegenbeweis; die Zustandstabelle in `test_control_loop_state_table.py` zieht dieselbe
-Ausnahme jetzt ebenfalls. `_on_off_actuators_only()` hatte zudem keinen gezielten
-Test — nachgezogen in `tests/test_shadow_run.py` (ohne Aktor, gemischt, mehrere
-gleiche EIN/AUS-Aktoren).
+`already_engaged` verlangt neben `heating_now` auch
+`not situation.valve_protection_active`: ein unterbrochener Ventilschutzlauf wird
+nicht als bereits aktive Frostschutz-Ausnahme protokolliert. Geprüft durch
+`test_frost_override_is_not_attributed_to_an_interrupted_protection_run` und die
+Zustandstabelle. `tests/test_shadow_run.py` prüft `_on_off_actuators_only()` für
+Zonen ohne Aktor, gemischte Zonen und mehrere reine EIN/AUS-Aktoren.
 
 ## Urlaubsbetrieb: Absenkung deckelt nicht mehr unter den Frostschutz einer Zone
 
@@ -644,7 +455,7 @@ bestätigt statt nur angenommen. `docs/api.md` zieht die Grenze bei
 
 ## Urlaubsbetrieb: anlagenweite Absenkung über ein festes Zeitfenster
 
-Neue Tabelle `vacation` (Migration `4bfefd4c10a4`, Kopf jetzt hier): ein einziger
+Tabelle `vacation` (Migration `4bfefd4c10a4`): ein einziger
 Absenkwert für die ganze Anlage über ein Zeitfenster mit fest eingegebenem Beginn
 und Ende, danach läuft der Zeitplan von selbst weiter. Umgesetzt als eigener
 Zustand, den `domain/schedule.py::resolved_setpoint()` direkt abfragt — nicht als
@@ -719,22 +530,10 @@ Validierungsfunktion (`check_number`, jetzt parametrisiert) statt eines
 gemeinsamen Wertebereichs, der die beiden Schwellen versehentlich mit
 hinausgetragen hätte.
 
-Migration `f18d4dcb3f5d`, Kopf danach unverändert einzügig.
-`domain/control_loop.py` und `services/shadow_run.py` blieben unangetastet --
-der Alarm ist eine Meldung, kein Eingriff in die Regelung (das ist Gegenstand
-eines parallel laufenden Auftrags).
+Migration `f18d4dcb3f5d`. Der Alarm ist eine Meldung, kein Eingriff in die Regelung.
+Die Fensterabschaltung ist oben separat beschrieben.
 
 ## Migrationssperre: gleichzeitige `alembic upgrade head`-Läufe abgesichert
-
-Der unten dokumentierte offene Punkt ist geschlossen. Nachgestellt, vor der
-Absicherung: Zwei gleichzeitig gegen dieselbe, frische Datenbank gestartete
-`alembic upgrade head`-Läufe (nicht zwei nacheinander, sondern gleichzeitig
-gestartet) scheiterten beide Male mit dem zweiten Lauf verlässlich an
-`Table 'alembic_version' already exists` (MariaDB) bzw.
-`table alembic_version already exists` (SQLite) — im günstigsten Fall, da
-beide Läufe hier zufällig am allerersten Statement kollidierten. MariaDB
-committet DDL implizit; ein schlimmerer Ausgang bei einer Kollision mitten in
-einer mehrschrittigen Migration war nicht ausgeschlossen.
 
 `migrations/env.py` nimmt jetzt vor jedem Migrationslauf eine Datenbank-Sperre
 (neu: `thermoctl/db/migration_lock.py`) — wirkt für **jeden** Alembic-Aufruf,
@@ -762,28 +561,14 @@ und in `tests/test_migration_lock.py` (Erwerb, Freigabe, Warten mit
 Zeitüberschreitung, Absturz des Halters — je gegen SQLite **und** MariaDB,
 unabhängig vom Backend des jeweiligen Testlaufs).
 
-Letzte Aktualisierung: 2026-09-06.
-
 ## Betrieb unter Docker Swarm und Kubernetes dokumentiert
 
-Zwei neue Anleitungen für den Aktiv-Bereitschafts-Verbund (Abschnitt 6d unten):
+Zwei Anleitungen für den Aktiv-Bereitschafts-Verbund:
 [`docs/docker-swarm.md`](docker-swarm.md) und [`docs/kubernetes.md`](kubernetes.md), je
 mit lauffähigen Beispieldateien (`docker/swarm.compose.beispiel.yml`,
 `docker/swarm.migrate.compose.beispiel.yml`, `k8s/*.beispiel.yaml`). Zwei Dateien statt
 einer gemeinsamen, weil die Beispielmanifeste beider Systeme sonst dieselbe Anleitung mit
 zwei unvereinbaren YAML-Dialekten überladen hätten.
-
-**Offener Punkt, kein Dokumentationsfehler:** `docker/entrypoint.sh` führt
-`alembic upgrade head` unbedingt aus, ohne Sperre gegen eine zweite, gleichzeitig
-migrierende Nachbildung. Unter einem Orchestrierer starten zwei Nachbildungen leicht
-gleichzeitig (Swarm: `docker stack deploy` ignoriert `depends_on`; Kubernetes: ein
-Rolling Update lässt alte und neue Nachbildung kurz nebeneinander laufen). Beide
-Anleitungen umschiffen das über einen vorgeschalteten, einmaligen Migrations-Job
-(Swarm: `mode: replicated-job`; Kubernetes: `Job`, mit `kubectl wait` vor dem
-`StatefulSet`) — das behebt nicht, dass der Entrypoint selbst ungesichert ist. Eine
-Absicherung in `migrations/env.py` (z. B. eine Datenbank-Sperre) ist noch offen.
-
-Letzte Aktualisierung: 2026-09-06.
 
 ## Erkennung eines festhängenden Messwerts
 
@@ -813,7 +598,7 @@ Leiste mit der Vorschau der nächsten 24 Stunden, sichtbar bereits mit `zone.rea
 (keine Änderungsrechte nötig). Die Berechnung sitzt in der Domäne
 (`thermoctl.domain.schedule.schedule_forecast`), nicht in der Ansicht: sie reicht
 über `resolved_setpoint`s eigene Rangfolge (Betriebsart Aus schlägt alles, dann eine
-laufende Übersteuerung bis zu ihrem Ende, dann der Zeitplan, zuletzt Frostschutz) und
+laufende Übersteuerung bis zu ihrem Ende, dann Urlaub, Zeitplan und zuletzt Frostschutz) und
 kann daher nie etwas zeigen, was zur Laufzeit nicht tatsächlich einträte. Sie rechnet
 in echten UTC-Instanzen statt in Ortszeit-Arithmetik und bleibt deshalb auch über
 Mitternacht, einen Wochentagswechsel und beide Sommerzeit-Umstellungen (23- bzw.
@@ -821,8 +606,6 @@ Mitternacht, einen Wochentagswechsel und beide Sommerzeit-Umstellungen (23- bzw.
 abgeleiteten Uhrzeiten belegen (`tests/test_domain_schedule.py`). REST und MCP bieten
 die Vorschau noch nicht an; das ist eine bewusste Auslassung dieser Aufgabe, keine
 technische Grenze — die Domänenfunktion ist adapterunabhängig nutzbar.
-
-Letzte Aktualisierung: 2026-09-06.
 
 ## Liveaktualisierung der Startseite
 
@@ -853,8 +636,6 @@ Nachgewiesen in `browser_tests/test_start_page_live.py` (vier Tests: abgeleitete
 Intervall, ein geänderter Wert aktualisiert sich ohne Zutun, ein aufgeklappter Bereich
 samt begonnener Eingabe übersteht eine Aktualisierung, der Ladebalken bleibt dabei
 stumm — auch unter einer künstlich verzögerten Antwort).
-
-Letzte Aktualisierung: 2026-09-06.
 
 ## Aktiv-Bereitschafts-Verbund: zwei Instanzen, eine Datenbank, ein Broker
 
@@ -986,15 +767,6 @@ grundsätzlich nicht — WebAuthn verlangt einen gültigen Domainnamen als
 Relying-Party-Id, keine Einstellung kann das umgehen. Details in
 `docs/self-hosting.md`, Abschnitte 6c und 8.
 
-**Diese Datei sagt, was jetzt gilt — sonst nichts.** Wie es dazu kam, welche Fehler wie
-gefunden wurden und warum etwas so entschieden ist, wird hier nicht mitgeführt; das
-gehört in `git log` und die Auftragsberichte. Der Grund für diese Trennung: Diese Datei
-ist zweimal auf über tausend Zeilen gewachsen und enthielt dabei gleichzeitig aktuelle und
-längst überholte Angaben — zuletzt „nichts ist scharf", „1024 Tests, 98,55 %",
-„`control_armed` wird nirgends gesetzt", „es gibt keine Geräteerkennung für Meross". Alle
-vier stimmten einmal und standen noch da; ein Freigabe-Review konnte sie namentlich
-widerlegen.
-
 ## Der Ingress-Präfix gilt jetzt pro Anfrage, nicht mehr pro Prozess
 
 Als Home-Assistant-Add-on ist `thermoctl` sowohl über Ingress als auch — der
@@ -1083,18 +855,41 @@ Details je Phase, Aufgabenlisten und was nicht ursprünglich vorgesehen war steh
 
 ## Zahlen
 
-Selbst nachgemessen für diese Freigabe (nicht aus einem früheren Bericht übernommen):
+Am 2026-09-10 im Freigabe-Worktree selbst nachgemessen:
 
-| | |
+| Prüfung | Ergebnis |
 |---|---|
-| Tests | 4488 unter SQLite, unverändert unter MariaDB (Exit 0, keine Skips) |
-| Testabdeckung | 100 %, Mindestschwelle 100 % in der CI |
-| Ruff, mypy strict | ohne Befund, 109 Quelldateien |
-| Migrationskette | linear, ein Kopf (`67e794059830`), vorwärts und rückwärts gegen beide Datenbanken geprüft; **keine neue Migration seit `v0.6.4`** |
-| Container | baut (`docker build -f docker/Dockerfile`), Exit 0 |
+| Testsammlung | 5013 Tests in `tests/` (Browsertests separat) |
+| SQLite, volle Suite nach Doku-Korrektur | 5011 bestanden, 1 fehlgeschlagen, 1 übersprungen (Exit 1) |
+| MariaDB, volle Suite nach Doku-Korrektur | 5011 bestanden, 1 fehlgeschlagen, 1 übersprungen (Exit 1) |
+| Testabdeckung | beide Datenbanken: 100 %, 8958 erfasste Anweisungen, keine ungedeckt; CI-Mindestschwelle 100 % |
+| Ruff | ohne Befund (Exit 0) |
+| mypy strict | ohne Befund, 124 Quelldateien (Exit 0) |
+| Migrationskette | ein Kopf `d31f6a04c7e9`; Upgrade-/Downgrade-Tests gegen beide Datenbanken bestanden |
+| Container | `docker build -f docker/Dockerfile .` erfolgreich (Exit 0) |
 
-**Die Suite liest `THERMOCTL_TEST_DATABASE_URL`**, nicht `THERMOCTL_DATABASE_URL`. Wer
-die zweite setzt, läuft unbemerkt gegen SQLite und bekommt trotzdem einen grünen Lauf.
+Je ein Test ist backendbedingt übersprungen: unter SQLite der MariaDB-spezifische
+Parallelmigrationsfall, unter MariaDB die SQLite-spezifische Fremdschlüsselprüfung.
+
+v0.9.0 ergänzt drei aufeinanderfolgende Migrationen nach `43aa18ba1c12`:
+UI-Profil `c4d18b7e2a95`, Abwesenheit `c724de89a13f` und
+Problemmeldung/`report.create` `d31f6a04c7e9`.
+
+**Offener Freigabeprüfpunkt:**
+`test_physical_vocabulary_occurrences_are_explicitly_reviewed` aus
+`tests/test_user_visible_effect_texts.py` beanstandet geänderte und entfernte
+Doku-Zeilen gegenüber `tests/approved_physical_vocabulary.json`. Das Register hält
+wortgetreue Fundstellen fest, auch inzwischen widerlegte Aussagen. Die sachlich
+korrigierte Dokumentation und das unveränderte Register passen deshalb nicht mehr
+zusammen. Test und Register bleiben im reinen Dokumentationsauftrag unverändert;
+die Suite ist damit trotz vollständiger Abdeckung **nicht grün**.
+
+**Die Suite liest `THERMOCTL_TEST_DATABASE_URL`**, nicht `THERMOCTL_DATABASE_URL`.
+Der MariaDB-Lauf verwendet `mysql+pymysql` gegen `127.0.0.1:3306/doku_090` und
+`COVERAGE_FILE=.coverage.doku`. Der Server meldet `11.8.9-MariaDB-ubu2404`;
+während des Laufs waren drei Verbindungen zu `doku_090` und 42 Tabellen dort
+nachweisbar. Die Migrationstests verwenden die abgeleitete Datenbank
+`doku_090_migrations`. Der SQLite-Lauf verwendet `sqlite:///./test.db`.
 
 ## Was geschaltet wird — genau
 
@@ -1103,7 +898,9 @@ die zweite setzt, läuft unbemerkt gegen SQLite und bekommt trotzdem einen grün
   mit eigenem Recht `control.arm`.
 - **Der MQTT-Client trägt einen zweiten, unabhängigen Riegel**, der beim Prozessstart
   gebaut wird. Scharfschalten wirkt deshalb erst nach einem Neustart.
-- **Sind beide Riegel offen**, veröffentlicht der Dienst: Sollwerte an selbstregelnde
+- **Als dritter Riegel muss die Instanz führen** (`cluster.is_leader`); im
+  Einzelbetrieb ohne Verbund-Datensatz gilt sie als führend. Sind alle drei
+  Riegel offen, veröffentlicht der Dienst: Sollwerte an selbstregelnde
   Thermostatventile, Ein/Aus an gewöhnliche Zigbee2MQTT-Aktoren
   (`services/publishing.py::_send_actuator_switches`), Sollwert und `system_mode`
   (wo vorhanden) an Zigbee2MQTT-Thermostatventile ohne eigene Regelung
@@ -1149,10 +946,10 @@ die zweite setzt, läuft unbemerkt gegen SQLite und bekommt trotzdem einen grün
   gewöhnliche `docker compose`-Betrieb mit explizit gesetztem `user:` bleibt unverändert
   unprivilegiert; ohne `user:`-Angabe läuft der Container kurz als root und fällt vor
   `alembic` zurück.
-- **Ingress-Präfix**: `THERMOCTL_ROOT_PATH` (aus Konfiguration, nicht aus der
-  `X-Ingress-Path`-Kopfzeile) setzt FastAPIs `root_path`; jeder lokale Verweis in den
-  Vorlagen, Cookie-`path` und der `/static`-Mount respektieren ihn. `/healthz` bleibt
-  bewusst unpräfigiert — ein Docker-Healthcheck erreicht den Container direkt.
+- **Ingress-Präfix**: wird pro Anfrage anhand der gegen `THERMOCTL_ROOT_PATH`
+  geprüften Kopfzeile `X-Ingress-Path` gesetzt (Details oben). Lokale Verweise,
+  Cookie-`path` und statische Dateien folgen dem jeweiligen Zugangsweg.
+  `/healthz` bleibt direkt erreichbar.
 - **Mehrarchitektur-Abbild**: `linux/amd64` und `linux/arm64`, `armv7` ausdrücklich
   nicht.
 - **`tools/env_nach_addon.py`** übersetzt eine bestehende `.env` in die
@@ -1168,11 +965,13 @@ die zweite setzt, läuft unbemerkt gegen SQLite und bekommt trotzdem einen grün
 
 ## Störungsmeldungen
 
-Drei Arten lassen sich anlagenweit einzeln abschalten, unter „Einstellungen" —
-**Sensorstörung** samt Entwarnung, **Brücke oder Broker weg**, und **Schaltbefehl
-gescheitert**. Alle drei sind ab Werk an. Gemeldet wird nur der Übergang, samt
-Entwarnung. Home Assistant bleibt entkoppelt: Wer den Webhook stilllegt, verliert den
-Problemsensor dort nicht.
+Sechs Arten lassen sich anlagenweit einzeln abschalten, unter „Einstellungen“:
+**Sensorstörung**, **Brücke oder Broker weg**, **Schaltbefehl gescheitert**,
+**festhängender Messwert**, **Fenster-Alarm** und **Mieter-Problemmeldung**.
+Die Schalter sind ab Werk an. Automatische Störungsmeldungen folgen den
+Zustandsübergängen samt Entwarnung; Mieter-Problemmeldungen werden ausdrücklich
+vom Mieter ausgelöst. Home Assistant bleibt entkoppelt: Wer den Webhook stilllegt,
+verliert den Problemsensor dort nicht.
 
 Ein **Testknopf** unter „Einstellungen" schickt eine gekennzeichnete Testmeldung über
 denselben Weg wie eine echte und zeigt Statuscode, Dauer und im Fehlerfall den Grund
@@ -1183,13 +982,13 @@ ist ein eigener Zustand. Das Audit-Protokoll unterscheidet `sent` (Versuch ging 
 unabhängig vom Netzerfolg) von `suppressed` (durch einen abgeschalteten Schalter nie
 versucht).
 
-Migration `67e794059830` (sechs neue Spalten auf `setting`) ist vor `v0.6.4` gelandet,
-in `v0.7.0` selbst kam keine neue Migration dazu.
+Die Grundfelder für Meldungsschalter und Zustellzustand stammen aus Migration
+`67e794059830`; weitere Meldungsarten sind oben bei ihren Funktionen beschrieben.
 
 ## Kiosk, Ladeanzeige, Sprache
 
 - **`kiosk.html`** trägt den AGPL-§13-Quelltextverweis knapp in der Kopfzeile
-  (`target="_blank"`) statt einer Fußzeile — die einzige Ausnahme von `base.html`, weil
+  (`target="_blank"`) statt einer Fußzeile — abweichend von der Fußzeile in `base_core.html`, weil
   das Wandtablett aus Distanz angesehen wird und die Fläche dem Zonenraster gehört.
 - **Eine dezente Ladeanzeige** (`#tc-loading-bar`) läuft global auf jeder angemeldeten
   Seite und der Anmeldung/Einrichtung, gesteuert über die htmx-Ereignisse
