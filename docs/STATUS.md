@@ -2,6 +2,15 @@
 
 Letzte Aktualisierung: 2026-09-10.
 
+## Die CI baut jetzt auch das Image
+
+CLAUDE.md nennt den Docker-Image-Bau als Freigabe-Riegel; in
+`.github/workflows/ci.yml` fehlte er als Einziges der dort genannten Punkte. Er
+steht jetzt als eigener Job `docker-build` neben der Datenbank-Matrix, nicht in
+ihr: SQLite und MariaDB ergeben dasselbe Image, und zweimal dasselbe zu bauen
+kostet Laufzeit ohne eine zweite Aussage. Gebaut, nicht veröffentlicht -- keine
+Anmeldung, keine Registry, kein Upload, `permissions: contents: read` unverändert.
+
 ## v0.9.0 -- Freigabevorbereitung: getrennte Admin- und Mieteroberfläche
 
 Die Arbeitsanweisung zum Redesign liegt unter
