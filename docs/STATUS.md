@@ -2,14 +2,21 @@
 
 Letzte Aktualisierung: 2026-09-10.
 
-## Die CI baut jetzt auch das Image
+## Der Image-Bau wird jetzt schon vor dem Merge geprüft
 
-CLAUDE.md nennt den Docker-Image-Bau als Freigabe-Riegel; in
-`.github/workflows/ci.yml` fehlte er als Einziges der dort genannten Punkte. Er
-steht jetzt als eigener Job `docker-build` neben der Datenbank-Matrix, nicht in
-ihr: SQLite und MariaDB ergeben dasselbe Image, und zweimal dasselbe zu bauen
-kostet Laufzeit ohne eine zweite Aussage. Gebaut, nicht veröffentlicht -- keine
-Anmeldung, keine Registry, kein Upload, `permissions: contents: read` unverändert.
+**Zwei Workflows, nicht einer** -- das ist beim Aufräumen für v0.9.0 einmal
+übersehen worden und hier festgehalten, damit es niemand erneut übersieht:
+`.github/workflows/docker.yml` baut das Image für amd64 und arm64 und
+veröffentlicht es nach `ghcr.io`, aber **nur** bei einem Push auf `main` und bei
+einem `v*`-Tag. `latest` entsteht ausschließlich aus einem Tag.
+
+Was fehlte, war deshalb nicht der Bau überhaupt, sondern der Bau **vor** dem
+Merge: Auf einem Zweig und in einem Pull Request lief er nicht, ein kaputtes
+Dockerfile fiel erst nach dem Merge auf. `ci.yml` trägt dafür jetzt einen eigenen
+Job `docker-build` -- neben der Datenbank-Matrix, nicht in ihr, weil SQLite und
+MariaDB dasselbe Image ergeben. Er baut nur: keine Anmeldung, keine Registry,
+kein Upload, `permissions: contents: read` unverändert. Das Veröffentlichen
+bleibt allein Sache von `docker.yml`.
 
 ## v0.9.0 -- Freigabevorbereitung: getrennte Admin- und Mieteroberfläche
 
