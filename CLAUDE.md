@@ -141,7 +141,7 @@ eine begründete Ausnahme mit `# pragma: no cover` die ehrlichere Antwort.
 Tests und Reviews gerutscht — eine fehlende Startseite, auf die Anmeldung und Navigation
 zeigten, und eine Oberfläche ohne eingebundenes Stylesheet. Beide Male fand es der
 Projektinhaber beim ersten Öffnen der Seite. Der Grund ist strukturell: Das Verfahren prüft,
-ob das Gebaute dem Plan entspricht, nie ob der Plan vollständig war. `tests/test_rauchtest.py`
+ob das Gebaute dem Plan entspricht, nie ob der Plan vollständig war. `tests/test_smoke_test.py`
 fängt inzwischen die häufigsten Fälle — jede Seite antwortet, Weiterleitungen führen
 irgendwohin, jeder Verweis in einer Vorlage ist erreichbar. Ersetzt aber nicht, die Anwendung
 nach einem sichtbaren Teilschritt einmal wirklich zu öffnen.
