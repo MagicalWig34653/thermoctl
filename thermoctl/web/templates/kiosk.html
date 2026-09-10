@@ -4,9 +4,9 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Kiosk – thermoctl</title>
-    <link rel="icon" href="{{ url_prefix }}/static/favicon.svg" type="image/svg+xml">
-    <link rel="stylesheet" href="{{ url_prefix }}/static/vendor/bootstrap/bootstrap.min.css">
-    <link rel="stylesheet" href="{{ url_prefix }}/static/thermoctl.css">
+    <link rel="icon" href="{{ url_prefix }}/static/favicon.svg?v={{ asset_version }}" type="image/svg+xml">
+    <link rel="stylesheet" href="{{ url_prefix }}/static/vendor/bootstrap/bootstrap.min.css?v={{ asset_version }}">
+    <link rel="stylesheet" href="{{ url_prefix }}/static/thermoctl.css?v={{ asset_version }}">
     {#
     Eigener, schlanker Kopf statt base.html/base_plain.html: Beide sind für eine
     schmale, mittig stehende Karte gebaut (Anmeldeformular, Einrichtung). Ein
@@ -25,7 +25,7 @@
             abfrage.addEventListener("change", setzen);
         })();
     </script>
-    <script defer src="{{ url_prefix }}/static/vendor/htmx/htmx.min.js"></script>
+    <script defer src="{{ url_prefix }}/static/vendor/htmx/htmx.min.js?v={{ asset_version }}"></script>
     <script>
         {#
         Eigenes Cookie, eigenes Skript: Der Kopf aus base_core.html liest

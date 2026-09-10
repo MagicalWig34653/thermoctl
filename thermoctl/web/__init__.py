@@ -11,6 +11,8 @@ from thermoctl.auth.csrf import csrf_token
 from thermoctl.auth.sessions import COOKIE_NAME
 from thermoctl.config import get_settings
 from thermoctl.domain.time import age_in_words, local_time
+from thermoctl.web.assets import ASSET_VERSION
+from thermoctl.web.assets import STATIC_DIR as STATIC_DIR
 from thermoctl.web.navigation import visible_navigation
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
@@ -103,7 +105,7 @@ templates = Jinja2Templates(
 # Bootstrap and HTMX sit as files in this directory (see static/HERKUNFT.md) and
 # are served locally, not via a CDN -- `thermoctl` should stay usable on a home
 # network without internet access, too.
-STATIC_DIR = Path(__file__).parent / "static"
+templates.env.globals["asset_version"] = ASSET_VERSION
 
 
 def is_partial_swap(request: Request) -> bool:

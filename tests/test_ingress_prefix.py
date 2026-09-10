@@ -30,6 +30,7 @@ from fastapi.testclient import TestClient
 
 from tests.helpers import user_with_permissions
 from thermoctl.auth.sessions import COOKIE_NAME, create_session
+from thermoctl.web.assets import ASSET_VERSION
 
 TEMPLATES = Path(__file__).resolve().parent.parent / "thermoctl" / "web" / "templates"
 PREFIX = "/api/hassio_ingress/A1b2C3d4e5"
@@ -145,7 +146,7 @@ def test_rendered_page_carries_the_prefix_on_every_local_link(
     response = client_with_prefix.get("/zones")
     assert response.status_code == 200
     body = response.text
-    assert f'href="{PREFIX}/static/thermoctl.css"' in body
+    assert f'href="{PREFIX}/static/thermoctl.css?v={ASSET_VERSION}"' in body
     assert f'href="{PREFIX}/zones/new"' in body
     # No stray un-prefixed absolute link to a local page slipped through.
     assert 'href="/zones' not in body
@@ -157,7 +158,7 @@ def test_rendered_page_without_prefix_uses_bare_local_links(client: TestClient, 
     response = client.get("/zones")
     assert response.status_code == 200
     body = response.text
-    assert 'href="/static/thermoctl.css"' in body
+    assert f'href="/static/thermoctl.css?v={ASSET_VERSION}"' in body
     assert 'href="/zones/new"' in body
 
 
@@ -280,7 +281,7 @@ def test_rendered_page_direct_uses_bare_links_even_with_ingress_configured(
     response = client_direct_with_ingress_configured.get("/zones")
     assert response.status_code == 200
     body = response.text
-    assert 'href="/static/thermoctl.css"' in body
+    assert f'href="/static/thermoctl.css?v={ASSET_VERSION}"' in body
     assert 'href="/zones/new"' in body
     assert PREFIX not in body
 
@@ -292,7 +293,7 @@ def test_rendered_page_with_forged_header_uses_bare_links(
     response = client_with_forged_prefix_header.get("/zones")
     assert response.status_code == 200
     body = response.text
-    assert 'href="/static/thermoctl.css"' in body
+    assert f'href="/static/thermoctl.css?v={ASSET_VERSION}"' in body
     assert 'href="/zones/new"' in body
     # The forged value must not appear anywhere in what got rendered either.
     assert "EinAnderesAddon" not in body
