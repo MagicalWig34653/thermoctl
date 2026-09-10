@@ -4,80 +4,105 @@
 {% block max_width %}72rem{% endblock %}
 
 {#
-Eine Zeile je Gerät statt einer Tabelle mit neun gleich gewichteten Spalten.
+Auffälliges bleibt zuerst; beide Gruppen verwenden dieselben Tabellenspalten.
 
-Vorher stand alles da und nichts stach heraus: Anzeigename, Anbindung, Modell,
-Fähigkeiten, letzte Nachricht, Batterie, Funkgüte, Erreichbarkeit, Zone — die meisten
-Zellen ein Gedankenstrich. Die Frage, mit der jemand herkommt, ist aber fast immer
-dieselbe: stimmt mit meiner Hardware etwas nicht? Auffälliges steht deshalb oben, in
-einem eigenen Block und mit seinem Befund im Klartext; alles Gesunde darunter, schmal.
+Die Arbeitsanweisung zum UI-Redesign erlaubt für die Geräteliste ausdrücklich
+"kompakte Tabellen" am Desktop, und genau das steht hier: eine echte Tabelle mit
+Kopfzeile statt gestapelter Kärtchen. Die frühere Zeilenform (ein `<article>` je
+Gerät mit von Hand ausgerichteten Spalten) blieb an sich hinter einer Tabelle
+zurück, ohne deren Nachteil zu vermeiden -- die Ausrichtung stimmte nie ganz, und
+Kopfzeile und Zebrastreifen fehlten ihr.
 
-Was hier bewusst *nicht* steht: ein Kärtchen "Batteriestand" neben der Prozentzahl, ein
-Kärtchen "Verbindungsqualität" neben der LQI, und bei jedem der dreißig Geräte
-dieselbe Marke "ohne Zone". Wiederholung, die auf jeder Zeile gleich aussieht, trägt
-keine Auskunft — sie steht deshalb einmal oben als Zahl.
+Mobil bricht die Tabelle in gestapelte Zellen um (siehe `.tc-device-table` in
+thermoctl.css). Dabei gilt weiterhin, was im ursprünglichen Kommentar zur Zeilenform
+stand: Wiederholung, die auf jeder Zeile gleich aussieht, trägt keine Auskunft.
+Deshalb tragen "Gerät" und "Status" mobil keine eigene Beschriftung -- Name und
+Status sprechen für sich --, und eine leere Zone oder eine fehlende Fähigkeit
+erscheint mobil gar nicht erst als eigene Zeile ("Zone: —" vierzehnmal
+untereinander sagt nichts). Gesetzte Werte bei Fähigkeiten und Zone behalten dagegen
+ihre Beschriftung, weil ein bloßer Wert wie "Wohnzimmer" sonst nicht als Zone
+erkennbar wäre.
 #}
-
 {% set badges = {
-    "offline":      "tc-chip-warning",
-    "silent":        "tc-chip-warning",
+    "offline": "tc-chip-warning",
+    "silent": "tc-chip-warning",
     "disabled": "tc-chip-quiet",
-    "battery":     "tc-chip-warning",
-    "radio":         "tc-chip-quiet",
+    "battery": "tc-chip-warning",
+    "radio": "tc-chip-quiet",
 } %}
 
 {% macro geraetezeile(g) %}
-<article class="tc-zone tc-zone-device" data-device-row
-         data-search-text="{{ (g.name ~ ' ' ~ (g.model or '') ~ ' ' ~ g.capabilities|join(' ') ~ ' ' ~ g.zones|join(' '))|lower }}">
-    <div>
-        <div class="tc-zone-name">
-            {{ g.name }}
-            {% if g.ist_group %}
-            <span class="tc-chip tc-chip-quiet align-middle">Gruppe</span>
+<tr data-device-row
+    data-search-text="{{ (g.name ~ ' ' ~ (g.model or '') ~ ' ' ~ g.capabilities|join(' ') ~ ' ' ~ g.zones|join(' '))|lower }}">
+    <td data-label="Gerät">
+        <div>
+            <div class="fw-semibold">
+                {{ g.name }}
+                {% if g.ist_group %}
+                <span class="tc-chip tc-chip-quiet align-middle">Gruppe</span>
+                {% endif %}
+            </div>
+            <div class="t-quiet small">{{ g.model or "Modell unbekannt" }} · {{ g.integration }}</div>
+        </div>
+    </td>
+    <td data-label="Status"
+        {% if not g.findings and not g.last_heard and g.battery is none and g.radio_quality is none %}data-empty{% endif %}>
+        <div>
+            {% if g.findings %}
+            <div class="d-flex flex-wrap gap-1">
+                {% for b in g.findings %}
+                <span class="tc-chip {{ badges.get(b.kind, 'tc-chip-quiet') }}">{{ b.text }}</span>
+                {% endfor %}
+            </div>
+            {% endif %}
+            {% if g.last_heard %}
+            <div class="t-quiet small" title="{{ (g.last_heard|localtime(timezone)).strftime('%d.%m.%Y %H:%M:%S') }}">{{ g.last_heard|age }}</div>
+            {% endif %}
+            {% if g.battery is not none or g.radio_quality is not none %}
+            <div class="t-value t-quiet small">
+                {% if g.battery is not none %}Batterie {{ g.battery|round|int }} %{% endif %}
+                {% if g.radio_quality is not none %}
+                {{ "· " if g.battery is not none }}LQI {{ g.radio_quality }}
+                {% endif %}
+            </div>
             {% endif %}
         </div>
-        <div class="t-quiet" style="font-size: .72rem">
-            {{ g.model or "Modell unbekannt" }} · {{ g.integration }}
-        </div>
-        {% if g.findings %}
-        <div class="d-flex flex-wrap gap-1 mt-2">
-            {% for b in g.findings %}
-            <span class="tc-chip {{ badges.get(b.kind, 'tc-chip-quiet') }}">{{ b.text }}</span>
-            {% endfor %}
-        </div>
-        {% endif %}
-    </div>
-
-    <div class="text-end">
-        {% if g.last_heard %}
-        <div class="t-quiet small" title="{{ (g.last_heard|localtime(timezone)).strftime('%d.%m.%Y %H:%M:%S') }}">{{ g.last_heard|age }}</div>
-        {% else %}
-        <div class="t-quiet small">nie gehört</div>
-        {% endif %}
-        <div class="t-value t-quiet" style="font-size: .72rem">
-            {% if g.battery is not none %}{{ g.battery|round|int }} %{% endif %}
-            {% if g.radio_quality is not none %}
-            {{ "· " if g.battery is not none }}LQI {{ g.radio_quality }}
+    </td>
+    <td data-label="Fähigkeiten" {% if not g.capabilities %}data-empty{% endif %}>
+        <div>
+            {% if g.capabilities %}
+            <div class="d-flex flex-wrap gap-1">
+                {% for f in g.capabilities %}
+                <span class="tc-chip tc-chip-quiet">{{ f }}</span>
+                {% endfor %}
+            </div>
+            {% elif not g.quiet_capabilities %}
+            <span class="t-quiet small">keine Fähigkeiten gemeldet</span>
             {% endif %}
         </div>
-    </div>
+    </td>
+    <td data-label="Zone" {% if not g.zones %}data-empty{% endif %}>
+        <div class="t-quiet small">{{ g.zones|join(", ") if g.zones else "—" }}</div>
+    </td>
+</tr>
+{% endmacro %}
 
-    <div>
-        {% if g.capabilities %}
-        <div class="d-flex flex-wrap gap-1">
-            {% for f in g.capabilities %}
-            <span class="tc-chip tc-chip-quiet">{{ f }}</span>
-            {% endfor %}
-        </div>
-        {% elif not g.quiet_capabilities %}
-        <span class="t-quiet small">keine Fähigkeiten gemeldet</span>
-        {% endif %}
-    </div>
-
-    <div class="text-end t-quiet small">
-        {% if g.zones %}{{ g.zones|join(", ") }}{% endif %}
-    </div>
-</article>
+{% macro geraetetabelle(geraete, label) %}
+<div class="tc-panel table-responsive mb-4">
+    <table class="table table-striped align-middle tc-device-table mb-0" aria-label="{{ label }}">
+        <thead>
+            <tr>
+                <th scope="col">Gerät</th>
+                <th scope="col">Status</th>
+                <th scope="col">Fähigkeiten</th>
+                <th scope="col">Zone</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for g in geraete %}{{ geraetezeile(g) }}{% endfor %}
+        </tbody>
+    </table>
+</div>
 {% endmacro %}
 
 {% block content %}
@@ -107,18 +132,14 @@ keine Auskunft — sie steht deshalb einmal oben als Zahl.
     <h2 class="t-section mb-2">
 {{ notable|length }} {{ "davon fällt auf" if notable|length == 1 else "davon fallen auf" }}
     </h2>
-    <div class="tc-panel mb-4">
-        {% for g in notable %}{{ geraetezeile(g) }}{% endfor %}
-    </div>
+    {{ geraetetabelle(notable, "Auffällige Geräte") }}
     {% endif %}
 
     {% if unremarkable %}
     <h2 class="t-section mb-2">
         {% if notable %}Der Rest meldet sich{% else %}Alle melden sich{% endif %}
     </h2>
-    <div class="tc-panel">
-        {% for g in unremarkable %}{{ geraetezeile(g) }}{% endfor %}
-    </div>
+    {{ geraetetabelle(unremarkable, "Geräte ohne Auffälligkeiten") }}
     {% endif %}
 
     <p class="t-quiet small mt-3" id="no-matches" hidden>Kein Gerät passt zum Filter.</p>
