@@ -23,6 +23,7 @@ zeigt sie nur an.
 {% endmacro %}
 <div class="tc-shell">
     <aside class="tc-sidebar" id="tc-sidebar">
+        <div class="tc-sidebar-content">
         <a class="tc-brand" href="{{ url_prefix }}/">
             <span class="tc-brandmark" aria-hidden="true"></span>
             <span>thermoctl</span>
@@ -43,6 +44,7 @@ zeigt sie nur an.
             {% endif %}
             {% endfor %}
         </nav>
+        </div>
     </aside>
     <div class="tc-frame">
         <header class="tc-topbar">
@@ -60,7 +62,8 @@ zeigt sie nur an.
             <div class="dropdown ms-auto">
                 <button class="tc-iconbtn dropdown-toggle" type="button"
                         data-bs-toggle="dropdown" aria-expanded="false">
-                    {{ top_bar_user.display_name if top_bar_user else "Konto" }}
+                    <span class="d-none d-lg-inline">{{ top_bar_user.display_name if top_bar_user else "Konto" }}</span>
+                    <span class="d-lg-none">Konto</span>
                 </button>
                 <ul class="dropdown-menu dropdown-menu-end">
                     <li><a class="dropdown-item" href="{{ url_prefix }}/account">Konto und Sicherheit</a></li>

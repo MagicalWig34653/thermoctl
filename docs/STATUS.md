@@ -2,6 +2,23 @@
 
 Letzte Aktualisierung: 2026-09-10.
 
+## Geräteliste und Admin-Hülle
+
+`/devices` zeigt kompakte Tabellen mit den Spalten Gerät, Status, Fähigkeiten und
+Zone; auffällige Geräte bleiben zuerst. Am Desktop unverändert die volle Tabelle.
+Mobil bricht sie in gestapelte Zellen um, aber ohne Beschriftung für jede Zelle:
+Gerätename und Status sprechen für sich, und eine leere Zone oder eine fehlende
+Fähigkeit erscheint gar nicht erst als eigene Zeile -- nur gesetzte Werte tragen
+dort noch eine Beschriftung ("Zone: Wohnzimmer"). Das senkt die mobile Seitenhöhe
+bei 14 Beispielgeräten von 2952 auf 2489 Pixel, unter den Stand vor dem
+Tabellenumbau (2847 Pixel). Der Status „hat sich noch nie gemeldet“ erscheint nur
+einmal. Freitextfilter, Anlagenbild und Zuordnung bleiben erhalten. Die
+Admin-Kopfleiste zeigt mobil „Konto“ und den vollständigen Seitentitel in einer
+eigenen Zeile. Der Seitenleistenhintergrund reicht bis zum Seitenende; ihr Inhalt
+bleibt haftend und bei wenig Fensterhöhe separat scrollbar. Mit 14 Geräten bei
+1440 und 390 Pixeln in hellem und dunklem Farbschema visuell geprüft, ein Teil
+davon mit Zone und Fähigkeiten und ein Teil ohne.
+
 ## Eine Freigabe ist erst fertig, wenn auch das Add-on nachgezogen ist
 
 `thermoctl` wird an zwei Orten ausgeliefert, und der zweite ist beim Release v0.9.0

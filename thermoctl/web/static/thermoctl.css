@@ -570,17 +570,9 @@ h2, .t-section {
     grid-template-columns: minmax(8rem, 1fr) 6.5rem 6.5rem minmax(12rem, 2.4fr);
 }
 
-/* Geraeteliste: Name und Befund tragen das Gewicht, Zustandswerte und Fähigkeiten
-   stehen daneben. */
-.tc-zone-device {
-    grid-template-columns: minmax(12rem, 2fr) 7rem minmax(10rem, 1.6fr) minmax(7rem, 1fr);
-    align-items: start;
-}
-
 @media (max-width: 62em) {
     .tc-zone,
-    .tc-zone-operation,
-    .tc-zone-device {
+    .tc-zone-operation {
         grid-template-columns: 1fr auto;
         row-gap: 0.85rem;
     }
@@ -588,8 +580,7 @@ h2, .t-section {
         grid-column: 1 / -1;
     }
     /* Die Begründung darf umbrechen; sie ist der längste Text der Zeile. */
-    .tc-zone-operation > :last-child,
-    .tc-zone-device > :last-child {
+    .tc-zone-operation > :last-child {
         grid-column: 1 / -1;
     }
 }
@@ -737,6 +728,82 @@ body {
 
 .table > tbody > tr > td {
     border-bottom-color: var(--line);
+}
+
+/* Gleiche Spaltenbreiten in beiden Gruppen der Geräteliste. */
+.tc-device-table {
+    table-layout: fixed;
+    margin-bottom: 0;
+}
+
+.tc-device-table > :not(caption) > * > * {
+    padding: 0.6rem 0.8rem;
+}
+
+.tc-device-table th:nth-child(1) { width: 28%; }
+.tc-device-table th:nth-child(2) { width: 28%; }
+.tc-device-table th:nth-child(3) { width: 28%; }
+.tc-device-table th:nth-child(4) { width: 16%; }
+
+@media (max-width: 767.98px) {
+    .tc-device-table thead {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip-path: inset(50%);
+    }
+
+    .tc-device-table,
+    .tc-device-table tbody {
+        display: block;
+        width: 100%;
+    }
+
+    .tc-device-table tr:not([hidden]) {
+        display: block;
+        border-bottom: 1px solid var(--line-strong);
+        padding: 0.5rem 0;
+    }
+
+    .tc-device-table > tbody > tr > td {
+        display: block;
+        padding: 0.2rem 0.8rem;
+        border: 0;
+    }
+
+    /* Gerät und Status sprechen für sich -- Name, Statuschips und Zeitangabe
+       brauchen keine vorangestellte Beschriftung. */
+    .tc-device-table td:nth-child(1),
+    .tc-device-table td:nth-child(2) {
+        padding-top: 0.4rem;
+    }
+
+    /* Fähigkeiten und Zone bekommen dagegen eine Beschriftung, weil ein bloßer
+       Wert wie "Wohnzimmer" sonst nicht als Zone erkennbar wäre. */
+    .tc-device-table td:nth-child(3),
+    .tc-device-table td:nth-child(4) {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: baseline;
+        gap: 0.35rem;
+    }
+
+    .tc-device-table td:nth-child(3)::before,
+    .tc-device-table td:nth-child(4)::before {
+        content: attr(data-label) ":";
+        color: var(--muted);
+        font-size: 0.75rem;
+        flex-shrink: 0;
+    }
+
+    /* Eine leere Zone oder eine fehlende Fähigkeit ist bei fast jedem Gerät
+       gleich und leer -- das trägt keine Auskunft und erscheint mobil deshalb
+       gar nicht erst als eigene Zeile. Dasselbe gilt für einen Status ganz
+       ohne Befund, Zeitstempel oder Messwert. */
+    .tc-device-table td[data-empty] {
+        display: none;
+    }
 }
 
 /* ── Flussbild ─────────────────────────────────────────────────────────────── */
@@ -1344,12 +1411,13 @@ body {
     flex: 0 0 15.5rem;
     border-right: 1px solid var(--line);
     background: var(--surface);
+}
+
+/* Die äußere Fläche reicht bis zum Seitenende; nur ihr Inhalt haftet und scrollt. */
+.tc-sidebar-content {
     padding: 1.1rem 0.9rem 1.5rem;
-    /* Die Seitenleiste steht, der Inhalt scrollt darunter weg -- so bleibt die
-       Navigation auf einer langen Geräteliste erreichbar. */
     position: sticky;
     top: 0;
-    align-self: flex-start;
     max-height: 100vh;
     overflow-y: auto;
 }
@@ -1516,6 +1584,22 @@ body {
 @media (max-width: 991.98px) {
     .tc-shell {
         display: block;
+    }
+
+    .tc-admin .tc-topbar {
+        flex-wrap: wrap;
+    }
+
+    .tc-admin .tc-topbar > .tc-iconbtn {
+        flex-shrink: 0;
+        white-space: nowrap;
+    }
+
+    .tc-admin .tc-pagetitle {
+        order: 3;
+        flex-basis: 100%;
+        white-space: normal;
+        overflow: visible;
     }
 
     /* Die Seitenleiste klappt über Bootstraps `collapse` auf; ohne aufgeklappten
