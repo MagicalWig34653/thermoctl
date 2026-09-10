@@ -132,6 +132,27 @@ und den Haken im Implementierungsplan. Keine Sammelcommits über mehrere Aufgabe
 **und** MariaDB, Alembic vorwärts und rückwärts, Docker-Image-Build, Testabdeckung über der
 Mindestschwelle.
 
+**Zu jeder Freigabe gehört das Add-on-Repository.** `thermoctl` wird an zwei Orten
+ausgeliefert: als eigener Container und als Home-Assistant-Add-on. Das Add-on liegt in
+einem **eigenen** Repository (`MagicalWig34653/thermoctl-addon`) und zeigt über
+`thermoctl/config.yaml` auf eine feste Versionsnummer des ghcr.io-Abbilds. Solange die
+dort nicht nachgezogen ist, installiert jeder Add-on-Betreiber weiterhin die alte
+Fassung — die Freigabe im Hauptrepository erreicht ihn schlicht nicht.
+
+Ein Release ist deshalb erst abgeschlossen, wenn **beide** Repositories stehen:
+
+1. hier: `main` gemergt, `v*`-Tag gesetzt und gepusht, GitHub-Release erstellt, CI grün
+   (der Tag löst `docker.yml` aus, das das Abbild samt `latest` nach ghcr.io schiebt —
+   das Add-on kann erst danach darauf zeigen);
+2. dort: `version` in `thermoctl/config.yaml` auf dieselbe Nummer, ein Abschnitt im
+   Add-on-`CHANGELOG.md` (was in der Anwendung neu ist, **und** was ein Betreiber beim
+   Upgrade wissen muss), `DOCS.md` nachgezogen, falls eine Aussage darin falsch geworden
+   ist, und `python3 pruefe-konfiguration.py` ohne Beanstandung.
+
+Die Reihenfolge ist nicht beliebig: Die Versionsnummer im Add-on muss zu einem Abbild
+passen, das es wirklich schon gibt. Zeigt sie auf einen Tag, den `docker.yml` noch nicht
+gebaut hat, scheitert die Installation beim Betreiber, nicht bei uns.
+
 **Zu jedem Endpunkt und jeder Funktion gehört ein Test.** Ein Test, der nur bestätigt, was
 der Code ohnehin tut, zählt nicht — er hebt die Prozentzahl und suggeriert eine Sicherheit,
 die es nicht gibt. Wo eine Zeile nur durch eine künstliche Konstruktion erreichbar wäre, ist

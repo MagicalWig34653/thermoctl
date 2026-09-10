@@ -2,6 +2,20 @@
 
 Letzte Aktualisierung: 2026-09-10.
 
+## Eine Freigabe ist erst fertig, wenn auch das Add-on nachgezogen ist
+
+`thermoctl` wird an zwei Orten ausgeliefert, und der zweite ist beim Release v0.9.0
+zunächst liegen geblieben: das Home-Assistant-Add-on liegt in einem eigenen
+Repository (`MagicalWig34653/thermoctl-addon`) und zeigt über
+`thermoctl/config.yaml` auf eine **feste** Versionsnummer des ghcr.io-Abbilds.
+Solange die dort nicht nachgezogen ist, installiert jeder Add-on-Betreiber weiter
+die alte Fassung -- die Freigabe erreicht ihn schlicht nicht.
+
+Die Reihenfolge ist nicht beliebig: erst Tag und `docker.yml`, dann das Add-on. Die
+Versionsnummer dort muss zu einem Abbild passen, das es wirklich schon gibt, sonst
+scheitert die Installation beim Betreiber statt bei uns. Als Bedingung festgehalten
+in `CLAUDE.md`, Abschnitt „Arbeitsweise".
+
 ## Der Image-Bau wird jetzt schon vor dem Merge geprüft
 
 **Zwei Workflows, nicht einer** -- das ist beim Aufräumen für v0.9.0 einmal
