@@ -265,8 +265,8 @@ aus dem falschen Grund, und seit dem Redesign wäre er zusätzlich stumpf, weil 
 Primärfarbe selbst ein Blau ist. Geprüft wird jetzt, dass die Gestaltungsvariablen
 auf `:root` überhaupt ankommen; die kennt nur diese Datei.
 
-Bisher dokumentierter Prüfstand: **56 Browsertests grün**; bei dieser
-Dokumentationsfreigabe nicht erneut ausgeführt.
+Bisher dokumentierter Prüfstand: **59 Browsertests grün**, für v0.9.1 selbst erneut
+einzeln ausgeführt.
 
 ## Mieter-Zeitplan: bearbeiten und leere Tage einrichten
 
@@ -983,17 +983,16 @@ Details je Phase, Aufgabenlisten und was nicht ursprünglich vorgesehen war steh
 
 ## Zahlen
 
-Am 2026-09-10 auf dem Freigabestand in `main` selbst nachgemessen, nach dem
-Zusammenführen mit dem v0.8.2-Hotfix:
+Am 2026-09-10 auf dem Freigabestand für v0.9.1 selbst nachgemessen:
 
 | Prüfung | Ergebnis |
 |---|---|
-| Testsammlung | 5018 Tests in `tests/` (56 Browsertests separat, nicht in der CI) |
-| SQLite, volle Suite | 5017 bestanden, 1 übersprungen (Exit 0) |
-| MariaDB, volle Suite | 5017 bestanden, 1 übersprungen (Exit 0) |
-| Testabdeckung | beide Datenbanken: 100 %, 8969 erfasste Anweisungen, keine ungedeckt; CI-Mindestschwelle 100 % |
+| Testsammlung | 5028 Tests in `tests/` (59 Browsertests separat, nicht in der CI) |
+| SQLite, volle Suite | 5027 bestanden, 1 übersprungen (Exit 0) |
+| MariaDB, volle Suite | 5027 bestanden, 1 übersprungen (Exit 0), gegen `THERMOCTL_TEST_DATABASE_URL` mit `mysql+pymysql` |
+| Testabdeckung | beide Datenbanken: 100 %, 8996 erfasste Anweisungen, keine ungedeckt; CI-Mindestschwelle 100 % |
 | Ruff | ohne Befund (Exit 0) |
-| mypy strict | ohne Befund, 124 Quelldateien (Exit 0) |
+| mypy strict | ohne Befund, 125 Quelldateien (Exit 0) |
 | Migrationskette | ein Kopf `d31f6a04c7e9`; Upgrade-/Downgrade-Tests gegen beide Datenbanken bestanden |
 | Container | `docker build -f docker/Dockerfile .` erfolgreich (Exit 0) |
 

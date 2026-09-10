@@ -9,6 +9,42 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ---
 
+## 0.9.1 — 2026-09-10
+
+Reine Fehlerbehebungs-Freigabe, am selben Tag wie v0.9.0: der Projektinhaber hat die
+Oberfläche zum ersten Mal wirklich geöffnet und vier Dinge gemeldet. **Wer v0.9.0 im
+Browser offen hatte oder benutzt hat, sollte aktualisieren** — das veraltete CSS traf
+genau diese Fassung.
+
+### Behoben
+
+- **Veraltetes CSS nach dem Update.** `StaticFiles` schickte weder `Cache-Control` noch
+  `Expires`, nur einen ETag; ohne Cache-Vorgabe cachen Browser heuristisch und liefern
+  ohne Rückfrage aus. v0.9.0 hat `thermoctl.css` stark umgeschrieben, und wer die alte
+  Fassung im Cache hatte, bekam neues HTML mit alten Regeln. Jede Asset-URL trägt jetzt
+  `?v=`, gebildet aus Versionsnummer **und** einem SHA-256 über alle ausgelieferten
+  Dateien; `/static` antwortet nur auf die passende Kennung mit
+  `public, max-age=31536000, immutable`, auf jede andere mit `no-cache`. Dazu ein Riegel
+  für Tabs, die ein Server-Update überstehen: trägt eine Antwort eine andere
+  Assets-Kennung, erzwingt `htmx:beforeSwap` eine echte Navigation statt eines
+  Teil-Swaps.
+- **Zähes Laden der Oberfläche.** Jede Seite lud alle neun Skripte, auch die sechs, die
+  nur je eine Seite braucht. `page_scripts.js` steht jetzt als einziger Lader im
+  bleibenden Kopf und holt ein Funktionsskript nur, wenn sein CSS-Selektor auf der Seite
+  wirklich vorkommt.
+- **Source-Map-Ladefehler aus den Vendor-Dateien.** Die mitgelieferten Bibliotheken
+  verwiesen auf `.map`-Dateien, die nie mitgeliefert wurden; jeder Browser mit offenen
+  Entwicklerwerkzeugen holte sie und bekam 404. Verweise entfernt, in `HERKUNFT.md`
+  vermerkt.
+- **Die Geräteliste sah aus wie vierzehn Zonenkacheln.** Sie trug die Klasse der
+  Zonenkachel vom Dashboard statt einer eigenen Tabelle; dazu eine Seitenleiste, die auf
+  Fensterhöhe abriss, statt der ganzen Seite zu folgen, und eine Kopfleiste, die auf
+  mobilen Geräten umbrach. Geräteliste jetzt als echte Tabelle mit Kopfzeile,
+  ausgerichteten Spalten und Zebrastreifen; Seitenleiste und Kopfleiste korrigiert.
+- Eine versehentlich mit v0.9.0 veröffentlichte Coverage-Datei (`.coverage.review`)
+  wurde aus dem Repository genommen; `.gitignore` erfasst jetzt auch die Nebendateien
+  parallelisierter Coverage-Läufe.
+
 ## 0.9.0 — 2026-09-10
 
 ### Hinzugefügt
