@@ -69,6 +69,14 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
   auf den Zeitplan statt auf die weiterhin gültige Absenkung zurück — wer während
   seiner Abwesenheit einen Raum kurz aufheizte, bekam ihn danach für den Rest der
   Abwesenheit normal beheizt.
+- **Die Seed-Revision der Rechtetabelle schnitt positionell in eine lebende Liste.**
+  `3685e30419a4` spielte den Rechtestand seiner Zeit als `PERMISSIONS[:15]` ein. Das ging
+  gut, solange neue Rechte hinten angehängt wurden; `report.create` steht in der Mitte und
+  schob `audit.read` aus dem Schnitt — eine frisch eingerichtete Anlage hätte danach kein
+  Konto mehr gehabt, das Protokoll, Schaltprotokoll oder Relaisverschleiß öffnen kann.
+  Die Revision schreibt ihren Stand jetzt aus, statt ihn zu schneiden, und ist damit
+  gegen jedes künftige Recht unempfindlich. Betrifft nur neu eingerichtete Anlagen;
+  eine bestehende hatte den Schnitt längst hinter sich.
 - **Zonen anlegen und speichern ging hinter dem Home-Assistant-Ingress ins Leere.**
   Das Zonenformular war das einzige ohne Pfadpräfix; als Add-on endete es beim
   Wurzelpfad des Hosts. Ein Wächtertest prüft das jetzt für alle Vorlagen.

@@ -869,8 +869,8 @@ Am 2026-09-10 im Freigabe-Worktree selbst nachgemessen:
 | Prüfung | Ergebnis |
 |---|---|
 | Testsammlung | 5013 Tests in `tests/` (Browsertests separat) |
-| SQLite, volle Suite nach Doku-Korrektur | 5011 bestanden, 1 fehlgeschlagen, 1 übersprungen (Exit 1) |
-| MariaDB, volle Suite nach Doku-Korrektur | 5011 bestanden, 1 fehlgeschlagen, 1 übersprungen (Exit 1) |
+| SQLite, volle Suite | 5012 bestanden, 1 übersprungen (Exit 0) |
+| MariaDB, volle Suite | 5012 bestanden, 1 übersprungen (Exit 0) |
 | Testabdeckung | beide Datenbanken: 100 %, 8958 erfasste Anweisungen, keine ungedeckt; CI-Mindestschwelle 100 % |
 | Ruff | ohne Befund (Exit 0) |
 | mypy strict | ohne Befund, 124 Quelldateien (Exit 0) |
@@ -884,14 +884,11 @@ v0.9.0 ergänzt drei aufeinanderfolgende Migrationen nach `43aa18ba1c12`:
 UI-Profil `c4d18b7e2a95`, Abwesenheit `c724de89a13f` und
 Problemmeldung/`report.create` `d31f6a04c7e9`.
 
-**Offener Freigabeprüfpunkt:**
-`test_physical_vocabulary_occurrences_are_explicitly_reviewed` aus
-`tests/test_user_visible_effect_texts.py` beanstandet geänderte und entfernte
-Doku-Zeilen gegenüber `tests/approved_physical_vocabulary.json`. Das Register hält
-wortgetreue Fundstellen fest, auch inzwischen widerlegte Aussagen. Die sachlich
-korrigierte Dokumentation und das unveränderte Register passen deshalb nicht mehr
-zusammen. Test und Register bleiben im reinen Dokumentationsauftrag unverändert;
-die Suite ist damit trotz vollständiger Abdeckung **nicht grün**.
+**Unabhängig nachvollzogen.** Ruff, mypy, beide Datenbanken, Alembic vorwärts und
+rückwärts und der Container-Bau sind von einem Gegenleser, der nicht umgesetzt hat,
+noch einmal selbst ausgeführt worden -- mit demselben Ergebnis, und mit Nachweis, dass
+der MariaDB-Lauf wirklich gegen MariaDB lief (`11.8.9-MariaDB`) und nicht unbemerkt
+auf SQLite auswich.
 
 **Die Suite liest `THERMOCTL_TEST_DATABASE_URL`**, nicht `THERMOCTL_DATABASE_URL`.
 Der MariaDB-Lauf verwendet `mysql+pymysql` gegen `127.0.0.1:3306/doku_090` und
