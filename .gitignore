@@ -40,6 +40,12 @@ logs/
 .ruff_cache/
 .mypy_cache/
 .coverage
+# Auch jede Nebendatei: coverage legt mit COVERAGE_FILE oder --parallel-mode
+# Namen wie ".coverage.review" oder ".coverage.maria" an. Das Muster stand hier
+# zuerst nur als blosses ".coverage" -- eine 92 KB grosse ".coverage.review" ist
+# dadurch in v0.9.0 mitgewandert, samt der absoluten Pfade des Rechners, auf dem
+# sie entstand. Ein Freigabe-Commit mit `git add -A` sieht so etwas nicht.
+.coverage.*
 htmlcov/
 
 # Werkzeuge
