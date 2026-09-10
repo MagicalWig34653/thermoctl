@@ -13,9 +13,9 @@
     hier nicht: ein Wandtablett hat weder Navigation noch Ladebalken, und die
     Kiosk-CSRF-Behandlung ist eine andere.
     #}
-    <link rel="icon" href="{{ url_prefix }}/static/favicon.svg" type="image/svg+xml">
-    <link rel="stylesheet" href="{{ url_prefix }}/static/vendor/bootstrap/bootstrap.min.css">
-    <link rel="stylesheet" href="{{ url_prefix }}/static/thermoctl.css">
+    <link rel="icon" href="{{ url_prefix }}/static/favicon.svg?v={{ asset_version }}" type="image/svg+xml">
+    <link rel="stylesheet" href="{{ url_prefix }}/static/vendor/bootstrap/bootstrap.min.css?v={{ asset_version }}">
+    <link rel="stylesheet" href="{{ url_prefix }}/static/thermoctl.css?v={{ asset_version }}">
     {#
     Vor dem ersten Anzeigen und ohne `defer`: Ein Farbschema, das erst nach dem Aufbau
     gesetzt wird, blitzt einmal hell auf. `data-bs-theme="auto"` stand hier früher im
@@ -51,15 +51,10 @@
     im selben Klick wieder zu -- es sah aus, als ginge es gar nicht mehr auf. Der Kopf
     wird nie ausgetauscht, also läuft hier alles genau einmal.
     #}
-    <script defer src="{{ url_prefix }}/static/vendor/bootstrap/bootstrap.bundle.min.js"></script>
-    <script defer src="{{ url_prefix }}/static/vendor/htmx/htmx.min.js"></script>
-    <script defer src="{{ url_prefix }}/static/loading_indicator.js"></script>
-    <script defer src="{{ url_prefix }}/static/passkey.js"></script>
-    <script defer src="{{ url_prefix }}/static/schedule.js"></script>
-    <script defer src="{{ url_prefix }}/static/permissions.js"></script>
-    <script defer src="{{ url_prefix }}/static/assignment.js"></script>
-    <script defer src="{{ url_prefix }}/static/device_filter.js"></script>
-    <script defer src="{{ url_prefix }}/static/homebridge_copy.js"></script>
+    <script defer src="{{ url_prefix }}/static/vendor/bootstrap/bootstrap.bundle.min.js?v={{ asset_version }}"></script>
+    <script defer src="{{ url_prefix }}/static/vendor/htmx/htmx.min.js?v={{ asset_version }}"></script>
+    <script defer src="{{ url_prefix }}/static/loading_indicator.js?v={{ asset_version }}"></script>
+    <script defer src="{{ url_prefix }}/static/page_scripts.js?v={{ asset_version }}"></script>
     <script>
         // Am `document`, nicht am `document.body`: htmx-Ereignisse blubbern bis dorthin,
         // und der Rumpf existiert zum Zeitpunkt dieses Skripts noch gar nicht.

@@ -2,6 +2,54 @@
 
 Letzte Aktualisierung: 2026-09-10.
 
+## Statische Auslieferung: versioniert, langfristig cachebar, ein Lader statt neun Skripte
+
+Anlass waren drei Rückmeldungen aus dem echten Betrieb: zähes Laden seit v0.9,
+Source-Map-Ladefehler ohne HA-Ingress, und veraltetes CSS ohne HA-Ingress, das erst
+ein Cache-Leeren behob. Ursache für Letzteres: `StaticFiles` sendet weder
+`Cache-Control` noch `Expires`, nur ein ETag -- Browser cachen dann heuristisch und
+liefern ohne Rückfrage aus. v0.9.0 hat `thermoctl.css` stark umgeschrieben; wer die
+alte Fassung im Cache hatte, bekam neues HTML mit alten Regeln.
+
+Jetzt behoben, alle Pflichtläufe (Ruff, mypy, Pytest gegen SQLite **und** MariaDB
+mit 100 % Abdeckung, Browsertests einzeln) grün geprüft:
+
+- `thermoctl/web/assets.py`: `ASSET_VERSION` aus `__version__` plus SHA-256 über
+  alle `.css`/`.js`/`.svg` im static-Verzeichnis. Jede Asset-URL trägt
+  `?v={{ asset_version }}`; `/static` liefert `Cache-Control: public,
+  max-age=31536000, immutable` nur für exakt diese Version, sonst `no-cache`.
+  Ändert sich eine Datei, ändert sich zwangsläufig die URL -- geprüft mit einer
+  echten Dateiänderung: Hash vorher `0.9.0-421a...`, nach einer Änderung an
+  `thermoctl.css` `0.9.0-59f5...`, nach Rücknahme wieder der alte Wert.
+- `thermoctl/web/static/page_scripts.js`: ein Lader im bleibenden `<head>`
+  (`base_core.html`, `base_plain.html`), der die sechs Funktionsskripte
+  (passkey, schedule, permissions, assignment, device_filter, homebridge_copy)
+  nur nachlädt, wenn ihr CSS-Selektor auf der aktuellen Seite tatsächlich
+  vorkommt -- vorher lud jede Admin-Seite alle sechs ungefragt mit (51 604
+  zusätzliche Bytes, sechs Anfragen, auch auf Seiten wie `/audit`, die keines
+  davon braucht). Ein `loaded`-Set verhindert Doppelregistrierung über
+  `hx-boost`-Swaps, `htmx:beforeSwap` erzwingt bei einer geänderten
+  `X-Thermoctl-Assets`-Kennung eine echte Navigation statt eines Teil-Swaps mit
+  veraltetem Kopf -- ein offener Tab überlebt so ein Server-Update, ohne
+  neues HTML in einen alten `<head>` zu mischen. Alle sechs Selektoren gegen
+  die Vorlagen abgeglichen, jeder trifft.
+- Kiosk (`base_plain.html`-Gegenstück `kiosk.html`) bewusst unverändert ohne
+  Lader und ohne Ladebalken -- braucht keines der sechs Skripte.
+  `browser_tests/test_page_scripts.py::test_features_load_once_across_boost_and_history`
+  prüft genau die schwierige Stelle: zwei Runden Boost/Vor/Zurück, geladen wird
+  jedes Skript nur einmal, auch mit Ingress-Prefix.
+- `sourceMappingURL`-Verweise aus den drei minifizierten Vendor-Dateien entfernt
+  (Bootstrap CSS/JS, Swagger-UI-CSS) -- die referenzierten `.map`-Dateien wurden
+  nie mitgeliefert, DevTools fragte sie erfolglos an. `HERKUNFT.md` dokumentiert
+  die SHA-384 der geänderten Fassungen, `tests/test_assets.py` prüft, dass kein
+  verbleibender Verweis mehr auf eine fehlende Datei zeigt.
+- Ein Codex-Agent hatte das begonnen und wurde durch ein Nutzungslimit mitten in
+  der Arbeit abgebrochen; ein zweiter Agent hat gegengelesen, den einzigen echten
+  Fund korrigiert (der neue Browsertest hing an einem Gerät, das nur zufällig aus
+  einem *anderen*, früher laufenden Test in derselben, sitzungsweiten Datenbank
+  übrig war -- beide betroffenen Tests seeden jetzt ihr eigenes Gerät) und alle
+  Pflichtläufe unabhängig wiederholt.
+
 ## Geräteliste und Admin-Hülle
 
 `/devices` zeigt kompakte Tabellen mit den Spalten Gerät, Status, Fähigkeiten und

@@ -1,6 +1,6 @@
 # Herkunft der mitgelieferten Dateien
 
-Dieses Verzeichnis enthält fremden, unverändert übernommenen Code. Er wird lokal
+Dieses Verzeichnis enthält fremden Code (lokale Änderungen sind unten ausgewiesen). Er wird lokal
 ausgeliefert (über `StaticFiles` in `thermoctl/app.py`), nicht über ein CDN --
 `thermoctl` soll auch ohne Internetzugang im Heimnetz benutzbar bleiben, und ein
 CDN-Aufruf würde jedem Betreiber-Netzwerk gegenüber Dritten verraten, wann jemand
@@ -55,4 +55,19 @@ Lesefassung derselben Beschreibung ist den Ballast nicht wert.
 
 Beim Aktualisieren einer dieser Dateien: neue Version laden, Hash in dieser Tabelle
 nachführen, Version im Commit nennen. Keine dieser Dateien wird von Ruff oder mypy
-geprüft -- sie sind fremder, unveränderter Code, kein Projektquelltext.
+geprüft -- sie sind Fremdcode, kein Projektquelltext.
+
+## Lokale Änderungen für die Auslieferung
+
+Bei den folgenden Dateien wurde ausschließlich der `sourceMappingURL`-Kommentar
+entfernt. Die referenzierten Maps werden nicht mitgeliefert; Entwicklerwerkzeuge
+fordern damit keine fehlenden Dateien mehr an. Lizenzhinweise bleiben erhalten.
+Die Tabellen oben dokumentieren die Originaldateien der genannten Quellen; die
+folgenden SHA-384-Werte gelten für die tatsächlich ausgelieferten Fassungen.
+Beim Aktualisieren diesen Schritt wiederholen und beide Hash-Tabellen nachführen.
+
+| Geänderte Datei | SHA-384 der lokalen Fassung |
+|---|---|
+| `vendor/bootstrap/bootstrap.min.css` | `sha384-wtrIRqztIYGvkbJp4m6Vi2ETIkyUhJ/Ik2fZyGQZwVxCUYzb3nUwIZnNQjzGbTLm` |
+| `vendor/bootstrap/bootstrap.bundle.min.js` | `sha384-HqZ4oRyF0315sRxm0icZGRHk+ppSPetPAgYnl2DqGNobhcX2fLVRHC771KNO7RC8` |
+| `vendor/swagger-ui/swagger-ui.css` | `sha384-ZpZakqAmqVkjVQvPHC7JrCdmocLHj570Ke/GDWRvH4HOi8I1rx8hZa2jIN6MMeNN` |

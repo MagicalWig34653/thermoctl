@@ -13,8 +13,9 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
+from starlette.datastructures import MutableHeaders, QueryParams
 from starlette.routing import Mount
-from starlette.types import Receive, Scope, Send
+from starlette.types import Message, Receive, Scope, Send
 
 import thermoctl
 from thermoctl import audit
@@ -94,6 +95,7 @@ from thermoctl.setup import SETUP_TOKEN_LIFETIME, create_setup_token, setup_need
 from thermoctl.web import STATIC_DIR, templates
 from thermoctl.web.account_views import router as account_router
 from thermoctl.web.admin_views import router as admin_router
+from thermoctl.web.assets import ASSET_VERSION
 from thermoctl.web.audit_views import router as audit_router
 from thermoctl.web.auth_views import router as auth_router
 from thermoctl.web.control_views import router as control_router
@@ -941,7 +943,20 @@ async def _serve_static(scope: Scope, receive: Receive, send: Send) -> None:
     request_scope = dict(scope)
     request_scope["path"] = scope["path"].removeprefix("/static") or "/"
     request_scope["root_path"] = ""
-    await _static_files(request_scope, receive, send)
+    async def send_cached(message: Message) -> None:
+        if message["type"] == "http.response.start" and message["status"] in (200, 304):
+            query = QueryParams(scope.get("query_string", b""))
+            headers = MutableHeaders(scope=message)
+            # Old/unversioned URLs must revalidate; only the current asset set
+            # gets a long lifetime. Apply to 304 responses as well.
+            headers["Cache-Control"] = (
+                "public, max-age=31536000, immutable"
+                if query.get("v") == ASSET_VERSION
+                else "no-cache"
+            )
+        await send(message)
+
+    await _static_files(request_scope, receive, send_cached)
 
 
 def create_app() -> FastAPI:
@@ -1130,7 +1145,10 @@ def create_app() -> FastAPI:
         ASGI middleware hands information to what runs after it.
         """
         request.scope["root_path"] = _ingress_header_prefix(request, settings.root_path)
-        return await call_next(request)
+        response = await call_next(request)
+        if response.headers.get("content-type", "").startswith("text/html"):
+            response.headers["X-Thermoctl-Assets"] = ASSET_VERSION
+        return response
 
     @app.get("/docs", include_in_schema=False)
     async def swagger_ui(request: Request) -> HTMLResponse:
@@ -1144,9 +1162,13 @@ def create_app() -> FastAPI:
         return get_swagger_ui_html(
             openapi_url=prefixed(request, "/openapi.json"),
             title="thermoctl — REST-Schnittstelle",
-            swagger_js_url=prefixed(request, "/static/vendor/swagger-ui/swagger-ui-bundle.js"),
-            swagger_css_url=prefixed(request, "/static/vendor/swagger-ui/swagger-ui.css"),
-            swagger_favicon_url=prefixed(request, "/static/favicon.svg"),
+            swagger_js_url=prefixed(
+                request, f"/static/vendor/swagger-ui/swagger-ui-bundle.js?v={ASSET_VERSION}"
+            ),
+            swagger_css_url=prefixed(
+                request, f"/static/vendor/swagger-ui/swagger-ui.css?v={ASSET_VERSION}"
+            ),
+            swagger_favicon_url=prefixed(request, f"/static/favicon.svg?v={ASSET_VERSION}"),
         )
 
     @app.get("/healthz")

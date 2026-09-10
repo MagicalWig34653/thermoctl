@@ -406,6 +406,11 @@
 
     // Two hooks, as in passkey.js: `DOMContentLoaded` for the direct call, `htmx:load`
     // for every page swapped in by hx-boost.
+    // A lazy-loaded script can arrive after DOMContentLoaded and htmx:load.
+    if (document.readyState !== "loading") {
+        setUp();
+    }
     document.addEventListener("DOMContentLoaded", setUp);
     document.addEventListener("htmx:load", setUp);
+    document.addEventListener("htmx:historyRestore", setUp);
 })();

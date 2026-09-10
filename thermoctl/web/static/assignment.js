@@ -237,6 +237,11 @@
         wireSwitches();
     }
 
+    // A lazy-loaded script can arrive after DOMContentLoaded and htmx:load.
+    if (document.readyState !== "loading") {
+        start();
+    }
     document.addEventListener("DOMContentLoaded", start);
     document.addEventListener("htmx:load", start);
+    document.addEventListener("htmx:historyRestore", start);
 })();
