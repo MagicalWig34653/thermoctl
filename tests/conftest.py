@@ -17,6 +17,7 @@ from thermoctl.db.base import Base
 from thermoctl.db.engine import create_engine_from_settings
 from thermoctl.db.models.identity import AccessGroup, User, UserAccessGroup
 from thermoctl.db.models.lookup import ACTOR_SOURCES, PERMISSIONS, ActorSource, Permission
+from thermoctl.domain.ui_profile import WebUiProfile
 
 TEST_DATABASE_URL = os.environ.get("THERMOCTL_TEST_DATABASE_URL", "sqlite:///./test.db")
 
@@ -357,6 +358,34 @@ def client_als(
         return client
 
     return _client_als
+
+
+@pytest.fixture
+def tenant_client(
+    client: TestClient, session: Session
+) -> Callable[[list[tuple[str, int | None]]], TestClient]:
+    """Wie ``client_als``, aber der Benutzer sitzt in einer Gruppe mit dem
+    Mieter-UI-Profil.
+
+    Bewusst dieselben ``(code, zone_id)``-Rechte wie dort: das Profil nimmt kein
+    Recht weg und gibt keines dazu. Genau diese Trennung soll damit prüfbar sein --
+    ein Mieter mit ``zone.read`` auf einer Zone darf dieselbe Zone lesen wie ein
+    Administrator mit demselben Recht, sieht dabei aber eine andere Oberfläche und
+    kommt an die Anlagenseiten nicht heran.
+    """
+    counter = 0
+
+    def _tenant_client(permissions: list[tuple[str, int | None]]) -> TestClient:
+        nonlocal counter
+        counter += 1
+        user_record = user_with_permissions(
+            session, f"mieter-{counter}", permissions, ui_profile=WebUiProfile.TENANT
+        )
+        _http_session, secret = create_session(session, user_record, 3600)
+        client.cookies.set(COOKIE_NAME, secret)
+        return client
+
+    return _tenant_client
 
 
 @pytest.fixture

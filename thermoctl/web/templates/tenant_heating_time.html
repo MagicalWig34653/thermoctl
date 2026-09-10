@@ -1,0 +1,65 @@
+{% extends "base_tenant.html" %}
+{% block title %}Heizzeit{% endblock %}
+{% block content %}
+<div class="tc-hero">
+    <p class="tc-eyebrow">Heizzeit</p>
+    <h1 class="tc-h1">Wie viel wurde geheizt?</h1>
+    <p class="t-quiet">
+        Eine einfache Orientierung über deine Räume. Das ist Heizdauer — kein
+        Energie- oder Kostenmesser.
+    </p>
+</div>
+
+{% if not armed %}
+{#
+Trockenlauf: die Werte zeigen, wann die Anlage geheizt **hätte**. Als Text und
+nicht als Farbe oder Hinweisblase -- eine Zahl, die man für die tatsächliche
+Geschichte der Anlage hält, wäre schlimmer als gar keine.
+#}
+<div class="alert alert-warning" role="status">
+    <strong>Die Anlage schaltet derzeit nicht.</strong>
+    Die Balken zeigen, wann sie geheizt <em>hätte</em>.
+</div>
+{% endif %}
+
+<nav class="tc-segments" aria-label="Zeitraum">
+    {% for code, label in periods %}
+    <a class="tc-segment{{ ' tc-here' if code == period }}"
+       href="{{ url_prefix }}/heating-time?period={{ code }}"
+       {% if code == period %}aria-current="page"{% endif %}>{{ label }}</a>
+    {% endfor %}
+</nav>
+
+{% if not zones %}
+<p class="tc-empty">
+    Für dieses Konto ist noch kein Raum freigegeben.
+</p>
+{% endif %}
+
+{% for zone in zones %}
+{% set stat = values.get(zone.id) %}
+<section class="tc-panel p-3 mb-3">
+    <div class="d-flex justify-content-between align-items-baseline flex-wrap gap-2">
+        <h2 class="h5 mb-0">{{ zone.display_name }}</h2>
+        <span class="t-value">{{ as_duration(stat.seconds_total) if stat else as_duration(0) }}</span>
+    </div>
+    <div class="tc-bars">
+        {% for day in (stat.days if stat else []) %}
+        <div class="tc-barwrap">
+            <span class="tc-bar"
+                  style="height: {{ (day.seconds * 100 / maximum) if maximum else 0 }}%"></span>
+            <span class="visually-hidden">{{ day.day }}: {{ as_duration(day.seconds) }}</span>
+        </div>
+        {% endfor %}
+    </div>
+    <p class="t-quiet small mb-0">
+        {{ (stat.days|length) if stat else 0 }} Tage, jeweils die Heizdauer dieses Raums.
+    </p>
+</section>
+{% endfor %}
+
+<p class="t-quiet small">
+    Die Balken zeigen nur Heizzeit. Außentemperatur, Gebäudezustand und Lüften
+    beeinflussen die Werte; ein genauer Verbrauch lässt sich daraus nicht ableiten.
+</p>
+{% endblock %}

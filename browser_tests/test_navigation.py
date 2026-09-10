@@ -33,14 +33,15 @@ def test_a_user_without_user_manage_does_not_see_the_users_menu_entry(
     page.get_by_label("Benutzername").fill("browsertest-eingeschraenkt")
     page.get_by_label("Passwort").fill(_PASSWORD)
     page.get_by_role("button", name="Anmelden").click()
-    expect(page.locator(".tc-head")).to_be_visible()
+    # `.tc-topbar` statt der seit v0.9.0 entfallenen `.tc-head` -- dieselbe Aussage
+    # ("angemeldet, Anlagenhuelle sichtbar"), an einem Element, das auf jeder
+    # Bildschirmbreite sichtbar bleibt.
+    expect(page.locator(".tc-topbar")).to_be_visible()
 
-    # The entry must be genuinely absent from the rendered menu -- not merely
-    # styled away -- for both the always-visible top level and inside the
-    # collapsed "Einstellungen" dropdown, wherever it would otherwise land.
-    settings_dropdown = page.get_by_role("button", name="Einstellungen")
-    if settings_dropdown.count():
-        settings_dropdown.click()
+    # Seit v0.9.0 gibt es kein Sammelmenü "Einstellungen" mehr, das erst
+    # aufgeklappt werden müsste -- die Seitenleiste zeigt jeden Eintrag
+    # unmittelbar als Verweis. Der Test prüft deshalb nur noch direkt, dass der
+    # Eintrag genuin fehlt -- nicht bloß gestylt weg -- in der ganzen Seitenleiste.
     expect(page.get_by_role("link", name="Benutzer", exact=True)).to_have_count(0)
 
     # And direct navigation is refused too -- the entry being hidden is a courtesy,
@@ -51,5 +52,22 @@ def test_a_user_without_user_manage_does_not_see_the_users_menu_entry(
 
 
 def test_the_administrator_does_see_the_users_menu_entry(admin_page: Page) -> None:
-    admin_page.get_by_role("button", name="Einstellungen").click()
+    # Kein Aufklappen mehr nötig (siehe Kommentar oben) -- der Eintrag steht
+    # unmittelbar sichtbar in der Seitenleiste, Abschnitt "Zugänge".
     expect(admin_page.get_by_role("link", name="Benutzer", exact=True)).to_be_visible()
+
+
+def test_the_sidebar_opens_only_after_clicking_the_navigation_button_on_a_narrow_screen(
+    admin_page: Page,
+) -> None:
+    """Ein Bootstrap-`collapse`, das mit der neuen Hülle nicht mehr auf- oder
+    zugeht, sieht im HTML völlig richtig aus -- nur ein echter Browser zeigt, ob
+    `.tc-sidebar` auf einem schmalen Bildschirm tatsächlich verborgen bleibt, bis
+    der Knopf "Navigation" sie aufklappt.
+    """
+    admin_page.set_viewport_size({"width": 390, "height": 844})
+    sidebar = admin_page.locator("#tc-sidebar")
+    expect(sidebar).not_to_be_visible()
+
+    admin_page.get_by_role("button", name="Navigation").click()
+    expect(sidebar).to_be_visible()

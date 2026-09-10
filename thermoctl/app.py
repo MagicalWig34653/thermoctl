@@ -92,12 +92,14 @@ from thermoctl.services.retention import delete_old_measurements, delete_old_sha
 from thermoctl.services.shadow_run import cycle
 from thermoctl.setup import SETUP_TOKEN_LIFETIME, create_setup_token, setup_needed
 from thermoctl.web import STATIC_DIR, templates
+from thermoctl.web.account_views import router as account_router
 from thermoctl.web.admin_views import router as admin_router
 from thermoctl.web.audit_views import router as audit_router
 from thermoctl.web.auth_views import router as auth_router
 from thermoctl.web.control_views import router as control_router
 from thermoctl.web.controller_views import router as controller_router
 from thermoctl.web.daily_views import router as alltag_router
+from thermoctl.web.daily_views import shared_router as alltag_shared_router
 from thermoctl.web.device_assignment_views import router as device_assignment_router
 from thermoctl.web.device_commands_views import router as device_commands_router
 from thermoctl.web.device_views import router as devices_router
@@ -105,9 +107,11 @@ from thermoctl.web.kiosk_admin_views import router as kiosk_admin_router
 from thermoctl.web.kiosk_views import router as kiosk_router
 from thermoctl.web.mode_views import router as modes_router
 from thermoctl.web.passkey_views import router as passkey_router
+from thermoctl.web.report_views import router as report_router
 from thermoctl.web.schedule_views import router as schedule_router
 from thermoctl.web.setup_views import router as setup_router
 from thermoctl.web.start_views import router as start_router
+from thermoctl.web.tenant_views import router as tenant_router
 from thermoctl.web.urls import cookie_path, prefixed
 from thermoctl.web.vacation_views import router as vacation_router
 from thermoctl.web.zone_views import router as zone_router
@@ -994,6 +998,7 @@ def create_app() -> FastAPI:
     app.include_router(auth_router)
     app.include_router(setup_router)
     app.include_router(admin_router)
+    app.include_router(account_router)
     app.include_router(kiosk_admin_router)
     app.include_router(kiosk_router)
     app.include_router(audit_router)
@@ -1005,6 +1010,9 @@ def create_app() -> FastAPI:
     app.include_router(passkey_router)
     app.include_router(schedule_router)
     app.include_router(alltag_router)
+    app.include_router(alltag_shared_router)
+    app.include_router(tenant_router)
+    app.include_router(report_router)
     app.include_router(vacation_router)
     app.include_router(api_router)
     app.router.routes.append(
@@ -1055,7 +1063,7 @@ def create_app() -> FastAPI:
             # nothing, which is the very complaint this handler exists for. The page
             # is not reloaded automatically either; that was tried and it can put a
             # control that fires on restore into a loop of reload, refuse, reload.
-            # Instead a marker goes out that the small handler in `base.html` turns
+            # Instead a marker goes out that the small handler in `base_core.html` turns
             # into a visible notice with a reload button -- the person decides when
             # the page goes away, and an unsent change is not swallowed silently.
             answer = JSONResponse(status_code=403, content={"detail": str(exc)})

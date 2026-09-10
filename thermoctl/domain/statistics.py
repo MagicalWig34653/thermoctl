@@ -263,6 +263,32 @@ def relay_operations(
     return statistics
 
 
+# Die drei Zeiträume der Auswertungen. Bewusst kein Freitext-Datumsfeld: die Frage
+# lautet "diese Woche" oder "diesen Monat", nicht "vom 3. bis zum 17.".
+#
+# Steht in der Domäne und nicht in der Weboberfläche, weil inzwischen zwei Ansichten
+# darauf zugreifen -- die Anlagenstatistik und die Heizzeit der Wohnungssicht. Zwei
+# Tabellen mit denselben drei Zahlen wären zwei Wahrheiten, die beim nächsten
+# Hinzufügen eines Zeitraums auseinanderlaufen.
+PERIODS: dict[str, tuple[str, int]] = {
+    "7": ("7 Tage", 7),
+    "30": ("30 Tage", 30),
+    "90": ("90 Tage", 90),
+}
+
+DEFAULT_PERIOD = "7"
+
+
+def period_days(key: str) -> tuple[str, int]:
+    """Beschriftung und Tageszahl zu einem Zeitraumschlüssel.
+
+    Ein unbekannter Schlüssel -- aus einem von Hand veränderten Abfrageparameter --
+    fällt auf den Vorgabezeitraum zurück, statt die Seite mit einem Fehler zu
+    beantworten. Zu sehen gibt es dann eben die letzte Woche.
+    """
+    return PERIODS.get(key, PERIODS[DEFAULT_PERIOD])
+
+
 def heating_periods(
     session: Session,
     zone_ids: list[int],

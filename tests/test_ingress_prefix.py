@@ -23,11 +23,15 @@ learned from the Supervisor (`client_with_forged_prefix_header`) -- both must be
 exactly like the plain, unconfigured `client`, never like `client_with_prefix`.
 """
 
+import re
+from pathlib import Path
+
 from fastapi.testclient import TestClient
 
 from tests.helpers import user_with_permissions
 from thermoctl.auth.sessions import COOKIE_NAME, create_session
 
+TEMPLATES = Path(__file__).resolve().parent.parent / "thermoctl" / "web" / "templates"
 PREFIX = "/api/hassio_ingress/A1b2C3d4e5"
 
 
@@ -327,3 +331,35 @@ def test_ingress_configured_and_direct_access_work_side_by_side(
         follow_redirects=False,
     )
     assert direct.headers["location"] == "/"
+
+
+def test_no_template_sends_a_form_or_link_past_the_ingress_prefix() -> None:
+    """Jede eigene Adresse in einer Vorlage trägt `url_prefix`.
+
+    Hinter dem Ingress-Proxy ist der Wurzelpfad des Hosts nicht thermoctl. Ein
+    `action="/zones"` landet dort außerhalb der Anwendung -- der Nutzer bekommt einen
+    404 vom Proxy, während dieselbe Seite ohne Ingress einwandfrei funktioniert. Das
+    macht den Fehler doppelt teuer: er tritt nur bei einem Teil der Betreiber auf und
+    ist beim Entwickeln unsichtbar.
+
+    Genau das war `zone_form.html` bis v0.9.0: das einzige Formular im Projekt ohne
+    Präfix, und damit „Zone anlegen" und „Zone speichern" als Add-on unbenutzbar.
+    Gefunden hat es eine Durchsicht, nicht die Testsuite -- deshalb dieser Wächter.
+
+    Geprüft wird die Vorlage, nicht die gerenderte Seite: eine Adresse, die nur auf
+    einer selten aufgerufenen Seite steht, käme sonst nie in einen Testlauf.
+    """
+    # Adressen, die absichtlich ohne Präfix stehen: fremde Ziele (das gibt es hier
+    # nur als vollständige URL mit Schema) und der leere Anker `#`.
+    verdaechtig = re.compile(r'\b(?:action|href|hx-(?:get|post))\s*=\s*"(/[^"{]*)"')
+    findings: list[str] = []
+    for template in sorted(TEMPLATES.glob("*.html")):
+        for number, line in enumerate(
+            template.read_text(encoding="utf-8").splitlines(), start=1
+        ):
+            for treffer in verdaechtig.finditer(line):
+                findings.append(f"{template.name}:{number}: {treffer.group(0)}")
+    assert not findings, (
+        "Diese Adressen stehen ohne `url_prefix` und verlassen damit hinter einem "
+        "Ingress-Proxy die Anwendung:\n" + "\n".join(findings)
+    )

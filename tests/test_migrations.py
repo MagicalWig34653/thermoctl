@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 import thermoctl.app as app_module
 from thermoctl.config import get_settings
+from thermoctl.db.models.lookup import PERMISSIONS
 from thermoctl.db.models.operations import ClusterClaim, Setting
 from thermoctl.db.models.zone import SetpointMode
 from thermoctl.services import cluster
@@ -703,3 +704,226 @@ def test_upgrade_head_against_an_already_current_database_is_a_quick_no_op(
     # Nowhere near the migration lock's own default timeout (60s) -- a
     # no-op run against an uncontended lock must not even come close.
     assert elapsed < 20, elapsed
+
+
+@pytest.mark.migration
+def test_existing_groups_keep_the_admin_interface_on_upgrade(
+    migrations_database_url: str,
+) -> None:
+    """Der eine Punkt, an dem diese Migration schiefgehen könnte.
+
+    Eine bestehende Installation hat ihre Gruppen nie als Mietergruppe
+    gekennzeichnet -- es gab das Feld nicht. Bekämen sie beim Upgrade `tenant`,
+    verlöre die laufende Anlage mit einem Aufruf von `alembic upgrade head` ihre
+    gesamte Verwaltung, ohne dass jemand etwas geändert hätte. Deshalb wird hier
+    eine Gruppe *vor* der Migration angelegt und danach nachgesehen.
+
+    Und zwar eine, deren Name nach Mieter klingt: die Migration darf ausdrücklich
+    nicht anhand des Namens klassifizieren -- ein Name ist kein Modell.
+    """
+    before = _alembic(migrations_database_url, "downgrade", "43aa18ba1c12")
+    assert before.returncode == 0, before.stderr
+
+    db_engine = create_engine(migrations_database_url)
+    try:
+        with db_engine.begin() as connection:
+            connection.execute(
+                text(
+                    "INSERT INTO access_group (name, description, is_builtin) "
+                    "VALUES ('Mieter', 'klingt nach Wohnung, ist aber Verwaltung', false)"
+                )
+            )
+
+        up = _alembic(migrations_database_url, "upgrade", "head")
+        assert up.returncode == 0, up.stderr
+        with db_engine.connect() as connection:
+            profile = connection.execute(
+                text("SELECT ui_profile FROM access_group WHERE name = 'Mieter'")
+            ).scalar_one()
+        assert profile == "admin"
+
+        down = _alembic(migrations_database_url, "downgrade", "43aa18ba1c12")
+        assert down.returncode == 0, down.stderr
+        up_again = _alembic(migrations_database_url, "upgrade", "head")
+        assert up_again.returncode == 0, up_again.stderr
+        with db_engine.begin() as connection:
+            connection.execute(text("DELETE FROM access_group WHERE name = 'Mieter'"))
+    finally:
+        db_engine.dispose()
+
+
+@pytest.mark.migration
+def test_absence_migration_keeps_existing_override_unassigned(
+    migrations_database_url: str,
+) -> None:
+    """Eine Übersteuerung, die es vor der Abwesenheit schon gab, gehört zu keiner.
+
+    Die Zuordnung `zone_override.absence_id` ist nullbar, damit genau das gilt.
+    Bekämen bestehende Zeilen beim Upgrade eine Klammer, ließe sich eine einzelne
+    Übersteuerung anschließend über "Abwesenheit beenden" mitbeenden, ohne dass
+    jemand sie je zu einer Abwesenheit erklärt hätte.
+    """
+    before = _alembic(migrations_database_url, "downgrade", "c4d18b7e2a95")
+    assert before.returncode == 0, before.stderr
+
+    db_engine = create_engine(migrations_database_url)
+    try:
+        with db_engine.begin() as connection:
+            mode_id = connection.execute(
+                text("SELECT id FROM operating_mode ORDER BY id LIMIT 1")
+            ).scalar_one()
+            source_id = connection.execute(
+                text("SELECT id FROM actor_source WHERE code = 'web'")
+            ).scalar_one()
+            connection.execute(
+                text(
+                    "INSERT INTO zone "
+                    "(name, display_name, operating_mode_id, sort_order, created_at, updated_at) "
+                    "VALUES ('absence-migration', 'Abwesenheit Migration', :mode_id, 0, "
+                    "'2026-09-07 08:00:00', '2026-09-07 08:00:00')"
+                ),
+                {"mode_id": mode_id},
+            )
+            zone_id = connection.execute(
+                text("SELECT id FROM zone WHERE name = 'absence-migration'")
+            ).scalar_one()
+            connection.execute(
+                text(
+                    "INSERT INTO zone_override "
+                    "(zone_id, temperature_c, starts_at, ends_at, created_at, source_id) "
+                    "VALUES (:zone_id, 17.0, '2026-09-07 08:00:00', "
+                    "'2026-09-08 08:00:00', '2026-09-07 08:00:00', :source_id)"
+                ),
+                {"zone_id": zone_id, "source_id": source_id},
+            )
+
+        up = _alembic(migrations_database_url, "upgrade", "head")
+        assert up.returncode == 0, up.stderr
+        with db_engine.connect() as connection:
+            absence_id = connection.execute(
+                text("SELECT absence_id FROM zone_override WHERE zone_id = :zone_id"),
+                {"zone_id": zone_id},
+            ).scalar_one()
+        assert absence_id is None
+
+        down = _alembic(migrations_database_url, "downgrade", "c4d18b7e2a95")
+        assert down.returncode == 0, down.stderr
+        up_again = _alembic(migrations_database_url, "upgrade", "head")
+        assert up_again.returncode == 0, up_again.stderr
+    finally:
+        db_engine.dispose()
+
+
+@pytest.mark.migration
+def test_the_report_permission_reaches_no_group_by_itself(
+    migrations_database_url: str,
+) -> None:
+    """Ein Recht, das eine Meldung nach außen auslöst, darf niemand geschenkt kriegen.
+
+    `control.arm` ging seinerzeit ausdrücklich an alle Gruppen mit `setting.manage`
+    -- dort war es die Fortsetzung eines Rechts, das dieselben Leute schon hatten.
+    Hier ist es das Gegenteil: eine bestehende Gruppe mit `zone.read` bekäme über
+    Nacht die Möglichkeit, den Webhook des Betreibers zu bedienen. Der Test hält
+    fest, dass die Migration genau das nicht tut.
+    """
+    before = _alembic(migrations_database_url, "downgrade", "c724de89a13f")
+    assert before.returncode == 0, before.stderr
+
+    db_engine = create_engine(migrations_database_url)
+    try:
+        with db_engine.begin() as connection:
+            connection.execute(
+                text(
+                    "INSERT INTO access_group (name, description, is_builtin) "
+                    "VALUES ('Bestandsgruppe', 'darf lesen', false)"
+                )
+            )
+            group_id = connection.execute(
+                text("SELECT id FROM access_group WHERE name = 'Bestandsgruppe'")
+            ).scalar_one()
+            read_id = connection.execute(
+                text("SELECT id FROM permission WHERE code = 'zone.read'")
+            ).scalar_one()
+            connection.execute(
+                text(
+                    "INSERT INTO group_permission (access_group_id, permission_id, zone_id) "
+                    "VALUES (:group_id, :permission_id, NULL)"
+                ),
+                {"group_id": group_id, "permission_id": read_id},
+            )
+
+        up = _alembic(migrations_database_url, "upgrade", "head")
+        assert up.returncode == 0, up.stderr
+        with db_engine.connect() as connection:
+            exists = connection.execute(
+                text("SELECT is_zone_scoped FROM permission WHERE code = 'report.create'")
+            ).scalar_one()
+            assigned = connection.execute(
+                text(
+                    "SELECT count(*) FROM group_permission gp "
+                    "JOIN permission p ON p.id = gp.permission_id "
+                    "WHERE p.code = 'report.create'"
+                )
+            ).scalar_one()
+        assert bool(exists) is True
+        assert assigned == 0
+
+        down = _alembic(migrations_database_url, "downgrade", "c724de89a13f")
+        assert down.returncode == 0, down.stderr
+        with db_engine.connect() as connection:
+            gone = connection.execute(
+                text("SELECT count(*) FROM permission WHERE code = 'report.create'")
+            ).scalar_one()
+        assert gone == 0
+        up_again = _alembic(migrations_database_url, "upgrade", "head")
+        assert up_again.returncode == 0, up_again.stderr
+        with db_engine.begin() as connection:
+            connection.execute(
+                text("DELETE FROM group_permission WHERE access_group_id = :group_id"),
+                {"group_id": group_id},
+            )
+            connection.execute(
+                text("DELETE FROM access_group WHERE name = 'Bestandsgruppe'")
+            )
+    finally:
+        db_engine.dispose()
+
+
+@pytest.mark.migration
+def test_every_permission_exists_after_a_full_upgrade(
+    migrations_database_url: str,
+) -> None:
+    """Nach `alembic upgrade head` steht **jedes** Recht aus `PERMISSIONS` in der
+    Tabelle -- sonst gibt es Seiten, die niemand öffnen kann.
+
+    Der Test hat einen konkreten Anlass. Die Seed-Revision
+    `3685e30419a4_nachschlagetabellen` spielte den Stand von damals über einen
+    *positionellen* Schnitt in die lebende Liste ein (`PERMISSIONS[:15]`). Beim
+    Einsortieren eines neuen Rechts in die Mitte rutschte `audit.read` aus dem
+    Schnitt: eine frisch eingerichtete Anlage hatte danach kein Konto mehr, das
+    Protokoll, Schaltprotokoll oder Relaisverschleiß öffnen konnte. Nichts schlug
+    dabei fehl -- weder die Migration noch die Einrichtung noch die Testsuite. Nur
+    drei Seiten antworteten jedem mit 403.
+
+    Gefunden hat es ein Browsertest, weil dort ein echter Server frisch eingerichtet
+    wird. Dieser Test hier findet dasselbe eine Ebene tiefer und ohne Browser.
+    """
+    up = _alembic(migrations_database_url, "upgrade", "head")
+    assert up.returncode == 0, up.stderr
+
+    db_engine = create_engine(migrations_database_url)
+    try:
+        with db_engine.connect() as connection:
+            vorhanden = {
+                row[0]
+                for row in connection.execute(text("SELECT code FROM permission"))
+            }
+    finally:
+        db_engine.dispose()
+
+    fehlend = {code for code, _beschreibung, _zonenbezogen in PERMISSIONS} - vorhanden
+    assert not fehlend, (
+        "Diese Rechte stehen in PERMISSIONS, legt aber keine Migration an: "
+        f"{sorted(fehlend)}. Ein neues Recht gehört ans **Ende** von PERMISSIONS "
+        "und braucht seine eigene Migration."
+    )

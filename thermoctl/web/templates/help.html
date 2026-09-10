@@ -1,0 +1,62 @@
+{% extends shell %}
+{% block title %}Was bedeuten die Anzeigen?{% endblock %}
+{% block content %}
+{#
+Reiner Erklärtext. Bewusst ohne jede Anlagendaten: die Seite braucht kein Recht,
+liest nichts aus der Datenbank und kann deshalb auch nichts über fremde Räume
+verraten.
+#}
+<h1 class="tc-h1">Was bedeuten die Anzeigen?</h1>
+
+<article class="tc-panel p-4 mb-3">
+    <h2 class="h5">Sollwert</h2>
+    <p>
+        Die Temperatur, die dein Raum gerade erreichen soll. Sie kommt aus dem
+        Zeitplan — oder, falls du gerade etwas geändert hast, aus deiner Änderung.
+        Darunter steht immer, woher der Wert stammt.
+    </p>
+</article>
+
+<article class="tc-panel p-4 mb-3">
+    <h2 class="h5">Heizt / wartet</h2>
+    <p>
+        „Heizt" heißt: dein Raum ist kühler als der Sollwert und wird gerade
+        erwärmt. „Wartet" heißt: der Sollwert ist erreicht. Beides wechselt im
+        Tagesverlauf mehrfach; das ist normal und kein Fehler.
+    </p>
+</article>
+
+<article class="tc-panel p-4 mb-3">
+    <h2 class="h5">Zeitplan</h2>
+    <p>
+        Der Wochenplan legt fest, ab wann es morgens warm und ab wann es abends
+        kühler sein soll. Er gilt dauerhaft, Woche für Woche.
+    </p>
+</article>
+
+<article class="tc-panel p-4 mb-3">
+    <h2 class="h5">Normale Temperatur ändern</h2>
+    <p>
+        Die Knöpfe <span class="tc-key">−</span> und <span class="tc-key">+</span>
+        ändern die Temperatur des gerade laufenden Abschnitts <strong>dauerhaft</strong>.
+        Wer also abends auf 21,5 °C stellt, hat ab jetzt jeden Abend 21,5 °C.
+    </p>
+</article>
+
+<article class="tc-panel p-4 mb-3">
+    <h2 class="h5">Für eine Weile wärmer</h2>
+    <p>
+        Gilt nur vorübergehend und endet von selbst. Danach zählt wieder der
+        Zeitplan — der Wochenplan bleibt dabei unverändert.
+    </p>
+</article>
+
+<article class="tc-panel p-4">
+    <h2 class="h5">Messwert möglicherweise nicht aktuell</h2>
+    <p>
+        Der Temperaturfühler hat sich länger nicht gemeldet. Die Heizung regelt
+        weiter, aber die angezeigte Zahl kann älter sein als sie aussieht. Hält der
+        Hinweis über Stunden an, ist meist die Batterie des Fühlers leer.
+    </p>
+</article>
+{% endblock %}

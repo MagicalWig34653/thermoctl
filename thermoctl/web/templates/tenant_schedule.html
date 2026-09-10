@@ -1,0 +1,224 @@
+{% extends "base_tenant.html" %}
+{% block title %}Zeitplan{% endblock %}
+{% block content %}
+{#
+Der Mieter-Zeitplan: dieselben echten Schaltpunkte wie der Editor der
+Anlagensicht, nur eine einfachere Oberfläche darauf. Jede Änderung läuft über
+dieselben Domänenfunktionen (`domain.schedule`) -- es gibt keine zweite
+Zeitplanmechanik.
+
+Die Raumauswahl enthält ausschließlich sichtbare Räume, und jede Zonen-Id aus
+einem Formular wird serverseitig erneut geprüft. Ein Wert, den ein Browser
+selbst gesetzt hat, ist hier kein Nachweis für gar nichts.
+#}
+<div class="tc-hero">
+    <p class="tc-eyebrow">Zeitplan</p>
+    <h1 class="tc-h1">{{ zone.display_name }}: wann soll es warm sein?</h1>
+    <p class="t-quiet">
+        Du legst nur deine Komfortzeiten fest. Alles Weitere übernimmt die Heizung.
+    </p>
+</div>
+
+{% if zones|length > 1 %}
+<nav class="tc-roomtabs" aria-label="Raum wählen">
+    {% for other in zones %}
+    <a class="tc-roomtab{{ ' tc-here' if other.id == zone.id }}"
+       href="{{ url_prefix }}/schedule?zone={{ other.id }}"
+       {% if other.id == zone.id %}aria-current="page"{% endif %}>{{ other.display_name }}</a>
+    {% endfor %}
+</nav>
+{% endif %}
+
+{% if gesture_error %}<div class="alert alert-warning" role="alert">{{ gesture_error }}</div>{% endif %}
+{% if day_error %}<div class="alert alert-warning" role="alert">{{ day_error }}</div>{% endif %}
+{% if gesture_notice %}
+<div class="alert alert-success d-flex align-items-center gap-3" role="status">
+    <span>{{ gesture_notice }}</span>
+    {% if undo_token %}
+    <form method="post" action="{{ url_prefix }}/schedule/undo">
+        <input type="hidden" name="zone_id" value="{{ zone.id }}">
+        <input type="hidden" name="undo_token" value="{{ undo_token }}">
+        <button class="btn btn-sm btn-outline-secondary" type="submit">Rückgängig</button>
+    </form>
+    {% endif %}
+</div>
+{% endif %}
+
+<section class="tc-panel p-3 mb-3">
+    <h2 class="h5">Die nächsten 24 Stunden</h2>
+    <p class="t-quiet small">
+        So würde die Temperatur tatsächlich laufen — einschließlich einer gerade
+        laufenden vorübergehenden Änderung.
+    </p>
+    {#
+    Die Vorschau kommt aus `domain.schedule.schedule_forecast` -- derselben
+    Funktion, nach der zur Laufzeit geregelt wird. Sie kann deshalb nie etwas
+    zeigen, was nicht tatsächlich einträte.
+    #}
+    <div class="tc-forecast">
+        {% for bar in forecast %}
+        <div class="tc-forecast-part{{ ' tc-here' if bar.is_current }}"
+             style="flex: {{ bar.share_percent }};
+             background: color-mix(in srgb, var(--warmth) {{ (bar.warmth * 100)|round|int }}%, var(--cool-area));">
+            <span class="tc-forecast-label">{{ bar.mode_name or "Sollwert" }}</span>
+            <span class="t-value small">{{ bar.temperature_c|grad }} °C · {{ bar.label }}</span>
+        </div>
+        {% endfor %}
+    </div>
+</section>
+
+<section class="tc-panel p-3">
+    <h2 class="h5">Deine Woche</h2>
+    {#
+    Wer den Raum nur ansehen darf, soll das lesen können -- eine Seite ohne
+    Bedienelemente sieht sonst aus, als ließe sich der Zeitplan grundsätzlich nicht
+    ändern.
+    #}
+    {% if not may_edit %}
+    <p class="t-quiet small">
+        Diesen Raum kannst du ansehen, aber nicht ändern.
+        {% if adopt_targets %}
+        Ändern lässt sich {{ adopt_targets | map(attribute="display_name") | join(", ") }}.
+        {% endif %}
+    </p>
+    {% endif %}
+    {#
+    Der Satz beschreibt einen Verlauf. Gibt es keinen, wäre er eine Behauptung über
+    etwas, das nicht da ist -- dann steht dort, was tatsächlich gilt.
+    #}
+    {% if day_points.values() | map("length") | sum %}
+    <p class="t-quiet small">Warm am Morgen und Abend, nachts automatisch kühler.</p>
+    {% else %}
+    <p class="t-quiet small">
+        Für diesen Raum ist noch keine Schaltzeit festgelegt. Bis dahin hält die
+        Heizung ihn auf dem Frostschutzwert.
+    </p>
+    {% endif %}
+    {% for day, day_name in weekdays %}
+    {% set points = day_points.get(day, []) %}
+    <div class="tc-dayrow">
+        <span class="tc-dayname">{{ day_name }}</span>
+        <div class="tc-daybar" role="img"
+             aria-label="Verlauf am {{ day_name }}">
+            {% for segment in segments.get(day, []) %}
+            <span class="tc-daybar-part"
+                  style="left: {{ segment.start_minute * 100 / 1440 }}%;
+                         width: {{ (segment.end_minute - segment.start_minute) * 100 / 1440 }}%;
+                         {#
+                         Dieselbe zweiseitige Skala wie die Tagesspur der
+                         Startseite: unter der Mitte kühl, darüber warm, und die
+                         Sättigung sagt, wie deutlich. Ein einseitiges Mischen ließ
+                         die Nachtstunden hier warm aussehen -- drei Ansichten
+                         desselben Zeitplans dürfen nicht drei Sprachen sprechen.
+                         #}
+                         background: color-mix(in oklab,
+                             var({{ '--warmth' if warmth.get(segment.mode_id, 0.5) >= 0.5 else '--cool' }})
+                             {{ (40 + (warmth.get(segment.mode_id, 0.5) - 0.5)|abs * 90)|round|int }}%, var(--surface));"></span>
+            {% endfor %}
+        </div>
+        <span class="tc-daytimes t-value">
+            {% if points %}
+            {% for point in points %}{{ "%02d:%02d"|format(point.minute_of_day // 60, point.minute_of_day % 60) }}{% if not loop.last %} · {% endif %}{% endfor %}
+            {% else %}
+            keine Schaltzeit
+            {% endif %}
+        </span>
+        {% if may_edit and points|length == 2 %}
+        <details class="tc-dayedit">
+            <summary>Bearbeiten</summary>
+            <form method="post" action="{{ url_prefix }}/schedule/day" class="tc-dayform">
+                <input type="hidden" name="zone_id" value="{{ zone.id }}">
+                <input type="hidden" name="weekday" value="{{ day }}">
+                {% for point in points %}
+                <input type="hidden" name="point_id_{{ loop.index }}" value="{{ point.id }}">
+                <label class="form-label" for="zeit-{{ day }}-{{ loop.index }}">
+                    {{ modes.get(point.setpoint_mode_id, "Abschnitt") }} ab
+                </label>
+                <input class="form-control" type="time" id="zeit-{{ day }}-{{ loop.index }}"
+                       name="time_{{ loop.index }}"
+                       value="{{ "%02d:%02d"|format(point.minute_of_day // 60, point.minute_of_day % 60) }}">
+                {% endfor %}
+                <button class="btn btn-sm btn-primary" type="submit">Speichern</button>
+            </form>
+            <form method="post" action="{{ url_prefix }}/schedule/copy-day" class="tc-dayform">
+                <input type="hidden" name="zone_id" value="{{ zone.id }}">
+                <input type="hidden" name="weekday" value="{{ day }}">
+                <button class="btn btn-sm btn-outline-secondary" type="submit"
+                        name="scope" value="workdays">Auf Mo–Fr übertragen</button>
+                <button class="btn btn-sm btn-outline-secondary" type="submit"
+                        name="scope" value="all">Auf alle Tage übertragen</button>
+            </form>
+        </details>
+        {% elif may_edit and not points and empty_day_modes %}
+        {#
+        Ein Tag ohne jede Schaltzeit -- bei einem frisch angelegten Raum der
+        Normalfall. Dieselben zwei Felder wie oben, nur legen sie an statt zu
+        verschieben. Welche zwei Modi das sind, entscheidet der Server; das
+        Formular schickt nur die Zeiten.
+        #}
+        <details class="tc-dayedit">
+            <summary>Einrichten</summary>
+            <form method="post" action="{{ url_prefix }}/schedule/day" class="tc-dayform">
+                <input type="hidden" name="zone_id" value="{{ zone.id }}">
+                <input type="hidden" name="weekday" value="{{ day }}">
+                {% for mode_id, mode_name in empty_day_modes %}
+                <label class="form-label" for="neu-{{ day }}-{{ loop.index }}">
+                    {{ mode_name }} ab
+                </label>
+                <input class="form-control" type="time" id="neu-{{ day }}-{{ loop.index }}"
+                       name="time_{{ loop.index }}" value="{{ suggested_times[loop.index0] }}">
+                {% endfor %}
+                <button class="btn btn-sm btn-primary" type="submit">Einrichten</button>
+            </form>
+        </details>
+        {% elif may_edit and not points %}
+        <span class="t-quiet small">
+            Für diesen Raum sind noch keine zwei Temperaturen hinterlegt — ohne sie
+            gibt es nichts, wozwischen ein Tag umschalten könnte.
+        </span>
+        {% elif may_edit %}
+        <span class="t-quiet small">
+            Dieser Tag hat {{ points|length }} Schaltzeiten und lässt sich hier nicht
+            vereinfacht bearbeiten.
+        </span>
+        {% endif %}
+    </div>
+    {% endfor %}
+</section>
+
+{#
+Gezeigt, sobald es überhaupt einen Raum gibt, in den geschrieben werden darf --
+unabhängig davon, ob der gerade angezeigte einer davon ist. Der angezeigte Raum ist
+hier die Quelle und braucht nur Leserecht.
+#}
+{% if adopt_targets %}
+<section class="tc-panel p-3 mt-3">
+    <h2 class="h5">Auf einen anderen Raum übernehmen</h2>
+    <p class="t-quiet small">
+        Einmal einstellen und den Wochenplan auf einen weiteren eigenen Raum
+        übertragen. Der bisherige Plan dieses Raums wird dabei ersetzt.
+    </p>
+    {#
+    Die Auswahl enthält ausschließlich Räume aus `visible_zones`; der Server
+    prüft die gewählte Id danach erneut. Ein fremder Raum kann hier weder
+    auftauchen noch durch ein verändertes Formularfeld getroffen werden.
+    #}
+    <form method="post" action="{{ url_prefix }}/schedule/adopt" class="d-flex gap-2 flex-wrap">
+        <input type="hidden" name="source_id" value="{{ zone.id }}">
+        <label class="visually-hidden" for="uebernehmen-ziel">Zielraum</label>
+        <select class="form-select w-auto" id="uebernehmen-ziel" name="zone_id">
+            {% for other in adopt_targets %}
+            <option value="{{ other.id }}">{{ other.display_name }}</option>
+            {% endfor %}
+        </select>
+        <button class="btn btn-outline-secondary" type="submit">Übernehmen</button>
+    </form>
+</section>
+{% endif %}
+
+<p class="tc-tip">
+    <strong>Vorübergehende Änderungen bleiben getrennt.</strong>
+    „Für eine Weile wärmer“ verändert diesen Wochenplan nicht. Nach Ablauf gilt
+    automatisch wieder der Zeitplan.
+</p>
+{% endblock %}

@@ -23,6 +23,8 @@ from thermoctl.domain.modes import DomainError
 from thermoctl.domain.schedule import (
     MINUTES_PER_WEEK,
     DaySegment,
+    NextSwitch,
+    OverrideAlreadyRunning,
     ScheduleError,
     Setpoint,
     cancel_override,
@@ -35,10 +37,13 @@ from thermoctl.domain.schedule import (
     current_or_upcoming_vacation,
     current_point,
     frost_protection_temperature,
+    jump_to_next_switch,
     move_schedule_point,
     next_point,
+    next_switch,
     paint_schedule_interval,
     resolved_setpoint,
+    running_override,
     running_vacation,
     schedule_forecast,
     schedule_snapshot,
@@ -1821,3 +1826,324 @@ def test_schedule_forecast_ignores_a_running_vacation_when_the_zone_is_off(
     result = schedule_forecast(session, zone, now)
     assert len(result) == 1
     assert result[0].setpoint.temperature_c == Decimal("16.0")
+
+
+# --- next_switch / jump_to_next_switch --------------------------------------------
+#
+# "Zur nächsten Schaltzeit springen": die nächste reguläre Zeitplanphase gilt sofort,
+# aber nur bis zu dem Moment, an dem sie ohnehin regulär begonnen hätte. Der
+# Wochenplan bleibt dabei unangetastet -- jeder Test, der eine Übersteuerung anlegt,
+# prüft deshalb zusätzlich, dass die gespeicherten Schaltpunkte unverändert sind.
+
+
+def _override_count(session: Session, zone_id: int) -> int:
+    return len(session.query(ZoneOverride).filter_by(zone_id=zone_id).all())
+
+
+def test_jump_to_next_switch_targets_the_next_phases_mode_and_temperature(
+    session: Session,
+) -> None:
+    zone = zone_with_schedule(
+        session,
+        "sprung-modus",
+        points=[(1, 360, "tag", Decimal("21.0")), (1, 1200, "nacht", Decimal("18.0"))],
+    )
+    # Montag 10:00 lokal -- mitten in der Tagphase, die ab 06:00 gilt.
+    now = datetime(2026, 8, 31, 8, 0)
+
+    entry = jump_to_next_switch(session, zone, now=now)
+
+    assert entry.temperature_c == Decimal("18.0")
+    assert entry.zone_id == zone.id
+
+
+def test_jump_to_next_switch_ends_exactly_at_the_switch_second(session: Session) -> None:
+    zone = zone_with_schedule(
+        session,
+        "sprung-endzeit",
+        points=[(1, 360, "tag", Decimal("21.0")), (1, 1200, "nacht", Decimal("18.0"))],
+    )
+    now = datetime(2026, 8, 31, 8, 0)
+
+    entry = jump_to_next_switch(session, zone, now=now)
+
+    # Montag 20:00 lokal (Sommerzeit, UTC+2) -> 18:00 UTC.
+    assert entry.ends_at == datetime(2026, 8, 31, 18, 0)
+
+
+def test_jump_to_next_switch_leaves_the_weekly_schedule_untouched(session: Session) -> None:
+    zone = zone_with_schedule(
+        session,
+        "sprung-unveraendert",
+        points=[(1, 360, "tag", Decimal("21.0")), (1, 1200, "nacht", Decimal("18.0"))],
+    )
+    before = _stored_snapshot(session, zone.id)
+
+    jump_to_next_switch(session, zone, now=datetime(2026, 8, 31, 8, 0))
+
+    after = _stored_snapshot(session, zone.id)
+    assert after == before
+
+
+def test_jump_to_next_switch_crosses_a_day_boundary(session: Session) -> None:
+    zone = zone_with_schedule(
+        session,
+        "sprung-tagesgrenze",
+        points=[(1, 1320, "nacht", Decimal("18.0")), (2, 360, "tag", Decimal("21.0"))],
+    )
+    # Montag 23:00 lokal -- in der Nachtphase, die ab 22:00 gilt.
+    now = datetime(2026, 8, 31, 21, 0)
+
+    entry = jump_to_next_switch(session, zone, now=now)
+
+    assert entry.temperature_c == Decimal("21.0")
+    # Dienstag 06:00 lokal -> 04:00 UTC.
+    assert entry.ends_at == datetime(2026, 9, 1, 4, 0)
+
+
+def test_jump_to_next_switch_crosses_a_weekday_change(session: Session) -> None:
+    zone = zone_with_schedule(
+        session,
+        "sprung-wochentag",
+        points=[(7, 1320, "nacht", Decimal("18.0")), (1, 360, "tag", Decimal("21.0"))],
+    )
+    # Sonntag 23:00 lokal -- in der Nachtphase, die ab 22:00 gilt.
+    now = datetime(2026, 9, 6, 21, 0)
+
+    entry = jump_to_next_switch(session, zone, now=now)
+
+    assert entry.temperature_c == Decimal("21.0")
+    # Montag 06:00 lokal -> 04:00 UTC.
+    assert entry.ends_at == datetime(2026, 9, 7, 4, 0)
+
+
+def test_jump_to_next_switch_without_a_schedule_fails_and_creates_nothing(
+    session: Session,
+) -> None:
+    zone = zone_with_schedule(session, "sprung-ohne-plan", points=[])
+
+    with pytest.raises(ScheduleError, match="kein Zeitplan"):
+        jump_to_next_switch(session, zone, now=datetime(2026, 8, 31, 8, 0))
+
+    assert _override_count(session, zone.id) == 0
+
+
+def test_jump_to_next_switch_without_a_setpoint_for_the_next_mode_fails(
+    session: Session,
+) -> None:
+    zone = zone_with_schedule(
+        session, "sprung-ohne-sollwert", points=[(1, 360, "tag", Decimal("21.0"))]
+    )
+    # Ein Modus ohne hinterlegte Temperatur für diese Zone -- die nächste Phase
+    # kann so keinen Sollwert liefern.
+    leerer_modus = create_mode(session, "ohne-temperatur")
+    session.add(SchedulePoint(
+        zone_id=zone.id, weekday=1, minute_of_day=1200, setpoint_mode_id=leerer_modus.id,
+    ))
+    session.flush()
+    now = datetime(2026, 8, 31, 8, 0)
+
+    with pytest.raises(ScheduleError):
+        jump_to_next_switch(session, zone, now=now)
+
+    assert _override_count(session, zone.id) == 0
+
+
+def test_jump_to_next_switch_with_a_running_override_refuses_a_second_one(
+    session: Session,
+) -> None:
+    zone = zone_with_schedule(
+        session,
+        "sprung-laeuft-schon",
+        points=[(1, 360, "tag", Decimal("21.0")), (1, 1200, "nacht", Decimal("18.0"))],
+        override=(Decimal("24.0"), None),
+    )
+    now = datetime(2026, 8, 31, 8, 0)
+    laufend = running_override(session, zone, now)
+    assert laufend is not None
+
+    with pytest.raises(OverrideAlreadyRunning) as exc_info:
+        jump_to_next_switch(session, zone, now=now)
+
+    assert exc_info.value.running_override.id == laufend.id
+    assert _override_count(session, zone.id) == 1
+
+
+def test_jump_to_next_switch_with_replace_ends_the_old_override_first(
+    session: Session,
+) -> None:
+    zone = zone_with_schedule(
+        session,
+        "sprung-ersetzen",
+        points=[(1, 360, "tag", Decimal("21.0")), (1, 1200, "nacht", Decimal("18.0"))],
+        override=(Decimal("24.0"), None),
+    )
+    now = datetime(2026, 8, 31, 8, 0)
+    alte = running_override(session, zone, now)
+    assert alte is not None
+
+    neue = jump_to_next_switch(session, zone, now=now, replace=True)
+
+    session.refresh(alte)
+    assert alte.cancelled_at is not None
+    assert neue.id != alte.id
+    assert running_override(session, zone, now) is not None
+    assert running_override(session, zone, now).id == neue.id
+    assert neue.temperature_c == Decimal("18.0")
+
+
+def test_jump_to_next_switch_stores_the_switch_time_as_utc_for_berlin(
+    session: Session,
+) -> None:
+    """`zone_with_schedule` setzt die Anlage auf Europe/Berlin -- die Endzeit muss
+    trotzdem als UTC gespeichert sein und zur lokalen Schaltzeit passen (Sommerzeit,
+    UTC+2)."""
+    zone = zone_with_schedule(
+        session,
+        "sprung-zeitzone",
+        points=[(1, 360, "tag", Decimal("21.0")), (1, 900, "nacht", Decimal("18.0"))],
+    )
+    now = datetime(2026, 8, 31, 8, 0)
+
+    entry = jump_to_next_switch(session, zone, now=now)
+
+    # Montag 15:00 lokal (900 Minuten) -> 13:00 UTC.
+    assert entry.ends_at == datetime(2026, 8, 31, 13, 0)
+
+
+def test_next_switch_writes_nothing_and_matches_the_subsequent_jump(
+    session: Session,
+) -> None:
+    zone = zone_with_schedule(
+        session,
+        "vorschau-liest-nur",
+        points=[(1, 360, "tag", Decimal("21.0")), (1, 1200, "nacht", Decimal("18.0"))],
+    )
+    now = datetime(2026, 8, 31, 8, 0)
+
+    before = _override_count(session, zone.id)
+    preview = next_switch(session, zone, now)
+    assert isinstance(preview, NextSwitch)
+    assert _override_count(session, zone.id) == before
+
+    entry = jump_to_next_switch(session, zone, now=now)
+
+    assert preview.at == entry.ends_at
+    assert preview.setpoint.temperature_c == entry.temperature_c
+
+
+def test_next_switch_ignores_a_running_override(session: Session) -> None:
+    """Der eigentliche Grund, warum `next_switch` nicht `resolved_setpoint`
+    benutzt: eine laufende Übersteuerung auf 24 °C darf das Ziel nicht verfälschen
+    -- es muss der Zeitplanwert der nächsten Phase bleiben."""
+    zone = zone_with_schedule(
+        session,
+        # Kurz halten: `zone_with_schedule` baut daraus `frost-<name>` für
+        # `setpoint_mode.code`, und die Spalte fasst 32 Zeichen. Unter SQLite
+        # ginge ein längerer Name durch, MariaDB lehnt ihn ab -- genau der Fall,
+        # für den die Suite gegen beide Datenbanken läuft.
+        "vorschau-ohne-ueberst",
+        points=[(1, 360, "tag", Decimal("21.0")), (1, 1200, "nacht", Decimal("18.0"))],
+        override=(Decimal("24.0"), None),
+    )
+    now = datetime(2026, 8, 31, 8, 0)
+
+    preview = next_switch(session, zone, now)
+
+    assert preview is not None
+    assert preview.setpoint.temperature_c == Decimal("18.0")
+
+
+def test_next_switch_does_not_skip_a_phase_that_lasts_a_single_minute(
+    session: Session,
+) -> None:
+    """Der Grund für den Abstand von einer Sekunde statt einer Minute.
+
+    Schaltpunkte sind minutengenau, zwei davon können also unmittelbar
+    aufeinanderfolgen. Wird der Sollwert eine Minute nach dem Schaltzeitpunkt
+    abgefragt, liegt die Abfrage bereits in der übernächsten Phase -- der Sprung zöge
+    dann den falschen Wert vor, und zwar lautlos: es entstünde eine gültige
+    Übersteuerung mit einer Temperatur, die zu diesem Zeitpunkt gar nicht gilt.
+    """
+    zone = zone_with_schedule(
+        session,
+        "minutenphase",
+        [
+            (1, 6 * 60, "nacht", Decimal("18.0")),
+            (1, 8 * 60, "kurz", Decimal("23.0")),
+            (1, 8 * 60 + 1, "spaeter", Decimal("20.0")),
+        ],
+    )
+    # Montag, 07:00 Ortszeit (Europe/Berlin, Sommerzeit) = 05:00 UTC.
+    result = next_switch(session, zone, datetime(2026, 8, 31, 5, 0))
+    assert result is not None
+    assert result.setpoint.temperature_c == Decimal("23.0")
+
+
+def test_an_expired_override_gives_way_to_an_older_one_that_still_runs(
+    session: Session,
+) -> None:
+    """Zwei sich überlappende Übersteuerungen: läuft die jüngere ab, übernimmt wieder
+    die ältere -- nicht der Zeitplan.
+
+    Der Fall ist mit der Abwesenheit zum Normalfall geworden: sie legt je Raum eine
+    lange Absenkung an, und wer während seiner Abwesenheit einen Raum kurz aufheizt,
+    hat danach zwei Zeilen übereinander. Bis v0.9.0 nahm `_running_override` die
+    jüngste *begonnene* Zeile ohne Rücksicht auf ihr Ende; war sie abgelaufen, gab
+    `_override_setpoint` `None` zurück, ohne auf die ältere zurückzufallen. Die
+    Wohnung wurde dann für den **Rest der Abwesenheit** normal beheizt, obwohl die
+    Absenkung noch lief -- und nichts sagte es an.
+    """
+    zone = zone_with_schedule(
+        session,
+        "ueberlappung",
+        points=[(1, 360, "tag", Decimal("21.0")), (1, 1200, "nacht", Decimal("18.0"))],
+    )
+    now = datetime(2026, 8, 31, 8, 0)
+    # Die lange Absenkung, wie eine Abwesenheit sie anlegt.
+    create_override(session, zone, Decimal("17.0"), now + timedelta(days=2), now=now)
+    # Eine Minute später kurz wärmer, bis 11:00.
+    create_override(
+        session, zone, Decimal("23.0"), now + timedelta(hours=1),
+        now=now + timedelta(minutes=1),
+    )
+
+    waehrend = resolved_setpoint(session, zone, now + timedelta(minutes=30))
+    assert waehrend.temperature_c == Decimal("23.0")
+
+    danach = resolved_setpoint(session, zone, now + timedelta(hours=2))
+    assert danach.temperature_c == Decimal("17.0"), (
+        "Nach Ablauf der kurzen Übersteuerung muss die noch laufende Absenkung "
+        "wieder gelten -- nicht der Zeitplan."
+    )
+
+
+def test_the_forecast_shows_the_older_override_taking_over_again(
+    session: Session,
+) -> None:
+    """Dieselbe Aussage in der Vorschau: sie darf nach dem Ende der kurzen
+    Übersteuerung nicht den Zeitplan zeigen, wenn in Wahrheit die Absenkung
+    weiterläuft -- sonst kündigt sie etwas an, das nie eintritt."""
+    zone = zone_with_schedule(
+        session,
+        "ueberlappung-vorschau",
+        points=[(1, 360, "tag", Decimal("21.0")), (1, 1200, "nacht", Decimal("18.0"))],
+    )
+    now = datetime(2026, 8, 31, 8, 0)
+    create_override(session, zone, Decimal("17.0"), now + timedelta(days=2), now=now)
+    create_override(
+        session, zone, Decimal("23.0"), now + timedelta(hours=1),
+        now=now + timedelta(minutes=1),
+    )
+
+    # Zwei Minuten später: da läuft die kurze Übersteuerung tatsächlich schon (sie
+    # beginnt eine Minute nach `now`). Bei `now` selbst hätte sie noch gar nicht
+    # begonnen, und die Vorschau zeigte zu Recht durchgehend die Absenkung.
+    segments = schedule_forecast(session, zone, now + timedelta(minutes=2))
+    spaeter = [
+        segment for segment in segments if segment.starts_at >= now + timedelta(hours=1)
+    ]
+    assert spaeter, "Die Vorschau muss über das Ende der kurzen Übersteuerung hinausreichen."
+    assert all(
+        segment.setpoint.temperature_c == Decimal("17.0") for segment in spaeter
+    ), [str(segment.setpoint.temperature_c) for segment in spaeter]

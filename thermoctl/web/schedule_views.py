@@ -38,13 +38,21 @@ from thermoctl.domain.schedule import (
 )
 from thermoctl.domain.time import local_time
 from thermoctl.web import templates, warmth_fraction
+from thermoctl.web.guards import admin_ui_only
 from thermoctl.web.urls import prefixed
 
 # `include_in_schema=False`: the OpenAPI description is the contract of the REST
 # interface. These routes deliver HTML for humans, and in the interface under
 # /docs there would otherwise be a form route next to every real endpoint whose
 # 'Try it out' triggers a real change.
-router = APIRouter(dependencies=[Depends(csrf_protection)], include_in_schema=False)
+# `admin_ui_only`: der vollständige Wochenplan-Editor gehört zur Anlagensicht. Die
+# Mieteroberfläche hat eine eigene, bewusst einfachere Ansicht auf dieselben Daten
+# (`web/tenant_views.py`), die dieselben Domänenfunktionen ruft -- keine zweite
+# Fassung der Zeitplanlogik, aber auch kein Mieter im Editor der Anlage.
+router = APIRouter(
+    dependencies=[Depends(csrf_protection), Depends(admin_ui_only)],
+    include_in_schema=False,
+)
 
 WEEKDAYS = (
     (1, "Montag"),

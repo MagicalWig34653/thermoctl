@@ -1,6 +1,7 @@
-{% extends "base.html" if not is_htmx else "empty.html" %}
+{% extends "base_admin.html" if not is_htmx else "empty.html" %}
 {% from "form.html" import text_field, number_field, toggle, error_notice %}
 {% block title %}Kiosk-Tokens – thermoctl{% endblock %}
+{% block page_title %}Kiosk-Tokens{% endblock %}
 {% block content %}
 <section id="kiosk-token-list">
     <h1 class="mb-1">Kiosk-Tokens</h1>

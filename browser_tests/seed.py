@@ -24,6 +24,7 @@ from thermoctl.db.models.identity import User
 from thermoctl.db.models.measurement import Measurement
 from thermoctl.db.models.schedule import SchedulePoint
 from thermoctl.db.models.zone import SetpointMode, Zone, ZoneSetpoint
+from thermoctl.domain.ui_profile import WebUiProfile
 
 
 def create_login_user(
@@ -35,6 +36,22 @@ def create_login_user(
     HTTP test suite, which never runs the login form, but useless here.
     """
     user = user_with_permissions(session, username, permissions)
+    user.password_hash = hash_password(password)
+    session.flush()
+    return user
+
+
+def create_login_tenant_user(
+    session: Session, username: str, password: str, permissions: list[tuple[str, int | None]]
+) -> User:
+    """Wie ``create_login_user``, nur mit Mieterprofil (``ui_profile=TENANT``).
+
+    Eigene, schmale Funktion statt eines zusätzlichen Arguments an
+    ``create_login_user``: dessen Signatur wird von etlichen bestehenden Tests
+    genutzt, und das Profil ist ohnehin eine vom Recht unabhängige Eigenschaft der
+    Gruppe (siehe ``thermoctl.domain.ui_profile``), nicht der einzelnen Berechtigung.
+    """
+    user = user_with_permissions(session, username, permissions, ui_profile=WebUiProfile.TENANT)
     user.password_hash = hash_password(password)
     session.flush()
     return user

@@ -108,3 +108,47 @@ def test_template_project_classes_have_css_rules() -> None:
         f"{name}: {', '.join(sorted(used[name]))}" for name in sorted(used.keys() - defined)
     ]
     assert not missing, "Project classes without a CSS rule:\n" + "\n".join(missing)
+
+
+def test_no_emoji_in_any_of_our_own_interface_files() -> None:
+    """Die neue Oberfläche kommt ohne Emojis aus -- Arbeitsanweisung §7.
+
+    Ein Emoji ist eine Aussage, die je nach Schriftart, Betriebssystem und
+    Vorlesewerkzeug etwas anderes bedeutet, und ein Vorlesewerkzeug spricht es als
+    Namen aus ("Feuer", "Warnzeichen") mitten im Satz. Zustände tragen hier
+    stattdessen Text, CSS-Formen oder lokale SVGs.
+
+    Die mitgelieferten Fremdbibliotheken unter `static/vendor/` sind ausgenommen:
+    ihr Inhalt ist nicht unsere Aussage, und ändern könnten wir ihn ohnehin nicht,
+    ohne die Herkunft zu verlieren (siehe `static/HERKUNFT.md`).
+    """
+    # Die Blöcke, in denen Emoji und emojiartige Piktogramme tatsächlich liegen.
+    # Bewusst **nicht** "alles über U+2000": in diesem Bereich stehen auch die
+    # typografischen Anführungszeichen, der Gedankenstrich, das Gradzeichen und die
+    # einfachen Richtungspfeile (U+2190–U+21FF), die im ASCII-Anlagenbild als
+    # Verbindungslinien gebraucht werden und keine Aussage tragen, die ein
+    # Vorlesewerkzeug falsch benennen könnte.
+    emoji = re.compile(
+        "[\U0001F000-\U0001FAFF"   # Emoji im eigentlichen Sinn
+        "\u2600-\u27BF"            # Verschiedene Symbole und Dingbats (☀ … ➿)
+        "\u2B00-\u2BFF"            # Zusätzliche Pfeile und geometrische Formen
+        "\uFE0F]"                   # Variantenselektor "als Emoji darstellen"
+    )
+    roots = [
+        TEMPLATES,
+        STYLESHEET.parent,
+    ]
+    findings: list[str] = []
+    for root in roots:
+        for path in sorted(root.rglob("*")):
+            if not path.is_file() or "vendor" in path.parts:
+                continue
+            if path.suffix not in {".html", ".css", ".js", ".svg"}:
+                continue
+            for number, line in enumerate(
+                path.read_text(encoding="utf-8").splitlines(), start=1
+            ):
+                found = emoji.findall(line)
+                if found:
+                    findings.append(f"{path.name}:{number}: {''.join(found)}")
+    assert not findings, "Emoji in der Oberfläche:\n" + "\n".join(findings)

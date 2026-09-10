@@ -6,8 +6,10 @@ from sqlalchemy.orm import Session
 
 from thermoctl.db.base import utcnow
 from thermoctl.db.models.credential import SetupToken
-from thermoctl.db.models.identity import AccessGroup, User
+from thermoctl.db.models.identity import AccessGroup, GroupPermission, User
 from thermoctl.db.models.operations import Setting
+from thermoctl.domain.authz import principal_for_user
+from thermoctl.domain.ui_profile import WebUiProfile
 from thermoctl.setup import (
     SETUP_TOKEN_LIFETIME,
     create_setup_token,
@@ -52,9 +54,52 @@ def test_setup_creates_the_administrator_groups_and_settings(client: TestClient,
     assert response.status_code == 303
     assert session.query(User).count() == 1
     assert {g.name for g in session.query(AccessGroup)} == {
-        "Verwaltung", "Bedienung", "Nur lesen", "Integration"
+        "Verwaltung", "Bedienung", "Nur lesen", "Integration", "Wohnung"
     }
     assert session.get(Setting, 1) is not None
+
+
+def test_setup_leaves_the_first_user_in_the_admin_interface(
+    client: TestClient, session: Session
+) -> None:
+    """Die Einrichtung darf niemanden in der Mieteroberfläche zurücklassen.
+
+    Der erste Benutzer ist der einzige, der die Anlage danach überhaupt einrichten
+    kann. Landete er in der Wohnungssicht, wäre die frisch aufgesetzte Installation
+    für ihre eigene Verwaltung unerreichbar.
+    """
+    marker = create_setup_token(session)
+    client.post(
+        "/setup",
+        data={"username": "lino", "display_name": "Lino", "password": "passwort-lang-genug",
+              "timezone": "Europe/Berlin", "setup_token": marker},
+        follow_redirects=False,
+    )
+    user_record = session.query(User).one()
+    assert principal_for_user(session, user_record).ui_profile is WebUiProfile.ADMIN
+
+
+def test_the_tenant_template_group_carries_no_permission_at_all(
+    client: TestClient, session: Session
+) -> None:
+    """Die Wohnungsvorlage bekommt die Mieteroberfläche, aber kein einziges Recht.
+
+    Ein anlagenweites `zone.read` in einer Mietervorlage wäre genau der Fehler,
+    gegen den die zonenbezogenen Rechte eingeführt wurden: die erste angelegte
+    Wohnung sähe damit jede Zone des Hauses.
+    """
+    marker = create_setup_token(session)
+    client.post(
+        "/setup",
+        data={"username": "lino", "display_name": "Lino", "password": "passwort-lang-genug",
+              "timezone": "Europe/Berlin", "setup_token": marker},
+        follow_redirects=False,
+    )
+    tenant_group = session.query(AccessGroup).filter_by(name="Wohnung").one()
+    assert tenant_group.ui_profile == WebUiProfile.TENANT.value
+    assert (
+        session.query(GroupPermission).filter_by(access_group_id=tenant_group.id).count() == 0
+    )
 
 
 def test_setup_token_can_only_be_used_once(client: TestClient, session: Session) -> None:

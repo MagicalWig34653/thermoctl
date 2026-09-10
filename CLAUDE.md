@@ -141,7 +141,7 @@ eine begründete Ausnahme mit `# pragma: no cover` die ehrlichere Antwort.
 Tests und Reviews gerutscht — eine fehlende Startseite, auf die Anmeldung und Navigation
 zeigten, und eine Oberfläche ohne eingebundenes Stylesheet. Beide Male fand es der
 Projektinhaber beim ersten Öffnen der Seite. Der Grund ist strukturell: Das Verfahren prüft,
-ob das Gebaute dem Plan entspricht, nie ob der Plan vollständig war. `tests/test_rauchtest.py`
+ob das Gebaute dem Plan entspricht, nie ob der Plan vollständig war. `tests/test_smoke_test.py`
 fängt inzwischen die häufigsten Fälle — jede Seite antwortet, Weiterleitungen führen
 irgendwohin, jeder Verweis in einer Vorlage ist erreichbar. Ersetzt aber nicht, die Anwendung
 nach einem sichtbaren Teilschritt einmal wirklich zu öffnen.
@@ -176,7 +176,10 @@ Aus der Umsetzung von Teilprojekt 1, damit es niemand erneut herausfinden muss:
   THERMOCTL_TEST_DATABASE_URL="mysql+pymysql://root:pruefen@127.0.0.1:3306/<eigene_db>" \
     .venv/bin/python -m pytest -q
   ```
-  Die CI benutzt die richtige Variable und war nie betroffen.
+  Die CI benutzt die richtige Variable und war nie betroffen. **Das Passwort ist
+  `pruefen`, ohne Umlaut** -- hier stand bis v0.9.0 `prüfen`, und ein Lauf damit
+  scheitert an `Access denied` statt an einem Fehler im Code;
+  `.github/workflows/ci.yml` benutzt seit jeher die ASCII-Fassung.
 - **Migrationen vertragen keine echte Parallelität.** Zweigen zwei Aufgaben vom selben Stand
   ab, tragen beide dieselbe Vorgängerrevision, und die Historie hat zwei Köpfe. Die
   Hauptsession ordnet sie beim Zusammenführen; die Agents lassen `down_revision` in Ruhe.

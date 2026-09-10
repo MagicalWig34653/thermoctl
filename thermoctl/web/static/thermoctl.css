@@ -28,48 +28,134 @@
 :root {
     color-scheme: light;
 
-    --ground: #f4f6f7;
+    /* Die Anlagensicht: neutrale Flächen, Blau als Primärfarbe, Orange für Wärme.
+       Übernommen aus `docs/ui-redesign/thermoctl_admin_final.html`. */
+    --ground: #f4f6f8;
     --surface: #ffffff;
-    --surface-deep: #eceff1;
-    --ink: #15181b;
-    --muted: #5b656e;
-    --line: #dde2e6;
-    --line-strong: #c3cbd2;
+    --surface-deep: #f8fafb;
+    --ink: #18212b;
+    --muted: #687482;
+    --line: #dfe4e8;
+    --line-strong: #c9d0d6;
 
-    /* Die einzigen gesättigten Töne. Beide bedeuten etwas. */
-    --warmth: #b4562f;
-    --warmth-area: #f6e3da;
-    --cool: #3a6a89;
-    --cool-area: #dfeaf1;
-    --warning: #8a6212;
-    --warning-area: #f7ecd2;
+    --primary: #2463eb;
+    --primary-strong: #1647b8;
+    --primary-area: #eaf0ff;
 
-    --font-ui: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue",
-        Arial, sans-serif;
+    /* Die beiden Töne, die eine Temperatur bedeuten. `--warmth` heißt in der Demo
+       `--heat`; der Name bleibt, weil ihn der gesamte Bestand benutzt. */
+    --warmth: #dd6b20;
+    --warmth-area: #fff1e7;
+    --cool: #2377c9;
+    --cool-area: #eaf0ff;
+
+    --success: #198754;
+    --success-area: #e9f7ef;
+    --warning: #b7791f;
+    --warning-area: #fff6df;
+    --danger: #c53939;
+    --danger-area: #fff0f0;
+
+    --font-ui: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+        "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     --font-instrument: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
         "Liberation Mono", monospace;
 
-    --radius: 6px;
-    --radius-small: 4px;
+    /* Weiche Ecken und ein getragener Schatten -- der sichtbarste Unterschied zur
+       vorherigen, kantigen Fassung. `--radius-small` ist die Ecke von Knöpfen und
+       Eingabefeldern, `--radius` die von Flächen. */
+    --radius: 16px;
+    --radius-small: 10px;
+    --shadow: 0 10px 28px rgba(21, 35, 50, .08);
+    --shadow-soft: 0 1px 0 rgba(0, 0, 0, .02);
+}
+
+/* Die Wohnungssicht ist ruhiger und wohnlicher: gedämpftes Grün statt Blau, wärmere
+   Neutraltöne, größere Radien. Aus `thermoctl_mieter_final.html`. Gesetzt am Rumpf,
+   damit beide Hüllen dieselben Bausteine benutzen und nur ihre Werte tauschen. */
+.tc-tenant {
+    --ground: #f5f6f4;
+    --surface: #ffffff;
+    --surface-deep: #f8f9f7;
+    --ink: #1d2420;
+    --muted: #68736c;
+    --line: #dde3de;
+    --line-strong: #c6cec8;
+
+    --primary: #236248;
+    --primary-strong: #174a35;
+    --primary-area: #e6f1eb;
+
+    --warmth: #bf642d;
+    --warmth-area: #fff0e6;
+    --cool: #58748c;
+    --cool-area: #ebf2f7;
+
+    --warning: #99621e;
+    --warning-area: #fff4d9;
+    --danger: #ae4945;
+    --danger-area: #fff0ef;
+
+    --radius: 20px;
+    --radius-small: 14px;
+    --shadow: 0 18px 50px rgba(25, 38, 30, .08);
 }
 
 [data-bs-theme="dark"] {
     color-scheme: dark;
 
-    --ground: #121517;
-    --surface: #1a1e21;
-    --surface-deep: #24292d;
-    --ink: #e6eaed;
-    --muted: #9aa4ad;
-    --line: #2b3136;
-    --line-strong: #3c444b;
+    --ground: #0f1419;
+    --surface: #151b22;
+    --surface-deep: #1a222b;
+    --ink: #f2f5f7;
+    --muted: #9ba8b5;
+    --line: #29333d;
+    --line-strong: #3a4753;
 
-    --warmth: #dd8055;
-    --warmth-area: #3a2419;
-    --cool: #79aecd;
-    --cool-area: #16272f;
-    --warning: #d8a743;
-    --warning-area: #2f2612;
+    --primary: #73a1ff;
+    --primary-strong: #9bbaff;
+    --primary-area: #17284c;
+
+    --warmth: #ff9c56;
+    --warmth-area: #3d2718;
+    --cool: #78b5ef;
+    --cool-area: #17284c;
+
+    --success: #5fc28a;
+    --success-area: #143222;
+    --warning: #e8b760;
+    --warning-area: #3c2e11;
+    --danger: #ff8686;
+    --danger-area: #3d1d1d;
+
+    --shadow: 0 12px 34px rgba(0, 0, 0, .26);
+    --shadow-soft: none;
+}
+
+[data-bs-theme="dark"] .tc-tenant {
+    --ground: #111512;
+    --surface: #191f1b;
+    --surface-deep: #202722;
+    --ink: #f2f5f3;
+    --muted: #9fa9a2;
+    --line: #303934;
+    --line-strong: #3f4a43;
+
+    --primary: #8fc9ac;
+    --primary-strong: #b0ddc2;
+    --primary-area: #20362b;
+
+    --warmth: #f0a06d;
+    --warmth-area: #3b281d;
+    --cool: #9db9cf;
+    --cool-area: #20303c;
+
+    --warning: #efc16f;
+    --warning-area: #3b3119;
+    --danger: #ee8c86;
+    --danger-area: #3b2423;
+
+    --shadow: 0 18px 50px rgba(0, 0, 0, .26);
 }
 
 body {
@@ -133,25 +219,28 @@ body {
 
 /* ── Typografie ─────────────────────────────────────────────────────────────── */
 
-h1, .t-title {
-    font-size: 1.6rem;
-    font-weight: 620;
-    letter-spacing: -0.015em;
+h1, .t-title, .tc-h1 {
+    /* Die Demos führen die Seitenüberschrift groß und eng -- sie ist die Ansage,
+       worauf man gerade sieht, und trägt einen Gutteil des Eindrucks. */
+    font-size: clamp(1.75rem, 3vw, 2.35rem);
+    font-weight: 700;
+    letter-spacing: -0.035em;
+    line-height: 1.08;
     text-wrap: balance;
 }
 
 h2, .t-section {
-    font-size: 1.05rem;
-    font-weight: 600;
-    letter-spacing: -0.005em;
+    font-size: 1rem;
+    font-weight: 680;
+    letter-spacing: -0.015em;
 }
 
 /* Kleine Großbuchstaben-Marke. Sparsam: Sie beschriftet Abschnitte, sie schmückt sie
    nicht. */
 .t-label {
-    font-size: 0.6875rem;
-    font-weight: 640;
-    letter-spacing: 0.1em;
+    font-size: 0.625rem;
+    font-weight: 800;
+    letter-spacing: 0.11em;
     text-transform: uppercase;
     color: var(--muted);
 }
@@ -167,28 +256,34 @@ h2, .t-section {
     letter-spacing: -0.02em;
 }
 
+/* Der große Messwert. In den Demos die auffälligste einzelne Zahl der Seite --
+   entsprechend groß, schwer und eng gesetzt. */
 .t-large {
-    font-size: 2rem;
-    font-weight: 500;
+    font-size: clamp(2rem, 3.4vw, 2.9rem);
+    font-weight: 720;
     line-height: 1;
+    letter-spacing: -0.05em;
+    /* Nie umbrechen: "22,4 °C" über zwei Zeilen liest sich als zwei Zahlen. Die
+       Spalte, in der der Wert steht, bekommt ihre Breite von ihm. */
+    white-space: nowrap;
 }
 
+/* Die Einheit hängt an der Zahl, nicht unter ihr: hochgestellt und kleiner, wie in
+   beiden Demos -- "22,4 °C" liest sich sonst als zwei getrennte Angaben. */
 .t-unit {
-    font-size: 0.55em;
-    font-weight: 400;
+    font-size: 0.36em;
+    font-weight: 600;
     color: var(--muted);
     margin-left: 0.15em;
+    vertical-align: 0.9em;
+    letter-spacing: 0;
 }
 
 /* ── Navigation ─────────────────────────────────────────────────────────────── */
 
-.tc-head {
-    background: color-mix(in srgb, var(--surface) 72%, transparent);
-    backdrop-filter: blur(12px) saturate(140%);
-    -webkit-backdrop-filter: blur(12px) saturate(140%);
-    border-bottom: 1px solid var(--line);
-}
-
+/* Die Wortmarke des Kiosks. Die angemeldete Oberfläche trägt seit v0.9.0 statt
+ * ihrer den Strich allein (`.tc-brandmark` weiter unten); das Wandtablett behält
+ * den ausgeschriebenen Namen, weil es aus Entfernung angesehen wird. */
 .tc-marker {
     font-weight: 640;
     letter-spacing: -0.02em;
@@ -208,28 +303,13 @@ h2, .t-section {
     background: linear-gradient(to top, var(--cool), var(--warmth));
 }
 
-.tc-head .nav-link {
-    color: var(--muted);
-    font-weight: 520;
-    padding-inline: 0.7rem;
-}
-
-.tc-head .nav-link:hover,
-.tc-head .nav-link:focus-visible {
-    color: var(--ink);
-}
-
-.tc-head .nav-link.tc-here {
-    color: var(--ink);
-    box-shadow: inset 0 -2px 0 var(--ink);
-}
-
 /* ── Flächen ────────────────────────────────────────────────────────────────── */
 
 .tc-panel {
     background: var(--surface);
     border: 1px solid var(--line);
     border-radius: var(--radius);
+    box-shadow: var(--shadow-soft);
 }
 
 /* A block of text meant to be copied verbatim (a Homebridge/mqtt-thing config, for
@@ -255,10 +335,11 @@ h2, .t-section {
     flex-wrap: wrap;
     align-items: center;
     gap: 0.5rem 1.25rem;
-    padding: 0.7rem 1rem;
+    padding: 0.9rem 1rem;
     border-radius: var(--radius);
     border: 1px solid var(--line);
     background: var(--surface);
+    box-shadow: var(--shadow-soft);
 }
 
 .tc-system-row.tc-armed {
@@ -268,16 +349,23 @@ h2, .t-section {
 
 /* ── Zustandsmarken ─────────────────────────────────────────────────────────── */
 
+/* Pille statt Kästchen, kleine Versalien -- die Form, die beide Demos für einen
+   Zustand benutzen. Die Farbe bleibt dabei nie das einzige Merkmal: jede Marke
+   trägt ihren Zustand ausgeschrieben im Text. */
 .tc-chip {
     display: inline-flex;
     align-items: center;
-    gap: 0.35rem;
-    padding: 0.15rem 0.5rem;
-    border-radius: var(--radius-small);
-    font-size: 0.75rem;
-    font-weight: 600;
-    line-height: 1.4;
-    border: 1px solid transparent;
+    gap: 0.45rem;
+    padding: 0.35rem 0.6rem;
+    border-radius: 999px;
+    font-size: 0.625rem;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    line-height: 1.2;
+    border: 1px solid var(--line);
+    background: var(--surface-deep);
+    color: var(--muted);
     white-space: nowrap;
 }
 
@@ -305,13 +393,25 @@ h2, .t-section {
     border-color: var(--line);
 }
 
+/* Der Sollwert und alles, was aus einer Übersteuerung stammt, spricht in der
+   Primärfarbe -- so unterscheidet die Anlagensicht auf einen Blick "gewollt"
+   (blau) von "warm" (orange). */
+.tc-chip-primary {
+    color: var(--primary-strong);
+    background: var(--primary-area);
+    border-color: color-mix(in srgb, var(--primary) 28%, transparent);
+}
+
 /* Ein Punkt, der pulst, solange wirklich geheizt wird. Das einzige bewegte Element im
    ganzen Programm — es zeigt genau die eine Sache an, die gerade passiert. */
 .tc-dot {
-    width: 7px;
-    height: 7px;
+    width: 8px;
+    height: 8px;
     border-radius: 50%;
     background: currentColor;
+    /* Der weiche Hof um den Punkt -- in beiden Demos das Kennzeichen einer
+       Zustandsmarke, und er hebt ihn vom Text daneben ab, ohne ihn zu vergrößern. */
+    box-shadow: 0 0 0 4px color-mix(in srgb, currentColor 16%, transparent);
     flex: none;
 }
 
@@ -391,17 +491,66 @@ h2, .t-section {
    `auto` misst dann je Zeile neu. Die Folge waren Spalten, die von Zone zu Zone
    sprangen -- ausgerechnet auf einer Seite, deren ganzer Zweck es ist, Zonen
    untereinander vergleichbar zu machen. */
-.tc-zone {
+/* Die Zonen der Startseite als Kartenraster, wie in der Admin-Demo -- statt der
+   früheren Tabellenzeilen. Eine Zone ist keine Zeile in einer Liste, sondern der
+   Zustand eines Raums; sie bekommt ihre eigene Fläche. Ab zwei Spalten passen zwei
+   Karten nebeneinander, darunter bleibt es einspaltig. */
+.tc-zones {
     display: grid;
-    grid-template-columns: minmax(8rem, 1fr) 6.5rem auto minmax(11rem, 2fr) 10.5rem;
-    gap: 1.25rem;
-    align-items: center;
-    padding: 1rem 1.15rem;
-    border-bottom: 1px solid var(--line);
+    grid-template-columns: repeat(auto-fill, minmax(23rem, 1fr));
+    gap: 1.1rem;
+    align-items: start;
 }
 
-.tc-zone:last-child {
-    border-bottom: 0;
+.tc-zone {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.75rem 1.1rem;
+    align-items: start;
+    padding: 1.15rem;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-soft);
+    position: relative;
+    overflow: hidden;
+}
+
+/* Derselbe Streifen wie auf der Mieterkarte: er zeigt an, dass für diesen Raum
+   gerade Wärme angefordert ist -- zusätzlich zur ausgeschriebenen Marke, nie
+   an ihrer Stelle. */
+.tc-zone::before {
+    content: "";
+    position: absolute;
+    inset: 0 0 auto;
+    height: 3px;
+    background: transparent;
+}
+
+.tc-zone:has(.tc-chip-warm)::before {
+    background: var(--warmth);
+}
+
+/* Der Messwert steht rechts oben, groß; Spur und Begründung laufen unter beiden
+   Spalten durch. */
+.tc-zone > .tc-zone-value {
+    text-align: right;
+}
+
+.tc-zone > .tc-zone-track,
+.tc-zone > .tc-zone-reason,
+.tc-zone > .tc-zone-controls {
+    grid-column: 1 / -1;
+}
+
+.tc-zone-controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding-top: 0.9rem;
+    border-top: 1px solid var(--line);
 }
 
 .tc-zone-name {
@@ -461,30 +610,61 @@ body {
 }
 
 /* ── Formulare und Schaltflächen ────────────────────────────────────────────────
- * Bewusst schiefergrau statt blau: Blau ist hier Kühle und damit ein Messwert. */
+ *
+ * Die Primärfarbe ist seit v0.9.0 das Blau der Admin-Demo (in der Wohnungssicht das
+ * gedämpfte Grün, siehe `.tc-tenant`). Bis dahin war sie schiefergrau, mit dem
+ * Argument, Blau sei hier Kühle und damit ein Messwert. Das Argument fällt: Kühle
+ * heißt jetzt `--cool` und steht ausschließlich in Temperaturflächen -- Balken,
+ * Vorschau, Tagesspur --, nie auf einer Schaltfläche. Umgekehrt kommt `--warmth`
+ * (Orange) nie auf einer Schaltfläche vor. Die Trennung bleibt damit erhalten, nur
+ * an der Form statt an der Farbe.
+ */
 
-.btn-primary {
-    --bs-btn-bg: #2f3941;
-    --bs-btn-border-color: #2f3941;
-    --bs-btn-hover-bg: #1f272d;
-    --bs-btn-hover-border-color: #1f272d;
-    --bs-btn-active-bg: #1f272d;
-    --bs-btn-active-border-color: #1f272d;
+.btn {
+    border-radius: var(--radius-small);
+    font-weight: 650;
+    /* 42 px in beiden Demos -- eine Fläche, die auch ein Daumen sicher trifft. */
+    min-height: 2.625rem;
+    padding-inline: 0.9rem;
 }
 
+.btn-sm {
+    min-height: 2.125rem;
+    border-radius: calc(var(--radius-small) - 3px);
+    padding-inline: 0.6rem;
+}
+
+.btn-primary {
+    --bs-btn-bg: var(--primary);
+    --bs-btn-border-color: var(--primary);
+    --bs-btn-color: #ffffff;
+    --bs-btn-hover-bg: var(--primary-strong);
+    --bs-btn-hover-border-color: var(--primary-strong);
+    --bs-btn-hover-color: #ffffff;
+    --bs-btn-active-bg: var(--primary-strong);
+    --bs-btn-active-border-color: var(--primary-strong);
+    --bs-btn-active-color: #ffffff;
+}
+
+/* Im dunklen Schema ist die Primärfarbe aufgehellt (sie muss auf dunklem Grund
+   lesbar sein); eine weiße Beschriftung darauf hätte zu wenig Kontrast, deshalb
+   dort die dunkle. */
 [data-bs-theme="dark"] .btn-primary {
-    --bs-btn-bg: #d7dde2;
-    --bs-btn-border-color: #d7dde2;
-    --bs-btn-color: #15181b;
-    --bs-btn-hover-bg: #eef1f4;
-    --bs-btn-hover-border-color: #eef1f4;
-    --bs-btn-hover-color: #15181b;
-    --bs-btn-active-bg: #eef1f4;
-    --bs-btn-active-color: #15181b;
+    --bs-btn-color: #0f1419;
+    --bs-btn-hover-color: #0f1419;
+    --bs-btn-active-color: #0f1419;
 }
 
 .form-control, .form-select {
     border-color: var(--line-strong);
+    border-radius: var(--radius-small);
+    background: var(--surface-deep);
+    min-height: 2.375rem;
+}
+
+.form-control:focus, .form-select:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 18%, transparent);
 }
 
 /* Bootstraps `secondary` ist im dunklen Schema fast unsichtbar. Beide Varianten
@@ -492,21 +672,22 @@ body {
 .btn-outline-secondary {
     --bs-btn-color: var(--ink);
     --bs-btn-border-color: var(--line-strong);
+    --bs-btn-bg: var(--surface);
     --bs-btn-hover-color: var(--ink);
     --bs-btn-hover-bg: var(--surface-deep);
-    --bs-btn-hover-border-color: var(--line-strong);
+    --bs-btn-hover-border-color: color-mix(in srgb, var(--primary) 50%, var(--line-strong));
     --bs-btn-active-color: var(--ink);
     --bs-btn-active-bg: var(--surface-deep);
     --bs-btn-active-border-color: var(--line-strong);
 }
 
 :focus-visible {
-    outline: 2px solid var(--cool);
+    outline: 2px solid var(--primary);
     outline-offset: 2px;
 }
 
-/* Bootstraps Warngelb passt nicht zum Messing dieser Oberfläche. Es bleibt als Signal
-   erhalten -- "sieh genau hin" --, nur im richtigen Ton. */
+/* Warnung und Löschen behalten ihre eigene Bedeutung; beide nehmen jetzt die
+   Palette der Demos statt eigener Zahlenwerte. */
 .btn-warning {
     --bs-btn-bg: var(--warning-area);
     --bs-btn-border-color: color-mix(in srgb, var(--warning) 45%, transparent);
@@ -518,26 +699,44 @@ body {
     --bs-btn-active-color: var(--warning);
 }
 
-/* Die dritte und letzte Bedeutung von Farbe: "das löscht etwas". Sie erscheint
-   ausschließlich auf Schaltflächen, nie an einem Messwert -- Bootstraps volles Rot
-   wäre neben dem Kupfer nur laut. */
 .btn-outline-danger {
-    --bs-btn-color: #9c4232;
-    --bs-btn-border-color: #d8b3ab;
-    --bs-btn-hover-bg: #9c4232;
-    --bs-btn-hover-border-color: #9c4232;
-    --bs-btn-active-bg: #9c4232;
-    --bs-btn-active-border-color: #9c4232;
+    --bs-btn-color: var(--danger);
+    --bs-btn-bg: var(--danger-area);
+    --bs-btn-border-color: color-mix(in srgb, var(--danger) 25%, transparent);
+    --bs-btn-hover-bg: var(--danger);
+    --bs-btn-hover-border-color: var(--danger);
+    --bs-btn-hover-color: #ffffff;
+    --bs-btn-active-bg: var(--danger);
+    --bs-btn-active-border-color: var(--danger);
+    --bs-btn-active-color: #ffffff;
 }
 
 [data-bs-theme="dark"] .btn-outline-danger {
-    --bs-btn-color: #e0907f;
-    --bs-btn-border-color: #5a342d;
-    --bs-btn-hover-bg: #7d3527;
-    --bs-btn-hover-border-color: #7d3527;
-    --bs-btn-hover-color: #ffffff;
-    --bs-btn-active-bg: #7d3527;
-    --bs-btn-active-border-color: #7d3527;
+    --bs-btn-hover-color: #0f1419;
+    --bs-btn-active-color: #0f1419;
+}
+
+/* ── Tabellen ───────────────────────────────────────────────────────────────────
+ * Am Schreibtisch kompakt, mit einer Kopfzeile in kleinen Versalien auf eigener
+ * Fläche -- so liest sich eine Geräteliste als Liste und nicht als Fließtext.
+ * Schmale Bildschirme scrollen sie in ihrem eigenen Rahmen (`.table-responsive`,
+ * von einem Wächtertest verlangt). */
+.table > :not(caption) > * > * {
+    padding: 0.8rem 1rem;
+}
+
+.table > thead > tr > th {
+    background: var(--surface-deep);
+    color: var(--muted);
+    font-size: 0.625rem;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    border-bottom-color: var(--line);
+}
+
+.table > tbody > tr > td {
+    border-bottom-color: var(--line);
 }
 
 /* ── Flussbild ─────────────────────────────────────────────────────────────── */
@@ -911,7 +1110,7 @@ body {
         font-size: 0;
     }
     .schedule-day-column .dropdown-toggle::before {
-        content: "↗";
+        content: "\2026";
         font-size: 0.875rem;
     }
 }
@@ -977,7 +1176,7 @@ body {
 /* ── Kiosk-Dashboard ────────────────────────────────────────────────────────────
  * Ein Wandtablett wird aus etwa zwei Metern gelesen, nicht von einer Handbreit
  * entfernt. Alles hier ist deshalb deutlich größer als anderswo im Programm --
- * dieselben Farben und Bausteine (tc-chip, tc-panel, --wärme/--kühle), nur in
+ * dieselben Farben und Bausteine (tc-chip, tc-panel, --warmth/--cool), nur in
  * einem Maßstab, der auf Distanz noch lesbar ist.
  */
 
@@ -998,10 +1197,15 @@ body {
 }
 
 .kiosk-clock {
-    font-family: var(--schrift-instrument);
+    /* Vier tote Kürzel standen hier: `--schrift-instrument`, `--gedämpft`,
+       `--tinte`, `--wärme`. Sie stammen aus der Umbenennung ins Englische und
+       waren seither wirkungslos -- eine CSS-Eigenschaft mit unbekannter Variable
+       wird schlicht verworfen, ohne Fehlermeldung. Die Uhr des Wandtabletts lief
+       damit in der Fließtextschrift statt in der Instrumentschrift. */
+    font-family: var(--font-instrument);
     font-variant-numeric: tabular-nums;
     font-size: 1.5rem;
-    color: var(--gedämpft);
+    color: var(--muted);
 }
 
 .kiosk-grid {
@@ -1020,7 +1224,7 @@ body {
 .kiosk-tile-name {
     font-size: 1.6rem;
     font-weight: 600;
-    color: var(--tinte);
+    color: var(--ink);
 }
 
 .kiosk-temperature {
@@ -1048,7 +1252,7 @@ body {
 }
 
 .kiosk-error {
-    color: var(--wärme);
+    color: var(--warmth);
     font-size: 1rem;
 }
 
@@ -1063,5 +1267,985 @@ body {
 
 .kiosk-source-link:hover,
 .kiosk-source-link:focus-visible {
-    color: var(--tinte);
+    color: var(--ink);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+ * Die beiden Hüllen (v0.9.0)
+ *
+ * Zwei Oberflächen auf einem Farb- und Schriftsystem. Die Palette oben bleibt
+ * unverändert gültig -- Kupfer und Stahlblau bedeuten weiterhin Wärme und Kühle und
+ * werden hier nirgends als Schmuck verwendet. Was sich unterscheidet, ist die
+ * Anordnung: die Anlagensicht ist ein Arbeitsplatz mit Seitenleiste und dichten
+ * Tabellen, die Wohnungssicht eine ruhige, einspaltige Ansicht fürs Telefon.
+ *
+ * Die Demos unter docs/ui-redesign/ setzen Blau bzw. Grün als Akzent. Übernommen ist
+ * ihre Informationsarchitektur, nicht ihre Palette: die hiesige Palette trägt eine
+ * Aussage (Farbe = Messwert), eine zweite Akzentfarbe daneben würde genau die
+ * verwässern. Siehe die Prioritätenliste der Arbeitsanweisung -- bestehende Semantik
+ * vor pixelgenauer Optik.
+ * ═══════════════════════════════════════════════════════════════════════════════ */
+
+.tc-skip-link {
+    position: absolute;
+    left: -999px;
+    top: 0;
+    z-index: 1100;
+    background: var(--surface);
+    color: var(--ink);
+    padding: 0.5rem 0.9rem;
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius);
+}
+
+.tc-skip-link:focus-visible {
+    left: 0.5rem;
+    top: 0.5rem;
+}
+
+.tc-brand {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    text-decoration: none;
+    color: var(--ink);
+}
+
+/* Ein Thermometerstrich statt eines Logos -- er kommt aus der Sache selbst, ist
+ * kein Piktogramm, das ein Vorlesewerkzeug benennen müsste, und braucht weder
+ * Bilddatei noch Schriftart. Er stand vorher an der alten Wortmarke der
+ * Kopfleiste und ist mit ihr hierher gewandert. */
+.tc-brandmark {
+    display: inline-block;
+    width: 3px;
+    height: 1.05em;
+    border-radius: 2px;
+    background: linear-gradient(to top, var(--cool), var(--warmth));
+}
+
+/* ── Anlagensicht ──────────────────────────────────────────────────────────── */
+
+/* Die Marke am <body>. Sie schaltet keine Farben um, sondern erlaubt einzelnen
+ * Regeln weiter unten, sich auf eine der beiden Oberflächen zu beziehen -- und sie
+ * sagt beim Hineinsehen in eine gerenderte Seite, welche Hülle das ist. */
+.tc-admin {
+    background: var(--ground);
+}
+
+.tc-shell {
+    display: flex;
+    min-height: 100vh;
+    align-items: stretch;
+}
+
+.tc-sidebar {
+    flex: 0 0 15.5rem;
+    border-right: 1px solid var(--line);
+    background: var(--surface);
+    padding: 1.1rem 0.9rem 1.5rem;
+    /* Die Seitenleiste steht, der Inhalt scrollt darunter weg -- so bleibt die
+       Navigation auf einer langen Geräteliste erreichbar. */
+    position: sticky;
+    top: 0;
+    align-self: flex-start;
+    max-height: 100vh;
+    overflow-y: auto;
+}
+
+.tc-sidenav {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+    margin-top: 1rem;
+}
+
+/* Die Überschrift eines Blocks. Kein eigenes Bedienelement -- sie ordnet nur, und
+ * eine Überschrift ohne Einträge darunter rendert die Vorlage gar nicht erst. */
+.tc-navsec {
+    margin: 1.15rem 0 0.4rem;
+    padding: 0 0.7rem;
+    font-size: 0.625rem;
+    letter-spacing: 0.11em;
+    text-transform: uppercase;
+    font-weight: 800;
+    color: var(--muted);
+}
+
+.tc-nav-item {
+    display: block;
+    padding: 0.6rem 0.7rem;
+    margin: 2px 0;
+    border-radius: var(--radius-small);
+    color: var(--muted);
+    text-decoration: none;
+    font-size: 0.9rem;
+    font-weight: 650;
+}
+
+.tc-nav-item:hover {
+    background: var(--surface-deep);
+    color: var(--ink);
+}
+
+/* Der aktive Eintrag liegt auf der Primärfläche und trägt zusätzlich eine Kante --
+ * Zustand nie allein über Farbe, damit er auch ohne Farbwahrnehmung und im
+ * Kontrastmodus erkennbar bleibt. `aria-current="page"` setzt die Vorlage ohnehin. */
+.tc-nav-item.tc-here {
+    background: var(--primary-area);
+    color: var(--primary-strong);
+    font-weight: 750;
+    box-shadow: inset 3px 0 0 var(--primary);
+}
+
+.tc-frame {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Die Kopfzeile steht fest und lässt den Inhalt darunter durchscheinen. Das
+ * `-webkit-`-Präfix ist kein Überbleibsel: Safari braucht es bis heute, und ohne
+ * es ist die Leiste dort schlicht durchsichtig und der Text darunter kaum zu
+ * lesen (`tests/test_app.py::test_the_header_bar_carries_blur_for_every_browser`
+ * hält das fest). */
+.tc-topbar {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.6rem 1.25rem;
+    border-bottom: 1px solid var(--line);
+    background: color-mix(in srgb, var(--surface) 78%, transparent);
+    backdrop-filter: blur(12px) saturate(140%);
+    -webkit-backdrop-filter: blur(12px) saturate(140%);
+    position: sticky;
+    top: 0;
+    z-index: 30;
+}
+
+.tc-pagetitle {
+    margin: 0;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.95rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+}
+
+.tc-iconbtn {
+    border: 1px solid var(--line-strong);
+    background: var(--surface);
+    color: var(--ink);
+    border-radius: var(--radius-small);
+    padding: 0.35rem 0.75rem;
+    font-size: 0.85rem;
+    font-weight: 650;
+    min-height: 2.375rem;
+}
+
+.tc-iconbtn:hover {
+    background: var(--surface-deep);
+    border-color: color-mix(in srgb, var(--primary) 50%, var(--line-strong));
+}
+
+.tc-main {
+    flex: 1 1 auto;
+    width: 100%;
+    padding: 1.9rem clamp(1.1rem, 3vw, 2.6rem) 4.5rem;
+}
+
+.tc-footer {
+    margin-top: 2rem;
+    padding: 1.25rem 1.25rem 1.5rem;
+    border-top: 1px solid var(--line);
+    color: var(--muted);
+    font-size: 0.8rem;
+}
+
+.tc-h1 {
+    font-size: 1.5rem;
+    font-weight: 650;
+    margin-bottom: 0.35rem;
+}
+
+/* Eine Taste im Fließtext ("die Knöpfe − und +"). Kein Bedienelement. */
+.tc-key {
+    font-family: var(--font-instrument);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-small);
+    padding: 0 0.3rem;
+}
+
+.tc-bottomnav,
+.tc-tbottomnav {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 40;
+    display: flex;
+    background: var(--surface);
+    border-top: 1px solid var(--line);
+}
+
+.tc-bottomnav-item,
+.tc-tbottomnav-item {
+    flex: 1 1 0;
+    /* Mindestens 48 px hoch: das ist die Fläche, die ein Daumen sicher trifft. */
+    min-height: 3rem;
+    display: grid;
+    place-items: center;
+    border: 0;
+    background: transparent;
+    color: var(--ink);
+    text-decoration: none;
+    font-size: 0.8rem;
+    padding: 0.4rem 0.2rem;
+}
+
+.tc-bottomnav-item.tc-here,
+.tc-tbottomnav-item.tc-here {
+    font-weight: 650;
+    box-shadow: inset 0 2px 0 var(--line-strong);
+}
+
+@media (max-width: 991.98px) {
+    .tc-shell {
+        display: block;
+    }
+
+    /* Die Seitenleiste klappt über Bootstraps `collapse` auf; ohne aufgeklappten
+     * Zustand steht sie nicht im Weg. `.collapse.show` kommt von Bootstrap. */
+    .tc-sidebar {
+        border-right: 0;
+        border-bottom: 1px solid var(--line);
+        display: none;
+    }
+
+    .tc-sidebar.show {
+        display: block;
+    }
+
+    .tc-main {
+        padding-bottom: 5.5rem;
+    }
+}
+
+@media (min-width: 992px) {
+    /* Am Desktop steht die Seitenleiste immer -- Bootstraps `collapse` blendet ein
+     * Element ohne `.show` sonst auch dort aus. */
+    .tc-sidebar {
+        display: block !important;
+    }
+}
+
+/* ── Wohnungssicht ─────────────────────────────────────────────────────────── */
+
+.tc-tshell {
+    width: min(60rem, 100%);
+    margin: 0 auto;
+    padding: 0 1rem 6rem;
+}
+
+.tc-theader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    min-height: 4rem;
+    position: sticky;
+    top: 0;
+    z-index: 30;
+    background: color-mix(in srgb, var(--ground) 85%, transparent);
+    backdrop-filter: blur(12px) saturate(140%);
+    -webkit-backdrop-filter: blur(12px) saturate(140%);
+}
+
+.tc-tnav {
+    display: flex;
+    gap: 0.25rem;
+}
+
+.tc-tnav-item {
+    padding: 0.45rem 0.8rem;
+    border-radius: var(--radius);
+    color: var(--ink);
+    text-decoration: none;
+    min-height: 2.75rem;
+    display: inline-flex;
+    align-items: center;
+}
+
+.tc-tnav-item:hover {
+    background: var(--surface-deep);
+}
+
+.tc-tnav-item.tc-here {
+    background: var(--primary-area);
+    color: var(--primary-strong);
+    font-weight: 750;
+}
+
+.tc-tmain {
+    padding-top: 0.5rem;
+}
+
+/* Die Wohnungssicht setzt größere Grundflächen: sie wird im Stehen und mit dem
+ * Daumen bedient, nicht am Schreibtisch. */
+.tc-tenant .tc-panel {
+    padding: 1.1rem;
+}
+
+.tc-tenant .btn {
+    min-height: 2.75rem;
+}
+
+/* Der Balken, der aus dem Vortag hereinragt: kein Zeichen, sondern eine gezeichnete
+ * Ecke. Ein Piktogramm wie "↶" wird von einem Vorlesewerkzeug als Name ausgesprochen
+ * ("Pfeil nach links mit Haken") mitten in der Uhrzeit; die Aussage steht deshalb als
+ * echter Text daneben und ist hier nur noch optisch. */
+.schedule-carryover {
+    display: inline-block;
+    width: 0;
+    height: 0;
+    vertical-align: baseline;
+    border-top: 0.3em solid transparent;
+    border-bottom: 0.3em solid transparent;
+    border-right: 0.35em solid currentColor;
+    opacity: 0.55;
+}
+
+/* ── Die drei Riegel auf der Startseite ────────────────────────────────────────
+ *
+ * Aktorfreigabe, MQTT-Ausgabe und Verbundrolle stehen nebeneinander und bleiben
+ * drei getrennte Aussagen -- nicht ein zusammengefasstes "System OK". Jede trägt
+ * neben ihrer Marke einen eigenen Satz Klartext: eine Bereitschaftsinstanz, die
+ * aussieht wie die aktive, ist genau der Fehlerfall, den diese Trennung
+ * ausschließen soll. Auf schmalen Bildschirmen untereinander statt gequetscht --
+ * lieber drei volle Zeilen als drei abgeschnittene Sätze. */
+.tc-latches {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr));
+    gap: 0.75rem 1.25rem;
+    width: 100%;
+}
+
+.tc-latch {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    align-items: flex-start;
+    padding: 0.9rem 1rem;
+    border-radius: var(--radius-small);
+    border: 1px solid var(--line);
+    background: var(--surface-deep);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+ * Die Wohnungssicht (v0.9.0)
+ *
+ * Mobile first: eine Spalte, große Zahlen, Flächen, die ein Daumen sicher trifft.
+ * Dieselbe Palette wie die Anlagensicht -- Kupfer bedeutet auch hier Wärme, und
+ * eine Raumkarte, die aus einem anderen Farbsystem stammte, würde genau die
+ * Aussage verlieren, für die Farbe in diesem Programm da ist.
+ * ═══════════════════════════════════════════════════════════════════════════════ */
+
+.tc-tenant {
+    background: var(--ground);
+}
+
+.tc-hero {
+    padding: 0.5rem 0 1.25rem;
+}
+
+.tc-eyebrow {
+    margin: 0;
+    font-size: 0.75rem;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--muted);
+}
+
+/* Der eine ruhige Satz oben: läuft alles, oder betrifft etwas diese Wohnung? */
+.tc-notice {
+    border: 1px solid color-mix(in srgb, var(--warning) 32%, transparent);
+    border-radius: var(--radius);
+    background: var(--warning-area);
+    padding: 1rem 1.1rem;
+    margin-bottom: 1rem;
+}
+
+/* Der Normalfall: nichts liegt an. Er darf nicht aussehen wie eine Warnung --
+   sonst gewöhnt man sich daran, den Kasten zu übersehen, und übersieht ihn dann
+   auch, wenn wirklich etwas darin steht. */
+.tc-notice-calm {
+    border-color: color-mix(in srgb, var(--primary) 25%, transparent);
+    background: var(--primary-area);
+}
+
+.tc-notice-title {
+    margin: 0 0 0.15rem;
+    font-weight: 600;
+}
+
+.tc-empty {
+    border: 1px dashed var(--line-strong);
+    border-radius: var(--radius);
+    padding: 1.5rem 1rem;
+    text-align: center;
+    color: var(--muted);
+}
+
+.tc-rooms {
+    display: grid;
+    gap: 1rem;
+    grid-template-columns: 1fr;
+    /* Nicht strecken: nebeneinander sind zwei Räume unterschiedlich hoch, weil der
+       eine bedienbar ist und der andere nur gelesen werden darf. Eine Karte, die
+       auf die Höhe ihrer Nachbarin gezogen wird, endet in einer leeren Fläche. */
+    align-items: start;
+}
+
+@media (min-width: 62rem) {
+    /* Erst ab Tablettbreite zwei Spalten. Auf dem Telefon bleibt eine Karte eine
+     * Karte -- nebeneinander wären die Temperaturen zu klein für den Zweck. */
+    .tc-rooms {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+.tc-room {
+    position: relative;
+    overflow: hidden;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 1.25rem;
+    box-shadow: var(--shadow);
+}
+
+/* Ein Streifen am oberen Rand, solange für diesen Raum Wärme angefordert ist --
+   dieselbe Marke wie in beiden Demos. Er ergänzt die ausgeschriebene Marke
+   daneben, er ersetzt sie nicht: Zustand nie allein über Farbe. */
+.tc-room::before {
+    content: "";
+    position: absolute;
+    inset: 0 0 auto;
+    height: 3px;
+    background: transparent;
+}
+
+.tc-room:has(.tc-chip-warm)::before {
+    background: var(--warmth);
+}
+
+.tc-room-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+}
+
+.tc-room-name {
+    margin: 0;
+    font-size: 1.05rem;
+    font-weight: 600;
+}
+
+.tc-room-temp {
+    margin: 0.6rem 0 0;
+    line-height: 1;
+}
+
+.tc-big {
+    font-size: clamp(2.9rem, 9vw, 4.1rem);
+    font-weight: 720;
+    letter-spacing: -0.055em;
+}
+
+.tc-unit {
+    font-size: 1rem;
+    color: var(--muted);
+    margin-left: 0.15rem;
+}
+
+.tc-facts {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.5rem 1rem;
+    margin: 0.9rem 0;
+}
+
+.tc-facts div {
+    min-width: 0;
+}
+
+.tc-facts dt {
+    font-size: 0.72rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted);
+    font-weight: 400;
+}
+
+.tc-facts dd {
+    margin: 0;
+    font-weight: 600;
+}
+
+.tc-fact-wide {
+    grid-column: 1 / -1;
+}
+
+.tc-fact-wide dd {
+    font-weight: 400;
+}
+
+/* Der Tagesverlauf als Streifen mit Jetzt-Marke. Die Abschnitte kommen fertig
+ * gerechnet aus der Domäne; hier wird nichts hergeleitet, nur gezeichnet. */
+.tc-timeline {
+    position: relative;
+    height: 0.75rem;
+    border-radius: 999px;
+    background: var(--surface-deep);
+    overflow: hidden;
+}
+
+.tc-timeline-part {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+}
+
+.tc-timeline-now {
+    position: absolute;
+    top: -0.15rem;
+    bottom: -0.15rem;
+    width: 2px;
+    background: var(--ink);
+}
+
+.tc-nextline {
+    margin: 0.6rem 0 0;
+    color: var(--muted);
+}
+
+.tc-override {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    margin-top: 0.75rem;
+    padding: 0.6rem 0.8rem;
+    border-radius: var(--radius);
+    background: var(--warmth-area);
+    border: 1px solid color-mix(in srgb, var(--warmth) 35%, var(--line));
+}
+
+.tc-controlbox {
+    margin-top: 0.9rem;
+    padding-top: 0.9rem;
+    border-top: 1px solid var(--line);
+}
+
+.tc-controltop {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+    margin-bottom: 0.6rem;
+}
+
+/* Der dauerhafte Sollwert des laufenden Abschnitts. Große Flächen: das hier wird
+ * im Vorbeigehen mit dem Daumen bedient, nicht mit einer Maus. */
+.tc-stepper {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.tc-stepbtn {
+    width: 3rem;
+    height: 3rem;
+    border-radius: var(--radius-small);
+    border: 1px solid var(--line-strong);
+    background: var(--surface-deep);
+    color: var(--ink);
+    font-size: 1.35rem;
+    line-height: 1;
+}
+
+.tc-stepbtn:hover {
+    border-color: var(--primary);
+    color: var(--primary-strong);
+}
+
+.tc-stepvalue {
+    font-size: 1.35rem;
+    font-weight: 800;
+    min-width: 5.5rem;
+    text-align: center;
+}
+
+.tc-room-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 0.9rem;
+}
+
+.tc-room-actions .btn {
+    min-height: 2.75rem;
+}
+
+.tc-inline-error {
+    margin: 0.5rem 0 0;
+    color: var(--warmth);
+}
+
+.tc-boostform {
+    display: grid;
+    gap: 0.6rem;
+    margin-top: 0.9rem;
+    padding: 0.9rem;
+    border-radius: var(--radius);
+    background: var(--surface-deep);
+}
+
+.tc-durations {
+    border: 0;
+    padding: 0;
+    margin: 0;
+    display: grid;
+    gap: 0.35rem;
+}
+
+.tc-choice {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-height: 2.75rem;
+}
+
+/* ── Mieter-Zeitplan ───────────────────────────────────────────────────────── */
+
+.tc-roomtabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    margin-bottom: 1rem;
+}
+
+.tc-roomtab {
+    padding: 0.5rem 0.9rem;
+    min-height: 2.75rem;
+    display: inline-flex;
+    align-items: center;
+    border-radius: 999px;
+    border: 1px solid var(--line-strong);
+    background: var(--surface);
+    color: var(--ink);
+    text-decoration: none;
+}
+
+.tc-roomtab.tc-here {
+    background: var(--primary-area);
+    border-color: color-mix(in srgb, var(--primary) 35%, transparent);
+    color: var(--primary-strong);
+    font-weight: 750;
+}
+
+.tc-forecast {
+    display: flex;
+    min-height: 4.5rem;
+    border-radius: var(--radius-small);
+    overflow: hidden;
+    border: 1px solid var(--line);
+}
+
+.tc-forecast-part {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 0.4rem 0.5rem;
+    min-width: 0;
+    overflow: hidden;
+}
+
+.tc-forecast-part.tc-here {
+    box-shadow: inset 0 0 0 2px var(--line-strong);
+}
+
+.tc-forecast-label {
+    font-weight: 600;
+    font-size: 0.82rem;
+}
+
+.tc-dayrow {
+    display: grid;
+    /* Breit genug für "Donnerstag": eine Spalte, in der der Wochentag umbricht,
+       macht aus sieben Zeilen siebzehn. */
+    grid-template-columns: 6.5rem minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 0.5rem 0.9rem;
+    padding: 0.6rem 0;
+    border-top: 1px solid var(--line);
+}
+
+.tc-dayname {
+    font-weight: 700;
+    font-size: 0.85rem;
+    white-space: nowrap;
+}
+
+@media (max-width: 34em) {
+    /* Auf dem Telefon steht der Wochentag über seinem Balken statt daneben --
+       6,5 rem für den Namen plus Balken plus Uhrzeiten passen dort nicht mehr. */
+    .tc-dayrow {
+        grid-template-columns: minmax(0, 1fr) auto;
+    }
+    .tc-dayname {
+        grid-column: 1 / -1;
+    }
+}
+
+.tc-daybar {
+    position: relative;
+    height: 0.7rem;
+    border-radius: 999px;
+    background: var(--surface-deep);
+    overflow: hidden;
+}
+
+.tc-daybar-part {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+}
+
+.tc-daytimes {
+    white-space: nowrap;
+}
+
+.tc-dayedit {
+    grid-column: 1 / -1;
+}
+
+.tc-dayform {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: end;
+    gap: 0.5rem;
+    margin: 0.6rem 0;
+}
+
+.tc-dayform .form-control,
+.tc-dayform .form-select {
+    width: auto;
+}
+
+.tc-tip {
+    margin-top: 1rem;
+    padding: 0.9rem 1rem;
+    border-radius: var(--radius);
+    background: var(--surface-deep);
+    color: var(--muted);
+}
+
+/* ── Heizzeit ──────────────────────────────────────────────────────────────── */
+
+.tc-segments {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    margin-bottom: 1rem;
+}
+
+.tc-segment {
+    padding: 0.5rem 0.9rem;
+    min-height: 2.75rem;
+    display: inline-flex;
+    align-items: center;
+    border-radius: 999px;
+    border: 1px solid var(--line-strong);
+    background: var(--surface);
+    color: var(--ink);
+    text-decoration: none;
+}
+
+.tc-segment.tc-here {
+    background: var(--primary-area);
+    border-color: color-mix(in srgb, var(--primary) 35%, transparent);
+    color: var(--primary-strong);
+    font-weight: 750;
+}
+
+.tc-bars {
+    display: flex;
+    align-items: flex-end;
+    gap: 3px;
+    height: 6rem;
+    margin: 0.75rem 0;
+}
+
+.tc-barwrap {
+    flex: 1 1 0;
+    display: flex;
+    align-items: flex-end;
+    height: 100%;
+    min-width: 2px;
+}
+
+.tc-bar {
+    width: 100%;
+    background: var(--warmth);
+    border-radius: 2px 2px 0 0;
+    min-height: 1px;
+}
+
+/* Die Abwesenheit gilt für alle Räume zugleich und steht deshalb über den
+ * Raumkarten -- nicht in einer davon, wo sie wie eine Eigenschaft dieses einen
+ * Raums aussähe. */
+.tc-absence {
+    display: block;
+    margin-bottom: 1rem;
+    padding: 1.1rem 1.2rem;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--surface);
+    box-shadow: var(--shadow);
+}
+
+.tc-absence > summary {
+    cursor: pointer;
+    font-weight: 700;
+    min-height: 2.75rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+/* Der Untertitel steht in der Zusammenfassung, damit die zugeklappte Kachel schon
+   sagt, wozu sie da ist -- eine Zeile "Abwesenheit einstellen" allein ist eine
+   Beschriftung ohne Inhalt. */
+.tc-absence > summary::after {
+    content: "Alle Räume bis zur Rückkehr sparsamer regeln.";
+    margin-left: auto;
+    font-weight: 400;
+    font-size: 0.85rem;
+    color: var(--muted);
+    text-align: right;
+}
+
+@media (max-width: 40em) {
+    .tc-absence > summary {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.15rem;
+    }
+    .tc-absence > summary::after {
+        margin-left: 0;
+        text-align: left;
+    }
+}
+
+/* Aufgeklappt wiederholt der Text darunter dieselbe Aussage ausführlicher -- dann
+   ist der Untertitel überflüssig. */
+.tc-absence[open] > summary::after {
+    content: none;
+}
+
+.tc-absenceform {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: end;
+    gap: 0.75rem;
+}
+
+.tc-absenceform .form-control {
+    width: auto;
+}
+
+/* „Problem melden" -- zugeklappt, weil es der seltenste Fall ist, aber ohne
+ * JavaScript erreichbar (<details>, tastaturbedienbar). */
+.tc-report {
+    margin-top: 0.9rem;
+    border-top: 1px solid var(--line);
+    padding-top: 0.75rem;
+}
+
+.tc-report > summary {
+    cursor: pointer;
+    min-height: 2.75rem;
+    display: flex;
+    align-items: center;
+}
+
+.tc-reportform {
+    display: grid;
+    gap: 0.6rem;
+}
+
+.tc-reportform fieldset {
+    border: 0;
+    padding: 0;
+    margin: 0;
+    display: grid;
+    gap: 0.25rem;
+}
+
+/* Der Auf/Zu-Knopf einer Tageszeile. Er stand als nackter `<summary>` da -- ein
+ * kleines Dreieck und ein Wort, unterhalb der Zeile, in derselben Farbe wie der
+ * Fließtext daneben. Gemeldet worden ist genau das: "Ich sehe keine Möglichkeit,
+ * den Zeitplan zu ändern." Ein Bedienelement muss wie eines aussehen. */
+.tc-dayedit {
+    grid-column: 1 / -1;
+    margin-top: 0.35rem;
+}
+
+.tc-dayedit > summary {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    min-height: 2.25rem;
+    padding: 0.35rem 0.8rem;
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-small);
+    background: var(--surface);
+    color: var(--ink);
+    font-size: 0.85rem;
+    font-weight: 650;
+    cursor: pointer;
+    list-style: none;
+}
+
+/* Das eigene Dreieck weg -- die Kante des Knopfes trägt die Aussage, und in
+ * Safari sitzt der Marker sonst außerhalb der Fläche. */
+.tc-dayedit > summary::-webkit-details-marker {
+    display: none;
+}
+
+.tc-dayedit > summary::after {
+    content: "\+";
+    font-weight: 700;
+    color: var(--muted);
+}
+
+.tc-dayedit[open] > summary::after {
+    content: "\2212";
+}
+
+.tc-dayedit > summary:hover {
+    background: var(--surface-deep);
+    border-color: color-mix(in srgb, var(--primary) 50%, var(--line-strong));
+}
+
+.tc-dayedit[open] > summary {
+    background: var(--primary-area);
+    border-color: color-mix(in srgb, var(--primary) 35%, transparent);
+    color: var(--primary-strong);
 }

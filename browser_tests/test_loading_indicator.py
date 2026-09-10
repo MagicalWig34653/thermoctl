@@ -62,7 +62,10 @@ def test_the_loading_bar_appears_after_a_delay_for_a_slow_request(admin_page: Pa
         }"""
     )
 
-    admin_page.locator("#main-navigation").get_by_role(
+    # `#main-navigation` war der Bootstrap-Collapse-Container der alten,
+    # inzwischen entfallenen Kopfleiste (`.tc-head`); die Seitenleiste der neuen
+    # Anlagenhuelle traegt ihre Verweise stattdessen in `#tc-sidebar`.
+    admin_page.locator("#tc-sidebar").get_by_role(
         "link", name="Betrieb", exact=True
     ).click(no_wait_after=True)
     # 800 ms Anfrage plus Sicherheitsabstand nach beiden Seiten.
@@ -110,10 +113,15 @@ def test_the_loading_bar_does_not_flash_for_a_fast_request(admin_page: Page) -> 
         }"""
     )
 
-    admin_page.locator("#main-navigation").get_by_role(
+    admin_page.locator("#tc-sidebar").get_by_role(
         "link", name="Geräte", exact=True
     ).click(no_wait_after=True)
-    admin_page.get_by_role("heading", name="Geräte", exact=True).wait_for()
+    # `#tc-main` statt eines ungefilterten `get_by_role`: seit v0.9.0 traegt auch
+    # die Kopfzeile `.tc-topbar` ein `<h1 class="tc-pagetitle">Geräte</h1>`, das
+    # sonst zusammen mit der eigentlichen Seitenueberschrift zwei Treffer ergaebe.
+    admin_page.locator("#tc-main").get_by_role(
+        "heading", name="Geräte", exact=True
+    ).wait_for()
     # Weit ueber die 400-ms-Schwelle hinaus beobachten, falls der Balken doch
     # (fehlerhaft) verzoegert erschiene.
     admin_page.wait_for_timeout(500)
@@ -138,7 +146,7 @@ def test_the_loading_bar_disappears_again_after_a_failed_request(admin_page: Pag
     admin_page.route("**/zones", scheitern)
     balken = admin_page.locator("#tc-loading-bar")
 
-    admin_page.locator("#main-navigation").get_by_role(
+    admin_page.locator("#tc-sidebar").get_by_role(
         "link", name="Zonen", exact=True
     ).click(no_wait_after=True)
 

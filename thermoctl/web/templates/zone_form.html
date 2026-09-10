@@ -1,10 +1,17 @@
-{% extends "base.html" %}
+{% extends "base_admin.html" %}
 {% from "zone_header.html" import zonenkopf with context %}
 {% from "form.html" import text_field, number_field, select_field %}
 {% block title %}{% if zone %}Zone bearbeiten{% else %}Zone anlegen{% endif %} – thermoctl{% endblock %}
 {% block content %}
 {% if zone %}{{ zonenkopf(zone, "Zonendaten") }}{% else %}<h1 class="mb-4">Zone anlegen</h1>{% endif %}
-<form method="post" action="{% if zone %}/zones/{{ zone.id }}{% else %}/zones{% endif %}">
+{#
+`url_prefix`: ohne ihn schickt dieses Formular seine Eingabe hinter einem
+Ingress-Proxy an den Wurzelpfad des Hosts statt an thermoctl -- „Zone anlegen"
+und „Zone speichern" enden dort mit 404, während direkt ohne Ingress alles
+funktioniert. Es war das einzige Formular im Projekt ohne den Präfix; ein
+Wächtertest (`tests/test_ingress_prefix.py`) hält das jetzt für alle Vorlagen fest.
+#}
+<form method="post" action="{{ url_prefix }}{% if zone %}/zones/{{ zone.id }}{% else %}/zones{% endif %}">
     {{ text_field("name", "Technischer Name", values.name|default(""),
                  "Eindeutiger Name für Schnittstellen und Konfiguration.", errors.name, true) }}
     {{ text_field("display_name", "Anzeigename", values.display_name|default(""),

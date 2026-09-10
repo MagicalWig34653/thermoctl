@@ -12,14 +12,16 @@ from thermoctl.db.base import utcnow
 from thermoctl.db.models.zone import Zone
 from thermoctl.domain.authz import visible_zones
 from thermoctl.domain.control import settings as control_settings
-from thermoctl.domain.modes import DomainError, update_setpoints
+from thermoctl.domain.modes import DomainError, step_setpoint
 from thermoctl.domain.principal import Principal
 from thermoctl.domain.schedule import (
+    OverrideAlreadyRunning,
+    ScheduleError,
     cancel_override,
     create_override,
     end_of_next_switch,
+    jump_to_next_switch,
     resolved_setpoint,
-    temperature_for_mode,
 )
 from thermoctl.domain.zone_settings import (
     ControlParameters,
@@ -32,13 +34,31 @@ from thermoctl.domain.zone_settings import (
     validate_valve_protection,
 )
 from thermoctl.web.forms import FormError, form_again
+from thermoctl.web.guards import admin_ui_only
 from thermoctl.web.urls import prefixed
 
 # `include_in_schema=False`: the OpenAPI description is the contract of the REST
 # interface. These routes deliver HTML for humans, and in the interface under
 # /docs there would otherwise be a form route next to every real endpoint whose
 # 'Try it out' triggers a real change.
-router = APIRouter(dependencies=[Depends(csrf_protection)], include_in_schema=False)
+# Zwei Router, weil dieses Modul zwei verschiedene Dinge enthält.
+#
+# `router` trägt die Regelparameter einer Zone -- Hysterese, Mindestschaltdauern,
+# PI-Regelung. Das ist Anlagenkonfiguration und gehört in die Admin-Oberfläche;
+# deshalb hängt hier `admin_ui_only`.
+#
+# `shared_router` trägt die drei Alltagsaktionen an einer Zone: Sollwert des
+# laufenden Modus verstellen, übersteuern, Übersteuerung beenden. Die braucht die
+# Mieteroberfläche genauso wie die Admin-Oberfläche, und sie sind vollständig über
+# zonenbezogene Rechte abgesichert (`setpoint.write`, `override.create`,
+# `override.cancel`). Ein Profil-Wächter davor würde nichts absichern, was die
+# Rechteprüfung nicht schon absichert, aber die Mieteroberfläche funktionsunfähig
+# machen.
+router = APIRouter(
+    dependencies=[Depends(csrf_protection), Depends(admin_ui_only)],
+    include_in_schema=False,
+)
+shared_router = APIRouter(dependencies=[Depends(csrf_protection)], include_in_schema=False)
 
 FELDER = (
     "hysteresis_k",
@@ -268,7 +288,7 @@ async def save_window_temp_drop_detection(
     )
 
 
-@router.post("/zones/{zone_id}/override")
+@shared_router.post("/zones/{zone_id}/override")
 async def create_override_view(
     zone_id: int,
     request: Request,
@@ -330,7 +350,7 @@ async def create_override_view(
     return RedirectResponse(prefixed(request, "/"), status.HTTP_303_SEE_OTHER)
 
 
-@router.post("/zones/{zone_id}/override/cancel")
+@shared_router.post("/zones/{zone_id}/override/cancel")
 async def end_override(
     zone_id: int,
     request: Request,
@@ -342,12 +362,7 @@ async def end_override(
     return RedirectResponse(prefixed(request, "/"), status.HTTP_303_SEE_OTHER)
 
 
-# One click on the start page's thermostat. A half step, because below that a room
-# doesn't perceptibly change and you would otherwise click too often.
-THERMOSTAT_STEP = Decimal("0.5")
-
-
-@router.post("/zones/{zone_id}/thermostat")
+@shared_router.post("/zones/{zone_id}/thermostat")
 async def adjust_thermostat(
     zone_id: int,
     request: Request,
@@ -376,28 +391,83 @@ async def adjust_thermostat(
     if direction not in ("up", "down"):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Unbekannte Richtung")
 
-    # The value the page shows -- not the stored row. The two are not the same: if a
-    # zone has no own setpoint for frost protection, `aufgeloester_sollwert` shows the
-    # fallback of 16 degrees. The thermostat used to look up the row, find none, and
-    # respond with 404 -- on the page it looked as if nothing happened when pressed.
-    # That is exactly the state of a freshly set-up plant where nobody has maintained
-    # setpoints yet.
-    current = temperature_for_mode(session, zone, mode_id)
-    if current is None:
-        shown = resolved_setpoint(session, zone, utcnow())
-        if shown.mode_id == mode_id:
-            current = shown.temperature_c
-    if current is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Für diesen Modus gibt es keinen Sollwert")
-
-    new = current + (THERMOSTAT_STEP if direction == "up" else -THERMOSTAT_STEP)
+    # Der Wert, den die Seite anzeigt -- nicht die gespeicherte Zeile. Die beiden
+    # sind nicht dasselbe: hat eine Zone für den Frostschutz keinen eigenen Sollwert,
+    # zeigt `resolved_setpoint` den Rückfall von 16 Grad. Das Thermostat schlug
+    # früher die Zeile nach, fand keine und antwortete mit 404 -- auf der Seite sah
+    # es aus, als täte der Knopf nichts. Genau der Zustand einer frisch
+    # eingerichteten Anlage, in der noch niemand Sollwerte gepflegt hat.
+    shown = resolved_setpoint(session, zone, utcnow())
+    fallback = shown.temperature_c if shown.mode_id == mode_id else None
     try:
-        update_setpoints(
-            session, zone, {mode_id: new}, user_id=principal.user_id
+        # Der Schritt selbst liegt in der Domäne und ist **eine** Anweisung: zwei
+        # schnelle Klicks sind sonst nur ein Schritt, weil beide denselben Wert
+        # lesen und beide dasselbe Ergebnis zurückschreiben.
+        step_setpoint(
+            session, zone, mode_id,
+            1 if direction == "up" else -1,
+            fallback=fallback,
+            user_id=principal.user_id,
         )
     except DomainError as exc:
+        if exc.field == "mode_id":
+            raise HTTPException(
+                status.HTTP_404_NOT_FOUND, "Für diesen Modus gibt es keinen Sollwert"
+            ) from exc
         # Reached the limit. Not an error state, but the end of the road -- the
         # page simply shows the unchanged value afterward.
         parameter = urlencode({"thermostat_errors": exc.notice, "zone_id": zone.id})
+        return RedirectResponse(prefixed(request, f"/?{parameter}"), status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(prefixed(request, "/"), status.HTTP_303_SEE_OTHER)
+
+
+@shared_router.post("/zones/{zone_id}/jump-next")
+async def jump_to_next_switch_view(
+    zone_id: int,
+    request: Request,
+    principal: Annotated[Principal, Depends(current_principal)],
+    session: Annotated[Session, Depends(get_session)],
+) -> Response:
+    """„Zur nächsten Schaltzeit springen" -- zieht die nächste reguläre
+    Zeitplan-Phase sofort vor, aber nur bis zu dem Zeitpunkt, an dem sie regulär
+    begonnen hätte. Der Wochenplan selbst bleibt unverändert.
+
+    Ruft ausschließlich `domain.schedule.jump_to_next_switch` -- der nächste
+    Schaltpunkt, der Zielmodus und der Zielsollwert werden hier nirgends selbst
+    ausgerechnet (Grundsatz 6).
+
+    Läuft bereits eine Übersteuerung, legt die Domäne **keine** zweite still
+    daneben, sondern meldet die laufende. Die Seite zeigt sie daraufhin an und
+    bietet zwei ausdrückliche Wege: beenden, oder mit `replace=1` ersetzen. Ein
+    stillschweigendes Verdoppeln wäre ein Rennen zwischen zwei Zeilen, dessen
+    Ausgang niemand vorhersagen könnte.
+    """
+    zone = _zone_or_404(session, principal, zone_id, "override.create")
+    form = await request.form()
+    replace = str(form.get("replace", "")) == "1"
+
+    try:
+        jump_to_next_switch(
+            session,
+            zone,
+            replace=replace,
+            user_id=principal.user_id,
+            token_id=principal.token_id,
+            source="web",
+        )
+    except OverrideAlreadyRunning as exc:
+        running = f"{exc.running_override.temperature_c:.1f}".replace(".", ",")
+        parameter = urlencode(
+            {
+                "jump_next_errors": (
+                    f"Für diesen Raum läuft bereits eine Änderung auf {running} °C. "
+                    "Bitte zuerst beenden oder ausdrücklich ersetzen."
+                ),
+                "zone_id": zone.id,
+            }
+        )
+        return RedirectResponse(prefixed(request, f"/?{parameter}"), status.HTTP_303_SEE_OTHER)
+    except ScheduleError as exc:
+        parameter = urlencode({"jump_next_errors": exc.notice, "zone_id": zone.id})
         return RedirectResponse(prefixed(request, f"/?{parameter}"), status.HTTP_303_SEE_OTHER)
     return RedirectResponse(prefixed(request, "/"), status.HTTP_303_SEE_OTHER)

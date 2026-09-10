@@ -153,6 +153,13 @@ class Setting(Base):
     notify_window_alarm: Mapped[bool] = mapped_column(
         Boolean, default=True, server_default=true(), nullable=False
     )
+    # Eine sechste Art, wieder mit eigenem Schalter: eine Problemmeldung aus einer
+    # Wohnung (`domain.problem_report`). Sie kommt nicht aus einem Zustandswechsel
+    # der Regelung, sondern von einem Menschen -- wer sie nicht bekommen will, soll
+    # sie abstellen können, ohne dafür die fünf Störungsarten mit abzuschalten.
+    notify_tenant_reports: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default=true(), nullable=False
+    )
     # --- Außentemperatur und Fenster-Alarm --------------------------------------
     # Same pattern as `zone.temperature_source_device_id` -- picked from the known
     # Zigbee2MQTT devices with a `temperature` capability -- but exactly one for the

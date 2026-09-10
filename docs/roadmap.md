@@ -1,6 +1,6 @@
 # Roadmap
 
-Stand: 2026-09-04
+Stand: 2026-09-10
 
 Diese Roadmap führt zusammen, was der Rahmenentwurf in fünf Teilprojekte zerlegt hat, und
 konkretisiert es zu Features und Aufgaben. Sie ersetzt den Rahmenentwurf nicht — bei
@@ -19,7 +19,7 @@ Phase 1 geschehen ist. Features, die aus der unverbindlichen
 | 1 | Fundament | **umgesetzt**, `v0.1.0` | Nichts sichtbar, aber alles Weitere hängt daran |
 | 1a | Nacharbeiten | **umgesetzt** | Oberfläche benutzbar |
 | 2 | Geräte-Anbindung im Schattenbetrieb | **gebaut, Abnahme anhand echter Betriebsdaten geprüft und nicht bestanden** | Belegt gegen die echte Anlage, dass die Daten stimmen |
-| 3 | Konfigurations-Oberfläche | **umgesetzt**, seither erweitert | Ende der SQL-Pflege — ab hier im Alltag nützlich |
+| 3 | Konfigurations-Oberfläche | **umgesetzt**, seit `v0.9.0` getrennte Anlagen- und Wohnungssicht | Ende der SQL-Pflege — ab hier im Alltag nützlich |
 | 4 | Regelkreis und Cutover | schaltet seit `v0.3.0` scharf an der echten Anlage; Ablösung des Altsystems offen | Altsystem ablösen |
 | 5 | Integrationen und Veröffentlichung | Repository ist öffentlich (seit `v0.6.1`); läuft zusätzlich als Home-Assistant-Add-on — **nicht ursprünglich vorgesehen**, siehe unten | Für Fremde aufsetzbar |
 
@@ -140,6 +140,11 @@ pflegen statt per SQL-Client.
 - Audit-Protokoll durchsuchen
 - Verständliche Zustands- und Fehlermeldungen statt Rohdaten
   *(Idee aus dem Konzept-Dokument)*
+- **Zwei Weboberflächen, seit `v0.9.0`: Anlage und Wohnung.** Das UI-Profil der
+  Gruppe bestimmt die Oberfläche; Berechtigungen bleiben davon unabhängig. Die
+  Anlagensicht bietet die Verwaltung mit Seitenleiste, die Wohnungssicht eigene
+  Räume, einen vereinfachten Wochenplan, Heizzeit, Abwesenheit und Problemmeldung.
+  Beide haben einen persönlichen Kontobereich.
 
 ### Aufgaben
 

@@ -65,6 +65,7 @@ from thermoctl.domain.pi_control import (
 from thermoctl.domain.principal import Principal
 from thermoctl.domain.schedule import resolved_setpoint
 from thermoctl.domain.statistics import (
+    PERIODS,
     RelayDeviceStatistics,
     as_duration,
     heating_periods,
@@ -74,6 +75,7 @@ from thermoctl.domain.time import local_day_start_utc, local_time
 from thermoctl.integrations import notification
 from thermoctl.services.shadow_run import PI_FALLBACK_INELIGIBLE
 from thermoctl.web import templates
+from thermoctl.web.guards import admin_ui_only
 from thermoctl.web.urls import prefixed
 
 # Readable text for `shadow_decision.controller_fallback_reason` (specification
@@ -96,7 +98,14 @@ PI_FALLBACK_LABELS: dict[str, str] = {
 # interface. These routes deliver HTML for humans, and in the interface under
 # /docs there would otherwise be a form route next to every real endpoint whose
 # 'Try it out' triggers a real change.
-router = APIRouter(dependencies=[Depends(csrf_protection)], include_in_schema=False)
+# `admin_ui_only`: diese Seiten gehören zur Anlagensicht. Ein Mieterprofil wird
+# hier schon vor der Rechteprüfung abgewiesen -- eine ausgeblendete Verknüpfung
+# in der Navigation ist kein Riegel (siehe `web/guards.py`). Die bestehenden
+# Rechteprüfungen in den Endpunkten bleiben davon unberührt bestehen.
+router = APIRouter(
+    dependencies=[Depends(csrf_protection), Depends(admin_ui_only)],
+    include_in_schema=False,
+)
 
 
 def _page(
@@ -203,6 +212,7 @@ def _defaults_page(
             "notify_command_failures": row.notify_command_failures,
             "notify_stuck_sensor": row.notify_stuck_sensor,
             "notify_window_alarm": row.notify_window_alarm,
+            "notify_tenant_reports": row.notify_tenant_reports,
             "notify_last_attempt_at": row.notify_last_attempt_at,
             "notify_last_ok": row.notify_last_ok,
             "notify_last_error": row.notify_last_error,
@@ -406,6 +416,7 @@ async def save_notification_preferences(
     row.notify_command_failures = form.get("notify_command_failures") is not None
     row.notify_stuck_sensor = form.get("notify_stuck_sensor") is not None
     row.notify_window_alarm = form.get("notify_window_alarm") is not None
+    row.notify_tenant_reports = form.get("notify_tenant_reports") is not None
     audit.record(
         session,
         source="web",
@@ -574,11 +585,10 @@ async def show_interfaces(
 
 # Time ranges people actually want to know about. No free-form date field: the
 # question is "this week" or "this month", not "from the 14th to the 23rd".
-ZEITRAEUME: dict[str, tuple[str, int]] = {
-    "7": ("7 Tage", 7),
-    "30": ("30 Tage", 30),
-    "90": ("90 Tage", 90),
-}
+# Die Zeiträume stehen seit v0.9.0 in der Domäne: die Heizzeit-Ansicht der
+# Wohnungssicht benutzt dieselben drei. Der Name hier bleibt, damit die Seite und
+# ihre Tests nicht an einer Umbenennung hängen.
+ZEITRAEUME = PERIODS
 
 
 @router.get("/statistics")

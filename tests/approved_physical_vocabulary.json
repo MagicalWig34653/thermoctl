@@ -31,6 +31,7 @@
       "- **Ventilschutz je Zone.** Nach einer einstellbaren Zeit ohne reguläres Heizen erzeugt",
       "- **Zigbee-Heizkörperthermostate** (WT-A03E, BTH-RA) als Aktor. Ein Thermostatventil ist",
       "- `/control/arm` kann das öffnen, mit eigenem Recht `control.arm`. „Geschaltet wird",
+      "Abwesenheit normal beheizt.",
       "Aktor ist zu.",
       "Bisher schloss ein einziges selbstregelndes Thermostatventil in einer Zone PI für die",
       "Der Adapter kann eine bekannte Steckdose ein- und ausschalten, aber es gibt keine",
@@ -84,6 +85,7 @@
       "konnte ein Relais dadurch ohne seinen Taktschutz umschalten; bei einer Minute",
       "mehrere Grad zu warm; mit einem Wandfühler regelt es gegen den Raum.",
       "scharfen Betrieb an einer echten Heizung prüfte ein Kreuzreview gezielt, ob geschaltet",
+      "seiner Abwesenheit einen Raum kurz aufheizte, bekam ihn danach für den Rest der",
       "selbst anzuhalten. Ein Zigbee2MQTT-Thermostatventil ohne `self_regulating` (Fähigkeit",
       "sich beobachten, bevor sie etwas schalten). Der nie erreichte Schnittstellen-Zustand",
       "solange der Ventilschutz den Ein-Zustand tatsächlich verlangt.",
@@ -92,6 +94,7 @@
       "und beide wurden erst gefunden, nachdem die Anlage bereits an einer echten Heizung lief.",
       "verhinderte, dass „Zirkulationspumpe\" oder „Ölbrenner\" als Treffer für „pumpe\" bzw.",
       "wirklich angebunden statt halb, die Sonnenabsenkung lässt sich wieder einschalten, und",
+      "zeigen Wärme weiterhin in Orange und Kühle in Blau. Alle drei Ansichten desselben",
       "über beide. Ein Thermostatventil ohne `system_mode` geht über seinen Mindestsollwert aus",
       "„Die Zone regelt die Heizung bis auf Weiteres gegen den Frostschutz-Sollwert von",
       "„brenner\" erkannt wurden. Die führende Grenze fällt jetzt bei den Substantiven, die"
@@ -103,6 +106,7 @@
       "Schaltaktoren — selbstregelnde Ventile und Geräte mit `thermostat`-Fähigkeit sind",
       "Schalter: PI schaltet deutlich häufiger und verkürzt die Lebensdauer eines Schaltaktors.",
       "Wie oft eine Zone tatsächlich schaltet, zeigt die Seite **Relaisverschleiß** je Gerät und",
+      "Wochenplan, Heizzeit, „für eine Weile wärmer\", „zur nächsten Schaltzeit springen\" und",
       "an einer echten Heizung.",
       "beseitigt genau das. Weniger Verbrauch oder schnelleres Aufheizen folgt daraus nicht.",
       "kann das Ventil auch selbst regeln und bekommt dann nur Soll- und Ist-Temperatur), eine",
@@ -117,32 +121,31 @@
       "## Fenster: Frostschutz gewinnt, EIN/AUS-Aktoren schalten nicht ab",
       "## Was geschaltet wird — genau",
       "## v0.8.2 -- die Anlage schaltete nichts: der Anlaufriegel ging nie mehr auf",
-      "(Swarm: `mode: replicated-job`; Kubernetes: `Job`, mit `kubectl wait` vor dem",
       "(nicht-selbstregelnde) Schaltaktoren — genau die Bedingung für",
       "(wo vorhanden) an Zigbee2MQTT-Thermostatventile ohne eigene Regelung",
       "**EIN/AUS-Aktoren (Fußbodenheizung an reinen Ein/Aus-Ventilen) schaltet das Fenster",
       "**Frostschutz schlägt das offene Fenster.** Bisher schaltete Regel 3 bei offenem",
-      "Ablauf wird ein frischer Sturz erneut geprüft, und die Heizung stand die ganze Zeit aus,",
+      "**Schutz gegen Rückkopplung:** Eine aufgrund der Vermutung abgeschaltete Heizung",
       "Aktor etwas hinaus — das ist der Zustand einer neuen Anlage. `/control/arm` öffnet ihn,",
+      "Der vereinfachte Editor bietet zwei Schaltzeiten je Tag („warm ab“, „kühler ab“).",
       "Durchlauf, wenn sie nicht fuehrt -- eine Instanz in Bereitschaft schaltet nichts.",
       "Erkennungsmerkmal: die Zone hat Aktoren, und keiner davon ist",
-      "Quelltext gilt für normalen Betrieb mit periodischer Heizung, nicht für einen Raum, dem",
       "Sensorausfall, Mindestschaltdauern und Ventilschutz laufen unwissend vom Urlaub",
-      "Test — nachgezogen in `tests/test_shadow_run.py` (ohne Aktor, gemischt, mehrere",
       "Thermostatventile, Ein/Aus an gewöhnliche Zigbee2MQTT-Aktoren",
-      "Ventilschutzlauf und wurde ein Fenster geöffnet, während die Temperatur im",
+      "Zonen ohne Aktor, gemischte Zonen und mehrere reine EIN/AUS-Aktoren.",
       "[`docs/docker-swarm.md`](docker-swarm.md) und [`docs/kubernetes.md`](kubernetes.md), je",
+      "`not situation.valve_protection_active`: ein unterbrochener Ventilschutzlauf wird",
       "allein, für den Aus-Timer zusätzlich `protection_allowed`. Ein Ventilschutzlauf, der",
+      "benutzen jetzt dieselbe zweiseitige Skala: unter der Mitte kühl, darüber warm, die",
+      "dauerhaften ±0,5-K-Schritt am laufenden Modus, „Für eine Weile wärmer\" und „Zur",
       "deshalb bleibt die Erkennung je Zone standardmäßig aus, und der Betreiber schaltet sie",
       "echten Fensteröffnen zu unterscheiden. Ein langsames Auskühlen nach Heizende und das Ende",
-      "gleiche EIN/AUS-Aktoren).",
-      "gleichzeitig (Swarm: `docker stack deploy` ignoriert `depends_on`; Kubernetes: ein",
       "ihren Frostschutzwert, heizt sie jetzt wieder: Heizen gegen ein offenes Fenster ist",
       "könnte, und da die Erkennung selbst das Heizen abschaltet, gäbe es ohnehin keine aktive",
       "selbstregelndes Ventil) bleiben beim bisherigen, vorsichtigeren Verhalten. Nur das",
       "sicher entscheiden könnten, wer einen Heizkörper schalten darf; die Datenbank, die",
+      "sichtbare Räume, ausdrücklich „Heizzeit\" und im Trockenlauf „hätte geheizt\").",
       "verliert, den nächsten Aktor trotzdem nicht mehr anfasst. Erreicht damit sowohl den",
-      "wiederholt die Wärme entzogen wurde — bei kaltem Wetter und mäßiger Dämmung kann er dann",
       "| 4 — Regelkreis und Cutover | schaltet scharf an der echten Anlage; Ablösung des Altsystems noch offen |"
     ],
     "docs/api.md": [
@@ -174,10 +177,10 @@
     ],
     "docs/homebridge.md": [
       "**„Heizen\" (1) ist `manual`, nicht `auto`.** In thermoctl bedeutet die manuelle",
-      "`'manual'` (Heizen, 1) oder `'off'` (Aus/Bereit, 0) ab — beides Werte aus derselben Liste,",
       "Bild, das HomeKits „Heizen\" nahelegt: ein Rad, an dem ich drehe und das genau diesen Wert",
       "HomeKit kennt vier feste Heiz-/Kühlzustände: 0 Aus, 1 Heizen, 2 Kühlen, 3 Automatik.",
       "HomeKits Zahl: 0 Aus, 1 Heizen, 2 Kühlen, 3 Automatik. Ohne dieses Feld gilt die Vorgabe",
+      "`'manual'` (Heizen, 1) oder `'off'` (Aus/Bereit, 0) ab — beides Werte aus derselben Liste,",
       "ausschließlich Heizung; es gibt keine Betriebsart, die „Kühlen\" auch nur näherungsweise",
       "ist: Aus, Heizen, Automatik. Der Zustand 2 (Kühlen) fehlt bewusst, siehe unten. Anders als",
       "| 1 — Heizen | `operating_mode = manual` |",
@@ -412,9 +415,9 @@
       "Minuten auf Heizen. Im Trockenlauf wird die Entscheidung nur protokolliert; im scharfen Betrieb nach einem Neustart geht sie an den zugeordneten Aktor.",
       "Ventilschutzlauf — die Regelung entscheidet unabhängig von der Raumregelung für",
       "heizen",
+      "ventilschutz",
       "°C unterschritten — Ausnahmeregel: es wird trotz offenem Fenster geheizt, um ein Einfrieren zu vermeiden.",
-      "°C unterschritten — es wird trotzdem geheizt.",
-      "ventilschutz"
+      "°C unterschritten — es wird trotzdem geheizt."
     ],
     "thermoctl/domain/controller_channels.py": [
       "Schreibkanäle sind nur auf Bediengeräten erlaubt, die nirgends Aktor sind.",
@@ -465,6 +468,12 @@
       "actuator",
       "actuator",
       "kein Aktor — die Entscheidung erreicht kein Ventil"
+    ],
+    "thermoctl/domain/problem_report.py": [
+      "Raum wird nicht warm",
+      "Raum zu warm",
+      "not_warm",
+      "too_warm"
     ],
     "thermoctl/domain/reading.py": [
       "switch"
@@ -541,6 +550,9 @@
     "thermoctl/web/daily_views.py": [
       "Bitte bestätigen, dass mehr Schaltspiele und eine falsche Parametrierung verstanden wurden, bevor PI (Beta) eingeschaltet wird."
     ],
+    "thermoctl/web/navigation.py": [
+      "/heating-time"
+    ],
     "thermoctl/web/schedule_views.py": [
       "warmth",
       "warmth"
@@ -548,7 +560,7 @@
     "thermoctl/web/start_views.py": [
       "warmth"
     ],
-    "thermoctl/web/templates/base.html": [
+    "thermoctl/web/templates/base_core.html": [
       "// umschaltet."
     ],
     "thermoctl/web/templates/base_plain.html": [
@@ -581,16 +593,24 @@
     "thermoctl/web/templates/flow_diagram.html": [
       "<div class=\"tc-flow-column{{ ' tc-target' if draggable }}\"{% if draggable %} data-target=\"actuator\" data-target-name=\"Aktor\" data-requires=\"{{ requires.get('actuator', '') }}\"{% endif %}>",
       "<p class=\"t-label\">Als Aktor zugeordnet</p>",
+      "die Zone hängt an reinen EIN/AUS-Ventilen (z. B. Fußbodenheizung).",
       "{% else %}{{ lücke(\"kein Aktor\") }}{% endif %}",
       "{% for g in z.actuators %}{{ device_card(g, \"actuator\", draggable) }}{% endfor %}",
       "{% if z.actuators %}",
-      "├→ Zone → Aktoren",
-      "die Zone hängt an reinen EIN/AUS-Ventilen (z. B. Fußbodenheizung)."
+      "├→ Zone → Aktoren"
     ],
     "thermoctl/web/templates/form.html": [
       "<div class=\"form-check form-switch mb-3\">",
       "<input class=\"form-check-input\" type=\"checkbox\" role=\"switch\" id=\"{{ field_id }}\" name=\"{{ name }}\"",
       "denselben Schalter, und ein Klick auf die Beschriftung der dritten Zeile schaltete die"
+    ],
+    "thermoctl/web/templates/help.html": [
+      "<h2 class=\"h5\">Für eine Weile wärmer</h2>",
+      "<h2 class=\"h5\">Heizt / wartet</h2>",
+      "Der Temperaturfühler hat sich länger nicht gemeldet. Die Heizung regelt",
+      "Der Wochenplan legt fest, ab wann es morgens warm und ab wann es abends",
+      "erwärmt. „Wartet\" heißt: der Sollwert ist erreicht. Beides wechselt im",
+      "„Heizt\" heißt: dein Raum ist kühler als der Sollwert und wird gerade"
     ],
     "thermoctl/web/templates/interfaces.html": [
       "\"running\":       (\"tc-chip-warm\",  \"Läuft\"),"
@@ -625,8 +645,8 @@
       "an Thermostatventile, im Trockenlauf unterdrückte und gescheiterte Befehle zählen"
     ],
     "thermoctl/web/templates/schedule.html": [
-      "var({{ '--warmth' if w >= 0.5 else '--cool' }})",
       "var({{ '--warmth' if bar.warmth >= 0.5 else '--cool' }})",
+      "var({{ '--warmth' if w >= 0.5 else '--cool' }})",
       "{% set w = warmth.get(segment.mode_id, 0.5) %}",
       "{{ (45 + (bar.warmth - 0.5)|abs * 90)|round|int }}%, var(--surface));"
     ],
@@ -636,22 +656,24 @@
       "die Außentemperatur unter der eingestellten Schwelle liegt. Ein- und ausgeschaltet"
     ],
     "thermoctl/web/templates/start.html": [
+      "\"es ist warm draußen\" verwechseln könnte.",
       "<a href=\"{{ url_prefix }}/vacation\" class=\"tc-chip {{ 'tc-chip-warm' if vacation_running else 'tc-chip-quiet' }}\"",
       "<div class=\"small mt-1\" style=\"color: var(--warmth)\">{{ thermostat_errors }}</div>",
       "<div class=\"w-100 small\" style=\"color: var(--warmth)\">{{ override_errors }}</div>",
+      "<span class=\"t-quiet small\">Ausgabe freigegeben — alle zugeordneten Aktoren werden angesteuert.</span>",
+      "<span class=\"t-quiet small\">Der beim Start gebaute MQTT-Riegel ist noch zu. Bis zum Neustart gehen weder Sollwerte noch Ein/Aus-Befehle an Aktoren.</span>",
+      "<span class=\"t-quiet small\">Regelentscheidungen werden protokolliert. Weder Sollwerte noch Ein/Aus-Befehle gehen an Aktoren.</span>",
       "<span class=\"tc-chip tc-chip-warm\"><span class=\"tc-dot\"></span>Heizentscheidung</span>",
       "<span class=\"tc-chip tc-chip-warm\"><span class=\"tc-dot\"></span>Scharf und neu gestartet</span>",
-      "<span>Ausgabe freigegeben — alle zugeordneten Aktoren werden angesteuert.</span>",
-      "<span>Der beim Start gebaute MQTT-Riegel ist noch zu. Bis zum Neustart gehen weder Sollwerte noch Ein/Aus-Befehle an Aktoren.</span>",
-      "<span>Regelentscheidungen werden protokolliert. Weder Sollwerte noch Ein/Aus-Befehle gehen an Aktoren.</span>",
-      "Bereitschaft: Sie regelt nicht und schaltet nichts, unabhängig vom Zustand",
+      "<span class=\"tc-chip {{ 'tc-chip-warm' if sending_allowed else 'tc-chip-warning' }}\">",
       "Das Band je Zone zeigt den heutigen Zeitplan über 24 Stunden — je wärmer der Ton,",
       "Schalter, Steckdosen und Ventile ohne eigene Regelung bekommen Ein/Aus.",
       "Seite ein Formularstapel, in dem die eigentliche Auskunft — wie warm ist es — unterging.",
       "Selbstregelnde Thermostatventile bekommen einen Sollwert und regeln damit selbst;",
+      "Sätze fest; wer sie ändert, ändert eine Aussage über eine echte Heizung.",
       "dauerhaft \"Tag soll wärmer sein\", nicht \"jetzt einmal wärmer\". Deshalb steht",
+      "gerade in Bereitschaft: Sie regelt nicht und schaltet nichts,",
       "ohnehin nur eine Handvoll Modi -- die Farbe sagt \"wärmer\" oder \"kühler\", die",
-      "\"es ist warm draußen\" verwechseln könnte.",
       "var({{ '--warmth' if a.warmth >= 0.5 else '--cool' }})",
       "{{ (40 + (a.warmth - 0.5)|abs * 90)|round|int }}%, var(--surface));\""
     ],
@@ -661,9 +683,48 @@
       "Entweder war es warm genug, oder der Regelzyklus lief noch nicht — er schreibt",
       "bestätigt nicht, dass ein Aktor die angeforderte Wirkung tatsächlich erzielt hat."
     ],
+    "thermoctl/web/templates/tenant_heating_time.html": [
+      "<h1 class=\"tc-h1\">Wie viel wurde geheizt?</h1>",
+      "<strong>Die Anlage schaltet derzeit nicht.</strong>",
+      "Die Balken zeigen, wann sie geheizt <em>hätte</em>.",
+      "Trockenlauf: die Werte zeigen, wann die Anlage geheizt **hätte**. Als Text und",
+      "href=\"{{ url_prefix }}/heating-time?period={{ code }}\""
+    ],
+    "thermoctl/web/templates/tenant_schedule.html": [
+      "<h1 class=\"tc-h1\">{{ zone.display_name }}: wann soll es warm sein?</h1>",
+      "<p class=\"t-quiet small\">Warm am Morgen und Abend, nachts automatisch kühler.</p>",
+      "Du legst nur deine Komfortzeiten fest. Alles Weitere übernimmt die Heizung.",
+      "Heizung ihn auf dem Frostschutzwert.",
+      "Startseite: unter der Mitte kühl, darüber warm, und die",
+      "background: color-mix(in srgb, var(--warmth) {{ (bar.warmth * 100)|round|int }}%, var(--cool-area));\">",
+      "die Nachtstunden hier warm aussehen -- drei Ansichten",
+      "gibt es nichts, wozwischen ein Tag umschalten könnte.",
+      "var({{ '--warmth' if warmth.get(segment.mode_id, 0.5) >= 0.5 else '--cool' }})",
+      "{{ (40 + (warmth.get(segment.mode_id, 0.5) - 0.5)|abs * 90)|round|int }}%, var(--surface));\"></span>",
+      "„Für eine Weile wärmer“ verändert diesen Wochenplan nicht. Nach Ablauf gilt"
+    ],
+    "thermoctl/web/templates/tenant_schedule_empty.html": [
+      "<h1 class=\"tc-h1\">Wann soll es warm sein?</h1>"
+    ],
+    "thermoctl/web/templates/tenant_start.html": [
+      "<p class=\"tc-notice-title\">Heizung läuft normal</p>",
+      "<span class=\"tc-chip tc-chip-quiet\"><span class=\"tc-dot\"></span>keine Wärme angefordert</span>",
+      "<span class=\"tc-chip tc-chip-warm\"><span class=\"tc-dot\"></span>Wärme angefordert</span>",
+      "Behauptung über die Temperatur des Heizkörpers. \"heizt\" wäre beides",
+      "Für eine Weile wärmer",
+      "Seit {{ notice.measured_at|age }} kam keine neue Temperatur. Die Heizung",
+      "Solange ein Fenster offen steht, wird in diesem Raum nicht geheizt.",
+      "var({{ '--warmth' if segment.warmth >= 0.5 else '--cool' }})",
+      "{{ (40 + (segment.warmth - 0.5)|abs * 90)|round|int }}%, var(--surface));\"></span>"
+    ],
     "thermoctl/web/templates/vacation.html": [
       "<span class=\"tc-chip tc-chip-warm\"><span class=\"tc-dot\"></span>Läuft</span>",
       "Mindestschaltdauern und Ventilschutz gelten unverändert weiter, und eine Zone in"
+    ],
+    "thermoctl/web/tenant_views.py": [
+      "/heating-time",
+      "Für diesen Raum sind noch keine zwei Temperaturen hinterlegt -- ohne sie gibt es nichts, wozwischen ein Tag umschalten könnte.",
+      "warmth"
     ]
   },
   "version": 1

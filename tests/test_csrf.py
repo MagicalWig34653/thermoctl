@@ -118,7 +118,7 @@ def test_an_htmx_control_is_marked_so_the_page_can_say_something(
     """Measured in the browser: without this, the control simply did nothing.
 
     htmx ignores the body of an error answer, so a message put there is seen by
-    nobody. The marker header is what the small handler in `base.html` turns into a
+    nobody. The marker header is what the small handler in `base_core.html` turns into a
     visible notice. Deliberately not `HX-Refresh`: that was tried, and a control
     that fires again on restore turns it into a loop of reload and refusal.
     """
@@ -138,7 +138,7 @@ def test_the_base_template_turns_that_marker_into_something_visible() -> None:
 
     base = (
         _Path(__file__).parent.parent
-        / "thermoctl" / "web" / "templates" / "base.html"
+        / "thermoctl" / "web" / "templates" / "base_core.html"
     ).read_text(encoding="utf-8")
 
     assert "htmx:responseError" in base
@@ -213,7 +213,7 @@ def test_base_template_carries_the_csrf_cookie_via_htmx() -> None:
     from pathlib import Path
 
     base_template = (
-        Path(__file__).parent.parent / "thermoctl" / "web" / "templates" / "base.html"
+        Path(__file__).parent.parent / "thermoctl" / "web" / "templates" / "base_core.html"
     ).read_text(encoding="utf-8")
     assert 'hx-boost="true"' in base_template
     assert 'headers["X-CSRF-Token"]' in base_template

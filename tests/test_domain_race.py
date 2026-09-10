@@ -27,6 +27,21 @@ def _source(session: Session) -> None:
     source(session, "web")
 
 
+def _gespeichert(session: Session, zone_id: int, mode_id: int):  # type: ignore[no-untyped-def]
+    """Der tatsächlich in der Zeile stehende Sollwert -- am ORM vorbei gelesen,
+    damit ein zwischengespeichertes Objekt das Ergebnis nicht beschönigt."""
+    from sqlalchemy import select as _select
+
+    from thermoctl.db.models.zone import ZoneSetpoint as _ZoneSetpoint
+
+    session.expire_all()
+    return session.scalar(
+        _select(_ZoneSetpoint.temperature_c).where(
+            _ZoneSetpoint.zone_id == zone_id, _ZoneSetpoint.setpoint_mode_id == mode_id
+        )
+    )
+
+
 def _principal() -> Principal:
     return Principal(user_id=None, token_id=None, grants=frozenset())
 
@@ -170,3 +185,99 @@ def test_a_time_slot_taken_concurrently_while_moving(
             session, zone, moving, weekday=1, minute=420, user_id=None
         )
     assert fehler.value.field == "time_of_day"
+
+
+def test_two_simultaneous_steps_are_two_steps_not_one(session: Session) -> None:
+    """Der Sollwertschritt ist **eine** Anweisung, kein Lesen-Rechnen-Schreiben.
+
+    Der alte Weg las den Wert, rechnete in Python und schrieb das Ergebnis zurück.
+    Zwei gleichzeitige Anfragen lasen dann beide 21,0 und schrieben beide 21,5 --
+    zwei Klicks ergaben einen Schritt. Ohne Fehlermeldung, ohne Eintrag, nur mit
+    einem um ein halbes Grad zu niedrigen Sollwert an einer echten Heizung. Genau
+    die Zusicherung "zwei Klicks sind zwei Schritte" steht seit jeher im Docstring
+    der Weboberfläche.
+
+    Nachgestellt wird das Rennen wie in dieser Datei üblich: die veraltete Lesung
+    wird nicht simuliert, sondern der Effekt geprüft, den nur eine atomare
+    Anweisung liefern kann -- der zweite Schritt rechnet auf dem Ergebnis des
+    ersten, auch wenn der Aufrufer den Zwischenstand nie gesehen hat.
+    """
+    from decimal import Decimal
+
+    from thermoctl.db.models.zone import ZoneSetpoint
+    from thermoctl.domain.modes import step_setpoint
+
+    zone = zone_helper(session, "rennen-thermostat")
+    mode = create_mode(session, "tag-rennen", "Tag")
+    session.add(
+        ZoneSetpoint(zone_id=zone.id, setpoint_mode_id=mode.id, temperature_c=Decimal("21.0"))
+    )
+    session.flush()
+
+    # Zwei Aufrufe ohne zwischenzeitliches Lesen durch den Aufrufer.
+    step_setpoint(session, zone, mode.id, 1, user_id=None)
+    zweiter = step_setpoint(session, zone, mode.id, 1, user_id=None)
+
+    assert zweiter == Decimal("22.0")
+    assert _gespeichert(session, zone.id, mode.id) == Decimal("22.0")
+
+
+def test_the_step_stops_at_the_domain_limit_without_writing(session: Session) -> None:
+    """An der Grenze schreibt die Anweisung nichts -- und der Aufrufer bekommt den
+    Grund, nicht einen stillen Nicht-Effekt."""
+
+    from thermoctl.db.models.zone import ZoneSetpoint
+    from thermoctl.domain.modes import MAXIMUM_TEMPERATURE_C, DomainError, step_setpoint
+
+    zone = zone_helper(session, "rennen-grenze")
+    mode = create_mode(session, "tag-grenze", "Tag")
+    session.add(
+        ZoneSetpoint(
+            zone_id=zone.id, setpoint_mode_id=mode.id, temperature_c=MAXIMUM_TEMPERATURE_C
+        )
+    )
+    session.flush()
+
+    with pytest.raises(DomainError) as caught:
+        step_setpoint(session, zone, mode.id, 1, user_id=None)
+    assert "zwischen" in caught.value.notice
+
+    assert _gespeichert(session, zone.id, mode.id) == MAXIMUM_TEMPERATURE_C
+
+
+def test_a_mode_without_a_stored_setpoint_uses_the_value_the_page_shows(
+    session: Session,
+) -> None:
+    """Sonst ließe sich ein Sollwert, den man sieht, nicht verstellen.
+
+    Eine frisch eingerichtete Anlage hat für den Frostschutz keine eigene Zeile; die
+    Seite zeigt den Rückfall. Das Thermostat schlug früher die Zeile nach, fand
+    keine und antwortete mit 404 -- auf der Seite sah es aus, als täte der Knopf
+    nichts.
+    """
+    from decimal import Decimal
+
+    from thermoctl.domain.modes import step_setpoint
+
+    zone = zone_helper(session, "rennen-rueckfall")
+    mode = create_mode(session, "frost-rennen", "Frostschutz")
+
+    neu = step_setpoint(
+        session, zone, mode.id, 1, fallback=Decimal("16.0"), user_id=None
+    )
+
+    assert neu == Decimal("16.5")
+    assert _gespeichert(session, zone.id, mode.id) == Decimal("16.5")
+
+
+def test_without_a_stored_value_and_without_a_fallback_the_caller_is_told(
+    session: Session,
+) -> None:
+    from thermoctl.domain.modes import DomainError, step_setpoint
+
+    zone = zone_helper(session, "rennen-nichts")
+    mode = create_mode(session, "tag-nichts", "Tag")
+
+    with pytest.raises(DomainError) as caught:
+        step_setpoint(session, zone, mode.id, 1, user_id=None)
+    assert caught.value.field == "mode_id"

@@ -196,7 +196,10 @@ def test_a_user_without_setting_manage_only_sees_the_current_thresholds(
     page.get_by_label("Benutzername").fill("browsertest-ohne-fensteralarmrecht")
     page.get_by_label("Passwort").fill(_PASSWORD)
     page.get_by_role("button", name="Anmelden").click()
-    expect(page.locator(".tc-head")).to_be_visible()
+    # `.tc-topbar` statt der seit v0.9.0 entfallenen `.tc-head` -- dieselbe
+    # Aussage ("angemeldet, Anlagenhuelle sichtbar"), an einem Element, das
+    # auf jeder Bildschirmbreite sichtbar bleibt.
+    expect(page.locator(".tc-topbar")).to_be_visible()
 
     page.goto("/settings")
     expect(page.get_by_text("Fenster-Alarm", exact=True)).to_be_visible()

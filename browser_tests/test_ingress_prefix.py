@@ -56,7 +56,13 @@ def test_direct_access_works_alongside_ingress_on_the_same_running_instance(
 
     # The Ingress-side page: every local link still carries the prefix.
     admin_page_with_prefix.get_by_role("link", name="Zonen", exact=True).click()
-    expect(admin_page_with_prefix.get_by_role("heading", name="Zonen")).to_be_visible()
+    # Seit v0.9.0 traegt auch die Kopfzeile `.tc-topbar` einen `<h1>` mit dem
+    # Seitentitel (`.tc-pagetitle`) -- ein ungefiltertes `get_by_role("heading")`
+    # faende deshalb zwei Treffer. `#tc-main` grenzt auf die eigentliche Seite ein,
+    # dieselbe Stelle, die vorher schon die einzige war.
+    expect(
+        admin_page_with_prefix.locator("#tc-main").get_by_role("heading", name="Zonen")
+    ).to_be_visible()
     assert admin_page_with_prefix.url.endswith(f"{INGRESS_PREFIX}/zones")
 
     # The direct-side page, navigated *after* the above, against the same server:
@@ -66,7 +72,8 @@ def test_direct_access_works_alongside_ingress_on_the_same_running_instance(
         "link", name="Zonen", exact=True
     ).click()
     expect(
-        admin_page_direct_via_prefixed_instance.get_by_role("heading", name="Zonen")
+        admin_page_direct_via_prefixed_instance.locator("#tc-main")
+        .get_by_role("heading", name="Zonen")
     ).to_be_visible()
     assert admin_page_direct_via_prefixed_instance.url.endswith("/zones")
     assert INGRESS_PREFIX not in admin_page_direct_via_prefixed_instance.url
@@ -86,13 +93,20 @@ def test_the_stylesheet_applies_on_direct_access_to_the_same_ingress_configured_
     configured at all (already covered by `test_stylesheet.py`).
     """
     page_direct_via_prefixed_instance.goto("login")
-    button = page_direct_via_prefixed_instance.get_by_role("button", name="Anmelden")
-    expect(button).to_be_visible()
-    background = button.evaluate("el => getComputedStyle(el).backgroundColor")
-    assert background == "rgb(47, 57, 65)", (
-        f"Errechnete Hintergrundfarbe war {background!r} -- thermoctl.css scheint "
-        "beim direkten Zugriff auf die Ingress-konfigurierte Instanz nicht geladen "
-        "zu sein (Bootstraps Standardblau wäre rgb(13, 110, 253))."
+    expect(
+        page_direct_via_prefixed_instance.get_by_role("button", name="Anmelden")
+    ).to_be_visible()
+    # Geprüft wird eine Gestaltungsvariable, kein Farbwert -- siehe die Begründung
+    # in `browser_tests/test_stylesheet.py`: ein fester Farbwert scheitert bei jeder
+    # gewollten Farbanpassung und damit aus dem falschen Grund.
+    warmth = page_direct_via_prefixed_instance.evaluate(
+        "() => getComputedStyle(document.documentElement)"
+        ".getPropertyValue('--warmth').trim()"
+    )
+    assert warmth, (
+        "Die Gestaltungsvariable `--warmth` ist leer -- thermoctl.css scheint beim "
+        "direkten Zugriff auf die Ingress-konfigurierte Instanz nicht geladen zu "
+        "sein. Sie steht ausschließlich in dieser Datei."
     )
 
 
@@ -106,7 +120,11 @@ def test_login_reaches_the_dashboard_under_the_prefix(
     page_with_prefix.get_by_label("Passwort").fill(live_server_with_prefix.admin_password)
     page_with_prefix.get_by_role("button", name="Anmelden").click()
 
-    expect(page_with_prefix.locator(".tc-head")).to_be_visible()
+    # Anker seit v0.9.0 die Kopfzeile `.tc-topbar` statt der entfallenen
+    # `.tc-head` -- dieselbe Aussage ("angemeldet, Anlagenhuelle sichtbar"),
+    # nur an einem Element, das (anders als die Seitenleiste) auf jeder
+    # Bildschirmbreite sichtbar bleibt.
+    expect(page_with_prefix.locator(".tc-topbar")).to_be_visible()
     expect(page_with_prefix).to_have_url(live_server_with_prefix.base_url)
 
 
@@ -128,7 +146,11 @@ def test_a_boosted_navigation_link_stays_under_the_prefix(admin_page_with_prefix
     # that the rendered `href` carries the prefix (`tests/test_ingress_prefix.py`),
     # not that the browser actually ends up there after clicking.
     admin_page_with_prefix.get_by_role("link", name="Zonen", exact=True).click()
-    expect(admin_page_with_prefix.get_by_role("heading", name="Zonen")).to_be_visible()
+    # Siehe Kommentar oben: `#tc-main` statt eines ungefilterten `get_by_role`,
+    # das seit v0.9.0 auch die Kopfzeile treffen wuerde.
+    expect(
+        admin_page_with_prefix.locator("#tc-main").get_by_role("heading", name="Zonen")
+    ).to_be_visible()
     assert admin_page_with_prefix.url.endswith(f"{INGRESS_PREFIX}/zones")
 
 
@@ -140,13 +162,16 @@ def test_the_stylesheet_still_applies_under_the_prefix(page_with_prefix: Page) -
     back to Bootstrap's own colours.
     """
     page_with_prefix.goto("login")
-    button = page_with_prefix.get_by_role("button", name="Anmelden")
-    expect(button).to_be_visible()
-    background = button.evaluate("el => getComputedStyle(el).backgroundColor")
-    assert background == "rgb(47, 57, 65)", (
-        f"Errechnete Hintergrundfarbe war {background!r} -- thermoctl.css scheint "
-        "unter dem Präfix nicht geladen zu sein (Bootstraps Standardblau wäre "
-        "rgb(13, 110, 253))."
+    expect(page_with_prefix.get_by_role("button", name="Anmelden")).to_be_visible()
+    # Gestaltungsvariable statt Farbwert, siehe `browser_tests/test_stylesheet.py`.
+    warmth = page_with_prefix.evaluate(
+        "() => getComputedStyle(document.documentElement)"
+        ".getPropertyValue('--warmth').trim()"
+    )
+    assert warmth, (
+        "Die Gestaltungsvariable `--warmth` ist leer -- thermoctl.css scheint unter "
+        "dem Präfix nicht geladen zu sein. Ein falsch berechnetes Präfix würde genau "
+        "diesen Verweis mit 404 beantworten."
     )
 
 

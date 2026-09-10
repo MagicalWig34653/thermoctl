@@ -13,8 +13,9 @@ non-logged-in visitor with 401, but redirects to the login: whoever types the
 service's address into a browser should see a login form, not an error message.
 """
 
+from datetime import datetime
 from decimal import Decimal
-from typing import Annotated
+from typing import Annotated, cast
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import RedirectResponse
@@ -31,16 +32,18 @@ from thermoctl.db.models.operations import Setting
 from thermoctl.db.models.override import ZoneOverride
 from thermoctl.db.models.schedule import SchedulePoint
 from thermoctl.db.models.state import ShadowDecision, ZoneState
-from thermoctl.db.models.zone import SetpointMode, ZoneSetpoint
+from thermoctl.db.models.zone import SetpointMode, Zone, ZoneSetpoint
 from thermoctl.domain.authz import has_permission, principal_for_user, visible_zones
 from thermoctl.domain.modes import MAXIMUM_TEMPERATURE_C, MINIMUM_TEMPERATURE_C
 from thermoctl.domain.outdoor import outdoor_reading
+from thermoctl.domain.principal import Principal
 from thermoctl.domain.schedule import (
     current_or_upcoming_vacation,
     resolved_setpoint,
     week_segments,
 )
 from thermoctl.domain.time import local_time
+from thermoctl.domain.ui_profile import WebUiProfile
 from thermoctl.services import cluster
 from thermoctl.setup import setup_needed
 from thermoctl.web import templates, warmth_fraction
@@ -106,6 +109,91 @@ def _day_track(
     return tracks
 
 
+def zone_status_context(
+    session: Session,
+    principal: Principal,
+    zones: list[Zone],
+    now: datetime,
+    settings: Setting | None,
+) -> dict[str, object]:
+    """Was beide Startseiten -- Anlage und Wohnung -- gleichermaßen brauchen:
+    Zustand, aufgelöster Sollwert, laufende Übersteuerung, letzte Entscheidung,
+    Bearbeitungsrechte und der Tagesverlauf je sichtbarer Zone.
+
+    Eine Rechnung statt zweier: Grundsatz 6 verbietet eine zweite Fassung derselben
+    Logik im Browser -- dieselbe Regel gilt hier zwischen den beiden Serveransichten.
+    Die Anlagensicht (`start()` unten) ergänzt danach ihre eigenen, zusätzlichen
+    Daten (Riegel, Brücke, Verbund, Urlaub, Außentemperatur); die Mieteransicht
+    bekommt diese Zusätze gar nicht erst in ihren Kontext.
+    """
+    zone_ids = [zone.id for zone in zones]
+    now_utc = now
+    settings_row = settings
+    local_now = local_time(now_utc, settings_row.timezone if settings_row is not None else None)
+    states = {
+        zone_id: (state, sensor_status_of)
+        for zone_id, state, sensor_status_of in session.execute(
+            select(ZoneState.zone_id, ZoneState, SensorStatus)
+            .join(SensorStatus, SensorStatus.id == ZoneState.sensor_status_id)
+            .where(ZoneState.zone_id.in_(zone_ids))
+        )
+    }
+    overrides: dict[int, ZoneOverride] = {}
+    for entry in session.scalars(
+        select(ZoneOverride)
+        .where(
+            ZoneOverride.zone_id.in_(zone_ids),
+            ZoneOverride.cancelled_at.is_(None),
+            ZoneOverride.starts_at <= now_utc,
+            or_(ZoneOverride.ends_at.is_(None), ZoneOverride.ends_at > now_utc),
+        )
+        .order_by(ZoneOverride.created_at.desc())
+    ):
+        overrides.setdefault(entry.zone_id, entry)
+    decisions: dict[int, ShadowDecision] = {}
+    for decision in session.scalars(
+        select(ShadowDecision)
+        .where(ShadowDecision.zone_id.in_(zone_ids))
+        .order_by(ShadowDecision.decided_at.desc(), ShadowDecision.id.desc())
+    ):
+        decisions.setdefault(decision.zone_id, decision)
+    return {
+        "states": states,
+        "setpoints": {zone.id: resolved_setpoint(session, zone, now_utc) for zone in zones},
+        "overrides": overrides,
+        "decisions": decisions,
+        "may_override": {
+            zone.id
+            for zone in zones
+            if has_permission(principal, "override.create", zone.id)
+        },
+        "may_cancel": {
+            zone.id
+            for zone in zones
+            if has_permission(principal, "override.cancel", zone.id)
+        },
+        "may_edit_setpoint": {
+            zone.id
+            for zone in zones
+            if has_permission(principal, "setpoint.write", zone.id)
+        },
+        "minimum_temperature": MINIMUM_TEMPERATURE_C,
+        "maximum_temperature": MAXIMUM_TEMPERATURE_C,
+        "mode_names": {
+            identifier: name
+            for identifier, name in session.execute(
+                select(SetpointMode.id, SetpointMode.name)
+            )
+        },
+        "day_tracks": _day_track(session, zone_ids, local_now.isoweekday()),
+        "now_fraction": (local_now.hour * 60 + local_now.minute) * 100 / MINUTES_PER_DAY,
+        "timezone": settings_row.timezone if settings_row is not None else "UTC",
+        "poll_interval_seconds": (
+            settings_row.shadow_interval_seconds if settings_row is not None else 60
+        ),
+    }
+
+
 @router.get("/")
 def start(
     request: Request,
@@ -129,90 +217,42 @@ def start(
     request.state.user = user
     principal = principal_for_user(session, user)
     request.state.principal = principal
+
+    # Verzweigung nach UI-Profil (ARCHITEKTUR-v0.9.0.md §3): `/` bleibt für beide
+    # Oberflächen eine einzige Adresse. Die Mieteransicht hat keine eigene Route --
+    # sie lebt in `tenant_views.render_home` und wird hier nur aufgerufen. Ein
+    # lokaler Import, nicht einer auf Modulebene: `tenant_views` importiert seinerseits
+    # `zone_status_context` aus diesem Modul, ein Import auf Modulebene wäre ein
+    # Ringschluss.
+    if principal.ui_profile is WebUiProfile.TENANT:
+        from thermoctl.web import tenant_views
+
+        return tenant_views.render_home(request, session, principal)
+
     zones = visible_zones(session, principal, "zone.read")
     now = utcnow()
     settings = session.get(Setting, 1)
-    local_now = local_time(now, settings.timezone if settings is not None else None)
     # Anlagenweit, kein Wert je Zone -- deshalb ein einzelnes Ergebnis, nicht ein
     # Wert je Zone wie `states` unten. `None` nur vor abgeschlossener Einrichtung
     # (fehlende `setting`-Zeile), sonst antwortet `outdoor_reading` selbst mit
     # "keine_quelle".
     outdoor = outdoor_reading(session, settings, now) if settings is not None else None
-    states = {
-        zone_id: (state, sensor_status_of)
-        for zone_id, state, sensor_status_of in session.execute(
-            select(ZoneState.zone_id, ZoneState, SensorStatus)
-            .join(SensorStatus, SensorStatus.id == ZoneState.sensor_status_id)
-            .where(ZoneState.zone_id.in_([zone.id for zone in zones]))
-        )
-    }
-    zone_ids = [zone.id for zone in zones]
-    overrides: dict[int, ZoneOverride] = {}
-    for entry in session.scalars(
-        select(ZoneOverride)
-        .where(
-            ZoneOverride.zone_id.in_(zone_ids),
-            ZoneOverride.cancelled_at.is_(None),
-            ZoneOverride.starts_at <= now,
-            or_(ZoneOverride.ends_at.is_(None), ZoneOverride.ends_at > now),
-        )
-        .order_by(ZoneOverride.created_at.desc())
-    ):
-        overrides.setdefault(entry.zone_id, entry)
-    decisions: dict[int, ShadowDecision] = {}
-    for decision in session.scalars(
-        select(ShadowDecision)
-        .where(ShadowDecision.zone_id.in_(zone_ids))
-        .order_by(ShadowDecision.decided_at.desc(), ShadowDecision.id.desc())
-    ):
-        decisions.setdefault(decision.zone_id, decision)
 
     # Running or merely planned, both count: whoever opens the start page in January
     # and does not see that tomorrow's setback is coming has exactly the problem this
     # banner exists to rule out (the project owner's own wording).
     vacation = current_or_upcoming_vacation(session, now)
 
+    context = zone_status_context(session, principal, zones, now, settings)
+    states = cast("dict[int, tuple[ZoneState, SensorStatus]]", context["states"])
+
     return templates.TemplateResponse(
         request,
         "start.html",
         {
-            "user": user,
+            **context,
             "zones": zones,
-            "states": states,
-            "setpoints": {
-                zone.id: resolved_setpoint(session, zone, now) for zone in zones
-            },
-            "overrides": overrides,
-            "decisions": decisions,
-            "may_override": {
-                zone.id
-                for zone in zones
-                if has_permission(principal, "override.create", zone.id)
-            },
-            "may_cancel": {
-                zone.id
-                for zone in zones
-                if has_permission(principal, "override.cancel", zone.id)
-            },
-            "may_edit_setpoint": {
-                zone.id
-                for zone in zones
-                if has_permission(principal, "setpoint.write", zone.id)
-            },
             "thermostat_errors": request.query_params.get("thermostat_errors"),
-            # From the domain: a `min="5"` in the markup would be a second version of
-            # the limit and would fall behind on the next change.
-            "minimum_temperature": MINIMUM_TEMPERATURE_C,
-            "maximum_temperature": MAXIMUM_TEMPERATURE_C,
-            # The display name, not the code: the thermostat used to show "frostschutz"
-            # instead of "Frostschutz" -- a database identifier that has no business
-            # showing up there.
-            "mode_names": {
-                identifier: name
-                for identifier, name in session.execute(
-                    select(SetpointMode.id, SetpointMode.name)
-                )
-            },
             "may_edit_parameters": {
                 zone.id for zone in zones if has_permission(principal, "zone.manage", zone.id)
             },
@@ -259,27 +299,7 @@ def start(
                 for zone in zones
                 if zone.id in states and states[zone.id][0].window_alarm
             ],
-            "day_tracks": _day_track(
-                session, zone_ids, local_now.isoweekday()
-            ),
             "vacation": vacation,
             "vacation_running": vacation is not None and vacation.starts_at <= now,
-            "timezone": settings.timezone if settings is not None else "UTC",
-            "now_fraction": (
-                local_now.hour * 60 + local_now.minute
-            ) * 100 / MINUTES_PER_DAY,
-            # How often the page re-fetches itself (see the `hx-trigger` on
-            # `#tc-live` in start.html). Derived from the setting that actually
-            # bounds how often a value here *can* change -- the regulation cycle
-            # (`setting.shadow_interval_seconds`) -- rather than a second, hard-coded
-            # number that could drift from it. Polling faster than the plant itself
-            # decides would only add load for no new information, which matters
-            # more here than at the kiosk (fixed 20 s): behind the Ingress proxy
-            # every extra request takes an extra hop. `60` mirrors the column
-            # default and `app.py`'s own `_SHADOW_INTERVAL_DEFAULT_S` for the same
-            # not-yet-configured case.
-            "poll_interval_seconds": (
-                settings.shadow_interval_seconds if settings is not None else 60
-            ),
         },
     )

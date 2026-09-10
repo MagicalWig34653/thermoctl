@@ -1,5 +1,6 @@
-{% extends "base.html" if not is_htmx else "empty.html" %}
+{% extends "base_admin.html" if not is_htmx else "empty.html" %}
 {% block title %}Geräte – thermoctl{% endblock %}
+{% block page_title %}Geräte{% endblock %}
 {% block max_width %}72rem{% endblock %}
 
 {#

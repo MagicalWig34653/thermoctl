@@ -7,6 +7,14 @@ permissions:
   contents: read
 
 jobs:
+  # Das Image ist für beide Datenbanken identisch; außerhalb der Matrix wird
+  # derselbe Bau nicht zweimal ausgeführt.
+  docker-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -f docker/Dockerfile .
+
   pruefen:
     runs-on: ubuntu-latest
     strategy:

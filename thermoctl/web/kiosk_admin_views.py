@@ -27,11 +27,19 @@ from thermoctl.domain.kiosk import KioskError, issue_kiosk_token, kiosk_scope
 from thermoctl.domain.principal import Principal
 from thermoctl.web import is_partial_swap
 from thermoctl.web.forms import FormError, form_again
+from thermoctl.web.guards import admin_ui_only
 from thermoctl.web.urls import prefixed
 
 # `include_in_schema=False`: see the same note in every other HTML-only router --
 # these are pages for humans, not the REST contract described under /docs.
-router = APIRouter(dependencies=[Depends(csrf_protection)], include_in_schema=False)
+# `admin_ui_only`: diese Seiten gehören zur Anlagensicht. Ein Mieterprofil wird
+# hier schon vor der Rechteprüfung abgewiesen -- eine ausgeblendete Verknüpfung
+# in der Navigation ist kein Riegel (siehe `web/guards.py`). Die bestehenden
+# Rechteprüfungen in den Endpunkten bleiben davon unberührt bestehen.
+router = APIRouter(
+    dependencies=[Depends(csrf_protection), Depends(admin_ui_only)],
+    include_in_schema=False,
+)
 
 
 def _kiosk_token_list(

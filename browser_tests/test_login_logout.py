@@ -28,11 +28,14 @@ def test_login_with_correct_credentials_reaches_the_dashboard(
     page.get_by_label("Passwort").fill(live_server.admin_password)
     page.get_by_role("button", name="Anmelden").click()
 
-    # The navigation bar exists only on `base.html` (logged in), never on the
-    # login page's `base_plain.html` — an HTTP test can check the redirect target
-    # in isolation, but not that htmx's boosted submit actually arrives there with
-    # a working page behind it.
-    expect(page.locator(".tc-head")).to_be_visible()
+    # The header bar exists only on the logged-in shells (`base_admin.html`,
+    # `base_tenant.html`), never on the login page's `base_plain.html` — an
+    # HTTP test can check the redirect target in isolation, but not that
+    # htmx's boosted submit actually arrives there with a working page behind
+    # it. Anchor is `.tc-topbar` since v0.9.0 (`.tc-head` no longer exists) --
+    # same assertion, new element, chosen because it stays visible at every
+    # viewport width, unlike the collapsible `.tc-sidebar`.
+    expect(page.locator(".tc-topbar")).to_be_visible()
     expect(page).to_have_url(f"{live_server.base_url}/")
 
 

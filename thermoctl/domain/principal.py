@@ -1,5 +1,7 @@
 from dataclasses import dataclass
 
+from thermoctl.domain.ui_profile import DEFAULT_PROFILE, WebUiProfile
+
 
 @dataclass(frozen=True)
 class Principal:
@@ -15,3 +17,13 @@ class Principal:
     user_id: int
     token_id: int | None
     grants: frozenset[tuple[str, int | None]]
+    # Welche Weboberfläche dieser Principal bekommt (siehe `domain.ui_profile`).
+    # Steht hier und nicht neben dem Benutzer, weil die Adapter genau diesen Typ
+    # sehen und sonst ein zweites Mal nachschlagen müssten, wer da gerade handelt.
+    #
+    # Der Vorgabewert ist ADMIN und nicht TENANT: das Profil ist keine Berechtigung
+    # -- ein Principal ohne ausdrückliches Profil (REST-Token, Kiosk, Testaufbau)
+    # darf die Anlagensicht sehen, kommt aber nur an das, wofür `grants` reichen.
+    # Ein Vorgabewert TENANT würde umgekehrt bestehende Zugänge stillschweigend
+    # verengen und dabei nichts absichern.
+    ui_profile: WebUiProfile = DEFAULT_PROFILE

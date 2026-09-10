@@ -3,16 +3,33 @@ from typing import Literal
 
 from thermoctl.domain.authz import has_permission
 from thermoctl.domain.principal import Principal
+from thermoctl.domain.ui_profile import WebUiProfile
 
 
 @dataclass(frozen=True)
 class NavigationItem:
     path: str
     label: str
-    permission: str
+    # `None` ausschließlich für einen Bereich, der kein Recht braucht, weil er zum
+    # eigenen Konto gehört (`/account` -- jeder Angemeldete kommt an sein eigenes
+    # Konto, unabhängig von jedem Grant). Jeder andere Eintrag trägt weiterhin ein
+    # echtes Recht.
+    permission: str | None
     endpoint: str
     scope: Literal["plant", "any_zone"] = "plant"
-    section: Literal["main", "settings"] = "settings"
+    # Der Abschnitt der Admin-Seitenleiste, in dem der Eintrag steht. "main" ist der
+    # tägliche Betrieb, "analysis" die Auswertungen, "system" die Konfiguration,
+    # "access" die Zugänge -- die vier Blöcke der Admin-Demo. Für Mietereinträge
+    # bedeutungslos, deren Navigation hat nur eine Ebene.
+    section: Literal["main", "analysis", "system", "access", "tenant"] = "system"
+    # Für welche Oberfläche der Eintrag gilt. Ausdrücklich nur Navigation: dass eine
+    # Mieteroberfläche `/settings` nicht anzeigt, ist Darstellung -- dass sie sie
+    # nicht öffnen kann, entscheidet der Wächter am Router (`web/guards.py`), und
+    # ob sie dort etwas darf, entscheidet weiterhin die Rechteprüfung im Endpunkt.
+    profile: WebUiProfile = WebUiProfile.ADMIN
+    # Auf kleinen Bildschirmen zeigt die Admin-Oberfläche nur eine reduzierte
+    # Leiste (Übersicht, Zonen, Geräte, Mehr) -- alles Übrige liegt unter "Mehr".
+    in_bottom_navigation: bool = False
 
 
 # This is the single navigation-to-permission contract.  The template renders this
@@ -20,6 +37,7 @@ class NavigationItem:
 # security boundaries in the views; the guardian test compares those checks with this
 # table, so either side changing alone makes the suite fail instead of silently drifting.
 NAVIGATION_ITEMS: tuple[NavigationItem, ...] = (
+    # -- Hauptbereich: was im täglichen Betrieb gebraucht wird -------------------
     NavigationItem(
         "/zones",
         "Zonen",
@@ -27,6 +45,7 @@ NAVIGATION_ITEMS: tuple[NavigationItem, ...] = (
         "thermoctl.web.zone_views.zone_list_view",
         "any_zone",
         "main",
+        in_bottom_navigation=True,
     ),
     NavigationItem(
         "/devices",
@@ -34,6 +53,7 @@ NAVIGATION_ITEMS: tuple[NavigationItem, ...] = (
         "device.read",
         "thermoctl.web.device_views.device_overview",
         section="main",
+        in_bottom_navigation=True,
     ),
     NavigationItem(
         "/control",
@@ -42,18 +62,63 @@ NAVIGATION_ITEMS: tuple[NavigationItem, ...] = (
         "thermoctl.web.control_views.show_control",
         section="main",
     ),
+    # -- Analyse -----------------------------------------------------------------
     NavigationItem(
-        "/settings", "Regelvorgaben", "zone.read", "thermoctl.web.control_views.show_settings"
+        "/statistics",
+        "Heizstatistik",
+        "zone.read",
+        "thermoctl.web.control_views.show_statistics",
+        section="analysis",
     ),
     NavigationItem(
-        "/vacation", "Urlaub", "zone.read", "thermoctl.web.vacation_views.show_vacation"
+        "/relay-wear",
+        "Relaisverschleiß",
+        "audit.read",
+        "thermoctl.web.control_views.show_relay_wear",
+        section="analysis",
     ),
-    NavigationItem("/modes", "Sollwert-Modi", "mode.manage", "thermoctl.web.mode_views.mode_list"),
+    NavigationItem(
+        "/audit",
+        "Protokoll",
+        "audit.read",
+        "thermoctl.web.audit_views.audit_list",
+        section="analysis",
+    ),
+    NavigationItem(
+        "/device-commands",
+        "Schaltprotokoll",
+        "audit.read",
+        "thermoctl.web.device_commands_views.device_command_list",
+        section="analysis",
+    ),
+    # -- System ------------------------------------------------------------------
+    NavigationItem(
+        "/settings",
+        "Regelvorgaben",
+        "zone.read",
+        "thermoctl.web.control_views.show_settings",
+        section="system",
+    ),
+    NavigationItem(
+        "/modes",
+        "Sollwert-Modi",
+        "mode.manage",
+        "thermoctl.web.mode_views.mode_list",
+        section="system",
+    ),
+    NavigationItem(
+        "/vacation",
+        "Urlaub",
+        "zone.read",
+        "thermoctl.web.vacation_views.show_vacation",
+        section="system",
+    ),
     NavigationItem(
         "/interfaces",
         "Schnittstellen",
         "setting.manage",
         "thermoctl.web.control_views.show_interfaces",
+        section="system",
     ),
     NavigationItem(
         "/controllers",
@@ -61,28 +126,67 @@ NAVIGATION_ITEMS: tuple[NavigationItem, ...] = (
         "device.read",
         "thermoctl.web.controller_views.controllers",
         "any_zone",
+        "system",
     ),
-    NavigationItem("/users", "Benutzer", "user.manage", "thermoctl.web.admin_views.user_list"),
-    NavigationItem("/groups", "Gruppen", "group.manage", "thermoctl.web.admin_views.group_list"),
-    NavigationItem("/tokens", "API-Tokens", "token.self", "thermoctl.web.admin_views.token_list"),
+    # -- Zugänge -----------------------------------------------------------------
+    NavigationItem(
+        "/users",
+        "Benutzer",
+        "user.manage",
+        "thermoctl.web.admin_views.user_list",
+        section="access",
+    ),
+    NavigationItem(
+        "/groups",
+        "Gruppen",
+        "group.manage",
+        "thermoctl.web.admin_views.group_list",
+        section="access",
+    ),
+    NavigationItem(
+        "/tokens",
+        "API-Tokens",
+        "token.self",
+        "thermoctl.web.admin_views.token_list",
+        section="access",
+    ),
     NavigationItem(
         "/kiosk-tokens",
         "Kiosk-Tokens",
         "token.manage",
         "thermoctl.web.kiosk_admin_views.kiosk_token_list",
+        section="access",
     ),
-    NavigationItem("/audit", "Protokoll", "audit.read", "thermoctl.web.audit_views.audit_list"),
+    # -- Mieteroberfläche ----------------------------------------------------------
     NavigationItem(
-        "/device-commands",
-        "Schaltprotokoll",
-        "audit.read",
-        "thermoctl.web.device_commands_views.device_command_list",
+        "/schedule",
+        "Zeitplan",
+        "zone.read",
+        "thermoctl.web.tenant_views.show_tenant_schedule",
+        "any_zone",
+        "tenant",
+        profile=WebUiProfile.TENANT,
     ),
     NavigationItem(
-        "/relay-wear",
-        "Relaisverschleiß",
-        "audit.read",
-        "thermoctl.web.control_views.show_relay_wear",
+        "/heating-time",
+        "Heizzeit",
+        "zone.read",
+        "thermoctl.web.tenant_views.show_heating_time",
+        "any_zone",
+        "tenant",
+        profile=WebUiProfile.TENANT,
+    ),
+    NavigationItem(
+        "/account",
+        "Mehr",
+        # Kein Recht: `/account` ist der eigene, persönliche Bereich -- jeder
+        # Angemeldete kommt daran, unabhängig von jedem Grant (siehe
+        # `web/account_views.py`s eigene Begründung). Der Wächtertest unten
+        # überspringt genau diesen Eintrag deshalb bewusst.
+        None,
+        "thermoctl.web.account_views.show_account",
+        section="tenant",
+        profile=WebUiProfile.TENANT,
     ),
 )
 
@@ -93,13 +197,22 @@ def visible_navigation(principal: Principal) -> tuple[NavigationItem, ...]:
     A listing which filters itself by zone is useful as soon as one matching zone is
     available.  A plant-wide endpoint stays hidden for a merely zone-scoped grant,
     matching ``has_permission(principal, code)`` at that endpoint.
+
+    Zusätzlich gefiltert nach dem UI-Profil: ein Mieter sieht keine Anlageneinträge,
+    ein Administrator keine Mietereinträge. Das bleibt reine Darstellung -- ob eine
+    Adresse geöffnet werden kann, entscheidet der Wächter am Router, ob dort etwas
+    erlaubt ist, weiterhin der Endpunkt.
     """
     return tuple(
         item
         for item in NAVIGATION_ITEMS
-        if has_permission(principal, item.permission)
-        or (
-            item.scope == "any_zone"
-            and any(code == item.permission for code, _zone_id in principal.grants)
+        if item.profile is principal.ui_profile
+        and (
+            item.permission is None
+            or has_permission(principal, item.permission)
+            or (
+                item.scope == "any_zone"
+                and any(code == item.permission for code, _zone_id in principal.grants)
+            )
         )
     )

@@ -932,6 +932,20 @@ def _running_override(session: Session, zone: Zone, now_utc: datetime) -> ZoneOv
     resolves to a usable temperature -- that check is `_override_setpoint`'s job.
     Split out because the forecast needs the row's own `ends_at` (to know *when* the
     override stops applying), which the resolved `Setpoint` below no longer carries.
+
+    **Es zählt nur, was gerade wirklich läuft.** Die Bedingung auf `ends_at` stand
+    bis v0.9.0 nicht hier, sondern erst eine Ebene höher in `_override_setpoint`:
+    diese Abfrage nahm die jüngste *begonnene* Zeile, und wenn die abgelaufen war,
+    gab der Aufrufer schlicht `None` zurück -- ohne auf eine ältere, noch laufende
+    zurückzufallen. Zwei sich überlappende Übersteuerungen genügten also, damit die
+    ältere lautlos aufhörte zu wirken, sobald die jüngere endete.
+
+    Das war lange folgenlos, weil sich Übersteuerungen selten überlappten. Mit der
+    Abwesenheit (`domain/absence.py`) ist die Überlappung der Normalfall: wer
+    während seiner Abwesenheit einen Raum kurz aufheizt, bekam ihn danach für den
+    **Rest der Abwesenheit** normal beheizt, obwohl die Absenkung noch lief. Der
+    Filter gehört deshalb in die Auswahl selbst -- dann übernimmt beim Ablauf der
+    jüngeren wieder die ältere, die ja weiterhin gilt.
     """
     return session.scalars(
         select(ZoneOverride)
@@ -939,6 +953,7 @@ def _running_override(session: Session, zone: Zone, now_utc: datetime) -> ZoneOv
             ZoneOverride.zone_id == zone.id,
             ZoneOverride.cancelled_at.is_(None),
             ZoneOverride.starts_at <= now_utc,
+            or_(ZoneOverride.ends_at.is_(None), ZoneOverride.ends_at > now_utc),
         )
         # `id` as a second criterion: MariaDB stores DATETIME with second precision.
         # Two overrides within the same second -- say, one replacing another -- would
@@ -962,8 +977,12 @@ def _override_setpoint(
     slightly different copy of this precedence could show a bar the live decision
     would never actually produce.
     """
+    # `_running_override` filtert das Ende inzwischen selbst -- was hier ankommt,
+    # läuft tatsächlich. Die zweite Prüfung stand hier, solange die Abfrage auch
+    # abgelaufene Zeilen lieferte; sie war genau die Stelle, an der eine ältere,
+    # noch laufende Übersteuerung verlorenging (siehe dort).
     running = _running_override(session, zone, now_utc)
-    if running is None or not (running.ends_at is None or running.ends_at > now_utc):
+    if running is None:
         return None
     if running.temperature_c is not None:
         return (
@@ -1262,3 +1281,142 @@ def end_of_next_switch(
     if end_at is None:
         return None
     return end_at.replace(tzinfo=timezone_name).astimezone(ZoneInfo("UTC")).replace(tzinfo=None)
+
+
+@dataclass(frozen=True)
+class NextSwitch:
+    """Wann die nächste reguläre Zeitplanphase beginnt, und was dann gilt.
+
+    Getrennt von `Setpoint` selbst, weil hier zusätzlich der Zeitpunkt gebraucht wird
+    -- die Anzeige "Als Nächstes: 18,0 °C um 23:00" und `jump_to_next_switch` können
+    beide nichts damit anfangen, wenn sie den Sollwert und seinen Beginn getrennt neu
+    zusammensuchen müssten.
+    """
+
+    at: datetime
+    setpoint: Setpoint
+
+
+def next_switch(session: Session, zone: Zone, now_utc: datetime) -> NextSwitch | None:
+    """Die nächste reguläre Zeitplanphase: wann sie beginnt und was sie bringt.
+
+    Rein lesend, für die Anzeige "Als Nächstes: 18,0 °C um 23:00" -- und die einzige
+    Stelle, an der diese Rechnung steht. `jump_to_next_switch` ruft ausschließlich
+    diese Funktion auf, damit die Anzeige und der tatsächliche Sprung nie
+    auseinanderlaufen können.
+
+    Der Sollwert kommt bewusst aus `_schedule_setpoint`, nicht aus
+    `resolved_setpoint`: eine gerade laufende Übersteuerung soll nicht ihr eigenes
+    Ziel liefern, wenn sie doch gleich durch die neue, vorgezogene Phase ersetzt
+    wird -- sonst würde ein Sprung, der einen Sollwert vorzieht, im Kreis auf sich
+    selbst zeigen.
+
+    Abgefragt wird `_schedule_setpoint` nicht exakt bei `at`, sondern eine Sekunde
+    danach. Der Grund ist die Rundung: `end_of_next_switch` rechnet über `next_point`
+    und zwei Zeitzonenumrechnungen, und exakt auf der Grenze bestünde ein winziges
+    Risiko, noch die alte statt der neuen Phase zu treffen.
+
+    Eine **Sekunde**, nicht eine Minute. Zeitplanpunkte sind minutengenau, zwei
+    davon können also eine Minute auseinanderliegen -- mit einem Abstand von einer
+    Minute läge die Abfrage dann schon in der übernächsten Phase, und der Sprung
+    zöge den falschen Sollwert vor. Eine Sekunde kann eine Phase dieser kürzesten
+    möglichen Länge nicht überspringen und reicht gegen jede Rundung.
+    """
+    at = end_of_next_switch(session, zone, now_utc)
+    if at is None:
+        return None
+    settings = session.get(Setting, 1)
+    assert settings is not None, "setting-Zeile fehlt — Einrichtung unvollstaendig"
+    setpoint = _schedule_setpoint(session, zone, settings, at + timedelta(seconds=1))
+    if setpoint is None:
+        return None
+    return NextSwitch(at, setpoint)
+
+
+@dataclass
+class OverrideAlreadyRunning(ScheduleError):
+    """Ein Sprung zur nächsten Schaltzeit soll keine zweite Übersteuerung neben
+    einer bereits laufenden anlegen, still und ohne dass irgendjemand es bemerkt.
+
+    Führt die laufende Übersteuerung als eigenes Feld mit, damit die aufrufende
+    Oberfläche sie anzeigen und ihre Beendigung anbieten kann, statt nur einen
+    Fehlertext zu zeigen.
+    """
+
+    running_override: ZoneOverride
+
+
+def jump_to_next_switch(
+    session: Session,
+    zone: Zone,
+    *,
+    now: datetime | None = None,
+    replace: bool = False,
+    user_id: int | None = None,
+    token_id: int | None = None,
+    source: str = "web",
+) -> ZoneOverride:
+    """Zieht die nächste reguläre Zeitplanphase sofort vor.
+
+    Was der Nutzer sieht: die Phase, die als Nächstes ohnehin gekommen wäre, gilt ab
+    sofort -- nicht erst zu ihrer regulären Uhrzeit. Der Wochenplan selbst bleibt dabei
+    unangetastet: es wird kein Schaltpunkt angelegt, verschoben oder gelöscht, genau
+    wie bei `remote_control.boost`. Umgesetzt ist der Sprung als eine gewöhnliche
+    Übersteuerung, deren Temperatur die der vorgezogenen Phase ist und die exakt in
+    dem Moment endet, in dem diese Phase ohnehin regulär begonnen hätte
+    (`NextSwitch.at`, aus `next_switch`). Danach übernimmt der Zeitplan von selbst
+    wieder -- die Übersteuerung läuft ja bereits ab, sobald ihre reguläre Zeit
+    erreicht ist, ohne dass diese Funktion oder wer sie aufgerufen hat noch etwas
+    dafür tun müsste.
+
+    `next_switch` liefert sowohl die Zielzeit als auch den Zielsollwert -- diese
+    Funktion rechnet sie nicht selbst noch einmal nach, damit es dafür nur eine
+    einzige Fassung der Rechnung gibt. Liefert sie `None`, unterscheidet diese
+    Funktion zwei Fälle für die Fehlermeldung: gar kein Zeitplan (`end_of_next_switch`
+    selbst liefert `None`) gegenüber einem Zeitplan, dessen nächste Phase keinen
+    nutzbaren Sollwert hat.
+
+    Läuft für die Zone bereits eine Übersteuerung, wird ihr standardmäßig **keine**
+    zweite stillschweigend danebengestellt -- das würde `resolved_setpoint`s
+    Rangfolge (jüngste Übersteuerung gewinnt) unbemerkt zu einem Rennen zwischen zwei
+    Zeilen machen. Stattdessen wird `OverrideAlreadyRunning` ausgelöst, mit der
+    laufenden Übersteuerung als Attribut, damit die Oberfläche sie anzeigen und ihre
+    Beendigung anbieten kann. Mit `replace=True` wird die laufende Übersteuerung
+    zuerst über `cancel_override` beendet und danach die neue angelegt.
+
+    `now` ist derselbe Augenblick, gegen den sowohl die nächste Schaltzeit als auch
+    der Beginn der neuen Übersteuerung berechnet werden -- aus demselben Grund, den
+    `create_override` für seinen eigenen `now`-Parameter dokumentiert: zwei separat
+    gelesene Uhrzeiten dürfen hier nicht auseinanderfallen.
+    """
+    now = now if now is not None else utcnow()
+    result = next_switch(session, zone, now)
+    if result is None:
+        if end_of_next_switch(session, zone, now) is None:
+            raise ScheduleError("schedule", "Für diesen Raum ist kein Zeitplan hinterlegt.")
+        raise ScheduleError(
+            "schedule",
+            "Für die nächste Zeitplanphase ist keine Temperatur hinterlegt.",
+        )
+
+    running = running_override(session, zone, now)
+    if running is not None:
+        if not replace:
+            raise OverrideAlreadyRunning(
+                "override",
+                "Für diese Zone läuft bereits eine Übersteuerung -- "
+                "diese zuerst beenden oder ersetzen.",
+                running_override=running,
+            )
+        cancel_override(session, zone)
+
+    return create_override(
+        session,
+        zone,
+        result.setpoint.temperature_c,
+        result.at,
+        now=now,
+        user_id=user_id,
+        token_id=token_id,
+        source=source,
+    )

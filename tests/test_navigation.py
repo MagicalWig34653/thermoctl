@@ -9,11 +9,19 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from tests.helpers import create_settings, create_zone
+from thermoctl.domain.ui_profile import WebUiProfile
 from thermoctl.web.navigation import NAVIGATION_ITEMS
 
 
 def _navigation(html: str) -> str:
-    match = re.search(r'<nav class="tc-head.*?</nav>', html, re.DOTALL)
+    """Die gerenderte Navigation der Anlagenhülle.
+
+    Seit dem Redesign ist das die Seitenleiste (`base_admin.html`) statt der alten
+    Kopfleiste. Die Zusicherung dieser Datei ist dieselbe geblieben: was hier steht,
+    darf nur stehen, wenn das Recht dazu vorliegt -- und dass es hier *nicht* steht,
+    ist keine Absicherung, die prüft der Endpunkt.
+    """
+    match = re.search(r'<nav class="tc-sidenav.*?</nav>', html, re.DOTALL)
     assert match is not None
     return match.group(0)
 
@@ -30,18 +38,39 @@ def test_user_without_user_management_neither_sees_link_nor_gets_access(
 def test_user_with_all_permissions_sees_every_navigation_item(
     angemeldeter_client: TestClient,
 ) -> None:
+    """Jeder Eintrag der Anlagensicht steht dort auch wirklich.
+
+    Seit v0.9.0 trägt die Tabelle zusätzlich die Einträge der Wohnungssicht. Die
+    gehören ausdrücklich **nicht** in diese Navigation -- geprüft wird deshalb je
+    Profil, nicht über die ganze Tabelle. Die Zusicherung selbst ist dieselbe
+    geblieben: was in der Tabelle steht, muss auch erscheinen.
+    """
     navigation = _navigation(angemeldeter_client.get("/").text)
     for item in NAVIGATION_ITEMS:
+        if item.profile is not WebUiProfile.ADMIN:
+            assert f'href="{item.path}"' not in navigation, item.path
+            continue
         assert f'href="{item.path}"' in navigation
         assert item.label in navigation
 
 
-def test_settings_menu_is_absent_when_none_of_its_items_is_available(
+def test_no_section_heading_remains_when_none_of_its_entries_is_available(
     client_als: Callable[[list[tuple[str, int | None]]], TestClient],
 ) -> None:
-    navigation = _navigation(client_als([]).get("/").text)
-    assert "Einstellungen" not in navigation
-    assert "dropdown-menu" in navigation  # The account menu still exists.
+    """Eine Überschrift ohne einen einzigen Eintrag darunter ist eine leere
+    Behauptung, hier gäbe es etwas.
+
+    „Hauptbereich" ist davon ausgenommen und bleibt stehen: „Übersicht" steht dort
+    fest und ist für jeden Angemeldeten erreichbar -- die Überschrift hat also
+    immer mindestens einen Eintrag unter sich.
+    """
+    page = client_als([]).get("/").text
+    navigation = _navigation(page)
+    for title in ("Analyse", "System", "Zugänge"):
+        assert title not in navigation
+    assert "Hauptbereich" in navigation
+    assert 'href="/"' in navigation
+    assert "dropdown-menu" in page  # Das Kontomenü gibt es weiterhin.
 
 
 @pytest.mark.parametrize(
@@ -94,9 +123,25 @@ def _permission_checks(endpoint: str) -> tuple[set[str], set[str]]:
     return plant, any_zone
 
 
+def test_every_navigation_entry_carries_a_profile_that_exists() -> None:
+    """Ein Eintrag ohne gültiges Profil erschiene in keiner der beiden Oberflächen --
+    er wäre unsichtbar, ohne dass irgendwo etwas fehlschlüge."""
+    for item in NAVIGATION_ITEMS:
+        assert isinstance(item.profile, WebUiProfile)
+
+
 def test_navigation_permissions_match_destination_guards() -> None:
     """Changing a view guard without its navigation contract must fail here."""
     for item in NAVIGATION_ITEMS:
+        if item.permission is None:
+            # Genau ein Eintrag trägt kein Recht: der persönliche Bereich
+            # `/account`. Das eigene Passwort zu ändern oder die eigenen anderen
+            # Sitzungen zu beenden ist kein privilegierter Vorgang -- ein Recht
+            # dafür zu verlangen hieße, dass es Konten gäbe, deren Passwort
+            # niemand ändern kann. Der Endpunkt prüft deshalb tatsächlich keins,
+            # und dieser Test hätte hier nichts zu vergleichen.
+            assert item.path == "/account", item.path
+            continue
         plant, any_zone = _permission_checks(item.endpoint)
         actual = any_zone if item.scope == "any_zone" else plant
         assert item.permission in actual, (

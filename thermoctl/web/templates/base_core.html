@@ -4,6 +4,15 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}thermoctl{% endblock %}</title>
+    {#
+    Der gemeinsame Kern beider Oberflächen: Kopfbereich, Farbschema, Assets, HTMX,
+    CSRF-Weitergabe, Ladeanzeige und der Hinweis auf eine veraltete Seite. Alles
+    darunter -- Navigation, Layout, Bedienelemente -- unterscheidet sich zwischen
+    Anlagensicht (`base_admin.html`) und Wohnungssicht (`base_tenant.html`) und
+    steht deshalb dort. `base_plain.html` (Kiosk) bleibt bewusst daneben und erbt
+    hier nicht: ein Wandtablett hat weder Navigation noch Ladebalken, und die
+    Kiosk-CSRF-Behandlung ist eine andere.
+    #}
     <link rel="icon" href="{{ url_prefix }}/static/favicon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="{{ url_prefix }}/static/vendor/bootstrap/bootstrap.min.css">
     <link rel="stylesheet" href="{{ url_prefix }}/static/thermoctl.css">
@@ -92,7 +101,8 @@
         });
     </script>
 </head>
-<body hx-boost="true" data-url-prefix="{{ url_prefix }}">
+<body hx-boost="true" data-url-prefix="{{ url_prefix }}"
+      class="{% block body_class %}tc-admin{% endblock %}">
 {#
 Rein optisch, kein Steuerelement -- `loading_indicator.js` fügt die sichtbare
 Klasse hinzu und nimmt sie wieder weg. `aria-hidden`, weil ein Balken ohne
@@ -101,75 +111,12 @@ Anfrage bleibt für Screenreader wie bisher wahrnehmbar (die Seite antwortet
 einfach etwas später).
 #}
 <div id="tc-loading-bar" class="tc-loading-bar" aria-hidden="true"></div>
-{% set here = request.url.path %}
-{% set main_navigation = navigation_items | selectattr("section", "equalto", "main") | list %}
-{% set settings_navigation = navigation_items | selectattr("section", "equalto", "settings") | list %}
-{% macro nav_link(target, label, exact=false) %}
-    {% set active = here == target if exact else (here == target or here.startswith(target ~ "/")) %}
-    <li class="nav-item">
-        <a class="nav-link{{ ' tc-here' if active }}" href="{{ url_prefix }}{{ target }}"
-           {% if active %}aria-current="page"{% endif %}>{{ label }}</a>
-    </li>
-{% endmacro %}
-<nav class="tc-head navbar sticky-top navbar-expand-lg py-2 mb-4">
-    <div class="container" style="max-width: 76rem;">
-        <a class="tc-marker navbar-brand" href="{{ url_prefix }}/">thermoctl</a>
-        <button class="navbar-toggler border-0" type="button" data-bs-toggle="collapse"
-                data-bs-target="#main-navigation" aria-controls="main-navigation"
-                aria-expanded="false" aria-label="Navigation einblenden">
-            <span class="navbar-toggler-icon"></span>
-        </button>
-        <div class="collapse navbar-collapse" id="main-navigation">
-            {#
-            Vier Wege statt drei Sammelmenüs. Früher lagen Steuerung, Zonen, Geraete und
-            Modi zusammen unter "Anlage" -- vier Dinge, die man unterschiedlich oft
-            braucht, hinter einem Klick, den man jedes Mal machen muss. Was täglich
-            gebraucht wird, steht jetzt offen; was selten gebraucht wird, liegt unter
-            "Einstellungen".
-            #}
-            <ul class="navbar-nav ms-auto align-items-lg-center">
-                {{ nav_link("/", "Start", exact=true) }}
-                {% for item in main_navigation %}
-                    {{ nav_link(item.path, item.label) }}
-                {% endfor %}
-                {% if settings_navigation %}
-                <li class="nav-item dropdown">
-                    <button class="nav-link dropdown-toggle{{ ' tc-here' if settings_navigation | selectattr('path', 'equalto', here) | list or (here.startswith('/modes/') and settings_navigation | selectattr('path', 'equalto', '/modes') | list) }}"
-                            type="button" data-bs-toggle="dropdown" aria-expanded="false">
-                        Einstellungen
-                    </button>
-                    <ul class="dropdown-menu dropdown-menu-end">
-                        {% for item in settings_navigation %}
-                        <li><a class="dropdown-item" href="{{ url_prefix }}{{ item.path }}">{{ item.label }}</a></li>
-                        {% endfor %}
-                    </ul>
-                </li>
-                {% endif %}
-                <li class="nav-item dropdown">
-                    <button class="nav-link dropdown-toggle{{ ' tc-here' if here == '/passkeys' }}"
-                            type="button" data-bs-toggle="dropdown" aria-expanded="false">
-                        {{ top_bar_user.display_name if top_bar_user else "Konto" }}
-                    </button>
-                    <ul class="dropdown-menu dropdown-menu-end">
-                        <li><a class="dropdown-item" href="{{ url_prefix }}/passkeys">Passkeys</a></li>
-                        <li><hr class="dropdown-divider"></li>
-                        <li>
-                            <form hx-post="{{ url_prefix }}/logout">
-                                <button class="dropdown-item" type="submit">Abmelden</button>
-                            </form>
-                        </li>
-                    </ul>
-                </li>
-            </ul>
-        </div>
-    </div>
-</nav>
-<main class="container pb-5" style="max-width: {% block max_width %}64rem{% endblock %};">
-{% block content %}{% endblock %}
-</main>
-<footer class="container text-center t-quiet small pb-4">
-    thermoctl steht unter der AGPL-3.0. Quelltext:
-    <a href="https://github.com/MagicalWig34653/thermoctl">github.com/MagicalWig34653/thermoctl</a>
-</footer>
+{#
+Der Sprung an den Inhalt. Eine Oberfläche mit Seitenleiste stellt sonst vor jeder
+Seite dieselben sechzehn Verweise, durch die sich eine Tastaturbedienung jedes Mal
+hindurchtabben muss.
+#}
+<a class="tc-skip-link" href="#tc-main">Zum Inhalt springen</a>
+{% block shell %}{% endblock %}
 </body>
 </html>

@@ -27,9 +27,17 @@ from thermoctl.domain.controller import (
 from thermoctl.domain.controller_channels import ControllerChannelError, configure_channel
 from thermoctl.domain.principal import Principal
 from thermoctl.web import templates
+from thermoctl.web.guards import admin_ui_only
 from thermoctl.web.urls import prefixed
 
-router = APIRouter(dependencies=[Depends(csrf_protection)], include_in_schema=False)
+# `admin_ui_only`: diese Seiten gehören zur Anlagensicht. Ein Mieterprofil wird
+# hier schon vor der Rechteprüfung abgewiesen -- eine ausgeblendete Verknüpfung
+# in der Navigation ist kein Riegel (siehe `web/guards.py`). Die bestehenden
+# Rechteprüfungen in den Endpunkten bleiben davon unberührt bestehen.
+router = APIRouter(
+    dependencies=[Depends(csrf_protection), Depends(admin_ui_only)],
+    include_in_schema=False,
+)
 
 
 def _zones(session: Session, principal: Principal, permission: str) -> list[Zone]:

@@ -1,0 +1,367 @@
+{% extends "base_tenant.html" %}
+{% block title %}Zuhause{% endblock %}
+{% block content %}
+{#
+Die Wohnungs-Startseite. Sie zeigt ausschließlich Räume, die `visible_zones` für
+diesen Principal liefert -- die Ansicht bekommt gar nichts anderes in den Kontext,
+und weder Zonenname noch Zonen-Id eines fremden Raums kann deshalb hier landen.
+
+Ausdrücklich **nicht** hier: MQTT, Broker, Brücke, Aktorfreigabe, Verbundrolle,
+Schattenentscheidung, PI, Hysterese, Relais, Gerätenamen. Nichts davon sagt einem
+Mieter etwas über seine Wohnung; was ihn betrifft, steht als Wirkung da, nicht als
+Ursache.
+#}
+<div class="tc-hero">
+    <p class="tc-eyebrow">Meine Wohnung</p>
+    <h1 class="tc-h1">Angenehm zuhause.</h1>
+    <p class="t-quiet">
+        Temperaturen sehen, für eine Weile ändern oder den Wochenplan anpassen.
+    </p>
+</div>
+
+{#
+Der Liveabruf. Dasselbe Muster wie die Anlagen-Startseite: Intervall aus der
+Servereinstellung, Pause im Hintergrund, `data-tc-quiet-poll`, damit nicht jede
+Minute grundlos ein Ladebalken aufblitzt.
+#}
+<div id="tc-live" data-tc-quiet-poll="true"
+     hx-get="{{ url_prefix }}/" hx-trigger="every {{ poll_interval_seconds }}s [!document.hidden]"
+     hx-select="#tc-live" hx-target="#tc-live" hx-swap="outerHTML"
+     hx-disinherit="hx-select hx-target hx-swap">
+
+{% if notice %}
+<div class="tc-notice" role="status">
+    <p class="tc-notice-title">
+        {% if notice.kind == "sensor" %}
+        {{ notice.zone_name }}: Messwert möglicherweise nicht aktuell
+        {% else %}
+        {{ notice.zone_name }}: Fenster steht offen
+        {% endif %}
+    </p>
+    <p class="t-quiet small mb-0">
+        {% if notice.kind == "sensor" %}
+        Seit {{ notice.measured_at|age }} kam keine neue Temperatur. Die Heizung
+        regelt weiter, aber der angezeigte Wert kann veraltet sein.
+        {% else %}
+        Solange ein Fenster offen steht, wird in diesem Raum nicht geheizt.
+        {% endif %}
+    </p>
+</div>
+{% else %}
+<div class="tc-notice tc-notice-calm" role="status">
+    <p class="tc-notice-title">Heizung läuft normal</p>
+    <p class="t-quiet small mb-0">Alle Räume werden wie geplant geregelt.</p>
+</div>
+{% endif %}
+
+{% if absence_errors %}
+<div class="alert alert-warning" role="alert">{{ absence_errors }}</div>
+{% endif %}
+
+{#
+Die Abwesenheit gilt für **alle** Räume dieser Wohnung zugleich und steht deshalb
+über den Raumkarten, nicht in einer davon. Welche Räume das sind, entscheidet der
+Server; das Formular trägt bewusst keine Zonenauswahl.
+#}
+{% if absence %}
+<section class="tc-absence" role="status">
+    <p class="tc-notice-title">Abwesenheit läuft</p>
+    <p class="t-quiet small">
+        Bis {{ (absence.ends_at|localtime(timezone)).strftime("%d.%m.%Y, %H:%M") }} werden
+        {{ absence_zone_names|join(", ") }} auf
+        <strong class="t-value">{{ absence.setback_temperature_c|grad }} °C</strong>
+        gehalten. Danach gilt wieder dein Zeitplan.
+    </p>
+    <form method="post" action="{{ url_prefix }}/absence/end">
+        <button class="btn btn-sm btn-outline-secondary" type="submit">
+            Abwesenheit beenden
+        </button>
+    </form>
+</section>
+{% elif absence_zone_count %}
+<details class="tc-absence">
+    <summary>Abwesenheit einstellen</summary>
+    <p class="t-quiet small">
+        Alle deine Räume werden bis zu deiner Rückkehr sparsamer geregelt und
+        danach automatisch wieder normal. Der Wochenplan bleibt unverändert.
+    </p>
+    <form method="post" action="{{ url_prefix }}/absence" class="tc-absenceform">
+        <div>
+            <label class="form-label" for="abwesend-bis">Zurück am</label>
+            <input class="form-control" type="date" id="abwesend-bis" name="return_on" required>
+        </div>
+        <div>
+            {#
+            Ohne `min`/`max` im Markup: die Grenzen prüft die Domäne beim Anlegen
+            der Übersteuerungen. Eine zweite Zahl hier wäre eine zweite Wahrheit.
+            #}
+            <label class="form-label" for="abwesend-temperatur">Temperatur in °C</label>
+            <input class="form-control" type="number" step="0.5" value="17"
+                   id="abwesend-temperatur" name="temperature_c" required>
+        </div>
+        <button class="btn btn-primary" type="submit">Abwesenheit aktivieren</button>
+    </form>
+</details>
+{% endif %}
+
+{% if jump_next_errors %}
+<div class="alert alert-warning" role="alert">{{ jump_next_errors }}</div>
+{% endif %}
+{% if report_errors %}
+<div class="alert alert-warning" role="alert">{{ report_errors }}</div>
+{% endif %}
+{% if report_notice %}
+<div class="alert alert-success" role="status">{{ report_notice }}</div>
+{% endif %}
+
+{% if not zones %}
+<p class="tc-empty">
+    Für dieses Konto ist noch kein Raum freigegeben. Die Verwaltung der Anlage
+    trägt ein, welche Räume zu dieser Wohnung gehören.
+</p>
+{% endif %}
+
+<div class="tc-rooms">
+{% for zone in zones %}
+    {% set state = states.get(zone.id) %}
+    {% set setpoint = setpoints[zone.id] %}
+    {% set override = overrides.get(zone.id) %}
+    {% set decision = decisions.get(zone.id) %}
+    {% set upcoming = next_switches.get(zone.id) %}
+    <article class="tc-room">
+        <div class="tc-room-head">
+            <h2 class="tc-room-name">{{ zone.display_name }}</h2>
+            {#
+            Was hier steht, ist die **Entscheidung** der Regelung, nicht eine
+            Behauptung über die Temperatur des Heizkörpers. "heizt" wäre beides
+            zugleich und im Trockenlauf schlicht falsch; ein Wächtertest
+            (`tests/test_user_visible_effect_texts.py`) hält das fest.
+            #}
+            {% if decision and decision.would_heat %}
+            <span class="tc-chip tc-chip-warm"><span class="tc-dot"></span>Wärme angefordert</span>
+            {% elif decision %}
+            <span class="tc-chip tc-chip-quiet"><span class="tc-dot"></span>keine Wärme angefordert</span>
+            {% else %}
+            <span class="tc-chip tc-chip-quiet"><span class="tc-dot"></span>noch keine Entscheidung</span>
+            {% endif %}
+        </div>
+
+        <p class="tc-room-temp">
+            {% if state %}
+            <span class="tc-big t-value">{{ state[0].temperature_c|grad }}</span><span class="tc-unit">°C</span>
+            {% else %}
+            <span class="tc-big t-value">–</span>
+            {% endif %}
+        </p>
+        <p class="t-quiet small">
+            {% if state and state[1].code != "ok" %}
+            Messwert {{ state[0].measured_at|age }} — Anzeige kann veraltet sein
+            {% elif state %}
+            gemessen {{ state[0].measured_at|age }}
+            {% else %}
+            noch kein Messwert
+            {% endif %}
+        </p>
+
+        <dl class="tc-facts">
+            <div><dt>Gerade</dt><dd>{{ mode_names.get(setpoint.mode_id, "Sollwert") }}</dd></div>
+            <div><dt>Soll</dt><dd class="t-value">{{ setpoint.temperature_c|grad }} °C</dd></div>
+            <div class="tc-fact-wide"><dt>Warum?</dt><dd>{{ setpoint.reason }}</dd></div>
+        </dl>
+
+        {#
+        Der Tagesverlauf. Dieselbe Zerlegung wie die Anlagensicht und die
+        Wochenansicht, gerechnet in der Domäne -- eine zweite Fassung im Browser
+        wäre genau das, was Grundsatz 6 verbietet.
+        #}
+        {% set track = day_tracks.get(zone.id, []) %}
+        {% if track %}
+        <div class="tc-timeline" role="img"
+             aria-label="Tagesverlauf für {{ zone.display_name }}">
+            {% for segment in track %}
+            <span class="tc-timeline-part"
+                  {# Dieselbe Skala wie überall sonst, siehe `start.html`. #}
+                  style="left: {{ segment.left }}%; width: {{ segment.width }}%;
+                         background: color-mix(in oklab,
+                             var({{ '--warmth' if segment.warmth >= 0.5 else '--cool' }})
+                             {{ (40 + (segment.warmth - 0.5)|abs * 90)|round|int }}%, var(--surface));"></span>
+            {% endfor %}
+            <span class="tc-timeline-now" style="left: {{ now_fraction }}%"></span>
+        </div>
+        {% endif %}
+
+        {% if upcoming %}
+        <p class="tc-nextline small">
+            Als Nächstes:
+            <strong class="t-value">{{ upcoming.setpoint.temperature_c|grad }} °C</strong>
+            um {{ (upcoming.at|localtime(timezone)).strftime("%H:%M") }}
+        </p>
+        {% endif %}
+
+        {% if override %}
+        <div class="tc-override" role="status">
+            <span>
+                Vorübergehend <strong class="t-value">{{ override.temperature_c|grad }} °C</strong>
+                {% if override.ends_at %}bis {{ (override.ends_at|localtime(timezone)).strftime("%H:%M") }}{% else %}auf Widerruf{% endif %}.
+                Danach gilt wieder der Zeitplan.
+            </span>
+            {% if zone.id in may_cancel %}
+            <form method="post" action="{{ url_prefix }}/zones/{{ zone.id }}/override/cancel">
+                <button class="btn btn-sm btn-outline-secondary" type="submit">Beenden</button>
+            </form>
+            {% endif %}
+        </div>
+        {% endif %}
+
+        {#
+        Der dauerhafte Sollwert des laufenden Modus -- ausdrücklich **keine**
+        Übersteuerung. Beide Alltagswünsche mit demselben Bedienelement zu
+        erledigen wäre der sicherste Weg, das Falsche zu treffen; deshalb steht
+        daneben, welcher Modus dauerhaft geändert wird. Der Schritt selbst wird
+        serverseitig gegen den aktuellen Wert gerechnet, damit zwei schnelle
+        Klicks auch zwei Schritte sind.
+        #}
+        {% if setpoint.mode_id and zone.id in may_edit_setpoint %}
+        <div class="tc-controlbox">
+            <p class="tc-controltop">
+                <strong>Normale Temperatur für „{{ mode_names.get(setpoint.mode_id, "diesen Abschnitt") }}“</strong>
+                <span class="t-quiet small">Ändert den Wert dauerhaft — nicht nur für heute.</span>
+            </p>
+            <form method="post" action="{{ url_prefix }}/zones/{{ zone.id }}/thermostat"
+                  class="tc-stepper">
+                <input type="hidden" name="mode_id" value="{{ setpoint.mode_id }}">
+                <button class="tc-stepbtn" type="submit" name="direction" value="down"
+                        aria-label="Temperatur um ein halbes Grad senken">−</button>
+                <span class="tc-stepvalue t-value">{{ setpoint.temperature_c|grad }} °C</span>
+                <button class="tc-stepbtn" type="submit" name="direction" value="up"
+                        aria-label="Temperatur um ein halbes Grad anheben">+</button>
+            </form>
+            {% if thermostat_errors and error_zone_id == zone.id|string %}
+            <p class="tc-inline-error small">{{ thermostat_errors }}</p>
+            {% endif %}
+        </div>
+        {% endif %}
+
+        <div class="tc-room-actions">
+            {% if zone.id in may_override %}
+            <button class="btn btn-sm btn-outline-secondary" type="button"
+                    data-bs-toggle="collapse" data-bs-target="#waermer-{{ zone.id }}"
+                    aria-controls="waermer-{{ zone.id }}"
+                    aria-expanded="{{ 'true' if override_errors and error_zone_id == zone.id|string else 'false' }}">
+                Für eine Weile wärmer
+            </button>
+            <form method="post" action="{{ url_prefix }}/zones/{{ zone.id }}/jump-next">
+                <button class="btn btn-sm btn-outline-secondary" type="submit">
+                    Zur nächsten Schaltzeit springen
+                </button>
+            </form>
+            {% if override %}
+            <form method="post" action="{{ url_prefix }}/zones/{{ zone.id }}/jump-next">
+                <input type="hidden" name="replace" value="1">
+                <button class="btn btn-sm btn-outline-secondary" type="submit">
+                    Laufende Änderung ersetzen
+                </button>
+            </form>
+            {% endif %}
+            {% endif %}
+        </div>
+
+        {#
+        Problem melden. Eigenes Recht `report.create`, ausdrücklich nicht
+        `zone.read`: die Meldung verlässt die Anlage über den Webhook des
+        Betreibers. Wer nur lesen darf, sieht diesen Bereich deshalb gar nicht --
+        und der Endpunkt weist ihn zusätzlich ab.
+        #}
+        {% if zone.id in may_report %}
+        <details class="tc-report">
+            <summary>Problem melden</summary>
+            <p class="t-quiet small">
+                Raum, letzter Messwert, Sollwert und Zeitpunkt werden automatisch
+                ergänzt. Technische Angaben sind nicht nötig.
+            </p>
+            <form method="post" action="{{ url_prefix }}/zones/{{ zone.id }}/report"
+                  class="tc-reportform">
+                <fieldset>
+                    <legend class="form-label">Was ist los?</legend>
+                    {% for code, label in report_kinds %}
+                    <label class="tc-choice">
+                        <input type="radio" name="kind" value="{{ code }}"
+                               {{ "checked" if loop.first }}>
+                        <span>{{ label }}</span>
+                    </label>
+                    {% endfor %}
+                </fieldset>
+                <label class="form-label" for="hinweis-{{ zone.id }}">
+                    Hinweis (optional)
+                </label>
+                <input class="form-control" id="hinweis-{{ zone.id }}" name="note"
+                       maxlength="200" placeholder="z. B. seit heute Morgen">
+                <button class="btn btn-outline-secondary" type="submit">Melden</button>
+            </form>
+        </details>
+        {% endif %}
+
+        {% if zone.id in may_override %}
+        {% set has_error = override_errors and error_zone_id == zone.id|string %}
+        {#
+        `hx-preserve`: Ohne diese Marke ersetzt jeder Liveabruf den Bereich samt
+        halb getippter Eingabe -- gemeldet aus dem Betrieb an der Anlagensicht,
+        dasselbe gilt hier.
+        #}
+        <div class="collapse{{ ' show' if has_error }}" id="waermer-{{ zone.id }}"
+             hx-preserve="true">
+            <form method="post" action="{{ url_prefix }}/zones/{{ zone.id }}/override"
+                  class="tc-boostform">
+                <p class="t-quiet small">
+                    Das gilt nur vorübergehend. Danach zählt wieder dein Zeitplan;
+                    der Wochenplan ändert sich dabei nicht.
+                </p>
+                <label class="form-label" for="waermer-temp-{{ zone.id }}">Temperatur in °C</label>
+                {#
+                Ohne `min`/`max` im Markup: die Grenzen stehen in der Domäne und
+                werden dort geprüft. Eine zweite Zahl hier wäre eine zweite
+                Wahrheit, die beim nächsten Ändern zurückbliebe.
+                #}
+                <input class="form-control" id="waermer-temp-{{ zone.id }}" type="number"
+                       step="0.5" name="temperature_c" required
+                       value="{{ override_values.get('temperature_c', '') if has_error else '' }}">
+                <fieldset class="tc-durations">
+                    <legend class="form-label">Wie lange?</legend>
+                    {#
+                    Eine Auswahl "wie lange überhaupt" und daneben die Dauer --
+                    bewusst zwei gewöhnliche Formularfelder statt vier Kacheln mit
+                    einem Skript dahinter. Vier Kacheln müssten die Dauer per
+                    JavaScript in ein verstecktes Feld schreiben; ohne Skript
+                    fiele die Auswahl dann stillschweigend auf den ersten Wert
+                    zurück, und der Mieter bekäme eine andere Dauer als die, die
+                    er angetippt hat. So funktioniert das Formular auch ohne
+                    JavaScript genau so, wie es aussieht.
+                    #}
+                    <label class="tc-choice">
+                        <input type="radio" name="end" value="duration" checked>
+                        <span>Für eine Dauer</span>
+                    </label>
+                    <label class="tc-choice">
+                        <input type="radio" name="end" value="next_switch">
+                        <span>Bis zur nächsten Umschaltung</span>
+                    </label>
+                </fieldset>
+                <label class="form-label" for="waermer-dauer-{{ zone.id }}">Dauer</label>
+                <select class="form-select" id="waermer-dauer-{{ zone.id }}"
+                        name="duration_minutes">
+                    <option value="30">30 Minuten</option>
+                    <option value="60">1 Stunde</option>
+                    <option value="120">2 Stunden</option>
+                </select>
+                <button class="btn btn-primary" type="submit">Übernehmen</button>
+                {% if has_error %}
+                <p class="tc-inline-error small">{{ override_errors }}</p>
+                {% endif %}
+            </form>
+        </div>
+        {% endif %}
+    </article>
+{% endfor %}
+</div>
+</div>
+{% endblock %}
