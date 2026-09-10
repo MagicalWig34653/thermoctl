@@ -91,6 +91,7 @@
       "und beide wurden erst gefunden, nachdem die Anlage bereits an einer echten Heizung lief.",
       "verhinderte, dass „Zirkulationspumpe\" oder „Ölbrenner\" als Treffer für „pumpe\" bzw.",
       "wirklich angebunden statt halb, die Sonnenabsenkung lässt sich wieder einschalten, und",
+      "zeigen Wärme weiterhin in Orange und Kühle in Blau. Alle drei Ansichten desselben",
       "über beide. Ein Thermostatventil ohne `system_mode` geht über seinen Mindestsollwert aus",
       "„Die Zone regelt die Heizung bis auf Weiteres gegen den Frostschutz-Sollwert von",
       "„brenner\" erkannt wurden. Die führende Grenze fällt jetzt bei den Substantiven, die"
@@ -116,38 +117,30 @@
       "## Betrieb unter Docker Swarm und Kubernetes dokumentiert",
       "## Fenster: Frostschutz gewinnt, EIN/AUS-Aktoren schalten nicht ab",
       "## Was geschaltet wird — genau",
-      "(Swarm: `mode: replicated-job`; Kubernetes: `Job`, mit `kubectl wait` vor dem",
       "(nicht-selbstregelnde) Schaltaktoren — genau die Bedingung für",
       "(wo vorhanden) an Zigbee2MQTT-Thermostatventile ohne eigene Regelung",
       "**EIN/AUS-Aktoren (Fußbodenheizung an reinen Ein/Aus-Ventilen) schaltet das Fenster",
       "**Frostschutz schlägt das offene Fenster.** Bisher schaltete Regel 3 bei offenem",
-      "Ablauf wird ein frischer Sturz erneut geprüft, und die Heizung stand die ganze Zeit aus,",
+      "**Schutz gegen Rückkopplung:** Eine aufgrund der Vermutung abgeschaltete Heizung",
       "Aktor etwas hinaus — das ist der Zustand einer neuen Anlage. `/control/arm` öffnet ihn,",
-      "Der vereinfachte Zeitplan-Editor bildet zwei Schaltzeiten je Tag ab („warm ab\",",
-      "Die Palette bleibt, wie sie war (Kupfer = Wärme, Stahlblau = Kühle, sonst Schiefer",
+      "Der vereinfachte Editor bietet zwei Schaltzeiten je Tag („warm ab“, „kühler ab“).",
       "Erkennungsmerkmal: die Zone hat Aktoren, und keiner davon ist",
-      "Grad zu niedriger Sollwert an einer echten Heizung -- und das ausgerechnet gegen die",
-      "Quelltext gilt für normalen Betrieb mit periodischer Heizung, nicht für einen Raum, dem",
       "Sensorausfall, Mindestschaltdauern und Ventilschutz laufen unwissend vom Urlaub",
-      "Test — nachgezogen in `tests/test_shadow_run.py` (ohne Aktor, gemischt, mehrere",
       "Thermostatventile, Ein/Aus an gewöhnliche Zigbee2MQTT-Aktoren",
-      "Ventilschutzlauf und wurde ein Fenster geöffnet, während die Temperatur im",
+      "Zonen ohne Aktor, gemischte Zonen und mehrere reine EIN/AUS-Aktoren.",
       "[`docs/docker-swarm.md`](docker-swarm.md) und [`docs/kubernetes.md`](kubernetes.md), je",
+      "`not situation.valve_protection_active`: ein unterbrochener Ventilschutzlauf wird",
       "allein, für den Aus-Timer zusätzlich `protection_allowed`. Ein Ventilschutzlauf, der",
-      "aufheizte, bekam ihn danach für den **Rest der Abwesenheit** normal beheizt. Der",
       "benutzen jetzt dieselbe zweiseitige Skala: unter der Mitte kühl, darüber warm, die",
       "dauerhaften ±0,5-K-Schritt am laufenden Modus, „Für eine Weile wärmer\" und „Zur",
       "deshalb bleibt die Erkennung je Zone standardmäßig aus, und der Betreiber schaltet sie",
       "echten Fensteröffnen zu unterscheiden. Ein langsames Auskühlen nach Heizende und das Ende",
-      "gleiche EIN/AUS-Aktoren).",
-      "gleichzeitig (Swarm: `docker stack deploy` ignoriert `depends_on`; Kubernetes: ein",
       "ihren Frostschutzwert, heizt sie jetzt wieder: Heizen gegen ein offenes Fenster ist",
       "könnte, und da die Erkennung selbst das Heizen abschaltet, gäbe es ohnehin keine aktive",
       "selbstregelndes Ventil) bleiben beim bisherigen, vorsichtigeren Verhalten. Nur das",
       "sicher entscheiden könnten, wer einen Heizkörper schalten darf; die Datenbank, die",
       "sichtbare Räume, ausdrücklich „Heizzeit\" und im Trockenlauf „hätte geheizt\").",
       "verliert, den nächsten Aktor trotzdem nicht mehr anfasst. Erreicht damit sowohl den",
-      "wiederholt die Wärme entzogen wurde — bei kaltem Wetter und mäßiger Dämmung kann er dann",
       "| 4 — Regelkreis und Cutover | schaltet scharf an der echten Anlage; Ablösung des Altsystems noch offen |"
     ],
     "docs/api.md": [
@@ -179,10 +172,10 @@
     ],
     "docs/homebridge.md": [
       "**„Heizen\" (1) ist `manual`, nicht `auto`.** In thermoctl bedeutet die manuelle",
-      "`'manual'` (Heizen, 1) oder `'off'` (Aus/Bereit, 0) ab — beides Werte aus derselben Liste,",
       "Bild, das HomeKits „Heizen\" nahelegt: ein Rad, an dem ich drehe und das genau diesen Wert",
       "HomeKit kennt vier feste Heiz-/Kühlzustände: 0 Aus, 1 Heizen, 2 Kühlen, 3 Automatik.",
       "HomeKits Zahl: 0 Aus, 1 Heizen, 2 Kühlen, 3 Automatik. Ohne dieses Feld gilt die Vorgabe",
+      "`'manual'` (Heizen, 1) oder `'off'` (Aus/Bereit, 0) ab — beides Werte aus derselben Liste,",
       "ausschließlich Heizung; es gibt keine Betriebsart, die „Kühlen\" auch nur näherungsweise",
       "ist: Aus, Heizen, Automatik. Der Zustand 2 (Kühlen) fehlt bewusst, siehe unten. Anders als",
       "| 1 — Heizen | `operating_mode = manual` |",
@@ -417,9 +410,9 @@
       "Minuten auf Heizen. Im Trockenlauf wird die Entscheidung nur protokolliert; im scharfen Betrieb nach einem Neustart geht sie an den zugeordneten Aktor.",
       "Ventilschutzlauf — die Regelung entscheidet unabhängig von der Raumregelung für",
       "heizen",
+      "ventilschutz",
       "°C unterschritten — Ausnahmeregel: es wird trotz offenem Fenster geheizt, um ein Einfrieren zu vermeiden.",
-      "°C unterschritten — es wird trotzdem geheizt.",
-      "ventilschutz"
+      "°C unterschritten — es wird trotzdem geheizt."
     ],
     "thermoctl/domain/controller_channels.py": [
       "Schreibkanäle sind nur auf Bediengeräten erlaubt, die nirgends Aktor sind.",
@@ -595,11 +588,11 @@
     "thermoctl/web/templates/flow_diagram.html": [
       "<div class=\"tc-flow-column{{ ' tc-target' if draggable }}\"{% if draggable %} data-target=\"actuator\" data-target-name=\"Aktor\" data-requires=\"{{ requires.get('actuator', '') }}\"{% endif %}>",
       "<p class=\"t-label\">Als Aktor zugeordnet</p>",
+      "die Zone hängt an reinen EIN/AUS-Ventilen (z. B. Fußbodenheizung).",
       "{% else %}{{ lücke(\"kein Aktor\") }}{% endif %}",
       "{% for g in z.actuators %}{{ device_card(g, \"actuator\", draggable) }}{% endfor %}",
       "{% if z.actuators %}",
-      "├→ Zone → Aktoren",
-      "die Zone hängt an reinen EIN/AUS-Ventilen (z. B. Fußbodenheizung)."
+      "├→ Zone → Aktoren"
     ],
     "thermoctl/web/templates/form.html": [
       "<div class=\"form-check form-switch mb-3\">",
@@ -647,8 +640,8 @@
       "an Thermostatventile, im Trockenlauf unterdrückte und gescheiterte Befehle zählen"
     ],
     "thermoctl/web/templates/schedule.html": [
-      "var({{ '--warmth' if w >= 0.5 else '--cool' }})",
       "var({{ '--warmth' if bar.warmth >= 0.5 else '--cool' }})",
+      "var({{ '--warmth' if w >= 0.5 else '--cool' }})",
       "{% set w = warmth.get(segment.mode_id, 0.5) %}",
       "{{ (45 + (bar.warmth - 0.5)|abs * 90)|round|int }}%, var(--surface));"
     ],
