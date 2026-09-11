@@ -1080,7 +1080,7 @@ Details je Phase, Aufgabenlisten und was nicht ursprünglich vorgesehen war steh
 
 ## Zahlen
 
-Am 2026-09-11 auf dem Freigabestand für v0.9.2 selbst nachgemessen:
+Am 2026-09-11 auf dem Freigabestand für v0.9.3 selbst nachgemessen:
 
 | Prüfung | Ergebnis |
 |---|---|

@@ -9,6 +9,32 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ---
 
+## 0.9.3 — 2026-09-11
+
+Nachtrag zu v0.9.2: dieselbe Ursache, die zweite Stelle. **Wer die Betriebsseite
+benutzt, sollte aktualisieren.**
+
+### Behoben
+
+- **Die Betriebsseite `/control` las dieselbe Historie, die die Uebersicht in
+  v0.9.2 schon losgeworden war.** Die Beschleunigung hatte eine zweite Fassung
+  derselben Abfrage stehen lassen: `/control` holte weiterhin alle
+  `shadow_decision`-Zeilen aller sichtbaren Raeume ohne `LIMIT`, nur um je Raum
+  die neueste zu behalten. Gleiche Ursache, gleiche Groessenordnung — an zehn
+  Raeumen mit dreissig Tagen Historie **5.111 ms fuer diese eine Abfrage, jetzt
+  136 ms**.
+- **Die Abfrage steht jetzt nur noch einmal.** Sie lag in der Vorlage der
+  Uebersicht; dass die Betriebsseite sie dort nicht mitbekam, ist genau der
+  Grund, warum die langsame Fassung ueberlebt hat. Sie ist in die Domaene
+  gewandert und wird von beiden Seiten benutzt.
+
+### Bewusst nicht geaendert
+
+Die naechste Schaltzeit wird in der Wohnungssicht weiterhin je Raum gerechnet.
+Die Messung zeigt, dass die Zeit nicht mit der Raumzahl waechst, sondern allein
+mit der Entscheidungshistorie; eine Buendelung waere zusaetzliche Komplexitaet
+in der Regelungsdomaene ohne messbaren Gewinn.
+
 ## 0.9.2 — 2026-09-11
 
 Nachtrag zu v0.9.1: dieselbe Beschwerde, aber die zweite, groessere Haelfte der
