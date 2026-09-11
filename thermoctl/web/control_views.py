@@ -28,7 +28,7 @@ from thermoctl.config import get_settings
 from thermoctl.db.base import utcnow
 from thermoctl.db.models.device import Device
 from thermoctl.db.models.lookup import SensorStatus
-from thermoctl.db.models.state import ShadowDecision, ZoneState
+from thermoctl.db.models.state import ZoneState
 from thermoctl.domain.authz import has_permission, require, visible_zones
 from thermoctl.domain.control import (
     GANZZAHLIG,
@@ -72,6 +72,7 @@ from thermoctl.domain.statistics import (
     relay_operations,
 )
 from thermoctl.domain.time import local_day_start_utc, local_time
+from thermoctl.domain.zones import latest_decisions_by_zone
 from thermoctl.integrations import notification
 from thermoctl.services.shadow_run import PI_FALLBACK_INELIGIBLE
 from thermoctl.web import templates
@@ -127,13 +128,12 @@ def _page(
             .where(ZoneState.zone_id.in_([zone.id for zone in zones]))
         )
     }
-    decisions: dict[int, ShadowDecision] = {}
-    for decision in session.scalars(
-        select(ShadowDecision)
-        .where(ShadowDecision.zone_id.in_([zone.id for zone in zones]))
-        .order_by(ShadowDecision.decided_at.desc(), ShadowDecision.id.desc())
-    ):
-        decisions.setdefault(decision.zone_id, decision)
+    # Bündelung statt N+1 -- dieselbe Abfrage wie `zone_status_context`
+    # (`web/start_views.py`), jetzt eine gemeinsame Domänenfunktion statt einer
+    # zweiten, seither zurückgebliebenen Fassung hier: eine ungebündelte Version
+    # hätte auf `/control` die ganze `shadow_decision`-Historie jeder sichtbaren
+    # Zone gelesen (siehe `latest_decisions_by_zone`s Docstring).
+    decisions = latest_decisions_by_zone(session, [zone.id for zone in zones])
 
     return templates.TemplateResponse(
         request,

@@ -19,7 +19,7 @@ from typing import Annotated, cast
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import RedirectResponse
-from sqlalchemy import func, or_, select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 from starlette.responses import Response
 
@@ -31,7 +31,7 @@ from thermoctl.db.models.lookup import SensorStatus
 from thermoctl.db.models.operations import Setting
 from thermoctl.db.models.override import ZoneOverride
 from thermoctl.db.models.schedule import SchedulePoint
-from thermoctl.db.models.state import ShadowDecision, ZoneState
+from thermoctl.db.models.state import ZoneState
 from thermoctl.db.models.zone import SetpointMode, Zone, ZoneSetpoint
 from thermoctl.domain.authz import has_permission, principal_for_user, visible_zones
 from thermoctl.domain.modes import MAXIMUM_TEMPERATURE_C, MINIMUM_TEMPERATURE_C
@@ -46,6 +46,7 @@ from thermoctl.domain.schedule import (
 )
 from thermoctl.domain.time import local_time
 from thermoctl.domain.ui_profile import WebUiProfile
+from thermoctl.domain.zones import latest_decisions_by_zone
 from thermoctl.services import cluster
 from thermoctl.setup import setup_needed
 from thermoctl.web import templates, warmth_fraction
@@ -104,56 +105,6 @@ def _day_track(
     return tracks
 
 
-def _latest_decisions(session: Session, zone_ids: list[int]) -> dict[int, ShadowDecision]:
-    """The single most recent `ShadowDecision` per zone -- without reading the
-    zone's whole decision history to find it.
-
-    `shadow_decision_retention_days` defaults to 365 (`db/models/operations.py`),
-    and the control loop writes one row per zone every `shadow_interval_seconds`
-    (60 by default) -- a plant running for months can hold hundreds of thousands
-    of rows per zone. The query this replaced (`select(ShadowDecision).where(zone_id
-    .in_(...)).order_by(decided_at.desc(), id.desc())`) had no `LIMIT`: it fetched
-    *every* one of those rows for every visible zone over the network merely to
-    keep the first one per zone in Python and discard the rest -- on the real,
-    MariaDB-backed installation this dwarfed every other cost on this page.
-
-    Instead: find each zone's newest `decided_at` with a `GROUP BY zone_id`, which
-    the composite index `ix_shadow_decision_zone_decided_id` on
-    `(zone_id, decided_at, id)` answers by seeking straight to the last entry of
-    each zone's index range (a "loose index scan") -- no row-by-row scan of the
-    history. A second, equally cheap grouped step resolves the `id` tiebreak
-    (mirrors `ZoneOverride`'s: MariaDB's `DATETIME` only has second precision, so
-    two decisions in the same zone within the same second must not leave the
-    database an arbitrary choice) before the final query fetches exactly one row
-    per zone by its `id`.
-    """
-    if not zone_ids:
-        return {}
-    latest_per_zone = (
-        select(
-            ShadowDecision.zone_id.label("zone_id"),
-            func.max(ShadowDecision.decided_at).label("decided_at"),
-        )
-        .where(ShadowDecision.zone_id.in_(zone_ids))
-        .group_by(ShadowDecision.zone_id)
-        .subquery()
-    )
-    latest_ids = (
-        select(func.max(ShadowDecision.id).label("id"))
-        .join(
-            latest_per_zone,
-            (ShadowDecision.zone_id == latest_per_zone.c.zone_id)
-            & (ShadowDecision.decided_at == latest_per_zone.c.decided_at),
-        )
-        .group_by(ShadowDecision.zone_id)
-        .subquery()
-    )
-    rows = session.scalars(
-        select(ShadowDecision).where(ShadowDecision.id.in_(select(latest_ids.c.id)))
-    )
-    return {row.zone_id: row for row in rows}
-
-
 def zone_status_context(
     session: Session,
     principal: Principal,
@@ -209,7 +160,7 @@ def zone_status_context(
         .order_by(ZoneOverride.created_at.desc(), ZoneOverride.id.desc())
     ):
         overrides.setdefault(entry.zone_id, entry)
-    decisions = _latest_decisions(session, zone_ids)
+    decisions = latest_decisions_by_zone(session, zone_ids)
 
     modes_by_id = {m.id: m for m in session.scalars(select(SetpointMode))}
     temperatures: dict[tuple[int, int], Decimal] = {

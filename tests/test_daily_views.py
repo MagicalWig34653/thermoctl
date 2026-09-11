@@ -598,7 +598,7 @@ def test_the_overview_shows_the_latest_of_several_decisions(
     session: Session, client_als
 ) -> None:
     """`zone_status_context` no longer reads a zone's whole decision history to
-    find the newest row (see `_latest_decisions` in `web/start_views.py`) --
+    find the newest row (see `latest_decisions_by_zone` in `domain/zones.py`) --
     it now finds it with a `GROUP BY`. This proves that shortcut still lands on
     the *right* row: an older decision, a newer one that wins, and a third with
     the exact same `decided_at` as the newest (MariaDB's `DATETIME` only has

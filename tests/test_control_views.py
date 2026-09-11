@@ -27,10 +27,13 @@ def test_the_operating_page_shows_the_most_recent_decision_per_zone(
 ) -> None:
     """Only the newest one per zone, and only once.
 
-    The query returns every decision, newest first; the page keeps the first per zone.
-    Without a decision in the database the loop never runs, which is why no test had
-    ever exercised it -- and the operating page is precisely where someone looks to
-    find out what the plant last decided.
+    `/control` resolves this through `domain.zones.latest_decisions_by_zone` --
+    the same shared, `LIMIT`-free-history-avoiding query the plant overview uses
+    (`web/start_views.py::zone_status_context`); its tiebreak behaviour is proven
+    once, in `test_daily_views.py::test_the_overview_shows_the_latest_of_several_decisions`.
+    Without a decision in the database the query returns nothing, which is why no
+    test had ever exercised this at all -- and the operating page is precisely
+    where someone looks to find out what the plant last decided.
     """
     from tests.helpers import create_shadow_decision, create_zone
 

@@ -75,6 +75,30 @@ Betriebsseite) hat dieselbe Vollscan-Abfrage über `shadow_decision` -- eigener
 Auftrag. Die Wohnungssicht (`tenant_views.py`) profitiert vom Fix mit, hat aber
 ihren eigenen, noch ungeprüften Aufruf von `next_switch()` je Zone.
 
+## Die Betriebsseite las dieselbe Historie wie die Übersicht
+
+Die Beschleunigung der Übersicht in v0.9.2 hat eine zweite Fassung derselben
+Abfrage stehen lassen: `/control` holte weiterhin die **ganze**
+`shadow_decision`-Historie aller sichtbaren Zonen ohne `LIMIT`, nur um je Zone
+die neueste Zeile zu behalten. Bei 365 Tagen Aufbewahrung und einer Zeile je
+Zone und Regelzyklus sind das nach Monaten Betrieb Hunderttausende.
+
+Die Abfrage steht jetzt **einmal** als `domain/zones.py::latest_decisions_by_zone`
+und wird von beiden Seiten benutzt. Sie lag zuvor in `web/start_views.py`; dass
+`web/control_views.py` sie dort nicht mitbekam, ist genau der Grund, warum die
+langsame Fassung überlebt hat -- Grundsatz 6, eine Regel wird einmal
+implementiert. In der Domäne statt in einem der beiden Adapter, damit kein
+Adapter den anderen importieren muss; die Domäne kennt weiterhin keinen Adapter
+(`test_architecture.py`).
+
+**Bewusst nicht geändert:** `next_switch` wird in der Wohnungssicht weiterhin je
+Zone gerechnet. Die Achsenmessung aus v0.9.2 zeigt, dass die Zeit nicht mit der
+Zonenzahl wächst (3 auf 10 Zonen: 14 auf 40 ms), sondern allein mit der
+Entscheidungshistorie. Eine Bündelung wäre zusätzliche Komplexität in der
+Regelungsdomäne ohne messbaren Gewinn -- und `next_switch` ist ausdrücklich die
+einzige Stelle, an der diese Rechnung steht, damit Anzeige und tatsächlicher
+Sprung nie auseinanderlaufen.
+
 ## Statische Auslieferung: versioniert, langfristig cachebar, ein Lader statt neun Skripte
 
 Anlass waren drei Rückmeldungen aus dem echten Betrieb: zähes Laden seit v0.9,
