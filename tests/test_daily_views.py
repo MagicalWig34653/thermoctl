@@ -594,6 +594,65 @@ def test_the_overview_explains_a_missing_reading_and_shows_the_decision(
     assert "Betriebsart" not in response.text
 
 
+def test_the_overview_shows_the_latest_of_several_decisions(
+    session: Session, client_als
+) -> None:
+    """`zone_status_context` no longer reads a zone's whole decision history to
+    find the newest row (see `_latest_decisions` in `web/start_views.py`) --
+    it now finds it with a `GROUP BY`. This proves that shortcut still lands on
+    the *right* row: an older decision, a newer one that wins, and a third with
+    the exact same `decided_at` as the newest (MariaDB's `DATETIME` only has
+    second precision) that must lose to it by `id` alone, exactly as
+    `_running_override`'s tiebreak already does for overrides.
+    """
+    zone = _grundlage(session)
+    newest_moment = datetime(2026, 8, 29, 9)
+    session.add(
+        ShadowDecision(
+            decided_at=datetime(2026, 8, 29, 7),
+            zone_id=zone.id,
+            temperature_c=Decimal("18.0"),
+            setpoint_c=Decimal("21.0"),
+            setpoint_reason="Zeitplan",
+            would_heat=True,
+            outcome_code="would_heat",
+            reason="Älteste Entscheidung",
+        )
+    )
+    session.add(
+        ShadowDecision(
+            decided_at=newest_moment,
+            zone_id=zone.id,
+            temperature_c=Decimal("20.5"),
+            setpoint_c=Decimal("21.0"),
+            setpoint_reason="Zeitplan",
+            would_heat=True,
+            outcome_code="would_heat",
+            reason="Vorletzte Entscheidung (gleiche Sekunde, kleinere id)",
+        )
+    )
+    session.add(
+        ShadowDecision(
+            decided_at=newest_moment,
+            zone_id=zone.id,
+            temperature_c=Decimal("20.9"),
+            setpoint_c=Decimal("21.0"),
+            setpoint_reason="Zeitplan",
+            would_heat=False,
+            outcome_code="setpoint_reached",
+            reason="Tatsächlich jüngste Entscheidung",
+        )
+    )
+    session.flush()
+
+    response = client_als([("zone.read", zone.id)]).get("/")
+
+    assert response.status_code == 200
+    assert "Tatsächlich jüngste Entscheidung" in response.text
+    assert "Älteste Entscheidung" not in response.text
+    assert "Vorletzte Entscheidung" not in response.text
+
+
 def test_the_overview_labels_heating_as_a_decision(session: Session, client_als) -> None:
     zone = _grundlage(session)
     session.add(

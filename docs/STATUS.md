@@ -1,6 +1,79 @@
 # Stand
 
-Letzte Aktualisierung: 2026-09-10.
+Letzte Aktualisierung: 2026-09-11.
+
+## Übersicht: 8 s / 4 s auf < 200 ms -- die Entscheidungs-Historie, nicht Assets, nicht N+1 über Zonen
+
+Meldung aus dem echten Betrieb: `/` lud ohne Cache 8 s, mit Cache 4 s (v0.9.1
+hatte bereits die Asset-Auslieferung behoben -- diese Zeit ging vollständig auf den
+Server). Vorgabe: höchstens 1 s mit Cache, höchstens 4 s ohne. Gemessen gegen **MariaDB**
+mit realistischem Bestand (3/10/25 Zonen, 30 Tage Messwerte und Schattenentscheidungen
+am Standardintervall), nicht gegen SQLite -- dort blieb das Problem unsichtbar.
+
+**Ursprünglicher Verdacht (N+1 über `resolved_setpoint` je Zone) war real, aber nicht
+die Hauptursache.** Eine gezielte Messreihe mit fester Zonenzahl (10, die tatsächliche
+Anlagengröße) und unabhängig variierter Datenmenge trennte die drei möglichen Achsen:
+
+| Achse (10 Zonen fest) | Datenmenge | Wandzeit |
+|---|---|---|
+| nur Zonenzahl (3 → 10, wenig Historie) | -- | 14 ms → 40 ms |
+| `shadow_decision`-Menge (1.000 → 432.000 Zeilen) | 30 Tage @ 60 s Takt | **40 ms → 7.300 ms** |
+| `measurement`-Menge (Außenfühler, 100 → 8.640 Zeilen) | 30 Tage @ 5 min Takt | 40 ms → 40 ms (unverändert) |
+
+`shadow_decision_retention_days` steht vorgabemäßig auf **365** (nicht 30 wie
+`measurement_retention_days`), bei 60 s Regeltakt macht das bis zu ~525.000 Zeilen
+je Zone. `zone_status_context` (`web/start_views.py`) las bislang die **gesamte**
+Historie aller sichtbaren Zonen (`select(ShadowDecision).where(zone_id.in_(...))
+.order_by(decided_at.desc(), id.desc())`, ohne `LIMIT`) nur um in Python die jeweils
+neueste Zeile je Zone zu behalten. `EXPLAIN` gegen MariaDB bestätigt es:
+`type: ALL, rows: 432000, key: None, Extra: Using where; Using filesort` -- ein
+voller Tabellenscan trotz vorhandenem Index, weil die Abfrageform (`ORDER BY` ohne
+`LIMIT` über mehrere Zonen) dem Optimierer keine Wahl lässt. Die Messwerttabelle war
+dagegen nie das Problem: ihr Index (`ix_measurement_device_capability_measured`)
+bediente die einzige, anlagenweite Außentemperatur-Abfrage bereits mit `type: range`
+und einem `LIMIT 1`-Seek, unabhängig vom Bestand.
+
+Behoben, ohne neue Migration -- der vorhandene Index
+`ix_shadow_decision_zone_decided_id (zone_id, decided_at, id)` genügt bereits:
+
+- `_latest_decisions()` (neu, `web/start_views.py`) ersetzt den Vollscan durch zwei
+  gruppierte `MAX()`-Abfragen (neuestes `decided_at` je Zone, dann per `id` aufgelöst
+  -- derselbe Sekunden-genaue Tiebreak wie bei `ZoneOverride`) und eine finale Abfrage
+  über genau die gefundenen Zeilen. `EXPLAIN` zeigt jetzt `Using index for group-by`
+  (ein "loose index scan"): Kosten proportional zur Zonenzahl, nicht zum Bestand.
+- **Der reale N+1 über `resolved_setpoint` je Zone war zusätzlich vorhanden**, nur
+  nicht die Hauptursache (10 Zonen kosteten dadurch allein rund 25 ms, nicht Sekunden).
+  `BulkSetpointContext` (neu, `domain/schedule.py`) lässt `resolved_setpoint` optional
+  vorab geladene Daten (Einstellungen, Frostschutz-Code, Sollwerte je Zone/Modus,
+  laufende Übersteuerungen, den Urlaub, Zeitplanpunkte) statt eigener Abfragen je Zone
+  benutzen -- ohne `ctx` unverändert wie vorher (alle ~25 anderen Aufrufstellen,
+  Regelschleife eingeschlossen, unberührt). `zone_status_context` baut den Kontext
+  einmal je Seitenaufruf. Dieselbe Bündelung versorgt `tenant_views.render_home`
+  mit, das dieselbe Funktion aufruft.
+- Nebenbefund beim Bündeln behoben: die Anzeige-Abfrage für das
+  Übersteuerungs-Banner sortierte nur nach `created_at`, `_running_override` (was
+  tatsächlich gilt) zusätzlich nach `id` -- bei zwei Übersteuerungen in derselben
+  MariaDB-Sekunde (Sekundenpräzision) konnten Banner und tatsächliche Entscheidung
+  auseinanderlaufen. Beide lesen jetzt dieselbe, gleich sortierte Abfrage.
+
+Ergebnis am realistischen Fall (10 Zonen, 30 Tage Historie, Außenfühler,
+End-to-End über HTTP inklusive Auth und Template-Rendering):
+
+| | vorher | nachher | Vorgabe |
+|---|---|---|---|
+| 10 Zonen, 30 Tage | ~7.400 ms | **~140 ms** | ≤ 1000 ms mit Cache |
+| 25 Zonen, 30 Tage (Kontext allein) | ~18.000 ms | ~19 ms | -- |
+| SQL-Anweisungen je Aufruf (25 Zonen) | 158 | 10 | -- |
+
+Regellogik unberührt (`resolved_setpoint`, `control_loop.decide()` unverändert bei
+gleicher Eingabe), Zonenisolation unberührt (jede Bündelabfrage bleibt auf die von
+`visible_zones` gelieferten Zonen beschränkt). Ruff, mypy, Pytest gegen SQLite **und**
+MariaDB mit 100 % Abdeckung, Browsertests einzeln -- alle grün.
+
+**Noch offen, nicht Teil dieser Änderung:** `web/control_views.py` (die
+Betriebsseite) hat dieselbe Vollscan-Abfrage über `shadow_decision` -- eigener
+Auftrag. Die Wohnungssicht (`tenant_views.py`) profitiert vom Fix mit, hat aber
+ihren eigenen, noch ungeprüften Aufruf von `next_switch()` je Zone.
 
 ## Statische Auslieferung: versioniert, langfristig cachebar, ein Lader statt neun Skripte
 

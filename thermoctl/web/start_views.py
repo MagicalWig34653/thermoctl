@@ -19,7 +19,7 @@ from typing import Annotated, cast
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import RedirectResponse
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 from starlette.responses import Response
 
@@ -38,8 +38,10 @@ from thermoctl.domain.modes import MAXIMUM_TEMPERATURE_C, MINIMUM_TEMPERATURE_C
 from thermoctl.domain.outdoor import outdoor_reading
 from thermoctl.domain.principal import Principal
 from thermoctl.domain.schedule import (
+    BulkSetpointContext,
     current_or_upcoming_vacation,
     resolved_setpoint,
+    running_vacation,
     week_segments,
 )
 from thermoctl.domain.time import local_time
@@ -60,33 +62,26 @@ MINUTES_PER_DAY = 1440
 
 
 def _day_track(
-    session: Session, zone_ids: list[int], weekday: int
+    modes: dict[int, SetpointMode],
+    temperatures: dict[tuple[int, int], Decimal],
+    points_per_zone: dict[int, list[SchedulePoint]],
+    weekday: int,
 ) -> dict[int, list[dict[str, object]]]:
     """Today's schedule per zone as segments with share, time, and setpoint.
 
     The same decomposition as the week view (`wochenabschnitte`), just restricted to
     one day -- a second version of the same logic in the browser would be exactly what
     principle 6 forbids.
+
+    Takes its data pre-fetched rather than querying: `zone_status_context` (the only
+    caller) already loads all three -- modes, per-zone-and-mode temperatures, and
+    schedule points -- once for the whole page, the same data `resolved_setpoint`
+    needs per zone. Querying them again here would be the exact N+1 duplication this
+    module exists to avoid.
     """
-    if not zone_ids:
+    if not points_per_zone:
         return {}
-    modes = {m.id: m for m in session.scalars(select(SetpointMode))}
     names = {identifier: mode.name for identifier, mode in modes.items()}
-    temperatures: dict[tuple[int, int], Decimal] = {
-        (zone_id, mode_id): temperature
-        for zone_id, mode_id, temperature in session.execute(
-            select(
-                ZoneSetpoint.zone_id,
-                ZoneSetpoint.setpoint_mode_id,
-                ZoneSetpoint.temperature_c,
-            ).where(ZoneSetpoint.zone_id.in_(zone_ids))
-        )
-    }
-    points_per_zone: dict[int, list[SchedulePoint]] = {zone_id: [] for zone_id in zone_ids}
-    for point in session.scalars(
-        select(SchedulePoint).where(SchedulePoint.zone_id.in_(zone_ids))
-    ):
-        points_per_zone[point.zone_id].append(point)
 
     tracks: dict[int, list[dict[str, object]]] = {}
     for zone_id, points in points_per_zone.items():
@@ -107,6 +102,56 @@ def _day_track(
             for segment in segments
         ]
     return tracks
+
+
+def _latest_decisions(session: Session, zone_ids: list[int]) -> dict[int, ShadowDecision]:
+    """The single most recent `ShadowDecision` per zone -- without reading the
+    zone's whole decision history to find it.
+
+    `shadow_decision_retention_days` defaults to 365 (`db/models/operations.py`),
+    and the control loop writes one row per zone every `shadow_interval_seconds`
+    (60 by default) -- a plant running for months can hold hundreds of thousands
+    of rows per zone. The query this replaced (`select(ShadowDecision).where(zone_id
+    .in_(...)).order_by(decided_at.desc(), id.desc())`) had no `LIMIT`: it fetched
+    *every* one of those rows for every visible zone over the network merely to
+    keep the first one per zone in Python and discard the rest -- on the real,
+    MariaDB-backed installation this dwarfed every other cost on this page.
+
+    Instead: find each zone's newest `decided_at` with a `GROUP BY zone_id`, which
+    the composite index `ix_shadow_decision_zone_decided_id` on
+    `(zone_id, decided_at, id)` answers by seeking straight to the last entry of
+    each zone's index range (a "loose index scan") -- no row-by-row scan of the
+    history. A second, equally cheap grouped step resolves the `id` tiebreak
+    (mirrors `ZoneOverride`'s: MariaDB's `DATETIME` only has second precision, so
+    two decisions in the same zone within the same second must not leave the
+    database an arbitrary choice) before the final query fetches exactly one row
+    per zone by its `id`.
+    """
+    if not zone_ids:
+        return {}
+    latest_per_zone = (
+        select(
+            ShadowDecision.zone_id.label("zone_id"),
+            func.max(ShadowDecision.decided_at).label("decided_at"),
+        )
+        .where(ShadowDecision.zone_id.in_(zone_ids))
+        .group_by(ShadowDecision.zone_id)
+        .subquery()
+    )
+    latest_ids = (
+        select(func.max(ShadowDecision.id).label("id"))
+        .join(
+            latest_per_zone,
+            (ShadowDecision.zone_id == latest_per_zone.c.zone_id)
+            & (ShadowDecision.decided_at == latest_per_zone.c.decided_at),
+        )
+        .group_by(ShadowDecision.zone_id)
+        .subquery()
+    )
+    rows = session.scalars(
+        select(ShadowDecision).where(ShadowDecision.id.in_(select(latest_ids.c.id)))
+    )
+    return {row.zone_id: row for row in rows}
 
 
 def zone_status_context(
@@ -138,6 +183,20 @@ def zone_status_context(
             .where(ZoneState.zone_id.in_(zone_ids))
         )
     }
+    # Bündelung statt N+1 (siehe fix/uebersicht-tempo): eine Anfrage je Tabelle über
+    # alle sichtbaren Zonen, statt `resolved_setpoint` seine gut ein Dutzend eigenen
+    # Abfragen je Zone selbst stellen zu lassen -- auf MariaDB hinter einem
+    # Reverse Proxy kostet jede davon eine echte Netzrunde. `BulkSetpointContext`
+    # trägt genau dieselbe Vorrangkette wie zuvor, nur mit vorab geladenen Daten
+    # statt eigener Abfragen je Zone (Grundsatz 6: eine einzige Fassung der Logik).
+    #
+    # `overrides` (Anzeige des Übersteuerungs-Banners) und `overrides_by_zone` (was
+    # `resolved_setpoint` als laufende Übersteuerung ansieht) sind bewusst dieselbe
+    # Abfrage: vorher hatte die Anzeige-Abfrage keine `id`-Tiebreak-Sortierung, die
+    # zonenweise Auflösung über `_running_override` aber schon -- bei zwei
+    # Übersteuerungen innerhalb derselben MariaDB-Sekunde (Sekundenpräzision) konnten
+    # Banner und tatsächliche Entscheidung damit unbemerkt auseinanderlaufen. Jetzt
+    # sind es garantiert dieselbe Zeile.
     overrides: dict[int, ZoneOverride] = {}
     for entry in session.scalars(
         select(ZoneOverride)
@@ -147,19 +206,57 @@ def zone_status_context(
             ZoneOverride.starts_at <= now_utc,
             or_(ZoneOverride.ends_at.is_(None), ZoneOverride.ends_at > now_utc),
         )
-        .order_by(ZoneOverride.created_at.desc())
+        .order_by(ZoneOverride.created_at.desc(), ZoneOverride.id.desc())
     ):
         overrides.setdefault(entry.zone_id, entry)
-    decisions: dict[int, ShadowDecision] = {}
-    for decision in session.scalars(
-        select(ShadowDecision)
-        .where(ShadowDecision.zone_id.in_(zone_ids))
-        .order_by(ShadowDecision.decided_at.desc(), ShadowDecision.id.desc())
+    decisions = _latest_decisions(session, zone_ids)
+
+    modes_by_id = {m.id: m for m in session.scalars(select(SetpointMode))}
+    temperatures: dict[tuple[int, int], Decimal] = {
+        (zone_id, mode_id): temperature
+        for zone_id, mode_id, temperature in session.execute(
+            select(
+                ZoneSetpoint.zone_id,
+                ZoneSetpoint.setpoint_mode_id,
+                ZoneSetpoint.temperature_c,
+            ).where(ZoneSetpoint.zone_id.in_(zone_ids))
+        )
+    }
+    points_per_zone: dict[int, list[SchedulePoint]] = {zone_id: [] for zone_id in zone_ids}
+    for point in session.scalars(
+        select(SchedulePoint).where(SchedulePoint.zone_id.in_(zone_ids))
     ):
-        decisions.setdefault(decision.zone_id, decision)
+        points_per_zone[point.zone_id].append(point)
+
+    # Only built when there is at least one zone to resolve -- `zone_ids` empty
+    # means the `setpoints` dict comprehension below never calls `resolved_setpoint`
+    # at all, so `ctx` is never read. Guarding it here (rather than asserting
+    # `settings_row` unconditionally) matters for exactly the case the original,
+    # per-zone `resolved_setpoint` call never hit either: a principal with zero
+    # visible zones, on an instance whose `setting` row does not exist yet.
+    ctx: BulkSetpointContext | None = None
+    if zone_ids:
+        assert settings_row is not None, "setting-Zeile fehlt — Einrichtung unvollstaendig"
+        frost_code = session.scalar(
+            select(SetpointMode.code).where(
+                SetpointMode.id == settings_row.frost_protection_mode_id
+            )
+        )
+        ctx = BulkSetpointContext(
+            settings=settings_row,
+            frost_code=frost_code,
+            temperatures=temperatures,
+            modes_by_id=modes_by_id,
+            overrides_by_zone=overrides,
+            vacation=running_vacation(session, now_utc),
+            points_by_zone=points_per_zone,
+        )
+
     return {
         "states": states,
-        "setpoints": {zone.id: resolved_setpoint(session, zone, now_utc) for zone in zones},
+        "setpoints": {
+            zone.id: resolved_setpoint(session, zone, now_utc, ctx) for zone in zones
+        },
         "overrides": overrides,
         "decisions": decisions,
         "may_override": {
@@ -179,13 +276,10 @@ def zone_status_context(
         },
         "minimum_temperature": MINIMUM_TEMPERATURE_C,
         "maximum_temperature": MAXIMUM_TEMPERATURE_C,
-        "mode_names": {
-            identifier: name
-            for identifier, name in session.execute(
-                select(SetpointMode.id, SetpointMode.name)
-            )
-        },
-        "day_tracks": _day_track(session, zone_ids, local_now.isoweekday()),
+        "mode_names": {identifier: mode.name for identifier, mode in modes_by_id.items()},
+        "day_tracks": _day_track(
+            modes_by_id, temperatures, points_per_zone, local_now.isoweekday()
+        ),
         "now_fraction": (local_now.hour * 60 + local_now.minute) * 100 / MINUTES_PER_DAY,
         "timezone": settings_row.timezone if settings_row is not None else "UTC",
         "poll_interval_seconds": (

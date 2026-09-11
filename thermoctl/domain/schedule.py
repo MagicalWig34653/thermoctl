@@ -34,6 +34,38 @@ class Setpoint:
     mode_id: int | None = None
 
 
+@dataclass(frozen=True)
+class BulkSetpointContext:
+    """Pre-fetched, plant-wide data for `resolved_setpoint()`, one row per zone
+    of what would otherwise be its own query -- built once by a caller that
+    resolves many zones at once (the start page's `zone_status_context`) instead
+    of once per zone.
+
+    This does not change what `resolved_setpoint` computes, only where the data
+    it reads comes from: every helper below falls back to its original,
+    per-call query whenever `ctx` is `None`, which is every call site except the
+    one that builds this. The precedence chain (principle 6) lives in exactly
+    one place either way -- this only swaps its data source.
+    """
+
+    settings: Setting
+    # `SetpointMode.code` for the plant-wide frost-protection mode -- resolved
+    # once instead of once per zone, since it does not depend on the zone at all.
+    frost_code: str | None
+    # `(zone_id, mode_id) -> temperature_c`, covering every mode a zone has a
+    # stored temperature for -- feeds `temperature_for_mode` for frost
+    # protection, the schedule and mode-based overrides alike.
+    temperatures: dict[tuple[int, int], Decimal]
+    modes_by_id: dict[int, SetpointMode]
+    # The one running override per zone, if any -- same precedence as
+    # `_running_override` (`created_at` desc, `id` desc as tiebreak).
+    overrides_by_zone: dict[int, ZoneOverride]
+    # Plant-wide, so a single value serves every zone -- unlike overrides and
+    # the schedule, this is not zone-specific at all.
+    vacation: Vacation | None
+    points_by_zone: dict[int, list[SchedulePoint]]
+
+
 # Deliberately NOT `frozen=True`: Python attaches a traceback to an exception when it
 # is raised, and a frozen dataclass refuses exactly that. The bug only surfaces once
 # the exception is passed far enough — in our case through FastAPI's dependency
@@ -896,13 +928,20 @@ def current_or_upcoming_vacation(session: Session, now_utc: datetime) -> Vacatio
     ).first()
 
 
-def temperature_for_mode(session: Session, zone: Zone, mode_id: int) -> Decimal | None:
+def temperature_for_mode(
+    session: Session, zone: Zone, mode_id: int, ctx: BulkSetpointContext | None = None
+) -> Decimal | None:
     """The temperature stored for this zone for a mode, or None.
 
     Public, because the thermostat on the start page needs the same value to add half
     a step to it -- and because an underscore that three modules ignore anyway is not
     protection, only a false signal.
+
+    With `ctx` given, looks the value up in its pre-fetched `temperatures` map
+    instead of querying -- see `BulkSetpointContext`.
     """
+    if ctx is not None:
+        return ctx.temperatures.get((zone.id, mode_id))
     return session.scalar(
         select(ZoneSetpoint.temperature_c).where(
             ZoneSetpoint.zone_id == zone.id, ZoneSetpoint.setpoint_mode_id == mode_id
@@ -910,7 +949,9 @@ def temperature_for_mode(session: Session, zone: Zone, mode_id: int) -> Decimal 
     )
 
 
-def frost_protection_temperature(session: Session, zone: Zone) -> Decimal:
+def frost_protection_temperature(
+    session: Session, zone: Zone, ctx: BulkSetpointContext | None = None
+) -> Decimal:
     """The zone's frost-protection setpoint.
 
     Extracted because a second caller appeared: a self-regulating valve is told this
@@ -920,14 +961,16 @@ def frost_protection_temperature(session: Session, zone: Zone) -> Decimal:
     The fallback of 16 degrees applies when the frost mode has no setpoint for this
     zone -- a plant that is not fully set up should still not freeze.
     """
-    settings = session.get(Setting, 1)
+    settings = ctx.settings if ctx is not None else session.get(Setting, 1)
     assert settings is not None, "setting-Zeile fehlt — Einrichtung unvollstaendig"
-    return temperature_for_mode(session, zone, settings.frost_protection_mode_id) or Decimal(
-        "16.0"
-    )
+    return temperature_for_mode(
+        session, zone, settings.frost_protection_mode_id, ctx
+    ) or Decimal("16.0")
 
 
-def _running_override(session: Session, zone: Zone, now_utc: datetime) -> ZoneOverride | None:
+def _running_override(
+    session: Session, zone: Zone, now_utc: datetime, ctx: BulkSetpointContext | None = None
+) -> ZoneOverride | None:
     """The override row that would win at `now_utc`, ignoring whether it actually
     resolves to a usable temperature -- that check is `_override_setpoint`'s job.
     Split out because the forecast needs the row's own `ends_at` (to know *when* the
@@ -946,7 +989,13 @@ def _running_override(session: Session, zone: Zone, now_utc: datetime) -> ZoneOv
     **Rest der Abwesenheit** normal beheizt, obwohl die Absenkung noch lief. Der
     Filter gehört deshalb in die Auswahl selbst -- dann übernimmt beim Ablauf der
     jüngeren wieder die ältere, die ja weiterhin gilt.
+
+    With `ctx` given, reads the already-fetched `overrides_by_zone` map instead
+    of querying -- built with the identical order (`created_at` desc, `id` desc),
+    so the row it returns is the same one this query would have returned.
     """
+    if ctx is not None:
+        return ctx.overrides_by_zone.get(zone.id)
     return session.scalars(
         select(ZoneOverride)
         .where(
@@ -964,7 +1013,7 @@ def _running_override(session: Session, zone: Zone, now_utc: datetime) -> ZoneOv
 
 
 def _override_setpoint(
-    session: Session, zone: Zone, now_utc: datetime
+    session: Session, zone: Zone, now_utc: datetime, ctx: BulkSetpointContext | None = None
 ) -> tuple[Setpoint, datetime | None] | None:
     """The override in effect at `now_utc`, together with when it stops applying
     (`None` meaning it does not end on its own) -- or `None` if no override applies,
@@ -981,7 +1030,7 @@ def _override_setpoint(
     # läuft tatsächlich. Die zweite Prüfung stand hier, solange die Abfrage auch
     # abgelaufene Zeilen lieferte; sie war genau die Stelle, an der eine ältere,
     # noch laufende Übersteuerung verlorenging (siehe dort).
-    running = _running_override(session, zone, now_utc)
+    running = _running_override(session, zone, now_utc, ctx)
     if running is None:
         return None
     if running.temperature_c is not None:
@@ -989,9 +1038,13 @@ def _override_setpoint(
             Setpoint(running.temperature_c, "Übersteuerung (feste Temperatur)", None, None),
             running.ends_at,
         )
-    temp = temperature_for_mode(session, zone, running.setpoint_mode_id or 0)
-    code = session.scalar(
-        select(SetpointMode.code).where(SetpointMode.id == running.setpoint_mode_id)
+    temp = temperature_for_mode(session, zone, running.setpoint_mode_id or 0, ctx)
+    code = (
+        ctx.modes_by_id[running.setpoint_mode_id].code
+        if ctx is not None and running.setpoint_mode_id in ctx.modes_by_id
+        else session.scalar(
+            select(SetpointMode.code).where(SetpointMode.id == running.setpoint_mode_id)
+        )
     )
     if temp is not None:
         return (
@@ -1002,7 +1055,11 @@ def _override_setpoint(
 
 
 def _schedule_setpoint(
-    session: Session, zone: Zone, settings: Setting, now_utc: datetime
+    session: Session,
+    zone: Zone,
+    settings: Setting,
+    now_utc: datetime,
+    ctx: BulkSetpointContext | None = None,
 ) -> Setpoint | None:
     """The schedule's own answer at `now_utc`, or `None` if no point applies or the
     point in effect has no usable zone temperature -- then frost protection is the
@@ -1012,21 +1069,29 @@ def _schedule_setpoint(
     # Schedules are stored in local time, so the night setback does not shift when
     # clocks change for daylight saving.
     local = local_time(now_utc, settings.timezone)
-    points = list(
-        session.scalars(select(SchedulePoint).where(SchedulePoint.zone_id == zone.id))
+    points = (
+        ctx.points_by_zone.get(zone.id, [])
+        if ctx is not None
+        else list(session.scalars(select(SchedulePoint).where(SchedulePoint.zone_id == zone.id)))
     )
     gilt = current_point(points, local.replace(tzinfo=None))
     if gilt is None:
         return None
-    temp = temperature_for_mode(session, zone, gilt.setpoint_mode_id)
-    mode = session.get(SetpointMode, gilt.setpoint_mode_id)
+    temp = temperature_for_mode(session, zone, gilt.setpoint_mode_id, ctx)
+    mode = (
+        ctx.modes_by_id.get(gilt.setpoint_mode_id)
+        if ctx is not None
+        else session.get(SetpointMode, gilt.setpoint_mode_id)
+    )
     if temp is None or mode is None:
         return None
     time_of_day = f"{gilt.minute_of_day // 60:02d}:{gilt.minute_of_day % 60:02d}"
     return Setpoint(temp, f"Zeitplan: Modus {mode.name} ab {time_of_day}", mode.code, mode.id)
 
 
-def _vacation_setpoint(session: Session, zone: Zone, now_utc: datetime) -> Setpoint | None:
+def _vacation_setpoint(
+    session: Session, zone: Zone, now_utc: datetime, ctx: BulkSetpointContext | None = None
+) -> Setpoint | None:
     """The plant-wide vacation setback in effect at `now_utc`, or `None`.
 
     Frost protection is an absolute floor here, never a rule this function might
@@ -1042,10 +1107,10 @@ def _vacation_setpoint(session: Session, zone: Zone, now_utc: datetime) -> Setpo
     setpoint-context key in `services/shadow_run.py`) tell the two apart by asking
     whether a vacation is running, exactly as they already do for a fixed override.
     """
-    vacation = running_vacation(session, now_utc)
+    vacation = ctx.vacation if ctx is not None else running_vacation(session, now_utc)
     if vacation is None:
         return None
-    frost_temp = frost_protection_temperature(session, zone)
+    frost_temp = frost_protection_temperature(session, zone, ctx)
     if vacation.setback_temperature_c < frost_temp:
         return Setpoint(
             frost_temp, "Urlaubsbetrieb — Absenkung durch Frostschutz angehoben", None, None
@@ -1053,7 +1118,9 @@ def _vacation_setpoint(session: Session, zone: Zone, now_utc: datetime) -> Setpo
     return Setpoint(vacation.setback_temperature_c, "Urlaubsbetrieb — Absenkung", None, None)
 
 
-def resolved_setpoint(session: Session, zone: Zone, now_utc: datetime) -> Setpoint:
+def resolved_setpoint(
+    session: Session, zone: Zone, now_utc: datetime, ctx: BulkSetpointContext | None = None
+) -> Setpoint:
     """Which setpoint currently applies, and why.
 
     Precedence: operating mode 'off' beats everything; then a running per-zone
@@ -1069,25 +1136,34 @@ def resolved_setpoint(session: Session, zone: Zone, now_utc: datetime) -> Setpoi
     sensor-failure fallback, minimum switch durations and valve protection all run
     in `decide()` on whatever setpoint arrives here, unaware that a vacation exists
     at all, the same way they are unaware an override does.
+
+    `ctx`, a `BulkSetpointContext`, lets a caller that resolves many zones at once
+    (`web/start_views.py::zone_status_context`) supply every query below's answer
+    up front instead of one query per zone per helper -- the precedence and every
+    branch here are unchanged, only where the data comes from.
     """
-    settings = session.get(Setting, 1)
+    settings = ctx.settings if ctx is not None else session.get(Setting, 1)
     assert settings is not None, "setting-Zeile fehlt — Einrichtung unvollstaendig"
     frost_id = settings.frost_protection_mode_id
-    frost_temp = frost_protection_temperature(session, zone)
-    frost_code = session.scalar(select(SetpointMode.code).where(SetpointMode.id == frost_id))
+    frost_temp = frost_protection_temperature(session, zone, ctx)
+    frost_code = (
+        ctx.frost_code
+        if ctx is not None
+        else session.scalar(select(SetpointMode.code).where(SetpointMode.id == frost_id))
+    )
 
     if zone.operating_mode.code == "off":
         return Setpoint(frost_temp, "Betriebsart Aus — Frostschutz", frost_code, frost_id)
 
-    override = _override_setpoint(session, zone, now_utc)
+    override = _override_setpoint(session, zone, now_utc, ctx)
     if override is not None:
         return override[0]
 
-    vacation_setpoint = _vacation_setpoint(session, zone, now_utc)
+    vacation_setpoint = _vacation_setpoint(session, zone, now_utc, ctx)
     if vacation_setpoint is not None:
         return vacation_setpoint
 
-    schedule_setpoint = _schedule_setpoint(session, zone, settings, now_utc)
+    schedule_setpoint = _schedule_setpoint(session, zone, settings, now_utc, ctx)
     if schedule_setpoint is not None:
         return schedule_setpoint
 
