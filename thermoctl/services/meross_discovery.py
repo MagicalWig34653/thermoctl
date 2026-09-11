@@ -15,6 +15,17 @@ This is the second source. It deliberately follows the same rules as the first:
   was away for a moment.
 * **A failure disturbs nothing.** No account, no answer, an error of the cloud: it is
   logged, and the installation carries on with what it knows.
+
+**Sign-in here shares `services/meross_session.py`'s cache, not just its backoff.**
+This module used to sign in completely independently of the shadow cycle's own
+session -- the real lockout that made that a problem was hit with both signing in
+roughly two seconds apart, every cycle, doubling the login rate against the same
+account limit for no reason (both authenticate the same account). At the shadow
+cycle's default interval, `ensure_transport()`'s own sign-in is almost always still
+fresh by the time the hourly reconciliation here runs, so `valid_http_session()` lets
+this module reuse that HTTP token instead of paying for a sign-in of its own --
+`fetch_devices()`'s own sign-in becomes the exception, not the rule, and inherits the
+same backoff for whenever it still needs one.
 """
 
 import logging
@@ -34,6 +45,14 @@ from thermoctl.integrations.meross import (
     MerossError,
     device_list,
     sign_in,
+)
+from thermoctl.services.meross_session import (
+    MerossSessionCache,
+    backoff_active,
+    invalidate,
+    record_login,
+    record_rejection,
+    valid_http_session,
 )
 
 log = logging.getLogger(__name__)
@@ -143,29 +162,63 @@ def save_devices(
 
 
 async def fetch_devices(
-    settings: Settings, transport: JsonTransport
+    settings: Settings,
+    transport: JsonTransport,
+    cache: MerossSessionCache,
+    now: datetime,
 ) -> list[MerossDevice] | None:
     """Fetch the device list without touching the database.
 
     `None` means that no reconciliation should be written: either Meross is not
-    configured or the cloud failed. An empty list is a successful response and must
-    stay distinguishable from a failure.
+    configured, a prior rejection's backoff is still running, or the cloud failed. An
+    empty list is a successful response and must stay distinguishable from a failure.
+
+    `cache` is the same `MerossSessionCache` the shadow cycle's own sign-in
+    (`services/meross_session.py::ensure_transport`) uses -- see the module docstring
+    for why reusing its HTTP session, not just sharing its backoff, is what matters
+    here.
     """
     # Written as an explicit narrowing check, not `credentials_configured(settings)`:
     # mypy cannot follow a boolean helper's implication that both fields below are set,
     # and `sign_in` needs both narrowed to `str`, not `str | None`.
     if settings.meross_email is None or settings.meross_password is None:
         return None
+
+    account = valid_http_session(cache, now)
+    if account is None:
+        if backoff_active(cache, now):
+            log.debug(
+                "Meross-Geräteliste übersprungen -- noch in der Wartezeit nach Ablehnung"
+            )
+            return None
+        try:
+            account = await sign_in(
+                transport,
+                settings.meross_api_base,
+                settings.meross_email,
+                settings.meross_password.get_secret_value(),
+            )
+        except MerossError as exc:
+            log.error("Meross-Geräteliste nicht abrufbar", extra={"grund": str(exc)})
+            record_rejection(cache, now, exc)
+            return None
+        except Exception:
+            log.exception("Meross-Geräteliste nicht abrufbar")
+            return None
+        # The sign-in itself succeeded -- proof the account and the cloud-side limit
+        # are fine, whatever happens to the device-list call below, and worth sharing
+        # with `ensure_transport()` the same way its own sign-ins are shared here.
+        record_login(cache, now, account)
+
     try:
-        account = await sign_in(
-            transport,
-            settings.meross_api_base,
-            settings.meross_email,
-            settings.meross_password.get_secret_value(),
-        )
         devices = await device_list(transport, settings.meross_api_base, account)
     except MerossError as exc:
         log.error("Meross-Geräteliste nicht abrufbar", extra={"grund": str(exc)})
+        # The token was accepted at sign-in but the cloud no longer honours it here
+        # (e.g. revoked from the Meross app since) -- mark it bad so the *next* call,
+        # from either caller, signs in again instead of reusing a token that just
+        # failed.
+        invalidate(cache)
         return None
     except Exception:
         log.exception("Meross-Geräteliste nicht abrufbar")

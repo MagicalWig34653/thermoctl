@@ -232,5 +232,5 @@ def test_devices_enter_the_system_only_on_the_two_known_paths(session: Session) 
     ]
     assert stellen == [
         "thermoctl/services/ingest.py:66",
-        "thermoctl/services/meross_discovery.py:89",
+        "thermoctl/services/meross_discovery.py:108",
     ], "Geraete entstehen an einer neuen Stelle: " + ", ".join(stellen)

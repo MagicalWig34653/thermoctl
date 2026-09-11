@@ -207,14 +207,17 @@ class MerossTransportStub:
     prove a dry run reached the network -- exactly the property this suite must not
     let slip through again."""
 
-    def __init__(self, *, method: str = "SETACK") -> None:
+    def __init__(self, *, method: str = "SETACK", errors: Exception | None = None) -> None:
         self.calls: list[tuple[str, str, str, dict[str, Any]]] = []
         self.method = method
+        self.errors = errors
 
     async def send(
         self, device_uuid: str, namespace: str, method: str, payload: Any
     ) -> dict[str, Any]:
         self.calls.append((device_uuid, namespace, method, dict(payload)))
+        if self.errors is not None:
+            raise self.errors
         return {"header": {"method": self.method}, "payload": {}}
 
 
@@ -693,6 +696,45 @@ async def test_a_meross_actuator_without_a_signed_in_session_fails_visibly(
 
 
 @pytest.mark.anyio
+async def test_a_missing_session_names_the_clouds_own_rejection_reason_in_the_log(
+    session: Session,
+) -> None:
+    """Principle 5: the command log used to say only "no valid session" -- an
+    operator had to go looking in the container log for the actual reason
+    (`apiStatus=1301, Beyond Login Limit`). With the cache's last rejection handed
+    through, the command log names it directly."""
+    create_settings(session)
+    source(session, "system")
+    create_all_command_outcomes(session)
+    zone, device = _actuator_zone(session, "merosskeinegrundzone", integration_code="meross")
+    _decision(session, zone, heating=True)
+    arm(session, True, reason="vier Tage verglichen", user_id=None)
+    session.flush()
+
+    cache = MerossSessionCache()
+    cache.last_rejection = "Anmeldung abgelehnt: apiStatus=1301, Beyond Login Limit"
+    client = Mitschrift()
+    await cycle(
+        session,
+        client,
+        PublicationState(),
+        "thermoctl",
+        NOW,
+        meross_session_cache=cache,
+        meross_switching_allowed=True,
+    )
+
+    entries = _command_log(session)
+    assert len(entries) == 1
+    entry, outcome_code = entries[0]
+    assert outcome_code == "failed"
+    assert entry.device_name == device.display_name
+    assert entry.error is not None
+    assert "apiStatus=1301" in entry.error
+    assert "Beyond Login Limit" in entry.error
+
+
+@pytest.mark.anyio
 async def test_a_meross_actuator_in_a_dry_run_never_touches_the_transport(
     session: Session,
 ) -> None:
@@ -812,14 +854,59 @@ async def test_a_frozen_bolt_left_at_its_safe_default_blocks_meross_too(
 
 
 @pytest.mark.anyio
-async def test_a_failed_meross_send_invalidates_the_cached_session(session: Session) -> None:
-    """A real attempt that did not work marks the cached connection bad, so the
-    *next* cycle signs in again instead of trusting a connection already known not
-    to work for the rest of its TTL (`services/meross_session.py::invalidate`)."""
+async def test_a_broker_level_meross_failure_invalidates_the_cached_session(
+    session: Session,
+) -> None:
+    """Only a failure `MerossSwitch.switching()` itself attributes to the broker
+    refusing the connection -- not any `MerossError` -- marks the cached connection
+    bad, so the *next* cycle signs in again instead of trusting a connection already
+    known not to work for the rest of its TTL (`services/meross_session.py::
+    invalidate`). Anything raised from `send()` other than `MerossError` stands in
+    for that here (`integrations/actuators.py`'s docstring has the real-world case:
+    aiomqtt's own exception on a refused `CONNACK`)."""
     create_settings(session)
     source(session, "system")
     create_all_command_outcomes(session)
     zone, _device = _actuator_zone(session, "merossfehlerzone", integration_code="meross")
+    _decision(session, zone, heating=True)
+    arm(session, True, reason="vier Tage verglichen", user_id=None)
+    session.flush()
+
+    transport = MerossTransportStub(errors=ConnectionRefusedError("CONNACK: Not authorized"))
+    cache = MerossSessionCache()
+    await cycle(
+        session,
+        Mitschrift(),
+        PublicationState(),
+        "thermoctl",
+        NOW,
+        meross_transport=transport,  # type: ignore[arg-type]
+        meross_session_cache=cache,
+        # The frozen, start-of-process bolt (finding C); the runtime bolt is
+        # already armed above.
+        meross_switching_allowed=True,
+    )
+
+    assert cache.invalid is True
+    entry, outcome_code = _command_log(session)[0]
+    assert outcome_code == "failed"
+
+
+@pytest.mark.anyio
+async def test_a_device_that_does_not_confirm_leaves_the_session_alone(
+    session: Session,
+) -> None:
+    """The gegenprobe: a device that answers but does not confirm (`ERROR` instead
+    of `SETACK`) is a device-side failure, not a session one -- the broker already
+    accepted this session's credentials to deliver the command at all. Invalidating
+    the session here would only trigger a needless fresh sign-in, and was found to be
+    exactly what fed a real installation into a Meross login-rate lockout
+    (`apiStatus=1301, Beyond Login Limit`): every offline or non-confirming device
+    forced another cloud login for no reason."""
+    create_settings(session)
+    source(session, "system")
+    create_all_command_outcomes(session)
+    zone, _device = _actuator_zone(session, "merossunbestaetigtzone", integration_code="meross")
     _decision(session, zone, heating=True)
     arm(session, True, reason="vier Tage verglichen", user_id=None)
     session.flush()
@@ -839,7 +926,7 @@ async def test_a_failed_meross_send_invalidates_the_cached_session(session: Sess
         meross_switching_allowed=True,
     )
 
-    assert cache.invalid is True
+    assert cache.invalid is False
     entry, outcome_code = _command_log(session)[0]
     assert outcome_code == "failed"
 

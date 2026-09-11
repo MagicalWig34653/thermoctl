@@ -17,7 +17,7 @@ import hashlib
 import json
 import types
 from collections.abc import Mapping
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -40,9 +40,11 @@ from thermoctl.integrations.meross import (
     MerossSession,
     UrllibJsonTransport,
     device_list,
+    is_permanent_login_failure,
     sign_in,
 )
 from thermoctl.services.meross_discovery import fetch_devices, save_devices
+from thermoctl.services.meross_session import MerossSessionCache
 
 NOW = datetime(2026, 8, 31, 18, 0)
 
@@ -170,6 +172,36 @@ async def test_a_refusal_without_a_reason_still_says_which_call_failed() -> None
 
     with pytest.raises(MerossError, match="Anmeldung.*ohne Begründung"):
         await sign_in(transport, "https://example.invalid", "a@b.de", "geheim")
+
+
+@pytest.mark.anyio
+async def test_a_refused_sign_in_carries_the_apistatus_for_callers_to_branch_on() -> None:
+    """`services/meross_session.py` tells a permanent failure (wrong credentials)
+    from a transient one (`apiStatus=1301`) apart by this field, not by parsing the
+    message text."""
+    transport = _FakeJsonTransport({"apiStatus": 1004, "info": "Wrong password"})
+
+    with pytest.raises(MerossError) as excinfo:
+        await sign_in(transport, "https://example.invalid", "a@b.de", "falsch")
+
+    assert excinfo.value.api_status == 1004
+
+
+def test_wrong_credentials_are_a_permanent_login_failure() -> None:
+    assert is_permanent_login_failure(MerossError("nope", api_status=1004)) is True
+
+
+def test_beyond_login_limit_is_not_a_permanent_login_failure() -> None:
+    """`apiStatus=1301` -- the account and password are fine, the cloud is only
+    throttling how often anyone may sign in right now. Retrying later must stay on
+    the table, unlike a genuinely wrong password."""
+    assert is_permanent_login_failure(MerossError("nope", api_status=1301)) is False
+
+
+def test_an_error_without_an_apistatus_is_not_treated_as_permanent() -> None:
+    """A transport-level failure (a malformed answer, a network error) carries no
+    `apiStatus` at all -- it must not be mistaken for a definitively wrong account."""
+    assert is_permanent_login_failure(MerossError("kaputt")) is False
 
 
 @pytest.mark.anyio
@@ -546,7 +578,7 @@ async def test_the_fetch_does_nothing_without_credentials() -> None:
     # real credentials here -- the test would then pass for the wrong reason.
     without = Settings(meross_email=None, meross_password=None)
 
-    assert await fetch_devices(without, transport) is None
+    assert await fetch_devices(without, transport, MerossSessionCache(), NOW) is None
     assert transport.calls == []
 
 
@@ -554,7 +586,9 @@ async def test_the_fetch_does_nothing_without_credentials() -> None:
 async def test_the_fetch_signs_in_and_returns_what_it_finds() -> None:
     transport = _FakeJsonTransport(_SIGN_IN_ANSWER, _DEVICE_LIST_ANSWER)
 
-    devices = await fetch_devices(_settings_with_credentials(), transport)
+    devices = await fetch_devices(
+        _settings_with_credentials(), transport, MerossSessionCache(), NOW
+    )
 
     assert devices is not None
     assert [d.uuid for d in devices] == ["1111", "2222"]
@@ -567,9 +601,75 @@ async def test_a_refused_sign_in_leaves_the_installation_running(
     transport = _FakeJsonTransport({"apiStatus": 1004, "info": "Wrong password"})
 
     with caplog.at_level("ERROR"):
-        assert await fetch_devices(_settings_with_credentials(), transport) is None
+        assert (
+            await fetch_devices(
+                _settings_with_credentials(), transport, MerossSessionCache(), NOW
+            )
+            is None
+        )
 
     assert "Meross" in caplog.text
+
+
+@pytest.mark.anyio
+async def test_the_fetch_respects_a_backoff_set_by_the_shadow_cycles_own_sign_in() -> None:
+    """The real lockout was hit with both callers signing in roughly two seconds
+    apart, every cycle -- doubling the login rate against the same account limit.
+    A rejection recorded through `services/meross_session.py::ensure_transport` must
+    hold this caller off too, through the one shared `MerossSessionCache`."""
+    transport = _FakeJsonTransport()
+    cache = MerossSessionCache()
+    cache.retry_after = NOW + timedelta(minutes=1)
+
+    assert await fetch_devices(_settings_with_credentials(), transport, cache, NOW) is None
+    assert transport.calls == []
+
+
+@pytest.mark.anyio
+async def test_a_successful_fetch_resets_the_shared_backoff() -> None:
+    """The other direction: this caller's own successful sign-in proves the account
+    works again, so it must not leave the other caller backed off either."""
+    transport = _FakeJsonTransport(_SIGN_IN_ANSWER, _DEVICE_LIST_ANSWER)
+    cache = MerossSessionCache()
+    cache.retry_after = NOW - timedelta(seconds=1)  # already expired
+    cache.last_rejection = "apiStatus=1301, Beyond Login Limit"
+
+    devices = await fetch_devices(_settings_with_credentials(), transport, cache, NOW)
+
+    assert devices is not None
+    assert cache.retry_after is None
+    assert cache.last_rejection is None
+
+
+@pytest.mark.anyio
+async def test_a_fresh_session_from_the_shadow_cycle_is_reused_not_signed_in_again() -> None:
+    """The lockout-relevant part of sharing the cache: with the shadow cycle's own
+    sign-in still valid, this call must not spend a login of its own against the same
+    account -- only `device_list()` should reach the network."""
+    cache = MerossSessionCache()
+    cache.http_session = ACCOUNT
+    cache.expires_at = NOW + timedelta(hours=1)
+    transport = _FakeJsonTransport(_DEVICE_LIST_ANSWER)
+
+    devices = await fetch_devices(_settings_with_credentials(), transport, cache, NOW)
+
+    assert devices is not None
+    assert len(transport.calls) == 1  # only device_list(), no sign_in()
+
+
+@pytest.mark.anyio
+async def test_a_reused_session_the_cloud_no_longer_honours_is_invalidated() -> None:
+    """The cached token was accepted at sign-in but the cloud rejects it here anyway
+    (revoked from the Meross app in the meantime, say) -- both callers must sign in
+    again next time, not keep reusing a token already shown to be bad."""
+    cache = MerossSessionCache()
+    cache.http_session = ACCOUNT
+    cache.expires_at = NOW + timedelta(hours=1)
+    transport = _FakeJsonTransport({"apiStatus": 1200, "info": "Token expired"})
+
+    assert await fetch_devices(_settings_with_credentials(), transport, cache, NOW) is None
+
+    assert cache.invalid is True
 
 
 @pytest.mark.anyio
@@ -580,7 +680,30 @@ async def test_a_broken_connection_leaves_the_installation_running(
     transport = _FakeJsonTransport(OSError("Netz weg"))
 
     with caplog.at_level("ERROR"):
-        assert await fetch_devices(_settings_with_credentials(), transport) is None
+        assert (
+            await fetch_devices(
+                _settings_with_credentials(), transport, MerossSessionCache(), NOW
+            )
+            is None
+        )
+
+
+@pytest.mark.anyio
+async def test_a_broken_connection_during_the_device_list_call_leaves_the_session_alone(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The gegenprobe for the sign-in half above: a non-`MerossError` failure of
+    `device_list()` itself (the sign-in already succeeded) must not be read as the
+    cloud rejecting the account either -- it is logged and reported as no
+    reconciliation, without touching the shared backoff."""
+    transport = _FakeJsonTransport(_SIGN_IN_ANSWER, OSError("Netz weg"))
+    cache = MerossSessionCache()
+
+    with caplog.at_level("ERROR"):
+        assert await fetch_devices(_settings_with_credentials(), transport, cache, NOW) is None
+
+    assert "Meross" in caplog.text
+    assert cache.invalid is False
 
     assert "Meross" in caplog.text
 

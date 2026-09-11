@@ -323,7 +323,12 @@ async def _run_detached_meross_refresh(app: FastAPI, now: datetime) -> None:
     transport = getattr(app.state, "meross_transport", None)
     if transport is None:  # pragma: no cover - always set in the lifespan
         return
-    devices = await fetch_meross_devices(get_settings(), transport)
+    # The same cache the shadow cycle's own sign-in uses (`meross_cache` below,
+    # `services/meross_session.py`) -- so a rejection either side hits backs off the
+    # other too. `getattr`, not a direct attribute read: this also runs in tests that
+    # assemble an app without running through the full lifespan.
+    meross_cache = getattr(app.state, "meross_session_cache", None) or MerossSessionCache()
+    devices = await fetch_meross_devices(get_settings(), transport, meross_cache, now)
     if devices is None:
         return
     with session_scope(app.state.session_factory) as session:

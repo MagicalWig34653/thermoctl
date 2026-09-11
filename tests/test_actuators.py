@@ -16,6 +16,7 @@ from thermoctl.integrations.actuators import (
     Zigbee2MqttThermostat,
     Zigbee2MqttValve,
 )
+from thermoctl.integrations.meross import MerossError
 from thermoctl.services import cluster
 
 
@@ -181,6 +182,70 @@ async def test_an_armed_switch_without_a_signed_in_session_fails_without_touchin
 
     assert result.executed is False
     assert result.errors == "Keine gültige Meross-Sitzung vorhanden"
+
+
+@pytest.mark.anyio
+async def test_a_withheld_command_carries_the_clouds_own_rejection_reason(
+    session: Session,
+) -> None:
+    """Principle 5: without this, the command log said only "no valid session" and
+    the operator had to go looking in the container log for `apiStatus=1301, Beyond
+    Login Limit` -- exactly what was reported as the missing piece."""
+    frost_protection = create_mode(session, "frostschutz")
+    session.add(Setting(id=1, control_armed=True, frost_protection_mode_id=frost_protection.id))
+    session.flush()
+
+    result = await MerossSwitch(
+        session,
+        None,
+        "irgendein-geraet",
+        frozen_switching_allowed=True,
+        session_unavailable_reason="Anmeldung abgelehnt: apiStatus=1301, Beyond Login Limit",
+    ).switching(True)
+
+    assert result.executed is False
+    assert result.errors is not None
+    assert "apiStatus=1301" in result.errors
+    assert "Beyond Login Limit" in result.errors
+
+
+@pytest.mark.anyio
+async def test_a_device_that_does_not_answer_is_not_reported_as_a_session_fault(
+    session: Session,
+) -> None:
+    """A `MerossError` from `_transport.send()` can only happen after the broker
+    already accepted this session's credentials (see `MerossSwitch.switching()`'s
+    docstring) -- the device simply did not answer, or the connection dropped
+    afterwards. `services/publishing.py` must not read that as a reason to sign in
+    again."""
+    _armed(session)
+    meross = MerossStub(errors=MerossError("Geraet hat auf ... nicht geantwortet"))
+
+    result = await MerossSwitch(
+        session, meross, "geraet-1", frozen_switching_allowed=True
+    ).switching(True)
+
+    assert result.executed is False
+    assert result.session_fault is False
+
+
+@pytest.mark.anyio
+async def test_a_broker_connection_failure_is_reported_as_a_session_fault(
+    session: Session,
+) -> None:
+    """Anything other than a `MerossError` from `_transport.send()` happened while
+    still establishing the MQTT connection -- exactly what a stale or revoked
+    session produces. `services/publishing.py` invalidates the cached session on
+    this, and only this."""
+    _armed(session)
+    meross = MerossStub(errors=ConnectionRefusedError("CONNACK: Not authorized"))
+
+    result = await MerossSwitch(
+        session, meross, "geraet-1", frozen_switching_allowed=True
+    ).switching(True)
+
+    assert result.executed is False
+    assert result.session_fault is True
 
 
 @pytest.mark.anyio

@@ -9,6 +9,7 @@ from typing import Protocol
 from sqlalchemy.orm import Session
 
 from thermoctl.db.models.operations import Setting
+from thermoctl.integrations.meross import MerossError
 from thermoctl.integrations.meross_mqtt import MerossCommandTransport, toggle_payload
 from thermoctl.services import cluster
 
@@ -18,6 +19,13 @@ class SwitchResult:
     executed: bool
     description: str
     errors: str | None = None
+    # Only ever set by `MerossSwitch.switching()` below. Whether this failure came
+    # from the MQTT broker refusing the connection itself, as opposed to a device
+    # that simply did not answer afterwards -- only the former means the cached
+    # sign-in is actually the problem. `services/publishing.py` invalidates the
+    # cached session only when this is set; see `MerossSwitch.switching()`'s
+    # docstring for why the two are reliably distinguishable at all.
+    session_fault: bool = False
 
 
 class Actuator(Protocol):
@@ -320,12 +328,20 @@ class MerossSwitch:
         *,
         channel: int = 0,
         frozen_switching_allowed: bool = False,
+        session_unavailable_reason: str | None = None,
     ) -> None:
         self._session = session
         self._transport = transport
         self._device_uuid = device_uuid
         self._channel = channel
         self._frozen_switching_allowed = frozen_switching_allowed
+        # The cloud's own reason the last sign-in was rejected
+        # (`services/meross_session.py::MerossSessionCache.last_rejection`), passed
+        # through so the operator sees more than "no valid session" without going
+        # looking in the container log for it (principle 5). `None` when no
+        # rejection is on record yet, or `transport` is not `None` in the first
+        # place and this reason will never be read.
+        self._session_unavailable_reason = session_unavailable_reason
 
     def description(self) -> str:
         return f"Meross-Schalter {self._device_uuid}"
@@ -346,17 +362,33 @@ class MerossSwitch:
         # stays `False`, the reason names it, and nothing here retries or blocks --
         # the caller moves on to the next device.
         if self._transport is None:
-            return SwitchResult(
-                False, message, "Keine gültige Meross-Sitzung vorhanden"
-            )
+            reason = "Keine gültige Meross-Sitzung vorhanden"
+            if self._session_unavailable_reason is not None:
+                reason = f"{reason} ({self._session_unavailable_reason})"
+            return SwitchResult(False, message, reason)
 
         try:
             self._session.commit()
             answer = await self._transport.send(
                 self._device_uuid, TOGGLE_NAMESPACE, "SET", payload
             )
-        except Exception as exc:
+        except MerossError as exc:
+            # By the time `AiomqttCommandTransport.send()` can raise a `MerossError`,
+            # the MQTT `CONNECT`/`CONNACK` handshake has already succeeded -- the
+            # broker already accepted this session's credentials (see its
+            # docstring: every `MerossError` it raises, a device answer timeout or
+            # the connection ending before one arrived, happens strictly after that
+            # point). So this is a device or network problem, not a bad session --
+            # `session_fault` stays unset, and `services/publishing.py` must not
+            # treat it as a reason to sign in again.
             return SwitchResult(False, message, str(exc))
+        except Exception as exc:
+            # Anything else -- most commonly one of aiomqtt's own exceptions on a
+            # refused `CONNACK` -- happened while establishing the connection
+            # itself, exactly what a stale or revoked session produces. Flagged so
+            # `services/publishing.py` invalidates the cached session for this case
+            # and only this case.
+            return SwitchResult(False, message, str(exc), session_fault=True)
 
         # The socket confirms with `SETACK`. Anything else is not a confirmation, and
         # treating it as one would report a heater as switched that never was.

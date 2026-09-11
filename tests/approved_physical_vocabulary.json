@@ -135,6 +135,7 @@
       "Zonen ohne Aktor, gemischte Zonen und mehrere reine EIN/AUS-Aktoren.",
       "[`docs/docker-swarm.md`](docker-swarm.md) und [`docs/kubernetes.md`](kubernetes.md), je",
       "`not situation.valve_protection_active`: ein unterbrochener Ventilschutzlauf wird",
+      "Anmelderate dadurch von rund 4 (Schalten, alle 6 Stunden `SESSION_TTL`) plus 24",
       "allein, für den Aus-Timer zusätzlich `protection_allowed`. Ein Ventilschutzlauf, der",
       "benutzen jetzt dieselbe zweiseitige Skala: unter der Mitte kühl, darüber warm, die",
       "dauerhaften ±0,5-K-Schritt am laufenden Modus, „Für eine Weile wärmer\" und „Zur",

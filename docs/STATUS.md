@@ -2,6 +2,64 @@
 
 Letzte Aktualisierung: 2026-09-11.
 
+## Die Meross-Anmeldesperre war selbstverursacht -- Backoff, geteilte Sitzung, sichtbarer Grund
+
+Meldung aus dem echten Betrieb: Schaltbefehle an zwei Meross-Steckdosen gingen nicht
+mehr durch, „ungültige Meross-Sitzung". Das Protokoll zeigte 16 abgelehnte
+Anmeldeversuche in 8 Minuten im konstanten Abstand von 32 Sekunden, alle mit
+`apiStatus=1301, Beyond Login Limit`. Ursache war eine sich selbst erhaltende
+Schleife: ein gescheiterter Schaltbefehl verwarf die zwischengespeicherte Sitzung
+(`services/publishing.py`), der nächste Zyklus meldete sich deshalb neu an, die Cloud
+lehnte wegen der Anmeldesperre ab, was wiederum jeden Meross-Befehl dieses Zyklus
+scheitern ließ -- zurück zum Anfang, alle 32 Sekunden, ohne dass die Anlage von
+selbst wieder herauskam.
+
+Vier Behebungen, alle in `services/meross_session.py`, `services/meross_discovery.py`,
+`integrations/meross.py`, `integrations/actuators.py` und `services/publishing.py`:
+
+- **Backoff nach einer abgelehnten Anmeldung**, im `MerossSessionCache` selbst
+  (keine neue Tabelle -- der Zwischenspeicher lebt ohnehin nur je Prozess, ein
+  Neustart verwirft ihn wie vorher). Exponentiell ab einer Minute, gedeckelt bei
+  30 Minuten -- lang genug, um eine echte Anmeldesperre nicht mit jedem Zyklus neu
+  zu verlängern, kurz genug, um eine kurze Störung nicht unnötig lange nachwirken zu
+  lassen. `apiStatus`-Werte, die eine dauerhaft falsche Zugangsdaten-Kombination
+  anzeigen (`integrations/meross.py::is_permanent_login_failure`), springen sofort auf
+  die Obergrenze statt sich dorthin hochzutasten -- ein falsches Passwort wird durch
+  Warten nicht richtiger.
+- **`invalidate()` wird nicht mehr bei jedem gescheiterten Befehl aufgerufen**, nur
+  noch wenn `MerossSwitch.switching()` die Ursache selbst als Ablehnung durch den
+  Broker erkennt (`SwitchResult.session_fault`). Ein `MerossError` aus
+  `_transport.send()` (Gerät antwortet nicht, Verbindung endet vor der Antwort) kann
+  nur auftreten, nachdem der Broker die Zugangsdaten bereits akzeptiert hat -- das ist
+  ein Geräte- oder Funkproblem, keine kaputte Sitzung, und darf keine erneute
+  Anmeldung mehr auslösen.
+- **Geräteabgleich und Schaltsitzung melden sich nicht mehr unabhängig an.**
+  `services/meross_discovery.py::fetch_devices` benutzt jetzt denselben
+  `MerossSessionCache`: bei noch frischer Sitzung aus `ensure_transport()` entfällt
+  die eigene Anmeldung vollständig (`valid_http_session()`), eine eigene Ablehnung
+  respektiert denselben Backoff, und ein erfolgreicher Abgleich setzt ihn ebenso
+  zurück wie eine erfolgreiche Schaltanmeldung. Im gesunden Betrieb sinkt die
+  Anmelderate dadurch von rund 4 (Schalten, alle 6 Stunden `SESSION_TTL`) plus 24
+  (Geräteabgleich, stündlich `MEROSS_RECONCILE_INTERVAL_SECONDS`) auf nahe 4 pro Tag.
+- **Der Ablehnungsgrund der Cloud erreicht jetzt das Schaltprotokoll**
+  (`MerossSessionCache.last_rejection`, durchgereicht über `MerossSwitch`s
+  `session_unavailable_reason` bis in `integrations/actuators.py`s Fehlermeldung) --
+  vorher stand dort nur „Keine gültige Meross-Sitzung vorhanden", und der Betreiber
+  musste für „Beyond Login Limit" in die Containerprotokolle steigen.
+
+**Entschieden und nicht umgesetzt, auf ausdrücklichen Wunsch des Projektinhabers:**
+kein Sitzungstoken in der Datenbank, damit die Anlage einen Neustart übersteht. Ein
+gespeichertes Token ist einem Passwort gleichwertig; bislang stehen keinerlei
+Cloud-Zugangsdaten in der Datenbank, und nach den beiden ersten Behebungen oben
+bleiben ohnehin nur rund vier Anmeldungen am Tag übrig -- das rechtfertigt die
+größere Angriffsfläche nicht. **`SESSION_TTL` bleibt bei 6 Stunden** -- eine längere
+Lebensdauer wäre geraten, nicht gewusst (Meross dokumentiert keine Token-Lebensdauer),
+und bei vier Anmeldungen am Tag gibt es dafür ohnehin keinen Anlass mehr.
+
+Die frühere Aussage weiter unten in diesem Dokument, ein gescheiterter Meross-Befehl
+werde „unbegrenzt oft, bewusst ohne Backoff" erneut versucht, gilt nicht mehr -- siehe
+dort.
+
 ## Übersicht: 8 s / 4 s auf < 200 ms -- die Entscheidungs-Historie, nicht Assets, nicht N+1 über Zonen
 
 Meldung aus dem echten Betrieb: `/` lud ohne Cache 8 s, mit Cache 4 s (v0.9.1
@@ -1129,10 +1187,14 @@ nachweisbar. Die Migrationstests verwenden die abgeleitete Datenbank
   (`Zigbee2MqttThermostat`), und Schaltbefehle an Meross-Steckdosen über eine
   zwischengespeicherte Cloud-Sitzung (`services/meross_session.py`), außerhalb jeder
   Datenbanktransaktion.
-- **Ein gescheiterter Befehl wird jeden scharfen Zyklus erneut versucht** — unbegrenzt oft,
-  bewusst ohne Backoff — und nur einmal pro Ausfallepisode geloggt; der
-  Zwischenspeicher „nur bei Änderung senden" trägt das Ergebnis im Schlüssel, damit ein
-  gescheiterter Befehl das Gerät nicht dauerhaft überspringt.
+- **Ein gescheiterter Befehl wird jeden scharfen Zyklus erneut versucht** — unbegrenzt
+  oft und nur einmal pro Ausfallepisode geloggt; der Zwischenspeicher „nur bei
+  Änderung senden" trägt das Ergebnis im Schlüssel, damit ein gescheiterter Befehl das
+  Gerät nicht dauerhaft überspringt. Gilt unverändert für Zigbee2MQTT, wo ein
+  gescheiterter Befehl keine erneute Anmeldung nach sich zieht. **Für Meross gilt es
+  nicht mehr:** eine abgelehnte Cloud-Anmeldung wartet einen wachsenden, gedeckelten
+  Backoff ab, statt im nächsten Zyklus sofort erneut anzumelden — siehe den Abschnitt
+  oben zur Anmeldesperre.
 - **Das Schaltprotokoll** (`device_command`, `/device-commands`, Recht `audit.read`)
   zeichnet jeden Befehl auf, der hinausging oder im Trockenlauf unterdrückt oder
   verworfen wurde — Zeitpunkt, Zone, Gerät, Nutzlast, Ergebnis, Begründung, Auslöser.

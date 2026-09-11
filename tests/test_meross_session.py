@@ -19,6 +19,8 @@ from thermoctl.db.engine import create_engine_from_settings, session_factory, se
 from thermoctl.db.models.operations import Setting
 from thermoctl.integrations.meross_mqtt import AiomqttCommandTransport
 from thermoctl.services.meross_session import (
+    BACKOFF_INITIAL,
+    BACKOFF_MAX,
     SESSION_TTL,
     MerossSessionCache,
     ensure_transport,
@@ -138,6 +140,110 @@ async def test_a_rejected_sign_in_returns_none_and_caches_nothing(
     assert result is None
     assert cache.connection is None
     assert "Meross" in caplog.text
+
+
+@pytest.mark.anyio
+async def test_a_rejected_sign_in_backs_off_the_very_next_cycle() -> None:
+    """The fault this whole change exists to fix: a rejection used to leave the cache
+    empty, so the next cycle (32 seconds later by default) tried again immediately and
+    failed the same way -- sixteen such attempts in eight minutes are what actually put
+    a real account into `apiStatus=1301, Beyond Login Limit`. No attempt may be made
+    again before the backoff set by the rejection has passed, even one second later."""
+    # A rate-limit rejection (not a permanent one), so the escalating climb applies
+    # rather than jumping straight to `BACKOFF_MAX` -- see the next test for that case.
+    transport = _FakeJsonTransport({"apiStatus": 1301, "info": "Beyond Login Limit"})
+    cache = MerossSessionCache()
+
+    result = await ensure_transport(_settings_with_credentials(), transport, cache, NOW)
+
+    assert result is None
+    assert transport.calls == 1
+
+    result_again = await ensure_transport(
+        _settings_with_credentials(), transport, cache, NOW + timedelta(seconds=1)
+    )
+
+    assert result_again is None
+    # No second sign-in attempt was made -- the backoff alone answered `None`.
+    assert transport.calls == 1
+
+
+@pytest.mark.anyio
+async def test_the_backoff_lifts_once_it_has_actually_passed() -> None:
+    """The gegenprobe for the previous test: the backoff is temporary, not a
+    permanent lockout of its own -- once `BACKOFF_INITIAL` has actually elapsed, the
+    next cycle is free to try again."""
+    transport = _FakeJsonTransport(
+        {"apiStatus": 1301, "info": "Beyond Login Limit"}, _SIGN_IN_ANSWER
+    )
+    cache = MerossSessionCache()
+
+    await ensure_transport(_settings_with_credentials(), transport, cache, NOW)
+    assert transport.calls == 1
+
+    result = await ensure_transport(
+        _settings_with_credentials(), transport, cache, NOW + BACKOFF_INITIAL
+    )
+
+    assert isinstance(result, AiomqttCommandTransport)
+    assert transport.calls == 2
+
+
+@pytest.mark.anyio
+async def test_a_successful_sign_in_resets_the_backoff() -> None:
+    """A working sign-in is proof the account and the cloud-side limit are fine again
+    -- a rejection two rounds ago must not keep escalating a backoff nothing has been
+    rejected against since."""
+    transport = _FakeJsonTransport(
+        {"apiStatus": 1301, "info": "Beyond Login Limit"},
+        _SIGN_IN_ANSWER,
+        {"apiStatus": 1301, "info": "Beyond Login Limit"},
+    )
+    cache = MerossSessionCache()
+
+    await ensure_transport(_settings_with_credentials(), transport, cache, NOW)
+    await ensure_transport(
+        _settings_with_credentials(), transport, cache, NOW + BACKOFF_INITIAL
+    )
+    assert cache.next_backoff == BACKOFF_INITIAL
+
+    # A third rejection, right after the successful sign-in -- if the backoff had not
+    # been reset, this would already be climbing from a higher step than the first
+    # rejection did. `invalidate()` forces a fresh attempt regardless of `SESSION_TTL`
+    # so the just-established connection does not simply get reused instead.
+    invalidate(cache)
+    await ensure_transport(
+        _settings_with_credentials(), transport, cache, NOW + BACKOFF_INITIAL
+    )
+    assert cache.next_backoff == BACKOFF_INITIAL * 2
+
+
+@pytest.mark.anyio
+async def test_a_permanent_login_failure_jumps_straight_to_the_backoff_ceiling() -> None:
+    """Wrong credentials do not get less wrong while the process waits -- climbing
+    towards `BACKOFF_MAX` one rejection at a time gains nothing a wrong password will
+    ever benefit from, so this jumps there on the very first rejection instead."""
+    transport = _FakeJsonTransport({"apiStatus": 1004, "info": "Wrong password"})
+    cache = MerossSessionCache()
+
+    await ensure_transport(_settings_with_credentials(), transport, cache, NOW)
+
+    assert cache.retry_after == NOW + BACKOFF_MAX
+    assert cache.next_backoff == BACKOFF_MAX
+
+
+@pytest.mark.anyio
+async def test_the_rejection_reason_is_remembered_for_the_operator_to_see() -> None:
+    """Principle 5: the operator must be able to see why, not just that it failed --
+    without going looking in the container log for it."""
+    transport = _FakeJsonTransport({"apiStatus": 1301, "info": "Beyond Login Limit"})
+    cache = MerossSessionCache()
+
+    await ensure_transport(_settings_with_credentials(), transport, cache, NOW)
+
+    assert cache.last_rejection is not None
+    assert "1301" in cache.last_rejection
+    assert "Beyond Login Limit" in cache.last_rejection
 
 
 @pytest.mark.anyio

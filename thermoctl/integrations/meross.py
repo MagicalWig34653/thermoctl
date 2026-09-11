@@ -41,7 +41,40 @@ DEVICE_LIST_PATH = "/v1/Device/devList"
 
 
 class MerossError(Exception):
-    """The cloud refused, or answered something unexpected."""
+    """The cloud refused, or answered something unexpected.
+
+    `api_status` carries the cloud's own `apiStatus` code when the failure is a parsed
+    answer that named one (`_data()` below) -- `None` for everything else (a malformed
+    answer, a missing field, a transport-level error). `services/meross_session.py`
+    reads it to tell a login that will never succeed no matter how often it is retried
+    (wrong credentials) from one that is only temporarily throttled (`apiStatus=1301`,
+    "Beyond Login Limit") -- see `is_permanent_login_failure()` below.
+    """
+
+    def __init__(self, message: str, *, api_status: int | None = None) -> None:
+        super().__init__(message)
+        self.api_status = api_status
+
+
+# Known `apiStatus` codes for a login that will not start working again just because
+# time passes -- the account itself needs to change, not the clock. Recovered from the
+# same reverse-engineering community as `APP_SECRET` above; Meross documents neither.
+# `1301` ("Beyond Login Limit", the fault this constant list exists to rule out) is
+# deliberately absent: that account and password are fine, the cloud is only rate
+# limiting how often *any* client may sign in right now, and retrying later -- not
+# never -- is exactly the right response.
+_PERMANENT_LOGIN_FAILURE_STATUSES = frozenset({1004, 1005, 1006, 1008})
+
+
+def is_permanent_login_failure(error: MerossError) -> bool:
+    """Whether retrying the same credentials later would help at all.
+
+    `services/meross_session.py` still retries even a permanent failure -- an operator
+    who fixes a wrong password should not have to restart the process -- but at the
+    slowest backoff step rather than climbing gradually towards it, since nothing about
+    a wrong password gets less wrong while it waits.
+    """
+    return error.api_status in _PERMANENT_LOGIN_FAILURE_STATUSES
 
 
 class JsonTransport(Protocol):
@@ -123,7 +156,8 @@ def _data(answer: Mapping[str, object], what: str) -> object:
         # `info` carries the service's reason and is the only trace an operator has --
         # without it the log says no more than "did not work".
         raise MerossError(
-            f"{what} abgelehnt: apiStatus={status}, {answer.get('info') or 'ohne Begründung'}"
+            f"{what} abgelehnt: apiStatus={status}, {answer.get('info') or 'ohne Begründung'}",
+            api_status=status if isinstance(status, int) else None,
         )
     return answer.get("data")
 

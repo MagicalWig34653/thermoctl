@@ -765,14 +765,23 @@ async def _send_actuator_switches(
             payload = json.dumps({"state": "ON" if heating else "OFF"})
         else:
             # The only other member of `_WIRED_INTEGRATIONS`. `meross_transport` is
-            # `None` when no account is configured or the cloud rejected the sign-in
-            # this cycle -- `MerossSwitch.switching()` reports that as a failed
-            # attempt on its own, it does not need a special case here.
+            # `None` when no account is configured, a backoff from an earlier
+            # rejection is still running, or the cloud rejected the sign-in this
+            # cycle -- `MerossSwitch.switching()` reports that as a failed attempt
+            # on its own, it does not need a special case here. The cache's own
+            # last rejection reason goes along too, so the failed-attempt message
+            # names more than "no valid session" (principle 5) without the operator
+            # going looking in the container log for it.
             actuator = MerossSwitch(
                 session,
                 meross_transport,
                 device.external_id,
                 frozen_switching_allowed=meross_switching_allowed,
+                session_unavailable_reason=(
+                    meross_session_cache.last_rejection
+                    if meross_session_cache is not None
+                    else None
+                ),
             )
             payload = json.dumps(toggle_payload(0, heating))
 
@@ -782,12 +791,19 @@ async def _send_actuator_switches(
         if (
             command.integration_code == "meross"
             and not result.executed
-            and result.errors is not None
+            and result.session_fault
             and meross_session_cache is not None
         ):
-            # A real attempt was made (not just withheld by a dry-run bolt) and it
-            # did not work -- the cached connection might be the reason, so the next
-            # cycle signs in again instead of trusting it for the rest of its TTL.
+            # `result.session_fault` is only set when `MerossSwitch.switching()`
+            # itself could tell the failure came from the broker refusing the
+            # connection, not from the device simply not answering -- see its
+            # docstring for how it tells the two apart. Invalidating on every
+            # failed command regardless (the previous behaviour) discarded a
+            # perfectly good session whenever a socket was merely offline, which
+            # forced a fresh sign-in -- another cloud login -- for no reason, and
+            # was itself found to be feeding the account into a login-rate lockout
+            # (`apiStatus=1301, Beyond Login Limit`) that then out-lasted every
+            # session it triggered a re-sign-in for.
             invalidate_meross_session(meross_session_cache)
         _note_command_outcome(state, notices, session, device, outcome, setting_row)
         new_entry = (heating, armed, outcome)
