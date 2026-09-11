@@ -50,21 +50,21 @@
   {% if errors.page %}<div class="alert alert-danger">{{ errors.page }}</div>{% endif %}
   {% if entries %}
   <div class="table-responsive">
-    <table class="table table-striped align-middle">
-      <thead><tr><th>Zeitpunkt</th><th>Quelle</th><th>Zone</th><th>Gerät</th><th>Befehl</th><th>Ergebnis</th><th>Begründung</th></tr></thead>
+    <table class="table table-striped align-middle tc-stack-table tc-command-table" aria-label="Schaltprotokoll">
+      <thead><tr><th scope="col">Zeitpunkt</th><th scope="col">Quelle</th><th scope="col">Zone</th><th scope="col">Gerät</th><th scope="col">Befehl</th><th scope="col">Ergebnis</th><th scope="col">Begründung</th></tr></thead>
       <tbody>
       {% for entry, source, outcome in entries %}
       <tr>
         <td class="text-nowrap" title="{{ (entry.sent_at|localtime(timezone)).strftime('%d.%m.%Y %H:%M:%S') }}">{{ (entry.sent_at|localtime(timezone)).strftime("%d.%m.%Y %H:%M:%S") }}</td>
-        <td>{{ source.label }}</td>
-        <td>{{ entry.zone_name }}</td>
-        <td>{{ entry.device_name }}</td>
-        <td><code>{{ entry.command }}</code></td>
-        <td>
+        <td data-label="Quelle">{{ source.label }}</td>
+        <td data-label="Zone">{{ entry.zone_name }}</td>
+        <td data-label="Gerät">{{ entry.device_name }}</td>
+        <td data-label="Befehl"><code>{{ entry.command }}</code></td>
+        <td data-label="Ergebnis">
           {{ outcome.label }}
           {% if entry.error %}<div class="text-danger small">{{ entry.error }}</div>{% endif %}
         </td>
-        <td>
+        <td data-label="Begründung">
           {{ entry.reason or "–" }}
           <details class="mt-1"><summary>Nutzlast anzeigen</summary><pre class="mt-2 text-wrap">{{ entry.payload }}</pre></details>
         </td>

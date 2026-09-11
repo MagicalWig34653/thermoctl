@@ -9,6 +9,48 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ---
 
+## 0.9.4 — 2026-09-11
+
+**Wer Meross-Steckdosen schaltet, sollte aktualisieren.** Bis hierher konnte sich
+thermoctl selbst aus der Meross-Cloud aussperren und kam ohne Zutun nicht wieder
+heraus.
+
+### Behoben
+
+- **thermoctl hielt seine eigene Anmeldesperre aufrecht.** Ein gescheiterter
+  Schaltbefehl verwarf die Cloud-Sitzung, der nächste Regelzyklus meldete sich
+  neu an, die Cloud lehnte wegen zu häufiger Anmeldungen ab
+  (`apiStatus=1301, Beyond Login Limit`), damit scheiterten **alle**
+  Meross-Befehle — und von vorn, alle 32 Sekunden. An der Anlage des
+  Projektinhabers sechzehn Versuche in acht Minuten. Die Sitzungsdauer von sechs
+  Stunden griff dabei nie: der Fehlerpfad leerte den Zwischenspeicher, und ein
+  leerer Zwischenspeicher hat keine Wartezeit. Es gab keinerlei Backoff.
+  Jetzt wartet eine abgelehnte Anmeldung, verdoppelnd von einer Minute bis
+  höchstens dreißig, zurückgesetzt durch die nächste erfolgreiche.
+- **Falsche Zugangsdaten werden von einer Sperre unterschieden.** Das eine geht
+  vorüber, das andere nie — falsche Zugangsdaten springen sofort auf die
+  Obergrenze, statt zu klettern. Weiter versucht wird es trotzdem, damit ein
+  Betreiber, der das Konto in Ordnung bringt, nicht zusätzlich neu starten muss.
+- **Die Sitzung wird nur noch verworfen, wenn wirklich sie schuld ist.** Bisher
+  tat das jeder gescheiterte Befehl, auch ein Gerät, das schlicht offline war.
+- **Der Geräteabgleich meldete sich unabhängig an** und verdoppelte damit die
+  Anmelderate gegen dieselbe Begrenzung. Er teilt sich jetzt Sitzung und
+  Wartezeit mit dem Schaltweg: von rund 28 auf rund 4 Anmeldungen am Tag.
+- **Der Grund steht jetzt im Schaltprotokoll**, nicht nur im Containerprotokoll.
+  Er trägt ausschließlich, was die Cloud selbst gemeldet hat — nie Konto oder
+  Passwort.
+- **Im Schaltprotokoll brachen Wörter mitten durch** („Syste/m", „wohnzimme/r"),
+  während rechts Platz übrig war, und der Aufklapper „Nutzlast anzeigen" brach
+  über zwei Zeilen. Feste Spaltenbreiten beheben beides; die Seitenhöhe sinkt bei
+  achtzehn Einträgen von 2434 auf 1948 Pixel, mobil von 13.473 auf 5868.
+
+### Bewusst entschieden
+
+Die Meross-Sitzung überlebt **keinen** Neustart, und die Sitzungsdauer bleibt bei
+sechs Stunden. Ein gespeichertes Sitzungstoken wäre einem Passwort gleichwertig,
+und bei vier Anmeldungen am Tag lohnt die größere Angriffsfläche der Datenbank
+nicht.
+
 ## 0.9.3 — 2026-09-11
 
 Nachtrag zu v0.9.2: dieselbe Ursache, die zweite Stelle. **Wer die Betriebsseite
