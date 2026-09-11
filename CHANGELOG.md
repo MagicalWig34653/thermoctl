@@ -9,6 +9,36 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ---
 
+## 0.9.2 — 2026-09-11
+
+Nachtrag zu v0.9.1: dieselbe Beschwerde, aber die zweite, groessere Haelfte der
+Ursache. **Wer die Anlage laenger als ein paar Wochen betreibt, sollte
+aktualisieren** — der Fehler wird mit jedem Betriebstag schlimmer.
+
+### Behoben
+
+- **Die Uebersicht las bei jedem Aufruf die gesamte Entscheidungshistorie.** Die
+  Startseite holte alle `shadow_decision`-Zeilen aller sichtbaren Zonen ohne
+  `LIMIT` ueber das Netz, nur um in Python je Zone die neueste zu behalten und den
+  Rest wegzuwerfen. `shadow_decision_retention_days` steht vorgabemaessig auf 365,
+  und die Regelschleife schreibt je Zone und Zyklus eine Zeile — nach Monaten
+  Betrieb sind das Hunderttausende. Gemessen an zehn Zonen mit dreissig Tagen
+  Historie (432.000 Zeilen): **5.111 ms vorher, 136 ms nachher**. Die Abfrage sucht
+  jetzt je Zone nur den neuesten Eintrag ueber eine Gruppierung, die der bereits
+  vorhandene Index beantwortet; eine neue Migration braucht es dafuer nicht.
+  Warum das niemandem auffiel: mit SQLite und einer Handvoll Testzeilen kostet
+  dieselbe Abfrage nichts. Der Fehler zeigt sich erst an einer Anlage, die laenger
+  laeuft.
+- **Je Zone wiederholte Abfragen des aufgeloesten Sollwerts gebuendelt.** Die
+  Vorrangkette bleibt unveraendert — Betriebsart, laufende Uebersteuerung,
+  Urlaubsabsenkung, Zeitplan, Frostschutz in genau dieser Reihenfolge; gebuendelt
+  wird nur, woher die Daten kommen. Jeder andere Aufrufer, die Regelschleife
+  eingeschlossen, geht unveraendert seinen bisherigen Weg.
+- **Anzeige und Entscheidung konnten bei zwei Uebersteuerungen in derselben
+  Sekunde auseinanderlaufen.** Das Banner sortierte ohne Tiebreak auf die Id, die
+  tatsaechliche Aufloesung mit; MariaDBs `DATETIME` hat nur Sekundenaufloesung.
+  Beide lesen jetzt dieselbe Abfrage.
+
 ## 0.9.1 — 2026-09-10
 
 Reine Fehlerbehebungs-Freigabe, am selben Tag wie v0.9.0: der Projektinhaber hat die

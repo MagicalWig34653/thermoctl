@@ -1056,14 +1056,14 @@ Details je Phase, Aufgabenlisten und was nicht ursprünglich vorgesehen war steh
 
 ## Zahlen
 
-Am 2026-09-10 auf dem Freigabestand für v0.9.1 selbst nachgemessen:
+Am 2026-09-11 auf dem Freigabestand für v0.9.2 selbst nachgemessen:
 
 | Prüfung | Ergebnis |
 |---|---|
-| Testsammlung | 5028 Tests in `tests/` (59 Browsertests separat, nicht in der CI) |
-| SQLite, volle Suite | 5027 bestanden, 1 übersprungen (Exit 0) |
-| MariaDB, volle Suite | 5027 bestanden, 1 übersprungen (Exit 0), gegen `THERMOCTL_TEST_DATABASE_URL` mit `mysql+pymysql` |
-| Testabdeckung | beide Datenbanken: 100 %, 8996 erfasste Anweisungen, keine ungedeckt; CI-Mindestschwelle 100 % |
+| Testsammlung | 5029 Tests in `tests/` (59 Browsertests separat, nicht in der CI) |
+| SQLite, volle Suite | 5028 bestanden, 1 übersprungen (Exit 0) |
+| MariaDB, volle Suite | 5028 bestanden, 1 übersprungen (Exit 0), gegen `THERMOCTL_TEST_DATABASE_URL` mit `mysql+pymysql` |
+| Testabdeckung | beide Datenbanken: 100 %, 9012 erfasste Anweisungen, keine ungedeckt; CI-Mindestschwelle 100 % |
 | Ruff | ohne Befund (Exit 0) |
 | mypy strict | ohne Befund, 125 Quelldateien (Exit 0) |
 | Migrationskette | ein Kopf `d31f6a04c7e9`; Upgrade-/Downgrade-Tests gegen beide Datenbanken bestanden |
