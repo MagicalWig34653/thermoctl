@@ -2,6 +2,37 @@
 
 Letzte Aktualisierung: 2026-09-11.
 
+## Schaltprotokoll: Spaltenbreiten, kein viertes Ergebnis, mobile Kartenform
+
+Meldung: `/device-commands` brach QUELLE und ZONE mitten im Wort um ("wohnzimme/r"),
+der Aufklapper für die Nutzlast wirkte durch einen Umbruch wie ein zweizeiliger
+Fließtext, und mobil (390 px) zerlief die Tabelle auf über 13.000 px Höhe -- derselbe
+Fehler wie einmal bei der Geräteliste (`.tc-device-table`), nur diesmal ohne deren
+Gegenmittel. Ursache identisch: keine feste Spaltenbreite, und das globale
+`overflow-wrap: anywhere` erlaubt dem automatischen Tabellenlayout, eine schmale Spalte
+bis auf ein Zeichen zusammenzuquetschen, sobald eine andere (Begründung, Ergebnis) viel
+Platz beansprucht.
+
+Behoben mit `table-layout: fixed` und abgestimmten Prozentbreiten für alle sieben
+Spalten (`.tc-command-table`, `thermoctl.css`), plus derselben mobilen Kartenform wie
+bei der Geräteliste -- deren gemeinsamer Teil (Kopfzeile ausblenden, Zeile als Block,
+Beschriftung je Feld) ist jetzt als `.tc-stack-table` herausgezogen, damit keine zweite
+Fassung entsteht; beide Tabellen tragen diese Klasse zusätzlich zu ihrer eigenen.
+Seitenhöhe bei 18 Einträgen: 2506 px auf 2004--2088 px am Schreibtisch (abhängig vom
+Ergebnis-Mix), 13.473 px auf 5.899 px mobil.
+
+**Kein viertes Ergebnis "verworfen"/"discarded" existiert.** `command_outcome` hat und
+hatte immer nur drei Zeilen (`executed`/`suppressed`/`failed`, Migration
+`3a3e44c560fb`); `record_command` (`services/device_commands.py`) schreibt nie einen
+anderen Code, und ein unbekannter Code schlägt fehl, bevor eine Zeile entsteht --
+"discarded" kann aus keinem echten Codepfad in die Tabelle gelangen. Der Wortlaut
+"unterdrückt oder verworfen" in `device_commands.html` und weiter oben in dieser Datei
+ist eine sprachliche Dopplung für denselben Zustand (`suppressed`), keine zweite Sorte.
+Die ursprünglich gemeldete rohe Beschriftung "discarded" stammte vermutlich aus
+Demodaten, die über den Testhelfer `command_outcome()` mit einem erfundenen Code erzeugt
+wurden -- dessen Fallback (`label = code`) ist für Tests gedacht, nicht für eine
+Vorschau. Keine Migration nötig.
+
 ## Übersicht: 8 s / 4 s auf < 200 ms -- die Entscheidungs-Historie, nicht Assets, nicht N+1 über Zonen
 
 Meldung aus dem echten Betrieb: `/` lud ohne Cache 8 s, mit Cache 4 s (v0.9.1

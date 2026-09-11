@@ -730,23 +730,37 @@ body {
     border-bottom-color: var(--line);
 }
 
-/* Gleiche Spaltenbreiten in beiden Gruppen der Geräteliste. */
-.tc-device-table {
-    table-layout: fixed;
+/* Gleiche Spaltenbreiten je Tabelle, per `table-layout: fixed` -- ohne feste
+ * Prozentwerte quetscht das automatische Tabellenlayout schmale Spalten
+ * (Quelle, Zone) bis auf einzelne Buchstaben zusammen, sobald eine andere Spalte
+ * (Begründung, Ergebnis) viel Platz beansprucht; das globale
+ * `overflow-wrap: anywhere` (oben) erlaubt dem Browser dabei ausdrücklich, ein
+ * einzelnes Wort mitten durchzubrechen, weil es genau diese Mindestbreiten in die
+ * Berechnung einbezieht. `table-layout: fixed` übergeht diese Berechnung ganz
+ * und nimmt stattdessen die hier angegebenen Breiten -- das behebt beide
+ * Tabellen unten aus derselben Ursache.
+ *
+ * `.tc-stack-table` trägt das mobile Verhalten (Kopfzeile ausgeblendet, jede
+ * Zeile als eigener Block), gemeinsam für jede Tabelle, die es benutzt --
+ * `.tc-device-table` (Geräteliste) und `.tc-command-table` (Schaltprotokoll)
+ * ergänzen nur noch ihre eigenen Spaltenbreiten und welche Spalten mobil eine
+ * Beschriftung brauchen. */
+.tc-stack-table {
     margin-bottom: 0;
 }
 
-.tc-device-table > :not(caption) > * > * {
+.tc-stack-table > :not(caption) > * > * {
     padding: 0.6rem 0.8rem;
 }
 
+.tc-device-table { table-layout: fixed; }
 .tc-device-table th:nth-child(1) { width: 28%; }
 .tc-device-table th:nth-child(2) { width: 28%; }
 .tc-device-table th:nth-child(3) { width: 28%; }
 .tc-device-table th:nth-child(4) { width: 16%; }
 
 @media (max-width: 767.98px) {
-    .tc-device-table thead {
+    .tc-stack-table thead {
         position: absolute;
         width: 1px;
         height: 1px;
@@ -754,19 +768,19 @@ body {
         clip-path: inset(50%);
     }
 
-    .tc-device-table,
-    .tc-device-table tbody {
+    .tc-stack-table,
+    .tc-stack-table tbody {
         display: block;
         width: 100%;
     }
 
-    .tc-device-table tr:not([hidden]) {
+    .tc-stack-table tr:not([hidden]) {
         display: block;
         border-bottom: 1px solid var(--line-strong);
         padding: 0.5rem 0;
     }
 
-    .tc-device-table > tbody > tr > td {
+    .tc-stack-table > tbody > tr > td {
         display: block;
         padding: 0.2rem 0.8rem;
         border: 0;
@@ -801,9 +815,71 @@ body {
        gleich und leer -- das trägt keine Auskunft und erscheint mobil deshalb
        gar nicht erst als eigene Zeile. Dasselbe gilt für einen Status ganz
        ohne Befund, Zeitstempel oder Messwert. */
-    .tc-device-table td[data-empty] {
+    .tc-stack-table td[data-empty] {
         display: none;
     }
+}
+
+/* Schaltprotokoll: Zeitpunkt, Quelle, Zone, Gerät, Befehl, Ergebnis, Begründung. */
+.tc-command-table { table-layout: fixed; }
+.tc-command-table th:nth-child(1) { width: 15%; } /* Zeitpunkt, "10.09.2026 12:49:00" bleibt einzeilig */
+.tc-command-table th:nth-child(2) { width: 13%; } /* Quelle -- alle fünf Beschriftungen aus ACTOR_SOURCES passen einzeilig, auch "Weboberfläche"/"Kommandozeile" */
+.tc-command-table th:nth-child(3) { width: 12%; } /* Zone, frei vergebener Name */
+.tc-command-table th:nth-child(4) { width: 13%; } /* Gerät, frei vergebener Name -- ein Bindestrich bricht dort sauber um */
+.tc-command-table th:nth-child(5) { width: 10%; } /* Befehl, längster Code ist "thermostat" */
+.tc-command-table th:nth-child(6) { width: 18%; } /* Ergebnis -- braucht bei "Gescheitert" Platz für den Fehlertext eines echten Geräte- oder Broker-Fehlers */
+.tc-command-table th:nth-child(7) { width: 19%; } /* Begründung */
+
+.tc-command-table td:nth-child(5) code {
+    white-space: nowrap;
+}
+
+@media (max-width: 767.98px) {
+    /* Nur der Zeitpunkt spricht für sich -- jede andere Spalte braucht mobil
+       eine Beschriftung, sonst ist "wohnzimmer" allein nicht als Zone und
+       "setpoint" allein nicht als Befehl erkennbar. */
+    .tc-command-table td:nth-child(1) {
+        padding-top: 0.4rem;
+        font-weight: 600;
+    }
+
+    .tc-command-table td:nth-child(2),
+    .tc-command-table td:nth-child(3),
+    .tc-command-table td:nth-child(4),
+    .tc-command-table td:nth-child(5),
+    .tc-command-table td:nth-child(6),
+    .tc-command-table td:nth-child(7) {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: baseline;
+        gap: 0.35rem;
+    }
+
+    .tc-command-table td:nth-child(2)::before,
+    .tc-command-table td:nth-child(3)::before,
+    .tc-command-table td:nth-child(4)::before,
+    .tc-command-table td:nth-child(5)::before,
+    .tc-command-table td:nth-child(6)::before,
+    .tc-command-table td:nth-child(7)::before {
+        content: attr(data-label) ":";
+        color: var(--muted);
+        font-size: 0.75rem;
+        flex-shrink: 0;
+    }
+
+    /* Das Aufklapp-Element für die Nutzlast bricht sonst mitten im eigenen
+       Text um ("▶ Nutzlast" / "anzeigen") -- als eigene Zeile unter der
+       Begründung bekommt es die volle Zeilenbreite dafür. */
+    .tc-command-table td:nth-child(7) > details {
+        flex-basis: 100%;
+    }
+}
+
+/* Der Aufklapper ist ein Bedienelement, kein Fließtext -- er darf nicht wie ein
+   Zeilenumbruch aussehen, weder mobil noch am Schreibtisch. */
+.tc-command-table details > summary {
+    white-space: nowrap;
+    cursor: pointer;
 }
 
 /* ── Flussbild ─────────────────────────────────────────────────────────────── */
