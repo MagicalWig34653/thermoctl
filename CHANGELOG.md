@@ -9,6 +9,27 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ---
 
+## 0.9.5 — 2026-09-14
+
+**An der Anwendung ändert sich nichts.** Diese Freigabe gibt es nur, damit das
+Home-Assistant-Add-on eine neue Versionsnummer bekommt.
+
+### Add-on
+
+- **Der Eintrag in der Home-Assistant-Seitenleiste ist jetzt für alle Nutzer
+  sichtbar, nicht nur für Administratoren.** Das Add-on setzt `panel_admin: false`.
+  Bisher galt die Vorgabe des Supervisors (`true`): Wer in Home Assistant kein
+  Administrator war, sah thermoctl gar nicht — obwohl thermoctl seine eigene
+  Anmeldung hat und selbst entscheidet, wer was darf. Die Rechteprüfung liegt
+  unverändert bei thermoctl; Home Assistant zeigt nur den Weg dorthin.
+- Warum dafür eine Anwendungsversion nötig ist: Home Assistant übernimmt eine
+  geänderte `config.yaml` erst mit einer neuen `version`, und die muss auf ein
+  Abbild zeigen, das es auf ghcr.io wirklich gibt. Also `0.9.5` hier, `0.9.5`
+  dort — mit demselben Inhalt wie 0.9.4.
+
+Beim Upgrade nichts zu tun: keine Migration, keine neue Einstellung, keine
+Änderung an Rechten oder Gruppen.
+
 ## 0.9.4 — 2026-09-11
 
 **Wer Meross-Steckdosen schaltet, sollte aktualisieren.** Bis hierher konnte sich

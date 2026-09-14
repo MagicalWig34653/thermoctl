@@ -1,6 +1,19 @@
 # Stand
 
-Letzte Aktualisierung: 2026-09-11.
+Letzte Aktualisierung: 2026-09-14.
+
+## v0.9.5: eine Anwendungsversion ohne Anwendungsänderung, für das Add-on
+
+Das Add-on hat `panel_admin: false` bekommen (Commit `8f8bd53` im Add-on-Repository):
+der Seitenleisten-Eintrag in Home Assistant erscheint damit auch Nutzern ohne
+Home-Assistant-Administratorrechte. Bisher galt die Supervisor-Vorgabe `true`, und
+Nicht-Administratoren sahen thermoctl nicht -- obwohl die Rechteprüfung ohnehin bei
+thermoctls eigener Anmeldung liegt. Home Assistant liefert eine geänderte
+`config.yaml` aber erst mit einer neuen `version` aus, und die muss zu einem
+vorhandenen ghcr.io-Abbild passen (siehe "Eine Freigabe ist erst fertig, wenn auch das
+Add-on nachgezogen ist"). Deshalb 0.9.5 hier mit demselben Inhalt wie 0.9.4: nur
+`pyproject.toml`, `thermoctl/__init__.py`, `CHANGELOG.md` und dieser Abschnitt.
+Keine Migration, kein Quelltext berührt.
 
 ## Die Meross-Anmeldesperre war selbstverursacht -- Backoff, geteilte Sitzung, sichtbarer Grund
 
