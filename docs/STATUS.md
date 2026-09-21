@@ -43,6 +43,8 @@ Kopfzeile fehlte jeder `@media`-Block. Jetzt (noch unveröffentlicht, nicht Teil
 - Keine neue Route, keine Migration, kein Eingriff in `thermoctl/domain/kiosk.py`
   oder die Rechteprüfung der vier bestehenden Kiosk-Endpunkte.
 
+Die Panel-Ansicht ist jetzt in der Bedienungs- und Self-Hosting-Dokumentation bebildert.
+
 Noch offen: Kreuzreview (Umsetzung war ein Claude-Agent) inklusive eigenem
 Testlauf gegen SQLite **und** MariaDB, danach Merge nach `main` und ein
 Nachtrag im Add-on-Repository, falls `DOCS.md` dort eine inzwischen falsche
