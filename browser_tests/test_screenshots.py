@@ -4,6 +4,7 @@ import os
 import struct
 import subprocess
 import sys
+from contextlib import closing
 from pathlib import Path
 from typing import Any
 
@@ -54,7 +55,11 @@ def test_cli_filter_produces_real_pngs(tmp_path: Path) -> None:
         ("wohnung-wochenplan", {"wohnung-wochenplan", "wohnung-wochenplan-mobil"}),
         ("anlage-startseite", {"anlage-startseite", "anlage-startseite-mobil"}),
         ("wohnung-konto", {"wohnung-konto", "wohnung-konto-mobil", "wohnung-konto-mobil-2"}),
-        ("kiosk-*", {"kiosk-dashboard", "kiosk-dashboard-mobil"}),
+        (
+            "kiosk-*",
+            {"kiosk-dashboard", "kiosk-dashboard-mobil", "kiosk-panel-uebersicht",
+             "kiosk-panel-detail", "kiosk-tafel"},
+        ),
     ):
         directory = tmp_path / pattern.replace("*", "alle")
         result = subprocess.run(  # noqa: S603 -- fixed local Python module
@@ -80,10 +85,18 @@ def test_cli_filter_produces_real_pngs(tmp_path: Path) -> None:
             data = path.read_bytes()
             assert data[:8] == b"\x89PNG\r\n\x1a\n"
             width, height = struct.unpack(">II", data[16:24])
-            assert width == (390 if "-mobil" in path.stem else 1280)
-            if "-mobil" in path.stem:
+            if path.stem in {"kiosk-panel-uebersicht", "kiosk-panel-detail", "kiosk-tafel"}:
+                assert width == 480
+                if path.stem == "kiosk-tafel":
+                    assert height > 480  # Full-page capture of the scrolling board.
+                else:
+                    assert height == 480
+            elif "-mobil" in path.stem:
+                # Viewport capture, so the fixed bottom navigation stays at the bottom.
+                assert width == 390
                 assert height == 844
             else:
+                assert width == 1280
                 assert height >= 900
             assert len(data) > 10_000
 
@@ -159,4 +172,34 @@ def test_capture_rejects_browser_console_errors(
         _capture(
             browser, live_server, View("fehler", "/login", "oeffentlich"), {}, tmp_path, tmp_path
         )
+    assert not list(tmp_path.glob("*.png"))
+
+
+def test_panel_capture_rejects_missing_panel_javascript(
+    browser: Browser, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from browser_tests.live_server import _live_server
+    from tools.screenshot_seed import seed_demo
+    from tools.screenshots import _capture
+
+    original = browser.new_context
+
+    def without_panel_script(**kwargs: Any) -> BrowserContext:
+        context = original(**kwargs)
+        # A successful but empty script response isolates the readiness guard:
+        # no HTTP/console error may substitute for checking the active view.
+        context.route(
+            "**/kiosk_panel.js*",
+            lambda route: route.fulfill(status=200, content_type="text/javascript", body=""),
+        )
+        return context
+
+    monkeypatch.setattr(browser, "new_context", without_panel_script)
+    view = next(view for view in VIEWS if view.stem == "kiosk-panel-uebersicht")
+    with closing(_live_server("")) as servers:
+        server = next(servers)
+        with server.session() as session:
+            paths = seed_demo(session, server.admin_password)
+        with pytest.raises(RuntimeError, match="data-ansicht-aktiv fehlt oder ist falsch"):
+            _capture(browser, server, view, paths, tmp_path, tmp_path)
     assert not list(tmp_path.glob("*.png"))

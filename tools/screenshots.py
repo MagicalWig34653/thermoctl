@@ -10,6 +10,7 @@ from tempfile import TemporaryDirectory
 from urllib.parse import urlsplit
 
 from playwright.sync_api import Browser, Page, sync_playwright
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 from browser_tests.live_server import LiveServer, _live_server
 from tools.screenshot_seed import seed_demo
@@ -71,8 +72,9 @@ def _capture(
     documented_only: bool = False,
 ) -> list[Path]:
     result = []
-    for width in (1280, 390) if view.mobile else (1280,):
-        is_mobile_capture = width == 390
+    sizes = (view.viewport, (390, 844)) if view.mobile else (view.viewport,)
+    for index, (width, height) in enumerate(sizes):
+        is_mobile_capture = index == 1
         if documented_only and not (
             view.documented_mobile if is_mobile_capture else view.documented
         ):
@@ -83,7 +85,8 @@ def _capture(
         with browser.new_context(
             storage_state=auth_file if auth_file.exists() else None,
             base_url=server.base_url,
-            viewport={"width": width, "height": 900 if width == 1280 else 844},
+            viewport={"width": width, "height": height},
+            has_touch=view.kiosk_mode is not None,
             device_scale_factor=1,
             color_scheme="light",
             locale="de-DE",
@@ -105,6 +108,22 @@ def _capture(
                     raise RuntimeError(f"HTTP {response.status if response else 'ohne Antwort'}")
                 if urlsplit(page.url).path == "/login" and view.path != "/login":
                     raise RuntimeError("Unerwartete Weiterleitung auf /login")
+                if view.kiosk_mode:
+                    # The token entry redirects to bare /kiosk and drops query parameters.
+                    response = page.goto(
+                        f"/kiosk?ansicht={view.kiosk_mode}", wait_until="networkidle"
+                    )
+                    if response is None or response.status >= 400:
+                        raise RuntimeError("Kiosk-Ansicht konnte nicht geladen werden")
+                    try:
+                        page.locator(
+                            f'body[data-ansicht-aktiv="{view.kiosk_mode}"]'
+                        ).wait_for(timeout=10_000)
+                    except PlaywrightTimeoutError as exc:
+                        raise RuntimeError(
+                            f"Kiosk-{view.kiosk_mode}: data-ansicht-aktiv fehlt oder ist falsch; "
+                            "kiosk_panel.js hat die angeforderte Ansicht nicht aktiviert"
+                        ) from exc
                 if view.open_details:
                     for detail in page.locator("details").all():
                         if detail.get_attribute("open") is None:
@@ -122,6 +141,14 @@ def _capture(
                     raise RuntimeError("thermoctl.css fehlt")
                 if errors:
                     raise RuntimeError("; ".join(errors))
+                if view.kiosk_detail_zone:
+                    # Real touch interaction immediately before capture: no URL shortcut
+                    # and no waits that could run into the 45-second return timer.
+                    zone_id = paths[view.kiosk_detail_zone]
+                    page.locator(f'[data-kiosk-tile="{zone_id}"]').tap()
+                    page.locator(
+                        f'[data-kiosk-detail="{zone_id}"].kiosk-detail-open'
+                    ).wait_for(state="visible", timeout=5_000)
                 target = output / name
                 page.screenshot(
                     path=str(target), full_page=not is_mobile_capture, animations="disabled"

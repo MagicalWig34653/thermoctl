@@ -13,7 +13,10 @@ class View:
     mobile: bool = False
     open_details: bool = False
     route: str | None = None
-    # Whether this view's desktop (1280px) capture, respectively its mobile (390px)
+    viewport: tuple[int, int] = (1280, 900)
+    kiosk_mode: str | None = None
+    kiosk_detail_zone: str | None = None
+    # Whether this view's primary capture, respectively its mobile (390px)
     # capture, is one of the images actually embedded in the documentation. Only
     # `documented` views are written by `--doku`; `documented_mobile` only applies
     # when `mobile` is also set, since otherwise there is no mobile capture at all.
@@ -105,6 +108,18 @@ _VIEWS_BEFORE_DOCUMENTATION_FLAGS = (
         for slug in ZONE_SLUGS[:4]
     ),
     View("dashboard", "/kiosk/{plaintext}", "kiosk", mobile=True),
+    View(
+        "panel-uebersicht", "/kiosk/{plaintext}", "kiosk",
+        viewport=(480, 480), kiosk_mode="panel",
+    ),
+    View(
+        "panel-detail", "/kiosk/{plaintext}", "kiosk",
+        viewport=(480, 480), kiosk_mode="panel", kiosk_detail_zone="zone_wohnzimmer",
+    ),
+    View(
+        "tafel", "/kiosk/{plaintext}", "kiosk",
+        viewport=(480, 480), kiosk_mode="tafel",
+    ),
 )
 
 # Which generated PNGs are actually embedded in the documentation, keyed by
@@ -131,6 +146,8 @@ _DOCUMENTED: dict[str, tuple[bool, bool]] = {
     "wohnung-heizzeit": (True, True),
     "wohnung-konto": (True, True),
     "kiosk-dashboard": (True, False),
+    "kiosk-panel-uebersicht": (True, False),
+    "kiosk-panel-detail": (True, False),
     "oeffentlich-anmeldung": (True, False),
     "oeffentlich-einrichtung": (True, False),
 }

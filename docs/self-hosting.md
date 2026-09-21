@@ -433,6 +433,19 @@ Das Ergebnis auf dem Tablet: eine große, für den Abstand zur Wand lesbare Kach
 
 ![Kiosk-Dashboard mit sechs Zonen nebeneinander, je mit Ist-Temperatur, Sollwert-Reglern und Heizanforderungsanzeige](bilder/kiosk-dashboard.png)
 
+Für kleine Wandpanels gibt es eine eigene Panel-Ebene: Bei 480×480 Pixeln passen
+sechs Zonen als Raster ohne Scrollen auf den Bildschirm. Die Zustandspunkte zeigen
+Regelentscheidungen. Antippen einer Kachel öffnet die Details mit Ist-Temperatur,
+Sollwert und den erlaubten Bedienelementen; „Zurück“ oder 45 Sekunden ohne Bedienung
+führen zur Übersicht. Auf der geöffneten Kiosk-Seite wählt `/kiosk?ansicht=panel`
+das Panel, `/kiosk?ansicht=tafel` die große Tafel und `/kiosk?ansicht=auto`
+automatisch das Panel unter 600 Pixeln Breite, sonst die Tafel. Die Auswahl wird
+in einem eigenen Cookie gemerkt. Ohne JavaScript bleibt die scrollende Tafel.
+
+![Panel-Übersicht auf 480×480 Pixeln mit sechs Zonen, Ist- und Sollwerten sowie Zustandspunkten](bilder/kiosk-panel-uebersicht.png)
+
+![Panel-Details des Wohnzimmers nach Antippen der Kachel, mit Sollwert-Reglern und Zurück-Knopf](bilder/kiosk-panel-detail.png)
+
 Die Adresse erscheint **einmal** im Klartext, in der Form `/kiosk/<token>`. Diese Adresse
 als Lesezeichen auf dem Tablet ablegen; danach lebt das Token nur noch in einem Cookie, und
 die Adresszeile zeigt das nackte `/kiosk`. Gespeichert wird nur ein Hash — geht die Adresse

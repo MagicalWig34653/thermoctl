@@ -120,6 +120,12 @@ Cookie. Ein Token lässt sich jederzeit widerrufen.
 
 ![Formular für Kiosk-Tokens mit einem bereits ausgestellten Token „Demo-Wandtablet" und dem Formular für ein neues](bilder/anlage-kiosk-token.png)
 
+Für kleine Wandpanels gibt es unter `/kiosk?ansicht=panel` eine eigene Ebene mit
+einem kompakten Zonenraster; Antippen einer Kachel öffnet ihre Details.
+Ohne JavaScript bleibt die scrollende Tafel.
+
+![Panel-Übersicht für ein kleines Wandtablet mit sechs Zonen auf 480×480 Pixeln](bilder/kiosk-panel-uebersicht.png)
+
 ### Einstellungen und Störungsmeldungen
 
 **Regelvorgaben** (`/settings`) fasst die anlagenweiten Werte zusammen, die eine Zone
