@@ -1,6 +1,48 @@
 # Stand
 
-Letzte Aktualisierung: 2026-09-11.
+Letzte Aktualisierung: 2026-09-21.
+
+## Doku mit Bildern, Screenshot-Werkzeug, drei Fehler aus dem Hinsehen
+
+`tools/screenshots.py` nimmt jede GET-Ansicht der Weboberfläche auf — Anlagensicht,
+Wohnungssicht, Einrichtung, Anmeldung, Kiosk — gegen einen eigenen Server mit erfundenen
+Demodaten (`tools/screenshot_seed.py`). Versioniert sind nur die 25 Bilder, die die Doku
+einbindet (`--doku` → `docs/bilder/`, 5 MB); der volle Satz geht ins ignorierte
+`var/bilder/`. `browser_tests/test_screenshots.py` meldet jede neue Route ohne Aufnahme,
+`tests/test_docs_current.py` hält Kennzeichen und Einbindungen in beide Richtungen
+zusammen. Chromium läuft mit `--lang=de-DE`, sonst zeigen die Zeitfelder AM/PM.
+
+Neue Doku: `docs/bedienung.md` (beide Oberflächen, für den Betreiber) und
+`docs/wohnung.md` (nur Wohnungssicht, zum Weitergeben an Bewohner). Dabei kamen zwei
+bisher unbeschriebene Funktionen zum Vorschein: der anlagenweite Urlaub und der Regler auf
+der Zuhause-Seite, der die normale Temperatur des laufenden Zeitplanabschnitts dauerhaft
+ändert. Dieser Regler ist nur sichtbar, solange keine vorübergehende Änderung läuft — das
+ist kein ausdrücklicher Schalter, sondern folgt daraus, dass jede Übersteuerung einen
+Sollwert ohne `mode_id` liefert (`domain/schedule.py`, `tenant_start.html`). Wer daran
+etwas ändert, ändert die Sichtbarkeit mit.
+
+`tests/test_user_visible_effect_texts.py` hat zwei Sätze der neuen Doku abgewiesen, die
+eine bestätigte Heizwirkung behaupteten, wo die Anwendung nur Entscheidungen kennt
+(Heizstatistik, Startseitenchip). Beide umformuliert, nicht ins Verzeichnis eingetragen.
+
+Beim Ansehen der Bilder gefunden und behoben:
+- `/controllers`: Die Vorlage verglich Geräte-IDs mit Zonen-IDs (`manageable_ids`); jetzt
+  eigene Menge `manageable_device_ids` mit demselben Join wie `_managed_device()`.
+- `/controllers`: Ein Raumfühler hängt nur über `zone.temperature_source_device_id` an der
+  Zone (bewusst keine Rolle `sensor`); `_devices_in()` las nur `ZoneDevice` und bot ihn
+  deshalb nie an, `_require_readable_device()` wies ihn mit 404 ab. Beide lesen jetzt
+  beide Quellen, gebunden an Zonen mit `device.read`.
+- `.tc-roomtabs` brach lange Raumnamen mitten im Wort; jetzt einzeilig, seitlich scrollend.
+
+Offen:
+- `browser_tests/test_start_page_live.py::test_an_open_override_area_and_a_started_input_survive_a_refresh`
+  schlug einmal unter Last fehl und ließ sich danach nicht reproduzieren.
+- Der Zweig `release/v0.9.5` ist nicht nach `main` gemergt, obwohl das Add-on bereits auf
+  0.9.5 zeigt.
+- Die Gesamtabdeckung erreicht 100 % nur mit erreichbarer MariaDB:
+  `tests/test_migration_lock.py` deckt `thermoctl/db/migration_lock.py:122-148` ab, und
+  zwar gegen die lokale MariaDB, unabhängig von `THERMOCTL_TEST_DATABASE_URL`. Ein reiner
+  SQLite-Lauf ohne MariaDB zeigt 99 % — das ist kein Befund.
 
 ## Die Meross-Anmeldesperre war selbstverursacht -- Backoff, geteilte Sitzung, sichtbarer Grund
 

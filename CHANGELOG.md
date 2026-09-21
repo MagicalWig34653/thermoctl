@@ -9,6 +9,35 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ---
 
+## Unveröffentlicht
+
+### Neu
+
+- **Bilder in der Doku.** Die README zeigt jetzt, wie thermoctl aussieht, und
+  verweist auf zwei neue Anleitungen: `docs/bedienung.md` beschreibt beide
+  Oberflächen für den Betreiber, `docs/wohnung.md` ist zum Weitergeben an
+  Bewohner gedacht — nur die Wohnungssicht, ohne Technik. `self-hosting.md`,
+  `inbetriebnahme-schattenbetrieb.md` und `scharfschalten.md` zeigen die Seite,
+  um die es im jeweiligen Schritt geht.
+- **Screenshots per Werkzeug.** `.venv/bin/python -m tools.screenshots --doku`
+  startet einen eigenen Server mit erfundenen Demodaten und erzeugt die in der
+  Doku eingebundenen Bilder neu; ohne `--doku` entstehen alle rund hundert
+  Ansichten im ignorierten `var/bilder/`. Ein Test meldet jede neue Seite, die
+  weder aufgenommen noch begründet ausgeschlossen ist.
+
+### Behoben
+
+- **Das Bearbeitungsformular der Bediengeräte blieb meist verborgen.** Die
+  Vorlage verglich eine Geräte-ID mit einer Menge von Zonen-IDs; ob ein Verwalter
+  die Formulare sah, hing an der Nummerierung. Die Rechteprüfung beim Speichern
+  war davon nie betroffen.
+- **Der Raumfühler fehlte in der Auswahl der Temperaturquellen** auf
+  „Bediengeräte" und scheiterte beim Speichern an „Quellgerät nicht gefunden".
+- **Lange Raumnamen brachen in den Raumreitern mitten im Wort um.** Die Leiste
+  scrollt jetzt seitlich.
+
+---
+
 ## 0.9.4 — 2026-09-11
 
 **Wer Meross-Steckdosen schaltet, sollte aktualisieren.** Bis hierher konnte sich

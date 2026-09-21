@@ -106,8 +106,8 @@
       "Meross-Steckdosen und selbstregelnde Ventile. Sein gespeicherter erster Riegel lässt sich",
       "Schaltaktoren — selbstregelnde Ventile und Geräte mit `thermostat`-Fähigkeit sind",
       "Schalter: PI schaltet deutlich häufiger und verkürzt die Lebensdauer eines Schaltaktors.",
+      "Weile wärmer\" und einem Abwesenheitszeitraum. Wie beide aussehen und sich bedienen lassen,",
       "Wie oft eine Zone tatsächlich schaltet, zeigt die Seite **Relaisverschleiß** je Gerät und",
-      "Wochenplan, Heizzeit, „für eine Weile wärmer\", „zur nächsten Schaltzeit springen\" und",
       "an einer echten Heizung.",
       "beseitigt genau das. Weniger Verbrauch oder schnelleres Aufheizen folgt daraus nicht.",
       "kann das Ventil auch selbst regeln und bekommt dann nur Soll- und Ist-Temperatur), eine",
@@ -159,6 +159,22 @@
       "gewöhnlichen Schaltaktor stehen darf — PI steuert dann nur diesen Schaltaktor an. Der",
       "warum PI deutlich häufiger schaltet als die Hysterese — die Zahlen dazu stehen am Schalter",
       "weitergereicht —, ebenso eine Zone ganz ohne gewöhnlichen Schaltaktor. Ein"
+    ],
+    "docs/bedienung.md": [
+      "![Betriebsseite im Trockenlauf: Hinweistext, Schaltfläche „Scharf schalten …\" und darunter die Ist/Soll-Werte aller sechs Zonen](bilder/anlage-betrieb.png)",
+      "![Heizzeit-Ansicht mit vier Räumen als Balkendiagramm über 7 Tage und dem Hinweis, dass die Anlage derzeit nicht schaltet](bilder/wohnung-heizzeit.png)",
+      "![Relaisverschleiß-Seite mit Zeitraumauswahl (7/30/90 Tage) und dem Hinweis, dass in diesem Zeitraum noch keine Schaltaktoren protokolliert wurden](bilder/anlage-relaisverschleiss.png)",
+      "![Zuhause-Ansicht mit vier Raumkarten; oben ein aktiver Abwesenheitszeitraum, je Karte eine laufende Übersteuerung mit „Beenden\" sowie die Knöpfe „Für eine Weile wärmer\", „Zur nächsten Schaltzeit springen\" und „Laufende Änderung ersetzen\"](bilder/wohnung-abwesenheit.png)",
+      "**Betrieb** ist der Ort, an dem entschieden wird, ob die Anlage wirklich schaltet. Im",
+      "- **„Für eine Weile wärmer\"** setzt eine feste Temperatur bis zu einem selbst gewählten",
+      "Kostenmesser und keine Bestätigung einer körperlichen Heizwirkung: Wie warm ein Raum dabei",
+      "Temperaturmessung, Schaltausgang oder Thermostatventil. Zonen ohne Meldung stehen oben",
+      "aktuelle Heizentscheidung und ein Band mit dem Tagesplan der nächsten 24 Stunden — je wärmer",
+      "die Anlage einrichtet, eine eigene Instanz aufsetzt oder scharf schaltet, findet das in",
+      "minutengenau ein — sie fragt nur, wann es warm sein soll: eine Zeit für „Tag ab\" und eine",
+      "nur kurz wärmer haben wollte.",
+      "wann *geheizt worden wäre*, nicht was wirklich geschah.",
+      "wird. Fenster, Sensorausfall, Mindestschaltdauern und Ventilschutz gelten dabei"
     ],
     "docs/docker-swarm.md": [
       "# Der Aktiv-Bereitschafts-Verbund unter Docker Swarm",
@@ -296,6 +312,7 @@
       "übersprungen** — thermoctl lief als Erstes direkt scharf an der echten Heizung, mit dem"
     ],
     "docs/scharfschalten.md": [
+      "![Betriebsseite im Trockenlauf mit der Schaltfläche „Scharf schalten …\" und darunter Ist- und Sollwerten aller Zonen](bilder/anlage-betrieb.png)",
       "# Ohne Schattenbetrieb scharf schalten",
       "## 6. Woran man merkt, dass etwas nicht schaltet, obwohl es soll",
       "**Ein unauffälliger Abend** zeigt für jede Zone mit aktivem Aktor wenige Einträge —",
@@ -392,6 +409,21 @@
     "docs/veroeffentlichung-durchsicht.md": [
       "eine Heizung in einer bewohnten Wohnung\" sowie „Ins offene Internet gehört dieser",
       "öffentlich geschaltet wird — sie listet, was dem heute entgegensteht, damit der"
+    ],
+    "docs/wohnung.md": [
+      "## Heizzeit: wie viel geheizt wurde",
+      "## Zeitplan: wann es warm sein soll",
+      "- **Hilfe** — eine kurze Erklärung, was die Anzeigen bedeuten (Sollwert, „Heizt\"/„Wartet\",",
+      "- **„Für eine Weile wärmer\"** stellt eine Temperatur nur bis zu einem von Ihnen",
+      "Diese Anleitung erklärt, wie Sie Ihre Heizung über den Webbrowser sehen und bedienen —",
+      "Eine kurzzeitige Änderung über „Für eine Weile wärmer\" verändert diesen Wochenplan",
+      "Im Reiter **Zeitplan** legen Sie je Raum fest, ab wann es tagsüber wärmer und ab wann es",
+      "Kostenmesser. Wie warm ein Raum dabei tatsächlich wurde, hängt auch vom Wetter, vom",
+      "Tagen geheizt wurde. Das ist eine grobe Orientierung — **kein** Energie- oder",
+      "aus, worum es geht (Raum wird nicht warm, Temperatur wirkt falsch, Raum zu warm,",
+      "gerade dieser Wert gilt. Darunter ein Balken, der zeigt, wie warm es heute laufen soll —",
+      "je dunkler, desto wärmer.",
+      "schaltet, zeigen die Balken, wann geheizt worden *wäre* — das kann in dieser Zeit von"
     ],
     "thermoctl/db/models/lookup.py": [
       "Aktor",
