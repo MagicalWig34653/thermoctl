@@ -158,6 +158,22 @@ Wer sie nachbaut: Der Pfad zur Konfigurationsdatei muss dort **relativ** stehen
 naiv an Leerzeichen, und ein absoluter Pfad zerbricht deshalb, sobald das Projekt in einem
 Verzeichnis mit Leerzeichen liegt — hier „Code Projekte".
 
+**Screenshots neu erzeugen.** Das Werkzeug startet einen eigenen Server mit frischer
+SQLite-Datenbank und erfundenen Demodaten; es liest keine `.env`. Es nimmt alle
+Ansichten einschließlich Einrichtung und Wohnungssicht auf, letztere sowie Startseite
+und Kiosk zusätzlich mit 390 Pixeln Breite (sonst 1280, immer die ganze Seite).
+
+```bash
+.venv/bin/python -m tools.screenshots
+.venv/bin/python -m tools.screenshots --ausgabe docs/bilder --nur 'wohnung-*'
+```
+
+`--nur` filtert die Namen `<profil>-<ansicht>` mit einem Shell-Muster. Ohne Filter
+entstehen alle PNGs in `docs/bilder/`; gleichnamige Bilder werden ersetzt. Demodaten
+werden relativ zum Laufzeitpunkt angelegt, damit Messwerte frisch bleiben. HTTP- und
+Browserfehler brechen den Lauf ab. Die Routenabdeckung und ein gefilterter Probelauf
+werden von `browser_tests/test_screenshots.py` geprüft.
+
 ## Noch nicht enthalten
 
 Der Regelkreis ist gebaut und erschöpfend getestet, und alle vier Aktorwege sind mit ihm
