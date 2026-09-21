@@ -43,6 +43,9 @@ Was in den ersten Minuten zu sehen sein sollte:
 Über die Oberfläche, ohne SQL:
 
 1. **`/zonen`** — je Raum eine Zone anlegen.
+
+   ![Zonenliste mit mehreren Räumen, je mit Betriebsart und Schaltflächen für Geräte, Zeitplan und Bearbeiten](bilder/anlage-zonen.png)
+
 2. **`/zonen/<id>/geraete`** — die Messquelle wählen (der Temperatursensor des Raums), dazu
    Aktoren und, falls vorhanden, Fensterkontakte.
 3. **`/modi`** und **`/zonen/<id>/sollwerte`** — je Modus eine Temperatur.
@@ -55,6 +58,8 @@ Was in den ersten Minuten zu sehen sein sollte:
 
 Auf der **Startseite** steht je Zone: Ist-Wert und wie alt er ist, Sollwert **mit
 Begründung**, Sensorzustand, und die letzte Schattenentscheidung.
+
+![Startseite mit mehreren Zonen, je mit Ist-Wert, Sollwert samt Begründung und Zeitplan-Band](bilder/anlage-startseite.png)
 
 Über mehrere Tage sind drei Dinge zu prüfen — sie sind das Abnahmekriterium von
 Teilprojekt 2:

@@ -4,6 +4,37 @@
 Zeitplänen, konfiguriert über eine Weboberfläche, ansprechbar zusätzlich über eine
 REST-Schnittstelle und einen MCP-Server.
 
+Seit 0.9.0 gibt es **zwei Weboberflächen statt einer**. Welche jemand bekommt, hängt an
+seiner Gruppe: die **Anlagensicht** für Verwaltung und Technik — Zonen, Geräte, Betrieb,
+Protokolle, Rechte —, oder die **Wohnungssicht** für die Bewohner eines einzelnen Raums:
+nur die eigenen Räume, in Alltagssprache, mit Temperatur, Wochenplan, Heizzeit, „für eine
+Weile wärmer" und einem Abwesenheitszeitraum. Wie beide aussehen und sich bedienen lassen,
+zeigt die **[Bedienungsanleitung](docs/bedienung.md)**.
+
+<table>
+<tr>
+<td width="50%">
+
+**Anlagensicht** — alle Zonen im Blick, mit Übersteuerung und Tagesplan je Raum.
+
+<img src="docs/bilder/anlage-startseite.png" alt="Startseite der Anlagensicht: sechs Zonen mit Ist-Temperatur, Sollwert, Zeitplan-Band und Freigabestatus" width="100%">
+
+</td>
+<td width="50%">
+
+**Wohnungssicht (mobil)** — nur die eigenen Räume, in Alltagssprache.
+
+<img src="docs/bilder/wohnung-startseite-mobil.png" alt="Wohnungssicht auf dem Handy: eigene Räume mit Temperatur, Sollwert und Knöpfen für vorübergehende Änderungen" width="100%">
+
+</td>
+</tr>
+</table>
+
+**Ein Wandtablet-Dashboard** rundet das ab — großformatig, ohne Anmeldung, hinter einem
+jederzeit widerrufbaren Kiosk-Token:
+
+<img src="docs/bilder/kiosk-dashboard.png" alt="Kiosk-Dashboard für ein Wandtablet: Zonen nebeneinander mit Ist-Wert, Sollwert-Reglern und Heizanforderung" width="70%">
+
 Was heute läuft: Sensoren werden über Zigbee2MQTT eingelesen, Messwerte fortgeschrieben,
 ausgefallene Sensoren erkannt und gemeldet. Räume, Geräte, Sollwerte und Zeitpläne lassen
 sich vollständig über die Oberfläche pflegen — Geräte per Ziehen und Ablegen. Für jede Zone
@@ -21,14 +52,6 @@ sichtbarem Zustellzustand unter „Einstellungen".
 Home-Assistant-Add-on, mit Ingress-Einbindung und automatischer Rechteanpassung beim
 Start. Wer bereits per `docker compose` betreibt, findet den Umstiegsweg in
 [self-hosting.md](docs/self-hosting.md#6b-umstieg-von-docker-compose-auf-das-home-assistant-add-on).
-
-Seit 0.9.0 gibt es **zwei Weboberflächen statt einer**. Welche jemand bekommt, hängt an
-seiner Gruppe: die **Anlagensicht** mit Betrieb, Geräten, Protokollen und Rechten, oder
-die **Wohnungssicht** — nur die eigenen Räume, in Alltagssprache, mit Temperatur,
-Wochenplan, Heizzeit, „für eine Weile wärmer", „zur nächsten Schaltzeit springen" und
-einem Abwesenheitszeitraum. Das Profil entscheidet allein, *was zu sehen ist*; *was
-erlaubt ist*, entscheiden weiterhin die Rechte, und beide Prüfungen laufen
-hintereinander. Beim Upgrade bleibt jede bestehende Gruppe in der Anlagensicht.
 
 Seit 0.5.0 gibt es zusätzlich eine **PI-Regelung als Beta**, je Zone einschaltbar und aus
 als Vorgabe. Sie ersetzt für eine eingeschaltete Zone die Hysterese durch einen
@@ -48,6 +71,10 @@ selbstregelnde Thermostatventile ebenso wie Ein/Aus-Befehle an gewöhnliche Akto
 
 ## Weiterlesen
 
+- **[Bedienungsanleitung](docs/bedienung.md)** — für alle, die thermoctl benutzen statt
+  betreiben: Anlagensicht und Wohnungssicht, Bild für Bild.
+- **[Ihre Wohnung online steuern](docs/wohnung.md)** — die technikfreie Kurzanleitung
+  zum Weitergeben an Bewohner, die nur die Wohnungssicht sehen.
 - **[Den Schattenbetrieb in Gang setzen](docs/inbetriebnahme-schattenbetrieb.md)** — der
   nächste Schritt an der echten Anlage.
 - **[Eine eigene Instanz betreiben](docs/self-hosting.md)** — Schritt für Schritt, mit
@@ -157,6 +184,27 @@ Wer sie nachbaut: Der Pfad zur Konfigurationsdatei muss dort **relativ** stehen
 (`-c browser_tests/pytest.ini`). PyCharm zerlegt die Zusatzargumente einer Testkonfiguration
 naiv an Leerzeichen, und ein absoluter Pfad zerbricht deshalb, sobald das Projekt in einem
 Verzeichnis mit Leerzeichen liegt — hier „Code Projekte".
+
+**Screenshots neu erzeugen.** Das Werkzeug startet einen eigenen Server mit frischer
+SQLite-Datenbank und erfundenen Demodaten; es liest keine `.env`. Es nimmt alle
+Ansichten einschließlich Einrichtung und Wohnungssicht auf, letztere sowie Startseite
+und Kiosk zusätzlich mit 390 Pixeln Breite (sonst 1280, immer die ganze Seite).
+
+```bash
+.venv/bin/python -m tools.screenshots
+.venv/bin/python -m tools.screenshots --nur 'wohnung-*'
+.venv/bin/python -m tools.screenshots --doku
+```
+
+`--nur` filtert die Namen `<profil>-<ansicht>` mit einem Shell-Muster. Ohne `--doku`
+entstehen die PNGs standardmäßig im ignorierten `var/bilder/`; gleichnamige Bilder werden
+ersetzt. `--doku` schreibt stattdessen ausschließlich die als `documented` gekennzeichneten
+Ansichten nach `docs/bilder/` (und ignoriert dabei `--ausgabe`) -- nur diese Bilder werden
+versioniert. Demodaten werden relativ zum Laufzeitpunkt angelegt, damit Messwerte frisch
+bleiben. HTTP- und Browserfehler brechen den Lauf ab. Die Routenabdeckung und ein
+gefilterter Probelauf werden von `browser_tests/test_screenshots.py` geprüft, der Abgleich
+zwischen `documented`-Kennzeichen und den tatsächlich in der Dokumentation eingebundenen
+Bildern von `tests/test_docs_current.py`.
 
 ## Noch nicht enthalten
 

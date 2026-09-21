@@ -174,6 +174,67 @@ def test_the_controller_page_and_both_form_endpoints(client_als, session: Sessio
     assert response.status_code == 303
 
 
+def test_a_room_sensor_used_only_as_temperature_source_appears_as_a_source(
+    client_als, session: Session
+) -> None:
+    """A pure room-temperature sensor is attached to a zone only through
+    `zone.temperature_source_device_id` (see `domain/device_assignment.py`'s
+    `TEMPERATURE_SOURCE` and `set_temperature_source`) -- there is no `sensor` role
+    it could hold in `ZoneDevice`, `assign_device` never creates one for it.
+
+    `_devices_in()` used to join solely over `ZoneDevice`, so such a sensor could
+    never appear in the 'Temperaturquellen' pool that feeds a controller's write
+    channel, even though an actuator sharing the same zone did.
+    """
+    _kinds(session)
+    zone = create_zone(session, "wohnzimmer")
+    controller = create_device(session, "wandgeraet")
+    _assign(session, zone.id, controller.id, "controller")
+    sensor = create_device(session, "raumfuehler")
+    zone.temperature_source_device_id = sensor.id
+    session.flush()
+    _property(session, controller.id, readable=True)
+
+    client = client_als([("device.read", zone.id), ("device.manage", zone.id)])
+    response = client.get("/controllers")
+
+    assert response.status_code == 200
+    assert "raumfuehler" in response.text
+
+
+def test_a_room_sensor_can_be_picked_as_a_channel_source(
+    client_als, session: Session
+) -> None:
+    """The counterpart to the read above: submitting the form with such a sensor's
+    id must not be rejected by `_require_readable_device`, which used to run the
+    same `ZoneDevice`-only check and would 404 a device the page had just offered.
+    """
+    _kinds(session)
+    zone = create_zone(session, "kueche")
+    controller = create_device(session, "kuechenpanel")
+    _assign(session, zone.id, controller.id, "controller")
+    sensor = create_device(session, "kuechenfuehler")
+    zone.temperature_source_device_id = sensor.id
+    session.flush()
+    _property(session, controller.id)
+
+    client = client_als([("device.read", zone.id), ("device.manage", zone.id)])
+    response = client.post(
+        "/controllers/channel",
+        data={
+            "device_id": controller.id,
+            "property_name": "external_temperature",
+            "direction": "write",
+            "kind": "sensor_temperature",
+            "source_device_id": sensor.id,
+        },
+        headers=_csrf(client),
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+
+
 def test_the_controllers_page_with_no_visible_zone_shows_nothing(
     client_als, session: Session
 ) -> None:
@@ -658,6 +719,43 @@ def test_a_controller_in_a_foreign_zone_is_not_found(client_als, session: Sessio
     assert response.status_code == 404
 
 
+def test_a_temperature_source_in_a_foreign_zone_is_not_found(
+    client_als, session: Session
+) -> None:
+    """The counterpart to `_devices_in()` picking up `zone.temperature_source_device_id`:
+    that second source must stay scoped to the principal's own visible zones just like
+    the `ZoneDevice` one always was. A sensor hanging off a foreign zone's temperature
+    source -- never a `ZoneDevice` row -- must still 404 as a channel's `source_device_id`,
+    not be accepted because `_require_readable_device()` now also checks that column.
+    """
+    _kinds(session)
+    own_zone = create_zone(session, "eigene-zone")
+    controller = create_device(session, "eigenes-bediengeraet")
+    _assign(session, own_zone.id, controller.id, "controller")
+    _property(session, controller.id)
+
+    foreign_zone = create_zone(session, "fremde-zone")
+    foreign_sensor = create_device(session, "fremder-fuehler")
+    foreign_zone.temperature_source_device_id = foreign_sensor.id
+    session.flush()
+
+    client = client_als([("device.read", own_zone.id), ("device.manage", own_zone.id)])
+    response = client.post(
+        "/controllers/channel",
+        data={
+            "device_id": controller.id,
+            "property_name": "external_temperature",
+            "direction": "write",
+            "kind": "sensor_temperature",
+            "source_device_id": foreign_sensor.id,
+        },
+        headers=_csrf(client),
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 404
+
+
 def _temperature_measurement(
     session: Session, device_id: int, value: str, when: datetime
 ) -> None:
@@ -849,6 +947,82 @@ async def test_a_device_that_became_an_actuator_is_no_longer_written_to(
         session, recorder, state, "zigbee2mqtt", datetime(2026, 8, 30, 10, 0)
     )
     assert recorder.messages == []
+
+
+def test_the_edit_form_is_shown_only_to_a_principal_who_may_manage_the_zone(
+    client_als, session: Session
+) -> None:
+    """`controllers.html` decides whether to show the edit form (as opposed to the
+    read-only label) by checking `device.id in manageable_ids` -- but
+    `_context()` fills `manageable_ids` with *zone* ids (`device.manage` is a
+    zone-scoped permission; a controller device has no permission of its own).
+    A device id can never appear in a set of zone ids unless the two id spaces
+    collide by chance, so an administrator who may in fact manage the zone
+    practically never sees the edit forms ("Was ankommt", "Was hingeschickt
+    wird").
+
+    The fix must show the form exactly when the principal may manage a zone the
+    device sits in as a controller -- the same test `_managed_device()` (used by
+    both POST endpoints) already applies -- without widening what a POST accepts.
+    """
+    _kinds(session)
+    # Zwei ungenutzte Zonen zuerst angelegt: Zone- und Gerätetabelle zählen ihre
+    # Autoinkrement-Ids unabhängig voneinander hoch, und ohne diesen Vorlauf wäre
+    # `zone.id == device.id` reiner Zufall der Anlagereihenfolge -- der Test würde
+    # den Fehler dann nur zufällig treffen, je nachdem, welche andere Zone oder
+    # welches andere Gerät die Testsuite vorher in derselben Sitzung angelegt hat.
+    create_zone(session, "vorlaufzone-1")
+    create_zone(session, "vorlaufzone-2")
+    zone = create_zone(session, "formularzone")
+    device = create_device(session, "formulargeraet")
+    assert zone.id != device.id, "Vorlauf griff nicht -- der Test prüft dann nichts"
+    _assign(session, zone.id, device.id, "controller")
+    _property(session, device.id, readable=True)
+
+    manager = client_als([("device.read", zone.id), ("device.manage", zone.id)])
+    response = manager.get("/controllers")
+    assert response.status_code == 200
+    assert 'action="/controllers/channel"' in response.text, (
+        "Wer die Zone verwalten darf, bekommt hier keine Bearbeitungsform zu sehen"
+    )
+
+    reader = client_als([("device.read", zone.id)])
+    response = reader.get("/controllers")
+    assert response.status_code == 200
+    assert 'action="/controllers/channel"' not in response.text, (
+        "Wer die Zone nur lesen darf, sieht trotzdem die Bearbeitungsform"
+    )
+    assert "Nicht belegt" in response.text
+
+
+def test_the_post_endpoint_rejects_a_device_the_forged_request_names_regardless_of_the_form(
+    client_als, session: Session
+) -> None:
+    """The template condition above only controls what is *shown* -- the
+    endpoint must reject the very same request on its own, exactly as if the
+    form had never been hidden. Otherwise the visibility fix in the template
+    would be the only thing standing between a read-only principal and a write.
+    """
+    _kinds(session)
+    zone = create_zone(session, "erzwungene-zone")
+    device = create_device(session, "erzwungenes-geraet")
+    _assign(session, zone.id, device.id, "controller")
+    _property(session, device.id, readable=True)
+
+    reader = client_als([("device.read", zone.id)])
+    response = reader.post(
+        "/controllers/channel",
+        data={
+            "device_id": str(device.id),
+            "property_name": "external_temperature",
+            "direction": "write",
+            "kind": "fixed",
+            "fixed_number": "21",
+        },
+        headers=_csrf(reader),
+        follow_redirects=False,
+    )
+    assert response.status_code == 404
 
 
 def test_the_controllers_page_shows_a_configured_channel(

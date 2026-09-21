@@ -71,6 +71,13 @@ Neustart erzeugt kein zweites. Behandeln Sie das Log entsprechend.
 Dann `http://127.0.0.1:8000/setup` im Browser öffnen, Token einsetzen, ersten Verwalter
 anlegen. Danach ist `/setup` dauerhaft geschlossen, nicht nur ausgeblendet.
 
+![Einrichtungsseite mit den Feldern Einrichtungs-Token, Benutzername, Anzeigename, Passwort und Zeitzone](bilder/oeffentlich-einrichtung.png)
+
+Von da an führt jeder Aufruf ohne gültige Sitzung auf dieselbe Anmeldeseite —
+Benutzername und Passwort des gerade angelegten Kontos.
+
+![Anmeldeseite von thermoctl mit den Feldern Benutzername und Passwort](bilder/oeffentlich-anmeldung.png)
+
 ## 4. Ins Netz stellen — nur mit TLS
 
 Das Beispiel-Compose bindet den Port bewusst nur an `127.0.0.1`. Wer den Dienst im Netz
@@ -419,6 +426,12 @@ Token ausgestellt:
 3. „Auch bedienen" nur setzen, wenn am Tablet wirklich verstellt werden soll — sonst zeigt
    es nur an.
 4. Optional eine Gültigkeit in Tagen. Ein befristetes Token ist die sicherere Wahl.
+
+![Formular für Kiosk-Tokens mit einem bereits ausgestellten Token und den Feldern Name, Zonen, „Auch bedienen" und Gültigkeit](bilder/anlage-kiosk-token.png)
+
+Das Ergebnis auf dem Tablet: eine große, für den Abstand zur Wand lesbare Kachel je Zone.
+
+![Kiosk-Dashboard mit sechs Zonen nebeneinander, je mit Ist-Temperatur, Sollwert-Reglern und Heizanforderungsanzeige](bilder/kiosk-dashboard.png)
 
 Die Adresse erscheint **einmal** im Klartext, in der Form `/kiosk/<token>`. Diese Adresse
 als Lesezeichen auf dem Tablet ablegen; danach lebt das Token nur noch in einem Cookie, und
