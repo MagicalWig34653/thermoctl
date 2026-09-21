@@ -355,16 +355,14 @@ def test_documented_screenshots_match_what_the_documentation_actually_embeds() -
     nobody references. This ties the two together directly instead of trusting that
     whoever changes one remembers the other.
 
-    On this branch itself neither README.md nor docs/*.md embeds any
-    `docs/bilder/*.png` yet -- marking views `documented` and actually wiring the
-    images into the prose are two separate changes, and the second one has not
-    landed here. So this only enforces the direction that is meaningful before that
-    catch-up: no reference can exist for an unmarked view (vacuously true while there
-    are no references at all -- both sides empty). The moment the documentation
-    change adds its first `docs/bilder/*.png` reference, this starts enforcing the
-    reverse direction too -- every marked view must then actually be embedded
-    somewhere, so a forgotten flag or a forgotten embed shows up immediately instead
-    of drifting apart unnoticed.
+    README.md lives at the repository root, so it references an image as
+    `docs/bilder/<name>.png`; every file under `docs/*.md` references the same image
+    relative to its own directory, i.e. `bilder/<name>.png` (no `docs/` prefix -- that
+    would resolve to a nonexistent `docs/docs/bilder/`). Both forms are checked, each
+    anchored to the directory it is actually relative to, so a typo'd path -- say a
+    `docs/*.md` file that accidentally wrote the README's `docs/bilder/...` form -- would
+    not be mistaken for a real reference: rendered from within `docs/`, that string
+    points nowhere.
     """
     from tools.screenshots import VIEWS
 
@@ -376,10 +374,11 @@ def test_documented_screenshots_match_what_the_documentation_actually_embeds() -
             expected.add(f"{view.stem}-mobil.png")
 
     embedded: set[str] = set()
-    for name in ("README.md", *sorted(p.name for p in (ROOT / "docs").glob("*.md"))):
-        path = name if name == "README.md" else f"docs/{name}"
-        text = (ROOT / path).read_text(encoding="utf-8")
-        embedded.update(re.findall(r"docs/bilder/([\w-]+\.png)", text))
+    readme_text = (ROOT / "README.md").read_text(encoding="utf-8")
+    embedded.update(re.findall(r"docs/bilder/([\w-]+\.png)", readme_text))
+    for path in sorted((ROOT / "docs").glob("*.md")):
+        text = path.read_text(encoding="utf-8")
+        embedded.update(re.findall(r"(?<!docs/)\bbilder/([\w-]+\.png)", text))
 
     missing_flag = sorted(embedded - expected)
     assert not missing_flag, (
@@ -387,14 +386,11 @@ def test_documented_screenshots_match_what_the_documentation_actually_embeds() -
         "in tools/screenshots.py: " + ", ".join(missing_flag)
     )
 
-    if embedded:
-        # The documentation has started referencing images -- from here on both
-        # sides must match exactly.
-        missing_embed = sorted(expected - embedded)
-        assert not missing_embed, (
-            "Als documented gekennzeichnete Ansichten, die in keiner Dokumentationsdatei "
-            "eingebunden sind: " + ", ".join(missing_embed)
-        )
+    missing_embed = sorted(expected - embedded)
+    assert not missing_embed, (
+        "Als documented gekennzeichnete Ansichten, die in keiner Dokumentationsdatei "
+        "eingebunden sind: " + ", ".join(missing_embed)
+    )
 
 
 def test_homebridge_documentation_operating_modes_match_the_code() -> None:
