@@ -12,6 +12,7 @@ present because the token was issued with "auch bedienen".
 from __future__ import annotations
 
 import re
+from decimal import Decimal
 
 import pytest
 from playwright.sync_api import Browser, FloatRect, Page, expect
@@ -19,12 +20,15 @@ from sqlalchemy import select
 
 from browser_tests import seed
 from browser_tests.conftest import LiveServer, _record_console_error
+from tests.helpers import sensor_status_of
 from thermoctl.auth.tokens import resolve_token
 from thermoctl.db.base import utcnow
 from thermoctl.db.models.identity import User
+from thermoctl.db.models.state import ZoneState
 from thermoctl.db.models.zone import Zone
 from thermoctl.domain.kiosk import issue_kiosk_token
 from thermoctl.domain.remote_control import boost as domain_boost
+from thermoctl.domain.remote_control import set_setpoint
 
 pytestmark = pytest.mark.browser
 
@@ -66,10 +70,10 @@ def test_the_kiosk_dashboard_shows_the_zone_and_lets_the_setpoint_be_adjusted(
     try:
         kiosk_page.goto(f"/kiosk/{plaintext}")
         expect(kiosk_page).to_have_url(re.compile(r"/kiosk$"))
-        # Scoped to the tile, not the whole page: since 0.9.5 the zone's name also
-        # sits in its (invisible, until opened) detail layer further down the same
-        # document (kiosk.html) -- `get_by_text` on the whole page would match both
-        # and fail on ambiguity.
+        # Scoped to the tile, not the whole page: since the panel view, the zone's
+        # name also sits in its (invisible, until opened) detail layer further down
+        # the same document (kiosk.html) -- `get_by_text` on the whole page would
+        # match both and fail on ambiguity.
         expect(
             kiosk_page.locator(".kiosk-tile", has_text=zone_display_name)
         ).to_be_visible()
@@ -89,7 +93,7 @@ def test_the_kiosk_dashboard_shows_the_zone_and_lets_the_setpoint_be_adjusted(
         kiosk_context.close()
 
 
-# --- Panel-Ansicht (0.9.5): 480×480 und andere Wandformate --------------------------
+# --- Panel-Ansicht: 480×480 und andere Wandformate ----------------------------------
 #
 # Der Projektinhaber maß die laufende Anwendung mit sechs Zonen: eine einzige Kachel
 # ohne Scrollen auf 480×480, zwei auf 800×480 (siehe Auftrag). Sechs Zonen sind daher
@@ -137,8 +141,18 @@ def _issue_kiosk_token_for_zones(live_server: LiveServer, zone_ids: list[int]) -
 
 def _open_panel_kiosk(
     browser: Browser, live_server: LiveServer, plaintext: str,
-    *, width: int, height: int,
+    *, width: int, height: int, install_clock: bool = False,
 ) -> tuple[Page, list[str]]:
+    """`install_clock=True` installs Playwright's fake clock *before*
+    navigation, not after. htmx registers its own `every 20s` poll through the
+    real `setInterval` the moment the page first loads; installing the clock
+    only after `goto()` leaves that already-running interval real and ticking
+    in actual wall-clock time, immune to `page.clock.run_for()` -- a first
+    version of the timeout tests below did exactly that and silently verified
+    nothing about polling (zero real polls fired during `run_for(46_000)`, and
+    the detail still closed on schedule, because only `kiosk_panel.js`'s own
+    45s timer, started after `install()`, was fake).
+    """
     context = browser.new_context(
         base_url=live_server.base_url, color_scheme="light",
         viewport={"width": width, "height": height},
@@ -146,6 +160,8 @@ def _open_panel_kiosk(
     errors: list[str] = []
     page = context.new_page()
     page.on("console", lambda message: _record_console_error(errors, message))
+    if install_clock:
+        page.clock.install()
     page.goto(f"/kiosk/{plaintext}")
     expect(page).to_have_url(re.compile(r"/kiosk$"))
     return page, errors
@@ -169,7 +185,15 @@ def _start_override(live_server: LiveServer, zone_id: int, plaintext: str) -> No
 
 def _visible_tap_targets(page: Page) -> list[FloatRect]:
     """Bounding boxes of every visible button-like element -- the tile itself
-    included (`role="button"` in the panel overview)."""
+    included (`role="button"` in the panel overview).
+
+    Deliberately not every clickable element: the AGPL source link in the
+    heading is excluded on purpose (see the comment on `.kiosk-source-link` in
+    thermoctl.css) -- it is not a control of the plant, and forcing it to 44 px
+    would have cost the grid the vertical space six zones need to fit without
+    scrolling. The 44 px guarantee below covers this page's actual controls
+    (tiles, buttons), not incidental links.
+    """
     boxes: list[FloatRect] = []
     for handle in page.locator("button, [role='button']").all():
         if not handle.is_visible():
@@ -270,27 +294,53 @@ def test_tapping_a_tile_opens_its_zone_and_back_returns_to_the_overview(
 def test_raising_the_setpoint_in_the_detail_keeps_it_open(
     live_server: LiveServer, browser: Browser
 ) -> None:
+    """Checks the exact effect, not just "some text changed": +0.5°C on the one
+    zone touched (`THERMOSTAT_STEP`, kiosk_views.py), and the five neighbours
+    left exactly as they were -- a review found the previous version of this
+    test would have missed a wrong-zone regression as long as the display text
+    changed at all, in either direction, by any amount.
+    """
     zone_ids = _seed_panel_zones(live_server, "PanelSollwert")
     plaintext = _issue_kiosk_token_for_zones(live_server, zone_ids)
 
     page, errors = _open_panel_kiosk(browser, live_server, plaintext, width=480, height=480)
     try:
-        first_tile = page.locator("[data-kiosk-tile]").first
+        tiles = page.locator("[data-kiosk-tile]")
+        first_tile = tiles.first
         zone_id = first_tile.get_attribute("data-kiosk-tile")
+        vorher_je_kachel = {
+            tile.get_attribute("data-kiosk-tile"): tile.locator(".kiosk-tile-summary").inner_text()
+            for tile in tiles.all()
+        }
+        assert vorher_je_kachel[zone_id] == "Soll 21,0 °C", vorher_je_kachel
+
         first_tile.click()
         detail = page.locator(f'[data-kiosk-detail="{zone_id}"]')
         expect(detail).to_be_visible()
 
         setpoint_value = detail.locator(".kiosk-setpoint-detail .t-value")
-        before = setpoint_value.inner_text()
+        expect(setpoint_value).to_have_text("21,0 °C")
         detail.get_by_label("Sollwert anheben").click()
 
-        expect(setpoint_value).not_to_have_text(before)
+        # Genau +0,5 °C (THERMOSTAT_STEP) -- nicht nur "irgendein anderer Text".
+        expect(setpoint_value).to_have_text("21,5 °C")
         # Die eigentliche Behauptung dieses Tests: das Formular ersetzt per htmx nur
         # `#kiosk-body`, statt die Seite neu zu laden -- der Detailbereich bleibt
         # deshalb derselbe, offene DOM-Knoten, nicht bloß "wieder" offen.
         expect(detail).to_be_visible()
         expect(detail).to_have_class(re.compile(r"\bkiosk-detail-open\b"))
+
+        nachher_je_kachel = {
+            tile.get_attribute("data-kiosk-tile"): tile.locator(".kiosk-tile-summary").inner_text()
+            for tile in page.locator("[data-kiosk-tile]").all()
+        }
+        assert nachher_je_kachel[zone_id] == "Soll 21,5 °C", nachher_je_kachel
+        for andere_zone_id, text in nachher_je_kachel.items():
+            if andere_zone_id == zone_id:
+                continue
+            assert text == vorher_je_kachel[andere_zone_id], (
+                f"Zone {andere_zone_id} hat sich mitverändert: {text!r}"
+            )
     finally:
         assert not errors, "Kiosk-Konsole meldete Fehler:\n" + "\n".join(errors)
         page.context.close()
@@ -339,12 +389,302 @@ def test_at_1024_by_600_the_original_scrolling_layout_is_unchanged(
     try:
         expect(page.locator(".kiosk-page")).to_have_attribute("data-ansicht-aktiv", "tafel")
         first_tile = page.locator("[data-kiosk-tile]").first
-        # Genau die Bedienelemente von vor 0.9.5, direkt in der Kachel -- kein Antippen
-        # nötig, um an sie heranzukommen.
+        # Genau die Bedienelemente von vor der Panel-Ansicht, direkt in der Kachel --
+        # kein Antippen nötig, um an sie heranzukommen.
         expect(first_tile.get_by_label("Sollwert anheben")).to_be_visible()
         expect(first_tile.get_by_label("Sollwert senken")).to_be_visible()
         zone_id = first_tile.get_attribute("data-kiosk-tile")
         expect(page.locator(f'[data-kiosk-detail="{zone_id}"]')).not_to_be_visible()
+    finally:
+        assert not errors, "Kiosk-Konsole meldete Fehler:\n" + "\n".join(errors)
+        page.context.close()
+
+
+# --- Regressionen aus dem Kreuzreview -----------------------------------------------
+
+
+def test_the_auto_breakpoint_is_exclusive_at_exactly_600px(
+    live_server: LiveServer, browser: Browser
+) -> None:
+    """Die Vorgabe lautet "automatisch nach Bildschirmbreite ... ab 600 px die
+    Tafel-Ansicht" -- ein Review maß, dass `max-width: 600px`
+    (`kiosk_panel.js`) 600 px selbst noch ins Panel einschloss. Prüft genau die
+    Grenze, nicht nur deutlich kleinere/größere Breiten wie die übrigen Tests.
+    """
+    zone_ids = _seed_panel_zones(live_server, "PanelGrenze")
+    plaintext = _issue_kiosk_token_for_zones(live_server, zone_ids)
+
+    page, errors = _open_panel_kiosk(browser, live_server, plaintext, width=600, height=480)
+    try:
+        expect(page.locator(".kiosk-page")).to_have_attribute("data-ansicht-aktiv", "tafel")
+    finally:
+        assert not errors, "Kiosk-Konsole meldete Fehler:\n" + "\n".join(errors)
+        page.context.close()
+
+
+def test_the_inactivity_timeout_fires_even_while_the_page_keeps_polling(
+    live_server: LiveServer, browser: Browser
+) -> None:
+    """Ein Review reproduzierte das in einem echten Browser: Detail öffnen, 67 s
+    nichts tun, während die eigene Selbstaktualisierung der Seite alle 20 s
+    (`hx-trigger="every 20s"`) weiterläuft -- das Detail schloss sich nie.
+    `kiosk_panel.js` stellte den DOM-Zustand nach jedem Tausch bisher über
+    dieselbe Funktion wieder her, die auch ein echtes Öffnen benutzt -- die
+    startet den 45-s-Timer jedes Mal neu. `page.clock` spult virtuelle Zeit vor
+    (und löst dabei die echten 20-s-Abrufe tatsächlich aus), statt 45+ echte
+    Sekunden lang stumpf zu warten.
+
+    Zählt die tatsächlichen Abrufe mit (`response`-Ereignis), statt sich auf
+    die Behauptung im Kommentar zu verlassen: Eine erste Fassung dieses Tests
+    installierte die Uhr erst nach `page.goto()` -- htmx registriert seinen
+    Intervall-Timer aber schon beim ersten Laden über die *echten*
+    Timer-Funktionen, und eine danach installierte Uhr fälscht einen bereits
+    laufenden `setInterval` nicht rückwirkend. Der Test bestand damals trotzdem
+    (der eigene, danach gestartete 45-s-Timer von `kiosk_panel.js` war ja
+    tatsächlich gefälscht), maß aber am eigentlichen Verhalten -- ob ein Poll
+    dazwischenfunkt -- vorbei: null gezählte Abrufe. Ein unabhängiges Review hat
+    das nachgewiesen.
+    """
+    zone_ids = _seed_panel_zones(live_server, "PanelTimeoutPoll")
+    plaintext = _issue_kiosk_token_for_zones(live_server, zone_ids)
+
+    polls: list[str] = []
+
+    page, errors = _open_panel_kiosk(
+        browser, live_server, plaintext, width=480, height=480, install_clock=True
+    )
+    page.on(
+        "response",
+        lambda response: polls.append(response.url)
+        if response.request.method == "GET" and response.url.rstrip("/").endswith("/kiosk")
+        else None,
+    )
+    try:
+        page.wait_for_load_state("networkidle")
+        tile = page.locator("[data-kiosk-tile]").first
+        zone_id = tile.get_attribute("data-kiosk-tile")
+        tile.click()
+        detail = page.locator(f'[data-kiosk-detail="{zone_id}"]')
+        expect(detail).to_be_visible()
+
+        polls.clear()
+        # Zwei Schritte zu 20 s -- an jedem ist die Selbstaktualisierung fällig;
+        # `wait_for_timeout` danach gibt der wirklich losgeschickten, echten
+        # Anfrage Zeit für Antwort und Tausch, bevor der nächste Schritt kommt.
+        for _ in range(2):
+            page.clock.run_for(20_000)
+            page.wait_for_timeout(200)
+        assert len(polls) >= 2, polls
+        # 40 s seit dem Öffnen, unter den 45 s -- trotz zweier Abrufe noch offen.
+        expect(detail).to_be_visible()
+
+        page.clock.run_for(10_000)  # 50 s insgesamt
+        expect(detail).not_to_be_visible()
+    finally:
+        assert not errors, "Kiosk-Konsole meldete Fehler:\n" + "\n".join(errors)
+        page.context.close()
+
+
+def test_a_real_interaction_shortly_before_the_timeout_extends_it(
+    live_server: LiveServer, browser: Browser
+) -> None:
+    """Die andere Hälfte derselben Behebung: Ein Abruf der Selbstaktualisierung
+    darf den Rücksprung nicht verlängern, eine echte Bedienung (hier: den
+    Sollwert anheben -- tauscht `#kiosk-body` ebenfalls per htmx) aber schon.
+    Übt den `pointerdown`-Zurücksetzer in `kiosk_panel.js` zusammen mit dem
+    htmx-getriebenen Wiederherstellen aus, nicht isoliert.
+    """
+    zone_ids = _seed_panel_zones(live_server, "PanelTimeoutVerlaengern")
+    plaintext = _issue_kiosk_token_for_zones(live_server, zone_ids)
+
+    page, errors = _open_panel_kiosk(
+        browser, live_server, plaintext, width=480, height=480, install_clock=True
+    )
+    try:
+        # htmx verdrahtet die Formulare der eingangs gerenderten Seite synchron
+        # beim Laden, unabhängig von der gefälschten Uhr -- unter Last (viele
+        # Browsertests hintereinander) reichte das aber nicht immer aus, bevor
+        # gleich darauf tatsächlich geklickt wird: eine noch nicht verdrahtete
+        # Form fällt auf eine gewöhnliche, volle Navigation zurück, die den
+        # gesamten JavaScript-Zustand dieser Seite (samt gefälschter Uhr)
+        # verwirft. `networkidle` gibt dem Aufbau Zeit, bevor der Test lostippt.
+        page.wait_for_load_state("networkidle")
+        tile = page.locator("[data-kiosk-tile]").first
+        zone_id = tile.get_attribute("data-kiosk-tile")
+        tile.click()
+        detail = page.locator(f'[data-kiosk-detail="{zone_id}"]')
+        expect(detail).to_be_visible()
+
+        page.clock.run_for(40_000)  # kurz vor dem 45-s-Ablauf
+        expect(detail).to_be_visible()
+        detail.get_by_label("Sollwert anheben").click()  # echte Bedienung (Maus)
+        expect(detail).to_be_visible()
+
+        # 80 s seit dem Öffnen, aber nur 40 s seit der Bedienung -- noch offen.
+        page.clock.run_for(40_000)
+        expect(detail).to_be_visible()
+
+        # 50 s seit der Bedienung -- jetzt schließt es.
+        page.clock.run_for(10_000)
+        expect(detail).not_to_be_visible()
+    finally:
+        assert not errors, "Kiosk-Konsole meldete Fehler:\n" + "\n".join(errors)
+        page.context.close()
+
+
+def test_a_real_keyboard_interaction_shortly_before_the_timeout_extends_it(
+    live_server: LiveServer, browser: Browser
+) -> None:
+    """Ein Review fand: Nur `pointerdown` zählte im Detailbereich als Bedienung.
+    Eine Tastaturaktivierung (Eingabetaste auf einem fokussierten Knopf) löst
+    kein `pointerdown` aus -- seit die Wiederherstellung nach einem Tausch den
+    Timer korrekterweise nicht mehr neu startet, schloss das Detail dadurch
+    schon rund fünf Sekunden nach einer erfolgreichen Tastaturbedienung
+    (unabhängig mit echter Uhr nachgemessen: Enter bei 41 s, zu bei 46 s).
+    """
+    zone_ids = _seed_panel_zones(live_server, "PanelTimeoutTastatur")
+    plaintext = _issue_kiosk_token_for_zones(live_server, zone_ids)
+
+    page, errors = _open_panel_kiosk(
+        browser, live_server, plaintext, width=480, height=480, install_clock=True
+    )
+    try:
+        page.wait_for_load_state("networkidle")  # siehe Begründung im Test oberhalb
+        tile = page.locator("[data-kiosk-tile]").first
+        zone_id = tile.get_attribute("data-kiosk-tile")
+        tile.click()
+        detail = page.locator(f'[data-kiosk-detail="{zone_id}"]')
+        expect(detail).to_be_visible()
+
+        page.clock.run_for(40_000)  # kurz vor dem 45-s-Ablauf
+        expect(detail).to_be_visible()
+        plus = detail.get_by_label("Sollwert anheben")
+        plus.focus()
+        page.keyboard.press("Enter")  # echte Bedienung (Tastatur, kein Klick)
+        expect(detail).to_be_visible()
+
+        # 80 s seit dem Öffnen, aber nur 40 s seit der Tastaturbedienung.
+        page.clock.run_for(40_000)
+        expect(detail).to_be_visible()
+
+        # 50 s seit der Bedienung -- jetzt schließt es.
+        page.clock.run_for(10_000)
+        expect(detail).not_to_be_visible()
+    finally:
+        assert not errors, "Kiosk-Konsole meldete Fehler:\n" + "\n".join(errors)
+        page.context.close()
+
+
+def test_every_detail_control_stays_within_480px_with_an_error_and_a_sensor_warning(
+    live_server: LiveServer, browser: Browser
+) -> None:
+    """Ein Review fand: Mit einem serverseitig abgelehnten Sollwert (Fehlertext),
+    einem Sensor-Warnhinweis und einer laufenden Übersteuerung zusammen ragte
+    "Übersteuerung aufheben" bis zu 20 px unter den sichtbaren Rand, und der
+    Statuschip überlagerte Raumname und Zurück-Knopf -- mit Bildschirmfoto
+    belegt. Bloße Sichtbarkeits-/Größenprüfungen (wie im Übersichtstest oben)
+    hätten das nicht gefangen: Ein abgeschnittenes oder überlagertes Element
+    bleibt trotzdem `is_visible()` und behält seine volle Größe. Dieser Test
+    prüft stattdessen die Lage im Sichtfeld.
+    """
+    zone_ids = _seed_panel_zones(live_server, "PanelUeberlauf")
+    plaintext = _issue_kiosk_token_for_zones(live_server, zone_ids)
+    override_zone_id = zone_ids[0]
+    _start_override(live_server, override_zone_id, plaintext)
+    with live_server.session() as session:
+        # `sensor_stuck` wird nur berechnet, während `sensor_status_id` "ok"
+        # liest (siehe der Kommentar am Feld, thermoctl/db/models/state.py) --
+        # beides zusammen mit einer eigenen, nicht "ok" lautenden Warnung ist ein
+        # Zustand, den die Anlage selbst nie erzeugt. Der Sensor-Chip hier ist
+        # deshalb genau der eine Warnhinweis, den ein echter Betrieb zeigen
+        # könnte, nicht ein zweiter, unerreichbarer obendrauf.
+        session.add(
+            ZoneState(
+                zone_id=override_zone_id, sensor_status_id=sensor_status_of(session, "ok").id,
+                updated_at=utcnow(), sensor_stuck=True,
+            )
+        )
+        # Knapp unter der oberen Grenze (-20..35 °C,
+        # thermoctl/domain/remote_control.py) vorbelegt, statt sie über
+        # Dutzende Klicks in der Oberfläche zu erklimmen: Ein Klick je Sekunde
+        # Testlaufzeit wird schnell länger als die 20-s-Selbstaktualisierung der
+        # Seite, und deren nächster, fälliger Abruf (ohne die Fehler-Abfrage in
+        # seiner URL) überschreibt dann den gerade erst angekommenen Fehlertext
+        # wieder -- ein Testartefakt, keine Verhaltensänderung an der Anlage.
+        zone = session.get(Zone, override_zone_id)
+        assert zone is not None
+        token = resolve_token(session, plaintext)
+        assert token is not None
+        set_setpoint(
+            session, zone, Decimal("34.5"), utcnow(), token_id=token.id, source="kiosk"
+        )
+        session.commit()
+
+    page, errors = _open_panel_kiosk(browser, live_server, plaintext, width=480, height=480)
+    try:
+        page.locator(f'[data-kiosk-tile="{override_zone_id}"]').click()
+        detail = page.locator(f'[data-kiosk-detail="{override_zone_id}"]')
+        expect(detail).to_be_visible()
+
+        # 34,5 → 35,0 (noch erlaubt) → 35,5 (abgelehnt).
+        raise_button = detail.get_by_label("Sollwert anheben")
+        raise_button.click()
+        raise_button.click()
+        expect(detail.locator(".kiosk-error")).to_be_visible()
+        expect(detail.get_by_text("Messwert unverändert")).to_be_visible()
+
+        for control in (
+            detail.locator("[data-kiosk-back]"),
+            detail.get_by_label("Sollwert senken"),
+            raise_button,
+            detail.get_by_role("button", name="Nächste Schaltung vorziehen"),
+            detail.get_by_role("button", name="Übersteuerung aufheben"),
+        ):
+            box = control.bounding_box()
+            assert box is not None
+            assert box["y"] >= 0, box
+            assert box["y"] + box["height"] <= 480, box
+
+        # Der feste Kopf (Name/Zurück) wird nie überlagert: Der Rumpf mit dem
+        # übrigen Inhalt beginnt erst, wo der Kopf endet, nicht darüber.
+        head_box = detail.locator(".kiosk-detail-head").bounding_box()
+        body_box = detail.locator(".kiosk-detail-body").bounding_box()
+        assert head_box is not None and body_box is not None
+        assert body_box["y"] >= head_box["y"] + head_box["height"] - 1, (head_box, body_box)
+    finally:
+        assert not errors, "Kiosk-Konsole meldete Fehler:\n" + "\n".join(errors)
+        page.context.close()
+
+
+def test_enter_and_space_on_the_plus_button_still_work_in_the_tafel_view(
+    live_server: LiveServer, browser: Browser
+) -> None:
+    """Ein Review fand: Der `keydown`-Behandler an der Kachel (`kiosk_panel.js`)
+    fing auch Ereignisse ab, die von den Formularknöpfen in der Kachel
+    hochstiegen, und rief bei Eingabetaste/Leertaste immer `preventDefault()`
+    auf -- die Prüfung auf Panel-Modus kam erst danach. Folge: In der
+    Tafel-Ansicht (1024×600 und breiter, unverändert seit vor der
+    Panel-Ansicht) lösten Eingabetaste und Leertaste auf dem fokussierten
+    "+"-Knopf nichts mehr aus, per Maus schon.
+    """
+    zone_ids = _seed_panel_zones(live_server, "PanelTastatur")
+    plaintext = _issue_kiosk_token_for_zones(live_server, zone_ids)
+
+    page, errors = _open_panel_kiosk(browser, live_server, plaintext, width=1024, height=600)
+    try:
+        expect(page.locator(".kiosk-page")).to_have_attribute("data-ansicht-aktiv", "tafel")
+        first_tile = page.locator("[data-kiosk-tile]").first
+        plus = first_tile.get_by_label("Sollwert anheben")
+        setpoint_value = first_tile.locator(".kiosk-setpoint .t-value")
+        expect(setpoint_value).to_have_text("21,0 °C")
+
+        plus.focus()
+        page.keyboard.press("Enter")
+        expect(setpoint_value).to_have_text("21,5 °C")
+
+        plus.focus()
+        page.keyboard.press(" ")
+        expect(setpoint_value).to_have_text("22,0 °C")
     finally:
         assert not errors, "Kiosk-Konsole meldete Fehler:\n" + "\n".join(errors)
         page.context.close()

@@ -7,7 +7,8 @@ Letzte Aktualisierung: 2026-09-21.
 Gemessen an der laufenden 0.9.4-Anlage kam `/kiosk` mit sechs Zonen auf einem
 480×480-Feld (3,95", z. B. Sonoff NSPanel Pro Gen2) ohne Scrollen auf genau eine
 sichtbare Kachel -- das Raster brach erst ab 20rem je Kachel um, und für die
-Kopfzeile fehlte jeder `@media`-Block. Seit 0.9.5 gibt es dafür eine zweite Ebene:
+Kopfzeile fehlte jeder `@media`-Block. Jetzt (noch unveröffentlicht, nicht Teil von
+0.9.5) gibt es dafür eine zweite Ebene:
 
 - **Übersicht:** festes 2×N-Raster, sechs Kacheln passen bei 480×480 ohne
   Scrollen. Je Kachel nur Raumname, Ist-Wert, Soll-Wert und ein kleiner

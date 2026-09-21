@@ -1,5 +1,5 @@
 /*
- * Kiosk: Panel-Ansicht (0.9.5).
+ * Kiosk: Panel-Ansicht.
  *
  * `kiosk.html` rendert beide Ebenen immer -- die 2x3-Übersicht und, je Zone,
  * einen flächendeckenden Detailbereich (`[data-kiosk-detail]`). Dieses Skript
@@ -25,7 +25,12 @@
 (function () {
     "use strict";
 
-    const BREITENSCHWELLE = "(max-width: 600px)";
+    // 599.98px, nicht 600px: die Vorgabe lautet "ab 600 px die Tafel", und
+    // `max-width: 600px` schließt 600px selbst noch ins Panel ein -- am
+    // Grenzwert lief das der Zusage zuwider. Dieselbe Schreibweise benutzt das
+    // Projekt schon anderswo (thermoctl.css, `767.98px`/`991.98px`, die
+    // Bootstrap-Konvention für einen Haltepunkt "bis ausschließlich").
+    const BREITENSCHWELLE = "(max-width: 599.98px)";
     const RUECKSPRUNG_MS = 45000;
 
     let offeneZoneId = null;
@@ -73,7 +78,18 @@
         return document.querySelector('[data-kiosk-detail="' + zoneId + '"]');
     }
 
-    function detailOeffnen(zoneId) {
+    // Nur die sichtbare Klasse setzen -- ohne den Rücksprung-Timer anzufassen.
+    // Getrennt von `detailOeffnen` (unten), das eine *Bedienung* ist: Diese
+    // Funktion läuft auch nach jedem `#kiosk-body`-Tausch (Selbstaktualisierung
+    // alle 20 s, jedes Formular), um den DOM-Zustand wiederherzustellen -- ein
+    // neuer DOM-Knoten hat die Klasse "kiosk-detail-open" nie gesehen. Bis
+    // hierher rief genau diese Wiederherstellung `detailOeffnen` auf, das den
+    // Timer jedes Mal neu startete -- bei laufender Selbstaktualisierung lief
+    // der 45-s-Rücksprung dadurch nie ab (im Betrieb widerlegt: Detail 67 s
+    // offen gelassen, drei Abrufe der Selbstaktualisierung dazwischen, Detail
+    // weiterhin offen). Der Ablaufzeitpunkt darf sich nur bei echter Bedienung
+    // ändern, nicht beim bloßen Wiederherstellen eines schon offenen Zustands.
+    function detailWiederherstellen(zoneId) {
         const detail = detailZuZone(zoneId);
         if (!detail) {
             return;
@@ -82,6 +98,14 @@
             offen.classList.remove("kiosk-detail-open");
         });
         detail.classList.add("kiosk-detail-open");
+    }
+
+    function detailOeffnen(zoneId) {
+        detailWiederherstellen(zoneId);
+        const detail = detailZuZone(zoneId);
+        if (!detail) {
+            return;
+        }
         offeneZoneId = zoneId;
         timerNeuStarten();
         // Zurück-Knopf statt Kachel im Fokus: Ein Wandtablett wird per Finger
@@ -133,7 +157,7 @@
             const oeffnen = function () {
                 // Wirkungslos außerhalb der Panel-Ansicht: In der Tafel-Ansicht
                 // bleiben die Formulare in der Kachel selbst die einzigen
-                // Bedienelemente, wie vor 0.9.5.
+                // Bedienelemente, wie vor der Panel-Ansicht.
                 if (aufgeloesteAnsicht() !== "panel") {
                     return;
                 }
@@ -141,6 +165,21 @@
             };
             kachel.addEventListener("click", oeffnen);
             kachel.addEventListener("keydown", function (ereignis) {
+                // `keydown` bubbelt von jedem Formularknopf innerhalb der Kachel
+                // hoch (Sollwert, Boost -- in der Tafel-Ansicht dort die einzigen
+                // Bedienelemente). Ohne diese beiden Prüfungen *vor* dem
+                // `preventDefault` unten schluckte dieser Behandler Eingabetaste
+                // und Leertaste auf einem fokussierten „+"-Knopf auch in der
+                // Tafel-Ansicht -- eine Barrierefreiheits-Regression an einer
+                // Ansicht, die unverändert bleiben soll. Erst wenn wirklich die
+                // Kachel selbst das Ziel ist (nicht eines ihrer Kinder) *und* die
+                // Panel-Ansicht überhaupt gilt, greift diese Tastaturaktivierung.
+                if (ereignis.target !== kachel) {
+                    return;
+                }
+                if (aufgeloesteAnsicht() !== "panel") {
+                    return;
+                }
                 if (ereignis.key === "Enter" || ereignis.key === " ") {
                     ereignis.preventDefault();
                     oeffnen();
@@ -162,9 +201,25 @@
             // Jede Berührung im offenen Detailbereich zählt als Bedienung -- ein
             // zweimaliges Anheben des Sollwerts innerhalb von 45 s darf nicht
             // mitten in der zweiten Berührung zur Übersicht zurückspringen.
-            detail.addEventListener("pointerdown", function () {
+            const alsBedienungZaehlen = function () {
                 if (offeneZoneId === detail.dataset.kioskDetail) {
                     timerNeuStarten();
+                }
+            };
+            detail.addEventListener("pointerdown", alsBedienungZaehlen);
+            // `pointerdown` allein erfasst nur Maus/Finger/Stift -- eine
+            // Tastaturaktivierung (Eingabetaste/Leertaste auf einem fokussierten
+            // Knopf) feuert kein `pointerdown`. Seit die Wiederherstellung nach
+            // einem Swap den Timer korrekt *nicht* mehr neu startet (siehe
+            // `detailWiederherstellen` oben), fiel das auf: Eine echte
+            // Tastaturbedienung schloss das Detail trotzdem nach dem nächsten
+            // regulären Ablauf, weil sie nirgends als Aktivität ankam (in echter
+            // Zeit gemessen: Detail nach einer erfolgreichen Eingabetaste-Bedienung
+            // schon fünf Sekunden später zu). Nur Aktivierungstasten zählen, nicht
+            // jeder Tastendruck (z. B. Tab beim Durchwandern der Knöpfe).
+            detail.addEventListener("keydown", function (ereignis) {
+                if (ereignis.key === "Enter" || ereignis.key === " ") {
+                    alsBedienungZaehlen();
                 }
             });
         });
@@ -174,9 +229,14 @@
         ansichtAnwenden();
         kachelnVerdrahten();
         detailsVerdrahten();
+        // Reihenfolge wichtig: `fehlerZoneUebernehmen` setzt `offeneZoneId` nur,
+        // wenn noch keine Zone offen ist (z. B. ein per Formular ohne
+        // JavaScript-Umweg -- sprich per htmx -- gerade abgelehnter Sollwert).
+        // War schon eine Zone offen, bleibt es bei deren Wiederherstellung statt
+        // eines neuen "Öffnens" mit neu laufendem Timer.
         fehlerZoneUebernehmen();
         if (offeneZoneId !== null && aufgeloesteAnsicht() === "panel") {
-            detailOeffnen(offeneZoneId);
+            detailWiederherstellen(offeneZoneId);
         }
     }
 

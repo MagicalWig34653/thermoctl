@@ -268,7 +268,7 @@ def test_the_entry_link_sets_a_cookie_and_redirects_without_the_token_in_the_url
     assert response.cookies[KIOSK_COOKIE_NAME] == plaintext
 
 
-# --- Ansicht: panel vs. tafel (0.9.5) -----------------------------------------------
+# --- Ansicht: panel vs. tafel ---------------------------------------------------------
 #
 # The panel/tafel split itself lives in the template and `kiosk_panel.js` -- what
 # belongs here is only the part `kiosk_views.py` owns: `ansicht` read from the query

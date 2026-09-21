@@ -55,7 +55,7 @@ router = APIRouter(dependencies=[Depends(kiosk_csrf_protection)], include_in_sch
 # the project. Capped below by the token's own `expires_at`, if it has one.
 _KIOSK_COOKIE_MAX_AGE_S = 60 * 60 * 24 * 365
 
-# The two-level panel layout (0.9.5) versus the original, scrolling one-level
+# The two-level panel layout versus the original, scrolling one-level
 # dashboard -- a tablet's screen size decides this on its own most of the time
 # (`?ansicht=auto`, resolved client-side by width, see `kiosk_panel.js`), but an
 # installer wiring up a specific panel gets a fixed override in the bookmarked
