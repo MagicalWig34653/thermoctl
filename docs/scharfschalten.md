@@ -58,7 +58,11 @@ klärt das vor dem Scharfschalten, nicht danach.
 
 ## 2. Die Reihenfolge des Scharfschaltens
 
-![Betriebsseite im Trockenlauf mit der Schaltfläche „Scharf schalten …" und darunter Ist- und Sollwerten aller Zonen](bilder/anlage-betrieb.png)
+![Betriebsseite im Trockenlauf mit der Schaltfläche „Scharf schalten …“](bilder/anlage-betrieb.png)
+
+Weiter unten:
+
+![Ist- und Sollwerte sowie Regelentscheidungen aller sechs Zonen](bilder/anlage-betrieb-2.png)
 
 1. **Auf `Betrieb`, „Scharf schalten …"** anklicken, eine Begründung eintragen (Pflicht)
    und bestätigen. Die Seite zeigt danach sofort „Scharf, Neustart fehlt" — der beim
@@ -111,7 +115,7 @@ seltener, weil sich eine Ein/Aus- oder Sollwert-Entscheidung nur selten ändert.
 
 Unter `Einstellungen → Schaltprotokoll`, mit Filtern nach Zeitraum, Zone und Ergebnis.
 
-![Schaltprotokoll mit mehreren Einträgen: Zeitpunkt, Zone, Gerät, Befehl, Ergebnis „Ausgeführt" und Begründung „Zeitplan"](bilder/anlage-schaltprotokoll.png)
+![Schaltprotokoll mit sechs Einträgen aus System, Weboberfläche und REST-API: ausgeführt, im Trockenlauf unterdrückt oder gescheitert](bilder/anlage-schaltprotokoll.png)
 
 **Ein unauffälliger Abend** zeigt für jede Zone mit aktivem Aktor wenige Einträge —
 typischerweise die Schaltpunkte des Zeitplans, an denen sich die Entscheidung tatsächlich

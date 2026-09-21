@@ -28,7 +28,11 @@ hat. Darunter steht, ob eine Außentemperaturquelle gewählt ist, und — sobald
 Urlaub angesetzt oder geplant ist — der Chip „Urlaub geplant" (bzw. „Urlaub läuft"),
 verlinkt zur Urlaubsseite (siehe Abschnitt „Urlaub" unten).
 
-![Startseite der Anlagensicht mit sechs Zonen, je einer Karte mit Ist-Wert, Sollwert, Zeitplan-Band und den drei Statuschips oben, darunter der Chip „Urlaub geplant"](bilder/anlage-startseite.png)
+![Startseite der Anlagensicht mit Freigabestatus, geplantem Urlaub und den ersten Zonen](bilder/anlage-startseite.png)
+
+Weiter unten:
+
+![Weitere Zonen mit Ist-Wert, Sollwert und Zeitplan-Band](bilder/anlage-startseite-2.png)
 
 ### Zonen, Wochenplan und Sollwerte
 
@@ -45,7 +49,11 @@ setzen, im Formular darunter eintragen oder mit „Zeit malen" über ein Zeitras
 Ein kompletter Plan lässt sich von einer anderen Zone übernehmen, statt ihn noch einmal
 einzutragen.
 
-![Wochenplan der Zone Bad mit sieben Tagesbalken, dem Formular für neue Schaltpunkte und der Liste bestehender Schaltpunkte](bilder/anlage-bad-wochenplan.png)
+![Zeitplan der Zone Bad mit Vorschau und Werkzeugen zum Zeitmalen](bilder/anlage-bad-wochenplan.png)
+
+Weiter unten:
+
+![Schaltpunkt anlegen und bestehende Schaltpunkte bearbeiten](bilder/anlage-bad-wochenplan-2.png)
 
 Die **Sollwerte** einer Zone legen fest, welche Temperatur zu welchem Modus gehört
 (Komfort, Tag, Nacht, Frostschutz). Ein leeres Feld löscht den Sollwert für diesen
@@ -64,7 +72,11 @@ Temperaturmessung, Schaltausgang oder Thermostatventil. Zonen ohne Meldung stehe
 gesondert, damit sie auffallen. Ein Gerät wird per Ziehen und Ablegen einer Zone
 zugeordnet.
 
-![Geräteliste mit 13 Geräten, davon sieben ohne bisherige Meldung oben abgesetzt und sechs sich meldenden Sensoren darunter](bilder/anlage-geraete.png)
+![Geräteliste mit sieben auffälligen Geräten](bilder/anlage-geraete.png)
+
+Weiter unten:
+
+![Die sechs Raumfühler mit Meldungsalter, Batterie und Verbindungsqualität](bilder/anlage-geraete-2.png)
 
 ### Betrieb: Trockenlauf und Scharfschalten
 
@@ -75,7 +87,11 @@ Sollwert und die aktuelle Ein/Aus-Entscheidung. Die genaue Reihenfolge des
 Scharfschaltens (Begründung eintragen, danach neu starten) steht in
 [scharfschalten.md](scharfschalten.md).
 
-![Betriebsseite im Trockenlauf: Hinweistext, Schaltfläche „Scharf schalten …" und darunter die Ist/Soll-Werte aller sechs Zonen](bilder/anlage-betrieb.png)
+![Betriebsseite im Trockenlauf mit der Schaltfläche „Scharf schalten …“](bilder/anlage-betrieb.png)
+
+Weiter unten:
+
+![Ist- und Sollwerte sowie Regelentscheidungen aller sechs Zonen](bilder/anlage-betrieb-2.png)
 
 ### Schaltprotokoll
 
@@ -85,7 +101,7 @@ Befehl, Ergebnis und aufklappbarer Begründung. Filter nach Zeitraum, Zone und E
 grenzen lange Listen ein. Wie man ein unauffälliges Protokoll von einem mit echtem
 Problem unterscheidet, erklärt [scharfschalten.md](scharfschalten.md#4-wie-man-das-schaltprotokoll-liest).
 
-![Schaltprotokoll mit einer Reihe von Einträgen: Zeitpunkt, Zone, Gerät, Befehl ein/aus, Ergebnis „Ausgeführt" und Begründung „Zeitplan"](bilder/anlage-schaltprotokoll.png)
+![Schaltprotokoll mit sechs Einträgen aus System, Weboberfläche und REST-API: ausgeführt, im Trockenlauf unterdrückt oder gescheitert](bilder/anlage-schaltprotokoll.png)
 
 ### Benutzer, Gruppen und Rechte
 
@@ -94,7 +110,11 @@ Konto ohne Gruppe hat keinerlei Rechte. Von hier aus lässt sich auch das eigene
 ändern und jede andere angemeldete Sitzung dieses Kontos beenden — etwa nach einem
 verlorenen Gerät.
 
-![Benutzerliste mit drei Konten samt Status, Gruppe und letzter Anmeldung, darunter das Formular zum Anlegen eines neuen Benutzers](bilder/anlage-benutzer.png)
+![Benutzerliste mit drei Konten samt Status, Gruppe und letzter Anmeldung](bilder/anlage-benutzer.png)
+
+Weiter unten:
+
+![Formular zum Anlegen eines Benutzers und zum Ändern des eigenen Passworts](bilder/anlage-benutzer-2.png)
 
 **Rechte hängen an Gruppen, nicht an Personen.** Wer mehreren Gruppen angehört, darf
 alles, was mindestens eine davon erlaubt. Vier eingebaute Gruppen decken die üblichen
@@ -107,7 +127,11 @@ Oberflächen ihre Mitglieder überhaupt zu sehen bekommen. Beim Upgrade behält 
 bestehende Gruppe das Anlagenprofil; für eine Mietergruppe wird das Profil ausdrücklich
 auf Wohnung umgestellt.
 
-![Gruppenliste mit den vier eingebauten Gruppen und zwei eigenen Gruppen, je mit Oberflächen-Auswahl und der Liste ihrer Rechte](bilder/anlage-gruppen.png)
+![Eingebaute Gruppen mit Oberflächen-Auswahl und Zusammenfassung ihrer Rechte](bilder/anlage-gruppen.png)
+
+Weiter unten:
+
+![Formular zum Anlegen einer Gruppe mit Auswahl der Oberfläche](bilder/anlage-gruppen-2.png)
 
 ### Kiosk-Token
 
@@ -136,7 +160,11 @@ festhängender Messwert, Fenster vergessen offen, Problemmeldung aus einer Wohnu
 jede einzeln abschaltbar. Ein Testknopf prüft einen hinterlegten Webhook, ohne auf eine
 echte Störung zu warten.
 
-![Regelvorgaben-Seite mit den Feldern für Regelzyklus, Hysterese, Sonnenabsenkung, Fenster-Alarm und den sechs abschaltbaren Meldungsarten](bilder/anlage-einstellungen.png)
+![Regelvorgaben mit Regelzyklus, Hysterese und weiteren anlagenweiten Werten](bilder/anlage-einstellungen.png)
+
+Weiter unten:
+
+![Die sechs abschaltbaren Meldungsarten und ihre Erläuterungen](bilder/anlage-einstellungen-2.png)
 
 ### Statistik und Relaisverschleiß
 
@@ -203,7 +231,11 @@ Ein „Problem melden" je Raum schickt eine Meldung an die Verwaltung — Raum, 
 Messwert und Sollwert werden automatisch angehängt, es sind keine technischen Angaben
 nötig.
 
-![Zuhause-Ansicht mit vier Raumkarten; oben ein aktiver Abwesenheitszeitraum, je Karte eine laufende Übersteuerung mit „Beenden" sowie die Knöpfe „Für eine Weile wärmer", „Zur nächsten Schaltzeit springen" und „Laufende Änderung ersetzen"](bilder/wohnung-abwesenheit.png)
+![Zuhause-Ansicht mit aktivem Abwesenheitszeitraum und den ersten Raumkarten](bilder/wohnung-abwesenheit.png)
+
+Weiter unten:
+
+![Weitere Raumkarten mit laufender Übersteuerung und Knöpfen für vorübergehende Änderungen](bilder/wohnung-abwesenheit-2.png)
 
 ### Wochenplan
 
@@ -214,7 +246,11 @@ Montag–Freitag zu übertragen. Eine Vorschau der nächsten 24 Stunden zeigt, w
 Sollwert dadurch verläuft — einschließlich einer gerade laufenden vorübergehenden
 Änderung. Ein kompletter Plan lässt sich auch hier auf einen anderen eigenen Raum übertragen.
 
-![Wochenplan-Ansicht für das Wohnzimmer mit sieben Tagen, je einem Zeitbalken sowie Feldern „Tag ab" und „Nacht ab" zum Bearbeiten](bilder/wohnung-wohnzimmer-wochenplan.png)
+![Wochenplan für das Wohnzimmer mit Vorschau und geöffneten Feldern „Tag ab“ und „Nacht ab“](bilder/wohnung-wohnzimmer-wochenplan.png)
+
+Weiter unten:
+
+![Wochenende mit bearbeitbaren Schaltzeiten und Übernahme auf einen anderen Raum](bilder/wohnung-wohnzimmer-wochenplan-2.png)
 
 ### Heizzeit
 
@@ -225,7 +261,11 @@ tatsächlich wurde, hängt zusätzlich von Außentemperatur, Gebäudezustand und
 Läuft die Anlage im Trockenlauf, weist ein Hinweis darauf hin, dass die Balken zeigen,
 wann *geheizt worden wäre*, nicht was wirklich geschah.
 
-![Heizzeit-Ansicht mit vier Räumen als Balkendiagramm über 7 Tage und dem Hinweis, dass die Anlage derzeit nicht schaltet](bilder/wohnung-heizzeit.png)
+![Heizzeit für die ersten Räume über sieben Tage und Hinweis auf den Trockenlauf](bilder/wohnung-heizzeit.png)
+
+Weiter unten:
+
+![Heizzeit für Schlafzimmer und Wohnzimmer über sieben Tage](bilder/wohnung-heizzeit-2.png)
 
 ### Abwesenheit
 
@@ -253,4 +293,4 @@ eine Passkey-Anmeldung eingerichtet, erscheint hier zusätzlich ein Verweis auf
 „Passkeys verwalten" — ohne diese Einrichtung bleibt der Abschnitt schlicht weg, statt
 eine Möglichkeit zu zeigen, die nicht funktioniert.
 
-![Konto-und-Sicherheit-Seite mit Passwort ändern, Andere Sitzungen beenden, Hilfe und Abmelden](bilder/wohnung-konto.png)
+![Konto und Sicherheit mit Passwortänderung, Sitzungsverwaltung, Hilfe und Abmelden](bilder/wohnung-konto.png)

@@ -129,9 +129,19 @@ def seed_demo(session: Session, password: str) -> dict[str, str | int]:
             decision.reason = (
                 "Temperatur unter Sollwert" if decision.would_heat else "Sollwert erreicht"
             )
-            entry = create_device_command(session, zone, actuator, at=at)
-            entry.command = "on" if decision.would_heat else "off"
-            entry.payload = '{"state":"ON"}' if decision.would_heat else '{"state":"OFF"}'
+        # Six commands keep the log readable; the 72 hourly decisions per zone
+        # remain intact for heating charts and relay statistics.
+        outcome = ("executed", "suppressed", "failed")[i % 3]
+        entry = create_device_command(
+            session, zone, actuator, at=now - timedelta(minutes=5 + i * 7),
+            outcome_code=outcome, source_code=("system", "web", "api")[i % 3],
+        )
+        if i != 2:
+            entry.command = "on" if i % 2 == 0 else "off"
+            entry.payload = '{"state":"ON"}' if i % 2 == 0 else '{"state":"OFF"}'
+        entry.reason = ("Zeitplan", "Manuelle Änderung", "Sollwert übertragen")[i % 3]
+        if outcome == "failed":
+            entry.error = "Gerät nicht erreichbar"
         point = session.scalar(select(SchedulePoint).where(SchedulePoint.zone_id == zone.id))
         assert point is not None
         paths[f"point_{slug}"] = point.id

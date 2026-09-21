@@ -53,8 +53,14 @@ def test_cli_filter_produces_real_pngs(tmp_path: Path) -> None:
     for pattern, stems in (
         ("oeffentlich-*", {"oeffentlich-einrichtung", "oeffentlich-anmeldung"}),
         ("wohnung-wochenplan", {"wohnung-wochenplan", "wohnung-wochenplan-mobil"}),
-        ("anlage-startseite", {"anlage-startseite", "anlage-startseite-mobil"}),
-        ("wohnung-konto", {"wohnung-konto", "wohnung-konto-mobil", "wohnung-konto-mobil-2"}),
+        (
+            "anlage-startseite",
+            {"anlage-startseite", "anlage-startseite-2", "anlage-startseite-mobil"},
+        ),
+        (
+            "wohnung-konto",
+            {"wohnung-konto", "wohnung-konto-mobil", "wohnung-konto-mobil-2"},
+        ),
         (
             "kiosk-*",
             {"kiosk-dashboard", "kiosk-dashboard-mobil", "kiosk-panel-uebersicht",
@@ -82,24 +88,34 @@ def test_cli_filter_produces_real_pngs(tmp_path: Path) -> None:
         assert result.returncode == 0, result.stdout + result.stderr
         assert {p.stem for p in directory.glob("*.png")} == stems
         for path in directory.glob("*.png"):
-            data = path.read_bytes()
-            assert data[:8] == b"\x89PNG\r\n\x1a\n"
-            width, height = struct.unpack(">II", data[16:24])
-            if path.stem in {"kiosk-panel-uebersicht", "kiosk-panel-detail", "kiosk-tafel"}:
-                assert width == 480
-                if path.stem == "kiosk-tafel":
-                    assert height > 480  # Full-page capture of the scrolling board.
-                else:
-                    assert height == 480
-            elif "-mobil" in path.stem:
-                # Viewport capture, so the fixed bottom navigation stays at the bottom.
-                assert width == 390
-                assert height == 844
-            else:
-                assert width == 1280
-                assert height >= 900
-            assert len(data) > 10_000
+            _assert_capture_dimensions(path)
 
+
+def test_documented_png_dimensions() -> None:
+    for path in (Path(__file__).resolve().parents[1] / "docs" / "bilder").glob("*.png"):
+        _assert_capture_dimensions(path)
+
+
+def _assert_capture_dimensions(path: Path) -> None:
+    data = path.read_bytes()
+    assert data[:8] == b"\x89PNG\r\n\x1a\n"
+    width, height = struct.unpack(">II", data[16:24])
+    if path.stem in {"kiosk-panel-uebersicht", "kiosk-panel-detail", "kiosk-tafel"}:
+        assert width == 480
+        if path.stem == "kiosk-tafel":
+            assert height > 480  # Full-page capture of the scrolling board.
+        else:
+            assert height == 480
+    elif "-mobil" in path.stem:
+        # Viewport capture, so the fixed bottom navigation stays at the bottom.
+        assert width == 390
+        assert height == 844
+    else:
+        assert width == 1280
+        # One 1280 × 900 desktop viewport stays legible in the docs.
+        # Longer pages need a second capture, never a taller PNG.
+        assert height == 900
+    assert len(data) > 10_000
 
 def test_phone_captures_start_at_top_and_keep_navigation_at_bottom(
     browser: Browser, live_server: LiveServer, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

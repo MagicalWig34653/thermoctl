@@ -17,7 +17,9 @@ zeigt die **[Bedienungsanleitung](docs/bedienung.md)**.
 
 **Anlagensicht** — alle Zonen im Blick, mit Übersteuerung und Tagesplan je Raum.
 
-<img src="docs/bilder/anlage-startseite.png" alt="Startseite der Anlagensicht: sechs Zonen mit Ist-Temperatur, Sollwert, Zeitplan-Band und Freigabestatus" width="100%">
+<img src="docs/bilder/anlage-startseite.png" alt="Startseite der Anlagensicht mit Freigabestatus, geplantem Urlaub und den ersten Zonen" width="100%">
+
+<img src="docs/bilder/anlage-startseite-2.png" alt="Weitere Zonen mit Ist-Wert, Sollwert und Zeitplan-Band" width="100%">
 
 </td>
 <td width="50%">

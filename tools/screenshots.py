@@ -151,16 +151,19 @@ def _capture(
                     ).wait_for(state="visible", timeout=5_000)
                 target = output / name
                 page.screenshot(
-                    path=str(target), full_page=not is_mobile_capture, animations="disabled"
+                    path=str(target),
+                    full_page=view.kiosk_mode == "tafel" and not is_mobile_capture,
+                    animations="disabled",
                 )
                 if errors:
                     target.unlink(missing_ok=True)
                     raise RuntimeError("; ".join(errors))
                 result.append(target)
                 print(name, flush=True)
-                if is_mobile_capture and view.mobile_followup:
-                    page.locator(view.mobile_followup).evaluate("""el => {
-                        const header = document.querySelector('.tc-theader');
+                followup = view.mobile_followup if is_mobile_capture else view.desktop_followup
+                if followup:
+                    page.locator(followup).evaluate("""el => {
+                        const header = document.querySelector('.tc-theader, .tc-topbar');
                         const offset = (header ? header.getBoundingClientRect().height : 0) + 16;
                         const top = window.scrollY + el.getBoundingClientRect().top - offset;
                         window.scrollTo(0, top);
@@ -168,7 +171,7 @@ def _capture(
                     page.evaluate("document.fonts.ready")
                     page.wait_for_load_state("networkidle")
                     page.locator(".htmx-request").wait_for(state="detached")
-                    target = output / f"{view.stem}-mobil-2.png"
+                    target = output / f"{Path(name).stem}-2.png"
                     page.screenshot(path=str(target), full_page=False, animations="disabled")
                     if errors:
                         target.unlink(missing_ok=True)

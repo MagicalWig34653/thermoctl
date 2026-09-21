@@ -370,6 +370,8 @@ def test_documented_screenshots_match_what_the_documentation_actually_embeds() -
     for view in VIEWS:
         if view.documented:
             expected.add(f"{view.stem}.png")
+            if view.desktop_followup:
+                expected.add(f"{view.stem}-2.png")
         if view.mobile and view.documented_mobile:
             expected.add(f"{view.stem}-mobil.png")
             if view.mobile_followup:

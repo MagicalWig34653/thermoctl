@@ -59,7 +59,11 @@ Was in den ersten Minuten zu sehen sein sollte:
 Auf der **Startseite** steht je Zone: Ist-Wert und wie alt er ist, Sollwert **mit
 Begründung**, Sensorzustand, und die letzte Schattenentscheidung.
 
-![Startseite mit mehreren Zonen, je mit Ist-Wert, Sollwert samt Begründung und Zeitplan-Band](bilder/anlage-startseite.png)
+![Startseite der Anlagensicht mit Freigabestatus, geplantem Urlaub und den ersten Zonen](bilder/anlage-startseite.png)
+
+Weiter unten:
+
+![Weitere Zonen mit Ist-Wert, Sollwert und Zeitplan-Band](bilder/anlage-startseite-2.png)
 
 Über mehrere Tage sind drei Dinge zu prüfen — sie sind das Abnahmekriterium von
 Teilprojekt 2:

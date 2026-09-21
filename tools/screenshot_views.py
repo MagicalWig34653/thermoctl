@@ -24,6 +24,8 @@ class View:
     documented_mobile: bool = False
     # Optional second phone viewport, scrolled to this element below the header.
     mobile_followup: str | None = None
+    # Optional second desktop viewport for relevant content below the fold.
+    desktop_followup: str | None = None
 
     @property
     def stem(self) -> str:
@@ -163,11 +165,24 @@ def _with_documentation_flags(view: View) -> View:
         "wohnung-wohnzimmer-wochenplan": ".tc-panel:has(.tc-dayrow)",
         "wohnung-konto": ".tc-panel:has(a[href$='/account/help'])",
     }
+    desktop_followups = {
+        "anlage-bad-wochenplan": "h2:text-is('Schaltpunkt anlegen')",
+        "anlage-benutzer": "h2:text-is('Benutzer anlegen')",
+        "anlage-betrieb": ".tc-panel:has(.tc-zone-operation)",
+        "anlage-einstellungen": "form[action$='/settings/notifications']",
+        "anlage-geraete": "h2:text-is('Der Rest meldet sich')",
+        "anlage-startseite": ".tc-zone:has(.tc-zone-name:text-is('Kinderzimmer'))",
+        "anlage-gruppen": "article:has(h2:text-is('Gruppe anlegen'))",
+        "wohnung-abwesenheit": ".tc-room:has(.tc-room-name:text-is('Wohnzimmer'))",
+        "wohnung-wohnzimmer-wochenplan": ".tc-dayrow:last-child",
+        "wohnung-heizzeit": ".tc-panel:has(h2:text-is('Schlafzimmer'))",
+    }
     return replace(
         view,
         documented=documented,
         documented_mobile=documented_mobile,
         mobile_followup=followups.get(view.stem),
+        desktop_followup=desktop_followups.get(view.stem),
     )
 
 
