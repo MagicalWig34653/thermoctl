@@ -22,11 +22,55 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
   `?ansicht=panel`/`?ansicht=tafel`/`?ansicht=auto` (Vorgabe: automatisch nach
   Bildschirmbreite), gemerkt in einem eigenen Cookie.
 
+- **Bilder in der Doku.** Die README zeigt jetzt, wie thermoctl aussieht, und
+  verweist auf zwei neue Anleitungen: `docs/bedienung.md` beschreibt beide
+  Oberflächen für den Betreiber, `docs/wohnung.md` ist zum Weitergeben an
+  Bewohner gedacht — nur die Wohnungssicht, ohne Technik. `self-hosting.md`,
+  `inbetriebnahme-schattenbetrieb.md` und `scharfschalten.md` zeigen die Seite,
+  um die es im jeweiligen Schritt geht.
+- **Screenshots per Werkzeug.** `.venv/bin/python -m tools.screenshots --doku`
+  startet einen eigenen Server mit erfundenen Demodaten und erzeugt die in der
+  Doku eingebundenen Bilder neu; ohne `--doku` entstehen alle rund hundert
+  Ansichten im ignorierten `var/bilder/`. Ein Test meldet jede neue Seite, die
+  weder aufgenommen noch begründet ausgeschlossen ist.
+
 ### Behoben
 
 - **Zwei Knöpfe am Kiosk-Wandtablett waren knapp unter der Mindestgröße für ein
   Tippziel.** "Nächste Schaltung vorziehen" und "Übersteuerung aufheben" kamen
   auf 42 statt 44 px -- betraf jeden `.btn` im Programm, nicht nur diese zwei.
+
+- **Das Bearbeitungsformular der Bediengeräte blieb meist verborgen.** Die
+  Vorlage verglich eine Geräte-ID mit einer Menge von Zonen-IDs; ob ein Verwalter
+  die Formulare sah, hing an der Nummerierung. Die Rechteprüfung beim Speichern
+  war davon nie betroffen.
+- **Der Raumfühler fehlte in der Auswahl der Temperaturquellen** auf
+  „Bediengeräte" und scheiterte beim Speichern an „Quellgerät nicht gefunden".
+- **Lange Raumnamen brachen in den Raumreitern mitten im Wort um.** Die Leiste
+  scrollt jetzt seitlich.
+
+---
+
+## 0.9.5 — 2026-09-14
+
+**An der Anwendung ändert sich nichts.** Diese Freigabe gibt es nur, damit das
+Home-Assistant-Add-on eine neue Versionsnummer bekommt.
+
+### Add-on
+
+- **Der Eintrag in der Home-Assistant-Seitenleiste ist jetzt für alle Nutzer
+  sichtbar, nicht nur für Administratoren.** Das Add-on setzt `panel_admin: false`.
+  Bisher galt die Vorgabe des Supervisors (`true`): Wer in Home Assistant kein
+  Administrator war, sah thermoctl gar nicht — obwohl thermoctl seine eigene
+  Anmeldung hat und selbst entscheidet, wer was darf. Die Rechteprüfung liegt
+  unverändert bei thermoctl; Home Assistant zeigt nur den Weg dorthin.
+- Warum dafür eine Anwendungsversion nötig ist: Home Assistant übernimmt eine
+  geänderte `config.yaml` erst mit einer neuen `version`, und die muss auf ein
+  Abbild zeigen, das es auf ghcr.io wirklich gibt. Also `0.9.5` hier, `0.9.5`
+  dort — mit demselben Inhalt wie 0.9.4.
+
+Beim Upgrade nichts zu tun: keine Migration, keine neue Einstellung, keine
+Änderung an Rechten oder Gruppen.
 
 ## 0.9.4 — 2026-09-11
 

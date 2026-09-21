@@ -18,8 +18,8 @@ Für Verwalter, Haustechnik und alle, die die ganze Anlage im Blick behalten.
 ### Übersicht
 
 Die Startseite zeigt jede Zone als eigene Karte: Ist-Temperatur und wie alt die Messung
-ist, aktueller Sollwert samt Begründung (Zeitplan, Übersteuerung, Frostschutz …), ob
-gerade geheizt wird, und ein Band mit dem Tagesplan der nächsten 24 Stunden — je wärmer
+ist, aktueller Sollwert samt Begründung (Zeitplan, Übersteuerung, Frostschutz …), die
+aktuelle Heizentscheidung und ein Band mit dem Tagesplan der nächsten 24 Stunden — je wärmer
 der Ton, desto höher der Sollwert, der senkrechte Strich markiert „jetzt". Oben stehen
 drei Zustandsanzeigen: ob die Regelung im Trockenlauf oder scharf ist, ob die
 MQTT-Ausgabe (der beim Prozessstart gebaute zweite Riegel) noch gesperrt ist, und —
@@ -134,7 +134,8 @@ echte Störung zu warten.
 
 ### Statistik und Relaisverschleiß
 
-**Heizstatistik** zeigt, wie lange je Zone tatsächlich geheizt wurde. **Relaisverschleiß**
+**Heizstatistik** zeigt, wie lange je Zone eine Heizanforderung bestand. Die Zahlen zeigen
+Regelentscheidungen, keine bestätigte körperliche Heizwirkung. **Relaisverschleiß**
 zählt Schaltspiele je Gerät und Tag und rechnet sie auf ein Jahr hoch, verglichen mit einer
 angenommenen Relais-Lebensdauer (Vorgabe 500.000 Schaltspiele — eine Annahme, keine
 Herstellerangabe, einstellbar unter Regelvorgaben). Nützlich unabhängig davon, ob eine Zone
@@ -203,20 +204,20 @@ nötig.
 Anders als in der Anlagensicht trägt die Wohnungssicht keine Modi und keine Uhrzeiten
 minutengenau ein — sie fragt nur, wann es warm sein soll: eine Zeit für „Tag ab" und eine
 für „Nacht ab", je Wochentag, mit der Möglichkeit, einen Tag auf die ganze Woche oder auf
-Montag–Freitag zu übertragen. Eine Vorschau der nächsten 24 Stunden zeigt, wie die
-Temperatur dadurch tatsächlich verläuft — einschließlich einer gerade laufenden
-vorübergehenden Änderung. Ein kompletter Plan lässt sich auch hier auf einen anderen
-eigenen Raum übertragen.
+Montag–Freitag zu übertragen. Eine Vorschau der nächsten 24 Stunden zeigt, wie der
+Sollwert dadurch verläuft — einschließlich einer gerade laufenden vorübergehenden
+Änderung. Ein kompletter Plan lässt sich auch hier auf einen anderen eigenen Raum übertragen.
 
 ![Wochenplan-Ansicht für das Wohnzimmer mit sieben Tagen, je einem Zeitbalken sowie Feldern „Tag ab" und „Nacht ab" zum Bearbeiten](bilder/wohnung-wohnzimmer-wochenplan.png)
 
 ### Heizzeit
 
-**Heizzeit** zeigt je Raum, wie viele Stunden in den letzten 7, 30 oder 90 Tagen geheizt
-wurde — als einfache Orientierung, ausdrücklich **kein** Energie- oder Kostenmesser: Wie
-warm ein Raum dabei tatsächlich wurde, hängt zusätzlich von Außentemperatur,
-Gebäudezustand und Lüften ab. Läuft die Anlage im Trockenlauf, weist ein Hinweis darauf
-hin, dass die Balken zeigen, wann *geheizt worden wäre*, nicht was wirklich geschah.
+**Heizzeit** zeigt je Raum, für wie viele Stunden in den letzten 7, 30 oder 90 Tagen eine
+Heizanforderung bestand — als einfache Orientierung, ausdrücklich **kein** Energie- oder
+Kostenmesser und keine Bestätigung einer körperlichen Heizwirkung: Wie warm ein Raum dabei
+tatsächlich wurde, hängt zusätzlich von Außentemperatur, Gebäudezustand und Lüften ab.
+Läuft die Anlage im Trockenlauf, weist ein Hinweis darauf hin, dass die Balken zeigen,
+wann *geheizt worden wäre*, nicht was wirklich geschah.
 
 ![Heizzeit-Ansicht mit vier Räumen als Balkendiagramm über 7 Tage und dem Hinweis, dass die Anlage derzeit nicht schaltet](bilder/wohnung-heizzeit.png)
 
