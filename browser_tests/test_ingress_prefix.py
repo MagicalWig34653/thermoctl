@@ -203,7 +203,13 @@ def test_kiosk_dashboard_works_end_to_end_under_the_prefix(
     kiosk_page.on("console", lambda message: _record_console_error(kiosk_errors, message))
     try:
         kiosk_page.goto(f"kiosk/{plaintext}")
-        expect(kiosk_page.get_by_text(zone_display_name)).to_be_visible()
+        # Scoped to the tile, not the whole page: since 0.9.5 the zone's name also
+        # sits in its (invisible, until opened) detail layer further down the same
+        # document (kiosk.html) -- `get_by_text` on the whole page would match both
+        # and fail on ambiguity.
+        expect(
+            kiosk_page.locator(".kiosk-tile", has_text=zone_display_name)
+        ).to_be_visible()
         assert kiosk_page.url == f"{live_server_with_prefix.base_url}kiosk"
         assert not kiosk_errors, "Browserkonsole meldete Fehler:\n" + "\n".join(kiosk_errors)
     finally:

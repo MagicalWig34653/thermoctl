@@ -9,6 +9,25 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ---
 
+## Unveröffentlicht
+
+### Hinzugefügt
+
+- **Kiosk: eine zweite, kompakte Ansicht für kleine Wandtabletts (480×480).**
+  Die bisherige, scrollende Tafel-Darstellung blieb erhalten und ist weiterhin
+  die Vorgabe für breitere Geräte; neu ist eine zweistufige Panel-Ansicht --
+  ein festes 2-Spalten-Raster mit allen Zonen auf einen Blick, und ein
+  flächendeckender Detailbereich je Zone, den ein Antippen der Kachel öffnet
+  und der nach Zurück oder 45 s ohne Bedienung wieder schließt. Umschaltbar über
+  `?ansicht=panel`/`?ansicht=tafel`/`?ansicht=auto` (Vorgabe: automatisch nach
+  Bildschirmbreite), gemerkt in einem eigenen Cookie.
+
+### Behoben
+
+- **Zwei Knöpfe am Kiosk-Wandtablett waren knapp unter der Mindestgröße für ein
+  Tippziel.** "Nächste Schaltung vorziehen" und "Übersteuerung aufheben" kamen
+  auf 42 statt 44 px -- betraf jeden `.btn` im Programm, nicht nur diese zwei.
+
 ## 0.9.4 — 2026-09-11
 
 **Wer Meross-Steckdosen schaltet, sollte aktualisieren.** Bis hierher konnte sich

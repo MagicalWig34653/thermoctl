@@ -55,6 +55,23 @@ router = APIRouter(dependencies=[Depends(kiosk_csrf_protection)], include_in_sch
 # the project. Capped below by the token's own `expires_at`, if it has one.
 _KIOSK_COOKIE_MAX_AGE_S = 60 * 60 * 24 * 365
 
+# The two-level panel layout (0.9.5) versus the original, scrolling one-level
+# dashboard -- a tablet's screen size decides this on its own most of the time
+# (`?ansicht=auto`, resolved client-side by width, see `kiosk_panel.js`), but an
+# installer wiring up a specific panel gets a fixed override in the bookmarked
+# address. Kept in its own cookie, deliberately separate from `KIOSK_COOKIE_NAME`:
+# it is a display preference, not a credential, and must never be mistaken for one
+# or affect what `principal_for_token` resolves.
+ANSICHT_COOKIE_NAME = "thermoctl_kiosk_ansicht"
+_ANSICHT_VALUES = frozenset({"auto", "panel", "tafel"})
+
+
+def _normalize_ansicht(value: str | None) -> str:
+    """Unknown or missing input falls back to `auto`, never an error -- a stray
+    query string or a cookie from a future version with a value this build does
+    not know yet must not break the dashboard a wall tablet depends on."""
+    return value if value in _ANSICHT_VALUES else "auto"
+
 
 def _kiosk_cookie_max_age_s(expires_at: datetime | None) -> int:
     if expires_at is None:
@@ -130,7 +147,7 @@ async def kiosk_entry(
 
 def _dashboard(
     request: Request, session: Session, principal: Principal, *,
-    error: str | None = None, error_zone_id: str | None = None,
+    error: str | None = None, error_zone_id: str | None = None, ansicht: str = "auto",
 ) -> Response:
     zones = visible_zones(session, principal, "zone.read")
     zone_ids = [zone.id for zone in zones]
@@ -196,6 +213,11 @@ def _dashboard(
             # Goes into the forms as a hidden field. The buttons are plain HTML and
             # send no header of their own -- see `kiosk_csrf_protection`.
             "csrf": _kiosk_csrf(request),
+            # `auto` / `panel` / `tafel` -- see `ANSICHT_COOKIE_NAME` above. Read into
+            # `data-ansicht` on <body>; everything past that (resolving `auto` by
+            # screen width, opening and closing the detail layer) is the template's
+            # and `kiosk_panel.js`'s job, not this adapter's.
+            "ansicht": ansicht,
         },
     )
 
@@ -209,11 +231,35 @@ async def kiosk_dashboard(
     if token is None:
         return _invalid_page(request)
     principal = principal_for_token(session, token)
-    return _dashboard(
+
+    # `None` (no `ansicht` in the query string) means "use whatever was chosen
+    # before" -- read the cookie and leave it untouched, which is what makes the
+    # self-refresh (`hx-get` with no query string at all) and the plain `/kiosk`
+    # bookmark keep showing the view a tablet was set up with. An explicit value,
+    # even an unrecognised one that normalizes to `auto`, is a deliberate choice
+    # made through the address bar and is written back to the cookie so it survives
+    # past this one request.
+    requested = request.query_params.get("ansicht")
+    if requested is None:
+        ansicht = _normalize_ansicht(request.cookies.get(ANSICHT_COOKIE_NAME))
+    else:
+        ansicht = _normalize_ansicht(requested)
+
+    response = _dashboard(
         request, session, principal,
         error=request.query_params.get("error"),
         error_zone_id=request.query_params.get("zone_id"),
+        ansicht=ansicht,
     )
+    if requested is not None:
+        settings = get_settings()
+        response.set_cookie(
+            ANSICHT_COOKIE_NAME, ansicht,
+            max_age=_kiosk_cookie_max_age_s(token.expires_at),
+            httponly=True, samesite="lax", secure=settings.secure_cookies,
+            path=cookie_path(request),
+        )
+    return response
 
 
 # The same step used by the start page's thermostat (`daily_views.py`) -- one click
