@@ -2221,12 +2221,18 @@ body {
 
 .tc-room-head {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
     gap: 0.75rem;
 }
 
 .tc-room-name {
+    /* Den Namen nicht neben dem Chip zerquetschen: der Kopf darf umbrechen.
+       Anders als beim scrollenden Raumreiter bleibt die Breite auf die Karte
+       begrenzt; überlange Namen dürfen dort mit overflow-wrap umbrechen. */
+    flex-shrink: 0;
+    max-width: 100%;
     margin: 0;
     font-size: 1.05rem;
     font-weight: 600;

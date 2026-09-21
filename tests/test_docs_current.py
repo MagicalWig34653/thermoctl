@@ -372,6 +372,8 @@ def test_documented_screenshots_match_what_the_documentation_actually_embeds() -
             expected.add(f"{view.stem}.png")
         if view.mobile and view.documented_mobile:
             expected.add(f"{view.stem}-mobil.png")
+            if view.mobile_followup:
+                expected.add(f"{view.stem}-mobil-2.png")
 
     embedded: set[str] = set()
     readme_text = (ROOT / "README.md").read_text(encoding="utf-8")

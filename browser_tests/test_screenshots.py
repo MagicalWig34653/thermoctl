@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from playwright.sync_api import Browser, BrowserContext
+from playwright.sync_api import Browser, BrowserContext, Page
 
 from browser_tests.live_server import LiveServer
 from tests.helpers import alle_api_routen
@@ -53,6 +53,7 @@ def test_cli_filter_produces_real_pngs(tmp_path: Path) -> None:
         ("oeffentlich-*", {"oeffentlich-einrichtung", "oeffentlich-anmeldung"}),
         ("wohnung-wochenplan", {"wohnung-wochenplan", "wohnung-wochenplan-mobil"}),
         ("anlage-startseite", {"anlage-startseite", "anlage-startseite-mobil"}),
+        ("wohnung-konto", {"wohnung-konto", "wohnung-konto-mobil", "wohnung-konto-mobil-2"}),
         ("kiosk-*", {"kiosk-dashboard", "kiosk-dashboard-mobil"}),
     ):
         directory = tmp_path / pattern.replace("*", "alle")
@@ -79,9 +80,52 @@ def test_cli_filter_produces_real_pngs(tmp_path: Path) -> None:
             data = path.read_bytes()
             assert data[:8] == b"\x89PNG\r\n\x1a\n"
             width, height = struct.unpack(">II", data[16:24])
-            assert width == (390 if path.stem.endswith("-mobil") else 1280)
-            assert height >= 844
+            assert width == (390 if "-mobil" in path.stem else 1280)
+            if "-mobil" in path.stem:
+                assert height == 844
+            else:
+                assert height >= 900
             assert len(data) > 10_000
+
+
+def test_phone_captures_start_at_top_and_keep_navigation_at_bottom(
+    browser: Browser, live_server: LiveServer, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from browser_tests.seed import create_login_tenant_user
+    from tools.screenshots import _capture
+
+    with live_server.session() as session:
+        create_login_tenant_user(
+            session, "demo-mieter", live_server.admin_password, [("zone.read", None)]
+        )
+        session.commit()
+
+    original = Page.screenshot
+    positions = []
+
+    def checked_screenshot(page: Page, **kwargs: Any) -> bytes:
+        if page.viewport_size == {"width": 390, "height": 844}:
+            assert kwargs["full_page"] is False
+            nav = page.locator(".tc-tbottomnav")
+            box = nav.bounding_box()
+            assert box is not None
+            assert box["y"] + box["height"] == pytest.approx(844)
+            links = nav.get_by_role("link")
+            assert links.count() == 4
+            for link in links.all():
+                bounds = link.bounding_box()
+                assert bounds is not None
+                assert 0 <= bounds["x"] < bounds["x"] + bounds["width"] <= 390
+                assert box["y"] <= bounds["y"] < bounds["y"] + bounds["height"] <= 844
+            positions.append(page.evaluate("window.scrollY"))
+        return original(page, **kwargs)
+
+    monkeypatch.setattr(Page, "screenshot", checked_screenshot)
+    view = next(view for view in VIEWS if view.stem == "wohnung-konto")
+    _capture(browser, live_server, view, {}, tmp_path, tmp_path, documented_only=True)
+    assert len(positions) == 2
+    assert positions[0] == 0
+    assert positions[1] > 0
 
 
 @pytest.mark.parametrize("path, message", [("/not-a-demo-page", "404"), ("/", "/login")])

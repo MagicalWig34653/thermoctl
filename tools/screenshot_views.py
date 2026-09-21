@@ -19,6 +19,8 @@ class View:
     # when `mobile` is also set, since otherwise there is no mobile capture at all.
     documented: bool = False
     documented_mobile: bool = False
+    # Optional second phone viewport, scrolled to this element below the header.
+    mobile_followup: str | None = None
 
     @property
     def stem(self) -> str:
@@ -139,7 +141,17 @@ def _with_documentation_flags(view: View) -> View:
     if flags is None:
         return view
     documented, documented_mobile = flags
-    return replace(view, documented=documented, documented_mobile=documented_mobile)
+    followups = {
+        "wohnung-startseite": ".tc-room:has(.tc-room-name:text-is('Schlafzimmer'))",
+        "wohnung-wohnzimmer-wochenplan": ".tc-panel:has(.tc-dayrow)",
+        "wohnung-konto": ".tc-panel:has(a[href$='/account/help'])",
+    }
+    return replace(
+        view,
+        documented=documented,
+        documented_mobile=documented_mobile,
+        mobile_followup=followups.get(view.stem),
+    )
 
 
 VIEWS = tuple(_with_documentation_flags(view) for view in _VIEWS_BEFORE_DOCUMENTATION_FLAGS)

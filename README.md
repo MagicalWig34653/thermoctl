@@ -24,7 +24,7 @@ zeigt die **[Bedienungsanleitung](docs/bedienung.md)**.
 
 **Wohnungssicht (mobil)** — nur die eigenen Räume, in Alltagssprache.
 
-<img src="docs/bilder/wohnung-startseite-mobil.png" alt="Wohnungssicht auf dem Handy: eigene Räume mit Temperatur, Sollwert und Knöpfen für vorübergehende Änderungen" width="100%">
+<img src="docs/bilder/wohnung-startseite-mobil.png" alt="Wohnungssicht am Seitenanfang: Status, Abwesenheit und erste Raumkarte" width="390">
 
 </td>
 </tr>
@@ -188,7 +188,9 @@ Verzeichnis mit Leerzeichen liegt — hier „Code Projekte".
 **Screenshots neu erzeugen.** Das Werkzeug startet einen eigenen Server mit frischer
 SQLite-Datenbank und erfundenen Demodaten; es liest keine `.env`. Es nimmt alle
 Ansichten einschließlich Einrichtung und Wohnungssicht auf, letztere sowie Startseite
-und Kiosk zusätzlich mit 390 Pixeln Breite (sonst 1280, immer die ganze Seite).
+und Kiosk zusätzlich als Telefon-Sichtbereich mit 390 × 844 Pixeln (am Schreibtisch
+1280 Pixel breit, ganze Seite). Mobile Aufnahmen beginnen oben; ergänzende Bilder
+mit `-mobil-2` zeigen auf Startseite, Wochenplan und Konto einen Bereich weiter unten.
 
 ```bash
 .venv/bin/python -m tools.screenshots

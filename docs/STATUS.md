@@ -52,11 +52,12 @@ Aussage über die Kiosk-Ansicht enthält.
 
 `tools/screenshots.py` nimmt jede GET-Ansicht der Weboberfläche auf — Anlagensicht,
 Wohnungssicht, Einrichtung, Anmeldung, Kiosk — gegen einen eigenen Server mit erfundenen
-Demodaten (`tools/screenshot_seed.py`). Versioniert sind nur die 25 Bilder, die die Doku
-einbindet (`--doku` → `docs/bilder/`, 5 MB); der volle Satz geht ins ignorierte
+Demodaten (`tools/screenshot_seed.py`). Versioniert sind nur die 28 Bilder, die die Doku
+einbindet (`--doku` → `docs/bilder/`, 4,6 MB); der volle Satz geht ins ignorierte
 `var/bilder/`. `browser_tests/test_screenshots.py` meldet jede neue Route ohne Aufnahme,
 `tests/test_docs_current.py` hält Kennzeichen und Einbindungen in beide Richtungen
 zusammen. Chromium läuft mit `--lang=de-DE`, sonst zeigen die Zeitfelder AM/PM.
+Mobile Aufnahmen zeigen den Sichtbereich (390 × 844 Pixel, bei Bedarf mit einer zweiten Aufnahme weiter unten), weil feste Elemente in Ganzseitenaufnahmen verrutschen.
 
 Neue Doku: `docs/bedienung.md` (beide Oberflächen, für den Betreiber) und
 `docs/wohnung.md` (nur Wohnungssicht, zum Weitergeben an Bewohner). Dabei kamen zwei

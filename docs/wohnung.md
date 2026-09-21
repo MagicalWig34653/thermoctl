@@ -23,7 +23,11 @@ Temperatur, seit wann sie gilt, der aktuelle Sollwert und eine kurze Erklärung,
 gerade dieser Wert gilt. Darunter ein Balken, der zeigt, wie warm es heute laufen soll —
 je dunkler, desto wärmer.
 
-![Zuhause-Ansicht mit den eigenen Räumen, Temperatur, Sollwert und Bedienknöpfen](bilder/wohnung-startseite-mobil.png)
+![Zuhause am Seitenanfang: Status, laufende Abwesenheit und Beginn der ersten Raumkarte](bilder/wohnung-startseite-mobil.png)
+
+Weiter unten stehen die Raumkarten mit ihren Bedienknöpfen:
+
+![Zuhause weiter unten: Schlafzimmer mit Temperatur, Sollwert und Raumaktionen](bilder/wohnung-startseite-mobil-2.png)
 
 Für jeden Raum gibt es mehrere Möglichkeiten, die Temperatur zu ändern:
 
@@ -49,7 +53,11 @@ abends kühler sein soll — für jeden Wochentag einzeln, oder auf einmal für 
 Woche bzw. für Montag bis Freitag übertragen. Eine Vorschau zeigt, wie die Temperatur
 dadurch in den nächsten 24 Stunden tatsächlich verläuft.
 
-![Zeitplan-Ansicht mit Raumauswahl und den Uhrzeiten für „Tag ab" und „Nacht ab" je Wochentag](bilder/wohnung-wohnzimmer-wochenplan-mobil.png)
+![Zeitplan am Seitenanfang: Raumauswahl, Vorschau und Beginn der Woche](bilder/wohnung-wohnzimmer-wochenplan-mobil.png)
+
+Weiter unten lassen sich die Uhrzeiten bearbeiten:
+
+![Zeitplan weiter unten: „Tag ab", „Nacht ab", Speichern und Übertragen](bilder/wohnung-wohnzimmer-wochenplan-mobil-2.png)
 
 Eine kurzzeitige Änderung über „Für eine Weile wärmer" verändert diesen Wochenplan
 **nicht** — sobald sie endet, gilt der Plan unverändert weiter.
@@ -94,7 +102,11 @@ Gesichtserkennung oder Sicherheitsschlüssel) als Anmeldeweg hinterlegen, als be
 und sicherere Alternative zum Passwort. Ist diese Möglichkeit bei Ihrer Anlage nicht
 eingerichtet, erscheint dieser Bereich schlicht nicht.
 
-![Konto-Seite mit Passwort ändern, Andere Sitzungen beenden, Hilfe und Abmelden](bilder/wohnung-konto-mobil.png)
+![Konto am Seitenanfang: Passwort ändern und andere Sitzungen beenden](bilder/wohnung-konto-mobil.png)
+
+Hilfe und Abmelden stehen weiter unten:
+
+![Konto weiter unten: Hilfe und Abmelden](bilder/wohnung-konto-mobil-2.png)
 
 ## Wenn etwas nicht stimmt
 
