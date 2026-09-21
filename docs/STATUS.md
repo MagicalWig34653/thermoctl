@@ -44,6 +44,9 @@ Kopfzeile fehlte jeder `@media`-Block. Jetzt (noch unveröffentlicht, nicht Teil
   oder die Rechteprüfung der vier bestehenden Kiosk-Endpunkte.
 
 Die Panel-Ansicht ist jetzt in der Bedienungs- und Self-Hosting-Dokumentation bebildert.
+Tafel und Panel zeigen in der Kopfzeile keinen Produkt-Schriftzug, sondern nur den
+weiterhin direkt sichtbaren Quelltext-Link (AGPL-3.0) und die Uhrzeit; auch der
+Panel-Detaildialog bietet den Quelltext-Link direkt an.
 
 Noch offen: Kreuzreview (Umsetzung war ein Claude-Agent) inklusive eigenem
 Testlauf gegen SQLite **und** MariaDB, danach Merge nach `main` und ein

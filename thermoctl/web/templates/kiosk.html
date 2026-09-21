@@ -172,7 +172,6 @@ nichts aufzuheben, und der Knopf wäre einer ohne Wirkung.
      hx-select="#kiosk-body" hx-target="#kiosk-body" hx-swap="outerHTML"
      data-kiosk-error-zone="{{ error_zone_id or '' }}">
     <div class="kiosk-heading">
-        <span class="tc-marker kiosk-marker">thermoctl</span>
         <div class="d-flex align-items-baseline gap-3">
             {#
             AGPL-3.0 §13 verlangt für netzseitig genutzte Software eine erreichbare
@@ -299,6 +298,8 @@ nichts aufzuheben, und der Knopf wäre einer ohne Wirkung.
              role="dialog" aria-modal="true" aria-label="{{ zone.display_name }}">
             <div class="kiosk-detail-head">
                 <span class="kiosk-detail-name">{{ zone.display_name }}</span>
+                <a class="kiosk-source-link t-quiet" href="https://github.com/MagicalWig34653/thermoctl"
+                   target="_blank" rel="noopener">Quelltext (AGPL-3.0)</a>
                 {#
                 `type="button"`, kein Formular: Zurück verlässt nur die Ansicht,
                 verändert nichts an der Zone -- ein `submit` hätte hier fälschlich

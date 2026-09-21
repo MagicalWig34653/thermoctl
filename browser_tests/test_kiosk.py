@@ -688,3 +688,32 @@ def test_enter_and_space_on_the_plus_button_still_work_in_the_tafel_view(
     finally:
         assert not errors, "Kiosk-Konsole meldete Fehler:\n" + "\n".join(errors)
         page.context.close()
+
+
+@pytest.mark.parametrize("mode,width,height,detail", [
+    ("tafel", 1440, 900, False), ("tafel", 390, 844, False),
+    ("panel", 480, 480, False), ("panel", 390, 844, False),
+    ("panel", 480, 480, True), ("panel", 390, 844, True),
+])
+def test_kiosk_has_no_wordmark_and_keeps_source_link_visible(
+    page: Page, live_server: LiveServer, mode: str, width: int, height: int, detail: bool,
+) -> None:
+    zone_ids = _seed_panel_zones(live_server, prefix=f"Logo-{mode}-{width}-{detail}")
+    plaintext = _issue_kiosk_token_for_zones(live_server, zone_ids)
+    page.set_viewport_size({"width": width, "height": height})
+    page.goto(f"/kiosk/{plaintext}")
+    page.goto(f"/kiosk?ansicht={mode}")
+    expect(page.locator("body")).to_have_attribute("data-ansicht-aktiv", mode)
+    expect(page.locator(".kiosk-clock")).to_be_visible()
+    scope = page.locator(".kiosk-heading")
+    if detail:
+        page.locator("[data-kiosk-tile]").first.click()
+        scope = page.get_by_role("dialog")
+        expect(scope).to_be_visible()
+    source = scope.get_by_role("link", name="Quelltext (AGPL-3.0)", exact=True)
+    expect(source).to_be_visible()
+    expect(source).to_be_in_viewport()
+    expect(source).to_have_attribute("href", "https://github.com/MagicalWig34653/thermoctl")
+    source.click(trial=True)  # Also detects an overlay intercepting the link.
+    expect(page.get_by_text("thermoctl", exact=True)).to_have_count(0)
+    expect(page.locator(".tc-marker, .kiosk-marker")).to_have_count(0)

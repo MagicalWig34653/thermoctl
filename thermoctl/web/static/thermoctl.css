@@ -1344,13 +1344,6 @@ body {
     gap: 0.5rem;
 }
 
-/* Stand bis 0.9.4 als Inline-`style` am Element selbst -- musste hierher
-   wandern, weil die Panel-Ansicht ihn kleiner braucht und eine Inline-Angabe
-   jede Regel aus dieser Datei ohne `!important` schlägt. */
-.kiosk-marker {
-    font-size: 1.75rem;
-}
-
 .kiosk-clock {
     /* Vier tote Kürzel standen hier: `--schrift-instrument`, `--gedämpft`,
        `--tinte`, `--wärme`. Sie stammen aus der Umbenennung ins Englische und
@@ -1479,10 +1472,6 @@ body {
 
 .kiosk-page[data-ansicht-aktiv="panel"] .kiosk-heading {
     gap: 0.3rem;
-}
-
-.kiosk-page[data-ansicht-aktiv="panel"] .kiosk-marker {
-    font-size: 0.85rem;
 }
 
 .kiosk-page[data-ansicht-aktiv="panel"] .kiosk-clock {
