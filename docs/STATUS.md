@@ -37,12 +37,22 @@ Beim Ansehen der Bilder gefunden und behoben:
 Offen:
 - `browser_tests/test_start_page_live.py::test_an_open_override_area_and_a_started_input_survive_a_refresh`
   schlug einmal unter Last fehl und ließ sich danach nicht reproduzieren.
-- Der Zweig `release/v0.9.5` ist nicht nach `main` gemergt, obwohl das Add-on bereits auf
-  0.9.5 zeigt.
 - Die Gesamtabdeckung erreicht 100 % nur mit erreichbarer MariaDB:
   `tests/test_migration_lock.py` deckt `thermoctl/db/migration_lock.py:122-148` ab, und
   zwar gegen die lokale MariaDB, unabhängig von `THERMOCTL_TEST_DATABASE_URL`. Ein reiner
   SQLite-Lauf ohne MariaDB zeigt 99 % — das ist kein Befund.
+## v0.9.5: eine Anwendungsversion ohne Anwendungsänderung, für das Add-on
+
+Das Add-on hat `panel_admin: false` bekommen (Commit `8f8bd53` im Add-on-Repository):
+der Seitenleisten-Eintrag in Home Assistant erscheint damit auch Nutzern ohne
+Home-Assistant-Administratorrechte. Bisher galt die Supervisor-Vorgabe `true`, und
+Nicht-Administratoren sahen thermoctl nicht -- obwohl die Rechteprüfung ohnehin bei
+thermoctls eigener Anmeldung liegt. Home Assistant liefert eine geänderte
+`config.yaml` aber erst mit einer neuen `version` aus, und die muss zu einem
+vorhandenen ghcr.io-Abbild passen (siehe "Eine Freigabe ist erst fertig, wenn auch das
+Add-on nachgezogen ist"). Deshalb 0.9.5 hier mit demselben Inhalt wie 0.9.4: nur
+`pyproject.toml`, `thermoctl/__init__.py`, `CHANGELOG.md` und dieser Abschnitt.
+Keine Migration, kein Quelltext berührt.
 
 ## Die Meross-Anmeldesperre war selbstverursacht -- Backoff, geteilte Sitzung, sichtbarer Grund
 
