@@ -94,7 +94,10 @@ INGRESS_PREFIX = "/api/hassio_ingress/A1b2C3d4e5"
 
 
 def _live_server(
-    root_path: str, *, before_setup: Callable[[LiveServer], None] | None = None
+    root_path: str,
+    *,
+    before_setup: Callable[[LiveServer], None] | None = None,
+    admin_username: str = ADMIN_USERNAME,
 ) -> Generator[LiveServer]:
     """Shared implementation behind `live_server` and `live_server_with_prefix`.
 
@@ -102,6 +105,10 @@ def _live_server(
     plain fixture, `INGRESS_PREFIX` for the prefixed one. Everything else (database,
     admin setup, teardown) is identical; only the environment and, in the prefixed
     case, what fronts the server (see `live_server_with_prefix`) differ.
+
+    `admin_username` defaults to the shared browser-test constant; `tools/screenshots.py`
+    passes its own demo-schema name so the recorded username never becomes browser-test
+    plumbing leaking into documentation images.
     """
     workdir = Path(tempfile.mkdtemp(prefix="thermoctl-browsertests-"))
     db_path = workdir / "browsertests.db"
@@ -194,11 +201,11 @@ def _live_server(
             )
 
         if before_setup is not None:
-            before_setup(LiveServer(base_url, database_url, ADMIN_USERNAME, ADMIN_PASSWORD))
+            before_setup(LiveServer(base_url, database_url, admin_username, ADMIN_PASSWORD))
 
         payload = urlencode(
             {
-                "username": ADMIN_USERNAME,
+                "username": admin_username,
                 "display_name": "Browsertest-Verwaltung",
                 "password": ADMIN_PASSWORD,
                 "timezone": "Europe/Berlin",
@@ -221,7 +228,7 @@ def _live_server(
         yield LiveServer(
             base_url=base_url,
             database_url=database_url,
-            admin_username=ADMIN_USERNAME,
+            admin_username=admin_username,
             admin_password=ADMIN_PASSWORD,
         )
     finally:

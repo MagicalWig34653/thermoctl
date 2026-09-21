@@ -165,14 +165,19 @@ und Kiosk zusätzlich mit 390 Pixeln Breite (sonst 1280, immer die ganze Seite).
 
 ```bash
 .venv/bin/python -m tools.screenshots
-.venv/bin/python -m tools.screenshots --ausgabe docs/bilder --nur 'wohnung-*'
+.venv/bin/python -m tools.screenshots --nur 'wohnung-*'
+.venv/bin/python -m tools.screenshots --doku
 ```
 
-`--nur` filtert die Namen `<profil>-<ansicht>` mit einem Shell-Muster. Ohne Filter
-entstehen alle PNGs in `docs/bilder/`; gleichnamige Bilder werden ersetzt. Demodaten
-werden relativ zum Laufzeitpunkt angelegt, damit Messwerte frisch bleiben. HTTP- und
-Browserfehler brechen den Lauf ab. Die Routenabdeckung und ein gefilterter Probelauf
-werden von `browser_tests/test_screenshots.py` geprüft.
+`--nur` filtert die Namen `<profil>-<ansicht>` mit einem Shell-Muster. Ohne `--doku`
+entstehen die PNGs standardmäßig im ignorierten `var/bilder/`; gleichnamige Bilder werden
+ersetzt. `--doku` schreibt stattdessen ausschließlich die als `documented` gekennzeichneten
+Ansichten nach `docs/bilder/` (und ignoriert dabei `--ausgabe`) -- nur diese Bilder werden
+versioniert. Demodaten werden relativ zum Laufzeitpunkt angelegt, damit Messwerte frisch
+bleiben. HTTP- und Browserfehler brechen den Lauf ab. Die Routenabdeckung und ein
+gefilterter Probelauf werden von `browser_tests/test_screenshots.py` geprüft, der Abgleich
+zwischen `documented`-Kennzeichen und den tatsächlich in der Dokumentation eingebundenen
+Bildern von `tests/test_docs_current.py`.
 
 ## Noch nicht enthalten
 
