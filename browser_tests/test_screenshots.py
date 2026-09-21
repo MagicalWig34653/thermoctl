@@ -14,7 +14,7 @@ from browser_tests.live_server import LiveServer
 from tests.helpers import alle_api_routen
 from thermoctl.app import create_app
 from thermoctl.config import get_settings
-from tools.screenshots import EXCLUDED_ROUTES, VIEWS
+from tools.screenshot_views import EXCLUDED_ROUTES, VIEWS
 
 pytestmark = pytest.mark.browser
 

@@ -364,7 +364,7 @@ def test_documented_screenshots_match_what_the_documentation_actually_embeds() -
     not be mistaken for a real reference: rendered from within `docs/`, that string
     points nowhere.
     """
-    from tools.screenshots import VIEWS
+    from tools.screenshot_views import VIEWS
 
     expected = set()
     for view in VIEWS:
@@ -383,7 +383,7 @@ def test_documented_screenshots_match_what_the_documentation_actually_embeds() -
     missing_flag = sorted(embedded - expected)
     assert not missing_flag, (
         "In der Dokumentation eingebundene Bilder ohne passendes documented-Kennzeichen "
-        "in tools/screenshots.py: " + ", ".join(missing_flag)
+        "in tools/screenshot_views.py: " + ", ".join(missing_flag)
     )
 
     missing_embed = sorted(expected - embedded)

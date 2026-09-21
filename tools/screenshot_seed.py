@@ -37,9 +37,9 @@ from thermoctl.db.models.zone import SetpointMode, ZoneSetpoint
 from thermoctl.domain.absence import start_absence
 from thermoctl.domain.controller import set_binding
 from thermoctl.domain.controller_channels import configure_channel
+from tools.screenshot_views import ZONE_SLUGS
 
 ZONE_NAMES = ("Wohnzimmer", "Küche", "Bad", "Schlafzimmer", "Kinderzimmer", "Büro")
-ZONE_SLUGS = ("wohnzimmer", "kueche", "bad", "schlafzimmer", "kinderzimmer", "buero")
 
 
 def seed_demo(session: Session, password: str) -> dict[str, str | int]:

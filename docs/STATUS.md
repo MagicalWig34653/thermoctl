@@ -2,6 +2,14 @@
 
 Letzte Aktualisierung: 2026-09-21.
 
+## Gewöhnliche Tests ohne Playwright
+
+Die Screenshot-Ansichtenliste liegt in `tools/screenshot_views.py` und braucht nur
+die Standardbibliothek. Doku-Konsistenztest und Screenshot-Werkzeug verwenden dieselben
+Daten. Ein Regressionstest führt den echten Doku-Abgleich in einem Unterprozess mit
+gesperrtem Playwright-Import aus und prüft auch die Server- und Seed-Importkette.
+Playwright bleibt ausschließlich im Extra `browser-tests`.
+
 ## Doku mit Bildern, Screenshot-Werkzeug, drei Fehler aus dem Hinsehen
 
 `tools/screenshots.py` nimmt jede GET-Ansicht der Weboberfläche auf — Anlagensicht,

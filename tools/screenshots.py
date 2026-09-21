@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 from contextlib import closing
-from dataclasses import dataclass, replace
 from fnmatch import fnmatchcase
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -13,158 +12,13 @@ from urllib.parse import urlsplit
 from playwright.sync_api import Browser, Page, sync_playwright
 
 from browser_tests.live_server import LiveServer, _live_server
-from tools.screenshot_seed import ZONE_SLUGS, seed_demo
+from tools.screenshot_seed import seed_demo
+from tools.screenshot_views import VIEWS, View
 
 # The demo administrator used only for screenshot generation -- deliberately not the
 # shared `browser_tests.live_server.ADMIN_USERNAME`, which stays test plumbing and must
 # not appear inside a documentation image (see docs/bilder/*.png reviews).
 SCREENSHOT_ADMIN_USERNAME = "demo-verwaltung"
-
-
-@dataclass(frozen=True)
-class View:
-    name: str
-    path: str
-    profile: str = "anlage"
-    mobile: bool = False
-    open_details: bool = False
-    route: str | None = None
-    # Whether this view's desktop (1280px) capture, respectively its mobile (390px)
-    # capture, is one of the images actually embedded in the documentation. Only
-    # `documented` views are written by `--doku`; `documented_mobile` only applies
-    # when `mobile` is also set, since otherwise there is no mobile capture at all.
-    documented: bool = False
-    documented_mobile: bool = False
-
-    @property
-    def stem(self) -> str:
-        return f"{self.profile}-{self.name}"
-
-
-# The single inventory, including parameterized per-zone views and preparations.
-_VIEWS_BEFORE_DOCUMENTATION_FLAGS = (
-    View("einrichtung", "/setup", "oeffentlich"),
-    View("anmeldung", "/login", "oeffentlich"),
-    View("startseite", "/", mobile=True),
-    *(
-        View(name, path)
-        for name, path in (
-            ("zonen", "/zones"),
-            ("zone-neu", "/zones/new"),
-            ("geraete", "/devices"),
-            ("anlage", "/plant"),
-            ("bediengeraete", "/controllers"),
-            ("schaltprotokoll", "/device-commands"),
-            ("passkeys", "/passkeys"),
-            ("kiosk-token", "/kiosk-tokens"),
-            ("urlaub", "/vacation"),
-            ("konto", "/account"),
-            ("hilfe", "/account/help"),
-            ("audit", "/audit"),
-            ("benutzer", "/users"),
-            ("gruppen", "/groups"),
-            ("api-token", "/tokens"),
-            ("sollwertmodi", "/modes"),
-            ("sollwertmodus-neu", "/modes/new"),
-            ("sollwertmodus", "/modes/{mode_id}"),
-            ("sollwertmodus-loeschen", "/modes/{mode_id}/delete"),
-            ("betrieb", "/control"),
-            ("einstellungen", "/settings"),
-            ("schnittstellen", "/interfaces"),
-            ("statistik", "/statistics"),
-            ("relaisverschleiss", "/relay-wear"),
-        )
-    ),
-    *(
-        View(
-            f"{slug}-{name}",
-            path.replace("{zone_id}", "{zone_" + slug + "}").replace(
-                "{point_id}", "{point_" + slug + "}"
-            ),
-            route=path,
-        )
-        for slug in ZONE_SLUGS
-        for name, path in (
-            ("details", "/zones/{zone_id}"),
-            ("loeschen", "/zones/{zone_id}/delete"),
-            ("parameter", "/zones/{zone_id}/parameters"),
-            ("geraete", "/zones/{zone_id}/devices"),
-            ("wochenplan", "/zones/{zone_id}/schedule"),
-            ("schaltpunkt-loeschen", "/zones/{zone_id}/schedule/points/{point_id}/delete"),
-            ("wochenplan-uebernehmen", "/zones/{zone_id}/schedule/adopt"),
-            ("sollwerte", "/zones/{zone_id}/setpoints"),
-        )
-    ),
-    *(
-        View(name, path, "wohnung", mobile=True, open_details=details)
-        for name, path, details in (
-            ("startseite", "/", False),
-            ("abwesenheit", "/", True),
-            ("wochenplan", "/schedule", True),
-            ("heizzeit", "/heating-time", False),
-            ("konto", "/account", False),
-            ("hilfe", "/account/help", False),
-            ("passkeys", "/passkeys", False),
-        )
-    ),
-    *(
-        View(
-            f"{slug}-wochenplan",
-            "/schedule?zone={zone_" + slug + "}",
-            "wohnung",
-            mobile=True,
-            open_details=True,
-            route="/schedule",
-        )
-        for slug in ZONE_SLUGS[:4]
-    ),
-    View("dashboard", "/kiosk/{plaintext}", "kiosk", mobile=True),
-)
-
-# Which generated PNGs are actually embedded in the documentation, keyed by
-# `<profile>-<name>` (i.e. `View.stem`, not the on-disk file name -- the `-mobil`
-# suffix is expressed through `documented_mobile` instead, since one view can have a
-# documented desktop capture, a documented mobile capture, both, or neither).
-_DOCUMENTED: dict[str, tuple[bool, bool]] = {
-    "anlage-startseite": (True, False),
-    "anlage-zonen": (True, False),
-    "anlage-bad-wochenplan": (True, False),
-    "anlage-bad-sollwerte": (True, False),
-    "anlage-geraete": (True, False),
-    "anlage-betrieb": (True, False),
-    "anlage-schaltprotokoll": (True, False),
-    "anlage-benutzer": (True, False),
-    "anlage-gruppen": (True, False),
-    "anlage-kiosk-token": (True, False),
-    "anlage-einstellungen": (True, False),
-    "anlage-relaisverschleiss": (True, False),
-    "anlage-urlaub": (True, False),
-    "wohnung-startseite": (False, True),
-    "wohnung-abwesenheit": (True, True),
-    "wohnung-wohnzimmer-wochenplan": (True, True),
-    "wohnung-heizzeit": (True, True),
-    "wohnung-konto": (True, True),
-    "kiosk-dashboard": (True, False),
-    "oeffentlich-anmeldung": (True, False),
-    "oeffentlich-einrichtung": (True, False),
-}
-
-def _with_documentation_flags(view: View) -> View:
-    flags = _DOCUMENTED.get(view.stem)
-    if flags is None:
-        return view
-    documented, documented_mobile = flags
-    return replace(view, documented=documented, documented_mobile=documented_mobile)
-
-
-VIEWS = tuple(_with_documentation_flags(view) for view in _VIEWS_BEFORE_DOCUMENTATION_FLAGS)
-assert {stem for stem in _DOCUMENTED if stem not in {v.stem for v in VIEWS}} == set(), (
-    "documented-Kennzeichen für eine Ansicht vergeben, die es nicht (mehr) gibt"
-)
-
-EXCLUDED_ROUTES = {
-    "/kiosk": "Ziel der Token-Weiterleitung; wird über /kiosk/{plaintext} aufgenommen.",
-}
 
 
 def selected_views(pattern: str | None, *, documented_only: bool = False) -> list[View]:
