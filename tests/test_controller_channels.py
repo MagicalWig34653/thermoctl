@@ -174,6 +174,67 @@ def test_the_controller_page_and_both_form_endpoints(client_als, session: Sessio
     assert response.status_code == 303
 
 
+def test_a_room_sensor_used_only_as_temperature_source_appears_as_a_source(
+    client_als, session: Session
+) -> None:
+    """A pure room-temperature sensor is attached to a zone only through
+    `zone.temperature_source_device_id` (see `domain/device_assignment.py`'s
+    `TEMPERATURE_SOURCE` and `set_temperature_source`) -- there is no `sensor` role
+    it could hold in `ZoneDevice`, `assign_device` never creates one for it.
+
+    `_devices_in()` used to join solely over `ZoneDevice`, so such a sensor could
+    never appear in the 'Temperaturquellen' pool that feeds a controller's write
+    channel, even though an actuator sharing the same zone did.
+    """
+    _kinds(session)
+    zone = create_zone(session, "wohnzimmer")
+    controller = create_device(session, "wandgeraet")
+    _assign(session, zone.id, controller.id, "controller")
+    sensor = create_device(session, "raumfuehler")
+    zone.temperature_source_device_id = sensor.id
+    session.flush()
+    _property(session, controller.id, readable=True)
+
+    client = client_als([("device.read", zone.id), ("device.manage", zone.id)])
+    response = client.get("/controllers")
+
+    assert response.status_code == 200
+    assert "raumfuehler" in response.text
+
+
+def test_a_room_sensor_can_be_picked_as_a_channel_source(
+    client_als, session: Session
+) -> None:
+    """The counterpart to the read above: submitting the form with such a sensor's
+    id must not be rejected by `_require_readable_device`, which used to run the
+    same `ZoneDevice`-only check and would 404 a device the page had just offered.
+    """
+    _kinds(session)
+    zone = create_zone(session, "kueche")
+    controller = create_device(session, "kuechenpanel")
+    _assign(session, zone.id, controller.id, "controller")
+    sensor = create_device(session, "kuechenfuehler")
+    zone.temperature_source_device_id = sensor.id
+    session.flush()
+    _property(session, controller.id)
+
+    client = client_als([("device.read", zone.id), ("device.manage", zone.id)])
+    response = client.post(
+        "/controllers/channel",
+        data={
+            "device_id": controller.id,
+            "property_name": "external_temperature",
+            "direction": "write",
+            "kind": "sensor_temperature",
+            "source_device_id": sensor.id,
+        },
+        headers=_csrf(client),
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+
+
 def test_the_controllers_page_with_no_visible_zone_shows_nothing(
     client_als, session: Session
 ) -> None:
@@ -655,6 +716,43 @@ def test_a_controller_in_a_foreign_zone_is_not_found(client_als, session: Sessio
         data={"device_id": str(foreign_device.id), "action_code": "single_plus",
               "command": "boost"},
     )
+    assert response.status_code == 404
+
+
+def test_a_temperature_source_in_a_foreign_zone_is_not_found(
+    client_als, session: Session
+) -> None:
+    """The counterpart to `_devices_in()` picking up `zone.temperature_source_device_id`:
+    that second source must stay scoped to the principal's own visible zones just like
+    the `ZoneDevice` one always was. A sensor hanging off a foreign zone's temperature
+    source -- never a `ZoneDevice` row -- must still 404 as a channel's `source_device_id`,
+    not be accepted because `_require_readable_device()` now also checks that column.
+    """
+    _kinds(session)
+    own_zone = create_zone(session, "eigene-zone")
+    controller = create_device(session, "eigenes-bediengeraet")
+    _assign(session, own_zone.id, controller.id, "controller")
+    _property(session, controller.id)
+
+    foreign_zone = create_zone(session, "fremde-zone")
+    foreign_sensor = create_device(session, "fremder-fuehler")
+    foreign_zone.temperature_source_device_id = foreign_sensor.id
+    session.flush()
+
+    client = client_als([("device.read", own_zone.id), ("device.manage", own_zone.id)])
+    response = client.post(
+        "/controllers/channel",
+        data={
+            "device_id": controller.id,
+            "property_name": "external_temperature",
+            "direction": "write",
+            "kind": "sensor_temperature",
+            "source_device_id": foreign_sensor.id,
+        },
+        headers=_csrf(client),
+        follow_redirects=False,
+    )
+
     assert response.status_code == 404
 
 
