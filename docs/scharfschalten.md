@@ -58,6 +58,8 @@ klärt das vor dem Scharfschalten, nicht danach.
 
 ## 2. Die Reihenfolge des Scharfschaltens
 
+![Betriebsseite im Trockenlauf mit der Schaltfläche „Scharf schalten …" und darunter Ist- und Sollwerten aller Zonen](bilder/anlage-betrieb.png)
+
 1. **Auf `Betrieb`, „Scharf schalten …"** anklicken, eine Begründung eintragen (Pflicht)
    und bestätigen. Die Seite zeigt danach sofort „Scharf, Neustart fehlt" — der beim
    Prozessstart gebaute zweite Riegel ist noch zu, es geht noch nichts hinaus.
@@ -108,6 +110,8 @@ seltener, weil sich eine Ein/Aus- oder Sollwert-Entscheidung nur selten ändert.
 ## 4. Wie man das Schaltprotokoll liest
 
 Unter `Einstellungen → Schaltprotokoll`, mit Filtern nach Zeitraum, Zone und Ergebnis.
+
+![Schaltprotokoll mit mehreren Einträgen: Zeitpunkt, Zone, Gerät, Befehl, Ergebnis „Ausgeführt" und Begründung „Zeitplan"](bilder/anlage-schaltprotokoll.png)
 
 **Ein unauffälliger Abend** zeigt für jede Zone mit aktivem Aktor wenige Einträge —
 typischerweise die Schaltpunkte des Zeitplans, an denen sich die Entscheidung tatsächlich

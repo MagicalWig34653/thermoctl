@@ -80,3 +80,7 @@ docs/verlauf.md
 docs/offene-entscheidungen.md
 docs/superpowers/
 tools/umbenennung/
+
+# Standardausgabe von tools/screenshots.py -- nur ein Lauf mit --doku schreibt
+# gezielt die als "documented" gekennzeichneten Ansichten nach docs/bilder/.
+var/bilder/
