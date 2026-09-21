@@ -109,8 +109,20 @@ def _require_readable_device(session: Session, principal: Principal, device_id: 
 
 def _context(session: Session, principal: Principal, **extra: object) -> dict[str, object]:
     readable_zones = _zones(session, principal, "device.read")
-    manageable_ids = {zone.id for zone in _zones(session, principal, "device.manage")}
+    manageable_zones = _zones(session, principal, "device.manage")
+    manageable_ids = {zone.id for zone in manageable_zones}
     controllers = _controllers(session, [zone.id for zone in readable_zones])
+    # `manageable_ids` above holds *zone* ids -- `device.manage` is a zone-scoped
+    # permission, a controller device carries none of its own. The edit form in
+    # `controllers.html` is about a specific *device*, so it needs the set of
+    # device ids the principal may in fact manage: exactly the controllers that
+    # sit in one of those zones. This mirrors `_managed_device()` below, which
+    # both POST endpoints already check independently of anything the template
+    # decides to show -- this only controls visibility, it does not widen what a
+    # POST accepts.
+    manageable_device_ids = {
+        device.id for device in _controllers(session, [zone.id for zone in manageable_zones])
+    }
     properties: dict[int, list[DeviceProperty]] = {}
     values: dict[int, list[str]] = {}
     channels: dict[tuple[int, str], ControllerChannel] = {}
@@ -122,6 +134,7 @@ def _context(session: Session, principal: Principal, **extra: object) -> dict[st
     return {
         "controllers": controllers, "properties": properties, "property_values": values,
         "channels": channels, "zones": readable_zones, "manageable_ids": manageable_ids,
+        "manageable_device_ids": manageable_device_ids,
         "devices": _devices_in(session, [zone.id for zone in readable_zones]),
         "kinds": {kind.id: kind for kind in session.scalars(select(ChannelKind))},
         "commands": session.scalars(select(ControllerCommand).order_by(ControllerCommand.id)).all(),
