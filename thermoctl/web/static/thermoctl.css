@@ -2093,11 +2093,16 @@ body {
 
 /* ── Mieter-Zeitplan ───────────────────────────────────────────────────────── */
 
+/* Scrollt in sich selbst statt umzubrechen, aus demselben Grund wie `.tc-bars`
+ * oben: bei vielen oder langen Raumnamen soll die Leiste bedienbar bleiben,
+ * statt in mehrere Zeilen zu zerfallen. */
 .tc-roomtabs {
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
+    overflow-x: auto;
     gap: 0.35rem;
     margin-bottom: 1rem;
+    padding-bottom: 0.25rem;
 }
 
 .tc-roomtab {
@@ -2110,6 +2115,14 @@ body {
     background: var(--surface);
     color: var(--ink);
     text-decoration: none;
+    /* Ohne diese zwei Zeilen erlaubt das globale `overflow-wrap: anywhere`
+     * (oben) einem schrumpfenden Flex-Kind, seinen Text mitten im Wort zu
+     * trennen, sobald der Reiter selbst breiter ist als der verbleibende
+     * Platz -- "Schlafzimmer" brach dadurch auf 390 px in zwei Zeilen um.
+     * Dieselbe Ursache und Lösung wie bei der Geräteliste und dem
+     * Schaltprotokoll (siehe deren `table-layout: fixed`-Kommentar oben). */
+    flex-shrink: 0;
+    white-space: nowrap;
 }
 
 .tc-roomtab.tc-here {

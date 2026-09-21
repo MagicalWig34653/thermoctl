@@ -851,6 +851,82 @@ async def test_a_device_that_became_an_actuator_is_no_longer_written_to(
     assert recorder.messages == []
 
 
+def test_the_edit_form_is_shown_only_to_a_principal_who_may_manage_the_zone(
+    client_als, session: Session
+) -> None:
+    """`controllers.html` decides whether to show the edit form (as opposed to the
+    read-only label) by checking `device.id in manageable_ids` -- but
+    `_context()` fills `manageable_ids` with *zone* ids (`device.manage` is a
+    zone-scoped permission; a controller device has no permission of its own).
+    A device id can never appear in a set of zone ids unless the two id spaces
+    collide by chance, so an administrator who may in fact manage the zone
+    practically never sees the edit forms ("Was ankommt", "Was hingeschickt
+    wird").
+
+    The fix must show the form exactly when the principal may manage a zone the
+    device sits in as a controller -- the same test `_managed_device()` (used by
+    both POST endpoints) already applies -- without widening what a POST accepts.
+    """
+    _kinds(session)
+    # Zwei ungenutzte Zonen zuerst angelegt: Zone- und Gerätetabelle zählen ihre
+    # Autoinkrement-Ids unabhängig voneinander hoch, und ohne diesen Vorlauf wäre
+    # `zone.id == device.id` reiner Zufall der Anlagereihenfolge -- der Test würde
+    # den Fehler dann nur zufällig treffen, je nachdem, welche andere Zone oder
+    # welches andere Gerät die Testsuite vorher in derselben Sitzung angelegt hat.
+    create_zone(session, "vorlaufzone-1")
+    create_zone(session, "vorlaufzone-2")
+    zone = create_zone(session, "formularzone")
+    device = create_device(session, "formulargeraet")
+    assert zone.id != device.id, "Vorlauf griff nicht -- der Test prüft dann nichts"
+    _assign(session, zone.id, device.id, "controller")
+    _property(session, device.id, readable=True)
+
+    manager = client_als([("device.read", zone.id), ("device.manage", zone.id)])
+    response = manager.get("/controllers")
+    assert response.status_code == 200
+    assert 'action="/controllers/channel"' in response.text, (
+        "Wer die Zone verwalten darf, bekommt hier keine Bearbeitungsform zu sehen"
+    )
+
+    reader = client_als([("device.read", zone.id)])
+    response = reader.get("/controllers")
+    assert response.status_code == 200
+    assert 'action="/controllers/channel"' not in response.text, (
+        "Wer die Zone nur lesen darf, sieht trotzdem die Bearbeitungsform"
+    )
+    assert "Nicht belegt" in response.text
+
+
+def test_the_post_endpoint_rejects_a_device_the_forged_request_names_regardless_of_the_form(
+    client_als, session: Session
+) -> None:
+    """The template condition above only controls what is *shown* -- the
+    endpoint must reject the very same request on its own, exactly as if the
+    form had never been hidden. Otherwise the visibility fix in the template
+    would be the only thing standing between a read-only principal and a write.
+    """
+    _kinds(session)
+    zone = create_zone(session, "erzwungene-zone")
+    device = create_device(session, "erzwungenes-geraet")
+    _assign(session, zone.id, device.id, "controller")
+    _property(session, device.id, readable=True)
+
+    reader = client_als([("device.read", zone.id)])
+    response = reader.post(
+        "/controllers/channel",
+        data={
+            "device_id": str(device.id),
+            "property_name": "external_temperature",
+            "direction": "write",
+            "kind": "fixed",
+            "fixed_number": "21",
+        },
+        headers=_csrf(reader),
+        follow_redirects=False,
+    )
+    assert response.status_code == 404
+
+
 def test_the_controllers_page_shows_a_configured_channel(
     angemeldeter_client: TestClient, session: Session
 ) -> None:
