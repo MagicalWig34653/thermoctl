@@ -11,7 +11,16 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ## Unveröffentlicht
 
-### Neu
+### Hinzugefügt
+
+- **Kiosk: eine zweite, kompakte Ansicht für kleine Wandtabletts (480×480).**
+  Die bisherige, scrollende Tafel-Darstellung blieb erhalten und ist weiterhin
+  die Vorgabe für breitere Geräte; neu ist eine zweistufige Panel-Ansicht --
+  ein festes 2-Spalten-Raster mit allen Zonen auf einen Blick, und ein
+  flächendeckender Detailbereich je Zone, den ein Antippen der Kachel öffnet
+  und der nach Zurück oder 45 s ohne Bedienung wieder schließt. Umschaltbar über
+  `?ansicht=panel`/`?ansicht=tafel`/`?ansicht=auto` (Vorgabe: automatisch nach
+  Bildschirmbreite), gemerkt in einem eigenen Cookie.
 
 - **Bilder in der Doku.** Die README zeigt jetzt, wie thermoctl aussieht, und
   verweist auf zwei neue Anleitungen: `docs/bedienung.md` beschreibt beide
@@ -27,6 +36,10 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ### Behoben
 
+- **Zwei Knöpfe am Kiosk-Wandtablett waren knapp unter der Mindestgröße für ein
+  Tippziel.** "Nächste Schaltung vorziehen" und "Übersteuerung aufheben" kamen
+  auf 42 statt 44 px -- betraf jeden `.btn` im Programm, nicht nur diese zwei.
+
 - **Das Bearbeitungsformular der Bediengeräte blieb meist verborgen.** Die
   Vorlage verglich eine Geräte-ID mit einer Menge von Zonen-IDs; ob ein Verwalter
   die Formulare sah, hing an der Nummerierung. Die Rechteprüfung beim Speichern
@@ -37,6 +50,7 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
   scrollt jetzt seitlich.
 
 ---
+
 ## 0.9.5 — 2026-09-14
 
 **An der Anwendung ändert sich nichts.** Diese Freigabe gibt es nur, damit das

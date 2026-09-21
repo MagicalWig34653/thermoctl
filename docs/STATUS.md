@@ -10,6 +10,44 @@ Daten. Ein Regressionstest führt den echten Doku-Abgleich in einem Unterprozess
 gesperrtem Playwright-Import aus und prüft auch die Server- und Seed-Importkette.
 Playwright bleibt ausschließlich im Extra `browser-tests`.
 
+## Kiosk: eine Panel-Ansicht für 480×480-Wandtabletts, neben der bisherigen Tafel
+
+Gemessen an der laufenden 0.9.4-Anlage kam `/kiosk` mit sechs Zonen auf einem
+480×480-Feld (3,95", z. B. Sonoff NSPanel Pro Gen2) ohne Scrollen auf genau eine
+sichtbare Kachel -- das Raster brach erst ab 20rem je Kachel um, und für die
+Kopfzeile fehlte jeder `@media`-Block. Jetzt (noch unveröffentlicht, nicht Teil von
+0.9.5) gibt es dafür eine zweite Ebene:
+
+- **Übersicht:** festes 2×N-Raster, sechs Kacheln passen bei 480×480 ohne
+  Scrollen. Je Kachel nur Raumname, Ist-Wert, Soll-Wert und ein kleiner
+  Zustandspunkt (`.kiosk-status-dot`) -- keine Zeitplan-Zeile, keine Knöpfe.
+- **Detail:** Tippen auf eine Kachel öffnet eine flächendeckende Ebene für genau
+  diese Zone (großer Ist-Wert, Soll-Stellglied, "Nächste Schaltung vorziehen",
+  ggf. "Übersteuerung aufheben", ein Zurück-Knopf). Rückkehr durch Zurück oder
+  automatisch nach 45 s ohne Bedienung.
+- **Umschaltung** über `?ansicht=panel`/`?ansicht=tafel`/`?ansicht=auto`
+  (`auto` entscheidet die Bildschirmbreite bei 600 px, `kiosk_panel.js`,
+  `matchMedia`), gemerkt in einem eigenen Cookie
+  (`thermoctl_kiosk_ansicht`, `thermoctl/web/kiosk_views.py`) -- unabhängig vom
+  Kiosk-Cookie selbst und ohne jeden Einfluss auf Token, Rechte oder Sitzung.
+- **Ohne JavaScript** bleibt es bei der ursprünglichen, scrollenden Tafel-Form:
+  `data-ansicht-aktiv` an `<body>` wird ausschließlich von `kiosk_panel.js`
+  gesetzt, jede Panel-Regel in `thermoctl.css` hängt daran. Absichtlich, siehe
+  `thermoctl/auth/kiosk.py::kiosk_csrf_protection` -- die drei Formulare (Soll,
+  Boost, Übersteuerung aufheben) laufen ohne Skript weiter als gewöhnliche
+  Formularübermittlung.
+- **Ein allgemeiner Fehler wurde mitbehoben, nicht nur im Kiosk:** `.btn` hatte
+  eine Mindesthöhe von 42 statt 44 px (`thermoctl/web/static/thermoctl.css`) --
+  betraf "Nächste Schaltung vorziehen" und "Übersteuerung aufheben" überall im
+  Programm, nicht nur am Wandtablett.
+- Keine neue Route, keine Migration, kein Eingriff in `thermoctl/domain/kiosk.py`
+  oder die Rechteprüfung der vier bestehenden Kiosk-Endpunkte.
+
+Noch offen: Kreuzreview (Umsetzung war ein Claude-Agent) inklusive eigenem
+Testlauf gegen SQLite **und** MariaDB, danach Merge nach `main` und ein
+Nachtrag im Add-on-Repository, falls `DOCS.md` dort eine inzwischen falsche
+Aussage über die Kiosk-Ansicht enthält.
+
 ## Doku mit Bildern, Screenshot-Werkzeug, drei Fehler aus dem Hinsehen
 
 `tools/screenshots.py` nimmt jede GET-Ansicht der Weboberfläche auf — Anlagensicht,

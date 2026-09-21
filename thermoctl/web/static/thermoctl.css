@@ -614,8 +614,13 @@ body {
 .btn {
     border-radius: var(--radius-small);
     font-weight: 650;
-    /* 42 px in beiden Demos -- eine Fläche, die auch ein Daumen sicher trifft. */
-    min-height: 2.625rem;
+    /* 44 px (2.75rem) -- die WCAG-Mindestgröße für ein Tippziel. Bis 0.9.4 standen
+       hier 42 px, aus den beiden Demos übernommen, ohne diese Grenze zu kennen. Am
+       Kiosk-Wandtablett fiel das auf ("Nächste Schaltung vorziehen",
+       "Übersteuerung aufheben" -- knapp unter den 48 px der benachbarten
+       −/+-Knöpfe), aber die Zeile gilt für jeden `.btn` im Programm, nicht nur
+       dort: ein zu flaches Tippziel ist ein Fehler unabhängig von der Seite. */
+    min-height: 2.75rem;
     padding-inline: 0.9rem;
 }
 
@@ -1339,6 +1344,13 @@ body {
     gap: 0.5rem;
 }
 
+/* Stand bis 0.9.4 als Inline-`style` am Element selbst -- musste hierher
+   wandern, weil die Panel-Ansicht ihn kleiner braucht und eine Inline-Angabe
+   jede Regel aus dieser Datei ohne `!important` schlägt. */
+.kiosk-marker {
+    font-size: 1.75rem;
+}
+
 .kiosk-clock {
     /* Vier tote Kürzel standen hier: `--schrift-instrument`, `--gedämpft`,
        `--tinte`, `--wärme`. Sie stammen aus der Umbenennung ins Englische und
@@ -1411,6 +1423,310 @@ body {
 .kiosk-source-link:hover,
 .kiosk-source-link:focus-visible {
     color: var(--ink);
+}
+
+/* ── Kiosk: Panel-Ansicht ──────────────────────────────────────────────────────
+ * Ein zweites Wandtablett-Format neben der Tafel oben: 3,95"/480×480
+ * (Sonoff NSPanel Pro Gen2 und Ähnliches), zu klein für ein Raster, das erst ab
+ * ~20rem je Kachel umbricht -- bei sechs Zonen blieb davon auf 480×480 im
+ * Betrieb genau eine Kachel ohne Scrollen sichtbar. Die Übersicht/Detail-Trennung
+ * kommt vom Projektinhaber, nicht aus dieser Datei; was hier steht, setzt sie nur um.
+ *
+ * `data-ansicht-aktiv` schreibt ausschließlich `kiosk_panel.js` -- ohne
+ * JavaScript existiert das Attribut nie, keine Regel in diesem Block greift, und
+ * die Seite bleibt bei der Tafel-Darstellung oben stehen. Das ist Absicht (siehe
+ * Auftrag): Sollwert, Boost und Übersteuerung-aufheben müssen ohne Skript bedienbar
+ * bleiben, und die Panel/Tafel-Unterscheidung ist reine Anzeigeform, keine
+ * Sicherheitsgrenze -- ein Bootstrap-`role="button"` ohne Skript dahinter ist
+ * ebenso wirkungslos wie ein Klick auf eine tote Fläche.
+ */
+
+.kiosk-tile-summary,
+.kiosk-detail-layer {
+    display: none;
+}
+
+.kiosk-page[data-ansicht-aktiv="panel"] {
+    /* `min-height: 100vh` allein (Grundregel oben) besetzt zwar die volle Höhe des
+       Rahmens, verteilt den Rest aber nicht an die Kinder -- ohne Zutun blieb das
+       Raster auf seiner Inhaltshöhe stehen und darunter etwa ein Viertel des
+       Felds leer (im Betrieb gemessen, 480×480). `height: 100vh` plus
+       `flex: 1 1 auto` am Raster (weiter unten) macht daraus tatsächlich
+       ausnutzbare Fläche statt nur eine Mindesthöhe.
+       Ebenso: die Kopfzeile (Uhrzeit, Quelltext-Verweis) ist auf einem
+       Wandpanel, das aus zwei bis drei Metern abgelesen wird, zweitrangig
+       gegenüber den Messwerten -- sie schrumpft hier zugunsten des Rasters. */
+    height: 100vh;
+    padding: 0.5rem;
+    gap: 0.35rem;
+}
+
+/* `flex: 1 1 auto` am Raster allein reichte nicht: `.kiosk-heading` und
+   `.kiosk-grid` sind keine direkten Kinder von `.kiosk-page` (dem Flex-Rahmen),
+   sondern liegen beide innerhalb von `#kiosk-body` -- dem htmx-Ziel der
+   Selbstaktualisierung, einem gewöhnlichen, nicht am Flex-Layout beteiligten
+   Block. `flex-grow` griff dadurch ins Leere, und ein Viertel der Fläche blieb
+   leer, obwohl das Raster selbst korrekt auf "wachsen" stand (im Betrieb
+   nachvollzogen). `display: contents` nimmt `#kiosk-body` aus dem Layoutbaum
+   heraus, ohne es aus dem DOM zu nehmen -- htmx braucht das Element weiterhin
+   als Ziel für `hx-select`/`hx-swap`, nur eine eigene Layout-Box braucht es
+   nicht. Nur in der Panel-Ansicht: die Tafel-Ansicht verließ sich bisher
+   stillschweigend auf genau diese Box (kein bekannter Fehler, aber ungeprüft),
+   deshalb wird daran nichts geändert. */
+.kiosk-page[data-ansicht-aktiv="panel"] .kiosk-body {
+    display: contents;
+}
+
+.kiosk-page[data-ansicht-aktiv="panel"] .kiosk-heading {
+    gap: 0.3rem;
+}
+
+.kiosk-page[data-ansicht-aktiv="panel"] .kiosk-marker {
+    font-size: 0.85rem;
+}
+
+.kiosk-page[data-ansicht-aktiv="panel"] .kiosk-clock {
+    font-size: 0.85rem;
+}
+
+.kiosk-page[data-ansicht-aktiv="panel"] .kiosk-source-link {
+    /* Bewusst kein 44-px-Tippziel: Der AGPL-Verweis ist keine Bedienung der
+       Anlage (siehe die Begründung weiter oben, wo er steht) und bei einer
+       Kopfzeile, die für das Raster darunter ohnehin knapp bemessen ist, hätte
+       ihn auf 44 px zu bringen -- per Innenabstand oder per vergrößerter,
+       unsichtbarer Trefferfläche -- entweder das Raster verdrängt oder in die
+       erste Kachelreihe hineingeragt und dort Antippen fehlgeleitet. Die
+       44-px-Zusage dieser Ansicht gilt deshalb für ihre Bedienelemente
+       (Kacheln, Knöpfe), nicht für diesen einen, absichtlich unauffälligen
+       Verweis -- siehe `browser_tests/test_kiosk.py::_visible_tap_targets`. */
+    font-size: 0.55rem;
+}
+
+.kiosk-page[data-ansicht-aktiv="panel"] .kiosk-grid {
+    /* Zwei Spalten, fest -- kein `auto-fit` wie in der Tafel-Ansicht: Bei sechs
+       Zonen sind genau drei Zeilen das Ziel, nicht "so viele Spalten, wie
+       hineinpassen". Drei *gleich hohe* Zeilen (`1fr` statt `auto`), die
+       zusammen mit `flex: 1 1 auto` die komplette Resthöhe unter der Kopfzeile
+       ausfüllen -- Kacheln strecken sich mit, nicht nur ihr Inhalt. */
+    grid-template-columns: repeat(2, 1fr);
+    grid-template-rows: repeat(3, 1fr);
+    flex: 1 1 auto;
+    min-height: 0;
+    gap: 0.5rem;
+}
+
+.kiosk-page[data-ansicht-aktiv="panel"] .kiosk-tile {
+    padding: 0.6rem;
+    gap: 0.25rem;
+    cursor: pointer;
+    /* Name oben, Ist-Wert in der Mitte, Soll unten -- verteilt auf die volle,
+       jetzt gestreckte Kachelhöhe, statt oben zusammengedrängt mit leerem Raum
+       darunter. */
+    justify-content: space-between;
+    /* Die ganze Kachel ist das Tippziel (kiosk_panel.js); bei drei gleich hohen
+       Zeilen auf 480 px deutlich über 44×44 px, hier nur zur Sicherheit. */
+    min-height: 44px;
+    /* Ohne das: Rasterelemente haben eine implizite `min-width: auto`, die sich
+       an ihrem *ungebrochenen* Inhalt bemisst. `.kiosk-temperature` steht seit
+       eben auf `white-space: nowrap` (weiter unten) -- ohne dieses `min-width:
+       0` zwang ihr voller, nicht umbrechbarer Text die Spur selbst dann breiter
+       als `1fr`, wenn der Wert sichtbar viel zu groß war: Die zweite Spalte
+       wanderte dabei komplett aus dem 480-px-Feld heraus, nicht nur eine
+       einzelne Zahl über ihren Kachelrand (im Betrieb nachvollzogen: 480+ px
+       Gesamtbreite des Rasters statt 480). */
+    min-width: 0;
+}
+
+.kiosk-page[data-ansicht-aktiv="panel"] .kiosk-tile-name {
+    font-size: 0.8rem;
+    font-weight: 600;
+    /* Ein zu langer Raumname soll die Kachel nicht sprengen. Bis hierher stand
+       hier ein Zeilenumbruch (`overflow-wrap: anywhere`) -- der geriet an einem
+       schmalen `.tc-chip` daneben zur Katastrophe: `.tc-chip` erzwingt
+       `white-space: nowrap` (thermoctl.css, unverändert seit 0.9.0), also gab
+       der Flexbox-Algorithmus dem Chip seine volle Breite und quetschte den
+       Namen auf praktisch nichts zusammen -- ein sieben Zeichen langer Name
+       brach in sieben Zeilen um und machte die Kachel 58 statt ~20 px hoch, bei
+       sechs Kacheln reichte das allein, um die 480-px-Höhe zu sprengen (im
+       Betrieb gemessen). Eine einzelne, per Auslassungspunkten gekürzte Zeile
+       ist auf einem 3,95"-Feld ohnehin lesbarer als mehrere kleine. */
+    min-width: 0;
+    flex: 1 1 auto;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.kiosk-page[data-ansicht-aktiv="panel"] .kiosk-tile .kiosk-temperature {
+    /* Richtwert 34–36 px (2.125–2.25rem). Angehoben von zuvor 28–34 px, jetzt,
+       da die Kacheln durch das gestreckte Raster (oben) mehr Höhe zur Verfügung
+       haben -- die Zahl ist der Grund, warum überhaupt hingesehen wird, sie darf
+       den neu gewonnenen Platz mitnehmen. 40 px aus einer Zwischenfassung passten
+       nicht mehr auf einen Wert mit Einheit in einer 228-px-Spalte (im Betrieb an
+       "22,1 °C" nachvollzogen, exakt an der Kante): `white-space: nowrap` verhinderte
+       zwar den Umbruch der Einheit in eine zweite Zeile, aber Rasterelemente haben
+       eine implizite `min-width: auto`, die sich am *ungebrochenen* Inhalt bemisst
+       -- die Spalte wurde dadurch selbst breiter als `1fr`, und die zweite Spalte
+       wanderte komplett aus dem 480-px-Feld heraus. Der kleinere Höchstwert hier
+       *und* `min-width: 0` an `.kiosk-tile` oben beheben das gemeinsam. */
+    font-size: clamp(2.125rem, 7.5vw, 2.25rem);
+    white-space: nowrap;
+}
+
+.kiosk-page[data-ansicht-aktiv="panel"] .kiosk-tile-summary {
+    display: block;
+    font-size: 0.75rem;
+}
+
+.kiosk-page[data-ansicht-aktiv="panel"] .kiosk-tile-full {
+    /* Der Kopf der Kachel (Raumname, Chip/Punkt) steht außerhalb von
+       `.kiosk-tile-full` und bleibt deshalb von dieser Regel unberührt sichtbar
+       -- genau die vier Angaben aus der Vorgabe: Raumname, Ist, Soll, Chip. Was
+       hier verschwindet, sind Alterstext, Zeitplan-Grund, Sensor-Warnhinweise
+       und alle Knöpfe. */
+    display: none;
+}
+
+/* Zwei Fassungen desselben Zustands, nebeneinander im Markup (kiosk.html):
+   die ausgeschriebene Kachel (`.kiosk-tile-chip-full`, unverändert seit 0.9.0,
+   für die Tafel-Ansicht) und ein reiner Punkt (`.kiosk-status-dot`, neu, für die
+   Übersicht). Standardmäßig gilt die Tafel-Fassung -- ohne JavaScript bleibt es
+   dabei, siehe der Kommentar am Anfang dieses Abschnitts. */
+.kiosk-page[data-ansicht-aktiv="panel"] .kiosk-tile-chip-full {
+    display: none;
+}
+
+.kiosk-status-dot {
+    display: none;
+    width: 0.65rem;
+    height: 0.65rem;
+    border-radius: 50%;
+    flex-shrink: 0;
+    margin-top: 0.2rem;
+}
+
+.kiosk-page[data-ansicht-aktiv="panel"] .kiosk-status-dot {
+    display: inline-block;
+}
+
+.kiosk-status-dot-an {
+    background: var(--warmth);
+}
+
+.kiosk-status-dot-aus {
+    background: var(--cool);
+}
+
+.kiosk-status-dot-quiet {
+    background: var(--line-strong);
+}
+
+.kiosk-page[data-ansicht-aktiv="panel"] .kiosk-detail-layer {
+    display: contents;
+}
+
+.kiosk-detail {
+    display: none;
+}
+
+.kiosk-page[data-ansicht-aktiv="panel"] .kiosk-detail.kiosk-detail-open {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    position: fixed;
+    inset: 0;
+    padding: 0.75rem;
+    background: var(--surface);
+    /* Über allem anderen auf der Seite, einschließlich der Kacheln darunter --
+       eine "flächendeckende Ebene", wie gefordert, nicht ein weiteres Element
+       im Fluss. */
+    z-index: 20;
+    overflow-y: auto;
+}
+
+.kiosk-detail-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.5rem;
+    /* Feste Höhe oben -- wächst nicht mit `.kiosk-detail-body` mit. Das gilt nur,
+       solange `.kiosk-detail-name` selbst nicht wächst (siehe dort) -- sonst
+       trieb ein langer, durchaus gewöhnlicher Raumname (76 Zeichen gemessen,
+       128 sind laut Modell erlaubt) den Kopf in die Höhe und schob den Rest
+       samt "Übersteuerung aufheben" wieder unter den sichtbaren Rand, diesmal
+       nicht durch Zentrierung, sondern durch einen zu hohen Kopf. */
+    flex: 0 0 auto;
+}
+
+/* Ohne `flex-shrink: 0` gab derselbe lange Name dem Zurück-Knopf keinen Raum
+   mehr: Flex quetschte ihn unter die zugesagten 44 px und brach seine
+   Beschriftung in bis zu drei Zeilen (gemessen: 41×158 px bei einem 128
+   Zeichen langen Namen). Er bekommt jetzt garantiert seine natürliche Breite,
+   der Name (unten) weicht stattdessen per Kürzung zurück. */
+.kiosk-detail-head [data-kiosk-back] {
+    flex-shrink: 0;
+    white-space: nowrap;
+}
+
+.kiosk-detail-body {
+    /* Ist-Wert, Soll-Stellglied und Knöpfe füllen die freie Höhe unter der
+       Kopfzeile, statt sich oben zu stapeln und unten leeren Raum stehen zu
+       lassen. Ein eigener Rumpf-Wrapper statt Regeln auf dem ganzen
+       `.kiosk-detail`, weil Name und Zurück-Knopf oben stehen bleiben sollen,
+       ganz gleich wie viel Platz der Rest für sich beansprucht.
+       `justify-content` stand hier auf `center` -- das zentriert nur den
+       *Regelfall* zuverlässig. Reicht der Inhalt nicht (Fehlertext plus
+       Sensor-Warnung plus laufende Übersteuerung), wächst ein zentrierter
+       Flex-Inhalt in *beide* Richtungen über seine eigene Box hinaus: Die
+       obere Hälfte des Überlaufs schob sich über die Kopfzeile
+       (Raumname/Zurück wurden überdeckt), die untere Hälfte schob
+       "Übersteuerung aufheben" bis zu 20 px unter den sichtbaren Rand (im
+       Betrieb mit dem Fehlertext "Der Sollwert liegt außerhalb des
+       zulässigen Bereichs." nachvollzogen und mit Bildschirmfoto belegt).
+       `flex-start` kann per Konstruktion nicht mehr nach oben über die
+       Kopfzeile hinauswachsen; bei viel Inhalt bleibt `.kiosk-detail-open`s
+       eigenes `overflow-y: auto` (oben) die Rückfalllösung, statt eines
+       Überlaufs, den niemand erreichen kann. */
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    gap: 0.4rem;
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
+.kiosk-detail-name {
+    font-size: 1.35rem;
+    font-weight: 650;
+    color: var(--ink);
+    /* Dieselbe Behandlung wie der Raumname in der Übersichtskachel
+       (`.kiosk-tile-name`): eine Zeile, per Auslassungspunkten gekürzt. Ohne
+       das wuchs der Kopf mit jedem zusätzlichen Zeichen in die Höhe -- ein
+       normal lesbarer, 76 Zeichen langer Name genügte bereits, um
+       "Übersteuerung aufheben" wieder unter den sichtbaren Rand zu schieben
+       (im Betrieb mit echter Serverablehnung nachvollzogen). `min-width: 0`
+       ist hier kein Zubrot: Ohne es verweigert ein Flex-Kind mit Inhalt, der
+       breiter ist als sein Platz, das Schrumpfen, und die Ellipse griffe nie.
+       `flex-shrink: 0` am Zurück-Knopf daneben (oben) sorgt dafür, dass genau
+       dieser Name weicht, nicht der Knopf. */
+    min-width: 0;
+    flex: 1 1 auto;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.kiosk-detail .kiosk-temperature {
+    /* Deutlich größer als vor der Panel-Ansicht (64–72 px), aber kleiner als
+       eine frühere Zwischenfassung (80–104 px): Die brauchte allein für die
+       Zahl mehr Höhe, als im ungünstigsten Fall überhaupt übrig blieb --
+       Fehlertext, Sensor-Warnung und ein aktiver Übersteuerungs-Hinweis
+       zusammen. Richtwert jetzt 68–76 px (4.25–4.75rem). */
+    font-size: clamp(4.25rem, 15vw, 4.75rem);
+}
+
+.kiosk-detail .kiosk-setpoint-detail {
+    font-size: 1.75rem;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════════

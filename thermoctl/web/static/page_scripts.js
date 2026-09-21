@@ -12,7 +12,8 @@
         ["permissions.js", "[data-permission]"],
         ["assignment.js", "#device-pool, [data-submit-on-change]"],
         ["device_filter.js", "#device-search"],
-        ["homebridge_copy.js", "[data-homebridge-copy]"]
+        ["homebridge_copy.js", "[data-homebridge-copy]"],
+        ["kiosk_panel.js", "[data-kiosk-tile]"]
     ];
 
     function load() {

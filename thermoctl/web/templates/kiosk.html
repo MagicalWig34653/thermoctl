@@ -26,6 +26,14 @@
         })();
     </script>
     <script defer src="{{ url_prefix }}/static/vendor/htmx/htmx.min.js?v={{ asset_version }}"></script>
+    {#
+    Der übliche Lader (thermoctl/web/assets.py, thermoctl/web/static/page_scripts.js):
+    Er erkennt Bedienelemente an ihrer Selektor-Signatur, nicht an der Route, und lädt
+    `kiosk_panel.js` nur, wenn `[data-kiosk-tile]` tatsächlich im Markup steht -- also
+    nur hier, nicht auf jeder anderen Seite. Ein eigenes, neuntes Einzelskript am
+    Seitenkopf wäre eine Ausnahme vom bestehenden Muster gewesen, ohne Grund dafür.
+    #}
+    <script defer src="{{ url_prefix }}/static/page_scripts.js?v={{ asset_version }}"></script>
     <script>
         {#
         Eigenes Cookie, eigenes Skript: Der Kopf aus base_core.html liest
@@ -43,11 +51,128 @@
         });
     </script>
 </head>
-<body class="kiosk-page" data-url-prefix="{{ url_prefix }}">
-<div id="kiosk-body" hx-get="{{ url_prefix }}/kiosk" hx-trigger="every 20s" hx-select="#kiosk-body"
-     hx-target="#kiosk-body" hx-swap="outerHTML">
+{#
+Panel-Ansicht: `data-ansicht` trägt, was der Server aufgelöst hat --
+"auto", "panel" oder "tafel" (thermoctl/web/kiosk_views.py). Für "auto" entscheidet
+erst `kiosk_panel.js` anhand der Bildschirmbreite, welche der beiden Ebenen
+tatsächlich gilt, und schreibt das Ergebnis in `data-ansicht-aktiv` -- deshalb ist
+`data-ansicht` allein noch keine Anweisung an das CSS, siehe thermoctl.css. Ohne
+JavaScript bleibt `data-ansicht-aktiv` für immer unbesetzt, keine der
+Panel-Anweisungen dort greift, und das Wandtablett zeigt die ursprüngliche,
+scrollende Tafel-Darstellung -- absichtlich, siehe Auftrag: Die Bedienung darf
+nicht an JavaScript hängen.
+#}
+<body class="kiosk-page" data-url-prefix="{{ url_prefix }}" data-ansicht="{{ ansicht }}">
+{% macro heat_chip(would_heat) %}
+{% if would_heat %}
+<span class="tc-chip tc-chip-warm"><span class="tc-dot"></span>Heizanforderung</span>
+{% elif would_heat is not none %}
+<span class="tc-chip tc-chip-cool">Aus</span>
+{% else %}
+<span class="tc-chip tc-chip-quiet">Noch nicht entschieden</span>
+{% endif %}
+{% endmacro %}
+
+{#
+Die Panel-Übersicht bekommt nur den Punkt, nicht die ausgeschriebene Kachel:
+"Noch nicht entschieden" allein ist bei 0.625rem-Schrift schon länger als der Platz,
+den zwei Spalten auf 480 px neben einem Raumnamen übrig lassen -- der Raumname
+wich dem, Zeichen für Zeichen umgebrochen (im Betrieb geprüft: eine sieben Zeichen
+lange Kachel wurde 58 px hoch statt der vorgesehenen ~20 px). Genau das entspricht
+der Vorgabe des Projektinhabers ohnehin eher als die ausgeschriebene Kachel: ein
+knapper Zustandspunkt statt eines ganzen Satzes. Die Bedeutung bleibt erreichbar
+(`title`/`aria-label`), nur nicht mehr als sichtbarer Text.
+#}
+{% macro heat_dot(would_heat) %}
+{% if would_heat %}
+{% set bezeichnung = "Heizanforderung" %}
+{% set art = "an" %}
+{% elif would_heat is not none %}
+{% set bezeichnung = "Aus" %}
+{% set art = "aus" %}
+{% else %}
+{% set bezeichnung = "Noch nicht entschieden" %}
+{% set art = "quiet" %}
+{% endif %}
+<span class="kiosk-status-dot kiosk-status-dot-{{ art }}" title="{{ bezeichnung }}" aria-label="{{ bezeichnung }}"></span>
+{% endmacro %}
+
+{#
+Sollwert-Stellglied, einmal definiert und zweimal eingesetzt (Kachel und
+Detailbereich) -- dieselben Daten, dieselbe Berechtigungsprüfung
+(`control_zone_ids`), nur andere Umgebung. `context` unterscheidet nur den
+Formularnamen, damit zwei Formulare für dieselbe Zone (Kachel und Detail) nicht
+dieselbe `id` brauchen und eine Browsererweiterung, die Formulare anhand ihrer
+Reihenfolge unterscheidet, nicht durcheinanderkommt.
+
+`hx-post`/`hx-target`/`hx-select`/`hx-swap`: dasselbe Muster wie die
+Selbstaktualisierung von `#kiosk-body` weiter unten, jetzt auch auf den Formularen
+selbst. Der Server antwortet unverändert mit einer Weiterleitung nach `/kiosk`
+(bei Erfolg) oder `/kiosk?error=...` (bei Fehler, thermoctl/web/kiosk_views.py);
+htmx folgt beiden automatisch und ersetzt nur `#kiosk-body`, ohne die Seite neu zu
+laden. Genau das hält im Panel-Modus den geöffneten Detailbereich offen (siehe
+kiosk_panel.js) -- ohne diese Attribute würde jede Verstellung des Sollwerts zur
+Übersicht zurückspringen. `method`/`action` bleiben trotzdem stehen: ohne
+JavaScript ignoriert der Browser die `hx-*`-Attribute und sendet das Formular ganz
+gewöhnlich ab (volle Navigation, Rücksprung nach `/kiosk`) -- diese drei
+Bedienelemente lassen sich so schon immer auch ohne Skript benutzen (siehe die
+Begründung in `thermoctl/auth/kiosk.py::kiosk_csrf_protection`), und daran ändert
+diese Version nichts.
+#}
+{% macro setpoint_control(zone, setpoint, context) %}
+{% if zone.id in control_zone_ids %}
+<form method="post" action="{{ url_prefix }}/kiosk/zones/{{ zone.id }}/setpoint"
+      class="kiosk-setpoint kiosk-setpoint-{{ context }}"
+      hx-post="{{ url_prefix }}/kiosk/zones/{{ zone.id }}/setpoint"
+      hx-target="#kiosk-body" hx-select="#kiosk-body" hx-swap="outerHTML">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    <button class="btn btn-outline-secondary kiosk-stage" type="submit"
+            name="direction" value="down" aria-label="Sollwert senken">−</button>
+    <span class="t-value">{{ setpoint.temperature_c|grad }} °C</span>
+    <button class="btn btn-outline-secondary kiosk-stage" type="submit"
+            name="direction" value="up" aria-label="Sollwert anheben">+</button>
+</form>
+{% else %}
+<div class="kiosk-setpoint kiosk-setpoint-{{ context }} t-value">{{ setpoint.temperature_c|grad }} °C</div>
+{% endif %}
+{% endmacro %}
+
+{% macro boost_control(zone) %}
+{% if zone.id in control_zone_ids %}
+<form method="post" action="{{ url_prefix }}/kiosk/zones/{{ zone.id }}/boost"
+      hx-post="{{ url_prefix }}/kiosk/zones/{{ zone.id }}/boost"
+      hx-target="#kiosk-body" hx-select="#kiosk-body" hx-swap="outerHTML">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    <button class="btn btn-outline-secondary" type="submit">
+        Nächste Schaltung vorziehen
+    </button>
+</form>
+{% endif %}
+{% endmacro %}
+
+{#
+Nur sichtbar, wenn tatsächlich eine Übersteuerung läuft -- ein Boost ist eine
+davon (domain/remote_control.py::boost). Ohne laufende Übersteuerung gäbe es
+nichts aufzuheben, und der Knopf wäre einer ohne Wirkung.
+#}
+{% macro cancel_control(zone) %}
+{% if zone.id in running_overrides and zone.id in cancel_zone_ids %}
+<form method="post" action="{{ url_prefix }}/kiosk/zones/{{ zone.id }}/override/cancel"
+      hx-post="{{ url_prefix }}/kiosk/zones/{{ zone.id }}/override/cancel"
+      hx-target="#kiosk-body" hx-select="#kiosk-body" hx-swap="outerHTML">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    <button class="btn btn-outline-secondary" type="submit">
+        Übersteuerung aufheben
+    </button>
+</form>
+{% endif %}
+{% endmacro %}
+
+<div id="kiosk-body" class="kiosk-body" hx-get="{{ url_prefix }}/kiosk" hx-trigger="every 20s"
+     hx-select="#kiosk-body" hx-target="#kiosk-body" hx-swap="outerHTML"
+     data-kiosk-error-zone="{{ error_zone_id or '' }}">
     <div class="kiosk-heading">
-        <span class="tc-marker" style="font-size: 1.75rem">thermoctl</span>
+        <span class="tc-marker kiosk-marker">thermoctl</span>
         <div class="d-flex align-items-baseline gap-3">
             {#
             AGPL-3.0 §13 verlangt für netzseitig genutzte Software eine erreichbare
@@ -78,87 +203,147 @@
         {% set entry = zustaende.get(zone.id) %}
         {% set setpoint = setpoints[zone.id] %}
         {% set would_heat = would_heat_je_zone.get(zone.id) %}
-        <article class="tc-panel kiosk-tile" id="kiosk-zone-{{ zone.id }}">
+        {#
+        Die ganze Kachel ist im Panel-Modus das Tippziel, das den Detailbereich
+        unten öffnet (kiosk_panel.js) -- weit über der 44-px-Mindestgröße, ganz
+        ohne eigene Maßnahme dafür. In der Tafel-Ansicht (unverändert gegenüber
+        v0.9.4) ist `role="button"` wirkungslos, weil kiosk_panel.js dort nichts an
+        einen Klick auf die Kachel selbst hängt -- die Formulare darin bleiben die
+        einzigen Bedienelemente, wie bisher.
+        #}
+        <article class="tc-panel kiosk-tile" id="kiosk-zone-{{ zone.id }}"
+                 data-kiosk-tile="{{ zone.id }}" role="button" tabindex="0"
+                 aria-haspopup="dialog" aria-controls="kiosk-detail-{{ zone.id }}"
+                 aria-label="{{ zone.display_name }} – Details öffnen">
             <div class="d-flex justify-content-between align-items-start gap-2">
                 <span class="kiosk-tile-name">{{ zone.display_name }}</span>
-                {% if would_heat %}
-                <span class="tc-chip tc-chip-warm"><span class="tc-dot"></span>Heizanforderung</span>
-                {% elif would_heat is not none %}
-                <span class="tc-chip tc-chip-cool">Aus</span>
-                {% else %}
-                <span class="tc-chip tc-chip-quiet">Noch nicht entschieden</span>
-                {% endif %}
+                {#
+                Beide Varianten stehen im Markup, nur eine ist je Ansicht per CSS
+                sichtbar (thermoctl.css) -- dasselbe Muster wie
+                `.kiosk-tile-full`/`.kiosk-tile-summary` weiter unten.
+                #}
+                <span class="kiosk-tile-chip-full">{{ heat_chip(would_heat) }}</span>
+                {{ heat_dot(would_heat) }}
             </div>
 
             {% if entry and entry[0].temperature_c is not none %}
             <div class="kiosk-temperature t-value">{{ entry[0].temperature_c|grad }}<span class="t-unit">°C</span></div>
-            <div class="t-quiet">{{ entry[0].measured_at|age }}</div>
             {% else %}
             <div class="kiosk-temperature t-value t-quiet">––<span class="t-unit">°C</span></div>
-            <div class="t-quiet">kein Messwert</div>
-            {% endif %}
-
-            {% if entry and entry[1].code != "ok" %}
-            <span class="tc-chip tc-chip-warning align-self-start">{{ entry[1].label }}</span>
-            {% endif %}
-            {% if entry and entry[0].sensor_stuck %}
-            <span class="tc-chip tc-chip-quiet align-self-start"
-                  title="Der Messwert bewegt sich seit längerem nicht. Die Zone regelt normal weiter, es ist kein Ausfall.">
-                Messwert unverändert
-            </span>
             {% endif %}
 
             {#
-            No mode_id field: `set_setpoint` (thermoctl/domain/remote_control.py)
-            adjusts whichever setpoint is currently in effect on its own -- the mode
-            in charge, or a running fixed override if there is one. Unlike the start
-            page's thermostat (daily_views.py, which calls `update_setpoints`
-            directly and therefore does need a mode to target), this button works the
-            same way regardless of which of the two currently applies.
+            Nur in der Panel-Übersicht sichtbar (thermoctl.css) -- die vier Angaben,
+            die der Projektinhaber dafür festgelegt hat: Raumname, Ist, Soll, Chip.
+            Kein Alterstext, kein Zeitplan-Grund, keine Knöpfe; die stehen unten in
+            `.kiosk-tile-full` bzw. im Detailbereich.
             #}
-            {% if zone.id in control_zone_ids %}
-            <form method="post" action="{{ url_prefix }}/kiosk/zones/{{ zone.id }}/setpoint"
-                  class="kiosk-setpoint">
-                <input type="hidden" name="csrf_token" value="{{ csrf }}">
-                <button class="btn btn-outline-secondary kiosk-stage" type="submit"
-                        name="direction" value="down" aria-label="Sollwert senken">−</button>
-                <span class="t-value">{{ setpoint.temperature_c|grad }} °C</span>
-                <button class="btn btn-outline-secondary kiosk-stage" type="submit"
-                        name="direction" value="up" aria-label="Sollwert anheben">+</button>
-            </form>
-            {% else %}
-            <div class="kiosk-setpoint t-value">{{ setpoint.temperature_c|grad }} °C</div>
-            {% endif %}
-            <div class="t-quiet">{{ setpoint.reason }} · Betriebsart: {{ zone.operating_mode.label }}</div>
-
-            {% if error and error_zone_id == zone.id|string %}
-            <div class="kiosk-error">{{ error }}</div>
-            {% endif %}
-
-            {% if zone.id in control_zone_ids %}
-            <form method="post" action="{{ url_prefix }}/kiosk/zones/{{ zone.id }}/boost">
-                <input type="hidden" name="csrf_token" value="{{ csrf }}">
-                <button class="btn btn-outline-secondary" type="submit">
-                    Nächste Schaltung vorziehen
-                </button>
-            </form>
-            {% endif %}
+            <div class="kiosk-tile-summary t-quiet">Soll {{ setpoint.temperature_c|grad }} °C</div>
 
             {#
-            Nur sichtbar, wenn tatsächlich eine Übersteuerung läuft -- ein Boost ist
-            eine davon (domain/remote_control.py::boost). Ohne laufende
-            Übersteuerung gäbe es nichts aufzuheben, und der Knopf wäre einer ohne
-            Wirkung.
+            Die heutige Tafel-Kachel, unverändert -- in der Panel-Übersicht per CSS
+            ausgeblendet (thermoctl.css), im Detailbereich unten noch einmal in
+            groß.
             #}
-            {% if zone.id in running_overrides and zone.id in cancel_zone_ids %}
-            <form method="post" action="{{ url_prefix }}/kiosk/zones/{{ zone.id }}/override/cancel">
-                <input type="hidden" name="csrf_token" value="{{ csrf }}">
-                <button class="btn btn-outline-secondary" type="submit">
-                    Übersteuerung aufheben
-                </button>
-            </form>
-            {% endif %}
+            <div class="kiosk-tile-full">
+                {% if entry and entry[0].temperature_c is not none %}
+                <div class="t-quiet">{{ entry[0].measured_at|age }}</div>
+                {% else %}
+                <div class="t-quiet">kein Messwert</div>
+                {% endif %}
+
+                {% if entry and entry[1].code != "ok" %}
+                <span class="tc-chip tc-chip-warning align-self-start">{{ entry[1].label }}</span>
+                {% endif %}
+                {% if entry and entry[0].sensor_stuck %}
+                <span class="tc-chip tc-chip-quiet align-self-start"
+                      title="Der Messwert bewegt sich seit längerem nicht. Die Zone regelt normal weiter, es ist kein Ausfall.">
+                    Messwert unverändert
+                </span>
+                {% endif %}
+
+                {{ setpoint_control(zone, setpoint, "tile") }}
+                <div class="t-quiet">{{ setpoint.reason }} · Betriebsart: {{ zone.operating_mode.label }}</div>
+
+                {% if error and error_zone_id == zone.id|string %}
+                <div class="kiosk-error">{{ error }}</div>
+                {% endif %}
+
+                {{ boost_control(zone) }}
+                {{ cancel_control(zone) }}
+            </div>
         </article>
+        {% endfor %}
+    </div>
+
+    {#
+    Der Detailbereich je Zone -- außerhalb der Kacheln, nicht darin verschachtelt.
+    Das ist kein Zufall: `browser_tests/test_kiosk.py` sucht "Sollwert anheben" per
+    `tile.get_by_label(...)`, eng auf eine einzelne `.kiosk-tile` begrenzt. Läge
+    dieselbe Beschriftung ein zweites Mal *in* derselben Kachel (hier, groß), würde
+    genau diese Suche auf zwei Treffer stoßen und der bestehende Test bräche --
+    nicht weil sich an ihm etwas geändert hätte, sondern weil die Verschachtelung
+    seine Voraussetzung verletzt hätte. Liegt der Bereich daneben, bleibt jede
+    Kachel weiterhin genau ein Formular mit dieser Beschriftung.
+
+    In der Tafel-Ansicht (und ohne JavaScript) bleibt der ganze Block unsichtbar
+    (thermoctl.css) -- dort trägt die Kachel selbst schon alles, was hier in groß
+    wiederholt wird.
+    #}
+    <div class="kiosk-detail-layer">
+        {% for zone in zones %}
+        {% set entry = zustaende.get(zone.id) %}
+        {% set setpoint = setpoints[zone.id] %}
+        {% set would_heat = would_heat_je_zone.get(zone.id) %}
+        <div class="kiosk-detail" id="kiosk-detail-{{ zone.id }}" data-kiosk-detail="{{ zone.id }}"
+             role="dialog" aria-modal="true" aria-label="{{ zone.display_name }}">
+            <div class="kiosk-detail-head">
+                <span class="kiosk-detail-name">{{ zone.display_name }}</span>
+                {#
+                `type="button"`, kein Formular: Zurück verlässt nur die Ansicht,
+                verändert nichts an der Zone -- ein `submit` hätte hier fälschlich
+                ein CSRF-Feld gebraucht.
+                #}
+                <button type="button" class="btn btn-outline-secondary" data-kiosk-back>Zurück</button>
+            </div>
+            {#
+            Eigener Rumpf-Wrapper (thermoctl.css): In der Panel-Ansicht verteilt
+            er sich mittig über die Höhe unter der Kopfzeile, statt sich oben zu
+            stapeln und darunter Fläche ungenutzt zu lassen -- der Name/Zurück-Kopf
+            bleibt davon unberührt oben stehen.
+            #}
+            <div class="kiosk-detail-body">
+                {{ heat_chip(would_heat) }}
+
+                {% if entry and entry[0].temperature_c is not none %}
+                <div class="kiosk-temperature t-value">{{ entry[0].temperature_c|grad }}<span class="t-unit">°C</span></div>
+                <div class="t-quiet">{{ entry[0].measured_at|age }}</div>
+                {% else %}
+                <div class="kiosk-temperature t-value t-quiet">––<span class="t-unit">°C</span></div>
+                <div class="t-quiet">kein Messwert</div>
+                {% endif %}
+
+                {% if entry and entry[1].code != "ok" %}
+                <span class="tc-chip tc-chip-warning align-self-start">{{ entry[1].label }}</span>
+                {% endif %}
+                {% if entry and entry[0].sensor_stuck %}
+                <span class="tc-chip tc-chip-quiet align-self-start"
+                      title="Der Messwert bewegt sich seit längerem nicht. Die Zone regelt normal weiter, es ist kein Ausfall.">
+                    Messwert unverändert
+                </span>
+                {% endif %}
+
+                {{ setpoint_control(zone, setpoint, "detail") }}
+                <div class="t-quiet">{{ setpoint.reason }} · Betriebsart: {{ zone.operating_mode.label }}</div>
+
+                {% if error and error_zone_id == zone.id|string %}
+                <div class="kiosk-error">{{ error }}</div>
+                {% endif %}
+
+                {{ boost_control(zone) }}
+                {{ cancel_control(zone) }}
+            </div>
+        </div>
         {% endfor %}
     </div>
     {% endif %}

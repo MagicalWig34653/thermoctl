@@ -37,6 +37,7 @@ from thermoctl.db.models.zone import ZoneSetpoint
 from thermoctl.domain.administration import revoke_token
 from thermoctl.domain.kiosk import KioskError, issue_kiosk_token, kiosk_scope
 from thermoctl.domain.schedule import resolved_setpoint
+from thermoctl.web.kiosk_views import ANSICHT_COOKIE_NAME
 
 # `token.manage` alone: this admin is deliberately *not* given `zone.read` etc. for
 # every test -- several tests below rely on that to check the admin's own permissions
@@ -265,6 +266,96 @@ def test_the_entry_link_sets_a_cookie_and_redirects_without_the_token_in_the_url
     assert response.status_code == status.HTTP_303_SEE_OTHER
     assert response.headers["location"] == "/kiosk"
     assert response.cookies[KIOSK_COOKIE_NAME] == plaintext
+
+
+# --- Ansicht: panel vs. tafel ---------------------------------------------------------
+#
+# The panel/tafel split itself lives in the template and `kiosk_panel.js` -- what
+# belongs here is only the part `kiosk_views.py` owns: `ansicht` read from the query
+# string, normalized, handed to the template as `data-ansicht`, and written back to
+# its own cookie so a bookmarked `?ansicht=panel` address does not have to be typed
+# again on every visit.
+
+
+def test_ansicht_defaults_to_auto_with_neither_query_nor_cookie(
+    client: TestClient, session: Session
+) -> None:
+    create_settings(session)
+    zone = create_zone(session, "flur")
+    admin = _admin(session)
+    _token, plaintext = issue_kiosk_token(
+        session, admin, "Flur", [zone.id], control_allowed=False, expires_at=None
+    )
+    _with_kiosk_cookie(client, plaintext)
+
+    response = client.get("/kiosk")
+
+    assert response.status_code == status.HTTP_200_OK
+    assert 'data-ansicht="auto"' in response.text
+    assert ANSICHT_COOKIE_NAME not in response.cookies
+
+
+def test_an_explicit_ansicht_is_reflected_and_written_to_its_own_cookie(
+    client: TestClient, session: Session
+) -> None:
+    create_settings(session)
+    zone = create_zone(session, "flur")
+    admin = _admin(session)
+    _token, plaintext = issue_kiosk_token(
+        session, admin, "Flur", [zone.id], control_allowed=False, expires_at=None
+    )
+    _with_kiosk_cookie(client, plaintext)
+
+    response = client.get("/kiosk?ansicht=panel")
+
+    assert response.status_code == status.HTTP_200_OK
+    assert 'data-ansicht="panel"' in response.text
+    assert response.cookies[ANSICHT_COOKIE_NAME] == "panel"
+
+
+def test_an_unknown_ansicht_value_falls_back_to_auto_instead_of_failing(
+    client: TestClient, session: Session
+) -> None:
+    """Not an error -- see `_normalize_ansicht`: a stray query string (or a cookie
+    from some future version) must not break a wall tablet's dashboard."""
+    create_settings(session)
+    zone = create_zone(session, "flur")
+    admin = _admin(session)
+    _token, plaintext = issue_kiosk_token(
+        session, admin, "Flur", [zone.id], control_allowed=False, expires_at=None
+    )
+    _with_kiosk_cookie(client, plaintext)
+
+    response = client.get("/kiosk?ansicht=griesgram")
+
+    assert response.status_code == status.HTTP_200_OK
+    assert 'data-ansicht="auto"' in response.text
+    assert response.cookies[ANSICHT_COOKIE_NAME] == "auto"
+
+
+def test_a_previously_chosen_ansicht_survives_a_visit_without_the_query_string(
+    client: TestClient, session: Session
+) -> None:
+    """The self-refresh (`hx-get` on `#kiosk-body`, no query string at all) and a
+    plain re-opened `/kiosk` bookmark must keep showing what a tablet was set up
+    with -- the whole point of persisting the choice in a cookie instead of
+    requiring `?ansicht=panel` on every single request."""
+    create_settings(session)
+    zone = create_zone(session, "flur")
+    admin = _admin(session)
+    _token, plaintext = issue_kiosk_token(
+        session, admin, "Flur", [zone.id], control_allowed=False, expires_at=None
+    )
+    _with_kiosk_cookie(client, plaintext)
+    client.get("/kiosk?ansicht=panel")
+
+    response = client.get("/kiosk")
+
+    assert response.status_code == status.HTTP_200_OK
+    assert 'data-ansicht="panel"' in response.text
+    # No `ansicht` in this request's query string -- nothing new to persist, and
+    # the cookie header is absent rather than merely repeating the same value.
+    assert ANSICHT_COOKIE_NAME not in response.cookies
 
 
 # --- Scope: exactly the assigned zones, nothing else -------------------------------
