@@ -4,6 +4,37 @@
 Zeitplänen, konfiguriert über eine Weboberfläche, ansprechbar zusätzlich über eine
 REST-Schnittstelle und einen MCP-Server.
 
+Seit 0.9.0 gibt es **zwei Weboberflächen statt einer**. Welche jemand bekommt, hängt an
+seiner Gruppe: die **Anlagensicht** für Verwaltung und Technik — Zonen, Geräte, Betrieb,
+Protokolle, Rechte —, oder die **Wohnungssicht** für die Bewohner eines einzelnen Raums:
+nur die eigenen Räume, in Alltagssprache, mit Temperatur, Wochenplan, Heizzeit, „für eine
+Weile wärmer" und einem Abwesenheitszeitraum. Wie beide aussehen und sich bedienen lassen,
+zeigt die **[Bedienungsanleitung](docs/bedienung.md)**.
+
+<table>
+<tr>
+<td width="50%">
+
+**Anlagensicht** — alle Zonen im Blick, mit Übersteuerung und Tagesplan je Raum.
+
+<img src="docs/bilder/anlage-startseite.png" alt="Startseite der Anlagensicht: sechs Zonen mit Ist-Temperatur, Sollwert, Zeitplan-Band und Freigabestatus" width="100%">
+
+</td>
+<td width="50%">
+
+**Wohnungssicht (mobil)** — nur die eigenen Räume, in Alltagssprache.
+
+<img src="docs/bilder/wohnung-startseite-mobil.png" alt="Wohnungssicht auf dem Handy: eigene Räume mit Temperatur, Sollwert und Knöpfen für vorübergehende Änderungen" width="100%">
+
+</td>
+</tr>
+</table>
+
+**Ein Wandtablet-Dashboard** rundet das ab — großformatig, ohne Anmeldung, hinter einem
+jederzeit widerrufbaren Kiosk-Token:
+
+<img src="docs/bilder/kiosk-dashboard.png" alt="Kiosk-Dashboard für ein Wandtablet: Zonen nebeneinander mit Ist-Wert, Sollwert-Reglern und Heizanforderung" width="70%">
+
 Was heute läuft: Sensoren werden über Zigbee2MQTT eingelesen, Messwerte fortgeschrieben,
 ausgefallene Sensoren erkannt und gemeldet. Räume, Geräte, Sollwerte und Zeitpläne lassen
 sich vollständig über die Oberfläche pflegen — Geräte per Ziehen und Ablegen. Für jede Zone
@@ -21,14 +52,6 @@ sichtbarem Zustellzustand unter „Einstellungen".
 Home-Assistant-Add-on, mit Ingress-Einbindung und automatischer Rechteanpassung beim
 Start. Wer bereits per `docker compose` betreibt, findet den Umstiegsweg in
 [self-hosting.md](docs/self-hosting.md#6b-umstieg-von-docker-compose-auf-das-home-assistant-add-on).
-
-Seit 0.9.0 gibt es **zwei Weboberflächen statt einer**. Welche jemand bekommt, hängt an
-seiner Gruppe: die **Anlagensicht** mit Betrieb, Geräten, Protokollen und Rechten, oder
-die **Wohnungssicht** — nur die eigenen Räume, in Alltagssprache, mit Temperatur,
-Wochenplan, Heizzeit, „für eine Weile wärmer", „zur nächsten Schaltzeit springen" und
-einem Abwesenheitszeitraum. Das Profil entscheidet allein, *was zu sehen ist*; *was
-erlaubt ist*, entscheiden weiterhin die Rechte, und beide Prüfungen laufen
-hintereinander. Beim Upgrade bleibt jede bestehende Gruppe in der Anlagensicht.
 
 Seit 0.5.0 gibt es zusätzlich eine **PI-Regelung als Beta**, je Zone einschaltbar und aus
 als Vorgabe. Sie ersetzt für eine eingeschaltete Zone die Hysterese durch einen
@@ -48,6 +71,10 @@ selbstregelnde Thermostatventile ebenso wie Ein/Aus-Befehle an gewöhnliche Akto
 
 ## Weiterlesen
 
+- **[Bedienungsanleitung](docs/bedienung.md)** — für alle, die thermoctl benutzen statt
+  betreiben: Anlagensicht und Wohnungssicht, Bild für Bild.
+- **[Ihre Wohnung online steuern](docs/wohnung.md)** — die technikfreie Kurzanleitung
+  zum Weitergeben an Bewohner, die nur die Wohnungssicht sehen.
 - **[Den Schattenbetrieb in Gang setzen](docs/inbetriebnahme-schattenbetrieb.md)** — der
   nächste Schritt an der echten Anlage.
 - **[Eine eigene Instanz betreiben](docs/self-hosting.md)** — Schritt für Schritt, mit
