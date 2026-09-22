@@ -34,6 +34,13 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
   Ansichten im ignorierten `var/bilder/`. Ein Test meldet jede neue Seite, die
   weder aufgenommen noch begründet ausgeschlossen ist.
 
+### Geändert
+
+- **Im Kiosk fällt der Schriftzug „thermoctl" weg**, in beiden Formen. Ein
+  Wandtablett zeigt die Räume, nicht den Produktnamen. Der Link „Quelltext
+  (AGPL-3.0)" bleibt und steht in der Panel-Detailebene jetzt zusätzlich in
+  deren Kopfzeile, weil der Dialog ihn vorher verdeckte.
+
 ### Behoben
 
 - **Zwei Knöpfe am Kiosk-Wandtablett waren knapp unter der Mindestgröße für ein
@@ -47,7 +54,13 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 - **Der Raumfühler fehlte in der Auswahl der Temperaturquellen** auf
   „Bediengeräte" und scheiterte beim Speichern an „Quellgerät nicht gefunden".
 - **Lange Raumnamen brachen in den Raumreitern mitten im Wort um.** Die Leiste
-  scrollt jetzt seitlich.
+  scrollt jetzt seitlich. Dasselbe traf die Raumkarten der Wohnungssicht am
+  Telefon.
+- **Schaltprotokoll, Benutzer und Geräte liefen bei 1280 px aus ihren Spalten.**
+  Im Schaltprotokoll überlappten Zeitpunkt und Quelle, und Wörter brachen mitten
+  durch; bei den Benutzern brachen Schaltflächen um, bei den Geräten ragte der
+  Statuschip aus seiner Spalte. Die Spaltenbreiten sind jetzt am Inhalt bemessen,
+  mobil greift für alle drei dieselbe Kartenform.
 
 ---
 
