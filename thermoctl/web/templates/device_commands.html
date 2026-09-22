@@ -55,7 +55,7 @@
       <tbody>
       {% for entry, source, outcome in entries %}
       <tr>
-        <td class="text-nowrap" title="{{ (entry.sent_at|localtime(timezone)).strftime('%d.%m.%Y %H:%M:%S') }}">{{ (entry.sent_at|localtime(timezone)).strftime("%d.%m.%Y %H:%M:%S") }}</td>
+        <td title="{{ (entry.sent_at|localtime(timezone)).strftime('%d.%m.%Y %H:%M:%S') }}">{{ (entry.sent_at|localtime(timezone)).strftime("%d.%m.%Y %H:%M:%S") }}</td>
         <td data-label="Quelle">{{ source.label }}</td>
         <td data-label="Zone">{{ entry.zone_name }}</td>
         <td data-label="Gerät">{{ entry.device_name }}</td>

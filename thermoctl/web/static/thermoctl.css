@@ -735,21 +735,10 @@ body {
     border-bottom-color: var(--line);
 }
 
-/* Gleiche Spaltenbreiten je Tabelle, per `table-layout: fixed` -- ohne feste
- * Prozentwerte quetscht das automatische Tabellenlayout schmale Spalten
- * (Quelle, Zone) bis auf einzelne Buchstaben zusammen, sobald eine andere Spalte
- * (Begründung, Ergebnis) viel Platz beansprucht; das globale
- * `overflow-wrap: anywhere` (oben) erlaubt dem Browser dabei ausdrücklich, ein
- * einzelnes Wort mitten durchzubrechen, weil es genau diese Mindestbreiten in die
- * Berechnung einbezieht. `table-layout: fixed` übergeht diese Berechnung ganz
- * und nimmt stattdessen die hier angegebenen Breiten -- das behebt beide
- * Tabellen unten aus derselben Ursache.
- *
- * `.tc-stack-table` trägt das mobile Verhalten (Kopfzeile ausgeblendet, jede
- * Zeile als eigener Block), gemeinsam für jede Tabelle, die es benutzt --
- * `.tc-device-table` (Geräteliste) und `.tc-command-table` (Schaltprotokoll)
- * ergänzen nur noch ihre eigenen Spaltenbreiten und welche Spalten mobil eine
- * Beschriftung brauchen. */
+/* Feste Spalten mit eigenem Platzbudget; `fixed` allein verhindert keinen
+ * Textüberlauf. Das globale `overflow-wrap: anywhere` bleibt die Sicherung für
+ * frei vergebene, überlange Namen. `.tc-stack-table` liefert gemeinsam die
+ * mobile Kartenform, die Tabellen ergänzen ihre Breiten und Beschriftungen. */
 .tc-stack-table {
     margin-bottom: 0;
 }
@@ -825,15 +814,64 @@ body {
     }
 }
 
-/* Schaltprotokoll: Zeitpunkt, Quelle, Zone, Gerät, Befehl, Ergebnis, Begründung. */
+/* Bei 1280px bleiben neben Navigation und Seitenpolster nur 955px übrig.
+ * 15% davon boten dem einzeiligen Zeitpunkt bloß 118px Textplatz (Text: 152px).
+ * Datum und Uhrzeit dürfen jetzt am Leerzeichen umbrechen. Die festen Breiten
+ * enthalten je 1.6rem Zellpolster: Quelle bis „Kommandozeile“, Zone bis
+ * „Kinderzimmer“, Gerät bis „Heizkörperventil“, Code bis „thermostat“.
+ * Der Rest gehört Begründung und einzeiligem Nutzlast-Aufklapper. Unterhalb
+ * dieses Budgets scrollt nur die Tabelle; mobil gilt die gemeinsame Kartenform. */
 .tc-command-table { table-layout: fixed; }
-.tc-command-table th:nth-child(1) { width: 15%; } /* Zeitpunkt, "10.09.2026 12:49:00" bleibt einzeilig */
-.tc-command-table th:nth-child(2) { width: 13%; } /* Quelle -- alle fünf Beschriftungen aus ACTOR_SOURCES passen einzeilig, auch "Weboberfläche"/"Kommandozeile" */
-.tc-command-table th:nth-child(3) { width: 12%; } /* Zone, frei vergebener Name */
-.tc-command-table th:nth-child(4) { width: 13%; } /* Gerät, frei vergebener Name -- ein Bindestrich bricht dort sauber um */
-.tc-command-table th:nth-child(5) { width: 10%; } /* Befehl, längster Code ist "thermostat" */
-.tc-command-table th:nth-child(6) { width: 18%; } /* Ergebnis -- braucht bei "Gescheitert" Platz für den Fehlertext eines echten Geräte- oder Broker-Fehlers */
-.tc-command-table th:nth-child(7) { width: 19%; } /* Begründung */
+.tc-command-table th:nth-child(1) { width: 7rem; }
+.tc-command-table th:nth-child(2) { width: 8.5rem; }
+.tc-command-table th:nth-child(3) { width: 8.25rem; }
+.tc-command-table th:nth-child(4) { width: 9.5rem; }
+.tc-command-table th:nth-child(5) { width: 6.5rem; }
+.tc-command-table th:nth-child(6) { width: 9.5rem; }
+
+.tc-command-table td:nth-child(1) {
+    overflow-wrap: normal;
+}
+
+.tc-command-table td:nth-child(2) {
+    white-space: nowrap;
+}
+
+/* Die Gruppenauswahl bekommt den verbleibenden Raum. Aktionsbeschriftungen
+ * sind unteilbar; der Select darf schrumpfen, der zugehörige Knopf nicht. */
+.tc-user-table { table-layout: fixed; }
+.tc-user-table th:nth-child(1) { width: 11rem; }
+.tc-user-table th:nth-child(2) { width: 9.5rem; }
+.tc-user-table th:nth-child(3) { width: 4.5rem; }
+.tc-user-table th:nth-child(5) { width: 6.5rem; }
+.tc-user-table th:nth-child(6) { width: 8.5rem; }
+.tc-user-table .btn {
+    flex-shrink: 0;
+    white-space: nowrap;
+}
+.tc-user-table .form-select { min-width: 0; }
+
+@media (min-width: 768px) {
+    .tc-command-table,
+    .tc-user-table { min-width: 59.5rem; }
+}
+
+@media (max-width: 767.98px) {
+    .tc-user-table td[data-label]::before {
+        content: attr(data-label) ":";
+        display: block;
+        color: var(--muted);
+        font-size: 0.75rem;
+    }
+}
+
+/* Ein Status ist ein Satz und kann länger als seine feste Spalte sein.
+ * Nur in der Gerätetabelle dürfen Chips an Leerzeichen umbrechen. */
+.tc-device-table .tc-chip {
+    max-width: 100%;
+    white-space: normal;
+    overflow-wrap: normal;
+}
 
 .tc-command-table td:nth-child(5) code {
     white-space: nowrap;

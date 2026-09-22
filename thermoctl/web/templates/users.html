@@ -6,9 +6,9 @@
 <section id="user-list">
     <h1 class="mb-3">Benutzer</h1>
     {{ error_notice(hint) }}
-    {# Scrollt in sich selbst statt die ganze Seite breit zu machen: Auf einem Telefon passt diese Tabelle nicht nebeneinander. #}
+    {# Dieselbe mobile Kartenform wie Geräte und Schaltprotokoll. #}
     <div class="table-responsive">
-    <table class="table table-striped align-middle">
+    <table class="table table-striped align-middle tc-stack-table tc-user-table">
         <thead>
         <tr>
             <th scope="col">Anzeigename</th>
@@ -22,16 +22,16 @@
         <tbody>
         {% for person in user %}
         <tr>
-            <td>{{ person.display_name }}</td>
-            <td>{{ person.username }}</td>
-            <td>
+            <td data-label="Anzeigename">{{ person.display_name }}</td>
+            <td data-label="Benutzername">{{ person.username }}</td>
+            <td data-label="Status">
                 {% if person.is_active %}
                 <span class="badge text-bg-success">aktiv</span>
                 {% else %}
                 <span class="badge text-bg-secondary">inaktiv</span>
                 {% endif %}
             </td>
-            <td>
+            <td data-label="Gruppe">
                 <form method="post" action="{{ url_prefix }}/users/{{ person.id }}/group"
                       class="d-flex gap-1 align-items-center">
                     <select class="form-select form-select-sm" name="group_id"
@@ -50,7 +50,7 @@
                     <button type="submit" class="btn btn-sm btn-outline-secondary">Setzen</button>
                 </form>
             </td>
-            <td title="{{ (person.last_login_at|localtime(timezone)).strftime('%d.%m.%Y %H:%M:%S') if person.last_login_at else '' }}">{{ person.last_login_at|age }}</td>
+            <td data-label="Letzte Anmeldung" title="{{ (person.last_login_at|localtime(timezone)).strftime('%d.%m.%Y %H:%M:%S') if person.last_login_at else '' }}">{{ person.last_login_at|age }}</td>
             <td class="text-end">
                 <form method="post" action="{{ url_prefix }}/users/{{ person.id }}/active" class="d-inline">
                     <input type="hidden" name="active" value="{{ 'no' if person.is_active else 'yes' }}">

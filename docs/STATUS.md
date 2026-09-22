@@ -1,6 +1,27 @@
 # Stand
 
-Letzte Aktualisierung: 2026-09-21.
+Letzte Aktualisierung: 2026-09-22.
+
+## Verwaltungstabellen bei 1280 px und mobil
+
+Schaltprotokoll, Benutzer und Geräte bleiben mit den Doku-Demodaten innerhalb ihrer
+Zellen. Die frühere Schaltprotokoll-Korrektur (`9a2701e`) griff zwar: `table-layout:
+fixed` und Prozentbreiten waren aktiv. Bei 1280 px blieben aber nur 955 px Tabellenbreite;
+15 % für den Zeitpunkt enthielten nach Zellpolster nur 118 px für rund 152 px Text.
+`nowrap` ließ ihn in die Quelle laufen; das globale `overflow-wrap: anywhere` trennte
+Wörter in den ebenfalls zu knappen Nachbarspalten.
+
+Jetzt haben Schaltprotokoll und Benutzer feste, am Inhalt samt Zellpolster bemessene
+Spalten und am Desktop ein Mindestbudget von 59,5 rem im vorhandenen Scrollcontainer.
+Datum und Uhrzeit dürfen am Leerzeichen umbrechen, Quellen und Benutzeraktionen bleiben
+einzeilig. Mobil nutzen beide wie die Geräte `.tc-stack-table`. Lange Gerätestatuschips
+brechen innerhalb der Zelle an Leerzeichen um; vorher ragte ihr `nowrap` über die feste
+Statusspalte hinaus. Die globale Umbruchsicherung bleibt erhalten.
+
+Der gemeldete Gruppenfehler ist im genannten Bild nicht sichtbar (Editoren geschlossen)
+und bei 1280 px auch mit geöffneten Editoren nicht reproduzierbar. Keine Änderung dort.
+Browsertests prüfen Wortfragmente, Zellgrenzen und Bedienelemente mit den echten
+Doku-Demodaten bei 1280/390 px; die Gruppenrechteauswahl zusätzlich geöffnet bei 1280 px.
 
 ## Gewöhnliche Tests ohne Playwright
 
@@ -166,24 +187,7 @@ Die frühere Aussage weiter unten in diesem Dokument, ein gescheiterter Meross-B
 werde „unbegrenzt oft, bewusst ohne Backoff" erneut versucht, gilt nicht mehr -- siehe
 dort.
 
-## Schaltprotokoll: Spaltenbreiten, kein viertes Ergebnis, mobile Kartenform
-
-Meldung: `/device-commands` brach QUELLE und ZONE mitten im Wort um ("wohnzimme/r"),
-der Aufklapper für die Nutzlast wirkte durch einen Umbruch wie ein zweizeiliger
-Fließtext, und mobil (390 px) zerlief die Tabelle auf über 13.000 px Höhe -- derselbe
-Fehler wie einmal bei der Geräteliste (`.tc-device-table`), nur diesmal ohne deren
-Gegenmittel. Ursache identisch: keine feste Spaltenbreite, und das globale
-`overflow-wrap: anywhere` erlaubt dem automatischen Tabellenlayout, eine schmale Spalte
-bis auf ein Zeichen zusammenzuquetschen, sobald eine andere (Begründung, Ergebnis) viel
-Platz beansprucht.
-
-Behoben mit `table-layout: fixed` und abgestimmten Prozentbreiten für alle sieben
-Spalten (`.tc-command-table`, `thermoctl.css`), plus derselben mobilen Kartenform wie
-bei der Geräteliste -- deren gemeinsamer Teil (Kopfzeile ausblenden, Zeile als Block,
-Beschriftung je Feld) ist jetzt als `.tc-stack-table` herausgezogen, damit keine zweite
-Fassung entsteht; beide Tabellen tragen diese Klasse zusätzlich zu ihrer eigenen.
-Seitenhöhe bei 18 Einträgen: 2506 px auf 2004--2088 px am Schreibtisch (abhängig vom
-Ergebnis-Mix), 13.473 px auf 5.899 px mobil.
+## Schaltprotokoll: drei Ergebniszustände
 
 **Kein viertes Ergebnis "verworfen"/"discarded" existiert.** `command_outcome` hat und
 hatte immer nur drei Zeilen (`executed`/`suppressed`/`failed`, Migration
