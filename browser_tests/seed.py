@@ -104,6 +104,25 @@ def create_schedule_zone(
     return zone
 
 
+def create_constant_schedule_zone(session: Session, name: str) -> Zone:
+    """21 °C all week, including while a UI test adjusts the active mode.
+
+    One point repeats around the weekly ring. Unlike two equally warm modes,
+    this also keeps a stepper's change effective across every day/night boundary.
+    The schedule still exists, so controls for the next switch remain available.
+    """
+    zone = create_zone(session, name)
+    mode = _builtin_mode(session, "tag")
+    session.add(ZoneSetpoint(
+        zone_id=zone.id, setpoint_mode_id=mode.id, temperature_c=Decimal("21.0")
+    ))
+    session.add(SchedulePoint(
+        zone_id=zone.id, weekday=1, minute_of_day=0, setpoint_mode_id=mode.id
+    ))
+    session.flush()
+    return zone
+
+
 def create_bare_zone(session: Session, name: str) -> Zone:
     """A zone with no schedule and no assigned actuator.
 

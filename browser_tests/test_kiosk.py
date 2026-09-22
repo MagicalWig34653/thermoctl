@@ -27,8 +27,8 @@ from thermoctl.db.models.identity import User
 from thermoctl.db.models.state import ZoneState
 from thermoctl.db.models.zone import Zone
 from thermoctl.domain.kiosk import issue_kiosk_token
-from thermoctl.domain.remote_control import boost as domain_boost
 from thermoctl.domain.remote_control import set_setpoint
+from thermoctl.domain.schedule import create_override
 
 pytestmark = pytest.mark.browser
 
@@ -53,7 +53,7 @@ def test_the_kiosk_dashboard_shows_the_zone_and_lets_the_setpoint_be_adjusted(
 ) -> None:
     zone_name = "Kiosk-Wohnzimmer"
     with live_server.session() as session:
-        zone = seed.create_schedule_zone(session, zone_name)
+        zone = seed.create_constant_schedule_zone(session, zone_name)
         session.commit()
         zone_display_name = zone.display_name
 
@@ -113,7 +113,7 @@ def _seed_panel_zones(live_server: LiveServer, prefix: str) -> list[int]:
     """
     with live_server.session() as session:
         zone_ids = [
-            seed.create_schedule_zone(session, f"{prefix}-{n}").id
+            seed.create_constant_schedule_zone(session, f"{prefix}-{n}").id
             for n in range(1, _PANEL_ZONE_COUNT + 1)
         ]
         session.commit()
@@ -168,18 +168,22 @@ def _open_panel_kiosk(
 
 
 def _start_override(live_server: LiveServer, zone_id: int, plaintext: str) -> None:
-    """Boosts one zone so its running override actually shows an "Übersteuerung
+    """Overrides one zone so it actually shows an "Übersteuerung
     aufheben" button to measure -- without one, that button never renders
     (`kiosk_views.py::_dashboard`, `cancel_zone_ids`/`running_overrides`) and its
     tap target size goes untested along with it, same as boost's own button would
-    without a schedule.
+    without a schedule. No expiry: a layout test must not lose its cancel button
+    because the next schedule point happens to fall during the test.
     """
     with live_server.session() as session:
         token = resolve_token(session, plaintext)
         assert token is not None
         zone = session.get(Zone, zone_id)
         assert zone is not None
-        domain_boost(session, zone, utcnow(), token_id=token.id, source="kiosk")
+        create_override(
+            session, zone, Decimal("21.0"), None,
+            token_id=token.id, source="kiosk",
+        )
         session.commit()
 
 

@@ -10,13 +10,14 @@ stehen, sind alles Fragen an das gerenderte Ergebnis, nicht an den Statuscode.
 from __future__ import annotations
 
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import pytest
 from playwright.sync_api import Page, expect
 
 from browser_tests import seed
 from browser_tests.conftest import LiveServer
+from thermoctl.db.base import utcnow
 from thermoctl.db.models.vacation import Vacation
 
 pytestmark = pytest.mark.browser
@@ -47,10 +48,11 @@ def test_setting_a_vacation_shows_it_on_its_own_page_and_as_a_chip_on_the_start_
     expect(admin_page.get_by_role("heading", name="Urlaubsbetrieb")).to_be_visible()
     expect(admin_page.get_by_text("Kein Urlaub angesetzt")).to_be_visible()
 
-    # Ein Zeitraum, der den heutigen Tag sicher einschließt: weit genug gefasst,
-    # unabhängig davon, an welchem Tag die Suite gerade läuft.
-    admin_page.locator("#start_date").fill("2020-01-01")
-    admin_page.locator("#end_date").fill("2099-12-31")
+    # Two days of margin include today in every application timezone, even if
+    # the test crosses midnight between seeding and checking the page.
+    today = utcnow().date()
+    admin_page.locator("#start_date").fill((today - timedelta(days=2)).isoformat())
+    admin_page.locator("#end_date").fill((today + timedelta(days=2)).isoformat())
     admin_page.locator("#setback_temperature_c").fill("15")
     admin_page.get_by_role("button", name="Urlaub ansetzen").click()
 
@@ -76,8 +78,9 @@ def test_setting_a_vacation_shows_it_on_its_own_page_and_as_a_chip_on_the_start_
 
 def test_a_planned_future_vacation_shows_geplant_not_laeuft(admin_page: Page) -> None:
     admin_page.goto("/vacation")
-    admin_page.locator("#start_date").fill("2999-01-01")
-    admin_page.locator("#end_date").fill("2999-01-10")
+    today = utcnow().date()
+    admin_page.locator("#start_date").fill((today + timedelta(days=7)).isoformat())
+    admin_page.locator("#end_date").fill((today + timedelta(days=14)).isoformat())
     admin_page.locator("#setback_temperature_c").fill("14")
     admin_page.get_by_role("button", name="Urlaub ansetzen").click()
 

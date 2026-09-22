@@ -11,8 +11,6 @@ schmalen Bildschirm die richtige Navigation ein- und ausblenden.
 
 from __future__ import annotations
 
-from decimal import Decimal
-
 import pytest
 from playwright.sync_api import Page, expect
 
@@ -85,9 +83,7 @@ def test_the_setpoint_stepper_actually_changes_the_shown_value_after_the_server_
     dem Klick, nicht ein `hx-*`-Attribut im Markup.
     """
     with live_server.session() as session:
-        zone = seed.create_schedule_zone(
-            session, "Wohnzimmer", day_temperature=Decimal("21.0")
-        )
+        zone = seed.create_constant_schedule_zone(session, "Wohnzimmer")
         seed.create_login_tenant_user(
             session,
             "browsertest-mieter-stepper",
