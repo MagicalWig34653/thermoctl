@@ -498,7 +498,14 @@ async def token_issue_view(
         )
     expiry: datetime | None = None
     if valid_days:
-        expiry = utcnow() + timedelta(days=int(valid_days))
+        try:
+            expiry = utcnow() + timedelta(days=int(valid_days))
+        except ValueError:
+            return _token_list(
+                request, session, principal,
+                FormError("valid_days", "Die Gültigkeit muss eine Zahl von Tagen sein."),
+                {"name": name, "code": code},
+            )
     try:
         _token, plaintext = issue_token(
             session, owner, name, [(code, None)] if code else [], expiry

@@ -119,7 +119,17 @@ async def kiosk_token_issue_view(
     if owner is None:  # pragma: no cover
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Nur für angemeldete Benutzer")
 
-    expiry = utcnow() + timedelta(days=int(valid_days)) if valid_days else None
+    if valid_days:
+        try:
+            expiry = utcnow() + timedelta(days=int(valid_days))
+        except ValueError:
+            return _kiosk_token_list(
+                request, session,
+                FormError("valid_days", "Die Gültigkeit muss eine Zahl von Tagen sein."),
+                values,
+            )
+    else:
+        expiry = None
     try:
         _token, plaintext = issue_kiosk_token(
             session, owner, name, zone_ids,

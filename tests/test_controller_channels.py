@@ -1,4 +1,5 @@
 import json
+import re
 from datetime import datetime
 from decimal import Decimal
 
@@ -1047,3 +1048,237 @@ def test_the_controllers_page_shows_a_configured_channel(
     response = angemeldeter_client.get("/controllers")
     assert response.status_code == 200
     assert "external_temperature" in response.text
+def _channel_form(html: str, property_name: str, direction: str) -> str:
+    """The `<form>` for exactly this property/direction combination.
+
+    The page renders one such form per property, so a plain regex over the whole
+    page would pick up whichever one matches first -- usually the wrong one once a
+    device has more than a single channel.
+    """
+    for block in re.findall(
+        r'<form\b[^>]*action="[^"]*/controllers/channel"[^>]*>.*?</form>', html, re.S
+    ):
+        if (
+            f'name="property_name" value="{property_name}"' in block
+            and f'name="direction" value="{direction}"' in block
+        ):
+            return block
+    raise AssertionError(f"Kein Formular fuer {property_name}/{direction} gefunden")
+
+
+def _selected_option(form_html: str, select_name: str) -> str | None:
+    match = re.search(rf'<select[^>]*name="{select_name}"[^>]*>(.*?)</select>', form_html, re.S)
+    assert match is not None, f"Auswahlfeld {select_name} fehlt"
+    selected = re.search(r'<option value="([^"]*)"\s+selected', match.group(1))
+    return selected.group(1) if selected else None
+
+
+def _field_value(form_html: str, input_name: str) -> str:
+    match = re.search(rf'<input[^>]*name="{input_name}"[^>]*>', form_html)
+    assert match is not None, f"Eingabefeld {input_name} fehlt"
+    value = re.search(r'value="([^"]*)"', match.group(0))
+    return value.group(1) if value else ""
+
+
+def test_a_saved_read_channel_keeps_its_kind_selected_after_reload(
+    angemeldeter_client: TestClient, session: Session
+) -> None:
+    """The bug report: the read-channel `kind` select had no `selected` binding and
+    always rendered its first option (`zone_setpoint`) -- regardless which kind was
+    actually stored. A channel configured as `operating_mode` would silently look
+    like `zone_setpoint` on reload, and the very next unrelated save (e.g. picking a
+    different zone) would write that wrong kind back, discarding the real one.
+    """
+    _kinds(session)
+    zone, device = _controller(session, "leseregler")
+    _read_channel(session, device, zone, "system_mode", "operating_mode")
+
+    response = angemeldeter_client.get("/controllers")
+    assert response.status_code == 200
+    form = _channel_form(response.text, "system_mode", "read")
+
+    assert _selected_option(form, "kind") == "operating_mode"
+    assert _selected_option(form, "zone_id") == str(zone.id)
+
+
+@pytest.mark.parametrize(
+    ("kind", "extra", "expect"),
+    [
+        ("sensor_temperature", {"source_device_id": "quelle"}, {"source_device_id": "quelle"}),
+        ("zone_setpoint", {"zone_id": "zone"}, {"zone_id": "zone"}),
+        (
+            "fixed",
+            {"fixed_text": "Boost", "fixed_number": "21,5"},
+            {"fixed_text": "Boost", "fixed_number": "21,5"},
+        ),
+    ],
+)
+def test_a_saved_write_channel_shows_every_field_after_reload(
+    angemeldeter_client: TestClient,
+    session: Session,
+    kind: str,
+    extra: dict[str, str],
+    expect: dict[str, str],
+) -> None:
+    """Every one of the five write-channel fields (`kind`, `source_device_id`,
+    `zone_id`, `fixed_text`, `fixed_number`) was missing its `selected`/`value`
+    binding -- all five were forgotten after the very next page load.
+    """
+    _kinds(session)
+    zone, device = _controller(session, f"schreibregler-{kind}")
+    source = create_device(session, f"quellgeraet-{kind}")
+    _assign(session, zone.id, source.id, "controller")
+    prop = _property(session, device.id, "boost_mode")
+
+    form_data: dict[str, object] = {
+        "device_id": device.id,
+        "property_name": prop.name,
+        "direction": "write",
+        "kind": kind,
+    }
+    for key, placeholder in extra.items():
+        form_data[key] = (
+            str(source.id)
+            if placeholder == "quelle"
+            else (str(zone.id) if placeholder == "zone" else placeholder)
+        )
+    if kind == "fixed":
+        # `fixed` is only accepted when the property allows the fixed value --
+        # a numeric property here, matching `fixed_number`.
+        prop.value_type = "numeric"
+        session.flush()
+    save = angemeldeter_client.post(
+        "/controllers/channel",
+        data=form_data,
+        headers=_csrf(angemeldeter_client),
+        follow_redirects=False,
+    )
+    assert save.status_code == 303, save.text
+
+    response = angemeldeter_client.get("/controllers")
+    assert response.status_code == 200
+    form = _channel_form(response.text, prop.name, "write")
+
+    assert _selected_option(form, "kind") == kind
+    if "source_device_id" in expect:
+        assert _selected_option(form, "source_device_id") == str(source.id)
+    if "zone_id" in expect:
+        assert _selected_option(form, "zone_id") == str(zone.id)
+    if "fixed_text" in expect:
+        assert _field_value(form, "fixed_text") == expect["fixed_text"]
+    if "fixed_number" in expect:
+        assert _field_value(form, "fixed_number") == expect["fixed_number"]
+
+
+@pytest.mark.parametrize("raw_value", [Decimal("3.125"), Decimal("3.1234")])
+def test_a_fixed_number_with_more_than_one_decimal_survives_an_unchanged_resubmit(
+    angemeldeter_client: TestClient, session: Session, raw_value: Decimal
+) -> None:
+    """`ControllerChannel.fixed_number` is `Numeric(12, 4)` -- a value set over the
+    REST API or MCP (not this form) can carry up to four decimal places. The field
+    used to render it with `grad()`'s fixed one place, so 3,125 became 3,1 on the
+    page; resubmitting the form exactly as rendered -- the same "form still matches
+    the database" property every other test on this page checks -- then rounded
+    the stored value down to one decimal, discarding the rest, with nothing on the
+    page ever suggesting a change had happened.
+    """
+    from sqlalchemy import select
+
+    from thermoctl.db.models.device import ControllerChannel
+
+    _kinds(session)
+    _zone, device = _controller(session, f"praezisionsregler-{raw_value}".replace(".", "_"))
+    prop = _property(session, device.id, "boost_level")
+    prop.value_type = "numeric"
+    session.flush()
+    configure_channel(session, device, prop.name, "write", "fixed", fixed_number=raw_value)
+
+    before = angemeldeter_client.get("/controllers")
+    assert before.status_code == 200
+    form = _channel_form(before.text, prop.name, "write")
+    kind = _selected_option(form, "kind")
+    fixed_number_field = _field_value(form, "fixed_number")
+    # Rendered with the value's actual precision -- not rounded to one place.
+    assert fixed_number_field == str(raw_value).replace(".", ",")
+
+    resubmit = angemeldeter_client.post(
+        "/controllers/channel",
+        data={
+            "device_id": device.id,
+            "property_name": prop.name,
+            "direction": "write",
+            "kind": kind,
+            "fixed_number": fixed_number_field,
+        },
+        headers=_csrf(angemeldeter_client),
+        follow_redirects=False,
+    )
+    assert resubmit.status_code == 303
+
+    session.expire_all()
+    channel = session.scalar(
+        select(ControllerChannel).where(ControllerChannel.device_id == device.id)
+    )
+    assert channel is not None
+    assert channel.fixed_number == raw_value
+
+
+def test_resubmitting_the_rendered_form_unchanged_keeps_the_configuration(
+    angemeldeter_client: TestClient, session: Session
+) -> None:
+    """Submitting the form exactly as the page rendered it -- the values a browser
+    would send back without the user touching anything -- must not change the
+    stored channel. Before the fix, the missing `selected`/`value` bindings meant
+    the rendered form did *not* reflect the stored state, so this same round trip
+    silently overwrote `operating_mode` with the first option, `zone_setpoint`.
+    """
+    _kinds(session)
+    zone, device = _controller(session, "rundlaufregler")
+    _read_channel(session, device, zone, "system_mode", "operating_mode")
+
+    before = angemeldeter_client.get("/controllers")
+    form = _channel_form(before.text, "system_mode", "read")
+    kind = _selected_option(form, "kind")
+    zone_id = _selected_option(form, "zone_id")
+    assert kind == "operating_mode"
+
+    resubmit = angemeldeter_client.post(
+        "/controllers/channel",
+        data={
+            "device_id": device.id,
+            "property_name": "system_mode",
+            "direction": "read",
+            "kind": kind,
+            "zone_id": zone_id,
+        },
+        headers=_csrf(angemeldeter_client),
+        follow_redirects=False,
+    )
+    assert resubmit.status_code == 303
+
+    after = angemeldeter_client.get("/controllers")
+    form_after = _channel_form(after.text, "system_mode", "read")
+    assert _selected_option(form_after, "kind") == "operating_mode"
+    assert _selected_option(form_after, "zone_id") == str(zone.id)
+
+
+def test_switching_kind_clears_fields_that_no_longer_apply(session: Session) -> None:
+    """`configure_channel` must not keep a stale `zone_id`/`source_device_id`/
+    `fixed_*` around once the channel is reconfigured to a `kind` that does not use
+    it -- otherwise a channel switched from `zone_setpoint` to `fixed` still carries
+    the old zone in the database, invisible on the page but there on the next read.
+    """
+    _kinds(session)
+    zone, device = _controller(session, "wechselregler")
+    prop = _property(session, device.id, "boost_mode")
+    prop.value_type = "text"
+    session.flush()
+    configure_channel(session, device, prop.name, "write", "zone_setpoint", zone_id=zone.id)
+
+    channel = configure_channel(
+        session, device, prop.name, "write", "fixed", zone_id=zone.id, fixed_text="Boost"
+    )
+
+    assert channel.zone_id is None
+    assert channel.kind_id is not None
+    assert channel.fixed_text == "Boost"

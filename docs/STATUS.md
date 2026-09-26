@@ -2,6 +2,61 @@
 
 Letzte Aktualisierung: 2026-09-26.
 
+## Formulare: fünf vergessene Bindungen auf /controllers, zwei Abstürze bei falscher Eingabe
+
+Der Projektinhaber meldete "immer mal wieder doppelte Speichern-Knöpfe und
+Checkboxen" und "Einstellungen, die nach Neuladen weg sind", ohne eine Seite
+nennen zu können. Empirisch geprüft (echter Server, Doku-Demodaten, Formular
+im rohen HTML bzw. per Playwright, nicht nur statisch gelesen): `/controllers`,
+`/users`, `/tokens`, `/kiosk-tokens`, `/passkeys`, `/device-commands`,
+`/vacation`, `/interfaces`, `/zones/{id}/devices`, `/zones/{id}`,
+`/zones/{id}/parameters`, `/zones/{id}/setpoints`, `/modes/{id}`, `/settings`,
+`/account`, `/schedule`, `/heating-time` (Wohnung) sowie alle 39 eindeutigen
+GET-Ansichten aus `tools/screenshot_views.py` über den neuen generischen
+Browsertest `browser_tests/test_form_hygiene.py`.
+
+**Bestätigt und behoben:**
+- **`/controllers`, Lese-Kanal-Formular:** `<select name="kind">` hatte keine
+  `selected`-Bindung -- zeigte nach jedem Neuladen die erste Option
+  (`zone_setpoint`), unabhängig vom gespeicherten Wert. Der nächste Speichern
+  eines anderen Feldes schrieb diesen falschen Wert zurück und verwarf z. B.
+  einen auf `operating_mode` konfigurierten Kanal.
+- **`/controllers`, Schreib-Kanal-Formular:** `kind`, `source_device_id`,
+  `zone_id` ohne `selected`, `fixed_text`/`fixed_number` ohne `value` --
+  alle fünf gespeicherten Felder fehlten nach dem nächsten Laden.
+  `configure_channel()` leert jetzt zusätzlich die Felder, die zur gewählten
+  `kind` nicht passen (vorher blieb z. B. eine alte `zone_id` in der
+  Datenbank stehen, wenn nur auf `fixed` umgestellt wurde, ohne dass die
+  Seite das je gezeigt hätte).
+- **`device_assignment.html`:** toter, durch `{% if false and controllers %}`
+  abgeschalteter zweiter "Tastenbelegung"-Editor entfernt (Zeilen 184-253);
+  keine eigene, nur dafür vorhandene Kontextdaten im Handler gefunden.
+- **`/tokens` und `/kiosk-tokens`:** Ein nicht-numerisches `valid_days` (das
+  `<input type="number">` verhindert das im Browser, ein Werkzeug oder ein
+  manueller POST nicht) ließ `int(valid_days)` ungefangen durchschlagen --
+  Absturz mit 500 statt einer Fehlermeldung im Formular. Beide Stellen fangen
+  jetzt `ValueError` und zeigen "Die Gültigkeit muss eine Zahl von Tagen
+  sein." am Feld.
+
+**Geprüft, kein Fund:** Gruppen-Rechte (bereits an anderer Stelle in Arbeit),
+alle Formulare, die `form.html`s Makros (`text_field`, `number_field`,
+`select_field`, `toggle`) benutzen -- diese binden `value`/`selected`
+grundsätzlich korrekt; der Fehler oben saß genau in den beiden
+Formularblöcken, die das nicht tun. Kein `hx-swap="afterend"`/`"beforeend"`
+im ganzen Projekt (Risiko für sich duplizierende HTMX-Fragmente); die beiden
+tatsächlich genutzten `hx-get`/`hx-swap="outerHTML"`-Polling-Stellen
+(`start.html`, `tenant_start.html`) tauschen ein Element durch sich selbst
+aus, verdoppeln nichts.
+
+**Neuer Test:** `browser_tests/test_form_hygiene.py` -- für jede eindeutige
+Anlagen- und Wohnungs-Ansicht aus `tools/screenshot_views.py`: höchstens ein
+sichtbarer, gleichlautender Speichern-Knopf je Formular, kein sichtbares
+Eingabefeld mit demselben Namen doppelt im selben Formular (Checkboxen/Radios
+ausgenommen), keine Beschriftung "Speichern" zweimal im selben
+`.tc-panel`/`.card`/`section`. `/controllers` ist dort ausdrücklich
+ausgenommen (viele unabhängige Ein-Zeilen-Formulare je Karte sind dessen
+Layout, kein Fehler).
+
 ## Verwaltungstabellen bei 1280 px und mobil
 
 Schaltprotokoll, Benutzer und Geräte bleiben mit den Doku-Demodaten innerhalb ihrer

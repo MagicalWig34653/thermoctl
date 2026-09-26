@@ -222,6 +222,22 @@ def test_a_token_without_a_name_is_refused(client_als, session: Session) -> None
     assert "braucht einen Namen" in response.text
 
 
+def test_a_non_numeric_token_validity_is_refused_instead_of_crashing(
+    client_als, session: Session
+) -> None:
+    """`int(valid_days)` used to run unguarded -- a value the `<input type=number>`
+    would normally reject client-side, but a bare POST does not, crashed the
+    endpoint with a 500 instead of showing a form error."""
+    c = client_als([("token.self", None)])
+    response = c.post(
+        "/tokens", data={"name": "Ungueltig", "code": "", "valid_days": "abc"},
+        headers=_with_csrf(c, session),
+    )
+    assert response.status_code == 200
+    assert "Zahl von Tagen" in response.text
+    assert "tctl_" not in response.text
+
+
 def test_a_token_with_too_many_permissions_is_refused_understandably(
     client_als, session: Session
 ) -> None:

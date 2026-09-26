@@ -156,6 +156,30 @@ def grad(value: Decimal | float | None, digits: int = 1) -> str:
     return f"{value:.{digits}f}".replace(".", ",")
 
 
+def zahl_verlustfrei(value: Decimal | float | None, max_digits: int = 4) -> str:
+    """As many decimal places as the value actually has, up to `max_digits`, with
+    a comma -- no more, no fewer.
+
+    `grad()` above always shows a fixed number of places, which rounds: a
+    `ControllerChannel.fixed_number` is `Numeric(12, 4)` (set over the REST API or
+    MCP, not only this form), and rendering it with `grad`'s default of one place
+    turned 3,125 into 3,1. Submitting that same form back unchanged -- exactly the
+    "does the form still show what's stored" property the rest of this page is
+    tested against -- would then silently round the stored value down to one
+    decimal. `grad` stays as it is for temperatures, where a fixed one place is
+    the point.
+    """
+    if value is None:
+        return "–"
+    decimal_value = value if isinstance(value, Decimal) else Decimal(str(value))
+    quantised = decimal_value.quantize(Decimal(1).scaleb(-max_digits))
+    text = f"{quantised:f}"
+    if "." in text:
+        text = text.rstrip("0").rstrip(".") or "0"
+    return text.replace(".", ",")
+
+
 templates.env.filters["age"] = age_in_words
 templates.env.filters["grad"] = grad
+templates.env.filters["zahl_verlustfrei"] = zahl_verlustfrei
 templates.env.filters["localtime"] = local_time

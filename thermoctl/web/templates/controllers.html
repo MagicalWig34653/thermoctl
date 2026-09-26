@@ -25,7 +25,7 @@
   {% if device.id in manageable_device_ids %}
     <form method="post" action="{{ url_prefix }}/controllers/channel" class="row g-2">
       <input type="hidden" name="device_id" value="{{ device.id }}"><input type="hidden" name="property_name" value="{{ property.name }}"><input type="hidden" name="direction" value="read">
-      <div class="col"><select class="form-select form-select-sm" name="kind"><option value="zone_setpoint">Sollwert der Zone</option><option value="operating_mode">Betriebsart der Zone</option></select></div>
+      <div class="col"><select class="form-select form-select-sm" name="kind"><option value="zone_setpoint" {{ "selected" if channel and kinds[channel.kind_id].code == "zone_setpoint" }}>Sollwert der Zone</option><option value="operating_mode" {{ "selected" if channel and kinds[channel.kind_id].code == "operating_mode" }}>Betriebsart der Zone</option></select></div>
       <div class="col"><select class="form-select form-select-sm" name="zone_id" required>{% for zone in zones if zone.id in manageable_ids %}<option value="{{ zone.id }}" {{ "selected" if channel and channel.zone_id == zone.id }}>{{ zone.display_name }}</option>{% endfor %}</select></div>
       <div class="col-auto"><button class="btn btn-sm btn-outline-secondary">Speichern</button></div>
     </form>
@@ -42,10 +42,10 @@
   </td><td>
   {% if device.id in manageable_device_ids %}<form id="channel-{{ device.id }}-{{ property.id }}" method="post" action="{{ url_prefix }}/controllers/channel" class="row g-2">
     <input type="hidden" name="device_id" value="{{ device.id }}"><input type="hidden" name="property_name" value="{{ property.name }}"><input type="hidden" name="direction" value="write">
-    <div class="col"><select class="form-select form-select-sm" name="kind"><option value="sensor_temperature">Temperatur eines Geräts</option><option value="zone_temperature">Ist-Temperatur der Zone</option><option value="zone_setpoint">Sollwert der Zone</option><option value="fixed">Fester Wert</option></select></div>
-    <div class="col"><select class="form-select form-select-sm" name="source_device_id"><option value="">Quellgerät</option>{% for source in devices %}<option value="{{ source.id }}">{{ source.display_name }}</option>{% endfor %}</select></div>
-    <div class="col"><select class="form-select form-select-sm" name="zone_id"><option value="">Zone</option>{% for zone in zones if zone.id in manageable_ids %}<option value="{{ zone.id }}">{{ zone.display_name }}</option>{% endfor %}</select></div>
-    <div class="col"><input class="form-control form-control-sm" name="fixed_text" placeholder="Fester Text"><input class="form-control form-control-sm mt-1" name="fixed_number" inputmode="decimal" placeholder="Feste Zahl"></div>
+    <div class="col"><select class="form-select form-select-sm" name="kind"><option value="sensor_temperature" {{ "selected" if channel and kinds[channel.kind_id].code == "sensor_temperature" }}>Temperatur eines Geräts</option><option value="zone_temperature" {{ "selected" if channel and kinds[channel.kind_id].code == "zone_temperature" }}>Ist-Temperatur der Zone</option><option value="zone_setpoint" {{ "selected" if channel and kinds[channel.kind_id].code == "zone_setpoint" }}>Sollwert der Zone</option><option value="fixed" {{ "selected" if channel and kinds[channel.kind_id].code == "fixed" }}>Fester Wert</option></select></div>
+    <div class="col"><select class="form-select form-select-sm" name="source_device_id"><option value="">Quellgerät</option>{% for source in devices %}<option value="{{ source.id }}" {{ "selected" if channel and channel.source_device_id == source.id }}>{{ source.display_name }}</option>{% endfor %}</select></div>
+    <div class="col"><select class="form-select form-select-sm" name="zone_id"><option value="">Zone</option>{% for zone in zones if zone.id in manageable_ids %}<option value="{{ zone.id }}" {{ "selected" if channel and channel.zone_id == zone.id }}>{{ zone.display_name }}</option>{% endfor %}</select></div>
+    <div class="col"><input class="form-control form-control-sm" name="fixed_text" value="{{ channel.fixed_text or '' if channel else '' }}" placeholder="Fester Text"><input class="form-control form-control-sm mt-1" name="fixed_number" inputmode="decimal" value="{{ channel.fixed_number|zahl_verlustfrei if channel and channel.fixed_number is not none else '' }}" placeholder="Feste Zahl"></div>
     <div class="col-auto"><button class="btn btn-sm btn-outline-secondary">Speichern</button></div>
   </form>{% elif channel %}{{ kinds[channel.kind_id].label }}{% else %}Nicht belegt{% endif %}
   </td></tr>{% endfor %}

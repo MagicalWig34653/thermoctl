@@ -94,6 +94,18 @@ def configure_channel(
             raise ControllerChannelError("Der feste Wert ist für dieses Merkmal nicht erlaubt.")
         if fixed_number is not None and ((property_model.min_value is not None and fixed_number < property_model.min_value) or (property_model.max_value is not None and fixed_number > property_model.max_value)):
             raise ControllerChannelError("Der feste Wert liegt außerhalb des Wertebereichs.")
+    # The form always submits all four fields together, regardless of which `kind`
+    # is selected -- a stale selection left over from a previous save (a zone still
+    # picked in the dropdown after switching to "fixed", say) would otherwise be
+    # stored right along with the new kind, even though nothing reads it for that
+    # kind. Keeping only what the chosen kind actually uses is what lets the
+    # persisted state and the form that re-renders it agree.
+    if kind_code not in {"zone_temperature", "zone_setpoint", "operating_mode"}:
+        zone_id = None
+    if kind_code != "sensor_temperature":
+        source_device_id = None
+    if kind_code != "fixed":
+        fixed_text, fixed_number = None, None
     channel = session.scalar(select(ControllerChannel).where(
         ControllerChannel.device_id == device.id, ControllerChannel.property_name == property_name))
     if channel is None:
