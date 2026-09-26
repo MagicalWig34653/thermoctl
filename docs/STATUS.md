@@ -20,6 +20,11 @@ Beim-Upgrade-Hinweise in `CHANGELOG.md`. Keine Migration.
 `thermoctl/config.yaml` auf `0.10.0`, Abschnitt in dessen `CHANGELOG.md`),
 erst nach `docker.yml` für den `v0.10.0`-Tag.
 
+**SQLAlchemy ist auf `<2.1` gepinnt** (CI zog sonst 2.1.1 und brach an fünf
+mypy-Stellen in unveränderten Dateien); Umstieg auf 2.1 ist ein eigener Auftrag —
+Befund: mypy scheitert an den fünf genannten Stellen, die Testsuite selbst läuft
+mit 2.1.1 gegen SQLite unverändert grün (100 % Abdeckung, keine Fehlschläge).
+
 ## Nachbesserung Kreuzreview: Formularfelder bei 390px, Escape/Backdrop-Test
 
 Zwei Nachbesserungen aus dem Kreuzreview der Navigations-Änderung unten:

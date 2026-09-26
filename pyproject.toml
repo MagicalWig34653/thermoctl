@@ -7,7 +7,12 @@ license-files = ["LICENSE"]
 dependencies = [
     "fastapi>=0.141",
     "uvicorn[standard]>=0.52",
-    "sqlalchemy>=2.0.52",
+    # <2.1 gepinnt: 2.1.1 bricht mypy an fünf Stellen (thermoctl/domain/zones.py,
+    # thermoctl/api/routes.py, thermoctl/web/device_views.py,
+    # thermoctl/web/device_commands_views.py, thermoctl/web/audit_views.py), ohne
+    # dass sich an diesen Dateien etwas geändert hätte. Umstieg ist ein eigener
+    # Auftrag, siehe docs/STATUS.md.
+    "sqlalchemy>=2.0.52,<2.1",
     "alembic>=1.19",
     "pydantic-settings>=2.15",
     "argon2-cffi>=25.1",

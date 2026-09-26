@@ -38,6 +38,10 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ### Geändert
 
+- **SQLAlchemy auf `<2.1` gepinnt.** 2.1.1 brach mypy an fünf Stellen, ohne
+  dass sich an den betroffenen Dateien etwas geändert hätte; die Testsuite
+  selbst läuft mit 2.1.1 unverändert grün. Umstieg auf 2.1 folgt als eigener
+  Auftrag, siehe `docs/STATUS.md`.
 - **Im Kiosk fällt der Schriftzug „thermoctl" weg**, in beiden Formen. Ein
   Wandtablett zeigt die Räume, nicht den Produktnamen. Der Link „Quelltext
   (AGPL-3.0)" bleibt und steht in der Panel-Detailebene jetzt zusätzlich in
