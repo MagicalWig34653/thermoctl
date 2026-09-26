@@ -118,19 +118,51 @@ gewöhnlich ab (volle Navigation, Rücksprung nach `/kiosk`) -- diese drei
 Bedienelemente lassen sich so schon immer auch ohne Skript benutzen (siehe die
 Begründung in `thermoctl/auth/kiosk.py::kiosk_csrf_protection`), und daran ändert
 diese Version nichts.
+
+`hx-disabled-elt`/`hx-sync`: Zwei schnelle Tipps auf "Sollwert anheben" konnten
+den Knopf beide noch vor dem Austausch von `#kiosk-body` (outerHTML) treffen --
+nichts verhinderte das. Nachgestellt mit zwei `HTMLElement.click()`-Aufrufen
+auf denselben Knoten ohne jede Verzögerung dazwischen: der zweite Tipp landete
+zuverlässig folgenlos, ohne Fehlermeldung, bei `35,0` statt der erwarteten
+Ablehnung bei `35,5` -- exakt der gemeldete Befund. Die Regellogik selbst
+(`domain/modes.py::step_setpoint`) aktualisiert den Sollwert mit einer
+atomaren Anweisung und ist von dieser rein clientseitigen Race gar nicht
+betroffen; das Problem liegt allein darin, dass ein zweiter Tipp während einer
+laufenden Anfrage bislang keine erkennbare Wirkung hatte -- weder eine
+Sperre noch ein zweites, tatsächlich abgeschicktes Formular. Am Wandtablett
+soll kein Tipp
+folgenlos verschwinden, aber zwei Anfragen dürfen sich auch nicht überholen; die
+gewählte Antwort ist ein sichtbar gesperrter Knopf während die Anfrage läuft,
+kein leises Verwerfen: `htmx` deaktiviert das `<fieldset>` (beide Tasten) für
+die Dauer der Anfrage (`fieldset:disabled .btn`, Bootstrap, ohne eigene CSS-
+Regel), ein zweiter, während dieser Zeit ausgelöster Tipp erreicht den
+deaktivierten Knopf gar nicht erst. `hx-sync="this:queue first"` ist die
+zweite Absicherung, falls doch einmal zwei Anfragen von diesem Formular
+zugleich entstehen (z. B. Tastatur-Aktivierung knapp vor der Deaktivierung):
+dann läuft die zweite erst nach der ersten, nie parallel, und die Reihenfolge
+der Antworten entspricht der Reihenfolge der Tipps. Ohne JavaScript wirkt keins
+von beiden -- eine gewöhnliche Formularübermittlung ist ohnehin sequenziell,
+eine Seite lädt vor der nächsten Eingabe fertig. Das `<fieldset>` selbst
+bekommt `style="display: contents"`, nicht eine Zeile in `thermoctl.css`
+(parallel von anderer Stelle geändert): es soll rein technisch beide Tasten
+gemeinsam deaktivierbar machen, ohne das bestehende Flex-Layout der drei
+Kinder (Minus, Wert, Plus) zu berühren.
 #}
 {% macro setpoint_control(zone, setpoint, context) %}
 {% if zone.id in control_zone_ids %}
 <form method="post" action="{{ url_prefix }}/kiosk/zones/{{ zone.id }}/setpoint"
       class="kiosk-setpoint kiosk-setpoint-{{ context }}"
       hx-post="{{ url_prefix }}/kiosk/zones/{{ zone.id }}/setpoint"
-      hx-target="#kiosk-body" hx-select="#kiosk-body" hx-swap="outerHTML">
+      hx-target="#kiosk-body" hx-select="#kiosk-body" hx-swap="outerHTML"
+      hx-disabled-elt="find fieldset" hx-sync="this:queue first">
     <input type="hidden" name="csrf_token" value="{{ csrf }}">
-    <button class="btn btn-outline-secondary kiosk-stage" type="submit"
-            name="direction" value="down" aria-label="Sollwert senken">−</button>
-    <span class="t-value">{{ setpoint.temperature_c|grad }} °C</span>
-    <button class="btn btn-outline-secondary kiosk-stage" type="submit"
-            name="direction" value="up" aria-label="Sollwert anheben">+</button>
+    <fieldset style="display: contents">
+        <button class="btn btn-outline-secondary kiosk-stage" type="submit"
+                name="direction" value="down" aria-label="Sollwert senken">−</button>
+        <span class="t-value">{{ setpoint.temperature_c|grad }} °C</span>
+        <button class="btn btn-outline-secondary kiosk-stage" type="submit"
+                name="direction" value="up" aria-label="Sollwert anheben">+</button>
+    </fieldset>
 </form>
 {% else %}
 <div class="kiosk-setpoint kiosk-setpoint-{{ context }} t-value">{{ setpoint.temperature_c|grad }} °C</div>
@@ -139,9 +171,15 @@ diese Version nichts.
 
 {% macro boost_control(zone) %}
 {% if zone.id in control_zone_ids %}
+{#
+Dieselbe Sperre wie beim Sollwert-Stellglied (siehe Begründung dort) -- hier
+genügt `hx-disabled-elt="find button"` ohne `<fieldset>`, weil dieses Formular
+von vornherein nur einen einzigen Knopf enthält.
+#}
 <form method="post" action="{{ url_prefix }}/kiosk/zones/{{ zone.id }}/boost"
       hx-post="{{ url_prefix }}/kiosk/zones/{{ zone.id }}/boost"
-      hx-target="#kiosk-body" hx-select="#kiosk-body" hx-swap="outerHTML">
+      hx-target="#kiosk-body" hx-select="#kiosk-body" hx-swap="outerHTML"
+      hx-disabled-elt="find button" hx-sync="this:queue first">
     <input type="hidden" name="csrf_token" value="{{ csrf }}">
     <button class="btn btn-outline-secondary" type="submit">
         Nächste Schaltung vorziehen
@@ -159,7 +197,8 @@ nichts aufzuheben, und der Knopf wäre einer ohne Wirkung.
 {% if zone.id in running_overrides and zone.id in cancel_zone_ids %}
 <form method="post" action="{{ url_prefix }}/kiosk/zones/{{ zone.id }}/override/cancel"
       hx-post="{{ url_prefix }}/kiosk/zones/{{ zone.id }}/override/cancel"
-      hx-target="#kiosk-body" hx-select="#kiosk-body" hx-swap="outerHTML">
+      hx-target="#kiosk-body" hx-select="#kiosk-body" hx-swap="outerHTML"
+      hx-disabled-elt="find button" hx-sync="this:queue first">
     <input type="hidden" name="csrf_token" value="{{ csrf }}">
     <button class="btn btn-outline-secondary" type="submit">
         Übersteuerung aufheben

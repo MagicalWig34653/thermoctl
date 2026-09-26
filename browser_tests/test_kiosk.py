@@ -660,6 +660,96 @@ def test_every_detail_control_stays_within_480px_with_an_error_and_a_sensor_warn
         page.context.close()
 
 
+def test_a_double_tap_on_raise_is_locked_out_instead_of_racing(
+    live_server: LiveServer, browser: Browser
+) -> None:
+    """Kreuzreview-Befund: Die Formulare (Sollwert, Boost, Übersteuerung
+    aufheben) tauschten `#kiosk-body` komplett aus (`hx-swap="outerHTML"`), und
+    nichts hinderte einen zweiten Tipp auf "Sollwert anheben" daran, den Knopf
+    noch vor dem Austausch ein zweites Mal zu treffen. Nachgestellt mit zwei
+    `HTMLElement.click()`-Aufrufen auf denselben Knoten ohne jede Verzögerung
+    dazwischen (`page.evaluate`, nicht `Locator.click()` -- das wartet vor
+    jedem Klick auf Aktivierbarkeit und wäre damit selbst schon eine
+    Verzögerung, die den Fehler verdeckt): Zuverlässig in allen 15 Versuchen
+    landete der zweite Tipp folgenlos, ohne Fehlermeldung, bei 34,5 → 35,0 --
+    exakt der gemeldete Befund ("blieb bei 35,0 statt 35,5-Ablehnung"). Unter
+    CPU-Drosselung bleibt das Bild gleich; sie ist hier zusätzlich gesetzt, um
+    das schmale Zeitfenster zwischen Klick und einer etwaigen asynchronen
+    Deaktivierung real zu dehnen.
+
+    Entscheidung: Am Wandtablett soll kein Tipp *zu einem falschen Endwert*
+    führen, aber ein Tipp, der während einer laufenden Anfrage eintrifft,
+    darf sichtbar ins Leere greifen -- besser ein bewusst gesperrter, klar
+    erkennbarer Knopf als ein leise verschluckter, dabei unbemerkt in der
+    Reihenfolge vertauschter Tipp. Die Behebung sperrt deshalb den Knopf für
+    die Dauer der eigenen Anfrage (`hx-disabled-elt="find fieldset"`,
+    `kiosk.html`, Bootstraps `fieldset:disabled .btn` liefert die sichtbare
+    Sperre ohne eigenes CSS); ein `HTMLButtonElement.click()` auf einen
+    deaktivierten Knopf ist für den Browser wirkungslos, `hx-sync="this:queue
+    first"` sichert zusätzlich ab, falls doch einmal zwei Anfragen von
+    demselben Formular entstehen. Ergebnis: derselbe Doppelklick endet
+    deterministisch bei genau einem angewandten Schritt (34,5 → 35,0, keine
+    Fehlermeldung -- der zweite, gesperrte Tipp fand schlicht nicht statt),
+    nie bei einem falschen oder vertauschten Wert. Wichtig ist der zweite
+    Teil dieses Tests: Ein *echter*, späterer Tipp (nachdem die Anfrage
+    durchgelaufen und der Knopf wieder frei ist) wirkt weiterhin ganz normal
+    -- die Sperre ist vorübergehend, kein dauerhaft verlorener Tipp.
+    """
+    zone_ids = _seed_panel_zones(live_server, "PanelDoppeltipp")
+    plaintext = _issue_kiosk_token_for_zones(live_server, zone_ids)
+    zone_id = zone_ids[0]
+    with live_server.session() as session:
+        token = resolve_token(session, plaintext)
+        assert token is not None
+        zone = session.get(Zone, zone_id)
+        assert zone is not None
+        set_setpoint(session, zone, Decimal("34.5"), utcnow(), token_id=token.id, source="kiosk")
+        session.commit()
+
+    page, errors = _open_panel_kiosk(browser, live_server, plaintext, width=480, height=480)
+    try:
+        cdp = page.context.new_cdp_session(page)
+        # 20-fach: dehnt ein etwaiges schmales Zeitfenster zwischen dem ersten
+        # Klick und der (in `htmx` tatsächlich synchronen) Deaktivierung --
+        # ändert am deterministischen Ergebnis nichts, ist aber die im Auftrag
+        # verlangte Reproduktion über `Emulation.setCPUThrottlingRate`.
+        cdp.send("Emulation.setCPUThrottlingRate", {"rate": 20})
+        try:
+            page.locator(f'[data-kiosk-tile="{zone_id}"]').click()
+            detail = page.locator(f'[data-kiosk-detail="{zone_id}"]')
+            expect(detail).to_be_visible()
+
+            wert = detail.locator(".kiosk-setpoint-detail .t-value")
+            fehler = detail.locator(".kiosk-error")
+
+            # Zwei Tipps ohne jede Verzögerung dazwischen -- siehe Docstring,
+            # warum das ausdrücklich nicht über `Locator.click()` zweimal
+            # geschieht.
+            page.evaluate(
+                """() => {
+                    const knopf = document.querySelector(
+                        '[data-kiosk-detail] [aria-label="Sollwert anheben"]');
+                    knopf.click();
+                    knopf.click();
+                }"""
+            )
+            expect(wert).to_have_text("35,0 °C")
+            expect(fehler).not_to_be_visible()
+
+            # Der Knopf ist nur vorübergehend gesperrt: ein echter, späterer
+            # Tipp wirkt wieder ganz normal und stößt den zweiten,
+            # tatsächlichen Schritt an -- der landet über der Obergrenze
+            # (`MAXIMUM_TEMPERATURE_C`, `domain/modes.py`) und wird abgelehnt.
+            detail.get_by_label("Sollwert anheben").click()
+            expect(fehler).to_be_visible()
+            expect(wert).to_have_text("35,0 °C")
+        finally:
+            cdp.send("Emulation.setCPUThrottlingRate", {"rate": 1})
+    finally:
+        assert not errors, "Kiosk-Konsole meldete Fehler:\n" + "\n".join(errors)
+        page.context.close()
+
+
 def test_enter_and_space_on_the_plus_button_still_work_in_the_tafel_view(
     live_server: LiveServer, browser: Browser
 ) -> None:

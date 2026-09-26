@@ -1,6 +1,6 @@
 # Stand
 
-Letzte Aktualisierung: 2026-09-22.
+Letzte Aktualisierung: 2026-09-26.
 
 ## Verwaltungstabellen bei 1280 px und mobil
 
@@ -70,10 +70,38 @@ weiterhin direkt sichtbaren Quelltext-Link (AGPL-3.0) und die Uhrzeit; auch der
 Panel-Detaildialog bietet den Quelltext-Link direkt an.
 Die Kiosk- und Mieter-Steppertests verwenden einen durchgehend gültigen Zeitplanmodus mit 21 °C, die Kiosk-Layouttests Übersteuerungen ohne Ablaufzeit und die Urlaubstests relative Datumsbereiche, damit ihre Erwartungen unabhängig von Uhrzeit, Wochentag und Datum gelten.
 
-Noch offen: Kreuzreview (Umsetzung war ein Claude-Agent) inklusive eigenem
-Testlauf gegen SQLite **und** MariaDB, danach Merge nach `main` und ein
-Nachtrag im Add-on-Repository, falls `DOCS.md` dort eine inzwischen falsche
-Aussage über die Kiosk-Ansicht enthält.
+Kreuzreview erfolgt (2026-09-26, kein Blocker; Auth/CSRF/Domäne unverändert
+bestätigt). Merge nach `main` und ein Nachtrag im Add-on-Repository, falls
+`DOCS.md` dort eine inzwischen falsche Aussage über die Kiosk-Ansicht enthält,
+stehen noch aus.
+
+**Kreuzreview-Nachtrag: doppelter Tipp auf "Sollwert anheben" konnte
+folgenlos verschwinden.** Alle drei Kiosk-Formulare (Sollwert, Boost,
+Übersteuerung aufheben) tauschen `#kiosk-body` vollständig aus
+(`hx-swap="outerHTML"`); nichts hinderte einen zweiten Tipp daran, den Knopf
+noch vor dem Austausch erneut zu treffen. Nachgestellt mit zwei
+`HTMLElement.click()`-Aufrufen auf denselben Knoten ohne jede Verzögerung
+(nicht mit `Locator.click()` -- das wartet selbst auf Aktivierbarkeit und
+verdeckt den Fehler dadurch): zuverlässig in allen Versuchen landete der
+zweite Tipp folgenlos bei 34,5 → 35,0 statt der erwarteten Ablehnung bei
+35,5 -- genau der gemeldete Befund.
+
+Entscheidung: kein Tipp soll unbemerkt zu einem falschen Endwert führen,
+aber ein Tipp während einer laufenden Anfrage darf sichtbar ins Leere
+greifen. `hx-disabled-elt` sperrt jetzt den Knopf (beim Sollwert-Formular
+über ein `<fieldset style="display: contents">`, da `find` nur den ersten
+Treffer liefert und beide Tasten gemeinsam gesperrt werden müssen; Boost und
+Übersteuerung-aufheben haben je nur einen Knopf) für die Dauer der eigenen
+Anfrage -- Bootstraps `fieldset:disabled .btn`/`.btn:disabled` liefert die
+sichtbare Sperre ohne eigene CSS-Regel. `hx-sync="this:queue first"` sichert
+zusätzlich gegen doppelte Anfragen vom selben Formular ab. Ein gesperrter
+Tipp ist nicht dauerhaft verloren: ein späterer, echter Tipp wirkt normal.
+Ohne JavaScript unverändert eine gewöhnliche, sequenzielle
+Formularübermittlung. Kein Eingriff in `thermoctl/auth/`, `thermoctl/domain/`
+oder die Rechte- und CSRF-Prüfung der Kiosk-Endpunkte.
+`browser_tests/test_kiosk.py::test_a_double_tap_on_raise_is_locked_out_instead_of_racing`
+prüft das deterministisch (CPU-Drosselung via CDP zusätzlich gesetzt, ändert
+das Ergebnis aber nicht), zehnfach hintereinander grün.
 
 ## Doku mit Bildern, Screenshot-Werkzeug, drei Fehler aus dem Hinsehen
 

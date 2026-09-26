@@ -43,6 +43,17 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ### Behoben
 
+- **Zwei schnelle Tipps auf "Sollwert anheben" konnten den zweiten Tipp
+  wirkungslos verschwinden lassen, ohne Fehlermeldung.** Die drei Kiosk-
+  Formulare (Sollwert, Boost, Übersteuerung aufheben) tauschten `#kiosk-body`
+  vollständig aus; nichts hinderte einen zweiten Tipp daran, den Knopf noch
+  vor dem Austausch erneut zu treffen. Der Knopf sperrt sich jetzt sichtbar
+  für die Dauer der eigenen Anfrage (`hx-disabled-elt`, Bootstraps
+  `fieldset:disabled .btn` ohne eigenes CSS) statt einen Tipp leise zu
+  verwerfen -- ein gesperrter Tipp bleibt erkennbar, kein späterer geht
+  dauerhaft verloren. Ohne JavaScript unverändert eine gewöhnliche,
+  sequenzielle Formularübermittlung.
+
 - **Zwei Knöpfe am Kiosk-Wandtablett waren knapp unter der Mindestgröße für ein
   Tippziel.** "Nächste Schaltung vorziehen" und "Übersteuerung aufheben" kamen
   auf 42 statt 44 px -- betraf jeden `.btn` im Programm, nicht nur diese zwei.
