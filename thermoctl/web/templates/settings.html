@@ -80,8 +80,15 @@
         {% endif %}
         </strong>
     </p>
+    {#
+    `col-sm`/`col-sm-auto` statt `col`/`col-auto`: Bootstraps `.row > *` gibt
+    jedem Kind ohne eigene Breitenklasse volle Breite; das unqualifizierte
+    `.col` hebt das aber -- anders als `.col-sm` -- bei *jeder* Breite auf und
+    zwingt Auswahlfeld und Knopf schon bei 390px in eine gemeinsame, zu enge
+    Zeile.
+    #}
     <div class="row g-2 align-items-end">
-        <div class="col">
+        <div class="col-sm">
             <label class="form-label" for="outdoor-source-device">Quelle</label>
             <select class="form-select" id="outdoor-source-device" name="device_id" aria-label="Außentemperaturquelle">
                 <option value="">Keine Quelle</option>
@@ -90,7 +97,7 @@
                 {% endfor %}
             </select>
         </div>
-        <div class="col-auto"><button class="btn btn-primary" type="submit">Quelle speichern</button></div>
+        <div class="col-sm-auto"><button class="btn btn-primary" type="submit">Quelle speichern</button></div>
     </div>
 </form>
 

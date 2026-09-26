@@ -2,6 +2,33 @@
 
 Letzte Aktualisierung: 2026-09-26.
 
+## Nachbesserung Kreuzreview: Formularfelder bei 390px, Escape/Backdrop-Test
+
+Zwei Nachbesserungen aus dem Kreuzreview der Navigations-Änderung unten:
+
+- **`/controllers`, `/zones/{id}/devices`, `/settings` (Außentemperaturquelle):**
+  Bootstraps `.row > *` gibt jedem Zeilenkind ohne eigene Breitenklasse volle
+  Breite; das unqualifizierte `.col`/`.col-auto` hebt das aber -- anders als
+  `.col-sm`/`.col-sm-auto` -- bei *jeder* Bildschirmbreite auf, nicht erst ab
+  einem Umbruchpunkt. Bei 390px saßen mehrere Auswahlfelder dadurch
+  nebeneinander statt gestapelt und zeigten nur ihren abgeschnittenen Text
+  ("Sollwe", "Tei", "Qu", "Zo"). Durchweg auf `col-sm`/`col-sm-auto`
+  umgestellt -- nur Klassen, keine Feldnamen, Werte oder `selected`-Bindungen
+  angerührt. Die „Rollen"-Tabelle in `device_assignment.html` trug denselben
+  Fehler an einer Tabelle statt einer `.row` (fiel erst beim Ansehen der
+  Screenshots auf) und ist jetzt ebenfalls `.tc-stack-table`.
+  Neuer Browsertest `browser_tests/test_form_field_width.py`: 390px, alle
+  eindeutigen Anlagensicht-Routen, jedes sichtbare `select`/Text-`input`
+  braucht ≥8rem Breite (Kriterium bewusst die Breite, nicht
+  `scrollWidth`/`clientWidth` -- bei `select` unzuverlässig). Begründete
+  Ausnahme: `date`/`time`/`datetime-local`/`month`/`week`/`color`/`range` --
+  native Steuerelemente mit festem, nie abschneidendem Format.
+- **`test_the_drawer_closes_when_a_navigation_link_is_chosen`:** prüft jetzt
+  zusätzlich, dass nach der hx-boost-Navigation `document.body.style.overflow`
+  wieder leer ist und kein `.offcanvas-backdrop` übrig bleibt -- beide Spuren
+  von Bootstraps Hintergrundsperre, die eine Seite sonst dauerhaft gegen
+  Scrollen sperren könnten, ohne dass eine sichtbare Schublade das erklärt.
+
 ## Anlagensicht mobil: Navigation als Schublade, Zeilenumbrüche behoben
 
 „Navigation" (Kopfzeile) und „Mehr" (untere Leiste) klappten dieselbe `#tc-sidebar`

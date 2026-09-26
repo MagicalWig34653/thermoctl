@@ -102,6 +102,12 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
   (`overflow-wrap: anywhere`) auch gewöhnliche Beschriftungen zerreißen. Der
   Wochenplan bleibt als Woche nebeneinander, jetzt aber horizontal scrollbar
   statt bis zur Unlesbarkeit schrumpfend.
+- **Mehrere Auswahlfelder auf `/controllers`, `/zones/{id}/devices` und in
+  den Einstellungen (Außentemperaturquelle) saßen bei 390px nebeneinander
+  statt gestapelt und zeigten nur ihren abgeschnittenen Text.** Bootstraps
+  Zeilenraster gibt jedem Feld ohne eigene Breitenklasse volle Breite; die
+  unqualifizierte Klasse hob das bei jeder Bildschirmbreite auf, nicht erst
+  ab einem Umbruchpunkt. Am Desktop unverändert.
 
 ---
 
