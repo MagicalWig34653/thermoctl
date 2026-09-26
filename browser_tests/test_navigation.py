@@ -139,6 +139,17 @@ def test_the_drawer_closes_when_a_navigation_link_is_chosen(admin_page: Page) ->
     sidebar.get_by_role("link", name="Benutzer", exact=True).click()
     expect(sidebar).not_to_be_visible()
 
+    # Waehrend die Schublade offen steht, sperrt Bootstrap den Hintergrund
+    # (`document.body.style.overflow`) und legt einen `.offcanvas-backdrop`
+    # an. `hx-boost` tauscht nur den Inhalt des <body> aus, nicht den Knoten
+    # selbst -- beide Spuren muessen nach der Navigation wirklich weg sein,
+    # sonst bliebe die Seite (und jede folgende Seite) dauerhaft gegen
+    # Scrollen gesperrt, ohne dass eine sichtbare Schublade das erklaeren
+    # wuerde.
+    expect(admin_page.locator(".offcanvas-backdrop")).to_have_count(0)
+    admin_page.wait_for_function("document.body.style.overflow === ''")
+    assert admin_page.evaluate("document.body.style.overflow") == ""
+
 
 def test_the_desktop_sidebar_stands_fixed_without_a_navigation_button(
     admin_page: Page,
