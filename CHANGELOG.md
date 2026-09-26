@@ -43,6 +43,20 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ### Behoben
 
+- **Auf „Bediengeräte" gingen gespeicherte Kanaleinstellungen beim nächsten
+  Laden verloren.** Das Lese-Kanal-Formular zeigte die Kanalart immer als
+  „Sollwert der Zone" an, egal was gespeichert war -- der nächste Speichern
+  eines anderen Feldes schrieb diesen falschen Wert zurück. Im
+  Schreib-Kanal-Formular fehlten alle fünf Felder (Kanalart, Quellgerät, Zone,
+  fester Text, feste Zahl) nach dem Neuladen ganz. Zusätzlich leert das
+  Speichern jetzt Felder, die zur gewählten Kanalart nicht passen, statt sie
+  unsichtbar in der Datenbank stehen zu lassen.
+- **`/tokens` und `/kiosk-tokens` stürzten mit Serverfehler ab**, wenn die
+  Gültigkeitsdauer keine Zahl war, statt eine Fehlermeldung im Formular zu
+  zeigen.
+- Ein toter, abgeschalteter zweiter „Tastenbelegung"-Editor auf der
+  Geräte-Zuordnung entfernt.
+
 - **Zwei Knöpfe am Kiosk-Wandtablett waren knapp unter der Mindestgröße für ein
   Tippziel.** "Nächste Schaltung vorziehen" und "Übersteuerung aufheben" kamen
   auf 42 statt 44 px -- betraf jeden `.btn` im Programm, nicht nur diese zwei.
