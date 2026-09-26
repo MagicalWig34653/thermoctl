@@ -11,6 +11,8 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ## Unveröffentlicht
 
+## 0.10.0 — 2026-09-26
+
 ### Hinzugefügt
 
 - **Kiosk: eine zweite, kompakte Ansicht für kleine Wandtabletts (480×480).**
@@ -108,6 +110,12 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
   Zeilenraster gibt jedem Feld ohne eigene Breitenklasse volle Breite; die
   unqualifizierte Klasse hob das bei jeder Bildschirmbreite auf, nicht erst
   ab einem Umbruchpunkt. Am Desktop unverändert.
+
+**Beim Upgrade beachten:** keine Migration. Neu ist das Cookie
+`thermoctl_kiosk_ansicht` (merkt sich Tafel- oder Panel-Ansicht am
+Kiosk-Wandtablett, ohne Einfluss auf Token, Rechte oder Sitzung) -- kein
+Betreibereingriff nötig, es entsteht beim ersten Wechsel der Ansicht von
+selbst.
 
 ---
 

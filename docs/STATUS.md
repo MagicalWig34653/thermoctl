@@ -2,6 +2,24 @@
 
 Letzte Aktualisierung: 2026-09-26.
 
+## v0.10.0
+
+Freigabe mit: der Kiosk-Panel-Ansicht für 480×480-Wandtabletts (Übersicht und
+Zonen-Detail, umschaltbar über `?ansicht=panel`/`tafel`/`auto`, gemerkt im
+Cookie `thermoctl_kiosk_ansicht`), der bebilderten Doku
+(`docs/bedienung.md`, `docs/wohnung.md`, README), dem Schutz gegen einen
+doppelten Tipp auf „Sollwert anheben" im Kiosk, den nachgezogenen
+Bediengeräte-Kanalbindungen (Anzeige und Speichern), abgefangenen
+500er-Fehlern bei ungültiger Token-Gültigkeitsdauer, der mobilen Navigation
+der Anlagensicht als feste Schublade (statt eines zweiten, versenkbaren
+Kopfzeilen-Knopfs) sowie mehreren behobenen Zeilenumbrüchen und
+Spaltenbreiten in Tabellen und Formularen (1280 px und 390 px). Details und
+Beim-Upgrade-Hinweise in `CHANGELOG.md`. Keine Migration.
+
+**Das Add-on-Repository muss nachgezogen werden** (`MagicalWig34653/thermoctl-addon`,
+`thermoctl/config.yaml` auf `0.10.0`, Abschnitt in dessen `CHANGELOG.md`),
+erst nach `docker.yml` für den `v0.10.0`-Tag.
+
 ## Nachbesserung Kreuzreview: Formularfelder bei 390px, Escape/Backdrop-Test
 
 Zwei Nachbesserungen aus dem Kreuzreview der Navigations-Änderung unten:
@@ -165,8 +183,8 @@ Playwright bleibt ausschließlich im Extra `browser-tests`.
 Gemessen an der laufenden 0.9.4-Anlage kam `/kiosk` mit sechs Zonen auf einem
 480×480-Feld (3,95", z. B. Sonoff NSPanel Pro Gen2) ohne Scrollen auf genau eine
 sichtbare Kachel -- das Raster brach erst ab 20rem je Kachel um, und für die
-Kopfzeile fehlte jeder `@media`-Block. Jetzt (noch unveröffentlicht, nicht Teil von
-0.9.5) gibt es dafür eine zweite Ebene:
+Kopfzeile fehlte jeder `@media`-Block. Jetzt (Teil von 0.10.0) gibt es dafür
+eine zweite Ebene:
 
 - **Übersicht:** festes 2×N-Raster, sechs Kacheln passen bei 480×480 ohne
   Scrollen. Je Kachel nur Raumname, Ist-Wert, Soll-Wert und ein kleiner
@@ -200,9 +218,7 @@ Panel-Detaildialog bietet den Quelltext-Link direkt an.
 Die Kiosk- und Mieter-Steppertests verwenden einen durchgehend gültigen Zeitplanmodus mit 21 °C, die Kiosk-Layouttests Übersteuerungen ohne Ablaufzeit und die Urlaubstests relative Datumsbereiche, damit ihre Erwartungen unabhängig von Uhrzeit, Wochentag und Datum gelten.
 
 Kreuzreview erfolgt (2026-09-26, kein Blocker; Auth/CSRF/Domäne unverändert
-bestätigt). Merge nach `main` und ein Nachtrag im Add-on-Repository, falls
-`DOCS.md` dort eine inzwischen falsche Aussage über die Kiosk-Ansicht enthält,
-stehen noch aus.
+bestätigt).
 
 **Kreuzreview-Nachtrag: doppelter Tipp auf "Sollwert anheben" konnte
 folgenlos verschwinden.** Alle drei Kiosk-Formulare (Sollwert, Boost,
