@@ -1170,6 +1170,59 @@ def test_a_saved_write_channel_shows_every_field_after_reload(
         assert _field_value(form, "fixed_number") == expect["fixed_number"]
 
 
+@pytest.mark.parametrize("raw_value", [Decimal("3.125"), Decimal("3.1234")])
+def test_a_fixed_number_with_more_than_one_decimal_survives_an_unchanged_resubmit(
+    angemeldeter_client: TestClient, session: Session, raw_value: Decimal
+) -> None:
+    """`ControllerChannel.fixed_number` is `Numeric(12, 4)` -- a value set over the
+    REST API or MCP (not this form) can carry up to four decimal places. The field
+    used to render it with `grad()`'s fixed one place, so 3,125 became 3,1 on the
+    page; resubmitting the form exactly as rendered -- the same "form still matches
+    the database" property every other test on this page checks -- then rounded
+    the stored value down to one decimal, discarding the rest, with nothing on the
+    page ever suggesting a change had happened.
+    """
+    from sqlalchemy import select
+
+    from thermoctl.db.models.device import ControllerChannel
+
+    _kinds(session)
+    _zone, device = _controller(session, f"praezisionsregler-{raw_value}".replace(".", "_"))
+    prop = _property(session, device.id, "boost_level")
+    prop.value_type = "numeric"
+    session.flush()
+    configure_channel(session, device, prop.name, "write", "fixed", fixed_number=raw_value)
+
+    before = angemeldeter_client.get("/controllers")
+    assert before.status_code == 200
+    form = _channel_form(before.text, prop.name, "write")
+    kind = _selected_option(form, "kind")
+    fixed_number_field = _field_value(form, "fixed_number")
+    # Rendered with the value's actual precision -- not rounded to one place.
+    assert fixed_number_field == str(raw_value).replace(".", ",")
+
+    resubmit = angemeldeter_client.post(
+        "/controllers/channel",
+        data={
+            "device_id": device.id,
+            "property_name": prop.name,
+            "direction": "write",
+            "kind": kind,
+            "fixed_number": fixed_number_field,
+        },
+        headers=_csrf(angemeldeter_client),
+        follow_redirects=False,
+    )
+    assert resubmit.status_code == 303
+
+    session.expire_all()
+    channel = session.scalar(
+        select(ControllerChannel).where(ControllerChannel.device_id == device.id)
+    )
+    assert channel is not None
+    assert channel.fixed_number == raw_value
+
+
 def test_resubmitting_the_rendered_form_unchanged_keeps_the_configuration(
     angemeldeter_client: TestClient, session: Session
 ) -> None:

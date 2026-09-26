@@ -32,10 +32,13 @@ _PASSWORD = "Formularhygiene-9"  # noqa: S105 -- ephemeral local database only
 
 # Checkbox/radio groups where the same `name` legitimately appears more than once
 # -- a group of related switches, not a setting that was accidentally duplicated.
-# Keyed by (profile, path) exactly as `View.route or View.path` identifies it.
-_ALLOWED_NAME_DUPLICATES: dict[str, set[str]] = {
-    "/kiosk-tokens": {"zone_id"},
-}
+# Keyed by (profile, path) exactly as `View.route or View.path` identifies it. Empty
+# for now: the JavaScript below already excludes every checkbox and radio before
+# counting names (see `test_no_visible_field_with_the_same_name_appears_twice_in_one_form`),
+# so `/kiosk-tokens`' repeated checkbox `zone_id` never reaches this list in the
+# first place -- an entry for it here would be dead weight. Kept as the place to
+# list a *non*-checkbox exception, should one turn up.
+_ALLOWED_NAME_DUPLICATES: dict[str, set[str]] = {}
 
 # `/controllers` deliberately puts one small "Speichern" form per device property
 # in the same `.tc-panel` card -- as many as the device has readable/writable

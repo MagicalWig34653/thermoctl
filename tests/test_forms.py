@@ -117,3 +117,20 @@ def test_a_missing_temperature_shows_a_dash_not_an_empty_field() -> None:
     assert grad(None) == "–"
     assert grad(Decimal("21.5")) == "21,5"
     assert grad(Decimal("21.5"), 2) == "21,50"
+
+
+def test_a_fixed_channel_value_is_shown_with_no_more_precision_than_it_has() -> None:
+    """`zahl_verlustfrei` backs the `fixed_number` field on `/controllers`
+    (`ControllerChannel.fixed_number` is `Numeric(12, 4)`) -- unlike `grad()`, it
+    must not round a value set with more than one decimal, or resubmitting the
+    form exactly as rendered would silently discard it.
+    """
+    from thermoctl.web import zahl_verlustfrei
+
+    assert zahl_verlustfrei(None) == "–"
+    assert zahl_verlustfrei(Decimal("3.125")) == "3,125"
+    assert zahl_verlustfrei(Decimal("3.1234")) == "3,1234"
+    assert zahl_verlustfrei(Decimal("3.1000")) == "3,1"
+    assert zahl_verlustfrei(Decimal("100.0000")) == "100"
+    assert zahl_verlustfrei(Decimal("0")) == "0"
+    assert zahl_verlustfrei(Decimal("-2.5")) == "-2,5"
