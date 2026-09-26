@@ -54,18 +54,21 @@
   {% if errors.page %}<div class="alert alert-danger">{{ errors.page }}</div>{% endif %}
   {% if entries %}
   <div class="table-responsive">
-    <table class="table table-striped align-middle">
-      <thead><tr><th>Zeitpunkt</th><th>Quelle</th><th>Akteur</th><th>Aktion</th><th>Objekt</th><th>Zusammenfassung</th></tr></thead>
+    <table class="table table-striped align-middle tc-stack-table">
+      <thead><tr><th scope="col">Zeitpunkt</th><th scope="col">Quelle</th><th scope="col">Akteur</th><th scope="col">Aktion</th><th scope="col">Objekt</th><th scope="col">Zusammenfassung</th></tr></thead>
       <tbody>
       {% for entry, source, person, token in entries %}
       <tr>
-        <td class="text-nowrap" title="{{ (entry.occurred_at|localtime(timezone)).strftime('%d.%m.%Y %H:%M:%S') }}">{{ entry.occurred_at|age }}</td>
-        <td>{{ source.label }}</td>
-        <td>{{ person.username if person else (token.name if token else "System") }}</td>
-        <td><code>{{ entry.action }}</code></td>
-        <td><code>{{ entry.object_type }}{% if entry.object_id %}:{{ entry.object_id }}{% endif %}</code></td>
-        <td>
+        <td data-label="Zeitpunkt" class="text-nowrap" title="{{ (entry.occurred_at|localtime(timezone)).strftime('%d.%m.%Y %H:%M:%S') }}">{{ entry.occurred_at|age }}</td>
+        <td data-label="Quelle">{{ source.label }}</td>
+        <td data-label="Akteur">{{ person.username if person else (token.name if token else "System") }}</td>
+        <td data-label="Aktion"><code>{{ entry.action }}</code></td>
+        <td data-label="Objekt"><code>{{ entry.object_type }}{% if entry.object_id %}:{{ entry.object_id }}{% endif %}</code></td>
+        <td data-label="Zusammenfassung">
           {{ entry.summary }}
+          {# `<pre>` mit gespeichertem Detail (u.a. ISO-Zeitstempel, unzerteilte Kennungen):
+             bewusste Ausnahme vom Wortumbruch, wie lange Token/URLs anderswo -- der
+             Inhalt ist keine Fließtext-Beschriftung, sondern ein wörtliches Protokoll. #}
           {% if entry.detail %}<details class="mt-1"><summary>Details anzeigen</summary><pre class="mt-2 text-wrap">{{ entry.detail }}</pre></details>{% endif %}
         </td>
       </tr>

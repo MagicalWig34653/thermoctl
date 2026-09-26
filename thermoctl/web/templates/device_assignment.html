@@ -103,14 +103,20 @@ Skripts falsch rät.
 
 <h2 class="h4">Rollen</h2>
 {% if assignments %}
+{#
+`.tc-stack-table`: bei 390px quetschten sich "Rolle", der Gerätename samt
+Umschalter-Hilfetext und der Knopf "Lösen" in drei nebeneinanderstehende, viel
+zu enge Spalten -- mit genau der Wortumbruch-Wirkung, die das globale
+`overflow-wrap: anywhere` sonst nur bei echten Ausreißern zeigen soll.
+#}
 <div class="table-responsive">
-<table class="table align-middle">
-    <thead><tr><th>Rolle</th><th>Gerät</th><th></th></tr></thead>
+<table class="table align-middle tc-stack-table">
+    <thead><tr><th scope="col">Rolle</th><th scope="col">Gerät</th><th scope="col"></th></tr></thead>
     <tbody>
     {% for assignment, device, rolle in assignments %}
     <tr>
-        <td>{{ rolle.label }}</td>
-        <td>
+        <td data-label="Rolle">{{ rolle.label }}</td>
+        <td data-label="Gerät">
             {{ device.display_name }}
             {#
             Nur bei Thermostatventilen: Bei allem anderen gibt es nichts zu wählen --
@@ -156,7 +162,7 @@ Skripts falsch rät.
             </div>
             {% endif %}
         </td>
-        <td class="text-end">
+        <td class="text-md-end">
         {% if may_edit %}
         <form method="post" action="{{ url_prefix }}/zones/{{ zone.id }}/devices/detach">
             <input type="hidden" name="assignment_id" value="{{ assignment.id }}">

@@ -51,14 +51,21 @@ hätte er gewirkt, ist schlimmer als keiner.
     {% endif %}
 
     {% if s.details %}
+    {#
+    `.tc-kv-table`: die feste 12rem-Spalte für den Namen gilt erst ab 768px.
+    Darunter -- und schon bei 390px war die Wertspalte auf rund 9px geschrumpft
+    -- stapelt jede Zeile Name, Wert und Variable/Quelle stattdessen
+    untereinander; das globale `overflow-wrap: anywhere` bricht dann nichts
+    mehr mitten im Wort.
+    #}
     <div class="table-responsive mt-3">
-        <table class="table table-sm align-middle mb-0">
+        <table class="table table-sm align-middle mb-0 tc-kv-table">
             <tbody>
             {% for a in s.details %}
             <tr>
-                <td class="t-quiet" style="width: 12rem">{{ a.name }}</td>
+                <td class="t-quiet">{{ a.name }}</td>
                 <td class="t-value">{{ a.value }}</td>
-                <td class="text-end">
+                <td>
                     {% if a.variable %}
                     <span class="t-value t-quiet" style="font-size: .7rem">{{ a.variable }}</span>
                     {% endif %}

@@ -82,9 +82,16 @@ der ganze Stand; die Domäne bildet die Differenz.
             zu sehen bekommen. Der Hinweistext sagt das, weil eine Auswahl an dieser
             Stelle sonst wie eine weitere Rechtevergabe gelesen wird.
             #}
+            {#
+            `flex-wrap` und `flex-shrink-0` auf Label/Knopf: ohne beide schrumpfte
+            diese Zeile in der schmalsten Fassung so weit, dass "Oberfläche" und
+            "Übernehmen" mitten im Wort umbrachen -- das globale
+            `overflow-wrap: anywhere` griff dort, wo eigentlich nur umgebrochen
+            werden sollte.
+            #}
             <form method="post" action="{{ url_prefix }}/groups/{{ group.id }}/ui-profile"
-                  class="d-flex align-items-center gap-2">
-                <label class="t-label mb-0" for="ui-profile-{{ group.id }}">Oberfläche</label>
+                  class="d-flex align-items-center gap-2 flex-wrap">
+                <label class="t-label mb-0 flex-shrink-0" for="ui-profile-{{ group.id }}">Oberfläche</label>
                 <select class="form-select form-select-sm w-auto" id="ui-profile-{{ group.id }}"
                         name="ui_profile">
                     {% for value, label in profile_choices %}
@@ -92,7 +99,7 @@ der ganze Stand; die Domäne bildet die Differenz.
                             {{ "selected" if ui_profiles[group.id].value == value }}>{{ label }}</option>
                     {% endfor %}
                 </select>
-                <button type="submit" class="btn btn-sm btn-outline-secondary">Übernehmen</button>
+                <button type="submit" class="btn btn-sm btn-outline-secondary flex-shrink-0">Übernehmen</button>
             </form>
             {% if not group.is_builtin %}
             <form method="post" action="{{ url_prefix }}/groups/{{ group.id }}/delete">

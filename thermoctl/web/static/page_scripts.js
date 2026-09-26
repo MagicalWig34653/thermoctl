@@ -53,4 +53,25 @@
     document.addEventListener("DOMContentLoaded", load);
     document.addEventListener("htmx:load", load);
     document.addEventListener("htmx:historyRestore", load);
+
+    // Bootstraps Offcanvas schließt sich sonst nur über Hintergrund, Escape
+    // oder den eigenen Schließen-Knopf -- Linkwahl in der Anlagensicht-
+    // Seitenleiste (`#tc-sidebar`, `base_admin.html`) soll die Schublade
+    // ebenfalls schließen. Auf Seiten ohne diese Seitenleiste (Wohnungssicht,
+    // Kiosk) trifft der Selektor nie, der Eintrag ist dann folgenlos.
+    document.addEventListener("click", function (event) {
+        const link = event.target.closest("#tc-sidebar .tc-nav-item");
+        if (!link) {
+            return;
+        }
+        const sidebar = document.getElementById("tc-sidebar");
+        const Offcanvas = window.bootstrap && window.bootstrap.Offcanvas;
+        if (!sidebar || !Offcanvas) {
+            return;
+        }
+        const instance = Offcanvas.getInstance(sidebar);
+        if (instance) {
+            instance.hide();
+        }
+    });
 })();

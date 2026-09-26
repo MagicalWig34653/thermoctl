@@ -96,7 +96,17 @@
   </form>
 {% endif %}
 
-<div id="schedule-grid" class="row g-2 mb-2"
+{#
+Mobil bleiben die sieben Tagesspalten nebeneinander -- `schedule.js` bestimmt
+Tag und Uhrzeit beim Ziehen über `getBoundingClientRect()` der `.schedule-day`-
+Elemente, unabhängig davon, ob die Zeile umbricht oder scrollt. Stapeln
+untereinander hätte das Ziehen zwischen Tagen (horizontale Geste) verändert;
+ein horizontal scrollbarer Wrapper mit Mindestbreite je Spalte (9rem) erhält
+Ziehen und Malen unverändert und macht nur die Woche insgesamt breiter als der
+Bildschirm -- wie ein Kalender es ohnehin ist.
+#}
+<div class="tc-schedule-scroll">
+<div id="schedule-grid" class="row g-2 mb-2 tc-schedule-grid"
      data-zone="{{ zone.id }}" data-editable="{{ 'yes' if may_edit else 'no' }}">
 {% for day, tagname in weekdays %}
     <section class="col schedule-day-column">
@@ -148,6 +158,7 @@
         </div>
     </section>
 {% endfor %}
+</div>
 </div>
 {% if may_edit %}
 <p class="text-muted small mb-4" data-schedule-hint hidden>

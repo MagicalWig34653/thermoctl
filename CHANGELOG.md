@@ -61,6 +61,20 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
   durch; bei den Benutzern brachen Schaltflächen um, bei den Geräten ragte der
   Statuschip aus seiner Spalte. Die Spaltenbreiten sind jetzt am Inhalt bemessen,
   mobil greift für alle drei dieselbe Kartenform.
+- **Die mobile Navigation der Anlagensicht öffnete außerhalb des Sichtbereichs,
+  wenn die Seite zuvor gescrollt war.** „Navigation" (Kopfzeile) und „Mehr"
+  klappten dieselbe Seitenleiste im Seitenfluss auf; stand man weit unten, war
+  sie danach unsichtbar. Der Kopfzeilen-Knopf ist entfernt, „Mehr" ist jetzt der
+  einzige mobile Zugang und öffnet die Seitenleiste als feste Schublade über dem
+  Inhalt (mit Hintergrund, Escape, Tippen daneben und eigenem Schließen-Knopf) --
+  unabhängig von der Scrollposition. Am Desktop bleibt sie unverändert fest.
+- **Mobile Zeilenumbrüche mitten im Wort** auf Zonen, Schnittstellen,
+  Einstellungen, Gruppen, Tokens, Kiosk-Tokens, Audit-Protokoll, Bediengeräten
+  und der Geräte-Zuordnung einer Zone behoben -- zu enge Tabellenspalten bzw.
+  Formularzeilen ließen dort die globale Notbremse gegen überlange Namen
+  (`overflow-wrap: anywhere`) auch gewöhnliche Beschriftungen zerreißen. Der
+  Wochenplan bleibt als Woche nebeneinander, jetzt aber horizontal scrollbar
+  statt bis zur Unlesbarkeit schrumpfend.
 
 ---
 

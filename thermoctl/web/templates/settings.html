@@ -196,10 +196,10 @@
     {% endif %}
 
     <dl class="row mb-0 mt-3">
-        <dt class="col-sm-5 fw-normal t-quiet">Letzter Versuch</dt>
-        <dd class="col-sm-7 t-value">{{ notify_last_attempt_at|age }}</dd>
-        <dt class="col-sm-5 fw-normal t-quiet">Ergebnis</dt>
-        <dd class="col-sm-7 mb-0">
+        <dt class="col-md-5 fw-normal t-quiet">Letzter Versuch</dt>
+        <dd class="col-md-7 t-value">{{ notify_last_attempt_at|age }}</dd>
+        <dt class="col-md-5 fw-normal t-quiet">Ergebnis</dt>
+        <dd class="col-md-7 mb-0">
             {% if notify_last_ok is none %}
             <span class="tc-chip tc-chip-quiet">Noch nie versucht</span>
             {% elif notify_last_ok %}
@@ -214,36 +214,36 @@
 <div class="tc-panel p-4">
     <dl class="row mb-0">
         {% for field, label, integral in fields %}
-        <dt class="col-sm-7 fw-normal t-quiet">{{ label }}</dt>
-        <dd class="col-sm-5 t-value">{{ values.get(field, "") }}</dd>
+        <dt class="col-md-7 fw-normal t-quiet">{{ label }}</dt>
+        <dd class="col-md-5 t-value">{{ values.get(field, "") }}</dd>
         {% endfor %}
-        <dt class="col-sm-7 fw-normal t-quiet">Zeitzone</dt>
-        <dd class="col-sm-5 t-value mb-0">{{ values.get("timezone", "") }}</dd>
+        <dt class="col-md-7 fw-normal t-quiet">Zeitzone</dt>
+        <dd class="col-md-5 t-value mb-0">{{ values.get("timezone", "") }}</dd>
     </dl>
 </div>
 <div class="tc-panel p-4 mt-4">
     <dl class="row mb-0">
-        <dt class="col-sm-7 fw-normal t-quiet">Sonnenabsenkung aktiv</dt>
-        <dd class="col-sm-5 t-value">{{ "Ja" if solar_forecast_enabled else "Nein" }}</dd>
-        <dt class="col-sm-7 fw-normal t-quiet">Breite</dt>
-        <dd class="col-sm-5 t-value">{{ values.get("solar_forecast_latitude", "") }}</dd>
-        <dt class="col-sm-7 fw-normal t-quiet">Länge</dt>
-        <dd class="col-sm-5 t-value mb-0">{{ values.get("solar_forecast_longitude", "") }}</dd>
+        <dt class="col-md-7 fw-normal t-quiet">Sonnenabsenkung aktiv</dt>
+        <dd class="col-md-5 t-value">{{ "Ja" if solar_forecast_enabled else "Nein" }}</dd>
+        <dt class="col-md-7 fw-normal t-quiet">Breite</dt>
+        <dd class="col-md-5 t-value">{{ values.get("solar_forecast_latitude", "") }}</dd>
+        <dt class="col-md-7 fw-normal t-quiet">Länge</dt>
+        <dd class="col-md-5 t-value mb-0">{{ values.get("solar_forecast_longitude", "") }}</dd>
     </dl>
 </div>
 <div class="tc-panel p-4 mt-4">
     <p class="t-label mb-1">Außentemperatur</p>
     <dl class="row mb-0">
-        <dt class="col-sm-7 fw-normal t-quiet">Quelle</dt>
-        <dd class="col-sm-5 t-value mb-0">{{ outdoor_source.display_name if outdoor_source else "Keine Quelle gewählt" }}</dd>
+        <dt class="col-md-7 fw-normal t-quiet">Quelle</dt>
+        <dd class="col-md-5 t-value mb-0">{{ outdoor_source.display_name if outdoor_source else "Keine Quelle gewählt" }}</dd>
     </dl>
 </div>
 <div class="tc-panel p-4 mt-4">
     <p class="t-label mb-1">Fenster-Alarm</p>
     <dl class="row mb-0">
         {% for field, label, integral in window_alarm_fields %}
-        <dt class="col-sm-7 fw-normal t-quiet">{{ label }}</dt>
-        <dd class="col-sm-5 t-value{{ ' mb-0' if loop.last }}">{{ window_alarm_values.get(field, "") }}</dd>
+        <dt class="col-md-7 fw-normal t-quiet">{{ label }}</dt>
+        <dd class="col-md-5 t-value{{ ' mb-0' if loop.last }}">{{ window_alarm_values.get(field, "") }}</dd>
         {% endfor %}
     </dl>
 </div>
@@ -251,8 +251,8 @@
     <p class="t-label mb-1">Fenster-Erkennung aus einem Temperatursturz</p>
     <dl class="row mb-0">
         {% for field, label, integral in window_temp_drop_fields %}
-        <dt class="col-sm-7 fw-normal t-quiet">{{ label }}</dt>
-        <dd class="col-sm-5 t-value{{ ' mb-0' if loop.last }}">{{ window_temp_drop_values.get(field, "") }}</dd>
+        <dt class="col-md-7 fw-normal t-quiet">{{ label }}</dt>
+        <dd class="col-md-5 t-value{{ ' mb-0' if loop.last }}">{{ window_temp_drop_values.get(field, "") }}</dd>
         {% endfor %}
     </dl>
 </div>

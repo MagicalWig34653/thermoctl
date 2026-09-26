@@ -57,17 +57,96 @@ def test_the_administrator_does_see_the_users_menu_entry(admin_page: Page) -> No
     expect(admin_page.get_by_role("link", name="Benutzer", exact=True)).to_be_visible()
 
 
-def test_the_sidebar_opens_only_after_clicking_the_navigation_button_on_a_narrow_screen(
+def test_there_is_no_navigation_button_in_the_header_on_a_narrow_screen(
     admin_page: Page,
 ) -> None:
-    """Ein Bootstrap-`collapse`, das mit der neuen Hülle nicht mehr auf- oder
-    zugeht, sieht im HTML völlig richtig aus -- nur ein echter Browser zeigt, ob
-    `.tc-sidebar` auf einem schmalen Bildschirm tatsächlich verborgen bleibt, bis
-    der Knopf "Navigation" sie aufklappt.
+    """Zwei Zugänge zur selben Seitenleiste liefen früher auseinander: der
+    Kopfzeilen-Knopf "Navigation" klappte dieselbe `#tc-sidebar` per Bootstrap-
+    `collapse` im Seitenfluss auf, "Mehr" in der unteren Leiste ebenfalls -- beide
+    landeten dabei aus gescrollter Position außerhalb des Sichtbereichs. Jetzt gibt
+    es nur noch "Mehr"; der Knopf "Navigation" ist ganz entfernt.
     """
     admin_page.set_viewport_size({"width": 390, "height": 844})
+    expect(admin_page.get_by_role("button", name="Navigation")).to_have_count(0)
+
+
+def test_the_sidebar_opens_as_a_drawer_over_the_content_regardless_of_scroll_position(
+    admin_page: Page,
+) -> None:
+    """Die Seitenleiste stand im DOM vor dem Inhalt: Wer weit auf `/devices`
+    heruntergescrollt hatte und dann aufklappte, sah sie nicht -- gemessen
+    `sidebar.y = -2788` bei 390x844. Jetzt ist `#tc-sidebar` ein Bootstrap-
+    Offcanvas (`offcanvas-lg`), das als fixe Schublade über dem Inhalt öffnet,
+    unabhängig von der Scrollposition.
+    """
+    admin_page.set_viewport_size({"width": 390, "height": 844})
+    admin_page.goto("/devices")
+    admin_page.locator(".tc-footer").scroll_into_view_if_needed()
+
     sidebar = admin_page.locator("#tc-sidebar")
     expect(sidebar).not_to_be_visible()
 
-    admin_page.get_by_role("button", name="Navigation").click()
+    admin_page.get_by_role("button", name="Mehr").click()
     expect(sidebar).to_be_visible()
+
+    box = sidebar.bounding_box()
+    assert box is not None
+    viewport = admin_page.viewport_size
+    assert viewport is not None
+    assert box["y"] >= 0
+    assert box["y"] < viewport["height"]
+
+    # Und der einzige mobile Zugang: keine zweite, separate Navigation im Kopf.
+    expect(admin_page.get_by_role("button", name="Navigation")).to_have_count(0)
+
+
+def test_the_drawer_closes_on_escape(admin_page: Page) -> None:
+    admin_page.set_viewport_size({"width": 390, "height": 844})
+    sidebar = admin_page.locator("#tc-sidebar")
+    admin_page.get_by_role("button", name="Mehr").click()
+    expect(sidebar).to_be_visible()
+    # Bootstraps Escape-Behandlung hängt am Element selbst (nicht an `document`)
+    # und feuert nur, wenn der Tastaturfokus wirklich darin liegt -- den setzt der
+    # eigene Fokus-Trap erst, sobald die Öffnen-Animation fertig ist. `to_be_visible`
+    # allein greift schon während des Übergangs.
+    expect(sidebar).to_be_focused()
+
+    admin_page.keyboard.press("Escape")
+    expect(sidebar).not_to_be_visible()
+
+
+def test_the_drawer_closes_on_a_tap_outside(admin_page: Page) -> None:
+    admin_page.set_viewport_size({"width": 390, "height": 844})
+    sidebar = admin_page.locator("#tc-sidebar")
+    admin_page.get_by_role("button", name="Mehr").click()
+    expect(sidebar).to_be_visible()
+    expect(sidebar).to_be_focused()
+
+    # Die Schublade ist bewusst schmaler als Bootstraps 400px-Vorgabe
+    # (`--bs-offcanvas-width` in thermoctl.css) -- randlos bliebe auf einem
+    # 390px breiten Telefon kein Hintergrund übrig, auf den "Tippen daneben"
+    # überhaupt träfe. Ein Klick weit rechts trifft ihn zuverlässig.
+    admin_page.mouse.click(380, 400)
+    expect(sidebar).not_to_be_visible()
+
+
+def test_the_drawer_closes_when_a_navigation_link_is_chosen(admin_page: Page) -> None:
+    admin_page.set_viewport_size({"width": 390, "height": 844})
+    sidebar = admin_page.locator("#tc-sidebar")
+    admin_page.get_by_role("button", name="Mehr").click()
+    expect(sidebar).to_be_visible()
+
+    sidebar.get_by_role("link", name="Benutzer", exact=True).click()
+    expect(sidebar).not_to_be_visible()
+
+
+def test_the_desktop_sidebar_stands_fixed_without_a_navigation_button(
+    admin_page: Page,
+) -> None:
+    """Am Desktop bleibt die Seitenleiste exakt wie vor der Umstellung: fest
+    sichtbar, kein Offcanvas-Verhalten, kein Knopf "Navigation" im Kopf."""
+    admin_page.set_viewport_size({"width": 1280, "height": 800})
+    sidebar = admin_page.locator("#tc-sidebar")
+    expect(sidebar).to_be_visible()
+    expect(admin_page.get_by_role("button", name="Navigation")).to_have_count(0)
+    expect(admin_page.get_by_role("button", name="Mehr")).to_have_count(0)

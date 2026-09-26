@@ -22,7 +22,43 @@ zeigt sie nur an.
        {% if active %}aria-current="page"{% endif %}>{{ label }}</a>
 {% endmacro %}
 <div class="tc-shell">
-    <aside class="tc-sidebar" id="tc-sidebar">
+    {#
+    Bootstraps responsives Offcanvas (`offcanvas-lg`): unter 992 px eine feste
+    Schublade über dem Inhalt, unabhängig von der Scrollposition -- mit
+    Hintergrund, Escape und Tippen daneben zum Schließen, alles ohne eigenes
+    JavaScript. Ab 992 px hebt dieselbe Klasse die Offcanvas-Positionierung
+    wieder auf, und die Seitenleiste steht wie zuvor fest im Fluss. Schließen
+    bei Linkwahl übernimmt `page_scripts.js` (Bootstrap schließt sonst nur über
+    Hintergrund, Escape oder den eigenen Schließen-Knopf).
+    #}
+    {#
+    `offcanvas-lg` allein, **ohne** die unqualifizierte `offcanvas`-Klasse: Die
+    unqualifizierte Klasse ist selbst nicht responsiv -- sie setzt
+    `position: fixed; visibility: hidden` bei jeder Breite, ohne `@media`. Mit
+    beiden Klassen zugleich blieb die Seitenleiste auch am Desktop unsichtbar,
+    weil `offcanvas-lg` seine eigene Desktop-Rücknahme (`background:
+    transparent`, Kopf/Fuß ausgeblendet) nie auf Position oder Sichtbarkeit
+    erstreckt -- das übernimmt bei `offcanvas-lg` allein schlicht das Fehlen
+    der schmalbreiten `@media`-Regel selbst.
+    #}
+    <aside class="tc-sidebar offcanvas-lg offcanvas-start" tabindex="-1"
+           id="tc-sidebar" aria-labelledby="tc-sidebar-label">
+        <div class="offcanvas-header d-lg-none">
+            <span class="offcanvas-title" id="tc-sidebar-label">Navigation</span>
+            <button type="button" class="btn-close" data-bs-dismiss="offcanvas"
+                    aria-label="Schließen"></button>
+        </div>
+        {#
+        Bewusst **ohne** Bootstraps `offcanvas-body`-Klasse: Deren eigene
+        Rücknahme ab 992px (`.offcanvas-lg .offcanvas-body`) setzt
+        `display: flex` ohne `flex-direction` -- Marke und Navigation
+        landeten dadurch nebeneinander in einer Reihe statt untereinander,
+        und die Marke wurde auf die volle Seitenleistenhöhe gestreckt. Die
+        eigene `.tc-sidebar-content`-Regel liefert Innenabstand, Sticky-
+        Verhalten und Rollen bereits vollständig; die Bootstrap-Klasse hätte
+        hier nur mobil (wo unsere Regel ohnehin gewinnt) etwas beigetragen
+        und am Desktop nur geschadet.
+        #}
         <div class="tc-sidebar-content">
         <a class="tc-brand" href="{{ url_prefix }}/">
             <span class="tc-brandmark" aria-hidden="true"></span>
@@ -48,9 +84,11 @@ zeigt sie nur an.
     </aside>
     <div class="tc-frame">
         <header class="tc-topbar">
-            <button class="tc-iconbtn d-lg-none" type="button" data-bs-toggle="collapse"
-                    data-bs-target="#tc-sidebar" aria-controls="tc-sidebar"
-                    aria-expanded="false">Navigation</button>
+            {#
+            Kein eigener Knopf mehr für die Navigation: unter 992 px führt allein
+            "Mehr" in der unteren Leiste zur Seitenleiste, die jetzt als Schublade
+            öffnet. Zwei Zugänge zu derselben Liste liefen sonst leicht auseinander.
+            #}
             {#
             Kein <h1>: die Seite hat ihre eigene Überschrift, und zwei davon sind
             weder für ein Vorlesewerkzeug noch für die Gliederung einer Seite
@@ -90,17 +128,18 @@ zeigt sie nur an.
 </div>
 {#
 Auf kleinen Bildschirmen tritt die Seitenleiste zurück und unten steht das Wenige,
-was unterwegs wirklich gebraucht wird. "Mehr" führt in die aufklappbare Seitenleiste
-statt in eine zweite, eigene Liste -- sonst gäbe es zwei Navigationen, die
-auseinanderlaufen können.
+was unterwegs wirklich gebraucht wird. "Mehr" öffnet dieselbe Seitenleiste als
+Schublade statt einer zweiten, eigenen Liste -- sonst gäbe es zwei Navigationen,
+die auseinanderlaufen können. Sie ist zugleich der **einzige** mobile Zugang zur
+vollständigen Navigation.
 #}
 <nav class="tc-bottomnav d-lg-none" aria-label="Navigation">
     {{ nav_link("/", "Übersicht", exact=true, css="tc-bottomnav-item") }}
     {% for item in bottom_items %}
     {{ nav_link(item.path, item.label, css="tc-bottomnav-item") }}
     {% endfor %}
-    <button class="tc-bottomnav-item" type="button" data-bs-toggle="collapse"
-            data-bs-target="#tc-sidebar" aria-controls="tc-sidebar" aria-expanded="false">
+    <button class="tc-bottomnav-item" type="button" data-bs-toggle="offcanvas"
+            data-bs-target="#tc-sidebar" aria-controls="tc-sidebar">
         Mehr
     </button>
 </nav>

@@ -780,6 +780,21 @@ body {
         border: 0;
     }
 
+    /*
+     * Allgemeine Beschriftung für jede gestapelte Tabelle, die kein eigenes,
+     * feinjustiertes Layout mitbringt (Zonen, Tokens, Audit, Bediengeräte, ...).
+     * `:not(...)`, nicht bloß Regelreihenfolge: `.tc-device-table` trägt in
+     * Spalte 1/2 ebenfalls `data-label`, zeigt es aber absichtlich nicht --
+     * Name und Status sprechen für sich. `.tc-user-table` löst dieselbe Frage
+     * mit eigenem Flex-Layout weiter unten. Beide bräuchten sonst eine höhere
+     * Spezifität allein aus Zufall der Reihenfolge, statt aus der Absicht.
+     */
+    .tc-stack-table:not(.tc-device-table):not(.tc-user-table) td[data-label]::before {
+        content: attr(data-label) ": ";
+        color: var(--muted);
+        font-size: 0.75rem;
+    }
+
     /* Gerät und Status sprechen für sich -- Name, Statuschips und Zeitangabe
        brauchen keine vorangestellte Beschriftung. */
     .tc-device-table td:nth-child(1),
@@ -811,6 +826,52 @@ body {
        ohne Befund, Zeitstempel oder Messwert. */
     .tc-stack-table td[data-empty] {
         display: none;
+    }
+}
+
+/*
+ * Schnittstellen und ähnliche Name/Wert/Herkunft-Tabellen (`.tc-kv-table`,
+ * `interfaces.html`): die feste Namensspalte gilt erst ab 768px. Darunter
+ * schrumpfte die Wertspalte auf rund 9px, weil drei Spalten samt Chip und
+ * Variable in 390px keinen Platz mehr hatten. Mobil stapelt jede Zeile Name,
+ * Wert und Variable/Quelle stattdessen untereinander.
+ */
+@media (min-width: 768px) {
+    .tc-kv-table td:first-child {
+        width: 12rem;
+    }
+
+    .tc-kv-table td:last-child {
+        text-align: right;
+    }
+}
+
+@media (max-width: 767.98px) {
+    .tc-kv-table,
+    .tc-kv-table tbody,
+    .tc-kv-table tr,
+    .tc-kv-table td {
+        display: block;
+        width: auto;
+    }
+
+    .tc-kv-table tr {
+        padding: 0.5rem 0;
+        border-bottom: 1px solid var(--line);
+    }
+
+    .tc-kv-table tr:last-child {
+        border-bottom: 0;
+    }
+
+    .tc-kv-table td {
+        padding: 0.1rem 0;
+        border: 0;
+    }
+
+    .tc-kv-table td:first-child {
+        font-weight: 650;
+        color: var(--ink);
     }
 }
 
@@ -1288,16 +1349,31 @@ body {
     transform: none;
 }
 
-@media (max-width: 60em) {
+/*
+ * Sieben Spalten à 7rem sind bei 991.98 px und darunter enger als jeder
+ * Tagesname, jede Uhrzeit und "Übertragen" -- vorher schrumpfte hier
+ * `min-width` auf 0, und das globale `overflow-wrap: anywhere` brach die
+ * Beschriftungen Buchstabe für Buchstabe. Jetzt bleibt die Mindestbreite
+ * (9rem) erhalten, und `.tc-schedule-scroll` lässt die ganze Woche stattdessen
+ * horizontal scrollen -- wie ein Kalender ohnehin breiter ist als der
+ * Bildschirm. `schedule.js` misst weiterhin per `getBoundingClientRect()` und
+ * bleibt davon unberührt.
+ */
+@media (max-width: 991.98px) {
+    .tc-schedule-scroll {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        margin: 0 -0.4rem;
+        padding: 0 0.4rem 0.4rem;
+    }
+
+    .tc-schedule-grid {
+        flex-wrap: nowrap;
+    }
+
     .schedule-day-column {
-        min-width: 0;
-    }
-    .schedule-day-column .dropdown-toggle {
-        font-size: 0;
-    }
-    .schedule-day-column .dropdown-toggle::before {
-        content: "\2026";
-        font-size: 0.875rem;
+        min-width: 9rem;
+        flex: 0 0 9rem;
     }
 }
 
@@ -1334,6 +1410,11 @@ body {
    über Tab weiterhin erreichbar und für Screenreader vorhanden bleibt) und erscheint
    erst bei Hover über dem Balken oder bei Tastaturfokus -- eine reine Hover-Lösung
    wäre ohne Maus nicht bedienbar gewesen. */
+/* `white-space: nowrap`: die 1.15rem-Box ist für ein Icon bemessen, trägt aber
+ * den Text "ändern" -- ohne `nowrap` erzwang das globale
+ * `overflow-wrap: anywhere` dort einen Umbruch mitten im Wort. Der Text darf
+ * über die schmale Box hinausragen; sie ist ohnehin nur bei Hover/Fokus
+ * sichtbar und liegt frei in der oberen Ecke des Balkens. */
 .schedule-mode-link {
     position: absolute;
     top: 0.15rem;
@@ -1345,6 +1426,7 @@ body {
     height: 1.15rem;
     line-height: 1;
     font-size: 0.7rem;
+    white-space: nowrap;
     border-radius: 0.2rem;
     color: var(--ink);
     background: color-mix(in srgb, var(--surface) 75%, transparent);
@@ -1826,10 +1908,15 @@ body {
     align-items: stretch;
 }
 
+/* `!important`, weil Bootstraps `.offcanvas-lg`-Regelsatz Hintergrund und Rahmen
+ * unter 992 px selbst setzt (Offcanvas-Standardfarben) und ab 992 px zusätzlich
+ * `background-color: transparent !important` erzwingt, um die Schublade wieder in
+ * eine gewöhnliche Seitenleiste zu verwandeln. Ohne `!important` bliebe die
+ * Seitenleiste am Desktop durchsichtig. */
 .tc-sidebar {
     flex: 0 0 15.5rem;
-    border-right: 1px solid var(--line);
-    background: var(--surface);
+    border-right: 1px solid var(--line) !important;
+    background: var(--surface) !important;
 }
 
 /* Die äußere Fläche reicht bis zum Seitenende; nur ihr Inhalt haftet und scrollt. */
@@ -2000,49 +2087,25 @@ body {
     box-shadow: inset 0 2px 0 var(--line-strong);
 }
 
+/*
+ * Die Seitenleiste ist ein Bootstrap-Offcanvas mit `offcanvas-lg`
+ * (`base_admin.html`): unter 992 px eine feste Schublade über dem Inhalt,
+ * unabhängig von der Scrollposition; ab 992 px hebt dieselbe Klasse die
+ * Offcanvas-Positionierung wieder auf, und `.tc-sidebar` steht wie zuvor fest
+ * im `.tc-shell`-Fluss. Die Regeln hier ergänzen nur das eigene Erscheinungsbild
+ * (Rahmen, Hintergrund) -- Ein-/Ausblenden und Fokus übernimmt Bootstrap.
+ */
 @media (max-width: 991.98px) {
-    .tc-shell {
-        display: block;
-    }
-
-    .tc-admin .tc-topbar {
-        flex-wrap: wrap;
-    }
-
-    .tc-admin .tc-topbar > .tc-iconbtn {
-        flex-shrink: 0;
-        white-space: nowrap;
-    }
-
-    .tc-admin .tc-pagetitle {
-        order: 3;
-        flex-basis: 100%;
-        white-space: normal;
-        overflow: visible;
-    }
-
-    /* Die Seitenleiste klappt über Bootstraps `collapse` auf; ohne aufgeklappten
-     * Zustand steht sie nicht im Weg. `.collapse.show` kommt von Bootstrap. */
-    .tc-sidebar {
-        border-right: 0;
-        border-bottom: 1px solid var(--line);
-        display: none;
-    }
-
-    .tc-sidebar.show {
-        display: block;
-    }
-
     .tc-main {
         padding-bottom: 5.5rem;
     }
-}
 
-@media (min-width: 992px) {
-    /* Am Desktop steht die Seitenleiste immer -- Bootstraps `collapse` blendet ein
-     * Element ohne `.show` sonst auch dort aus. */
+    /* Bootstraps Vorgabe (`--bs-offcanvas-width: 400px`, nur durch `max-width:
+     * 100%` gedeckelt) deckt ein 390px breites Telefon randlos ab -- dann bleibt
+     * kein Hintergrund übrig, auf den "Tippen daneben" überhaupt träfe. Eine
+     * schmalere Schublade lässt rechts sichtbar Hintergrund stehen. */
     .tc-sidebar {
-        display: block !important;
+        --bs-offcanvas-width: min(20rem, 85vw);
     }
 }
 
