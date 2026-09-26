@@ -2,6 +2,80 @@
 
 Letzte Aktualisierung: 2026-09-26.
 
+## Nachbesserung Kreuzreview: Formularfelder bei 390px, Escape/Backdrop-Test
+
+Zwei Nachbesserungen aus dem Kreuzreview der Navigations-Änderung unten:
+
+- **`/controllers`, `/zones/{id}/devices`, `/settings` (Außentemperaturquelle):**
+  Bootstraps `.row > *` gibt jedem Zeilenkind ohne eigene Breitenklasse volle
+  Breite; das unqualifizierte `.col`/`.col-auto` hebt das aber -- anders als
+  `.col-sm`/`.col-sm-auto` -- bei *jeder* Bildschirmbreite auf, nicht erst ab
+  einem Umbruchpunkt. Bei 390px saßen mehrere Auswahlfelder dadurch
+  nebeneinander statt gestapelt und zeigten nur ihren abgeschnittenen Text
+  ("Sollwe", "Tei", "Qu", "Zo"). Durchweg auf `col-sm`/`col-sm-auto`
+  umgestellt -- nur Klassen, keine Feldnamen, Werte oder `selected`-Bindungen
+  angerührt. Die „Rollen"-Tabelle in `device_assignment.html` trug denselben
+  Fehler an einer Tabelle statt einer `.row` (fiel erst beim Ansehen der
+  Screenshots auf) und ist jetzt ebenfalls `.tc-stack-table`.
+  Neuer Browsertest `browser_tests/test_form_field_width.py`: 390px, alle
+  eindeutigen Anlagensicht-Routen, jedes sichtbare `select`/Text-`input`
+  braucht ≥8rem Breite (Kriterium bewusst die Breite, nicht
+  `scrollWidth`/`clientWidth` -- bei `select` unzuverlässig). Begründete
+  Ausnahme: `date`/`time`/`datetime-local`/`month`/`week`/`color`/`range` --
+  native Steuerelemente mit festem, nie abschneidendem Format.
+- **`test_the_drawer_closes_when_a_navigation_link_is_chosen`:** prüft jetzt
+  zusätzlich, dass nach der hx-boost-Navigation `document.body.style.overflow`
+  wieder leer ist und kein `.offcanvas-backdrop` übrig bleibt -- beide Spuren
+  von Bootstraps Hintergrundsperre, die eine Seite sonst dauerhaft gegen
+  Scrollen sperren könnten, ohne dass eine sichtbare Schublade das erklärt.
+
+## Anlagensicht mobil: Navigation als Schublade, Zeilenumbrüche behoben
+
+„Navigation" (Kopfzeile) und „Mehr" (untere Leiste) klappten dieselbe `#tc-sidebar`
+bisher per Bootstrap-`collapse` im Seitenfluss auf; stand die Seite vor dem Öffnen weit
+gescrollt, lag die Leiste danach komplett außerhalb des Sichtbereichs (gemessen:
+`sidebar.y = -2788` bei 390×844 auf `/devices`). Der Kopfzeilen-Knopf „Navigation" ist
+jetzt entfernt; „Mehr" ist der einzige mobile Zugang und öffnet `#tc-sidebar` als
+Bootstrap-Offcanvas (`offcanvas-lg offcanvas-start`, Bootstrap 5.3.3) -- eine fixe
+Schublade über dem Inhalt, unabhängig von der Scrollposition, mit Hintergrund, Escape,
+Tippen daneben und Schließen-Knopf; ein Klick auf einen Navigationslink schließt sie
+zusätzlich (`page_scripts.js`, da Bootstrap das von sich aus nicht tut). Am Desktop
+steht die Seitenleiste unverändert fest.
+
+Zwei Stolperfallen dabei, beide erst durch einen echten Browser sichtbar geworden, nicht
+durch HTML-Kontrolle:
+- **Nicht** zusätzlich zur responsiven Klasse `offcanvas-lg` auch die unqualifizierte
+  Klasse `offcanvas` verwenden -- die ist selbst nicht responsiv (`position: fixed;
+  visibility: hidden` bei jeder Breite, ohne `@media`) und machte die Seitenleiste am
+  Desktop unsichtbar.
+- **Nicht** Bootstraps `offcanvas-body`-Klasse auf denselben Knoten wie die eigene
+  `.tc-sidebar-content` legen -- deren Desktop-Rücknahme setzt `display: flex` ohne
+  `flex-direction` und streckte die Marke „thermoctl" auf die volle Seitenleistenhöhe,
+  neben statt über der Navigation. Sichtbar erst im Screenshot, nicht im HTML.
+
+Die Breite der Schublade ist bewusst auf `min(20rem, 85vw)` begrenzt (Bootstraps
+400px-Vorgabe, nur durch `max-width: 100%` gedeckelt, deckte ein 390px-Telefon randlos
+ab -- dann blieb kein Hintergrund für „Tippen daneben" übrig).
+
+Mobile Zeilenumbrüche mitten im Wort (`overflow-wrap: anywhere` trifft auf zu enge
+Layouts) behoben in: `/zones`, `/interfaces`, `/settings`, `/groups`, `/tokens`,
+`/kiosk-tokens`, `/audit`, `/controllers`, `/zones/{id}/devices` (Rollen-Zuordnung) --
+jeweils `.tc-stack-table` (mit einer neuen, generischen `data-label`-Beschriftung für
+Tabellen ohne eigenes Spezial-Layout) oder gestapelte `dt`/`dd`. Der Wochenplan
+(`/zones/{id}/schedule`) bleibt als Woche nebeneinander, jetzt aber horizontal
+scrollbar mit 9rem Mindestbreite je Tag statt schrumpfend bis zur Unlesbarkeit;
+`schedule.js` misst weiterhin per `getBoundingClientRect()` und ist unberührt. Der
+winzige "ändern"-Verweis in jedem Zeitplanbalken (`.schedule-mode-link`, eine
+1,15rem-Box) bekam `white-space: nowrap`, weil sein Text sonst grundsätzlich --
+unabhängig von der Bildschirmbreite -- mitten im Wort brach.
+
+Ein neuer, generischer Browsertest (`browser_tests/test_mobile_word_wrap.py`) fährt bei
+390×844 alle Anlagensicht-Ansichten aus `tools/screenshot_views.py` mit den
+Doku-Demodaten ab und schlägt bei jedem Wortumbruch mitten im Zeichen sowie bei
+horizontalem Dokumentüberlauf fehl (Ausnahmen: `pre`/`code`-Blöcke für wörtlich
+kopierten Inhalt, die Startseiten-Zeitspur `.tc-zone-track`). Er hat bereits drei
+weitere, bis dahin unbenannte Fundstellen aufgedeckt (`/controllers`,
+`/zones/{id}/devices`, `.schedule-mode-link`).
 ## Formulare: fünf vergessene Bindungen auf /controllers, zwei Abstürze bei falscher Eingabe
 
 Der Projektinhaber meldete "immer mal wieder doppelte Speichern-Knöpfe und

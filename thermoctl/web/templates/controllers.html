@@ -13,47 +13,61 @@
   <h2>{{ device.display_name }}</h2>
   <p class="t-quiet">{{ device.model or "Modell unbekannt" }}</p>
 
+  {#
+  Drei Tabellen mit `.tc-stack-table`: bei 390px brachen "Merkmal", "Letzter
+  Wert" & Co. mitten im Wort, weil eine Kopfzelle neben den Auswahlfeldern
+  keinen Platz mehr hatte. Mobil stapelt jede Zeile stattdessen -- die
+  Auswahlfelder in `.row g-2` brauchen dort ohnehin die volle Breite.
+
+  `col-sm`/`col-sm-auto` statt `col`/`col-auto` auf jedem Auswahlfeld unten:
+  Bootstraps `.row > *` gibt jedem Feld ohne eigene Breitenklasse volle
+  Breite; `.col` allein hebt das bei *jeder* Bildschirmbreite auf, nicht erst
+  ab einem Umbruchpunkt, und presste bei 390px mehrere Auswahlfelder und den
+  Knopf in eine einzige, viel zu enge Zeile -- sichtbar nur als
+  abgeschnittener Text in den Auswahlfeldern ("Sollwe", "Tei", "Qu", "Zo"),
+  nicht im HTML.
+  #}
   <h3 class="h5">Was ankommt</h3>
-  <div class="table-responsive"><table class="table align-middle"><thead><tr><th>Merkmal</th><th>Letzter Wert</th><th>Verwendung</th></tr></thead><tbody>
+  <div class="table-responsive"><table class="table align-middle tc-stack-table"><thead><tr><th scope="col">Merkmal</th><th scope="col">Letzter Wert</th><th scope="col">Verwendung</th></tr></thead><tbody>
   {% for property in properties.get(device.id, []) if property.is_readable %}
   {% set channel = channels.get((device.id, property.name)) %}
-  <tr><td class="t-value">{{ property.name }}</td><td>
+  <tr><td class="t-value" data-label="Merkmal">{{ property.name }}</td><td data-label="Letzter Wert">
     {% if property.last_value_number is not none %}{{ property.last_value_number }} {{ property.unit or "" }}
     {% elif property.last_value_text is not none %}{{ property.last_value_text }}{% else %}—{% endif %}
     {% if property.last_value_at %}<span class="t-quiet small">({{ property.last_value_at|age }})</span>{% endif %}
-  </td><td>
+  </td><td data-label="Verwendung">
   {% if device.id in manageable_device_ids %}
     <form method="post" action="{{ url_prefix }}/controllers/channel" class="row g-2">
       <input type="hidden" name="device_id" value="{{ device.id }}"><input type="hidden" name="property_name" value="{{ property.name }}"><input type="hidden" name="direction" value="read">
-      <div class="col"><select class="form-select form-select-sm" name="kind"><option value="zone_setpoint" {{ "selected" if channel and kinds[channel.kind_id].code == "zone_setpoint" }}>Sollwert der Zone</option><option value="operating_mode" {{ "selected" if channel and kinds[channel.kind_id].code == "operating_mode" }}>Betriebsart der Zone</option></select></div>
-      <div class="col"><select class="form-select form-select-sm" name="zone_id" required>{% for zone in zones if zone.id in manageable_ids %}<option value="{{ zone.id }}" {{ "selected" if channel and channel.zone_id == zone.id }}>{{ zone.display_name }}</option>{% endfor %}</select></div>
-      <div class="col-auto"><button class="btn btn-sm btn-outline-secondary">Speichern</button></div>
+      <div class="col-sm"><select class="form-select form-select-sm" name="kind"><option value="zone_setpoint" {{ "selected" if channel and kinds[channel.kind_id].code == "zone_setpoint" }}>Sollwert der Zone</option><option value="operating_mode" {{ "selected" if channel and kinds[channel.kind_id].code == "operating_mode" }}>Betriebsart der Zone</option></select></div>
+      <div class="col-sm"><select class="form-select form-select-sm" name="zone_id" required>{% for zone in zones if zone.id in manageable_ids %}<option value="{{ zone.id }}" {{ "selected" if channel and channel.zone_id == zone.id }}>{{ zone.display_name }}</option>{% endfor %}</select></div>
+      <div class="col-sm-auto"><button class="btn btn-sm btn-outline-secondary">Speichern</button></div>
     </form>
   {% elif channel %}{{ kinds[channel.kind_id].label }}{% else %}Nicht belegt{% endif %}
   </td></tr>{% endfor %}
   </tbody></table></div>
 
   <h3 class="h5 mt-4">Was hingeschickt wird</h3>
-  <div class="table-responsive"><table class="table align-middle"><thead><tr><th>Merkmal</th><th>Erlaubt</th><th>Quelle</th></tr></thead><tbody>
+  <div class="table-responsive"><table class="table align-middle tc-stack-table"><thead><tr><th scope="col">Merkmal</th><th scope="col">Erlaubt</th><th scope="col">Quelle</th></tr></thead><tbody>
   {% for property in properties.get(device.id, []) if property.is_writable %}
   {% set channel = channels.get((device.id, property.name)) %}
-  <tr class="tc-target" data-target="channel" data-form="channel-{{ device.id }}-{{ property.id }}"><td class="t-value">{{ property.name }}</td><td>
+  <tr class="tc-target" data-target="channel" data-form="channel-{{ device.id }}-{{ property.id }}"><td class="t-value" data-label="Merkmal">{{ property.name }}</td><td data-label="Erlaubt">
     {% if property_values[property.id] %}{{ property_values[property.id]|join(", ") }}{% elif property.min_value is not none or property.max_value is not none %}{{ property.min_value|grad if property.min_value is not none else "…" }} bis {{ property.max_value|grad if property.max_value is not none else "…" }} {{ property.unit or "" }}{% else %}{{ property.value_type }}{% endif %}
-  </td><td>
+  </td><td data-label="Quelle">
   {% if device.id in manageable_device_ids %}<form id="channel-{{ device.id }}-{{ property.id }}" method="post" action="{{ url_prefix }}/controllers/channel" class="row g-2">
     <input type="hidden" name="device_id" value="{{ device.id }}"><input type="hidden" name="property_name" value="{{ property.name }}"><input type="hidden" name="direction" value="write">
-    <div class="col"><select class="form-select form-select-sm" name="kind"><option value="sensor_temperature" {{ "selected" if channel and kinds[channel.kind_id].code == "sensor_temperature" }}>Temperatur eines Geräts</option><option value="zone_temperature" {{ "selected" if channel and kinds[channel.kind_id].code == "zone_temperature" }}>Ist-Temperatur der Zone</option><option value="zone_setpoint" {{ "selected" if channel and kinds[channel.kind_id].code == "zone_setpoint" }}>Sollwert der Zone</option><option value="fixed" {{ "selected" if channel and kinds[channel.kind_id].code == "fixed" }}>Fester Wert</option></select></div>
-    <div class="col"><select class="form-select form-select-sm" name="source_device_id"><option value="">Quellgerät</option>{% for source in devices %}<option value="{{ source.id }}" {{ "selected" if channel and channel.source_device_id == source.id }}>{{ source.display_name }}</option>{% endfor %}</select></div>
-    <div class="col"><select class="form-select form-select-sm" name="zone_id"><option value="">Zone</option>{% for zone in zones if zone.id in manageable_ids %}<option value="{{ zone.id }}" {{ "selected" if channel and channel.zone_id == zone.id }}>{{ zone.display_name }}</option>{% endfor %}</select></div>
-    <div class="col"><input class="form-control form-control-sm" name="fixed_text" value="{{ channel.fixed_text or '' if channel else '' }}" placeholder="Fester Text"><input class="form-control form-control-sm mt-1" name="fixed_number" inputmode="decimal" value="{{ channel.fixed_number|zahl_verlustfrei if channel and channel.fixed_number is not none else '' }}" placeholder="Feste Zahl"></div>
-    <div class="col-auto"><button class="btn btn-sm btn-outline-secondary">Speichern</button></div>
+    <div class="col-sm"><select class="form-select form-select-sm" name="kind"><option value="sensor_temperature" {{ "selected" if channel and kinds[channel.kind_id].code == "sensor_temperature" }}>Temperatur eines Geräts</option><option value="zone_temperature" {{ "selected" if channel and kinds[channel.kind_id].code == "zone_temperature" }}>Ist-Temperatur der Zone</option><option value="zone_setpoint" {{ "selected" if channel and kinds[channel.kind_id].code == "zone_setpoint" }}>Sollwert der Zone</option><option value="fixed" {{ "selected" if channel and kinds[channel.kind_id].code == "fixed" }}>Fester Wert</option></select></div>
+    <div class="col-sm"><select class="form-select form-select-sm" name="source_device_id"><option value="">Quellgerät</option>{% for source in devices %}<option value="{{ source.id }}" {{ "selected" if channel and channel.source_device_id == source.id }}>{{ source.display_name }}</option>{% endfor %}</select></div>
+    <div class="col-sm"><select class="form-select form-select-sm" name="zone_id"><option value="">Zone</option>{% for zone in zones if zone.id in manageable_ids %}<option value="{{ zone.id }}" {{ "selected" if channel and channel.zone_id == zone.id }}>{{ zone.display_name }}</option>{% endfor %}</select></div>
+    <div class="col-sm"><input class="form-control form-control-sm" name="fixed_text" value="{{ channel.fixed_text or '' if channel else '' }}" placeholder="Fester Text"><input class="form-control form-control-sm mt-1" name="fixed_number" inputmode="decimal" value="{{ channel.fixed_number|zahl_verlustfrei if channel and channel.fixed_number is not none else '' }}" placeholder="Feste Zahl"></div>
+    <div class="col-sm-auto"><button class="btn btn-sm btn-outline-secondary">Speichern</button></div>
   </form>{% elif channel %}{{ kinds[channel.kind_id].label }}{% else %}Nicht belegt{% endif %}
   </td></tr>{% endfor %}
   </tbody></table></div>
 
   <h3 class="h5 mt-4">Tastenbelegung</h3>
-  {% if bindings[device.id] %}<div class="table-responsive"><table class="table align-middle"><tbody>{% for binding in bindings[device.id] %}<tr><td class="t-value">{{ binding.action }}</td><td>
-    <form method="post" action="{{ url_prefix }}/controllers/button" class="row g-2"><input type="hidden" name="device_id" value="{{ device.id }}"><input type="hidden" name="action_code" value="{{ binding.action }}"><div class="col"><select class="form-select form-select-sm" name="command"><option value="">— nichts —</option>{% for command in commands %}<option value="{{ command.code }}" {{ "selected" if command.code == binding.command_code }}>{{ command.label }}</option>{% endfor %}</select></div><div class="col"><input class="form-control form-control-sm" name="step_k" value="{{ binding.step_k|grad if binding.step_k is not none }}" placeholder="0,5 K"></div><div class="col-auto"><button class="btn btn-sm btn-outline-secondary">Übernehmen</button></div></form>
+  {% if bindings[device.id] %}<div class="table-responsive"><table class="table align-middle tc-stack-table"><tbody>{% for binding in bindings[device.id] %}<tr><td class="t-value" data-label="Aktion">{{ binding.action }}</td><td data-label="Belegung">
+    <form method="post" action="{{ url_prefix }}/controllers/button" class="row g-2"><input type="hidden" name="device_id" value="{{ device.id }}"><input type="hidden" name="action_code" value="{{ binding.action }}"><div class="col-sm"><select class="form-select form-select-sm" name="command"><option value="">— nichts —</option>{% for command in commands %}<option value="{{ command.code }}" {{ "selected" if command.code == binding.command_code }}>{{ command.label }}</option>{% endfor %}</select></div><div class="col-sm"><input class="form-control form-control-sm" name="step_k" value="{{ binding.step_k|grad if binding.step_k is not none }}" placeholder="0,5 K"></div><div class="col-sm-auto"><button class="btn btn-sm btn-outline-secondary">Übernehmen</button></div></form>
   </td></tr>{% endfor %}</tbody></table></div>{% else %}<p class="t-quiet">Noch keinen Tastendruck empfangen.</p>{% endif %}
 </section>{% endfor %}
 

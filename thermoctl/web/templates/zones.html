@@ -7,17 +7,21 @@
     {% if may_create %}<a class="btn btn-primary" href="{{ url_prefix }}/zones/new">Zone anlegen</a>{% endif %}
 </div>
 {% if zones %}
-{# Scrollt in sich selbst statt die ganze Seite breit zu machen: Auf einem Telefon passt diese Tabelle nicht nebeneinander. #}
+{#
+Mobil wie Geräte/Benutzer als gestapelte Karte (`.tc-stack-table`): das globale
+`overflow-wrap: anywhere` bricht sonst Zonennamen und Beschriftungen Buchstabe
+für Buchstabe, weil die vier Spalten bei 390 px keinen Platz mehr haben.
+#}
 <div class="table-responsive">
-<table class="table align-middle">
-    <thead><tr><th>Name</th><th>Betriebsart</th><th>Sortierung</th><th></th></tr></thead>
+<table class="table align-middle tc-stack-table">
+    <thead><tr><th scope="col">Name</th><th scope="col">Betriebsart</th><th scope="col">Sortierung</th><th scope="col"></th></tr></thead>
     <tbody>
     {% for zone in zones %}
     <tr>
-        <td><strong>{{ zone.display_name }}</strong><br><small class="text-muted">{{ zone.name }}</small></td>
-        <td>{{ zone.operating_mode.label }}</td>
-        <td>{{ zone.sort_order }}</td>
-        <td class="text-end">
+        <td data-label="Name"><strong>{{ zone.display_name }}</strong><br><small class="text-muted">{{ zone.name }}</small></td>
+        <td data-label="Betriebsart">{{ zone.operating_mode.label }}</td>
+        <td data-label="Sortierung">{{ zone.sort_order }}</td>
+        <td class="text-md-end">
             <a class="btn btn-sm btn-outline-secondary"
                href="{{ url_prefix }}/zones/{{ zone.id }}/devices">Geräte</a>
             <a class="btn btn-sm btn-outline-secondary"

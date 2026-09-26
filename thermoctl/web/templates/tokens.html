@@ -17,7 +17,7 @@
     {% endif %}
 
     <div class="table-responsive">
-    <table class="table table-striped align-middle">
+    <table class="table table-striped align-middle tc-stack-table">
         <thead>
         <tr>
             <th scope="col">Name</th>
@@ -30,17 +30,17 @@
         <tbody>
         {% for entry in token %}
         <tr>
-            <td>{{ entry.name }}</td>
-            <td><code>{{ entry.prefix }}</code></td>
-            <td>{{ (entry.expires_at|localtime(timezone)).strftime("%d.%m.%Y %H:%M") if entry.expires_at else "unbegrenzt" }}</td>
-            <td>
+            <td data-label="Name">{{ entry.name }}</td>
+            <td data-label="Präfix"><code>{{ entry.prefix }}</code></td>
+            <td data-label="Gültig bis">{{ (entry.expires_at|localtime(timezone)).strftime("%d.%m.%Y %H:%M") if entry.expires_at else "unbegrenzt" }}</td>
+            <td data-label="Status">
                 {% if entry.revoked_at %}
                 <span class="badge text-bg-secondary">widerrufen</span>
                 {% else %}
                 <span class="badge text-bg-success">aktiv</span>
                 {% endif %}
             </td>
-            <td class="text-end">
+            <td class="text-md-end">
                 {% if not entry.revoked_at %}
                 <form method="post" action="{{ url_prefix }}/tokens/{{ entry.id }}/revoke">
                     <button type="submit" class="btn btn-sm btn-outline-danger">Widerrufen</button>

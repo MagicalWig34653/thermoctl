@@ -88,8 +88,16 @@ Skripts falsch rät.
 <p>Aktuell: <strong>{{ temperature_source.display_name if temperature_source else "Keine Messquelle" }}</strong></p>
 {% if may_edit %}
 {% if errors.temperature_source %}<div class="alert alert-danger">{{ errors.temperature_source }}</div>{% endif %}
+{#
+`col-sm`/`col-sm-auto` statt `col`/`col-auto` in diesem und den beiden
+folgenden Formularen: Bootstraps `.row > *` gibt jedem Feld ohne eigene
+Breitenklasse volle Breite; `.col` allein hebt das bei *jeder*
+Bildschirmbreite auf, nicht erst ab einem Umbruchpunkt, und presste bei
+390px Auswahlfeld(er) und Knopf in eine einzige, viel zu enge Zeile --
+sichtbar nur als abgeschnittener Text in den Auswahlfeldern, nicht im HTML.
+#}
 <form method="post" action="{{ url_prefix }}/zones/{{ zone.id }}/devices/source" class="row g-2 mb-4">
-    <div class="col">
+    <div class="col-sm">
         <select class="form-select" name="device_id" aria-label="Messquelle">
             <option value="">Keine Messquelle</option>
             {% for device in devices %}
@@ -97,20 +105,26 @@ Skripts falsch rät.
             {% endfor %}
         </select>
     </div>
-    <div class="col-auto"><button class="btn btn-primary" type="submit">Messquelle speichern</button></div>
+    <div class="col-sm-auto"><button class="btn btn-primary" type="submit">Messquelle speichern</button></div>
 </form>
 {% endif %}
 
 <h2 class="h4">Rollen</h2>
 {% if assignments %}
+{#
+`.tc-stack-table`: bei 390px quetschten sich "Rolle", der Gerätename samt
+Umschalter-Hilfetext und der Knopf "Lösen" in drei nebeneinanderstehende, viel
+zu enge Spalten -- mit genau der Wortumbruch-Wirkung, die das globale
+`overflow-wrap: anywhere` sonst nur bei echten Ausreißern zeigen soll.
+#}
 <div class="table-responsive">
-<table class="table align-middle">
-    <thead><tr><th>Rolle</th><th>Gerät</th><th></th></tr></thead>
+<table class="table align-middle tc-stack-table">
+    <thead><tr><th scope="col">Rolle</th><th scope="col">Gerät</th><th scope="col"></th></tr></thead>
     <tbody>
     {% for assignment, device, rolle in assignments %}
     <tr>
-        <td>{{ rolle.label }}</td>
-        <td>
+        <td data-label="Rolle">{{ rolle.label }}</td>
+        <td data-label="Gerät">
             {{ device.display_name }}
             {#
             Nur bei Thermostatventilen: Bei allem anderen gibt es nichts zu wählen --
@@ -156,7 +170,7 @@ Skripts falsch rät.
             </div>
             {% endif %}
         </td>
-        <td class="text-end">
+        <td class="text-md-end">
         {% if may_edit %}
         <form method="post" action="{{ url_prefix }}/zones/{{ zone.id }}/devices/detach">
             <input type="hidden" name="assignment_id" value="{{ assignment.id }}">
@@ -185,42 +199,42 @@ Skripts falsch rät.
 <h2 class="h4 mt-4">Rolle zuordnen</h2>
 {% if errors.assignment %}<div class="alert alert-danger">{{ errors.assignment }}</div>{% endif %}
 <form method="post" action="{{ url_prefix }}/zones/{{ zone.id }}/devices/assign" class="row g-2 mb-4">
-    <div class="col">
+    <div class="col-sm">
         <label class="form-label" for="device_id">Gerät</label>
         <select class="form-select" id="device_id" name="device_id" required>
             <option value="">Bitte auswählen</option>
             {% for device in devices %}<option value="{{ device.id }}">{{ device.display_name }}</option>{% endfor %}
         </select>
     </div>
-    <div class="col">
+    <div class="col-sm">
         <label class="form-label" for="role_id">Rolle</label>
         <select class="form-select" id="role_id" name="role_id" required>
             <option value="">Bitte auswählen</option>
             {% for rolle in roles %}<option value="{{ rolle.id }}">{{ rolle.label }}</option>{% endfor %}
         </select>
     </div>
-    <div class="col-auto align-self-end"><button class="btn btn-primary" type="submit">Zuordnen</button></div>
+    <div class="col-sm-auto align-self-end"><button class="btn btn-primary" type="submit">Zuordnen</button></div>
 </form>
 
 <h2 class="h4 mt-4">Gerät tauschen</h2>
 <p class="text-muted">Alle Rollen und die Messquelle in dieser Zone gehen auf das neue Gerät über. Sollwerte, Zeitplan, Regelparameter und Messverlauf bleiben erhalten.</p>
 {% if errors.swap %}<div class="alert alert-danger">{{ errors.swap }}</div>{% endif %}
 <form method="post" action="{{ url_prefix }}/zones/{{ zone.id }}/devices/swap" class="row g-2 mb-4">
-    <div class="col">
+    <div class="col-sm">
         <label class="form-label" for="old_device_id">Altes Gerät</label>
         <select class="form-select" id="old_device_id" name="old_device_id" required>
             <option value="">Bitte auswählen</option>
             {% for device in devices %}<option value="{{ device.id }}">{{ device.display_name }}</option>{% endfor %}
         </select>
     </div>
-    <div class="col">
+    <div class="col-sm">
         <label class="form-label" for="new_device_id">Neues Gerät</label>
         <select class="form-select" id="new_device_id" name="new_device_id" required>
             <option value="">Bitte auswählen</option>
             {% for device in devices %}<option value="{{ device.id }}">{{ device.display_name }}</option>{% endfor %}
         </select>
     </div>
-    <div class="col-auto align-self-end"><button class="btn btn-warning" type="submit">Gerät tauschen</button></div>
+    <div class="col-sm-auto align-self-end"><button class="btn btn-warning" type="submit">Gerät tauschen</button></div>
 </form>
 {% endif %}
 {% endblock %}
