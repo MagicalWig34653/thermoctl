@@ -49,6 +49,60 @@ horizontalem Dokumentüberlauf fehl (Ausnahmen: `pre`/`code`-Blöcke für wörtl
 kopierten Inhalt, die Startseiten-Zeitspur `.tc-zone-track`). Er hat bereits drei
 weitere, bis dahin unbenannte Fundstellen aufgedeckt (`/controllers`,
 `/zones/{id}/devices`, `.schedule-mode-link`).
+## Formulare: fünf vergessene Bindungen auf /controllers, zwei Abstürze bei falscher Eingabe
+
+Der Projektinhaber meldete "immer mal wieder doppelte Speichern-Knöpfe und
+Checkboxen" und "Einstellungen, die nach Neuladen weg sind", ohne eine Seite
+nennen zu können. Empirisch geprüft (echter Server, Doku-Demodaten, Formular
+im rohen HTML bzw. per Playwright, nicht nur statisch gelesen): `/controllers`,
+`/users`, `/tokens`, `/kiosk-tokens`, `/passkeys`, `/device-commands`,
+`/vacation`, `/interfaces`, `/zones/{id}/devices`, `/zones/{id}`,
+`/zones/{id}/parameters`, `/zones/{id}/setpoints`, `/modes/{id}`, `/settings`,
+`/account`, `/schedule`, `/heating-time` (Wohnung) sowie alle 39 eindeutigen
+GET-Ansichten aus `tools/screenshot_views.py` über den neuen generischen
+Browsertest `browser_tests/test_form_hygiene.py`.
+
+**Bestätigt und behoben:**
+- **`/controllers`, Lese-Kanal-Formular:** `<select name="kind">` hatte keine
+  `selected`-Bindung -- zeigte nach jedem Neuladen die erste Option
+  (`zone_setpoint`), unabhängig vom gespeicherten Wert. Der nächste Speichern
+  eines anderen Feldes schrieb diesen falschen Wert zurück und verwarf z. B.
+  einen auf `operating_mode` konfigurierten Kanal.
+- **`/controllers`, Schreib-Kanal-Formular:** `kind`, `source_device_id`,
+  `zone_id` ohne `selected`, `fixed_text`/`fixed_number` ohne `value` --
+  alle fünf gespeicherten Felder fehlten nach dem nächsten Laden.
+  `configure_channel()` leert jetzt zusätzlich die Felder, die zur gewählten
+  `kind` nicht passen (vorher blieb z. B. eine alte `zone_id` in der
+  Datenbank stehen, wenn nur auf `fixed` umgestellt wurde, ohne dass die
+  Seite das je gezeigt hätte).
+- **`device_assignment.html`:** toter, durch `{% if false and controllers %}`
+  abgeschalteter zweiter "Tastenbelegung"-Editor entfernt (Zeilen 184-253);
+  keine eigene, nur dafür vorhandene Kontextdaten im Handler gefunden.
+- **`/tokens` und `/kiosk-tokens`:** Ein nicht-numerisches `valid_days` (das
+  `<input type="number">` verhindert das im Browser, ein Werkzeug oder ein
+  manueller POST nicht) ließ `int(valid_days)` ungefangen durchschlagen --
+  Absturz mit 500 statt einer Fehlermeldung im Formular. Beide Stellen fangen
+  jetzt `ValueError` und zeigen "Die Gültigkeit muss eine Zahl von Tagen
+  sein." am Feld.
+
+**Geprüft, kein Fund:** Gruppen-Rechte (bereits an anderer Stelle in Arbeit),
+alle Formulare, die `form.html`s Makros (`text_field`, `number_field`,
+`select_field`, `toggle`) benutzen -- diese binden `value`/`selected`
+grundsätzlich korrekt; der Fehler oben saß genau in den beiden
+Formularblöcken, die das nicht tun. Kein `hx-swap="afterend"`/`"beforeend"`
+im ganzen Projekt (Risiko für sich duplizierende HTMX-Fragmente); die beiden
+tatsächlich genutzten `hx-get`/`hx-swap="outerHTML"`-Polling-Stellen
+(`start.html`, `tenant_start.html`) tauschen ein Element durch sich selbst
+aus, verdoppeln nichts.
+
+**Neuer Test:** `browser_tests/test_form_hygiene.py` -- für jede eindeutige
+Anlagen- und Wohnungs-Ansicht aus `tools/screenshot_views.py`: höchstens ein
+sichtbarer, gleichlautender Speichern-Knopf je Formular, kein sichtbares
+Eingabefeld mit demselben Namen doppelt im selben Formular (Checkboxen/Radios
+ausgenommen), keine Beschriftung "Speichern" zweimal im selben
+`.tc-panel`/`.card`/`section`. `/controllers` ist dort ausdrücklich
+ausgenommen (viele unabhängige Ein-Zeilen-Formulare je Karte sind dessen
+Layout, kein Fehler).
 
 ## Verwaltungstabellen bei 1280 px und mobil
 
@@ -118,10 +172,38 @@ weiterhin direkt sichtbaren Quelltext-Link (AGPL-3.0) und die Uhrzeit; auch der
 Panel-Detaildialog bietet den Quelltext-Link direkt an.
 Die Kiosk- und Mieter-Steppertests verwenden einen durchgehend gültigen Zeitplanmodus mit 21 °C, die Kiosk-Layouttests Übersteuerungen ohne Ablaufzeit und die Urlaubstests relative Datumsbereiche, damit ihre Erwartungen unabhängig von Uhrzeit, Wochentag und Datum gelten.
 
-Noch offen: Kreuzreview (Umsetzung war ein Claude-Agent) inklusive eigenem
-Testlauf gegen SQLite **und** MariaDB, danach Merge nach `main` und ein
-Nachtrag im Add-on-Repository, falls `DOCS.md` dort eine inzwischen falsche
-Aussage über die Kiosk-Ansicht enthält.
+Kreuzreview erfolgt (2026-09-26, kein Blocker; Auth/CSRF/Domäne unverändert
+bestätigt). Merge nach `main` und ein Nachtrag im Add-on-Repository, falls
+`DOCS.md` dort eine inzwischen falsche Aussage über die Kiosk-Ansicht enthält,
+stehen noch aus.
+
+**Kreuzreview-Nachtrag: doppelter Tipp auf "Sollwert anheben" konnte
+folgenlos verschwinden.** Alle drei Kiosk-Formulare (Sollwert, Boost,
+Übersteuerung aufheben) tauschen `#kiosk-body` vollständig aus
+(`hx-swap="outerHTML"`); nichts hinderte einen zweiten Tipp daran, den Knopf
+noch vor dem Austausch erneut zu treffen. Nachgestellt mit zwei
+`HTMLElement.click()`-Aufrufen auf denselben Knoten ohne jede Verzögerung
+(nicht mit `Locator.click()` -- das wartet selbst auf Aktivierbarkeit und
+verdeckt den Fehler dadurch): zuverlässig in allen Versuchen landete der
+zweite Tipp folgenlos bei 34,5 → 35,0 statt der erwarteten Ablehnung bei
+35,5 -- genau der gemeldete Befund.
+
+Entscheidung: kein Tipp soll unbemerkt zu einem falschen Endwert führen,
+aber ein Tipp während einer laufenden Anfrage darf sichtbar ins Leere
+greifen. `hx-disabled-elt` sperrt jetzt den Knopf (beim Sollwert-Formular
+über ein `<fieldset style="display: contents">`, da `find` nur den ersten
+Treffer liefert und beide Tasten gemeinsam gesperrt werden müssen; Boost und
+Übersteuerung-aufheben haben je nur einen Knopf) für die Dauer der eigenen
+Anfrage -- Bootstraps `fieldset:disabled .btn`/`.btn:disabled` liefert die
+sichtbare Sperre ohne eigene CSS-Regel. `hx-sync="this:queue first"` sichert
+zusätzlich gegen doppelte Anfragen vom selben Formular ab. Ein gesperrter
+Tipp ist nicht dauerhaft verloren: ein späterer, echter Tipp wirkt normal.
+Ohne JavaScript unverändert eine gewöhnliche, sequenzielle
+Formularübermittlung. Kein Eingriff in `thermoctl/auth/`, `thermoctl/domain/`
+oder die Rechte- und CSRF-Prüfung der Kiosk-Endpunkte.
+`browser_tests/test_kiosk.py::test_a_double_tap_on_raise_is_locked_out_instead_of_racing`
+prüft das deterministisch (CPU-Drosselung via CDP zusätzlich gesetzt, ändert
+das Ergebnis aber nicht), zehnfach hintereinander grün.
 
 ## Doku mit Bildern, Screenshot-Werkzeug, drei Fehler aus dem Hinsehen
 

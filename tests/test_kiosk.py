@@ -873,6 +873,27 @@ def test_issuing_with_an_unparseable_zone_id_is_rejected(
     assert response.status_code == status.HTTP_400_BAD_REQUEST
 
 
+def test_issuing_with_a_non_numeric_validity_is_rejected_with_a_form_error(
+    client: TestClient, session: Session
+) -> None:
+    """`int(valid_days)` used to run unguarded -- a value the `<input type=number>`
+    would normally reject client-side, but a bare POST does not, crashed the
+    endpoint with a 500 instead of showing a form error."""
+    zone = create_zone(session, "flur")
+    admin = _admin(session)
+    _entry, secret = create_session(session, admin, 3600)
+    client.cookies.set(COOKIE_NAME, secret)
+    headers = {"X-CSRF-Token": csrf_token(secret, get_settings().secret_key.get_secret_value())}
+
+    response = client.post(
+        "/kiosk-tokens",
+        data={"name": "Flur", "zone_id": str(zone.id), "valid_days": "abc"},
+        headers=headers,
+    )
+    assert response.status_code == status.HTTP_200_OK
+    assert "Zahl von Tagen" in response.text
+
+
 def test_issuing_without_a_name_is_rejected_with_a_form_error(
     client: TestClient, session: Session
 ) -> None:

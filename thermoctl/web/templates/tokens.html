@@ -70,7 +70,7 @@
             </select>
         </div>
         {{ number_field("valid_days", "Gültig für (Tage)", values.get("valid_days", ""),
-                      step="1", min="1",
+                      step="1", min="1", errors=errors.get("valid_days", ""),
                       help_text="Leer lassen für unbegrenzt. Ein befristetes Token ist die sicherere Wahl.") }}
         <button type="submit" class="btn btn-primary">Ausstellen</button>
     </form>
