@@ -15,10 +15,11 @@ frühere eigene Endpunkt `/zones/{id}/window-temp-drop-detection` ist entfernt
 unverändert). Die Domänenregel (`domain.zone_settings.set_window_temp_drop_detection`)
 bleibt unverändert; der Handler ruft sie nur zusätzlich zu `save_control_parameters`
 auf. `valve_protection_enabled`, `pi_confirm`, `pi_enabled` (inkl. `disabled`-Fall)
-geprüft — kein weiterer Fehler, `pi_confirm` wird bewusst nur beim Einschalten
-verlangt (unverändertes, bereits korrektes Verhalten), `pi_enabled` bleibt beim
-bereits eingeschalteten, inzwischen ungeeigneten Zustand absichtlich *nicht*
-`disabled`, sonst würde ein Reload es durch ein fehlendes Formularfeld ausschalten.
+geprüft — kein weiterer Fehler, `pi_confirm` wird bewusst nur beim Aktivieren des
+Häkchens verlangt (unverändertes, bereits korrektes Verhalten), `pi_enabled` bleibt
+beim bereits gesetzten, inzwischen ungeeigneten Zustand absichtlich *nicht*
+`disabled`, sonst würde ein Reload es über ein fehlendes Formularfeld stillschweigend
+zurücksetzen.
 
 Projektweite Suche nach demselben Muster (mehrere Formulare, die für den Nutzer
 wie ein zusammenhängender Bereich aussehen): `settings.html`, `device_assignment.html`,

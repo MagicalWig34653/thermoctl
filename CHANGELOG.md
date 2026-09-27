@@ -16,7 +16,8 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 - **Zonen → Regelparameter (`/zones/{id}/parameters`): zwei "Speichern"-Knöpfe für
   eine Seite, einer davon verlor die Änderung.** Der Schalter „Fenster aus
   Temperatursturz erkennen" stand in einem eigenen, zweiten `<form>` mit eigenem
-  Knopf direkt unter dem Hauptformular (Regelparameter, Ventilschutz, PI-Regelung).
+  Knopf direkt unter dem Hauptformular (Regelparameter, Schutzlauf-Einstellungen,
+  PI-Regelung).
   Wer den Schalter umlegte und dann den *anderen*, oben stehenden Knopf drückte,
   verlor die Änderung — für einen Betrachter sieht die Seite wie ein
   zusammenhängender Einstellungsbereich mit zwei gleichlautenden Knöpfen aus. Beide
@@ -28,7 +29,7 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
   Projektweite Suche nach demselben Muster (mehrere Formulare, die für den Nutzer
   wie ein Bereich aussehen): kein weiterer bestätigter Fall gefunden.
 
-
+## 0.10.0 — 2026-09-26
 
 ### Hinzugefügt
 
