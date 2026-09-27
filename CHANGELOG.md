@@ -11,6 +11,21 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ## Unveröffentlicht
 
+### Behoben
+
+- **Die "−"/"+"-Sollwertknöpfe zeigten ihr Zeichen sichtbar zu tief** -- auf
+  der Übersicht (`.tc-stage`), der Wohnungssicht-Startseite (`.tc-stepbtn`)
+  und im Kiosk (`.kiosk-stage`, dort mit rund 2 px am stärksten). Ursache war
+  eine Schriftmetrik-Eigenheit: die Zeilenbox eines Zeichens zentriert
+  `display: flex`/`align-items: center` zuverlässig, die tatsächlich
+  gezeichnete Tinte darin aber nicht -- deren Lage relativ zur Zeilenbox
+  hängt von Ascent/Descent der jeweiligen Schrift ab, nicht vom Zeichen
+  selbst. Gemessen mit `CanvasRenderingContext2D.measureText()`s
+  `actualBoundingBox*`-Metriken statt einer reinen Zeilenbox-Prüfung (siehe
+  `browser_tests/test_icon_centering.py`); behoben mit einem an dieser
+  Messung bemessenen, asymmetrischen `padding-block` je betroffener Klasse in
+  `thermoctl.css`.
+
 ## 0.10.0 — 2026-09-26
 
 ### Hinzugefügt

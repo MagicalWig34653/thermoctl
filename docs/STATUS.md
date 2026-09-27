@@ -1,6 +1,45 @@
 # Stand
 
-Letzte Aktualisierung: 2026-09-26.
+Letzte Aktualisierung: 2026-09-27.
+
+## Icon-Zentrierung in den Sollwert-Steppern (unveröffentlicht)
+
+Meldung: "Auf der Übersichtsseite sind manche Icons in den Buttons nicht
+zentriert." Betroffen: `.tc-stage` (Übersicht `/`), `.tc-stepbtn`
+(Wohnungssicht-Startseite) und `.kiosk-stage` (Kiosk-Tafel) -- alle drei sind
+dieselbe Ursache mit unterschiedlicher Schriftgröße, keine drei getrennten
+Fehler. Kein anderer Icon-Knopf im Programm ist betroffen (`.tc-iconbtn`,
+`.tc-bottomnav-item` u. a. tragen nur Beschriftungstext, kein Einzelzeichen).
+
+**Ursache:** Weder `line-height` noch `display: flex` mit
+`align-items: center` zentrieren die tatsächlich gezeichnete Tinte eines
+Zeichens wie "−"/"+" -- beide zentrieren nur die *Zeilenbox*, die eine
+Schrift aus ihrer eigenen Ascent-/Descent-Metrik bildet. Die Tinte sitzt
+innerhalb dieser Box nicht zwingend mittig; eine reine
+`Range.getBoundingClientRect()`-Prüfung (Zeilenbox) hätte den Fehler nicht
+gezeigt, weil die Zeilenbox nach dem `flex`-Zusatz bereits exakt zentriert
+war, während die Tinte darin unverändert 1,3 px (`.tc-stage`), 1,1 px
+(`.tc-stepbtn`) bzw. 2,1 px (`.kiosk-stage`) zu tief blieb. Gemessen über
+`CanvasRenderingContext2D.measureText()`s `actualBoundingBox*`-Metriken
+(echte Tintenausdehnung, MDN) gegen die Knopf-Innenfläche, mit einem
+Diagnoseskript (Playwright, eigener Server, eigene Zustände: laufende
+Übersteuerung, Fenster offen, Sensorfehler, Kiosk-Token, Wohnungssicht) --
+nicht Teil des Programms.
+
+**Behoben:** ein an der Messung bemessenes, asymmetrisches `padding-block`
+je Klasse in `thermoctl.css` (mehr Innenabstand unten als oben, verschiebt
+die Zeilenbox selbst statt sie nur zu zentrieren). Danach liegt die Tinte
+bei allen drei Klassen auf unter 0,1 px genau in der Knopfmitte (dieselbe
+Messung). Horizontal war keine der drei Klassen betroffen (< 0,25 px, weit
+unter der Wahrnehmungsschwelle).
+
+Neuer Regressionstest `browser_tests/test_icon_centering.py`: misst dieselbe
+Tintenmitte für jeden Icon-Knopf (Text mit höchstens zwei Zeichen) gegen
+1 px Toleranz, auf `/`, der Wohnungssicht-Startseite und `/kiosk/{token}`,
+zusätzlich mit einer laufenden Übersteuerung im DOM (damit die Diagnose
+das Verschwinden des Thermostats bei aktiver Übersteuerung nicht mit einem
+falschen Treffer verwechselt). Vor der Behebung rot an allen vier Stellen
+(belegt durch einen Lauf gegen den zurückgestellten CSS-Stand), danach grün.
 
 ## v0.10.0
 

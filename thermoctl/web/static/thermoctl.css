@@ -592,12 +592,19 @@ body {
     overflow-wrap: anywhere;
 }
 
-/* Das Thermostat: zwei Stufentasten um den Sollwert des laufenden Modus. */
+/* Das Thermostat: zwei Stufentasten um den Sollwert des laufenden Modus.
+ * `padding-block` gleicht eine Font-Metrik-Asymmetrie der Glyphen "−"/"+" aus,
+ * die weder `line-height` noch `flex`/`align-items: center` allein beheben --
+ * ausführliche Begründung und Messwerte bei `.kiosk-stage` weiter unten. */
 .tc-thermostat .tc-stage {
     width: 2rem;
     padding-inline: 0;
     font-size: 1.1rem;
     line-height: 1.1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding-block: 0 0.17rem;
 }
 
 /* ── Formulare und Schaltflächen ────────────────────────────────────────────────
@@ -1512,11 +1519,29 @@ body {
     gap: 0.75rem;
 }
 
+/* Weder `line-height` noch `display: flex` allein zentrieren die Tintenfläche
+ * der Ziffernglyphen "−"/"+" -- beide zentrieren nur die Zeilenbox, die eine
+ * Schrift aus ihrer eigenen Ascent-/Descent-Metrik bildet; die sichtbare Tinte
+ * sitzt innerhalb dieser Box nicht zwingend mittig (asymmetrische
+ * Halb-Vorlauf-Aufteilung). Gemessen (Canvas-`measureText().actualBoundingBox*`
+ * gegen die Knopf-Innenfläche, `tools/`-Diagnose, nicht Teil des Programms): die
+ * Tinte saß mit `flex`/`place-items: center` allein unverändert rund 2 px zu
+ * tief -- exakt wie vorher, weil `align-items: center` dieselbe schriftmetrische
+ * Box zentriert, die schon vorher zentriert war. Erst das zusätzliche,
+ * asymmetrische `padding-block` (mehr unten als oben) verschiebt die Zeilenbox
+ * selbst um den gemessenen Betrag; danach liegt die Tinte auf unter 0,1 px genau
+ * mittig (nachgemessen, dieselbe Diagnose). Bewusst als Knopfpolster und nicht
+ * als `transform`, weil ein `transform` auf dem flexen Container die ganze
+ * Knopffläche mitverschieben würde, nicht nur die Zeilenbox darin. */
 .kiosk-stage {
     font-size: 1.5rem;
     width: 3rem;
     height: 3rem;
     line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding-block: 0 0.27rem;
 }
 
 .kiosk-error {
@@ -2440,6 +2465,8 @@ body {
     gap: 0.75rem;
 }
 
+/* Dieselbe Ursache wie bei `.kiosk-stage`/`.tc-thermostat .tc-stage` -- gemessen
+ * rund 1,1 px zu tief. */
 .tc-stepbtn {
     width: 3rem;
     height: 3rem;
@@ -2449,6 +2476,10 @@ body {
     color: var(--ink);
     font-size: 1.35rem;
     line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding-block: 0 0.13rem;
 }
 
 .tc-stepbtn:hover {
