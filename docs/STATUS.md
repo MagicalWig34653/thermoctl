@@ -2,6 +2,66 @@
 
 Letzte Aktualisierung: 2026-09-27.
 
+## PI-Regelung: eine allgemeine Invariante ersetzt die einzelnen Übergangs-Sonderfälle
+
+Zweiter Kreuzreview desselben Fixes fand zwei weitere, blockierende Befunde, beide
+in genau der Behandlung des Übergangs Hysterese→PI, die der Abschnitt darunter
+noch als "konservativ behoben" beschreibt -- das war zu eng gedacht.
+
+**Befund (A):** Gate-Resets (Fenster/Frost/Sensor/Ventilschutz) erhalten
+`pi_last_control_armed` -- ein einmal abgeschlossener Scharfschalt-Schutz
+(`needs_safe_start`) feuert danach nie wieder, egal wie oft ein Gate zwischenzeitlich
+zurücksetzt. Eine unter Hysterese begonnene Phase, die während eines vorübergehenden
+Gates (z. B. Sensorausfall) läuft, verlor damit ihren Schutz, sobald das Gate endete:
+PI übernahm mit seinen eigenen, kürzeren Mindestdauern, unabhängig davon, wie lange die
+Phase tatsächlich schon lief. Reproduziert für Sensor, Fenster, Aus-Modus/Frost und
+Wiederanlauf. Zusätzlich konnte ein Gate-Reset sogar eine noch laufende
+Scharfschalt-Wartefrist löschen (`reset_pi_state()` ohne `await_next_boundary` schreibt
+`awaiting_boundary_until=None` -- vorher unbedingt, auch wenn schon eine Frist lief).
+
+**Befund (B):** Die vorherige, einmalige Berechnung der Wartefrist (siehe Abschnitt
+unten) griff nicht, wenn PI aktiviert wurde, *bevor* überhaupt etwas gehalten wurde --
+die Berechnung fand nichts zu verlängern. Eine Phase, die danach unter Hysterese
+begann, war nie geschützt.
+
+**Diagnose der Hauptsession:** Die Behandlung an einzelnen Übergangspunkten war der
+falsche Ansatz. **Ersetzt durch eine allgemeine Invariante**, in jedem Zyklus geprüft,
+in dem PI wirksam würde -- nicht nur an einem Übergang: *Eine Phase (Ein oder Aus), die
+unter Hysterese-Steuerung begonnen hat, wird mindestens für die Hysterese-Mindestdauer
+gehalten, egal wann und auf welchem Weg PI danach übernimmt. Eine Phase, die PI selbst
+begonnen hat, unterliegt PI's eigenen, weichen Mindestdauern.*
+
+Welcher Regler eine Phase begonnen hat, wird aus der bereits vorhandenen
+`shadow_decision`-Historie abgeleitet -- derselben Zeile, aus der `held_for_s` schon
+kommt (`_previous_state()`s neuer vierter Rückgabewert `phase_started_by`, deren
+`effective_controller`). **Keine Migration nötig.** Die neue Prüfung
+(`_hysteresis_phase_still_holding()`) sitzt in `_pi_outcome`, direkt nach den
+bestehenden Gates (Fenster/Frost/Sensor/Ventilschutz) und vor der eigentlichen
+PI-Berechnung; der bisherige Sonderfall im `needs_safe_start`-Zweig (Abschnitt unten)
+ist ersatzlos entfernt, nicht zusätzlich stehen geblieben. Der `_write_reset_state()`-Fix
+(Befund A, zweiter Teil) bleibt eigenständig bestehen -- er schützt weiterhin die
+Scharfschalt-Wartefrist selbst, unabhängig von der neuen Invariante.
+
+**Am Anlagenverhalten ändert sich dadurch:** Eine unter Hysterese begonnene Phase wird
+jetzt unter allen Umständen für die volle Hysterese-Mindestdauer gehalten -- unabhängig
+davon, wie oft zwischenzeitlich ein Gate (Sensor, Fenster, Frostschutz, Aus-Modus,
+Wiederanlauf) zurückgesetzt hat, und unabhängig davon, ob PI schon vor oder erst nach
+Beginn der Phase aktiviert wurde. Eine von PI selbst begonnene Phase ist davon
+unberührt und folgt weiterhin PI's eigenen, kürzeren Mindestdauern.
+
+**Geändert:** `thermoctl/services/shadow_run.py` (`_previous_state()` liefert
+`phase_started_by`; `_hysteresis_minimum_still_running()` durch
+`_hysteresis_phase_still_holding()` ersetzt und in `_pi_outcome` als allgemeines Gate
+verdrahtet statt in `needs_safe_start`; `_write_reset_state()` löscht eine laufende
+Wartefrist nicht mehr; neue Konstante `PI_FALLBACK_HYSTERESIS_MINIMUM`),
+`tests/test_shadow_run_pi.py` (Regressionstests für beide Befunde, je ein Test für
+Sensor/Fenster/Aus-Modus-und-Frost/Wiederanlauf, vorher rot belegt durch gezielte
+Deaktivierung der neuen Prüfung). Keine Migration.
+
+Ruff, mypy, Pytest gegen SQLite **und** MariaDB, Zahlen im Bericht. Einzelmutanten von
+Hand für die neue Invariante und den `_write_reset_state()`-Fix geprüft (kein neuer
+vollständiger Mutationslauf, wie beauftragt).
+
 ## PI-Regelung: Sensorausfall wurde von PI übersehen, Übergang Hysterese→PI umgeht jetzt nicht mehr die laufende Mindestdauer
 
 Kreuzreview des Fixes unten (Commit 45ecf1a) fand zwei weitere Fehler, einen davon
@@ -27,21 +87,13 @@ Parameter, der nicht mehr über `decision.reason_code` laufen kann und deshalb v
 unabhängig von `decision.reason_code` berechnet und damit nie betroffen (jetzt mit
 eigenen End-zu-End-Tests belegt statt nur angenommen).
 
-**Behoben (Regellogik, konservativ):** Die vorherige Aussage unten, der Übergang
-Hysterese→PI übernehme "nie mitten in einer laufenden Hysterese-Haltung", war falsch --
-der vorhandene Scharfschalt-Schutz wartet nur bis zur nächsten vollen
-15-Minuten-Fenstergrenze, nicht bis zum Ende der *tatsächlich* noch laufenden
-Hysterese-Mindestdauer. Gegenbeispiel aus dem Review: Heizbeginn 12:13, PI-Aktivierung
-12:14, Fenstergrenze 12:15 -- PI hätte nach nur 120s statt der vollen 300s-Mindestdauer
-abschalten können. **Entscheidung des Projektinhabers, konservativ:** Beim Übergang
-Hysterese→PI gilt die zum Übernahmezeitpunkt noch laufende Hysterese-Mindestdauer der
-aktuellen Phase bis zu ihrem Ende (hier also bis 12:18); erst danach entscheidet PI mit
-eigener Semantik. Umgesetzt in `_pi_outcome`'s `needs_safe_start`-Zweig: die Wartezeit
-ist jetzt das spätere von „nächste Fenstergrenze" und „noch laufende
-Hysterese-Mindestdauer der gehaltenen Phase" (`_hysteresis_minimum_still_running()`,
-neu). **Am Anlagenverhalten ändert das**: eine frisch aktivierte oder wieder eligible
-PI-Zone kann eine bereits laufende Hysterese-Mindestdauer nicht mehr durch das Erreichen
-der nächsten Fenstergrenze umgehen.
+**Ersetzt (Regellogik):** Dieser Abschnitt beschrieb ursprünglich einen einmaligen
+Sonderfall im `needs_safe_start`-Zweig, der den Übergang Hysterese→PI korrigieren
+sollte. Ein zweiter Kreuzreview fand diesen Ansatz unzureichend (zwei weitere,
+blockierende Befunde) -- siehe den Abschnitt ganz oben in dieser Datei, der ihn durch
+eine allgemeine, in jedem Zyklus geprüfte Invariante ersetzt. `_hysteresis_minimum_
+still_running()` existiert nicht mehr; die Nachfolgefunktion heißt
+`_hysteresis_phase_still_holding()`.
 
 **Zwei Testkorrekturen** aus demselben Review: `test_falling_back_to_hysteresis_
 keeps_the_accumulated_hold` behauptete in seinen Kommentaren falsche Zeiten (30s

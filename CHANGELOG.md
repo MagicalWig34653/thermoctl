@@ -26,15 +26,20 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
   Hysterese-Zone. Behoben durch einen eigenen, direkt aus der Situation berechneten
   Sensorstatus-Parameter, der nicht mehr durch eine andere Regel verdeckt werden
   kann.
-- **PI-Regelung: der Übergang von Hysterese zu PI konnte eine bereits laufende
-  Mindestschaltdauer umgehen.** Aktiviert man PI (oder wird eine Zone wieder
-  dafür geeignet), während ein Zustand noch innerhalb der Hysterese-Mindestdauer
-  gehalten wird, wartete die Anlage bisher nur bis zur nächsten vollen
-  15-Minuten-Fenstergrenze, nicht bis zum tatsächlichen Ende dieser
-  Mindestdauer. **Was sich an der Anlage ändert:** Eine frisch aktivierte oder
-  wieder geeignete PI-Zone kann eine bereits laufende Hysterese-Mindestdauer
-  jetzt nicht mehr durch das Erreichen der nächsten Fenstergrenze umgehen -- die
-  längere der beiden Wartezeiten gilt.
+- **PI-Regelung: eine unter Hysterese begonnene Phase konnte ihre eigene
+  Mindestschaltdauer umgehen, sobald PI die Steuerung übernahm.** Betraf drei
+  Fälle: den Übergang Hysterese→PI selbst (PI wird aktiviert oder wieder
+  geeignet, während eine Phase noch innerhalb ihrer Hysterese-Mindestdauer
+  gehalten wird); die Rückkehr aus einem vorübergehenden Zustand (Sensorausfall,
+  offenes Fenster, Aus-Modus/Frostschutz, Wiederanlauf-Wartezeit nach einem
+  Fenster) mitten in einer solchen Phase; und einen Sonderfall, in dem ein
+  solcher Zustand sogar eine bereits laufende Warteperiode nach dem Aktivieren
+  von PI löschen konnte. **Was sich an der Anlage ändert:** Eine Phase, die unter
+  Hysterese begonnen hat, wird jetzt unter allen Umständen für die volle
+  Hysterese-Mindestdauer gehalten -- unabhängig davon, wann oder auf welchem Weg
+  PI danach übernimmt, und unabhängig davon, wie oft zwischenzeitlich ein
+  vorübergehender Zustand zurückgesetzt hat. Eine von PI selbst begonnene Phase
+  ist davon unberührt und folgt weiterhin PI's eigenen, kürzeren Mindestdauern.
 - **PI-Regelung: der Schattenlauf berichtete die 300s-Hysterese-Mindestdauer,
   nicht PI's eigene, kürzere Mindestdauern.** `would_heat` selbst folgte schon
   immer PI's eigenen Werten (`pi_min_on_seconds`/`pi_min_off_seconds`) -- die

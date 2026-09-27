@@ -120,6 +120,8 @@
     ],
     "docs/STATUS.md": [
       "## Betrieb unter Docker Swarm und Kubernetes dokumentiert",
+      "**Befund (A):** Gate-Resets (Fenster/Frost/Sensor/Ventilschutz) erhalten",
+      "bestehenden Gates (Fenster/Frost/Sensor/Ventilschutz) und vor der eigentlichen",
       "klammerte den Ventilschutz-Marker vorher nicht ab, wenn PI eine solche Blockade",
       "## Fenster: Frostschutz gewinnt, EIN/AUS-Aktoren schalten nicht ab",
       "## Was geschaltet wird — genau",
