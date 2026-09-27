@@ -1,0 +1,23 @@
+{#
+Gemeinsame Icon-Glyphen für die Sollwert-Stepper (Übersicht, Wohnungssicht,
+Kiosk). Als Inline-SVG statt Textzeichen ("−"/"+"): ein Zeichen zentriert sich
+nur scheinbar über `line-height`/`flex` -- die tatsächlich gezeichnete Tinte
+sitzt innerhalb der Zeilenbox einer Schrift nicht zwingend mittig, und wie
+stark hängt von der jeweiligen Schriftmetrik ab (siehe `docs/STATUS.md`,
+Abschnitt zur Icon-Zentrierung). Ein Pfad mit fester, zur eigenen Bounding-Box
+symmetrischer Geometrie hat dieses Problem nicht, unabhängig von Schrift oder
+Betriebssystem -- wichtig gerade am Kiosk-Wandtablett, dessen Schriftsystem
+unbekannt ist.
+
+`aria-hidden="true"`, weil jeder aufrufende Knopf sein eigenes `aria-label`
+trägt ("Sollwert senken" usw.) -- das SVG ist rein dekorativ, der zugängliche
+Name kommt vollständig vom Knopf. `focusable="false"` hält Internet-Explorer-
+artige Browser davon ab, das SVG selbst in die Tab-Reihenfolge aufzunehmen
+(in aktuellen Browsern wirkungslos, aber schadet nicht).
+#}
+{% macro stepper_icon(direction) %}
+<svg class="tc-stepicon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+    <path d="M5 12h14"/>
+    {% if direction == "up" %}<path d="M12 5v14"/>{% endif %}
+</svg>
+{% endmacro %}

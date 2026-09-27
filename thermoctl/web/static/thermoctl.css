@@ -592,19 +592,51 @@ body {
     overflow-wrap: anywhere;
 }
 
-/* Das Thermostat: zwei Stufentasten um den Sollwert des laufenden Modus.
- * `padding-block` gleicht eine Font-Metrik-Asymmetrie der Glyphen "−"/"+" aus,
- * die weder `line-height` noch `flex`/`align-items: center` allein beheben --
- * ausführliche Begründung und Messwerte bei `.kiosk-stage` weiter unten. */
+/* Gemeinsamer Grundstil des Sollwert-Stepper-Icons (`icons.html::stepper_icon`).
+ * `stroke: currentColor` übernimmt die Textfarbe des jeweiligen Knopfes (auch im
+ * Hover, siehe `.tc-stepbtn:hover` unten) ohne eigene Farbregel je Stelle;
+ * `fill: none` zeichnet nur die Striche, keine Fläche. Größe wird je Knopf
+ * überschrieben (unten), weil die drei Stellen unterschiedlich groß sind. */
+.tc-stepicon {
+    width: 1.25rem;
+    height: 1.25rem;
+    stroke: currentColor;
+    stroke-width: 2.5;
+    stroke-linecap: round;
+    fill: none;
+    display: block;
+}
+
+/* Icon statt Zeichen: Kreuzreview-Fund (029de74) -- ein Textzeichen wie "−"/"+"
+ * lässt sich nicht schriftunabhängig zentrieren. `line-height`/`flex` zentrieren
+ * nur die Zeilenbox, die eine Schrift aus ihrer eigenen Ascent-/Descent-Metrik
+ * bildet; wie weit die tatsächlich gezeichnete Tinte davon abweicht, hängt von
+ * der jeweiligen Schrift ab. Ein früherer Versuch, das über ein an der
+ * macOS-Systemschrift bemessenes, asymmetrisches `padding-block` auszugleichen,
+ * überkorrigierte auf jeder anderen Schrift in die Gegenrichtung (gemessen:
+ * Arial dy = -2,25 px, Times -1,86, Courier -2,04, Georgia -0,97) -- am
+ * Kiosk-Wandtablett mit unbekanntem Betriebssystem also potenziell schlimmer als
+ * der ursprüngliche Fund. `stepper_icon()` (`icons.html`) liefert stattdessen ein
+ * SVG mit fester, zu ihrer eigenen Bounding-Box symmetrischer Pfadgeometrie --
+ * `display: flex`/`align-items: center` zentriert dessen *tatsächliche* Fläche,
+ * nicht nur eine Zeilenbox, unabhängig von Schrift oder Plattform. Nachgemessen
+ * über mehrere Schriften hinweg in `browser_tests/test_icon_centering.py`.
+ *
+ * Größe zugleich auf die WCAG-Mindesttippzielgröße gebracht (vorher 32×34 px,
+ * unter den sonst im Programm geltenden 44 px -- siehe `.btn`s eigene
+ * Begründung weiter unten). */
 .tc-thermostat .tc-stage {
-    width: 2rem;
+    width: 2.75rem;
+    min-height: 2.75rem;
     padding-inline: 0;
-    font-size: 1.1rem;
-    line-height: 1.1;
     display: flex;
     align-items: center;
     justify-content: center;
-    padding-block: 0 0.17rem;
+}
+
+.tc-thermostat .tc-stage .tc-stepicon {
+    width: 1.1rem;
+    height: 1.1rem;
 }
 
 /* ── Formulare und Schaltflächen ────────────────────────────────────────────────
@@ -1519,29 +1551,24 @@ body {
     gap: 0.75rem;
 }
 
-/* Weder `line-height` noch `display: flex` allein zentrieren die Tintenfläche
- * der Ziffernglyphen "−"/"+" -- beide zentrieren nur die Zeilenbox, die eine
- * Schrift aus ihrer eigenen Ascent-/Descent-Metrik bildet; die sichtbare Tinte
- * sitzt innerhalb dieser Box nicht zwingend mittig (asymmetrische
- * Halb-Vorlauf-Aufteilung). Gemessen (Canvas-`measureText().actualBoundingBox*`
- * gegen die Knopf-Innenfläche, `tools/`-Diagnose, nicht Teil des Programms): die
- * Tinte saß mit `flex`/`place-items: center` allein unverändert rund 2 px zu
- * tief -- exakt wie vorher, weil `align-items: center` dieselbe schriftmetrische
- * Box zentriert, die schon vorher zentriert war. Erst das zusätzliche,
- * asymmetrische `padding-block` (mehr unten als oben) verschiebt die Zeilenbox
- * selbst um den gemessenen Betrag; danach liegt die Tinte auf unter 0,1 px genau
- * mittig (nachgemessen, dieselbe Diagnose). Bewusst als Knopfpolster und nicht
- * als `transform`, weil ein `transform` auf dem flexen Container die ganze
- * Knopffläche mitverschieben würde, nicht nur die Zeilenbox darin. */
+/* Icon statt Zeichen -- siehe die ausführliche Begründung bei
+ * `.tc-thermostat .tc-stage` weiter oben. Ein früherer, an der
+ * macOS-Systemschrift bemessener `padding-block`-Ausgleich stand hier lange
+ * Zeit mit der größten Abweichung aller drei Stellen (rund 2 px); genau das
+ * machte ihn auf einer anderen Schrift auch zur größten Überkorrektur. Das SVG
+ * braucht keinen solchen Ausgleich, weil seine Fläche unabhängig von Schrift
+ * oder Plattform ist. */
 .kiosk-stage {
-    font-size: 1.5rem;
     width: 3rem;
     height: 3rem;
-    line-height: 1;
     display: flex;
     align-items: center;
     justify-content: center;
-    padding-block: 0 0.27rem;
+}
+
+.kiosk-stage .tc-stepicon {
+    width: 1.5rem;
+    height: 1.5rem;
 }
 
 .kiosk-error {
@@ -2465,8 +2492,8 @@ body {
     gap: 0.75rem;
 }
 
-/* Dieselbe Ursache wie bei `.kiosk-stage`/`.tc-thermostat .tc-stage` -- gemessen
- * rund 1,1 px zu tief. */
+/* Icon statt Zeichen -- siehe die ausführliche Begründung bei
+ * `.tc-thermostat .tc-stage` weiter oben. */
 .tc-stepbtn {
     width: 3rem;
     height: 3rem;
@@ -2474,12 +2501,14 @@ body {
     border: 1px solid var(--line-strong);
     background: var(--surface-deep);
     color: var(--ink);
-    font-size: 1.35rem;
-    line-height: 1;
     display: flex;
     align-items: center;
     justify-content: center;
-    padding-block: 0 0.13rem;
+}
+
+.tc-stepbtn .tc-stepicon {
+    width: 1.35rem;
+    height: 1.35rem;
 }
 
 .tc-stepbtn:hover {
