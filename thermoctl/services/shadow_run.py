@@ -25,7 +25,9 @@ from thermoctl.db.models.zone import Zone, ZoneSetpoint
 from thermoctl.domain.control_loop import (
     REASON_CODE_BLOCKED_MINIMUM_DURATION,
     REASON_CODE_FROST_SENSOR_FAILURE,
+    REASON_CODE_HEATING,
     REASON_CODE_NO_SOURCE,
+    REASON_CODE_OFF,
     REASON_CODE_VALVE_PROTECTION,
     Decision,
     Situation,
@@ -920,19 +922,51 @@ def _process_zone(
         vacation,
         now,
     )
-    effective_decision = (
-        decision
-        if effective_heating == decision.heating and pi_reason_suffix is None
-        else replace(
+    # `decide()`'s rule 5 always answers the pure-hysteresis question, against
+    # `situation.parameter.min_on_seconds`/`min_off_seconds` -- correct for that
+    # question, but `REASON_CODE_BLOCKED_MINIMUM_DURATION` is exactly the code
+    # `_pi_gate_reason()` treats as *not* blocking PI (its own, shorter minimums
+    # govern instead -- see `TestPiGateReasonClassifiesEveryReasonCode` in
+    # `tests/test_shadow_run_pi.py`). Once PI actually is this cycle's effective
+    # controller, keeping `decision.reason_code`/`decision.reason` as the base --
+    # as the general branch below does for every other code -- reports the wrong
+    # minimum duration (the hysteresis one, not PI's) and, whenever PI's own
+    # candidate actually differs from `decision.heating`, a reason sentence that
+    # literally claims "bleibt unverändert" for a state that just changed.
+    # Grundsatz 5 asks for an accurate reason, not merely an accurate `heating`
+    # value -- found 2026-09-27 from the project owner's report that the 300s
+    # hysteresis minimum still appeared to govern a PI-controlled zone. Rebuilt
+    # entirely from PI's own outcome instead of patching decide()'s text: PI's
+    # reason (`pi_reason_suffix`, always set whenever `pi_fields` names PI as the
+    # effective controller) already names the applicable minimum-duration
+    # decision (`pi_min_duration_decision`) and the resulting direction, with
+    # nothing left over from the inapplicable hysteresis rule to contradict it.
+    pi_overrides_hysteresis_block = (
+        decision.reason_code == REASON_CODE_BLOCKED_MINIMUM_DURATION
+        and pi_fields.get("effective_controller") == "pi"
+    )
+    if pi_overrides_hysteresis_block:
+        assert pi_reason_suffix is not None  # always set once PI is effective
+        effective_decision = replace(
             decision,
             heating=effective_heating,
-            reason=(
-                decision.reason
-                if pi_reason_suffix is None
-                else f"{decision.reason} {pi_reason_suffix}"
-            ),
+            reason_code=REASON_CODE_HEATING if effective_heating else REASON_CODE_OFF,
+            reason=pi_reason_suffix.strip(),
         )
-    )
+    else:
+        effective_decision = (
+            decision
+            if effective_heating == decision.heating and pi_reason_suffix is None
+            else replace(
+                decision,
+                heating=effective_heating,
+                reason=(
+                    decision.reason
+                    if pi_reason_suffix is None
+                    else f"{decision.reason} {pi_reason_suffix}"
+                ),
+            )
+        )
     _apply_decision_to_state(state, effective_decision, now)
 
     row = ShadowDecision(
@@ -943,7 +977,12 @@ def _process_zone(
         setpoint_reason=setpoint_reason,
         would_heat=effective_decision.heating,
         previous_would_heat=previous_would_heat,
-        outcome_code=decision.reason_code,
+        # `effective_decision.reason_code`, not the raw `decision.reason_code`:
+        # identical to it in every other branch (`replace()` above only touches
+        # `reason_code` in the PI-overrides-hysteresis-block branch), but the
+        # persisted `outcome_code` must name what actually governed this cycle,
+        # not decide()'s pure-hysteresis answer whenever PI overrode it.
+        outcome_code=effective_decision.reason_code,
         reason=effective_decision.reason,
         **pi_fields,
     )

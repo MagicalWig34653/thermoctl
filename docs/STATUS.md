@@ -1,6 +1,70 @@
 # Stand
 
-Letzte Aktualisierung: 2026-09-26.
+Letzte Aktualisierung: 2026-09-27.
+
+## PI-Regelung: Begründung nannte die 300s-Hysterese-Mindestdauer statt PI's eigener Werte
+
+Meldung des Projektinhabers: „Bei der PI-Regelung greift aktuell noch die 300s
+Mindest-Ein- und -Ausschaltdauer, nicht die PI-exklusiven Werte."
+
+**Belegt und eingegrenzt:** `would_heat` selbst folgt bereits den PI-eigenen, weichen
+Mindestdauern (`Zone.pi_min_on_seconds`/`pi_min_off_seconds`) -- ein Test mit
+Hysterese-Mindestdauer 300s und PI-Mindestdauer 60s zeigt eine echte Umschaltung nach
+90s (`tests/test_shadow_run_pi.py::TestHysteresisMinimumDurationDoesNotGovernPi`).
+`domain.control_loop.decide()`s Regel 5 bleibt bewusst reglerunabhängig (Modul-eigener
+Kommentar) und beantwortet immer nur die reine Hysterese-Frage; `_pi_gate_reason()` in
+`services/shadow_run.py` behandelt `REASON_CODE_BLOCKED_MINIMUM_DURATION` schon seit der
+PI-Anbindung ausdrücklich als einen der Codes, die PI **nicht** blockieren
+(`TestPiGateReasonClassifiesEveryReasonCode`) -- das war korrekt und ist unverändert.
+
+Der tatsächliche Fehler saß eine Ebene höher: `_process_zone()` übernahm für die
+gespeicherte `shadow_decision.outcome_code`/`.reason` unverändert `decide()`s eigene,
+dann unzutreffende Antwort -- auf genau den Zyklen, auf denen PI eine Umschaltung
+gegen die Hysterese-Mindestdauer durchgesetzt hat, stand dort weiterhin
+„gesperrt_mindestdauer" mit „Mindestdauer 300s ... die Heizanforderung bleibt
+unverändert", obwohl sich `would_heat` in derselben Zeile gerade geändert hatte.
+Betriebsseite, Schaltprotokoll, REST-API und MCP-Server lesen alle dieselbe Spalte
+unverändert weiter und zeigten deshalb genau den gemeldeten Eindruck.
+
+**Behoben** in `services/shadow_run.py::_process_zone`: Sobald PI der wirksame Regler
+ist (`effective_controller == "pi"`) und `decide()`s eigene Regel 5 mit der
+Hysterese-Mindestdauer geblockt hätte, wird `reason_code`/`reason` vollständig aus PI's
+eigenem Ergebnis aufgebaut (`REASON_CODE_HEATING`/`REASON_CODE_OFF` je nach
+tatsächlicher Heizanforderung, Text aus PI's eigener Begründung), statt die
+Hysterese-Antwort zu übernehmen. `outcome_code` liest jetzt `effective_decision
+.reason_code` statt `decision.reason_code` -- in jedem anderen Zweig identisch, nur in
+diesem einen Fall verschieden. Nebenbefund gleich mitbehoben: `_apply_decision_to_state`
+klammerte den Ventilschutz-Marker vorher nicht ab, wenn PI eine solche Blockade
+überstimmt hat (`decision.reason_code != REASON_CODE_BLOCKED_MINIMUM_DURATION` blieb
+`False`, weil `replace()` den Code nicht mit anfasste) -- derselbe Fehlerfall wie der
+am 2026-09-02 für reine Hysterese-Zonen behobene, jetzt auch für PI geschlossen.
+
+**Entschieden, nicht geändert (Übergänge mitten in einer gehaltenen Phase):**
+- **PI → Hysterese** (PI wird ineligibel oder abgeschaltet, während ein Zustand noch
+  hält): die Hysterese-Mindestdauer zählt ab dem tatsächlichen Beginn des Zustands,
+  nicht ab dem Rückfall -- `Situation.held_for_s` liest die *wirksame*
+  `would_heat`-Historie, die PI's eigene Haltezeit bereits einschließt. Keine
+  Umschaltung, die die 300s umgeht, direkt nach dem Rückfall.
+- **Hysterese → PI** (PI wird neu aktiviert oder eligibel, während Hysterese hält): der
+  vorhandene Scharfschalt-Schutz (`needs_safe_start`, `RESET_REASON_ARMING`/
+  `RESET_REASON_INVALID_STATE`) lässt PI erst zur nächsten vollen 15-Minuten-Grenze
+  wirksam werden -- PI's kürzere Mindestdauern übernehmen nie mitten in einer laufenden
+  Hysterese-Haltung.
+
+Beide Verhalten bestanden bereits unverändert und sind jetzt zusätzlich mit
+`tests/test_shadow_run_pi.py::TestControllerTransitionsMidHold` explizit für dieses
+Szenario abgesichert.
+
+**Geändert:** `thermoctl/services/shadow_run.py`, `tests/test_shadow_run_pi.py`,
+`mutation/cosmic-ray-shadow-run.toml` (Testbefehl fehlte `tests/test_shadow_run_pi.py`
+-- ohne die Ergänzung hätte der Mutationslauf die geänderten Zeilen nicht durch die
+neuen Tests geprüft). Keine Migration, kein Eingriff in `domain/control_loop.py` oder
+`domain/pi_control.py` -- beide bleiben unverändert reglerunabhängig bzw. eigenständig
+korrekt; nur die Zusammenführung und die daraus abgeleitete Begründung in
+`services/shadow_run.py` war falsch.
+
+Ruff, mypy, Pytest gegen SQLite **und** MariaDB (100 % Abdeckung, keine Fehlschläge).
+Mutationslauf-Ergebnis siehe Commit/Bericht.
 
 ## v0.10.0
 

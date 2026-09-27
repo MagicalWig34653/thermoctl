@@ -2,6 +2,7 @@
   "occurrences": {
     "CHANGELOG.md": [
       "(Steckdosen) bekommt die Fähigkeit `switch`; Hubs, Lampen, Thermostatventile und",
+      "Ventilschutz-Marker wurde nicht geräumt, wenn PI eine solche Blockade",
       "**Der Preis steht in der Oberfläche, am Schalter und nicht in einer Fußnote:** PI schaltet",
       "**Der Trockenlauf bleibt die Vorgabe.** Wer schalten will, öffnet `/control/arm` (eigenes",
       "**Die Fassung, in der thermoctl anfängt zu schalten.** Bis 0.2.2 landete jede",
@@ -119,6 +120,7 @@
     ],
     "docs/STATUS.md": [
       "## Betrieb unter Docker Swarm und Kubernetes dokumentiert",
+      "klammerte den Ventilschutz-Marker vorher nicht ab, wenn PI eine solche Blockade",
       "## Fenster: Frostschutz gewinnt, EIN/AUS-Aktoren schalten nicht ab",
       "## Was geschaltet wird — genau",
       "## v0.8.2 -- die Anlage schaltete nichts: der Anlaufriegel ging nie mehr auf",

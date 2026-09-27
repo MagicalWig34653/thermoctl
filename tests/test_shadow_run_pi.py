@@ -17,6 +17,7 @@ directly on the ORM object, exactly like that file already does.
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from tests.helpers import (
@@ -960,3 +961,343 @@ class TestDisablingNeutralizes:
         now += timedelta(seconds=60)
         again = _row_for(shadow_run.cycle(session, now), zone)
         assert again.controller_fallback_reason == RESET_REASON_INVALID_STATE
+
+
+class TestHysteresisMinimumDurationDoesNotGovernPi:
+    """The project owner's report (2026-09-27): "Bei der PI-Regelung greift aktuell
+    noch die 300s Mindest-Ein- und -Ausschaltdauer, nicht die PI-exklusiven Werte."
+
+    `decide()`'s rule 5 always answers the pure-hysteresis question, against
+    `min_on_seconds`/`min_off_seconds` (300s here) -- deliberately controller-agnostic
+    (see its own module docstring and `_process_zone`'s comment above `decide()`).
+    `_pi_gate_reason()` already treats `REASON_CODE_BLOCKED_MINIMUM_DURATION` as one
+    of the codes that must *not* block PI (`TestPiGateReasonClassifiesEveryReasonCode`
+    above) -- so `would_heat` itself already follows PI's own, shorter minimums
+    (`pi_min_on_seconds`/`pi_min_off_seconds`, 60s here), confirmed below by a switch
+    at 90s, well inside the 300s hysteresis minimum.
+
+    The actual defect was one level up: `ShadowDecision.outcome_code`/`.reason` kept
+    reporting `decide()`'s own, inapplicable answer -- "Mindestdauer 300s ... bleibt
+    unverändert" -- even on the very cycle `would_heat` changed. That is exactly what
+    the owner's report describes: reading the shadow log gives the impression the
+    300s rule still governs, even though the effective decision does not come from
+    it. Fixed in `services/shadow_run.py::_process_zone`: once PI is the effective
+    controller, the persisted `outcome_code`/`reason` are rebuilt entirely from PI's
+    own outcome instead of decide()'s hysteresis-based one. Before the fix, this
+    class's tests failed at the marked assertions (`outcome_code` was
+    `gesperrt_mindestdauer` and `reason` contained "bleibt unverändert" while
+    `would_heat` had just flipped).
+    """
+
+    def test_a_pi_switch_inside_the_hysteresis_minimum_reports_pi_as_the_reason(
+        self, session: Session
+    ) -> None:
+        # A small, non-saturating error (0 < u < 1) so the modulator has a duty
+        # cycle to spread across the window instead of the absolute u=0/u=1 case
+        # (section 3), which would switch regardless of any minimum duration and
+        # prove nothing about which minimum actually governed here.
+        zone = _pi_zone(
+            session,
+            "pi-ueberstimmt-hysterese",
+            measured_c=Decimal("20.9"),
+            pi_min_on=60,
+            pi_min_off=60,
+        )
+        now = NOW
+        rows: list[ShadowDecision] = []
+        for _ in range(7):  # 0, 30, ..., 180s
+            rows.append(_row_for(shadow_run.cycle(session, now), zone))
+            now += timedelta(seconds=30)
+
+        by_offset = {i * 30: row for i, row in enumerate(rows)}
+
+        # The switch-on at 90s: well inside the 300s hysteresis minimum (the state
+        # had held "Aus" for only 90s), but past PI's own 60s minimum -- `would_heat`
+        # already proves PI's own value governs the actual outcome.
+        switched_on = by_offset[90]
+        assert switched_on.would_heat is True
+        assert by_offset[60].would_heat is False  # the state it switched away from
+
+        # The bug: `outcome_code` used to stay `gesperrt_mindestdauer` (decide()'s
+        # own, inapplicable rule-5 answer) on exactly this cycle, and `reason` used
+        # to say the heating request "bleibt unverändert" despite the flip above.
+        assert switched_on.outcome_code == REASON_CODE_HEATING  # was: gesperrt_mindestdauer
+        assert "unverändert" not in switched_on.reason
+        assert switched_on.effective_controller == "pi"
+        # The corrected reason must name PI, not the hysteresis minimum duration it
+        # replaced -- no dangling "300s" from decide()'s own sentence.
+        assert "PI-Regelung" in switched_on.reason
+        assert "300s" not in switched_on.reason
+
+        # The switch-off at 180s, symmetric case (heating -> off, again inside the
+        # 300s hysteresis minimum: the "Heizen" state had held for only 90s).
+        switched_off = by_offset[180]
+        assert switched_off.would_heat is False
+        assert by_offset[150].would_heat is True
+        assert switched_off.outcome_code == REASON_CODE_OFF  # was: gesperrt_mindestdauer
+        assert "unverändert" not in switched_off.reason
+        assert "300s" not in switched_off.reason
+
+    def test_an_unchanged_pi_hold_still_names_pi_not_the_hysteresis_minimum(
+        self, session: Session
+    ) -> None:
+        """Even when PI's own candidate happens to *agree* with decide()'s blocked
+        answer (both say "stay off"), the reason must name PI's own, applicable
+        minimum -- not the 300s hysteresis one that never actually governed."""
+        zone = _pi_zone(
+            session,
+            "pi-haelt-selbst",
+            measured_c=Decimal("20.9"),
+            pi_min_on=60,
+            pi_min_off=60,
+        )
+        now = NOW
+        shadow_run.cycle(session, now)  # cycle 0: establishes the initial state
+        now += timedelta(seconds=30)
+        held = _row_for(shadow_run.cycle(session, now), zone)  # cycle 1: 30s in
+
+        assert held.would_heat is False
+        assert held.outcome_code == REASON_CODE_OFF  # was: gesperrt_mindestdauer
+        assert held.effective_controller == "pi"
+        assert held.pi_min_duration_decision == MODULATOR_REASON_HELD
+        assert "300s" not in held.reason
+        assert "Tastgrad" in held.reason  # PI's own reasoning, not decide()'s
+
+    def test_a_hysteresis_only_zone_is_unaffected(self, session: Session) -> None:
+        """Regression guard: a zone with PI disabled (or ineligible) must keep
+        reporting `decide()`'s own `gesperrt_mindestdauer` verbatim -- the fix only
+        touches the cycle where PI actually is the effective controller."""
+        zone = _pi_zone(
+            session, "nur-hysterese", measured_c=Decimal("20.9"), pi_enabled=False
+        )
+        now = NOW
+        shadow_run.cycle(session, now)
+        now += timedelta(seconds=30)
+        row = _row_for(shadow_run.cycle(session, now), zone)
+
+        assert row.requested_controller == "hysteresis"
+        assert row.effective_controller == "hysteresis"
+        if row.outcome_code == "gesperrt_mindestdauer":
+            assert "Mindestdauer 300s" in row.reason
+            assert "unverändert" in row.reason
+
+
+class TestNonBlockedReasonCodesKeepDecideOwnReasoning:
+    """Mutation boundary for `pi_overrides_hysteresis_block`'s first term
+    (`decision.reason_code == REASON_CODE_BLOCKED_MINIMUM_DURATION`,
+    `services/shadow_run.py`): a `<=`/`>=` in place of `==` survived a full
+    cosmic-ray run against this file (791 mutants, 462 killed / 329 survived / 0
+    incompetent) because no existing test exercised a PI-governed cycle whose
+    `decide()` reason code is *not* the minimum-duration block but still sorts on
+    one side of it alphabetically.
+
+    `REASON_CODE_OFF` ("aus") sorts *before* "gesperrt_mindestdauer";
+    `REASON_CODE_HEATING` ("heizen") sorts *after* it. Together they bracket the
+    exact-match code from both directions, so one test per side kills both a `<=`
+    and a `>=` mutant of that comparison -- verified by hand (see the class this
+    docstring belongs to's tests, applied as single mutants and reverted; not
+    re-run as a fresh full cosmic-ray pass per the task's instruction not to start
+    a new complete run).
+    """
+
+    def test_a_plain_pi_governed_heat_keeps_decide_s_own_reason(
+        self, session: Session
+    ) -> None:
+        # Fresh zone, first cycle: no minimum-duration question at all yet
+        # (`held_for_s` is `None`). `decide()` itself answers `REASON_CODE_HEATING`
+        # ("heizen", sorts *after* "gesperrt_mindestdauer") -- kills a `>=` mutant
+        # of the guard, which would wrongly divert this cycle into the
+        # PI-overrides-hysteresis-block branch and rewrite the reason/outcome code
+        # (to `REASON_CODE_OFF` here, since the modulator's own tie-break at a
+        # brand-new window boundary -- remainder exactly 0 -- favours "aus"
+        # regardless of duty; `would_heat` itself is therefore not asserted here,
+        # only `outcome_code`/`reason`, which the mutant corrupts either way).
+        zone = _pi_zone(session, "pi-normal-heizen", measured_c=COLD_C)
+        row = _row_for(shadow_run.cycle(session, NOW), zone)
+
+        assert row.effective_controller == "pi"
+        assert row.outcome_code == control_loop.REASON_CODE_HEATING  # not rewritten
+        # decide()'s own sentence ("Ist ... °C unter Soll ...") must still be the
+        # base, with PI's own reasoning appended -- not replaced outright.
+        assert "Ist" in row.reason
+        assert "PI-Regelung" in row.reason
+
+    def test_a_plain_pi_governed_switch_off_keeps_decide_s_own_reason(
+        self, session: Session
+    ) -> None:
+        # `REASON_CODE_OFF` ("aus") sorts *before* "gesperrt_mindestdauer" -- kills
+        # a `<=` mutant of the same guard. Needs a genuine rule-6 "switch off" (i.e.
+        # `regular_heating_now` must actually have been `True`), not a
+        # minimum-duration block, so the hysteresis minimums are set to 1s here
+        # (irrelevant to the boundary itself -- with the ordinary 300s default,
+        # the warm-up cycle below would be `gesperrt_mindestdauer` and prove
+        # nothing about this particular boundary; that case is already covered by
+        # `TestHysteresisMinimumDurationDoesNotGovernPi` above).
+        settings = create_settings(session, min_ein=1)
+        settings.default_min_off_seconds = 1
+        session.flush()
+        zone = _pi_zone(
+            session, "pi-normal-aus", measured_c=COLD_C, pi_min_on=60, pi_min_off=60
+        )
+
+        # The modulator's own tie-break favours "aus" on the very first cycle of a
+        # fresh window (remainder starts at exactly 0, see the test above) --
+        # several cold cycles are needed before `would_heat` actually turns `True`
+        # and rule 6 has a genuine "Heizen" state to switch off from.
+        now = NOW
+        row = None
+        for _ in range(6):
+            row = _row_for(shadow_run.cycle(session, now), zone)
+            now += timedelta(seconds=60)
+            if row.would_heat:
+                break
+        assert row is not None
+        assert row.would_heat is True  # otherwise the warm-up below proves nothing
+
+        state = session.get(ZoneState, zone.id)
+        assert state is not None
+        state.temperature_c = Decimal("23.0")  # well above setpoint + hysteresis
+        session.flush()
+        row = _row_for(shadow_run.cycle(session, now), zone)
+
+        assert row.effective_controller == "pi"
+        assert row.outcome_code == control_loop.REASON_CODE_OFF  # not rewritten
+        assert "Ist" in row.reason
+        assert "PI-Regelung" in row.reason
+
+
+class TestControllerTransitionsMidHold:
+    """Two deliberate, conservative decisions about a controller change while a
+    minimum-duration hold is already running (task instruction: decide and test
+    both directions explicitly, "keine sofortige Umschaltung, die die
+    Hysterese-Mindestdauer umgeht").
+
+    Neither direction needed a code change beyond the reason/outcome-code fix
+    above -- both already follow from mechanisms this file already tests in
+    isolation; these two tests compose them explicitly for this bug's scenario.
+
+    - **PI -> Hysterese** (PI becomes ineligible or is disabled mid-run): falling
+      back does *not* reset how long the current physical state has held. Rule 5
+      in `decide()` reads `Situation.held_for_s` from the *effective* `would_heat`
+      history (`_previous_state()`), which already includes the time PI itself
+      held that state -- so the hysteresis minimum, once it is the one governing
+      again, is measured from when the state actually started, not from the
+      moment of the fallback. A state PI just started 90s ago stays held for the
+      *remaining* 210s of the 300s hysteresis minimum, not for a fresh 300s.
+    - **Hysterese -> PI** (PI newly enabled or newly eligible): `_pi_outcome()`'s
+      safe-start wait (`needs_safe_start`, tested in `TestSafeStart`) always makes
+      the zone decide by hysteresis alone until the next full 15-minute window
+      boundary, regardless of how long the current state has already held under
+      hysteresis. PI's own, shorter minimums never apply mid-hold on the very
+      cycle it turns on.
+    """
+
+    def test_falling_back_to_hysteresis_keeps_the_accumulated_hold(
+        self, session: Session
+    ) -> None:
+        zone = _pi_zone(
+            session,
+            "pi-faellt-zurueck",
+            measured_c=Decimal("20.9"),
+            pi_min_on=60,
+            pi_min_off=60,
+        )
+        now = NOW
+        for _ in range(4):  # 0, 30, 60, 90 -- switches on at 90s (see test above)
+            row = _row_for(shadow_run.cycle(session, now), zone)
+            now += timedelta(seconds=30)
+        assert row.would_heat is True
+        assert row.effective_controller == "pi"
+
+        # PI becomes ineligible mid-hold, at 90s into the "Heizen" state -- removing
+        # its only ordinary actuator is the simplest way to force that without
+        # touching the measurement or the clock.
+        actuator_link = session.execute(
+            select(ZoneDevice).where(ZoneDevice.zone_id == zone.id)
+        ).scalar_one()
+        session.delete(actuator_link)
+        session.flush()
+
+        # now == NOW + 120s; the "Heizen" state has held for 120s under the 300s
+        # hysteresis minimum, whichever controller produced it.
+        fallen_back = _row_for(shadow_run.cycle(session, now), zone)
+        assert fallen_back.requested_controller == "pi"
+        assert fallen_back.effective_controller == "hysteresis"
+        assert fallen_back.controller_fallback_reason == PI_FALLBACK_INELIGIBLE
+        # Not reset to a fresh 300s: the hold counts from the state's real start.
+        assert fallen_back.outcome_code == "gesperrt_mindestdauer"
+        assert "Mindestdauer 300s" in fallen_back.reason
+        assert fallen_back.would_heat is True  # held, not switched off early
+
+    def test_enabling_pi_mid_hold_waits_for_the_next_boundary_first(
+        self, session: Session
+    ) -> None:
+        zone = _pi_zone(
+            session,
+            "hysterese-zu-pi",
+            measured_c=Decimal("20.9"),
+            pi_enabled=False,
+            pi_min_on=60,
+            pi_min_off=60,
+        )
+        now = NOW
+        for _ in range(4):
+            row = _row_for(shadow_run.cycle(session, now), zone)
+            now += timedelta(seconds=30)
+
+        # Enable PI mid-hold -- whatever state hysteresis is holding right now
+        # continues exactly as hysteresis decided it, not by PI's shorter minimums.
+        zone.pi_enabled = True
+        session.flush()
+        just_enabled = _row_for(shadow_run.cycle(session, now), zone)
+        assert just_enabled.requested_controller == "pi"
+        assert just_enabled.effective_controller == "hysteresis"
+        # `RESET_REASON_INVALID_STATE`, not `RESET_REASON_ARMING`: a disabled zone's
+        # PI state is fully neutralised every cycle (`_neutralize_pi_state()`,
+        # `pi_last_control_armed` included), so re-enabling starts exactly as clean
+        # as a first-ever PI cycle -- `TestDisablingNeutralizes` above proves this
+        # for the disable step; this is its mirror on the enable step.
+        assert just_enabled.controller_fallback_reason == RESET_REASON_INVALID_STATE
+        assert just_enabled.would_heat == row.would_heat  # unchanged by the switch
+
+
+class TestValveProtectionMarkerClearsWhenPiOverridesTheBlock:
+    """Second affected spot named in the task: `_apply_decision_to_state()` only
+    clears a stale `valve_protection_started_at` marker when the *effective*
+    decision's `reason_code` is not `REASON_CODE_BLOCKED_MINIMUM_DURATION` (see its
+    own docstring, and the fix from 2026-09-02 it refers to). Before this fix,
+    `effective_decision.reason_code` stayed `gesperrt_mindestdauer` even when PI's
+    own candidate had just switched heating on -- so the marker was never cleared,
+    and the next cycle could misread a genuine PI-driven heat as a still-running
+    protection cycle. The fix (rebuilding `reason_code` from PI's own outcome)
+    clears it correctly."""
+
+    def test_a_pi_driven_switch_on_clears_a_stale_protection_marker(
+        self, session: Session
+    ) -> None:
+        zone = _pi_zone(
+            session,
+            "ventilschutz-pi",
+            measured_c=Decimal("20.9"),
+            pi_min_on=60,
+            pi_min_off=60,
+        )
+        state = session.get(ZoneState, zone.id)
+        assert state is not None
+        # Simulate a stale marker left over from a valve-protection run that ended
+        # -- the exact situation `_apply_decision_to_state()`'s docstring describes.
+        state.valve_protection_started_at = NOW - timedelta(minutes=1)
+        session.flush()
+
+        now = NOW
+        row = None
+        for _ in range(4):  # switches on at 90s, see the first test in this file
+            row = _row_for(shadow_run.cycle(session, now), zone)
+            now += timedelta(seconds=30)
+        assert row is not None
+        assert row.would_heat is True
+        assert row.outcome_code == REASON_CODE_HEATING
+
+        state = session.get(ZoneState, zone.id)
+        assert state is not None
+        assert state.valve_protection_started_at is None

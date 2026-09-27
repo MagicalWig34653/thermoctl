@@ -11,6 +11,29 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ## Unveröffentlicht
 
+### Behoben
+
+- **PI-Regelung: der Schattenlauf berichtete die 300s-Hysterese-Mindestdauer,
+  nicht PI's eigene, kürzere Mindestdauern.** `would_heat` selbst folgte schon
+  immer PI's eigenen Werten (`pi_min_on_seconds`/`pi_min_off_seconds`) -- die
+  hartverdrahtete 300s-Regel hat nie tatsächlich blockiert, wenn PI wirksamer
+  Regler ist. Der Fehler saß in der protokollierten Begründung
+  (`shadow_decision.outcome_code`/`.reason`): auf genau den Zyklen, auf denen
+  PI eine Umschaltung entgegen der Hysterese-Mindestdauer durchgesetzt hat,
+  stand dort weiterhin "gesperrt_mindestdauer" mit "Mindestdauer 300s ... die
+  Heizanforderung bleibt unverändert" -- widersprüchlich zur tatsächlich
+  geänderten Heizanforderung und irreführend, welche Mindestdauer wirklich
+  galt. Betroffen davon: Betriebsseite, Schaltprotokoll, REST-API und
+  MCP-Server (alle lesen dieselbe Spalte unverändert weiter). Behoben in
+  `services/shadow_run.py::_process_zone`: Sobald PI der wirksame Regler ist
+  und `decide()` selbst mit der Hysterese-Mindestdauer geblockt hätte, wird
+  Grund und Code vollständig aus PI's eigener Entscheidung aufgebaut, nicht
+  aus der dann unzutreffenden Hysterese-Antwort. Als Nebeneffekt behoben: der
+  Ventilschutz-Marker wurde nicht geräumt, wenn PI eine solche Blockade
+  überstimmt hat (dieselbe Ursache wie der 2026-09-02 behobene Fall für
+  reine Hysterese-Zonen). Keine Migration, kein Verhalten am Schaltverhalten
+  selbst geändert -- nur die Begründung stimmt jetzt.
+
 ## 0.10.0 — 2026-09-26
 
 ### Hinzugefügt
