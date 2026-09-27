@@ -1655,6 +1655,69 @@ class TestControllerTransitionsMidHold:
         # either (the window gate does not know about it and must not touch it).
         assert state.pi_awaiting_boundary_until == wait_until
 
+    def test_a_pre_upgrade_wait_is_extended_not_discarded_by_a_later_arming(
+        self, session: Session
+    ) -> None:
+        """Review finding, 2026-09-27: the `else` branch in `_write_reset_state()`
+        is reachable after all -- not through two calls of the *current* code
+        (whose boundary-only formula can never produce a strictly later
+        `new_wait` for an existing, still-pending one -- either the two land in
+        the same 15-minute window, giving an equal value, or the first has
+        already elapsed by the second call, landing in the first branch
+        instead), but when an *earlier* version of this fix left a wait behind
+        in a different format. Reproduced by writing that leftover state
+        directly into `ZoneState`, the way a predecessor version actually
+        would have -- not by running old code, which no longer exists in this
+        checkout: heating started at "12:13", PI was enabled at "12:14" under
+        the version of this fix that still extended the wait to the hysteresis
+        deadline itself (300s after "12:13", so "12:18") -- superseded by the
+        general invariant, but a zone upgraded mid-wait still has exactly that
+        value sitting in the column. Arming the installation for real at
+        "12:16", before "12:18" elapses, fires `needs_safe_start` a second
+        time (`RESET_REASON_ARMING`) and computes a fresh boundary-only wait of
+        "12:30" -- later than the still-pending "12:18", so it must win here
+        instead of being discarded in favour of the earlier, now-stale value.
+        """
+        zone = _pi_zone(session, "upgrade-wartefrist", measured_c=COLD_C)
+        state = session.get(ZoneState, zone.id)
+        assert state is not None
+
+        # Leftover state exactly as the superseded version of this fix would
+        # have written it at "12:14": PI newly enabled while the installation
+        # itself was still in dry run (`RESET_REASON_ARMING`, `pi_last_control_
+        # armed=False`), the wait already extended past the next boundary
+        # ("12:15") to the hysteresis deadline itself ("12:18").
+        state.pi_integral = Decimal("0")
+        state.pi_last_evaluated_at = NOW + timedelta(minutes=14)
+        state.pi_setpoint_context_key = None
+        state.pi_window_started_at = None
+        state.pi_window_duty = None
+        state.pi_time_balance_seconds = Decimal("0")
+        state.pi_last_switch_at = None
+        state.pi_last_switch_heating = None
+        state.pi_awaiting_boundary_until = NOW + timedelta(minutes=18)
+        state.pi_last_reset_reason = RESET_REASON_ARMING
+        state.pi_last_control_armed = False
+        session.flush()
+
+        # "12:16" -- the installation is armed for real, firing
+        # `needs_safe_start` a second time (`previous_armed=False`,
+        # `armed=True`).
+        now = NOW + timedelta(minutes=16)
+        settings = session.get(Setting, 1)
+        assert settings is not None
+        settings.control_armed = True
+        session.flush()
+
+        row = _row_for(shadow_run.cycle(session, now), zone)
+        assert row.effective_controller == "hysteresis"
+        assert row.controller_fallback_reason == RESET_REASON_ARMING
+
+        # The decisive assertion: the fresh boundary ("12:30") wins, extending
+        # the still-pending leftover wait ("12:18") rather than being discarded.
+        assert state.pi_awaiting_boundary_until == NOW + timedelta(minutes=30)
+        assert state.pi_awaiting_boundary_until != NOW + timedelta(minutes=18)
+
 
 class TestGeneralInvariantSurvivesEveryNamedGate:
     """Bug (A) from the second security review, 2026-09-27, one variant per gate

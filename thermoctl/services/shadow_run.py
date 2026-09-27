@@ -600,16 +600,23 @@ def _write_reset_state(row: ZoneState, reset_state: PiState) -> None:
     elif new_wait is None or existing_wait >= new_wait:
         row.pi_awaiting_boundary_until = _naive(existing_wait)
     else:
-        # Unreachable with the single current caller of `await_next_boundary=True`
-        # (`_pi_outcome`'s `needs_safe_start` branch): any later call computes its
-        # boundary from a `now` that is either still inside the same 15-minute
-        # window as `existing_wait` (giving an equal `new_wait`, the `elif` above)
-        # or already past `existing_wait` (cleared to `None` above already,
-        # landing in the first branch instead). Kept for exactly the reason this
-        # whole function exists -- a `None` from a future second caller must
-        # still never *shorten* a pending wait -- without inventing a scenario
-        # that cannot happen today just to reach it.
-        row.pi_awaiting_boundary_until = _naive(new_wait)  # pragma: no cover
+        # Reachable, and not just hypothetically: an upgrade can leave a `now`-
+        # format wait behind that this codebase's own two calls would never
+        # produce between themselves (the boundary-only formula alone cannot
+        # advance an existing pending wait -- see the two branches above), but
+        # a value written by an *earlier* version of this function can still be
+        # sitting in the column when a second `needs_safe_start` fires under
+        # the current code. Found by review, 2026-09-27: heating starts at
+        # 12:13, PI is enabled at 12:14 under the version of this fix that
+        # still extended the wait to the hysteresis deadline itself (300s after
+        # 12:13, so 12:18) -- superseded by the general invariant, but that
+        # 12:18 is what a zone upgraded mid-wait still has stored. Arming the
+        # installation at 12:16, before that stored wait elapses, fires
+        # `needs_safe_start` again (`RESET_REASON_ARMING`) and computes a fresh
+        # boundary-only wait of 12:30 -- later than the still-pending 12:18, so
+        # it correctly wins here instead of being discarded in favour of the
+        # earlier, now-stale value.
+        row.pi_awaiting_boundary_until = _naive(new_wait)
     row.pi_last_reset_reason = reset_state.last_reset_reason
 
 
