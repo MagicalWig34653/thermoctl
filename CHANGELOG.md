@@ -11,6 +11,24 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ## Unveröffentlicht
 
+### Behoben
+
+- **Zonen → Regelparameter (`/zones/{id}/parameters`): zwei "Speichern"-Knöpfe für
+  eine Seite, einer davon verlor die Änderung.** Der Schalter „Fenster aus
+  Temperatursturz erkennen" stand in einem eigenen, zweiten `<form>` mit eigenem
+  Knopf direkt unter dem Hauptformular (Regelparameter, Schutzlauf-Einstellungen,
+  PI-Regelung).
+  Wer den Schalter umlegte und dann den *anderen*, oben stehenden Knopf drückte,
+  verlor die Änderung — für einen Betrachter sieht die Seite wie ein
+  zusammenhängender Einstellungsbereich mit zwei gleichlautenden Knöpfen aus. Beide
+  Formulare sind jetzt eins; der frühere eigene Endpunkt
+  `/zones/{id}/window-temp-drop-detection` ist entfernt (nur von dieser Seite
+  benutzt — REST und MCP haben dieses Feld nie exponiert und sind unverändert).
+  Die Domänenregel selbst (`domain.zone_settings.set_window_temp_drop_detection`)
+  bleibt unverändert und wird vom gemeinsamen Formular nur zusätzlich aufgerufen.
+  Projektweite Suche nach demselben Muster (mehrere Formulare, die für den Nutzer
+  wie ein Bereich aussehen): kein weiterer bestätigter Fall gefunden.
+
 ## 0.10.0 — 2026-09-26
 
 ### Hinzugefügt

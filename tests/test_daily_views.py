@@ -3,7 +3,7 @@ from decimal import Decimal
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from tests.helpers import (
@@ -330,6 +330,163 @@ def test_switching_pi_on_and_off_through_the_interface_with_audit_entry(
     assert zone.pi_enabled is False
 
 
+def test_valve_protection_checkbox_round_trip(session: Session, client_als) -> None:
+    """Checked -> saved -> still checked, and unchecked -> saved -> still
+    unchecked, through the one form on the page (task-mandated round trip)."""
+    zone = _grundlage(session)
+    client = client_als([("zone.manage", zone.id)])
+    path = f"/zones/{zone.id}/parameters"
+
+    on = client.post(
+        path, data={"valve_protection_enabled": "yes"}, headers=_csrf(client),
+        follow_redirects=False,
+    )
+    assert on.status_code == 303
+    assert zone.valve_protection_enabled is True
+    page = client.get(path)
+    after_name = page.text.split('name="valve_protection_enabled"')[1]
+    assert "checked" in after_name.split(">")[0]
+
+    off = client.post(path, data={}, headers=_csrf(client), follow_redirects=False)
+    assert off.status_code == 303
+    assert zone.valve_protection_enabled is False
+    page = client.get(path)
+    after_name = page.text.split('name="valve_protection_enabled"')[1]
+    assert "checked" not in after_name.split(">")[0]
+
+
+def test_pi_enabled_stays_on_across_further_saves_without_reconfirming(
+    session: Session, client_als
+) -> None:
+    """Once PI is on for a zone, `pi_confirm` must not be demanded again on every
+    later save -- only the moment it is switched on (already covered by
+    `test_switching_pi_on_needs_the_confirmation_checkbox_first` and
+    `test_an_ineligible_zone_...`). This checks the GET side: a reload after PI is
+    already on shows it checked and *not* disabled, so a browser submits it as
+    checked on the next save without the user touching it again."""
+    zone = _grundlage(session)
+    _assign_switch_actuator(session, zone)
+    client = client_als([("zone.manage", zone.id)])
+    path = f"/zones/{zone.id}/parameters"
+    client.post(
+        path,
+        data={
+            "pi_enabled": "yes",
+            "pi_confirm": "yes",
+            "pi_gain_per_k": "0.25",
+            "pi_integral_time_minutes": "180",
+            "pi_min_on_seconds": "60",
+            "pi_min_off_seconds": "60",
+        },
+        headers=_csrf(client),
+    )
+    assert zone.pi_enabled is True
+
+    page = client.get(path)
+    pi_field = page.text.split('id="pi_enabled"')[1].split(">")[0]
+    assert "checked" in pi_field
+    assert "disabled" not in pi_field
+
+    # A further save that keeps everything as-is (like a browser resubmitting the
+    # same checked checkbox) must not require `pi_confirm` again.
+    again = client.post(
+        path,
+        data={
+            "pi_enabled": "yes",
+            "pi_gain_per_k": "0.25",
+            "pi_integral_time_minutes": "180",
+            "pi_min_on_seconds": "60",
+            "pi_min_off_seconds": "60",
+        },
+        headers=_csrf(client),
+        follow_redirects=False,
+    )
+    assert again.status_code == 303
+    assert zone.pi_enabled is True
+
+
+def test_an_enabled_but_now_ineligible_pi_switch_is_never_disabled_in_the_form(
+    session: Session, client_als
+) -> None:
+    """The disabled attribute is only ever meant to block switching PI *on* for an
+    ineligible zone (`not pi_eligibility.eligible and not values.pi_enabled`). If it
+    were also applied while PI is already on, a real browser would silently drop
+    the field from the submitted form and the merged save would read that as
+    'off' -- switching a zone's live regulation off through a page reload the user
+    never asked for. This zone becomes ineligible (`pi_eligible` requires a
+    switch-capable actuator) after PI is already enabled, and the checkbox must
+    stay enabled in the markup regardless."""
+    zone = _grundlage(session)
+    _assign_switch_actuator(session, zone)
+    client = client_als([("zone.manage", zone.id)])
+    path = f"/zones/{zone.id}/parameters"
+    client.post(
+        path,
+        data={
+            "pi_enabled": "yes",
+            "pi_confirm": "yes",
+            "pi_gain_per_k": "0.25",
+            "pi_integral_time_minutes": "180",
+            "pi_min_on_seconds": "60",
+            "pi_min_off_seconds": "60",
+        },
+        headers=_csrf(client),
+    )
+    assert zone.pi_enabled is True
+
+    # Removing the actuator assignment makes the zone ineligible without
+    # touching `pi_enabled` itself -- exactly the situation `pi_eligibility`'s own
+    # docstring describes ("a zone that was eligible ... can become ineligible
+    # later by a device reassignment").
+    session.execute(delete(ZoneDevice).where(ZoneDevice.zone_id == zone.id))
+    session.flush()
+
+    page = client.get(path)
+    assert "eignet sich derzeit nicht für PI" in page.text
+    pi_field = page.text.split('id="pi_enabled"')[1].split(">")[0]
+    assert "checked" in pi_field
+    assert "disabled" not in pi_field
+
+    # Resubmitting `pi_enabled=yes` for a now-ineligible zone is refused by
+    # `validate_pi_parameters` (unrelated pre-existing domain rule, untouched here)
+    # -- but the point of the field staying enabled/submittable is that this
+    # rejection is a visible, explicit error, not a silent, unexplained switch-off.
+    # A *disabled* checkbox would instead have dropped the field from the request
+    # entirely, which `save_control_parameters` reads as an explicit "off" and
+    # would have turned PI off without the user asking for it or seeing why.
+    resubmit = client.post(
+        path,
+        data={
+            "pi_enabled": "yes",
+            "pi_gain_per_k": "0.25",
+            "pi_integral_time_minutes": "180",
+            "pi_min_on_seconds": "60",
+            "pi_min_off_seconds": "60",
+        },
+        headers=_csrf(client),
+        follow_redirects=False,
+    )
+    assert resubmit.status_code == 200
+    assert "kann für diese Zone nicht eingeschaltet werden" in resubmit.text
+    assert zone.pi_enabled is True
+
+    # The silent-switch-off this guards against, made explicit: omitting the field
+    # (what a disabled checkbox would submit) really would turn PI off.
+    omitted = client.post(
+        path,
+        data={
+            "pi_gain_per_k": "0.25",
+            "pi_integral_time_minutes": "180",
+            "pi_min_on_seconds": "60",
+            "pi_min_off_seconds": "60",
+        },
+        headers=_csrf(client),
+        follow_redirects=False,
+    )
+    assert omitted.status_code == 303
+    assert zone.pi_enabled is False
+
+
 def test_parameters_of_a_foreign_zone_yield_404(session: Session, client_als) -> None:
     eigene = _grundlage(session)
     fremde = create_zone(session, "fremd")
@@ -353,15 +510,26 @@ def test_the_parameter_page_shows_the_window_temp_drop_switch_off_by_default(
     assert 'name="window_temp_drop_detection_enabled"' in response.text
     after_name = response.text.split('name="window_temp_drop_detection_enabled"')[1]
     assert "checked" not in after_name.split(">")[0]
+    # There used to be a second `<form>` here with its own "Speichern" -- the
+    # project owner reported it reads as one settings page with two save buttons,
+    # and a user who flips this switch and presses the *other* one loses the
+    # change. Only one form, one button, for the whole page now.
+    assert response.text.count(">Speichern<") == 1
 
 
-def test_turning_the_window_temp_drop_switch_on_and_off_is_audited(
+def test_the_window_temp_drop_switch_is_saved_through_the_single_parameter_form(
     session: Session, client_als
 ) -> None:
+    """Regression for the reported bug: the switch used to live in its own
+    `<form>`/`<button>` below the main one and was silently lost whenever a user
+    pressed the main "Speichern" instead. It is now part of that one form/request,
+    while the domain rule for setting it stays in
+    `domain.zone_settings.set_window_temp_drop_detection` (Grundsatz 6) -- this
+    only exercises the merged HTTP entry point."""
     zone = _grundlage(session)
     assert zone.window_temp_drop_detection_enabled is False
     client = client_als([("zone.manage", zone.id)])
-    path = f"/zones/{zone.id}/window-temp-drop-detection"
+    path = f"/zones/{zone.id}/parameters"
 
     on = client.post(
         path,
@@ -376,6 +544,8 @@ def test_turning_the_window_temp_drop_switch_on_and_off_is_audited(
     ).all()[-1]
     assert "eingeschaltet" in entry.summary
 
+    # A checkbox left unchecked is not sent at all by a real browser -- this is
+    # the actual "off" request, not an explicit "off" value.
     off = client.post(path, data={}, headers=_csrf(client), follow_redirects=False)
     assert off.status_code == 303
     assert zone.window_temp_drop_detection_enabled is False
@@ -385,9 +555,14 @@ def test_turning_the_window_temp_drop_switch_on_and_off_is_audited(
     assert "ausgeschaltet" in entry.summary
 
 
-def test_turning_the_window_temp_drop_switch_to_its_current_value_is_not_audited(
+def test_saving_parameters_with_the_window_temp_drop_switch_unchanged_audits_once(
     session: Session, client_als
 ) -> None:
+    """`save_control_parameters` always writes its own audit entry, regardless of
+    whether anything actually changed (unrelated to this task). But
+    `set_window_temp_drop_detection`'s own unchanged-value guard must still hold
+    inside the merged request: an unchanged switch must not add a *second* entry
+    on top of the one the main save always makes."""
     zone = _grundlage(session)
     client = client_als([("zone.manage", zone.id)])
     before = session.scalars(
@@ -395,7 +570,7 @@ def test_turning_the_window_temp_drop_switch_to_its_current_value_is_not_audited
     ).all()
 
     client.post(
-        f"/zones/{zone.id}/window-temp-drop-detection",
+        f"/zones/{zone.id}/parameters",
         data={},
         headers=_csrf(client),
         follow_redirects=False,
@@ -404,41 +579,41 @@ def test_turning_the_window_temp_drop_switch_to_its_current_value_is_not_audited
     after = session.scalars(
         select(AuditEvent).where(AuditEvent.object_type == "zone_settings")
     ).all()
-    assert len(after) == len(before)
+    assert len(after) == len(before) + 1
 
 
-def test_the_window_temp_drop_switch_of_a_foreign_zone_yields_404(
+def test_the_window_temp_drop_switch_survives_a_rejected_save_in_the_redisplayed_form(
     session: Session, client_als
 ) -> None:
-    eigene = _grundlage(session)
-    fremde = create_zone(session, "fremd")
-    client = client_als([("zone.manage", eigene.id)])
+    """A validation error must not silently drop the submitted checkbox state --
+    the redisplayed form has to echo back what the user just typed/checked, not
+    the zone's last-saved state."""
+    zone = _grundlage(session)
+    client = client_als([("zone.manage", zone.id)])
+
     response = client.post(
-        f"/zones/{fremde.id}/window-temp-drop-detection",
-        data={"window_temp_drop_detection_enabled": "yes"},
+        f"/zones/{zone.id}/parameters",
+        data={"hysteresis_k": "-0.2", "window_temp_drop_detection_enabled": "yes"},
         headers=_csrf(client),
     )
-    assert response.status_code == 404
-    assert fremde.window_temp_drop_detection_enabled is False
+
+    assert response.status_code == 200
+    assert "darf nicht negativ" in response.text
+    assert zone.window_temp_drop_detection_enabled is False
+    after_name = response.text.split('name="window_temp_drop_detection_enabled"')[1]
+    assert "checked" in after_name.split(">")[0]
 
 
 def test_the_window_temp_drop_switch_is_not_part_of_control_parameters(
     session: Session, client_als
 ) -> None:
-    """Task instruction: this switch must never reach REST or MCP -- it must
-    therefore never be settable through `/zones/{id}/parameters`, which feeds
-    `ControlParametersResponse` verbatim from `ControlParameters`."""
-    zone = _grundlage(session)
-    client = client_als([("zone.manage", zone.id)])
+    """The switch is now saved *through* `/zones/{id}/parameters` (see above), but
+    it must still not become one of the `ControlParameters` fields REST exposes
+    verbatim via `ControlParametersResponse` -- it is set via its own domain call
+    (`set_window_temp_drop_detection`), not through `save_control_parameters`."""
+    from thermoctl.domain.zone_settings import ControlParameters
 
-    client.post(
-        f"/zones/{zone.id}/parameters",
-        data={"window_temp_drop_detection_enabled": "yes"},
-        headers=_csrf(client),
-        follow_redirects=False,
-    )
-
-    assert zone.window_temp_drop_detection_enabled is False
+    assert "window_temp_drop_detection_enabled" not in ControlParameters.__dataclass_fields__
 
 
 def test_an_override_from_the_interface_uses_the_same_data_model_as_rest(

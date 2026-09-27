@@ -127,7 +127,6 @@ def _parameter_page(
         effective=effective,
         pi_eligibility=eligibility,
         assumed_lifetime_operations=control_settings(session).assumed_relay_lifetime_operations,
-        window_temp_drop_detection_enabled=zone.window_temp_drop_detection_enabled,
     )
 
 
@@ -148,6 +147,9 @@ async def show_parameter(
         values[name] = str(getattr(zone, name))
     values["pi_enabled"] = "yes" if zone.pi_enabled else ""
     values["pi_confirm"] = ""
+    values["window_temp_drop_detection_enabled"] = (
+        "yes" if zone.window_temp_drop_detection_enabled else ""
+    )
     return _parameter_page(request, session, zone, control_parameters(session, zone), values)
 
 
@@ -201,6 +203,9 @@ async def save_parameter(
         values[name] = str(form.get(name, "")).strip()
     values["pi_enabled"] = str(form.get("pi_enabled", ""))
     values["pi_confirm"] = str(form.get("pi_confirm", ""))
+    values["window_temp_drop_detection_enabled"] = str(
+        form.get("window_temp_drop_detection_enabled", "")
+    )
     try:
         checked = _check_parameters({name: values[name] for name in FELDER})
         checked["valve_protection_enabled"] = bool(values["valve_protection_enabled"])
@@ -260,28 +265,22 @@ async def save_parameter(
     save_control_parameters(
         session, zone, checked, user_id=principal.user_id, token_id=principal.token_id
     )
-    return RedirectResponse(
-        prefixed(request, f"/zones/{zone.id}/parameters"), status.HTTP_303_SEE_OTHER
-    )
-
-
-@router.post("/zones/{zone_id}/window-temp-drop-detection")
-async def save_window_temp_drop_detection(
-    zone_id: int,
-    request: Request,
-    principal: Annotated[Principal, Depends(current_principal)],
-    session: Annotated[Session, Depends(get_session)],
-) -> Response:
-    """The per-zone switch alone -- its own tiny route and form, deliberately not
-    folded into `save_parameter` above: `Zone.window_temp_drop_detection_enabled`
-    is not a `ControlParameters` field and must stay that way (see
-    `domain.zone_settings.set_window_temp_drop_detection`'s own docstring).
-    """
-    zone = _zone_or_404(session, principal, zone_id, "zone.manage")
-    form = await request.form()
-    enabled = str(form.get("window_temp_drop_detection_enabled", "")) != ""
+    # `Zone.window_temp_drop_detection_enabled` is deliberately not a
+    # `ControlParameters` field (see `domain.zone_settings.set_window_temp_drop_detection`'s
+    # own docstring: it must never reach REST/MCP through `ControlParametersResponse`) --
+    # but the project owner reported this as its own form with its own "Speichern" button
+    # right below the one above, which reads as one settings page with two save actions.
+    # A user who flips this switch and presses the *other* button loses the change. The
+    # domain call stays separate (Grundsatz 6: the rule lives once, in `zone_settings.py`);
+    # only the HTTP entry point is merged, and the former standalone
+    # `/zones/{zone_id}/window-temp-drop-detection` route is removed -- it had no other
+    # caller (REST and MCP never exposed this field, by the same docstring's decision).
     set_window_temp_drop_detection(
-        session, zone, enabled, user_id=principal.user_id, token_id=principal.token_id
+        session,
+        zone,
+        values["window_temp_drop_detection_enabled"] != "",
+        user_id=principal.user_id,
+        token_id=principal.token_id,
     )
     return RedirectResponse(
         prefixed(request, f"/zones/{zone.id}/parameters"), status.HTTP_303_SEE_OTHER
