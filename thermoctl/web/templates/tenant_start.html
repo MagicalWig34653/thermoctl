@@ -1,4 +1,5 @@
 {% extends "base_tenant.html" %}
+{% from "icons.html" import stepper_icon %}
 {% block title %}Zuhause{% endblock %}
 {% block content %}
 {#
@@ -231,10 +232,10 @@ Server; das Formular trägt bewusst keine Zonenauswahl.
                   class="tc-stepper">
                 <input type="hidden" name="mode_id" value="{{ setpoint.mode_id }}">
                 <button class="tc-stepbtn" type="submit" name="direction" value="down"
-                        aria-label="Temperatur um ein halbes Grad senken">−</button>
+                        aria-label="Temperatur um ein halbes Grad senken">{{ stepper_icon("down") }}</button>
                 <span class="tc-stepvalue t-value">{{ setpoint.temperature_c|grad }} °C</span>
                 <button class="tc-stepbtn" type="submit" name="direction" value="up"
-                        aria-label="Temperatur um ein halbes Grad anheben">+</button>
+                        aria-label="Temperatur um ein halbes Grad anheben">{{ stepper_icon("up") }}</button>
             </form>
             {% if thermostat_errors and error_zone_id == zone.id|string %}
             <p class="tc-inline-error small">{{ thermostat_errors }}</p>

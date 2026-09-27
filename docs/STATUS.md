@@ -40,6 +40,68 @@ in `tests/test_daily_views.py`.
 Noch offen: Add-on-Repository nachziehen (nach Freigabe von v0.10.1, siehe unten
 „Arbeitsweise" im übergeordneten `CLAUDE.md`).
 
+## Icon-Zentrierung in den Sollwert-Steppern (unveröffentlicht)
+
+Meldung: "Auf der Übersichtsseite sind manche Icons in den Buttons nicht
+zentriert." Betroffen: `.tc-stage` (Übersicht `/`), `.tc-stepbtn`
+(Wohnungssicht-Startseite) und `.kiosk-stage` (Kiosk-Tafel) -- alle drei sind
+dieselbe Ursache mit unterschiedlicher Schriftgröße, keine drei getrennten
+Fehler. Kein anderer Icon-Knopf im Programm ist betroffen (`.tc-iconbtn`,
+`.tc-bottomnav-item` u. a. tragen nur Beschriftungstext, kein Einzelzeichen).
+
+**Ursache:** Weder `line-height` noch `display: flex` mit
+`align-items: center` zentrieren die tatsächlich gezeichnete Tinte eines
+Zeichens wie "−"/"+" -- beide zentrieren nur die *Zeilenbox*, die eine
+Schrift aus ihrer eigenen Ascent-/Descent-Metrik bildet. Die Tinte sitzt
+innerhalb dieser Box nicht zwingend mittig; eine reine
+`Range.getBoundingClientRect()`-Prüfung (Zeilenbox) hätte den Fehler nicht
+gezeigt, weil die Zeilenbox nach dem `flex`-Zusatz bereits exakt zentriert
+war, während die Tinte darin unverändert 1,3 px (`.tc-stage`), 1,1 px
+(`.tc-stepbtn`) bzw. 2,1 px (`.kiosk-stage`) zu tief blieb.
+
+**Erste Behebung (Commit 029de74) war selbst fehlerhaft, per Kreuzreview
+gefunden.** Sie glich die Font-Metrik-Asymmetrie über ein an der
+macOS-Systemschrift (`-apple-system`, da `--font-ui`s erster Eintrag "Inter"
+keine im Programm eingebundene Webschrift ist) kalibriertes, asymmetrisches
+`padding-block` aus. Auf jeder anderen Schrift überkorrigierte das in die
+Gegenrichtung: gemessen mit Arial dy = -2,25 px, Times New Roman -1,86,
+Courier New -2,04, Georgia -0,97 -- am Kiosk-Wandtablett mit unbekanntem
+Betriebssystem also potenziell eine größere Abweichung als der ursprüngliche
+Fund, nicht kleiner.
+
+**Jetzige Behebung:** die Zeichen "−"/"+" sind kein Text mehr, sondern ein
+gemeinsames Inline-SVG (`stepper_icon()`-Makro, `thermoctl/web/templates/
+icons.html`, in `start.html`, `kiosk.html` und `tenant_start.html`
+importiert) mit fester, zu seiner eigenen Bounding-Box symmetrischer
+Pfadgeometrie -- `display: flex` mit `align-items: center` zentriert dessen
+*tatsächliche* Fläche, nicht mehr eine schriftabhängige Zeilenbox, und ist
+damit unabhängig von Schrift oder Plattform richtig. Das SVG trägt
+`aria-hidden="true"` und `stroke="currentColor"`; der zugängliche Name kommt
+weiterhin allein vom `aria-label` des jeweiligen Knopfes ("Sollwert senken"
+usw., unverändert) -- alle Tests, die über `get_by_label`/`get_by_role(...,
+name=...)` suchen, sind davon nicht betroffen. Die font-spezifischen
+`padding-block`-Werte sind vollständig zurückgenommen.
+
+**Beiläufig behoben:** `.tc-stage` auf der Anlagen-Übersicht war mit
+32×34 px unter der sonst im Programm geltenden 44-px-Mindesttippzielgröße
+(siehe `.btn`s eigene Begründung in `thermoctl.css`) -- jetzt 44×44 px, ohne
+Layoutbruch bei 1280 und 390 px (Screenshots angesehen).
+
+Neuer Regressionstest `browser_tests/test_icon_centering.py`: misst die
+Icon-Fläche (SVG-Bounding-Box bzw., für den historischen Nachweis unten,
+`CanvasRenderingContext2D.measureText()`s `actualBoundingBox*`-Metriken)
+gegen 1 px Toleranz, auf `/`, der Wohnungssicht-Startseite und
+`/kiosk/{token}`, **jeweils unter vier verschiedenen Schriften** (Arial,
+Times New Roman, Courier New, Georgia -- über `--font-ui` injiziert, keine
+davon `-apple-system`), zusätzlich mit einer laufenden Übersteuerung im DOM
+(damit die Diagnose das Verschwinden des Thermostats bei aktiver
+Übersteuerung nicht mit einem falschen Treffer verwechselt). Ein eigener
+Test baut den historischen, textbasierten Stand aus 029de74 auf einer
+eigenständigen Seite nach (ohne die echte Anwendung dafür zurückzudrehen)
+und belegt, dass er unter Arial die 1-px-Grenze reißt -- der Kreuzreview-Fund
+bleibt damit reproduzierbar nachvollziehbar, auch nachdem der fehlerhafte
+Code selbst nicht mehr existiert.
+
 ## v0.10.0
 
 Freigabe mit: der Kiosk-Panel-Ansicht für 480×480-Wandtabletts (Übersicht und

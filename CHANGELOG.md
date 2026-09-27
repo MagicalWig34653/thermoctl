@@ -29,6 +29,25 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
   Projektweite Suche nach demselben Muster (mehrere Formulare, die für den Nutzer
   wie ein Bereich aussehen): kein weiterer bestätigter Fall gefunden.
 
+- **Die "−"/"+"-Sollwertknöpfe zeigten ihr Zeichen sichtbar zu tief** -- auf
+  der Übersicht (`.tc-stage`), der Wohnungssicht-Startseite (`.tc-stepbtn`)
+  und im Kiosk (`.kiosk-stage`, dort mit rund 2 px am stärksten). Ursache war
+  eine Schriftmetrik-Eigenheit: die Zeilenbox eines Zeichens zentriert
+  `display: flex`/`align-items: center` zuverlässig, die tatsächlich
+  gezeichnete Tinte darin aber nicht -- deren Lage relativ zur Zeilenbox
+  hängt von Ascent/Descent der jeweiligen Schrift ab, nicht vom Zeichen
+  selbst. Behoben mit einem gemeinsamen Inline-SVG-Icon
+  (`thermoctl/web/templates/icons.html`) statt der Textzeichen -- ein Pfad
+  mit fester, zu seiner eigenen Fläche symmetrischer Geometrie lässt sich
+  unabhängig von Schrift und Plattform zentrieren. Ein erster Versuch (ein an
+  der macOS-Systemschrift kalibrierter, asymmetrischer `padding-block`-
+  Ausgleich) überkorrigierte auf jeder anderen Schrift in die
+  Gegenrichtung -- per Kreuzreview gefunden, bevor er veröffentlicht wurde.
+  Beiläufig behoben: die Tippfläche auf der Übersicht war mit 32×34 px unter
+  der sonst geltenden 44-px-Mindestgröße, jetzt 44×44 px. Neuer
+  Regressionstest `browser_tests/test_icon_centering.py`, gegen vier
+  unterschiedliche Schriften.
+
 ## 0.10.0 — 2026-09-26
 
 ### Hinzugefügt
