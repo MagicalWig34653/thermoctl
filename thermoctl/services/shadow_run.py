@@ -24,14 +24,14 @@ from thermoctl.db.models.vacation import Vacation
 from thermoctl.db.models.zone import Zone, ZoneSetpoint
 from thermoctl.domain.control_loop import (
     REASON_CODE_BLOCKED_MINIMUM_DURATION,
-    REASON_CODE_FROST_SENSOR_FAILURE,
-    REASON_CODE_NO_SOURCE,
+    REASON_CODE_HEATING,
+    REASON_CODE_OFF,
     REASON_CODE_VALVE_PROTECTION,
     Decision,
     Situation,
     decide,
 )
-from thermoctl.domain.fault import NO_SOURCE
+from thermoctl.domain.fault import NO_SOURCE, VERALTET
 from thermoctl.domain.pi_control import (
     INTEGRATOR_RESET,
     RESET_REASON_ARMING,
@@ -67,6 +67,12 @@ _FROST_DEFAULT = Decimal("16.0")
 # which would not fit `controller_fallback_reason`'s 64 characters reliably.
 PI_FALLBACK_INELIGIBLE = "pi_ungeeignet"
 
+# Same reasoning as `PI_FALLBACK_INELIGIBLE` above -- not a `pi_control` reset
+# reason, because the concept it names ("this phase started under hysteresis and
+# its minimum switch duration has not elapsed yet") belongs to the composition of
+# `decide()` and PI in this module, not to PI's own pure state machine.
+PI_FALLBACK_HYSTERESIS_MINIMUM = "haelt_hysterese_mindestdauer"
+
 
 def _frost_setpoint(session: Session, zone: Zone, settings: Setting) -> Decimal:
     """The zone's frost protection setpoint for the configured frost protection mode.
@@ -86,7 +92,7 @@ def _frost_setpoint(session: Session, zone: Zone, settings: Setting) -> Decimal:
 
 def _previous_state(
     session: Session, zone_id: int, now: datetime
-) -> tuple[bool, int | None, bool | None]:
+) -> tuple[bool, int | None, bool | None, str | None]:
     """`heizt_gerade` and `seit_s` from the chain of this zone's own past decisions.
 
     In shadow run nothing actually switches, so there's no real valve state to read
@@ -100,24 +106,41 @@ def _previous_state(
 
     Also returns the raw `previous_would_heat` for the new row: `None` if there's no
     history at all yet, otherwise the most recently decided value.
+
+    Fourth value, `phase_started_by`: the `effective_controller` of that same
+    earliest row -- whichever controller's decision actually started the currently
+    held phase. Added 2026-09-27 (second security review of the PI-minimum-duration
+    fix) for `_pi_outcome`'s general invariant ("a phase started under hysteresis
+    holds for the hysteresis minimum, regardless of which controller decides later
+    cycles; a phase PI itself started is subject only to PI's own minimums"): reusing
+    this exact row -- the same one `seit_s` already comes from -- means the invariant
+    needs no new column and no migration. `None` exactly when there is no history at
+    all yet (`seit_s` is `None` too in that case); rule 5 in `decide()` itself treats
+    an unknown duration as nothing to enforce yet, and the invariant mirrors that.
     """
     rows = list(
         session.execute(
-            select(ShadowDecision.would_heat, ShadowDecision.decided_at)
+            select(
+                ShadowDecision.would_heat,
+                ShadowDecision.decided_at,
+                ShadowDecision.effective_controller,
+            )
             .where(ShadowDecision.zone_id == zone_id)
             .order_by(ShadowDecision.decided_at.desc(), ShadowDecision.id.desc())
         )
     )
     if not rows:
-        return False, None, None
+        return False, None, None, None
 
     current_state = rows[0].would_heat
     start = rows[0].decided_at
-    for state, moment in rows:
+    phase_started_by = rows[0].effective_controller
+    for state, moment, controller in rows:
         if state != current_state:
             break
         start = moment
-    return current_state, int((now - start).total_seconds()), current_state
+        phase_started_by = controller
+    return current_state, int((now - start).total_seconds()), current_state, phase_started_by
 
 
 def _window_situation(
@@ -361,6 +384,7 @@ def _pi_setpoint_context_key(
 def _pi_gate_reason(
     reason_code: str,
     *,
+    sensor_failed: bool,
     window_governs: bool,
     resume_delay_active: bool,
     frost_effective: bool,
@@ -371,13 +395,35 @@ def _pi_gate_reason(
     falls through to when rule 7 does not apply either): PI computes a real
     candidate for this cycle.
 
-    Reads `decision.reason_code` wherever `decide()`'s own code already names the
-    rule unambiguously -- sensor failure (`REASON_CODE_NO_SOURCE` for "keine
-    Quelle", `REASON_CODE_FROST_SENSOR_FAILURE` for a stale reading kept usable via
-    the frost setpoint -- together exactly section 4's "Sensorausfall" row) and
-    valve protection (`REASON_CODE_VALVE_PROTECTION`, unique to rule 7 winning) are
-    each produced by exactly one branch of `decide()`. The rest need the caller's
-    own booleans instead:
+    `sensor_failed`, `window_governs`, `resume_delay_active`, and `frost_effective`
+    are all computed by the caller directly from `Situation`/context, deliberately
+    *not* from `decision.reason_code` -- see the paragraph below for why that
+    matters for `sensor_failed` in particular. Only `REASON_CODE_VALVE_PROTECTION`
+    is still read from `decision.reason_code`, since it is produced by exactly one
+    branch of `decide()` (rule 7, only once rule 6 has already deferred) with
+    nothing else that could pre-empt it the way rule 5 can pre-empt the others
+    (see below).
+
+    `sensor_failed` used to be read from `decision.reason_code` too (`in
+    (REASON_CODE_NO_SOURCE, REASON_CODE_FROST_SENSOR_FAILURE)`), on the assumption
+    that "keine Quelle" and a stale reading each produce exactly one, unambiguous
+    code -- true for `REASON_CODE_NO_SOURCE` (rule 1 returns before anything else
+    can run), but **not** for a stale ("veraltet") reading: `decide()` only assigns
+    `REASON_CODE_FROST_SENSOR_FAILURE` inside rule 6, and rule 5 (the ordinary
+    minimum-switch-duration hold, `situation.parameter.min_on_seconds`/
+    `min_off_seconds`) sits *before* rule 6 and returns early whenever the current
+    state has not been held long enough -- with `REASON_CODE_BLOCKED_MINIMUM_DURATION`,
+    not the sensor code. On such a cycle this function used to see an ordinary,
+    `_PERMITTED` code and let PI compute a real candidate against the zone's normal
+    setpoint and the stale measurement -- exactly the situation rule 1 exists to
+    prevent (found 2026-09-27, security review of the fix above: reproduced with a
+    zone held at 20.9 °C against a 21 °C setpoint, a 300 s hysteresis minimum and a
+    60 s PI minimum -- `would_heat` flips to `True` on PI's own candidate two
+    minutes after the sensor went stale, with `effective_controller` staying
+    `"pi"` the whole time). `sensor_failed` (`Situation.sensor_status in
+    (NO_SOURCE, VERALTET) or Situation.measured_c is None`) cannot be masked this
+    way: it reads the same field rule 1 itself reads, independent of which rule in
+    `decide()` happened to return first this cycle.
 
     `window_governs` -- `Situation.window_open and not Situation.on_off_actuators_only`,
     i.e. rule 3's own condition for actually applying (added 2026-09-06 alongside the
@@ -409,9 +455,10 @@ def _pi_gate_reason(
     only ever returned once rule 6 has already deferred) *before* the independently
     computed `frost_effective`, so a cycle where protection actually wins is
     attributed to protection, not to the frost setpoint that never got to decide
-    anything that cycle.
+    anything that cycle. `sensor_failed` is checked first, ahead of everything
+    else -- rule 1 has the same, highest precedence in `decide()` itself.
     """
-    if reason_code in (REASON_CODE_NO_SOURCE, REASON_CODE_FROST_SENSOR_FAILURE):
+    if sensor_failed:
         return RESET_REASON_SENSOR_FAILURE
     if window_governs:
         return RESET_REASON_WINDOW_OPEN
@@ -521,6 +568,19 @@ def _write_reset_state(row: ZoneState, reset_state: PiState) -> None:
     arming/invalid-state wait) -- unlike `_write_pi_state`, always unconditionally
     clears the switch-timing columns, matching `reset_pi_state()`'s own neutral
     modulator.
+
+    `pi_awaiting_boundary_until` is the one exception: a section-4 gate reset
+    (window/frost/sensor/valve -- every call here except the safe-start wait
+    itself) always calls `reset_pi_state()` without `await_next_boundary`, so
+    `reset_state.awaiting_boundary_until` is `None` on those calls -- but writing
+    that `None` through unconditionally used to silently erase an *already
+    pending* safe-start wait from an earlier cycle, not merely leave it alone.
+    Found in the second security review, 2026-09-27: a temporary gate (a stale
+    sensor, an open window, ...) firing even once during the wait let PI resume
+    the moment the gate cleared, without ever finishing the wait it was still
+    in the middle of. Keep whichever of the existing and the newly written
+    value is later; a `None` from this call never *shortens* an existing wait,
+    it only fails to *set* one where none was pending.
     """
     row.pi_integral = reset_state.integral
     row.pi_last_evaluated_at = _naive(reset_state.last_evaluated_at)
@@ -530,7 +590,33 @@ def _write_reset_state(row: ZoneState, reset_state: PiState) -> None:
     row.pi_time_balance_seconds = reset_state.modulator.remainder_s
     row.pi_last_switch_at = None
     row.pi_last_switch_heating = None
-    row.pi_awaiting_boundary_until = _naive(reset_state.awaiting_boundary_until)
+    now = _aware(reset_state.last_evaluated_at)
+    existing_wait = _aware(row.pi_awaiting_boundary_until)
+    if existing_wait is not None and now is not None and existing_wait <= now:
+        existing_wait = None  # already elapsed -- no longer "pending"
+    new_wait = reset_state.awaiting_boundary_until
+    if existing_wait is None:
+        row.pi_awaiting_boundary_until = _naive(new_wait)
+    elif new_wait is None or existing_wait >= new_wait:
+        row.pi_awaiting_boundary_until = _naive(existing_wait)
+    else:
+        # Reachable, and not just hypothetically: an upgrade can leave a `now`-
+        # format wait behind that this codebase's own two calls would never
+        # produce between themselves (the boundary-only formula alone cannot
+        # advance an existing pending wait -- see the two branches above), but
+        # a value written by an *earlier* version of this function can still be
+        # sitting in the column when a second `needs_safe_start` fires under
+        # the current code. Found by review, 2026-09-27: heating starts at
+        # 12:13, PI is enabled at 12:14 under the version of this fix that
+        # still extended the wait to the hysteresis deadline itself (300s after
+        # 12:13, so 12:18) -- superseded by the general invariant, but that
+        # 12:18 is what a zone upgraded mid-wait still has stored. Arming the
+        # installation at 12:16, before that stored wait elapses, fires
+        # `needs_safe_start` again (`RESET_REASON_ARMING`) and computes a fresh
+        # boundary-only wait of 12:30 -- later than the still-pending 12:18, so
+        # it correctly wins here instead of being discarded in favour of the
+        # earlier, now-stale value.
+        row.pi_awaiting_boundary_until = _naive(new_wait)
     row.pi_last_reset_reason = reset_state.last_reset_reason
 
 
@@ -577,6 +663,59 @@ def _neutral_pi_fields() -> dict[str, object]:
     }
 
 
+def _hysteresis_phase_still_holding(
+    situation: Situation, phase_started_by: str | None
+) -> bool:
+    """The general invariant (project owner, second security review, 2026-09-27):
+    a phase (on or off) that started under hysteresis control is held for at
+    least the ordinary hysteresis minimum switch duration
+    (`situation.parameter.min_on_seconds`/`min_off_seconds`, the same values
+    rule 5 in `decide()` itself checks) -- regardless of when, or through which
+    path, PI later takes over. A phase PI itself started is subject only to
+    PI's own, softer minimums (`pi_min_on_seconds`/`pi_min_off_seconds`, entirely
+    separate bookkeeping inside `pi_cycle()`/`window_modulate()`) and never
+    checked here.
+
+    Replaces a narrower, first version of this fix that only checked the
+    equivalent condition once, at the `needs_safe_start` transition itself --
+    found insufficient by this second review, two ways:
+
+    1. A one-time check at the moment PI is enabled cannot react to a
+       hysteresis-controlled phase that only *starts* afterwards. PI enabled at
+       12:01 found nothing held yet, so the resulting wait ended at the next
+       window boundary (12:15) with nothing left to extend it -- a phase that
+       then starts under hysteresis at 12:13 was never protected at all, and PI
+       switched it off after only 120s once 12:15 arrived.
+    2. The one-time wait was stored as `ZoneState.pi_awaiting_boundary_until`,
+       which every *other* gate reset (window/frost/sensor/valve) overwrote to
+       `None` the moment it fired even once during the wait -- clearing a
+       still-pending wait, not just superseding it (see `_write_reset_state`'s
+       own fix for the general form of this). A temporary sensor outage during
+       the wait let PI resume immediately once the outage cleared, with its own
+       short minimums, on a phase hysteresis had started and was still holding.
+
+    Both are closed by checking this fresh, from history, on *every* cycle PI
+    would otherwise decide -- not stored anywhere, so there is nothing to
+    silently go stale or get erased.
+
+    `phase_started_by` is `_previous_state()`'s fourth value: the
+    `effective_controller` of the earliest `shadow_decision` row in the
+    currently held run -- the exact same row `held_for_s` itself already comes
+    from, so this needs no new column and no migration. `None` means no history
+    at all yet (a zone's very first cycle, where `held_for_s` is `None` too);
+    `decide()`'s own rule 5 already treats an unknown duration as nothing to
+    enforce yet, and this mirrors that instead of conservatively blocking on it.
+    """
+    if situation.held_for_s is None or phase_started_by != "hysteresis":
+        return False
+    minimum_duration = (
+        situation.parameter.min_on_seconds
+        if situation.heating_now
+        else situation.parameter.min_off_seconds
+    )
+    return situation.held_for_s < minimum_duration
+
+
 def _pi_outcome(
     session: Session,
     zone: Zone,
@@ -588,6 +727,7 @@ def _pi_outcome(
     setpoint: Setpoint,
     override: ZoneOverride | None,
     vacation: Vacation | None,
+    phase_started_by: str | None,
     now: datetime,
 ) -> tuple[bool, str | None, dict[str, object]]:
     """Everything PI contributes to one zone's cycle.
@@ -639,6 +779,14 @@ def _pi_outcome(
     state.pi_last_control_armed = armed
     needs_safe_start = previous_armed is None or (previous_armed is False and armed)
     if needs_safe_start:
+        # Purely about a *safe* PI start after arming/an invalid state -- giving
+        # `pi_dt()` a clean, known-recent `last_evaluated_at` instead of computing
+        # over a potentially huge or meaningless gap. Deliberately unaware of the
+        # hysteresis minimum duration of whatever is currently held: that is now
+        # the general invariant checked below, on every cycle, not just this one
+        # transition (second security review, 2026-09-27 -- see
+        # `_hysteresis_phase_still_holding`'s own docstring for why a one-time
+        # check here was not enough).
         reason = RESET_REASON_INVALID_STATE if previous_armed is None else RESET_REASON_ARMING
         _write_reset_state(state, reset_pi_state(reason, now=now, await_next_boundary=True))
         fields["controller_fallback_reason"] = reason
@@ -665,8 +813,21 @@ def _pi_outcome(
         zone.operating_mode.code == "off"
         or setpoint.mode_id == settings.frost_protection_mode_id
     )
+    # Read directly off `Situation`, not off `decision.reason_code` -- rule 5 (the
+    # ordinary minimum-switch-duration hold) can return `REASON_CODE_BLOCKED_
+    # MINIMUM_DURATION` before rule 6 ever gets to assign
+    # `REASON_CODE_FROST_SENSOR_FAILURE` for a stale reading, masking it from a
+    # reason-code-based check the same way rule 4's resume delay and rule 3's
+    # window handling would be masked without their own independent booleans
+    # above (see `_pi_gate_reason`'s docstring for the security finding this
+    # closes, 2026-09-27). `situation.sensor_status` is exactly what rule 1 itself
+    # reads, so this cannot be pre-empted by any other rule.
+    sensor_failed = (
+        situation.sensor_status in (NO_SOURCE, VERALTET) or situation.measured_c is None
+    )
     gate = _pi_gate_reason(
         decision.reason_code,
+        sensor_failed=sensor_failed,
         window_governs=situation.window_open and not situation.on_off_actuators_only,
         resume_delay_active=resume_delay_active,
         frost_effective=frost_effective,
@@ -676,6 +837,25 @@ def _pi_outcome(
         fields["pi_reset_reason"] = gate
         fields["pi_integrator_action"] = INTEGRATOR_RESET
         return decision.heating, None, fields
+
+    # General invariant (project owner, second security review, 2026-09-27):
+    # a phase started under hysteresis holds for the hysteresis minimum switch
+    # duration regardless of which controller decides later cycles; only a
+    # phase PI itself started is subject to PI's own, softer minimums. Checked
+    # fresh every cycle from history (Grundsatz 5 -- the reason names exactly
+    # this, not the inapplicable hysteresis rule and not PI's own minimum).
+    if _hysteresis_phase_still_holding(situation, phase_started_by):
+        _write_reset_state(
+            state, reset_pi_state(PI_FALLBACK_HYSTERESIS_MINIMUM, now=now)
+        )
+        fields["pi_reset_reason"] = PI_FALLBACK_HYSTERESIS_MINIMUM
+        fields["pi_integrator_action"] = INTEGRATOR_RESET
+        return (
+            decision.heating,
+            "PI hält: die aktuelle Phase hat unter Hysterese begonnen und deren "
+            "Mindestdauer läuft noch.",
+            fields,
+        )
 
     # No section-4 rule applies: rule 6's territory (or rule 7's plain "stay off"
     # fallthrough, which is behaviourally the same "stay off" rule 6 itself would
@@ -862,7 +1042,9 @@ def _process_zone(
     setpoint = resolved_setpoint(session, zone, now)
     frost_c = _frost_setpoint(session, zone, settings)
     parameter = control_parameters(session, zone)
-    heating_now, held_for_s, previous_would_heat = _previous_state(session, zone.id, now)
+    heating_now, held_for_s, previous_would_heat, phase_started_by = _previous_state(
+        session, zone.id, now
+    )
     setpoint_c, setpoint_reason = _with_solar_setback(
         setpoint, frost_c, zone, parameter, settings, forecast, now
     )
@@ -918,21 +1100,54 @@ def _process_zone(
         setpoint,
         override,
         vacation,
+        phase_started_by,
         now,
     )
-    effective_decision = (
-        decision
-        if effective_heating == decision.heating and pi_reason_suffix is None
-        else replace(
+    # `decide()`'s rule 5 always answers the pure-hysteresis question, against
+    # `situation.parameter.min_on_seconds`/`min_off_seconds` -- correct for that
+    # question, but `REASON_CODE_BLOCKED_MINIMUM_DURATION` is exactly the code
+    # `_pi_gate_reason()` treats as *not* blocking PI (its own, shorter minimums
+    # govern instead -- see `TestPiGateReasonClassifiesEveryReasonCode` in
+    # `tests/test_shadow_run_pi.py`). Once PI actually is this cycle's effective
+    # controller, keeping `decision.reason_code`/`decision.reason` as the base --
+    # as the general branch below does for every other code -- reports the wrong
+    # minimum duration (the hysteresis one, not PI's) and, whenever PI's own
+    # candidate actually differs from `decision.heating`, a reason sentence that
+    # literally claims "bleibt unverändert" for a state that just changed.
+    # Grundsatz 5 asks for an accurate reason, not merely an accurate `heating`
+    # value -- found 2026-09-27 from the project owner's report that the 300s
+    # hysteresis minimum still appeared to govern a PI-controlled zone. Rebuilt
+    # entirely from PI's own outcome instead of patching decide()'s text: PI's
+    # reason (`pi_reason_suffix`, always set whenever `pi_fields` names PI as the
+    # effective controller) already names the applicable minimum-duration
+    # decision (`pi_min_duration_decision`) and the resulting direction, with
+    # nothing left over from the inapplicable hysteresis rule to contradict it.
+    pi_overrides_hysteresis_block = (
+        decision.reason_code == REASON_CODE_BLOCKED_MINIMUM_DURATION
+        and pi_fields.get("effective_controller") == "pi"
+    )
+    if pi_overrides_hysteresis_block:
+        assert pi_reason_suffix is not None  # always set once PI is effective
+        effective_decision = replace(
             decision,
             heating=effective_heating,
-            reason=(
-                decision.reason
-                if pi_reason_suffix is None
-                else f"{decision.reason} {pi_reason_suffix}"
-            ),
+            reason_code=REASON_CODE_HEATING if effective_heating else REASON_CODE_OFF,
+            reason=pi_reason_suffix.strip(),
         )
-    )
+    else:
+        effective_decision = (
+            decision
+            if effective_heating == decision.heating and pi_reason_suffix is None
+            else replace(
+                decision,
+                heating=effective_heating,
+                reason=(
+                    decision.reason
+                    if pi_reason_suffix is None
+                    else f"{decision.reason} {pi_reason_suffix}"
+                ),
+            )
+        )
     _apply_decision_to_state(state, effective_decision, now)
 
     row = ShadowDecision(
@@ -943,7 +1158,12 @@ def _process_zone(
         setpoint_reason=setpoint_reason,
         would_heat=effective_decision.heating,
         previous_would_heat=previous_would_heat,
-        outcome_code=decision.reason_code,
+        # `effective_decision.reason_code`, not the raw `decision.reason_code`:
+        # identical to it in every other branch (`replace()` above only touches
+        # `reason_code` in the PI-overrides-hysteresis-block branch), but the
+        # persisted `outcome_code` must name what actually governed this cycle,
+        # not decide()'s pure-hysteresis answer whenever PI overrode it.
+        outcome_code=effective_decision.reason_code,
         reason=effective_decision.reason,
         **pi_fields,
     )

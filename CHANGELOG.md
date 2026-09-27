@@ -48,6 +48,54 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
   Regressionstest `browser_tests/test_icon_centering.py`, gegen vier
   unterschiedliche Schriften.
 
+- **PI-Regelung: ein veralteter Messwert wurde von PI übersehen, wenn gleichzeitig
+  eine Mindestschaltdauer geblockt hätte.** Sicherheitsrelevanter Fund aus dem
+  Kreuzreview des Eintrags unten. `_pi_gate_reason()` erkannte einen veralteten
+  Sensor bisher nur am Antwortcode von `decide()` -- der aber erst in Regel 6
+  vergeben wird, während die gewöhnliche Mindestschaltdauer (Regel 5) davor liegt
+  und den Zyklus mit einem anderen Code beenden kann, bevor Regel 6 je erreicht
+  wird. Auf einem solchen Zyklus lief PI unbeirrt gegen den normalen Sollwert und
+  den veralteten Messwert weiter, statt auf den Frostschutz-Sollwert
+  zurückzufallen. **Was sich an der Anlage ändert:** Bei einem veralteten Messwert
+  verhält sich eine PI-Zone jetzt in jedem Fall exakt wie eine reine
+  Hysterese-Zone. Behoben durch einen eigenen, direkt aus der Situation berechneten
+  Sensorstatus-Parameter, der nicht mehr durch eine andere Regel verdeckt werden
+  kann.
+- **PI-Regelung: eine unter Hysterese begonnene Phase konnte ihre eigene
+  Mindestschaltdauer umgehen, sobald PI die Steuerung übernahm.** Betraf drei
+  Fälle: den Übergang Hysterese→PI selbst (PI wird aktiviert oder wieder
+  geeignet, während eine Phase noch innerhalb ihrer Hysterese-Mindestdauer
+  gehalten wird); die Rückkehr aus einem vorübergehenden Zustand (Sensorausfall,
+  offenes Fenster, Aus-Modus/Frostschutz, Wiederanlauf-Wartezeit nach einem
+  Fenster) mitten in einer solchen Phase; und einen Sonderfall, in dem ein
+  solcher Zustand sogar eine bereits laufende Warteperiode nach dem Aktivieren
+  von PI löschen konnte. **Was sich an der Anlage ändert:** Eine Phase, die unter
+  Hysterese begonnen hat, wird jetzt unter allen Umständen für die volle
+  Hysterese-Mindestdauer gehalten -- unabhängig davon, wann oder auf welchem Weg
+  PI danach übernimmt, und unabhängig davon, wie oft zwischenzeitlich ein
+  vorübergehender Zustand zurückgesetzt hat. Eine von PI selbst begonnene Phase
+  ist davon unberührt und folgt weiterhin PI's eigenen, kürzeren Mindestdauern.
+- **PI-Regelung: der Schattenlauf berichtete die 300s-Hysterese-Mindestdauer,
+  nicht PI's eigene, kürzere Mindestdauern.** `would_heat` selbst folgte schon
+  immer PI's eigenen Werten (`pi_min_on_seconds`/`pi_min_off_seconds`) -- die
+  hartverdrahtete 300s-Regel hat nie tatsächlich blockiert, wenn PI wirksamer
+  Regler ist. Der Fehler saß in der protokollierten Begründung
+  (`shadow_decision.outcome_code`/`.reason`): auf genau den Zyklen, auf denen
+  PI eine Umschaltung entgegen der Hysterese-Mindestdauer durchgesetzt hat,
+  stand dort weiterhin "gesperrt_mindestdauer" mit "Mindestdauer 300s ... die
+  Heizanforderung bleibt unverändert" -- widersprüchlich zur tatsächlich
+  geänderten Heizanforderung und irreführend, welche Mindestdauer wirklich
+  galt. Betroffen davon: Betriebsseite, Schaltprotokoll, REST-API und
+  MCP-Server (alle lesen dieselbe Spalte unverändert weiter). Behoben in
+  `services/shadow_run.py::_process_zone`: Sobald PI der wirksame Regler ist
+  und `decide()` selbst mit der Hysterese-Mindestdauer geblockt hätte, wird
+  Grund und Code vollständig aus PI's eigener Entscheidung aufgebaut, nicht
+  aus der dann unzutreffenden Hysterese-Antwort. Als Nebeneffekt behoben: der
+  Ventilschutz-Marker wurde nicht geräumt, wenn PI eine solche Blockade
+  überstimmt hat (dieselbe Ursache wie der 2026-09-02 behobene Fall für
+  reine Hysterese-Zonen). Keine Migration, kein Verhalten am Schaltverhalten
+  selbst geändert -- nur die Begründung stimmt jetzt.
+
 ## 0.10.0 — 2026-09-26
 
 ### Hinzugefügt

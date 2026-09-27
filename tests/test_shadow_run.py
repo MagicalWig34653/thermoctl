@@ -194,7 +194,7 @@ def test_previous_state_uses_only_the_target_zones_latest_uninterrupted_run(
         ))
     session.flush()
 
-    assert shadow_run._previous_state(session, target.id, NOW) == (True, 30, True)
+    assert shadow_run._previous_state(session, target.id, NOW) == (True, 30, True, "hysteresis")
 
 
 def test_empty_previous_state_does_not_leak_from_lower_or_higher_zone_ids(
@@ -218,7 +218,7 @@ def test_empty_previous_state_does_not_leak_from_lower_or_higher_zone_ids(
         ))
     session.flush()
 
-    assert shadow_run._previous_state(session, target.id, NOW) == (False, None, None)
+    assert shadow_run._previous_state(session, target.id, NOW) == (False, None, None, None)
 
 
 def test_shadow_valve_protection_closes_on_schedule_without_claiming_actuation(

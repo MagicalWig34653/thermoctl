@@ -8,7 +8,7 @@
 module-path = "thermoctl/services/shadow_run.py"
 timeout = 10.0
 excluded-modules = []
-test-command = ".venv/bin/python -m pytest --no-cov tests/test_shadow_run.py tests/test_shadow_run_solar.py"
+test-command = ".venv/bin/python -m pytest --no-cov tests/test_shadow_run.py tests/test_shadow_run_solar.py tests/test_shadow_run_pi.py"
 
 [cosmic-ray.distributor]
 name = "local"
