@@ -29,6 +29,7 @@ from tests.helpers import (
     role,
     sensor_status_of,
 )
+from tests.test_control_loop import _lage, _parameter
 from thermoctl.db.models.device import Device, DeviceCapabilityLink, ZoneDevice
 from thermoctl.db.models.operations import Setting
 from thermoctl.db.models.schedule import SchedulePoint
@@ -277,14 +278,28 @@ class TestPiGateReasonClassifiesEveryReasonCode:
         # `reason_code == REASON_CODE_WINDOW_OPEN` check -- true here exactly for the
         # one code it is meant to gate, mirroring how `_process_zone` derives it from
         # `Situation.window_open and not Situation.on_off_actuators_only`.
+        #
+        # `sensor_failed` (added 2026-09-27, security finding on the reason/outcome
+        # fix above): mirrors `window_governs` in the same way -- true here exactly
+        # for the two codes rule 1's sensor check is meant to gate, and *not* read
+        # from `reason_code` at all inside `_pi_gate_reason()` itself, because rule 5
+        # can return `REASON_CODE_BLOCKED_MINIMUM_DURATION` before rule 6 ever
+        # assigns `REASON_CODE_FROST_SENSOR_FAILURE` (see `_pi_gate_reason`'s own
+        # docstring). `TestPrecedenceRulesBeatPi` exercises that masking scenario
+        # end to end; this test only proves the mapping in isolation.
         window_governed_codes = (
             control_loop.REASON_CODE_WINDOW_OPEN,
             control_loop.REASON_CODE_FROST_OVERRIDES_WINDOW,
+        )
+        sensor_failure_codes = (
+            control_loop.REASON_CODE_NO_SOURCE,
+            control_loop.REASON_CODE_FROST_SENSOR_FAILURE,
         )
         for code, expected_reason in self._BLOCKING.items():
             assert (
                 shadow_run._pi_gate_reason(
                     code,
+                    sensor_failed=code in sensor_failure_codes,
                     window_governs=code in window_governed_codes,
                     resume_delay_active=False,
                     frost_effective=False,
@@ -296,8 +311,8 @@ class TestPiGateReasonClassifiesEveryReasonCode:
         for code in self._PERMITTED:
             assert (
                 shadow_run._pi_gate_reason(
-                    code, window_governs=False, resume_delay_active=False,
-                    frost_effective=False,
+                    code, sensor_failed=False, window_governs=False,
+                    resume_delay_active=False, frost_effective=False,
                 )
                 is None
             )
@@ -311,11 +326,27 @@ class TestPiGateReasonClassifiesEveryReasonCode:
         assert (
             shadow_run._pi_gate_reason(
                 control_loop.REASON_CODE_BLOCKED_MINIMUM_DURATION,
+                sensor_failed=False,
                 window_governs=True,
                 resume_delay_active=False,
                 frost_effective=False,
             )
             == RESET_REASON_WINDOW_OPEN
+        )
+
+    def test_sensor_failed_gates_pi_even_for_an_otherwise_permitted_code(self) -> None:
+        """Mirrors the window test above, for `sensor_failed` -- the exact
+        combination the security finding reproduced end to end
+        (`REASON_CODE_BLOCKED_MINIMUM_DURATION` masking a stale reading)."""
+        assert (
+            shadow_run._pi_gate_reason(
+                control_loop.REASON_CODE_BLOCKED_MINIMUM_DURATION,
+                sensor_failed=True,
+                window_governs=False,
+                resume_delay_active=False,
+                frost_effective=False,
+            )
+            == RESET_REASON_SENSOR_FAILURE
         )
 
 
@@ -711,6 +742,113 @@ class TestPrecedenceRulesBeatPi:
         assert row.pi_reset_reason == RESET_REASON_SENSOR_FAILURE
         assert row.pi_integrator_action == INTEGRATOR_RESET
 
+    def test_a_stale_sensor_gates_pi_even_when_a_minimum_duration_block_masks_it(
+        self, session: Session
+    ) -> None:
+        """Security finding from the cross-review of commit 45ecf1a (2026-09-27):
+        `_pi_gate_reason` used to recognise a stale ("veraltet") sensor only via
+        `decision.reason_code == REASON_CODE_FROST_SENSOR_FAILURE` -- but
+        `decide()` only assigns that code inside rule 6, and rule 5 (the ordinary
+        minimum-switch-duration hold) sits *before* rule 6 and returns
+        `REASON_CODE_BLOCKED_MINIMUM_DURATION` first whenever the current state
+        has not been held long enough. On such a cycle PI kept computing a real
+        candidate against the zone's normal setpoint and the stale measurement --
+        exactly what rule 1 exists to prevent.
+
+        Reproduced with the exact scenario from the review: setpoint 21 °C,
+        measured 20.9 °C (inside the hysteresis band -- "aus" from the start,
+        so nothing but rule 5 ever has a reason to block a switch), a 300 s
+        hysteresis minimum, a 60 s PI minimum. The sensor goes stale after the
+        first cycle; before the fix, `would_heat` flipped to `True` on PI's own
+        candidate at t=120s with `effective_controller` still `"pi"`.
+
+        Proven against a twin, PI-disabled zone under an identical timeline
+        rather than a hand-picked expected value: the fix's own safety
+        requirement *is* "behaves exactly like the hysteresis-only zone", so that
+        is exactly what this test compares against, cycle by cycle.
+        """
+        pi_zone = _pi_zone(
+            session, "pi-sensor-veraltet", measured_c=Decimal("20.9"), pi_min_on=60, pi_min_off=60
+        )
+        hysteresis_zone = _pi_zone(
+            session, "hysterese-sensor-veraltet", measured_c=Decimal("20.9"), pi_enabled=False
+        )
+
+        now = NOW
+        for i in range(4):
+            if i == 1:
+                # Sensor goes stale right after the first cycle (t=0s) for both
+                # zones, *before* the cycle at t=60s below -- so both already
+                # share an identical "aus" history to hold from when it does.
+                for z in (pi_zone, hysteresis_zone):
+                    state = session.get(ZoneState, z.id)
+                    assert state is not None
+                    state.sensor_status_id = sensor_status_of(session, "veraltet").id
+                session.flush()
+
+            pi_row = _row_for(shadow_run.cycle(session, now), pi_zone)
+            control_row = _row_for(shadow_run.cycle(session, now), hysteresis_zone)
+            now += timedelta(seconds=60)
+
+            assert pi_row.would_heat == control_row.would_heat, (
+                f"cycle {i}: PI zone diverged from the hysteresis-only twin while "
+                "the sensor was stale"
+            )
+            if i >= 1:
+                # The actual bug: this stayed "pi" before the fix, at exactly the
+                # cycle (t=120s, i=2) the review reproduced `would_heat=True` on.
+                assert pi_row.effective_controller == "hysteresis"
+                assert pi_row.pi_reset_reason == RESET_REASON_SENSOR_FAILURE
+                assert pi_row.pi_integrator_action == INTEGRATOR_RESET
+
+    def test_window_governed_frost_override_gates_pi_even_when_a_minimum_duration_block_masks_it(
+        self, session: Session
+    ) -> None:
+        """Same class of finding as the stale-sensor test above, checked for the
+        other three caller-computed gates named in the review
+        (`window_governs`/`resume_delay_active`/`frost_effective`): unlike the
+        sensor check before this fix, none of them ever read `decision.reason_code`
+        -- they were already computed straight from `Situation`/context, so rule 5
+        masking `decide()`'s own reason code cannot hide them. This is the one
+        combination that actually exercises the masking risk end to end: an open
+        window whose frost exception is engaged (`REASON_CODE_FROST_OVERRIDES_WINDOW`,
+        rule 3's fallthrough) still runs rule 5 afterwards, which can return
+        `REASON_CODE_BLOCKED_MINIMUM_DURATION` before rule 6 ever assigns the
+        window-frost code. `frost_effective` (a plain operating-mode/off-mode
+        check) has no such fallthrough to begin with -- rule 5 running first
+        cannot mask it, and the existing 30-cycle
+        `test_frost_protection_mode_resets_every_cycle_it_is_effective` above
+        already asserts `RESET_REASON_FROST` on every one of those cycles,
+        including the early ones where rule 5 would otherwise fire. A missing
+        measurement (`REASON_CODE_NO_SOURCE`) cannot be masked by rule 5 at all --
+        rule 1 returns before rule 5 (or anything else) ever runs.
+        """
+        zone = _pi_zone(session, "fenster-frost-block", measured_c=Decimal("15.0"))
+        # Mixed zone, same reason as `test_window_open_resets_every_cycle_for_two_hours`
+        # above: a plain switch-only zone is `on_off_actuators_only`, which exempts
+        # it from rule 3 (and this test) entirely.
+        _assign_actuator(
+            session, zone, self_regulating=True, capability_code="thermostat", suffix="-heizkörper",
+        )
+        state = session.get(ZoneState, zone.id)
+        assert state is not None
+        state.window_open = True
+        session.flush()
+
+        now = NOW
+        for i in range(5):  # t=0..240s, well inside the 300s hysteresis minimum
+            row = _row_for(shadow_run.cycle(session, now), zone)
+            assert row.effective_controller == "hysteresis"
+            assert row.pi_reset_reason == RESET_REASON_WINDOW_OPEN
+            assert row.pi_integrator_action == INTEGRATOR_RESET
+            if i >= 1:
+                # The actual masking risk: `decide()` itself answers
+                # `gesperrt_mindestdauer` here (held_for_s < 300s), not the
+                # window-frost code -- proving `pi_reset_reason` above does not
+                # merely coincide with an unmasked `decide()` answer.
+                assert row.outcome_code == control_loop.REASON_CODE_BLOCKED_MINIMUM_DURATION
+            now += timedelta(seconds=60)
+
     def test_a_valve_protection_run_holds_pi_at_zero_for_its_whole_duration(
         self, session: Session
     ) -> None:
@@ -1077,9 +1215,14 @@ class TestHysteresisMinimumDurationDoesNotGovernPi:
 
         assert row.requested_controller == "hysteresis"
         assert row.effective_controller == "hysteresis"
-        if row.outcome_code == "gesperrt_mindestdauer":
-            assert "Mindestdauer 300s" in row.reason
-            assert "unverändert" in row.reason
+        # Deterministic, not incidental: `held_for_s` is 30s at this second
+        # cycle (< the 300s hysteresis minimum), so rule 5 in `decide()` always
+        # fires here regardless of what rule 6 would otherwise have decided --
+        # unconditional per the task's review (a conditional assertion here
+        # would silently stop proving anything the moment that stopped holding).
+        assert row.outcome_code == "gesperrt_mindestdauer"
+        assert "Mindestdauer 300s" in row.reason
+        assert "unverändert" in row.reason
 
 
 class TestNonBlockedReasonCodesKeepDecideOwnReasoning:
@@ -1166,6 +1309,55 @@ class TestNonBlockedReasonCodesKeepDecideOwnReasoning:
         assert "PI-Regelung" in row.reason
 
 
+class TestHysteresisMinimumStillRunning:
+    """Direct unit tests for `_hysteresis_minimum_still_running()`, the pure
+    helper the Hysterese -> PI transition fix (`TestControllerTransitionsMidHold`
+    below) is built on. Two things an end-to-end `_process_zone()` scenario
+    cannot reliably pin down on its own:
+
+    - A `min_on_seconds == min_off_seconds` situation (the common case in the
+      rest of this file) cannot distinguish a `heating_now`/`not heating_now`
+      swap in which of the two this function reads -- both give the same
+      number either way. Exercised here with deliberately different values.
+    - Once past `_pi_outcome`'s own composition with the window-boundary wait
+      (`hysteresis_ready_at > reset_state.awaiting_boundary_until`), the exact
+      moment the minimum elapses (`held_for_s == minimum_duration`) can never
+      make an observable difference there: extending an already-later boundary
+      to the *same* instant is a no-op. That equivalence does not hold for this
+      function on its own, so it is worth pinning down directly.
+    """
+
+    def test_returns_none_without_any_held_history(self) -> None:
+        situation = _lage(held_for_s=None)
+        assert shadow_run._hysteresis_minimum_still_running(situation, NOW) is None
+
+    def test_returns_none_exactly_once_the_minimum_has_elapsed(self) -> None:
+        situation = _lage(
+            heating_now=True, held_for_s=300, parameter=_parameter(min_on_seconds=300)
+        )
+        assert shadow_run._hysteresis_minimum_still_running(situation, NOW) is None
+
+    def test_reads_min_on_seconds_while_heating(self) -> None:
+        situation = _lage(
+            heating_now=True,
+            held_for_s=10,
+            parameter=_parameter(min_on_seconds=300, min_off_seconds=30),
+        )
+        assert shadow_run._hysteresis_minimum_still_running(
+            situation, NOW
+        ) == NOW + timedelta(seconds=290)
+
+    def test_reads_min_off_seconds_while_off(self) -> None:
+        situation = _lage(
+            heating_now=False,
+            held_for_s=10,
+            parameter=_parameter(min_on_seconds=300, min_off_seconds=30),
+        )
+        assert shadow_run._hysteresis_minimum_still_running(
+            situation, NOW
+        ) == NOW + timedelta(seconds=20)
+
+
 class TestControllerTransitionsMidHold:
     """Two deliberate, conservative decisions about a controller change while a
     minimum-duration hold is already running (task instruction: decide and test
@@ -1185,16 +1377,40 @@ class TestControllerTransitionsMidHold:
       moment of the fallback. A state PI just started 90s ago stays held for the
       *remaining* 210s of the 300s hysteresis minimum, not for a fresh 300s.
     - **Hysterese -> PI** (PI newly enabled or newly eligible): `_pi_outcome()`'s
-      safe-start wait (`needs_safe_start`, tested in `TestSafeStart`) always makes
-      the zone decide by hysteresis alone until the next full 15-minute window
-      boundary, regardless of how long the current state has already held under
-      hysteresis. PI's own, shorter minimums never apply mid-hold on the very
-      cycle it turns on.
+      safe-start wait (`needs_safe_start`, tested in `TestSafeStart`) makes the
+      zone decide by hysteresis alone until the next full 15-minute window
+      boundary -- **and, since a security review of this fix found the boundary
+      alone is not enough (2026-09-27), until the hysteresis minimum for the
+      currently held state has *also* elapsed, whichever of the two ends later**
+      (`_hysteresis_minimum_still_running()`). Without that extension, a state
+      held for less than the hysteresis minimum at the moment PI takes over could
+      switch immediately once the (unrelated) window boundary arrived, bypassing
+      the remainder of a minimum duration that was still running -- exactly the
+      counter-example the review gave: heating starts at 12:13, PI is enabled at
+      12:14, the next boundary at 12:15 let PI switch off after only 120s instead
+      of the 300s hysteresis minimum still running from 12:13. The project
+      owner's conservative decision: PI's own, shorter minimums never apply
+      mid-hold -- not even once the window boundary has passed -- until the
+      *original* hysteresis deadline for the currently held state is reached.
     """
 
     def test_falling_back_to_hysteresis_keeps_the_accumulated_hold(
         self, session: Session
     ) -> None:
+        """Cross-review correction (2026-09-27): the previous version of this test
+        had the timing wrong in its own comments (it switches on at t=90s, not
+        t=120s as claimed) and, worse, never actually distinguished "the original
+        90s-old deadline keeps counting" from "the deadline silently restarted at
+        the fallback moment" -- both produce `gesperrt_mindestdauer` on the very
+        next cycle regardless, since *any* `held_for_s` below 300s blocks. Fixed
+        by warming the room right at the fallback point (so rule 6 genuinely wants
+        to switch off from then on) and running cycles all the way to where the
+        two hypotheses disagree: the true deadline (300s after the state actually
+        started at t=90s) is t=390s; a silently-restarted one (300s after the
+        fallback at t=120s) would be t=420s. Observing the switch-off exactly at
+        t=390s -- not still blocked, and not already switched off earlier -- is
+        what actually proves the accumulated hold, not just its label.
+        """
         zone = _pi_zone(
             session,
             "pi-faellt-zurueck",
@@ -1203,30 +1419,61 @@ class TestControllerTransitionsMidHold:
             pi_min_off=60,
         )
         now = NOW
-        for _ in range(4):  # 0, 30, 60, 90 -- switches on at 90s (see test above)
+        for i in range(4):  # t=0, 30, 60, 90 -- switches on at t=90s
             row = _row_for(shadow_run.cycle(session, now), zone)
+            if i < 3:
+                assert row.would_heat is False
             now += timedelta(seconds=30)
         assert row.would_heat is True
         assert row.effective_controller == "pi"
+        heating_started_at = now - timedelta(seconds=30)  # t=90s
 
-        # PI becomes ineligible mid-hold, at 90s into the "Heizen" state -- removing
-        # its only ordinary actuator is the simplest way to force that without
-        # touching the measurement or the clock.
+        # PI becomes ineligible right here, at t=120s -- 30s into the "Heizen"
+        # state, not 120s into it. Removing its only ordinary actuator is the
+        # simplest way to force that without touching the measurement or the
+        # clock. The room is warmed *in the same cycle* so rule 6 genuinely wants
+        # to switch off from t=120s onward -- without this, every cycle up to the
+        # deadline would trivially stay "Heizen" because rule 6 itself agrees,
+        # proving nothing about which deadline governs.
         actuator_link = session.execute(
             select(ZoneDevice).where(ZoneDevice.zone_id == zone.id)
         ).scalar_one()
         session.delete(actuator_link)
+        state = session.get(ZoneState, zone.id)
+        assert state is not None
+        state.temperature_c = Decimal("23.0")  # well above setpoint + hysteresis
         session.flush()
 
-        # now == NOW + 120s; the "Heizen" state has held for 120s under the 300s
-        # hysteresis minimum, whichever controller produced it.
+        true_deadline = heating_started_at + timedelta(seconds=300)  # t=390s
+        restarted_deadline = now + timedelta(seconds=300)  # t=420s, if it reset
+        assert true_deadline != restarted_deadline  # the two hypotheses disagree
+
         fallen_back = _row_for(shadow_run.cycle(session, now), zone)
         assert fallen_back.requested_controller == "pi"
         assert fallen_back.effective_controller == "hysteresis"
         assert fallen_back.controller_fallback_reason == PI_FALLBACK_INELIGIBLE
-        # Not reset to a fresh 300s: the hold counts from the state's real start.
         assert fallen_back.outcome_code == "gesperrt_mindestdauer"
         assert "Mindestdauer 300s" in fallen_back.reason
+        assert fallen_back.would_heat is True  # still blocked, 30s into the hold
+        now += timedelta(seconds=30)
+
+        # Run every cycle up to (but not including) the true deadline: rule 6
+        # would switch off immediately (the room is warm) if not for the
+        # minimum-duration block, so `would_heat` staying `True` throughout is
+        # exactly the accumulated hold from t=90s continuing to apply.
+        while now < true_deadline:
+            row = _row_for(shadow_run.cycle(session, now), zone)
+            assert row.would_heat is True, f"switched off early, at {now}"
+            assert row.outcome_code == "gesperrt_mindestdauer"
+            now += timedelta(seconds=30)
+
+        assert now == true_deadline
+        at_deadline = _row_for(shadow_run.cycle(session, now), zone)
+        # The decisive assertion: switched off exactly at the *original*
+        # deadline (t=390s) -- a silently-restarted one would still be blocked
+        # here (30s short of t=420s), the exact bug this test was meant to catch.
+        assert at_deadline.would_heat is False
+        assert at_deadline.outcome_code == control_loop.REASON_CODE_OFF
         assert fallen_back.would_heat is True  # held, not switched off early
 
     def test_enabling_pi_mid_hold_waits_for_the_next_boundary_first(
@@ -1259,6 +1506,74 @@ class TestControllerTransitionsMidHold:
         # for the disable step; this is its mirror on the enable step.
         assert just_enabled.controller_fallback_reason == RESET_REASON_INVALID_STATE
         assert just_enabled.would_heat == row.would_heat  # unchanged by the switch
+
+    def test_the_hysteresis_minimum_extends_the_wait_past_the_window_boundary(
+        self, session: Session
+    ) -> None:
+        """The scenario the security review actually gave, reproduced with
+        `NOW` (a Monday, exactly on a 15-minute UTC boundary -- see the module
+        docstring) standing in for 12:00: heating starts at "12:13" (`NOW` + 13
+        minutes), PI is enabled a minute later at "12:14", and the next window
+        boundary is "12:15" -- only 120s into the "Heizen" state, well short of
+        the 300s hysteresis minimum still running from "12:13" (until "12:18").
+
+        Before the fix in `_pi_outcome`'s `needs_safe_start` branch, the boundary
+        alone governed the wait: PI would have taken over at "12:15" already.
+        This test proves the wait now extends to "12:18" instead -- the previous
+        test above does not, because there the hysteresis deadline (at 300s of
+        holding) falls *before* the next boundary (900s away) and so never
+        exercises the extension.
+        """
+        zone = _pi_zone(
+            session,
+            "spaettransfer",
+            measured_c=COLD_C,
+            pi_enabled=False,
+            pi_min_on=60,
+            pi_min_off=60,
+        )
+        # "12:13" -- `decide()` alone (PI still disabled) switches heating on
+        # immediately against the cold measurement, no minimum-duration question
+        # yet (`held_for_s` is `None` on this zone's first-ever cycle).
+        heating_started_at = NOW + timedelta(minutes=13)
+        started = _row_for(shadow_run.cycle(session, heating_started_at), zone)
+        assert started.would_heat is True
+
+        # "12:14" -- PI is enabled with the state only 60s into the hold.
+        now = heating_started_at + timedelta(seconds=60)
+        zone.pi_enabled = True
+        session.flush()
+        just_enabled = _row_for(shadow_run.cycle(session, now), zone)
+        assert just_enabled.effective_controller == "hysteresis"
+        assert just_enabled.controller_fallback_reason == RESET_REASON_INVALID_STATE
+
+        boundary = (
+            window_start_for(now.replace(tzinfo=UTC)) + timedelta(seconds=WINDOW_SECONDS)
+        ).replace(tzinfo=None)  # naive, matching `ZoneState.pi_awaiting_boundary_until`
+        assert boundary == NOW + timedelta(minutes=15)  # "12:15"
+        hysteresis_deadline = heating_started_at + timedelta(seconds=300)  # "12:18"
+        assert hysteresis_deadline > boundary  # the fix's extension actually applies here
+
+        state = session.get(ZoneState, zone.id)
+        assert state is not None
+        assert state.pi_awaiting_boundary_until == hysteresis_deadline
+        assert state.pi_awaiting_boundary_until != boundary  # not the unextended wait
+
+        # Every cycle up to, but not including, "12:18": still hysteresis, even
+        # though the "12:15" boundary has long passed.
+        now += timedelta(minutes=1)
+        while now < hysteresis_deadline:
+            row = _row_for(shadow_run.cycle(session, now), zone)
+            assert row.effective_controller == "hysteresis", f"took over PI early, at {now}"
+            now += timedelta(minutes=1)
+
+        # "12:18": the hysteresis minimum for the state held since "12:13" has
+        # now genuinely elapsed -- PI computes its first real candidate.
+        assert now == hysteresis_deadline
+        at_deadline = _row_for(shadow_run.cycle(session, now), zone)
+        assert at_deadline.effective_controller == "pi"
+        assert at_deadline.controller_fallback_reason is None
+        assert at_deadline.pi_min_duration_decision is not None
 
 
 class TestValveProtectionMarkerClearsWhenPiOverridesTheBlock:

@@ -13,6 +13,28 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ### Behoben
 
+- **PI-Regelung: ein veralteter Messwert wurde von PI übersehen, wenn gleichzeitig
+  eine Mindestschaltdauer geblockt hätte.** Sicherheitsrelevanter Fund aus dem
+  Kreuzreview des Eintrags unten. `_pi_gate_reason()` erkannte einen veralteten
+  Sensor bisher nur am Antwortcode von `decide()` -- der aber erst in Regel 6
+  vergeben wird, während die gewöhnliche Mindestschaltdauer (Regel 5) davor liegt
+  und den Zyklus mit einem anderen Code beenden kann, bevor Regel 6 je erreicht
+  wird. Auf einem solchen Zyklus lief PI unbeirrt gegen den normalen Sollwert und
+  den veralteten Messwert weiter, statt auf den Frostschutz-Sollwert
+  zurückzufallen. **Was sich an der Anlage ändert:** Bei einem veralteten Messwert
+  verhält sich eine PI-Zone jetzt in jedem Fall exakt wie eine reine
+  Hysterese-Zone. Behoben durch einen eigenen, direkt aus der Situation berechneten
+  Sensorstatus-Parameter, der nicht mehr durch eine andere Regel verdeckt werden
+  kann.
+- **PI-Regelung: der Übergang von Hysterese zu PI konnte eine bereits laufende
+  Mindestschaltdauer umgehen.** Aktiviert man PI (oder wird eine Zone wieder
+  dafür geeignet), während ein Zustand noch innerhalb der Hysterese-Mindestdauer
+  gehalten wird, wartete die Anlage bisher nur bis zur nächsten vollen
+  15-Minuten-Fenstergrenze, nicht bis zum tatsächlichen Ende dieser
+  Mindestdauer. **Was sich an der Anlage ändert:** Eine frisch aktivierte oder
+  wieder geeignete PI-Zone kann eine bereits laufende Hysterese-Mindestdauer
+  jetzt nicht mehr durch das Erreichen der nächsten Fenstergrenze umgehen -- die
+  längere der beiden Wartezeiten gilt.
 - **PI-Regelung: der Schattenlauf berichtete die 300s-Hysterese-Mindestdauer,
   nicht PI's eigene, kürzere Mindestdauern.** `would_heat` selbst folgte schon
   immer PI's eigenen Werten (`pi_min_on_seconds`/`pi_min_off_seconds`) -- die

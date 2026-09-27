@@ -2,6 +2,69 @@
 
 Letzte Aktualisierung: 2026-09-27.
 
+## PI-Regelung: Sensorausfall wurde von PI übersehen, Übergang Hysterese→PI umgeht jetzt nicht mehr die laufende Mindestdauer
+
+Kreuzreview des Fixes unten (Commit 45ecf1a) fand zwei weitere Fehler, einen davon
+sicherheitsrelevant.
+
+**Behoben (sicherheitsrelevant):** `_pi_gate_reason()` in `services/shadow_run.py`
+erkannte einen veralteten Messwert nur an `decide()`s eigenem Antwortcode
+(`REASON_CODE_FROST_SENSOR_FAILURE`) -- der aber erst in Regel 6 vergeben wird. Regel 5
+(die gewöhnliche Mindestschaltdauer) liegt davor und kann mit
+`REASON_CODE_BLOCKED_MINIMUM_DURATION` zurückkehren, bevor Regel 6 den
+Sensorfehler-Code je vergibt. Auf einem solchen Zyklus lief PI unbeirrt gegen den
+normalen Sollwert und den veralteten Messwert weiter -- genau das, was Regel 1 (Rückfall
+auf den Frostschutz-Sollwert bei Sensorausfall) verhindern soll. Reproduziert mit Soll
+21 °C, Messwert 20,9 °C, Hysterese-Mindestdauer 300s, PI-Mindestdauer 60s: `would_heat`
+kippt 60s nach dem Sensorausfall auf `True`, mit weiterhin `effective_controller="pi"`.
+**Am Verhalten der Anlage ändert sich dadurch:** Bei einem veralteten Messwert
+verhält sich eine PI-Zone jetzt exakt wie eine reine Hysterese-Zone -- Regelung gegen
+den Frostschutz-Sollwert, keine PI-Entscheidung mehr, unabhängig davon, ob eine
+Mindestschaltdauer diesen Zyklus zufällig ebenfalls geblockt hätte. Behoben durch einen
+eigenen, direkt aus `Situation.sensor_status`/`measured_c` berechneten `sensor_failed`-
+Parameter, der nicht mehr über `decision.reason_code` laufen kann und deshalb von Regel
+5 nicht mehr verdeckt wird. Fenster-, Frostschutz- und Aus-Modus-Gates waren bereits
+unabhängig von `decision.reason_code` berechnet und damit nie betroffen (jetzt mit
+eigenen End-zu-End-Tests belegt statt nur angenommen).
+
+**Behoben (Regellogik, konservativ):** Die vorherige Aussage unten, der Übergang
+Hysterese→PI übernehme "nie mitten in einer laufenden Hysterese-Haltung", war falsch --
+der vorhandene Scharfschalt-Schutz wartet nur bis zur nächsten vollen
+15-Minuten-Fenstergrenze, nicht bis zum Ende der *tatsächlich* noch laufenden
+Hysterese-Mindestdauer. Gegenbeispiel aus dem Review: Heizbeginn 12:13, PI-Aktivierung
+12:14, Fenstergrenze 12:15 -- PI hätte nach nur 120s statt der vollen 300s-Mindestdauer
+abschalten können. **Entscheidung des Projektinhabers, konservativ:** Beim Übergang
+Hysterese→PI gilt die zum Übernahmezeitpunkt noch laufende Hysterese-Mindestdauer der
+aktuellen Phase bis zu ihrem Ende (hier also bis 12:18); erst danach entscheidet PI mit
+eigener Semantik. Umgesetzt in `_pi_outcome`'s `needs_safe_start`-Zweig: die Wartezeit
+ist jetzt das spätere von „nächste Fenstergrenze" und „noch laufende
+Hysterese-Mindestdauer der gehaltenen Phase" (`_hysteresis_minimum_still_running()`,
+neu). **Am Anlagenverhalten ändert das**: eine frisch aktivierte oder wieder eligible
+PI-Zone kann eine bereits laufende Hysterese-Mindestdauer nicht mehr durch das Erreichen
+der nächsten Fenstergrenze umgehen.
+
+**Zwei Testkorrekturen** aus demselben Review: `test_falling_back_to_hysteresis_
+keeps_the_accumulated_hold` behauptete in seinen Kommentaren falsche Zeiten (30s
+Heizbeginn, nicht wie beschrieben) und bewies die fortlaufende Frist nicht wirklich --
+beide Hypothesen ("ursprüngliche Frist" vs. "neu gestartete Frist ab dem Rückfall")
+hätten auf dem alten Test identisch ausgesehen. Jetzt unterscheidet der Test explizit
+zwischen der wahren Frist (t=390s, 300s nach dem echten Heizbeginn) und einer
+hypothetisch neu gestarteten (t=420s) und beobachtet das Abschalten exakt bei t=390s.
+`test_a_hysteresis_only_zone_is_unaffected` assertierte bedingt (`if outcome_code ==
+...`) -- die Bedingung war bei den gewählten Zeiten immer wahr, jetzt unbedingt
+assertiert.
+
+**Geändert:** `thermoctl/services/shadow_run.py` (`_pi_gate_reason()` um `sensor_failed`
+ergänzt statt `decision.reason_code`-basiert; neue Funktion
+`_hysteresis_minimum_still_running()`; deren Verdrahtung in `_pi_outcome`),
+`tests/test_shadow_run_pi.py` (neue Testklassen `TestNonBlockedReasonCodesKeepDecide
+OwnReasoning`-Nachbarklassen für die Sensor-/Fenster-Kombination, `TestHysteresisMinimum
+StillRunning`, Korrekturen an den beiden oben genannten Tests). Keine Migration.
+
+Ruff, mypy, Pytest gegen SQLite **und** MariaDB, Zahlen im Bericht. Einzelmutanten von
+Hand für die neue Gate- und Übergangslogik geprüft (kein neuer vollständiger
+Mutationslauf, wie beauftragt).
+
 ## PI-Regelung: Begründung nannte die 300s-Hysterese-Mindestdauer statt PI's eigener Werte
 
 Meldung des Projektinhabers: „Bei der PI-Regelung greift aktuell noch die 300s
@@ -39,21 +102,18 @@ klammerte den Ventilschutz-Marker vorher nicht ab, wenn PI eine solche Blockade
 `False`, weil `replace()` den Code nicht mit anfasste) -- derselbe Fehlerfall wie der
 am 2026-09-02 für reine Hysterese-Zonen behobene, jetzt auch für PI geschlossen.
 
-**Entschieden, nicht geändert (Übergänge mitten in einer gehaltenen Phase):**
+**Übergänge mitten in einer gehaltenen Phase:**
 - **PI → Hysterese** (PI wird ineligibel oder abgeschaltet, während ein Zustand noch
-  hält): die Hysterese-Mindestdauer zählt ab dem tatsächlichen Beginn des Zustands,
-  nicht ab dem Rückfall -- `Situation.held_for_s` liest die *wirksame*
-  `would_heat`-Historie, die PI's eigene Haltezeit bereits einschließt. Keine
-  Umschaltung, die die 300s umgeht, direkt nach dem Rückfall.
-- **Hysterese → PI** (PI wird neu aktiviert oder eligibel, während Hysterese hält): der
-  vorhandene Scharfschalt-Schutz (`needs_safe_start`, `RESET_REASON_ARMING`/
-  `RESET_REASON_INVALID_STATE`) lässt PI erst zur nächsten vollen 15-Minuten-Grenze
-  wirksam werden -- PI's kürzere Mindestdauern übernehmen nie mitten in einer laufenden
-  Hysterese-Haltung.
+  hält): unverändert korrekt -- die Hysterese-Mindestdauer zählt ab dem tatsächlichen
+  Beginn des Zustands, nicht ab dem Rückfall (`Situation.held_for_s` liest die
+  *wirksame* `would_heat`-Historie, die PI's eigene Haltezeit bereits einschließt).
+- **Hysterese → PI**: **war hier als bereits korrekt beschrieben -- das war falsch**,
+  siehe den Abschnitt oben. Der Scharfschalt-Schutz allein garantiert nicht, dass die
+  Hysterese-Mindestdauer der gehaltenen Phase bis zur nächsten Fenstergrenze bereits
+  abgelaufen ist; das ist jetzt oben nachgezogen und behoben.
 
-Beide Verhalten bestanden bereits unverändert und sind jetzt zusätzlich mit
-`tests/test_shadow_run_pi.py::TestControllerTransitionsMidHold` explizit für dieses
-Szenario abgesichert.
+Beide Übergänge sind jetzt in `tests/test_shadow_run_pi.py::TestControllerTransitionsMidHold`
+explizit für dieses Szenario abgesichert.
 
 **Geändert:** `thermoctl/services/shadow_run.py`, `tests/test_shadow_run_pi.py`,
 `mutation/cosmic-ray-shadow-run.toml` (Testbefehl fehlte `tests/test_shadow_run_pi.py`
