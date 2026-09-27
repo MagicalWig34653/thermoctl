@@ -11,6 +11,8 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ## Unveröffentlicht
 
+## 0.10.1 — 2026-09-27
+
 ### Behoben
 
 - **Zonen → Regelparameter (`/zones/{id}/parameters`): zwei "Speichern"-Knöpfe für

@@ -2,7 +2,23 @@
 
 Letzte Aktualisierung: 2026-09-27.
 
-## Patch v0.10.1 (in Arbeit): zwei Speichern-Knöpfe auf Regelparameter zusammengeführt
+## v0.10.1
+
+Enthält: ein Formular und ein Speichern-Knopf auf Zonen → Regelparameter (der
+Temperatursturz-Schalter ging verloren), Minus/Plus der Sollwertknöpfe als SVG
+(schriftunabhängig zentriert, Anlagen-Stellknopf 44 px), und drei PI-Korrekturen:
+richtiger Entscheidungsgrund statt der Hysterese-Mindestdauer, Sensorausfall wird
+von der PI-Freigabe unabhängig vom Reason-Code erkannt (sicherheitsrelevant), und
+eine unter Hysterese begonnene Phase hält deren Mindestdauer auch nach einer
+PI-Übernahme. Keine Migration. SQLAlchemy bleibt auf <2.1 begrenzt (Umstieg offen).
+Add-on-Repository wird mit derselben Freigabe nachgezogen.
+
+Nächstes: Notbetrieb bei Sensorausfall (Konzept lokal unter
+`lokal/konzepte/sensorausfall-notbetrieb.md`, acht Entscheidungen des
+Projektinhabers offen) und das Konzept für übersichtlichere Einstellungsseiten
+(`lokal/konzepte/regelparameter/`, fünf Fragen offen).
+
+## Regelparameter: zwei Speichern-Knöpfe auf Regelparameter zusammengeführt
 
 Meldung nach 0.10.0: „doppelte Speichern-Buttons und z. B. eine Checkbox, die
 nicht gespeichert wird" unter Zonen → Regelparameter (`/zones/{id}/parameters`).
@@ -37,10 +53,8 @@ durch die dieser Fehler bisher gerutscht ist) sowie
 setzen, den einen Knopf drücken, in neuem Kontext neu laden). HTTP-Regressionstests
 in `tests/test_daily_views.py`.
 
-Noch offen: Add-on-Repository nachziehen (nach Freigabe von v0.10.1, siehe unten
-„Arbeitsweise" im übergeordneten `CLAUDE.md`).
 
-## Icon-Zentrierung in den Sollwert-Steppern (unveröffentlicht)
+## Icon-Zentrierung in den Sollwert-Steppern
 
 Meldung: "Auf der Übersichtsseite sind manche Icons in den Buttons nicht
 zentriert." Betroffen: `.tc-stage` (Übersicht `/`), `.tc-stepbtn`
@@ -163,6 +177,8 @@ Hand für die neue Invariante und den `_write_reset_state()`-Fix geprüft (kein 
 vollständiger Mutationslauf, wie beauftragt).
 
 ## PI-Regelung: Sensorausfall wurde von PI übersehen, Übergang Hysterese→PI umgeht jetzt nicht mehr die laufende Mindestdauer
+
+*Der hier beschriebene Übergangs-Sonderfall (`_hysteresis_minimum_still_running`) ist durch die allgemeine Invariante im Abschnitt oben ersetzt; gültig bleibt aus diesem Abschnitt der Sensor-Teil.*
 
 Kreuzreview des Fixes unten (Commit 45ecf1a) fand zwei weitere Fehler, einen davon
 sicherheitsrelevant.
