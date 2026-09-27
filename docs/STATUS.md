@@ -1,6 +1,43 @@
 # Stand
 
-Letzte Aktualisierung: 2026-09-26.
+Letzte Aktualisierung: 2026-09-27.
+
+## Patch v0.10.1 (in Arbeit): zwei Speichern-Knöpfe auf Regelparameter zusammengeführt
+
+Meldung nach 0.10.0: „doppelte Speichern-Buttons und z. B. eine Checkbox, die
+nicht gespeichert wird" unter Zonen → Regelparameter (`/zones/{id}/parameters`).
+Bestätigt und behoben: `parameter.html` hatte zwei `<form>`s mit je einem
+„Speichern" — das Hauptformular und ein zweites, direkt darunter, nur für den
+Schalter „Fenster aus Temperatursturz erkennen". Wer den Schalter umlegte und den
+*anderen* Knopf drückte, verlor die Änderung. Jetzt ein Formular, ein Knopf; der
+frühere eigene Endpunkt `/zones/{id}/window-temp-drop-detection` ist entfernt
+(nur von dieser Seite benutzt, REST/MCP exponieren dieses Feld nicht und sind
+unverändert). Die Domänenregel (`domain.zone_settings.set_window_temp_drop_detection`)
+bleibt unverändert; der Handler ruft sie nur zusätzlich zu `save_control_parameters`
+auf. `valve_protection_enabled`, `pi_confirm`, `pi_enabled` (inkl. `disabled`-Fall)
+geprüft — kein weiterer Fehler, `pi_confirm` wird bewusst nur beim Einschalten
+verlangt (unverändertes, bereits korrektes Verhalten), `pi_enabled` bleibt beim
+bereits eingeschalteten, inzwischen ungeeigneten Zustand absichtlich *nicht*
+`disabled`, sonst würde ein Reload es durch ein fehlendes Formularfeld ausschalten.
+
+Projektweite Suche nach demselben Muster (mehrere Formulare, die für den Nutzer
+wie ein zusammenhängender Bereich aussehen): `settings.html`, `device_assignment.html`,
+`tenant_start.html`, `schedule.html`, `tenant_schedule.html`, `users.html`,
+`groups.html`, `account.html`, `controllers.html`, `control.html`, `zone_form.html`
+durchgesehen — überall trägt jeder Knopf eine eigene, die jeweilige Aktion
+benennende Beschriftung (z. B. „Sonnenabsenkung speichern", „Gerät tauschen",
+„Rechte speichern") statt eines wiederholten, unbeschrifteten „Speichern"; kein
+weiterer bestätigter Fall.
+
+Neuer Browsertest `browser_tests/test_form_hygiene.py::test_at_most_one_visible_
+speichern_button_per_page` (seitenweit, nicht mehr nur je Karte — genau die Lücke,
+durch die dieser Fehler bisher gerutscht ist) sowie
+`browser_tests/test_parameter_page_single_save.py` (echter Rundlauf: Checkbox
+setzen, den einen Knopf drücken, in neuem Kontext neu laden). HTTP-Regressionstests
+in `tests/test_daily_views.py`.
+
+Noch offen: Add-on-Repository nachziehen (nach Freigabe von v0.10.1, siehe unten
+„Arbeitsweise" im übergeordneten `CLAUDE.md`).
 
 ## v0.10.0
 
@@ -979,10 +1016,14 @@ bestehenden Fenster-Alarm-Chip.
 wie beim Fenster-Alarm. Die anlagenweiten Parameter liegen deshalb in einem eigenen
 `WINDOW_TEMP_DROP_LIMITS` (`domain/control.py`), nicht im von REST und MCP mitbenutzten
 `LIMITS`; der Zonen-Schalter ist keine `ControlParameters`-Spalte und hat eine eigene
-kleine Speicherfunktion (`domain/zone_settings.py::set_window_temp_drop_detection`) samt
-eigener Route (`/zones/{id}/window-temp-drop-detection`), damit er das Formular
-`/zones/{id}/parameters` — das die REST-Antwort `ControlParametersResponse` verbatim
-speist — nicht erreichen kann. In Home Assistant eine eigene, laufend gesendete
+kleine Speicherfunktion (`domain/zone_settings.py::set_window_temp_drop_detection`), damit
+er die REST-Antwort `ControlParametersResponse` — die `ControlParameters` verbatim spiegelt
+— nicht erreichen kann. **Stand v0.10.1:** der HTTP-Adapter dafür ist das eine Formular
+`/zones/{id}/parameters` (nicht mehr eine eigene Route/eigenes `<form>` — das erzeugte zwei
+gleichlautende „Speichern"-Knöpfe auf einer Seite und verlor die Änderung, wenn der jeweils
+andere Knopf gedrückt wurde, s. Abschnitt oben); `save_parameter` ruft die Speicherfunktion
+zusätzlich zu `save_control_parameters` auf, ohne dass das Feld dadurch Teil von
+`ControlParameters` würde. In Home Assistant eine eigene, laufend gesendete
 Diagnose-Entität je Zone (`state/window_open_by_temperature`), kein eigenes
 Meldungssystem mit Zustellprotokoll wie beim Fenster-Alarm.
 

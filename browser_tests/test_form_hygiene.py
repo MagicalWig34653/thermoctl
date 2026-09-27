@@ -50,6 +50,15 @@ _ALLOWED_NAME_DUPLICATES: dict[str, set[str]] = {}
 # (`thermoctl/web/templates/tenant_schedule.html`).
 _ALLOWED_REPEATED_SPEICHERN = {"/controllers", "/schedule"}
 
+# Same exception, but for the *page-wide* sweep below (`test_at_most_one_visible_
+# speichern_button_per_page`): this one does not stop at the innermost `.tc-panel`/
+# `.card`/`section` the way `test_the_label_speichern_never_appears_twice_in_the_
+# same_card` does, because the reported bug (v0.10.1) was exactly a case that test
+# missed -- `parameter.html` had two separate, unheaded `<form>`s one after another
+# with no shared `.tc-panel`/`.card`/`section` wrapper, so the per-card test saw two
+# containers with one "Speichern" each and called it fine. The reasons for
+# `/controllers` and the tenant `/schedule` above hold here too, unchanged.
+
 
 def _unique_views() -> list[View]:
     """One representative per route: six zones sharing `/zones/{zone_id}` would
@@ -213,4 +222,52 @@ def test_the_label_speichern_never_appears_twice_in_the_same_card(
     assert not duplicate_labels, (
         f"{view.profile}-{view.path}: Beschriftung 'Speichern' mehrfach im selben "
         f"Abschnitt: {duplicate_labels}"
+    )
+
+
+@pytest.mark.parametrize("view", _unique_views(), ids=lambda v: f"{v.profile}-{v.route or v.path}")
+def test_at_most_one_visible_speichern_button_per_page(
+    hygiene_page: Page, hygiene_server: tuple[LiveServer, dict], view: View
+) -> None:
+    """Whole-page version of the check above (v0.10.1 regression). The per-card
+    check only ever compares elements inside the same innermost `.tc-panel`/`.card`/
+    `section` -- `parameter.html` had exactly the pattern that slips past it: its
+    old, separate window-detection `<form>` sat directly below the main one with no
+    shared card wrapper, so each container had its own single "Speichern" and the
+    per-card check saw nothing wrong. A user looking at the rendered page sees one
+    settings area with two identical "Speichern" buttons regardless of the markup
+    structure underneath -- this counts every visible one across the whole page.
+    """
+    if (view.route or view.path) in _ALLOWED_REPEATED_SPEICHERN:
+        pytest.skip(
+            "Mehrere unabhängige, klar überschriebene Speichern-Knöpfe sind hier "
+            "das Layout (s. Begründung bei _ALLOWED_REPEATED_SPEICHERN)"
+        )
+    page = hygiene_page
+    server, paths = hygiene_server
+    username = server.admin_username if view.profile == "anlage" else "demo-mieter"
+    password = server.admin_password if view.profile == "anlage" else _PASSWORD
+    _login(page, username, password)
+    response = page.goto(view.path.format_map(paths), wait_until="networkidle")
+    assert response is not None and response.status < 400
+    for detail in page.locator("details").all():
+        if detail.get_attribute("open") is None:
+            detail.locator("summary").click()
+    page.locator(".htmx-request").wait_for(state="detached")
+
+    count = page.evaluate(
+        """() => {
+        let count = 0;
+        for (const el of document.querySelectorAll('button, input[type=submit]')) {
+            if (!(el.offsetParent !== null || el.getClientRects().length)) continue;
+            const label = (el.value || el.textContent || '').trim();
+            if (label === 'Speichern') count++;
+        }
+        return count;
+    }"""
+    )
+    assert count <= 1, (
+        f"{view.profile}-{view.path}: {count} sichtbare 'Speichern'-Knöpfe auf einer "
+        "Seite, die für den Nutzer nach einem zusammenhängenden Einstellungsbereich "
+        "aussieht"
     )
