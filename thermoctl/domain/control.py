@@ -24,6 +24,7 @@ from sqlalchemy.orm import Session
 
 from thermoctl import audit
 from thermoctl.db.models.operations import Setting
+from thermoctl.domain.sensor_failure_policy import PolicyError, validate_active_profiles
 
 
 @dataclass
@@ -247,6 +248,10 @@ def save_settings(
     checked = {field: check_number(field, values.get(field, "")) for field in LIMITS}
 
     row = settings(session)
+    try:
+        validate_active_profiles(session, setting_values=checked)
+    except PolicyError as exc:
+        raise ControlError(exc.field, exc.notice) from exc
     row.timezone = timezone_name.strip()
     for field, value in checked.items():
         setattr(row, field, value if field not in GANZZAHLIG else int(value))

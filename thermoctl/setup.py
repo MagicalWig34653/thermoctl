@@ -17,6 +17,7 @@ from thermoctl.db.models.identity import (
 from thermoctl.db.models.lookup import Permission
 from thermoctl.db.models.operations import Setting
 from thermoctl.db.models.zone import SetpointMode
+from thermoctl.domain.sensor_failure_policy import migration_default_profile_id
 from thermoctl.domain.ui_profile import DEFAULT_PROFILE, WebUiProfile
 
 log = logging.getLogger(__name__)
@@ -96,6 +97,7 @@ def run_setup(
     # view deliberately catches PasswordTooShort; later writes must therefore not
     # accidentally get committed as if the request had succeeded.
     password_hash = hash_password(password)
+    default_profile_id = migration_default_profile_id(session)
 
     for code, name, order in BUILTIN_MODES:
         if session.scalar(select(SetpointMode).where(SetpointMode.code == code)) is None:
@@ -135,7 +137,10 @@ def run_setup(
     # Cannot be None after BUILTIN_MODES is created above -- only here for mypy
     # strict, which doesn't know a narrower return type for `scalar()`.
     assert frost is not None
-    session.add(Setting(id=1, timezone=timezone_name, frost_protection_mode_id=frost.id))
+    session.add(Setting(
+        id=1, timezone=timezone_name, frost_protection_mode_id=frost.id,
+        sensor_failure_default_profile_id=default_profile_id,
+    ))
 
     marker.consumed_at = utcnow()
     session.flush()
