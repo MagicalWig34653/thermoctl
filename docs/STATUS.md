@@ -1,6 +1,20 @@
 # Stand
 
-Letzte Aktualisierung: 2026-09-27.
+Letzte Aktualisierung: 2026-09-28.
+
+## 0.11.0 in Arbeit: Notbetrieb bei Sensorausfall
+
+Plan: `lokal/plaene/0.11.0-notbetrieb.md`. Auftrag 6 (Festtakt und
+Außenkennlinie) fertig als reine Domänenlogik in
+`thermoctl/domain/emergency_cycle.py` (`tests/test_emergency_cycle.py`,
+100 % Testabdeckung) -- **noch nicht angebunden**: kein Aufruf aus
+`control_loop.py`/`shadow_run.py`, keine Datenbankmodelle (die baut ein
+paralleler Auftrag), keine UI/REST/MCP. Deckt Festtakt- und
+Kennlinien-Phasenrechnung (Decimal, randbegrenzt, Mindestdauer-Anrechnung),
+eine Wiederanlaufsperre mit Hysteresespanne am oberen Kennlinienpunkt,
+Quellenwechsel nur am Paarbeginn sowie Neustart-/Zeitrücksprung-Behandlung ab.
+Auftrag 2 (PI-Sensorgate) entfällt laut Nachentscheidung (Abschnitt 6 des
+Plans) -- bereits mit v0.10.1 erledigt.
 
 ## v0.10.1
 
