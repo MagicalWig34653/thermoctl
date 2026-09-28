@@ -1,6 +1,22 @@
 # Stand
 
-Letzte Aktualisierung: 2026-09-27.
+Letzte Aktualisierung: 2026-09-28.
+
+## 0.11.0 in Arbeit: Datenmodell Notbetrieb
+
+Profile mit Kennlinienpunkten, Quellenzustand, Ausfallepisoden, Aktorlaufzustand
+und Aktorentscheidungen sind als relationale Tabellen angelegt. Die Migration
+legt das Vorgabeprofil mit Festtakt 600/1200 s, Rückkehr 60 s/2 Messwerte,
+Warm-Aus-Hysterese 1 K und drei Kennlinienpunkten an (−10 °C: 1200/600 s,
+0 °C: 600/1200 s, 15 °C: 0/1800 s). Bestehende Anlageneinstellungen verweisen
+auf dieses Profil; die Notsollwert-Vorgabe beträgt 20 °C.
+
+Notbetrieb bleibt für neue und bestehende Zonen deaktiviert. Zonen können Profil
+und Notsollwert nullable überschreiben, Zuordnungen tragen einen Temperaturausgleich
+(Vorgabe 0 K). Historien bleiben bei Zonenlöschung mit Namenssnapshot erhalten;
+Simulation und scharfer Versand haben getrennte Laufzustandsfelder.
+Domänenlogik, Bedienoberfläche und automatische Aktivierung sind noch nicht umgesetzt.
+Die Profilzuweisung im Setup bei Neuinstallationen ist noch offen (Auftrag 3/4).
 
 ## v0.10.1
 
@@ -14,8 +30,8 @@ PI-Übernahme. Keine Migration. SQLAlchemy bleibt auf <2.1 begrenzt (Umstieg off
 Add-on-Repository wird mit derselben Freigabe nachgezogen.
 
 Nächstes: Notbetrieb bei Sensorausfall (Konzept lokal unter
-`lokal/konzepte/sensorausfall-notbetrieb.md`, acht Entscheidungen des
-Projektinhabers offen) und das Konzept für übersichtlichere Einstellungsseiten
+`lokal/konzepte/sensorausfall-notbetrieb.md`, Entscheidungen im lokalen
+Implementierungsplan festgehalten) und das Konzept für übersichtlichere Einstellungsseiten
 (`lokal/konzepte/regelparameter/`, fünf Fragen offen).
 
 ## Regelparameter: zwei Speichern-Knöpfe auf Regelparameter zusammengeführt

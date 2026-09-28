@@ -119,6 +119,7 @@
       "wird protokolliert, **was geschaltet würde und warum**."
     ],
     "docs/STATUS.md": [
+      "Warm-Aus-Hysterese 1 K und drei Kennlinienpunkten an (−10 °C: 1200/600 s,",
       "## Betrieb unter Docker Swarm und Kubernetes dokumentiert",
       "**Befund (A):** Gate-Resets (Fenster/Frost/Sensor/Ventilschutz) erhalten",
       "bestehenden Gates (Fenster/Frost/Sensor/Ventilschutz) und vor der eigentlichen",

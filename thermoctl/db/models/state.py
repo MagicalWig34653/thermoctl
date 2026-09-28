@@ -274,6 +274,14 @@ class DeviceCommand(Base):
     __tablename__ = "device_command"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    reason_code: Mapped[str | None] = mapped_column(String(64))
+    episode_id: Mapped[int | None] = mapped_column(
+        ForeignKey("sensor_failure_episode.id", ondelete="SET NULL")
+    )
+    actuator_decision_id: Mapped[int | None] = mapped_column(
+        ForeignKey("actuator_decision.id", ondelete="SET NULL")
+    )
+
     sent_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)
     source_id: Mapped[int] = mapped_column(ForeignKey("actor_source.id"), nullable=False)
     zone_id: Mapped[int | None] = mapped_column(
