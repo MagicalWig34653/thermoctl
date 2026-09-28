@@ -218,6 +218,15 @@ def _permissions_for_setup_wizard(
     """
     if request.node.fspath.basename != "test_setup.py":
         return
+    # Das Setup benötigt auch das durch a0110b03c001 angelegte Vorgabeprofil.
+    from decimal import Decimal
+
+    from thermoctl.db.models.sensor_failure import SensorFailureProfile
+
+    session.add(SensorFailureProfile(
+        name="Notbetrieb Vorgabe", version=1, fixed_on_seconds=600, fixed_off_seconds=1200,
+        recovery_seconds=60, recovery_samples=2, warm_restart_hysteresis_k=Decimal("1"),
+    ))
     existing = {p.code for p in session.query(Permission)}
     for code, description, zone_scoped in PERMISSIONS:
         if code not in existing:

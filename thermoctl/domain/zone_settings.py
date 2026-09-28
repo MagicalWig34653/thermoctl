@@ -10,6 +10,13 @@ from thermoctl.db.models.lookup import DeviceCapability, DeviceRole
 from thermoctl.db.models.operations import Setting
 from thermoctl.db.models.zone import Zone
 from thermoctl.domain.pi_control import ActuatorProfile, PiEligibility, pi_eligible
+from thermoctl.domain.sensor_failure_policy import (
+    EffectivePolicy,
+    PolicyError,
+    effective_policy,
+    save_zone_policy,
+    validate_zone_timing,
+)
 
 MAXIMUM_VALVE_PROTECTION_INTERVAL_DAYS = 3650
 MAXIMUM_VALVE_PROTECTION_DURATION_MINUTES = 5_256_000
@@ -233,6 +240,11 @@ def save_control_parameters(
     }
     validate_valve_protection(complete)
     validate_pi_parameters(session, zone, complete)
+    if zone.sensor_failure_enabled:
+        try:
+            validate_zone_timing(session, zone, zone_values=complete)
+        except PolicyError as exc:
+            raise ParameterOutOfRange(exc.notice) from exc
     for name in ControlParameters.__dataclass_fields__:
         setattr(zone, name, complete[name])
     audit.record(
@@ -413,3 +425,21 @@ def set_parameter(
         session, zone, values, user_id=user_id, token_id=token_id, source=source
     )
     return Decimal(rounded)
+
+
+def sensor_failure_parameters(session: Session, zone: Zone) -> EffectivePolicy:
+    """Eigener Domänenvertrag: ControlParameters wird bereits von Adaptern exponiert."""
+    return effective_policy(session, zone)
+
+
+def save_sensor_failure_parameters(
+    session: Session, zone: Zone, *, enabled: bool, profile_id: int | None,
+    emergency_setpoint_c: Decimal | None, user_id: int | None,
+    token_id: int | None = None, source: str = "web",
+) -> None:
+    save_zone_policy(session, zone, enabled=enabled, profile_id=profile_id,
+                     emergency_setpoint_c=emergency_setpoint_c)
+    audit.record(session, source=source, action="update", object_type="zone_settings",
+                 object_id=str(zone.id),
+                 summary=f"Notbetriebsparameter für Zone '{zone.display_name}' geändert",
+                 user_id=user_id, token_id=token_id)

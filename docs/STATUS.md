@@ -2,7 +2,27 @@
 
 Letzte Aktualisierung: 2026-09-28.
 
-## 0.11.0 in Arbeit: Datenmodell Notbetrieb
+## 0.11.0 in Arbeit: Konfigurationsdienst Notbetrieb
+
+Der Domänendienst `sensor_failure_policy` liest und speichert Profile einschließlich
+Kennlinien, Anlagenvorgaben, Zonenüberschreibungen und Thermostat-Zuordnungs-Offsets.
+Wirksame Zonenkonfigurationen sind unveränderliche Datenklassen mit Herkunft je
+Profil, Notsollwert und Aktivierung. Eingaben werden vor Änderungen vollständig
+validiert (Bosch-Notsollwert 5–30 °C in 0,5-K-Schritten); aktive Festtakte werden
+auch bei Änderungen an Mindestzeiten und Regelintervall erneut geprüft.
+Leere Kennlinien bedeuten Festtakt, nichtleere brauchen mindestens zwei Punkte
+mit genau einem oberen Aus-Punkt und nicht steigendem Tastgrad.
+
+Das Setup setzt den Profilverweis ausdrücklich. Bei NULL gilt das Profil mit
+dem Migrationsnamen „Notbetrieb Vorgabe“ und kleinster ID: Es wurde vor allen
+späteren Profilen angelegt, Namensduplikate verdrängen es nicht. Fehlt der Name,
+meldet die Domäne einen Konfigurationsfehler statt ein Ersatzprofil anzulegen.
+Offset und Hysterese werden ohne stilles Runden auf die vorhandene Numeric-Präzision
+begrenzt; dies sind Speichergrenzen, keine neue Geräte-Kalibrierungsempfehlung.
+Die Anbindung in `zone_settings` hat eigene Lese-/Speicherfunktionen, damit die
+bereits von REST/MCP verwendeten `ControlParameters` unverändert bleiben.
+UI, REST/MCP und automatische Aktivierung folgen in späteren Aufträgen.
+
 
 Profile mit Kennlinienpunkten, Quellenzustand, Ausfallepisoden, Aktorlaufzustand
 und Aktorentscheidungen sind als relationale Tabellen angelegt. Die Migration
@@ -15,8 +35,7 @@ Notbetrieb bleibt für neue und bestehende Zonen deaktiviert. Zonen können Prof
 und Notsollwert nullable überschreiben, Zuordnungen tragen einen Temperaturausgleich
 (Vorgabe 0 K). Historien bleiben bei Zonenlöschung mit Namenssnapshot erhalten;
 Simulation und scharfer Versand haben getrennte Laufzustandsfelder.
-Domänenlogik, Bedienoberfläche und automatische Aktivierung sind noch nicht umgesetzt.
-Die Profilzuweisung im Setup bei Neuinstallationen ist noch offen (Auftrag 3/4).
+Regel- und Versandlogik sind noch nicht umgesetzt.
 
 ## v0.10.1
 
