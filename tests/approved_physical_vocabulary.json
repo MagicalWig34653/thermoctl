@@ -518,6 +518,11 @@
     "thermoctl/domain/self_regulating.py": [
       "actuator"
     ],
+    "thermoctl/domain/sensor_failure_policy.py": [
+      "Temperaturausgleich ist nur für Thermostat-Aktor-Zuordnungen zulässig.",
+      "actuator",
+      "switch"
+    ],
     "thermoctl/domain/statistics.py": [
       "switch",
       "switch"

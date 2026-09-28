@@ -435,11 +435,11 @@ def sensor_failure_parameters(session: Session, zone: Zone) -> EffectivePolicy:
 def save_sensor_failure_parameters(
     session: Session, zone: Zone, *, enabled: bool, profile_id: int | None,
     emergency_setpoint_c: Decimal | None, user_id: int | None,
-    token_id: int | None = None, source: str = 'web',
+    token_id: int | None = None, source: str = "web",
 ) -> None:
     save_zone_policy(session, zone, enabled=enabled, profile_id=profile_id,
                      emergency_setpoint_c=emergency_setpoint_c)
-    audit.record(session, source=source, action='update', object_type='zone_settings',
+    audit.record(session, source=source, action="update", object_type="zone_settings",
                  object_id=str(zone.id),
                  summary=f"Notbetriebsparameter für Zone '{zone.display_name}' geändert",
                  user_id=user_id, token_id=token_id)
