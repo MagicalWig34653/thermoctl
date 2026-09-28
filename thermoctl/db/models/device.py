@@ -73,6 +73,10 @@ class ZoneDevice(Base):
     # -- the setpoint, and where the device accepts one, the room temperature measured
     # elsewhere. That is what a radiator thermostat is built to do, and its own sensor
     # sits on the radiator, where it reads several degrees too warm.
+    temperature_backup_offset_k: Mapped[Decimal | None] = mapped_column(
+        Numeric(4, 2), default=Decimal("0"), server_default="0", nullable=True
+    )
+
     self_regulating: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default=false(), nullable=False
     )

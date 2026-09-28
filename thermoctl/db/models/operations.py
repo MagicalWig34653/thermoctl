@@ -36,6 +36,13 @@ class Setting(Base):
     id: Mapped[int] = mapped_column(
         Integer, primary_key=True, autoincrement=False, default=1
     )
+    sensor_failure_default_profile_id: Mapped[int | None] = mapped_column(
+        ForeignKey("sensor_failure_profile.id", ondelete="SET NULL")
+    )
+    sensor_failure_default_emergency_setpoint_c: Mapped[Decimal] = mapped_column(
+        Numeric(5, 2), default=Decimal("20"), server_default=text("20"), nullable=False
+    )
+
     timezone: Mapped[str] = mapped_column(String(64), default="Europe/Berlin", nullable=False)
     polling_interval_seconds: Mapped[int] = mapped_column(Integer, default=30, nullable=False)
     default_hysteresis_k: Mapped[Decimal] = mapped_column(

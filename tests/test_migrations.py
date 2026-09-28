@@ -927,3 +927,180 @@ def test_every_permission_exists_after_a_full_upgrade(
         f"{sorted(fehlend)}. Ein neues Recht gehört ans **Ende** von PERMISSIONS "
         "und braucht seine eigene Migration."
     )
+
+
+@pytest.mark.migration
+@pytest.mark.parametrize("with_existing_data", [False, True])
+def test_sensor_failure_upgrade_preserves_installation(
+    migrations_database_url: str,
+    with_existing_data: bool,
+) -> None:
+    """Fresh install and existing installations receive the same editable curve.
+
+    Compare every old column, not just the zone names, also after downgrade/re-upgrade.
+    """
+    from datetime import datetime
+
+    import sqlalchemy as sa
+    from alembic.config import Config
+    from alembic.script import ScriptDirectory
+
+    scripts = ScriptDirectory.from_config(Config("alembic.ini"))
+    assert scripts.get_heads() == ["a0110b03c001"]
+    for args in (("downgrade", "base"), ("upgrade", "d31f6a04c7e9")):
+        result = _alembic(migrations_database_url, *args)
+        assert result.returncode == 0, result.stderr
+    db_engine = create_engine(migrations_database_url)
+    metadata = sa.MetaData()
+    metadata.reflect(db_engine)
+    old_rows: dict[str, list[dict[str, object]]] = {}
+    try:
+        with db_engine.begin() as connection:
+            if with_existing_data:
+                mode_id = connection.execute(
+                    sa.select(metadata.tables["operating_mode"].c.id)
+                ).first()[0]
+                connection.execute(
+                    metadata.tables["zone"]
+                    .insert()
+                    .values(
+                        name="nb-bestand",
+                        display_name="Bestand",
+                        operating_mode_id=mode_id,
+                        sort_order=7,
+                        created_at=datetime(2026, 9, 28),
+                        updated_at=datetime(2026, 9, 28),
+                        hysteresis_k=Decimal("0.45"),
+                        min_on_seconds=420,
+                    )
+                )
+                zone_id = connection.execute(sa.select(metadata.tables["zone"].c.id)).scalar_one()
+                integration_id = connection.execute(
+                    sa.select(metadata.tables["integration"].c.id)
+                ).first()[0]
+                connection.execute(
+                    metadata.tables["device"]
+                    .insert()
+                    .values(
+                        integration_id=integration_id,
+                        external_id="nb-aktor",
+                        display_name="Bestandsaktor",
+                        is_enabled=True,
+                    )
+                )
+                device_id = connection.execute(
+                    sa.select(metadata.tables["device"].c.id)
+                ).scalar_one()
+                role_id = connection.execute(
+                    sa.select(metadata.tables["device_role"].c.id)
+                ).first()[0]
+                connection.execute(
+                    metadata.tables["zone_device"]
+                    .insert()
+                    .values(
+                        zone_id=zone_id,
+                        device_id=device_id,
+                        device_role_id=role_id,
+                        sort_order=8,
+                        self_regulating=True,
+                    )
+                )
+                connection.execute(
+                    metadata.tables["setpoint_mode"]
+                    .insert()
+                    .values(
+                        code="nb-frost",
+                        name="Frost",
+                        sort_order=0,
+                        is_builtin=True,
+                    )
+                )
+                frost_id = connection.execute(
+                    sa.select(metadata.tables["setpoint_mode"].c.id)
+                ).scalar_one()
+                source_id = connection.execute(
+                    sa.select(metadata.tables["actor_source"].c.id)
+                ).first()[0]
+                outcome_id = connection.execute(
+                    sa.select(metadata.tables["command_outcome"].c.id)
+                ).first()[0]
+                connection.execute(metadata.tables["device_command"].insert().values(
+                    sent_at=datetime(2026, 9, 28), source_id=source_id,
+                    zone_id=zone_id, zone_name="Bestand", device_id=device_id,
+                    device_name="Bestandsaktor", command="switch", payload="OFF",
+                    outcome_id=outcome_id, reason="Bestand",
+                ))
+                # Existing ORM defaults supply the old required Setting columns.
+                values = {}
+                for column in Setting.__table__.columns:
+                    if column.name in metadata.tables["setting"].c and column.default is not None:
+                        if column.default.is_scalar:
+                            values[column.name] = column.default.arg
+                values.update(
+                    id=1, frost_protection_mode_id=frost_id, updated_at=datetime(2026, 9, 28)
+                )
+                connection.execute(metadata.tables["setting"].insert().values(**values))
+            for name in ("zone", "zone_device", "setting", "device_command"):
+                old_rows[name] = [
+                    dict(row)
+                    for row in connection.execute(sa.select(metadata.tables[name])).mappings()
+                ]
+        for iteration in range(2):
+            result = _alembic(migrations_database_url, "upgrade", "head")
+            assert result.returncode == 0, result.stderr
+            with db_engine.connect() as connection:
+                for name, rows in old_rows.items():
+                    assert [
+                        dict(row)
+                        for row in connection.execute(sa.select(metadata.tables[name])).mappings()
+                    ] == rows
+                profile = (
+                    connection.execute(text("SELECT * FROM sensor_failure_profile"))
+                    .mappings()
+                    .one()
+                )
+                assert (
+                    profile["fixed_on_seconds"],
+                    profile["fixed_off_seconds"],
+                    profile["recovery_seconds"],
+                    profile["recovery_samples"],
+                    profile["warm_restart_hysteresis_k"],
+                ) == (600, 1200, 60, 2, 1)
+                assert connection.execute(
+                    text(
+                        "SELECT outdoor_c, on_seconds, off_seconds FROM sensor_failure_curve_point "
+                        "WHERE profile_id = :id ORDER BY outdoor_c"
+                    ),
+                    {"id": profile["id"]},
+                ).all() == [(-10, 1200, 600), (0, 600, 1200), (15, 0, 1800)]
+                assert "emergency_role_override" not in {
+                    column["name"] for column in sa.inspect(connection).get_columns("zone_device")
+                }
+                if with_existing_data:
+                    assert connection.execute(text(
+                        "SELECT reason_code, episode_id, actuator_decision_id FROM device_command"
+                    )).one() == (None, None, None)
+                    assert connection.execute(
+                        text(
+                            "SELECT sensor_failure_enabled, sensor_failure_profile_id, "
+                            "sensor_failure_emergency_setpoint_c FROM zone"
+                        )
+                    ).one() == (False, None, None)
+                    assert (
+                        connection.execute(
+                            text("SELECT temperature_backup_offset_k FROM zone_device")
+                        ).scalar_one()
+                        == 0
+                    )
+                    assert connection.execute(
+                        text(
+                            "SELECT sensor_failure_default_profile_id, "
+                            "sensor_failure_default_emergency_setpoint_c FROM setting"
+                        )
+                    ).one() == (profile["id"], 20)
+            if iteration == 0:
+                result = _alembic(migrations_database_url, "downgrade", "-1")
+                assert result.returncode == 0, result.stderr
+                assert "sensor_failure_profile" not in sa.inspect(db_engine).get_table_names()
+    finally:
+        db_engine.dispose()

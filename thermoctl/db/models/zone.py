@@ -58,6 +58,14 @@ class Zone(TimestampMixin, Base):
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    sensor_failure_enabled: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=text("0"), nullable=False
+    )
+    sensor_failure_profile_id: Mapped[int | None] = mapped_column(
+        ForeignKey("sensor_failure_profile.id", ondelete="SET NULL")
+    )
+    sensor_failure_emergency_setpoint_c: Mapped[Decimal | None] = mapped_column(Numeric(5, 2))
+
     name: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
     display_name: Mapped[str] = mapped_column(String(128), nullable=False)
     operating_mode_id: Mapped[int] = mapped_column(
