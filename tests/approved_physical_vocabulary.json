@@ -119,6 +119,9 @@
       "wird protokolliert, **was geschaltet würde und warum**."
     ],
     "docs/STATUS.md": [
+      "\"switch\"` in der neuen `_zone_actuator_assignments`, keine körperliche Behauptung —",
+      "PI-Neutralisierung während einer aktiven Notbetriebsstufe, und eine Zone ganz ohne Aktor",
+      "texts.py` danach einzeln grün (zwei neue, geprüfte Fundstellen „actuator\"/„switch\" in",
       "Warm-Aus-Hysterese 1 K und drei Kennlinienpunkten an (−10 °C: 1200/600 s,",
       "## Betrieb unter Docker Swarm und Kubernetes dokumentiert",
       "**Befund (A):** Gate-Resets (Fenster/Frost/Sensor/Ventilschutz) erhalten",
@@ -583,6 +586,8 @@
       "Heizen",
       "actuator",
       "actuator",
+      "actuator",
+      "switch",
       "switch"
     ],
     "thermoctl/services/temperature_source_health.py": [

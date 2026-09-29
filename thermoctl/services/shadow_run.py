@@ -7,21 +7,34 @@ exact rows later become the basis for comparison against the old system (subproj
 """
 
 import logging
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from thermoctl.db.models.device import DeviceCapabilityLink, ZoneDevice
+from thermoctl.db.models.device import Device, DeviceCapabilityLink, ZoneDevice
 from thermoctl.db.models.lookup import DeviceCapability, DeviceRole, SensorStatus
 from thermoctl.db.models.measurement import Measurement
 from thermoctl.db.models.operations import Setting
 from thermoctl.db.models.override import ZoneOverride
+from thermoctl.db.models.sensor_failure import (
+    ActuatorDecision,
+    ActuatorEmergencyState,
+    SensorFailureEpisode,
+    ZoneSensorFailureState,
+)
 from thermoctl.db.models.state import ShadowDecision, ZoneState
 from thermoctl.db.models.vacation import Vacation
 from thermoctl.db.models.zone import Zone, ZoneSetpoint
+from thermoctl.domain import (
+    emergency_actuator_plan,
+    emergency_cycle,
+    emergency_operation,
+    sensor_failure_policy,
+)
+from thermoctl.domain import outdoor as outdoor_domain
 from thermoctl.domain.control_loop import (
     REASON_CODE_BLOCKED_MINIMUM_DURATION,
     REASON_CODE_HEATING,
@@ -31,7 +44,7 @@ from thermoctl.domain.control_loop import (
     Situation,
     decide,
 )
-from thermoctl.domain.fault import NO_SOURCE, VERALTET
+from thermoctl.domain.fault import NO_SOURCE, OK, VERALTET
 from thermoctl.domain.pi_control import (
     INTEGRATOR_RESET,
     RESET_REASON_ARMING,
@@ -52,7 +65,13 @@ from thermoctl.domain.pi_control import (
 from thermoctl.domain.schedule import Setpoint, resolved_setpoint, running_vacation
 from thermoctl.domain.solar_setback import HourlyForecast, sun_expected
 from thermoctl.domain.solar_setback import apply as apply_solar_setback
+from thermoctl.domain.temperature_source_health import (
+    SourceHealth,
+    WallProbeReading,
+    evaluate_source_health,
+)
 from thermoctl.domain.zone_settings import ControlParameters, control_parameters
+from thermoctl.services.temperature_source_health import zone_candidates
 
 log = logging.getLogger(__name__)
 
@@ -269,6 +288,511 @@ def _effective_override(session: Session, zone: Zone, now: datetime) -> ZoneOver
 
 
 # --------------------------------------------------------------------------- #
+# Notbetrieb (Auftrag 7a of `lokal/plaene/0.11.0-notbetrieb.md`): assembles the
+# already-built, tested-in-isolation domain modules
+# (`domain.temperature_source_health`, `domain.emergency_operation`,
+# `domain.emergency_cycle`, `domain.emergency_actuator_plan`) into the shadow
+# cycle. Shadow-only, by this task's explicit scope: every `ActuatorDecision`/
+# `ActuatorEmergencyState` write below is `simulated=True` -- Auftrag 7b is the
+# only place that turns a `handover`/`switch_on`/`switch_off` action into an
+# actual command, TRV write suppression, or dedup-cache reset.
+#
+# Engaged only for a zone that is `sensor_failure_enabled`, *or* one that has a
+# still-open `ZoneSensorFailureState` episode from before it was switched off --
+# the latter matters so an episode opened while the zone was enabled is closed
+# properly (`emergency_operation.advance`'s own `REASON_DEAKTIVIERT` branch),
+# not abandoned mid-episode the moment the flag flips. Every other zone -- the
+# overwhelming majority until an operator opts in -- never reaches
+# `sensor_failure_policy.effective_policy()`, `zone_candidates()`, or any new
+# table at all: bitgenau today's behaviour, the plan's explicit regression
+# requirement (Auftrag 7a scope, item 1).
+# --------------------------------------------------------------------------- #
+
+
+def _derive_switch_phase_started_at(
+    phase: str, phase_deadline_at: datetime, on_seconds: int, off_seconds: int
+) -> datetime:
+    """Reconstructs `emergency_cycle.CycleState.phase_started_at` from what
+    `ActuatorEmergencyState` actually persists (`simulated_phase_deadline_at`,
+    `simulated_on_seconds`, `simulated_off_seconds`) -- not a guess:
+    `emergency_cycle.advance()` always sets `phase_deadline = phase_started_at +
+    timedelta(seconds=on_seconds if phase==PHASE_ON else off_seconds)`, so the
+    inverse is exact, not an approximation.
+    """
+    duration = on_seconds if phase == emergency_cycle.PHASE_ON else off_seconds
+    return phase_deadline_at - timedelta(seconds=duration)
+
+
+def _zone_actuator_assignments(
+    session: Session, zone: Zone
+) -> list[tuple[ZoneDevice, Device, str]]:
+    """Every actuator assignment of `zone`, classified by plan 1.1 entry 1's rule:
+    the strategy follows the device's own capability, not a per-assignment
+    field. `switch` wins over `thermostat` when a device has both (`Mischgerät
+    wird zentral als Switch behandelt`, `domain.switch_commands.py:99`/`:132`) --
+    no such device exists in the plant today
+    (`lokal/plaene/0.11.0-geraetevertrag.md` (d)), but the check costs nothing
+    and never has to guess if one appears. An actuator with neither capability
+    has no entry in plan 1.4's vorrangtabelle at all and is silently skipped,
+    not treated as an error.
+    """
+    actuator_role = session.scalar(select(DeviceRole).where(DeviceRole.code == "actuator"))
+    if actuator_role is None:
+        return []
+    switch = session.scalar(select(DeviceCapability).where(DeviceCapability.code == "switch"))
+    thermostat = session.scalar(
+        select(DeviceCapability).where(DeviceCapability.code == "thermostat")
+    )
+    rows = session.execute(
+        select(ZoneDevice, Device)
+        .join(Device, Device.id == ZoneDevice.device_id)
+        .where(ZoneDevice.zone_id == zone.id, ZoneDevice.device_role_id == actuator_role.id)
+        .order_by(ZoneDevice.sort_order, ZoneDevice.id)
+    ).all()
+    result: list[tuple[ZoneDevice, Device, str]] = []
+    for zone_device, device in rows:
+        capability_ids = set(
+            session.scalars(
+                select(DeviceCapabilityLink.capability_id).where(
+                    DeviceCapabilityLink.device_id == device.id
+                )
+            )
+        )
+        if switch is not None and switch.id in capability_ids:
+            result.append((zone_device, device, emergency_actuator_plan.KIND_SWITCH))
+        elif thermostat is not None and thermostat.id in capability_ids:
+            result.append((zone_device, device, emergency_actuator_plan.KIND_THERMOSTAT))
+    return result
+
+
+def _load_emergency_state(
+    db_state: ZoneSensorFailureState | None,
+) -> emergency_operation.ZoneEmergencyState | None:
+    if db_state is None:
+        return None
+    # `tracked_kind` has no column of its own -- it is fully determined by
+    # `active_source_device_id`: `emergency_operation._device_id_for()` only
+    # ever returns `None` for kind `KIND_WANDFUEHLER`, never for
+    # `KIND_ERSATZQUELLE` (a tracked replacement always names a real device).
+    # Redundant information, not a missing column.
+    tracked_kind = (
+        emergency_operation.KIND_WANDFUEHLER
+        if db_state.active_source_device_id is None
+        else emergency_operation.KIND_ERSATZQUELLE
+    )
+    return emergency_operation.ZoneEmergencyState(
+        stage=db_state.stage,
+        tracked_kind=tracked_kind,
+        tracked_device_id=db_state.active_source_device_id,
+        source_measured_at=db_state.source_measured_at,
+        recovery_started_at=db_state.recovery_started_at,
+        last_counted_measurement_at=db_state.last_counted_measurement_at,
+        recovery_sample_count=db_state.recovery_sample_count,
+        episode_open=db_state.episode_id is not None,
+        handover_due_signalled=db_state.handover_due_signalled,
+    )
+
+
+def _persist_episode(
+    session: Session,
+    zone: Zone,
+    db_state: ZoneSensorFailureState | None,
+    stage_output: emergency_operation.StageOutput,
+    policy: sensor_failure_policy.EffectivePolicy,
+    sensor_timeout_seconds: int,
+    now: datetime,
+) -> int | None:
+    """Creates, continues or closes `sensor_failure_episode` for this cycle --
+    "eine Zeile je Störung" (plan 2.1), driven entirely by
+    `stage_output.events`/`stage_output.state.episode_open`, never re-derived
+    from the stage string itself.
+    """
+    events = stage_output.events
+    if events.episode_started:
+        source_device = (
+            session.get(Device, zone.temperature_source_device_id)
+            if zone.temperature_source_device_id is not None
+            else None
+        )
+        row = SensorFailureEpisode(
+            zone_id=zone.id,
+            zone_name=zone.display_name,
+            started_at=now,
+            trigger_kind=events.trigger_kind or emergency_operation.TRIGGER_ALLE_QUELLEN,
+            profile_version=policy.profile.version,
+            fixed_on_seconds=policy.profile.values.fixed_on_seconds,
+            fixed_off_seconds=policy.profile.values.fixed_off_seconds,
+            recovery_seconds=policy.profile.values.recovery_seconds,
+            recovery_samples=policy.profile.values.recovery_samples,
+            warm_restart_hysteresis_k=policy.profile.values.warm_restart_hysteresis_k,
+            emergency_setpoint_c=policy.emergency_setpoint_c,
+            sensor_timeout_seconds=sensor_timeout_seconds,
+            source_device_id=zone.temperature_source_device_id,
+            source_device_name=(
+                source_device.display_name if source_device is not None else None
+            ),
+            # `notification_state` stays at its column default (`offen`)
+            # deliberately -- Auftrag 8 owns the webhook and only needs to pick
+            # this row up, not decide how it started (plan Auftrag 7a, item 4).
+        )
+        session.add(row)
+        session.flush()
+        return row.id
+
+    if stage_output.state.episode_open:
+        return db_state.episode_id if db_state is not None else None
+
+    if events.episode_ended and db_state is not None and db_state.episode_id is not None:
+        episode = session.get(SensorFailureEpisode, db_state.episode_id)
+        if episode is not None:
+            episode.ended_at = now
+    return None
+
+
+def _persist_zone_state(
+    session: Session,
+    zone: Zone,
+    db_state: ZoneSensorFailureState | None,
+    stage_output: emergency_operation.StageOutput,
+    episode_id: int | None,
+    now: datetime,
+) -> None:
+    row = db_state
+    if row is None:
+        row = ZoneSensorFailureState(zone_id=zone.id)
+        session.add(row)
+    new_state = stage_output.state
+    # Mirrors `SensorFailureEpisode.started_at` of the currently linked episode
+    # for cheap display without a join (Auftrag 8) -- set once on entry, carried
+    # unchanged while the same episode stays open, cleared the moment it closes.
+    row.failure_started_at = (
+        now
+        if stage_output.events.episode_started
+        else (row.failure_started_at if new_state.episode_open else None)
+    )
+    row.episode_id = episode_id
+    row.stage = new_state.stage
+    row.active_source_device_id = new_state.tracked_device_id
+    row.source_measured_at = new_state.source_measured_at
+    row.recovery_started_at = new_state.recovery_started_at
+    row.last_counted_measurement_at = new_state.last_counted_measurement_at
+    row.recovery_sample_count = new_state.recovery_sample_count
+    row.handover_due_signalled = new_state.handover_due_signalled
+    session.flush()
+
+
+@dataclass(frozen=True)
+class _SensorFailureOutcome:
+    stage_output: emergency_operation.StageOutput
+    health: SourceHealth
+    effective_temperature_c: Decimal | None
+    effective_device_name: str | None
+    episode_id: int | None
+    policy: sensor_failure_policy.EffectivePolicy
+
+
+def _apply_sensor_failure(
+    session: Session,
+    zone: Zone,
+    state: ZoneState | None,
+    settings: Setting,
+    parameter: ControlParameters,
+    db_state: ZoneSensorFailureState | None,
+    now: datetime,
+) -> _SensorFailureOutcome:
+    """One cycle's quellenbewertung + Zustandsautomat for one
+    `sensor_failure_enabled` zone -- plan Auftrag 7a, item 1."""
+    policy = sensor_failure_policy.effective_policy(session, zone)
+    raw_candidates = zone_candidates(session, zone, now)
+    wall_probe = WallProbeReading(
+        state.temperature_c if state is not None else None,
+        state.measured_at if state is not None else None,
+    )
+    health = evaluate_source_health(
+        wall_probe, raw_candidates, now=now, timeout_s=parameter.sensor_timeout_seconds
+    )
+    assessment_by_device = {a.device_id: a for a in health.candidates}
+    measured_at_by_device = {c.device_id: c.measured_at for c in raw_candidates}
+    usable_candidates = [a for a in health.candidates if a.usable]
+    if usable_candidates:
+        # Same tie-break rule `evaluate_source_health` itself documents
+        # (coldest corrected reading, then `device_id`) -- recomputed here,
+        # independent of the wall probe's own status, because
+        # `emergency_operation.StageInput.replacement` needs "is there a usable
+        # candidate right now" on *every* cycle, not only the ones where the
+        # wall probe has already failed (`evaluate_source_health` only names a
+        # `selected_device_id` once `wall_usable` is `False`).
+        chosen = min(usable_candidates, key=lambda a: (a.corrected_temperature_c, a.device_id))
+        replacement_reading = emergency_operation.SourceReading(
+            usable=True,
+            measured_at=measured_at_by_device.get(chosen.device_id),
+            device_id=chosen.device_id,
+            device_name=chosen.device_name,
+        )
+    else:
+        replacement_reading = emergency_operation.SourceReading(usable=False, measured_at=None)
+
+    prior = _load_emergency_state(db_state)
+    stage_output = emergency_operation.advance(
+        prior,
+        emergency_operation.StageInput(
+            now=now,
+            enabled=zone.sensor_failure_enabled,
+            wall_probe=emergency_operation.SourceReading(
+                usable=health.wall_probe_usable, measured_at=wall_probe.measured_at
+            ),
+            replacement=replacement_reading,
+            recovery_seconds=policy.profile.values.recovery_seconds,
+            recovery_samples=policy.profile.values.recovery_samples,
+        ),
+    )
+
+    episode_id = _persist_episode(
+        session, zone, db_state, stage_output, policy, parameter.sensor_timeout_seconds, now
+    )
+    _persist_zone_state(session, zone, db_state, stage_output, episode_id, now)
+
+    effective_temperature_c: Decimal | None = None
+    effective_device_name: str | None = None
+    if (
+        stage_output.state.stage == emergency_operation.STAGE_ERSATZQUELLE
+        and replacement_reading.device_id is not None
+    ):
+        # Whenever the machine lands in `ERSATZQUELLE` this cycle, the
+        # `replacement` reading just fed into `StageInput` above must have been
+        # `usable=True` (`_ersatzquelle`/`_enter_from_normal` only choose this
+        # stage on exactly that condition) -- so it, not the state machine's own
+        # (recovery-bookkeeping-only) `tracked_device_id`, is this cycle's
+        # active replacement.
+        chosen_assessment = assessment_by_device[replacement_reading.device_id]
+        effective_temperature_c = chosen_assessment.corrected_temperature_c
+        effective_device_name = chosen_assessment.device_name
+
+    return _SensorFailureOutcome(
+        stage_output=stage_output,
+        health=health,
+        effective_temperature_c=effective_temperature_c,
+        effective_device_name=effective_device_name,
+        episode_id=episode_id,
+        policy=policy,
+    )
+
+
+def _apply_emergency_actuators(
+    session: Session,
+    zone: Zone,
+    outcome: _SensorFailureOutcome,
+    settings: Setting,
+    parameter: ControlParameters,
+    now: datetime,
+) -> Decision:
+    """Rang 3/4 of plan 1.4 for every actuator assignment of `zone`, plus the
+    zone-level `Decision` `_process_zone` records instead of `decide()`'s own
+    answer -- only ever called while `outcome.stage_output.state.stage` is
+    `NOTBETRIEB`/`RUECKKEHRPRUEFUNG`, both of which guarantee
+    `outcome.episode_id is not None` (episode_open is true in both stages).
+    """
+    assert outcome.episode_id is not None
+    policy = outcome.policy
+    profile = policy.profile
+    stage = outcome.stage_output.state.stage
+
+    outdoor = outdoor_domain.outdoor_reading(session, settings, now)
+    outdoor_sample = emergency_cycle.OutdoorSample(
+        value_c=outdoor.temperature_c, measured_at=outdoor.measured_at, usable=outdoor.status == OK
+    )
+    cycle_profile = emergency_cycle.CycleProfile(
+        fixed_on_seconds=profile.values.fixed_on_seconds,
+        fixed_off_seconds=profile.values.fixed_off_seconds,
+        warm_restart_hysteresis_k=profile.values.warm_restart_hysteresis_k,
+        curve_points=tuple(
+            emergency_cycle.CurvePoint(p.outdoor_c, p.on_seconds, p.off_seconds)
+            for p in profile.values.curve_points
+        ),
+    )
+    # A control loop can go silent past a phase's own deadline for up to this
+    # long before a persisted cycle state is distrusted and restarted
+    # (`emergency_cycle`'s own "lange Prozesspause" handling) -- five shadow
+    # intervals, floored at 300s, the same order of magnitude
+    # `services/publishing.py`'s own staleness reasoning uses elsewhere; not a
+    # hard-coded constant (Grundsatz 1), derived from the plant's own
+    # configured cycle length.
+    stale_state_seconds = max(settings.shadow_interval_seconds * 5, 300)
+
+    has_switch = False
+    any_switch_heating = False
+
+    for zone_device, device, kind in _zone_actuator_assignments(session, zone):
+        existing_row = session.get(ActuatorEmergencyState, zone_device.id)
+        fresh_episode = existing_row is None or existing_row.episode_id != outcome.episode_id
+        row = existing_row if existing_row is not None else ActuatorEmergencyState(
+            zone_device_id=zone_device.id
+        )
+        if existing_row is None:
+            session.add(row)
+
+        if kind == emergency_actuator_plan.KIND_THERMOSTAT:
+            already_attempted = (
+                not fresh_episode and row.simulated_handover_attempted_at is not None
+            )
+            if fresh_episode:
+                row.simulated_handover_attempted_at = None
+                row.simulated_last_command_state = None
+                row.simulated_last_command_at = None
+                row.simulated_phase = None
+                row.simulated_phase_deadline_at = None
+                row.simulated_on_seconds = None
+                row.simulated_off_seconds = None
+            thermostat_decision = emergency_actuator_plan.plan_thermostat(
+                already_attempted=already_attempted,
+                now=now,
+                device_name=device.display_name,
+                emergency_setpoint_c=policy.emergency_setpoint_c,
+            )
+            if thermostat_decision.handover_attempted_at is not None:
+                row.simulated_handover_attempted_at = thermostat_decision.handover_attempted_at
+                row.simulated_last_command_state = True
+                row.simulated_last_command_at = now
+            row.episode_id = outcome.episode_id
+            row.last_evaluated_at = now
+            row.profile_version = profile.version
+            session.add(
+                ActuatorDecision(
+                    episode_id=outcome.episode_id,
+                    zone_device_id=zone_device.id,
+                    zone_name=zone.display_name,
+                    device_name=device.display_name,
+                    decided_at=now,
+                    action=thermostat_decision.action,
+                    reason_code=thermostat_decision.reason_code,
+                    reason=thermostat_decision.reason,
+                    phase=None,
+                    phase_deadline_at=None,
+                    simulated=True,
+                    cycle_source=None,
+                    on_seconds=None,
+                    off_seconds=None,
+                    outdoor_c=None,
+                    profile_version=profile.version,
+                )
+            )
+        elif kind == emergency_actuator_plan.KIND_SWITCH:
+            has_switch = True
+            prior_cycle_state = None
+            if (
+                not fresh_episode
+                and row.simulated_phase is not None
+                and row.simulated_phase_deadline_at is not None
+                and row.simulated_on_seconds is not None
+                and row.simulated_off_seconds is not None
+            ):
+                # `ActuatorEmergencyState` does not persist the cycle's taktquelle
+                # (`festtakt`/`kennlinie`) or its `warm_locked` band per assignment
+                # -- BLOCKER for Auftrag 3/7b, reported in the build report, not
+                # guessed silently: proposed `simulated_cycle_source`/
+                # `simulated_warm_locked` columns (and their scharf-side
+                # counterparts for 7b). Interim, clearly-scoped workaround: phase,
+                # its deadline and both durations round-trip *exactly*
+                # (`_derive_switch_phase_started_at` above is an exact inverse,
+                # not an approximation) so "kein Nachholen"/minimum-duration
+                # behaviour is unaffected; only the *label* recorded on this
+                # cycle's `ActuatorDecision.cycle_source` and the warm-lock band
+                # are recomputed live instead of carried over. `warm_locked`
+                # defaults to `False` -- the conservative direction (Grundsatz
+                # 7): it can only make a warm-locked pair re-engage one extra
+                # time before the hysteresis band catches it again, never
+                # silently keep an already-released lock closed.
+                prior_cycle_state = emergency_cycle.CycleState(
+                    phase=row.simulated_phase,
+                    phase_started_at=_derive_switch_phase_started_at(
+                        row.simulated_phase,
+                        row.simulated_phase_deadline_at,
+                        row.simulated_on_seconds,
+                        row.simulated_off_seconds,
+                    ),
+                    phase_deadline=row.simulated_phase_deadline_at,
+                    source=(
+                        emergency_cycle.SOURCE_CURVE
+                        if cycle_profile.curve_points and outdoor_sample.usable
+                        else emergency_cycle.SOURCE_FIXED
+                    ),
+                    on_seconds=row.simulated_on_seconds,
+                    off_seconds=row.simulated_off_seconds,
+                    warm_locked=False,
+                )
+            switch_decision = emergency_actuator_plan.plan_switch(
+                prior_cycle_state,
+                emergency_cycle.CycleInput(
+                    now=now,
+                    profile=cycle_profile,
+                    outdoor=outdoor_sample,
+                    min_on_seconds=parameter.min_on_seconds,
+                    min_off_seconds=parameter.min_off_seconds,
+                    stale_state_seconds=stale_state_seconds,
+                    prior=None,
+                ),
+            )
+            new_cycle_state = switch_decision.cycle.state
+            row.simulated_phase = new_cycle_state.phase
+            row.simulated_phase_deadline_at = new_cycle_state.phase_deadline
+            row.simulated_on_seconds = new_cycle_state.on_seconds
+            row.simulated_off_seconds = new_cycle_state.off_seconds
+            row.episode_id = outcome.episode_id
+            row.last_evaluated_at = now
+            row.profile_version = profile.version
+            any_switch_heating = (
+                any_switch_heating or switch_decision.cycle.decision.heating_requested
+            )
+            session.add(
+                ActuatorDecision(
+                    episode_id=outcome.episode_id,
+                    zone_device_id=zone_device.id,
+                    zone_name=zone.display_name,
+                    device_name=device.display_name,
+                    decided_at=now,
+                    action=switch_decision.action,
+                    reason_code=switch_decision.reason_code,
+                    reason=switch_decision.reason,
+                    phase=new_cycle_state.phase,
+                    phase_deadline_at=new_cycle_state.phase_deadline,
+                    simulated=True,
+                    cycle_source=new_cycle_state.source,
+                    on_seconds=new_cycle_state.on_seconds,
+                    off_seconds=new_cycle_state.off_seconds,
+                    outdoor_c=outdoor_sample.value_c,
+                    profile_version=profile.version,
+                )
+            )
+
+    session.flush()
+
+    if has_switch:
+        source_text = "Außenkennlinie" if outdoor_sample.usable else "Festtakt"
+        outdoor_text = (
+            f"{outdoor_sample.value_c} °C"
+            if outdoor_sample.value_c is not None
+            else "nicht verfügbar"
+        )
+        reason = (
+            f"Notbetrieb ({stage}): Schaltausgang-Takt bestimmt die Heizanforderung "
+            f"(Taktquelle {source_text}, Außentemperatur {outdoor_text})."
+        )
+        heating = any_switch_heating
+    else:
+        reason = (
+            f"Notbetrieb ({stage}): kein Schaltausgang in dieser Zone — die "
+            "Heizanforderung bleibt informativ aus; eine etwaige Thermostat-"
+            "Übergabe erfolgt unabhängig davon je Zuordnung."
+        )
+        heating = False
+    return Decision(
+        heating=heating,
+        reason_code=emergency_actuator_plan.OUTCOME_CODE_NOTBETRIEB,
+        reason=reason,
+    )
+
+
+# --------------------------------------------------------------------------- #
 # PI wiring (steps 4 and 5 of the build order in section 11 of the PI
 # specification). `thermoctl.domain.pi_control` supplies the pure arithmetic and
 # window modulator (step 3, already built and mutation-tested); everything below
@@ -388,6 +912,7 @@ def _pi_gate_reason(
     window_governs: bool,
     resume_delay_active: bool,
     frost_effective: bool,
+    sensor_failure_emergency_active: bool = False,
 ) -> str | None:
     """Which of section 4's PI-resetting precedence rules governs this cycle, if
     any. `None` means none of them do -- exactly "wo die gewöhnliche Regelung
@@ -457,8 +982,22 @@ def _pi_gate_reason(
     attributed to protection, not to the frost setpoint that never got to decide
     anything that cycle. `sensor_failed` is checked first, ahead of everything
     else -- rule 1 has the same, highest precedence in `decide()` itself.
+
+    `sensor_failure_emergency_active` -- Auftrag 7a of
+    `lokal/plaene/0.11.0-notbetrieb.md`, plan 1.3/1.4 Rang 9: `True` on any
+    cycle `domain.emergency_operation.advance()` reports a stage other than
+    `normal` for this zone (`ersatzquelle`, `notbetrieb`,
+    `rueckkehrpruefung`). Checked first, ahead of `sensor_failed` itself,
+    because it must also gate `ERSATZQUELLE`: there `_process_zone` has
+    already fed a corrected replacement reading into `Situation` with
+    `sensor_status="ok"`, so the ordinary `sensor_failed` computation
+    (`Situation.sensor_status in (NO_SOURCE, VERALTET)`) would not catch it on
+    its own -- plan 1.3's own requirement ("PI wird bei aktiver Ersatzquelle
+    ausgesetzt") needs its own, independent signal, exactly the way
+    `window_governs`/`resume_delay_active`/`frost_effective` each already
+    have their own instead of being inferred from `decision.reason_code`.
     """
-    if sensor_failed:
+    if sensor_failed or sensor_failure_emergency_active:
         return RESET_REASON_SENSOR_FAILURE
     if window_governs:
         return RESET_REASON_WINDOW_OPEN
@@ -729,8 +1268,14 @@ def _pi_outcome(
     vacation: Vacation | None,
     phase_started_by: str | None,
     now: datetime,
+    *,
+    sensor_failure_emergency_active: bool = False,
 ) -> tuple[bool, str | None, dict[str, object]]:
     """Everything PI contributes to one zone's cycle.
+
+    `sensor_failure_emergency_active` -- see `_pi_gate_reason`'s own docstring
+    for why this needs its own flag, independent of `situation.sensor_status`
+    (Auftrag 7a, plan 1.3/1.4 Rang 9).
 
     Returns `(effective_heating, reason_suffix, shadow_decision_fields)`:
     `effective_heating` is `decision.heating` (the ordinary hysteresis decision)
@@ -831,6 +1376,7 @@ def _pi_outcome(
         window_governs=situation.window_open and not situation.on_off_actuators_only,
         resume_delay_active=resume_delay_active,
         frost_effective=frost_effective,
+        sensor_failure_emergency_active=sensor_failure_emergency_active,
     )
     if gate is not None:
         _write_reset_state(state, reset_pi_state(gate, now=now))
@@ -1049,6 +1595,31 @@ def _process_zone(
         setpoint, frost_c, zone, parameter, settings, forecast, now
     )
 
+    # Notbetrieb (Auftrag 7a): engaged for a zone currently opted in, or one
+    # with a still-open episode from before it was opted out again -- see the
+    # module-level comment above `_apply_sensor_failure` for why the second
+    # half of this condition matters. Every other zone never touches any of
+    # this (bitgenau today's behaviour, the plan's explicit regression
+    # requirement).
+    sf_db_state = session.get(ZoneSensorFailureState, zone.id)
+    sensor_failure_outcome: _SensorFailureOutcome | None = None
+    sf_stage: str | None = None
+    if zone.sensor_failure_enabled or (
+        sf_db_state is not None and sf_db_state.episode_id is not None
+    ):
+        sensor_failure_outcome = _apply_sensor_failure(
+            session, zone, state, settings, parameter, sf_db_state, now
+        )
+        sf_stage = sensor_failure_outcome.stage_output.state.stage
+        if sf_stage == emergency_operation.STAGE_ERSATZQUELLE:
+            # Plan 1.4 Rang 2: the corrected replacement reading becomes the
+            # zone's istwert for the ordinary `decide()` path below, sensor
+            # status `ok` -- `_pi_gate_reason` is still told separately that an
+            # emergency stage is active (see its own docstring), so PI does not
+            # mistake this for a healthy, ordinary cycle.
+            measured_c = sensor_failure_outcome.effective_temperature_c
+            sensor_status = OK
+
     override = _effective_override(session, zone, now)
     override_active = override is not None
     # Deliberately not folded into `override_active`/`Situation`: the project owner's
@@ -1082,6 +1653,18 @@ def _process_zone(
         on_off_actuators_only=on_off_actuators_only,
     )
     decision = decide(situation)
+    if sensor_failure_outcome is not None and sf_stage == emergency_operation.STAGE_ERSATZQUELLE:
+        # Plan Auftrag 7a, item 2: "eigener Hinweis im Entscheidungsgrund".
+        # `decide()` itself never learns the source is a replacement -- this is
+        # purely textual, `decision.heating`/`reason_code` stay exactly what
+        # ordinary hysteresis against the corrected value produced.
+        decision = replace(
+            decision,
+            reason=(
+                f"{decision.reason} Ersatzquelle aktiv: "
+                f"{sensor_failure_outcome.effective_device_name}."
+            ),
+        )
 
     # PI (steps 4 and 5 of the PI specification's build order, section 11): a
     # parallel candidate that -- once the zone is enabled for it, eligible, and no
@@ -1089,6 +1672,9 @@ def _process_zone(
     # decision below. `decision` itself, and everything computed from `situation`
     # above, stays exactly the ordinary hysteresis path; nothing here feeds back
     # into `decide()`.
+    sensor_failure_emergency_active = sf_stage is not None and sf_stage != (
+        emergency_operation.STAGE_NORMAL
+    )
     effective_heating, pi_reason_suffix, pi_fields = _pi_outcome(
         session,
         zone,
@@ -1102,6 +1688,7 @@ def _process_zone(
         vacation,
         phase_started_by,
         now,
+        sensor_failure_emergency_active=sensor_failure_emergency_active,
     )
     # `decide()`'s rule 5 always answers the pure-hysteresis question, against
     # `situation.parameter.min_on_seconds`/`min_off_seconds` -- correct for that
@@ -1148,6 +1735,20 @@ def _process_zone(
                 ),
             )
         )
+
+    if sensor_failure_outcome is not None and sf_stage in (
+        emergency_operation.STAGE_NOTBETRIEB,
+        emergency_operation.STAGE_RUECKKEHRPRUEFUNG,
+    ):
+        # Plan 1.4 Rang 3/4 take over the zone's decision entirely -- neither
+        # `decide()`'s own answer (necessarily `keine_quelle`/off here, both
+        # sources having already failed) nor whatever PI computed above govern
+        # this cycle; `_pi_outcome`'s `sensor_failure_emergency_active` gate has
+        # already made sure PI itself stayed neutral regardless.
+        effective_decision = _apply_emergency_actuators(
+            session, zone, sensor_failure_outcome, settings, parameter, now
+        )
+
     _apply_decision_to_state(state, effective_decision, now)
 
     row = ShadowDecision(
