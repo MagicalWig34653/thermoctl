@@ -585,6 +585,10 @@
       "actuator",
       "switch"
     ],
+    "thermoctl/services/temperature_source_health.py": [
+      "actuator",
+      "switch"
+    ],
     "thermoctl/web/control_views.py": [
       "Die Anlage wurde gerade scharf geschaltet.",
       "Ein Ventilschutzlauf ist aktiv."
