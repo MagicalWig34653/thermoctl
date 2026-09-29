@@ -4,6 +4,8 @@ Letzte Aktualisierung: 2026-09-29.
 
 ## 0.11.0 in Arbeit: Notbetriebs-Zustandsautomat (Auftrag 5b)
 
+`handover_due_signalled` ist eine echte, migrierte Spalte von `zone_sensor_failure_state` (Migration `8423190df6f9`); die Sperre „Übergabe einmal je Episode“ übersteht damit einen Neustart.
+
 `thermoctl.domain.emergency_operation.advance` ist eine reine Funktion (kein DB-/
 Netzwerkzugriff, `now` und der bisherige Laufzustand kommen vom Aufrufer, wie
 `emergency_cycle.advance`) und trägt eine Zone durch die vier Stufen
