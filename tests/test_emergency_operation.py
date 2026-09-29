@@ -115,6 +115,22 @@ def test_notbetrieb_moves_to_rueckkehrpruefung_once_a_source_returns() -> None:
     assert returned.state.tracked_kind == KIND_WANDFUEHLER
 
 
+def test_wall_probe_takes_priority_when_both_sources_return_in_the_same_cycle() -> None:
+    """Plan 1.3: the wall probe is preferred whenever both recover together."""
+    notbetrieb = advance(None, _input(T0)).state
+    returned = advance(
+        notbetrieb,
+        _input(
+            T0 + timedelta(seconds=10),
+            wall=USABLE_WALL,
+            replacement=USABLE_REPLACEMENT,
+        ),
+    )
+    assert returned.state.stage == STAGE_RUECKKEHRPRUEFUNG
+    assert returned.state.tracked_kind == KIND_WANDFUEHLER
+    assert returned.state.tracked_device_id is None
+
+
 def test_recovery_completed_against_wall_probe_returns_to_normal() -> None:
     notbetrieb = advance(None, _input(T0)).state
     started = advance(
@@ -384,6 +400,42 @@ def test_handover_due_does_not_refire_when_escalating_from_ersatzquelle() -> Non
     assert escalated.events.handover_due
     still_down = advance(escalated.state, _input(T0 + timedelta(seconds=2)))
     assert not still_down.events.handover_due
+
+
+def test_handover_due_does_not_refire_on_a_second_escalation_in_the_same_episode() -> None:
+    """Kreuzreview finding: `notbetrieb -> rueckkehrpruefung` (via Ersatzquelle)
+    `-> ersatzquelle` (flag already set) `->` both sources fail again must not
+    signal handover a second time within the same episode. A hard-coded
+    `first_time = True` in `_ersatzquelle`'s escalation branch would pass every
+    other handover test (they all reach that branch with the flag still
+    unset) but must fail here, where it is already set."""
+    notbetrieb = advance(None, _input(T0))
+    assert notbetrieb.events.handover_due
+
+    checking = advance(
+        notbetrieb.state, _input(T0 + timedelta(seconds=1), replacement=USABLE_REPLACEMENT)
+    )
+    assert checking.state.stage == STAGE_RUECKKEHRPRUEFUNG
+
+    recovered = advance(
+        checking.state,
+        _input(
+            T0 + timedelta(seconds=61),
+            replacement=SourceReading(
+                usable=True,
+                measured_at=T0 + timedelta(seconds=61),
+                device_id=7,
+                device_name="TRV Wohnzimmer",
+            ),
+        ),
+    )
+    assert recovered.state.stage == STAGE_ERSATZQUELLE
+    assert recovered.state.handover_due_signalled  # carried over, not reset
+
+    escalated_again = advance(recovered.state, _input(T0 + timedelta(seconds=62)))
+    assert escalated_again.state.stage == STAGE_NOTBETRIEB
+    assert not escalated_again.events.episode_started
+    assert not escalated_again.events.handover_due
 
 
 # --- 9. PI-neutralisation signal --------------------------------------------------

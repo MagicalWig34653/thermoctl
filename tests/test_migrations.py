@@ -946,7 +946,15 @@ def test_sensor_failure_upgrade_preserves_installation(
     from alembic.script import ScriptDirectory
 
     scripts = ScriptDirectory.from_config(Config("alembic.ini"))
-    assert scripts.get_heads() == ["a0110b03c001"]
+    # Trip-wire: this pins the *current* head so a later migration stacked on
+    # top of the sensor-failure schema forces a deliberate look at this test
+    # -- in particular at the "downgrade -1 removes the whole schema" check
+    # below, which silently narrows to "removes only the newest migration"
+    # once another one lands on top (exactly what happened here when
+    # `8423190df6f9` added `handover_due_signalled`; the downgrade target
+    # was changed from the relative "-1" to the absolute pre-sensor-failure
+    # revision below so the check keeps its original meaning).
+    assert scripts.get_heads() == ["8423190df6f9"]
     for args in (("downgrade", "base"), ("upgrade", "d31f6a04c7e9")):
         result = _alembic(migrations_database_url, *args)
         assert result.returncode == 0, result.stderr
@@ -1099,8 +1107,108 @@ def test_sensor_failure_upgrade_preserves_installation(
                         )
                     ).one() == (profile["id"], 20)
             if iteration == 0:
-                result = _alembic(migrations_database_url, "downgrade", "-1")
+                # Absolute target, not "-1": the sensor-failure schema is no
+                # longer the head by itself (see the guard assertion above),
+                # so a relative single step would only undo the newest
+                # migration on top and this check would stop meaning what it
+                # says.
+                result = _alembic(migrations_database_url, "downgrade", "d31f6a04c7e9")
                 assert result.returncode == 0, result.stderr
                 assert "sensor_failure_profile" not in sa.inspect(db_engine).get_table_names()
+    finally:
+        db_engine.dispose()
+
+
+@pytest.mark.migration
+def test_handover_due_signalled_migration_upgrade_and_downgrade(
+    migrations_database_url: str,
+) -> None:
+    """`handover_due_signalled` persists the once-per-episode handover latch.
+
+    Without this column (Kreuzreview finding on `emergency_operation.py`), the
+    latch would live only in memory and either re-fire or vanish across a
+    process restart mid-episode. Covers: fresh install gets the column with a
+    `False` default, an existing row gets `False` too (not NULL), and
+    downgrading by exactly one step removes only this column -- the rest of
+    `zone_sensor_failure_state` and its sibling tables stay intact.
+    """
+    from datetime import datetime
+
+    import sqlalchemy as sa
+
+    # `migrations_database_url` is session-scoped and shared with every other
+    # migration test -- start from an empty schema, not whatever an earlier
+    # test in the session left behind.
+    reset = _alembic(migrations_database_url, "downgrade", "base")
+    assert reset.returncode == 0, reset.stderr
+    up_to_previous = _alembic(migrations_database_url, "upgrade", "a0110b03c001")
+    assert up_to_previous.returncode == 0, up_to_previous.stderr
+
+    db_engine = create_engine(migrations_database_url)
+    try:
+        with db_engine.begin() as connection:
+            metadata = sa.MetaData()
+            metadata.reflect(db_engine, only=["zone", "operating_mode"])
+            mode_id = connection.execute(sa.select(metadata.tables["operating_mode"].c.id)).first()[
+                0
+            ]
+            connection.execute(
+                metadata.tables["zone"]
+                .insert()
+                .values(
+                    name="nb-latch",
+                    display_name="Übergabesperre",
+                    operating_mode_id=mode_id,
+                    sort_order=9,
+                    created_at=datetime(2026, 9, 29),
+                    updated_at=datetime(2026, 9, 29),
+                    hysteresis_k=Decimal("0.45"),
+                    min_on_seconds=420,
+                )
+            )
+            zone_id = connection.execute(sa.select(metadata.tables["zone"].c.id)).scalar_one()
+            connection.execute(
+                text(
+                    "INSERT INTO zone_sensor_failure_state (zone_id, stage, "
+                    "recovery_sample_count) VALUES (:zone_id, 'normal', 0)"
+                ),
+                {"zone_id": zone_id},
+            )
+
+        up = _alembic(migrations_database_url, "upgrade", "head")
+        assert up.returncode == 0, up.stderr
+        with db_engine.connect() as connection:
+            row = connection.execute(
+                text(
+                    "SELECT stage, recovery_sample_count, handover_due_signalled "
+                    "FROM zone_sensor_failure_state WHERE zone_id = :zone_id"
+                ),
+                {"zone_id": zone_id},
+            ).one()
+            assert row == ("normal", 0, False)
+            columns_after_upgrade = {
+                column["name"]
+                for column in sa.inspect(connection).get_columns("zone_sensor_failure_state")
+            }
+            assert "handover_due_signalled" in columns_after_upgrade
+
+        down = _alembic(migrations_database_url, "downgrade", "-1")
+        assert down.returncode == 0, down.stderr
+        with db_engine.connect() as connection:
+            columns_after_downgrade = {
+                column["name"]
+                for column in sa.inspect(connection).get_columns("zone_sensor_failure_state")
+            }
+            assert "handover_due_signalled" not in columns_after_downgrade
+            # Only the one column disappeared -- the row and its other
+            # columns, and the table itself, are still there.
+            row = connection.execute(
+                text(
+                    "SELECT stage, recovery_sample_count FROM zone_sensor_failure_state "
+                    "WHERE zone_id = :zone_id"
+                ),
+                {"zone_id": zone_id},
+            ).one()
+            assert row == ("normal", 0)
     finally:
         db_engine.dispose()

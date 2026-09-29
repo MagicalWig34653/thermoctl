@@ -50,6 +50,13 @@ two values -- `"wandfuehler"` when the wall probe alone failed and the
 replacement was still there to catch it, `"alle_quellen"` when neither source
 delivered a current reading at the moment the episode opened.
 
+`episode_ended` can also happen with `reason_code=REASON_DEAKTIVIERT` (`enabled`
+flipped to `False` mid-episode, see below) -- this is **not** an Entwarnung
+(plan 8's "eine Störungsmeldung je Episode ... und Entwarnung"): the fault was
+never resolved, the operator simply told this module to stop tracking it. A
+later task (Auftrag 7/8) must not send the "all clear" notification text for
+this particular `episode_ended`, only close the episode record.
+
 `handover_due` is the "Thermostat-Übergabe fällig" signal from plan 1.4 Rang 3:
 it fires exactly once per episode, on the cycle `NOTBETRIEB` is *first*
 reached -- never again for the rest of that episode, including every later
@@ -146,8 +153,13 @@ class ZoneEmergencyState:
     """The persisted runtime state of one zone -- mirrors
     `db.models.sensor_failure.ZoneSensorFailureState`'s columns (minus `zone_id`,
     which the caller already knows, and `episode_id`, whose actual integer only
-    the persistence layer can assign; `episode_open`/`handover_due_signalled`
-    stand in for what that id's presence/history already implies)."""
+    the persistence layer can assign; `episode_open` stands in for what that
+    id's presence/history already implies -- non-`None` means open).
+    `handover_due_signalled` **is** a real column there (Kreuzreview finding on
+    `509997b`: without one, the once-per-episode latch would live only in this
+    process's memory and either re-fire or silently vanish across a restart
+    mid-episode) -- every other field here has a same-named, same-meaning
+    counterpart."""
 
     stage: str = STAGE_NORMAL
     tracked_kind: str | None = None
