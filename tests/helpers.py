@@ -418,6 +418,8 @@ def create_device_command(
     at: datetime = datetime(2026, 8, 29, 8, 0),
     outcome_code: str = "executed",
     source_code: str = "system",
+    command: str = "setpoint",
+    payload: str = '{"occupied_heating_setpoint": 21.0}',
 ) -> DeviceCommand:
     entry = DeviceCommand(
         sent_at=at,
@@ -426,8 +428,8 @@ def create_device_command(
         zone_name=zone.name,
         device_id=device.id,
         device_name=device.display_name,
-        command="setpoint",
-        payload='{"occupied_heating_setpoint": 21.0}',
+        command=command,
+        payload=payload,
         outcome_id=command_outcome(session, outcome_code).id,
         error=None,
         reason="Zeitplan",

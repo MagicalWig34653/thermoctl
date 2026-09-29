@@ -1,8 +1,39 @@
 # Stand
 
-Letzte Aktualisierung: 2026-09-28.
+Letzte Aktualisierung: 2026-09-29.
 
-## 0.11.0 in Arbeit: Konfigurationsdienst Notbetrieb
+## 0.11.0 in Arbeit: Quellenqualität inkl. automatischer Ersatzquelle (Auftrag 5a)
+
+`thermoctl.domain.temperature_source_health.evaluate_source_health` ist eine reine
+Funktion (kein DB-/Netzwerkzugriff, `now` wird übergeben) und liefert den effektiven
+Istwert einer Zone: Wandfühler, wenn brauchbar (Status `ok` und Messwert vorhanden,
+wie bisher in `domain/fault.py`), sonst — nur unter den der Zone zugeordneten
+Thermostat-Zuordnungen — die **kälteste** um `temperature_backup_offset_k` korrigierte
+Messung, sonst „keine Quelle". Jeder Kandidat wird für die Vergleichsprotokollierung
+mit Rohwert, korrigiertem Wert und Echo-Status zurückgegeben, auch wenn er nicht
+gewählt wurde.
+
+**Echo-Regel (Bosch BTH-RA, Gerätevertrag belegt):** Solange thermoctl eine externe
+Temperatur an ein Thermostat schreibt, ist dessen `local_temperature` ein Echo dieses
+Werts, keine unabhängige Messung. Das Gerät fällt laut Hersteller erst 30 Minuten
+nach dem letzten Schreiben auf seinen internen Fühler zurück — benannt als
+`ECHO_INDEPENDENCE_DELAY`. Ein Kandidat gilt erst als unabhängig, wenn sein eigener
+Messzeitpunkt auf oder nach diesem Umschaltzeitpunkt liegt; ein älterer Messwert
+bleibt ein Echo, selbst wenn seither mehr als 30 Minuten vergangen sind. Der dafür
+nötige Zeitpunkt des letzten erfolgreichen Schreibens kommt aus einer eigenen,
+unreinen Abfrage über `device_command` (`services.temperature_source_health.
+last_external_temperature_write_at`, zählt nur tatsächlich ausgeführte, keine
+Trockenlauf- oder gescheiterten Versuche) — die reine Funktion bekommt nur das
+Ergebnis. `services.temperature_source_health.zone_candidates` stellt die
+Kandidatenliste einer Zone zusammen, mit derselben Eignungsregel wie
+`sensor_failure_policy._assignment` (Rolle `actuator`, Fähigkeit `thermostat`,
+keine Fähigkeit `switch`) — eine reine Schaltzuordnung wird nie Kandidat.
+
+Zustandsautomat, Übergabe an TRVs und Versandweg (Aufträge 5b/6/7) folgen. Real
+eingesetzte Geräte laut Auftrag 1: ausschließlich Bosch BTH-RA als Thermostate,
+Meross mss710 als Schaltausgänge, keine Mischgeräte.
+
+## 0.11.0: Konfigurationsdienst Notbetrieb
 
 Der Domänendienst `sensor_failure_policy` liest und speichert Profile einschließlich
 Kennlinien, Anlagenvorgaben, Zonenüberschreibungen und Thermostat-Zuordnungs-Offsets.
