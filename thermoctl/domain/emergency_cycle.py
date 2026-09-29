@@ -315,7 +315,10 @@ def _enter(cycle: CycleInput, *, disturbed: bool) -> CycleOutput:
             phase_started_at=started,
             phase_deadline=deadline,
             source=source,
-            on_seconds=cycle.min_on_seconds,
+            # The resolved pair's own Ein-Dauer, not the (possibly much shorter)
+            # zone minimum used only to size the credited remainder above -- see
+            # `CycleState.on_seconds`'s docstring ("this pair's Ein-Dauer").
+            on_seconds=on_s,
             off_seconds=off_s,
             warm_locked=warm,
         )
@@ -412,7 +415,7 @@ def advance(state: CycleState | None, cycle: CycleInput) -> CycleOutput:
         warm_locked=warm,
     )
     reason_code = REASON_WARM_LOCK if on_s == 0 else REASON_TRANSITION
-    lead_in = "Warm-Aus-Sperre hält" if on_s == 0 else "Notbetriebstakt wechselt auf"
+    lead_in = "Wiederanlaufsperre hält" if on_s == 0 else "Notbetriebstakt wechselt auf"
     reason = _explain(
         phase=new_phase,
         on_seconds=on_s,

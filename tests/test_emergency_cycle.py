@@ -422,9 +422,7 @@ def test_warm_lock_engages_exactly_at_the_threshold_not_only_strictly_above() ->
     profile = _curve_profile()
     entry = advance(None, _cycle(T0, profile, _usable("15")))
     assert entry.state.warm_locked is True
-    within_band = advance(
-        entry.state, _cycle(entry.state.phase_deadline, profile, _usable("14.5"))
-    )
+    within_band = advance(entry.state, _cycle(entry.state.phase_deadline, profile, _usable("14.5")))
     assert within_band.state.warm_locked is True
     assert within_band.decision.heating_requested is False
 
@@ -538,6 +536,30 @@ def test_entry_credits_remaining_minimum_on_of_an_already_on_relay() -> None:
     assert out.state.phase == PHASE_ON
     # 600s minimum, 400s already elapsed -> 200s remain.
     assert out.state.phase_deadline == T0 + timedelta(seconds=200)
+
+
+def test_entry_with_already_on_relay_records_the_resolved_pair_on_duration() -> None:
+    """`CycleState.on_seconds` is documented as "this pair's Ein-Dauer" -- the
+    resolved Festtakt/Kennlinie value, not the (possibly much shorter) zone
+    minimum used only to size the credited remainder. A caller reading this field
+    back (e.g. for the explanation text of a later `REASON_CONTINUE` tick during
+    this same credited phase) must see the real pair duration, not the minimum."""
+    profile = _fixed_profile(on_seconds=600, off_seconds=1200)
+    out = advance(
+        None,
+        _cycle(
+            T0,
+            profile,
+            _no_source(),
+            min_on_seconds=60,  # deliberately much smaller than the profile's 600s
+            prior=PriorPhaseHint(on=True, elapsed_seconds=10),
+        ),
+    )
+    assert out.state.on_seconds == 600
+    assert out.state.off_seconds == 1200
+    # The credited remainder itself still only honours the zone minimum (60s), not
+    # the full resolved pair duration -- that part of the behaviour is unaffected.
+    assert out.state.phase_deadline == T0 + timedelta(seconds=50)
 
 
 def test_entry_with_already_on_relay_ignores_elapsed_beyond_minimum() -> None:
