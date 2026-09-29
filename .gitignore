@@ -84,3 +84,8 @@ tools/umbenennung/
 # Standardausgabe von tools/screenshots.py -- nur ein Lauf mit --doku schreibt
 # gezielt die als "documented" gekennzeichneten Ansichten nach docs/bilder/.
 var/bilder/
+
+# Lokale, nicht zu veroeffentlichende Unterlagen (Konzepte zum realen Objekt,
+# Mieterbezug). Bleiben aus demselben Grund draussen wie die Bestandsaufnahme
+# des Altsystems -- siehe CLAUDE.md.
+lokal/
