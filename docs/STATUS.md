@@ -2,7 +2,53 @@
 
 Letzte Aktualisierung: 2026-09-29.
 
-## 0.11.0 in Arbeit: Quellenqualität inkl. automatischer Ersatzquelle (Auftrag 5a)
+## 0.11.0 in Arbeit: Notbetriebs-Zustandsautomat (Auftrag 5b)
+
+`thermoctl.domain.emergency_operation.advance` ist eine reine Funktion (kein DB-/
+Netzwerkzugriff, `now` und der bisherige Laufzustand kommen vom Aufrufer, wie
+`emergency_cycle.advance`) und trägt eine Zone durch die vier Stufen
+`normal → ersatzquelle → notbetrieb → rueckkehrpruefung → normal` (Plan 1.2). Sie
+bekommt pro Zyklus nur, ob Wandfühler und Ersatzquelle diesen Zyklus brauchbar sind
+(`temperature_source_health` liefert das bereits) und liefert die neue Stufe plus
+Ereignisse: Episodenbeginn/-ende (eine Episode überdauert eine Eskalation
+`ersatzquelle → notbetrieb` und jeden Rückfall aus `rueckkehrpruefung`, endet erst
+bei `normal`), das PI-Neutralisierungssignal (jede Stufe außer `normal`) und das
+„Thermostat-Übergabe fällig"-Signal (genau einmal je Episode, beim ersten Erreichen
+von `notbetrieb` — ein späterer Rückfall aus `rueckkehrpruefung` löst es nicht erneut
+aus).
+
+Rückkehr zählt gegen genau eine Quelle (Wandfühler in `ersatzquelle`, Wandfühler
+*oder* Ersatzquelle in `rueckkehrpruefung`, Wandfühler hat bei gleichzeitiger Rückkehr
+Vorrang): mindestens zwei verschiedene Messzeitpunkte **und** mindestens die
+konfigurierte Rückkehrdauer durchgehend brauchbar, beides zum selben Zeitpunkt erfüllt.
+Derselbe Messzeitpunkt zählt nie zweimal (ein Sensor, der einfach noch keinen neuen
+Wert gesendet hat, bleibt „brauchbar", ohne die Zählung voranzutreiben). Wechselt in
+`rueckkehrpruefung` das Gerät hinter „die Ersatzquelle" (die kälteste brauchbare
+Thermostat-Messung kann von Zyklus zu Zyklus ein anderes Gerät sein), startet die
+Zählung neu gegen das neue Gerät. Ein einzelner unbrauchbarer Zyklus der geprüften
+Quelle fällt in `rueckkehrpruefung` sofort auf `notbetrieb` zurück (gleiche Episode);
+in `ersatzquelle` bleibt die Stufe, nur die Zählung wird verworfen. „Nie seit Start
+gemessen" erreicht `notbetrieb` im selben Aufruf, ohne eigene Zusatzwartezeit — die
+ist schon in der Brauchbarkeitsbewertung enthalten. `enabled=false` erzwingt in jedem
+Zustand sofort reines `normal`-Verhalten und schließt eine offene Episode dabei ab.
+
+Geprüft: `ruff check .`, `mypy thermoctl` sauber; `pytest -q --cov-fail-under=100`
+gegen SQLite und MariaDB nacheinander, je 5280 Tests, 1 Fehlschlag (vorbestehend,
+unabhängig von diesem Auftrag — `test_physical_vocabulary_occurrences_are_explicitly_
+reviewed` moniert zwei unreviewte Fundstellen in Auftrag 5a's
+`thermoctl/services/temperature_source_health.py`), 0 Fehler, 1 übersprungen, 100 %
+Testabdeckung beide Male. Fünf gezielte Handmutanten an den gefährlichsten
+Grenzvergleichen (`>=`/`!=` bei Probenzahl, Rückkehrdauer, Messzeit-Unterscheidung,
+Gerätewechsel, Rückfallbedingung) einzeln angelegt, jeweils sofort von der Testsuite
+getötet, Datei danach per Prüfsumme auf den Originalstand zurückgesetzt. Kein
+Cosmic-Ray-Lauf — der volle Mutationslauf ist Auftrag 10, nachdem 5a/5b/6 gemeinsam
+gemergt sind.
+
+Zustandsautomat und Rückkehrprüfung sind fertig. Aktorplan/Publisher-Anbindung
+(Auftrag 7) und Anzeige/Meldung (Auftrag 8) folgen; dieses Modul selbst ist an
+nichts angeschlossen (`control_loop.py`/`shadow_run.py` unverändert).
+
+## 0.11.0: Quellenqualität inkl. automatischer Ersatzquelle (Auftrag 5a)
 
 `thermoctl.domain.temperature_source_health.evaluate_source_health` ist eine reine
 Funktion (kein DB-/Netzwerkzugriff, `now` wird übergeben) und liefert den effektiven
