@@ -122,6 +122,10 @@ class ZoneSensorFailureState(Base):
     recovery_started_at: Mapped[datetime | None] = mapped_column(DateTime)
     last_counted_measurement_at: Mapped[datetime | None] = mapped_column(DateTime)
     recovery_sample_count: Mapped[int] = mapped_column(Integer, default=0)
+    # Mirrors `domain.emergency_operation.ZoneEmergencyState.handover_due_signalled`:
+    # without this column the once-per-episode handover latch would live only in
+    # memory and either re-fire or vanish across a process restart mid-episode.
+    handover_due_signalled: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
 class ActuatorEmergencyState(Base):
