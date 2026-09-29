@@ -2,10 +2,11 @@
 
 Not the rule (that is `domain.temperature_source_health`, tested purely in
 `tests/test_temperature_source_health.py`): this covers only the two impure
-things the rule needs from the database -- the moment of the last successful
-external-temperature write, and which of a zone's device assignments are
-actually eligible candidates at all (same rule as
-`domain.sensor_failure_policy._assignment`).
+things the rule needs from the database -- the moment of the last real
+attempt (not necessarily a confirmed-successful one, see
+`test_a_failed_attempt_still_counts_as_a_write` below) to write an external
+temperature, and which of a zone's device assignments are actually eligible
+candidates at all (same rule as `domain.sensor_failure_policy._assignment`).
 """
 
 from datetime import datetime
@@ -97,7 +98,13 @@ def test_a_suppressed_dry_run_attempt_does_not_count_as_a_write(session: Session
     assert last_external_temperature_write_at(session, device.id) is None
 
 
-def test_a_failed_attempt_does_not_count_as_a_write(session: Session) -> None:
+def test_a_failed_attempt_still_counts_as_a_write(session: Session) -> None:
+    # A `failed` outcome is recorded whenever an exception or timeout struck
+    # after the message left the service (`services/publishing.py` around
+    # `_send_self_regulating_valves`) -- the device may well have received it
+    # anyway. Not counting it would let the 30-minute switch-over instant
+    # arrive too early and a lingering echo look independent -- the dangerous
+    # direction (Grundsatz 7). So this must count exactly like `executed`.
     zone = create_zone(session, "bad")
     device = create_device(session, "trv-5")
     create_device_command(
@@ -109,7 +116,29 @@ def test_a_failed_attempt_does_not_count_as_a_write(session: Session) -> None:
         payload='{"occupied_heating_setpoint":20.0,"remote_temperature":23.4}',
     )
 
-    assert last_external_temperature_write_at(session, device.id) is None
+    assert last_external_temperature_write_at(session, device.id) == NOW
+
+
+def test_an_outcome_this_codebase_does_not_know_yet_still_counts_as_a_write(
+    session: Session,
+) -> None:
+    # `COMMAND_OUTCOMES` today only lists `executed`/`suppressed`/`failed`, but
+    # the check is written as "not suppressed", not "one of these codes" --
+    # any future or unexpected outcome (a pending/unknown status, say) must
+    # land on the safe side (counts as a write) rather than silently falling
+    # through as "no write" the way an allowlist would.
+    zone = create_zone(session, "bad")
+    device = create_device(session, "trv-9")
+    create_device_command(
+        session,
+        zone,
+        device,
+        at=NOW,
+        outcome_code="pending",
+        payload='{"occupied_heating_setpoint":20.0,"remote_temperature":23.4}',
+    )
+
+    assert last_external_temperature_write_at(session, device.id) == NOW
 
 
 def test_the_most_recent_matching_write_wins(session: Session) -> None:

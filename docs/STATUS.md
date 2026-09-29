@@ -20,10 +20,12 @@ nach dem letzten Schreiben auf seinen internen Fühler zurück — benannt als
 `ECHO_INDEPENDENCE_DELAY`. Ein Kandidat gilt erst als unabhängig, wenn sein eigener
 Messzeitpunkt auf oder nach diesem Umschaltzeitpunkt liegt; ein älterer Messwert
 bleibt ein Echo, selbst wenn seither mehr als 30 Minuten vergangen sind. Der dafür
-nötige Zeitpunkt des letzten erfolgreichen Schreibens kommt aus einer eigenen,
-unreinen Abfrage über `device_command` (`services.temperature_source_health.
-last_external_temperature_write_at`, zählt nur tatsächlich ausgeführte, keine
-Trockenlauf- oder gescheiterten Versuche) — die reine Funktion bekommt nur das
+nötige Zeitpunkt des letzten Schreibversuchs kommt aus einer eigenen, unreinen
+Abfrage über `device_command` (`services.temperature_source_health.
+last_external_temperature_write_at`): gezählt wird jeder Versuch außer einem
+Trockenlauf, **auch ein als gescheitert protokollierter** — dessen Nachricht
+kann das Gerät trotzdem erreicht haben, und ihn nicht zu zählen würde die
+30-Minuten-Frist zu früh ablaufen lassen. Die reine Funktion bekommt nur das
 Ergebnis. `services.temperature_source_health.zone_candidates` stellt die
 Kandidatenliste einer Zone zusammen, mit derselben Eignungsregel wie
 `sensor_failure_policy._assignment` (Rolle `actuator`, Fähigkeit `thermostat`,

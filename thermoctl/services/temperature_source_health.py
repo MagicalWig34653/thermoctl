@@ -1,11 +1,12 @@
 """The one impure lookup `domain.temperature_source_health` needs but must not do.
 
 That module is a reine Funktion by design (no clock, no database, no network --
-see its module docstring) and is handed the moment of the last successful
-external-temperature write as plain input. This module is where that moment
-actually comes from: a query over `device_command`, the same table
-`services/device_commands.py` reads for the audit log and `services/
-publishing.py` writes to on every attempt.
+see its module docstring) and is handed the moment of the last real attempt to
+write an external temperature as plain input -- "attempted", not "confirmed
+successful": see `_NOT_A_WRITE`'s docstring for why a `failed` outcome still
+counts. This module is where that moment actually comes from: a query over
+`device_command`, the same table `services/device_commands.py` reads for the
+audit log and `services/publishing.py` writes to on every attempt.
 """
 
 import json
@@ -23,12 +24,25 @@ from thermoctl.db.models.zone import Zone
 from thermoctl.domain.self_regulating import TEMPERATURE_PROPERTIES
 from thermoctl.domain.temperature_source_health import ThermostatCandidate
 
-# Only a command that actually reached the device counts as a write that could
-# have produced an echo. A dry-run attempt (`suppressed`) never left the
-# service, and a `failed` attempt is not known to have arrived either -- both
-# would understate how long the device has been echoing, never overstate it,
-# so treating them as "no write" is the conservative direction (Grundsatz 7).
-_EXECUTED = "executed"
+# Every outcome *except* a dry-run attempt counts as a write that could have
+# produced an echo. `suppressed` is the one outcome that provably never left
+# the service (the dry-run bolt in `services/publishing.py` stops it before
+# any network call) -- everything else, including `failed`, is a real attempt
+# whose outcome at the device is not actually known: a raised exception or a
+# timeout there (`services/publishing.py` around `_send_self_regulating_valves`,
+# roughly lines 507-518) is recorded as `failed` regardless of whether the
+# broker or the device itself is what the service lost track of afterwards.
+# Treating `failed` as "no write" would make the 30-minute switch-over instant
+# too *early* -- the device may have received the message and kept echoing
+# past that point while this function already reports a stale write as long
+# forgotten. Undercounting here is the dangerous direction (Grundsatz 7): it
+# is what would let a genuine echo look independent. Counting every non-
+# `suppressed` outcome instead can only make the function too conservative
+# (a device that never actually saw the write kept waiting out a delay that
+# was not required), never the reverse -- and a future outcome code this
+# codebase does not know yet falls on the safe side of this check by
+# construction, since only the one confirmed-harmless code is excluded.
+_NOT_A_WRITE = "suppressed"
 
 # `record_command` in `services/publishing.py::_send_self_regulating_valves`
 # always writes under this literal command name for a self-regulating valve's
@@ -39,16 +53,19 @@ _COMMAND_NAME = "setpoint"
 
 
 def last_external_temperature_write_at(session: Session, device_id: int) -> datetime | None:
-    """When thermoctl last *successfully* wrote an external temperature to this device.
+    """When thermoctl last attempted to write an external temperature to this device.
 
-    `None` means either this device has never received such a write, or the
-    payload of every candidate row failed to parse as the JSON object it is
-    always written as -- both are treated identically by the caller: no
-    confirmed write means no echo to wait out, so this device's own reading
-    can be trusted immediately (subject to the usual staleness check). This
-    is the conservative direction (Grundsatz 7): understating how recently a
-    write happened can only delay treating a device as a replacement, never
-    make one look independent it is not.
+    "Attempted", not "succeeded": any outcome other than `suppressed` (dry
+    run) counts, `failed` included -- see `_NOT_A_WRITE`'s docstring for why
+    a `failed` command must still count as a possible write. `None` means
+    either this device has never had such an attempt at all, or the payload
+    of every candidate row failed to parse as the JSON object it is always
+    written as -- both are treated identically by the caller: nothing counted
+    means no echo to wait out, so this device's own reading can be trusted
+    immediately (subject to the usual staleness check). Silence here can
+    therefore only make a caller wait *longer* than strictly required before
+    trusting an echo-prone device again, never shorter -- the conservative
+    direction (Grundsatz 7).
 
     The candidate rows are already narrowed by device and command name in the
     query; only the JSON parse below can still fail, and only for a row this
@@ -62,7 +79,7 @@ def last_external_temperature_write_at(session: Session, device_id: int) -> date
         .where(
             DeviceCommand.device_id == device_id,
             DeviceCommand.command == _COMMAND_NAME,
-            CommandOutcome.code == _EXECUTED,
+            CommandOutcome.code != _NOT_A_WRITE,
         )
         .order_by(DeviceCommand.sent_at.desc(), DeviceCommand.id.desc())
     )

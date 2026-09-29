@@ -4,9 +4,10 @@
 database or network access -- every input arrives as a plain data class, exactly
 like `domain/fault.py` and `domain/emergency_cycle.py`. The thin, impure lookup
 that this module needs but must not perform itself -- "when did thermoctl last
-successfully write an external temperature to this device" -- lives in
+*attempt* to write an external temperature to this device" -- lives in
 `services/temperature_source_health.py`; this module only ever receives the
-resulting timestamp.
+resulting timestamp. Deliberately "attempt", not "confirmed successful write":
+see that module's `_NOT_A_WRITE` for why a `failed` outcome still counts.
 
 ## Why a thermostat's own reading needs a special rule (Bosch BTH-RA)
 
@@ -66,13 +67,15 @@ class WallProbeReading:
 class ThermostatCandidate:
     """One thermostat-actuator assignment of the zone, as a possible replacement.
 
-    `last_external_write_at` is the moment thermoctl last *successfully* wrote
-    an external temperature to this exact device -- `None` means it has never
-    happened (a thermostat that is not run as a self-regulating valve, or one
-    thermoctl has simply never fed yet). A dry-run "attempt" is not a write:
-    the repository function this comes from
+    `last_external_write_at` is the moment thermoctl last *attempted* to write
+    an external temperature to this exact device -- `None` means no such
+    attempt has ever happened (a thermostat that is not run as a
+    self-regulating valve, or one thermoctl has simply never fed yet). A
+    dry-run is not an attempt: the repository function this comes from
     (`services.temperature_source_health.last_external_temperature_write_at`)
-    counts only commands that actually reached the device.
+    excludes only the one outcome that provably never left the service --
+    a `failed` command still counts, because its outcome at the device
+    itself is not actually known (see that function's docstring).
     """
 
     device_id: int
