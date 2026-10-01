@@ -311,7 +311,7 @@ def _effective_override(session: Session, zone: Zone, now: datetime) -> ZoneOver
 # --------------------------------------------------------------------------- #
 
 
-def _derive_switch_phase_started_at(
+def derive_switch_phase_started_at(
     phase: str, phase_deadline_at: datetime, on_seconds: int, off_seconds: int
 ) -> datetime:
     """Reconstructs `emergency_cycle.CycleState.phase_started_at` from what
@@ -325,7 +325,7 @@ def _derive_switch_phase_started_at(
     return phase_deadline_at - timedelta(seconds=duration)
 
 
-def _zone_actuator_assignments(
+def zone_actuator_assignments(
     session: Session, zone: Zone
 ) -> list[tuple[ZoneDevice, Device, str]]:
     """Every actuator assignment of `zone`, classified by plan 1.1 entry 1's rule:
@@ -689,7 +689,7 @@ def _apply_emergency_actuators(
     # configured cycle length.
     stale_state_seconds = max(settings.shadow_interval_seconds * 5, 300)
 
-    for zone_device, device, kind in _zone_actuator_assignments(session, zone):
+    for zone_device, device, kind in zone_actuator_assignments(session, zone):
         existing_row = session.get(ActuatorEmergencyState, zone_device.id)
         fresh_episode = existing_row is None or existing_row.episode_id != outcome.episode_id
         row = existing_row if existing_row is not None else ActuatorEmergencyState(
@@ -760,12 +760,12 @@ def _apply_emergency_actuators(
                 # Persistenz, nicht mehr live neu geschätzt (Kreuzreview von
                 # 88bc87a: ohne das griff die Sperre nie über einen Zyklus
                 # hinweg, weil `CycleState` jeden Zyklus frisch aus der DB
-                # rekonstruiert wird). `_derive_switch_phase_started_at` bleibt
+                # rekonstruiert wird). `derive_switch_phase_started_at` bleibt
                 # der exakte -- nicht angenäherte -- Umkehrweg für
                 # `phase_started_at`, das keine eigene Spalte hat.
                 prior_cycle_state = emergency_cycle.CycleState(
                     phase=row.simulated_phase,
-                    phase_started_at=_derive_switch_phase_started_at(
+                    phase_started_at=derive_switch_phase_started_at(
                         row.simulated_phase,
                         row.simulated_phase_deadline_at,
                         row.simulated_on_seconds,

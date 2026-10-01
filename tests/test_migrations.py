@@ -950,14 +950,16 @@ def test_sensor_failure_upgrade_preserves_installation(
     # top of the sensor-failure schema forces a deliberate look at this test
     # -- in particular at the "downgrade -1 removes the whole schema" check
     # below, which silently narrows to "removes only the newest migration"
-    # once another one lands on top. Already happened twice: `8423190df6f9`
-    # added `handover_due_signalled`, then `05f7842e4d69` (Auftrag 7a follow-
-    # up: `simulated_cycle_source`/`simulated_warm_locked` on
-    # `actuator_emergency_state` plus `sensor_failure_source_comparison`) --
-    # both times the downgrade target stayed the absolute pre-sensor-failure
+    # once another one lands on top. Already happened three times:
+    # `8423190df6f9` added `handover_due_signalled`, `05f7842e4d69` (Auftrag 7a
+    # follow-up: `simulated_cycle_source`/`simulated_warm_locked` on
+    # `actuator_emergency_state` plus `sensor_failure_source_comparison`), then
+    # `9d3f1a7c2b84` (Auftrag 7b: `armed_episode_id` on
+    # `actuator_emergency_state` plus the `decided_no_command` command outcome)
+    # -- every time the downgrade target stayed the absolute pre-sensor-failure
     # revision below (never "-1"), so the check keeps its original meaning
     # regardless of how many migrations now sit on top of it.
-    assert scripts.get_heads() == ["05f7842e4d69"]
+    assert scripts.get_heads() == ["9d3f1a7c2b84"]
     for args in (("downgrade", "base"), ("upgrade", "d31f6a04c7e9")):
         result = _alembic(migrations_database_url, *args)
         assert result.returncode == 0, result.stderr

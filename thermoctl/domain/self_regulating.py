@@ -26,7 +26,7 @@ from decimal import Decimal
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from thermoctl.db.models.device import Device, DeviceProperty, ZoneDevice
+from thermoctl.db.models.device import Device, DeviceProperty, DevicePropertyValue, ZoneDevice
 from thermoctl.db.models.lookup import DeviceCapability, DeviceRole
 from thermoctl.db.models.state import ZoneState
 from thermoctl.db.models.zone import Zone
@@ -35,6 +35,13 @@ from thermoctl.domain.schedule import frost_protection_temperature, resolved_set
 # The property a valve accepts its target on. Same name as in the capability
 # detection -- a valve without it is not recognised as one in the first place.
 SETPOINT_PROPERTY = "occupied_heating_setpoint"
+
+# Notbetrieb-Übergabe (plan Auftrag 7b, item 2; confirmed against a Bosch
+# BTH-RA in `lokal/plaene/0.11.0-geraetevertrag.md` (b)): the property that
+# actually arms heating on a device whose `system_mode` is a fixed display
+# value, and the one value this version ever writes to it.
+HANDOVER_OPERATING_MODE_PROPERTY = "operating_mode"
+HANDOVER_OPERATING_MODE_VALUE = "manual"
 
 # Where a measured room temperature can be written, in the order we would rather use
 # them. Zigbee2MQTT does not agree on one name across manufacturers: a WT-A03E takes
@@ -87,6 +94,35 @@ def _in_range(property_model: DeviceProperty, value: Decimal) -> bool:
     if property_model.min_value is not None and value < property_model.min_value:
         return False
     return not (property_model.max_value is not None and value > property_model.max_value)
+
+
+def handover_capable(session: Session, device: Device) -> bool:
+    """Whether `device` has a confirmed contract for the Notbetrieb-Übergabe
+    (plan Auftrag 7b, item 2): both `occupied_heating_setpoint` and
+    `operating_mode` writable, and -- where the device actually declares the
+    values `operating_mode` accepts at all -- `manual` among them.
+
+    Deliberately conservative: a device that does not declare `operating_mode`
+    as writable at all gets no handover, only silence, visibly reasoned
+    (`emergency_actuator_plan.REASON_NO_WRITE_KEIN_VERTRAG`) -- plan item 2's
+    own "kein erfundener Property-Name". An empty `DevicePropertyValue` set is
+    not itself a rejection: the same "no declared values means unrestricted"
+    reading `domain/controller_channels.py::configure_channel` already uses
+    for a fixed value on another kind of channel.
+    """
+    writable = _writable_properties(session, device)
+    setpoint = writable.get(SETPOINT_PROPERTY)
+    operating_mode = writable.get(HANDOVER_OPERATING_MODE_PROPERTY)
+    if setpoint is None or operating_mode is None:
+        return False
+    allowed = set(
+        session.scalars(
+            select(DevicePropertyValue.value).where(
+                DevicePropertyValue.property_id == operating_mode.id
+            )
+        )
+    )
+    return not allowed or HANDOVER_OPERATING_MODE_VALUE in allowed
 
 
 def valve_commands(session: Session, zone: Zone, now: datetime) -> list[ValveCommand]:

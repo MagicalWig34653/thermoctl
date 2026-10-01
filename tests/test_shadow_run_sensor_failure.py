@@ -541,7 +541,7 @@ def test_notbetrieb_without_any_actuator_assignment_persists_nothing_for_actuato
     `tests/test_shadow_run.py::test_on_off_actuators_only_is_false_for_a_zone_
     without_any_actuator` already uses for the analogous existing guard):
     `zone_candidates()` finds no replacement candidates (straight to
-    Notbetrieb, no Ersatzquelle stage) and `_zone_actuator_assignments()`
+    Notbetrieb, no Ersatzquelle stage) and `zone_actuator_assignments()`
     finds no assignments either -- `_apply_emergency_actuators` then simply
     persists nothing, and the zone-level decision still matches
     `decide()`'s own answer."""

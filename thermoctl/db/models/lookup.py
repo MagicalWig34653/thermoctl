@@ -72,7 +72,9 @@ class CommandOutcome(_Lookup):
 
     `executed`: actually sent, and the client confirmed it. `suppressed`: withheld
     by a dry-run bolt -- the command was computed but deliberately not sent.
-    `failed`: sending was attempted and did not succeed.
+    `failed`: sending was attempted and did not succeed. `decided_no_command`:
+    no command was ever computed for this assignment -- Notbetrieb silence
+    without a confirmed device contract (see `COMMAND_OUTCOMES`).
     """
 
     __tablename__ = "command_outcome"
@@ -148,6 +150,12 @@ COMMAND_OUTCOMES = [
     ("executed", "Ausgeführt"),
     ("suppressed", "Unterdrückt (Trockenlauf)"),
     ("failed", "Gescheitert"),
+    # Notbetrieb (plan Auftrag 7b item 4): an assignment this version has no
+    # confirmed device contract for (no writable operating_mode/Notsollwert
+    # property) and therefore was never even going to be attempted -- distinct
+    # from `suppressed` (computed, withheld by the dry-run bolt) and `failed`
+    # (attempted, did not succeed).
+    ("decided_no_command", "Entscheidung ohne Befehlsversand"),
 ]
 # "kiosk" is deliberately NOT listed here, even though it is a fully real actor
 # source from here on (see the migration `d07073d9abdf`). The very first migration,

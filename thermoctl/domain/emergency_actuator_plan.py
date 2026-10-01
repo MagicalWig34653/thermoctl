@@ -44,6 +44,10 @@ ACTION_HANDOVER = "handover"
 # like every other `sensorausfall_*` code this plan's modules define.
 REASON_HANDOVER = "sensorausfall_uebergabe"
 REASON_NO_WRITE_ERLEDIGT = "sensorausfall_schweigen"
+# Auftrag 7b item 2: no confirmed device contract for this assignment
+# (`domain.self_regulating.handover_capable` said no) -- silence, never a
+# guessed property name.
+REASON_NO_WRITE_KEIN_VERTRAG = "sensorausfall_kein_geraetevertrag"
 
 # NOTE (Hauptsession-Review von 88bc87a, 2026-09-30): plan Auftrag 7a, item 3
 # had originally called for this module to also provide a dedicated
@@ -79,6 +83,7 @@ def plan_thermostat(
     now: datetime,
     device_name: str,
     emergency_setpoint_c: Decimal,
+    capable: bool = True,
 ) -> ThermostatDecision:
     """Rang 3 of plan 1.4: one handover attempt per episode, then silence.
 
@@ -93,7 +98,22 @@ def plan_thermostat(
     only exists, or only becomes eligible, on a later cycle of the same
     still-open episode -- the per-assignment latch, not the per-episode
     entry event, is what actually enforces "genau einmal".
+
+    `capable` (Auftrag 7b, item 2) is the caller's own answer to
+    `domain.self_regulating.handover_capable` for this device -- a thermostat
+    this version has no confirmed write contract for never gets a handover
+    attempt at all, regardless of `already_attempted`; the returned
+    `handover_attempted_at` stays `None` so the caller never latches a
+    silence it did not actually try.
     """
+    if not capable:
+        return ThermostatDecision(
+            ACTION_NO_WRITE,
+            REASON_NO_WRITE_KEIN_VERTRAG,
+            f"{device_name}: kein bestätigter Gerätevertrag für operating_mode=manual "
+            "und Notsollwert — keine Übergabe, nur Schweigen.",
+            None,
+        )
     if already_attempted:
         return ThermostatDecision(
             ACTION_NO_WRITE,
@@ -146,6 +166,7 @@ __all__ = [
     "KIND_THERMOSTAT",
     "REASON_HANDOVER",
     "REASON_NO_WRITE_ERLEDIGT",
+    "REASON_NO_WRITE_KEIN_VERTRAG",
     "SwitchDecision",
     "ThermostatDecision",
     "plan_switch",

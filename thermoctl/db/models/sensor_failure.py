@@ -149,6 +149,17 @@ class ActuatorEmergencyState(Base):
     episode_id: Mapped[int] = mapped_column(
         ForeignKey("sensor_failure_episode.id", ondelete="CASCADE")
     )
+    # Which episode the *scharfe* fields below (no `simulated_` prefix) currently
+    # belong to -- `services/publishing.py` only, never `services/shadow_run.py`.
+    # Deliberately separate from `episode_id` above: that column is overwritten on
+    # every shadow cycle regardless of whether the plant is armed, so it cannot
+    # answer "is the persisted scharfe Taktzustand/Handover-Markierung still from
+    # the current episode, or a stale leftover from the previous one". `NULL`
+    # means "no armed emergency state recorded for this assignment yet" (never
+    # armed-emergency this far, or already reset after the last episode closed).
+    armed_episode_id: Mapped[int | None] = mapped_column(
+        ForeignKey("sensor_failure_episode.id", ondelete="SET NULL")
+    )
     phase: Mapped[str | None] = mapped_column(String(8))
     phase_deadline_at: Mapped[datetime | None] = mapped_column(DateTime)
     on_seconds: Mapped[int | None] = mapped_column(Integer)
