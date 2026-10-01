@@ -1,6 +1,104 @@
 # Stand
 
-Letzte Aktualisierung: 2026-09-29.
+Letzte Aktualisierung: 2026-09-30.
+
+## 0.11.0 in Arbeit: Notbetrieb an den Regelzyklus angebunden, Schattenbetrieb (Auftrag 7a)
+
+**Kreuzreview-Korrektur (Hauptsession, 2026-09-30) an einer ersten Fassung (Commit
+`88bc87a`):** Diese Fassung hatte in `notbetrieb`/`rueckkehrpruefung` die
+Zonen-`ShadowDecision` (`would_heat`/`outcome_code`/`reason`) durch die Aktor-/Takt-
+Entscheidung ersetzt. Das war falsch — genau dieses Feld liest der bestehende, unveränderte
+Publisher (`services/publishing.py::_latest_decision`/`_send_actuator_switches`) und schaltet
+danach echte Relais, sobald die Anlage scharf ist. Auftrag 7a ist als **reiner
+Schattenbetrieb** definiert; eine Überschreibung dort hätte die Notbetriebslogik am ersten
+scharfen Zyklus wirksam werden lassen, ohne dass der Versandweg (Auftrag 7b) je geprüft wurde.
+**Korrigiert:** Die Zonen-`ShadowDecision` bleibt für **jede** Stufe exakt das, was `decide()` +
+PI ohnehin liefern würden — unverändert durch Notbetrieb. Die Aktor-/Takt-Entscheidung
+(Übergabe, Ein/Aus-Takt) wird **ausschließlich** nach `actuator_decision`/
+`actuator_emergency_state` geschrieben (`simulated=True`), nie in die Zonenentscheidung
+zurückgespeist. Bewiesen durch `tests/test_publishing_sensor_failure.py`
+(scharf geschaltete Anlage, Fake-Transport, Zählung der Schreibaufrufe: eine Notbetriebs-Zone
+sendet exakt dasselbe wie eine gewöhnliche Zone ohne Quelle) und durch
+`tests/test_shadow_run_sensor_failure.py`s `_assert_matches_ordinary_decision`-Hilfsfunktion
+(rekonstruiert `decide()`s Antwort unabhängig und vergleicht sie mit der tatsächlich
+geschriebenen Zeile). **Hinweis für Auftrag 7b:** Eine notbetriebs-getaktete Phase darf danach
+nicht als Hysterese-Phase in `_previous_state`/`phase_started_by` erscheinen — sobald 7b den
+Publisher auf die Aktorentscheidung umstellt, braucht `shadow_run._previous_state` eine eigene
+Kennzeichnung, welche Phase tatsächlich vom Notbetriebstakt stammt, sonst hält
+`_hysteresis_phase_still_holding` eine Notbetriebs-Phase fälschlich für eine gewöhnliche.
+
+`thermoctl/services/shadow_run.py` ruft für jede `sensor_failure_enabled`-Zone pro Zyklus
+`temperature_source_health.evaluate_source_health` → `emergency_operation.advance` auf und
+schreibt Stufe/Episode nach `zone_sensor_failure_state`/`sensor_failure_episode` — auch für
+eine Zone, die währenddessen von aktiviert auf deaktiviert wechselt (offene Episode wird
+noch sauber geschlossen, danach läuft die Zone wieder bitgenau wie eine, die nie aktiviert
+war; das ist die einzige Abweichung von "kein Zugriff, solange `enabled=false`"). Stufe
+`ersatzquelle` speist den korrigierten Ersatzmesswert mit Sensorstatus `ok` in die normale
+`Situation`/`decide()`-Kette (eigener Hinweis „Ersatzquelle aktiv: <Gerät>" im
+Entscheidungsgrund — das ist die einzige Stufe, in der die Zonenentscheidung sich gegenüber
+heute ändert, und das bewusst: Ersatzquelle soll real geregelt werden, nicht nur protokolliert).
+PI wird über ein neues, eigenständiges `sensor_failure_emergency_active`-Signal an
+`_pi_gate_reason`/`_pi_outcome` in **jeder** Nicht-normal-Stufe neutralisiert (nicht nur bei
+`sensor_status`-Ausfall — sonst hätte die Ersatzquelle mit Status `ok` PI fälschlich
+weiterlaufen lassen). Die 0.10.1-Invariante „Hysterese-Phase hält ihre Mindestdauer" bleibt
+unverändert (eigener Regressionslauf grün).
+
+In `notbetrieb`/`rueckkehrpruefung` berechnet der neue, reine Domänenbaustein
+`thermoctl/domain/emergency_actuator_plan.py` (Vorrangtabelle Plan 1.4) je Aktorzuordnung eine
+eigene Entscheidung, **rein zur Protokollierung**: je Thermostat-Zuordnung genau ein
+`handover`-Versuch pro **Episode** (nicht pro Signal-Zyklus — das Flag sitzt je
+`zone_device_id` in `actuator_emergency_state`, übersteht also auch einen Prozessneustart
+unverändert), danach `no_write`; je Schaltausgang läuft `emergency_cycle.advance` unverändert
+weiter (auch bei offenem Fenster/Aus-Modus, wie entschieden) — Taktquelle
+(`festtakt`/`kennlinie`) und Wiederanlaufsperre (`warm_locked`) werden jetzt **persistiert**
+(`simulated_cycle_source`/`simulated_warm_locked`, Migration `05f7842e4d69`), nicht mehr aus
+dem aktuellen Zyklus neu geschätzt — vorher griff die Wiederanlaufsperre nie über einen
+Neustart/Zyklus hinweg (Kreuzreview-Fund, siehe unten). Alles bleibt **Schattenbetrieb**: jede
+`ActuatorDecision`/`ActuatorEmergencyState`-Zeile trägt `simulated=True`; kein Versandpfad
+(`publishing.py`, `integrations/`, `switch_commands.py`) wurde angefasst — das ist Auftrag 7b.
+
+**Schnittstelle für Auftrag 7b:** je Aktorzuordnung liegt die aktuelle Entscheidung in
+`actuator_emergency_state` (Felder `simulated_*` vs. die bisher leeren `phase`/`on_seconds`/
+`cycle_source`/`warm_locked`/`handover_attempted_at` usw. für den scharfen Zweig — 7b befüllt
+genau diese beim echten Versand) und das Protokoll in `actuator_decision` (`action`,
+`reason_code`, `reason`, bei Schaltausgängen `phase`/`phase_deadline_at`/`cycle_source`/
+`on_seconds`/`off_seconds`, bei Thermostaten nur `action`/`reason`). 7b muss außerdem den
+Publisher selbst umstellen, damit die Aktorentscheidung überhaupt scharf wirkt: für
+`action="handover"` `operating_mode="manual"` + Notsollwert genau einmal senden (Marker vor
+Versand setzen, wie bei den simulierten Feldern hier vorgemacht), für `switch_on`/`switch_off`
+den Zustand aus `phase` ableiten, die Publisher-Dedup-Caches bei Rückkehr (`stage` wird wieder
+`normal`) gezielt invalidieren — und dabei die oben genannte `_previous_state`-Kennzeichnung
+ergänzen, sonst verwechselt die Mindestdauer-Prüfung eine Notbetriebs-Phase mit einer
+gewöhnlichen Hysterese-Phase.
+
+**Vergleichsprotokoll Ersatzquelle ↔ Wandfühler (Plan Abschnitt 6, R2) — jetzt umgesetzt:**
+neue Tabelle `sensor_failure_source_comparison` (Migration `05f7842e4d69`, Zone/Gerät als
+SET-NULL-Snapshot wie jede andere Historie in diesem Modul). Geschrieben je Kandidat, wenn
+Wandfühler **und** Kandidat je einen Wert haben oder die Zone gerade in Stufe `ersatzquelle`
+steht, höchstens eine Zeile je neuem Kandidaten-Messzeitpunkt (kein Zeilenwachstum ohne neue
+Messung).
+
+Geprüft: `ruff check .`, `mypy thermoctl` sauber (0 Fehler); Alembic-Migration `05f7842e4d69`
+vorwärts/rückwärts geprüft, ein Migrationskopf; `pytest -q --cov-fail-under=100` gegen SQLite
+und MariaDB nacheinander (eigene Testdatenbanken), je 5279 Tests, 0 Fehlschläge, 0 Fehler,
+1 übersprungen, 100 % Testabdeckung beide Male; `tests/test_user_visible_effect_texts.py`
+danach **einzeln, als allerletzter Schritt** (keine Datei mehr geändert) grün — drei neue,
+geprüfte Fundstellen: „switch" in `emergency_actuator_plan.py` (`KIND_SWITCH = "switch"`,
+ein Vorrangtabellen-Code, keine körperliche Behauptung) sowie zwei Prosa-Zeilen in
+`docs/STATUS.md` selbst; `tests/approved_physical_vocabulary.json` entsprechend ergänzt.
+
+Acht Szenarientests in `tests/test_shadow_run_sensor_failure.py`: enabled=false bleibt
+unberührt (keine Tabellenzeile entsteht), ein vollständiger Zyklus normal → ersatzquelle →
+notbetrieb mit Taktentscheidungen über zwei Aus/Ein-Paare und **an jeder Stelle geprüft, dass
+die Zonenentscheidung exakt `decide()`s eigener Antwort entspricht** (nicht mehr überschrieben),
+Übergabe genau einmal auch nach simuliertem Prozessneustart (echte zweite `Session` gegen
+dieselbe committete SQLite-Datei), Rückkehr nach zwei Messungen/60s, PI-Neutralisierung während
+einer aktiven Notbetriebsstufe, eine Zone ganz ohne Aktor, die Wiederanlaufsperre hält
+tatsächlich über eine Paar-Grenze am 15-°C-Punkt hinweg (vorher rot ohne die persistierten
+Spalten — von Hand gegen `domain.emergency_cycle._resolve_pair` nachgerechnet, bevor der Test
+geschrieben wurde), und das Vergleichsprotokoll wächst nur bei einer neuen Kandidatenmessung.
+Ein weiterer Test in `tests/test_publishing_sensor_failure.py` beweist die eingangs genannte
+Korrektur direkt am Publisher.
 
 ## 0.11.0 in Arbeit: Notbetriebs-Zustandsautomat (Auftrag 5b)
 
@@ -46,9 +144,9 @@ getötet, Datei danach per Prüfsumme auf den Originalstand zurückgesetzt. Kein
 Cosmic-Ray-Lauf — der volle Mutationslauf ist Auftrag 10, nachdem 5a/5b/6 gemeinsam
 gemergt sind.
 
-Zustandsautomat und Rückkehrprüfung sind fertig. Aktorplan/Publisher-Anbindung
-(Auftrag 7) und Anzeige/Meldung (Auftrag 8) folgen; dieses Modul selbst ist an
-nichts angeschlossen (`control_loop.py`/`shadow_run.py` unverändert).
+Zustandsautomat und Rückkehrprüfung sind fertig und seit Auftrag 7a (oben) an
+`shadow_run.py` angeschlossen (Schattenbetrieb). Publisher-Anbindung (Auftrag 7b)
+und Anzeige/Meldung (Auftrag 8) folgen.
 
 ## 0.11.0: Quellenqualität inkl. automatischer Ersatzquelle (Auftrag 5a)
 

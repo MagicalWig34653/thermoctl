@@ -137,6 +137,10 @@ class ActuatorEmergencyState(Base):
         CheckConstraint("on_seconds >= 0", name="on_nonnegative"),
         CheckConstraint("simulated_off_seconds > 0", name="simulated_off_positive"),
         CheckConstraint("simulated_on_seconds >= 0", name="simulated_on_nonnegative"),
+        CheckConstraint("cycle_source IN ('kennlinie', 'festtakt')", name="cycle_source"),
+        CheckConstraint(
+            "simulated_cycle_source IN ('kennlinie', 'festtakt')", name="simulated_cycle_source"
+        ),
     )
 
     zone_device_id: Mapped[int] = mapped_column(
@@ -149,10 +153,21 @@ class ActuatorEmergencyState(Base):
     phase_deadline_at: Mapped[datetime | None] = mapped_column(DateTime)
     on_seconds: Mapped[int | None] = mapped_column(Integer)
     off_seconds: Mapped[int | None] = mapped_column(Integer)
+    # Taktquelle (`festtakt`/`kennlinie`) und Wiederanlaufsperre je Zuordnung --
+    # `domain.emergency_cycle.CycleState.source`/`.warm_locked` haben ohne diese
+    # beiden Spalten keinen Weg zurück in die Persistenz: vor ihrer Einführung
+    # (Kreuzreview von 88bc87a) wurden beide bei jedem Zyklus live aus dem
+    # aktuellen Profil/der aktuellen Außentemperatur neu geschätzt statt aus der
+    # Historie übernommen -- die Wiederanlaufsperre konnte dadurch nie über
+    # einen Zyklus hinweg wirken.
+    cycle_source: Mapped[str | None] = mapped_column(String(16))
+    warm_locked: Mapped[bool | None] = mapped_column(Boolean)
     simulated_phase: Mapped[str | None] = mapped_column(String(8))
     simulated_phase_deadline_at: Mapped[datetime | None] = mapped_column(DateTime)
     simulated_on_seconds: Mapped[int | None] = mapped_column(Integer)
     simulated_off_seconds: Mapped[int | None] = mapped_column(Integer)
+    simulated_cycle_source: Mapped[str | None] = mapped_column(String(16))
+    simulated_warm_locked: Mapped[bool | None] = mapped_column(Boolean)
     handover_attempted_at: Mapped[datetime | None] = mapped_column(DateTime)
     handover_result: Mapped[str | None] = mapped_column(String(64))
     simulated_handover_attempted_at: Mapped[datetime | None] = mapped_column(DateTime)
@@ -196,3 +211,34 @@ class ActuatorDecision(Base):
     off_seconds: Mapped[int | None] = mapped_column(Integer)
     outdoor_c: Mapped[Decimal | None] = mapped_column(Numeric(5, 2))
     profile_version: Mapped[int] = mapped_column(Integer)
+
+
+class SensorFailureSourceComparison(Base):
+    """Ersatzquelle-gegen-Wandfühler-Vergleichsprotokoll (Plan Abschnitt 6, R2).
+
+    Eine Zeile je neuem Kandidaten-Messzeitpunkt, nicht je Regelzyklus --
+    `services/shadow_run.py` schreibt nur, wenn Wandfühler und Kandidat beide
+    einen Wert haben oder die Zone gerade in Stufe `ersatzquelle` steht, und
+    überspringt einen bereits protokollierten Messzeitpunkt desselben Geräts.
+    Grundlage für eine spätere Kalibrierhilfe (Offset-Vorschlag), nicht selbst
+    Teil der Regelkette. Zone/Gerät überleben ihre Löschung als Namenssnapshot
+    (SET NULL), wie jede andere Historie in diesem Modul.
+    """
+
+    __tablename__ = "sensor_failure_source_comparison"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    zone_id: Mapped[int | None] = mapped_column(
+        ForeignKey("zone.id", ondelete="SET NULL"), index=True
+    )
+    zone_name: Mapped[str] = mapped_column(String(128))
+    device_id: Mapped[int | None] = mapped_column(
+        ForeignKey("device.id", ondelete="SET NULL"), index=True
+    )
+    device_name: Mapped[str] = mapped_column(String(128))
+    measured_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+    wall_probe_c: Mapped[Decimal | None] = mapped_column(Numeric(5, 2))
+    raw_c: Mapped[Decimal | None] = mapped_column(Numeric(5, 2))
+    corrected_c: Mapped[Decimal | None] = mapped_column(Numeric(5, 2))
+    echo: Mapped[bool] = mapped_column(Boolean)
+    usable: Mapped[bool] = mapped_column(Boolean)
