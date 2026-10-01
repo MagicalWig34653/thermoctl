@@ -23,6 +23,7 @@ from thermoctl.db.models.sensor_failure import (
     ActuatorDecision,
     ActuatorEmergencyState,
     SensorFailureEpisode,
+    SensorFailureSourceComparison,
     ZoneSensorFailureState,
 )
 from thermoctl.db.models.state import ShadowDecision, ZoneState
@@ -67,6 +68,7 @@ from thermoctl.domain.solar_setback import HourlyForecast, sun_expected
 from thermoctl.domain.solar_setback import apply as apply_solar_setback
 from thermoctl.domain.temperature_source_health import (
     SourceHealth,
+    ThermostatCandidate,
     WallProbeReading,
     evaluate_source_health,
 )
@@ -491,6 +493,66 @@ class _SensorFailureOutcome:
     policy: sensor_failure_policy.EffectivePolicy
 
 
+def _record_source_comparisons(
+    session: Session,
+    zone: Zone,
+    wall_probe: WallProbeReading,
+    raw_candidates: list[ThermostatCandidate],
+    health: SourceHealth,
+    stage: str,
+) -> None:
+    """Vergleichsprotokoll Ersatzquelle <-> Wandfühler (Plan Abschnitt 6, R2;
+    freigegeben im Kreuzreview von 88bc87a). One row per candidate per *new*
+    measurement instant, never per cycle: a candidate whose reading has not
+    moved since the last cycle produces no second row (checked against the
+    table itself -- the same "already have a row for this exact
+    (device, measured_at)" question, asked here of the table rather than of
+    a persisted counter). Written only when there is something to compare
+    (wall probe *and* candidate both have a value -- not necessarily fresh
+    or independent of an echo, this is a comparison log, not a usability
+    gate) or while the zone is actually relying on the candidate as its
+    active replacement (`ersatzquelle`); writing unconditionally on every
+    cycle would grow this table without bound long after a candidate has
+    stopped reporting anything new.
+    """
+    if not raw_candidates:
+        return
+    assessment_by_device = {a.device_id: a for a in health.candidates}
+    both_have_a_value = wall_probe.temperature_c is not None
+    for candidate in raw_candidates:
+        if candidate.measured_at is None:
+            continue
+        if not (
+            (both_have_a_value and candidate.local_temperature_c is not None)
+            or stage == emergency_operation.STAGE_ERSATZQUELLE
+        ):
+            continue
+        already_logged = session.scalar(
+            select(SensorFailureSourceComparison.id).where(
+                SensorFailureSourceComparison.device_id == candidate.device_id,
+                SensorFailureSourceComparison.measured_at == candidate.measured_at,
+            )
+        )
+        if already_logged is not None:
+            continue
+        assessment = assessment_by_device.get(candidate.device_id)
+        session.add(
+            SensorFailureSourceComparison(
+                zone_id=zone.id,
+                zone_name=zone.display_name,
+                device_id=candidate.device_id,
+                device_name=candidate.device_name,
+                measured_at=candidate.measured_at,
+                wall_probe_c=wall_probe.temperature_c,
+                raw_c=candidate.local_temperature_c,
+                corrected_c=assessment.corrected_temperature_c if assessment is not None else None,
+                echo=assessment.echo if assessment is not None else False,
+                usable=assessment.usable if assessment is not None else False,
+            )
+        )
+    session.flush()
+
+
 def _apply_sensor_failure(
     session: Session,
     zone: Zone,
@@ -568,6 +630,10 @@ def _apply_sensor_failure(
         effective_temperature_c = chosen_assessment.corrected_temperature_c
         effective_device_name = chosen_assessment.device_name
 
+    _record_source_comparisons(
+        session, zone, wall_probe, raw_candidates, health, stage_output.state.stage
+    )
+
     return _SensorFailureOutcome(
         stage_output=stage_output,
         health=health,
@@ -585,17 +651,21 @@ def _apply_emergency_actuators(
     settings: Setting,
     parameter: ControlParameters,
     now: datetime,
-) -> Decision:
-    """Rang 3/4 of plan 1.4 for every actuator assignment of `zone`, plus the
-    zone-level `Decision` `_process_zone` records instead of `decide()`'s own
-    answer -- only ever called while `outcome.stage_output.state.stage` is
-    `NOTBETRIEB`/`RUECKKEHRPRUEFUNG`, both of which guarantee
-    `outcome.episode_id is not None` (episode_open is true in both stages).
+) -> None:
+    """Rang 3/4 of plan 1.4 for every actuator assignment of `zone` --
+    persistence only (`actuator_decision`/`actuator_emergency_state`,
+    `simulated=True`). Deliberately returns nothing and never touches the
+    zone's own `ShadowDecision`/`Decision`: Auftrag 7a is shadow-only by
+    scope, and `ShadowDecision.would_heat` is exactly what the existing
+    publisher reads and sends the moment an installation runs scharf (see the
+    caller's own comment, Hauptsession review of 88bc87a). Only ever called
+    while `outcome.stage_output.state.stage` is `NOTBETRIEB`/
+    `RUECKKEHRPRUEFUNG`, both of which guarantee `outcome.episode_id is not
+    None` (episode_open is true in both stages).
     """
     assert outcome.episode_id is not None
     policy = outcome.policy
     profile = policy.profile
-    stage = outcome.stage_output.state.stage
 
     outdoor = outdoor_domain.outdoor_reading(session, settings, now)
     outdoor_sample = emergency_cycle.OutdoorSample(
@@ -619,9 +689,6 @@ def _apply_emergency_actuators(
     # configured cycle length.
     stale_state_seconds = max(settings.shadow_interval_seconds * 5, 300)
 
-    has_switch = False
-    any_switch_heating = False
-
     for zone_device, device, kind in _zone_actuator_assignments(session, zone):
         existing_row = session.get(ActuatorEmergencyState, zone_device.id)
         fresh_episode = existing_row is None or existing_row.episode_id != outcome.episode_id
@@ -643,6 +710,8 @@ def _apply_emergency_actuators(
                 row.simulated_phase_deadline_at = None
                 row.simulated_on_seconds = None
                 row.simulated_off_seconds = None
+                row.simulated_cycle_source = None
+                row.simulated_warm_locked = None
             thermostat_decision = emergency_actuator_plan.plan_thermostat(
                 already_attempted=already_attempted,
                 now=now,
@@ -677,7 +746,6 @@ def _apply_emergency_actuators(
                 )
             )
         elif kind == emergency_actuator_plan.KIND_SWITCH:
-            has_switch = True
             prior_cycle_state = None
             if (
                 not fresh_episode
@@ -685,23 +753,16 @@ def _apply_emergency_actuators(
                 and row.simulated_phase_deadline_at is not None
                 and row.simulated_on_seconds is not None
                 and row.simulated_off_seconds is not None
+                and row.simulated_cycle_source is not None
+                and row.simulated_warm_locked is not None
             ):
-                # `ActuatorEmergencyState` does not persist the cycle's taktquelle
-                # (`festtakt`/`kennlinie`) or its `warm_locked` band per assignment
-                # -- BLOCKER for Auftrag 3/7b, reported in the build report, not
-                # guessed silently: proposed `simulated_cycle_source`/
-                # `simulated_warm_locked` columns (and their scharf-side
-                # counterparts for 7b). Interim, clearly-scoped workaround: phase,
-                # its deadline and both durations round-trip *exactly*
-                # (`_derive_switch_phase_started_at` above is an exact inverse,
-                # not an approximation) so "kein Nachholen"/minimum-duration
-                # behaviour is unaffected; only the *label* recorded on this
-                # cycle's `ActuatorDecision.cycle_source` and the warm-lock band
-                # are recomputed live instead of carried over. `warm_locked`
-                # defaults to `False` -- the conservative direction (Grundsatz
-                # 7): it can only make a warm-locked pair re-engage one extra
-                # time before the hysteresis band catches it again, never
-                # silently keep an already-released lock closed.
+                # Taktquelle und Wiederanlaufsperre kommen jetzt aus der
+                # Persistenz, nicht mehr live neu geschätzt (Kreuzreview von
+                # 88bc87a: ohne das griff die Sperre nie über einen Zyklus
+                # hinweg, weil `CycleState` jeden Zyklus frisch aus der DB
+                # rekonstruiert wird). `_derive_switch_phase_started_at` bleibt
+                # der exakte -- nicht angenäherte -- Umkehrweg für
+                # `phase_started_at`, das keine eigene Spalte hat.
                 prior_cycle_state = emergency_cycle.CycleState(
                     phase=row.simulated_phase,
                     phase_started_at=_derive_switch_phase_started_at(
@@ -711,14 +772,10 @@ def _apply_emergency_actuators(
                         row.simulated_off_seconds,
                     ),
                     phase_deadline=row.simulated_phase_deadline_at,
-                    source=(
-                        emergency_cycle.SOURCE_CURVE
-                        if cycle_profile.curve_points and outdoor_sample.usable
-                        else emergency_cycle.SOURCE_FIXED
-                    ),
+                    source=row.simulated_cycle_source,
                     on_seconds=row.simulated_on_seconds,
                     off_seconds=row.simulated_off_seconds,
-                    warm_locked=False,
+                    warm_locked=row.simulated_warm_locked,
                 )
             switch_decision = emergency_actuator_plan.plan_switch(
                 prior_cycle_state,
@@ -737,12 +794,11 @@ def _apply_emergency_actuators(
             row.simulated_phase_deadline_at = new_cycle_state.phase_deadline
             row.simulated_on_seconds = new_cycle_state.on_seconds
             row.simulated_off_seconds = new_cycle_state.off_seconds
+            row.simulated_cycle_source = new_cycle_state.source
+            row.simulated_warm_locked = new_cycle_state.warm_locked
             row.episode_id = outcome.episode_id
             row.last_evaluated_at = now
             row.profile_version = profile.version
-            any_switch_heating = (
-                any_switch_heating or switch_decision.cycle.decision.heating_requested
-            )
             session.add(
                 ActuatorDecision(
                     episode_id=outcome.episode_id,
@@ -765,31 +821,6 @@ def _apply_emergency_actuators(
             )
 
     session.flush()
-
-    if has_switch:
-        source_text = "Außenkennlinie" if outdoor_sample.usable else "Festtakt"
-        outdoor_text = (
-            f"{outdoor_sample.value_c} °C"
-            if outdoor_sample.value_c is not None
-            else "nicht verfügbar"
-        )
-        reason = (
-            f"Notbetrieb ({stage}): Schaltausgang-Takt bestimmt die Heizanforderung "
-            f"(Taktquelle {source_text}, Außentemperatur {outdoor_text})."
-        )
-        heating = any_switch_heating
-    else:
-        reason = (
-            f"Notbetrieb ({stage}): kein Schaltausgang in dieser Zone — die "
-            "Heizanforderung bleibt informativ aus; eine etwaige Thermostat-"
-            "Übergabe erfolgt unabhängig davon je Zuordnung."
-        )
-        heating = False
-    return Decision(
-        heating=heating,
-        reason_code=emergency_actuator_plan.OUTCOME_CODE_NOTBETRIEB,
-        reason=reason,
-    )
 
 
 # --------------------------------------------------------------------------- #
@@ -1740,14 +1771,23 @@ def _process_zone(
         emergency_operation.STAGE_NOTBETRIEB,
         emergency_operation.STAGE_RUECKKEHRPRUEFUNG,
     ):
-        # Plan 1.4 Rang 3/4 take over the zone's decision entirely -- neither
-        # `decide()`'s own answer (necessarily `keine_quelle`/off here, both
-        # sources having already failed) nor whatever PI computed above govern
-        # this cycle; `_pi_outcome`'s `sensor_failure_emergency_active` gate has
-        # already made sure PI itself stayed neutral regardless.
-        effective_decision = _apply_emergency_actuators(
-            session, zone, sensor_failure_outcome, settings, parameter, now
-        )
+        # Plan 1.4 Rang 3/4 -- persists the per-actuator handover/Takt plan
+        # (`actuator_decision`/`actuator_emergency_state`, `simulated=True`)
+        # for Auftrag 7b to read later, but **must not** touch
+        # `effective_decision`/the zone's `ShadowDecision` row (Hauptsession
+        # review of 88bc87a, security-relevant): `ShadowDecision.would_heat`
+        # is exactly what the existing publisher
+        # (`services/publishing.py::_latest_decision`/`_send_actuator_
+        # switches`) reads and sends the moment an installation runs scharf,
+        # regardless of Notbetrieb -- Auftrag 7a is shadow-only by scope, so
+        # the zone-level decision a zone in Notbetrieb reports stays exactly
+        # what `decide()` (necessarily `keine_quelle`/off here, both sources
+        # having already failed) and PI (neutralised by
+        # `sensor_failure_emergency_active` above regardless) would already
+        # give without any of this module existing. Auftrag 7b is the one
+        # place that may reroute the publisher to read the actuator plan
+        # instead.
+        _apply_emergency_actuators(session, zone, sensor_failure_outcome, settings, parameter, now)
 
     _apply_decision_to_state(state, effective_decision, now)
 

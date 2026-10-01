@@ -45,14 +45,19 @@ ACTION_HANDOVER = "handover"
 REASON_HANDOVER = "sensorausfall_uebergabe"
 REASON_NO_WRITE_ERLEDIGT = "sensorausfall_schweigen"
 
-# The zone-level `shadow_decision.outcome_code` for a cycle governed by the
-# emergency actuator plan (plan Auftrag 7a, item 3: "outcome_code eigener,
-# eindeutiger Code") -- distinct from every `control_loop.REASON_CODE_*`
-# because `decide()` itself never runs for this cycle; nothing in that table
-# describes "Notbetriebstakt entscheidet", and inventing a look-alike among
-# those constants would wrongly suggest the ordinary hysteresis path produced
-# it.
-OUTCOME_CODE_NOTBETRIEB = "sensorausfall_notbetrieb_takt"
+# NOTE (Hauptsession-Review von 88bc87a, 2026-09-30): plan Auftrag 7a, item 3
+# had originally called for this module to also provide a dedicated
+# `shadow_decision.outcome_code` and to override the zone's own `would_heat`
+# while in Notbetrieb. That is now explicitly overruled: `ShadowDecision` is
+# exactly what the existing publisher (`services/publishing.py`) reads and
+# sends the moment an installation runs scharf, regardless of Notbetrieb --
+# Auftrag 7a is shadow-only by scope. There is therefore deliberately no
+# `OUTCOME_CODE_NOTBETRIEB`/zone-level `Decision` here any more; every
+# function below only ever produces the per-*actuator* plan
+# (`services/shadow_run.py::_apply_emergency_actuators` persists it to
+# `actuator_decision`/`actuator_emergency_state`, `simulated=True`, and never
+# feeds it back into the zone's own decision). Rerouting the publisher to
+# actually read this plan is Auftrag 7b's job, not this module's.
 
 
 @dataclass(frozen=True)
@@ -139,7 +144,6 @@ __all__ = [
     "ACTION_SWITCH_ON",
     "KIND_SWITCH",
     "KIND_THERMOSTAT",
-    "OUTCOME_CODE_NOTBETRIEB",
     "REASON_HANDOVER",
     "REASON_NO_WRITE_ERLEDIGT",
     "SwitchDecision",
