@@ -1,8 +1,8 @@
 # Stand
 
-Letzte Aktualisierung: 2026-10-01.
+Letzte Aktualisierung: 2026-10-02.
 
-## 0.11.0 in Arbeit: Notbetrieb-Versandweg (Auftrag 7b) — **offener Blocker vor Freigabe**
+## 0.11.0 in Arbeit: Notbetrieb-Versandweg (Auftrag 7b) — beide Blocker entschieden und umgesetzt
 
 Scharfer Versand jetzt in `thermoctl/services/publishing.py`: eine neue
 `_send_emergency_actuators`-Familie (`_send_emergency_handover`,
@@ -60,82 +60,84 @@ Pfad. Ein-Fehler hält die Phase bis zum nächsten erfolgreichen Versuch (kein
 Fortschritt in `phase`/`phase_deadline_at`), Aus-Fehler verhindert dadurch
 automatisch eine neue Ein-Phase — beides ohne eigene Sonderfälle, siehe oben.
 
-### Offener Blocker — Mindestdauer-Invariante bei Rückkehr (Auftrag-7b-Vorgabe,
-### Punkt 5; **nicht gelöst, bewusst gemeldet statt geraten**)
+### Blocker 1 (Hauptsession, Grundsatz 7) — Mindestdauer-Invariante bei Rückkehr, gelöst
 
-Auftrag 7a hatte hier bereits gewarnt (Zeile weiter unten in diesem Dokument,
-vor dieser Überarbeitung): `shadow_run._previous_state()`/`held_for_s`
-leitet die Hysterese-Mindestdauer (`decide()` Regel 5, und darüber
-`_hysteresis_phase_still_holding()` für die PI-Freigabe) ausschließlich aus
-der Folge von `ShadowDecision.would_heat`-Zeilen ab — bewusst unverändert
-durch Notbetrieb (siehe Auftrag-7a-Abschnitt unten: die Zonenentscheidung
-bleibt exakt `decide()`s eigene Antwort). Diese simulierte Historie läuft
-während `notbetrieb`/`rueckkehrpruefung` **unverändert weiter**, während das
-reale Relais in genau dieser Zeit vom hier neu gebauten Notbetriebstakt
-geschaltet wird — zwei völlig unabhängige Zeitlinien. Im Moment der Rückkehr
-sendet der Publisher wieder `ShadowDecision.would_heat`, **ohne zu wissen,
-wann das reale Relais zuletzt tatsächlich geschaltet hat** — `held_for_s`
-beschreibt nur, wie lange die *simulierte* Entscheidung schon denselben Wert
-hat, nicht das reale Gerät. Im ungünstigen Fall könnte das reale Relais
-Sekunden zuvor vom Notbetriebstakt eingeschaltet worden sein, und der erste
-scharfe Zyklus nach der Rückkehr schaltet es sofort wieder aus — eine
-Mindest-Ein-Dauer-Verletzung, die `decide()` Regel 5 eigentlich verhindern
-soll, hier aber nicht verhindert, weil sie von der falschen Historie liest.
+Der zuvor hier gemeldete Blocker (siehe Git-Historie dieser Datei für den
+ursprünglichen Befund) ist entschieden und umgesetzt, konservativ wie von der
+Hauptsession vorgegeben. `shadow_run._previous_state()`/`held_for_s` liest
+ausschließlich die `ShadowDecision`-Historie — die während
+`notbetrieb`/`rueckkehrpruefung` unverändert simuliert weiterlief, während
+das reale Relais vom Notbetriebstakt geschaltet wurde. Ohne Korrektur hätte
+der erste reguläre Zyklus nach der Rückkehr die Mindestschaltdauer anhand
+der falschen (simulierten) Historie geprüft.
 
-**Nicht behoben in diesem Auftrag**, aus demselben Grund, der hier zur
-Meldung statt zum Raten führt: Eine Lösung („Rückkehr startet mit dem
-tatsächlich zuletzt gesendeten Relaiszustand als neuem Phasenbeginn", wie im
-Auftrag selbst vorgeschlagen) ändert `decide()`/`_previous_state()` selbst —
-beides Kernregellogik nach Grundsatz 7, die eigene, sorgfältige Prüfung und
-eigene Tests verdient, keinen Seitenschlenker in einem bereits sehr großen
-Auftrag. **Vorschlag für einen eigenen Nachfolgeauftrag:** Beim Übergang
-`notbetrieb`/`rueckkehrpruefung` → `normal` (bzw. `ersatzquelle`) für jede
-Schaltausgang-Zuordnung eine synthetische „Phase begann jetzt"-Markierung
-setzen, aus `actuator_emergency_state.last_successful_command_state`/
-`.last_successful_command_at` abgeleitet, bevor der erste reguläre Zyklus
-danach wieder `_send_actuator_switches` erreicht — entweder als eigene,
-von `ShadowDecision`-Historie unabhängige Spur, oder als einmalig
-eingefügte `ShadowDecision`-Zeile, die `_previous_state()` korrekt als
-Phasenbeginn liest. **Bis das entschieden und umgesetzt ist, ist dieser
-Auftrag nicht freigabereif für eine Anlage mit Schaltausgängen, deren
-Hardware eine Mindestschaltdauer tatsächlich braucht** — die Hauptsession
-muss das vor einem Merge nach `main` gegenlesen und entscheiden, nicht diese
-Umsetzung.
+**Lösung:** `thermoctl/services/shadow_run.py::_seed_recovery_phase_marker`,
+aufgerufen genau in dem Zyklus, in dem `_apply_sensor_failure` eine Episode
+beendet (`events.episode_ended`) — dafür musste `_apply_sensor_failure`
+innerhalb von `_process_zone` **vor** `_previous_state()` gezogen werden
+(beide sind unabhängig voneinander berechenbar, die bisherige Reihenfolge war
+zufällig, nicht absichtlich). Die Funktion schreibt eine zusätzliche
+`shadow_decision`-Zeile mit `decided_at=now` und `would_heat` = dem real
+zuletzt erfolgreich gesendeten Zustand
+(`ActuatorEmergencyState.last_successful_command_state`, zu diesem Zeitpunkt
+im Zyklus noch nicht vom Publisher zurückgesetzt). Bewusst **konservativ**,
+nicht exakt rekonstruiert: `held_for_s` beginnt dadurch bei 0 ab dem
+Rückkehr-Zeitpunkt selbst (nicht ab dem tatsächlichen, oft früheren
+Schaltzeitpunkt) — nie mit mehr Anrechnung als real erreicht, also nie zu
+früh als „Mindestdauer erfüllt" gelesen, höchstens strenger als nötig. Neuer
+Outcome-Code `notbetrieb_rueckkehr_start`, damit die Zeile im Protokoll als
+das erkennbar bleibt, was sie ist. Nur für Zonen mit **genau einem**
+Schaltausgang (die reale Anlage hat je Zone höchstens einen) — bei keinem
+oder mehreren wird bewusst nichts geschrieben, kein erfundener Zustand.
 
-### Zweiter, kleinerer Blocker — `operating_mode` bei Rückkehr nicht zurückgesetzt
+Test (`test_recovery_does_not_violate_the_real_minimum_on_duration`): Relais
+schaltet im Notbetrieb real ein, Sensor kommt nach wenigen Sekunden warm
+zurück (gewöhnliche Hysterese wollte sofort „aus") — Relais bleibt an, bis
+die (konservativ ab dem Rückkehr-Zeitpunkt gezählte) Mindest-Ein-Dauer
+abgelaufen ist, schaltet danach korrekt ab. Gezielter Handmutant bestätigt:
+Markierung deaktiviert → derselbe Test schlägt sofort fehl (Relais schaltet
+zu früh ab).
 
-Plan Auftrag 7b, Punkt 3, verlangt ausdrücklich: „Prüfe, ob nach der Übergabe
-(`operating_mode: manual`) etwas zurückgestellt werden muss … wenn unklar:
-Blocker melden mit Optionen, nicht raten." Diese Umsetzung schreibt
-`operating_mode` **nur einmal**, beim Handover — bei Rückkehr zu `normal`
-bleibt es unverändert auf `manual` stehen, es gibt keinen Rückschreibe-Pfad.
-Drei Optionen, keine davon am echten Gerät bestätigt
-(`lokal/plaene/0.11.0-geraetevertrag.md` (b) nennt den Wechsel
-`pause`→`manual` selbst nur als „Beobachtungsempfehlung für die Testphase",
-nicht als entschieden):
+### Blocker 2 (Projektinhaber) — `operating_mode` bei Rückkehr, gelöst: „exakt der Zustand wie davor"
 
-- **A (so umgesetzt):** nichts zurückschreiben. Laut Gerätevertrag läuft die
-  reguläre Sollwertregelung beobachtet unabhängig vom `operating_mode`-Wert
-  (alle drei BTH-RA standen im ausgewerteten Dump dauerhaft auf `pause`,
-  *während* Gerät 23 aktiv heizte) — der naheliegende Schluss ist, dass
-  `manual` ebenso wenig stört, aber das ist eine Übertragung der Beobachtung
-  auf einen anderen Wert, keine eigene Messung.
-- **B:** `operating_mode="pause"` beim Rückkehr-Abschluss einmalig
-  zurückschreiben (symmetrisch zur Übergabe). Nicht im Plan vorgesehen, ein
-  zusätzlicher Schreibpfad außerhalb der „genau eine Übergabe" Vorgabe.
-- **C:** `operating_mode="schedule"` zurückschreiben. Könnte das Gerät auf
-  seinen eigenen, geräteinternen Zeitplan umschalten und mit dem von
-  thermoctl extern gesetzten Sollwert in Konflikt geraten — ungetestet.
+Entscheidung des Projektinhabers: nicht raten (Optionen B/C aus der
+vorherigen Fassung dieses Abschnitts), sondern den tatsächlich vom Gerät
+gemeldeten Vorwert festhalten und bei Rückkehr genau diesen zurückschreiben.
 
-**Für die Hardwareabnahme (Plan Abschnitt 4) relevant:** Vor der ersten
-echten Rückkehr an einem Bosch BTH-RA beobachten, ob Option A tatsächlich
-unauffällig bleibt (lokale Bedienbarkeit, Anzeige, Reaktion auf externe
-Sollwerte) — wie im Gerätevertrag für den Hinweg bereits empfohlen, jetzt
-auch für den Rückweg.
+**Umsetzung:** Neue Spalte `actuator_emergency_state.
+handover_previous_operating_mode` (Migration `b2e6f1a9c374`) — beim Handover,
+unmittelbar vor dem Schreibversuch, liest `_send_emergency_handover` den
+aktuell gespeicherten Gerätezustand (`DeviceProperty.last_value_text` für
+`operating_mode`, von `services/ingest.py` laufend aktuell gehalten — **nicht**
+das, was thermoctl zuletzt geschrieben hat, sondern das, was das Gerät selbst
+zuletzt gemeldet hat) und hält ihn fest. `NULL` heißt ausdrücklich „unbekannt",
+nie ein geratener Wert (Grundsatz 1). Bei Rückkehr zu `normal`/`ersatzquelle`
+schreibt die neue Domänenfunktion `domain.emergency_actuator_plan.
+plan_restore` + `services/publishing.py::_send_emergency_restore` genau
+einmal `operating_mode` auf diesen Vorwert zurück — derselbe
+Einmal-Versand-ohne-Wiederholung-Vertrag wie die Übergabe, nur umgekehrt:
+`restore_attempted_at` wird **vor** dem Versand gesetzt und committet,
+Fehlschlag bleibt sichtbar (`restore_result`), kein zweiter Versuch. Ist der
+Vorwert unbekannt, wird nichts geschrieben, einmalig sichtbar begründet
+(neuer Reason-Code `sensorausfall_rueckstellung_unbekannt`). Ein Trockenlauf
+verbraucht den einmaligen Versuch nicht: `_send_emergency_actuators` hält die
+Episode für die Rückstellung bewusst offen (`armed_episode_id` bleibt
+gesetzt), bis ein scharfer Zyklus den echten Versuch unternimmt — sonst wäre
+das Gerät nach einer Rückkehr im Trockenlauf dauerhaft auf `manual`
+hängengeblieben. Die Dedup-Cache-Invalidierung (Blocker aus Auftrag 7b,
+Punkt 3) läuft unabhängig davon in jedem Zyklus, damit der gewöhnliche
+Sollwert nicht auf die Rückstellung warten muss.
 
-Tests, Zähl-Belege: `tests/test_publishing_notbetrieb_versand.py` (ersetzt die gleichnamige
-Auftrag-7a-Testdatei mit dem schmalen Schattenbetrieb-Nachweis, der durch den jetzt scharfen
-Versand überholt ist) — zehn Szenarien mit
+Test (`test_recovery_restores_the_previous_operating_mode_exactly_once_with_restart`,
+eigene SQLite-Datei, simulierter Prozessneustart zwischen Übergabe und
+Rückkehr): Gerät meldet vor dem Ausfall `pause` → Übergabe schreibt `manual`
+→ Rückkehr schreibt genau einmal `pause` zurück, Inhalt geprüft, kein dritter
+Schreibversuch über weitere Zyklen. Gezielter Handmutant am
+„Vorwert unbekannt"-Zweig (`domain.emergency_actuator_plan.plan_restore`)
+und einer am Trockenlauf-Offenhalten bestätigen beide: Mutation → Test wird
+rot.
+
+Tests, Zähl-Belege: `tests/test_publishing_notbetrieb_versand.py` — zwölf Szenarien mit
 Fake-Transport-Zählung (nie nur Rückgabewert): genau eine Übergabe-Nachricht
 mit geprüftem Inhalt, danach null über fünf weitere Zyklen inkl. geänderter
 Notbetriebs-Einstellung; gescheiterte Übergabe kein zweiter Versuch; Gerät
@@ -146,31 +148,25 @@ mit korrekten Zeiten; Ein-Fehler hält die Phase; Aus-Fehler verhindert eine
 neue Ein-Phase; Rückkehr sendet den unveränderten Sollwert erneut
 (Dedup-Invalidierung); Bediengerätekanal strukturell ausgeschlossen
 (`may_be_written`); Übergabe-Latch übersteht einen simulierten
-Prozessneustart (eigene SQLite-Datei, zweite `Session`).
+Prozessneustart; Rückkehr schreibt den gemeldeten Vorwert von
+`operating_mode` genau einmal zurück (eigener Neustart-Test); Rückkehr
+verletzt die reale Mindest-Ein-Dauer nicht (Blocker 1).
 
 Geprüft: `ruff check .` sauber, `mypy thermoctl` sauber (132 Dateien, 0 Fehler); Alembic-
-Migration `9d3f1a7c2b84` vorwärts/rückwärts geprüft (SQLite), ein Migrationskopf;
-`pytest -q --no-cov --junitxml=…` gegen SQLite **und** MariaDB (eigene Testdatenbanken,
-nacheinander, zwei vollständige Läufe je Datenbank), zuletzt je **5302 Tests, 0 Fehler,
-0 Fehlschläge, 1 übersprungen** auf beiden Datenbanken — unterwegs zunächst zwei erwartete
-Fehlschläge (Lebende-Doku-Verweis auf die inzwischen umbenannte Testdatei,
-`tests/test_user_visible_effect_texts.py` vor dem letzten, abschließenden Schritt), beide
-behoben, siehe unten. Vier gezielte Handmutanten in `services/publishing.py` (Prüfsumme
-vor/nach jedem identisch geprüft): Übergabe-Latch invertiert (`is None` statt `is not None`)
-→ von 4 Tests erkannt; Takt-Erfolgsgate invertiert (`outcome != EXECUTED`) → von 3 Tests
-erkannt; Episodenfrische-Erkennung invertiert (`==` statt `!=`) → von 1 Test erkannt
-(begründet: der Rückkehr-Reset setzt `armed_episode_id` ohnehin vor jeder neuen Episode auf
-`None` zurück, der Mutant trifft nur den „kein Gerätevertrag"-Protokolleintrag);
-Trockenlauf-Sperre der Übergabe entfernt (`if False:`) → von 1 Test erkannt. **Eine der vier
-Rücksetzungen hatte beim ersten Versuch nicht gegriffen** — die Prüfsumme stimmte unmittelbar
-nach dem `cp`-Rücksetzen, aber ein späterer vollständiger Testlauf (nach weiteren,
-unabhängigen Änderungen an `docs/STATUS.md`) fand die `if False:`-Mutation dennoch wieder im
-Dateisystem vor und schlug entsprechend fehl — genau das von CLAUDE.md beschriebene
-iCloud-Konfliktrisiko, hier nicht als Konfliktkopie (`* 2.py`), sondern als unbemerkt nicht
-persistierte Rücksetzung. Durch den eigenständigen, vom Umsetzenden unabhängigen Testlauf
-gefunden, sofort korrigiert und mit Prüfsumme **und** erneutem vollständigen Lauf gegen beide
-Datenbanken (grün, s.o.) bestätigt — der Beleg dafür, warum „jedes Review führt die Testsuite
-selbst aus" mehr ist als eine Formalie.
+Migrationen `9d3f1a7c2b84` und `b2e6f1a9c374` vorwärts/rückwärts geprüft (SQLite), ein
+Migrationskopf (`b2e6f1a9c374`); `pytest -q --no-cov --junitxml=…` gegen SQLite **und**
+MariaDB (eigene Testdatenbanken, nacheinander), zuletzt je **5304 Tests, 0 Fehler,
+0 Fehlschläge, 1 übersprungen** auf beiden Datenbanken. Sechs gezielte Handmutanten insgesamt
+(vier aus der ersten Fassung dieses Auftrags, siehe Git-Historie, plus zwei neue für die
+Blocker-Lösungen), **nach jedem einzelnen Prüfsumme und `git diff --stat` kontrolliert**
+(CLAUDE.md-iCloud-Lehre aus der ersten Fassung): `plan_restore`s „Vorwert unbekannt"-Zweig
+invertiert → von 1 Test erkannt; die Trockenlauf-Offenhalte-Bedingung in
+`_send_emergency_actuators` invertiert → von 1 Test erkannt (derselbe Test deckt beide Enden
+des Rückstellungs-Vertrags ab); `_seed_recovery_phase_marker`s Aufruf deaktiviert (`if False:`)
+→ von 1 Test erkannt (direkter Beleg für Blocker 1: das Relais schaltet im Mutanten zu früh
+ab); dieselbe Funktion mit invertierter „genau ein Schaltausgang"-Bedingung → von 2 Tests
+erkannt. Alle sechs Mutanten einzeln zurückgesetzt und per Prüfsumme bestätigt identisch zum
+Ausgangsstand.
 
 ## 0.11.0: Notbetrieb an den Regelzyklus angebunden, Schattenbetrieb (Auftrag 7a)
 

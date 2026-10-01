@@ -38,7 +38,13 @@ from thermoctl.db.models.device import (
     DevicePropertyValue,
     ZoneDevice,
 )
-from thermoctl.db.models.lookup import CHANNEL_KINDS, ChannelKind
+from thermoctl.db.models.lookup import (
+    ACTOR_SOURCES,
+    CHANNEL_KINDS,
+    ActorSource,
+    ChannelKind,
+    CommandOutcome,
+)
 from thermoctl.db.models.operations import Setting
 from thermoctl.db.models.sensor_failure import (
     ActuatorDecision,
@@ -665,6 +671,421 @@ async def test_recovery_resends_the_current_setpoint_even_if_unchanged(
     assert relais_after[0] == (topic, '{"state": "ON"}')
 
 
+# --- Rückkehr: operating_mode wird auf den Vorwert zurückgestellt ----------------
+
+
+@pytest.mark.anyio
+async def test_recovery_restores_the_previous_operating_mode_exactly_once_with_restart(
+    tmp_path: Path,
+) -> None:
+    """Projektinhaber-Entscheidung: "exakt der Zustand wie davor" -- die
+    Übergabe setzt `operating_mode=manual`, die Rückkehr schreibt genau
+    einmal den vor der Übergabe tatsächlich vom Gerät gemeldeten Wert zurück
+    (hier `pause`, wie in `lokal/plaene/0.11.0-geraetevertrag.md` (b) für den
+    real eingesetzten Bosch BTH-RA beobachtet). Eigene SQLite-Datei und eine
+    zweite `Session`, damit der simulierte Prozessneustart zwischen Übergabe
+    und Rückkehr echte Persistenz prüft, nicht In-Prozess-Zustand.
+    """
+    from tests.helpers import sensor_status_of
+    from thermoctl.db.models.schedule import SchedulePoint
+    from thermoctl.db.models.state import ZoneState
+    from thermoctl.db.models.zone import SetpointMode, ZoneSetpoint
+
+    engine, maker = _own_database(tmp_path, "nb-versand-restore")
+    session = maker()
+    try:
+        create_settings(session)
+        settings = session.get(Setting, 1)
+        assert settings is not None
+        settings.control_armed = True
+        create_all_command_outcomes(session)
+
+        zone = create_zone(session, "nb-restore")
+        zone.min_on_seconds = 10
+        zone.min_off_seconds = 10
+        zone.sensor_timeout_seconds = 90
+        zone.sensor_failure_enabled = True
+        zone.sensor_failure_profile_id = _profile(session)
+        zone.sensor_failure_emergency_setpoint_c = Decimal("18.0")
+
+        mode = SetpointMode(code="nb-restore-heizen", name="Heizen")
+        session.add(mode)
+        session.flush()
+        session.add(
+            ZoneSetpoint(zone_id=zone.id, setpoint_mode_id=mode.id, temperature_c=Decimal("21.0"))
+        )
+        session.add(
+            SchedulePoint(
+                zone_id=zone.id, weekday=NOW.weekday(), minute_of_day=0, setpoint_mode_id=mode.id
+            )
+        )
+        session.flush()
+
+        wall = Device(
+            integration_id=integration(session, "zigbee2mqtt").id,
+            external_id="nb-restore-wand",
+            display_name="Wandfühler",
+        )
+        session.add(wall)
+        session.flush()
+        _link(session, wall, "temperature")
+        zone.temperature_source_device_id = wall.id
+
+        trv = Device(
+            integration_id=integration(session, "zigbee2mqtt").id,
+            external_id="nb-restore-trv",
+            display_name="TRV",
+        )
+        session.add(trv)
+        session.flush()
+        _link(session, trv, "thermostat")
+        session.add(
+            DeviceProperty(
+                device_id=trv.id,
+                name="occupied_heating_setpoint",
+                value_type="numeric",
+                min_value=Decimal("5"),
+                max_value=Decimal("30"),
+                is_readable=True,
+                is_writable=True,
+            )
+        )
+        operating_mode_property = DeviceProperty(
+            device_id=trv.id,
+            name="operating_mode",
+            value_type="text",
+            is_readable=True,
+            is_writable=True,
+        )
+        session.add(operating_mode_property)
+        session.flush()
+        session.add_all(
+            DevicePropertyValue(property_id=operating_mode_property.id, value=value)
+            for value in ("schedule", "manual", "pause")
+        )
+        # The device itself reports "pause" before anything goes wrong --
+        # exactly the real-plant observation for a Bosch BTH-RA.
+        operating_mode_property.last_value_text = "pause"
+        operating_mode_property.last_value_at = NOW - timedelta(minutes=5)
+        session.add(
+            ZoneDevice(
+                zone_id=zone.id,
+                device_id=trv.id,
+                device_role_id=role(session, "actuator").id,
+                self_regulating=True,
+            )
+        )
+        session.flush()
+
+        client = _FakeClient()
+        pub_state = PublicationState()
+        trv_topic = _trv_topic(trv)
+
+        t0 = NOW
+        session.add(
+            ZoneState(
+                zone_id=zone.id,
+                temperature_c=Decimal("19.0"),
+                measured_at=t0,
+                sensor_status_id=sensor_status_of(session, "ok").id,
+                updated_at=t0,
+            )
+        )
+        session.flush()
+        shadow_run.cycle(session, t0)
+        session.commit()
+        await publishing.cycle(session, client, pub_state, "thermoctl", t0)
+        session.commit()
+        # Healthy zone: the ordinary self-regulating setpoint path sends its
+        # usual `occupied_heating_setpoint`, but never touches `operating_mode`.
+        assert all(
+            "operating_mode" not in m[1]
+            for m in client.messages
+            if m[0] == trv_topic
+        )
+
+        t1 = t0 + timedelta(seconds=100)
+        state_row = session.get(ZoneState, zone.id)
+        assert state_row is not None
+        state_row.sensor_status_id = sensor_status_of(session, "veraltet").id
+        session.flush()
+        shadow_run.cycle(session, t1)
+        session.commit()
+        sf_state = session.get(ZoneSensorFailureState, zone.id)
+        assert sf_state is not None
+        assert sf_state.stage == emergency_operation.STAGE_NOTBETRIEB
+        await publishing.cycle(session, client, pub_state, "thermoctl", t1)
+        session.commit()
+
+        handover_messages = [
+            m for m in client.messages if m[0] == trv_topic and "operating_mode" in m[1]
+        ]
+        assert len(handover_messages) == 1
+        assert json.loads(handover_messages[0][1]) == {
+            "operating_mode": "manual",
+            "occupied_heating_setpoint": 18.0,
+        }
+        zone_device_id = _zone_device_id(session, zone.id, trv.id)
+        row = session.get(ActuatorEmergencyState, zone_device_id)
+        assert row is not None
+        assert row.handover_previous_operating_mode == "pause"
+        session.close()
+
+        # --- simulated process restart between Übergabe and Rückkehr.
+        restart_session = maker()
+        try:
+            zone = restart_session.get(Zone, zone.id)
+            assert zone is not None
+
+            t2 = t1 + timedelta(seconds=5)
+            state_row = restart_session.get(ZoneState, zone.id)
+            assert state_row is not None
+            state_row.temperature_c = Decimal("19.0")
+            state_row.measured_at = t2
+            state_row.sensor_status_id = sensor_status_of(restart_session, "ok").id
+            restart_session.flush()
+            shadow_run.cycle(restart_session, t2)
+            restart_session.commit()
+            await publishing.cycle(restart_session, client, pub_state, "thermoctl", t2)
+            restart_session.commit()
+
+            t3 = t2 + timedelta(seconds=61)
+            state_row.measured_at = t3
+            restart_session.flush()
+            shadow_run.cycle(restart_session, t3)
+            restart_session.commit()
+            sf_state = restart_session.get(ZoneSensorFailureState, zone.id)
+            assert sf_state is not None
+            assert sf_state.stage == emergency_operation.STAGE_NORMAL
+
+            messages_before = len(client.messages)
+            await publishing.cycle(restart_session, client, pub_state, "thermoctl", t3)
+            restart_session.commit()
+            # The ordinary setpoint path resumes in this same cycle too (the
+            # zone is `normal` again) -- filter for the Rückstellung itself,
+            # not the unrelated `occupied_heating_setpoint` message beside it.
+            restore_messages = [
+                m
+                for m in client.messages[messages_before:]
+                if m[0] == trv_topic and "operating_mode" in m[1]
+            ]
+            assert len(restore_messages) == 1
+            assert json.loads(restore_messages[0][1]) == {"operating_mode": "pause"}
+
+            # The row's own bookkeeping is cleared immediately once the
+            # Rückkehr fully resolves this cycle -- same convention the
+            # handover fields already follow (`_send_emergency_actuators`'s
+            # "not active" branch). The durable record lives in the audit
+            # trail instead: exactly one `restore` command, `executed`.
+            row = restart_session.get(ActuatorEmergencyState, zone_device_id)
+            assert row is not None
+            assert row.restore_result is None
+            assert row.handover_previous_operating_mode is None
+            restore_commands = restart_session.scalars(
+                select(DeviceCommand).where(
+                    DeviceCommand.device_id == trv.id, DeviceCommand.command == "restore"
+                )
+            ).all()
+            assert len(restore_commands) == 1
+            outcome_row = restart_session.get(CommandOutcome, restore_commands[0].outcome_id)
+            assert outcome_row is not None
+            assert outcome_row.code == "executed"
+
+            # Further cycles: no third write of `operating_mode` to this device.
+            t4 = t3 + timedelta(seconds=30)
+            shadow_run.cycle(restart_session, t4)
+            restart_session.commit()
+            await publishing.cycle(restart_session, client, pub_state, "thermoctl", t4)
+            restart_session.commit()
+            total_mode_messages = [
+                m for m in client.messages if m[0] == trv_topic and "operating_mode" in m[1]
+            ]
+            assert len(total_mode_messages) == 2  # handover + restore, nothing more
+        finally:
+            restart_session.close()
+    finally:
+        engine.dispose()
+
+
+@pytest.mark.anyio
+async def test_recovery_does_not_violate_the_real_minimum_on_duration(
+    tmp_path: Path,
+) -> None:
+    """Blocker 1 (Hauptsession, Grundsatz 7, konservativ): Notbetrieb schaltet
+    das Relais ein; der Sensor kehrt zurück, während der Raum bereits warm
+    ist (die gewöhnliche Hysterese-Entscheidung wäre sofort "aus") -- das
+    Relais muss trotzdem bis zur Mindest-Ein-Dauer an bleiben, weil es real
+    erst vor Kurzem eingeschaltet wurde. Zählung der Befehle und ihrer
+    Zeitpunkte, nicht nur der Endzustand.
+    """
+    from tests.helpers import sensor_status_of
+    from thermoctl.db.models.schedule import SchedulePoint
+    from thermoctl.db.models.state import ZoneState
+    from thermoctl.db.models.zone import SetpointMode, ZoneSetpoint
+
+    engine, maker = _own_database(tmp_path, "nb-versand-mindestdauer")
+    session = maker()
+    try:
+        create_settings(session)
+        settings = session.get(Setting, 1)
+        assert settings is not None
+        settings.control_armed = True
+        create_all_command_outcomes(session)
+
+        zone = create_zone(session, "nb-mindestdauer")
+        zone.min_on_seconds = 600  # 10 Minuten
+        zone.min_off_seconds = 600
+        zone.sensor_timeout_seconds = 90
+        zone.sensor_failure_enabled = True
+        # `domain.emergency_cycle._resolve_pair` klemmt Festtakt-Dauern nach
+        # unten auf die Zonen-Mindestschaltdauer -- mit `min_on_seconds=600`/
+        # `min_off_seconds=600` dauert deshalb *jede* Notbetriebsphase
+        # tatsächlich 600 s, unabhängig vom hier gewählten Profilwert (20/30 s).
+        zone.sensor_failure_profile_id = _profile(session)
+        zone.sensor_failure_emergency_setpoint_c = Decimal("18.0")
+
+        # Warmer Raum: 23 °C gegen einen 21 °C-Sollwert -- die gewöhnliche
+        # Hysterese will sofort "aus", sobald der Sensor zurück ist.
+        mode = SetpointMode(code="nb-mindestdauer-heizen", name="Heizen")
+        session.add(mode)
+        session.flush()
+        session.add(
+            ZoneSetpoint(zone_id=zone.id, setpoint_mode_id=mode.id, temperature_c=Decimal("21.0"))
+        )
+        session.add(
+            SchedulePoint(
+                zone_id=zone.id, weekday=NOW.weekday(), minute_of_day=0, setpoint_mode_id=mode.id
+            )
+        )
+        session.flush()
+
+        wall = Device(
+            integration_id=integration(session, "zigbee2mqtt").id,
+            external_id="nb-md-wand",
+            display_name="Wandfühler",
+        )
+        session.add(wall)
+        session.flush()
+        _link(session, wall, "temperature")
+        zone.temperature_source_device_id = wall.id
+
+        relais = Device(
+            integration_id=integration(session, "zigbee2mqtt").id,
+            external_id="nb-md-relais",
+            display_name="Relais",
+        )
+        session.add(relais)
+        session.flush()
+        _link(session, relais, "switch")
+        session.add(
+            ZoneDevice(
+                zone_id=zone.id,
+                device_id=relais.id,
+                device_role_id=role(session, "actuator").id,
+                self_regulating=False,
+            )
+        )
+        session.flush()
+
+        client = _FakeClient()
+        pub_state = PublicationState()
+        topic = _relais_topic(relais)
+
+        t0 = NOW
+        session.add(
+            ZoneState(
+                zone_id=zone.id,
+                temperature_c=Decimal("23.0"),
+                measured_at=t0,
+                sensor_status_id=sensor_status_of(session, "ok").id,
+                updated_at=t0,
+            )
+        )
+        session.flush()
+        shadow_run.cycle(session, t0)
+        session.commit()
+        await publishing.cycle(session, client, pub_state, "thermoctl", t0)
+        session.commit()
+        assert client.messages[-1] == (topic, '{"state": "OFF"}')  # Entscheidung 1: Aus zuerst
+
+        # t1 -- wall probe goes stale -> Notbetrieb (no thermostat candidate
+        # configured): festtakt starts its Aus-Phase, 600 s (clamped, see above).
+        t1 = t0 + timedelta(seconds=100)
+        state_row = session.get(ZoneState, zone.id)
+        assert state_row is not None
+        state_row.sensor_status_id = sensor_status_of(session, "veraltet").id
+        session.flush()
+        shadow_run.cycle(session, t1)
+        session.commit()
+        await publishing.cycle(session, client, pub_state, "thermoctl", t1)
+        session.commit()
+        row = session.get(ActuatorEmergencyState, _zone_device_id(session, zone.id, relais.id))
+        assert row is not None
+        assert row.phase == "aus"
+
+        # t2 -- Aus-Phase's 600 s deadline passed: switches Ein (real relay now
+        # genuinely on, confirmed via `last_successful_command_state`).
+        t2 = t1 + timedelta(seconds=601)
+        shadow_run.cycle(session, t2)
+        session.commit()
+        await publishing.cycle(session, client, pub_state, "thermoctl", t2)
+        session.commit()
+        session.refresh(row)
+        assert row.phase == "ein"
+        assert row.last_successful_command_state is True
+        assert row.last_successful_command_at == t2
+        assert client.messages[-1] == (topic, '{"state": "ON"}')
+
+        # t3 -- only 5s after the real relay turned on: the wall probe comes
+        # back, warm room, two measurements 61s apart -- recovery completes
+        # right as the ordinary hysteresis would want "aus" immediately.
+        t3 = t2 + timedelta(seconds=5)
+        state_row.temperature_c = Decimal("23.0")
+        state_row.measured_at = t3
+        state_row.sensor_status_id = sensor_status_of(session, "ok").id
+        session.flush()
+        shadow_run.cycle(session, t3)
+        session.commit()
+        await publishing.cycle(session, client, pub_state, "thermoctl", t3)
+        session.commit()
+
+        t4 = t3 + timedelta(seconds=61)
+        state_row.measured_at = t4
+        session.flush()
+        shadow_run.cycle(session, t4)
+        session.commit()
+        sf_state = session.get(ZoneSensorFailureState, zone.id)
+        assert sf_state is not None
+        assert sf_state.stage == emergency_operation.STAGE_NORMAL
+        # `held_for_s` is anchored conservatively at the recovery moment
+        # itself (t4), 0 s elapsed so far -- nowhere near the 600 s minimum,
+        # so the first regular cycle must not turn the relay off yet. The
+        # ordinary path *does* resend (plan item 3's dedup invalidation), but
+        # the resent state must still be "on", never "off".
+        messages_before = len(client.messages)
+        await publishing.cycle(session, client, pub_state, "thermoctl", t4)
+        session.commit()
+        new_messages = [m for m in client.messages[messages_before:] if m[0] == topic]
+        assert new_messages == [(topic, '{"state": "ON"}')]  # held on, not switched off early
+
+        # t5 -- well past the 600 s minimum counted conservatively from the
+        # recovery moment itself (t4, not the earlier real switch-on at t2 --
+        # `_seed_recovery_phase_marker`'s own documented conservative choice,
+        # see its docstring): the ordinary hysteresis may now turn it off.
+        t5 = t4 + timedelta(seconds=601)
+        state_row.measured_at = t5
+        session.flush()
+        shadow_run.cycle(session, t5)
+        session.commit()
+        messages_before = len(client.messages)
+        await publishing.cycle(session, client, pub_state, "thermoctl", t5)
+        session.commit()
+        new_messages = [m for m in client.messages[messages_before:] if m[0] == topic]
+        assert new_messages == [(topic, '{"state": "OFF"}')]
+    finally:
+        engine.dispose()
+
+
 # --- Kein Notbetrieb: bestehende Publisher-Tests bleiben unberührt ----------------
 # (siehe tests/test_publishing.py -- vollständig weiterhin grün, siehe Bericht.)
 
@@ -698,7 +1119,21 @@ def test_notbetrieb_thermostat_can_never_also_be_a_write_controller_channel(
 def _own_database(tmp_path: Path, name: str) -> tuple[Engine, sessionmaker[Session]]:
     engine = create_engine(f"sqlite:///{tmp_path}/{name}.db", future=True)
     Base.metadata.create_all(engine)
-    return engine, session_factory(engine)
+    # `tests/conftest.py`'s shared `session` fixture seeds `actor_source` once
+    # for its whole engine -- a dedicated engine like this one starts with an
+    # empty table, and `record_command(source="system")` would otherwise fail
+    # silently (it catches and only logs, see its own docstring) on every
+    # call, never raising into the test. Seeded here once so that silent
+    # failure cannot masquerade as "no command log entry expected".
+    maker = session_factory(engine)
+    seed_session = maker()
+    try:
+        for code, label in ACTOR_SOURCES:
+            seed_session.add(ActorSource(code=code, label=label))
+        seed_session.commit()
+    finally:
+        seed_session.close()
+    return engine, maker
 
 
 @pytest.mark.anyio

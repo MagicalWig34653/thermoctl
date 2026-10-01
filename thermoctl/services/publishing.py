@@ -48,7 +48,7 @@ from sqlalchemy.orm import Session
 
 from thermoctl import audit
 from thermoctl.config import get_settings
-from thermoctl.db.models.device import ControllerChannel, Device
+from thermoctl.db.models.device import ControllerChannel, Device, DeviceProperty
 from thermoctl.db.models.lookup import ChannelKind, DeviceCapability, Integration, SensorStatus
 from thermoctl.db.models.measurement import Measurement
 from thermoctl.db.models.operations import Setting
@@ -70,7 +70,12 @@ from thermoctl.domain.fault_notice import (
 )
 from thermoctl.domain.outdoor import outdoor_reading
 from thermoctl.domain.schedule import end_of_next_switch, resolved_setpoint, running_override
-from thermoctl.domain.self_regulating import SETPOINT_PROPERTY, handover_capable, valve_commands
+from thermoctl.domain.self_regulating import (
+    HANDOVER_OPERATING_MODE_PROPERTY,
+    SETPOINT_PROPERTY,
+    handover_capable,
+    valve_commands,
+)
 from thermoctl.domain.switch_commands import switch_commands, thermostat_commands
 from thermoctl.domain.zone_settings import PARAMETERS, ControlParameters, control_parameters
 from thermoctl.integrations.actuators import (
@@ -81,7 +86,9 @@ from thermoctl.integrations.actuators import (
     Zigbee2MqttThermostat,
     Zigbee2MqttValve,
     handover_payload,
+    restore_payload,
     send_emergency_handover,
+    send_emergency_restore,
     switching_allowed,
     thermostat_payload,
 )
@@ -616,6 +623,25 @@ async def _send_emergency_handover(
         )
         return 0
 
+    # Captured *before* the write, alongside `handover_attempted_at`
+    # (Projektinhaber-Entscheidung: "exakt der Zustand wie davor"): the
+    # `operating_mode` the device itself last reported, read from the stored
+    # device state (`DeviceProperty.last_value_text`, kept current by
+    # `services/ingest.py`), not from what thermoctl last *wrote* -- the
+    # question is what the device was actually doing, and this version never
+    # writes `operating_mode` outside this one handover. `None` when no
+    # property row exists or the device never reported one -- an honest
+    # "unknown", not a guess (Grundsatz 1); `_send_emergency_restore` below
+    # reads this value at Rückkehr time and refuses to write back a guess.
+    operating_mode_property = session.scalar(
+        select(DeviceProperty).where(
+            DeviceProperty.device_id == device.id,
+            DeviceProperty.name == HANDOVER_OPERATING_MODE_PROPERTY,
+        )
+    )
+    row.handover_previous_operating_mode = (
+        operating_mode_property.last_value_text if operating_mode_property is not None else None
+    )
     # Persisted -- and committed -- *before* the send: plan item 2's own
     # "wird vor dem Versand gespeichert und committet". A crash between this
     # write and the broker's reply must still count as "attempted" on restart.
@@ -650,6 +676,130 @@ async def _send_emergency_handover(
                 "zone_id": zone.id,
                 "geraet": device.display_name,
                 "notsollwert": str(policy.emergency_setpoint_c),
+            },
+        )
+        return 1
+    return 0
+
+
+async def _send_emergency_restore(
+    session: Session,
+    client: MqttPublisher,
+    base: str,
+    state: PublicationState,
+    zone: Zone,
+    device: Device,
+    row: ActuatorEmergencyState,
+    now: datetime,
+    source: str,
+    notices: list[FaultNotice],
+    setting_row: Setting | None,
+) -> int:
+    """Rückkehr-Gegenstück zu `_send_emergency_handover` (Projektinhaber-
+    Entscheidung, nach Auftrag 7b): writes the pre-Übergabe `operating_mode`
+    back exactly once, the cycle the zone's armed episode closes -- "exakt
+    der Zustand wie davor". Called from `_send_emergency_actuators`'s
+    recovery branch, before that branch clears `row`'s armed bookkeeping; a
+    dry run leaves `restore_attempted_at` unset so the caller keeps this
+    episode's Rückstellung open (does not clear `armed_episode_id` yet) until
+    an armed cycle gives it its one real attempt -- a dry run must never
+    spend the one-shot latch, same as the handover's own rule.
+    """
+    already_attempted = row.restore_attempted_at is not None
+    decision = emergency_actuator_plan.plan_restore(
+        already_attempted=already_attempted,
+        now=now,
+        device_name=device.display_name,
+        previous_operating_mode=row.handover_previous_operating_mode,
+    )
+    session.add(
+        ActuatorDecision(
+            episode_id=row.armed_episode_id,
+            zone_device_id=row.zone_device_id,
+            zone_name=zone.display_name,
+            device_name=device.display_name,
+            decided_at=now,
+            action=decision.action,
+            reason_code=decision.reason_code,
+            reason=decision.reason,
+            phase=None,
+            phase_deadline_at=None,
+            simulated=False,
+            cycle_source=None,
+            on_seconds=None,
+            off_seconds=None,
+            outdoor_c=None,
+            profile_version=row.profile_version,
+        )
+    )
+
+    if decision.action != emergency_actuator_plan.ACTION_RESTORE:
+        if decision.restore_attempted_at is not None:
+            # Either already attempted (nothing new to persist) or the
+            # Vorwert is permanently unknown -- plan Auftrag 7b item 4's own
+            # reasoning applies symmetrically: one Schaltprotokoll entry for
+            # the whole Rückkehr, not a guess.
+            row.restore_attempted_at = decision.restore_attempted_at
+            row.restore_result = NO_COMMAND
+            record_command(
+                session,
+                now=now,
+                source=source,
+                zone=zone,
+                device=device,
+                command="restore",
+                payload="{}",
+                outcome=NO_COMMAND,
+                reason=decision.reason,
+            )
+        return 0
+
+    if not switching_allowed(session):
+        # Dry run: no send, not counted as attempted -- `restore_attempted_at`
+        # stays as it was (unset, on the only path that reaches here), so the
+        # caller keeps this Rückkehr open for the next armed cycle.
+        record_command(
+            session,
+            now=now,
+            source=source,
+            zone=zone,
+            device=device,
+            command="restore",
+            payload=json.dumps(restore_payload(row.handover_previous_operating_mode or "")),
+            outcome=SUPPRESSED,
+            reason=decision.reason,
+        )
+        return 0
+
+    assert row.handover_previous_operating_mode is not None  # ACTION_RESTORE implies this
+    row.restore_attempted_at = now
+    _finish_database_work(session)
+
+    result = await send_emergency_restore(
+        session, client, base, device.external_id, row.handover_previous_operating_mode
+    )
+    outcome = _outcome_of(result)
+    row.restore_result = outcome
+    _note_command_outcome(state, notices, session, device, outcome, setting_row)
+    record_command(
+        session,
+        now=now,
+        source=source,
+        zone=zone,
+        device=device,
+        command="restore",
+        payload=json.dumps(restore_payload(row.handover_previous_operating_mode)),
+        outcome=outcome,
+        error=result.errors if outcome == FAILED else None,
+        reason=decision.reason,
+    )
+    if outcome == EXECUTED:
+        log.info(
+            "Notbetrieb-Rückstellung gesendet",
+            extra={
+                "zone_id": zone.id,
+                "geraet": device.display_name,
+                "operating_mode": row.handover_previous_operating_mode,
             },
         )
         return 1
@@ -926,7 +1076,27 @@ async def _send_emergency_actuators(
 
         if not active:
             if row.armed_episode_id is not None:
+                if kind == emergency_actuator_plan.KIND_THERMOSTAT:
+                    sent += await _send_emergency_restore(
+                        session, client, base, state, zone, device, row,
+                        now, source, notices, setting_row,
+                    )
+                # Invalidated unconditionally, even while the Rückstellung
+                # below is still open on a dry run: the ordinary setpoint
+                # path resuming must not stay silent on an unrelated
+                # technicality (plan item 3's own reasoning, orthogonal to
+                # the operating_mode Rückstellung).
                 _invalidate_dedup(state, device.id)
+                if (
+                    kind == emergency_actuator_plan.KIND_THERMOSTAT
+                    and row.restore_attempted_at is None
+                ):
+                    # Trockenlauf: `_send_emergency_restore` deliberately did
+                    # not spend the one-shot latch -- keep this episode's
+                    # Rückstellung open so the next armed cycle gets the real
+                    # attempt, instead of losing it the moment this branch
+                    # resets `armed_episode_id` below.
+                    continue
                 row.armed_episode_id = None
                 row.phase = None
                 row.phase_deadline_at = None
@@ -936,6 +1106,9 @@ async def _send_emergency_actuators(
                 row.warm_locked = None
                 row.handover_attempted_at = None
                 row.handover_result = None
+                row.handover_previous_operating_mode = None
+                row.restore_attempted_at = None
+                row.restore_result = None
                 row.last_successful_command_state = None
                 row.last_successful_command_at = None
             continue
@@ -947,6 +1120,9 @@ async def _send_emergency_actuators(
             row.armed_episode_id = zone_sf_state.episode_id
             row.handover_attempted_at = None
             row.handover_result = None
+            row.handover_previous_operating_mode = None
+            row.restore_attempted_at = None
+            row.restore_result = None
             row.last_successful_command_state = None
             row.last_successful_command_at = None
             row.phase = None
