@@ -156,7 +156,12 @@ def _comparisons(
         if row.device_id is None:
             continue
         assert row.wall_probe_c is not None and row.raw_c is not None  # narrowed above
-        by_device.setdefault(row.device_id, []).append(row.wall_probe_c - row.raw_c)
+        # Konvention aus `domain/temperature_source_health.py::_corrected`:
+        # `corrected = raw - offset_k`. Ein um 1 K zu warm messendes Thermostat
+        # (raw = wall + 1) braucht also `offset_k = raw - wall_probe = +1.0`,
+        # damit `corrected` danach wieder auf den Wandfühler fällt -- nicht
+        # umgekehrt (Kreuzreview von c1ae1c5: das Vorzeichen stand verkehrt).
+        by_device.setdefault(row.device_id, []).append(row.raw_c - row.wall_probe_c)
         names[row.device_id] = row.device_name
 
     views: list[SourceComparisonView] = []
@@ -254,7 +259,6 @@ def zone_emergency_view(
         on_seconds=primary_actuator.on_seconds if primary_actuator is not None else None,
         off_seconds=primary_actuator.off_seconds if primary_actuator is not None else None,
         cycle_source=primary_actuator.cycle_source if primary_actuator is not None else None,
-        outdoor_c=outdoor.temperature_c if outdoor is not None else None,
         recovery_sample_count=db_state.recovery_sample_count if db_state is not None else 0,
         recovery_samples=episode.recovery_samples if episode is not None else None,
     )

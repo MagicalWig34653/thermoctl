@@ -36,7 +36,7 @@ Minute grundlos ein Ladebalken aufblitzt.
         {% if notice.kind == "sensor" %}
         {{ notice.zone_name }}: Messwert möglicherweise nicht aktuell
         {% elif notice.kind == "notbetrieb" %}
-        {{ notice.zone_name }}: {{ notice.headline }}
+        {{ notice.zone_name }} – {{ notice.stage_label }}
         {% else %}
         {{ notice.zone_name }}: Fenster steht offen
         {% endif %}

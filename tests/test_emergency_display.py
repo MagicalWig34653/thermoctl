@@ -20,7 +20,6 @@ def test_normal_stage_has_no_banner() -> None:
             on_seconds=None,
             off_seconds=None,
             cycle_source=None,
-            outdoor_c=None,
             recovery_sample_count=0,
             recovery_samples=None,
         )
@@ -38,7 +37,6 @@ def test_ersatzquelle_banner_names_the_device_without_jargon() -> None:
         on_seconds=None,
         off_seconds=None,
         cycle_source=None,
-        outdoor_c=None,
         recovery_sample_count=0,
         recovery_samples=None,
     )
@@ -59,7 +57,6 @@ def test_ersatzquelle_banner_falls_back_without_a_device_name() -> None:
         on_seconds=None,
         off_seconds=None,
         cycle_source=None,
-        outdoor_c=None,
         recovery_sample_count=0,
         recovery_samples=None,
     )
@@ -77,7 +74,6 @@ def test_rueckkehrpruefung_banner_shows_progress() -> None:
         on_seconds=None,
         off_seconds=None,
         cycle_source=None,
-        outdoor_c=None,
         recovery_sample_count=1,
         recovery_samples=2,
     )
@@ -95,7 +91,6 @@ def test_rueckkehrpruefung_banner_default_sample_count_without_episode() -> None
         on_seconds=None,
         off_seconds=None,
         cycle_source=None,
-        outdoor_c=None,
         recovery_sample_count=0,
         recovery_samples=None,
     )
@@ -113,7 +108,6 @@ def test_notbetrieb_thermostat_banner_names_the_notsollwert() -> None:
         on_seconds=None,
         off_seconds=None,
         cycle_source=None,
-        outdoor_c=None,
         recovery_sample_count=0,
         recovery_samples=None,
     )
@@ -122,7 +116,13 @@ def test_notbetrieb_thermostat_banner_names_the_notsollwert() -> None:
     assert "regelt selbst" in banner.headline
 
 
-def test_notbetrieb_switch_banner_shows_cycle_minutes_and_outdoor() -> None:
+def test_notbetrieb_switch_banner_shows_cycle_minutes_without_jargon() -> None:
+    """Kreuzreview von c1ae1c5: "Kennlinie"/"Festtakt" sind Betreiber-
+    Fachbegriffe (sie stehen in der Aktorentabelle der Betriebsseite,
+    `control.html`, weiterhin) und dürfen in diesem geteilten, auch von
+    Bewohnern/Kiosk gezeigten Text nicht auftauchen -- auch keine rohe
+    Außentemperaturzahl, höchstens die Andeutung "passend zur
+    Außentemperatur"."""
     banner = emergency_display.zone_banner(
         stage=emergency_operation.STAGE_NOTBETRIEB,
         actuator_kind=emergency_actuator_plan.KIND_SWITCH,
@@ -132,17 +132,19 @@ def test_notbetrieb_switch_banner_shows_cycle_minutes_and_outdoor() -> None:
         on_seconds=600,
         off_seconds=1200,
         cycle_source="kennlinie",
-        outdoor_c=Decimal("-2.5"),
         recovery_sample_count=0,
         recovery_samples=None,
     )
     assert banner is not None
     assert "10/20 min" in banner.headline
-    assert "Kennlinie" in banner.detail
-    assert "-2.5" in banner.detail
+    assert "10 Min. an, 20 Min. aus" in banner.detail
+    assert "passend zur Außentemperatur" in banner.detail
+    for forbidden in ("Kennlinie", "Festtakt", "°C"):
+        assert forbidden not in banner.detail
+        assert forbidden not in banner.headline
 
 
-def test_notbetrieb_switch_banner_names_festtakt() -> None:
+def test_notbetrieb_switch_banner_names_no_outdoor_dependency_for_festtakt() -> None:
     banner = emergency_display.zone_banner(
         stage=emergency_operation.STAGE_NOTBETRIEB,
         actuator_kind=emergency_actuator_plan.KIND_SWITCH,
@@ -152,13 +154,13 @@ def test_notbetrieb_switch_banner_names_festtakt() -> None:
         on_seconds=0,
         off_seconds=1800,
         cycle_source="festtakt",
-        outdoor_c=None,
         recovery_sample_count=0,
         recovery_samples=None,
     )
     assert banner is not None
-    assert "Festtakt" in banner.detail
-    assert "außen" not in banner.detail
+    assert "0 Min. an, 30 Min. aus" in banner.detail
+    for forbidden in ("Kennlinie", "Festtakt", "Außentemperatur", "außen"):
+        assert forbidden not in banner.detail
 
 
 def test_notbetrieb_without_actuator_falls_back_to_generic_text() -> None:
@@ -171,7 +173,6 @@ def test_notbetrieb_without_actuator_falls_back_to_generic_text() -> None:
         on_seconds=None,
         off_seconds=None,
         cycle_source=None,
-        outdoor_c=None,
         recovery_sample_count=0,
         recovery_samples=None,
     )

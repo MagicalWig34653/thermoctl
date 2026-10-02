@@ -176,6 +176,7 @@
       "**selbstregelndes** Ventil dagegen schließt die Zone nicht aus: Es bekommt seinen",
       "Aufbewahrungsdauer pflegen darf, soll die Heizung nicht nebenbei scharf schalten können.",
       "Außenwertqualität, je Aktor Takt-Phase/-Frist und Übergabe-/Rückstellungsstatus",
+      "Richtung wie `temperature_backup_offset_k`: ein Thermostat, das 1 K zu warm misst,",
       "Verschleiß-Hochrechnung unter `/relay-wear` und in den Warnhinweis beim Einschalten der",
       "Wochen später nicht mehr zu klären, warum ein Raum in einer bestimmten Nacht warm war.",
       "gewöhnlichen Schaltaktor stehen darf — PI steuert dann nur diesen Schaltaktor an. Der",
@@ -502,6 +503,10 @@
     "thermoctl/domain/emergency_actuator_plan.py": [
       "switch"
     ],
+    "thermoctl/domain/emergency_display.py": [
+      "Der Raumfühler meldet gerade keinen Wert. Die Fußbodenheizung läuft deshalb in festen Abständen (",
+      "Kein Temperaturwert verfügbar. Die Heizung läuft nach einem festen Zeitplan, bis wieder ein Messwert da ist."
+    ],
     "thermoctl/domain/fault_notice.py": [
       "Der Temperaturwert ist veraltet. Die Zone regelt die Heizung bis auf Weiteres gegen den Frostschutz-Sollwert von",
       "Der Zone ist keine Temperaturquelle zugeordnet. Ohne Temperaturwert kann sie die Heizung nicht gegen den Frostschutz-Sollwert von",
@@ -587,6 +592,10 @@
       "Pulls a visible zone's next scheduled setpoint switch forward.",
       "Reads the actuator command log, newest first, filtered and capped.",
       "actuators"
+    ],
+    "thermoctl/services/emergency_state.py": [
+      "- noch kein Aktor zugeordnet.",
+      "Kein Temperaturwert verfügbar. Die Heizung läuft im Notbetrieb:"
     ],
     "thermoctl/services/meross_discovery.py": [
       "switch"

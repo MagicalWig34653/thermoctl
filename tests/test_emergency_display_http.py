@@ -118,4 +118,8 @@ def test_tenant_top_banner_shows_notbetrieb_instead_of_the_calm_message(
 
     assert response.status_code == status.HTTP_200_OK
     assert "Heizung läuft normal" not in response.text
-    assert "Arbeitszimmer: Ersatzquelle aktiv: Thermostat Diele" in response.text
+    # "<Zone> – <Stufe>", nicht "<Zone>: <Headline>" -- Letzteres hätte hier
+    # "Arbeitszimmer: Ersatzquelle aktiv: ..." ergeben, einen doppelten
+    # Doppelpunkt (Kreuzreview von c1ae1c5).
+    assert "Arbeitszimmer – Ersatzquelle" in response.text
+    assert "Arbeitszimmer:" not in response.text

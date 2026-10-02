@@ -43,6 +43,7 @@ from thermoctl.domain.absence import (
     start_absence,
 )
 from thermoctl.domain.authz import has_permission, visible_zones
+from thermoctl.domain import emergency_display
 from thermoctl.domain.emergency_display import ZoneEmergencyBanner
 from thermoctl.domain.modes import DomainError
 from thermoctl.domain.principal import Principal
@@ -166,7 +167,16 @@ def _home_notice(
                 return {
                     "kind": "notbetrieb",
                     "zone_name": zone.display_name,
-                    "headline": banner.headline,
+                    # Nicht `banner.headline` hinter "<Zone>: " hängen: dessen
+                    # eigener Text beginnt im Notbetrieb-Fall selbst mit
+                    # "Notbetrieb: …" -- zusammen ergäbe das einen doppelten
+                    # Doppelpunkt ("Wohnzimmer: Notbetrieb: …", Kreuzreview von
+                    # c1ae1c5). Die Vorlage setzt stattdessen "<Zone> –
+                    # <Stufe>" als Titel; `banner.detail` bleibt die einzige
+                    # Fließtextquelle.
+                    "stage_label": emergency_display.STAGE_LABELS.get(
+                        banner.stage, banner.stage
+                    ),
                     "detail": banner.detail,
                 }
     for zone in zones:

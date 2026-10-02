@@ -49,7 +49,6 @@ def zone_banner(
     on_seconds: int | None,
     off_seconds: int | None,
     cycle_source: str | None,
-    outdoor_c: Decimal | None,
     recovery_sample_count: int,
     recovery_samples: int | None,
 ) -> ZoneEmergencyBanner | None:
@@ -105,16 +104,24 @@ def zone_banner(
     if actuator_kind == emergency_actuator_plan.KIND_SWITCH and cycle_phase is not None:
         on_minutes = round((on_seconds or 0) / 60)
         off_minutes = round((off_seconds or 0) / 60)
-        source_label = (
-            "Kennlinie" if cycle_source == emergency_cycle.SOURCE_CURVE else "Festtakt"
+        # Kreuzreview von c1ae1c5: "Kennlinie"/"Festtakt" sind Betreiber-
+        # Fachbegriffe (sie stehen weiterhin in der Aktorentabelle der
+        # Betriebsseite, `control.html`) und gehören nicht in einen Text, den
+        # auch Bewohner/Kiosk zeigen. Die Außentemperaturabhängigkeit wird
+        # hier höchstens als "passend zur Außentemperatur" angedeutet, nie als
+        # Zahl oder Quellenname.
+        outdoor_text = (
+            ", passend zur Außentemperatur"
+            if cycle_source == emergency_cycle.SOURCE_CURVE
+            else ""
         )
-        outdoor_text = f", außen {outdoor_c} °C" if outdoor_c is not None else ""
         return ZoneEmergencyBanner(
             stage=stage,
             headline=f"Notbetrieb: Fußboden taktet {on_minutes}/{off_minutes} min",
             detail=(
-                f"Kein Temperaturwert verfügbar. Die Heizung läuft nach einem "
-                f"festen Takt ({source_label}{outdoor_text}), bis wieder ein "
+                "Der Raumfühler meldet gerade keinen Wert. Die Fußbodenheizung "
+                f"läuft deshalb in festen Abständen ({on_minutes} Min. an, "
+                f"{off_minutes} Min. aus{outdoor_text}), bis wieder ein "
                 "Messwert da ist."
             ),
         )

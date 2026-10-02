@@ -225,8 +225,12 @@ def test_source_comparison_average_excludes_echo_and_unusable_rows(session: Sess
             )
         )
 
-    _row(1, Decimal("20.0"), Decimal("19.0"), True, False)  # +1.0 K
-    _row(2, Decimal("20.0"), Decimal("19.5"), True, False)  # +0.5 K
+    # Thermostat misst zu warm (raw > wall_probe) -- die Konvention aus
+    # `domain/temperature_source_health.py::_corrected` ist `corrected = raw -
+    # offset_k`, also muss der Vorschlag hier positiv sein: `offset_k = raw -
+    # wall_probe`, damit `raw - offset_k` wieder auf den Wandfühler fällt.
+    _row(1, Decimal("20.0"), Decimal("21.0"), True, False)  # raw 1.0 K zu warm
+    _row(2, Decimal("20.0"), Decimal("20.5"), True, False)  # raw 0.5 K zu warm
     _row(3, Decimal("30.0"), Decimal("10.0"), True, True)  # echo, excluded
     _row(4, Decimal("30.0"), Decimal("10.0"), False, False)  # unusable, excluded
     session.flush()
@@ -239,6 +243,43 @@ def test_source_comparison_average_excludes_echo_and_unusable_rows(session: Sess
     assert comparison.mean_deviation_k == Decimal("0.75")
     assert comparison.suggested_offset_text is not None
     assert "+0.75" in comparison.suggested_offset_text
+
+
+def test_applying_the_suggested_offset_corrects_back_to_the_wall_probe(
+    session: Session,
+) -> None:
+    """Proves the sign is the right way round, not just that some number comes
+    out: taking the suggested offset and actually applying it the way
+    `domain/temperature_source_health.py::_corrected` does
+    (`corrected = raw - offset_k`) must land back on the wall probe's value --
+    the whole point of the calibration hint (Entscheidung R2)."""
+    settings = create_settings(session)
+    zone = create_zone(session, "Flur")
+    device = create_device(session, "thermostat-warm")
+    wall = Decimal("20.0")
+    raw = Decimal("21.0")  # thermostat reads 1 K too warm
+    session.add(
+        SensorFailureSourceComparison(
+            zone_id=zone.id,
+            zone_name=zone.display_name,
+            device_id=device.id,
+            device_name=device.display_name,
+            measured_at=NOW,
+            wall_probe_c=wall,
+            raw_c=raw,
+            corrected_c=raw,
+            echo=False,
+            usable=True,
+        )
+    )
+    session.flush()
+
+    view = zone_emergency_view(session, zone, NOW, settings)
+
+    comparison = view.comparisons[0]
+    assert comparison.mean_deviation_k == Decimal("1.0")
+    corrected = raw - comparison.mean_deviation_k
+    assert corrected == wall
 
 
 def test_source_comparison_is_empty_without_any_history(session: Session) -> None:
