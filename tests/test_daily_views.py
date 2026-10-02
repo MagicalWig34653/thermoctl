@@ -937,6 +937,39 @@ def test_nonsensical_control_parameters_stay_in_the_form(session: Session, clien
     assert zone.hysteresis_k is None and zone.min_on_seconds is None
 
 
+def test_an_invalid_emergency_setpoint_does_not_save_the_changed_hysteresis(
+    session: Session, client_als
+) -> None:
+    """One form, one "Speichern" button, but two domain calls underneath (control
+    parameters and the sensor-failure policy). They must be atomic: a rejected
+    emergency setpoint must not leave an already-committed hysteresis change
+    behind. Before the fix, `save_control_parameters` ran and was implicitly
+    committed by the request's session dependency even though the request then
+    returned the form with an error for the second part.
+    """
+    zone = _grundlage(session)
+    assert zone.hysteresis_k is None
+    assert zone.sensor_failure_enabled is False
+    client = client_als([("zone.manage", zone.id)])
+
+    response = client.post(
+        f"/zones/{zone.id}/parameters",
+        data={
+            "hysteresis_k": "0.50",
+            "sensor_failure_enabled": "on",
+            "sensor_failure_emergency_setpoint_c": "100",
+        },
+        headers=_csrf(client),
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    assert "Wert zwischen" in response.text
+    assert zone.hysteresis_k is None
+    assert zone.sensor_failure_enabled is False
+    assert 'value="0.50"' in response.text
+
+
 def test_an_override_with_two_decimal_places_is_refused(
     session: Session, client_als
 ) -> None:

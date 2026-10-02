@@ -430,6 +430,10 @@ def _parse_curve_points(form: FormData) -> tuple[CurvePoint, ...]:
     outdoor = form.getlist("curve_outdoor_c")
     on = form.getlist("curve_on_seconds")
     off = form.getlist("curve_off_seconds")
+    if not (len(outdoor) == len(on) == len(off)):
+        raise ControlError(
+            "curve_points", "Kennlinie: bitte überall gültige Zahlen angeben."
+        )
     points = []
     for outdoor_text, on_text, off_text in zip(outdoor, on, off, strict=True):
         if not (str(outdoor_text).strip() and str(on_text).strip() and str(off_text).strip()):

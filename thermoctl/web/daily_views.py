@@ -346,55 +346,60 @@ async def save_parameter(
             request, session, zone, control_parameters(session, zone), values, exc,
             principal=principal,
         )
-    # Set before `save_control_parameters` runs: that call also writes the audit
-    # entry, and its `object_type="zone_settings"` covers this field too -- a second,
-    # near-identical entry right after it would only make the log harder to read.
-    zone.solar_gain_factor = solar_gain_factor
-    save_control_parameters(
-        session, zone, checked, user_id=principal.user_id, token_id=principal.token_id
-    )
-    # `Zone.window_temp_drop_detection_enabled` is deliberately not a
-    # `ControlParameters` field (see `domain.zone_settings.set_window_temp_drop_detection`'s
-    # own docstring: it must never reach REST/MCP through `ControlParametersResponse`) --
-    # but the project owner reported this as its own form with its own "Speichern" button
-    # right below the one above, which reads as one settings page with two save actions.
-    # A user who flips this switch and presses the *other* button loses the change. The
-    # domain call stays separate (Grundsatz 6: the rule lives once, in `zone_settings.py`);
-    # only the HTTP entry point is merged, and the former standalone
-    # `/zones/{zone_id}/window-temp-drop-detection` route is removed -- it had no other
-    # caller (REST and MCP never exposed this field, by the same docstring's decision).
-    set_window_temp_drop_detection(
-        session,
-        zone,
-        values["window_temp_drop_detection_enabled"] != "",
-        user_id=principal.user_id,
-        token_id=principal.token_id,
-    )
-    # Notbetrieb bei Sensorausfall (Auftrag 8a) -- derselbe Kompromiss wie oben für
-    # `window_temp_drop_detection_enabled`: ein Formular, ein Speichern-Knopf, aber
-    # diese beiden Schreibvorgänge laufen zuletzt. Eine hier (selten) scheiternde
+    # Ein Formular, ein Speichern-Knopf, aber zwei getrennt validierte Domänenrufe
+    # (Regelparameter und Notbetriebsprofil). Beide Schreibvorgänge laufen deshalb
+    # in einer verschachtelten Transaktion (Savepoint): Scheitert die Notbetriebs-
     # Validierung (z. B. Festtakt des gewählten Profils zu kurz für die eben
-    # gespeicherten Mindestschaltzeiten dieser Zone) lässt die bereits geschriebenen
-    # Regelparameter oben stehen -- sichtbar als Fehler auf genau diesem Feld, nicht
-    # als stiller Datenverlust.
+    # gespeicherten Mindestschaltzeiten dieser Zone), rollt der Savepoint auch die
+    # schon gesetzten Regelparameter zurück -- nicht atomar zu speichern hätte sie
+    # stillschweigend committed, obwohl das Formular einen Fehler anzeigt.
     try:
-        save_sensor_failure_parameters(
-            session,
-            zone,
-            enabled=sensor_failure_enabled,
-            profile_id=sensor_failure_profile_id,
-            emergency_setpoint_c=sensor_failure_emergency_setpoint_c,
-            user_id=principal.user_id,
-            token_id=principal.token_id,
-        )
-        for assignment_id, offset in backup_offsets.items():
-            save_sensor_failure_backup_offset(
+        with session.begin_nested():
+            # Set before `save_control_parameters` runs: that call also writes the
+            # audit entry, and its `object_type="zone_settings"` covers this field
+            # too -- a second, near-identical entry right after it would only make
+            # the log harder to read.
+            zone.solar_gain_factor = solar_gain_factor
+            save_control_parameters(
+                session, zone, checked, user_id=principal.user_id, token_id=principal.token_id
+            )
+            # `Zone.window_temp_drop_detection_enabled` is deliberately not a
+            # `ControlParameters` field (see
+            # `domain.zone_settings.set_window_temp_drop_detection`'s own docstring:
+            # it must never reach REST/MCP through `ControlParametersResponse`) --
+            # but the project owner reported this as its own form with its own
+            # "Speichern" button right below the one above, which reads as one
+            # settings page with two save actions. A user who flips this switch and
+            # presses the *other* button loses the change. The domain call stays
+            # separate (Grundsatz 6: the rule lives once, in `zone_settings.py`);
+            # only the HTTP entry point is merged, and the former standalone
+            # `/zones/{zone_id}/window-temp-drop-detection` route is removed -- it
+            # had no other caller (REST and MCP never exposed this field, by the
+            # same docstring's decision).
+            set_window_temp_drop_detection(
                 session,
-                assignment_id,
-                offset,
+                zone,
+                values["window_temp_drop_detection_enabled"] != "",
                 user_id=principal.user_id,
                 token_id=principal.token_id,
             )
+            save_sensor_failure_parameters(
+                session,
+                zone,
+                enabled=sensor_failure_enabled,
+                profile_id=sensor_failure_profile_id,
+                emergency_setpoint_c=sensor_failure_emergency_setpoint_c,
+                user_id=principal.user_id,
+                token_id=principal.token_id,
+            )
+            for assignment_id, offset in backup_offsets.items():
+                save_sensor_failure_backup_offset(
+                    session,
+                    assignment_id,
+                    offset,
+                    user_id=principal.user_id,
+                    token_id=principal.token_id,
+                )
     except PolicyError as exc:
         field_map = {
             "profile_id": "sensor_failure_profile_id",

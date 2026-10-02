@@ -167,7 +167,7 @@
       errors.sensor_failure_profile_id, true) }}
     {{ number_field("sensor_failure_emergency_setpoint_c", "Eigener Notsollwert (°C)",
       values.sensor_failure_emergency_setpoint_c,
-      "Leer lässt die Zone den anlagenweiten Notsollwert erben (derzeit " ~ sensor_failure.emergency_setpoint_c ~ " °C" ~ (" aus der Anlagenvorgabe." if sensor_failure.setpoint_source != "Zone" else "."),
+      "Leer lässt die Zone den anlagenweiten Notsollwert erben (derzeit " ~ sensor_failure.emergency_setpoint_c ~ " °C" ~ (" aus der Anlagenvorgabe)." if sensor_failure.setpoint_source != "Zone" else ")."),
       errors.sensor_failure_emergency_setpoint_c, "0.5", "5", "30") }}
     {% if backup_offsets %}
     <p class="t-quiet small mb-2 mt-3">

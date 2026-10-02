@@ -1102,6 +1102,39 @@ def test_an_invalid_curve_point_value_on_the_settings_page_names_its_field(
     assert "Kennlinie" in response.text
 
 
+def test_mismatched_curve_point_field_counts_on_the_settings_page_are_rejected(
+    client_als: ClientBuilder, session: Session
+) -> None:
+    """`_parse_curve_points` zips the three repeated field lists -- a browser that
+    sends a different number of `curve_on_seconds` than `curve_outdoor_c` entries
+    (e.g. a row added/removed by JavaScript going out of sync) used to raise an
+    unhandled `ValueError` from `zip(..., strict=True)` -> HTTP 500. It must land
+    on the same form-error path as any other invalid curve, not a crash.
+    """
+    create_settings(session)
+    source(session, "web")
+    client = client_als(ALL_PERMISSIONS)
+
+    response = client.post(
+        "/settings/sensor-failure",
+        data={
+            "fixed_on_seconds": "600",
+            "fixed_off_seconds": "1200",
+            "recovery_seconds": "60",
+            "recovery_samples": "2",
+            "warm_restart_hysteresis_k": "1",
+            "emergency_setpoint_c": "16",
+            "curve_outdoor_c": ["-10", "0", "15"],
+            "curve_on_seconds": ["1200", "600"],
+            "curve_off_seconds": ["600", "1200", "1800"],
+        },
+        headers=_csrf(client),
+        follow_redirects=False,
+    )
+    assert response.status_code == 200
+    assert "Kennlinie" in response.text
+
+
 def test_a_non_numeric_top_level_sensor_failure_field_on_the_settings_page_is_rejected(
     client_als: ClientBuilder, session: Session
 ) -> None:
