@@ -233,10 +233,14 @@ nebeneinander ab knapp 48 rem, darunter einspaltig.
     {% set setpoint = setpoints[zone.id] %}
     {% set entscheidung = decisions.get(zone.id) %}
     {% set override = overrides.get(zone.id) %}
+    {% set notbetrieb = emergency_banners.get(zone.id) %}
     <article class="tc-zone">
 
         <div>
             <a class="tc-zone-name" href="{{ url_prefix }}/zones/{{ zone.id }}/schedule">{{ zone.display_name }}</a>
+            {% if notbetrieb %}
+            <div class="tc-chip tc-chip-warning mt-1" title="{{ notbetrieb.detail }}">{{ notbetrieb.headline }}</div>
+            {% endif %}
             <div class="mt-1 d-flex flex-wrap gap-1">
                 {% if entscheidung and entscheidung.would_heat %}
                 <span class="tc-chip tc-chip-warm"><span class="tc-dot"></span>Heizentscheidung</span>

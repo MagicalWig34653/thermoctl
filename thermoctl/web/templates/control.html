@@ -94,6 +94,7 @@
     {% set state = states.get(zone.id) %}
     {% set entscheidung = decisions.get(zone.id) %}
     {% set soll = setpoints.get(zone.id) %}
+    {% set nb = emergency.get(zone.id) %}
     <article class="tc-zone tc-zone-operation">
         <div>
             <a class="tc-zone-name" href="{{ url_prefix }}/zones/{{ zone.id }}/schedule">{{ zone.display_name }}</a>
@@ -133,6 +134,82 @@
             {% endif %}
         </div>
     </article>
+    {% if nb and (nb.stage != "normal" or nb.comparisons) %}
+    <article class="tc-panel p-3 mb-3" aria-label="Notbetrieb {{ zone.display_name }}">
+        <p class="t-label mb-2">Notbetrieb — {{ zone.display_name }}</p>
+        <div class="d-flex flex-wrap gap-3 small">
+            <div><span class="t-quiet">Stufe</span><br>{{ nb.stage_label }}</div>
+            {% if nb.active_source_device_name %}
+            <div><span class="t-quiet">Aktive Quelle</span><br>{{ nb.active_source_device_name }}</div>
+            {% endif %}
+            {% if nb.sensor_timeout_seconds %}
+            <div><span class="t-quiet">Sensor-Timeout</span><br>{{ nb.sensor_timeout_seconds }} s</div>
+            {% endif %}
+            {% if nb.outdoor %}
+            <div><span class="t-quiet">Außenwertqualität</span><br>
+                {{ nb.outdoor.status }}{% if nb.outdoor.temperature_c is not none %} ({{ nb.outdoor.temperature_c|grad }} °C){% endif %}
+            </div>
+            {% endif %}
+            {% if nb.stage == "rueckkehrpruefung" %}
+            <div><span class="t-quiet">Rückkehrfortschritt</span><br>{{ nb.recovery_sample_count }}/{{ nb.recovery_samples or 2 }} Messwerte</div>
+            {% endif %}
+            <div><span class="t-quiet">Sendefreigabe</span><br>
+                {% if settings.control_armed and sending_allowed %}scharf{% else %}Trockenlauf{% endif %}
+            </div>
+        </div>
+        {% if nb.actuators %}
+        {#
+        `.tc-stack-table`, nicht nur `.table-responsive`: ein scrollender
+        Rahmen allein hilft nicht, solange Bootstraps `.table { width: 100% }`
+        die Spalten unter 768px auf das schmale Panel presst -- genau dann
+        greift das globale `overflow-wrap: anywhere` und bricht Wörter mitten
+        im Wort (gefunden von `browser_tests/test_mobile_word_wrap.py` bei
+        390px). `.tc-stack-table` stapelt die Zeilen dort stattdessen als
+        Karten, `data-label` liefert die Beschriftung je Zelle.
+        #}
+        <div class="table-responsive mt-2">
+            <table class="table table-sm align-middle tc-stack-table" aria-label="Aktoren im Notbetrieb">
+                <thead><tr><th scope="col">Gerät</th><th scope="col">Art</th><th scope="col">Takt-Phase</th><th scope="col">Frist</th><th scope="col">Übergabe</th><th scope="col">Rückstellung</th></tr></thead>
+                <tbody>
+                {% for actuator in nb.actuators %}
+                <tr>
+                    <td data-label="Gerät">{{ actuator.device_name }}</td>
+                    <td data-label="Art">{{ "Thermostat" if actuator.kind == "thermostat" else "Schalter" }}</td>
+                    <td data-label="Takt-Phase">
+                        {% if actuator.phase %}
+                        {{ "Ein" if actuator.phase == "ein" else "Aus" }}
+                        {% if actuator.cycle_source %} ({{ "Kennlinie" if actuator.cycle_source == "kennlinie" else "Festtakt" }}){% endif %}
+                        {% else %}<span class="t-quiet">–</span>{% endif %}
+                    </td>
+                    <td data-label="Frist">{% if actuator.phase_deadline_at %}{{ actuator.phase_deadline_at|age }}{% else %}<span class="t-quiet">–</span>{% endif %}</td>
+                    <td data-label="Übergabe">{{ actuator.handover_status_text }}</td>
+                    <td data-label="Rückstellung">{{ actuator.restore_status_text }}</td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+        {% if nb.comparisons %}
+        <div class="table-responsive mt-2">
+            <p class="t-label mb-1">Ersatzquelle ↔ Wandfühler (letzte Tage)</p>
+            <table class="table table-sm align-middle tc-stack-table" aria-label="Quellenvergleich">
+                <thead><tr><th scope="col">Thermostat</th><th scope="col">Messwerte</th><th scope="col">Mittlere Abweichung</th><th scope="col">Vorschlag</th></tr></thead>
+                <tbody>
+                {% for comparison in nb.comparisons %}
+                <tr>
+                    <td data-label="Thermostat">{{ comparison.device_name }}</td>
+                    <td data-label="Messwerte">{{ comparison.sample_count }}</td>
+                    <td data-label="Mittlere Abweichung">{% if comparison.mean_deviation_k is not none %}{{ comparison.mean_deviation_k }} K{% else %}–{% endif %}</td>
+                    <td data-label="Vorschlag">{{ comparison.suggested_offset_text or "–" }}</td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+    </article>
+    {% endif %}
     {% endfor %}
 </div>
 <p class="t-quiet small">

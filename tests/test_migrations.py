@@ -958,11 +958,14 @@ def test_sensor_failure_upgrade_preserves_installation(
     # `actuator_emergency_state` plus the `decided_no_command` command
     # outcome), then `b2e6f1a9c374` (Auftrag 7b follow-up, Projektinhaber-
     # Entscheidung: `handover_previous_operating_mode`/`restore_attempted_at`/
-    # `restore_result` plus the `restore` action) -- every time the downgrade
-    # target stayed the absolute pre-sensor-failure revision below (never
-    # "-1"), so the check keeps its original meaning regardless of how many
-    # migrations now sit on top of it.
-    assert scripts.get_heads() == ["b2e6f1a9c374"]
+    # `restore_result` plus the `restore` action), then `c3f7a92e8d15`
+    # (Auftrag 8b: `ended_reason_code` on `sensor_failure_episode`, so the
+    # notification dispatch can tell a real recovery apart from
+    # `REASON_DEAKTIVIERT`) -- every time the downgrade target stayed the
+    # absolute pre-sensor-failure revision below (never "-1"), so the check
+    # keeps its original meaning regardless of how many migrations now sit
+    # on top of it.
+    assert scripts.get_heads() == ["c3f7a92e8d15"]
     for args in (("downgrade", "base"), ("upgrade", "d31f6a04c7e9")):
         result = _alembic(migrations_database_url, *args)
         assert result.returncode == 0, result.stderr
@@ -1225,5 +1228,86 @@ def test_handover_due_signalled_migration_upgrade_and_downgrade(
                 {"zone_id": zone_id},
             ).one()
             assert row == ("normal", 0)
+    finally:
+        db_engine.dispose()
+
+
+@pytest.mark.migration
+def test_ended_reason_code_migration_upgrade_and_downgrade(
+    migrations_database_url: str,
+) -> None:
+    """`ended_reason_code` (Auftrag 8b) lets the notification dispatch tell a
+    real recovery apart from `REASON_DEAKTIVIERT` after the episode closed.
+
+    Covers: a pre-existing closed episode gets the column as `NULL` (not a
+    guessed value -- Grundsatz 1, "kein Deaktivierungsgrund bekannt" is the
+    honest reading of a row that predates this migration), and downgrading by
+    exactly one step removes only this column -- the rest of
+    `sensor_failure_episode` and its sibling tables stay intact.
+    """
+    from datetime import datetime
+
+    import sqlalchemy as sa
+
+    # `migrations_database_url` is session-scoped and shared with every other
+    # migration test -- start from an empty schema, not whatever an earlier
+    # test in the session left behind.
+    reset = _alembic(migrations_database_url, "downgrade", "base")
+    assert reset.returncode == 0, reset.stderr
+    up_to_previous = _alembic(migrations_database_url, "upgrade", "b2e6f1a9c374")
+    assert up_to_previous.returncode == 0, up_to_previous.stderr
+
+    db_engine = create_engine(migrations_database_url)
+    try:
+        with db_engine.begin() as connection:
+            connection.execute(
+                text(
+                    "INSERT INTO sensor_failure_episode (zone_name, started_at, ended_at, "
+                    "trigger_kind, profile_version, notification_state, fixed_on_seconds, "
+                    "fixed_off_seconds, recovery_seconds, recovery_samples, "
+                    "warm_restart_hysteresis_k, emergency_setpoint_c, sensor_timeout_seconds) "
+                    "VALUES ('Bestand', :started, :started, 'alle_quellen', 1, 'gemeldet', "
+                    "600, 1200, 60, 2, 1, 20, 1800)"
+                ),
+                {"started": datetime(2026, 9, 28)},
+            )
+            episode_id = connection.execute(
+                sa.text("SELECT id FROM sensor_failure_episode")
+            ).scalar_one()
+
+        up = _alembic(migrations_database_url, "upgrade", "c3f7a92e8d15")
+        assert up.returncode == 0, up.stderr
+        with db_engine.connect() as connection:
+            row = connection.execute(
+                text(
+                    "SELECT ended_reason_code FROM sensor_failure_episode WHERE id = :id"
+                ),
+                {"id": episode_id},
+            ).one()
+            assert row == (None,)
+            columns_after_upgrade = {
+                column["name"]
+                for column in sa.inspect(connection).get_columns("sensor_failure_episode")
+            }
+            assert "ended_reason_code" in columns_after_upgrade
+
+        down = _alembic(migrations_database_url, "downgrade", "-1")
+        assert down.returncode == 0, down.stderr
+        with db_engine.connect() as connection:
+            columns_after_downgrade = {
+                column["name"]
+                for column in sa.inspect(connection).get_columns("sensor_failure_episode")
+            }
+            assert "ended_reason_code" not in columns_after_downgrade
+            # Only the one column disappeared -- the row and its other
+            # columns, and the table itself, are still there.
+            row = connection.execute(
+                text(
+                    "SELECT zone_name, notification_state FROM sensor_failure_episode "
+                    "WHERE id = :id"
+                ),
+                {"id": episode_id},
+            ).one()
+            assert row == ("Bestand", "gemeldet")
     finally:
         db_engine.dispose()

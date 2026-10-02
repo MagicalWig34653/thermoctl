@@ -32,8 +32,15 @@ from thermoctl.db.models.identity import User
 from thermoctl.db.models.lookup import PERMISSIONS
 from thermoctl.db.models.operations import AuditEvent
 from thermoctl.db.models.schedule import SchedulePoint
+from thermoctl.db.models.sensor_failure import (
+    ActuatorEmergencyState,
+    SensorFailureEpisode,
+    SensorFailureSourceComparison,
+    ZoneSensorFailureState,
+)
 from thermoctl.db.models.vacation import Vacation
 from thermoctl.db.models.zone import SetpointMode, ZoneSetpoint
+from thermoctl.domain import emergency_operation
 from thermoctl.domain.absence import start_absence
 from thermoctl.domain.controller import set_binding
 from thermoctl.domain.controller_channels import configure_channel
@@ -157,6 +164,81 @@ def seed_demo(session: Session, password: str) -> dict[str, str | int]:
                 detail="Tag ab 06:00, Nacht ab 22:00",
             )
         )
+    # Auftrag 8b: one zone demonstrating the Notbetrieb display -- "Wohnzimmer"
+    # (`zones[0]`), reused as the kiosk `kiosk_detail_zone` target so the same
+    # scenario shows on start/tenant/kiosk/control without a second zone.
+    notbetrieb_zone = zones[0]
+    notbetrieb_actuator_assignment = session.scalar(
+        select(ZoneDevice).where(
+            ZoneDevice.zone_id == notbetrieb_zone.id,
+            ZoneDevice.device_role_id == role(session, "actuator").id,
+        )
+    )
+    assert notbetrieb_actuator_assignment is not None
+    notbetrieb_episode = SensorFailureEpisode(
+        zone_id=notbetrieb_zone.id,
+        zone_name=notbetrieb_zone.display_name,
+        started_at=now - timedelta(hours=2),
+        trigger_kind=emergency_operation.TRIGGER_ALLE_QUELLEN,
+        profile_version=1,
+        notification_state="gemeldet",
+        fixed_on_seconds=600,
+        fixed_off_seconds=1200,
+        recovery_seconds=120,
+        recovery_samples=2,
+        warm_restart_hysteresis_k=Decimal("1.0"),
+        emergency_setpoint_c=Decimal("20"),
+        sensor_timeout_seconds=1800,
+    )
+    session.add(notbetrieb_episode)
+    session.flush()
+    session.add(
+        ZoneSensorFailureState(
+            zone_id=notbetrieb_zone.id,
+            episode_id=notbetrieb_episode.id,
+            stage=emergency_operation.STAGE_NOTBETRIEB,
+            failure_started_at=now - timedelta(hours=2),
+            handover_due_signalled=True,
+        )
+    )
+    session.add(
+        ActuatorEmergencyState(
+            zone_device_id=notbetrieb_actuator_assignment.id,
+            episode_id=notbetrieb_episode.id,
+            armed_episode_id=notbetrieb_episode.id,
+            phase="ein",
+            phase_deadline_at=now + timedelta(minutes=8),
+            on_seconds=600,
+            off_seconds=1800,
+            cycle_source="festtakt",
+            warm_locked=False,
+            simulated_phase="ein",
+            simulated_phase_deadline_at=now + timedelta(minutes=8),
+            simulated_on_seconds=600,
+            simulated_off_seconds=1800,
+            simulated_cycle_source="festtakt",
+            simulated_warm_locked=False,
+            profile_version=1,
+        )
+    )
+    # A few days of Ersatzquelle<->Wandfühler comparison history -- shows the
+    # calibration hint on the Betriebsseite without needing a second zone.
+    for day in range(1, 5):
+        session.add(
+            SensorFailureSourceComparison(
+                zone_id=notbetrieb_zone.id,
+                zone_name=notbetrieb_zone.display_name,
+                device_id=notbetrieb_actuator_assignment.device_id,
+                device_name="Heizkreis Wohnzimmer",
+                measured_at=now - timedelta(days=day),
+                wall_probe_c=Decimal("20.0"),
+                raw_c=Decimal(str(19.0 + day * 0.1)),
+                corrected_c=Decimal(str(19.0 + day * 0.1)),
+                echo=False,
+                usable=True,
+            )
+        )
+
     controller = create_device(session, "0x00124b00deadbeef")
     controller.display_name = "Wandregler Wohnzimmer"
     controller.model = "Demo-Regler R1"

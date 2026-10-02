@@ -279,6 +279,41 @@ Zone regelt in diesem Fall unverändert mit diesem Wert weiter, es ist kein Ausf
  "updated_at": "2026-08-29T08:15:02"}
 ```
 
+### `GET /api/v1/zones/{zone_id}/emergency-state` — Notbetrieb-Zustand lesen
+
+Recht: `zone.read`, dieselbe Zonensicht wie bei `/state` oben — `404`, wenn die Zone
+nicht sichtbar ist. **Nur lesend.** Liefert Stufe (`normal`, `ersatzquelle`,
+`notbetrieb`, `rueckkehrpruefung`), aktive Ersatzquelle, Rückkehrfortschritt,
+Außenwertqualität, je Aktor Takt-Phase/-Frist und Übergabe-/Rückstellungsstatus
+(`"versucht, Ergebnis unbekannt"` ist ein eigener, sichtbarer Zustand, kein
+Fehlschlag) sowie die Ersatzquelle-gegen-Wandfühler-Vergleichsauswertung der letzten
+Tage samt Ausgleichsvorschlag (`mean_deviation_k = raw − wall_probe`, dieselbe
+Richtung wie `temperature_backup_offset_k`: ein Thermostat, das 1 K zu warm misst,
+bekommt `+1.0 K` vorgeschlagen, denn `korrigiert = raw − offset_k` muss wieder auf
+den Wandfühler fallen). Dieselbe Datengrundlage wie die Betriebsseite
+(`services/emergency_state.py`) — Grundsatz 6.
+
+```json
+{"zone_id": 1, "zone_name": "Wohnzimmer", "stage": "notbetrieb",
+ "stage_label": "Notbetrieb", "episode_id": 7,
+ "failure_started_at": "2026-08-29T06:00:00", "active_source_device_id": null,
+ "active_source_device_name": null, "source_measured_at": null,
+ "sensor_timeout_seconds": 1800, "recovery_started_at": null,
+ "recovery_sample_count": 0, "recovery_samples": 2,
+ "emergency_setpoint_c": "20", "outdoor_c": "-2.5", "outdoor_status": "ok",
+ "banner_headline": "Notbetrieb: Fußboden taktet 10/20 min",
+ "banner_detail": "Kein Temperaturwert verfügbar. …",
+ "actuators": [{"device_id": 4, "device_name": "Heizkreis Wohnzimmer",
+   "kind": "switch", "phase": "ein", "phase_deadline_at": "2026-08-29T06:10:00",
+   "on_seconds": 600, "off_seconds": 1200, "cycle_source": "festtakt",
+   "handover_attempted": false, "handover_result": null,
+   "handover_status_text": "nicht versucht", "restore_attempted": false,
+   "restore_result": null, "restore_status_text": "nicht versucht"}],
+ "comparisons": [{"device_id": 9, "device_name": "Thermostat Küche",
+   "sample_count": 4, "mean_deviation_k": "0.75",
+   "suggested_offset_text": "vorgeschlagener Ausgleichswert ≈ +0.75 K"}]}
+```
+
 ### `GET /api/v1/devices` — Geräte auflisten
 
 Recht: `device.read`. Liefert Anzeigename, externe Kennung, Anbindung, Modell,
@@ -305,8 +340,14 @@ Protokoll, das sich über eine Schnittstelle ändern liesse, wäre keins.
 [{"id": 42, "sent_at": "2026-08-29T08:15:02Z", "source": "system",
   "zone": "wohnzimmer", "device": "ventil-wohnzimmer", "command": "setpoint",
   "payload": "{\"occupied_heating_setpoint\": 21.0}", "outcome": "executed",
-  "error": null, "reason": "Zeitplan"}]
+  "error": null, "reason": "Zeitplan", "entry_kind": "befehl", "simulated": false}]
 ```
+
+`entry_kind` unterscheidet einen echten Sendeversuch (`"befehl"`) von einer
+Notbetriebsentscheidung ohne eigenen Sendeversuch (`"entscheidung"`, z. B. „bewusst
+nicht gesendet", Übergabe, Rückstellung — aus `actuator_decision`, `action != "normal"`).
+`simulated` ist für `"befehl"`-Zeilen immer `false` und spiegelt für
+`"entscheidung"`-Zeilen, ob sie aus dem Trockenlauf stammen.
 
 | Parameter | Bedeutung |
 |---|---|
