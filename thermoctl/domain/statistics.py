@@ -313,6 +313,16 @@ def heating_periods(
     hours falls out on its own once bucketing goes by local date instead of a fixed
     24-hour span -- the extra or missing hour simply lands, correctly, in whichever
     local calendar day it actually occurred on.
+
+    `id` is a deliberate third sort key, not an arbitrary tie-breaker: a zone can have
+    two rows with the same `decided_at` (Notbetrieb Rückkehr, Auftrag 7b -- the
+    synthetic recovery marker `shadow_run._seed_recovery_phase_marker` inserts shares
+    its cycle's timestamp exactly with the natural `decide()` row written moments
+    later). Without `id`, the database is free to return either one first, and since
+    the loop below only ever compares a row against its immediate predecessor, which
+    one comes first changes which `would_heat` the *other* is diffed against --
+    non-deterministic heating duration for that one cycle. `id` orders them the same
+    way they were inserted, which is the only order that is itself deterministic.
     """
     maximum_interval = max(cycle_seconds, 1) * GAP_FACTOR
     eimer: dict[int, dict[date, int]] = defaultdict(lambda: defaultdict(int))
@@ -332,7 +342,7 @@ def heating_periods(
             ShadowDecision.decided_at >= start_at,
             ShadowDecision.decided_at <= bis,
         )
-        .order_by(ShadowDecision.zone_id, ShadowDecision.decided_at)
+        .order_by(ShadowDecision.zone_id, ShadowDecision.decided_at, ShadowDecision.id)
     ):
         last = previous.get(zone_id)
         if last is not None:

@@ -123,6 +123,7 @@
       "## Fenster: Frostschutz gewinnt, EIN/AUS-Aktoren schalten nicht ab",
       "## Was geschaltet wird — genau",
       "## v0.8.2 -- die Anlage schaltete nichts: der Anlaufriegel ging nie mehr auf",
+      "(`armed_episode_id` unverändert), sobald scharf geschaltet wird genau ein Versuch.",
       "(nicht-selbstregelnde) Schaltaktoren — genau die Bedingung für",
       "(wo vorhanden) an Zigbee2MQTT-Thermostatventile ohne eigene Regelung",
       "**Befund (A):** Gate-Resets (Fenster/Frost/Sensor/Ventilschutz) erhalten",

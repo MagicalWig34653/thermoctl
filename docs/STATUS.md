@@ -2,6 +2,79 @@
 
 Letzte Aktualisierung: 2026-10-02.
 
+## 0.11.0: Notbetrieb-Versandweg (Auftrag 7b) — Kreuzreview-Nachbesserung: 100 % Abdeckung
+
+Kreuzreview von Commit `4c2ed1a` bestätigte den Sicherheitskern (inkl. Handmutanten),
+blockierte aber bei **99,71 % Testabdeckung** (CI verlangt 100 %) — der vorherige Bericht
+hatte das nicht zitiert. Geschlossen, ohne `pragma: no cover`, durch gezielte Tests statt
+Ausnahmen:
+
+- **Rückstellung mit unbekanntem Vorwert** (`plan_restore`, `_send_emergency_handover`):
+  kein Schreibversuch, genau ein `decided_no_command`-Protokolleintrag.
+- **Rückstellung im Trockenlauf**: null Nachrichten, der Einmal-Versuch bleibt offen
+  (`armed_episode_id` unverändert), sobald scharf geschaltet wird genau ein Versuch.
+- **Gescheiterte Rückstellung**: sichtbares `failed`-Ergebnis, kein zweiter Versuch.
+- **Schaltausgang über Meross** (inkl. `invalidate_meross_session` bei Broker-Fehler) und
+  über eine nicht verdrahtete Anbindung — der scharfe Notbetriebspfad nutzt denselben
+  Dispatch wie der gewöhnliche Pfad, nicht eine zweite, parallele Umsetzung.
+- **Direkte Adaptertests** für `send_emergency_handover`/`send_emergency_restore` in
+  `tests/test_actuators.py`, analog zu `Zigbee2MqttThermostat.switching()` (Bereichsprüfung,
+  Trockenlauf, Peer-Fehler, abgelehnte Veröffentlichung).
+
+**Befund 2 — Absturz zwischen Markierung und Versand (Projektinhaber-Vorgabe, getestet,
+Verhalten dabei geklärt):** Ein Prozessabsturz zwischen dem Committen von
+`handover_attempted_at`/`restore_attempted_at` und dem tatsächlichen Versandergebnis löst in
+**keinem** Fall einen zweiten Versand aus — das ist die Eigenschaft, auf die es ankommt, und
+sie gilt nachweislich unabhängig vom Ausgang. Die *Sichtbarkeit* des unaufgelösten Zustands
+unterscheidet sich aber zwischen Übergabe und Rückstellung: Die Übergabe bleibt sichtbar
+(`handover_attempted_at` gesetzt, `handover_result` `None`), solange die Episode offen ist
+(die Zone also `notbetrieb`/`rueckkehrpruefung` bleibt) — das kann Stunden sein. Die
+Rückstellung dagegen wird genau in dem einen Zyklus aufgelöst, in dem die Zone `normal`
+wird; der nächste Durchlauf von `_send_emergency_actuators`s „not active"-Zweig sieht
+`restore_attempted_at` bereits gesetzt, verweigert korrekt einen zweiten Versuch und räumt
+die Zuordnung dabei als „abgeschlossen" weg — ohne zwischen „erfolgreich", „fehlgeschlagen"
+und „abgestürzt, unbekannt" zu unterscheiden, weil `restore_attempted_at` allein das Signal
+ist. Die dauerhafte Spur ist dafür `actuator_decision` (`simulated=False`, bei jedem Aufruf
+geschrieben, unabhängig davon, ob die Zuordnung danach geräumt wird) — nicht die Zeile in
+`actuator_emergency_state` selbst. Getestet in
+`tests/test_publishing_notbetrieb_versand.py::
+test_restore_interrupted_between_marker_and_send_is_not_retried`, mit genau dieser
+Begründung im Test selbst. Keine Code-Änderung nötig, keine Sicherheitslücke (die einzige
+Garantie, die zählt — kein zweiter Versand — hält) — hier nur festgehalten, falls der
+kürzere Sichtbarkeitszeitraum bei der Rückstellung einmal überrascht.
+
+**Kleinigkeit — `domain/statistics.py::heating_periods` fehlender Tie-Breaker:** Zwei
+`shadow_decision`-Zeilen mit identischem `decided_at` (die synthetische Rückkehr-Markierung
+aus Blocker 1 und die natürliche Entscheidung desselben Zyklus) hatten keine garantierte
+Verarbeitungsreihenfolge. `order_by` um `ShadowDecision.id` ergänzt — Einfügereihenfolge
+entscheidet jetzt, nicht der Zufall der Datenbank. Test
+`tests/test_statistics.py::test_two_decisions_at_the_same_instant_are_ordered_by_id_not_by_chance`
+mit zwei Zonen (umgekehrte Einfügereihenfolge je Zone), um zu belegen, dass das Ergebnis der
+Reihenfolge folgt. **Gezielter Handmutant (Entfernen des `id`-Tie-Breakers) überlebt auf
+SQLite** — erwiesen äquivalent für diesen Fall: SQLite liefert ohne `ORDER BY` auf dieser
+kleinen, indexlosen Tabelle in der Praxis bereits Einfügereihenfolge zurück, sodass der
+Mutant hier zufällig dasselbe Ergebnis liefert. Die Korrektur bleibt trotzdem richtig — sie
+macht aus einem nirgends zugesicherten Zufallsverhalten eine garantierte Eigenschaft, nur ist
+das auf SQLite mit einem reinen Unit-Test nicht von außen unterscheidbar. Nicht als
+`# pragma: no cover` markiert, weil die Zeile selbst (der dritte `order_by`-Parameter) beim
+normalen SQLite-Testlauf durchaus ausgeführt wird (100 % Abdeckung bleibt unberührt) — nur der
+gezielte Mutationstest dieser einen Zeile ist auf SQLite nicht aussagekräftig.
+
+Geprüft (dieser Nachbesserungsschritt): `ruff check .` sauber, `mypy thermoctl` sauber (132
+Dateien). SQLite (eigene Datei) **und** MariaDB (`nb_versand`), je mit
+`--cov-fail-under=100`, junitxml ausgezählt: SQLite **5322 Tests, 0 Fehler, 0 Fehlschläge,
+1 übersprungen, Testabdeckung 100,00 %**; MariaDB **5322 Tests, 0 Fehler, 0 Fehlschläge
+(der einzige Fehlschlag unterwegs war der erwartete, vor dem letzten Schritt noch offene
+Vokabeltest — danach behoben), 1 übersprungen, Testabdeckung ebenfalls 100,00 %** (beide:
+`Required test coverage of 100% reached. Total coverage: 100.00%`). Drei weitere gezielte
+Handmutanten
+(Prüfsumme und `git diff --stat` vor und nach jedem kontrolliert): Meross-Sitzungs-
+Invalidierung invertiert (`and not result.session_fault` statt `and result.session_fault`)
+→ von 1 Test erkannt; nicht verdrahtete Anbindung mit vertauschtem
+`SUPPRESSED`/`FAILED` → von 1 Test erkannt; der oben beschriebene Tie-Breaker-Mutant
+(äquivalent auf SQLite, s.o.). Alle drei einzeln zurückgesetzt, Prüfsumme danach jeweils
+wieder identisch zum Ausgangsstand.
+
 ## 0.11.0 in Arbeit: Notbetrieb-Versandweg (Auftrag 7b) — beide Blocker entschieden und umgesetzt
 
 Scharfer Versand jetzt in `thermoctl/services/publishing.py`: eine neue

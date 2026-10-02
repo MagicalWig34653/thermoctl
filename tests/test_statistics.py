@@ -121,6 +121,95 @@ def test_days_are_kept_separate(session: Session) -> None:
     assert by_day[(START + timedelta(days=1)).date()] == 60
 
 
+def test_two_decisions_at_the_same_instant_are_ordered_by_id_not_by_chance(
+    session: Session,
+) -> None:
+    """Notbetrieb Rückkehr (Auftrag 7b) can leave two `shadow_decision` rows
+    with the exact same `decided_at` -- the synthetic recovery marker
+    `shadow_run._seed_recovery_phase_marker` inserts, and the natural
+    `decide()` row written moments later in the same cycle. Without an
+    explicit `id` tie-breaker in `heating_periods()`'s `order_by`, which of
+    the two the database hands back first is undefined, and since the loop
+    only ever compares a row against its immediate predecessor, that choice
+    changes which `would_heat` governs the *next* interval -- a result that
+    would differ from one run to the next for no reason visible in the data
+    itself.
+
+    This proves the opposite is true now: whichever row was inserted first
+    at the tied instant is also the one whose state is superseded by the
+    time the next, later row is processed -- the same row ordering that
+    lets the real recovery marker (inserted first) safely be overtaken by
+    the real decision (inserted after it) without manipulating `decided_at`
+    itself.
+    """
+    zone = create_zone(session, "gleichzeitig")
+    tied_at = START + timedelta(minutes=1)
+    later_at = START + timedelta(minutes=2)
+
+    def _one(decided_at: datetime, heats: bool) -> None:
+        from decimal import Decimal
+
+        session.add(
+            ShadowDecision(
+                decided_at=decided_at,
+                zone_id=zone.id,
+                temperature_c=Decimal("20.0"),
+                setpoint_c=Decimal("21.0"),
+                setpoint_reason="Zeitplan",
+                would_heat=heats,
+                previous_would_heat=None,
+                outcome_code="ok",
+                reason="Test",
+            )
+        )
+        session.flush()  # each gets its own, increasing id, in call order
+
+    # Case 1: the "marker" (True) is inserted before the "natural" row
+    # (False) at the same instant -- the natural row must win going forward,
+    # so the 1min->2min gap counts as not heating (0s).
+    _one(START, False)
+    _one(tied_at, True)
+    _one(tied_at, False)
+    _one(later_at, False)
+    result = heating_periods(
+        session, [zone.id], START, later_at + timedelta(minutes=1), cycle_seconds=60
+    )
+    assert result[zone.id].seconds_total == 0
+
+    # Case 2 (a second zone, so the two cases cannot interfere with each
+    # other's history): reversing the insertion order at the tied instant
+    # reverses which state wins going forward -- proving the result tracks
+    # `id`, not an accident of `decided_at` alone.
+    zone2 = create_zone(session, "gleichzeitig-umgekehrt")
+
+    def _one2(decided_at: datetime, heats: bool) -> None:
+        from decimal import Decimal
+
+        session.add(
+            ShadowDecision(
+                decided_at=decided_at,
+                zone_id=zone2.id,
+                temperature_c=Decimal("20.0"),
+                setpoint_c=Decimal("21.0"),
+                setpoint_reason="Zeitplan",
+                would_heat=heats,
+                previous_would_heat=None,
+                outcome_code="ok",
+                reason="Test",
+            )
+        )
+        session.flush()
+
+    _one2(START, False)
+    _one2(tied_at, False)
+    _one2(tied_at, True)
+    _one2(later_at, False)
+    result2 = heating_periods(
+        session, [zone2.id], START, later_at + timedelta(minutes=1), cycle_seconds=60
+    )
+    assert result2[zone2.id].seconds_total == 60
+
+
 def test_a_zone_without_a_log_still_appears_with_zeros(session: Session) -> None:
     """Otherwise a zone would drop out of the list as soon as it had never
     heated -- and it would look deleted instead of merely cold."""

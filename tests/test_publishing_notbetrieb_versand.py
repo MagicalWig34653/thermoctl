@@ -57,6 +57,7 @@ from thermoctl.db.models.zone import Zone
 from thermoctl.domain import emergency_actuator_plan, emergency_operation
 from thermoctl.domain.controller_channels import ControllerChannelError, configure_channel
 from thermoctl.services import publishing, shadow_run
+from thermoctl.services.meross_session import MerossSessionCache
 from thermoctl.services.publishing import PublicationState
 
 NOW = datetime(2026, 10, 1, 12, 0, 0)
@@ -81,6 +82,26 @@ class _FakeClient:
             if topic in self.fail_topics:
                 return False
         return True
+
+
+class _MerossTransportStub:
+    """Stands in for a signed-in `MerossCommandTransport` -- answers `SETACK`
+    like a real socket unless told to fail, same double
+    `tests/test_actuator_switches.py::MerossTransportStub` uses for the
+    ordinary switch path."""
+
+    def __init__(self, *, method: str = "SETACK", errors: Exception | None = None) -> None:
+        self.calls: list[tuple[str, str, str, dict[str, object]]] = []
+        self.method = method
+        self.errors = errors
+
+    async def send(
+        self, device_uuid: str, namespace: str, method: str, payload: dict[str, object]
+    ) -> dict[str, object]:
+        self.calls.append((device_uuid, namespace, method, dict(payload)))
+        if self.errors is not None:
+            raise self.errors
+        return {"header": {"method": self.method}, "payload": {}}
 
 
 def _profile(session: Session, *, fixed_on: int = 20, fixed_off: int = 30) -> int:
@@ -114,7 +135,11 @@ def _zone_device_id(session: Session, zone_id: int, device_id: int) -> int:
 
 
 def _setup_zone_no_sensor(
-    session: Session, *, capable: bool = True, armed: bool = True
+    session: Session,
+    *,
+    capable: bool = True,
+    armed: bool = True,
+    relais_integration_code: str = "zigbee2mqtt",
 ) -> tuple[Zone, Device, Device]:
     """A zone with no wall probe and no thermostat measurement at all -- it
     reaches `NOTBETRIEB` on its very first `shadow_run.cycle()` call (same
@@ -181,7 +206,7 @@ def _setup_zone_no_sensor(
     )
 
     relais = Device(
-        integration_id=integration(session, "zigbee2mqtt").id,
+        integration_id=integration(session, relais_integration_code).id,
         external_id="nb-relais",
         display_name="Notbetrieb-Relais",
     )
@@ -521,6 +546,120 @@ async def test_switch_off_failure_blocks_a_new_on_phase(session: Session) -> Non
     assert row.phase == "ein"
     assert row.phase_deadline_at == ein_deadline
     assert [m[1] for m in failing_client.messages if m[0] == topic] == ['{"state": "OFF"}']
+
+
+# --- Schaltausgang über Meross, nicht verdrahtete Anbindung -----------------------
+
+
+@pytest.mark.anyio
+async def test_switch_via_meross_sends_and_a_broker_fault_invalidates_the_session(
+    session: Session,
+) -> None:
+    """The emergency switch path goes through the identical Meross dispatch
+    (`MerossSwitch`, `invalidate_meross_session`) as the ordinary one -- not a
+    second, parallel implementation that could silently drift from the
+    session-invalidation rule `tests/test_actuator_switches.py::
+    test_a_broker_level_meross_failure_invalidates_the_cached_session` already
+    protects for the ordinary path."""
+    zone, _trv, relais = _setup_zone_no_sensor(session, relais_integration_code="meross")
+    pub_state = PublicationState()
+    cache = MerossSessionCache()
+
+    t = NOW
+    shadow_run.cycle(session, t)
+    session.commit()
+    await publishing.cycle(
+        session,
+        _FakeClient(),
+        pub_state,
+        "thermoctl",
+        t,
+        meross_transport=_MerossTransportStub(),  # type: ignore[arg-type]
+        meross_session_cache=cache,
+        meross_switching_allowed=True,
+    )
+    session.commit()
+    row = session.get(ActuatorEmergencyState, _zone_device_id(session, zone.id, relais.id))
+    assert row is not None
+    assert row.phase == "aus"
+    assert cache.invalid is False
+
+    # The Aus->Ein transition's send fails at broker level -- the cached
+    # session must be invalidated, exactly like the ordinary path. 31 s:
+    # `_profile()`'s default Aus-Dauer (30 s) is the applicable one here,
+    # clamped *up* by `min_off_seconds`, never down (`_resolve_pair`'s
+    # `max(...)` cannot shorten the profile's own fixed duration).
+    t = t + timedelta(seconds=31)
+    shadow_run.cycle(session, t)
+    session.commit()
+    faulty_transport = _MerossTransportStub(
+        errors=ConnectionRefusedError("CONNACK: Not authorized")
+    )
+    await publishing.cycle(
+        session,
+        _FakeClient(),
+        pub_state,
+        "thermoctl",
+        t,
+        meross_transport=faulty_transport,  # type: ignore[arg-type]
+        meross_session_cache=cache,
+        meross_switching_allowed=True,
+    )
+    session.commit()
+    assert cache.invalid is True
+    session.refresh(row)
+    assert row.phase == "aus"  # the failed Ein attempt never committed
+
+    # A fresh, working transport recovers -- confirms the Meross path (not
+    # just the invalidation branch) genuinely sends for this actuator.
+    cache = MerossSessionCache()
+    t = t + timedelta(seconds=1)
+    shadow_run.cycle(session, t)
+    session.commit()
+    working_transport = _MerossTransportStub()
+    await publishing.cycle(
+        session,
+        _FakeClient(),
+        pub_state,
+        "thermoctl",
+        t,
+        meross_transport=working_transport,  # type: ignore[arg-type]
+        meross_session_cache=cache,
+        meross_switching_allowed=True,
+    )
+    session.commit()
+    session.refresh(row)
+    assert row.phase == "ein"
+    assert working_transport.calls[0][3] == {"togglex": {"channel": 0, "onoff": 1}}
+
+
+@pytest.mark.anyio
+async def test_switch_via_an_unwired_integration_is_reported_not_sent(
+    session: Session,
+) -> None:
+    """A capability this version has no dispatch path for at all (neither
+    Zigbee2MQTT nor Meross) must be reported visibly, armed or not -- never
+    silently skipped and never mistaken for a dry-run suppression."""
+    zone, _trv, relais = _setup_zone_no_sensor(session, relais_integration_code="mqtt_generic")
+    pub_state = PublicationState()
+
+    t = NOW
+    shadow_run.cycle(session, t)
+    session.commit()
+    await publishing.cycle(session, _FakeClient(), pub_state, "thermoctl", t)
+    session.commit()
+
+    commands = session.scalars(
+        select(DeviceCommand).where(DeviceCommand.device_id == relais.id)
+    ).all()
+    assert len(commands) == 1
+    outcome_row = session.get(CommandOutcome, commands[0].outcome_id)
+    assert outcome_row is not None
+    # Armed (`_setup_zone_no_sensor`'s default): a real attempt that could not
+    # be dispatched is `failed`, not `suppressed` -- `suppressed` is reserved
+    # for the dry-run bolt, which never engaged here.
+    assert outcome_row.code == "failed"
+    assert "nicht verdrahtet" in (commands[0].error or "")
 
 
 # --- Rückkehr: Dedup-Invalidierung -------------------------------------------------
@@ -905,6 +1044,417 @@ async def test_recovery_restores_the_previous_operating_mode_exactly_once_with_r
             restart_session.close()
     finally:
         engine.dispose()
+
+
+def _setup_recoverable_zone_with_trv(
+    session: Session, name: str, *, previous_operating_mode: str | None
+) -> tuple[Zone, Device, Device]:
+    """A zone with a wall probe (so it can actually recover to `normal`,
+    unlike `_setup_zone_no_sensor`) and one capable, self-regulating TRV --
+    shared setup for the Rückstellungs-Grenzfälle below. `previous_
+    operating_mode=None` means the device never reported one at all."""
+    from thermoctl.db.models.schedule import SchedulePoint
+    from thermoctl.db.models.zone import SetpointMode, ZoneSetpoint
+
+    create_settings(session)
+    settings = session.get(Setting, 1)
+    assert settings is not None
+    settings.control_armed = True
+    create_all_command_outcomes(session)
+
+    zone = create_zone(session, name)
+    zone.min_on_seconds = 10
+    zone.min_off_seconds = 10
+    zone.sensor_timeout_seconds = 90
+    zone.sensor_failure_enabled = True
+    zone.sensor_failure_profile_id = _profile(session)
+    zone.sensor_failure_emergency_setpoint_c = Decimal("18.0")
+
+    mode = SetpointMode(code=f"{name}-heizen", name="Heizen")
+    session.add(mode)
+    session.flush()
+    session.add(
+        ZoneSetpoint(zone_id=zone.id, setpoint_mode_id=mode.id, temperature_c=Decimal("21.0"))
+    )
+    session.add(
+        SchedulePoint(
+            zone_id=zone.id, weekday=NOW.weekday(), minute_of_day=0, setpoint_mode_id=mode.id
+        )
+    )
+    session.flush()
+
+    wall = Device(
+        integration_id=integration(session, "zigbee2mqtt").id,
+        external_id=f"{name}-wand",
+        display_name="Wandfühler",
+    )
+    session.add(wall)
+    session.flush()
+    _link(session, wall, "temperature")
+    zone.temperature_source_device_id = wall.id
+
+    trv = Device(
+        integration_id=integration(session, "zigbee2mqtt").id,
+        external_id=f"{name}-trv",
+        display_name="TRV",
+    )
+    session.add(trv)
+    session.flush()
+    _link(session, trv, "thermostat")
+    session.add(
+        DeviceProperty(
+            device_id=trv.id,
+            name="occupied_heating_setpoint",
+            value_type="numeric",
+            min_value=Decimal("5"),
+            max_value=Decimal("30"),
+            is_readable=True,
+            is_writable=True,
+        )
+    )
+    operating_mode_property = DeviceProperty(
+        device_id=trv.id, name="operating_mode", value_type="text",
+        is_readable=True, is_writable=True,
+    )
+    session.add(operating_mode_property)
+    session.flush()
+    session.add_all(
+        DevicePropertyValue(property_id=operating_mode_property.id, value=value)
+        for value in ("schedule", "manual", "pause")
+    )
+    operating_mode_property.last_value_text = previous_operating_mode
+    operating_mode_property.last_value_at = NOW - timedelta(minutes=5)
+    session.add(
+        ZoneDevice(
+            zone_id=zone.id,
+            device_id=trv.id,
+            device_role_id=role(session, "actuator").id,
+            self_regulating=True,
+        )
+    )
+    session.flush()
+    return zone, wall, trv
+
+
+async def _drive_to_recovery_cycle(
+    session: Session, zone: Zone, client: _FakeClient, pub_state: PublicationState
+) -> datetime:
+    """Healthy -> stale (Notbetrieb, handover) -> two fresh readings 61s
+    apart -> `normal` again. Returns `t3`, the cycle recovery completes on --
+    the caller still has to run `publishing.cycle(session, client, pub_state,
+    "thermoctl", t3)` itself, since what happens on that one cycle (dry run,
+    a failing topic, ...) is exactly what each test below varies."""
+    from tests.helpers import sensor_status_of
+    from thermoctl.db.models.state import ZoneState
+
+    t0 = NOW
+    session.add(
+        ZoneState(
+            zone_id=zone.id,
+            temperature_c=Decimal("19.0"),
+            measured_at=t0,
+            sensor_status_id=sensor_status_of(session, "ok").id,
+            updated_at=t0,
+        )
+    )
+    session.flush()
+    shadow_run.cycle(session, t0)
+    session.commit()
+    await publishing.cycle(session, client, pub_state, "thermoctl", t0)
+    session.commit()
+
+    t1 = t0 + timedelta(seconds=100)
+    state_row = session.get(ZoneState, zone.id)
+    assert state_row is not None
+    state_row.sensor_status_id = sensor_status_of(session, "veraltet").id
+    session.flush()
+    shadow_run.cycle(session, t1)
+    session.commit()
+    sf_state = session.get(ZoneSensorFailureState, zone.id)
+    assert sf_state is not None
+    assert sf_state.stage == emergency_operation.STAGE_NOTBETRIEB
+    await publishing.cycle(session, client, pub_state, "thermoctl", t1)
+    session.commit()
+
+    t2 = t1 + timedelta(seconds=5)
+    state_row.temperature_c = Decimal("19.0")
+    state_row.measured_at = t2
+    state_row.sensor_status_id = sensor_status_of(session, "ok").id
+    session.flush()
+    shadow_run.cycle(session, t2)
+    session.commit()
+    await publishing.cycle(session, client, pub_state, "thermoctl", t2)
+    session.commit()
+
+    t3 = t2 + timedelta(seconds=61)
+    state_row.measured_at = t3
+    session.flush()
+    shadow_run.cycle(session, t3)
+    session.commit()
+    sf_state = session.get(ZoneSensorFailureState, zone.id)
+    assert sf_state is not None
+    assert sf_state.stage == emergency_operation.STAGE_NORMAL
+    return t3
+
+
+# --- Rückstellung: Grenzfälle (unbekannter Vorwert, Trockenlauf, Fehlschlag) ------
+
+
+@pytest.mark.anyio
+async def test_restore_with_unknown_previous_value_writes_nothing_and_logs_no_command(
+    session: Session,
+) -> None:
+    """The device never reported `operating_mode` at all before the Übergabe
+    -- plan item 2's own rule applies symmetrically on the way back: no
+    guessed restore value, only a single, visible `decided_no_command`."""
+    zone, _wall, trv = _setup_recoverable_zone_with_trv(
+        session, "nb-restore-unbekannt", previous_operating_mode=None
+    )
+    client = _FakeClient()
+    pub_state = PublicationState()
+    trv_topic = _trv_topic(trv)
+
+    t3 = await _drive_to_recovery_cycle(session, zone, client, pub_state)
+    messages_before = len(client.messages)
+    await publishing.cycle(session, client, pub_state, "thermoctl", t3)
+    session.commit()
+
+    mode_messages = [
+        m
+        for m in client.messages[messages_before:]
+        if m[0] == trv_topic and "operating_mode" in m[1]
+    ]
+    assert mode_messages == []
+
+    restore_commands = session.scalars(
+        select(DeviceCommand).where(
+            DeviceCommand.device_id == trv.id, DeviceCommand.command == "restore"
+        )
+    ).all()
+    assert len(restore_commands) == 1
+    outcome_row = session.get(CommandOutcome, restore_commands[0].outcome_id)
+    assert outcome_row is not None
+    assert outcome_row.code == "decided_no_command"
+
+    decisions = session.scalars(
+        select(ActuatorDecision).where(
+            ActuatorDecision.zone_device_id == _zone_device_id(session, zone.id, trv.id),
+            ActuatorDecision.action == emergency_actuator_plan.ACTION_NO_WRITE,
+            ActuatorDecision.reason_code == emergency_actuator_plan.REASON_RESTORE_UNBEKANNT,
+        )
+    ).all()
+    assert len(decisions) == 1
+
+
+@pytest.mark.anyio
+async def test_restore_dry_run_sends_nothing_and_later_scharf_sends_exactly_once(
+    session: Session,
+) -> None:
+    """A dry run at the exact Rückkehr cycle must not spend the one-shot
+    latch -- the device still gets its real Rückstellung once the plant is
+    armed again, not never."""
+    zone, _wall, trv = _setup_recoverable_zone_with_trv(
+        session, "nb-restore-trockenlauf", previous_operating_mode="pause"
+    )
+    client = _FakeClient()
+    pub_state = PublicationState()
+    trv_topic = _trv_topic(trv)
+
+    t3 = await _drive_to_recovery_cycle(session, zone, client, pub_state)
+    messages_before = len(client.messages)
+    settings = session.get(Setting, 1)
+    assert settings is not None
+    settings.control_armed = False
+    session.flush()
+
+    await publishing.cycle(session, client, pub_state, "thermoctl", t3)
+    session.commit()
+    assert [
+        m for m in client.messages[messages_before:]
+        if m[0] == trv_topic and "operating_mode" in m[1]
+    ] == []
+
+    row = session.get(ActuatorEmergencyState, _zone_device_id(session, zone.id, trv.id))
+    assert row is not None
+    assert row.armed_episode_id is not None  # Rückkehr still open
+    assert row.restore_attempted_at is None
+
+    settings.control_armed = True
+    session.flush()
+    t4 = t3 + timedelta(seconds=30)
+    shadow_run.cycle(session, t4)
+    session.commit()
+    await publishing.cycle(session, client, pub_state, "thermoctl", t4)
+    session.commit()
+
+    restore_messages = [
+        m for m in client.messages[messages_before:]
+        if m[0] == trv_topic and "operating_mode" in m[1]
+    ]
+    assert len(restore_messages) == 1
+    assert json.loads(restore_messages[0][1]) == {"operating_mode": "pause"}
+    session.refresh(row)
+    assert row.armed_episode_id is None  # fully resolved now
+
+
+@pytest.mark.anyio
+async def test_failed_restore_leaves_a_visible_result_and_is_not_retried(
+    session: Session,
+) -> None:
+    zone, _wall, trv = _setup_recoverable_zone_with_trv(
+        session, "nb-restore-fehlschlag", previous_operating_mode="pause"
+    )
+    trv_topic = _trv_topic(trv)
+    client = _FakeClient(fail_topics=frozenset({trv_topic}))
+    pub_state = PublicationState()
+
+    t3 = await _drive_to_recovery_cycle(session, zone, client, pub_state)
+    messages_before = len(client.messages)
+    await publishing.cycle(session, client, pub_state, "thermoctl", t3)
+    session.commit()
+
+    restore_messages = [
+        m for m in client.messages[messages_before:]
+        if m[0] == trv_topic and "operating_mode" in m[1]
+    ]
+    assert len(restore_messages) == 1
+    restore_commands = session.scalars(
+        select(DeviceCommand).where(
+            DeviceCommand.device_id == trv.id, DeviceCommand.command == "restore"
+        )
+    ).all()
+    assert len(restore_commands) == 1
+    outcome_row = session.get(CommandOutcome, restore_commands[0].outcome_id)
+    assert outcome_row is not None
+    assert outcome_row.code == "failed"
+
+    row = session.get(ActuatorEmergencyState, _zone_device_id(session, zone.id, trv.id))
+    assert row is not None
+    assert row.armed_episode_id is None  # resolved (failed counts as resolved, no retry)
+
+    t4 = t3 + timedelta(seconds=30)
+    shadow_run.cycle(session, t4)
+    session.commit()
+    await publishing.cycle(session, client, pub_state, "thermoctl", t4)
+    session.commit()
+    restore_messages = [
+        m for m in client.messages[messages_before:]
+        if m[0] == trv_topic and "operating_mode" in m[1]
+    ]
+    assert len(restore_messages) == 1  # still just the one, never retried
+
+
+# --- Befund 2: Absturz zwischen Markierung und Versand ----------------------------
+
+
+@pytest.mark.anyio
+async def test_handover_interrupted_between_marker_and_send_is_not_retried(
+    session: Session,
+) -> None:
+    """Simulates a process crash between `handover_attempted_at` being
+    committed and the send actually resolving (plan item 2: the marker is
+    persisted *before* the send) -- the state must stay exactly as a crash
+    at that point would leave it (`handover_attempted_at` set,
+    `handover_result` still `None`), and no cycle since may ever attempt a
+    second send."""
+    zone, trv, _relais = _setup_zone_no_sensor(session)
+    shadow_run.cycle(session, NOW)
+    session.commit()
+    zone_device_id = _zone_device_id(session, zone.id, trv.id)
+    row = session.get(ActuatorEmergencyState, zone_device_id)
+    assert row is not None
+    sf_state = session.get(ZoneSensorFailureState, zone.id)
+    assert sf_state is not None
+    # The crash happens here: the marker committed (including the armed-
+    # episode marker a real cycle would also have set), the send itself
+    # never resolved (not executed, not failed -- simply unknown).
+    row.armed_episode_id = sf_state.episode_id
+    row.handover_attempted_at = NOW
+    row.handover_result = None
+    session.flush()
+    session.commit()
+
+    client = _FakeClient()
+    pub_state = PublicationState()
+    trv_topic = _trv_topic(trv)
+    t = NOW
+    for _ in range(3):
+        t = t + timedelta(seconds=21)
+        shadow_run.cycle(session, t)
+        session.commit()
+        await publishing.cycle(session, client, pub_state, "thermoctl", t)
+        session.commit()
+
+    assert [m for m in client.messages if m[0] == trv_topic] == []
+    session.refresh(row)
+    assert row.handover_attempted_at == NOW
+    assert row.handover_result is None
+
+
+@pytest.mark.anyio
+async def test_restore_interrupted_between_marker_and_send_is_not_retried(
+    session: Session,
+) -> None:
+    """The Rückstellung's own version of Befund 2: a crash between committing
+    `restore_attempted_at` and the send resolving must not be retried.
+
+    Unlike the handover (whose episode stays open for as long as the zone
+    remains `notbetrieb`/`rueckkehrpruefung`, so `handover_attempted_at`/
+    `handover_result` stay on the row the whole time), the Rückstellung's own
+    "episode" is exactly this one transition back to `normal` -- the very
+    next cycle's housekeeping (`_send_emergency_actuators`'s "not active"
+    branch) sees `restore_attempted_at` already set, correctly refuses a
+    second attempt (`already_attempted` in `plan_restore`), and then clears
+    the row's bookkeeping as "fully resolved" the same way a clean success or
+    a reported failure would be cleared -- it has no way to tell "crashed,
+    unknown" apart from either of those once `restore_attempted_at` alone is
+    the signal. The durable record of *that* cycle's no-write decision is
+    `actuator_decision` (`simulated=False`, written unconditionally,
+    independent of whether anything got cleared afterwards) -- the safety
+    property this test actually exists to prove is that no second message
+    is **ever** sent, which holds regardless.
+    """
+    zone, _wall, trv = _setup_recoverable_zone_with_trv(
+        session, "nb-restore-absturz", previous_operating_mode="pause"
+    )
+    client = _FakeClient()
+    pub_state = PublicationState()
+    trv_topic = _trv_topic(trv)
+
+    t3 = await _drive_to_recovery_cycle(session, zone, client, pub_state)
+    messages_before = len(client.messages)
+    zone_device_id = _zone_device_id(session, zone.id, trv.id)
+    row = session.get(ActuatorEmergencyState, zone_device_id)
+    assert row is not None
+    assert row.armed_episode_id is not None
+    crashed_episode_id = row.armed_episode_id
+    # The crash happens here: the marker would be committed, the send never
+    # resolved.
+    row.restore_attempted_at = t3
+    row.restore_result = None
+    session.flush()
+    session.commit()
+
+    for _ in range(3):
+        t3 = t3 + timedelta(seconds=21)
+        shadow_run.cycle(session, t3)
+        session.commit()
+        await publishing.cycle(session, client, pub_state, "thermoctl", t3)
+        session.commit()
+
+    assert [
+        m for m in client.messages[messages_before:]
+        if m[0] == trv_topic and "operating_mode" in m[1]
+    ] == []
+    no_write_decisions = session.scalars(
+        select(ActuatorDecision).where(
+            ActuatorDecision.zone_device_id == zone_device_id,
+            ActuatorDecision.episode_id == crashed_episode_id,
+            ActuatorDecision.action == emergency_actuator_plan.ACTION_NO_WRITE,
+            ActuatorDecision.simulated.is_(False),
+        )
+    ).all()
+    assert len(no_write_decisions) >= 1  # the crash cycle's decision stayed on record
 
 
 @pytest.mark.anyio
