@@ -183,7 +183,7 @@ def seed_demo(session: Session, password: str) -> dict[str, str | int]:
         profile_version=1,
         notification_state="gemeldet",
         fixed_on_seconds=600,
-        fixed_off_seconds=1800,
+        fixed_off_seconds=1200,
         recovery_seconds=120,
         recovery_samples=2,
         warm_restart_hysteresis_k=Decimal("1.0"),

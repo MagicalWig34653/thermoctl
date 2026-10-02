@@ -14,9 +14,14 @@ Codex-Agenten (dieser Auftrag lief auf Claude).
 
 **Anzeige** (`domain/emergency_display.py`, neu): `zone_banner()` liefert je Zone
 einen kurzen, nicht alarmistischen Hinweis ohne Technikbegriffe — „Ersatzquelle
-aktiv: <Gerät>", „Notbetrieb: Fußboden taktet x/y min (Kennlinie/Festtakt, außen
-t °C)", „Thermostat regelt selbst (Notsollwert s °C)", „Rückkehrprüfung läuft
-(n/2)". Eingebunden in `start.html`, `tenant_start.html` (zusätzlich: der
+aktiv: <Gerät>", „Notbetrieb: Fußboden taktet x/y min" (Fließtext: „Der
+Raumfühler meldet gerade keinen Wert. Die Fußbodenheizung läuft deshalb in
+festen Abständen (x Min. an, y Min. aus), bis wieder ein Messwert da ist.",
+höchstens angedeutet um „, passend zur Außentemperatur" — nie „Kennlinie"/
+„Festtakt" oder eine rohe °C-Zahl; diese Betreiber-Fachbegriffe bleiben der
+Aktorentabelle auf `control.html` vorbehalten, Kreuzreview-Befund aus Commit
+`c1ae1c5`, behoben in `77a7ef2`), „Thermostat regelt selbst (Notsollwert s °C)",
+„Rückkehrprüfung läuft (n/2)". Eingebunden in `start.html`, `tenant_start.html` (zusätzlich: der
 Kopfbanner `_home_notice` prüft Notbetrieb jetzt **vor** Sensor/Fenster, sonst
 hätte er „Heizung läuft normal" behauptet, während eine Zone tatsächlich im
 Notbetrieb lief — gefunden beim eigenen Öffnen der Seite, nicht von einem Test)
@@ -35,7 +40,12 @@ versucht"), Sendefreigabe (scharf/Trockenlauf), sowie die
 Ersatzquelle-↔-Wandfühler-Auswertung aus `sensor_failure_source_comparison`
 (mittlere Abweichung der letzten 7 Tage je Thermostat, Echo-/unbrauchbare Zeilen
 ausgeschlossen, „vorgeschlagener Ausgleichswert ≈ x K" — Grundlage für die
-Kalibrierung, Entscheidung R2). Die beiden neuen Tabellen in `control.html`
+Kalibrierung, Entscheidung R2; Kreuzreview-Befund zum Vorzeichen -- der
+Vorschlag muss `raw − wall_probe` lauten, nicht umgekehrt, sonst würde das
+Anwenden der Zahl weiter von statt näher an den Wandfühler führen -- aus
+Commit `c1ae1c5`, behoben in `77a7ef2` und zusätzlich mit
+`test_applying_the_suggested_offset_corrects_back_to_the_wall_probe`
+belegt: angewandter Vorschlag ergibt `corrected ≈ wall_probe`). Die beiden neuen Tabellen in `control.html`
 mussten `.tc-stack-table` statt nur `.table-responsive` bekommen: Bootstraps
 `.table { width: 100% }` presst die Spalten unter 768px sonst so eng, dass das
 globale `overflow-wrap: anywhere` Wörter mitten im Wort bricht — gefunden von

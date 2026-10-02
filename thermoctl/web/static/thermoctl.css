@@ -395,7 +395,7 @@ h2, .t-section {
 
 /* Notbetrieb-Hinweis in der schmalen Panel-Kachel (`kiosk.html`): dieselben
    Farben wie `.tc-chip-warning`, aber ohne dessen `white-space: nowrap` --
-   der Notbetriebstext ("Notbetrieb: Fußboden taktet 10/30 min") ist länger
+   der Notbetriebstext ("Notbetrieb: Fußboden taktet 10/20 min") ist länger
    als jeder andere Kachel-Chip und muss in der ~220 px breiten Panel-Kachel
    umbrechen statt über den Rand zu laufen (geprüft bei 480×480). */
 .kiosk-notbetrieb-badge {

@@ -140,6 +140,7 @@
       "Markierung deaktiviert → derselbe Test schlägt sofort fehl (Relais schaltet",
       "PI ohnehin liefern würden — unverändert durch Notbetrieb. Die Aktor-/Takt-Entscheidung",
       "Publisher (`services/publishing.py::_latest_decision`/`_send_actuator_switches`) und schaltet",
+      "Raumfühler meldet gerade keinen Wert. Die Fußbodenheizung läuft deshalb in",
       "Sensorausfall, Mindestschaltdauern und Ventilschutz laufen unwissend vom Urlaub",
       "Thermostatventile, Ein/Aus an gewöhnliche Zigbee2MQTT-Aktoren",
       "Warm-Aus-Hysterese 1 K und drei Kennlinienpunkten an (−10 °C: 1200/600 s,",

@@ -35,6 +35,7 @@ from thermoctl.db.models.operations import Setting
 from thermoctl.db.models.schedule import SchedulePoint
 from thermoctl.db.models.state import ZoneState
 from thermoctl.db.models.zone import SetpointMode, Zone, ZoneSetpoint
+from thermoctl.domain import emergency_display
 from thermoctl.domain.absence import (
     absence_zones,
     end_absence,
@@ -43,7 +44,6 @@ from thermoctl.domain.absence import (
     start_absence,
 )
 from thermoctl.domain.authz import has_permission, visible_zones
-from thermoctl.domain import emergency_display
 from thermoctl.domain.emergency_display import ZoneEmergencyBanner
 from thermoctl.domain.modes import DomainError
 from thermoctl.domain.principal import Principal
