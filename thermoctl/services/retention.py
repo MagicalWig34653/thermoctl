@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from thermoctl.db.models.measurement import Measurement
 from thermoctl.db.models.operations import Setting
+from thermoctl.db.models.sensor_failure import ActuatorDecision, SensorFailureSourceComparison
 from thermoctl.db.models.state import ShadowDecision
 
 log = logging.getLogger(__name__)
@@ -82,4 +83,79 @@ def delete_old_shadow_decisions(
         session.execute(delete(ShadowDecision).where(ShadowDecision.id.in_(ids)))
         count += len(ids)
     log.info("Alte Schattenentscheidungen gelöscht", extra={"anzahl": count})
+    return count
+
+
+def delete_old_sensor_failure_source_comparisons(
+    session: Session, now: datetime, *, batch_size: int = 5000
+) -> int:
+    """Deletes expired source-quality comparison rows (Auftrag 8a, Review-Hinweis).
+
+    Dieselbe Frist wie `ShadowDecision`
+    (`setting.shadow_decision_retention_days`): beide sind Schattenlauf-Historie
+    je Regelzyklus -- eine davon unabhängige, eigene Frist hätte keinen fachlichen
+    Grund und wäre nur eine weitere, nirgends erklärte Zahl.
+    """
+    if batch_size <= 0:
+        raise ValueError("Blockgröße muss größer als null sein")
+    settings = session.get(Setting, 1)
+    assert settings is not None, "setting-Zeile fehlt — Einrichtung unvollständig"
+
+    limit = now - timedelta(days=settings.shadow_decision_retention_days)
+    count = 0
+    while True:
+        ids = list(
+            session.scalars(
+                select(SensorFailureSourceComparison.id)
+                .where(SensorFailureSourceComparison.measured_at < limit)
+                .order_by(
+                    SensorFailureSourceComparison.measured_at,
+                    SensorFailureSourceComparison.id,
+                )
+                .limit(batch_size)
+            )
+        )
+        if not ids:
+            break
+        session.execute(
+            delete(SensorFailureSourceComparison).where(SensorFailureSourceComparison.id.in_(ids))
+        )
+        count += len(ids)
+    log.info("Alte Quellenvergleiche (Notbetrieb) gelöscht", extra={"anzahl": count})
+    return count
+
+
+def delete_old_actuator_decisions(
+    session: Session, now: datetime, *, batch_size: int = 5000
+) -> int:
+    """Deletes expired emergency-actuator decision log rows (Auftrag 8a, Review-Hinweis).
+
+    Gleiche Frist wie `ShadowDecision` -- derselbe Grund wie oben bei
+    `delete_old_sensor_failure_source_comparisons`: `actuator_decision` ist das
+    Notbetriebs-Gegenstück zum Schattenprotokoll (Entscheidungsereignisse statt
+    echter Befehle eingeschlossen), nicht eine andersartige Aufbewahrungsklasse.
+    `sensor_failure_episode` selbst bleibt unberührt (eine Zeile je Störung, siehe
+    Auftragstext) -- hier geht es nur um das feingranulare Protokoll je Zyklus.
+    """
+    if batch_size <= 0:
+        raise ValueError("Blockgröße muss größer als null sein")
+    settings = session.get(Setting, 1)
+    assert settings is not None, "setting-Zeile fehlt — Einrichtung unvollständig"
+
+    limit = now - timedelta(days=settings.shadow_decision_retention_days)
+    count = 0
+    while True:
+        ids = list(
+            session.scalars(
+                select(ActuatorDecision.id)
+                .where(ActuatorDecision.decided_at < limit)
+                .order_by(ActuatorDecision.decided_at, ActuatorDecision.id)
+                .limit(batch_size)
+            )
+        )
+        if not ids:
+            break
+        session.execute(delete(ActuatorDecision).where(ActuatorDecision.id.in_(ids)))
+        count += len(ids)
+    log.info("Alte Notbetriebs-Entscheidungen gelöscht", extra={"anzahl": count})
     return count

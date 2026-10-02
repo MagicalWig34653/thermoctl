@@ -311,8 +311,16 @@ def test_the_registered_mcp_tools_have_descriptions_and_call_the_adapter_functio
         ("zone.manage", zone.id),
         ("control.arm", None),
         ("vacation.manage", None),
+        ("setting.manage", None),
     ]
     plaintext = _token(session, "registrierter-nutzer", permissions)
+    from thermoctl.domain.sensor_failure_policy import ProfileValues
+    from thermoctl.domain.sensor_failure_policy import save_profile as _save_sensor_failure_profile
+
+    _save_sensor_failure_profile(
+        session,
+        ProfileValues("Notbetrieb Vorgabe", 600, 1200, 60, 2, Decimal("1"), ()),
+    )
 
     tools: dict[str, object] = {}
 
@@ -351,6 +359,10 @@ def test_the_registered_mcp_tools_have_descriptions_and_call_the_adapter_functio
         "read_vacation",
         "vacation",
         "cancel_vacation",
+        "read_sensor_failure_defaults",
+        "set_sensor_failure_defaults",
+        "read_sensor_failure_policy",
+        "set_sensor_failure_policy",
     }
     descriptions = {
         name: getattr(tool, "__doc__", None) for name, tool in tools.items()
@@ -388,6 +400,12 @@ def test_the_registered_mcp_tools_have_descriptions_and_call_the_adapter_functio
     assert created["setback_temperature_c"] == "15.0"
     assert tools["read_vacation"]() is not None  # type: ignore[operator]
     assert tools["cancel_vacation"]()["cancelled"] is True  # type: ignore[operator]
+    assert tools["read_sensor_failure_defaults"]()  # type: ignore[operator]
+    assert tools["set_sensor_failure_defaults"](  # type: ignore[operator]
+        600, 1200, 60, 2, Decimal("1"), Decimal("16")
+    )
+    assert tools["read_sensor_failure_policy"](zone.id)  # type: ignore[operator]
+    assert tools["set_sensor_failure_policy"](zone.id, False)  # type: ignore[operator]
 
 
 def test_an_unknown_token_is_refused(session: Session) -> None:

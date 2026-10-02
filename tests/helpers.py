@@ -34,6 +34,7 @@ from thermoctl.db.models.operations import Setting
 from thermoctl.db.models.override import ZoneOverride
 from thermoctl.db.models.passkey import UserPasskey
 from thermoctl.db.models.schedule import SchedulePoint
+from thermoctl.db.models.sensor_failure import SensorFailureProfile
 from thermoctl.db.models.state import DeviceCommand, ShadowDecision, ZoneState
 from thermoctl.db.models.zone import SetpointMode, Zone, ZoneSetpoint
 from thermoctl.domain.ui_profile import WebUiProfile
@@ -68,6 +69,23 @@ def create_settings(
         **extra,
     )
     session.add(settings)
+    # Wie die echte Migration (a0110b03c001): das Vorgabeprofil existiert immer
+    # neben der `setting`-Zeile, nicht nur in Tests, die es sich extra anlegen.
+    # Ohne das scheitert jede Seite, die `effective_default_profile`/
+    # `migration_default_profile_id` liest (z. B. die Notbetriebs-Sektion unter
+    # `/settings`), an einem `PolicyError`, den eine echte Installation nie sieht.
+    if session.query(SensorFailureProfile).filter_by(name="Notbetrieb Vorgabe").first() is None:
+        session.add(
+            SensorFailureProfile(
+                name="Notbetrieb Vorgabe",
+                version=1,
+                fixed_on_seconds=600,
+                fixed_off_seconds=1200,
+                recovery_seconds=60,
+                recovery_samples=2,
+                warm_restart_hysteresis_k=Decimal("1"),
+            )
+        )
     session.flush()
     return settings
 

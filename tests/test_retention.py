@@ -15,8 +15,14 @@ from tests.helpers import (
 )
 from thermoctl.db.models.lookup import DeviceCapability
 from thermoctl.db.models.measurement import Measurement
+from thermoctl.db.models.sensor_failure import ActuatorDecision, SensorFailureSourceComparison
 from thermoctl.db.models.state import ShadowDecision
-from thermoctl.services.retention import delete_old_measurements, delete_old_shadow_decisions
+from thermoctl.services.retention import (
+    delete_old_actuator_decisions,
+    delete_old_measurements,
+    delete_old_sensor_failure_source_comparisons,
+    delete_old_shadow_decisions,
+)
 from thermoctl.services.shadow_run import cycle
 
 NOW = datetime(2026, 8, 29, 12, 0)
@@ -152,3 +158,81 @@ def test_shadow_retention_keeps_the_valve_protection_marker_authoritative(
 def test_shadow_block_size_must_be_positive(session: Session) -> None:
     with pytest.raises(ValueError, match="größer als null"):
         delete_old_shadow_decisions(session, NOW, batch_size=-1)
+
+
+def _comparison_inventory(
+    session: Session, zone_id: int, device_id: int, age_days: list[int]
+) -> None:
+    for age in age_days:
+        moment = NOW - timedelta(days=age)
+        session.add(
+            SensorFailureSourceComparison(
+                zone_id=zone_id,
+                zone_name="Vergleichszone",
+                device_id=device_id,
+                device_name="Vergleichsgerät",
+                measured_at=moment,
+                wall_probe_c=Decimal("20.00"),
+                raw_c=Decimal("19.50"),
+                corrected_c=Decimal("19.50"),
+                echo=False,
+                usable=True,
+            )
+        )
+    session.flush()
+
+
+def test_old_source_comparisons_are_deleted_using_the_shadow_decision_retention(
+    session: Session,
+) -> None:
+    settings = create_settings(session)
+    settings.shadow_decision_retention_days = 365
+    zone = create_zone(session, "quellenvergleich-aufbewahrung")
+    device = create_device(
+        session, json.loads(DATA_PATH.read_text(encoding="utf-8"))["geraete"][0]
+    )
+    _comparison_inventory(session, zone.id, device.id, [367, 366, 364])
+
+    assert delete_old_sensor_failure_source_comparisons(session, NOW, batch_size=2) == 2
+    remaining = session.query(SensorFailureSourceComparison).all()
+    assert [row.measured_at for row in remaining] == [NOW - timedelta(days=364)]
+
+
+def test_source_comparison_block_size_must_be_positive(session: Session) -> None:
+    with pytest.raises(ValueError, match="größer als null"):
+        delete_old_sensor_failure_source_comparisons(session, NOW, batch_size=0)
+
+
+def _actuator_decision_inventory(session: Session, age_days: list[int]) -> None:
+    for age in age_days:
+        moment = NOW - timedelta(days=age)
+        session.add(
+            ActuatorDecision(
+                zone_name="Taktzone",
+                device_name="Ventil",
+                decided_at=moment,
+                action="switch_on",
+                reason_code="festtakt",
+                reason="Takt",
+                simulated=True,
+                profile_version=1,
+            )
+        )
+    session.flush()
+
+
+def test_old_actuator_decisions_are_deleted_using_the_shadow_decision_retention(
+    session: Session,
+) -> None:
+    settings = create_settings(session)
+    settings.shadow_decision_retention_days = 365
+    _actuator_decision_inventory(session, [367, 366, 364])
+
+    assert delete_old_actuator_decisions(session, NOW, batch_size=2) == 2
+    remaining = session.query(ActuatorDecision).all()
+    assert [row.decided_at for row in remaining] == [NOW - timedelta(days=364)]
+
+
+def test_actuator_decision_block_size_must_be_positive(session: Session) -> None:
+    with pytest.raises(ValueError, match="größer als null"):
+        delete_old_actuator_decisions(session, NOW, batch_size=0)

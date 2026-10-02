@@ -1,6 +1,6 @@
 {% extends "base_admin.html" %}
 {% from "zone_header.html" import zonenkopf with context %}
-{% from "form.html" import number_field %}
+{% from "form.html" import number_field, select_field %}
 {% block title %}Regelparameter – {{ zone.display_name }}{% endblock %}
 {% block content %}
 {{ zonenkopf(zone, "Regelparameter") }}
@@ -135,6 +135,55 @@
         falsch auslösen, etwa durch eine geöffnete Tür oder einen Luftzug.
       </div>
     </div>
+  </div>
+
+  <div class="border-top pt-3 mt-4">
+    <p class="t-label mb-2">Notbetrieb bei Sensorausfall</p>
+    <p class="t-quiet small mb-2">
+      Wirksam für diese Zone: Profil „{{ sensor_failure.profile.values.name }}“
+      ({{ sensor_failure.profile_source }}), Notsollwert
+      {{ sensor_failure.emergency_setpoint_c }} °C ({{ sensor_failure.setpoint_source }}).
+      Das anlagenweite Profil samt Kennlinie steht unter
+      <a href="{{ url_prefix }}/settings">Regelvorgaben</a>.
+    </p>
+    <div class="alert alert-warning small" role="alert">
+      Im Notbetrieb taktet ein zugeordneter Fußbodenkreis zeitgesteuert nach dem
+      wirksamen Profil, unabhängig von der gemessenen Temperatur; ein zugeordnetes
+      Thermostat wird einmal auf den Notsollwert gestellt und danach nicht mehr
+      angesprochen.
+    </div>
+    <div class="form-check form-switch mb-3">
+      <input class="form-check-input" type="checkbox" role="switch" id="sensor_failure_enabled"
+             name="sensor_failure_enabled" value="yes"{% if values.sensor_failure_enabled %} checked{% endif %}>
+      <label class="form-check-label" for="sensor_failure_enabled">Notbetrieb für diese Zone aktivieren</label>
+      <div class="form-text">
+        Aus ist die Vorgabe für jede Zone, auch nach einer Aktualisierung — eine
+        Aktivierung für alle Zonen auf einmal gibt es hier nicht.
+      </div>
+    </div>
+    {{ select_field("sensor_failure_profile_id", "Profil", profile_options,
+      values.sensor_failure_profile_id,
+      "Leer lässt die Zone das anlagenweite Profil erben.",
+      errors.sensor_failure_profile_id, true) }}
+    {{ number_field("sensor_failure_emergency_setpoint_c", "Eigener Notsollwert (°C)",
+      values.sensor_failure_emergency_setpoint_c,
+      "Leer lässt die Zone den anlagenweiten Notsollwert erben (derzeit " ~ sensor_failure.emergency_setpoint_c ~ " °C" ~ (" aus der Anlagenvorgabe." if sensor_failure.setpoint_source != "Zone" else "."),
+      errors.sensor_failure_emergency_setpoint_c, "0.5", "5", "30") }}
+    {% if backup_offsets %}
+    <p class="t-quiet small mb-2 mt-3">
+      Temperaturausgleich (K) je zugeordnetem Thermostat-Aktor — nur auf einen
+      belegten Vergleich stützen, kein erfundener Schätzwert.
+    </p>
+    <div class="row g-3">
+      {% for offset in backup_offsets %}
+      <div class="col-sm-6">
+        {{ number_field("backup_offset_" ~ offset.zone_device_id, offset.device_name,
+          offset.temperature_backup_offset_k, "",
+          errors.get("backup_offset_" ~ offset.zone_device_id, ""), "0.01", "-99.99", "99.99") }}
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
   </div>
 
   <button class="btn btn-primary" type="submit">Speichern</button>

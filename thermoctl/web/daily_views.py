@@ -5,12 +5,15 @@ from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import RedirectResponse
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from thermoctl.auth.dependencies import csrf_protection, current_principal, get_session
 from thermoctl.db.base import utcnow
+from thermoctl.db.models.sensor_failure import SensorFailureProfile
 from thermoctl.db.models.zone import Zone
-from thermoctl.domain.authz import visible_zones
+from thermoctl.domain.authz import has_permission, visible_zones
+from thermoctl.domain.control import save_sensor_failure_backup_offset
 from thermoctl.domain.control import settings as control_settings
 from thermoctl.domain.modes import DomainError, step_setpoint
 from thermoctl.domain.principal import Principal
@@ -23,12 +26,15 @@ from thermoctl.domain.schedule import (
     jump_to_next_switch,
     resolved_setpoint,
 )
+from thermoctl.domain.sensor_failure_policy import PolicyError, list_backup_offset_candidates
 from thermoctl.domain.zone_settings import (
     ControlParameters,
     ParameterOutOfRange,
     control_parameters,
     pi_eligibility,
     save_control_parameters,
+    save_sensor_failure_parameters,
+    sensor_failure_parameters,
     set_window_temp_drop_detection,
     validate_pi_parameters,
     validate_valve_protection,
@@ -108,6 +114,8 @@ def _parameter_page(
     effective: ControlParameters,
     values: dict[str, str],
     errors: FormError | None = None,
+    *,
+    principal: Principal,
 ) -> Response:
     # Shown *before* the switch can be offered (specification section 6): whether
     # this zone's current device assignment and control cycle even qualify for PI,
@@ -118,6 +126,18 @@ def _parameter_page(
         pi_min_on_seconds=effective.pi_min_on_seconds,
         pi_min_off_seconds=effective.pi_min_off_seconds,
     )
+    profiles = session.scalars(
+        select(SensorFailureProfile).order_by(SensorFailureProfile.name, SensorFailureProfile.id)
+    ).all()
+    # Ausgleichswerte brauchen zusätzlich `device.manage` (Auftrag 8a Punkt 3, wie
+    # REST/MCP) -- ohne das Recht werden die Felder gar nicht erst angezeigt, nicht
+    # nur beim Speichern verweigert: ein ausgegrautes, aber sichtbares Feld hätte
+    # eine falsche Erwartung geweckt.
+    offsets = (
+        list_backup_offset_candidates(session, zone)
+        if has_permission(principal, "device.manage", zone.id)
+        else ()
+    )
     return form_again(
         request,
         "parameter.html",
@@ -127,6 +147,10 @@ def _parameter_page(
         effective=effective,
         pi_eligibility=eligibility,
         assumed_lifetime_operations=control_settings(session).assumed_relay_lifetime_operations,
+        sensor_failure=sensor_failure_parameters(session, zone),
+        profile_options=[("", "(Anlage erben)")]
+        + [(str(profile.id), profile.name) for profile in profiles],
+        backup_offsets=offsets,
     )
 
 
@@ -150,7 +174,22 @@ async def show_parameter(
     values["window_temp_drop_detection_enabled"] = (
         "yes" if zone.window_temp_drop_detection_enabled else ""
     )
-    return _parameter_page(request, session, zone, control_parameters(session, zone), values)
+    values["sensor_failure_enabled"] = "yes" if zone.sensor_failure_enabled else ""
+    values["sensor_failure_profile_id"] = (
+        str(zone.sensor_failure_profile_id)
+        if zone.sensor_failure_profile_id is not None
+        else ""
+    )
+    values["sensor_failure_emergency_setpoint_c"] = (
+        str(zone.sensor_failure_emergency_setpoint_c)
+        if zone.sensor_failure_emergency_setpoint_c is not None
+        else ""
+    )
+    for candidate in list_backup_offset_candidates(session, zone):
+        values[f"backup_offset_{candidate.zone_device_id}"] = str(candidate.offset_k)
+    return _parameter_page(
+        request, session, zone, control_parameters(session, zone), values, principal=principal
+    )
 
 
 def _check_parameters(values: dict[str, str]) -> dict[str, Decimal | int | None]:
@@ -206,6 +245,18 @@ async def save_parameter(
     values["window_temp_drop_detection_enabled"] = str(
         form.get("window_temp_drop_detection_enabled", "")
     )
+    values["sensor_failure_enabled"] = str(form.get("sensor_failure_enabled", ""))
+    values["sensor_failure_profile_id"] = str(form.get("sensor_failure_profile_id", "")).strip()
+    values["sensor_failure_emergency_setpoint_c"] = str(
+        form.get("sensor_failure_emergency_setpoint_c", "")
+    ).strip()
+    may_manage_backup_offsets = has_permission(principal, "device.manage", zone.id)
+    backup_offset_candidates = list_backup_offset_candidates(session, zone)
+    if may_manage_backup_offsets:
+        for candidate in backup_offset_candidates:
+            values[f"backup_offset_{candidate.zone_device_id}"] = str(
+                form.get(f"backup_offset_{candidate.zone_device_id}", "")
+            ).strip()
     try:
         checked = _check_parameters({name: values[name] for name in FELDER})
         checked["valve_protection_enabled"] = bool(values["valve_protection_enabled"])
@@ -247,6 +298,42 @@ async def save_parameter(
         # protection value above must not, either (`validate_valve_protection`'s own
         # comment on `save_settings` for the same reasoning).
         validate_pi_parameters(session, zone, checked)
+
+        sensor_failure_enabled = values["sensor_failure_enabled"] != ""
+        try:
+            sensor_failure_profile_id = (
+                int(values["sensor_failure_profile_id"])
+                if values["sensor_failure_profile_id"]
+                else None
+            )
+        except ValueError as exc:
+            raise FormError(
+                "sensor_failure_profile_id", "Bitte ein bekanntes Profil wählen."
+            ) from exc
+        try:
+            sensor_failure_emergency_setpoint_c = (
+                Decimal(values["sensor_failure_emergency_setpoint_c"].replace(",", "."))
+                if values["sensor_failure_emergency_setpoint_c"]
+                else None
+            )
+        except InvalidOperation as exc:
+            raise FormError(
+                "sensor_failure_emergency_setpoint_c", "Bitte eine gültige Zahl angeben."
+            ) from exc
+        backup_offsets: dict[int, Decimal | None] = {}
+        if may_manage_backup_offsets:
+            for candidate in backup_offset_candidates:
+                text = values[f"backup_offset_{candidate.zone_device_id}"]
+                if not text:
+                    backup_offsets[candidate.zone_device_id] = None
+                    continue
+                try:
+                    backup_offsets[candidate.zone_device_id] = Decimal(text.replace(",", "."))
+                except InvalidOperation as exc:
+                    raise FormError(
+                        f"backup_offset_{candidate.zone_device_id}",
+                        "Bitte eine gültige Zahl angeben.",
+                    ) from exc
     except (FormError, ParameterOutOfRange) as exc:
         if isinstance(exc, ParameterOutOfRange):
             # Both `validate_valve_protection` and `validate_pi_parameters` raise
@@ -256,7 +343,8 @@ async def save_parameter(
             field = "pi_enabled" if "PI-" in str(exc) else "valve_protection_duration_minutes"
             exc = FormError(field, str(exc))
         return _parameter_page(
-            request, session, zone, control_parameters(session, zone), values, exc
+            request, session, zone, control_parameters(session, zone), values, exc,
+            principal=principal,
         )
     # Set before `save_control_parameters` runs: that call also writes the audit
     # entry, and its `object_type="zone_settings"` covers this field too -- a second,
@@ -282,6 +370,47 @@ async def save_parameter(
         user_id=principal.user_id,
         token_id=principal.token_id,
     )
+    # Notbetrieb bei Sensorausfall (Auftrag 8a) -- derselbe Kompromiss wie oben für
+    # `window_temp_drop_detection_enabled`: ein Formular, ein Speichern-Knopf, aber
+    # diese beiden Schreibvorgänge laufen zuletzt. Eine hier (selten) scheiternde
+    # Validierung (z. B. Festtakt des gewählten Profils zu kurz für die eben
+    # gespeicherten Mindestschaltzeiten dieser Zone) lässt die bereits geschriebenen
+    # Regelparameter oben stehen -- sichtbar als Fehler auf genau diesem Feld, nicht
+    # als stiller Datenverlust.
+    try:
+        save_sensor_failure_parameters(
+            session,
+            zone,
+            enabled=sensor_failure_enabled,
+            profile_id=sensor_failure_profile_id,
+            emergency_setpoint_c=sensor_failure_emergency_setpoint_c,
+            user_id=principal.user_id,
+            token_id=principal.token_id,
+        )
+        for assignment_id, offset in backup_offsets.items():
+            save_sensor_failure_backup_offset(
+                session,
+                assignment_id,
+                offset,
+                user_id=principal.user_id,
+                token_id=principal.token_id,
+            )
+    except PolicyError as exc:
+        field_map = {
+            "profile_id": "sensor_failure_profile_id",
+            "emergency_setpoint_c": "sensor_failure_emergency_setpoint_c",
+            "fixed_on_seconds": "sensor_failure_profile_id",
+            "fixed_off_seconds": "sensor_failure_profile_id",
+        }
+        return _parameter_page(
+            request,
+            session,
+            zone,
+            control_parameters(session, zone),
+            values,
+            FormError(field_map.get(exc.field, "sensor_failure_profile_id"), exc.notice),
+            principal=principal,
+        )
     return RedirectResponse(
         prefixed(request, f"/zones/{zone.id}/parameters"), status.HTTP_303_SEE_OTHER
     )

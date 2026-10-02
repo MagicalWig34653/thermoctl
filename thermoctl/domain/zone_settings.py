@@ -437,6 +437,22 @@ def save_sensor_failure_parameters(
     emergency_setpoint_c: Decimal | None, user_id: int | None,
     token_id: int | None = None, source: str = "web",
 ) -> None:
+    """Notbetriebs-Überschreibung einer Zone -- eigene, kleine Audit-Wache wie
+    `set_window_temp_drop_detection` oben: der Zonen-Regelparameterseite teilt
+    sich ein Formular/einen Speichern-Knopf mit den gewöhnlichen Regelparametern
+    (Auftrag 8a), die selbst bei jedem Speichern unbedingt ihren eigenen
+    `zone_settings`-Eintrag schreiben. Ohne diese Wache hätte *jedes* Speichern
+    der Seite, auch ohne jede Notbetriebs-Änderung, einen zweiten, inhaltsgleichen
+    Eintrag hinterlassen -- unnötiges Rauschen im Protokoll, nicht nur kosmetisch
+    (es hätte `tests/test_daily_views.py`s „genau ein Eintrag je Speichern,
+    sofern sich etwas ändert"-Zusicherung für das Fenstersturz-Feld mit verdeckt).
+    """
+    if (
+        zone.sensor_failure_enabled == enabled
+        and zone.sensor_failure_profile_id == profile_id
+        and zone.sensor_failure_emergency_setpoint_c == emergency_setpoint_c
+    ):
+        return
     save_zone_policy(session, zone, enabled=enabled, profile_id=profile_id,
                      emergency_setpoint_c=emergency_setpoint_c)
     audit.record(session, source=source, action="update", object_type="zone_settings",

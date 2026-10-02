@@ -289,6 +289,81 @@ class WriteControl(BaseModel):
     assumed_relay_lifetime_operations: int
 
 
+class CurvePointResponse(BaseModel):
+    outdoor_c: Decimal
+    on_seconds: int
+    off_seconds: int
+
+
+class WriteCurvePoint(BaseModel):
+    """One row of the Außenkennlinie. The domain checks bounds, order and the
+    single warm-end on_seconds==0 point -- a `Field` here would be a second,
+    drifting copy of those rules (Grundsatz 6)."""
+
+    outdoor_c: Decimal
+    on_seconds: int
+    off_seconds: int
+
+
+class SensorFailureDefaultsResponse(BaseModel):
+    """Anlagenweites Notbetriebsprofil (Auftrag 8a Punkt 2) plus Notsollwert."""
+
+    profile_id: int
+    profile_name: str
+    fixed_on_seconds: int
+    fixed_off_seconds: int
+    recovery_seconds: int
+    recovery_samples: int
+    warm_restart_hysteresis_k: Decimal
+    curve_points: list[CurvePointResponse]
+    emergency_setpoint_c: Decimal
+
+
+class WriteSensorFailureDefaults(BaseModel):
+    """`profile_name` is optional: omitted, the resolved profile keeps its current
+    name -- only its timing/curve fields and the plant-wide Notsollwert change."""
+
+    profile_name: str | None = None
+    fixed_on_seconds: int
+    fixed_off_seconds: int
+    recovery_seconds: int
+    recovery_samples: int
+    warm_restart_hysteresis_k: Decimal
+    curve_points: list[WriteCurvePoint] = Field(default_factory=list)
+    emergency_setpoint_c: Decimal
+
+
+class BackupOffsetResponse(BaseModel):
+    zone_device_id: int
+    device_name: str
+    temperature_backup_offset_k: Decimal
+
+
+class ZoneSensorFailureResponse(BaseModel):
+    """Wirksame und eigene Notbetriebs-Einstellungen einer Zone (Auftrag 8a Punkt 3),
+    inklusive der Ausgleichswerte ihrer Thermostat-Aktor-Zuordnungen."""
+
+    enabled: bool
+    profile_id: int | None
+    effective_profile_id: int
+    profile_source: str
+    emergency_setpoint_c: Decimal | None
+    effective_emergency_setpoint_c: Decimal
+    setpoint_source: str
+    backup_offsets: list[BackupOffsetResponse]
+
+
+class WriteZoneSensorFailure(BaseModel):
+    enabled: bool
+    profile_id: int | None = None
+    emergency_setpoint_c: Decimal | None = None
+    # Zuordnungs-ID -> Ausgleichswert (K); `null` setzt auf "kein Ausgleich"
+    # zurück. `None` (Feld ganz fehlt) heißt "unverändert" -- wer Grundsatz 1
+    # ernst nimmt, darf eine fremde Zuordnung nicht versehentlich mitlöschen, nur
+    # weil sie nicht im Formular stand.
+    backup_offsets: dict[int, Decimal | None] | None = None
+
+
 class MoveSchedulePoint(BaseModel):
     weekday: int = Field(ge=1, le=7)
     minute_of_day: int = Field(ge=0, le=1439)

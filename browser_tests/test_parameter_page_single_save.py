@@ -85,7 +85,7 @@ def test_the_page_has_exactly_one_visible_speichern_button(page_at_parameters: P
 
 @pytest.mark.parametrize(
     "checkbox_id",
-    ["valve_protection_enabled", "window_temp_drop_detection_enabled"],
+    ["valve_protection_enabled", "window_temp_drop_detection_enabled", "sensor_failure_enabled"],
 )
 def test_a_checkbox_survives_the_single_save_button_and_a_fresh_context(
     page_at_parameters: Page,

@@ -38,7 +38,15 @@ _PASSWORD = "Formularhygiene-9"  # noqa: S105 -- ephemeral local database only
 # so `/kiosk-tokens`' repeated checkbox `zone_id` never reaches this list in the
 # first place -- an entry for it here would be dead weight. Kept as the place to
 # list a *non*-checkbox exception, should one turn up.
-_ALLOWED_NAME_DUPLICATES: dict[str, set[str]] = {}
+# `/settings`' Notbetriebs-Kennlinie (Auftrag 8a) is a real array of rows -- each
+# `curve_outdoor_c`/`curve_on_seconds`/`curve_off_seconds` triple repeats once per
+# row by design (`thermoctl/web/control_views.py::_parse_curve_points` reads them
+# back with `form.getlist`), not the accidentally-duplicated single field the
+# project owner reported. The module docstring's own closing sentence names this
+# dict as the place for exactly this kind of non-checkbox exception.
+_ALLOWED_NAME_DUPLICATES: dict[str, set[str]] = {
+    "/settings": {"curve_outdoor_c", "curve_on_seconds", "curve_off_seconds"},
+}
 
 # `/controllers` deliberately puts one small "Speichern" form per device property
 # in the same `.tc-panel` card -- as many as the device has readable/writable

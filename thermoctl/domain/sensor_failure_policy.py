@@ -13,7 +13,7 @@ from typing import Literal
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from thermoctl.db.models.device import DeviceCapabilityLink, ZoneDevice
+from thermoctl.db.models.device import Device, DeviceCapabilityLink, ZoneDevice
 from thermoctl.db.models.lookup import DeviceCapability, DeviceRole
 from thermoctl.db.models.operations import Setting
 from thermoctl.db.models.sensor_failure import SensorFailureCurvePoint, SensorFailureProfile
@@ -141,6 +141,24 @@ def read_defaults(session: Session) -> Defaults:
     return Defaults(
         row.sensor_failure_default_profile_id, row.sensor_failure_default_emergency_setpoint_c
     )
+
+
+def effective_default_profile(session: Session) -> Profile:
+    """Das anlagenweite Profil, das jede Zone ohne eigenes Profil erbt --
+    dieselbe Herkunftsregel wie in `effective_policy` (Zone -> Anlage ->
+    Vorgabe), nur schon eine Stufe höher: hier gibt es keine Zone mehr, die
+    etwas überschreiben könnte, nur noch Anlagen-Vorgabe gegen
+    Migrations-Vorgabe. Ein einziger Ort für „welches Profil gilt gerade
+    anlagenweit", statt einer in jedem der drei Adapter selbst
+    nachgebildeten Randbedingung (Grundsatz 6).
+    """
+    defaults = read_defaults(session)
+    profile_id = (
+        defaults.profile_id
+        if defaults.profile_id is not None
+        else migration_default_profile_id(session)
+    )
+    return read_profile(session, profile_id)
 
 
 def read_zone_policy(session: Session, zone: Zone) -> ZonePolicy:
@@ -338,6 +356,53 @@ def _assignment(session: Session, assignment_id: int) -> ZoneDevice:
 def read_backup_offset(session: Session, assignment_id: int) -> Decimal:
     value = _assignment(session, assignment_id).temperature_backup_offset_k
     return Decimal("0") if value is None else value
+
+
+@dataclass(frozen=True)
+class BackupOffsetCandidate:
+    zone_device_id: int
+    device_name: str
+    offset_k: Decimal
+
+
+def list_backup_offset_candidates(
+    session: Session, zone: Zone
+) -> tuple[BackupOffsetCandidate, ...]:
+    """Thermostat-Aktor-Zuordnungen dieser Zone mit ihrem aktuellen Ausgleichswert.
+
+    Dieselbe Fähigkeitsprüfung wie `_assignment` oben (Aktor, `thermostat`, nicht
+    `switch`) -- ein einziger Ort dafür, statt einer in REST, MCP und der
+    Oberfläche je selbst nachgebildeten Randbedingung (Grundsatz 6).
+    """
+    role_id = session.scalar(select(DeviceRole.id).where(DeviceRole.code == "actuator"))
+    if role_id is None:
+        return ()
+    rows = session.scalars(
+        select(ZoneDevice)
+        .where(ZoneDevice.zone_id == zone.id, ZoneDevice.device_role_id == role_id)
+        .order_by(ZoneDevice.sort_order, ZoneDevice.id)
+    ).all()
+    result = []
+    for row in rows:
+        capabilities = set(
+            session.scalars(
+                select(DeviceCapability.code)
+                .join(
+                    DeviceCapabilityLink, DeviceCapabilityLink.capability_id == DeviceCapability.id
+                )
+                .where(DeviceCapabilityLink.device_id == row.device_id)
+            )
+        )
+        if "thermostat" in capabilities and "switch" not in capabilities:
+            device = session.get(Device, row.device_id)
+            assert device is not None
+            value = row.temperature_backup_offset_k
+            result.append(
+                BackupOffsetCandidate(
+                    row.id, device.display_name, Decimal("0") if value is None else value
+                )
+            )
+    return tuple(result)
 
 
 def save_backup_offset(session: Session, assignment_id: int, value: Decimal | None) -> None:

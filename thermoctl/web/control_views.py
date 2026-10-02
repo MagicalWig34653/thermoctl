@@ -14,10 +14,11 @@ landed on the arm button first.
 """
 
 from datetime import timedelta
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request, Response, status
+from fastapi.datastructures import FormData
 from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -43,6 +44,8 @@ from thermoctl.domain.control import (
     ControlError,
     arm,
     check_coordinate,
+    save_sensor_failure_defaults,
+    save_sensor_failure_profile,
     save_settings,
     save_solar_location,
     save_window_alarm_settings,
@@ -64,6 +67,13 @@ from thermoctl.domain.pi_control import (
 )
 from thermoctl.domain.principal import Principal
 from thermoctl.domain.schedule import resolved_setpoint
+from thermoctl.domain.sensor_failure_policy import (
+    CurvePoint,
+    PolicyError,
+    ProfileValues,
+    effective_default_profile,
+)
+from thermoctl.domain.sensor_failure_policy import read_defaults as read_sensor_failure_defaults
 from thermoctl.domain.statistics import (
     PERIODS,
     RelayDeviceStatistics,
@@ -174,6 +184,8 @@ def _defaults_page(
     window_alarm_errors: ControlError | None = None,
     window_temp_drop_values: dict[str, str] | None = None,
     window_temp_drop_errors: ControlError | None = None,
+    sensor_failure_values: dict[str, object] | None = None,
+    sensor_failure_errors: PolicyError | None = None,
 ) -> Response:
     row = settings(session)
     if values is None:
@@ -198,6 +210,17 @@ def _defaults_page(
         else None
     )
     outdoor_current = outdoor_reading(session, row, utcnow())
+    if sensor_failure_values is None:
+        profile = effective_default_profile(session)
+        sensor_failure_values = {
+            "fixed_on_seconds": profile.values.fixed_on_seconds,
+            "fixed_off_seconds": profile.values.fixed_off_seconds,
+            "recovery_seconds": profile.values.recovery_seconds,
+            "recovery_samples": profile.values.recovery_samples,
+            "warm_restart_hysteresis_k": profile.values.warm_restart_hysteresis_k,
+            "curve_points": profile.values.curve_points,
+            "emergency_setpoint_c": read_sensor_failure_defaults(session).emergency_setpoint_c,
+        }
     return templates.TemplateResponse(
         request,
         "settings.html",
@@ -254,6 +277,12 @@ def _defaults_page(
             "outdoor_source": outdoor_source,
             "outdoor_source_error": outdoor_source_error,
             "outdoor_current": outdoor_current,
+            "sensor_failure_values": sensor_failure_values,
+            "sensor_failure_errors": (
+                {sensor_failure_errors.field: sensor_failure_errors.notice}
+                if sensor_failure_errors
+                else {}
+            ),
         },
     )
 
@@ -387,6 +416,121 @@ async def save_window_temp_drop(
             principal,
             window_temp_drop_values=values,
             window_temp_drop_errors=exc,
+        )
+    return RedirectResponse(prefixed(request, "/settings"), status_code=status.HTTP_303_SEE_OTHER)
+
+
+def _parse_curve_points(form: FormData) -> tuple[CurvePoint, ...]:
+    """Parses the repeated `curve_outdoor_c`/`curve_on_seconds`/`curve_off_seconds`
+    triples -- one `<input>` per row, same `name` repeated, same shape the browser
+    sends regardless of how many rows JavaScript added or removed client-side.
+    A row with any blank field is dropped silently: an empty row left over from a
+    removed one (or one never filled in) means "nothing here", not "0 everywhere".
+    """
+    outdoor = form.getlist("curve_outdoor_c")
+    on = form.getlist("curve_on_seconds")
+    off = form.getlist("curve_off_seconds")
+    points = []
+    for outdoor_text, on_text, off_text in zip(outdoor, on, off, strict=True):
+        if not (str(outdoor_text).strip() and str(on_text).strip() and str(off_text).strip()):
+            continue
+        try:
+            points.append(
+                CurvePoint(
+                    Decimal(str(outdoor_text).replace(",", ".")),
+                    int(str(on_text)),
+                    int(str(off_text)),
+                )
+            )
+        except (InvalidOperation, ValueError) as exc:
+            raise ControlError(
+                "curve_points", "Kennlinie: bitte überall gültige Zahlen angeben."
+            ) from exc
+    return tuple(points)
+
+
+@router.post("/settings/sensor-failure")
+async def save_sensor_failure_defaults_view(
+    request: Request,
+    principal: Annotated[Principal, Depends(current_principal)],
+    session: Annotated[Session, Depends(get_session)],
+) -> Response:
+    """Anlagenweites Notbetriebsprofil und Notsollwert -- ein Formular, ein
+    Speichern-Knopf (Auftrag 8a, nicht den 0.10.1-Fehler wiederholen).
+
+    Beides wird in der Domäne geprüft, **bevor** eines von beiden geschrieben
+    wird (`save_sensor_failure_profile` validiert selbst zuerst), damit ein
+    abgelehntes Feld im zweiten Teil nicht den ersten schon committed
+    zurücklässt.
+    """
+    require(principal, "setting.manage")
+    form = await request.form()
+    current = effective_default_profile(session)
+    text_values = {
+        name: str(form.get(name, "")).strip()
+        for name in (
+            "fixed_on_seconds",
+            "fixed_off_seconds",
+            "recovery_seconds",
+            "recovery_samples",
+            "warm_restart_hysteresis_k",
+            "emergency_setpoint_c",
+        )
+    }
+    sensor_failure_values: dict[str, object] = dict(text_values)
+    try:
+        curve_points = _parse_curve_points(form)
+        sensor_failure_values["curve_points"] = curve_points
+        try:
+            int_fields = {
+                name: int(text_values[name])
+                for name in (
+                    "fixed_on_seconds",
+                    "fixed_off_seconds",
+                    "recovery_seconds",
+                    "recovery_samples",
+                )
+            }
+            warm_restart_hysteresis_k = Decimal(
+                text_values["warm_restart_hysteresis_k"].replace(",", ".")
+            )
+            emergency_setpoint_c = Decimal(
+                text_values["emergency_setpoint_c"].replace(",", ".")
+            )
+        except (InvalidOperation, ValueError) as exc:
+            raise ControlError(
+                "fixed_on_seconds", "Bitte überall gültige Zahlen angeben."
+            ) from exc
+        values = ProfileValues(
+            name=current.values.name,
+            fixed_on_seconds=int_fields["fixed_on_seconds"],
+            fixed_off_seconds=int_fields["fixed_off_seconds"],
+            recovery_seconds=int_fields["recovery_seconds"],
+            recovery_samples=int_fields["recovery_samples"],
+            warm_restart_hysteresis_k=warm_restart_hysteresis_k,
+            curve_points=curve_points,
+        )
+        save_sensor_failure_profile(
+            session,
+            values,
+            profile_id=current.id,
+            user_id=principal.user_id,
+            token_id=principal.token_id,
+        )
+        save_sensor_failure_defaults(
+            session,
+            profile_id=current.id,
+            emergency_setpoint_c=emergency_setpoint_c,
+            user_id=principal.user_id,
+            token_id=principal.token_id,
+        )
+    except (ControlError, PolicyError) as exc:
+        return _defaults_page(
+            request,
+            session,
+            principal,
+            sensor_failure_values=sensor_failure_values,
+            sensor_failure_errors=exc,  # type: ignore[arg-type]
         )
     return RedirectResponse(prefixed(request, "/settings"), status_code=status.HTTP_303_SEE_OTHER)
 

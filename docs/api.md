@@ -201,6 +201,48 @@ Wie stark eine einzelne Zone von Sonne profitiert, steht als `solar_gain_factor`
 **Fehlt das Feld, gilt 0** — ein Aufrufer, der die Absenkung nicht kennt, schaltet sie
 für diese Zone damit aus statt sie versehentlich ein.
 
+### Notbetrieb bei Sensorausfall
+
+`GET /api/v1/control/sensor-failure-defaults` benötigt `zone.read`,
+`PUT /api/v1/control/sensor-failure-defaults` benötigt `setting.manage`. Beschreibt das
+anlagenweite Notbetriebsprofil (Festtakt, Rückkehrprüfung, Außenkennlinie) und den
+anlagenweiten Notsollwert, den jede Zone erbt, die keinen eigenen gesetzt hat. Die
+Domäne prüft Profil und Notsollwert zusammen, bevor eines von beiden geschrieben wird —
+ein abgelehntes Feld lässt das andere unverändert.
+
+```json
+{"fixed_on_seconds": 600, "fixed_off_seconds": 1200, "recovery_seconds": 60,
+ "recovery_samples": 2, "warm_restart_hysteresis_k": "1.00",
+ "curve_points": [{"outdoor_c": "-10.00", "on_seconds": 1200, "off_seconds": 600},
+                   {"outdoor_c": "15.00", "on_seconds": 0, "off_seconds": 1800}],
+ "emergency_setpoint_c": "16.00"}
+```
+
+`curve_points` leer bedeutet Festtakt: die Außenkennlinie ist optional, mindestens
+zwei Zeilen sind aber nötig, sobald eine erste da ist (eine davon mit `on_seconds: 0`,
+der wärmste Punkt, Heizen aus).
+
+`GET /api/v1/zones/{zone_id}/sensor-failure` benötigt `zone.read`,
+`PUT /api/v1/zones/{zone_id}/sensor-failure` benötigt `zone.manage` — zusätzlich
+`device.manage`, sobald `backup_offsets` mitgeschickt wird. Zone-Überschreibung von
+Aktivierung, Profil und Notsollwert, dazu die Ausgleichswerte der
+Thermostat-Aktor-Zuordnungen dieser Zone (Zonenisolation gilt wie überall: eine
+fremde Zuordnungs-ID in `backup_offsets` ergibt `404`).
+
+```json
+{"enabled": true, "profile_id": null, "emergency_setpoint_c": "18.00",
+ "backup_offsets": {"7": "1.50", "9": null}}
+```
+
+`profile_id`/`emergency_setpoint_c` als `null` heißt „von der Anlage erben"; ein Wert
+in `backup_offsets` auf `null` setzt den Ausgleich dieser Zuordnung zurück. Die Antwort
+nennt zusätzlich die wirksamen Werte (`effective_profile_id`, `profile_source`,
+`effective_emergency_setpoint_c`, `setpoint_source`) — dieselben drei Herkunftsstufen
+wie überall sonst in diesem Modul: Zone, Anlage, Vorgabe.
+
+Die **automatische** Aktivierung für jede Zone ist nicht Teil dieses Endpunkts; die
+Vorgabe bleibt `enabled: false`.
+
 ### Regelparameter
 
 `GET /api/v1/zones/{zone_id}/parameters` benötigt `zone.read`,

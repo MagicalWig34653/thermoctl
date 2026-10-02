@@ -24,7 +24,15 @@ from sqlalchemy.orm import Session
 
 from thermoctl import audit
 from thermoctl.db.models.operations import Setting
-from thermoctl.domain.sensor_failure_policy import PolicyError, validate_active_profiles
+from thermoctl.domain.sensor_failure_policy import (
+    PolicyError,
+    Profile,
+    ProfileValues,
+    validate_active_profiles,
+)
+from thermoctl.domain.sensor_failure_policy import save_backup_offset as _save_backup_offset
+from thermoctl.domain.sensor_failure_policy import save_defaults as _save_defaults
+from thermoctl.domain.sensor_failure_policy import save_profile as _save_profile
 
 
 @dataclass
@@ -445,3 +453,79 @@ def arm(
         token_id=token_id,
     )
     return True
+
+
+def save_sensor_failure_defaults(
+    session: Session,
+    *,
+    profile_id: int | None,
+    emergency_setpoint_c: Decimal,
+    user_id: int | None,
+    token_id: int | None = None,
+    source: str = "web",
+) -> None:
+    """Anlagenweiter Notbetriebs-Notsollwert und Vorgabeprofil.
+
+    Audit lebt hier statt in `sensor_failure_policy.py`, wie `save_settings`/
+    `save_solar_location` oben für andere Felder der `setting`-Zeile: die Domäne
+    prüft und schreibt, der Adapter bekommt nur den Aufruf -- derselbe Grund wie
+    bei `save_sensor_failure_parameters` in `zone_settings.py` für die Zonenseite.
+    """
+    _save_defaults(session, profile_id=profile_id, emergency_setpoint_c=emergency_setpoint_c)
+    audit.record(
+        session,
+        source=source,
+        action="update",
+        object_type="setting",
+        object_id="1",
+        summary="Anlagenweite Notbetriebsvorgaben geändert",
+        user_id=user_id,
+        token_id=token_id,
+    )
+
+
+def save_sensor_failure_profile(
+    session: Session,
+    values: ProfileValues,
+    *,
+    profile_id: int | None = None,
+    user_id: int | None,
+    token_id: int | None = None,
+    source: str = "web",
+) -> Profile:
+    """Speichert ein Notbetriebsprofil (Festtakt, Rückkehr, Kennlinie) inkl. Audit."""
+    profile = _save_profile(session, values, profile_id=profile_id)
+    audit.record(
+        session,
+        source=source,
+        action="update",
+        object_type="sensor_failure_profile",
+        object_id=str(profile.id),
+        summary=f"Notbetriebsprofil „{values.name}“ geändert",
+        user_id=user_id,
+        token_id=token_id,
+    )
+    return profile
+
+
+def save_sensor_failure_backup_offset(
+    session: Session,
+    assignment_id: int,
+    value: Decimal | None,
+    *,
+    user_id: int | None,
+    token_id: int | None = None,
+    source: str = "web",
+) -> None:
+    """Ausgleichswert einer Thermostat-Aktor-Zuordnung (Auftrag 8a Punkt 3)."""
+    _save_backup_offset(session, assignment_id, value)
+    audit.record(
+        session,
+        source=source,
+        action="update",
+        object_type="zone_device",
+        object_id=str(assignment_id),
+        summary="Temperaturausgleich einer Thermostat-Zuordnung geändert",
+        user_id=user_id,
+        token_id=token_id,
+    )

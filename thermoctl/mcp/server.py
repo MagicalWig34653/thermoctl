@@ -19,7 +19,14 @@ from thermoctl.db.models.schedule import SchedulePoint
 from thermoctl.db.models.state import ShadowDecision, ZoneState
 from thermoctl.db.models.zone import SetpointMode, Zone, ZoneSetpoint
 from thermoctl.domain.authz import principal_for_token, require, visible_zones
-from thermoctl.domain.control import LIMITS, arm, settings
+from thermoctl.domain.control import (
+    LIMITS,
+    arm,
+    save_sensor_failure_backup_offset,
+    save_sensor_failure_defaults,
+    save_sensor_failure_profile,
+    settings,
+)
 from thermoctl.domain.device_commands import DEFAULT_LIMIT, list_commands, naive_utc
 from thermoctl.domain.principal import Principal
 from thermoctl.domain.remote_control import boost as domain_boost
@@ -38,9 +45,19 @@ from thermoctl.domain.schedule import (
 from thermoctl.domain.schedule import (
     move_schedule_point as domain_move_schedule_point,
 )
+from thermoctl.domain.sensor_failure_policy import (
+    CurvePoint,
+    ProfileValues,
+    list_backup_offset_candidates,
+    migration_default_profile_id,
+    read_defaults,
+    read_profile,
+)
 from thermoctl.domain.zone_settings import (
     PARAMETERS,
     control_parameters,
+    save_sensor_failure_parameters,
+    sensor_failure_parameters,
 )
 from thermoctl.domain.zone_settings import (
     set_parameter as domain_set_parameter,
@@ -84,6 +101,15 @@ def _visible_zone(session: Session, principal: Principal, zone_id: int) -> Zone:
 
 def _decimal(value: Decimal | None) -> str | None:
     return None if value is None else str(value)
+
+
+def _resolved_default_profile_id(session: Session) -> int:
+    defaults = read_defaults(session)
+    return (
+        defaults.profile_id
+        if defaults.profile_id is not None
+        else migration_default_profile_id(session)
+    )
 
 
 def _moment(value: datetime | None) -> str | None:
@@ -490,6 +516,170 @@ def read_control(session: Session, plaintext: str) -> dict[str, object]:
     }
 
 
+def _sensor_failure_defaults_payload(session: Session) -> dict[str, object]:
+    profile_id = _resolved_default_profile_id(session)
+    profile = read_profile(session, profile_id)
+    defaults = read_defaults(session)
+    return {
+        "profile_id": profile.id,
+        "profile_name": profile.values.name,
+        "fixed_on_seconds": profile.values.fixed_on_seconds,
+        "fixed_off_seconds": profile.values.fixed_off_seconds,
+        "recovery_seconds": profile.values.recovery_seconds,
+        "recovery_samples": profile.values.recovery_samples,
+        "warm_restart_hysteresis_k": _decimal(profile.values.warm_restart_hysteresis_k),
+        "curve_points": [
+            {
+                "outdoor_c": _decimal(point.outdoor_c),
+                "on_seconds": point.on_seconds,
+                "off_seconds": point.off_seconds,
+            }
+            for point in profile.values.curve_points
+        ],
+        "emergency_setpoint_c": _decimal(defaults.emergency_setpoint_c),
+    }
+
+
+def read_sensor_failure_defaults_tool(session: Session, plaintext: str) -> dict[str, object]:
+    """Anlagenweites Notbetriebsprofil (Festtakt, Rückkehr, Kennlinie) und den
+    plantweiten Notsollwert -- wie unter „Regelvorgaben" (Auftrag 8a)."""
+    _token, principal = _log_in(session, plaintext)
+    require(principal, "zone.read")
+    return _sensor_failure_defaults_payload(session)
+
+
+def set_sensor_failure_defaults_tool(
+    session: Session,
+    plaintext: str,
+    *,
+    fixed_on_seconds: int,
+    fixed_off_seconds: int,
+    recovery_seconds: int,
+    recovery_samples: int,
+    warm_restart_hysteresis_k: Decimal,
+    emergency_setpoint_c: Decimal,
+    curve_points: list[dict[str, Any]] | None = None,
+    profile_name: str | None = None,
+) -> dict[str, object]:
+    """Speichert das anlagenweite Notbetriebsprofil und den Notsollwert zusammen.
+
+    `curve_points` leer oder weggelassen bedeutet Festtakt -- dieselbe Regel wie
+    auf der Regelvorgaben-Seite.
+    """
+    _token, principal = _log_in(session, plaintext)
+    require(principal, "setting.manage")
+    profile_id = _resolved_default_profile_id(session)
+    current = read_profile(session, profile_id)
+    values = ProfileValues(
+        name=profile_name or current.values.name,
+        fixed_on_seconds=fixed_on_seconds,
+        fixed_off_seconds=fixed_off_seconds,
+        recovery_seconds=recovery_seconds,
+        recovery_samples=recovery_samples,
+        warm_restart_hysteresis_k=warm_restart_hysteresis_k,
+        curve_points=tuple(
+            CurvePoint(
+                Decimal(str(point["outdoor_c"])),
+                int(point["on_seconds"]),
+                int(point["off_seconds"]),
+            )
+            for point in (curve_points or [])
+        ),
+    )
+    save_sensor_failure_profile(
+        session,
+        values,
+        profile_id=profile_id,
+        user_id=principal.user_id,
+        token_id=_token.id,
+        source="mcp",
+    )
+    save_sensor_failure_defaults(
+        session,
+        profile_id=profile_id,
+        emergency_setpoint_c=emergency_setpoint_c,
+        user_id=principal.user_id,
+        token_id=_token.id,
+        source="mcp",
+    )
+    return _sensor_failure_defaults_payload(session)
+
+
+def read_sensor_failure_policy(session: Session, plaintext: str, zone_id: int) -> dict[str, object]:
+    """Wirksame und eigene Notbetriebs-Einstellungen einer Zone, samt Ausgleichswerten
+    ihrer Thermostat-Aktor-Zuordnungen (Auftrag 8a)."""
+    _token, principal = _log_in(session, plaintext)
+    zone = _visible_zone(session, principal, zone_id)
+    effective = sensor_failure_parameters(session, zone)
+    return {
+        "zone": zone.name,
+        "enabled": zone.sensor_failure_enabled,
+        "profile_id": zone.sensor_failure_profile_id,
+        "effective_profile_id": effective.profile.id,
+        "profile_source": effective.profile_source,
+        "emergency_setpoint_c": _decimal(zone.sensor_failure_emergency_setpoint_c),
+        "effective_emergency_setpoint_c": _decimal(effective.emergency_setpoint_c),
+        "setpoint_source": effective.setpoint_source,
+        "backup_offsets": [
+            {
+                "zone_device_id": candidate.zone_device_id,
+                "device_name": candidate.device_name,
+                "temperature_backup_offset_k": _decimal(candidate.offset_k),
+            }
+            for candidate in list_backup_offset_candidates(session, zone)
+        ],
+    }
+
+
+def set_sensor_failure_policy(
+    session: Session,
+    plaintext: str,
+    zone_id: int,
+    *,
+    enabled: bool,
+    profile_id: int | None = None,
+    emergency_setpoint_c: Decimal | None = None,
+    backup_offsets: dict[int, Decimal | None] | None = None,
+) -> dict[str, object]:
+    """Setzt Aktivierung, Profil-/Notsollwert-Herkunft und optional Ausgleichswerte.
+
+    Ausgleichswerte brauchen zusätzlich `device.manage` -- dieselbe Trennung wie in
+    REST (`PUT /api/v1/zones/{id}/sensor-failure`).
+    """
+    _token, principal = _log_in(session, plaintext)
+    zone = _visible_zone(session, principal, zone_id)
+    require(principal, "zone.manage", zone_id)
+    if backup_offsets:
+        require(principal, "device.manage", zone_id)
+        valid_ids = {c.zone_device_id for c in list_backup_offset_candidates(session, zone)}
+        unknown = set(backup_offsets) - valid_ids
+        if unknown:
+            raise ValueError(
+                f"Zuordnung(en) {sorted(unknown)} gehören nicht zu dieser Zone "
+                "oder sind kein Thermostat-Aktor."
+            )
+    save_sensor_failure_parameters(
+        session,
+        zone,
+        enabled=enabled,
+        profile_id=profile_id,
+        emergency_setpoint_c=emergency_setpoint_c,
+        user_id=principal.user_id,
+        token_id=_token.id,
+        source="mcp",
+    )
+    for assignment_id, value in (backup_offsets or {}).items():
+        save_sensor_failure_backup_offset(
+            session,
+            assignment_id,
+            value,
+            user_id=principal.user_id,
+            token_id=_token.id,
+            source="mcp",
+        )
+    return read_sensor_failure_policy(session, plaintext, zone_id)
+
+
 def force_dry_run(
     session: Session, plaintext: str, reason: str = ""
 ) -> dict[str, object]:
@@ -686,6 +876,71 @@ def _register_tools(
         """Returns control to dry run; this tool cannot arm the installation."""
         with session_scope(factory) as session:
             return force_dry_run(session, plaintext, reason)
+
+    @server.tool(name="read_sensor_failure_defaults")
+    def mcp_read_sensor_failure_defaults() -> dict[str, object]:
+        """Reads the plant-wide Notbetrieb profile (Festtakt/Rückkehr/Kennlinie)
+        and the plant-wide emergency setpoint."""
+        with session_scope(factory) as session:
+            return read_sensor_failure_defaults_tool(session, plaintext)
+
+    @server.tool(name="set_sensor_failure_defaults")
+    def mcp_set_sensor_failure_defaults(
+        fixed_on_seconds: int,
+        fixed_off_seconds: int,
+        recovery_seconds: int,
+        recovery_samples: int,
+        warm_restart_hysteresis_k: Decimal,
+        emergency_setpoint_c: Decimal,
+        curve_points: list[dict[str, Any]] | None = None,
+        profile_name: str | None = None,
+    ) -> dict[str, object]:
+        """Saves the plant-wide Notbetrieb profile and emergency setpoint together.
+
+        `curve_points` empty or omitted means Festtakt only, same as on the
+        Regelvorgaben page.
+        """
+        with session_scope(factory) as session:
+            return set_sensor_failure_defaults_tool(
+                session,
+                plaintext,
+                fixed_on_seconds=fixed_on_seconds,
+                fixed_off_seconds=fixed_off_seconds,
+                recovery_seconds=recovery_seconds,
+                recovery_samples=recovery_samples,
+                warm_restart_hysteresis_k=warm_restart_hysteresis_k,
+                emergency_setpoint_c=emergency_setpoint_c,
+                curve_points=curve_points,
+                profile_name=profile_name,
+            )
+
+    @server.tool(name="read_sensor_failure_policy")
+    def mcp_read_sensor_failure_policy(zone_id: int) -> dict[str, object]:
+        """Reads a visible zone's effective and own Notbetrieb settings, including
+        the backup offsets of its thermostat actuator assignments."""
+        with session_scope(factory) as session:
+            return read_sensor_failure_policy(session, plaintext, zone_id)
+
+    @server.tool(name="set_sensor_failure_policy")
+    def mcp_set_sensor_failure_policy(
+        zone_id: int,
+        enabled: bool,
+        profile_id: int | None = None,
+        emergency_setpoint_c: Decimal | None = None,
+        backup_offsets: dict[int, Decimal | None] | None = None,
+    ) -> dict[str, object]:
+        """Sets a visible zone's Notbetrieb activation, profile/setpoint source,
+        and optionally its thermostat backup offsets (needs `device.manage`)."""
+        with session_scope(factory) as session:
+            return set_sensor_failure_policy(
+                session,
+                plaintext,
+                zone_id,
+                enabled=enabled,
+                profile_id=profile_id,
+                emergency_setpoint_c=emergency_setpoint_c,
+                backup_offsets=backup_offsets,
+            )
 
     @server.tool(name="move_schedule_point")
     def mcp_move_schedule_point(

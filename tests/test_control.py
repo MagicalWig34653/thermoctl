@@ -20,6 +20,7 @@ from thermoctl.auth.csrf import CSRF_HEADER, csrf_token
 from thermoctl.auth.sessions import COOKIE_NAME
 from thermoctl.config import get_settings
 from thermoctl.db.models.operations import AuditEvent, Setting
+from thermoctl.db.models.zone import Zone
 from thermoctl.domain.control import (
     LIMITS,
     ControlError,
@@ -27,6 +28,12 @@ from thermoctl.domain.control import (
     check_number,
     save_settings,
     save_solar_location,
+)
+from thermoctl.domain.sensor_failure_policy import (
+    CurvePoint,
+    ProfileValues,
+    migration_default_profile_id,
+    save_profile,
 )
 
 ClientBuilder = Callable[[list[tuple[str, int | None]]], TestClient]
@@ -680,3 +687,443 @@ def test_the_start_page_keeps_the_three_latches_apart(
         assert label in page, label
     # Drei getrennte Blöcke, nicht drei Wörter in einem Satz.
     assert page.count('class="tc-latch"') == 3
+
+
+# --- Notbetrieb bei Sensorausfall (Auftrag 8a) ------------------------------
+
+
+def _profile_values(**overrides: object) -> ProfileValues:
+    base = dict(
+        name="Notbetrieb Vorgabe",
+        fixed_on_seconds=600,
+        fixed_off_seconds=1200,
+        recovery_seconds=60,
+        recovery_samples=2,
+        warm_restart_hysteresis_k=Decimal("1"),
+        curve_points=(),
+    )
+    base.update(overrides)
+    return ProfileValues(**base)  # type: ignore[arg-type]
+
+
+def _set_profile(session: Session, **overrides: object) -> None:
+    """Updates the one Vorgabeprofil `create_settings` already seeds (helpers.py
+    mirrors the real migration) -- `save_profile` without a `profile_id` would
+    create a *second*, unrelated row with the same name, and
+    `migration_default_profile_id` always keeps using the oldest (the bare one
+    from `create_settings`), silently ignoring whatever this test just set up."""
+    profile_id = migration_default_profile_id(session)
+    save_profile(session, _profile_values(**overrides), profile_id=profile_id)
+
+
+def test_the_settings_page_shows_the_effective_sensor_failure_profile(
+    client_als: ClientBuilder, session: Session
+) -> None:
+    create_settings(session)
+    _set_profile(session)
+    page = client_als(ALL_PERMISSIONS).get("/settings").text
+    assert "Notbetrieb bei Sensorausfall" in page
+    assert 'name="fixed_on_seconds"' in page
+    assert 'value="600"' in page
+
+
+def test_saving_the_sensor_failure_defaults_round_trips(
+    client_als: ClientBuilder, session: Session
+) -> None:
+    create_settings(session)
+    source(session, "web")
+    _set_profile(session)
+    client = client_als(ALL_PERMISSIONS)
+
+    response = client.post(
+        "/settings/sensor-failure",
+        data={
+            "fixed_on_seconds": "900",
+            "fixed_off_seconds": "1200",
+            "recovery_seconds": "60",
+            "recovery_samples": "2",
+            "warm_restart_hysteresis_k": "1",
+            "emergency_setpoint_c": "17.5",
+            "curve_outdoor_c": ["-10", "0", "15"],
+            "curve_on_seconds": ["1200", "600", "0"],
+            "curve_off_seconds": ["600", "1200", "1800"],
+        },
+        headers=_csrf(client),
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+
+    page = client.get("/settings").text
+    assert 'value="900"' in page
+
+    row = session.get(Setting, 1)
+    profile_id = row.sensor_failure_default_profile_id or migration_default_profile_id(session)
+    from thermoctl.domain.sensor_failure_policy import read_profile
+
+    reloaded = read_profile(session, profile_id)
+    assert reloaded.values.fixed_on_seconds == 900
+    assert [p.outdoor_c for p in reloaded.values.curve_points] == [
+        Decimal("-10.00"),
+        Decimal("0.00"),
+        Decimal("15.00"),
+    ]
+
+
+def test_emptying_the_curve_rows_falls_back_to_fixed_cycling(
+    client_als: ClientBuilder, session: Session
+) -> None:
+    """Keine Kennlinienzeile heißt Festtakt -- derselbe Vertrag wie in der Domäne
+    (`validate_profile`), hier über die Oberfläche belegt statt nur über `save_profile`
+    direkt (`tests/test_sensor_failure_policy.py`)."""
+    create_settings(session)
+    source(session, "web")
+    _set_profile(
+        session,
+        curve_points=(
+            CurvePoint(Decimal("-10"), 1200, 600),
+            CurvePoint(Decimal("15"), 0, 1800),
+        ),
+    )
+    client = client_als(ALL_PERMISSIONS)
+
+    response = client.post(
+        "/settings/sensor-failure",
+        data={
+            "fixed_on_seconds": "600",
+            "fixed_off_seconds": "1200",
+            "recovery_seconds": "60",
+            "recovery_samples": "2",
+            "warm_restart_hysteresis_k": "1",
+            "emergency_setpoint_c": "16",
+            "curve_outdoor_c": [""],
+            "curve_on_seconds": [""],
+            "curve_off_seconds": [""],
+        },
+        headers=_csrf(client),
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    row = session.get(Setting, 1)
+    profile_id = row.sensor_failure_default_profile_id or migration_default_profile_id(session)
+    from thermoctl.domain.sensor_failure_policy import read_profile
+
+    assert read_profile(session, profile_id).values.curve_points == ()
+
+
+def test_an_invalid_curve_point_rejects_the_whole_write_without_data_loss(
+    client_als: ClientBuilder, session: Session
+) -> None:
+    create_settings(session)
+    source(session, "web")
+    _set_profile(session)
+    client = client_als(ALL_PERMISSIONS)
+
+    response = client.post(
+        "/settings/sensor-failure",
+        data={
+            "fixed_on_seconds": "999",
+            "fixed_off_seconds": "1200",
+            "recovery_seconds": "60",
+            "recovery_samples": "2",
+            "warm_restart_hysteresis_k": "1",
+            "emergency_setpoint_c": "16",
+            # Kein Punkt mit on_seconds == 0: fehlender oberer Aus-Punkt, ungültig.
+            "curve_outdoor_c": ["-10", "0"],
+            "curve_on_seconds": ["1200", "600"],
+            "curve_off_seconds": ["600", "1200"],
+        },
+        headers=_csrf(client),
+        follow_redirects=False,
+    )
+    assert response.status_code == 200
+    assert "Kennlinie" in response.text
+
+    page = client.get("/settings").text
+    assert 'value="600"' in page  # unverändert, nicht auf 999 geschrieben
+
+
+def _minimal_zone_parameter_form(**overrides: str) -> dict[str, str]:
+    """A parameter-page POST where every regular field is left blank (= inherit) --
+    only the Notbetrieb fields under test actually carry a value."""
+    values: dict[str, str] = {}
+    values.update(overrides)
+    return values
+
+
+def test_the_zone_parameter_page_shows_the_sensor_failure_section(
+    client_als: ClientBuilder, session: Session
+) -> None:
+    create_settings(session)
+    _set_profile(session)
+    zone = create_zone(session, "notbetrieb-ui-zeigen-zone")
+    page = client_als([("zone.read", None), ("zone.manage", None)]).get(
+        f"/zones/{zone.id}/parameters"
+    ).text
+    assert "Notbetrieb bei Sensorausfall" in page
+    assert 'name="sensor_failure_enabled"' in page
+    assert 'name="sensor_failure_profile_id"' in page
+
+
+def test_enabling_the_zone_and_setting_an_own_setpoint_through_the_parameter_page(
+    client_als: ClientBuilder, session: Session
+) -> None:
+    create_settings(session)
+    source(session, "web")
+    _set_profile(session)
+    zone = create_zone(session, "notbetrieb-ui-zone")
+    client = client_als([("zone.read", None), ("zone.manage", None)])
+
+    response = client.post(
+        f"/zones/{zone.id}/parameters",
+        data=_minimal_zone_parameter_form(
+            sensor_failure_enabled="yes", sensor_failure_emergency_setpoint_c="19"
+        ),
+        headers=_csrf(client),
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    assert zone.sensor_failure_enabled is True
+    assert zone.sensor_failure_emergency_setpoint_c == Decimal("19")
+
+    # "zurück auf erben": derselbe Checkbox-Zustand, aber das Notsollwert-Feld
+    # diesmal leer -- erbt wieder vom anlagenweiten Wert.
+    response = client.post(
+        f"/zones/{zone.id}/parameters",
+        data=_minimal_zone_parameter_form(sensor_failure_enabled="yes"),
+        headers=_csrf(client),
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    assert zone.sensor_failure_emergency_setpoint_c is None
+    assert zone.sensor_failure_enabled is True
+
+
+def test_an_unknown_sensor_failure_profile_is_rejected_without_data_loss(
+    client_als: ClientBuilder, session: Session
+) -> None:
+    create_settings(session)
+    source(session, "web")
+    _set_profile(session)
+    zone = create_zone(session, "notbetrieb-ui-ungueltiges-profil")
+    client = client_als([("zone.read", None), ("zone.manage", None)])
+
+    response = client.post(
+        f"/zones/{zone.id}/parameters",
+        data=_minimal_zone_parameter_form(
+            sensor_failure_enabled="yes", sensor_failure_profile_id="999999"
+        ),
+        headers=_csrf(client),
+        follow_redirects=False,
+    )
+    assert response.status_code == 200
+    assert "nicht gefunden" in response.text
+    assert zone.sensor_failure_enabled is False
+
+
+def test_backup_offsets_are_only_shown_and_saved_with_device_manage(
+    client_als: ClientBuilder, session: Session
+) -> None:
+    from tests.helpers import capability, create_device, role
+    from thermoctl.db.models.device import DeviceCapabilityLink, ZoneDevice
+
+    create_settings(session)
+    source(session, "web")
+    _set_profile(session)
+    zone = create_zone(session, "notbetrieb-ui-ausgleich-zone")
+    thermostat_device = create_device(session, "notbetrieb-ui-thermostat")
+    session.add(
+        DeviceCapabilityLink(
+            device_id=thermostat_device.id, capability_id=capability(session, "thermostat").id
+        )
+    )
+    assignment = ZoneDevice(
+        zone_id=zone.id,
+        device_id=thermostat_device.id,
+        device_role_id=role(session, "actuator").id,
+        self_regulating=True,
+    )
+    session.add(assignment)
+    session.flush()
+
+    without_device_manage = client_als([("zone.read", None), ("zone.manage", None)])
+    page = without_device_manage.get(f"/zones/{zone.id}/parameters").text
+    assert f"backup_offset_{assignment.id}" not in page
+
+    with_device_manage = client_als(
+        [("zone.read", None), ("zone.manage", None), ("device.manage", None)]
+    )
+    page = with_device_manage.get(f"/zones/{zone.id}/parameters").text
+    assert f"backup_offset_{assignment.id}" in page
+
+    response = with_device_manage.post(
+        f"/zones/{zone.id}/parameters",
+        data=_minimal_zone_parameter_form(
+            **{f"backup_offset_{assignment.id}": "1.5"}
+        ),
+        headers=_csrf(with_device_manage),
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    from thermoctl.domain.sensor_failure_policy import read_backup_offset
+
+    assert read_backup_offset(session, assignment.id) == Decimal("1.50")
+
+
+def test_a_non_numeric_sensor_failure_profile_id_names_its_field(
+    client_als: ClientBuilder, session: Session
+) -> None:
+    create_settings(session)
+    zone = create_zone(session, "notbetrieb-ui-profil-keine-zahl")
+    client = client_als([("zone.read", None), ("zone.manage", None)])
+
+    response = client.post(
+        f"/zones/{zone.id}/parameters",
+        data=_minimal_zone_parameter_form(
+            sensor_failure_enabled="yes", sensor_failure_profile_id="abc"
+        ),
+        headers=_csrf(client),
+        follow_redirects=False,
+    )
+    assert response.status_code == 200
+    assert "bekanntes Profil" in response.text
+    assert zone.sensor_failure_enabled is False
+
+
+def test_a_non_numeric_sensor_failure_setpoint_names_its_field(
+    client_als: ClientBuilder, session: Session
+) -> None:
+    create_settings(session)
+    zone = create_zone(session, "notbetrieb-ui-sollwert-keine-zahl")
+    client = client_als([("zone.read", None), ("zone.manage", None)])
+
+    response = client.post(
+        f"/zones/{zone.id}/parameters",
+        data=_minimal_zone_parameter_form(
+            sensor_failure_enabled="yes", sensor_failure_emergency_setpoint_c="abc"
+        ),
+        headers=_csrf(client),
+        follow_redirects=False,
+    )
+    assert response.status_code == 200
+    assert "gültige Zahl" in response.text
+    assert zone.sensor_failure_emergency_setpoint_c is None
+
+
+def _ausgleich_assignment(session: Session, zone: Zone) -> int:
+    from tests.helpers import capability, create_device, role
+    from thermoctl.db.models.device import DeviceCapabilityLink, ZoneDevice
+
+    device = create_device(session, f"{zone.name}-thermostat")
+    thermostat_capability_id = capability(session, "thermostat").id
+    session.add(
+        DeviceCapabilityLink(device_id=device.id, capability_id=thermostat_capability_id)
+    )
+    assignment = ZoneDevice(
+        zone_id=zone.id,
+        device_id=device.id,
+        device_role_id=role(session, "actuator").id,
+        self_regulating=True,
+    )
+    session.add(assignment)
+    session.flush()
+    return assignment.id
+
+
+def test_a_non_numeric_backup_offset_names_its_field(
+    client_als: ClientBuilder, session: Session
+) -> None:
+    create_settings(session)
+    zone = create_zone(session, "notbetrieb-ui-ausgleich-keine-zahl")
+    assignment_id = _ausgleich_assignment(session, zone)
+    client = client_als(
+        [("zone.read", None), ("zone.manage", None), ("device.manage", None)]
+    )
+
+    response = client.post(
+        f"/zones/{zone.id}/parameters",
+        data=_minimal_zone_parameter_form(**{f"backup_offset_{assignment_id}": "abc"}),
+        headers=_csrf(client),
+        follow_redirects=False,
+    )
+    assert response.status_code == 200
+    assert "gültige Zahl" in response.text
+
+
+def test_clearing_a_backup_offset_through_the_parameter_page_resets_it(
+    client_als: ClientBuilder, session: Session
+) -> None:
+    from thermoctl.domain.control import save_sensor_failure_backup_offset
+    from thermoctl.domain.sensor_failure_policy import read_backup_offset
+
+    create_settings(session)
+    source(session, "web")
+    zone = create_zone(session, "notbetrieb-ui-ausgleich-loeschen")
+    assignment_id = _ausgleich_assignment(session, zone)
+    save_sensor_failure_backup_offset(session, assignment_id, Decimal("2"), user_id=None)
+    assert read_backup_offset(session, assignment_id) == Decimal("2")
+
+    client = client_als(
+        [("zone.read", None), ("zone.manage", None), ("device.manage", None)]
+    )
+    response = client.post(
+        f"/zones/{zone.id}/parameters",
+        data=_minimal_zone_parameter_form(**{f"backup_offset_{assignment_id}": ""}),
+        headers=_csrf(client),
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    assert read_backup_offset(session, assignment_id) == Decimal("0")
+
+
+def test_an_invalid_curve_point_value_on_the_settings_page_names_its_field(
+    client_als: ClientBuilder, session: Session
+) -> None:
+    create_settings(session)
+    source(session, "web")
+    client = client_als(ALL_PERMISSIONS)
+
+    response = client.post(
+        "/settings/sensor-failure",
+        data={
+            "fixed_on_seconds": "600",
+            "fixed_off_seconds": "1200",
+            "recovery_seconds": "60",
+            "recovery_samples": "2",
+            "warm_restart_hysteresis_k": "1",
+            "emergency_setpoint_c": "16",
+            "curve_outdoor_c": ["abc", "15"],
+            "curve_on_seconds": ["1200", "0"],
+            "curve_off_seconds": ["600", "1800"],
+        },
+        headers=_csrf(client),
+        follow_redirects=False,
+    )
+    assert response.status_code == 200
+    assert "Kennlinie" in response.text
+
+
+def test_a_non_numeric_top_level_sensor_failure_field_on_the_settings_page_is_rejected(
+    client_als: ClientBuilder, session: Session
+) -> None:
+    create_settings(session)
+    source(session, "web")
+    client = client_als(ALL_PERMISSIONS)
+
+    response = client.post(
+        "/settings/sensor-failure",
+        data={
+            "fixed_on_seconds": "abc",
+            "fixed_off_seconds": "1200",
+            "recovery_seconds": "60",
+            "recovery_samples": "2",
+            "warm_restart_hysteresis_k": "1",
+            "emergency_setpoint_c": "16",
+            "curve_outdoor_c": [],
+            "curve_on_seconds": [],
+            "curve_off_seconds": [],
+        },
+        headers=_csrf(client),
+        follow_redirects=False,
+    )
+    assert response.status_code == 200
+    assert "gültige Zahlen" in response.text

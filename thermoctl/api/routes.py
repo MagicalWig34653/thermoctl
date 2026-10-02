@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from thermoctl.api.schemas import (
+    BackupOffsetResponse,
     BoostResponse,
     ControlParametersResponse,
     ControlResponse,
@@ -15,12 +16,14 @@ from thermoctl.api.schemas import (
     CreateOverride,
     CreateSchedulePoint,
     CreateVacation,
+    CurvePointResponse,
     DeviceCommandResponse,
     DeviceResponse,
     ModeResponse,
     MoveSchedulePoint,
     OverrideResponse,
     SchedulePointResponse,
+    SensorFailureDefaultsResponse,
     SetArmed,
     SetpointResponse,
     TokenResponse,
@@ -28,10 +31,13 @@ from thermoctl.api.schemas import (
     WriteControl,
     WriteControlParameters,
     WriteParameter,
+    WriteSensorFailureDefaults,
     WriteSetpoints,
     WriteSolarLocation,
     WriteZone,
+    WriteZoneSensorFailure,
     ZoneResponse,
+    ZoneSensorFailureResponse,
     ZoneStateResponse,
 )
 from thermoctl.auth.dependencies import get_session
@@ -49,6 +55,9 @@ from thermoctl.domain.control import (
     LIMITS,
     ControlError,
     arm,
+    save_sensor_failure_backup_offset,
+    save_sensor_failure_defaults,
+    save_sensor_failure_profile,
     save_settings,
     save_solar_location,
     settings,
@@ -70,6 +79,15 @@ from thermoctl.domain.schedule import (
     end_of_next_switch,
     move_schedule_point,
 )
+from thermoctl.domain.sensor_failure_policy import (
+    CurvePoint,
+    PolicyError,
+    ProfileValues,
+    list_backup_offset_candidates,
+    migration_default_profile_id,
+    read_defaults,
+    read_profile,
+)
 from thermoctl.domain.time import local_time
 from thermoctl.domain.zone_settings import (
     PARAMETERS,
@@ -77,6 +95,8 @@ from thermoctl.domain.zone_settings import (
     UnknownParameter,
     control_parameters,
     save_control_parameters,
+    save_sensor_failure_parameters,
+    sensor_failure_parameters,
     set_parameter,
 )
 from thermoctl.domain.zones import ZoneNameTaken, create_zone, delete_zone, update_zone
@@ -828,6 +848,175 @@ def control_solar_location(
     except ControlError as exc:
         raise _domain_error(exc.field, exc.notice) from exc
     return _control_response(session)
+
+
+# --- Notbetrieb bei Sensorausfall (Auftrag 8a) ---------------------------------
+#
+# Zwei Endpunkte wie im Plan: das anlagenweite Profil samt Notsollwert, und die
+# Überschreibung/Ausgleichswerte einer einzelnen Zone. Die Domäne
+# (`domain.sensor_failure_policy`, `domain.control`, `domain.zone_settings`)
+# validiert und schreibt; hier wird nur übersetzt, wie bei jedem anderen
+# Endpunkt dieser Datei.
+
+
+def _resolved_default_profile_id(session: Session) -> int:
+    defaults = read_defaults(session)
+    return (
+        defaults.profile_id
+        if defaults.profile_id is not None
+        else migration_default_profile_id(session)
+    )
+
+
+def _sensor_failure_defaults_response(session: Session) -> SensorFailureDefaultsResponse:
+    defaults = read_defaults(session)
+    profile = read_profile(session, _resolved_default_profile_id(session))
+    return SensorFailureDefaultsResponse(
+        profile_id=profile.id,
+        profile_name=profile.values.name,
+        fixed_on_seconds=profile.values.fixed_on_seconds,
+        fixed_off_seconds=profile.values.fixed_off_seconds,
+        recovery_seconds=profile.values.recovery_seconds,
+        recovery_samples=profile.values.recovery_samples,
+        warm_restart_hysteresis_k=profile.values.warm_restart_hysteresis_k,
+        curve_points=[
+            CurvePointResponse(
+                outdoor_c=p.outdoor_c, on_seconds=p.on_seconds, off_seconds=p.off_seconds
+            )
+            for p in profile.values.curve_points
+        ],
+        emergency_setpoint_c=defaults.emergency_setpoint_c,
+    )
+
+
+@router.get("/control/sensor-failure-defaults", response_model=SensorFailureDefaultsResponse)
+def sensor_failure_defaults_view(
+    session: Annotated[Session, Depends(get_session)],
+    principal: Annotated[Principal, Depends(_principal)],
+) -> SensorFailureDefaultsResponse:
+    _permission(principal, "zone.read")
+    return _sensor_failure_defaults_response(session)
+
+
+@router.put("/control/sensor-failure-defaults", response_model=SensorFailureDefaultsResponse)
+def save_sensor_failure_defaults_view(
+    data: WriteSensorFailureDefaults,
+    session: Annotated[Session, Depends(get_session)],
+    principal: Annotated[Principal, Depends(_principal)],
+) -> SensorFailureDefaultsResponse:
+    _permission(principal, "setting.manage")
+    profile_id = _resolved_default_profile_id(session)
+    current = read_profile(session, profile_id)
+    values = ProfileValues(
+        name=data.profile_name or current.values.name,
+        fixed_on_seconds=data.fixed_on_seconds,
+        fixed_off_seconds=data.fixed_off_seconds,
+        recovery_seconds=data.recovery_seconds,
+        recovery_samples=data.recovery_samples,
+        warm_restart_hysteresis_k=data.warm_restart_hysteresis_k,
+        curve_points=tuple(
+            CurvePoint(p.outdoor_c, p.on_seconds, p.off_seconds) for p in data.curve_points
+        ),
+    )
+    try:
+        save_sensor_failure_profile(
+            session,
+            values,
+            profile_id=profile_id,
+            user_id=principal.user_id,
+            token_id=principal.token_id,
+            source="api",
+        )
+        save_sensor_failure_defaults(
+            session,
+            profile_id=profile_id,
+            emergency_setpoint_c=data.emergency_setpoint_c,
+            user_id=principal.user_id,
+            token_id=principal.token_id,
+            source="api",
+        )
+    except PolicyError as exc:
+        raise _domain_error(exc.field, exc.notice) from exc
+    return _sensor_failure_defaults_response(session)
+
+
+def _zone_sensor_failure_response(session: Session, zone: Zone) -> ZoneSensorFailureResponse:
+    effective = sensor_failure_parameters(session, zone)
+    return ZoneSensorFailureResponse(
+        enabled=zone.sensor_failure_enabled,
+        profile_id=zone.sensor_failure_profile_id,
+        effective_profile_id=effective.profile.id,
+        profile_source=effective.profile_source,
+        emergency_setpoint_c=zone.sensor_failure_emergency_setpoint_c,
+        effective_emergency_setpoint_c=effective.emergency_setpoint_c,
+        setpoint_source=effective.setpoint_source,
+        backup_offsets=[
+            BackupOffsetResponse(
+                zone_device_id=candidate.zone_device_id,
+                device_name=candidate.device_name,
+                temperature_backup_offset_k=candidate.offset_k,
+            )
+            for candidate in list_backup_offset_candidates(session, zone)
+        ],
+    )
+
+
+@router.get("/zones/{zone_id}/sensor-failure", response_model=ZoneSensorFailureResponse)
+def zone_sensor_failure_view(
+    zone_id: int,
+    session: Annotated[Session, Depends(get_session)],
+    principal: Annotated[Principal, Depends(_principal)],
+) -> ZoneSensorFailureResponse:
+    zone_obj = _visible_zone(session, principal, zone_id)
+    _permission(principal, "zone.read")
+    return _zone_sensor_failure_response(session, zone_obj)
+
+
+@router.put("/zones/{zone_id}/sensor-failure", response_model=ZoneSensorFailureResponse)
+def save_zone_sensor_failure_view(
+    zone_id: int,
+    data: WriteZoneSensorFailure,
+    session: Annotated[Session, Depends(get_session)],
+    principal: Annotated[Principal, Depends(_principal)],
+) -> ZoneSensorFailureResponse:
+    zone_obj = _visible_zone(session, principal, zone_id)
+    _permission(principal, "zone.manage", zone_id)
+    if data.backup_offsets:
+        _permission(principal, "device.manage", zone_id)
+        valid_ids = {
+            candidate.zone_device_id
+            for candidate in list_backup_offset_candidates(session, zone_obj)
+        }
+        unknown = set(data.backup_offsets) - valid_ids
+        if unknown:
+            raise HTTPException(
+                status.HTTP_404_NOT_FOUND,
+                f"Zuordnung(en) {sorted(unknown)} gehören nicht zu dieser Zone "
+                "oder sind kein Thermostat-Aktor.",
+            )
+    try:
+        save_sensor_failure_parameters(
+            session,
+            zone_obj,
+            enabled=data.enabled,
+            profile_id=data.profile_id,
+            emergency_setpoint_c=data.emergency_setpoint_c,
+            user_id=principal.user_id,
+            token_id=principal.token_id,
+            source="api",
+        )
+        for assignment_id, value in (data.backup_offsets or {}).items():
+            save_sensor_failure_backup_offset(
+                session,
+                assignment_id,
+                value,
+                user_id=principal.user_id,
+                token_id=principal.token_id,
+                source="api",
+            )
+    except PolicyError as exc:
+        raise _domain_error(exc.field, exc.notice) from exc
+    return _zone_sensor_failure_response(session, zone_obj)
 
 
 @router.put("/zones/{zone_id}/schedule/{point_id}", response_model=SchedulePointResponse)

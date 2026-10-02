@@ -39,7 +39,7 @@ Beispiel sind ausschließlich Platzhalter.
 
 ## Die Werkzeuge
 
-19 Stück, alle über dieselbe Domänenlogik wie Oberfläche und REST-Schnittstelle. Jedes
+23 Stück, alle über dieselbe Domänenlogik wie Oberfläche und REST-Schnittstelle. Jedes
 prüft dasselbe Recht wie der entsprechende REST-Endpunkt.
 
 | Werkzeug | Recht | Was es liefert |
@@ -63,6 +63,10 @@ prüft dasselbe Recht wie der entsprechende REST-Endpunkt.
 | `read_control()` | `zone.read` | gespeicherter Riegel, nicht feststellbarer MQTT-Riegel, globale Vorgaben und Sonnenabsenkung |
 | `force_dry_run(reason)` | `control.arm` | nimmt die Regelung in den Trockenlauf zurück |
 | `move_schedule_point(zone_id, point_id, weekday, minute)` | `schedule.manage` | setzt einen Punkt auf einen anderen Zeitpunkt |
+| `read_sensor_failure_defaults()` | `zone.read` | anlagenweites Notbetriebsprofil (Festtakt, Rückkehr, Kennlinie) und anlagenweiter Notsollwert |
+| `set_sensor_failure_defaults(fixed_on_seconds, fixed_off_seconds, recovery_seconds, recovery_samples, warm_restart_hysteresis_k, emergency_setpoint_c, curve_points=None, profile_name=None)` | `setting.manage` | speichert Profil und Notsollwert zusammen |
+| `read_sensor_failure_policy(zone_id)` | `zone.read` | wirksame und eigene Notbetriebs-Einstellungen einer Zone samt Ausgleichswerten ihrer Thermostat-Aktor-Zuordnungen |
+| `set_sensor_failure_policy(zone_id, enabled, profile_id=None, emergency_setpoint_c=None, backup_offsets=None)` | `zone.manage` (zusätzlich `device.manage` für `backup_offsets`) | setzt Aktivierung, Profil-/Notsollwert-Herkunft, optional Ausgleichswerte |
 
 Eine nicht sichtbare Zone wird wie eine unbekannte behandelt — die Antwort verrät nicht,
 dass es sie gibt.

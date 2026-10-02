@@ -61,6 +61,122 @@
     <button class="btn btn-primary mt-4" type="submit">Sonnenabsenkung speichern</button>
 </form>
 
+{% if sensor_failure_errors %}<div class="alert alert-danger">{{ sensor_failure_errors.values() | join(" ") }}</div>{% endif %}
+<form method="post" action="{{ url_prefix }}/settings/sensor-failure" class="tc-panel p-4 mt-4">
+    <p class="t-label mb-1">Notbetrieb bei Sensorausfall</p>
+    <p class="t-quiet mb-3">
+        Anlagenweites Profil: wie lange ein Fußbodenkreis ohne brauchbaren Sensor im
+        Festtakt ein- und ausschaltet, wie die Rückkehr geprüft wird, und der
+        anlagenweite Notsollwert, den jede Zone erbt, die keinen eigenen gesetzt hat.
+        Je Zone einstellbar unter „Regelparameter" der Zone.
+    </p>
+    <div class="alert alert-warning" role="alert">
+        Im Notbetrieb takten Fußbodenkreise zeitgesteuert nach diesem Profil (oder der
+        Kennlinie unten), unabhängig von der gemessenen Temperatur; Thermostate werden
+        einmal auf den Notsollwert gestellt und danach nicht mehr angesprochen.
+    </div>
+    <div class="row g-3">
+        <div class="col-sm-6">
+            {{ number_field("fixed_on_seconds", "Festtakt Ein (Sekunden)",
+                sensor_failure_values.fixed_on_seconds,
+                "Wie lange ein Fußbodenkreis je Taktzyklus mindestens eingeschaltet bleibt, solange keine Außenkennlinie greift.",
+                sensor_failure_errors.get("fixed_on_seconds", ""), "1", "60", "7200") }}
+        </div>
+        <div class="col-sm-6">
+            {{ number_field("fixed_off_seconds", "Festtakt Aus (Sekunden)",
+                sensor_failure_values.fixed_off_seconds,
+                "Wie lange er danach mindestens ausgeschaltet bleibt.",
+                sensor_failure_errors.get("fixed_off_seconds", ""), "1", "60", "7200") }}
+        </div>
+        <div class="col-sm-6">
+            {{ number_field("recovery_seconds", "Rückkehr: Mindestdauer stabil (Sekunden)",
+                sensor_failure_values.recovery_seconds,
+                "So lange müssen die zwei neuen Messungen durchgängig brauchbar gewesen sein, bevor die Zone aus dem Notbetrieb zurückkehrt.",
+                sensor_failure_errors.get("recovery_seconds", ""), "1", "0") }}
+        </div>
+        <div class="col-sm-6">
+            {{ number_field("recovery_samples", "Rückkehr: nötige Messungen",
+                sensor_failure_values.recovery_samples,
+                "Wie viele neue, brauchbare Messungen für eine Rückkehr nötig sind.",
+                sensor_failure_errors.get("recovery_samples", ""), "1", "1") }}
+        </div>
+        <div class="col-sm-6">
+            {{ number_field("warm_restart_hysteresis_k", "Wiederanlaufspanne (K)",
+                sensor_failure_values.warm_restart_hysteresis_k,
+                "Hysterese gegen zu häufiges erneutes Einschalten knapp unterhalb des warmen Aus-Punkts der Kennlinie.",
+                sensor_failure_errors.get("warm_restart_hysteresis_k", ""), "0.01", "0") }}
+        </div>
+        <div class="col-sm-6">
+            {{ number_field("emergency_setpoint_c", "Anlagenweiter Notsollwert (°C)",
+                sensor_failure_values.emergency_setpoint_c,
+                "Sollwert, auf den ein Thermostat im Notbetrieb einmalig gestellt wird, sofern die Zone keinen eigenen Notsollwert gesetzt hat.",
+                sensor_failure_errors.get("emergency_setpoint_c", ""), "0.5", "5", "30") }}
+        </div>
+    </div>
+
+    <p class="t-label mt-3 mb-2">Außenkennlinie (optional)</p>
+    <p class="t-quiet mb-3">
+        Je Außentemperatur eine Zeile mit Ein-/Aus-Takt. Keine Zeile bedeutet: immer
+        Festtakt oben. Mit mindestens einer Zeile werden es mindestens zwei, davon genau
+        eine mit 0 Sekunden Ein — der wärmste Punkt, Heizen dort aus.
+    </p>
+    <div data-sensor-failure-curve>
+        <div data-sfc-list>
+            {% for point in sensor_failure_values.curve_points %}
+            <div class="row g-2 align-items-end mb-2" data-sfc-row>
+                <div class="col-sm-3">
+                    <label class="form-label">Außentemperatur (°C)</label>
+                    <input type="number" step="0.01" class="form-control"
+                           name="curve_outdoor_c" value="{{ point.outdoor_c }}">
+                </div>
+                <div class="col-sm-3">
+                    <label class="form-label">Ein (Sekunden)</label>
+                    <input type="number" step="1" min="0" class="form-control"
+                           name="curve_on_seconds" value="{{ point.on_seconds }}">
+                </div>
+                <div class="col-sm-3">
+                    <label class="form-label">Aus (Sekunden)</label>
+                    <input type="number" step="1" min="1" class="form-control"
+                           name="curve_off_seconds" value="{{ point.off_seconds }}">
+                </div>
+                <div class="col-sm-auto">
+                    <button type="button" class="btn btn-outline-secondary btn-sm"
+                            data-sfc-remove>Zeile entfernen</button>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        <template data-sfc-template>
+            <div class="row g-2 align-items-end mb-2" data-sfc-row>
+                <div class="col-sm-3">
+                    <label class="form-label">Außentemperatur (°C)</label>
+                    <input type="number" step="0.01" class="form-control" name="curve_outdoor_c">
+                </div>
+                <div class="col-sm-3">
+                    <label class="form-label">Ein (Sekunden)</label>
+                    <input type="number" step="1" min="0" class="form-control" name="curve_on_seconds">
+                </div>
+                <div class="col-sm-3">
+                    <label class="form-label">Aus (Sekunden)</label>
+                    <input type="number" step="1" min="1" class="form-control" name="curve_off_seconds">
+                </div>
+                <div class="col-sm-auto">
+                    <button type="button" class="btn btn-outline-secondary btn-sm"
+                            data-sfc-remove>Zeile entfernen</button>
+                </div>
+            </div>
+        </template>
+        <button type="button" class="btn btn-outline-primary btn-sm mt-1" data-sfc-add>
+            Kennlinienzeile hinzufügen
+        </button>
+    </div>
+    {% if sensor_failure_errors.get("curve_points") %}
+    <div class="text-danger small mt-2">{{ sensor_failure_errors.curve_points }}</div>
+    {% endif %}
+
+    <button class="btn btn-primary mt-4" type="submit">Notbetrieb speichern</button>
+</form>
+
 {% if outdoor_source_error %}<div class="alert alert-danger">{{ outdoor_source_error }}</div>{% endif %}
 <form method="post" action="{{ url_prefix }}/settings/outdoor-source" class="tc-panel p-4 mt-4">
     <p class="t-label mb-1">Außentemperatur</p>
@@ -237,6 +353,31 @@
         <dt class="col-md-7 fw-normal t-quiet">Länge</dt>
         <dd class="col-md-5 t-value mb-0">{{ values.get("solar_forecast_longitude", "") }}</dd>
     </dl>
+</div>
+<div class="tc-panel p-4 mt-4">
+    <p class="t-label mb-1">Notbetrieb bei Sensorausfall</p>
+    <dl class="row mb-0">
+        <dt class="col-md-7 fw-normal t-quiet">Festtakt Ein (Sekunden)</dt>
+        <dd class="col-md-5 t-value">{{ sensor_failure_values.fixed_on_seconds }}</dd>
+        <dt class="col-md-7 fw-normal t-quiet">Festtakt Aus (Sekunden)</dt>
+        <dd class="col-md-5 t-value">{{ sensor_failure_values.fixed_off_seconds }}</dd>
+        <dt class="col-md-7 fw-normal t-quiet">Rückkehr: Mindestdauer stabil (Sekunden)</dt>
+        <dd class="col-md-5 t-value">{{ sensor_failure_values.recovery_seconds }}</dd>
+        <dt class="col-md-7 fw-normal t-quiet">Rückkehr: nötige Messungen</dt>
+        <dd class="col-md-5 t-value">{{ sensor_failure_values.recovery_samples }}</dd>
+        <dt class="col-md-7 fw-normal t-quiet">Wiederanlaufspanne (K)</dt>
+        <dd class="col-md-5 t-value">{{ sensor_failure_values.warm_restart_hysteresis_k }}</dd>
+        <dt class="col-md-7 fw-normal t-quiet">Anlagenweiter Notsollwert (°C)</dt>
+        <dd class="col-md-5 t-value mb-0">{{ sensor_failure_values.emergency_setpoint_c }}</dd>
+    </dl>
+    {% if sensor_failure_values.curve_points %}
+    <p class="t-quiet small mt-3 mb-1">Außenkennlinie</p>
+    <ul class="mb-0">
+        {% for point in sensor_failure_values.curve_points %}
+        <li>{{ point.outdoor_c }} °C: {{ point.on_seconds }} s ein, {{ point.off_seconds }} s aus</li>
+        {% endfor %}
+    </ul>
+    {% endif %}
 </div>
 <div class="tc-panel p-4 mt-4">
     <p class="t-label mb-1">Außentemperatur</p>
