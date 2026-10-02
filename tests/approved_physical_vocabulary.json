@@ -172,8 +172,10 @@
       "**Fehlt das Feld, gilt 0** — ein Aufrufer, der die Absenkung nicht kennt, schaltet sie",
       "**selbstregelndes** Ventil dagegen schließt die Zone nicht aus: Es bekommt seinen",
       "Aufbewahrungsdauer pflegen darf, soll die Heizung nicht nebenbei scharf schalten können.",
+      "Thermostat-Aktor-Zuordnungen dieser Zone (Zonenisolation gilt wie überall: eine",
       "Verschleiß-Hochrechnung unter `/relay-wear` und in den Warnhinweis beim Einschalten der",
       "Wochen später nicht mehr zu klären, warum ein Raum in einer bestimmten Nacht warm war.",
+      "der wärmste Punkt, Heizen aus).",
       "gewöhnlichen Schaltaktor stehen darf — PI steuert dann nur diesen Schaltaktor an. Der",
       "warum PI deutlich häufiger schaltet als die Hysterese — die Zahlen dazu stehen am Schalter",
       "weitergereicht —, ebenso eine Zone ganz ohne gewöhnlichen Schaltaktor. Ein"
@@ -249,7 +251,8 @@
       "gewöhnlichen Schaltaktor. Ein **selbstregelndes** Ventil schließt die Zone dagegen nicht",
       "können Sollwerte an selbstregelnde Thermostatventile und Ein/Aus-Befehle an gewöhnliche",
       "sodass es neben einem gewöhnlichen Schaltaktor stehen darf — PI steuert dann nur diesen",
-      "vorhandenen** Punkt, legt aber keinen an und löscht keinen. „Verschieb die Morgenheizung"
+      "vorhandenen** Punkt, legt aber keinen an und löscht keinen. „Verschieb die Morgenheizung",
+      "| `read_sensor_failure_policy(zone_id)` | `zone.read` | wirksame und eigene Notbetriebs-Einstellungen einer Zone samt Ausgleichswerten ihrer Thermostat-Aktor-Zuordnungen |"
     ],
     "docs/mqtt.md": [
       "- **Lesen** — Sensordaten aus Zigbee2MQTT aufnehmen. Läuft, sobald MQTT eingeschaltet ist.",
@@ -441,6 +444,9 @@
       "je dunkler, desto wärmer.",
       "schaltet, zeigen die Balken, wann geheizt worden *wäre* — das kann in dieser Zeit von"
     ],
+    "thermoctl/api/routes.py": [
+      "gehören nicht zu dieser Zone oder sind kein Thermostat-Aktor."
+    ],
     "thermoctl/db/models/lookup.py": [
       "Aktor",
       "Die Regelung scharf schalten",
@@ -537,6 +543,8 @@
     "thermoctl/domain/sensor_failure_policy.py": [
       "Temperaturausgleich ist nur für Thermostat-Aktor-Zuordnungen zulässig.",
       "actuator",
+      "actuator",
+      "switch",
       "switch"
     ],
     "thermoctl/domain/statistics.py": [
@@ -577,7 +585,9 @@
     ],
     "thermoctl/mcp/server.py": [
       "Pulls a visible zone's next scheduled setpoint switch forward.",
-      "Reads the actuator command log, newest first, filtered and capped."
+      "Reads the actuator command log, newest first, filtered and capped.",
+      "gehören nicht zu dieser Zone oder sind kein Thermostat-Aktor.",
+      "the backup offsets of its thermostat actuator assignments."
     ],
     "thermoctl/services/meross_discovery.py": [
       "switch"
@@ -691,13 +701,16 @@
       "\"Wie weit die Ist-Temperatur unter den Sollwert fallen darf, bevor die Regelung Heizen anfordert. Zu klein heißt ein ständiger Wechsel zwischen Ein- und Aus-Entscheidung. Derzeit \" ~ effective.hysteresis_k ~ \" K\" ~ (\" aus dem globalen Standard.\" if not values.hysteresis_k else \".\"), errors.hysteresis_k, \"0.01\", \"0\") }}",
       "<div class=\"form-check form-switch mb-1\">",
       "<div class=\"form-check form-switch mb-3\">",
+      "<div class=\"form-check form-switch mb-3\">",
       "<div class=\"form-text\">Erzeugt regelmäßig eine Ventilschutz-Entscheidung. Im Trockenlauf wird sie nur protokolliert; scharf und neu gestartet wird der zugeordnete Aktor angesteuert.</div>",
       "<input class=\"form-check-input\" type=\"checkbox\" role=\"switch\" id=\"pi_enabled\"",
+      "<input class=\"form-check-input\" type=\"checkbox\" role=\"switch\" id=\"sensor_failure_enabled\"",
       "<input class=\"form-check-input\" type=\"checkbox\" role=\"switch\" id=\"window_temp_drop_detection_enabled\"",
       "<label class=\"form-check-label\" for=\"pi_enabled\">PI-Regelung (Beta) einschalten</label>",
       "<label class=\"form-check-label\" for=\"valve_protection_enabled\">Ventilschutz einschalten</label>",
       "<strong>PI (Beta) schaltet deutlich häufiger als die Hysterese und verkürzt dadurch",
       "Aus ist die Vorgabe für jede Zone, auch nach einer Aktualisierung. Ausschalten",
+      "Temperaturausgleich (K) je zugeordnetem Thermostat-Aktor — nur auf einen",
       "die Lebensdauer des Schaltaktors spürbar.</strong>",
       "diese Zone tatsächlich schaltet, zeigt <a href=\"{{ url_prefix }}/relay-wear\">Relaisverschleiß</a>",
       "{{ number_field(\"valve_protection_duration_minutes\", \"Ventilschutz-Dauer (Minuten)\", values.valve_protection_duration_minutes,",
@@ -718,9 +731,14 @@
       "{{ (45 + (bar.warmth - 0.5)|abs * 90)|round|int }}%, var(--surface));"
     ],
     "thermoctl/web/templates/settings.html": [
+      "\"Hysterese gegen zu häufiges erneutes Einschalten knapp unterhalb des warmen Aus-Punkts der Kennlinie.\",",
       "\"Wenn ein Befehl an einen Aktor nicht durchkommt.\") }}",
+      "\"Wie lange ein Fußbodenkreis je Taktzyklus mindestens eingeschaltet bleibt, solange keine Außenkennlinie greift.\",",
+      "\"Wie lange er danach mindestens ausgeschaltet bleibt.\",",
       "<span class=\"tc-chip tc-chip-warm\"><span class=\"tc-dot\"></span>Angekommen</span>",
-      "die Außentemperatur unter der eingestellten Schwelle liegt. Ein- und ausgeschaltet"
+      "Festtakt ein- und ausschaltet, wie die Rückkehr geprüft wird, und der",
+      "die Außentemperatur unter der eingestellten Schwelle liegt. Ein- und ausgeschaltet",
+      "eine mit 0 Sekunden Ein — der wärmste Punkt, Heizen dort aus."
     ],
     "thermoctl/web/templates/start.html": [
       "\"es ist warm draußen\" verwechseln könnte.",

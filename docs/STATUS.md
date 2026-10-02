@@ -2,6 +2,64 @@
 
 Letzte Aktualisierung: 2026-10-02.
 
+## 0.11.0: Notbetrieb-Konfiguration über Oberfläche, REST und MCP (Auftrag 8a)
+
+Konfigurationsseite des Notbetriebs fertig, alle drei Adapter über derselben Domäne
+(Grundsatz 6): `thermoctl/domain/sensor_failure_policy.py` validiert und liest/schreibt,
+`thermoctl/domain/control.py` (anlagenweites Profil/Notsollwert/Ausgleichswert) und
+`thermoctl/domain/zone_settings.py` (Zonenüberschreibung) hängen Audit-Einträge an, genau
+wie bei den bestehenden Regelvorgaben.
+
+- **Regelparameter-Seite** (`thermoctl/web/templates/parameter.html`,
+  `thermoctl/web/daily_views.py`): Notbetriebs-Abschnitt **im bestehenden einen Formular**,
+  ein Speichern-Knopf — bewusst nicht wie 0.10.1 wiederholt. Aktivierung, Profilwahl
+  (anlagenweit erben oder eines der vorhandenen Profile — eine eigene
+  Profil-*Anlage*-Oberfläche gibt es nicht, siehe Entscheidung unten), eigener/erbter
+  Notsollwert, Ausgleichswerte je Thermostat-Zuordnung (nur sichtbar und schreibbar mit
+  zusätzlichem `device.manage`). Wirksame Werte und ihre Herkunft (Zone/Anlage/Vorgabe)
+  stehen direkt daneben.
+- **Regelvorgaben-Seite** (`thermoctl/web/templates/settings.html`,
+  `thermoctl/web/control_views.py`): eigene Karte „Notbetrieb bei Sensorausfall“, ein
+  Speichern-Knopf für Festtakt, Rückkehrprüfung, Wiederanlaufspanne, anlagenweiten
+  Notsollwert und die Außenkennlinie als **echte Zeilen** (hinzufügen/entfernen über
+  `thermoctl/web/static/sensor_failure_curve.js`, serverseitig als wiederholte
+  `curve_outdoor_c`/`curve_on_seconds`/`curve_off_seconds`-Felder geparst und vor jedem
+  Schreiben vollständig validiert — ein ungültiger Punkt verwirft die ganze Eingabe).
+- **REST**: `GET/PUT /api/v1/control/sensor-failure-defaults`,
+  `GET/PUT /api/v1/zones/{id}/sensor-failure` (`thermoctl/api/routes.py`, `schemas.py`).
+  **MCP**: `read/set_sensor_failure_defaults`, `read/set_sensor_failure_policy`
+  (`thermoctl/mcp/server.py`, jetzt 23 Werkzeuge, `docs/mcp.md`/`docs/api.md`/
+  `docs/roadmap.md` nachgezogen). Gleiche Rechte wie der Plan vorgab (`setting.manage`/
+  `zone.manage` + `device.manage` für Ausgleichswerte, Lesen `zone.read`), gleiche
+  Fehlertexte wie die Domäne, Zonenisolation geprüft.
+- **Aufbewahrung** (Review-Hinweis aus Auftrag 7b nachgezogen):
+  `thermoctl/services/retention.py` um `delete_old_sensor_failure_source_comparisons` und
+  `delete_old_actuator_decisions` erweitert, gleiche Frist wie `ShadowDecision`
+  (`shadow_decision_retention_days`), verdrahtet in `thermoctl/app.py`.
+  `sensor_failure_episode` bleibt unberührt (eine Zeile je Störung).
+- **Blocker gefunden und selbst behoben:** `sensor_failure_curve.js` fehlte zunächst der
+  `if (document.readyState !== "loading") setUp();`-Nachlade-Fallback, den
+  `device_filter.js` bereits hat. Ohne ihn tat der „Zeile hinzufügen“-Knopf bei einer
+  echten Direktnavigation auf `/settings` gar nichts (nur nach einem htmx-geboosteten
+  Seitenwechsel wirkte er) — per Browsertest aufgedeckt, nachgezogen.
+- **Entscheidung (Projektinhaber, 2026-10-02): keine Mehrprofilverwaltung.** Die
+  Zonen-Profilauswahl bietet „Anlage erben“ oder eines der vorhandenen Profile; eine
+  eigene Oberfläche zum *Anlegen* weiterer Profile ist nicht Teil dieses Auftrags und
+  bleibt es auch so. Nur das eine anlagenweite Profil ist über die Regelvorgaben-Seite
+  bearbeitbar.
+- Die **automatische** Aktivierung aller Zonen ist weiterhin nicht Teil dieses Auftrags
+  (Auftrag 9); die Vorgabe bleibt `sensor_failure_enabled=false`.
+
+Geprüft: `ruff check .` sauber, `mypy thermoctl` sauber (132 Dateien). SQLite (eigene
+Datei) mit `--cov-fail-under=100`: **100,00 % erreicht** ("Required test coverage of 100%
+reached. Total coverage: 100.00%"). MariaDB (`nb_ui_konfig_final`) ebenso mit
+`--cov-fail-under=100`: **100,00 % erreicht.** Beide junitxml ausgezählt. Vokabeltest
+(`tests/test_user_visible_effect_texts.py`) zuletzt einzeln geprüft, neue Fundstellen in
+`tests/approved_physical_vocabulary.json` eingetragen. Browsertests
+(`test_form_hygiene.py`, `test_parameter_page_single_save.py`,
+`test_sensor_failure_curve_rows.py` — neu) für die betroffenen Fälle grün; Seiten bei
+1280 und 390 px aufgenommen und angesehen, keine Layoutauffälligkeit.
+
 ## 0.11.0: Notbetrieb-Versandweg (Auftrag 7b) — Kreuzreview-Nachbesserung: 100 % Abdeckung
 
 Kreuzreview von Commit `4c2ed1a` bestätigte den Sicherheitskern (inkl. Handmutanten),
