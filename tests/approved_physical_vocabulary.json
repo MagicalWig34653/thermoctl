@@ -132,6 +132,7 @@
       "**Schutz gegen Rückkopplung:** Eine aufgrund der Vermutung abgeschaltete Heizung",
       "Aktor etwas hinaus — das ist der Zustand einer neuen Anlage. `/control/arm` öffnet ihn,",
       "Anmelderate dadurch von rund 4 (Schalten, alle 6 Stunden `SESSION_TTL`) plus 24",
+      "Außenwertqualität, Rückkehrfortschritt, je Aktor Takt-Phase/-Frist und",
       "Der vereinfachte Editor bietet zwei Schaltzeiten je Tag („warm ab“, „kühler ab“).",
       "Durchlauf, wenn sie nicht fuehrt -- eine Instanz in Bereitschaft schaltet nichts.",
       "Ein/Aus, Ventilschutz, Fehlerwiederholung).",
@@ -156,9 +157,11 @@
       "echten Fensteröffnen zu unterscheiden. Ein langsames Auskühlen nach Heizende und das Ende",
       "einer aktiven Notbetriebsstufe, eine Zone ganz ohne Aktor, die Wiederanlaufsperre hält",
       "geprüfte Fundstellen: „switch\" in `emergency_actuator_plan.py` (`KIND_SWITCH = \"switch\"`,",
+      "hätte er „Heizung läuft normal\" behauptet, während eine Zone tatsächlich im",
       "ihren Frostschutzwert, heizt sie jetzt wieder: Heizen gegen ein offenes Fenster ist",
       "klammerte den Ventilschutz-Marker vorher nicht ab, wenn PI eine solche Blockade",
       "könnte, und da die Erkennung selbst das Heizen abschaltet, gäbe es ohnehin keine aktive",
+      "oder welche Aktoren wie takten/regeln, aus derselben `ZoneEmergencyView` wie die",
       "schaltet im Notbetrieb real ein, Sensor kommt nach wenigen Sekunden warm",
       "scharf geschaltet genau ein Versuch; Schaltausgang über zwei Ein/Aus-Paare",
       "selbstregelndes Ventil) bleiben beim bisherigen, vorsichtigeren Verhalten. Nur das",
@@ -172,6 +175,7 @@
       "**Fehlt das Feld, gilt 0** — ein Aufrufer, der die Absenkung nicht kennt, schaltet sie",
       "**selbstregelndes** Ventil dagegen schließt die Zone nicht aus: Es bekommt seinen",
       "Aufbewahrungsdauer pflegen darf, soll die Heizung nicht nebenbei scharf schalten können.",
+      "Außenwertqualität, je Aktor Takt-Phase/-Frist und Übergabe-/Rückstellungsstatus",
       "Verschleiß-Hochrechnung unter `/relay-wear` und in den Warnhinweis beim Einschalten der",
       "Wochen später nicht mehr zu klären, warum ein Raum in einer bestimmten Nacht warm war.",
       "gewöhnlichen Schaltaktor stehen darf — PI steuert dann nur diesen Schaltaktor an. Der",
@@ -249,7 +253,8 @@
       "gewöhnlichen Schaltaktor. Ein **selbstregelndes** Ventil schließt die Zone dagegen nicht",
       "können Sollwerte an selbstregelnde Thermostatventile und Ein/Aus-Befehle an gewöhnliche",
       "sodass es neben einem gewöhnlichen Schaltaktor stehen darf — PI steuert dann nur diesen",
-      "vorhandenen** Punkt, legt aber keinen an und löscht keinen. „Verschieb die Morgenheizung"
+      "vorhandenen** Punkt, legt aber keinen an und löscht keinen. „Verschieb die Morgenheizung",
+      "| `read_emergency_state(zone_id)` | `zone.read` | Notbetrieb-Stufe, aktive Ersatzquelle, Rückkehrfortschritt, Takt-/Übergabestatus je Aktor, Ersatzquelle-Wandfühler-Vergleich |"
     ],
     "docs/mqtt.md": [
       "- **Lesen** — Sensordaten aus Zigbee2MQTT aufnehmen. Läuft, sobald MQTT eingeschaltet ist.",
@@ -441,6 +446,9 @@
       "je dunkler, desto wärmer.",
       "schaltet, zeigen die Balken, wann geheizt worden *wäre* — das kann in dieser Zeit von"
     ],
+    "thermoctl/app.py": [
+      "Kein Temperaturwert verfügbar. Die Heizung läuft im Notbetrieb."
+    ],
     "thermoctl/db/models/lookup.py": [
       "Aktor",
       "Die Regelung scharf schalten",
@@ -577,7 +585,8 @@
     ],
     "thermoctl/mcp/server.py": [
       "Pulls a visible zone's next scheduled setpoint switch forward.",
-      "Reads the actuator command log, newest first, filtered and capped."
+      "Reads the actuator command log, newest first, filtered and capped.",
+      "actuators"
     ],
     "thermoctl/services/meross_discovery.py": [
       "switch"
@@ -639,11 +648,22 @@
       "<li>Sollwerte und Ein/Aus-Befehle an Aktoren werden erst nach einem",
       "<span class=\"tc-chip tc-chip-warm mb-2\"><span class=\"tc-dot\"></span>Scharf und neu gestartet</span>",
       "<span class=\"tc-chip tc-chip-warm\"><span class=\"tc-dot\"></span>Heizanforderung</span>",
+      "<table class=\"table table-sm align-middle tc-stack-table\" aria-label=\"Aktoren im Notbetrieb\">",
+      "<td data-label=\"Art\">{{ \"Thermostat\" if actuator.kind == \"thermostat\" else \"Schalter\" }}</td>",
+      "<td data-label=\"Frist\">{% if actuator.phase_deadline_at %}{{ actuator.phase_deadline_at|age }}{% else %}<span class=\"t-quiet\">–</span>{% endif %}</td>",
+      "<td data-label=\"Gerät\">{{ actuator.device_name }}</td>",
+      "<td data-label=\"Rückstellung\">{{ actuator.restore_status_text }}</td>",
+      "<td data-label=\"Übergabe\">{{ actuator.handover_status_text }}</td>",
       "Der beim Start gebaute MQTT-Riegel ist noch zu. Bis zum Neustart gehen weder Sollwerte noch Ein/Aus-Befehle an Aktoren.",
       "Regelentscheidungen werden protokolliert. Weder Sollwerte noch Ein/Aus-Befehle gehen an Aktoren.",
       "Scharf schalten …",
       "So lassen sich die Entscheidungen beobachten, bevor sie etwas schalten.",
-      "Sollwerte gehen an selbstregelnde Thermostatventile; Ein/Aus-Befehle gehen an Zigbee2MQTT-Schalter, Zigbee2MQTT-Thermostatventile ohne eigene Regelung und Meross-Steckdosen."
+      "Sollwerte gehen an selbstregelnde Thermostatventile; Ein/Aus-Befehle gehen an Zigbee2MQTT-Schalter, Zigbee2MQTT-Thermostatventile ohne eigene Regelung und Meross-Steckdosen.",
+      "{% for actuator in nb.actuators %}",
+      "{% if actuator.cycle_source %} ({{ \"Kennlinie\" if actuator.cycle_source == \"kennlinie\" else \"Festtakt\" }}){% endif %}",
+      "{% if actuator.phase %}",
+      "{% if nb.actuators %}",
+      "{{ \"Ein\" if actuator.phase == \"ein\" else \"Aus\" }}"
     ],
     "thermoctl/web/templates/device_assignment.html": [
       "\"Ventil regelt selbst\",",
@@ -655,7 +675,7 @@
       "{% if rolle.code == \"actuator\" and \"thermostat\" in capabilities.get(device.id, []) %}"
     ],
     "thermoctl/web/templates/device_commands.html": [
-      "zugeordneten Aktoren."
+      "zugeordneten Aktoren. Notbetriebsentscheidungen (z. B. „bewusst nicht gesendet“,"
     ],
     "thermoctl/web/templates/flow_diagram.html": [
       "<div class=\"tc-flow-column{{ ' tc-target' if draggable }}\"{% if draggable %} data-target=\"actuator\" data-target-name=\"Aktor\" data-requires=\"{{ requires.get('actuator', '') }}\"{% endif %}>",

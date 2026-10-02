@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from thermoctl.api.schemas import (
+    ActuatorEmergencyResponse,
     BoostResponse,
     ControlParametersResponse,
     ControlResponse,
@@ -17,12 +18,14 @@ from thermoctl.api.schemas import (
     CreateVacation,
     DeviceCommandResponse,
     DeviceResponse,
+    EmergencyStateResponse,
     ModeResponse,
     MoveSchedulePoint,
     OverrideResponse,
     SchedulePointResponse,
     SetArmed,
     SetpointResponse,
+    SourceComparisonResponse,
     TokenResponse,
     VacationResponse,
     WriteControl,
@@ -41,6 +44,7 @@ from thermoctl.db.models.credential import ApiToken
 from thermoctl.db.models.device import Device, DeviceCapabilityLink, ZoneDevice
 from thermoctl.db.models.lookup import DeviceCapability, Integration, SensorStatus
 from thermoctl.db.models.measurement import DeviceHealth
+from thermoctl.db.models.operations import Setting
 from thermoctl.db.models.schedule import SchedulePoint
 from thermoctl.db.models.state import ZoneState
 from thermoctl.db.models.zone import SetpointMode, Zone, ZoneSetpoint
@@ -80,6 +84,7 @@ from thermoctl.domain.zone_settings import (
     set_parameter,
 )
 from thermoctl.domain.zones import ZoneNameTaken, create_zone, delete_zone, update_zone
+from thermoctl.services.emergency_state import zone_emergency_view
 
 router = APIRouter(prefix="/api/v1")
 
@@ -564,9 +569,82 @@ def device_commands(
             outcome=entry.outcome,
             error=entry.error,
             reason=entry.reason,
+            entry_kind=entry.entry_kind,
+            simulated=entry.simulated,
         )
         for entry in entries
     ]
+
+
+@router.get(
+    "/zones/{zone_id}/emergency-state", response_model=EmergencyStateResponse
+)
+def zone_emergency_state(
+    zone_id: int,
+    session: Annotated[Session, Depends(get_session)],
+    principal: Annotated[Principal, Depends(_principal)],
+) -> EmergencyStateResponse:
+    """Read-only Notbetrieb state of one zone (Auftrag 8b item 3).
+
+    Same permission and zone isolation as every other per-zone read
+    (`zone.read`, `_visible_zone` -- a zone outside the caller's grant is a
+    404, the same as `/zones/{zone_id}/state` above). Shares its data with
+    the control page via `services/emergency_state.zone_emergency_view`
+    (Grundsatz 6) -- this endpoint only shapes that same view into the REST
+    contract.
+    """
+    zone_obj = _visible_zone(session, principal, zone_id)
+    settings_row = session.get(Setting, 1)
+    view = zone_emergency_view(session, zone_obj, utcnow(), settings_row)
+    return EmergencyStateResponse(
+        zone_id=view.zone_id,
+        zone_name=view.zone_name,
+        stage=view.stage,
+        stage_label=view.stage_label,
+        episode_id=view.episode_id,
+        failure_started_at=view.failure_started_at,
+        active_source_device_id=view.active_source_device_id,
+        active_source_device_name=view.active_source_device_name,
+        source_measured_at=view.source_measured_at,
+        sensor_timeout_seconds=view.sensor_timeout_seconds,
+        recovery_started_at=view.recovery_started_at,
+        recovery_sample_count=view.recovery_sample_count,
+        recovery_samples=view.recovery_samples,
+        emergency_setpoint_c=view.emergency_setpoint_c,
+        outdoor_c=view.outdoor.temperature_c if view.outdoor is not None else None,
+        outdoor_status=view.outdoor.status if view.outdoor is not None else None,
+        banner_headline=view.banner.headline if view.banner is not None else None,
+        banner_detail=view.banner.detail if view.banner is not None else None,
+        actuators=[
+            ActuatorEmergencyResponse(
+                device_id=actuator.device_id,
+                device_name=actuator.device_name,
+                kind=actuator.kind,
+                phase=actuator.phase,
+                phase_deadline_at=actuator.phase_deadline_at,
+                on_seconds=actuator.on_seconds,
+                off_seconds=actuator.off_seconds,
+                cycle_source=actuator.cycle_source,
+                handover_attempted=actuator.handover_attempted,
+                handover_result=actuator.handover_result,
+                handover_status_text=actuator.handover_status_text,
+                restore_attempted=actuator.restore_attempted,
+                restore_result=actuator.restore_result,
+                restore_status_text=actuator.restore_status_text,
+            )
+            for actuator in view.actuators
+        ],
+        comparisons=[
+            SourceComparisonResponse(
+                device_id=comparison.device_id,
+                device_name=comparison.device_name,
+                sample_count=comparison.sample_count,
+                mean_deviation_k=comparison.mean_deviation_k,
+                suggested_offset_text=comparison.suggested_offset_text,
+            )
+            for comparison in view.comparisons
+        ],
+    )
 
 
 @router.get("/zones/{zone_id}/state", response_model=ZoneStateResponse)

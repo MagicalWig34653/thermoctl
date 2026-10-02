@@ -98,3 +98,97 @@ def test_naive_utc_converts_an_aware_value() -> None:
 
 def test_naive_utc_passes_none_through() -> None:
     assert naive_utc(None) is None
+
+
+def _decision(
+    session: Session,
+    zone_name: str = "notbetriebszone",
+    device_name: str = "notbetriebsgerät",
+    action: str = "handover",
+    at: datetime = datetime(2026, 10, 2, 12, 0),
+    simulated: bool = False,
+    reason_code: str = "sensorausfall_uebergabe",
+) -> None:
+    from thermoctl.db.models.sensor_failure import ActuatorDecision
+
+    session.add(
+        ActuatorDecision(
+            episode_id=None,
+            zone_device_id=None,
+            zone_name=zone_name,
+            device_name=device_name,
+            decided_at=at,
+            action=action,
+            reason_code=reason_code,
+            reason="Testentscheidung.",
+            phase=None,
+            phase_deadline_at=None,
+            simulated=simulated,
+            cycle_source=None,
+            on_seconds=None,
+            off_seconds=None,
+            outdoor_c=None,
+            profile_version=1,
+        )
+    )
+    session.flush()
+
+
+def test_actuator_decisions_are_merged_in_and_marked_as_entscheidung(session: Session) -> None:
+    from thermoctl.domain.device_commands import ENTRY_KIND_DECISION
+
+    zone = create_zone(session, "notbetriebszone")
+    geraet = create_device(session, "notbetriebsgerät")
+    create_device_command(session, zone, geraet, at=datetime(2026, 10, 2, 11, 0))
+    _decision(session, zone_name=zone.name, device_name=geraet.display_name)
+
+    result = list_commands(session, zone_name=zone.name)
+
+    assert len(result) == 2
+    decision_entries = [entry for entry in result if entry.entry_kind == ENTRY_KIND_DECISION]
+    assert len(decision_entries) == 1
+    assert decision_entries[0].command == "handover"
+    assert decision_entries[0].simulated is False
+
+
+def test_normal_decisions_are_excluded_to_keep_the_log_rare(session: Session) -> None:
+    _decision(session, action="normal", reason_code="sensorausfall_notbetrieb_haelt")
+
+    result = list_commands(session)
+
+    assert result == []
+
+
+def test_an_outcome_filter_excludes_every_decision_row(session: Session) -> None:
+    zone = create_zone(session, "ausgefilterte-zone")
+    geraet = create_device(session, "ausgefiltertes-gerät")
+    create_device_command(session, zone, geraet)
+    _decision(session, zone_name=zone.name, device_name=geraet.display_name)
+
+    result = list_commands(session, outcome="executed")
+
+    assert len(result) == 1
+    assert result[0].entry_kind == "befehl"
+
+
+def test_offset_paginates_the_merged_and_resorted_result(session: Session) -> None:
+    zone = create_zone(session, "seitenzone")
+    geraet = create_device(session, "seitengerät")
+    create_device_command(session, zone, geraet, at=datetime(2026, 10, 2, 9, 0))
+    _decision(
+        session,
+        zone_name=zone.name,
+        device_name=geraet.display_name,
+        at=datetime(2026, 10, 2, 10, 0),
+    )
+
+    first_page = list_commands(session, zone_name=zone.name, limit=1, offset=0)
+    second_page = list_commands(session, zone_name=zone.name, limit=1, offset=1)
+
+    assert first_page[0].entry_kind == "entscheidung"
+    assert second_page[0].entry_kind == "befehl"
+
+
+def test_a_negative_offset_is_refused(session: Session) -> None:
+    with pytest.raises(ValueError):
+        list_commands(session, offset=-1)

@@ -525,6 +525,11 @@ def _persist_episode(
         episode = session.get(SensorFailureEpisode, db_state.episode_id)
         if episode is not None:
             episode.ended_at = now
+            # Auftrag 8b: the one bit the notification dispatch (`app.py::
+            # _emergency_notices`) needs to tell a real recovery from a mere
+            # "sensorausfall_deaktiviert" -- see `ended_reason_code`'s column
+            # docstring.
+            episode.ended_reason_code = events.reason_code
     return None
 
 

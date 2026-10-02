@@ -12,6 +12,22 @@ The table has no retention, deliberately: unlike a measurement, a command is rar
 explain an incident -- an automatic deletion would remove exactly the evidence this
 log was built for. It therefore grows without bound for as long as the plant runs,
 which is why `limit` is mandatory and capped rather than left to the caller.
+
+**Auftrag 8b** adds `actuator_decision` rows (action != `"normal"`) into this
+same log, merged by time with the `device_command` rows above --
+"Notbetriebsentscheidungen ... zusätzlich zu echten Befehlen, eindeutig
+gekennzeichnet" (plan Auftrag 8). `action == "normal"` is excluded on
+purpose: it is written every single regulation cycle for every tracked
+assignment regardless of whether anything changed, and would flood this log
+exactly the way `docs/STATUS.md` says the log "bleibt selten" for real
+commands -- only a genuine decision (silence, handover, restore, a cycle
+switch) is a protocol-worthy event. `entry_kind` tells the two kinds of row
+apart (`"befehl"` for an actual send attempt, `"entscheidung"` for a decision
+that may or may not have led to one); `simulated` is `False` for every
+`"befehl"` row (a dry-run send is already visible through its own
+`outcome="suppressed"`) and mirrors `ActuatorDecision.simulated` for an
+`"entscheidung"` row -- shadow-run diagnostics look identical in shape to a
+scharf decision, only this flag tells them apart.
 """
 
 from dataclasses import dataclass
@@ -21,10 +37,14 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from thermoctl.db.models.lookup import ActorSource, CommandOutcome
+from thermoctl.db.models.sensor_failure import ActuatorDecision
 from thermoctl.db.models.state import DeviceCommand
 
 DEFAULT_LIMIT = 100
 MAX_LIMIT = 500
+
+ENTRY_KIND_COMMAND = "befehl"
+ENTRY_KIND_DECISION = "entscheidung"
 
 
 @dataclass(frozen=True)
@@ -39,6 +59,8 @@ class CommandLogEntry:
     outcome: str
     error: str | None
     reason: str | None
+    entry_kind: str = ENTRY_KIND_COMMAND
+    simulated: bool = False
 
 
 def naive_utc(moment: datetime | None) -> datetime | None:
@@ -62,6 +84,7 @@ def list_commands(
     to_at: datetime | None = None,
     outcome: str | None = None,
     limit: int = DEFAULT_LIMIT,
+    offset: int = 0,
 ) -> list[CommandLogEntry]:
     """The actuator command log, newest first, capped at `limit` rows.
 
@@ -72,9 +95,24 @@ def list_commands(
     `zone_name` matches the snapshot column, not a join to `zone`: a deleted zone has
     no row to join to anymore, and the snapshot is exactly what lets its entries stay
     findable by name regardless.
+
+    `outcome` only ever matches a `"befehl"` row -- an `ActuatorDecision` has no
+    `CommandOutcome` of its own (it may not have led to a send attempt at all,
+    see the module docstring), so any `outcome` filter excludes every
+    `"entscheidung"` row from the result rather than guessing which of them
+    might match.
+
+    `offset` (the HTML view's pagination, REST/MCP never pass it) is applied
+    **after** the two sources are merged and re-sorted, not pushed down into
+    either query: the two tables are sorted independently, and only the
+    merged order is the one the caller actually wants page boundaries drawn
+    against.
     """
     if limit < 1 or limit > MAX_LIMIT:
         raise ValueError(f"limit muss zwischen 1 und {MAX_LIMIT} liegen")
+    if offset < 0:
+        raise ValueError("offset darf nicht negativ sein")
+    fetch = offset + limit
 
     query = (
         select(DeviceCommand, ActorSource, CommandOutcome)
@@ -91,9 +129,9 @@ def list_commands(
         query = query.where(CommandOutcome.code == outcome)
 
     rows = session.execute(
-        query.order_by(DeviceCommand.sent_at.desc(), DeviceCommand.id.desc()).limit(limit)
+        query.order_by(DeviceCommand.sent_at.desc(), DeviceCommand.id.desc()).limit(fetch)
     ).all()
-    return [
+    entries = [
         CommandLogEntry(
             id=entry.id,
             sent_at=entry.sent_at,
@@ -105,6 +143,46 @@ def list_commands(
             outcome=outcome_row.code,
             error=entry.error,
             reason=entry.reason,
+            entry_kind=ENTRY_KIND_COMMAND,
+            simulated=False,
         )
         for entry, source_row, outcome_row in rows
     ]
+
+    if not outcome:
+        decision_query = select(ActuatorDecision).where(ActuatorDecision.action != "normal")
+        if zone_name:
+            decision_query = decision_query.where(ActuatorDecision.zone_name == zone_name)
+        if from_at is not None:
+            decision_query = decision_query.where(
+                ActuatorDecision.decided_at >= naive_utc(from_at)
+            )
+        if to_at is not None:
+            decision_query = decision_query.where(
+                ActuatorDecision.decided_at <= naive_utc(to_at)
+            )
+        decisions = session.scalars(
+            decision_query.order_by(
+                ActuatorDecision.decided_at.desc(), ActuatorDecision.id.desc()
+            ).limit(fetch)
+        ).all()
+        entries.extend(
+            CommandLogEntry(
+                id=decision.id,
+                sent_at=decision.decided_at,
+                source="regelung",
+                zone_name=decision.zone_name,
+                device_name=decision.device_name,
+                command=decision.action,
+                payload="",
+                outcome=decision.reason_code,
+                error=None,
+                reason=decision.reason,
+                entry_kind=ENTRY_KIND_DECISION,
+                simulated=decision.simulated,
+            )
+            for decision in decisions
+        )
+
+    entries.sort(key=lambda row: (row.sent_at, row.id), reverse=True)
+    return entries[offset : offset + limit]

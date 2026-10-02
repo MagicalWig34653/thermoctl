@@ -2,6 +2,110 @@
 
 Letzte Aktualisierung: 2026-10-02.
 
+## 0.11.0: Notbetrieb-Anzeige, Schaltprotokoll, Meldung (Auftrag 8b) — fertig, ungemergt
+
+Umgesetzt im Worktree `nb-ui-anzeige` (Branch `feat/notbetrieb-ui-anzeige`), der nur
+Anzeige/Schaltprotokoll/Meldung trägt — Regelparameter-/Regelvorgaben-Seite und die
+schreibenden REST/MCP-Konfigurationsendpunkte liegen parallel im Worktree
+`nb-ui-konfig` und fehlen hier bewusst. **Vor dem Mergen**: Migrationsketten-
+Reihenfolge prüfen (`c3f7a92e8d15` hängt an `b2e6f1a9c374`; falls `nb-ui-konfig`
+ebenfalls dort angesetzt hat, zwei Köpfe zusammenführen), Kreuzreview durch einen
+Codex-Agenten (dieser Auftrag lief auf Claude).
+
+**Anzeige** (`domain/emergency_display.py`, neu): `zone_banner()` liefert je Zone
+einen kurzen, nicht alarmistischen Hinweis ohne Technikbegriffe — „Ersatzquelle
+aktiv: <Gerät>", „Notbetrieb: Fußboden taktet x/y min (Kennlinie/Festtakt, außen
+t °C)", „Thermostat regelt selbst (Notsollwert s °C)", „Rückkehrprüfung läuft
+(n/2)". Eingebunden in `start.html`, `tenant_start.html` (zusätzlich: der
+Kopfbanner `_home_notice` prüft Notbetrieb jetzt **vor** Sensor/Fenster, sonst
+hätte er „Heizung läuft normal" behauptet, während eine Zone tatsächlich im
+Notbetrieb lief — gefunden beim eigenen Öffnen der Seite, nicht von einem Test)
+und `kiosk.html` (Tafel, Panel-Übersicht, Panel-Detail). Mobil (390 px) und Kiosk
+480×480 geprüft, inklusive eines CSS-Fundstücks: der lange Notbetriebstext riss in
+der schmalen Panel-Kachel über den Rand, weil `.tc-chip` `white-space: nowrap`
+setzt — eigene Klasse `.kiosk-notbetrieb-badge` (umbrechend) statt `.tc-chip` an
+dieser einen Stelle behebt es.
+
+**Betriebsseite** (`services/emergency_state.py`, neu — die eine geteilte Lesung
+für HTMX/REST/MCP, Grundsatz 6): je Zone Stufe, aktive Quelle, Sensor-Timeout,
+Außenwertqualität, Rückkehrfortschritt, je Aktor Takt-Phase/-Frist und
+Übergabe-/Rückstellungsstatus (inklusive sichtbarem eigenem Zustand „versucht,
+Ergebnis unbekannt", nicht gleichgesetzt mit „fehlgeschlagen" oder „nie
+versucht"), Sendefreigabe (scharf/Trockenlauf), sowie die
+Ersatzquelle-↔-Wandfühler-Auswertung aus `sensor_failure_source_comparison`
+(mittlere Abweichung der letzten 7 Tage je Thermostat, Echo-/unbrauchbare Zeilen
+ausgeschlossen, „vorgeschlagener Ausgleichswert ≈ x K" — Grundlage für die
+Kalibrierung, Entscheidung R2). Die beiden neuen Tabellen in `control.html`
+mussten `.tc-stack-table` statt nur `.table-responsive` bekommen: Bootstraps
+`.table { width: 100% }` presst die Spalten unter 768px sonst so eng, dass das
+globale `overflow-wrap: anywhere` Wörter mitten im Wort bricht — gefunden von
+`browser_tests/test_mobile_word_wrap.py`, nicht beim ersten Hinsehen.
+
+**REST/MCP, nur lesend:** `GET /api/v1/zones/{id}/emergency-state`
+(`zone.read`, dieselbe Zonenisolation wie `/state`) und MCP `read_emergency_state`
+— beide über `services/emergency_state.zone_emergency_view`, identischer Inhalt
+wie die Betriebsseite.
+
+**Schaltprotokoll** (`domain/device_commands.py::list_commands`): führt jetzt
+`actuator_decision`-Zeilen (`action != "normal"`, sonst würde jeder Regelzyklus
+das Protokoll fluten) zusammen mit den echten `device_command`-Zeilen, zeitlich
+sortiert, als `entry_kind` (`"befehl"`/`"entscheidung"`) und `simulated` markiert
+— identisch in HTMX (`device_commands.html`, mit Signalfarbe/Badge), REST
+(`DeviceCommandResponse`) und MCP (`device_commands`). Bestehende Tests auf die
+alte Dreier-Tupel-Form der HTMX-Ansicht angepasst (sie nutzt jetzt denselben
+`list_commands` wie REST/MCP, inklusive Seitenblätterung über ein neues
+`offset`-Argument).
+
+**Meldung** (`domain/fault_notice.py::emergency_entered_notice`/
+`emergency_resolved_notice`, neue `app.py::_emergency_notices`): eine
+Störungsmeldung beim Eintritt (Text mit tatsächlicher Strategie — Ersatzquelle
+oder welche Aktoren wie takten/regeln, aus derselben `ZoneEmergencyView` wie die
+Betriebsseite), eine Entwarnung bei echter Rückkehr, keine bei
+`REASON_DEAKTIVIERT` (neue Spalte `sensor_failure_episode.ended_reason_code`,
+Migration `c3f7a92e8d15`, von `shadow_run.py::_persist_episode` beim Schließen
+gesetzt). Getrieben rein über `notification_state`
+(`offen`→`gemeldet`→`entwarnung_gesendet`, committet **vor** dem Versand) —
+restart-sicher ohne Wiederholung, derselbe Vertrag wie der scharfe
+Notbetriebsversand aus Auftrag 7b. Teilt sich den `notify_sensor_faults`-Schalter
+mit der alten Sensorstörungsmeldung (keine neue Einstellung); `_sensor_notices`
+überspringt dafür jede Zone mit `sensor_failure_enabled=True`, sonst gäbe es eine
+Doppelmeldung für dieselbe Störung. Die Home-Assistant-MQTT-Entität
+(`send_fault_notice`) kennt nur `sensor:<zone id>`-Schlüssel; Notbetriebsmeldungen
+sind episodenweise (`notbetrieb:<episode id>`) und werden dort gezielt
+ausgenommen (`EMERGENCY_NOTICE_KEY_PREFIX`), sonst hätte jede neue Episode einen
+fehlschlagenden Parse-Versuch geloggt.
+
+**Vorher rot, jetzt grün:** `tests/test_emergency_display.py`,
+`tests/test_emergency_state.py`, `tests/test_emergency_display_http.py`,
+`tests/test_app_emergency_notices.py`, plus Ergänzungen in
+`test_fault_notice.py`, `test_api.py`, `test_mcp.py`,
+`test_domain_device_commands.py`, `test_control_views.py`, `test_migrations.py`
+(neuer Migrationstest für `ended_reason_code`, Trip-wire-Kopf auf `c3f7a92e8d15`
+nachgezogen), `test_docs_current.py` (`docs/api.md`, `docs/mcp.md`,
+`docs/roadmap.md` nachgezogen, MCP-Werkzeugzahl 19→20),
+`tests/approved_physical_vocabulary.json` (jede neu geflaggte Fundstelle einzeln
+gelesen und bestätigt, keine pauschal übernommen).
+
+**Bilder** (`tools/screenshot_seed.py` um einen Notbetrieb-Zustand für
+„Wohnzimmer" erweitert — dieselbe Zone ist auch der Kiosk-`kiosk_detail_zone`,
+zeigt das Szenario deshalb auf allen vier Oberflächen ohne zweite Demo-Zone):
+`anlage-startseite{,-2,-mobil}`, `anlage-betrieb{,-2}`, `wohnung-startseite{,-mobil,-mobil-2}`,
+`kiosk-{dashboard,dashboard-mobil,panel-uebersicht,panel-detail,tafel}` — alle real
+aufgenommen und angesehen (1280 px, 390 px, Kiosk 480×480), nicht nur über Tests
+geprüft.
+
+Geprüft: `ruff check .` sauber, `mypy thermoctl` sauber (134 Dateien). SQLite
+(eigene Datei) **5373 Tests, 0 Fehler, 0 Fehlschläge, 1 übersprungen,
+Testabdeckung 100,00 %**; MariaDB (`nb_ui_anzeige`, Passwort `pruefen`,
+nacheinander danach gelaufen) **ebenfalls 5373 Tests, 0 Fehler, 0 Fehlschläge,
+1 übersprungen, Testabdeckung 100,00 %** (beide: `Required test coverage of
+100% reached. Total coverage: 100.00%`). `tests/test_user_visible_effect_texts.py`
+zuletzt und einzeln geprüft: 20 Tests grün — dabei fiel auf, dass schon das
+Nachziehen von `STATUS.md` selbst neue, geflaggte Fundstellen erzeugt (dieser
+Abschnitt beschreibt ja die neuen Texte); jede einzeln gelesen und bestätigt,
+bevor sie ins Verzeichnis kam. Relevante Browsertests (`test_mobile_word_wrap.py`
+vollständig, zwei `test_kiosk.py`-Fälle für 480×480) grün.
+
 ## 0.11.0: Notbetrieb-Versandweg (Auftrag 7b) — Kreuzreview-Nachbesserung: 100 % Abdeckung
 
 Kreuzreview von Commit `4c2ed1a` bestätigte den Sicherheitskern (inkl. Handmutanten),

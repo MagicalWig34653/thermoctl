@@ -189,6 +189,8 @@ def test_device_commands_reports_an_explicit_utc_offset(session: Session) -> Non
             "outcome": "executed",
             "error": None,
             "reason": "Zeitplan",
+            "entry_kind": "befehl",
+            "simulated": False,
         }
     ]
 
@@ -340,6 +342,7 @@ def test_the_registered_mcp_tools_have_descriptions_and_call_the_adapter_functio
         "list_devices",
         "shadow_decisions",
         "device_commands",
+        "read_emergency_state",
         "override",
         "cancel_override",
         "boost",
@@ -365,6 +368,7 @@ def test_the_registered_mcp_tools_have_descriptions_and_call_the_adapter_functio
     assert tools["list_devices"]()  # type: ignore[operator]
     assert tools["shadow_decisions"](zone.id, 1)  # type: ignore[operator]
     assert tools["device_commands"]()  # type: ignore[operator]
+    assert tools["read_emergency_state"](zone.id)["stage"] == "normal"  # type: ignore[operator]
     assert tools["override"](zone.id, Decimal("21.0"))  # type: ignore[operator]
     assert tools["cancel_override"](zone.id)  # type: ignore[operator]
     assert tools["boost"](zone.id)  # type: ignore[operator]
@@ -405,6 +409,67 @@ def test_a_foreign_zone_cannot_be_found(session: Session) -> None:
 
     with pytest.raises(LookupError):
         server.zone_state(session, plaintext, fremde.id)
+
+
+def test_reading_emergency_state_refuses_a_foreign_zone(session: Session) -> None:
+    """Same zone isolation as every other per-zone MCP read -- a zone outside
+    the token's grant is not found, not merely forbidden."""
+    eigene = create_zone(session, "eigene-notbetrieb-zone")
+    fremde = create_zone(session, "fremde-notbetrieb-zone")
+    plaintext = _token(session, "notbetrieb-eingeschränkt", [("zone.read", eigene.id)])
+
+    with pytest.raises(LookupError):
+        server.read_emergency_state(session, plaintext, fremde.id)
+
+
+def test_reading_emergency_state_needs_zone_read(session: Session) -> None:
+    """Same shape as `test_a_foreign_zone_cannot_be_found` for every other
+    per-zone MCP read: a token without `zone.read` on this zone at all does
+    not see it either -- `_visible_zone`'s filter, not a separate `Forbidden`,
+    is what a per-zone function raises here."""
+    zone = create_zone(session, "notbetrieb-ohne-recht")
+    plaintext = _token(session, "notbetrieb-rechtelos", [("token.self", None)])
+
+    with pytest.raises(LookupError):
+        server.read_emergency_state(session, plaintext, zone.id)
+
+
+def test_reading_emergency_state_reports_an_open_episode(session: Session) -> None:
+    from decimal import Decimal as _Decimal
+
+    from thermoctl.db.models.sensor_failure import SensorFailureEpisode, ZoneSensorFailureState
+    from thermoctl.domain import emergency_operation
+
+    zone = create_zone(session, "notbetrieb-offen")
+    episode = SensorFailureEpisode(
+        zone_id=zone.id,
+        zone_name=zone.display_name,
+        started_at=datetime(2026, 10, 2, 12, 0, 0),
+        trigger_kind=emergency_operation.TRIGGER_ALLE_QUELLEN,
+        profile_version=1,
+        fixed_on_seconds=600,
+        fixed_off_seconds=1200,
+        recovery_seconds=60,
+        recovery_samples=2,
+        warm_restart_hysteresis_k=_Decimal("1"),
+        emergency_setpoint_c=_Decimal("20"),
+        sensor_timeout_seconds=1800,
+    )
+    session.add(episode)
+    session.flush()
+    session.add(
+        ZoneSensorFailureState(
+            zone_id=zone.id, episode_id=episode.id, stage=emergency_operation.STAGE_NOTBETRIEB
+        )
+    )
+    session.flush()
+    plaintext = _token(session, "notbetrieb-leser", [("zone.read", zone.id)])
+
+    result = server.read_emergency_state(session, plaintext, zone.id)
+
+    assert result["stage"] == "notbetrieb"
+    assert result["episode_id"] == episode.id
+    assert result["emergency_setpoint_c"] == "20"
 
 
 def test_without_the_zone_permission_there_is_a_denial_not_an_empty_list(

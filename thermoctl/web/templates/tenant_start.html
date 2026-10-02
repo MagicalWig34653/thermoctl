@@ -35,6 +35,8 @@ Minute grundlos ein Ladebalken aufblitzt.
     <p class="tc-notice-title">
         {% if notice.kind == "sensor" %}
         {{ notice.zone_name }}: Messwert möglicherweise nicht aktuell
+        {% elif notice.kind == "notbetrieb" %}
+        {{ notice.zone_name }}: {{ notice.headline }}
         {% else %}
         {{ notice.zone_name }}: Fenster steht offen
         {% endif %}
@@ -43,6 +45,8 @@ Minute grundlos ein Ladebalken aufblitzt.
         {% if notice.kind == "sensor" %}
         Seit {{ notice.measured_at|age }} kam keine neue Temperatur. Die Heizung
         regelt weiter, aber der angezeigte Wert kann veraltet sein.
+        {% elif notice.kind == "notbetrieb" %}
+        {{ notice.detail }}
         {% else %}
         Solange ein Fenster offen steht, wird in diesem Raum nicht geheizt.
         {% endif %}
@@ -129,9 +133,13 @@ Server; das Formular trägt bewusst keine Zonenauswahl.
     {% set override = overrides.get(zone.id) %}
     {% set decision = decisions.get(zone.id) %}
     {% set upcoming = next_switches.get(zone.id) %}
+    {% set notbetrieb = emergency_banners.get(zone.id) %}
     <article class="tc-room">
         <div class="tc-room-head">
             <h2 class="tc-room-name">{{ zone.display_name }}</h2>
+            {% if notbetrieb %}
+            <span class="tc-chip tc-chip-warning" title="{{ notbetrieb.detail }}">{{ notbetrieb.headline }}</span>
+            {% endif %}
             {#
             Was hier steht, ist die **Entscheidung** der Regelung, nicht eine
             Behauptung über die Temperatur des Heizkörpers. "heizt" wäre beides

@@ -43,6 +43,7 @@ from thermoctl.domain.absence import (
     start_absence,
 )
 from thermoctl.domain.authz import has_permission, visible_zones
+from thermoctl.domain.emergency_display import ZoneEmergencyBanner
 from thermoctl.domain.modes import DomainError
 from thermoctl.domain.principal import Principal
 from thermoctl.domain.problem_report import REPORT_KINDS
@@ -140,15 +141,34 @@ def _zone_or_404(session: Session, principal: Principal, zone_id: int, permissio
 
 
 def _home_notice(
-    zones: list[Zone], states: dict[int, tuple[ZoneState, SensorStatus]]
+    zones: list[Zone],
+    states: dict[int, tuple[ZoneState, SensorStatus]],
+    emergency_banners: dict[int, ZoneEmergencyBanner | None] | None = None,
 ) -> dict[str, object] | None:
     """Der für den Mieter relevante Effekt eines Problems -- nicht die Ursache.
 
-    Erlaubt sind ausschließlich ein stiller/festhängender Sensor und ein offenes
-    Fenster, je einer sichtbaren Zone. Ausdrücklich nicht: MQTT, Broker, Brücke,
-    ``control_armed``, Schattenentscheidung, PI, Hysterese, Verbundrolle, Relais,
-    Gerätenamen -- keines davon sagt einem Mieter etwas über seine Wohnung.
+    Erlaubt sind ein stiller/festhängender Sensor, ein offenes Fenster und
+    (Auftrag 8b) ein laufender Notbetrieb, je einer sichtbaren Zone. Ausdrücklich
+    nicht: MQTT, Broker, Brücke, ``control_armed``, Schattenentscheidung, PI,
+    Hysterese, Verbundrolle, Relais, Gerätenamen -- keines davon sagt einem
+    Mieter etwas über seine Wohnung.
+
+    Notbetrieb zuerst geprüft, vor Sensor/Fenster: ohne diesen Vorrang würde
+    "Heizung läuft normal" oben stehen, während ein Raum tatsächlich im
+    Notbetrieb läuft -- genau die Art falscher, wörtlich widerlegbarer Aussage,
+    die `tests/test_user_visible_effect_texts.py` verhindern soll (zwei
+    frühere Fälle: fehlende Startseite, fehlendes Stylesheet).
     """
+    if emergency_banners:
+        for zone in zones:
+            banner = emergency_banners.get(zone.id)
+            if banner is not None:
+                return {
+                    "kind": "notbetrieb",
+                    "zone_name": zone.display_name,
+                    "headline": banner.headline,
+                    "detail": banner.detail,
+                }
     for zone in zones:
         entry = states.get(zone.id)
         if entry is None:
@@ -192,7 +212,13 @@ def render_home(request: Request, session: Session, principal: Principal) -> Res
         {
             **context,
             "zones": zones,
-            "notice": _home_notice(zones, states),
+            "notice": _home_notice(
+                zones,
+                states,
+                cast(
+                    "dict[int, ZoneEmergencyBanner | None]", context["emergency_banners"]
+                ),
+            ),
             "next_switches": next_switches,
             # Die laufende Abwesenheit dieses Benutzers samt ihrer Räume -- damit
             # sie sichtbar ist und sich in einem Schritt beenden lässt, statt in

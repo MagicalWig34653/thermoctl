@@ -1,11 +1,9 @@
-from collections.abc import Sequence
 from datetime import date, datetime, time, timedelta
 from typing import Annotated
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, Request, Response
 from sqlalchemy import select
-from sqlalchemy.engine import Row
 from sqlalchemy.orm import Session
 
 from thermoctl.auth.dependencies import csrf_protection, current_principal, get_session
@@ -13,6 +11,7 @@ from thermoctl.db.models.lookup import ActorSource, CommandOutcome
 from thermoctl.db.models.operations import Setting
 from thermoctl.db.models.state import DeviceCommand
 from thermoctl.domain.authz import require
+from thermoctl.domain.device_commands import MAX_LIMIT, CommandLogEntry, list_commands
 from thermoctl.domain.principal import Principal
 from thermoctl.web import is_partial_swap, templates
 from thermoctl.web.guards import admin_ui_only
@@ -71,39 +70,33 @@ async def device_command_list(
         page_number = 1
         errors["page"] = "Die Seitennummer muss eine ganze Zahl sein."
 
-    query = (
-        select(DeviceCommand, ActorSource, CommandOutcome)
-        .join(ActorSource, ActorSource.id == DeviceCommand.source_id)
-        .join(CommandOutcome, CommandOutcome.id == DeviceCommand.outcome_id)
+    from_at = datetime.combine(from_day, time.min) if from_day is not None else None
+    # An exclusive bound on the following day includes the whole "to" day and
+    # avoids database-specific date functions -- as in `audit_views.py`.
+    to_at = (
+        datetime.combine(to_day, time.min) + timedelta(days=1) - timedelta(microseconds=1)
+        if to_day is not None
+        else None
     )
-    if not errors:
-        if from_day is not None:
-            query = query.where(
-                DeviceCommand.sent_at >= datetime.combine(from_day, time.min)
-            )
-        if to_day is not None:
-            # An exclusive bound on the following day includes the whole "to" day
-            # and avoids database-specific date functions -- as in `audit_views.py`.
-            next_day = datetime.combine(to_day, time.min) + timedelta(days=1)
-            query = query.where(DeviceCommand.sent_at < next_day)
-        if zone:
-            # Matched against the name snapshot, not a join to `zone`: a deleted
-            # zone has no row to join to anymore, and the snapshot is exactly what
-            # lets this filter still find its entries.
-            query = query.where(DeviceCommand.zone_name == zone)
-        if outcome:
-            query = query.where(CommandOutcome.code == outcome)
 
-    entries: Sequence[Row[tuple[DeviceCommand, ActorSource, CommandOutcome]]] = ()
+    entries: list[CommandLogEntry] = []
     has_more = False
     if not errors:
-        rows = session.execute(
-            query.order_by(DeviceCommand.sent_at.desc(), DeviceCommand.id.desc())
-            .offset((page_number - 1) * ENTRIES_PER_PAGE)
-            .limit(ENTRIES_PER_PAGE + 1)
-        ).all()
-        has_more = len(rows) > ENTRIES_PER_PAGE
-        entries = rows[:ENTRIES_PER_PAGE]
+        fetched = list_commands(
+            session,
+            zone_name=zone or None,
+            from_at=from_at,
+            to_at=to_at,
+            outcome=outcome or None,
+            # `+1` over the page size to detect whether another page follows --
+            # same trick the previous raw query used, now through the shared
+            # domain function (Grundsatz 6; see its module docstring on why it
+            # also carries `ActuatorDecision` rows since Auftrag 8b).
+            limit=min(ENTRIES_PER_PAGE + 1, MAX_LIMIT),
+            offset=(page_number - 1) * ENTRIES_PER_PAGE,
+        )
+        has_more = len(fetched) > ENTRIES_PER_PAGE
+        entries = fetched[:ENTRIES_PER_PAGE]
 
     # Every zone name ever recorded, not just the zones that still exist -- the whole
     # point of the snapshot is that a deleted zone stays filterable too.
@@ -113,6 +106,17 @@ async def device_command_list(
     outcomes = session.execute(
         select(CommandOutcome.code, CommandOutcome.label).order_by(CommandOutcome.label)
     ).all()
+    outcome_labels = {code: label for code, label in outcomes}
+    # `list_commands` returns the plain code for both `entry.source` (a real
+    # `actor_source` code) and -- for an `"entscheidung"` row -- `entry.outcome`
+    # (a `sensorausfall_*` reason code with no `command_outcome` row at all).
+    # The template shows a human label where one exists and falls back to the
+    # raw code otherwise, via these two small maps rather than re-querying per
+    # row.
+    source_labels = {
+        code: label for code, label in session.execute(select(ActorSource.code, ActorSource.label))
+    }
+    source_labels.setdefault("regelung", "Regelung (Notbetrieb)")
     filter_values = {
         "from_date": from_date,
         "to_date": to_date,
@@ -127,6 +131,8 @@ async def device_command_list(
             "entries": entries,
             "zone_names": zone_names,
             "outcomes": outcomes,
+            "outcome_labels": outcome_labels,
+            "source_labels": source_labels,
             "filter": filter_values,
             "errors": errors,
             "page": page_number,

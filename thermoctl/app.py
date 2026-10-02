@@ -29,16 +29,21 @@ from thermoctl.db.engine import create_engine_from_settings, session_factory, se
 from thermoctl.db.models.credential import SetupToken
 from thermoctl.db.models.lookup import SensorStatus
 from thermoctl.db.models.operations import Setting
+from thermoctl.db.models.sensor_failure import SensorFailureEpisode
 from thermoctl.db.models.state import ZoneState
 from thermoctl.db.models.zone import Zone
 from thermoctl.db.schema_state import SchemaMismatch, check_schema
+from thermoctl.domain import emergency_operation
 from thermoctl.domain.authz import Forbidden
 from thermoctl.domain.device_survey import MEROSS_RECONCILE_INTERVAL_SECONDS
 from thermoctl.domain.fault_notice import (
+    EMERGENCY_NOTICE_KEY_PREFIX,
     NOTICE_KIND_COMMAND_FAILURE,
     NOTICE_KIND_WINDOW_ALARM,
     FaultNotice,
     bridge_notice,
+    emergency_entered_notice,
+    emergency_resolved_notice,
     notice_enabled,
     notification_audit_action,
     sensor_notice,
@@ -78,6 +83,7 @@ from thermoctl.integrations.mqtt.zigbee2mqtt import (
 from thermoctl.integrations.notification import deliver
 from thermoctl.logging import configure_logging, request_id_var
 from thermoctl.services import cluster
+from thermoctl.services.emergency_state import entered_notice_text, zone_emergency_view
 from thermoctl.services.ingest import advance_zone_state, process_message
 from thermoctl.services.meross_discovery import fetch_devices as fetch_meross_devices
 from thermoctl.services.meross_discovery import save_devices as save_meross_devices
@@ -164,6 +170,19 @@ def _sensor_notices(
     after = _sensor_states(session)
     notices: list[FaultNotice] = []
     for zone in session.scalars(select(Zone).order_by(Zone.id)):
+        # Auftrag 8b: a zone with Notbetrieb enabled gets its sensor-fault
+        # lifecycle reported exclusively through `_emergency_notices` below --
+        # that notice carries the actual strategy (Ersatzquelle/Notbetrieb,
+        # which actuators) this generic one cannot. Without this check both
+        # would fire for the same root cause (the wall probe going stale is
+        # exactly what also drives `emergency_operation`'s state machine),
+        # which is the "keine Doppelmeldung" requirement from the plan.
+        # Deliberately keyed off `sensor_failure_enabled`, not off whether an
+        # episode happens to be open right now: the *entry* into an episode
+        # must also be suppressed here, not just its later cycles, and this
+        # flag is already known before the first cycle of a new episode runs.
+        if zone.sensor_failure_enabled:
+            continue
         status = after.get(zone.id)
         if status is None:  # pragma: no cover
             # `advance_zone_state` creates a row for every existing zone. Only a row
@@ -179,6 +198,65 @@ def _sensor_notices(
         if notice is not None:
             _audit(session, notice, setting_row)
             notices.append(notice)
+    return notices
+
+
+def _emergency_notices(
+    session: Session, now: datetime, setting_row: Setting | None
+) -> list[FaultNotice]:
+    """The Notbetrieb counterpart of `_sensor_notices` above (plan Auftrag 8:
+    "eine Störungsmeldung beim Eintritt ... und eine Entwarnung bei echter
+    Rückkehr").
+
+    Driven entirely by `sensor_failure_episode.notification_state`
+    (`offen` -> `gemeldet` -> `entwarnung_gesendet`), not by a before/after
+    comparison like the other `_*_notices` functions in this module: an
+    episode's own row already *is* the "has this been reported yet" state,
+    and it survives a process restart -- the whole reason that column exists
+    (plan Auftrag 7a item 4). The state transition is committed in the same
+    transaction as this read (the caller's `session_scope`), **before** the
+    notice is handed to the dispatch loop below -- so a crash between this
+    function returning and the webhook actually going out leaves the episode
+    already marked `gemeldet`/`entwarnung_gesendet` and never retries, the
+    same "no second attempt, ever" contract `services/publishing.py` already
+    applies to the scharfe Übergabe/Rückstellung. The trade-off is symmetric
+    to that one too: a crash in that exact window means the notice is lost,
+    never duplicated -- the safe direction for a channel with no delivery
+    guarantee of its own.
+
+    `REASON_DEAKTIVIERT` episodes are closed here without ever calling
+    `emergency_resolved_notice` -- advancing straight to
+    `entwarnung_gesendet` all the same, so a later deactivation-reactivation
+    cycle can never produce a late, wrong "all clear" for the original fault.
+    """
+    notices: list[FaultNotice] = []
+    opened = session.scalars(
+        select(SensorFailureEpisode).where(SensorFailureEpisode.notification_state == "offen")
+    ).all()
+    for episode in opened:
+        zone = session.get(Zone, episode.zone_id) if episode.zone_id is not None else None
+        if zone is not None:
+            view = zone_emergency_view(session, zone, now, setting_row)
+            text = entered_notice_text(view)
+        else:  # pragma: no cover -- zone rows are not deleted in normal operation
+            text = "Kein Temperaturwert verfügbar. Die Heizung läuft im Notbetrieb."
+        notice = emergency_entered_notice(episode.id, episode.zone_name, text)
+        episode.notification_state = "gemeldet"
+        _audit(session, notice, setting_row)
+        notices.append(notice)
+
+    resolved = session.scalars(
+        select(SensorFailureEpisode).where(
+            SensorFailureEpisode.notification_state == "gemeldet",
+            SensorFailureEpisode.ended_at.is_not(None),
+        )
+    ).all()
+    for episode in resolved:
+        if episode.ended_reason_code != emergency_operation.REASON_DEAKTIVIERT:
+            notice = emergency_resolved_notice(episode.id, episode.zone_name)
+            _audit(session, notice, setting_row)
+            notices.append(notice)
+        episode.notification_state = "entwarnung_gesendet"
     return notices
 
 
@@ -473,6 +551,11 @@ async def _shadow_loop(app: FastAPI) -> None:
                 notices += _stuck_notices(session, stuck_before, setting_row)
                 notices += _window_alarm_notices(session, window_alarm_before, setting_row)
                 cycle(session, now, forecast)
+                # Runs *after* `cycle()`: that is where `shadow_run.py` creates,
+                # continues and closes `sensor_failure_episode` rows for this
+                # cycle -- reading `notification_state` beforehand could miss an
+                # episode that starts or ends in this very cycle.
+                notices += _emergency_notices(session, now, setting_row)
                 # `getattr`: the loop also runs in tests that assemble an app without
                 # running through the full lifespan.
                 if getattr(app.state, "publisher", None) is not None:
@@ -547,7 +630,16 @@ async def _shadow_loop(app: FastAPI) -> None:
                     )
                     _running_notices.add(mqtt_task)
                     mqtt_task.add_done_callback(_running_notices.discard)
-                elif publisher is not None and notice.kind != NOTICE_KIND_COMMAND_FAILURE:
+                elif (
+                    publisher is not None
+                    and notice.kind != NOTICE_KIND_COMMAND_FAILURE
+                    # Auftrag 8b: an emergency notice is keyed per episode
+                    # (`notbetrieb:<episode id>`), not per zone -- there is no
+                    # stable Home Assistant entity for it to publish to, and
+                    # `send_fault_notice` below only parses `sensor:<zone id>`
+                    # keys. See `domain.fault_notice.EMERGENCY_NOTICE_KEY_PREFIX`.
+                    and not notice.key.startswith(EMERGENCY_NOTICE_KEY_PREFIX)
+                ):
                     mqtt_task = asyncio.create_task(
                         send_fault_notice(
                             publisher, notice, get_settings().mqtt_prefix
