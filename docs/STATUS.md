@@ -1,8 +1,247 @@
 # Stand
 
-Letzte Aktualisierung: 2026-09-30.
+Letzte Aktualisierung: 2026-10-02.
 
-## 0.11.0 in Arbeit: Notbetrieb an den Regelzyklus angebunden, Schattenbetrieb (Auftrag 7a)
+## 0.11.0: Notbetrieb-Versandweg (Auftrag 7b) — Kreuzreview-Nachbesserung: 100 % Abdeckung
+
+Kreuzreview von Commit `4c2ed1a` bestätigte den Sicherheitskern (inkl. Handmutanten),
+blockierte aber bei **99,71 % Testabdeckung** (CI verlangt 100 %) — der vorherige Bericht
+hatte das nicht zitiert. Geschlossen, ohne `pragma: no cover`, durch gezielte Tests statt
+Ausnahmen:
+
+- **Rückstellung mit unbekanntem Vorwert** (`plan_restore`, `_send_emergency_handover`):
+  kein Schreibversuch, genau ein `decided_no_command`-Protokolleintrag.
+- **Rückstellung im Trockenlauf**: null Nachrichten, der Einmal-Versuch bleibt offen
+  (`armed_episode_id` unverändert), sobald scharf geschaltet wird genau ein Versuch.
+- **Gescheiterte Rückstellung**: sichtbares `failed`-Ergebnis, kein zweiter Versuch.
+- **Schaltausgang über Meross** (inkl. `invalidate_meross_session` bei Broker-Fehler) und
+  über eine nicht verdrahtete Anbindung — der scharfe Notbetriebspfad nutzt denselben
+  Dispatch wie der gewöhnliche Pfad, nicht eine zweite, parallele Umsetzung.
+- **Direkte Adaptertests** für `send_emergency_handover`/`send_emergency_restore` in
+  `tests/test_actuators.py`, analog zu `Zigbee2MqttThermostat.switching()` (Bereichsprüfung,
+  Trockenlauf, Peer-Fehler, abgelehnte Veröffentlichung).
+
+**Befund 2 — Absturz zwischen Markierung und Versand (Projektinhaber-Vorgabe, getestet,
+Verhalten dabei geklärt):** Ein Prozessabsturz zwischen dem Committen von
+`handover_attempted_at`/`restore_attempted_at` und dem tatsächlichen Versandergebnis löst in
+**keinem** Fall einen zweiten Versand aus — das ist die Eigenschaft, auf die es ankommt, und
+sie gilt nachweislich unabhängig vom Ausgang. Die *Sichtbarkeit* des unaufgelösten Zustands
+unterscheidet sich aber zwischen Übergabe und Rückstellung: Die Übergabe bleibt sichtbar
+(`handover_attempted_at` gesetzt, `handover_result` `None`), solange die Episode offen ist
+(die Zone also `notbetrieb`/`rueckkehrpruefung` bleibt) — das kann Stunden sein. Die
+Rückstellung dagegen wird genau in dem einen Zyklus aufgelöst, in dem die Zone `normal`
+wird; der nächste Durchlauf von `_send_emergency_actuators`s „not active"-Zweig sieht
+`restore_attempted_at` bereits gesetzt, verweigert korrekt einen zweiten Versuch und räumt
+die Zuordnung dabei als „abgeschlossen" weg — ohne zwischen „erfolgreich", „fehlgeschlagen"
+und „abgestürzt, unbekannt" zu unterscheiden, weil `restore_attempted_at` allein das Signal
+ist. Die dauerhafte Spur ist dafür `actuator_decision` (`simulated=False`, bei jedem Aufruf
+geschrieben, unabhängig davon, ob die Zuordnung danach geräumt wird) — nicht die Zeile in
+`actuator_emergency_state` selbst. Getestet in
+`tests/test_publishing_notbetrieb_versand.py::
+test_restore_interrupted_between_marker_and_send_is_not_retried`, mit genau dieser
+Begründung im Test selbst. Keine Code-Änderung nötig, keine Sicherheitslücke (die einzige
+Garantie, die zählt — kein zweiter Versand — hält) — hier nur festgehalten, falls der
+kürzere Sichtbarkeitszeitraum bei der Rückstellung einmal überrascht.
+
+**Kleinigkeit — `domain/statistics.py::heating_periods` fehlender Tie-Breaker:** Zwei
+`shadow_decision`-Zeilen mit identischem `decided_at` (die synthetische Rückkehr-Markierung
+aus Blocker 1 und die natürliche Entscheidung desselben Zyklus) hatten keine garantierte
+Verarbeitungsreihenfolge. `order_by` um `ShadowDecision.id` ergänzt — Einfügereihenfolge
+entscheidet jetzt, nicht der Zufall der Datenbank. Test
+`tests/test_statistics.py::test_two_decisions_at_the_same_instant_are_ordered_by_id_not_by_chance`
+mit zwei Zonen (umgekehrte Einfügereihenfolge je Zone), um zu belegen, dass das Ergebnis der
+Reihenfolge folgt. **Gezielter Handmutant (Entfernen des `id`-Tie-Breakers) überlebt auf
+SQLite** — erwiesen äquivalent für diesen Fall: SQLite liefert ohne `ORDER BY` auf dieser
+kleinen, indexlosen Tabelle in der Praxis bereits Einfügereihenfolge zurück, sodass der
+Mutant hier zufällig dasselbe Ergebnis liefert. Die Korrektur bleibt trotzdem richtig — sie
+macht aus einem nirgends zugesicherten Zufallsverhalten eine garantierte Eigenschaft, nur ist
+das auf SQLite mit einem reinen Unit-Test nicht von außen unterscheidbar. Nicht als
+`# pragma: no cover` markiert, weil die Zeile selbst (der dritte `order_by`-Parameter) beim
+normalen SQLite-Testlauf durchaus ausgeführt wird (100 % Abdeckung bleibt unberührt) — nur der
+gezielte Mutationstest dieser einen Zeile ist auf SQLite nicht aussagekräftig.
+
+Geprüft (dieser Nachbesserungsschritt): `ruff check .` sauber, `mypy thermoctl` sauber (132
+Dateien). SQLite (eigene Datei) **und** MariaDB (`nb_versand`), je mit
+`--cov-fail-under=100`, junitxml ausgezählt: SQLite **5322 Tests, 0 Fehler, 0 Fehlschläge,
+1 übersprungen, Testabdeckung 100,00 %**; MariaDB **5322 Tests, 0 Fehler, 0 Fehlschläge
+(der einzige Fehlschlag unterwegs war der erwartete, vor dem letzten Schritt noch offene
+Vokabeltest — danach behoben), 1 übersprungen, Testabdeckung ebenfalls 100,00 %** (beide:
+`Required test coverage of 100% reached. Total coverage: 100.00%`). Drei weitere gezielte
+Handmutanten
+(Prüfsumme und `git diff --stat` vor und nach jedem kontrolliert): Meross-Sitzungs-
+Invalidierung invertiert (`and not result.session_fault` statt `and result.session_fault`)
+→ von 1 Test erkannt; nicht verdrahtete Anbindung mit vertauschtem
+`SUPPRESSED`/`FAILED` → von 1 Test erkannt; der oben beschriebene Tie-Breaker-Mutant
+(äquivalent auf SQLite, s.o.). Alle drei einzeln zurückgesetzt, Prüfsumme danach jeweils
+wieder identisch zum Ausgangsstand.
+
+## 0.11.0 in Arbeit: Notbetrieb-Versandweg (Auftrag 7b) — beide Blocker entschieden und umgesetzt
+
+Scharfer Versand jetzt in `thermoctl/services/publishing.py`: eine neue
+`_send_emergency_actuators`-Familie (`_send_emergency_handover`,
+`_send_emergency_switch`) wird je Zone aufgerufen, die jemals eine
+`ZoneSensorFailureState`-Zeile hatte — **vor** den bestehenden
+`_send_self_regulating_valves`/`_send_actuator_switches`-Schleifen, die für
+eine Zone in `notbetrieb`/`rueckkehrpruefung` jetzt übersprungen werden statt
+aufgerufen (keine ihrer Abfragen läuft dann überhaupt, nicht nur ihr Versand
+wird unterdrückt — „null Schreibbefehle auf allen Pfaden" gilt dadurch für
+alle vier in Auftrag 7b genannten Pfade zugleich: Sollwert, zentraler
+Ein/Aus, Ventilschutz, Fehlerwiederholung).
+
+**Architekturentscheidung (Begründung für die Nachfrage aus Auftrag 7a selbst,
+Zeile „Klar festlegen, wo die scharfe Takt-Berechnung stattfindet"):** Die
+scharfe Takt-/Handover-Berechnung läuft im **Publisher**, nicht im
+Schattenlauf — ruft aber dieselben reinen Domänenbausteine
+(`domain.emergency_actuator_plan.plan_thermostat`/`plan_switch`,
+`domain.emergency_cycle.advance`) auf wie `shadow_run.py` (Grundsatz 6: die
+Regel lebt einmal). Begründung: Nur der Publisher weiß, ob ein Versand
+*wirklich* gelungen ist (`switching_allowed`, das tatsächliche MQTT-Ergebnis)
+— genau das muss die scharfe Phase/den scharfen Handover-Zeitpunkt gaten
+(„Phasen erst nach erfolgreichem Versand als begonnen betrachtet"). Die
+scharfen Felder von `actuator_emergency_state` (ohne `simulated_`-Präfix)
+werden deshalb **nur bei `outcome == executed`** fortgeschrieben; ein
+gescheiterter Versuch lässt sie unverändert, wodurch der nächste Zyklus über
+den unveränderten, inzwischen überfälligen `prior` automatisch denselben
+Zielzustand erneut anfordert — Wiederholung ohne eigene Zähl-/Sperrlogik,
+direkt aus `emergency_cycle`s „kein Nachholen"-Vertrag.
+
+**Neue Spalte `armed_episode_id`** (Migration `9d3f1a7c2b84`) trennt, welcher
+Episode die *scharfen* Felder gerade zugeordnet sind, vom bestehenden
+`episode_id` — letzteres schreibt `shadow_run.py` jeden Zyklus unbedingt neu
+(auch im Trockenlauf), kann also nicht als scharfer Frische-Marker dienen.
+Bei Rückkehr (`armed_episode_id is not None`, Stufe nicht mehr aktiv) löscht
+der Publisher die scharfen Felder einmalig und invalidiert gezielt
+`PublicationState.valve_commands`/`.switch_commands` für das betroffene
+Gerät — ohne das sendet der nächste normale Zyklus einen unveränderten
+Sollwert/Zustand gar nicht erst, weil der Dedup-Cache ihn noch als „bereits
+gesendet" führt (Auftrag-7b-Vorgabe, jetzt mit Test belegt).
+
+**Übergabe:** genau ein Versuch je scharfer Episode und Zuordnung,
+`handover_attempted_at` wird **vor** dem Versand gesetzt und committet;
+Geräte ohne bestätigten Vertrag (`domain.self_regulating.handover_capable`
+prüft `occupied_heating_setpoint` **und** `operating_mode` schreibbar, mit
+`manual` unter den deklarierten Werten, falls welche deklariert sind)
+bekommen nie einen Versuch — stattdessen genau **ein**
+Schaltprotokoll-Eintrag je Episode mit dem neuen `command_outcome`
+`decided_no_command` (Migration `9d3f1a7c2b84`), nicht einer je Zyklus (das
+Schaltprotokoll bleibt „selten"). Trockenlauf zählt nicht als Versuch.
+
+**Schaltausgang:** `emergency_cycle.advance()` läuft gegen die scharfen
+Felder, genau wie im Schattenlauf gegen die `simulated_*`-Felder; Senden
+über denselben `Zigbee2MqttValve`/`MerossSwitch`-Weg wie der bestehende
+Pfad. Ein-Fehler hält die Phase bis zum nächsten erfolgreichen Versuch (kein
+Fortschritt in `phase`/`phase_deadline_at`), Aus-Fehler verhindert dadurch
+automatisch eine neue Ein-Phase — beides ohne eigene Sonderfälle, siehe oben.
+
+### Blocker 1 (Hauptsession, Grundsatz 7) — Mindestdauer-Invariante bei Rückkehr, gelöst
+
+Der zuvor hier gemeldete Blocker (siehe Git-Historie dieser Datei für den
+ursprünglichen Befund) ist entschieden und umgesetzt, konservativ wie von der
+Hauptsession vorgegeben. `shadow_run._previous_state()`/`held_for_s` liest
+ausschließlich die `ShadowDecision`-Historie — die während
+`notbetrieb`/`rueckkehrpruefung` unverändert simuliert weiterlief, während
+das reale Relais vom Notbetriebstakt geschaltet wurde. Ohne Korrektur hätte
+der erste reguläre Zyklus nach der Rückkehr die Mindestschaltdauer anhand
+der falschen (simulierten) Historie geprüft.
+
+**Lösung:** `thermoctl/services/shadow_run.py::_seed_recovery_phase_marker`,
+aufgerufen genau in dem Zyklus, in dem `_apply_sensor_failure` eine Episode
+beendet (`events.episode_ended`) — dafür musste `_apply_sensor_failure`
+innerhalb von `_process_zone` **vor** `_previous_state()` gezogen werden
+(beide sind unabhängig voneinander berechenbar, die bisherige Reihenfolge war
+zufällig, nicht absichtlich). Die Funktion schreibt eine zusätzliche
+`shadow_decision`-Zeile mit `decided_at=now` und `would_heat` = dem real
+zuletzt erfolgreich gesendeten Zustand
+(`ActuatorEmergencyState.last_successful_command_state`, zu diesem Zeitpunkt
+im Zyklus noch nicht vom Publisher zurückgesetzt). Bewusst **konservativ**,
+nicht exakt rekonstruiert: `held_for_s` beginnt dadurch bei 0 ab dem
+Rückkehr-Zeitpunkt selbst (nicht ab dem tatsächlichen, oft früheren
+Schaltzeitpunkt) — nie mit mehr Anrechnung als real erreicht, also nie zu
+früh als „Mindestdauer erfüllt" gelesen, höchstens strenger als nötig. Neuer
+Outcome-Code `notbetrieb_rueckkehr_start`, damit die Zeile im Protokoll als
+das erkennbar bleibt, was sie ist. Nur für Zonen mit **genau einem**
+Schaltausgang (die reale Anlage hat je Zone höchstens einen) — bei keinem
+oder mehreren wird bewusst nichts geschrieben, kein erfundener Zustand.
+
+Test (`test_recovery_does_not_violate_the_real_minimum_on_duration`): Relais
+schaltet im Notbetrieb real ein, Sensor kommt nach wenigen Sekunden warm
+zurück (gewöhnliche Hysterese wollte sofort „aus") — Relais bleibt an, bis
+die (konservativ ab dem Rückkehr-Zeitpunkt gezählte) Mindest-Ein-Dauer
+abgelaufen ist, schaltet danach korrekt ab. Gezielter Handmutant bestätigt:
+Markierung deaktiviert → derselbe Test schlägt sofort fehl (Relais schaltet
+zu früh ab).
+
+### Blocker 2 (Projektinhaber) — `operating_mode` bei Rückkehr, gelöst: „exakt der Zustand wie davor"
+
+Entscheidung des Projektinhabers: nicht raten (Optionen B/C aus der
+vorherigen Fassung dieses Abschnitts), sondern den tatsächlich vom Gerät
+gemeldeten Vorwert festhalten und bei Rückkehr genau diesen zurückschreiben.
+
+**Umsetzung:** Neue Spalte `actuator_emergency_state.
+handover_previous_operating_mode` (Migration `b2e6f1a9c374`) — beim Handover,
+unmittelbar vor dem Schreibversuch, liest `_send_emergency_handover` den
+aktuell gespeicherten Gerätezustand (`DeviceProperty.last_value_text` für
+`operating_mode`, von `services/ingest.py` laufend aktuell gehalten — **nicht**
+das, was thermoctl zuletzt geschrieben hat, sondern das, was das Gerät selbst
+zuletzt gemeldet hat) und hält ihn fest. `NULL` heißt ausdrücklich „unbekannt",
+nie ein geratener Wert (Grundsatz 1). Bei Rückkehr zu `normal`/`ersatzquelle`
+schreibt die neue Domänenfunktion `domain.emergency_actuator_plan.
+plan_restore` + `services/publishing.py::_send_emergency_restore` genau
+einmal `operating_mode` auf diesen Vorwert zurück — derselbe
+Einmal-Versand-ohne-Wiederholung-Vertrag wie die Übergabe, nur umgekehrt:
+`restore_attempted_at` wird **vor** dem Versand gesetzt und committet,
+Fehlschlag bleibt sichtbar (`restore_result`), kein zweiter Versuch. Ist der
+Vorwert unbekannt, wird nichts geschrieben, einmalig sichtbar begründet
+(neuer Reason-Code `sensorausfall_rueckstellung_unbekannt`). Ein Trockenlauf
+verbraucht den einmaligen Versuch nicht: `_send_emergency_actuators` hält die
+Episode für die Rückstellung bewusst offen (`armed_episode_id` bleibt
+gesetzt), bis ein scharfer Zyklus den echten Versuch unternimmt — sonst wäre
+das Gerät nach einer Rückkehr im Trockenlauf dauerhaft auf `manual`
+hängengeblieben. Die Dedup-Cache-Invalidierung (Blocker aus Auftrag 7b,
+Punkt 3) läuft unabhängig davon in jedem Zyklus, damit der gewöhnliche
+Sollwert nicht auf die Rückstellung warten muss.
+
+Test (`test_recovery_restores_the_previous_operating_mode_exactly_once_with_restart`,
+eigene SQLite-Datei, simulierter Prozessneustart zwischen Übergabe und
+Rückkehr): Gerät meldet vor dem Ausfall `pause` → Übergabe schreibt `manual`
+→ Rückkehr schreibt genau einmal `pause` zurück, Inhalt geprüft, kein dritter
+Schreibversuch über weitere Zyklen. Gezielter Handmutant am
+„Vorwert unbekannt"-Zweig (`domain.emergency_actuator_plan.plan_restore`)
+und einer am Trockenlauf-Offenhalten bestätigen beide: Mutation → Test wird
+rot.
+
+Tests, Zähl-Belege: `tests/test_publishing_notbetrieb_versand.py` — zwölf Szenarien mit
+Fake-Transport-Zählung (nie nur Rückgabewert): genau eine Übergabe-Nachricht
+mit geprüftem Inhalt, danach null über fünf weitere Zyklen inkl. geänderter
+Notbetriebs-Einstellung; gescheiterte Übergabe kein zweiter Versuch; Gerät
+ohne `operating_mode` null Nachrichten, ein `decided_no_command`-Eintrag;
+Trockenlauf null Nachrichten, Übergabe nicht als versucht markiert, danach
+scharf geschaltet genau ein Versuch; Schaltausgang über zwei Ein/Aus-Paare
+mit korrekten Zeiten; Ein-Fehler hält die Phase; Aus-Fehler verhindert eine
+neue Ein-Phase; Rückkehr sendet den unveränderten Sollwert erneut
+(Dedup-Invalidierung); Bediengerätekanal strukturell ausgeschlossen
+(`may_be_written`); Übergabe-Latch übersteht einen simulierten
+Prozessneustart; Rückkehr schreibt den gemeldeten Vorwert von
+`operating_mode` genau einmal zurück (eigener Neustart-Test); Rückkehr
+verletzt die reale Mindest-Ein-Dauer nicht (Blocker 1).
+
+Geprüft: `ruff check .` sauber, `mypy thermoctl` sauber (132 Dateien, 0 Fehler); Alembic-
+Migrationen `9d3f1a7c2b84` und `b2e6f1a9c374` vorwärts/rückwärts geprüft (SQLite), ein
+Migrationskopf (`b2e6f1a9c374`); `pytest -q --no-cov --junitxml=…` gegen SQLite **und**
+MariaDB (eigene Testdatenbanken, nacheinander), zuletzt je **5304 Tests, 0 Fehler,
+0 Fehlschläge, 1 übersprungen** auf beiden Datenbanken. Sechs gezielte Handmutanten insgesamt
+(vier aus der ersten Fassung dieses Auftrags, siehe Git-Historie, plus zwei neue für die
+Blocker-Lösungen), **nach jedem einzelnen Prüfsumme und `git diff --stat` kontrolliert**
+(CLAUDE.md-iCloud-Lehre aus der ersten Fassung): `plan_restore`s „Vorwert unbekannt"-Zweig
+invertiert → von 1 Test erkannt; die Trockenlauf-Offenhalte-Bedingung in
+`_send_emergency_actuators` invertiert → von 1 Test erkannt (derselbe Test deckt beide Enden
+des Rückstellungs-Vertrags ab); `_seed_recovery_phase_marker`s Aufruf deaktiviert (`if False:`)
+→ von 1 Test erkannt (direkter Beleg für Blocker 1: das Relais schaltet im Mutanten zu früh
+ab); dieselbe Funktion mit invertierter „genau ein Schaltausgang"-Bedingung → von 2 Tests
+erkannt. Alle sechs Mutanten einzeln zurückgesetzt und per Prüfsumme bestätigt identisch zum
+Ausgangsstand.
+
+## 0.11.0: Notbetrieb an den Regelzyklus angebunden, Schattenbetrieb (Auftrag 7a)
 
 **Kreuzreview-Korrektur (Hauptsession, 2026-09-30) an einer ersten Fassung (Commit
 `88bc87a`):** Diese Fassung hatte in `notbetrieb`/`rueckkehrpruefung` die
@@ -16,16 +255,16 @@ scharfen Zyklus wirksam werden lassen, ohne dass der Versandweg (Auftrag 7b) je 
 PI ohnehin liefern würden — unverändert durch Notbetrieb. Die Aktor-/Takt-Entscheidung
 (Übergabe, Ein/Aus-Takt) wird **ausschließlich** nach `actuator_decision`/
 `actuator_emergency_state` geschrieben (`simulated=True`), nie in die Zonenentscheidung
-zurückgespeist. Bewiesen durch `tests/test_publishing_sensor_failure.py`
+zurückgespeist. Seinerzeit bewiesen durch einen Test in der Auftrag-7a-Testdatei, die Auftrag 7b
+inzwischen durch `tests/test_publishing_notbetrieb_versand.py` ersetzt hat
 (scharf geschaltete Anlage, Fake-Transport, Zählung der Schreibaufrufe: eine Notbetriebs-Zone
-sendet exakt dasselbe wie eine gewöhnliche Zone ohne Quelle) und durch
+sendet exakt dasselbe wie eine gewöhnliche Zone ohne Quelle — nur auf dem allerersten Zyklus
+noch zutreffend, siehe oben) und durch
 `tests/test_shadow_run_sensor_failure.py`s `_assert_matches_ordinary_decision`-Hilfsfunktion
 (rekonstruiert `decide()`s Antwort unabhängig und vergleicht sie mit der tatsächlich
-geschriebenen Zeile). **Hinweis für Auftrag 7b:** Eine notbetriebs-getaktete Phase darf danach
-nicht als Hysterese-Phase in `_previous_state`/`phase_started_by` erscheinen — sobald 7b den
-Publisher auf die Aktorentscheidung umstellt, braucht `shadow_run._previous_state` eine eigene
-Kennzeichnung, welche Phase tatsächlich vom Notbetriebstakt stammt, sonst hält
-`_hysteresis_phase_still_holding` eine Notbetriebs-Phase fälschlich für eine gewöhnliche.
+geschriebenen Zeile). **Der hier ursprünglich vermerkte Hinweis für Auftrag 7b ist weiterhin
+ein offener Blocker** — siehe den eigenen Abschnitt oben („Offener Blocker — Mindestdauer-
+Invariante bei Rückkehr"), dort mit dem tatsächlichen Befund aus 7b statt der Vorab-Vermutung.
 
 `thermoctl/services/shadow_run.py` ruft für jede `sensor_failure_enabled`-Zone pro Zyklus
 `temperature_source_health.evaluate_source_health` → `emergency_operation.advance` auf und
@@ -57,19 +296,13 @@ Neustart/Zyklus hinweg (Kreuzreview-Fund, siehe unten). Alles bleibt **Schattenb
 `ActuatorDecision`/`ActuatorEmergencyState`-Zeile trägt `simulated=True`; kein Versandpfad
 (`publishing.py`, `integrations/`, `switch_commands.py`) wurde angefasst — das ist Auftrag 7b.
 
-**Schnittstelle für Auftrag 7b:** je Aktorzuordnung liegt die aktuelle Entscheidung in
-`actuator_emergency_state` (Felder `simulated_*` vs. die bisher leeren `phase`/`on_seconds`/
-`cycle_source`/`warm_locked`/`handover_attempted_at` usw. für den scharfen Zweig — 7b befüllt
-genau diese beim echten Versand) und das Protokoll in `actuator_decision` (`action`,
-`reason_code`, `reason`, bei Schaltausgängen `phase`/`phase_deadline_at`/`cycle_source`/
-`on_seconds`/`off_seconds`, bei Thermostaten nur `action`/`reason`). 7b muss außerdem den
-Publisher selbst umstellen, damit die Aktorentscheidung überhaupt scharf wirkt: für
-`action="handover"` `operating_mode="manual"` + Notsollwert genau einmal senden (Marker vor
-Versand setzen, wie bei den simulierten Feldern hier vorgemacht), für `switch_on`/`switch_off`
-den Zustand aus `phase` ableiten, die Publisher-Dedup-Caches bei Rückkehr (`stage` wird wieder
-`normal`) gezielt invalidieren — und dabei die oben genannte `_previous_state`-Kennzeichnung
-ergänzen, sonst verwechselt die Mindestdauer-Prüfung eine Notbetriebs-Phase mit einer
-gewöhnlichen Hysterese-Phase.
+**Schnittstelle, von Auftrag 7b inzwischen bedient** (siehe den Abschnitt oben): je
+Aktorzuordnung lag die aktuelle Entscheidung in `actuator_emergency_state` (Felder
+`simulated_*` vs. die damals noch leeren `phase`/`on_seconds`/`cycle_source`/`warm_locked`/
+`handover_attempted_at` usw. für den scharfen Zweig) und das Protokoll in `actuator_decision`
+(`action`, `reason_code`, `reason`, bei Schaltausgängen `phase`/`phase_deadline_at`/
+`cycle_source`/`on_seconds`/`off_seconds`, bei Thermostaten nur `action`/`reason`) bereit — 7b
+füllt die scharfen Felder jetzt beim echten Versand.
 
 **Vergleichsprotokoll Ersatzquelle ↔ Wandfühler (Plan Abschnitt 6, R2) — jetzt umgesetzt:**
 neue Tabelle `sensor_failure_source_comparison` (Migration `05f7842e4d69`, Zone/Gerät als
@@ -97,8 +330,9 @@ einer aktiven Notbetriebsstufe, eine Zone ganz ohne Aktor, die Wiederanlaufsperr
 tatsächlich über eine Paar-Grenze am 15-°C-Punkt hinweg (vorher rot ohne die persistierten
 Spalten — von Hand gegen `domain.emergency_cycle._resolve_pair` nachgerechnet, bevor der Test
 geschrieben wurde), und das Vergleichsprotokoll wächst nur bei einer neuen Kandidatenmessung.
-Ein weiterer Test in `tests/test_publishing_sensor_failure.py` beweist die eingangs genannte
-Korrektur direkt am Publisher.
+Ein weiterer, inzwischen ersetzter Test bewies die eingangs genannte Korrektur direkt am
+Publisher — jetzt Teil von `tests/test_publishing_notbetrieb_versand.py` (Auftrag 7b, siehe
+oben).
 
 ## 0.11.0 in Arbeit: Notbetriebs-Zustandsautomat (Auftrag 5b)
 

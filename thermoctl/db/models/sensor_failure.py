@@ -149,6 +149,17 @@ class ActuatorEmergencyState(Base):
     episode_id: Mapped[int] = mapped_column(
         ForeignKey("sensor_failure_episode.id", ondelete="CASCADE")
     )
+    # Which episode the *scharfe* fields below (no `simulated_` prefix) currently
+    # belong to -- `services/publishing.py` only, never `services/shadow_run.py`.
+    # Deliberately separate from `episode_id` above: that column is overwritten on
+    # every shadow cycle regardless of whether the plant is armed, so it cannot
+    # answer "is the persisted scharfe Taktzustand/Handover-Markierung still from
+    # the current episode, or a stale leftover from the previous one". `NULL`
+    # means "no armed emergency state recorded for this assignment yet" (never
+    # armed-emergency this far, or already reset after the last episode closed).
+    armed_episode_id: Mapped[int | None] = mapped_column(
+        ForeignKey("sensor_failure_episode.id", ondelete="SET NULL")
+    )
     phase: Mapped[str | None] = mapped_column(String(8))
     phase_deadline_at: Mapped[datetime | None] = mapped_column(DateTime)
     on_seconds: Mapped[int | None] = mapped_column(Integer)
@@ -170,6 +181,20 @@ class ActuatorEmergencyState(Base):
     simulated_warm_locked: Mapped[bool | None] = mapped_column(Boolean)
     handover_attempted_at: Mapped[datetime | None] = mapped_column(DateTime)
     handover_result: Mapped[str | None] = mapped_column(String(64))
+    # Projektinhaber-Entscheidung (nach Auftrag 7b): "exakt der Zustand wie
+    # davor" -- der vor der Übergabe tatsächlich vom Gerät gemeldete
+    # `operating_mode`-Wert (`DeviceProperty.last_value_text`), damit die
+    # Rückkehr ihn genau einmal zurückschreiben kann. `NULL` heißt
+    # ausdrücklich "unbekannt", nie ein geratener Vorgabewert (Grundsatz 1) --
+    # `services/publishing.py` schreibt dann bei Rückkehr nichts, sichtbar
+    # begründet, statt zu raten.
+    handover_previous_operating_mode: Mapped[str | None] = mapped_column(String(64))
+    # Rückkehr-Gegenstück zu `handover_attempted_at`/`handover_result`:
+    # derselbe Einmal-Versand-ohne-Wiederholung-Vertrag, nur in die andere
+    # Richtung -- gesetzt, sobald die Zone wieder `normal`/`ersatzquelle`
+    # ist, unabhängig vom Ergebnis, nie ein zweites Mal versucht.
+    restore_attempted_at: Mapped[datetime | None] = mapped_column(DateTime)
+    restore_result: Mapped[str | None] = mapped_column(String(64))
     simulated_handover_attempted_at: Mapped[datetime | None] = mapped_column(DateTime)
     last_successful_command_state: Mapped[bool | None] = mapped_column(Boolean)
     last_successful_command_at: Mapped[datetime | None] = mapped_column(DateTime)
@@ -183,7 +208,7 @@ class ActuatorDecision(Base):
     __tablename__ = "actuator_decision"
     __table_args__ = (
         CheckConstraint(
-            "action IN ('normal', 'no_write', 'switch_on', 'switch_off', 'handover')",
+            "action IN ('normal', 'no_write', 'switch_on', 'switch_off', 'handover', 'restore')",
             name="action",
         ),
         CheckConstraint("phase IN ('ein', 'aus')", name="phase"),

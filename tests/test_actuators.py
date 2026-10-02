@@ -15,6 +15,8 @@ from thermoctl.integrations.actuators import (
     MerossSwitch,
     Zigbee2MqttThermostat,
     Zigbee2MqttValve,
+    send_emergency_handover,
+    send_emergency_restore,
 )
 from thermoctl.integrations.meross import MerossError
 from thermoctl.services import cluster
@@ -758,3 +760,138 @@ async def test_the_leading_instance_still_switches_with_a_claim_row_present(
 
     assert result.executed is True
     assert mqtt.calls == [("zigbee2mqtt/Ventil/set", '{"state": "ON"}', True)]
+
+
+# --- Notbetrieb-Übergabe/-Rückstellung (Auftrag 7b) ---------------------------------
+#
+# `send_emergency_handover`/`send_emergency_restore` are not methods of an
+# `Actuator` class like the switches above -- but they move the same kind of
+# real valve through the same two dry-run bolts, so they get the same direct
+# coverage `Zigbee2MqttThermostat.switching()` already has above, not just
+# the end-to-end exercise through `services/publishing.py`.
+
+
+@pytest.mark.parametrize("out_of_range_setpoint", [Decimal("4.5"), Decimal("30.5")])
+@pytest.mark.anyio
+async def test_handover_setpoint_outside_five_to_thirty_degrees_is_rejected(
+    session: Session, out_of_range_setpoint: Decimal
+) -> None:
+    """Same device contract as the regular setpoint path (5-30 °C) -- a
+    Notsollwert outside it must not be sent, armed or not."""
+    _armed(session)
+    mqtt = MqttStub()
+    result = await send_emergency_handover(
+        session, mqtt, "zigbee2mqtt", "TRV-Bad", out_of_range_setpoint
+    )
+    assert result.executed is False
+    assert mqtt.calls == []
+    assert "außerhalb" in result.description
+
+
+@pytest.mark.anyio
+async def test_handover_without_control_armed_sends_nothing(session: Session) -> None:
+    """The dry-run bolt covers the handover exactly like every other command
+    that moves a valve."""
+    mqtt = MqttStub()
+    result = await send_emergency_handover(
+        session, mqtt, "zigbee2mqtt", "TRV-Wohnzimmer", Decimal("18.0")
+    )
+    assert mqtt.calls == []
+    assert result.executed is False
+    assert "zigbee2mqtt/TRV-Wohnzimmer/set" in result.description
+    assert "hätte gesendet" in result.description
+
+
+@pytest.mark.anyio
+async def test_an_armed_handover_actually_sends(session: Session) -> None:
+    """The counter-proof to the dry run: the path works, it is merely locked."""
+    _armed(session)
+    mqtt = MqttStub()
+    result = await send_emergency_handover(
+        session, mqtt, "zigbee2mqtt", "TRV-Bad", Decimal("18.0")
+    )
+    assert result.executed is True
+    assert mqtt.calls == [
+        (
+            "zigbee2mqtt/TRV-Bad/set",
+            '{"operating_mode": "manual", "occupied_heating_setpoint": 18.0}',
+            True,
+        )
+    ]
+
+
+@pytest.mark.anyio
+async def test_handover_peer_error_becomes_a_result_not_an_exception(
+    session: Session,
+) -> None:
+    """An MQTT-level failure must not abort the control cycle for every other
+    zone -- same discipline as every other actuator path."""
+    _armed(session)
+    mqtt = MqttStub(errors=ConnectionError("Broker weg"))
+    result = await send_emergency_handover(
+        session, mqtt, "zigbee2mqtt", "TRV-Bad", Decimal("18.0")
+    )
+    assert result.executed is False
+    assert result.errors is not None and "Broker weg" in result.errors
+
+
+@pytest.mark.anyio
+async def test_a_rejected_handover_publication_is_reported_as_an_error(
+    session: Session,
+) -> None:
+    """The second bolt in the MQTT client kicks in -- must not count as success."""
+    _armed(session)
+    result = await send_emergency_handover(
+        session, _RejectingClient(), "zigbee2mqtt", "TRV-Bad", Decimal("18.0")
+    )
+    assert result.executed is False
+    assert result.errors is not None and "abgewiesen" in result.errors
+
+
+@pytest.mark.anyio
+async def test_restore_without_control_armed_sends_nothing(session: Session) -> None:
+    """The Rückstellung has the identical dry-run bolt -- it moves the same
+    kind of real valve."""
+    mqtt = MqttStub()
+    result = await send_emergency_restore(session, mqtt, "zigbee2mqtt", "TRV-Bad", "pause")
+    assert mqtt.calls == []
+    assert result.executed is False
+    assert "zigbee2mqtt/TRV-Bad/set" in result.description
+    assert "hätte gesendet" in result.description
+
+
+@pytest.mark.anyio
+async def test_an_armed_restore_actually_sends(session: Session) -> None:
+    """The counter-proof to the dry run, for the Rückstellung."""
+    _armed(session)
+    mqtt = MqttStub()
+    result = await send_emergency_restore(session, mqtt, "zigbee2mqtt", "TRV-Bad", "pause")
+    assert result.executed is True
+    assert mqtt.calls == [
+        ("zigbee2mqtt/TRV-Bad/set", '{"operating_mode": "pause"}', True)
+    ]
+
+
+@pytest.mark.anyio
+async def test_restore_peer_error_becomes_a_result_not_an_exception(
+    session: Session,
+) -> None:
+    """Same discipline as the handover and every other actuator path."""
+    _armed(session)
+    mqtt = MqttStub(errors=ConnectionError("Broker weg"))
+    result = await send_emergency_restore(session, mqtt, "zigbee2mqtt", "TRV-Bad", "pause")
+    assert result.executed is False
+    assert result.errors is not None and "Broker weg" in result.errors
+
+
+@pytest.mark.anyio
+async def test_a_rejected_restore_publication_is_reported_as_an_error(
+    session: Session,
+) -> None:
+    """The second bolt in the MQTT client kicks in for the Rückstellung too."""
+    _armed(session)
+    result = await send_emergency_restore(
+        session, _RejectingClient(), "zigbee2mqtt", "TRV-Bad", "pause"
+    )
+    assert result.executed is False
+    assert result.errors is not None and "abgewiesen" in result.errors

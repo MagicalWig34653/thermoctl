@@ -39,11 +39,22 @@ ACTION_NO_WRITE = "no_write"
 ACTION_SWITCH_ON = "switch_on"
 ACTION_SWITCH_OFF = "switch_off"
 ACTION_HANDOVER = "handover"
+ACTION_RESTORE = "restore"
 
 # Reason codes -- diagnosis, read by people (Grundsatz 5); stable across releases,
 # like every other `sensorausfall_*` code this plan's modules define.
 REASON_HANDOVER = "sensorausfall_uebergabe"
 REASON_NO_WRITE_ERLEDIGT = "sensorausfall_schweigen"
+# Auftrag 7b item 2: no confirmed device contract for this assignment
+# (`domain.self_regulating.handover_capable` said no) -- silence, never a
+# guessed property name.
+REASON_NO_WRITE_KEIN_VERTRAG = "sensorausfall_kein_geraetevertrag"
+# Projektinhaber-Entscheidung (nach Auftrag 7b): die Rückkehr schreibt den vor
+# der Übergabe tatsächlich gemeldeten `operating_mode`-Wert genau einmal zurück.
+REASON_RESTORE = "sensorausfall_rueckstellung"
+# Der Vorwert wurde nie gemeldet (kein Gerätezustand vorhanden) -- kein
+# erfundener Rückstellwert, nur sichtbares Schweigen (Grundsatz 1).
+REASON_RESTORE_UNBEKANNT = "sensorausfall_rueckstellung_unbekannt"
 
 # NOTE (Hauptsession-Review von 88bc87a, 2026-09-30): plan Auftrag 7a, item 3
 # had originally called for this module to also provide a dedicated
@@ -79,6 +90,7 @@ def plan_thermostat(
     now: datetime,
     device_name: str,
     emergency_setpoint_c: Decimal,
+    capable: bool = True,
 ) -> ThermostatDecision:
     """Rang 3 of plan 1.4: one handover attempt per episode, then silence.
 
@@ -93,7 +105,22 @@ def plan_thermostat(
     only exists, or only becomes eligible, on a later cycle of the same
     still-open episode -- the per-assignment latch, not the per-episode
     entry event, is what actually enforces "genau einmal".
+
+    `capable` (Auftrag 7b, item 2) is the caller's own answer to
+    `domain.self_regulating.handover_capable` for this device -- a thermostat
+    this version has no confirmed write contract for never gets a handover
+    attempt at all, regardless of `already_attempted`; the returned
+    `handover_attempted_at` stays `None` so the caller never latches a
+    silence it did not actually try.
     """
+    if not capable:
+        return ThermostatDecision(
+            ACTION_NO_WRITE,
+            REASON_NO_WRITE_KEIN_VERTRAG,
+            f"{device_name}: kein bestätigter Gerätevertrag für operating_mode=manual "
+            "und Notsollwert — keine Übergabe, nur Schweigen.",
+            None,
+        )
     if already_attempted:
         return ThermostatDecision(
             ACTION_NO_WRITE,
@@ -107,6 +134,63 @@ def plan_thermostat(
         REASON_HANDOVER,
         f"{device_name}: Notbetrieb-Übergabe — operating_mode=manual, Notsollwert "
         f"{emergency_setpoint_c} °C (einmalig für diese Störung).",
+        now,
+    )
+
+
+@dataclass(frozen=True)
+class RestoreDecision:
+    """One cycle's plan for the Rückkehr-Rückstellung of a thermostat-actuator
+    assignment -- the `operating_mode` mirror image of `ThermostatDecision`."""
+
+    action: str  # ACTION_RESTORE | ACTION_NO_WRITE
+    reason_code: str
+    reason: str
+    # The new value for `ActuatorEmergencyState.restore_attempted_at` -- `None`
+    # means "leave the persisted value unchanged" (already attempted, or a
+    # dry run that must get its real chance once armed); both `ACTION_RESTORE`
+    # and the "Vorwert unbekannt" `ACTION_NO_WRITE` set it, since both fully
+    # resolve the Rückstellung for this episode -- only "already attempted"
+    # leaves it alone.
+    restore_attempted_at: datetime | None
+
+
+def plan_restore(
+    *,
+    already_attempted: bool,
+    now: datetime,
+    device_name: str,
+    previous_operating_mode: str | None,
+) -> RestoreDecision:
+    """Rückkehr-Gegenstück zu `plan_thermostat` (Projektinhaber-Entscheidung,
+    nach Auftrag 7b): "exakt der Zustand wie davor" -- der vor der Übergabe
+    tatsächlich vom Gerät gemeldete `operating_mode`-Wert wird genau einmal
+    zurückgeschrieben, nie ein erfundener Vorgabewert (Grundsatz 1).
+    `previous_operating_mode is None` means "never captured, or the device
+    never reported one" -- that is not an error to paper over with a guess,
+    it is its own, sichtbar begründete Schweigen-Entscheidung.
+    """
+    if already_attempted:
+        return RestoreDecision(
+            ACTION_NO_WRITE,
+            REASON_NO_WRITE_ERLEDIGT,
+            f"{device_name}: Rückstellung bereits abgeschlossen (operating_mode) — "
+            "keine weiteren Schreibbefehle für diese Rückkehr.",
+            None,
+        )
+    if previous_operating_mode is None:
+        return RestoreDecision(
+            ACTION_NO_WRITE,
+            REASON_RESTORE_UNBEKANNT,
+            f"{device_name}: Vorwert von operating_mode vor der Notbetrieb-Übergabe "
+            "unbekannt — keine Rückstellung, nur Schweigen.",
+            now,
+        )
+    return RestoreDecision(
+        ACTION_RESTORE,
+        REASON_RESTORE,
+        f"{device_name}: Rückkehr — operating_mode wird auf den vor der Übergabe "
+        f"gemeldeten Wert {previous_operating_mode!r} zurückgesetzt (einmalig).",
         now,
     )
 
@@ -140,14 +224,20 @@ __all__ = [
     "ACTION_HANDOVER",
     "ACTION_NORMAL",
     "ACTION_NO_WRITE",
+    "ACTION_RESTORE",
     "ACTION_SWITCH_OFF",
     "ACTION_SWITCH_ON",
     "KIND_SWITCH",
     "KIND_THERMOSTAT",
     "REASON_HANDOVER",
     "REASON_NO_WRITE_ERLEDIGT",
+    "REASON_NO_WRITE_KEIN_VERTRAG",
+    "REASON_RESTORE",
+    "REASON_RESTORE_UNBEKANNT",
+    "RestoreDecision",
     "SwitchDecision",
     "ThermostatDecision",
+    "plan_restore",
     "plan_switch",
     "plan_thermostat",
 ]

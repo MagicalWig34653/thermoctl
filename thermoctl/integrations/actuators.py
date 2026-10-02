@@ -269,6 +269,101 @@ class Zigbee2MqttThermostat:
         return SwitchResult(True, f"Gesendet: {message}")
 
 
+def handover_payload(setpoint_c: Decimal) -> dict[str, object]:
+    """The exact payload `send_emergency_handover` below sends.
+
+    Exposed separately, like `thermostat_payload` above, so a caller that only
+    wants to *log* what a handover would send writes down the same JSON the
+    adapter actually builds.
+    """
+    return {
+        "operating_mode": "manual",
+        "occupied_heating_setpoint": float(_quantized_setpoint(setpoint_c)),
+    }
+
+
+async def send_emergency_handover(
+    session: Session, client: MqttPublisher, base: str, device_name: str, setpoint_c: Decimal
+) -> SwitchResult:
+    """Notbetrieb-Übergabe (plan 0.11.0 Auftrag 7b, item 2): `operating_mode:
+    "manual"` together with the Notsollwert, confirmed against a Bosch BTH-RA
+    in `lokal/plaene/0.11.0-geraetevertrag.md` (b). The caller
+    (`services/publishing.py`) is responsible for calling this **at most
+    once** per armed episode per assignment -- this function itself has no
+    memory of whether it was already called, it only sends.
+
+    Same two bolts (`switching_allowed`, the step/range check) as
+    `Zigbee2MqttThermostat.switching()`: a handover moves a real valve, so
+    nothing here is allowed a looser gate than the regular setpoint path has.
+    """
+    if not (THERMOSTAT_MIN_SETPOINT_C <= setpoint_c <= THERMOSTAT_MAX_SETPOINT_C):
+        return SwitchResult(
+            False,
+            (
+                f"Notsollwert {setpoint_c} liegt außerhalb des am Gerät zulässigen "
+                f"Bereichs {THERMOSTAT_MIN_SETPOINT_C}-{THERMOSTAT_MAX_SETPOINT_C} Grad C"
+            ),
+        )
+    payload = json.dumps(handover_payload(setpoint_c))
+    topic = f"{base.rstrip('/')}/{device_name}/set"
+    message = f"{topic} mit Nutzlast {payload}"
+    if not switching_allowed(session):
+        return SwitchResult(False, f"Trockenlauf, hätte gesendet: {message}")
+
+    try:
+        session.commit()
+        executed = await client.publishing(topic, payload, switches=True)
+    except Exception as exc:
+        return SwitchResult(False, message, str(exc))
+    if not executed:
+        return SwitchResult(
+            False, message, "MQTT-Client hat die Veröffentlichung abgewiesen"
+        )
+    return SwitchResult(True, f"Gesendet: {message}")
+
+
+def restore_payload(operating_mode: str) -> dict[str, object]:
+    """The exact payload `send_emergency_restore` below sends -- `operating_mode`
+    only, no setpoint: the regular setpoint path resumes on its own the
+    moment the zone is `normal` again (`services/publishing.py::cycle`), this
+    only restores the one flag the Übergabe touched.
+    """
+    return {"operating_mode": operating_mode}
+
+
+async def send_emergency_restore(
+    session: Session, client: MqttPublisher, base: str, device_name: str, operating_mode: str
+) -> SwitchResult:
+    """Rückkehr-Gegenstück zu `send_emergency_handover` (Projektinhaber-
+    Entscheidung, nach Auftrag 7b): writes back the `operating_mode` value the
+    device itself reported just before the Übergabe -- "exakt der Zustand wie
+    davor", never an invented one. The caller is responsible for calling this
+    **at most once** per Rückkehr per assignment, and only with a value it
+    actually captured beforehand; this function does not validate that the
+    value is one the device declared (unlike the handover's setpoint range
+    check, `operating_mode` is a device-reported string, not a number this
+    module could sensibly range-check).
+
+    Same dry-run bolt as every other command that moves a valve.
+    """
+    payload = json.dumps(restore_payload(operating_mode))
+    topic = f"{base.rstrip('/')}/{device_name}/set"
+    message = f"{topic} mit Nutzlast {payload}"
+    if not switching_allowed(session):
+        return SwitchResult(False, f"Trockenlauf, hätte gesendet: {message}")
+
+    try:
+        session.commit()
+        executed = await client.publishing(topic, payload, switches=True)
+    except Exception as exc:
+        return SwitchResult(False, message, str(exc))
+    if not executed:
+        return SwitchResult(
+            False, message, "MQTT-Client hat die Veröffentlichung abgewiesen"
+        )
+    return SwitchResult(True, f"Gesendet: {message}")
+
+
 class MerossSwitch:
     """Switches a Meross socket that serves as a valve in the plant.
 

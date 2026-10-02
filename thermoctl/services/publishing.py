@@ -48,13 +48,21 @@ from sqlalchemy.orm import Session
 
 from thermoctl import audit
 from thermoctl.config import get_settings
-from thermoctl.db.models.device import ControllerChannel, Device
-from thermoctl.db.models.lookup import ChannelKind, DeviceCapability, SensorStatus
+from thermoctl.db.models.device import ControllerChannel, Device, DeviceProperty
+from thermoctl.db.models.lookup import ChannelKind, DeviceCapability, Integration, SensorStatus
 from thermoctl.db.models.measurement import Measurement
 from thermoctl.db.models.operations import Setting
+from thermoctl.db.models.sensor_failure import (
+    ActuatorDecision,
+    ActuatorEmergencyState,
+    ZoneSensorFailureState,
+)
 from thermoctl.db.models.state import ShadowDecision, ZoneState
 from thermoctl.db.models.zone import SetpointMode, Zone, ZoneSetpoint
+from thermoctl.domain import emergency_actuator_plan, emergency_cycle, sensor_failure_policy
 from thermoctl.domain.controller_channels import may_be_written
+from thermoctl.domain.emergency_operation import STAGE_NOTBETRIEB, STAGE_RUECKKEHRPRUEFUNG
+from thermoctl.domain.fault import OK
 from thermoctl.domain.fault_notice import (
     FaultNotice,
     command_failure_notice,
@@ -62,9 +70,14 @@ from thermoctl.domain.fault_notice import (
 )
 from thermoctl.domain.outdoor import outdoor_reading
 from thermoctl.domain.schedule import end_of_next_switch, resolved_setpoint, running_override
-from thermoctl.domain.self_regulating import SETPOINT_PROPERTY, valve_commands
+from thermoctl.domain.self_regulating import (
+    HANDOVER_OPERATING_MODE_PROPERTY,
+    SETPOINT_PROPERTY,
+    handover_capable,
+    valve_commands,
+)
 from thermoctl.domain.switch_commands import switch_commands, thermostat_commands
-from thermoctl.domain.zone_settings import PARAMETERS, control_parameters
+from thermoctl.domain.zone_settings import PARAMETERS, ControlParameters, control_parameters
 from thermoctl.integrations.actuators import (
     Actuator,
     MerossSwitch,
@@ -72,6 +85,10 @@ from thermoctl.integrations.actuators import (
     SwitchResult,
     Zigbee2MqttThermostat,
     Zigbee2MqttValve,
+    handover_payload,
+    restore_payload,
+    send_emergency_handover,
+    send_emergency_restore,
     switching_allowed,
     thermostat_payload,
 )
@@ -100,9 +117,21 @@ from thermoctl.integrations.mqtt.publication import (
     window_temperature_detected_discovery,
     zone_discovery,
 )
-from thermoctl.services.device_commands import EXECUTED, FAILED, SUPPRESSED, record_command
+from thermoctl.services.device_commands import (
+    EXECUTED,
+    FAILED,
+    NO_COMMAND,
+    SUPPRESSED,
+    record_command,
+)
 from thermoctl.services.meross_session import MerossSessionCache
 from thermoctl.services.meross_session import invalidate as invalidate_meross_session
+from thermoctl.services.shadow_run import derive_switch_phase_started_at, zone_actuator_assignments
+
+# Stages in which a zone's actuators are governed by the Notbetrieb vorrangtabelle
+# (plan 1.4 Rang 3/4) instead of the ordinary setpoint/hysteresis path -- the same
+# two stages `services/shadow_run.py` treats as "emergency actuator plan active".
+_EMERGENCY_STAGES = frozenset({STAGE_NOTBETRIEB, STAGE_RUECKKEHRPRUEFUNG})
 
 log = logging.getLogger(__name__)
 
@@ -406,7 +435,48 @@ async def cycle(
     for zone in zones:
         sent_count += await _send_zone_state(session, client, zone, prefix, now)
     sent_count += await _send_controller_channels(session, client, state, get_settings().mqtt_base_topic, now)
+
+    # Notbetrieb (plan Auftrag 7b): every zone that has ever had a
+    # `ZoneSensorFailureState` row runs through `_send_emergency_actuators`
+    # first -- both to actually send while the stage is active, and, just as
+    # importantly, to invalidate `state.valve_commands`/`.switch_commands`
+    # the one cycle a zone *leaves* that stage, before the ordinary paths
+    # below run again this same cycle (plan item 3). `emergency_active` is
+    # then used twice more, to keep the ordinary paths from touching a zone
+    # this function already owns this cycle.
+    zone_sf_states = {row.zone_id: row for row in session.scalars(select(ZoneSensorFailureState))}
+    emergency_active_zone_ids: set[int] = set()
     for zone in zones:
+        zone_sf_state = zone_sf_states.get(zone.id)
+        if zone_sf_state is None:
+            continue
+        if zone_sf_state.stage in _EMERGENCY_STAGES:
+            emergency_active_zone_ids.add(zone.id)
+        sent_count += await _send_emergency_actuators(
+            session,
+            client,
+            state,
+            get_settings().mqtt_base_topic,
+            zone,
+            zone_sf_state,
+            setting_row,
+            now,
+            source,
+            meross_transport,
+            meross_session_cache,
+            meross_switching_allowed,
+            notice_sink,
+            setting_row,
+        )
+
+    for zone in zones:
+        if zone.id in emergency_active_zone_ids:
+            # Rang 2/3 of plan 1.4: every write path a self-regulating valve
+            # has -- including the `remote_temperature` echo -- is owned by
+            # `_send_emergency_actuators` above while this zone is
+            # `NOTBETRIEB`/`RUECKKEHRPRUEFUNG`; `valve_commands()` is not even
+            # queried for it this cycle.
+            continue
         sent_count += await _send_self_regulating_valves(
             session,
             client,
@@ -419,6 +489,13 @@ async def cycle(
             setting_row,
         )
     for zone in zones:
+        if zone.id in emergency_active_zone_ids:
+            # Rang 2/4 of plan 1.4: both the ordinary switch and the
+            # (non-self-regulating) thermostat path are owned by
+            # `_send_emergency_actuators` above while this zone is emergency
+            # -active -- `switch_commands()`/`thermostat_commands()` are not
+            # even queried for it this cycle.
+            continue
         sent_count += await _send_actuator_switches(
             session,
             client,
@@ -434,6 +511,642 @@ async def cycle(
             setting_row,
         )
     return sent_count
+
+
+def _invalidate_dedup(state: PublicationState, device_id: int) -> None:
+    """Forgets this device's last-logged *ordinary* command (plan Auftrag 7b,
+    item 3).
+
+    Called exactly once, the cycle a zone's actuator assignment leaves
+    `NOTBETRIEB`/`RUECKKEHRPRUEFUNG` -- without it, `PublicationState.
+    valve_commands`/`.switch_commands` would still hold whatever was cached
+    from *before* the failure, and the ordinary path
+    (`_send_self_regulating_valves`/`_send_actuator_switches`), which this
+    zone's cycle now calls again, would read an unrelated-but-identical
+    `(payload, armed, EXECUTED)` entry as "already achieved" and stay silent
+    -- exactly the silent-after-recovery bug the plan calls out by name.
+    `.pop(..., None)`: a device never actually controlled normally before
+    (notbetrieb from its very first cycle) has no entry to begin with, and
+    that is not an error.
+    """
+    state.valve_commands.pop(device_id, None)
+    state.switch_commands.pop(device_id, None)
+
+
+async def _send_emergency_handover(
+    session: Session,
+    client: MqttPublisher,
+    base: str,
+    state: PublicationState,
+    zone: Zone,
+    device: Device,
+    row: ActuatorEmergencyState,
+    policy: sensor_failure_policy.EffectivePolicy,
+    fresh_episode: bool,
+    now: datetime,
+    source: str,
+    notices: list[FaultNotice],
+    setting_row: Setting | None,
+) -> int:
+    """Rang 3 of plan 1.4, scharf (Auftrag 7b item 2): exactly one handover
+    attempt per armed episode per assignment, then silence on every later
+    cycle -- this is the *only* place `cycle()` reaches for a thermostat-kind
+    assignment while its zone is `NOTBETRIEB`/`RUECKKEHRPRUEFUNG`; the
+    ordinary setpoint path (`_send_self_regulating_valves`, including its
+    `remote_temperature` echo) is not even called for this zone's devices
+    this cycle (see `cycle()`) -- "null Schreibbefehle auf allen Pfaden"
+    holds because the other paths never run, not because this one vetoes
+    them.
+    """
+    capable = handover_capable(session, device)
+    already_attempted = row.handover_attempted_at is not None
+    decision = emergency_actuator_plan.plan_thermostat(
+        already_attempted=already_attempted,
+        now=now,
+        device_name=device.display_name,
+        emergency_setpoint_c=policy.emergency_setpoint_c,
+        capable=capable,
+    )
+    session.add(
+        ActuatorDecision(
+            episode_id=row.armed_episode_id,
+            zone_device_id=row.zone_device_id,
+            zone_name=zone.display_name,
+            device_name=device.display_name,
+            decided_at=now,
+            action=decision.action,
+            reason_code=decision.reason_code,
+            reason=decision.reason,
+            phase=None,
+            phase_deadline_at=None,
+            simulated=False,
+            cycle_source=None,
+            on_seconds=None,
+            off_seconds=None,
+            outdoor_c=None,
+            profile_version=policy.profile.version,
+        )
+    )
+
+    if decision.action != emergency_actuator_plan.ACTION_HANDOVER:
+        if not capable and fresh_episode:
+            # Plan item 4: one Schaltprotokoll entry for the whole episode,
+            # not one per cycle -- the command log is deliberately "rare",
+            # and this assignment was never even going to be attempted.
+            record_command(
+                session,
+                now=now,
+                source=source,
+                zone=zone,
+                device=device,
+                command="handover",
+                payload="{}",
+                outcome=NO_COMMAND,
+                reason=decision.reason,
+            )
+        return 0
+
+    if not switching_allowed(session):
+        # Dry run: no send, and -- explicitly, plan item 2's own sentence --
+        # not counted as attempted either. The real one-shot attempt still
+        # lies ahead of an installation armed later.
+        record_command(
+            session,
+            now=now,
+            source=source,
+            zone=zone,
+            device=device,
+            command="handover",
+            payload=json.dumps(handover_payload(policy.emergency_setpoint_c)),
+            outcome=SUPPRESSED,
+            reason=decision.reason,
+        )
+        return 0
+
+    # Captured *before* the write, alongside `handover_attempted_at`
+    # (Projektinhaber-Entscheidung: "exakt der Zustand wie davor"): the
+    # `operating_mode` the device itself last reported, read from the stored
+    # device state (`DeviceProperty.last_value_text`, kept current by
+    # `services/ingest.py`), not from what thermoctl last *wrote* -- the
+    # question is what the device was actually doing, and this version never
+    # writes `operating_mode` outside this one handover. `None` when no
+    # property row exists or the device never reported one -- an honest
+    # "unknown", not a guess (Grundsatz 1); `_send_emergency_restore` below
+    # reads this value at Rückkehr time and refuses to write back a guess.
+    operating_mode_property = session.scalar(
+        select(DeviceProperty).where(
+            DeviceProperty.device_id == device.id,
+            DeviceProperty.name == HANDOVER_OPERATING_MODE_PROPERTY,
+        )
+    )
+    row.handover_previous_operating_mode = (
+        operating_mode_property.last_value_text if operating_mode_property is not None else None
+    )
+    # Persisted -- and committed -- *before* the send: plan item 2's own
+    # "wird vor dem Versand gespeichert und committet". A crash between this
+    # write and the broker's reply must still count as "attempted" on restart.
+    row.handover_attempted_at = now
+    _finish_database_work(session)
+
+    result = await send_emergency_handover(
+        session, client, base, device.external_id, policy.emergency_setpoint_c
+    )
+    outcome = _outcome_of(result)
+    row.handover_result = outcome
+    if outcome == EXECUTED:
+        row.last_successful_command_state = True
+        row.last_successful_command_at = now
+    _note_command_outcome(state, notices, session, device, outcome, setting_row)
+    record_command(
+        session,
+        now=now,
+        source=source,
+        zone=zone,
+        device=device,
+        command="handover",
+        payload=json.dumps(handover_payload(policy.emergency_setpoint_c)),
+        outcome=outcome,
+        error=result.errors if outcome == FAILED else None,
+        reason=decision.reason,
+    )
+    if outcome == EXECUTED:
+        log.info(
+            "Notbetrieb-Übergabe gesendet",
+            extra={
+                "zone_id": zone.id,
+                "geraet": device.display_name,
+                "notsollwert": str(policy.emergency_setpoint_c),
+            },
+        )
+        return 1
+    return 0
+
+
+async def _send_emergency_restore(
+    session: Session,
+    client: MqttPublisher,
+    base: str,
+    state: PublicationState,
+    zone: Zone,
+    device: Device,
+    row: ActuatorEmergencyState,
+    now: datetime,
+    source: str,
+    notices: list[FaultNotice],
+    setting_row: Setting | None,
+) -> int:
+    """Rückkehr-Gegenstück zu `_send_emergency_handover` (Projektinhaber-
+    Entscheidung, nach Auftrag 7b): writes the pre-Übergabe `operating_mode`
+    back exactly once, the cycle the zone's armed episode closes -- "exakt
+    der Zustand wie davor". Called from `_send_emergency_actuators`'s
+    recovery branch, before that branch clears `row`'s armed bookkeeping; a
+    dry run leaves `restore_attempted_at` unset so the caller keeps this
+    episode's Rückstellung open (does not clear `armed_episode_id` yet) until
+    an armed cycle gives it its one real attempt -- a dry run must never
+    spend the one-shot latch, same as the handover's own rule.
+    """
+    already_attempted = row.restore_attempted_at is not None
+    decision = emergency_actuator_plan.plan_restore(
+        already_attempted=already_attempted,
+        now=now,
+        device_name=device.display_name,
+        previous_operating_mode=row.handover_previous_operating_mode,
+    )
+    session.add(
+        ActuatorDecision(
+            episode_id=row.armed_episode_id,
+            zone_device_id=row.zone_device_id,
+            zone_name=zone.display_name,
+            device_name=device.display_name,
+            decided_at=now,
+            action=decision.action,
+            reason_code=decision.reason_code,
+            reason=decision.reason,
+            phase=None,
+            phase_deadline_at=None,
+            simulated=False,
+            cycle_source=None,
+            on_seconds=None,
+            off_seconds=None,
+            outdoor_c=None,
+            profile_version=row.profile_version,
+        )
+    )
+
+    if decision.action != emergency_actuator_plan.ACTION_RESTORE:
+        if decision.restore_attempted_at is not None:
+            # Either already attempted (nothing new to persist) or the
+            # Vorwert is permanently unknown -- plan Auftrag 7b item 4's own
+            # reasoning applies symmetrically: one Schaltprotokoll entry for
+            # the whole Rückkehr, not a guess.
+            row.restore_attempted_at = decision.restore_attempted_at
+            row.restore_result = NO_COMMAND
+            record_command(
+                session,
+                now=now,
+                source=source,
+                zone=zone,
+                device=device,
+                command="restore",
+                payload="{}",
+                outcome=NO_COMMAND,
+                reason=decision.reason,
+            )
+        return 0
+
+    if not switching_allowed(session):
+        # Dry run: no send, not counted as attempted -- `restore_attempted_at`
+        # stays as it was (unset, on the only path that reaches here), so the
+        # caller keeps this Rückkehr open for the next armed cycle.
+        record_command(
+            session,
+            now=now,
+            source=source,
+            zone=zone,
+            device=device,
+            command="restore",
+            payload=json.dumps(restore_payload(row.handover_previous_operating_mode or "")),
+            outcome=SUPPRESSED,
+            reason=decision.reason,
+        )
+        return 0
+
+    assert row.handover_previous_operating_mode is not None  # ACTION_RESTORE implies this
+    row.restore_attempted_at = now
+    _finish_database_work(session)
+
+    result = await send_emergency_restore(
+        session, client, base, device.external_id, row.handover_previous_operating_mode
+    )
+    outcome = _outcome_of(result)
+    row.restore_result = outcome
+    _note_command_outcome(state, notices, session, device, outcome, setting_row)
+    record_command(
+        session,
+        now=now,
+        source=source,
+        zone=zone,
+        device=device,
+        command="restore",
+        payload=json.dumps(restore_payload(row.handover_previous_operating_mode)),
+        outcome=outcome,
+        error=result.errors if outcome == FAILED else None,
+        reason=decision.reason,
+    )
+    if outcome == EXECUTED:
+        log.info(
+            "Notbetrieb-Rückstellung gesendet",
+            extra={
+                "zone_id": zone.id,
+                "geraet": device.display_name,
+                "operating_mode": row.handover_previous_operating_mode,
+            },
+        )
+        return 1
+    return 0
+
+
+async def _send_emergency_switch(
+    session: Session,
+    client: MqttPublisher,
+    state: PublicationState,
+    base: str,
+    zone: Zone,
+    device: Device,
+    row: ActuatorEmergencyState,
+    cycle_profile: emergency_cycle.CycleProfile,
+    outdoor_sample: emergency_cycle.OutdoorSample,
+    parameter: ControlParameters,
+    stale_state_seconds: int,
+    profile_version: int,
+    now: datetime,
+    source: str,
+    meross_transport: MerossCommandTransport | None,
+    meross_session_cache: MerossSessionCache | None,
+    meross_switching_allowed: bool,
+    notices: list[FaultNotice],
+    setting_row: Setting | None,
+) -> int:
+    """Rang 4 of plan 1.4, scharf (Auftrag 7b item 1):
+    `domain.emergency_cycle.advance()` computed against the *scharf*
+    `ActuatorEmergencyState` fields (no `simulated_` prefix) -- persisted to
+    them only once the matching command is actually confirmed sent: "Phasen
+    erst nach erfolgreichem Versand als begonnen betrachtet". A failed
+    attempt leaves the scharf fields exactly as they were, so the *next*
+    cycle's `advance()` call, given the same now-stale `prior`, proposes the
+    identical target phase again on its own -- retrying a failed Ein, or
+    refusing a new Ein while an Aus attempt is still outstanding, falls out
+    of that with no separate retry bookkeeping (`emergency_cycle`'s own "kein
+    Nachholen" contract already does the work).
+
+    Runs unconditionally, in every mode and with the window open (Entscheidung
+    6, plan 1.4 Rang 6/7) -- the caller never gates this on anything but the
+    zone's emergency stage.
+    """
+    prior_cycle_state = None
+    if (
+        row.phase is not None
+        and row.phase_deadline_at is not None
+        and row.on_seconds is not None
+        and row.off_seconds is not None
+        and row.cycle_source is not None
+        and row.warm_locked is not None
+    ):
+        prior_cycle_state = emergency_cycle.CycleState(
+            phase=row.phase,
+            phase_started_at=derive_switch_phase_started_at(
+                row.phase, row.phase_deadline_at, row.on_seconds, row.off_seconds
+            ),
+            phase_deadline=row.phase_deadline_at,
+            source=row.cycle_source,
+            on_seconds=row.on_seconds,
+            off_seconds=row.off_seconds,
+            warm_locked=row.warm_locked,
+        )
+    switch_decision = emergency_actuator_plan.plan_switch(
+        prior_cycle_state,
+        emergency_cycle.CycleInput(
+            now=now,
+            profile=cycle_profile,
+            outdoor=outdoor_sample,
+            min_on_seconds=parameter.min_on_seconds,
+            min_off_seconds=parameter.min_off_seconds,
+            stale_state_seconds=stale_state_seconds,
+            prior=None,
+        ),
+    )
+    heating = switch_decision.action == emergency_actuator_plan.ACTION_SWITCH_ON
+    new_cycle_state = switch_decision.cycle.state
+    armed = switching_allowed(session)
+    last_entry = state.switch_commands.get(device.id)
+
+    integration_row = session.get(Integration, device.integration_id)
+    integration_code = integration_row.code if integration_row is not None else None
+
+    def _persist_decision(*, committed: bool) -> None:
+        session.add(
+            ActuatorDecision(
+                episode_id=row.armed_episode_id,
+                zone_device_id=row.zone_device_id,
+                zone_name=zone.display_name,
+                device_name=device.display_name,
+                decided_at=now,
+                action=switch_decision.action,
+                reason_code=switch_decision.reason_code,
+                reason=switch_decision.reason,
+                phase=new_cycle_state.phase if committed else row.phase,
+                phase_deadline_at=(
+                    new_cycle_state.phase_deadline if committed else row.phase_deadline_at
+                ),
+                simulated=False,
+                cycle_source=new_cycle_state.source if committed else row.cycle_source,
+                on_seconds=new_cycle_state.on_seconds,
+                off_seconds=new_cycle_state.off_seconds,
+                outdoor_c=outdoor_sample.value_c,
+                profile_version=profile_version,
+            )
+        )
+
+    if integration_code not in _WIRED_INTEGRATIONS:
+        outcome = SUPPRESSED if not armed else FAILED
+        _note_command_outcome(state, notices, session, device, outcome, setting_row)
+        _persist_decision(committed=False)
+        new_entry = (heating, armed, outcome)
+        if new_entry != last_entry:
+            state.switch_commands[device.id] = new_entry
+            record_command(
+                session,
+                now=now,
+                source=source,
+                zone=zone,
+                device=device,
+                command="switch",
+                payload=json.dumps({"state": "ON" if heating else "OFF"}),
+                outcome=outcome,
+                error=(
+                    None
+                    if not armed
+                    else (
+                        f"Anbindung {integration_code!r} ist für Schaltbefehle in "
+                        "dieser Fassung nicht verdrahtet"
+                    )
+                ),
+                reason=switch_decision.reason,
+            )
+        return 0
+
+    actuator: Actuator
+    if integration_code == "zigbee2mqtt":
+        actuator = Zigbee2MqttValve(session, client, base, device.external_id)
+        payload = json.dumps({"state": "ON" if heating else "OFF"})
+    else:
+        actuator = MerossSwitch(
+            session,
+            meross_transport,
+            device.external_id,
+            frozen_switching_allowed=meross_switching_allowed,
+            session_unavailable_reason=(
+                meross_session_cache.last_rejection if meross_session_cache is not None else None
+            ),
+        )
+        payload = json.dumps(toggle_payload(0, heating))
+
+    _finish_database_work(session)
+    result = await actuator.switching(heating)
+    outcome = _outcome_of(result)
+    if (
+        integration_code == "meross"
+        and not result.executed
+        and result.session_fault
+        and meross_session_cache is not None
+    ):
+        invalidate_meross_session(meross_session_cache)
+    _note_command_outcome(state, notices, session, device, outcome, setting_row)
+
+    committed = outcome == EXECUTED
+    if committed:
+        row.phase = new_cycle_state.phase
+        row.phase_deadline_at = new_cycle_state.phase_deadline
+        row.on_seconds = new_cycle_state.on_seconds
+        row.off_seconds = new_cycle_state.off_seconds
+        row.cycle_source = new_cycle_state.source
+        row.warm_locked = new_cycle_state.warm_locked
+        row.last_successful_command_state = heating
+        row.last_successful_command_at = now
+    _persist_decision(committed=committed)
+
+    new_entry = (heating, armed, outcome)
+    if new_entry == last_entry:
+        return 1 if committed else 0
+    state.switch_commands[device.id] = new_entry
+    _record_switch_outcome(
+        session,
+        now=now,
+        source=source,
+        zone=zone,
+        device=device,
+        command_name="switch",
+        payload=payload,
+        result=result,
+        reason=switch_decision.reason,
+    )
+    if committed:
+        log.info(
+            "Notbetriebstakt geschaltet",
+            extra={
+                "zone_id": zone.id,
+                "geraet": device.display_name,
+                "zustand": "an" if heating else "aus",
+                "begründung": switch_decision.reason,
+            },
+        )
+        return 1
+    return 0
+
+
+async def _send_emergency_actuators(
+    session: Session,
+    client: MqttPublisher,
+    state: PublicationState,
+    base: str,
+    zone: Zone,
+    zone_sf_state: ZoneSensorFailureState,
+    settings: Setting | None,
+    now: datetime,
+    source: str,
+    meross_transport: MerossCommandTransport | None,
+    meross_session_cache: MerossSessionCache | None,
+    meross_switching_allowed: bool,
+    notices: list[FaultNotice],
+    setting_row: Setting | None,
+) -> int:
+    """Rang 3/4 of plan 1.4, scharf (Auftrag 7b) -- the one place a
+    `handover`/`switch_on`/`switch_off` decision from
+    `domain.emergency_actuator_plan` actually turns into a real command, now
+    that `services/shadow_run.py` has, this same cycle and transaction,
+    already established whether `zone` stands in `NOTBETRIEB`/
+    `RUECKKEHRPRUEFUNG` (`zone_sf_state.stage`). Reuses the same pure domain
+    modules the shadow run does (Grundsatz 6: the rule lives once) -- only
+    whether, and when, a decision is allowed to actually leave the process
+    differs here.
+
+    Runs even while `zone_sf_state.stage` is *not* currently emergency: a
+    zone whose armed bookkeeping (`ActuatorEmergencyState.armed_episode_id`)
+    still shows a previous episode has just recovered, and this is the one
+    cycle that has to invalidate the ordinary publisher's own dedup cache for
+    it (plan item 3) before the ordinary path runs again, further down in
+    the same `cycle()` call.
+    """
+    active = zone_sf_state.stage in _EMERGENCY_STAGES
+    policy: sensor_failure_policy.EffectivePolicy | None = None
+    cycle_profile: emergency_cycle.CycleProfile | None = None
+    outdoor_sample: emergency_cycle.OutdoorSample | None = None
+    parameter: ControlParameters | None = None
+    stale_state_seconds = 0
+    if active:
+        if settings is None:  # pragma: no cover -- shadow_run never reaches
+            # NOTBETRIEB/RUECKKEHRPRUEFUNG without a `setting` row either.
+            return 0
+        policy = sensor_failure_policy.effective_policy(session, zone)
+        outdoor = outdoor_reading(session, settings, now)
+        outdoor_sample = emergency_cycle.OutdoorSample(
+            value_c=outdoor.temperature_c,
+            measured_at=outdoor.measured_at,
+            usable=outdoor.status == OK,
+        )
+        profile_values = policy.profile.values
+        cycle_profile = emergency_cycle.CycleProfile(
+            fixed_on_seconds=profile_values.fixed_on_seconds,
+            fixed_off_seconds=profile_values.fixed_off_seconds,
+            warm_restart_hysteresis_k=profile_values.warm_restart_hysteresis_k,
+            curve_points=tuple(
+                emergency_cycle.CurvePoint(p.outdoor_c, p.on_seconds, p.off_seconds)
+                for p in profile_values.curve_points
+            ),
+        )
+        stale_state_seconds = max(settings.shadow_interval_seconds * 5, 300)
+        parameter = control_parameters(session, zone)
+
+    sent = 0
+    for zone_device, device, kind in zone_actuator_assignments(session, zone):
+        row = session.get(ActuatorEmergencyState, zone_device.id)
+        if row is None:  # pragma: no cover -- shadow_run always creates this
+            # row first, same transaction, for every assignment it sees.
+            continue
+
+        if not active:
+            if row.armed_episode_id is not None:
+                if kind == emergency_actuator_plan.KIND_THERMOSTAT:
+                    sent += await _send_emergency_restore(
+                        session, client, base, state, zone, device, row,
+                        now, source, notices, setting_row,
+                    )
+                # Invalidated unconditionally, even while the Rückstellung
+                # below is still open on a dry run: the ordinary setpoint
+                # path resuming must not stay silent on an unrelated
+                # technicality (plan item 3's own reasoning, orthogonal to
+                # the operating_mode Rückstellung).
+                _invalidate_dedup(state, device.id)
+                if (
+                    kind == emergency_actuator_plan.KIND_THERMOSTAT
+                    and row.restore_attempted_at is None
+                ):
+                    # Trockenlauf: `_send_emergency_restore` deliberately did
+                    # not spend the one-shot latch -- keep this episode's
+                    # Rückstellung open so the next armed cycle gets the real
+                    # attempt, instead of losing it the moment this branch
+                    # resets `armed_episode_id` below.
+                    continue
+                row.armed_episode_id = None
+                row.phase = None
+                row.phase_deadline_at = None
+                row.on_seconds = None
+                row.off_seconds = None
+                row.cycle_source = None
+                row.warm_locked = None
+                row.handover_attempted_at = None
+                row.handover_result = None
+                row.handover_previous_operating_mode = None
+                row.restore_attempted_at = None
+                row.restore_result = None
+                row.last_successful_command_state = None
+                row.last_successful_command_at = None
+            continue
+
+        assert policy is not None and cycle_profile is not None
+        assert outdoor_sample is not None and parameter is not None
+        fresh_episode = row.armed_episode_id != zone_sf_state.episode_id
+        if fresh_episode:
+            row.armed_episode_id = zone_sf_state.episode_id
+            row.handover_attempted_at = None
+            row.handover_result = None
+            row.handover_previous_operating_mode = None
+            row.restore_attempted_at = None
+            row.restore_result = None
+            row.last_successful_command_state = None
+            row.last_successful_command_at = None
+            row.phase = None
+            row.phase_deadline_at = None
+            row.on_seconds = None
+            row.off_seconds = None
+            row.cycle_source = None
+            row.warm_locked = None
+
+        if kind == emergency_actuator_plan.KIND_THERMOSTAT:
+            sent += await _send_emergency_handover(
+                session, client, base, state, zone, device, row, policy,
+                fresh_episode, now, source, notices, setting_row,
+            )
+        elif kind == emergency_actuator_plan.KIND_SWITCH:
+            sent += await _send_emergency_switch(
+                session, client, state, base, zone, device, row,
+                cycle_profile, outdoor_sample, parameter, stale_state_seconds,
+                policy.profile.version, now, source,
+                meross_transport, meross_session_cache, meross_switching_allowed,
+                notices, setting_row,
+            )
+    session.flush()
+    return sent
 
 
 async def _send_self_regulating_valves(

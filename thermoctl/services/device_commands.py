@@ -24,6 +24,9 @@ log = logging.getLogger(__name__)
 EXECUTED = "executed"
 SUPPRESSED = "suppressed"
 FAILED = "failed"
+# Notbetrieb (plan Auftrag 7b item 4): an assignment with no confirmed device
+# contract -- never even computed a command, let alone withheld or failed one.
+NO_COMMAND = "decided_no_command"
 
 
 def record_command(

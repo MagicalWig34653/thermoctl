@@ -164,6 +164,83 @@ def _previous_state(
     return current_state, int((now - start).total_seconds()), current_state, phase_started_by
 
 
+# Blocker 1 (Hauptsession, nach Auftrag 7b, Grundsatz 7): outcome code for the
+# synthetic `ShadowDecision` row `_seed_recovery_phase_marker` inserts the one
+# cycle a sensor-failure episode ends -- no ordinary decision is ever written
+# with this code, so it stays recognisable in the log as what it is.
+OUTCOME_CODE_NOTBETRIEB_RUECKKEHR = "notbetrieb_rueckkehr_start"
+
+
+def _seed_recovery_phase_marker(session: Session, zone: Zone, now: datetime) -> None:
+    """Blocker 1 (Hauptsession-Vorgabe nach Auftrag 7b, Grundsatz 7,
+    konservativ): die Mindestschaltdauer-Prüfung nach einer Rückkehr aus dem
+    Notbetrieb darf den tatsächlich zuletzt gesendeten Relaiszustand nicht
+    verletzen.
+
+    `_previous_state()` liest ausschließlich `shadow_decision` -- die während
+    `notbetrieb`/`rueckkehrpruefung` unverändert simuliert weiterlief
+    (Auftrag 7a: die Zonenentscheidung bleibt exakt `decide()`s eigene
+    Antwort), während das reale Relais in genau dieser Zeit vom
+    Notbetriebstakt geschaltet wurde (Auftrag 7b, `services/publishing.py`)
+    -- zwei unabhängige Zeitlinien. Ohne Korrektur würde der erste reguläre
+    Zyklus nach der Rückkehr `_previous_state()`s simulierte (und unter
+    Umständen falsche) Vorstellung von "schon lange gehalten" oder "gerade
+    erst umgeschaltet" übernehmen, nicht die reale.
+
+    Löst das konservativ (Grundsatz 7: im Zweifel vorsichtig), nicht durch
+    exakte Rekonstruktion der realen Haltezeit: schreibt eine zusätzliche
+    `shadow_decision`-Zeile mit `decided_at=now` und `would_heat` = dem real
+    zuletzt erfolgreich gesendeten Zustand
+    (`ActuatorEmergencyState.last_successful_command_state`, die scharfen
+    Felder -- zu diesem Zeitpunkt im Zyklus noch nicht durch den Publisher
+    zurückgesetzt, siehe `services/publishing.py::_send_emergency_actuators`,
+    das erst nach `shadow_run.cycle()` läuft). Eingefügt *vor* dem
+    natürlichen `decide()`-Ergebnis desselben Zyklus (das denselben
+    `decided_at`, aber eine höhere `id` bekommt und deshalb als
+    `_latest_decision()`s Antwort unverändert gewinnt -- diese Zeile
+    beeinflusst nur, was `_previous_state()` beim *nächsten* Aufruf als
+    Historie vorfindet): `held_for_s` beginnt dadurch konservativ bei 0 ab
+    `now`, nie mit mehr Anrechnung als real erreicht -- die Mindestdauer wird
+    dadurch nie zu früh als erfüllt behandelt, höchstens strenger als nötig.
+
+    Nur für Zonen mit genau einem Schaltausgang mit bekanntem scharfem
+    Zustand: die reale Anlage hat je Zone höchstens einen
+    (`lokal/plaene/0.11.0-geraetevertrag.md` (d)/(e)); bei keinem oder bei
+    mehreren Schaltausgängen schreibt diese Funktion bewusst nichts -- ein
+    einzelner `would_heat`-Wert für die Zone könnte nicht erfunden werden,
+    ohne für einen der Aktoren zu raten (Grundsatz 1), und die bisherige
+    (konservativ zu lesende, aber nicht erfundene) Simulation bleibt dann
+    einfach stehen.
+    """
+    switches = [
+        zone_device
+        for zone_device, _device, kind in zone_actuator_assignments(session, zone)
+        if kind == emergency_actuator_plan.KIND_SWITCH
+    ]
+    if len(switches) != 1:
+        return
+    row = session.get(ActuatorEmergencyState, switches[0].id)
+    if row is None or row.last_successful_command_state is None:
+        return
+    session.add(
+        ShadowDecision(
+            zone_id=zone.id,
+            decided_at=now,
+            setpoint_reason="",
+            would_heat=row.last_successful_command_state,
+            outcome_code=OUTCOME_CODE_NOTBETRIEB_RUECKKEHR,
+            reason=(
+                "Rückkehr aus dem Notbetrieb: realer Schaltzustand "
+                f"({'ein' if row.last_successful_command_state else 'aus'}) übernommen "
+                "-- Grundlage für die Mindestschaltdauer."
+            ),
+            requested_controller="hysteresis",
+            effective_controller="hysteresis",
+        )
+    )
+    session.flush()
+
+
 def _window_situation(
     session: Session, zone: Zone, state: ZoneState | None, now: datetime
 ) -> tuple[bool, int | None]:
@@ -311,7 +388,7 @@ def _effective_override(session: Session, zone: Zone, now: datetime) -> ZoneOver
 # --------------------------------------------------------------------------- #
 
 
-def _derive_switch_phase_started_at(
+def derive_switch_phase_started_at(
     phase: str, phase_deadline_at: datetime, on_seconds: int, off_seconds: int
 ) -> datetime:
     """Reconstructs `emergency_cycle.CycleState.phase_started_at` from what
@@ -325,7 +402,7 @@ def _derive_switch_phase_started_at(
     return phase_deadline_at - timedelta(seconds=duration)
 
 
-def _zone_actuator_assignments(
+def zone_actuator_assignments(
     session: Session, zone: Zone
 ) -> list[tuple[ZoneDevice, Device, str]]:
     """Every actuator assignment of `zone`, classified by plan 1.1 entry 1's rule:
@@ -689,7 +766,7 @@ def _apply_emergency_actuators(
     # configured cycle length.
     stale_state_seconds = max(settings.shadow_interval_seconds * 5, 300)
 
-    for zone_device, device, kind in _zone_actuator_assignments(session, zone):
+    for zone_device, device, kind in zone_actuator_assignments(session, zone):
         existing_row = session.get(ActuatorEmergencyState, zone_device.id)
         fresh_episode = existing_row is None or existing_row.episode_id != outcome.episode_id
         row = existing_row if existing_row is not None else ActuatorEmergencyState(
@@ -760,12 +837,12 @@ def _apply_emergency_actuators(
                 # Persistenz, nicht mehr live neu geschätzt (Kreuzreview von
                 # 88bc87a: ohne das griff die Sperre nie über einen Zyklus
                 # hinweg, weil `CycleState` jeden Zyklus frisch aus der DB
-                # rekonstruiert wird). `_derive_switch_phase_started_at` bleibt
+                # rekonstruiert wird). `derive_switch_phase_started_at` bleibt
                 # der exakte -- nicht angenäherte -- Umkehrweg für
                 # `phase_started_at`, das keine eigene Spalte hat.
                 prior_cycle_state = emergency_cycle.CycleState(
                     phase=row.simulated_phase,
-                    phase_started_at=_derive_switch_phase_started_at(
+                    phase_started_at=derive_switch_phase_started_at(
                         row.simulated_phase,
                         row.simulated_phase_deadline_at,
                         row.simulated_on_seconds,
@@ -1619,12 +1696,6 @@ def _process_zone(
     setpoint = resolved_setpoint(session, zone, now)
     frost_c = _frost_setpoint(session, zone, settings)
     parameter = control_parameters(session, zone)
-    heating_now, held_for_s, previous_would_heat, phase_started_by = _previous_state(
-        session, zone.id, now
-    )
-    setpoint_c, setpoint_reason = _with_solar_setback(
-        setpoint, frost_c, zone, parameter, settings, forecast, now
-    )
 
     # Notbetrieb (Auftrag 7a): engaged for a zone currently opted in, or one
     # with a still-open episode from before it was opted out again -- see the
@@ -1632,6 +1703,17 @@ def _process_zone(
     # half of this condition matters. Every other zone never touches any of
     # this (bitgenau today's behaviour, the plan's explicit regression
     # requirement).
+    #
+    # Deliberately computed *before* `_previous_state()` below (Blocker 1,
+    # Hauptsession-Vorgabe nach Auftrag 7b, Grundsatz 7): the one cycle an
+    # episode ends (`events.episode_ended`), `_seed_recovery_phase_marker`
+    # must get the chance to seed a protective `ShadowDecision` row *before*
+    # `_previous_state()` reads this zone's history for this exact cycle --
+    # otherwise the Mindestschaltdauer-Prüfung (`decide()` Regel 5) would see
+    # only the simulated hysteresis history that ran, unaware of Notbetrieb,
+    # throughout the whole episode, not the real relay state the
+    # Notbetriebstakt actually left it in. See `_seed_recovery_phase_marker`'s
+    # own docstring for the full reasoning.
     sf_db_state = session.get(ZoneSensorFailureState, zone.id)
     sensor_failure_outcome: _SensorFailureOutcome | None = None
     sf_stage: str | None = None
@@ -1650,6 +1732,15 @@ def _process_zone(
             # mistake this for a healthy, ordinary cycle.
             measured_c = sensor_failure_outcome.effective_temperature_c
             sensor_status = OK
+        if sensor_failure_outcome.stage_output.events.episode_ended:
+            _seed_recovery_phase_marker(session, zone, now)
+
+    heating_now, held_for_s, previous_would_heat, phase_started_by = _previous_state(
+        session, zone.id, now
+    )
+    setpoint_c, setpoint_reason = _with_solar_setback(
+        setpoint, frost_c, zone, parameter, settings, forecast, now
+    )
 
     override = _effective_override(session, zone, now)
     override_active = override is not None
