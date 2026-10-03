@@ -11,6 +11,71 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ## Unveröffentlicht
 
+Vorgesehen als 0.11.0: **Notbetrieb bei Sensorausfall.**
+
+> ### ⚠ Verhaltensänderung beim Upgrade
+>
+> **Der Notbetrieb bei Sensorausfall wird für alle bestehenden Zonen automatisch
+> aktiviert; neu angelegte Zonen starten ebenfalls damit.** Bis 0.10.1 tat `thermoctl`
+> bei einem Sensorausfall nichts Eigenes, jetzt greift es ein:
+>
+> - Fällt in einer Zone der Temperatursensor aus — und gibt es keine brauchbare
+>   Ersatzquelle über die Thermostat-Thermometer der Zone —, **takten Fußbodenkreise**
+>   (Vorgabe 10 Minuten an, 20 Minuten aus; nach der Außentemperatur-Kennlinie, sobald
+>   ein Außenwert vorliegt).
+> - **Heizkörper-Thermostate werden einmal** auf `manual` und den Notsollwert
+>   (Vorgabe 20 °C) gestellt und danach nicht mehr angesprochen. Sie regeln dann selbst.
+> - **Bei Rückkehr** des Sensors wird der vorherige `operating_mode` des Thermostats
+>   einmal zurückgeschrieben.
+> - **Meldung** bei Beginn und bei Entwarnung (Schalter `notify_sensor_faults`).
+>
+> **Wer das für eine Zone nicht will:** unter „Parameter" der Zone (Zonen →
+> Regelparameter) „Notbetrieb für diese Zone aktivieren" ausschalten.
+>
+> **Ein Downgrade** (Alembic `downgrade` unter `d4a81c6e5b29`) setzt den Notbetrieb für
+> **alle** Zonen auf aus; wer ihn vorher von Hand für einzelne Zonen eingeschaltet hatte,
+> muss ihn nach erneutem Upgrade selbst wieder setzen.
+
+### Hinzugefügt
+
+- **Ersatzquelle bei Sensorausfall.** Fällt der Wandfühler aus, nimmt die Zone die
+  **kälteste** Messung der ihr zugeordneten Thermostat-Thermometer, korrigiert um einen
+  Ausgleichswert je Thermostat (`korrigiert = roh − Ausgleich`, Vorgabe 0 K), und regelt
+  damit weiter. **Echo-Regel (Bosch BTH-RA):** Solange `thermoctl` dem Thermostat eine
+  externe Temperatur schreibt, ist dessen Messwert ein Echo und keine unabhängige
+  Messung; er zählt erst, wenn er frühestens 30 Minuten nach dem letzten Sendeversuch
+  entstanden ist. Erst wenn keine Quelle brauchbar ist, beginnt der Notbetrieb.
+- **Notbetrieb: Takt der Fußbodenkreise.** Festtakt (Vorgabe 10 Minuten an / 20 Minuten
+  aus) oder, mit Außenwert, eine Außentemperatur-Kennlinie (Vorgabe: −10 °C 20/10 Minuten,
+  0 °C 10/20, ab 15 °C aus; als Zeilen bearbeitbar). Mindest-Ein-/Aus-Dauern des
+  tatsächlichen Relaiszustands gelten über Ein- und Austritt hinweg.
+- **Notbetrieb: Übergabe an Thermostate, einmal.** Genau ein Schreibvorgang je Episode
+  (`manual` und Notsollwert), ein weiterer bei Rückkehr (gemeldeter Vorwert), sonst
+  Schweigen — auch nach einem Neustart oder Absturz kein zweiter Versuch.
+- **Betriebsseite (Anlagensicht → Betrieb):** je Zone Stufe, aktive Quelle,
+  Rückkehrfortschritt, Takt-Phase und -Frist, Übergabe- und Rückstellungsstatus, plus ein
+  **Vergleich Ersatzquelle ↔ Wandfühler** der letzten Tage mit vorgeschlagenem
+  Ausgleichswert als Grundlage für die Kalibrierung.
+- **Anzeige** des Notbetriebs auf Start, Wohnungssicht und Kiosk in Klartext ohne
+  Fachbegriffe; das Schaltprotokoll zeigt Notbetriebsentscheidungen mit.
+- **Konfiguration** über Oberfläche (Regelparameter der Zone, Karte „Notbetrieb bei
+  Sensorausfall" unter Regelvorgaben), REST (`GET/PUT /api/v1/control/sensor-failure-defaults`,
+  `GET/PUT /api/v1/zones/{id}/sensor-failure`, `GET /api/v1/zones/{id}/emergency-state`) und
+  MCP (`read_emergency_state`, `read/set_sensor_failure_defaults`,
+  `read/set_sensor_failure_policy`).
+- **Meldungen:** je Störung eine Meldung beim Eintritt und eine Entwarnung; bricht der
+  Dienst dazwischen ab, wird die Meldung genau einmal wiederholt (lieber doppelt als
+  gar nicht). Vergleichs- und Entscheidungsdaten des Notbetriebs unterliegen der
+  Aufbewahrungsfrist der Schattenentscheidungen.
+
+### Behoben
+
+- **Downgrade-Migrationen des Notbetriebs vertragen jetzt vorhandene Daten**; der Rückweg
+  scheiterte zuvor an Zeilen mit den neuen Werten.
+- **Das Notbetriebs-Formular speichert atomar:** ein ungültiger Wert verwirft die ganze
+  Eingabe, statt einen Teil zu schreiben.
+- **Unvollständige Kennlinienzeilen werden abgewiesen**, statt still ignoriert zu werden.
+
 ## 0.10.1 — 2026-09-27
 
 ### Behoben
