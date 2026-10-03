@@ -74,3 +74,117 @@ def test_the_operating_page_shows_pi_and_its_fallback_reason(
     assert "PI (Beta)" in response.text
     assert "PI-Rückfall" in response.text
     assert "Die Zone erfüllt die PI-Voraussetzungen nicht (mehr)." in response.text
+
+
+def test_the_operating_page_shows_notbetrieb_detail_and_comparison(
+    angemeldeter_client: TestClient, session: Session
+) -> None:
+    """Auftrag 8b item 2: Stufe, aktive Quelle, Taktphase, Übergabestatus und die
+    Ersatzquelle<->Wandfühler-Auswertung müssen auf der Betriebsseite stehen --
+    derselbe geteilte Lesevorgang wie REST/MCP."""
+    from datetime import datetime, timedelta
+    from decimal import Decimal
+
+    from tests.helpers import capability, create_device, create_zone, role
+    from thermoctl.db.models.device import DeviceCapabilityLink, ZoneDevice
+    from thermoctl.db.models.sensor_failure import (
+        ActuatorEmergencyState,
+        SensorFailureEpisode,
+        SensorFailureSourceComparison,
+        ZoneSensorFailureState,
+    )
+    from thermoctl.domain import emergency_operation
+
+    create_settings(session)
+    zone = create_zone(session, "betriebsnotzone")
+    device = create_device(session, "betriebsnotgeraet")
+    session.add(
+        DeviceCapabilityLink(device_id=device.id, capability_id=capability(session, "switch").id)
+    )
+    zone_device = ZoneDevice(
+        zone_id=zone.id,
+        device_id=device.id,
+        device_role_id=role(session, "actuator").id,
+        self_regulating=False,
+    )
+    session.add(zone_device)
+    session.flush()
+    now = datetime(2026, 10, 2, 12, 0, 0)
+    episode = SensorFailureEpisode(
+        zone_id=zone.id,
+        zone_name=zone.display_name,
+        started_at=now,
+        trigger_kind=emergency_operation.TRIGGER_ALLE_QUELLEN,
+        profile_version=1,
+        fixed_on_seconds=600,
+        fixed_off_seconds=1200,
+        recovery_seconds=60,
+        recovery_samples=2,
+        warm_restart_hysteresis_k=Decimal("1"),
+        emergency_setpoint_c=Decimal("20"),
+        sensor_timeout_seconds=1800,
+    )
+    session.add(episode)
+    session.flush()
+    session.add(
+        ZoneSensorFailureState(
+            zone_id=zone.id, episode_id=episode.id, stage=emergency_operation.STAGE_NOTBETRIEB
+        )
+    )
+    session.add(
+        ActuatorEmergencyState(
+            zone_device_id=zone_device.id,
+            episode_id=episode.id,
+            armed_episode_id=episode.id,
+            phase="ein",
+            phase_deadline_at=now + timedelta(minutes=10),
+            on_seconds=600,
+            off_seconds=1200,
+            cycle_source="festtakt",
+            warm_locked=False,
+            simulated_phase="ein",
+            simulated_phase_deadline_at=now + timedelta(minutes=10),
+            simulated_on_seconds=600,
+            simulated_off_seconds=1200,
+            simulated_cycle_source="festtakt",
+            simulated_warm_locked=False,
+            profile_version=1,
+        )
+    )
+    session.add(
+        SensorFailureSourceComparison(
+            zone_id=zone.id,
+            zone_name=zone.display_name,
+            device_id=device.id,
+            device_name=device.display_name,
+            measured_at=now,
+            wall_probe_c=Decimal("20.0"),
+            raw_c=Decimal("19.2"),
+            corrected_c=Decimal("19.2"),
+            echo=False,
+            usable=True,
+        )
+    )
+    session.flush()
+
+    response = angemeldeter_client.get("/control")
+
+    assert response.status_code == 200
+    assert "Notbetrieb" in response.text
+    assert device.display_name in response.text
+    assert "nicht versucht" in response.text
+    assert "vorgeschlagener Ausgleichswert" in response.text
+
+
+def test_the_operating_page_shows_nothing_extra_for_a_normal_zone(
+    angemeldeter_client: TestClient, session: Session
+) -> None:
+    from tests.helpers import create_zone
+
+    create_settings(session)
+    create_zone(session, "ruhige-zone")
+
+    response = angemeldeter_client.get("/control")
+
+    assert response.status_code == 200
+    assert "Ersatzquelle ↔ Wandfühler" not in response.text

@@ -728,3 +728,69 @@ def test_cancelling_a_vacation_ends_the_running_one(client, token_fuer, session)
     # three endpoints instead of only checking the row in the database.
     after = client.get("/api/v1/vacation", headers=head)
     assert after.json() is None
+
+
+def test_emergency_state_is_readable_only_for_a_visible_zone(
+    client, token_fuer, session: Session
+) -> None:
+    head = token_fuer([("zone.read", "bad")])
+
+    response = client.get("/api/v1/zones/1/emergency-state", headers=head)
+
+    assert response.status_code == 200
+    assert response.json()["stage"] == "normal"
+    assert response.json()["actuators"] == []
+    assert response.json()["comparisons"] == []
+    assert client.get("/api/v1/zones/2/emergency-state", headers=head).status_code == 404
+
+
+def test_emergency_state_requires_zone_read(client, token_fuer) -> None:
+    """Same shape as `/zones/{zone_id}/state` above: `_visible_zone` already
+    filters by `zone.read` before this endpoint's own body ever runs, so a
+    caller without it sees the same 404 as a nonexistent zone -- not a 403
+    that would distinguish "exists, no permission" from "does not exist"."""
+    head = token_fuer([("override.create", "bad")])
+    response = client.get("/api/v1/zones/1/emergency-state", headers=head)
+    assert response.status_code == 404
+
+
+def test_emergency_state_reports_an_open_episode(client, token_fuer, session: Session) -> None:
+    from decimal import Decimal
+
+    from thermoctl.db.models.sensor_failure import SensorFailureEpisode, ZoneSensorFailureState
+    from thermoctl.domain import emergency_operation
+
+    create_settings(session)
+    episode = SensorFailureEpisode(
+        zone_id=1,
+        zone_name="Bad",
+        started_at=datetime(2026, 10, 2, 12, 0, 0),
+        trigger_kind=emergency_operation.TRIGGER_ALLE_QUELLEN,
+        profile_version=1,
+        fixed_on_seconds=600,
+        fixed_off_seconds=1200,
+        recovery_seconds=60,
+        recovery_samples=2,
+        warm_restart_hysteresis_k=Decimal("1"),
+        emergency_setpoint_c=Decimal("20"),
+        sensor_timeout_seconds=1800,
+    )
+    session.add(episode)
+    session.flush()
+    session.add(
+        ZoneSensorFailureState(
+            zone_id=1,
+            episode_id=episode.id,
+            stage=emergency_operation.STAGE_NOTBETRIEB,
+        )
+    )
+    session.flush()
+    head = token_fuer([("zone.read", "bad")])
+
+    response = client.get("/api/v1/zones/1/emergency-state", headers=head)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["stage"] == "notbetrieb"
+    assert body["episode_id"] == episode.id
+    assert body["emergency_setpoint_c"] == "20"

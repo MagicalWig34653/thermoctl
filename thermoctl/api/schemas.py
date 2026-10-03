@@ -154,6 +154,70 @@ class DeviceCommandResponse(BaseModel):
     outcome: str
     error: str | None
     reason: str | None
+    # Auftrag 8b: whether this row is a real send attempt (`"befehl"`, the only
+    # kind that existed before this field) or a Notbetrieb decision carried
+    # over from `actuator_decision` without its own send attempt (`"entscheidung"`,
+    # e.g. "bewusst nicht gesendet"/Übergabe/Rückstellung) -- see
+    # `domain/device_commands.py::list_commands`. Clearly marked, same shape in
+    # the HTMX view (`device_commands.html`) and here.
+    entry_kind: str
+    simulated: bool
+
+
+class ActuatorEmergencyResponse(BaseModel):
+    """One actuator assignment's current Notbetrieb state -- part of
+    `GET /api/v1/zones/{id}/emergency-state` (Auftrag 8b item 3)."""
+
+    device_id: int
+    device_name: str
+    kind: str
+    phase: str | None
+    phase_deadline_at: datetime | None
+    on_seconds: int | None
+    off_seconds: int | None
+    cycle_source: str | None
+    handover_attempted: bool
+    handover_result: str | None
+    handover_status_text: str
+    restore_attempted: bool
+    restore_result: str | None
+    restore_status_text: str
+
+
+class SourceComparisonResponse(BaseModel):
+    """Ersatzquelle<->Wandfühler-Vergleich je Thermostat (Entscheidung R2)."""
+
+    device_id: int
+    device_name: str
+    sample_count: int
+    mean_deviation_k: Decimal | None
+    suggested_offset_text: str | None
+
+
+class EmergencyStateResponse(BaseModel):
+    """`GET /api/v1/zones/{id}/emergency-state` -- read-only, `zone.read`,
+    same zone isolation as every other per-zone endpoint (`_visible_zone`)."""
+
+    zone_id: int
+    zone_name: str
+    stage: str
+    stage_label: str
+    episode_id: int | None
+    failure_started_at: datetime | None
+    active_source_device_id: int | None
+    active_source_device_name: str | None
+    source_measured_at: datetime | None
+    sensor_timeout_seconds: int | None
+    recovery_started_at: datetime | None
+    recovery_sample_count: int
+    recovery_samples: int | None
+    emergency_setpoint_c: Decimal | None
+    outdoor_c: Decimal | None
+    outdoor_status: str | None
+    banner_headline: str | None
+    banner_detail: str | None
+    actuators: list[ActuatorEmergencyResponse]
+    comparisons: list[SourceComparisonResponse]
 
 
 class TokenResponse(BaseModel):

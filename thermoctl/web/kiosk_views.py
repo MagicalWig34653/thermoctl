@@ -45,6 +45,7 @@ from thermoctl.domain.principal import Principal
 from thermoctl.domain.remote_control import RemoteControlError, set_setpoint
 from thermoctl.domain.remote_control import boost as domain_boost
 from thermoctl.domain.schedule import cancel_override, resolved_setpoint
+from thermoctl.services.emergency_state import zone_emergency_view
 from thermoctl.web import templates
 from thermoctl.web.urls import cookie_path, prefixed
 
@@ -195,6 +196,12 @@ def _dashboard(
             "zones": zones,
             "zustaende": zustaende,
             "setpoints": {zone.id: resolved_setpoint(session, zone, now) for zone in zones},
+            # Auftrag 8b: same banner as the start/tenant pages and the control
+            # page -- `None` for every zone that has never seen a sensor failure.
+            "emergency_banners": {
+                zone.id: zone_emergency_view(session, zone, now, settings).banner
+                for zone in zones
+            },
             "would_heat_je_zone": would_heat_je_zone,
             "control_zone_ids": {
                 zone.id for zone in zones if has_permission(principal, "setpoint.write", zone.id)

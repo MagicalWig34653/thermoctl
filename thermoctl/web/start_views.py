@@ -48,6 +48,7 @@ from thermoctl.domain.time import local_time
 from thermoctl.domain.ui_profile import WebUiProfile
 from thermoctl.domain.zones import latest_decisions_by_zone
 from thermoctl.services import cluster
+from thermoctl.services.emergency_state import zone_emergency_view
 from thermoctl.setup import setup_needed
 from thermoctl.web import templates, warmth_fraction
 from thermoctl.web.urls import prefixed
@@ -203,8 +204,18 @@ def zone_status_context(
             points_by_zone=points_per_zone,
         )
 
+    # Auftrag 8b: one banner per zone, shared verbatim with the control page and
+    # REST/MCP (`services/emergency_state.zone_emergency_view`, Grundsatz 6).
+    # `None` for the overwhelming majority of zones that have never seen a
+    # sensor failure -- `zone_banner` itself returns `None` for `STAGE_NORMAL`.
+    emergency_banners = {
+        zone.id: zone_emergency_view(session, zone, now_utc, settings_row).banner
+        for zone in zones
+    }
+
     return {
         "states": states,
+        "emergency_banners": emergency_banners,
         "setpoints": {
             zone.id: resolved_setpoint(session, zone, now_utc, ctx) for zone in zones
         },

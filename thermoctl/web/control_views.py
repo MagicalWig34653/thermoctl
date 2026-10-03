@@ -84,6 +84,7 @@ from thermoctl.domain.statistics import (
 from thermoctl.domain.time import local_day_start_utc, local_time
 from thermoctl.domain.zones import latest_decisions_by_zone
 from thermoctl.integrations import notification
+from thermoctl.services.emergency_state import zone_emergency_view
 from thermoctl.services.shadow_run import PI_FALLBACK_INELIGIBLE
 from thermoctl.web import templates
 from thermoctl.web.guards import admin_ui_only
@@ -144,6 +145,13 @@ def _page(
     # hätte auf `/control` die ganze `shadow_decision`-Historie jeder sichtbaren
     # Zone gelesen (siehe `latest_decisions_by_zone`s Docstring).
     decisions = latest_decisions_by_zone(session, [zone.id for zone in zones])
+    # Auftrag 8b item 2: Stufe, aktive Quelle, Sensor-Timeout, Profilherkunft,
+    # Außenwertqualität, Rückkehrfortschritt, Takt-Phase/Frist, Übergabe-/
+    # Rückstellungsstatus je Thermostat und die Ersatzquelle<->Wandfühler-
+    # Auswertung -- derselbe geteilte Lesevorgang wie REST/MCP (Grundsatz 6).
+    emergency = {
+        zone.id: zone_emergency_view(session, zone, now, row) for zone in zones
+    }
 
     return templates.TemplateResponse(
         request,
@@ -153,6 +161,7 @@ def _page(
             "zones": zones,
             "states": states,
             "decisions": decisions,
+            "emergency": emergency,
             "setpoints": {
                 zone.id: resolved_setpoint(session, zone, now) for zone in zones
             },

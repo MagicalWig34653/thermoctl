@@ -60,6 +60,19 @@ class FaultNotice:
     kind: str
 
 
+#: Notbetrieb-Episoden (`sensor_failure_episode`) teilen sich dasselbe Tor wie
+#: die bereits bestehende Sensorstörungsmeldung: beide berichten letztlich,
+#: dass eine Zone keinen brauchbaren Temperaturwert mehr hat (plan Auftrag 8,
+#: "notify_sensor_faults-Schalter respektieren"). Keine eigene Spalte, kein
+#: eigener Schalter -- ein Betreiber, der Sensorstörungen abschaltet, würde
+#: sonst doppelt verwundert sein, wenn die ausführlichere Notbetrieb-Variante
+#: trotzdem weiter käme. Siehe `emergency_entered_notice`/
+#: `emergency_resolved_notice` unten und `app.py::_sensor_notices`, das die
+#: generische Meldung für genau die Zonen unterdrückt, deren Notbetrieb diese
+#: Meldung hier übernimmt (keine Doppelmeldung für dieselbe Störung).
+NOTICE_KIND_EMERGENCY = NOTICE_KIND_SENSOR_FAULT
+
+
 def notice_enabled(kind: str, settings: Setting) -> bool:
     """Whether a notice of this kind should actually be delivered.
 
@@ -322,3 +335,69 @@ def notification_audit_action(kind: str, settings: Setting | None) -> str:
     """
     delivered = settings is None or notice_enabled(kind, settings)
     return AUDIT_ACTION_NOTIFICATION_SENT if delivered else AUDIT_ACTION_NOTIFICATION_SUPPRESSED
+
+
+#: Shared between `emergency_entered_notice`/`emergency_resolved_notice` below
+#: and `app.py`'s Home Assistant dispatch, which must recognise and skip this
+#: key shape (`send_fault_notice` only knows `sensor:<zone id>` keys -- an
+#: episode-scoped key would otherwise fail its `int(...)` parse on every single
+#: dispatch attempt, logged as an exception each time for no actionable reason).
+EMERGENCY_NOTICE_KEY_PREFIX = "notbetrieb:"
+
+
+def emergency_entered_notice(
+    episode_id: int,
+    zone_name: str,
+    strategy_text: str,
+) -> FaultNotice:
+    """The one notice an emergency episode sends on entry (plan Auftrag 8:
+    "eine Störungsmeldung beim Eintritt in den Notbetrieb mit tatsächlicher
+    Strategie").
+
+    `key` is scoped to the episode id, not the zone (unlike the plain
+    `sensor_notice` above, which is keyed by zone and therefore only knows "a
+    problem" vs "no problem" at any one time): a zone can run through several
+    distinct Notbetrieb episodes over its lifetime, each with its own
+    Entwarnung, and the caller (`app.py::_emergency_notices`) drives this from
+    `sensor_failure_episode.notification_state`, not from a Home-Assistant-
+    style before/after comparison -- there is no `before` value to compare
+    here, idempotency comes entirely from that column (`offen` -> `gemeldet`
+    is a one-way transition the caller commits before dispatch even starts,
+    see that function's docstring for why that order matters).
+
+    `strategy_text` is the caller's job, not this function's: it already has
+    to read which actuators exist, which kind of handover (if any) applies,
+    and the actual target values -- exactly the data
+    `domain.emergency_display`/`services.emergency_state` compute for the
+    control page already. Duplicating that derivation here would be a second
+    copy of the same rule (Grundsatz 6).
+    """
+    return FaultNotice(
+        key=f"{EMERGENCY_NOTICE_KEY_PREFIX}{episode_id}",
+        severity="stoerung",
+        title=f"Notbetrieb in {zone_name}",
+        text=strategy_text,
+        kind=NOTICE_KIND_EMERGENCY,
+    )
+
+
+def emergency_resolved_notice(episode_id: int, zone_name: str) -> FaultNotice:
+    """The Entwarnung counterpart of `emergency_entered_notice` above -- sent
+    once, when `sensor_failure_episode.ended_at` is set **and**
+    `ended_reason_code` is not `emergency_operation.REASON_DEAKTIVIERT`
+    (plan Auftrag 8: "Entwarnung bei echter Rückkehr" -- deactivating the
+    feature mid-episode is not a recovery and must never produce this text;
+    the caller is the one place that checks `ended_reason_code` before even
+    calling this function, see `app.py::_emergency_notices`).
+    """
+    return FaultNotice(
+        key=f"{EMERGENCY_NOTICE_KEY_PREFIX}{episode_id}",
+        severity="entwarnung",
+        title=f"Notbetrieb in {zone_name} beendet",
+        text=(
+            "Die Temperaturmessung hat sich erholt und sich über die "
+            "eingestellte Zeit bestätigt. Die normale Regelung übernimmt "
+            "wieder."
+        ),
+        kind=NOTICE_KIND_EMERGENCY,
+    )

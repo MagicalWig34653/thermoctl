@@ -80,6 +80,15 @@ class SensorFailureEpisode(Base):
     zone_name: Mapped[str] = mapped_column(String(128))
     started_at: Mapped[datetime] = mapped_column(DateTime, index=True)
     ended_at: Mapped[datetime | None] = mapped_column(DateTime)
+    # Set once, in the same cycle `ended_at` is set (`services/shadow_run.py::
+    # _persist_episode`), to `StageEvents.reason_code` -- the one case that
+    # matters to a caller downstream (Auftrag 8b's notification dispatch) is
+    # `emergency_operation.REASON_DEAKTIVIERT`: an episode closed that way was
+    # never resolved, only stopped being tracked, and must not produce an
+    # "alles wieder normal" Entwarnung. `NULL` for every episode closed before
+    # this column existed, and for every still-open episode -- both read as
+    # "no deactivation reason on record", never as a block on the Entwarnung.
+    ended_reason_code: Mapped[str | None] = mapped_column(String(64))
     trigger_kind: Mapped[str] = mapped_column(String(32))
     profile_version: Mapped[int] = mapped_column(Integer)
     notification_state: Mapped[str] = mapped_column(String(32), default="offen")

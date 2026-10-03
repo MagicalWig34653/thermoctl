@@ -242,6 +242,7 @@ nichts aufzuheben, und der Knopf wäre einer ohne Wirkung.
         {% set entry = zustaende.get(zone.id) %}
         {% set setpoint = setpoints[zone.id] %}
         {% set would_heat = would_heat_je_zone.get(zone.id) %}
+        {% set notbetrieb = emergency_banners.get(zone.id) %}
         {#
         Die ganze Kachel ist im Panel-Modus das Tippziel, das den Detailbereich
         unten öffnet (kiosk_panel.js) -- weit über der 44-px-Mindestgröße, ganz
@@ -278,6 +279,16 @@ nichts aufzuheben, und der Knopf wäre einer ohne Wirkung.
             `.kiosk-tile-full` bzw. im Detailbereich.
             #}
             <div class="kiosk-tile-summary t-quiet">Soll {{ setpoint.temperature_c|grad }} °C</div>
+            {% if notbetrieb %}
+            {#
+            Bewusst kein `.tc-chip` hier: dessen `white-space: nowrap` lässt den
+            langen Notbetriebstext (z. B. "Notbetrieb: Fußboden taktet 10/30
+            min") in der schmalen Panel-Kachel über den Rand hinauslaufen statt
+            umzubrechen. Ein einfacher, farbig hervorgehobener Text bricht
+            normal um -- geprüft bei 480×480.
+            #}
+            <div class="kiosk-tile-summary kiosk-notbetrieb-badge" title="{{ notbetrieb.detail }}">{{ notbetrieb.headline }}</div>
+            {% endif %}
 
             {#
             Die heutige Tafel-Kachel, unverändert -- in der Panel-Übersicht per CSS
@@ -299,6 +310,9 @@ nichts aufzuheben, und der Knopf wäre einer ohne Wirkung.
                       title="Der Messwert bewegt sich seit längerem nicht. Die Zone regelt normal weiter, es ist kein Ausfall.">
                     Messwert unverändert
                 </span>
+                {% endif %}
+                {% if notbetrieb %}
+                <span class="tc-chip tc-chip-warning align-self-start" title="{{ notbetrieb.detail }}">{{ notbetrieb.headline }}</span>
                 {% endif %}
 
                 {{ setpoint_control(zone, setpoint, "tile") }}
@@ -334,6 +348,7 @@ nichts aufzuheben, und der Knopf wäre einer ohne Wirkung.
         {% set entry = zustaende.get(zone.id) %}
         {% set setpoint = setpoints[zone.id] %}
         {% set would_heat = would_heat_je_zone.get(zone.id) %}
+        {% set notbetrieb = emergency_banners.get(zone.id) %}
         <div class="kiosk-detail" id="kiosk-detail-{{ zone.id }}" data-kiosk-detail="{{ zone.id }}"
              role="dialog" aria-modal="true" aria-label="{{ zone.display_name }}">
             <div class="kiosk-detail-head">
@@ -372,6 +387,10 @@ nichts aufzuheben, und der Knopf wäre einer ohne Wirkung.
                       title="Der Messwert bewegt sich seit längerem nicht. Die Zone regelt normal weiter, es ist kein Ausfall.">
                     Messwert unverändert
                 </span>
+                {% endif %}
+                {% if notbetrieb %}
+                <span class="tc-chip tc-chip-warning align-self-start">{{ notbetrieb.headline }}</span>
+                <div class="t-quiet">{{ notbetrieb.detail }}</div>
                 {% endif %}
 
                 {{ setpoint_control(zone, setpoint, "detail") }}

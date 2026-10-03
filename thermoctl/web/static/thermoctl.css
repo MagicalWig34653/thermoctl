@@ -393,6 +393,26 @@ h2, .t-section {
     border-color: var(--line);
 }
 
+/* Notbetrieb-Hinweis in der schmalen Panel-Kachel (`kiosk.html`): dieselben
+   Farben wie `.tc-chip-warning`, aber ohne dessen `white-space: nowrap` --
+   der Notbetriebstext ("Notbetrieb: Fußboden taktet 10/20 min") ist länger
+   als jeder andere Kachel-Chip und muss in der ~220 px breiten Panel-Kachel
+   umbrechen statt über den Rand zu laufen (geprüft bei 480×480). */
+.kiosk-notbetrieb-badge {
+    display: inline-block;
+    margin-top: 0.3rem;
+    padding: 0.3rem 0.5rem;
+    border-radius: 0.5rem;
+    font-size: 0.6875rem;
+    font-weight: 700;
+    line-height: 1.25;
+    color: var(--warning);
+    background: var(--warning-area);
+    border: 1px solid color-mix(in srgb, var(--warning) 30%, transparent);
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
 /* Der Sollwert und alles, was aus einer Übersteuerung stammt, spricht in der
    Primärfarbe -- so unterscheidet die Anlagensicht auf einen Blick "gewollt"
    (blau) von "warm" (orange). */

@@ -15,6 +15,7 @@ from thermoctl.db.models.credential import ApiToken
 from thermoctl.db.models.device import Device, DeviceCapabilityLink
 from thermoctl.db.models.lookup import DeviceCapability, Integration, SensorStatus
 from thermoctl.db.models.measurement import DeviceHealth
+from thermoctl.db.models.operations import Setting
 from thermoctl.db.models.schedule import SchedulePoint
 from thermoctl.db.models.state import ShadowDecision, ZoneState
 from thermoctl.db.models.zone import SetpointMode, Zone, ZoneSetpoint
@@ -62,6 +63,7 @@ from thermoctl.domain.zone_settings import (
 from thermoctl.domain.zone_settings import (
     set_parameter as domain_set_parameter,
 )
+from thermoctl.services.emergency_state import zone_emergency_view
 
 
 class _McpServer(Protocol):
@@ -314,9 +316,72 @@ def device_commands(
             "outcome": entry.outcome,
             "error": entry.error,
             "reason": entry.reason,
+            "entry_kind": entry.entry_kind,
+            "simulated": entry.simulated,
         }
         for entry in entries
     ]
+
+
+def read_emergency_state(session: Session, plaintext: str, zone_id: int) -> dict[str, object]:
+    """Reads a visible zone's Notbetrieb state -- the MCP counterpart of
+    `GET /api/v1/zones/{zone_id}/emergency-state` (Auftrag 8b item 3), same
+    permission (`zone.read`) and zone isolation, same shared read
+    (`services/emergency_state.zone_emergency_view`, Grundsatz 6).
+    """
+    _token, principal = _log_in(session, plaintext)
+    zone = _visible_zone(session, principal, zone_id)
+    settings_row = session.get(Setting, 1)
+    view = zone_emergency_view(session, zone, utcnow(), settings_row)
+    return {
+        "zone_id": view.zone_id,
+        "zone_name": view.zone_name,
+        "stage": view.stage,
+        "stage_label": view.stage_label,
+        "episode_id": view.episode_id,
+        "failure_started_at": _moment(view.failure_started_at),
+        "active_source_device_id": view.active_source_device_id,
+        "active_source_device_name": view.active_source_device_name,
+        "source_measured_at": _moment(view.source_measured_at),
+        "sensor_timeout_seconds": view.sensor_timeout_seconds,
+        "recovery_started_at": _moment(view.recovery_started_at),
+        "recovery_sample_count": view.recovery_sample_count,
+        "recovery_samples": view.recovery_samples,
+        "emergency_setpoint_c": _decimal(view.emergency_setpoint_c),
+        "outdoor_c": _decimal(view.outdoor.temperature_c) if view.outdoor is not None else None,
+        "outdoor_status": view.outdoor.status if view.outdoor is not None else None,
+        "banner_headline": view.banner.headline if view.banner is not None else None,
+        "banner_detail": view.banner.detail if view.banner is not None else None,
+        "actuators": [
+            {
+                "device_id": actuator.device_id,
+                "device_name": actuator.device_name,
+                "kind": actuator.kind,
+                "phase": actuator.phase,
+                "phase_deadline_at": _moment(actuator.phase_deadline_at),
+                "on_seconds": actuator.on_seconds,
+                "off_seconds": actuator.off_seconds,
+                "cycle_source": actuator.cycle_source,
+                "handover_attempted": actuator.handover_attempted,
+                "handover_result": actuator.handover_result,
+                "handover_status_text": actuator.handover_status_text,
+                "restore_attempted": actuator.restore_attempted,
+                "restore_result": actuator.restore_result,
+                "restore_status_text": actuator.restore_status_text,
+            }
+            for actuator in view.actuators
+        ],
+        "comparisons": [
+            {
+                "device_id": comparison.device_id,
+                "device_name": comparison.device_name,
+                "sample_count": comparison.sample_count,
+                "mean_deviation_k": _decimal(comparison.mean_deviation_k),
+                "suggested_offset_text": comparison.suggested_offset_text,
+            }
+            for comparison in view.comparisons
+        ],
+    }
 
 
 def override_zone(
@@ -812,6 +877,12 @@ def _register_tools(
         """Reads the actuator command log, newest first, filtered and capped."""
         with session_scope(factory) as session:
             return device_commands(session, plaintext, zone, outcome, from_at, to_at, limit)
+
+    @server.tool(name="read_emergency_state")
+    def mcp_read_emergency_state(zone_id: int) -> dict[str, object]:
+        """Reads the Notbetrieb state of a visible zone."""
+        with session_scope(factory) as session:
+            return read_emergency_state(session, plaintext, zone_id)
 
     @server.tool(name="override")
     def mcp_override(

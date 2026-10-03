@@ -251,3 +251,37 @@ def test_the_audit_action_fails_open_before_setup_is_complete() -> None:
         notification_audit_action(NOTICE_KIND_SENSOR_FAULT, None)
         == AUDIT_ACTION_NOTIFICATION_SENT
     )
+
+
+def test_emergency_entered_notice_is_keyed_by_episode_and_gated_like_sensor_fault() -> None:
+    from thermoctl.domain.fault_notice import (
+        NOTICE_KIND_EMERGENCY,
+        NOTICE_KIND_SENSOR_FAULT,
+        emergency_entered_notice,
+    )
+
+    notice = emergency_entered_notice(42, "Wohnzimmer", "Kein Temperaturwert verfügbar.")
+
+    assert notice.key == "notbetrieb:42"
+    assert notice.severity == "stoerung"
+    assert "Wohnzimmer" in notice.title
+    assert notice.kind == NOTICE_KIND_EMERGENCY == NOTICE_KIND_SENSOR_FAULT
+
+
+def test_emergency_resolved_notice_is_an_entwarnung_with_the_same_key() -> None:
+    from thermoctl.domain.fault_notice import emergency_resolved_notice
+
+    entered = emergency_resolved_notice(42, "Wohnzimmer")
+
+    assert entered.key == "notbetrieb:42"
+    assert entered.severity == "entwarnung"
+    assert "Wohnzimmer" in entered.title
+
+
+def test_emergency_notices_respect_the_sensor_fault_switch() -> None:
+    from thermoctl.domain.fault_notice import NOTICE_KIND_EMERGENCY
+
+    on = _settings(notify_sensor_faults=True)
+    off = _settings(notify_sensor_faults=False)
+    assert notice_enabled(NOTICE_KIND_EMERGENCY, on) is True
+    assert notice_enabled(NOTICE_KIND_EMERGENCY, off) is False
