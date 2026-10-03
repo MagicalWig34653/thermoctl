@@ -210,6 +210,11 @@ def _setpoint(value: Decimal) -> None:
     _decimal("emergency_setpoint_c", value, Decimal("5"), Decimal("30"), Decimal("0.5"))
 
 
+def validate_emergency_setpoint(value: Decimal) -> None:
+    """Öffentlich, damit ein Aufrufer den Notsollwert vor dem ersten Schreiben prüfen kann."""
+    _setpoint(value)
+
+
 def validate_profile(values: ProfileValues) -> None:
     if not values.name.strip() or len(values.name) > 128:
         raise PolicyError("name", "Profilname: 1 bis 128 Zeichen erforderlich.")

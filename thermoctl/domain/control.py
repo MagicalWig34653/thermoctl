@@ -29,6 +29,8 @@ from thermoctl.domain.sensor_failure_policy import (
     Profile,
     ProfileValues,
     validate_active_profiles,
+    validate_emergency_setpoint,
+    validate_profile,
 )
 from thermoctl.domain.sensor_failure_policy import save_backup_offset as _save_backup_offset
 from thermoctl.domain.sensor_failure_policy import save_defaults as _save_defaults
@@ -504,6 +506,45 @@ def save_sensor_failure_profile(
         summary=f"Notbetriebsprofil „{values.name}“ geändert",
         user_id=user_id,
         token_id=token_id,
+    )
+    return profile
+
+
+def save_sensor_failure_plant_defaults(
+    session: Session,
+    values: ProfileValues,
+    *,
+    profile_id: int,
+    emergency_setpoint_c: Decimal,
+    user_id: int | None,
+    token_id: int | None = None,
+    source: str = "web",
+) -> Profile:
+    """Profil und Notsollwert der Anlage als **eine** Einheit speichern.
+
+    Alles Prüfbare wird geprüft, bevor das erste Byte geschrieben wird: Ein
+    ungültiger Notsollwert darf nicht erst *nach* dem schon geschriebenen Profil
+    auffallen, denn nicht jeder Adapter rollt bei einem Fehler zurück (die Web-
+    Ansicht zeigt ihn als Formularfehler und committet die Anfrage danach, MCP
+    hat gar keine umgebende Anfrage). Web, REST und MCP benutzen alle diesen Weg.
+    """
+    validate_emergency_setpoint(emergency_setpoint_c)
+    validate_profile(values)
+    profile = save_sensor_failure_profile(
+        session,
+        values,
+        profile_id=profile_id,
+        user_id=user_id,
+        token_id=token_id,
+        source=source,
+    )
+    save_sensor_failure_defaults(
+        session,
+        profile_id=profile_id,
+        emergency_setpoint_c=emergency_setpoint_c,
+        user_id=user_id,
+        token_id=token_id,
+        source=source,
     )
     return profile
 
