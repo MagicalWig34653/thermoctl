@@ -130,7 +130,8 @@ def _pi_zone(
     """
     _ensure_settings(session)
     zone = Zone(
-        name=name, display_name=name.capitalize(), operating_mode_id=operating_mode(session).id
+        name=name, display_name=name.capitalize(), operating_mode_id=operating_mode(session).id,
+        sensor_failure_enabled=False,  # test baseline: emergency operation off
     )
     session.add(zone)
     session.flush()

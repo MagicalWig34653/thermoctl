@@ -55,6 +55,12 @@ def test_creating_updating_and_deleting_zones(
     angelegt = client.post("/api/v1/zones", headers=head, json=data)
     assert angelegt.status_code == 201
     zone_id = angelegt.json()["id"]
+    neu = session.get(Zone, zone_id)
+    assert neu is not None
+    # Decision of the project owner (0.11.0): a new zone starts with the
+    # emergency operation on; profile and setpoint are inherited.
+    assert neu.sensor_failure_enabled is True
+    assert neu.sensor_failure_profile_id is None
     data["display_name"] = "Geänderte API-Zone"
     assert (
         client.put(f"/api/v1/zones/{zone_id}", headers=head, json=data).json()["display_name"]

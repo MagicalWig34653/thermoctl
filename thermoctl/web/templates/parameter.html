@@ -157,8 +157,9 @@
              name="sensor_failure_enabled" value="yes"{% if values.sensor_failure_enabled %} checked{% endif %}>
       <label class="form-check-label" for="sensor_failure_enabled">Notbetrieb für diese Zone aktivieren</label>
       <div class="form-text">
-        Aus ist die Vorgabe für jede Zone, auch nach einer Aktualisierung — eine
-        Aktivierung für alle Zonen auf einmal gibt es hier nicht.
+        Aktiv ist die Vorgabe für jede neu angelegte Zone; bei der
+        Aktualisierung auf 0.11 wurde der Notbetrieb außerdem für alle damals
+        bestehenden Zonen aktiviert. Hier lässt er sich für diese Zone deaktivieren.
       </div>
     </div>
     {{ select_field("sensor_failure_profile_id", "Profil", profile_options,

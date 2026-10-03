@@ -376,12 +376,13 @@ def _effective_override(session: Session, zone: Zone, now: datetime) -> ZoneOver
 # only place that turns a `handover`/`switch_on`/`switch_off` action into an
 # actual command, TRV write suppression, or dedup-cache reset.
 #
-# Engaged only for a zone that is `sensor_failure_enabled`, *or* one that has a
+# Engaged only for a zone that is `sensor_failure_enabled` (on by default since
+# 0.11.0, migration `d4a81c6e5b29`), *or* one that has a
 # still-open `ZoneSensorFailureState` episode from before it was switched off --
 # the latter matters so an episode opened while the zone was enabled is closed
 # properly (`emergency_operation.advance`'s own `REASON_DEAKTIVIERT` branch),
 # not abandoned mid-episode the moment the flag flips. Every other zone -- the
-# overwhelming majority until an operator opts in -- never reaches
+# zones an operator switched it off for -- never reaches
 # `sensor_failure_policy.effective_policy()`, `zone_candidates()`, or any new
 # table at all: bitgenau today's behaviour, the plan's explicit regression
 # requirement (Auftrag 7a scope, item 1).
@@ -1702,7 +1703,9 @@ def _process_zone(
     frost_c = _frost_setpoint(session, zone, settings)
     parameter = control_parameters(session, zone)
 
-    # Notbetrieb (Auftrag 7a): engaged for a zone currently opted in, or one
+    # Notbetrieb (Auftrag 7a): engaged for a zone that currently has it
+    # switched on (the default for every new zone and, since migration
+    # `d4a81c6e5b29`, for every pre-existing one), or one
     # with a still-open episode from before it was opted out again -- see the
     # module-level comment above `_apply_sensor_failure` for why the second
     # half of this condition matters. Every other zone never touches any of

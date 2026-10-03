@@ -961,11 +961,12 @@ def test_sensor_failure_upgrade_preserves_installation(
     # `restore_result` plus the `restore` action), then `c3f7a92e8d15`
     # (Auftrag 8b: `ended_reason_code` on `sensor_failure_episode`, so the
     # notification dispatch can tell a real recovery apart from
-    # `REASON_DEAKTIVIERT`) -- every time the downgrade target stayed the
-    # absolute pre-sensor-failure revision below (never "-1"), so the check
-    # keeps its original meaning regardless of how many migrations now sit
-    # on top of it.
-    assert scripts.get_heads() == ["c3f7a92e8d15"]
+    # `REASON_DEAKTIVIERT`), then `d4a81c6e5b29` (Auftrag 9: switches
+    # `sensor_failure_enabled` on for all existing zones) -- every time the
+    # downgrade target stayed the absolute pre-sensor-failure revision below
+    # (never "-1"), so the check keeps its original meaning regardless of
+    # how many migrations now sit on top of it.
+    assert scripts.get_heads() == ["d4a81c6e5b29"]
     for args in (("downgrade", "base"), ("upgrade", "d31f6a04c7e9")):
         result = _alembic(migrations_database_url, *args)
         assert result.returncode == 0, result.stderr
@@ -1104,7 +1105,7 @@ def test_sensor_failure_upgrade_preserves_installation(
                             "SELECT sensor_failure_enabled, sensor_failure_profile_id, "
                             "sensor_failure_emergency_setpoint_c FROM zone"
                         )
-                    ).one() == (False, None, None)
+                    ).one() == (True, None, None)  # Auftrag 9: Bestand wird aktiviert
                     assert (
                         connection.execute(
                             text("SELECT temperature_backup_offset_k FROM zone_device")
@@ -1309,5 +1310,92 @@ def test_ended_reason_code_migration_upgrade_and_downgrade(
                 {"id": episode_id},
             ).one()
             assert row == ("Bestand", "gemeldet")
+    finally:
+        db_engine.dispose()
+
+
+@pytest.mark.migration
+def test_activation_migration_switches_every_existing_zone_on_and_back_off(
+    migrations_database_url: str,
+) -> None:
+    """`d4a81c6e5b29` (Auftrag 9) enables the emergency operation for ALL
+    existing zones -- whatever state they had -- and leaves profile and
+    emergency setpoint alone. The downgrade sets every zone back to `false`;
+    it cannot know which zones were switched on by hand before (documented in
+    the migration)."""
+    from datetime import datetime
+
+    reset = _alembic(migrations_database_url, "downgrade", "base")
+    assert reset.returncode == 0, reset.stderr
+    up_to_previous = _alembic(migrations_database_url, "upgrade", "c3f7a92e8d15")
+    assert up_to_previous.returncode == 0, up_to_previous.stderr
+
+    db_engine = create_engine(migrations_database_url)
+    try:
+        with db_engine.begin() as connection:
+            mode_id = connection.execute(text("SELECT id FROM operating_mode")).first()[0]
+            profile_id = connection.execute(
+                text("SELECT id FROM sensor_failure_profile")
+            ).first()[0]
+            zones = {
+                # name: (enabled before, profile, emergency setpoint)
+                "aus-erbt": (False, None, None),
+                "aus-eigen": (False, profile_id, 18),
+                "an-eigen": (True, profile_id, 21),
+                "an-erbt": (True, None, None),
+            }
+            for name, (enabled, profile, setpoint) in zones.items():
+                connection.execute(
+                    text(
+                        "INSERT INTO zone (name, display_name, operating_mode_id, sort_order, "
+                        "created_at, updated_at, sensor_failure_enabled, "
+                        "sensor_failure_profile_id, sensor_failure_emergency_setpoint_c) "
+                        "VALUES (:name, :name, :mode, 0, :now, :now, :enabled, :profile, "
+                        ":setpoint)"
+                    ),
+                    {
+                        "name": name,
+                        "mode": mode_id,
+                        "now": datetime(2026, 10, 1),
+                        "enabled": enabled,
+                        "profile": profile,
+                        "setpoint": setpoint,
+                    },
+                )
+
+        def read() -> dict[str, tuple[bool, int | None, Decimal | None]]:
+            with db_engine.connect() as connection:
+                return {
+                    row[0]: (bool(row[1]), row[2], row[3])
+                    for row in connection.execute(
+                        text(
+                            "SELECT name, sensor_failure_enabled, sensor_failure_profile_id, "
+                            "sensor_failure_emergency_setpoint_c FROM zone"
+                        )
+                    )
+                }
+
+        before = read()
+        assert {name: value[0] for name, value in before.items()} == {
+            name: value[0] for name, value in zones.items()
+        }
+
+        up = _alembic(migrations_database_url, "upgrade", "d4a81c6e5b29")
+        assert up.returncode == 0, up.stderr
+        after = read()
+        assert all(enabled for enabled, _, _ in after.values())
+        # Profile and emergency setpoint are untouched.
+        assert {name: value[1:] for name, value in after.items()} == {
+            name: value[1:] for name, value in before.items()
+        }
+
+        down = _alembic(migrations_database_url, "downgrade", "-1")
+        assert down.returncode == 0, down.stderr
+        downgraded = read()
+        assert not any(enabled for enabled, _, _ in downgraded.values())
+        assert {name: value[1:] for name, value in downgraded.items()} == {
+            name: value[1:] for name, value in before.items()
+        }
+        assert set(downgraded) == set(zones)
     finally:
         db_engine.dispose()

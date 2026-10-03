@@ -58,8 +58,15 @@ class Zone(TimestampMixin, Base):
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    # Notbetrieb bei Sensorausfall: a newly created zone starts with it ON
+    # (decision of the project owner, 0.11.0). The ORM default is the single
+    # source for every creation path (domain, web, REST, MCP, setup). The
+    # `server_default` stays "0" on purpose: changing it would need a table
+    # rebuild under SQLite (zone is referenced by many foreign keys) for no
+    # gain -- no code path inserts a zone without going through the ORM, and
+    # migration `d4a81c6e5b29` switched the existing rows on explicitly.
     sensor_failure_enabled: Mapped[bool] = mapped_column(
-        Boolean, default=False, server_default=text("0"), nullable=False
+        Boolean, default=True, server_default=text("0"), nullable=False
     )
     sensor_failure_profile_id: Mapped[int | None] = mapped_column(
         ForeignKey("sensor_failure_profile.id", ondelete="SET NULL")

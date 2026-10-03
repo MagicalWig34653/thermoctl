@@ -53,8 +53,10 @@ def _assign_switch_actuator(session: Session, zone_id: int) -> None:
 @pytest.fixture
 def token_fuer(session: Session) -> Callable[[list[tuple[str, str | None]]], dict[str, str]]:
     kind = operating_mode(session)
-    bad = Zone(id=1, name="bad", display_name="Bad", operating_mode_id=kind.id)
-    others = Zone(id=2, name="andere", display_name="Andere", operating_mode_id=kind.id)
+    bad = Zone(id=1, name="bad", display_name="Bad", operating_mode_id=kind.id,
+               sensor_failure_enabled=False)  # test baseline: emergency operation off
+    others = Zone(id=2, name="andere", display_name="Andere", operating_mode_id=kind.id,
+                  sensor_failure_enabled=False)
     session.add_all([bad, others])
     session.flush()
     source(session, "api")

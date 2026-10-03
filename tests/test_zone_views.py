@@ -71,6 +71,9 @@ def test_creating_a_zone_writes_an_audit_entry(client_als, session: Session) -> 
     assert response.status_code == 303
     zone = session.scalar(select(Zone).where(Zone.name == "wohnzimmer"))
     assert zone is not None
+    # Decision of the project owner (0.11.0): a new zone starts with the
+    # emergency operation on.
+    assert zone.sensor_failure_enabled is True
     audit = session.scalar(select(AuditEvent).where(AuditEvent.object_id == str(zone.id)))
     assert audit is not None
     assert audit.action == "create"
