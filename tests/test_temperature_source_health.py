@@ -6,6 +6,7 @@ veraltet, die Echo-Regel des Bosch-BTH-RA-Gerätevertrags an ihren Grenzen,
 ein Thermostat ohne je geschriebene externe Temperatur, und Determinismus.
 """
 
+import dataclasses
 from datetime import datetime, timedelta
 from decimal import Decimal as D
 
@@ -16,6 +17,7 @@ from thermoctl.domain.temperature_source_health import (
     STAGE_ERSATZQUELLE,
     STAGE_KEINE,
     STAGE_WANDFUEHLER,
+    SourceHealth,
     ThermostatCandidate,
     WallProbeReading,
     evaluate_source_health,
@@ -285,9 +287,7 @@ def test_a_reading_with_no_measurement_timestamp_is_not_independent_even_if_writ
         last_external_write_at=NOW - timedelta(hours=2),
     )
 
-    result = evaluate_source_health(
-        wall(None), [broken_candidate], now=NOW, timeout_s=TIMEOUT_S
-    )
+    result = evaluate_source_health(wall(None), [broken_candidate], now=NOW, timeout_s=TIMEOUT_S)
 
     assert result.stage == STAGE_KEINE
     assert result.candidates[0].echo is True
@@ -345,3 +345,79 @@ def test_evaluate_never_raises_for_a_zone_with_no_data_at_all(timeout_s: int) ->
     result = evaluate_source_health(wall(None), [], now=NOW, timeout_s=timeout_s)
 
     assert result.stage == STAGE_KEINE
+
+
+# --- Mutationslauf: feste Werte statt der Konstante ---------------------------
+# Die Tests oben leiten die Grenze aus ECHO_INDEPENDENCE_DELAY ab und fangen daher
+# nicht, wenn die Konstante selbst verschoben wird. Hier steht die dokumentierte
+# Umschaltzeit des Geräts (30 Minuten) als Literal.
+
+
+def test_echo_delay_is_exactly_thirty_minutes() -> None:
+    assert ECHO_INDEPENDENCE_DELAY == timedelta(minutes=30)
+
+
+def _echo_probe(measured_after_write: timedelta) -> SourceHealth:
+    last_write = NOW - timedelta(minutes=45)
+    return evaluate_source_health(
+        wall(None),
+        [
+            candidate(
+                1,
+                last_write_at=last_write,
+                measured_at=last_write + measured_after_write,
+                age_s=0,
+            )
+        ],
+        now=NOW,
+        timeout_s=3600,
+    )
+
+
+def test_reading_29_min_59_s_after_the_write_is_still_an_echo() -> None:
+    result = _echo_probe(timedelta(minutes=29, seconds=59))
+    assert result.candidates[0].echo is True
+    assert result.stage == STAGE_KEINE
+
+
+def test_reading_exactly_30_min_after_the_write_is_independent() -> None:
+    result = _echo_probe(timedelta(minutes=30))
+    assert result.candidates[0].echo is False
+    assert result.stage == STAGE_ERSATZQUELLE
+
+
+def test_reason_texts_name_the_actual_situation() -> None:
+    echo = _echo_probe(timedelta(minutes=10)).candidates[0].reason
+    assert echo == (
+        "TRV: lokale Messung ist ein Echo der eingespeisten Ist-Temperatur, seit dem "
+        "letzten Schreiben sind noch keine 30 Minuten mit einer unabhängigen Messung "
+        "vergangen."
+    )
+    stale = evaluate_source_health(
+        wall(None),
+        [candidate(1, age_s=TIMEOUT_S + 60)],
+        now=NOW,
+        timeout_s=TIMEOUT_S,
+    ).candidates[0]
+    assert stale.reason == "TRV: Messwert veraltet."
+    ok = evaluate_source_health(
+        wall(None), [candidate(1)], now=NOW, timeout_s=TIMEOUT_S
+    ).candidates[0]
+    assert ok.reason == "TRV: als Ersatzquelle brauchbar."
+
+
+def test_all_result_types_are_immutable() -> None:
+    result = evaluate_source_health(wall(D("21.0")), [candidate(1)], now=NOW, timeout_s=TIMEOUT_S)
+    for obj, attr in (
+        (wall(D("21.0")), "temperature_c"),
+        (candidate(1), "device_name"),
+        (result.candidates[0], "usable"),
+        (result, "stage"),
+    ):
+        with pytest.raises(dataclasses.FrozenInstanceError):
+            setattr(obj, attr, None)
+
+
+def test_evaluate_source_health_takes_now_and_timeout_by_keyword_only() -> None:
+    with pytest.raises(TypeError):
+        evaluate_source_health(wall(None), [], NOW, TIMEOUT_S)  # type: ignore[misc]
