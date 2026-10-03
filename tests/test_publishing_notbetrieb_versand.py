@@ -807,7 +807,26 @@ async def test_recovery_resends_the_current_setpoint_even_if_unchanged(
     # cached pre-failure value -- without cache invalidation this would send
     # zero messages. Plan item 3: it must resend.
     assert len(relais_after) == 1
-    assert relais_after[0] == (topic, '{"state": "ON"}')
+    # The real relay was switched OFF by the Notbetrieb at t1; the minimum off
+    # duration (10 s) counts only from the recovery marker (t3, 0 s elapsed) --
+    # never from the simulated "on" history that ran alongside (Grundsatz 7).
+    # The resend therefore carries the *real* state (OFF), not the ordinary
+    # decision's "heat".
+    assert relais_after[0] == (topic, '{"state": "OFF"}')
+
+    # Once the minimum off duration has passed (counted from the marker), the
+    # ordinary decision takes over: heat.
+    t4 = t3 + timedelta(seconds=11)
+    state_row.measured_at = t4
+    session.flush()
+    shadow_run.cycle(session, t4)
+    session.commit()
+    messages_before = len(client.messages)
+    await publishing.cycle(session, client, pub_state, "thermoctl", t4)
+    session.commit()
+    assert [m for m in client.messages[messages_before:] if m[0] == topic] == [
+        (topic, '{"state": "ON"}')
+    ]
 
 
 # --- Rückkehr: operating_mode wird auf den Vorwert zurückgestellt ----------------
