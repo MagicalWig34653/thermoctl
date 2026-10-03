@@ -147,7 +147,7 @@
             {% endif %}
             {% if nb.outdoor %}
             <div><span class="t-quiet">Außenwertqualität</span><br>
-                {{ nb.outdoor.status }}{% if nb.outdoor.temperature_c is not none %} ({{ nb.outdoor.temperature_c|grad }} °C){% endif %}
+                {{ nb.outdoor_status_text }}{% if nb.outdoor.temperature_c is not none %} ({{ nb.outdoor.temperature_c|grad }} °C){% endif %}
             </div>
             {% endif %}
             {% if nb.stage == "rueckkehrpruefung" %}
