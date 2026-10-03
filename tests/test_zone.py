@@ -27,6 +27,17 @@ def test_control_parameters_are_empty_by_default(session: Session) -> None:
     assert zone.sensor_timeout_seconds is None
 
 
+def test_a_new_zone_starts_with_the_emergency_operation_on(session: Session) -> None:
+    """Decision of the project owner (0.11.0): the model default is `True`;
+    profile and emergency setpoint are inherited (`None`)."""
+    zone = Zone(name="neu", display_name="Neu", operating_mode_id=_operating_mode(session).id)
+    session.add(zone)
+    session.flush()
+    assert zone.sensor_failure_enabled is True
+    assert zone.sensor_failure_profile_id is None
+    assert zone.sensor_failure_emergency_setpoint_c is None
+
+
 def test_zone_name_is_unique(session: Session) -> None:
     kind = _operating_mode(session).id
     session.add(Zone(name="bad", display_name="Bad", operating_mode_id=kind))

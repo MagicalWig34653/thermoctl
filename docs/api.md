@@ -240,8 +240,9 @@ nennt zusätzlich die wirksamen Werte (`effective_profile_id`, `profile_source`,
 `effective_emergency_setpoint_c`, `setpoint_source`) — dieselben drei Herkunftsstufen
 wie überall sonst in diesem Modul: Zone, Anlage, Vorgabe.
 
-Die **automatische** Aktivierung für jede Zone ist nicht Teil dieses Endpunkts; die
-Vorgabe bleibt `enabled: false`.
+Neu angelegte Zonen starten mit `enabled: true` (Profil und Notsollwert geerbt). Beim
+Upgrade auf 0.11 hat eine Migration den Notbetrieb außerdem für alle bestehenden Zonen
+aktiviert; dieser Endpunkt aktiviert oder deaktiviert ihn je Zone.
 
 ### Regelparameter
 

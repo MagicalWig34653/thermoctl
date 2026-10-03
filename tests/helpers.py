@@ -100,8 +100,13 @@ def operating_mode(session: Session, code: str = "auto") -> OperatingMode:
 
 
 def create_zone(session: Session, name: str) -> Zone:
+    # Test baseline: emergency operation OFF. A genuinely new zone starts with
+    # it ON (model default, 0.11.0); the many tests that predate that decision
+    # reason about a zone without it, so the helper pins the neutral state
+    # explicitly. The default itself is covered in `test_zone_creation_default.py`.
     zone = Zone(name=name, display_name=name.capitalize(),
-                operating_mode_id=operating_mode(session).id)
+                operating_mode_id=operating_mode(session).id,
+                sensor_failure_enabled=False)
     session.add(zone)
     session.flush()
     return zone
@@ -313,7 +318,8 @@ def zone_with_schedule(
         kind = OperatingMode(code=operating_mode, label=operating_mode)
         session.add(kind)
         session.flush()
-    zone = Zone(name=name, display_name=name.capitalize(), operating_mode_id=kind.id)
+    zone = Zone(name=name, display_name=name.capitalize(), operating_mode_id=kind.id,
+                sensor_failure_enabled=False)  # test baseline, see create_zone
     session.add(zone)
     session.flush()
     session.add(ZoneSetpoint(
