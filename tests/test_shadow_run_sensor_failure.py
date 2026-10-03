@@ -27,7 +27,14 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from tests.helpers import capability, create_settings, create_zone, role, sensor_status_of
+from tests.helpers import (
+    capability,
+    create_settings,
+    create_zone,
+    role,
+    seed_switch_command,
+    sensor_status_of,
+)
 from thermoctl.db.base import Base
 from thermoctl.db.engine import session_factory
 from thermoctl.db.models.device import Device, DeviceCapabilityLink, ZoneDevice
@@ -825,3 +832,83 @@ def test_recovery_marker_cuts_off_older_simulated_hold_time(
     decision = _expected_ordinary_decision(session, zone, NOW)
     assert decision.heating is real_heating
     assert "0s" in decision.reason
+
+
+# --- Ersteintritt: realer letzter Relaiszustand zaehlt (Konzept 3.4) ----------------
+
+
+def _entry_zone(session: Session, *, min_on_seconds: int = 300) -> tuple[Zone, Device]:
+    create_settings(session)
+    zone = create_zone(session, "eintritt")
+    zone.min_on_seconds = min_on_seconds
+    zone.min_off_seconds = 10
+    zone.sensor_failure_enabled = True
+    zone.sensor_failure_profile_id = _thermostat_profile(session)
+    _add_schedule(session, zone, temperature_c=Decimal("21.0"))
+    relais = Device(
+        integration_id=_integration_id(session), external_id="eintritt-relais", display_name="R"
+    )
+    session.add(relais)
+    session.flush()
+    _link(session, relais, "switch")
+    session.add(
+        ZoneDevice(
+            zone_id=zone.id,
+            device_id=relais.id,
+            device_role_id=role(session, "actuator").id,
+            self_regulating=False,
+        )
+    )
+    session.flush()
+    return zone, relais
+
+
+def _simulated_actions(session: Session) -> list[str]:
+    return [
+        row.action
+        for row in session.scalars(
+            select(ActuatorDecision)
+            .where(ActuatorDecision.simulated.is_(True))
+            .order_by(ActuatorDecision.id)
+        )
+    ]
+
+
+def test_entry_with_relay_on_for_30s_simulates_minimum_on_then_off(session: Session) -> None:
+    zone, relais = _entry_zone(session)
+    seed_switch_command(session, zone, relais, sent_at=NOW - timedelta(seconds=30), on=True)
+
+    shadow_run.cycle(session, NOW)
+    row = session.get(ActuatorEmergencyState, _zone_device_id(session, zone.id, relais.id))
+    assert row is not None
+    assert row.simulated_phase == emergency_cycle.PHASE_ON
+    assert row.simulated_phase_deadline_at == NOW + timedelta(seconds=270)
+    assert _simulated_actions(session) == [emergency_actuator_plan.ACTION_SWITCH_ON]
+
+    shadow_run.cycle(session, NOW + timedelta(seconds=271))
+    assert _simulated_actions(session)[-1] == emergency_actuator_plan.ACTION_SWITCH_OFF
+    assert row.simulated_phase == emergency_cycle.PHASE_OFF
+
+
+def test_entry_with_relay_off_for_20s_credits_20s_in_the_simulation(session: Session) -> None:
+    zone, relais = _entry_zone(session)
+    seed_switch_command(session, zone, relais, sent_at=NOW - timedelta(seconds=20), on=False)
+
+    shadow_run.cycle(session, NOW)
+    row = session.get(ActuatorEmergencyState, _zone_device_id(session, zone.id, relais.id))
+    assert row is not None
+    assert row.simulated_phase == emergency_cycle.PHASE_OFF
+    assert row.simulated_phase_deadline_at == NOW + timedelta(seconds=10)
+
+
+def test_entry_with_unknown_relay_state_simulates_off_for_the_full_off_duration(
+    session: Session,
+) -> None:
+    zone, relais = _entry_zone(session)
+
+    shadow_run.cycle(session, NOW)
+    row = session.get(ActuatorEmergencyState, _zone_device_id(session, zone.id, relais.id))
+    assert row is not None
+    assert row.simulated_phase == emergency_cycle.PHASE_OFF
+    assert row.simulated_phase_deadline_at == NOW + timedelta(seconds=30)
+    assert _simulated_actions(session) == [emergency_actuator_plan.ACTION_SWITCH_OFF]

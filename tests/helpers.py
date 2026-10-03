@@ -478,3 +478,32 @@ def create_passkey(
     session.add(entry)
     session.flush()
     return entry
+
+
+def seed_switch_command(
+    session: Session,
+    zone: Zone,
+    device: Device,
+    *,
+    sent_at: datetime,
+    on: bool,
+    outcome: str = "executed",
+    payload: str | None = None,
+) -> DeviceCommand:
+    """One `switch` entry in the command log, the way the ordinary publisher
+    writes it for a Zigbee2MQTT relay (`{"state": "ON"|"OFF"}`) -- the real last
+    state of a relay before an emergency episode begins."""
+    entry = DeviceCommand(
+        sent_at=sent_at,
+        source_id=source(session, "system").id,
+        zone_id=zone.id,
+        zone_name=zone.display_name,
+        device_id=device.id,
+        device_name=device.display_name,
+        command="switch",
+        payload=payload or ('{"state": "ON"}' if on else '{"state": "OFF"}'),
+        outcome_id=command_outcome(session, outcome).id,
+    )
+    session.add(entry)
+    session.flush()
+    return entry

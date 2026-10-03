@@ -124,6 +124,7 @@ from thermoctl.services.device_commands import (
     SUPPRESSED,
     record_command,
 )
+from thermoctl.services.emergency_prior import entry_prior_hint
 from thermoctl.services.meross_session import MerossSessionCache
 from thermoctl.services.meross_session import invalidate as invalidate_meross_session
 from thermoctl.services.shadow_run import derive_switch_phase_started_at, zone_actuator_assignments
@@ -872,7 +873,15 @@ async def _send_emergency_switch(
             min_on_seconds=parameter.min_on_seconds,
             min_off_seconds=parameter.min_off_seconds,
             stale_state_seconds=stale_state_seconds,
-            prior=None,
+            # Only consulted on first entry (`prior_cycle_state is None`): the
+            # real last relay state from the command log (concept 3.4).
+            prior=(
+                entry_prior_hint(
+                    session, device.id, now=now, min_on_seconds=parameter.min_on_seconds
+                )
+                if prior_cycle_state is None
+                else None
+            ),
         ),
     )
     heating = switch_decision.action == emergency_actuator_plan.ACTION_SWITCH_ON

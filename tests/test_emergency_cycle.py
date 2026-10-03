@@ -650,3 +650,17 @@ def test_state_is_immutable_dataclass() -> None:
     assert isinstance(state, CycleState)
     with pytest.raises(dataclasses.FrozenInstanceError):
         state.phase = PHASE_ON  # type: ignore[misc]
+
+
+def test_entry_credits_never_more_than_the_off_duration() -> None:
+    """A relay that has been off for hours is credited the Aus-Dauer, not the hours:
+    the phase is then due exactly now, not overdue by hours (which the next call
+    would misread as a stale, disturbed state)."""
+    profile = _fixed_profile(off_seconds=1200)
+    out = advance(
+        None,
+        _cycle(T0, profile, _no_source(), prior=PriorPhaseHint(on=False, elapsed_seconds=90000)),
+    )
+    assert out.state.phase == PHASE_OFF
+    assert out.state.phase_started_at == T0 - timedelta(seconds=1200)
+    assert out.state.phase_deadline == T0
