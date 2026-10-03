@@ -208,3 +208,10 @@ def test_handover_status_text_passes_through_an_unknown_result_code() -> None:
     assert emergency_display.handover_status_text(True, "decided_no_command") == (
         "decided_no_command"
     )
+
+
+def test_outdoor_status_text_translates_every_code_to_plain_german() -> None:
+    assert emergency_display.outdoor_status_text("ok") == "in Ordnung"
+    assert emergency_display.outdoor_status_text("veraltet").startswith("veraltet")
+    assert emergency_display.outdoor_status_text("keine_quelle") == "keine Außenquelle eingerichtet"
+    assert emergency_display.outdoor_status_text("sonstwas") == "sonstwas"

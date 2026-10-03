@@ -96,6 +96,7 @@ class ZoneEmergencyView:
     recovery_samples: int | None
     emergency_setpoint_c: Decimal | None
     outdoor: OutdoorReading | None
+    outdoor_status_text: str | None
     actuators: tuple[ActuatorEmergencyView, ...]
     comparisons: tuple[SourceComparisonView, ...]
     banner: emergency_display.ZoneEmergencyBanner | None
@@ -285,6 +286,9 @@ def zone_emergency_view(
         recovery_samples=episode.recovery_samples if episode is not None else None,
         emergency_setpoint_c=episode.emergency_setpoint_c if episode is not None else None,
         outdoor=outdoor,
+        outdoor_status_text=(
+            emergency_display.outdoor_status_text(outdoor.status) if outdoor is not None else None
+        ),
         actuators=tuple(actuator_views),
         comparisons=_comparisons(session, zone, now, device_names),
         banner=banner,

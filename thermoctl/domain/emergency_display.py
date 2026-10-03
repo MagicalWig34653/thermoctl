@@ -165,6 +165,19 @@ def handover_status_text(
     return result
 
 
+_OUTDOOR_STATUS_TEXT = {
+    "ok": "in Ordnung",
+    "veraltet": "veraltet (Quelle meldet nicht mehr)",
+    "keine_quelle": "keine Außenquelle eingerichtet",
+}
+
+
+def outdoor_status_text(status: str) -> str:
+    """Klartext für den Außenwertstatus der Betriebsseite; REST/MCP behalten den
+    Code. Ein unbekannter Code bleibt sichtbar statt zu verschwinden."""
+    return _OUTDOOR_STATUS_TEXT.get(status, status)
+
+
 def suggested_offset_text(mean_deviation_k: Decimal | None) -> str | None:
     """"vorgeschlagener Ausgleichswert ≈ x K" (Auftrag 8b item 2, Entscheidung
     R2) -- `None` when there is nothing to compare yet (empty/all-unusable

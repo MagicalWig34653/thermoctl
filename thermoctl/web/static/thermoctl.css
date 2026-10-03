@@ -934,27 +934,32 @@ body {
     }
 }
 
-/* Bei 1280px bleiben neben Navigation und Seitenpolster nur 955px übrig.
- * 15% davon boten dem einzeiligen Zeitpunkt bloß 118px Textplatz (Text: 152px).
- * Datum und Uhrzeit dürfen jetzt am Leerzeichen umbrechen. Die festen Breiten
- * enthalten je 1.6rem Zellpolster: Quelle bis „Kommandozeile“, Zone bis
- * „Kinderzimmer“, Gerät bis „Heizkörperventil“, Code bis „thermostat“.
- * Der Rest gehört Begründung und einzeiligem Nutzlast-Aufklapper. Unterhalb
- * dieses Budgets scrollt nur die Tabelle; mobil gilt die gemeinsame Kartenform. */
+/* Spalten: 1 Art, 2 Zeitpunkt, 3 Quelle, 4 Zone, 5 Gerät, 6 Befehl,
+ * 7 Ergebnis, 8 Begründung. Bei 1280px bleiben neben Navigation und
+ * Seitenpolster nur 955px. Jede feste Breite enthält ihr Zellpolster (2 x
+ * 0.45rem); Zeitpunkt, Ergebnis und Begründung dürfen nur an Leerzeichen
+ * umbrechen, nie mitten im Wort. Der Rest gehört der Begründung. Unterhalb
+ * dieses Budgets scrollt nur die Tabelle; mobil gilt die Kartenform. */
 .tc-command-table { table-layout: fixed; }
-.tc-command-table th:nth-child(1) { width: 7rem; }
-.tc-command-table th:nth-child(2) { width: 8.5rem; }
-.tc-command-table th:nth-child(3) { width: 8.25rem; }
-.tc-command-table th:nth-child(4) { width: 9.5rem; }
-.tc-command-table th:nth-child(5) { width: 6.5rem; }
-.tc-command-table th:nth-child(6) { width: 9.5rem; }
+.tc-command-table > :not(caption) > * > * { padding: 0.6rem 0.45rem; }
+.tc-command-table th:nth-child(1) { width: 6.75rem; }
+.tc-command-table th:nth-child(2) { width: 6rem; }
+.tc-command-table th:nth-child(3) { width: 7.5rem; }
+.tc-command-table th:nth-child(4) { width: 7.5rem; }
+.tc-command-table th:nth-child(5) { width: 9rem; }
+.tc-command-table th:nth-child(6) { width: 5.5rem; }
+.tc-command-table th:nth-child(7) { width: 7.25rem; }
 
-.tc-command-table td:nth-child(1) {
+.tc-command-table td:nth-child(1),
+.tc-command-table td:nth-child(2),
+.tc-command-table td:nth-child(3),
+.tc-command-table td:nth-child(7),
+.tc-command-table td:nth-child(8) {
     overflow-wrap: normal;
 }
 
-.tc-command-table td:nth-child(2) {
-    white-space: nowrap;
+.tc-command-table td:nth-child(1) .badge {
+    white-space: normal;
 }
 
 /* Die Gruppenauswahl bekommt den verbleibenden Raum. Aktionsbeschriftungen
@@ -993,37 +998,41 @@ body {
     overflow-wrap: normal;
 }
 
-.tc-command-table td:nth-child(5) code {
+.tc-command-table td:nth-child(6) code {
     white-space: nowrap;
 }
 
 @media (max-width: 767.98px) {
-    /* Nur der Zeitpunkt spricht für sich -- jede andere Spalte braucht mobil
-       eine Beschriftung, sonst ist "wohnzimmer" allein nicht als Zone und
-       "setpoint" allein nicht als Befehl erkennbar. */
+    /* Die Art-Plakette führt die Zeile an, der Zeitpunkt spricht für sich --
+       jede andere Spalte braucht mobil eine Beschriftung, sonst ist
+       "wohnzimmer" allein nicht als Zone und "setpoint" allein nicht als
+       Befehl erkennbar. */
     .tc-command-table td:nth-child(1) {
         padding-top: 0.4rem;
+    }
+
+    .tc-command-table td:nth-child(2) {
         font-weight: 600;
     }
 
-    .tc-command-table td:nth-child(2),
     .tc-command-table td:nth-child(3),
     .tc-command-table td:nth-child(4),
     .tc-command-table td:nth-child(5),
     .tc-command-table td:nth-child(6),
-    .tc-command-table td:nth-child(7) {
+    .tc-command-table td:nth-child(7),
+    .tc-command-table td:nth-child(8) {
         display: flex;
         flex-wrap: wrap;
         align-items: baseline;
         gap: 0.35rem;
     }
 
-    .tc-command-table td:nth-child(2)::before,
     .tc-command-table td:nth-child(3)::before,
     .tc-command-table td:nth-child(4)::before,
     .tc-command-table td:nth-child(5)::before,
     .tc-command-table td:nth-child(6)::before,
-    .tc-command-table td:nth-child(7)::before {
+    .tc-command-table td:nth-child(7)::before,
+    .tc-command-table td:nth-child(8)::before {
         content: attr(data-label) ":";
         color: var(--muted);
         font-size: 0.75rem;
@@ -1033,7 +1042,7 @@ body {
     /* Das Aufklapp-Element für die Nutzlast bricht sonst mitten im eigenen
        Text um ("▶ Nutzlast" / "anzeigen") -- als eigene Zeile unter der
        Begründung bekommt es die volle Zeilenbreite dafür. */
-    .tc-command-table td:nth-child(7) > details {
+    .tc-command-table td:nth-child(8) > details {
         flex-basis: 100%;
     }
 }

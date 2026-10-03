@@ -131,3 +131,39 @@ def test_no_word_splits_or_horizontal_overflow_at_phone_width(
     if view.path not in _OVERFLOW_EXCEPTIONS:
         overflow = demo_page.evaluate("document.documentElement.scrollWidth - window.innerWidth")
         assert overflow <= 1, f"{target}: Seite {overflow}px breiter als der Bildschirm"
+
+
+_DESKTOP_VIEWPORT = {"width": 1280, "height": 900}
+
+
+def test_command_log_has_no_word_splits_or_overlapping_cells_at_desktop_width(
+    browser: Browser, demo_server: tuple[LiveServer, dict[str, str | int]]
+) -> None:
+    """Schaltprotokoll bei 1280px: die Spalte "Art" darf Zeitpunkt, Quelle, Ergebnis
+    und Begründung weder überlagern noch zu Umbrüchen mitten im Wort zwingen."""
+    server, _ = demo_server
+    with browser.new_context(
+        base_url=server.base_url,
+        viewport=_DESKTOP_VIEWPORT,
+        locale="de-DE",
+        timezone_id="Europe/Berlin",
+    ) as context:
+        page = context.new_page()
+        _login(page, server.admin_username, server.admin_password)
+        page.goto("/device-commands", wait_until="networkidle")
+        page.evaluate("document.fonts.ready")
+
+        failures = page.evaluate(_GEOMETRY, _WORD_WRAP_EXEMPT_SELECTOR)
+        assert not failures, "\n".join(failures)
+
+        cut_off = page.evaluate(
+            """() => [...document.querySelectorAll('.tc-command-table tbody td')]
+                .filter(td => td.scrollWidth > td.clientWidth + 1)
+                .map(td => td.dataset.label || td.textContent.trim().slice(0, 20))"""
+        )
+        assert not cut_off, f"Zellen laufen über ihre Spalte hinaus: {cut_off}"
+        scroll = page.evaluate(
+            "() => { const w = document.querySelector('.table-responsive');"
+            " return w.scrollWidth - w.clientWidth; }"
+        )
+        assert scroll <= 1, f"Tabelle scrollt bei 1280px um {scroll}px"

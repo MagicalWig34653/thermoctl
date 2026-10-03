@@ -174,6 +174,9 @@ def test_the_operating_page_shows_notbetrieb_detail_and_comparison(
     assert device.display_name in response.text
     assert "nicht versucht" in response.text
     assert "vorgeschlagener Ausgleichswert" in response.text
+    # Außenwertqualität als Klartext, nicht als Rohcode.
+    assert "keine Außenquelle eingerichtet" in response.text
+    assert "keine_quelle" not in response.text
 
 
 def test_the_operating_page_shows_nothing_extra_for_a_normal_zone(
