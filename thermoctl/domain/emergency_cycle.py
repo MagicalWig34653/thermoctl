@@ -329,7 +329,10 @@ def _enter(cycle: CycleInput, *, disturbed: bool) -> CycleOutput:
         )
         return CycleOutput(state, CycleDecision(True, reason_code, reason))
 
-    elapsed = prior.elapsed_seconds if (prior is not None and not prior.on) else 0
+    # Credit at most the Aus-Dauer itself: a relay that has been off for hours must
+    # not leave a phase deadline in the distant past, which the next call would
+    # misread as a stale (disturbed) state.
+    elapsed = min(prior.elapsed_seconds, off_s) if (prior is not None and not prior.on) else 0
     started = cycle.now - timedelta(seconds=elapsed)
     deadline = started + timedelta(seconds=off_s)
     state = CycleState(

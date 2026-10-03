@@ -73,6 +73,7 @@ from thermoctl.domain.temperature_source_health import (
     evaluate_source_health,
 )
 from thermoctl.domain.zone_settings import ControlParameters, control_parameters
+from thermoctl.services.emergency_prior import entry_prior_hint
 from thermoctl.services.temperature_source_health import zone_candidates
 
 log = logging.getLogger(__name__)
@@ -877,7 +878,18 @@ def _apply_emergency_actuators(
                     min_on_seconds=parameter.min_on_seconds,
                     min_off_seconds=parameter.min_off_seconds,
                     stale_state_seconds=stale_state_seconds,
-                    prior=None,
+                    # Only consulted on first entry (`prior_cycle_state is None`):
+                    # the real last relay state from the command log (concept 3.4).
+                    prior=(
+                        entry_prior_hint(
+                            session,
+                            device.id,
+                            now=now,
+                            min_on_seconds=parameter.min_on_seconds,
+                        )
+                        if prior_cycle_state is None
+                        else None
+                    ),
                 ),
             )
             new_cycle_state = switch_decision.cycle.state

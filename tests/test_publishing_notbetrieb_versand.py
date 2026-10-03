@@ -27,6 +27,7 @@ from tests.helpers import (
     create_zone,
     integration,
     role,
+    seed_switch_command,
 )
 from thermoctl.config import get_settings
 from thermoctl.db.base import Base
@@ -1741,3 +1742,143 @@ async def test_handover_latch_survives_a_simulated_process_restart(tmp_path: Pat
             restart_session.close()
     finally:
         engine.dispose()
+
+
+# --- Ersteintritt: realer letzter Relaiszustand zaehlt (Konzept 3.4) ----------------
+
+
+async def _drive(
+    session: Session,
+    client: _FakeClient,
+    pub_state: PublicationState,
+    now: datetime,
+) -> None:
+    shadow_run.cycle(session, now)
+    session.commit()
+    await publishing.cycle(session, client, pub_state, "thermoctl", now)
+    session.commit()
+
+
+def _relais_payloads(client: _FakeClient, relais: Device) -> list[str]:
+    topic = _relais_topic(relais)
+    return [payload for t, payload in client.messages if t == topic]
+
+
+@pytest.mark.anyio
+async def test_entry_with_relay_on_for_30s_keeps_minimum_on_then_switches_off(
+    session: Session,
+) -> None:
+    zone, _trv, relais = _setup_zone_no_sensor(session)
+    zone.min_on_seconds = 300
+    seed_switch_command(session, zone, relais, sent_at=NOW - timedelta(seconds=30), on=True)
+    client = _FakeClient()
+    pub_state = PublicationState()
+
+    await _drive(session, client, pub_state, NOW)
+    # Kein Aus beim Eintritt: das Relais laeuft seine Mindest-Ein-Dauer zu Ende.
+    assert '{"state": "OFF"}' not in _relais_payloads(client, relais)
+    row = session.get(ActuatorEmergencyState, _zone_device_id(session, zone.id, relais.id))
+    assert row is not None
+    assert row.phase == "ein"
+    assert row.phase_deadline_at == NOW + timedelta(seconds=270)
+
+    await _drive(session, client, pub_state, NOW + timedelta(seconds=269))
+    assert '{"state": "OFF"}' not in _relais_payloads(client, relais)
+
+    await _drive(session, client, pub_state, NOW + timedelta(seconds=271))
+    assert _relais_payloads(client, relais)[-1] == '{"state": "OFF"}'
+    session.refresh(row)
+    assert row.phase == "aus"
+
+
+@pytest.mark.anyio
+async def test_entry_keeps_minimum_on_even_when_the_first_on_resend_fails(
+    session: Session,
+) -> None:
+    """A failed send must not turn into "state unknown" on the next cycle."""
+    zone, _trv, relais = _setup_zone_no_sensor(session)
+    zone.min_on_seconds = 300
+    seed_switch_command(session, zone, relais, sent_at=NOW - timedelta(seconds=30), on=True)
+    client = _FakeClient(fail_topics=frozenset({_relais_topic(relais)}))
+    pub_state = PublicationState()
+
+    await _drive(session, client, pub_state, NOW)
+    await _drive(session, client, pub_state, NOW + timedelta(seconds=10))
+    assert '{"state": "OFF"}' not in _relais_payloads(client, relais)
+
+
+@pytest.mark.anyio
+async def test_entry_with_relay_on_longer_than_minimum_on_switches_off_at_once(
+    session: Session,
+) -> None:
+    zone, _trv, relais = _setup_zone_no_sensor(session)
+    zone.min_on_seconds = 300
+    seed_switch_command(session, zone, relais, sent_at=NOW - timedelta(seconds=900), on=True)
+    client = _FakeClient()
+
+    await _drive(session, client, PublicationState(), NOW)
+    assert _relais_payloads(client, relais) == ['{"state": "OFF"}']
+
+
+@pytest.mark.anyio
+async def test_entry_with_relay_off_for_long_stays_off_then_takts_normally(
+    session: Session,
+) -> None:
+    zone, _trv, relais = _setup_zone_no_sensor(session)
+    seed_switch_command(session, zone, relais, sent_at=NOW - timedelta(seconds=3600), on=False)
+    client = _FakeClient()
+    pub_state = PublicationState()
+
+    await _drive(session, client, pub_state, NOW)
+    assert _relais_payloads(client, relais) == ['{"state": "OFF"}']
+    row = session.get(ActuatorEmergencyState, _zone_device_id(session, zone.id, relais.id))
+    assert row is not None
+    assert row.phase == "aus"
+    # Die bereits eingehaltene Aus-Zeit ist angerechnet -- aber nie mehr als die Aus-Dauer.
+    assert row.phase_deadline_at == NOW
+
+    await _drive(session, client, pub_state, NOW + timedelta(seconds=31))
+    assert _relais_payloads(client, relais)[-1] == '{"state": "ON"}'
+
+
+@pytest.mark.anyio
+async def test_entry_with_relay_off_for_20s_credits_exactly_20s(session: Session) -> None:
+    zone, _trv, relais = _setup_zone_no_sensor(session)
+    seed_switch_command(session, zone, relais, sent_at=NOW - timedelta(seconds=20), on=False)
+    client = _FakeClient()
+    pub_state = PublicationState()
+
+    await _drive(session, client, pub_state, NOW)
+    row = session.get(ActuatorEmergencyState, _zone_device_id(session, zone.id, relais.id))
+    assert row is not None
+    assert row.phase_deadline_at == NOW + timedelta(seconds=10)
+    await _drive(session, client, pub_state, NOW + timedelta(seconds=9))
+    assert '{"state": "ON"}' not in _relais_payloads(client, relais)
+    await _drive(session, client, pub_state, NOW + timedelta(seconds=11))
+    assert _relais_payloads(client, relais)[-1] == '{"state": "ON"}'
+
+
+@pytest.mark.anyio
+async def test_entry_with_unknown_relay_state_sends_off_and_waits_the_full_off_duration(
+    session: Session,
+) -> None:
+    zone, _trv, relais = _setup_zone_no_sensor(session)
+    zone.min_on_seconds = 300
+    # Nur Fehlschlaege und Trockenlauf-Eintraege: nichts davon belegt einen realen Zustand.
+    seed_switch_command(
+        session, zone, relais, sent_at=NOW - timedelta(seconds=30), on=True, outcome="failed"
+    )
+    seed_switch_command(
+        session, zone, relais, sent_at=NOW - timedelta(seconds=20), on=True, outcome="suppressed"
+    )
+    client = _FakeClient()
+    pub_state = PublicationState()
+
+    await _drive(session, client, pub_state, NOW)
+    assert _relais_payloads(client, relais) == ['{"state": "OFF"}']
+    row = session.get(ActuatorEmergencyState, _zone_device_id(session, zone.id, relais.id))
+    assert row is not None
+    assert row.phase == "aus"
+    assert row.phase_deadline_at == NOW + timedelta(seconds=30)
+    await _drive(session, client, pub_state, NOW + timedelta(seconds=29))
+    assert '{"state": "ON"}' not in _relais_payloads(client, relais)
