@@ -60,8 +60,7 @@ from thermoctl.domain.control import (
     ControlError,
     arm,
     save_sensor_failure_backup_offset,
-    save_sensor_failure_defaults,
-    save_sensor_failure_profile,
+    save_sensor_failure_plant_defaults,
     save_settings,
     save_solar_location,
     settings,
@@ -997,16 +996,9 @@ def save_sensor_failure_defaults_view(
         ),
     )
     try:
-        save_sensor_failure_profile(
+        save_sensor_failure_plant_defaults(
             session,
             values,
-            profile_id=profile_id,
-            user_id=principal.user_id,
-            token_id=principal.token_id,
-            source="api",
-        )
-        save_sensor_failure_defaults(
-            session,
             profile_id=profile_id,
             emergency_setpoint_c=data.emergency_setpoint_c,
             user_id=principal.user_id,

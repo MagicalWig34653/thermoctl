@@ -24,8 +24,7 @@ from thermoctl.domain.control import (
     LIMITS,
     arm,
     save_sensor_failure_backup_offset,
-    save_sensor_failure_defaults,
-    save_sensor_failure_profile,
+    save_sensor_failure_plant_defaults,
     settings,
 )
 from thermoctl.domain.device_commands import DEFAULT_LIMIT, list_commands, naive_utc
@@ -651,16 +650,9 @@ def set_sensor_failure_defaults_tool(
             for point in (curve_points or [])
         ),
     )
-    save_sensor_failure_profile(
+    save_sensor_failure_plant_defaults(
         session,
         values,
-        profile_id=profile_id,
-        user_id=principal.user_id,
-        token_id=_token.id,
-        source="mcp",
-    )
-    save_sensor_failure_defaults(
-        session,
         profile_id=profile_id,
         emergency_setpoint_c=emergency_setpoint_c,
         user_id=principal.user_id,

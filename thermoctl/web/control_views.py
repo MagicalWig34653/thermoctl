@@ -44,8 +44,7 @@ from thermoctl.domain.control import (
     ControlError,
     arm,
     check_coordinate,
-    save_sensor_failure_defaults,
-    save_sensor_failure_profile,
+    save_sensor_failure_plant_defaults,
     save_settings,
     save_solar_location,
     save_window_alarm_settings,
@@ -433,8 +432,10 @@ def _parse_curve_points(form: FormData) -> tuple[CurvePoint, ...]:
     """Parses the repeated `curve_outdoor_c`/`curve_on_seconds`/`curve_off_seconds`
     triples -- one `<input>` per row, same `name` repeated, same shape the browser
     sends regardless of how many rows JavaScript added or removed client-side.
-    A row with any blank field is dropped silently: an empty row left over from a
-    removed one (or one never filled in) means "nothing here", not "0 everywhere".
+    A completely blank row is ignored: an empty row left over from a removed one
+    (or one never filled in) means "nothing here", not "0 everywhere". A *partly*
+    filled row is an error that rejects the whole input -- dropping it silently
+    would save the rest and tell the operator everything went in.
     """
     outdoor = form.getlist("curve_outdoor_c")
     on = form.getlist("curve_on_seconds")
@@ -445,8 +446,16 @@ def _parse_curve_points(form: FormData) -> tuple[CurvePoint, ...]:
         )
     points = []
     for outdoor_text, on_text, off_text in zip(outdoor, on, off, strict=True):
-        if not (str(outdoor_text).strip() and str(on_text).strip() and str(off_text).strip()):
+        filled = [bool(str(text).strip()) for text in (outdoor_text, on_text, off_text)]
+        if not any(filled):
             continue
+        if not all(filled):
+            raise ControlError(
+                "curve_points",
+                "Kennlinie: Zeile unvollständig -- Außentemperatur, Ein-Zeit und "
+                "Aus-Zeit müssen alle ausgefüllt sein (oder die ganze Zeile leer). "
+                "Es wurde nichts gespeichert.",
+            )
         try:
             points.append(
                 CurvePoint(
@@ -472,9 +481,9 @@ async def save_sensor_failure_defaults_view(
     Speichern-Knopf (Auftrag 8a, nicht den 0.10.1-Fehler wiederholen).
 
     Beides wird in der Domäne geprüft, **bevor** eines von beiden geschrieben
-    wird (`save_sensor_failure_profile` validiert selbst zuerst), damit ein
-    abgelehntes Feld im zweiten Teil nicht den ersten schon committed
-    zurücklässt.
+    wird (`save_sensor_failure_plant_defaults`), damit ein abgelehntes Feld im
+    zweiten Teil nicht den ersten schon committed zurücklässt -- diese Ansicht
+    zeigt Fehler als Formular und die Anfrage wird danach committet.
     """
     require(principal, "setting.manage")
     form = await request.form()
@@ -523,15 +532,9 @@ async def save_sensor_failure_defaults_view(
             warm_restart_hysteresis_k=warm_restart_hysteresis_k,
             curve_points=curve_points,
         )
-        save_sensor_failure_profile(
+        save_sensor_failure_plant_defaults(
             session,
             values,
-            profile_id=current.id,
-            user_id=principal.user_id,
-            token_id=principal.token_id,
-        )
-        save_sensor_failure_defaults(
-            session,
             profile_id=current.id,
             emergency_setpoint_c=emergency_setpoint_c,
             user_id=principal.user_id,
