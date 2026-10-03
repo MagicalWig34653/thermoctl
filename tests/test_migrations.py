@@ -7,6 +7,7 @@ import time
 from decimal import Decimal
 
 import pytest
+import sqlalchemy as sa
 from sqlalchemy import Engine, create_engine, make_url, text
 from sqlalchemy.orm import Session
 
@@ -612,6 +613,104 @@ def test_the_thermostat_downgrade_survives_a_device_that_used_the_capability(
                     )
                 ).scalar_one()
                 assert orphans == 0, f"{table} zeigt auf eine gelöschte Fähigkeit"
+    finally:
+        db_engine.dispose()
+
+
+def _insert_decision_and_command(
+    connection: sa.Connection, *, action: str, outcome_code: str
+) -> tuple[int, int]:
+    """Legt eine `actuator_decision` und einen darauf verweisenden `device_command` an."""
+    connection.execute(
+        text(
+            "INSERT INTO actuator_decision (zone_name, device_name, decided_at, action,"
+            " reason_code, reason, simulated, profile_version)"
+            " VALUES ('z', 'd', CURRENT_TIMESTAMP, :action, 'rc', 'grund', 0, 1)"
+        ),
+        {"action": action},
+    )
+    decision_id = connection.execute(
+        text("SELECT id FROM actuator_decision WHERE action = :action"), {"action": action}
+    ).scalar_one()
+    source_id = connection.execute(text("SELECT id FROM actor_source LIMIT 1")).scalar_one()
+    outcome_id = connection.execute(
+        text("SELECT id FROM command_outcome WHERE code = :code"), {"code": outcome_code}
+    ).scalar_one()
+    connection.execute(
+        text(
+            "INSERT INTO device_command (sent_at, source_id, zone_name, device_name, command,"
+            " payload, outcome_id, actuator_decision_id)"
+            " VALUES (CURRENT_TIMESTAMP, :source_id, 'z', 'd', 'c', '{}', :outcome_id,"
+            " :decision_id)"
+        ),
+        {"source_id": source_id, "outcome_id": outcome_id, "decision_id": decision_id},
+    )
+    command_id = connection.execute(text("SELECT max(id) FROM device_command")).scalar_one()
+    return decision_id, command_id
+
+
+@pytest.mark.migration
+@pytest.mark.parametrize("fall", ["restore", "decided_no_command"])
+def test_notbetrieb_downgrades_survive_operating_data(
+    migrations_database_url: str, fall: str
+) -> None:
+    """Beide Notbetrieb-Downgrades laufen mit Betriebsdaten, ohne Verwaiste zu hinterlassen.
+
+    `9d3f1a7c2b84` loescht den Outcome `decided_no_command`, auf den
+    `device_command.outcome_id` zeigt; `b2e6f1a9c374` stellt einen Check-Constraint
+    wieder her, den `action='restore'` verletzt. Beides scheitert nur mit Daten -- die
+    leere Kette in `test_migration_forward_and_backward` sieht es nicht. Die
+    SQLite-Verbindung hier erzwingt Fremdschluessel (PRAGMA), der Alembic-Subprozess
+    nicht; deshalb wird zusaetzlich auf Verwaiste geprueft.
+    """
+    base = _alembic(migrations_database_url, "downgrade", "base")
+    assert base.returncode == 0, base.stderr
+    up = _alembic(migrations_database_url, "upgrade", "head")
+    assert up.returncode == 0, up.stderr
+
+    db_engine = create_engine(migrations_database_url)
+    try:
+        with db_engine.begin() as connection:
+            if fall == "restore":
+                decision_id, command_id = _insert_decision_and_command(
+                    connection, action="restore", outcome_code="executed"
+                )
+            else:
+                decision_id, command_id = _insert_decision_and_command(
+                    connection, action="normal", outcome_code="decided_no_command"
+                )
+
+        down = _alembic(migrations_database_url, "downgrade", "05f7842e4d69")
+        assert down.returncode == 0, down.stderr
+
+        with db_engine.connect() as connection:
+            assert (
+                connection.execute(
+                    text("SELECT count(*) FROM command_outcome WHERE code = 'decided_no_command'")
+                ).scalar_one()
+                == 0
+            )
+            orphans = connection.execute(
+                text(
+                    "SELECT count(*) FROM device_command c WHERE NOT EXISTS "
+                    "(SELECT 1 FROM command_outcome o WHERE o.id = c.outcome_id)"
+                )
+            ).scalar_one()
+            assert orphans == 0, "device_command zeigt auf einen geloeschten Outcome"
+            # Daten bleiben erhalten: Befehlszeile und Entscheidung existieren noch.
+            assert (
+                connection.execute(
+                    text("SELECT count(*) FROM device_command WHERE id = :id"), {"id": command_id}
+                ).scalar_one()
+                == 1
+            )
+            action = connection.execute(
+                text("SELECT action FROM actuator_decision WHERE id = :id"), {"id": decision_id}
+            ).scalar_one()
+            assert action != "restore"
+            if connection.dialect.name == "sqlite":
+                connection.exec_driver_sql("PRAGMA foreign_keys=ON")
+                assert connection.exec_driver_sql("PRAGMA foreign_key_check").fetchall() == []
     finally:
         db_engine.dispose()
 
