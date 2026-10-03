@@ -105,7 +105,9 @@ def test_sensor_notices_skip_a_zone_with_sensor_failure_enabled(session: Session
     assert notices[0].key == f"sensor:{plain_zone.id}"
 
 
-def test_emergency_notices_entered_marks_gemeldet_exactly_once(session: Session) -> None:
+def test_emergency_notices_entered_marks_melden_laeuft_and_plans_one_notice(
+    session: Session,
+) -> None:
     setting_row = create_settings(session)
     source(session, "system")
     zone = create_zone(session, "Flur")
@@ -114,16 +116,16 @@ def test_emergency_notices_entered_marks_gemeldet_exactly_once(session: Session)
     notices = app_modul._emergency_notices(session, NOW, setting_row)
 
     assert len(notices) == 1
-    assert notices[0].key == f"notbetrieb:{episode.id}"
-    assert notices[0].severity == "stoerung"
-    assert episode.notification_state == "gemeldet"
+    assert notices[0].notice.key == f"notbetrieb:{episode.id}"
+    assert notices[0].notice.severity == "stoerung"
+    # The Zwischenzustand: the final `gemeldet` is set only after the send
+    # (`tests/test_app_emergency_retry.py`).
+    assert episode.notification_state == "melden_laeuft"
+    assert notices[0].final_state == "gemeldet"
+    assert notices[0].is_retry is False
 
-    # Second call (next cycle, or after a restart): no second notice.
-    again = app_modul._emergency_notices(session, NOW, setting_row)
-    assert again == []
 
-
-def test_emergency_notices_resolved_sends_entwarnung_once(session: Session) -> None:
+def test_emergency_notices_resolved_plans_one_entwarnung(session: Session) -> None:
     setting_row = create_settings(session)
     source(session, "system")
     zone = create_zone(session, "Flur")
@@ -138,11 +140,9 @@ def test_emergency_notices_resolved_sends_entwarnung_once(session: Session) -> N
     notices = app_modul._emergency_notices(session, NOW, setting_row)
 
     assert len(notices) == 1
-    assert notices[0].severity == "entwarnung"
-    assert episode.notification_state == "entwarnung_gesendet"
-
-    again = app_modul._emergency_notices(session, NOW, setting_row)
-    assert again == []
+    assert notices[0].notice.severity == "entwarnung"
+    assert episode.notification_state == "entwarnung_laeuft"
+    assert notices[0].final_state == "entwarnung_gesendet"
 
 
 def test_emergency_notices_deactivation_sends_no_entwarnung_but_closes_the_episode(

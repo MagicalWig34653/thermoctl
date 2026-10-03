@@ -70,7 +70,8 @@ class SensorFailureEpisode(Base):
     __table_args__ = (
         CheckConstraint("trigger_kind IN ('wandfuehler', 'alle_quellen')", name="trigger_kind"),
         CheckConstraint(
-            "notification_state IN ('offen', 'gemeldet', 'entwarnung_gesendet')",
+            "notification_state IN ('offen', 'melden_laeuft', 'gemeldet', "
+            "'entwarnung_laeuft', 'entwarnung_gesendet')",
             name="notification_state",
         ),
     )

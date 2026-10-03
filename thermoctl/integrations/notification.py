@@ -130,7 +130,7 @@ async def send(settings: Settings, notice: FaultNotice) -> None:
 
 async def deliver(
     session_factory: sessionmaker[Session], settings: Settings, notice: FaultNotice
-) -> None:
+) -> bool:
     """Sends a notice like `send()` above, and durably records the webhook's
     delivery outcome in the `setting` row -- what the interface's delivery display
     (part two of this feature) reads.
@@ -153,16 +153,22 @@ async def deliver(
     Writes nothing when no webhook is configured at all -- there was no delivery
     attempt to report on, only the same unconditional log line `send()` also
     writes.
+
+    Returns whether the attempt went through (`True` as well when no webhook is
+    configured -- there was nothing to fail). Callers that do not care ignore it;
+    the Notbetrieb dispatch (`app.py::_deliver_emergency_notice`) uses it to decide
+    whether its one repeated attempt is still due.
     """
     ok, error = await _attempt_delivery(settings, notice)
     if settings.notify_webhook is None:
-        return
+        return ok
     with session_scope(session_factory) as session:
         setting = session.get(Setting, 1)
         if setting is not None:
             setting.notify_last_attempt_at = utcnow()
             setting.notify_last_ok = ok
             setting.notify_last_error = error
+    return ok
 
 
 # The notice a human explicitly asked for, not one control derived from a state
