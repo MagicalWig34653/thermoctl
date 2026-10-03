@@ -2,650 +2,218 @@
 
 Letzte Aktualisierung: 2026-10-03.
 
-## 0.11.0: Stand und nächste Schritte
+## 0.11.0: Notbetrieb bei Sensorausfall
 
-Der Notbetrieb bei Sensorausfall (Aufträge 3–8) ist vollständig in `main` und CI-grün, aber
-für keine Zone aktiviert (`zone.sensor_failure_enabled` Vorgabe `false`). Offen, in dieser
-Reihenfolge: Komplett-Review von `v0.10.1..main`, Auftrag 9 (Migration aktiviert den
-Notbetrieb für alle Bestandszonen ein, Verhaltensänderung beim Upgrade deutlich in
-CHANGELOG und Add-on), Auftrag 10 (Mutationsläufe der neuen Regellogik), Zusammenfassen der
-0.11.0-Abschnitte unten zu einem, Doku und Bilder, Freigabe 0.11.0 samt Add-on, danach
-Abnahme an der echten Anlage. Ausführliche Übergabe lokal unter
-`lokal/plaene/0.11.0-uebergabe.md`.
+Plan und Gerätevertrag liegen lokal (`lokal/plaene/0.11.0-notbetrieb.md`,
+`lokal/plaene/0.11.0-geraetevertrag.md`), die Übergabe unter
+`lokal/plaene/0.11.0-uebergabe.md`. Der Notbetrieb ist vollständig gebaut und für
+**alle** Zonen **automatisch aktiv**: Migration `d4a81c6e5b29` schaltet jede Bestandszone
+ein, neu angelegte Zonen starten mit `sensor_failure_enabled = true` (gesetzt vom
+ORM-Standardwert in `Zone`, nicht vom `server_default`). Das ist eine bewusste
+Verhaltensänderung beim Upgrade und steht deshalb in CHANGELOG und Add-on-Changelog an
+erster Stelle. Ein Downgrade über `d4a81c6e5b29` setzt die Spalte für alle Zonen auf
+`false` (der Vorzustand wird nicht gemerkt). Migrationskopf: `e5b92d7f3a18`.
 
-## 0.11.0: Notbetrieb-Konfiguration über Oberfläche, REST und MCP (Auftrag 8a)
+### Architektur
 
-Konfigurationsseite des Notbetriebs fertig, alle drei Adapter über derselben Domäne
-(Grundsatz 6): `thermoctl/domain/sensor_failure_policy.py` validiert und liest/schreibt,
-`thermoctl/domain/control.py` (anlagenweites Profil/Notsollwert/Ausgleichswert) und
-`thermoctl/domain/zone_settings.py` (Zonenüberschreibung) hängen Audit-Einträge an, genau
-wie bei den bestehenden Regelvorgaben.
+- **Reine Domänenbausteine** (kein Datenbank-/Netzwerkzugriff, `now` und Vorzustand kommen
+  vom Aufrufer): `domain/temperature_source_health.py` (Quellenbewertung, Ersatzquelle,
+  Echo-Regel), `domain/emergency_operation.py` (Zustandsautomat), `domain/emergency_cycle.py`
+  (Festtakt und Außenkennlinie), `domain/emergency_actuator_plan.py` (Vorrangtabelle je
+  Aktorzuordnung: Übergabe, Takt, Rückstellung), `domain/emergency_display.py` (Hinweistexte),
+  `domain/sensor_failure_policy.py` (Konfiguration, Validierung, wirksame Werte).
+- **Schattenlauf und Publisher teilen sich dieselben Bausteine** (Grundsatz 6).
+  `services/shadow_run.py` bewertet je aktivierter Zone pro Zyklus Quellen und Stufe, schreibt
+  Stufe und Episode (`zone_sensor_failure_state`, `sensor_failure_episode`) und protokolliert
+  die Aktorentscheidung mit `simulated=True` (`actuator_decision`, `simulated_*`-Felder in
+  `actuator_emergency_state`). Die Zonenentscheidung (`ShadowDecision`) bleibt in **jeder**
+  Stufe das, was `decide()` und PI ohnehin liefern; die Aktor-/Taktentscheidung wird nie in sie
+  zurückgespeist. Nur in der Stufe `ersatzquelle` ändert sich die Zonenentscheidung bewusst:
+  der korrigierte Ersatzwert gilt als Istwert (Sensorstatus `ok`). PI ist in jeder Stufe außer
+  `normal` neutralisiert (eigenes Signal `sensor_failure_emergency_active`).
+- **Scharfer Versand nur im Publisher** (`services/publishing.py`, `_send_emergency_*`;
+  Adapter in `integrations/actuators.py`), weil nur dort bekannt ist, ob ein Versand gelang.
+  Die scharfen Felder von `actuator_emergency_state` (ohne `simulated_`-Präfix) werden nur
+  nach erfolgreichem Versand fortgeschrieben; `armed_episode_id` hält fest, welcher Episode
+  sie zugeordnet sind. Auf den gewöhnlichen Pfaden (Sollwert, zentraler Ein/Aus, Ventilschutz,
+  Fehlerwiederholung) schweigen Thermostate und Schaltausgänge einer Zone in `notbetrieb` und
+  `rueckkehrpruefung` vollständig; bei Rückkehr werden die scharfen Felder einmal geräumt und
+  der Wiederholungs-Zwischenspeicher (`PublicationState.valve_commands`/`.switch_commands`)
+  für das Gerät invalidiert, damit der gewöhnliche Sollwert sofort wieder gesendet wird.
+- **Gerätevertrag:** Schaltausgänge sind Fußbodenkreise (Meross mss710), Thermostate
+  ausschließlich Bosch BTH-RA, kein Mischgerät. Ein Thermostat gilt nur dann als
+  übergabefähig, wenn `occupied_heating_setpoint` und `operating_mode` schreibbar sind
+  (`domain.self_regulating.handover_capable`, mit `manual` unter den deklarierten Werten).
+  Ohne diesen Vertrag gibt es nie einen Schreibversuch, stattdessen genau einen
+  Schaltprotokoll-Eintrag je Episode mit dem Ergebnis `decided_no_command`.
 
-- **Regelparameter-Seite** (`thermoctl/web/templates/parameter.html`,
-  `thermoctl/web/daily_views.py`): Notbetriebs-Abschnitt **im bestehenden einen Formular**,
-  ein Speichern-Knopf — bewusst nicht wie 0.10.1 wiederholt. Aktivierung, Profilwahl
-  (anlagenweit erben oder eines der vorhandenen Profile — eine eigene
-  Profil-*Anlage*-Oberfläche gibt es nicht, siehe Entscheidung unten), eigener/erbter
-  Notsollwert, Ausgleichswerte je Thermostat-Zuordnung (nur sichtbar und schreibbar mit
-  zusätzlichem `device.manage`). Wirksame Werte und ihre Herkunft (Zone/Anlage/Vorgabe)
-  stehen direkt daneben.
-- **Regelvorgaben-Seite** (`thermoctl/web/templates/settings.html`,
-  `thermoctl/web/control_views.py`): eigene Karte „Notbetrieb bei Sensorausfall“, ein
-  Speichern-Knopf für Festtakt, Rückkehrprüfung, Wiederanlaufspanne, anlagenweiten
-  Notsollwert und die Außenkennlinie als **echte Zeilen** (hinzufügen/entfernen über
-  `thermoctl/web/static/sensor_failure_curve.js`, serverseitig als wiederholte
-  `curve_outdoor_c`/`curve_on_seconds`/`curve_off_seconds`-Felder geparst und vor jedem
-  Schreiben vollständig validiert — ein ungültiger Punkt verwirft die ganze Eingabe).
-- **REST**: `GET/PUT /api/v1/control/sensor-failure-defaults`,
-  `GET/PUT /api/v1/zones/{id}/sensor-failure` (`thermoctl/api/routes.py`, `schemas.py`).
-  **MCP**: `read/set_sensor_failure_defaults`, `read/set_sensor_failure_policy`
-  (`thermoctl/mcp/server.py`, jetzt 23 Werkzeuge, `docs/mcp.md`/`docs/api.md`/
-  `docs/roadmap.md` nachgezogen). Gleiche Rechte wie der Plan vorgab (`setting.manage`/
-  `zone.manage` + `device.manage` für Ausgleichswerte, Lesen `zone.read`), gleiche
-  Fehlertexte wie die Domäne, Zonenisolation geprüft.
-- **Aufbewahrung** (Review-Hinweis aus Auftrag 7b nachgezogen):
-  `thermoctl/services/retention.py` um `delete_old_sensor_failure_source_comparisons` und
-  `delete_old_actuator_decisions` erweitert, gleiche Frist wie `ShadowDecision`
-  (`shadow_decision_retention_days`), verdrahtet in `thermoctl/app.py`.
-  `sensor_failure_episode` bleibt unberührt (eine Zeile je Störung).
-- **Blocker gefunden und selbst behoben:** `sensor_failure_curve.js` fehlte zunächst der
-  `if (document.readyState !== "loading") setUp();`-Nachlade-Fallback, den
-  `device_filter.js` bereits hat. Ohne ihn tat der „Zeile hinzufügen“-Knopf bei einer
-  echten Direktnavigation auf `/settings` gar nichts (nur nach einem htmx-geboosteten
-  Seitenwechsel wirkte er) — per Browsertest aufgedeckt, nachgezogen.
-- **Entscheidung (Projektinhaber, 2026-10-02): keine Mehrprofilverwaltung.** Die
-  Zonen-Profilauswahl bietet „Anlage erben“ oder eines der vorhandenen Profile; eine
-  eigene Oberfläche zum *Anlegen* weiterer Profile ist nicht Teil dieses Auftrags und
-  bleibt es auch so. Nur das eine anlagenweite Profil ist über die Regelvorgaben-Seite
-  bearbeitbar.
-- Die **automatische** Aktivierung aller Zonen ist weiterhin nicht Teil dieses Auftrags
-  (Auftrag 9); die Vorgabe bleibt `sensor_failure_enabled=false`.
+### Stufen
 
-Geprüft: `ruff check .` sauber, `mypy thermoctl` sauber (132 Dateien). SQLite (eigene
-Datei) mit `--cov-fail-under=100`: **100,00 % erreicht** ("Required test coverage of 100%
-reached. Total coverage: 100.00%"). MariaDB (`nb_ui_konfig_final`) ebenso mit
-`--cov-fail-under=100`: **100,00 % erreicht.** Beide junitxml ausgezählt. Vokabeltest
-(`tests/test_user_visible_effect_texts.py`) zuletzt einzeln geprüft, neue Fundstellen in
-`tests/approved_physical_vocabulary.json` eingetragen. Browsertests
-(`test_form_hygiene.py`, `test_parameter_page_single_save.py`,
-`test_sensor_failure_curve_rows.py` — neu) für die betroffenen Fälle grün; Seiten bei
-1280 und 390 px aufgenommen und angesehen, keine Layoutauffälligkeit.
+`normal` → `ersatzquelle` → `notbetrieb` → `rueckkehrpruefung` → `normal`. Eine Episode
+überdauert Eskalation und jeden Rückfall aus `rueckkehrpruefung` und endet erst bei `normal`.
+Der Wandfühler gilt als brauchbar bei Status `ok` und vorhandenem Messwert. Ist er es nicht,
+gilt unter den Thermostat-Zuordnungen der Zone die **kälteste** um den Ausgleichswert
+korrigierte Messung (`korrigiert = roh − Ausgleich`, `temperature_backup_offset_k` je
+Zuordnung, Vorgabe 0 K); nur Rolle `actuator` mit Fähigkeit `thermostat` und ohne `switch`
+kommt in Frage. Gibt es keine brauchbare Quelle, beginnt der Notbetrieb. Bei
+`enabled=false` gilt in jedem Zustand sofort wieder `normal`; eine offene Episode wird dabei
+geschlossen, ohne Entwarnung.
 
-## 0.11.0: Notbetrieb-Anzeige, Schaltprotokoll, Meldung (Auftrag 8b) — fertig, ungemergt
+**Rückkehr:** mindestens zwei verschiedene Messzeitpunkte und die konfigurierte Dauer
+(Vorgabe 60 s) durchgehend brauchbar, gezählt gegen genau eine Quelle (der Wandfühler hat bei
+Gleichzeitigkeit Vorrang; wechselt das Gerät hinter der Ersatzquelle, beginnt die Zählung neu).
+Derselbe Messzeitpunkt zählt nie zweimal. In `rueckkehrpruefung` fällt ein unbrauchbarer
+Zyklus sofort auf `notbetrieb` zurück (gleiche Episode).
 
-Umgesetzt im Worktree `nb-ui-anzeige` (Branch `feat/notbetrieb-ui-anzeige`), der nur
-Anzeige/Schaltprotokoll/Meldung trägt — Regelparameter-/Regelvorgaben-Seite und die
-schreibenden REST/MCP-Konfigurationsendpunkte liegen parallel im Worktree
-`nb-ui-konfig` und fehlen hier bewusst. **Vor dem Mergen**: Migrationsketten-
-Reihenfolge prüfen (`c3f7a92e8d15` hängt an `b2e6f1a9c374`; falls `nb-ui-konfig`
-ebenfalls dort angesetzt hat, zwei Köpfe zusammenführen), Kreuzreview durch einen
-Codex-Agenten (dieser Auftrag lief auf Claude).
+### Echo-Regel (Bosch BTH-RA)
 
-**Anzeige** (`domain/emergency_display.py`, neu): `zone_banner()` liefert je Zone
-einen kurzen, nicht alarmistischen Hinweis ohne Technikbegriffe — „Ersatzquelle
-aktiv: <Gerät>", „Notbetrieb: Fußboden taktet x/y min" (Fließtext: „Der
-Raumfühler meldet gerade keinen Wert. Die Fußbodenheizung läuft deshalb in
-festen Abständen (x Min. an, y Min. aus), bis wieder ein Messwert da ist.",
-höchstens angedeutet um „, passend zur Außentemperatur" — nie „Kennlinie"/
-„Festtakt" oder eine rohe °C-Zahl; diese Betreiber-Fachbegriffe bleiben der
-Aktorentabelle auf `control.html` vorbehalten, Kreuzreview-Befund aus Commit
-`c1ae1c5`, behoben in `77a7ef2`), „Thermostat regelt selbst (Notsollwert s °C)",
-„Rückkehrprüfung läuft (n/2)". Eingebunden in `start.html`, `tenant_start.html` (zusätzlich: der
-Kopfbanner `_home_notice` prüft Notbetrieb jetzt **vor** Sensor/Fenster, sonst
-hätte er „Heizung läuft normal" behauptet, während eine Zone tatsächlich im
-Notbetrieb lief — gefunden beim eigenen Öffnen der Seite, nicht von einem Test)
-und `kiosk.html` (Tafel, Panel-Übersicht, Panel-Detail). Mobil (390 px) und Kiosk
-480×480 geprüft, inklusive eines CSS-Fundstücks: der lange Notbetriebstext riss in
-der schmalen Panel-Kachel über den Rand, weil `.tc-chip` `white-space: nowrap`
-setzt — eigene Klasse `.kiosk-notbetrieb-badge` (umbrechend) statt `.tc-chip` an
-dieser einen Stelle behebt es.
+Solange `thermoctl` eine externe Temperatur an ein Thermostat schreibt, ist dessen
+`local_temperature` ein Echo, keine unabhängige Messung. Ein Messwert gilt erst als
+unabhängig, wenn er frühestens 30 Minuten (`ECHO_INDEPENDENCE_DELAY`) nach dem letzten
+`remote_temperature`-Sendeversuch entstanden ist und danach empfangen wurde. Als Sendeversuch
+zählt alles außer `suppressed` (Trockenlauf), auch ein als gescheitert protokollierter, weil
+dessen Nachricht das Gerät trotzdem erreicht haben kann
+(`services/temperature_source_health.py`, `last_external_temperature_write_at`). Ein älterer
+Messwert bleibt ein Echo, auch wenn seither mehr als 30 Minuten vergangen sind.
 
-**Betriebsseite** (`services/emergency_state.py`, neu — die eine geteilte Lesung
-für HTMX/REST/MCP, Grundsatz 6): je Zone Stufe, aktive Quelle, Sensor-Timeout,
-Außenwertqualität, Rückkehrfortschritt, je Aktor Takt-Phase/-Frist und
-Übergabe-/Rückstellungsstatus (inklusive sichtbarem eigenem Zustand „versucht,
-Ergebnis unbekannt", nicht gleichgesetzt mit „fehlgeschlagen" oder „nie
-versucht"), Sendefreigabe (scharf/Trockenlauf), sowie die
-Ersatzquelle-↔-Wandfühler-Auswertung aus `sensor_failure_source_comparison`
-(mittlere Abweichung der letzten 7 Tage je Thermostat, Echo-/unbrauchbare Zeilen
-ausgeschlossen, „vorgeschlagener Ausgleichswert ≈ x K" — Grundlage für die
-Kalibrierung, Entscheidung R2; Kreuzreview-Befund zum Vorzeichen -- der
-Vorschlag muss `raw − wall_probe` lauten, nicht umgekehrt, sonst würde das
-Anwenden der Zahl weiter von statt näher an den Wandfühler führen -- aus
-Commit `c1ae1c5`, behoben in `77a7ef2` und zusätzlich mit
-`test_applying_the_suggested_offset_corrects_back_to_the_wall_probe`
-belegt: angewandter Vorschlag ergibt `corrected ≈ wall_probe`). Die beiden neuen Tabellen in `control.html`
-mussten `.tc-stack-table` statt nur `.table-responsive` bekommen: Bootstraps
-`.table { width: 100% }` presst die Spalten unter 768px sonst so eng, dass das
-globale `overflow-wrap: anywhere` Wörter mitten im Wort bricht — gefunden von
-`browser_tests/test_mobile_word_wrap.py`, nicht beim ersten Hinsehen.
+### Takt der Fußbodenkreise
 
-**REST/MCP, nur lesend:** `GET /api/v1/zones/{id}/emergency-state`
-(`zone.read`, dieselbe Zonenisolation wie `/state`) und MCP `read_emergency_state`
-— beide über `services/emergency_state.zone_emergency_view`, identischer Inhalt
-wie die Betriebsseite.
+`domain/emergency_cycle.advance` (Decimal, randbegrenzt, kein Nachholen). **Festtakt**
+(Vorgabe 10 min an / 20 min aus) gilt, wenn der Außenwert fehlt oder unbrauchbar ist; sonst
+die **Kennlinie** nach Außentemperatur (Vorgabepunkte −10 °C: 20 min an / 10 min aus,
+0 °C: 10/20, 15 °C: aus). Eine nichtleere Kennlinie braucht mindestens zwei Punkte mit genau
+einem oberen Aus-Punkt und nicht steigendem Tastgrad; leer heißt Festtakt. Die
+Wiederanlaufsperre am oberen Kennlinienpunkt hat eine Hysteresespanne (Vorgabe 1 K) und ist
+mit Taktquelle in `cycle_source`/`warm_locked` persistiert, hält also über Zyklen und Neustart.
+Die Taktquelle wechselt nur am Paarbeginn. Der Takt läuft auch im Betriebsmodus „Aus" und bei
+offenem Fenster. Phasen zählen erst ab **erfolgreichem** Versand: ein Ein-Fehler hält die
+Phase bis zum nächsten erfolgreichen Versuch, ein Aus-Fehler verhindert dadurch automatisch
+eine neue Ein-Phase.
 
-**Schaltprotokoll** (`domain/device_commands.py::list_commands`): führt jetzt
-`actuator_decision`-Zeilen (`action != "normal"`, sonst würde jeder Regelzyklus
-das Protokoll fluten) zusammen mit den echten `device_command`-Zeilen, zeitlich
-sortiert, als `entry_kind` (`"befehl"`/`"entscheidung"`) und `simulated` markiert
-— identisch in HTMX (`device_commands.html`, mit Signalfarbe/Badge), REST
-(`DeviceCommandResponse`) und MCP (`device_commands`). Bestehende Tests auf die
-alte Dreier-Tupel-Form der HTMX-Ansicht angepasst (sie nutzt jetzt denselben
-`list_commands` wie REST/MCP, inklusive Seitenblätterung über ein neues
-`offset`-Argument).
+### Einmal-Übergabe und Rückstellung der Thermostate
 
-**Meldung** (`domain/fault_notice.py::emergency_entered_notice`/
-`emergency_resolved_notice`, neue `app.py::_emergency_notices`): eine
-Störungsmeldung beim Eintritt (Text mit tatsächlicher Strategie — Ersatzquelle
-oder welche Aktoren wie takten/regeln, aus derselben `ZoneEmergencyView` wie die
-Betriebsseite), eine Entwarnung bei echter Rückkehr, keine bei
-`REASON_DEAKTIVIERT` (neue Spalte `sensor_failure_episode.ended_reason_code`,
-Migration `c3f7a92e8d15`, von `shadow_run.py::_persist_episode` beim Schließen
-gesetzt). Getrieben rein über `notification_state`
-(`offen`→`gemeldet`→`entwarnung_gesendet`, committet **vor** dem Versand) —
-restart-sicher ohne Wiederholung, derselbe Vertrag wie der scharfe
-Notbetriebsversand aus Auftrag 7b. Teilt sich den `notify_sensor_faults`-Schalter
-mit der alten Sensorstörungsmeldung (keine neue Einstellung); `_sensor_notices`
-überspringt dafür jede Zone mit `sensor_failure_enabled=True`, sonst gäbe es eine
-Doppelmeldung für dieselbe Störung. Die Home-Assistant-MQTT-Entität
-(`send_fault_notice`) kennt nur `sensor:<zone id>`-Schlüssel; Notbetriebsmeldungen
-sind episodenweise (`notbetrieb:<episode id>`) und werden dort gezielt
-ausgenommen (`EMERGENCY_NOTICE_KEY_PREFIX`), sonst hätte jede neue Episode einen
-fehlschlagenden Parse-Versuch geloggt.
+- **Übergabe** genau einmal je Episode und Zuordnung: `operating_mode: manual` und Notsollwert
+  (Vorgabe 20 °C; Bosch 5–30 °C in 0,5-K-Schritten), danach schweigt `thermoctl`.
+  `handover_attempted_at` wird **vor** dem Versand committet, auch bei Absturz gibt es keinen
+  zweiten Versuch. Der Trockenlauf verbraucht den Versuch nicht. Das Auslösesignal sitzt in
+  `zone_sensor_failure_state.handover_due_signalled` und übersteht einen Neustart.
+- **Vorwert:** unmittelbar vor der Übergabe wird der vom Gerät zuletzt **gemeldete**
+  `operating_mode` festgehalten (`handover_previous_operating_mode`, aus
+  `DeviceProperty.last_value_text`; nicht das zuletzt Geschriebene). `NULL` heißt unbekannt,
+  nie ein geratener Wert.
+- **Rückstellung** bei Rückkehr genau einmal: der gemeldete Vorwert wird zurückgeschrieben
+  (`restore_attempted_at` vor dem Versand). Ist der Vorwert unbekannt, wird nichts geschrieben
+  und das einmalig begründet (`sensorausfall_rueckstellung_unbekannt`). Im Trockenlauf bleibt
+  die Rückstellung offen (`armed_episode_id` gesetzt), bis ein scharfer Zyklus sie ausführt.
+  Gescheiterte Versuche bleiben sichtbar und werden nicht wiederholt. Die dauerhafte Spur ist
+  `actuator_decision`, auch wenn die Zuordnung danach geräumt wird.
 
-**Vorher rot, jetzt grün:** `tests/test_emergency_display.py`,
-`tests/test_emergency_state.py`, `tests/test_emergency_display_http.py`,
-`tests/test_app_emergency_notices.py`, plus Ergänzungen in
-`test_fault_notice.py`, `test_api.py`, `test_mcp.py`,
-`test_domain_device_commands.py`, `test_control_views.py`, `test_migrations.py`
-(neuer Migrationstest für `ended_reason_code`, Trip-wire-Kopf auf `c3f7a92e8d15`
-nachgezogen), `test_docs_current.py` (`docs/api.md`, `docs/mcp.md`,
-`docs/roadmap.md` nachgezogen, MCP-Werkzeugzahl 19→20),
-`tests/approved_physical_vocabulary.json` (jede neu geflaggte Fundstelle einzeln
-gelesen und bestätigt, keine pauschal übernommen).
+### Mindestdauer-Anrechnung
 
-**Bilder** (`tools/screenshot_seed.py` um einen Notbetrieb-Zustand für
-„Wohnzimmer" erweitert — dieselbe Zone ist auch der Kiosk-`kiosk_detail_zone`,
-zeigt das Szenario deshalb auf allen vier Oberflächen ohne zweite Demo-Zone):
-`anlage-startseite{,-2,-mobil}`, `anlage-betrieb{,-2}`, `wohnung-startseite{,-mobil,-mobil-2}`,
-`kiosk-{dashboard,dashboard-mobil,panel-uebersicht,panel-detail,tafel}` — alle real
-aufgenommen und angesehen (1280 px, 390 px, Kiosk 480×480), nicht nur über Tests
-geprüft.
+Für Mindest-Ein-/Aus-Dauer zählt der reale Relaiszustand, nicht der simulierte.
 
-Geprüft: `ruff check .` sauber, `mypy thermoctl` sauber (134 Dateien). SQLite
-(eigene Datei) **5373 Tests, 0 Fehler, 0 Fehlschläge, 1 übersprungen,
-Testabdeckung 100,00 %**; MariaDB (`nb_ui_anzeige`, Passwort `pruefen`,
-nacheinander danach gelaufen) **ebenfalls 5373 Tests, 0 Fehler, 0 Fehlschläge,
-1 übersprungen, Testabdeckung 100,00 %** (beide: `Required test coverage of
-100% reached. Total coverage: 100.00%`). `tests/test_user_visible_effect_texts.py`
-zuletzt und einzeln geprüft: 20 Tests grün — dabei fiel auf, dass schon das
-Nachziehen von `STATUS.md` selbst neue, geflaggte Fundstellen erzeugt (dieser
-Abschnitt beschreibt ja die neuen Texte); jede einzeln gelesen und bestätigt,
-bevor sie ins Verzeichnis kam. Relevante Browsertests (`test_mobile_word_wrap.py`
-vollständig, zwei `test_kiosk.py`-Fälle für 480×480) grün.
+- **Rückkehr:** `shadow_run._seed_recovery_phase_marker` schreibt in dem Zyklus, in dem die
+  Episode endet, eine `ShadowDecision` mit Outcome `notbetrieb_rueckkehr_start` und dem zuletzt
+  real erfolgreich gesendeten Zustand (`last_successful_command_state`). Die Haltedauer beginnt
+  damit konservativ ab der Markierung, nie mit mehr Anrechnung als real erreicht. Nur bei genau
+  einem Schaltausgang je Zone; bei keinem oder mehreren wird nichts erfunden.
+- **Ersteintritt:** der reale Relaiszustand samt Sendezeitpunkt kommt aus dem Befehlslog
+  (`services/emergency_prior.py`, von Schattenlauf und Publisher gleich benutzt). Nur ein
+  ausgeführter Schaltbefehl zählt als Wissen. Ein eingeschaltetes Relais erfüllt zuerst seine
+  Mindest-Ein-Dauer, bei bekanntem Aus-Zustand wird dessen Aus-Zeit angerechnet, bei
+  unbekanntem wird Aus gesendet und die volle Aus-Dauer abgewartet.
+- **Bekannte Grenze:** beim Ersteintritt sieht der Befehlslog keine Handschaltung am Gerät; ein
+  von Hand geänderter Relaiszustand fließt nicht ein.
+- `domain/statistics.py::heating_periods` sortiert bei gleichem `decided_at` nach
+  `ShadowDecision.id`.
 
-## 0.11.0: Notbetrieb-Versandweg (Auftrag 7b) — Kreuzreview-Nachbesserung: 100 % Abdeckung
+### Meldung
 
-Kreuzreview von Commit `4c2ed1a` bestätigte den Sicherheitskern (inkl. Handmutanten),
-blockierte aber bei **99,71 % Testabdeckung** (CI verlangt 100 %) — der vorherige Bericht
-hatte das nicht zitiert. Geschlossen, ohne `pragma: no cover`, durch gezielte Tests statt
-Ausnahmen:
+Je Episode genau eine Störungsmeldung beim Eintritt und eine Entwarnung bei echter Rückkehr,
+keine bei Deaktivierung (`sensor_failure_episode.ended_reason_code`); Schalter ist der
+bestehende `notify_sensor_faults`. `app.py::_emergency_notices` treibt den dreistufigen
+Meldezustand `sensor_failure_episode.notification_state` (Migration `e5b92d7f3a18`):
+`offen` → `melden_laeuft` → `gemeldet` → `entwarnung_laeuft` → `entwarnung_gesendet`. Der
+Zwischenzustand wird **vor** dem Versand committet, der Endzustand danach. Bricht der Prozess
+dazwischen ab, findet der nächste Lauf die Zwischenstufe und sendet **einmal** erneut, denn
+lieber eine doppelte als eine fehlende Meldung. Die Texte nennen die tatsächliche Strategie
+(`domain/fault_notice.py::emergency_entered_notice`/`emergency_resolved_notice`).
+`_sensor_notices` überspringt Zonen mit aktivem Notbetrieb (keine Doppelmeldung); die
+Home-Assistant-MQTT-Entität kennt nur `sensor:<zone id>`-Schlüssel, Notbetriebsmeldungen
+(`notbetrieb:<episode id>`, `EMERGENCY_NOTICE_KEY_PREFIX`) werden dort ausgenommen.
 
-- **Rückstellung mit unbekanntem Vorwert** (`plan_restore`, `_send_emergency_handover`):
-  kein Schreibversuch, genau ein `decided_no_command`-Protokolleintrag.
-- **Rückstellung im Trockenlauf**: null Nachrichten, der Einmal-Versuch bleibt offen
-  (`armed_episode_id` unverändert), sobald scharf geschaltet wird genau ein Versuch.
-- **Gescheiterte Rückstellung**: sichtbares `failed`-Ergebnis, kein zweiter Versuch.
-- **Schaltausgang über Meross** (inkl. `invalidate_meross_session` bei Broker-Fehler) und
-  über eine nicht verdrahtete Anbindung — der scharfe Notbetriebspfad nutzt denselben
-  Dispatch wie der gewöhnliche Pfad, nicht eine zweite, parallele Umsetzung.
-- **Direkte Adaptertests** für `send_emergency_handover`/`send_emergency_restore` in
-  `tests/test_actuators.py`, analog zu `Zigbee2MqttThermostat.switching()` (Bereichsprüfung,
-  Trockenlauf, Peer-Fehler, abgelehnte Veröffentlichung).
+### Anzeige, REST und MCP
 
-**Befund 2 — Absturz zwischen Markierung und Versand (Projektinhaber-Vorgabe, getestet,
-Verhalten dabei geklärt):** Ein Prozessabsturz zwischen dem Committen von
-`handover_attempted_at`/`restore_attempted_at` und dem tatsächlichen Versandergebnis löst in
-**keinem** Fall einen zweiten Versand aus — das ist die Eigenschaft, auf die es ankommt, und
-sie gilt nachweislich unabhängig vom Ausgang. Die *Sichtbarkeit* des unaufgelösten Zustands
-unterscheidet sich aber zwischen Übergabe und Rückstellung: Die Übergabe bleibt sichtbar
-(`handover_attempted_at` gesetzt, `handover_result` `None`), solange die Episode offen ist
-(die Zone also `notbetrieb`/`rueckkehrpruefung` bleibt) — das kann Stunden sein. Die
-Rückstellung dagegen wird genau in dem einen Zyklus aufgelöst, in dem die Zone `normal`
-wird; der nächste Durchlauf von `_send_emergency_actuators`s „not active"-Zweig sieht
-`restore_attempted_at` bereits gesetzt, verweigert korrekt einen zweiten Versuch und räumt
-die Zuordnung dabei als „abgeschlossen" weg — ohne zwischen „erfolgreich", „fehlgeschlagen"
-und „abgestürzt, unbekannt" zu unterscheiden, weil `restore_attempted_at` allein das Signal
-ist. Die dauerhafte Spur ist dafür `actuator_decision` (`simulated=False`, bei jedem Aufruf
-geschrieben, unabhängig davon, ob die Zuordnung danach geräumt wird) — nicht die Zeile in
-`actuator_emergency_state` selbst. Getestet in
-`tests/test_publishing_notbetrieb_versand.py::
-test_restore_interrupted_between_marker_and_send_is_not_retried`, mit genau dieser
-Begründung im Test selbst. Keine Code-Änderung nötig, keine Sicherheitslücke (die einzige
-Garantie, die zählt — kein zweiter Versand — hält) — hier nur festgehalten, falls der
-kürzere Sichtbarkeitszeitraum bei der Rückstellung einmal überrascht.
+- **Hinweise** (`domain/emergency_display.py::zone_banner`) auf Start, Wohnungs-Start und Kiosk
+  (Tafel, Panel-Übersicht, Panel-Detail): „Ersatzquelle aktiv", „Notbetrieb: Fußboden taktet
+  x/y min", „Thermostat regelt selbst", „Rückkehrprüfung läuft (n/2)". Die Texte für Bewohner
+  nennen weder Kennlinie noch Festtakt noch eine rohe Gradzahl; diese Begriffe bleiben der
+  Aktorentabelle der Betriebsseite vorbehalten. Der Kopfbanner prüft Notbetrieb vor Sensor und
+  Fenster.
+- **Betriebsseite** (`/control`, `services/emergency_state.py` als gemeinsame Lesung): je Zone
+  Stufe, aktive Quelle, Sensor-Timeout, Außenwertqualität, Rückkehrfortschritt, je Aktor
+  Takt-Phase, Frist, Übergabe- und Rückstellungsstatus (mit eigenem Zustand „versucht, Ergebnis
+  unbekannt"), Sendefreigabe (scharf/Trockenlauf) und der Vergleich Ersatzquelle ↔ Wandfühler
+  aus `sensor_failure_source_comparison` (mittlere Abweichung der letzten 7 Tage je
+  Thermostat, Echo- und unbrauchbare Zeilen ausgeschlossen) mit vorgeschlagenem Ausgleichswert
+  `roh − Wandfühler`. Eine Vergleichszeile entsteht je neuem Kandidaten-Messzeitpunkt, wenn
+  Wandfühler und Kandidat Werte haben oder die Zone in `ersatzquelle` steht.
+- **Schaltprotokoll** (`domain/device_commands.py::list_commands`) führt neben echten
+  `device_command`-Zeilen die `actuator_decision`-Zeilen mit `action != "normal"` zusammen
+  (`entry_kind` `befehl`/`entscheidung`, `simulated`), identisch in HTMX, REST und MCP.
+- **REST:** `GET /api/v1/zones/{id}/emergency-state`,
+  `GET/PUT /api/v1/control/sensor-failure-defaults`, `GET/PUT /api/v1/zones/{id}/sensor-failure`.
+  **MCP:** `read_emergency_state`, `read/set_sensor_failure_defaults`,
+  `read/set_sensor_failure_policy`. Rechte: Lesen `zone.read`, Schreiben `setting.manage` bzw.
+  `zone.manage`, Ausgleichswerte zusätzlich `device.manage`; Zonenisolation wie bei `/state`.
 
-**Kleinigkeit — `domain/statistics.py::heating_periods` fehlender Tie-Breaker:** Zwei
-`shadow_decision`-Zeilen mit identischem `decided_at` (die synthetische Rückkehr-Markierung
-aus Blocker 1 und die natürliche Entscheidung desselben Zyklus) hatten keine garantierte
-Verarbeitungsreihenfolge. `order_by` um `ShadowDecision.id` ergänzt — Einfügereihenfolge
-entscheidet jetzt, nicht der Zufall der Datenbank. Test
-`tests/test_statistics.py::test_two_decisions_at_the_same_instant_are_ordered_by_id_not_by_chance`
-mit zwei Zonen (umgekehrte Einfügereihenfolge je Zone), um zu belegen, dass das Ergebnis der
-Reihenfolge folgt. **Gezielter Handmutant (Entfernen des `id`-Tie-Breakers) überlebt auf
-SQLite** — erwiesen äquivalent für diesen Fall: SQLite liefert ohne `ORDER BY` auf dieser
-kleinen, indexlosen Tabelle in der Praxis bereits Einfügereihenfolge zurück, sodass der
-Mutant hier zufällig dasselbe Ergebnis liefert. Die Korrektur bleibt trotzdem richtig — sie
-macht aus einem nirgends zugesicherten Zufallsverhalten eine garantierte Eigenschaft, nur ist
-das auf SQLite mit einem reinen Unit-Test nicht von außen unterscheidbar. Nicht als
-`# pragma: no cover` markiert, weil die Zeile selbst (der dritte `order_by`-Parameter) beim
-normalen SQLite-Testlauf durchaus ausgeführt wird (100 % Abdeckung bleibt unberührt) — nur der
-gezielte Mutationstest dieser einen Zeile ist auf SQLite nicht aussagekräftig.
+### Konfiguration
 
-Geprüft (dieser Nachbesserungsschritt): `ruff check .` sauber, `mypy thermoctl` sauber (132
-Dateien). SQLite (eigene Datei) **und** MariaDB (`nb_versand`), je mit
-`--cov-fail-under=100`, junitxml ausgezählt: SQLite **5322 Tests, 0 Fehler, 0 Fehlschläge,
-1 übersprungen, Testabdeckung 100,00 %**; MariaDB **5322 Tests, 0 Fehler, 0 Fehlschläge
-(der einzige Fehlschlag unterwegs war der erwartete, vor dem letzten Schritt noch offene
-Vokabeltest — danach behoben), 1 übersprungen, Testabdeckung ebenfalls 100,00 %** (beide:
-`Required test coverage of 100% reached. Total coverage: 100.00%`). Drei weitere gezielte
-Handmutanten
-(Prüfsumme und `git diff --stat` vor und nach jedem kontrolliert): Meross-Sitzungs-
-Invalidierung invertiert (`and not result.session_fault` statt `and result.session_fault`)
-→ von 1 Test erkannt; nicht verdrahtete Anbindung mit vertauschtem
-`SUPPRESSED`/`FAILED` → von 1 Test erkannt; der oben beschriebene Tie-Breaker-Mutant
-(äquivalent auf SQLite, s.o.). Alle drei einzeln zurückgesetzt, Prüfsumme danach jeweils
-wieder identisch zum Ausgangsstand.
+- **Datenmodell:** Profile samt Kennlinienpunkten als echte Zeilen, dazu Quellenzustand,
+  Episoden, Aktorlaufzustand und Aktorentscheidungen als relationale Tabellen (kein ENUM,
+  Wertemengen als CHECK-Constraints). Historien bleiben bei Zonenlöschung mit Namenssnapshot
+  erhalten. Vorgabeprofil „Notbetrieb Vorgabe": Festtakt 600/1200 s, Rückkehr 60 s und 2
+  Messwerte, Wiederanlaufspanne 1 K, drei Kennlinienpunkte. Bei leerem Profilverweis gilt das
+  Profil mit diesem Namen und kleinster ID; fehlt es, meldet die Domäne einen
+  Konfigurationsfehler, statt ein Ersatzprofil anzulegen.
+- **Regelparameter-Sektion der Zone** (`web/templates/parameter.html`): im bestehenden einen
+  Formular mit einem Speichern-Knopf, das atomar speichert. Aktivierung, Profil (erben oder
+  vorhandenes), eigener Notsollwert, Ausgleichswerte je Thermostat (nur mit `device.manage`),
+  wirksame Werte mit Herkunft daneben.
+- **Regelvorgaben-Karte „Notbetrieb bei Sensorausfall"** (`/settings`, `settings.html`): ein
+  Speichern-Knopf für Festtakt, Rückkehrprüfung, Wiederanlaufspanne, anlagenweiten Notsollwert
+  und die Außenkennlinie als Zeilen (`sensor_failure_curve.js`, wiederholte
+  `curve_outdoor_c`/`curve_on_seconds`/`curve_off_seconds`-Felder). Die Eingabe wird vor jedem
+  Schreiben vollständig validiert; ein ungültiger Punkt oder eine unvollständige Zeile verwirft
+  alles. Aktive Festtakte werden bei Änderung von Mindestzeiten und Regelintervall erneut
+  geprüft.
+- **Aufbewahrung** (`services/retention.py`): `sensor_failure_source_comparison` und
+  `actuator_decision` werden nach `shadow_decision_retention_days` gelöscht;
+  `sensor_failure_episode` bleibt (eine Zeile je Störung).
 
-## 0.11.0 in Arbeit: Notbetrieb-Versandweg (Auftrag 7b) — beide Blocker entschieden und umgesetzt
+### Bewusste Entwurfsentscheidungen
 
-Scharfer Versand jetzt in `thermoctl/services/publishing.py`: eine neue
-`_send_emergency_actuators`-Familie (`_send_emergency_handover`,
-`_send_emergency_switch`) wird je Zone aufgerufen, die jemals eine
-`ZoneSensorFailureState`-Zeile hatte — **vor** den bestehenden
-`_send_self_regulating_valves`/`_send_actuator_switches`-Schleifen, die für
-eine Zone in `notbetrieb`/`rueckkehrpruefung` jetzt übersprungen werden statt
-aufgerufen (keine ihrer Abfragen läuft dann überhaupt, nicht nur ihr Versand
-wird unterdrückt — „null Schreibbefehle auf allen Pfaden" gilt dadurch für
-alle vier in Auftrag 7b genannten Pfade zugleich: Sollwert, zentraler
-Ein/Aus, Ventilschutz, Fehlerwiederholung).
+- **Ein-Frist nach fehlgeschlagenem Versand:** Die Phase zählt ab erfolgreichem Versand. Nach
+  einem gescheiterten Ein-Versuch darf die Ein-Frist neu beginnen; eine Ein-Phase ist dabei nie
+  länger als konfiguriert.
+- **Der Warm-Aus-Punkt beendet eine laufende Ein-Phase nicht vorzeitig** (Projektinhaber,
+  2026-10-03: unkritisch).
+- **Keine Mehrprofilverwaltung** (Projektinhaber, 2026-10-02): die Zone wählt „Anlage erben"
+  oder ein vorhandenes Profil; bearbeitbar ist nur das eine anlagenweite Profil über die
+  Regelvorgaben-Seite.
 
-**Architekturentscheidung (Begründung für die Nachfrage aus Auftrag 7a selbst,
-Zeile „Klar festlegen, wo die scharfe Takt-Berechnung stattfindet"):** Die
-scharfe Takt-/Handover-Berechnung läuft im **Publisher**, nicht im
-Schattenlauf — ruft aber dieselben reinen Domänenbausteine
-(`domain.emergency_actuator_plan.plan_thermostat`/`plan_switch`,
-`domain.emergency_cycle.advance`) auf wie `shadow_run.py` (Grundsatz 6: die
-Regel lebt einmal). Begründung: Nur der Publisher weiß, ob ein Versand
-*wirklich* gelungen ist (`switching_allowed`, das tatsächliche MQTT-Ergebnis)
-— genau das muss die scharfe Phase/den scharfen Handover-Zeitpunkt gaten
-(„Phasen erst nach erfolgreichem Versand als begonnen betrachtet"). Die
-scharfen Felder von `actuator_emergency_state` (ohne `simulated_`-Präfix)
-werden deshalb **nur bei `outcome == executed`** fortgeschrieben; ein
-gescheiterter Versuch lässt sie unverändert, wodurch der nächste Zyklus über
-den unveränderten, inzwischen überfälligen `prior` automatisch denselben
-Zielzustand erneut anfordert — Wiederholung ohne eigene Zähl-/Sperrlogik,
-direkt aus `emergency_cycle`s „kein Nachholen"-Vertrag.
+### Offen und als Nächstes
 
-**Neue Spalte `armed_episode_id`** (Migration `9d3f1a7c2b84`) trennt, welcher
-Episode die *scharfen* Felder gerade zugeordnet sind, vom bestehenden
-`episode_id` — letzteres schreibt `shadow_run.py` jeden Zyklus unbedingt neu
-(auch im Trockenlauf), kann also nicht als scharfer Frische-Marker dienen.
-Bei Rückkehr (`armed_episode_id is not None`, Stufe nicht mehr aktiv) löscht
-der Publisher die scharfen Felder einmalig und invalidiert gezielt
-`PublicationState.valve_commands`/`.switch_commands` für das betroffene
-Gerät — ohne das sendet der nächste normale Zyklus einen unveränderten
-Sollwert/Zustand gar nicht erst, weil der Dedup-Cache ihn noch als „bereits
-gesendet" führt (Auftrag-7b-Vorgabe, jetzt mit Test belegt).
-
-**Übergabe:** genau ein Versuch je scharfer Episode und Zuordnung,
-`handover_attempted_at` wird **vor** dem Versand gesetzt und committet;
-Geräte ohne bestätigten Vertrag (`domain.self_regulating.handover_capable`
-prüft `occupied_heating_setpoint` **und** `operating_mode` schreibbar, mit
-`manual` unter den deklarierten Werten, falls welche deklariert sind)
-bekommen nie einen Versuch — stattdessen genau **ein**
-Schaltprotokoll-Eintrag je Episode mit dem neuen `command_outcome`
-`decided_no_command` (Migration `9d3f1a7c2b84`), nicht einer je Zyklus (das
-Schaltprotokoll bleibt „selten"). Trockenlauf zählt nicht als Versuch.
-
-**Schaltausgang:** `emergency_cycle.advance()` läuft gegen die scharfen
-Felder, genau wie im Schattenlauf gegen die `simulated_*`-Felder; Senden
-über denselben `Zigbee2MqttValve`/`MerossSwitch`-Weg wie der bestehende
-Pfad. Ein-Fehler hält die Phase bis zum nächsten erfolgreichen Versuch (kein
-Fortschritt in `phase`/`phase_deadline_at`), Aus-Fehler verhindert dadurch
-automatisch eine neue Ein-Phase — beides ohne eigene Sonderfälle, siehe oben.
-
-### Blocker 1 (Hauptsession, Grundsatz 7) — Mindestdauer-Invariante bei Rückkehr, gelöst
-
-Der zuvor hier gemeldete Blocker (siehe Git-Historie dieser Datei für den
-ursprünglichen Befund) ist entschieden und umgesetzt, konservativ wie von der
-Hauptsession vorgegeben. `shadow_run._previous_state()`/`held_for_s` liest
-ausschließlich die `ShadowDecision`-Historie — die während
-`notbetrieb`/`rueckkehrpruefung` unverändert simuliert weiterlief, während
-das reale Relais vom Notbetriebstakt geschaltet wurde. Ohne Korrektur hätte
-der erste reguläre Zyklus nach der Rückkehr die Mindestschaltdauer anhand
-der falschen (simulierten) Historie geprüft.
-
-**Lösung:** `thermoctl/services/shadow_run.py::_seed_recovery_phase_marker`,
-aufgerufen genau in dem Zyklus, in dem `_apply_sensor_failure` eine Episode
-beendet (`events.episode_ended`) — dafür musste `_apply_sensor_failure`
-innerhalb von `_process_zone` **vor** `_previous_state()` gezogen werden
-(beide sind unabhängig voneinander berechenbar, die bisherige Reihenfolge war
-zufällig, nicht absichtlich). Die Funktion schreibt eine zusätzliche
-`shadow_decision`-Zeile mit `decided_at=now` und `would_heat` = dem real
-zuletzt erfolgreich gesendeten Zustand
-(`ActuatorEmergencyState.last_successful_command_state`, zu diesem Zeitpunkt
-im Zyklus noch nicht vom Publisher zurückgesetzt). Bewusst **konservativ**,
-nicht exakt rekonstruiert: `held_for_s` beginnt dadurch bei 0 ab dem
-Rückkehr-Zeitpunkt selbst (nicht ab dem tatsächlichen, oft früheren
-Schaltzeitpunkt) — nie mit mehr Anrechnung als real erreicht, also nie zu
-früh als „Mindestdauer erfüllt" gelesen, höchstens strenger als nötig. Neuer
-Outcome-Code `notbetrieb_rueckkehr_start`, damit die Zeile im Protokoll als
-das erkennbar bleibt, was sie ist. Nur für Zonen mit **genau einem**
-Schaltausgang (die reale Anlage hat je Zone höchstens einen) — bei keinem
-oder mehreren wird bewusst nichts geschrieben, kein erfundener Zustand.
-
-Test (`test_recovery_does_not_violate_the_real_minimum_on_duration`): Relais
-schaltet im Notbetrieb real ein, Sensor kommt nach wenigen Sekunden warm
-zurück (gewöhnliche Hysterese wollte sofort „aus") — Relais bleibt an, bis
-die (konservativ ab dem Rückkehr-Zeitpunkt gezählte) Mindest-Ein-Dauer
-abgelaufen ist, schaltet danach korrekt ab. Gezielter Handmutant bestätigt:
-Markierung deaktiviert → derselbe Test schlägt sofort fehl (Relais schaltet
-zu früh ab).
-
-### Blocker 2 (Projektinhaber) — `operating_mode` bei Rückkehr, gelöst: „exakt der Zustand wie davor"
-
-Entscheidung des Projektinhabers: nicht raten (Optionen B/C aus der
-vorherigen Fassung dieses Abschnitts), sondern den tatsächlich vom Gerät
-gemeldeten Vorwert festhalten und bei Rückkehr genau diesen zurückschreiben.
-
-**Umsetzung:** Neue Spalte `actuator_emergency_state.
-handover_previous_operating_mode` (Migration `b2e6f1a9c374`) — beim Handover,
-unmittelbar vor dem Schreibversuch, liest `_send_emergency_handover` den
-aktuell gespeicherten Gerätezustand (`DeviceProperty.last_value_text` für
-`operating_mode`, von `services/ingest.py` laufend aktuell gehalten — **nicht**
-das, was thermoctl zuletzt geschrieben hat, sondern das, was das Gerät selbst
-zuletzt gemeldet hat) und hält ihn fest. `NULL` heißt ausdrücklich „unbekannt",
-nie ein geratener Wert (Grundsatz 1). Bei Rückkehr zu `normal`/`ersatzquelle`
-schreibt die neue Domänenfunktion `domain.emergency_actuator_plan.
-plan_restore` + `services/publishing.py::_send_emergency_restore` genau
-einmal `operating_mode` auf diesen Vorwert zurück — derselbe
-Einmal-Versand-ohne-Wiederholung-Vertrag wie die Übergabe, nur umgekehrt:
-`restore_attempted_at` wird **vor** dem Versand gesetzt und committet,
-Fehlschlag bleibt sichtbar (`restore_result`), kein zweiter Versuch. Ist der
-Vorwert unbekannt, wird nichts geschrieben, einmalig sichtbar begründet
-(neuer Reason-Code `sensorausfall_rueckstellung_unbekannt`). Ein Trockenlauf
-verbraucht den einmaligen Versuch nicht: `_send_emergency_actuators` hält die
-Episode für die Rückstellung bewusst offen (`armed_episode_id` bleibt
-gesetzt), bis ein scharfer Zyklus den echten Versuch unternimmt — sonst wäre
-das Gerät nach einer Rückkehr im Trockenlauf dauerhaft auf `manual`
-hängengeblieben. Die Dedup-Cache-Invalidierung (Blocker aus Auftrag 7b,
-Punkt 3) läuft unabhängig davon in jedem Zyklus, damit der gewöhnliche
-Sollwert nicht auf die Rückstellung warten muss.
-
-Test (`test_recovery_restores_the_previous_operating_mode_exactly_once_with_restart`,
-eigene SQLite-Datei, simulierter Prozessneustart zwischen Übergabe und
-Rückkehr): Gerät meldet vor dem Ausfall `pause` → Übergabe schreibt `manual`
-→ Rückkehr schreibt genau einmal `pause` zurück, Inhalt geprüft, kein dritter
-Schreibversuch über weitere Zyklen. Gezielter Handmutant am
-„Vorwert unbekannt"-Zweig (`domain.emergency_actuator_plan.plan_restore`)
-und einer am Trockenlauf-Offenhalten bestätigen beide: Mutation → Test wird
-rot.
-
-Tests, Zähl-Belege: `tests/test_publishing_notbetrieb_versand.py` — zwölf Szenarien mit
-Fake-Transport-Zählung (nie nur Rückgabewert): genau eine Übergabe-Nachricht
-mit geprüftem Inhalt, danach null über fünf weitere Zyklen inkl. geänderter
-Notbetriebs-Einstellung; gescheiterte Übergabe kein zweiter Versuch; Gerät
-ohne `operating_mode` null Nachrichten, ein `decided_no_command`-Eintrag;
-Trockenlauf null Nachrichten, Übergabe nicht als versucht markiert, danach
-scharf geschaltet genau ein Versuch; Schaltausgang über zwei Ein/Aus-Paare
-mit korrekten Zeiten; Ein-Fehler hält die Phase; Aus-Fehler verhindert eine
-neue Ein-Phase; Rückkehr sendet den unveränderten Sollwert erneut
-(Dedup-Invalidierung); Bediengerätekanal strukturell ausgeschlossen
-(`may_be_written`); Übergabe-Latch übersteht einen simulierten
-Prozessneustart; Rückkehr schreibt den gemeldeten Vorwert von
-`operating_mode` genau einmal zurück (eigener Neustart-Test); Rückkehr
-verletzt die reale Mindest-Ein-Dauer nicht (Blocker 1).
-
-Geprüft: `ruff check .` sauber, `mypy thermoctl` sauber (132 Dateien, 0 Fehler); Alembic-
-Migrationen `9d3f1a7c2b84` und `b2e6f1a9c374` vorwärts/rückwärts geprüft (SQLite), ein
-Migrationskopf (`b2e6f1a9c374`); `pytest -q --no-cov --junitxml=…` gegen SQLite **und**
-MariaDB (eigene Testdatenbanken, nacheinander), zuletzt je **5304 Tests, 0 Fehler,
-0 Fehlschläge, 1 übersprungen** auf beiden Datenbanken. Sechs gezielte Handmutanten insgesamt
-(vier aus der ersten Fassung dieses Auftrags, siehe Git-Historie, plus zwei neue für die
-Blocker-Lösungen), **nach jedem einzelnen Prüfsumme und `git diff --stat` kontrolliert**
-(CLAUDE.md-iCloud-Lehre aus der ersten Fassung): `plan_restore`s „Vorwert unbekannt"-Zweig
-invertiert → von 1 Test erkannt; die Trockenlauf-Offenhalte-Bedingung in
-`_send_emergency_actuators` invertiert → von 1 Test erkannt (derselbe Test deckt beide Enden
-des Rückstellungs-Vertrags ab); `_seed_recovery_phase_marker`s Aufruf deaktiviert (`if False:`)
-→ von 1 Test erkannt (direkter Beleg für Blocker 1: das Relais schaltet im Mutanten zu früh
-ab); dieselbe Funktion mit invertierter „genau ein Schaltausgang"-Bedingung → von 2 Tests
-erkannt. Alle sechs Mutanten einzeln zurückgesetzt und per Prüfsumme bestätigt identisch zum
-Ausgangsstand.
-
-## 0.11.0: Notbetrieb an den Regelzyklus angebunden, Schattenbetrieb (Auftrag 7a)
-
-**Kreuzreview-Korrektur (Hauptsession, 2026-09-30) an einer ersten Fassung (Commit
-`88bc87a`):** Diese Fassung hatte in `notbetrieb`/`rueckkehrpruefung` die
-Zonen-`ShadowDecision` (`would_heat`/`outcome_code`/`reason`) durch die Aktor-/Takt-
-Entscheidung ersetzt. Das war falsch — genau dieses Feld liest der bestehende, unveränderte
-Publisher (`services/publishing.py::_latest_decision`/`_send_actuator_switches`) und schaltet
-danach echte Relais, sobald die Anlage scharf ist. Auftrag 7a ist als **reiner
-Schattenbetrieb** definiert; eine Überschreibung dort hätte die Notbetriebslogik am ersten
-scharfen Zyklus wirksam werden lassen, ohne dass der Versandweg (Auftrag 7b) je geprüft wurde.
-**Korrigiert:** Die Zonen-`ShadowDecision` bleibt für **jede** Stufe exakt das, was `decide()` +
-PI ohnehin liefern würden — unverändert durch Notbetrieb. Die Aktor-/Takt-Entscheidung
-(Übergabe, Ein/Aus-Takt) wird **ausschließlich** nach `actuator_decision`/
-`actuator_emergency_state` geschrieben (`simulated=True`), nie in die Zonenentscheidung
-zurückgespeist. Seinerzeit bewiesen durch einen Test in der Auftrag-7a-Testdatei, die Auftrag 7b
-inzwischen durch `tests/test_publishing_notbetrieb_versand.py` ersetzt hat
-(scharf geschaltete Anlage, Fake-Transport, Zählung der Schreibaufrufe: eine Notbetriebs-Zone
-sendet exakt dasselbe wie eine gewöhnliche Zone ohne Quelle — nur auf dem allerersten Zyklus
-noch zutreffend, siehe oben) und durch
-`tests/test_shadow_run_sensor_failure.py`s `_assert_matches_ordinary_decision`-Hilfsfunktion
-(rekonstruiert `decide()`s Antwort unabhängig und vergleicht sie mit der tatsächlich
-geschriebenen Zeile). **Der hier ursprünglich vermerkte Hinweis für Auftrag 7b ist weiterhin
-ein offener Blocker** — siehe den eigenen Abschnitt oben („Offener Blocker — Mindestdauer-
-Invariante bei Rückkehr"), dort mit dem tatsächlichen Befund aus 7b statt der Vorab-Vermutung.
-
-`thermoctl/services/shadow_run.py` ruft für jede `sensor_failure_enabled`-Zone pro Zyklus
-`temperature_source_health.evaluate_source_health` → `emergency_operation.advance` auf und
-schreibt Stufe/Episode nach `zone_sensor_failure_state`/`sensor_failure_episode` — auch für
-eine Zone, die währenddessen von aktiviert auf deaktiviert wechselt (offene Episode wird
-noch sauber geschlossen, danach läuft die Zone wieder bitgenau wie eine, die nie aktiviert
-war; das ist die einzige Abweichung von "kein Zugriff, solange `enabled=false`"). Stufe
-`ersatzquelle` speist den korrigierten Ersatzmesswert mit Sensorstatus `ok` in die normale
-`Situation`/`decide()`-Kette (eigener Hinweis „Ersatzquelle aktiv: <Gerät>" im
-Entscheidungsgrund — das ist die einzige Stufe, in der die Zonenentscheidung sich gegenüber
-heute ändert, und das bewusst: Ersatzquelle soll real geregelt werden, nicht nur protokolliert).
-PI wird über ein neues, eigenständiges `sensor_failure_emergency_active`-Signal an
-`_pi_gate_reason`/`_pi_outcome` in **jeder** Nicht-normal-Stufe neutralisiert (nicht nur bei
-`sensor_status`-Ausfall — sonst hätte die Ersatzquelle mit Status `ok` PI fälschlich
-weiterlaufen lassen). Die 0.10.1-Invariante „Hysterese-Phase hält ihre Mindestdauer" bleibt
-unverändert (eigener Regressionslauf grün).
-
-In `notbetrieb`/`rueckkehrpruefung` berechnet der neue, reine Domänenbaustein
-`thermoctl/domain/emergency_actuator_plan.py` (Vorrangtabelle Plan 1.4) je Aktorzuordnung eine
-eigene Entscheidung, **rein zur Protokollierung**: je Thermostat-Zuordnung genau ein
-`handover`-Versuch pro **Episode** (nicht pro Signal-Zyklus — das Flag sitzt je
-`zone_device_id` in `actuator_emergency_state`, übersteht also auch einen Prozessneustart
-unverändert), danach `no_write`; je Schaltausgang läuft `emergency_cycle.advance` unverändert
-weiter (auch bei offenem Fenster/Aus-Modus, wie entschieden) — Taktquelle
-(`festtakt`/`kennlinie`) und Wiederanlaufsperre (`warm_locked`) werden jetzt **persistiert**
-(`simulated_cycle_source`/`simulated_warm_locked`, Migration `05f7842e4d69`), nicht mehr aus
-dem aktuellen Zyklus neu geschätzt — vorher griff die Wiederanlaufsperre nie über einen
-Neustart/Zyklus hinweg (Kreuzreview-Fund, siehe unten). Alles bleibt **Schattenbetrieb**: jede
-`ActuatorDecision`/`ActuatorEmergencyState`-Zeile trägt `simulated=True`; kein Versandpfad
-(`publishing.py`, `integrations/`, `switch_commands.py`) wurde angefasst — das ist Auftrag 7b.
-
-**Schnittstelle, von Auftrag 7b inzwischen bedient** (siehe den Abschnitt oben): je
-Aktorzuordnung lag die aktuelle Entscheidung in `actuator_emergency_state` (Felder
-`simulated_*` vs. die damals noch leeren `phase`/`on_seconds`/`cycle_source`/`warm_locked`/
-`handover_attempted_at` usw. für den scharfen Zweig) und das Protokoll in `actuator_decision`
-(`action`, `reason_code`, `reason`, bei Schaltausgängen `phase`/`phase_deadline_at`/
-`cycle_source`/`on_seconds`/`off_seconds`, bei Thermostaten nur `action`/`reason`) bereit — 7b
-füllt die scharfen Felder jetzt beim echten Versand.
-
-**Vergleichsprotokoll Ersatzquelle ↔ Wandfühler (Plan Abschnitt 6, R2) — jetzt umgesetzt:**
-neue Tabelle `sensor_failure_source_comparison` (Migration `05f7842e4d69`, Zone/Gerät als
-SET-NULL-Snapshot wie jede andere Historie in diesem Modul). Geschrieben je Kandidat, wenn
-Wandfühler **und** Kandidat je einen Wert haben oder die Zone gerade in Stufe `ersatzquelle`
-steht, höchstens eine Zeile je neuem Kandidaten-Messzeitpunkt (kein Zeilenwachstum ohne neue
-Messung).
-
-Geprüft: `ruff check .`, `mypy thermoctl` sauber (0 Fehler); Alembic-Migration `05f7842e4d69`
-vorwärts/rückwärts geprüft, ein Migrationskopf; `pytest -q --cov-fail-under=100` gegen SQLite
-und MariaDB nacheinander (eigene Testdatenbanken), je 5279 Tests, 0 Fehlschläge, 0 Fehler,
-1 übersprungen, 100 % Testabdeckung beide Male; `tests/test_user_visible_effect_texts.py`
-danach **einzeln, als allerletzter Schritt** (keine Datei mehr geändert) grün — drei neue,
-geprüfte Fundstellen: „switch" in `emergency_actuator_plan.py` (`KIND_SWITCH = "switch"`,
-ein Vorrangtabellen-Code, keine körperliche Behauptung) sowie zwei Prosa-Zeilen in
-`docs/STATUS.md` selbst; `tests/approved_physical_vocabulary.json` entsprechend ergänzt.
-
-Acht Szenarientests in `tests/test_shadow_run_sensor_failure.py`: enabled=false bleibt
-unberührt (keine Tabellenzeile entsteht), ein vollständiger Zyklus normal → ersatzquelle →
-notbetrieb mit Taktentscheidungen über zwei Aus/Ein-Paare und **an jeder Stelle geprüft, dass
-die Zonenentscheidung exakt `decide()`s eigener Antwort entspricht** (nicht mehr überschrieben),
-Übergabe genau einmal auch nach simuliertem Prozessneustart (echte zweite `Session` gegen
-dieselbe committete SQLite-Datei), Rückkehr nach zwei Messungen/60s, PI-Neutralisierung während
-einer aktiven Notbetriebsstufe, eine Zone ganz ohne Aktor, die Wiederanlaufsperre hält
-tatsächlich über eine Paar-Grenze am 15-°C-Punkt hinweg (vorher rot ohne die persistierten
-Spalten — von Hand gegen `domain.emergency_cycle._resolve_pair` nachgerechnet, bevor der Test
-geschrieben wurde), und das Vergleichsprotokoll wächst nur bei einer neuen Kandidatenmessung.
-Ein weiterer, inzwischen ersetzter Test bewies die eingangs genannte Korrektur direkt am
-Publisher — jetzt Teil von `tests/test_publishing_notbetrieb_versand.py` (Auftrag 7b, siehe
-oben).
-
-## 0.11.0 in Arbeit: Notbetriebs-Zustandsautomat (Auftrag 5b)
-
-`handover_due_signalled` ist eine echte, migrierte Spalte von `zone_sensor_failure_state` (Migration `8423190df6f9`); die Sperre „Übergabe einmal je Episode“ übersteht damit einen Neustart.
-
-`thermoctl.domain.emergency_operation.advance` ist eine reine Funktion (kein DB-/
-Netzwerkzugriff, `now` und der bisherige Laufzustand kommen vom Aufrufer, wie
-`emergency_cycle.advance`) und trägt eine Zone durch die vier Stufen
-`normal → ersatzquelle → notbetrieb → rueckkehrpruefung → normal` (Plan 1.2). Sie
-bekommt pro Zyklus nur, ob Wandfühler und Ersatzquelle diesen Zyklus brauchbar sind
-(`temperature_source_health` liefert das bereits) und liefert die neue Stufe plus
-Ereignisse: Episodenbeginn/-ende (eine Episode überdauert eine Eskalation
-`ersatzquelle → notbetrieb` und jeden Rückfall aus `rueckkehrpruefung`, endet erst
-bei `normal`), das PI-Neutralisierungssignal (jede Stufe außer `normal`) und das
-„Thermostat-Übergabe fällig"-Signal (genau einmal je Episode, beim ersten Erreichen
-von `notbetrieb` — ein späterer Rückfall aus `rueckkehrpruefung` löst es nicht erneut
-aus).
-
-Rückkehr zählt gegen genau eine Quelle (Wandfühler in `ersatzquelle`, Wandfühler
-*oder* Ersatzquelle in `rueckkehrpruefung`, Wandfühler hat bei gleichzeitiger Rückkehr
-Vorrang): mindestens zwei verschiedene Messzeitpunkte **und** mindestens die
-konfigurierte Rückkehrdauer durchgehend brauchbar, beides zum selben Zeitpunkt erfüllt.
-Derselbe Messzeitpunkt zählt nie zweimal (ein Sensor, der einfach noch keinen neuen
-Wert gesendet hat, bleibt „brauchbar", ohne die Zählung voranzutreiben). Wechselt in
-`rueckkehrpruefung` das Gerät hinter „die Ersatzquelle" (die kälteste brauchbare
-Thermostat-Messung kann von Zyklus zu Zyklus ein anderes Gerät sein), startet die
-Zählung neu gegen das neue Gerät. Ein einzelner unbrauchbarer Zyklus der geprüften
-Quelle fällt in `rueckkehrpruefung` sofort auf `notbetrieb` zurück (gleiche Episode);
-in `ersatzquelle` bleibt die Stufe, nur die Zählung wird verworfen. „Nie seit Start
-gemessen" erreicht `notbetrieb` im selben Aufruf, ohne eigene Zusatzwartezeit — die
-ist schon in der Brauchbarkeitsbewertung enthalten. `enabled=false` erzwingt in jedem
-Zustand sofort reines `normal`-Verhalten und schließt eine offene Episode dabei ab.
-
-Geprüft: `ruff check .`, `mypy thermoctl` sauber; `pytest -q --cov-fail-under=100`
-gegen SQLite und MariaDB nacheinander, je 5280 Tests, 1 Fehlschlag (vorbestehend,
-unabhängig von diesem Auftrag — `test_physical_vocabulary_occurrences_are_explicitly_
-reviewed` moniert zwei unreviewte Fundstellen in Auftrag 5a's
-`thermoctl/services/temperature_source_health.py`), 0 Fehler, 1 übersprungen, 100 %
-Testabdeckung beide Male. Fünf gezielte Handmutanten an den gefährlichsten
-Grenzvergleichen (`>=`/`!=` bei Probenzahl, Rückkehrdauer, Messzeit-Unterscheidung,
-Gerätewechsel, Rückfallbedingung) einzeln angelegt, jeweils sofort von der Testsuite
-getötet, Datei danach per Prüfsumme auf den Originalstand zurückgesetzt. Kein
-Cosmic-Ray-Lauf — der volle Mutationslauf ist Auftrag 10, nachdem 5a/5b/6 gemeinsam
-gemergt sind.
-
-Zustandsautomat und Rückkehrprüfung sind fertig und seit Auftrag 7a (oben) an
-`shadow_run.py` angeschlossen (Schattenbetrieb). Publisher-Anbindung (Auftrag 7b)
-und Anzeige/Meldung (Auftrag 8) folgen.
-
-## 0.11.0: Quellenqualität inkl. automatischer Ersatzquelle (Auftrag 5a)
-
-`thermoctl.domain.temperature_source_health.evaluate_source_health` ist eine reine
-Funktion (kein DB-/Netzwerkzugriff, `now` wird übergeben) und liefert den effektiven
-Istwert einer Zone: Wandfühler, wenn brauchbar (Status `ok` und Messwert vorhanden,
-wie bisher in `domain/fault.py`), sonst — nur unter den der Zone zugeordneten
-Thermostat-Zuordnungen — die **kälteste** um `temperature_backup_offset_k` korrigierte
-Messung, sonst „keine Quelle". Jeder Kandidat wird für die Vergleichsprotokollierung
-mit Rohwert, korrigiertem Wert und Echo-Status zurückgegeben, auch wenn er nicht
-gewählt wurde.
-
-**Echo-Regel (Bosch BTH-RA, Gerätevertrag belegt):** Solange thermoctl eine externe
-Temperatur an ein Thermostat schreibt, ist dessen `local_temperature` ein Echo dieses
-Werts, keine unabhängige Messung. Das Gerät fällt laut Hersteller erst 30 Minuten
-nach dem letzten Schreiben auf seinen internen Fühler zurück — benannt als
-`ECHO_INDEPENDENCE_DELAY`. Ein Kandidat gilt erst als unabhängig, wenn sein eigener
-Messzeitpunkt auf oder nach diesem Umschaltzeitpunkt liegt; ein älterer Messwert
-bleibt ein Echo, selbst wenn seither mehr als 30 Minuten vergangen sind. Der dafür
-nötige Zeitpunkt des letzten Schreibversuchs kommt aus einer eigenen, unreinen
-Abfrage über `device_command` (`services.temperature_source_health.
-last_external_temperature_write_at`): gezählt wird jeder Versuch außer einem
-Trockenlauf, **auch ein als gescheitert protokollierter** — dessen Nachricht
-kann das Gerät trotzdem erreicht haben, und ihn nicht zu zählen würde die
-30-Minuten-Frist zu früh ablaufen lassen. Die reine Funktion bekommt nur das
-Ergebnis. `services.temperature_source_health.zone_candidates` stellt die
-Kandidatenliste einer Zone zusammen, mit derselben Eignungsregel wie
-`sensor_failure_policy._assignment` (Rolle `actuator`, Fähigkeit `thermostat`,
-keine Fähigkeit `switch`) — eine reine Schaltzuordnung wird nie Kandidat.
-
-Zustandsautomat, Übergabe an TRVs und Versandweg (Aufträge 5b/6/7) folgen. Real
-eingesetzte Geräte laut Auftrag 1: ausschließlich Bosch BTH-RA als Thermostate,
-Meross mss710 als Schaltausgänge, keine Mischgeräte.
-
-## 0.11.0: Konfigurationsdienst Notbetrieb
-
-Der Domänendienst `sensor_failure_policy` liest und speichert Profile einschließlich
-Kennlinien, Anlagenvorgaben, Zonenüberschreibungen und Thermostat-Zuordnungs-Offsets.
-Wirksame Zonenkonfigurationen sind unveränderliche Datenklassen mit Herkunft je
-Profil, Notsollwert und Aktivierung. Eingaben werden vor Änderungen vollständig
-validiert (Bosch-Notsollwert 5–30 °C in 0,5-K-Schritten); aktive Festtakte werden
-auch bei Änderungen an Mindestzeiten und Regelintervall erneut geprüft.
-Leere Kennlinien bedeuten Festtakt, nichtleere brauchen mindestens zwei Punkte
-mit genau einem oberen Aus-Punkt und nicht steigendem Tastgrad.
-
-Das Setup setzt den Profilverweis ausdrücklich. Bei NULL gilt das Profil mit
-dem Migrationsnamen „Notbetrieb Vorgabe“ und kleinster ID: Es wurde vor allen
-späteren Profilen angelegt, Namensduplikate verdrängen es nicht. Fehlt der Name,
-meldet die Domäne einen Konfigurationsfehler statt ein Ersatzprofil anzulegen.
-Offset und Hysterese werden ohne stilles Runden auf die vorhandene Numeric-Präzision
-begrenzt; dies sind Speichergrenzen, keine neue Geräte-Kalibrierungsempfehlung.
-Die Anbindung in `zone_settings` hat eigene Lese-/Speicherfunktionen, damit die
-bereits von REST/MCP verwendeten `ControlParameters` unverändert bleiben.
-UI, REST/MCP und automatische Aktivierung folgen in späteren Aufträgen.
-
-
-Profile mit Kennlinienpunkten, Quellenzustand, Ausfallepisoden, Aktorlaufzustand
-und Aktorentscheidungen sind als relationale Tabellen angelegt. Die Migration
-legt das Vorgabeprofil mit Festtakt 600/1200 s, Rückkehr 60 s/2 Messwerte,
-Warm-Aus-Hysterese 1 K und drei Kennlinienpunkten an (−10 °C: 1200/600 s,
-0 °C: 600/1200 s, 15 °C: 0/1800 s). Bestehende Anlageneinstellungen verweisen
-auf dieses Profil; die Notsollwert-Vorgabe beträgt 20 °C.
-
-Notbetrieb bleibt für neue und bestehende Zonen deaktiviert. Zonen können Profil
-und Notsollwert nullable überschreiben, Zuordnungen tragen einen Temperaturausgleich
-(Vorgabe 0 K). Historien bleiben bei Zonenlöschung mit Namenssnapshot erhalten;
-Simulation und scharfer Versand haben getrennte Laufzustandsfelder.
-Regel- und Versandlogik sind noch nicht umgesetzt.
-
-## 0.11.0 in Arbeit: Notbetrieb bei Sensorausfall
-
-Plan: `lokal/plaene/0.11.0-notbetrieb.md`. Auftrag 6 (Festtakt und
-Außenkennlinie) fertig als reine Domänenlogik in
-`thermoctl/domain/emergency_cycle.py` (`tests/test_emergency_cycle.py`,
-100 % Testabdeckung) -- **noch nicht angebunden**: kein Aufruf aus
-`control_loop.py`/`shadow_run.py`, keine Datenbankmodelle (die baut ein
-paralleler Auftrag), keine UI/REST/MCP. Deckt Festtakt- und
-Kennlinien-Phasenrechnung (Decimal, randbegrenzt, Mindestdauer-Anrechnung),
-eine Wiederanlaufsperre mit Hysteresespanne am oberen Kennlinienpunkt,
-Quellenwechsel nur am Paarbeginn sowie Neustart-/Zeitrücksprung-Behandlung ab.
-Auftrag 2 (PI-Sensorgate) entfällt laut Nachentscheidung (Abschnitt 6 des
-Plans) -- bereits mit v0.10.1 erledigt.
+1. Mutationsläufe der neuen Regellogik (Auftrag 10, noch nicht gelaufen):
+   `domain/emergency_cycle.py`, `domain/emergency_operation.py`,
+   `domain/temperature_source_health.py`, `domain/emergency_actuator_plan.py`, ggf. die
+   Notbetriebsteile von `services/publishing.py`.
+2. Release 0.11.0 samt Add-on-Repository (Version, Changelog mit Verhaltensänderung, `DOCS.md`).
+3. Abnahme an der echten Anlage (Plan Abschnitt 4), zuerst im Schattenbetrieb: Wandfühler im Bad
+   abklemmen, Ersatzquelle (frühestens 30 min nach dem letzten `remote_temperature`), Notbetrieb,
+   Übergabe `pause` → `manual` am BTH-RA beobachten, Rückkehr, Rückstellung `manual` → `pause`;
+   Fußbodenkreis über mindestens zwei Taktpaare; Webhook-Meldung und Entwarnung prüfen;
+   Gerätevertrag vorher mit frischem Dump gegenprüfen.
 
 ## v0.10.1
 

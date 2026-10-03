@@ -93,6 +93,16 @@ Weiter unten:
 
 ![Ist- und Sollwerte sowie Regelentscheidungen aller sechs Zonen](bilder/anlage-betrieb-2.png)
 
+Läuft eine Zone im **Notbetrieb** (siehe [Notbetrieb bei Sensorausfall](#notbetrieb-bei-sensorausfall)
+unten) oder gibt es einen Vergleich von Ersatzquelle und Wandfühler, steht unter ihrer
+Zeile ein eigener Kasten „Notbetrieb": die Stufe, die aktive Quelle, bei der Rückkehrprüfung
+der Fortschritt (Messwerte von nötigen zwei), die Sendefreigabe (scharf oder Trockenlauf)
+und je Aktor Takt-Phase, Frist, Übergabe und Rückstellung. Darunter der **Vergleich
+Ersatzquelle ↔ Wandfühler** der letzten Tage: je Thermostat die Zahl der Messwerte, die
+mittlere Abweichung und ein **vorgeschlagener Ausgleichswert** — eine Grundlage für die
+Kalibrierung, die man unter den Regelparametern der Zone einträgt, kein Wert, der sich von
+selbst übernimmt.
+
 ### Schaltprotokoll
 
 Jeder Befehl, der wirklich an ein Gerät hinausging oder im Trockenlauf unterdrückt bzw.
@@ -165,6 +175,54 @@ echte Störung zu warten.
 Weiter unten:
 
 ![Die sechs abschaltbaren Meldungsarten und ihre Erläuterungen](bilder/anlage-einstellungen-2.png)
+
+### Notbetrieb bei Sensorausfall
+
+Fällt der Temperatursensor einer Zone aus, regelt `thermoctl` nicht mehr auf eine Messung,
+die es nicht mehr gibt. Der Notbetrieb ist für **alle Zonen von Anfang an aktiv** — bei
+bestehenden Anlagen seit dem Upgrade auf 0.11, bei neu angelegten Zonen von der Anlage
+an. Er geht in Stufen vor:
+
+1. **Ersatzquelle.** Zuerst nimmt die Zone die kälteste Messung der ihr zugeordneten
+   Thermostat-Thermometer (korrigiert um den Ausgleichswert) und regelt normal weiter.
+   Ein Thermostat, dem `thermoctl` gerade selbst eine Temperatur schreibt, misst dann nur
+   das Echo davon und zählt erst 30 Minuten nach dem letzten Schreiben als unabhängig.
+2. **Notbetrieb.** Gibt es keine brauchbare Quelle, **takten Fußbodenkreise** — im
+   Festtakt (Vorgabe 10 Minuten an, 20 Minuten aus) oder, wenn ein Außenwert vorliegt,
+   nach der Außentemperatur-Kennlinie. Der Takt läuft auch im Betriebsmodus „Aus"
+   und bei offenem Fenster. **Heizkörper-Thermostate** werden **einmal** auf „manual" und
+   den Notsollwert (Vorgabe 20 °C) gestellt und danach nicht mehr angesprochen.
+3. **Rückkehrprüfung.** Der Sensor muss zwei verschiedene Messwerte liefern und danach
+   60 Sekunden durchgehend brauchbar bleiben. Erst dann geht die Zone zurück in den
+   Normalbetrieb; das Thermostat bekommt **einmal** den Betriebsmodus zurück, den es vor
+   der Übergabe gemeldet hat. Die Mindest-Ein- und -Aus-Dauern der Fußbodenkreise gelten
+   dabei weiter.
+
+Die Anlage meldet je Störung **einmal den Beginn und einmal die Entwarnung** (mit dem
+Schalter „Sensorstörung" unter Regelvorgaben abschaltbar). Auf Start, Wohnungssicht und
+Kiosk steht ein kurzer Hinweis in Klartext; Details für die Technik zeigt die Betriebsseite
+(oben) und das Schaltprotokoll.
+
+**Einstellen** lässt sich der Notbetrieb an zwei Stellen:
+
+- **Regelvorgaben → Karte „Notbetrieb bei Sensorausfall"** (anlagenweit): Festtakt
+  (Sekunden an/aus), Rückkehrprüfung (Dauer und Zahl der Messwerte), Wiederanlaufspanne,
+  anlagenweiter Notsollwert und die **Außenkennlinie**. Die Kennlinie besteht aus Zeilen
+  (Außentemperatur, Sekunden an, Sekunden aus), die sich hinzufügen und entfernen lassen;
+  sie braucht mindestens zwei Zeilen und genau einen oberen Punkt, ab dem nicht mehr eingeschaltet
+  bleibt, und der Tastgrad darf mit steigender Außentemperatur nicht zunehmen. Eine leere
+  Kennlinie heißt Festtakt. Ein Fehler in einer Zeile verwirft die ganze Eingabe.
+- **Zone → Regelparameter → Abschnitt „Notbetrieb bei Sensorausfall"** (je Zone): den
+  Notbetrieb für diese Zone **ausschalten**, ein anderes vorhandenes Profil wählen oder
+  einen eigenen Notsollwert setzen (leer = Anlagenwert erben), und je zugeordnetem
+  Thermostat den **Ausgleichswert** (Recht `device.manage` nötig). Daneben stehen die
+  wirksamen Werte und woher sie stammen. Der Abschnitt gehört zum selben Formular wie die
+  übrigen Regelparameter, mit einem gemeinsamen Speichern-Knopf. Mehrere Profile
+  anzulegen ist nicht vorgesehen; es gibt das eine anlagenweite Profil.
+
+**Wichtig zu wissen:** Im Notbetrieb takten Fußbodenkreise nach der Uhr, **unabhängig von der
+Raumtemperatur**. Das ist eine Notlösung für den Ausfall, keine Regelung; wer eine Zone
+dauerhaft so betreibt, sollte den Sensor reparieren.
 
 ### Statistik und Relaisverschleiß
 

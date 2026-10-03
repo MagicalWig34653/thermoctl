@@ -46,6 +46,13 @@ Für jeden Raum gibt es mehrere Möglichkeiten, die Temperatur zu ändern:
 Läuft gerade eine solche Änderung, sehen Sie das an einem hervorgehobenen Kasten mit
 Enddatum und einem „Beenden"-Knopf.
 
+**Wenn ein Raum einen Hinweis zum Notbetrieb zeigt:** Der Temperaturfühler des Raums meldet
+gerade keinen Wert. Die Anlage schaltet die Fußbodenheizung dann nach festen Zeiten ein und
+aus, bis wieder eine Messung da ist, und Heizkörper-Thermostate bekommen einmal einen festen
+Sollwert. Die Temperatur, die Sie einstellen, kann in dieser Zeit nicht genau eingehalten
+werden. Sie müssen nichts tun. Bleibt der Hinweis lange stehen, melden Sie das unter
+„Problem melden".
+
 ## Zeitplan: wann es warm sein soll
 
 Im Reiter **Zeitplan** legen Sie je Raum fest, ab wann es tagsüber wärmer und ab wann es
