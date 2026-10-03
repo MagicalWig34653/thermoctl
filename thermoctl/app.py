@@ -5,7 +5,9 @@ import re
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
 from datetime import datetime, timedelta
+from typing import Any
 
 from fastapi import FastAPI, Request, Response
 from fastapi.openapi.docs import get_swagger_ui_html
@@ -151,7 +153,7 @@ def _audit(session: Session, notice: FaultNotice, setting_row: Setting | None) -
 
 # Strong references to the running dispatch tasks. Without them the garbage collector
 # could collect a task before it finishes -- asyncio itself only holds weak references.
-_running_notices: set[asyncio.Task[None]] = set()
+_running_notices: set[asyncio.Task[Any]] = set()
 
 # Same reason, for the detached Meross reconciliation started from the shadow loop
 # below (`_start_meross_refresh`).
@@ -206,63 +208,185 @@ def _sensor_notices(
     return notices
 
 
+@dataclass(frozen=True)
+class EmergencyDispatch:
+    """One Notbetrieb notice together with what has to happen to its episode once
+    the send attempt is over (`_deliver_emergency_notice`)."""
+
+    notice: FaultNotice
+    episode_id: int
+    #: The state the episode moves to once the notice counts as handled.
+    final_state: str
+    #: `True` for the one repeated attempt after a crash or a failed first send.
+    is_retry: bool
+
+
+#: Intermediate state (committed *before* the send) -> final state (set after it).
+_EMERGENCY_FINAL_STATE = {
+    "melden_laeuft": "gemeldet",
+    "entwarnung_laeuft": "entwarnung_gesendet",
+}
+
+# Episodes whose send task of this process is still running. Without it, a slow
+# webhook (up to ten seconds) could still be in flight when the next cycle finds
+# the episode in its intermediate state and starts the "retry" in parallel.
+_emergency_in_flight: set[int] = set()
+
+
 def _emergency_notices(
     session: Session, now: datetime, setting_row: Setting | None
-) -> list[FaultNotice]:
+) -> list[EmergencyDispatch]:
     """The Notbetrieb counterpart of `_sensor_notices` above (plan Auftrag 8:
     "eine Störungsmeldung beim Eintritt ... und eine Entwarnung bei echter
     Rückkehr").
 
     Driven entirely by `sensor_failure_episode.notification_state`
-    (`offen` -> `gemeldet` -> `entwarnung_gesendet`), not by a before/after
-    comparison like the other `_*_notices` functions in this module: an
-    episode's own row already *is* the "has this been reported yet" state,
-    and it survives a process restart -- the whole reason that column exists
-    (plan Auftrag 7a item 4). The state transition is committed in the same
-    transaction as this read (the caller's `session_scope`), **before** the
-    notice is handed to the dispatch loop below -- so a crash between this
-    function returning and the webhook actually going out leaves the episode
-    already marked `gemeldet`/`entwarnung_gesendet` and never retries, the
-    same "no second attempt, ever" contract `services/publishing.py` already
-    applies to the scharfe Übergabe/Rückstellung. The trade-off is symmetric
-    to that one too: a crash in that exact window means the notice is lost,
-    never duplicated -- the safe direction for a channel with no delivery
-    guarantee of its own.
+    (`offen` -> `melden_laeuft` -> `gemeldet` -> `entwarnung_laeuft` ->
+    `entwarnung_gesendet`), not by a before/after comparison like the other
+    `_*_notices` functions in this module: an episode's own row already *is* the
+    "has this been reported yet" state, and it survives a process restart -- the
+    whole reason that column exists (plan Auftrag 7a item 4).
+
+    Three steps instead of two, so that a crash cannot lose a notice. The
+    intermediate state (`melden_laeuft` / `entwarnung_laeuft`) is committed in the
+    same transaction as this read, **before** the notice is handed to the dispatch
+    loop; `_deliver_emergency_notice` sets the final state once the send attempt is
+    over. An episode found *in* an intermediate state (the process died between the
+    commit and the send, or the first send failed) is sent **one more time** --
+    `is_retry` -- and then moves to its final state whatever the outcome of that
+    second attempt, so a dead webhook can never turn into a flood. Better a
+    duplicate than a missing notice; never a third attempt.
+
+    A retry is not audited again (the first attempt wrote the entry), and an
+    episode whose send task of this very process is still running is skipped
+    (`_emergency_in_flight`).
 
     `REASON_DEAKTIVIERT` episodes are closed here without ever calling
     `emergency_resolved_notice` -- advancing straight to
     `entwarnung_gesendet` all the same, so a later deactivation-reactivation
     cycle can never produce a late, wrong "all clear" for the original fault.
     """
-    notices: list[FaultNotice] = []
+    dispatches: list[EmergencyDispatch] = []
+
+    pending = session.scalars(
+        select(SensorFailureEpisode)
+        .where(SensorFailureEpisode.notification_state.in_(_EMERGENCY_FINAL_STATE))
+        .order_by(SensorFailureEpisode.id)
+    ).all()
+    for episode in pending:
+        if episode.id in _emergency_in_flight:
+            continue
+        if episode.notification_state == "melden_laeuft":
+            notice = _entered_notice(session, episode, now, setting_row)
+        else:
+            notice = emergency_resolved_notice(episode.id, episode.zone_name)
+        dispatches.append(
+            EmergencyDispatch(
+                notice,
+                episode.id,
+                _EMERGENCY_FINAL_STATE[episode.notification_state],
+                is_retry=True,
+            )
+        )
+
     opened = session.scalars(
-        select(SensorFailureEpisode).where(SensorFailureEpisode.notification_state == "offen")
+        select(SensorFailureEpisode)
+        .where(SensorFailureEpisode.notification_state == "offen")
+        .order_by(SensorFailureEpisode.id)
     ).all()
     for episode in opened:
-        zone = session.get(Zone, episode.zone_id) if episode.zone_id is not None else None
-        if zone is not None:
-            view = zone_emergency_view(session, zone, now, setting_row)
-            text = entered_notice_text(view)
-        else:  # pragma: no cover -- zone rows are not deleted in normal operation
-            text = "Kein Temperaturwert verfügbar. Die Heizung läuft im Notbetrieb."
-        notice = emergency_entered_notice(episode.id, episode.zone_name, text)
-        episode.notification_state = "gemeldet"
+        notice = _entered_notice(session, episode, now, setting_row)
+        episode.notification_state = "melden_laeuft"
         _audit(session, notice, setting_row)
-        notices.append(notice)
+        dispatches.append(EmergencyDispatch(notice, episode.id, "gemeldet", is_retry=False))
 
     resolved = session.scalars(
-        select(SensorFailureEpisode).where(
+        select(SensorFailureEpisode)
+        .where(
             SensorFailureEpisode.notification_state == "gemeldet",
             SensorFailureEpisode.ended_at.is_not(None),
         )
+        .order_by(SensorFailureEpisode.id)
     ).all()
     for episode in resolved:
-        if episode.ended_reason_code != emergency_operation.REASON_DEAKTIVIERT:
-            notice = emergency_resolved_notice(episode.id, episode.zone_name)
-            _audit(session, notice, setting_row)
-            notices.append(notice)
-        episode.notification_state = "entwarnung_gesendet"
-    return notices
+        if episode.ended_reason_code == emergency_operation.REASON_DEAKTIVIERT:
+            episode.notification_state = "entwarnung_gesendet"
+            continue
+        notice = emergency_resolved_notice(episode.id, episode.zone_name)
+        episode.notification_state = "entwarnung_laeuft"
+        _audit(session, notice, setting_row)
+        dispatches.append(
+            EmergencyDispatch(notice, episode.id, "entwarnung_gesendet", is_retry=False)
+        )
+    return dispatches
+
+
+def _entered_notice(
+    session: Session,
+    episode: SensorFailureEpisode,
+    now: datetime,
+    setting_row: Setting | None,
+) -> FaultNotice:
+    zone = session.get(Zone, episode.zone_id) if episode.zone_id is not None else None
+    if zone is not None:
+        view = zone_emergency_view(session, zone, now, setting_row)
+        text = entered_notice_text(view)
+    else:  # pragma: no cover -- zone rows are not deleted in normal operation
+        text = "Kein Temperaturwert verfügbar. Die Heizung läuft im Notbetrieb."
+    return emergency_entered_notice(episode.id, episode.zone_name, text)
+
+
+async def _deliver_emergency_notice(
+    factory: sessionmaker[Session],
+    settings: Settings,
+    dispatch: EmergencyDispatch,
+    *,
+    send: bool,
+) -> None:
+    """Sends one Notbetrieb notice and then, and only then, moves its episode on.
+
+    `send=False` is a notice kind that is switched off (`notice_enabled`): nothing
+    goes out, the episode moves on all the same -- as it always did, there is no
+    retry loop for a notice that is off on purpose.
+
+    A failed attempt (`deliver` answering `False`, or raising) leaves the episode in
+    its intermediate state, so the next cycle repeats the send once. A failed
+    *retry* is logged and the episode moves to its final state anyway -- see
+    `_emergency_notices`. The webhook failure itself is, as before, already logged
+    and recorded in `setting.notify_last_*` by `deliver`.
+    """
+    try:
+        delivered = True
+        if send:
+            try:
+                delivered = await deliver(factory, settings, dispatch.notice) is not False
+            except Exception:
+                log.exception(
+                    "Notbetrieb-Meldung konnte nicht versendet werden",
+                    extra={"schluessel": dispatch.notice.key},
+                )
+                delivered = False
+        if not delivered and not dispatch.is_retry:
+            log.warning(
+                "Notbetrieb-Meldung nicht zugestellt -- ein weiterer Versuch folgt",
+                extra={"schluessel": dispatch.notice.key},
+            )
+            return
+        if not delivered:
+            log.error(
+                "Notbetrieb-Meldung auch beim zweiten Versuch nicht zugestellt -- "
+                "es folgt kein weiterer",
+                extra={"schluessel": dispatch.notice.key},
+            )
+        with session_scope(factory) as session:
+            episode = session.get(SensorFailureEpisode, dispatch.episode_id)
+            if (
+                episode is not None
+                and _EMERGENCY_FINAL_STATE.get(episode.notification_state) == dispatch.final_state
+            ):
+                episode.notification_state = dispatch.final_state
+    finally:
+        _emergency_in_flight.discard(dispatch.episode_id)
 
 
 def _stuck_states(session: Session) -> dict[int, bool]:
@@ -531,6 +655,7 @@ async def _shadow_loop(app: FastAPI) -> None:
                 continue
             notices: list[FaultNotice]
             command_notices: list[FaultNotice] = []
+            emergency_dispatches: dict[str, EmergencyDispatch] = {}
             setting_row: Setting | None = None
             forecast = await _solar_forecast(app, app.state.session_factory, now)
             # Signing in (if due) happens here, before any transaction opens -- the
@@ -560,7 +685,11 @@ async def _shadow_loop(app: FastAPI) -> None:
                 # continues and closes `sensor_failure_episode` rows for this
                 # cycle -- reading `notification_state` beforehand could miss an
                 # episode that starts or ends in this very cycle.
-                notices += _emergency_notices(session, now, setting_row)
+                emergency_dispatches = {
+                    dispatch.notice.key: dispatch
+                    for dispatch in _emergency_notices(session, now, setting_row)
+                }
+                notices += [dispatch.notice for dispatch in emergency_dispatches.values()]
                 # `getattr`: the loop also runs in tests that assemble an app without
                 # running through the full lifespan.
                 if getattr(app.state, "publisher", None) is not None:
@@ -615,12 +744,28 @@ async def _shadow_loop(app: FastAPI) -> None:
                 # `setting_row` is `None` before setup finishes (the `setting` row
                 # does not exist yet); fail open in that case rather than silently
                 # dropping a notice nobody has had the chance to configure yet.
-                if setting_row is None or notice_enabled(notice.kind, setting_row):
+                enabled = setting_row is None or notice_enabled(notice.kind, setting_row)
+                emergency = emergency_dispatches.get(notice.key)
+                if emergency is not None:
+                    # The episode moves to its final state only after the send
+                    # attempt (`_deliver_emergency_notice`), switched on or off.
+                    _emergency_in_flight.add(emergency.episode_id)
                     task = asyncio.create_task(
-                        deliver(app.state.session_factory, get_settings(), notice)
+                        _deliver_emergency_notice(
+                            app.state.session_factory,
+                            get_settings(),
+                            emergency,
+                            send=enabled,
+                        )
                     )
                     _running_notices.add(task)
                     task.add_done_callback(_running_notices.discard)
+                elif enabled:
+                    send_task = asyncio.create_task(
+                        deliver(app.state.session_factory, get_settings(), notice)
+                    )
+                    _running_notices.add(send_task)
+                    send_task.add_done_callback(_running_notices.discard)
                 publisher = getattr(app.state, "publisher", None)
                 # `send_fault_notice` publishes to a per-zone Home Assistant entity
                 # keyed by `sensor:<zone id>` -- there is no such entity for a
