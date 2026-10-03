@@ -1,6 +1,17 @@
 # Stand
 
-Letzte Aktualisierung: 2026-10-02.
+Letzte Aktualisierung: 2026-10-03.
+
+## 0.11.0: Stand und nächste Schritte
+
+Der Notbetrieb bei Sensorausfall (Aufträge 3–8) ist vollständig in `main` und CI-grün, aber
+für keine Zone aktiviert (`zone.sensor_failure_enabled` Vorgabe `false`). Offen, in dieser
+Reihenfolge: Komplett-Review von `v0.10.1..main`, Auftrag 9 (Migration aktiviert den
+Notbetrieb für alle Bestandszonen ein, Verhaltensänderung beim Upgrade deutlich in
+CHANGELOG und Add-on), Auftrag 10 (Mutationsläufe der neuen Regellogik), Zusammenfassen der
+0.11.0-Abschnitte unten zu einem, Doku und Bilder, Freigabe 0.11.0 samt Add-on, danach
+Abnahme an der echten Anlage. Ausführliche Übergabe lokal unter
+`lokal/plaene/0.11.0-uebergabe.md`.
 
 ## 0.11.0: Notbetrieb-Konfiguration über Oberfläche, REST und MCP (Auftrag 8a)
 
