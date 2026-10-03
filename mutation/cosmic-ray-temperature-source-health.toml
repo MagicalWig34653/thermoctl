@@ -1,0 +1,39 @@
+# Achtung: Der Testbefehl unten verweist relativ auf .venv/bin/python. In einem
+# Worktree ohne eigene Umgebung wird dadurch jeder Mutant INCOMPETENT, und
+# cosmic-ray meldet null Überlebende -- ein gescheiterter Lauf sieht aus wie ein
+# perfektes Ergebnis. Vorher einen .venv-Symlink anlegen und hinterher prüfen,
+# dass kein test_outcome INCOMPETENT ist. Siehe CLAUDE.md.
+# Mutationstest für thermoctl/domain/temperature_source_health.py (Notbetrieb, 0.11.0).
+# Wiederholbarer Lauf aus dem Repository-Wurzelverzeichnis, mit eigener Testdatenbank
+# (THERMOCTL_TEST_DATABASE_URL), im Hintergrund:
+#
+#   .venv/bin/cosmic-ray init --force mutation/cosmic-ray-temperature-source-health.toml /tmp/thermoctl-temperature-source-health.sqlite
+#   .venv/bin/cr-filter-operators /tmp/thermoctl-temperature-source-health.sqlite mutation/cosmic-ray-temperature-source-health.toml
+#   .venv/bin/cosmic-ray exec mutation/cosmic-ray-temperature-source-health.toml /tmp/thermoctl-temperature-source-health.sqlite
+#   .venv/bin/cr-report /tmp/thermoctl-temperature-source-health.sqlite
+#
+# Die Sitzungsdatenbank ist ein Laufartefakt und wird nicht eingecheckt.
+[cosmic-ray]
+module-path = "thermoctl/domain/temperature_source_health.py"
+timeout = 30.0
+excluded-modules = []
+test-command = ".venv/bin/python -m pytest --no-cov -q -x -p no:cacheprovider tests/test_temperature_source_health.py tests/test_temperature_source_health_service.py tests/test_emergency_state.py"
+
+[cosmic-ray.distributor]
+name = "local"
+
+[cosmic-ray.distributor.local]
+max-workers = 4
+
+# Gleiche Werkzeugrauschen-Ausschlüsse wie cosmic-ray-control-loop.toml (siehe
+# cosmic-ray-stage1-assessment.md).
+[cosmic-ray.filters.operators-filter]
+exclude-operators = [
+    "core/ReplaceBinaryOperator_BitOr_.*",
+    "core/ReplaceComparisonOperator_Eq_(Gt|GtE|Lt|LtE|Is|IsNot)",
+    "core/ReplaceComparisonOperator_NotEq_(Gt|GtE|Lt|LtE|Is|IsNot)",
+    "core/ReplaceComparisonOperator_Lt_(Eq|NotEq|Gt|GtE|Is|IsNot)",
+    "core/ReplaceComparisonOperator_LtE_(Eq|NotEq|Gt|GtE|Is|IsNot)",
+    "core/ReplaceComparisonOperator_Gt_(Eq|NotEq|Lt|LtE|Is|IsNot)",
+    "core/ReplaceComparisonOperator_GtE_(Eq|NotEq|Lt|LtE|Is|IsNot)",
+]

@@ -104,9 +104,7 @@ def test_other_commands_and_other_devices_do_not_count(session: Session) -> None
     zone, device = _fixture(session)
     other = create_device(session, "prior-andere")
     seed_switch_command(session, zone, other, sent_at=NOW - timedelta(seconds=10), on=True)
-    entry = seed_switch_command(
-        session, zone, device, sent_at=NOW - timedelta(seconds=10), on=True
-    )
+    entry = seed_switch_command(session, zone, device, sent_at=NOW - timedelta(seconds=10), on=True)
     entry.command = "handover"
     session.flush()
     assert _hint(session, device.id) is None
@@ -125,7 +123,13 @@ def test_a_send_time_in_the_future_is_unknown(session: Session) -> None:
     seed_switch_command(session, zone, device, sent_at=NOW + timedelta(seconds=1), on=False)
     assert _hint(session, device.id) is None
 
+
 def test_a_command_sent_this_very_second_credits_zero(session: Session) -> None:
     zone, device = _fixture(session)
     seed_switch_command(session, zone, device, sent_at=NOW, on=False)
     assert _hint(session, device.id) == PriorPhaseHint(on=False, elapsed_seconds=0)
+
+
+def test_entry_prior_hint_takes_now_and_min_on_by_keyword_only(session: Session) -> None:
+    with pytest.raises(TypeError):
+        entry_prior_hint(session, 1, datetime(2026, 1, 1), 60)  # type: ignore[misc]

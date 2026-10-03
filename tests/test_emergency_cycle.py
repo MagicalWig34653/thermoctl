@@ -664,3 +664,186 @@ def test_entry_credits_never_more_than_the_off_duration() -> None:
     assert out.state.phase == PHASE_OFF
     assert out.state.phase_started_at == T0 - timedelta(seconds=1200)
     assert out.state.phase_deadline == T0
+
+
+# --- 9. Mutationslauf (Auftrag 10): Begruendungstexte, Randwerte, Unveraenderlichkeit --
+
+
+def test_all_cycle_types_are_immutable() -> None:
+    state = advance(None, _cycle(T0, _fixed_profile(), _no_source()))
+    objs = [
+        CurvePoint(Decimal("0"), 1, 1),
+        _fixed_profile(),
+        _no_source(),
+        PriorPhaseHint(on=True, elapsed_seconds=1),
+        state.state,
+        _cycle(T0, _fixed_profile(), _no_source()),
+        state.decision,
+        state,
+    ]
+    for obj in objs:
+        field = dataclasses.fields(obj)[0].name  # type: ignore[arg-type]
+        with pytest.raises(dataclasses.FrozenInstanceError):
+            setattr(obj, field, None)
+
+
+def test_cycle_state_is_not_warm_locked_by_default() -> None:
+    state = CycleState(PHASE_OFF, T0, T0, SOURCE_FIXED, 1, 1)
+    assert state.warm_locked is False
+
+
+def test_fixed_cycle_never_carries_a_warm_lock() -> None:
+    out = advance(None, _cycle(T0, _fixed_profile(), _no_source()))
+    assert out.state.warm_locked is False
+    boundary = advance(out.state, _cycle(out.state.phase_deadline, _fixed_profile(), _no_source()))
+    assert boundary.state.warm_locked is False
+
+
+def test_curve_above_the_last_point_takes_the_last_points_pair_not_another_one() -> None:
+    # Letzter Stuetzpunkt mit Ein > 0 (kein Warm-Aus-Punkt), Aussentemperatur darueber:
+    # exakt das Wertepaar des letzten Punkts, nicht das eines anderen Index.
+    profile = CycleProfile(
+        fixed_on_seconds=600,
+        fixed_off_seconds=1200,
+        warm_restart_hysteresis_k=Decimal("1"),
+        curve_points=(
+            CurvePoint(Decimal("-10"), 1200, 600),
+            CurvePoint(Decimal("0"), 900, 700),
+            CurvePoint(Decimal("15"), 300, 1800),
+        ),
+    )
+    out = advance(None, _cycle(T0, profile, _usable("20")))
+    assert (out.state.on_seconds, out.state.off_seconds) == (300, 1800)
+
+
+def test_curve_on_duration_of_one_second_is_still_raised_to_the_minimum() -> None:
+    profile = CycleProfile(
+        fixed_on_seconds=600,
+        fixed_off_seconds=1200,
+        warm_restart_hysteresis_k=Decimal("1"),
+        curve_points=(CurvePoint(Decimal("-10"), 1, 600), CurvePoint(Decimal("0"), 1, 600)),
+    )
+    out = advance(None, _cycle(T0, profile, _usable("-5"), min_on_seconds=60))
+    assert out.state.on_seconds == 60
+
+
+def test_entry_reason_text_fixed_cycle() -> None:
+    out = advance(None, _cycle(T0, _fixed_profile(), _no_source()))
+    assert out.decision.reason == (
+        "Notbetriebstakt startet: Aus-Phase für 1200 s, Taktquelle Festtakt, "
+        "keine Außentemperaturmessung. Takt: 600 s Ein / 1200 s Aus."
+    )
+
+
+def test_disturbed_restart_reason_text() -> None:
+    first = advance(None, _cycle(T0, _fixed_profile(), _no_source()))
+    later = T0 + timedelta(days=1)
+    out = advance(first.state, _cycle(later, _fixed_profile(), _no_source()))
+    assert out.decision.reason_code == REASON_DISTURBED
+    assert out.decision.reason == (
+        "Störung erkannt, Notbetriebstakt neu gestartet: Aus-Phase für 1200 s, "
+        "Taktquelle Festtakt, keine Außentemperaturmessung. Takt: 600 s Ein / 1200 s Aus."
+    )
+
+
+@pytest.mark.parametrize(("elapsed", "remaining"), [(180, 120), (300, 0), (400, 0)])
+def test_already_on_entry_reason_states_remaining_minimum_on(elapsed: int, remaining: int) -> None:
+    out = advance(
+        None,
+        _cycle(
+            T0,
+            _fixed_profile(),
+            _no_source(),
+            min_on_seconds=300,
+            prior=PriorPhaseHint(on=True, elapsed_seconds=elapsed),
+        ),
+    )
+    assert out.decision.heating_requested is True
+    assert out.decision.reason == (
+        "Notbetriebstakt übernimmt eine bereits laufende Ein-Phase: verbleibende "
+        f"Mindest-Ein-Dauer {remaining} s werden gehalten, danach Aus nach Takt (Festtakt)."
+    )
+
+
+def test_already_on_entry_reason_names_the_curve_as_source() -> None:
+    out = advance(
+        None,
+        _cycle(
+            T0,
+            _curve_profile(),
+            _usable("-5"),
+            min_on_seconds=300,
+            prior=PriorPhaseHint(on=True, elapsed_seconds=100),
+        ),
+    )
+    assert out.state.source == SOURCE_CURVE
+    assert out.decision.reason.endswith("danach Aus nach Takt (Außenkennlinie).")
+
+
+def test_continue_reason_texts_for_off_and_on_phase_and_outdoor_judgement() -> None:
+    off = advance(None, _cycle(T0, _fixed_profile(), _no_source()))
+    cont_off = advance(off.state, _cycle(T0 + timedelta(seconds=1), _fixed_profile(), _no_source()))
+    assert cont_off.decision.reason == (
+        "Notbetriebstakt läuft weiter, aktuelle Aus-Phase für 1200 s, Taktquelle Festtakt, "
+        "keine Außentemperaturmessung. Takt: 600 s Ein / 1200 s Aus."
+    )
+    on = advance(
+        None,
+        _cycle(
+            T0,
+            _fixed_profile(),
+            _no_source(),
+            prior=PriorPhaseHint(on=True, elapsed_seconds=0),
+        ),
+    )
+    unusable = OutdoorSample(Decimal("-5"), T0, usable=False)
+    cont_on = advance(on.state, _cycle(T0 + timedelta(seconds=1), _fixed_profile(), unusable))
+    assert cont_on.decision.reason == (
+        "Notbetriebstakt läuft weiter, aktuelle Ein-Phase für 600 s, Taktquelle Festtakt, "
+        "Außentemperatur -5 °C (unbrauchbar). Takt: 600 s Ein / 1200 s Aus."
+    )
+    curve = advance(None, _cycle(T0, _curve_profile(), _usable("-5")))
+    cont_curve = advance(
+        curve.state, _cycle(T0 + timedelta(seconds=1), _curve_profile(), _usable("-5"))
+    )
+    assert cont_curve.decision.reason == (
+        "Notbetriebstakt läuft weiter, aktuelle Aus-Phase für 900 s, Taktquelle Außenkennlinie, "
+        "Außentemperatur -5 °C (brauchbar). Takt: 900 s Ein / 900 s Aus."
+    )
+
+
+def test_transition_reason_texts_on_to_off_and_off_to_on() -> None:
+    on = advance(
+        None,
+        _cycle(
+            T0,
+            _fixed_profile(),
+            _no_source(),
+            prior=PriorPhaseHint(on=True, elapsed_seconds=0),
+        ),
+    )
+    to_off = advance(on.state, _cycle(on.state.phase_deadline, _fixed_profile(), _no_source()))
+    assert to_off.decision.reason_code == REASON_TRANSITION
+    assert to_off.decision.reason == (
+        "Notbetriebstakt wechselt auf Aus-Phase für 1200 s, Taktquelle Festtakt, "
+        "keine Außentemperaturmessung. Takt: 600 s Ein / 1200 s Aus."
+    )
+    to_on = advance(
+        to_off.state, _cycle(to_off.state.phase_deadline, _fixed_profile(), _no_source())
+    )
+    assert to_on.decision.heating_requested is True
+    assert to_on.decision.reason == (
+        "Notbetriebstakt wechselt auf Ein-Phase für 600 s, Taktquelle Festtakt, "
+        "keine Außentemperaturmessung. Takt: 600 s Ein / 1200 s Aus."
+    )
+
+
+def test_warm_lock_reason_text() -> None:
+    first = advance(None, _cycle(T0, _curve_profile(), _usable("20")))
+    out = advance(first.state, _cycle(first.state.phase_deadline, _curve_profile(), _usable("20")))
+    assert out.decision.reason_code == REASON_WARM_LOCK
+    assert out.decision.heating_requested is False
+    assert out.decision.reason == (
+        "Wiederanlaufsperre hält Aus-Phase für 1800 s, Taktquelle Außenkennlinie, "
+        "Außentemperatur 20 °C (brauchbar). Takt: 0 s Ein / 1800 s Aus."
+    )
