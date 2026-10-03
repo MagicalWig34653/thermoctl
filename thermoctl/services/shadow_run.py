@@ -145,6 +145,7 @@ def _previous_state(
                 ShadowDecision.would_heat,
                 ShadowDecision.decided_at,
                 ShadowDecision.effective_controller,
+                ShadowDecision.outcome_code,
             )
             .where(ShadowDecision.zone_id == zone_id)
             .order_by(ShadowDecision.decided_at.desc(), ShadowDecision.id.desc())
@@ -156,11 +157,18 @@ def _previous_state(
     current_state = rows[0].would_heat
     start = rows[0].decided_at
     phase_started_by = rows[0].effective_controller
-    for state, moment, controller in rows:
+    for state, moment, controller, outcome_code in rows:
         if state != current_state:
             break
         start = moment
         phase_started_by = controller
+        if outcome_code == OUTCOME_CODE_NOTBETRIEB_RUECKKEHR:
+            # Grundsatz 7: the recovery marker (`_seed_recovery_phase_marker`)
+            # is the real relay state's only known anchor. Older rows with the
+            # same value are the *simulated* timeline that ran alongside the
+            # emergency cycle; counting them would credit a hold the real relay
+            # never had (minimum on/off duration violated on return).
+            break
     return current_state, int((now - start).total_seconds()), current_state, phase_started_by
 
 

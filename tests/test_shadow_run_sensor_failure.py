@@ -22,6 +22,7 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 
+import pytest
 from sqlalchemy import create_engine, select
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
@@ -749,3 +750,78 @@ def test_source_comparison_is_not_logged_without_a_wall_probe_value_outside_ersa
     assert db_state.stage == emergency_operation.STAGE_NOTBETRIEB
     assert rows  # sanity: the cycle actually produced a row
     assert session.scalars(select(SensorFailureSourceComparison)).all() == []
+
+
+@pytest.mark.parametrize(
+    ("real_heating", "temperature_c", "minimum_field"),
+    [
+        # Real relay switched OFF 65 s ago, simulated 'aus' for 20 min, zone is
+        # cold and wants heat -> min-off (300 s) must still block.
+        (False, Decimal("15.0"), "min_off_seconds"),
+        # Symmetric: real relay switched ON 65 s ago, simulated 'ein' for
+        # 20 min, zone is warm and wants off -> min-on (300 s) must still block.
+        (True, Decimal("25.0"), "min_on_seconds"),
+    ],
+)
+def test_recovery_marker_cuts_off_older_simulated_hold_time(
+    session: Session, real_heating: bool, temperature_c: Decimal, minimum_field: str
+) -> None:
+    """Review finding (Grundsatz 7): `_previous_state()` used to keep walking back
+    over older rows with the same `would_heat` as the recovery marker, crediting
+    the *simulated* 20 min to a relay the Notbetrieb had switched only 65 s ago
+    -- the real minimum on/off duration was violated on return."""
+    zone, _wall, _trv, relais = _setup_zone(session)
+    setattr(zone, minimum_field, 300)
+    zone_device = session.scalars(
+        select(ZoneDevice).where(ZoneDevice.device_id == relais.id)
+    ).one()
+    episode = SensorFailureEpisode(
+        zone_id=zone.id,
+        zone_name=zone.display_name,
+        started_at=NOW - timedelta(minutes=30),
+        trigger_kind=emergency_operation.TRIGGER_ALLE_QUELLEN,
+        profile_version=1,
+        fixed_on_seconds=20,
+        fixed_off_seconds=30,
+        recovery_seconds=60,
+        recovery_samples=2,
+        warm_restart_hysteresis_k=Decimal("1"),
+        emergency_setpoint_c=Decimal("18"),
+        sensor_timeout_seconds=90,
+    )
+    session.add(episode)
+    session.flush()
+    session.add(
+        ActuatorEmergencyState(
+            zone_device_id=zone_device.id,
+            episode_id=episode.id,
+            last_successful_command_state=real_heating,
+            last_successful_command_at=NOW - timedelta(seconds=65),
+            profile_version=1,
+        )
+    )
+    # Simulated timeline: the same value for 20 minutes (older than the marker).
+    for minutes_ago in (20, 10, 1):
+        session.add(
+            ShadowDecision(
+                zone_id=zone.id,
+                decided_at=NOW - timedelta(minutes=minutes_ago),
+                setpoint_reason="",
+                would_heat=real_heating,
+                outcome_code="x",
+                reason="simulated",
+                requested_controller="hysteresis",
+                effective_controller="hysteresis",
+            )
+        )
+    _wall_state(session, zone, temperature_c=temperature_c, at=NOW)
+    session.flush()
+
+    shadow_run._seed_recovery_phase_marker(session, zone, NOW)
+
+    heating, held_for_s, _, _ = shadow_run._previous_state(session, zone.id, NOW)
+    assert heating is real_heating
+    assert held_for_s == 0
+    decision = _expected_ordinary_decision(session, zone, NOW)
+    assert decision.heating is real_heating
+    assert "0s" in decision.reason
