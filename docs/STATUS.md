@@ -204,12 +204,15 @@ Home-Assistant-MQTT-Entität kennt nur `sensor:<zone id>`-Schlüssel, Notbetrieb
 
 ### Offen und als Nächstes
 
-1. Mutationsläufe der neuen Regellogik (Auftrag 10, noch nicht gelaufen):
-   `domain/emergency_cycle.py`, `domain/emergency_operation.py`,
-   `domain/temperature_source_health.py`, `domain/emergency_actuator_plan.py`, ggf. die
-   Notbetriebsteile von `services/publishing.py`.
-2. Release 0.11.0 samt Add-on-Repository (Version, Changelog mit Verhaltensänderung, `DOCS.md`).
-3. Abnahme an der echten Anlage (Plan Abschnitt 4), zuerst im Schattenbetrieb: Wandfühler im Bad
+1. **Mutationsläufe** der Regellogik sind gelaufen (cosmic-ray, gültig, kein `INCOMPETENT`;
+   Konfigurationen `mutation/cosmic-ray-emergency-*.toml`, `-temperature-source-health.toml`):
+   `emergency_cycle` 502 Mutanten, `emergency_operation` 339, `temperature_source_health` 116,
+   `emergency_actuator_plan` 58, `emergency_prior` 135. Nach gezielten Zusatztests überleben
+   14 Mutanten, alle als äquivalent begründet (Signaturmutanten `*,` → `/,`, Grenzvergleiche der
+   Interpolation, `.limit(1)` → `.limit(2)`, `//60` bei 1800 s). Die Notbetriebsteile von
+   `services/publishing.py` sind nicht mutiert, sondern durch Handmutanten und
+   `tests/test_publishing_notbetrieb_versand.py` abgesichert.
+2. Abnahme an der echten Anlage (Plan Abschnitt 4), zuerst im Schattenbetrieb: Wandfühler im Bad
    abklemmen, Ersatzquelle (frühestens 30 min nach dem letzten `remote_temperature`), Notbetrieb,
    Übergabe `pause` → `manual` am BTH-RA beobachten, Rückkehr, Rückstellung `manual` → `pause`;
    Fußbodenkreis über mindestens zwei Taktpaare; Webhook-Meldung und Entwarnung prüfen;
