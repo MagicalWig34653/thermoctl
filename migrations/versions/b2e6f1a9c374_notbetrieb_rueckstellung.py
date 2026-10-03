@@ -50,6 +50,16 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     """Downgrade schema."""
+    # Der alte Check-Constraint kennt `restore` nicht; mit vorhandenen Zeilen scheitert
+    # sein Wiederherstellen. Zeilen zu loeschen waere der groessere Verlust (Protokoll,
+    # `device_command.actuator_decision_id` zeigt darauf), daher werden sie auf den
+    # zulaessigen Wert `no_write` umgeschrieben; `reason_code`/`reason` behalten den
+    # tatsaechlichen Hergang.
+    entscheidung = sa.table("actuator_decision", sa.column("action", sa.String))
+    op.execute(
+        entscheidung.update().where(entscheidung.c.action == "restore").values(action="no_write")
+    )
+
     with op.batch_alter_table("actuator_decision", schema=None) as batch_op:
         batch_op.drop_constraint(batch_op.f("ck_actuator_decision_action"), type_="check")
         batch_op.create_check_constraint(

@@ -66,7 +66,22 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     """Downgrade schema."""
+    # `device_command.outcome_id` zeigt (ohne ON DELETE) auf diese Zeile; ein blosses DELETE
+    # scheitert unter MariaDB, sobald das Feature je benutzt wurde, und hinterlaesst unter
+    # SQLite Verwaiste. Die Befehlszeilen bleiben als Protokoll erhalten (loeschen waere der
+    # groessere Datenverlust) und werden auf `suppressed` umgeschrieben: der Befehl wurde
+    # nie versandt, die Entscheidung ist also am ehesten "berechnet und zurueckgehalten".
     tabelle = _command_outcome()
+    ids = sa.table("command_outcome", sa.column("id", sa.Integer), sa.column("code", sa.String))
+    befehl = sa.table("device_command", sa.column("outcome_id", sa.Integer))
+    op.execute(
+        befehl.update()
+        .where(
+            befehl.c.outcome_id
+            == sa.select(ids.c.id).where(ids.c.code == _NEUER_OUTCOME[0]).scalar_subquery()
+        )
+        .values(outcome_id=sa.select(ids.c.id).where(ids.c.code == "suppressed").scalar_subquery())
+    )
     op.execute(tabelle.delete().where(tabelle.c.code == _NEUER_OUTCOME[0]))
 
     with op.batch_alter_table("actuator_emergency_state", schema=None) as batch_op:
