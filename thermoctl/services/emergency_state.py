@@ -28,7 +28,7 @@ from thermoctl.db.models.sensor_failure import (
     ZoneSensorFailureState,
 )
 from thermoctl.db.models.zone import Zone
-from thermoctl.domain import emergency_display, emergency_operation
+from thermoctl.domain import emergency_actuator_plan, emergency_display, emergency_operation
 from thermoctl.domain.outdoor import OutdoorReading, outdoor_reading
 from thermoctl.services.shadow_run import zone_actuator_assignments
 
@@ -248,7 +248,26 @@ def zone_emergency_view(
 
     outdoor = outdoor_reading(session, setting_row, now) if setting_row is not None else None
 
-    primary_actuator = actuator_views[0] if actuator_views else None
+    # A zone with a thermostat AND a floor switch does both at once, so the
+    # banner must not stop at whichever actuator sorts first: the thermostat
+    # leads, the first armed switch contributes its cycle.
+    thermostat_view = next(
+        (a for a in actuator_views if a.kind == emergency_actuator_plan.KIND_THERMOSTAT), None
+    )
+    switch_view = next(
+        (
+            a
+            for a in actuator_views
+            if a.kind == emergency_actuator_plan.KIND_SWITCH and a.phase is not None
+        ),
+        None,
+    )
+    primary_actuator: ActuatorEmergencyView | None
+    if thermostat_view is not None:
+        primary_actuator = thermostat_view
+    else:
+        primary_actuator = actuator_views[0] if actuator_views else None
+        switch_view = None
     banner = emergency_display.zone_banner(
         stage=stage,
         actuator_kind=primary_actuator.kind if primary_actuator is not None else None,
@@ -262,6 +281,10 @@ def zone_emergency_view(
         cycle_source=primary_actuator.cycle_source if primary_actuator is not None else None,
         recovery_sample_count=db_state.recovery_sample_count if db_state is not None else 0,
         recovery_samples=episode.recovery_samples if episode is not None else None,
+        switch_cycle_phase=switch_view.phase if switch_view is not None else None,
+        switch_on_seconds=switch_view.on_seconds if switch_view is not None else None,
+        switch_off_seconds=switch_view.off_seconds if switch_view is not None else None,
+        switch_cycle_source=switch_view.cycle_source if switch_view is not None else None,
     )
 
     return ZoneEmergencyView(

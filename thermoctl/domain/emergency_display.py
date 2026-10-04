@@ -39,6 +39,23 @@ class ZoneEmergencyBanner:
     detail: str
 
 
+def _cycle_parts(
+    on_seconds: int | None, off_seconds: int | None, cycle_source: str | None
+) -> tuple[int, int, str]:
+    """Minutes and the optional outdoor hint of a duty cycle.
+
+    Kreuzreview von c1ae1c5: "Kennlinie"/"Festtakt" sind Betreiber-
+    Fachbegriffe (sie stehen weiterhin in der Aktorentabelle der
+    Betriebsseite, `control.html`) und gehören nicht in einen Text, den auch
+    Bewohner/Kiosk zeigen. Die Außentemperaturabhängigkeit wird höchstens als
+    "passend zur Außentemperatur" angedeutet, nie als Zahl oder Quellenname.
+    """
+    outdoor_text = (
+        ", passend zur Außentemperatur" if cycle_source == emergency_cycle.SOURCE_CURVE else ""
+    )
+    return round((on_seconds or 0) / 60), round((off_seconds or 0) / 60), outdoor_text
+
+
 def zone_banner(
     *,
     stage: str,
@@ -51,6 +68,10 @@ def zone_banner(
     cycle_source: str | None,
     recovery_sample_count: int,
     recovery_samples: int | None,
+    switch_cycle_phase: str | None = None,
+    switch_on_seconds: int | None = None,
+    switch_off_seconds: int | None = None,
+    switch_cycle_source: str | None = None,
 ) -> ZoneEmergencyBanner | None:
     """The one banner a zone shows while it is not in `STAGE_NORMAL`.
 
@@ -91,29 +112,31 @@ def zone_banner(
             ),
         )
     # STAGE_NOTBETRIEB
+    # Eine gemischte Zone (Thermostat UND Fußbodenschalter) tut beides
+    # gleichzeitig: `actuator_kind` ist dann KIND_THERMOSTAT, und die
+    # `switch_*`-Argumente tragen den Takt des Schalters dazu. Ohne sie (oder
+    # solange der Schalter noch keinen Takt hat) bleibt es der reine
+    # Thermostat-Text.
     if actuator_kind == emergency_actuator_plan.KIND_THERMOSTAT:
         setpoint = emergency_setpoint_c if emergency_setpoint_c is not None else Decimal("20")
-        return ZoneEmergencyBanner(
-            stage=stage,
-            headline=f"Thermostat regelt selbst (Notsollwert {setpoint} °C)",
-            detail=(
-                "Kein Temperaturwert verfügbar. Das Thermostat hält selbst "
-                f"{setpoint} °C, bis wieder ein Messwert da ist."
-            ),
+        headline = f"Thermostat regelt selbst (Notsollwert {setpoint} °C)"
+        detail = (
+            "Kein Temperaturwert verfügbar. Das Thermostat hält selbst "
+            f"{setpoint} °C, bis wieder ein Messwert da ist."
         )
+        if switch_cycle_phase is not None:
+            on_min, off_min, outdoor = _cycle_parts(
+                switch_on_seconds, switch_off_seconds, switch_cycle_source
+            )
+            headline = f"Thermostat regelt selbst; Fußboden taktet {on_min}/{off_min} min"
+            detail += (
+                f" Der Fußboden taktet in festen Abständen ({on_min} Min. an, "
+                f"{off_min} Min. aus{outdoor})."
+            )
+        return ZoneEmergencyBanner(stage=stage, headline=headline, detail=detail)
     if actuator_kind == emergency_actuator_plan.KIND_SWITCH and cycle_phase is not None:
-        on_minutes = round((on_seconds or 0) / 60)
-        off_minutes = round((off_seconds or 0) / 60)
-        # Kreuzreview von c1ae1c5: "Kennlinie"/"Festtakt" sind Betreiber-
-        # Fachbegriffe (sie stehen weiterhin in der Aktorentabelle der
-        # Betriebsseite, `control.html`) und gehören nicht in einen Text, den
-        # auch Bewohner/Kiosk zeigen. Die Außentemperaturabhängigkeit wird
-        # hier höchstens als "passend zur Außentemperatur" angedeutet, nie als
-        # Zahl oder Quellenname.
-        outdoor_text = (
-            ", passend zur Außentemperatur"
-            if cycle_source == emergency_cycle.SOURCE_CURVE
-            else ""
+        on_minutes, off_minutes, outdoor_text = _cycle_parts(
+            on_seconds, off_seconds, cycle_source
         )
         return ZoneEmergencyBanner(
             stage=stage,

@@ -215,3 +215,27 @@ def test_outdoor_status_text_translates_every_code_to_plain_german() -> None:
     assert emergency_display.outdoor_status_text("veraltet").startswith("veraltet")
     assert emergency_display.outdoor_status_text("keine_quelle") == "keine Außenquelle eingerichtet"
     assert emergency_display.outdoor_status_text("sonstwas") == "sonstwas"
+
+
+def test_thermostat_banner_with_a_cycling_floor_names_both_behaviours() -> None:
+    banner = emergency_display.zone_banner(
+        stage=emergency_operation.STAGE_NOTBETRIEB,
+        actuator_kind=emergency_actuator_plan.KIND_THERMOSTAT,
+        source_device_name=None,
+        emergency_setpoint_c=Decimal("20"),
+        cycle_phase=None,
+        on_seconds=None,
+        off_seconds=None,
+        cycle_source=None,
+        recovery_sample_count=0,
+        recovery_samples=None,
+        switch_cycle_phase="ein",
+        switch_on_seconds=300,
+        switch_off_seconds=900,
+        switch_cycle_source="kennlinie",
+    )
+    assert banner is not None
+    assert banner.headline == "Thermostat regelt selbst; Fußboden taktet 5/15 min"
+    assert "passend zur Außentemperatur" in banner.detail
+    for forbidden in ("Kennlinie", "Festtakt", "°C"):
+        assert forbidden not in banner.headline

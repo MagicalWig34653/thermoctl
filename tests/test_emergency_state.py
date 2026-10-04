@@ -4,6 +4,7 @@
 from datetime import datetime, timedelta
 from decimal import Decimal
 
+import pytest
 from sqlalchemy.orm import Session
 
 from tests.helpers import capability, create_device, create_settings, create_zone, role
@@ -326,3 +327,92 @@ def test_entered_notice_text_notes_a_missing_actuator(session: Session) -> None:
 
     assert view.actuators == ()
     assert "noch kein Aktor zugeordnet" in entered_notice_text(view)
+
+
+def _thermostat_actuator(session: Session, zone_id: int, sort_order: int) -> ZoneDevice:
+    device = create_device(session, f"zone-{zone_id}-thermostat")
+    session.add(
+        DeviceCapabilityLink(
+            device_id=device.id, capability_id=capability(session, "thermostat").id
+        )
+    )
+    zone_device = ZoneDevice(
+        zone_id=zone_id,
+        device_id=device.id,
+        device_role_id=role(session, "actuator").id,
+        self_regulating=True,
+        sort_order=sort_order,
+    )
+    session.add(zone_device)
+    session.flush()
+    return zone_device
+
+
+@pytest.mark.parametrize("thermostat_first", [True, False])
+def test_mixed_zone_banner_names_thermostat_and_floor_in_either_order(
+    session: Session, thermostat_first: bool
+) -> None:
+    settings = create_settings(session)
+    zone = create_zone(session, "Bad")
+    if thermostat_first:
+        _thermostat_actuator(session, zone.id, 0)
+        floor = _switch_actuator(session, zone.id)
+        floor.sort_order = 1
+    else:
+        floor = _switch_actuator(session, zone.id)
+        floor.sort_order = 0
+        _thermostat_actuator(session, zone.id, 1)
+    episode = SensorFailureEpisode(
+        zone_id=zone.id,
+        zone_name=zone.display_name,
+        started_at=NOW,
+        trigger_kind=emergency_operation.TRIGGER_ALLE_QUELLEN,
+        profile_version=1,
+        fixed_on_seconds=600,
+        fixed_off_seconds=1200,
+        recovery_seconds=60,
+        recovery_samples=2,
+        warm_restart_hysteresis_k=Decimal("1"),
+        emergency_setpoint_c=Decimal("20"),
+        sensor_timeout_seconds=1800,
+    )
+    session.add(episode)
+    session.flush()
+    session.add(
+        ZoneSensorFailureState(
+            zone_id=zone.id,
+            episode_id=episode.id,
+            stage=emergency_operation.STAGE_NOTBETRIEB,
+            recovery_sample_count=0,
+        )
+    )
+    session.add(
+        ActuatorEmergencyState(
+            zone_device_id=floor.id,
+            episode_id=episode.id,
+            armed_episode_id=episode.id,
+            phase="ein",
+            phase_deadline_at=NOW + timedelta(minutes=10),
+            on_seconds=600,
+            off_seconds=1200,
+            cycle_source="festtakt",
+            warm_locked=False,
+            simulated_phase="ein",
+            simulated_phase_deadline_at=NOW + timedelta(minutes=10),
+            simulated_on_seconds=600,
+            simulated_off_seconds=1200,
+            simulated_cycle_source="festtakt",
+            simulated_warm_locked=False,
+            profile_version=1,
+        )
+    )
+    session.flush()
+
+    view = zone_emergency_view(session, zone, NOW, settings)
+
+    assert view.banner is not None
+    assert view.banner.headline == "Thermostat regelt selbst; Fußboden taktet 10/20 min"
+    assert "Fußboden" in view.banner.detail
+    assert "10 Min. an" in view.banner.detail
+    for forbidden in ("Kennlinie", "Festtakt", "°C"):
+        assert forbidden not in view.banner.headline
