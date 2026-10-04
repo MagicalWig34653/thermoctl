@@ -1,8 +1,8 @@
 # Stand
 
-Letzte Aktualisierung: 2026-10-03.
+Letzte Aktualisierung: 2026-10-04.
 
-## 0.11.0: Notbetrieb bei Sensorausfall
+## 0.11.0 / 0.11.1: Notbetrieb bei Sensorausfall
 
 Plan und Gerätevertrag liegen lokal (`lokal/plaene/0.11.0-notbetrieb.md`,
 `lokal/plaene/0.11.0-geraetevertrag.md`), die Übergabe unter
@@ -204,6 +204,12 @@ Home-Assistant-MQTT-Entität kennt nur `sensor:<zone id>`-Schlüssel, Notbetrieb
 
 ### Offen und als Nächstes
 
+0.11.1 enthält die Korrekturen aus dem ersten Blick auf die laufende Anlage: Ausgleichswerte
+werden im Formular angezeigt und beim Speichern nicht mehr gelöscht, der Notbetriebs-Hinweis
+nennt bei Thermostat plus Fußbodenkreis beide, einheitliche Zahlenschreibweise in den
+Entscheidungsgründen (`thermoctl/domain/number_text.py`), PI-Grund „Abweichung" und Tastgrad
+in Prozent, Schaltprotokoll-Layout bei langen Texten.
+
 1. **Mutationsläufe** der Regellogik sind gelaufen (cosmic-ray, gültig, kein `INCOMPETENT`;
    Konfigurationen `mutation/cosmic-ray-emergency-*.toml`, `-temperature-source-health.toml`):
    `emergency_cycle` 502 Mutanten, `emergency_operation` 339, `temperature_source_health` 116,
@@ -217,6 +223,11 @@ Home-Assistant-MQTT-Entität kennt nur `sensor:<zone id>`-Schlüssel, Notbetrieb
    Übergabe `pause` → `manual` am BTH-RA beobachten, Rückkehr, Rückstellung `manual` → `pause`;
    Fußbodenkreis über mindestens zwei Taktpaare; Webhook-Meldung und Entwarnung prüfen;
    Gerätevertrag vorher mit frischem Dump gegenprüfen.
+3. Bekannte Kleinigkeiten: Die Spalte „Ergebnis" im Schaltprotokoll zeigt bei Notbetriebs-
+   Entscheidungen noch den Rohcode (z. B. `sensorausfall_takt_laeuft`) statt einer deutschen
+   Bezeichnung; ein nie gesetzter Ausgleichswert wird beim ersten Speichern als 0,00 abgelegt
+   (wirkt wie „kein Wert"); beim Ersteintritt in den Notbetrieb sieht der Befehlslog keine
+   Handschaltung des Relais.
 
 ## v0.10.1
 

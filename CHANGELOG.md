@@ -9,6 +9,36 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ---
 
+## 0.11.1 — 2026-10-04
+
+Korrekturen zu 0.11.0, beim ersten Hinsehen auf die laufende Anlage gefunden. Beim Upgrade
+nichts zu tun: keine Migration, keine neue Einstellung.
+
+### Behoben
+
+- **Ausgleichswerte der Notbetriebs-Thermostate gingen beim Speichern verloren.** Unter
+  Zonen → Regelparameter blieb das Feld „Ausgleichswert" je Thermostat leer, auch wenn ein
+  Wert gespeichert war; wer die Seite speicherte (Berechtigung `device.manage`), löschte
+  damit still alle Ausgleichswerte der Zone. Das Feld zeigt den gespeicherten Wert jetzt an,
+  ein Speichern ohne Änderung lässt ihn stehen, und nach einer abgewiesenen Eingabe bleibt
+  der getippte Wert im Feld. Wer unter 0.11.0 Ausgleichswerte gesetzt und danach die Seite
+  gespeichert hat, muss sie einmal neu eintragen. Ein leeres Feld entfernt den Wert weiterhin
+  (die Zone rechnet dann wie mit 0 K); das steht jetzt als Hinweis am Feld.
+- **Der Notbetriebs-Hinweis nannte bei Zonen mit Thermostat und Fußbodenkreis nur eines von
+  beidem.** Er nennt jetzt beide, etwa „Thermostat regelt selbst; Fußboden taktet 10/20 min".
+- **Schaltprotokoll:** Bei 1280 px liefen lange Ergebnis- und Begründungstexte über ihre
+  Spalte hinaus; sie brechen jetzt an Trennstellen um.
+
+### Geändert
+
+- **Entscheidungsgründe lesen sich einheitlich:** Dezimalkomma, Leerzeichen vor der Einheit
+  („Ist 19,9 °C … Hysterese 0,10 K"). Bei der PI-Regelung heißt es „Abweichung" statt
+  „Fehler" und der Tastgrad steht gerundet in Prozent („3,6 %") statt mit siebzehn
+  Nachkommastellen. Reine Textänderung, die Regelung selbst ist unverändert. Bereits
+  gespeicherte Gründe im Verlauf behalten ihre alte Schreibweise.
+- **Doku:** zwei neue Bilder (Regelvorgaben-Karte „Notbetrieb", Notbetrieb in den
+  Regelparametern einer Zone), das Schaltprotokoll-Bild neu.
+
 ## 0.11.0 — 2026-10-03
 
 Neu in 0.11.0: **Notbetrieb bei Sensorausfall.**
