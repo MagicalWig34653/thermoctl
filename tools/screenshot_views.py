@@ -26,6 +26,10 @@ class View:
     mobile_followup: str | None = None
     # Optional second desktop viewport for relevant content below the fold.
     desktop_followup: str | None = None
+    # Optional element selector: the primary capture is then cropped to this element
+    # (full page, so a section taller than the viewport is still complete) instead of
+    # showing the top of the page.
+    section: str | None = None
 
     @property
     def stem(self) -> str:
@@ -65,6 +69,18 @@ _VIEWS_BEFORE_DOCUMENTATION_FLAGS = (
             ("statistik", "/statistics"),
             ("relaisverschleiss", "/relay-wear"),
         )
+    ),
+    View(
+        "einstellungen-notbetrieb",
+        "/settings",
+        section="form[action$='/settings/sensor-failure']",
+        route="/settings",
+    ),
+    View(
+        "bad-parameter-notbetrieb",
+        "/zones/{zone_bad}/parameters",
+        section=".border-top:has(#sensor_failure_enabled)",
+        route="/zones/{zone_id}/parameters",
     ),
     *(
         View(
@@ -140,6 +156,8 @@ _DOCUMENTED: dict[str, tuple[bool, bool]] = {
     "anlage-gruppen": (True, False),
     "anlage-kiosk-token": (True, False),
     "anlage-einstellungen": (True, False),
+    "anlage-einstellungen-notbetrieb": (True, False),
+    "anlage-bad-parameter-notbetrieb": (True, False),
     "anlage-relaisverschleiss": (True, False),
     "anlage-urlaub": (True, False),
     "wohnung-startseite": (False, True),

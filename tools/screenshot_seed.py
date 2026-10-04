@@ -1,5 +1,6 @@
 """Invented, repeatable demonstration data; only for the isolated screenshot DB."""
 
+from dataclasses import replace
 from datetime import timedelta
 from decimal import Decimal
 
@@ -40,7 +41,7 @@ from thermoctl.db.models.sensor_failure import (
 )
 from thermoctl.db.models.vacation import Vacation
 from thermoctl.db.models.zone import SetpointMode, ZoneSetpoint
-from thermoctl.domain import emergency_operation
+from thermoctl.domain import emergency_operation, sensor_failure_policy
 from thermoctl.domain.absence import start_absence
 from thermoctl.domain.controller import set_binding
 from thermoctl.domain.controller_channels import configure_channel
@@ -61,6 +62,10 @@ def seed_demo(session: Session, password: str) -> dict[str, str | int]:
     zones = []
     for i, (name, slug) in enumerate(zip(ZONE_NAMES, ZONE_SLUGS, strict=True)):
         zone = create_schedule_zone(session, name, day_temperature=Decimal(20 + i % 3))
+        # Der Notbetrieb ist für jede reale Zone aktiv (Vorgabe seit 0.11); nur die
+        # Testhilfe legt Zonen ausgeschaltet an. Sonst zeigte der Schalter in den
+        # Regelparametern "aus".
+        zone.sensor_failure_enabled = True
         zones.append(zone)
         paths[f"zone_{slug}"] = zone.id
         sensor = create_temperature_device(session, f"0x00124b00dead{i:04x}")
@@ -102,6 +107,9 @@ def seed_demo(session: Session, password: str) -> dict[str, str | int]:
                 device_id=actuator.id,
                 device_role_id=role(session, "actuator").id,
                 self_regulating=i == 2,
+                # Nur das Thermostat (Bad) zeigt einen Ausgleichswert im Abschnitt
+                # "Notbetrieb" der Regelparameter.
+                temperature_backup_offset_k=Decimal("-1.50") if i == 2 else Decimal("0"),
             )
         )
         for day in range(2, 8):
@@ -238,6 +246,25 @@ def seed_demo(session: Session, password: str) -> dict[str, str | int]:
                 usable=True,
             )
         )
+
+    # Anlagenweite Außenkennlinie: mehrere Zeilen, damit die Karte unter
+    # Regelvorgaben nicht leer wirkt; der Festtakt bleibt die Vorgabe.
+    default_profile = sensor_failure_policy.read_profile(
+        session, sensor_failure_policy.migration_default_profile_id(session)
+    )
+    sensor_failure_policy.save_profile(
+        session,
+        replace(
+            default_profile.values,
+            curve_points=(
+                sensor_failure_policy.CurvePoint(Decimal("-10"), 1200, 600),
+                sensor_failure_policy.CurvePoint(Decimal("0"), 900, 900),
+                sensor_failure_policy.CurvePoint(Decimal("10"), 600, 1200),
+                sensor_failure_policy.CurvePoint(Decimal("16"), 0, 1800),
+            ),
+        ),
+        profile_id=default_profile.id,
+    )
 
     controller = create_device(session, "0x00124b00deadbeef")
     controller.display_name = "Wandregler Wohnzimmer"
