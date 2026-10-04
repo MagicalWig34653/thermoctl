@@ -938,24 +938,41 @@ body {
  * 7 Ergebnis, 8 Begründung. Bei 1280px bleiben neben Navigation und
  * Seitenpolster nur 955px. Jede feste Breite enthält ihr Zellpolster (2 x
  * 0.45rem); Zeitpunkt, Ergebnis und Begründung dürfen nur an Leerzeichen
- * umbrechen, nie mitten im Wort. Der Rest gehört der Begründung. Unterhalb
+ * umbrechen, nie mitten im Wort. Der Rest (rund 190px) gehört der Begründung. Unterhalb
  * dieses Budgets scrollt nur die Tabelle; mobil gilt die Kartenform. */
 .tc-command-table { table-layout: fixed; }
 .tc-command-table > :not(caption) > * > * { padding: 0.6rem 0.45rem; }
-.tc-command-table th:nth-child(1) { width: 6.75rem; }
-.tc-command-table th:nth-child(2) { width: 6rem; }
-.tc-command-table th:nth-child(3) { width: 7.5rem; }
-.tc-command-table th:nth-child(4) { width: 7.5rem; }
-.tc-command-table th:nth-child(5) { width: 9rem; }
-.tc-command-table th:nth-child(6) { width: 5.5rem; }
-.tc-command-table th:nth-child(7) { width: 7.25rem; }
+.tc-command-table th:nth-child(1) { width: 6.5rem; }
+.tc-command-table th:nth-child(2) { width: 5.5rem; }
+.tc-command-table th:nth-child(3) { width: 7rem; }
+.tc-command-table th:nth-child(4) { width: 7.25rem; }
+.tc-command-table th:nth-child(5) { width: 8.25rem; }
+.tc-command-table th:nth-child(6) { width: 4.75rem; }
+.tc-command-table th:nth-child(7) { width: 8.5rem; }
+
+/* Am Schreibtisch ist die Tabelle dicht: Die Zeilen tragen Notbetriebstexte mit
+ * langen deutschen Zusammensetzungen ("Außentemperaturmessung"), die in
+ * 1rem-Schrift nicht in die Begründungsspalte passen. Mobil bleibt die
+ * Kartenform in Normalgröße. */
+@media (min-width: 768px) {
+    .tc-command-table { font-size: 0.875rem; }
+}
 
 .tc-command-table td:nth-child(1),
 .tc-command-table td:nth-child(2),
-.tc-command-table td:nth-child(3),
+.tc-command-table td:nth-child(3) {
+    overflow-wrap: normal;
+}
+
+/* Ergebnis und Begründung tragen freien Text: Fehlermeldungen, Pfade, lange
+ * deutsche Zusammensetzungen. Umbrochen wird zuerst an Leerzeichen und an den
+ * Trennmarken der Vorlage (<wbr> nach _ / ? & =); erst wenn ein einzelnes Wort
+ * allein nicht in die Spalte passt, darf `break-word` es zerteilen -- statt
+ * dass es in die Nachbarspalte läuft. Anders als `anywhere` ändert es die
+ * Mindestbreite nicht und greift nur in diesem Notfall. */
 .tc-command-table td:nth-child(7),
 .tc-command-table td:nth-child(8) {
-    overflow-wrap: normal;
+    overflow-wrap: break-word;
 }
 
 .tc-command-table td:nth-child(1) .badge {

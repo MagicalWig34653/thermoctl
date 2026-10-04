@@ -1,6 +1,13 @@
 {% extends "base_admin.html" if not is_htmx else "empty.html" %}
 {% block title %}Schaltprotokoll – thermoctl{% endblock %}
 {% block page_title %}Schaltprotokoll{% endblock %}
+{# Trennstellen für Rohcodes, Pfade und Adressen: <wbr> nach _ / ? & = . erlaubt dem
+   Browser einen Umbruch an diesen Stellen, bevor er überhaupt ein Wort zerreißen
+   müsste. Der Text wird zuerst maskiert; nur die Trennmarke ist Markup. #}
+{% macro breakable(text) -%}
+{%- set wbr = "<wbr>"|safe -%}
+{{- text|e|replace("_", "_"|safe ~ wbr)|replace("/", "/"|safe ~ wbr)|replace("?", "?"|safe ~ wbr)|replace("&amp;"|safe, "&amp;"|safe ~ wbr)|replace("=", "="|safe ~ wbr)|replace(".", "."|safe ~ wbr) -}}
+{%- endmacro %}
 {% block content %}
 <section id="device-command-list">
   <h1 class="mb-3">Schaltprotokoll</h1>
@@ -71,11 +78,11 @@
         <td data-label="Gerät">{{ entry.device_name }}</td>
         <td data-label="Befehl"><code>{{ entry.command }}</code></td>
         <td data-label="Ergebnis">
-          {{ outcome_labels.get(entry.outcome, entry.outcome) }}
-          {% if entry.error %}<div class="text-danger small">{{ entry.error }}</div>{% endif %}
+          {{ breakable(outcome_labels.get(entry.outcome, entry.outcome)) }}
+          {% if entry.error %}<div class="text-danger small">{{ breakable(entry.error) }}</div>{% endif %}
         </td>
         <td data-label="Begründung">
-          {{ entry.reason or "–" }}
+          {{ breakable(entry.reason or "–") }}
           {% if entry.payload %}
           <details class="mt-1"><summary>Nutzlast anzeigen</summary><pre class="mt-2 text-wrap">{{ entry.payload }}</pre></details>
           {% endif %}
