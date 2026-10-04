@@ -12,6 +12,7 @@ control latches are open, sends it to the wired actuator.
 from dataclasses import dataclass
 from decimal import Decimal
 
+from thermoctl.domain.number_text import difference_text, temperature_text
 from thermoctl.domain.zone_settings import ControlParameters
 
 # These codes correspond literally to the shadow_decision.outcome_code column from
@@ -113,6 +114,8 @@ def decide(situation: Situation) -> Decision:
     # which is why it is applied to the current value here, and only here, before any
     # further rule.
     measured_c = situation.measured_c + situation.parameter.temperature_offset_k
+    measured_text = temperature_text(measured_c)
+    frost_text = temperature_text(situation.frost_c)
 
     # Rule 2 — operating mode 'off' means frost protection, not powered down. The
     # caller already resolves the setpoint before us (`aufgeloester_sollwert`), which
@@ -128,8 +131,10 @@ def decide(situation: Situation) -> Decision:
     # powered down".
     sensor_failed = situation.sensor_status == "veraltet"
     setpoint_c = situation.frost_c if sensor_failed else situation.setpoint_c
+    setpoint_text = temperature_text(setpoint_c)
     setpoint_reason = (
-        f"Sensorwert veraltet — Frostschutz {situation.frost_c} °C statt {situation.setpoint_c} °C"
+        f"Sensorwert veraltet — Frostschutz {frost_text} "
+        f"statt {temperature_text(situation.setpoint_c)}"
         if sensor_failed
         else situation.setpoint_reason
     )
@@ -137,6 +142,7 @@ def decide(situation: Situation) -> Decision:
     # `h` (rule 6's hysteresis band) is needed already here, by rule 3's frost
     # exception below — moved up from its original position directly above rule 6.
     h = situation.parameter.hysteresis_k
+    hysteresis_text = difference_text(h)
 
     # An EIN/AUS-zone (`on_off_actuators_only`, see the field's docstring) skips both
     # rule 3 and rule 4 below entirely, unconditionally — the owner's decision this
@@ -222,8 +228,8 @@ def decide(situation: Situation) -> Decision:
                 heating=False,
                 reason_code=REASON_CODE_WINDOW_OPEN,
                 reason=(
-                    f"Fenster offen — Ist {measured_c} °C, "
-                    f"Soll {setpoint_c} °C ({setpoint_reason})." + window_temp_note
+                    f"Fenster offen — Ist {measured_text}, "
+                    f"Soll {setpoint_text} ({setpoint_reason})." + window_temp_note
                 ),
             )
         # Falls through instead of returning: rule 4 below never applies here in
@@ -234,6 +240,7 @@ def decide(situation: Situation) -> Decision:
         # on/off exactly as it always does, just against the frost-protection value
         # instead of the normal setpoint, which is why both are substituted here.
         setpoint_c = situation.frost_c
+        setpoint_text = frost_text
         # On a failed sensor `setpoint_reason` already names that (rule 1/2 above) and
         # `setpoint_c` is already the frost value — append instead of replacing, so a
         # doubly unusual cycle (stale sensor *and* an open window below frost) still
@@ -241,11 +248,11 @@ def decide(situation: Situation) -> Decision:
         # one.
         setpoint_reason = (
             f"{setpoint_reason} Zusätzlich Ausnahmeregel: Fenster offen, aber "
-            f"Frostschutz {situation.frost_c} °C unterschritten — es wird trotzdem "
+            f"Frostschutz {frost_text} unterschritten — es wird trotzdem "
             "geheizt."
             if sensor_failed
             else (
-                f"Fenster offen, aber Frostschutz {situation.frost_c} °C unterschritten "
+                f"Fenster offen, aber Frostschutz {frost_text} unterschritten "
                 "— Ausnahmeregel: es wird trotz offenem Fenster geheizt, um ein "
                 "Einfrieren zu vermeiden."
             )
@@ -367,7 +374,8 @@ def decide(situation: Situation) -> Decision:
                 else REASON_CODE_HEATING
             ),
             reason=(
-                f"Ist {measured_c} °C unter Soll {setpoint_c} °C minus Hysterese {h}K "
+                f"Ist {measured_text} unter Soll {setpoint_text} "
+                f"minus Hysterese {hysteresis_text} "
                 f"({setpoint_reason})." + on_off_zone_note + window_temp_note
             ),
         )
@@ -379,7 +387,8 @@ def decide(situation: Situation) -> Decision:
             heating=False,
             reason_code=REASON_CODE_OFF,
             reason=(
-                f"Ist {measured_c} °C über Soll {setpoint_c} °C plus Hysterese {h}K "
+                f"Ist {measured_text} über Soll {setpoint_text} "
+                f"plus Hysterese {hysteresis_text} "
                 f"({setpoint_reason})." + on_off_zone_note + window_temp_note
             ),
         )
@@ -400,7 +409,8 @@ def decide(situation: Situation) -> Decision:
                     else REASON_CODE_UNCHANGED
                 ),
                 reason=(
-                    f"Ist {measured_c} °C unter Soll {setpoint_c} °C minus Hysterese {h}K "
+                    f"Ist {measured_text} unter Soll {setpoint_text} "
+                    f"minus Hysterese {hysteresis_text} "
                     f"({setpoint_reason}) — Heizung läuft bereits, Zustand bleibt."
                     + on_off_zone_note + window_temp_note
                 ),
@@ -413,7 +423,8 @@ def decide(situation: Situation) -> Decision:
                 else REASON_CODE_UNCHANGED
             ),
             reason=(
-                f"Ist {measured_c} °C innerhalb der Hysterese um Soll {setpoint_c} °C ± {h}K "
+                f"Ist {measured_text} innerhalb der Hysterese um "
+                f"Soll {setpoint_text} ± {hysteresis_text} "
                 f"({setpoint_reason}) — Zustand bleibt." + on_off_zone_note + window_temp_note
             ),
         )
@@ -454,7 +465,8 @@ def decide(situation: Situation) -> Decision:
                 else REASON_CODE_UNCHANGED
             ),
             reason=(
-                f"Ist {measured_c} °C über Soll {setpoint_c} °C plus Hysterese {h}K "
+                f"Ist {measured_text} über Soll {setpoint_text} "
+                f"plus Hysterese {hysteresis_text} "
                 f"({setpoint_reason}) — Heizung ist bereits aus, Zustand bleibt."
                 + on_off_zone_note + window_temp_note
             ),
@@ -466,7 +478,8 @@ def decide(situation: Situation) -> Decision:
             else REASON_CODE_UNCHANGED
         ),
         reason=(
-            f"Ist {measured_c} °C innerhalb der Hysterese um Soll {setpoint_c} °C ± {h}K "
+            f"Ist {measured_text} innerhalb der Hysterese um "
+            f"Soll {setpoint_text} ± {hysteresis_text} "
             f"({setpoint_reason}) — Zustand bleibt." + on_off_zone_note + window_temp_note
         ),
     )

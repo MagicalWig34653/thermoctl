@@ -478,8 +478,8 @@
       "Ventilschutzlauf — die Regelung entscheidet unabhängig von der Raumregelung für",
       "heizen",
       "ventilschutz",
-      "°C unterschritten — Ausnahmeregel: es wird trotz offenem Fenster geheizt, um ein Einfrieren zu vermeiden.",
-      "°C unterschritten — es wird trotzdem geheizt."
+      "unterschritten — Ausnahmeregel: es wird trotz offenem Fenster geheizt, um ein Einfrieren zu vermeiden.",
+      "unterschritten — es wird trotzdem geheizt."
     ],
     "thermoctl/domain/controller_channels.py": [
       "Schreibkanäle sind nur auf Bediengeräten erlaubt, die nirgends Aktor sind.",

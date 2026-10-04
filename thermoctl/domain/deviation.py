@@ -15,6 +15,8 @@ from dataclasses import dataclass
 from decimal import Decimal
 from enum import StrEnum
 
+from thermoctl.domain.number_text import temperature_text
+
 
 class Classification(StrEnum):
     UEBEREINSTIMMUNG = "uebereinstimmung"
@@ -30,8 +32,8 @@ class Comparison:
 
 def _temperature_text(value: Decimal | None) -> str:
     if value is None:
-        return "unbekannt"
-    return f"{value:.1f}".replace(".", ",")
+        return "unbekannt °C"
+    return temperature_text(value)
 
 
 def compare(
@@ -69,11 +71,11 @@ def compare(
     if would_heat:
         text = (
             "thermoctl hätte geheizt, das Altsystem heizte nicht — "
-            f"Ist {ist_text} °C, Soll {setpoint_text} °C."
+            f"Ist {ist_text}, Soll {setpoint_text}."
         )
     else:
         text = (
             "thermoctl hätte nicht geheizt, das Altsystem heizte — "
-            f"Ist {ist_text} °C, Soll {setpoint_text} °C."
+            f"Ist {ist_text}, Soll {setpoint_text}."
         )
     return Comparison(Classification.ABWEICHUNG, text)

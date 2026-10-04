@@ -56,6 +56,8 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 
+from thermoctl.domain.number_text import temperature_text
+
 PHASE_ON = "ein"
 PHASE_OFF = "aus"
 
@@ -276,7 +278,7 @@ def _explain(
     source_text = "Außenkennlinie" if source == SOURCE_CURVE else "Festtakt"
     if outdoor.value_c is not None:
         brauchbarkeit = "brauchbar" if outdoor.usable else "unbrauchbar"
-        outdoor_text = f"Außentemperatur {outdoor.value_c} °C ({brauchbarkeit})"
+        outdoor_text = f"Außentemperatur {temperature_text(outdoor.value_c)} ({brauchbarkeit})"
     else:
         outdoor_text = "keine Außentemperaturmessung"
     duration = on_seconds if phase == PHASE_ON else off_seconds
