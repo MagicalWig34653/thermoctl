@@ -150,11 +150,30 @@ def _capture(
                         f'[data-kiosk-detail="{zone_id}"].kiosk-detail-open'
                     ).wait_for(state="visible", timeout=5_000)
                 target = output / name
-                page.screenshot(
-                    path=str(target),
-                    full_page=view.kiosk_mode == "tafel" and not is_mobile_capture,
-                    animations="disabled",
-                )
+                if view.section:
+                    box = page.locator(view.section).bounding_box()
+                    if box is None:
+                        raise RuntimeError(f"Abschnitt nicht gefunden: {view.section}")
+                    pad = 8
+                    left = max(box["x"] - pad, 0)
+                    top = max(box["y"] - pad, 0)
+                    page.screenshot(
+                        path=str(target),
+                        full_page=True,
+                        clip={
+                            "x": left,
+                            "y": top,
+                            "width": min(box["width"] + 2 * pad, width - left),
+                            "height": box["height"] + pad,
+                        },
+                        animations="disabled",
+                    )
+                else:
+                    page.screenshot(
+                        path=str(target),
+                        full_page=view.kiosk_mode == "tafel" and not is_mobile_capture,
+                        animations="disabled",
+                    )
                 if errors:
                     target.unlink(missing_ok=True)
                     raise RuntimeError("; ".join(errors))

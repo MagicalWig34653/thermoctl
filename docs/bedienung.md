@@ -212,6 +212,9 @@ Kiosk steht ein kurzer Hinweis in Klartext; Details für die Technik zeigt die B
   sie braucht mindestens zwei Zeilen und genau einen oberen Punkt, ab dem nicht mehr eingeschaltet
   bleibt, und der Tastgrad darf mit steigender Außentemperatur nicht zunehmen. Eine leere
   Kennlinie heißt Festtakt. Ein Fehler in einer Zeile verwirft die ganze Eingabe.
+
+  ![Karte „Notbetrieb bei Sensorausfall" unter Regelvorgaben mit Festtakt, Rückkehrprüfung, Wiederanlaufspanne, Notsollwert und einer Außenkennlinie aus vier Zeilen](bilder/anlage-einstellungen-notbetrieb.png)
+
 - **Zone → Regelparameter → Abschnitt „Notbetrieb bei Sensorausfall"** (je Zone): den
   Notbetrieb für diese Zone **ausschalten**, ein anderes vorhandenes Profil wählen oder
   einen eigenen Notsollwert setzen (leer = Anlagenwert erben), und je zugeordnetem
@@ -219,6 +222,8 @@ Kiosk steht ein kurzer Hinweis in Klartext; Details für die Technik zeigt die B
   wirksamen Werte und woher sie stammen. Der Abschnitt gehört zum selben Formular wie die
   übrigen Regelparameter, mit einem gemeinsamen Speichern-Knopf. Mehrere Profile
   anzulegen ist nicht vorgesehen; es gibt das eine anlagenweite Profil.
+
+  ![Abschnitt „Notbetrieb bei Sensorausfall" in den Regelparametern der Zone Bad mit Schalter, Profilwahl, eigenem Notsollwert, Ausgleichswertfeld für das zugeordnete Thermostat und den wirksamen Werten samt Herkunft](bilder/anlage-bad-parameter-notbetrieb.png)
 
 **Wichtig zu wissen:** Im Notbetrieb takten Fußbodenkreise nach der Uhr, **unabhängig von der
 Raumtemperatur**. Das ist eine Notlösung für den Ausfall, keine Regelung; wer eine Zone
