@@ -14,6 +14,7 @@ separate, later task -- see `tests/test_pi_schema.py`), so every test here sets 
 directly on the ORM object, exactly like that file already does.
 """
 
+import re
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
@@ -1941,3 +1942,37 @@ class TestValveProtectionMarkerClearsWhenPiOverridesTheBlock:
         state = session.get(ZoneState, zone.id)
         assert state is not None
         assert state.valve_protection_started_at is None
+
+
+class TestPiReasonText:
+    """Wortlaut des PI-Entscheidungsgrunds: Regelabweichung statt "Fehler",
+    Tastgrad als gerundeter Prozentwert mit Dezimalkomma (Befund 2026-10-04: der
+    Grund zeigte ``Fehler 0.10K, Tastgrad 0.03649823433564814814814814815``)."""
+
+    def test_wording_and_rounding(self) -> None:
+        text = shadow_run._pi_reason_text(
+            Decimal("0.10"), Decimal("0.03649823433564814814814814815"), "regulaer", True
+        )
+        assert text == "PI-Regelung: Abweichung 0,10 K, Tastgrad 3,6 %, regulaer -> Heizen."
+        assert "Fehler" not in text
+
+    def test_zero_percent(self) -> None:
+        text = shadow_run._pi_reason_text(Decimal("-1.5"), Decimal("0"), "regulaer", False)
+        assert text == "PI-Regelung: Abweichung -1,50 K, Tastgrad 0,0 %, regulaer -> Aus."
+
+    def test_hundred_percent(self) -> None:
+        text = shadow_run._pi_reason_text(Decimal("4"), Decimal("1"), "regulaer", True)
+        assert "Tastgrad 100,0 %" in text
+
+    def test_very_small_value_rounds_to_zero_without_scientific_notation(self) -> None:
+        text = shadow_run._pi_reason_text(
+            Decimal("-0.0001"), Decimal("0.00000001"), "regulaer", False
+        )
+        assert text == "PI-Regelung: Abweichung 0,00 K, Tastgrad 0,0 %, regulaer -> Aus."
+
+    def test_the_persisted_reason_has_no_raw_decimal(self, session: Session) -> None:
+        zone = _pi_zone(session, "pi-grund-wortlaut", measured_c=Decimal("20.9"))
+        row = _row_for(shadow_run.cycle(session, NOW), zone)
+        assert row.effective_controller == "pi"
+        assert "Abweichung" in row.reason and "Fehler" not in row.reason
+        assert re.search(r"Tastgrad \d+,\d %", row.reason)
