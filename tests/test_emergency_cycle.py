@@ -800,7 +800,7 @@ def test_continue_reason_texts_for_off_and_on_phase_and_outdoor_judgement() -> N
     cont_on = advance(on.state, _cycle(T0 + timedelta(seconds=1), _fixed_profile(), unusable))
     assert cont_on.decision.reason == (
         "Notbetriebstakt läuft weiter, aktuelle Ein-Phase für 600 s, Taktquelle Festtakt, "
-        "Außentemperatur -5 °C (unbrauchbar). Takt: 600 s Ein / 1200 s Aus."
+        "Außentemperatur -5,0 °C (unbrauchbar). Takt: 600 s Ein / 1200 s Aus."
     )
     curve = advance(None, _cycle(T0, _curve_profile(), _usable("-5")))
     cont_curve = advance(
@@ -808,7 +808,7 @@ def test_continue_reason_texts_for_off_and_on_phase_and_outdoor_judgement() -> N
     )
     assert cont_curve.decision.reason == (
         "Notbetriebstakt läuft weiter, aktuelle Aus-Phase für 900 s, Taktquelle Außenkennlinie, "
-        "Außentemperatur -5 °C (brauchbar). Takt: 900 s Ein / 900 s Aus."
+        "Außentemperatur -5,0 °C (brauchbar). Takt: 900 s Ein / 900 s Aus."
     )
 
 
@@ -845,5 +845,5 @@ def test_warm_lock_reason_text() -> None:
     assert out.decision.heating_requested is False
     assert out.decision.reason == (
         "Wiederanlaufsperre hält Aus-Phase für 1800 s, Taktquelle Außenkennlinie, "
-        "Außentemperatur 20 °C (brauchbar). Takt: 0 s Ein / 1800 s Aus."
+        "Außentemperatur 20,0 °C (brauchbar). Takt: 0 s Ein / 1800 s Aus."
     )

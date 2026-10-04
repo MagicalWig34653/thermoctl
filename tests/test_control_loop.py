@@ -27,6 +27,16 @@ from thermoctl.domain.control_loop import (
 from thermoctl.domain.zone_settings import ControlParameters
 
 
+def test_decision_reason_uses_german_temperature_and_hysteresis_text() -> None:
+    decision = decide(_lage(
+        measured_c=Decimal("19.90"),
+        setpoint_c=Decimal("20.0"),
+        heating_now=True,
+        parameter=_parameter(hysteresis_k=Decimal("0.10")),
+    ))
+    assert "Ist 19,9 °C innerhalb der Hysterese um Soll 20,0 °C ± 0,10 K" in decision.reason
+
+
 def _parameter(
     *,
     hysteresis_k: Decimal = Decimal("0.5"),
@@ -269,7 +279,7 @@ def test_rule1_a_stale_sensor_controls_to_frost_protection() -> None:
     )
     assert e.heating is True
     assert e.reason_code == REASON_CODE_FROST_SENSOR_FAILURE
-    assert "16.0" in e.reason and "Frostschutz" in e.reason
+    assert "16,0 °C" in e.reason and "Frostschutz" in e.reason
 
 
 def test_rule1_a_stale_sensor_does_not_heat_to_the_normal_setpoint() -> None:
@@ -786,8 +796,8 @@ def test_rule6_unchanged_reason_names_the_true_gap_when_off_far_above_the_setpoi
     )
     assert e.heating is False
     assert e.reason_code == REASON_CODE_UNCHANGED
-    assert "27.40" in e.reason
-    assert "16.0" in e.reason
+    assert "27,4 °C" in e.reason
+    assert "16,0 °C" in e.reason
     assert "über" in e.reason
     assert "bereits aus" in e.reason
     assert "innerhalb" not in e.reason
@@ -811,8 +821,8 @@ def test_rule6_unchanged_reason_names_the_true_gap_when_on_far_below_the_setpoin
     )
     assert e.heating is True
     assert e.reason_code == REASON_CODE_UNCHANGED
-    assert "9.0" in e.reason
-    assert "21.0" in e.reason
+    assert "9,0 °C" in e.reason
+    assert "21,0 °C" in e.reason
     assert "unter" in e.reason
     assert "läuft bereits" in e.reason
     assert "innerhalb" not in e.reason
@@ -950,7 +960,7 @@ def test_precedence_sensor_failure_beats_the_resolved_setpoint() -> None:
     )
     assert e.reason_code == REASON_CODE_FROST_SENSOR_FAILURE
     assert e.heating is True
-    assert "16.0" in e.reason
+    assert "16,0 °C" in e.reason
 
 
 def test_precedence_an_open_window_still_beats_frost_protection_above_the_frost_threshold(
@@ -1178,9 +1188,9 @@ def test_the_reason_carries_the_actual_numbers_of_the_hysteresis_decision() -> N
             parameter=_parameter(hysteresis_k=Decimal("0.5")),
         )
     )
-    assert "20.4" in e.reason
-    assert "21.0" in e.reason
-    assert "0.5" in e.reason
+    assert "20,4 °C" in e.reason
+    assert "21,0 °C" in e.reason
+    assert "0,50 K" in e.reason
 
 
 def test_the_reason_carries_the_actual_numbers_of_the_minimum_duration_decision() -> None:
@@ -1422,5 +1432,5 @@ def test_on_off_zone_targets_the_normal_setpoint_not_the_frost_value() -> None:
     assert e.heating is True
     assert e.reason_code == REASON_CODE_HEATING
     assert e.reason_code != REASON_CODE_FROST_OVERRIDES_WINDOW
-    assert "21.0" in e.reason
+    assert "21,0 °C" in e.reason
     assert "EIN/AUS" in e.reason

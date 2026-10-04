@@ -30,6 +30,7 @@ from datetime import datetime
 from decimal import Decimal
 
 from thermoctl.domain import emergency_cycle
+from thermoctl.domain.number_text import temperature_text
 
 KIND_THERMOSTAT = "thermostat"
 KIND_SWITCH = "switch"
@@ -133,7 +134,7 @@ def plan_thermostat(
         ACTION_HANDOVER,
         REASON_HANDOVER,
         f"{device_name}: Notbetrieb-Übergabe — operating_mode=manual, Notsollwert "
-        f"{emergency_setpoint_c} °C (einmalig für diese Störung).",
+        f"{temperature_text(emergency_setpoint_c)} (einmalig für diese Störung).",
         now,
     )
 

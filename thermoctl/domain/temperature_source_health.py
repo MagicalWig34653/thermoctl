@@ -40,8 +40,10 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from decimal import Decimal
+from typing import cast
 
 from thermoctl.domain.fault import OK, sensor_state
+from thermoctl.domain.number_text import temperature_text
 
 # Bosch BTH-RA Gerätevertrag (belegt, siehe Moduldocstring): das Gerät fällt
 # frühestens nach 30 Minuten ohne neuen `remote_temperature`-Schreibvorgang auf
@@ -237,7 +239,8 @@ def evaluate_source_health(
             selected_device_name=chosen.device_name,
             reason=(
                 f"Wandfühler ausgefallen — Ersatzquelle {chosen.device_name} "
-                f"({chosen.corrected_temperature_c} °C korrigiert) aktiv."
+                f"({temperature_text(cast(Decimal, chosen.corrected_temperature_c))} "
+                "korrigiert) aktiv."
             ),
             candidates=assessments,
         )

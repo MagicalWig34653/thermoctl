@@ -46,6 +46,7 @@ from thermoctl.domain.control_loop import (
     decide,
 )
 from thermoctl.domain.fault import NO_SOURCE, OK, VERALTET
+from thermoctl.domain.number_text import difference_text, percent_text
 from thermoctl.domain.pi_control import (
     INTEGRATOR_RESET,
     RESET_REASON_ARMING,
@@ -351,7 +352,8 @@ def _with_solar_setback(
         return setpoint_c, setpoint_reason
     return (
         result.setpoint_c,
-        f"{setpoint_reason} Sonnenabsenkung: -{result.reduction_k} K wegen erwarteter "
+        f"{setpoint_reason} Sonnenabsenkung: "
+        f"{difference_text(-result.reduction_k, places=1)} wegen erwarteter "
         f"Sonneneinstrahlung in den nächsten {settings.solar_setback_lookahead_hours} Stunden.",
     )
 
@@ -1606,13 +1608,9 @@ def _pi_reason_text(
     percentage rounded to one decimal; both numbers use a decimal comma. A tiny
     negative deviation that rounds to zero is shown as "0,00", not "-0,00".
     """
-    deviation = f"{error_k:.2f}"
-    if Decimal(deviation) == 0:
-        deviation = "0.00"
-    duty_percent = f"{duty_raw * 100:.1f}"
     return (
-        f"PI-Regelung: Abweichung {deviation.replace('.', ',')} K, "
-        f"Tastgrad {duty_percent.replace('.', ',')} %, "
+        f"PI-Regelung: Abweichung {difference_text(error_k)}, "
+        f"Tastgrad {percent_text(duty_raw * 100)}, "
         f"{reason_code} -> {'Heizen' if heating else 'Aus'}."
     )
 
