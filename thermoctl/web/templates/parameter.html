@@ -173,7 +173,9 @@
     {% if backup_offsets %}
     <p class="t-quiet small mb-2 mt-3">
       Temperaturausgleich (K) je zugeordnetem Thermostat-Aktor — nur auf einen
-      belegten Vergleich stützen, kein erfundener Schätzwert.
+      belegten Vergleich stützen, kein erfundener Schätzwert. Ein leeres Feld
+      entfernt den Ausgleichswert (die Zone rechnet dann wie mit 0 K); wird
+      nichts geändert, bleibt der gespeicherte Wert beim Speichern erhalten.
     </p>
     <div class="row g-3">
       {% for offset in backup_offsets %}
