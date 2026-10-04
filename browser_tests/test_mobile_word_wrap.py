@@ -135,6 +135,65 @@ def test_no_word_splits_or_horizontal_overflow_at_phone_width(
 
 _DESKTOP_VIEWPORT = {"width": 1280, "height": 900}
 
+# Bewusst lange Protokollinhalte: ein Rohcode als Ergebnis einer Notbetriebs-
+# entscheidung (ohne Anzeigebezeichnung, nur mit Unterstrichen), ein langer
+# Satz als Begründung, ein langer Fehlertext mit Pfad und ein Fehlercode ohne
+# jede Trennstelle als letzte Rückfalloption.
+_LONG_CODE = "sensorausfall_rueckkehr_quellenwechsel"
+_LONG_REASON = (
+    "Notbetriebstakt läuft weiter, aktuelle Ein-Phase für 600 s, Taktquelle "
+    "Festtakt, keine Außentemperaturmessung, Übergabe an den Thermostat "
+    "wurde bewusst nicht gesendet, weil der Sollwert bereits erreicht ist."
+)
+_LONG_ERROR = (
+    "Zeitüberschreitung beim Zugriff auf "
+    "http://geraet.example.invalid/api/v1/geraete/wohnzimmer/heizkoerper/sollwert"
+    "?versuch=3&modus=komfort nach 30 Sekunden"
+)
+_UNBROKEN_ERROR = "ERR_" + "X" * 60
+
+
+def _seed_long_log_rows(server: LiveServer) -> None:
+    """Fügt Protokollzeilen mit überlangem Ergebnis, Fehlertext und Begründung ein.
+
+    Eigene Zeilen statt Demo-Daten: Die Doku-Bilder bleiben inhaltlich unberührt.
+    """
+    from datetime import datetime, timedelta
+
+    from sqlalchemy import select
+
+    from tests.helpers import create_device_command
+    from thermoctl.db.base import utcnow
+    from thermoctl.db.models.device import Device
+    from thermoctl.db.models.sensor_failure import ActuatorDecision
+    from thermoctl.db.models.zone import Zone
+
+    with server.session() as session:
+        existing = select(ActuatorDecision).where(ActuatorDecision.reason_code == _LONG_CODE)
+        if session.scalar(existing):
+            return
+        zone = session.scalars(select(Zone).order_by(Zone.id)).first()
+        device = session.scalars(select(Device).order_by(Device.id)).first()
+        assert zone is not None and device is not None
+        now: datetime = utcnow()
+        for index, error in enumerate((_LONG_ERROR, _UNBROKEN_ERROR)):
+            entry = create_device_command(
+                session, zone, device, at=now - timedelta(minutes=index),
+                outcome_code="failed",
+            )
+            entry.reason = _LONG_REASON
+            entry.error = error
+        session.add(
+            ActuatorDecision(
+                episode_id=None, zone_device_id=None, zone_name=zone.display_name,
+                device_name=device.display_name, decided_at=now - timedelta(minutes=2),
+                action="no_write", reason_code=_LONG_CODE, reason=_LONG_REASON,
+                phase=None, phase_deadline_at=None, simulated=False, cycle_source=None,
+                on_seconds=None, off_seconds=None, outdoor_c=None, profile_version=1,
+            )
+        )
+        session.commit()
+
 
 def test_command_log_has_no_word_splits_or_overlapping_cells_at_desktop_width(
     browser: Browser, demo_server: tuple[LiveServer, dict[str, str | int]]
@@ -142,6 +201,7 @@ def test_command_log_has_no_word_splits_or_overlapping_cells_at_desktop_width(
     """Schaltprotokoll bei 1280px: die Spalte "Art" darf Zeitpunkt, Quelle, Ergebnis
     und Begründung weder überlagern noch zu Umbrüchen mitten im Wort zwingen."""
     server, _ = demo_server
+    _seed_long_log_rows(server)
     with browser.new_context(
         base_url=server.base_url,
         viewport=_DESKTOP_VIEWPORT,
@@ -154,6 +214,10 @@ def test_command_log_has_no_word_splits_or_overlapping_cells_at_desktop_width(
         page.evaluate("document.fonts.ready")
 
         failures = page.evaluate(_GEOMETRY, _WORD_WRAP_EXEMPT_SELECTOR)
+        # Der trennstellenlose Fehlercode ist der dokumentierte Notfall: kein
+        # Leerzeichen, keine Trennmarke -- dort darf `break-word` mitten im
+        # "Wort" umbrechen, solange nichts überläuft (unten geprüft).
+        failures = [line for line in failures if "XXXX" not in line]
         assert not failures, "\n".join(failures)
 
         cut_off = page.evaluate(
