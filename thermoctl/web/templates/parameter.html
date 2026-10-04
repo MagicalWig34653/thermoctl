@@ -179,7 +179,7 @@
       {% for offset in backup_offsets %}
       <div class="col-sm-6">
         {{ number_field("backup_offset_" ~ offset.zone_device_id, offset.device_name,
-          offset.temperature_backup_offset_k, "",
+          values.get("backup_offset_" ~ offset.zone_device_id, ""), "",
           errors.get("backup_offset_" ~ offset.zone_device_id, ""), "0.01", "-99.99", "99.99") }}
       </div>
       {% endfor %}
