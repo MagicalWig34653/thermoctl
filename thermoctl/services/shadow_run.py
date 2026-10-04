@@ -1589,11 +1589,32 @@ def _pi_outcome(
     fields["pi_min_duration_decision"] = output.reason_code
     fields["effective_controller"] = "pi"
     assert output.heating is not None  # guaranteed whenever pi_available is True
-    reason_suffix = (
-        f"PI-Regelung: Fehler {error_k}K, Tastgrad {output.duty_raw}, "
-        f"{output.reason_code} -> {'Heizen' if output.heating else 'Aus'}."
+    assert output.duty_raw is not None  # likewise: set whenever PI is available
+    reason_suffix = _pi_reason_text(
+        error_k, output.duty_raw, output.reason_code, output.heating
     )
     return output.heating, reason_suffix, fields
+
+
+def _pi_reason_text(
+    error_k: Decimal, duty_raw: Decimal, reason_code: str | None, heating: bool
+) -> str:
+    """Wording of the PI part of a decision reason (display only, no rule logic).
+
+    `error_k` is the control deviation (setpoint minus calibrated actual value), so a
+    positive value means the room is colder than wanted. The duty cycle is shown as a
+    percentage rounded to one decimal; both numbers use a decimal comma. A tiny
+    negative deviation that rounds to zero is shown as "0,00", not "-0,00".
+    """
+    deviation = f"{error_k:.2f}"
+    if Decimal(deviation) == 0:
+        deviation = "0.00"
+    duty_percent = f"{duty_raw * 100:.1f}"
+    return (
+        f"PI-Regelung: Abweichung {deviation.replace('.', ',')} K, "
+        f"Tastgrad {duty_percent.replace('.', ',')} %, "
+        f"{reason_code} -> {'Heizen' if heating else 'Aus'}."
+    )
 
 
 def _advance_valve_protection(
