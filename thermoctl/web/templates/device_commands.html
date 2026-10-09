@@ -18,6 +18,10 @@
     zugeordneten Aktoren. Notbetriebsentscheidungen (z. B. „bewusst nicht gesendet“,
     Übergabe, Rückstellung) stehen zusätzlich hier, als <strong>Entscheidung</strong>
     gekennzeichnet — auch wenn ihnen kein eigener Sendeversuch folgte.
+    Senkt die Sonnenabsenkung den Sollwert einer Zone ab, steht Beginn, Änderung des Betrags
+    und Ende jeweils einmal hier, als <strong>Absenkung</strong> gekennzeichnet — mit
+    Zeitplan-Sollwert und wirksamem Sollwert, damit nachvollziehbar bleibt, warum die
+    Regelung gegen einen niedrigeren Wert als den Zeitplan gearbeitet hat.
   </p>
   <form method="get" action="{{ url_prefix }}/device-commands" class="row g-3 mb-4">
     <div class="col-sm-6 col-lg-3">
@@ -67,6 +71,8 @@
         <td data-label="Art">
           {% if entry.entry_kind == "entscheidung" %}
           <span class="badge text-bg-secondary" title="Notbetriebsentscheidung, kein eigener Sendeversuch">Entscheidung</span>
+          {% elif entry.entry_kind == "absenkung" %}
+          <span class="badge bg-warning-subtle text-warning-emphasis" title="Sonnenabsenkung des Sollwerts, kein Sendeversuch">Absenkung</span>
           {% else %}
           <span class="badge text-bg-primary-subtle text-primary-emphasis">Befehl</span>
           {% endif %}
@@ -75,7 +81,7 @@
         <td title="{{ (entry.sent_at|localtime(timezone)).strftime('%d.%m.%Y %H:%M:%S') }}">{{ (entry.sent_at|localtime(timezone)).strftime("%d.%m.%Y %H:%M:%S") }}</td>
         <td data-label="Quelle">{{ source_labels.get(entry.source, entry.source) }}</td>
         <td data-label="Zone">{{ entry.zone_name }}</td>
-        <td data-label="Gerät">{{ entry.device_name }}</td>
+        <td data-label="Gerät">{{ entry.device_name or "–" }}</td>
         <td data-label="Befehl"><code>{{ entry.command }}</code></td>
         <td data-label="Ergebnis">
           {{ breakable(outcome_labels.get(entry.outcome, entry.outcome)) }}

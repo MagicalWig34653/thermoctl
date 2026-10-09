@@ -11,8 +11,20 @@ from thermoctl.db.models.lookup import ActorSource, CommandOutcome
 from thermoctl.db.models.operations import Setting
 from thermoctl.db.models.state import DeviceCommand
 from thermoctl.domain.authz import require
-from thermoctl.domain.device_commands import MAX_LIMIT, CommandLogEntry, list_commands
+from thermoctl.domain.device_commands import (
+    MAX_LIMIT,
+    SETBACK_OUTCOME_PREFIX,
+    SETBACK_SOURCE,
+    CommandLogEntry,
+    list_commands,
+)
 from thermoctl.domain.principal import Principal
+from thermoctl.domain.solar_setback_log import (
+    KIND_BEGIN,
+    KIND_CHANGE,
+    KIND_END,
+    setback_zone_names,
+)
 from thermoctl.web import is_partial_swap, templates
 from thermoctl.web.guards import admin_ui_only
 
@@ -28,6 +40,12 @@ router = APIRouter(
 )
 
 ENTRIES_PER_PAGE = 50
+
+SETBACK_OUTCOME_LABELS = {
+    SETBACK_OUTCOME_PREFIX + KIND_BEGIN: "Absenkung beginnt",
+    SETBACK_OUTCOME_PREFIX + KIND_CHANGE: "Absenkung geändert",
+    SETBACK_OUTCOME_PREFIX + KIND_END: "Absenkung beendet",
+}
 
 
 def _datum(value: str, field: str, errors: dict[str, str]) -> date | None:
@@ -100,13 +118,24 @@ async def device_command_list(
 
     # Every zone name ever recorded, not just the zones that still exist -- the whole
     # point of the snapshot is that a deleted zone stays filterable too.
-    zone_names = session.scalars(
-        select(DeviceCommand.zone_name).distinct().order_by(DeviceCommand.zone_name)
-    ).all()
+    # Dazu die bestehenden Zonen mit Sonnenabsenkung: Deren Einträge stammen aus
+    # `shadow_decision`, nicht aus `device_command`; ohne sie fehlte eine Zone, die nur
+    # Absenkungswechsel und keinen Gerätebefehl hat. Als Menge, damit eine Zone mit beidem
+    # nur einmal erscheint.
+    zone_names = sorted(
+        {
+            *session.scalars(select(DeviceCommand.zone_name).distinct()),
+            *setback_zone_names(session),
+        },
+        key=lambda name: (name.casefold(), name),
+    )
     outcomes = session.execute(
         select(CommandOutcome.code, CommandOutcome.label).order_by(CommandOutcome.label)
     ).all()
     outcome_labels = {code: label for code, label in outcomes}
+    # Die Ergebnisse der Absenkungseinträge sind keine `command_outcome`-Zeilen (wie die
+    # `sensorausfall_*`-Gründe der Entscheidungen); ihre Anzeigetexte stehen hier.
+    outcome_labels.update(SETBACK_OUTCOME_LABELS)
     # `list_commands` returns the plain code for both `entry.source` (a real
     # `actor_source` code) and -- for an `"entscheidung"` row -- `entry.outcome`
     # (a `sensorausfall_*` reason code with no `command_outcome` row at all).
@@ -117,6 +146,7 @@ async def device_command_list(
         code: label for code, label in session.execute(select(ActorSource.code, ActorSource.label))
     }
     source_labels.setdefault("regelung", "Regelung (Notbetrieb)")
+    source_labels.setdefault(SETBACK_SOURCE, "Regelung (Sonnenabsenkung)")
     filter_values = {
         "from_date": from_date,
         "to_date": to_date,

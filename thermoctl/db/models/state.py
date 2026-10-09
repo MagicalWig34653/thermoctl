@@ -170,6 +170,16 @@ class ShadowDecision(Base):
             "decided_at",
             "id",
         ),
+        # Für das Schaltprotokoll (`domain/solar_setback_log.py`): findet ohne Tabellenscan,
+        # welche Zonen überhaupt je eine Sonnenabsenkung hatten und von wann bis wann.
+        # `solar_setback_k` ist fast überall NULL; ein Index mit dieser Spalte vorn macht
+        # "gibt es welche?" zu einem Bereichszugriff auf die wenigen Zeilen mit Wert.
+        Index(
+            "ix_shadow_decision_solar_setback",
+            "solar_setback_k",
+            "zone_id",
+            "decided_at",
+        ),
         CheckConstraint(
             "pi_integral_before IS NULL OR pi_integral_before BETWEEN 0 AND 1",
             name="pi_integral_before_0_bis_1",
@@ -205,6 +215,12 @@ class ShadowDecision(Base):
     # für Frostschutz und dem PI-Zusatz gemessen über 400 Zeichen erreichte (Migration
     # `c1a4e9d872b3`).
     setpoint_reason: Mapped[str] = mapped_column(Text, nullable=False)
+    # Die Sonnenabsenkung als eigene Angabe statt nur im Fließtext von `setpoint_reason`:
+    # der Sollwert vor der Absenkung (immer, wenn ein Zeitplan-Sollwert vorlag) und die
+    # angewandte Absenkung in Kelvin (nur bei greifender Absenkung, sonst NULL). Zeilen
+    # aus der Zeit davor bleiben NULL -- sie werden bewusst nicht aus dem Text geraten.
+    scheduled_setpoint_c: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), nullable=True)
+    solar_setback_k: Mapped[Decimal | None] = mapped_column(Numeric(4, 1), nullable=True)
     would_heat: Mapped[bool] = mapped_column(Boolean, nullable=False)
     previous_would_heat: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     outcome_code: Mapped[str] = mapped_column(String(32), nullable=False)

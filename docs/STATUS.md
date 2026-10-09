@@ -1,6 +1,37 @@
 # Stand
 
-Letzte Aktualisierung: 2026-10-04.
+Letzte Aktualisierung: 2026-10-09.
+
+## Unveröffentlicht (nach 0.11.1)
+
+Laufende Arbeit der Sitzung vom 2026-10-09: Sonnenabsenkung sichtbar machen, Glossar,
+Verlaufsdiagramm auf der Zonenseite, Landingpage (GitHub Pages). Gebaut und gemergt ist bisher:
+
+**Sonnenabsenkung im Schaltprotokoll.** Auslöser war eine Meldung: Wohnzimmer-Sollwert
+laut Zeitplan 20,5 °C, Ist 19,5 °C, trotzdem von 08:00 bis 13:00 kein Heizen. Ursache war
+keine Übertragungsstörung, sondern die Sonnenabsenkung (−2,0 K, wirksam 18,5 °C); sie stand
+nur im Fließtext von `shadow_decision.setpoint_reason`. Die Regellogik der Absenkung ist
+**unverändert** (Projektinhaber, 2026-10-09: nur sichtbar machen, nicht ändern).
+Bekannt und beabsichtigt: Die Absenkung prüft nicht, ob der Raum gerade zu kalt ist.
+
+- `shadow_decision.scheduled_setpoint_c` (Sollwert vor der Absenkung) und `solar_setback_k`
+  (angewandte Absenkung, NULL = keine), Migration `f6c3a8d19b42` mit Index
+  `ix_shadow_decision_solar_setback`. Alte Zeilen bleiben NULL und werden nicht aus dem Text
+  geraten. Migrationskopf: `f6c3a8d19b42`.
+- Schaltprotokoll: dritte Eintragsart `entry_kind = absenkung` (`beginn`, `aenderung`, `ende`
+  je Zone), abgeleitet per LAG aus aufeinanderfolgenden Schattenzeilen
+  (`domain/solar_setback_log.py`), identisch in HTMX, REST und MCP. Die Einträge sind
+  **abgeleitet, nicht gespeichert**: Sie folgen der Aufbewahrungsfrist von `shadow_decision`
+  und dem heutigen Zonennamen; am Anfang der verbleibenden Historie kann eine laufende
+  Absenkung als neuer „Beginn“ erscheinen. Absenkungen vor der Migration fehlen.
+- Zonenauswahl im Schaltprotokoll enthält auch Zonen, die nur Absenkungseinträge haben.
+- Der Test `test_the_operating_page_shows_notbetrieb_detail_and_comparison` arbeitet mit
+  relativem statt festem Datum (er war seit dem 2026-10-09 rot, weil das 7-Tage-Fenster des
+  Ersatzquellen-Vergleichs den fest gesetzten 2.10. abschnitt).
+
+Review: Codex (`gpt-6-sol`) hat Commit `8562711` unabhängig geprüft, beide Datenbanken
+5564 grün, 1 bekannter roter Test (inzwischen behoben); die beiden „sollte“-Befunde
+(Zonenfilter, Herkunft der Einträge) sind umgesetzt.
 
 ## 0.11.0 / 0.11.1: Notbetrieb bei Sensorausfall
 
@@ -12,7 +43,7 @@ ein, neu angelegte Zonen starten mit `sensor_failure_enabled = true` (gesetzt vo
 ORM-Standardwert in `Zone`, nicht vom `server_default`). Das ist eine bewusste
 Verhaltensänderung beim Upgrade und steht deshalb in CHANGELOG und Add-on-Changelog an
 erster Stelle. Ein Downgrade über `d4a81c6e5b29` setzt die Spalte für alle Zonen auf
-`false` (der Vorzustand wird nicht gemerkt). Migrationskopf: `e5b92d7f3a18`.
+`false` (der Vorzustand wird nicht gemerkt). Migrationskopf von 0.11.1: `e5b92d7f3a18`.
 
 ### Architektur
 

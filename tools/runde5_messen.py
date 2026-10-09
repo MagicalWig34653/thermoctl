@@ -48,6 +48,7 @@ def _query_measurement(
         if baseline_before_index_migration:
             session.execute(text("DROP INDEX ix_shadow_decision_zone_decided_id"))
             session.execute(text("DROP INDEX ix_shadow_decision_retention"))
+            session.execute(text("DROP INDEX ix_shadow_decision_solar_setback"))
             session.execute(
                 text(
                     "CREATE INDEX ix_shadow_decision_decided_at "
@@ -68,6 +69,7 @@ def _query_measurement(
             if baseline_before_index_migration
             else [
                 "ix_shadow_decision_retention",
+                "ix_shadow_decision_solar_setback",
                 "ix_shadow_decision_zone_decided_id",
             ]
         )
@@ -175,6 +177,8 @@ def _insert_measurement(rows: int, with_old_index: bool) -> dict[str, object]:
     # benchmark, so leave it out of this subcommand deliberately.
     with engine.begin() as connection:
         connection.execute(text("DROP INDEX ix_shadow_decision_retention"))
+        # Ebenso der Index der Sonnenabsenkung: er gehört nicht zum Vergleich von damals.
+        connection.execute(text("DROP INDEX ix_shadow_decision_solar_setback"))
     if with_old_index:
         with engine.begin() as connection:
             connection.execute(

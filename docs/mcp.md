@@ -51,7 +51,7 @@ prüft dasselbe Recht wie der entsprechende REST-Endpunkt.
 | `read_setpoints(zone_id)` | `zone.read` | die gesetzte Temperatur je Modus |
 | `list_devices()` | `device.read` | Anbindung, Fähigkeiten, letzte Nachricht, Batterie |
 | `shadow_decisions(zone_id, count=10)` | `zone.read` | die jüngsten Entscheidungen samt Grund |
-| `device_commands(zone, outcome, from_at, to_at, limit=100)` | `audit.read` | das Schaltprotokoll — jeder gesendete, unterdrückte oder gescheiterte Befehl an ein Gerät, plus Notbetriebsentscheidungen (`entry_kind: "entscheidung"`) |
+| `device_commands(zone, outcome, from_at, to_at, limit=100)` | `audit.read` | das Schaltprotokoll — jeder gesendete, unterdrückte oder gescheiterte Befehl an ein Gerät, plus Notbetriebsentscheidungen (`entry_kind: "entscheidung"`) und Wechsel der Sonnenabsenkung (`entry_kind: "absenkung"`: Beginn, Betragsänderung, Ende je Zone; `outcome` `absenkung_beginn`/`absenkung_aenderung`/`absenkung_ende`, `reason` mit Zeitplan- und wirksamem Sollwert) |
 | `read_emergency_state(zone_id)` | `zone.read` | Notbetrieb-Stufe, aktive Ersatzquelle, Rückkehrfortschritt, Takt-/Übergabestatus je Aktor, Ersatzquelle-Wandfühler-Vergleich |
 | `override(zone_id, temperature_c, ends_at)` | `override.create` | legt eine Übersteuerung an |
 | `cancel_override(zone_id)` | `override.cancel` | beendet die laufende Übersteuerung |
