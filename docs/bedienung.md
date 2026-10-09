@@ -357,3 +357,13 @@ eine Passkey-Anmeldung eingerichtet, erscheint hier zusätzlich ein Verweis auf
 eine Möglichkeit zu zeigen, die nicht funktioniert.
 
 ![Konto und Sicherheit mit Passwortänderung, Sitzungsverwaltung, Hilfe und Abmelden](bilder/wohnung-konto.png)
+
+### Temperaturverlauf einer Zone
+
+Unter **Zonen → Zonendaten** zeigt die Karte den Verlauf der letzten 24 Stunden, 3 Tage
+oder 7 Tage. Blau steht für die gemessene Temperatur, Gelb für den Zeitplan-Sollwert und
+die gestrichelte Linie für den wirksamen Sollwert. Orange Striche markieren Heizphasen;
+ein hinterlegtes Band markiert die Sonnenabsenkung. So ist sichtbar, wann der wirksame
+Sollwert unter dem Zeitplan lag. Mit **Vollbild** lässt sich die Karte vergrößern;
+**Schließen** oder Escape führt zurück. Ältere Protokollzeilen ohne Angaben zur
+Sonnenabsenkung zeigen nur den damals gespeicherten wirksamen Sollwert.

@@ -1,0 +1,54 @@
+<div class="card tc-history" id="zone-history">
+  <div class="card-body">
+    <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+      <h2 class="h5 mb-0">Temperaturverlauf</h2>
+      <div class="d-flex flex-wrap gap-2 align-items-center">
+        <div class="btn-group btn-group-sm" role="group" aria-label="Zeitraum">
+          {% for choice, label in [('24h', '24 Stunden'), ('3d', '3 Tage'), ('7d', '7 Tage')] %}
+          <button type="button" class="btn {{ 'btn-primary' if period == choice else 'btn-outline-secondary' }}"
+                  hx-get="{{ url_prefix }}/zones/{{ zone.id }}/history?period={{ choice }}"
+                  hx-target="#zone-history" hx-swap="outerHTML">{{ label }}</button>
+          {% endfor %}
+        </div>
+        <button type="button" class="btn btn-sm btn-outline-secondary" data-history-open>Vollbild</button>
+        <button type="button" class="btn btn-sm btn-outline-secondary tc-history-close" data-history-close>Schließen</button>
+      </div>
+    </div>
+    {% if chart.points %}
+    <div class="tc-history-plot">
+<div class="tc-history-desktop">
+      <svg viewBox="0 0 960 280" role="img" aria-label="Temperaturverlauf für {{ zone.display_name }}. {{ chart.summary }}" preserveAspectRatio="xMidYMid meet">
+        <rect x="60" y="30" width="880" height="210" class="tc-history-background"/>
+        {% for a, b in chart.solar_bands %}<rect x="{{ xpos(a, chart) }}" y="30" width="{{ xpos(b, chart) - xpos(a, chart) }}" height="210" class="tc-history-solar"/>{% endfor %}
+        {% for a, b, share in chart.heat_bands %}<rect x="{{ xpos(a, chart) }}" y="30" width="{{ [1.5, xpos(b, chart) - xpos(a, chart)]|max }}" height="210" class="tc-history-heat" style="opacity: {{ 0.15 + 0.7 * share }}"/>{% endfor %}
+        {% for value, label in chart.y_ticks %}<line x1="60" x2="940" y1="{{ ypos(value, chart) }}" y2="{{ ypos(value, chart) }}" class="tc-history-grid"/><text x="54" y="{{ ypos(value, chart) + 4 }}" text-anchor="end" class="tc-history-label">{{ label }}</text>{% endfor %}
+        {% for fraction, label in chart.ticks %}<line x1="{{ 60 + 880 * fraction }}" x2="{{ 60 + 880 * fraction }}" y1="240" y2="245" class="tc-history-grid"/><text x="{{ 60 + 880 * fraction }}" y="263" text-anchor="{{ 'start' if loop.first else 'end' if loop.last else 'middle' }}" class="tc-history-label">{{ label }}</text>{% endfor %}
+        <path d="{{ steps(chart.scheduled_steps, chart) }}" class="tc-history-scheduled"/>
+        <path d="{{ steps(chart.effective_steps, chart) }}" class="tc-history-effective"/>
+        <path d="{{ line(chart.points, chart) }}" class="tc-history-actual"/>
+      </svg>
+</div>
+<div class="tc-history-mobile">
+      <svg viewBox="0 0 360 260" role="img" aria-label="Temperaturverlauf für {{ zone.display_name }}. {{ chart.summary }}" preserveAspectRatio="xMidYMid meet">
+        <rect x="45" y="30" width="305" height="190" class="tc-history-background"/>
+        {% for a, b in chart.solar_bands %}<rect x="{{ mobile_xpos(a, chart) }}" y="30" width="{{ mobile_xpos(b, chart) - mobile_xpos(a, chart) }}" height="190" class="tc-history-solar"/>{% endfor %}
+        {% for a, b, share in chart.heat_bands %}<rect x="{{ mobile_xpos(a, chart) }}" y="30" width="{{ [1.5, mobile_xpos(b, chart) - mobile_xpos(a, chart)]|max }}" height="190" class="tc-history-heat" style="opacity: {{ 0.15 + 0.7 * share }}"/>{% endfor %}
+        {% for value, label in chart.y_ticks %}<line x1="45" x2="350" y1="{{ mobile_ypos(value, chart) }}" y2="{{ mobile_ypos(value, chart) }}" class="tc-history-grid"/><text x="40" y="{{ mobile_ypos(value, chart) + 4 }}" text-anchor="end" class="tc-history-label">{{ label }}</text>{% endfor %}
+        {% for fraction, label in chart.ticks[::2] %}<line x1="{{ 45 + 305 * fraction }}" x2="{{ 45 + 305 * fraction }}" y1="220" y2="225" class="tc-history-grid"/><text x="{{ 45 + 305 * fraction }}" y="247" text-anchor="{{ 'start' if loop.first else 'end' if loop.last else 'middle' }}" class="tc-history-label">{{ label }}</text>{% endfor %}
+        <path d="{{ mobile_steps(chart.scheduled_steps, chart) }}" class="tc-history-scheduled"/>
+        <path d="{{ mobile_steps(chart.effective_steps, chart) }}" class="tc-history-effective"/>
+        <path d="{{ mobile_line(chart.points, chart) }}" class="tc-history-actual"/>
+      </svg>
+</div>
+    </div>
+    <ul class="tc-history-legend" aria-label="Legende">
+      <li><span class="tc-history-key tc-history-key-actual"></span>Ist: {{ '%.1f'|format(chart.points[-1].temperature) if chart.points[-1].temperature is not none else '–' }} °C</li>
+      <li><span class="tc-history-key tc-history-key-scheduled"></span>Zeitplan-Soll: {{ '%.1f'|format(chart.points[-1].scheduled) if chart.points[-1].scheduled is not none else '–' }} °C</li>
+      <li><span class="tc-history-key tc-history-key-effective"></span>Wirksamer Soll: {{ '%.1f'|format(chart.points[-1].effective) if chart.points[-1].effective is not none else '–' }} °C</li>
+      <li><span class="tc-history-key tc-history-key-heat"></span>Heizphasen</li>
+      <li><span class="tc-history-key tc-history-key-solar"></span>Sonnenabsenkung</li>
+    </ul>
+    {% else %}<p class="text-muted mb-0">{{ chart.summary }}</p>{% endif %}
+    <p class="visually-hidden">{{ chart.summary }}</p>
+  </div>
+</div>

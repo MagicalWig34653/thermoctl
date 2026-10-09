@@ -41,6 +41,7 @@ _VIEWS_BEFORE_DOCUMENTATION_FLAGS = (
     View("einrichtung", "/setup", "oeffentlich"),
     View("anmeldung", "/login", "oeffentlich"),
     View("startseite", "/", mobile=True),
+    View("wohnzimmer-verlauf", "/zones/{zone_wohnzimmer}", mobile=True),
     *(
         View(name, path)
         for name, path in (
@@ -127,16 +128,26 @@ _VIEWS_BEFORE_DOCUMENTATION_FLAGS = (
     ),
     View("dashboard", "/kiosk/{plaintext}", "kiosk", mobile=True),
     View(
-        "panel-uebersicht", "/kiosk/{plaintext}", "kiosk",
-        viewport=(480, 480), kiosk_mode="panel",
+        "panel-uebersicht",
+        "/kiosk/{plaintext}",
+        "kiosk",
+        viewport=(480, 480),
+        kiosk_mode="panel",
     ),
     View(
-        "panel-detail", "/kiosk/{plaintext}", "kiosk",
-        viewport=(480, 480), kiosk_mode="panel", kiosk_detail_zone="zone_wohnzimmer",
+        "panel-detail",
+        "/kiosk/{plaintext}",
+        "kiosk",
+        viewport=(480, 480),
+        kiosk_mode="panel",
+        kiosk_detail_zone="zone_wohnzimmer",
     ),
     View(
-        "tafel", "/kiosk/{plaintext}", "kiosk",
-        viewport=(480, 480), kiosk_mode="tafel",
+        "tafel",
+        "/kiosk/{plaintext}",
+        "kiosk",
+        viewport=(480, 480),
+        kiosk_mode="tafel",
     ),
 )
 

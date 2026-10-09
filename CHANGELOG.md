@@ -13,6 +13,10 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ### Neu
 
+- **Temperaturverlauf je Zone:** Die Zonendaten zeigen Ist-Temperatur, Zeitplan-Soll,
+  wirksamen Sollwert, Heizphasen und Sonnenabsenkung als Diagramm. Zeitraum 24 Stunden,
+  3 oder 7 Tage, mit Vollbildansicht. Die Daten werden serverseitig verdichtet.
+
 - **Die Sonnenabsenkung ist im Schaltprotokoll erkennbar.** Senkt sie den Sollwert einer Zone
   ab (etwa Zeitplan 20,5 °C, wirksam 18,5 °C), steht das jetzt mit Beginn, Änderung des
   Betrags und Ende als Eintrag der Art **Absenkung** im Schaltprotokoll — mit Zeitplan-Sollwert
