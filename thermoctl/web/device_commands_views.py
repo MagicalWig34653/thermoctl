@@ -19,7 +19,12 @@ from thermoctl.domain.device_commands import (
     list_commands,
 )
 from thermoctl.domain.principal import Principal
-from thermoctl.domain.solar_setback_log import KIND_BEGIN, KIND_CHANGE, KIND_END
+from thermoctl.domain.solar_setback_log import (
+    KIND_BEGIN,
+    KIND_CHANGE,
+    KIND_END,
+    setback_zone_names,
+)
 from thermoctl.web import is_partial_swap, templates
 from thermoctl.web.guards import admin_ui_only
 
@@ -113,9 +118,17 @@ async def device_command_list(
 
     # Every zone name ever recorded, not just the zones that still exist -- the whole
     # point of the snapshot is that a deleted zone stays filterable too.
-    zone_names = session.scalars(
-        select(DeviceCommand.zone_name).distinct().order_by(DeviceCommand.zone_name)
-    ).all()
+    # Dazu die bestehenden Zonen mit Sonnenabsenkung: Deren Einträge stammen aus
+    # `shadow_decision`, nicht aus `device_command`; ohne sie fehlte eine Zone, die nur
+    # Absenkungswechsel und keinen Gerätebefehl hat. Als Menge, damit eine Zone mit beidem
+    # nur einmal erscheint.
+    zone_names = sorted(
+        {
+            *session.scalars(select(DeviceCommand.zone_name).distinct()),
+            *setback_zone_names(session),
+        },
+        key=lambda name: (name.casefold(), name),
+    )
     outcomes = session.execute(
         select(CommandOutcome.code, CommandOutcome.label).order_by(CommandOutcome.label)
     ).all()

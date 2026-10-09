@@ -22,6 +22,11 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
   Zone, nicht je Zyklus. Oberfläche, REST (`entry_kind: "absenkung"`) und MCP zeigen dasselbe;
   der Filter „Ergebnis" blendet diese Einträge wie die Notbetriebsentscheidungen aus. An der
   Regelung selbst ändert sich nichts.
+  Die Zonenauswahl des Schaltprotokolls führt auch Zonen auf, die nur Absenkungseinträge und
+  keinen Gerätebefehl haben; wählt man eine Zone dort, zeigt das Protokoll beides. Die
+  Absenkungseinträge werden aus dem Schattenprotokoll (`shadow_decision`) abgeleitet, nicht
+  gespeichert: Sie folgen dessen Aufbewahrungsfrist und dem heutigen Zonennamen, und am Anfang
+  der verbleibenden Historie kann eine schon laufende Absenkung als neuer „Beginn" erscheinen.
 
 ### Beim Upgrade zu wissen
 

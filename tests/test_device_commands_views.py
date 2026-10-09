@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from tests.helpers import command_outcome, create_settings, create_zone, source
 from thermoctl.db.models.state import DeviceCommand
+from thermoctl.db.models.zone import Zone
 
 
 def _entry(
@@ -180,7 +181,7 @@ def test_the_rendered_filter_form_actually_filters(client_als, session: Session)
     assert "anderes-ventil" not in response.text
 
 
-def _absenkung(session: Session, zone_name: str) -> None:
+def _absenkung(session: Session, zone_name: str) -> Zone:
     """Beginn und Ende einer Sonnenabsenkung als echte Schattenzeilen."""
     from decimal import Decimal
 
@@ -203,6 +204,7 @@ def _absenkung(session: Session, zone_name: str) -> None:
             )
         )
     session.flush()
+    return zone
 
 
 def test_absenkung_entries_are_shown_with_kind_text_and_labels(
@@ -240,3 +242,45 @@ def test_the_outcome_filter_hides_absenkung_entries(client_als, session: Session
     assert "ausgefuehrtes-ventil" in response.text
     assert "Zeitplan 20,5 °C, wirksam" not in response.text
     assert "wirksam wieder" not in response.text
+
+
+def test_the_zone_filter_offers_a_zone_that_only_has_absenkung_entries(
+    client_als, session: Session
+) -> None:
+    """Eine Zone ohne jeden Gerätebefehl, aber mit Absenkungswechseln, muss in der
+    Auswahl stehen -- sonst sind ihre Einträge nur über eine von Hand getippte URL
+    erreichbar. Der Wert der Option muss die Einträge auch wirklich finden."""
+    create_settings(session)
+    zone = _absenkung(session, "nur-sonne")
+    _entry(session, device_name="anderes-ventil", zone_name="Wohnzimmer")
+    client = client_als([("audit.read", None)])
+
+    page = client.get("/device-commands")
+    assert f'<option value="{zone.display_name}"' in page.text
+    assert '<option value="Wohnzimmer"' in page.text
+
+    filtered = client.get("/device-commands", params={"zone": zone.display_name})
+    assert "Sonnenabsenkung -2,0 K: Zeitplan 20,5 °C, wirksam 18,5 °C" in filtered.text
+    assert "anderes-ventil" not in filtered.text
+    assert f'<option value="{zone.display_name}" selected' in filtered.text
+
+
+def test_the_zone_filter_lists_a_zone_with_commands_and_absenkung_only_once(
+    client_als, session: Session
+) -> None:
+    create_settings(session)
+    zone = _absenkung(session, "beides")
+    _entry(session, device_name="beides-ventil", zone_name=zone.display_name, zone_id=zone.id)
+    page = client_als([("audit.read", None)]).get("/device-commands")
+    assert page.text.count(f'<option value="{zone.display_name}"') == 1
+
+
+def test_a_zone_that_never_had_an_absenkung_is_not_offered_by_the_shadow_log(
+    client_als, session: Session
+) -> None:
+    """Eine bloße Zone ohne Befehl und ohne Absenkung bleibt außen vor -- die Auswahl
+    wird nicht zur Liste aller Zonen."""
+    create_settings(session)
+    create_zone(session, "ohne-alles")
+    page = client_als([("audit.read", None)]).get("/device-commands")
+    assert 'value="Ohne-alles"' not in page.text

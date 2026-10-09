@@ -41,6 +41,13 @@ gesondert gelesen und nur zum Vergleich mitgenommen, nie selbst gemeldet.
 Rückkehr-Markierung des Notbetriebs) tragen keine Aussage über die Absenkung und werden
 übersprungen -- sie wären sonst ein vorgetäuschtes `ende`. Eine Zeile, deren Vorgängerin so
 fehlt, gilt als "vorher keine Absenkung".
+
+**Die Einträge sind abgeleitet, nicht gespeichert.** Sie folgen deshalb der Aufbewahrungsfrist
+von `shadow_decision` (was dort bereinigt ist, fehlt auch hier) und dem heutigen Zonennamen
+(`Zone.name`; eine gelöschte Zone hat keine Einträge mehr, anders als bei den Gerätebefehlen
+mit ihrem Namensschnappschuss). Am Anfang der verbleibenden Historie kann eine Absenkung, die
+schon lief, als neuer `beginn` erscheinen -- die Vorzeile, die das Gegenteil zeigen würde, ist
+bereinigt.
 """
 
 from collections.abc import Sequence
@@ -119,7 +126,10 @@ def setback_transitions(
     """
     zone_query = select(Zone.id, Zone.name)
     if zone_name:
-        zone_query = zone_query.where(Zone.name == zone_name)
+        # Auch der Anzeigename trifft: `device_command.zone_name` und damit die Zonenauswahl
+        # des Schaltprotokolls tragen ihn (`setback_zone_names`); wer dort eine Zone wählt,
+        # soll ihre Absenkungen ebenfalls sehen. Der Eintrag selbst nennt weiter `Zone.name`.
+        zone_query = zone_query.where(or_(Zone.name == zone_name, Zone.display_name == zone_name))
     names = {zone_id: name for zone_id, name in session.execute(zone_query)}
     if not names:
         return []
@@ -150,6 +160,30 @@ def setback_transitions(
         )
     found.sort(key=lambda row: (row.decided_at, row.decision_id), reverse=True)
     return found[:fetch]
+
+
+def setback_zone_names(session: Session) -> list[str]:
+    """Anzeigenamen der bestehenden Zonen, die je eine Sonnenabsenkung hatten.
+
+    Für die Zonenauswahl des Schaltprotokolls: Eine Zone, die nur Absenkungseinträge und
+    keinen Gerätebefehl hat, wäre dort sonst nicht wählbar. Ein einziger Zugriff auf
+    `ix_shadow_decision_solar_setback` (nur Zeilen mit Wert, die Spalte ist fast überall
+    NULL), derselbe Bereich, den `setback_transitions` ohnehin liest; kein Scan der
+    Minutenzeilen. Wie dort gilt: gelöschte Zonen fehlen, ihre Zeilen sind per CASCADE weg.
+    """
+    # Verbund mit Gruppierung statt `IN (Unterabfrage)`/`EXISTS`: Nur diese Form bringt den
+    # Planer dazu, den Index `ix_shadow_decision_solar_setback` (Bereich `k > NULL`, nur
+    # die wenigen Zeilen mit Wert) zu lesen; die anderen Formen scannen in SQLite den
+    # Zonenindex über alle Minutenzeilen.
+    return list(
+        session.scalars(
+            select(Zone.display_name)
+            .join(ShadowDecision, ShadowDecision.zone_id == Zone.id)
+            .where(ShadowDecision.solar_setback_k.is_not(None))
+            .group_by(Zone.id, Zone.display_name)
+            .order_by(Zone.display_name)
+        )
+    )
 
 
 def _zone_transitions(

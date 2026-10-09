@@ -16,7 +16,11 @@ from tests.helpers import create_device, create_device_command, create_zone
 from thermoctl.db.models.state import ShadowDecision
 from thermoctl.db.models.zone import Zone
 from thermoctl.domain.device_commands import ENTRY_KIND_SETBACK, list_commands
-from thermoctl.domain.solar_setback_log import SetbackTransition, setback_transitions
+from thermoctl.domain.solar_setback_log import (
+    SetbackTransition,
+    setback_transitions,
+    setback_zone_names,
+)
 
 T0 = datetime(2026, 10, 9, 6, 0)
 SCHEDULED = Decimal("20.5")
@@ -348,3 +352,28 @@ def test_date_bounds_given_as_aware_values_are_honoured(session: Session) -> Non
     )
 
     assert [entry.outcome for entry in result] == ["absenkung_ende"]
+
+
+def test_the_zone_filter_also_matches_the_display_name(session: Session) -> None:
+    """Das Schaltprotokoll nennt Zonen in seiner Auswahl beim Anzeigenamen (so steht er in
+    `device_command.zone_name`); wählt man ihn, müssen auch die Absenkungen kommen."""
+    zone = create_zone(session, "anzeigename-zone")
+    other = create_zone(session, "anzeigename-andere")
+    _series(session, zone, [None, K2, None])
+    _series(session, other, [None, K15, None])
+
+    by_display = _transitions(session, zone.display_name)
+    by_name = _transitions(session, zone.name)
+
+    assert {entry.zone_name for entry in by_display} == {zone.name}
+    assert [e.decision_id for e in by_display] == [e.decision_id for e in by_name]
+    assert len(by_display) == 2
+
+
+def test_setback_zone_names_lists_only_zones_with_a_setback(session: Session) -> None:
+    with_setback = create_zone(session, "namen-mit")
+    without = create_zone(session, "namen-ohne")
+    _series(session, with_setback, [None, K2, None])
+    _series(session, without, [None, None])
+
+    assert setback_zone_names(session) == [with_setback.display_name]
