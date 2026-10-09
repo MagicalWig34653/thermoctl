@@ -8,7 +8,7 @@ Laufende Arbeit der Sitzung vom 2026-10-09: Sonnenabsenkung sichtbar machen, Glo
 Verlaufsdiagramm auf der Zonenseite, Landingpage (GitHub Pages). Gebaut und gemergt ist bisher:
 
 **Sonnenabsenkung im Schaltprotokoll.** Auslöser war eine Meldung: Wohnzimmer-Sollwert
-laut Zeitplan 20,5 °C, Ist 19,5 °C, trotzdem von 08:00 bis 13:00 kein Heizen. Ursache war
+laut Zeitplan 20,5 °C, Ist 19,5 °C, trotzdem von 08:00 bis 13:00 keine Heizanforderung. Ursache war
 keine Übertragungsstörung, sondern die Sonnenabsenkung (−2,0 K, wirksam 18,5 °C); sie stand
 nur im Fließtext von `shadow_decision.setpoint_reason`. Die Regellogik der Absenkung ist
 **unverändert** (Projektinhaber, 2026-10-09: nur sichtbar machen, nicht ändern).
