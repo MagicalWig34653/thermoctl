@@ -1,0 +1,65 @@
+{% extends shell %}
+{% block title %}Glossar – thermoctl{% endblock %}
+{% block page_title %}Glossar{% endblock %}
+{% block max_width %}56rem{% endblock %}
+{% block content %}
+{#
+Reiner Erklärtext aus `thermoctl/data/glossar.json` -- die Vorlage kennt keinen einzelnen
+Begriff. Ohne Anlagendaten: die Seite braucht kein Recht, liest nichts aus der
+Datenbank und kann deshalb auch nichts über fremde Räume verraten.
+
+Das Suchfeld ist `hidden` und wird erst von `glossary_filter.js` eingeblendet: Ohne
+JavaScript würde es nichts filtern, und ein Eingabefeld, das nichts tut, ist schlimmer
+als keines. Die Sprungmarken sind gewöhnliche Verweise und gehen auch ohne.
+#}
+<h1 class="tc-h1">Glossar</h1>
+<p class="t-quiet mb-3">
+    Die Fachbegriffe der Oberfläche in einfachen Worten — {{ entry_count }} Begriffe,
+    alphabetisch. Hinter dem kleinen Fragezeichen neben einer Einstellung steht
+    jeweils der passende Eintrag.
+</p>
+
+<input type="search" class="form-control mb-3" id="glossary-search" hidden
+       autocomplete="off" placeholder="Begriff suchen, zum Beispiel „Hysterese“"
+       aria-label="Glossar durchsuchen" aria-controls="glossary-list">
+
+<nav class="tc-glossary-letters mb-3" aria-label="Sprungmarken von A bis Z">
+    {% for letter in "ABCDEFGHIJKLMNOPQRSTUVWXYZ" %}
+    {% if letter in available_letters %}
+    <a href="#buchstabe-{{ letter|lower }}" data-glossary-letter="{{ letter }}"
+       aria-label="Begriffe mit {{ letter }}">{{ letter }}</a>
+    {% else %}
+    <span class="tc-glossary-letter-empty" aria-hidden="true">{{ letter }}</span>
+    {% endif %}
+    {% endfor %}
+</nav>
+
+<p id="glossary-empty" class="alert alert-secondary" role="status" hidden>
+    Kein Begriff passt zur Suche.
+</p>
+
+<div id="glossary-list">
+    {% for letter, entries in groups %}
+    <section data-glossary-group aria-labelledby="buchstabe-{{ letter|lower }}">
+        <h2 class="t-section tc-glossary-letter" id="buchstabe-{{ letter|lower }}">{{ letter }}</h2>
+        {% for entry in entries %}
+        <article class="tc-panel p-4 mb-3 tc-glossary-entry" id="{{ entry.id }}"
+                 data-glossary-entry data-search-text="{{ entry.search_text }}">
+            <h3 class="h5 mb-1">{{ entry.term }}</h3>
+            <p class="t-label mb-2">{{ entry.area }}</p>
+            <p class="mb-2"><strong>{{ entry.short }}</strong></p>
+            <p class="mb-2">{{ entry.explanation }}</p>
+            {% if entry.synonyms %}
+            <p class="small t-quiet mb-1">Auch: {{ entry.synonyms | join(", ") }}</p>
+            {% endif %}
+            {% if entry.see_also %}
+            <p class="small mb-0">Siehe auch:
+                {% for target in entry.see_also %}<a href="#{{ target }}">{{ terms[target] }}</a>{{ ", " if not loop.last }}{% endfor %}
+            </p>
+            {% endif %}
+        </article>
+        {% endfor %}
+    </section>
+    {% endfor %}
+</div>
+{% endblock %}

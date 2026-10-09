@@ -75,6 +75,9 @@ selbstregelnde Thermostatventile ebenso wie Ein/Aus-Befehle an gewöhnliche Akto
 
 - **[Bedienungsanleitung](docs/bedienung.md)** — für alle, die thermoctl benutzen statt
   betreiben: Anlagensicht und Wohnungssicht, Bild für Bild.
+- **[Glossar](docs/glossar.md)** — die Fachbegriffe der Oberfläche in einfachen Worten
+  (Hysterese, Notbetrieb, Trockenlauf …); dieselben Texte stehen in der Oberfläche unter
+  `/glossar`.
 - **[Ihre Wohnung online steuern](docs/wohnung.md)** — die technikfreie Kurzanleitung
   zum Weitergeben an Bewohner, die nur die Wohnungssicht sehen.
 - **[Den Schattenbetrieb in Gang setzen](docs/inbetriebnahme-schattenbetrieb.md)** — der

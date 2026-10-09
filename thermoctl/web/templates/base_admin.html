@@ -79,6 +79,16 @@ zeigt sie nur an.
             </div>
             {% endif %}
             {% endfor %}
+            {#
+            Die Hilfe steht bewusst nicht in `NAVIGATION_ITEMS`: Diese Tabelle ist der
+            Vertrag zwischen Eintrag und Recht, und das Glossar braucht kein Recht --
+            es ist reiner Erklärtext ohne Anlagendaten, für jeden Angemeldeten (siehe
+            `web/glossary_views.py`). Ein Eintrag ohne Recht gehörte dort nicht hinein.
+            #}
+            <p class="tc-navsec" id="tc-navsec-hilfe">Hilfe</p>
+            <div role="group" aria-labelledby="tc-navsec-hilfe">
+                {{ nav_link("/glossar", "Glossar") }}
+            </div>
         </nav>
         </div>
     </aside>
@@ -123,6 +133,7 @@ zeigt sie nur an.
         <footer class="tc-footer">
             thermoctl steht unter der AGPL-3.0. Quelltext:
             <a href="https://github.com/MagicalWig34653/thermoctl">github.com/MagicalWig34653/thermoctl</a>
+            · <a href="{{ url_prefix }}/glossar">Glossar</a>
         </footer>
     </div>
 </div>

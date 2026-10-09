@@ -12,6 +12,7 @@
         ["permissions.js", "[data-permission]"],
         ["assignment.js", "#device-pool, [data-submit-on-change]"],
         ["device_filter.js", "#device-search"],
+        ["glossary_filter.js", "#glossary-search"],
         ["homebridge_copy.js", "[data-homebridge-copy]"],
         ["kiosk_panel.js", "[data-kiosk-tile]"],
         ["sensor_failure_curve.js", "[data-sensor-failure-curve]"]

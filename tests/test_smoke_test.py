@@ -45,6 +45,7 @@ PROTECTED_PAGES = [
     "/statistics",
     "/relay-wear",
     "/plant",
+    "/glossar",
 ]
 
 

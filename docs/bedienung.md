@@ -5,6 +5,11 @@ die Anlage einrichtet, eine eigene Instanz aufsetzt oder scharf schaltet, findet
 [self-hosting.md](self-hosting.md), [inbetriebnahme-schattenbetrieb.md](inbetriebnahme-schattenbetrieb.md)
 und [scharfschalten.md](scharfschalten.md). Hier geht es um die beiden Oberflächen selbst.
 
+**Ein Fachbegriff, den die Oberfläche nicht erklärt?** Das [Glossar](glossar.md) erklärt
+sie in einfachen Worten — dieselben Texte stehen in der Oberfläche unter **Hilfe →
+Glossar** (Anlagensicht, Seitenleiste) bzw. im Fußbereich jeder Seite. Neben schwierigen
+Einstellungen führt ein kleines Fragezeichen direkt zum passenden Eintrag.
+
 **Welche Oberfläche jemand sieht, entscheidet seine Gruppe, nicht sein Wunsch.** Es gibt
 zwei: die **Anlagensicht** für Verwaltung und Technik, und die **Wohnungssicht** für
 die Bewohner eines oder mehrerer Räume. Was jemand in seiner Oberfläche sehen *darf*,

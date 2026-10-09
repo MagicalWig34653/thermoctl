@@ -11,9 +11,14 @@
 </div>
 {% endmacro %}
 
-{% macro number_field(name, label, value="", help_text="", errors="", step="0.1", min="", max="") %}
+{#
+`label_extra` ist fertiges HTML neben der Beschriftung, gedacht für das Hilfe-Symbol
+(der Aufruf von `glossar_hilfe`). Es wird als Parameter übergeben, weil das Symbol den
+`url_prefix` der Seite braucht, den ein ohne Kontext importiertes Makro nicht kennt.
+#}
+{% macro number_field(name, label, value="", help_text="", errors="", step="0.1", min="", max="", label_extra="") %}
 <div class="mb-3">
-    <label for="{{ name }}" class="form-label">{{ label }}</label>
+    <label for="{{ name }}" class="form-label">{{ label }}</label>{{ label_extra }}
     <input type="number" class="form-control{% if errors %} is-invalid{% endif %}"
            id="{{ name }}" name="{{ name }}" value="{{ value }}" step="{{ step }}"
            {% if min != "" %}min="{{ min }}"{% endif %} {% if max != "" %}max="{{ max }}"{% endif %}

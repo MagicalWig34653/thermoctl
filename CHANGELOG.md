@@ -9,6 +9,26 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ---
 
+## Unreleased
+
+Beim Upgrade nichts zu tun: keine Migration, keine neue Einstellung.
+
+### Neu
+
+- **Glossar der Fachbegriffe.** Unter `/glossar` erklärt die Oberfläche 54 Begriffe in
+  einfachen Worten — Hysterese, Mindestschaltdauer, PI-Regelung, Sonnenabsenkung,
+  Ersatzquelle, Echo-Regel, Ausgleichswert, Notbetrieb, Festtakt, Außenkennlinie,
+  Rückkehrprüfung, Trockenlauf, Schattenbetrieb und weitere. Die Seite ist alphabetisch,
+  hat Sprungmarken von A bis Z und ein Suchfeld und steht beiden Oberflächen offen
+  (Anlagensicht: Seitenleiste unter „Hilfe", Wohnungssicht: Fußbereich). Neben neun
+  erklärungsbedürftigen Stellen — Regelparameter der Zone, Regelvorgaben und Betriebsseite —
+  führt ein kleines Fragezeichen direkt zum passenden Eintrag.
+- **Eine einzige Quelle:** Die Begriffe stehen in `thermoctl/data/glossar.json`.
+  [docs/glossar.md](docs/glossar.md) wird daraus mit `python -m tools.glossar_erzeugen`
+  erzeugt; ein Test schlägt fehl, wenn beide auseinanderlaufen.
+
+---
+
 ## 0.11.1 — 2026-10-04
 
 Korrekturen zu 0.11.0, beim ersten Hinsehen auf die laufende Anlage gefunden. Beim Upgrade

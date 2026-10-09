@@ -727,7 +727,7 @@
     "thermoctl/web/templates/parameter.html": [
       "\"Nach so vielen Tagen ohne reguläres Heizen wird der Schutzlauf fällig.\", errors.valve_protection_interval_days, \"1\", \"1\") }}",
       "\"So lange fordert der Schutzlauf ein geöffnetes Ventil an. Im Trockenlauf wird die Entscheidung nur protokolliert; scharf und neu gestartet geht sie an den Aktor.\", errors.valve_protection_duration_minutes, \"1\", \"1\") }}",
-      "\"Wie weit die Ist-Temperatur unter den Sollwert fallen darf, bevor die Regelung Heizen anfordert. Zu klein heißt ein ständiger Wechsel zwischen Ein- und Aus-Entscheidung. Derzeit \" ~ effective.hysteresis_k ~ \" K\" ~ (\" aus dem globalen Standard.\" if not values.hysteresis_k else \".\"), errors.hysteresis_k, \"0.01\", \"0\") }}",
+      "\"Wie weit die Ist-Temperatur unter den Sollwert fallen darf, bevor die Regelung Heizen anfordert. Zu klein heißt ein ständiger Wechsel zwischen Ein- und Aus-Entscheidung. Derzeit \" ~ effective.hysteresis_k ~ \" K\" ~ (\" aus dem globalen Standard.\" if not values.hysteresis_k else \".\"), errors.hysteresis_k, \"0.01\", \"0\",",
       "<div class=\"form-check form-switch mb-1\">",
       "<div class=\"form-check form-switch mb-3\">",
       "<div class=\"form-check form-switch mb-3\">",

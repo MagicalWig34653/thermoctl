@@ -1,0 +1,491 @@
+{
+  "version": 1,
+  "entries": [
+    {
+      "id": "abwesenheit",
+      "term": "Abwesenheit",
+      "short": "Hält alle eigenen Räume bis zu einem Rückkehrdatum auf einer sparsameren Temperatur.",
+      "explanation": "Die Abwesenheit setzt ein Bewohner in der Wohnungssicht für seine eigenen Räume. Sie ist eine Übersteuerung mit gemeinsamem Ende; der Wochenplan bleibt unverändert und gilt danach wieder. Nicht zu verwechseln mit dem anlagenweiten Urlaub, den die Verwaltung setzt.",
+      "synonyms": ["Zurück am"],
+      "area": "Regelung",
+      "see_also": ["urlaub", "uebersteuerung", "oberflaechen"]
+    },
+    {
+      "id": "aktiv-bereitschafts-verbund",
+      "term": "Aktiv-Bereitschafts-Verbund",
+      "short": "Mehrere Instanzen teilen sich eine Datenbank; nur eine regelt, die andere springt bei Ausfall ein.",
+      "explanation": "Die führende Instanz erneuert regelmäßig ihre Zuständigkeit. Bleibt das mehrere Regelzyklen lang aus (einstellbar, ab Werk 5), übernimmt die Bereitschaftsinstanz. Eine Instanz in Bereitschaft regelt und schaltet nichts, lässt sich aber ansehen und konfigurieren.",
+      "synonyms": ["Verbund", "Bereitschaft", "Führend"],
+      "area": "Betrieb",
+      "see_also": ["regelzyklus", "scharfschalten"]
+    },
+    {
+      "id": "aktor",
+      "term": "Aktor",
+      "short": "Ein Gerät, das die Heizung tatsächlich schaltet oder einstellt.",
+      "explanation": "Aktoren sind Schaltsteckdosen und Relais (Ein/Aus), aber auch Thermostatventile (Zieltemperatur). Welcher Zone ein Aktor angehört und ob er sich selbst regelt, wird bei den Geräten der Zone festgelegt. Ob thermoctl einem Aktor wirklich Befehle schickt, entscheidet der Trockenlauf bzw. das Scharfschalten.",
+      "synonyms": ["Schaltaktor", "Stellglied", "Schalter"],
+      "area": "Betrieb",
+      "see_also": ["selbstregelndes-thermostatventil", "trockenlauf", "zone"]
+    },
+    {
+      "id": "api-token",
+      "term": "API-Token",
+      "short": "Ein Zugangsschlüssel für Programme, die thermoctl über die Schnittstellen bedienen.",
+      "explanation": "Ein Token kann höchstens, was sein Aussteller selbst darf; verliert der Aussteller später ein Recht, behält auch das Token es nicht. Der Klartext erscheint genau einmal; gespeichert wird nur ein Hash. Wer ihn verliert, stellt ein neues Token aus.",
+      "synonyms": ["Token", "Zugangstoken", "REST-Token", "MCP-Token"],
+      "area": "Oberfläche",
+      "see_also": ["kiosk", "gruppen-und-rechte"]
+    },
+    {
+      "id": "aussenkennlinie",
+      "term": "Außenkennlinie",
+      "short": "Legt im Notbetrieb fest, wie lange ein Fußbodenkreis je nach Außentemperatur ein- und ausgeschaltet bleibt.",
+      "explanation": "Sie besteht aus Zeilen mit Außentemperatur sowie Sekunden Ein und Aus; zwischen den Zeilen wird interpoliert. Mit mindestens einer Zeile werden es mindestens zwei, davon genau eine mit 0 Sekunden Ein: der wärmste Punkt, ab dem nicht mehr geheizt wird. Ohne Kennlinie oder ohne brauchbaren Außenwert gilt der Festtakt.",
+      "synonyms": ["Kennlinie", "Heizkurve im Notbetrieb"],
+      "area": "Sensorik",
+      "see_also": ["notbetrieb", "festtakt", "aussentemperatur", "wiederanlaufspanne"]
+    },
+    {
+      "id": "aussentemperatur",
+      "term": "Außentemperatur",
+      "short": "Die Temperatur draußen, gemessen von einer einzigen anlagenweit gewählten Quelle.",
+      "explanation": "Es gibt genau ein „draußen“ für die ganze Anlage, kein Wert je Zone. Die Quelle wird wie die Messquelle einer Zone aus den bekannten Geräten gewählt. Der Wert steuert die Außenkennlinie im Notbetrieb und den Fenster-Alarm; meldet die Quelle nicht mehr, gilt er als veraltet.",
+      "synonyms": ["Außenfühler", "Außenquelle", "Außenwert", "Außentemperaturquelle"],
+      "area": "Sensorik",
+      "see_also": ["aussenkennlinie", "fenster-alarm", "messquelle"]
+    },
+    {
+      "id": "ausgleichswert",
+      "term": "Ausgleichswert",
+      "short": "Gleicht aus, um wie viel Kelvin ein Thermostat zu warm misst, wenn es als Ersatzquelle dient.",
+      "explanation": "Der Fühler eines Thermostatventils sitzt am Heizkörper und misst meist wärmer als der Raum. Der je Thermostat eingetragene Wert wird von dessen Messung abgezogen, ab Werk 0 K. Die Betriebsseite zeigt dazu einen vorgeschlagenen Ausgleichswert aus dem Vergleich mit dem Wandfühler; übernommen wird er nur, wenn man ihn einträgt.",
+      "synonyms": ["Temperaturausgleich", "Ausgleich", "vorgeschlagener Ausgleichswert"],
+      "area": "Sensorik",
+      "see_also": ["ersatzquelle", "sensorkalibrierung", "echo-regel"]
+    },
+    {
+      "id": "betriebsart",
+      "term": "Betriebsart",
+      "short": "Automatik, Manuell oder Aus; „Aus“ heißt Frostschutz, nicht abgeschaltet.",
+      "explanation": "Bei „Aus“ hält die Zone nur den Frostschutz-Sollwert; Übersteuerung, Urlaub und Zeitplan wirken dann nicht. „Automatik“ und „Manuell“ unterscheiden sich bei der Ermittlung des Sollwerts nicht: Es gilt die Vorrangfolge, die unter Sollwert steht.",
+      "synonyms": ["Automatik", "Manuell", "Aus", "Betriebsmodus"],
+      "area": "Regelung",
+      "see_also": ["sollwert", "frostschutz", "uebersteuerung"]
+    },
+    {
+      "id": "bediengeraet",
+      "term": "Bediengerät",
+      "short": "Ein Gerät mit Tasten, etwa ein Wandtaster, dessen Tastendrücke Befehle für eine Zone auslösen.",
+      "explanation": "thermoctl rät nicht, welche Tasten ein Modell hat, sondern zeigt, welche Aktionen das Gerät tatsächlich geschickt hat; diese lassen sich Befehlen zuordnen. Erlaubt sind bewusst wenige Befehle: wärmer, kälter, zur nächsten Schaltzeit springen, aus, automatisch.",
+      "synonyms": ["Bediengeräte", "Wandtaster", "Taste"],
+      "area": "Oberfläche",
+      "see_also": ["zone", "sollwert-modus"]
+    },
+    {
+      "id": "echo-regel",
+      "term": "Echo-Regel",
+      "short": "Ein Thermostat, dem thermoctl die Raumtemperatur vorgibt, misst nur sein eigenes Echo und taugt dann nicht als Ersatzquelle.",
+      "explanation": "Schreibt thermoctl einem selbstregelnden Thermostat eine Raumtemperatur, gibt es diese Zahl binnen Sekunden als „eigene“ Messung zurück. Als unabhängig zählt seine Messung erst, wenn sie mindestens 30 Minuten nach dem letzten Schreiben entstanden ist; ältere Werte bleiben ausgeschlossen.",
+      "synonyms": ["Echo", "Echo-Erkennung", "Echo-Prüfung"],
+      "area": "Sensorik",
+      "see_also": ["ersatzquelle", "selbstregelndes-thermostatventil", "ausgleichswert"]
+    },
+    {
+      "id": "ersatzquelle",
+      "term": "Ersatzquelle",
+      "short": "Ersatzmessung für einen ausgefallenen Wandfühler, genommen von einem Thermostat der Zone.",
+      "explanation": "Fällt der Wandfühler aus, nimmt die Zone die kälteste brauchbare Messung ihrer zugeordneten Thermostate, korrigiert um den jeweiligen Ausgleichswert, und regelt normal weiter. Ein Thermostat, das nur sein Echo liefert, zählt nicht. Meldet sich der Wandfühler wieder, übernimmt er nach der Rückkehrprüfung.",
+      "synonyms": ["Thermostat-Ersatzquelle", "Ersatzmessung"],
+      "area": "Sensorik",
+      "see_also": ["notbetrieb", "echo-regel", "ausgleichswert", "rueckkehrpruefung", "messquelle"]
+    },
+    {
+      "id": "fenster-alarm",
+      "term": "Fenster-Alarm",
+      "short": "Meldet ein vergessenes offenes Fenster, wenn es draußen kalt ist.",
+      "explanation": "Beide Bedingungen müssen zugleich gelten: Das Fenster einer Zone steht länger als die eingestellte Dauer offen, und die Außentemperatur liegt unter der eingestellten Schwelle. Es ist eine Meldung und kein Eingriff; was die Heizung bei offenem Fenster tut, regeln Fensterkontakt und Frostschutz.",
+      "synonyms": ["Fenster vergessen", "Fenster vergessen offen"],
+      "area": "Sensorik",
+      "see_also": ["fensterkontakt", "aussentemperatur", "meldungen"]
+    },
+    {
+      "id": "fenster-erkennung-temperatursturz",
+      "term": "Fenster-Erkennung aus Temperatursturz",
+      "short": "Vermutet ein offenes Fenster, wenn die Raumtemperatur schnell fällt, auch ohne Fensterkontakt.",
+      "explanation": "Nur wirksam für eine Zone ohne zugeordneten Fensterkontakt und mit eingeschaltetem Schalter in den Regelparametern (ab Werk aus). Fällt die Temperatur innerhalb des Zeitfensters mindestens um die Sturzschwelle, behandelt sie die Zone wie bei offenem Fenster und kennzeichnet das als Vermutung. Eine geöffnete Tür oder ein Luftzug kann dasselbe auslösen; die Schwellen sind begründete Schätzwerte.",
+      "synonyms": ["Temperatursturz", "Sturzschwelle", "Fenster vermutlich offen"],
+      "area": "Regelung",
+      "see_also": ["fensterkontakt", "fenster-alarm"]
+    },
+    {
+      "id": "fensterkontakt",
+      "term": "Fensterkontakt",
+      "short": "Ein Sensor, der meldet, ob ein Fenster offen ist; bei offenem Fenster wird nicht geheizt.",
+      "explanation": "Bei offenem Fenster fordert die Regelung kein Heizen an. Ausnahme: Fällt der Raum unter den Frostschutz-Sollwert, wird trotzdem geheizt. Nach dem Schließen wartet die Regelung die Nachlaufzeit ab (einstellbar, ab Werk 120 Sekunden), bevor sie wieder heizen darf. Zonen, deren Aktoren ausschließlich einfache Ein/Aus-Ventile sind, werden durch ein offenes Fenster nicht abgeschaltet, weil eine solche Fußbodenheizung dafür zu träge ist.",
+      "synonyms": ["Fenster offen", "Fenstersensor", "Nachlauf nach Fensterschluss", "Wiederanlauf nach Fenster"],
+      "area": "Regelung",
+      "see_also": ["frostschutz", "fenster-alarm", "fenster-erkennung-temperatursturz", "aktor"]
+    },
+    {
+      "id": "festhaengender-messwert",
+      "term": "Festhängender Messwert",
+      "short": "Ein Sensor meldet zwar weiter, aber seit Stunden immer denselben Wert.",
+      "explanation": "Als festhängend gilt ein Messwert, wenn alle Werte der letzten Stunden (einstellbar, ab Werk 12) nur minimal voneinander abweichen. Das ist kein Ausfall: Die Zone regelt unverändert mit dem Wert weiter, es gibt nur einen Hinweis und optional eine Meldung. Ein ungeheizter, stabiler Raum kann sich ebenfalls so verhalten.",
+      "synonyms": ["festhängend", "Messwert bewegt sich nicht mehr", "Messwert unverändert"],
+      "area": "Sensorik",
+      "see_also": ["sensor-timeout", "meldungen"]
+    },
+    {
+      "id": "festtakt",
+      "term": "Festtakt",
+      "short": "Im Notbetrieb schaltet ein Fußbodenkreis nach der Uhr abwechselnd ein und aus, unabhängig von der Raumtemperatur.",
+      "explanation": "Der Festtakt gibt an, wie lange ein Kreis je Zyklus eingeschaltet und wie lange danach ausgeschaltet bleibt. Ab Werk sind es 10 Minuten Ein und 20 Minuten Aus; beides ist anlagenweit einstellbar. Ein erster Eintritt beginnt mit der Aus-Phase. Mit Außenkennlinie und brauchbarem Außenwert hat die Kennlinie Vorrang.",
+      "synonyms": ["Festtakt Ein", "Festtakt Aus", "fester Takt", "Taktzyklus"],
+      "area": "Sensorik",
+      "see_also": ["notbetrieb", "aussenkennlinie"]
+    },
+    {
+      "id": "frostschutz",
+      "term": "Frostschutz",
+      "short": "Die niedrigste Temperatur, auf die ein Raum nicht fallen soll; sie schützt Leitungen vor dem Einfrieren.",
+      "explanation": "Frostschutz ist ein eigener Sollwert-Modus. Er gilt bei Betriebsart „Aus“, solange kein Zeitplan greift (etwa weil noch kein Schaltpunkt eingetragen ist), und bei Sensorausfall, wenn die Zone dem letzten Messwert nicht mehr traut. Auch bei offenem Fenster wird geheizt, sobald der Raum darunter fällt. Die Sonnenabsenkung geht nie unter diese Grenze.",
+      "synonyms": ["Frostschutz-Sollwert", "Frostschutztemperatur", "Frostschutzmodus"],
+      "area": "Regelung",
+      "see_also": ["sollwert", "betriebsart", "sonnenabsenkung", "sensor-timeout", "fensterkontakt"]
+    },
+    {
+      "id": "gruppen-und-rechte",
+      "term": "Gruppen und Rechte",
+      "short": "Rechte hängen an Gruppen, nicht an Personen; die Gruppe legt auch die Oberfläche fest.",
+      "explanation": "Wer in mehreren Gruppen ist, darf alles, was mindestens eine erlaubt. Zonenbezogene Rechte lassen sich auf einzelne Zonen beschränken. Das Oberflächen-Profil einer Gruppe (Anlage oder Wohnung) bestimmt nur, welche Seiten angezeigt werden; was jemand darf, steht allein in den Rechten.",
+      "synonyms": ["Gruppe", "Rechte", "Berechtigung", "Oberflächen-Profil"],
+      "area": "Oberfläche",
+      "see_also": ["oberflaechen", "api-token"]
+    },
+    {
+      "id": "heizzeit",
+      "term": "Heizzeit",
+      "short": "Wie lange eine Zone an einem Tag eine Heizanforderung hatte.",
+      "explanation": "Die Zahl zeigt Entscheidungen der Regelung, keine bestätigte körperliche Heizwirkung. Sie ist weder Energie- noch Kostenmesser: Wie warm ein Raum wird, hängt zusätzlich von Außentemperatur, Gebäude und Lüften ab. Im Trockenlauf zeigt sie, wann geheizt worden wäre.",
+      "synonyms": ["Heizstatistik"],
+      "area": "Betrieb",
+      "see_also": ["regelentscheidung", "trockenlauf", "relaisverschleiss"]
+    },
+    {
+      "id": "home-assistant",
+      "term": "Home Assistant",
+      "short": "Eine Smart-Home-Zentrale, die sich optional per MQTT mit thermoctl verbinden lässt.",
+      "explanation": "Die Anbindung ist freiwillig. Über MQTT meldet thermoctl seine Zonen an und nimmt Sollwerte und Betriebsarten entgegen; auch im Trockenlauf, dann bewegt sich nur kein Ventil. Die Entität „Regelung scharf“ zeigt, ob die Regelung scharf geschaltet ist.",
+      "synonyms": ["HA", "Home-Assistant-Add-on"],
+      "area": "Oberfläche",
+      "see_also": ["mqtt-broker", "homebridge", "scharfschalten"]
+    },
+    {
+      "id": "homebridge",
+      "term": "Homebridge",
+      "short": "Eine Brücke, die Zonen von thermoctl in Apple Home sichtbar macht.",
+      "explanation": "Die Oberfläche erzeugt je Zone eine fertige Konfiguration für das Homebridge-Plugin mit den echten Topics der Anlage. Benutzername und Passwort darin sind Platzhalter: Homebridge braucht einen eigenen Broker-Zugang mit möglichst engen Rechten, nie den von thermoctl.",
+      "synonyms": ["Apple Home", "HomeKit"],
+      "area": "Oberfläche",
+      "see_also": ["mqtt-broker", "home-assistant"]
+    },
+    {
+      "id": "hysterese",
+      "term": "Hysterese",
+      "short": "Ein Spielraum um den Sollwert, damit die Heizung nicht ständig an- und ausgeht.",
+      "explanation": "Die Regelung fordert Heizen erst an, wenn die Temperatur mehr als die Hysterese unter dem Sollwert liegt, und beendet es erst, wenn sie mehr als die Hysterese darüber liegt. Dazwischen bleibt der Zustand, wie er ist. Der Wert gilt anlagenweit (ab Werk 0,3 K) und lässt sich je Zone abweichend einstellen.",
+      "synonyms": ["Hysterese (K)", "Schalthysterese", "Hysterese-Regelung"],
+      "area": "Regelung",
+      "see_also": ["mindestschaltdauer", "pi-regelung", "sollwert"]
+    },
+    {
+      "id": "kiosk",
+      "term": "Kiosk",
+      "short": "Eine Anzeige für ein Wandtablet, die ohne Benutzerkonto über ein eigenes Token geöffnet wird.",
+      "explanation": "Ein Kiosk-Token hat einen Namen, eine Auswahl sichtbarer Zonen und optional die Erlaubnis zu bedienen; sonst zeigt es nur an. Optional läuft es nach einigen Tagen ab, und es lässt sich jederzeit widerrufen. Die Adresse mit dem Token erscheint genau einmal im Klartext und gehört als Lesezeichen auf das Tablet.",
+      "synonyms": ["Kiosk-Token", "Wandtablet", "Wandpanel", "Tafel"],
+      "area": "Oberfläche",
+      "see_also": ["api-token", "oberflaechen"]
+    },
+    {
+      "id": "meldungen",
+      "term": "Meldungen",
+      "short": "Hinweise, die thermoctl bei Störungen an ein Ziel wie einen Webhook schickt.",
+      "explanation": "Es gibt sechs Arten, jede einzeln abschaltbar: Sensorstörung, Brücke oder Broker weg, gescheiterter Schaltbefehl, festhängender Messwert, Fenster vergessen offen und Problemmeldung aus einer Wohnung. Gemeldet werden Beginn und Entwarnung je einmal. Wohin eine Meldung geht, steht unter Schnittstellen.",
+      "synonyms": ["Störungsmeldungen", "Benachrichtigungen", "Webhook", "Testmeldung"],
+      "area": "Betrieb",
+      "see_also": ["festhaengender-messwert", "fenster-alarm", "mqtt-broker"]
+    },
+    {
+      "id": "meross",
+      "term": "Meross",
+      "short": "Eine Herstellerreihe von WLAN-Steckdosen, die thermoctl über deren Cloud schaltet.",
+      "explanation": "Meross-Steckdosen melden sich nicht über MQTT, sondern werden stündlich mit der Cloud abgeglichen. Zum Schalten braucht thermoctl eine Anmeldung dort. Ist sie gerade nicht möglich, wird nicht geschaltet, und jeder betroffene Regelzyklus versucht es erneut.",
+      "synonyms": ["Meross-Steckdose", "Steckdose"],
+      "area": "Sensorik",
+      "see_also": ["aktor", "zigbee2mqtt"]
+    },
+    {
+      "id": "messquelle",
+      "term": "Messquelle",
+      "short": "Der Temperatursensor, nach dem eine Zone regelt.",
+      "explanation": "Die Messquelle (auch Wandfühler oder Raumfühler) wird bei den Geräten der Zone aus den bekannten Geräten mit Temperaturmessung gewählt. Liefert sie nicht mehr, springt je nach Konfiguration eine Ersatzquelle oder der Notbetrieb ein.",
+      "synonyms": ["Wandfühler", "Raumfühler", "Fühler", "Temperatursensor", "Messquelle wählen"],
+      "area": "Sensorik",
+      "see_also": ["ersatzquelle", "sensor-timeout", "sensorkalibrierung"]
+    },
+    {
+      "id": "mindestschaltdauer",
+      "term": "Mindestschaltdauer",
+      "short": "Wie lange ein Zustand (Heizen oder Aus) mindestens bestehen bleibt, bevor er wechseln darf.",
+      "explanation": "Sie schützt Ventile und Relais vor ständigem Ein- und Ausschalten und gilt getrennt als Mindest-Einschaltdauer und Mindest-Ausschaltdauer. Solange die Zeit nicht um ist, bleibt die Heizanforderung unverändert, auch wenn die Temperatur einen Wechsel erlauben würde. Ab Werk sind es je 5 Minuten, anlagenweit einstellbar und je Zone abweichend.",
+      "synonyms": ["Mindest-Einschaltdauer", "Mindest-Ausschaltdauer", "Mindestdauer", "Taktschutz"],
+      "area": "Regelung",
+      "see_also": ["hysterese", "pi-regelung", "relaisverschleiss"]
+    },
+    {
+      "id": "mqtt-broker",
+      "term": "MQTT und Broker",
+      "short": "MQTT ist ein Nachrichtenweg zwischen Geräten und Diensten; der Broker ist dessen Vermittlungsstelle.",
+      "explanation": "Sensoren, Zigbee2MQTT, Home Assistant, Homebridge und thermoctl tauschen sich über einen MQTT-Broker aus. Fällt der Broker oder die Verbindung zur Brücke aus, kommen keine Messwerte mehr an. Dafür gibt es eine eigene Meldung. Adresse und Zugangsdaten werden in der Umgebung des Dienstes gesetzt, nicht in der Oberfläche.",
+      "synonyms": ["MQTT", "Broker", "MQTT-Broker"],
+      "area": "Sensorik",
+      "see_also": ["zigbee2mqtt", "home-assistant", "homebridge", "meldungen"]
+    },
+    {
+      "id": "notbetrieb",
+      "term": "Notbetrieb",
+      "short": "Ersatzverhalten, wenn für eine Zone keine brauchbare Temperaturmessung mehr vorliegt.",
+      "explanation": "Die Zone durchläuft vier Stufen: Normal, Ersatzquelle, Notbetrieb und Rückkehrprüfung. Im Notbetrieb takten Schaltaktoren wie Fußbodenkreise nach der Uhr (Festtakt oder Außenkennlinie), unabhängig von der Raumtemperatur; Thermostate werden einmal auf den Notsollwert gestellt und danach nicht mehr angesprochen. Ab Werk ist er für jede Zone aktiv und je Zone abschaltbar. Eine Notlösung, keine Regelung.",
+      "synonyms": ["Notbetrieb bei Sensorausfall", "Sensorausfall", "Notbetriebsprofil"],
+      "area": "Sensorik",
+      "see_also": ["ersatzquelle", "festtakt", "aussenkennlinie", "notsollwert", "rueckkehrpruefung"]
+    },
+    {
+      "id": "notsollwert",
+      "term": "Notsollwert",
+      "short": "Die Temperatur, auf die ein Thermostat im Notbetrieb einmalig gestellt wird.",
+      "explanation": "Gilt anlagenweit (ab Werk 20 °C) und lässt sich je Zone überschreiben; ein leeres Feld erbt den Anlagenwert. Danach hält das Thermostat diese Temperatur selbst, bis wieder ein Messwert da ist. Der Notsollwert gilt nur für Thermostate, nicht für Fußbodenkreise.",
+      "synonyms": ["Anlagenweiter Notsollwert", "Eigener Notsollwert"],
+      "area": "Sensorik",
+      "see_also": ["notbetrieb", "selbstregelndes-thermostatventil"]
+    },
+    {
+      "id": "oberflaechen",
+      "term": "Anlagensicht und Wohnungssicht",
+      "short": "Zwei Oberflächen: eine für Verwaltung und Technik, eine für Bewohner.",
+      "explanation": "Die Gruppe eines Benutzers entscheidet, welche er sieht. Die Anlagensicht zeigt die ganze Anlage mit Geräten, Regelparametern und Protokollen. Die Wohnungssicht zeigt nur die eigenen Räume ohne Fachbegriffe: Temperatur, Wochenplan, Heizzeit und Abwesenheit.",
+      "synonyms": ["Anlagensicht", "Wohnungssicht", "Mietersicht", "Profil"],
+      "area": "Oberfläche",
+      "see_also": ["gruppen-und-rechte", "abwesenheit", "kiosk"]
+    },
+    {
+      "id": "passkey",
+      "term": "Passkey",
+      "short": "Eine Anmeldung ohne Passwort, bei der ein geheimer Schlüssel das Gerät nie verlässt.",
+      "explanation": "Ein Passkey gilt nur für diese Seite und lässt sich daher nicht auf einer nachgemachten Seite eingeben. Er braucht einen Browser mit Passkey-Unterstützung und eine verschlüsselte Verbindung. Solange kein Passkey hinterlegt ist, bleibt das Passwort der einzige Weg zur Anmeldung.",
+      "synonyms": ["Passkeys", "WebAuthn"],
+      "area": "Oberfläche",
+      "see_also": ["gruppen-und-rechte", "api-token"]
+    },
+    {
+      "id": "pi-regelung",
+      "term": "PI-Regelung (Beta)",
+      "short": "Eine optionale Regelart, die den Raum gleichmäßiger halten soll, dafür aber öfter schaltet.",
+      "explanation": "Statt zwischen zwei Schwellen umzuschalten, berechnet der PI-Regler aus der Abweichung einen Tastgrad: den Anteil der Zeit, in der geheizt wird. Er wird für jeweils 15 Minuten festgelegt. PI schaltet deutlich öfter als die Hysterese und belastet Relais stärker. Sie ist je Zone abschaltbar (ab Werk aus) und nur mit gewöhnlichem Schaltaktor möglich; bei Einschränkungen regelt die Zone über die Hysterese.",
+      "synonyms": ["PI", "PI-Regler", "Tastgrad", "Verstärkung Kp", "Nachstellzeit Ti", "Beta"],
+      "area": "Regelung",
+      "see_also": ["hysterese", "relaisverschleiss", "mindestschaltdauer"]
+    },
+    {
+      "id": "regelentscheidung",
+      "term": "Regelentscheidung",
+      "short": "Das Ergebnis eines Regelzyklus für eine Zone: Heizen oder nicht, mit Begründung.",
+      "explanation": "Zu jeder Entscheidung nennt thermoctl, warum so entschieden wurde, zum Beispiel, dass die Temperatur unter dem Sollwert minus Hysterese liegt, dass ein Fenster offen ist oder dass die Mindestdauer des aktuellen Zustands noch nicht erreicht ist. Im Trockenlauf wird sie nur protokolliert, scharf geht sie an die Aktoren. Die Oberfläche spricht von Heizanforderung und, im Trockenlauf, von Schattenentscheidung.",
+      "synonyms": ["Entscheidung", "Begründung", "Schattenentscheidung", "Heizanforderung", "Würde heizen"],
+      "area": "Regelung",
+      "see_also": ["regelzyklus", "hysterese", "trockenlauf", "schattenbetrieb"]
+    },
+    {
+      "id": "regelzyklus",
+      "term": "Regelzyklus",
+      "short": "Der Takt, in dem die Regelung für jede Zone neu entscheidet.",
+      "explanation": "In jedem Durchlauf wird für jede Zone der Sollwert ermittelt und entschieden, ob geheizt werden soll. Die Dauer ist anlagenweit einstellbar, ab Werk 60 Sekunden. Sie ist auch die Zeiteinheit des Aktiv-Bereitschafts-Verbunds.",
+      "synonyms": ["Regelzyklus (Sekunden)", "Zyklus", "Regelintervall"],
+      "area": "Regelung",
+      "see_also": ["regelentscheidung", "aktiv-bereitschafts-verbund"]
+    },
+    {
+      "id": "relaisverschleiss",
+      "term": "Relaisverschleiß",
+      "short": "Zählt, wie oft Relais schalten, und rechnet das auf ein Jahr hoch.",
+      "explanation": "Ein Schaltspiel ist jeder erfolgreich befohlene Wechsel von Aus nach Ein oder von Ein nach Aus. Gezählt wird gegen eine angenommene Lebensdauer (ab Werk 500.000 Schaltspiele): ein austauschbarer Vergleichswert, keine Herstellerangabe. Befehle im Trockenlauf, gescheiterte Befehle und Sollwerte an Thermostatventile zählen nicht.",
+      "synonyms": ["Schaltspiel", "Schaltspiele", "Relais-Lebensdauer", "Jahreshochrechnung"],
+      "area": "Betrieb",
+      "see_also": ["pi-regelung", "hysterese", "mindestschaltdauer", "schaltprotokoll"]
+    },
+    {
+      "id": "rueckkehrpruefung",
+      "term": "Rückkehrprüfung",
+      "short": "Die Probezeit, nach der eine Zone aus dem Notbetrieb oder der Ersatzquelle zur normalen Regelung zurückkehrt.",
+      "explanation": "Die geprüfte Quelle muss mehrere neue Messwerte liefern (ab Werk zwei) und danach durchgehend brauchbar bleiben (ab Werk 60 Sekunden). Beides ist anlagenweit einstellbar. Fällt sie währenddessen wieder aus, geht die Zone zurück in den Notbetrieb. Erst dann übernimmt die normale Regelung, und das Thermostat bekommt seine frühere Betriebsart einmal zurück.",
+      "synonyms": ["Rückkehr", "Rückkehr: Mindestdauer stabil", "Rückkehr: nötige Messungen"],
+      "area": "Sensorik",
+      "see_also": ["notbetrieb", "ersatzquelle", "messquelle"]
+    },
+    {
+      "id": "scharfschalten",
+      "term": "Scharfschalten",
+      "short": "Gibt frei, dass die Regelung wirklich Befehle an Aktoren sendet.",
+      "explanation": "Dafür gibt es zwei Riegel. Der erste ist die gespeicherte Freigabe auf der Betriebsseite (mit Begründung, jederzeit zurücknehmbar). Der zweite sitzt im MQTT-Client und wird nur beim Start des Dienstes gelesen. Darum braucht es nach dem Scharfschalten einen Neustart; bis dahin zeigt die Oberfläche „Scharf, Neustart fehlt“.",
+      "synonyms": ["scharf", "Scharf schalten", "Riegel", "MQTT-Riegel", "Freigabe", "Neustart fehlt"],
+      "area": "Betrieb",
+      "see_also": ["trockenlauf", "schattenbetrieb", "aktor"]
+    },
+    {
+      "id": "schattenbetrieb",
+      "term": "Schattenbetrieb",
+      "short": "Die Anlaufphase, in der thermoctl mitentscheidet, ohne zu schalten, und gegen die bisherige Steuerung verglichen wird.",
+      "explanation": "Technisch derselbe Zustand wie der Trockenlauf: Die Regelung liest, entscheidet und protokolliert, aber keine Befehle erreichen einen Aktor. Die Entscheidungen bleiben als Schattenentscheidungen erhalten (einstellbar, ab Werk 365 Tage), damit man sie über Tage mit der bisherigen Steuerung vergleichen kann, bevor man scharf schaltet.",
+      "synonyms": ["Schattenprotokoll", "Schattenentscheidungen", "Schattenlauf"],
+      "area": "Betrieb",
+      "see_also": ["trockenlauf", "scharfschalten", "regelentscheidung"]
+    },
+    {
+      "id": "schaltprotokoll",
+      "term": "Schaltprotokoll",
+      "short": "Das Journal aller Befehle an Geräte, auch derer, die im Trockenlauf unterdrückt wurden.",
+      "explanation": "Jeder Eintrag nennt Zeitpunkt, Zone, Gerät, Befehl, Ergebnis (ausgeführt, unterdrückt oder gescheitert) und eine Begründung. Dazu kommen Entscheidungen des Notbetriebs, eindeutig gekennzeichnet. Das Protokoll löscht sich nicht selbst, weil ein einzelner Eintrag noch nach Wochen eine Störung erklären kann.",
+      "synonyms": ["Befehlsprotokoll", "Befehle", "Schaltbefehl"],
+      "area": "Betrieb",
+      "see_also": ["trockenlauf", "notbetrieb", "relaisverschleiss"]
+    },
+    {
+      "id": "selbstregelndes-thermostatventil",
+      "term": "Selbstregelndes Thermostatventil",
+      "short": "Ein Heizkörperventil, das mit einer vorgegebenen Zieltemperatur selbst regelt.",
+      "explanation": "thermoctl schreibt nur die Zieltemperatur und, wenn das Gerät es annimmt, die Raumtemperatur; das Ventil regelt damit selbst. Bei einem nicht selbstregelnden Ventil entscheidet dagegen thermoctl über Ein und Aus, mit Hysterese, Mindestschaltdauer und Fensterkontakt. Im Notbetrieb wird ein solches Ventil einmal auf den Notsollwert gestellt.",
+      "synonyms": ["selbstregelnd", "Thermostatventil", "Thermostat", "Heizkörperthermostat"],
+      "area": "Betrieb",
+      "see_also": ["aktor", "notsollwert", "echo-regel", "hysterese"]
+    },
+    {
+      "id": "sensor-timeout",
+      "term": "Sensor-Timeout",
+      "short": "Die Zeit ohne neuen Messwert, nach der ein Sensor als ausgefallen („veraltet“) gilt.",
+      "explanation": "Ab Werk 30 Minuten, anlagenweit einstellbar und je Zone abweichend. Danach traut die Zone dem letzten Messwert nicht mehr. Je nach Konfiguration greifen Ersatzquelle und Notbetrieb; ohne sie regelt die Zone gegen den Frostschutz-Sollwert. Gibt es gar keine Messung, bleibt die Heizanforderung aus.",
+      "synonyms": ["Sensor gilt als ausgefallen nach", "veraltet", "Messwert veraltet", "keine Quelle"],
+      "area": "Sensorik",
+      "see_also": ["messquelle", "ersatzquelle", "notbetrieb", "frostschutz", "festhaengender-messwert"]
+    },
+    {
+      "id": "sensorkalibrierung",
+      "term": "Sensorkalibrierung",
+      "short": "Ein fester Betrag in Kelvin, der auf die Messung eines Sensors aufgerechnet wird.",
+      "explanation": "Der Wert wird zur gemessenen Temperatur addiert, um eine bekannte Abweichung des Sensors auszugleichen. Negative Werte sind erlaubt. Er gilt je Zone und beeinflusst alle Regelentscheidungen. Nicht zu verwechseln mit dem Ausgleichswert eines Thermostats, der von dessen Messung abgezogen wird.",
+      "synonyms": ["Temperaturkorrektur", "Temperaturversatz", "Offset", "Kalibrierung"],
+      "area": "Sensorik",
+      "see_also": ["ausgleichswert", "messquelle"]
+    },
+    {
+      "id": "sollwert",
+      "term": "Sollwert",
+      "short": "Die Temperatur, die ein Raum gerade erreichen soll.",
+      "explanation": "Er ergibt sich in dieser Reihenfolge: Betriebsart „Aus“ (dann Frostschutz), laufende Übersteuerung, Urlaub, Zeitplan und zuletzt Frostschutz. Die Oberfläche nennt zu jedem Sollwert die Begründung, woher er stammt. Die Sonnenabsenkung kann ihn zusätzlich senken.",
+      "synonyms": ["Soll", "Zieltemperatur", "Solltemperatur", "Sollwert mit Begründung"],
+      "area": "Regelung",
+      "see_also": ["sollwert-modus", "zeitplan", "uebersteuerung", "urlaub", "frostschutz", "sonnenabsenkung"]
+    },
+    {
+      "id": "sollwert-modus",
+      "term": "Sollwert-Modus",
+      "short": "Eine benannte Temperaturstufe wie Komfort, Tag, Nacht oder Frostschutz.",
+      "explanation": "Je Zone wird jedem Modus eine Temperatur zugeordnet; ein leeres Feld erbt den anlagenweiten Vorgabewert. Der Zeitplan wechselt zu bestimmten Uhrzeiten zwischen den Modi, sodass sich eine Temperatur an einer Stelle ändern lässt, statt in jedem Schaltpunkt.",
+      "synonyms": ["Modus", "Modi", "Komfort", "Tag", "Nacht", "Sollwertmodus"],
+      "area": "Regelung",
+      "see_also": ["zeitplan", "sollwert", "frostschutz"]
+    },
+    {
+      "id": "sonnenabsenkung",
+      "term": "Sonnenabsenkung",
+      "short": "Senkt den Sollwert ab, wenn bald Sonne zu erwarten ist, die den Raum ohnehin erwärmt.",
+      "explanation": "Meldet die Wettervorhersage in den nächsten Stunden (einstellbar, ab Werk 3) eine Einstrahlung von mindestens 120 W/m², sinkt der Sollwert einer Zone um bis zu ihre Obergrenze (ab Werk 2 K), gewichtet mit dem Sonnenprofil der Zone von 0 bis 1. Der Frostschutz-Sollwert bleibt die Untergrenze. Ohne Standort bleibt die Funktion aus, ebenso bei nicht erreichbarer Vorhersage.",
+      "synonyms": ["Sonnenprofil", "Sonnenabsenkung, Obergrenze", "Solarabsenkung", "Sonnenvorhersage"],
+      "area": "Regelung",
+      "see_also": ["frostschutz", "sollwert"]
+    },
+    {
+      "id": "trockenlauf",
+      "term": "Trockenlauf",
+      "short": "Die Regelung entscheidet und protokolliert, schaltet aber nichts.",
+      "explanation": "Das ist der Zustand nach jeder Einrichtung. Entscheidungen und Begründungen werden aufgezeichnet, aber weder Sollwerte noch Ein/Aus-Befehle gehen an Aktoren. So lassen sich Entscheidungen über mehrere Tage beobachten, bevor sie etwas schalten. Das Scharfschalten ist jederzeit umkehrbar.",
+      "synonyms": ["unscharf", "Trockenlauf-Modus", "im Trockenlauf unterdrückt"],
+      "area": "Betrieb",
+      "see_also": ["scharfschalten", "schattenbetrieb", "schaltprotokoll"]
+    },
+    {
+      "id": "uebersteuerung",
+      "term": "Übersteuerung",
+      "short": "Eine vorübergehend von Hand gesetzte Temperatur, die den Zeitplan überlagert.",
+      "explanation": "Sie gilt bis zu einem gewählten Zeitpunkt oder bis auf Widerruf; danach gilt wieder der Zeitplan, der unverändert bleibt. Nur die Betriebsart „Aus“ steht darüber. Ein Boost („Für eine Weile wärmer“) ist eine Übersteuerung, ebenso die Abwesenheit je Raum.",
+      "synonyms": ["Boost", "Für eine Weile wärmer", "Übersteuern", "Override"],
+      "area": "Regelung",
+      "see_also": ["sollwert", "zeitplan", "abwesenheit", "betriebsart"]
+    },
+    {
+      "id": "urlaub",
+      "term": "Urlaub",
+      "short": "Senkt jede Zone der Anlage über einen Zeitraum auf einen einzigen Absenkwert.",
+      "explanation": "Die Verwaltung setzt ersten und letzten Tag sowie die Absenktemperatur für die ganze Anlage. Fenster, Sensorausfall, Mindestschaltdauer und Ventilschutz gelten weiter, eine Zone in Betriebsart „Aus“ bleibt aus, und eine von Hand gesetzte Übersteuerung bleibt bestehen. Zu unterscheiden von der Abwesenheit einzelner Bewohner.",
+      "synonyms": ["Urlaubsbetrieb", "Absenkwert", "Urlaub geplant", "Urlaub läuft"],
+      "area": "Regelung",
+      "see_also": ["abwesenheit", "uebersteuerung", "sollwert"]
+    },
+    {
+      "id": "ventilschutz",
+      "term": "Ventilschutz",
+      "short": "Ein regelmäßiger kurzer Heizlauf, damit Ventile nach langem Stillstand nicht festsitzen.",
+      "explanation": "Hat eine Zone länger als den eingestellten Abstand (Tage) nicht regulär geheizt, fordert die Regelung einmal für die eingestellte Dauer (Minuten) Heizen an. Er ist je Zone abschaltbar (ab Werk aus) und läuft nur bei gutem Sensor, ohne Übersteuerung und nicht bei Betriebsart „Aus“. Im Trockenlauf wird die Entscheidung nur protokolliert.",
+      "synonyms": ["Ventilschutzlauf", "Ventilschutz-Abstand", "Ventilschutz-Dauer", "Schutzlauf"],
+      "area": "Regelung",
+      "see_also": ["mindestschaltdauer", "trockenlauf", "aktor"]
+    },
+    {
+      "id": "wiederanlaufspanne",
+      "term": "Wiederanlaufspanne",
+      "short": "Verhindert, dass der Notbetrieb am warmen Ende der Außenkennlinie ständig neu anläuft.",
+      "explanation": "Sobald der warme Aus-Punkt der Kennlinie erreicht ist, bleibt Ein bei 0 Sekunden, bis die Außentemperatur um diese Spanne darunter fällt (ab Werk 1 K). So flattert ein Wert um den Aus-Punkt nicht zwischen Heizen und Aus.",
+      "synonyms": ["Warm-Aus-Hysterese", "Wiederanlaufspanne (K)"],
+      "area": "Sensorik",
+      "see_also": ["aussenkennlinie", "notbetrieb", "hysterese"]
+    },
+    {
+      "id": "zeitplan",
+      "term": "Zeitplan",
+      "short": "Der Wochenplan einer Zone: Schaltpunkte, die zu bestimmten Zeiten den Sollwert-Modus wechseln.",
+      "explanation": "Ein Schaltpunkt gilt bis zum nächsten, Woche für Woche. Übersteuerung, Urlaub und Betriebsart „Aus“ gehen vor. Solange kein Schaltpunkt eingetragen ist, gilt der Frostschutz. Die Vorschau zeigt auch eine gerade laufende Übersteuerung, nicht nur den gemalten Plan.",
+      "synonyms": ["Wochenplan", "Schaltpunkt", "Schaltpunkte", "Schaltzeit", "Heizzeit-Plan"],
+      "area": "Regelung",
+      "see_also": ["sollwert-modus", "sollwert", "uebersteuerung", "frostschutz"]
+    },
+    {
+      "id": "zigbee2mqtt",
+      "term": "Zigbee2MQTT und Brücke",
+      "short": "Die Software, die Zigbee-Funkgeräte über MQTT zugänglich macht; die Brücke ist ihre Verbindung.",
+      "explanation": "Funksensoren, Thermostate und Schalter hängen an der Zigbee2MQTT-Brücke. Meldet sie sich nicht, kommt von keinem einzigen Gerät etwas an, unabhängig von der Zuordnung zu Zonen. Neue Geräte erscheinen von selbst in der Geräteliste und werden von Hand einer Zone zugeordnet.",
+      "synonyms": ["Zigbee", "Zigbee-Brücke", "Brücke", "Z2M"],
+      "area": "Sensorik",
+      "see_also": ["mqtt-broker", "messquelle", "aktor"]
+    },
+    {
+      "id": "zone",
+      "term": "Zone",
+      "short": "Ein Raum oder eine Gruppe von Räumen mit eigenem Sollwert.",
+      "explanation": "Einer Zone sind eine Messquelle, Aktoren, ein Zeitplan, Sollwerte und Regelparameter zugeordnet. Ohne mindestens eine Zone gibt es nichts zu regeln. Was die Zone nicht selbst einstellt, erbt sie aus den anlagenweiten Regelvorgaben.",
+      "synonyms": ["Raum", "Zonen"],
+      "area": "Betrieb",
+      "see_also": ["messquelle", "aktor", "zeitplan", "oberflaechen"]
+    }
+  ]
+}
