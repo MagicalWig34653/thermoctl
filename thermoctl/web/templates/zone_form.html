@@ -4,6 +4,7 @@
 {% block title %}{% if zone %}Zone bearbeiten{% else %}Zone anlegen{% endif %} – thermoctl{% endblock %}
 {% block content %}
 {% if zone %}{{ zonenkopf(zone, "Zonendaten") }}{% else %}<h1 class="mb-4">Zone anlegen</h1>{% endif %}
+{% if zone and chart %}<div class="mb-4">{% include "zone_history_chart.html" %}</div>{% endif %}
 {#
 `url_prefix`: ohne ihn schickt dieses Formular seine Eingabe hinter einem
 Ingress-Proxy an den Wurzelpfad des Hosts statt an thermoctl -- „Zone anlegen"
@@ -28,5 +29,4 @@ Wächtertest (`tests/test_ingress_prefix.py`) hält das jetzt für alle Vorlagen
     <a class="btn btn-secondary" href="{{ url_prefix }}/zones">Abbrechen</a>
     {% if zone %}<a class="btn btn-outline-danger float-end" href="{{ url_prefix }}/zones/{{ zone.id }}/delete">Löschen</a>{% endif %}
 </form>
-{% if zone and chart %}{% include "zone_history_chart.html" %}{% endif %}
 {% endblock %}

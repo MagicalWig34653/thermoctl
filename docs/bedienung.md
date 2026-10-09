@@ -360,10 +360,15 @@ eine Möglichkeit zu zeigen, die nicht funktioniert.
 
 ### Temperaturverlauf einer Zone
 
-Unter **Zonen → Zonendaten** zeigt die Karte den Verlauf der letzten 24 Stunden, 3 Tage
-oder 7 Tage. Blau steht für die gemessene Temperatur, Gelb für den Zeitplan-Sollwert und
-die gestrichelte Linie für den wirksamen Sollwert. Orange Striche markieren Heizphasen;
-ein hinterlegtes Band markiert die Sonnenabsenkung. So ist sichtbar, wann der wirksame
-Sollwert unter dem Zeitplan lag. Mit **Vollbild** lässt sich die Karte vergrößern;
-**Schließen** oder Escape führt zurück. Ältere Protokollzeilen ohne Angaben zur
-Sonnenabsenkung zeigen nur den damals gespeicherten wirksamen Sollwert.
+Unter **Zonen → Zonendaten** steht oberhalb des Formulars die Karte mit dem Verlauf der
+letzten 24 Stunden, 3 Tage oder 7 Tage. Blau ist die gemessene Temperatur, die durchgehende
+gelbbraune Linie der Zeitplan-Sollwert, die gestrichelte violette Linie der wirksame
+Sollwert. Ein grünes Band mit Balken am oberen Rand und Angabe der Absenkung markiert die
+Sonnenabsenkung; so ist sofort zu sehen, wann der wirksame Sollwert unter dem Zeitplan lag.
+Die orangen Striche in der schmalen Spur unter der Zeichnung zeigen, wann Heizanforderung
+bestand; je dichter, desto häufiger in diesem Abschnitt. Die Zeitachse steht in der
+eingestellten Zeitzone auf runden Stunden, an Mitternacht mit Wochentag und Datum. Wo keine
+Daten vorliegen (Neustart, Ausfall), bleiben die Linien unterbrochen; ein Hinweis unter dem
+Diagramm nennt dann die erfasste Zeit und den letzten Wert. Mit **Vollbild** lässt sich die
+Karte vergrößern; **Schließen** oder Escape führt zurück. Ältere Protokollzeilen ohne Angaben
+zur Sonnenabsenkung zeigen nur den damals gespeicherten wirksamen Sollwert.

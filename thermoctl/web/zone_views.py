@@ -14,14 +14,13 @@ from thermoctl.db.models.zone import Zone
 from thermoctl.domain.authz import has_permission, require, visible_zones
 from thermoctl.domain.principal import Principal
 from thermoctl.domain.zone_history_chart import (
+    LAYOUTS,
     WINDOWS,
     chart_for_zone,
     line_path,
-    mobile_line_path,
-    mobile_step_path,
-    mobile_x_position,
-    mobile_y_position,
     step_path,
+    tick_x,
+    ticks_for,
     x_position,
     y_position,
 )
@@ -197,21 +196,20 @@ async def create_zone_view(
 
 def _history_context(session: Session, zone_id: int, period: str) -> dict[str, object]:
     if period not in WINDOWS:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Ungültiger Zeitraum")
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Ungültiger Zeitraum")
     setting = session.get(Setting, 1)
     timezone_name = setting.timezone if setting is not None else None
     now = datetime.now(UTC).replace(tzinfo=None)
     return {
         "chart": chart_for_zone(session, zone_id, period, now, timezone_name),
         "period": period,
+        "layouts": LAYOUTS,
         "xpos": x_position,
         "ypos": y_position,
+        "tickx": tick_x,
+        "ticks_for": ticks_for,
         "line": line_path,
         "steps": step_path,
-        "mobile_xpos": mobile_x_position,
-        "mobile_ypos": mobile_y_position,
-        "mobile_line": mobile_line_path,
-        "mobile_steps": mobile_step_path,
     }
 
 
