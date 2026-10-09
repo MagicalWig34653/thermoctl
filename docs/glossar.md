@@ -13,9 +13,9 @@ Die Fachbegriffe der Oberfläche in einfachen Worten. Dieselben Erklärungen ste
 <a id="abwesenheit"></a>
 ### Abwesenheit
 
-*Regelung* — Hält alle eigenen Räume bis zu einem Rückkehrdatum auf einer gewählten, meist sparsameren Temperatur.
+*Regelung* — Eine Übersteuerung für die eigenen Räume eines Bewohners, gültig bis zu einem Rückkehrdatum.
 
-Die Abwesenheit setzt ein Bewohner in der Wohnungssicht für seine eigenen Räume. Sie ist eine Übersteuerung mit gemeinsamem Ende; der Wochenplan bleibt unverändert und gilt danach wieder. Nicht zu verwechseln mit dem anlagenweiten Urlaub, den die Verwaltung setzt.
+Die Abwesenheit wird in der Wohnungssicht gesetzt. Sie ist eine Übersteuerung mit gemeinsamem Ende; der Wochenplan selbst wird dadurch nicht verändert. Nicht zu verwechseln mit dem anlagenweiten Urlaub, den die Verwaltung setzt.
 
 Auch: Zurück am
 
@@ -24,9 +24,9 @@ Siehe auch: [Urlaub](#urlaub), [Übersteuerung](#uebersteuerung), [Anlagensicht 
 <a id="aktiv-bereitschafts-verbund"></a>
 ### Aktiv-Bereitschafts-Verbund
 
-*Betrieb* — Mehrere Instanzen teilen sich eine Datenbank; nur eine regelt, die andere springt bei Ausfall ein.
+*Betrieb* — Mehrere Instanzen teilen sich eine Datenbank; eine ist führend, die anderen stehen bereit.
 
-Die führende Instanz erneuert regelmäßig ihre Zuständigkeit. Bleibt das mehrere Regelzyklen lang aus (einstellbar, ab Werk 5), übernimmt die Bereitschaftsinstanz. Eine Instanz in Bereitschaft regelt und schaltet nichts, lässt sich aber ansehen und konfigurieren.
+Fällt die führende Instanz aus, kann eine Bereitschaftsinstanz übernehmen; die Zahl der abgewarteten Regelzyklen ist einstellbar (ab Werk 5). Was eine Instanz in Bereitschaft tut und was nicht, steht in docs/self-hosting.md im Abschnitt zum Aktiv-Bereitschafts-Verbund.
 
 Auch: Verbund, Bereitschaft, Führend
 
@@ -35,11 +35,11 @@ Siehe auch: [Regelzyklus](#regelzyklus), [Scharfschalten](#scharfschalten)
 <a id="aktor"></a>
 ### Aktor
 
-*Betrieb* — Ein Gerät, das die Heizung tatsächlich schaltet oder einstellt.
+*Betrieb* — Ein Gerät, das Befehle der Regelung entgegennimmt.
 
-Aktoren sind Schaltsteckdosen und Relais (Ein/Aus), aber auch Thermostatventile (Zieltemperatur). Welcher Zone ein Aktor angehört und ob er sich selbst regelt, wird bei den Geräten der Zone festgelegt. Ob thermoctl einem Aktor wirklich Befehle schickt, entscheidet der Trockenlauf bzw. das Scharfschalten; im Trockenlauf wird nur protokolliert. Wie ein Aktor im Notbetrieb behandelt wird, hängt von seinen Fähigkeiten ab (Ein/Aus oder Thermostat).
+Beispiele sind Schaltsteckdosen und Relais (Ein/Aus) sowie Thermostate mit Zieltemperatur. Zu welcher Zone ein Gerät gehört und ob es sich selbst regelt, wird bei den Geräten der Zone festgelegt. Ob Befehle tatsächlich gesendet werden, hängt vom Trockenlauf und vom Scharfschalten ab.
 
-Auch: Schaltaktor, Stellglied, Schalter
+Auch: Stellglied, Schalter
 
 Siehe auch: [Selbstregelndes Thermostatventil](#selbstregelndes-thermostatventil), [Trockenlauf](#trockenlauf), [Zone](#zone)
 
@@ -48,7 +48,7 @@ Siehe auch: [Selbstregelndes Thermostatventil](#selbstregelndes-thermostatventil
 
 *Oberfläche* — Zwei Oberflächen: eine für Verwaltung und Technik, eine für Bewohner.
 
-Die Gruppe eines Benutzers entscheidet, welche er sieht. Die Anlagensicht zeigt die ganze Anlage mit Geräten, Regelparametern und Protokollen. Die Wohnungssicht zeigt nur die eigenen Räume ohne Fachbegriffe: Temperatur, Wochenplan, Heizzeit und Abwesenheit.
+Die Gruppe eines Benutzers legt fest, welche Oberfläche er sieht. Die Anlagensicht zeigt die ganze Anlage mit Geräten, Regelparametern und Protokollen. Die Wohnungssicht ist für Bewohner gedacht und zeigt die eigenen Räume mit Temperatur, Wochenplan, Heizzeit und Abwesenheit, möglichst ohne Fachbegriffe.
 
 Auch: Anlagensicht, Wohnungssicht, Mietersicht, Profil
 
@@ -59,7 +59,7 @@ Siehe auch: [Gruppen und Rechte](#gruppen-und-rechte), [Abwesenheit](#abwesenhei
 
 *Oberfläche* — Ein Zugangsschlüssel für Programme, die thermoctl über die Schnittstellen bedienen.
 
-Ein Token kann höchstens, was sein Aussteller selbst darf; verliert der Aussteller später ein Recht, behält auch das Token es nicht. Der Klartext erscheint genau einmal; gespeichert wird nur ein Hash. Wer ihn verliert, stellt ein neues Token aus.
+Ein Token trägt eigene Rechte, höchstens die seines Besitzers (siehe docs/api.md). Der Klartext wird bei der Ausstellung angezeigt; gespeichert wird nur ein Hash. Wer ihn verliert, stellt ein neues Token aus.
 
 Auch: Token, Zugangstoken, REST-Token, MCP-Token
 
@@ -68,9 +68,9 @@ Siehe auch: [Kiosk](#kiosk), [Gruppen und Rechte](#gruppen-und-rechte)
 <a id="ausgleichswert"></a>
 ### Ausgleichswert
 
-*Sensorik* — Gleicht aus, um wie viel Kelvin ein Thermostat zu warm misst, wenn es als Ersatzquelle dient.
+*Sensorik* — Ein Betrag in Kelvin, der je Thermostat von dessen Messung abgezogen wird, wenn es als Ersatzquelle dient.
 
-Der Fühler eines Thermostatventils sitzt am Heizkörper und misst meist wärmer als der Raum. Der je Thermostat eingetragene Wert wird von dessen Messung abgezogen, ab Werk 0 K. Die Betriebsseite zeigt dazu einen vorgeschlagenen Ausgleichswert aus dem Vergleich mit dem Wandfühler; übernommen wird er nur, wenn man ihn einträgt.
+Der Fühler eines Thermostats sitzt am Gerät selbst und kann deshalb vom Raum abweichen. Der Ausgleichswert wird in den Regelparametern der Zone je Thermostat eingetragen (ab Werk 0 K). Die Betriebsseite kann einen vorgeschlagenen Ausgleichswert aus dem Vergleich mit dem Wandfühler anzeigen; er gilt erst, wenn man ihn einträgt.
 
 Auch: Temperaturausgleich, Ausgleich, vorgeschlagener Ausgleichswert
 
@@ -79,9 +79,9 @@ Siehe auch: [Ersatzquelle](#ersatzquelle), [Sensorkalibrierung](#sensorkalibrier
 <a id="aussenkennlinie"></a>
 ### Außenkennlinie
 
-*Sensorik* — Legt im Notbetrieb fest, wie lange ein Fußbodenkreis je nach Außentemperatur ein- und ausgeschaltet bleibt.
+*Sensorik* — Eine Tabelle für den Notbetrieb: zu jeder Außentemperatur eine Ein- und eine Aus-Dauer.
 
-Sie besteht aus Zeilen mit Außentemperatur sowie Sekunden Ein und Aus; zwischen den Zeilen wird interpoliert. Eine Kennlinie braucht mindestens zwei Zeilen, und genau die wärmste hat 0 Sekunden Ein: der Punkt, ab dem nicht mehr geheizt wird. Ohne Kennlinie oder ohne brauchbaren Außenwert gilt der Festtakt.
+Sie besteht aus Zeilen mit Außentemperatur sowie Sekunden Ein und Aus; zwischen den Zeilen wird interpoliert. Eine Kennlinie braucht mindestens zwei Zeilen; die wärmste Zeile steht für „Aus“ und hat 0 Sekunden Ein. Eingestellt wird sie in den Regelvorgaben unter Notbetrieb bei Sensorausfall. Eine Alternative ohne Außentemperatur ist der Festtakt.
 
 Auch: Kennlinie, Heizkurve im Notbetrieb
 
@@ -90,9 +90,9 @@ Siehe auch: [Notbetrieb](#notbetrieb), [Festtakt](#festtakt), [Außentemperatur]
 <a id="aussentemperatur"></a>
 ### Außentemperatur
 
-*Sensorik* — Die Temperatur draußen, gemessen von einer einzigen anlagenweit gewählten Quelle.
+*Sensorik* — Die Temperatur draußen, aus einer anlagenweit gewählten Quelle.
 
-Es gibt genau ein „draußen“ für die ganze Anlage, kein Wert je Zone. Die Quelle wird wie die Messquelle einer Zone aus den bekannten Geräten gewählt. Der Wert steuert die Außenkennlinie im Notbetrieb und den Fenster-Alarm; meldet die Quelle nicht mehr, gilt er als veraltet.
+Es gibt ein „draußen“ für die ganze Anlage, keinen Wert je Zone. Die Quelle wird in den Regelvorgaben unter Außentemperatur aus den bekannten Geräten gewählt. Der Wert wird unter anderem von der Außenkennlinie im Notbetrieb und vom Fenster-Alarm genutzt.
 
 Auch: Außenfühler, Außenquelle, Außenwert, Außentemperaturquelle
 
@@ -103,9 +103,9 @@ Siehe auch: [Außenkennlinie](#aussenkennlinie), [Fenster-Alarm](#fenster-alarm)
 <a id="bediengeraet"></a>
 ### Bediengerät
 
-*Oberfläche* — Ein Gerät mit Tasten, etwa ein Wandtaster, dessen Tastendrücke Befehle für eine Zone auslösen.
+*Oberfläche* — Ein Gerät mit Tasten, etwa ein Wandtaster, dessen Tastendrücke Befehle für eine Zone auslösen können.
 
-thermoctl rät nicht, welche Tasten ein Modell hat, sondern zeigt, welche Aktionen das Gerät tatsächlich geschickt hat; diese lassen sich Befehlen zuordnen. Erlaubt sind bewusst wenige Befehle: wärmer, kälter, zur nächsten Schaltzeit springen, aus, automatisch.
+Die Seite Bediengeräte zeigt, welche Aktionen ein Gerät bisher geschickt hat; sie lassen sich dort Befehlen für eine Zone zuordnen. Welche Befehle zur Auswahl stehen, zeigt dieselbe Seite.
 
 Auch: Bediengeräte, Wandtaster, Taste
 
@@ -114,9 +114,9 @@ Siehe auch: [Zone](#zone), [Sollwert-Modus](#sollwert-modus)
 <a id="betriebsart"></a>
 ### Betriebsart
 
-*Regelung* — Automatik, Manuell oder Aus; „Aus“ heißt Frostschutz, nicht abgeschaltet.
+*Regelung* — Eine Einstellung je Zone: Automatik, Manuell oder Aus. „Aus“ ist nicht gleichbedeutend mit abgestellt, siehe Frostschutz.
 
-Bei „Aus“ hält die Zone nur den Frostschutz-Sollwert; Übersteuerung, Urlaub und Zeitplan wirken dann nicht. „Automatik“ und „Manuell“ unterscheiden sich bei der Ermittlung des Sollwerts nicht: Es gilt die Vorrangfolge, die unter Sollwert steht.
+Bei „Aus“ gilt der Frostschutz-Sollwert vor Übersteuerung, Urlaub und Zeitplan. Eingestellt wird die Betriebsart je Zone unter Zonen. Wie der Sollwert sonst zustande kommt, zeigt die Oberfläche als Begründung beim Sollwert.
 
 Auch: Automatik, Manuell, Aus, Betriebsmodus
 
@@ -127,9 +127,9 @@ Siehe auch: [Sollwert](#sollwert), [Frostschutz](#frostschutz), [Übersteuerung]
 <a id="echo-regel"></a>
 ### Echo-Regel
 
-*Sensorik* — Ein Thermostat, dem thermoctl die Raumtemperatur vorgibt, misst nur sein eigenes Echo und taugt dann nicht als Ersatzquelle.
+*Sensorik* — Soll verhindern, dass ein Thermostat als Ersatzquelle dient, dessen Messung nur ein Echo der vorgegebenen Raumtemperatur sein könnte.
 
-Schreibt thermoctl einem selbstregelnden Thermostat eine Raumtemperatur, gibt es diese Zahl binnen Sekunden als „eigene“ Messung zurück. Als unabhängig zählt seine Messung erst, wenn sie mindestens 30 Minuten nach dem letzten Schreiben entstanden ist; ältere Werte bleiben ausgeschlossen.
+Schreibt thermoctl einem selbstregelnden Thermostat eine Raumtemperatur, kann das Gerät diesen Wert als eigene Messung zurückmelden. Deshalb soll eine Messung erst als unabhängig gelten, wenn sie mindestens 30 Minuten nach dem letzten Schreiben entstanden ist.
 
 Auch: Echo, Echo-Erkennung, Echo-Prüfung
 
@@ -138,9 +138,9 @@ Siehe auch: [Ersatzquelle](#ersatzquelle), [Selbstregelndes Thermostatventil](#s
 <a id="ersatzquelle"></a>
 ### Ersatzquelle
 
-*Sensorik* — Ersatzmessung für einen ausgefallenen Wandfühler, genommen von einem Thermostat der Zone.
+*Sensorik* — Eine Ersatzmessung für einen ausgefallenen Wandfühler, genommen von einem Thermostat der Zone.
 
-Fällt der Wandfühler aus und ist ein Thermostat der Zone brauchbar, gilt dessen Messung: die kälteste brauchbare Messung der zugeordneten Thermostate, korrigiert um den jeweiligen Ausgleichswert. Die Zone regelt damit weiter nach der Hysterese; eine PI-Regelung ist solange ausgesetzt. Ein Thermostat, das nur sein Echo liefert, zählt nicht. Meldet sich der Wandfühler wieder, übernimmt er erst nach der Rückkehrprüfung. Fällt auch die Ersatzquelle aus, beginnt der Notbetrieb.
+Fällt der Wandfühler aus, kann die Messung eines Thermostats der Zone an seine Stelle treten, korrigiert um den Ausgleichswert. Welche Messung gilt, wie die Rückkehr zum Wandfühler geprüft wird und was geschieht, wenn auch die Ersatzquelle ausfällt, steht unter Notbetrieb und Rückkehrprüfung.
 
 Auch: Thermostat-Ersatzquelle, Ersatzmessung
 
@@ -153,7 +153,7 @@ Siehe auch: [Notbetrieb](#notbetrieb), [Echo-Regel](#echo-regel), [Ausgleichswer
 
 *Sensorik* — Meldet ein vergessenes offenes Fenster, wenn es draußen kalt ist.
 
-Beide Bedingungen müssen zugleich gelten: Das Fenster einer Zone steht länger als die eingestellte Dauer offen, und die Außentemperatur liegt unter der eingestellten Schwelle. Ist die Außentemperatur oder der Fensterzustand gerade unbekannt, wird weder gemeldet noch entwarnt. Es ist eine Meldung und kein Eingriff; was die Heizung bei offenem Fenster tut, regeln Fensterkontakt und Frostschutz.
+Er hängt an zwei Einstellungen: der Dauer, die ein Fenster offen stehen darf, und der Schwelle für die Außentemperatur. Beides steht in den Regelvorgaben unter Fenster-Alarm; ob gemeldet wird, stellt man unter Meldungen ein. Es ist eine Meldung; was die Regelung bei offenem Fenster tut, steht unter Fensterkontakt.
 
 Auch: Fenster vergessen, Fenster vergessen offen
 
@@ -164,7 +164,7 @@ Siehe auch: [Fensterkontakt](#fensterkontakt), [Außentemperatur](#aussentempera
 
 *Regelung* — Vermutet ein offenes Fenster, wenn die Raumtemperatur schnell fällt, auch ohne Fensterkontakt.
 
-Nur wirksam für eine Zone ohne zugeordneten Fensterkontakt und mit eingeschaltetem Schalter in den Regelparametern (ab Werk aus). Fällt die Temperatur innerhalb des Zeitfensters mindestens um die Sturzschwelle, behandelt sie die Zone wie bei offenem Fenster und kennzeichnet das als Vermutung. Eine geöffnete Tür oder ein Luftzug kann dasselbe auslösen; die Schwellen sind begründete Schätzwerte.
+Gedacht für Zonen ohne zugeordneten Fensterkontakt; sie wird je Zone in den Regelparametern aktiviert (ab Werk aus). Sturzschwelle und Zeitfenster stehen in den Regelvorgaben. Eine geöffnete Tür oder ein Luftzug kann dasselbe auslösen; die Schwellen sind begründete Schätzwerte.
 
 Auch: Temperatursturz, Sturzschwelle, Fenster vermutlich offen
 
@@ -173,9 +173,9 @@ Siehe auch: [Fensterkontakt](#fensterkontakt), [Fenster-Alarm](#fenster-alarm)
 <a id="fensterkontakt"></a>
 ### Fensterkontakt
 
-*Regelung* — Ein Sensor, der meldet, ob ein Fenster offen ist; bei offenem Fenster fordert die Regelung in der Regel kein Heizen an.
+*Regelung* — Ein Sensor, der meldet, ob ein Fenster offen ist.
 
-Bei offenem Fenster fordert die Regelung in der Regel kein Heizen an. Ausnahme: Fällt der Raum um mehr als die Hysterese unter den Frostschutz-Sollwert, wird trotzdem geheizt. Nach dem Schließen wartet die Regelung die Nachlaufzeit ab (einstellbar, ab Werk 120 Sekunden), bevor sie wieder heizen darf. Zonen, in denen kein Aktor als selbstregelnd eingestellt ist (reine Ein/Aus-Aktoren), werden durch ein offenes Fenster nicht abgeschaltet, weil eine solche Fußbodenheizung dafür zu träge ist. Im Notbetrieb läuft der Takt unabhängig vom Fenster weiter.
+Die Regelung berücksichtigt offene Fenster, kann aber je nach Einstellung und Zone abweichend reagieren; die Begründung jeder Entscheidung steht auf der Betriebsseite. Die Nachlaufzeit nach dem Schließen ist einstellbar (ab Werk 120 Sekunden); ob und wie sie wirkt, hängt von der Zone und ihren Geräten ab.
 
 Auch: Fenster offen, Fenstersensor, Nachlauf nach Fensterschluss, Wiederanlauf nach Fenster
 
@@ -184,9 +184,9 @@ Siehe auch: [Frostschutz](#frostschutz), [Fenster-Alarm](#fenster-alarm), [Fenst
 <a id="festhaengender-messwert"></a>
 ### Festhängender Messwert
 
-*Sensorik* — Ein Sensor meldet zwar weiter, aber seit Stunden immer denselben Wert.
+*Sensorik* — Ein Sensor meldet zwar weiter, aber seit Stunden denselben Wert.
 
-Als festhängend gilt ein Messwert, wenn alle Werte der letzten Stunden (einstellbar, ab Werk 12) nur minimal voneinander abweichen. Das ist kein Ausfall: Die Zone regelt unverändert mit dem Wert weiter, es gibt nur einen Hinweis und optional eine Meldung. Ein ungeheizter, stabiler Raum kann sich ebenfalls so verhalten.
+Als festhängend gilt ein Messwert, wenn alle Werte der letzten Stunden (einstellbar, ab Werk 12) nur minimal voneinander abweichen. Das ist kein Ausfall; es gibt einen Hinweis und optional eine Meldung. Ein stabiler Raum kann sich ebenfalls so verhalten.
 
 Auch: festhängend, Messwert bewegt sich nicht mehr, Messwert unverändert
 
@@ -195,9 +195,9 @@ Siehe auch: [Sensor-Timeout](#sensor-timeout), [Meldungen](#meldungen)
 <a id="festtakt"></a>
 ### Festtakt
 
-*Sensorik* — Im Notbetrieb schaltet ein Fußbodenkreis nach der Uhr abwechselnd ein und aus, unabhängig von der Raumtemperatur.
+*Sensorik* — Ein fester Zeittakt aus einer Ein- und einer Aus-Dauer für den Notbetrieb.
 
-Der Festtakt gibt an, wie lange ein Kreis je Zyklus eingeschaltet und wie lange danach ausgeschaltet bleibt, jeweils mindestens so lange wie die Mindestschaltdauer der Zone. Ab Werk sind es 10 Minuten Ein und 20 Minuten Aus; beides ist einstellbar. Der Takt beginnt mit der Aus-Phase. Ausnahme: War der Aktor beim Eintritt schon eingeschaltet, bleibt er zunächst für seine verbleibende Mindest-Einschaltdauer an. Mit Außenkennlinie und brauchbarem Außenwert hat die Kennlinie Vorrang.
+Der Festtakt gehört zum Notbetriebsprofil: eine Ein-Dauer und eine Aus-Dauer, beide einstellbar (ab Werk 10 Minuten Ein und 20 Minuten Aus). Wann statt seiner die Außenkennlinie gilt und wie der Notbetrieb abläuft, steht unter Notbetrieb.
 
 Auch: Festtakt Ein, Festtakt Aus, fester Takt, Taktzyklus
 
@@ -206,9 +206,9 @@ Siehe auch: [Notbetrieb](#notbetrieb), [Außenkennlinie](#aussenkennlinie)
 <a id="frostschutz"></a>
 ### Frostschutz
 
-*Regelung* — Die niedrigste Temperatur, auf die ein Raum nicht fallen soll; sie schützt Leitungen vor dem Einfrieren.
+*Regelung* — Die niedrigste Temperatur, auf die ein Raum nicht fallen soll; sie soll Leitungen vor dem Einfrieren schützen.
 
-Frostschutz ist ein eigener Sollwert-Modus. Er gilt bei Betriebsart „Aus“, solange kein Zeitplan greift (etwa weil noch kein Schaltpunkt eingetragen ist), und bei Sensorausfall, wenn die Zone dem letzten Messwert nicht mehr traut; ist der Notbetrieb aktiv, bestimmt für die Aktoren stattdessen dessen Ablauf. Auch bei offenem Fenster wird geheizt, wenn der Raum um mehr als die Hysterese darunter fällt. Die Sonnenabsenkung geht nie unter diese Grenze.
+Frostschutz ist ein eigener Sollwert-Modus. Er kommt unter anderem bei Betriebsart „Aus“ und bei fehlendem Zeitplan zur Anwendung; die Oberfläche nennt zu jedem Sollwert die Begründung. Die Sonnenabsenkung soll ihn nicht unterschreiten.
 
 Auch: Frostschutz-Sollwert, Frostschutztemperatur, Frostschutzmodus
 
@@ -219,9 +219,9 @@ Siehe auch: [Sollwert](#sollwert), [Betriebsart](#betriebsart), [Sonnenabsenkung
 <a id="gruppen-und-rechte"></a>
 ### Gruppen und Rechte
 
-*Oberfläche* — Rechte hängen an Gruppen, nicht an Personen; die Gruppe legt auch die Oberfläche fest.
+*Oberfläche* — Rechte hängen an Gruppen, nicht an Personen; die Gruppe legt auch das Oberflächen-Profil fest.
 
-Wer in mehreren Gruppen ist, darf alles, was mindestens eine erlaubt. Zonenbezogene Rechte lassen sich auf einzelne Zonen beschränken. Das Oberflächen-Profil einer Gruppe (Anlage oder Wohnung) bestimmt nur, welche Seiten angezeigt werden; was jemand darf, steht allein in den Rechten.
+Das Oberflächen-Profil einer Gruppe (Anlage oder Wohnung) bestimmt, welche Oberfläche sie sieht; die Rechte regeln, was jemand darf. Beides wird bei den Gruppen eingestellt. Zonenbezogene Rechte lassen sich auf einzelne Zonen beschränken. Wie sich die Rechte mehrerer Gruppen verhalten, steht in docs/bedienung.md.
 
 Auch: Gruppe, Rechte, Berechtigung, Oberflächen-Profil
 
@@ -234,7 +234,7 @@ Siehe auch: [Anlagensicht und Wohnungssicht](#oberflaechen), [API-Token](#api-to
 
 *Betrieb* — Wie lange eine Zone an einem Tag eine Heizanforderung hatte.
 
-Die Zahl zeigt Entscheidungen der Regelung, keine bestätigte körperliche Heizwirkung. Sie ist weder Energie- noch Kostenmesser: Wie warm ein Raum wird, hängt zusätzlich von Außentemperatur, Gebäude und Lüften ab. Im Trockenlauf zeigt sie, wann geheizt worden wäre. Im Notbetrieb zeigt sie nicht den Takt der Aktoren. Stand der Dienst still, zählen die Lücken nur begrenzt mit.
+Die Zahl gibt Entscheidungen der Regelung wieder, keine gemessene Wirkung im Raum, und ist weder Energie- noch Kostenmesser. Hinweise zur Deutung stehen auf der Seite Heizstatistik und in docs/bedienung.md im Abschnitt Heizzeit.
 
 Auch: Heizstatistik
 
@@ -245,7 +245,7 @@ Siehe auch: [Regelentscheidung](#regelentscheidung), [Trockenlauf](#trockenlauf)
 
 *Oberfläche* — Eine Smart-Home-Zentrale, die sich optional per MQTT mit thermoctl verbinden lässt.
 
-Die Anbindung ist freiwillig. Über MQTT meldet thermoctl seine Zonen an und nimmt Sollwerte und Betriebsarten entgegen; das geht auch im Trockenlauf, dann wird aber nichts geschaltet. Die Entität „Regelung scharf“ zeigt nur die gespeicherte Freigabe; ob nach einem Neustart wirklich gesendet wird, zeigt die Betriebsseite.
+Die Anbindung ist freiwillig. Über MQTT meldet thermoctl seine Zonen an und nimmt Sollwerte und Betriebsarten entgegen. Die Entität „Regelung scharf“ zeigt die gespeicherte Freigabe, nicht den Zustand der Befehlsausgabe; den zeigt die Betriebsseite. Einzelheiten stehen unter Schnittstellen und in docs/mqtt.md.
 
 Auch: HA, Home-Assistant-Add-on
 
@@ -256,7 +256,7 @@ Siehe auch: [MQTT und Broker](#mqtt-broker), [Homebridge](#homebridge), [Scharfs
 
 *Oberfläche* — Eine Brücke, die Zonen von thermoctl in Apple Home sichtbar macht.
 
-Die Oberfläche erzeugt je Zone eine fertige Konfiguration für das Homebridge-Plugin mit den echten Topics der Anlage. Benutzername und Passwort darin sind Platzhalter: Homebridge braucht einen eigenen Broker-Zugang mit möglichst engen Rechten, nie den von thermoctl.
+Die Oberfläche erzeugt je Zone eine fertige Konfiguration für das Homebridge-Plugin mit den echten Topics der Anlage. Benutzername und Passwort darin sind Platzhalter; Homebridge sollte einen eigenen Broker-Zugang mit möglichst engen Rechten bekommen und nicht den von thermoctl (siehe docs/homebridge.md).
 
 Auch: Apple Home, HomeKit
 
@@ -265,9 +265,9 @@ Siehe auch: [MQTT und Broker](#mqtt-broker), [Home Assistant](#home-assistant)
 <a id="hysterese"></a>
 ### Hysterese
 
-*Regelung* — Ein Spielraum um den Sollwert, damit die Heizung nicht ständig an- und ausgeht.
+*Regelung* — Ein Spielraum um den Sollwert, der häufiges Wechseln der Heizanforderung vermeiden soll.
 
-Die Regelung fordert Heizen erst an, wenn die Temperatur mehr als die Hysterese unter dem Sollwert liegt, und beendet es erst, wenn sie mehr als die Hysterese darüber liegt. Dazwischen bleibt der Zustand, wie er ist. Der Wert gilt anlagenweit (ab Werk 0,3 K) und lässt sich je Zone abweichend einstellen.
+Die Hysterese legt fest, wie weit die Temperatur vom Sollwert abweichen muss, bevor die Hysterese-Regelung ihre Entscheidung wechselt. Der Wert gilt anlagenweit (ab Werk 0,3 K) und lässt sich je Zone abweichend einstellen. Weitere Regeln, etwa Mindestschaltdauer und Fensterkontakt, können vorgehen; die Begründung jeder Entscheidung steht auf der Betriebsseite.
 
 Auch: Hysterese (K), Schalthysterese, Hysterese-Regelung
 
@@ -280,7 +280,7 @@ Siehe auch: [Mindestschaltdauer](#mindestschaltdauer), [PI-Regelung (Beta)](#pi-
 
 *Oberfläche* — Eine Anzeige für ein Wandtablet, die ohne Benutzerkonto über ein eigenes Token geöffnet wird.
 
-Ein Kiosk-Token hat einen Namen, eine Auswahl sichtbarer Zonen und optional die Erlaubnis zu bedienen; sonst zeigt es nur an. Optional läuft es nach einigen Tagen ab, und es lässt sich jederzeit widerrufen. Die Adresse mit dem Token erscheint genau einmal im Klartext und gehört als Lesezeichen auf das Tablet.
+Ein Kiosk-Token hat einen Namen, eine Auswahl sichtbarer Zonen und optional die Erlaubnis zu bedienen. Es kann ein Ablaufdatum haben und lässt sich widerrufen. Die Adresse mit dem Token wird bei der Ausstellung angezeigt und gehört als Lesezeichen auf das Tablet; ein verlorenes Token ersetzt man durch ein neues.
 
 Auch: Kiosk-Token, Wandtablet, Wandpanel, Tafel
 
@@ -291,9 +291,9 @@ Siehe auch: [API-Token](#api-token), [Anlagensicht und Wohnungssicht](#oberflaec
 <a id="meldungen"></a>
 ### Meldungen
 
-*Betrieb* — Hinweise, die thermoctl bei Störungen an ein Ziel wie einen Webhook schickt.
+*Betrieb* — Hinweise, die thermoctl bei Störungen an ein Ziel wie einen Webhook schicken kann.
 
-Es gibt sechs Arten, jede einzeln abschaltbar: Sensorstörung, Brücke oder Broker weg, gescheiterter Schaltbefehl, festhängender Messwert, Fenster vergessen offen und Problemmeldung aus einer Wohnung. Bei Störungen werden Beginn und Entwarnung je einmal gemeldet; die Problemmeldung aus einer Wohnung ist eine einzelne Nachricht ohne Entwarnung. Wohin eine Meldung geht, steht unter Schnittstellen.
+Es gibt sechs Arten, die sich einzeln wählen lassen: Sensorstörung, Brücke oder Broker weg, gescheiterter Schaltbefehl, festhängender Messwert, Fenster vergessen offen und Problemmeldung aus einer Wohnung. Die Auswahl steht in den Regelvorgaben unter Meldungen; wohin eine Meldung geht, steht unter Schnittstellen.
 
 Auch: Störungsmeldungen, Benachrichtigungen, Webhook, Testmeldung
 
@@ -302,9 +302,9 @@ Siehe auch: [Festhängender Messwert](#festhaengender-messwert), [Fenster-Alarm]
 <a id="meross"></a>
 ### Meross
 
-*Sensorik* — Eine Herstellerreihe von WLAN-Steckdosen, die thermoctl über deren Cloud schaltet.
+*Sensorik* — Eine Herstellerreihe von WLAN-Steckdosen, die thermoctl über deren Cloud ansprechen kann.
 
-Meross-Steckdosen melden sich nicht über MQTT, sondern werden stündlich mit der Cloud abgeglichen. Zum Schalten braucht thermoctl eine Anmeldung dort. Ist sie gerade nicht möglich, wird nicht geschaltet: Der Befehl gilt als gescheitert und wird im nächsten Regelzyklus erneut versucht, die Anmeldung selbst nach einer Ablehnung dagegen mit wachsenden Pausen.
+Meross-Steckdosen sind nicht über MQTT angebunden, sondern über die Cloud des Herstellers; dafür braucht thermoctl eine Anmeldung dort. Die Zugangsdaten werden in der Umgebung des Dienstes gesetzt, nicht in der Oberfläche; Einzelheiten stehen unter Schnittstellen und in docs/self-hosting.md.
 
 Auch: Meross-Steckdose, Steckdose
 
@@ -315,7 +315,7 @@ Siehe auch: [Aktor](#aktor), [Zigbee2MQTT und Brücke](#zigbee2mqtt)
 
 *Sensorik* — Der Temperatursensor, nach dem eine Zone regelt.
 
-Die Messquelle (auch Wandfühler oder Raumfühler) wird bei den Geräten der Zone aus den bekannten Geräten mit Temperaturmessung gewählt. Liefert sie nicht mehr, greift bei aktivem Notbetrieb der Zone eine Ersatzquelle oder der Notbetrieb; mehr dazu unter Sensor-Timeout.
+Die Messquelle (auch Wandfühler oder Raumfühler) wird bei den Geräten der Zone aus den bekannten Geräten mit Temperaturmessung gewählt. Was bei einem Ausfall geschieht, steht unter Sensor-Timeout, Ersatzquelle und Notbetrieb.
 
 Auch: Wandfühler, Raumfühler, Fühler, Temperatursensor, Messquelle wählen
 
@@ -324,9 +324,9 @@ Siehe auch: [Ersatzquelle](#ersatzquelle), [Sensor-Timeout](#sensor-timeout), [S
 <a id="mindestschaltdauer"></a>
 ### Mindestschaltdauer
 
-*Regelung* — Wie lange ein Zustand (Heizen oder Aus) mindestens bestehen bleibt, bevor er wechseln darf.
+*Regelung* — Wie lange ein Zustand (Heizanforderung oder Aus) mindestens bestehen soll, bevor er wechseln darf.
 
-Sie schützt Ventile und Relais vor ständigem Ein- und Ausschalten und gilt getrennt als Mindest-Einschaltdauer und Mindest-Ausschaltdauer. Solange die Zeit nicht um ist, hält die Regelung die Heizanforderung in der Regel unverändert, auch wenn die Temperatur einen Wechsel erlauben würde. Ausnahmen: Ein offenes Fenster (außer in Zonen, die es nicht abschaltet) und eine fehlende Messung beenden die Heizanforderung sofort, und ein Ventilschutzlauf kann die Dauer umgehen. Im Notbetrieb gilt der feste Takt, der die Mindestdauern nicht unterschreitet. Ab Werk sind es je 5 Minuten, anlagenweit einstellbar und je Zone abweichend.
+Sie soll Geräte vor ständigem Wechsel schützen und gilt getrennt als Mindest-Einschaltdauer und Mindest-Ausschaltdauer. Ab Werk sind es je 5 Minuten, anlagenweit einstellbar und je Zone abweichend. Es gibt Ausnahmen; die Begründung jeder Entscheidung nennt, welche Regel gegriffen hat.
 
 Auch: Mindest-Einschaltdauer, Mindest-Ausschaltdauer, Mindestdauer, Taktschutz
 
@@ -337,7 +337,7 @@ Siehe auch: [Hysterese](#hysterese), [PI-Regelung (Beta)](#pi-regelung), [Relais
 
 *Sensorik* — MQTT ist ein Nachrichtenweg zwischen Geräten und Diensten; der Broker ist dessen Vermittlungsstelle.
 
-Sensoren, Zigbee2MQTT, Home Assistant, Homebridge und thermoctl tauschen sich über einen MQTT-Broker aus. Fällt der Broker oder die Verbindung zur Brücke aus, kommen keine Messwerte mehr an. Dafür gibt es eine eigene Meldung. Adresse und Zugangsdaten werden in der Umgebung des Dienstes gesetzt, nicht in der Oberfläche.
+Sensoren, Zigbee2MQTT, Home Assistant, Homebridge und thermoctl können sich über einen MQTT-Broker austauschen. Fällt der Broker aus, können Messwerte ausbleiben; dafür gibt es eine eigene Meldung. Adresse und Zugangsdaten werden in der Umgebung des Dienstes gesetzt, nicht in der Oberfläche.
 
 Auch: MQTT, Broker, MQTT-Broker
 
@@ -350,7 +350,7 @@ Siehe auch: [Zigbee2MQTT und Brücke](#zigbee2mqtt), [Home Assistant](#home-assi
 
 *Sensorik* — Ersatzverhalten, wenn für eine Zone keine brauchbare Temperaturmessung mehr vorliegt.
 
-Der Ablauf kennt vier Stufen: Normal, Ersatzquelle, Notbetrieb und Rückkehrprüfung. Er durchläuft nicht immer alle: Gibt es keine brauchbare Ersatzquelle, wechselt eine Zone direkt von Normal in den Notbetrieb. Im Notbetrieb takten Aktoren mit Ein/Aus-Schaltfunktion (etwa Fußbodenkreise) nach der Uhr (Festtakt oder Außenkennlinie), unabhängig von der Raumtemperatur. Ein Thermostat wird nur dann einmal je Störung auf den Notsollwert gestellt und danach nicht mehr angesprochen, wenn für das Gerät bestätigt ist, dass es Betriebsart und Zieltemperatur annimmt; sonst wird es gar nicht angesprochen. Im Trockenlauf wird das alles nur protokolliert. Ab Werk ist er für jede Zone aktiv und je Zone abschaltbar. Eine Notlösung, keine Regelung.
+Der Ablauf kennt vier Stufen: Normal, Ersatzquelle, Notbetrieb und Rückkehrprüfung; nicht jede Zone durchläuft alle. Im Notbetrieb sollen Geräte mit Ein/Aus-Funktion nach einem Zeittakt angesprochen werden (Festtakt oder Außenkennlinie) und Thermostate den Notsollwert bekommen. Was bei einem bestimmten Gerät tatsächlich gesendet wird, hängt von Gerät und Einstellung ab und steht auf der Betriebsseite im Abschnitt Notbetrieb und im Schaltprotokoll. Für neu angelegte Zonen ist er ab Werk aktiv und lässt sich je Zone in den Regelparametern abstellen. Er ist eine Notlösung, keine Regelung.
 
 Auch: Notbetrieb bei Sensorausfall, Sensorausfall, Notbetriebsprofil
 
@@ -359,9 +359,9 @@ Siehe auch: [Ersatzquelle](#ersatzquelle), [Festtakt](#festtakt), [Außenkennlin
 <a id="notsollwert"></a>
 ### Notsollwert
 
-*Sensorik* — Die Temperatur, auf die ein Thermostat im Notbetrieb einmalig gestellt wird.
+*Sensorik* — Die Zieltemperatur, die ein Thermostat im Notbetrieb bekommen soll.
 
-Gilt anlagenweit (ab Werk 20 °C) und lässt sich je Zone überschreiben; ein leeres Feld erbt den Anlagenwert. Das Thermostat bekommt ihn zusammen mit der Betriebsart „manuell“ einmal je Störung, wenn für das Gerät bestätigt ist, dass es beides annimmt, und hält ihn dann selbst. Nach der Rückkehr wird die zuvor gemeldete Betriebsart zurückgeschrieben, falls sie bekannt war, und es gilt wieder der gewöhnliche Sollwert. Der Notsollwert gilt nur für Thermostate, nicht für Aktoren mit Ein/Aus-Schalter wie Fußbodenkreise.
+Gilt anlagenweit (ab Werk 20 °C) und lässt sich je Zone überschreiben; ein leeres Feld erbt den Anlagenwert. Der Notsollwert betrifft Thermostate, nicht Geräte mit Ein/Aus-Schalter wie Fußbodenkreise. Ob die Übergabe an ein Thermostat gelungen ist, zeigt die Betriebsseite im Abschnitt Notbetrieb (Spalten Übergabe und Rückstellung) und das Schaltprotokoll.
 
 Auch: Anlagenweiter Notsollwert, Eigener Notsollwert
 
@@ -372,9 +372,9 @@ Siehe auch: [Notbetrieb](#notbetrieb), [Selbstregelndes Thermostatventil](#selbs
 <a id="passkey"></a>
 ### Passkey
 
-*Oberfläche* — Eine Anmeldung ohne Passwort, bei der ein geheimer Schlüssel das Gerät nie verlässt.
+*Oberfläche* — Eine Anmeldung ohne Passwort, bei der ein geheimer Schlüssel das Gerät nicht verlässt.
 
-Ein Passkey gilt nur für diese Seite und lässt sich daher nicht auf einer nachgemachten Seite eingeben. Er braucht einen Browser mit Passkey-Unterstützung und eine verschlüsselte Verbindung. Solange kein Passkey hinterlegt ist, bleibt das Passwort der einzige Weg zur Anmeldung.
+Ein Passkey ist an die Adresse der Seite gebunden; das soll die Eingabe auf nachgemachten Seiten verhindern. Er braucht einen Browser mit Passkey-Unterstützung und eine verschlüsselte Verbindung. Verwaltet wird er unter Mehr, Passkeys.
 
 Auch: Passkeys, WebAuthn
 
@@ -383,9 +383,9 @@ Siehe auch: [Gruppen und Rechte](#gruppen-und-rechte), [API-Token](#api-token)
 <a id="pi-regelung"></a>
 ### PI-Regelung (Beta)
 
-*Regelung* — Eine optionale Regelart, die den Raum gleichmäßiger halten soll, dafür aber öfter schaltet.
+*Regelung* — Eine optionale, experimentelle Regelart (Beta); siehe Regelparameter der Zone.
 
-Statt zwischen zwei Schwellen umzuschalten, berechnet der PI-Regler aus der Abweichung einen Tastgrad: den Anteil der Zeit, in der geheizt wird. Er wird für jeweils 15 Minuten festgelegt. PI schaltet deutlich öfter als die Hysterese und belastet Relais stärker. Sie ist je Zone abschaltbar (ab Werk aus) und nur mit gewöhnlichem Schaltaktor möglich; bei Einschränkungen regelt die Zone über die Hysterese.
+Statt zwischen zwei Schwellen zu wechseln, berechnet der PI-Regler aus der Abweichung einen Tastgrad: den Anteil einer Zeitspanne mit Heizanforderung. Sie wird je Zone in den Regelparametern eingestellt (ab Werk aus). Dort steht auch der Hinweis zum Relaisverschleiß; Reglertyp und ein etwaiger Rückfallgrund stehen auf der Betriebsseite.
 
 Auch: PI, PI-Regler, Tastgrad, Verstärkung Kp, Nachstellzeit Ti, Beta
 
@@ -396,20 +396,20 @@ Siehe auch: [Hysterese](#hysterese), [Relaisverschleiß](#relaisverschleiss), [M
 <a id="regelentscheidung"></a>
 ### Regelentscheidung
 
-*Regelung* — Das Ergebnis eines Regelzyklus für eine Zone: Heizen oder nicht, mit Begründung.
+*Regelung* — Das Ergebnis eines Regelzyklus für eine Zone: Heizanforderung oder nicht, mit Begründung.
 
-Zu jeder Entscheidung nennt thermoctl, warum so entschieden wurde, zum Beispiel, dass die Temperatur unter dem Sollwert minus Hysterese liegt, dass ein Fenster offen ist oder dass die Mindestdauer des aktuellen Zustands noch nicht erreicht ist. Im Trockenlauf wird sie nur protokolliert, scharf geht sie an die Aktoren; im Notbetrieb treten dort Takt bzw. Übergabe an ihre Stelle. Die Oberfläche spricht von Heizanforderung und, im Trockenlauf, von Schattenentscheidung.
+Zu einer Entscheidung wird in der Regel eine Begründung genannt, zum Beispiel die Temperatur, ein offenes Fenster oder die Mindestdauer. Sie steht auf der Betriebsseite unter Was die Regelung gerade entscheidet. Die Oberfläche spricht von Heizanforderung und, im Trockenlauf, von Schattenentscheidung.
 
-Auch: Entscheidung, Begründung, Schattenentscheidung, Heizanforderung, Würde heizen
+Auch: Entscheidung, Begründung, Schattenentscheidung, Heizanforderung
 
 Siehe auch: [Regelzyklus](#regelzyklus), [Hysterese](#hysterese), [Trockenlauf](#trockenlauf), [Schattenbetrieb](#schattenbetrieb)
 
 <a id="regelzyklus"></a>
 ### Regelzyklus
 
-*Regelung* — Der Takt, in dem die Regelung für jede Zone neu entscheidet.
+*Regelung* — Der Takt, in dem die Regelung für die Zonen neu entscheidet.
 
-In jedem Durchlauf wird für jede Zone der Sollwert ermittelt und entschieden, ob geheizt werden soll. Die Dauer ist anlagenweit einstellbar, ab Werk 60 Sekunden. Sie ist auch die Zeiteinheit des Aktiv-Bereitschafts-Verbunds.
+Im Regelzyklus wird für die Zonen der Sollwert ermittelt und über die Heizanforderung entschieden. Die Dauer ist anlagenweit einstellbar, ab Werk 60 Sekunden. Sie ist auch die Zeiteinheit des Aktiv-Bereitschafts-Verbunds.
 
 Auch: Regelzyklus (Sekunden), Zyklus, Regelintervall
 
@@ -418,9 +418,9 @@ Siehe auch: [Regelentscheidung](#regelentscheidung), [Aktiv-Bereitschafts-Verbun
 <a id="relaisverschleiss"></a>
 ### Relaisverschleiß
 
-*Betrieb* — Zählt, wie oft Relais schalten, und rechnet das auf ein Jahr hoch.
+*Betrieb* — Schätzt aus den gesendeten Befehlen, wie stark Relais beansprucht werden, und rechnet das auf ein Jahr hoch.
 
-Ein Schaltspiel ist jeder bestätigt gesendete Wechsel von Aus nach Ein oder von Ein nach Aus; gezählt wird, was thermoctl befohlen hat, nicht, was das Relais getan hat. Der erste bekannte Befehl ist nur der Ausgangspunkt. Gezählt wird gegen eine angenommene Lebensdauer (ab Werk 500.000 Schaltspiele): ein austauschbarer Vergleichswert, keine Herstellerangabe. Befehle im Trockenlauf, gescheiterte Befehle und Sollwerte an Thermostatventile zählen nicht.
+Gezählt werden Wechsel zwischen gesendeten Ein- und Aus-Befehlen, nicht beobachtete Relaisbewegungen. Verglichen wird mit einer angenommenen Lebensdauer (ab Werk 500.000 Schaltspiele): ein austauschbarer Vergleichswert, keine Herstellerangabe. Welche Befehle im Einzelnen zählen, steht auf der Seite Relaisverschleiß.
 
 Auch: Schaltspiel, Schaltspiele, Relais-Lebensdauer, Jahreshochrechnung
 
@@ -431,7 +431,7 @@ Siehe auch: [PI-Regelung (Beta)](#pi-regelung), [Hysterese](#hysterese), [Mindes
 
 *Sensorik* — Die Probezeit, nach der eine Zone nach einem Ausfall wieder einer Quelle vertraut: dem Wandfühler oder der Ersatzquelle.
 
-Geprüft wird immer genau eine Quelle: der Wandfühler, wenn er wieder liefert, sonst die Ersatzquelle. Sie muss mehrere neue Messwerte liefern (ab Werk zwei) und dabei durchgehend brauchbar bleiben (ab Werk 60 Sekunden); beides wird gleichzeitig geprüft und lässt sich über das Notbetriebsprofil einstellen. Fällt die Quelle währenddessen wieder aus, beginnt die Prüfung von vorn; aus der Rückkehrprüfung selbst führt das zurück in den Notbetrieb. Besteht der Wandfühler, übernimmt die normale Regelung; besteht nur die Ersatzquelle, regelt die Zone mit ihr weiter. Thermostate bekommen danach ihre frühere Betriebsart einmal zurück, falls sie bekannt war.
+Geprüft wird eine Quelle: der Wandfühler, wenn er wieder liefert, sonst die Ersatzquelle. Wie viele neue Messwerte nötig sind und wie lange die Quelle durchgehend brauchbar sein muss, ist im Notbetriebsprofil einstellbar (Regelvorgaben). Den Ablauf beschreibt docs/bedienung.md im Abschnitt Notbetrieb bei Sensorausfall.
 
 Auch: Rückkehr, Rückkehr: Mindestdauer stabil, Rückkehr: nötige Messungen
 
@@ -442,9 +442,9 @@ Siehe auch: [Notbetrieb](#notbetrieb), [Ersatzquelle](#ersatzquelle), [Messquell
 <a id="schaltprotokoll"></a>
 ### Schaltprotokoll
 
-*Betrieb* — Das Journal der Befehle an Geräte, auch derer, die im Trockenlauf unterdrückt wurden.
+*Betrieb* — Das Journal der Befehle an Geräte und ihrer Ergebnisse.
 
-Jeder Eintrag nennt Zeitpunkt, Zone, Gerät, Befehl, Ergebnis (ausgeführt, unterdrückt oder gescheitert) und eine Begründung. Ein gescheiterter Befehl, der sich unverändert wiederholt, wird nur beim Wechsel des Ergebnisses neu eingetragen. Dazu kommen Entscheidungen des Notbetriebs, eindeutig gekennzeichnet. Die Befehle löscht der Dienst nicht selbst, weil ein einzelner Eintrag noch nach Wochen eine Störung erklären kann. Die Notbetriebsentscheidungen dagegen werden nach der eingestellten Frist für Schattenentscheidungen gelöscht.
+Ein Eintrag nennt Zeitpunkt, Zone, Gerät, Befehl, Ergebnis und eine Begründung. Mögliche Ergebnisse sind zum Beispiel ausgeführt, unterdrückt und gescheitert; dazu kommen gekennzeichnete Einträge zu Entscheidungen des Notbetriebs. Auf der Seite Schaltprotokoll lässt sich nachlesen, was zu einem Eintrag gespeichert ist.
 
 Auch: Befehlsprotokoll, Befehle, Schaltbefehl
 
@@ -453,20 +453,20 @@ Siehe auch: [Trockenlauf](#trockenlauf), [Notbetrieb](#notbetrieb), [Relaisversc
 <a id="scharfschalten"></a>
 ### Scharfschalten
 
-*Betrieb* — Gibt frei, dass die Regelung wirklich Befehle an Aktoren sendet.
+*Betrieb* — Die Freigabe dafür, dass die Regelung Befehle an Geräte senden darf.
 
-Dafür gibt es zwei Riegel. Der erste ist die gespeicherte Freigabe auf der Betriebsseite (mit Begründung, jederzeit zurücknehmbar). Der zweite wird beim Start des Dienstes aus dieser Freigabe gebildet und danach nicht mehr verändert; er gilt für Befehle über MQTT (Zigbee2MQTT) ebenso wie für Meross. Wurde der Dienst im Trockenlauf gestartet, braucht es darum nach dem Scharfschalten einen Neustart; bis dahin zeigt die Oberfläche „Scharf, Neustart fehlt“. Im Aktiv-Bereitschafts-Verbund sendet außerdem nur die führende Instanz. Das Zurücknehmen wirkt sofort; bereits gesendete Befehle bleiben wirksam.
+Dafür gibt es zwei Riegel. Der erste ist die gespeicherte Freigabe auf der Betriebsseite (mit Begründung). Der zweite wird beim Start des Dienstes aus dieser Freigabe gebildet und gilt für alle Wege, auf denen Befehle hinausgehen können, MQTT ebenso wie Meross. Nach dem Scharfschalten braucht es deshalb einen Neustart; bis dahin zeigt die Oberfläche „Scharf, Neustart fehlt“. Den Ablauf beschreibt docs/scharfschalten.md.
 
-Auch: scharf, Scharf schalten, Riegel, MQTT-Riegel, Freigabe, Neustart fehlt
+Auch: scharf, Scharfschaltung, Riegel, MQTT-Riegel, Freigabe, Neustart fehlt
 
 Siehe auch: [Trockenlauf](#trockenlauf), [Schattenbetrieb](#schattenbetrieb), [Aktor](#aktor)
 
 <a id="schattenbetrieb"></a>
 ### Schattenbetrieb
 
-*Betrieb* — Die Anlaufphase, in der thermoctl mitentscheidet, ohne zu schalten, und gegen die bisherige Steuerung verglichen wird.
+*Betrieb* — Die Anlaufphase, in der thermoctl mitentscheidet und protokolliert, damit sich seine Entscheidungen mit der bisherigen Steuerung vergleichen lassen.
 
-Technisch derselbe Zustand wie der Trockenlauf: Die Regelung liest, entscheidet und protokolliert, aber keine Befehle erreichen einen Aktor. Die Entscheidungen bleiben als Schattenentscheidungen erhalten (einstellbar, ab Werk 365 Tage; dieselbe Frist gilt für die Entscheidungen des Notbetriebs), damit man sie über Tage mit der bisherigen Steuerung vergleichen kann, bevor man scharf schaltet.
+Technisch ist es derselbe Zustand wie der Trockenlauf. Die Aufbewahrungsfrist für Schattenentscheidungen ist einstellbar (ab Werk 365 Tage). Wie der Vergleich mit der bisherigen Steuerung abläuft, beschreibt docs/inbetriebnahme-schattenbetrieb.md.
 
 Auch: Schattenprotokoll, Schattenentscheidungen, Schattenlauf
 
@@ -475,11 +475,11 @@ Siehe auch: [Trockenlauf](#trockenlauf), [Scharfschalten](#scharfschalten), [Reg
 <a id="selbstregelndes-thermostatventil"></a>
 ### Selbstregelndes Thermostatventil
 
-*Betrieb* — Ein Heizkörperventil, das mit einer vorgegebenen Zieltemperatur selbst regelt.
+*Betrieb* — Ein Thermostat, das mit einer vorgegebenen Zieltemperatur selbst regelt.
 
-thermoctl schreibt nur die Zieltemperatur und, wenn das Gerät es annimmt, die Raumtemperatur; das Ventil regelt damit selbst. Bei einem nicht selbstregelnden Ventil entscheidet dagegen thermoctl über Ein und Aus, mit Hysterese und Mindestschaltdauer; ein offenes Fenster schaltet eine solche Zone nicht ab (siehe Fensterkontakt). Im Notbetrieb zählt nicht diese Einstellung, sondern, welche Fähigkeiten das Gerät hat (siehe Notbetrieb).
+Bei einem selbstregelnden Thermostat gibt thermoctl im Normalbetrieb eine Zieltemperatur vor und, wenn das Gerät es annimmt, die Raumtemperatur; das Gerät regelt dann selbst. Ob ein Gerät selbstregelnd ist, wird bei den Geräten der Zone festgelegt. Ein nicht selbstregelndes Gerät behandelt thermoctl dagegen wie einen Schalter mit Ein und Aus. Wie das Gerät im Notbetrieb behandelt wird, steht unter Notbetrieb.
 
-Auch: selbstregelnd, Thermostatventil, Thermostat, Heizkörperthermostat
+Auch: selbstregelnd, Thermostat
 
 Siehe auch: [Aktor](#aktor), [Notsollwert](#notsollwert), [Echo-Regel](#echo-regel), [Hysterese](#hysterese)
 
@@ -488,7 +488,7 @@ Siehe auch: [Aktor](#aktor), [Notsollwert](#notsollwert), [Echo-Regel](#echo-reg
 
 *Sensorik* — Die Zeit ohne neuen Messwert, nach der ein Sensor als ausgefallen („veraltet“) gilt.
 
-Ab Werk 30 Minuten, anlagenweit einstellbar und je Zone abweichend. Danach traut die Zone dem letzten Messwert nicht mehr. Je nach Konfiguration greifen Ersatzquelle und Notbetrieb; ohne sie regelt die Zone gegen den Frostschutz-Sollwert. Gibt es gar keine Messung, bleibt die Heizanforderung aus.
+Ab Werk 30 Minuten, anlagenweit einstellbar und je Zone abweichend. Danach gilt die Messung als veraltet. Was dann geschieht, hängt von der Konfiguration ab (Ersatzquelle, Notbetrieb, Frostschutz); die Begründung der Entscheidung steht auf der Betriebsseite.
 
 Auch: Sensor gilt als ausgefallen nach, veraltet, Messwert veraltet, keine Quelle
 
@@ -499,7 +499,7 @@ Siehe auch: [Messquelle](#messquelle), [Ersatzquelle](#ersatzquelle), [Notbetrie
 
 *Sensorik* — Ein fester Betrag in Kelvin, der auf die Messung eines Sensors aufgerechnet wird.
 
-Der Wert wird zur gemessenen Temperatur addiert, um eine bekannte Abweichung des Sensors auszugleichen. Negative Werte sind erlaubt. Er gilt je Zone und beeinflusst alle Regelentscheidungen. Nicht zu verwechseln mit dem Ausgleichswert eines Thermostats, der von dessen Messung abgezogen wird.
+Der Wert wird zur gemessenen Temperatur addiert, um eine bekannte Abweichung des Sensors auszugleichen. Negative Werte sind erlaubt. Er wird je Zone in den Regelparametern eingestellt. Nicht zu verwechseln mit dem Ausgleichswert eines Thermostats, der von dessen Messung abgezogen wird.
 
 Auch: Temperaturkorrektur, Temperaturversatz, Offset, Kalibrierung
 
@@ -510,7 +510,7 @@ Siehe auch: [Ausgleichswert](#ausgleichswert), [Messquelle](#messquelle)
 
 *Regelung* — Die Temperatur, die ein Raum gerade erreichen soll.
 
-Er ergibt sich in dieser Reihenfolge: Betriebsart „Aus“ (dann Frostschutz), laufende Übersteuerung, Urlaub, Zeitplan und zuletzt Frostschutz. Die Oberfläche nennt zu jedem Sollwert die Begründung, woher er stammt. Die Sonnenabsenkung kann ihn zusätzlich senken.
+Der Sollwert ergibt sich aus mehreren Quellen: Betriebsart, Übersteuerung, Urlaub, Zeitplan und Frostschutz; die Sonnenabsenkung kann ihn zusätzlich beeinflussen. Welche Quelle gerade gilt, nennt die Oberfläche als Begründung bei jedem Sollwert.
 
 Auch: Soll, Zieltemperatur, Solltemperatur, Sollwert mit Begründung
 
@@ -530,9 +530,9 @@ Siehe auch: [Zeitplan](#zeitplan), [Sollwert](#sollwert), [Frostschutz](#frostsc
 <a id="sonnenabsenkung"></a>
 ### Sonnenabsenkung
 
-*Regelung* — Senkt den Sollwert ab, wenn bald Sonne zu erwarten ist, die den Raum ohnehin erwärmt.
+*Regelung* — Kann den Sollwert absenken, wenn bald Sonne zu erwarten ist.
 
-Meldet die Wettervorhersage in den nächsten Stunden (einstellbar, ab Werk 3) eine Einstrahlung von mindestens 120 W/m², sinkt der Sollwert einer Zone um bis zu ihre Obergrenze (ab Werk 2 K), gewichtet mit dem Sonnenprofil der Zone von 0 bis 1. Der Frostschutz-Sollwert bleibt die Untergrenze. Ohne Standort bleibt die Funktion aus, ebenso bei nicht erreichbarer Vorhersage.
+Grundlage ist die Wettervorhersage: Bei einer vorhergesagten Einstrahlung von mindestens 120 W/m² in den nächsten Stunden (einstellbar, ab Werk 3) kann der Sollwert einer Zone um bis zu ihre Obergrenze (ab Werk 2 K) sinken, gewichtet mit dem Sonnenprofil der Zone von 0 bis 1. Der Frostschutz-Sollwert soll dabei nicht unterschritten werden. Die Funktion braucht einen Standort und eine erreichbare Vorhersage.
 
 Auch: Sonnenprofil, Sonnenabsenkung, Obergrenze, Solarabsenkung, Sonnenvorhersage
 
@@ -543,9 +543,9 @@ Siehe auch: [Frostschutz](#frostschutz), [Sollwert](#sollwert)
 <a id="trockenlauf"></a>
 ### Trockenlauf
 
-*Betrieb* — Die Regelung entscheidet und protokolliert, schaltet aber nichts.
+*Betrieb* — Die Regelung entscheidet und protokolliert; Befehle an Geräte sollen dabei nicht hinausgehen.
 
-Das ist der Zustand nach jeder Einrichtung. Entscheidungen und Begründungen werden aufgezeichnet, aber weder Sollwerte noch Ein/Aus-Befehle gehen an Aktoren. So lassen sich Entscheidungen über mehrere Tage beobachten, bevor sie etwas schalten. Das Scharfschalten lässt sich jederzeit zurücknehmen; bereits gesendete Befehle bleiben wirksam.
+Das ist der Zustand nach der Einrichtung. Entscheidungen und Begründungen werden aufgezeichnet, damit man sie über mehrere Tage beobachten kann, bevor das Scharfschalten erfolgt. Was im Einzelnen gesendet wird, beschreibt docs/scharfschalten.md; siehe auch Schattenbetrieb.
 
 Auch: unscharf, Trockenlauf-Modus, im Trockenlauf unterdrückt
 
@@ -558,7 +558,7 @@ Siehe auch: [Scharfschalten](#scharfschalten), [Schattenbetrieb](#schattenbetrie
 
 *Regelung* — Eine vorübergehend von Hand gesetzte Temperatur, die den Zeitplan überlagert.
 
-Sie gilt bis zu einem gewählten Ende oder bis auf Widerruf; danach gilt wieder, was sonst gälte: der Urlaub, sonst der Zeitplan, der unverändert bleibt. Nur die Betriebsart „Aus“ steht darüber. Ein Boost („Für eine Weile wärmer“) ist eine Übersteuerung, ebenso die Abwesenheit je Raum.
+Sie gilt bis zu einem gewählten Ende oder bis auf Widerruf; der Zeitplan selbst wird dadurch nicht verändert. Ein Boost ist eine Übersteuerung, ebenso die Abwesenheit je Raum. Wie sie sich zu Urlaub, Zeitplan und Betriebsart verhält, zeigt die Oberfläche als Begründung beim Sollwert.
 
 Auch: Boost, Für eine Weile wärmer, Übersteuern, Override
 
@@ -567,9 +567,9 @@ Siehe auch: [Sollwert](#sollwert), [Zeitplan](#zeitplan), [Abwesenheit](#abwesen
 <a id="urlaub"></a>
 ### Urlaub
 
-*Regelung* — Senkt jede Zone der Anlage über einen Zeitraum auf einen einzigen Absenkwert.
+*Regelung* — Eine anlagenweite Absenkung für einen Zeitraum, gesetzt von der Verwaltung.
 
-Die Verwaltung setzt ersten und letzten Tag sowie die Absenktemperatur für die ganze Anlage. Liegt sie unter dem Frostschutz einer Zone, gilt für diese der Frostschutz. Fenster, Sensorausfall, Mindestschaltdauer und Ventilschutz gelten weiter, eine Zone in Betriebsart „Aus“ bleibt aus, und eine von Hand gesetzte Übersteuerung bleibt bestehen. Zu unterscheiden von der Abwesenheit einzelner Bewohner.
+Die Verwaltung setzt ersten und letzten Tag sowie die Absenktemperatur für die ganze Anlage. Ob und wie der Urlaub bei einer Zone wirkt, hängt von weiteren Einstellungen ab, etwa Betriebsart, Übersteuerung und Frostschutz der Zone; die Begründung beim Sollwert nennt die gerade geltende Quelle. Zu unterscheiden von der Abwesenheit einzelner Bewohner.
 
 Auch: Urlaubsbetrieb, Absenkwert, Urlaub geplant, Urlaub läuft
 
@@ -580,11 +580,11 @@ Siehe auch: [Abwesenheit](#abwesenheit), [Übersteuerung](#uebersteuerung), [Sol
 <a id="ventilschutz"></a>
 ### Ventilschutz
 
-*Regelung* — Ein regelmäßiger kurzer Heizlauf, damit Ventile nach langem Stillstand nicht festsitzen.
+*Regelung* — Ein Schutzlauf, der dem Festsitzen nach langem Stillstand vorbeugen soll.
 
-Hat eine Zone länger als den eingestellten Abstand (Tage) nicht regulär geheizt, fordert die Regelung einmal für die eingestellte Dauer (Minuten) Heizen an. Er ist je Zone abschaltbar (ab Werk aus) und läuft nur bei gutem Sensor, ohne Übersteuerung und nicht bei Betriebsart „Aus“. Er hat den niedrigsten Rang: Wo die Raumregelung ohnehin heizt oder ein offenes Fenster abschaltet, entscheidet diese. Im Trockenlauf wird die Entscheidung nur protokolliert.
+Der Schutzlauf wird nach einem einstellbaren Abstand in Tagen und für eine einstellbare Dauer in Minuten angefordert. Er wird je Zone in den Regelparametern eingestellt (ab Werk aus). Wann er tatsächlich ausgeführt wird, hängt von weiteren Bedingungen ab; die Begründung der Entscheidung steht auf der Betriebsseite.
 
-Auch: Ventilschutzlauf, Ventilschutz-Abstand, Ventilschutz-Dauer, Schutzlauf
+Auch: Schutzlauf
 
 Siehe auch: [Mindestschaltdauer](#mindestschaltdauer), [Trockenlauf](#trockenlauf), [Aktor](#aktor)
 
@@ -593,11 +593,11 @@ Siehe auch: [Mindestschaltdauer](#mindestschaltdauer), [Trockenlauf](#trockenlau
 <a id="wiederanlaufspanne"></a>
 ### Wiederanlaufspanne
 
-*Sensorik* — Verhindert, dass der Notbetrieb am warmen Ende der Außenkennlinie ständig neu anläuft.
+*Sensorik* — Eine Spanne in Kelvin am oberen Ende der Außenkennlinie, die häufiges Neuanlaufen im Notbetrieb vermeiden soll.
 
-Sobald der warme Aus-Punkt der Kennlinie erreicht ist, bleibt Ein bei 0 Sekunden, bis die Außentemperatur um diese Spanne darunter fällt (ab Werk 1 K). So flattert ein Wert um den Aus-Punkt nicht zwischen Heizen und Aus.
+Sie gehört zum Notbetriebsprofil (Regelvorgaben, ab Werk 1 K). Sie soll verhindern, dass ein Wert um den obersten Punkt der Kennlinie ständig zwischen Ein und Aus wechselt. Wie sie im Einzelnen wirkt, beschreibt docs/bedienung.md im Abschnitt Notbetrieb bei Sensorausfall.
 
-Auch: Warm-Aus-Hysterese, Wiederanlaufspanne (K)
+Auch: Wiederanlaufspanne (K)
 
 Siehe auch: [Außenkennlinie](#aussenkennlinie), [Notbetrieb](#notbetrieb), [Hysterese](#hysterese)
 
@@ -608,7 +608,7 @@ Siehe auch: [Außenkennlinie](#aussenkennlinie), [Notbetrieb](#notbetrieb), [Hys
 
 *Regelung* — Der Wochenplan einer Zone: Schaltpunkte, die zu bestimmten Zeiten den Sollwert-Modus wechseln.
 
-Ein Schaltpunkt gilt bis zum nächsten, Woche für Woche. Übersteuerung, Urlaub und Betriebsart „Aus“ gehen vor. Solange kein Schaltpunkt eingetragen ist, gilt der Frostschutz. Die Vorschau zeigt auch eine gerade laufende Übersteuerung, nicht nur den gemalten Plan.
+Ein Schaltpunkt gilt bis zum nächsten, Woche für Woche. Solange kein Schaltpunkt eingetragen ist, kommt der Frostschutz zur Anwendung. Die Vorschau zeigt auch eine gerade laufende Übersteuerung, nicht nur den gemalten Plan.
 
 Auch: Wochenplan, Schaltpunkt, Schaltpunkte, Schaltzeit, Heizzeit-Plan
 
@@ -619,7 +619,7 @@ Siehe auch: [Sollwert-Modus](#sollwert-modus), [Sollwert](#sollwert), [Übersteu
 
 *Sensorik* — Die Software, die Zigbee-Funkgeräte über MQTT zugänglich macht; die Brücke ist ihre Verbindung.
 
-Funksensoren, Thermostate und Schalter hängen an der Zigbee2MQTT-Brücke. Meldet sie sich nicht, kommt von keinem einzigen Gerät etwas an, unabhängig von der Zuordnung zu Zonen. Neue Geräte erscheinen von selbst in der Geräteliste und werden von Hand einer Zone zugeordnet.
+Funksensoren, Thermostate und Schalter hängen an der Zigbee2MQTT-Brücke. Fällt die Brücke aus, können Messwerte mehrerer Geräte gleichzeitig ausbleiben; dafür gibt es eine eigene Meldung. Neue Geräte können in der Geräteliste erscheinen und werden von Hand einer Zone zugeordnet.
 
 Auch: Zigbee, Zigbee-Brücke, Brücke, Z2M
 
@@ -630,7 +630,7 @@ Siehe auch: [MQTT und Broker](#mqtt-broker), [Messquelle](#messquelle), [Aktor](
 
 *Betrieb* — Ein Raum oder eine Gruppe von Räumen mit eigenem Sollwert.
 
-Einer Zone sind eine Messquelle, Aktoren, ein Zeitplan, Sollwerte und Regelparameter zugeordnet. Ohne mindestens eine Zone gibt es nichts zu regeln. Was die Zone nicht selbst einstellt, erbt sie aus den anlagenweiten Regelvorgaben.
+Einer Zone sind eine Messquelle, Geräte, ein Zeitplan, Sollwerte und Regelparameter zugeordnet. Ohne mindestens eine Zone gibt es nichts zu regeln. Was die Zone nicht selbst einstellt, erbt sie aus den anlagenweiten Regelvorgaben.
 
 Auch: Raum, Zonen
 

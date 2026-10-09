@@ -70,9 +70,10 @@
                 <li>Umkehrbar: derselbe Knopf führt zurück in den Trockenlauf — und
                     zwar sofort, ohne Neustart.</li>
                 <li>Sollwerte und Ein/Aus-Befehle an Aktoren werden erst nach einem
-                    Neustart des Dienstes freigegeben: Der zweite Riegel sitzt im
-                    MQTT-Client und wird beim Start gelesen. Die Anbindung an Home Assistant
-                    läuft schon vorher; dort sagt es die Entität
+                    Neustart des Dienstes freigegeben: Der zweite Riegel wird beim
+                    Start des Dienstes gebildet und gilt für alle Wege, auf denen
+                    Befehle hinausgehen (MQTT und Meross). Die Anbindung an Home
+                    Assistant läuft schon vorher; dort sagt es die Entität
                     <span class="t-value">Regelung scharf</span>.</li>
             </ul>
             <form method="post" action="{{ url_prefix }}/control/arm">
