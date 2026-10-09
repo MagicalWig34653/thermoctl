@@ -151,6 +151,10 @@ def test_ids_returns_all_ids() -> None:
         ([], "Objekt"),
         ({"entries": [_entry()]}, "Version"),
         ({"version": 2, "entries": [_entry()]}, "Version"),
+        # In Python ist True == 1 und 1.0 == 1; in JSON sind es aber weder die Zahl 1
+        # noch eine Version. Der Vergleich allein ließe beides als Version 1 durch.
+        ({"version": True, "entries": [_entry()]}, "Version"),
+        ({"version": 1.0, "entries": [_entry()]}, "Version"),
         ({"version": 1}, "nicht leere Liste"),
         ({"version": 1, "entries": []}, "nicht leere Liste"),
         ({"version": 1, "entries": "x"}, "nicht leere Liste"),

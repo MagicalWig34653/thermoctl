@@ -191,7 +191,10 @@ def parse_glossary(data: object) -> Glossary:
     """
     if not isinstance(data, dict):
         raise GlossaryError("Das Glossar muss ein Objekt mit „version“ und „entries“ sein.")
-    if data.get("version") != SUPPORTED_VERSION:
+    version = data.get("version")
+    # `type(...) is int`, nicht `==`: In Python ist `True == 1` und `1.0 == 1`, ein JSON-
+    # `true` oder `1.0` wäre sonst stillschweigend als Version 1 durchgegangen.
+    if type(version) is not int or version != SUPPORTED_VERSION:
         raise GlossaryError(
             f"Glossar-Version {data.get('version')!r} wird nicht unterstützt "
             f"(erwartet: {SUPPORTED_VERSION})."
