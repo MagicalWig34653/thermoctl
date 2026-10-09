@@ -93,6 +93,7 @@ def test_the_operating_page_shows_notbetrieb_detail_and_comparison(
         SensorFailureSourceComparison,
         ZoneSensorFailureState,
     )
+    from thermoctl.db.base import utcnow
     from thermoctl.domain import emergency_operation
 
     create_settings(session)
@@ -109,7 +110,11 @@ def test_the_operating_page_shows_notbetrieb_detail_and_comparison(
     )
     session.add(zone_device)
     session.flush()
-    now = datetime(2026, 10, 2, 12, 0, 0)
+    # Die Betriebsseite liest die Uhr selbst (`utcnow()` in `control_views`), und der
+    # 7-Tage-Vergleich der Ersatzquelle schneidet nach dieser Uhr ab. Ein festes Datum
+    # fiel deshalb eines Tages aus dem Fenster und der Test scheiterte an der Zeit, nicht
+    # am Code. Gegenwart plus ein paar Sekunden Vorlauf: die Messung liegt immer im Fenster.
+    now = utcnow().replace(microsecond=0)
     episode = SensorFailureEpisode(
         zone_id=zone.id,
         zone_name=zone.display_name,
