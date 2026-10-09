@@ -62,6 +62,10 @@ def test_cli_filter_produces_real_pngs(tmp_path: Path) -> None:
             {"wohnung-konto", "wohnung-konto-mobil", "wohnung-konto-mobil-2"},
         ),
         (
+            "anlage-*-notbetrieb",
+            {"anlage-einstellungen-notbetrieb", "anlage-bad-parameter-notbetrieb"},
+        ),
+        (
             "kiosk-*",
             {"kiosk-dashboard", "kiosk-dashboard-mobil", "kiosk-panel-uebersicht",
              "kiosk-panel-detail", "kiosk-tafel"},
@@ -91,6 +95,10 @@ def test_cli_filter_produces_real_pngs(tmp_path: Path) -> None:
             _assert_capture_dimensions(path)
 
 
+# Stems of the views captured as an excerpt of one section instead of the viewport.
+SECTION_CAPTURE_STEMS = {view.stem for view in VIEWS if view.section}
+
+
 def test_documented_png_dimensions() -> None:
     for path in (Path(__file__).resolve().parents[1] / "docs" / "bilder").glob("*.png"):
         _assert_capture_dimensions(path)
@@ -106,6 +114,13 @@ def _assert_capture_dimensions(path: Path) -> None:
             assert height > 480  # Full-page capture of the scrolling board.
         else:
             assert height == 480
+    elif path.stem in SECTION_CAPTURE_STEMS:
+        # Deliberate excerpt of one form section (`View.section`, cropped to the element,
+        # full page so nothing is cut off): narrower than the viewport and as tall as the
+        # section needs. Only views that declare a section get this exemption; it is
+        # derived from the inventory, so a full-page capture can never slip through here.
+        assert 0 < width <= 1280
+        assert height > 0
     elif "-mobil" in path.stem:
         # Viewport capture, so the fixed bottom navigation stays at the bottom.
         assert width == 390
