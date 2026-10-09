@@ -796,3 +796,50 @@ def test_emergency_state_reports_an_open_episode(client, token_fuer, session: Se
     assert body["stage"] == "notbetrieb"
     assert body["episode_id"] == episode.id
     assert body["emergency_setpoint_c"] == "20"
+
+
+def test_device_commands_lists_the_sun_setback_as_absenkung(
+    client, token_fuer, session: Session
+) -> None:
+    from decimal import Decimal
+
+    from tests.helpers import create_zone
+    from thermoctl.db.models.state import ShadowDecision
+
+    zone = create_zone(session, "sonnenbad")
+    for minute, k in enumerate([None, Decimal("2.0"), None]):
+        session.add(
+            ShadowDecision(
+                decided_at=datetime(2026, 8, 15, 12, minute),
+                zone_id=zone.id,
+                setpoint_c=Decimal("20.5") - (k or 0),
+                scheduled_setpoint_c=Decimal("20.5"),
+                solar_setback_k=k,
+                setpoint_reason="Zeitplan",
+                would_heat=False,
+                outcome_code="aus",
+                reason="Sollwert ist erreicht.",
+            )
+        )
+    session.flush()
+    head = token_fuer([("audit.read", None)])
+
+    response = client.get("/api/v1/device-commands?zone=sonnenbad", headers=head)
+
+    assert response.status_code == 200
+    assert [(e["entry_kind"], e["outcome"], e["sent_at"]) for e in response.json()] == [
+        ("absenkung", "absenkung_ende", "2026-08-15T12:02:00Z"),
+        ("absenkung", "absenkung_beginn", "2026-08-15T12:01:00Z"),
+    ]
+    beginn = response.json()[1]
+    assert beginn["reason"] == "Sonnenabsenkung -2,0 K: Zeitplan 20,5 °C, wirksam 18,5 °C"
+    assert beginn["source"] == "sonnenabsenkung"
+    assert beginn["device"] == ""
+    assert beginn["simulated"] is False
+
+
+def test_device_commands_absenkung_entries_need_audit_read(
+    client, token_fuer, session: Session
+) -> None:
+    head = token_fuer([("zone.read", None)])
+    assert client.get("/api/v1/device-commands?zone=sonnenbad", headers=head).status_code == 403

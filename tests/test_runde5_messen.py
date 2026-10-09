@@ -16,7 +16,11 @@ def test_queries_report_the_real_shadow_index_state(
     assert all(entry["composite_shadow_index_present"] for entry in production)
     assert all(
         entry["shadow_indexes"]
-        == ["ix_shadow_decision_retention", "ix_shadow_decision_zone_decided_id"]
+        == [
+            "ix_shadow_decision_retention",
+            "ix_shadow_decision_solar_setback",
+            "ix_shadow_decision_zone_decided_id",
+        ]
         for entry in production
     )
 

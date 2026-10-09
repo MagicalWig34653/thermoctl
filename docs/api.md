@@ -392,6 +392,28 @@ nicht gesendet", Übergabe, Rückstellung — aus `actuator_decision`, `action !
 `simulated` ist für `"befehl"`-Zeilen immer `false` und spiegelt für
 `"entscheidung"`-Zeilen, ob sie aus dem Trockenlauf stammen.
 
+`"absenkung"` kennzeichnet einen Zustandswechsel der **Sonnenabsenkung** einer Zone — kein
+Sendeversuch, sondern der Hinweis, dass der wirksame Sollwert unter dem Zeitplan-Sollwert
+liegt (die Regelung also gegen den niedrigeren Wert arbeitet). Es gibt je Zone einen Eintrag bei
+Beginn, bei Änderung des Betrags und bei Ende, nicht je Regelzyklus. Abgeleitet wird er
+aus aufeinanderfolgenden Schattenentscheidungen derselben Zone
+(`shadow_decision.solar_setback_k` und `scheduled_setpoint_c`); Zeilen aus der Zeit vor
+der Migration `f6c3a8d19b42` tragen diese Angaben nicht und erzeugen keine Einträge. Belegung der Felder:
+`source` ist `"sonnenabsenkung"`, `command` ebenfalls `"sonnenabsenkung"`, `device` leer,
+`payload` leer, `outcome` eines von `"absenkung_beginn"`, `"absenkung_aenderung"`,
+`"absenkung_ende"`, `reason` der Klartext mit den Zahlen, `simulated` immer `false`.
+
+```json
+{"id": 570123, "sent_at": "2026-10-09T06:12:01Z", "source": "sonnenabsenkung",
+ "zone": "wohnzimmer", "device": "", "command": "sonnenabsenkung", "payload": "",
+ "outcome": "absenkung_beginn", "error": null,
+ "reason": "Sonnenabsenkung -2,0 K: Zeitplan 20,5 °C, wirksam 18,5 °C",
+ "entry_kind": "absenkung", "simulated": false}
+```
+
+Der Filter `outcome` schließt `"entscheidung"`- wie `"absenkung"`-Einträge aus: Beide haben
+kein Sendeergebnis.
+
 | Parameter | Bedeutung |
 |---|---|
 | `zone` | Zonenname, gegen die Namens-Momentaufnahme geprüft — findet auch Einträge einer inzwischen gelöschten Zone |

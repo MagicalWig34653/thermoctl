@@ -9,6 +9,34 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ---
 
+## Unreleased
+
+### Neu
+
+- **Die Sonnenabsenkung ist im Schaltprotokoll erkennbar.** Senkt sie den Sollwert einer Zone
+  ab (etwa Zeitplan 20,5 °C, wirksam 18,5 °C), steht das jetzt mit Beginn, Änderung des
+  Betrags und Ende als Eintrag der Art **Absenkung** im Schaltprotokoll — mit Zeitplan-Sollwert
+  und wirksamem Sollwert, z. B. „Sonnenabsenkung -2,0 K: Zeitplan 20,5 °C, wirksam 18,5 °C".
+  Bisher stand das nur im Begründungstext der Schattenentscheidung, und man suchte vergeblich,
+  warum der wirksame Sollwert stundenlang unter dem Zeitplan lag. Ein Eintrag entsteht je Zustandswechsel einer
+  Zone, nicht je Zyklus. Oberfläche, REST (`entry_kind: "absenkung"`) und MCP zeigen dasselbe;
+  der Filter „Ergebnis" blendet diese Einträge wie die Notbetriebsentscheidungen aus. An der
+  Regelung selbst ändert sich nichts.
+
+### Beim Upgrade zu wissen
+
+- **Eine Migration** (`f6c3a8d19b42`): zwei neue Spalten an `shadow_decision`
+  (`scheduled_setpoint_c`, `solar_setback_k`) und ein Index darauf. Bestehende Zeilen bleiben
+  leer — frühere Absenkungen werden nicht aus dem Text zurückgeraten und erscheinen deshalb
+  nicht im Schaltprotokoll; es zählt ab dem ersten Regelzyklus nach dem Upgrade. Eine
+  Absenkung, die beim Upgrade gerade läuft, erscheint mit ihrem Beginn zu diesem Zeitpunkt.
+  Der Index wird auf großen Beständen (einige hunderttausend Zeilen) beim Start der Migration
+  einmalig aufgebaut; das dauert Sekunden.
+- Neue Werte in REST und MCP: `entry_kind: "absenkung"`, `source: "sonnenabsenkung"`,
+  `outcome: "absenkung_beginn"` / `"absenkung_aenderung"` / `"absenkung_ende"`. Wer das
+  Schaltprotokoll maschinell liest und unbekannte `entry_kind`-Werte nicht verträgt, muss sie
+  berücksichtigen.
+
 ## 0.11.1 — 2026-10-04
 
 Korrekturen zu 0.11.0, beim ersten Hinsehen auf die laufende Anlage gefunden. Beim Upgrade

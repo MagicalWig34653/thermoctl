@@ -28,6 +28,15 @@ that may or may not have led to one); `simulated` is `False` for every
 `outcome="suppressed"`) and mirrors `ActuatorDecision.simulated` for an
 `"entscheidung"` row -- shadow-run diagnostics look identical in shape to a
 scharf decision, only this flag tells them apart.
+
+**Sonnenabsenkung** adds a third kind, `entry_kind == "absenkung"`: one entry
+per state change of a zone's solar setback (begin, change of amount, end),
+derived from consecutive `shadow_decision` rows -- see
+`domain/solar_setback_log.py`, which also explains why this is a change log and
+not one entry per cycle, and how the query stays cheap on a table of several
+hundred thousand rows. Like `"entscheidung"`, it has no `CommandOutcome`, so an
+`outcome` filter excludes it, and `simulated` is `False`: the setback acts on the
+setpoint that really is regulated against.
 """
 
 from dataclasses import dataclass
@@ -39,12 +48,20 @@ from sqlalchemy.orm import Session
 from thermoctl.db.models.lookup import ActorSource, CommandOutcome
 from thermoctl.db.models.sensor_failure import ActuatorDecision
 from thermoctl.db.models.state import DeviceCommand
+from thermoctl.domain.solar_setback_log import setback_transitions
 
 DEFAULT_LIMIT = 100
 MAX_LIMIT = 500
 
 ENTRY_KIND_COMMAND = "befehl"
 ENTRY_KIND_DECISION = "entscheidung"
+ENTRY_KIND_SETBACK = "absenkung"
+
+# `source` eines Absenkungseintrags und das Ergebnis je Wechselart. Die Ergebnisse tragen
+# den Wechsel (`beginn`/`aenderung`/`ende`), `command` bleibt für alle `sonnenabsenkung`.
+SETBACK_SOURCE = "sonnenabsenkung"
+SETBACK_COMMAND = "sonnenabsenkung"
+SETBACK_OUTCOME_PREFIX = "absenkung_"
 
 
 @dataclass(frozen=True)
@@ -182,6 +199,35 @@ def list_commands(
                 simulated=decision.simulated,
             )
             for decision in decisions
+        )
+
+        # Sonnenabsenkung (`entry_kind` "absenkung"): ein Eintrag je Zustandswechsel einer
+        # Zone, abgeleitet aus aufeinanderfolgenden Schattenzeilen -- siehe
+        # `domain/solar_setback_log.py` zu Wechsellogik und Laufzeit. Wie die
+        # `"entscheidung"`-Zeilen hat auch sie kein `CommandOutcome`, daher dieselbe
+        # Regel: ein `outcome`-Filter schließt sie aus.
+        entries.extend(
+            CommandLogEntry(
+                id=transition.decision_id,
+                sent_at=transition.decided_at,
+                source=SETBACK_SOURCE,
+                zone_name=transition.zone_name,
+                device_name="",
+                command=SETBACK_COMMAND,
+                payload="",
+                outcome=SETBACK_OUTCOME_PREFIX + transition.kind,
+                error=None,
+                reason=transition.text,
+                entry_kind=ENTRY_KIND_SETBACK,
+                simulated=False,
+            )
+            for transition in setback_transitions(
+                session,
+                zone_name=zone_name or None,
+                from_at=naive_utc(from_at),
+                to_at=naive_utc(to_at),
+                fetch=fetch,
+            )
         )
 
     entries.sort(key=lambda row: (row.sent_at, row.id), reverse=True)

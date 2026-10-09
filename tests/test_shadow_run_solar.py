@@ -169,3 +169,58 @@ def test_a_zone_override_setting_the_maximum_takes_precedence(session: Session) 
 
     assert row.setpoint_c == Decimal("20.5")
     assert "Sonnenabsenkung: -0,5 K" in row.setpoint_reason
+
+
+def test_the_row_records_schedule_setpoint_and_setback_as_structured_values(
+    session: Session,
+) -> None:
+    """Die Absenkung steht als eigene Angabe in der Zeile, nicht nur im Fließtext."""
+    settings = create_settings(session)
+    settings.default_solar_setback_max_k = Decimal("2.0")
+    zone = create_zone(session, "strukturiert-mit-absenkung")
+    zone.solar_gain_factor = Decimal("1.0")
+    _fixed_setpoint(session, zone, Decimal("21.0"))
+    session.flush()
+
+    row = shadow_run.cycle(session, NOW, _sunny_forecast())[0]
+
+    assert row.scheduled_setpoint_c == Decimal("21.0")
+    assert row.solar_setback_k == Decimal("2.0")
+    assert row.setpoint_c == Decimal("19.0")
+
+
+def test_without_a_setback_the_schedule_setpoint_is_recorded_and_the_amount_is_null(
+    session: Session,
+) -> None:
+    create_settings(session)
+    zone = create_zone(session, "strukturiert-ohne-absenkung")
+    zone.solar_gain_factor = Decimal("1.0")
+    _fixed_setpoint(session, zone, Decimal("21.0"))
+    session.flush()
+
+    without_forecast = shadow_run.cycle(session, NOW)[0]
+    cloudy = shadow_run.cycle(session, NOW + timedelta(minutes=1), _cloudy_forecast())[0]
+
+    for row in (without_forecast, cloudy):
+        assert row.scheduled_setpoint_c == Decimal("21.0")
+        assert row.solar_setback_k is None
+        assert row.setpoint_c == Decimal("21.0")
+
+
+def test_a_setback_capped_by_frost_protection_records_the_reduction_actually_applied(
+    session: Session,
+) -> None:
+    """Gedeckelt auf den Platz über dem Frostschutz: gespeichert wird der angewandte
+    Betrag, nicht der gewünschte."""
+    settings = create_settings(session)
+    settings.default_solar_setback_max_k = Decimal("2.0")
+    zone = create_zone(session, "strukturiert-gedeckelt")
+    zone.solar_gain_factor = Decimal("1.0")
+    _fixed_setpoint(session, zone, Decimal("16.5"))
+    session.flush()
+
+    row = shadow_run.cycle(session, NOW, _sunny_forecast())[0]
+
+    assert row.scheduled_setpoint_c == Decimal("16.5")
+    assert row.solar_setback_k == Decimal("0.5")
+    assert row.setpoint_c == Decimal("16.0")

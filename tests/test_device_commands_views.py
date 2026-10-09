@@ -178,3 +178,65 @@ def test_the_rendered_filter_form_actually_filters(client_als, session: Session)
     response = client.get("/device-commands", params={"outcome": "suppressed"})
     assert "renderformventil" in response.text
     assert "anderes-ventil" not in response.text
+
+
+def _absenkung(session: Session, zone_name: str) -> None:
+    """Beginn und Ende einer Sonnenabsenkung als echte Schattenzeilen."""
+    from decimal import Decimal
+
+    from tests.helpers import create_zone
+    from thermoctl.db.models.state import ShadowDecision
+
+    zone = create_zone(session, zone_name)
+    for minute, k in enumerate([None, Decimal("2.0"), Decimal("2.0"), None]):
+        session.add(
+            ShadowDecision(
+                decided_at=datetime(2026, 8, 15, 12, minute),
+                zone_id=zone.id,
+                setpoint_c=Decimal("20.5") - (k or 0),
+                scheduled_setpoint_c=Decimal("20.5"),
+                solar_setback_k=k,
+                setpoint_reason="Zeitplan",
+                would_heat=False,
+                outcome_code="aus",
+                reason="Sollwert ist erreicht.",
+            )
+        )
+    session.flush()
+
+
+def test_absenkung_entries_are_shown_with_kind_text_and_labels(
+    client_als, session: Session
+) -> None:
+    create_settings(session)
+    _absenkung(session, "sonnenzimmer")
+    response = client_als([("audit.read", None)]).get("/device-commands?zone=sonnenzimmer")
+    assert response.status_code == 200
+    assert ">Absenkung<" in response.text
+    assert "Sonnenabsenkung -2,0 K: Zeitplan 20,5 °C, wirksam 18,5 °C" in response.text
+    assert "Sonnenabsenkung beendet: wirksam wieder 20,5 °C" in response.text
+    assert "Absenkung beginnt" in response.text
+    assert "Absenkung beendet" in response.text
+    assert "Regelung (Sonnenabsenkung)" in response.text
+    # Kein Gerät beteiligt: Platzhalter statt leerer Zelle.
+    assert re.search(r'data-label="Gerät">\s*–\s*</td>', response.text)
+
+
+def test_absenkung_entries_need_audit_read_like_every_other_entry(
+    client_als, session: Session
+) -> None:
+    create_settings(session)
+    _absenkung(session, "sonnenzimmer-recht")
+    response = client_als([("zone.read", None)]).get("/device-commands")
+    assert response.status_code == 403
+    assert "Sonnenabsenkung" not in response.text
+
+
+def test_the_outcome_filter_hides_absenkung_entries(client_als, session: Session) -> None:
+    create_settings(session)
+    _absenkung(session, "sonnenzimmer-filter")
+    _entry(session, device_name="ausgefuehrtes-ventil", outcome_code="executed")
+    response = client_als([("audit.read", None)]).get("/device-commands?outcome=executed")
+    assert "ausgefuehrtes-ventil" in response.text
+    assert "Zeitplan 20,5 °C, wirksam" not in response.text
+    assert "wirksam wieder" not in response.text

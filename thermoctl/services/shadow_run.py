@@ -324,8 +324,13 @@ def _with_solar_setback(
     settings: Setting,
     forecast: list[HourlyForecast] | None,
     now: datetime,
-) -> tuple[Decimal, str]:
-    """The setpoint and its reasoning, corrected for an expected solar gain.
+) -> tuple[Decimal, str, Decimal | None]:
+    """The setpoint, its reasoning and the applied setback, corrected for an expected solar gain.
+
+    The third element is the setback in Kelvin that was actually applied, `None` when no
+    correction took place -- the structured counterpart of the sentence appended to the
+    reasoning (`ShadowDecision.solar_setback_k`), so the protocol does not have to guess
+    the amount back out of free text.
 
     Correction happens **here**, before `Situation` is built -- not inside
     `regelung.entscheiden()`, which stays exactly as unaware of solar setback as it
@@ -339,7 +344,7 @@ def _with_solar_setback(
     setpoint_c: Decimal = setpoint.temperature_c
     setpoint_reason: str = setpoint.reason
     if forecast is None:
-        return setpoint_c, setpoint_reason
+        return setpoint_c, setpoint_reason, None
     expects_sun = sun_expected(forecast, now, settings.solar_setback_lookahead_hours)
     result = apply_solar_setback(
         setpoint_c,
@@ -349,12 +354,13 @@ def _with_solar_setback(
         expects_sun=expects_sun,
     )
     if result is None:
-        return setpoint_c, setpoint_reason
+        return setpoint_c, setpoint_reason, None
     return (
         result.setpoint_c,
         f"{setpoint_reason} Sonnenabsenkung: "
         f"{difference_text(-result.reduction_k, places=1)} wegen erwarteter "
         f"Sonneneinstrahlung in den nächsten {settings.solar_setback_lookahead_hours} Stunden.",
+        result.reduction_k,
     )
 
 
@@ -1785,7 +1791,7 @@ def _process_zone(
     heating_now, held_for_s, previous_would_heat, phase_started_by = _previous_state(
         session, zone.id, now
     )
-    setpoint_c, setpoint_reason = _with_solar_setback(
+    setpoint_c, setpoint_reason, solar_setback_k = _with_solar_setback(
         setpoint, frost_c, zone, parameter, settings, forecast, now
     )
 
@@ -1935,6 +1941,11 @@ def _process_zone(
         temperature_c=measured_c,
         setpoint_c=setpoint_c,
         setpoint_reason=setpoint_reason,
+        # Der Sollwert vor der Sonnenabsenkung und deren Betrag als eigene Angaben
+        # (Schaltprotokoll, `domain/solar_setback_log.py`); der Entscheidungsweg
+        # darüber bleibt unberührt, hier wird nur mitgeschrieben.
+        scheduled_setpoint_c=setpoint.temperature_c,
+        solar_setback_k=solar_setback_k,
         would_heat=effective_decision.heating,
         previous_would_heat=previous_would_heat,
         # `effective_decision.reason_code`, not the raw `decision.reason_code`:

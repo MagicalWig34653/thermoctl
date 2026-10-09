@@ -803,3 +803,43 @@ def test_read_control_reports_whether_the_solar_setback_is_switched_on(
     assert on["solar_forecast_enabled"] is True
     assert on["solar_forecast_latitude"] == "52.520"
     assert isinstance(on["solar_forecast_longitude"], str)
+
+
+def test_device_commands_reports_the_sun_setback_as_absenkung(session: Session) -> None:
+    from decimal import Decimal
+
+    from thermoctl.db.models.state import ShadowDecision
+
+    zone = create_zone(session, "sonnenmcp")
+    for minute, k in enumerate([None, Decimal("1.5"), None]):
+        session.add(
+            ShadowDecision(
+                decided_at=datetime(2026, 8, 29, 8, minute),
+                zone_id=zone.id,
+                setpoint_c=Decimal("20.5") - (k or 0),
+                scheduled_setpoint_c=Decimal("20.5"),
+                solar_setback_k=k,
+                setpoint_reason="Zeitplan",
+                would_heat=False,
+                outcome_code="aus",
+                reason="Sollwert ist erreicht.",
+            )
+        )
+    session.flush()
+    plaintext = _token(session, "absenkungsleser", [("audit.read", None)])
+
+    result = server.device_commands(session, plaintext, zone="sonnenmcp")
+
+    assert [(e["entry_kind"], e["outcome"], e["sent_at"]) for e in result] == [
+        ("absenkung", "absenkung_ende", "2026-08-29T08:02:00+00:00"),
+        ("absenkung", "absenkung_beginn", "2026-08-29T08:01:00+00:00"),
+    ]
+    assert result[1]["reason"] == "Sonnenabsenkung -1,5 K: Zeitplan 20,5 °C, wirksam 19,0 °C"
+    assert result[1]["device"] == ""
+
+
+def test_device_commands_absenkung_entries_need_audit_read(session: Session) -> None:
+    plaintext = _token(session, "absenkungsunbefugt", [("zone.read", None)])
+
+    with pytest.raises(Forbidden, match="audit.read"):
+        server.device_commands(session, plaintext, zone="sonnenmcp")
