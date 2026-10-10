@@ -62,9 +62,10 @@ class Wording:
     """Die Beschriftungen eines Verlaufs; die Zahlen und die Zeichnung sind davon unberührt.
 
     Es gibt zwei Fassungen derselben Aussagen: `TECHNICAL` für die Anlagensicht (Fachbegriffe wie
-    "Zeitplan-Soll" und "Wirksamer Soll") und `TENANT` für die Wohnungssicht. Beide sagen
-    dasselbe und belegen dasselbe; die Wohnungssicht lässt nur die Fachsprache weg. Insbesondere
-    behauptet keine Fassung eine Wirkung im Raum: "Heizanforderung" bleibt eine Anforderung.
+    "Sollwert vor Sonnenabsenkung" und "Wirksamer Soll") und `TENANT` für die Wohnungssicht.
+    Beide sagen dasselbe und belegen dasselbe; die Wohnungssicht lässt nur die Fachsprache weg.
+    Insbesondere behauptet keine Fassung eine Wirkung im Raum: "Heizanforderung" bleibt eine
+    Anforderung.
 
     Vorlage und Skript tragen keine eigenen Texte für diese Stellen, sondern lesen sie hier: die
     Legende aus den `legend_*`-Feldern, die Anzeige am Mauszeiger aus `hover` (nur die Texte, die
@@ -97,14 +98,16 @@ TECHNICAL = Wording(
     measured="Ist",
     measured_range="Ist {low} bis {high}.",
     no_measurement="Kein Istwert.",
-    last_both="Zuletzt Zeitplan-Soll {scheduled}, wirksamer Soll {effective}.",
-    last_effective_only="Zuletzt wirksamer Soll {effective} (Zeitplan-Soll unbekannt).",
+    last_both="Zuletzt Sollwert vor Sonnenabsenkung {scheduled}, wirksamer Soll {effective}.",
+    last_effective_only=(
+        "Zuletzt wirksamer Soll {effective} (Sollwert vor Sonnenabsenkung unbekannt)."
+    ),
     unknown_solar="Absenkung für {duration} unbekannt (vor der Aufzeichnung).",
     no_temperature="Für {duration} der erfassten Zeit lag kein Temperaturmesswert vor.",
     no_data="Keine Verlaufsdaten im gewählten Zeitraum.",
     k_unit="K",
     unknown_band_label="Absenkung unbekannt",
-    scheduled_label="Zeitplan-Soll",
+    scheduled_label="Sollwert vor Sonnenabsenkung",
     effective_label="Wirksamer Soll",
     legend_curve=(
         "Kurve: Mittelwert je Abschnitt von bis zu {bucket} (ein Punkt kann aus einer einzigen "
@@ -297,8 +300,8 @@ def read_samples(session: Session, zone_id: int, start: datetime, end: datetime)
             _float(temp),
             _float(effective),
             # Zeilen aus der Zeit vor der Spalte `scheduled_setpoint_c` kennen weder den
-            # Zeitplan-Sollwert noch die Absenkung. Beides bleibt unbekannt: weder wird der
-            # wirksame Soll als Zeitplan-Soll ausgegeben noch "keine Absenkung" behauptet.
+            # Sollwert vor der Absenkung noch die Absenkung. Beides bleibt unbekannt: weder wird der
+            # wirksame Soll als dieser Sollwert ausgegeben noch "keine Absenkung" behauptet.
             _float(scheduled),
             heat,
             None if scheduled is None and solar is None else _solar_value(solar),
@@ -771,7 +774,8 @@ def hover_payload(chart: Chart, timezone_name: str | None) -> dict[str, object]:
     `c` ist flach, je Stück sieben Zahlen: Abstand zum Ende des vorigen Stücks (das erste: zum
     Fensterbeginn), Dauer, Zahl der Temperaturwerte, Mittelwert, kleinster Wert minus Mittelwert,
     größter Wert minus Mittelwert, Anteil Heizanforderung in Prozent. `ef`/`sc`/`so` sind
-    wirksamer Soll, Zeitplan-Soll und Absenkung je Stück, gleiche Nachbarn zusammengefasst.
+    wirksamer Soll, Sollwert vor der Absenkung und Absenkung je Stück, gleiche Nachbarn
+    zusammengefasst.
     Was nicht in `c` liegt, ist Lücke: dort gibt es keine Zeile, und die Anzeige sagt das.
     """
     flat: list[int] = []

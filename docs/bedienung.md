@@ -372,7 +372,7 @@ den Zielwert absenken; der Frostschutz soll dabei nicht unterschritten werden) u
 Glossar verknüpft. Der Zielwert „ohne Sonnenabsenkung" ist der Sollwert vor dieser Korrektur und
 folgt damit außer dem Zeitplan auch einer Abwesenheit oder einer Änderung von Hand. Die Texte
 behaupten keine Wirkung im Raum, sondern nennen nur die Heizanforderung. Technische
-Einzelheiten der Anlagensicht (Fachbegriffe wie „Zeitplan-Soll", „Wirksamer Soll") stehen hier
+Einzelheiten der Anlagensicht (Fachbegriffe wie „Sollwert vor Sonnenabsenkung", „Wirksamer Soll") stehen hier
 nicht.
 
 Welche Räume erscheinen, bestimmt allein das Leserecht für Zonen (`zone.read`), dieselbe Prüfung
@@ -415,9 +415,12 @@ eine Möglichkeit zu zeigen, die nicht funktioniert.
 
 Unter **Zonen → Zonendaten** steht oberhalb des Formulars die Karte mit dem Verlauf der
 letzten 24 Stunden, 3 Tage oder 7 Tage. Blau ist die gemessene Temperatur, die durchgehende
-gelbbraune Linie der Zeitplan-Sollwert, die gestrichelte violette Linie der wirksame
-Sollwert. Ein grünes Band mit Balken am oberen Rand und Angabe der Absenkung markiert die
-Sonnenabsenkung; so ist sofort zu sehen, wann der wirksame Sollwert unter dem Zeitplan lag.
+gelbbraune Linie der Sollwert vor der Sonnenabsenkung, die gestrichelte violette Linie der
+wirksame Sollwert. Der Sollwert vor der Sonnenabsenkung folgt außer dem Zeitplan auch einer
+Übersteuerung (etwa einem Boost), dem Urlaub, einer Abwesenheit und der Betriebsart Aus; die
+Linie heißt deshalb nicht „Zeitplan-Soll". Ein grünes Band mit Balken am oberen Rand und Angabe
+der Absenkung markiert die Sonnenabsenkung; so ist sofort zu sehen, wann der wirksame Sollwert
+unter dem Sollwert vor der Absenkung lag.
 Wechselt der Betrag innerhalb eines Bandes, steht der Bereich („1,5 bis 2,0 K"), nicht nur
 der Höchstwert.
 
@@ -458,7 +461,7 @@ Balken. Besteht ein Zeitraum oder ein durch Lücken abgetrennter Teil nur aus ei
 Abschnitt, gibt es keinen Bereich zwischen Nachbarn; dann steht an seiner Stelle ein
 Balken vom kleinsten bis zum größten Wert. Die Breite der Balken ist nur Darstellung und sagt
 nichts über die Dauer. „Ist" in der Legende ist die letzte tatsächliche Messung mit Uhrzeit;
-Zeitplan-Soll und wirksamer Soll tragen einen „Stand"-Zeitpunkt, wenn die Daten veraltet sind
+Sollwert vor Sonnenabsenkung und wirksamer Soll tragen einen „Stand"-Zeitpunkt, wenn die Daten veraltet sind
 (letzter Wert mehr als 15 Minuten vor dem Ende des Zeitraums). Liegen zwischen zwei Zeilen mehr als
 **10 Minuten** (Neustart, Ausfall), bleiben Istkurve und Sollwertlinien unterbrochen, in
 jedem Zeitraum gleich und auch dann, wenn die Lücke mitten in einem verdichteten
@@ -472,7 +475,7 @@ führt zurück.
 
 **Werte an einer Stelle ablesen.** Mit der Maus über das Diagramm fahren (auf dem Telefon
 tippen oder ziehen) zeigt eine senkrechte Linie und eine Box mit der Ortszeit und den Werten
-an dieser Stelle: Ist, Zeitplan-Soll, wirksamer Soll, Sonnenabsenkung und Heizanforderung.
+an dieser Stelle: Ist, Sollwert vor Sonnenabsenkung, wirksamer Soll, Sonnenabsenkung und Heizanforderung.
 Mit den Pfeiltasten (links/rechts, Pos1/Ende, Umschalt für größere Schritte) lässt sich dasselbe
 bedienen, sobald das Diagramm den Fokus hat; Escape blendet die Box aus. Die Box zeigt nur, was
 protokollierte Zeilen belegen: In einer Lücke (mehr als 90 Sekunden ohne Zeile) und nach dem
@@ -484,9 +487,9 @@ Wert. „Heizanforderung" ist „ja" oder „nein", wenn sie im ganzen Abschnitt
 nicht vorlag, sonst der Anteil der Zeit in Prozent. Das ist die Anforderung des Reglers, keine
 Aussage über das, was am Gerät ankam.
 
-Ältere Protokollzeilen (aus der Zeit vor der Aufzeichnung von Zeitplan-Sollwert und
-Absenkung) tragen dazu keine Aussage. Sie erscheinen als schraffierter Bereich „Absenkung
-unbekannt (vor der Aufzeichnung)"; dort fehlt die Zeitplan-Linie, und der wirksame Sollwert
+Ältere Protokollzeilen (aus der Zeit vor der Aufzeichnung des Sollwerts vor der Absenkung und
+der Absenkung) tragen dazu keine Aussage. Sie erscheinen als schraffierter Bereich „Absenkung
+unbekannt (vor der Aufzeichnung)"; dort fehlt die Linie des Sollwerts vor der Absenkung, und der wirksame Sollwert
 ist der damals gespeicherte. Das heißt ausdrücklich nicht, dass es keine Absenkung gab. Die
 Zusammenfassung nennt die Dauer dieser unbekannten Zeit. Besteht ein Fenster aus alten und
 neuen Zeilen, gilt ein „keine Sonnenabsenkung" nur für den aufgezeichneten Teil („In den

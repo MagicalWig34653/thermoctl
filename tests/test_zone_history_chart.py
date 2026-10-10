@@ -27,6 +27,7 @@ from thermoctl.domain.zone_history_chart import (
 )
 
 BERLIN = "Europe/Berlin"
+SCHEDULED = "Sollwert vor Sonnenabsenkung"  # Beschriftung von `scheduled_setpoint_c`
 
 
 def _sample(
@@ -129,7 +130,7 @@ def test_charts_without_setpoints_draw_no_step_lines() -> None:
     )
     assert step_path(chart.effective_runs, chart, DESKTOP) == ""
     assert step_path(chart.scheduled_runs, chart, MOBILE) == ""
-    assert "Zuletzt Zeitplan-Soll" not in chart.summary
+    assert f"Zuletzt {SCHEDULED}" not in chart.summary
 
 
 # --- Sonnenabsenkung und Heizspur -----------------------------------------------------
@@ -320,7 +321,7 @@ def test_summary_uses_german_numbers_and_reports_coverage_and_staleness() -> Non
     ]
     chart = build_chart(samples, start, start + timedelta(hours=24), BERLIN)
     assert "Ist 19,5 °C bis 19,5 °C." in chart.summary
-    assert "Zeitplan-Soll 20,5 °C, wirksamer Soll 18,5 °C" in chart.summary
+    assert f"{SCHEDULED} 20,5 °C, wirksamer Soll 18,5 °C" in chart.summary
     assert "Heizanforderung 50 % der erfassten Zeit." in chart.summary
     assert "Sonnenabsenkung 2,0 Stunden." in chart.summary
     assert "Daten für 2,0 Stunden von 24,0 Stunden." in chart.summary

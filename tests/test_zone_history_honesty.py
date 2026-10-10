@@ -1,7 +1,7 @@
 """Verlauf: das Diagramm zeichnet nur, was die Zeilen belegen.
 
-Jeder Test hier gehört zu einem Befund des unabhängigen Reviews: Altzeilen ohne Zeitplan-Sollwert,
-Sonnenbänder über Phasen ohne Absenkung, Linien über Lücken, Heizspur und Stufen mit
+Jeder Test hier gehört zu einem Befund des unabhängigen Reviews: Altzeilen ohne Sollwert vor der
+Absenkung, Sonnenbänder über Phasen ohne Absenkung, Linien über Lücken, Heizspur und Stufen mit
 künstlicher Breite, Legende mit Bucket-Mittel statt letzter Messung.
 """
 
@@ -85,14 +85,15 @@ def test_rows_without_a_recorded_schedule_value_leave_the_schedule_line_open(
     zone = create_zone(session, "altzeitplan")
     now = datetime(2026, 10, 9, 12)
     for minute in range(60):
-        # Vor der Aufzeichnung: wirksamer Soll vorhanden, Zeitplan-Soll und Absenkung NULL.
+        # Vor der Aufzeichnung: wirksamer Soll vorhanden, Sollwert vor der Absenkung und
+        # Absenkung NULL.
         _row(session, zone, now - timedelta(minutes=120 - minute), setpoint="18.5")
     for minute in range(60):
         _row(session, zone, now - timedelta(minutes=60 - minute), setpoint="20.5", scheduled="20.5")
     session.flush()
     chart = chart_for_zone(session, zone.id, "24h", now, BERLIN)
-    # Der wirksame Soll gilt über beide Abschnitte; der Zeitplan-Sollwert beginnt erst dort,
-    # wo er aufgezeichnet wurde -- nichts wird aus dem wirksamen Soll abgeleitet.
+    # Der wirksame Soll gilt über beide Abschnitte; der Sollwert vor der Absenkung beginnt erst
+    # dort, wo er aufgezeichnet wurde -- nichts wird aus dem wirksamen Soll abgeleitet.
     assert [v for _, _, v in chart.effective_runs] == [18.5, 20.5]
     assert len(chart.scheduled_runs) == 1
     assert chart.scheduled_runs[0][0] == now - timedelta(minutes=60)
@@ -110,7 +111,7 @@ def test_legacy_rows_are_marked_unknown_and_never_reported_as_no_setback(
     assert chart.scheduled_runs == ()
     assert "Keine Sonnenabsenkung" not in chart.summary
     assert "Absenkung für 1,0 Stunden unbekannt (vor der Aufzeichnung)." in chart.summary
-    assert "Zuletzt Zeitplan-Soll" not in chart.summary
+    assert "Zuletzt Sollwert vor Sonnenabsenkung" not in chart.summary
     html = _history_html(client_als, zone)
     assert "Absenkung unbekannt (vor der Aufzeichnung)" in html
     assert html.count('class="tc-history-unknown"') == len(LAYOUTS)
@@ -322,7 +323,10 @@ def test_summary_and_legend_for_a_chart_whose_schedule_value_is_unknown() -> Non
         _sample(start + timedelta(minutes=i), scheduled=None, solar_k=None) for i in range(5)
     ]
     chart = build_chart(samples, start, start + timedelta(hours=1), BERLIN)
-    assert "Zuletzt wirksamer Soll 20,5 °C (Zeitplan-Soll unbekannt)." in chart.summary
+    assert (
+        "Zuletzt wirksamer Soll 20,5 °C (Sollwert vor Sonnenabsenkung unbekannt)."
+        in chart.summary
+    )
     # Die Daten enden 56 Minuten vor dem Fensterende: der Stand steht dabei (06:04 Ortszeit).
     assert chart.scheduled_text == "unbekannt"
     assert chart.effective_text == "20,5 °C (Stand 09.10. 06:04 Uhr)"
@@ -635,7 +639,8 @@ def test_the_stamp_reaches_the_legend_of_the_page(session: Session, client_als) 
     _row(session, zone, now - timedelta(hours=3), scheduled="21.0", setpoint="19.0")
     session.flush()
     html = _history_html(client_als, zone)
-    assert re.search(r"Zeitplan-Soll: 21,0 °C \(Stand \d\d\.\d\d\. \d\d:\d\d Uhr\)", html)
+    stamp = r"\(Stand \d\d\.\d\d\. \d\d:\d\d Uhr\)"
+    assert re.search(rf"Sollwert vor Sonnenabsenkung: 21,0 °C {stamp}", html)
     assert re.search(r"Wirksamer Soll: 19,0 °C \(Stand \d\d\.\d\d\. \d\d:\d\d Uhr\)", html)
 
 

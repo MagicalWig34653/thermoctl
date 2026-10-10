@@ -35,7 +35,7 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
   Zeitumstellung), Ist, Zeitplan-Soll, wirksamem Soll, Sonnenabsenkung und Heizanforderung an
   dieser Stelle. Die Box zeigt nur, was Zeilen belegen: In einer Lücke und nach dem letzten
   Eintrag steht „keine Daten" (mit der Dauer der Lücke), nichts wird interpoliert oder über
-  eine Lücke hinweg angezeigt; Altzeilen ohne aufgezeichneten Zeitplan-Soll stehen als
+  eine Lücke hinweg angezeigt; Altzeilen ohne aufgezeichneten Sollwert vor der Absenkung stehen als
   „unbekannt", ohne Absenkungsangabe als „Absenkung unbekannt". Bei 3 und 7 Tagen zeigt die Box den
   Mittelwert des Abschnitts („Mittelwert aus 27 Messungen, Abschnitt bis zu 17 Minuten") mit
   kleinstem und größtem Wert. Funktioniert in der Karte und im Vollbild, in allen vier
@@ -48,6 +48,17 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
   nacheinander nach, sobald sie ins Bild kommen. Angezeigt werden nur Zonen, die man verwalten
   darf (`zone.manage`, wie die Einzelkarte); ohne dieses Recht ist die Seite leer, wie die
   Zonenliste. Die Seite gehört nur zur Anlagensicht.
+
+### Behoben
+
+- **Beschriftung korrigiert: „Zeitplan-Soll" im Temperaturverlauf der Anlagensicht heißt jetzt
+  „Sollwert vor Sonnenabsenkung".** Die Linie zeigt den Sollwert, bevor die Sonnenabsenkung
+  ihn senkt; der folgt außer dem Zeitplan auch einer Übersteuerung (Boost), dem Urlaub, einer
+  Abwesenheit und der Betriebsart Aus. „Zeitplan-Soll" war dabei falsch, sobald eines davon
+  galt. Geändert sind Legende, Zusammenfassung („Zuletzt Sollwert vor Sonnenabsenkung …",
+  „(Sollwert vor Sonnenabsenkung unbekannt)") und die Anzeige am Mauszeiger; die Zahlen und die
+  Zeichnung bleiben unverändert. Die Wohnungssicht („Zielwert ohne Sonnenabsenkung") war schon
+  richtig.
 
 ---
 

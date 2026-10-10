@@ -378,6 +378,7 @@ def test_every_address_carries_the_ingress_prefix(
 
 TECHNICAL_ONLY = (
     "Zeitplan-Soll",
+    "Sollwert vor Sonnenabsenkung",
     "Wirksamer Soll",
     "Heizanforderung (untere Spur)",
     "Absenkung unbekannt (vor der Aufzeichnung)",
@@ -411,7 +412,7 @@ def test_the_plant_tile_keeps_its_technical_wording(client_als: Client, session:
     tile = client_als([("zone.manage", zone.id)]).get(f"/zones/{zone.id}/history?tile=1").text
     for expected in (
         "Ist: 19,5 °C",
-        "Zeitplan-Soll: 20,5 °C",
+        "Sollwert vor Sonnenabsenkung: 20,5 °C",
         "Wirksamer Soll: 18,5 °C",
         "Heizanforderung (untere Spur)",
         "Kurve: Mittelwert je Abschnitt von bis zu",
@@ -438,7 +439,14 @@ def test_the_page_explains_why_it_can_stay_cooler_than_the_plan(
     # Fachbegriffe führen ins Glossar (vorhandene Einträge, keine neuen).
     for entry in ("sollwert", "zeitplan", "sonnenabsenkung"):
         assert f'href="/glossar#{entry}"' in page
-    for technical in ("Zeitplan-Soll", "Wirksamer Soll", "Trockenlauf", "Schattenbetrieb", "MQTT"):
+    for technical in (
+        "Zeitplan-Soll",
+        "Sollwert vor Sonnenabsenkung",
+        "Wirksamer Soll",
+        "Trockenlauf",
+        "Schattenbetrieb",
+        "MQTT",
+    ):
         assert technical not in page
 
 

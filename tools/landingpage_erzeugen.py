@@ -201,9 +201,10 @@ FUNKTIONEN: tuple[Funktion, ...] = (
     Funktion(
         "Temperaturverlauf je Zone",
         "Im Reiter Zonendaten zeigt ein Diagramm für 24 Stunden, 3 oder 7 Tage Ist-"
-        "Temperatur, Zeitplan-Soll, wirksamen Soll, die Sonnenabsenkung als Band und die "
-        "Heizanforderung, auch als Vollbild. Es zeichnet nur, was protokollierte Zeilen "
-        "belegen; Lücken und unbekannte Zeiträume bleiben sichtbar.",
+        "Temperatur, den Sollwert vor der Sonnenabsenkung, den wirksamen Soll, die "
+        "Sonnenabsenkung als Band und die Heizanforderung, auch als Vollbild. Es zeichnet "
+        "nur, was protokollierte Zeilen belegen; Lücken und unbekannte Zeiträume bleiben "
+        "sichtbar.",
         ("sonnenabsenkung", "schaltprotokoll"),
         (("Bedienungsanleitung", "bedienung.md"),),
     ),

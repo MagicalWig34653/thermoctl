@@ -54,7 +54,7 @@ def _seed(live_server: LiveServer, name: str, *, alternate: bool = False) -> int
     - von -300 bis -200: Ist 18,0 (bei `alternate` im Wechsel 18,0 / 19,0), Soll 20,0, keine
       Absenkung, keine Heizanforderung
     - von -200 bis -100: keine Zeilen (Lücke)
-    - von -100 bis -20: Ist 21,0, wirksamer Soll 18,5, Zeitplan-Soll 20,5, Absenkung 2,0 K,
+    - von -100 bis -20: Ist 21,0, wirksamer Soll 18,5, Sollwert vor Absenkung 20,5, Absenkung 2,0 K,
       Heizanforderung
     - nach -20: nichts mehr
     """
@@ -139,7 +139,8 @@ def test_hover_shows_the_values_the_rows_prove_at_that_place(
         x = _hover_at(page, 250)
         early = _tip(page)
         assert "18,0 °C" in early
-        assert "Zeitplan-Soll" in early and "Wirksamer Soll" in early and "20,0 °C" in early
+        assert "Sollwert vor Sonnenabsenkung" in early and "Wirksamer Soll" in early
+        assert "20,0 °C" in early
         assert "keine Sonnenabsenkung" in early
         assert "Heizanforderung" in early and "nein" in early
         # Die senkrechte Linie steht unter der Maus.

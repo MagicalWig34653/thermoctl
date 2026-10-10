@@ -59,7 +59,7 @@
     // Beschriftungen der Anlagensicht. Die Wohnungssicht schickt abweichende Texte als `l` in den
     // Daten (`Wording.hover` in der Domäne); was dort fehlt, bleibt bei diesen Vorgaben.
     const DEFAULT_LABELS = {
-        measured: "Ist", scheduled: "Zeitplan-Soll", effective: "Wirksamer Soll",
+        measured: "Ist", scheduled: "Sollwert vor Sonnenabsenkung", effective: "Wirksamer Soll",
         mean: "Mittelwert aus {n} Messungen (Abschnitt bis zu {bucket})",
         lowest: "kleinster", highest: "größter", unit: "K", unknown: "unbekannt",
         partly: "(teils unbekannt)", solar_unknown: "Absenkung unbekannt"

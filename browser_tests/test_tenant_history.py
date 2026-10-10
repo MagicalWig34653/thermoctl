@@ -250,7 +250,7 @@ def test_each_tile_has_its_own_fullscreen_and_the_hover_speaks_plainly(
                          "Tatsächlicher Zielwert", "18,5 °C", "Heizanforderung", "ja",
                          "Sonnenabsenkung 2,0 Grad"):
             assert expected in text, (expected, text)
-        for technical in ("Zeitplan-Soll", "Wirksamer Soll", " K"):
+        for technical in ("Zeitplan-Soll", "Sollwert vor Sonnenabsenkung", "Wirksamer Soll", " K"):
             assert technical not in text, (technical, text)
         # Eine senkrechte Linie hat keine Breite und gilt Playwright deshalb nie als sichtbar:
         # geprüft wird, dass die Markergruppe eingeblendet ist und die Punkte eine Lage haben.
@@ -282,7 +282,9 @@ def test_the_legend_and_summary_use_the_words_of_the_dwelling(
                          "Heizanforderung (Spur unten): Anteil der Zeit",
                          "Wenn Sonne erwartet wird, kann die Regelung den Zielwert absenken"):
             assert expected in legend, (expected, legend)
-        for technical in ("Zeitplan-Soll", "Wirksamer Soll", "untere Spur"):
+        for technical in (
+            "Zeitplan-Soll", "Sollwert vor Sonnenabsenkung", "Wirksamer Soll", "untere Spur"
+        ):
             assert technical not in legend
         # Das Fachwort führt ins Glossar (neuer Tab), ohne dass die Seite verlassen wird.
         link = page.locator('a.tc-help[href$="/glossar#sonnenabsenkung"]')

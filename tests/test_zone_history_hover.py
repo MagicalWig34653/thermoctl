@@ -107,10 +107,11 @@ def test_rows_from_before_the_recording_are_unknown_not_zero() -> None:
     payload = _payload(old + new, start, start + timedelta(hours=24))
     scheduled = _runs(payload["sc"])
     solar = _runs(payload["so"])
-    # Das erste Stück (nur Altzeilen) kennt weder Zeitplan-Soll noch Absenkung -- weder
+    # Das erste Stück (nur Altzeilen) kennt weder den Sollwert vor der Absenkung noch die
+    # Absenkung -- weder
     # "gleich dem wirksamen Soll" noch "keine Absenkung".
     assert scheduled[0][1] is None and solar[0][1] is None
-    # Die Stücke danach tragen belegte Werte: Zeitplan-Soll 20,5 und Absenkung 2,0 K.
+    # Die Stücke danach tragen belegte Werte: Sollwert vor der Absenkung 20,5 und Absenkung 2,0 K.
     assert scheduled[-1][1:3] == [205, 205] and solar[-1][1:3] == [20, 20]
     assert all(run[1] is not None for run in solar[1:])
 
@@ -264,7 +265,7 @@ def test_hatch_patterns_get_one_id_per_tile(client_als, session: Session) -> Non
         row = create_shadow_decision(session, zone)
         row.decided_at = now - timedelta(minutes=5 - index)
         row.temperature_c = Decimal("19.5")
-        row.setpoint_c = Decimal("20.5")  # Altzeile: weder Zeitplan-Soll noch Absenkung
+        row.setpoint_c = Decimal("20.5")  # Altzeile: weder Sollwert vor Absenkung noch Absenkung
     session.flush()
     tile = client_als([("zone.manage", zone.id)]).get(f"/zones/{zone.id}/history?tile=1").text
     assert f'id="zone-history-{zone.id}-hatch-desktop"' in tile
