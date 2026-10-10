@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
@@ -8,9 +9,28 @@ from sqlalchemy.orm import Session
 from thermoctl.auth.dependencies import csrf_protection, current_principal, get_session
 from thermoctl.db.models.device import Device
 from thermoctl.db.models.lookup import OperatingMode
+from thermoctl.db.models.operations import Setting
 from thermoctl.db.models.zone import Zone
 from thermoctl.domain.authz import has_permission, require, visible_zones
 from thermoctl.domain.principal import Principal
+from thermoctl.domain.zone_history_chart import (
+    LAYOUTS,
+    WINDOWS,
+    chart_for_zone,
+    has_short_bands,
+    heat_cells_for,
+    line_path,
+    range_bars,
+    range_path,
+    solar_bands_for,
+    solar_marks_for,
+    step_path,
+    tick_x,
+    ticks_for,
+    unknown_bands_for,
+    x_position,
+    y_position,
+)
 from thermoctl.domain.zones import (
     ZoneNameTaken,
     create_zone,
@@ -93,9 +113,7 @@ def _checked_values(
                 "temperature_source_device_id", "Bitte ein bekanntes Gerät auswählen."
             ) from exc
         if session.get(Device, device_id) is None:
-            raise FormError(
-                "temperature_source_device_id", "Dieses Gerät ist nicht bekannt."
-            )
+            raise FormError("temperature_source_device_id", "Dieses Gerät ist nicht bekannt.")
     return values["name"], values["display_name"], operating_mode_id, sort_order, device_id
 
 
@@ -183,6 +201,49 @@ async def create_zone_view(
     return RedirectResponse(prefixed(request, "/zones"), status_code=status.HTTP_303_SEE_OTHER)
 
 
+def _history_context(session: Session, zone_id: int, period: str) -> dict[str, object]:
+    if period not in WINDOWS:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Ungültiger Zeitraum")
+    setting = session.get(Setting, 1)
+    timezone_name = setting.timezone if setting is not None else None
+    now = datetime.now(UTC).replace(tzinfo=None)
+    chart = chart_for_zone(session, zone_id, period, now, timezone_name)
+    return {
+        "chart": chart,
+        "period": period,
+        "layouts": LAYOUTS,
+        "xpos": x_position,
+        "ypos": y_position,
+        "tickx": tick_x,
+        "ticks_for": ticks_for,
+        "line": line_path,
+        "steps": step_path,
+        "range_path": range_path,
+        "range_bars": range_bars,
+        "solar_bands_for": solar_bands_for,
+        "solar_marks_for": solar_marks_for,
+        "unknown_bands_for": unknown_bands_for,
+        "heat_cells_for": heat_cells_for,
+        "short_bands": has_short_bands(chart),
+    }
+
+
+@router.get("/zones/{zone_id}/history")
+async def zone_history(
+    zone_id: int,
+    request: Request,
+    principal: Annotated[Principal, Depends(current_principal)],
+    session: Annotated[Session, Depends(get_session)],
+    period: str = "24h",
+) -> Response:
+    zone = _visible_zone(session, principal, zone_id)
+    return templates.TemplateResponse(
+        request,
+        "zone_history_chart.html",
+        {"zone": zone, **_history_context(session, zone_id, period)},
+    )
+
+
 @router.get("/zones/{zone_id}")
 async def edit_zone(
     zone_id: int,
@@ -201,7 +262,13 @@ async def edit_zone(
     return templates.TemplateResponse(
         request,
         "zone_form.html",
-        {"zone": zone, "values": values, "errors": {}, **_choice_values(session)},
+        {
+            "zone": zone,
+            "values": values,
+            "errors": {},
+            **_choice_values(session),
+            **_history_context(session, zone_id, "24h"),
+        },
     )
 
 

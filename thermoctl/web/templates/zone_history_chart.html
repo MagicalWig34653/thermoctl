@@ -1,0 +1,64 @@
+{#
+Verlaufskarte einer Zone. Dieselbe Zeichnung wird für vier Geometrien (`layouts`)
+erzeugt; per CSS ist je Bildschirm genau eine sichtbar, siehe thermoctl.css. Alle
+Koordinaten kommen aus `thermoctl/domain/zone_history_chart.py`.
+#}
+<div class="card tc-history" id="zone-history">
+  <div class="card-body">
+    <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+      <h2 class="h5 mb-0">Temperaturverlauf</h2>
+      <div class="d-flex flex-wrap gap-2 align-items-center">
+        <div class="btn-group btn-group-sm" role="group" aria-label="Zeitraum">
+          {% for choice, label in [('24h', '24 Stunden'), ('3d', '3 Tage'), ('7d', '7 Tage')] %}
+          <button type="button" class="btn {{ 'btn-primary' if period == choice else 'btn-outline-secondary' }}"
+                  hx-get="{{ url_prefix }}/zones/{{ zone.id }}/history?period={{ choice }}"
+                  hx-target="#zone-history" hx-swap="outerHTML">{{ label }}</button>
+          {% endfor %}
+        </div>
+        <button type="button" class="btn btn-sm btn-outline-secondary" data-history-open>Vollbild</button>
+        <button type="button" class="btn btn-sm btn-outline-secondary tc-history-close" data-history-close>Schließen</button>
+      </div>
+    </div>
+    {% if chart.has_data %}
+    <div class="tc-history-plot">
+      {% for L in layouts %}
+      <div class="tc-history-{{ L.name }}">
+        <svg viewBox="0 0 {{ L.width }} {{ L.height }}" role="img" aria-label="Temperaturverlauf für {{ zone.display_name }}" aria-describedby="zone-history-summary" preserveAspectRatio="xMidYMid meet">
+          <rect x="{{ L.left }}" y="{{ L.top }}" width="{{ L.right - L.left }}" height="{{ L.bottom - L.top }}" class="tc-history-background"/>
+          {% if chart.unknown_bands %}<defs><pattern id="hist-hatch-{{ L.name }}" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="6" class="tc-history-hatch-line"/></pattern></defs>{% endif %}
+          {% for band in unknown_bands_for(chart, L) %}
+          <rect x="{{ band.x }}" y="{{ L.top }}" width="{{ band.width }}" height="{{ L.bottom - L.top }}" fill="url(#hist-hatch-{{ L.name }})" class="tc-history-unknown"/>
+          <rect x="{{ band.x }}" y="{{ L.top }}" width="{{ band.width }}" height="5" class="tc-history-unknown-bar"/>
+          {% if band.label %}<text x="{{ band.x + 6 }}" y="{{ L.top + 19 }}" class="tc-history-unknown-label">{{ band.label }}</text>{% endif %}{% endfor %}
+          {% for band in solar_bands_for(chart, L) %}
+          <rect x="{{ band.x }}" y="{{ L.top }}" width="{{ band.width }}" height="{{ L.bottom - L.top }}" class="tc-history-solar"/>
+          <rect x="{{ band.x }}" y="{{ L.top }}" width="{{ band.width }}" height="5" class="tc-history-solar-bar"/>
+          {% if band.label %}<text x="{{ band.x + 6 }}" y="{{ L.top + 19 }}" class="tc-history-solar-label">{{ band.label }}</text>{% endif %}{% endfor %}
+          {% for x in solar_marks_for(chart, L) %}<path d="M{{ (x - 3)|round(1) }},{{ L.top - 9 }} L{{ (x + 3)|round(1) }},{{ L.top - 9 }} L{{ x }},{{ L.top - 2 }} Z" class="tc-history-solar-mark"/>{% endfor %}
+          {% for value, label in chart.y_ticks %}<line x1="{{ L.left }}" x2="{{ L.right }}" y1="{{ ypos(value, chart, L) }}" y2="{{ ypos(value, chart, L) }}" class="tc-history-grid"/><text x="{{ L.left - 6 }}" y="{{ ypos(value, chart, L) + 4 }}" text-anchor="end" class="tc-history-label">{{ label }}</text>{% endfor %}
+          {% for fraction, label in ticks_for(chart, L) %}{% set x = tickx(fraction, L) %}<line x1="{{ x }}" x2="{{ x }}" y1="{{ L.top }}" y2="{{ L.lane_bottom + 4 }}" class="tc-history-vgrid"/><text x="{{ x }}" y="{{ L.label_y }}" text-anchor="{{ 'start' if fraction < 0.04 else 'end' if fraction > 0.94 else 'middle' }}" class="tc-history-label">{{ label }}</text>{% endfor %}
+          <rect x="{{ L.left }}" y="{{ L.lane_top }}" width="{{ L.right - L.left }}" height="{{ L.lane_bottom - L.lane_top }}" class="tc-history-lane-track"/>
+          {% for x, w, level in heat_cells_for(chart, L) %}<rect x="{{ x }}" y="{{ L.lane_top }}" width="{{ w }}" height="{{ L.lane_bottom - L.lane_top }}" class="tc-history-demand" style="opacity: {{ level / 4 }}"/>{% endfor %}
+          <path d="{{ range_path(chart, L) }}" class="tc-history-range"/>
+          <path d="{{ range_bars(chart, L) }}" class="tc-history-range-bar"/>
+          <path d="{{ steps(chart.scheduled_runs, chart, L) }}" class="tc-history-scheduled"/>
+          <path d="{{ steps(chart.effective_runs, chart, L) }}" class="tc-history-effective"/>
+          <path d="{{ line(chart, L) }}" class="tc-history-actual"/>
+        </svg>
+      </div>
+      {% endfor %}
+    </div>
+    <ul class="tc-history-legend" aria-label="Legende">
+      <li><span class="tc-history-key tc-history-key-actual"></span>Ist: {{ chart.actual_text }}</li>
+      <li><span class="tc-history-key tc-history-key-range"></span>Kurve: Mittelwert je Abschnitt von bis zu {{ chart.bucket_text }} (ein Punkt kann aus einer einzigen Messung stammen); heller Bereich oder Balken: Kleinster bis größter Wert je Abschnitt</li>
+      <li><span class="tc-history-key tc-history-key-scheduled"></span>Zeitplan-Soll: {{ chart.scheduled_text }}</li>
+      <li><span class="tc-history-key tc-history-key-effective"></span>Wirksamer Soll: {{ chart.effective_text }}</li>
+      <li><span class="tc-history-key tc-history-key-demand"></span>Heizanforderung (untere Spur): Anteil der Zeit mit Heizanforderung je Abschnitt, blasser = kleinerer Anteil</li>
+      <li><span class="tc-history-key tc-history-key-solar"></span>Sonnenabsenkung</li>
+      {% if short_bands %}<li><span class="tc-history-key-mark"></span>Dreieck oben: kurze Absenkung, im Bild nur als schmaler Streifen oder gar nicht als Band erkennbar</li>{% endif %}
+      {% if chart.unknown_bands %}<li><span class="tc-history-key tc-history-key-unknown"></span>Absenkung unbekannt (vor der Aufzeichnung)</li>{% endif %}
+    </ul>
+    <p class="tc-history-summary text-muted mb-0" id="zone-history-summary">{{ chart.summary }}</p>
+    {% else %}<p class="text-muted mb-0">{{ chart.summary }}</p>{% endif %}
+  </div>
+</div>

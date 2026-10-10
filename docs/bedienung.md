@@ -386,3 +386,71 @@ eine Passkey-Anmeldung eingerichtet, erscheint hier zusätzlich ein Verweis auf
 eine Möglichkeit zu zeigen, die nicht funktioniert.
 
 ![Konto und Sicherheit mit Passwortänderung, Sitzungsverwaltung, Hilfe und Abmelden](bilder/wohnung-konto.png)
+
+### Temperaturverlauf einer Zone
+
+Unter **Zonen → Zonendaten** steht oberhalb des Formulars die Karte mit dem Verlauf der
+letzten 24 Stunden, 3 Tage oder 7 Tage. Blau ist die gemessene Temperatur, die durchgehende
+gelbbraune Linie der Zeitplan-Sollwert, die gestrichelte violette Linie der wirksame
+Sollwert. Ein grünes Band mit Balken am oberen Rand und Angabe der Absenkung markiert die
+Sonnenabsenkung; so ist sofort zu sehen, wann der wirksame Sollwert unter dem Zeitplan lag.
+Wechselt der Betrag innerhalb eines Bandes, steht der Bereich („1,5 bis 2,0 K"), nicht nur
+der Höchstwert.
+
+Das Diagramm zeichnet nur, was protokollierte Zeilen belegen. Jede Zeile gilt für ihren
+Zyklus (bis zur nächsten Zeile, höchstens 90 Sekunden). Sonnenband, unbekannter Bereich und
+Heizspur bestehen aus genau diesen Zeitspannen und werden weder verbreitert noch über
+Pausen hinweg zusammengezogen; Sollwertlinien verbinden Zeilen bis 10 Minuten Abstand und
+enden am letzten Wert. Eine Absenkung, die schmaler als rund drei Bildpunkte der Zeichnung
+ist (bei 7 Tagen am Desktop etwa 35 Minuten), bekommt zusätzlich zu ihrem Band ein kleines
+Dreieck über der Zeichnung, damit sie auffindbar bleibt; das Band selbst wird nie breiter
+gezeichnet, als die Zeilen es belegen. Ist sie schmaler als ein Viertel Bildpunkt (bei
+7 Tagen am Desktop etwa 3 Minuten), bleibt nur das Dreieck. Das Dreieck zeigt nur, dass dort
+etwas liegt, und behauptet keine Dauer. Auf dem Telefon sind die Bildpunkte gröber, die
+Schwellen entsprechend länger.
+
+Die orangen Striche in der schmalen Spur unter der Zeichnung zeigen den **Anteil der Zeit
+mit Heizanforderung je Abschnitt**, nicht den genauen Zeitpunkt der Anforderung. Ein Strich
+deckt zusammenhängende Zeilen ab (zwischen zwei Zeilen höchstens 90 Sekunden) und reicht nie
+über einen Zeitabschnitt hinaus, aus dem auch die Kurve einen Punkt bildet (bei 7 Tagen bis
+zu 17 Minuten). Ganz deckungsgleich mit der Kurve ist das nicht: Die Spur zählt auch Zeilen
+ohne Temperaturwert und trennt schon bei mehr als 90 Sekunden Abstand, die Kurve nimmt nur
+Zeilen mit Temperaturwert und verbindet bis 10 Minuten Abstand. Die Deckkraft stuft den Anteil
+der **Zeit** (nicht der Zeilen) in Vierteln ab, derselbe Anteil wie die Prozentzahl unter dem
+Diagramm: Eine Sekunde Anforderung vor 90 Sekunden ohne ist das schwächste Viertel. Ein
+blasser Strich heißt also „in diesem Abschnitt nur zeitweise angefordert", nicht „durchgehend
+ein bisschen". Genaue Einzelstriche wären bei 7 Tagen kleiner als ein Bildpunkt und nicht
+mehr zu sehen. Gefärbt ist nur die Zeit, für die Zeilen vorliegen. Die Zeitachse steht in der eingestellten Zeitzone
+auf runden Stunden, an Mitternacht mit Wochentag und Datum.
+
+Die blaue Linie ist verdichtet: Sie zeigt den Mittelwert je Abschnitt (die Legende nennt
+die Obergrenze seiner Länge, nach oben gerundet: bei 24 Stunden bis zu 3, bei 7 Tagen bis zu
+17 Minuten; ein Punkt kann auch aus einer einzigen Messung stammen). Der hellblaue Bereich
+darum zeigt den kleinsten bis größten gemessenen Wert. Ein kurzer Ausschlag ragt dort nur als
+feine Spitze heraus; ragt der Extremwert eines Abschnitts deutlich (um mehr als ein Zehntel
+der Zeichenhöhe) über den seiner Nachbarabschnitte hinaus, steht an dieser Stelle zusätzlich
+ein schmaler hellblauer Balken bis zum Extremwert. Gewöhnliches Messrauschen bekommt keinen
+Balken. Besteht ein Zeitraum oder ein durch Lücken abgetrennter Teil nur aus einem einzigen
+Abschnitt, gibt es keinen Bereich zwischen Nachbarn; dann steht an seiner Stelle ein
+Balken vom kleinsten bis zum größten Wert. Die Breite der Balken ist nur Darstellung und sagt
+nichts über die Dauer. „Ist" in der Legende ist die letzte tatsächliche Messung mit Uhrzeit;
+Zeitplan-Soll und wirksamer Soll tragen einen „Stand"-Zeitpunkt, wenn die Daten veraltet sind
+(letzter Wert mehr als 15 Minuten vor dem Ende des Zeitraums). Liegen zwischen zwei Zeilen mehr als
+**10 Minuten** (Neustart, Ausfall), bleiben Istkurve und Sollwertlinien unterbrochen, in
+jedem Zeitraum gleich und auch dann, wenn die Lücke mitten in einem verdichteten
+Abschnitt liegt. Ein Hinweis unter dem Diagramm nennt dann die erfasste Zeit und den
+letzten Wert. Zeilen ohne Temperaturwert (etwa bei einem Sensorausfall) zählen zur erfassten
+Zeit, belegen aber keine Temperatur; der Hinweis nennt, für wie lange der Messwert fehlte.
+Die technische Markierungszeile, die beim Ende eines Notbetriebs den Schaltzustand übernimmt,
+trägt keinen Sollwert; die Sollwertlinien sind an dieser Stelle für etwa eine Minute
+unterbrochen. Mit **Vollbild** lässt sich die Karte vergrößern; **Schließen** oder Escape
+führt zurück.
+
+Ältere Protokollzeilen (aus der Zeit vor der Aufzeichnung von Zeitplan-Sollwert und
+Absenkung) tragen dazu keine Aussage. Sie erscheinen als schraffierter Bereich „Absenkung
+unbekannt (vor der Aufzeichnung)"; dort fehlt die Zeitplan-Linie, und der wirksame Sollwert
+ist der damals gespeicherte. Das heißt ausdrücklich nicht, dass es keine Absenkung gab. Die
+Zusammenfassung nennt die Dauer dieser unbekannten Zeit. Besteht ein Fenster aus alten und
+neuen Zeilen, gilt ein „keine Sonnenabsenkung" nur für den aufgezeichneten Teil („In den
+aufgezeichneten 30 Minuten keine Sonnenabsenkung"); der Satz „Keine Sonnenabsenkung" ohne
+Einschränkung steht nur, wenn jede Zeile des Fensters die Absenkung aufgezeichnet hat.

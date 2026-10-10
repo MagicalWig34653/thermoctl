@@ -59,6 +59,28 @@ Reviews: Codex `gpt-6-sol` in vier Runden (die letzte nur noch über den Untersc
 Bekannte Grenze: der Docstring von `app.py::_emergency_notices` („nie ein dritter Versuch“)
 passt für den Absturzfall nicht ganz.
 
+**Temperaturverlauf je Zone** (Reiter Zonendaten, oberhalb des Formulars; `domain/zone_history_chart.py`,
+`web/templates/zone_history_chart.html`, `static/zone_history.js`): Ist, Zeitplan-Soll, wirksamer Soll,
+Sonnenabsenkung als beschriftetes Band, Heizanforderung als eigene Spur, Zeiträume 24 Stunden,
+3 oder 7 Tage (HTMX-Partial `/zones/{id}/history`), Vollbild mit je einer Zeichnung für Breit- und
+Hochformat. **Grundsatz: es zeichnet nur, was protokollierte Zeilen belegen.** Sonnenband, „Absenkung
+unbekannt“ und Heizspur bestehen aus Zeilenzeitspannen (Zeile bis nächste, höchstens 90 s), ohne
+Mindestbreite und ohne Pausenschluss; kürzere Absenkungen bekommen zusätzlich ein Dreieck ohne
+Zeitangabe. Ist-Kurve und Sollstufen reißen bei mehr als 10 Minuten ohne Zeile ab. Die Ist-Kurve ist
+ein beschrifteter Mittelwert je Abschnitt („bis zu N Minuten“) mit hellem Min/Max-Bereich; ein
+Abschnitt ohne verbundenen Nachbarn oder mit einer Spitze über einem Zehntel der Zeichenhöhe
+(`SPIKE_FRACTION`) bekommt einen schmalen Balken. Zeilen ohne `scheduled_setpoint_c` und
+`solar_setback_k` gelten als unbekannt (keine Zeitplan-Linie, schraffierter Bereich); „Keine
+Sonnenabsenkung“ steht nur, wenn jede Zeile des Fensters sie belegt. Die Heizspur ist
+sekundengewichtet. Zeitplan-Soll und wirksamer Soll tragen bei veralteten Daten einen Stand-Zeitpunkt.
+Erste Fassung von Codex (`gpt-6-sol`), danach in drei Runden von Claude-Agents korrigiert; Codex hat in
+zwei Reviews vier und dann zwei Wahrheitsverstöße gefunden (erfundener Zeitplan-Sollwert bei Altzeilen,
+Sonnenband über Pausen, überbrückte Lücken, verbreiterte Heizspur, „Keine“ neben „unbekannt“, fehlende
+Hülle bei einem einzelnen Abschnitt), das letzte Gegenlesen machte ein unabhängiger Claude-Agent
+(kein blockierender Befund). Bekannt: die Notbetriebs-Markierungszeile unterbricht die Sollwertlinien
+etwa eine Minute; Ende-zu-Ende-Messung gegen 570 000 Zeilen steht aus (Berechnung 17 000 Zeilen
+etwa 0,4 s, Abfrage über `ix_shadow_decision_zone_decided_id`).
+
 **PNG-Maßregel:** `browser_tests/test_screenshots.py` kennt Abschnittsausschnitte
 (`View.section`; zurzeit `anlage-einstellungen-notbetrieb`, `anlage-bad-parameter-notbetrieb`),
 abgeleitet aus der Ansichtenliste. `anlage-bad-parameter-notbetrieb.png` war veraltet und wurde

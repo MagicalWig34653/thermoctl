@@ -13,6 +13,32 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ### Neu
 
+- **Temperaturverlauf je Zone:** Die Zonendaten zeigen oben Ist-Temperatur, Zeitplan-Soll,
+  wirksamen Sollwert, Heizanforderung und Sonnenabsenkung als Diagramm. Zeitraum 24 Stunden,
+  3 oder 7 Tage, mit Vollbildansicht (auf dem Telefon hochformatig gefüllt). Die Achse ist auf
+  runde Ortszeit-Stunden beschriftet, die Sonnenabsenkung als deutlich grünes Band mit Angabe
+  der Absenkung (bei wechselndem Betrag als Bereich), die Heizanforderung als eigene Spur
+  unter der Zeichnung. Gezeichnet wird nur, was Zeilen belegen: Band, Spur und Sollstufen
+  bestehen aus den Zeitspannen der Zeilen, ohne Mindestbreite und ohne Überbrückung von
+  Pausen; eine Absenkung, die kürzer als ein Bildpunkt ist, zeigt ein Dreieck über der
+  Zeichnung (zusätzlich zu ihrem unverbreiterten Band, solange es sichtbar ist). Istkurve
+  und Sollwertlinien reißen in jedem Zeitraum bei mehr als 10 Minuten ohne Zeile
+  ab. Die Istkurve ist ein beschrifteter Mittelwert je Abschnitt (in der Legende „bis zu"
+  so viele Minuten; ein Punkt kann aus einer einzigen Messung stammen) mit hellem Bereich
+  für kleinsten bis größten Wert; besteht ein Zeitraum oder ein durch Lücken abgetrennter
+  Teil nur aus einem einzigen Abschnitt, zeigt ein schmaler Balken den Ausschlag; in einer
+  Kette von Abschnitten bekommt ein Abschnitt den Balken, dessen Extremwert um mehr als ein
+  Zehntel der Zeichenhöhe über die Nachbarn hinausragt. Die „bis zu“-Angabe ist aufgerundet.
+  Zeitplan-Soll und wirksamer Soll tragen bei veralteten Daten einen Stand-Zeitpunkt. Die
+  Heizspur nennt in der Legende, was sie zeigt: den Anteil der Zeit (nach Sekunden gewichtet,
+  wie die Prozentzahl der Zusammenfassung) mit Heizanforderung je Abschnitt, nicht den
+  genauen Zeitpunkt. „Ist" in der Legende ist die letzte Messung mit
+  Uhrzeit. Ältere Zeilen ohne aufgezeichneten Zeitplan-Sollwert und ohne Absenkungsangabe
+  erscheinen als „Absenkung unbekannt (vor der Aufzeichnung)", nicht als „keine
+  Absenkung"; in einem Fenster mit alten und neuen Zeilen gilt „keine Sonnenabsenkung"
+  nur für den aufgezeichneten Teil. Eine Textzusammenfassung (Wertebereich, Heizanforderung, Sonnenabsenkung,
+  erfasste Zeit, Zeit ohne Temperaturwert) steht unter dem Diagramm.
+
 - **Die Sonnenabsenkung ist im Schaltprotokoll erkennbar.** Senkt sie den Sollwert einer Zone
   ab (etwa Zeitplan 20,5 °C, wirksam 18,5 °C), steht das jetzt mit Beginn, Änderung des
   Betrags und Ende als Eintrag der Art **Absenkung** im Schaltprotokoll — mit Zeitplan-Sollwert
