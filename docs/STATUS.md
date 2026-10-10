@@ -1,11 +1,12 @@
 # Stand
 
-Letzte Aktualisierung: 2026-10-09.
+Letzte Aktualisierung: 2026-10-10.
 
-## Unveröffentlicht (nach 0.11.1)
+## 0.12.0 (2026-10-10)
 
-Laufende Arbeit der Sitzung vom 2026-10-09: Sonnenabsenkung sichtbar machen, Glossar,
-Verlaufsdiagramm auf der Zonenseite, Landingpage (GitHub Pages). Gebaut und gemergt ist bisher:
+Enthält die Arbeit der Sitzung vom 2026-10-09: Sonnenabsenkung im Schaltprotokoll sichtbar, Glossar,
+Temperaturverlauf je Zone, Landingpage (GitHub Pages). Eine Migration (`f6c3a8d19b42`, Migrationskopf).
+Das Add-on-Repository wird mit derselben Freigabe nachgezogen. Inhalt im Einzelnen:
 
 **Sonnenabsenkung im Schaltprotokoll.** Auslöser war eine Meldung: Wohnzimmer-Sollwert
 laut Zeitplan 20,5 °C, Ist 19,5 °C, trotzdem von 08:00 bis 13:00 keine Heizanforderung. Ursache war

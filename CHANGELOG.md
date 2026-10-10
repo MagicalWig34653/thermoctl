@@ -9,7 +9,7 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ---
 
-## Unreleased
+## 0.12.0 — 2026-10-10
 
 ### Neu
 
@@ -64,6 +64,14 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 - **Eine einzige Quelle:** Die Begriffe stehen in `thermoctl/data/glossar.json`.
   [docs/glossar.md](docs/glossar.md) wird daraus mit `python -m tools.glossar_erzeugen`
   erzeugt; ein Test schlägt fehl, wenn beide auseinanderlaufen.
+
+- **Korrigierte Hinweise:** Die Doku zum Notbetrieb (`docs/bedienung.md`) und der Hinweis auf der
+  Betriebsseite zum zweiten Riegel beim Scharfschalten (gilt für MQTT **und** Meross) sind gegen den
+  Quelltext berichtigt. Die pauschale Aussage über die Häufigkeit der PI-Regelung steht nicht mehr
+  in Oberfläche, README und API-Docs; die Zahlentabelle ist als Modellrechnung gekennzeichnet.
+- **Öffentliche Seite** (`site/`, erzeugt aus `thermoctl/data/glossar.json` und den Demo-Screenshots
+  mit `python -m tools.landingpage_erzeugen`) und der Workflow `.github/workflows/pages.yml` für
+  GitHub Pages. Für den laufenden Betrieb der Anwendung ohne Bedeutung.
 
 ### Beim Upgrade zu wissen
 
