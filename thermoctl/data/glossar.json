@@ -86,7 +86,7 @@
       "id": "echo-regel",
       "term": "Echo-Regel",
       "short": "Soll verhindern, dass ein Thermostat als Ersatzquelle dient, dessen Messung nur ein Echo der vorgegebenen Raumtemperatur sein könnte.",
-      "explanation": "Schreibt thermoctl einem selbstregelnden Thermostat eine Raumtemperatur, kann das Gerät diesen Wert als eigene Messung zurückmelden. Deshalb soll eine Messung erst als unabhängig gelten, wenn sie mindestens 30 Minuten nach dem letzten Schreiben entstanden ist.",
+      "explanation": "Schreibt thermoctl einem selbstregelnden Thermostat eine Raumtemperatur, kann das Gerät diesen Wert als eigene Messung zurückmelden. Deshalb wird eine Messung erst dann als unabhängig behandelt, wenn sie mindestens 30 Minuten nach dem letzten Sendeversuch entstanden ist; als Sendeversuch zählt auch ein gescheiterter.",
       "synonyms": ["Echo", "Echo-Erkennung", "Echo-Prüfung"],
       "area": "Sensorik",
       "see_also": ["ersatzquelle", "selbstregelndes-thermostatventil", "ausgleichswert"]
@@ -329,7 +329,7 @@
       "id": "rueckkehrpruefung",
       "term": "Rückkehrprüfung",
       "short": "Die Probezeit, nach der eine Zone nach einem Ausfall wieder einer Quelle vertraut: dem Wandfühler oder der Ersatzquelle.",
-      "explanation": "Geprüft wird eine Quelle: der Wandfühler, wenn er wieder liefert, sonst die Ersatzquelle. Wie viele neue Messwerte nötig sind und wie lange die Quelle durchgehend brauchbar sein muss, ist im Notbetriebsprofil einstellbar (Regelvorgaben). Den Ablauf beschreibt docs/bedienung.md im Abschnitt Notbetrieb bei Sensorausfall.",
+      "explanation": "Geprüft wird jeweils eine Quelle. Sie wird beim Beginn der Prüfung gewählt (der Wandfühler, wenn er dann wieder liefert, sonst die Ersatzquelle) und bleibt danach an diese Prüfung gebunden. Wie viele neue Messwerte nötig sind und wie lange die Quelle durchgehend brauchbar sein muss, ist im Notbetriebsprofil einstellbar (Regelvorgaben). Den Ablauf beschreibt docs/bedienung.md im Abschnitt Notbetrieb bei Sensorausfall.",
       "synonyms": ["Rückkehr", "Rückkehr: Mindestdauer stabil", "Rückkehr: nötige Messungen"],
       "area": "Sensorik",
       "see_also": ["notbetrieb", "ersatzquelle", "messquelle"]
@@ -356,7 +356,7 @@
       "id": "schaltprotokoll",
       "term": "Schaltprotokoll",
       "short": "Das Journal der Befehle an Geräte und ihrer Ergebnisse.",
-      "explanation": "Ein Eintrag nennt Zeitpunkt, Zone, Gerät, Befehl, Ergebnis und eine Begründung. Mögliche Ergebnisse sind zum Beispiel ausgeführt, unterdrückt und gescheitert; dazu kommen gekennzeichnete Einträge zu Entscheidungen des Notbetriebs. Auf der Seite Schaltprotokoll lässt sich nachlesen, was zu einem Eintrag gespeichert ist.",
+      "explanation": "Ein Eintrag kann Zeitpunkt, Zone, Gerät, Befehl, Ergebnis und eine Begründung enthalten; welche Angaben vorliegen, zeigt die Seite. Mögliche Ergebnisse sind zum Beispiel ausgeführt, unterdrückt und gescheitert; dazu kommen gekennzeichnete Einträge zu Entscheidungen des Notbetriebs. Auf der Seite Schaltprotokoll lässt sich nachlesen, was zu einem Eintrag gespeichert ist.",
       "synonyms": ["Befehlsprotokoll", "Befehle", "Schaltbefehl"],
       "area": "Betrieb",
       "see_also": ["trockenlauf", "notbetrieb", "relaisverschleiss"]
@@ -455,7 +455,7 @@
       "id": "wiederanlaufspanne",
       "term": "Wiederanlaufspanne",
       "short": "Eine Spanne in Kelvin am oberen Ende der Außenkennlinie, die häufiges Neuanlaufen im Notbetrieb vermeiden soll.",
-      "explanation": "Sie gehört zum Notbetriebsprofil (Regelvorgaben, ab Werk 1 K). Sie soll verhindern, dass ein Wert um den obersten Punkt der Kennlinie ständig zwischen Ein und Aus wechselt. Wie sie im Einzelnen wirkt, beschreibt docs/bedienung.md im Abschnitt Notbetrieb bei Sensorausfall.",
+      "explanation": "Sie gehört zum Notbetriebsprofil (Regelvorgaben, ab Werk 1 K). Sie soll verhindern, dass ein Wert um den obersten Punkt der Kennlinie ständig zwischen Ein und Aus wechselt. Eine kurze Erklärung der Wirkung steht in docs/bedienung.md im Abschnitt Notbetrieb bei Sensorausfall.",
       "synonyms": ["Wiederanlaufspanne (K)"],
       "area": "Sensorik",
       "see_also": ["aussenkennlinie", "notbetrieb", "hysterese"]

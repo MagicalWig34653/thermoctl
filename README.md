@@ -60,8 +60,8 @@ als Vorgabe. Sie ersetzt für eine eingeschaltete Zone die Hysterese durch einen
 Proportional-Integral-Regler mit zeitproportionalem Ausgang und gilt nur für gewöhnliche
 Schaltaktoren — selbstregelnde Ventile und Geräte mit `thermostat`-Fähigkeit sind
 ausgeschlossen, weil dort zwei Regler auf derselben Regelstrecke säßen. Der Preis steht am
-Schalter: PI schaltet deutlich häufiger und verkürzt die Lebensdauer eines Schaltaktors.
-Wie oft eine Zone tatsächlich schaltet, zeigt die Seite **Relaisverschleiß** je Gerät und
+Schalter: PI kann je nach Einstellung mehr Schaltspiele erzeugen als die Hysterese.
+Wie viele Schaltspiele eine Zone tatsächlich hat, zeigt die Seite **Relaisverschleiß** je Gerät und
 Tag mit Jahreshochrechnung — auch ohne PI nützlich.
 
 Die Ausgabe hat drei klar getrennte Stufen: Im **Trockenlauf** werden Regelentscheidungen

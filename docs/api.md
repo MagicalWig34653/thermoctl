@@ -269,8 +269,8 @@ Versuch wird bei fehlender Eignung mit einer Begründung abgewiesen, statt still
 Hysterese zurückzufallen.
 
 `pi_min_on_seconds` und `pi_min_off_seconds` sind **weiche** Untergrenzen: Die Genauigkeit
-des Tastgrads darf sie unterschreiten. Das ist eine bewusste Entscheidung und der Grund,
-warum PI deutlich häufiger schaltet als die Hysterese — die Zahlen dazu stehen am Schalter
+des Tastgrads darf sie unterschreiten. Das ist eine bewusste Entscheidung; sie kann je nach Einstellung
+zu mehr Schaltspielen führen als bei der Hysterese. Eine Modellrechnung dazu steht am Schalter
 in der Oberfläche und im Eintrag zu 0.5.0 im [CHANGELOG](../CHANGELOG.md).
 
 `PUT /api/v1/zones/{zone_id}/parameters/{name}` setzt **einen** Parameter und lässt die

@@ -129,7 +129,7 @@ Siehe auch: [Sollwert](#sollwert), [Frostschutz](#frostschutz), [Übersteuerung]
 
 *Sensorik* — Soll verhindern, dass ein Thermostat als Ersatzquelle dient, dessen Messung nur ein Echo der vorgegebenen Raumtemperatur sein könnte.
 
-Schreibt thermoctl einem selbstregelnden Thermostat eine Raumtemperatur, kann das Gerät diesen Wert als eigene Messung zurückmelden. Deshalb soll eine Messung erst als unabhängig gelten, wenn sie mindestens 30 Minuten nach dem letzten Schreiben entstanden ist.
+Schreibt thermoctl einem selbstregelnden Thermostat eine Raumtemperatur, kann das Gerät diesen Wert als eigene Messung zurückmelden. Deshalb wird eine Messung erst dann als unabhängig behandelt, wenn sie mindestens 30 Minuten nach dem letzten Sendeversuch entstanden ist; als Sendeversuch zählt auch ein gescheiterter.
 
 Auch: Echo, Echo-Erkennung, Echo-Prüfung
 
@@ -431,7 +431,7 @@ Siehe auch: [PI-Regelung (Beta)](#pi-regelung), [Hysterese](#hysterese), [Mindes
 
 *Sensorik* — Die Probezeit, nach der eine Zone nach einem Ausfall wieder einer Quelle vertraut: dem Wandfühler oder der Ersatzquelle.
 
-Geprüft wird eine Quelle: der Wandfühler, wenn er wieder liefert, sonst die Ersatzquelle. Wie viele neue Messwerte nötig sind und wie lange die Quelle durchgehend brauchbar sein muss, ist im Notbetriebsprofil einstellbar (Regelvorgaben). Den Ablauf beschreibt docs/bedienung.md im Abschnitt Notbetrieb bei Sensorausfall.
+Geprüft wird jeweils eine Quelle. Sie wird beim Beginn der Prüfung gewählt (der Wandfühler, wenn er dann wieder liefert, sonst die Ersatzquelle) und bleibt danach an diese Prüfung gebunden. Wie viele neue Messwerte nötig sind und wie lange die Quelle durchgehend brauchbar sein muss, ist im Notbetriebsprofil einstellbar (Regelvorgaben). Den Ablauf beschreibt docs/bedienung.md im Abschnitt Notbetrieb bei Sensorausfall.
 
 Auch: Rückkehr, Rückkehr: Mindestdauer stabil, Rückkehr: nötige Messungen
 
@@ -444,7 +444,7 @@ Siehe auch: [Notbetrieb](#notbetrieb), [Ersatzquelle](#ersatzquelle), [Messquell
 
 *Betrieb* — Das Journal der Befehle an Geräte und ihrer Ergebnisse.
 
-Ein Eintrag nennt Zeitpunkt, Zone, Gerät, Befehl, Ergebnis und eine Begründung. Mögliche Ergebnisse sind zum Beispiel ausgeführt, unterdrückt und gescheitert; dazu kommen gekennzeichnete Einträge zu Entscheidungen des Notbetriebs. Auf der Seite Schaltprotokoll lässt sich nachlesen, was zu einem Eintrag gespeichert ist.
+Ein Eintrag kann Zeitpunkt, Zone, Gerät, Befehl, Ergebnis und eine Begründung enthalten; welche Angaben vorliegen, zeigt die Seite. Mögliche Ergebnisse sind zum Beispiel ausgeführt, unterdrückt und gescheitert; dazu kommen gekennzeichnete Einträge zu Entscheidungen des Notbetriebs. Auf der Seite Schaltprotokoll lässt sich nachlesen, was zu einem Eintrag gespeichert ist.
 
 Auch: Befehlsprotokoll, Befehle, Schaltbefehl
 
@@ -595,7 +595,7 @@ Siehe auch: [Mindestschaltdauer](#mindestschaltdauer), [Trockenlauf](#trockenlau
 
 *Sensorik* — Eine Spanne in Kelvin am oberen Ende der Außenkennlinie, die häufiges Neuanlaufen im Notbetrieb vermeiden soll.
 
-Sie gehört zum Notbetriebsprofil (Regelvorgaben, ab Werk 1 K). Sie soll verhindern, dass ein Wert um den obersten Punkt der Kennlinie ständig zwischen Ein und Aus wechselt. Wie sie im Einzelnen wirkt, beschreibt docs/bedienung.md im Abschnitt Notbetrieb bei Sensorausfall.
+Sie gehört zum Notbetriebsprofil (Regelvorgaben, ab Werk 1 K). Sie soll verhindern, dass ein Wert um den obersten Punkt der Kennlinie ständig zwischen Ein und Aus wechselt. Eine kurze Erklärung der Wirkung steht in docs/bedienung.md im Abschnitt Notbetrieb bei Sensorausfall.
 
 Auch: Wiederanlaufspanne (K)
 

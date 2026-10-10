@@ -189,22 +189,38 @@ bestehenden Anlagen seit dem Upgrade auf 0.11, bei neu angelegten Zonen von der 
 an. Er geht in Stufen vor:
 
 1. **Ersatzquelle.** Zuerst nimmt die Zone die kälteste Messung der ihr zugeordneten
-   Thermostat-Thermometer (korrigiert um den Ausgleichswert) und regelt normal weiter.
-   Ein Thermostat, dem `thermoctl` gerade selbst eine Temperatur schreibt, misst dann nur
-   das Echo davon und zählt erst 30 Minuten nach dem letzten Schreiben als unabhängig.
+   Thermostat-Thermometer (korrigiert um den Ausgleichswert) anstelle des Wandfühlers. Die
+   Entscheidung fällt dann nach der gewöhnlichen Hysterese; ein eingeschalteter PI-Regler
+   ist in dieser Zeit ausgesetzt. Ein Thermostat, dem `thermoctl` gerade selbst eine
+   Temperatur schreibt, misst dann möglicherweise nur das Echo davon; seine Messung gilt
+   erst als unabhängig, wenn sie mindestens 30 Minuten nach dem letzten Sendeversuch
+   entstanden ist (auch ein gescheiterter Versuch zählt).
 2. **Notbetrieb.** Gibt es keine brauchbare Quelle, **takten Fußbodenkreise** — im
    Festtakt (Vorgabe 10 Minuten an, 20 Minuten aus) oder, wenn ein Außenwert vorliegt,
-   nach der Außentemperatur-Kennlinie. Der Takt läuft auch im Betriebsmodus „Aus"
-   und bei offenem Fenster. **Heizkörper-Thermostate** werden **einmal** auf „manual" und
-   den Notsollwert (Vorgabe 20 °C) gestellt und danach nicht mehr angesprochen.
-3. **Rückkehrprüfung.** Der Sensor muss zwei verschiedene Messwerte liefern und danach
-   60 Sekunden durchgehend brauchbar bleiben. Erst dann geht die Zone zurück in den
-   Normalbetrieb; das Thermostat bekommt **einmal** den Betriebsmodus zurück, den es vor
-   der Übergabe gemeldet hat. Die Mindest-Ein- und -Aus-Dauern der Fußbodenkreise gelten
-   dabei weiter.
+   nach der Außentemperatur-Kennlinie. Der Takt wird nicht an den Betriebsmodus „Aus"
+   oder an ein offenes Fenster geknüpft. **Thermostate** bekommen je Störung
+   und Zuordnung **höchstens einen** Übergabeversuch: Betriebsmodus „manual" und den
+   Notsollwert (Vorgabe 20 °C); danach werden sie nicht mehr angesprochen. Für ein
+   Gerät, zu dem es keinen bestätigten Gerätevertrag für diesen Befehl gibt, findet kein
+   Übergabeversuch statt. Im Trockenlauf wird nichts gesendet.
+3. **Rückkehrprüfung.** Geprüft wird jeweils eine Quelle. Sie wird beim Beginn der
+   Prüfung gewählt — der Wandfühler, wenn er dann wieder liefert, sonst die Ersatzquelle —
+   und bleibt an diese Prüfung gebunden; fällt sie erneut aus, geht die Zone zurück in den
+   Notbetrieb derselben Störung. Die Quelle muss die eingestellte Zahl neuer Messwerte
+   liefern (Vorgabe 2) und danach die eingestellte Dauer durchgehend brauchbar bleiben
+   (Vorgabe 60 Sekunden); beides ist unter Regelvorgaben einstellbar. Besteht die
+   Prüfung mit dem Wandfühler, geht die Zone zurück in den Normalbetrieb. Besteht sie
+   mit der Ersatzquelle, kehrt die Zone in die Stufe Ersatzquelle zurück, und die Rückkehr
+   zum Wandfühler wird danach eigens geprüft. Beim Abschluss der Störung (Rückkehr in den Normalbetrieb) soll ein
+   Thermostat den Betriebsmodus zurückbekommen, den es vor der Übergabe gemeldet hat; war
+   dieser Wert nicht bekannt, bleibt es still. Die Mindest-Ein- und -Aus-Dauern der
+   Fußbodenkreise gelten dabei weiter.
 
-Die Anlage meldet je Störung **einmal den Beginn und einmal die Entwarnung** (mit dem
-Schalter „Sensorstörung" unter Regelvorgaben abschaltbar). Auf Start, Wohnungssicht und
+Die Anlage kann je Störung eine Meldung zum Beginn und eine zur Entwarnung senden (mit dem
+Schalter „Sensorstörung" unter Regelvorgaben abschaltbar). Eine Zusage, dass jede genau
+einmal ankommt, gibt es nicht: Nach einem Abbruch oder einem gescheiterten Versand wird
+einmal erneut gesendet, eine Meldung kann also doppelt ankommen oder, wenn auch der zweite
+Versuch scheitert, ausbleiben. Auf Start, Wohnungssicht und
 Kiosk steht ein kurzer Hinweis in Klartext; Details für die Technik zeigt die Betriebsseite
 (oben) und das Schaltprotokoll.
 
@@ -217,6 +233,12 @@ Kiosk steht ein kurzer Hinweis in Klartext; Details für die Technik zeigt die B
   sie braucht mindestens zwei Zeilen und genau einen oberen Punkt, ab dem nicht mehr eingeschaltet
   bleibt, und der Tastgrad darf mit steigender Außentemperatur nicht zunehmen. Eine leere
   Kennlinie heißt Festtakt. Ein Fehler in einer Zeile verwirft die ganze Eingabe.
+
+  Die **Wiederanlaufspanne** (Vorgabe 1 K) wirkt nur zusammen mit einer Kennlinie und einem
+  brauchbaren Außenwert: Hat die Außentemperatur den oberen Punkt erreicht, bleibt die Ein-Phase
+  auf 0 gesperrt, bis die Außentemperatur unter diesen Punkt abzüglich der Spanne gefallen ist.
+  So wechselt ein Wert, der um den oberen Punkt schwankt, nicht in jedem Takt zwischen Ein
+  und Aus. Der Wert wird zu Beginn jedes Takt-Paares ausgewertet.
 
   ![Karte „Notbetrieb bei Sensorausfall" unter Regelvorgaben mit Festtakt, Rückkehrprüfung, Wiederanlaufspanne, Notsollwert und einer Außenkennlinie aus vier Zeilen](bilder/anlage-einstellungen-notbetrieb.png)
 

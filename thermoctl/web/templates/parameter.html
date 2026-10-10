@@ -47,36 +47,36 @@
     </p>
 
     <div class="alert alert-warning" role="alert">
-      <strong>PI (Beta) schaltet deutlich häufiger als die Hysterese und verkürzt dadurch
-      die Lebensdauer des Schaltaktors spürbar.</strong>
-      Das betrifft vor allem den ungünstigsten Fall — nicht den Regelbetrieb; wie oft
-      diese Zone tatsächlich schaltet, zeigt <a href="{{ url_prefix }}/relay-wear">Relaisverschleiß</a>
-      mit Jahreshochrechnung je Gerät. Für einen Kessel oder Verdichter ohne eigenen
-      Taktschutz ist PI ungeeignet — häufiges Takten kostet dort nicht nur Lebensdauer,
-      sondern auch Wirkungsgrad.
+      <strong>PI (Beta) kann je nach Einstellung mehr Schaltspiele erzeugen als die
+      Hysterese.</strong>
+      Jedes Schaltspiel zählt gegen die angenommene Lebensdauer des Relais. Wie oft diese
+      Zone tatsächlich wechselt, hängt von den Parametern unten ab; gezählt wird auf der Seite
+      <a href="{{ url_prefix }}/relay-wear">Relaisverschleiß</a> mit Jahreshochrechnung je
+      Gerät. Für einen Kessel oder Verdichter ohne eigenen Taktschutz wird PI nicht
+      empfohlen; häufiger Wechsel kann dort Lebensdauer und Wirkungsgrad kosten.
       <details class="tc-info-disclosure mt-2">
-        <summary>ⓘ Rechnung ansehen</summary>
+        <summary>ⓘ Modellrechnung ansehen</summary>
         <div class="table-responsive mt-2">
           <table class="table table-sm mb-2">
             <thead>
               <tr><th scope="col"></th><th scope="col" class="text-end">je Stunde</th><th scope="col" class="text-end">je Tag</th><th scope="col" class="text-end">je Jahr</th></tr>
             </thead>
             <tbody>
-              <tr><th scope="row">PI, ungünstigster Fall</th><td class="text-end">30</td><td class="text-end">720</td><td class="text-end">262.800</td></tr>
-              <tr><th scope="row">PI bei 30&nbsp;% Tastgrad (simuliert)</th><td class="text-end">18</td><td class="text-end">432</td><td class="text-end">157.680</td></tr>
-              <tr><th scope="row">Hysterese, höchstens</th><td class="text-end">6</td><td class="text-end">144</td><td class="text-end">52.560</td></tr>
+              <tr><th scope="row">PI, ungünstigster Fall (Modell)</th><td class="text-end">30</td><td class="text-end">720</td><td class="text-end">262.800</td></tr>
+              <tr><th scope="row">PI bei 30&nbsp;% Tastgrad (Modell)</th><td class="text-end">18</td><td class="text-end">432</td><td class="text-end">157.680</td></tr>
+              <tr><th scope="row">Hysterese, höchstens (Modell)</th><td class="text-end">6</td><td class="text-end">144</td><td class="text-end">52.560</td></tr>
             </tbody>
           </table>
         </div>
         <p class="small mb-0">
-          Schaltspiele, nicht Zustandswechsel. Mit der in den
+          Modellrechnung, keine Messung dieser Zone. Schaltspiele, nicht Zustandswechsel. Mit der in den
           <a href="{{ url_prefix }}/settings">Einstellungen</a> hinterlegten, austauschbaren Annahme
           von derzeit {{ "{:,}".format(assumed_lifetime_operations).replace(",", ".") }}
           elektrischen Betätigungen eines vergleichbaren 16-A-Leistungsrelais (keine
           Meross-Herstellerangabe — öffentliche Daten dazu fehlen) entspricht der
           ungünstigste Fall rund {{ ("%.2f" | format(262800 / assumed_lifetime_operations)).replace(".", ",") }}
           solcher Relaislebensdauern im Jahr. Der ungünstigste Fall ist ausdrücklich nicht der
-          Regelfall; die simulierte Spalte mit 30&nbsp;% Tastgrad und der tatsächliche,
+          Regelfall; die Modellzeile mit 30&nbsp;% Tastgrad und der tatsächliche,
           gemessene Verschleiß je Gerät stehen unter
           <a href="{{ url_prefix }}/relay-wear">Relaisverschleiß</a>.
         </p>

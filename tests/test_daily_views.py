@@ -216,7 +216,11 @@ def test_the_parameter_page_shows_the_pi_warning_with_the_switching_table_and_re
 
     assert page.status_code == 200
     assert "PI-Regelung (Beta)" in page.text
-    assert "verkürzt dadurch" in page.text and "Lebensdauer" in page.text
+    # Kein pauschaler Vergleich: PI "kann je nach Einstellung" mehr Schaltspiele erzeugen,
+    # und die Tabelle ist ausdrücklich eine Modellrechnung, keine Messung.
+    assert "kann je nach Einstellung mehr Schaltspiele erzeugen" in page.text
+    assert "deutlich häufiger" not in page.text and "verkürzt" not in page.text
+    assert "Modellrechnung" in page.text and "Lebensdauer" in page.text
     assert "262.800" in page.text  # worst case, per year
     assert "52.560" in page.text  # hysteresis ceiling, per year
     # The vorgabe, 500,000 -- and the ratio recomputed against it (262,800 / 500,000).
