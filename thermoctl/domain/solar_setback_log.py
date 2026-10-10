@@ -2,9 +2,9 @@
 
 Warum es das gibt: Die Absenkung (`domain/solar_setback.py`, angewandt in
 `services/shadow_run.py::_with_solar_setback`) senkt den Sollwert einer Zone um bis zu
-einige Kelvin. Im Betrieb bedeutete das: Zeitplan 20,5 °C, Ist 19,4 °C, wirksamer Sollwert
-18,5 °C -- und fünf Stunden lang keine Heizung. Der Grund stand nur im Fließtext von
-`shadow_decision.setpoint_reason`, nirgends als eigener Eintrag. Das Schaltprotokoll
+einige Kelvin. Im Betrieb bedeutete das: Sollwert vor der Absenkung 20,5 °C, Ist 19,4 °C,
+wirksamer Sollwert 18,5 °C -- und fünf Stunden lang keine Heizung. Der Grund stand nur im
+Fließtext von `shadow_decision.setpoint_reason`, nirgends als eigener Eintrag. Das Schaltprotokoll
 (`domain/device_commands.py::list_commands`) zeigt deshalb jetzt auch diese Wechsel.
 
 **Einträge entstehen bei Zustandswechseln, nicht je Zyklus.** Eine Zeile pro Regelzyklus
@@ -16,7 +16,13 @@ entsteht, wenn er sich gegenüber der vorherigen Zeile derselben Zone ändert:
 * `aenderung`: vorher und jetzt eine Absenkung, aber ein anderer Betrag;
 * `ende`: vorher eine Absenkung, jetzt keine.
 
-Eine Änderung des Zeitplan-Sollwerts bei gleichbleibendem Betrag ist keiner.
+Eine Änderung des Sollwerts vor der Absenkung bei gleichbleibendem Betrag ist keiner.
+
+**Benennung.** `shadow_decision.scheduled_setpoint_c` ist der Sollwert *vor* der Absenkung
+(`resolved_setpoint`). Er folgt außer dem Zeitplan auch einer Übersteuerung, dem Urlaub,
+einer Abwesenheit und der Betriebsart Aus. Die Texte nennen ihn deshalb "Sollwert vor
+Absenkung", nie "Zeitplan"; sie werden beim Lesen erzeugt, die Benennung gilt also auch
+rückwirkend.
 
 **Laufzeit.** `shadow_decision` hat Größenordnung 10^5 bis 10^6 Zeilen, eine pro Zone und
 Minute. Das Schaltprotokoll wird bei jedem Öffnen der Seite berechnet und darf davon nicht
@@ -107,7 +113,10 @@ class SetbackTransition:
 def _situation(scheduled_c: Decimal | None, effective_c: Decimal | None) -> str:
     if scheduled_c is None or effective_c is None:  # pragma: no cover - set whenever k is
         return ""
-    return f": Zeitplan {temperature_text(scheduled_c)}, wirksam {temperature_text(effective_c)}"
+    return (
+        f": Sollwert vor Absenkung {temperature_text(scheduled_c)},"
+        f" wirksam {temperature_text(effective_c)}"
+    )
 
 
 def setback_transitions(

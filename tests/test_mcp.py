@@ -834,7 +834,9 @@ def test_device_commands_reports_the_sun_setback_as_absenkung(session: Session) 
         ("absenkung", "absenkung_ende", "2026-08-29T08:02:00+00:00"),
         ("absenkung", "absenkung_beginn", "2026-08-29T08:01:00+00:00"),
     ]
-    assert result[1]["reason"] == "Sonnenabsenkung -1,5 K: Zeitplan 20,5 °C, wirksam 19,0 °C"
+    assert result[1]["reason"] == (
+        "Sonnenabsenkung -1,5 K: Sollwert vor Absenkung 20,5 °C, wirksam 19,0 °C"
+    )
     assert result[1]["device"] == ""
 
 

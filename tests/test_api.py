@@ -832,7 +832,9 @@ def test_device_commands_lists_the_sun_setback_as_absenkung(
         ("absenkung", "absenkung_beginn", "2026-08-15T12:01:00Z"),
     ]
     beginn = response.json()[1]
-    assert beginn["reason"] == "Sonnenabsenkung -2,0 K: Zeitplan 20,5 °C, wirksam 18,5 °C"
+    assert beginn["reason"] == (
+        "Sonnenabsenkung -2,0 K: Sollwert vor Absenkung 20,5 °C, wirksam 18,5 °C"
+    )
     assert beginn["source"] == "sonnenabsenkung"
     assert beginn["device"] == ""
     assert beginn["simulated"] is False

@@ -36,7 +36,7 @@ def _row(
     *,
     scheduled: Decimal | None = SCHEDULED,
 ) -> ShadowDecision:
-    """Eine Schattenzeile; wirksamer Sollwert = Zeitplan - Absenkung, wie im Betrieb."""
+    """Eine Schattenzeile; wirksamer Sollwert = Sollwert vor Absenkung - Absenkung (Betrieb)."""
     effective = None if scheduled is None else scheduled - (k or Decimal(0))
     row = ShadowDecision(
         decided_at=at,
@@ -89,9 +89,32 @@ def test_begin_change_and_end_each_produce_exactly_one_entry(session: Session) -
     ]
     assert [entry.text for entry in result] == [
         "Sonnenabsenkung beendet: wirksam wieder 20,5 °C",
-        "Sonnenabsenkung geändert auf -1,5 K (vorher -2,0 K): Zeitplan 20,5 °C, wirksam 19,0 °C",
-        "Sonnenabsenkung -2,0 K: Zeitplan 20,5 °C, wirksam 18,5 °C",
+        "Sonnenabsenkung geändert auf -1,5 K (vorher -2,0 K): "
+        "Sollwert vor Absenkung 20,5 °C, wirksam 19,0 °C",
+        "Sonnenabsenkung -2,0 K: Sollwert vor Absenkung 20,5 °C, wirksam 18,5 °C",
     ]
+
+
+def test_no_setback_text_calls_the_value_before_the_setback_a_schedule(
+    session: Session,
+) -> None:
+    """`scheduled_setpoint_c` ist der Sollwert VOR der Absenkung. Der folgt außer dem
+    Zeitplan auch einer Übersteuerung, dem Urlaub, einer Abwesenheit und der Betriebsart
+    Aus (`resolved_setpoint`). Ein Text, der ihn "Zeitplan" nennt, behauptet bei einem Boost
+    etwas, das die Daten nicht belegen. Der Text nennt deshalb nur, was gemessen wurde."""
+    zone = create_zone(session, "boostzone-sonne")
+    rows = _series(session, zone, [None, K2, K15, None])
+    for row in rows:
+        row.setpoint_reason = "Übersteuerung (Boost)"
+    session.flush()
+
+    result = _transitions(session, zone.name)
+    assert [entry.kind for entry in result] == ["ende", "aenderung", "beginn"]
+    for entry in result:
+        assert "Zeitplan" not in entry.text, entry.text
+    for entry in list_commands(session, zone_name=zone.name):
+        assert "Zeitplan" not in entry.reason, entry.reason
+    assert "Sollwert vor Absenkung 20,5 °C, wirksam 18,5 °C" in result[2].text
 
 
 def test_a_zone_without_any_setback_produces_no_entry(session: Session) -> None:
@@ -190,7 +213,7 @@ def test_a_setback_row_without_schedule_setpoint_does_not_break_the_window_looku
     session: Session,
 ) -> None:
     """Widersprüchliche Handarbeit in der Tabelle: der einzige Beleg für den Beginn
-    (`solar_setback_k` gesetzt) hat keinen Zeitplan-Sollwert. Die Vorzeile ist dann nicht
+    (`solar_setback_k` gesetzt) hat keinen Sollwert vor der Absenkung. Die Vorzeile ist dann nicht
     zu finden; die erste vollständige Zeile gilt als Beginn statt als Absturz."""
     zone = create_zone(session, "luckenzone")
     _row(session, zone, T0, K2, scheduled=None)
@@ -304,7 +327,9 @@ def test_list_commands_marks_the_entries_as_absenkung_and_merges_them_by_time(
     assert ende.entry_kind == ENTRY_KIND_SETBACK
     assert ende.simulated is False
     assert beginn.outcome == "absenkung_beginn"
-    assert beginn.reason == "Sonnenabsenkung -2,0 K: Zeitplan 20,5 °C, wirksam 18,5 °C"
+    assert beginn.reason == (
+        "Sonnenabsenkung -2,0 K: Sollwert vor Absenkung 20,5 °C, wirksam 18,5 °C"
+    )
 
 
 def test_an_outcome_filter_excludes_the_absenkung_entries(session: Session) -> None:

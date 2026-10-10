@@ -393,8 +393,10 @@ nicht gesendet", Übergabe, Rückstellung — aus `actuator_decision`, `action !
 `"entscheidung"`-Zeilen, ob sie aus dem Trockenlauf stammen.
 
 `"absenkung"` kennzeichnet einen Zustandswechsel der **Sonnenabsenkung** einer Zone — kein
-Sendeversuch, sondern der Hinweis, dass der wirksame Sollwert unter dem Zeitplan-Sollwert
-liegt (die Regelung also gegen den niedrigeren Wert arbeitet). Es gibt je Zone einen Eintrag bei
+Sendeversuch, sondern der Hinweis, dass der wirksame Sollwert unter dem Sollwert vor der Absenkung
+liegt (die Regelung also gegen den niedrigeren Wert arbeitet). Der Sollwert vor der Absenkung
+folgt außer dem Zeitplan auch einer Übersteuerung, dem Urlaub, einer Abwesenheit und der
+Betriebsart Aus; der Text nennt ihn deshalb nicht „Zeitplan". Es gibt je Zone einen Eintrag bei
 Beginn, bei Änderung des Betrags und bei Ende, nicht je Regelzyklus. Abgeleitet wird er
 aus aufeinanderfolgenden Schattenentscheidungen derselben Zone
 (`shadow_decision.solar_setback_k` und `scheduled_setpoint_c`); Zeilen aus der Zeit vor
@@ -407,7 +409,7 @@ der Migration `f6c3a8d19b42` tragen diese Angaben nicht und erzeugen keine Eintr
 {"id": 570123, "sent_at": "2026-10-09T06:12:01Z", "source": "sonnenabsenkung",
  "zone": "wohnzimmer", "device": "", "command": "sonnenabsenkung", "payload": "",
  "outcome": "absenkung_beginn", "error": null,
- "reason": "Sonnenabsenkung -2,0 K: Zeitplan 20,5 °C, wirksam 18,5 °C",
+ "reason": "Sonnenabsenkung -2,0 K: Sollwert vor Absenkung 20,5 °C, wirksam 18,5 °C",
  "entry_kind": "absenkung", "simulated": false}
 ```
 

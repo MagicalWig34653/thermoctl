@@ -51,6 +51,13 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ### Behoben
 
+- **Text des Schaltprotokoll-Eintrags der Sonnenabsenkung korrigiert.** Er sagte „Sonnenabsenkung
+  -2,0 K: Zeitplan 20,5 °C, wirksam 18,5 °C"; der Wert ist aber der Sollwert vor der Absenkung und
+  folgt auch einer Übersteuerung, dem Urlaub, einer Abwesenheit und der Betriebsart Aus. Jetzt
+  heißt es „Sonnenabsenkung -2,0 K: Sollwert vor Absenkung 20,5 °C, wirksam 18,5 °C" (ebenso bei
+  „geändert auf …"); der Hinweistext der Seite Schaltprotokoll, `docs/api.md` und `docs/mcp.md` sind
+  nachgezogen. Die Texte werden beim Lesen erzeugt, die Korrektur gilt deshalb auch für ältere
+  Einträge; gespeicherte Daten und Zahlen ändern sich nicht.
 - **Beschriftung korrigiert: „Zeitplan-Soll" im Temperaturverlauf der Anlagensicht heißt jetzt
   „Sollwert vor Sonnenabsenkung".** Die Linie zeigt den Sollwert, bevor die Sonnenabsenkung
   ihn senkt; der folgt außer dem Zeitplan auch einer Übersteuerung (Boost), dem Urlaub, einer

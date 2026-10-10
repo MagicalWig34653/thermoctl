@@ -215,13 +215,30 @@ def test_absenkung_entries_are_shown_with_kind_text_and_labels(
     response = client_als([("audit.read", None)]).get("/device-commands?zone=sonnenzimmer")
     assert response.status_code == 200
     assert ">Absenkung<" in response.text
-    assert "Sonnenabsenkung -2,0 K: Zeitplan 20,5 °C, wirksam 18,5 °C" in response.text
+    assert (
+        "Sonnenabsenkung -2,0 K: Sollwert vor Absenkung 20,5 °C, wirksam 18,5 °C" in response.text
+    )
     assert "Sonnenabsenkung beendet: wirksam wieder 20,5 °C" in response.text
     assert "Absenkung beginnt" in response.text
     assert "Absenkung beendet" in response.text
     assert "Regelung (Sonnenabsenkung)" in response.text
     # Kein Gerät beteiligt: Platzhalter statt leerer Zelle.
     assert re.search(r'data-label="Gerät">\s*–\s*</td>', response.text)
+
+
+def test_the_page_does_not_call_the_value_before_the_setback_a_schedule(
+    client_als, session: Session
+) -> None:
+    """Der Hinweistext der Seite und die Einträge sagen "Sollwert vor Absenkung" -- der
+    Wert folgt auch einer Übersteuerung oder Abwesenheit, nicht nur dem Zeitplan."""
+    create_settings(session)
+    _absenkung(session, "sonnenzimmer-wortlaut")
+    page = client_als([("audit.read", None)]).get("/device-commands?zone=sonnenzimmer-wortlaut")
+    assert page.status_code == 200
+    assert "Sollwert vor Absenkung 20,5 °C, wirksam 18,5 °C" in page.text
+    assert "Zeitplan-Sollwert" not in page.text
+    assert "niedrigeren Wert als den Zeitplan" not in page.text
+    assert "Zeitplan 20,5 °C" not in page.text
 
 
 def test_absenkung_entries_need_audit_read_like_every_other_entry(
@@ -240,7 +257,7 @@ def test_the_outcome_filter_hides_absenkung_entries(client_als, session: Session
     _entry(session, device_name="ausgefuehrtes-ventil", outcome_code="executed")
     response = client_als([("audit.read", None)]).get("/device-commands?outcome=executed")
     assert "ausgefuehrtes-ventil" in response.text
-    assert "Zeitplan 20,5 °C, wirksam" not in response.text
+    assert "Sollwert vor Absenkung 20,5 °C, wirksam" not in response.text
     assert "wirksam wieder" not in response.text
 
 
@@ -260,7 +277,9 @@ def test_the_zone_filter_offers_a_zone_that_only_has_absenkung_entries(
     assert '<option value="Wohnzimmer"' in page.text
 
     filtered = client.get("/device-commands", params={"zone": zone.display_name})
-    assert "Sonnenabsenkung -2,0 K: Zeitplan 20,5 °C, wirksam 18,5 °C" in filtered.text
+    assert (
+        "Sonnenabsenkung -2,0 K: Sollwert vor Absenkung 20,5 °C, wirksam 18,5 °C" in filtered.text
+    )
     assert "anderes-ventil" not in filtered.text
     assert f'<option value="{zone.display_name}" selected' in filtered.text
 

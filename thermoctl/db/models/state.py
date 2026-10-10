@@ -216,7 +216,7 @@ class ShadowDecision(Base):
     # `c1a4e9d872b3`).
     setpoint_reason: Mapped[str] = mapped_column(Text, nullable=False)
     # Die Sonnenabsenkung als eigene Angabe statt nur im Fließtext von `setpoint_reason`:
-    # der Sollwert vor der Absenkung (immer, wenn ein Zeitplan-Sollwert vorlag) und die
+    # der Sollwert vor der Absenkung (immer, wenn ein Sollwert vorlag) und die
     # angewandte Absenkung in Kelvin (nur bei greifender Absenkung, sonst NULL). Zeilen
     # aus der Zeit davor bleiben NULL -- sie werden bewusst nicht aus dem Text geraten.
     scheduled_setpoint_c: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), nullable=True)
