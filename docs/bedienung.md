@@ -365,10 +365,34 @@ letzten 24 Stunden, 3 Tage oder 7 Tage. Blau ist die gemessene Temperatur, die d
 gelbbraune Linie der Zeitplan-Sollwert, die gestrichelte violette Linie der wirksame
 Sollwert. Ein grünes Band mit Balken am oberen Rand und Angabe der Absenkung markiert die
 Sonnenabsenkung; so ist sofort zu sehen, wann der wirksame Sollwert unter dem Zeitplan lag.
+Wechselt der Betrag innerhalb eines Bandes, steht der Bereich („1,5 bis 2,0 K"), nicht nur
+der Höchstwert.
+
+Das Diagramm zeichnet nur, was protokollierte Zeilen belegen. Jede Zeile gilt für ihren
+Zyklus (bis zur nächsten Zeile, höchstens 90 Sekunden). Sonnenband, unbekannter Bereich und
+Heizspur bestehen aus genau diesen Zeitspannen und werden weder verbreitert noch über
+Pausen hinweg zusammengezogen; Sollwertlinien verbinden Zeilen bis 10 Minuten Abstand und
+enden am letzten Wert. Ist eine Absenkung kürzer als ein Bildpunkt der Zeichnung (bei
+7 Tagen entspricht einer rund 11 Minuten), erscheint statt eines Bandes ein kleines
+Dreieck über der Zeichnung. Es zeigt nur, dass dort etwas liegt, und behauptet keine Dauer.
+
 Die orangen Striche in der schmalen Spur unter der Zeichnung zeigen, wann Heizanforderung
-bestand; je dichter, desto häufiger in diesem Abschnitt. Die Zeitachse steht in der
-eingestellten Zeitzone auf runden Stunden, an Mitternacht mit Wochentag und Datum. Wo keine
-Daten vorliegen (Neustart, Ausfall), bleiben die Linien unterbrochen; ein Hinweis unter dem
-Diagramm nennt dann die erfasste Zeit und den letzten Wert. Mit **Vollbild** lässt sich die
-Karte vergrößern; **Schließen** oder Escape führt zurück. Ältere Protokollzeilen ohne Angaben
-zur Sonnenabsenkung zeigen nur den damals gespeicherten wirksamen Sollwert.
+bestand; je blasser, desto seltener in diesem Abschnitt. Gefärbt ist nur die Zeit, für die
+Zeilen vorliegen. Die Zeitachse steht in der eingestellten Zeitzone auf runden Stunden, an
+Mitternacht mit Wochentag und Datum.
+
+Die blaue Linie ist verdichtet: Sie zeigt den Mittelwert je Abschnitt (die Legende nennt
+seine Länge, bei 24 Stunden rund 2, bei 7 Tagen rund 17 Minuten), der hellblaue Bereich
+darum den kleinsten bis größten gemessenen Wert, damit kurze Ausschläge sichtbar bleiben. „Ist" in der Legende
+ist die letzte tatsächliche Messung mit Uhrzeit. Liegen zwischen zwei Zeilen mehr als
+**10 Minuten** (Neustart, Ausfall), bleiben Istkurve und Sollwertlinien unterbrochen, in
+jedem Zeitraum gleich und auch dann, wenn die Lücke mitten in einem verdichteten
+Abschnitt liegt. Ein Hinweis unter dem Diagramm nennt dann die erfasste Zeit und den
+letzten Wert. Mit **Vollbild** lässt sich die Karte vergrößern; **Schließen** oder Escape
+führt zurück.
+
+Ältere Protokollzeilen (aus der Zeit vor der Aufzeichnung von Zeitplan-Sollwert und
+Absenkung) tragen dazu keine Aussage. Sie erscheinen als schraffierter Bereich „Absenkung
+unbekannt (vor der Aufzeichnung)"; dort fehlt die Zeitplan-Linie, und der wirksame Sollwert
+ist der damals gespeicherte. Das heißt ausdrücklich nicht, dass es keine Absenkung gab. Die
+Zusammenfassung nennt die Dauer dieser unbekannten Zeit.

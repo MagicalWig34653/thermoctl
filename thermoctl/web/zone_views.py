@@ -17,10 +17,16 @@ from thermoctl.domain.zone_history_chart import (
     LAYOUTS,
     WINDOWS,
     chart_for_zone,
+    has_short_bands,
+    heat_cells_for,
     line_path,
+    range_path,
+    solar_bands_for,
+    solar_marks_for,
     step_path,
     tick_x,
     ticks_for,
+    unknown_bands_for,
     x_position,
     y_position,
 )
@@ -200,8 +206,9 @@ def _history_context(session: Session, zone_id: int, period: str) -> dict[str, o
     setting = session.get(Setting, 1)
     timezone_name = setting.timezone if setting is not None else None
     now = datetime.now(UTC).replace(tzinfo=None)
+    chart = chart_for_zone(session, zone_id, period, now, timezone_name)
     return {
-        "chart": chart_for_zone(session, zone_id, period, now, timezone_name),
+        "chart": chart,
         "period": period,
         "layouts": LAYOUTS,
         "xpos": x_position,
@@ -210,6 +217,12 @@ def _history_context(session: Session, zone_id: int, period: str) -> dict[str, o
         "ticks_for": ticks_for,
         "line": line_path,
         "steps": step_path,
+        "range_path": range_path,
+        "solar_bands_for": solar_bands_for,
+        "solar_marks_for": solar_marks_for,
+        "unknown_bands_for": unknown_bands_for,
+        "heat_cells_for": heat_cells_for,
+        "short_bands": has_short_bands(chart),
     }
 
 

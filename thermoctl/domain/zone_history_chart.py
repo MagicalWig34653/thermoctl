@@ -64,39 +64,51 @@ class Sample:
     effective: float | None
     scheduled: float | None
     heat: bool
-    solar_k: float = 0.0
-
-    @property
-    def solar(self) -> bool:
-        return self.solar_k > 0
+    # None = unbekannt: Zeilen aus der Zeit vor der Aufzeichnung tragen keine Aussage über die
+    # Absenkung. 0.0 heißt dagegen belegt: keine Absenkung.
+    solar_k: float | None = 0.0
 
 
 @dataclass(frozen=True)
 class Point:
-    at: datetime
-    temperature: float | None
-    effective: float | None
-    scheduled: float | None
-    heat_share: float
-    solar: bool
+    """Ein Abschnitt zusammenhängender Messzeilen innerhalb eines Buckets."""
+
+    at: datetime  # Mitte zwischen erster und letzter Messzeile
+    first: datetime
+    last: datetime
+    temperature: float  # Mittelwert des Abschnitts
+    low: float
+    high: float
+    joined: bool  # lückenlos (höchstens GAP) an den vorigen Abschnitt angeschlossen
+
+
+# (von, bis, Stufe 1..4): Anteil der Zyklen mit Heizanforderung, in Viertel gestuft.
+HeatCell = tuple[datetime, datetime, int]
+# (von, bis, kleinste Absenkung in K, größte Absenkung in K)
+SolarBand = tuple[datetime, datetime, float, float]
 
 
 @dataclass(frozen=True)
 class Chart:
+    has_data: bool
     points: tuple[Point, ...]
-    # (von, bis, Stufe 1..4): Anteil der Zyklen mit Heizanforderung, in Viertel gestuft.
-    heat_lane: tuple[tuple[datetime, datetime, int], ...]
-    # (von, bis, größte Absenkung in K)
-    solar_bands: tuple[tuple[datetime, datetime, float], ...]
+    heat_lane: tuple[HeatCell, ...]
+    solar_bands: tuple[SolarBand, ...]
+    # (von, bis): Zeilen ohne Aussage über die Absenkung (vor der Aufzeichnung)
+    unknown_bands: tuple[tuple[datetime, datetime], ...]
     effective_runs: tuple[Run, ...]
     scheduled_runs: tuple[Run, ...]
     start: datetime
     end: datetime
     data_end: datetime
-    gap_seconds: float
+    bucket_seconds: float
     minimum: float
     maximum: float
     summary: str
+    actual_text: str
+    scheduled_text: str
+    effective_text: str
+    bucket_text: str
     ticks: tuple[tuple[float, str], ...]
     sparse_ticks: tuple[tuple[float, str], ...]
     y_ticks: tuple[tuple[float, str], ...]
@@ -126,11 +138,12 @@ def read_samples(session: Session, zone_id: int, start: datetime, end: datetime)
             at,
             _float(temp),
             _float(effective),
-            # Zeilen aus der Zeit vor der Spalte `scheduled_setpoint_c` kennen keinen
-            # Zeitplan-Sollwert; dort galt der wirksame Soll, eine Absenkung gab es nicht.
-            _float(scheduled) if scheduled is not None else _float(effective),
+            # Zeilen aus der Zeit vor der Spalte `scheduled_setpoint_c` kennen weder den
+            # Zeitplan-Sollwert noch die Absenkung. Beides bleibt unbekannt: weder wird der
+            # wirksame Soll als Zeitplan-Soll ausgegeben noch "keine Absenkung" behauptet.
+            _float(scheduled),
             heat,
-            float(solar) if solar is not None and solar > 0 else 0.0,
+            None if scheduled is None and solar is None else _solar_value(solar),
         )
         for at, temp, effective, scheduled, heat, solar in rows
     ]
@@ -138,6 +151,10 @@ def read_samples(session: Session, zone_id: int, start: datetime, end: datetime)
 
 def _float(value: Decimal | None) -> float | None:
     return float(value) if value is not None else None
+
+
+def _solar_value(value: Decimal | None) -> float:
+    return float(value) if value is not None and value > 0 else 0.0
 
 
 def _runs(samples: list[Sample], pick: Callable[[Sample], float | None]) -> tuple[Run, ...]:
@@ -205,105 +222,115 @@ def _duration_text(hours: float) -> str:
     return f"{max(1, round(hours * 60))} Minuten"
 
 
+def _minutes_text(seconds: float) -> str:
+    if seconds < 120:
+        return f"{round(seconds)} Sekunden"
+    return f"{round(seconds / 60)} Minuten"
+
+
+def _k_text(low: float, high: float) -> str:
+    """Betrag der Absenkung: ein Wert, oder der Bereich, wenn er sich im Band geändert hat."""
+    low_text, high_text = f"{low:.1f}".replace(".", ","), f"{high:.1f}".replace(".", ",")
+    return f"{low_text} K" if low_text == high_text else f"{low_text} bis {high_text} K"
+
+
+def _merge_touching(
+    intervals: list[tuple[datetime, datetime, float]],
+) -> list[SolarBand]:
+    """Fügt Zeitspannen zusammen, die sich genau berühren; ein Abstand bleibt ein Abstand."""
+    merged: list[SolarBand] = []
+    for first, last, k in intervals:
+        if merged and merged[-1][1] == first:
+            previous = merged[-1]
+            merged[-1] = (previous[0], last, min(previous[2], k), max(previous[3], k))
+        else:
+            merged.append((first, last, k, k))
+    return merged
+
+
 def build_chart(
     samples: list[Sample], start: datetime, end: datetime, timezone_name: str | None
 ) -> Chart:
-    """Berechnet Buckets, exakte Sollwertläufe und Zustandsbänder ohne HTTP."""
-    # Die Istkurve hat höchstens 600 Buckets; Sollwertläufe und Sonnenbänder bleiben
-    # davon unberührt und werden aus den einzelnen Zeilen gebildet.
+    """Berechnet Abschnitte, exakte Sollwertläufe und Zustandsbänder ohne HTTP.
+
+    Gezeichnet wird nur, was Zeilen belegen. Eine Zeile gilt für ihren Zyklus (bis zur
+    nächsten Zeile, höchstens CYCLE_LIMIT); alles, was Zeitspannen färbt -- Sonnenband,
+    unbekannte Absenkung, Heizspur --, besteht aus solchen Zeitspannen und nie aus mehr.
+    Verdichtet wird nur die Istkurve (Mittelwert je Abschnitt), und das ist beschriftet.
+    """
     width = (end - start).total_seconds() / MAX_POINTS
-    buckets: dict[int, list[Sample]] = {}
+    buckets: dict[int, list[int]] = {}
     solar_intervals: list[tuple[datetime, datetime, float]] = []
+    unknown_intervals: list[tuple[datetime, datetime, float]] = []
+    ends: list[datetime] = []
     covered_seconds = 0.0
     heat_seconds = 0.0
+    unknown_seconds = 0.0
     for index, sample in enumerate(samples):
         bucket_index = min(MAX_POINTS - 1, int((sample.at - start).total_seconds() / width))
-        buckets.setdefault(bucket_index, []).append(sample)
+        buckets.setdefault(bucket_index, []).append(index)
         next_at = samples[index + 1].at if index + 1 < len(samples) else end
-        interval_end = min(end, next_at, sample.at + CYCLE_LIMIT)
+        interval_end = max(sample.at, min(end, next_at, sample.at + CYCLE_LIMIT))
+        ends.append(interval_end)
         if interval_end > sample.at:
             seconds = (interval_end - sample.at).total_seconds()
             covered_seconds += seconds
             if sample.heat:
                 heat_seconds += seconds
-            if sample.solar:
+            if sample.solar_k is None:
+                unknown_seconds += seconds
+                unknown_intervals.append((sample.at, interval_end, 0.0))
+            elif sample.solar_k > 0:
                 solar_intervals.append((sample.at, interval_end, sample.solar_k))
     effective_runs = _runs(samples, lambda s: s.effective)
     scheduled_runs = _runs(samples, lambda s: s.scheduled)
-    points = tuple(
-        Point(
-            at=items[-1].at,
-            temperature=(sum(temps) / len(temps))
-            if (temps := [item.temperature for item in items if item.temperature is not None])
-            else None,
-            effective=items[-1].effective,
-            scheduled=items[-1].scheduled,
-            heat_share=sum(item.heat for item in items) / len(items),
-            solar=any(item.solar for item in items),
-        )
-        for _, items in sorted(buckets.items())
-    )
-    # Der Wertebereich kommt aus den Läufen, nicht aus den Buckets: Ein kurzer
-    # Sollwert, der in keinem Bucket der letzte ist, darf nicht aus dem Bild laufen.
-    values = [point.temperature for point in points if point.temperature is not None]
+    points = _points(samples, buckets)
+    # Der Wertebereich kommt aus den Extremwerten und den Läufen, nicht aus den Mittelwerten:
+    # Ein kurzer Ausschlag oder Sollwert darf nicht aus dem Bild laufen.
+    values = [point.low for point in points] + [point.high for point in points]
     values += [value for _, _, value in effective_runs + scheduled_runs]
     minimum = floor(min(values) - 0.4) if values else 18
     maximum = ceil(max(values) + 0.4) if values else 21
     if maximum - minimum < 2:
         maximum = minimum + 2
-    # Heizspur: aufeinanderfolgende Buckets gleicher Stufe zu einem Strich zusammenfassen.
-    lane: list[list[int]] = []
-    for index, items in sorted(buckets.items()):
-        share = sum(item.heat for item in items) / len(items)
-        if share > 0:
-            level = ceil(share * 4)
-            if lane and lane[-1][1] == index - 1 and lane[-1][2] == level:
-                lane[-1][1] = index
-            else:
-                lane.append([index, index, level])
-    heat_lane = tuple(
-        (
-            start + timedelta(seconds=first * width),
-            start + timedelta(seconds=(last + 1) * width),
-            level,
-        )
-        for first, last, level in lane
-    )
-    # Sonnenabsenkung aus den einzelnen Zeilen: nichts geht verloren, auch keine kurze
-    # Phase. Lücken von höchstens einem Bucket werden zugezogen, damit das Band
-    # beschränkt bleibt (höchstens 600) und nicht pro Zyklus zerfällt.
-    merged: list[tuple[datetime, datetime, float]] = []
-    for first, last, k in solar_intervals:
-        if merged and (first - merged[-1][1]).total_seconds() <= width:
-            merged[-1] = (merged[-1][0], max(last, merged[-1][1]), max(k, merged[-1][2]))
-        else:
-            merged.append((first, last, k))
+    heat_lane = _heat_lane(samples, ends, buckets)
+    solar_bands = tuple(_merge_touching(solar_intervals))
+    unknown_bands = tuple((a, b) for a, b, _, _ in _merge_touching(unknown_intervals))
     data_end = samples[-1].at if samples else start
     stale = bool(samples) and end - data_end > STALE_AFTER
-    if samples:
-        measured = [sample.temperature for sample in samples if sample.temperature is not None]
+    measured = [(s.at, s.temperature) for s in samples if s.temperature is not None]
+    latest = samples[-1] if samples else None
+    if samples and latest is not None:
         parts = [
-            f"Ist {temperature_text(Decimal(str(min(measured))))} bis "
-            f"{temperature_text(Decimal(str(max(measured))))}."
+            f"Ist {temperature_text(Decimal(str(min(t for _, t in measured))))} bis "
+            f"{temperature_text(Decimal(str(max(t for _, t in measured))))}."
             if measured
             else "Kein Istwert."
         ]
-        latest = samples[-1]
         if latest.scheduled is not None and latest.effective is not None:
             parts.append(
                 f"Zuletzt Zeitplan-Soll {temperature_text(Decimal(str(latest.scheduled)))}, "
                 f"wirksamer Soll {temperature_text(Decimal(str(latest.effective)))}."
             )
+        elif latest.effective is not None:
+            parts.append(
+                f"Zuletzt wirksamer Soll {temperature_text(Decimal(str(latest.effective)))} "
+                "(Zeitplan-Soll unbekannt)."
+            )
         if covered_seconds > 0:
             parts.append(
                 f"Heizanforderung {heat_seconds / covered_seconds * 100:.0f} % der erfassten Zeit."
             )
-        solar_hours = sum((b - a).total_seconds() for a, b, _ in solar_intervals) / 3600
-        parts.append(
-            f"Sonnenabsenkung {_duration_text(solar_hours)}."
-            if solar_hours > 0
-            else "Keine Sonnenabsenkung."
-        )
+        solar_hours = sum((b - a).total_seconds() for a, b, *_ in solar_bands) / 3600
+        if solar_hours > 0:
+            parts.append(f"Sonnenabsenkung {_duration_text(solar_hours)}.")
+        elif covered_seconds - unknown_seconds > 0:
+            parts.append("Keine Sonnenabsenkung.")
+        if unknown_seconds > 0:
+            parts.append(
+                f"Absenkung für {_duration_text(unknown_seconds / 3600)} "
+                "unbekannt (vor der Aufzeichnung)."
+            )
         window_hours = (end - start).total_seconds() / 3600
         if covered_seconds / 3600 < window_hours * 0.9:
             parts.append(
@@ -315,27 +342,125 @@ def build_chart(
         summary = " ".join(parts)
     else:
         summary = "Keine Verlaufsdaten im gewählten Zeitraum."
+    if measured:
+        measured_at, measured_value = measured[-1]
+        local_at = local_time(measured_at, timezone_name)
+        same_day = local_at.date() == local_time(end, timezone_name).date()
+        stamp = f"{local_at:%H:%M}" if same_day else f"{local_at:%d.%m. %H:%M}"
+        actual_text = (
+            f"{temperature_text(Decimal(str(measured_value)))} (letzte Messung {stamp} Uhr)"
+        )
+    else:
+        actual_text = "keine Messung"
     ticks = _round_ticks(start, end, timezone_name, _tick_step(end - start))
     y_step = 1 if maximum - minimum <= 8 else 2
     y_ticks = tuple((float(v), f"{v} °C") for v in range(minimum, maximum + 1, y_step))
     return Chart(
+        has_data=bool(samples),
         points=points,
         heat_lane=heat_lane,
-        solar_bands=tuple(merged),
+        solar_bands=solar_bands,
+        unknown_bands=unknown_bands,
         effective_runs=effective_runs,
         scheduled_runs=scheduled_runs,
         start=start,
         end=end,
         data_end=data_end,
-        gap_seconds=max(GAP.total_seconds(), 3 * width),
+        bucket_seconds=width,
         minimum=float(minimum),
         maximum=float(maximum),
         summary=summary,
+        actual_text=actual_text,
+        scheduled_text=_setpoint_text(latest.scheduled if latest else None),
+        effective_text=_setpoint_text(latest.effective if latest else None),
+        bucket_text=_minutes_text(width),
         ticks=ticks,
         sparse_ticks=ticks[::2],
         y_ticks=y_ticks,
         stale=stale,
     )
+
+
+def _setpoint_text(value: float | None) -> str:
+    return temperature_text(Decimal(str(value))) if value is not None else "unbekannt"
+
+
+def _points(samples: list[Sample], buckets: dict[int, list[int]]) -> tuple[Point, ...]:
+    """Mittelwert, kleinster und größter Wert je Abschnitt zusammenhängender Messzeilen.
+
+    Ein Bucket kann zwei Abschnitte enthalten, wenn mitten darin Daten fehlten: sie werden
+    nicht zu einem Wert zusammengezogen, und die Kurve verbindet nur Abschnitte, deren
+    Zeilen höchstens GAP auseinanderliegen.
+    """
+    points: list[Point] = []
+    for _, indices in sorted(buckets.items()):
+        sections: list[list[Sample]] = []
+        for index in indices:
+            sample = samples[index]
+            if sample.temperature is None:
+                continue
+            if sections and sample.at - sections[-1][-1].at <= GAP:
+                sections[-1].append(sample)
+            else:
+                sections.append([sample])
+        for section in sections:
+            temperatures = [s.temperature for s in section if s.temperature is not None]
+            first, last = section[0].at, section[-1].at
+            joined = bool(points) and first - points[-1].last <= GAP
+            points.append(
+                Point(
+                    at=first + (last - first) / 2,
+                    first=first,
+                    last=last,
+                    temperature=sum(temperatures) / len(temperatures),
+                    low=min(temperatures),
+                    high=max(temperatures),
+                    joined=joined,
+                )
+            )
+    return tuple(points)
+
+
+@dataclass
+class _Cell:
+    first: datetime
+    last: datetime
+    cycles: int = 0
+    heating: int = 0
+
+
+def _heat_lane(
+    samples: list[Sample], ends: list[datetime], buckets: dict[int, list[int]]
+) -> tuple[HeatCell, ...]:
+    """Heizspur: Zeitspannen der Zeilen, gestuft nach dem Anteil der Zyklen mit Anforderung.
+
+    Eine Zelle reicht von der ersten Zeile bis zum Ende der letzten Zeile eines
+    zusammenhängenden Stücks innerhalb eines Buckets -- nicht über den ganzen Bucket.
+    """
+    cells: list[_Cell] = []
+    for _, indices in sorted(buckets.items()):
+        current: _Cell | None = None
+        for index in indices:
+            sample = samples[index]
+            if ends[index] <= sample.at:
+                continue
+            if current is not None and current.last == sample.at:
+                current.last = ends[index]
+            else:
+                current = _Cell(sample.at, ends[index])
+                cells.append(current)
+            current.cycles += 1
+            current.heating += 1 if sample.heat else 0
+    lane: list[HeatCell] = []
+    for cell in cells:
+        if cell.heating == 0:
+            continue
+        level = ceil(cell.heating / cell.cycles * 4)
+        if lane and lane[-1][1] == cell.first and lane[-1][2] == level:
+            lane[-1] = (lane[-1][0], cell.last, level)
+        else:
+            lane.append((cell.first, cell.last, level))
+    return tuple(lane)
 
 
 def chart_for_zone(
@@ -347,9 +472,19 @@ def chart_for_zone(
     return build_chart(read_samples(session, zone_id, start, now), start, now, timezone_name)
 
 
-def x_position(at: datetime, chart: Chart, layout: Layout) -> float:
+def _x_exact(at: datetime, chart: Chart, layout: Layout) -> float:
     fraction = (at - chart.start).total_seconds() / (chart.end - chart.start).total_seconds()
-    return round(layout.left + (layout.right - layout.left) * fraction, 1)
+    return layout.left + (layout.right - layout.left) * fraction
+
+
+def x_position(at: datetime, chart: Chart, layout: Layout) -> float:
+    return round(_x_exact(at, chart, layout), 1)
+
+
+def _span(first: datetime, last: datetime, chart: Chart, layout: Layout) -> tuple[float, float]:
+    """Lage und Breite einer Zeitspanne, ungerundet genug, dass kurze Spannen nicht wachsen."""
+    x = _x_exact(first, chart, layout)
+    return round(x, 2), round(_x_exact(last, chart, layout) - x, 2)
 
 
 def y_position(value: float, chart: Chart, layout: Layout) -> float:
@@ -366,40 +501,124 @@ def ticks_for(chart: Chart, layout: Layout) -> tuple[tuple[float, str], ...]:
 
 
 def line_path(chart: Chart, layout: Layout) -> str:
-    """Istkurve; bricht bei fehlendem Messwert und bei Datenlücken ab."""
+    """Istkurve (Mittelwert je Abschnitt); bricht bei jeder Lücke über GAP ab."""
     segments: list[list[tuple[float, float]]] = []
-    previous: Point | None = None
     for point in chart.points:
-        if point.temperature is None:
-            previous = None
-            continue
-        broken = previous is None or (point.at - previous.at).total_seconds() > chart.gap_seconds
         xy = (x_position(point.at, chart, layout), y_position(point.temperature, chart, layout))
-        if broken:
-            segments.append([xy])
-        else:
+        if point.joined and segments:
             segments[-1].append(xy)
-        previous = point
+        else:
+            segments.append([xy])
     parts: list[str] = []
     for segment in segments:
-        if len(segment) == 1:  # ein einzelner Wert wird als kurzer Strich sichtbar
-            segment.append((segment[0][0] + 0.4, segment[0][1]))
+        if len(segment) == 1:  # ein einzelner Wert: Punkt (runde Linienenden), ohne Zeitbreite
+            segment.append(segment[0])
         parts.append(
             " ".join(f"{'M' if i == 0 else 'L'}{x:.1f},{y:.1f}" for i, (x, y) in enumerate(segment))
         )
     return " ".join(parts)
 
 
+def range_path(chart: Chart, layout: Layout) -> str:
+    """Kleinster bis größter Wert je Abschnitt, nur zwischen lückenlos verbundenen Abschnitten."""
+    chains: list[list[Point]] = []
+    for point in chart.points:
+        if point.joined and chains:
+            chains[-1].append(point)
+        else:
+            chains.append([point])
+    parts: list[str] = []
+    for chain in chains:
+        if len(chain) < 2 or all(point.low == point.high for point in chain):
+            continue
+        xs = [x_position(p.at, chart, layout) for p in chain]
+        upper = [(x, y_position(p.high, chart, layout)) for x, p in zip(xs, chain, strict=True)]
+        lower = [(x, y_position(p.low, chart, layout)) for x, p in zip(xs, chain, strict=True)]
+        outline = upper + lower[::-1]
+        parts.append(
+            " ".join(f"{'M' if i == 0 else 'L'}{x:.1f},{y:.1f}" for i, (x, y) in enumerate(outline))
+            + " Z"
+        )
+    return " ".join(parts)
+
+
 def step_path(runs: tuple[Run, ...], chart: Chart, layout: Layout) -> str:
-    """Sollwertstufen: waagerecht je Lauf, senkrecht nur beim Wechsel ohne Datenlücke."""
+    """Sollwertstufen: waagerecht je Lauf, senkrecht nur beim Wechsel ohne Datenlücke.
+
+    Ein Lauf aus einer einzigen Zeile ist ein Punkt; er wird nicht verbreitert.
+    """
     parts: list[str] = []
     previous_end: datetime | None = None
     for first, last, value in runs:
         y = y_position(value, chart, layout)
-        x2 = max(x_position(last, chart, layout), x_position(first, chart, layout) + 0.4)
+        x2 = x_position(last, chart, layout)
         if previous_end == first:
             parts.append(f"V{y:.1f} H{x2:.1f}")
         else:
             parts.append(f"M{x_position(first, chart, layout):.1f},{y:.1f} H{x2:.1f}")
         previous_end = last
     return " ".join(parts)
+
+
+# Ein Band, das schmaler ist, bekommt zusätzlich eine Markierung über der Zeichnung; ein Band,
+# das schmaler als MIN_DRAWN ist, wird nur durch diese Markierung angezeigt. Beides ist
+# Darstellung (Hinweis, dass hier etwas liegt) und behauptet keine Zeit.
+MARK_BELOW = 3.0
+MIN_DRAWN = 0.25
+
+
+@dataclass(frozen=True)
+class Band:
+    x: float
+    width: float
+    label: str
+
+
+def _fits(label: str, width: float, layout: Layout) -> bool:
+    return width >= layout.solar_label_min_width * len(label) / 21
+
+
+def solar_bands_for(chart: Chart, layout: Layout) -> tuple[Band, ...]:
+    """Sonnenbänder dieser Zeichnung: exakt die Zeitspannen der Zeilen mit Absenkung."""
+    bands: list[Band] = []
+    for first, last, low, high in chart.solar_bands:
+        x, width = _span(first, last, chart, layout)
+        if width < MIN_DRAWN:
+            continue
+        label = f"Sonnenabsenkung {_k_text(low, high)}"
+        bands.append(Band(x, width, label if _fits(label, width, layout) else ""))
+    return tuple(bands)
+
+
+def solar_marks_for(chart: Chart, layout: Layout) -> tuple[float, ...]:
+    """Lagen der Markierungen für Bänder, die als Fläche zu schmal wären (je Bildpunkt eine)."""
+    marks: set[int] = set()
+    for first, last, _, _ in chart.solar_bands:
+        x, width = _span(first, last, chart, layout)
+        if width < MARK_BELOW:
+            marks.add(round(x + width / 2))
+    return tuple(float(x) for x in sorted(marks))
+
+
+def has_short_bands(chart: Chart) -> bool:
+    """Ob in irgendeiner Zeichnung ein Band nur als Markierung erscheint (für die Legende)."""
+    coarsest = min(layout.right - layout.left for layout in LAYOUTS)
+    limit = MARK_BELOW * (chart.end - chart.start).total_seconds() / coarsest
+    return any((last - first).total_seconds() < limit for first, last, _, _ in chart.solar_bands)
+
+
+def unknown_bands_for(chart: Chart, layout: Layout) -> tuple[Band, ...]:
+    """Bereiche ohne Aussage über die Absenkung; sie bleiben sichtbar, auch wenn sie schmal sind."""
+    label = "Absenkung unbekannt"
+    bands: list[Band] = []
+    for first, last in chart.unknown_bands:
+        x, width = _span(first, last, chart, layout)
+        bands.append(Band(x, width, label if _fits(label, width, layout) else ""))
+    return tuple(bands)
+
+
+def heat_cells_for(chart: Chart, layout: Layout) -> tuple[tuple[float, float, int], ...]:
+    """Heizspur dieser Zeichnung als (x, Breite, Stufe); die Breite ist die der Zeilen."""
+    return tuple(
+        (*_span(first, last, chart, layout), level) for first, last, level in chart.heat_lane
+    )

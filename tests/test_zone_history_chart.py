@@ -17,6 +17,8 @@ from thermoctl.domain.zone_history_chart import (
     build_chart,
     chart_for_zone,
     line_path,
+    solar_bands_for,
+    solar_marks_for,
     step_path,
     tick_x,
     ticks_for,
@@ -141,7 +143,11 @@ def test_solar_band_has_exact_edges_and_the_largest_setback() -> None:
     ]
     samples[30] = _sample(samples[30].at, solar_k=3.5)
     chart = build_chart(samples, start, start + timedelta(hours=24), BERLIN)
-    assert chart.solar_bands == ((samples[20].at, samples[39].at + timedelta(seconds=60), 3.5),)
+    # Ein Band, solange die Absenkung steht; der Betrag wechselt von 2,0 auf 3,5 K, also
+    # trägt es den Bereich, nicht nur den Höchstwert.
+    assert chart.solar_bands == (
+        (samples[20].at, samples[39].at + timedelta(seconds=60), 2.0, 3.5),
+    )
 
 
 def test_a_one_cycle_setback_survives_seven_days_of_compression() -> None:
@@ -160,32 +166,48 @@ def test_a_one_cycle_setback_survives_seven_days_of_compression() -> None:
     assert len(chart.points) <= 600
     assert len(chart.heat_lane) <= 600
     assert len(chart.solar_bands) == 1
-    first, last, k = chart.solar_bands[0]
+    first, last, low, high = chart.solar_bands[0]
     assert first == samples[5000].at and last == samples[5000].at + timedelta(seconds=37)
-    assert k == 2.0
+    assert low == high == 2.0
     assert chart.effective_runs[1][0] == samples[5000].at
 
 
-def test_solar_bands_stay_bounded_even_when_the_setback_flickers() -> None:
+def test_flickering_setback_stays_exact_and_the_drawing_stays_bounded() -> None:
     start = datetime(2026, 10, 2, 4)
     samples = [
         _sample(start + timedelta(seconds=60 * i), solar_k=(1.0 if i % 2 == 0 else 0.0))
         for i in range(9000)
     ]
     chart = build_chart(samples, start, start + timedelta(days=7), BERLIN)
-    assert len(chart.solar_bands) < 50
+    # Jede Zeile mit Absenkung ist ein eigenes Band von 60 Sekunden: nichts wird überbrückt.
+    assert len(chart.solar_bands) == 4500
+    assert all((b - a).total_seconds() == 60 for a, b, *_ in chart.solar_bands)
+    for layout in LAYOUTS:
+        # Auf der Zeichnung ist ein Band von 60 s kein Bildpunkt: nur Markierungen, höchstens
+        # eine je Bildpunkt, und keine Fläche.
+        assert solar_bands_for(chart, layout) == ()
+        assert len(solar_marks_for(chart, layout)) <= layout.right - layout.left
 
 
-def test_heat_lane_merges_equal_levels_and_marks_every_heating_bucket() -> None:
+def test_heat_lane_colours_the_time_of_the_heating_rows_and_merges_touching_equal_levels() -> None:
     start = datetime(2026, 10, 9, 0)
-    # 24 h = 600 Buckets zu je 144 s; je Bucket eine Zeile.
+    # Je Bucket (144 s) eine Zeile; ein Zyklus gilt höchstens 90 s, die Spur ebenso.
     samples = [
         _sample(start + timedelta(seconds=144 * i + 1), heat=(100 <= i < 110)) for i in range(600)
     ]
     chart = build_chart(samples, start, start + timedelta(hours=24), BERLIN)
-    assert chart.heat_lane == (
-        (start + timedelta(seconds=144 * 100), start + timedelta(seconds=144 * 110), 4),
+    assert chart.heat_lane == tuple(
+        (
+            start + timedelta(seconds=144 * i + 1),
+            start + timedelta(seconds=144 * i + 1 + 90),
+            4,
+        )
+        for i in range(100, 110)
     )
+    # Lückenlos aufeinanderfolgende Zeilen gleicher Stufe ergeben eine einzige Zelle.
+    dense = [_sample(start + timedelta(seconds=72 * i), heat=(100 <= i < 110)) for i in range(300)]
+    lane = build_chart(dense, start, start + timedelta(hours=24), BERLIN).heat_lane
+    assert lane == ((start + timedelta(seconds=7200), start + timedelta(seconds=7920), 4),)
     # Ein einzelner Heizzyklus unter vielen bleibt sichtbar (Stufe 1), verschwindet nicht.
     mixed = [_sample(start + timedelta(seconds=36 * i), heat=(i == 7)) for i in range(2400)]
     lane = build_chart(mixed, start, start + timedelta(hours=24), BERLIN).heat_lane
@@ -322,7 +344,9 @@ def test_summary_without_setback_and_without_measurement_and_without_data() -> N
 # --- Altzeilen, Datenbank -------------------------------------------------------------
 
 
-def test_old_null_columns_use_effective_value_without_solar(session: Session) -> None:
+def test_old_null_columns_keep_the_effective_value_and_leave_the_rest_unknown(
+    session: Session,
+) -> None:
     zone = create_zone(session, "altverlauf")
     row = create_shadow_decision(session, zone)
     row.decided_at = datetime.now(UTC).replace(tzinfo=None) - timedelta(minutes=5)
@@ -330,8 +354,10 @@ def test_old_null_columns_use_effective_value_without_solar(session: Session) ->
     row.setpoint_c = Decimal("20.5")
     session.flush()
     chart = chart_for_zone(session, zone.id, "24h", datetime.now(UTC).replace(tzinfo=None), BERLIN)
-    assert chart.points[0].scheduled == chart.points[0].effective == 20.5
-    assert not chart.solar_bands
+    assert [v for _, _, v in chart.effective_runs] == [20.5]
+    assert chart.scheduled_runs == ()
+    assert chart.scheduled_text == "unbekannt" and chart.effective_text == "20,5 °C"
+    assert not chart.solar_bands and len(chart.unknown_bands) == 1
 
 
 def test_database_rows_become_exact_runs_and_a_solar_band(session: Session) -> None:
@@ -457,19 +483,3 @@ def test_every_layout_draws_inside_its_own_view_box(client_als, session: Session
         for d in re.findall(r' d="([^"]*)"', body):
             for number in re.findall(r"[-\d.]+", d):
                 assert -1 <= float(number) <= max(int(width), int(height))
-
-
-def test_a_very_short_setback_is_still_drawn_at_least_two_units_wide(
-    client_als, session: Session
-) -> None:
-    zone = create_zone(session, "kurzband")
-    now = datetime.now(UTC).replace(tzinfo=None)
-    for minutes, solar in ((300, None), (299, "2.0"), (298, None)):
-        row = create_shadow_decision(session, zone)
-        row.decided_at = now - timedelta(minutes=minutes)
-        row.setpoint_c = Decimal("20.0")
-        row.solar_setback_k = Decimal(solar) if solar else None
-    session.flush()
-    html = client_als([("zone.manage", zone.id)]).get(f"/zones/{zone.id}/history?period=7d").text
-    widths = re.findall(r'<rect [^>]*width="([\d.]+)"[^>]*class="tc-history-solar"', html)
-    assert len(widths) == len(LAYOUTS) and all(float(w) >= 2 for w in widths)

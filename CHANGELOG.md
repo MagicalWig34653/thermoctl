@@ -17,9 +17,17 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
   wirksamen Sollwert, Heizanforderung und Sonnenabsenkung als Diagramm. Zeitraum 24 Stunden,
   3 oder 7 Tage, mit Vollbildansicht (auf dem Telefon hochformatig gefüllt). Die Achse ist auf
   runde Ortszeit-Stunden beschriftet, die Sonnenabsenkung als deutlich grünes Band mit Angabe
-  der Absenkung, die Heizanforderung als eigene Spur unter der Zeichnung. Sollwertlinien
-  enden am letzten Wert, Datenlücken bleiben als Lücken sichtbar. Eine Textzusammenfassung
-  (Wertebereich, Heizanforderung, Sonnenabsenkung, erfasste Zeit) steht unter dem Diagramm.
+  der Absenkung (bei wechselndem Betrag als Bereich), die Heizanforderung als eigene Spur
+  unter der Zeichnung. Gezeichnet wird nur, was Zeilen belegen: Band, Spur und Sollstufen
+  bestehen aus den Zeitspannen der Zeilen, ohne Mindestbreite und ohne Überbrückung von
+  Pausen; eine Absenkung, die kürzer als ein Bildpunkt ist, zeigt ein Dreieck über der
+  Zeichnung. Istkurve und Sollwertlinien reißen in jedem Zeitraum ab 10 Minuten ohne Zeile
+  ab. Die Istkurve ist ein beschrifteter Mittelwert je Abschnitt mit hellem Bereich für
+  kleinsten bis größten Wert; „Ist" in der Legende ist die letzte Messung mit
+  Uhrzeit. Ältere Zeilen ohne aufgezeichneten Zeitplan-Sollwert und ohne Absenkungsangabe
+  erscheinen als „Absenkung unbekannt (vor der Aufzeichnung)", nicht als „keine
+  Absenkung". Eine Textzusammenfassung (Wertebereich, Heizanforderung, Sonnenabsenkung,
+  erfasste Zeit) steht unter dem Diagramm.
 
 - **Die Sonnenabsenkung ist im Schaltprotokoll erkennbar.** Senkt sie den Sollwert einer Zone
   ab (etwa Zeitplan 20,5 °C, wirksam 18,5 °C), steht das jetzt mit Beginn, Änderung des
