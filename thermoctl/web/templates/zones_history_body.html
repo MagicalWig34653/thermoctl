@@ -13,7 +13,9 @@ Nur Darstellung, mit Vorgabe für die Anlagensicht (die Wohnungssicht setzt sie 
 
   tenant_layout  Kopf und Zeitraumwahl im Stil der Wohnungssicht (`tc-hero`, `tc-segments`),
   heading        Überschrift,
-  empty_text     Text ohne Zonen.
+  empty_text     Text ohne Zonen,
+  dry_run        nur Wohnungssicht: die Anlage ist nicht scharf -- dann steht ein Hinweis, dass der
+                 Verlauf Entscheidungen zeigt (fehlt = kein Hinweis).
 
 Die Seite enthält keine Messdaten. Jede Kachel holt ihre Karte selbst (`hx-trigger="revealed"`),
 sobald sie ins Bild kommt: so liest der Server nicht für alle Zonen auf einmal sieben Tage Zeilen.
@@ -55,19 +57,32 @@ Adresse, damit Neuladen und Verweis den Zeitraum behalten.
     {% endif %}
     {% if zones %}
     {% if tenant_layout %}
+    {% if dry_run %}
+    {#
+    Die Anlage ist nicht scharf: Zielwert und Heizanforderung stammen dann aus den Entscheidungen
+    der Regelung, nicht aus einer Schaltung. Als Text, wie auf der Seite „Heizzeit" (`armed` dort,
+    dieselbe Quelle: `Setting.control_armed`) -- ein Verlauf, den man für die tatsächliche
+    Geschichte der Räume hält, wäre schlimmer als keiner.
+    #}
+    <div class="alert alert-warning" role="status">
+        <strong>Die Anlage steuert derzeit nichts.</strong>
+        Der Verlauf zeigt, was die Regelung entschieden <em>hätte</em>: Der tatsächliche Zielwert und
+        die Heizanforderung sind Entscheidungen, keine Aufzeichnung dessen, was in den Räumen geschah.
+    </div>
+    {% endif %}
     <p class="t-quiet">
         So hat sich die Temperatur in deinen Räumen entwickelt – und welchen Zielwert{{ glossar_hilfe("sollwert") }}
         die Regelung dafür verwendet hat. Der gewählte Zeitraum gilt für alle Räume.
     </p>
     <ul class="t-quiet small tc-history-help">
         <li>Die Linie ist die gemessene Temperatur. Die Stufenlinien zeigen den Zielwert: ohne
-            Sonnenabsenkung (so, wie ihn der Zeitplan{{ glossar_hilfe("zeitplan") }}, eine Abwesenheit oder
-            eine Änderung von Hand vorgeben) und den tatsächlichen Zielwert, nach dem die Regelung
-            gearbeitet hat.</li>
+            Sonnenabsenkung (so, wie ihn der Zeitplan{{ glossar_hilfe("zeitplan") }}, eine Abwesenheit, ein
+            Urlaub, die Betriebsart Aus oder eine Änderung von Hand vorgeben) und den tatsächlichen
+            Zielwert, nach dem die Regelung gearbeitet hat.</li>
         <li>Liegt der tatsächliche Zielwert darunter, war die Sonnenabsenkung{{ glossar_hilfe("sonnenabsenkung") }}
             im Spiel (grünes Band). Wenn Sonne erwartet wird, kann die Regelung den Zielwert absenken.
             Das kann erklären, warum die Regelung noch keine Heizanforderung hatte, obwohl die Temperatur
-            unter dem Wert des Zeitplans lag.</li>
+            unter dem Zielwert ohne Sonnenabsenkung lag.</li>
         <li>Die schmale Spur unter dem Diagramm zeigt die Heizanforderung. Das sagt nichts darüber, wie es
             im Raum war. Mit der Maus über ein Diagramm fahren oder es antippen zeigt die Werte; „keine
             Daten“ heißt: für diese Zeit gibt es keine Aufzeichnung.</li>

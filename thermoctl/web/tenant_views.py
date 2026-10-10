@@ -17,6 +17,7 @@ Domänenfunktionen wie der Admin-Editor (`domain.schedule`). Diese Seite ist nur
 eine einfachere Oberfläche auf dieselben Daten.
 """
 
+import re
 from collections.abc import Mapping
 from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
@@ -654,6 +655,13 @@ async def undo_tenant_schedule(
     return _tenant_schedule_page(request, session, principal, zone, zones)
 
 
+def _control_armed(session: Session) -> bool:
+    """Ob die Anlage scharf ist -- die eine Quelle für „schaltet sie wirklich?" in der
+    Wohnungssicht (Heizzeit und Verlauf). Ohne Einstellungszeile gilt sie als nicht scharf."""
+    settings = session.get(Setting, 1)
+    return bool(settings and settings.control_armed)
+
+
 @router.get("/heating-time")
 async def show_heating_time(
     request: Request,
@@ -668,7 +676,7 @@ async def show_heating_time(
     settings = session.get(Setting, 1)
     timezone_name = settings.timezone if settings is not None else "UTC"
     cycle_seconds = settings.shadow_interval_seconds if settings is not None else 60
-    armed = bool(settings and settings.control_armed)
+    armed = _control_armed(session)
 
     key = request.query_params.get("period", "7")
     if key not in PERIODS:
@@ -735,10 +743,17 @@ async def show_temperature_history(
             "page_path": "/temperature-history",
             "tile_path": "/temperature-history/{zone_id}/tile",
             "tenant_layout": True,
+            # Verlaufsdaten sind Entscheidungen der Regelung; ohne scharfe Anlage sagt die
+            # Seite das (wie die Heizzeit-Seite).
+            "dry_run": not _control_armed(session),
             "heading": "Wie war die Temperatur?",
             "empty_text": "Für dieses Konto ist noch kein Raum freigegeben.",
         },
     )
+
+
+# Nur ASCII-Ziffern, kein Vorzeichen, begrenzte Länge (bis neun Stellen, weit über jeder Id).
+_ZONE_ID_PATTERN = re.compile(r"[0-9]{1,9}")
 
 
 @router.get("/temperature-history/{zone_id}/tile")
@@ -757,11 +772,12 @@ async def show_temperature_history_tile(
     (`TENANT`); die Zahlen sind dieselben wie in der Anlagensicht.
     """
     # Als Text angenommen und selbst gelesen: eine Nicht-Zahl ist hier wie in den übrigen
-    # Mieter-Routen "nicht gefunden", nicht die Validierungsantwort des Frameworks.
-    try:
-        requested_id = int(zone_id)
-    except ValueError as exc:
-        raise HTTPException(status.HTTP_404_NOT_FOUND) from exc
+    # Mieter-Routen "nicht gefunden", nicht die Validierungsantwort des Frameworks. Streng:
+    # `int()` nähme auch " 1", "+1", "1_0" und arabisch-indische Ziffern als die Zahl 1 an --
+    # eine Adresse, die nicht wie eine Id aussieht, ist keine.
+    if _ZONE_ID_PATTERN.fullmatch(zone_id) is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND)
+    requested_id = int(zone_id)
     zone = _zone_or_404(session, principal, requested_id, "zone.read")
     return templates.TemplateResponse(
         request,

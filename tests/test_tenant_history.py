@@ -27,6 +27,8 @@ from tests.helpers import (
     user_with_permissions,
 )
 from thermoctl.auth.sessions import COOKIE_NAME, create_session
+from thermoctl.auth.tokens import issue_token
+from thermoctl.db.models.operations import Setting
 from thermoctl.db.models.zone import Zone
 from thermoctl.domain.ui_profile import WebUiProfile
 from thermoctl.domain.zone_history_chart import (
@@ -169,6 +171,32 @@ def test_an_unparseable_room_id_is_not_found_like_everywhere_else_in_the_tenant_
         assert client.get(f"/temperature-history/{bad}/tile").status_code == 404, bad
 
 
+def test_the_room_id_must_be_plain_ascii_digits_and_nothing_else(
+    tenant_client: Client, session: Session
+) -> None:
+    """`int()` liest auch "1 ", "+1", "1_0" und arabisch-indische Ziffern als die Zahl 1. Der
+    Zonenfilter bleibt auch dann dicht, aber eine Adresse, die nicht die Form einer Id hat, ist
+    keine Id: 404 wie bei jeder Nicht-Zahl, nicht die Kachel des Raums."""
+    mine, _theirs, _bath = _wohnungen(session)
+    client = tenant_client([("zone.read", mine.id)])
+    assert client.get(f"/temperature-history/{mine.id}/tile").status_code == 200
+    arabic = "".join(chr(0x0660 + int(digit)) for digit in str(mine.id))
+    percent_encoded = "".join(f"%{byte:02X}" for byte in arabic.encode("utf-8"))
+    for bad in (
+        f"{mine.id}%20",
+        f"%20{mine.id}",
+        f"%2B{mine.id}",
+        f"{mine.id}%0A",
+        f"{mine.id}_0",
+        percent_encoded,
+        "0" * 40 + str(mine.id),
+        "9" * 40,
+    ):
+        answer = client.get(f"/temperature-history/{bad}/tile")
+        assert answer.status_code == 404, bad
+        assert mine.display_name not in answer.text, bad
+
+
 def test_a_right_for_a_different_permission_does_not_open_the_tile(
     tenant_client: Client, session: Session
 ) -> None:
@@ -200,6 +228,75 @@ def test_the_tile_drawing_and_summary_carry_only_the_own_measurements(
     page = tenant_client([("zone.read", mine.id)]).get(f"/temperature-history/{mine.id}/tile").text
     assert "19,5 °C" in page
     assert "23,7" not in page
+
+
+def test_a_global_read_right_shows_every_room_and_that_is_intended(
+    tenant_client: Client, session: Session
+) -> None:
+    """Ein Mieter mit `zone.read` ohne Zonenbezug liest alle Räume -- dasselbe wie überall sonst
+    in der Wohnungssicht (`visible_zones`). Der Test hält fest, dass das gewollt ist: Wer so
+    ein Recht vergibt, vergibt die ganze Anlage."""
+    mine, theirs, bath = _wohnungen(session)
+    client = tenant_client([("zone.read", None)])
+    page = client.get("/temperature-history")
+    assert sorted(_tile_ids(page.text)) == sorted([mine.id, theirs.id, bath.id])
+    for room in (mine, theirs, bath):
+        assert client.get(f"/temperature-history/{room.id}/tile").status_code == 200
+
+
+def test_a_global_and_a_room_grant_together_show_each_room_once(
+    tenant_client: Client, session: Session
+) -> None:
+    mine, theirs, bath = _wohnungen(session)
+    page = tenant_client([("zone.read", None), ("zone.read", mine.id)]).get("/temperature-history")
+    assert sorted(_tile_ids(page.text)) == sorted([mine.id, theirs.id, bath.id])
+
+
+def test_a_global_right_for_something_else_adds_no_room(
+    tenant_client: Client, session: Session
+) -> None:
+    """Ein globales Bedienrecht neben dem Leserecht auf einen Raum erweitert die Sicht nicht."""
+    mine, theirs, _bath = _wohnungen(session)
+    client = tenant_client([("setpoint.write", None), ("zone.read", mine.id)])
+    page = client.get("/temperature-history")
+    assert _tile_ids(page.text) == [mine.id]
+    assert theirs.display_name not in page.text
+    assert client.get(f"/temperature-history/{theirs.id}/tile").status_code == 404
+
+
+def test_rooms_of_two_access_groups_add_up_and_nothing_more(
+    client: TestClient, session: Session
+) -> None:
+    mine, theirs, bath = _wohnungen(session)
+    owner = user_with_permissions(
+        session,
+        "zwei-gruppen",
+        [("zone.read", mine.id)],
+        second_group=[("zone.read", bath.id)],
+        ui_profile=WebUiProfile.TENANT,
+    )
+    _http_session, secret = create_session(session, owner, 3600)
+    client.cookies.set(COOKIE_NAME, secret)
+    page = client.get("/temperature-history")
+    assert sorted(_tile_ids(page.text)) == sorted([mine.id, bath.id])
+    assert client.get(f"/temperature-history/{theirs.id}/tile").status_code == 404
+
+
+def test_an_api_token_does_not_open_the_html_history(client: TestClient, session: Session) -> None:
+    """`current_principal` kennt für die HTML-Routen nur das Sitzungs-Cookie. Ein Bearer-Token
+    mit allen Rechten öffnet Seite und Kachel deshalb nicht -- Tokens gehören zur REST-API."""
+    mine, _theirs, _bath = _wohnungen(session)
+    owner = user_with_permissions(
+        session, "token-mieter", [("zone.read", None)], ui_profile=WebUiProfile.TENANT
+    )
+    _token, plaintext = issue_token(session, owner, "verlauf", [("zone.read", None)], None)
+    headers = {"Authorization": f"Bearer {plaintext}"}
+    # Gegenprobe: dasselbe Token ist an der API gültig, sonst bewiese der Test nichts.
+    assert client.get("/api/v1/zones", headers=headers).status_code == 200
+    for path in ("/temperature-history", f"/temperature-history/{mine.id}/tile"):
+        answer = client.get(path, headers=headers, follow_redirects=False)
+        assert answer.status_code in (303, 401), path
+        assert mine.display_name not in answer.text
 
 
 # -- Profil und Anmeldung ----------------------------------------------------------------
@@ -250,6 +347,80 @@ def test_the_history_page_is_a_page_of_the_tenant_view(
     assert "<title>Verlauf" in page
     # htmx führt Skripte in getauschtem Inhalt aus; die Seite selbst trägt keine.
     assert "<script" not in page.split("<main", 1)[1].split("</main>", 1)[0]
+
+
+# -- Anlage nicht scharf -------------------------------------------------------------------
+
+DRY_RUN_NOTICE = "Die Anlage steuert derzeit nichts."
+
+
+def _armed(session: Session, armed: bool) -> None:
+    settings = session.get(Setting, 1)
+    assert settings is not None
+    settings.control_armed = armed
+    session.flush()
+
+
+def test_a_page_of_a_plant_that_is_not_armed_says_that_it_shows_decisions(
+    tenant_client: Client, session: Session
+) -> None:
+    """Die Verlaufsdaten stammen aus den Entscheidungen der Regelung. Solange die Anlage nicht
+    scharf ist, ist die Heizanforderung eine Entscheidung ohne Wirkung -- das muss auf der
+    Seite stehen, wie auf der Heizzeit-Seite."""
+    mine, _theirs, _bath = _wohnungen(session)
+    _armed(session, False)
+    client = tenant_client([("zone.read", mine.id)])
+    page = client.get("/temperature-history")
+    text = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", page.text))
+    assert DRY_RUN_NOTICE in text
+    assert "hätte" in text and "keine Aufzeichnung dessen" in text
+    # Derselbe Hinweis bleibt, wenn htmx beim Zeitraumwechsel die Fläche tauscht.
+    swapped = client.get("/temperature-history", params={"period": "3d"})
+    assert DRY_RUN_NOTICE in re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", swapped.text))
+    # Der Hinweis liegt in der Fläche, die htmx tauscht.
+    area = page.text.split('id="zones-history-page"', 1)[1]
+    assert DRY_RUN_NOTICE in re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", area))
+
+
+def test_a_page_of_an_armed_plant_carries_no_such_notice(
+    tenant_client: Client, session: Session
+) -> None:
+    mine, _theirs, _bath = _wohnungen(session)
+    _armed(session, True)
+    page = tenant_client([("zone.read", mine.id)]).get("/temperature-history")
+    assert DRY_RUN_NOTICE not in page.text
+    assert "keine Aufzeichnung dessen" not in page.text
+
+
+def test_the_notice_follows_the_same_source_as_the_heating_time_page(
+    tenant_client: Client, session: Session
+) -> None:
+    mine, _theirs, _bath = _wohnungen(session)
+    client = tenant_client([("zone.read", mine.id)])
+    for armed in (False, True, False):
+        _armed(session, armed)
+        history = DRY_RUN_NOTICE in client.get("/temperature-history").text
+        heating = "Die Anlage schaltet derzeit nicht." in client.get("/heating-time").text
+        assert history is heating is (not armed)
+
+
+def test_without_any_room_there_is_nothing_to_explain(
+    tenant_client: Client, session: Session
+) -> None:
+    _wohnungen(session)
+    _armed(session, False)
+    page = tenant_client([]).get("/temperature-history")
+    assert DRY_RUN_NOTICE not in page.text
+
+
+def test_the_plant_history_pages_show_no_tenant_notice(
+    client_als: Client, session: Session
+) -> None:
+    mine, _theirs, _bath = _wohnungen(session)
+    _armed(session, False)
+    admin = client_als([("zone.read", None), ("zone.manage", None)])
+    assert DRY_RUN_NOTICE not in admin.get("/zones/history").text
+    assert DRY_RUN_NOTICE not in admin.get(f"/zones/{mine.id}/history").text
 
 
 # -- Zeitraum -----------------------------------------------------------------------------
@@ -431,7 +602,9 @@ def test_the_page_explains_why_it_can_stay_cooler_than_the_plan(
     for sentence in (
         "Wenn Sonne erwartet wird, kann die Regelung den Zielwert absenken.",
         "Das kann erklären, warum die Regelung noch keine Heizanforderung hatte, obwohl die "
-        "Temperatur unter dem Wert des Zeitplans lag.",
+        "Temperatur unter dem Zielwert ohne Sonnenabsenkung lag.",
+        ", eine Abwesenheit, ein Urlaub, die Betriebsart Aus oder eine Änderung von Hand "
+        "vorgeben",
         "Das sagt nichts darüber, wie es im Raum war.",
         "„keine Daten“ heißt: für diese Zeit gibt es keine Aufzeichnung.",
     ):

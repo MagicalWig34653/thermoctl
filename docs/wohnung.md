@@ -84,18 +84,21 @@ dem abweichen, was Sie im Raum tatsächlich gespürt haben.
 
 Der Reiter **Verlauf** zeigt für jeden Ihrer Räume ein Diagramm der letzten 24 Stunden, 3 oder
 7 Tage; der gewählte Zeitraum oben gilt für alle Räume. Die Kacheln laden nacheinander nach,
-sobald sie ins Bild kommen („Verlauf wird geladen …").
+sobald sie ins Bild kommen („Verlauf wird geladen …"). Steuert die Anlage noch nichts, steht
+oben der Hinweis „Die Anlage steuert derzeit nichts": Dann zeigt der Verlauf, was die Regelung
+entschieden hätte – der tatsächliche Zielwert und die Heizanforderung sind Entscheidungen, keine
+Aufzeichnung dessen, was in den Räumen geschah.
 
 - Die **Linie** ist die gemessene Temperatur („Gemessen"). Bei längeren Zeiträumen steht jeder
   Punkt für den Durchschnitt eines kurzen Abschnitts; der helle Bereich dahinter zeigt den
   niedrigsten bis höchsten Messwert darin.
 - Zwei **Stufenlinien** zeigen den Zielwert: den **Zielwert ohne Sonnenabsenkung** (so, wie ihn
-  Zeitplan, Abwesenheit oder eine Änderung von Hand vorgeben) und den **tatsächlichen
+  Zeitplan, Abwesenheit, Urlaub, die Betriebsart Aus oder eine Änderung von Hand vorgeben) und den **tatsächlichen
   Zielwert**, nach dem die Regelung gearbeitet hat.
 - Das **grüne Band** markiert die **Sonnenabsenkung**: Wenn Sonne erwartet wird, kann die
   Regelung den Zielwert absenken; der Frostschutz soll dabei nicht unterschritten werden. Das
   kann erklären, warum die Regelung noch keine Heizanforderung hatte, obwohl die Temperatur
-  unter dem Wert des Zeitplans lag. Ein schraffiertes Stück heißt „keine Angabe": Für diese
+  unter dem Zielwert ohne Sonnenabsenkung lag. Ein schraffiertes Stück heißt „keine Angabe": Für diese
   Zeit wurde die Sonnenabsenkung nicht aufgezeichnet.
 - Die **schmale Spur unter dem Diagramm** zeigt den Anteil der Zeit mit **Heizanforderung**
   (blasser = kleinerer Anteil). Eine Anforderung sagt nichts darüber, wie es im Raum war.
