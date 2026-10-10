@@ -1,0 +1,273 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>thermoctl – Heizungssteuerung zum Selbsthosten</title>
+<meta name="description" content="thermoctl ist eine eigenständige, selbst gehostete Heizungssteuerung: sensorbasierte Raumregelung mit Zeitplänen, Weboberfläche, REST-API und MCP-Server. Läuft als Docker-Container oder als Home-Assistant-Add-on.">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#f4f6f8" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0f1419" media="(prefers-color-scheme: dark)">
+<link rel="canonical" href="https://magicalwig34653.github.io/thermoctl/">
+<meta property="og:type" content="website">
+<meta property="og:locale" content="de_DE">
+<meta property="og:site_name" content="thermoctl">
+<meta property="og:title" content="thermoctl – Heizungssteuerung zum Selbsthosten">
+<meta property="og:description" content="thermoctl ist eine eigenständige, selbst gehostete Heizungssteuerung: sensorbasierte Raumregelung mit Zeitplänen, Weboberfläche, REST-API und MCP-Server. Läuft als Docker-Container oder als Home-Assistant-Add-on.">
+<meta property="og:url" content="https://magicalwig34653.github.io/thermoctl/">
+<meta property="og:image" content="https://magicalwig34653.github.io/thermoctl/bilder/anlage-startseite.png">
+<meta property="og:image:alt" content="Startseite der Anlagensicht: Freigabestatus, geplanter Urlaub und die ersten Zonen mit Ist-Wert, Sollwert und Zeitplan-Band. Demodaten.">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="stil.css">
+</head>
+<body>
+<a class="skip" href="#inhalt">Zum Inhalt springen</a>
+<header class="site-header">
+<div class="wrap">
+<a class="brand" href="index.html"><img src="favicon.svg" width="32" height="32" alt="">thermoctl</a>
+<nav class="site-nav" aria-label="Hauptnavigation">
+<ul>
+<li><a href="index.html#funktionen">Funktionen</a></li>
+<li><a href="index.html#einblicke">Einblicke</a></li>
+<li><a href="index.html#installation">Installation</a></li>
+<li><a href="glossar.html">Glossar</a></li>
+<li><a href="https://github.com/MagicalWig34653/thermoctl">Quelltext</a></li>
+</ul>
+</nav>
+</div>
+</header>
+<main id="inhalt">
+<section class="hero" aria-labelledby="titel">
+<div class="wrap">
+<div class="hero-text">
+<p class="eyebrow">Heizungssteuerung zum Selbsthosten</p>
+<h1 id="titel">Räume regeln nach Sensorwert und Zeitplan.</h1>
+<p class="lead">thermoctl ist eine eigenständige, selbst gehostete Heizungssteuerung.
+Konfiguriert wird im Browser; zusätzlich gibt es eine REST-Schnittstelle und einen
+MCP-Server. Home Assistant lässt sich per MQTT anbinden, ist aber keine Voraussetzung.</p>
+<ul class="badges" aria-label="Eckdaten">
+<li>Open Source, AGPL-3.0</li>
+<li>Docker oder Home-Assistant-Add-on</li>
+<li>SQLite oder MariaDB</li>
+</ul>
+<div class="actions">
+<a class="button" href="#installation">Installieren</a>
+<a class="button secondary" href="https://github.com/MagicalWig34653/thermoctl">Quelltext auf GitHub</a>
+<a class="button secondary" href="glossar.html">Glossar</a>
+</div>
+</div>
+<figure class="shot">
+<a href="bilder/anlage-startseite.png"><img src="bilder/anlage-startseite.png" width="1280" height="900" alt="Startseite der Anlagensicht: Freigabestatus, geplanter Urlaub und die ersten Zonen mit Ist-Wert, Sollwert und Zeitplan-Band. Demodaten." loading="eager"></a>
+<figcaption><strong>Anlagensicht</strong>Alle Zonen im Blick, mit Übersteuerung und Tagesplan je Raum.</figcaption>
+</figure>
+</div>
+</section>
+
+<section id="funktionen" class="alt" aria-labelledby="funktionen-titel">
+<div class="wrap">
+<div class="section-head">
+<p class="eyebrow">Funktionen</p>
+<h2 id="funktionen-titel">Was thermoctl kann</h2>
+<p>Die Liste folgt der Dokumentation im Repository. Hinter jedem Fachbegriff steht
+eine Erklärung im <a href="glossar.html">Glossar</a>.</p>
+</div>
+<ul class="grid">
+<li class="card">
+<h3>Zeitpläne und Sollwert-Modi</h3>
+<p>Wochenpläne bestehen aus echten Schaltpunkten je Zone. Komfort, Tag, Nacht und Frostschutz sind vorgegeben; eigene Modi lassen sich anlegen.</p>
+<p class="more">Mehr: <a href="glossar.html#zeitplan">Zeitplan</a>, <a href="glossar.html#sollwert-modus">Sollwert-Modus</a></p>
+</li>
+<li class="card">
+<h3>Regelung mit Hysterese</h3>
+<p>Entscheidungen mit Hysterese und Mindestschaltdauer. Je Zone gibt es optional eine PI-Regelung, ausdrücklich als Beta und aus als Vorgabe.</p>
+<p class="more">Mehr: <a href="glossar.html#hysterese">Hysterese</a>, <a href="glossar.html#pi-regelung">PI-Regelung (Beta)</a></p>
+</li>
+<li class="card">
+<h3>Urlaub und Abwesenheit</h3>
+<p>Die Verwaltung setzt einen anlagenweiten Urlaub. Bewohner setzen für ihre eigenen Räume eine Abwesenheit bis zu einem Rückkehrdatum.</p>
+<p class="more">Mehr: <a href="glossar.html#urlaub">Urlaub</a>, <a href="glossar.html#abwesenheit">Abwesenheit</a></p>
+</li>
+<li class="card">
+<h3>Sonnenabsenkung</h3>
+<p>Optional: eine Absenkung des Sollwerts, wenn die Sonnenprognose sie erlaubt. Beginn, Änderung und Ende stehen im Schaltprotokoll.</p>
+<p class="more">Mehr: <a href="glossar.html#sonnenabsenkung">Sonnenabsenkung</a></p>
+</li>
+<li class="card">
+<h3>Notbetrieb bei Sensorausfall</h3>
+<p>Fällt der Messwert einer Zone aus, kann ein Notbetrieb übernehmen, etwa mit Ersatzquelle, festem Takt oder Notsollwert. Er ist ab Werk eingeschaltet und je Zone einstellbar.</p>
+<p class="more">Mehr: <a href="glossar.html#notbetrieb">Notbetrieb</a>, <a href="glossar.html#ersatzquelle">Ersatzquelle</a></p>
+</li>
+<li class="card">
+<h3>Schaltprotokoll und Regelentscheidungen</h3>
+<p>Für jede Zone wird festgehalten, was geschaltet würde und warum. Das Schaltprotokoll zeigt Befehle mit Ergebnis und Begründung.</p>
+<p class="more">Mehr: <a href="glossar.html#schaltprotokoll">Schaltprotokoll</a>, <a href="glossar.html#regelentscheidung">Regelentscheidung</a></p>
+</li>
+<li class="card">
+<h3>Statistik und Meldungen</h3>
+<p>Heizzeit und Relaisverschleiß je Gerät und Tag. Störungen wie ein ausgefallener Sensor lassen sich einzeln per Webhook melden.</p>
+<p class="more">Mehr: <a href="glossar.html#heizzeit">Heizzeit</a>, <a href="glossar.html#relaisverschleiss">Relaisverschleiß</a>, <a href="glossar.html#meldungen">Meldungen</a></p>
+</li>
+<li class="card">
+<h3>Zwei Oberflächen</h3>
+<p>Die Anlagensicht für Verwaltung und Technik: Zonen, Geräte, Betrieb, Protokolle, Rechte. Die Wohnungssicht für Bewohner: nur die eigenen Räume, mit Temperatur, Wochenplan und Heizzeit.</p>
+<p class="more">Mehr: <a href="glossar.html#oberflaechen">Anlagensicht und Wohnungssicht</a>, <a href="https://github.com/MagicalWig34653/thermoctl/blob/main/docs/bedienung.md">Bedienungsanleitung</a></p>
+</li>
+<li class="card">
+<h3>Kiosk für Wandtablets</h3>
+<p>Ein großformatiges Dashboard ohne Anmeldung, geöffnet über ein eigenes Token, das sich jederzeit widerrufen lässt.</p>
+<p class="more">Mehr: <a href="glossar.html#kiosk">Kiosk</a></p>
+</li>
+<li class="card">
+<h3>Anmeldung, Rechte und Passkeys</h3>
+<p>Authentifizierung ist verpflichtend. Benutzer, Gruppen und Rechte je Raum; Passkeys als Anmeldung ohne Passwort; API-Tokens mit begrenzten Rechten.</p>
+<p class="more">Mehr: <a href="glossar.html#gruppen-und-rechte">Gruppen und Rechte</a>, <a href="glossar.html#passkey">Passkey</a>, <a href="glossar.html#api-token">API-Token</a></p>
+</li>
+<li class="card">
+<h3>REST-API und MCP-Server</h3>
+<p>Dieselben Funktionen wie in der Weboberfläche lassen sich über eine REST-Schnittstelle und einen MCP-Server ansprechen.</p>
+<p class="more">Mehr: <a href="https://github.com/MagicalWig34653/thermoctl/blob/main/docs/api.md">REST-Schnittstelle</a>, <a href="https://github.com/MagicalWig34653/thermoctl/blob/main/docs/mcp.md">MCP-Server</a></p>
+</li>
+<li class="card">
+<h3>Home Assistant, MQTT und Zigbee2MQTT</h3>
+<p>Sensoren werden über Zigbee2MQTT eingelesen. Die Anbindung an Home Assistant per MQTT-Discovery ist optional und keine Voraussetzung.</p>
+<p class="more">Mehr: <a href="glossar.html#home-assistant">Home Assistant</a>, <a href="glossar.html#zigbee2mqtt">Zigbee2MQTT und Brücke</a>, <a href="https://github.com/MagicalWig34653/thermoctl/blob/main/docs/mqtt.md">MQTT</a></p>
+</li>
+</ul>
+</div>
+</section>
+
+<section id="einblicke" aria-labelledby="einblicke-titel">
+<div class="wrap">
+<div class="section-head">
+<p class="eyebrow">Einblicke</p>
+<h2 id="einblicke-titel">So sieht es aus</h2>
+<p>Alle Bilder entstehen aus erfundenen Demodaten, nicht aus einer echten Anlage. Ein
+Klick öffnet das Bild in voller Größe.</p>
+</div>
+<div class="grid">
+<figure class="shot crop">
+<a href="bilder/anlage-bad-wochenplan.png"><img src="bilder/anlage-bad-wochenplan.png" width="1280" height="900" alt="Zeitplan der Zone Bad mit Vorschau für die nächsten 24 Stunden, Werkzeugen zum Zeitmalen und Wochenraster. Demodaten." loading="lazy"></a>
+<figcaption><strong>Zeitplan einer Zone</strong>Zeiträume im Raster malen oder Schaltpunkte ziehen. Die Vorschau zeigt, was gerade gilt, auch mit laufender Übersteuerung.</figcaption>
+</figure>
+<figure class="shot crop">
+<a href="bilder/anlage-schaltprotokoll.png"><img src="bilder/anlage-schaltprotokoll.png" width="1280" height="900" alt="Schaltprotokoll mit sechs Einträgen aus System, Weboberfläche und REST-API: ausgeführt, im Trockenlauf unterdrückt oder gescheitert. Demodaten." loading="lazy"></a>
+<figcaption><strong>Schaltprotokoll</strong>Jeder Befehl mit Zeitpunkt, Zone, Gerät, Ergebnis und Begründung, auch im Trockenlauf.</figcaption>
+</figure>
+<figure class="shot crop">
+<a href="bilder/anlage-einstellungen-notbetrieb.png"><img src="bilder/anlage-einstellungen-notbetrieb.png" width="771" height="1323" alt="Karte „Notbetrieb bei Sensorausfall“ mit Festtakt, Rückkehrprüfung, Wiederanlaufspanne, Notsollwert und einer Außenkennlinie aus vier Zeilen. Demodaten." loading="lazy"></a>
+<figcaption><strong>Notbetrieb bei Sensorausfall</strong>Festtakt, Rückkehrprüfung, Notsollwert und eine optionale Außenkennlinie sind anlagenweit einstellbar.</figcaption>
+</figure>
+<figure class="shot portrait">
+<a href="bilder/wohnung-startseite-mobil.png"><img src="bilder/wohnung-startseite-mobil.png" width="390" height="844" alt="Wohnungssicht am Seitenanfang: Hinweis zum Notbetrieb, laufende Abwesenheit und die erste Raumkarte. Demodaten." loading="lazy"></a>
+<figcaption><strong>Wohnungssicht auf dem Telefon</strong>Bewohner sehen nur ihre eigenen Räume, in Alltagssprache.</figcaption>
+</figure>
+<figure class="shot portrait">
+<a href="bilder/wohnung-heizzeit-mobil.png"><img src="bilder/wohnung-heizzeit-mobil.png" width="390" height="844" alt="Seite Heizzeit der Wohnungssicht mit Auswahl 7, 30 oder 90 Tage und einem Balkendiagramm je Raum. Demodaten." loading="lazy"></a>
+<figcaption><strong>Heizzeit je Raum</strong>Die Heizdauer der letzten 7, 30 oder 90 Tage als Orientierung, kein Energie- oder Kostenmesser.</figcaption>
+</figure>
+<figure class="shot crop">
+<a href="bilder/kiosk-dashboard.png"><img src="bilder/kiosk-dashboard.png" width="1280" height="900" alt="Kiosk-Dashboard: sechs Zonen nebeneinander mit Ist-Wert und Reglern für den Sollwert. Demodaten." loading="lazy"></a>
+<figcaption><strong>Kiosk für ein Wandtablet</strong>Großformatig, ohne Anmeldung, hinter einem jederzeit widerrufbaren Token.</figcaption>
+</figure>
+</div>
+</div>
+</section>
+
+<section id="installation" class="alt" aria-labelledby="installation-titel">
+<div class="wrap">
+<div class="section-head">
+<p class="eyebrow">Installation</p>
+<h2 id="installation-titel">Zwei Wege</h2>
+<p>thermoctl läuft als eigener Docker-Container oder als
+<a href="https://www.home-assistant.io/">Home-Assistant</a>-Add-on. Voraussetzung ist bei Docker eine
+SQLite- oder MariaDB-Datenbank; SQLite braucht keinen eigenen Dienst.</p>
+</div>
+<div class="two">
+<div class="panel">
+<h3>Docker mit Compose</h3>
+<p class="note">Das fertige Abbild <code>ghcr.io/magicalwig34653/thermoctl</code> gibt es für
+<code>linux/amd64</code> und <code>linux/arm64</code>.</p>
+<ol>
+<li>Quelltext holen und das Beispiel kopieren:
+<pre aria-label="Befehle: Quelltext holen"><code>git clone https://github.com/MagicalWig34653/thermoctl.git
+cd thermoctl
+cp docker/compose.beispiel.yml compose.yml
+cp .env.example .env</code></pre></li>
+<li>In <code>.env</code> mindestens <code>THERMOCTL_DATABASE_URL</code> setzen, etwa
+<code>sqlite:////data/thermoctl.db</code>, und <code>THERMOCTL_SECRET_KEY</code> mit
+einem zufälligen Schlüssel von mindestens 32 Zeichen:
+<pre aria-label="Befehl: Schlüssel erzeugen"><code>python3 -c &quot;import secrets; print(secrets.token_urlsafe(48))&quot;</code></pre></li>
+<li>Starten und das Log ansehen:
+<pre aria-label="Befehle: starten"><code>docker compose up -d
+docker compose logs thermoctl</code></pre></li>
+<li>Im Log steht beim ersten Start ein einmalig verwendbares Einrichtungs-Token.
+Damit wird die Einrichtung unter <code>/setup</code> abgeschlossen. Das Token ist wie
+ein Passwort zu behandeln.</li>
+</ol>
+<p class="note">Die Beispieldatei bindet den Port nur an die Loopback-Adresse
+(<code>127.0.0.1:8000</code>). Alle Werte stehen in der <code>.env</code>, nie im
+Quelltext; Zugangsdaten gehören nicht ins Repository.</p>
+</div>
+<div class="panel">
+<h3>Home-Assistant-Add-on</h3>
+<p class="note">Das Add-on liegt in einem eigenen Repository und zeigt auf eine feste
+Version des Abbilds.</p>
+<ol>
+<li>In Home Assistant: <em>Einstellungen</em>, <em>Add-ons</em>, <em>Add-on-Store</em>.</li>
+<li>Über das Menü oben rechts <em>Repositories</em> öffnen und diese Adresse hinzufügen:
+<pre aria-label="Adresse des Add-on-Repositorys"><code>https://github.com/MagicalWig34653/thermoctl-addon</code></pre></li>
+<li>thermoctl installieren, konfigurieren und starten. Die Einbindung läuft über
+Ingress.</li>
+</ol>
+<p class="note">Wer bisher mit <code>docker compose</code> betreibt, findet den
+Umstiegsweg in der
+<a href="https://github.com/MagicalWig34653/thermoctl/blob/main/docs/self-hosting.md#6b-umstieg-von-docker-compose-auf-das-home-assistant-add-on">Anleitung zum Selbst-Hosten</a>.</p>
+</div>
+</div>
+<p class="after">Danach: den
+<a href="https://github.com/MagicalWig34653/thermoctl/blob/main/docs/inbetriebnahme-schattenbetrieb.md">Schattenbetrieb in Gang setzen</a>, später
+<a href="https://github.com/MagicalWig34653/thermoctl/blob/main/docs/scharfschalten.md">scharf schalten</a>. Alles Weitere steht in
+der <a href="https://github.com/MagicalWig34653/thermoctl/tree/main/docs">Dokumentation</a>.</p>
+</div>
+</section>
+
+<section id="hinweise" aria-labelledby="hinweise-titel">
+<div class="wrap">
+<div class="notice">
+<h2 id="hinweise-titel">Gut zu wissen</h2>
+<ul>
+<li>Der Trockenlauf ist die Vorgabe: Die Regelung entscheidet und protokolliert, ohne Befehle an Geräte zu senden. Erst nach ausdrücklichem Scharfschalten und einem Neustart wird wirklich gesendet.</li>
+<li>thermoctl macht keine Zusagen über Heizverhalten, Komfort oder Verbrauch. Auch die PI-Regelung verspricht keinen Verbrauchsvorteil.</li>
+<li>Die Software steuert eine echte Heizung. Wer sie einsetzt, prüft ihre Entscheidungen zuerst im Trockenlauf; die Lizenz schließt jede Gewährleistung aus.</li>
+<li>Der Zugriff verlangt immer eine Anmeldung. Wer die Oberfläche über das Netz erreichbar macht, stellt einen Reverse-Proxy mit TLS davor und aktiviert THERMOCTL_SECURE_COOKIES.</li>
+</ul>
+</div>
+</div>
+</section>
+</main>
+<footer class="site-footer">
+<div class="wrap">
+<div class="footer-cols">
+<div>
+<h2>Lizenz</h2>
+<p>thermoctl steht unter der <a href="https://github.com/MagicalWig34653/thermoctl/blob/main/LICENSE">GNU Affero General Public License, Version 3</a> (AGPL-3.0-only). Wer den Code verändert und weitergibt, muss den veränderten Quelltext mitgeben. Wer thermoctl anderen über das Netz zugänglich macht, muss ihnen ebenfalls den Quelltext anbieten, einschließlich eigener Änderungen.</p>
+</div>
+<div>
+<h2>Verweise</h2>
+<ul>
+<li><a href="https://github.com/MagicalWig34653/thermoctl">Quelltext auf GitHub</a></li>
+<li><a href="https://github.com/MagicalWig34653/thermoctl-addon">Home-Assistant-Add-on</a></li>
+<li><a href="https://github.com/MagicalWig34653/thermoctl/tree/main/docs">Dokumentation</a></li>
+<li><a href="https://github.com/MagicalWig34653/thermoctl/blob/main/CHANGELOG.md">Änderungen</a></li>
+<li><a href="glossar.html">Glossar</a></li>
+</ul>
+</div>
+<div>
+<h2>Diese Seite</h2>
+<p>Sie setzt keine Cookies, bindet keine Schriften, Skripte oder Bilder von Dritten ein und speichert nichts im Browser. Ausgeliefert wird sie von GitHub Pages.</p>
+</div>
+</div>
+</div>
+</footer>
+</body>
+</html>
