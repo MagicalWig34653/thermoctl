@@ -155,7 +155,7 @@ def test_phone_captures_start_at_top_and_keep_navigation_at_bottom(
             assert box is not None
             assert box["y"] + box["height"] == pytest.approx(844)
             links = nav.get_by_role("link")
-            assert links.count() == 4
+            assert links.count() == 5  # Zuhause, Zeitplan, Heizzeit, Verlauf, Mehr
             for link in links.all():
                 bounds = link.bounding_box()
                 assert bounds is not None
