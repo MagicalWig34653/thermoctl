@@ -68,6 +68,7 @@ _VIEWS_BEFORE_DOCUMENTATION_FLAGS = (
             ("schnittstellen", "/interfaces"),
             ("statistik", "/statistics"),
             ("relaisverschleiss", "/relay-wear"),
+            ("glossar", "/glossar"),
         )
     ),
     View(
@@ -111,6 +112,7 @@ _VIEWS_BEFORE_DOCUMENTATION_FLAGS = (
             ("heizzeit", "/heating-time", False),
             ("konto", "/account", False),
             ("hilfe", "/account/help", False),
+            ("glossar", "/glossar", False),
             ("passkeys", "/passkeys", False),
         )
     ),

@@ -196,3 +196,24 @@ def test_the_operating_page_shows_nothing_extra_for_a_normal_zone(
 
     assert response.status_code == 200
     assert "Ersatzquelle ↔ Wandfühler" not in response.text
+
+
+def test_the_arming_notes_name_both_command_paths_behind_the_second_latch(
+    angemeldeter_client: TestClient, session: Session
+) -> None:
+    """Der zweite Riegel ist ein Wert für den ganzen Prozess, nicht ein Teil des MQTT-Clients.
+
+    Der Hinweis stand einmal mit „sitzt im MQTT-Client“ da; Meross-Befehle gehen aber
+    durch denselben beim Start eingefrorenen Wert (`app.py`: ein `sending_allowed` für
+    beide Wege). Die Oberfläche soll das nicht auf einen Weg verengen.
+    """
+    create_settings(session)
+    session.flush()
+
+    response = angemeldeter_client.get("/control")
+
+    assert response.status_code == 200
+    assert "Jetzt scharf schalten" in response.text
+    text = " ".join(response.text.split())
+    assert "für alle Wege, auf denen Befehle hinausgehen (MQTT und Meross)" in text
+    assert "sitzt im MQTT-Client" not in text

@@ -120,11 +120,10 @@ Schaltaktor an. Der Versuch wird bei fehlender Eignung mit einer Begründung abg
 Das ist Absicht: Ein Modell soll den
 Rückfall nicht stillschweigend bekommen, sondern den Grund lesen können.
 
-PI schaltet deutlich häufiger als die Hysterese und verkürzt dadurch die Lebensdauer eines
-Schaltaktors. Wer es über MCP einschaltet, umgeht den Warnhinweis, den die Oberfläche am
-Schalter zeigt — die Zahlen stehen im Eintrag zu 0.5.0 im
-[CHANGELOG](../CHANGELOG.md), und der tatsächliche Verschleiß ist in der Oberfläche unter
-„Relaisverschleiß" ablesbar.
+PI (Beta) kann je nach Einstellung mehr Schaltspiele erzeugen als die Hysterese. Wer es über
+MCP aktiviert, umgeht den Warnhinweis, den die Oberfläche am Schalter zeigt — eine
+Modellrechnung steht dort und im Eintrag zu 0.5.0 im [CHANGELOG](../CHANGELOG.md), und die
+tatsächlich gezählten Schaltspiele sind in der Oberfläche unter „Relaisverschleiß" ablesbar.
 
 **Der eigentliche Gewinn sind `explain_setpoint` und `shadow_decisions`.** Sie
 beantworten „warum ist es hier kalt?" in einem Aufruf, statt Ist-Wert, Zeitplan und

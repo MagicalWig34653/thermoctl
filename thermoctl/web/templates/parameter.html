@@ -7,9 +7,11 @@
 <p class="text-secondary">Ein leeres Feld verwendet den globalen Standard.</p>
 <form method="post" action="{{ url_prefix }}/zones/{{ zone.id }}/parameters">
   {{ number_field("hysteresis_k", "Hysterese (K)", values.hysteresis_k,
-    "Wie weit die Ist-Temperatur unter den Sollwert fallen darf, bevor die Regelung Heizen anfordert. Zu klein heißt ein ständiger Wechsel zwischen Ein- und Aus-Entscheidung. Derzeit " ~ effective.hysteresis_k ~ " K" ~ (" aus dem globalen Standard." if not values.hysteresis_k else "."), errors.hysteresis_k, "0.01", "0") }}
+    "Wie weit die Ist-Temperatur unter den Sollwert fallen darf, bevor die Regelung Heizen anfordert. Zu klein heißt ein ständiger Wechsel zwischen Ein- und Aus-Entscheidung. Derzeit " ~ effective.hysteresis_k ~ " K" ~ (" aus dem globalen Standard." if not values.hysteresis_k else "."), errors.hysteresis_k, "0.01", "0",
+    label_extra=glossar_hilfe("hysterese")) }}
   {{ number_field("min_on_seconds", "Mindest-Einschaltdauer (Sekunden)", values.min_on_seconds,
-    "Wie lange eine Ein-Entscheidung mindestens bestehen bleibt. Das verhindert kurz aufeinanderfolgende Ein- und Aus-Entscheidungen. Derzeit " ~ effective.min_on_seconds ~ " Sekunden" ~ (" aus dem globalen Standard." if not values.min_on_seconds else "."), errors.min_on_seconds, "1", "0") }}
+    "Wie lange eine Ein-Entscheidung mindestens bestehen bleibt. Das verhindert kurz aufeinanderfolgende Ein- und Aus-Entscheidungen. Derzeit " ~ effective.min_on_seconds ~ " Sekunden" ~ (" aus dem globalen Standard." if not values.min_on_seconds else "."), errors.min_on_seconds, "1", "0",
+    label_extra=glossar_hilfe("mindestschaltdauer")) }}
   {{ number_field("min_off_seconds", "Mindest-Ausschaltdauer (Sekunden)", values.min_off_seconds,
     "Wie lange eine Aus-Entscheidung mindestens bestehen bleibt. Das verhindert eine sofort folgende Ein-Entscheidung. Derzeit " ~ effective.min_off_seconds ~ " Sekunden" ~ (" aus dem globalen Standard." if not values.min_off_seconds else "."), errors.min_off_seconds, "1", "0") }}
   {{ number_field("sensor_timeout_seconds", "Sensor-Timeout (Sekunden)", values.sensor_timeout_seconds,
@@ -19,7 +21,8 @@
   {{ number_field("window_resume_delay_seconds", "Wiederanlauf nach Fenster (Sekunden)", values.window_resume_delay_seconds,
     "So lange wartet die Regelung nach dem Schließen eines Fensters, bevor sie wieder eine Ein-Entscheidung treffen darf. Derzeit " ~ effective.window_resume_delay_seconds ~ " Sekunden" ~ (" aus dem globalen Standard." if not values.window_resume_delay_seconds else "."), errors.window_resume_delay_seconds, "1", "0") }}
   {{ number_field("solar_setback_max_k", "Sonnenabsenkung, Obergrenze (K)", values.solar_setback_max_k,
-    "Wie viel der Sollwert bei erwarteter Sonne höchstens absinken darf. Derzeit " ~ effective.solar_setback_max_k ~ " K" ~ (" aus dem globalen Standard." if not values.solar_setback_max_k else "."), errors.solar_setback_max_k, "0.1", "0") }}
+    "Wie viel der Sollwert bei erwarteter Sonne höchstens absinken darf. Derzeit " ~ effective.solar_setback_max_k ~ " K" ~ (" aus dem globalen Standard." if not values.solar_setback_max_k else "."), errors.solar_setback_max_k, "0.1", "0",
+    label_extra=glossar_hilfe("sonnenabsenkung")) }}
   {{ number_field("solar_gain_factor", "Sonnenprofil (0 bis 1)", values.solar_gain_factor,
     "Wie stark diese Zone von Sonneneinstrahlung profitiert — 0 für gar nicht (z. B. ein Nordzimmer), 1 für stark (z. B. ein Zimmer mit Dachfenstern). Voreinstellung 0, also aus.", errors.solar_gain_factor, "0.05", "0", "1") }}
   <div class="form-check mb-3">
@@ -34,7 +37,7 @@
     "So lange fordert der Schutzlauf ein geöffnetes Ventil an. Im Trockenlauf wird die Entscheidung nur protokolliert; scharf und neu gestartet geht sie an den Aktor.", errors.valve_protection_duration_minutes, "1", "1") }}
 
   <div class="border-top pt-3 mt-4">
-    <p class="t-label mb-2">Experimentell: PI-Regelung (Beta)</p>
+    <p class="t-label mb-2">Experimentell: PI-Regelung (Beta){{ glossar_hilfe("pi-regelung") }}</p>
     <p class="t-quiet small">
       Ersetzt für diese Zone die Hysterese-Entscheidung durch einen PI-Regler mit
       Tastgrad-Modulation. Beta heißt: keine bestätigte Relaisfreigabe, kein
@@ -44,36 +47,39 @@
     </p>
 
     <div class="alert alert-warning" role="alert">
-      <strong>PI (Beta) schaltet deutlich häufiger als die Hysterese und verkürzt dadurch
-      die Lebensdauer des Schaltaktors spürbar.</strong>
-      Das betrifft vor allem den ungünstigsten Fall — nicht den Regelbetrieb; wie oft
-      diese Zone tatsächlich schaltet, zeigt <a href="{{ url_prefix }}/relay-wear">Relaisverschleiß</a>
-      mit Jahreshochrechnung je Gerät. Für einen Kessel oder Verdichter ohne eigenen
-      Taktschutz ist PI ungeeignet — häufiges Takten kostet dort nicht nur Lebensdauer,
-      sondern auch Wirkungsgrad.
+      <strong>PI (Beta) kann je nach Einstellung mehr Schaltspiele erzeugen als die
+      Hysterese.</strong>
+      Jedes Schaltspiel zählt gegen die angenommene Lebensdauer des Relais. Wie oft diese
+      Zone tatsächlich wechselt, hängt von den Parametern unten ab; gezählt wird auf der Seite
+      <a href="{{ url_prefix }}/relay-wear">Relaisverschleiß</a> mit Jahreshochrechnung je
+      Gerät. Für einen Kessel oder Verdichter ohne eigenen Taktschutz wird PI nicht
+      empfohlen; häufiger Wechsel kann dort Lebensdauer und Wirkungsgrad kosten.
       <details class="tc-info-disclosure mt-2">
-        <summary>ⓘ Rechnung ansehen</summary>
+        <summary>ⓘ Modellrechnung ansehen</summary>
         <div class="table-responsive mt-2">
           <table class="table table-sm mb-2">
             <thead>
               <tr><th scope="col"></th><th scope="col" class="text-end">je Stunde</th><th scope="col" class="text-end">je Tag</th><th scope="col" class="text-end">je Jahr</th></tr>
             </thead>
             <tbody>
-              <tr><th scope="row">PI, ungünstigster Fall</th><td class="text-end">30</td><td class="text-end">720</td><td class="text-end">262.800</td></tr>
-              <tr><th scope="row">PI bei 30&nbsp;% Tastgrad (simuliert)</th><td class="text-end">18</td><td class="text-end">432</td><td class="text-end">157.680</td></tr>
-              <tr><th scope="row">Hysterese, höchstens</th><td class="text-end">6</td><td class="text-end">144</td><td class="text-end">52.560</td></tr>
+              <tr><th scope="row">PI, ungünstigster Fall (Modell)</th><td class="text-end">30</td><td class="text-end">720</td><td class="text-end">262.800</td></tr>
+              <tr><th scope="row">PI bei 30&nbsp;% Tastgrad (Modell)</th><td class="text-end">18</td><td class="text-end">432</td><td class="text-end">157.680</td></tr>
+              <tr><th scope="row">Hysterese, mit Vorgabewerten höchstens (Modell)</th><td class="text-end">6</td><td class="text-end">144</td><td class="text-end">52.560</td></tr>
             </tbody>
           </table>
         </div>
         <p class="small mb-0">
-          Schaltspiele, nicht Zustandswechsel. Mit der in den
+          Modellrechnung, keine Messung dieser Zone. Schaltspiele, nicht Zustandswechsel. Der Höchstwert
+          der Hysterese gilt für die Vorgabe von je 300&nbsp;Sekunden Mindest-Ein- und -Ausschaltdauer;
+          mit kürzeren Mindestdauern (zulässig ab 30&nbsp;Sekunden) und kurzem Regelzyklus sind
+          rechnerisch mehr möglich. Mit der in den
           <a href="{{ url_prefix }}/settings">Einstellungen</a> hinterlegten, austauschbaren Annahme
           von derzeit {{ "{:,}".format(assumed_lifetime_operations).replace(",", ".") }}
           elektrischen Betätigungen eines vergleichbaren 16-A-Leistungsrelais (keine
           Meross-Herstellerangabe — öffentliche Daten dazu fehlen) entspricht der
           ungünstigste Fall rund {{ ("%.2f" | format(262800 / assumed_lifetime_operations)).replace(".", ",") }}
           solcher Relaislebensdauern im Jahr. Der ungünstigste Fall ist ausdrücklich nicht der
-          Regelfall; die simulierte Spalte mit 30&nbsp;% Tastgrad und der tatsächliche,
+          Regelfall; die Modellzeile mit 30&nbsp;% Tastgrad und der tatsächliche,
           gemessene Verschleiß je Gerät stehen unter
           <a href="{{ url_prefix }}/relay-wear">Relaisverschleiß</a>.
         </p>
@@ -138,7 +144,7 @@
   </div>
 
   <div class="border-top pt-3 mt-4">
-    <p class="t-label mb-2">Notbetrieb bei Sensorausfall</p>
+    <p class="t-label mb-2">Notbetrieb bei Sensorausfall{{ glossar_hilfe("notbetrieb") }}</p>
     <p class="t-quiet small mb-2">
       Wirksam für diese Zone: Profil „{{ sensor_failure.profile.values.name }}“
       ({{ sensor_failure.profile_source }}), Notsollwert

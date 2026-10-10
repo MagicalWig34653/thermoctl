@@ -33,6 +33,37 @@ Review: Codex (`gpt-6-sol`) hat Commit `8562711` unabhängig geprüft, beide Dat
 5564 grün, 1 bekannter roter Test (inzwischen behoben); die beiden „sollte“-Befunde
 (Zonenfilter, Herkunft der Einträge) sind umgesetzt.
 
+**Glossar** (`thermoctl/data/glossar.json`, 54 Begriffe, einzige Quelle). Daraus entstehen die
+Seite `/glossar` (Anlagen- und Wohnungssicht, Sprungmarken A–Z, clientseitige Suche,
+`current_principal`, kein Recht nötig), neun Hilfe-Symbole in Regelparametern, Regelvorgaben und
+Betriebsseite sowie `docs/glossar.md` (`python -m tools.glossar_erzeugen`, ein Test schlägt bei
+Abweichung fehl). **Regel für neue Glossartexte:** erklären und den Fundort nennen, **kein
+Verhalten zusichern.** Das Glossar war zweimal im unabhängigen Review durchgefallen, weil jeder
+präzise gemeinte Satz über Heizverhalten bei Nachprüfung am Quelltext Ausnahmen übersah
+(Notsollwert nur für Thermostate mit bestätigtem Gerätevertrag, Stufenfolge des Notbetriebs nicht
+fest, PI bei Ersatzquelle ausgesetzt, Mindestschaltdauer mit Ausnahmen, Aufbewahrung der
+Notbetriebsentscheidungen, zweiter Scharfschalt-Riegel auch bei Meross). Nur die an Code-Vorgaben
+gebundenen Zahlen bleiben (`tests/test_glossary.py`). Der Wächtertest
+`test_user_visible_effect_texts.py` prüft `glossar.json` satzweise; `docs/glossar.md` ist nur
+ausgenommen, solange es zur Quelle passt. Die Freigabeliste enthält für das Glossar nur vier
+Namenszeilen (vier Begriffsnamen, siehe `tests/approved_physical_vocabulary.json`),
+vom Projektinhaber am 2026-10-09 freigegeben. Der Loader lehnt JSON-`true` und `1.0` als Version
+ab. Die Folgekorrekturen betrafen auch `docs/bedienung.md` (Abschnitt Notbetrieb: PI bei
+Ersatzquelle ausgesetzt, Thermostat-Übergabe höchstens ein Versuch und keiner ohne bestätigten
+Gerätevertrag, Rückkehrprüfung mit Quellbindung, Meldungswiederholung ohne Einmal-Garantie) und
+die pauschale PI-Aussage über die Häufigkeit in Oberfläche, README und API-Docs: jetzt
+„kann je nach Einstellung mehr Schaltspiele erzeugen“, Zahlentabelle als Modellrechnung. Der
+Hinweis auf der Betriebsseite zum zweiten Riegel nennt MQTT **und** Meross.
+`.gitignore` hatte `data/` und hätte `thermoctl/data/` verschluckt (`!thermoctl/data/`).
+Reviews: Codex `gpt-6-sol` in vier Runden (die letzte nur noch über den Unterschied).
+Bekannte Grenze: der Docstring von `app.py::_emergency_notices` („nie ein dritter Versuch“)
+passt für den Absturzfall nicht ganz.
+
+**PNG-Maßregel:** `browser_tests/test_screenshots.py` kennt Abschnittsausschnitte
+(`View.section`; zurzeit `anlage-einstellungen-notbetrieb`, `anlage-bad-parameter-notbetrieb`),
+abgeleitet aus der Ansichtenliste. `anlage-bad-parameter-notbetrieb.png` war veraltet und wurde
+neu erzeugt.
+
 ## 0.11.0 / 0.11.1: Notbetrieb bei Sensorausfall
 
 Plan und Gerätevertrag liegen lokal (`lokal/plaene/0.11.0-notbetrieb.md`,

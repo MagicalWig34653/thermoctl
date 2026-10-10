@@ -27,6 +27,17 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
   Absenkungseinträge werden aus dem Schattenprotokoll (`shadow_decision`) abgeleitet, nicht
   gespeichert: Sie folgen dessen Aufbewahrungsfrist und dem heutigen Zonennamen, und am Anfang
   der verbleibenden Historie kann eine schon laufende Absenkung als neuer „Beginn" erscheinen.
+- **Glossar der Fachbegriffe.** Unter `/glossar` erklärt die Oberfläche 54 Begriffe in
+  einfachen Worten — Hysterese, Mindestschaltdauer, PI-Regelung, Sonnenabsenkung,
+  Ersatzquelle, Echo-Regel, Ausgleichswert, Notbetrieb, Festtakt, Außenkennlinie,
+  Rückkehrprüfung, Trockenlauf, Schattenbetrieb und weitere. Die Seite ist alphabetisch,
+  hat Sprungmarken von A bis Z und ein Suchfeld und steht beiden Oberflächen offen
+  (Anlagensicht: Seitenleiste unter „Hilfe", Wohnungssicht: Fußbereich). Neben neun
+  erklärungsbedürftigen Stellen — Regelparameter der Zone, Regelvorgaben und Betriebsseite —
+  führt ein kleines Fragezeichen direkt zum passenden Eintrag.
+- **Eine einzige Quelle:** Die Begriffe stehen in `thermoctl/data/glossar.json`.
+  [docs/glossar.md](docs/glossar.md) wird daraus mit `python -m tools.glossar_erzeugen`
+  erzeugt; ein Test schlägt fehl, wenn beide auseinanderlaufen.
 
 ### Beim Upgrade zu wissen
 
@@ -41,6 +52,8 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
   `outcome: "absenkung_beginn"` / `"absenkung_aenderung"` / `"absenkung_ende"`. Wer das
   Schaltprotokoll maschinell liest und unbekannte `entry_kind`-Werte nicht verträgt, muss sie
   berücksichtigen.
+
+---
 
 ## 0.11.1 — 2026-10-04
 

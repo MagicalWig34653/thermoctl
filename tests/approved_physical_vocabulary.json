@@ -109,9 +109,7 @@
       "Dazu: Bediengeräte und Zigbee-Heizkörperthermostate frei konfigurierbar (ein Thermostat",
       "Meross-Steckdosen und selbstregelnde Ventile. Sein gespeicherter erster Riegel lässt sich",
       "Schaltaktoren — selbstregelnde Ventile und Geräte mit `thermostat`-Fähigkeit sind",
-      "Schalter: PI schaltet deutlich häufiger und verkürzt die Lebensdauer eines Schaltaktors.",
       "Weile wärmer\" und einem Abwesenheitszeitraum. Wie beide aussehen und sich bedienen lassen,",
-      "Wie oft eine Zone tatsächlich schaltet, zeigt die Seite **Relaisverschleiß** je Gerät und",
       "an einer echten Heizung.",
       "beseitigt genau das. Weniger Verbrauch oder schnelleres Aufheizen folgt daraus nicht.",
       "kann das Ventil auch selbst regeln und bekommt dann nur Soll- und Ist-Temperatur), eine",
@@ -173,7 +171,6 @@
       "Wochen später nicht mehr zu klären, warum ein Raum in einer bestimmten Nacht warm war.",
       "der wärmste Punkt, Heizen aus).",
       "gewöhnlichen Schaltaktor stehen darf — PI steuert dann nur diesen Schaltaktor an. Der",
-      "warum PI deutlich häufiger schaltet als die Hysterese — die Zahlen dazu stehen am Schalter",
       "weitergereicht —, ebenso eine Zone ganz ohne gewöhnlichen Schaltaktor. Ein"
     ],
     "docs/bedienung.md": [
@@ -189,7 +186,6 @@
       "minutengenau ein — sie fragt nur, wann es warm sein soll: eine Zeit für „Tag ab\" und eine",
       "nur kurz wärmer haben wollte.",
       "sie braucht mindestens zwei Zeilen und genau einen oberen Punkt, ab dem nicht mehr eingeschaltet",
-      "und bei offenem Fenster. **Heizkörper-Thermostate** werden **einmal** auf „manual\" und",
       "und je Aktor Takt-Phase, Frist, Übergabe und Rückstellung. Darunter der **Vergleich",
       "wann *geheizt worden wäre*, nicht was wirklich geschah.",
       "wird. Fenster, Sensorausfall, Mindestschaltdauern und Ventilschutz gelten dabei"
@@ -243,9 +239,7 @@
       "**`boost` ist für ein Sprachmodell die verlässlichere Form von „mach es hier wärmer\".** Es",
       "Aktoren gesendet werden.",
       "Ein Modell kann es über `set_control_parameters` einschalten, aber nur für eine Zone, die",
-      "PI schaltet deutlich häufiger als die Hysterese und verkürzt dadurch die Lebensdauer eines",
       "Schaltaktor an. Der Versuch wird bei fehlender Eignung mit einer Begründung abgewiesen.",
-      "Schaltaktors. Wer es über MCP einschaltet, umgeht den Warnhinweis, den die Oberfläche am",
       "Wer scharf schalten will, tut das dort, wo ein Mensch am Knopf steht.",
       "die Heizung auf 15 Grad runter\": eine einzige, plant-weite Angabe statt einer Übersteuerung",
       "gewöhnlichen Schaltaktor. Ein **selbstregelndes** Ventil schließt die Zone dagegen nicht",
@@ -452,6 +446,12 @@
     ],
     "thermoctl/app.py": [
       "Kein Temperaturwert verfügbar. Die Heizung läuft im Notbetrieb."
+    ],
+    "thermoctl/data/glossar.json": [
+      "Aktor",
+      "Für eine Weile wärmer",
+      "Selbstregelndes Thermostatventil",
+      "Ventilschutz"
     ],
     "thermoctl/db/models/lookup.py": [
       "Aktor",
@@ -727,7 +727,7 @@
     "thermoctl/web/templates/parameter.html": [
       "\"Nach so vielen Tagen ohne reguläres Heizen wird der Schutzlauf fällig.\", errors.valve_protection_interval_days, \"1\", \"1\") }}",
       "\"So lange fordert der Schutzlauf ein geöffnetes Ventil an. Im Trockenlauf wird die Entscheidung nur protokolliert; scharf und neu gestartet geht sie an den Aktor.\", errors.valve_protection_duration_minutes, \"1\", \"1\") }}",
-      "\"Wie weit die Ist-Temperatur unter den Sollwert fallen darf, bevor die Regelung Heizen anfordert. Zu klein heißt ein ständiger Wechsel zwischen Ein- und Aus-Entscheidung. Derzeit \" ~ effective.hysteresis_k ~ \" K\" ~ (\" aus dem globalen Standard.\" if not values.hysteresis_k else \".\"), errors.hysteresis_k, \"0.01\", \"0\") }}",
+      "\"Wie weit die Ist-Temperatur unter den Sollwert fallen darf, bevor die Regelung Heizen anfordert. Zu klein heißt ein ständiger Wechsel zwischen Ein- und Aus-Entscheidung. Derzeit \" ~ effective.hysteresis_k ~ \" K\" ~ (\" aus dem globalen Standard.\" if not values.hysteresis_k else \".\"), errors.hysteresis_k, \"0.01\", \"0\",",
       "<div class=\"form-check form-switch mb-1\">",
       "<div class=\"form-check form-switch mb-3\">",
       "<div class=\"form-check form-switch mb-3\">",
@@ -737,11 +737,8 @@
       "<input class=\"form-check-input\" type=\"checkbox\" role=\"switch\" id=\"window_temp_drop_detection_enabled\"",
       "<label class=\"form-check-label\" for=\"pi_enabled\">PI-Regelung (Beta) einschalten</label>",
       "<label class=\"form-check-label\" for=\"valve_protection_enabled\">Ventilschutz einschalten</label>",
-      "<strong>PI (Beta) schaltet deutlich häufiger als die Hysterese und verkürzt dadurch",
       "Aus ist die Vorgabe für jede Zone, auch nach einer Aktualisierung. Ausschalten",
       "Temperaturausgleich (K) je zugeordnetem Thermostat-Aktor — nur auf einen",
-      "die Lebensdauer des Schaltaktors spürbar.</strong>",
-      "diese Zone tatsächlich schaltet, zeigt <a href=\"{{ url_prefix }}/relay-wear\">Relaisverschleiß</a>",
       "{{ number_field(\"valve_protection_duration_minutes\", \"Ventilschutz-Dauer (Minuten)\", values.valve_protection_duration_minutes,",
       "{{ number_field(\"valve_protection_interval_days\", \"Ventilschutz-Abstand (Tage)\", values.valve_protection_interval_days,"
     ],

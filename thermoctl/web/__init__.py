@@ -4,12 +4,15 @@ from pathlib import Path
 
 from fastapi import Request
 from fastapi.templating import Jinja2Templates
-from jinja2 import Environment, FileSystemLoader
+from jinja2 import Environment, FileSystemLoader, pass_context
 from jinja2.ext import Extension
+from jinja2.runtime import Context
+from markupsafe import Markup
 
 from thermoctl.auth.csrf import csrf_token
 from thermoctl.auth.sessions import COOKIE_NAME
 from thermoctl.config import get_settings
+from thermoctl.domain.glossary import default_glossary
 from thermoctl.domain.time import age_in_words, local_time
 from thermoctl.web.assets import ASSET_VERSION
 from thermoctl.web.assets import STATIC_DIR as STATIC_DIR
@@ -179,6 +182,34 @@ def zahl_verlustfrei(value: Decimal | float | None, max_digits: int = 4) -> str:
     return text.replace(".", ",")
 
 
+@pass_context
+def glossary_help(context: Context, entry_id: str) -> Markup:
+    """Das kleine Hilfe-Symbol, das auf einen Glossareintrag verweist.
+
+    Aufruf in der Vorlage: ``{{ glossar_hilfe("hysterese") }}``. Der Verweis öffnet in
+    einem neuen Tab (``target="_blank"``): Wer mitten in einem Formular auf das Symbol
+    tippt, soll seine ungespeicherten Eingaben nicht verlieren.
+
+    Eine unbekannte Kennung bricht das Rendern ab, statt einen Verweis ins Leere zu
+    erzeugen. Das ist Absicht -- ein toter Anker fiele sonst keinem Test und keinem
+    Review auf, sondern erst dem Bewohner, der darauf tippt. Der Begriff selbst
+    (Beschriftung und Erklärung) kommt aus dem Glossar, nicht aus der Vorlage: damit
+    gibt es genau eine Stelle, an der er steht.
+
+    Funktioniert nur auf Seitenebene, nicht innerhalb importierter Makros ohne
+    Kontext, weil nur dort ``url_prefix`` bekannt ist -- Makros bekommen das fertige
+    Symbol deshalb als Parameter (``label_extra``).
+    """
+    entry = default_glossary().get(entry_id)
+    prefix = context.get("url_prefix", "")
+    return Markup(
+        '<a class="tc-help" href="{href}" target="_blank" rel="noopener" '
+        'aria-label="Erklärung zu {term} im Glossar (öffnet in neuem Tab)" '
+        'title="Was bedeutet {term}?"><span aria-hidden="true">?</span></a>'
+    ).format(href=f"{prefix}/glossar#{entry.id}", term=entry.term)
+
+
+templates.env.globals["glossar_hilfe"] = glossary_help
 templates.env.filters["age"] = age_in_words
 templates.env.filters["grad"] = grad
 templates.env.filters["zahl_verlustfrei"] = zahl_verlustfrei

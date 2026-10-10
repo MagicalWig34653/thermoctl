@@ -22,6 +22,8 @@ from thermoctl.services.publishing import _WIRED_INTEGRATIONS
 
 ROOT = Path(__file__).resolve().parent.parent
 APPROVED_OCCURRENCES = ROOT / "tests/approved_physical_vocabulary.json"
+GLOSSARY_SOURCE = "thermoctl/data/glossar.json"
+GENERATED_GLOSSARY = "glossar.md"
 
 # Keep this vocabulary short and concrete. A term belongs here when its occurrence can turn
 # nearby prose into a claim about a physical heating effect. Adding vocabulary is cheap: the
@@ -124,7 +126,18 @@ def _user_visible_sources(root: Path = ROOT) -> list[Path]:
         if path.is_file()
     ]
     sources += [root / "README.md", root / "CHANGELOG.md"]
-    sources += list((root / "docs").glob("*.md"))
+    # `docs/glossar.md` ist ausgenommen: Es wird aus `thermoctl/data/glossar.json`
+    # erzeugt, und `tests/test_glossary.py::test_docs_glossar_md_matches_the_source`
+    # schlägt fehl, sobald beide auseinanderlaufen. Dieselben Sätze würden sonst doppelt
+    # (einmal als JSON-Wert, einmal als erzeugte Markdown-Zeile) geprüft und gepflegt.
+    # Die Ausnahme gilt nur, solange dieser Synchronitätstest besteht -- siehe
+    # `test_the_generated_glossary_is_exempt_only_because_it_is_kept_in_sync`.
+    sources += [
+        path for path in (root / "docs").glob("*.md") if path.name != GENERATED_GLOSSARY
+    ]
+    # Die Quelle des Glossars dagegen ist prüfpflichtig: Bewohner lesen diese Sätze,
+    # bevor sie eine Heizung bedienen.
+    sources.append(root / GLOSSARY_SOURCE)
     return sorted(
         path
         for path in set(sources)
@@ -262,6 +275,29 @@ def _javascript_text_fragments(path: Path) -> list[tuple[int, str]]:
     return fragments
 
 
+_SENTENCE_BOUNDARY = re.compile(r"(?<=[.!?])\s+(?=[A-ZÄÖÜ„(])")
+
+
+def _glossary_text_fragments(path: Path) -> list[str]:
+    """Return every sentence of the glossary's visible text fields, one string each.
+
+    Sentences, not whole explanations: the registry then lists exactly the sentence that
+    makes a physical claim, and editing one sentence invalidates only that approval.
+    Identifiers and `see_also` links are not visible text and stay out.
+    """
+    data = json.loads(path.read_text(encoding="utf-8"))
+    fragments: list[str] = []
+    for entry in data["entries"]:
+        texts = [entry["term"], entry["short"], entry["explanation"], *entry.get("synonyms", [])]
+        for text in texts:
+            fragments.extend(
+                sentence.strip()
+                for sentence in _SENTENCE_BOUNDARY.split(text)
+                if sentence.strip()
+            )
+    return fragments
+
+
 def _blank_markdown_code(match: re.Match[str]) -> str:
     return "".join("\n" if character == "\n" else " " for character in match.group())
 
@@ -280,6 +316,12 @@ def _text_lines(path: Path) -> list[tuple[int, str, str]]:
             (first_line + offset, line, line)
             for first_line, fragment in _javascript_text_fragments(path)
             for offset, line in enumerate(fragment.splitlines())
+        ]
+
+    if path.suffix == ".json":
+        return [
+            (number, sentence, sentence)
+            for number, sentence in enumerate(_glossary_text_fragments(path), start=1)
         ]
 
     text = path.read_text(encoding="utf-8")
@@ -353,6 +395,51 @@ def test_physical_vocabulary_occurrences_are_explicitly_reviewed() -> None:
             "und aktualisiere das Verzeichnis bewusst:\n" + _format_occurrences(stale)
         )
     assert not problems, "\n\n".join(problems)
+
+
+def test_the_generated_glossary_is_exempt_only_because_it_is_kept_in_sync() -> None:
+    """Die Glossar-Quelle wird geprüft, ihre erzeugte Markdown-Fassung nicht doppelt --
+    aber nur, solange diese Fassung nachweislich den Text der Quelle trägt."""
+    from thermoctl.domain.glossary import default_glossary, render_markdown
+
+    sources = {str(path.relative_to(ROOT)) for path in _user_visible_sources()}
+    assert GLOSSARY_SOURCE in sources
+    assert "docs/glossar.md" not in sources
+    on_disk = (ROOT / "docs" / "glossar.md").read_text(encoding="utf-8")
+    assert on_disk == render_markdown(default_glossary())
+
+
+def test_glossary_sentences_are_split_into_individually_reviewable_lines(
+    tmp_path: Path,
+) -> None:
+    """Ein Satz je Fundstelle: Ändert sich einer, wird nur seine Freigabe ungültig."""
+    source = tmp_path / "glossar.json"
+    source.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "entries": [
+                    {
+                        "id": "x",
+                        "term": "Ventil",
+                        "short": "Kurz.",
+                        "explanation": "Erster Satz. Zweiter Satz. „Dritter“ Satz!",
+                        "synonyms": ["Stellglied"],
+                    }
+                ],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    assert _glossary_text_fragments(source) == [
+        "Ventil",
+        "Kurz.",
+        "Erster Satz.",
+        "Zweiter Satz.",
+        "„Dritter“ Satz!",
+        "Stellglied",
+    ]
 
 
 def test_wired_integrations_forbid_a_blanket_denial_of_actuator_commands() -> None:

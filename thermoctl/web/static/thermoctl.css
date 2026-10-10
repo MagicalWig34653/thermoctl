@@ -2940,3 +2940,91 @@ body {
     border-color: color-mix(in srgb, var(--primary) 35%, transparent);
     color: var(--primary-strong);
 }
+
+/* Das Glossar (`glossar.html`) und die kleinen Hilfe-Symbole, die dorthin verweisen.
+ *
+ * Das Symbol ist 1.5rem = 24 CSS-Pixel groß, die Mindestgröße eines Ziels nach WCAG 2.2
+ * (2.5.8). Es trägt "?" und einen `aria-label`; die Fläche allein sagt einem
+ * Vorleseprogramm nichts. */
+.tc-help {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.5rem;
+    height: 1.5rem;
+    margin-left: 0.4rem;
+    border: 1px solid var(--line-strong);
+    border-radius: 50%;
+    color: var(--muted);
+    font-size: 0.8rem;
+    font-weight: 700;
+    line-height: 1;
+    text-decoration: none;
+    vertical-align: middle;
+}
+
+.tc-help:hover,
+.tc-help:focus-visible {
+    background: var(--primary-area);
+    border-color: var(--primary);
+    color: var(--primary-strong);
+}
+
+/* Die Sprungmarken A-Z. Buchstaben ohne Begriff bleiben stehen, damit das Alphabet
+ * vollständig aussieht und die Leiste beim Suchen nicht umspringt; sie sind aber keine
+ * Verweise. Zustand nie allein über Farbe: Die ausgegrauten sind zusätzlich gar kein
+ * Bedienelement mehr (`<span>` bzw. `aria-disabled`). */
+.tc-glossary-letters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+}
+
+.tc-glossary-letters a,
+.tc-glossary-letters .tc-glossary-letter-empty {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 2rem;
+    height: 2rem;
+    border-radius: var(--radius-small);
+    font-size: 0.85rem;
+    font-weight: 700;
+}
+
+.tc-glossary-letters a {
+    background: var(--primary-area);
+    color: var(--primary-strong);
+    text-decoration: none;
+}
+
+.tc-glossary-letters a:hover,
+.tc-glossary-letters a:focus-visible {
+    box-shadow: inset 0 0 0 1px var(--primary);
+}
+
+.tc-glossary-letters .tc-glossary-letter-empty,
+.tc-glossary-letters a.tc-glossary-letter-off {
+    background: transparent;
+    color: var(--muted);
+    opacity: 0.45;
+    pointer-events: none;
+}
+
+.tc-glossary-entry,
+.tc-glossary-letter {
+    scroll-margin-top: 1rem;
+}
+
+/* Das Ziel eines Sprungs hervorheben: Wer vom Hilfe-Symbol kommt, soll sofort sehen,
+ * welcher der Einträge gemeint ist. */
+.tc-glossary-entry:target {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px var(--primary-area);
+}
+
+/* `hidden` verliert gegen eine gesetzte `display`-Regel; hier ausdrücklich nicht. */
+.tc-glossary-entry[hidden],
+[data-glossary-group][hidden] {
+    display: none;
+}

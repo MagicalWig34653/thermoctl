@@ -60,8 +60,8 @@ als Vorgabe. Sie ersetzt für eine eingeschaltete Zone die Hysterese durch einen
 Proportional-Integral-Regler mit zeitproportionalem Ausgang und gilt nur für gewöhnliche
 Schaltaktoren — selbstregelnde Ventile und Geräte mit `thermostat`-Fähigkeit sind
 ausgeschlossen, weil dort zwei Regler auf derselben Regelstrecke säßen. Der Preis steht am
-Schalter: PI schaltet deutlich häufiger und verkürzt die Lebensdauer eines Schaltaktors.
-Wie oft eine Zone tatsächlich schaltet, zeigt die Seite **Relaisverschleiß** je Gerät und
+Schalter: PI kann je nach Einstellung mehr Schaltspiele erzeugen als die Hysterese.
+Wie viele Schaltspiele eine Zone tatsächlich hat, zeigt die Seite **Relaisverschleiß** je Gerät und
 Tag mit Jahreshochrechnung — auch ohne PI nützlich.
 
 Die Ausgabe hat drei klar getrennte Stufen: Im **Trockenlauf** werden Regelentscheidungen
@@ -75,6 +75,9 @@ selbstregelnde Thermostatventile ebenso wie Ein/Aus-Befehle an gewöhnliche Akto
 
 - **[Bedienungsanleitung](docs/bedienung.md)** — für alle, die thermoctl benutzen statt
   betreiben: Anlagensicht und Wohnungssicht, Bild für Bild.
+- **[Glossar](docs/glossar.md)** — die Fachbegriffe der Oberfläche in einfachen Worten
+  (Hysterese, Notbetrieb, Trockenlauf …); dieselben Texte stehen in der Oberfläche unter
+  `/glossar`.
 - **[Ihre Wohnung online steuern](docs/wohnung.md)** — die technikfreie Kurzanleitung
   zum Weitergeben an Bewohner, die nur die Wohnungssicht sehen.
 - **[Den Schattenbetrieb in Gang setzen](docs/inbetriebnahme-schattenbetrieb.md)** — der

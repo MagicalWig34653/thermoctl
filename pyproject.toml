@@ -64,7 +64,7 @@ include = ["thermoctl*"]
 # CI-Schritt "Docker-Image-Build" weist das nicht nach; er beweist nur, dass sich
 # ein Abbild bauen lässt, nicht dass es läuft.
 [tool.setuptools.package-data]
-thermoctl = ["web/templates/*.html", "web/static/*", "web/static/vendor/*/*"]
+thermoctl = ["web/templates/*.html", "web/static/*", "web/static/vendor/*/*", "data/*.json"]
 
 [tool.ruff]
 line-length = 100
