@@ -21,12 +21,18 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
   unter der Zeichnung. Gezeichnet wird nur, was Zeilen belegen: Band, Spur und Sollstufen
   bestehen aus den Zeitspannen der Zeilen, ohne Mindestbreite und ohne Überbrückung von
   Pausen; eine Absenkung, die kürzer als ein Bildpunkt ist, zeigt ein Dreieck über der
-  Zeichnung. Istkurve und Sollwertlinien reißen in jedem Zeitraum ab 10 Minuten ohne Zeile
-  ab. Die Istkurve ist ein beschrifteter Mittelwert je Abschnitt mit hellem Bereich für
-  kleinsten bis größten Wert; „Ist" in der Legende ist die letzte Messung mit
+  Zeichnung (zusätzlich zu ihrem unverbreiterten Band, solange es sichtbar ist). Istkurve
+  und Sollwertlinien reißen in jedem Zeitraum ab 10 Minuten ohne Zeile
+  ab. Die Istkurve ist ein beschrifteter Mittelwert je Abschnitt (in der Legende „bis zu"
+  so viele Minuten; ein Punkt kann aus einer einzigen Messung stammen) mit hellem Bereich
+  für kleinsten bis größten Wert; besteht ein Zeitraum oder ein durch Lücken abgetrennter
+  Teil nur aus einem einzigen Abschnitt, zeigt ein schmaler Balken den Ausschlag. Die
+  Heizspur nennt in der Legende, was sie zeigt: den Anteil der Zeit mit Heizanforderung je
+  Abschnitt, nicht den genauen Zeitpunkt. „Ist" in der Legende ist die letzte Messung mit
   Uhrzeit. Ältere Zeilen ohne aufgezeichneten Zeitplan-Sollwert und ohne Absenkungsangabe
   erscheinen als „Absenkung unbekannt (vor der Aufzeichnung)", nicht als „keine
-  Absenkung". Eine Textzusammenfassung (Wertebereich, Heizanforderung, Sonnenabsenkung,
+  Absenkung"; in einem Fenster mit alten und neuen Zeilen gilt „keine Sonnenabsenkung"
+  nur für den aufgezeichneten Teil. Eine Textzusammenfassung (Wertebereich, Heizanforderung, Sonnenabsenkung,
   erfasste Zeit) steht unter dem Diagramm.
 
 - **Die Sonnenabsenkung ist im Schaltprotokoll erkennbar.** Senkt sie den Sollwert einer Zone

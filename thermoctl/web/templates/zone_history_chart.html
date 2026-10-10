@@ -40,6 +40,7 @@ Koordinaten kommen aus `thermoctl/domain/zone_history_chart.py`.
           <rect x="{{ L.left }}" y="{{ L.lane_top }}" width="{{ L.right - L.left }}" height="{{ L.lane_bottom - L.lane_top }}" class="tc-history-lane-track"/>
           {% for x, w, level in heat_cells_for(chart, L) %}<rect x="{{ x }}" y="{{ L.lane_top }}" width="{{ w }}" height="{{ L.lane_bottom - L.lane_top }}" class="tc-history-demand" style="opacity: {{ level / 4 }}"/>{% endfor %}
           <path d="{{ range_path(chart, L) }}" class="tc-history-range"/>
+          <path d="{{ range_bars(chart, L) }}" class="tc-history-range-bar"/>
           <path d="{{ steps(chart.scheduled_runs, chart, L) }}" class="tc-history-scheduled"/>
           <path d="{{ steps(chart.effective_runs, chart, L) }}" class="tc-history-effective"/>
           <path d="{{ line(chart, L) }}" class="tc-history-actual"/>
@@ -49,12 +50,12 @@ Koordinaten kommen aus `thermoctl/domain/zone_history_chart.py`.
     </div>
     <ul class="tc-history-legend" aria-label="Legende">
       <li><span class="tc-history-key tc-history-key-actual"></span>Ist: {{ chart.actual_text }}</li>
-      <li><span class="tc-history-key tc-history-key-range"></span>Kurve: Mittelwert je {{ chart.bucket_text }}; heller Bereich: Kleinster bis größter Wert</li>
+      <li><span class="tc-history-key tc-history-key-range"></span>Kurve: Mittelwert je Abschnitt von bis zu {{ chart.bucket_text }} (ein Punkt kann aus einer einzigen Messung stammen); heller Bereich oder Balken: Kleinster bis größter Wert je Abschnitt</li>
       <li><span class="tc-history-key tc-history-key-scheduled"></span>Zeitplan-Soll: {{ chart.scheduled_text }}</li>
       <li><span class="tc-history-key tc-history-key-effective"></span>Wirksamer Soll: {{ chart.effective_text }}</li>
-      <li><span class="tc-history-key tc-history-key-demand"></span>Heizanforderung (untere Spur; blasser = seltener)</li>
+      <li><span class="tc-history-key tc-history-key-demand"></span>Heizanforderung (untere Spur): Anteil der Zeit mit Heizanforderung je Abschnitt, blasser = kleinerer Anteil</li>
       <li><span class="tc-history-key tc-history-key-solar"></span>Sonnenabsenkung</li>
-      {% if short_bands %}<li><span class="tc-history-key-mark"></span>Dreieck oben: kurze Absenkung, zu schmal für ein Band</li>{% endif %}
+      {% if short_bands %}<li><span class="tc-history-key-mark"></span>Dreieck oben: kurze Absenkung, im Bild nur als schmaler Streifen oder gar nicht als Band erkennbar</li>{% endif %}
       {% if chart.unknown_bands %}<li><span class="tc-history-key tc-history-key-unknown"></span>Absenkung unbekannt (vor der Aufzeichnung)</li>{% endif %}
     </ul>
     <p class="tc-history-summary text-muted mb-0" id="zone-history-summary">{{ chart.summary }}</p>

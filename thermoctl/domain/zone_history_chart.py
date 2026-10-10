@@ -322,9 +322,16 @@ def build_chart(
                 f"Heizanforderung {heat_seconds / covered_seconds * 100:.0f} % der erfassten Zeit."
             )
         solar_hours = sum((b - a).total_seconds() for a, b, *_ in solar_bands) / 3600
+        known_seconds = covered_seconds - unknown_seconds
         if solar_hours > 0:
             parts.append(f"Sonnenabsenkung {_duration_text(solar_hours)}.")
-        elif covered_seconds - unknown_seconds > 0:
+        elif known_seconds > 0 and unknown_seconds > 0:
+            # "Keine" gilt nur für die Zeilen, die die Absenkung aufgezeichnet haben.
+            parts.append(
+                f"In den aufgezeichneten {_duration_text(known_seconds / 3600)} "
+                "keine Sonnenabsenkung."
+            )
+        elif known_seconds > 0:
             parts.append("Keine Sonnenabsenkung.")
         if unknown_seconds > 0:
             parts.append(
@@ -519,16 +526,24 @@ def line_path(chart: Chart, layout: Layout) -> str:
     return " ".join(parts)
 
 
-def range_path(chart: Chart, layout: Layout) -> str:
-    """Kleinster bis größter Wert je Abschnitt, nur zwischen lückenlos verbundenen Abschnitten."""
+def _sections(chart: Chart) -> list[list[Point]]:
+    """Ketten lückenlos verbundener Abschnitte (höchstens GAP zwischen den Zeilen)."""
     chains: list[list[Point]] = []
     for point in chart.points:
         if point.joined and chains:
             chains[-1].append(point)
         else:
             chains.append([point])
+    return chains
+
+
+def range_path(chart: Chart, layout: Layout) -> str:
+    """Kleinster bis größter Wert je Abschnitt als Fläche zwischen verbundenen Abschnitten.
+
+    Ein einzelner Abschnitt ohne verbundenen Nachbarn hat keine Fläche; ihn zeichnet `range_bars`.
+    """
     parts: list[str] = []
-    for chain in chains:
+    for chain in _sections(chart):
         if len(chain) < 2 or all(point.low == point.high for point in chain):
             continue
         xs = [x_position(p.at, chart, layout) for p in chain]
@@ -538,6 +553,32 @@ def range_path(chart: Chart, layout: Layout) -> str:
         parts.append(
             " ".join(f"{'M' if i == 0 else 'L'}{x:.1f},{y:.1f}" for i, (x, y) in enumerate(outline))
             + " Z"
+        )
+    return " ".join(parts)
+
+
+# Breite des Balkens für einen einzelnen Abschnitt, in Zeichnungseinheiten. Das ist Darstellung
+# (ein Strich, der gerade sichtbar ist) und behauptet keine Zeit -- wie das Dreieck der Absenkung.
+RANGE_BAR_WIDTH = 1.6
+
+
+def range_bars(chart: Chart, layout: Layout) -> str:
+    """Kleinster bis größter Wert eines Abschnitts ohne verbundenen Nachbarn, als schmaler Balken.
+
+    Ohne diesen Balken verschwände ein kurzer Ausschlag, wenn das ganze Fenster nur aus einem
+    verdichteten Abschnitt oder aus voneinander getrennten Abschnitten besteht.
+    """
+    parts: list[str] = []
+    for chain in _sections(chart):
+        if len(chain) != 1 or chain[0].low == chain[0].high:
+            continue
+        point = chain[0]
+        x = x_position(point.at, chart, layout)
+        left, right = x - RANGE_BAR_WIDTH / 2, x + RANGE_BAR_WIDTH / 2
+        top, bottom = y_position(point.high, chart, layout), y_position(point.low, chart, layout)
+        parts.append(
+            f"M{left:.1f},{top:.1f} L{right:.1f},{top:.1f} "
+            f"L{right:.1f},{bottom:.1f} L{left:.1f},{bottom:.1f} Z"
         )
     return " ".join(parts)
 

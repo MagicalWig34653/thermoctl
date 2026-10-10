@@ -372,19 +372,31 @@ Das Diagramm zeichnet nur, was protokollierte Zeilen belegen. Jede Zeile gilt f�
 Zyklus (bis zur nächsten Zeile, höchstens 90 Sekunden). Sonnenband, unbekannter Bereich und
 Heizspur bestehen aus genau diesen Zeitspannen und werden weder verbreitert noch über
 Pausen hinweg zusammengezogen; Sollwertlinien verbinden Zeilen bis 10 Minuten Abstand und
-enden am letzten Wert. Ist eine Absenkung kürzer als ein Bildpunkt der Zeichnung (bei
-7 Tagen entspricht einer rund 11 Minuten), erscheint statt eines Bandes ein kleines
-Dreieck über der Zeichnung. Es zeigt nur, dass dort etwas liegt, und behauptet keine Dauer.
+enden am letzten Wert. Eine Absenkung, die schmaler als rund drei Bildpunkte der Zeichnung
+ist (bei 7 Tagen am Desktop etwa 35 Minuten), bekommt zusätzlich zu ihrem Band ein kleines
+Dreieck über der Zeichnung, damit sie auffindbar bleibt; das Band selbst wird nie breiter
+gezeichnet, als die Zeilen es belegen. Ist sie schmaler als ein Viertel Bildpunkt (bei
+7 Tagen am Desktop etwa 3 Minuten), bleibt nur das Dreieck. Das Dreieck zeigt nur, dass dort
+etwas liegt, und behauptet keine Dauer. Auf dem Telefon sind die Bildpunkte gröber, die
+Schwellen entsprechend länger.
 
-Die orangen Striche in der schmalen Spur unter der Zeichnung zeigen, wann Heizanforderung
-bestand; je blasser, desto seltener in diesem Abschnitt. Gefärbt ist nur die Zeit, für die
-Zeilen vorliegen. Die Zeitachse steht in der eingestellten Zeitzone auf runden Stunden, an
-Mitternacht mit Wochentag und Datum.
+Die orangen Striche in der schmalen Spur unter der Zeichnung zeigen den **Anteil der Zeit
+mit Heizanforderung je Abschnitt**, nicht den genauen Zeitpunkt der Anforderung: Ein Strich ist so breit
+wie der Abschnitt, aus dem die Kurve einen Punkt bildet (bei 7 Tagen bis zu 17 Minuten), und
+seine Deckkraft stuft diesen Anteil in Vierteln ab. Ein blasser Strich heißt also „in diesem
+Abschnitt nur zeitweise angefordert", nicht „durchgehend ein bisschen". Genaue
+Einzelstriche wären bei 7 Tagen kleiner als ein Bildpunkt und nicht mehr zu sehen. Gefärbt
+ist nur die Zeit, für die Zeilen vorliegen. Die Zeitachse steht in der eingestellten Zeitzone
+auf runden Stunden, an Mitternacht mit Wochentag und Datum.
 
 Die blaue Linie ist verdichtet: Sie zeigt den Mittelwert je Abschnitt (die Legende nennt
-seine Länge, bei 24 Stunden rund 2, bei 7 Tagen rund 17 Minuten), der hellblaue Bereich
-darum den kleinsten bis größten gemessenen Wert, damit kurze Ausschläge sichtbar bleiben. „Ist" in der Legende
-ist die letzte tatsächliche Messung mit Uhrzeit. Liegen zwischen zwei Zeilen mehr als
+die Obergrenze seiner Länge, bei 24 Stunden bis zu 2, bei 7 Tagen bis zu 17 Minuten; ein
+Punkt kann auch aus einer einzigen Messung stammen). Der hellblaue Bereich darum zeigt den
+kleinsten bis größten gemessenen Wert, damit kurze Ausschläge sichtbar bleiben. Besteht ein
+Zeitraum oder ein durch Lücken abgetrennter Teil nur aus einem einzigen Abschnitt, gibt es
+keinen Bereich zwischen Nachbarn; dann steht an seiner Stelle ein schmaler hellblauer Balken
+vom kleinsten bis zum größten Wert (seine Breite ist nur Darstellung und sagt nichts über die
+Dauer). „Ist" in der Legende ist die letzte tatsächliche Messung mit Uhrzeit. Liegen zwischen zwei Zeilen mehr als
 **10 Minuten** (Neustart, Ausfall), bleiben Istkurve und Sollwertlinien unterbrochen, in
 jedem Zeitraum gleich und auch dann, wenn die Lücke mitten in einem verdichteten
 Abschnitt liegt. Ein Hinweis unter dem Diagramm nennt dann die erfasste Zeit und den
@@ -395,4 +407,7 @@ führt zurück.
 Absenkung) tragen dazu keine Aussage. Sie erscheinen als schraffierter Bereich „Absenkung
 unbekannt (vor der Aufzeichnung)"; dort fehlt die Zeitplan-Linie, und der wirksame Sollwert
 ist der damals gespeicherte. Das heißt ausdrücklich nicht, dass es keine Absenkung gab. Die
-Zusammenfassung nennt die Dauer dieser unbekannten Zeit.
+Zusammenfassung nennt die Dauer dieser unbekannten Zeit. Besteht ein Fenster aus alten und
+neuen Zeilen, gilt ein „keine Sonnenabsenkung" nur für den aufgezeichneten Teil („In den
+aufgezeichneten 30 Minuten keine Sonnenabsenkung"); der Satz „Keine Sonnenabsenkung" ohne
+Einschränkung steht nur, wenn jede Zeile des Fensters die Absenkung aufgezeichnet hat.
