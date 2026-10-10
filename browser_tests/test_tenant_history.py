@@ -17,6 +17,7 @@ from playwright.sync_api import Browser, BrowserContext, Page, expect
 
 from browser_tests import seed
 from browser_tests.conftest import LiveServer
+from browser_tests.history_tiles import scroll_until_loaded
 from tests.helpers import create_shadow_decision
 
 pytestmark = pytest.mark.browser
@@ -99,17 +100,9 @@ def _watch_requests(page: Page) -> list[tuple[str, int]]:
 
 
 def _loaded(page: Page) -> None:
-    """Rollt zum jeweils nächsten Platzhalter, bis alle Kacheln geladen sind."""
-    page.evaluate(
-        """async () => {
-            for (let i = 0; i < 200; i++) {
-                const next = document.querySelector('.tc-history-placeholder');
-                if (!next) return;
-                next.scrollIntoView({block: 'center'});
-                await new Promise(resolve => setTimeout(resolve, 150));
-            }
-        }"""
-    )
+    """Rollt zum jeweils nächsten Platzhalter, bis alle Kacheln geladen sind (nach Zeit und
+    Fortschritt begrenzt, nicht nach Schritten: `browser_tests/history_tiles.py`)."""
+    scroll_until_loaded(page)
     page.wait_for_function(
         "document.querySelectorAll('.tc-history-placeholder').length === 0", timeout=30000
     )

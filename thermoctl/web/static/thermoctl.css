@@ -3152,6 +3152,10 @@ body {
 .tc-history-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 26rem), 1fr)); gap: 1rem; }
 .tc-history-grid > .tc-history { min-width: 0; }
 .tc-history-placeholder { min-height: 16rem; }
+/* Der Raumname ist frei vergeben und kann ein einziges, sehr langes Wort sein. Im Kopf der Kachel
+   (flex, mit Umbruch) hielt ihn sein Mindestmaß breiter als den Schirm; `min-width: 0` und die
+   Begrenzung lassen ihn umbrechen. */
+.tc-history-tile h2 { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
 .tc-history-tile h2 a { color: inherit; text-decoration: none; }
 .tc-history-tile h2 a:hover, .tc-history-tile h2 a:focus-visible { text-decoration: underline; }
 /* Eine Kachel wählt ihre Zeichnung nach der eigenen Breite, nicht nach der des Schirms: Die

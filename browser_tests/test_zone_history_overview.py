@@ -8,6 +8,7 @@ from playwright.sync_api import Browser, Locator, Page, expect
 
 from browser_tests import seed
 from browser_tests.conftest import LiveServer
+from browser_tests.history_tiles import scroll_until_loaded
 from browser_tests.test_zone_history_marker import _opened
 from tests.helpers import create_shadow_decision
 
@@ -83,18 +84,10 @@ def _period_applied(page: Page, period: str, names: list[str]) -> None:
 
 
 def _scroll_through(page: Page) -> None:
-    """Rollt zum jeweils nächsten Platzhalter, bis keiner mehr da ist (Kacheln tauschen sich
-    beim Laden aus, ein fester Satz Fundstellen wäre danach veraltet)."""
-    page.evaluate(
-        """async () => {
-            for (let i = 0; i < 200; i++) {
-                const next = document.querySelector('.tc-history-placeholder');
-                if (!next) return;
-                next.scrollIntoView({block: 'center'});
-                await new Promise(resolve => setTimeout(resolve, 150));
-            }
-        }"""
-    )
+    """Rollt zum jeweils nächsten Platzhalter, bis keiner mehr da ist -- nach Zeit und Fortschritt
+    begrenzt, nicht nach Schritten (`browser_tests/history_tiles.py`): Im Gesamtlauf stehen hier die
+    Zonen aller früheren Tests, und jede Kachel braucht ihren eigenen Schritt."""
+    scroll_until_loaded(page)
 
 
 def test_every_visible_zone_gets_a_tile_with_the_drawing_and_a_link(
@@ -226,6 +219,25 @@ def test_the_grid_is_two_columns_on_a_desktop_and_one_on_a_phone_without_overflo
         _all_loaded(page)
         first, second = _two_rects(page)
         assert second["y"] > first["y"] + first["height"] - 1 and abs(first["x"] - second["x"]) < 2
+        assert page.evaluate("document.documentElement.scrollWidth - window.innerWidth") <= 1
+
+
+def test_a_very_long_room_name_wraps_in_its_tile_and_does_not_widen_the_page(
+    browser: Browser, live_server: LiveServer
+) -> None:
+    """Raumnamen sind frei vergeben, auch als ein einziges langes Wort. Im Kopf der Kachel hielt
+    das Mindestmaß eines solchen Namens die Kachel breiter als den Schirm -- die Seite bekam eine
+    waagerechte Leiste (im Gesamtlauf, wo andere Tests solche Namen anlegen, 369 Pixel)."""
+    long_name = "Schlafzimmermitbalkonundgartenblickundabstellkammerundwaschkuechenzugang"
+    with live_server.session() as session:
+        zone = seed.create_schedule_zone(session, "uebersicht-langer-name")
+        zone.display_name = long_name
+        session.commit()
+    with _opened(browser, live_server, 390, 844) as page:
+        page.goto("/zones/history")
+        _scroll_through(page)
+        _all_loaded(page)
+        expect(page.get_by_role("heading", name=long_name, exact=True)).to_be_visible()
         assert page.evaluate("document.documentElement.scrollWidth - window.innerWidth") <= 1
 
 

@@ -93,6 +93,38 @@ def _read_stream(stream: object, sink: list[str]) -> None:
 INGRESS_PREFIX = "/api/hassio_ingress/A1b2C3d4e5"
 
 
+def server_environment(database_url: str, port: int, root_path: str) -> dict[str, str]:
+    """Die Umgebung des Server-Prozesses: eine Wegwerf-Datenbank, nichts vom Entwicklerrechner.
+
+    Alle `THERMOCTL_*`-Variablen der Umgebung des Aufrufers werden abgeschnitten, und es werden
+    nur die gesetzt, die der Server braucht. Insbesondere werden die Zugangsdaten für Meross
+    **nicht** gesetzt, auch nicht leer: Eine leere Zeichenkette ist für die Anwendung "nicht None",
+    also "Konto eingerichtet" -- dann startet die Schattenschleife (sie schriebe jede Minute
+    Entscheidungen für alle Zonen in die geteilte Testdatenbank und meldete sich am
+    Meross-Dienst an). Genau das passierte hier lange; im Gesamtlauf standen dann hinter den
+    gesäten Zeilen der Verlauf-Tests Zeilen der echten Schleife ("kein Messwert").
+    `tests/test_live_server_environment.py` hält fest, dass die Schleife aus bleibt.
+    """
+    return {
+        **{key: value for key, value in os.environ.items() if not key.startswith("THERMOCTL_")},
+        "THERMOCTL_DATABASE_URL": database_url,
+        "THERMOCTL_SECRET_KEY": "b" * 32,
+        "THERMOCTL_ROOT_PATH": root_path,
+        # Cuts off a developer's own `.env`, exactly like `tests/conftest.py` does --
+        # otherwise real MQTT or Meross credentials sitting there for local, manual
+        # testing would reach this subprocess and it would reach out to the network.
+        "THERMOCTL_ENV_FILE": "",
+        "THERMOCTL_BIND_HOST": "127.0.0.1",
+        "THERMOCTL_BIND_PORT": str(port),
+        "THERMOCTL_SECURE_COOKIES": "false",
+        "THERMOCTL_LOG_FORMAT": "text",
+        "THERMOCTL_LOG_LEVEL": "INFO",
+        # MQTT explicitly off. Meross is off by *absence* (see the docstring): the THERMOCTL_*
+        # variables of the caller are filtered above, so no account reaches this process.
+        "THERMOCTL_MQTT_ENABLED": "false",
+    }
+
+
 def _live_server(
     root_path: str,
     *,
@@ -116,26 +148,7 @@ def _live_server(
     port = _free_port()
     base_url = f"http://127.0.0.1:{port}"
 
-    env = {
-        **{key: value for key, value in os.environ.items() if not key.startswith("THERMOCTL_")},
-        "THERMOCTL_DATABASE_URL": database_url,
-        "THERMOCTL_SECRET_KEY": "b" * 32,
-        "THERMOCTL_ROOT_PATH": root_path,
-        # Cuts off a developer's own `.env`, exactly like `tests/conftest.py` does --
-        # otherwise real MQTT or Meross credentials sitting there for local, manual
-        # testing would reach this subprocess and it would reach out to the network.
-        "THERMOCTL_ENV_FILE": "",
-        "THERMOCTL_BIND_HOST": "127.0.0.1",
-        "THERMOCTL_BIND_PORT": str(port),
-        "THERMOCTL_SECURE_COOKIES": "false",
-        "THERMOCTL_LOG_FORMAT": "text",
-        "THERMOCTL_LOG_LEVEL": "INFO",
-        # Explicitly unset (not merely defaulted) so a developer's real environment
-        # cannot accidentally arm MQTT or Meross for this throwaway instance either.
-        "THERMOCTL_MQTT_ENABLED": "false",
-        "THERMOCTL_MEROSS_EMAIL": "",
-        "THERMOCTL_MEROSS_PASSWORD": "",
-    }
+    env = server_environment(database_url, port, root_path)
 
     migration = subprocess.run(
         [sys.executable, "-m", "alembic", "upgrade", "head"],
