@@ -41,7 +41,8 @@ _VIEWS_BEFORE_DOCUMENTATION_FLAGS = (
     View("einrichtung", "/setup", "oeffentlich"),
     View("anmeldung", "/login", "oeffentlich"),
     View("startseite", "/", mobile=True),
-    View("wohnzimmer-verlauf", "/zones/{zone_wohnzimmer}", mobile=True),
+    View("wohnzimmer-verlauf", "/zones/{zone_wohnzimmer}", mobile=True, route="/zones/{zone_id}"),
+    View("zonenverlaeufe", "/zones/history", mobile=True),
     *(
         View(name, path)
         for name, path in (
@@ -224,4 +225,8 @@ assert {stem for stem in _DOCUMENTED if stem not in {v.stem for v in VIEWS}} == 
 
 EXCLUDED_ROUTES = {
     "/kiosk": "Ziel der Token-Weiterleitung; wird über /kiosk/{plaintext} aufgenommen.",
+    "/zones/{zone_id}/history": (
+        "Teilantwort (nur die Verlaufskarte, ohne Seitenrahmen); erscheint auf "
+        "/zones/{zone_id} (wohnzimmer-verlauf) und als Kachel auf /zones/history."
+    ),
 }

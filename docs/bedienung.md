@@ -446,6 +446,20 @@ trägt keinen Sollwert; die Sollwertlinien sind an dieser Stelle für etwa eine 
 unterbrochen. Mit **Vollbild** lässt sich die Karte vergrößern; **Schließen** oder Escape
 führt zurück.
 
+**Werte an einer Stelle ablesen.** Mit der Maus über das Diagramm fahren (auf dem Telefon
+tippen oder ziehen) zeigt eine senkrechte Linie und eine Box mit der Ortszeit und den Werten
+an dieser Stelle: Ist, Zeitplan-Soll, wirksamer Soll, Sonnenabsenkung und Heizanforderung.
+Mit den Pfeiltasten (links/rechts, Pos1/Ende, Umschalt für größere Schritte) lässt sich dasselbe
+bedienen, sobald das Diagramm den Fokus hat; Escape blendet die Box aus. Die Box zeigt nur, was
+protokollierte Zeilen belegen: In einer Lücke (mehr als 90 Sekunden ohne Zeile) und nach dem
+letzten Eintrag steht „keine Daten" mit der Dauer der Lücke, es wird nichts geschätzt oder über
+die Lücke hinweg angezeigt. Ältere Zeilen aus der Zeit vor der Aufzeichnung zeigen „unbekannt"
+bzw. „Absenkung unbekannt". Bei 3 und 7 Tagen ist der Istwert ein Mittelwert (die Box nennt die
+Zahl der Messungen und die Länge des Abschnitts, „bis zu 17 Minuten") mit kleinstem und größtem
+Wert. „Heizanforderung" ist „ja" oder „nein", wenn sie im ganzen Abschnitt durchgehend oder gar
+nicht vorlag, sonst der Anteil der Zeit in Prozent. Das ist die Anforderung des Reglers, keine
+Aussage über das, was am Gerät ankam.
+
 Ältere Protokollzeilen (aus der Zeit vor der Aufzeichnung von Zeitplan-Sollwert und
 Absenkung) tragen dazu keine Aussage. Sie erscheinen als schraffierter Bereich „Absenkung
 unbekannt (vor der Aufzeichnung)"; dort fehlt die Zeitplan-Linie, und der wirksame Sollwert
@@ -454,3 +468,16 @@ Zusammenfassung nennt die Dauer dieser unbekannten Zeit. Besteht ein Fenster aus
 neuen Zeilen, gilt ein „keine Sonnenabsenkung" nur für den aufgezeichneten Teil („In den
 aufgezeichneten 30 Minuten keine Sonnenabsenkung"); der Satz „Keine Sonnenabsenkung" ohne
 Einschränkung steht nur, wenn jede Zeile des Fensters die Absenkung aufgezeichnet hat.
+
+### Verläufe aller Zonen
+
+Unter **Analyse → Zonenverläufe** (auch über „Alle Verläufe" auf der Zonenliste) stehen die
+Verläufe aller Zonen auf einer Seite, je Zone eine Kachel mit demselben Diagramm. Der Zeitraum
+(24 Stunden, 3 oder 7 Tage) oben gilt für alle Kacheln und steht in der Adresse, sodass sich
+die Ansicht teilen oder neu laden lässt. Der Zonenname über der Kachel führt zur Zone; **Vollbild**
+vergrößert nur diese Kachel. Die Kacheln laden nacheinander nach, sobald sie ins Bild kommen
+(„Verlauf wird geladen …"); die Seite selbst enthält keine Messdaten. Nebeneinander stehen sie
+auf breiten Bildschirmen in zwei Spalten, auf dem Telefon untereinander. Gezeigt werden nur die
+Zonen, die man verwalten darf; ohne dieses Recht ist die Seite leer. Sie gehört zur
+Anlagensicht und steht in der Wohnungssicht nicht zur Verfügung.
+

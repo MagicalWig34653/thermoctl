@@ -1,9 +1,9 @@
 """Verdichteter Verlauf einer Zone; Berechnung getrennt vom Datenbankzugriff."""
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
-from decimal import Decimal
+from decimal import ROUND_HALF_EVEN, Decimal
 from math import ceil, floor
 from zoneinfo import ZoneInfo
 
@@ -89,6 +89,40 @@ SolarBand = tuple[datetime, datetime, float, float]
 
 
 @dataclass(frozen=True)
+class Span:
+    """Kleinster und größter Wert über die Zeilen eines Abschnitts, in Zehnteln (°C bzw. K).
+
+    `low`/`high` sind `None`, wenn keine einzige Zeile des Abschnitts den Wert belegt;
+    `partly_unknown` sagt, dass mindestens eine Zeile ihn nicht kennt (Altzeile, Ausfall).
+    """
+
+    low: int | None
+    high: int | None
+    partly_unknown: bool
+
+
+@dataclass(frozen=True)
+class HoverCell:
+    """Was die Zeilen eines zusammenhängenden Stücks innerhalb eines Buckets belegen.
+
+    Grundlage der Anzeige am Mauszeiger. Ein Stück reicht von der ersten Zeile bis zum Ende
+    der letzten (nie über CYCLE_LIMIT hinaus, nie über die nächste Zeile); wo kein Stück liegt,
+    gibt es keine Zeile -- und die Anzeige sagt das, statt zu interpolieren.
+    """
+
+    first: datetime
+    end: datetime
+    measurements: int  # Zeilen mit Temperaturwert
+    mean: int | None  # Zehntel °C; None ohne Temperaturwert
+    low: int | None
+    high: int | None
+    heat_percent: int  # Anteil der Zeit mit Heizanforderung, 0..100
+    effective: Span
+    scheduled: Span
+    solar: Span
+
+
+@dataclass(frozen=True)
 class Chart:
     has_data: bool
     points: tuple[Point, ...]
@@ -113,6 +147,7 @@ class Chart:
     sparse_ticks: tuple[tuple[float, str], ...]
     y_ticks: tuple[tuple[float, str], ...]
     stale: bool
+    hover: tuple[HoverCell, ...]
 
 
 def read_samples(session: Session, zone_id: int, start: datetime, end: datetime) -> list[Sample]:
@@ -404,6 +439,7 @@ def build_chart(
         sparse_ticks=ticks[::2],
         y_ticks=y_ticks,
         stale=stale,
+        hover=_hover_cells(samples, ends, buckets),
     )
 
 
@@ -499,6 +535,136 @@ def _heat_lane(
         else:
             lane.append((cell.first, cell.last, level))
     return tuple(lane)
+
+
+def _tenths(value: float) -> int:
+    """Auf Zehntel gerundet wie `temperature_text` (kaufmännisch gerade, Decimal-Regel)."""
+    return int(Decimal(str(value)).quantize(Decimal("0.1"), rounding=ROUND_HALF_EVEN) * 10)
+
+
+def _value_span(values: list[float | None]) -> Span:
+    known = [value for value in values if value is not None]
+    if not known:
+        return Span(None, None, True)
+    return Span(_tenths(min(known)), _tenths(max(known)), len(known) < len(values))
+
+
+@dataclass
+class _HoverAccumulator:
+    first: datetime
+    end: datetime
+    seconds: float = 0.0
+    heating: float = 0.0
+    temperatures: list[float] = field(default_factory=list)
+    effective: list[float | None] = field(default_factory=list)
+    scheduled: list[float | None] = field(default_factory=list)
+    solar: list[float | None] = field(default_factory=list)
+
+
+def _hover_cells(
+    samples: list[Sample], ends: list[datetime], buckets: dict[int, list[int]]
+) -> tuple[HoverCell, ...]:
+    """Stücke für die Anzeige am Mauszeiger: dieselbe Zeilenzuordnung wie die Heizspur.
+
+    Ein Stück endet am Bucket-Rand und an jeder Pause über dem Zyklus einer Zeile. Mehr als
+    ein Bucket zusammenzufassen hieße, einen Mittelwert über eine Strecke zu behaupten, die
+    das Diagramm selbst nicht als einen Punkt zeichnet.
+    """
+    accumulators: list[_HoverAccumulator] = []
+    for _, indices in sorted(buckets.items()):
+        current: _HoverAccumulator | None = None
+        for index in indices:
+            sample = samples[index]
+            if ends[index] <= sample.at:
+                continue
+            if current is not None and current.end == sample.at:
+                current.end = ends[index]
+            else:
+                current = _HoverAccumulator(sample.at, ends[index])
+                accumulators.append(current)
+            seconds = (ends[index] - sample.at).total_seconds()
+            current.seconds += seconds
+            current.heating += seconds if sample.heat else 0.0
+            if sample.temperature is not None:
+                current.temperatures.append(sample.temperature)
+            current.effective.append(sample.effective)
+            current.scheduled.append(sample.scheduled)
+            current.solar.append(sample.solar_k)
+    cells: list[HoverCell] = []
+    for acc in accumulators:
+        temperatures = acc.temperatures
+        # 0 und 100 stehen nur für "nie" und "durchgehend"; alles dazwischen bleibt ein Anteil.
+        if acc.heating == 0:
+            percent = 0
+        elif acc.heating == acc.seconds:
+            percent = 100
+        else:
+            percent = min(99, max(1, round(acc.heating / acc.seconds * 100)))
+        cells.append(
+            HoverCell(
+                first=acc.first,
+                end=acc.end,
+                measurements=len(temperatures),
+                mean=_tenths(sum(temperatures) / len(temperatures)) if temperatures else None,
+                low=_tenths(min(temperatures)) if temperatures else None,
+                high=_tenths(max(temperatures)) if temperatures else None,
+                heat_percent=percent,
+                effective=_value_span(acc.effective),
+                scheduled=_value_span(acc.scheduled),
+                solar=_value_span(acc.solar),
+            )
+        )
+    return tuple(cells)
+
+
+def _runs_of_spans(spans: list[Span]) -> list[list[int | bool | None]]:
+    """Gleiche Nachbarn zusammengefasst: [Anzahl, kleinster, größter, teils unbekannt]."""
+    runs: list[list[int | bool | None]] = []
+    for span in spans:
+        entry: list[int | bool | None] = [1, span.low, span.high, int(span.partly_unknown)]
+        if runs and runs[-1][1:] == entry[1:]:
+            count = runs[-1][0]
+            assert isinstance(count, int)
+            runs[-1][0] = count + 1
+        else:
+            runs.append(entry)
+    return runs
+
+
+def hover_payload(chart: Chart, timezone_name: str | None) -> dict[str, object]:
+    """Kompakte Daten für die Anzeige am Mauszeiger (ein Satz für alle Zeichnungen).
+
+    Zeiten sind Sekunden ab Fensterbeginn (`s`, UTC-Epoche), Temperaturen Zehntel Grad.
+    `c` ist flach, je Stück sieben Zahlen: Abstand zum Ende des vorigen Stücks (das erste: zum
+    Fensterbeginn), Dauer, Zahl der Temperaturwerte, Mittelwert, kleinster Wert minus Mittelwert,
+    größter Wert minus Mittelwert, Anteil Heizanforderung in Prozent. `ef`/`sc`/`so` sind
+    wirksamer Soll, Zeitplan-Soll und Absenkung je Stück, gleiche Nachbarn zusammengefasst.
+    Was nicht in `c` liegt, ist Lücke: dort gibt es keine Zeile, und die Anzeige sagt das.
+    """
+    flat: list[int] = []
+    previous_end = 0
+    for cell in chart.hover:
+        first = max(previous_end, round((cell.first - chart.start).total_seconds()))
+        end = max(first + 1, round((cell.end - chart.start).total_seconds()))
+        mean = cell.mean if cell.mean is not None and cell.low is not None else 0
+        low = cell.low if cell.low is not None else 0
+        high = cell.high if cell.high is not None else 0
+        flat += [
+            first - previous_end, end - first, cell.measurements, mean,
+            low - mean, high - mean, cell.heat_percent,
+        ]  # fmt: skip
+        previous_end = end
+    return {
+        "v": 1,
+        "tz": timezone_name or "UTC",
+        "s": int(chart.start.replace(tzinfo=UTC).timestamp()),
+        "e": round((chart.end - chart.start).total_seconds()),
+        "b": chart.bucket_text,
+        "c": flat,
+        "ef": _runs_of_spans([cell.effective for cell in chart.hover]),
+        "sc": _runs_of_spans([cell.scheduled for cell in chart.hover]),
+        "so": _runs_of_spans([cell.solar for cell in chart.hover]),
+    }
 
 
 def chart_for_zone(

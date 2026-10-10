@@ -30,6 +30,7 @@ PROTECTED_PAGES = [
     "/kiosk-tokens",
     "/devices",
     "/zones",
+    "/zones/history",
     "/modes",
     "/modes/new",
     "/audit",

@@ -3116,3 +3116,46 @@ body {
     .tc-history-expanded .tc-history-mobile { display: none; }
     .tc-history-expanded .tc-history-mobile-tall { display: block; width: 100%; }
 }
+
+/* Anzeige am Mauszeiger: senkrechte Linie, Punkte auf den Werten und eine Wertebox. Alles
+   überlagert die Zeichnung und fasst sie nicht an; ohne JavaScript entsteht nichts davon. */
+.tc-history-plot { position: relative; touch-action: pan-y pinch-zoom; }
+.tc-history-plot:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.tc-history-marker { pointer-events: none; }
+.tc-history-marker-line { stroke: var(--ink); stroke-width: 1; opacity: .55; vector-effect: non-scaling-stroke; }
+.tc-history-marker-dot { fill: var(--surface); stroke-width: 2; vector-effect: non-scaling-stroke; }
+.tc-history-marker-dot-actual { stroke: var(--history-actual); }
+.tc-history-marker-dot-scheduled { stroke: var(--history-scheduled); }
+.tc-history-marker-dot-effective { stroke: var(--history-effective); }
+.tc-history-tip {
+    position: absolute; z-index: 3; top: 0; left: 0; box-sizing: border-box; pointer-events: none;
+    width: max-content; max-width: min(19rem, 100%); padding: .5rem .65rem;
+    background: var(--surface); color: var(--ink); border: 1px solid var(--line-strong);
+    border-radius: var(--radius-small); box-shadow: var(--shadow); font-size: .8rem; line-height: 1.35;
+}
+.tc-history-tip[hidden] { display: none; }
+@media (max-width: 600px) { .tc-history-tip { max-width: min(14rem, 100%); font-size: .75rem; } }
+.tc-history-tip-head { font-weight: 600; margin-bottom: .2rem; }
+.tc-history-tip-grid { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: .1rem .6rem; margin: 0; }
+.tc-history-tip-grid dt { color: var(--muted); font-weight: 400; }
+.tc-history-tip-grid dd { margin: 0; font-variant-numeric: tabular-nums; }
+.tc-history-tip-note { color: var(--muted); font-size: .75rem; }
+.tc-history-tip-wide { grid-column: 1 / -1; margin: 0; }
+
+/* Übersichtsseite: ein Raster aus Kacheln, zwei Spalten ab etwa 870 px Inhaltsbreite (bei 1280 px Schirm mit Seitenleiste). */
+.tc-history-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 26rem), 1fr)); gap: 1rem; }
+.tc-history-grid > .tc-history { min-width: 0; }
+.tc-history-placeholder { min-height: 16rem; }
+.tc-history-tile h2 a { color: inherit; text-decoration: none; }
+.tc-history-tile h2 a:hover, .tc-history-tile h2 a:focus-visible { text-decoration: underline; }
+/* Eine Kachel wählt ihre Zeichnung nach der eigenen Breite, nicht nach der des Schirms: Die
+   breite Zeichnung in einer halben Spalte machte die Beschriftung unleserlich klein. Im
+   Vollbild gelten wieder die Regeln des Schirms. */
+.tc-history-tile:not(.tc-history-expanded) .tc-history-plot { container-type: inline-size; }
+@container (max-width: 700px) {
+    .tc-history-tile:not(.tc-history-expanded) .tc-history-desktop { display: none; }
+    .tc-history-tile:not(.tc-history-expanded) .tc-history-mobile { display: block; width: 100%; }
+    .tc-history-tile:not(.tc-history-expanded) .tc-history-label { font-size: 11px; }
+    .tc-history-tile:not(.tc-history-expanded) .tc-history-solar-label,
+    .tc-history-tile:not(.tc-history-expanded) .tc-history-unknown-label { font-size: 11px; }
+}

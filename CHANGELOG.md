@@ -9,6 +9,33 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ---
 
+## Unreleased
+
+### Neu
+
+- **Werte am Mauszeiger im Temperaturverlauf:** Fährt man mit der Maus über das Diagramm (oder
+  tippt bzw. zieht mit dem Finger, oder bedient es mit den Pfeiltasten links/rechts, Pos1/Ende,
+  Umschalt für größere Schritte, Escape zum Ausblenden), erscheinen eine senkrechte Linie und
+  eine Wertebox mit der Ortszeit (nach der eingestellten Zeitzone, auch über die
+  Zeitumstellung), Ist, Zeitplan-Soll, wirksamem Soll, Sonnenabsenkung und Heizanforderung an
+  dieser Stelle. Die Box zeigt nur, was Zeilen belegen: In einer Lücke und nach dem letzten
+  Eintrag steht „keine Daten" (mit der Dauer der Lücke), nichts wird interpoliert oder über
+  eine Lücke hinweg angezeigt; Altzeilen ohne aufgezeichneten Zeitplan-Soll stehen als
+  „unbekannt", ohne Absenkungsangabe als „Absenkung unbekannt". Bei 3 und 7 Tagen zeigt die Box den
+  Mittelwert des Abschnitts („Mittelwert aus 27 Messungen, Abschnitt bis zu 17 Minuten") mit
+  kleinstem und größtem Wert. Funktioniert in der Karte und im Vollbild, in allen vier
+  Zeichnungen und in beiden Farbmodi; ohne JavaScript bleibt das Diagramm wie bisher lesbar.
+  Die Daten stehen kompakt einmal je Karte im Markup (rund 11 bis 14 Kilobyte bei 600
+  Abschnitten, etwa ein Zehntel der Antwort).
+- **Neue Seite „Verläufe aller Zonen"** (Analyse → Zonenverläufe, auch als „Alle Verläufe" auf
+  der Zonenliste): je Zone eine Kachel mit demselben Diagramm, ein Zeitraum (24 Stunden, 3 oder
+  7 Tage) für alle, jede Kachel mit eigenem Vollbild und Link zur Zone. Die Kacheln laden
+  nacheinander nach, sobald sie ins Bild kommen. Angezeigt werden nur Zonen, die man verwalten
+  darf (`zone.manage`, wie die Einzelkarte); ohne dieses Recht ist die Seite leer, wie die
+  Zonenliste. Die Seite gehört nur zur Anlagensicht.
+
+---
+
 ## 0.12.0 — 2026-10-10
 
 ### Neu

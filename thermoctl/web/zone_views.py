@@ -1,8 +1,10 @@
+import json
 from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import RedirectResponse
+from markupsafe import Markup
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -19,6 +21,7 @@ from thermoctl.domain.zone_history_chart import (
     chart_for_zone,
     has_short_bands,
     heat_cells_for,
+    hover_payload,
     line_path,
     range_bars,
     range_path,
@@ -201,9 +204,31 @@ async def create_zone_view(
     return RedirectResponse(prefixed(request, "/zones"), status_code=status.HTTP_303_SEE_OTHER)
 
 
-def _history_context(session: Session, zone_id: int, period: str) -> dict[str, object]:
+def _checked_period(period: str) -> str:
     if period not in WINDOWS:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Ungültiger Zeitraum")
+    return period
+
+
+def _attribute_json(payload: object) -> Markup:
+    """JSON ohne Leerraum für ein einfach quotiertes `data-`Attribut.
+
+    Das übliche HTML-Escapen machte aus jedem `"` ein `&#34;` und blähte die Daten auf das
+    Dreifache auf. Stattdessen stehen `'`, `&`, `<` und `>` als JSON-Escape (`\\u0027` ...) im
+    Text, den jeder JSON-Leser zurückübersetzt -- so enthält das Attribut keines dieser Zeichen
+    mehr, und mit `"` im Wert ist es auch in einfachen Anführungszeichen eindeutig begrenzt.
+    """
+    text = json.dumps(payload, separators=(",", ":"), ensure_ascii=True)
+    for char in "'&<>":
+        text = text.replace(char, f"\\u{ord(char):04x}")
+    # Von jedem Zeichen befreit, das ein Attribut verlassen könnte; Test: test_zone_history_hover.
+    return Markup(text)  # noqa: S704
+
+
+def _history_context(
+    session: Session, zone_id: int, period: str, *, tile: bool = False
+) -> dict[str, object]:
+    _checked_period(period)
     setting = session.get(Setting, 1)
     timezone_name = setting.timezone if setting is not None else None
     now = datetime.now(UTC).replace(tzinfo=None)
@@ -211,6 +236,14 @@ def _history_context(session: Session, zone_id: int, period: str) -> dict[str, o
     return {
         "chart": chart,
         "period": period,
+        "tile": tile,
+        # Jede Karte braucht eine eigene Kennung: auf der Übersichtsseite stehen viele
+        # nebeneinander, und SVG-Muster und Beschreibungen werden im Dokument über die Kennung
+        # gefunden.
+        "chart_id": f"zone-history-{zone_id}" if tile else "zone-history",
+        "hover_json": _attribute_json(hover_payload(chart, timezone_name))
+        if chart.has_data
+        else "",
         "layouts": LAYOUTS,
         "xpos": x_position,
         "ypos": y_position,
@@ -228,6 +261,37 @@ def _history_context(session: Session, zone_id: int, period: str) -> dict[str, o
     }
 
 
+@router.get("/zones/history")
+async def zone_history_overview(
+    request: Request,
+    principal: Annotated[Principal, Depends(current_principal)],
+    session: Annotated[Session, Depends(get_session)],
+    period: str = "24h",
+) -> Response:
+    """Alle Verläufe auf einer Seite -- die Kacheln laden einzeln nach.
+
+    Die Seite selbst enthält keine Messdaten, nur Platzhalter. Welche Zonen darauf stehen,
+    entscheidet derselbe Zonenfilter wie bei der Einzelkarte (`_visible_zone`: `zone.manage`);
+    jede Kachel holt ihre Karte über `zone_history`, das die Zone noch einmal prüft. Ohne
+    Recht ist die Seite leer, wie die Zonenliste.
+    """
+    _checked_period(period)
+    zones = visible_zones(session, principal, "zone.manage")
+    # `page_path`/`tile_path`: die Adressen dieser Oberfläche. Seitenkörper und Kachel sind frei
+    # von Rechten und festen Adressen, damit eine andere Oberfläche (Wohnungssicht) sie mit ihrem
+    # eigenen Zonenfilter und ihren eigenen Routen wiederverwenden kann.
+    return templates.TemplateResponse(
+        request,
+        "zones_history.html",
+        {
+            "zones": zones,
+            "period": period,
+            "page_path": "/zones/history",
+            "tile_path": "/zones/{zone_id}/history",
+        },
+    )
+
+
 @router.get("/zones/{zone_id}/history")
 async def zone_history(
     zone_id: int,
@@ -235,12 +299,17 @@ async def zone_history(
     principal: Annotated[Principal, Depends(current_principal)],
     session: Annotated[Session, Depends(get_session)],
     period: str = "24h",
+    tile: bool = False,
 ) -> Response:
     zone = _visible_zone(session, principal, zone_id)
     return templates.TemplateResponse(
         request,
         "zone_history_chart.html",
-        {"zone": zone, **_history_context(session, zone_id, period)},
+        {
+            "zone": zone,
+            "zone_href": f"/zones/{zone.id}" if tile else None,
+            **_history_context(session, zone_id, period, tile=tile),
+        },
     )
 
 

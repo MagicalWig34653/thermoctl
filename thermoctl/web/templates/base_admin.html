@@ -17,7 +17,15 @@ zeigt sie nur an.
 ] %}
 {% set bottom_items = navigation_items | selectattr("in_bottom_navigation") | list %}
 {% macro nav_link(target, label, exact=false, css="tc-nav-item") %}
-    {% set active = here == target if exact else (here == target or here.startswith(target ~ "/")) %}
+    {#
+    Der genauere Eintrag gewinnt: unter `/zones/history` ist "Zonenverläufe" die aktuelle
+    Seite, nicht zugleich "Zonen" -- zwei Einträge mit `aria-current` wären eine falsche Auskunft.
+    #}
+    {% set deeper = namespace(found=false) %}
+    {% for other in navigation_items %}
+    {% if other.path != target and other.path | length > target | length and (here == other.path or here.startswith(other.path ~ "/")) %}{% set deeper.found = true %}{% endif %}
+    {% endfor %}
+    {% set active = here == target if exact else ((here == target or here.startswith(target ~ "/")) and not deeper.found) %}
     <a class="{{ css }}{{ ' tc-here' if active }}" href="{{ url_prefix }}{{ target }}"
        {% if active %}aria-current="page"{% endif %}>{{ label }}</a>
 {% endmacro %}
