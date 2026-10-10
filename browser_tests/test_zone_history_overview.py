@@ -4,7 +4,7 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 import pytest
-from playwright.sync_api import Browser, Page, expect
+from playwright.sync_api import Browser, Locator, Page, expect
 
 from browser_tests import seed
 from browser_tests.conftest import LiveServer
@@ -55,20 +55,29 @@ def _all_loaded(page: Page) -> None:
     )
 
 
-def _period_applied(page: Page, period: str) -> None:
-    """Wartet, bis die Seite fertig getauscht ist: jede Kachel ist entweder ein Platzhalter für
-    den neuen Zeitraum oder schon seine geladene Karte. Der neue Zeitraum-Knopf allein beweist das
-    nicht -- htmx setzt ihn einen Augenblick vor den Kacheln."""
+def _tile(page: Page, name: str) -> Locator:
+    """Die Kachel genau dieser Zone. Der Live-Server ist für die ganze Sitzung geteilt, die Seite
+    zeigt also auch die Zonen früherer Tests (teils ohne Verlaufsdaten): Zusicherungen über
+    „jede Kachel" oder „die erste Kachel" gelten nur für die eigenen Zonen, nie für die Seite."""
+    return page.locator(".tc-history-tile", has=page.get_by_role("heading", name=name, exact=True))
+
+
+def _period_applied(page: Page, period: str, names: list[str]) -> None:
+    """Wartet, bis die Seite fertig getauscht ist: jede Kachel der eigenen Zonen (`names`) ist
+    entweder ein Platzhalter für den neuen Zeitraum oder schon seine geladene Karte. Der neue
+    Zeitraum-Knopf allein beweist das nicht -- htmx setzt ihn einen Augenblick vor den Kacheln.
+    Fremde Zonen bleiben außen vor: Sie haben womöglich keine Daten, also keinen Text."""
     marker = "17 Minuten" if period == "7d" else "3 Minuten"
     page.wait_for_function(
-        """([period, marker]) => {
-            const tiles = Array.from(document.querySelectorAll('.tc-history-tile'));
-            return tiles.length > 0 && tiles.every(tile =>
+        """([period, marker, names]) => {
+            const tiles = Array.from(document.querySelectorAll('.tc-history-tile')).filter(
+                tile => names.includes(tile.querySelector('h2')?.textContent.trim()));
+            return tiles.length === names.length && tiles.every(tile =>
                 tile.classList.contains('tc-history-placeholder')
                     ? (tile.getAttribute('hx-get') || '').includes('period=' + period)
                     : tile.textContent.includes(marker));
         }""",
-        arg=[period, marker],
+        arg=[period, marker, names],
         timeout=15000,
     )
 
@@ -99,9 +108,9 @@ def test_every_visible_zone_gets_a_tile_with_the_drawing_and_a_link(
         _scroll_through(page)
         _all_loaded(page)
         for name in names:
-            tile = page.locator(".tc-history-tile", has=page.get_by_role("heading", name=name))
+            tile = _tile(page, name)
             expect(tile.locator("svg:visible")).to_have_count(1)
-            link = tile.get_by_role("link", name=name)
+            link = tile.get_by_role("link", name=name, exact=True)
             assert (link.get_attribute("href") or "").startswith("/zones/")
         assert seen and all(status == 200 for _, status in seen), seen
         # Jede Kennung im Dokument kommt genau einmal vor (Muster, Beschreibungen, Kacheln).
@@ -115,7 +124,7 @@ def test_every_visible_zone_gets_a_tile_with_the_drawing_and_a_link(
 def test_the_period_applies_to_all_tiles_and_stays_in_the_address(
     browser: Browser, live_server: LiveServer
 ) -> None:
-    _seed_zones(live_server, "zeitraum", 2)
+    names = _seed_zones(live_server, "zeitraum", 2)
     with _opened(browser, live_server, 1280, 900) as page:
         seen = _watch_tiles(page)
         page.goto("/zones/history")
@@ -123,16 +132,16 @@ def test_the_period_applies_to_all_tiles_and_stays_in_the_address(
         _all_loaded(page)
         page.get_by_role("button", name="7 Tage").click()
         page.locator('#zones-history-page .btn-primary:has-text("7 Tage")').wait_for()
-        _period_applied(page, "7d")
+        _period_applied(page, "7d", names)
         _scroll_through(page)
         _all_loaded(page)
         page.wait_for_load_state("networkidle")
-        # Jede Kachel zeigt den gewählten Zeitraum (verdichtet: Abschnitte von bis zu 17 Minuten),
-        # und keine Anfrage ist gescheitert.
-        for index in range(page.locator(".tc-history-tile").count()):
-            expect(page.locator(".tc-history-tile").nth(index)).to_contain_text(
-                "bis zu 17 Minuten", timeout=15000
-            )
+        # Jede Kachel der eigenen Zonen zeigt den gewählten Zeitraum (verdichtet: Abschnitte von
+        # bis zu 17 Minuten), und keine Anfrage -- auch keine fremder Zonen -- ist gescheitert.
+        for name in names:
+            tile = _tile(page, name)
+            expect(tile).to_have_count(1)
+            expect(tile).to_contain_text("bis zu 17 Minuten", timeout=15000)
         assert all(status == 200 for _, status in seen), seen
         assert "period=7d" in page.url
         page.reload()
@@ -149,11 +158,11 @@ def test_each_tile_has_its_own_fullscreen_and_hover(
         page.goto("/zones/history")
         _scroll_through(page)
         _all_loaded(page)
-        tiles = page.locator(".tc-history-tile", has=page.get_by_role("heading", name=names[1]))
+        tiles = _tile(page, names[1])
         tiles.get_by_role("button", name="Vollbild").click()
         expanded = page.locator(".tc-history-expanded")
         expect(expanded).to_have_count(1)
-        expect(expanded.get_by_role("heading", name=names[1])).to_be_visible()
+        expect(expanded.get_by_role("heading", name=names[1], exact=True)).to_be_visible()
         # Der Zeitraumwechsel gehört der Seite, nicht der Kachel: im Vollbild gibt es ihn nicht.
         assert expanded.get_by_role("button", name="7 Tage").count() == 0
         page.wait_for_timeout(400)
@@ -168,7 +177,7 @@ def test_each_tile_has_its_own_fullscreen_and_hover(
         expanded.get_by_role("button", name="Schließen").click()
         expect(page.locator(".tc-history-expanded")).to_have_count(0)
         # Auch nach dem Schließen zeigt die Kachel ihre Werte beim Darüberfahren.
-        first = page.locator(".tc-history-tile").first
+        first = _tile(page, names[0])
         first.scroll_into_view_if_needed()
         box = first.locator(".tc-history-plot").bounding_box()
         assert box is not None
@@ -197,7 +206,7 @@ def test_tiles_load_only_when_they_come_into_view_and_one_at_a_time(
 def test_the_grid_is_two_columns_on_a_desktop_and_one_on_a_phone_without_overflow(
     browser: Browser, live_server: LiveServer
 ) -> None:
-    _seed_zones(live_server, "raster", 2)
+    names = _seed_zones(live_server, "raster", 2)
     with _opened(browser, live_server, 1280, 900) as page:
         page.goto("/zones/history")
         _scroll_through(page)
@@ -206,9 +215,9 @@ def test_the_grid_is_two_columns_on_a_desktop_and_one_on_a_phone_without_overflo
         assert abs(first["y"] - second["y"]) < 2 and second["x"] > first["x"] + first["width"] - 1
         # Eine Kachel nimmt die Zeichnung nach ihrer Breite: in der halben Spalte die schmale.
         assert (
-            page.locator(".tc-history-tile svg:visible").first.evaluate(
-                "s => s.viewBox.baseVal.width"
-            )
+            _tile(page, names[0])
+            .locator("svg:visible")
+            .first.evaluate("s => s.viewBox.baseVal.width")
             == 360
         )
     with _opened(browser, live_server, 390, 844) as page:
