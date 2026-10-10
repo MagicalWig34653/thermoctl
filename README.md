@@ -73,6 +73,10 @@ selbstregelnde Thermostatventile ebenso wie Ein/Aus-Befehle an gewöhnliche Akto
 
 ## Weiterlesen
 
+- **[Webseite](https://magicalwig34653.github.io/thermoctl/)** (sobald veröffentlicht) —
+  Überblick, Installation und das Glossar im Netz. Sie wird aus dem Verzeichnis `site/`
+  veröffentlicht, das `python -m tools.landingpage_erzeugen` aus `thermoctl/data/glossar.json`
+  und `docs/bilder/` erzeugt.
 - **[Bedienungsanleitung](docs/bedienung.md)** — für alle, die thermoctl benutzen statt
   betreiben: Anlagensicht und Wohnungssicht, Bild für Bild.
 - **[Glossar](docs/glossar.md)** — die Fachbegriffe der Oberfläche in einfachen Worten
