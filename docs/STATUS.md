@@ -2,6 +2,15 @@
 
 Letzte Aktualisierung: 2026-10-10.
 
+## Offene Entscheidungen (Projektinhaber)
+
+- **Impressum der öffentlichen Seite** (`site/`, GitHub Pages): bewusst **offen gelassen** (Projektinhaber,
+  2026-10-10). Für eine öffentliche Seite aus Deutschland kann ein Impressum nötig sein; es wurde nichts
+  erfunden. Die Seite setzt keine Cookies, speichert nichts im Browser und stellt keine Anfragen an Dritte
+  (per Test abgesichert, `tests/test_landingpage.py`). Wird eines gewünscht: `impressum.html` und ein
+  Fußlink im Generator (`tools/landingpage_erzeugen.py`) ergänzen, `site/` neu erzeugen.
+- Das Paket `ghcr.io/magicalwig34653/thermoctl` ist öffentlich (Projektinhaber, 2026-10-10).
+
 ## 0.12.0 (2026-10-10)
 
 Enthält die Arbeit der Sitzung vom 2026-10-09: Sonnenabsenkung im Schaltprotokoll sichtbar, Glossar,
