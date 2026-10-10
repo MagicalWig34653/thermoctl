@@ -207,8 +207,9 @@ an. Er geht in Stufen vor:
    Prüfung gewählt — der Wandfühler, wenn er dann wieder liefert, sonst die Ersatzquelle —
    und bleibt an diese Prüfung gebunden; fällt sie erneut aus, geht die Zone zurück in den
    Notbetrieb derselben Störung. Die Quelle muss die eingestellte Zahl neuer Messwerte
-   liefern (Vorgabe 2) und danach die eingestellte Dauer durchgehend brauchbar bleiben
-   (Vorgabe 60 Sekunden); beides ist unter Regelvorgaben einstellbar. Besteht die
+   liefern (Vorgabe 2) und die eingestellte Dauer durchgehend brauchbar bleiben
+   (Vorgabe 60 Sekunden). Beides läuft gleichzeitig ab dem Beginn der Prüfung; sie besteht,
+   sobald beide Bedingungen erfüllt sind. Beides ist unter Regelvorgaben einstellbar. Besteht die
    Prüfung mit dem Wandfühler, geht die Zone zurück in den Normalbetrieb. Besteht sie
    mit der Ersatzquelle, kehrt die Zone in die Stufe Ersatzquelle zurück, und die Rückkehr
    zum Wandfühler wird danach eigens geprüft. Beim Abschluss der Störung (Rückkehr in den Normalbetrieb) soll ein
@@ -219,9 +220,10 @@ an. Er geht in Stufen vor:
 Die Anlage kann je Störung eine Meldung zum Beginn und eine zur Entwarnung senden (mit dem
 Schalter „Sensorstörung" unter Regelvorgaben abschaltbar). Eine Zusage, dass jede genau
 einmal ankommt, gibt es nicht: Nach einem Abbruch oder einem gescheiterten Versand wird
-einmal erneut gesendet, eine Meldung kann also doppelt ankommen oder, wenn auch der zweite
-Versuch scheitert, ausbleiben. Auf Start, Wohnungssicht und
-Kiosk steht ein kurzer Hinweis in Klartext; Details für die Technik zeigt die Betriebsseite
+erneut gesendet. Bricht der Prozess auch während dieser Wiederholung ab, bevor der
+Endzustand gespeichert ist, kann der nächste Lauf nochmals senden; eine Meldung kann deshalb
+mehrfach ankommen. Scheitert die Wiederholung selbst, bleibt die Meldung aus. Auf Start,
+Wohnungssicht und Kiosk steht ein kurzer Hinweis in Klartext; Details für die Technik zeigt die Betriebsseite
 (oben) und das Schaltprotokoll.
 
 **Einstellen** lässt sich der Notbetrieb an zwei Stellen:

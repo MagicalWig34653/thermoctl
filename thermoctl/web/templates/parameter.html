@@ -64,12 +64,15 @@
             <tbody>
               <tr><th scope="row">PI, ungünstigster Fall (Modell)</th><td class="text-end">30</td><td class="text-end">720</td><td class="text-end">262.800</td></tr>
               <tr><th scope="row">PI bei 30&nbsp;% Tastgrad (Modell)</th><td class="text-end">18</td><td class="text-end">432</td><td class="text-end">157.680</td></tr>
-              <tr><th scope="row">Hysterese, höchstens (Modell)</th><td class="text-end">6</td><td class="text-end">144</td><td class="text-end">52.560</td></tr>
+              <tr><th scope="row">Hysterese, mit Vorgabewerten höchstens (Modell)</th><td class="text-end">6</td><td class="text-end">144</td><td class="text-end">52.560</td></tr>
             </tbody>
           </table>
         </div>
         <p class="small mb-0">
-          Modellrechnung, keine Messung dieser Zone. Schaltspiele, nicht Zustandswechsel. Mit der in den
+          Modellrechnung, keine Messung dieser Zone. Schaltspiele, nicht Zustandswechsel. Der Höchstwert
+          der Hysterese gilt für die Vorgabe von je 300&nbsp;Sekunden Mindest-Ein- und -Ausschaltdauer;
+          mit kürzeren Mindestdauern (zulässig ab 30&nbsp;Sekunden) und kurzem Regelzyklus sind
+          rechnerisch mehr möglich. Mit der in den
           <a href="{{ url_prefix }}/settings">Einstellungen</a> hinterlegten, austauschbaren Annahme
           von derzeit {{ "{:,}".format(assumed_lifetime_operations).replace(",", ".") }}
           elektrischen Betätigungen eines vergleichbaren 16-A-Leistungsrelais (keine
