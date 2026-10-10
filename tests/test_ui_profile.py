@@ -142,7 +142,7 @@ def test_a_tenant_sees_no_plant_navigation(session: Session) -> None:
     for plant_path in ("/users", "/audit", "/settings", "/control", "/devices", "/zones"):
         assert plant_path not in paths, plant_path
     # Was übrig bleibt, gehört zur Wohnung -- und nur das.
-    assert paths == {"/schedule", "/heating-time", "/account"}
+    assert paths == {"/schedule", "/heating-time", "/temperature-history", "/account"}
 
 
 def test_an_administrator_still_sees_the_plant_navigation(session: Session) -> None:

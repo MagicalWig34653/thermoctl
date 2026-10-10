@@ -58,6 +58,126 @@ LAYOUTS = (DESKTOP, DESKTOP_FULL, MOBILE, MOBILE_TALL)
 
 
 @dataclass(frozen=True)
+class Wording:
+    """Die Beschriftungen eines Verlaufs; die Zahlen und die Zeichnung sind davon unberührt.
+
+    Es gibt zwei Fassungen derselben Aussagen: `TECHNICAL` für die Anlagensicht (Fachbegriffe wie
+    "Zeitplan-Soll" und "Wirksamer Soll") und `TENANT` für die Wohnungssicht. Beide sagen
+    dasselbe und belegen dasselbe; die Wohnungssicht lässt nur die Fachsprache weg. Insbesondere
+    behauptet keine Fassung eine Wirkung im Raum: "Heizanforderung" bleibt eine Anforderung.
+
+    Vorlage und Skript tragen keine eigenen Texte für diese Stellen, sondern lesen sie hier: die
+    Legende aus den `legend_*`-Feldern, die Anzeige am Mauszeiger aus `hover` (nur die Texte, die
+    von der technischen Fassung abweichen; das Skript kennt die technische Fassung als Vorgabe).
+    """
+
+    # Zusammenfassung unter dem Diagramm und Legende.
+    measured: str
+    measured_range: str  # {low}, {high}
+    no_measurement: str
+    last_both: str  # {scheduled}, {effective}
+    last_effective_only: str  # {effective}
+    unknown_solar: str  # {duration}
+    no_temperature: str  # {duration}
+    no_data: str
+    k_unit: str
+    unknown_band_label: str
+    scheduled_label: str
+    effective_label: str
+    legend_curve: str  # {bucket}
+    legend_heat: str
+    legend_solar: str
+    legend_short_mark: str
+    legend_unknown: str
+    # Anzeige am Mauszeiger: nur abweichende Texte, als Paare (Schlüssel, Text).
+    hover: tuple[tuple[str, str], ...] = ()
+
+
+TECHNICAL = Wording(
+    measured="Ist",
+    measured_range="Ist {low} bis {high}.",
+    no_measurement="Kein Istwert.",
+    last_both="Zuletzt Zeitplan-Soll {scheduled}, wirksamer Soll {effective}.",
+    last_effective_only="Zuletzt wirksamer Soll {effective} (Zeitplan-Soll unbekannt).",
+    unknown_solar="Absenkung für {duration} unbekannt (vor der Aufzeichnung).",
+    no_temperature="Für {duration} der erfassten Zeit lag kein Temperaturmesswert vor.",
+    no_data="Keine Verlaufsdaten im gewählten Zeitraum.",
+    k_unit="K",
+    unknown_band_label="Absenkung unbekannt",
+    scheduled_label="Zeitplan-Soll",
+    effective_label="Wirksamer Soll",
+    legend_curve=(
+        "Kurve: Mittelwert je Abschnitt von bis zu {bucket} (ein Punkt kann aus einer einzigen "
+        "Messung stammen); heller Bereich oder Balken: Kleinster bis größter Wert je Abschnitt"
+    ),
+    legend_heat=(
+        "Heizanforderung (untere Spur): Anteil der Zeit mit Heizanforderung je Abschnitt, "
+        "blasser = kleinerer Anteil"
+    ),
+    legend_solar="Sonnenabsenkung",
+    legend_short_mark=(
+        "Dreieck oben: kurze Absenkung, im Bild nur als schmaler Streifen oder gar nicht als "
+        "Band erkennbar"
+    ),
+    legend_unknown="Absenkung unbekannt (vor der Aufzeichnung)",
+)
+
+# Die Wohnungssicht. "Zielwert" ist der Sollwert in Alltagssprache; erklärt wird er auf der Seite
+# selbst. Die Sonnenabsenkung steht in einem Satz, ohne ein Verhalten zuzusichern ("kann").
+#
+# Bewusst nicht "Zielwert laut Zeitplan": die Spalte `scheduled_setpoint_c` hält den Sollwert VOR
+# der Sonnenabsenkung (`services/shadow_run.py`, `resolved_setpoint`) -- und der folgt außer dem
+# Zeitplan auch einer Übersteuerung, dem Urlaub und der Betriebsart Aus. "Ohne Sonnenabsenkung"
+# ist genau, was die Zahl belegt.
+TENANT = Wording(
+    measured="Gemessen",
+    measured_range="Gemessen {low} bis {high}.",
+    no_measurement="Keine Messung.",
+    last_both=(
+        "Zuletzt: Zielwert ohne Sonnenabsenkung {scheduled}, tatsächlicher Zielwert {effective}."
+    ),
+    last_effective_only=(
+        "Zuletzt: tatsächlicher Zielwert {effective} (Zielwert ohne Sonnenabsenkung unbekannt)."
+    ),
+    unknown_solar="Für {duration} liegt keine Angabe zur Sonnenabsenkung vor.",
+    no_temperature="Für {duration} der erfassten Zeit gab es keinen Messwert.",
+    no_data="Für diesen Zeitraum liegen keine Daten vor.",
+    k_unit="Grad",
+    unknown_band_label="keine Angabe",
+    scheduled_label="Zielwert ohne Sonnenabsenkung",
+    effective_label="Tatsächlicher Zielwert",
+    legend_curve=(
+        "Linie: Durchschnitt je Abschnitt von bis zu {bucket}; "
+        "heller Bereich oder Balken: niedrigster bis höchster Messwert"
+    ),
+    legend_heat=(
+        "Heizanforderung (Spur unten): Anteil der Zeit, blasser = kleinerer Anteil"
+    ),
+    legend_solar=(
+        "Sonnenabsenkung: Wenn Sonne erwartet wird, kann die Regelung den Zielwert absenken; "
+        "der Frostschutz soll dabei nicht unterschritten werden"
+    ),
+    legend_short_mark=(
+        "Dreieck oben: kurze Sonnenabsenkung, im Bild nur als schmaler Streifen oder gar nicht "
+        "zu sehen"
+    ),
+    legend_unknown="Keine Angabe zur Sonnenabsenkung (Zeit vor der Aufzeichnung)",
+    hover=(
+        ("measured", "Gemessen"),
+        ("scheduled", "Zielwert ohne Sonnenabsenkung"),
+        ("effective", "Tatsächlicher Zielwert"),
+        ("mean", "Durchschnitt aus {n} Messungen (Abschnitt bis zu {bucket})"),
+        ("lowest", "niedrigster"),
+        ("highest", "höchster"),
+        ("unit", "Grad"),
+        ("unknown", "keine Angabe"),
+        ("partly", "(teils ohne Angabe)"),
+        ("solar_unknown", "Sonnenabsenkung: keine Angabe"),
+    ),
+)
+
+
+@dataclass(frozen=True)
 class Sample:
     at: datetime
     temperature: float | None
@@ -148,6 +268,9 @@ class Chart:
     y_ticks: tuple[tuple[float, str], ...]
     stale: bool
     hover: tuple[HoverCell, ...]
+    # Die Fassung der Beschriftungen, in der dieser Verlauf gebaut wurde; Vorlage und Bänder lesen
+    # sie hier, damit Text und Zeichnung nicht zwei verschiedene Fassungen mischen.
+    wording: Wording = TECHNICAL
 
 
 def read_samples(session: Session, zone_id: int, start: datetime, end: datetime) -> list[Sample]:
@@ -269,10 +392,10 @@ def _minutes_text(seconds: float) -> str:
     return f"{ceil(seconds / 60 - 1e-9)} Minuten"
 
 
-def _k_text(low: float, high: float) -> str:
+def _k_text(low: float, high: float, unit: str = "K") -> str:
     """Betrag der Absenkung: ein Wert, oder der Bereich, wenn er sich im Band geändert hat."""
     low_text, high_text = f"{low:.1f}".replace(".", ","), f"{high:.1f}".replace(".", ",")
-    return f"{low_text} K" if low_text == high_text else f"{low_text} bis {high_text} K"
+    return f"{low_text} {unit}" if low_text == high_text else f"{low_text} bis {high_text} {unit}"
 
 
 def _merge_touching(
@@ -290,7 +413,11 @@ def _merge_touching(
 
 
 def build_chart(
-    samples: list[Sample], start: datetime, end: datetime, timezone_name: str | None
+    samples: list[Sample],
+    start: datetime,
+    end: datetime,
+    timezone_name: str | None,
+    wording: Wording = TECHNICAL,
 ) -> Chart:
     """Berechnet Abschnitte, exakte Sollwertläufe und Zustandsbänder ohne HTTP.
 
@@ -346,20 +473,25 @@ def build_chart(
     latest = samples[-1] if samples else None
     if samples and latest is not None:
         parts = [
-            f"Ist {temperature_text(Decimal(str(min(t for _, t in measured))))} bis "
-            f"{temperature_text(Decimal(str(max(t for _, t in measured))))}."
+            wording.measured_range.format(
+                low=temperature_text(Decimal(str(min(t for _, t in measured)))),
+                high=temperature_text(Decimal(str(max(t for _, t in measured)))),
+            )
             if measured
-            else "Kein Istwert."
+            else wording.no_measurement
         ]
         if latest.scheduled is not None and latest.effective is not None:
             parts.append(
-                f"Zuletzt Zeitplan-Soll {temperature_text(Decimal(str(latest.scheduled)))}, "
-                f"wirksamer Soll {temperature_text(Decimal(str(latest.effective)))}."
+                wording.last_both.format(
+                    scheduled=temperature_text(Decimal(str(latest.scheduled))),
+                    effective=temperature_text(Decimal(str(latest.effective))),
+                )
             )
         elif latest.effective is not None:
             parts.append(
-                f"Zuletzt wirksamer Soll {temperature_text(Decimal(str(latest.effective)))} "
-                "(Zeitplan-Soll unbekannt)."
+                wording.last_effective_only.format(
+                    effective=temperature_text(Decimal(str(latest.effective)))
+                )
             )
         if covered_seconds > 0:
             parts.append(
@@ -379,8 +511,7 @@ def build_chart(
             parts.append("Keine Sonnenabsenkung.")
         if unknown_seconds > 0:
             parts.append(
-                f"Absenkung für {_duration_text(unknown_seconds / 3600)} "
-                "unbekannt (vor der Aufzeichnung)."
+                wording.unknown_solar.format(duration=_duration_text(unknown_seconds / 3600))
             )
         window_hours = (end - start).total_seconds() / 3600
         if covered_seconds / 3600 < window_hours * 0.9:
@@ -391,14 +522,15 @@ def build_chart(
         if no_temperature_seconds > 0:
             # Zeilen ohne Messwert (Sensorausfall) belegen Zeit, aber keine Temperatur.
             parts.append(
-                f"Für {_duration_text(no_temperature_seconds / 3600)} der erfassten Zeit "
-                "lag kein Temperaturmesswert vor."
+                wording.no_temperature.format(
+                    duration=_duration_text(no_temperature_seconds / 3600)
+                )
             )
         if stale:
             parts.append(f"Letzter Wert {local_time(data_end, timezone_name):%d.%m. %H:%M} Uhr.")
         summary = " ".join(parts)
     else:
-        summary = "Keine Verlaufsdaten im gewählten Zeitraum."
+        summary = wording.no_data
     if measured:
         measured_at, measured_value = measured[-1]
         local_at = local_time(measured_at, timezone_name)
@@ -440,6 +572,7 @@ def build_chart(
         y_ticks=y_ticks,
         stale=stale,
         hover=_hover_cells(samples, ends, buckets),
+        wording=wording,
     )
 
 
@@ -664,16 +797,25 @@ def hover_payload(chart: Chart, timezone_name: str | None) -> dict[str, object]:
         "ef": _runs_of_spans([cell.effective for cell in chart.hover]),
         "sc": _runs_of_spans([cell.scheduled for cell in chart.hover]),
         "so": _runs_of_spans([cell.solar for cell in chart.hover]),
+        # Nur die Fassung der Wohnungssicht trägt eigene Texte; ohne `l` gilt die technische.
+        **({"l": dict(chart.wording.hover)} if chart.wording.hover else {}),
     }
 
 
 def chart_for_zone(
-    session: Session, zone_id: int, period: str, now: datetime, timezone_name: str | None
+    session: Session,
+    zone_id: int,
+    period: str,
+    now: datetime,
+    timezone_name: str | None,
+    wording: Wording = TECHNICAL,
 ) -> Chart:
     """Lesefunktion der Domäne; die Session kommt vom aufrufenden Adapter."""
     duration = WINDOWS[period]
     start = now - duration
-    return build_chart(read_samples(session, zone_id, start, now), start, now, timezone_name)
+    return build_chart(
+        read_samples(session, zone_id, start, now), start, now, timezone_name, wording
+    )
 
 
 def _x_exact(at: datetime, chart: Chart, layout: Layout) -> float:
@@ -848,7 +990,7 @@ def solar_bands_for(chart: Chart, layout: Layout) -> tuple[Band, ...]:
         x, width = _span(first, last, chart, layout)
         if width < MIN_DRAWN:
             continue
-        label = f"Sonnenabsenkung {_k_text(low, high)}"
+        label = f"Sonnenabsenkung {_k_text(low, high, chart.wording.k_unit)}"
         bands.append(Band(x, width, label if _fits(label, width, layout) else ""))
     return tuple(bands)
 
@@ -872,7 +1014,7 @@ def has_short_bands(chart: Chart) -> bool:
 
 def unknown_bands_for(chart: Chart, layout: Layout) -> tuple[Band, ...]:
     """Bereiche ohne Aussage über die Absenkung; sie bleiben sichtbar, auch wenn sie schmal sind."""
-    label = "Absenkung unbekannt"
+    label = chart.wording.unknown_band_label
     bands: list[Band] = []
     for first, last in chart.unknown_bands:
         x, width = _span(first, last, chart, layout)

@@ -133,6 +133,70 @@ def test_no_word_splits_or_horizontal_overflow_at_phone_width(
         assert overflow <= 1, f"{target}: Seite {overflow}px breiter als der Bildschirm"
 
 
+# Die Wohnungssicht: dieselbe Prüfung mit dem Mieterkonto der Demo, über alle Ansichten dieses
+# Profils (darunter der Temperaturverlauf mit seinen nachladenden Kacheln).
+_WOHNUNG_VIEWS = [view for view in VIEWS if view.profile == "wohnung"]
+assert any(view.path.startswith("/temperature-history") for view in _WOHNUNG_VIEWS), (
+    "Die Wohnungsseite „Verlauf“ fehlt in der Ansichtenliste"
+)
+
+
+@pytest.fixture
+def tenant_page(
+    browser: Browser, demo_server: tuple[LiveServer, dict[str, str | int]]
+) -> Iterator[Page]:
+    server, _ = demo_server
+    with browser.new_context(
+        base_url=server.base_url,
+        viewport=_VIEWPORT,
+        locale="de-DE",
+        timezone_id="Europe/Berlin",
+    ) as context:
+        page = context.new_page()
+        _login(page, "demo-mieter", server.admin_password)
+        yield page
+
+
+@pytest.mark.parametrize("view", _WOHNUNG_VIEWS, ids=[v.stem for v in _WOHNUNG_VIEWS])
+def test_no_word_splits_or_horizontal_overflow_in_the_tenant_view_at_phone_width(
+    tenant_page: Page,
+    demo_server: tuple[LiveServer, dict[str, str | int]],
+    view: View,
+) -> None:
+    _, paths = demo_server
+    target = view.path.format_map(paths)
+    response = tenant_page.goto(target, wait_until="networkidle")
+    assert response is not None and response.status < 400, (
+        f"{target}: HTTP {response.status if response else 'ohne Antwort'}"
+    )
+    # Kacheln laden erst, wenn sie ins Bild kommen: bis zum letzten Platzhalter rollen.
+    tenant_page.evaluate(
+        """async () => {
+            for (let i = 0; i < 200; i++) {
+                const next = document.querySelector('.tc-history-placeholder');
+                if (!next) break;
+                next.scrollIntoView({block: 'center'});
+                await new Promise(resolve => setTimeout(resolve, 150));
+            }
+            window.scrollTo(0, 0);
+        }"""
+    )
+    tenant_page.wait_for_function(
+        "document.querySelectorAll('.tc-history-placeholder').length === 0", timeout=30000
+    )
+    tenant_page.evaluate("document.fonts.ready")
+    tenant_page.locator(".htmx-request").wait_for(state="detached")
+
+    failures = tenant_page.evaluate(_GEOMETRY, _WORD_WRAP_EXEMPT_SELECTOR)
+    assert not failures, f"{target}:\n" + "\n".join(failures)
+
+    if view.path != "/":
+        overflow = tenant_page.evaluate(
+            "document.documentElement.scrollWidth - window.innerWidth"
+        )
+        assert overflow <= 1, f"{target}: Seite {overflow}px breiter als der Bildschirm"
+
+
 _DESKTOP_VIEWPORT = {"width": 1280, "height": 900}
 
 # Bewusst lange Protokollinhalte: ein Rohcode als Ergebnis einer Notbetriebs-

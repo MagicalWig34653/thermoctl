@@ -118,6 +118,14 @@ _VIEWS_BEFORE_DOCUMENTATION_FLAGS = (
             ("passkeys", "/passkeys", False),
         )
     ),
+    # Drei Tage statt der Vorgabe: die Demo-Daten umfassen 72 Stunden, das füllt das Bild.
+    View(
+        "verlauf",
+        "/temperature-history?period=3d",
+        "wohnung",
+        mobile=True,
+        route="/temperature-history",
+    ),
     *(
         View(
             f"{slug}-wochenplan",
@@ -225,6 +233,10 @@ assert {stem for stem in _DOCUMENTED if stem not in {v.stem for v in VIEWS}} == 
 
 EXCLUDED_ROUTES = {
     "/kiosk": "Ziel der Token-Weiterleitung; wird über /kiosk/{plaintext} aufgenommen.",
+    "/temperature-history/{zone_id}/tile": (
+        "Teilantwort (nur die Verlaufskarte eines eigenen Raums, ohne Seitenrahmen); erscheint als "
+        "Kachel auf /temperature-history (wohnung-verlauf)."
+    ),
     "/zones/{zone_id}/history": (
         "Teilantwort (nur die Verlaufskarte, ohne Seitenrahmen); erscheint auf "
         "/zones/{zone_id} (wohnzimmer-verlauf) und als Kachel auf /zones/history."

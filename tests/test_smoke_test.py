@@ -138,10 +138,15 @@ def test_links_in_templates_point_to_existing_pages(
     # it. Without it, this test would check a state no instance ever has.
     create_settings(session)
     targets = _static_href_targets(template.read_text(encoding="utf-8"))
+    # Die Vorlagen der Wohnungssicht verweisen auf Seiten des Mieterprofils; der Administrator,
+    # mit dem dieser Test angemeldet ist, bekommt dort 403. Die Adresse gibt es also -- ob der
+    # Verweis auf der gerenderten Seite ankommt, prüft für die Wohnungssicht
+    # `test_every_link_and_form_on_the_tenant_pages_leads_somewhere` mit einem Mieterkonto.
+    tenant_template = template.name.startswith(("tenant_", "base_tenant"))
     dead = []
     for target in sorted(targets):
         response = angemeldeter_client.get(target, follow_redirects=True)
-        if response.status_code >= 400:
+        if response.status_code >= 400 and not (tenant_template and response.status_code == 403):
             dead.append(f"{target}: HTTP {response.status_code}")
     assert not dead, f"Dead links in {template.name}: " + ", ".join(dead)
 
@@ -731,7 +736,14 @@ def test_no_script_marks_itself_wired_in_the_markup(script: Path) -> None:
 # vertippter Formularpfad oder ein Kontextname, den die Vorlage erwartet und die
 # View nicht liefert, fällt in keinem der einzelnen Tests auf.
 
-TENANT_PAGES = ["/", "/schedule", "/heating-time", "/account", "/account/help"]
+TENANT_PAGES = [
+    "/",
+    "/schedule",
+    "/heating-time",
+    "/temperature-history",
+    "/account",
+    "/account/help",
+]
 
 
 def _mieter_client(tenant_client, session: Session):  # type: ignore[no-untyped-def]

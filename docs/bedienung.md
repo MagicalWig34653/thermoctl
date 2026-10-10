@@ -359,6 +359,30 @@ Weiter unten:
 
 ![Heizzeit für Schlafzimmer und Wohnzimmer über sieben Tage](bilder/wohnung-heizzeit-2.png)
 
+### Verlauf
+
+**Verlauf** (Adresse `/temperature-history`) ist die Entsprechung der Seite „Verläufe aller
+Zonen" für die Wohnungssicht: je eigenem Raum eine Kachel mit derselben Zeichnung und denselben
+Zahlen (gemessene Temperatur, die beiden Zielwert-Stufen, Sonnenabsenkung als Band, Spur der
+Heizanforderung), mit Zeitraum 24 Stunden, 3 oder 7 Tage für alle Kacheln, **Vollbild** je Kachel
+und den Werten am Mauszeiger. Die Beschriftungen sind in Alltagssprache gehalten: „Gemessen",
+„Zielwert ohne Sonnenabsenkung", „Tatsächlicher Zielwert", „Heizanforderung", Sonnenabsenkung in
+Grad; die Sonnenabsenkung wird in einem Satz erklärt (wenn Sonne erwartet wird, kann die Regelung
+den Zielwert absenken; der Frostschutz soll dabei nicht unterschritten werden) und mit dem
+Glossar verknüpft. Der Zielwert „ohne Sonnenabsenkung" ist der Sollwert vor dieser Korrektur und
+folgt damit außer dem Zeitplan auch einer Abwesenheit oder einer Änderung von Hand. Die Texte
+behaupten keine Wirkung im Raum, sondern nennen nur die Heizanforderung. Technische
+Einzelheiten der Anlagensicht (Fachbegriffe wie „Zeitplan-Soll", „Wirksamer Soll") stehen hier
+nicht.
+
+Welche Räume erscheinen, bestimmt allein das Leserecht für Zonen (`zone.read`), dieselbe Prüfung
+wie bei Startseite, Zeitplan und Heizzeit: Ein Mieter sieht nur Kacheln seiner eigenen Räume.
+Die Adresse der Kachel eines fremden Raums antwortet wie die eines nicht vorhandenen Raums
+(404), auch mit ungültigem Zeitraum; ein ungültiger Zeitraum bei eigenen Räumen wird abgelehnt
+(422) wie in der Anlagensicht. Ohne Raum ist die Seite leer. Die Anlagenseiten
+`/zones/history` und `/zones/{id}/history` bleiben der Wohnungssicht verschlossen, ebenso sind
+die Wohnungsseiten für Verwaltungskonten nicht erreichbar.
+
 ### Abwesenheit
 
 Direkt auf der Startseite **Zuhause**, oberhalb der Raumkarten, lässt sich eine

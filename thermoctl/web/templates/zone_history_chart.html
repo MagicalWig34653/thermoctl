@@ -61,15 +61,16 @@ liefern die `data-`Maße der vier SVG. Ohne JavaScript bleibt alles wie gezeichn
       </div>
       {% endfor %}
     </div>
+    {% set w = chart.wording %}
     <ul class="tc-history-legend" aria-label="Legende">
-      <li><span class="tc-history-key tc-history-key-actual"></span>Ist: {{ chart.actual_text }}</li>
-      <li><span class="tc-history-key tc-history-key-range"></span>Kurve: Mittelwert je Abschnitt von bis zu {{ chart.bucket_text }} (ein Punkt kann aus einer einzigen Messung stammen); heller Bereich oder Balken: Kleinster bis größter Wert je Abschnitt</li>
-      <li><span class="tc-history-key tc-history-key-scheduled"></span>Zeitplan-Soll: {{ chart.scheduled_text }}</li>
-      <li><span class="tc-history-key tc-history-key-effective"></span>Wirksamer Soll: {{ chart.effective_text }}</li>
-      <li><span class="tc-history-key tc-history-key-demand"></span>Heizanforderung (untere Spur): Anteil der Zeit mit Heizanforderung je Abschnitt, blasser = kleinerer Anteil</li>
-      <li><span class="tc-history-key tc-history-key-solar"></span>Sonnenabsenkung</li>
-      {% if short_bands %}<li><span class="tc-history-key-mark"></span>Dreieck oben: kurze Absenkung, im Bild nur als schmaler Streifen oder gar nicht als Band erkennbar</li>{% endif %}
-      {% if chart.unknown_bands %}<li><span class="tc-history-key tc-history-key-unknown"></span>Absenkung unbekannt (vor der Aufzeichnung)</li>{% endif %}
+      <li><span class="tc-history-key tc-history-key-actual"></span>{{ w.measured }}: {{ chart.actual_text }}</li>
+      <li><span class="tc-history-key tc-history-key-range"></span>{{ w.legend_curve.format(bucket=chart.bucket_text) }}</li>
+      <li><span class="tc-history-key tc-history-key-scheduled"></span>{{ w.scheduled_label }}: {{ chart.scheduled_text }}</li>
+      <li><span class="tc-history-key tc-history-key-effective"></span>{{ w.effective_label }}: {{ chart.effective_text }}</li>
+      <li><span class="tc-history-key tc-history-key-demand"></span>{{ w.legend_heat }}</li>
+      <li><span class="tc-history-key tc-history-key-solar"></span>{{ w.legend_solar }}</li>
+      {% if short_bands %}<li><span class="tc-history-key-mark"></span>{{ w.legend_short_mark }}</li>{% endif %}
+      {% if chart.unknown_bands %}<li><span class="tc-history-key tc-history-key-unknown"></span>{{ w.legend_unknown }}</li>{% endif %}
     </ul>
     <p class="tc-history-summary text-muted mb-0" id="{{ chart_id }}-summary">{{ chart.summary }}</p>
     {% else %}<p class="text-muted mb-0">{{ chart.summary }}</p>{% endif %}

@@ -17,7 +17,9 @@ from thermoctl.domain.authz import has_permission, require, visible_zones
 from thermoctl.domain.principal import Principal
 from thermoctl.domain.zone_history_chart import (
     LAYOUTS,
+    TECHNICAL,
     WINDOWS,
+    Wording,
     chart_for_zone,
     has_short_bands,
     heat_cells_for,
@@ -204,7 +206,7 @@ async def create_zone_view(
     return RedirectResponse(prefixed(request, "/zones"), status_code=status.HTTP_303_SEE_OTHER)
 
 
-def _checked_period(period: str) -> str:
+def checked_period(period: str) -> str:
     if period not in WINDOWS:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Ungültiger Zeitraum")
     return period
@@ -225,14 +227,25 @@ def _attribute_json(payload: object) -> Markup:
     return Markup(text)  # noqa: S704
 
 
-def _history_context(
-    session: Session, zone_id: int, period: str, *, tile: bool = False
+def history_context(
+    session: Session,
+    zone_id: int,
+    period: str,
+    *,
+    tile: bool = False,
+    wording: Wording = TECHNICAL,
 ) -> dict[str, object]:
-    _checked_period(period)
+    """Alles, was `zone_history_chart.html` braucht -- für Anlagen- und Wohnungssicht.
+
+    Ohne jede Rechteprüfung: die aufrufende Route hat die Zone vorher gegen ihren eigenen
+    Zonenfilter geprüft (`tenant_views.show_temperature_history_tile` mit `visible_zones`).
+    `wording` wählt die Beschriftungen, nicht die Daten.
+    """
+    checked_period(period)
     setting = session.get(Setting, 1)
     timezone_name = setting.timezone if setting is not None else None
     now = datetime.now(UTC).replace(tzinfo=None)
-    chart = chart_for_zone(session, zone_id, period, now, timezone_name)
+    chart = chart_for_zone(session, zone_id, period, now, timezone_name, wording)
     return {
         "chart": chart,
         "period": period,
@@ -275,7 +288,7 @@ async def zone_history_overview(
     jede Kachel holt ihre Karte über `zone_history`, das die Zone noch einmal prüft. Ohne
     Recht ist die Seite leer, wie die Zonenliste.
     """
-    _checked_period(period)
+    checked_period(period)
     zones = visible_zones(session, principal, "zone.manage")
     # `page_path`/`tile_path`: die Adressen dieser Oberfläche. Seitenkörper und Kachel sind frei
     # von Rechten und festen Adressen, damit eine andere Oberfläche (Wohnungssicht) sie mit ihrem
@@ -308,7 +321,7 @@ async def zone_history(
         {
             "zone": zone,
             "zone_href": f"/zones/{zone.id}" if tile else None,
-            **_history_context(session, zone_id, period, tile=tile),
+            **history_context(session, zone_id, period, tile=tile),
         },
     )
 
@@ -336,7 +349,7 @@ async def edit_zone(
             "values": values,
             "errors": {},
             **_choice_values(session),
-            **_history_context(session, zone_id, "24h"),
+            **history_context(session, zone_id, "24h"),
         },
     )
 

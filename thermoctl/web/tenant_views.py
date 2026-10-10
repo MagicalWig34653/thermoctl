@@ -1,9 +1,9 @@
-"""Die Mieteroberfläche: Startseite, Zeitplan und Heizzeit.
+"""Die Mieteroberfläche: Startseite, Zeitplan, Heizzeit und Temperaturverlauf.
 
-Diese drei Seiten haben keine eigene Route für `/`, weil `/` für beide Oberflächen
+Diese Seiten haben keine eigene Route für `/`, weil `/` für beide Oberflächen
 eine einzige Adresse bleibt (`start_views.start` verzweigt nach
-`principal.ui_profile`). `/schedule` und `/heating-time` haben dagegen eigene
-Routen, mit `tenant_ui_only` als Router-Dependency abgesichert.
+`principal.ui_profile`). `/schedule`, `/heating-time` und `/temperature-history` haben dagegen
+eigene Routen, mit `tenant_ui_only` als Router-Dependency abgesichert.
 
 Zonenisolation ist die wichtigste Regel dieser Seiten: ein Mieter sieht
 ausschließlich, was `visible_zones(session, principal, "zone.read")` liefert. Jede
@@ -68,6 +68,7 @@ from thermoctl.domain.statistics import (
     period_days,
 )
 from thermoctl.domain.time import local_day_start_utc, local_time
+from thermoctl.domain.zone_history_chart import TENANT
 from thermoctl.web import templates, warmth_fraction
 from thermoctl.web.guards import tenant_ui_only
 from thermoctl.web.schedule_views import (
@@ -78,6 +79,7 @@ from thermoctl.web.schedule_views import (
 )
 from thermoctl.web.start_views import zone_status_context
 from thermoctl.web.urls import prefixed
+from thermoctl.web.zone_views import checked_period, history_context
 
 #: Die beiden Zeiten, die ein noch leerer Tag vorschlägt. Nur ein Startpunkt zum
 #: Überschreiben, keine fachliche Aussage -- deshalb hier und nicht in der Domäne.
@@ -697,6 +699,77 @@ async def show_heating_time(
             "period": key,
             "armed": armed,
             "as_duration": as_duration,
+        },
+    )
+
+
+# -- Temperaturverlauf ----------------------------------------------------------
+
+
+@router.get("/temperature-history")
+async def show_temperature_history(
+    request: Request,
+    principal: Annotated[Principal, Depends(current_principal)],
+    session: Annotated[Session, Depends(get_session)],
+    period: str = "24h",
+) -> Response:
+    """Der Verlauf aller **eigenen** Räume auf einer Seite -- das Gegenstück zu
+    `/zones/history` der Anlagensicht, mit demselben Seitenkörper und derselben Kachel.
+
+    Welche Räume darauf stehen, entscheidet allein `visible_zones(..., "zone.read")`: dieselbe
+    Prüfung wie bei Startseite, Zeitplan und Heizzeit, kein eigenes Recht. Die Seite selbst
+    enthält keine Messdaten, nur Platzhalter mit Namen; jede Kachel holt ihre Karte über
+    `show_temperature_history_tile`, das die Zone noch einmal prüft. Ohne Raum ist die Seite leer.
+
+    Der Zeitraum wird wie in der Anlagensicht geprüft (422), die Seite nennt aber keinen Raum,
+    sodass die Prüfung vor dem Zonenfilter nichts verrät.
+    """
+    checked_period(period)
+    zones = visible_zones(session, principal, "zone.read")
+    return templates.TemplateResponse(
+        request,
+        "tenant_history.html",
+        {
+            "zones": zones,
+            "period": period,
+            "page_path": "/temperature-history",
+            "tile_path": "/temperature-history/{zone_id}/tile",
+            "tenant_layout": True,
+            "heading": "Wie war die Temperatur?",
+            "empty_text": "Für dieses Konto ist noch kein Raum freigegeben.",
+        },
+    )
+
+
+@router.get("/temperature-history/{zone_id}/tile")
+async def show_temperature_history_tile(
+    zone_id: str,
+    request: Request,
+    principal: Annotated[Principal, Depends(current_principal)],
+    session: Annotated[Session, Depends(get_session)],
+    period: str = "24h",
+) -> Response:
+    """Die Verlaufskarte eines eigenen Raums (Teilantwort für die Kacheln der Seite).
+
+    Die Zone wird **zuerst** gegen den Zonenfilter geprüft und führt sonst zu 404 -- auch bei
+    ungültigem Zeitraum, damit die Antwort nicht verrät, ob es den Raum gibt. Erst danach
+    kommt der Zeitraum (422, wie in der Anlagensicht). Beschriftungen in Alltagssprache
+    (`TENANT`); die Zahlen sind dieselben wie in der Anlagensicht.
+    """
+    # Als Text angenommen und selbst gelesen: eine Nicht-Zahl ist hier wie in den übrigen
+    # Mieter-Routen "nicht gefunden", nicht die Validierungsantwort des Frameworks.
+    try:
+        requested_id = int(zone_id)
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND) from exc
+    zone = _zone_or_404(session, principal, requested_id, "zone.read")
+    return templates.TemplateResponse(
+        request,
+        "zone_history_chart.html",
+        {
+            "zone": zone,
+            "zone_href": None,
+            **history_context(session, zone.id, period, tile=True, wording=TENANT),
         },
     )
 

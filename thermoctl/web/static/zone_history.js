@@ -56,7 +56,14 @@
     const SVG = "http://www.w3.org/2000/svg";
     const STEP_FRACTION = 0.01;
     const models = new WeakMap();
-    const WEEKDAYS = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"];
+    // Beschriftungen der Anlagensicht. Die Wohnungssicht schickt abweichende Texte als `l` in den
+    // Daten (`Wording.hover` in der Domäne); was dort fehlt, bleibt bei diesen Vorgaben.
+    const DEFAULT_LABELS = {
+        measured: "Ist", scheduled: "Zeitplan-Soll", effective: "Wirksamer Soll",
+        mean: "Mittelwert aus {n} Messungen (Abschnitt bis zu {bucket})",
+        lowest: "kleinster", highest: "größter", unit: "K", unknown: "unbekannt",
+        partly: "(teils unbekannt)", solar_unknown: "Absenkung unbekannt"
+    };
 
     function parse(text) {
         let raw;
@@ -64,6 +71,7 @@
         if (!raw || raw.v !== 1 || !Array.isArray(raw.c)) return null;
         const model = {
             start: raw.s, span: raw.e, bucket: raw.b, formatter: null,
+            labels: Object.assign({}, DEFAULT_LABELS, raw.l || {}),
             from: [], to: [], count: [], mean: [], low: [], high: [], heat: [],
             effective: [], scheduled: [], solar: []
         };
@@ -129,20 +137,21 @@
         return number(Math.round(seconds / 360)) + " Stunden";
     }
 
-    function spanText(run, unit) {
-        if (run[1] === null) return "unbekannt";
+    function spanText(model, run, unit) {
+        if (run[1] === null) return model.labels.unknown;
         const text = run[1] === run[2] ? number(run[1]) + " " + unit
             : number(run[1]) + " bis " + number(run[2]) + " " + unit;
-        return run[3] ? text + " (teils unbekannt)" : text;
+        return run[3] ? text + " " + model.labels.partly : text;
     }
 
-    function solarText(run) {
-        if (run[1] === null) return "Absenkung unbekannt";
+    function solarText(model, run) {
+        const unit = model.labels.unit;
+        if (run[1] === null) return model.labels.solar_unknown;
         let text;
         if (run[2] === 0) text = "keine Sonnenabsenkung";
-        else if (run[1] === run[2]) text = "Sonnenabsenkung " + number(run[2]) + " K";
-        else text = "Sonnenabsenkung " + number(run[1]) + " bis " + number(run[2]) + " K";
-        return run[3] ? text + " (teils unbekannt)" : text;
+        else if (run[1] === run[2]) text = "Sonnenabsenkung " + number(run[2]) + " " + unit;
+        else text = "Sonnenabsenkung " + number(run[1]) + " bis " + number(run[2]) + " " + unit;
+        return run[3] ? text + " " + model.labels.partly : text;
     }
 
     function find(model, seconds) {
@@ -184,23 +193,24 @@
         };
         if (index >= 0) {
             const n = model.count[index];
-            row("Ist", n === 0 ? "kein Messwert" : degrees(model.mean[index]));
+            const labels = model.labels;
+            row(labels.measured, n === 0 ? "kein Messwert" : degrees(model.mean[index]));
             if (n === 1) {
                 note("eine Messung");
             } else if (n > 1) {
-                note("Mittelwert aus " + n + " Messungen (Abschnitt bis zu " + model.bucket + ")" +
+                note(labels.mean.replace("{n}", n).replace("{bucket}", model.bucket) +
                     (model.low[index] === model.high[index] ? "" :
-                        "; kleinster " + degrees(model.low[index]) +
-                        ", größter " + degrees(model.high[index])));
+                        "; " + labels.lowest + " " + degrees(model.low[index]) +
+                        ", " + labels.highest + " " + degrees(model.high[index])));
             }
-            row("Zeitplan-Soll", spanText(model.scheduled[index], "°C"));
-            row("Wirksamer Soll", spanText(model.effective[index], "°C"));
+            row(labels.scheduled, spanText(model, model.scheduled[index], "°C"));
+            row(labels.effective, spanText(model, model.effective[index], "°C"));
             row("Heizanforderung", model.heat[index] === 100 ? "ja" : model.heat[index] === 0 ? "nein" :
                 model.heat[index] + " % der Zeit");
-            const solar = element("dd", "tc-history-tip-wide", solarText(model.solar[index]));
+            const solar = element("dd", "tc-history-tip-wide", solarText(model, model.solar[index]));
             grid.appendChild(solar);
         } else {
-            row("Ist", "keine Daten");
+            row(model.labels.measured, "keine Daten");
             const after = before + 1 < model.from.length ? before + 1 : -1;
             if (before < 0) {
                 note("Vor dem ersten Eintrag dieses Zeitraums.");

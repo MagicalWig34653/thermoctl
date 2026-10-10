@@ -60,12 +60,13 @@ def test_the_four_tenant_sections_are_visible_and_each_leads_to_a_working_page(
     _login_as_tenant(page, "browsertest-mieter-bereiche", _PASSWORD)
 
     # "Zuhause" ist der einzige Eintrag, der nicht aus `NAVIGATION_ITEMS` kommt
-    # (`base_tenant.html` verdrahtet ihn fest auf "/") -- die anderen drei stehen
+    # (`base_tenant.html` verdrahtet ihn fest auf "/") -- die anderen vier stehen
     # dort mit dem Profil `tenant`.
     for label, path in (
         ("Zuhause", "/"),
         ("Zeitplan", "/schedule"),
         ("Heizzeit", "/heating-time"),
+        ("Verlauf", "/temperature-history"),
         ("Mehr", "/account"),
     ):
         link = page.locator(".tc-tnav").get_by_role("link", name=label, exact=True)

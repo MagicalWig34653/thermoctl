@@ -9,6 +9,12 @@ weitere Oberflächen (etwa die Wohnungssicht): Wer dieses Stück einbindet, übe
   tile_path  Pfad-Vorlage der Kachel-Route mit `{zone_id}` (die Route prüft die Zone selbst noch
              einmal und rendert `zone_history_chart.html` mit `tile=True`).
 
+Nur Darstellung, mit Vorgabe für die Anlagensicht (die Wohnungssicht setzt sie in `tenant_history.html`):
+
+  tenant_layout  Kopf und Zeitraumwahl im Stil der Wohnungssicht (`tc-hero`, `tc-segments`),
+  heading        Überschrift,
+  empty_text     Text ohne Zonen.
+
 Die Seite enthält keine Messdaten. Jede Kachel holt ihre Karte selbst (`hx-trigger="revealed"`),
 sobald sie ins Bild kommt: so liest der Server nicht für alle Zonen auf einmal sieben Tage Zeilen.
 Die Kacheln laden nacheinander (`hx-sync`, Warteschlange), nicht gleichzeitig: Jede Anfrage
@@ -16,11 +22,29 @@ schreibt ihren Sitzungszeitstempel, und gleichzeitige Anfragen scheiterten bei S
 is locked". Der Zeitraum gilt für alle Kacheln; ein Wechsel tauscht die ganze Fläche (`hx-select`) und setzt die
 Adresse, damit Neuladen und Verweis den Zeitraum behalten.
 #}
+{% set periods = [('24h', '24 Stunden'), ('3d', '3 Tage'), ('7d', '7 Tage')] %}
 <div id="zones-history-page">
+    {% if tenant_layout %}
+    <div class="tc-hero">
+        <p class="tc-eyebrow">Verlauf</p>
+        <h1 class="tc-h1">{{ heading }}</h1>
+    </div>
+    {# Verweise statt Knöpfe: ohne JavaScript lädt die Seite mit dem neuen Zeitraum neu, mit JavaScript tauscht htmx nur die Fläche. #}
+    <nav class="tc-segments" aria-label="Zeitraum">
+        {% for choice, label in periods %}
+        <a class="tc-segment{{ ' tc-here' if choice == period }}"
+           href="{{ url_prefix }}{{ page_path }}?period={{ choice }}"
+           hx-get="{{ url_prefix }}{{ page_path }}?period={{ choice }}"
+           hx-target="#zones-history-page" hx-select="#zones-history-page"
+           hx-swap="outerHTML" hx-push-url="true"
+           {% if choice == period %}aria-current="page"{% endif %}>{{ label }}</a>
+        {% endfor %}
+    </nav>
+    {% else %}
     <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
-        <h1 class="mb-0">Verläufe aller Zonen</h1>
+        <h1 class="mb-0">{{ heading | default('Verläufe aller Zonen') }}</h1>
         <div class="btn-group btn-group-sm" role="group" aria-label="Zeitraum">
-            {% for choice, label in [('24h', '24 Stunden'), ('3d', '3 Tage'), ('7d', '7 Tage')] %}
+            {% for choice, label in periods %}
             <button type="button" class="btn {{ 'btn-primary' if period == choice else 'btn-outline-secondary' }}"
                     hx-get="{{ url_prefix }}{{ page_path }}?period={{ choice }}"
                     hx-target="#zones-history-page" hx-select="#zones-history-page"
@@ -28,8 +52,27 @@ Adresse, damit Neuladen und Verweis den Zeitraum behalten.
             {% endfor %}
         </div>
     </div>
+    {% endif %}
     {% if zones %}
-    <p class="text-muted">Derselbe Verlauf wie auf der Seite jeder Zone; der gewählte Zeitraum gilt für alle. Mit der Maus über ein Diagramm fahren (oder es antippen, mit den Pfeiltasten bedienen), um die Werte an einer Stelle zu sehen.</p>
+    {% if tenant_layout %}
+    <p class="t-quiet">
+        So hat sich die Temperatur in deinen Räumen entwickelt – und welchen Zielwert{{ glossar_hilfe("sollwert") }}
+        die Regelung dafür verwendet hat. Der gewählte Zeitraum gilt für alle Räume.
+    </p>
+    <ul class="t-quiet small tc-history-help">
+        <li>Die Linie ist die gemessene Temperatur. Die Stufenlinien zeigen den Zielwert: ohne
+            Sonnenabsenkung (so, wie ihn der Zeitplan{{ glossar_hilfe("zeitplan") }}, eine Abwesenheit oder
+            eine Änderung von Hand vorgeben) und den tatsächlichen Zielwert, nach dem die Regelung
+            gearbeitet hat.</li>
+        <li>Liegt der tatsächliche Zielwert darunter, war die Sonnenabsenkung{{ glossar_hilfe("sonnenabsenkung") }}
+            im Spiel (grünes Band). Wenn Sonne erwartet wird, kann die Regelung den Zielwert absenken.
+            Das kann erklären, warum die Regelung noch keine Heizanforderung hatte, obwohl die Temperatur
+            unter dem Wert des Zeitplans lag.</li>
+        <li>Die schmale Spur unter dem Diagramm zeigt die Heizanforderung. Das sagt nichts darüber, wie es
+            im Raum war. Mit der Maus über ein Diagramm fahren oder es antippen zeigt die Werte; „keine
+            Daten“ heißt: für diese Zeit gibt es keine Aufzeichnung.</li>
+    </ul>
+    {% else %}<p class="text-muted">Derselbe Verlauf wie auf der Seite jeder Zone; der gewählte Zeitraum gilt für alle. Mit der Maus über ein Diagramm fahren (oder es antippen, mit den Pfeiltasten bedienen), um die Werte an einer Stelle zu sehen.</p>{% endif %}
     <div class="tc-history-grid">
         {% for zone in zones %}
         <div class="card tc-history tc-history-tile tc-history-placeholder" id="zone-history-{{ zone.id }}"
@@ -43,5 +86,5 @@ Adresse, damit Neuladen und Verweis den Zeitraum behalten.
         </div>
         {% endfor %}
     </div>
-    {% else %}<p>Noch keine sichtbaren Zonen vorhanden.</p>{% endif %}
+    {% else %}<p{% if tenant_layout %} class="tc-empty"{% endif %}>{{ empty_text | default('Noch keine sichtbaren Zonen vorhanden.') }}</p>{% endif %}
 </div>

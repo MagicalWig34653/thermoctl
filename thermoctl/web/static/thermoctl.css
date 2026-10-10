@@ -3080,6 +3080,9 @@ body {
 .tc-history-effective { stroke: var(--history-effective); stroke-dasharray: 3 7.5; stroke-linecap: round; }
 .tc-history-legend { display: flex; flex-wrap: wrap; gap: .4rem 1rem; padding: 0; margin: 1rem 0 .5rem; list-style: none; font-size: .9rem; }
 .tc-history-legend li { min-width: 0; overflow-wrap: anywhere; }
+/* Lesehilfe über den Kacheln der Wohnungssicht (Temperaturverlauf). */
+.tc-history-help { padding-left: 1.2rem; margin: 0 0 1rem; }
+.tc-history-help li + li { margin-top: .35rem; }
 .tc-history-summary { font-size: .85rem; }
 .tc-history-key { display: inline-block; width: 1.1rem; height: .25rem; margin-right: .3rem; vertical-align: middle; }
 .tc-history-key-actual { background: var(--history-actual); }
@@ -3136,9 +3139,12 @@ body {
 .tc-history-tip[hidden] { display: none; }
 @media (max-width: 600px) { .tc-history-tip { max-width: min(14rem, 100%); font-size: .75rem; } }
 .tc-history-tip-head { font-weight: 600; margin-bottom: .2rem; }
-.tc-history-tip-grid { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: .1rem .6rem; margin: 0; }
+.tc-history-tip-grid { display: grid; grid-template-columns: auto minmax(min-content, 1fr); gap: .1rem .6rem; margin: 0; }
 .tc-history-tip-grid dt { color: var(--muted); font-weight: 400; }
-.tc-history-tip-grid dd { margin: 0; font-variant-numeric: tabular-nums; }
+/* Ein Wert bricht nicht um (sonst "2 0 , 3 ° C" untereinander, sobald die Bezeichnung lang ist, wie in der
+   Wohnungssicht); lange Bezeichnungen brechen dagegen an den Wortgrenzen. */
+.tc-history-tip-grid dd { margin: 0; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tc-history-tip-grid dd.tc-history-tip-wide { white-space: normal; }
 .tc-history-tip-note { color: var(--muted); font-size: .75rem; }
 .tc-history-tip-wide { grid-column: 1 / -1; margin: 0; }
 

@@ -12,8 +12,8 @@ Benutzername und Passwort.
 
 ![Anmeldeseite mit den Feldern Benutzername und Passwort](bilder/oeffentlich-anmeldung.png)
 
-Nach der Anmeldung sehen Sie oben vier Reiter: **Zuhause**, **Zeitplan**, **Heizzeit**
-und **Mehr**. Sie sehen darin ausschließlich die Räume, für die Sie freigeschaltet
+Nach der Anmeldung sehen Sie oben fünf Reiter: **Zuhause**, **Zeitplan**, **Heizzeit**,
+**Verlauf** und **Mehr**. Sie sehen darin ausschließlich die Räume, für die Sie freigeschaltet
 wurden — nie andere Wohnungen oder Technik der Anlage.
 
 ## Zuhause: Ihre Räume auf einen Blick
@@ -79,6 +79,32 @@ schaltet, zeigen die Balken, wann geheizt worden *wäre* — das kann in dieser 
 dem abweichen, was Sie im Raum tatsächlich gespürt haben.
 
 ![Heizzeit-Ansicht mit Balken je Raum über die letzten 7 Tage](bilder/wohnung-heizzeit-mobil.png)
+
+## Verlauf: wie die Temperatur war
+
+Der Reiter **Verlauf** zeigt für jeden Ihrer Räume ein Diagramm der letzten 24 Stunden, 3 oder
+7 Tage; der gewählte Zeitraum oben gilt für alle Räume. Die Kacheln laden nacheinander nach,
+sobald sie ins Bild kommen („Verlauf wird geladen …").
+
+- Die **Linie** ist die gemessene Temperatur („Gemessen"). Bei längeren Zeiträumen steht jeder
+  Punkt für den Durchschnitt eines kurzen Abschnitts; der helle Bereich dahinter zeigt den
+  niedrigsten bis höchsten Messwert darin.
+- Zwei **Stufenlinien** zeigen den Zielwert: den **Zielwert ohne Sonnenabsenkung** (so, wie ihn
+  Zeitplan, Abwesenheit oder eine Änderung von Hand vorgeben) und den **tatsächlichen
+  Zielwert**, nach dem die Regelung gearbeitet hat.
+- Das **grüne Band** markiert die **Sonnenabsenkung**: Wenn Sonne erwartet wird, kann die
+  Regelung den Zielwert absenken; der Frostschutz soll dabei nicht unterschritten werden. Das
+  kann erklären, warum die Regelung noch keine Heizanforderung hatte, obwohl die Temperatur
+  unter dem Wert des Zeitplans lag. Ein schraffiertes Stück heißt „keine Angabe": Für diese
+  Zeit wurde die Sonnenabsenkung nicht aufgezeichnet.
+- Die **schmale Spur unter dem Diagramm** zeigt den Anteil der Zeit mit **Heizanforderung**
+  (blasser = kleinerer Anteil). Eine Anforderung sagt nichts darüber, wie es im Raum war.
+- **Mit der Maus über das Diagramm fahren** (auf dem Telefon: antippen) zeigt die Werte an dieser
+  Stelle. Wo „keine Daten" steht, gibt es für diese Zeit keine Aufzeichnung; zwischen zwei
+  Einträgen wird nichts dazugerechnet. **Vollbild** vergrößert nur dieses eine Diagramm.
+
+Sie sehen hier ausschließlich die Räume, für die Sie freigeschaltet wurden. Die Fachbegriffe
+verweisen mit einem kleinen Fragezeichen ins Glossar.
 
 ## Abwesenheit: wenn Sie verreisen
 

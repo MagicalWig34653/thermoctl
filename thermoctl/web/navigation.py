@@ -185,6 +185,15 @@ NAVIGATION_ITEMS: tuple[NavigationItem, ...] = (
         profile=WebUiProfile.TENANT,
     ),
     NavigationItem(
+        "/temperature-history",
+        "Verlauf",
+        "zone.read",
+        "thermoctl.web.tenant_views.show_temperature_history",
+        "any_zone",
+        "tenant",
+        profile=WebUiProfile.TENANT,
+    ),
+    NavigationItem(
         "/account",
         "Mehr",
         # Kein Recht: `/account` ist der eigene, persönliche Bereich -- jeder

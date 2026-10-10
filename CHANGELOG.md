@@ -13,6 +13,21 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ### Neu
 
+- **Neue Seite „Verlauf" in der Wohnungssicht** (`/temperature-history`, fünfter Eintrag der
+  Mieter-Navigation, Verweis auf der Seite Heizzeit): der Temperaturverlauf **aller eigenen
+  Räume** mit Zeitraum 24 Stunden, 3 oder 7 Tage, einer Kachel je Raum, Vollbild und den Werten
+  am Mauszeiger. Es ist dieselbe Kachel und dieselbe Zeichnung wie in der Anlagensicht, aber in
+  Alltagssprache: „Gemessen", „Zielwert ohne Sonnenabsenkung", „Tatsächlicher Zielwert",
+  „Heizanforderung" (ohne Aussage über die Wirkung im Raum), Sonnenabsenkung in Grad und in einem Satz erklärt, Lücken als
+  „keine Daten", Fachbegriffe mit Verweis ins Glossar. So ist zu sehen, warum bei einem Zeitplan
+  von 20,5 °C und 19,5 °C im Raum noch nicht angefordert wurde: Das grüne Band zeigt die
+  Sonnenabsenkung. **Rechte:** Ein Mieter sieht ausschließlich Kacheln seiner eigenen Räume
+  (Leserecht für Zonen, dieselbe Prüfung wie die übrigen Wohnungsseiten, kein neues Recht); die
+  Adresse der Kachel eines fremden Raums antwortet wie die eines nicht vorhandenen (404), auch bei
+  ungültigem Zeitraum. Die Anlagenseiten `/zones/history` und `/zones/{id}/history` bleiben für
+  Mieter gesperrt, die Wohnungsseiten für Verwaltungskonten. Im Hintergrund trägt die Domäne
+  (`domain/zone_history_chart.py`) die Beschriftungen jetzt als austauschbare Fassung (`Wording`);
+  die Anlagensicht bleibt Wort für Wort unverändert.
 - **Werte am Mauszeiger im Temperaturverlauf:** Fährt man mit der Maus über das Diagramm (oder
   tippt bzw. zieht mit dem Finger, oder bedient es mit den Pfeiltasten links/rechts, Pos1/Ende,
   Umschalt für größere Schritte, Escape zum Ausblenden), erscheinen eine senkrechte Linie und

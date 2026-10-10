@@ -1,0 +1,10 @@
+{% extends "base_tenant.html" %}
+{#
+Der Temperaturverlauf der eigenen Räume. Seitenkörper und Kachel sind dieselben wie in der
+Anlagensicht (`zones_history_body.html`, `zone_history_chart.html`); diese Vorlage setzt nur den
+Rahmen der Wohnungssicht. Die Route übergibt ausschließlich Räume, die der Mieter sehen darf.
+#}
+{% block title %}Verlauf{% endblock %}
+{% block content %}
+{% include "zones_history_body.html" %}
+{% endblock %}
