@@ -381,26 +381,40 @@ etwas liegt, und behauptet keine Dauer. Auf dem Telefon sind die Bildpunkte grö
 Schwellen entsprechend länger.
 
 Die orangen Striche in der schmalen Spur unter der Zeichnung zeigen den **Anteil der Zeit
-mit Heizanforderung je Abschnitt**, nicht den genauen Zeitpunkt der Anforderung: Ein Strich ist so breit
-wie der Abschnitt, aus dem die Kurve einen Punkt bildet (bei 7 Tagen bis zu 17 Minuten), und
-seine Deckkraft stuft diesen Anteil in Vierteln ab. Ein blasser Strich heißt also „in diesem
-Abschnitt nur zeitweise angefordert", nicht „durchgehend ein bisschen". Genaue
-Einzelstriche wären bei 7 Tagen kleiner als ein Bildpunkt und nicht mehr zu sehen. Gefärbt
-ist nur die Zeit, für die Zeilen vorliegen. Die Zeitachse steht in der eingestellten Zeitzone
+mit Heizanforderung je Abschnitt**, nicht den genauen Zeitpunkt der Anforderung. Ein Strich
+deckt zusammenhängende Zeilen ab (zwischen zwei Zeilen höchstens 90 Sekunden) und reicht nie
+über einen Zeitabschnitt hinaus, aus dem auch die Kurve einen Punkt bildet (bei 7 Tagen bis
+zu 17 Minuten). Ganz deckungsgleich mit der Kurve ist das nicht: Die Spur zählt auch Zeilen
+ohne Temperaturwert und trennt schon bei mehr als 90 Sekunden Abstand, die Kurve nimmt nur
+Zeilen mit Temperaturwert und verbindet bis 10 Minuten Abstand. Die Deckkraft stuft den Anteil
+der **Zeit** (nicht der Zeilen) in Vierteln ab, derselbe Anteil wie die Prozentzahl unter dem
+Diagramm: Eine Sekunde Anforderung vor 90 Sekunden ohne ist das schwächste Viertel. Ein
+blasser Strich heißt also „in diesem Abschnitt nur zeitweise angefordert", nicht „durchgehend
+ein bisschen". Genaue Einzelstriche wären bei 7 Tagen kleiner als ein Bildpunkt und nicht
+mehr zu sehen. Gefärbt ist nur die Zeit, für die Zeilen vorliegen. Die Zeitachse steht in der eingestellten Zeitzone
 auf runden Stunden, an Mitternacht mit Wochentag und Datum.
 
 Die blaue Linie ist verdichtet: Sie zeigt den Mittelwert je Abschnitt (die Legende nennt
-die Obergrenze seiner Länge, bei 24 Stunden bis zu 2, bei 7 Tagen bis zu 17 Minuten; ein
-Punkt kann auch aus einer einzigen Messung stammen). Der hellblaue Bereich darum zeigt den
-kleinsten bis größten gemessenen Wert, damit kurze Ausschläge sichtbar bleiben. Besteht ein
-Zeitraum oder ein durch Lücken abgetrennter Teil nur aus einem einzigen Abschnitt, gibt es
-keinen Bereich zwischen Nachbarn; dann steht an seiner Stelle ein schmaler hellblauer Balken
-vom kleinsten bis zum größten Wert (seine Breite ist nur Darstellung und sagt nichts über die
-Dauer). „Ist" in der Legende ist die letzte tatsächliche Messung mit Uhrzeit. Liegen zwischen zwei Zeilen mehr als
+die Obergrenze seiner Länge, nach oben gerundet: bei 24 Stunden bis zu 3, bei 7 Tagen bis zu
+17 Minuten; ein Punkt kann auch aus einer einzigen Messung stammen). Der hellblaue Bereich
+darum zeigt den kleinsten bis größten gemessenen Wert. Ein kurzer Ausschlag ragt dort nur als
+feine Spitze heraus; ragt der Extremwert eines Abschnitts deutlich (um mehr als ein Zehntel
+der Zeichenhöhe) über den seiner Nachbarabschnitte hinaus, steht an dieser Stelle zusätzlich
+ein schmaler hellblauer Balken bis zum Extremwert. Gewöhnliches Messrauschen bekommt keinen
+Balken. Besteht ein Zeitraum oder ein durch Lücken abgetrennter Teil nur aus einem einzigen
+Abschnitt, gibt es keinen Bereich zwischen Nachbarn; dann steht an seiner Stelle ein
+Balken vom kleinsten bis zum größten Wert. Die Breite der Balken ist nur Darstellung und sagt
+nichts über die Dauer. „Ist" in der Legende ist die letzte tatsächliche Messung mit Uhrzeit;
+Zeitplan-Soll und wirksamer Soll tragen einen „Stand"-Zeitpunkt, wenn die Daten veraltet sind
+(letzter Wert mehr als 15 Minuten vor dem Ende des Zeitraums). Liegen zwischen zwei Zeilen mehr als
 **10 Minuten** (Neustart, Ausfall), bleiben Istkurve und Sollwertlinien unterbrochen, in
 jedem Zeitraum gleich und auch dann, wenn die Lücke mitten in einem verdichteten
 Abschnitt liegt. Ein Hinweis unter dem Diagramm nennt dann die erfasste Zeit und den
-letzten Wert. Mit **Vollbild** lässt sich die Karte vergrößern; **Schließen** oder Escape
+letzten Wert. Zeilen ohne Temperaturwert (etwa bei einem Sensorausfall) zählen zur erfassten
+Zeit, belegen aber keine Temperatur; der Hinweis nennt, für wie lange der Messwert fehlte.
+Die technische Markierungszeile, die beim Ende eines Notbetriebs den Schaltzustand übernimmt,
+trägt keinen Sollwert; die Sollwertlinien sind an dieser Stelle für etwa eine Minute
+unterbrochen. Mit **Vollbild** lässt sich die Karte vergrößern; **Schließen** oder Escape
 führt zurück.
 
 Ältere Protokollzeilen (aus der Zeit vor der Aufzeichnung von Zeitplan-Sollwert und

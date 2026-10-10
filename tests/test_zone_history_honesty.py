@@ -18,6 +18,8 @@ from thermoctl.domain.zone_history_chart import (
     LAYOUTS,
     WINDOWS,
     Sample,
+    _duration_text,
+    _minutes_text,
     build_chart,
     chart_for_zone,
     line_path,
@@ -25,6 +27,7 @@ from thermoctl.domain.zone_history_chart import (
     range_path,
     step_path,
     x_position,
+    y_position,
 )
 
 BERLIN = "Europe/Berlin"
@@ -320,7 +323,9 @@ def test_summary_and_legend_for_a_chart_whose_schedule_value_is_unknown() -> Non
     ]
     chart = build_chart(samples, start, start + timedelta(hours=1), BERLIN)
     assert "Zuletzt wirksamer Soll 20,5 °C (Zeitplan-Soll unbekannt)." in chart.summary
-    assert chart.scheduled_text == "unbekannt" and chart.effective_text == "20,5 °C"
+    # Die Daten enden 56 Minuten vor dem Fensterende: der Stand steht dabei (06:04 Ortszeit).
+    assert chart.scheduled_text == "unbekannt"
+    assert chart.effective_text == "20,5 °C (Stand 09.10. 06:04 Uhr)"
     assert [first for first, _ in chart.unknown_bands] == [start]
 
 
@@ -512,3 +517,150 @@ def test_rows_with_the_same_timestamp_do_not_colour_or_cover_anything() -> None:
     # zweite gilt bis zum Ende ihres Zyklus.
     assert chart.heat_lane == ((start, start + timedelta(seconds=90), 4),)
     assert chart.solar_bands == ((start, start + timedelta(seconds=90), 2.0, 2.0),)
+
+
+# --- Vierte Runde: Ausschlag in Ketten, Texte, Stufung nach Zeit ------------------------
+
+
+def _spike_chart(window: timedelta, offset: timedelta):
+    """16 Minuten Rohdaten (ein Wert 30,0 Grad) am Ende des Fensters, ab `offset` nach Beginn."""
+    start = datetime(2026, 10, 2, 4)
+    rows = _outlier_rows(start + offset)
+    return build_chart(rows, start, start + window, BERLIN)
+
+
+@pytest.mark.parametrize(
+    ("window", "offset"),
+    [
+        (timedelta(hours=24), timedelta(hours=10)),  # Bucket 144 s: etwa sieben Abschnitte
+        (timedelta(days=3), timedelta(hours=30)),  # Bucket 432 s: drei bis vier Abschnitte
+        (timedelta(days=7), _BUCKET * 258 - timedelta(minutes=7)),  # zwei Abschnitte
+    ],
+)
+@pytest.mark.parametrize("layout", LAYOUTS, ids=lambda layout: layout.name)
+def test_a_spike_inside_a_chain_of_sections_gets_a_bar_up_to_its_extreme(
+    window: timedelta, offset: timedelta, layout
+) -> None:
+    chart = _spike_chart(window, offset)
+    assert len([chain for chain in chart.points if chain.joined]) >= 1, "Kette erwartet"
+    bars = range_bars(chart, layout)
+    # Genau ein Balken: der Abschnitt mit dem Ausschlag; er reicht bis zum Extremwert.
+    assert bars.count("M") == 1
+    assert f",{y_position(30.0, chart, layout):.1f} " in bars
+
+
+def test_ordinary_noise_in_a_chain_gets_no_bars_only_the_area() -> None:
+    start = datetime(2026, 10, 9, 0)
+    rows = [
+        _sample(start + timedelta(minutes=i), temperature=19.5 + 0.1 * (i % 4)) for i in range(600)
+    ]
+    for window in WINDOWS.values():
+        chart = build_chart(rows, start, start + window, BERLIN)
+        for layout in LAYOUTS:
+            assert range_bars(chart, layout) == ""
+    assert range_path(build_chart(rows, start, start + WINDOWS["24h"], BERLIN), DESKTOP) != ""
+
+
+def test_a_steady_climb_is_not_taken_for_a_spike() -> None:
+    start = datetime(2026, 10, 9, 0)
+    rows = [_sample(start + timedelta(minutes=i), temperature=18.0 + i / 60) for i in range(240)]
+    chart = build_chart(rows, start, start + WINDOWS["24h"], BERLIN)
+    assert range_bars(chart, DESKTOP) == ""
+
+
+def test_a_dip_inside_a_chain_gets_a_bar_down_to_its_minimum() -> None:
+    start = datetime(2026, 10, 9, 0)
+    rows = [
+        _sample(start + timedelta(seconds=30 * i), temperature=10.0 if i == 200 else 20.0)
+        for i in range(400)
+    ]
+    chart = build_chart(rows, start, start + WINDOWS["24h"], BERLIN)
+    bars = range_bars(chart, DESKTOP)
+    assert bars.count("M") == 1
+    assert f",{y_position(10.0, chart, DESKTOP):.1f} " in bars
+
+
+def test_the_duration_text_has_singular_and_never_says_zero_hours() -> None:
+    assert _duration_text(1 / 60) == "1 Minute"
+    assert _duration_text(2 / 60) == "2 Minuten"
+    assert _duration_text(0.0) == "0 Minuten"
+    assert _duration_text(1.5) == "1,5 Stunden"
+
+
+def test_a_single_row_reports_its_minutes_not_zero_hours() -> None:
+    end = datetime(2026, 10, 9, 12)
+    chart = build_chart(
+        [_sample(end - timedelta(seconds=45))], end - timedelta(hours=24), end, BERLIN
+    )
+    assert "Daten für 1 Minute von 24,0 Stunden." in chart.summary
+    assert "0,0" not in chart.summary
+
+
+def test_up_to_n_minutes_is_rounded_up_so_it_never_understates() -> None:
+    assert _minutes_text(144) == "3 Minuten"  # 2,4
+    assert _minutes_text(432) == "8 Minuten"  # 7,2
+    assert _minutes_text(1008) == "17 Minuten"  # 16,8
+    assert _minutes_text(180) == "3 Minuten"  # genau: nicht 4
+    assert _minutes_text(30.2) == "31 Sekunden"
+    assert _minutes_text(0.4) == "1 Sekunde"
+
+
+def test_the_legend_of_the_24_hour_window_names_three_minutes(session: Session, client_als) -> None:
+    zone = create_zone(session, "dreiminuten")
+    now = datetime.now(UTC).replace(tzinfo=None)
+    _row(session, zone, now - timedelta(minutes=20), scheduled="20.5")
+    session.flush()
+    assert "Mittelwert je Abschnitt von bis zu 3 Minuten" in _history_html(client_als, zone, "24h")
+
+
+def test_setpoint_legend_carries_a_stamp_when_the_data_is_stale_and_not_otherwise() -> None:
+    end = datetime(2026, 10, 10, 12)
+    start = end - timedelta(hours=24)
+    last = end - timedelta(hours=3)  # 09:00 UTC = 11:00 Ortszeit
+    stale = build_chart([_sample(last, scheduled=21.0, effective=19.0)], start, end, BERLIN)
+    assert stale.scheduled_text == "21,0 °C (Stand 10.10. 11:00 Uhr)"
+    assert stale.effective_text == "19,0 °C (Stand 10.10. 11:00 Uhr)"
+    fresh = build_chart(
+        [_sample(end - timedelta(minutes=2), scheduled=21.0, effective=19.0)], start, end, BERLIN
+    )
+    assert fresh.scheduled_text == "21,0 °C" and fresh.effective_text == "19,0 °C"
+    unknown = build_chart([_sample(last, scheduled=None)], start, end, BERLIN)
+    assert unknown.scheduled_text == "unbekannt"
+    assert unknown.effective_text == "20,5 °C (Stand 10.10. 11:00 Uhr)"
+
+
+def test_the_stamp_reaches_the_legend_of_the_page(session: Session, client_als) -> None:
+    zone = create_zone(session, "veraltet")
+    now = datetime.now(UTC).replace(tzinfo=None)
+    _row(session, zone, now - timedelta(hours=3), scheduled="21.0", setpoint="19.0")
+    session.flush()
+    html = _history_html(client_als, zone)
+    assert re.search(r"Zeitplan-Soll: 21,0 °C \(Stand \d\d\.\d\d\. \d\d:\d\d Uhr\)", html)
+    assert re.search(r"Wirksamer Soll: 19,0 °C \(Stand \d\d\.\d\d\. \d\d:\d\d Uhr\)", html)
+
+
+def test_the_heat_lane_weighs_rows_by_their_seconds_like_the_summary() -> None:
+    start = datetime(2026, 10, 9, 4)
+    # Eine Sekunde mit Heizanforderung, dann 90 Sekunden ohne: der Anteil ist 1/91, nicht 1/2.
+    rows = [_sample(start, heat=True), _sample(start + timedelta(seconds=1), heat=False)]
+    end = start + timedelta(hours=1)
+    chart = build_chart(rows, start, end, BERLIN)
+    assert [level for _, _, level in chart.heat_lane] == [1]
+    assert "Heizanforderung 1 % der erfassten Zeit." in chart.summary
+    # Umgekehrt: 90 Sekunden mit Anforderung und eine Sekunde ohne ist fast durchgehend.
+    rows = [_sample(start, heat=True), _sample(start + timedelta(seconds=90), heat=False)]
+    chart = build_chart(rows, start, start + timedelta(seconds=91), BERLIN)
+    assert [level for _, _, level in chart.heat_lane] == [4]
+
+
+def test_the_summary_names_the_time_without_a_temperature_reading() -> None:
+    start = datetime(2026, 10, 9, 0)
+    end = start + timedelta(minutes=10)
+    mixed = [
+        _sample(start + timedelta(seconds=30 * i), temperature=None if i < 10 else 19.5)
+        for i in range(20)
+    ]
+    text = build_chart(mixed, start, end, BERLIN).summary
+    assert "Für 5 Minuten der erfassten Zeit lag kein Temperaturmesswert vor." in text
+    whole = [_sample(start + timedelta(seconds=30 * i)) for i in range(20)]
+    assert "Temperaturmesswert" not in build_chart(whole, start, end, BERLIN).summary

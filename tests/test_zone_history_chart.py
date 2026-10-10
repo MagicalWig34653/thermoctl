@@ -323,7 +323,7 @@ def test_summary_uses_german_numbers_and_reports_coverage_and_staleness() -> Non
     assert "Zeitplan-Soll 20,5 °C, wirksamer Soll 18,5 °C" in chart.summary
     assert "Heizanforderung 50 % der erfassten Zeit." in chart.summary
     assert "Sonnenabsenkung 2,0 Stunden." in chart.summary
-    assert "Daten für 2,0 von 24,0 Stunden." in chart.summary
+    assert "Daten für 2,0 Stunden von 24,0 Stunden." in chart.summary
     assert "Letzter Wert 09.10. 03:59 Uhr." in chart.summary  # 01:59 UTC = 03:59 Ortszeit
 
 

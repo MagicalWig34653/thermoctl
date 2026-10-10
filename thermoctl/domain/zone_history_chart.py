@@ -219,13 +219,19 @@ def _duration_text(hours: float) -> str:
     """Stunden ab einer Stunde, darunter Minuten -- 0,0 Stunden wäre keine Auskunft."""
     if hours >= 1:
         return f"{_hours_text(hours)} Stunden"
-    return f"{max(1, round(hours * 60))} Minuten"
+    minutes = round(hours * 60)
+    if hours > 0:
+        minutes = max(1, minutes)
+    return f"{minutes} Minute" if minutes == 1 else f"{minutes} Minuten"
 
 
 def _minutes_text(seconds: float) -> str:
+    """Obergrenze für "bis zu": aufgerundet, damit die Angabe nie untertreibt."""
     if seconds < 120:
-        return f"{round(seconds)} Sekunden"
-    return f"{round(seconds / 60)} Minuten"
+        count = ceil(seconds)
+        return f"{count} Sekunde" if count == 1 else f"{count} Sekunden"
+    # Der kleine Abzug fängt Gleitkommafehler ab (180,00000000000003 s sind keine 4 Minuten).
+    return f"{ceil(seconds / 60 - 1e-9)} Minuten"
 
 
 def _k_text(low: float, high: float) -> str:
@@ -266,6 +272,7 @@ def build_chart(
     covered_seconds = 0.0
     heat_seconds = 0.0
     unknown_seconds = 0.0
+    no_temperature_seconds = 0.0
     for index, sample in enumerate(samples):
         bucket_index = min(MAX_POINTS - 1, int((sample.at - start).total_seconds() / width))
         buckets.setdefault(bucket_index, []).append(index)
@@ -277,6 +284,8 @@ def build_chart(
             covered_seconds += seconds
             if sample.heat:
                 heat_seconds += seconds
+            if sample.temperature is None:
+                no_temperature_seconds += seconds
             if sample.solar_k is None:
                 unknown_seconds += seconds
                 unknown_intervals.append((sample.at, interval_end, 0.0))
@@ -341,8 +350,14 @@ def build_chart(
         window_hours = (end - start).total_seconds() / 3600
         if covered_seconds / 3600 < window_hours * 0.9:
             parts.append(
-                f"Daten für {_hours_text(covered_seconds / 3600)} "
+                f"Daten für {_duration_text(covered_seconds / 3600)} "
                 f"von {_hours_text(window_hours)} Stunden."
+            )
+        if no_temperature_seconds > 0:
+            # Zeilen ohne Messwert (Sensorausfall) belegen Zeit, aber keine Temperatur.
+            parts.append(
+                f"Für {_duration_text(no_temperature_seconds / 3600)} der erfassten Zeit "
+                "lag kein Temperaturmesswert vor."
             )
         if stale:
             parts.append(f"Letzter Wert {local_time(data_end, timezone_name):%d.%m. %H:%M} Uhr.")
@@ -378,8 +393,12 @@ def build_chart(
         maximum=float(maximum),
         summary=summary,
         actual_text=actual_text,
-        scheduled_text=_setpoint_text(latest.scheduled if latest else None),
-        effective_text=_setpoint_text(latest.effective if latest else None),
+        scheduled_text=_setpoint_text(
+            latest.scheduled if latest else None, data_end if stale else None, timezone_name
+        ),
+        effective_text=_setpoint_text(
+            latest.effective if latest else None, data_end if stale else None, timezone_name
+        ),
         bucket_text=_minutes_text(width),
         ticks=ticks,
         sparse_ticks=ticks[::2],
@@ -388,8 +407,14 @@ def build_chart(
     )
 
 
-def _setpoint_text(value: float | None) -> str:
-    return temperature_text(Decimal(str(value))) if value is not None else "unbekannt"
+def _setpoint_text(value: float | None, stamp: datetime | None, timezone_name: str | None) -> str:
+    """Letzter Sollwert; bei veralteten Daten mit dem Zeitpunkt, zu dem er zuletzt galt."""
+    if value is None:
+        return "unbekannt"
+    text = temperature_text(Decimal(str(value)))
+    if stamp is None:
+        return text
+    return f"{text} (Stand {local_time(stamp, timezone_name):%d.%m. %H:%M} Uhr)"
 
 
 def _points(samples: list[Sample], buckets: dict[int, list[int]]) -> tuple[Point, ...]:
@@ -432,14 +457,18 @@ def _points(samples: list[Sample], buckets: dict[int, list[int]]) -> tuple[Point
 class _Cell:
     first: datetime
     last: datetime
-    cycles: int = 0
-    heating: int = 0
+    seconds: float = 0.0
+    heating: float = 0.0
 
 
 def _heat_lane(
     samples: list[Sample], ends: list[datetime], buckets: dict[int, list[int]]
 ) -> tuple[HeatCell, ...]:
-    """Heizspur: Zeitspannen der Zeilen, gestuft nach dem Anteil der Zyklen mit Anforderung.
+    """Heizspur: Zeitspannen der Zeilen, gestuft nach dem Anteil der Zeit mit Anforderung.
+
+    Der Anteil ist nach Sekunden gewichtet (die Zeitspanne jeder Zeile, wie `ends` sie liefert),
+    genau wie die Prozentzahl der Zusammenfassung; Zeilen zu zählen würde eine Sekunde mit
+    Anforderung vor neunzig Sekunden ohne als "die Hälfte" darstellen.
 
     Eine Zelle reicht von der ersten Zeile bis zum Ende der letzten Zeile eines
     zusammenhängenden Stücks innerhalb eines Buckets -- nicht über den ganzen Bucket.
@@ -456,13 +485,15 @@ def _heat_lane(
             else:
                 current = _Cell(sample.at, ends[index])
                 cells.append(current)
-            current.cycles += 1
-            current.heating += 1 if sample.heat else 0
+            seconds = (ends[index] - sample.at).total_seconds()
+            current.seconds += seconds
+            current.heating += seconds if sample.heat else 0.0
     lane: list[HeatCell] = []
     for cell in cells:
         if cell.heating == 0:
             continue
-        level = ceil(cell.heating / cell.cycles * 4)
+        # Runden fängt Gleitkommafehler ab: genau die Hälfte ist Stufe 2, nicht 3.
+        level = ceil(round(cell.heating / cell.seconds * 4, 9))
         if lane and lane[-1][1] == cell.first and lane[-1][2] == level:
             lane[-1] = (lane[-1][0], cell.last, level)
         else:
@@ -540,7 +571,8 @@ def _sections(chart: Chart) -> list[list[Point]]:
 def range_path(chart: Chart, layout: Layout) -> str:
     """Kleinster bis größter Wert je Abschnitt als Fläche zwischen verbundenen Abschnitten.
 
-    Ein einzelner Abschnitt ohne verbundenen Nachbarn hat keine Fläche; ihn zeichnet `range_bars`.
+    Ein einzelner Abschnitt ohne verbundenen Nachbarn hat keine Fläche; ihn zeichnet `range_bars`,
+    ebenso eine Spitze in einer Kette.
     """
     parts: list[str] = []
     for chain in _sections(chart):
@@ -562,24 +594,48 @@ def range_path(chart: Chart, layout: Layout) -> str:
 RANGE_BAR_WIDTH = 1.6
 
 
-def range_bars(chart: Chart, layout: Layout) -> str:
-    """Kleinster bis größter Wert eines Abschnitts ohne verbundenen Nachbarn, als schmaler Balken.
+# Ein Abschnitt in einer Kette bekommt ebenfalls einen Balken, wenn sein Extremwert um mehr als
+# diesen Anteil der Zeichenhöhe über (oder unter) die Extremwerte seiner Nachbarabschnitte
+# hinausragt. Die Fläche zeigt eine solche Spitze nur als Haarstrich bei Deckkraft 0,22.
+# Gewöhnliches Messrauschen und gleichmäßiger Anstieg bleiben darunter, weil jeder Abschnitt
+# dann zwischen seinen Nachbarn liegt; sie bekommen keine Balken, die die Fläche verschmieren.
+SPIKE_FRACTION = 0.10
 
-    Ohne diesen Balken verschwände ein kurzer Ausschlag, wenn das ganze Fenster nur aus einem
-    verdichteten Abschnitt oder aus voneinander getrennten Abschnitten besteht.
+
+def _sticks_out(chain: list[Point], index: int, chart: Chart, layout: Layout) -> bool:
+    """Ob der Extremwert dieses Abschnitts deutlich über die seiner Nachbarn hinausragt."""
+    point = chain[index]
+    neighbours = chain[max(0, index - 1) : index] + chain[index + 1 : index + 2]
+    height = layout.bottom - layout.top
+    scale = height / (chart.maximum - chart.minimum)
+    above = (point.high - max(n.high for n in neighbours)) * scale
+    below = (min(n.low for n in neighbours) - point.low) * scale
+    return max(above, below) > height * SPIKE_FRACTION
+
+
+def range_bars(chart: Chart, layout: Layout) -> str:
+    """Kleinster bis größter Wert eines Abschnitts als schmaler Balken.
+
+    Gezeichnet wird er für einen Abschnitt ohne verbundenen Nachbarn (sonst verschwände ein
+    kurzer Ausschlag, wenn das ganze Fenster nur aus einem Abschnitt oder aus getrennten
+    Abschnitten besteht) und für einen Abschnitt in einer Kette, dessen Extremwert deutlich
+    über die Nachbarn hinausragt (die Fläche zeigt eine solche Spitze nur als Haarstrich).
     """
     parts: list[str] = []
     for chain in _sections(chart):
-        if len(chain) != 1 or chain[0].low == chain[0].high:
-            continue
-        point = chain[0]
-        x = x_position(point.at, chart, layout)
-        left, right = x - RANGE_BAR_WIDTH / 2, x + RANGE_BAR_WIDTH / 2
-        top, bottom = y_position(point.high, chart, layout), y_position(point.low, chart, layout)
-        parts.append(
-            f"M{left:.1f},{top:.1f} L{right:.1f},{top:.1f} "
-            f"L{right:.1f},{bottom:.1f} L{left:.1f},{bottom:.1f} Z"
-        )
+        for index, point in enumerate(chain):
+            if point.low == point.high:
+                continue
+            if len(chain) > 1 and not _sticks_out(chain, index, chart, layout):
+                continue
+            x = x_position(point.at, chart, layout)
+            left, right = x - RANGE_BAR_WIDTH / 2, x + RANGE_BAR_WIDTH / 2
+            top = y_position(point.high, chart, layout)
+            bottom = y_position(point.low, chart, layout)
+            parts.append(
+                f"M{left:.1f},{top:.1f} L{right:.1f},{top:.1f} "
+                f"L{right:.1f},{bottom:.1f} L{left:.1f},{bottom:.1f} Z"
+            )
     return " ".join(parts)
 
 
