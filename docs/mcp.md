@@ -35,7 +35,181 @@ Ein MCP-Client kann den Server beispielsweise so über stdio starten:
 
 Das Token muss die Rechte der verwendeten Werkzeuge tragen. Ohne
 `THERMOCTL_MCP_TOKEN` verweigert der Server den Start. Token und Datenbankadresse im
-Beispiel sind ausschließlich Platzhalter.
+Beispiel sind ausschließlich Platzhalter. Dieses Verfahren (stdio) bleibt unverändert; der
+HTTP-Zugang unten ist eine zusätzliche Möglichkeit.
+
+## MCP über HTTP
+
+Neben stdio kann der MCP-Server auch über HTTP erreichbar sein, mit Bearer-Token oder
+OAuth. Die Werkzeuge und ihre Rechte sind dieselben; nur der Zugang ist ein anderer.
+Vorgabe ist **aus** — ohne Einstellung ändert sich nichts.
+
+### Betriebsarten
+
+`THERMOCTL_MCP_MODE` wählt:
+
+| Wert | Bedeutung |
+|---|---|
+| `off` (Vorgabe) | kein HTTP-Zugang zum MCP-Server |
+| `path` | der MCP-Endpunkt liegt unter einem Pfad der Weboberfläche, im selben Prozess und auf demselben Port |
+| `port` | der MCP-Server läuft als zweiter Prozess (`thermoctl-mcp --http`) auf eigenem Port; im Container startet `docker/entrypoint.sh` beide und beendet den Container, sobald einer endet |
+
+Einstellungen und ihre Pflichtregeln:
+
+| Variable | `path` | `port` |
+|---|---|---|
+| `THERMOCTL_PUBLIC_URL` | Pflicht — öffentliche Adresse der Weboberfläche, z. B. `https://heizung.example.org` | Pflicht — dorthin leitet die Zustimmungsseite um |
+| `THERMOCTL_MCP_PATH` | Vorgabe `/mcp`; Segmente aus Buchstaben, Ziffern und `. _ ~ -`, ohne `/` am Ende | ohne Bedeutung (ein ungültiger Wert verhindert den Start nicht) |
+| `THERMOCTL_MCP_PORT` | ohne Bedeutung | Pflicht, 1–65535 |
+| `THERMOCTL_MCP_PUBLIC_URL` | optional; ersetzt `PUBLIC_URL` + Pfad als Adresse des MCP-Endpunkts | Pflicht — öffentliche Adresse des MCP-Listeners, z. B. `https://mcp.example.org` |
+
+- Alle Adressen: `https`, nur für `localhost`, `127.0.0.1` und `::1` ist `http` erlaubt.
+  Kein `/` am Ende, keine Zugangsdaten, kein Query, kein Fragment, nur ASCII (Umlaute als
+  Punycode).
+- Der Pfad darf keinen von thermoctl belegten Pfad treffen (OAuth-Endpunkte, `/api`,
+  `/static`, `/.well-known`, die Seiten der Weboberfläche) und nicht mit
+  `THERMOCTL_ROOT_PATH` kollidieren.
+- Eine unvollständige oder unzulässige Angabe **verhindert den Start** mit einer Meldung,
+  die die Variable nennt; es gibt keine stille Rückfallstufe.
+- Im Modus `path` braucht die Web-App das MCP-Paket (`thermoctl[mcp]`). Fehlt es, startet
+  die Weboberfläche trotzdem; im Log steht `mcp.http.unavailable`. Das Container-Abbild
+  bringt es mit.
+- `THERMOCTL_MCP_MODE=port` nutzt `THERMOCTL_BIND_HOST`; `thermoctl-mcp --http` ohne
+  diesen Modus bricht mit einer Meldung ab.
+
+### Adressen
+
+Der MCP-Endpunkt ist die Adresse aus `THERMOCTL_MCP_PUBLIC_URL`, sonst
+`THERMOCTL_PUBLIC_URL` + `THERMOCTL_MCP_PATH` (z. B. `https://heizung.example.org/mcp`).
+Die OAuth-Endpunkte hängen daran: `/authorize`, `/token`, `/register`, `/revoke`.
+
+Die Beschreibungen für Clients (`/.well-known/oauth-protected-resource` und
+`/.well-known/oauth-authorization-server`) liegen an beiden Orten, an denen ein Client
+suchen darf:
+
+- **Modus `path`:** an der Wurzel der Weboberfläche mit dem Pfad dahinter, also
+  `https://heizung.example.org/.well-known/oauth-protected-resource/mcp`, und zusätzlich
+  unter dem MCP-Pfad selbst (`…/mcp/.well-known/…`). Der Reverse Proxy muss
+  `/.well-known/` nicht gesondert behandeln — es ist dieselbe Web-App.
+- **Modus `port`:** an der Wurzel des MCP-Listeners; hat `THERMOCTL_MCP_PUBLIC_URL` einen
+  Pfad, zusätzlich mit diesem Pfad als Endung. Ein Proxy, der den Pfad auf die Wurzel des
+  Listeners abbildet, muss die `/.well-known/`-Pfade weiterreichen.
+
+### Anbinden mit Claude Code
+
+Mit einem Bearer-Token (Abschnitt unten):
+
+```console
+claude mcp add --transport http thermoctl https://heizung.example.org/mcp \
+  --header "Authorization: Bearer <token>"
+```
+
+Per OAuth, ohne vorab ausgestelltes Token:
+
+```console
+claude mcp add --transport http thermoctl https://heizung.example.org/mcp
+```
+
+Danach im Client `/mcp` aufrufen und `thermoctl` anmelden. Der Client öffnet den Browser
+mit der Zustimmungsseite von thermoctl (Ablauf unten). Die Adressen im Beispiel sind
+Platzhalter.
+
+### Bearer-Token
+
+Unter `/tokens` in der Oberfläche ausstellen — wie jedes API-Token, siehe
+[REST-Schnittstelle](api.md). Das Formular bietet eine **Vorauswahl** (Presets), die nur
+Haken setzt; danach lässt sich jedes Recht einzeln ändern. Ein Bearer-Token gilt am
+MCP-Endpunkt **und** in der REST-Schnittstelle. Kiosk-Token werden am MCP-Endpunkt
+abgewiesen.
+
+### Rechte-Presets
+
+Presets stehen im Code (`thermoctl/domain/token_presets.py`), nicht in der Datenbank; eine
+Änderung wirkt nie rückwirkend auf bereits ausgestellte Token.
+
+| Preset | Rechte |
+|---|---|
+| Read-only | `zone.read`, `device.read`, `audit.read` |
+| Read-write | zusätzlich `override.create`, `override.cancel`, `vacation.manage`, `zone.manage`, `schedule.manage`, `setting.manage`, `control.disarm` |
+
+- **`control.arm` steckt in keinem Preset.** Scharfschalten bleibt eine Einzelentscheidung
+  und gibt es über MCP ohnehin nicht (siehe unten).
+- `control.disarm` ist das Recht für `force_dry_run` (zurück in den Trockenlauf). Es ist
+  neu in 0.14.0; die Migration vergibt es an alle Gruppen und Token, die anlagenweit
+  `control.arm` haben.
+- Ebenfalls in keinem Preset: `user.manage`, `group.manage`, `token.manage`, `token.self`
+  und `device.manage`. Wer bei `set_sensor_failure_policy` Ausgleichswerte setzen will,
+  hakt `device.manage` zusätzlich an.
+- Ein Token trägt höchstens die Rechte seines Besitzers.
+
+### OAuth-Ablauf
+
+1. **Registrierung.** Der Client meldet sich selbst an (`POST /register`, JSON mit
+   `client_name` und `redirect_uris`; nur öffentliche Clients, höchstens 10
+   Redirect-Adressen). Das gibt ihm eine Client-Id, aber **kein einziges Recht**.
+2. **Anfrage.** Der Client schickt den Browser an `/authorize` (Code-Verfahren mit
+   PKCE `S256`; der Parameter `resource` ist Pflicht und bindet das Token an diesen
+   MCP-Server). thermoctl merkt sich die Anfrage 10 Minuten und leitet auf
+   `/oauth/consent` der Weboberfläche weiter.
+3. **Anmeldung.** Wer nicht angemeldet ist, landet auf der Anmeldeseite und danach wieder
+   hier. Nötig ist das Recht `token.self`.
+4. **Zustimmung.** Die Seite nennt den Namen des Clients (frei gewählt, **nicht geprüft**)
+   und die Adresse, an die zurückgeleitet wird. Für Adressen im Netz steht eine Warnung
+   da. Eine Vorauswahl (Read-only oder Read-write) setzt die Haken; angeboten werden nur
+   Rechte, die der angemeldete Nutzer selbst hat. Wer „Zulassen" wählt, vergibt genau die
+   angehakten Rechte, mindestens eines; „Ablehnen" schickt `access_denied` zurück.
+5. **Tausch.** Der Client tauscht den Code (gilt 5 Minuten, genau einmal) am `/token`
+   gegen ein Zugriffs-Token und ein Refresh-Token.
+6. **Gültigkeit.** Das Zugriffs-Token gilt **1 Stunde**, das Refresh-Token **30 Tage**.
+   Bei jeder Erneuerung wird das Refresh-Token ersetzt (Rotation). Wird ein schon
+   benutztes oder widerrufenes Refresh-Token noch einmal vorgelegt, **sperrt thermoctl die
+   ganze Familie** — auch das gerade gültige Token dieser Sitzung. Eine Erneuerung
+   behält nur die Rechte, die der Nutzer noch hat; bleibt keines, ist die Sitzung zu Ende.
+7. **Einsicht und Widerruf.** OAuth-Token erscheinen unter `/tokens` mit Quelle `oauth` und
+   dem Namen des Clients und lassen sich dort widerrufen (das sperrt auch die
+   Refresh-Familie). `POST /revoke` widerruft ein Refresh- oder Zugriffs-Token (RFC 7009)
+   und antwortet immer gleich.
+
+### Debugging
+
+- Jeder Werkzeugaufruf schreibt `event=mcp.tool` mit `tool`, `key_prefix` (die ersten
+  Zeichen des Tokens, nie das Token), `outcome` und bei Fehlern `reason`. `outcome` ist
+  `ok`, `denied` (Recht fehlt), `rejected` (die Domäne hat die Eingabe abgewiesen),
+  `not_found` oder `error`.
+- Die Zugangsprüfung am HTTP-Eingang schreibt `event=mcp.http.auth` mit `outcome` `ok` oder
+  `denied` und dem Grund (kein Bearer-Header, Token ungültig/widerrufen/abgelaufen/nur
+  Kiosk, Origin nicht erlaubt).
+- Die OAuth-Vorgänge schreiben Ereignisse mit dem Namen `oauth.…` (u. a. `oauth.approve`,
+  `oauth.token.refresh`, `oauth.revoke`, `oauth.purge`), jeweils mit `outcome`.
+- Der Grund einer Ablehnung steht auch **im Ergebnis des Werkzeugs**, das das Modell
+  liest — es kann ihn weitergeben, statt zu raten.
+- `401` am Endpunkt heißt: kein oder ungültiges Token (die Antwort verweist per
+  `WWW-Authenticate` auf die Beschreibung des Servers); `403 forbidden_origin`: der
+  `Origin`-Header passt nicht zur MCP-Adresse; ein abgewiesener `Host`-Header kommt vom
+  Transportschutz des MCP-Pakets (siehe Reverse Proxy in
+  [self-hosting.md](self-hosting.md)).
+
+### Grenzen und Sicherheit
+
+- **OAuth-Token gelten nur am MCP-Endpunkt.** Die REST-Schnittstelle weist sie mit `401`
+  ab, damit ein KI-Client, dem man MCP erlaubt hat, nicht die ganze REST-Fläche bekommt.
+- **Die Zustimmungsseite lässt sich nicht einbetten** (`frame-ancestors 'none'`,
+  `X-Frame-Options: DENY`).
+- **Die Registrierung ist offen, aber ohne Rechte.** Rechte entstehen erst durch die
+  Zustimmung eines angemeldeten Nutzers. Je Quelladresse sind 20 Registrierungen pro
+  Stunde erlaubt. **Hinter einem Reverse Proxy ist das die Adresse des Proxys:** uvicorn
+  wertet Weiterleitungsheader nur für Adressen aus `FORWARDED_ALLOW_IPS` aus. Wer den
+  Proxy dort einträgt, bekommt die Adresse des Besuchers; sonst teilen sich alle die
+  Grenze. Die Begrenzung selbst liest keine Header.
+- **Wachstumsgrenzen**, weil `/register` und `/authorize` öffentlich sind: höchstens 1000
+  nie benutzte Clients, nach einem Tag werden sie gelöscht; höchstens 100 offene
+  Anfragen je Client.
+- **Aufräumen** läuft täglich im Takt der Aufbewahrung: abgelaufene Anfragen, Codes und
+  Refresh-Token verschwinden einen Tag nach Ablauf. Benutzte Clients und widerrufene
+  Token bleiben zur Nachvollziehbarkeit.
+- Ein Downgrade der Migration `b721e49c6a30` **löscht alle OAuth-Token**, weil sie sonst
+  als dauerhafte Bearer-Token weitergälten.
+- HTTP-Zugang braucht TLS (Abschnitt 8c in [self-hosting.md](self-hosting.md)).
 
 ## Die Werkzeuge
 

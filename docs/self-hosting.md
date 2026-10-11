@@ -516,6 +516,49 @@ und Start in [`docs/mcp.md`](mcp.md). Das Feld sorgt lediglich dafür, dass ein 
 anderer Stelle betriebener MCP-Server, der auf dieselbe Datenbank zugreift, das
 richtige Token vorfindet, ohne über das freie `env`-Feld gehen zu müssen.
 
+## 8c. MCP über HTTP
+
+Wie der HTTP-Zugang zum [MCP-Server](mcp.md) funktioniert, die Einstellungen und der
+Ablauf stehen in `docs/mcp.md`. Hier nur, was der Betrieb davon braucht. Vorgabe ist
+`THERMOCTL_MCP_MODE=off`; ohne Einstellung ändert sich nichts.
+
+**TLS ist Pflicht.** Ein Bearer-Token im Klartext lässt sich mitlesen und weiterverwenden. thermoctl
+akzeptiert `http` in den öffentlichen Adressen nur für `localhost`; im Netz gehört ein
+Reverse Proxy mit TLS davor (Abschnitt 4).
+
+**Modus `path`** (`THERMOCTL_MCP_MODE=path`, `THERMOCTL_PUBLIC_URL=https://…`):
+
+- Der Endpunkt liegt unter `THERMOCTL_MCP_PATH` (Vorgabe `/mcp`) auf dem Web-Port. Am Proxy
+  ist nichts Besonderes einzustellen — er leitet ohnehin alles an die Web-App.
+- **Der Proxy muss den `Host`-Header unverändert weitergeben** (nginx: `proxy_set_header
+  Host $host;`). thermoctl vergleicht `Host` und `Origin` mit der öffentlichen Adresse
+  (Schutz gegen DNS-Rebinding); ein umgeschriebener `Host` führt zu abgewiesenen Anfragen.
+- Der Proxy darf `/.well-known/` und die OAuth-Pfade unter dem MCP-Pfad nicht blockieren.
+
+**Modus `port`** (`THERMOCTL_MCP_MODE=port`, `THERMOCTL_MCP_PORT`,
+`THERMOCTL_MCP_PUBLIC_URL`, `THERMOCTL_PUBLIC_URL`):
+
+- Im Container startet `docker/entrypoint.sh` einen zweiten Prozess (`thermoctl-mcp --http`)
+  neben dem Web-Dienst. Beendet sich einer von beiden, stoppt der Container, damit
+  `restart: unless-stopped` greift.
+- Der Port muss freigegeben werden (`ports:`) und ein Proxy mit TLS davor, der unter der
+  Adresse aus `THERMOCTL_MCP_PUBLIC_URL` antwortet und den `Host`-Header erhält. Die
+  `/.well-known/`-Pfade müssen den Listener erreichen.
+- Die Zustimmungsseite liegt weiterhin in der Weboberfläche (`THERMOCTL_PUBLIC_URL`).
+
+**Beispiel:** `docker/compose.beispiel.yml` enthält die auskommentierte Port-Freigabe für den
+Modus `port`; die Werte kommen aus der `.env` (Vorlage `.env.example`, Abschnitt
+„MCP-Server").
+
+**Hinter einem Reverse Proxy** zählt die Ratenbegrenzung der Registrierung (20 je Stunde)
+je Quelladresse, und das ist ohne Zutun die Adresse des Proxys. Wer die Adresse des
+Besuchers will, trägt den Proxy in `FORWARDED_ALLOW_IPS` ein (Umgebungsvariable von
+uvicorn).
+
+**Im Home-Assistant-Add-on** gibt es die Felder dafür noch nicht; sie kommen mit dem
+Add-on-Update zu 0.14.0 (`mcp_mode`, `mcp_path`, `mcp_port`, `public_url`,
+`mcp_public_url`, Port-Freigabe). Bis dahin ist der HTTP-Zugang dort nicht eingestellbar.
+
 ## 8b. Urlaubsbetrieb
 
 Unter „Urlaub" (auch von der Startseite aus verlinkt, dort außerdem als Hinweis

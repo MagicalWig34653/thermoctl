@@ -9,6 +9,57 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ---
 
+## 0.14.0 — 2026-10-11
+
+### Beim Upgrade zu wissen
+
+- **Zwei Migrationen**, laufen beim Start (`alembic upgrade head`):
+  - `b7d2e5a40c18` legt das neue Recht `control.disarm` an und vergibt es an **alle Gruppen
+    und Token, die anlagenweit `control.arm` haben**.
+  - `b721e49c6a30` legt die OAuth-Tabellen an und ergänzt `api_token` um `source` und
+    `oauth_client_id`. Bestehende Token bekommen die Quelle `bearer`.
+- **Verhaltenswechsel:** `force_dry_run` (MCP) verlangt jetzt `control.disarm` statt
+  `control.arm`. Wer ein Token nach dem Upgrade neu zusammenstellt, setzt den Haken an der
+  richtigen Stelle; die Migration überträgt bestehende Rechte.
+- **Neue Einstellungen, alle optional:** `THERMOCTL_MCP_MODE` (`off`, `path`, `port`),
+  `THERMOCTL_MCP_PATH`, `THERMOCTL_MCP_PORT`, `THERMOCTL_PUBLIC_URL`,
+  `THERMOCTL_MCP_PUBLIC_URL`. Die Vorgabe `MCP_MODE=off` bedeutet: **es ändert sich nichts.**
+- **Downgrade** unter `b721e49c6a30` **löscht alle OAuth-Token** (sie ließen sich sonst nicht
+  mehr von Bearer-Token unterscheiden und gälten als dauerhafte Token weiter).
+- **Home-Assistant-Add-on:** Die Felder für die neuen Einstellungen (`mcp_mode`, `mcp_path`,
+  `mcp_port`, `public_url`, `mcp_public_url`, Port-Freigabe) kommen mit dem Add-on-Update;
+  bis dahin ist der HTTP-Zugang dort nicht einstellbar.
+
+### Neu
+
+- **MCP über HTTP**, in zwei Betriebsarten: `path` (Pfad der Weboberfläche, Vorgabe `/mcp`)
+  oder `port` (zweiter Prozess im Container auf eigenem Port). Anbindung zum Beispiel mit
+  `claude mcp add --transport http thermoctl <Adresse>`. Pflichtangaben, Adressen und
+  Reverse-Proxy-Hinweise in [docs/mcp.md](docs/mcp.md) und
+  [docs/self-hosting.md](docs/self-hosting.md) (Abschnitt 8c). Das stdio-Verfahren
+  (`THERMOCTL_MCP_TOKEN`) bleibt unverändert.
+- **Anmeldung per Bearer-Token oder per OAuth.** Das Bearer-Token wird wie bisher unter
+  `/tokens` ausgestellt. Per OAuth registriert sich der Client selbst, der Nutzer meldet sich
+  an und wählt auf einer Zustimmungsseite die Rechte aus. Zugriffs-Token gelten 1 Stunde,
+  Refresh-Token 30 Tage und rotieren; die Wiederverwendung eines Refresh-Tokens sperrt die
+  ganze Familie. OAuth-Token gelten nur am MCP-Endpunkt, die REST-Schnittstelle weist sie mit
+  `401` ab.
+- **Rechte-Vorauswahl „Read-only“ und „Read-write“** im Token-Formular und auf der
+  Zustimmungsseite. `control.arm` steckt in keinem von beiden; Read-write enthält
+  `control.disarm`.
+- **Neues Recht `control.disarm`** (zurück in den Trockenlauf) für `force_dry_run`.
+- **Die Tokenliste zeigt Quelle (`bearer`/`oauth`) und Client**; OAuth-Token lassen sich dort
+  widerrufen, was auch die Refresh-Familie sperrt.
+- **Ablehnungsgründe stehen im Werkzeug-Ergebnis**; jeder Aufruf schreibt `mcp.tool` mit
+  `key_prefix` und `outcome` ins Log, Zugangsprüfung und OAuth-Vorgänge `mcp.http.auth` und
+  `oauth.*`.
+- **Schutz der offenen Endpunkte:** Registrierung ohne Rechte, 20 je Stunde und Quelladresse
+  (hinter einem Proxy die Adresse des Proxys, siehe `FORWARDED_ALLOW_IPS`), Grenzen für nie
+  benutzte Clients und offene Anfragen, tägliches Aufräumen; die Zustimmungsseite ist nicht
+  einbettbar.
+
+---
+
 ## 0.13.0 — 2026-10-11
 
 Beim Upgrade nichts zu tun: keine Migration, keine neue Einstellung, keine neuen Optionen.

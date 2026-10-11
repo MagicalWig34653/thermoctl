@@ -124,11 +124,11 @@ BEWUSST_AUSGELASSEN: dict[str, str] = {
     "übernimmt Ingress.",
     "meross_api_base": "Regionswahl (iotx-eu/us/ap), die so gut wie nie vom "
     "Standardwert abweicht -- wer sie braucht, setzt sie über das freie `env`-Feld.",
-    "mcp_mode": "Kommt mit der Freigabe der MCP-HTTP-Funktion (Plan Task 10, Add-on-Repo).",
-    "mcp_path": "Kommt mit der Freigabe der MCP-HTTP-Funktion (Plan Task 10, Add-on-Repo).",
-    "mcp_port": "Kommt mit der Freigabe der MCP-HTTP-Funktion (Plan Task 10, Add-on-Repo).",
-    "public_url": "Kommt mit der Freigabe der MCP-HTTP-Funktion (Plan Task 10, Add-on-Repo).",
-    "mcp_public_url": "Kommt mit der Freigabe der MCP-HTTP-Funktion (Plan Task 10, Add-on-Repo).",
+    "mcp_mode": "Kommt mit dem Add-on-Update zu 0.14.0 (Add-on-Repo, siehe docs/STATUS.md).",
+    "mcp_path": "Kommt mit dem Add-on-Update zu 0.14.0 (Add-on-Repo, siehe docs/STATUS.md).",
+    "mcp_port": "Kommt mit dem Add-on-Update zu 0.14.0 (Add-on-Repo, siehe docs/STATUS.md).",
+    "public_url": "Kommt mit dem Add-on-Update zu 0.14.0 (Add-on-Repo, siehe docs/STATUS.md).",
+    "mcp_public_url": "Kommt mit dem Add-on-Update zu 0.14.0 (Add-on-Repo, siehe docs/STATUS.md).",
     "root_path": "Keine vom Betreiber auszufüllende Option: unter Ingress vergibt der "
     "Supervisor den Pfad selbst und teilt ihn nur zur Laufzeit über seine eigene API "
     "mit (docker/thermoctl_ingress.py, aus docker/entrypoint.sh aufgerufen) -- ein "
