@@ -224,7 +224,7 @@ def test_devices_enter_the_system_only_on_the_two_known_paths(session: Session) 
     quelle = _Path(__file__).resolve().parent.parent / "thermoctl"
     stellen = [
         f"{pfad.relative_to(quelle.parent)}:{nummer}"
-        for pfad in quelle.rglob("*.py")
+        for pfad in sorted(quelle.rglob("*.py"))
         for nummer, zeile in enumerate(pfad.read_text(encoding="utf-8").splitlines(), 1)
         # `Device(` als Konstruktoraufruf: nicht `DeviceProperty(` und Verwandte,
         # und nicht die Klassendefinition selbst.
