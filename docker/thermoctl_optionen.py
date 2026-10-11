@@ -109,6 +109,11 @@ ABGEBILDETE_FELDER: dict[str, str] = {
     "passkey_rp_id": "passkey_rp_id",
     "passkey_rp_name": "passkey_rp_name",
     "passkey_origin": "passkey_origin",
+    "mcp_mode": "mcp_mode",
+    "mcp_path": "mcp_path",
+    "mcp_port": "mcp_port",
+    "public_url": "public_url",
+    "mcp_public_url": "mcp_public_url",
 }
 
 #: Settings fields this script deliberately does *not* offer as a dedicated add-on
@@ -124,21 +129,6 @@ BEWUSST_AUSGELASSEN: dict[str, str] = {
     "übernimmt Ingress.",
     "meross_api_base": "Regionswahl (iotx-eu/us/ap), die so gut wie nie vom "
     "Standardwert abweicht -- wer sie braucht, setzt sie über das freie `env`-Feld.",
-    "mcp_mode": "Seltene Betriebsart-Einstellung für MCP über HTTP; im Add-on über das freie "
-    "`env`-Feld zu setzen (siehe DOCS.md des Add-ons). Eigene Felder gäbe es nur, "
-    "wenn sich das als häufig erweist.",
-    "mcp_path": "Seltene Betriebsart-Einstellung für MCP über HTTP; im Add-on über das freie "
-    "`env`-Feld zu setzen (siehe DOCS.md des Add-ons). Eigene Felder gäbe es nur, "
-    "wenn sich das als häufig erweist.",
-    "mcp_port": "Seltene Betriebsart-Einstellung für MCP über HTTP; im Add-on über das freie "
-    "`env`-Feld zu setzen (siehe DOCS.md des Add-ons). Eigene Felder gäbe es nur, "
-    "wenn sich das als häufig erweist.",
-    "public_url": "Seltene Betriebsart-Einstellung für MCP über HTTP; im Add-on über das freie "
-    "`env`-Feld zu setzen (siehe DOCS.md des Add-ons). Eigene Felder gäbe es nur, "
-    "wenn sich das als häufig erweist.",
-    "mcp_public_url": "Seltene Betriebsart-Einstellung für MCP über HTTP; im Add-on über das freie "
-    "`env`-Feld zu setzen (siehe DOCS.md des Add-ons). Eigene Felder gäbe es nur, "
-    "wenn sich das als häufig erweist.",
     "root_path": "Keine vom Betreiber auszufüllende Option: unter Ingress vergibt der "
     "Supervisor den Pfad selbst und teilt ihn nur zur Laufzeit über seine eigene API "
     "mit (docker/thermoctl_ingress.py, aus docker/entrypoint.sh aufgerufen) -- ein "
@@ -177,6 +167,14 @@ def translate(options: dict[str, Any]) -> dict[str, str]:
         "THERMOCTL_PASSKEY_RP_ID": options.get("passkey_rp_id"),
         "THERMOCTL_PASSKEY_RP_NAME": options.get("passkey_rp_name"),
         "THERMOCTL_PASSKEY_ORIGIN": options.get("passkey_origin"),
+        # `off` wird bewusst mit exportiert: es ist die Vorgabe der Anwendung, aber das
+        # Add-on-Formular liefert den Wert immer mit, und ein ausdrücklich gesetztes
+        # `off` ist ehrlicher als ein stillschweigend fehlendes Feld (wie bei log_level).
+        "THERMOCTL_MCP_MODE": options.get("mcp_mode"),
+        "THERMOCTL_MCP_PATH": options.get("mcp_path"),
+        "THERMOCTL_MCP_PORT": options.get("mcp_port"),
+        "THERMOCTL_PUBLIC_URL": options.get("public_url"),
+        "THERMOCTL_MCP_PUBLIC_URL": options.get("mcp_public_url"),
     }
     return {name: str(value) for name, value in values.items() if value not in (None, "")}
 

@@ -353,6 +353,30 @@ class TestAddonOptionen:
         with pytest.raises(werkzeug.UmwandlungsFehler, match="ganze Zahl"):
             werkzeug.addon_optionen({"THERMOCTL_MQTT_PORT": "nicht-numerisch"})
 
+    def test_mcp_http_variablen_werden_eigene_optionen(self) -> None:
+        optionswerte, hinweise = werkzeug.addon_optionen(
+            {
+                "THERMOCTL_MCP_MODE": "port",
+                "THERMOCTL_MCP_PATH": "/mcp-heizung",
+                "THERMOCTL_MCP_PORT": "8001",
+                "THERMOCTL_PUBLIC_URL": "https://heizung.example.org",
+                "THERMOCTL_MCP_PUBLIC_URL": "https://mcp.example.org",
+            }
+        )
+        assert optionswerte == {
+            "mcp_mode": "port",
+            "mcp_path": "/mcp-heizung",
+            "mcp_port": 8001,
+            "public_url": "https://heizung.example.org",
+            "mcp_public_url": "https://mcp.example.org",
+        }
+        assert "env" not in optionswerte
+        assert hinweise == []
+
+    def test_ungueltiger_mcp_port_ist_ein_fehler(self) -> None:
+        with pytest.raises(werkzeug.UmwandlungsFehler, match="ganze Zahl"):
+            werkzeug.addon_optionen({"THERMOCTL_MCP_PORT": "acht"})
+
     def test_leere_env_werte_ergeben_leere_optionen(self) -> None:
         optionswerte, hinweise = werkzeug.addon_optionen({})
         assert optionswerte == {}

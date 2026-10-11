@@ -511,10 +511,11 @@ Werkzeuge, die der MCP-Server nutzen soll (siehe Abschnitt 9 und
 
 **Das Eintragen dieses Tokens allein startet keinen MCP-Server.** Der MCP-Server ist
 ein eigener, optionaler Einstiegspunkt (`thermoctl-mcp`, separate Abhängigkeit
-`thermoctl[mcp]`) und läuft nicht als Teil dieses Add-ons mit — Näheres zu Installation
-und Start in [`docs/mcp.md`](mcp.md). Das Feld sorgt lediglich dafür, dass ein an
-anderer Stelle betriebener MCP-Server, der auf dieselbe Datenbank zugreift, das
-richtige Token vorfindet, ohne über das freie `env`-Feld gehen zu müssen.
+`thermoctl[mcp]`) — Näheres zu Installation und Start in [`docs/mcp.md`](mcp.md).
+Das Feld sorgt lediglich dafür, dass ein an anderer Stelle betriebener MCP-Server
+(stdio), der auf dieselbe Datenbank zugreift, das richtige Token vorfindet, ohne über
+das freie `env`-Feld gehen zu müssen. Den HTTP-Zugang zum MCP-Server stellt das Add-on
+selbst bereit, sobald `mcp_mode` auf `path` oder `port` steht (Abschnitt 8c).
 
 ## 8c. MCP über HTTP
 
@@ -555,9 +556,11 @@ je Quelladresse, und das ist ohne Zutun die Adresse des Proxys. Wer die Adresse 
 Besuchers will, trägt den Proxy in `FORWARDED_ALLOW_IPS` ein (Umgebungsvariable von
 uvicorn).
 
-**Im Home-Assistant-Add-on** gibt es dafür keine eigenen Felder; die Einstellungen kommen
-über das freie Feld `env` (`THERMOCTL_MCP_MODE` und die übrigen, siehe oben). Im Modus
-`port` den Port 8001 (`THERMOCTL_MCP_PORT=8001`) unter „Netzwerk“ freigeben. Ingress taugt
+**Im Home-Assistant-Add-on** gibt es dafür seit 0.14.1 eigene Felder: `mcp_mode`, `mcp_path`,
+`mcp_port`, `public_url` und `mcp_public_url` (Zuordnung zu den `THERMOCTL_*`-Variablen
+wie oben benannt). Im Modus `port` den Port 8001 (Vorgabe von `mcp_port`) unter
+„Netzwerk“ freigeben; ein anderer Wert in `mcp_port` braucht auch eine andere
+Port-Zuordnung dort. Ingress taugt
 für externe MCP-Clients nicht, weil es eine Home-Assistant-Anmeldung verlangt; der Zugang
 geht über die veröffentlichten Ports mit eigenem TLS-Proxy. Einzelheiten in der `DOCS.md`
 des Add-ons.

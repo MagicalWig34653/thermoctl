@@ -16,6 +16,8 @@ import sys
 from pathlib import Path
 from types import ModuleType
 
+import pytest
+
 ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = ROOT / "docker" / "thermoctl_optionen.py"
 
@@ -195,6 +197,59 @@ def test_passkey_origin_passes_through() -> None:
         ]
         == "https://homeassistant.local:8123"
     )
+
+
+_MCP_HTTP_ZUORDNUNG = {
+    "mcp_mode": ("THERMOCTL_MCP_MODE", "path"),
+    "mcp_path": ("THERMOCTL_MCP_PATH", "/mcp-heizung"),
+    "mcp_port": ("THERMOCTL_MCP_PORT", 8001),
+    "public_url": ("THERMOCTL_PUBLIC_URL", "https://heizung.example.org"),
+    "mcp_public_url": ("THERMOCTL_MCP_PUBLIC_URL", "https://mcp.example.org"),
+}
+
+
+@pytest.mark.parametrize("feld", sorted(_MCP_HTTP_ZUORDNUNG))
+def test_mcp_http_fields_map_to_their_environment_variable(feld: str) -> None:
+    """Die fünf Einstellungen für MCP über HTTP sind eigene Add-on-Felder (0.14.1),
+    nicht mehr nur über das freie `env`-Feld erreichbar."""
+    variable, wert = _MCP_HTTP_ZUORDNUNG[feld]
+    assert optionen.translate({feld: wert})[variable] == str(wert)
+    assert feld in optionen.ABGEBILDETE_FELDER
+    assert feld not in optionen.BEWUSST_AUSGELASSEN
+
+
+@pytest.mark.parametrize("feld", sorted(_MCP_HTTP_ZUORDNUNG))
+def test_mcp_http_fields_left_empty_or_absent_set_nothing(feld: str) -> None:
+    variable, _ = _MCP_HTTP_ZUORDNUNG[feld]
+    assert variable not in optionen.translate({feld: ""})
+    assert variable not in optionen.translate({feld: None})
+    assert variable not in optionen.translate({})
+
+
+def test_mcp_mode_off_is_exported_so_the_add_on_states_its_default_explicitly() -> None:
+    assert optionen.translate({"mcp_mode": "off"})["THERMOCTL_MCP_MODE"] == "off"
+
+
+@pytest.mark.parametrize("feld", sorted(_MCP_HTTP_ZUORDNUNG))
+def test_a_mcp_http_environment_variable_set_by_the_operator_wins(feld: str) -> None:
+    variable, wert = _MCP_HTTP_ZUORDNUNG[feld]
+    environ = {variable: "vom-betreiber-gesetzt", **_DATABASE_ALREADY_SET}
+    assert optionen.exports_for({feld: wert}, environ) == []
+
+
+def test_a_mcp_url_with_shell_special_characters_survives_a_round_trip() -> None:
+    """Eine Adresse darf `&`, `$`, `;` und Leerzeichen enthalten (Query wird von
+    thermoctl später abgewiesen, aber die Shell darf daran nicht zerbrechen)."""
+    tricky = "https://h.example.org/a?b=1&c=$HOME;touch x 'y'"
+    (line,) = optionen.exports_for({"public_url": tricky}, dict(_DATABASE_ALREADY_SET))
+    parsed = subprocess.run(  # noqa: S602,S603 -- fester Shell-Einzeiler, kein Fremdeingang
+        f"{line}; printf '%s' \"$THERMOCTL_PUBLIC_URL\"",
+        shell=True,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert parsed.stdout == tricky
 
 
 def test_meross_api_base_has_no_dedicated_option() -> None:

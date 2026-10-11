@@ -94,6 +94,11 @@ _SCHEMA_REIHENFOLGE = [
     "passkey_rp_id",
     "passkey_rp_name",
     "passkey_origin",
+    "mcp_mode",
+    "mcp_path",
+    "mcp_port",
+    "public_url",
+    "mcp_public_url",
     "env",
 ]
 
@@ -102,7 +107,7 @@ _SCHEMA_REIHENFOLGE = [
 _BOOL_FELDER = frozenset({"mqtt_enabled", "mqtt_tls"})
 
 #: Dieselbe Rolle für ganzzahlige Optionen.
-_INT_FELDER = frozenset({"mqtt_port"})
+_INT_FELDER = frozenset({"mqtt_port", "mcp_port"})
 
 _WAHR_WERTE = {"1", "true", "yes", "on"}
 _FALSCH_WERTE = {"0", "false", "no", "off"}

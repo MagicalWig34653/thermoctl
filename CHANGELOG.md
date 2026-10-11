@@ -9,6 +9,27 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ---
 
+## 0.14.1 — 2026-10-11
+
+### Beim Upgrade zu wissen
+
+- **Nichts zu tun:** keine Migration, und der Standard bleibt MCP aus
+  (`THERMOCTL_MCP_MODE=off`). Wer das Abbild ohne Add-on betreibt, bemerkt keinen Unterschied.
+- **Home-Assistant-Add-on:** Wer die Einstellungen aus 0.14.0 über das freie Feld `env`
+  gesetzt hat, kann sie in die neuen Felder übernehmen; ein Eintrag in `env` gewinnt
+  weiterhin gegen das Feld, beides nebeneinander ist also nicht falsch, nur unübersichtlich.
+
+### Neu
+
+- **Add-on-Felder für MCP über HTTP:** `mcp_mode` (`off`, `path`, `port`), `mcp_path`,
+  `mcp_port`, `public_url` und `mcp_public_url` sind echte, in der Oberfläche
+  beschriftete Felder und nicht mehr nur über `env` zu erreichen. Leere Felder setzen
+  nichts; eine ausdrücklich gesetzte Umgebungsvariable gewinnt wie bei den übrigen Feldern.
+  `tools/env_nach_addon.py` überträgt die fünf `THERMOCTL_*`-Variablen aus einer `.env`
+  entsprechend in diese Felder.
+
+---
+
 ## 0.14.0 — 2026-10-11
 
 ### Beim Upgrade zu wissen
