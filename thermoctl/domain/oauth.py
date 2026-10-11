@@ -26,9 +26,10 @@ import re
 import secrets
 from dataclasses import dataclass
 from datetime import timedelta
+from typing import Any
 from urllib.parse import urlsplit
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from thermoctl.auth.secrets import hash_secret, new_secret
@@ -217,6 +218,24 @@ def load_request(session: Session, request_id: str) -> OAuthAuthorizationRequest
     return request
 
 
+def _claim(session: Session, row: Any, column: str, *extra: Any) -> bool:
+    """Beansprucht eine Zeile atomar: genau ein Aufrufer bekommt `True`.
+
+    Ein Lesen-dann-Schreiben (`if row.consumed_at is None: row.consumed_at = jetzt`) lässt zwei
+    gleichzeitige Anfragen beide durch -- beide lesen "unverbraucht". Der bedingte `UPDATE ...
+    WHERE spalte IS NULL` entscheidet in der Datenbank; wer 0 Zeilen trifft, hat verloren.
+    `extra` sind weitere Bedingungen (z. B. "nicht ersetzt").
+    """
+    result = session.execute(
+        update(type(row))
+        .where(type(row).id == row.id, getattr(type(row), column).is_(None), *extra)
+        .values({column: utcnow()})
+        .execution_options(synchronize_session=False)
+    )
+    session.refresh(row)
+    return bool(result.rowcount == 1)  # type: ignore[attr-defined]
+
+
 def _open(request: OAuthAuthorizationRequest) -> None:
     if request.consumed_at is not None or request.expires_at <= utcnow():
         raise OAuthError("invalid_request", "Die Anfrage ist abgelaufen oder schon verbraucht")
@@ -236,7 +255,8 @@ def approve(
         if not has_permission(principal, code, zone_id):
             raise Forbidden(f"{user.username} kann das Recht {code} nicht weitergeben")
     ids = {c: i for c, i in session.execute(select(Permission.code, Permission.id)).all()}
-    request.consumed_at = utcnow()
+    if not _claim(session, request, "consumed_at"):
+        raise OAuthError("invalid_request", "Die Anfrage ist abgelaufen oder schon verbraucht")
     plaintext = new_secret()
     row = OAuthAuthorizationCode(
         code_hash=hash_secret(plaintext),
@@ -335,8 +355,12 @@ def exchange_code(
         # abgefangen. Alles, was aus ihm entstand, wird widerrufen.
         _revoke_family(session, _family(row.code_hash))
         raise _fail(event, "Code wurde schon eingelöst", client_id=client_id)
-    row.consumed_at = utcnow()  # auch bei Fehlschlag verbraucht: kein Raten am selben Code
-    session.flush()
+    # Auch bei Fehlschlag verbraucht (kein Raten am selben Code). Verliert dieser Aufruf
+    # die Beanspruchung, hat ein zweiter denselben Code gleichzeitig vorgelegt: wie jede
+    # Wiederverwendung behandeln.
+    if not _claim(session, row, "consumed_at"):
+        _revoke_family(session, _family(row.code_hash))
+        raise _fail(event, "Code wurde schon eingelöst", client_id=client_id)
     if row.expires_at <= utcnow():
         raise _fail(event, "Code ist abgelaufen", client_id=client_id)
     if redirect_uri != row.redirect_uri:
@@ -427,6 +451,11 @@ def refresh(
         raise _fail(
             event, "Dem Nutzer ist keines der vergebenen Rechte geblieben", client_id=client_id
         )
+    # Rotation atomar beanspruchen (siehe `_claim`): Zwei gleichzeitige Erneuerungen mit
+    # demselben Token dürfen nicht beide ein neues Paar bekommen.
+    if not _claim(session, row, "revoked_at", OAuthRefreshToken.replaced_by_id.is_(None)):
+        _revoke_family(session, row.family)
+        raise _fail(event, "Refresh-Token wurde schon benutzt oder widerrufen", client_id=client_id)
     pair, new_row = _issue_pair(session, client, user, kept, row.family)
     row.replaced_by_id = new_row.id
     if old.revoked_at is None:

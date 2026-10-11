@@ -473,3 +473,69 @@ def test_exchange_rejects_a_code_when_the_server_resource_changed(session: Sessi
             "https://neu.example.invalid/mcp",
         )
     assert exc.value.error == "invalid_target"
+
+
+def _lose_the_race(monkeypatch, column: str) -> None:
+    """Simuliert den gleichzeitigen Gewinner: Die Zeile wird vor der Beanspruchung belegt."""
+    real = oauth._claim
+
+    def racing(session, row, col, *extra):
+        if col == column:
+            from sqlalchemy import update
+
+            session.execute(
+                update(type(row)).where(type(row).id == row.id).values({col: utcnow()})
+            )
+        return real(session, row, col, *extra)
+
+    monkeypatch.setattr("thermoctl.domain.oauth._claim", racing)
+
+
+def test_claim_is_won_by_exactly_one_caller(session: Session) -> None:
+    client = _client(session)
+    request_id = oauth.start_request(
+        session, client, REDIRECT, _challenge(), RESOURCE, None, RESOURCE
+    )
+    request = oauth.load_request(session, request_id)
+    assert request is not None
+    assert oauth._claim(session, request, "consumed_at") is True
+    assert oauth._claim(session, request, "consumed_at") is False
+
+
+def test_concurrent_code_redemption_lets_only_one_win(session: Session, monkeypatch) -> None:
+    user = user_with_permissions(session, "rennen-code", [("zone.read", None)])
+    client = _client(session)
+    code = _approved_code(session, client, user)
+    _lose_the_race(monkeypatch, "consumed_at")
+    with pytest.raises(oauth.OAuthError) as exc:
+        oauth.exchange_code(
+            session, client.client_id, code, VERIFIER, REDIRECT, RESOURCE, RESOURCE
+        )
+    assert exc.value.error == "invalid_grant"
+    assert not session.scalars(select(OAuthRefreshToken)).all()  # kein Paar ausgestellt
+
+
+def test_concurrent_refresh_lets_only_one_win(session: Session, monkeypatch) -> None:
+    _user, client, pair = _pair(session)
+    _lose_the_race(monkeypatch, "revoked_at")
+    with pytest.raises(oauth.OAuthError) as exc:
+        oauth.refresh(session, client.client_id, pair.refresh_token, None, RESOURCE)
+    assert exc.value.error == "invalid_grant"
+    assert resolve_token(session, pair.access_token) is None  # Familie gesperrt
+    assert len(session.scalars(select(OAuthRefreshToken)).all()) == 1  # kein zweites Paar
+
+
+def test_concurrent_approval_of_one_request_lets_only_one_win(
+    session: Session, monkeypatch
+) -> None:
+    user = user_with_permissions(session, "rennen-zustimmung", [("zone.read", None)])
+    client = _client(session)
+    request_id = oauth.start_request(
+        session, client, REDIRECT, _challenge(), RESOURCE, None, RESOURCE
+    )
+    request = oauth.load_request(session, request_id)
+    assert request is not None
+    _lose_the_race(monkeypatch, "consumed_at")
+    with pytest.raises(oauth.OAuthError):
+        oauth.approve(session, request, user, [("zone.read", None)])
+    assert not session.scalars(select(OAuthAuthorizationCode)).all()
