@@ -469,6 +469,9 @@
       "Globale Vorgaben und die gespeicherte Freigabe. Erst nach einem Neustart gehen Sollwerte an selbstregelnde Thermostatventile und Ein/Aus-Befehle an gewöhnliche Aktoren.",
       "Sensoren, Ventile und ihre Zuordnung zu Zonen."
     ],
+    "thermoctl/domain/change_log.py": [
+      "gehören nicht zu dieser Zone oder sind kein Thermostat-Aktor."
+    ],
     "thermoctl/domain/control.py": [
       "Regelung scharf geschaltet — Sollwertausgabe erst nach Neustart freigegeben"
     ],

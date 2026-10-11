@@ -113,6 +113,7 @@ from thermoctl.web.admin_views import router as admin_router
 from thermoctl.web.assets import ASSET_VERSION
 from thermoctl.web.audit_views import router as audit_router
 from thermoctl.web.auth_views import router as auth_router
+from thermoctl.web.changes_views import router as changes_router
 from thermoctl.web.control_views import router as control_router
 from thermoctl.web.controller_views import router as controller_router
 from thermoctl.web.daily_views import router as alltag_router
@@ -1310,6 +1311,7 @@ def create_app() -> FastAPI:
     app.include_router(kiosk_router)
     app.include_router(audit_router)
     app.include_router(device_commands_router)
+    app.include_router(changes_router)
     app.include_router(devices_router)
     app.include_router(device_assignment_router)
     app.include_router(zone_router)

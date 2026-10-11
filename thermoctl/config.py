@@ -19,7 +19,7 @@ _MCP_PATH_RE = re.compile(r"^(/[A-Za-z0-9._~-]+)+$")
 RESERVED_MCP_PATHS: tuple[str, ...] = (
     "/authorize", "/token", "/register", "/revoke", "/oauth", "/api", "/static",
     "/.well-known", "/docs", "/redoc", "/openapi.json", "/healthz",
-    "/absence", "/account", "/audit", "/control", "/controllers", "/device-commands",
+    "/absence", "/account", "/audit", "/changes", "/control", "/controllers", "/device-commands",
     "/devices", "/glossar", "/groups", "/heating-time", "/interfaces", "/kiosk",
     "/kiosk-tokens", "/login", "/logout", "/modes", "/passkey", "/passkeys", "/plant",
     "/relay-wear", "/schedule", "/settings", "/setup", "/statistics",
