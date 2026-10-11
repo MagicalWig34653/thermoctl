@@ -1,6 +1,8 @@
 """Zustimmung zu einem selbst angemeldeten OAuth-Client."""
 
-from typing import Annotated
+from collections.abc import Awaitable, Callable
+from functools import wraps
+from typing import Annotated, Any
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, Response, status
@@ -19,6 +21,28 @@ from thermoctl.domain.token_presets import PRESETS
 from thermoctl.domain.ui_profile import WebUiProfile
 from thermoctl.web import templates
 from thermoctl.web.urls import prefixed
+
+
+def _unframed(handler: Callable[..., Awaitable[Response]]) -> Callable[..., Awaitable[Response]]:
+    """Die Zustimmungsseite darf in keinem fremden Rahmen erscheinen.
+
+    Sonst könnte eine Seite sie unsichtbar einbetten und den "Zulassen"-Knopf
+    unterschieben (Clickjacking) -- und damit einem Client ohne Wissen des Nutzers
+    Zugriff auf die Heizung geben. Gilt für alle Antworten dieser Routen, auch Fehler und
+    Weiterleitungen. Ein Dekorator statt einer Abhängigkeit: FastAPI übernimmt Header
+    einer Abhängigkeit nicht, wenn die Route eine `Response` selbst zurückgibt.
+    """
+
+    @wraps(handler)
+    async def wrapped(*args: Any, **kwargs: Any) -> Response:
+        response = await handler(*args, **kwargs)
+        response.headers["Content-Security-Policy"] = "frame-ancestors 'none'"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Cache-Control"] = "no-store"
+        return response
+
+    return wrapped
+
 
 router = APIRouter(dependencies=[Depends(csrf_protection)], include_in_schema=False)
 
@@ -101,6 +125,7 @@ def _page(
 
 
 @router.get("/oauth/consent")
+@_unframed
 async def consent_form(
     request: Request,
     session: Annotated[Session, Depends(get_session)],
@@ -120,6 +145,7 @@ async def consent_form(
 
 
 @router.post("/oauth/consent")
+@_unframed
 async def consent_submit(
     request: Request,
     session: Annotated[Session, Depends(get_session)],

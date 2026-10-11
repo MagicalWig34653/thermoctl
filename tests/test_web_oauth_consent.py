@@ -198,3 +198,22 @@ def test_login_rejects_external_return_target(client, session: Session, monkeypa
     )
     assert response.status_code == 303
     assert response.headers["location"] == "/"
+
+
+def test_consent_pages_cannot_be_framed(client_als, session: Session) -> None:
+    """Sonst könnte eine fremde Seite den Zustimmen-Knopf unsichtbar einbetten."""
+    c = client_als([("token.self", None)])
+    request_id = _request(session, "Rahmen")
+    for response in (
+        c.get(f"/oauth/consent?request={request_id}"),  # Formular
+        c.get("/oauth/consent?request=unbekannt"),  # Fehlerseite
+        c.post(
+            "/oauth/consent",
+            data={"request": request_id, "action": "deny"},
+            headers=_csrf(c),
+            follow_redirects=False,
+        ),  # Weiterleitung
+    ):
+        assert response.headers["content-security-policy"] == "frame-ancestors 'none'"
+        assert response.headers["x-frame-options"] == "DENY"
+        assert response.headers["cache-control"] == "no-store"
