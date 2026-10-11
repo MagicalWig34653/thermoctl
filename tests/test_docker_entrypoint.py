@@ -429,32 +429,65 @@ def test_port_mode_starts_http_mcp_and_stops_with_first_process(tmp_path: Path, 
     assert "'mcp'" in result.stderr
 
 
+# Läuft, bis der Entrypoint ihn beendet; die Stoppdatei ignoriert er. `exec sleep` behält die
+# PID und hinterlässt kein Enkelkind, das die Pipes des Tests offen halten könnte.
+_LAUFEN_BIS_BEENDET = (
+    "#!/bin/sh\n"
+    'echo $$ > "$THERMOCTL_TEST_PID_DIR/$(basename "$0").pid"\n'
+    "exec sleep 3600\n"
+)
+
+
+def _kill_children(pid_dir: Path) -> None:
+    """Beendet jeden Kindprozess aus den PID-Dateien, auch einen angehaltenen."""
+    for pid_file in pid_dir.glob("*.pid"):
+        try:
+            pid = int(pid_file.read_text())
+        except (OSError, ValueError):  # pragma: no cover - Datei halb geschrieben
+            continue
+        for sig in (signal.SIGCONT, signal.SIGKILL):
+            with contextlib.suppress(ProcessLookupError):
+                os.kill(pid, sig)
+
+
+def _reap(proc: subprocess.Popen[bytes], pid_dir: Path) -> None:
+    """Räumt auf, ohne hängen zu können: erst die Kinder, dann das Skript, nur mit Frist."""
+    _kill_children(pid_dir)
+    if proc.poll() is None:
+        proc.kill()
+    proc.wait(timeout=FRIST)
+    for stream in (proc.stdout, proc.stderr):
+        if stream is not None:
+            stream.close()
+
+
 @pytest.mark.parametrize("shell", SHELLS)
 def test_port_mode_passes_on_the_exit_code_of_the_crashed_child(tmp_path: Path, shell: str) -> None:
+    """Der Web-Dienst endet mit 3, der MCP-Prozess läuft weiter: das Skript reicht die 3
+    durch und beendet den noch laufenden MCP-Prozess."""
     bin_dir = _fake_bin(tmp_path)
     _make_executable(bin_dir / "thermoctl", _WARTEN_BIS_STOPPDATEI % "WEB")
-    _make_executable(bin_dir / "thermoctl-mcp", _WARTEN_BIS_STOPPDATEI % "MCP")
+    _make_executable(bin_dir / "thermoctl-mcp", _LAUFEN_BIS_BEENDET)
     env = _port_mode_env(tmp_path, bin_dir, {"THERMOCTL_TEST_EXIT_CODE_WEB": "3"})
+    pid_dir = Path(env["THERMOCTL_TEST_PID_DIR"])
     proc = subprocess.Popen(  # noqa: S603
-        [shell, str(ENTRYPOINT)], env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+        [shell, str(ENTRYPOINT)],
+        env=env,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
     )
     try:
-        pid_dir = Path(env["THERMOCTL_TEST_PID_DIR"])
         _wait_for(pid_dir / "thermoctl.pid")
         _wait_for(pid_dir / "thermoctl-mcp.pid")
-        # Nur der Web-Dienst soll abstürzen: die Stoppdatei gilt beiden, deshalb
-        # beendet sich der MCP-Prozess hier per Signal und der Web-Dienst per Datei.
         mcp_pid = int((pid_dir / "thermoctl-mcp.pid").read_text())
-        os.kill(mcp_pid, signal.SIGSTOP)
         Path(env["THERMOCTL_TEST_STOPP"]).write_text("")
         code = proc.wait(timeout=FRIST)
+        mcp_gone = _process_gone(mcp_pid)
     finally:
-        if proc.poll() is None:
-            proc.kill()
-        proc.communicate()
-        with contextlib.suppress(ProcessLookupError):
-            os.kill(mcp_pid, signal.SIGKILL)
+        _reap(proc, pid_dir)
     assert code == 3
+    assert mcp_gone, "der MCP-Prozess läuft nach dem Ende des Skripts noch"
 
 
 @pytest.mark.parametrize("shell", SHELLS)
@@ -465,7 +498,11 @@ def test_port_mode_stops_cleanly_on_sigterm_without_busy_loop(tmp_path: Path, sh
     env = _port_mode_env(tmp_path, bin_dir, {})
     pid_dir = Path(env["THERMOCTL_TEST_PID_DIR"])
     proc = subprocess.Popen(  # noqa: S603
-        [shell, str(ENTRYPOINT)], env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+        [shell, str(ENTRYPOINT)],
+        env=env,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
     )
     kinder: list[int] = []
     try:
@@ -483,14 +520,10 @@ def test_port_mode_stops_cleanly_on_sigterm_without_busy_loop(tmp_path: Path, sh
         code = proc.wait(timeout=FRIST)
         dauer = time.monotonic() - start
         cpu_nachher = resource.getrusage(resource.RUSAGE_CHILDREN)
-        _, stderr = proc.communicate()
+        assert proc.stderr is not None
+        stderr = proc.stderr.read()
     finally:
-        if proc.poll() is None:
-            proc.kill()
-            proc.communicate()
-        for pid in kinder:
-            with contextlib.suppress(ProcessLookupError):
-                os.kill(pid, signal.SIGKILL)
+        _reap(proc, pid_dir)
     assert code == 143
     assert dauer < 10
     cpu = (cpu_nachher.ru_utime - cpu_vorher.ru_utime) + (
