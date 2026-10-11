@@ -1,11 +1,17 @@
-"""Öffentliche OAuth-Endpunkte und Metadaten für den MCP-HTTP-Zugang."""
+"""Öffentliche OAuth-Endpunkte und Metadaten für den MCP-HTTP-Zugang.
+
+Die Registrierungsgrenze nutzt die von uvicorn gelieferte Quelladresse. Hinter einem
+Reverse Proxy ist das dessen Adresse, sofern uvicorn Forwarded-Header nicht für die
+Proxy-Adresse aus FORWARDED_ALLOW_IPS vertraut. Betreiber setzen diese uvicorn-Variable
+für ihren Proxy; die Ratenbegrenzung selbst wertet keine Header aus.
+"""
 
 import html
 import json
 import logging
 import time
 from collections.abc import Callable
-from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+from urllib.parse import parse_qs, parse_qsl, urlencode, urlsplit, urlunsplit
 
 from sqlalchemy.orm import Session, sessionmaker
 from starlette.concurrency import run_in_threadpool
@@ -83,7 +89,7 @@ def build_root_wellknown_routes(settings: Settings) -> list[Route]:
     """RFC-Pfade an der Web-Wurzel im Modus ``path``."""
     if settings.mcp_mode != "path":
         return []
-    return _metadata_routes(settings, settings.mcp_path)
+    return _metadata_routes(settings, urlsplit(_issuer(settings)).path)
 
 
 def _json_error(error: str, description: str, status: int = 400) -> JSONResponse:
@@ -198,7 +204,8 @@ def build_oauth_routes(factory: sessionmaker[Session], settings: Settings) -> li
 
         result, error = await run_in_threadpool(_run_oauth, factory, create)
         if error is not None:
-            return _json_error(error.error, error.description)
+            status = 503 if error.error == "temporarily_unavailable" else 400
+            return _json_error(error.error, error.description, status)
         registrations.setdefault(peer, []).append(now)
         return JSONResponse(result, status_code=201)
 
@@ -270,11 +277,11 @@ def build_oauth_routes(factory: sessionmaker[Session], settings: Settings) -> li
         ):
             return _json_error("invalid_request", "Formulardaten sind erforderlich")
         try:
-            from urllib.parse import parse_qs
-
             values = parse_qs(body.decode("utf-8"), keep_blank_values=True, strict_parsing=True)
         except UnicodeDecodeError, ValueError:
             return _json_error("invalid_request", "Ungültige Formulardaten")
+        if any(len(items) != 1 for items in values.values()):
+            return _json_error("invalid_request", "Parameter darf nur einmal vorkommen")
         form = {key: value[-1] for key, value in values.items()}
         grant = form.get("grant_type")
         if grant not in ("authorization_code", "refresh_token"):
@@ -325,14 +332,15 @@ def build_oauth_routes(factory: sessionmaker[Session], settings: Settings) -> li
                 and request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
                 == "application/x-www-form-urlencoded"
             ):
-                from urllib.parse import parse_qs
-
-                token_plain = parse_qs(body.decode("utf-8"), keep_blank_values=True).get(
-                    "token", [""]
-                )[-1]
-                if token_plain:
+                values = parse_qs(body.decode("utf-8"), keep_blank_values=True)
+                token_values = values.get("token", [])
+                if (
+                    all(len(items) == 1 for items in values.values())
+                    and len(token_values) == 1
+                    and token_values[0]
+                ):
                     await run_in_threadpool(
-                        _run_oauth, factory, lambda session: oauth.revoke(session, token_plain)
+                        _run_oauth, factory, lambda session: oauth.revoke(session, token_values[0])
                     )
         except Exception:
             # RFC 7009 verlangt dieselbe Antwort auch bei fehlgeschlagenem Widerruf.
@@ -347,8 +355,13 @@ def build_oauth_routes(factory: sessionmaker[Session], settings: Settings) -> li
             )
         return Response(status_code=200, headers={"Cache-Control": "no-store"})
 
+    # Ein Proxy bildet den öffentlichen Präfix auf die Listener-Wurzel ab; die
+    # RFC-Well-known-Pfade bleiben unter der Listener-Wurzel direkt erreichbar.
+    suffix = urlsplit(issuer).path
+    prefixed = _metadata_routes(settings, suffix) if settings.mcp_mode == "port" and suffix else []
     return [
         *_metadata_routes(settings),
+        *prefixed,
         Route("/register", register, methods=["POST"]),
         Route("/authorize", authorize, methods=["GET"]),
         Route("/token", token, methods=["POST"]),

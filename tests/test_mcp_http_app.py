@@ -324,3 +324,112 @@ def test_http_main_serves_the_app_on_the_configured_port(monkeypatch) -> None:
     server.main()
     assert (seen["host"], seen["port"]) == ("127.0.0.1", 9123)
     assert seen["app"] is not None
+
+
+@pytest.mark.parametrize(
+    "url,accepted,rejected",
+    [
+        (
+            "https://mcp.example.invalid:443",
+            ("mcp.example.invalid", "mcp.example.invalid:443"),
+            "evil.invalid",
+        ),
+        (
+            "https://mcp.example.invalid:9443",
+            ("mcp.example.invalid:9443",),
+            "mcp.example.invalid",
+        ),
+        (
+            "http://mcp.example.invalid:80",
+            ("mcp.example.invalid", "mcp.example.invalid:80"),
+            "evil.invalid",
+        ),
+    ],
+)
+def test_transport_hosts_follow_public_port(
+    session: Session, url: str, accepted: tuple[str, ...], rejected: str
+) -> None:
+    settings = _settings("port")
+    settings.mcp_public_url = url
+    app = create_mcp_asgi_app(settings, _SharedSession(session))
+    headers = {
+        "Authorization": f"Bearer {_token(session)}",
+        "Accept": "application/json, text/event-stream",
+        "Content-Type": "application/json",
+        "MCP-Protocol-Version": "2025-06-18",
+    }
+    with TestClient(app, base_url=url) as client:
+        for host in accepted:
+            response = client.post("/", json=_rpc("initialize"), headers=headers | {"Host": host})
+            assert response.status_code == 200
+        response = client.post("/", json=_rpc("initialize"), headers=headers | {"Host": rejected})
+        assert response.status_code == 421
+
+
+def test_http_main_configures_structured_logging(monkeypatch) -> None:
+    import json
+    import logging
+    import sys
+
+    import uvicorn
+
+    from thermoctl.logging import JsonFormatter
+    from thermoctl.mcp import server
+
+    settings = _settings("port")
+    settings.log_format = "json"
+    settings.log_level = "INFO"
+    monkeypatch.setattr(sys, "argv", ["thermoctl-mcp", "--http"])
+    monkeypatch.setattr(server, "get_settings", lambda: settings)
+
+    class EngineStub:
+        def dispose(self):
+            pass
+
+    monkeypatch.setattr(server, "create_engine_from_settings", lambda _settings: EngineStub())
+    monkeypatch.setattr(server, "session_factory", lambda _engine: object())
+    monkeypatch.setattr("thermoctl.mcp.http_app.create_mcp_asgi_app", lambda _s, _f: object())
+    monkeypatch.setattr(uvicorn, "run", lambda *_args, **_kwargs: None)
+    root = logging.getLogger()
+    previous_handlers, previous_level = root.handlers[:], root.level
+    try:
+        root.handlers.clear()
+        root.setLevel(logging.WARNING)
+        server.main()
+        assert root.level == logging.INFO
+        assert any(isinstance(handler.formatter, JsonFormatter) for handler in root.handlers)
+        record = logging.LogRecord("thermoctl.mcp", logging.INFO, __file__, 1, "mcp.tool", (), None)
+        record.event = "mcp.tool"
+        assert json.loads(root.handlers[0].formatter.format(record))["event"] == "mcp.tool"
+    finally:
+        root.handlers[:] = previous_handlers
+        root.setLevel(previous_level)
+
+
+def test_dockerfile_exposes_web_port() -> None:
+    from pathlib import Path
+
+    dockerfile = (Path(__file__).resolve().parent.parent / "docker" / "Dockerfile").read_text()
+    assert "EXPOSE 8000" in dockerfile.splitlines()
+
+
+def test_http_app_requires_public_url(session: Session) -> None:
+    with pytest.raises(ValueError, match="öffentliche MCP-Adresse"):
+        create_mcp_asgi_app(_settings("off"), _SharedSession(session))
+
+
+@pytest.mark.parametrize("mode", ["path", "port"])
+def test_challenge_metadata_uses_resource_path(session: Session, mode: str) -> None:
+    settings = _settings(mode)
+    if mode == "path":
+        settings.public_url = "https://thermo.example.invalid/praefix"
+    else:
+        settings.mcp_public_url = "https://mcp.example.invalid/praefix/mcp"
+    app = create_mcp_asgi_app(settings, _SharedSession(session))
+    with TestClient(app) as client:
+        response = client.post("/", json=_rpc("initialize"))
+    assert response.status_code == 401
+    expected = "https://"
+    expected += "thermo.example.invalid" if mode == "path" else "mcp.example.invalid"
+    expected += "/.well-known/oauth-protected-resource/praefix/mcp"
+    assert f'resource_metadata="{expected}"' in response.headers["www-authenticate"]
