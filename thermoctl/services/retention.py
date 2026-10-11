@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
+from thermoctl.db.models.change_log import ChangeLog
 from thermoctl.db.models.measurement import Measurement
 from thermoctl.db.models.operations import Setting
 from thermoctl.db.models.sensor_failure import ActuatorDecision, SensorFailureSourceComparison
@@ -159,6 +160,39 @@ def delete_old_actuator_decisions(
         session.execute(delete(ActuatorDecision).where(ActuatorDecision.id.in_(ids)))
         count += len(ids)
     log.info("Alte Notbetriebs-Entscheidungen gelöscht", extra={"anzahl": count})
+    return count
+
+
+def delete_old_changes(
+    session: Session, now: datetime, keep_days: int = 365, *, batch_size: int = 5000
+) -> int:
+    """Löscht Einträge des Änderungsprotokolls, die älter als `keep_days` Tage sind.
+
+    Die Felder fallen per CASCADE mit. Die Selbstverweise (`reverted_by_id`, `reverts_id`)
+    stehen auf SET NULL: Ein Eintrag, dessen Gegenstück gelöscht wurde, bleibt stehen und
+    verliert nur den Verweis. Wie bei den Nachbarn in Blöcken, damit keine Transaktion
+    zu groß wird.
+    """
+    if batch_size <= 0:
+        raise ValueError("Blockgröße muss größer als null sein")
+    if keep_days < 1:
+        raise ValueError("keep_days muss mindestens 1 sein")
+    limit = now - timedelta(days=keep_days)
+    count = 0
+    while True:
+        ids = list(
+            session.scalars(
+                select(ChangeLog.id)
+                .where(ChangeLog.occurred_at < limit)
+                .order_by(ChangeLog.occurred_at, ChangeLog.id)
+                .limit(batch_size)
+            )
+        )
+        if not ids:
+            break
+        session.execute(delete(ChangeLog).where(ChangeLog.id.in_(ids)))
+        count += len(ids)
+    log.info("Alte Einträge des Änderungsprotokolls gelöscht", extra={"anzahl": count})
     return count
 
 

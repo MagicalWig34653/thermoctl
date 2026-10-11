@@ -1,5 +1,6 @@
 from thermoctl.db.models import (
     absence,
+    change_log,
     credential,
     device,
     identity,
@@ -18,6 +19,7 @@ from thermoctl.db.models import (
 
 __all__ = [
     "absence",
+    "change_log",
     "credential",
     "device",
     "identity",

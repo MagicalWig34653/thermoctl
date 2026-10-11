@@ -11,6 +11,19 @@ Letzte Aktualisierung: 2026-10-11.
   Fußlink im Generator (`tools/landingpage_erzeugen.py`) ergänzen, `site/` neu erzeugen.
 - Das Paket `ghcr.io/magicalwig34653/thermoctl` ist öffentlich (Projektinhaber, 2026-10-10).
 
+## Änderungsprotokoll mit Zurückrollen -- Phase 1 (Domäne), unveröffentlicht
+
+Spezifikation: `docs/superpowers/specs/2026-10-11-aenderungsprotokoll-design.md` (lokal). Gebaut ist die Domäne, **noch
+nicht** angeschlossen:
+
+- **Migration** `c4a9e2f71b35` (`change_log`, `change_log_field`), Migrationskopf damit `c4a9e2f71b35`.
+- **Domäne** `domain/change_log.py`: Schreibfunktionen je Operation (umhüllen die vorhandenen Domänenfunktionen,
+  Eintrag nur bei tatsächlicher Änderung, in derselben Transaktion), `list_changes`, `get_change`, `revert_change`
+  (Rechte zuerst, dann nicht zurücknehmbar, schon zurückgenommen, Konflikt, Ausführung über die Domänenfunktion).
+- **Aufbewahrung** `delete_old_changes` (365 Tage) im Tageslauf.
+- **Offen (Phase 2):** MCP-Werkzeuge `list_changes`/`revert_change`, `mcp/server.py` auf die Schreibfunktionen umstellen
+  (auch `token_id` bei `set_control_parameters`), Weboberfläche, Dokumentation.
+
 ## MCP über HTTP mit Bearer und OAuth (0.14.0 freigegeben), Add-on-Felder (0.14.1) und Korrektur der Zustimmungsseite (0.14.2) -- 0.14.1 und 0.14.2 noch nicht freigegeben
 
 Gebaut und dokumentiert (`docs/mcp.md`, `docs/self-hosting.md` Abschnitt 8c, `docs/api.md`, `CHANGELOG.md`):

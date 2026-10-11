@@ -12,8 +12,10 @@ from tests.helpers import (
     create_settings,
     create_zone,
     create_zone_state,
+    source,
 )
 from thermoctl.db.base import utcnow
+from thermoctl.db.models.change_log import ChangeLog, ChangeLogField
 from thermoctl.db.models.lookup import DeviceCapability
 from thermoctl.db.models.measurement import Measurement
 from thermoctl.db.models.oauth import OAuthAuthorizationRequest
@@ -23,6 +25,7 @@ from thermoctl.domain.oauth import register_client, start_request
 from thermoctl.services.retention import (
     delete_expired_oauth,
     delete_old_actuator_decisions,
+    delete_old_changes,
     delete_old_measurements,
     delete_old_sensor_failure_source_comparisons,
     delete_old_shadow_decisions,
@@ -265,3 +268,52 @@ def test_expired_oauth_rows_are_removed_by_the_retention_run(session: Session) -
 
     assert delete_expired_oauth(session) == 1
     assert session.query(OAuthAuthorizationRequest).all() == [frische]
+
+
+def _change(session: Session, age_days: int, source_id: int) -> ChangeLog:
+    entry = ChangeLog(
+        occurred_at=NOW - timedelta(days=age_days),
+        source_id=source_id,
+        change_type="control_parameter",
+        summary=f"vor {age_days} Tagen",
+        revertible=True,
+    )
+    session.add(entry)
+    session.flush()
+    session.add(ChangeLogField(change_id=entry.id, field="hysteresis_k", after_value="0.5"))
+    session.flush()
+    return entry
+
+
+def test_old_changes_are_deleted_with_their_fields_and_young_ones_stay(
+    session: Session,
+) -> None:
+    mcp = source(session, "mcp")
+    old = [_change(session, age, mcp.id) for age in (366, 400, 900)]
+    young = [_change(session, age, mcp.id) for age in (364, 1)]
+    boundary = _change(session, 365, mcp.id)
+    # Eine alte Rücknahme zeigt auf einen jungen Eintrag: Er bleibt, nur der Verweis fällt.
+    young[0].reverted_by_id = old[0].id
+    session.flush()
+
+    deleted = delete_old_changes(session, NOW, batch_size=2)
+
+    assert deleted == 3
+    session.expire_all()
+    remaining = {e.id for e in session.query(ChangeLog)}
+    assert remaining == {young[0].id, young[1].id, boundary.id}
+    assert session.query(ChangeLogField).count() == 3
+    assert session.get(ChangeLog, young[0].id).reverted_by_id is None  # type: ignore[union-attr]
+
+
+def test_changes_keep_days_is_configurable_and_validated(session: Session) -> None:
+    mcp = source(session, "mcp")
+    _change(session, 40, mcp.id)
+    _change(session, 10, mcp.id)
+
+    assert delete_old_changes(session, NOW, keep_days=30) == 1
+    assert session.query(ChangeLog).count() == 1
+    with pytest.raises(ValueError, match="keep_days"):
+        delete_old_changes(session, NOW, keep_days=0)
+    with pytest.raises(ValueError, match="Blockgröße"):
+        delete_old_changes(session, NOW, batch_size=0)

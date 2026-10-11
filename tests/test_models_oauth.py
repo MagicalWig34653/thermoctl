@@ -315,7 +315,9 @@ def test_oauth_migration_preserves_existing_tokens_and_downgrades(
                 ).scalar_one()
                 == "bearer"
             )
-        down = _alembic(migrations_database_url, "downgrade", "-1")
+        # Ausdrücklich die Revision davor und nicht „-1“: Auf den OAuth-Stand setzen
+        # später weitere Migrationen auf (`c4a9e2f71b35`), „-1“ träfe dann die falsche.
+        down = _alembic(migrations_database_url, "downgrade", "b7d2e5a40c18")
         assert down.returncode == 0, down.stderr
         assert "oauth_client" not in inspect(engine).get_table_names()
         assert "source" not in {c["name"] for c in inspect(engine).get_columns("api_token")}
