@@ -11,6 +11,15 @@ Letzte Aktualisierung: 2026-10-10.
   Fußlink im Generator (`tools/landingpage_erzeugen.py`) ergänzen, `site/` neu erzeugen.
 - Das Paket `ghcr.io/magicalwig34653/thermoctl` ist öffentlich (Projektinhaber, 2026-10-10).
 
+## In Arbeit: MCP über HTTP mit Bearer und OAuth (Branch `mcp-http-task2`, Task 2)
+
+Token-Presets (`domain/token_presets.py`: `READ_ONLY`, `READ_WRITE`, `preset_permissions`; `control.arm`, `user.manage`,
+`group.manage`, `token.manage`, `token.self`, `device.manage` in keinem Preset) und neues anlagenweites Recht
+`control.disarm`. `force_dry_run` (MCP) prüft jetzt `control.disarm` statt `control.arm`; die Migration `b7d2e5a40c18`
+(`down_revision = f6c3a8d19b42`, Köpfe ordnet die Hauptsession) legt das Recht an und gibt es allen Gruppen mit anlagenweitem
+`control.arm`. Neue Anlagen bekommen es über `PERMISSIONS` (Seed in `setup.py` vergibt alle Rechte an „Verwaltung“).
+Presets sind noch nicht an Oberfläche oder Token-Ausstellung angeschlossen (spätere Tasks).
+
 ## 0.13.0 (2026-10-11)
 
 Neu seit 0.12.0, keine Migration: **Werte am Mauszeiger** im Temperaturverlauf (Maus, Touch, Pfeiltasten; Daten

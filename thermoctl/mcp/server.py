@@ -747,12 +747,12 @@ def force_dry_run(
     justification the domain requires for arming is no obstacle for a model -- it is
     exactly the kind of text it generates effortlessly. The barrier would thus be a
     formality instead of a decision. Going back to the dry run, on the other hand, is
-    always the safe direction and should be open to anyone allowed to operate the
-    plant. Whoever wants to arm the plant does so in the interface or via the REST
-    interface, where a human is at the button.
+    always the safe direction and has its own permission, `control.disarm`, so that
+    it does not require the right to arm. Whoever wants to arm the plant does so in
+    the interface or via the REST interface, where a human is at the button.
     """
     token, principal = _log_in(session, plaintext)
-    require(principal, "control.arm")
+    require(principal, "control.disarm")
     changed = arm(
         session,
         False,

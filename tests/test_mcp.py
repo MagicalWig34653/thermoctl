@@ -312,6 +312,7 @@ def test_the_registered_mcp_tools_have_descriptions_and_call_the_adapter_functio
         ("schedule.manage", zone.id),
         ("zone.manage", zone.id),
         ("control.arm", None),
+        ("control.disarm", None),
         ("vacation.manage", None),
         ("setting.manage", None),
     ]
@@ -573,11 +574,24 @@ def test_forcing_dry_run_takes_the_installation_back(session: Session) -> None:
     source(session, "mcp")
     source(session, "web")
     arm(session, True, reason="von Hand", user_id=None)
-    plaintext = _token(session, "notaus", [("zone.read", None), ("control.arm", None)])
+    plaintext = _token(session, "notaus", [("zone.read", None), ("control.disarm", None)])
 
     response = server.force_dry_run(session, plaintext, "Assistent nimmt zurück")
     assert response == {"armed": False, "changed": True}
     assert session.get(Setting, 1).control_armed is False
+
+
+def test_forcing_dry_run_needs_control_disarm_not_control_arm(session: Session) -> None:
+    """Zurück in den Trockenlauf ist die sichere Richtung und braucht kein
+    Scharfschaltrecht -- umgekehrt genügt das Scharfschaltrecht dafür nicht mehr."""
+    create_settings(session)
+    source(session, "mcp")
+    arm(session, True, reason="von Hand", user_id=None)
+    plaintext = _token(session, "nur-scharf", [("zone.read", None), ("control.arm", None)])
+
+    with pytest.raises(Forbidden, match="control.disarm"):
+        server.force_dry_run(session, plaintext, "darf nicht")
+    assert session.get(Setting, 1).control_armed is True
 
 
 def test_mcp_cannot_arm_the_control(session: Session) -> None:
