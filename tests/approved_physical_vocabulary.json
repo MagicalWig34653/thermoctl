@@ -469,6 +469,9 @@
       "Globale Vorgaben und die gespeicherte Freigabe. Erst nach einem Neustart gehen Sollwerte an selbstregelnde Thermostatventile und Ein/Aus-Befehle an gewöhnliche Aktoren.",
       "Sensoren, Ventile und ihre Zuordnung zu Zonen."
     ],
+    "thermoctl/domain/change_log.py": [
+      "gehören nicht zu dieser Zone oder sind kein Thermostat-Aktor."
+    ],
     "thermoctl/domain/control.py": [
       "Regelung scharf geschaltet — Sollwertausgabe erst nach Neustart freigegeben"
     ],
@@ -600,7 +603,6 @@
       "Pulls a visible zone's next scheduled setpoint switch forward.",
       "Reads the actuator command log, newest first, filtered and capped.",
       "actuators",
-      "gehören nicht zu dieser Zone oder sind kein Thermostat-Aktor.",
       "the backup offsets of its thermostat actuator assignments."
     ],
     "thermoctl/services/emergency_prior.py": [

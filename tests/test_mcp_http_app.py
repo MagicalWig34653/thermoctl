@@ -58,7 +58,7 @@ def test_path_http_protocol_and_oauth_metadata(session: Session) -> None:
         assert response.status_code == 200
         response = client.post("/", json=_rpc("tools/list", 2), headers=headers)
         assert response.status_code == 200
-        assert len(response.json()["result"]["tools"]) == 25
+        assert len(response.json()["result"]["tools"]) == 27
         no_token = client.post(
             "/", json=_rpc("tools/list"), headers={"Host": "thermo.example.invalid"}
         )
@@ -103,7 +103,7 @@ def test_port_metadata_at_root(session: Session) -> None:
         }
         response = client.post("/", json=_rpc("tools/list"), headers=headers)
         assert response.status_code == 200
-        assert len(response.json()["result"]["tools"]) == 25
+        assert len(response.json()["result"]["tools"]) == 27
 
 
 def test_web_mount_answers_exact_path_without_redirect(
@@ -134,7 +134,7 @@ def test_web_mount_answers_exact_path_without_redirect(
         }
         response = client.post("/mcp", json=_rpc("tools/list"), headers=headers)
         assert response.status_code == 200
-        assert len(response.json()["result"]["tools"]) == 25
+        assert len(response.json()["result"]["tools"]) == 27
 
 
 def test_off_mode_has_no_mcp_route(monkeypatch) -> None:
@@ -433,3 +433,82 @@ def test_challenge_metadata_uses_resource_path(session: Session, mode: str) -> N
     expected += "thermo.example.invalid" if mode == "path" else "mcp.example.invalid"
     expected += "/.well-known/oauth-protected-resource/praefix/mcp"
     assert f'resource_metadata="{expected}"' in response.headers["www-authenticate"]
+
+
+def test_change_log_round_trip_over_http_with_two_tokens(session: Session) -> None:
+    """set_control_parameters -> list_changes -> revert_change über den echten HTTP-Weg.
+
+    Zwei Token aus den Presets: Read-only liest das Protokoll, darf aber nichts
+    zurücknehmen; Read-write nimmt zurück, und der Wert ist wieder da.
+    """
+    from decimal import Decimal
+
+    from tests.helpers import create_settings, create_zone, source
+    from thermoctl.domain.token_presets import preset_permissions
+
+    create_settings(session)
+    source(session, "mcp")
+    zone = create_zone(session, "http-protokoll")
+    owner = user_with_permissions(session, "http-owner", preset_permissions("read_write"))
+    _row, read_only = issue_token(
+        session, owner, "nur-lesen", preset_permissions("read_only"), None
+    )
+    _row, read_write = issue_token(
+        session, owner, "lesen-schreiben", preset_permissions("read_write"), None
+    )
+    app = create_mcp_asgi_app(_settings("port"), _SharedSession(session))
+    headers = {
+        "Accept": "application/json, text/event-stream",
+        "Content-Type": "application/json",
+        "MCP-Protocol-Version": "2025-06-18",
+        "Host": "mcp.example.invalid:9443",
+    }
+    counter = iter(range(100, 200))
+
+    with TestClient(app, base_url="https://mcp.example.invalid:9443") as client:
+
+        def call(plaintext: str, tool: str, **arguments: object) -> dict:
+            response = client.post(
+                "/",
+                json={
+                    **_rpc("tools/call", next(counter)),
+                    "params": {"name": tool, "arguments": arguments},
+                },
+                headers=headers | {"Authorization": f"Bearer {plaintext}"},
+            )
+            assert response.status_code == 200
+            return response.json()["result"]
+
+        def text(result: dict) -> str:
+            return " ".join(part["text"] for part in result["content"])
+
+        inherited = _hysteresis(call, read_only, zone.id)
+        changed = call(read_write, "set_control_parameters",
+                       zone_id=zone.id, name="hysteresis_k", value="0.7")
+        assert not changed["isError"]
+        change_id = changed["structuredContent"]["change_id"]
+        assert isinstance(change_id, int)
+
+        listed = call(read_only, "list_changes", zone=zone.name)
+        assert not listed["isError"]
+        entry = listed["structuredContent"]["result"][0]
+        assert entry["id"] == change_id
+        assert entry["token"] == "lesen-schreiben"
+        assert entry["fields"] == [{"field": "hysteresis_k", "before": None, "after": "0.7"}]
+
+        refused = call(read_only, "revert_change", change_id=change_id)
+        assert refused["isError"]
+        assert "zone.manage" in text(refused)
+        assert Decimal(_hysteresis(call, read_only, zone.id)) == Decimal("0.7")
+
+        reverted = call(read_write, "revert_change", change_id=change_id)
+        assert not reverted["isError"]
+        assert reverted["structuredContent"]["status"] == "reverted"
+        assert reverted["structuredContent"]["reverts"] == change_id
+        assert _hysteresis(call, read_only, zone.id) == inherited  # der geerbte Wert ist wieder da
+
+
+def _hysteresis(call, plaintext: str, zone_id: int) -> str:
+    result = call(plaintext, "read_control_parameters", zone_id=zone_id)
+    parameters = result["structuredContent"]["parameter"]
+    return next(p["value"] for p in parameters if p["name"] == "hysteresis_k")

@@ -30,6 +30,7 @@ from thermoctl.db.models.operations import Setting
 from thermoctl.db.models.override import ZoneOverride
 from thermoctl.db.models.schedule import SchedulePoint
 from thermoctl.db.models.zone import SetpointMode, Zone
+from thermoctl.domain import change_log as change_log_domain
 from thermoctl.domain.authz import Forbidden
 from thermoctl.domain.control import arm, save_solar_location
 from thermoctl.mcp import server
@@ -354,6 +355,8 @@ def test_the_registered_mcp_tools_have_descriptions_and_call_the_adapter_functio
         "shadow_decisions",
         "device_commands",
         "temperature_history",
+        "list_changes",
+        "revert_change",
         "read_emergency_state",
         "override",
         "cancel_override",
@@ -390,9 +393,13 @@ def test_the_registered_mcp_tools_have_descriptions_and_call_the_adapter_functio
     assert tools["cancel_override"](zone.id)  # type: ignore[operator]
     assert tools["boost"](zone.id)  # type: ignore[operator]
     assert tools["read_control_parameters"](zone.id)  # type: ignore[operator]
-    assert tools["set_control_parameters"](  # type: ignore[operator]
+    changed = tools["set_control_parameters"](  # type: ignore[operator]
         zone.id, "hysteresis_k", Decimal("0.4")
     )
+    assert changed["change_id"] is not None
+    listed = tools["list_changes"](change_type="control_parameter")  # type: ignore[operator]
+    assert listed[0]["id"] == changed["change_id"]
+    assert tools["revert_change"](changed["change_id"])["status"] == "reverted"  # type: ignore[operator]
     assert tools["read_control"]()  # type: ignore[operator]
     # `trockenlauf_erzwingen` reports `geändert: False` when dry run already applies --
     # so check for the key, not for the truthiness of the result.
@@ -581,7 +588,8 @@ def test_forcing_dry_run_takes_the_installation_back(session: Session) -> None:
     plaintext = _token(session, "notaus", [("zone.read", None), ("control.disarm", None)])
 
     response = server.force_dry_run(session, plaintext, "Assistent nimmt zurück")
-    assert response == {"armed": False, "changed": True}
+    assert response["armed"] is False and response["changed"] is True
+    assert isinstance(response["change_id"], int)
     assert session.get(Setting, 1).control_armed is False
 
 
@@ -607,15 +615,17 @@ def test_mcp_cannot_arm_the_control(session: Session) -> None:
     assert not [
         name
         for name in dir(server)
-        if "armed" in name.lower() and name != "arm"
+        if "armed" in name.lower()
     ]
-    # `scharf_schalten` is the imported domain function, not a tool: it is called
-    # exclusively with `False`.
+    # Der Adapter importiert die Domänenfunktion `arm` gar nicht mehr und ruft nur
+    # `force_dry_run` des Änderungsprotokolls auf, die ausschließlich `arm(False)` kennt.
+    assert not hasattr(server, "arm")
     quelltext = (
         Path(server.__file__).read_text(encoding="utf-8")  # type: ignore[arg-type]
     )
-    assert quelltext.count("arm(") == 1
-    assert "        False," in quelltext
+    assert quelltext.count("arm(") == 0
+    assert quelltext.count("change_log_domain.force_dry_run(") == 1
+    assert "arm(True" not in Path(change_log_domain.__file__).read_text(encoding="utf-8")
 
 
 def test_moving_a_schedule_point_through_mcp(session: Session) -> None:

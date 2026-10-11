@@ -213,7 +213,7 @@ Presets stehen im Code (`thermoctl/domain/token_presets.py`), nicht in der Daten
 
 ## Die Werkzeuge
 
-25 Stück, alle über dieselbe Domänenlogik wie Oberfläche und REST-Schnittstelle. Jedes
+27 Stück, alle über dieselbe Domänenlogik wie Oberfläche und REST-Schnittstelle. Jedes
 prüft dasselbe Recht wie der entsprechende REST-Endpunkt.
 
 | Werkzeug | Recht | Was es liefert |
@@ -227,6 +227,8 @@ prüft dasselbe Recht wie der entsprechende REST-Endpunkt.
 | `shadow_decisions(zone_id, count=10)` | `zone.read` | die jüngsten Entscheidungen samt Grund |
 | `device_commands(zone, outcome, from_at, to_at, limit=100)` | `audit.read` | das Schaltprotokoll — jeder gesendete, unterdrückte oder gescheiterte Befehl an ein Gerät, plus Notbetriebsentscheidungen (`entry_kind: "entscheidung"`) und Wechsel der Sonnenabsenkung (`entry_kind: "absenkung"`: Beginn, Betragsänderung, Ende je Zone; `outcome` `absenkung_beginn`/`absenkung_aenderung`/`absenkung_ende`, `reason` mit Sollwert vor der Absenkung und wirksamem Sollwert) |
 | `temperature_history(zone_id, hours=24, from_at, to_at, max_points=300, log_limit=100)` | `zone.read` (Protokoll: zusätzlich `audit.read`) | die Messreihe einer Zone — gemessen, wirksamer Sollwert, Sollwert vor der Sonnenabsenkung, Sonnenabsenkung, Anteil der Messungen mit Heizanforderung — in gleich breite Zeitfächer verdichtet, mit Zusammenfassung, und im selben Aufruf die Einträge des Schaltprotokolls dieser Zone im Zeitraum |
+| `list_changes(zone, change_type, source, from_at, to_at, include_reverted=true, limit=100)` | `audit.read` | das Änderungsprotokoll — jede schreibende Änderung über MCP mit Wer (Nutzer und Token), Wann, Vorher und Nachher je Feld, und ob sie sich zurücknehmen lässt |
+| `revert_change(change_id, force=false)` | die Rechte der ursprünglichen Änderung (Tabelle unten) | nimmt eine Änderung zurück und liefert den neuen Rücknahme-Eintrag |
 | `read_emergency_state(zone_id)` | `zone.read` | Notbetrieb-Stufe, aktive Ersatzquelle, Rückkehrfortschritt, Takt-/Übergabestatus je Aktor, Ersatzquelle-Wandfühler-Vergleich |
 | `override(zone_id, temperature_c, ends_at)` | `override.create` | legt eine Übersteuerung an |
 | `cancel_override(zone_id)` | `override.cancel` | beendet die laufende Übersteuerung |
@@ -343,6 +345,85 @@ tatsächlich gezählten Schaltspiele sind in der Oberfläche unter „Relaisvers
 **Der eigentliche Gewinn sind `explain_setpoint` und `shadow_decisions`.** Sie
 beantworten „warum ist es hier kalt?" in einem Aufruf, statt Ist-Wert, Zeitplan und
 Regelentscheidung von Hand zusammenzusuchen.
+
+## Änderungsprotokoll und Zurückrollen
+
+Jedes schreibende Werkzeug (`set_control_parameters`, `move_schedule_point`, `override`,
+`cancel_override`, `boost`, `vacation`, `cancel_vacation`, `force_dry_run`,
+`set_sensor_failure_defaults`, `set_sensor_failure_policy`) schreibt in derselben Transaktion
+einen Eintrag ins Änderungsprotokoll: wer (Nutzer **und** Token), wann, welche Art, welche
+Zone, und je geändertem Feld Vorher und Nachher. Die Antwort des Werkzeugs trägt dazu den
+Schlüssel `change_id`; `null` heißt, dass nichts geändert wurde und deshalb auch kein Eintrag
+entstand (derselbe Wert, nichts zu beenden). Eine abgewiesene Änderung hinterlässt keinen
+Eintrag. Das Audit-Log bleibt daneben bestehen; das Änderungsprotokoll ist die strukturierte
+Fassung, aus der sich etwas zurücknehmen lässt.
+
+**Lesen:** `list_changes` verlangt `audit.read` anlagenweit, wie `device_commands`. `zone`
+nennt die Zone mit ihrem Namen (wie in `list_zones`); ein unbekannter Name ist ein Fehler,
+keine leere Liste. Einträge einer inzwischen gelöschten Zone findet man ohne `zone`. `from_at`
+gilt einschließlich, `to_at` ausschließlich, ohne Zeitzone gilt UTC. `limit` liegt zwischen 1
+und 500. Jeder Zeitpunkt trägt `+00:00`. Je Eintrag: `id`, `at`, `source`, `user`, `token`,
+`change_type`, `zone`, `summary`, `fields` (Liste aus `field`, `before`, `after`; `null`
+heißt leer oder geerbt), `revertible` mit `not_revertible_reason`, `reverted`, `reverted_at`,
+`reverted_by` (Id des Rücknahme-Eintrags), `reverts` (bei einer Rücknahme die Id des
+Originals) und `forced`.
+
+**Zurücknehmen:** `revert_change(change_id)` setzt die Änderung über dieselben
+Domänenfunktionen zurück, die sie gemacht haben — Grenzen und Prüfungen gelten weiter, und
+die Rücknahme steht selbst als Eintrag im Protokoll. Beispiel:
+
+```text
+set_control_parameters(zone_id=3, name="hysteresis_k", value=0.7)
+  -> {"zone": "wohnzimmer", "name": "hysteresis_k", "value": "0.7", "change_id": 41}
+list_changes(zone="wohnzimmer", limit=1)
+  -> [{"id": 41, "change_type": "control_parameter", "token": "assistent",
+       "fields": [{"field": "hysteresis_k", "before": null, "after": "0.7"}],
+       "revertible": true, "reverted": false, ...}]
+revert_change(change_id=41)
+  -> {"status": "reverted", "id": 42, "reverts": 41,
+      "fields": [{"field": "hysteresis_k", "before": "0.7", "after": null}], ...}
+```
+
+- **Konflikt.** Zurückgenommen wird nur, wenn der aktuelle Wert noch der ist, den die
+  Änderung gesetzt hat. Wurde er inzwischen anders gesetzt, lehnt das Werkzeug ab und nennt
+  den aktuellen und den erwarteten Wert; mit `force=true` wird trotzdem zurückgesetzt, und
+  der Rücknahme-Eintrag trägt `forced: true`. Nichts davon geschieht, ohne dass der Nutzer
+  es ausdrücklich verlangt: Ein Modell soll `force` erst nach einer Rückfrage setzen.
+- **Nur einmal.** Ein Eintrag lässt sich einmal zurücknehmen; eine Rücknahme wird nicht
+  erneut zurückgenommen (der Wert wird stattdessen neu gesetzt).
+- **Gegenstandslos.** Läuft eine Übersteuerung oder ein Urlaub nicht mehr, gibt es nichts
+  zurückzunehmen. Das ist kein Fehler: Die Antwort ist `{"status": "already_effective",
+  "message": ...}`, nichts wird geschrieben, und der Eintrag gilt danach als erledigt.
+- **Fehler** erreichen den Client mit ihrer Meldung (Recht fehlt, Eintrag unbekannt, schon
+  zurückgenommen, nicht zurücknehmbar, Konflikt), nicht als „Error executing tool".
+
+Die Rechte prüft die Domäne, und zwar **vor** jeder Auskunft über den Zustand: Wer das Recht
+nicht hat, erfährt weder den aktuellen Wert noch, ob der Eintrag schon zurückgenommen ist.
+`audit.read` braucht eine Rücknahme nicht, nur die Rechte der Art:
+
+| Art (`change_type`) | geschrieben von | Rücknahme | Recht für die Rücknahme |
+|---|---|---|---|
+| `control_parameter` | `set_control_parameters` | Parameter auf den Vorher-Wert (auch „geerbt“) | `zone.manage` (Zone) |
+| `schedule_point` | `move_schedule_point` | Punkt zurück auf Wochentag und Minute | `schedule.manage` (Zone) |
+| `override` | `override` | die laufende Übersteuerung beenden | `override.cancel` (Zone) und `override.create` |
+| `boost` | `boost` | die entstandene Übersteuerung beenden | `override.cancel` und `override.create` |
+| `vacation` | `vacation` | Urlaub beenden | `vacation.manage` |
+| `sensor_failure_defaults` | `set_sensor_failure_defaults` | Profil und Notsollwert auf die Vorher-Werte | `setting.manage` |
+| `sensor_failure_policy` | `set_sensor_failure_policy` | Zonen-Einstellung auf die Vorher-Werte | `zone.manage` (Zone), zusätzlich `device.manage`, wenn Ausgleichswerte betroffen sind |
+| `override_cancel`, `vacation_cancel` | `cancel_override`, `cancel_vacation` | **nicht zurücknehmbar** | — |
+| `force_dry_run` | `force_dry_run` | **nicht zurücknehmbar** | — |
+
+**Warum manche Arten nicht zurücknehmbar sind.** Eine beendete Übersteuerung oder ein
+beendeter Urlaub lässt sich nicht „wiederherstellen“: Der Zeitraum ist vorbei, und ein neu
+angelegter Eintrag wäre eine andere Übersteuerung mit anderem Ende. Wer sie wieder will,
+legt sie mit `override` oder `vacation` neu an. `force_dry_run` bleibt **bewusst
+unumkehrbar**: Das Scharfschalten gibt es über MCP nicht (siehe unten), und eine Rücknahme
+wäre genau das — über einen Umweg, der die Begründung umgeht, die die Domäne beim
+Scharfschalten verlangt. Das Scharfschalten bleibt der Oberfläche und der
+REST-Schnittstelle vorbehalten, wo ein Mensch am Knopf steht.
+
+Die Einträge sind 365 Tage lang einsehbar und werden danach im täglichen Aufbewahrungslauf
+gelöscht.
 
 ## Was es bewusst nicht gibt
 

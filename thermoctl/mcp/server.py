@@ -21,6 +21,7 @@ from thermoctl.db.models.operations import Setting
 from thermoctl.db.models.schedule import SchedulePoint
 from thermoctl.db.models.state import ShadowDecision, ZoneState
 from thermoctl.db.models.zone import SetpointMode, Zone, ZoneSetpoint
+from thermoctl.domain import change_log as change_log_domain
 from thermoctl.domain.authz import (
     Forbidden,
     has_permission,
@@ -28,12 +29,10 @@ from thermoctl.domain.authz import (
     require,
     visible_zones,
 )
+from thermoctl.domain.change_log import Actor, ChangeAlreadyEffective, ChangeLogError, ChangeView
 from thermoctl.domain.control import (
     LIMITS,
     ControlError,
-    arm,
-    save_sensor_failure_backup_offset,
-    save_sensor_failure_plant_defaults,
     settings,
 )
 from thermoctl.domain.device_commands import (
@@ -46,22 +45,10 @@ from thermoctl.domain.device_commands import (
 from thermoctl.domain.modes import DomainError
 from thermoctl.domain.principal import Principal
 from thermoctl.domain.remote_control import RemoteControlError
-from thermoctl.domain.remote_control import boost as domain_boost
 from thermoctl.domain.schedule import (
     ScheduleError,
-    create_override,
-    create_vacation,
     current_or_upcoming_vacation,
     resolved_setpoint,
-)
-from thermoctl.domain.schedule import (
-    cancel_override as domain_cancel_override,
-)
-from thermoctl.domain.schedule import (
-    cancel_vacation as domain_cancel_vacation,
-)
-from thermoctl.domain.schedule import (
-    move_schedule_point as domain_move_schedule_point,
 )
 from thermoctl.domain.sensor_failure_policy import (
     CurvePoint,
@@ -85,11 +72,7 @@ from thermoctl.domain.zone_settings import (
     ParameterOutOfRange,
     UnknownParameter,
     control_parameters,
-    save_sensor_failure_parameters,
     sensor_failure_parameters,
-)
-from thermoctl.domain.zone_settings import (
-    set_parameter as domain_set_parameter,
 )
 from thermoctl.mcp.http_auth import current_key_prefix
 from thermoctl.services.emergency_state import zone_emergency_view
@@ -100,6 +83,7 @@ log = logging.getLogger("thermoctl.mcp")
 # Die REST-Schnittstelle gibt ihren Text als 4xx weiter; hier gilt dasselbe, sonst erführe ein
 # Modell nie, warum etwas abgelehnt wurde. Die Meldungen formuliert die Domäne selbst.
 _REJECTIONS = (
+    ChangeLogError,
     ControlError,
     DomainError,
     HistoryRangeError,
@@ -191,6 +175,11 @@ def _visible_zone(session: Session, principal: Principal, zone_id: int) -> Zone:
 
 def _decimal(value: Decimal | None) -> str | None:
     return None if value is None else str(value)
+
+
+def _actor(principal: Principal, token: ApiToken) -> Actor:
+    """Wer im Änderungsprotokoll steht: der Besitzer des Tokens und das Token selbst."""
+    return Actor(principal.user_id, token.id, "mcp")
 
 
 def _resolved_default_profile_id(session: Session) -> int:
@@ -560,29 +549,29 @@ def override_zone(
     token, principal = _log_in(session, plaintext)
     zone = _visible_zone(session, principal, zone_id)
     require(principal, "override.create", zone_id)
-    entry = create_override(
-        session,
-        zone,
-        temperature_c,
-        ends_at,
-        user_id=principal.user_id,
-        token_id=token.id,
-        source="mcp",
+    recorded = change_log_domain.create_override(
+        session, _actor(principal, token), zone, temperature_c, ends_at
     )
+    entry = recorded.result
     return {
         "zone": zone.name,
         "temperature_c": _decimal(entry.temperature_c),
         "ends_at": _moment(entry.ends_at),
+        "change_id": recorded.change_id,
     }
 
 
 def cancel_override(session: Session, plaintext: str, zone_id: int) -> dict[str, object]:
     """Cancels the active override via the shared domain function."""
-    _token, principal = _log_in(session, plaintext)
+    token, principal = _log_in(session, plaintext)
     zone = _visible_zone(session, principal, zone_id)
     require(principal, "override.cancel", zone_id)
-    cancelled = domain_cancel_override(session, zone)
-    return {"zone": zone.name, "cancelled": cancelled is not None}
+    recorded = change_log_domain.cancel_override(session, _actor(principal, token), zone)
+    return {
+        "zone": zone.name,
+        "cancelled": recorded.result is not None,
+        "change_id": recorded.change_id,
+    }
 
 
 def read_vacation(session: Session, plaintext: str) -> dict[str, object] | None:
@@ -622,20 +611,20 @@ def set_vacation(
     token, principal = _log_in(session, plaintext)
     require(principal, "vacation.manage")
     row = settings(session)
-    entry = create_vacation(
+    recorded = change_log_domain.create_vacation(
         session,
+        _actor(principal, token),
         start_date=start_date,
         end_date=end_date,
         setback_temperature_c=setback_temperature_c,
         timezone_name=row.timezone,
-        user_id=principal.user_id,
-        token_id=token.id,
-        source="mcp",
     )
+    entry = recorded.result
     return {
         "starts_at": _moment(entry.starts_at),
         "ends_at": _moment(entry.ends_at),
         "setback_temperature_c": _decimal(entry.setback_temperature_c),
+        "change_id": recorded.change_id,
     }
 
 
@@ -643,10 +632,8 @@ def cancel_vacation(session: Session, plaintext: str) -> dict[str, object]:
     """Ends the running or planned vacation early via the shared domain function."""
     token, principal = _log_in(session, plaintext)
     require(principal, "vacation.manage")
-    cancelled = domain_cancel_vacation(
-        session, user_id=principal.user_id, token_id=token.id, source="mcp"
-    )
-    return {"cancelled": cancelled is not None}
+    recorded = change_log_domain.cancel_vacation(session, _actor(principal, token))
+    return {"cancelled": recorded.result is not None, "change_id": recorded.change_id}
 
 
 def boost(session: Session, plaintext: str, zone_id: int) -> dict[str, object]:
@@ -661,19 +648,14 @@ def boost(session: Session, plaintext: str, zone_id: int) -> dict[str, object]:
     token, principal = _log_in(session, plaintext)
     zone = _visible_zone(session, principal, zone_id)
     require(principal, "override.create", zone_id)
-    result = domain_boost(
-        session,
-        zone,
-        utcnow(),
-        user_id=principal.user_id,
-        token_id=token.id,
-        source="mcp",
-    )
+    recorded = change_log_domain.boost(session, _actor(principal, token), zone, utcnow())
+    result = recorded.result
     return {
         "zone": zone.name,
         "mode": result.mode_code,
         "temperature_c": _decimal(result.temperature),
         "valid_until": _moment(result.bis),
+        "change_id": recorded.change_id,
     }
 
 
@@ -712,13 +694,16 @@ def set_control_parameters(
     `zone.manage`, not `override.create`: a control parameter has a lasting effect on
     every future decision, an override only until the next schedule point.
     """
-    _token, principal = _log_in(session, plaintext)
+    token, principal = _log_in(session, plaintext)
     zone = _visible_zone(session, principal, zone_id)
     require(principal, "zone.manage", zone_id)
-    set_value = domain_set_parameter(
-        session, zone, name, value, user_id=principal.user_id, source="mcp"
-    )
-    return {"zone": zone.name, "name": name, "value": _decimal(set_value)}
+    recorded = change_log_domain.set_parameter(session, _actor(principal, token), zone, name, value)
+    return {
+        "zone": zone.name,
+        "name": name,
+        "value": _decimal(recorded.result),
+        "change_id": recorded.change_id,
+    }
 
 
 def read_control(session: Session, plaintext: str) -> dict[str, object]:
@@ -796,7 +781,7 @@ def set_sensor_failure_defaults_tool(
     `curve_points` leer oder weggelassen bedeutet Festtakt -- dieselbe Regel wie
     auf der Regelvorgaben-Seite.
     """
-    _token, principal = _log_in(session, plaintext)
+    token, principal = _log_in(session, plaintext)
     require(principal, "setting.manage")
     profile_id = _resolved_default_profile_id(session)
     current = read_profile(session, profile_id)
@@ -816,16 +801,14 @@ def set_sensor_failure_defaults_tool(
             for point in (curve_points or [])
         ),
     )
-    save_sensor_failure_plant_defaults(
+    recorded = change_log_domain.save_sensor_failure_defaults(
         session,
+        _actor(principal, token),
         values,
         profile_id=profile_id,
         emergency_setpoint_c=emergency_setpoint_c,
-        user_id=principal.user_id,
-        token_id=_token.id,
-        source="mcp",
     )
-    return _sensor_failure_defaults_payload(session)
+    return {**_sensor_failure_defaults_payload(session), "change_id": recorded.change_id}
 
 
 def read_sensor_failure_policy(session: Session, plaintext: str, zone_id: int) -> dict[str, object]:
@@ -869,38 +852,25 @@ def set_sensor_failure_policy(
     Ausgleichswerte brauchen zusätzlich `device.manage` -- dieselbe Trennung wie in
     REST (`PUT /api/v1/zones/{id}/sensor-failure`).
     """
-    _token, principal = _log_in(session, plaintext)
+    token, principal = _log_in(session, plaintext)
     zone = _visible_zone(session, principal, zone_id)
     require(principal, "zone.manage", zone_id)
     if backup_offsets:
         require(principal, "device.manage", zone_id)
-        valid_ids = {c.zone_device_id for c in list_backup_offset_candidates(session, zone)}
-        unknown = set(backup_offsets) - valid_ids
-        if unknown:
-            raise ValueError(
-                f"Zuordnung(en) {sorted(unknown)} gehören nicht zu dieser Zone "
-                "oder sind kein Thermostat-Aktor."
-            )
-    save_sensor_failure_parameters(
+    # Ausgleichswerte fremder Zuordnungen weist die Domäne ab, bevor etwas geschrieben wird.
+    recorded = change_log_domain.save_sensor_failure_policy(
         session,
+        _actor(principal, token),
         zone,
         enabled=enabled,
         profile_id=profile_id,
         emergency_setpoint_c=emergency_setpoint_c,
-        user_id=principal.user_id,
-        token_id=_token.id,
-        source="mcp",
+        backup_offsets=backup_offsets,
     )
-    for assignment_id, value in (backup_offsets or {}).items():
-        save_sensor_failure_backup_offset(
-            session,
-            assignment_id,
-            value,
-            user_id=principal.user_id,
-            token_id=_token.id,
-            source="mcp",
-        )
-    return read_sensor_failure_policy(session, plaintext, zone_id)
+    return {
+        **read_sensor_failure_policy(session, plaintext, zone_id),
+        "change_id": recorded.change_id,
+    }
 
 
 def force_dry_run(
@@ -919,15 +889,10 @@ def force_dry_run(
     """
     token, principal = _log_in(session, plaintext)
     require(principal, "control.disarm")
-    changed = arm(
-        session,
-        False,
-        reason=reason,
-        user_id=principal.user_id,
-        token_id=token.id,
-        source="mcp",
+    recorded = change_log_domain.force_dry_run(
+        session, _actor(principal, token), reason=reason
     )
-    return {"armed": False, "changed": changed}
+    return {"armed": False, "changed": recorded.result, "change_id": recorded.change_id}
 
 
 def move_schedule_point(
@@ -944,22 +909,109 @@ def move_schedule_point(
     point = session.get(SchedulePoint, point_id)
     if point is None or point.zone_id != zone.id:
         raise ValueError("Zeitplanpunkt nicht gefunden")
-    domain_move_schedule_point(
-        session,
-        zone,
-        point,
-        weekday=weekday,
-        minute=minute,
-        user_id=principal.user_id,
-        token_id=token.id,
-        source="mcp",
+    recorded = change_log_domain.move_point(
+        session, _actor(principal, token), zone, point, weekday=weekday, minute=minute
     )
     return {
         "zone": zone.name,
         "point_id": point.id,
         "weekday": point.weekday,
         "minute": point.minute_of_day,
+        "change_id": recorded.change_id,
     }
+
+
+def _change_entry(view: ChangeView) -> dict[str, object]:
+    """Ein Eintrag des Änderungsprotokolls in der Form, die `list_changes` und
+    `revert_change` gemeinsam ausgeben. Zeitpunkte tragen die Zeitzone ausdrücklich."""
+    return {
+        "id": view.id,
+        "at": _moment_utc(view.occurred_at),
+        "source": view.source,
+        "user": view.user_name,
+        "token": view.token_name,
+        "change_type": view.change_type,
+        "zone": view.zone_name,
+        "summary": view.summary,
+        "fields": [
+            {"field": item.field, "before": item.before, "after": item.after}
+            for item in view.fields
+        ],
+        "revertible": view.revertible,
+        "not_revertible_reason": view.not_revertible_reason,
+        "reverted": view.reverted_at is not None,
+        "reverted_at": _moment_utc(view.reverted_at),
+        "reverted_by": view.reverted_by_id,
+        "reverts": view.reverts_id,
+        "forced": view.forced,
+    }
+
+
+def list_changes(
+    session: Session,
+    plaintext: str,
+    zone: str | None = None,
+    change_type: str | None = None,
+    source: str | None = None,
+    from_at: datetime | None = None,
+    to_at: datetime | None = None,
+    include_reverted: bool = True,
+    limit: int = DEFAULT_LIMIT,
+) -> list[dict[str, object]]:
+    """Reads the change log -- the same protocol as the page "Änderungsprotokoll".
+
+    `audit.read`, plant-wide: like the command log, this is a protocol over the whole
+    plant. `zone` is the zone's name (as in `list_zones`); entries of a zone that has
+    been deleted since are still found with `zone=None`.
+    """
+    _token, principal = _log_in(session, plaintext)
+    require(principal, "audit.read")
+    zone_id: int | None = None
+    if zone is not None:
+        found = next(
+            (
+                entry
+                for entry in visible_zones(session, principal, "audit.read")
+                if zone in (entry.name, entry.display_name)
+            ),
+            None,
+        )
+        if found is None:
+            raise LookupError("Zone nicht gefunden")
+        zone_id = found.id
+    if limit < 1 or limit > change_log_domain.MAX_LIMIT:
+        raise ChangeLogError(f"limit muss zwischen 1 und {change_log_domain.MAX_LIMIT} liegen")
+    views = change_log_domain.list_changes(
+        session,
+        zone_id=zone_id,
+        change_type=change_type,
+        source=source,
+        from_at=from_at,
+        to_at=to_at,
+        include_reverted=include_reverted,
+        limit=limit,
+    )
+    return [_change_entry(view) for view in views]
+
+
+def revert_change(
+    session: Session, plaintext: str, change_id: int, force: bool = False
+) -> dict[str, object]:
+    """Takes one logged change back, through the domain's own functions.
+
+    The rights are those of the original change and are checked by the domain, before
+    anything about the current state is disclosed -- not repeated here. A revert whose
+    effect has already ended is not an error: it comes back as `already_effective`
+    and the entry is marked as settled (an exception would roll that marking back).
+    """
+    token, principal = _log_in(session, plaintext)
+    try:
+        view = change_log_domain.revert_change(
+            session, principal, change_id, force=force, actor=_actor(principal, token)
+        )
+    except ChangeAlreadyEffective as notice:
+        return {"status": "already_effective", "message": str(notice), "change_id": change_id}
+    return {"status": "reverted", **_change_entry(view)}
 
 
 def _mcp_server_class() -> Callable[[str], _McpServer]:
@@ -1103,6 +1155,41 @@ def _register_tools(
         """Reads the actuator command log, newest first, filtered and capped."""
         with session_scope(factory) as session:
             return device_commands(session, current(), zone, outcome, from_at, to_at, limit)
+
+    @server.tool(name="list_changes")
+    def mcp_list_changes(
+        zone: str | None = None,
+        change_type: str | None = None,
+        source: str | None = None,
+        from_at: datetime | None = None,
+        to_at: datetime | None = None,
+        include_reverted: bool = True,
+        limit: int = DEFAULT_LIMIT,
+    ) -> list[dict[str, object]]:
+        """Reads the change log, newest first: who changed what, before and after.
+
+        Filters: zone name, change_type, source, from_at (inclusive) / to_at (exclusive,
+        naive = UTC), include_reverted. Each entry says whether it can be taken back
+        (`revertible`, else `not_revertible_reason`) and by which entry it was
+        (`reverted_by`); `reverts` is set on an entry that is itself a rollback.
+        """
+        with session_scope(factory) as session:
+            return list_changes(
+                session, current(), zone, change_type, source, from_at, to_at,
+                include_reverted, limit,
+            )
+
+    @server.tool(name="revert_change")
+    def mcp_revert_change(change_id: int, force: bool = False) -> dict[str, object]:
+        """Takes back one logged change (id from list_changes) and returns the new entry.
+
+        Needs the rights of the original change. If the value was changed again since,
+        the call is refused and names the current and the expected value; `force=true`
+        sets it back anyway. A rollback is not rolled back again; if the effect has
+        already ended the answer is status `already_effective`.
+        """
+        with session_scope(factory) as session:
+            return revert_change(session, current(), change_id, force)
 
     @server.tool(name="temperature_history")
     def mcp_temperature_history(
