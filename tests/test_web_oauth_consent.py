@@ -337,3 +337,91 @@ def test_approval_refused_by_the_domain_is_a_plain_400(
     )
     assert response.status_code == 400
     assert "nicht bestätigt" in response.text
+
+
+def _form_field_token(c) -> dict[str, str]:
+    return {"csrf_token": _csrf(c)["X-CSRF-Token"]}
+
+
+def test_consent_form_is_not_boosted_and_carries_csrf_field(client_als, session: Session) -> None:
+    """Die Zustimmung führt zu einer fremden Adresse und muss ein echter Seitenwechsel sein."""
+    c = client_als([("token.self", None), ("zone.read", None)])
+    request_id = _request(session)
+    body = c.get(f"/oauth/consent?request={request_id}").text
+    post_form = body[body.index('<form method="post"') :]
+    post_form = post_form[: post_form.index("</form>")]
+    assert 'hx-boost="false"' in post_form.split(">", 1)[0]
+    assert 'name="csrf_token"' in post_form
+
+
+def test_htmx_submit_gets_hx_redirect_not_cross_origin_303(client_als, session: Session) -> None:
+    c = client_als([("token.self", None), ("zone.read", None)])
+    request_id = _request(session)
+    response = c.post(
+        "/oauth/consent",
+        data={"request": request_id, "action": "allow", "permission": "zone.read"},
+        headers={**_csrf(c), "HX-Request": "true", "HX-Boosted": "true"},
+        follow_redirects=False,
+    )
+    assert response.status_code == 200
+    assert "location" not in response.headers
+    target = urlsplit(response.headers["HX-Redirect"])
+    assert (target.scheme, target.netloc, target.path) == ("https", "client.example", "/callback")
+    query = parse_qs(target.query)
+    assert query["state"] == ["opaque"]
+    assert len(query["code"]) == 1
+
+
+def test_htmx_deny_gets_hx_redirect(client_als, session: Session) -> None:
+    c = client_als([("token.self", None)])
+    request_id = _request(session)
+    response = c.post(
+        "/oauth/consent",
+        data={"request": request_id, "action": "deny"},
+        headers={**_csrf(c), "HX-Request": "true", "HX-Boosted": "true"},
+        follow_redirects=False,
+    )
+    assert response.status_code == 200
+    assert "location" not in response.headers
+    query = parse_qs(urlsplit(response.headers["HX-Redirect"]).query)
+    assert query["error"] == ["access_denied"]
+    assert query["state"] == ["opaque"]
+
+
+def test_plain_form_post_with_field_token_redirects_with_303(client_als, session: Session) -> None:
+    """Ohne htmx kommt das Token nur als Formularfeld; die Antwort ist eine gewöhnliche 303."""
+    c = client_als([("token.self", None), ("zone.read", None)])
+    request_id = _request(session)
+    response = c.post(
+        "/oauth/consent",
+        data={
+            "request": request_id,
+            "action": "allow",
+            "permission": "zone.read",
+            **_form_field_token(c),
+        },
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    assert "HX-Redirect" not in response.headers
+    query = parse_qs(urlsplit(response.headers["location"]).query)
+    assert query["state"] == ["opaque"] and len(query["code"]) == 1
+
+
+def test_plain_form_deny_with_field_token_and_without_token(client_als, session: Session) -> None:
+    c = client_als([("token.self", None)])
+    request_id = _request(session)
+    rejected = c.post(
+        "/oauth/consent",
+        data={"request": request_id, "action": "deny"},
+        follow_redirects=False,
+    )
+    assert rejected.status_code == 403
+    response = c.post(
+        "/oauth/consent",
+        data={"request": request_id, "action": "deny", **_form_field_token(c)},
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    query = parse_qs(urlsplit(response.headers["location"]).query)
+    assert query["error"] == ["access_denied"]

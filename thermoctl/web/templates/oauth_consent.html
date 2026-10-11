@@ -22,7 +22,10 @@
     <button class="btn btn-outline-secondary mt-2" type="submit">Vorauswahl übernehmen</button>
 </form>
 {% if omitted %}<p class="text-muted">Rechte der Vorauswahl, die Sie nicht besitzen, wurden weggelassen.</p>{% endif %}
-<form method="post" action="{{ url_prefix }}/oauth/consent">
+{# Kein hx-boost: Die Antwort führt zu einer fremden Adresse (Redirect-URI des Clients).
+   Ein XHR folgte dem Cross-Origin und scheiterte am Preflight; nur ein echter
+   Seitenwechsel erreicht den Client. #}
+<form method="post" action="{{ url_prefix }}/oauth/consent" hx-boost="false">
     <input type="hidden" name="request" value="{{ request_id }}">
     {% for title, detail, entries in areas %}
     <fieldset class="mt-3">
