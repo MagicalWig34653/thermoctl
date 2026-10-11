@@ -484,9 +484,7 @@ def _lose_the_race(monkeypatch, column: str) -> None:
         if col == column:
             from sqlalchemy import update
 
-            session.execute(
-                update(type(row)).where(type(row).id == row.id).values({col: utcnow()})
-            )
+            session.execute(update(type(row)).where(type(row).id == row.id).values({col: utcnow()}))
         return real(session, row, col, *extra)
 
     monkeypatch.setattr("thermoctl.domain.oauth._claim", racing)
@@ -509,9 +507,7 @@ def test_concurrent_code_redemption_lets_only_one_win(session: Session, monkeypa
     code = _approved_code(session, client, user)
     _lose_the_race(monkeypatch, "consumed_at")
     with pytest.raises(oauth.OAuthError) as exc:
-        oauth.exchange_code(
-            session, client.client_id, code, VERIFIER, REDIRECT, RESOURCE, RESOURCE
-        )
+        oauth.exchange_code(session, client.client_id, code, VERIFIER, REDIRECT, RESOURCE, RESOURCE)
     assert exc.value.error == "invalid_grant"
     assert not session.scalars(select(OAuthRefreshToken)).all()  # kein Paar ausgestellt
 
@@ -593,3 +589,96 @@ def test_revoke_access_token_refuses_bearer_tokens(session: Session) -> None:
     with pytest.raises(ValueError):
         oauth.revoke_access_token(session, token)
     assert token.revoked_at is None
+
+
+# --- Name, Wachstumsgrenzen, Aufräumen -------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "name", ["Cla‮ude", "Claude​", "Cla\nude", "Cla\tude", "Cla ude", "Cla\x00ude"]
+)
+def test_register_client_rejects_control_format_and_separator_characters(
+    session: Session, name: str
+) -> None:
+    with pytest.raises(oauth.OAuthError) as exc:
+        oauth.register_client(session, name, [REDIRECT])
+    assert exc.value.error == "invalid_client_metadata"
+
+
+def test_register_client_keeps_ordinary_names_with_spaces_and_umlauts(session: Session) -> None:
+    assert oauth.register_client(session, "Mein Büro-Client 2", [REDIRECT]).name
+
+
+def test_unused_clients_are_capped(session: Session, monkeypatch) -> None:
+    monkeypatch.setattr("thermoctl.domain.oauth.MAX_UNUSED_CLIENTS", 3)
+    for i in range(3):
+        oauth.register_client(session, f"c{i}", [REDIRECT])
+    with pytest.raises(oauth.OAuthError) as exc:
+        oauth.register_client(session, "zu viel", [REDIRECT])
+    assert exc.value.error == "temporarily_unavailable"
+
+
+def test_a_used_client_does_not_count_against_the_cap(session: Session, monkeypatch) -> None:
+    monkeypatch.setattr("thermoctl.domain.oauth.MAX_UNUSED_CLIENTS", 1)
+    _pair(session)  # der Austausch setzt last_used_at
+    oauth.register_client(session, "noch einer", [REDIRECT])
+
+
+def test_pending_requests_per_client_are_capped(session: Session, monkeypatch) -> None:
+    monkeypatch.setattr("thermoctl.domain.oauth.MAX_PENDING_REQUESTS_PER_CLIENT", 2)
+    client = _client(session)
+    other = _client(session)
+    for _ in range(2):
+        oauth.start_request(session, client, REDIRECT, _challenge(), RESOURCE, None, RESOURCE)
+    with pytest.raises(oauth.OAuthError) as exc:
+        oauth.start_request(session, client, REDIRECT, _challenge(), RESOURCE, None, RESOURCE)
+    assert exc.value.error == "temporarily_unavailable"
+    oauth.start_request(session, other, REDIRECT, _challenge(), RESOURCE, None, RESOURCE)
+
+
+def test_expired_requests_do_not_count_against_the_cap(session: Session, monkeypatch) -> None:
+    monkeypatch.setattr("thermoctl.domain.oauth.MAX_PENDING_REQUESTS_PER_CLIENT", 1)
+    client = _client(session)
+    oauth.start_request(session, client, REDIRECT, _challenge(), RESOURCE, None, RESOURCE)
+    later = utcnow() + oauth.REQUEST_TTL + timedelta(seconds=1)
+    monkeypatch.setattr("thermoctl.domain.oauth.utcnow", lambda: later)
+    oauth.start_request(session, client, REDIRECT, _challenge(), RESOURCE, None, RESOURCE)
+
+
+def test_purge_removes_only_what_is_dead(session: Session) -> None:
+    _user, used_client, pair = _pair(session)  # benutzt: Client, Code, Refresh-Token bleiben
+    idle = _client(session)  # nie benutzt, aber jung: bleibt
+    old_idle = _client(session)  # nie benutzt und alt: geht
+    pending_client = _client(session)  # alt, aber mit offener Anfrage: bleibt
+    # Erst nach dem Anlegen altern lassen: `register_client` räumt selbst auf.
+    for old in (old_idle, pending_client):
+        old.created_at = utcnow() - oauth.UNUSED_CLIENT_TTL - timedelta(hours=1)
+    oauth.start_request(session, pending_client, REDIRECT, _challenge(), RESOURCE, None, RESOURCE)
+    stale = oauth.start_request(session, idle, REDIRECT, _challenge(), RESOURCE, None, RESOURCE)
+    row = oauth.load_request(session, stale)
+    assert row is not None
+    row.expires_at = utcnow() - oauth.EXPIRED_KEEP - timedelta(hours=1)
+    session.flush()
+
+    removed = oauth.purge_expired(session)
+
+    assert removed == 2  # die alte Anfrage und der alte, ungenutzte Client
+    remaining = {c.client_id for c in session.scalars(select(oauth.OAuthClient))}
+    assert used_client.client_id in remaining and idle.client_id in remaining
+    assert old_idle.client_id not in remaining and pending_client.client_id in remaining
+    assert resolve_token(session, pair.access_token) is not None
+
+
+def test_purge_drops_expired_codes_and_dead_refresh_tokens(session: Session) -> None:
+    _user, client, pair = _pair(session)
+    old = utcnow() - oauth.EXPIRED_KEEP - timedelta(hours=1)
+    for code in session.scalars(select(OAuthAuthorizationCode)):
+        code.expires_at = old
+    for refresh_row in session.scalars(select(OAuthRefreshToken)):
+        refresh_row.expires_at = old
+    session.flush()
+    assert oauth.purge_expired(session) == 2
+    assert not session.scalars(select(OAuthAuthorizationCode)).all()
+    assert oauth.purge_expired(session) == 0
+    with pytest.raises(oauth.OAuthError):
+        oauth.refresh(session, client.client_id, pair.refresh_token, None, RESOURCE)

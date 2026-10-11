@@ -24,12 +24,13 @@ import hmac
 import logging
 import re
 import secrets
+import unicodedata
 from dataclasses import dataclass
 from datetime import timedelta
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
 from urllib.parse import urlsplit
 
-from sqlalchemy import select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
 
 from thermoctl.auth.secrets import hash_secret, new_secret
@@ -48,12 +49,22 @@ from thermoctl.db.models.oauth import (
 )
 from thermoctl.domain.authz import Forbidden, has_permission, principal_for_user
 
+if TYPE_CHECKING:
+    from sqlalchemy.engine import CursorResult
+
 log = logging.getLogger("thermoctl.oauth")
 
 ACCESS_TTL = timedelta(hours=1)
 REFRESH_TTL = timedelta(days=30)
 CODE_TTL = timedelta(minutes=5)
 REQUEST_TTL = timedelta(minutes=10)
+
+# Wachstumsgrenzen: /register und /authorize sind öffentlich (keine Anmeldung, kein Recht).
+# Ohne Grenzen könnte jeder, der die Adresse kennt, die Tabellen beliebig füllen.
+MAX_UNUSED_CLIENTS = 1000
+UNUSED_CLIENT_TTL = timedelta(days=1)
+MAX_PENDING_REQUESTS_PER_CLIENT = 100
+EXPIRED_KEEP = timedelta(days=1)  # abgelaufene Zeilen bleiben so lange zur Fehlersuche
 
 MAX_REDIRECT_URIS = 10
 MAX_URI_LENGTH = 512  # Unique-Index (client_id, uri): 512 Zeichen = 2048 Byte unter utf8mb4
@@ -144,6 +155,17 @@ def register_client(session: Session, name: str, redirect_uris: list[str]) -> OA
     name = name.strip()
     if not name or len(name) > 128:
         raise OAuthError("invalid_client_metadata", "client_name fehlt oder ist zu lang")
+    # Der Name steht auf der Zustimmungsseite, und der Client wählt ihn frei. Steuer-,
+    # Format- (u. a. Bidi-Umkehr) und Trennzeichen erlauben es, einen anderen Namen
+    # vorzutäuschen oder die Anzeige zu verdrehen.
+    if any(unicodedata.category(char)[0] in ("C", "Z") and char != " " for char in name):
+        raise OAuthError("invalid_client_metadata", "client_name enthält unzulässige Zeichen")
+    purge_expired(session)
+    unused = session.scalar(
+        select(func.count()).select_from(OAuthClient).where(OAuthClient.last_used_at.is_(None))
+    )
+    if (unused or 0) >= MAX_UNUSED_CLIENTS:
+        raise OAuthError("temporarily_unavailable", "Zu viele noch unbenutzte Clients")
     if not 1 <= len(redirect_uris) <= MAX_REDIRECT_URIS:
         raise OAuthError(
             "invalid_redirect_uri", f"1 bis {MAX_REDIRECT_URIS} Redirect-URIs sind erlaubt"
@@ -170,6 +192,45 @@ def client_redirect_uris(session: Session, client: OAuthClient) -> list[str]:
     )
 
 
+def _deleted(session: Session, statement: Any) -> int:
+    result = cast("CursorResult[Any]", session.execute(statement))
+    return result.rowcount or 0
+
+
+def purge_expired(session: Session) -> int:
+    """Löscht Abgelaufenes: Anfragen, Codes, nie benutzte Clients, tote Refresh-Token.
+
+    Gibt die Zahl gelöschter Zeilen zurück. Nichts davon wird noch gebraucht: eine
+    abgelaufene Anfrage oder ein abgelaufener Code lässt sich nicht mehr einlösen, ein
+    Client, der nie ein Token bekam, kann sich neu registrieren. Benutzte Clients und
+    widerrufene Token bleiben (Nachvollziehbarkeit).
+    """
+    cutoff = utcnow() - EXPIRED_KEEP
+    removed = 0
+    for model in (OAuthAuthorizationRequest, OAuthAuthorizationCode):
+        removed += _deleted(session, delete(model).where(model.expires_at < cutoff))
+    removed += _deleted(
+        session,
+        delete(OAuthRefreshToken).where(
+            OAuthRefreshToken.expires_at < cutoff, OAuthRefreshToken.replaced_by_id.is_(None)
+        ),
+    )
+    removed += _deleted(
+        session,
+        delete(OAuthClient).where(
+            OAuthClient.last_used_at.is_(None),
+            OAuthClient.created_at < utcnow() - UNUSED_CLIENT_TTL,
+            OAuthClient.id.not_in(select(OAuthAuthorizationRequest.client_id)),
+            OAuthClient.id.not_in(select(OAuthAuthorizationCode.client_id)),
+            OAuthClient.id.not_in(select(OAuthRefreshToken.client_id)),
+        ),
+    )
+    session.flush()
+    if removed:
+        _log("oauth.purge", "ok", removed=removed)
+    return removed
+
+
 def find_client(session: Session, client_id: str) -> OAuthClient | None:
     return session.scalar(select(OAuthClient).where(OAuthClient.client_id == client_id))
 
@@ -194,6 +255,17 @@ def start_request(
         raise OAuthError("invalid_target", "resource ist nicht der MCP-Server dieser Anlage")
     if state is not None and len(state) > 512:
         raise OAuthError("invalid_request", "state ist zu lang")
+    pending = session.scalar(
+        select(func.count())
+        .select_from(OAuthAuthorizationRequest)
+        .where(
+            OAuthAuthorizationRequest.client_id == client.id,
+            OAuthAuthorizationRequest.consumed_at.is_(None),
+            OAuthAuthorizationRequest.expires_at > utcnow(),
+        )
+    )
+    if (pending or 0) >= MAX_PENDING_REQUESTS_PER_CLIENT:
+        raise OAuthError("temporarily_unavailable", "Zu viele offene Anfragen für diesen Client")
     request_id = new_secret()
     session.add(
         OAuthAuthorizationRequest(
