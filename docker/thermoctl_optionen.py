@@ -124,11 +124,21 @@ BEWUSST_AUSGELASSEN: dict[str, str] = {
     "übernimmt Ingress.",
     "meross_api_base": "Regionswahl (iotx-eu/us/ap), die so gut wie nie vom "
     "Standardwert abweicht -- wer sie braucht, setzt sie über das freie `env`-Feld.",
-    "mcp_mode": "Kommt mit dem Add-on-Update zu 0.14.0 (Add-on-Repo, siehe docs/STATUS.md).",
-    "mcp_path": "Kommt mit dem Add-on-Update zu 0.14.0 (Add-on-Repo, siehe docs/STATUS.md).",
-    "mcp_port": "Kommt mit dem Add-on-Update zu 0.14.0 (Add-on-Repo, siehe docs/STATUS.md).",
-    "public_url": "Kommt mit dem Add-on-Update zu 0.14.0 (Add-on-Repo, siehe docs/STATUS.md).",
-    "mcp_public_url": "Kommt mit dem Add-on-Update zu 0.14.0 (Add-on-Repo, siehe docs/STATUS.md).",
+    "mcp_mode": "Seltene Betriebsart-Einstellung für MCP über HTTP; im Add-on über das freie "
+    "`env`-Feld zu setzen (siehe DOCS.md des Add-ons). Eigene Felder gäbe es nur, "
+    "wenn sich das als häufig erweist.",
+    "mcp_path": "Seltene Betriebsart-Einstellung für MCP über HTTP; im Add-on über das freie "
+    "`env`-Feld zu setzen (siehe DOCS.md des Add-ons). Eigene Felder gäbe es nur, "
+    "wenn sich das als häufig erweist.",
+    "mcp_port": "Seltene Betriebsart-Einstellung für MCP über HTTP; im Add-on über das freie "
+    "`env`-Feld zu setzen (siehe DOCS.md des Add-ons). Eigene Felder gäbe es nur, "
+    "wenn sich das als häufig erweist.",
+    "public_url": "Seltene Betriebsart-Einstellung für MCP über HTTP; im Add-on über das freie "
+    "`env`-Feld zu setzen (siehe DOCS.md des Add-ons). Eigene Felder gäbe es nur, "
+    "wenn sich das als häufig erweist.",
+    "mcp_public_url": "Seltene Betriebsart-Einstellung für MCP über HTTP; im Add-on über das freie "
+    "`env`-Feld zu setzen (siehe DOCS.md des Add-ons). Eigene Felder gäbe es nur, "
+    "wenn sich das als häufig erweist.",
     "root_path": "Keine vom Betreiber auszufüllende Option: unter Ingress vergibt der "
     "Supervisor den Pfad selbst und teilt ihn nur zur Laufzeit über seine eigene API "
     "mit (docker/thermoctl_ingress.py, aus docker/entrypoint.sh aufgerufen) -- ein "

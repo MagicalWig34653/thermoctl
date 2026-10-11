@@ -26,9 +26,9 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
   `THERMOCTL_MCP_PUBLIC_URL`. Die Vorgabe `MCP_MODE=off` bedeutet: **es ändert sich nichts.**
 - **Downgrade** unter `b721e49c6a30` **löscht alle OAuth-Token** (sie ließen sich sonst nicht
   mehr von Bearer-Token unterscheiden und gälten als dauerhafte Token weiter).
-- **Home-Assistant-Add-on:** Die Felder für die neuen Einstellungen (`mcp_mode`, `mcp_path`,
-  `mcp_port`, `public_url`, `mcp_public_url`, Port-Freigabe) kommen mit dem Add-on-Update;
-  bis dahin ist der HTTP-Zugang dort nicht einstellbar.
+- **Home-Assistant-Add-on:** Es gibt keine eigenen Felder für die neuen Einstellungen; sie
+  werden über das freie Feld `env` gesetzt. Neu ist ein optionaler Port 8001 für den Modus
+  `port`, standardmäßig nicht veröffentlicht.
 
 ### Neu
 

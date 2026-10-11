@@ -25,10 +25,11 @@ Gebaut und dokumentiert (`docs/mcp.md`, `docs/self-hosting.md` Abschnitt 8c, `do
   für `force_dry_run`.
 - **Migrationen** `b7d2e5a40c18` (`control.disarm`) und `b721e49c6a30` (OAuth-Tabellen, `api_token.source`),
   Migrationskopf `b721e49c6a30`.
-- **Offen:** Add-on-Repository (Felder `mcp_mode`, `mcp_path`, `mcp_port`, `public_url`, `mcp_public_url`,
-  Port-Freigabe, `DOCS.md`, `CHANGELOG.md`) und die Freigabe 0.14.0 (Versionsnummer in `pyproject.toml`, Tag, Release)
-  stehen aus. `docker/thermoctl_optionen.py` führt die fünf Felder bis dahin in `BEWUSST_AUSGELASSEN`; sobald das
-  Add-on sie hat, wandern sie nach `ABGEBILDETE_FELDER`.
+- **Add-on:** Keine eigenen Felder; die Einstellungen kommen über das freie `env`-Feld, der Port 8001 ist
+  optional (`ports: 8001/tcp: null`). `docker/thermoctl_optionen.py` führt die fünf Felder deshalb mit
+  Begründung in `BEWUSST_AUSGELASSEN`. Das Add-on-Repository ist lokal auf 0.14.0 vorbereitet (nicht gepusht);
+  es wird erst nach Tag und gebautem Abbild gepusht.
+- **Offen:** die Freigabe 0.14.0 (Versionsnummer in `pyproject.toml`, Tag, Release, danach Push des Add-ons).
 - **Nicht ausprobiert:** der Ablauf mit einem echten Client (`claude mcp add --transport http …`, `/mcp`) hinter einem echten
   Reverse Proxy; die Tests prüfen den Ablauf, ersetzen aber nicht, ihn einmal zu öffnen.
 
