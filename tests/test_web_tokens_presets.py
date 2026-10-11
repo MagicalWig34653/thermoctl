@@ -1,3 +1,5 @@
+from datetime import timedelta
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -8,6 +10,8 @@ from thermoctl.config import get_settings
 from thermoctl.db.base import utcnow
 from thermoctl.db.models.credential import ApiToken, ApiTokenPermission
 from thermoctl.db.models.identity import User
+from thermoctl.db.models.lookup import Permission
+from thermoctl.db.models.operations import AuditEvent
 from thermoctl.domain.oauth import register_client
 
 
@@ -188,3 +192,77 @@ def test_zone_scoped_permission_can_be_selected_without_widening(
     ).all()
     assert len(rows) == 1
     assert rows[0].zone_id == zone.id
+
+
+def _permission_codes(session: Session, token: ApiToken) -> set[str]:
+    session.expire_all()
+    return {
+        row.code
+        for row in session.execute(
+            select(Permission.code)
+            .join(ApiTokenPermission, ApiTokenPermission.permission_id == Permission.id)
+            .where(ApiTokenPermission.api_token_id == token.id)
+        ).all()
+    }
+
+
+def test_permission_change_is_audited_with_old_and_new_rights(
+    client_als, session: Session
+) -> None:
+    c = client_als([("token.self", None), ("zone.read", None), ("device.read", None)])
+    c.post("/tokens", data={"name": "Protokoll", "code": "zone.read"}, headers=_csrf(c))
+    token = session.scalar(select(ApiToken).where(ApiToken.name == "Protokoll"))
+    assert token is not None
+    response = c.post(
+        f"/tokens/{token.id}/permissions",
+        data={"permission": "device.read"},
+        headers=_csrf(c),
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    event = session.scalar(
+        select(AuditEvent).where(
+            AuditEvent.action == "token.permissions_changed",
+            AuditEvent.object_id == str(token.id),
+        )
+    )
+    assert event is not None
+    assert event.object_type == "api_token"
+    assert event.actor_user_id == token.user_id
+    assert event.detail is not None
+    assert "alt: zone.read" in event.detail
+    assert "neu: device.read" in event.detail
+
+
+def test_revoked_token_permissions_are_not_edited(client_als, session: Session) -> None:
+    c = client_als([("token.self", None), ("zone.read", None), ("device.read", None)])
+    c.post("/tokens", data={"name": "Widerrufen", "code": "zone.read"}, headers=_csrf(c))
+    token = session.scalar(select(ApiToken).where(ApiToken.name == "Widerrufen"))
+    assert token is not None
+    token.revoked_at = utcnow()
+    session.flush()
+    response = c.post(
+        f"/tokens/{token.id}/permissions",
+        data={"permission": "device.read"},
+        headers=_csrf(c),
+        follow_redirects=False,
+    )
+    assert response.status_code == 409
+    assert _permission_codes(session, token) == {"zone.read"}
+
+
+def test_expired_token_permissions_are_not_edited(client_als, session: Session) -> None:
+    c = client_als([("token.self", None), ("zone.read", None), ("device.read", None)])
+    c.post("/tokens", data={"name": "Abgelaufen", "code": "zone.read"}, headers=_csrf(c))
+    token = session.scalar(select(ApiToken).where(ApiToken.name == "Abgelaufen"))
+    assert token is not None
+    token.expires_at = utcnow() - timedelta(minutes=1)
+    session.flush()
+    response = c.post(
+        f"/tokens/{token.id}/permissions",
+        data={"permission": "device.read"},
+        headers=_csrf(c),
+        follow_redirects=False,
+    )
+    assert response.status_code == 409
+    assert _permission_codes(session, token) == {"zone.read"}
