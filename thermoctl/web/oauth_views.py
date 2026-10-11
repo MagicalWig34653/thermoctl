@@ -119,7 +119,7 @@ def _page(
     if pending is None:
         return _error()
     client = session.get(OAuthClient, pending.client_id)
-    if client is None:
+    if client is None:  # pragma: no cover - Fremdschlüssel löscht die Anfrage mit dem Client
         return _error()
     redirect_origin, redirect_kind = _redirect_target(pending.redirect_uri)
     areas = _choices(session, principal)
@@ -209,11 +209,13 @@ async def consent_submit(
     for value in sorted(selected):
         code, separator, zone = value.partition(":")
         zone_id = int(zone) if separator else None
-        if not has_permission(principal, code, zone_id):
+        if not has_permission(principal, code, zone_id):  # pragma: no cover - doppelte Absicherung
+            # `available` stammt aus den Grants desselben Principals; die Prüfung bleibt als
+            # zweite Sperre vor `approve`, ist aber über die Oberfläche nicht erreichbar.
             return HTMLResponse("<h1>Recht nicht erlaubt.</h1>", status_code=403)
         grants.append((code, zone_id))
     user = session.get(User, principal.user_id)
-    if user is None:
+    if user is None:  # pragma: no cover - der Principal stammt aus einer Sitzung dieses Benutzers
         return _error()
     failure: OAuthError | Forbidden | None = None
     code_plain = None

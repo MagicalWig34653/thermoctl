@@ -192,9 +192,7 @@ def test_old_source_comparisons_are_deleted_using_the_shadow_decision_retention(
     settings = create_settings(session)
     settings.shadow_decision_retention_days = 365
     zone = create_zone(session, "quellenvergleich-aufbewahrung")
-    device = create_device(
-        session, json.loads(DATA_PATH.read_text(encoding="utf-8"))["geraete"][0]
-    )
+    device = create_device(session, json.loads(DATA_PATH.read_text(encoding="utf-8"))["geraete"][0])
     _comparison_inventory(session, zone.id, device.id, [367, 366, 364])
 
     assert delete_old_sensor_failure_source_comparisons(session, NOW, batch_size=2) == 2
@@ -245,13 +243,21 @@ def test_actuator_decision_block_size_must_be_positive(session: Session) -> None
 def test_expired_oauth_rows_are_removed_by_the_retention_run(session: Session) -> None:
     client = register_client(session, "Aufräumen", ["https://client.example/cb"])
     start_request(
-        session, client, "https://client.example/cb", "x" * 43,
-        "https://mcp.example", None, "https://mcp.example",
+        session,
+        client,
+        "https://client.example/cb",
+        "x" * 43,
+        "https://mcp.example",
+        None,
+        "https://mcp.example",
     )
     frische = session.query(OAuthAuthorizationRequest).one()
     alt = OAuthAuthorizationRequest(
-        request_hash="h" * 64, client_id=client.id, redirect_uri="https://client.example/cb",
-        code_challenge="x" * 43, resource="https://mcp.example",
+        request_hash="h" * 64,
+        client_id=client.id,
+        redirect_uri="https://client.example/cb",
+        code_challenge="x" * 43,
+        resource="https://mcp.example",
         expires_at=utcnow() - timedelta(days=3),
     )
     session.add(alt)

@@ -324,3 +324,20 @@ def test_http_main_serves_the_app_on_the_configured_port(monkeypatch) -> None:
     server.main()
     assert (seen["host"], seen["port"]) == ("127.0.0.1", 9123)
     assert seen["app"] is not None
+
+
+def test_other_runtime_errors_while_creating_the_mcp_app_are_not_swallowed(monkeypatch) -> None:
+    import pytest
+
+    from thermoctl import app as web_app
+    from thermoctl.mcp import http_app
+
+    settings = _settings()
+    monkeypatch.setattr(web_app, "get_settings", lambda: settings)
+
+    def broken(_settings, _factory):
+        raise RuntimeError("etwas ganz anderes")
+
+    monkeypatch.setattr(http_app, "create_mcp_asgi_app", broken)
+    with pytest.raises(RuntimeError, match="ganz anderes"):
+        web_app.create_app()

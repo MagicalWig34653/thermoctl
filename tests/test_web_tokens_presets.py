@@ -206,9 +206,7 @@ def _permission_codes(session: Session, token: ApiToken) -> set[str]:
     }
 
 
-def test_permission_change_is_audited_with_old_and_new_rights(
-    client_als, session: Session
-) -> None:
+def test_permission_change_is_audited_with_old_and_new_rights(client_als, session: Session) -> None:
     c = client_als([("token.self", None), ("zone.read", None), ("device.read", None)])
     c.post("/tokens", data={"name": "Protokoll", "code": "zone.read"}, headers=_csrf(c))
     token = session.scalar(select(ApiToken).where(ApiToken.name == "Protokoll"))
@@ -266,3 +264,33 @@ def test_expired_token_permissions_are_not_edited(client_als, session: Session) 
     )
     assert response.status_code == 409
     assert _permission_codes(session, token) == {"zone.read"}
+
+
+def test_malformed_zone_in_permission_value_is_refused(client_als, session: Session) -> None:
+    c = client_als([("token.self", None), ("zone.read", None)])
+    response = c.post(
+        "/tokens",
+        data={"name": "Kaputt", "permission": "zone.read:abc", "selection_submitted": "1"},
+        headers=_csrf(c),
+    )
+    assert response.status_code == 200
+    assert "kann kein Token mit diesem Recht ausstellen" in response.text
+    assert session.scalar(select(ApiToken).where(ApiToken.name == "Kaputt")) is None
+
+
+def test_issue_refusal_by_the_domain_is_shown_as_hint(
+    client_als, session: Session, monkeypatch
+) -> None:
+    """Zwischen Vorprüfung und Ausstellen können sich die Rechte ändern; die Domäne lehnt
+    dann ab, und die Seite zeigt den Satz statt eines Serverfehlers."""
+    from thermoctl.domain.authz import Forbidden
+    from thermoctl.web import admin_views
+
+    def refuse(*args, **kwargs):
+        raise Forbidden("Recht fehlt inzwischen")
+
+    monkeypatch.setattr(admin_views, "issue_token", refuse)
+    c = client_als([("token.self", None), ("zone.read", None)])
+    response = c.post("/tokens", data={"name": "Rennen", "code": "zone.read"}, headers=_csrf(c))
+    assert response.status_code == 200
+    assert "Recht fehlt inzwischen" in response.text
