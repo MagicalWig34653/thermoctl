@@ -849,6 +849,27 @@ def _mcp_server_class() -> Callable[[str], _McpServer]:
         ) from exc
 
 
+def _visible_to_client(error: Exception) -> Exception | None:
+    """Macht die Begründung einer Ablehnung für den Client lesbar.
+
+    Das SDK ersetzt jede Ausnahme, die kein `ToolError` ist, durch "Error executing tool
+    <name>" -- ein Modell erführe nie, dass ihm ein Recht fehlt oder die Zone nicht
+    existiert, und müsste raten. Die Meldungen dieser drei Arten formuliert die Domäne
+    selbst (Recht fehlt, Zone nicht gefunden, Token ungültig); andere Ausnahmen bleiben
+    verborgen, weil ihr Text Eingaben des Clients enthalten kann.
+    """
+    if not isinstance(error, (Forbidden, PermissionError, LookupError)):
+        return None
+    try:
+        tool_error = import_module("mcp.server.mcpserver.exceptions").ToolError
+    except ModuleNotFoundError:  # pragma: no cover - ältere SDK-Versionen
+        try:
+            tool_error = import_module("mcp.server.fastmcp.exceptions").ToolError
+        except ModuleNotFoundError:
+            return None
+    return cast(Exception, tool_error(str(error)))
+
+
 class _LoggedServer:
     """Hüllt den MCP-Server, damit jeder Werkzeugaufruf protokolliert wird.
 
@@ -870,6 +891,9 @@ class _LoggedServer:
                     result = function(*args, **kwargs)
                 except Exception as exc:
                     _log_tool(label, exc)
+                    visible = _visible_to_client(exc)
+                    if visible is not None:
+                        raise visible from exc
                     raise
                 _log_tool(label, None)
                 return result

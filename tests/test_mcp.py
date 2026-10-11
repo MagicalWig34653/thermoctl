@@ -34,6 +34,8 @@ from thermoctl.domain.authz import Forbidden
 from thermoctl.domain.control import arm, save_solar_location
 from thermoctl.mcp import server
 
+ToolError = pytest.importorskip("mcp.server.mcpserver.exceptions").ToolError
+
 
 def _assign_switch_actuator(session: Session, zone: Zone) -> None:
     """The minimal assignment `pi_eligible()` accepts."""
@@ -892,7 +894,7 @@ def test_tools_ask_the_token_source_on_every_call(session: Session, monkeypatch)
 
     assert tools["list_zones"]()  # type: ignore[operator]
     current["token"] = without_right
-    with pytest.raises(Forbidden):
+    with pytest.raises(ToolError, match="zone.read"):
         tools["list_zones"]()  # type: ignore[operator]
 
 
@@ -912,9 +914,9 @@ def test_tool_calls_are_logged_with_outcome_and_reason(
     marker = http_auth.current_key_prefix.set("abcd1234")
     try:
         assert tools["list_zones"]()  # type: ignore[operator]
-        with pytest.raises(Forbidden):
+        with pytest.raises(ToolError):
             tools["list_devices"]()  # type: ignore[operator]
-        with pytest.raises(LookupError):
+        with pytest.raises(ToolError):
             tools["zone_state"](999_999)  # type: ignore[operator]
     finally:
         http_auth.current_key_prefix.reset(marker)
@@ -961,3 +963,19 @@ def test_foreign_exception_text_never_reaches_the_log(
     with pytest.raises(ValueError):
         tools["list_zones"]()  # type: ignore[operator]
     assert secret not in " ".join(f"{r.getMessage()} {r.__dict__}" for r in caplog.records)
+
+
+def test_the_reason_of_a_refusal_reaches_the_client(session: Session, monkeypatch) -> None:
+    """Ohne diese Umwandlung sähe das Modell nur "Error executing tool ..."."""
+    plaintext = _token(session, "grund-sichtbar", [("zone.read", None)])
+    tools = _recording_tools(session, monkeypatch, lambda: plaintext)
+    with pytest.raises(ToolError, match="device.read"):
+        tools["list_devices"]()  # type: ignore[operator]
+
+
+def test_unexpected_errors_stay_hidden_from_the_client(session: Session, monkeypatch) -> None:
+    plaintext = _token(session, "grund-verborgen", [("zone.read", None)])
+    tools = _recording_tools(session, monkeypatch, lambda: plaintext)
+    monkeypatch.setattr(server, "list_zones", lambda *_a: (_ for _ in ()).throw(ValueError("x")))
+    with pytest.raises(ValueError):
+        tools["list_zones"]()  # type: ignore[operator]

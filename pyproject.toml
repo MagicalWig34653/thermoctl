@@ -29,6 +29,8 @@ dev = [
     "pytest>=9.1",
     "pytest-cov>=6.0",
     "httpx2>=2.12",
+    # Die HTTP-Tests des MCP-Servers (tests/test_mcp_http_app.py) laufen über das echte SDK.
+    "mcp>=1.2",
     "ruff>=0.16",
     "mypy>=1.18",
     "cosmic-ray>=8.7,<9",
