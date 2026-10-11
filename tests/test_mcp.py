@@ -979,3 +979,34 @@ def test_unexpected_errors_stay_hidden_from_the_client(session: Session, monkeyp
     monkeypatch.setattr(server, "list_zones", lambda *_a: (_ for _ in ()).throw(ValueError("x")))
     with pytest.raises(ValueError):
         tools["list_zones"]()  # type: ignore[operator]
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        server.ControlError("feld", "Der Wert liegt außerhalb"),
+        server.RemoteControlError("Die Einrichtung ist unvollständig."),
+        server.ScheduleError("zeitraum", "Der Zeitraum ist ungültig"),
+        server.PolicyError("profil", "Das Profil gibt es nicht"),
+        server.UnknownParameter("Parameter unbekannt"),
+        server.ParameterOutOfRange("Wert zu groß"),
+        server.DomainError("betriebsart", "Die Betriebsart gibt es nicht"),
+    ],
+)
+def test_domain_rejections_reach_the_client_with_their_text(
+    session: Session, monkeypatch, caplog, error: Exception
+) -> None:
+    import logging
+
+    plaintext = _token(session, f"abgewiesen-{type(error).__name__}"[:40], [("zone.read", None)])
+    tools = _recording_tools(session, monkeypatch, lambda: plaintext)
+    monkeypatch.setattr(server, "list_zones", lambda *_a: (_ for _ in ()).throw(error))
+    caplog.set_level(logging.INFO)
+    expected = getattr(error, "notice", None) or str(error)
+    with pytest.raises(ToolError) as exc:
+        tools["list_zones"]()  # type: ignore[operator]
+    assert str(exc.value) == expected  # der Satz der Domäne, nicht das Argument-Tupel
+    assert any(
+        getattr(r, "outcome", "") == "rejected" and getattr(r, "reason", "") == expected
+        for r in caplog.records
+    )

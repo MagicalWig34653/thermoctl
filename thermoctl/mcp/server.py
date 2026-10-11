@@ -24,14 +24,24 @@ from thermoctl.db.models.zone import SetpointMode, Zone, ZoneSetpoint
 from thermoctl.domain.authz import Forbidden, principal_for_token, require, visible_zones
 from thermoctl.domain.control import (
     LIMITS,
+    ControlError,
     arm,
     save_sensor_failure_backup_offset,
     save_sensor_failure_plant_defaults,
     settings,
 )
 from thermoctl.domain.device_commands import DEFAULT_LIMIT, list_commands, naive_utc
+from thermoctl.domain.modes import DomainError
 from thermoctl.domain.principal import Principal
+from thermoctl.domain.remote_control import RemoteControlError
 from thermoctl.domain.remote_control import boost as domain_boost
+from thermoctl.domain.schedule import (
+    ScheduleError,
+    create_override,
+    create_vacation,
+    current_or_upcoming_vacation,
+    resolved_setpoint,
+)
 from thermoctl.domain.schedule import (
     cancel_override as domain_cancel_override,
 )
@@ -39,16 +49,11 @@ from thermoctl.domain.schedule import (
     cancel_vacation as domain_cancel_vacation,
 )
 from thermoctl.domain.schedule import (
-    create_override,
-    create_vacation,
-    current_or_upcoming_vacation,
-    resolved_setpoint,
-)
-from thermoctl.domain.schedule import (
     move_schedule_point as domain_move_schedule_point,
 )
 from thermoctl.domain.sensor_failure_policy import (
     CurvePoint,
+    PolicyError,
     ProfileValues,
     list_backup_offset_candidates,
     migration_default_profile_id,
@@ -57,6 +62,8 @@ from thermoctl.domain.sensor_failure_policy import (
 )
 from thermoctl.domain.zone_settings import (
     PARAMETERS,
+    ParameterOutOfRange,
+    UnknownParameter,
     control_parameters,
     save_sensor_failure_parameters,
     sensor_failure_parameters,
@@ -69,6 +76,29 @@ from thermoctl.services.emergency_state import zone_emergency_view
 
 log = logging.getLogger("thermoctl.mcp")
 
+# Ausnahmen, mit denen die Domäne eine Eingabe abweist ("so nicht", kein Fehler des Dienstes).
+# Die REST-Schnittstelle gibt ihren Text als 4xx weiter; hier gilt dasselbe, sonst erführe ein
+# Modell nie, warum etwas abgelehnt wurde. Die Meldungen formuliert die Domäne selbst.
+_REJECTIONS = (
+    ControlError,
+    DomainError,
+    ParameterOutOfRange,
+    PolicyError,
+    RemoteControlError,
+    ScheduleError,
+    UnknownParameter,
+)
+
+
+def _reason(error: Exception) -> str:
+    """Der Text, den die Domäne für die Ablehnung formuliert hat.
+
+    Mehrere Domänenfehler sind Dataklassen mit `field` und `notice` und haben kein eigenes
+    `__str__`; `str(error)` ergäbe dort das Argument-Tupel statt des lesbaren Satzes.
+    """
+    notice = getattr(error, "notice", None)
+    return notice if isinstance(notice, str) else str(error)
+
 
 def _log_tool(name: str, error: Exception | None) -> None:
     """Ein Eintrag je Werkzeugaufruf: Werkzeug, Token-Präfix, Ergebnis, bei Fehlern der Grund.
@@ -79,6 +109,8 @@ def _log_tool(name: str, error: Exception | None) -> None:
         outcome = "ok"
     elif isinstance(error, (Forbidden, PermissionError)):
         outcome = "denied"
+    elif isinstance(error, _REJECTIONS):
+        outcome = "rejected"
     elif isinstance(error, LookupError):
         outcome = "not_found"
     else:
@@ -94,8 +126,8 @@ def _log_tool(name: str, error: Exception | None) -> None:
         # Zone), kommen ins Protokoll. Andere Ausnahmen können Eingaben des Clients
         # enthalten -- ein dort eingefügtes Token oder Geheimnis gehört nicht ins Log.
         extra["reason"] = (
-            str(error)
-            if isinstance(error, (Forbidden, PermissionError, LookupError))
+            _reason(error)
+            if isinstance(error, (Forbidden, PermissionError, LookupError, *_REJECTIONS))
             else type(error).__name__
         )
     log.info("mcp.tool", extra=extra)
@@ -854,11 +886,11 @@ def _visible_to_client(error: Exception) -> Exception | None:
 
     Das SDK ersetzt jede Ausnahme, die kein `ToolError` ist, durch "Error executing tool
     <name>" -- ein Modell erführe nie, dass ihm ein Recht fehlt oder die Zone nicht
-    existiert, und müsste raten. Die Meldungen dieser drei Arten formuliert die Domäne
-    selbst (Recht fehlt, Zone nicht gefunden, Token ungültig); andere Ausnahmen bleiben
+    existiert, und müsste raten. Die Meldungen dieser Arten formuliert die Domäne selbst
+    (Recht fehlt, Zone nicht gefunden, Token ungültig, Eingabe abgewiesen); andere Ausnahmen bleiben
     verborgen, weil ihr Text Eingaben des Clients enthalten kann.
     """
-    if not isinstance(error, (Forbidden, PermissionError, LookupError)):
+    if not isinstance(error, (Forbidden, PermissionError, LookupError, *_REJECTIONS)):
         return None
     try:
         tool_error = import_module("mcp.server.mcpserver.exceptions").ToolError
@@ -867,7 +899,7 @@ def _visible_to_client(error: Exception) -> Exception | None:
             tool_error = import_module("mcp.server.fastmcp.exceptions").ToolError
         except ModuleNotFoundError:
             return None
-    return cast(Exception, tool_error(str(error)))
+    return cast(Exception, tool_error(_reason(error)))
 
 
 class _LoggedServer:
