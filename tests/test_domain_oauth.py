@@ -560,3 +560,16 @@ def test_revoking_the_access_token_also_blocks_its_refresh_token(session: Sessio
     oauth.revoke(session, pair.access_token)
     with pytest.raises(oauth.OAuthError):
         oauth.refresh(session, client.client_id, pair.refresh_token, None, RESOURCE)
+
+
+def test_revoking_an_oauth_access_token_without_refresh_row_still_revokes_it(
+    session: Session,
+) -> None:
+    from thermoctl.auth.tokens import issue_token
+
+    owner = user_with_permissions(session, "verwaist", [("zone.read", None)])
+    token, plaintext = issue_token(session, owner, "o", [("zone.read", None)], None)
+    token.source = "oauth"
+    session.flush()
+    oauth.revoke(session, plaintext)
+    assert token.revoked_at is not None
