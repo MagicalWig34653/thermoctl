@@ -1,6 +1,7 @@
 import asyncio
 import secrets
 from typing import Annotated
+from urllib.parse import urlsplit
 
 from anyio import to_thread
 from fastapi import APIRouter, Depends, Form, Request, Response, status
@@ -67,6 +68,16 @@ async def sleep(seconds: float) -> None:
     await asyncio.sleep(seconds)  # pragma: no cover - every test replaces this line
 
 
+def _consent_return(value: str | None) -> str | None:
+    """Nur die eigene Zustimmungsseite darf nach der Anmeldung Ziel sein."""
+    if value is None:
+        return None
+    parts = urlsplit(value)
+    if parts.scheme or parts.netloc or parts.fragment or parts.path != "/oauth/consent":
+        return None
+    return value
+
+
 @router.get("/login")
 async def login_form(
     request: Request, session: Annotated[Session, Depends(get_session)]
@@ -78,21 +89,13 @@ async def login_form(
     if setup_needed(session):
         return RedirectResponse(prefixed(request, "/setup"), status_code=status.HTTP_303_SEE_OTHER)
     return templates.TemplateResponse(
-        request, "login.html", {"passkeys_available": get_settings().passkeys_available(),
-                                "return_to": _consent_return(request.query_params.get("return_to"))}
+        request,
+        "login.html",
+        {
+            "passkeys_available": get_settings().passkeys_available(),
+            "return_to": _consent_return(request.query_params.get("return_to")),
+        },
     )
-
-
-def _consent_return(value: str | None) -> str | None:
-    """Nur die eigene Zustimmungsseite darf nach der Anmeldung Ziel sein."""
-    if value is None:
-        return None
-    from urllib.parse import urlsplit
-
-    parts = urlsplit(value)
-    if parts.scheme or parts.netloc or parts.fragment or parts.path != "/oauth/consent":
-        return None
-    return value
 
 
 @router.post("/login")
@@ -139,9 +142,13 @@ async def login(
             object_id=username, summary=f"Anmeldung als '{username}' fehlgeschlagen",
         )
         return templates.TemplateResponse(
-            request, "login.html",
-            {"errors": _ERROR_MESSAGE, "passkeys_available": settings.passkeys_available(),
-             "return_to": _consent_return(return_to)},
+            request,
+            "login.html",
+            {
+                "errors": _ERROR_MESSAGE,
+                "passkeys_available": settings.passkeys_available(),
+                "return_to": _consent_return(return_to),
+            },
             status_code=status.HTTP_401_UNAUTHORIZED,
         )
 
