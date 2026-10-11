@@ -16,7 +16,7 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 from starlette.datastructures import MutableHeaders, QueryParams
-from starlette.routing import Mount
+from starlette.routing import Mount, Route
 from starlette.types import Message, Receive, Scope, Send
 
 import thermoctl
@@ -1059,7 +1059,11 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         background_tasks.append(asyncio.create_task(_shadow_loop(app)))
 
     try:
-        yield
+        async with contextlib.AsyncExitStack() as stack:
+            if app.state.mcp_http_app is not None:
+                mcp_app = app.state.mcp_http_app
+                await stack.enter_async_context(mcp_app.router.lifespan_context(mcp_app))
+            yield
     finally:
         # Cancel and wait, not just cancel: otherwise a task that is currently stuck
         # in an ongoing database operation could prevent the process from exiting --
@@ -1212,6 +1216,8 @@ async def _serve_static(scope: Scope, receive: Receive, send: Send) -> None:
 
 def create_app() -> FastAPI:
     settings = get_settings()
+    if settings.mcp_mode != "off":
+        settings.validate_mcp_http()
     configure_logging(settings)
     log.info(
         "thermoctl startet",
@@ -1258,6 +1264,35 @@ def create_app() -> FastAPI:
     # until the process ends, in tests again on every setup.
     app.state.engine = create_engine_from_settings(settings)
     app.state.session_factory = session_factory(app.state.engine)
+    app.state.mcp_http_app = None
+    if settings.mcp_mode == "path":
+        try:
+            from thermoctl.mcp.http_app import create_mcp_asgi_app
+
+            mcp_app = create_mcp_asgi_app(settings, app.state.session_factory)
+        except RuntimeError as exc:
+            if "Das optionale MCP-Paket fehlt" not in str(exc):
+                raise
+            log.warning(
+                "MCP über HTTP nicht verfügbar: %s",
+                exc,
+                extra={"event": "mcp.http.unavailable"},
+            )
+        else:
+            app.state.mcp_http_app = mcp_app
+            from thermoctl.mcp.oauth_routes import build_root_wellknown_routes
+
+            app.router.routes.extend(build_root_wellknown_routes(settings))
+
+            class ExactMcpPath:
+                async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+                    child_scope = dict(scope)
+                    child_scope["path"] = "/"
+                    child_scope["root_path"] = ""
+                    await mcp_app(child_scope, receive, send)
+
+            app.router.routes.append(Route(settings.mcp_path, ExactMcpPath()))
+            app.router.routes.append(Mount(settings.mcp_path, app=mcp_app))
     app.include_router(start_router)
     app.include_router(control_router)
     app.include_router(controller_router)
