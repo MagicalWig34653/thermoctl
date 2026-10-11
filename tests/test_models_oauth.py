@@ -276,7 +276,7 @@ def test_oauth_migration_preserves_existing_tokens_and_downgrades(
     migrations_database_url: str,
 ) -> None:
     assert _alembic(migrations_database_url, "downgrade", "base").returncode == 0
-    before = _alembic(migrations_database_url, "upgrade", "f6c3a8d19b42")
+    before = _alembic(migrations_database_url, "upgrade", "b7d2e5a40c18")
     assert before.returncode == 0, before.stderr
     engine = create_engine(migrations_database_url)
     try:

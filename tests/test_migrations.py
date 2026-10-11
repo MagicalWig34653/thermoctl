@@ -1064,11 +1064,11 @@ def test_sensor_failure_upgrade_preserves_installation(
     # `sensor_failure_enabled` on for all existing zones), then `e5b92d7f3a18`
     # (Zwischenzustaende von `notification_state`), then `f6c3a8d19b42`
     # (`shadow_decision.scheduled_setpoint_c`/`solar_setback_k`), then `b7d2e5a40c18`
-    # (Recht `control.disarm`) -- every time the
+    # (Recht `control.disarm`), then `b721e49c6a30` (OAuth-Datenmodell) -- every time the
     # downgrade target stayed the absolute pre-sensor-failure revision below
     # (never "-1"), so the check keeps its original meaning regardless of
     # how many migrations now sit on top of it.
-    assert scripts.get_heads() == ["b7d2e5a40c18"]
+    assert scripts.get_heads() == ["b721e49c6a30"]
     for args in (("downgrade", "base"), ("upgrade", "d31f6a04c7e9")):
         result = _alembic(migrations_database_url, *args)
         assert result.returncode == 0, result.stderr
