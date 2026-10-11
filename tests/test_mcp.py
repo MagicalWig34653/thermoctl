@@ -941,6 +941,23 @@ def test_unexpected_tool_errors_are_logged_as_error(session: Session, monkeypatc
     with pytest.raises(ValueError):
         tools["list_zones"]()  # type: ignore[operator]
     assert any(
-        getattr(r, "outcome", "") == "error" and getattr(r, "reason", "") == "kaputt"
+        getattr(r, "outcome", "") == "error" and getattr(r, "reason", "") == "ValueError"
         for r in caplog.records
     )
+
+
+def test_foreign_exception_text_never_reaches_the_log(
+    session: Session, monkeypatch, caplog
+) -> None:
+    import logging
+
+    plaintext = _token(session, "log-fremd", [("zone.read", None)])
+    tools = _recording_tools(session, monkeypatch, lambda: plaintext)
+    secret = "tctl_abcd1234_geheimgeheimgeheim"
+    monkeypatch.setattr(
+        server, "list_zones", lambda *_a: (_ for _ in ()).throw(ValueError(f"Parameter {secret}"))
+    )
+    caplog.set_level(logging.INFO)
+    with pytest.raises(ValueError):
+        tools["list_zones"]()  # type: ignore[operator]
+    assert secret not in " ".join(f"{r.getMessage()} {r.__dict__}" for r in caplog.records)

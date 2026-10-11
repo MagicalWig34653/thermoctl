@@ -90,7 +90,14 @@ def _log_tool(name: str, error: Exception | None) -> None:
         "key_prefix": current_key_prefix.get(),
     }
     if error is not None:
-        extra["reason"] = str(error)
+        # Nur Meldungen, die die Domäne selbst formuliert (fehlendes Recht, unbekannte
+        # Zone), kommen ins Protokoll. Andere Ausnahmen können Eingaben des Clients
+        # enthalten -- ein dort eingefügtes Token oder Geheimnis gehört nicht ins Log.
+        extra["reason"] = (
+            str(error)
+            if isinstance(error, (Forbidden, PermissionError, LookupError))
+            else type(error).__name__
+        )
     log.info("mcp.tool", extra=extra)
 
 

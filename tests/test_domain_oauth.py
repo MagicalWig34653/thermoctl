@@ -83,7 +83,8 @@ def test_register_client_stores_client_and_exact_uris(session: Session) -> None:
         "https://[::1",
         "https://nutzer:pw@client.example.invalid/cb",
         "https:///kein-host",
-        "https://client.example.invalid/" + "a" * 1100,
+        "https://client.example.invalid/" + "a" * 600,
+        "http://evil.example.invalid\\@localhost/cb",
         "",
     ],
 )
@@ -539,3 +540,23 @@ def test_concurrent_approval_of_one_request_lets_only_one_win(
     with pytest.raises(oauth.OAuthError):
         oauth.approve(session, request, user, [("zone.read", None)])
     assert not session.scalars(select(OAuthAuthorizationCode)).all()
+
+
+def test_refresh_after_manual_revocation_of_the_access_token_fails(session: Session) -> None:
+    _user, client, pair = _pair(session)
+    token = resolve_token(session, pair.access_token)
+    assert token is not None
+    from thermoctl.auth.tokens import revoke_token
+
+    revoke_token(session, token)
+    with pytest.raises(oauth.OAuthError) as exc:
+        oauth.refresh(session, client.client_id, pair.refresh_token, None, RESOURCE)
+    assert exc.value.error == "invalid_grant"
+    assert all(r.revoked_at for r in session.scalars(select(OAuthRefreshToken)))
+
+
+def test_revoking_the_access_token_also_blocks_its_refresh_token(session: Session) -> None:
+    _user, client, pair = _pair(session)
+    oauth.revoke(session, pair.access_token)
+    with pytest.raises(oauth.OAuthError):
+        oauth.refresh(session, client.client_id, pair.refresh_token, None, RESOURCE)

@@ -56,7 +56,7 @@ CODE_TTL = timedelta(minutes=5)
 REQUEST_TTL = timedelta(minutes=10)
 
 MAX_REDIRECT_URIS = 10
-MAX_URI_LENGTH = 1024
+MAX_URI_LENGTH = 512  # Unique-Index (client_id, uri): 512 Zeichen = 2048 Byte unter utf8mb4
 _LOOPBACK = frozenset({"localhost", "127.0.0.1", "::1"})
 # Schemata, die als "App-Schema" für eine Umleitung nie in Frage kommen.
 _FORBIDDEN_SCHEMES = frozenset(
@@ -98,8 +98,12 @@ def _check_redirect_uri(uri: str) -> None:
 
     if not uri or len(uri) > MAX_URI_LENGTH:
         raise bad("Redirect-URI fehlt oder ist zu lang")
-    if any(ord(char) < 33 or ord(char) == 127 for char in uri):
-        raise bad("Redirect-URI enthält Leer- oder Steuerzeichen")
+    if any(ord(char) < 33 or ord(char) == 127 or char == "\\" for char in uri):
+        # Der Backslash gehört dazu: Parser behandeln ihn verschieden (`urlsplit` liest in
+        # `http://evil.example\@localhost/` den Host "localhost", ein Browser oder Node
+        # den Host "evil.example"). Eine geprüfte und eine tatsächlich angesteuerte
+        # Adresse dürfen nicht auseinanderfallen.
+        raise bad("Redirect-URI enthält Leer-, Steuer- oder Rückstrichzeichen")
     try:
         parts = urlsplit(uri)
         host = parts.hostname
@@ -435,6 +439,11 @@ def refresh(
         )
     user = session.get(User, row.user_id)
     old = session.get(ApiToken, row.api_token_id) if row.api_token_id else None
+    if old is not None and old.revoked_at is not None:
+        # Das zugehörige Access-Token wurde von Hand widerrufen (Token-Verwaltung, /revoke):
+        # Das Refresh-Token darf es nicht wieder aufleben lassen.
+        _revoke_family(session, row.family)
+        raise _fail(event, "Das Token dieser Sitzung wurde widerrufen", client_id=client_id)
     if user is None or not user.is_active or old is None:
         raise _fail(
             event, "Nutzer oder ursprüngliches Token nicht mehr vorhanden", client_id=client_id
@@ -487,7 +496,14 @@ def revoke(session: Session, token_plaintext: str) -> None:
                 ApiToken.token_hash == hash_secret(parts[2]), ApiToken.source == "oauth"
             )
         )
-        if token is not None and token.revoked_at is None:
-            revoke_token(session, token)
+        if token is not None:
+            # Auch das Refresh-Token derselben Sitzung sperren, sonst ließe sich das
+            # widerrufene Token mit einer Erneuerung sofort ersetzen.
+            for family in session.scalars(
+                select(OAuthRefreshToken.family).where(OAuthRefreshToken.api_token_id == token.id)
+            ).all():
+                _revoke_family(session, family)
+            if token.revoked_at is None:
+                revoke_token(session, token)
             session.flush()
             _log("oauth.revoke", "ok", reason="access", key_prefix=token.prefix)
