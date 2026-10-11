@@ -1,5 +1,7 @@
 import os
 from functools import lru_cache
+from typing import Literal
+from urllib.parse import urlsplit
 
 from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -72,6 +74,11 @@ class Settings(BaseSettings):
     meross_email: str | None = None
     meross_password: SecretStr | None = None
     mcp_token: SecretStr | None = None
+    mcp_mode: Literal["off", "path", "port"] = "off"
+    mcp_path: str = "/mcp"
+    mcp_port: int | None = None
+    public_url: str | None = None
+    mcp_public_url: str | None = None
 
     # --- Passkeys (WebAuthn) ---------------------------------------------------------
     # The relying party id is the bare hostname under which the interface is
@@ -115,6 +122,74 @@ class Settings(BaseSettings):
     def passkeys_available(self) -> bool:
         """Without a relying party id there are no passkeys — and none half-enabled."""
         return bool(self.passkey_rp_id)
+
+    def mcp_base_url(self) -> str | None:
+        """Öffentliche Ressourcenadresse für den gewählten MCP-HTTP-Modus."""
+        if self.mcp_mode == "off":
+            return None
+        if self.mcp_mode == "port" or self.mcp_public_url is not None:
+            return self.mcp_public_url
+        if self.public_url is None:
+            return None
+        return self.public_url + self.mcp_path
+
+    def validate_mcp_http(self) -> None:
+        """Verweigert einen HTTP-Start mit unvollständigen oder unsicheren Adressen."""
+        if self.mcp_mode == "off":
+            return
+        if not self.public_url:
+            raise ValueError("THERMOCTL_PUBLIC_URL ist im MCP-HTTP-Modus erforderlich")
+
+        self._validate_public_url("THERMOCTL_PUBLIC_URL", self.public_url)
+        if self.mcp_public_url is not None:
+            self._validate_public_url("THERMOCTL_MCP_PUBLIC_URL", self.mcp_public_url)
+
+        if self.mcp_mode == "port":
+            if self.mcp_port is None or not 1 <= self.mcp_port <= 65535:
+                raise ValueError("THERMOCTL_MCP_PORT muss zwischen 1 und 65535 liegen")
+            if not self.mcp_public_url:
+                raise ValueError("THERMOCTL_MCP_PUBLIC_URL ist im Modus port erforderlich")
+
+        path = self.mcp_path
+        if (
+            not path.startswith("/")
+            or path == "/"
+            or path.endswith("/")
+            or "\n" in path
+            or "\r" in path
+        ):
+            raise ValueError(
+                "THERMOCTL_MCP_PATH muss ein Pfad ohne abschließenden Schrägstrich sein"
+            )
+
+        reserved = ("/api", "/static", "/.well-known")
+        if any(path == prefix or path.startswith(prefix + "/") for prefix in reserved):
+            raise ValueError("THERMOCTL_MCP_PATH kollidiert mit einem reservierten Pfad")
+        if self.root_path and (
+            path == self.root_path
+            or path.startswith(self.root_path + "/")
+            or self.root_path.startswith(path + "/")
+        ):
+            raise ValueError("THERMOCTL_MCP_PATH kollidiert mit THERMOCTL_ROOT_PATH")
+
+    @staticmethod
+    def _validate_public_url(name: str, value: str) -> None:
+        """Prüft eine konfigurierte öffentliche Basis-URL vor ihrer Weitergabe."""
+        if "\n" in value or "\r" in value:
+            raise ValueError(f"{name} darf keine Zeilenumbrüche enthalten")
+        try:
+            parsed = urlsplit(value)
+            hostname = parsed.hostname
+        except ValueError as exc:
+            raise ValueError(f"{name} ist keine gültige URL") from exc
+        if parsed.scheme not in ("http", "https") or not hostname:
+            raise ValueError(f"{name} braucht eine vollständige HTTP(S)-URL")
+        if parsed.scheme == "http" and hostname not in ("localhost", "127.0.0.1", "::1"):
+            raise ValueError(f"{name} erlaubt HTTP nur für localhost oder Loopback")
+        if parsed.username is not None or parsed.password is not None:
+            raise ValueError(f"{name} darf keine Zugangsdaten enthalten")
+        if value.endswith("/"):
+            raise ValueError(f"{name} darf nicht mit '/' enden")
 
     def passkey_allowed_origin(self) -> str:
         """The origin the authenticator must have seen."""
