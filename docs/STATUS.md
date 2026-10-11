@@ -28,11 +28,11 @@ Zurückrollen, Token-Kennung in jedem Eintrag. Der MCP-Server hat 27 Werkzeuge.
 - **`temperature_history`** (keine Migration): Messreihe einer Zone in Zeitfächern (`domain/zone_history_series.py`)
   plus Schaltprotokoll dieser Zone, wenn das Token `audit.read` hat (sonst `switching_log` null mit Hinweis).
 - **Offen:** Freigabe 0.15.0 (Merge nach `main`, Tag, Release, gebautes Abbild), danach Push des Add-on-Repositorys
-  (lokal auf 0.15.0 vorbereitet, nicht gepusht). 0.14.1 und 0.14.2 sind ebenfalls noch nicht freigegeben und gehen mit.
+  (lokal auf 0.15.0 vorbereitet, nicht gepusht). 0.14.0, 0.14.1 und 0.14.2 sind freigegeben.
 - **Nicht ausprobiert:** der MCP-Ablauf mit einem echten Client (`claude mcp add --transport http …`) hinter einem
   echten Reverse Proxy, und die Seite `/changes` im Browser nach dem Merge; die Tests ersetzen nicht, sie einmal zu öffnen.
 
-## MCP über HTTP mit Bearer und OAuth (0.14.0 freigegeben, 0.14.1 und 0.14.2 noch nicht)
+## MCP über HTTP mit Bearer und OAuth (seit 0.14.0, Add-on-Felder seit 0.14.1, Zustimmungsseite seit 0.14.2)
 
 - **Betriebsarten** `THERMOCTL_MCP_MODE` = `off` (Vorgabe) / `path` / `port` mit `MCP_PATH`, `MCP_PORT`, `PUBLIC_URL`,
   `MCP_PUBLIC_URL` (Prüfung in `Settings.validate_mcp_http`, Start bricht bei Fehlern ab). Modus `path`: Mount in
