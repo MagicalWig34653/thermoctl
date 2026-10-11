@@ -5,7 +5,12 @@
 <h1>Zugriff erlauben</h1>
 <p><strong>{{ client_name }}</strong> möchte auf thermoctl zugreifen.</p>
 <p class="text-warning">Selbst angemeldeter Client, nicht geprüft</p>
-<p>Weiterleitung an: <code>{{ redirect_host }}</code></p>
+<p>Weiterleitung an: <code>{{ redirect_origin }}</code></p>
+{% if redirect_kind == "network" %}
+<div class="alert alert-warning" role="alert"><strong>Nur zustimmen, wenn Sie diesen Dienst selbst eingerichtet haben.</strong> Der Name des Clients ist frei gewählt und wird nicht geprüft; entscheidend ist die Adresse oben.</div>
+{% elif redirect_kind == "loopback" %}
+<p class="text-muted">Der Client läuft auf diesem Rechner.</p>
+{% endif %}
 {% if error %}<div class="alert alert-danger" role="alert">{{ error }}</div>{% endif %}
 <form method="get" action="{{ url_prefix }}/oauth/consent">
     <input type="hidden" name="request" value="{{ request_id }}">

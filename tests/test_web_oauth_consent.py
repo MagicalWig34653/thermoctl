@@ -217,3 +217,53 @@ def test_consent_pages_cannot_be_framed(client_als, session: Session) -> None:
         assert response.headers["content-security-policy"] == "frame-ancestors 'none'"
         assert response.headers["x-frame-options"] == "DENY"
         assert response.headers["cache-control"] == "no-store"
+
+
+def _request_for(session: Session, uri: str, name: str = "Client") -> str:
+    client = register_client(session, name, [uri])
+    return start_request(
+        session, client, uri, "x" * 43, "https://mcp.example", "opaque", "https://mcp.example"
+    )
+
+
+def test_consent_shows_scheme_host_and_port_of_a_network_redirect(
+    client_als, session: Session
+) -> None:
+    c = client_als([("token.self", None)])
+    body = c.get(
+        f"/oauth/consent?request={_request_for(session, 'https://client.example:8443/cb')}"
+    ).text
+    assert "<code>https://client.example:8443</code>" in body
+    assert "Nur zustimmen, wenn Sie diesen Dienst selbst eingerichtet haben" in body
+    assert "läuft auf diesem Rechner" not in body
+
+
+def test_consent_marks_loopback_redirect_as_local_without_warning(
+    client_als, session: Session
+) -> None:
+    c = client_als([("token.self", None)])
+    body = c.get(
+        f"/oauth/consent?request={_request_for(session, 'http://localhost:9999/cb')}"
+    ).text
+    assert "<code>http://localhost:9999</code>" in body
+    assert "läuft auf diesem Rechner" in body
+    assert "Nur zustimmen, wenn Sie diesen Dienst selbst eingerichtet haben" not in body
+
+
+def test_consent_app_scheme_has_neither_warning_nor_local_hint(
+    client_als, session: Session
+) -> None:
+    c = client_als([("token.self", None)])
+    body = c.get(f"/oauth/consent?request={_request_for(session, 'meineapp:/cb')}").text
+    assert "<code>meineapp:</code>" in body
+    assert "Nur zustimmen, wenn Sie diesen Dienst selbst eingerichtet haben" not in body
+    assert "läuft auf diesem Rechner" not in body
+
+
+def test_consent_escapes_client_name_next_to_the_warning(client_als, session: Session) -> None:
+    c = client_als([("token.self", None)])
+    request_id = _request_for(session, "https://client.example/cb", "<script>x</script>")
+    body = c.get(f"/oauth/consent?request={request_id}").text
+    assert "<script>x</script>" not in body
+    assert "&lt;script&gt;x&lt;/script&gt;" in body
+    assert "Nur zustimmen, wenn Sie diesen Dienst selbst eingerichtet haben" in body

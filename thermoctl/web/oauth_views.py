@@ -67,6 +67,25 @@ def _redirect(uri: str, **params: str | None) -> str:
     return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment))
 
 
+_LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
+
+
+def _redirect_target(uri: str) -> tuple[str, str]:
+    """Anzeige der Redirect-URI für die Zustimmung: (Ursprung, Art).
+
+    Der Client-Name ist frei gewählt und nicht geprüft; verlässlich ist nur, wohin die
+    Weiterleitung geht. Deshalb steht Schema, Host und Port da, nicht nur der Host. Art:
+    ``loopback`` (läuft auf diesem Rechner), ``network`` (eine Adresse im Netz -- hier
+    der Warnhinweis) oder ``app`` (App-Schema ohne Host).
+    """
+    parts = urlsplit(uri)
+    if parts.scheme in ("http", "https") and parts.netloc:
+        origin = f"{parts.scheme}://{parts.netloc}"
+        kind = "loopback" if (parts.hostname or "") in _LOOPBACK_HOSTS else "network"
+        return origin, kind
+    return f"{parts.scheme}:", "app"
+
+
 def _choices(
     session: Session,
     principal: Principal,
@@ -102,6 +121,7 @@ def _page(
     client = session.get(OAuthClient, pending.client_id)
     if client is None:
         return _error()
+    redirect_origin, redirect_kind = _redirect_target(pending.redirect_uri)
     areas = _choices(session, principal)
     available = {value for _, _, entries in areas for value, _, _ in entries}
     requested = PRESETS.get(preset, PRESETS["read_only"])
@@ -113,7 +133,8 @@ def _page(
         {
             "request_id": request_id,
             "client_name": client.name,
-            "redirect_host": urlsplit(pending.redirect_uri).hostname or pending.redirect_uri,
+            "redirect_origin": redirect_origin,
+            "redirect_kind": redirect_kind,
             "areas": areas,
             "selected": checked,
             "preset": preset,
