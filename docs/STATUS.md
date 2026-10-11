@@ -11,7 +11,7 @@ Letzte Aktualisierung: 2026-10-11.
   Fußlink im Generator (`tools/landingpage_erzeugen.py`) ergänzen, `site/` neu erzeugen.
 - Das Paket `ghcr.io/magicalwig34653/thermoctl` ist öffentlich (Projektinhaber, 2026-10-10).
 
-## MCP über HTTP mit Bearer und OAuth (0.14.0 freigegeben) und Add-on-Felder (0.14.1, noch nicht freigegeben)
+## MCP über HTTP mit Bearer und OAuth (0.14.0 freigegeben), Add-on-Felder (0.14.1) und Korrektur der Zustimmungsseite (0.14.2) -- 0.14.1 und 0.14.2 noch nicht freigegeben
 
 Gebaut und dokumentiert (`docs/mcp.md`, `docs/self-hosting.md` Abschnitt 8c, `docs/api.md`, `CHANGELOG.md`):
 
@@ -27,9 +27,11 @@ Gebaut und dokumentiert (`docs/mcp.md`, `docs/self-hosting.md` Abschnitt 8c, `do
   Migrationskopf `b721e49c6a30`.
 - **Add-on (0.14.1):** `mcp_mode`, `mcp_path`, `mcp_port`, `public_url` und `mcp_public_url` sind echte Felder
   (`ABGEBILDETE_FELDER` in `docker/thermoctl_optionen.py`, `_SCHEMA_REIHENFOLGE` in `tools/env_nach_addon.py`);
-  der Port 8001 ist optional (`ports: 8001/tcp: null`). Das Add-on-Repository ist lokal auf 0.14.1 vorbereitet
+  der Port 8001 ist optional (`ports: 8001/tcp: null`). Das Add-on-Repository ist lokal auf 0.14.2 vorbereitet
   (nicht gepusht).
-- **Offen:** die Freigabe 0.14.1 (Tag, Release, gebautes Abbild, danach Push des Add-ons).
+- **0.14.2:** die OAuth-Zustimmungsseite wird als normaler Seitenwechsel abgeschickt (kein HTMX-Boost), sodass die
+  Cross-Origin-Weiterleitung zum Client gelingt.
+- **Offen:** die Freigabe 0.14.2 (Tag, Release, gebautes Abbild, danach Push des Add-ons).
 - **Nicht ausprobiert:** der Ablauf mit einem echten Client (`claude mcp add --transport http …`, `/mcp`) hinter einem echten
   Reverse Proxy; die Tests prüfen den Ablauf, ersetzen aber nicht, ihn einmal zu öffnen.
 

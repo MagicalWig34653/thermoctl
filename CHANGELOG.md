@@ -9,6 +9,20 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ---
 
+## 0.14.2 — 2026-10-11
+
+Beim Upgrade nichts zu tun: keine Migration, keine neue Einstellung.
+
+### Korrigiert
+
+- **OAuth-Zustimmung als normaler Seitenwechsel:** Die Zustimmungsseite der OAuth-Anmeldung
+  schickte das Formular per HTMX-XHR ab; die Weiterleitung zum Client (z. B. claude.ai) wurde
+  cross-origin per XHR verfolgt und scheiterte am Preflight, die Zustimmung kam nie beim Client
+  an und der Code war verbraucht. Jetzt normaler Seitenwechsel. Betroffene mussten die
+  Verbindung neu starten; Bearer-Token waren nicht betroffen.
+
+---
+
 ## 0.14.1 — 2026-10-11
 
 ### Beim Upgrade zu wissen
