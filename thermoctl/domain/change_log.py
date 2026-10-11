@@ -23,7 +23,7 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from decimal import Decimal
 
-from sqlalchemy import Select, select
+from sqlalchemy import Select, select, update
 from sqlalchemy.orm import Session
 
 from thermoctl import audit
@@ -1200,35 +1200,55 @@ def revert_change(
     context = _Context(session, actor, entry, fields, zone, force)
     now = utcnow()
     new_entry: ChangeLog | None = None
-    with session.begin_nested():
-        changes = _REVERTERS[entry.change_type](context)
-        if changes is not None:
-            new_entry = _record(
-                session,
-                actor,
-                change_type=entry.change_type,
-                zone=zone,
-                object_ref=entry.object_ref,
-                summary=f"Rücknahme: {entry.summary}",
-                changes=changes,
-                revertible=False,
-                reason=REASON_REVERT,
-                reverts=entry,
-                forced=force,
+    try:
+        with session.begin_nested():
+            # Atomar beanspruchen, bevor irgendetwas geschrieben wird: Zwei gleichzeitige
+            # Rücknahmen desselben Eintrags lesen beide "noch nicht zurückgenommen" (mit `force`
+            # kämen sonst beide durch). Der bedingte UPDATE entscheidet in der Datenbank; wer 0
+            # Zeilen trifft, hat verloren, und die Verschachtelung rollt seine Arbeit zurück.
+            claimed = session.execute(
+                update(ChangeLog)
+                .where(ChangeLog.id == entry.id, ChangeLog.reverted_at.is_(None))
+                .values(reverted_at=now)
+                .execution_options(synchronize_session=False)
             )
-            entry.reverted_at = now
-            entry.reverted_by_id = new_entry.id
-            audit.record(
-                session,
-                source=actor.source,
-                action="revert",
-                object_type="change_log",
-                object_id=str(new_entry.id),
-                summary=f"Änderung {entry.id} zurückgenommen" + (" (erzwungen)" if force else ""),
-                detail=entry.summary,
-                user_id=actor.user_id,
-                token_id=actor.token_id,
-            )
+            if claimed.rowcount != 1:  # type: ignore[attr-defined]
+                raise ChangeAlreadyReverted(f"Die Änderung {entry.id} wurde gerade zurückgenommen.")
+            session.refresh(entry)
+            changes = _REVERTERS[entry.change_type](context)
+            if changes is not None:
+                new_entry = _record(
+                    session,
+                    actor,
+                    change_type=entry.change_type,
+                    zone=zone,
+                    object_ref=entry.object_ref,
+                    summary=f"Rücknahme: {entry.summary}",
+                    changes=changes,
+                    revertible=False,
+                    reason=REASON_REVERT,
+                    reverts=entry,
+                    forced=force,
+                )
+                entry.reverted_at = now
+                entry.reverted_by_id = new_entry.id
+                audit.record(
+                    session,
+                    source=actor.source,
+                    action="revert",
+                    object_type="change_log",
+                    object_id=str(new_entry.id),
+                    summary=f"Änderung {entry.id} zurückgenommen"
+                    + (" (erzwungen)" if force else ""),
+                    detail=entry.summary,
+                    user_id=actor.user_id,
+                    token_id=actor.token_id,
+                )
+    except Exception:
+        # Die Verschachtelung hat die Beanspruchung zurückgerollt; das geladene Objekt
+        # trägt den Wert aber noch. Neu laden, damit der Aufrufer den echten Stand sieht.
+        session.refresh(entry)
+        raise
     if new_entry is None:
         entry.reverted_at = now
         session.flush()

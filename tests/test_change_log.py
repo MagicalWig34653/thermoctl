@@ -335,6 +335,34 @@ def test_a_change_can_only_be_reverted_once(session: Session) -> None:
         cl.revert_change(session, principal, changed.change_id, actor=actor)  # type: ignore[arg-type]
 
 
+def test_a_concurrent_revert_of_the_same_change_loses(session: Session, monkeypatch) -> None:
+    """Zwei gleichzeitige Rücknahmen (mit `force` kämen sonst beide durch): Der zweite
+    Aufrufer liest "noch nicht zurückgenommen", aber ein anderer hat den Eintrag in der
+    Zwischenzeit beansprucht. Simuliert, indem die Zeile direkt vor der Beanspruchung belegt
+    wird."""
+    from sqlalchemy import update
+
+    zone = _parameter_zone(session)
+    actor = _actor(session)
+    changed = cl.set_parameter(session, actor, zone, "hysteresis_k", D("0.7"))
+    principal = _principal(("zone.manage", zone.id))
+    real_begin_nested = session.begin_nested
+
+    def occupied_first():  # type: ignore[no-untyped-def]
+        session.execute(
+            update(ChangeLog).where(ChangeLog.id == changed.change_id).values(reverted_at=utcnow())
+        )
+        return real_begin_nested()
+
+    monkeypatch.setattr(session, "begin_nested", occupied_first)
+    with pytest.raises(ChangeAlreadyReverted):
+        cl.revert_change(session, principal, changed.change_id, force=True, actor=actor)  # type: ignore[arg-type]
+    monkeypatch.undo()
+    # nichts wurde zurückgesetzt, kein Rücknahme-Eintrag entstand
+    assert zone_settings.control_parameters(session, zone).hysteresis_k == D("0.7")
+    assert not session.scalars(select(ChangeLog).where(ChangeLog.reverts_id.is_not(None))).all()
+
+
 def test_a_revert_is_not_reverted_again(session: Session) -> None:
     zone = _parameter_zone(session)
     actor = _actor(session)
