@@ -141,6 +141,14 @@ def _token(
             status.HTTP_401_UNAUTHORIZED,
             "Kiosk-Token sind nur an der Kioskoberflaeche gueltig",
         )
+    if token.source == "oauth":
+        # Ein über OAuth ausgestelltes Token ist an den MCP-Server gebunden (RFC 8707,
+        # `resource`). Würde REST es annehmen, bekäme jeder KI-Client, dem man den MCP-
+        # Zugang erlaubt hat, damit auch die gesamte REST-Fläche.
+        raise HTTPException(
+            status.HTTP_401_UNAUTHORIZED,
+            "OAuth-Token sind nur am MCP-Server gueltig",
+        )
     return token
 
 

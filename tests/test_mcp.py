@@ -859,3 +859,88 @@ def test_device_commands_absenkung_entries_need_audit_read(session: Session) -> 
 
     with pytest.raises(Forbidden, match="audit.read"):
         server.device_commands(session, plaintext, zone="sonnenmcp")
+
+
+def _recording_tools(session: Session, monkeypatch, token_source) -> dict[str, object]:
+    tools: dict[str, object] = {}
+
+    class RecordingServer:
+        def tool(self, name: str | None = None):  # type: ignore[no-untyped-def]
+            def dekorator(function):  # type: ignore[no-untyped-def]
+                tools[str(name)] = function
+                return function
+
+            return dekorator
+
+        def run(self, transport: str = "stdio", **kwargs: object) -> None:
+            raise AssertionError("Der Test startet keinen Transport")
+
+    monkeypatch.setattr(server, "session_scope", lambda _factory: nullcontext(session))
+    server._register_tools(RecordingServer(), object(), token_source)  # type: ignore[arg-type]
+    return tools
+
+
+def test_tools_ask_the_token_source_on_every_call(session: Session, monkeypatch) -> None:
+    """HTTP: jedes Werkzeug liest das Token der laufenden Anfrage, nicht das vom Start."""
+    zone = zone_with_schedule(session, "wechselzone", [(1, 0, "tag-wechsel", Decimal("20.0"))])
+    source(session, "api")
+    create_zone_state(session, zone)
+    with_right = _token(session, "mit-recht", [("zone.read", None)])
+    without_right = _token(session, "ohne-recht", [("device.read", None)])
+    current = {"token": with_right}
+    tools = _recording_tools(session, monkeypatch, lambda: current["token"])
+
+    assert tools["list_zones"]()  # type: ignore[operator]
+    current["token"] = without_right
+    with pytest.raises(Forbidden):
+        tools["list_zones"]()  # type: ignore[operator]
+
+
+def test_tool_calls_are_logged_with_outcome_and_reason(
+    session: Session, monkeypatch, caplog
+) -> None:
+    import logging
+
+    from thermoctl.mcp import http_auth
+
+    zone = zone_with_schedule(session, "logzone", [(1, 0, "tag-log", Decimal("20.0"))])
+    source(session, "api")
+    create_zone_state(session, zone)
+    plaintext = _token(session, "log-nutzer", [("zone.read", None)])
+    tools = _recording_tools(session, monkeypatch, lambda: plaintext)
+    caplog.set_level(logging.INFO)
+    marker = http_auth.current_key_prefix.set("abcd1234")
+    try:
+        assert tools["list_zones"]()  # type: ignore[operator]
+        with pytest.raises(Forbidden):
+            tools["list_devices"]()  # type: ignore[operator]
+        with pytest.raises(LookupError):
+            tools["zone_state"](999_999)  # type: ignore[operator]
+    finally:
+        http_auth.current_key_prefix.reset(marker)
+
+    records = {
+        (r.tool, r.outcome): r for r in caplog.records if getattr(r, "event", "") == "mcp.tool"
+    }
+    assert records[("list_zones", "ok")].key_prefix == "abcd1234"
+    denied = records[("list_devices", "denied")]
+    assert "device.read" in denied.reason and plaintext not in denied.reason
+    assert ("zone_state", "not_found") in records
+    assert not hasattr(records[("list_zones", "ok")], "reason")
+
+
+def test_unexpected_tool_errors_are_logged_as_error(session: Session, monkeypatch, caplog) -> None:
+    import logging
+
+    plaintext = _token(session, "fehler-nutzer", [("zone.read", None)])
+    tools = _recording_tools(session, monkeypatch, lambda: plaintext)
+    monkeypatch.setattr(
+        server, "list_zones", lambda *_a: (_ for _ in ()).throw(ValueError("kaputt"))
+    )
+    caplog.set_level(logging.INFO)
+    with pytest.raises(ValueError):
+        tools["list_zones"]()  # type: ignore[operator]
+    assert any(
+        getattr(r, "outcome", "") == "error" and getattr(r, "reason", "") == "kaputt"
+        for r in caplog.records
+    )
