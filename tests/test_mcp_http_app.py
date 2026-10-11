@@ -1,5 +1,6 @@
 """HTTP-Weg und Betriebsarten des MCP-Servers."""
 
+import pytest
 from sqlalchemy.orm import Session
 from starlette.testclient import TestClient
 
@@ -268,3 +269,58 @@ def test_http_cli_rejects_invalid_port_configuration(monkeypatch) -> None:
     monkeypatch.setattr(server, "get_settings", lambda: settings)
     with pytest.raises(ValueError, match="THERMOCTL_MCP_PORT"):
         server.main()
+
+
+def _main_with(monkeypatch, **env: str) -> None:
+    from thermoctl.config import get_settings
+
+    for key in (
+        "THERMOCTL_MCP_MODE",
+        "THERMOCTL_MCP_PORT",
+        "THERMOCTL_PUBLIC_URL",
+        "THERMOCTL_MCP_PUBLIC_URL",
+        "THERMOCTL_MCP_PATH",
+    ):
+        monkeypatch.delenv(key, raising=False)
+    for key, value in env.items():
+        monkeypatch.setenv(key, value)
+    monkeypatch.setattr("sys.argv", ["thermoctl-mcp", "--http"])
+    get_settings.cache_clear()
+
+
+def test_http_main_refuses_other_modes(monkeypatch) -> None:
+    from thermoctl.mcp import server
+
+    _main_with(
+        monkeypatch, THERMOCTL_MCP_MODE="path", THERMOCTL_PUBLIC_URL="https://t.example.invalid"
+    )
+    with pytest.raises(SystemExit, match="THERMOCTL_MCP_MODE=port"):
+        server.main()
+
+
+def test_http_main_refuses_incomplete_port_configuration(monkeypatch) -> None:
+    from thermoctl.mcp import server
+
+    _main_with(
+        monkeypatch, THERMOCTL_MCP_MODE="port", THERMOCTL_PUBLIC_URL="https://t.example.invalid"
+    )
+    with pytest.raises(ValueError, match="THERMOCTL_MCP_PORT"):
+        server.main()
+
+
+def test_http_main_serves_the_app_on_the_configured_port(monkeypatch) -> None:
+    from thermoctl.mcp import server
+
+    _main_with(
+        monkeypatch,
+        THERMOCTL_MCP_MODE="port",
+        THERMOCTL_PUBLIC_URL="https://t.example.invalid",
+        THERMOCTL_MCP_PORT="9123",
+        THERMOCTL_MCP_PUBLIC_URL="https://mcp.example.invalid",
+        THERMOCTL_BIND_HOST="127.0.0.1",
+    )
+    seen: dict[str, object] = {}
+    monkeypatch.setattr("uvicorn.run", lambda app, **kw: seen.update(app=app, **kw))
+    server.main()
+    assert (seen["host"], seen["port"]) == ("127.0.0.1", 9123)
+    assert seen["app"] is not None
