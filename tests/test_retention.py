@@ -13,11 +13,15 @@ from tests.helpers import (
     create_zone,
     create_zone_state,
 )
+from thermoctl.db.base import utcnow
 from thermoctl.db.models.lookup import DeviceCapability
 from thermoctl.db.models.measurement import Measurement
+from thermoctl.db.models.oauth import OAuthAuthorizationRequest
 from thermoctl.db.models.sensor_failure import ActuatorDecision, SensorFailureSourceComparison
 from thermoctl.db.models.state import ShadowDecision
+from thermoctl.domain.oauth import register_client, start_request
 from thermoctl.services.retention import (
+    delete_expired_oauth,
     delete_old_actuator_decisions,
     delete_old_measurements,
     delete_old_sensor_failure_source_comparisons,
@@ -236,3 +240,22 @@ def test_old_actuator_decisions_are_deleted_using_the_shadow_decision_retention(
 def test_actuator_decision_block_size_must_be_positive(session: Session) -> None:
     with pytest.raises(ValueError, match="größer als null"):
         delete_old_actuator_decisions(session, NOW, batch_size=0)
+
+
+def test_expired_oauth_rows_are_removed_by_the_retention_run(session: Session) -> None:
+    client = register_client(session, "Aufräumen", ["https://client.example/cb"])
+    start_request(
+        session, client, "https://client.example/cb", "x" * 43,
+        "https://mcp.example", None, "https://mcp.example",
+    )
+    frische = session.query(OAuthAuthorizationRequest).one()
+    alt = OAuthAuthorizationRequest(
+        request_hash="h" * 64, client_id=client.id, redirect_uri="https://client.example/cb",
+        code_challenge="x" * 43, resource="https://mcp.example",
+        expires_at=utcnow() - timedelta(days=3),
+    )
+    session.add(alt)
+    session.flush()
+
+    assert delete_expired_oauth(session) == 1
+    assert session.query(OAuthAuthorizationRequest).all() == [frische]

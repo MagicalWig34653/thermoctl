@@ -8,6 +8,7 @@ from thermoctl.db.models.measurement import Measurement
 from thermoctl.db.models.operations import Setting
 from thermoctl.db.models.sensor_failure import ActuatorDecision, SensorFailureSourceComparison
 from thermoctl.db.models.state import ShadowDecision
+from thermoctl.domain.oauth import purge_expired
 
 log = logging.getLogger(__name__)
 
@@ -158,4 +159,16 @@ def delete_old_actuator_decisions(
         session.execute(delete(ActuatorDecision).where(ActuatorDecision.id.in_(ids)))
         count += len(ids)
     log.info("Alte Notbetriebs-Entscheidungen gelöscht", extra={"anzahl": count})
+    return count
+
+
+def delete_expired_oauth(session: Session) -> int:
+    """Räumt abgelaufene OAuth-Zeilen mit auf (Anfragen, Codes, tote Refresh-Token).
+
+    Die Fristen (`EXPIRED_KEEP`) liegen in der Domäne bei `purge_expired`; hier läuft sie
+    nur im selben Takt wie die übrige Aufbewahrung, statt allein beim Registrieren eines
+    Clients -- sonst bliebe Abgelaufenes liegen, solange sich niemand neu anmeldet.
+    """
+    count = purge_expired(session)
+    log.info("Abgelaufene OAuth-Zeilen gelöscht", extra={"anzahl": count})
     return count
