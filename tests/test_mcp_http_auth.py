@@ -127,19 +127,24 @@ def test_own_origin_and_missing_origin_pass(session: Session) -> None:
 
 
 def test_concurrent_requests_do_not_see_each_others_token(session: Session) -> None:
-    _a, plain_a = _token(session, "parallel-a")
-    _b, plain_b = _token(session, "parallel-b")
+    # Die Datenbankprüfung ist hier ersetzt: Die Testsitzung ist eine einzige und darf nicht
+    # von mehreren Threads gleichzeitig benutzt werden. Geprüft wird die Isolation der
+    # ContextVars, nicht die Tokenprüfung (die haben die Tests oben).
+    plain_a, plain_b = "tctl_aaaaaaaa_eins", "tctl_bbbbbbbb_zwei"
     seen: dict[str, str | None] = {}
 
     async def slow(scope, receive, send):
         await asyncio.sleep(0.05)
         seen[scope["headers"][0][1].decode()] = http_auth.current_token.get()
+        own = (http_auth.current_token.get() or "").split("_")[1]
+        assert http_auth.current_key_prefix.get() == own
         await send({"type": "http.response.start", "status": 200, "headers": []})
         await send({"type": "http.response.body", "body": b""})
 
     app = http_auth.BearerAuthMiddleware(
         slow, _SharedSession(session), resource_metadata_url=METADATA, allowed_origin=ORIGIN
     )
+    app._authenticate = lambda plaintext: plaintext.split("_")[1]  # type: ignore[method-assign]
 
     async def call(plain: str) -> None:
         scope = {
@@ -161,7 +166,7 @@ def test_concurrent_requests_do_not_see_each_others_token(session: Session) -> N
         await asyncio.gather(call(plain_a), call(plain_b))
 
     asyncio.run(both())
-    assert set(seen.values()) == {plain_a, plain_b}
+    assert seen == {f"Bearer {plain_a}": plain_a, f"Bearer {plain_b}": plain_b}
 
 
 def test_non_http_scopes_are_passed_through_and_websockets_refused(session: Session) -> None:

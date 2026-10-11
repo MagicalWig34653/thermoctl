@@ -842,6 +842,39 @@ def _mcp_server_class() -> Callable[[str], _McpServer]:
         ) from exc
 
 
+class _LoggedServer:
+    """Hüllt den MCP-Server, damit jeder Werkzeugaufruf protokolliert wird.
+
+    Die Werkzeuge bleiben im Quelltext als Dekorator `server.tool` mit Namensargument
+    lesbar -- Wächtertests und Dokumentation suchen genau diese Form.
+    """
+
+    def __init__(self, inner: _McpServer) -> None:
+        self._inner = inner
+
+    def tool(self, name: str | None = None) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+        register = self._inner.tool(name=name)
+        label = name or "?"
+
+        def decorate(function: Callable[..., Any]) -> Callable[..., Any]:
+            @wraps(function)
+            def logged(*args: Any, **kwargs: Any) -> Any:
+                try:
+                    result = function(*args, **kwargs)
+                except Exception as exc:
+                    _log_tool(label, exc)
+                    raise
+                _log_tool(label, None)
+                return result
+
+            return register(logged)
+
+        return decorate
+
+    def run(self, transport: str = "stdio", **kwargs: Any) -> None:
+        self._inner.run(transport, **kwargs)  # pragma: no cover
+
+
 def _register_tools(
     server: _McpServer,
     factory: sessionmaker[Session],
@@ -854,67 +887,51 @@ def _register_tools(
     """
     current: Callable[[], str] = plaintext if callable(plaintext) else (lambda: plaintext)
 
-    def tool(name: str) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
-        register = server.tool(name=name)
+    server = _LoggedServer(server)
 
-        def decorate(function: Callable[..., Any]) -> Callable[..., Any]:
-            @wraps(function)
-            def logged(*args: Any, **kwargs: Any) -> Any:
-                try:
-                    result = function(*args, **kwargs)
-                except Exception as exc:
-                    _log_tool(name, exc)
-                    raise
-                _log_tool(name, None)
-                return result
-
-            return register(logged)
-
-        return decorate
-
-    @tool("list_zones")
+    @server.tool(name="list_zones")
     def mcp_list_zones() -> list[dict[str, object]]:
         """Lists the zones visible to the authenticated token."""
         with session_scope(factory) as session:
             return list_zones(session, current())
 
-    @tool("zone_state")
+    @server.tool(name="zone_state")
     def mcp_zone_state(zone_id: int) -> dict[str, object]:
         """Returns the latest derived temperature and sensor state of a visible zone."""
         with session_scope(factory) as session:
             return zone_state(session, current(), zone_id)
 
-    @tool("explain_setpoint")
+    @server.tool(name="explain_setpoint")
     def mcp_explain_setpoint(zone_id: int) -> dict[str, object]:
         """Returns a visible zone's effective setpoint and the reason for it."""
         with session_scope(factory) as session:
             return explain_setpoint(session, current(), zone_id)
 
-    @tool("read_schedule")
+    @server.tool(name="read_schedule")
     def mcp_read_schedule(zone_id: int) -> list[dict[str, object]]:
         """Reads the schedule points and mode names of a visible zone."""
         with session_scope(factory) as session:
             return read_schedule(session, current(), zone_id)
 
-    @tool("read_setpoints")
+    @server.tool(name="read_setpoints")
     def mcp_read_setpoints(zone_id: int) -> list[dict[str, object]]:
         """Reads the temperatures configured for each mode of a visible zone."""
         with session_scope(factory) as session:
             return read_setpoints(session, current(), zone_id)
 
-    @tool("list_devices")
+    @server.tool(name="list_devices")
     def mcp_list_devices() -> list[dict[str, object]]:
         """Lists devices with integrations, capabilities, and signs of life."""
         with session_scope(factory) as session:
             return list_devices(session, current())
 
-    @tool("shadow_decisions")
+    @server.tool(name="shadow_decisions")
     def mcp_shadow_decisions(zone_id: int, count: int = 10) -> list[dict[str, object]]:
         """Returns the latest reasoned shadow decisions of a visible zone."""
         with session_scope(factory) as session:
             return shadow_decisions(session, current(), zone_id, count)
 
-    @tool("device_commands")
+    @server.tool(name="device_commands")
     def mcp_device_commands(
         zone: str | None = None,
         outcome: str | None = None,
@@ -926,13 +943,13 @@ def _register_tools(
         with session_scope(factory) as session:
             return device_commands(session, current(), zone, outcome, from_at, to_at, limit)
 
-    @tool("read_emergency_state")
+    @server.tool(name="read_emergency_state")
     def mcp_read_emergency_state(zone_id: int) -> dict[str, object]:
         """Reads the Notbetrieb state of a visible zone."""
         with session_scope(factory) as session:
             return read_emergency_state(session, current(), zone_id)
 
-    @tool("override")
+    @server.tool(name="override")
     def mcp_override(
         zone_id: int, temperature_c: Decimal, ends_at: datetime | None = None
     ) -> dict[str, object]:
@@ -940,25 +957,25 @@ def _register_tools(
         with session_scope(factory) as session:
             return override_zone(session, current(), zone_id, temperature_c, ends_at)
 
-    @tool("cancel_override")
+    @server.tool(name="cancel_override")
     def mcp_cancel_override(zone_id: int) -> dict[str, object]:
         """Cancels the active setpoint override of a visible zone."""
         with session_scope(factory) as session:
             return cancel_override(session, current(), zone_id)
 
-    @tool("boost")
+    @server.tool(name="boost")
     def mcp_boost(zone_id: int) -> dict[str, object]:
         """Pulls a visible zone's next scheduled setpoint switch forward."""
         with session_scope(factory) as session:
             return boost(session, current(), zone_id)
 
-    @tool("read_vacation")
+    @server.tool(name="read_vacation")
     def mcp_read_vacation() -> dict[str, object] | None:
         """Reads the plant-wide vacation currently running or still upcoming, if any."""
         with session_scope(factory) as session:
             return read_vacation(session, current())
 
-    @tool("vacation")
+    @server.tool(name="vacation")
     def mcp_vacation(
         start_date: date, end_date: date, setback_temperature_c: Decimal
     ) -> dict[str, object]:
@@ -966,44 +983,44 @@ def _register_tools(
         with session_scope(factory) as session:
             return set_vacation(session, current(), start_date, end_date, setback_temperature_c)
 
-    @tool("cancel_vacation")
+    @server.tool(name="cancel_vacation")
     def mcp_cancel_vacation() -> dict[str, object]:
         """Ends the running or planned plant-wide vacation early."""
         with session_scope(factory) as session:
             return cancel_vacation(session, current())
 
-    @tool("read_control_parameters")
+    @server.tool(name="read_control_parameters")
     def mcp_read_control_parameters(zone_id: int) -> dict[str, object]:
         """Reads a visible zone's effective control parameters and their limits."""
         with session_scope(factory) as session:
             return read_control_parameters(session, current(), zone_id)
 
-    @tool("set_control_parameters")
+    @server.tool(name="set_control_parameters")
     def mcp_set_control_parameters(zone_id: int, name: str, value: Decimal) -> dict[str, object]:
         """Sets one control parameter of a visible zone within its limits."""
         with session_scope(factory) as session:
             return set_control_parameters(session, current(), zone_id, name, value)
 
-    @tool("read_control")
+    @server.tool(name="read_control")
     def mcp_read_control() -> dict[str, object]:
         """Reads the persisted latch, MQTT-latch observability, and global defaults."""
         with session_scope(factory) as session:
             return read_control(session, current())
 
-    @tool("force_dry_run")
+    @server.tool(name="force_dry_run")
     def mcp_force_dry_run(reason: str = "") -> dict[str, object]:
         """Returns control to dry run; this tool cannot arm the installation."""
         with session_scope(factory) as session:
             return force_dry_run(session, current(), reason)
 
-    @tool("read_sensor_failure_defaults")
+    @server.tool(name="read_sensor_failure_defaults")
     def mcp_read_sensor_failure_defaults() -> dict[str, object]:
         """Reads the plant-wide Notbetrieb profile (Festtakt/Rückkehr/Kennlinie)
         and the plant-wide emergency setpoint."""
         with session_scope(factory) as session:
             return read_sensor_failure_defaults_tool(session, current())
 
-    @tool("set_sensor_failure_defaults")
+    @server.tool(name="set_sensor_failure_defaults")
     def mcp_set_sensor_failure_defaults(
         fixed_on_seconds: int,
         fixed_off_seconds: int,
@@ -1033,14 +1050,14 @@ def _register_tools(
                 profile_name=profile_name,
             )
 
-    @tool("read_sensor_failure_policy")
+    @server.tool(name="read_sensor_failure_policy")
     def mcp_read_sensor_failure_policy(zone_id: int) -> dict[str, object]:
         """Reads a visible zone's effective and own Notbetrieb settings, including
         the backup offsets of its thermostat actuator assignments."""
         with session_scope(factory) as session:
             return read_sensor_failure_policy(session, current(), zone_id)
 
-    @tool("set_sensor_failure_policy")
+    @server.tool(name="set_sensor_failure_policy")
     def mcp_set_sensor_failure_policy(
         zone_id: int,
         enabled: bool,
@@ -1061,7 +1078,7 @@ def _register_tools(
                 backup_offsets=backup_offsets,
             )
 
-    @tool("move_schedule_point")
+    @server.tool(name="move_schedule_point")
     def mcp_move_schedule_point(
         zone_id: int, point_id: int, weekday: int, minute: int
     ) -> dict[str, object]:
