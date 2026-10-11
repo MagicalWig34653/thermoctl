@@ -1,0 +1,34 @@
+{% extends "base_tenant.html" if is_tenant else "base_admin.html" %}
+{% block title %}Zugriff erlauben – thermoctl{% endblock %}
+{% block page_title %}Zugriff erlauben{% endblock %}
+{% block content %}
+<h1>Zugriff erlauben</h1>
+<p><strong>{{ client_name }}</strong> möchte auf thermoctl zugreifen.</p>
+<p class="text-warning">Selbst angemeldeter Client, nicht geprüft</p>
+<p>Weiterleitung an: <code>{{ redirect_host }}</code></p>
+{% if error %}<div class="alert alert-danger" role="alert">{{ error }}</div>{% endif %}
+<form method="get" action="{{ url_prefix }}/oauth/consent">
+    <input type="hidden" name="request" value="{{ request_id }}">
+    <label for="preset">Vorauswahl</label>
+    <select id="preset" name="preset" class="form-select">
+        <option value="read_only"{{ " selected" if preset == "read_only" }}>Read-only</option>
+        <option value="read_write"{{ " selected" if preset == "read_write" }}>Read-write</option>
+    </select>
+    <button class="btn btn-outline-secondary mt-2" type="submit">Vorauswahl übernehmen</button>
+</form>
+{% if omitted %}<p class="text-muted">Rechte der Vorauswahl, die Sie nicht besitzen, wurden weggelassen.</p>{% endif %}
+<form method="post" action="{{ url_prefix }}/oauth/consent">
+    <input type="hidden" name="request" value="{{ request_id }}">
+    {% for title, detail, entries in areas %}
+    <fieldset class="mt-3">
+        <legend class="h5">{{ title }}</legend>
+        <p class="text-muted">{{ detail }}</p>
+        {% for value, code, description in entries %}
+        <label class="d-block"><input type="checkbox" name="permission" value="{{ value }}"{{ " checked" if value in selected }}> {{ description }} <small>({{ value }})</small></label>
+        {% endfor %}
+    </fieldset>
+    {% endfor %}
+    <button class="btn btn-primary mt-3" type="submit" name="action" value="allow">Zulassen</button>
+    <button class="btn btn-outline-secondary mt-3" type="submit" name="action" value="deny">Ablehnen</button>
+</form>
+{% endblock %}

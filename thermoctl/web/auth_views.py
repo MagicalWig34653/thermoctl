@@ -78,8 +78,21 @@ async def login_form(
     if setup_needed(session):
         return RedirectResponse(prefixed(request, "/setup"), status_code=status.HTTP_303_SEE_OTHER)
     return templates.TemplateResponse(
-        request, "login.html", {"passkeys_available": get_settings().passkeys_available()}
+        request, "login.html", {"passkeys_available": get_settings().passkeys_available(),
+                                "return_to": _consent_return(request.query_params.get("return_to"))}
     )
+
+
+def _consent_return(value: str | None) -> str | None:
+    """Nur die eigene Zustimmungsseite darf nach der Anmeldung Ziel sein."""
+    if value is None:
+        return None
+    from urllib.parse import urlsplit
+
+    parts = urlsplit(value)
+    if parts.scheme or parts.netloc or parts.fragment or parts.path != "/oauth/consent":
+        return None
+    return value
 
 
 @router.post("/login")
@@ -88,6 +101,7 @@ async def login(
     username: Annotated[str, Form()],
     password: Annotated[str, Form()],
     session: Annotated[Session, Depends(get_session)],
+    return_to: Annotated[str | None, Form()] = None,
 ) -> Response:
     settings = get_settings()
 
@@ -126,7 +140,8 @@ async def login(
         )
         return templates.TemplateResponse(
             request, "login.html",
-            {"errors": _ERROR_MESSAGE, "passkeys_available": settings.passkeys_available()},
+            {"errors": _ERROR_MESSAGE, "passkeys_available": settings.passkeys_available(),
+             "return_to": _consent_return(return_to)},
             status_code=status.HTTP_401_UNAUTHORIZED,
         )
 
@@ -146,7 +161,10 @@ async def login(
         user_id=user.id,
     )
 
-    response = RedirectResponse(prefixed(request, "/"), status_code=status.HTTP_303_SEE_OTHER)
+    response = RedirectResponse(
+        prefixed(request, _consent_return(return_to) or "/"),
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
     response.set_cookie(
         COOKIE_NAME, secret, max_age=lifetime_s,
         httponly=True, samesite="lax", secure=settings.secure_cookies,

@@ -120,7 +120,10 @@
                     : null
             }
         }).then(function (result) {
-            window.location.href = result.redirect || URL_PREFIX + "/";
+            const returnField = document.querySelector('input[name="return_to"]');
+            window.location.href = returnField
+                ? URL_PREFIX + returnField.value
+                : (result.redirect || URL_PREFIX + "/");
         });
     }
 
