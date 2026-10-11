@@ -155,6 +155,70 @@ def test_unknown_mcp_mode_is_rejected() -> None:
         _settings(mcp_mode="unknown")
 
 
+@pytest.mark.parametrize("path", [
+    "/a b", "/mcp?x", "/m#c", "/m/../api", "/%2e%2e/api", "/a//b", "/a/./b", "/mcp ", "/é",
+    "/..", "/.", "/authorize", "/token", "/register", "/revoke", "/oauth", "/oauth/x",
+    "/login", "/tokens",
+])
+def test_mcp_path_must_be_plain_and_unreserved(path: str) -> None:
+    settings = _settings(mcp_mode="path", public_url="https://web.example.invalid", mcp_path=path)
+    with pytest.raises(ValueError, match="THERMOCTL_MCP_PATH"):
+        settings.validate_mcp_http()
+
+
+def test_reserved_mcp_paths_cover_every_real_top_level_route() -> None:
+    """Die Konstante in config.py wird gegen die echten Routen geprüft, nicht von Hand gepflegt."""
+    from tests.helpers import alle_api_routen
+    from thermoctl.app import create_app
+
+    anwendung = create_app()
+    namen = {"/" + r.path.strip("/").split("/")[0] for r in alle_api_routen(anwendung)}
+    namen |= {"/" + getattr(r, "path", "").strip("/").split("/")[0] for r in anwendung.routes}
+    namen.discard("/")
+    assert "/login" in namen and "/tokens" in namen  # Sicherung gegen leeres Einsammeln
+    for name in sorted(namen):
+        settings = _settings(
+            mcp_mode="path", public_url="https://web.example.invalid", mcp_path=name
+        )
+        with pytest.raises(ValueError, match="THERMOCTL_MCP_PATH"):
+            settings.validate_mcp_http()
+
+
+def test_invalid_mcp_path_does_not_block_port_mode() -> None:
+    settings = _settings(
+        mcp_mode="port", public_url="https://web.example.invalid",
+        mcp_public_url="https://mcp.example.invalid", mcp_port=9234, mcp_path="/a b",
+    )
+    settings.validate_mcp_http()
+
+
+@pytest.mark.parametrize("url", [
+    " https://x.org", "https://x.org ", "https://x.org\t", "https://a b.example",
+    "https://x.org:99999", "https://x.org:abc", "https://x.org:", "https://x.org?q=1",
+    "https://x.org#f", "https://exämple.org", "https://例え.jp", "https://x.org/a/../b",
+    "https://x.org/a;p", "https://x.org/a%20b", "https://x.org/a?",
+])
+@pytest.mark.parametrize("field", ["public_url", "mcp_public_url"])
+def test_further_invalid_public_urls_are_rejected(field: str, url: str) -> None:
+    values = {
+        "mcp_mode": "path",
+        "public_url": "https://web.example.invalid",
+        "mcp_public_url": "https://mcp.example.invalid",
+        field: url,
+    }
+    with pytest.raises(ValueError, match=f"THERMOCTL_{field.upper()}"):
+        _settings(**values).validate_mcp_http()
+
+
+def test_public_url_may_carry_a_path_prefix() -> None:
+    """Hinter einem Pfad-Präfix (root_path, Ingress) ist die öffentliche Adresse mit Pfad."""
+    settings = _settings(
+        mcp_mode="path", public_url="https://web.example.invalid/praefix", root_path="/praefix"
+    )
+    settings.validate_mcp_http()
+    assert settings.mcp_base_url() == "https://web.example.invalid/praefix/mcp"
+
+
 def test_path_mode_without_any_url_has_no_base_url_and_fails_validation() -> None:
     settings = _settings(mcp_mode="path")
     assert settings.mcp_base_url() is None

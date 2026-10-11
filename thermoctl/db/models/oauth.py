@@ -26,7 +26,10 @@ class OAuthRedirectUri(Base):
     client_id: Mapped[int] = mapped_column(
         ForeignKey("oauth_client.id", ondelete="CASCADE"), nullable=False
     )
-    uri: Mapped[str] = mapped_column(String(1024), nullable=False)
+    # 512 statt 1024 Zeichen: der Unique-Index (client_id, uri) muss auf MariaDB mit utf8mb4
+    # unter dem Indexlimit von 3072 Byte bleiben (512 Zeichen = 2048 Byte). Die Spalten
+    # redirect_uri der Anfragen und Codes sind nicht indiziert und bleiben bei 1024.
+    uri: Mapped[str] = mapped_column(String(512), nullable=False)
 
 
 class OAuthAuthorizationRequest(Base):

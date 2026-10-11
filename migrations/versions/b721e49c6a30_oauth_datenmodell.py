@@ -1,7 +1,7 @@
 """OAuth-Datenmodell mit eigenen Tabellen und Herkunft bestehender API-Token.
 
 Revision ID: b721e49c6a30
-Revises: f6c3a8d19b42
+Revises: b7d2e5a40c18
 """
 
 from collections.abc import Sequence
@@ -33,7 +33,9 @@ def upgrade() -> None:
             sa.ForeignKey("oauth_client.id", ondelete="CASCADE"),
             nullable=False,
         ),
-        sa.Column("uri", sa.String(1024), nullable=False),
+        # 512 statt 1024: der Unique-Index (client_id, uri) muss auf MariaDB mit utf8mb4
+        # unter 3072 Byte bleiben (512 Zeichen = 2048 Byte).
+        sa.Column("uri", sa.String(512), nullable=False),
         sa.UniqueConstraint("client_id", "uri", name="uri_je_oauth_client"),
     )
     op.create_table(
@@ -135,6 +137,18 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    # Ohne die Spalte `source` ließen sich OAuth-Token nicht mehr von Bearer-Token
+    # unterscheiden und würden als dauerhafte Bearer-Token weitergelten. Deshalb werden sie
+    # vorher gelöscht: erst ihre Rechte, dann die Token (oauth_refresh_token hängt per
+    # SET NULL an api_token und verschwindet gleich mit der Tabelle).
+    verbindung = op.get_bind()
+    verbindung.execute(
+        sa.text(
+            "DELETE FROM api_token_permission WHERE api_token_id IN "
+            "(SELECT id FROM api_token WHERE source = 'oauth')"
+        )
+    )
+    verbindung.execute(sa.text("DELETE FROM api_token WHERE source = 'oauth'"))
     op.drop_index("ix_oauth_refresh_token_family", table_name="oauth_refresh_token")
     op.drop_table("oauth_refresh_token")
     with op.batch_alter_table("api_token") as batch_op:

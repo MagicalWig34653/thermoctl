@@ -447,6 +447,9 @@
     "thermoctl/app.py": [
       "Kein Temperaturwert verfügbar. Die Heizung läuft im Notbetrieb."
     ],
+    "thermoctl/config.py": [
+      "/heating-time"
+    ],
     "thermoctl/data/glossar.json": [
       "Aktor",
       "Für eine Weile wärmer",
