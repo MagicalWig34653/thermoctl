@@ -497,13 +497,22 @@ def revoke(session: Session, token_plaintext: str) -> None:
             )
         )
         if token is not None:
-            # Auch das Refresh-Token derselben Sitzung sperren, sonst ließe sich das
-            # widerrufene Token mit einer Erneuerung sofort ersetzen.
-            for family in session.scalars(
-                select(OAuthRefreshToken.family).where(OAuthRefreshToken.api_token_id == token.id)
-            ).all():
-                _revoke_family(session, family)
-            if token.revoked_at is None:
-                revoke_token(session, token)
-            session.flush()
-            _log("oauth.revoke", "ok", reason="access", key_prefix=token.prefix)
+            revoke_access_token(session, token)
+
+
+def revoke_access_token(session: Session, token: ApiToken) -> None:
+    """Widerruft ein OAuth-Access-Token anhand seiner Zeile (Token-Verwaltung).
+
+    Sperrt auch die Refresh-Familie derselben Sitzung, sonst ließe sich das widerrufene
+    Token mit einer Erneuerung sofort ersetzen. Ein Bearer-Token ist hier kein Ziel.
+    """
+    if token.source != "oauth":
+        raise ValueError("Nur OAuth-Token werden hier widerrufen")
+    for family in session.scalars(
+        select(OAuthRefreshToken.family).where(OAuthRefreshToken.api_token_id == token.id)
+    ).all():
+        _revoke_family(session, family)
+    if token.revoked_at is None:
+        revoke_token(session, token)
+    session.flush()
+    _log("oauth.revoke", "ok", reason="access", key_prefix=token.prefix)

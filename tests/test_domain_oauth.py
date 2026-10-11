@@ -573,3 +573,23 @@ def test_revoking_an_oauth_access_token_without_refresh_row_still_revokes_it(
     session.flush()
     oauth.revoke(session, plaintext)
     assert token.revoked_at is not None
+
+
+def test_revoke_access_token_by_row_blocks_the_refresh_family(session: Session) -> None:
+    _user, client, pair = _pair(session)
+    token = resolve_token(session, pair.access_token)
+    assert token is not None
+    oauth.revoke_access_token(session, token)
+    assert token.revoked_at is not None
+    with pytest.raises(oauth.OAuthError):
+        oauth.refresh(session, client.client_id, pair.refresh_token, None, RESOURCE)
+
+
+def test_revoke_access_token_refuses_bearer_tokens(session: Session) -> None:
+    from thermoctl.auth.tokens import issue_token
+
+    owner = user_with_permissions(session, "bearer-kein-ziel", [("zone.read", None)])
+    token, _plain = issue_token(session, owner, "b", [("zone.read", None)], None)
+    with pytest.raises(ValueError):
+        oauth.revoke_access_token(session, token)
+    assert token.revoked_at is None
