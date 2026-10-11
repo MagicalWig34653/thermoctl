@@ -213,7 +213,7 @@ Presets stehen im Code (`thermoctl/domain/token_presets.py`), nicht in der Daten
 
 ## Die Werkzeuge
 
-24 Stück, alle über dieselbe Domänenlogik wie Oberfläche und REST-Schnittstelle. Jedes
+25 Stück, alle über dieselbe Domänenlogik wie Oberfläche und REST-Schnittstelle. Jedes
 prüft dasselbe Recht wie der entsprechende REST-Endpunkt.
 
 | Werkzeug | Recht | Was es liefert |
@@ -226,6 +226,7 @@ prüft dasselbe Recht wie der entsprechende REST-Endpunkt.
 | `list_devices()` | `device.read` | Anbindung, Fähigkeiten, letzte Nachricht, Batterie |
 | `shadow_decisions(zone_id, count=10)` | `zone.read` | die jüngsten Entscheidungen samt Grund |
 | `device_commands(zone, outcome, from_at, to_at, limit=100)` | `audit.read` | das Schaltprotokoll — jeder gesendete, unterdrückte oder gescheiterte Befehl an ein Gerät, plus Notbetriebsentscheidungen (`entry_kind: "entscheidung"`) und Wechsel der Sonnenabsenkung (`entry_kind: "absenkung"`: Beginn, Betragsänderung, Ende je Zone; `outcome` `absenkung_beginn`/`absenkung_aenderung`/`absenkung_ende`, `reason` mit Sollwert vor der Absenkung und wirksamem Sollwert) |
+| `temperature_history(zone_id, hours=24, from_at, to_at, max_points=300, log_limit=100)` | `zone.read` (Protokoll: zusätzlich `audit.read`) | die Messreihe einer Zone — gemessen, wirksamer Sollwert, Sollwert vor der Sonnenabsenkung, Sonnenabsenkung, Anteil der Messungen mit Heizanforderung — in gleich breite Zeitfächer verdichtet, mit Zusammenfassung, und im selben Aufruf die Einträge des Schaltprotokolls dieser Zone im Zeitraum |
 | `read_emergency_state(zone_id)` | `zone.read` | Notbetrieb-Stufe, aktive Ersatzquelle, Rückkehrfortschritt, Takt-/Übergabestatus je Aktor, Ersatzquelle-Wandfühler-Vergleich |
 | `override(zone_id, temperature_c, ends_at)` | `override.create` | legt eine Übersteuerung an |
 | `cancel_override(zone_id)` | `override.cancel` | beendet die laufende Übersteuerung |
@@ -255,6 +256,46 @@ die aktuelle Zone, und findet deshalb auch Einträge einer inzwischen gelöschte
 höchstens 500 begrenzt (Vorgabe 100) — ein Wert außerhalb löst einen Fehler aus. Jeder
 Zeitpunkt trägt die Zeitzone ausdrücklich (`+00:00`), damit ein Eintrag auch Wochen
 später noch eindeutig neben einem Vorfallsbericht aus einer anderen Zeitzone liegt.
+
+**`temperature_history` beantwortet „warum war es gestern Abend im Wohnzimmer kalt" in einem
+Aufruf.** Es liefert die Messreihe, mit der auch die Verlaufskachel zeichnet, als Zahlen und
+legt die Schaltvorgänge derselben Zone daneben. Das Zeitfenster kommt aus `from_at`/`to_at`
+(ohne Zeitzone gilt UTC) oder aus den letzten `hours` (1 bis 168); höchstens 7 Tage, wie in
+der Oberfläche. Die Messungen werden in Zeitfächer von `bucket_minutes` Minuten verdichtet
+(Spanne geteilt durch `max_points`, aufgerundet auf ganze Minuten, mindestens eine); je Fach
+steht der Mittelwert samt kleinstem und größtem Wert, der zuletzt gültige Sollwert und der
+größte Absenkungsbetrag. **Ein Fach ohne Messung fehlt in `points`** — das ist eine Lücke, es
+wird weder interpoliert noch mit 0 gefüllt; `summary.buckets_without_data` zählt sie.
+`null` heißt unbekannt (etwa Zeilen aus der Zeit vor der Aufzeichnung der Absenkung), `0`
+heißt belegt „keine Absenkung". `heat_share` ist der Anteil der Messungen, bei denen die
+Regelung eine Heizanforderung ausgab (`would_heat`); das ist eine Aussage über die
+Entscheidung der Regelung, nicht über den Raum — was ein Gerät daraufhin tat, steht im
+Schaltprotokoll. Dieses gehört nur dazu, wenn das Token `audit.read` hat (aus demselben
+Grund wie bei `device_commands`); sonst ist `switching_log` `null`, `switching_log_note`
+nennt das fehlende Recht, und die Messreihe kommt trotzdem. Das Protokoll wird über den
+Anzeigenamen der Zone gefiltert, unter dem es sie führt; wurde die Zone umbenannt, tragen
+ältere Einträge den früheren Namen. Werte außerhalb der Grenzen (`hours`, Fensterlänge,
+`max_points` 10 bis 1000, `log_limit` 1 bis 500) lehnt das Werkzeug mit einer Meldung ab.
+
+Beispiel (gekürzt), Anfrage `temperature_history(zone_id=3, hours=6, max_points=12)`:
+
+```json
+{
+  "zone": "wohnzimmer", "display_name": "Wohnzimmer",
+  "from": "2026-10-10T16:00:00+00:00", "to": "2026-10-10T22:00:00+00:00",
+  "bucket_minutes": 30,
+  "summary": {"sample_count": 350, "first_at": "2026-10-10T16:00:00+00:00",
+              "last_at": "2026-10-10T21:59:00+00:00", "measured_min_c": 17.9,
+              "measured_avg_c": 19.2, "measured_max_c": 20.8, "heat_share": 0.41,
+              "buckets_without_data": 1},
+  "points": [{"at": "2026-10-10T16:00:00+00:00", "measured_c": 20.4, "measured_min_c": 20.1,
+              "measured_max_c": 20.8, "setpoint_c": 20.5, "scheduled_setpoint_c": 20.5,
+              "solar_setback_k": 0.0, "heat_share": 0.2}],
+  "switching_log": [{"sent_at": "2026-10-10T17:42:00+00:00", "zone": "Wohnzimmer",
+                     "entry_kind": "befehl", "outcome": "executed", "...": "..."}],
+  "switching_log_note": null
+}
+```
 
 **`boost` ist für ein Sprachmodell die verlässlichere Form von „mach es hier wärmer".** Es
 muss weder eine Temperatur noch eine Dauer raten, und nach dem Schaltpunkt räumt sich der

@@ -9,6 +9,19 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ---
 
+## Unveröffentlicht
+
+### Neu
+
+- **Neu: MCP-Werkzeug `temperature_history`:** liefert den Temperaturverlauf einer Zone
+  (gemessen, wirksamer Sollwert, Sollwert vor der Sonnenabsenkung, Sonnenabsenkung, Anteil der
+  Messungen mit Heizanforderung) in Zeitfächern samt Zusammenfassung und im selben Aufruf das
+  Schaltprotokoll dieser Zone im Zeitraum. Recht `zone.read`; das Protokoll gehört nur dazu,
+  wenn das Token `audit.read` hat, sonst ist es `null` mit Hinweis. Lücken bleiben Lücken, Unbekanntes
+  `null`. Keine Migration, keine neue Einstellung.
+
+---
+
 ## 0.14.2 — 2026-10-11
 
 Beim Upgrade nichts zu tun: keine Migration, keine neue Einstellung.

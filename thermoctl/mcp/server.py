@@ -21,7 +21,13 @@ from thermoctl.db.models.operations import Setting
 from thermoctl.db.models.schedule import SchedulePoint
 from thermoctl.db.models.state import ShadowDecision, ZoneState
 from thermoctl.db.models.zone import SetpointMode, Zone, ZoneSetpoint
-from thermoctl.domain.authz import Forbidden, principal_for_token, require, visible_zones
+from thermoctl.domain.authz import (
+    Forbidden,
+    has_permission,
+    principal_for_token,
+    require,
+    visible_zones,
+)
 from thermoctl.domain.control import (
     LIMITS,
     ControlError,
@@ -30,7 +36,13 @@ from thermoctl.domain.control import (
     save_sensor_failure_plant_defaults,
     settings,
 )
-from thermoctl.domain.device_commands import DEFAULT_LIMIT, list_commands, naive_utc
+from thermoctl.domain.device_commands import (
+    DEFAULT_LIMIT,
+    MAX_LIMIT,
+    CommandLogEntry,
+    list_commands,
+    naive_utc,
+)
 from thermoctl.domain.modes import DomainError
 from thermoctl.domain.principal import Principal
 from thermoctl.domain.remote_control import RemoteControlError
@@ -60,6 +72,14 @@ from thermoctl.domain.sensor_failure_policy import (
     read_defaults,
     read_profile,
 )
+from thermoctl.domain.zone_history_series import (
+    DEFAULT_HOURS,
+    DEFAULT_POINTS,
+    HistoryRangeError,
+    HistorySeries,
+    history_series,
+    resolve_window,
+)
 from thermoctl.domain.zone_settings import (
     PARAMETERS,
     ParameterOutOfRange,
@@ -82,6 +102,7 @@ log = logging.getLogger("thermoctl.mcp")
 _REJECTIONS = (
     ControlError,
     DomainError,
+    HistoryRangeError,
     ParameterOutOfRange,
     PolicyError,
     RemoteControlError,
@@ -348,6 +369,24 @@ def _moment_utc(value: datetime | None) -> str | None:
     return None if value is None else value.replace(tzinfo=UTC).isoformat()
 
 
+def _command_entry(entry: CommandLogEntry) -> dict[str, object]:
+    """Ein Eintrag des Schaltprotokolls in der Form, die `device_commands` und
+    `temperature_history` gemeinsam ausgeben."""
+    return {
+        "sent_at": _moment_utc(entry.sent_at),
+        "source": entry.source,
+        "zone": entry.zone_name,
+        "device": entry.device_name,
+        "command": entry.command,
+        "payload": entry.payload,
+        "outcome": entry.outcome,
+        "error": entry.error,
+        "reason": entry.reason,
+        "entry_kind": entry.entry_kind,
+        "simulated": entry.simulated,
+    }
+
+
 def device_commands(
     session: Session,
     plaintext: str,
@@ -372,22 +411,81 @@ def device_commands(
         outcome=outcome,
         limit=limit,
     )
+    return [_command_entry(entry) for entry in entries]
+
+
+SWITCHING_LOG_NOTE = "Das Schaltprotokoll braucht das Recht audit.read; dieses Token hat es nicht."
+
+
+def _history_points(series: HistorySeries) -> list[dict[str, object]]:
     return [
         {
-            "sent_at": _moment_utc(entry.sent_at),
-            "source": entry.source,
-            "zone": entry.zone_name,
-            "device": entry.device_name,
-            "command": entry.command,
-            "payload": entry.payload,
-            "outcome": entry.outcome,
-            "error": entry.error,
-            "reason": entry.reason,
-            "entry_kind": entry.entry_kind,
-            "simulated": entry.simulated,
+            "at": point.at.isoformat(),
+            "measured_c": point.measured_c,
+            "measured_min_c": point.measured_min_c,
+            "measured_max_c": point.measured_max_c,
+            "setpoint_c": point.setpoint_c,
+            "scheduled_setpoint_c": point.scheduled_setpoint_c,
+            "solar_setback_k": point.solar_setback_k,
+            "heat_share": point.heat_share,
         }
-        for entry in entries
+        for point in series.points
     ]
+
+
+def temperature_history(
+    session: Session,
+    plaintext: str,
+    zone_id: int,
+    hours: int = DEFAULT_HOURS,
+    from_at: datetime | None = None,
+    to_at: datetime | None = None,
+    max_points: int = DEFAULT_POINTS,
+    log_limit: int = DEFAULT_LIMIT,
+) -> dict[str, object]:
+    """Temperaturverlauf einer sichtbaren Zone, samt Schaltprotokoll dieser Zone.
+
+    `zone.read` für die Zone. Das Schaltprotokoll ist ein Protokoll über die ganze Anlage und
+    gehört deshalb nur dazu, wenn das Token `audit.read` hat; sonst ist `switching_log` null
+    und `switching_log_note` sagt warum -- die Messreihe kommt trotzdem.
+    """
+    _token, principal = _log_in(session, plaintext)
+    zone = _visible_zone(session, principal, zone_id)
+    start, end = resolve_window(hours=hours, from_at=from_at, to_at=to_at, now=utcnow())
+    if log_limit < 1 or log_limit > MAX_LIMIT:
+        raise HistoryRangeError(f"log_limit muss zwischen 1 und {MAX_LIMIT} liegen")
+    series = history_series(session, zone.id, start, end, max_points)
+    summary = series.summary
+
+    switching_log: list[dict[str, object]] | None = None
+    note: str | None = SWITCHING_LOG_NOTE
+    if has_permission(principal, "audit.read"):
+        # Das Schaltprotokoll führt die Zone unter ihrem Anzeigenamen (Momentaufnahme).
+        entries = list_commands(
+            session, zone_name=zone.display_name, from_at=start, to_at=end, limit=log_limit
+        )
+        switching_log = [_command_entry(entry) for entry in entries]
+        note = None
+    return {
+        "zone": zone.name,
+        "display_name": zone.display_name,
+        "from": _moment_utc(start),
+        "to": _moment_utc(end),
+        "bucket_minutes": series.bucket_minutes,
+        "summary": {
+            "sample_count": summary.sample_count,
+            "first_at": summary.first_at.isoformat() if summary.first_at else None,
+            "last_at": summary.last_at.isoformat() if summary.last_at else None,
+            "measured_min_c": summary.measured_min_c,
+            "measured_avg_c": summary.measured_avg_c,
+            "measured_max_c": summary.measured_max_c,
+            "heat_share": summary.heat_share,
+            "buckets_without_data": summary.buckets_without_data,
+        },
+        "points": _history_points(series),
+        "switching_log": switching_log,
+        "switching_log_note": note,
+    }
 
 
 def read_emergency_state(session: Session, plaintext: str, zone_id: int) -> dict[str, object]:
@@ -1005,6 +1103,28 @@ def _register_tools(
         """Reads the actuator command log, newest first, filtered and capped."""
         with session_scope(factory) as session:
             return device_commands(session, current(), zone, outcome, from_at, to_at, limit)
+
+    @server.tool(name="temperature_history")
+    def mcp_temperature_history(
+        zone_id: int,
+        hours: int = 24,
+        from_at: datetime | None = None,
+        to_at: datetime | None = None,
+        max_points: int = 300,
+        log_limit: int = 100,
+    ) -> dict[str, object]:
+        """Temperature history of a visible zone, with the zone's command log.
+
+        Window: from_at/to_at (naive = UTC) or the last `hours` (1-168, at most 7 days).
+        Points are time buckets of `bucket_minutes`; a bucket without readings is absent
+        (a gap, nothing interpolated), `summary.buckets_without_data` counts them. null =
+        unknown, never 0. `heat_share` is the share of readings in which the controller's
+        demand flag (`would_heat`) was set. `switching_log` needs audit.read, otherwise null.
+        """
+        with session_scope(factory) as session:
+            return temperature_history(
+                session, current(), zone_id, hours, from_at, to_at, max_points, log_limit
+            )
 
     @server.tool(name="read_emergency_state")
     def mcp_read_emergency_state(zone_id: int) -> dict[str, object]:

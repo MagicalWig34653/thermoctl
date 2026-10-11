@@ -1,5 +1,5 @@
 from contextlib import nullcontext
-from datetime import date, datetime
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
 
@@ -353,6 +353,7 @@ def test_the_registered_mcp_tools_have_descriptions_and_call_the_adapter_functio
         "list_devices",
         "shadow_decisions",
         "device_commands",
+        "temperature_history",
         "read_emergency_state",
         "override",
         "cancel_override",
@@ -383,6 +384,7 @@ def test_the_registered_mcp_tools_have_descriptions_and_call_the_adapter_functio
     assert tools["list_devices"]()  # type: ignore[operator]
     assert tools["shadow_decisions"](zone.id, 1)  # type: ignore[operator]
     assert tools["device_commands"]()  # type: ignore[operator]
+    assert "points" in tools["temperature_history"](zone.id)  # type: ignore[operator]
     assert tools["read_emergency_state"](zone.id)["stage"] == "normal"  # type: ignore[operator]
     assert tools["override"](zone.id, Decimal("21.0"))  # type: ignore[operator]
     assert tools["cancel_override"](zone.id)  # type: ignore[operator]
@@ -1010,3 +1012,317 @@ def test_domain_rejections_reach_the_client_with_their_text(
         getattr(r, "outcome", "") == "rejected" and getattr(r, "reason", "") == expected
         for r in caplog.records
     )
+
+
+# --- temperature_history ---------------------------------------------------------------
+
+_HISTORY_FROM = datetime(2026, 8, 29, 8, 0)
+_HISTORY_TO = datetime(2026, 8, 29, 10, 0)
+
+
+def _history_row(session: Session, zone: Zone, minute: int, *, temperature: str = "19.0",
+                 heat: bool = False) -> None:
+    from thermoctl.db.models.state import ShadowDecision
+
+    session.add(
+        ShadowDecision(
+            decided_at=_HISTORY_FROM + timedelta(minutes=minute),
+            zone_id=zone.id,
+            temperature_c=Decimal(temperature),
+            setpoint_c=Decimal("21.0"),
+            scheduled_setpoint_c=Decimal("21.0"),
+            solar_setback_k=Decimal("0.0"),
+            setpoint_reason="Zeitplan",
+            would_heat=heat,
+            outcome_code="an" if heat else "aus",
+            reason="Test",
+        )
+    )
+    session.flush()
+
+
+def _logged_command(session: Session, zone: Zone, device_name: str, minute: int) -> None:
+    device = create_device(session, device_name)
+    entry = create_device_command(
+        session, zone, device, at=_HISTORY_FROM + timedelta(minutes=minute)
+    )
+    # Das Schaltprotokoll führt die Zone unter ihrem Anzeigenamen.
+    entry.zone_name = zone.display_name
+    session.flush()
+
+
+def _history(session: Session, plaintext: str, zone: Zone, **kwargs: object) -> dict[str, object]:
+    arguments: dict[str, object] = {"from_at": _HISTORY_FROM, "to_at": _HISTORY_TO}
+    arguments.update(kwargs)
+    return server.temperature_history(session, plaintext, zone.id, **arguments)  # type: ignore[arg-type]
+
+
+def test_temperature_history_returns_series_summary_and_the_log_of_this_zone(
+    session: Session,
+) -> None:
+    zone = create_zone(session, "wohnzimmer")
+    other = create_zone(session, "schlafzimmer")
+    _history_row(session, zone, 10, temperature="18.0", heat=True)
+    _history_row(session, zone, 11, temperature="19.0", heat=True)
+    _history_row(session, other, 10, temperature="30.0")
+    _logged_command(session, zone, "wohn-relais", 12)
+    _logged_command(session, other, "schlaf-relais", 13)
+    _logged_command(session, zone, "wohn-relais-zu-frueh", -30)
+    _logged_command(session, zone, "wohn-relais-zu-spaet", 180)
+    plaintext = _token(session, "verlauf-alles", [("zone.read", None), ("audit.read", None)])
+
+    result = _history(session, plaintext, zone, max_points=24)
+
+    assert result["zone"] == "wohnzimmer"
+    assert result["display_name"] == "Wohnzimmer"
+    assert result["from"] == "2026-08-29T08:00:00+00:00"
+    assert result["to"] == "2026-08-29T10:00:00+00:00"
+    assert result["bucket_minutes"] == 5
+    assert result["summary"] == {
+        "sample_count": 2,
+        "first_at": "2026-08-29T08:10:00+00:00",
+        "last_at": "2026-08-29T08:11:00+00:00",
+        "measured_min_c": 18.0,
+        "measured_avg_c": 18.5,
+        "measured_max_c": 19.0,
+        "heat_share": 1.0,
+        "buckets_without_data": 23,
+    }
+    assert result["points"] == [
+        {
+            "at": "2026-08-29T08:10:00+00:00",
+            "measured_c": 18.5,
+            "measured_min_c": 18.0,
+            "measured_max_c": 19.0,
+            "setpoint_c": 21.0,
+            "scheduled_setpoint_c": 21.0,
+            "solar_setback_k": 0.0,
+            "heat_share": 1.0,
+        }
+    ]
+    assert result["switching_log_note"] is None
+    log = result["switching_log"]
+    assert isinstance(log, list)
+    # Der Befehl dieser Zone im Fenster -- und der Beginn der Sonnenabsenkung (Wert 0,0 ist
+    # der erste belegte Wert), den das Schaltprotokoll ebenfalls führt. Nichts von der
+    # anderen Zone, nichts außerhalb des Fensters.
+    assert [(e["entry_kind"], e["device"], e["sent_at"]) for e in log] == [
+        ("befehl", "wohn-relais", "2026-08-29T08:12:00+00:00"),
+        ("absenkung", "", "2026-08-29T08:10:00+00:00"),
+    ]
+
+
+def test_temperature_history_log_entries_have_the_format_of_device_commands(
+    session: Session,
+) -> None:
+    zone = create_zone(session, "formatzone")
+    _logged_command(session, zone, "format-relais", 5)
+    plaintext = _token(session, "verlauf-format", [("zone.read", None), ("audit.read", None)])
+
+    log = _history(session, plaintext, zone)["switching_log"]
+    expected = server.device_commands(
+        session, plaintext, zone=zone.display_name, from_at=_HISTORY_FROM, to_at=_HISTORY_TO
+    )
+
+    assert log == expected
+    assert expected  # der Vergleich beweist nur etwas, wenn es einen Eintrag gibt
+
+
+def test_temperature_history_without_audit_read_has_no_log_but_a_note(session: Session) -> None:
+    zone = create_zone(session, "ohneprotokoll")
+    _history_row(session, zone, 10)
+    _logged_command(session, zone, "geheim-relais", 12)
+    plaintext = _token(session, "verlauf-nur-zone", [("zone.read", None)])
+
+    result = _history(session, plaintext, zone)
+
+    assert result["switching_log"] is None
+    assert result["switching_log_note"] == (
+        "Das Schaltprotokoll braucht das Recht audit.read; dieses Token hat es nicht."
+    )
+    assert result["summary"]["sample_count"] == 1  # type: ignore[index]
+    assert "geheim-relais" not in str(result)
+
+
+def test_temperature_history_zone_scoped_audit_read_is_not_enough_for_the_log(
+    session: Session,
+) -> None:
+    """`device_commands` verlangt das anlagenweite Recht; ein zonengebundenes genügt nicht."""
+    zone = create_zone(session, "zonenprotokoll")
+    _logged_command(session, zone, "zonen-relais", 12)
+    plaintext = _token(
+        session, "verlauf-zonenaudit", [("zone.read", zone.id), ("audit.read", zone.id)]
+    )
+
+    result = _history(session, plaintext, zone)
+
+    assert result["switching_log"] is None
+    assert result["switching_log_note"]
+
+
+def test_temperature_history_needs_zone_read_even_with_audit_read(session: Session) -> None:
+    zone = create_zone(session, "nurprotokoll")
+    plaintext = _token(session, "verlauf-nur-audit", [("audit.read", None)])
+
+    with pytest.raises(LookupError, match="Zone nicht gefunden"):
+        _history(session, plaintext, zone)
+
+
+def test_temperature_history_zone_scoped_read_covers_only_that_zone(session: Session) -> None:
+    own = create_zone(session, "eigenverlauf")
+    foreign = create_zone(session, "fremdverlauf")
+    _history_row(session, own, 10, temperature="20.0")
+    _history_row(session, foreign, 10, temperature="25.0")
+    plaintext = _token(session, "verlauf-einzelzone", [("zone.read", own.id)])
+
+    result = _history(session, plaintext, own)
+    assert result["summary"]["measured_max_c"] == 20.0  # type: ignore[index]
+
+    with pytest.raises(LookupError, match="Zone nicht gefunden") as unknown:
+        _history(session, plaintext, foreign)
+    # Eine nicht sichtbare Zone sieht aus wie eine, die es nicht gibt.
+    with pytest.raises(LookupError) as missing:
+        server.temperature_history(session, plaintext, 999_999)
+    assert str(unknown.value) == str(missing.value)
+
+
+def test_temperature_history_without_zone_read_is_denied(session: Session) -> None:
+    zone = create_zone(session, "ohnerecht")
+    plaintext = _token(session, "verlauf-ohne", [("device.read", None)])
+
+    with pytest.raises((Forbidden, LookupError)):
+        _history(session, plaintext, zone)
+
+
+@pytest.mark.parametrize(
+    ("arguments", "message"),
+    [
+        ({"hours": 0}, "hours muss zwischen 1 und 168"),
+        ({"hours": 169}, "hours muss zwischen 1 und 168"),
+        ({"from_at": _HISTORY_TO, "to_at": _HISTORY_FROM}, "from_at muss vor to_at"),
+        ({"from_at": _HISTORY_FROM, "to_at": _HISTORY_FROM}, "from_at muss vor to_at"),
+        (
+            {"from_at": _HISTORY_FROM, "to_at": _HISTORY_FROM + timedelta(days=7, minutes=1)},
+            "höchstens 7 Tage",
+        ),
+        ({"max_points": 9}, "max_points muss zwischen 10 und 1000"),
+        ({"max_points": 1001}, "max_points muss zwischen 10 und 1000"),
+        ({"log_limit": 0}, "log_limit muss zwischen 1 und 500"),
+        ({"log_limit": 501}, "log_limit muss zwischen 1 und 500"),
+    ],
+)
+def test_temperature_history_refuses_out_of_range_values(
+    session: Session, arguments: dict[str, object], message: str
+) -> None:
+    zone = create_zone(session, "grenzverlauf")
+    plaintext = _token(session, "verlauf-grenzen", [("zone.read", None), ("audit.read", None)])
+
+    with pytest.raises(ValueError, match=message):
+        _history(session, plaintext, zone, **arguments)
+
+
+def test_temperature_history_naive_bounds_are_utc_and_aware_ones_are_converted(
+    session: Session,
+) -> None:
+    zone = create_zone(session, "zeitangaben")
+    _history_row(session, zone, 30)  # 08:30 UTC
+    plaintext = _token(session, "verlauf-zeit", [("zone.read", None)])
+    plus_two = timezone(timedelta(hours=2))
+
+    naive = _history(session, plaintext, zone)
+    aware = _history(
+        session,
+        plaintext,
+        zone,
+        from_at=datetime(2026, 8, 29, 10, 0, tzinfo=plus_two),  # 08:00 UTC
+        to_at=datetime(2026, 8, 29, 12, 0, tzinfo=plus_two),
+    )
+
+    assert naive["from"] == aware["from"] == "2026-08-29T08:00:00+00:00"
+    assert naive["summary"] == aware["summary"]
+    assert aware["summary"]["sample_count"] == 1  # type: ignore[index]
+
+
+def test_temperature_history_defaults_to_the_last_hours(session: Session) -> None:
+    from thermoctl.db.base import utcnow
+    from thermoctl.db.models.state import ShadowDecision
+
+    zone = create_zone(session, "letztestunden")
+    now = utcnow()
+    for ago in (timedelta(hours=1), timedelta(hours=30)):
+        session.add(
+            ShadowDecision(
+                decided_at=now - ago,
+                zone_id=zone.id,
+                temperature_c=Decimal("20.0"),
+                setpoint_reason="Zeitplan",
+                would_heat=False,
+                outcome_code="aus",
+                reason="Test",
+            )
+        )
+    session.flush()
+    plaintext = _token(session, "verlauf-stunden", [("zone.read", None)])
+
+    day = server.temperature_history(session, plaintext, zone.id)
+    two_days = server.temperature_history(session, plaintext, zone.id, hours=48)
+
+    assert day["summary"]["sample_count"] == 1  # type: ignore[index]
+    assert two_days["summary"]["sample_count"] == 2  # type: ignore[index]
+
+
+def test_temperature_history_gaps_and_unknowns_reach_the_client_as_null(session: Session) -> None:
+    from thermoctl.db.models.state import ShadowDecision
+
+    zone = create_zone(session, "altzeilen")
+    session.add(
+        ShadowDecision(  # Zeile aus der Zeit vor den Spalten für Absenkung
+            decided_at=_HISTORY_FROM + timedelta(minutes=10),
+            zone_id=zone.id,
+            temperature_c=Decimal("19.5"),
+            setpoint_c=Decimal("21.0"),
+            setpoint_reason="Zeitplan",
+            would_heat=False,
+            outcome_code="aus",
+            reason="Test",
+        )
+    )
+    session.flush()
+    plaintext = _token(session, "verlauf-alt", [("zone.read", None)])
+
+    result = _history(session, plaintext, zone)
+
+    (point,) = result["points"]  # type: ignore[misc]
+    assert point["scheduled_setpoint_c"] is None
+    assert point["solar_setback_k"] is None
+    assert point["measured_c"] == 19.5
+    assert result["summary"]["buckets_without_data"] == 119  # type: ignore[index]  # 120 Fächer
+
+
+def test_temperature_history_range_errors_reach_the_client_with_their_message(
+    session: Session, monkeypatch
+) -> None:
+    zone = create_zone(session, "clientfehler")
+    plaintext = _token(session, "verlauf-client", [("zone.read", None)])
+    tools = _recording_tools(session, monkeypatch, lambda: plaintext)
+
+    with pytest.raises(ToolError, match="hours muss zwischen 1 und 168"):
+        tools["temperature_history"](zone.id, hours=0)  # type: ignore[operator]
+    with pytest.raises(ToolError, match="Zone nicht gefunden"):
+        tools["temperature_history"](999_999)  # type: ignore[operator]
+    assert tools["temperature_history"](zone.id)["switching_log"] is None  # type: ignore[operator]
+
+
+def test_a_foreign_value_error_stays_hidden_from_the_client(session: Session, monkeypatch) -> None:
+    """Nur `HistoryRangeError` ist freigegeben, nicht jeder `ValueError` (der Text kann
+    Eingaben des Clients enthalten)."""
+    zone = create_zone(session, "fremdfehler")
+    plaintext = _token(session, "verlauf-fremd", [("zone.read", None)])
+    tools = _recording_tools(session, monkeypatch, lambda: plaintext)
+    monkeypatch.setattr(
+        server, "history_series", lambda *_a: (_ for _ in ()).throw(ValueError("geheim"))
+    )
+
+    with pytest.raises(ValueError, match="geheim") as raised:
+        tools["temperature_history"](zone.id)  # type: ignore[operator]
+    assert not isinstance(raised.value, ToolError)

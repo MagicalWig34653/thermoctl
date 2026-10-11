@@ -31,6 +31,11 @@ Gebaut und dokumentiert (`docs/mcp.md`, `docs/self-hosting.md` Abschnitt 8c, `do
   (nicht gepusht).
 - **0.14.2:** die OAuth-Zustimmungsseite wird als normaler Seitenwechsel abgeschickt (kein HTMX-Boost), sodass die
   Cross-Origin-Weiterleitung zum Client gelingt.
+- **MCP-Werkzeug `temperature_history`** (25. Werkzeug, unveröffentlicht, keine Migration): Messreihe einer Zone in
+  Zeitfächern (`domain/zone_history_series.py`, liest mit `zone_history_chart.read_samples`) plus Schaltprotokoll dieser
+  Zone, wenn das Token `audit.read` hat (sonst `switching_log` null mit Hinweis). Lücken fehlen und werden gezählt,
+  Unbekanntes bleibt `null`; `heat_share` beschreibt die Anforderung der Regelung, nicht den Raum. Das Protokoll wird
+  über den Anzeigenamen der Zone gefiltert (so führt `device_command` sie).
 - **Offen:** die Freigabe 0.14.2 (Tag, Release, gebautes Abbild, danach Push des Add-ons).
 - **Nicht ausprobiert:** der Ablauf mit einem echten Client (`claude mcp add --transport http …`, `/mcp`) hinter einem echten
   Reverse Proxy; die Tests prüfen den Ablauf, ersetzen aber nicht, ihn einmal zu öffnen.

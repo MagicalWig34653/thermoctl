@@ -58,7 +58,7 @@ def test_path_http_protocol_and_oauth_metadata(session: Session) -> None:
         assert response.status_code == 200
         response = client.post("/", json=_rpc("tools/list", 2), headers=headers)
         assert response.status_code == 200
-        assert len(response.json()["result"]["tools"]) == 24
+        assert len(response.json()["result"]["tools"]) == 25
         no_token = client.post(
             "/", json=_rpc("tools/list"), headers={"Host": "thermo.example.invalid"}
         )
@@ -103,7 +103,7 @@ def test_port_metadata_at_root(session: Session) -> None:
         }
         response = client.post("/", json=_rpc("tools/list"), headers=headers)
         assert response.status_code == 200
-        assert len(response.json()["result"]["tools"]) == 24
+        assert len(response.json()["result"]["tools"]) == 25
 
 
 def test_web_mount_answers_exact_path_without_redirect(
@@ -134,7 +134,7 @@ def test_web_mount_answers_exact_path_without_redirect(
         }
         response = client.post("/mcp", json=_rpc("tools/list"), headers=headers)
         assert response.status_code == 200
-        assert len(response.json()["result"]["tools"]) == 24
+        assert len(response.json()["result"]["tools"]) == 25
 
 
 def test_off_mode_has_no_mcp_route(monkeypatch) -> None:
