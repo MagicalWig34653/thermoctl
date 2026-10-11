@@ -11,6 +11,29 @@ Letzte Aktualisierung: 2026-10-10.
   Fußlink im Generator (`tools/landingpage_erzeugen.py`) ergänzen, `site/` neu erzeugen.
 - Das Paket `ghcr.io/magicalwig34653/thermoctl` ist öffentlich (Projektinhaber, 2026-10-10).
 
+## 0.13.0 (2026-10-11)
+
+Neu seit 0.12.0, keine Migration: **Werte am Mauszeiger** im Temperaturverlauf (Maus, Touch, Pfeiltasten; Daten
+einmal je Karte als JSON im Attribut `data-history-data`, `zone_history_chart.hover_payload`, `zone_history.js`),
+die Seite **„Verläufe aller Zonen“** (`/zones/history`, Analyse → Zonenverläufe; Kacheln laden nacheinander
+nach, `hx-sync`; Recht `zone.manage` über `visible_zones`, nur Anlagensicht) und die Seite **„Verlauf“ der
+Wohnungssicht** (`/temperature-history`, Kachel-Route `/temperature-history/{id}/tile`; Filter
+`visible_zones(…, "zone.read")` wie die übrigen Wohnungsseiten, kein neues Recht; fremde Zone = 404, auch bei
+ungültigem Zeitraum; Zonen-ID nur 1–9 ASCII-Ziffern). Beschriftungen als austauschbare Fassung
+`Wording.TECHNICAL`/`TENANT` in `domain/zone_history_chart.py`; die Mieterfassung spricht von „Zielwert ohne
+Sonnenabsenkung“ und „Tatsächlicher Zielwert“. Bei nicht scharfer Anlage zeigt die Mieterseite denselben Hinweis
+wie die Heizzeit (`tenant_views._control_armed`). **Beschriftung korrigiert:** `scheduled_setpoint_c` ist der
+Sollwert **vor der Sonnenabsenkung** und folgt auch Übersteuerung, Urlaub, Abwesenheit und Betriebsart Aus; „Zeitplan-Soll“
+war deshalb falsch und heißt in Diagramm und Schaltprotokoll jetzt „Sollwert vor Sonnenabsenkung“ bzw. „Sollwert vor
+Absenkung“ (Protokolltexte entstehen beim Lesen, gelten also rückwirkend). Landingpage-Karte ergänzt. Rechte der
+neuen Seiten von der Hauptsession gelesen, zusätzlich unabhängig gegengelesen (23 Angriffsadressen, Monkeypatch-Mutation,
+kein Leck). Browsertests: Live-Server startete wegen leerer `THERMOCTL_MEROSS_*`-Variablen die Schattenschleife
+(`browser_tests/live_server.py::server_environment`), Verlaufskacheln laden über `history_tiles.scroll_until_loaded`,
+CSS-Fehler bei langen Raumnamen behoben. Prüfstand: Suite 5903 Tests gegen SQLite und MariaDB, Abdeckung 100 %,
+Browser-Gesamtlauf 452 Tests ohne Fehler. Offen: kein Trockenlauf-Hinweis auf den Anlagenseiten (Verwaltung sieht den
+Betriebszustand auf Start- und Betriebsseite); zwei fremde Python-Prozesse (PID 71766, 73674) laufen seit Ende September
+mit 100 % CPU auf dem Entwicklungsrechner, nicht angefasst.
+
 ## 0.12.0 (2026-10-10)
 
 Enthält die Arbeit der Sitzung vom 2026-10-09: Sonnenabsenkung im Schaltprotokoll sichtbar, Glossar,

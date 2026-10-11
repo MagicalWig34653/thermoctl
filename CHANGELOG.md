@@ -9,7 +9,9 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ---
 
-## Unreleased
+## 0.13.0 — 2026-10-11
+
+Beim Upgrade nichts zu tun: keine Migration, keine neue Einstellung, keine neuen Optionen.
 
 ### Neu
 
@@ -28,11 +30,13 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
   Mieter gesperrt, die Wohnungsseiten für Verwaltungskonten. Im Hintergrund trägt die Domäne
   (`domain/zone_history_chart.py`) die Beschriftungen jetzt als austauschbare Fassung (`Wording`);
   die Anlagensicht bleibt Wort für Wort unverändert.
+  Ist die Anlage noch nicht scharf gestellt, steht auf der Seite derselbe Hinweis wie bei der
+  Heizzeit: Der Verlauf zeigt dann, was die Regelung entschieden hätte.
 - **Werte am Mauszeiger im Temperaturverlauf:** Fährt man mit der Maus über das Diagramm (oder
   tippt bzw. zieht mit dem Finger, oder bedient es mit den Pfeiltasten links/rechts, Pos1/Ende,
   Umschalt für größere Schritte, Escape zum Ausblenden), erscheinen eine senkrechte Linie und
   eine Wertebox mit der Ortszeit (nach der eingestellten Zeitzone, auch über die
-  Zeitumstellung), Ist, Zeitplan-Soll, wirksamem Soll, Sonnenabsenkung und Heizanforderung an
+  Zeitumstellung), Ist, Sollwert vor der Absenkung, wirksamem Soll, Sonnenabsenkung und Heizanforderung an
   dieser Stelle. Die Box zeigt nur, was Zeilen belegen: In einer Lücke und nach dem letzten
   Eintrag steht „keine Daten" (mit der Dauer der Lücke), nichts wird interpoliert oder über
   eine Lücke hinweg angezeigt; Altzeilen ohne aufgezeichneten Sollwert vor der Absenkung stehen als
