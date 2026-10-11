@@ -61,9 +61,7 @@
                     </form>
                     {% endif %}
                 </details>
-                {% if not entry.revoked_at and entry.source == "oauth" %}
-                <span class="text-muted">OAuth-Widerruf noch nicht verfügbar</span>
-                {% elif not entry.revoked_at %}
+                {% if not entry.revoked_at %}
                 <form method="post" action="{{ url_prefix }}/tokens/{{ entry.id }}/revoke">
                     <button type="submit" class="btn btn-sm btn-outline-danger">Widerrufen</button>
                 </form>

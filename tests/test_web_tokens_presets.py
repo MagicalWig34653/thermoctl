@@ -5,6 +5,7 @@ from tests.helpers import create_zone, token_with_permissions, user_with_permiss
 from thermoctl.auth.csrf import csrf_token
 from thermoctl.auth.sessions import COOKIE_NAME, resolve_session
 from thermoctl.config import get_settings
+from thermoctl.db.base import utcnow
 from thermoctl.db.models.credential import ApiToken, ApiTokenPermission
 from thermoctl.db.models.identity import User
 from thermoctl.domain.oauth import register_client
@@ -136,7 +137,12 @@ def test_token_list_shows_oauth_source_and_client(client_als, session: Session) 
     assert "Anwendung" in body
 
 
-def test_oauth_revoke_does_not_claim_a_partial_family_revoke(client_als, session: Session) -> None:
+def test_revoking_an_oauth_token_also_blocks_its_refresh_family(
+    client_als, session: Session
+) -> None:
+    from thermoctl.db.models.oauth import OAuthRefreshToken
+    from thermoctl.domain.oauth import REFRESH_TTL
+
     c = client_als([("token.self", None)])
     web_session = resolve_session(session, c.cookies[COOKIE_NAME])
     assert web_session is not None
@@ -144,9 +150,22 @@ def test_oauth_revoke_does_not_claim_a_partial_family_revoke(client_als, session
     assert owner is not None
     token = token_with_permissions(session, owner, [])
     token.source = "oauth"
+    oauth_client = register_client(session, "Anwendung", ["https://client.example/return"])
+    token.oauth_client_id = oauth_client.id
+    row = OAuthRefreshToken(
+        token_hash="h" * 64,
+        family="f" * 32,
+        client_id=oauth_client.id,
+        user_id=owner.id,
+        api_token_id=token.id,
+        expires_at=utcnow() + REFRESH_TTL,
+    )
+    session.add(row)
+    session.flush()
     response = c.post(f"/tokens/{token.id}/revoke", headers=_csrf(c))
-    assert response.status_code == 409
-    assert token.revoked_at is None
+    assert response.status_code in (200, 303)
+    assert token.revoked_at is not None
+    assert row.revoked_at is not None  # Refresh-Familie gesperrt
 
 
 def test_zone_scoped_permission_can_be_selected_without_widening(

@@ -37,6 +37,7 @@ from thermoctl.domain.authz import (
     principal_for_token,
     require,
 )
+from thermoctl.domain.oauth import revoke_access_token as revoke_oauth_access_token
 from thermoctl.domain.principal import Principal
 from thermoctl.domain.token_presets import PRESETS
 from thermoctl.domain.ui_profile import WebUiProfile, parse_profile
@@ -644,12 +645,9 @@ async def token_revoke_view(
         # Someone else's tokens are unfindable, not forbidden -- otherwise the
         # response would reveal which ids exist.
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Token nicht gefunden")
-    if token.source == "oauth":
-        # domain.oauth.revoke erwartet Klartext, der hier absichtlich nicht mehr
-        # vorhanden ist. Ein bloßer Access-Token-Widerruf ließe Refresh aktiv.
-        return Response(
-            "Der Widerruf dieser OAuth-Tokenfamilie ist noch nicht verfügbar.",
-            status_code=status.HTTP_409_CONFLICT,
-        )
     revoke_token(session, token, actor_id=principal.user_id)
+    if token.source == "oauth":
+        # Das Token ist hier schon (mit Protokolleintrag) widerrufen; dies sperrt zusätzlich
+        # die Refresh-Familie der Sitzung, sonst ließe es sich per Erneuerung ersetzen.
+        revoke_oauth_access_token(session, token)
     return RedirectResponse(prefixed(request, "/tokens"), status_code=status.HTTP_303_SEE_OTHER)
