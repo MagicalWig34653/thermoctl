@@ -1,0 +1,16 @@
+{% extends "base_admin.html" %}
+{% block title %}Änderung zurücknehmen – thermoctl{% endblock %}
+{% block page_title %}Änderung zurücknehmen{% endblock %}
+{% block content %}
+<h1>Änderung {{ entry.id }} zurücknehmen</h1>
+{% if message %}<div class="alert alert-warning" role="status">{{ message }}</div>{% endif %}
+<p>{{ entry.summary }}</p>
+<ul>{% for field in entry.fields %}<li><code>{{ field.field }}</code>: {{ field.before if field.before is not none else 'leer/geerbt' }} → {{ field.after if field.after is not none else 'leer/geerbt' }}</li>{% endfor %}</ul>
+{% if conflict %}
+<div class="alert alert-warning" role="alert"><p>Der Wert wurde inzwischen geändert. Die Rücknahme wurde nicht ausgeführt.</p><ul>{% for item in conflict.conflicts %}<li>{{ item.field }}: aktuell {{ item.current if item.current is not none else 'leer/geerbt' }}, erwartet {{ item.expected if item.expected is not none else 'leer/geerbt' }}</li>{% endfor %}</ul></div>
+<form method="post" action="{{ url_prefix }}/changes/{{ entry.id }}/revert" hx-boost="false"><input type="hidden" name="force" value="1"><input type="hidden" name="force_token" value="{{ force_token }}"><button class="btn btn-danger" type="submit">Trotzdem zurücksetzen (überschreibt die neuere Änderung)</button></form>
+{% elif entry.revertible and not entry.reverted_at and not message %}
+<form method="post" action="{{ url_prefix }}/changes/{{ entry.id }}/revert" hx-boost="false"><button class="btn btn-warning" type="submit">Zurücknahme bestätigen</button></form>
+{% endif %}
+<p class="mt-3"><a href="{{ url_prefix }}/changes">Zurück zum Änderungsprotokoll</a></p>
+{% endblock %}

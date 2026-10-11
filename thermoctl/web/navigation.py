@@ -99,6 +99,13 @@ NAVIGATION_ITEMS: tuple[NavigationItem, ...] = (
         "thermoctl.web.device_commands_views.device_command_list",
         section="analysis",
     ),
+    NavigationItem(
+        "/changes",
+        "Änderungsprotokoll",
+        "audit.read",
+        "thermoctl.web.changes_views.change_list",
+        section="analysis",
+    ),
     # -- System ------------------------------------------------------------------
     NavigationItem(
         "/settings",
