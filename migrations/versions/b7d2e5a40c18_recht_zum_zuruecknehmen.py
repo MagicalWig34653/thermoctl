@@ -5,9 +5,9 @@ Richtung (zurück in den Trockenlauf) an das Recht zur gefährlichen (scharf sch
 ein Token, das die Regelung nur anhalten können soll, hätte sie auch scharf schalten
 dürfen. `control.disarm` trennt beides.
 
-Damit niemand eine Fähigkeit verliert, die er hatte, bekommen alle Gruppen das neue
-Recht, die `control.arm` anlagenweit halten. Wer `control.arm` nicht hatte, bekommt
-nichts.
+Damit niemand eine Fähigkeit verliert, die er hatte, bekommen alle Gruppen und alle
+bestehenden API-Token das neue Recht, die `control.arm` anlagenweit halten. Wer
+`control.arm` nicht hatte, bekommt nichts.
 
 Revision ID: b7d2e5a40c18
 Revises: f6c3a8d19b42
@@ -62,11 +62,36 @@ def upgrade() -> None:
         ),
         {"neu": vorhanden},
     )
+    # Dasselbe für API-Token: ihr Recht liegt in api_token_permission und gilt als
+    # Obergrenze zusätzlich zur Gruppe; ohne diese Zuteilung verlöre ein Token mit
+    # control.arm still die Fähigkeit, force_dry_run zu nutzen.
+    verbindung.execute(
+        sa.text(
+            "INSERT INTO api_token_permission (api_token_id, permission_id, zone_id) "
+            "SELECT atp.api_token_id, :neu, NULL "
+            "FROM api_token_permission atp "
+            "JOIN permission p ON p.id = atp.permission_id "
+            "WHERE p.code = 'control.arm' AND atp.zone_id IS NULL "
+            "AND NOT EXISTS ("
+            "  SELECT 1 FROM api_token_permission vorhanden "
+            "  WHERE vorhanden.api_token_id = atp.api_token_id "
+            "    AND vorhanden.permission_id = :neu AND vorhanden.zone_id IS NULL"
+            ")"
+        ),
+        {"neu": vorhanden},
+    )
 
 
 def downgrade() -> None:
     verbindung = op.get_bind()
     # Erst die Zuteilungen, dann das Recht: umgekehrt hält der Fremdschlüssel dagegen.
+    verbindung.execute(
+        sa.text(
+            "DELETE FROM api_token_permission WHERE permission_id IN "
+            "(SELECT id FROM permission WHERE code = :code)"
+        ),
+        {"code": CODE},
+    )
     verbindung.execute(
         sa.text(
             "DELETE FROM group_permission WHERE permission_id IN "

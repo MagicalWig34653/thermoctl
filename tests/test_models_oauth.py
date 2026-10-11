@@ -31,7 +31,7 @@ def _client(session: Session, client_id: str = "client-a") -> OAuthClient:
 def test_oauth_columns_and_lengths_match_contract() -> None:
     expected = {
         OAuthClient: {"client_id": 64, "name": 128},
-        OAuthRedirectUri: {"uri": 1024},
+        OAuthRedirectUri: {"uri": 512},
         OAuthAuthorizationRequest: {
             "state": 512,
             "code_challenge": 128,

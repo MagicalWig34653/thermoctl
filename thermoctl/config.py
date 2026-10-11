@@ -1,4 +1,5 @@
 import os
+import re
 from functools import lru_cache
 from typing import Literal
 from urllib.parse import urlsplit
@@ -6,6 +7,24 @@ from urllib.parse import urlsplit
 from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import make_url
+
+# Zulässige Pfade für den MCP-Endpunkt: nur unreservierte URL-Zeichen je Segment, kein
+# Leerraum, kein Prozent-Escape, keine leeren Segmente.
+_MCP_PATH_RE = re.compile(r"^(/[A-Za-z0-9._~-]+)+$")
+
+# Erste Pfadebene, die der MCP-Pfad nicht belegen darf: OAuth-Endpunkte, Wurzelpfade der
+# Weboberfläche und die von FastAPI erzeugten Seiten. `tests/test_config_mcp_http.py`
+# prüft diese Liste gegen die echten Routen von `create_app()` -- eine neue Weboberflächen-
+# Route, die hier fehlt, lässt diesen Test scheitern.
+RESERVED_MCP_PATHS: tuple[str, ...] = (
+    "/authorize", "/token", "/register", "/revoke", "/oauth", "/api", "/static",
+    "/.well-known", "/docs", "/redoc", "/openapi.json", "/healthz",
+    "/absence", "/account", "/audit", "/control", "/controllers", "/device-commands",
+    "/devices", "/glossar", "/groups", "/heating-time", "/interfaces", "/kiosk",
+    "/kiosk-tokens", "/login", "/logout", "/modes", "/passkey", "/passkeys", "/plant",
+    "/relay-wear", "/schedule", "/settings", "/setup", "/statistics",
+    "/temperature-history", "/tokens", "/users", "/vacation", "/zones",
+)
 
 
 class Settings(BaseSettings):
@@ -131,6 +150,8 @@ class Settings(BaseSettings):
             return self.mcp_public_url
         if self.public_url is None:
             return None
+        # public_url ist die öffentliche Adresse der Web-App inklusive eines eventuellen
+        # Pfad-Präfixes; root_path wird hier bewusst nicht noch einmal hinzugefügt.
         return self.public_url + self.mcp_path
 
     def validate_mcp_http(self) -> None:
@@ -150,20 +171,20 @@ class Settings(BaseSettings):
             if not self.mcp_public_url:
                 raise ValueError("THERMOCTL_MCP_PUBLIC_URL ist im Modus port erforderlich")
 
+        # Im Modus port hat der Pfad keine Bedeutung (der Dienst lauscht auf eigenem
+        # Port), deshalb blockiert ein ungültiger Wert dort den Start nicht.
+        if self.mcp_mode != "path":
+            return
         path = self.mcp_path
-        if (
-            not path.startswith("/")
-            or path == "/"
-            or path.endswith("/")
-            or "\n" in path
-            or "\r" in path
+        if not _MCP_PATH_RE.fullmatch(path) or any(
+            segment in (".", "..") for segment in path.split("/")
         ):
             raise ValueError(
-                "THERMOCTL_MCP_PATH muss ein Pfad ohne abschließenden Schrägstrich sein"
+                "THERMOCTL_MCP_PATH muss ein Pfad aus Segmenten mit Buchstaben, Ziffern "
+                "und . _ ~ - sein, ohne abschließenden Schrägstrich und ohne '.'/'..'"
             )
 
-        reserved = ("/api", "/static", "/.well-known")
-        if any(path == prefix or path.startswith(prefix + "/") for prefix in reserved):
+        if any(path == prefix or path.startswith(prefix + "/") for prefix in RESERVED_MCP_PATHS):
             raise ValueError("THERMOCTL_MCP_PATH kollidiert mit einem reservierten Pfad")
         if self.root_path and (
             path == self.root_path
@@ -177,9 +198,14 @@ class Settings(BaseSettings):
         """Prüft eine konfigurierte öffentliche Basis-URL vor ihrer Weitergabe."""
         if "\n" in value or "\r" in value:
             raise ValueError(f"{name} darf keine Zeilenumbrüche enthalten")
+        if value != value.strip() or any(zeichen.isspace() for zeichen in value):
+            raise ValueError(f"{name} darf keinen Leerraum enthalten")
+        if not value.isascii():
+            raise ValueError(f"{name} darf nur ASCII-Zeichen enthalten (Punycode für Umlaute)")
         try:
             parsed = urlsplit(value)
             hostname = parsed.hostname
+            parsed.port  # noqa: B018 -- löst bei ungültigem Port ValueError aus
         except ValueError as exc:
             raise ValueError(f"{name} ist keine gültige URL") from exc
         if parsed.scheme not in ("http", "https") or not hostname:
@@ -190,6 +216,17 @@ class Settings(BaseSettings):
             raise ValueError(f"{name} darf keine Zugangsdaten enthalten")
         if value.endswith("/"):
             raise ValueError(f"{name} darf nicht mit '/' enden")
+        if value.endswith(":"):
+            raise ValueError(f"{name} hat einen leeren Port")
+        if parsed.query or parsed.fragment or "?" in value or "#" in value or ";" in value:
+            raise ValueError(f"{name} darf weder Query noch Fragment noch Parameter enthalten")
+        # Ein Pfad ist erlaubt: hinter einem Reverse-Proxy mit Pfad-Präfix (THERMOCTL_ROOT_PATH,
+        # Home-Assistant-Ingress) ist die öffentliche Adresse der Web-App `https://host/praefix`.
+        if parsed.path and (
+            not _MCP_PATH_RE.fullmatch(parsed.path)
+            or any(segment in (".", "..") for segment in parsed.path.split("/"))
+        ):
+            raise ValueError(f"{name} hat einen ungültigen Pfad")
 
     def passkey_allowed_origin(self) -> str:
         """The origin the authenticator must have seen."""
