@@ -9,16 +9,51 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ---
 
-## Unveröffentlicht
+## 0.15.0 — 2026-10-11
+
+### Beim Upgrade zu wissen
+
+- **Eine Migration, läuft beim Start:** `c4a9e2f71b35` legt zwei Tabellen an, `change_log` und
+  `change_log_field`. Von Hand ist nichts zu tun.
+- **Die Protokollierung beginnt ab diesem Start.** Ältere Änderungen stehen nicht im
+  Änderungsprotokoll und lassen sich nicht darüber zurücknehmen; das Audit-Log daneben bleibt
+  unverändert.
+- **Der Standard bleibt:** MCP aus (`THERMOCTL_MCP_MODE=off`), keine neue Einstellung.
+- **Aufbewahrung:** Einträge werden 365 Tage lang vorgehalten und danach im Tageslauf gelöscht.
 
 ### Neu
 
-- **Neu: MCP-Werkzeug `temperature_history`:** liefert den Temperaturverlauf einer Zone
+- **MCP-Werkzeug `temperature_history`:** liefert den Temperaturverlauf einer Zone
   (gemessen, wirksamer Sollwert, Sollwert vor der Sonnenabsenkung, Sonnenabsenkung, Anteil der
   Messungen mit Heizanforderung) in Zeitfächern samt Zusammenfassung und im selben Aufruf das
   Schaltprotokoll dieser Zone im Zeitraum. Recht `zone.read`; das Protokoll gehört nur dazu,
-  wenn das Token `audit.read` hat, sonst ist es `null` mit Hinweis. Lücken bleiben Lücken, Unbekanntes
-  `null`. Keine Migration, keine neue Einstellung.
+  wenn das Token `audit.read` hat, sonst ist es `null` mit Hinweis. Lücken bleiben Lücken,
+  Unbekanntes `null`.
+- **Änderungsprotokoll mit Zurückrollen:** Jedes schreibende MCP-Werkzeug
+  (`set_control_parameters`, `move_schedule_point`, `override`, `cancel_override`, `boost`,
+  `vacation`, `cancel_vacation`, `force_dry_run`, `set_sensor_failure_defaults`,
+  `set_sensor_failure_policy`) schreibt in derselben Transaktion einen Eintrag: wer (Nutzer und
+  Token), wann, welche Zone, je Feld Vorher und Nachher. Die Antwort trägt `change_id`.
+- **Zwei neue MCP-Werkzeuge:** `list_changes` (Lesen, Recht `audit.read`) und `revert_change`
+  (nimmt eine Änderung zurück). Damit hat der MCP-Server 27 Werkzeuge.
+- **Seite „Änderungsprotokoll“** unter Analyse (`/changes`), mit Rücknahme nach Bestätigung.
+- **Konflikt:** Zurückgenommen wird nur, wenn der aktuelle Wert noch der ist, den die Änderung
+  gesetzt hat. Sonst wird die Rücknahme abgewiesen; mit `force` lässt sie sich ausdrücklich
+  erzwingen (in der Oberfläche mit gesonderter Bestätigung) und steht dann als `forced` im
+  Protokoll.
+- **Nicht zurücknehmbar:** `force_dry_run`, `cancel_override` und `cancel_vacation`. Eine
+  beendete Übersteuerung oder ein beendeter Urlaub lässt sich nicht wiederherstellen (der
+  Zeitraum ist vorbei, ein neuer Eintrag wäre eine andere Übersteuerung); `force_dry_run`
+  bleibt bewusst unumkehrbar, weil seine Rücknahme das Scharfschalten über MCP wäre, das es
+  nicht gibt.
+- **Rechte:** Die Rücknahme verlangt die Rechte der ursprünglichen Änderung; Lesen des
+  Protokolls braucht `audit.read`.
+
+### Korrigiert
+
+- **`set_control_parameters` schrieb die Token-Kennung nicht ins Audit-Log.** Der Eintrag
+  trug den Nutzer, aber nicht, über welches Token die Änderung kam. Jetzt steht sie in jedem
+  Eintrag.
 
 ---
 

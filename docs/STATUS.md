@@ -11,47 +11,42 @@ Letzte Aktualisierung: 2026-10-11.
   Fußlink im Generator (`tools/landingpage_erzeugen.py`) ergänzen, `site/` neu erzeugen.
 - Das Paket `ghcr.io/magicalwig34653/thermoctl` ist öffentlich (Projektinhaber, 2026-10-10).
 
-## Änderungsprotokoll mit Zurückrollen -- Phase 1 (Domäne), unveröffentlicht
+## 0.15.0 (2026-10-11) -- vorbereitet, noch nicht freigegeben
 
-Spezifikation: `docs/superpowers/specs/2026-10-11-aenderungsprotokoll-design.md` (lokal). Gebaut ist die Domäne, **noch
-nicht** angeschlossen:
+Gebaut und dokumentiert (`docs/mcp.md`, `CHANGELOG.md`): MCP-Werkzeug `temperature_history`, Änderungsprotokoll mit
+Zurückrollen, Token-Kennung in jedem Eintrag. Der MCP-Server hat 27 Werkzeuge.
 
-- **Migration** `c4a9e2f71b35` (`change_log`, `change_log_field`), Migrationskopf damit `c4a9e2f71b35`.
-- **Domäne** `domain/change_log.py`: Schreibfunktionen je Operation (umhüllen die vorhandenen Domänenfunktionen,
-  Eintrag nur bei tatsächlicher Änderung, in derselben Transaktion), `list_changes`, `get_change`, `revert_change`
-  (Rechte zuerst, dann nicht zurücknehmbar, schon zurückgenommen, Konflikt, Ausführung über die Domänenfunktion).
-- **Aufbewahrung** `delete_old_changes` (365 Tage) im Tageslauf.
-- **Offen (Phase 2):** MCP-Werkzeuge `list_changes`/`revert_change`, `mcp/server.py` auf die Schreibfunktionen umstellen
-  (auch `token_id` bei `set_control_parameters`), Weboberfläche, Dokumentation.
+- **Änderungsprotokoll:** Domäne `domain/change_log.py` (Schreibfunktionen je Operation, Eintrag nur bei tatsächlicher
+  Änderung und in derselben Transaktion; `list_changes`, `get_change`, `revert_change` mit Rechteprüfung zuerst, dann
+  nicht zurücknehmbar, schon zurückgenommen, Konflikt; Rücknahme atomar beansprucht). Migration `c4a9e2f71b35`
+  (`change_log`, `change_log_field`), Migrationskopf damit `c4a9e2f71b35`. Aufbewahrung 365 Tage im Tageslauf
+  (`delete_old_changes`). Protokolliert nur, was über MCP geschrieben wird; ältere Änderungen fehlen.
+- **MCP:** `list_changes` (`audit.read`), `revert_change` (Rechte der ursprünglichen Änderung); `force` erzwingt trotz
+  Konflikt. Nicht zurücknehmbar: `force_dry_run`, `cancel_override`, `cancel_vacation`.
+- **Weboberfläche:** Seite `/changes` („Änderungsprotokoll“ unter Analyse, Recht `audit.read`), Rücknahme mit
+  Bestätigung, erzwungene Rücknahme mit gesondertem Bestätigungs-Token.
+- **`temperature_history`** (keine Migration): Messreihe einer Zone in Zeitfächern (`domain/zone_history_series.py`)
+  plus Schaltprotokoll dieser Zone, wenn das Token `audit.read` hat (sonst `switching_log` null mit Hinweis).
+- **Offen:** Freigabe 0.15.0 (Merge nach `main`, Tag, Release, gebautes Abbild), danach Push des Add-on-Repositorys
+  (lokal auf 0.15.0 vorbereitet, nicht gepusht). 0.14.1 und 0.14.2 sind ebenfalls noch nicht freigegeben und gehen mit.
+- **Nicht ausprobiert:** der MCP-Ablauf mit einem echten Client (`claude mcp add --transport http …`) hinter einem
+  echten Reverse Proxy, und die Seite `/changes` im Browser nach dem Merge; die Tests ersetzen nicht, sie einmal zu öffnen.
 
-## MCP über HTTP mit Bearer und OAuth (0.14.0 freigegeben), Add-on-Felder (0.14.1) und Korrektur der Zustimmungsseite (0.14.2) -- 0.14.1 und 0.14.2 noch nicht freigegeben
-
-Gebaut und dokumentiert (`docs/mcp.md`, `docs/self-hosting.md` Abschnitt 8c, `docs/api.md`, `CHANGELOG.md`):
+## MCP über HTTP mit Bearer und OAuth (0.14.0 freigegeben, 0.14.1 und 0.14.2 noch nicht)
 
 - **Betriebsarten** `THERMOCTL_MCP_MODE` = `off` (Vorgabe) / `path` / `port` mit `MCP_PATH`, `MCP_PORT`, `PUBLIC_URL`,
   `MCP_PUBLIC_URL` (Prüfung in `Settings.validate_mcp_http`, Start bricht bei Fehlern ab). Modus `path`: Mount in
   `create_app()`; Modus `port`: `thermoctl-mcp --http`, vom `docker/entrypoint.sh` als zweiter Prozess gestartet.
 - **Zugang** Bearer-Token und OAuth (Registrierung, `/authorize`, Zustimmungsseite `/oauth/consent`, `/token`, `/revoke`;
   `mcp/oauth_routes.py`, `domain/oauth.py`, `web/oauth_views.py`). Zugriffs-Token 1 Stunde, Refresh 30 Tage rotierend,
-  Wiederverwendung sperrt die Familie. OAuth-Token gelten nur am MCP (REST: 401).
-- **Presets** `domain/token_presets.py` (Read-only, Read-write); `control.arm` in keinem; neues Recht `control.disarm`
-  für `force_dry_run`.
-- **Migrationen** `b7d2e5a40c18` (`control.disarm`) und `b721e49c6a30` (OAuth-Tabellen, `api_token.source`),
-  Migrationskopf `b721e49c6a30`.
-- **Add-on (0.14.1):** `mcp_mode`, `mcp_path`, `mcp_port`, `public_url` und `mcp_public_url` sind echte Felder
+  Wiederverwendung sperrt die Familie. OAuth-Token gelten nur am MCP (REST: 401). Die Zustimmungsseite wird als
+  normaler Seitenwechsel abgeschickt (kein HTMX-Boost).
+- **Presets** `domain/token_presets.py` (Read-only, Read-write); `control.arm` in keinem; Recht `control.disarm` für
+  `force_dry_run`.
+- **Migrationen** `b7d2e5a40c18` (`control.disarm`) und `b721e49c6a30` (OAuth-Tabellen, `api_token.source`).
+- **Add-on-Felder:** `mcp_mode`, `mcp_path`, `mcp_port`, `public_url` und `mcp_public_url` sind echte Felder
   (`ABGEBILDETE_FELDER` in `docker/thermoctl_optionen.py`, `_SCHEMA_REIHENFOLGE` in `tools/env_nach_addon.py`);
-  der Port 8001 ist optional (`ports: 8001/tcp: null`). Das Add-on-Repository ist lokal auf 0.14.2 vorbereitet
-  (nicht gepusht).
-- **0.14.2:** die OAuth-Zustimmungsseite wird als normaler Seitenwechsel abgeschickt (kein HTMX-Boost), sodass die
-  Cross-Origin-Weiterleitung zum Client gelingt.
-- **MCP-Werkzeug `temperature_history`** (25. Werkzeug, unveröffentlicht, keine Migration): Messreihe einer Zone in
-  Zeitfächern (`domain/zone_history_series.py`, liest mit `zone_history_chart.read_samples`) plus Schaltprotokoll dieser
-  Zone, wenn das Token `audit.read` hat (sonst `switching_log` null mit Hinweis). Lücken fehlen und werden gezählt,
-  Unbekanntes bleibt `null`; `heat_share` beschreibt die Anforderung der Regelung, nicht den Raum. Das Protokoll wird
-  über den Anzeigenamen der Zone gefiltert (so führt `device_command` sie).
-- **Offen:** die Freigabe 0.14.2 (Tag, Release, gebautes Abbild, danach Push des Add-ons).
-- **Nicht ausprobiert:** der Ablauf mit einem echten Client (`claude mcp add --transport http …`, `/mcp`) hinter einem echten
-  Reverse Proxy; die Tests prüfen den Ablauf, ersetzen aber nicht, ihn einmal zu öffnen.
+  der Port 8001 ist optional (`ports: 8001/tcp: null`).
 
 ## 0.13.0 (2026-10-11)
 
