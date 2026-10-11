@@ -217,3 +217,123 @@ def test_consent_pages_cannot_be_framed(client_als, session: Session) -> None:
         assert response.headers["content-security-policy"] == "frame-ancestors 'none'"
         assert response.headers["x-frame-options"] == "DENY"
         assert response.headers["cache-control"] == "no-store"
+
+
+def _request_for(session: Session, uri: str, name: str = "Client") -> str:
+    client = register_client(session, name, [uri])
+    return start_request(
+        session, client, uri, "x" * 43, "https://mcp.example", "opaque", "https://mcp.example"
+    )
+
+
+def test_consent_shows_scheme_host_and_port_of_a_network_redirect(
+    client_als, session: Session
+) -> None:
+    c = client_als([("token.self", None)])
+    body = c.get(
+        f"/oauth/consent?request={_request_for(session, 'https://client.example:8443/cb')}"
+    ).text
+    assert "<code>https://client.example:8443</code>" in body
+    assert "Nur zustimmen, wenn Sie diesen Dienst selbst eingerichtet haben" in body
+    assert "läuft auf diesem Rechner" not in body
+
+
+def test_consent_marks_loopback_redirect_as_local_without_warning(
+    client_als, session: Session
+) -> None:
+    c = client_als([("token.self", None)])
+    body = c.get(f"/oauth/consent?request={_request_for(session, 'http://localhost:9999/cb')}").text
+    assert "<code>http://localhost:9999</code>" in body
+    assert "läuft auf diesem Rechner" in body
+    assert "Nur zustimmen, wenn Sie diesen Dienst selbst eingerichtet haben" not in body
+
+
+def test_consent_app_scheme_has_neither_warning_nor_local_hint(
+    client_als, session: Session
+) -> None:
+    c = client_als([("token.self", None)])
+    body = c.get(f"/oauth/consent?request={_request_for(session, 'meineapp:/cb')}").text
+    assert "<code>meineapp:</code>" in body
+    assert "Nur zustimmen, wenn Sie diesen Dienst selbst eingerichtet haben" not in body
+    assert "läuft auf diesem Rechner" not in body
+
+
+def test_consent_escapes_client_name_next_to_the_warning(client_als, session: Session) -> None:
+    c = client_als([("token.self", None)])
+    request_id = _request_for(session, "https://client.example/cb", "<script>x</script>")
+    body = c.get(f"/oauth/consent?request={request_id}").text
+    assert "<script>x</script>" not in body
+    assert "&lt;script&gt;x&lt;/script&gt;" in body
+    assert "Nur zustimmen, wenn Sie diesen Dienst selbst eingerichtet haben" in body
+
+
+def test_unexpected_http_errors_of_the_principal_lookup_are_not_swallowed(
+    client_als, session: Session, monkeypatch
+) -> None:
+    from fastapi import HTTPException
+
+    from thermoctl.web import oauth_views
+
+    def broken(_request, _session):
+        raise HTTPException(500, "kaputt")
+
+    monkeypatch.setattr(oauth_views, "current_principal", broken)
+    request_id = _request(session)
+    # raise_server_exceptions=False greift für HTTPException nicht; sie wird zur Antwort.
+    assert (
+        client_als([("token.self", None)]).get(f"/oauth/consent?request={request_id}").status_code
+        == 500
+    )
+
+
+def test_post_without_login_goes_to_login(client, session: Session) -> None:
+    request_id = _request(session)
+    client.cookies.clear()
+    response = client.post(
+        "/oauth/consent",
+        data={"request": request_id, "action": "allow", "permission": "zone.read"},
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    assert response.headers["location"] == "/login"
+
+
+def test_post_for_unknown_request_is_plain_404(client_als) -> None:
+    c = client_als([("token.self", None)])
+    response = c.post(
+        "/oauth/consent",
+        data={"request": "unbekannt", "action": "allow", "permission": "zone.read"},
+        headers=_csrf(c),
+    )
+    assert response.status_code == 404
+
+
+def test_unknown_action_shows_form_error(client_als, session: Session) -> None:
+    c = client_als([("token.self", None)])
+    request_id = _request(session)
+    response = c.post(
+        "/oauth/consent", data={"request": request_id, "action": "vielleicht"}, headers=_csrf(c)
+    )
+    assert response.status_code == 200
+    assert "Ungültige Aktion." in response.text
+
+
+def test_approval_refused_by_the_domain_is_a_plain_400(
+    client_als, session: Session, monkeypatch
+) -> None:
+    from thermoctl.domain.oauth import OAuthError
+    from thermoctl.web import oauth_views
+
+    def refuse(*_args, **_kwargs):
+        raise OAuthError("invalid_request", "abgelaufen")
+
+    monkeypatch.setattr(oauth_views, "approve", refuse)
+    c = client_als([("token.self", None), ("zone.read", None)])
+    request_id = _request(session)
+    response = c.post(
+        "/oauth/consent",
+        data={"request": request_id, "action": "allow", "permission": "zone.read"},
+        headers=_csrf(c),
+    )
+    assert response.status_code == 400
+    assert "nicht bestätigt" in response.text
