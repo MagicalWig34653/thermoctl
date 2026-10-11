@@ -51,7 +51,7 @@ def test_solar_setback_columns_upgrade_keep_old_rows_null_and_downgrade_cleanly(
             column["name"] for column in inspect(db_engine).get_columns("shadow_decision")
         }
 
-        up = _alembic(migrations_database_url, "upgrade", "head")
+        up = _alembic(migrations_database_url, "upgrade", "f6c3a8d19b42")
         assert up.returncode == 0, up.stderr
         with db_engine.begin() as connection:
             old = connection.execute(
@@ -90,7 +90,7 @@ def test_solar_setback_columns_upgrade_keep_old_rows_null_and_downgrade_cleanly(
         with db_engine.connect() as connection:
             assert connection.execute(text("SELECT COUNT(*) FROM shadow_decision")).scalar() == 2
 
-        again = _alembic(migrations_database_url, "upgrade", "head")
+        again = _alembic(migrations_database_url, "upgrade", "f6c3a8d19b42")
         assert again.returncode == 0, again.stderr
     finally:
         db_engine.dispose()
