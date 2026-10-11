@@ -62,7 +62,7 @@ prüft dasselbe Recht wie der entsprechende REST-Endpunkt.
 | `read_control_parameters(zone_id)` | `zone.read` | wirksame Regelparameter **samt ihrer Grenzen** |
 | `set_control_parameters(zone_id, name, value)` | `zone.manage` | setzt einen Parameter, lässt die übrigen |
 | `read_control()` | `zone.read` | gespeicherter Riegel, nicht feststellbarer MQTT-Riegel, globale Vorgaben und Sonnenabsenkung |
-| `force_dry_run(reason)` | `control.arm` | nimmt die Regelung in den Trockenlauf zurück |
+| `force_dry_run(reason)` | `control.disarm` | nimmt die Regelung in den Trockenlauf zurück |
 | `move_schedule_point(zone_id, point_id, weekday, minute)` | `schedule.manage` | setzt einen Punkt auf einen anderen Zeitpunkt |
 | `read_sensor_failure_defaults()` | `zone.read` | anlagenweites Notbetriebsprofil (Festtakt, Rückkehr, Kennlinie) und anlagenweiter Notsollwert |
 | `set_sensor_failure_defaults(fixed_on_seconds, fixed_off_seconds, recovery_seconds, recovery_samples, warm_restart_hysteresis_k, emergency_setpoint_c, curve_points=None, profile_name=None)` | `setting.manage` | speichert Profil und Notsollwert zusammen |

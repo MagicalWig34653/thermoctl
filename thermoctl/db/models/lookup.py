@@ -215,4 +215,9 @@ PERMISSIONS: list[tuple[str, str, bool]] = [
     # die Regel gilt trotzdem weiter: ein neues Recht kommt ans Ende und bekommt
     # seine eigene Migration.
     ("report.create", "Ein Problem aus einem Raum melden", True),
+    # Die sichere Richtung von `control.arm`: zurück in den Trockenlauf. Ein Token (etwa
+    # eines Sprachmodells) soll die Regelung anhalten dürfen, ohne sie scharf schalten
+    # zu können; `force_dry_run` im MCP-Server prüft deshalb dieses Recht und nicht
+    # `control.arm`. Angehängt, nicht einsortiert (siehe oben).
+    ("control.disarm", "Die Regelung in den Trockenlauf zurücknehmen", False),
 ]
