@@ -378,6 +378,11 @@ WITHOUT_PROFILE_GUARD: dict[tuple[str, str], str] = {
     ("GET", "/glossar"): "reiner Erklärtext für beide Oberflächen, liest nichts aus der Datenbank",
     ("POST", "/account/password"): "eigenes Konto",
     ("POST", "/account/sessions/revoke-others"): "eigenes Konto",
+    # OAuth-Zustimmung stellt einen Zugang ausschließlich für den angemeldeten
+    # Nutzer aus. Beide Profile dürfen das mit dem Recht token.self; der Endpunkt
+    # prüft dieses Recht unabhängig vom Profil.
+    ("GET", "/oauth/consent"): "eigene OAuth-Zustimmung mit token.self",
+    ("POST", "/oauth/consent"): "eigene OAuth-Zustimmung mit token.self",
     # Anmeldung, Abmeldung und Einrichtung stehen vor jedem Profil.
     ("GET", "/login"): "vor der Anmeldung gibt es kein Profil",
     ("POST", "/login"): "vor der Anmeldung gibt es kein Profil",
