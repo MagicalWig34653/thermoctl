@@ -1097,8 +1097,32 @@ def _register_tools(
 
 
 def main() -> None:
-    """Starts the authenticated MCP server over stdio."""
+    """Startet den MCP-Server über stdio oder auf einem eigenen HTTP-Port."""
+    import argparse
+
+    parser = argparse.ArgumentParser(description="thermoctl MCP-Server")
+    parser.add_argument("--http", action="store_true", help="MCP über HTTP starten")
+    args, _unknown = parser.parse_known_args()
     settings = get_settings()
+    if args.http:
+        if settings.mcp_mode != "port":
+            raise SystemExit(
+                "--http verlangt THERMOCTL_MCP_MODE=port; im Modus path läuft MCP in der Web-App."
+            )
+        settings.validate_mcp_http()
+        import uvicorn
+
+        from thermoctl.mcp.http_app import create_mcp_asgi_app
+
+        engine = create_engine_from_settings(settings)
+        factory = session_factory(engine)
+        app = create_mcp_asgi_app(settings, factory)
+        assert settings.mcp_port is not None  # validate_mcp_http() hat den Port geprüft.
+        try:
+            uvicorn.run(app, host=settings.bind_host, port=settings.mcp_port)
+        finally:
+            engine.dispose()
+        return
     if settings.mcp_token is None:
         raise SystemExit("THERMOCTL_MCP_TOKEN fehlt; der MCP-Server startet nicht ohne Anmeldung.")
     # From here on the process runs as a stdio server until stopped. This is wiring,

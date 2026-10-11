@@ -65,4 +65,22 @@ if [ "$(id -u)" = "0" ] && [ -z "${THERMOCTL_ENTRYPOINT_UNPRIVILEGED:-}" ]; then
 fi
 
 alembic upgrade head
+if [ "${THERMOCTL_MCP_MODE:-off}" = "port" ]; then
+    # POSIX-sh kennt kein portables `wait -n`: beide Kinder melden ihr Ende über
+    # eine FIFO. Sobald eines endet, werden beide beendet und der Container stoppt.
+    laufzeitverzeichnis="$(mktemp -d)"
+    mkfifo "$laufzeitverzeichnis/ende"
+    trap 'kill "$web_pid" "$mcp_pid" 2>/dev/null || :; rm -rf "$laufzeitverzeichnis"' EXIT HUP INT TERM
+    (trap 'kill "$kind_pid" 2>/dev/null || :' HUP INT TERM; thermoctl & kind_pid=$!; wait "$kind_pid" || :; echo web > "$laufzeitverzeichnis/ende") &
+    web_pid=$!
+    (trap 'kill "$kind_pid" 2>/dev/null || :' HUP INT TERM; thermoctl-mcp --http & kind_pid=$!; wait "$kind_pid" || :; echo mcp > "$laufzeitverzeichnis/ende") &
+    mcp_pid=$!
+    while ! read -r beendet < "$laufzeitverzeichnis/ende"; do
+        : # SIGCHLD kann das blockierende Lesen unterbrechen; erneut warten.
+    done
+    kill "$web_pid" "$mcp_pid" 2>/dev/null || :
+    wait "$web_pid" 2>/dev/null || :
+    wait "$mcp_pid" 2>/dev/null || :
+    exit 0
+fi
 exec thermoctl

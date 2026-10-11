@@ -350,3 +350,28 @@ def test_supervisor_token_with_valid_ingress_entry_sets_root_path(tmp_path: Path
     assert "THERMOCTL_ROOT_PATH=/api/hassio_ingress/deadbeef" in result.stdout
     assert "mein-token" not in result.stdout
     assert "mein-token" not in result.stderr
+
+
+def test_port_mode_starts_http_mcp_and_stops_with_first_process(tmp_path: Path) -> None:
+    """Der zweite Listener startet mit --http; Ende eines Kindes beendet den Start."""
+    bin_dir = _fake_bin(tmp_path)
+    marker = tmp_path / "mcp-argumente"
+    _make_executable(bin_dir / "thermoctl", "#!/bin/sh\nexec sleep 2\n")
+    _make_executable(
+        bin_dir / "thermoctl-mcp",
+        '#!/bin/sh\nprintf "%s" "$1" > "$THERMOCTL_TEST_MCP_MARKER"\n',
+    )
+    result = subprocess.run(  # noqa: S603
+        ["/bin/sh", str(ENTRYPOINT)],
+        env={
+            "PATH": f"{bin_dir}:/usr/bin:/bin",
+            "THERMOCTL_INGRESS_SCRIPT": str(INGRESS_SKRIPT),
+            "THERMOCTL_MCP_MODE": "port",
+            "THERMOCTL_TEST_MCP_MARKER": str(marker),
+        },
+        capture_output=True,
+        text=True,
+        timeout=5,
+    )
+    assert result.returncode == 0
+    assert marker.read_text() == "--http"
