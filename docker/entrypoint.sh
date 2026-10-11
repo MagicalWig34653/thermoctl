@@ -65,4 +65,51 @@ if [ "$(id -u)" = "0" ] && [ -z "${THERMOCTL_ENTRYPOINT_UNPRIVILEGED:-}" ]; then
 fi
 
 alembic upgrade head
+if [ "${THERMOCTL_MCP_MODE:-off}" = "port" ]; then
+    # POSIX-sh kennt kein portables `wait -n`: beide Kinder melden ihr Ende samt
+    # Exit-Code ("web 3") über eine FIFO. Sobald eines endet, werden beide beendet und
+    # der Container stoppt.
+    laufzeitverzeichnis="$(mktemp -d)"
+    mkfifo "$laufzeitverzeichnis/ende"
+    web_pid=""
+    mcp_pid=""
+    # Der EXIT-Trap räumt nur auf und beendet nichts. Die Signal-Traps müssen dagegen
+    # selbst `exit` aufrufen: ein Trap allein führt das Skript nach dem Handler fort, die
+    # Leseschleife unten drehte dann mit gelöschter FIFO ohne Pause und der Container
+    # stoppte nie sauber (Docker schickt nach 10 s SIGKILL). 143 = 128 + SIGTERM.
+    trap 'rm -rf "$laufzeitverzeichnis"' EXIT
+    trap 'kill "$web_pid" "$mcp_pid" 2>/dev/null || :; exit 143' HUP INT TERM
+    # Die Subshell beendet sich im Signalfall selbst (`exit 143`), sonst würde sie nach
+    # dem Handler weiterlaufen und auf die FIFO schreiben wollen.
+    (
+        trap 'kill "$kind_pid" 2>/dev/null || :; exit 143' HUP INT TERM
+        thermoctl & kind_pid=$!
+        rc=0
+        wait "$kind_pid" || rc=$?
+        echo "web $rc" > "$laufzeitverzeichnis/ende"
+    ) &
+    web_pid=$!
+    (
+        trap 'kill "$kind_pid" 2>/dev/null || :; exit 143' HUP INT TERM
+        thermoctl-mcp --http & kind_pid=$!
+        rc=0
+        wait "$kind_pid" || rc=$?
+        echo "mcp $rc" > "$laufzeitverzeichnis/ende"
+    ) &
+    mcp_pid=$!
+    while ! read -r beendet code < "$laufzeitverzeichnis/ende"; do
+        : # SIGCHLD kann das blockierende Lesen unterbrechen; erneut warten.
+    done
+    kill "$web_pid" "$mcp_pid" 2>/dev/null || :
+    wait "$web_pid" 2>/dev/null || :
+    wait "$mcp_pid" 2>/dev/null || :
+    echo "thermoctl: Dienst '$beendet' hat sich mit Code $code beendet; der Container stoppt." >&2
+    # Ein Dienst, der sich beendet hat, ist im Container immer ein Fehlerfall, auch bei
+    # Code 0 -- sonst hielte `restart: on-failure` bzw. der Add-on-Watchdog den Container
+    # nach einem stillen Ende eines Kindes für gesund beendet und startete nicht neu.
+    if [ "$code" -gt 0 ] 2>/dev/null; then
+        exit "$code"
+    fi
+    exit 1
+fi
 exec thermoctl

@@ -2,7 +2,7 @@ FROM python:3.14-slim AS build
 WORKDIR /build
 COPY pyproject.toml LICENSE ./
 COPY thermoctl ./thermoctl
-RUN pip install --no-cache-dir --prefix=/install .
+RUN pip install --no-cache-dir --prefix=/install ".[mcp]"
 
 FROM python:3.14-slim
 LABEL org.opencontainers.image.licenses="AGPL-3.0-only"
@@ -28,6 +28,7 @@ COPY docker/thermoctl_ingress.py /usr/local/bin/thermoctl_ingress.py
 RUN chmod +x /usr/local/bin/entrypoint.sh && mkdir -p /data && chown thermoctl /data
 WORKDIR /app
 VOLUME ["/data"]
+# Der Web-Port bleibt dokumentiert; der MCP-Port ist konfigurierbar und wird in Compose veröffentlicht.
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s \
   CMD python -c "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8000/healthz')"

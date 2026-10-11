@@ -45,6 +45,10 @@ Wer ihn verliert, stellt ein neues aus.
 
 Ausgestellt und widerrufen werden Tokens unter `/tokens` in der Oberfläche.
 
+**OAuth-Token gelten hier nicht:** Ein über den MCP-Zugang per OAuth ausgestelltes Token
+(Quelle `oauth` unter `/tokens`, siehe [MCP über HTTP](mcp.md)) wird mit `401` abgewiesen; nur
+Bearer-Token von `/tokens` gelten in dieser Schnittstelle.
+
 Diese Schnittstelle nimmt **kein Sitzungscookie** an. Das ist Absicht und keine Lücke: Ein
 Cookie würde bei jedem Aufruf aus dem Browser automatisch mitgeschickt und die
 Schnittstelle damit von jeder fremden Seite aus aufrufbar machen. Weil nur der Header zählt,

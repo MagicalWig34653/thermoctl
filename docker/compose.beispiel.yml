@@ -17,11 +17,16 @@ services:
     image: ghcr.io/magicalwig34653/thermoctl:latest
     restart: unless-stopped
     env_file: .env
+    # Modus path: THERMOCTL_MCP_MODE=path und THERMOCTL_PUBLIC_URL in .env
+    # setzen; der MCP-Endpunkt liegt dann unter /mcp auf dem Web-Port.
     ports:
       # Nur an die Loopback-Adresse gebunden. Wer den Dienst im Netz erreichbar machen
       # will, stellt einen Reverse-Proxy mit TLS davor und setzt
       # THERMOCTL_SECURE_COOKIES=true — siehe docs/self-hosting.md.
       - "127.0.0.1:8000:8000"
+      # Modus port: THERMOCTL_MCP_MODE=port, THERMOCTL_MCP_PORT=9000,
+      # THERMOCTL_MCP_PUBLIC_URL und THERMOCTL_PUBLIC_URL in .env setzen:
+      # - "127.0.0.1:9000:9000"
     volumes:
       # Die SQLite-Datei lebt hier. Ohne dieses Volume ist nach jedem `docker compose up`
       # alles weg, einschließlich der Benutzer.

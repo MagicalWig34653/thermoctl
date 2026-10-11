@@ -1,6 +1,8 @@
+import logging
 from collections.abc import Callable
 from datetime import UTC, date, datetime
 from decimal import Decimal
+from functools import wraps
 from importlib import import_module
 from typing import Any, Protocol, cast
 
@@ -19,17 +21,27 @@ from thermoctl.db.models.operations import Setting
 from thermoctl.db.models.schedule import SchedulePoint
 from thermoctl.db.models.state import ShadowDecision, ZoneState
 from thermoctl.db.models.zone import SetpointMode, Zone, ZoneSetpoint
-from thermoctl.domain.authz import principal_for_token, require, visible_zones
+from thermoctl.domain.authz import Forbidden, principal_for_token, require, visible_zones
 from thermoctl.domain.control import (
     LIMITS,
+    ControlError,
     arm,
     save_sensor_failure_backup_offset,
     save_sensor_failure_plant_defaults,
     settings,
 )
 from thermoctl.domain.device_commands import DEFAULT_LIMIT, list_commands, naive_utc
+from thermoctl.domain.modes import DomainError
 from thermoctl.domain.principal import Principal
+from thermoctl.domain.remote_control import RemoteControlError
 from thermoctl.domain.remote_control import boost as domain_boost
+from thermoctl.domain.schedule import (
+    ScheduleError,
+    create_override,
+    create_vacation,
+    current_or_upcoming_vacation,
+    resolved_setpoint,
+)
 from thermoctl.domain.schedule import (
     cancel_override as domain_cancel_override,
 )
@@ -37,16 +49,11 @@ from thermoctl.domain.schedule import (
     cancel_vacation as domain_cancel_vacation,
 )
 from thermoctl.domain.schedule import (
-    create_override,
-    create_vacation,
-    current_or_upcoming_vacation,
-    resolved_setpoint,
-)
-from thermoctl.domain.schedule import (
     move_schedule_point as domain_move_schedule_point,
 )
 from thermoctl.domain.sensor_failure_policy import (
     CurvePoint,
+    PolicyError,
     ProfileValues,
     list_backup_offset_candidates,
     migration_default_profile_id,
@@ -55,6 +62,8 @@ from thermoctl.domain.sensor_failure_policy import (
 )
 from thermoctl.domain.zone_settings import (
     PARAMETERS,
+    ParameterOutOfRange,
+    UnknownParameter,
     control_parameters,
     save_sensor_failure_parameters,
     sensor_failure_parameters,
@@ -62,7 +71,66 @@ from thermoctl.domain.zone_settings import (
 from thermoctl.domain.zone_settings import (
     set_parameter as domain_set_parameter,
 )
+from thermoctl.mcp.http_auth import current_key_prefix
 from thermoctl.services.emergency_state import zone_emergency_view
+
+log = logging.getLogger("thermoctl.mcp")
+
+# Ausnahmen, mit denen die Domäne eine Eingabe abweist ("so nicht", kein Fehler des Dienstes).
+# Die REST-Schnittstelle gibt ihren Text als 4xx weiter; hier gilt dasselbe, sonst erführe ein
+# Modell nie, warum etwas abgelehnt wurde. Die Meldungen formuliert die Domäne selbst.
+_REJECTIONS = (
+    ControlError,
+    DomainError,
+    ParameterOutOfRange,
+    PolicyError,
+    RemoteControlError,
+    ScheduleError,
+    UnknownParameter,
+)
+
+
+def _reason(error: Exception) -> str:
+    """Der Text, den die Domäne für die Ablehnung formuliert hat.
+
+    Mehrere Domänenfehler sind Dataklassen mit `field` und `notice` und haben kein eigenes
+    `__str__`; `str(error)` ergäbe dort das Argument-Tupel statt des lesbaren Satzes.
+    """
+    notice = getattr(error, "notice", None)
+    return notice if isinstance(notice, str) else str(error)
+
+
+def _log_tool(name: str, error: Exception | None) -> None:
+    """Ein Eintrag je Werkzeugaufruf: Werkzeug, Token-Präfix, Ergebnis, bei Fehlern der Grund.
+
+    Der Grund ist die Meldung der Domäne (z. B. "Recht zone.manage fehlt"), nie das Token.
+    """
+    if error is None:
+        outcome = "ok"
+    elif isinstance(error, (Forbidden, PermissionError)):
+        outcome = "denied"
+    elif isinstance(error, _REJECTIONS):
+        outcome = "rejected"
+    elif isinstance(error, LookupError):
+        outcome = "not_found"
+    else:
+        outcome = "error"
+    extra: dict[str, object] = {
+        "event": "mcp.tool",
+        "tool": name,
+        "outcome": outcome,
+        "key_prefix": current_key_prefix.get(),
+    }
+    if error is not None:
+        # Nur Meldungen, die die Domäne selbst formuliert (fehlendes Recht, unbekannte
+        # Zone), kommen ins Protokoll. Andere Ausnahmen können Eingaben des Clients
+        # enthalten -- ein dort eingefügtes Token oder Geheimnis gehört nicht ins Log.
+        extra["reason"] = (
+            _reason(error)
+            if isinstance(error, (Forbidden, PermissionError, LookupError, *_REJECTIONS))
+            else type(error).__name__
+        )
+    log.info("mcp.tool", extra=extra)
 
 
 class _McpServer(Protocol):
@@ -747,12 +815,12 @@ def force_dry_run(
     justification the domain requires for arming is no obstacle for a model -- it is
     exactly the kind of text it generates effortlessly. The barrier would thus be a
     formality instead of a decision. Going back to the dry run, on the other hand, is
-    always the safe direction and should be open to anyone allowed to operate the
-    plant. Whoever wants to arm the plant does so in the interface or via the REST
-    interface, where a human is at the button.
+    always the safe direction and has its own permission, `control.disarm`, so that
+    it does not require the right to arm. Whoever wants to arm the plant does so in
+    the interface or via the REST interface, where a human is at the button.
     """
     token, principal = _log_in(session, plaintext)
-    require(principal, "control.arm")
+    require(principal, "control.disarm")
     changed = arm(
         session,
         False,
@@ -813,50 +881,118 @@ def _mcp_server_class() -> Callable[[str], _McpServer]:
         ) from exc
 
 
+def _visible_to_client(error: Exception) -> Exception | None:
+    """Macht die Begründung einer Ablehnung für den Client lesbar.
+
+    Das SDK ersetzt jede Ausnahme, die kein `ToolError` ist, durch "Error executing tool
+    <name>" -- ein Modell erführe nie, dass ihm ein Recht fehlt oder die Zone nicht
+    existiert, und müsste raten. Die Meldungen dieser Arten formuliert die Domäne selbst
+    (Recht fehlt, Zone nicht gefunden, Token ungültig, Eingabe abgewiesen); andere Ausnahmen bleiben
+    verborgen, weil ihr Text Eingaben des Clients enthalten kann.
+    """
+    if not isinstance(error, (Forbidden, PermissionError, LookupError, *_REJECTIONS)):
+        return None
+    try:
+        tool_error = import_module("mcp.server.mcpserver.exceptions").ToolError
+    except ModuleNotFoundError:  # pragma: no cover - ältere SDK-Versionen
+        try:
+            tool_error = import_module("mcp.server.fastmcp.exceptions").ToolError
+        except ModuleNotFoundError:
+            return None
+    return cast(Exception, tool_error(_reason(error)))
+
+
+class _LoggedServer:
+    """Hüllt den MCP-Server, damit jeder Werkzeugaufruf protokolliert wird.
+
+    Die Werkzeuge bleiben im Quelltext als Dekorator `server.tool` mit Namensargument
+    lesbar -- Wächtertests und Dokumentation suchen genau diese Form.
+    """
+
+    def __init__(self, inner: _McpServer) -> None:
+        self._inner = inner
+
+    def tool(self, name: str | None = None) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+        register = self._inner.tool(name=name)
+        label = name or "?"
+
+        def decorate(function: Callable[..., Any]) -> Callable[..., Any]:
+            @wraps(function)
+            def logged(*args: Any, **kwargs: Any) -> Any:
+                try:
+                    result = function(*args, **kwargs)
+                except Exception as exc:
+                    _log_tool(label, exc)
+                    visible = _visible_to_client(exc)
+                    if visible is not None:
+                        raise visible from exc
+                    raise
+                _log_tool(label, None)
+                return result
+
+            return register(logged)
+
+        return decorate
+
+    def run(self, transport: str = "stdio", **kwargs: Any) -> None:
+        self._inner.run(transport, **kwargs)  # pragma: no cover
+
+
 def _register_tools(
-    server: _McpServer, factory: sessionmaker[Session], plaintext: str
+    server: _McpServer,
+    factory: sessionmaker[Session],
+    plaintext: str | Callable[[], str],
 ) -> None:
+    """Registriert die Werkzeuge.
+
+    `plaintext` ist bei stdio das beim Start festgelegte Token, bei HTTP eine Funktion, die
+    das Token der laufenden Anfrage liefert (`http_auth.current_token`).
+    """
+    current: Callable[[], str] = plaintext if callable(plaintext) else (lambda: plaintext)
+
+    server = _LoggedServer(server)
+
     @server.tool(name="list_zones")
     def mcp_list_zones() -> list[dict[str, object]]:
         """Lists the zones visible to the authenticated token."""
         with session_scope(factory) as session:
-            return list_zones(session, plaintext)
+            return list_zones(session, current())
 
     @server.tool(name="zone_state")
     def mcp_zone_state(zone_id: int) -> dict[str, object]:
         """Returns the latest derived temperature and sensor state of a visible zone."""
         with session_scope(factory) as session:
-            return zone_state(session, plaintext, zone_id)
+            return zone_state(session, current(), zone_id)
 
     @server.tool(name="explain_setpoint")
     def mcp_explain_setpoint(zone_id: int) -> dict[str, object]:
         """Returns a visible zone's effective setpoint and the reason for it."""
         with session_scope(factory) as session:
-            return explain_setpoint(session, plaintext, zone_id)
+            return explain_setpoint(session, current(), zone_id)
 
     @server.tool(name="read_schedule")
     def mcp_read_schedule(zone_id: int) -> list[dict[str, object]]:
         """Reads the schedule points and mode names of a visible zone."""
         with session_scope(factory) as session:
-            return read_schedule(session, plaintext, zone_id)
+            return read_schedule(session, current(), zone_id)
 
     @server.tool(name="read_setpoints")
     def mcp_read_setpoints(zone_id: int) -> list[dict[str, object]]:
         """Reads the temperatures configured for each mode of a visible zone."""
         with session_scope(factory) as session:
-            return read_setpoints(session, plaintext, zone_id)
+            return read_setpoints(session, current(), zone_id)
 
     @server.tool(name="list_devices")
     def mcp_list_devices() -> list[dict[str, object]]:
         """Lists devices with integrations, capabilities, and signs of life."""
         with session_scope(factory) as session:
-            return list_devices(session, plaintext)
+            return list_devices(session, current())
 
     @server.tool(name="shadow_decisions")
     def mcp_shadow_decisions(zone_id: int, count: int = 10) -> list[dict[str, object]]:
         """Returns the latest reasoned shadow decisions of a visible zone."""
         with session_scope(factory) as session:
-            return shadow_decisions(session, plaintext, zone_id, count)
+            return shadow_decisions(session, current(), zone_id, count)
 
     @server.tool(name="device_commands")
     def mcp_device_commands(
@@ -868,13 +1004,13 @@ def _register_tools(
     ) -> list[dict[str, object]]:
         """Reads the actuator command log, newest first, filtered and capped."""
         with session_scope(factory) as session:
-            return device_commands(session, plaintext, zone, outcome, from_at, to_at, limit)
+            return device_commands(session, current(), zone, outcome, from_at, to_at, limit)
 
     @server.tool(name="read_emergency_state")
     def mcp_read_emergency_state(zone_id: int) -> dict[str, object]:
         """Reads the Notbetrieb state of a visible zone."""
         with session_scope(factory) as session:
-            return read_emergency_state(session, plaintext, zone_id)
+            return read_emergency_state(session, current(), zone_id)
 
     @server.tool(name="override")
     def mcp_override(
@@ -882,25 +1018,25 @@ def _register_tools(
     ) -> dict[str, object]:
         """Creates a temporary setpoint override for a visible zone."""
         with session_scope(factory) as session:
-            return override_zone(session, plaintext, zone_id, temperature_c, ends_at)
+            return override_zone(session, current(), zone_id, temperature_c, ends_at)
 
     @server.tool(name="cancel_override")
     def mcp_cancel_override(zone_id: int) -> dict[str, object]:
         """Cancels the active setpoint override of a visible zone."""
         with session_scope(factory) as session:
-            return cancel_override(session, plaintext, zone_id)
+            return cancel_override(session, current(), zone_id)
 
     @server.tool(name="boost")
     def mcp_boost(zone_id: int) -> dict[str, object]:
         """Pulls a visible zone's next scheduled setpoint switch forward."""
         with session_scope(factory) as session:
-            return boost(session, plaintext, zone_id)
+            return boost(session, current(), zone_id)
 
     @server.tool(name="read_vacation")
     def mcp_read_vacation() -> dict[str, object] | None:
         """Reads the plant-wide vacation currently running or still upcoming, if any."""
         with session_scope(factory) as session:
-            return read_vacation(session, plaintext)
+            return read_vacation(session, current())
 
     @server.tool(name="vacation")
     def mcp_vacation(
@@ -908,44 +1044,44 @@ def _register_tools(
     ) -> dict[str, object]:
         """Sets a plant-wide vacation setback over a fixed local calendar range."""
         with session_scope(factory) as session:
-            return set_vacation(session, plaintext, start_date, end_date, setback_temperature_c)
+            return set_vacation(session, current(), start_date, end_date, setback_temperature_c)
 
     @server.tool(name="cancel_vacation")
     def mcp_cancel_vacation() -> dict[str, object]:
         """Ends the running or planned plant-wide vacation early."""
         with session_scope(factory) as session:
-            return cancel_vacation(session, plaintext)
+            return cancel_vacation(session, current())
 
     @server.tool(name="read_control_parameters")
     def mcp_read_control_parameters(zone_id: int) -> dict[str, object]:
         """Reads a visible zone's effective control parameters and their limits."""
         with session_scope(factory) as session:
-            return read_control_parameters(session, plaintext, zone_id)
+            return read_control_parameters(session, current(), zone_id)
 
     @server.tool(name="set_control_parameters")
     def mcp_set_control_parameters(zone_id: int, name: str, value: Decimal) -> dict[str, object]:
         """Sets one control parameter of a visible zone within its limits."""
         with session_scope(factory) as session:
-            return set_control_parameters(session, plaintext, zone_id, name, value)
+            return set_control_parameters(session, current(), zone_id, name, value)
 
     @server.tool(name="read_control")
     def mcp_read_control() -> dict[str, object]:
         """Reads the persisted latch, MQTT-latch observability, and global defaults."""
         with session_scope(factory) as session:
-            return read_control(session, plaintext)
+            return read_control(session, current())
 
     @server.tool(name="force_dry_run")
     def mcp_force_dry_run(reason: str = "") -> dict[str, object]:
         """Returns control to dry run; this tool cannot arm the installation."""
         with session_scope(factory) as session:
-            return force_dry_run(session, plaintext, reason)
+            return force_dry_run(session, current(), reason)
 
     @server.tool(name="read_sensor_failure_defaults")
     def mcp_read_sensor_failure_defaults() -> dict[str, object]:
         """Reads the plant-wide Notbetrieb profile (Festtakt/Rückkehr/Kennlinie)
         and the plant-wide emergency setpoint."""
         with session_scope(factory) as session:
-            return read_sensor_failure_defaults_tool(session, plaintext)
+            return read_sensor_failure_defaults_tool(session, current())
 
     @server.tool(name="set_sensor_failure_defaults")
     def mcp_set_sensor_failure_defaults(
@@ -966,7 +1102,7 @@ def _register_tools(
         with session_scope(factory) as session:
             return set_sensor_failure_defaults_tool(
                 session,
-                plaintext,
+                current(),
                 fixed_on_seconds=fixed_on_seconds,
                 fixed_off_seconds=fixed_off_seconds,
                 recovery_seconds=recovery_seconds,
@@ -982,7 +1118,7 @@ def _register_tools(
         """Reads a visible zone's effective and own Notbetrieb settings, including
         the backup offsets of its thermostat actuator assignments."""
         with session_scope(factory) as session:
-            return read_sensor_failure_policy(session, plaintext, zone_id)
+            return read_sensor_failure_policy(session, current(), zone_id)
 
     @server.tool(name="set_sensor_failure_policy")
     def mcp_set_sensor_failure_policy(
@@ -997,7 +1133,7 @@ def _register_tools(
         with session_scope(factory) as session:
             return set_sensor_failure_policy(
                 session,
-                plaintext,
+                current(),
                 zone_id,
                 enabled=enabled,
                 profile_id=profile_id,
@@ -1012,13 +1148,41 @@ def _register_tools(
         """Moves an existing schedule point of a visible zone to another time."""
         with session_scope(factory) as session:
             return move_schedule_point(
-                session, plaintext, zone_id, point_id, weekday, minute
+                session, current(), zone_id, point_id, weekday, minute
             )
 
 
 def main() -> None:
-    """Starts the authenticated MCP server over stdio."""
+    """Startet den MCP-Server über stdio oder auf einem eigenen HTTP-Port."""
+    import argparse
+
+    parser = argparse.ArgumentParser(description="thermoctl MCP-Server")
+    parser.add_argument("--http", action="store_true", help="MCP über HTTP starten")
+    args, _unknown = parser.parse_known_args()
     settings = get_settings()
+    if args.http:
+        if settings.mcp_mode != "port":
+            raise SystemExit(
+                "--http verlangt THERMOCTL_MCP_MODE=port; im Modus path läuft MCP in der Web-App."
+            )
+        settings.validate_mcp_http()
+        import uvicorn
+
+        from thermoctl.logging import configure_logging
+        from thermoctl.mcp.http_app import create_mcp_asgi_app
+
+        configure_logging(settings)
+        engine = create_engine_from_settings(settings)
+        factory = session_factory(engine)
+        app = create_mcp_asgi_app(settings, factory)
+        assert settings.mcp_port is not None  # validate_mcp_http() hat den Port geprüft.
+        try:
+            # uvicorn nutzt proxy_headers=True als Standard; FORWARDED_ALLOW_IPS
+            # begrenzt, welchen vorgeschalteten Proxys es dabei vertraut.
+            uvicorn.run(app, host=settings.bind_host, port=settings.mcp_port)
+        finally:
+            engine.dispose()
+        return
     if settings.mcp_token is None:
         raise SystemExit("THERMOCTL_MCP_TOKEN fehlt; der MCP-Server startet nicht ohne Anmeldung.")
     # From here on the process runs as a stdio server until stopped. This is wiring,

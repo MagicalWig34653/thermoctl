@@ -12,9 +12,10 @@ from thermoctl.auth.passwords import PasswordTooShort
 from thermoctl.auth.sessions import COOKIE_NAME, resolve_session, revoke_all_sessions
 from thermoctl.auth.tokens import issue_token
 from thermoctl.db.base import utcnow
-from thermoctl.db.models.credential import ApiToken
+from thermoctl.db.models.credential import ApiToken, ApiTokenPermission
 from thermoctl.db.models.identity import AccessGroup, GroupPermission, User, UserAccessGroup
 from thermoctl.db.models.lookup import Permission
+from thermoctl.db.models.oauth import OAuthClient
 from thermoctl.db.models.operations import Setting
 from thermoctl.db.models.zone import Zone
 from thermoctl.domain.administration import (
@@ -29,8 +30,16 @@ from thermoctl.domain.administration import (
     set_user_active,
     set_user_group,
 )
-from thermoctl.domain.authz import PERMISSION_AREAS, Forbidden, require
+from thermoctl.domain.authz import (
+    PERMISSION_AREAS,
+    Forbidden,
+    has_permission,
+    principal_for_token,
+    require,
+)
+from thermoctl.domain.oauth import revoke_access_token as revoke_oauth_access_token
 from thermoctl.domain.principal import Principal
+from thermoctl.domain.token_presets import PRESETS
 from thermoctl.domain.ui_profile import WebUiProfile, parse_profile
 from thermoctl.web import is_partial_swap
 from thermoctl.web.forms import FormError, form_again, password_form_error
@@ -445,14 +454,49 @@ def _token_list(
     plaintext: str | None = None, hint: str | None = None,
 ) -> Response:
     settings = session.get(Setting, 1)
+    tokens = session.scalars(
+        select(ApiToken)
+        .where(ApiToken.user_id == principal.user_id, ApiToken.is_kiosk.is_(False))
+        .order_by(ApiToken.name)
+    ).all()
+    permissions = session.scalars(select(Permission).order_by(Permission.code)).all()
+    descriptions = {row.code: row.description for row in permissions}
+    permitted = [
+        (
+            f"{code}:{zone_id}" if zone_id is not None else code,
+            descriptions.get(code, code),
+        )
+        for code, zone_id in sorted(principal.grants, key=lambda grant: (grant[0], grant[1] or 0))
+    ]
+    owned_codes = {code for code, zone_id in principal.grants if zone_id is None}
+    selected_preset = request.query_params.get("preset", "read_only")
+    selected_codes = owned_codes & PRESETS.get(selected_preset, PRESETS["read_only"])
+    stored = session.execute(
+        select(ApiTokenPermission.api_token_id, Permission.code, ApiTokenPermission.zone_id)
+        .join(Permission, ApiTokenPermission.permission_id == Permission.id)
+        .where(ApiTokenPermission.api_token_id.in_([entry.id for entry in tokens]))
+    ).all() if tokens else []
+    token_codes: dict[int, set[str]] = {entry.id: set() for entry in tokens}
+    for token_id, code, zone_id in stored:
+        token_codes[token_id].add(f"{code}:{zone_id}" if zone_id is not None else code)
+    clients = {row.id: row.name for row in session.scalars(select(OAuthClient))}
+    effective = {
+        entry.id: sorted(
+            principal_for_token(session, entry).grants,
+            key=lambda grant: (grant[0], grant[1] or 0),
+        )
+        for entry in tokens
+    }
     return form_again(
         request, "tokens.html", values or {}, errors,
-        token=session.scalars(
-            select(ApiToken)
-            .where(ApiToken.user_id == principal.user_id)
-            .order_by(ApiToken.name)
-        ).all(),
-        alle_rechte=session.scalars(select(Permission).order_by(Permission.code)).all(),
+        token=tokens,
+        alle_rechte=permissions,
+        permitted=permitted,
+        token_codes=token_codes,
+        effective=effective,
+        clients=clients,
+        selected_codes=selected_codes,
+        selected_preset=selected_preset,
         plaintext=plaintext,
         hint=hint,
         timezone=settings.timezone if settings is not None else None,
@@ -478,6 +522,9 @@ async def token_issue_view(
     name: Annotated[str, Form()] = "",
     code: Annotated[str, Form()] = "",
     valid_days: Annotated[str, Form()] = "",
+    permission: Annotated[list[str] | None, Form()] = None,
+    preset: Annotated[str, Form()] = "",
+    selection_submitted: Annotated[str, Form()] = "",
 ) -> Response:
     require(principal, "token.self")
     # Neither case is reachable via this route: `aktueller_principal` resolves a
@@ -506,15 +553,107 @@ async def token_issue_view(
                 FormError("valid_days", "Die Gültigkeit muss eine Zahl von Tagen sein."),
                 {"name": name, "code": code},
             )
+    selected = (permission or []) if selection_submitted else (
+        permission if permission is not None
+        else (
+            [code] if code else sorted(
+                PRESETS.get(preset, frozenset()) & {
+                    granted for granted, zone_id in principal.grants if zone_id is None
+                }
+            )
+        )
+    )
+    grants = _token_grants(session, principal, selected)
+    if grants is None:
+        return _token_list(
+            request, session, principal,
+            hint="Dieser Nutzer kann kein Token mit diesem Recht ausstellen.",
+        )
     try:
         _token, plaintext = issue_token(
-            session, owner, name, [(code, None)] if code else [], expiry
+            session, owner, name, grants, expiry
         )
     except Forbidden as exc:
         return _token_list(request, session, principal, hint=str(exc))
     # The plaintext appears exactly once: only its hash is stored, and a token you
     # could look up later would not be one.
     return _token_list(request, session, principal, plaintext=plaintext)
+
+
+def _token_grants(
+    session: Session, principal: Principal, selected: list[str],
+) -> list[tuple[str, int | None]] | None:
+    known = {row.code: row for row in session.scalars(select(Permission))}
+    zone_ids = set(session.scalars(select(Zone.id)))
+    grants: list[tuple[str, int | None]] = []
+    for raw in dict.fromkeys(selected):
+        code, separator, zone_text = raw.partition(":")
+        if separator:
+            if not zone_text.isdecimal():
+                return None
+            zone_id: int | None = int(zone_text)
+        else:
+            zone_id = None
+        row = known.get(code)
+        if (row is None or (zone_id is not None and (
+            not row.is_zone_scoped or zone_id not in zone_ids
+        )) or not has_permission(principal, code, zone_id)):
+            return None
+        grants.append((code, zone_id))
+    return grants
+
+
+def _grant_label(code: str, zone_id: int | None) -> str:
+    """Recht für das Protokoll: ``code`` bzw. ``code@zone-id``."""
+    return code if zone_id is None else f"{code}@{zone_id}"
+
+
+@router.post("/tokens/{token_id}/permissions")
+async def token_permissions_view(
+    request: Request,
+    token_id: int,
+    principal: Annotated[Principal, Depends(current_principal)],
+    session: Annotated[Session, Depends(get_session)],
+    permission: Annotated[list[str] | None, Form()] = None,
+) -> Response:
+    require(principal, "token.self")
+    token = session.get(ApiToken, token_id)
+    if token is None or token.user_id != principal.user_id or token.is_kiosk:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Token nicht gefunden")
+    if token.revoked_at is not None or (
+        token.expires_at is not None and token.expires_at <= utcnow()
+    ):
+        # Die Vorlage blendet das Formular hier nur aus; ein direkter POST darf nicht
+        # durch -- ein unbrauchbares Token soll seine Rechte nicht mehr ändern.
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "Widerrufene oder abgelaufene Token sind nicht bearbeitbar"
+        )
+    selected = list(dict.fromkeys(permission or []))
+    grants = _token_grants(session, principal, selected)
+    if grants is None:
+        return Response("Ein gewähltes Recht fehlt Ihnen.", status_code=403)
+    ids = {row.code: row.id for row in session.scalars(select(Permission))}
+    bisherige = list(session.scalars(select(ApiTokenPermission).where(
+        ApiTokenPermission.api_token_id == token.id
+    )))
+    codes = {value: key for key, value in ids.items()}
+    alt = sorted(_grant_label(codes[entry.permission_id], entry.zone_id) for entry in bisherige)
+    for entry in bisherige:
+        session.delete(entry)
+    session.flush()
+    for code, zone_id in grants:
+        session.add(ApiTokenPermission(
+            api_token_id=token.id, permission_id=ids[code], zone_id=zone_id
+        ))
+    neu = sorted(_grant_label(code, zone_id) for code, zone_id in grants)
+    audit.record(
+        session, source="web", action="token.permissions_changed",
+        object_type="api_token", object_id=str(token.id),
+        summary=f"Rechte von Token '{token.name}' geändert",
+        user_id=principal.user_id,
+        detail=f"alt: {', '.join(alt) or '-'}; neu: {', '.join(neu) or '-'}",
+    )
+    return RedirectResponse(prefixed(request, "/tokens"), status_code=status.HTTP_303_SEE_OTHER)
 
 
 @router.post("/tokens/{token_id}/revoke")
@@ -526,9 +665,13 @@ async def token_revoke_view(
 ) -> Response:
     require(principal, "token.self")
     token = session.get(ApiToken, token_id)
-    if token is None or token.user_id != principal.user_id:
+    if token is None or token.user_id != principal.user_id or token.is_kiosk:
         # Someone else's tokens are unfindable, not forbidden -- otherwise the
         # response would reveal which ids exist.
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Token nicht gefunden")
     revoke_token(session, token, actor_id=principal.user_id)
+    if token.source == "oauth":
+        # Das Token ist hier schon (mit Protokolleintrag) widerrufen; dies sperrt zusätzlich
+        # die Refresh-Familie der Sitzung, sonst ließe es sich per Erneuerung ersetzen.
+        revoke_oauth_access_token(session, token)
     return RedirectResponse(prefixed(request, "/tokens"), status_code=status.HTTP_303_SEE_OTHER)

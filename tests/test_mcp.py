@@ -34,6 +34,8 @@ from thermoctl.domain.authz import Forbidden
 from thermoctl.domain.control import arm, save_solar_location
 from thermoctl.mcp import server
 
+ToolError = pytest.importorskip("mcp.server.mcpserver.exceptions").ToolError
+
 
 def _assign_switch_actuator(session: Session, zone: Zone) -> None:
     """The minimal assignment `pi_eligible()` accepts."""
@@ -312,6 +314,7 @@ def test_the_registered_mcp_tools_have_descriptions_and_call_the_adapter_functio
         ("schedule.manage", zone.id),
         ("zone.manage", zone.id),
         ("control.arm", None),
+        ("control.disarm", None),
         ("vacation.manage", None),
         ("setting.manage", None),
     ]
@@ -573,11 +576,24 @@ def test_forcing_dry_run_takes_the_installation_back(session: Session) -> None:
     source(session, "mcp")
     source(session, "web")
     arm(session, True, reason="von Hand", user_id=None)
-    plaintext = _token(session, "notaus", [("zone.read", None), ("control.arm", None)])
+    plaintext = _token(session, "notaus", [("zone.read", None), ("control.disarm", None)])
 
     response = server.force_dry_run(session, plaintext, "Assistent nimmt zurück")
     assert response == {"armed": False, "changed": True}
     assert session.get(Setting, 1).control_armed is False
+
+
+def test_forcing_dry_run_needs_control_disarm_not_control_arm(session: Session) -> None:
+    """Zurück in den Trockenlauf ist die sichere Richtung und braucht kein
+    Scharfschaltrecht -- umgekehrt genügt das Scharfschaltrecht dafür nicht mehr."""
+    create_settings(session)
+    source(session, "mcp")
+    arm(session, True, reason="von Hand", user_id=None)
+    plaintext = _token(session, "nur-scharf", [("zone.read", None), ("control.arm", None)])
+
+    with pytest.raises(Forbidden, match="control.disarm"):
+        server.force_dry_run(session, plaintext, "darf nicht")
+    assert session.get(Setting, 1).control_armed is True
 
 
 def test_mcp_cannot_arm_the_control(session: Session) -> None:
@@ -845,3 +861,152 @@ def test_device_commands_absenkung_entries_need_audit_read(session: Session) -> 
 
     with pytest.raises(Forbidden, match="audit.read"):
         server.device_commands(session, plaintext, zone="sonnenmcp")
+
+
+def _recording_tools(session: Session, monkeypatch, token_source) -> dict[str, object]:
+    tools: dict[str, object] = {}
+
+    class RecordingServer:
+        def tool(self, name: str | None = None):  # type: ignore[no-untyped-def]
+            def dekorator(function):  # type: ignore[no-untyped-def]
+                tools[str(name)] = function
+                return function
+
+            return dekorator
+
+        def run(self, transport: str = "stdio", **kwargs: object) -> None:
+            raise AssertionError("Der Test startet keinen Transport")
+
+    monkeypatch.setattr(server, "session_scope", lambda _factory: nullcontext(session))
+    server._register_tools(RecordingServer(), object(), token_source)  # type: ignore[arg-type]
+    return tools
+
+
+def test_tools_ask_the_token_source_on_every_call(session: Session, monkeypatch) -> None:
+    """HTTP: jedes Werkzeug liest das Token der laufenden Anfrage, nicht das vom Start."""
+    zone = zone_with_schedule(session, "wechselzone", [(1, 0, "tag-wechsel", Decimal("20.0"))])
+    source(session, "api")
+    create_zone_state(session, zone)
+    with_right = _token(session, "mit-recht", [("zone.read", None)])
+    without_right = _token(session, "ohne-recht", [("device.read", None)])
+    current = {"token": with_right}
+    tools = _recording_tools(session, monkeypatch, lambda: current["token"])
+
+    assert tools["list_zones"]()  # type: ignore[operator]
+    current["token"] = without_right
+    with pytest.raises(ToolError, match="zone.read"):
+        tools["list_zones"]()  # type: ignore[operator]
+
+
+def test_tool_calls_are_logged_with_outcome_and_reason(
+    session: Session, monkeypatch, caplog
+) -> None:
+    import logging
+
+    from thermoctl.mcp import http_auth
+
+    zone = zone_with_schedule(session, "logzone", [(1, 0, "tag-log", Decimal("20.0"))])
+    source(session, "api")
+    create_zone_state(session, zone)
+    plaintext = _token(session, "log-nutzer", [("zone.read", None)])
+    tools = _recording_tools(session, monkeypatch, lambda: plaintext)
+    caplog.set_level(logging.INFO)
+    marker = http_auth.current_key_prefix.set("abcd1234")
+    try:
+        assert tools["list_zones"]()  # type: ignore[operator]
+        with pytest.raises(ToolError):
+            tools["list_devices"]()  # type: ignore[operator]
+        with pytest.raises(ToolError):
+            tools["zone_state"](999_999)  # type: ignore[operator]
+    finally:
+        http_auth.current_key_prefix.reset(marker)
+
+    records = {
+        (r.tool, r.outcome): r for r in caplog.records if getattr(r, "event", "") == "mcp.tool"
+    }
+    assert records[("list_zones", "ok")].key_prefix == "abcd1234"
+    denied = records[("list_devices", "denied")]
+    assert "device.read" in denied.reason and plaintext not in denied.reason
+    assert ("zone_state", "not_found") in records
+    assert not hasattr(records[("list_zones", "ok")], "reason")
+
+
+def test_unexpected_tool_errors_are_logged_as_error(session: Session, monkeypatch, caplog) -> None:
+    import logging
+
+    plaintext = _token(session, "fehler-nutzer", [("zone.read", None)])
+    tools = _recording_tools(session, monkeypatch, lambda: plaintext)
+    monkeypatch.setattr(
+        server, "list_zones", lambda *_a: (_ for _ in ()).throw(ValueError("kaputt"))
+    )
+    caplog.set_level(logging.INFO)
+    with pytest.raises(ValueError):
+        tools["list_zones"]()  # type: ignore[operator]
+    assert any(
+        getattr(r, "outcome", "") == "error" and getattr(r, "reason", "") == "ValueError"
+        for r in caplog.records
+    )
+
+
+def test_foreign_exception_text_never_reaches_the_log(
+    session: Session, monkeypatch, caplog
+) -> None:
+    import logging
+
+    plaintext = _token(session, "log-fremd", [("zone.read", None)])
+    tools = _recording_tools(session, monkeypatch, lambda: plaintext)
+    secret = "tctl_abcd1234_geheimgeheimgeheim"
+    monkeypatch.setattr(
+        server, "list_zones", lambda *_a: (_ for _ in ()).throw(ValueError(f"Parameter {secret}"))
+    )
+    caplog.set_level(logging.INFO)
+    with pytest.raises(ValueError):
+        tools["list_zones"]()  # type: ignore[operator]
+    assert secret not in " ".join(f"{r.getMessage()} {r.__dict__}" for r in caplog.records)
+
+
+def test_the_reason_of_a_refusal_reaches_the_client(session: Session, monkeypatch) -> None:
+    """Ohne diese Umwandlung sähe das Modell nur "Error executing tool ..."."""
+    plaintext = _token(session, "grund-sichtbar", [("zone.read", None)])
+    tools = _recording_tools(session, monkeypatch, lambda: plaintext)
+    with pytest.raises(ToolError, match="device.read"):
+        tools["list_devices"]()  # type: ignore[operator]
+
+
+def test_unexpected_errors_stay_hidden_from_the_client(session: Session, monkeypatch) -> None:
+    plaintext = _token(session, "grund-verborgen", [("zone.read", None)])
+    tools = _recording_tools(session, monkeypatch, lambda: plaintext)
+    monkeypatch.setattr(server, "list_zones", lambda *_a: (_ for _ in ()).throw(ValueError("x")))
+    with pytest.raises(ValueError):
+        tools["list_zones"]()  # type: ignore[operator]
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        server.ControlError("feld", "Der Wert liegt außerhalb"),
+        server.RemoteControlError("Die Einrichtung ist unvollständig."),
+        server.ScheduleError("zeitraum", "Der Zeitraum ist ungültig"),
+        server.PolicyError("profil", "Das Profil gibt es nicht"),
+        server.UnknownParameter("Parameter unbekannt"),
+        server.ParameterOutOfRange("Wert zu groß"),
+        server.DomainError("betriebsart", "Die Betriebsart gibt es nicht"),
+    ],
+)
+def test_domain_rejections_reach_the_client_with_their_text(
+    session: Session, monkeypatch, caplog, error: Exception
+) -> None:
+    import logging
+
+    plaintext = _token(session, f"abgewiesen-{type(error).__name__}"[:40], [("zone.read", None)])
+    tools = _recording_tools(session, monkeypatch, lambda: plaintext)
+    monkeypatch.setattr(server, "list_zones", lambda *_a: (_ for _ in ()).throw(error))
+    caplog.set_level(logging.INFO)
+    expected = getattr(error, "notice", None) or str(error)
+    with pytest.raises(ToolError) as exc:
+        tools["list_zones"]()  # type: ignore[operator]
+    assert str(exc.value) == expected  # der Satz der Domäne, nicht das Argument-Tupel
+    assert any(
+        getattr(r, "outcome", "") == "rejected" and getattr(r, "reason", "") == expected
+        for r in caplog.records
+    )

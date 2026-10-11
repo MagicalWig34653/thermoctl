@@ -12,6 +12,8 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from thermoctl.db.base import Base, utcnow
 
+API_TOKEN_SOURCES = frozenset({"bearer", "oauth"})
+
 
 class Session_(Base):
     """Session of the web interface. Only the SHA-256 of the cookie secret is stored."""
@@ -46,6 +48,12 @@ class ApiToken(Base):
     # tokens) and `/kiosk-tokens` (tablet credentials, scoped to zones) apart; see the
     # migration `a84359d9d263`.
     is_kiosk: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    source: Mapped[str] = mapped_column(
+        String(16), default="bearer", server_default="bearer", nullable=False
+    )
+    oauth_client_id: Mapped[int | None] = mapped_column(
+        ForeignKey("oauth_client.id", ondelete="SET NULL"), nullable=True
+    )
 
 
 class ApiTokenPermission(Base):

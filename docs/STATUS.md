@@ -1,6 +1,6 @@
 # Stand
 
-Letzte Aktualisierung: 2026-10-10.
+Letzte Aktualisierung: 2026-10-11.
 
 ## Offene Entscheidungen (Projektinhaber)
 
@@ -10,6 +10,27 @@ Letzte Aktualisierung: 2026-10-10.
   (per Test abgesichert, `tests/test_landingpage.py`). Wird eines gewünscht: `impressum.html` und ein
   Fußlink im Generator (`tools/landingpage_erzeugen.py`) ergänzen, `site/` neu erzeugen.
 - Das Paket `ghcr.io/magicalwig34653/thermoctl` ist öffentlich (Projektinhaber, 2026-10-10).
+
+## Fertig, noch nicht freigegeben: MCP über HTTP mit Bearer und OAuth (Branch `mcp-http-task11`, Ziel 0.14.0)
+
+Gebaut und dokumentiert (`docs/mcp.md`, `docs/self-hosting.md` Abschnitt 8c, `docs/api.md`, `CHANGELOG.md`):
+
+- **Betriebsarten** `THERMOCTL_MCP_MODE` = `off` (Vorgabe) / `path` / `port` mit `MCP_PATH`, `MCP_PORT`, `PUBLIC_URL`,
+  `MCP_PUBLIC_URL` (Prüfung in `Settings.validate_mcp_http`, Start bricht bei Fehlern ab). Modus `path`: Mount in
+  `create_app()`; Modus `port`: `thermoctl-mcp --http`, vom `docker/entrypoint.sh` als zweiter Prozess gestartet.
+- **Zugang** Bearer-Token und OAuth (Registrierung, `/authorize`, Zustimmungsseite `/oauth/consent`, `/token`, `/revoke`;
+  `mcp/oauth_routes.py`, `domain/oauth.py`, `web/oauth_views.py`). Zugriffs-Token 1 Stunde, Refresh 30 Tage rotierend,
+  Wiederverwendung sperrt die Familie. OAuth-Token gelten nur am MCP (REST: 401).
+- **Presets** `domain/token_presets.py` (Read-only, Read-write); `control.arm` in keinem; neues Recht `control.disarm`
+  für `force_dry_run`.
+- **Migrationen** `b7d2e5a40c18` (`control.disarm`) und `b721e49c6a30` (OAuth-Tabellen, `api_token.source`),
+  Migrationskopf `b721e49c6a30`.
+- **Offen:** Add-on-Repository (Felder `mcp_mode`, `mcp_path`, `mcp_port`, `public_url`, `mcp_public_url`,
+  Port-Freigabe, `DOCS.md`, `CHANGELOG.md`) und die Freigabe 0.14.0 (Versionsnummer in `pyproject.toml`, Tag, Release)
+  stehen aus. `docker/thermoctl_optionen.py` führt die fünf Felder bis dahin in `BEWUSST_AUSGELASSEN`; sobald das
+  Add-on sie hat, wandern sie nach `ABGEBILDETE_FELDER`.
+- **Nicht ausprobiert:** der Ablauf mit einem echten Client (`claude mcp add --transport http …`, `/mcp`) hinter einem echten
+  Reverse Proxy; die Tests prüfen den Ablauf, ersetzen aber nicht, ihn einmal zu öffnen.
 
 ## 0.13.0 (2026-10-11)
 

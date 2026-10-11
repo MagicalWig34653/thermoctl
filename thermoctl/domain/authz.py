@@ -138,7 +138,7 @@ PERMISSION_AREAS: list[tuple[str, str, list[str]]] = [
         "Globale Vorgaben und die gespeicherte Freigabe. Erst nach einem Neustart "
         "gehen Sollwerte an selbstregelnde Thermostatventile und Ein/Aus-Befehle "
         "an gewöhnliche Aktoren.",
-        ["setting.manage", "control.arm", "vacation.manage"],
+        ["setting.manage", "control.arm", "control.disarm", "vacation.manage"],
     ),
     (
         "Benutzer und Zugang",

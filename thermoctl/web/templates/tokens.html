@@ -22,6 +22,10 @@
         <tr>
             <th scope="col">Name</th>
             <th scope="col">Präfix</th>
+            <th scope="col">Quelle</th>
+            <th scope="col">Client</th>
+            <th scope="col">Rechte</th>
+            <th scope="col">Zuletzt benutzt</th>
             <th scope="col">Gültig bis</th>
             <th scope="col">Status</th>
             <th scope="col"></th>
@@ -32,6 +36,10 @@
         <tr>
             <td data-label="Name">{{ entry.name }}</td>
             <td data-label="Präfix"><code>{{ entry.prefix }}</code></td>
+            <td data-label="Quelle">{{ entry.source }}</td>
+            <td data-label="Client">{{ clients.get(entry.oauth_client_id, "–") }}</td>
+            <td data-label="Rechte">{{ token_codes[entry.id] | sort | join(", ") or "–" }}</td>
+            <td data-label="Zuletzt benutzt">{{ (entry.last_used_at|localtime(timezone)).strftime("%d.%m.%Y %H:%M") if entry.last_used_at else "nie" }}</td>
             <td data-label="Gültig bis">{{ (entry.expires_at|localtime(timezone)).strftime("%d.%m.%Y %H:%M") if entry.expires_at else "unbegrenzt" }}</td>
             <td data-label="Status">
                 {% if entry.revoked_at %}
@@ -41,6 +49,18 @@
                 {% endif %}
             </td>
             <td class="text-md-end">
+                <details>
+                    <summary>Diagnose und Rechte</summary>
+                    <p>Wirksame Rechte: {{ effective[entry.id] | join(", ") or "keine" }}</p>
+                    {% if not entry.revoked_at %}
+                    <form method="post" action="{{ url_prefix }}/tokens/{{ entry.id }}/permissions">
+                        {% for value, description in permitted %}
+                        <label class="d-block"><input type="checkbox" name="permission" value="{{ value }}"{{ " checked" if value in token_codes[entry.id] }}> {{ description }} <small>({{ value }})</small></label>
+                        {% endfor %}
+                        <button type="submit" class="btn btn-sm btn-outline-primary">Rechte speichern</button>
+                    </form>
+                    {% endif %}
+                </details>
                 {% if not entry.revoked_at %}
                 <form method="post" action="{{ url_prefix }}/tokens/{{ entry.id }}/revoke">
                     <button type="submit" class="btn btn-sm btn-outline-danger">Widerrufen</button>
@@ -57,17 +77,21 @@
     <p class="text-muted">Ein Token kann höchstens, was Sie selbst dürfen — und behält das
         auch dann nicht, wenn Sie ein Recht später verlieren.</p>
     <form method="post" action="{{ url_prefix }}/tokens">
+        <input type="hidden" name="selection_submitted" value="1">
         {{ text_field("name", "Name", values.get("name", ""), required=true,
                     help_text="Wofür ist es gedacht? Später ist der Name das Einzige, woran Sie es erkennen.",
                     errors=errors.get("name", "")) }}
         <div class="mb-3">
-            <label class="form-label" for="code">Recht</label>
-            <select class="form-select" id="code" name="code">
-                <option value="">ohne Recht (nur zum Prüfen der Gültigkeit)</option>
-                {% for permission in alle_rechte %}
-                <option value="{{ permission.code }}">{{ permission.code }} – {{ permission.description }}</option>
-                {% endfor %}
+            <label class="form-label" for="token-preset">Vorauswahl</label>
+            <select class="form-select" id="token-preset" name="preset">
+                <option value="read_only"{{ " selected" if selected_preset == "read_only" }}>Read-only</option>
+                <option value="read_write"{{ " selected" if selected_preset == "read_write" }}>Read-write</option>
             </select>
+            <a href="{{ url_prefix }}/tokens?preset=read_only">Read-only auswählen</a> ·
+            <a href="{{ url_prefix }}/tokens?preset=read_write">Read-write auswählen</a>
+            {% for value, description in permitted %}
+            <label class="d-block"><input type="checkbox" name="permission" value="{{ value }}"{{ " checked" if value in selected_codes }}> {{ description }} <small>({{ value }})</small></label>
+            {% endfor %}
         </div>
         {{ number_field("valid_days", "Gültig für (Tage)", values.get("valid_days", ""),
                       step="1", min="1", errors=errors.get("valid_days", ""),
