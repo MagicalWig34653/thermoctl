@@ -555,9 +555,12 @@ je Quelladresse, und das ist ohne Zutun die Adresse des Proxys. Wer die Adresse 
 Besuchers will, trägt den Proxy in `FORWARDED_ALLOW_IPS` ein (Umgebungsvariable von
 uvicorn).
 
-**Im Home-Assistant-Add-on** gibt es die Felder dafür noch nicht; sie kommen mit dem
-Add-on-Update zu 0.14.0 (`mcp_mode`, `mcp_path`, `mcp_port`, `public_url`,
-`mcp_public_url`, Port-Freigabe). Bis dahin ist der HTTP-Zugang dort nicht eingestellbar.
+**Im Home-Assistant-Add-on** gibt es dafür keine eigenen Felder; die Einstellungen kommen
+über das freie Feld `env` (`THERMOCTL_MCP_MODE` und die übrigen, siehe oben). Im Modus
+`port` den Port 8001 (`THERMOCTL_MCP_PORT=8001`) unter „Netzwerk“ freigeben. Ingress taugt
+für externe MCP-Clients nicht, weil es eine Home-Assistant-Anmeldung verlangt; der Zugang
+geht über die veröffentlichten Ports mit eigenem TLS-Proxy. Einzelheiten in der `DOCS.md`
+des Add-ons.
 
 ## 8b. Urlaubsbetrieb
 
