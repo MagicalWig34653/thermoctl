@@ -28,7 +28,8 @@ COPY docker/thermoctl_ingress.py /usr/local/bin/thermoctl_ingress.py
 RUN chmod +x /usr/local/bin/entrypoint.sh && mkdir -p /data && chown thermoctl /data
 WORKDIR /app
 VOLUME ["/data"]
-# Web- und MCP-Port sind konfigurierbar; Veröffentlichungen stehen in Compose.
+# Der Web-Port bleibt dokumentiert; der MCP-Port ist konfigurierbar und wird in Compose veröffentlicht.
+EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s \
   CMD python -c "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8000/healthz')"
 ENTRYPOINT ["entrypoint.sh"]

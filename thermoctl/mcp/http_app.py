@@ -23,13 +23,21 @@ def create_mcp_asgi_app(settings: Settings, factory: sessionmaker[Session]) -> S
         raise ValueError("MCP-HTTP benötigt eine öffentliche MCP-Adresse")
     parsed = urlsplit(base_url)
     origin = f"{parsed.scheme}://{parsed.netloc}"
-    suffix = settings.mcp_path if settings.mcp_mode == "path" else ""
+    suffix = parsed.path
     metadata_url = origin + "/.well-known/oauth-protected-resource" + suffix
+    default_port = (parsed.scheme == "https" and parsed.port in (None, 443)) or (
+        parsed.scheme == "http" and parsed.port in (None, 80)
+    )
+    allowed_hosts = [parsed.netloc]
+    if default_port and parsed.hostname is not None:
+        allowed_hosts.append(parsed.hostname)
+        allowed_hosts.append(f"{parsed.hostname}:{443 if parsed.scheme == 'https' else 80}")
 
     def token_source() -> str:
         plaintext = http_auth.current_token.get()
         if plaintext is None:
-            raise PermissionError("Kein Token in der Anfrage")
+            # Nur erreichbar, wenn ein Programmierer die Auth-Middleware umgeht.
+            raise PermissionError("Kein Token in der Anfrage")  # pragma: no cover
         return plaintext
 
     mcp_server = server._mcp_server_class()("thermoctl")
@@ -40,7 +48,7 @@ def create_mcp_asgi_app(settings: Settings, factory: sessionmaker[Session]) -> S
         json_response=True,
         transport_security=TransportSecuritySettings(
             enable_dns_rebinding_protection=True,
-            allowed_hosts=[parsed.netloc],
+            allowed_hosts=sorted(set(allowed_hosts)),
             allowed_origins=[origin],
         ),
     )

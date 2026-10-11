@@ -1168,13 +1168,17 @@ def main() -> None:
         settings.validate_mcp_http()
         import uvicorn
 
+        from thermoctl.logging import configure_logging
         from thermoctl.mcp.http_app import create_mcp_asgi_app
 
+        configure_logging(settings)
         engine = create_engine_from_settings(settings)
         factory = session_factory(engine)
         app = create_mcp_asgi_app(settings, factory)
         assert settings.mcp_port is not None  # validate_mcp_http() hat den Port geprüft.
         try:
+            # uvicorn nutzt proxy_headers=True als Standard; FORWARDED_ALLOW_IPS
+            # begrenzt, welchen vorgeschalteten Proxys es dabei vertraut.
             uvicorn.run(app, host=settings.bind_host, port=settings.mcp_port)
         finally:
             engine.dispose()

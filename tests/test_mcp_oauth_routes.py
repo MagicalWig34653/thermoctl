@@ -2,7 +2,7 @@
 
 import base64
 import hashlib
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, urlencode, urlsplit
 
 import pytest
 from sqlalchemy.orm import Session
@@ -380,3 +380,162 @@ def test_revoke_is_indistinguishable_for_invalid_inputs(session: Session) -> Non
         ),
     ]
     assert all(response.status_code == 200 and response.content == b"" for response in responses)
+
+
+@pytest.mark.parametrize(
+    "field", ["grant_type", "client_id", "code", "code_verifier", "redirect_uri", "resource"]
+)
+def test_token_rejects_duplicate_parameters(session: Session, field: str) -> None:
+    form = {
+        "grant_type": "authorization_code", "client_id": "a", "code": "a",
+        "code_verifier": "v" * 43, "redirect_uri": "https://client.example.invalid/cb",
+        "resource": "https://web.example.invalid/mcp",
+    }
+    body = urlencode(form) + "&" + urlencode({field: "b"})
+    response = _client(session).post(
+        "/mcp/token", content=body,
+        headers={"content-type": "application/x-www-form-urlencoded"},
+    )
+    assert response.status_code == 400
+    assert response.json()["error"] == "invalid_request"
+
+
+def test_revoke_duplicate_token_is_ignored(session: Session, monkeypatch) -> None:
+    called: list[str] = []
+    monkeypatch.setattr(oauth, "revoke", lambda _session, value: called.append(value))
+    response = _client(session).post(
+        "/mcp/revoke", content="token=first&token=second",
+        headers={"content-type": "application/x-www-form-urlencoded"},
+    )
+    assert response.status_code == 200
+    assert called == []
+
+
+@pytest.mark.parametrize("mode", ["path", "port"])
+def test_rfc_metadata_uses_public_resource_path(session: Session, mode: str) -> None:
+    settings = _settings(mode)
+    if mode == "path":
+        settings.public_url = "https://web.example.invalid/praefix"
+    else:
+        settings.mcp_public_url = "https://mcp.example.invalid/praefix/mcp"
+    routes = (
+        oauth_routes.build_root_wellknown_routes(settings) if mode == "path"
+        else oauth_routes.build_oauth_routes(_SharedSession(session), settings)
+    )
+    client = TestClient(Starlette(routes=routes))
+    for name in ("oauth-protected-resource", "oauth-authorization-server"):
+        response = client.get(f"/.well-known/{name}/praefix/mcp")
+        assert response.status_code == 200
+        actual = response.json().get("resource", response.json().get("issuer"))
+        assert actual == settings.mcp_base_url()
+
+
+def test_register_returns_503_for_capacity_error(session: Session, monkeypatch) -> None:
+    def unavailable(*_args):
+        raise oauth.OAuthError("temporarily_unavailable", "Zu viele Clients")
+
+    monkeypatch.setattr(oauth, "register_client", unavailable)
+    response = _client(session).post(
+        "/mcp/register", json={"client_name": "Test", "redirect_uris": ["https://client.example.invalid/cb"]}
+    )
+    assert response.status_code == 503
+    assert response.json()["error"] == "temporarily_unavailable"
+
+
+def test_authorize_redirects_capacity_error(session: Session, monkeypatch) -> None:
+    client = _client(session)
+    client_id = _register(client)["client_id"]
+
+    def unavailable(*_args):
+        raise oauth.OAuthError("temporarily_unavailable", "Zu viele Anfragen")
+
+    monkeypatch.setattr(oauth, "start_request", unavailable)
+    response = client.get(
+        "/mcp/authorize", params=_authorize_params(client_id), follow_redirects=False
+    )
+    assert response.status_code == 303
+    assert parse_qs(urlsplit(response.headers["location"]).query)["error"] == [
+        "temporarily_unavailable"
+    ]
+
+
+def test_register_rejects_non_object_and_wrong_content_type(session: Session) -> None:
+    client = _client(session)
+    assert client.post("/mcp/register", json=[]).json()["error"] == "invalid_client_metadata"
+    wrong_type = client.post("/mcp/register", content="{}", headers={"content-type": "text/plain"})
+    assert wrong_type.json()["error"] == "invalid_request"
+    invalid_length = client.post(
+        "/mcp/register",
+        content="{}",
+        headers={"content-length": "not-a-number", "content-type": "application/json"},
+    )
+    assert invalid_length.status_code == 413
+
+
+def test_authorize_missing_resource_redirects_without_state(session: Session) -> None:
+    client = _client(session)
+    client_id = _register(client)["client_id"]
+    params = _authorize_params(client_id)
+    del params["resource"]
+    del params["state"]
+    response = client.get("/mcp/authorize", params=params, follow_redirects=False)
+    query = parse_qs(urlsplit(response.headers["location"]).query)
+    assert query["error"] == ["invalid_request"]
+    assert "state" not in query
+
+
+def test_revoke_failure_still_returns_200_and_logs(session: Session, monkeypatch, caplog) -> None:
+    def broken(*_args):
+        raise RuntimeError("interner Fehler")
+
+    monkeypatch.setattr(oauth, "revoke", broken)
+    response = _client(session).post("/mcp/revoke", data={"token": "unbekannt"})
+    assert response.status_code == 200
+    assert any(
+        record.event == "oauth.revoke" and record.outcome == "error" for record in caplog.records
+    )
+
+
+def test_registration_address_limit_evicts_oldest(session: Session, monkeypatch) -> None:
+    monkeypatch.setattr(oauth_routes, "_MAX_ADDRESSES", 2)
+    moment = [1000.0]
+    monkeypatch.setattr(oauth_routes, "_now", lambda: moment[0])
+    app = Starlette(routes=oauth_routes.build_oauth_routes(_SharedSession(session), _settings()))
+    payload = {"client_name": "Test", "redirect_uris": ["https://client.example.invalid/cb"]}
+    with TestClient(app, client=("oldest", 50000)) as oldest:
+        for _ in range(20):
+            assert oldest.post("/register", json=payload).status_code == 201
+        assert oldest.post("/register", json=payload).status_code == 429
+        moment[0] += 1
+        with TestClient(app, client=("second", 50000)) as second:
+            assert second.post("/register", json=payload).status_code == 201
+        moment[0] += 1
+        with TestClient(app, client=("third", 50000)) as third:
+            assert third.post("/register", json=payload).status_code == 201
+        assert oldest.post("/register", json=payload).status_code == 201
+
+
+def test_oauth_routes_require_public_url(session: Session) -> None:
+    settings = _settings("off")
+    with pytest.raises(ValueError, match="öffentliche MCP-Adresse"):
+        oauth_routes.build_oauth_routes(_SharedSession(session), settings)
+    assert oauth_routes.build_root_wellknown_routes(settings) == []
+
+
+def test_authorize_without_challenge_redirects(session: Session) -> None:
+    client = _client(session)
+    client_id = _register(client)["client_id"]
+    params = _authorize_params(client_id)
+    del params["code_challenge"]
+    response = client.get("/mcp/authorize", params=params, follow_redirects=False)
+    assert parse_qs(urlsplit(response.headers["location"]).query)["error"] == ["invalid_request"]
+
+
+@pytest.mark.parametrize("body", [b"\xff", b"broken"])
+def test_token_rejects_malformed_form(session: Session, body: bytes) -> None:
+    response = _client(session).post(
+        "/mcp/token", content=body,
+        headers={"content-type": "application/x-www-form-urlencoded"},
+    )
+    assert response.status_code == 400
+    assert response.json()["error"] == "invalid_request"
