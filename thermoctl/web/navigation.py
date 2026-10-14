@@ -79,6 +79,14 @@ NAVIGATION_ITEMS: tuple[NavigationItem, ...] = (
         "analysis",
     ),
     NavigationItem(
+        "/zones/data-flow",
+        "Datenfluss",
+        "zone.manage",
+        "thermoctl.web.zone_views.data_flow_overview",
+        "any_zone",
+        "analysis",
+    ),
+    NavigationItem(
         "/relay-wear",
         "Relaisverschleiß",
         "audit.read",

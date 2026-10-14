@@ -9,11 +9,14 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from thermoctl.auth.dependencies import csrf_protection, current_principal, get_session
+from thermoctl.db.base import utcnow
 from thermoctl.db.models.device import Device
 from thermoctl.db.models.lookup import OperatingMode
 from thermoctl.db.models.operations import Setting
 from thermoctl.db.models.zone import Zone
 from thermoctl.domain.authz import has_permission, require, visible_zones
+from thermoctl.domain.data_flow import build_data_flow
+from thermoctl.domain.data_flow_mermaid import render_mermaid
 from thermoctl.domain.principal import Principal
 from thermoctl.domain.zone_history_chart import (
     LAYOUTS,
@@ -272,6 +275,53 @@ def history_context(
         "heat_cells_for": heat_cells_for,
         "short_bands": has_short_bands(chart),
     }
+
+
+def _data_flow_entries(session: Session, zones: list[Zone]) -> list[dict[str, object]]:
+    """Je Zone der Graph, sein Mermaid-Quelltext und die Kanten als Text."""
+    now = utcnow()
+    entries: list[dict[str, object]] = []
+    for zone in zones:
+        graph = build_data_flow(session, zone, now)
+        entries.append(
+            {
+                "zone": zone,
+                "graph": graph,
+                "mermaid": render_mermaid(graph),
+                "edge_texts": [graph.edge_text(edge) for edge in graph.edges],
+            }
+        )
+    return entries
+
+
+@router.get("/zones/data-flow")
+async def data_flow_overview(
+    request: Request,
+    principal: Annotated[Principal, Depends(current_principal)],
+    session: Annotated[Session, Depends(get_session)],
+) -> Response:
+    """Datenfluss aller Zonen -- gleicher Zonenfilter und gleiches Recht wie `/zones/history`."""
+    zones = visible_zones(session, principal, "zone.manage")
+    return templates.TemplateResponse(
+        request,
+        "data_flow.html",
+        {"entries": _data_flow_entries(session, zones), "single": False},
+    )
+
+
+@router.get("/zones/{zone_id}/data-flow")
+async def zone_data_flow(
+    zone_id: int,
+    request: Request,
+    principal: Annotated[Principal, Depends(current_principal)],
+    session: Annotated[Session, Depends(get_session)],
+) -> Response:
+    zone = _visible_zone(session, principal, zone_id)
+    return templates.TemplateResponse(
+        request,
+        "data_flow.html",
+        {"entries": _data_flow_entries(session, [zone]), "single": True, "zone": zone},
+    )
 
 
 @router.get("/zones/history")

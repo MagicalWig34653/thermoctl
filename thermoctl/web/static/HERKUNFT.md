@@ -51,6 +51,21 @@ Browser bei jedem Seitenaufruf vergeblich nach `/favicon.ico`.
 ReDoc (`/redoc`) ist ersatzlos abgeschaltet: dasselbe CDN-Problem, und eine zweite
 Lesefassung derselben Beschreibung ist den Ballast nicht wert.
 
+## Mermaid 11.4.1
+
+Quelle: https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js
+Lizenz: MIT (https://github.com/mermaid-js/mermaid/blob/develop/LICENSE)
+
+| Datei | SHA-384 |
+|---|---|
+| `vendor/mermaid/mermaid.min.js` | `sha384-rbtjAdnIQE/aQJGEgXrVUlMibdfTSa4PQju4HDhN3sR2PmaKFzhEafuePsl9H/9I` |
+
+Für die Seite „Datenfluss“ (`/zones/data-flow`). Die Datei ist unverändert (kein
+`sourceMappingURL`), eine einzelne Datei ohne nachgeladene Teile. Sie wird nur auf dieser
+Seite geladen, und zwar von `static/data_flow.js` über die eigene Adresse -- nie von einem
+CDN. Gezeichnet wird mit `securityLevel: "strict"`; der Quelltext wird serverseitig aus
+dem Datenfluss-Graphen erzeugt und jeder Name dort escapt (`domain/data_flow_mermaid.py`).
+
 ## Pflege
 
 Beim Aktualisieren einer dieser Dateien: neue Version laden, Hash in dieser Tabelle

@@ -73,6 +73,7 @@ from thermoctl.domain.temperature_source_health import (
     WallProbeReading,
     evaluate_source_health,
 )
+from thermoctl.domain.thermostat_mode import MODE_READING_ONLY, switches
 from thermoctl.domain.zone_settings import ControlParameters, control_parameters
 from thermoctl.services.emergency_prior import entry_prior_hint
 from thermoctl.services.temperature_source_health import zone_candidates
@@ -295,7 +296,8 @@ def _window_situation(
 
 def _on_off_actuators_only(session: Session, zone: Zone) -> bool:
     """True exactly when `Situation.on_off_actuators_only` should be — the zone has at
-    least one actuator and none of them is `ZoneDevice.self_regulating`.
+    least one actuator and all of them are switched by thermoctl
+    (`switches(ZoneDevice.thermostat_mode)`).
 
     Deliberately its own tiny query rather than reusing `_pi_actuator_profiles()`:
     that one also resolves each device's capabilities for PI's own, unrelated
@@ -307,13 +309,13 @@ def _on_off_actuators_only(session: Session, zone: Zone) -> bool:
         return False
     flags = list(
         session.scalars(
-            select(ZoneDevice.self_regulating).where(
+            select(ZoneDevice.thermostat_mode).where(
                 ZoneDevice.zone_id == zone.id,
                 ZoneDevice.device_role_id == actuator_role.id,
             )
         )
     )
-    return bool(flags) and not any(flags)
+    return bool(flags) and all(switches(mode) for mode in flags)
 
 
 def _with_solar_setback(
@@ -455,6 +457,12 @@ def zone_actuator_assignments(
                 )
             )
         )
+        if zone_device.thermostat_mode == MODE_READING_ONLY:
+            # `reading_only`: thermoctl never writes a setpoint to this valve, so the
+            # Notbetrieb handover (operating_mode + emergency setpoint) must not
+            # reach it either -- no plan entry at all, same as an actuator without
+            # either capability (domain/thermostat_mode.py).
+            continue
         if switch is not None and switch.id in capability_ids:
             result.append((zone_device, device, emergency_actuator_plan.KIND_SWITCH))
         elif thermostat is not None and thermostat.id in capability_ids:
@@ -982,13 +990,13 @@ def _pi_actuator_profiles(session: Session, zone: Zone) -> list[ActuatorProfile]
         select(DeviceCapability).where(DeviceCapability.code == "thermostat")
     )
     rows = session.execute(
-        select(ZoneDevice.device_id, ZoneDevice.self_regulating).where(
+        select(ZoneDevice.device_id, ZoneDevice.thermostat_mode).where(
             ZoneDevice.zone_id == zone.id,
             ZoneDevice.device_role_id == actuator_role.id,
         )
     )
     profiles: list[ActuatorProfile] = []
-    for device_id, self_regulating in rows:
+    for device_id, thermostat_mode in rows:
         capability_ids = set(
             session.scalars(
                 select(DeviceCapabilityLink.capability_id).where(
@@ -998,7 +1006,7 @@ def _pi_actuator_profiles(session: Session, zone: Zone) -> list[ActuatorProfile]
         )
         profiles.append(
             ActuatorProfile(
-                self_regulating=bool(self_regulating),
+                thermostat_mode=thermostat_mode,
                 has_switch_capability=switch is not None and switch.id in capability_ids,
                 has_thermostat_capability=(
                     thermostat is not None and thermostat.id in capability_ids

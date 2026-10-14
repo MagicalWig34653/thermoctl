@@ -44,7 +44,7 @@ def _assign_switch_actuator(session: Session, zone_id: int) -> None:
             zone_id=zone_id,
             device_id=device.id,
             device_role_id=role(session, "actuator").id,
-            self_regulating=False,
+            thermostat_mode="controlled",
         )
     )
     session.flush()

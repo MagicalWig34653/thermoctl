@@ -16,7 +16,8 @@
         ["homebridge_copy.js", "[data-homebridge-copy]"],
         ["kiosk_panel.js", "[data-kiosk-tile]"],
         ["sensor_failure_curve.js", "[data-sensor-failure-curve]"],
-        ["zone_history.js", "[data-history-open]"]
+        ["zone_history.js", "[data-history-open]"],
+        ["data_flow.js", "[data-flow-diagram]"]
     ];
 
     function load() {

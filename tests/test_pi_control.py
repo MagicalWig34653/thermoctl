@@ -570,7 +570,7 @@ class TestWindowModulateRemainder:
 
 class TestPiEligible:
     SWITCH_ONLY = ActuatorProfile(
-        self_regulating=False, has_switch_capability=True, has_thermostat_capability=False
+        thermostat_mode="controlled", has_switch_capability=True, has_thermostat_capability=False
     )
 
     def test_no_actuators_is_not_eligible(self) -> None:
@@ -587,10 +587,14 @@ class TestPiEligible:
         `domain/self_regulating.py`, never PI's `heating` decision -- so the zone is
         eligible, and PI will only ever reach the Meross switch."""
         self_regulating_thermostat = ActuatorProfile(
-            self_regulating=True, has_switch_capability=False, has_thermostat_capability=True
+            thermostat_mode="self_regulating",
+            has_switch_capability=False,
+            has_thermostat_capability=True,
         )
         meross_switch = ActuatorProfile(
-            self_regulating=False, has_switch_capability=True, has_thermostat_capability=False
+            thermostat_mode="controlled",
+            has_switch_capability=True,
+            has_thermostat_capability=False,
         )
         result = pi_eligible(
             [self_regulating_thermostat, meross_switch],
@@ -604,7 +608,9 @@ class TestPiEligible:
         """A self-regulating valve alone never counts as the required switch
         actuator -- PI would have nothing left to drive."""
         actuator = ActuatorProfile(
-            self_regulating=True, has_switch_capability=True, has_thermostat_capability=False
+            thermostat_mode="self_regulating",
+            has_switch_capability=True,
+            has_thermostat_capability=False,
         )
         result = pi_eligible(
             [actuator],
@@ -618,7 +624,7 @@ class TestPiEligible:
         self,
     ) -> None:
         actuator = ActuatorProfile(
-            self_regulating=False, has_switch_capability=True, has_thermostat_capability=True
+            thermostat_mode="controlled", has_switch_capability=True, has_thermostat_capability=True
         )
         result = pi_eligible(
             [actuator], control_cycle_seconds=60, pi_min_on_seconds=60, pi_min_off_seconds=60
@@ -627,7 +633,9 @@ class TestPiEligible:
 
     def test_an_actuator_without_switch_capability_is_not_eligible(self) -> None:
         actuator = ActuatorProfile(
-            self_regulating=False, has_switch_capability=False, has_thermostat_capability=False
+            thermostat_mode="controlled",
+            has_switch_capability=False,
+            has_thermostat_capability=False,
         )
         result = pi_eligible(
             [actuator], control_cycle_seconds=60, pi_min_on_seconds=60, pi_min_off_seconds=60
@@ -1312,7 +1320,7 @@ class TestHeldForAccumulation:
 
 class TestPiEligibleControlCycleBoundaries:
     _SWITCH_ONLY = ActuatorProfile(
-        self_regulating=False, has_switch_capability=True, has_thermostat_capability=False
+        thermostat_mode="controlled", has_switch_capability=True, has_thermostat_capability=False
     )
 
     def test_a_one_second_control_cycle_is_not_rejected_as_non_positive(self) -> None:
@@ -1375,16 +1383,18 @@ class TestDataclassesStayFrozen:
 
     def test_actuator_profile_rejects_attribute_assignment(self) -> None:
         profile = ActuatorProfile(
-            self_regulating=False, has_switch_capability=True, has_thermostat_capability=False
+            thermostat_mode="controlled",
+            has_switch_capability=True,
+            has_thermostat_capability=False,
         )
         with pytest.raises(dataclasses.FrozenInstanceError):
-            profile.self_regulating = True  # type: ignore[misc]
+            profile.thermostat_mode = "self_regulating"  # type: ignore[misc]
 
     def test_pi_eligibility_rejects_attribute_assignment(self) -> None:
         result = pi_eligible(
             [
                 ActuatorProfile(
-                    self_regulating=False,
+                    thermostat_mode="controlled",
                     has_switch_capability=True,
                     has_thermostat_capability=False,
                 )
@@ -1395,3 +1405,17 @@ class TestDataclassesStayFrozen:
         )
         with pytest.raises(dataclasses.FrozenInstanceError):
             result.eligible = False  # type: ignore[misc]
+
+
+def test_a_reading_only_valve_is_skipped_like_a_self_regulating_one() -> None:
+    """thermoctl never switches it, so it neither blocks PI nor counts as a switch."""
+    reading_only = ActuatorProfile(
+        thermostat_mode="reading_only", has_switch_capability=False, has_thermostat_capability=True
+    )
+    meross_switch = ActuatorProfile(
+        thermostat_mode="controlled", has_switch_capability=True, has_thermostat_capability=False
+    )
+    kwargs = dict(control_cycle_seconds=60, pi_min_on_seconds=60, pi_min_off_seconds=60)
+
+    assert pi_eligible([reading_only, meross_switch], **kwargs).eligible is True
+    assert pi_eligible([reading_only], **kwargs).eligible is False

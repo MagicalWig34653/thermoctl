@@ -61,7 +61,7 @@ def _thermostat(session: Session, zone_id: int, name: str, offset: str | None) -
         zone_id=zone_id,
         device_id=device.id,
         device_role_id=role(session, "actuator").id,
-        self_regulating=True,
+        thermostat_mode="self_regulating",
         temperature_backup_offset_k=Decimal(offset) if offset is not None else None,
     )
     session.add(row)

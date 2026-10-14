@@ -81,7 +81,7 @@ def _assign_actuator(
     session: Session,
     zone: Zone,
     *,
-    self_regulating: bool = False,
+    thermostat_mode: str = "controlled",
     capability_code: str = "switch",
     suffix: str = "",
 ) -> Device:
@@ -102,7 +102,7 @@ def _assign_actuator(
             zone_id=zone.id,
             device_id=device.id,
             device_role_id=role(session, "actuator").id,
-            self_regulating=self_regulating,
+            thermostat_mode=thermostat_mode,
         )
     )
     session.flush()
@@ -433,7 +433,7 @@ class TestIneligibilityFallsBackVisibly:
         disqualifying (see `TestMixedZoneWithASelfRegulatingValve` below for the
         case where a switch is also present)."""
         zone = _pi_zone(session, "selbstregelnd", with_actuator=False)
-        _assign_actuator(session, zone, self_regulating=True)
+        _assign_actuator(session, zone, thermostat_mode="self_regulating")
 
         rows = shadow_run.cycle(session, NOW)
         row = _row_for(rows, zone)
@@ -477,7 +477,7 @@ class TestMixedZoneWithASelfRegulatingValve:
     (`thermoctl/domain/pi_control.py`) for why a self-regulating valve is safe to
     ignore here: `switch_commands()`/`thermostat_commands()`
     (`thermoctl/domain/switch_commands.py`) both filter it out of their own queries
-    via `ZoneDevice.self_regulating.is_(False)`, so it is structurally unreachable
+    via `ZoneDevice.thermostat_mode == "controlled"`, so it is structurally unreachable
     from `publishing.py`'s `switch_commands` dispatch and only ever receives its own
     setpoint through `domain/self_regulating.py`.
     """
@@ -487,11 +487,11 @@ class TestMixedZoneWithASelfRegulatingValve:
     ) -> None:
         zone = _pi_zone(session, "heizkörper-und-meross", with_actuator=False)
         # The self-regulating radiator thermostat -- excluded from both command
-        # queries by `self_regulating=True`, so it must not block PI eligibility.
+        # queries by `thermostat_mode="self_regulating"`, so it must not block PI eligibility.
         _assign_actuator(
             session,
             zone,
-            self_regulating=True,
+            thermostat_mode="self_regulating",
             capability_code="thermostat",
             suffix="-heizkörper",
         )
@@ -508,7 +508,7 @@ class TestMixedZoneWithASelfRegulatingValve:
         assert row.pi_candidate_would_heat is not None
 
         # The command layer sends the on/off result to the switch alone -- the
-        # self-regulating valve is excluded by construction (`self_regulating.is_(False)`
+        # self-regulating valve is excluded by construction (`thermostat_mode == "controlled"`
         # in both `switch_commands()` and `thermostat_commands()`), never by anything
         # PI computes.
         from thermoctl.domain.switch_commands import switch_commands, thermostat_commands
@@ -611,7 +611,7 @@ class TestPrecedenceRulesBeatPi:
         did: an open window resets PI every cycle."""
         zone = _pi_zone(session, "fenster-offen", measured_c=COLD_C)
         _assign_actuator(
-            session, zone, self_regulating=True, capability_code="thermostat",
+            session, zone, thermostat_mode="self_regulating", capability_code="thermostat",
             suffix="-heizkörper",
         )
         state = session.get(ZoneState, zone.id)
@@ -650,7 +650,7 @@ class TestPrecedenceRulesBeatPi:
         `TestOnOffOnlyZoneIgnoresTheWindow`."""
         zone = _pi_zone(session, "nachlauf", measured_c=COLD_C)
         _assign_actuator(
-            session, zone, self_regulating=True, capability_code="thermostat",
+            session, zone, thermostat_mode="self_regulating", capability_code="thermostat",
             suffix="-heizkörper",
         )
         state = session.get(ZoneState, zone.id)
@@ -831,7 +831,8 @@ class TestPrecedenceRulesBeatPi:
         # above: a plain switch-only zone is `on_off_actuators_only`, which exempts
         # it from rule 3 (and this test) entirely.
         _assign_actuator(
-            session, zone, self_regulating=True, capability_code="thermostat", suffix="-heizkörper",
+            session, zone, thermostat_mode="self_regulating",
+            capability_code="thermostat", suffix="-heizkörper",
         )
         state = session.get(ZoneState, zone.id)
         assert state is not None
@@ -1624,7 +1625,7 @@ class TestControllerTransitionsMidHold:
         # entirely -- the window gate would never fire and this test would
         # prove nothing about it.
         _assign_actuator(
-            session, zone, self_regulating=True, capability_code="thermostat",
+            session, zone, thermostat_mode="self_regulating", capability_code="thermostat",
             suffix="-heizkoerper",
         )
         state = session.get(ZoneState, zone.id)
@@ -1787,7 +1788,7 @@ class TestGeneralInvariantSurvivesEveryNamedGate:
             session, "fenster-temporaer", measured_c=COLD_C, pi_min_on=60, pi_min_off=60
         )
         _assign_actuator(
-            session, zone, self_regulating=True, capability_code="thermostat",
+            session, zone, thermostat_mode="self_regulating", capability_code="thermostat",
             suffix="-heizkoerper",
         )
         zone.window_resume_delay_seconds = 0  # isolate the window gate from rule 4
@@ -1854,7 +1855,7 @@ class TestGeneralInvariantSurvivesEveryNamedGate:
             session, "wiederanlauf-temporaer", measured_c=COLD_C, pi_min_on=60, pi_min_off=60
         )
         _assign_actuator(
-            session, zone, self_regulating=True, capability_code="thermostat",
+            session, zone, thermostat_mode="self_regulating", capability_code="thermostat",
             suffix="-heizkoerper",
         )
         zone.window_resume_delay_seconds = 60

@@ -11,9 +11,11 @@ Diese Anleitung ersetzt den Vergleich nicht, sie sagt, worauf stattdessen zu ach
 **Auf `Geräte` und im Anlagenbild:** Welches Gerät ist welcher Zone als was zugeordnet.
 Vier Rollen kommen dafür infrage, und jede verhält sich nach dem Scharfschalten anders:
 
-1. **Selbstregelndes Thermostatventil** (Fähigkeit `thermostat`, `self_regulating`
-   gesetzt). Es bekommt den aufgelösten Sollwert als Temperaturvorgabe und regelt selbst
-   dagegen. Kein Ein/Aus geht hinaus, nur eine Zieltemperatur.
+1. **Selbstregelndes Thermostatventil** (Fähigkeit `thermostat`, Betriebsart
+   „Ventil regelt selbst“ = `self_regulating`). Es bekommt den aufgelösten Sollwert als
+   Temperaturvorgabe und regelt selbst dagegen. Kein Ein/Aus geht hinaus, nur eine
+   Zieltemperatur. Als dritte Betriebsart gibt es `reading_only` („Nur Raumtemperatur
+   melden“): dann geht nur der gemessene Istwert an das Ventil, nie ein Sollwert.
 2. **Gewöhnlicher Aktor** über Zigbee2MQTT (Rolle „Aktor", Fähigkeit `switch`, nicht
    selbstregelnd). Er bekommt genau das Ein/Aus, das die Regelung für seine Zone gerade
    entschieden hat.
@@ -23,7 +25,7 @@ Vier Rollen kommen dafür infrage, und jede verhält sich nach dem Scharfschalte
    aufzuhalten. Das Schaltprotokoll hält denselben Fehler nur einmal fest, bis sich das
    Ergebnis ändert.
 4. **Zigbee2MQTT-Thermostatventil ohne Selbstregelung** (Fähigkeit `thermostat`, aber
-   `self_regulating` nicht gesetzt — thermoctls eigene Hysterese entscheidet, nicht das
+   Betriebsart `controlled` „thermoctl schaltet“ — thermoctls eigene Hysterese entscheidet, nicht das
    Ventil selbst). Es bekommt den aufgelösten Sollwert und, wo das Gerät das anbietet,
    zusätzlich ein `heat`/`off`. Bietet es das nicht an, wird es stattdessen im Aus-Fall auf
    seinen niedrigsten Sollwert gefahren — ein sichtbarer, aber langsamerer Weg, „aus" zu

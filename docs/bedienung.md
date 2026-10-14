@@ -496,6 +496,31 @@ neuen Zeilen, gilt ein „keine Sonnenabsenkung" nur für den aufgezeichneten Te
 aufgezeichneten 30 Minuten keine Sonnenabsenkung"); der Satz „Keine Sonnenabsenkung" ohne
 Einschränkung steht nur, wenn jede Zeile des Fensters die Absenkung aufgezeichnet hat.
 
+### Datenfluss
+
+Unter **Analyse → Datenfluss** (und je Zone über den Knopf „Datenfluss“ im Zonenkopf) zeigt ein
+Flussdiagramm, welcher Wert von welchem Gerät kommt und wohin er geschrieben wird: links die
+Messquelle (Istwert), die Fensterkontakte und der aufgelöste Sollwert (Zeitplan, Übersteuerung,
+Boost, Urlaub), in der Mitte die Zone, rechts je Aktor, was thermoctl an ihn schreiben würde — je nach
+Betriebsart des Ventils:
+
+- **thermoctl schaltet:** ein Pfeil „Ein/Aus“ von der Zone zum Gerät, beschriftet mit dem echten
+  Kanal (Zigbee2MQTT-Schalter `state`, Meross-Schaltbefehl, bei einem Thermostat Sollwert und Modus
+  für Ein, Modus „off“ bzw. der Mindestsollwert für Aus).
+- **Ventil regelt selbst:** Sollwert und Istwert, bei einem Fensterkontakt (oder, ohne Kontakt, bei
+  eingeschalteter Temperaturabfall-Erkennung der Zone) zusätzlich der Frostschutz-Sollwert bei
+  offenem Fenster. Die Pfeile nennen die Geräteeigenschaft
+  (z. B. `occupied_heating_setpoint`, `external_temperature_input`).
+- **Nur Raumtemperatur melden:** nur der Istwert; es gibt bewusst keinen Sollwert-Pfeil, das
+  Gerät trägt den Vermerk „Sollwert bleibt am Gerät“.
+
+**Gestrichelt** ist, was fehlt: keine Messquelle, keine beschreibbare Temperatur- oder
+Sollwert-Eigenschaft, keine Schaltfähigkeit. Unter dem Bild stehen die Pfeile noch einmal als
+Text („Kanten als Text“); ohne JavaScript bleibt statt des Bildes der Diagramm-Quelltext
+sichtbar. Die Seite zeigt die Zonen, die man verwalten darf (wie die Verläufe), gehört zur
+Anlagensicht und ändert nichts an der Anlage; ob thermoctl gerade wirklich schreibt oder im
+Trockenlauf nur entscheidet, zeigt sie nicht, sondern nur den Weg der Werte.
+
 ### Verläufe aller Zonen
 
 Unter **Analyse → Zonenverläufe** (auch über „Alle Verläufe" auf der Zonenliste) stehen die

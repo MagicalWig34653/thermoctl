@@ -1191,9 +1191,11 @@ async def _send_self_regulating_valves(
     armed = switching_allowed(session)
     sent = 0
     for command in valve_commands(session, zone, now):
-        payload_values: dict[str, object] = {
-            SETPOINT_PROPERTY: float(command.setpoint_c)
-        }
+        # `setpoint_c` is `None` for a `reading_only` valve: its payload carries the
+        # temperature property alone, never `occupied_heating_setpoint`.
+        payload_values: dict[str, object] = {}
+        if command.setpoint_c is not None:
+            payload_values[SETPOINT_PROPERTY] = float(command.setpoint_c)
         if command.temperature_property is not None and command.temperature_c is not None:
             payload_values[command.temperature_property] = float(command.temperature_c)
         payload = json.dumps(payload_values, ensure_ascii=False, separators=(",", ":"))
@@ -1257,7 +1259,9 @@ async def _send_self_regulating_valves(
                 extra={
                     "zone_id": zone.id,
                     "geraet": command.device.display_name,
-                    "sollwert": str(command.setpoint_c),
+                    "sollwert": (
+                        None if command.setpoint_c is None else str(command.setpoint_c)
+                    ),
                     "begründung": command.reason,
                 },
             )

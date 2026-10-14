@@ -99,13 +99,13 @@ def zone_actuator_profiles(session: Session, zone: Zone) -> list[ActuatorProfile
         select(DeviceCapability).where(DeviceCapability.code == "thermostat")
     )
     rows = session.execute(
-        select(ZoneDevice.device_id, ZoneDevice.self_regulating).where(
+        select(ZoneDevice.device_id, ZoneDevice.thermostat_mode).where(
             ZoneDevice.zone_id == zone.id,
             ZoneDevice.device_role_id == actuator_role.id,
         )
     )
     profiles: list[ActuatorProfile] = []
-    for device_id, self_regulating in rows:
+    for device_id, thermostat_mode in rows:
         capability_ids = set(
             session.scalars(
                 select(DeviceCapabilityLink.capability_id).where(
@@ -115,7 +115,7 @@ def zone_actuator_profiles(session: Session, zone: Zone) -> list[ActuatorProfile
         )
         profiles.append(
             ActuatorProfile(
-                self_regulating=bool(self_regulating),
+                thermostat_mode=thermostat_mode,
                 has_switch_capability=switch is not None and switch.id in capability_ids,
                 has_thermostat_capability=(
                     thermostat is not None and thermostat.id in capability_ids
