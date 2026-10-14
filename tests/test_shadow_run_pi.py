@@ -477,7 +477,7 @@ class TestMixedZoneWithASelfRegulatingValve:
     (`thermoctl/domain/pi_control.py`) for why a self-regulating valve is safe to
     ignore here: `switch_commands()`/`thermostat_commands()`
     (`thermoctl/domain/switch_commands.py`) both filter it out of their own queries
-    via `ZoneDevice.self_regulating.is_(False)`, so it is structurally unreachable
+    via `ZoneDevice.thermostat_mode == "controlled"`, so it is structurally unreachable
     from `publishing.py`'s `switch_commands` dispatch and only ever receives its own
     setpoint through `domain/self_regulating.py`.
     """
@@ -508,7 +508,7 @@ class TestMixedZoneWithASelfRegulatingValve:
         assert row.pi_candidate_would_heat is not None
 
         # The command layer sends the on/off result to the switch alone -- the
-        # self-regulating valve is excluded by construction (`self_regulating.is_(False)`
+        # self-regulating valve is excluded by construction (`thermostat_mode == "controlled"`
         # in both `switch_commands()` and `thermostat_commands()`), never by anything
         # PI computes.
         from thermoctl.domain.switch_commands import switch_commands, thermostat_commands

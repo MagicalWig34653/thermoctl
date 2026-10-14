@@ -23,6 +23,7 @@ Letzte Aktualisierung: 2026-10-11.
   Übergabe; während des Notbetriebs bekommt es dann auch keinen Istwert.
 - Web: Radio-Auswahl mit drei Erklärungen auf `/zones/{id}/devices`; REST/MCP haben das Merkmal nicht
   (im Änderungsprotokoll wurde es nicht geführt).
+- `swap_device`: die neue Zuordnung bekommt bewusst `controlled`, nicht die Betriebsart des alten Geräts.
 - Offen: Flussdiagramm-Seite (Folgeauftrag), Merge und Migrationskopf.
 
 ## 0.15.0 (2026-10-11) -- vorbereitet, noch nicht freigegeben

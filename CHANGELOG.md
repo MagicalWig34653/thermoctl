@@ -29,7 +29,8 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
   auch nicht bei offenem Fenster oder als Frostschutz und nicht bei der Übergabe im Notbetrieb.
   Zeitplan, Übersteuerung und Boost wirken auf ein solches Ventil nicht. Die Auswahl steht auf der
   Seite „Geräte“ der Zone (drei Möglichkeiten mit je einer Erklärung); jede Umstellung steht im
-  Audit-Log.
+  Audit-Log. Beim Gerätetausch bekommt die neue Zuordnung bewusst wieder `controlled`, nicht
+  die Betriebsart des alten Geräts.
 
 ---
 

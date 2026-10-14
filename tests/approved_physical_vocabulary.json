@@ -340,7 +340,6 @@
       "- Ein als Aktor zugeordnetes Gerät, das über Tage überhaupt nicht im Protokoll auftaucht,",
       "- Innerhalb des ersten Regelzyklus nach dem Neustart erscheint für jedes als Aktor",
       "1. **Auf `Betrieb`, „Scharf schalten …\"** anklicken, eine Begründung eintragen (Pflicht)",
-      "1. **Selbstregelndes Thermostatventil** (Fähigkeit `thermostat`, `self_regulating`",
       "2. **Gewöhnlicher Aktor** über Zigbee2MQTT (Rolle „Aktor\", Fähigkeit `switch`, nicht",
       "4. **Zigbee2MQTT-Thermostatventil ohne Selbstregelung** (Fähigkeit `thermostat`, aber",
       "Auf `Betrieb`, „Zurück in den Trockenlauf\" — derselbe Knopf, mit dem scharf geschaltet",
@@ -363,7 +362,11 @@
       "obwohl seine Zone laut `Betrieb` zwischen Heizen und Nicht-Heizen wechselt.",
       "selbstregelnde Thermostatventile werden jetzt versendet, ebenso Ein/Aus an die übrigen",
       "zeigt „würde heizen: ja\", die Ist-Temperatur der Zone bewegt sich aber nicht in Richtung",
-      "zugeordnete Aktor-Gerät einmal unbedingt** — unabhängig davon, ob sich gegenüber vorher"
+      "zugeordnete Aktor-Gerät einmal unbedingt** — unabhängig davon, ob sich gegenüber vorher",
+      "1. **Selbstregelndes Thermostatventil** (Fähigkeit `thermostat`, Betriebsart",
+      "Betriebsart `controlled` „thermoctl schaltet“ — thermoctls eigene Hysterese entscheidet, nicht das",
+      "melden“): dann geht nur der gemessene Istwert an das Ventil, nie ein Sollwert.",
+      "„Ventil regelt selbst“ = `self_regulating`). Es bekommt den aufgelösten Sollwert als"
     ],
     "docs/self-hosting.md": [
       "**Aus als Vorgabe, auch nach einer Aktualisierung** — nichts schaltet sich von selbst ein.",
@@ -842,6 +845,13 @@
       "/heating-time",
       "Für diesen Raum sind noch keine zwei Temperaturen hinterlegt -- ohne sie gibt es nichts, wozwischen ein Tag umschalten könnte.",
       "warmth"
+    ],
+    "thermoctl/domain/thermostat_mode.py": [
+      "Ventil regelt selbst",
+      "thermoctl entscheidet über die Ein/Aus-Anforderung — mit Hysterese, Mindestschaltdauer und Fensterkontakt — und gibt sie im scharfen Betrieb nach einem Neustart an diesen Aktor aus.",
+      "thermoctl schaltet",
+      "thermoctl schreibt Soll- und, wenn das Gerät es annimmt, Ist-Temperatur; das Ventil regelt damit selbst.",
+      "thermoctl schreibt nur die gemessene Raumtemperatur (Istwert) an das Ventil, nie einen Sollwert und kein Ein/Aus. Zeitplan, Übersteuerung und Boost wirken auf dieses Ventil nicht; der Sollwert bleibt, wie er am Gerät eingestellt ist."
     ]
   }
 }

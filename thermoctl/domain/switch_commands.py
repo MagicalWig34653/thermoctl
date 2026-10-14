@@ -1,7 +1,9 @@
 """Which of a zone's actuators expect a plain on/off command.
 
 Two kinds of device can carry the `actuator` role (`domain/device_assignment.py`): a
-self-regulating thermostatic valve, told a setpoint (`domain/self_regulating.py`), and
+thermostatic valve outside the `controlled` mode (`ZoneDevice.thermostat_mode`,
+`domain/thermostat_mode.py`) -- `self_regulating` is told a setpoint and the actual
+value, `reading_only` only the actual value, both via `domain/self_regulating.py` -- and
 an ordinary switch, told on or off by the hysteresis decision in
 `domain/control_loop.py`. This module lists the second kind — the devices that still
 need `regelung.entscheiden()`'s `heating` to reach them at all before anything
@@ -80,7 +82,7 @@ def switch_commands(session: Session, zone: Zone) -> list[SwitchCommand]:
 
 @dataclass(frozen=True)
 class ThermostatCommand:
-    """One ordinary (non-self-regulating) Zigbee2MQTT thermostatic actuator of a zone.
+    """One Zigbee2MQTT thermostatic actuator of a zone in the `controlled` mode.
 
     `has_system_mode` says whether the device declared `system_mode` as a writable
     property — the same `device_property` rows `domain/self_regulating.py` reads for

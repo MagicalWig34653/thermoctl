@@ -517,14 +517,14 @@ def pi_eligible(
     self-regulating thermostatic valve *and* a Meross switch, and wants PI to govern
     the switch alone. `domain/switch_commands.py` already draws that line for us:
 
-    - A **self-regulating** valve (`ZoneDevice.thermostat_mode` other than `controlled`, see
-      `domain/thermostat_mode.py`) never receives an
+    - A valve outside the `controlled` mode (`self_regulating` or `reading_only`, see
+      `ZoneDevice.thermostat_mode` and `domain/thermostat_mode.py`) never receives an
       on/off command, whatever capabilities it declares -- `switch_commands()` and
       `thermostat_commands()` both filter it out (`ZoneDevice.thermostat_mode == controlled`
-      in each query). It only ever gets a setpoint, from `domain/self_regulating.py`,
-      a path PI's `heating` decision never reaches. Such an actuator is therefore
-      skipped here: it neither excludes the zone nor counts toward the "at least one
-      switch actuator" requirement below.
+      in each query). It only ever gets a setpoint (`self_regulating`) or just the actual value
+      (`reading_only`), from `domain/self_regulating.py`, a path PI's `heating` decision
+      never reaches. Such an actuator is therefore skipped here: it neither excludes the
+      zone nor counts toward the "at least one switch actuator" requirement below.
     - An actuator that is **not** self-regulating but carries the `thermostat`
       capability is consumed by `thermostat_commands()`, which turns `heating` into
       a setpoint jump -- exactly the fast on/off taktung PI must not feed it. Such a

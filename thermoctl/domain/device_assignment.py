@@ -247,7 +247,13 @@ def swap_device(
     actor_id: int | None,
     source: str = "web",
 ) -> None:
-    """Replaces a device only in its assignments to this zone."""
+    """Replaces a device only in its assignments to this zone.
+
+    The new assignment deliberately gets the default `thermostat_mode` (`controlled`),
+    not the old one's: a replacement valve is a different physical device, and silently
+    carrying over `self_regulating`/`reading_only` would stop thermoctl switching it
+    without anyone having decided that for this device.
+    """
     if old.id == new_link.id:
         raise ValueError("Altes und neues Gerät müssen verschieden sein.")
 

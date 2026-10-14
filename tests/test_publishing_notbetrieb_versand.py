@@ -1882,3 +1882,176 @@ async def test_entry_with_unknown_relay_state_sends_off_and_waits_the_full_off_d
     assert row.phase_deadline_at == NOW + timedelta(seconds=30)
     await _drive(session, client, pub_state, NOW + timedelta(seconds=29))
     assert '{"state": "ON"}' not in _relais_payloads(client, relais)
+
+
+@pytest.mark.anyio
+async def test_a_reading_only_valve_gets_nothing_in_emergency_operation_or_on_recovery(
+    session: Session,
+) -> None:
+    """`reading_only` heißt: kein Sollwert, kein `operating_mode`, auch nicht bei der
+    Notbetrieb-Übergabe und nicht bei der Rückstellung. Als Gegenprobe steht ein
+    `self_regulating`-Ventil in derselben Zone, das beides bekommt -- sonst bewiese
+    "null Nachrichten" nur, dass der Notbetrieb nie lief."""
+    from tests.helpers import sensor_status_of
+    from thermoctl.db.models.schedule import SchedulePoint
+    from thermoctl.db.models.state import ZoneState
+    from thermoctl.db.models.zone import SetpointMode, ZoneSetpoint
+
+    create_settings(session)
+    settings = session.get(Setting, 1)
+    assert settings is not None
+    settings.control_armed = True
+    create_all_command_outcomes(session)
+
+    zone = create_zone(session, "nb-nurist")
+    zone.min_on_seconds = 10
+    zone.min_off_seconds = 10
+    zone.sensor_timeout_seconds = 90
+    zone.sensor_failure_enabled = True
+    zone.sensor_failure_profile_id = _profile(session)
+    zone.sensor_failure_emergency_setpoint_c = Decimal("18.0")
+    mode = SetpointMode(code="nb-nurist-heizen", name="Heizen")
+    session.add(mode)
+    session.flush()
+    session.add(
+        ZoneSetpoint(zone_id=zone.id, setpoint_mode_id=mode.id, temperature_c=Decimal("21.0"))
+    )
+    session.add(
+        SchedulePoint(
+            zone_id=zone.id, weekday=NOW.weekday(), minute_of_day=0, setpoint_mode_id=mode.id
+        )
+    )
+
+    wall = Device(
+        integration_id=integration(session, "zigbee2mqtt").id,
+        external_id="nb-nurist-wand",
+        display_name="Wandfühler",
+    )
+    session.add(wall)
+    session.flush()
+    _link(session, wall, "temperature")
+    zone.temperature_source_device_id = wall.id
+
+    def _trv(external_id: str, thermostat_mode: str) -> Device:
+        trv = Device(
+            integration_id=integration(session, "zigbee2mqtt").id,
+            external_id=external_id,
+            display_name=external_id,
+        )
+        session.add(trv)
+        session.flush()
+        _link(session, trv, "thermostat")
+        session.add(
+            DeviceProperty(
+                device_id=trv.id,
+                name="occupied_heating_setpoint",
+                value_type="numeric",
+                min_value=Decimal("5"),
+                max_value=Decimal("30"),
+                is_readable=True,
+                is_writable=True,
+            )
+        )
+        operating_mode_property = DeviceProperty(
+            device_id=trv.id,
+            name="operating_mode",
+            value_type="text",
+            is_readable=True,
+            is_writable=True,
+        )
+        session.add(operating_mode_property)
+        session.flush()
+        session.add_all(
+            DevicePropertyValue(property_id=operating_mode_property.id, value=value)
+            for value in ("schedule", "manual", "pause")
+        )
+        operating_mode_property.last_value_text = "pause"
+        operating_mode_property.last_value_at = NOW - timedelta(minutes=5)
+        session.add(
+            ZoneDevice(
+                zone_id=zone.id,
+                device_id=trv.id,
+                device_role_id=role(session, "actuator").id,
+                thermostat_mode=thermostat_mode,
+            )
+        )
+        session.flush()
+        return trv
+
+    reading_only = _trv("nb-nurist-trv", "reading_only")
+    regulating = _trv("nb-regelt-trv", "self_regulating")
+    client = _FakeClient()
+    pub_state = PublicationState()
+
+    t0 = NOW
+    session.add(
+        ZoneState(
+            zone_id=zone.id,
+            temperature_c=Decimal("19.0"),
+            measured_at=t0,
+            sensor_status_id=sensor_status_of(session, "ok").id,
+            updated_at=t0,
+        )
+    )
+    session.flush()
+    shadow_run.cycle(session, t0)
+    session.commit()
+    await publishing.cycle(session, client, pub_state, "thermoctl", t0)
+    session.commit()
+
+    # Notbetrieb: Übergabe.
+    t1 = t0 + timedelta(seconds=100)
+    state_row = session.get(ZoneState, zone.id)
+    assert state_row is not None
+    state_row.sensor_status_id = sensor_status_of(session, "veraltet").id
+    session.flush()
+    shadow_run.cycle(session, t1)
+    session.commit()
+    sf_state = session.get(ZoneSensorFailureState, zone.id)
+    assert sf_state is not None
+    assert sf_state.stage == emergency_operation.STAGE_NOTBETRIEB
+    await publishing.cycle(session, client, pub_state, "thermoctl", t1)
+    session.commit()
+    assert [json.loads(m[1]) for m in client.messages if m[0] == _trv_topic(regulating)
+            and "operating_mode" in m[1]] == [
+        {"operating_mode": "manual", "occupied_heating_setpoint": 18.0}
+    ]
+
+    # Rückstellung: Sensor wieder da, zwei Proben im Abstand.
+    t2 = t1 + timedelta(seconds=5)
+    state_row.temperature_c = Decimal("19.0")
+    state_row.measured_at = t2
+    state_row.sensor_status_id = sensor_status_of(session, "ok").id
+    session.flush()
+    shadow_run.cycle(session, t2)
+    session.commit()
+    await publishing.cycle(session, client, pub_state, "thermoctl", t2)
+    session.commit()
+    t3 = t2 + timedelta(seconds=61)
+    state_row.measured_at = t3
+    session.flush()
+    shadow_run.cycle(session, t3)
+    session.commit()
+    sf_state = session.get(ZoneSensorFailureState, zone.id)
+    assert sf_state is not None
+    assert sf_state.stage == emergency_operation.STAGE_NORMAL
+    await publishing.cycle(session, client, pub_state, "thermoctl", t3)
+    session.commit()
+
+    # Gegenprobe: das selbstregelnde Ventil wurde zurückgestellt ("pause").
+    assert any(
+        m[0] == _trv_topic(regulating) and json.loads(m[1]).get("operating_mode") == "pause"
+        for m in client.messages
+    )
+    # Das reading_only-Ventil: nichts, in keiner Phase.
+    assert [m for m in client.messages if m[0] == _trv_topic(reading_only)] == []
+    assert (
+        session.scalars(
+            select(DeviceCommand).where(DeviceCommand.device_id == reading_only.id)
+        ).all()
+        == []
+    )
+    assert (
+        session.get(ActuatorEmergencyState, _zone_device_id(session, zone.id, reading_only.id))
+        is None
+    )
