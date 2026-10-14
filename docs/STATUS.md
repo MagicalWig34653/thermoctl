@@ -11,62 +11,36 @@ Letzte Aktualisierung: 2026-10-14.
   Fußlink im Generator (`tools/landingpage_erzeugen.py`) ergänzen, `site/` neu erzeugen.
 - Das Paket `ghcr.io/magicalwig34653/thermoctl` ist öffentlich (Projektinhaber, 2026-10-10).
 
-## Thermostat-Betriebsart (ungemergt, Unreleased)
+## 0.16.0 (2026-10-14) -- vorbereitet, noch nicht freigegeben
 
-- `ZoneDevice.self_regulating` (Boolean) ist durch `thermostat_mode` ersetzt: `controlled` /
-  `self_regulating` / `reading_only` (`domain/thermostat_mode.py`: `writes_setpoint`,
-  `writes_actual`, `switches`). Migration `d8e3a51c7f24` (down_revision `c4a9e2f71b35`, die
-  Hauptsession ordnet sie ein); rückwärts wird `reading_only` zu `self_regulating`.
+Gebaut und gemergt (`main`), Version angehoben, `CHANGELOG.md` und Add-on-Changelog vorbereitet: drei
+Betriebsarten je Thermostatventil und die Datenfluss-Seite. 0.15.0 ist freigegeben (Tag, GitHub-Release, Add-on-Repository
+auf 0.15.0 gepusht).
+
+- **Thermostat-Betriebsart:** `ZoneDevice.self_regulating` (Boolean) ist durch `thermostat_mode` ersetzt:
+  `controlled` / `self_regulating` / `reading_only` (`domain/thermostat_mode.py`: `writes_setpoint`,
+  `writes_actual`, `switches`). Migration `d8e3a51c7f24` (down_revision `c4a9e2f71b35`, Migrationskopf);
+  rückwärts wird `reading_only` zu `self_regulating`.
 - `reading_only`: `valve_commands` liefert `setpoint_c=None`, `services/publishing.py` schreibt nur die
   Temperatur-Eigenschaft (Trockenlauf-Riegel und Befehlslog wie bisher). Kein Sollwert bei offenem Fenster,
   kein Ein/Aus, kein Eintrag im Notbetrieb-Aktorplan (`zone_actuator_assignments`) -- also auch keine
   Übergabe; während des Notbetriebs bekommt es dann auch keinen Istwert.
 - Web: Radio-Auswahl mit drei Erklärungen auf `/zones/{id}/devices`; REST/MCP haben das Merkmal nicht
-  (im Änderungsprotokoll wurde es nicht geführt).
+  (im Änderungsprotokoll wird es nicht geführt).
 - `swap_device`: die neue Zuordnung bekommt bewusst `controlled`, nicht die Betriebsart des alten Geräts.
-- Offen: Merge und Migrationskopf.
-
-## Datenfluss-Seite (ungemergt, Unreleased)
-
-- `/zones/data-flow` (Analyse → Datenfluss, Recht `zone.manage`, Sichtbarkeit `visible_zones` wie
-  `/zones/history`) und `/zones/{id}/data-flow` (Knopf im Zonenkopf): je Zone ein Flussdiagramm.
-  Graph neutral in `domain/data_flow.py` (`build_data_flow`; Kantenarten Istwert/Sollwert/Ein-Aus/Fenster/
-  Frostschutz/fehlend), entschieden ausschließlich über `thermostat_mode.switches/writes_setpoint/writes_actual`;
-  Eigenschaftsnamen aus `SETPOINT_PROPERTY`/`TEMPERATURE_PROPERTIES` und `device_property`. Mermaid-Quelltext
-  getrennt in `domain/data_flow_mermaid.py` (Positivliste, alles Unbekannte als `#<Codepunkt>;`, Knoten-IDs erzeugt).
-- Mermaid 11.4.1 lokal unter `static/vendor/mermaid/` (MIT, SHA-384 in `static/HERKUNFT.md`), geladen nur von
-  `static/data_flow.js` (über `page_scripts.js` bei `[data-flow-diagram]`), `securityLevel: "strict"`. Ohne
-  JavaScript: Quelltext im `<pre>` plus Kantenliste. Keine CSP im Projekt (nur `frame-ancestors` auf der
-  OAuth-Seite), daher kein Inline-Problem; das Skript ist trotzdem eine eigene Datei.
-- Geprüft: `tests/test_data_flow.py`, Smoke-Test, Playwright-Test `browser_tests/test_data_flow.py` (SVG
-  entsteht, böser Name führt nichts aus, keine Anfrage an Dritte). Nur die Zeichnung selbst wurde nicht von
-  einem Menschen angesehen (Layout, Lesbarkeit bei vielen Aktoren).
-- Review-Nacharbeit: Graph folgt dem echten Schreiben (Schalter je Anbindung, Thermostat-Nutzlast aus
-  `thermostat_payload`, Frostkante auch bei Temperaturabfall-Erkennung ohne Kontakt); Hinweissatz unter dem
-  Diagramm (Trockenlauf, Gerätebereich, Notbetrieb-Übergabe nicht dargestellt); Mermaid ohne HTML-Beschriftungen,
-  `<br/>`-Umbruch; Handy: Mindestbreite 720 px, seitlich scrollend, Kantenliste dort offen.
+- **Datenfluss-Seite:** `/zones/data-flow` (Analyse → Datenfluss, Recht `zone.manage`, Sichtbarkeit `visible_zones` wie
+  `/zones/history`) und `/zones/{id}/data-flow`: je Zone ein Flussdiagramm. Graph neutral in `domain/data_flow.py`
+  (`build_data_flow`), entschieden ausschließlich über `thermostat_mode.switches/writes_setpoint/writes_actual`;
+  Mermaid-Quelltext getrennt in `domain/data_flow_mermaid.py` (Positivliste, alles Unbekannte als `#<Codepunkt>;`).
+  Mermaid 11.4.1 lokal unter `static/vendor/mermaid/` (MIT, SHA-384 in `static/HERKUNFT.md`), geladen nur von
+  `static/data_flow.js`, `securityLevel: "strict"`. Ohne JavaScript: Quelltext im `<pre>` plus Kantenliste.
+  Auf dem Handy scrollt das Bild seitlich (Mindestbreite 720 px).
+- Geprüft: `tests/test_data_flow.py`, Smoke-Test, Playwright-Test `browser_tests/test_data_flow.py`.
 - Annahme: ein Aktor ohne `switch`/`thermostat`-Fähigkeit in `controlled` erscheint als gestrichelte Kante.
-
-## 0.15.0 (2026-10-11) -- vorbereitet, noch nicht freigegeben
-
-Gebaut und dokumentiert (`docs/mcp.md`, `CHANGELOG.md`): MCP-Werkzeug `temperature_history`, Änderungsprotokoll mit
-Zurückrollen, Token-Kennung in jedem Eintrag. Der MCP-Server hat 27 Werkzeuge.
-
-- **Änderungsprotokoll:** Domäne `domain/change_log.py` (Schreibfunktionen je Operation, Eintrag nur bei tatsächlicher
-  Änderung und in derselben Transaktion; `list_changes`, `get_change`, `revert_change` mit Rechteprüfung zuerst, dann
-  nicht zurücknehmbar, schon zurückgenommen, Konflikt; Rücknahme atomar beansprucht). Migration `c4a9e2f71b35`
-  (`change_log`, `change_log_field`), Migrationskopf damit `c4a9e2f71b35`. Aufbewahrung 365 Tage im Tageslauf
-  (`delete_old_changes`). Protokolliert nur, was über MCP geschrieben wird; ältere Änderungen fehlen.
-- **MCP:** `list_changes` (`audit.read`), `revert_change` (Rechte der ursprünglichen Änderung); `force` erzwingt trotz
-  Konflikt. Nicht zurücknehmbar: `force_dry_run`, `cancel_override`, `cancel_vacation`.
-- **Weboberfläche:** Seite `/changes` („Änderungsprotokoll“ unter Analyse, Recht `audit.read`), Rücknahme mit
-  Bestätigung, erzwungene Rücknahme mit gesondertem Bestätigungs-Token.
-- **`temperature_history`** (keine Migration): Messreihe einer Zone in Zeitfächern (`domain/zone_history_series.py`)
-  plus Schaltprotokoll dieser Zone, wenn das Token `audit.read` hat (sonst `switching_log` null mit Hinweis).
-- **Offen:** Freigabe 0.15.0 (Merge nach `main`, Tag, Release, gebautes Abbild), danach Push des Add-on-Repositorys
-  (lokal auf 0.15.0 vorbereitet, nicht gepusht). 0.14.0, 0.14.1 und 0.14.2 sind freigegeben.
-- **Nicht ausprobiert:** der MCP-Ablauf mit einem echten Client (`claude mcp add --transport http …`) hinter einem
-  echten Reverse Proxy, und die Seite `/changes` im Browser nach dem Merge; die Tests ersetzen nicht, sie einmal zu öffnen.
+- **Offen:** Freigabe 0.16.0 (Tag, Release, gebautes Abbild), danach Push des Add-on-Repositorys (lokal auf 0.16.0
+  vorbereitet, nicht committet).
+- **Nicht ausprobiert:** die Datenfluss-Seite auf der echten Anlage und auf dem Handy (Layout, Lesbarkeit bei vielen
+  Aktoren); `reading_only` an einem echten Ventil.
 
 ## MCP über HTTP mit Bearer und OAuth (seit 0.14.0, Add-on-Felder seit 0.14.1, Zustimmungsseite seit 0.14.2)
 

@@ -9,7 +9,7 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ---
 
-## Unreleased
+## 0.16.0 — 2026-10-14
 
 ### Beim Upgrade zu wissen
 
