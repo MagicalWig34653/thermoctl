@@ -106,7 +106,7 @@ def seed_demo(session: Session, password: str) -> dict[str, str | int]:
                 zone_id=zone.id,
                 device_id=actuator.id,
                 device_role_id=role(session, "actuator").id,
-                self_regulating=i == 2,
+                thermostat_mode="self_regulating" if i == 2 else "controlled",
                 # Nur das Thermostat (Bad) zeigt einen Ausgleichswert im Abschnitt
                 # "Notbetrieb" der Regelparameter.
                 temperature_backup_offset_k=Decimal("-1.50") if i == 2 else Decimal("0"),

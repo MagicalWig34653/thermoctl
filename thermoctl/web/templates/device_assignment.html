@@ -135,21 +135,19 @@ zu enge Spalten -- mit genau der Wortumbruch-Wirkung, die das globale
                 {% if may_edit %}
                 <form method="post" action="{{ url_prefix }}/zones/{{ zone.id }}/devices/regulation">
                     <input type="hidden" name="assignment_id" value="{{ assignment.id }}">
-                    {{ toggle(
-                        "self_regulating",
-                        "Ventil regelt selbst",
-                        assignment.self_regulating,
-                        help_text=(
-                            "thermoctl schreibt nur Soll- und, wenn das Gerät es "
-                            "annimmt, Ist-Temperatur; das Ventil regelt damit selbst."
-                            if assignment.self_regulating else
-                            "thermoctl entscheidet über die Ein/Aus-Anforderung — mit "
-                            "Hysterese, Mindestschaltdauer und Fensterkontakt — und gibt "
-                            "sie im scharfen Betrieb nach einem Neustart an diesen Aktor aus."
-                        ),
-                        element_id="self-regulating-" ~ assignment.id,
-                        submit_on_change=true,
-                    ) }}
+                    <fieldset>
+                        <legend class="form-label small">Betriebsart des Ventils</legend>
+                        {% for code, label, description in thermostat_modes %}
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="thermostat_mode"
+                                   id="thermostat-mode-{{ assignment.id }}-{{ code }}" value="{{ code }}"
+                                   aria-describedby="thermostat-mode-{{ assignment.id }}-{{ code }}-hilfe"
+                                   data-submit-on-change{% if assignment.thermostat_mode == code %} checked{% endif %}>
+                            <label class="form-check-label" for="thermostat-mode-{{ assignment.id }}-{{ code }}">{{ label }}</label>
+                            <div id="thermostat-mode-{{ assignment.id }}-{{ code }}-hilfe" class="form-text">{{ description }}</div>
+                        </div>
+                        {% endfor %}
+                    </fieldset>
                     {# Ohne JavaScript legt der Schalter nichts um. #}
                     <noscript>
                         <button class="btn btn-sm btn-outline-secondary" type="submit">
@@ -159,12 +157,9 @@ zu enge Spalten -- mit genau der Wortumbruch-Wirkung, die das globale
                 </form>
                 {% else %}
                 <span class="t-quiet small">
-                    {% if assignment.self_regulating %}
-                    Ventil regelt selbst.
-                    {% else %}
-                    thermoctl entscheidet über die Ein/Aus-Anforderung und gibt sie im
-                    scharfen Betrieb nach einem Neustart an diesen Aktor aus.
-                    {% endif %}
+                    {% for code, label, description in thermostat_modes if code == assignment.thermostat_mode %}
+                    {{ label }}: {{ description }}
+                    {% endfor %}
                 </span>
                 {% endif %}
             </div>

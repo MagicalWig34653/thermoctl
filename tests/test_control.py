@@ -940,7 +940,7 @@ def test_backup_offsets_are_only_shown_and_saved_with_device_manage(
         zone_id=zone.id,
         device_id=thermostat_device.id,
         device_role_id=role(session, "actuator").id,
-        self_regulating=True,
+        thermostat_mode="self_regulating",
     )
     session.add(assignment)
     session.flush()
@@ -1022,7 +1022,7 @@ def _ausgleich_assignment(session: Session, zone: Zone) -> int:
         zone_id=zone.id,
         device_id=device.id,
         device_role_id=role(session, "actuator").id,
-        self_regulating=True,
+        thermostat_mode="self_regulating",
     )
     session.add(assignment)
     session.flush()

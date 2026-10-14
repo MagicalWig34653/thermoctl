@@ -33,6 +33,8 @@ from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from decimal import Decimal
 
+from thermoctl.domain.thermostat_mode import switches
+
 # --- Fixed by the spec (section 3): the window length is deliberately not a third
 # tuning parameter, and the remainder's bound matches it exactly. ---
 WINDOW_SECONDS = 900
@@ -486,12 +488,12 @@ class ActuatorProfile:
 
     Deliberately not a database row -- the caller builds this from
     `domain.switch_commands.switch_commands()` /
-    `domain.switch_commands.thermostat_commands()` plus the `self_regulating` flag on
+    `domain.switch_commands.thermostat_commands()` plus the `thermostat_mode` on
     the zone-device assignment, keeping this module free of any session or model
     import (see `tests/test_architecture.py`).
     """
 
-    self_regulating: bool
+    thermostat_mode: str
     has_switch_capability: bool
     has_thermostat_capability: bool
 
@@ -515,9 +517,10 @@ def pi_eligible(
     self-regulating thermostatic valve *and* a Meross switch, and wants PI to govern
     the switch alone. `domain/switch_commands.py` already draws that line for us:
 
-    - A **self-regulating** valve (`ZoneDevice.self_regulating`) never receives an
+    - A **self-regulating** valve (`ZoneDevice.thermostat_mode` other than `controlled`, see
+      `domain/thermostat_mode.py`) never receives an
       on/off command, whatever capabilities it declares -- `switch_commands()` and
-      `thermostat_commands()` both filter it out (`ZoneDevice.self_regulating.is_(False)`
+      `thermostat_commands()` both filter it out (`ZoneDevice.thermostat_mode == controlled`
       in each query). It only ever gets a setpoint, from `domain/self_regulating.py`,
       a path PI's `heating` decision never reaches. Such an actuator is therefore
       skipped here: it neither excludes the zone nor counts toward the "at least one
@@ -538,7 +541,7 @@ def pi_eligible(
         return PiEligibility(False, "Kein gewöhnlicher Schaltaktor zugeordnet.")
     has_ordinary_switch = False
     for actuator in actuators:
-        if actuator.self_regulating:
+        if not switches(actuator.thermostat_mode):
             # Never reaches switch_commands() or thermostat_commands() -- see the
             # docstring above. Neither excludes the zone nor satisfies the
             # "at least one switch actuator" requirement.

@@ -172,7 +172,7 @@ def _setup_zone(session: Session) -> tuple[Zone, Device, Device, Device]:
             zone_id=zone.id,
             device_id=trv.id,
             device_role_id=role(session, "actuator").id,
-            self_regulating=True,
+            thermostat_mode="self_regulating",
         )
     )
 
@@ -189,7 +189,7 @@ def _setup_zone(session: Session) -> tuple[Zone, Device, Device, Device]:
             zone_id=zone.id,
             device_id=relais.id,
             device_role_id=role(session, "actuator").id,
-            self_regulating=False,
+            thermostat_mode="controlled",
         )
     )
     session.flush()
@@ -619,7 +619,7 @@ def test_warm_lock_persists_across_a_pair_boundary(session: Session) -> None:
             zone_id=zone.id,
             device_id=relais.id,
             device_role_id=role(session, "actuator").id,
-            self_regulating=False,
+            thermostat_mode="controlled",
         )
     )
     outdoor = Device(
@@ -856,7 +856,7 @@ def _entry_zone(session: Session, *, min_on_seconds: int = 300) -> tuple[Zone, D
             zone_id=zone.id,
             device_id=relais.id,
             device_role_id=role(session, "actuator").id,
-            self_regulating=False,
+            thermostat_mode="controlled",
         )
     )
     session.flush()

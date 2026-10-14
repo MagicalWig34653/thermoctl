@@ -68,7 +68,7 @@ def _zone_with_valve(
     session: Session,
     name: str,
     *,
-    self_regulating: bool = True,
+    thermostat_mode: str = "self_regulating",
     properties: tuple[str, ...] = ("occupied_heating_setpoint",),
 ) -> tuple[object, object]:
     create_settings(session)
@@ -89,7 +89,7 @@ def _zone_with_valve(
             zone_id=zone.id,
             device_id=valve.id,
             device_role_id=role(session, "actuator").id,
-            self_regulating=self_regulating,
+            thermostat_mode=thermostat_mode,
         )
     )
     for property_name in properties:
@@ -119,7 +119,7 @@ def test_a_valve_that_thermoctl_switches_is_not_told_anything(session: Session) 
     In the default mode thermoctl drives the valve itself. Writing a setpoint on top
     would be a second hand on the same valve.
     """
-    zone, _valve = _zone_with_valve(session, "schaltzone", self_regulating=False)
+    zone, _valve = _zone_with_valve(session, "schaltzone", thermostat_mode="controlled")
 
     assert valve_commands(session, zone, NOW) == []
 
@@ -314,7 +314,7 @@ def test_a_missing_thermostat_capability_disables_valve_commands(session: Sessio
             zone_id=zone.id,
             device_id=valve.id,
             device_role_id=role(session, "actuator").id,
-            self_regulating=True,
+            thermostat_mode="self_regulating",
         )
     )
     _property(session, valve.id, "occupied_heating_setpoint")
@@ -338,7 +338,7 @@ def test_an_invalid_first_valve_does_not_hide_a_later_valid_valve(session: Sessi
             zone_id=zone.id,
             device_id=second.id,
             device_role_id=role(session, "actuator").id,
-            self_regulating=True,
+            thermostat_mode="self_regulating",
             sort_order=1,
         )
     )
@@ -348,3 +348,69 @@ def test_an_invalid_first_valve_does_not_hide_a_later_valid_valve(session: Sessi
     assert [command.device.id for command in valve_commands(session, zone, NOW)] == [
         second.id
     ]
+
+
+# --- reading_only: nur der Istwert, nie ein Sollwert ---------------------------
+
+
+def test_a_reading_only_valve_gets_the_temperature_and_no_setpoint(session: Session) -> None:
+    zone, valve = _zone_with_valve(
+        session,
+        "nurist",
+        thermostat_mode="reading_only",
+        properties=("occupied_heating_setpoint", "external_temperature_input"),
+    )
+    state = create_zone_state(session, zone)
+    state.temperature_c = Decimal("19.5")
+    session.flush()
+
+    commands = valve_commands(session, zone, NOW)
+
+    assert len(commands) == 1
+    assert commands[0].device.id == valve.id
+    assert commands[0].setpoint_c is None
+    assert commands[0].temperature_property == "external_temperature_input"
+    assert commands[0].temperature_c == Decimal("19.5")
+
+
+def test_a_reading_only_valve_is_not_given_a_setpoint_even_with_an_open_window(
+    session: Session,
+) -> None:
+    """Frostschutz bei offenem Fenster ist ein Sollwert -- hier gerade nicht."""
+    zone, _valve = _zone_with_valve(
+        session,
+        "nuristfenster",
+        thermostat_mode="reading_only",
+        properties=("occupied_heating_setpoint", "external_temperature_input"),
+    )
+    state = create_zone_state(session, zone)
+    state.temperature_c = Decimal("18.0")
+    state.window_open = True
+    session.flush()
+
+    commands = valve_commands(session, zone, NOW)
+
+    assert [c.setpoint_c for c in commands] == [None]
+
+
+def test_a_reading_only_valve_without_a_temperature_property_gets_nothing(
+    session: Session,
+) -> None:
+    zone, _valve = _zone_with_valve(session, "nuristohne", thermostat_mode="reading_only")
+    state = create_zone_state(session, zone)
+    state.temperature_c = Decimal("18.0")
+    session.flush()
+
+    assert valve_commands(session, zone, NOW) == []
+
+
+def test_a_reading_only_valve_without_a_reading_gets_nothing(session: Session) -> None:
+    zone, _valve = _zone_with_valve(
+        session,
+        "nuristleer",
+        thermostat_mode="reading_only",
+        properties=("external_temperature_input",),
+    )
+    create_zone_state(session, zone)
+
+    assert valve_commands(session, zone, NOW) == []

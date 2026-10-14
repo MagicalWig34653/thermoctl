@@ -1065,11 +1065,11 @@ def test_sensor_failure_upgrade_preserves_installation(
     # (Zwischenzustaende von `notification_state`), then `f6c3a8d19b42`
     # (`shadow_decision.scheduled_setpoint_c`/`solar_setback_k`), then `b7d2e5a40c18`
     # (Recht `control.disarm`), then `b721e49c6a30` (OAuth-Datenmodell), then `c4a9e2f71b35`
-    # (Änderungsprotokoll) -- every time the
+    # (Änderungsprotokoll), then `d8e3a51c7f24` (Thermostat-Betriebsart) -- every time the
     # downgrade target stayed the absolute pre-sensor-failure revision below
     # (never "-1"), so the check keeps its original meaning regardless of
     # how many migrations now sit on top of it.
-    assert scripts.get_heads() == ["c4a9e2f71b35"]
+    assert scripts.get_heads() == ["d8e3a51c7f24"]
     for args in (("downgrade", "base"), ("upgrade", "d31f6a04c7e9")):
         result = _alembic(migrations_database_url, *args)
         assert result.returncode == 0, result.stderr
@@ -1173,9 +1173,29 @@ def test_sensor_failure_upgrade_preserves_installation(
             assert result.returncode == 0, result.stderr
             with db_engine.connect() as connection:
                 for name, rows in old_rows.items():
+                    if name == "zone_device":
+                        # `d8e3a51c7f24` ersetzt `self_regulating` durch `thermostat_mode`.
+                        rows = [
+                            {
+                                **{k: v for k, v in row.items() if k != "self_regulating"},
+                                "thermostat_mode": (
+                                    "self_regulating" if row["self_regulating"] else "controlled"
+                                ),
+                            }
+                            for row in rows
+                        ]
+                    upgraded = sa.MetaData()
+                    upgraded.reflect(connection, only=[name])
+                    new_table = upgraded.tables[name]
+                    # Nur die Spalten des alten Standes -- später kamen weitere hinzu --,
+                    # dazu bei `zone_device` die ersetzte Spalte.
+                    wanted = {c.name for c in metadata.tables[name].c} | (
+                        {"thermostat_mode"} if name == "zone_device" else set()
+                    )
+                    columns = [c for c in new_table.c if c.name in wanted]
                     assert [
                         dict(row)
-                        for row in connection.execute(sa.select(metadata.tables[name])).mappings()
+                        for row in connection.execute(sa.select(*columns)).mappings()
                     ] == rows
                 profile = (
                     connection.execute(text("SELECT * FROM sensor_failure_profile"))

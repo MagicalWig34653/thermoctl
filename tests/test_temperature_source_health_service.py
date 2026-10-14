@@ -190,7 +190,7 @@ def test_a_switching_actuator_is_never_a_candidate(session: Session) -> None:
             zone_id=zone.id,
             device_id=switch.id,
             device_role_id=role(session, "actuator").id,
-            self_regulating=False,
+            thermostat_mode="controlled",
         )
     )
     session.flush()
@@ -231,7 +231,7 @@ def test_a_thermostat_actuator_becomes_a_candidate_with_its_latest_measurement(
             zone_id=zone.id,
             device_id=trv.id,
             device_role_id=role(session, "actuator").id,
-            self_regulating=True,
+            thermostat_mode="self_regulating",
             temperature_backup_offset_k=Decimal("1.5"),
         )
     )

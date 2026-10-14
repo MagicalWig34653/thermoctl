@@ -9,6 +9,30 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ---
 
+## Unreleased
+
+### Beim Upgrade zu wissen
+
+- **Eine Migration, läuft beim Start:** `d8e3a51c7f24` ersetzt `zone_device.self_regulating`
+  (Ja/Nein) durch `zone_device.thermostat_mode` (kurzer Text). Bestehende Zuordnungen bleiben,
+  was sie waren: `false` wird `controlled`, `true` wird `self_regulating`.
+- **Rückwärts verlustbehaftet:** Ein Downgrade macht `reading_only` zu `self_regulating`, weil
+  das alte Modell keine reine Istwert-Betriebsart kennt; thermoctl schreibt solchen Ventilen
+  danach wieder einen Sollwert.
+
+### Neu
+
+- **Drei Betriebsarten je Thermostatventil** statt „Ventil regelt selbst“ ja/nein
+  (`domain/thermostat_mode.py`): `controlled` (thermoctl schaltet, wie bisher),
+  `self_regulating` (Soll- und Istwert, wie bisher) und neu `reading_only`: thermoctl schreibt
+  **nur** die gemessene Raumtemperatur an das Ventil, nie einen Sollwert und kein Ein/Aus —
+  auch nicht bei offenem Fenster oder als Frostschutz und nicht bei der Übergabe im Notbetrieb.
+  Zeitplan, Übersteuerung und Boost wirken auf ein solches Ventil nicht. Die Auswahl steht auf der
+  Seite „Geräte“ der Zone (drei Möglichkeiten mit je einer Erklärung); jede Umstellung steht im
+  Audit-Log.
+
+---
+
 ## 0.15.0 — 2026-10-11
 
 ### Beim Upgrade zu wissen

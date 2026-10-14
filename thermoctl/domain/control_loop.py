@@ -55,7 +55,7 @@ class Situation:
     valve_protection_active: bool = False
     # Added 2026-09-06 (owner's decision): true exactly for a zone whose actuators are
     # all plain on/off valves -- it has at least one actuator and none of them is
-    # `Device.self_regulating` (`db.models.device.ZoneDevice.self_regulating`, see
+    # a valve thermoctl does not switch (`ZoneDevice.thermostat_mode`, see
     # `services/shadow_run.py::_process_zone` for how this is derived). Floor heating
     # on such valves is too sluggish for a window-triggered shutoff to make sense, so
     # rules 3 and 4 below skip it entirely -- window detection, recording and the cold

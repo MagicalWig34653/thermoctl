@@ -5,6 +5,11 @@ from thermoctl import audit
 from thermoctl.db.models.device import Device, DeviceCapabilityLink, ZoneDevice
 from thermoctl.db.models.lookup import DeviceCapability, DeviceRole
 from thermoctl.db.models.zone import Zone
+from thermoctl.domain.thermostat_mode import (
+    MODE_DESCRIPTIONS,
+    MODE_LABELS,
+    validate_mode,
+)
 
 
 class AssignmentAlreadyExists(Exception):
@@ -155,41 +160,43 @@ def detach_device(
     )
 
 
-def set_self_regulating(
+def set_thermostat_mode(
     session: Session,
     zone: Zone,
     assignment: ZoneDevice,
-    self_regulating: bool,
+    mode: str,
     *,
     actor_id: int | None,
     source: str = "web",
 ) -> None:
-    """Switches a thermostatic valve between the two ways of running it.
+    """Switches a thermostatic valve between its three modes (`domain/thermostat_mode.py`).
 
     Only for the actuator role, and only for a device that is a thermostat: nothing
     else regulates on its own, and offering the choice there would promise something
-    that cannot happen.
+    that cannot happen. An unknown mode code raises `ValueError`.
 
-    Recorded in the audit log because it changes how a real valve is driven. In
-    self-regulating mode thermoctl stops switching this device -- hysteresis, minimum
-    switching duration and the window contact then act only through the setpoint that
-    is written, not through an on/off command. That is a decision somebody should be
+    Recorded in the audit log because it changes how a real valve is driven. Outside
+    `controlled` thermoctl stops switching this device -- hysteresis, minimum
+    switching duration and the window contact then act at most through the setpoint
+    that is written (`self_regulating`), and not at all in `reading_only`, where the
+    setpoint on the device is never touched. That is a decision somebody should be
     able to look up afterwards.
     """
+    validate_mode(mode)
     if assignment.zone_id != zone.id:
         raise ValueError("Die Zuordnung gehört nicht zu dieser Zone.")
     role = session.get(DeviceRole, assignment.device_role_id)
     device = session.get(Device, assignment.device_id)
     if role is None or role.code != "actuator":
-        raise CapabilityMissing("Nur ein Aktor kann selbst regeln.")
+        raise CapabilityMissing("Nur ein Aktor hat eine Thermostat-Betriebsart.")
     if device is None or "thermostat" not in _capabilities(session, device):
         raise CapabilityMissing(
-            "Nur ein Thermostatventil kann selbst regeln — dieses Gerät ist keines."
+            "Nur ein Thermostatventil hat eine Betriebsart — dieses Gerät ist keines."
         )
 
-    if assignment.self_regulating == self_regulating:
+    if assignment.thermostat_mode == mode:
         return
-    assignment.self_regulating = self_regulating
+    assignment.thermostat_mode = mode
     audit.record(
         session,
         source=source,
@@ -197,15 +204,10 @@ def set_self_regulating(
         object_type="zone_device",
         object_id=str(assignment.id),
         summary=(
-            f"'{device.display_name}' in '{zone.display_name}' regelt "
-            + ("jetzt selbst" if self_regulating else "nicht mehr selbst")
+            f"'{device.display_name}' in '{zone.display_name}': "
+            f"Betriebsart '{MODE_LABELS[mode]}'"
         ),
-        detail=(
-            "thermoctl schreibt nur noch Soll- und Ist-Temperatur"
-            if self_regulating
-            else "thermoctl entscheidet wieder selbst über die Ein/Aus-Anforderung und "
-            "gibt sie im scharfen Betrieb nach einem Neustart an diesen Aktor aus"
-        ),
+        detail=MODE_DESCRIPTIONS[mode],
         user_id=actor_id,
     )
 

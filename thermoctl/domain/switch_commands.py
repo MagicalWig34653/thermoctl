@@ -27,6 +27,7 @@ from thermoctl.db.models.device import (
 )
 from thermoctl.db.models.lookup import DeviceCapability, DeviceRole, Integration
 from thermoctl.db.models.zone import Zone
+from thermoctl.domain.thermostat_mode import MODE_CONTROLLED
 
 
 @dataclass(frozen=True)
@@ -47,7 +48,8 @@ def switch_commands(session: Session, zone: Zone) -> list[SwitchCommand]:
     """Every ordinary (non-self-regulating) actuator of this zone with a switch output.
 
     A device without the `switch` capability recorded, or one marked
-    `self_regulating`, is left out — sending it an on/off command would either do
+    a non-`controlled` thermostat mode (`domain/thermostat_mode.py`), is left out —
+    sending it an on/off command would either do
     nothing the device understands, or fight the device's own regulation loop
     (rule 1 of the assignment: a self-regulating valve never also gets a switch
     command).
@@ -69,7 +71,7 @@ def switch_commands(session: Session, zone: Zone) -> list[SwitchCommand]:
         .where(
             ZoneDevice.zone_id == zone.id,
             ZoneDevice.device_role_id == actuator.id,
-            ZoneDevice.self_regulating.is_(False),
+            ZoneDevice.thermostat_mode == MODE_CONTROLLED,
         )
         .order_by(ZoneDevice.sort_order, ZoneDevice.id)
     )
@@ -122,7 +124,7 @@ def thermostat_commands(session: Session, zone: Zone) -> list[ThermostatCommand]
         .where(
             ZoneDevice.zone_id == zone.id,
             ZoneDevice.device_role_id == actuator.id,
-            ZoneDevice.self_regulating.is_(False),
+            ZoneDevice.thermostat_mode == MODE_CONTROLLED,
         )
         .order_by(ZoneDevice.sort_order, ZoneDevice.id)
     )

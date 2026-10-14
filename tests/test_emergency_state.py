@@ -30,7 +30,7 @@ def _switch_actuator(session: Session, zone_id: int) -> ZoneDevice:
         zone_id=zone_id,
         device_id=device.id,
         device_role_id=role(session, "actuator").id,
-        self_regulating=False,
+        thermostat_mode="controlled",
     )
     session.add(zone_device)
     session.flush()
@@ -130,7 +130,7 @@ def test_handover_attempted_but_unresolved_is_visibly_distinct(session: Session)
         zone_id=zone.id,
         device_id=device.id,
         device_role_id=role(session, "actuator").id,
-        self_regulating=True,
+        thermostat_mode="self_regulating",
     )
     session.add(zone_device)
     session.flush()
@@ -340,7 +340,7 @@ def _thermostat_actuator(session: Session, zone_id: int, sort_order: int) -> Zon
         zone_id=zone_id,
         device_id=device.id,
         device_role_id=role(session, "actuator").id,
-        self_regulating=True,
+        thermostat_mode="self_regulating",
         sort_order=sort_order,
     )
     session.add(zone_device)

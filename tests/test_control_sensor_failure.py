@@ -142,7 +142,8 @@ def _thermostat_assignment(session: Session) -> int:
         actuator_role = role_row.id
     zone = create_zone(session, "notbetrieb-ausgleich")
     assignment = ZoneDevice(
-        zone_id=zone.id, device_id=device.id, device_role_id=actuator_role, self_regulating=True
+        zone_id=zone.id, device_id=device.id, device_role_id=actuator_role,
+        thermostat_mode="self_regulating",
     )
     session.add(assignment)
     session.flush()

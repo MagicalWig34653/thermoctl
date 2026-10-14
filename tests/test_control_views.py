@@ -106,7 +106,7 @@ def test_the_operating_page_shows_notbetrieb_detail_and_comparison(
         zone_id=zone.id,
         device_id=device.id,
         device_role_id=role(session, "actuator").id,
-        self_regulating=False,
+        thermostat_mode="controlled",
     )
     session.add(zone_device)
     session.flush()

@@ -31,6 +31,11 @@ from thermoctl.db.models.lookup import DeviceCapability, DeviceRole
 from thermoctl.db.models.state import ZoneState
 from thermoctl.db.models.zone import Zone
 from thermoctl.domain.schedule import frost_protection_temperature, resolved_setpoint
+from thermoctl.domain.thermostat_mode import (
+    MODE_READING_ONLY,
+    MODE_SELF_REGULATING,
+    writes_setpoint,
+)
 
 # The property a valve accepts its target on. Same name as in the capability
 # detection -- a valve without it is not recognised as one in the first place.
@@ -66,7 +71,9 @@ class ValveCommand:
     """
 
     device: Device
-    setpoint_c: Decimal
+    # `None` bei `reading_only`: der Sollwert am Gerät wird nie angefasst, die
+    # Nachricht trägt nur die Temperatur-Eigenschaft (`domain/thermostat_mode.py`).
+    setpoint_c: Decimal | None
     temperature_c: Decimal | None
     temperature_property: str | None
     reason: str
@@ -126,7 +133,12 @@ def handover_capable(session: Session, device: Device) -> bool:
 
 
 def valve_commands(session: Session, zone: Zone, now: datetime) -> list[ValveCommand]:
-    """What every self-regulating valve of this zone should be told right now.
+    """What every `self_regulating` and `reading_only` valve of this zone should be told.
+
+    A `reading_only` valve (`domain/thermostat_mode.py`) gets a command with
+    `setpoint_c=None`: only the measured room temperature, never a setpoint -- not
+    even frost protection with an open window. Without a writable, in-range
+    temperature property (or without a measurement) it gets no command at all.
 
     The setpoint is the one the zone is aiming for -- schedule, override and boost
     already resolved, so a boost reaches these valves like any other.
@@ -155,19 +167,20 @@ def valve_commands(session: Session, zone: Zone, now: datetime) -> list[ValveCom
     measured = None if state is None else state.temperature_c
 
     commands: list[ValveCommand] = []
-    for device in session.scalars(
-        select(Device)
+    for device, mode in session.execute(
+        select(Device, ZoneDevice.thermostat_mode)
         .join(ZoneDevice, ZoneDevice.device_id == Device.id)
         .where(
             ZoneDevice.zone_id == zone.id,
             ZoneDevice.device_role_id == actuator.id,
-            ZoneDevice.self_regulating.is_(True),
+            ZoneDevice.thermostat_mode.in_((MODE_SELF_REGULATING, MODE_READING_ONLY)),
         )
         .order_by(ZoneDevice.sort_order, ZoneDevice.id)
     ):
         writable = _writable_properties(session, device)
+        sets_setpoint = writes_setpoint(mode)
         target = writable.get(SETPOINT_PROPERTY)
-        if target is None or not _in_range(target, setpoint):
+        if sets_setpoint and (target is None or not _in_range(target, setpoint)):
             # Either not a valve we can aim, or a setpoint it would discard. Sending
             # it anyway would look like a command and change nothing.
             continue
@@ -181,6 +194,20 @@ def valve_commands(session: Session, zone: Zone, now: datetime) -> list[ValveCom
                 temperature_property, temperature = None, None
         else:
             temperature_property, temperature = None, None
+
+        if not sets_setpoint:
+            if temperature_property is None:
+                continue
+            commands.append(
+                ValveCommand(
+                    device=device,
+                    setpoint_c=None,
+                    temperature_c=temperature,
+                    temperature_property=temperature_property,
+                    reason="Nur Raumtemperatur (Sollwert bleibt am Gerät)",
+                )
+            )
+            continue
 
         commands.append(
             ValveCommand(

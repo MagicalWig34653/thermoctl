@@ -63,22 +63,16 @@ class ZoneDevice(Base):
     device_id: Mapped[int] = mapped_column(ForeignKey("device.id"), nullable=False)
     device_role_id: Mapped[int] = mapped_column(ForeignKey("device_role.id"), nullable=False)
     sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    # Only meaningful for the actuator role, and only for a thermostatic valve.
-    #
-    # `False` (the default): thermoctl decides on and off and drives the valve --
-    # hysteresis, minimum switching duration and window-open all apply, and the device
-    # is a dumb switch that happens to speak thermostat.
-    #
-    # `True`: the valve regulates itself. thermoctl then only tells it what to aim for
-    # -- the setpoint, and where the device accepts one, the room temperature measured
-    # elsewhere. That is what a radiator thermostat is built to do, and its own sensor
-    # sits on the radiator, where it reads several degrees too warm.
+    # Nur für die Rolle Aktor und nur für ein Thermostatventil sinnvoll.
     temperature_backup_offset_k: Mapped[Decimal | None] = mapped_column(
         Numeric(4, 2), default=Decimal("0"), server_default="0", nullable=True
     )
 
-    self_regulating: Mapped[bool] = mapped_column(
-        Boolean, default=False, server_default=false(), nullable=False
+    # Betriebsart des Ventils, Codes und Regeln in `domain/thermostat_mode.py`:
+    # `controlled` (thermoctl schaltet), `self_regulating` (Soll- und Istwert werden
+    # geschrieben) oder `reading_only` (nur der Istwert). Kurzer String statt ENUM.
+    thermostat_mode: Mapped[str] = mapped_column(
+        String(16), default="controlled", server_default="controlled", nullable=False
     )
 
 

@@ -202,7 +202,7 @@ def _setup_zone_no_sensor(
             zone_id=zone.id,
             device_id=trv.id,
             device_role_id=role(session, "actuator").id,
-            self_regulating=True,
+            thermostat_mode="self_regulating",
         )
     )
 
@@ -219,7 +219,7 @@ def _setup_zone_no_sensor(
             zone_id=zone.id,
             device_id=relais.id,
             device_role_id=role(session, "actuator").id,
-            self_regulating=False,
+            thermostat_mode="controlled",
         )
     )
     session.flush()
@@ -729,7 +729,7 @@ async def test_recovery_resends_the_current_setpoint_even_if_unchanged(
             zone_id=zone.id,
             device_id=relais.id,
             device_role_id=role(session, "actuator").id,
-            self_regulating=False,
+            thermostat_mode="controlled",
         )
     )
     session.flush()
@@ -931,7 +931,7 @@ async def test_recovery_restores_the_previous_operating_mode_exactly_once_with_r
                 zone_id=zone.id,
                 device_id=trv.id,
                 device_role_id=role(session, "actuator").id,
-                self_regulating=True,
+                thermostat_mode="self_regulating",
             )
         )
         session.flush()
@@ -1149,7 +1149,7 @@ def _setup_recoverable_zone_with_trv(
             zone_id=zone.id,
             device_id=trv.id,
             device_role_id=role(session, "actuator").id,
-            self_regulating=True,
+            thermostat_mode="self_regulating",
         )
     )
     session.flush()
@@ -1552,7 +1552,7 @@ async def test_recovery_does_not_violate_the_real_minimum_on_duration(
                 zone_id=zone.id,
                 device_id=relais.id,
                 device_role_id=role(session, "actuator").id,
-                self_regulating=False,
+                thermostat_mode="controlled",
             )
         )
         session.flush()

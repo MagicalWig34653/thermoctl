@@ -712,13 +712,13 @@ def test_window_state_is_safe_when_only_one_required_lookup_exists(session: Sess
     assert shadow_run._window_situation(session, zone, state, NOW) == (False, None)
 
 
-def _actuator(session: Session, zone: Zone, *, self_regulating: bool, suffix: str) -> None:
+def _actuator(session: Session, zone: Zone, *, thermostat_mode: str, suffix: str) -> None:
     device = create_device(session, f"{zone.name}-aktor{suffix}")
     session.add(ZoneDevice(
         zone_id=zone.id,
         device_id=device.id,
         device_role_id=role(session, "actuator").id,
-        self_regulating=self_regulating,
+        thermostat_mode=thermostat_mode,
     ))
     session.flush()
 
@@ -740,8 +740,8 @@ def test_on_off_actuators_only_is_false_for_a_mixed_zone(session: Session) -> No
     2026-09-06): a single self-regulating actuator anywhere in the zone is
     enough to keep it out of the EIN/AUS-only category."""
     zone = create_zone(session, "gemischt")
-    _actuator(session, zone, self_regulating=True, suffix="-heizkoerper")
-    _actuator(session, zone, self_regulating=False, suffix="-schalter")
+    _actuator(session, zone, thermostat_mode="self_regulating", suffix="-heizkoerper")
+    _actuator(session, zone, thermostat_mode="controlled", suffix="-schalter")
 
     assert shadow_run._on_off_actuators_only(session, zone) is False
 
@@ -752,8 +752,8 @@ def test_on_off_actuators_only_is_true_for_several_plain_switch_actuators(
     """Several EIN/AUS actuators, none self-regulating -- the exception's own
     target case (e.g. two relays driving one floor-heating circuit)."""
     zone = create_zone(session, "reines-einaus")
-    _actuator(session, zone, self_regulating=False, suffix="-1")
-    _actuator(session, zone, self_regulating=False, suffix="-2")
+    _actuator(session, zone, thermostat_mode="controlled", suffix="-1")
+    _actuator(session, zone, thermostat_mode="controlled", suffix="-2")
 
     assert shadow_run._on_off_actuators_only(session, zone) is True
 

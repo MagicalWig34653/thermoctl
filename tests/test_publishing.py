@@ -637,7 +637,11 @@ async def test_window_open_by_temperature_reflects_zone_state(session: Session) 
 
 
 def _zone_with_self_regulating_valve(  # type: ignore[no-untyped-def]
-    session: Session, name: str, *, external_temperature: bool = False
+    session: Session,
+    name: str,
+    *,
+    external_temperature: bool = False,
+    thermostat_mode: str = "self_regulating",
 ):
     """A zone whose valve regulates itself, with a setpoint of 21 degrees."""
     from decimal import Decimal as _Decimal
@@ -678,7 +682,7 @@ def _zone_with_self_regulating_valve(  # type: ignore[no-untyped-def]
             zone_id=zone.id,
             device_id=valve.id,
             device_role_id=role(session, "actuator").id,
-            self_regulating=True,
+            thermostat_mode=thermostat_mode,
         )
     )
     session.add(
@@ -790,6 +794,65 @@ async def test_the_measured_room_temperature_goes_out_with_the_setpoint(
         "occupied_heating_setpoint": 21.0,
         "external_temperature_input": 19.5,
     }
+
+
+@pytest.mark.anyio
+async def test_a_reading_only_valve_is_sent_the_temperature_and_never_a_setpoint(
+    session: Session,
+) -> None:
+    """Nicht einmal mit offenem Fenster: Frostschutz wäre ein Sollwert am Gerät."""
+    from tests.helpers import create_zone_state
+
+    create_settings(session)
+    source(session, "system")
+    create_all_command_outcomes(session)
+    zone = _zone_with_self_regulating_valve(
+        session, "nurist", external_temperature=True, thermostat_mode="reading_only"
+    )
+    state = create_zone_state(session, zone)
+    state.temperature_c = Decimal("19.5")
+    state.window_open = True
+    arm(session, True, reason="vier Tage verglichen", user_id=None)
+    session.flush()
+
+    client = Mitschrift()
+    await cycle(session, client, PublicationState(), "thermoctl", NOW)
+
+    sent = [(t, json.loads(p)) for t, p in client.messages if t.endswith("/set")]
+    assert [payload for _, payload in sent] == [{"external_temperature_input": 19.5}]
+    for _, payload in sent:
+        assert "occupied_heating_setpoint" not in payload
+        assert "system_mode" not in payload
+        assert "operating_mode" not in payload
+    # Es bewegt am Gerät etwas (Istwert) und geht deshalb durch beide Riegel.
+    assert sent[0][0] in client.switched
+    entry, outcome = _command_log(session)[0]
+    assert outcome == "executed"
+    assert json.loads(entry.payload) == {"external_temperature_input": 19.5}
+
+
+@pytest.mark.anyio
+async def test_a_reading_only_valve_is_held_back_in_the_dry_run(session: Session) -> None:
+    from tests.helpers import create_zone_state
+
+    create_settings(session)
+    source(session, "system")
+    create_all_command_outcomes(session)
+    zone = _zone_with_self_regulating_valve(
+        session, "nuristtrocken", external_temperature=True, thermostat_mode="reading_only"
+    )
+    state = create_zone_state(session, zone)
+    state.temperature_c = Decimal("19.5")
+    session.flush()
+
+    client = Mitschrift()
+    await cycle(session, client, PublicationState(), "thermoctl", NOW)
+
+    assert [t for t in client.topics() if t.endswith("/set")] == []
+    entries = _command_log(session)
+    assert [(code, json.loads(e.payload)) for e, code in entries] == [
+        ("suppressed", {"external_temperature_input": 19.5})
+    ]
 
 
 class FailingClient:

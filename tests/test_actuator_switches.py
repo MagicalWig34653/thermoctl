@@ -96,7 +96,7 @@ def _actuator_zone(
     *,
     external_id: str | None = None,
     integration_code: str = "zigbee2mqtt",
-    self_regulating: bool = False,
+    thermostat_mode: str = "controlled",
     with_switch_capability: bool = True,
 ) -> tuple[Zone, Device]:
     zone = create_zone(session, name)
@@ -118,7 +118,7 @@ def _actuator_zone(
             zone_id=zone.id,
             device_id=device.id,
             device_role_id=role(session, "actuator").id,
-            self_regulating=self_regulating,
+            thermostat_mode=thermostat_mode,
         )
     )
     session.flush()
@@ -140,12 +140,12 @@ def _thermostat_actuator_zone(
     name: str,
     *,
     integration_code: str = "zigbee2mqtt",
-    self_regulating: bool = False,
+    thermostat_mode: str = "controlled",
     has_system_mode: bool = True,
     also_switch_capable: bool = False,
 ) -> tuple[Zone, Device]:
     """A Zigbee2MQTT thermostatic actuator, run by thermoctl's own hysteresis
-    (`self_regulating=False`) -- the wiring `thermostat_commands()` and
+    (`thermostat_mode="controlled"`) -- the wiring `thermostat_commands()` and
     `Zigbee2MqttThermostat` cover."""
     zone = create_zone(session, name)
     device = Device(
@@ -194,7 +194,7 @@ def _thermostat_actuator_zone(
             zone_id=zone.id,
             device_id=device.id,
             device_role_id=role(session, "actuator").id,
-            self_regulating=self_regulating,
+            thermostat_mode=thermostat_mode,
         )
     )
     session.flush()
@@ -361,7 +361,7 @@ async def test_a_self_regulating_valve_gets_no_switch_command(session: Session) 
     create_settings(session)
     source(session, "system")
     create_all_command_outcomes(session)
-    zone, _device = _actuator_zone(session, "selbstregelndzone", self_regulating=True)
+    zone, _device = _actuator_zone(session, "selbstregelndzone", thermostat_mode="self_regulating")
     _decision(session, zone, heating=True)
     arm(session, True, reason="vier Tage verglichen", user_id=None)
     session.flush()
@@ -1191,7 +1191,7 @@ def test_capability_joins_do_not_admit_devices_with_an_unrelated_capability(
             zone_id=switch_zone.id,
             device_id=switch_impostor.id,
             device_role_id=role(session, "actuator").id,
-            self_regulating=False,
+            thermostat_mode="controlled",
         )
     )
 
@@ -1239,7 +1239,7 @@ def test_a_dual_capability_thermostat_does_not_hide_a_later_plain_thermostat(
             zone_id=zone.id,
             device_id=plain.id,
             device_role_id=role(session, "actuator").id,
-            self_regulating=False,
+            thermostat_mode="controlled",
             sort_order=1,
         )
     )

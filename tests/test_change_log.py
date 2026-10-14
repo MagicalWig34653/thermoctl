@@ -1203,7 +1203,7 @@ def _thermostat_assignment(session: Session, zone_id: int) -> int:
         zone_id=zone_id,
         device_id=device.id,
         device_role_id=role(session, "actuator").id,
-        self_regulating=True,
+        thermostat_mode="self_regulating",
     )
     session.add(assignment)
     session.flush()

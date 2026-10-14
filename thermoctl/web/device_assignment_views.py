@@ -22,12 +22,13 @@ from thermoctl.domain.device_assignment import (
     CapabilityMissing,
     assign_device,
     detach_device,
-    set_self_regulating,
     set_temperature_source,
+    set_thermostat_mode,
     swap_device,
 )
 from thermoctl.domain.plant_diagram import plant_diagram
 from thermoctl.domain.principal import Principal
+from thermoctl.domain.thermostat_mode import MODE_DESCRIPTIONS, MODE_LABELS, MODES
 from thermoctl.web import templates
 from thermoctl.web.guards import admin_ui_only
 from thermoctl.web.urls import prefixed
@@ -93,6 +94,9 @@ def _context(session: Session, zone: Zone, **extra: object) -> dict[str, object]
     return {
         "zone": zone,
         "capabilities": capabilities,
+        "thermostat_modes": [
+            (code, MODE_LABELS[code], MODE_DESCRIPTIONS[code]) for code in MODES
+        ],
         # Welche Fähigkeit eine Stelle verlangt, entscheidet die Domäne -- die
         # Vorlage schreibt es nicht noch einmal hin. Die Aktor-Stelle nimmt seit den
         # Thermostatventilen `switch` **oder** `thermostat`; stand das in der Vorlage
@@ -237,13 +241,12 @@ async def device_regulation_view(
     principal: Annotated[Principal, Depends(current_principal)],
     session: Annotated[Session, Depends(get_session)],
 ) -> Response:
-    """Switches a thermostatic valve between the two ways of running it.
+    """Switches a thermostatic valve between its three modes.
 
-    Physically consequential, so it is written down: in self-regulating mode thermoctl
-    stops switching this valve. Hysteresis, minimum switching duration and the window
-    contact then no longer act through an on/off command -- only through the setpoint
-    that gets written. Whoever changes this should be able to find out later that they
-    did, and when.
+    Physically consequential, so it is written down: outside `controlled` thermoctl
+    stops switching this valve; `reading_only` never even writes a
+    setpoint. Whoever changes this should be able to find out later that they did, and
+    when.
     """
     zone = _visible_zone(session, principal, zone_id, "device.manage")
     form = await request.form()
@@ -255,13 +258,10 @@ async def device_regulation_view(
     if assignment is None or assignment.zone_id != zone.id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Zuordnung nicht gefunden")
 
-    set_self_regulating(
-        session,
-        zone,
-        assignment,
-        str(form.get("self_regulating", "")) == "yes",
-        actor_id=principal.user_id,
-    )
+    mode = str(form.get("thermostat_mode", ""))
+    if mode not in MODES:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Unbekannte Betriebsart")
+    set_thermostat_mode(session, zone, assignment, mode, actor_id=principal.user_id)
     return RedirectResponse(
         prefixed(request, f"/zones/{zone.id}/devices"), status.HTTP_303_SEE_OTHER
     )

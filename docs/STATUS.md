@@ -11,6 +11,20 @@ Letzte Aktualisierung: 2026-10-11.
   Fußlink im Generator (`tools/landingpage_erzeugen.py`) ergänzen, `site/` neu erzeugen.
 - Das Paket `ghcr.io/magicalwig34653/thermoctl` ist öffentlich (Projektinhaber, 2026-10-10).
 
+## Thermostat-Betriebsart (ungemergt, Unreleased)
+
+- `ZoneDevice.self_regulating` (Boolean) ist durch `thermostat_mode` ersetzt: `controlled` /
+  `self_regulating` / `reading_only` (`domain/thermostat_mode.py`: `writes_setpoint`,
+  `writes_actual`, `switches`). Migration `d8e3a51c7f24` (down_revision `c4a9e2f71b35`, die
+  Hauptsession ordnet sie ein); rückwärts wird `reading_only` zu `self_regulating`.
+- `reading_only`: `valve_commands` liefert `setpoint_c=None`, `services/publishing.py` schreibt nur die
+  Temperatur-Eigenschaft (Trockenlauf-Riegel und Befehlslog wie bisher). Kein Sollwert bei offenem Fenster,
+  kein Ein/Aus, kein Eintrag im Notbetrieb-Aktorplan (`zone_actuator_assignments`) -- also auch keine
+  Übergabe; während des Notbetriebs bekommt es dann auch keinen Istwert.
+- Web: Radio-Auswahl mit drei Erklärungen auf `/zones/{id}/devices`; REST/MCP haben das Merkmal nicht
+  (im Änderungsprotokoll wurde es nicht geführt).
+- Offen: Flussdiagramm-Seite (Folgeauftrag), Merge und Migrationskopf.
+
 ## 0.15.0 (2026-10-11) -- vorbereitet, noch nicht freigegeben
 
 Gebaut und dokumentiert (`docs/mcp.md`, `CHANGELOG.md`): MCP-Werkzeug `temperature_history`, Änderungsprotokoll mit
