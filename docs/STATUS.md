@@ -11,6 +11,21 @@ Letzte Aktualisierung: 2026-10-14.
   Fußlink im Generator (`tools/landingpage_erzeugen.py`) ergänzen, `site/` neu erzeugen.
 - Das Paket `ghcr.io/magicalwig34653/thermoctl` ist öffentlich (Projektinhaber, 2026-10-10).
 
+## Zuordnungskarte (Entwurf, Branch feature/zuordnungskarte)
+
+Nicht in `main`, nicht freigegeben, ersetzt nichts: die Zuordnungsseite `/zones/{id}/devices` ist unverändert.
+
+- Seite `/devices/map` (Navigation „Zuordnungskarte", Recht `device.read`, Zonenfilter wie die Zuordnung):
+  links Geräte mit Endpunkten (je Fähigkeit, ohne Batterie/Verbindungsqualität/Erreichbarkeit/Tastendruck),
+  rechts Zonen-Stellen (Messquelle, Fensterkontakt, Rolle des Ausgangs) und beschreibbare Geräte-Eingänge. Ziehen oder
+  Tastatur (Endpunkt wählen, Ziel wählen, Esc). Ohne JavaScript: Verbindungsliste.
+- Regeln nur in `domain/mapping_map.py` (`can_connect`; Fähigkeiten aus `REQUIRED_CAPABILITY`). Die Seite
+  bekommt die Ablehnungen samt Begründung fertig geliefert (`data-payload`) und rechnet nichts nach.
+- Gespeichert wird nur zu Zonen-Stellen (`POST /devices/map/connect|disconnect`, Recht `device.manage` je Zone,
+  über `assign_device`/`set_temperature_source`/`detach_device`). Geräte-Eingänge sind nur gezeichnet
+  („Entwurf, nicht gespeichert"); der Server lehnt sie mit 422 ab. Datenmodell dafür offen.
+- Geprüft: `tests/test_mapping_map.py`, Smoke-Test, `browser_tests/test_mapping_map.py`. Nur SQLite.
+
 ## 0.16.0 (2026-10-14) -- vorbereitet, noch nicht freigegeben
 
 Gebaut und gemergt (`main`), Version angehoben, `CHANGELOG.md` und Add-on-Changelog vorbereitet: drei
