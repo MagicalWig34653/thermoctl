@@ -1,0 +1,135 @@
+{% extends "base_admin.html" %}
+{#
+Zuordnungskarte (ENTWURF): links die Geräte mit ihren Endpunkten, rechts die Zonen-Stellen und die
+beschreibbaren Eingänge anderer Geräte. Linien werden von einem Endpunkt zu einem Ziel gezogen.
+
+Was zusammenpasst, entscheidet die Domäne (`domain/mapping_map.py`, `can_connect`); die Seite
+bekommt fertige Begründungen mitgeliefert (`data-payload`) und rechnet nichts nach. Ohne JavaScript
+bleibt die Liste der Verbindungen darunter -- sie sagt dasselbe als Text.
+
+Gespeichert werden nur Verbindungen zu Zonen-Stellen (über dieselben Domänenfunktionen wie die
+Zuordnungsseite). Verbindungen zu Geräte-Eingängen sind Entwurf und nur im Browser gezeichnet.
+#}
+{% block title %}Zuordnungskarte – thermoctl{% endblock %}
+{% block page_title %}Zuordnungskarte{% endblock %}
+{% block max_width %}80rem{% endblock %}
+{% block content %}
+<div class="alert alert-info" role="note">
+    <strong>Entwurf.</strong> Verbindungen zu Zonen-Stellen werden gespeichert, wie auf der
+    <a href="{{ url_prefix }}/devices">Geräteseite</a> und in der Zonen-Zuordnung. Linien zu
+    Geräte-Eingängen sind nur gezeichnet und <strong>noch nicht gespeichert</strong>; sie
+    verschwinden beim Neuladen.
+</div>
+
+<p class="t-quiet" data-map-hint hidden>
+    Ziehen Sie von einem Endpunkt (Punkt links) auf ein Ziel (Punkt rechts), oder wählen Sie den
+    Endpunkt mit Enter und danach das Ziel mit Enter. Passende Ziele leuchten auf, unpassende
+    sind ausgegraut; ihre Begründung steht als Hinweis daran. Esc bricht ab.
+</p>
+<div class="visually-hidden" role="status" aria-live="polite" data-map-status></div>
+{# Fest am unteren Rand: ein Hinweis im Textfluss verschöbe die Karte unter dem Zeiger. #}
+<div class="alert alert-danger position-fixed start-50 translate-middle-x shadow" style="bottom: 1rem; z-index: 1080; max-width: 40rem;" role="alert" data-map-error hidden></div>
+
+<div class="tc-map" data-map data-payload='{{ payload|tojson }}' data-connect-url="{{ url_prefix }}/devices/map/connect" data-disconnect-url="{{ url_prefix }}/devices/map/disconnect">
+    <svg class="tc-map-lines" aria-hidden="true" focusable="false"></svg>
+    <div class="tc-map-col" aria-label="Geräte und ihre Endpunkte">
+        <h2 class="h6 t-label">Geräte</h2>
+        {% for device_id, device_name, endpoints in graph.devices %}
+        {% if endpoints %}
+        <section class="card tc-map-card" aria-label="Gerät {{ device_name }}">
+            <div class="card-body py-2">
+                <div class="fw-semibold">{{ device_name }}</div>
+                <ul class="list-unstyled mb-0">
+                    {% for e in endpoints %}
+                    <li class="tc-map-row">
+                        <span class="tc-map-text">{{ e.label }}
+                            <span class="t-quiet small">{{ "schreibend" if e.direction == "write" else "lesend" }}</span></span>
+                        <button type="button" class="tc-port tc-port-source" data-endpoint="{{ e.id }}"
+                                aria-label="Endpunkt {{ e.label }} von {{ device_name }} verbinden"></button>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </section>
+        {% endif %}
+        {% else %}
+        <p class="t-quiet">Noch keine Geräte bekannt.</p>
+        {% endfor %}
+    </div>
+
+    <div class="tc-map-col" aria-label="Ziele">
+        <h2 class="h6 t-label">Zonen</h2>
+        {% set ns = namespace(group=none) %}
+        {% for t in graph.targets if t.kind == "zone_slot" %}
+        {% if t.group != ns.group %}
+        {% if ns.group is not none %}</ul></div></section>{% endif %}
+        {% set ns.group = t.group %}
+        <section class="card tc-map-card" aria-label="Zone {{ t.group }}">
+            <div class="card-body py-2">
+                <div class="fw-semibold">{{ t.group }}</div>
+                <ul class="list-unstyled mb-0">
+        {% endif %}
+                    <li class="tc-map-row">
+                        <button type="button" class="tc-port tc-port-target" data-target="{{ t.id }}"
+                                {% if t.editable %}data-editable{% endif %}
+                                aria-label="{{ t.label }} der Zone {{ t.group }}{% if not t.editable %} (nur lesend){% endif %}"></button>
+                        <span class="tc-map-text">{{ t.label }}
+                            <span class="t-quiet small">{{ "lesend" if t.direction == "read" else "schreibend" }}</span></span>
+                    </li>
+        {% endfor %}
+        {% if ns.group is not none %}</ul></div></section>{% endif %}
+
+        {% set inputs = graph.targets|selectattr("kind", "equalto", "device_input")|list %}
+        {% if inputs %}
+        <h2 class="h6 t-label mt-3">Geräte-Eingänge <span class="tc-chip tc-chip-warning">Entwurf</span></h2>
+        {% set ns2 = namespace(group=none) %}
+        {% for t in inputs %}
+        {% if t.group != ns2.group %}
+        {% if ns2.group is not none %}</ul></div></section>{% endif %}
+        {% set ns2.group = t.group %}
+        <section class="card tc-map-card" aria-label="Gerät {{ t.group }}">
+            <div class="card-body py-2">
+                <div class="fw-semibold">{{ t.group }}</div>
+                <ul class="list-unstyled mb-0">
+        {% endif %}
+                    <li class="tc-map-row">
+                        <button type="button" class="tc-port tc-port-target" data-target="{{ t.id }}" data-draft
+                                data-editable aria-label="Eingang {{ t.label }} von {{ t.group }} (Entwurf)"></button>
+                        <span class="tc-map-text">{{ t.label }}</span>
+                    </li>
+        {% endfor %}
+        {% if ns2.group is not none %}</ul></div></section>{% endif %}
+        {% endif %}
+    </div>
+</div>
+
+<section class="mt-4" aria-labelledby="map-conn-title">
+    <h2 class="h5" id="map-conn-title">Verbindungen</h2>
+    {% if graph.connections %}
+    <div class="table-responsive">
+    <table class="table table-sm">
+        <thead><tr><th scope="col">Gerät</th><th scope="col">Ziel</th><th scope="col"></th></tr></thead>
+        <tbody>
+        {% for c in graph.connections %}
+        <tr data-connection-row="{{ c.id }}">
+            <td>{{ c.device_name }}{% if not c.endpoint_id %} <span class="t-quiet small">(kein passender Endpunkt bekannt)</span>{% endif %}</td>
+            <td>{{ c.target_text }}</td>
+            <td class="text-end">
+                {% if c.editable %}
+                <button type="button" class="btn btn-sm btn-outline-secondary" data-disconnect="{{ c.id }}" hidden>Lösen</button>
+                <a class="btn btn-sm btn-outline-secondary" data-no-js href="{{ url_prefix }}/zones/{{ c.zone_id }}/devices">In der Zuordnung ändern</a>
+                {% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+    {% else %}
+    <p class="t-quiet">Noch keine Verbindungen.</p>
+    {% endif %}
+    <h3 class="h6 mt-3">Entwürfe (nicht gespeichert)</h3>
+    <ul class="mb-0" data-draft-list><li class="t-quiet" data-draft-empty>Noch keine.</li></ul>
+</section>
+
+{% endblock %}

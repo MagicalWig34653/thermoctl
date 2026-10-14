@@ -1,0 +1,162 @@
+"""Zuordnungskarte (Entwurf): Seite und zwei dünne Schreibendpunkte.
+
+Entscheidungen liegen in `domain/mapping_map.py` (Passt das? Was steht schon?) und in
+`domain/device_assignment.py` (Speichern). Die Seite zeigt nur an; die beiden POST-Endpunkte
+antworten mit JSON, weil die Karte die Seite nicht neu laden soll, solange der Nutzer noch
+zieht. Die bestehende Zuordnungsseite (`/zones/{id}/devices`) bleibt unverändert.
+"""
+
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, Request, Response
+from fastapi.responses import JSONResponse
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from thermoctl.auth.dependencies import csrf_protection, current_principal, get_session
+from thermoctl.db.models.device import Device, ZoneDevice
+from thermoctl.db.models.lookup import DeviceRole
+from thermoctl.db.models.zone import Zone
+from thermoctl.domain.authz import has_permission, visible_zones
+from thermoctl.domain.device_assignment import (
+    TEMPERATURE_SOURCE,
+    AssignmentAlreadyExists,
+    CapabilityMissing,
+    assign_device,
+    detach_device,
+    set_temperature_source,
+)
+from thermoctl.domain.mapping_map import MappingMap, build_mapping_map, can_connect
+from thermoctl.domain.principal import Principal
+from thermoctl.web import templates
+from thermoctl.web.guards import admin_ui_only
+
+router = APIRouter(
+    dependencies=[Depends(csrf_protection), Depends(admin_ui_only)],
+    include_in_schema=False,
+)
+
+
+def _rejected(reason: str, status_code: int = 422) -> JSONResponse:
+    return JSONResponse({"ok": False, "reason": reason}, status_code=status_code)
+
+
+@router.get("/devices/map")
+async def mapping_map(
+    request: Request,
+    principal: Annotated[Principal, Depends(current_principal)],
+    session: Annotated[Session, Depends(get_session)],
+) -> Response:
+    """Gleiches Recht und gleicher Zonenfilter wie die Zuordnungsseite (`device.read`)."""
+    zones = visible_zones(session, principal, "device.read")
+    editable = {zone.id for zone in zones if has_permission(principal, "device.manage", zone.id)}
+    graph = build_mapping_map(session, zones, editable)
+    return templates.TemplateResponse(
+        request,
+        "mapping_map.html",
+        {"graph": graph, "payload": _payload(graph), "may_edit": bool(editable)},
+    )
+
+
+def _payload(graph: MappingMap) -> dict[str, object]:
+    """Was das Skript braucht: nur Kennungen und fertige Begründungen, keine Regeln."""
+    return {
+        "rejections": graph.rejections,
+        "connections": [
+            {
+                "id": c.id,
+                "endpoint": c.endpoint_id,
+                "target": c.target_id,
+                "editable": c.editable,
+            }
+            for c in graph.connections
+        ],
+    }
+
+
+def _editable_graph(
+    session: Session, principal: Principal
+) -> tuple[MappingMap, dict[int, Zone]]:
+    zones = visible_zones(session, principal, "device.manage")
+    graph = build_mapping_map(session, zones, {zone.id for zone in zones})
+    return graph, {zone.id: zone for zone in zones}
+
+
+@router.post("/devices/map/connect")
+async def connect(
+    request: Request,
+    principal: Annotated[Principal, Depends(current_principal)],
+    session: Annotated[Session, Depends(get_session)],
+) -> Response:
+    """Verbindet einen Endpunkt mit einer Zonen-Stelle.
+
+    Zwei Prüfungen hintereinander, beide aus der Domäne: erst `can_connect` (endpunktgenau),
+    dann die Speicherfunktion, die ihre eigene Fähigkeitsprüfung mitbringt. Geräte-Eingänge
+    gibt es im Datenmodell für diese Karte nicht; solche Ziele lehnt der Endpunkt ab, statt
+    still etwas anderes zu speichern.
+    """
+    form = await request.form()
+    graph, zones = _editable_graph(session, principal)
+    endpoints = {e.id: e for _id, _name, eps in graph.devices for e in eps}
+    endpoint = endpoints.get(str(form.get("endpoint_id", "")))
+    target = next((t for t in graph.targets if t.id == str(form.get("target_id", ""))), None)
+    if endpoint is None or target is None:
+        return _rejected("Endpunkt oder Ziel nicht gefunden.", 404)
+    if target.kind != "zone_slot" or target.slot is None:
+        return _rejected("Verbindungen zu Geräte-Eingängen werden noch nicht gespeichert.")
+    if target.zone_id not in zones:
+        return _rejected("Endpunkt oder Ziel nicht gefunden.", 404)
+    verdict = can_connect(endpoint, target)
+    if not verdict.ok:
+        return _rejected(verdict.reason or "Diese Verbindung ist nicht möglich.")
+
+    zone = zones[target.zone_id]
+    device = session.get(Device, endpoint.device_id)
+    if device is None:  # pragma: no cover - der Endpunkt stammt aus derselben Sitzung
+        return _rejected("Gerät nicht gefunden.", 404)
+    try:
+        if target.slot == TEMPERATURE_SOURCE:
+            set_temperature_source(session, zone, device, actor_id=principal.user_id)
+        else:
+            role = session.scalar(select(DeviceRole).where(DeviceRole.code == target.slot))
+            if role is None:
+                return _rejected("Diese Rolle gibt es in der Anlage nicht.")
+            assign_device(session, zone, device, role, actor_id=principal.user_id)
+    except AssignmentAlreadyExists:
+        return _rejected("Dieses Gerät ist der Zone in dieser Rolle bereits zugeordnet.", 409)
+    except CapabilityMissing as exc:
+        return _rejected(exc.notice)
+    return JSONResponse({"ok": True})
+
+
+@router.post("/devices/map/disconnect")
+async def disconnect(
+    request: Request,
+    principal: Annotated[Principal, Depends(current_principal)],
+    session: Annotated[Session, Depends(get_session)],
+) -> Response:
+    """Löst eine gespeicherte Verbindung (Kennung aus `MappingMap.connections`)."""
+    form = await request.form()
+    graph, zones = _editable_graph(session, principal)
+    connection = next(
+        (c for c in graph.connections if c.id == str(form.get("connection_id", ""))), None
+    )
+    if connection is None or connection.zone_id not in zones:
+        return _rejected("Verbindung nicht gefunden.", 404)
+    zone = zones[connection.zone_id]
+    if connection.slot == TEMPERATURE_SOURCE:
+        set_temperature_source(session, zone, None, actor_id=principal.user_id)
+    else:
+        assignment = session.scalar(
+            select(ZoneDevice)
+            .join(DeviceRole, DeviceRole.id == ZoneDevice.device_role_id)
+            .where(
+                ZoneDevice.zone_id == zone.id,
+                ZoneDevice.device_id == connection.device_id,
+                DeviceRole.code == connection.slot,
+            )
+        )
+        if assignment is None:  # pragma: no cover - die Verbindung stammt aus derselben Sitzung
+            return _rejected("Verbindung nicht gefunden.", 404)
+        detach_device(session, zone, assignment, actor_id=principal.user_id)
+    return JSONResponse({"ok": True})

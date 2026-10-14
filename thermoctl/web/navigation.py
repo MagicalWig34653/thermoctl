@@ -151,6 +151,14 @@ NAVIGATION_ITEMS: tuple[NavigationItem, ...] = (
         "any_zone",
         "system",
     ),
+    NavigationItem(
+        "/devices/map",
+        "Zuordnungskarte",
+        "device.read",
+        "thermoctl.web.mapping_map_views.mapping_map",
+        "any_zone",
+        "system",
+    ),
     # -- Zugänge -----------------------------------------------------------------
     NavigationItem(
         "/users",
