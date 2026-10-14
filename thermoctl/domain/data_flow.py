@@ -23,12 +23,13 @@ Dieses Modul schreibt nichts und sendet nichts.
 
 from dataclasses import dataclass, field
 from datetime import datetime
+from decimal import Decimal
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from thermoctl.db.models.device import Device, DeviceCapabilityLink, DeviceProperty, ZoneDevice
-from thermoctl.db.models.lookup import DeviceCapability, DeviceRole
+from thermoctl.db.models.lookup import DeviceCapability, DeviceRole, Integration
 from thermoctl.db.models.operations import Setting
 from thermoctl.db.models.zone import Zone
 from thermoctl.domain.number_text import temperature_text
@@ -40,6 +41,8 @@ from thermoctl.domain.thermostat_mode import (
     writes_actual,
     writes_setpoint,
 )
+from thermoctl.integrations.actuators import THERMOSTAT_MIN_SETPOINT_C, thermostat_payload
+from thermoctl.integrations.meross_mqtt import toggle_payload
 
 # Knotenarten.
 NODE_SENSOR = "sensor"
@@ -56,6 +59,15 @@ EDGE_SWITCH = "switch"  # Ein/Aus-Befehl
 EDGE_WINDOW = "window"  # Fensterzustand
 EDGE_FROST = "frost"  # Frostschutz-Sollwert bei offenem Fenster
 EDGE_MISSING = "missing"  # fehlende oder nicht beschreibbare Eigenschaft
+
+# Anbindungen, über die `services/publishing.py` Schaltbefehle tatsächlich sendet.
+INTEGRATION_ZIGBEE2MQTT = "zigbee2mqtt"
+INTEGRATION_MEROSS = "meross"
+# Zigbee2MQTT-Schalter (`Zigbee2MqttValve`) schreiben die Eigenschaft `state`.
+Z2M_SWITCH_PROPERTY = "state"
+# Meross-Schaltbefehle sind ein ToggleX-Befehl, kein Zigbee2MQTT-Eigenschaftsschreiben;
+# der Name kommt aus derselben Funktion, die die Nutzlast baut.
+MEROSS_SWITCH_PROPERTY = next(iter(toggle_payload(0, True)))
 
 # An einer Stelle gesammelt, damit Graph, Renderer und Test dieselben Wörter benutzen.
 NO_SETPOINT_NOTE = "Sollwert bleibt am Gerät"
@@ -122,6 +134,59 @@ def _capability_codes(session: Session, device_id: int) -> set[str]:
     )
 
 
+def _switch_edge(node_id: str, integration_code: str | None) -> FlowEdge:
+    """Die Ein/Aus-Kante eines Schalters, je nach Anbindung (`services/publishing.py`)."""
+    if integration_code == INTEGRATION_ZIGBEE2MQTT:
+        return FlowEdge("zone", node_id, EDGE_SWITCH, "Ein/Aus", property_name=Z2M_SWITCH_PROPERTY)
+    if integration_code == INTEGRATION_MEROSS:
+        return FlowEdge(
+            "zone",
+            node_id,
+            EDGE_SWITCH,
+            "Ein/Aus: Meross-Schaltbefehl",
+            property_name=MEROSS_SWITCH_PROPERTY,
+        )
+    return FlowEdge(
+        "zone",
+        node_id,
+        EDGE_MISSING,
+        f"Ein/Aus: Anbindung {integration_code} sendet keine Schaltbefehle",
+        dashed=True,
+    )
+
+
+def _thermostat_edge(node_id: str, integration_code: str | None, writable: set[str]) -> FlowEdge:
+    """Ein/Aus eines Thermostats im Modus `controlled`: dieselbe Nutzlast wie beim Senden.
+
+    Die Namen kommen aus `thermostat_payload` (`integrations/actuators.py`), nicht aus einer
+    zweiten Aufzählung hier.
+    """
+    if integration_code != INTEGRATION_ZIGBEE2MQTT:
+        return FlowEdge(
+            "zone",
+            node_id,
+            EDGE_MISSING,
+            f"Ein/Aus: Anbindung {integration_code} sendet keine Thermostat-Befehle",
+            dashed=True,
+        )
+    has_mode = "system_mode" in writable
+    on = thermostat_payload(True, Decimal(0), has_system_mode=has_mode)
+    off = thermostat_payload(False, Decimal(0), has_system_mode=has_mode)
+    on_text = "Sollwert der Zone" + (f" + Modus {on['system_mode']}" if has_mode else "")
+    if has_mode:
+        off_text = f"Modus {off['system_mode']}"
+    else:
+        off_text = f"Mindestsollwert {temperature_text(THERMOSTAT_MIN_SETPOINT_C)}"
+    names = list(dict.fromkeys([*on, *off]))
+    return FlowEdge(
+        "zone",
+        node_id,
+        EDGE_SWITCH,
+        f"Ein: {on_text}; Aus: {off_text}",
+        property_name=" + ".join(names),
+    )
+
+
 def _device_label(device: Device) -> str:
     return device.display_name if device.is_enabled else f"{device.display_name} (abgeschaltet)"
 
@@ -182,9 +247,7 @@ def build_data_flow(session: Session, zone: Zone, now: datetime) -> DataFlowGrap
             for device, mode in session.execute(
                 select(Device, ZoneDevice.thermostat_mode)
                 .join(ZoneDevice, ZoneDevice.device_id == Device.id)
-                .where(
-                    ZoneDevice.zone_id == zone.id, ZoneDevice.device_role_id == actuator_role.id
-                )
+                .where(ZoneDevice.zone_id == zone.id, ZoneDevice.device_role_id == actuator_role.id)
                 .order_by(ZoneDevice.sort_order, ZoneDevice.id)
             )
         ]
@@ -206,6 +269,15 @@ def build_data_flow(session: Session, zone: Zone, now: datetime) -> DataFlowGrap
         )
         edges.append(FlowEdge(node_id, "zone", EDGE_WINDOW, "Fenster offen/zu"))
 
+    # Woher "Fenster offen" kommt, entscheidet `services/ingest.py::_window_open`: ein
+    # zugeordneter Kontakt allein; nur ohne Kontakt und bei eingeschalteter Zonen-Option die
+    # Temperaturabfall-Erkennung. `valve_commands` liest in beiden Fällen `ZoneState.window_open`.
+    frost_source: str | None = None
+    if windows:
+        frost_source = "Fensterkontakt"
+    elif zone.window_temp_drop_detection_enabled:
+        frost_source = "Temperaturabfall-Erkennung"
+
     # -- Senken je Aktor, entschieden von `thermostat_mode` ---------------------------
     for index, (device, mode) in enumerate(actuators):
         node_id = f"actuator{index}"
@@ -219,13 +291,12 @@ def build_data_flow(session: Session, zone: Zone, now: datetime) -> DataFlowGrap
 
         if switches(mode):
             codes = _capability_codes(session, device.id)
+            integration = session.get(Integration, device.integration_id)
+            integration_code = integration.code if integration is not None else None
             if "switch" in codes:
-                edges.append(
-                    FlowEdge("zone", node_id, EDGE_SWITCH, "Ein/Aus", property_name="state")
-                )
+                edges.append(_switch_edge(node_id, integration_code))
             elif "thermostat" in codes:
-                prop = "system_mode" if "system_mode" in writable else SETPOINT_PROPERTY
-                edges.append(FlowEdge("zone", node_id, EDGE_SWITCH, "Ein/Aus", property_name=prop))
+                edges.append(_thermostat_edge(node_id, integration_code, writable))
             else:
                 edges.append(
                     FlowEdge(
@@ -248,13 +319,13 @@ def build_data_flow(session: Session, zone: Zone, now: datetime) -> DataFlowGrap
                         property_name=SETPOINT_PROPERTY,
                     )
                 )
-                if windows:
+                if frost_source is not None:
                     edges.append(
                         FlowEdge(
                             "zone",
                             node_id,
                             EDGE_FROST,
-                            "Fenster offen: Frostschutz-Sollwert",
+                            f"Fenster offen ({frost_source}): Frostschutz-Sollwert",
                             property_name=SETPOINT_PROPERTY,
                         )
                     )

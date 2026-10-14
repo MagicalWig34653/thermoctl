@@ -504,9 +504,12 @@ Messquelle (Istwert), die Fensterkontakte und der aufgelöste Sollwert (Zeitplan
 Boost, Urlaub), in der Mitte die Zone, rechts je Aktor, was thermoctl an ihn schreiben würde — je nach
 Betriebsart des Ventils:
 
-- **thermoctl schaltet:** ein Pfeil „Ein/Aus“ von der Zone zum Gerät.
-- **Ventil regelt selbst:** Sollwert und Istwert, bei einem Fensterkontakt zusätzlich der
-  Frostschutz-Sollwert bei offenem Fenster. Die Pfeile nennen die Geräteeigenschaft
+- **thermoctl schaltet:** ein Pfeil „Ein/Aus“ von der Zone zum Gerät, beschriftet mit dem echten
+  Kanal (Zigbee2MQTT-Schalter `state`, Meross-Schaltbefehl, bei einem Thermostat Sollwert und Modus
+  für Ein, Modus „off“ bzw. der Mindestsollwert für Aus).
+- **Ventil regelt selbst:** Sollwert und Istwert, bei einem Fensterkontakt (oder, ohne Kontakt, bei
+  eingeschalteter Temperaturabfall-Erkennung der Zone) zusätzlich der Frostschutz-Sollwert bei
+  offenem Fenster. Die Pfeile nennen die Geräteeigenschaft
   (z. B. `occupied_heating_setpoint`, `external_temperature_input`).
 - **Nur Raumtemperatur melden:** nur der Istwert; es gibt bewusst keinen Sollwert-Pfeil, das
   Gerät trägt den Vermerk „Sollwert bleibt am Gerät“.

@@ -41,6 +41,10 @@ Letzte Aktualisierung: 2026-10-14.
 - Geprüft: `tests/test_data_flow.py`, Smoke-Test, Playwright-Test `browser_tests/test_data_flow.py` (SVG
   entsteht, böser Name führt nichts aus, keine Anfrage an Dritte). Nur die Zeichnung selbst wurde nicht von
   einem Menschen angesehen (Layout, Lesbarkeit bei vielen Aktoren).
+- Review-Nacharbeit: Graph folgt dem echten Schreiben (Schalter je Anbindung, Thermostat-Nutzlast aus
+  `thermostat_payload`, Frostkante auch bei Temperaturabfall-Erkennung ohne Kontakt); Hinweissatz unter dem
+  Diagramm (Trockenlauf, Gerätebereich, Notbetrieb-Übergabe nicht dargestellt); Mermaid ohne HTML-Beschriftungen,
+  `<br/>`-Umbruch; Handy: Mindestbreite 720 px, seitlich scrollend, Kantenliste dort offen.
 - Annahme: ein Aktor ohne `switch`/`thermostat`-Fähigkeit in `controlled` erscheint als gestrichelte Kante.
 
 ## 0.15.0 (2026-10-11) -- vorbereitet, noch nicht freigegeben

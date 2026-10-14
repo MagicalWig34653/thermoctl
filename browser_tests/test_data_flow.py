@@ -86,3 +86,87 @@ def test_full_zone_with_a_hostile_name_is_drawn_and_nothing_runs(
     assert admin_page.evaluate("window.pwned") is None
     assert "Syntax error" not in diagram.inner_text()
     assert diagram.locator("svg img, svg script").count() == 0
+
+
+def _full_zone(live_server: LiveServer, name: str) -> int:
+    with live_server.session() as session:
+        zone = seed.create_schedule_zone(session, name)
+        sensor = create_device(session, f"{name}-sensor")
+        zone.temperature_source_device_id = sensor.id
+        window = create_device(session, f"{name}-fenster")
+        session.add(
+            ZoneDevice(
+                zone_id=zone.id,
+                device_id=window.id,
+                device_role_id=role(session, "window_contact").id,
+            )
+        )
+        for mode in ("controlled", "self_regulating", "reading_only"):
+            valve = create_device(session, f"{name}-{mode}")
+            session.add(
+                DeviceCapabilityLink(
+                    device_id=valve.id, capability_id=capability(session, "thermostat").id
+                )
+            )
+            session.add(
+                ZoneDevice(
+                    zone_id=zone.id,
+                    device_id=valve.id,
+                    device_role_id=role(session, "actuator").id,
+                    thermostat_mode=mode,
+                )
+            )
+            for prop in ("occupied_heating_setpoint", "external_temperature_input", "system_mode"):
+                session.add(
+                    DeviceProperty(
+                        device_id=valve.id,
+                        name=prop,
+                        value_type="numeric",
+                        min_value=Decimal("5"),
+                        max_value=Decimal("30"),
+                        is_readable=True,
+                        is_writable=True,
+                    )
+                )
+        session.commit()
+        return zone.id
+
+
+def test_no_label_in_the_diagram_is_clipped(admin_page: Page, live_server: LiveServer) -> None:
+    zone_id = _full_zone(live_server, "datenfluss-abschnitt")
+    admin_page.goto(f"/zones/{zone_id}/data-flow")
+    expect(admin_page.locator("[data-flow-diagram]")).to_have_attribute(
+        "data-flow-done", "yes", timeout=20000
+    )
+
+    clipped = admin_page.evaluate(
+        """() => Array.from(document.querySelectorAll('[data-flow-canvas] foreignObject'))
+            .map(fo => ({ text: fo.textContent.trim(),
+                          box: parseFloat(fo.getAttribute('width')),
+                          content: fo.firstElementChild ? fo.firstElementChild.scrollWidth : 0 }))
+            .filter(label => label.content > label.box + 1)"""
+    )
+    assert clipped == []
+    assert admin_page.locator("[data-flow-canvas] foreignObject").count() > 5
+
+
+def test_phone_scrolls_the_diagram_sideways_and_opens_the_edge_list(
+    admin_page: Page, live_server: LiveServer
+) -> None:
+    zone_id = _full_zone(live_server, "datenfluss-handy")
+    admin_page.set_viewport_size({"width": 390, "height": 844})
+    admin_page.goto(f"/zones/{zone_id}/data-flow")
+    expect(admin_page.locator("[data-flow-diagram]")).to_have_attribute(
+        "data-flow-done", "yes", timeout=20000
+    )
+
+    sizes = admin_page.evaluate(
+        """() => { const c = document.querySelector('[data-flow-canvas]');
+                   return { page: document.documentElement.scrollWidth,
+                            view: document.documentElement.clientWidth,
+                            svg: c.querySelector('svg').getBoundingClientRect().width,
+                            canvasScroll: c.scrollWidth, canvasClient: c.clientWidth }; }"""
+    )
+    assert sizes["page"] <= sizes["view"], "die Seite selbst darf nicht seitlich überlaufen"
+    assert sizes["svg"] >= 720 and sizes["canvasScroll"] > sizes["canvasClient"]
+    assert admin_page.locator("details[data-flow-edges]").evaluate("d => d.open") is True

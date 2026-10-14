@@ -26,7 +26,10 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
   Recht `zone.manage`): ein Flussdiagramm je Zone, welcher Wert von welchem Gerät kommt (Messquelle,
   Fensterkontakte, aufgelöster Sollwert) und wohin er geschrieben würde — je Aktor nach Betriebsart
   (Ein/Aus, Sollwert und Istwert mit Frostschutz bei offenem Fenster, nur Istwert), mit dem Namen der
-  Geräteeigenschaft; Fehlendes gestrichelt. Mermaid 11.4.1 wird mitgeliefert (`static/vendor/mermaid`,
+  Geräteeigenschaft; Fehlendes gestrichelt. Schalter zeigen ihren echten Kanal (Zigbee2MQTT `state`,
+  Meross als Schaltbefehl), ein Thermostat im Modus „thermoctl schaltet“ Ein (Sollwert + Modus) und
+  Aus (Modus aus bzw. Mindestsollwert), und der Frostschutz erscheint auch, wenn „Fenster offen“
+  aus der Temperaturabfall-Erkennung stammt. Auf dem Handy scrollt das Bild seitlich statt zu schrumpfen. Mermaid 11.4.1 wird mitgeliefert (`static/vendor/mermaid`,
   MIT), kein CDN; ohne JavaScript bleiben Quelltext und Kantenliste lesbar. Ändert nichts an der Anlage.
 - **Drei Betriebsarten je Thermostatventil** statt „Ventil regelt selbst“ ja/nein
   (`domain/thermostat_mode.py`): `controlled` (thermoctl schaltet, wie bisher),

@@ -19,11 +19,13 @@ von einem fremden Server.
 <p class="t-quiet">Welcher Wert von welchem Gerät kommt und wohin er geschrieben wird. Gestrichelt: etwas fehlt oder ist nicht beschreibbar.</p>
 {% endif %}
 {% for entry in entries %}
-<section class="card mb-4" aria-labelledby="flow-title-{{ entry.zone.id }}">
+<section class="card mb-4" {% if single %}aria-label="Datenfluss der Zone {{ entry.zone.display_name }}"{% else %}aria-labelledby="flow-title-{{ entry.zone.id }}"{% endif %}>
     <div class="card-body">
+        {% if not single %}
         <h2 class="h5" id="flow-title-{{ entry.zone.id }}">
-            {% if single %}Datenfluss dieser Zone{% else %}<a href="{{ url_prefix }}/zones/{{ entry.zone.id }}/data-flow">{{ entry.zone.display_name }}</a>{% endif %}
+            <a href="{{ url_prefix }}/zones/{{ entry.zone.id }}/data-flow">{{ entry.zone.display_name }}</a>
         </h2>
+        {% endif %}
         {% if entry.graph.without_devices %}
         <p class="t-quiet">Dieser Zone sind noch keine Geräte zugeordnet.
             <a href="{{ url_prefix }}/zones/{{ entry.zone.id }}/devices">Geräte zuordnen</a></p>
@@ -33,7 +35,8 @@ von einem fremden Server.
                  aria-label="Datenflussdiagramm der Zone {{ entry.zone.display_name }}; die Kanten stehen darunter als Liste"></div>
             <pre data-flow-source class="tc-flow-source">{{ entry.mermaid }}</pre>
         </div>
-        <details class="mt-2">
+        <p class="t-quiet small mt-2 mb-0" data-flow-note>Das Diagramm zeigt, was thermoctl schreiben würde. Im Trockenlauf wird nichts gesendet, und Werte außerhalb des Gerätebereichs werden nicht gesendet. Die Notbetrieb-Übergabe ist hier nicht dargestellt.</p>
+        <details class="mt-2" data-flow-edges>
             <summary>Kanten als Text</summary>
             <ul class="mb-0">
                 {% for text in entry.edge_texts %}<li>{{ text }}</li>{% endfor %}

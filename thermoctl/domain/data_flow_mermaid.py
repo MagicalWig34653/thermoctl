@@ -16,6 +16,7 @@ einschleusen. Dagegen stehen drei Dinge, die zusammen halten sollen:
 """
 
 import re
+import textwrap
 
 from thermoctl.domain.data_flow import (
     EDGE_FROST,
@@ -53,6 +54,19 @@ def escape_label(text: str) -> str:
     return " ".join("".join(out).split())
 
 
+# Lange Beschriftungen werden an Wortgrenzen umbrochen. Der Umbruch ist unser eigenes festes
+# `<br/>` zwischen bereits escapten Zeilen -- nie ein Zeichen aus einem Namen.
+_WRAP_WIDTH = 28
+
+
+def _wrapped(text: str) -> str:
+    """`escape_label` plus fester Umbruch; Eigenschaftsnamen ohne Leerzeichen bleiben ganz."""
+    lines = textwrap.wrap(
+        escape_label(text), _WRAP_WIDTH, break_long_words=False, break_on_hyphens=False
+    )
+    return "<br/>".join(lines)
+
+
 _SHAPES = {
     NODE_SENSOR: ('(["', '"])'),
     NODE_WINDOW: ('(["', '"])'),
@@ -65,17 +79,18 @@ _SHAPES = {
 
 def _node_line(mermaid_id: str, node: FlowNode) -> str:
     opening, closing = _SHAPES[node.kind]
-    text = escape_label(node.label)
+    text = _wrapped(node.label)
     if node.detail:
         # `<br/>` ist unser eigener, fester Zeilenumbruch -- nie Teil eines Namens.
-        text += "<br/>" + escape_label(node.detail)
+        text += "<br/>" + _wrapped(node.detail)
     return f"    {mermaid_id}{opening}{text}{closing}"
 
 
 def _edge_line(ids: dict[str, str], edge: FlowEdge) -> str:
-    text = escape_label(edge.label)
+    text = _wrapped(edge.label)
     if edge.property_name:
-        text += "<br/>" + escape_label(edge.property_name)
+        # Die Eigenschaft steht in eigenen Zeilen unter der Beschriftung.
+        text += "<br/>" + _wrapped(edge.property_name)
     arrow = "-.->" if edge.dashed else ("==>" if edge.kind == EDGE_FROST else "-->")
     return f'    {ids[edge.source]} {arrow}|"{text}"| {ids[edge.target]}'
 

@@ -17,6 +17,7 @@ from tests.helpers import (
     create_device,
     create_settings,
     create_zone,
+    integration,
     role,
 )
 from thermoctl.db.models.device import DeviceCapabilityLink, DeviceProperty, ZoneDevice
@@ -152,9 +153,149 @@ def test_controlled_valve_gets_an_on_off_edge_from_the_zone_and_nothing_else(
     graph = build_data_flow(session, zone, NOW)
 
     (edge,) = _edges_to(graph, "kopf-schaltet")
-    assert edge.kind == EDGE_SWITCH and edge.label == "Ein/Aus"
-    assert edge.property_name == "system_mode"
+    assert edge.kind == EDGE_SWITCH
+    # Ein: Sollwert der Zone + Modus heat; Aus: Modus off -- wie `thermostat_payload` sendet.
+    assert edge.label == "Ein: Sollwert der Zone + Modus heat; Aus: Modus off"
+    assert edge.property_name == "occupied_heating_setpoint + system_mode"
     assert graph.node(edge.source).kind == "zone"
+
+
+def test_controlled_thermostat_without_system_mode_switches_off_via_the_minimum_setpoint(
+    session: Session,
+) -> None:
+    create_settings(session)
+    zone = create_zone(session, "ohnemodus")
+    _valve(session, zone, "kopf-ohne-modus", "controlled", properties=())
+
+    (edge,) = _edges_to(build_data_flow(session, zone, NOW), "kopf-ohne-modus")
+
+    assert edge.label == "Ein: Sollwert der Zone; Aus: Mindestsollwert 5,0 °C"
+    assert edge.property_name == "occupied_heating_setpoint"
+
+
+def test_controlled_thermostat_on_a_non_zigbee_binding_is_shown_as_missing(
+    session: Session,
+) -> None:
+    create_settings(session)
+    zone = create_zone(session, "fremd")
+    device = _valve(session, zone, "kopf-meross", "controlled")
+    device.integration_id = integration(session, "meross").id
+    session.flush()
+
+    (edge,) = _edges_to(build_data_flow(session, zone, NOW), "kopf-meross")
+
+    assert edge.kind == EDGE_MISSING and edge.dashed
+
+
+def _switch_actuator(session: Session, zone, name: str, integration_code: str):
+    device = create_device(session, name, integration_code)
+    session.add(
+        DeviceCapabilityLink(device_id=device.id, capability_id=capability(session, "switch").id)
+    )
+    session.add(
+        ZoneDevice(
+            zone_id=zone.id, device_id=device.id, device_role_id=role(session, "actuator").id
+        )
+    )
+    session.flush()
+    return device
+
+
+def test_a_zigbee_switch_is_written_through_the_state_property(session: Session) -> None:
+    create_settings(session)
+    zone = create_zone(session, "z2mschalter")
+    _switch_actuator(session, zone, "steckdose-z2m", "zigbee2mqtt")
+
+    (edge,) = _edges_to(build_data_flow(session, zone, NOW), "steckdose-z2m")
+
+    assert edge.kind == EDGE_SWITCH and edge.label == "Ein/Aus"
+    assert edge.property_name == "state"
+
+
+def test_a_meross_switch_is_labelled_as_a_meross_command_not_as_a_state_property(
+    session: Session,
+) -> None:
+    create_settings(session)
+    zone = create_zone(session, "merossschalter")
+    _switch_actuator(session, zone, "steckdose-meross", "meross")
+
+    (edge,) = _edges_to(build_data_flow(session, zone, NOW), "steckdose-meross")
+
+    assert edge.kind == EDGE_SWITCH and "Meross-Schaltbefehl" in edge.label
+    assert edge.property_name == "togglex"
+    assert not edge.dashed
+
+
+def test_a_switch_on_an_unwired_binding_is_shown_as_missing(session: Session) -> None:
+    create_settings(session)
+    zone = create_zone(session, "unverdrahtet")
+    _switch_actuator(session, zone, "steckdose-hue", "homekit")
+
+    (edge,) = _edges_to(build_data_flow(session, zone, NOW), "steckdose-hue")
+
+    assert edge.kind == EDGE_MISSING and edge.dashed
+    assert "homekit" in edge.label
+
+
+def test_frost_edge_names_the_window_contact_as_its_source(session: Session) -> None:
+    create_settings(session)
+    zone = create_zone(session, "kontakt")
+    _sensor_and_window(session, zone)
+    _valve(session, zone, "kopf-regelt", "self_regulating")
+
+    edges = {e.kind: e for e in _edges_to(build_data_flow(session, zone, NOW), "kopf-regelt")}
+
+    assert "Fensterkontakt" in edges[EDGE_FROST].label
+
+
+def test_frost_edge_follows_the_temperature_drop_detection_when_there_is_no_contact(
+    session: Session,
+) -> None:
+    create_settings(session)
+    zone = create_zone(session, "abfall")
+    zone.window_temp_drop_detection_enabled = True
+    _valve(session, zone, "kopf-regelt", "self_regulating")
+    _valve(session, zone, "kopf-lesen", "reading_only")
+
+    graph = build_data_flow(session, zone, NOW)
+
+    (frost,) = [e for e in _edges_to(graph, "kopf-regelt") if e.kind == EDGE_FROST]
+    assert "Temperaturabfall-Erkennung" in frost.label
+    assert EDGE_FROST not in {e.kind for e in _edges_to(graph, "kopf-lesen")}
+
+
+def test_a_contact_wins_over_the_temperature_drop_detection(session: Session) -> None:
+    create_settings(session)
+    zone = create_zone(session, "beides")
+    zone.window_temp_drop_detection_enabled = True
+    _sensor_and_window(session, zone)
+    _valve(session, zone, "kopf-regelt", "self_regulating")
+
+    (frost,) = [
+        e
+        for e in _edges_to(build_data_flow(session, zone, NOW), "kopf-regelt")
+        if e.kind == EDGE_FROST
+    ]
+
+    assert "Fensterkontakt" in frost.label and "Temperaturabfall" not in frost.label
+
+
+def test_long_edge_labels_are_wrapped_with_the_property_on_its_own_line(
+    session: Session,
+) -> None:
+    create_settings(session)
+    zone = create_zone(session, "umbruch")
+    _sensor_and_window(session, zone)
+    _valve(session, zone, "kopf-lesen", "reading_only")
+
+    source = render_mermaid(build_data_flow(session, zone, NOW))
+
+    assert '|"Istwert<br/>external_temperature_input"|' in source
+    _valve(session, zone, "kopf-regelt", "self_regulating")
+    wrapped = render_mermaid(build_data_flow(session, zone, NOW))
+    frost_line = next(line for line in wrapped.split("\n") if "==>" in line)
+    assert "<br/>Frostschutz-Sollwert<br/>occupied_heating_setpoint" in frost_line
+    assert all(len(part) <= 31 for part in frost_line.split('|"')[1].split('"|')[0].split("<br/>"))
 
 
 def test_controlled_actuator_without_any_switching_capability_is_shown_as_missing(
@@ -204,9 +345,9 @@ def test_zone_without_a_measurement_source_shows_the_gap(session: Session) -> No
 
     assert graph.node("sensor").kind == "missing"
     assert not graph.without_devices
-    assert all(
-        e.dashed for e in graph.edges if e.source == "sensor"
-    ), "ohne Messquelle darf keine Istwert-Kante durchgezogen sein"
+    assert all(e.dashed for e in graph.edges if e.source == "sensor"), (
+        "ohne Messquelle darf keine Istwert-Kante durchgezogen sein"
+    )
 
 
 def test_zone_without_devices_has_a_graph_with_only_the_fixed_nodes(session: Session) -> None:
@@ -354,3 +495,17 @@ def test_static_assets_are_served_locally(client: TestClient) -> None:
     assert "securityLevel" in script.text and 'securityLevel: "strict"' in script.text
     # Der Initialisierer lädt nirgends von einer fremden Adresse.
     assert "http://" not in script.text and "https://" not in script.text
+
+
+def test_single_zone_page_has_one_heading_and_the_dry_run_note(
+    client_als, session: Session
+) -> None:
+    create_settings(session)
+    zone = create_zone(session, "einzeln")
+    page = client_als([("zone.manage", zone.id)]).get(f"/zones/{zone.id}/data-flow")
+
+    assert page.status_code == 200
+    assert "Datenfluss dieser Zone" not in page.text
+    assert "Im Trockenlauf wird nichts gesendet" in page.text
+    assert "Notbetrieb-Übergabe ist hier nicht dargestellt" in page.text
+    assert "data-flow-edges" in page.text

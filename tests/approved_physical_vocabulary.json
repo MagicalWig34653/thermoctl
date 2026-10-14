@@ -56,6 +56,7 @@
       "Heizung.",
       "Ist-Temperatur. Der eigene Fühler eines Thermostats sitzt am Heizkörper und misst",
       "Konto geprüft; geschaltet wird über MQTT, wie Meross es tatsächlich tut.",
+      "Meross als Schaltbefehl), ein Thermostat im Modus „thermoctl schaltet“ Ein (Sollwert + Modus) und",
       "Meross-Aktoren stundenlang stillgelegt.",
       "Palette schaltet zwischen beiden um. Ohne JavaScript bleibt alles über das Formular",
       "Projektinhabers: ein Raum mit einem selbstregelnden Heizkörperthermostat neben einer",
@@ -186,8 +187,8 @@
       "![Betriebsseite im Trockenlauf mit der Schaltfläche „Scharf schalten …“](bilder/anlage-betrieb.png)",
       "![Relaisverschleiß-Seite mit Zeitraumauswahl (7/30/90 Tage) und dem Hinweis, dass in diesem Zeitraum noch keine Schaltaktoren protokolliert wurden](bilder/anlage-relaisverschleiss.png)",
       "**Betrieb** ist der Ort, an dem entschieden wird, ob die Anlage wirklich schaltet. Im",
-      "- **Ventil regelt selbst:** Sollwert und Istwert, bei einem Fensterkontakt zusätzlich der",
-      "- **thermoctl schaltet:** ein Pfeil „Ein/Aus“ von der Zone zum Gerät.",
+      "- **Ventil regelt selbst:** Sollwert und Istwert, bei einem Fensterkontakt (oder, ohne Kontakt, bei",
+      "- **thermoctl schaltet:** ein Pfeil „Ein/Aus“ von der Zone zum Gerät, beschriftet mit dem echten",
       "- **„Für eine Weile wärmer\"** setzt eine feste Temperatur bis zu einem selbst gewählten",
       "Betriebsart des Ventils:",
       "Boost, Urlaub), in der Mitte die Zone, rechts je Aktor, was thermoctl an ihn schreiben würde — je nach",
@@ -506,6 +507,14 @@
     "thermoctl/domain/controller_channels.py": [
       "Schreibkanäle sind nur auf Bediengeräten erlaubt, die nirgends Aktor sind.",
       "actuator"
+    ],
+    "thermoctl/domain/data_flow.py": [
+      "Ein/Aus: keine Schaltfähigkeit (switch/thermostat) erfasst",
+      "actuator",
+      "actuator",
+      "actuator",
+      "switch",
+      "switch"
     ],
     "thermoctl/domain/deviation.py": [
       "thermoctl hätte Heizen angefordert; das Altsystem heizte.",

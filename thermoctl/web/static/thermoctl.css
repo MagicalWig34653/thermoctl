@@ -3171,6 +3171,10 @@ body {
 }
 
 /* Datenfluss: das gezeichnete Diagramm scrollt bei Bedarf seitlich, die Seite nicht. */
-.tc-flow-canvas { overflow-x: auto; }
-.tc-flow-canvas svg { max-width: none; height: auto; }
+.tc-flow-canvas { overflow-x: auto; max-width: 100%; }
+/* Mermaid setzt `max-width` inline; ohne Mindestbreite wird das Bild auf dem Handy unlesbar klein. */
+.tc-flow-canvas svg { max-width: none !important; min-width: 720px; height: auto; }
+@media (max-width: 576px) {
+    .tc-flow-canvas svg { min-width: var(--flow-natural, 720px); }
+}
 .tc-flow-source { white-space: pre-wrap; overflow-wrap: anywhere; font-size: .8rem; }
