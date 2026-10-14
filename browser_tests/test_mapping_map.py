@@ -9,8 +9,9 @@ from playwright.sync_api import Page, expect
 
 from browser_tests import seed
 from browser_tests.live_server import LiveServer
-from tests.helpers import capability, create_device
-from thermoctl.db.models.device import DeviceCapabilityLink
+from tests.helpers import capability, create_device, role
+from thermoctl.db.models.device import DeviceCapabilityLink, DeviceProperty, ZoneDevice
+from thermoctl.db.models.zone import Zone
 
 pytestmark = pytest.mark.browser
 
@@ -242,3 +243,166 @@ def test_automatic_layout_separates_the_nodes_and_keeps_the_flow_direction(admin
     # Fühler links der Zone, Ventil rechts der Zone, ohne Überlappung.
     assert boxes[f"dev-{sensor}"]["x"] + boxes[f"dev-{sensor}"]["width"] <= boxes[f"zone-{zone}"]["x"]
     assert boxes[f"zone-{zone}"]["x"] + boxes[f"zone-{zone}"]["width"] <= boxes[f"dev-{valve}"]["x"]
+
+
+# ---- Entfernen, Mehrfachzuordnung ----------------------------------------------------------------
+
+
+def _seed_two_zones(live_server: LiveServer, name: str) -> tuple[int, int, int, int]:
+    """Zwei Zonen, ein Fühler und ein Thermostatventil, nichts verbunden."""
+    with live_server.session() as session:
+        first = seed.create_schedule_zone(session, f"{name}-a")
+        second = seed.create_schedule_zone(session, f"{name}-b")
+        sensor = create_device(session, f"{name}-fuehler")
+        valve = create_device(session, f"{name}-ventil")
+        for device, codes in ((sensor, ("temperature",)), (valve, ("thermostat",))):
+            for code in codes:
+                session.add(DeviceCapabilityLink(device_id=device.id, capability_id=capability(session, code).id))
+        session.commit()
+        return first.id, second.id, sensor.id, valve.id
+
+
+def _line_middle(page: Page, out_port: str, nth: int = 0) -> tuple[float, float]:
+    """Mitte einer gezeichneten Linie in Bildschirmkoordinaten."""
+    point: dict[str, float] = page.evaluate(
+        """([id, nth]) => {
+            const path = document.querySelectorAll('path[data-out="' + id + '"]')[nth];
+            const p = path.getPointAtLength(path.getTotalLength() / 2), m = path.getScreenCTM();
+            return { x: m.a * p.x + m.c * p.y + m.e, y: m.b * p.x + m.d * p.y + m.f };
+        }""",
+        [out_port, nth],
+    )
+    return point["x"], point["y"]
+
+
+def _source_of(live_server: LiveServer, zone: int) -> int | None:
+    with live_server.session() as session:
+        value = session.get(Zone, zone)
+        assert value is not None
+        return value.temperature_source_device_id
+
+
+def test_a_stored_line_is_marked_removed_with_the_button_and_stays_gone(admin_page: Page, live_server: LiveServer) -> None:
+    zone, sensor, _ = _seed(live_server, "karte-entfernen", connected=True)
+    _open(admin_page)
+    out = f"dev-{sensor}-temperature"
+    expect(admin_page.locator(f'path[data-out="{out}"]')).to_have_count(1)
+    remover = admin_page.locator(".tc-line-remove")
+    expect(remover).to_be_hidden()
+    x, y = _line_middle(admin_page, out)
+    admin_page.mouse.click(x, y)
+    expect(admin_page.locator(f'path.tc-map-line-selected[data-out="{out}"]')).to_have_count(1)
+    expect(remover).to_be_visible()
+    expect(remover).to_have_text("× Entfernen")
+    # Ein Klick auf den Hintergrund hebt die Markierung wieder auf.
+    box = admin_page.locator("[data-map-viewport]").bounding_box()
+    assert box is not None
+    admin_page.mouse.click(box["x"] + 6, box["y"] + box["height"] - 6)
+    expect(remover).to_be_hidden()
+    x, y = _line_middle(admin_page, out)
+    admin_page.mouse.click(x, y)
+    remover.click()
+    expect(admin_page.locator("[data-map-notice]")).to_contain_text("Verbindung gelöst", timeout=10000)
+    expect(admin_page.locator(f'path[data-out="{out}"]')).to_have_count(0)
+    expect(admin_page.locator(f'[data-connection-row="conn-{zone}-temperature_source-{sensor}"]')).to_have_count(0)
+    assert _source_of(live_server, zone) is None
+    admin_page.reload()
+    admin_page.locator("[data-map][data-ready]").wait_for()
+    expect(admin_page.locator(f'path[data-out="{out}"]')).to_have_count(0)
+
+
+def test_a_line_is_reachable_and_removable_by_keyboard(admin_page: Page, live_server: LiveServer) -> None:
+    zone, sensor, _ = _seed(live_server, "karte-tastatur", connected=True)
+    _open(admin_page)
+    hit = admin_page.locator(f'path[data-hit="conn-{zone}-temperature_source-{sensor}"]')
+    expect(hit).to_have_count(1)
+    expect(hit).to_have_attribute("role", "button")
+    hit.focus()  # Fokus markiert
+    expect(admin_page.locator(f'path.tc-map-line-selected[data-out="dev-{sensor}-temperature"]')).to_have_count(1)
+    admin_page.keyboard.press("Delete")
+    expect(admin_page.locator("[data-map-notice]")).to_contain_text("Verbindung gelöst", timeout=10000)
+    admin_page.locator("[data-map][data-ready]").wait_for()
+    expect(admin_page.locator(f'path[data-hit="conn-{zone}-temperature_source-{sensor}"]')).to_have_count(0)
+    assert _source_of(live_server, zone) is None
+
+
+def test_a_failed_removal_keeps_the_line_and_says_why(admin_page: Page, live_server: LiveServer) -> None:
+    zone, sensor, _ = _seed(live_server, "karte-fehlschlag", connected=True)
+    _open(admin_page)
+    admin_page.route(
+        "**/devices/map/disconnect",
+        lambda route: route.fulfill(status=422, content_type="application/json", body='{"ok": false, "reason": "Verbindung nicht gefunden."}'),
+    )
+    admin_page.locator(f'path[data-hit="conn-{zone}-temperature_source-{sensor}"]').focus()
+    admin_page.locator(".tc-line-remove").click()
+    expect(admin_page.locator("[data-map-error]")).to_contain_text("Verbindung nicht gefunden.")
+    expect(admin_page.locator(f'path[data-out="dev-{sensor}-temperature"]')).to_have_count(1)
+    assert _source_of(live_server, zone) == sensor
+
+
+def test_a_draft_line_is_removed_locally_without_a_request(admin_page: Page, live_server: LiveServer) -> None:
+    with live_server.session() as session:
+        sensor = create_device(session, "entwurf-fuehler")
+        display = create_device(session, "entwurf-anzeige")
+        session.add(DeviceCapabilityLink(device_id=sensor.id, capability_id=capability(session, "temperature").id))
+        zone = seed.create_schedule_zone(session, "entwurf-zone")
+        session.add(ZoneDevice(zone_id=zone.id, device_id=display.id, device_role_id=role(session, "controller").id))
+        session.add(DeviceProperty(device_id=display.id, name="ext", value_type="numeric", unit="°C", is_readable=True, is_writable=True))
+        session.commit()
+        sensor_id, display_id = sensor.id, display.id
+    _open(admin_page)
+    requests: list[str] = []
+    admin_page.on("request", lambda request: requests.append(request.url) if request.method == "POST" else None)
+    admin_page.evaluate("window.__marker = 42")
+    out = f"dev-{sensor_id}-temperature"
+    _drag(admin_page, f'[data-port="{out}"]', f'[data-port="dev-{display_id}-prop-ext"]')
+    expect(admin_page.locator(f'path.tc-map-line-draft[data-out="{out}"]')).to_have_count(1)
+    expect(admin_page.locator("[data-draft-list] li:not([data-draft-empty])")).to_have_count(1)
+    # Die Mitte dieser Linie liegt hinter der Zonenkarte, also per Tastatur anwählen (Linien laufen unter den Karten).
+    admin_page.locator(f'path[data-hit="draft:{out}>dev-{display_id}-prop-ext"]').focus()
+    admin_page.locator(".tc-line-remove").click()
+    expect(admin_page.locator(f'path[data-out="{out}"]')).to_have_count(0)
+    expect(admin_page.locator("[data-draft-list] li:not([data-draft-empty])")).to_have_count(0)
+    expect(admin_page.locator("[data-map-notice]")).to_contain_text("Entwurf entfernt")
+    assert admin_page.evaluate("window.__marker") == 42  # kein Neuladen
+    assert requests == []
+
+
+def test_one_sensor_feeds_two_zones_and_removing_one_line_keeps_the_other(admin_page: Page, live_server: LiveServer) -> None:
+    first, second, sensor, _ = _seed_two_zones(live_server, "karte-fan")
+    _open(admin_page)
+    out = f"dev-{sensor}-temperature"
+    rows = admin_page.locator(f'[data-connection-row$="-{sensor}"]')
+    _drag(admin_page, f'[data-port="{out}"]', f'[data-port="zone-{first}-temperature_source"]')
+    expect(rows).to_have_count(1, timeout=10000)
+    admin_page.locator("[data-map][data-ready]").wait_for()
+    _drag(admin_page, f'[data-port="{out}"]', f'[data-port="zone-{second}-temperature_source"]')
+    expect(rows).to_have_count(2, timeout=10000)
+    admin_page.locator("[data-map][data-ready]").wait_for()
+    expect(admin_page.locator(f'path.tc-map-line[data-out="{out}"]')).to_have_count(2)
+    assert _source_of(live_server, first) == sensor and _source_of(live_server, second) == sensor
+    # Eine der beiden Linien entfernen: die andere bleibt.
+    expect(admin_page.locator(f'path[data-in="zone-{second}-temperature_source"]')).to_have_count(1)
+    admin_page.locator(f'path[data-in="zone-{second}-temperature_source"] ~ path[data-hit]').first.focus()
+    admin_page.keyboard.press("Delete")
+    expect(admin_page.locator("[data-map-notice]")).to_contain_text("Verbindung gelöst", timeout=10000)
+    admin_page.locator("[data-map][data-ready]").wait_for()
+    expect(admin_page.locator(f'path.tc-map-line[data-out="{out}"]')).to_have_count(1)
+    assert _source_of(live_server, first) == sensor and _source_of(live_server, second) is None
+
+
+def test_a_valve_cannot_be_the_actuator_of_a_second_zone(admin_page: Page, live_server: LiveServer) -> None:
+    first, second, _, valve = _seed_two_zones(live_server, "karte-zwei-aktoren")
+    _open(admin_page)
+    rows = admin_page.locator(f'[data-connection-row$="-actuator-{valve}"]')
+    _drag(admin_page, f'[data-port="zone-{first}-actuator"]', f'[data-port="dev-{valve}-thermostat"]')
+    expect(rows).to_have_count(1, timeout=10000)
+    admin_page.locator("[data-map][data-ready]").wait_for()
+    _drag(admin_page, f'[data-port="zone-{second}-actuator"]', f'[data-port="dev-{valve}-thermostat"]')
+    error = admin_page.locator("[data-map-error]")
+    expect(error).to_be_visible()
+    expect(error).to_contain_text("ist bereits Aktor von Zone")
+    expect(error).to_contain_text("ein Gerät kann nur eine Zone heizen")
+    admin_page.reload()
+    admin_page.locator("[data-map][data-ready]").wait_for()
+    expect(rows).to_have_count(1)

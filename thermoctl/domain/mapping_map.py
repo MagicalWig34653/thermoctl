@@ -95,8 +95,10 @@ SLOT_ORDER = ("temperature_source", "window_contact", "actuator")
 # Der Aktor-Slot ist der einzige Zonen-Ausgang: Die Zone befiehlt dem Gerät.
 OUTPUT_SLOTS = frozenset({"actuator"})
 SLOT_KIND = {"temperature_source": "temperature", "window_contact": "contact", "actuator": "command"}
-# Nur die Messquelle nimmt genau eine Verbindung an (`Zone.temperature_source_device_id`). Mehrere
-# Fensterkontakte und mehrere Aktoren je Zone sind im Datenmodell vorgesehen.
+# Nur die Messquelle *einer Zone* nimmt genau eine Verbindung an (`Zone.temperature_source_device_id`
+# ist eine Spalte). Das Gerät dagegen darf Messquelle beliebig vieler Zonen sein (offener Grundriss),
+# ein Kontakt Fensterkontakt beliebig vieler Zonen; mehrere Fensterkontakte und mehrere Aktoren
+# je Zone sind ebenfalls vorgesehen. Die Gegenrichtung gilt beim Heizbefehl NICHT: siehe `can_connect`.
 SINGLE_SLOTS = frozenset({"temperature_source"})
 
 SAME_SIDE = {
@@ -129,6 +131,10 @@ class Port:
     single: bool = False
     blocked_reason: str | None = None
     editable: bool = False
+    # Nur Geräte-Eingänge mit Schalt-/Thermostat-Fähigkeit: die Zonen, in denen das Gerät schon
+    # Aktor ist, als (Zonen-Kennung, Satzteil für die Begründung) -- unabhängig davon, welche Zonen
+    # der Betrachter sehen darf (eine nicht sichtbare Zone heißt „einer anderen Zone").
+    actuator_zones: tuple[tuple[int, str], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -192,6 +198,13 @@ def can_connect(a: Port, b: Port, existing: Sequence[Connection] = ()) -> Verdic
     6. **Sperre des Eingangs** (zum Beispiel ein Gerät, das irgendwo Aktor ist, als Schreibkanal).
     7. **Doppelzuordnung**: dieselbe Zone-Gerät-Verbindung gibt es schon.
     8. **Einzelverbindung**: die Messquelle einer Zone nimmt genau ein Gerät.
+    9. **Ein Aktor, eine Zone**: Ein Gerät, das schon Aktor einer *anderen* Zone ist, nimmt keinen
+       zweiten Heizbefehl an. Die Regelkette (`services/publishing.py`, `services/shadow_run.py`)
+       entscheidet je Zone und schreibt je Zone an das Gerät; zwei Zonen mit gegensätzlichem Bedarf
+       würden dasselbe Gerät abwechselnd ein- und ausschalten, jede an der Hysterese und
+       Mindestschaltdauer der anderen vorbei. Eine Zusammenführung (zum Beispiel ODER) gibt es dort
+       nicht -- bevor es sie gibt, wird nicht doppelt zugeordnet. Der umgekehrte Fall ist
+       unproblematisch und erlaubt: ein *Fühler* oder *Kontakt* in mehreren Zonen.
     """
     for port in (a, b):
         if port.technical:
@@ -231,6 +244,14 @@ def can_connect(a: Port, b: Port, existing: Sequence[Connection] = ()) -> Verdic
                 f"'{zone_port.label}' der Zone '{zone_port.node_name}' nimmt nur eine Verbindung an und "
                 f"ist schon mit '{same[0].device_name}' verbunden. Lösen Sie diese zuerst.",
             )
+        if zone_port.slot == "actuator":
+            elsewhere = [label for zone_id, label in device_port.actuator_zones if zone_id != zone_port.zone_id]
+            if elsewhere:
+                return Verdict(
+                    False,
+                    f"'{device_port.node_name}' ist bereits Aktor {' und '.join(elsewhere)}; "
+                    "ein Gerät kann nur eine Zone heizen.",
+                )
     return Verdict(True, None, out, inp)
 
 
@@ -296,6 +317,22 @@ def build_mapping_map(session: Session, zones: list[Zone], editable_zone_ids: se
         if device.id in properties
     }
 
+    # Aktor-Zuordnungen **aller** Zonen (nicht nur der sichtbaren): Die Sperre „ein Aktor, eine Zone"
+    # darf nicht daran hängen, was der Betrachter sehen darf. Namen unsichtbarer Zonen bleiben verborgen.
+    visible_zone_ids = {zone.id for zone in zones}
+    actuator_zones: dict[int, list[tuple[int, str]]] = defaultdict(list)
+    for device_id, zone_id, zone_name in session.execute(
+        select(ZoneDevice.device_id, Zone.id, Zone.display_name)
+        .join(Zone, Zone.id == ZoneDevice.zone_id)
+        .join(DeviceRole, DeviceRole.id == ZoneDevice.device_role_id)
+        .where(DeviceRole.code == "actuator")
+        .order_by(Zone.id)
+    ):
+        actuator_zones[device_id].append(
+            (zone_id, f"von Zone '{zone_name}'" if zone_id in visible_zone_ids else "einer anderen Zone")
+        )
+    actuator_codes = REQUIRED_CAPABILITY["actuator"][0]
+
     nodes: list[Node] = []
     for device in devices:
         ports: list[Port] = []
@@ -317,6 +354,7 @@ def build_mapping_map(session: Session, zones: list[Zone], editable_zone_ids: se
                     capability=code,
                     device_id=device.id,
                     technical=technical,
+                    actuator_zones=tuple(actuator_zones.get(device.id, ())) if code in actuator_codes else (),
                 )
             )
         for prop in properties.get(device.id, []):

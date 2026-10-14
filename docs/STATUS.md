@@ -39,8 +39,26 @@ Nicht in `main`, nicht freigegeben, ersetzt nichts: die Zuordnungsseite `/zones/
   Reihenfolge, `POST /devices/map/disconnect`; Recht `device.manage` je Zone; über `assign_device`/
   `set_temperature_source`/`detach_device`). Zwischen zwei Geräten (Temperatur → Eingang `°C`) ist nur ein Entwurf
   gezeichnet („nicht gespeichert"); der Server lehnt das mit 422 ab. Datenmodell dafür offen.
-- Geprüft: `tests/test_mapping_map.py`, Smoke-Test, `browser_tests/test_mapping_map.py` (Knoten ziehen, Linie
-  folgt, Zoom/Pan, Position nach Reload, gültig/ungültig, technische Werte, Einklappen/Filter). Nur SQLite.
+- **Mehrfachzuordnung** (Regeln in `can_connect`, Tests `tests/test_mapping_map_multi.py`): Ein Fühler darf Messquelle
+  **mehrerer** Zonen sein (offener Grundriss), ein Kontakt Fensterkontakt mehrerer Zonen; mehrere Kontakte und mehrere
+  Aktoren je Zone gehen ohnehin. Die Regelkette liest je Zone über `Device.id` (`advance_zone_state`), nichts nimmt
+  „ein Gerät, eine Zone" an. **Abgelehnt:** ein Gerät (Ventil, Steckdose, Gruppe), das schon Aktor einer *anderen*
+  Zone ist, nimmt keinen zweiten Heizbefehl („ein Gerät kann nur eine Zone heizen"): `publishing`/`shadow_run`
+  entscheiden und schreiben je Zone, zwei Zonen mit gegensätzlichem Bedarf würden dasselbe Gerät abwechselnd
+  schalten, an Hysterese und Mindestschaltdauer vorbei. Eine Zusammenführung (ODER) gibt es nicht. Die Sperre
+  gilt in der Karte; `assign_device` und die Zuordnungsseite prüfen das **nicht**. Mehrere Fühler → eine Messquelle
+  bleibt abgelehnt (keine Mischung im Modell). Luftfeuchte, Anwesenheit, Helligkeit haben keinen Zonen-Eingang
+  (nur Anzeige/Entwurf auf Geräte-Eingänge mit Einheit `%`/`°C`).
+- **Linien entfernen:** Linie anklicken/antippen oder mit Tab anwählen markiert sie (dicker, Schatten), knapp über
+  ihrer Mitte erscheint „× Entfernen"; Entf/Backspace auf der fokussierten Linie entfernt sie ebenso, die Tabelle
+  „Verbindungen" behält „Lösen". Gespeichert: `POST /devices/map/disconnect` (CSRF, `device.manage` der Zone),
+  danach Neuladen mit kurzer Bestätigung unten; bei Fehler bleibt die Linie, der Grund steht unten. Entwürfe werden
+  lokal entfernt (kein Request). `detach_device` sendet dem Gerät **keinen** Ausschaltbefehl: Ein gelöster Aktor
+  behält seinen letzten Zustand, die Bestätigung sagt das. Linien laufen unter den Karten; liegt eine Linienmitte
+  hinter einer Karte, die Karte verschieben oder die Linie per Tab anwählen.
+- Geprüft: `tests/test_mapping_map.py`, `tests/test_mapping_map_multi.py`, Smoke-Test,
+  `browser_tests/test_mapping_map.py` (Ziehen, Zoom/Pan, gültig/ungültig, Entfernen per Maus/Tastatur/Entwurf/Fehlschlag,
+  Fan-out, Aktor in zweiter Zone). Nur SQLite.
 
 ## 0.16.0 (2026-10-14) -- vorbereitet, noch nicht freigegeben
 

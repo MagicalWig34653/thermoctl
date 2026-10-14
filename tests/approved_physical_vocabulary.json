@@ -169,7 +169,13 @@
       "sichtbare Räume, ausdrücklich „Heizzeit\" und im Trockenlauf „hätte geheizt\").",
       "sie zugeordnet sind. Auf den gewöhnlichen Pfaden (Sollwert, zentraler Ein/Aus, Ventilschutz,",
       "verliert, den nächsten Aktor trotzdem nicht mehr anfasst. Erreicht damit sowohl den",
-      "| 4 — Regelkreis und Cutover | schaltet scharf an der echten Anlage; Ablösung des Altsystems noch offen |"
+      "| 4 — Regelkreis und Cutover | schaltet scharf an der echten Anlage; Ablösung des Altsystems noch offen |",
+      "Aktoren je Zone gehen ohnehin. Die Regelkette liest je Zone über `Device.id` (`advance_zone_state`), nichts nimmt",
+      "Fan-out, Aktor in zweiter Zone). Nur SQLite.",
+      "Zone ist, nimmt keinen zweiten Heizbefehl („ein Gerät kann nur eine Zone heizen\"): `publishing`/`shadow_run`",
+      "lokal entfernt (kein Request). `detach_device` sendet dem Gerät **keinen** Ausschaltbefehl: Ein gelöster Aktor",
+      "schalten, an Hysterese und Mindestschaltdauer vorbei. Eine Zusammenführung (ODER) gibt es nicht. Die Sperre",
+      "„ein Gerät, eine Zone\" an. **Abgelehnt:** ein Gerät (Ventil, Steckdose, Gruppe), das schon Aktor einer *anderen*"
     ],
     "docs/api.md": [
       "**Fehlt das Feld, gilt 0** — ein Aufrufer, der die Absenkung nicht kennt, schaltet sie",
@@ -567,7 +573,12 @@
       "actuator",
       "actuator",
       "switch",
-      "switch"
+      "switch",
+      "' ist bereits Aktor",
+      "; ein Gerät kann nur eine Zone heizen.",
+      "actuator",
+      "actuator",
+      "actuator"
     ],
     "thermoctl/domain/pi_control.py": [
       "Ein Aktor ohne die Fähigkeit 'switch' ist der Zone zugeordnet.",
@@ -693,6 +704,11 @@
     "thermoctl/web/daily_views.py": [
       "Bitte bestätigen, dass mehr Schaltspiele und eine falsche Parametrierung verstanden wurden, bevor PI (Beta) eingeschaltet wird."
     ],
+    "thermoctl/web/mapping_map_views.py": [
+      "Das Gerät wird nicht mehr von thermoctl geschaltet und behält seinen letzten Zustand.",
+      "actuator",
+      "actuator"
+    ],
     "thermoctl/web/navigation.py": [
       "/heating-time"
     ],
@@ -771,7 +787,8 @@
     "thermoctl/web/templates/mapping_map.html": [
       "<div class=\"form-check form-switch mb-0\">",
       "<span class=\"tc-legend-kind\"><i class=\"tc-swatch tc-kind-command\"></i>Schalten / Heizbefehl</span>",
-      "{% if c.slot == \"actuator\" %}"
+      "{% if c.slot == \"actuator\" %}",
+      "Zonen versorgen (mehrere Linien von einem Ausgang); ein Gerät kann dagegen nur eine Zone heizen."
     ],
     "thermoctl/web/templates/parameter.html": [
       "\"Nach so vielen Tagen ohne reguläres Heizen wird der Schutzlauf fällig.\", errors.valve_protection_interval_days, \"1\", \"1\") }}",

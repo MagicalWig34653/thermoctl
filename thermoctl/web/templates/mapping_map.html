@@ -55,7 +55,9 @@ nur im Browser gezeichnet.
     mit Enter und danach den zweiten mit Enter. Passende Anschlüsse leuchten auf, unpassende sind
     ausgegraut; ihre Begründung steht als Hinweis daran. Karten lassen sich an der Kopfzeile
     verschieben (Pfeiltasten verschieben die fokussierte Karte), der Hintergrund lässt sich ziehen,
-    das Mausrad zoomt. Esc bricht ab.
+    das Mausrad zoomt. Esc bricht ab. Eine Linie anklicken, antippen oder mit Tab anwählen markiert sie;
+    „× Entfernen" in ihrer Mitte (oder Entf) löst die Verbindung. Ein Fühler oder Kontakt darf mehrere
+    Zonen versorgen (mehrere Linien von einem Ausgang); ein Gerät kann dagegen nur eine Zone heizen.
 </p>
 
 <div class="tc-map-toolbar" data-map-toolbar hidden>
@@ -79,6 +81,7 @@ nur im Browser gezeichnet.
 <div class="visually-hidden" role="status" aria-live="polite" data-map-status></div>
 {# Fest am unteren Rand: ein Hinweis im Textfluss verschöbe die Karte unter dem Zeiger. #}
 <div class="alert alert-danger position-fixed start-50 translate-middle-x shadow" style="bottom: 1rem; z-index: 1080; max-width: 40rem; pointer-events: none;" role="alert" data-map-error hidden></div>
+<div class="alert alert-success position-fixed start-50 translate-middle-x shadow" style="bottom: 1rem; z-index: 1080; max-width: 40rem; pointer-events: none;" role="status" data-map-notice hidden></div>
 
 <div class="tc-map" data-map data-payload='{{ payload|tojson }}' data-connect-url="{{ url_prefix }}/devices/map/connect" data-disconnect-url="{{ url_prefix }}/devices/map/disconnect">
     <div class="tc-map-viewport" data-map-viewport>

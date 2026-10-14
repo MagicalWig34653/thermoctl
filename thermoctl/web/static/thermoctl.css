@@ -3233,6 +3233,14 @@ body {
 .tc-map-line { stroke: var(--kind, var(--primary)); stroke-width: 2.5; fill: none; }
 .tc-map-line-live { stroke-dasharray: 2 5; stroke-linecap: round; }
 .tc-map-line-draft { stroke-dasharray: 7 5; }
+/* Linie markieren und entfernen: eine breite, unsichtbare Trefferfläche über jeder Linie (anklick-,
+   antipp- und fokussierbar), die markierte Linie wird dicker und hebt sich mit einem Schatten ab. */
+.tc-map-hit { fill: none; stroke: transparent; stroke-width: 16; pointer-events: stroke; cursor: pointer; outline: none; }
+.tc-map-line-selected { stroke-width: 5; filter: drop-shadow(0 0 3px var(--ink)); }
+/* Knapp über der Linienmitte, nicht darauf: Ein zweiter Klick an derselben Stelle (Doppelklick)
+   darf nicht schon entfernen. */
+.tc-line-remove { position: absolute; z-index: 6; transform: translate(-50%, calc(-100% - 12px)); white-space: nowrap; box-shadow: 0 2px 8px rgb(0 0 0 / .3); }
+.tc-line-remove[hidden] { display: none; }
 /* Mit JavaScript: freie Fläche. Die Knoten stehen absolut in der Weltkoordinate, Verschieben und Zoom
    wirken auf die Welt als Ganzes. */
 .tc-map-js .tc-map-viewport { height: calc(100vh - 14rem); min-height: 24rem; overflow: hidden; cursor: grab; touch-action: none; user-select: none; }

@@ -20,6 +20,11 @@
  * Gespeichert wird nur zwischen Zone und Gerät (POST an die Domänenfunktionen, danach
  * Neuladen). Linien zwischen zwei Geräten gibt es im Datenmodell nicht: Sie werden nur
  * gezeichnet und in der Entwurfsliste geführt.
+ *
+ * Entfernen: Eine Linie anklicken, antippen oder mit der Tastatur anwählen (Tab, Enter) markiert sie
+ * und zeigt in ihrer Mitte „× Entfernen". Entf/Backspace auf der fokussierten Linie entfernt sie
+ * ebenso. Gespeicherte Verbindungen löst der Server (POST /devices/map/disconnect); schlägt das fehl,
+ * bleibt die Linie und die Meldung erscheint unten. Entwürfe werden nur lokal entfernt.
  */
 (function () {
     "use strict";
@@ -50,6 +55,9 @@
         let dragging = null;    // { id, line, moved, x0, y0 }
         let suppressClick = false;
         let frame = 0;
+        let selected = null;    // Kennung der markierten Linie (gespeichert: Verbindung, Entwurf: "draft:...")
+        let removing = false;   // eine Löschanfrage läuft
+        const lineInfo = new Map();   // Linienkennung -> { entry, mid }
 
         // ---- Browser-Speicher (optional) -----------------------------------------------------
 
@@ -77,6 +85,20 @@
 
         // ---- Ausgabe ---------------------------------------------------------------------------
 
+        const FLASH_KEY = "thermoctl.mappingmap.flash";
+
+        // Kurze Bestätigung unten, nicht modal; verschwindet von selbst.
+        let noticeTimer = 0;
+        function notice(text) {
+            say(text, false);
+            const box = document.querySelector("[data-map-notice]");
+            if (!box) return;
+            box.textContent = text;
+            box.hidden = false;
+            window.clearTimeout(noticeTimer);
+            noticeTimer = window.setTimeout(function () { box.hidden = true; }, 8000);
+        }
+
         function say(text, isError) {
             const status = document.querySelector("[data-map-status]");
             const error = document.querySelector("[data-map-error]");
@@ -85,6 +107,8 @@
                 error.hidden = !(isError && text);
                 error.textContent = isError ? text : "";
             }
+            const box = document.querySelector("[data-map-notice]");
+            if (box && isError) box.hidden = true;
         }
 
         function csrfHeaders() {
@@ -98,8 +122,10 @@
             return fetch(url, { method: "POST", headers: headers, body: body, credentials: "same-origin" })
                 .then(function (response) {
                     return response.json().catch(function () { return {}; }).then(function (json) {
-                        return { ok: response.ok && json.ok === true, reason: json.reason || json.detail || "Das Speichern ist fehlgeschlagen." };
+                        return { ok: response.ok && json.ok === true, reason: json.reason || json.detail || "Das Speichern ist fehlgeschlagen.", message: json.message || "" };
                     });
+                }, function () {
+                    return { ok: false, reason: "Der Server ist nicht erreichbar. Es wurde nichts geändert.", message: "" };
                 });
         }
 
@@ -257,8 +283,9 @@
         function redrawNow() {
             frame = 0;
             svg.querySelectorAll("path[data-permanent]").forEach(function (p) { p.remove(); });
-            const entries = data.connections.map(function (c) { return { out: c.out, in: c.in, draft: false }; })
-                .concat(drafts.map(function (d) { return { out: d.out, in: d.in, draft: true }; }));
+            lineInfo.clear();
+            const entries = data.connections.map(function (c) { return { id: c.id, out: c.out, in: c.in, draft: false, editable: c.editable, title: c.title }; })
+                .concat(drafts.map(function (d) { return { id: d.id, out: d.out, in: d.in, draft: true, editable: true, title: d.title }; }));
             entries.forEach(function (entry) {
                 if (!entry.out || !entry.in) return;
                 const from = anchor(entry.out);
@@ -266,10 +293,109 @@
                 if (!from || !to) return;
                 const path = makePath("tc-map-line " + kindClass(entry.out) + (entry.draft ? " tc-map-line-draft" : ""));
                 path.setAttribute("data-permanent", "");
+                path.setAttribute("data-line", entry.id);
                 path.setAttribute("data-out", entry.out);
                 path.setAttribute("data-in", entry.in);
                 path.setAttribute("d", curve(from, to));
+                // Mittelpunkt einer Bézierkurve mit diesen Stützpunkten (t = 0,5) ist der der Endpunkte.
+                lineInfo.set(entry.id, { entry: entry, mid: { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 } });
+                const hit = makePath("tc-map-hit");
+                hit.setAttribute("data-permanent", "");
+                hit.setAttribute("data-hit", entry.id);
+                hit.setAttribute("d", curve(from, to));
+                hit.setAttribute("tabindex", "0");
+                hit.setAttribute("role", "button");
+                hit.setAttribute("aria-label", "Verbindung " + entry.title + (entry.draft ? " (Entwurf)" : "") + ". Markieren; Entf entfernt sie.");
+                hit.addEventListener("pointerdown", function (event) { event.stopPropagation(); });
+                hit.addEventListener("click", function (event) { event.stopPropagation(); select(entry.id); });
+                // Tastaturfokus markiert; ein Mausklick markiert über `click` (der Fokus durch die Maus tut es nicht,
+                // damit die Markierung nicht schon beim Drücken erscheint).
+                hit.addEventListener("focus", function () { if (hit.matches(":focus-visible")) select(entry.id); });
+                hit.addEventListener("keydown", function (event) {
+                    if (event.key === "Delete" || event.key === "Backspace") {
+                        event.preventDefault();
+                        removeLine(entry.id);
+                    } else if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        select(entry.id);
+                    }
+                });
             });
+            if (selected && !lineInfo.has(selected)) selected = null;
+            applySelection();
+        }
+
+        // ---- Linie markieren und entfernen -----------------------------------------------------
+
+        const remover = document.createElement("button");
+        remover.type = "button";
+        remover.className = "btn btn-sm btn-danger tc-line-remove";
+        remover.textContent = "× Entfernen";
+        remover.hidden = true;
+        remover.addEventListener("pointerdown", function (event) { event.stopPropagation(); });
+        remover.addEventListener("click", function (event) {
+            event.stopPropagation();
+            if (selected) removeLine(selected);
+        });
+        world.appendChild(remover);
+
+        function applySelection() {
+            svg.querySelectorAll("path.tc-map-line").forEach(function (p) {
+                p.classList.toggle("tc-map-line-selected", p.getAttribute("data-line") === selected);
+            });
+            const info = selected ? lineInfo.get(selected) : null;
+            if (!info || !info.entry.editable) {
+                remover.hidden = true;
+                return;
+            }
+            remover.hidden = false;
+            remover.style.left = info.mid.x + "px";
+            remover.style.top = info.mid.y + "px";
+            remover.setAttribute("aria-label", "Verbindung " + info.entry.title + " entfernen");
+        }
+
+        function select(id) {
+            if (selected === id) return;
+            selected = id;
+            applySelection();
+        }
+
+        function removeDraft(entry) {
+            const index = drafts.findIndex(function (d) { return d.id === entry.id; });
+            if (index < 0) return;
+            drafts[index].item.remove();
+            drafts.splice(index, 1);
+            const empty = document.querySelector("[data-draft-empty]");
+            if (!drafts.length && empty) empty.hidden = false;
+            selected = null;
+            redraw();
+            notice("Entwurf entfernt: " + entry.title + ".");
+        }
+
+        // Gespeichert: der Server löst die Verbindung; erst bei Erfolg verschwindet die Linie (Neuladen).
+        // Schlägt es fehl, bleibt sie stehen und der Grund erscheint unten.
+        function removeStored(entry) {
+            if (!entry.editable) {
+                say("Für diese Zone fehlt das Recht, Geräte zuzuordnen.", true);
+                return;
+            }
+            if (removing) return;
+            removing = true;
+            post(root.dataset.disconnectUrl, { connection_id: entry.id }).then(function (result) {
+                removing = false;
+                if (result.ok) {
+                    try { window.sessionStorage.setItem(FLASH_KEY, result.message || "Verbindung gelöst."); } catch (e) { /* ohne Speicher keine Meldung nach dem Neuladen */ }
+                    window.location.reload();
+                } else {
+                    say(result.reason, true);
+                }
+            });
+        }
+
+        function removeLine(id) {
+            const info = lineInfo.get(id);
+            if (!info) return;
+            if (info.entry.draft) removeDraft(info.entry); else removeStored(info.entry);
         }
 
         function redraw() {
@@ -326,22 +452,18 @@
                 say(data.single[inId], true);
                 return;
             }
-            drafts.push({ out: outId, in: inId });
             const empty = document.querySelector("[data-draft-empty]");
             if (empty) empty.hidden = true;
             const item = document.createElement("li");
-            item.textContent = ports.get(outId).getAttribute("aria-label").split(". ")[0] + " → " + ports.get(inId).getAttribute("aria-label").split(". ")[0] + " ";
+            const title = ports.get(outId).getAttribute("aria-label").split(". ")[0] + " → " + ports.get(inId).getAttribute("aria-label").split(". ")[0];
+            const draft = { id: "draft:" + outId + ">" + inId, out: outId, in: inId, title: title, item: item };
+            drafts.push(draft);
+            item.textContent = title + " ";
             const remove = document.createElement("button");
             remove.type = "button";
             remove.className = "btn btn-sm btn-link p-0";
             remove.textContent = "Entwurf verwerfen";
-            remove.addEventListener("click", function () {
-                const index = drafts.findIndex(function (d) { return d.out === outId && d.in === inId; });
-                if (index >= 0) drafts.splice(index, 1);
-                item.remove();
-                if (!drafts.length && empty) empty.hidden = false;
-                redraw();
-            });
+            remove.addEventListener("click", function () { removeDraft(draft); });
             item.appendChild(remove);
             document.querySelector("[data-draft-list]").appendChild(item);
             say("Entwurf gezeichnet, nicht gespeichert.", false);
@@ -377,6 +499,7 @@
 
         function cancel() {
             armed = null;
+            select(null);
             if (dragging) {
                 dragging.line.remove();
                 dragging = null;
@@ -511,7 +634,7 @@
         let panning = null;
         let pinch = 0;
         viewport.addEventListener("pointerdown", function (event) {
-            if (event.button !== 0 || (event.target.closest && event.target.closest(".tc-node"))) return;
+            if (event.button !== 0 || (event.target.closest && event.target.closest(".tc-node, .tc-line-remove, .tc-map-hit"))) return;
             touches.set(event.pointerId, { x: event.clientX, y: event.clientY });
             viewport.setPointerCapture(event.pointerId);
             if (touches.size === 1) {
@@ -548,6 +671,10 @@
                 save();
             }
         }
+        viewport.addEventListener("click", function (event) {
+            if (event.target.closest && event.target.closest(".tc-node, .tc-line-remove, .tc-map-hit")) return;
+            select(null);
+        });
         viewport.addEventListener("pointerup", endPan);
         viewport.addEventListener("pointercancel", endPan);
         viewport.addEventListener("wheel", function (event) {
@@ -609,13 +736,8 @@
         document.querySelectorAll("[data-no-js]").forEach(function (e) { e.hidden = true; });
         document.querySelectorAll("[data-disconnect]").forEach(function (button) {
             button.addEventListener("click", function () {
-                post(root.dataset.disconnectUrl, { connection_id: button.dataset.disconnect }).then(function (result) {
-                    if (result.ok) {
-                        window.location.reload();
-                    } else {
-                        say(result.reason, true);
-                    }
-                });
+                const stored = data.connections.find(function (c) { return c.id === button.dataset.disconnect; });
+                removeStored({ id: button.dataset.disconnect, editable: true, title: stored ? stored.title : "" });
             });
         });
 
@@ -645,11 +767,18 @@
         save();
         window.addEventListener("resize", redraw);
         redraw();
+        try {
+            const flash = window.sessionStorage.getItem(FLASH_KEY);
+            if (flash) {
+                window.sessionStorage.removeItem(FLASH_KEY);
+                notice(flash);
+            }
+        } catch (e) { /* ohne Speicher keine Meldung nach dem Neuladen */ }
         current = {
             cancel: cancel,
             redraw: redraw,
             say: say,
-            active: function () { return Boolean(armed || dragging); }
+            active: function () { return Boolean(armed || dragging || selected); }
         };
         root.dataset.ready = "1";
     }

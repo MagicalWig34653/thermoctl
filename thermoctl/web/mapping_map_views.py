@@ -29,6 +29,7 @@ from thermoctl.domain.device_assignment import (
 from thermoctl.domain.mapping_map import (
     SAME_SIDE,
     TECHNICAL_REASON,
+    Connection,
     MappingMap,
     build_mapping_map,
     can_connect,
@@ -77,10 +78,28 @@ def _payload(graph: MappingMap) -> dict[str, object]:
             if p.single and p.node_kind == "device"
         },
         "connections": [
-            {"id": c.id, "out": c.out_port_id, "in": c.in_port_id, "editable": c.editable}
+            {
+                "id": c.id,
+                "out": c.out_port_id,
+                "in": c.in_port_id,
+                "editable": c.editable,
+                "title": _title(c),
+            }
             for c in graph.connections
         ],
     }
+
+
+def _title(c: Connection) -> str:
+    """Lesbarer Name einer Verbindung in Richtung des Datenflusses (Ausgang → Eingang)."""
+    return f"{c.text} → {c.device_name}" if c.slot == "actuator" else f"{c.device_name} → {c.text}"
+
+
+# Nach dem Lösen eines Aktors: thermoctl schickt dem Gerät keinen Ausschaltbefehl (`detach_device`
+# löscht nur die Zuordnung, die Regelkette kennt das Gerät danach nicht mehr).
+ACTUATOR_DETACHED_NOTE = (
+    " Das Gerät wird nicht mehr von thermoctl geschaltet und behält seinen letzten Zustand."
+)
 
 
 def _editable_graph(
@@ -174,4 +193,5 @@ async def disconnect(
         if assignment is None:  # pragma: no cover - die Verbindung stammt aus derselben Sitzung
             return _rejected("Verbindung nicht gefunden.", 404)
         detach_device(session, zone, assignment, actor_id=principal.user_id)
-    return JSONResponse({"ok": True})
+    note = ACTUATOR_DETACHED_NOTE if connection.slot == "actuator" else ""
+    return JSONResponse({"ok": True, "message": f"Verbindung gelöst: {_title(connection)}.{note}"})
