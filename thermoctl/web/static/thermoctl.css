@@ -3179,25 +3179,71 @@ body {
 }
 .tc-flow-source { white-space: pre-wrap; overflow-wrap: anywhere; font-size: .8rem; }
 
-/* Zuordnungskarte (Entwurf): Geräte links, Ziele rechts, Linien als SVG darüber. */
-.tc-map { position: relative; display: grid; grid-template-columns: 1fr 1fr; column-gap: 6rem; align-items: start; }
-.tc-map-col { display: flex; flex-direction: column; gap: .5rem; min-width: 0; }
-.tc-map-lines { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
-.tc-map-row { display: flex; align-items: center; justify-content: space-between; gap: .5rem; padding: .15rem 0; }
-.tc-map-col:last-child .tc-map-row { justify-content: flex-start; }
-.tc-map-text { min-width: 0; overflow-wrap: anywhere; }
-.tc-port { flex: none; width: 1.1rem; height: 1.1rem; border-radius: 50%; padding: 0; cursor: pointer;
-    border: 2px solid var(--line-strong); background: var(--surface); touch-action: none; }
-.tc-port-source { cursor: grab; }
-.tc-port:focus-visible { outline: 3px solid var(--primary); outline-offset: 2px; }
-.tc-port-active { background: var(--primary); border-color: var(--primary); }
-.tc-port-fit { border-color: var(--primary); box-shadow: 0 0 0 4px color-mix(in srgb, var(--primary) 25%, transparent); }
-.tc-port-unfit { opacity: .3; cursor: not-allowed; }
-.tc-map-line { stroke: var(--primary); stroke-width: 2.5; }
+/* Zuordnungskarte (Entwurf): frei verschiebbare Knoten auf einer Fläche, Linien als SVG darunter.
+   Ohne JavaScript ist die Fläche eine einfache Kartenliste; erst `tc-map-js` macht sie frei. */
+.tc-map { --kind-temperature: var(--warmth); --kind-humidity: var(--cool); --kind-contact: var(--success);
+    --kind-presence: #7c4dbd; --kind-command: var(--primary); --kind-none: var(--muted); }
+.tc-map-legend { display: flex; flex-wrap: wrap; gap: .5rem 1.25rem; align-items: center; margin-bottom: .75rem; font-size: .9rem; }
+.tc-legend-flow, .tc-legend-kind, .tc-legend-kinds { display: inline-flex; align-items: center; gap: .4rem; flex-wrap: wrap; }
+.tc-legend-kinds { gap: .4rem 1rem; }
+.tc-swatch { display: inline-block; width: .8rem; height: .8rem; border-radius: 50%; background: var(--kind, var(--muted)); }
+.tc-map-toolbar { display: flex; flex-wrap: wrap; gap: .5rem .75rem; align-items: center; margin-bottom: .5rem; }
+.tc-map-toolbar[hidden] { display: none; }
+.tc-map-filter { max-width: 16rem; }
+.tc-map-viewport { position: relative; border: 1px solid var(--line); border-radius: .5rem; background: var(--surface-deep); }
+.tc-map-world { display: grid; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); gap: .75rem; padding: .75rem; }
+.tc-map-lines { display: none; }
+.tc-node { background: var(--surface); border: 1px solid var(--line-strong); border-radius: .5rem; min-width: 0; }
+.tc-node-zone { border-color: var(--warmth); }
+.tc-node-head { display: flex; align-items: center; gap: .4rem; padding: .35rem .6rem; border-bottom: 1px solid var(--line); }
+.tc-node-title { font-weight: 600; min-width: 0; overflow-wrap: anywhere; flex: 1; }
+.tc-node-type { font-size: .7rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+.tc-node-fold { border: 0; background: transparent; width: 1.6rem; height: 1.6rem; line-height: 1; border-radius: .25rem; color: var(--muted); }
+.tc-node-fold:hover { background: var(--ground); }
+.tc-node-body { display: grid; grid-template-columns: auto auto; justify-content: space-between; gap: .25rem 1rem; padding: .35rem 0; }
+.tc-node[data-collapsed] .tc-node-body { display: none; }
+.tc-node[data-collapsed] .tc-node-head { border-bottom: 0; }
+.tc-ports { list-style: none; margin: 0; padding: 0; min-width: 0; }
+.tc-ports-in { text-align: left; }
+.tc-ports-out { text-align: right; }
+.tc-port-in:hover, .tc-port-out:hover { filter: brightness(1.15); }
+.tc-prow { display: flex; align-items: center; gap: .4rem; padding: .15rem 0; min-height: 1.6rem; }
+.tc-prow-in { flex-direction: row; margin-left: -.55rem; }
+.tc-prow-out { flex-direction: row-reverse; margin-right: -.55rem; text-align: right; }
+.tc-plabel { min-width: 0; overflow-wrap: anywhere; font-size: .9rem; }
+.tc-prow-technical, .tc-node-technical { display: none; }
+.tc-map-show-technical .tc-prow-technical { display: flex; }
+.tc-map-show-technical .tc-node-technical { display: block; }
+.tc-map-show-technical .tc-prow-technical .tc-plabel { color: var(--muted); }
+/* Anschluss: ein Pfeil, der nach rechts zeigt -- am Eingang in den Knoten hinein, am Ausgang heraus. */
+.tc-port { --kind: var(--kind-none); flex: none; width: 1.15rem; height: 1.15rem; padding: 0; border: 0; cursor: pointer;
+    background: var(--kind); clip-path: polygon(0 12%, 62% 12%, 62% 0, 100% 50%, 62% 100%, 62% 88%, 0 88%); touch-action: none; }
+.tc-port:focus-visible { outline: 3px solid var(--primary); outline-offset: 2px; clip-path: none; border-radius: 50%; }
+.tc-port-out { cursor: grab; }
+.tc-kind-temperature { --kind: var(--kind-temperature, var(--warmth)); }
+.tc-kind-humidity { --kind: var(--kind-humidity, var(--cool)); }
+.tc-kind-contact { --kind: var(--kind-contact, var(--success)); }
+.tc-kind-presence { --kind: var(--kind-presence, #7c4dbd); }
+.tc-kind-command { --kind: var(--kind-command, var(--primary)); }
+.tc-kind-none { --kind: var(--muted); }
+.tc-port[data-technical] { opacity: .45; cursor: not-allowed; }
+.tc-port-active { filter: drop-shadow(0 0 3px var(--ink)); transform: scale(1.35); }
+.tc-port-fit { filter: drop-shadow(0 0 4px var(--kind)); transform: scale(1.35); }
+.tc-port-unfit { opacity: .25; cursor: not-allowed; }
+.tc-map-line { stroke: var(--kind, var(--primary)); stroke-width: 2.5; fill: none; }
 .tc-map-line-live { stroke-dasharray: 2 5; stroke-linecap: round; }
-.tc-map-line-draft { stroke: var(--warning); stroke-dasharray: 7 5; }
+.tc-map-line-draft { stroke-dasharray: 7 5; }
+/* Mit JavaScript: freie Fläche. Die Knoten stehen absolut in der Weltkoordinate, Verschieben und Zoom
+   wirken auf die Welt als Ganzes. */
+.tc-map-js .tc-map-viewport { height: calc(100vh - 14rem); min-height: 24rem; overflow: hidden; cursor: grab; touch-action: none; user-select: none; }
+.tc-map-js .tc-map-viewport.tc-map-panning { cursor: grabbing; }
+.tc-map-js .tc-map-world { display: block; position: absolute; left: 0; top: 0; width: 0; height: 0; padding: 0; transform-origin: 0 0; }
+.tc-map-js .tc-map-lines { display: block; position: absolute; left: 0; top: 0; width: 1px; height: 1px; overflow: visible; pointer-events: none; }
+.tc-map-js .tc-node { position: absolute; width: 20rem; box-shadow: 0 1px 4px rgb(0 0 0 / .12); }
+.tc-map-js .tc-node-head { cursor: move; touch-action: none; }
+.tc-map-js .tc-node[hidden] { display: none; }
+.tc-map-js .tc-node.tc-node-dragging { box-shadow: 0 4px 14px rgb(0 0 0 / .25); z-index: 5; }
+.tc-map-js .tc-node:focus-within { z-index: 4; }
 @media (max-width: 576px) {
-    .tc-map { column-gap: 2.5rem; }
+    .tc-map-js .tc-map-viewport { height: calc(100vh - 12rem); }
 }
-.tc-map-card { min-width: 0; }
-.tc-port-target { cursor: pointer; }

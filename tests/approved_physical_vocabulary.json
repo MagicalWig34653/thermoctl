@@ -558,6 +558,17 @@
     "thermoctl/domain/legacy_system.py": [
       "heizung"
     ],
+    "thermoctl/domain/mapping_map.py": [
+      "Schalten",
+      "Schreibkanäle sind nur auf Bediengeräten erlaubt, die nirgends Aktor sind.",
+      "actuator",
+      "actuator",
+      "actuator",
+      "actuator",
+      "actuator",
+      "switch",
+      "switch"
+    ],
     "thermoctl/domain/pi_control.py": [
       "Ein Aktor ohne die Fähigkeit 'switch' ist der Zone zugeordnet.",
       "Kein gewöhnlicher Schaltaktor zugeordnet.",
@@ -756,6 +767,11 @@
     ],
     "thermoctl/web/templates/kiosk.html": [
       "<span class=\"tc-chip tc-chip-warm\"><span class=\"tc-dot\"></span>Heizanforderung</span>"
+    ],
+    "thermoctl/web/templates/mapping_map.html": [
+      "<div class=\"form-check form-switch mb-0\">",
+      "<span class=\"tc-legend-kind\"><i class=\"tc-swatch tc-kind-command\"></i>Schalten / Heizbefehl</span>",
+      "{% if c.slot == \"actuator\" %}"
     ],
     "thermoctl/web/templates/parameter.html": [
       "\"Nach so vielen Tagen ohne reguläres Heizen wird der Schutzlauf fällig.\", errors.valve_protection_interval_days, \"1\", \"1\") }}",

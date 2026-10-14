@@ -16,15 +16,31 @@ Letzte Aktualisierung: 2026-10-14.
 Nicht in `main`, nicht freigegeben, ersetzt nichts: die Zuordnungsseite `/zones/{id}/devices` ist unverändert.
 
 - Seite `/devices/map` (Navigation „Zuordnungskarte", Recht `device.read`, Zonenfilter wie die Zuordnung):
-  links Geräte mit Endpunkten (je Fähigkeit, ohne Batterie/Verbindungsqualität/Erreichbarkeit/Tastendruck),
-  rechts Zonen-Stellen (Messquelle, Fensterkontakt, Rolle des Ausgangs) und beschreibbare Geräte-Eingänge. Ziehen oder
-  Tastatur (Endpunkt wählen, Ziel wählen, Esc). Ohne JavaScript: Verbindungsliste.
-- Regeln nur in `domain/mapping_map.py` (`can_connect`; Fähigkeiten aus `REQUIRED_CAPABILITY`). Die Seite
-  bekommt die Ablehnungen samt Begründung fertig geliefert (`data-payload`) und rechnet nichts nach.
-- Gespeichert wird nur zu Zonen-Stellen (`POST /devices/map/connect|disconnect`, Recht `device.manage` je Zone,
-  über `assign_device`/`set_temperature_source`/`detach_device`). Geräte-Eingänge sind nur gezeichnet
-  („Entwurf, nicht gespeichert"); der Server lehnt sie mit 422 ab. Datenmodell dafür offen.
-- Geprüft: `tests/test_mapping_map.py`, Smoke-Test, `browser_tests/test_mapping_map.py`. Nur SQLite.
+  Geräte und Zonen sind frei verschiebbare Knoten auf einer Fläche (Hintergrund ziehen = Pan, Mausrad/Knöpfe/
+  Zwei-Finger-Geste = Zoom, „Einpassen", „Automatisch anordnen" nach Datenfluss: Fühler links, Zonen Mitte,
+  reine Empfänger rechts). Linien folgen den Knoten live. Positionen, Ansicht, eingeklappte Knoten und der Schalter
+  „technische Werte zeigen" liegen pro Browser in `localStorage` (ohne funktioniert die Seite). Suchfeld, Knoten
+  einklappbar, Tastatur (Anschluss wählen, zweiten wählen, Esc; Pfeiltasten verschieben den fokussierten Knoten).
+  Ohne JavaScript: Kartenliste und Tabelle „Verbindungen".
+- **Richtung:** Werte fließen immer Ausgang → Eingang. Ausgänge sitzen rechts am Knoten, Eingänge links, Pfeil-
+  Symbol in der Farbe der Wertart, Hinweis am Anschluss („Ausgang: liefert Temperatur"), Legende auf der Seite.
+  Ziehen geht von jedem Ende aus; die Gegenrichtung findet die Domäne (`can_connect` ist symmetrisch).
+- **Modell** (`domain/mapping_map.py`): Messwerte sind Geräte-Ausgänge und gehen auf Zonen-Eingänge (Messquelle,
+  Fensterkontakt); der Heizbefehl ist ein Zonen-Ausgang und geht auf einen Geräte-Eingang (Schalter, Thermostat,
+  Rolle `actuator`). Weitere Geräte-Eingänge: beschreibbare Eigenschaften mit Einheit °C/%. Regeln in dieser
+  Reihenfolge: technischer Wert nie; derselbe Knoten nie, Zone↔Zone nie; Ausgang↔Ausgang und Eingang↔Eingang
+  nie; Wertart gleich und bekannt; Fähigkeit der Zonenstelle (`REQUIRED_CAPABILITY`; ein Sollwert ist keine
+  Messquelle); Sperre des Eingangs (`may_be_written`); keine Doppelzuordnung; die Messquelle nimmt nur ein Gerät
+  (erst lösen). Batterie, Verbindungsqualität, Erreichbarkeit, Tastendruck und Werte ohne Wertart erscheinen nur
+  hinter „technische Werte zeigen" und sind nie verbindbar.
+- Die Seite rechnet nichts nach: `data-payload` liefert Anschlusskennungen, Ablehnungen (mit Begründungstabelle)
+  und zwei feste Texte für „gleiche Seite".
+- Gespeichert wird nur zwischen Zone und Gerät (`POST /devices/map/connect` mit `from_id`/`to_id` in beliebiger
+  Reihenfolge, `POST /devices/map/disconnect`; Recht `device.manage` je Zone; über `assign_device`/
+  `set_temperature_source`/`detach_device`). Zwischen zwei Geräten (Temperatur → Eingang `°C`) ist nur ein Entwurf
+  gezeichnet („nicht gespeichert"); der Server lehnt das mit 422 ab. Datenmodell dafür offen.
+- Geprüft: `tests/test_mapping_map.py`, Smoke-Test, `browser_tests/test_mapping_map.py` (Knoten ziehen, Linie
+  folgt, Zoom/Pan, Position nach Reload, gültig/ungültig, technische Werte, Einklappen/Filter). Nur SQLite.
 
 ## 0.16.0 (2026-10-14) -- vorbereitet, noch nicht freigegeben
 

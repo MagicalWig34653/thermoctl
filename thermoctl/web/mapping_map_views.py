@@ -1,4 +1,4 @@
-"""Zuordnungskarte (Entwurf): Seite und zwei dünne Schreibendpunkte.
+"""Zuordnungskarte (Entwurf): Knoten-Fläche und zwei dünne Schreibendpunkte.
 
 Entscheidungen liegen in `domain/mapping_map.py` (Passt das? Was steht schon?) und in
 `domain/device_assignment.py` (Speichern). Die Seite zeigt nur an; die beiden POST-Endpunkte
@@ -26,7 +26,13 @@ from thermoctl.domain.device_assignment import (
     detach_device,
     set_temperature_source,
 )
-from thermoctl.domain.mapping_map import MappingMap, build_mapping_map, can_connect
+from thermoctl.domain.mapping_map import (
+    SAME_SIDE,
+    TECHNICAL_REASON,
+    MappingMap,
+    build_mapping_map,
+    can_connect,
+)
 from thermoctl.domain.principal import Principal
 from thermoctl.web import templates
 from thermoctl.web.guards import admin_ui_only
@@ -61,14 +67,17 @@ async def mapping_map(
 def _payload(graph: MappingMap) -> dict[str, object]:
     """Was das Skript braucht: nur Kennungen und fertige Begründungen, keine Regeln."""
     return {
+        "reasons": list(graph.reasons),
         "rejections": graph.rejections,
+        "same_side": SAME_SIDE,
+        "technical_reason": TECHNICAL_REASON,
+        "single": {
+            p.id: "Dieser Eingang nimmt nur eine Verbindung an."
+            for p in graph.ports()
+            if p.single and p.node_kind == "device"
+        },
         "connections": [
-            {
-                "id": c.id,
-                "endpoint": c.endpoint_id,
-                "target": c.target_id,
-                "editable": c.editable,
-            }
+            {"id": c.id, "out": c.out_port_id, "in": c.in_port_id, "editable": c.editable}
             for c in graph.connections
         ],
     }
@@ -88,43 +97,49 @@ async def connect(
     principal: Annotated[Principal, Depends(current_principal)],
     session: Annotated[Session, Depends(get_session)],
 ) -> Response:
-    """Verbindet einen Endpunkt mit einer Zonen-Stelle.
+    """Verbindet zwei Anschlüsse, sofern eine davon ein Zonen-Anschluss ist.
 
-    Zwei Prüfungen hintereinander, beide aus der Domäne: erst `can_connect` (endpunktgenau),
-    dann die Speicherfunktion, die ihre eigene Fähigkeitsprüfung mitbringt. Geräte-Eingänge
-    gibt es im Datenmodell für diese Karte nicht; solche Ziele lehnt der Endpunkt ab, statt
-    still etwas anderes zu speichern.
+    `from_id` und `to_id` dürfen in beliebiger Reihenfolge stehen (Ziehen geht von jedem Ende
+    aus); `can_connect` legt die Richtung fest. Zwei Prüfungen hintereinander, beide aus der
+    Domäne: erst `can_connect`, dann die Speicherfunktion mit ihrer eigenen Fähigkeitsprüfung.
+    Verbindungen zwischen zwei Geräten gibt es im Datenmodell nicht; solche lehnt der Endpunkt ab,
+    statt still etwas anderes zu speichern.
     """
     form = await request.form()
     graph, zones = _editable_graph(session, principal)
-    endpoints = {e.id: e for _id, _name, eps in graph.devices for e in eps}
-    endpoint = endpoints.get(str(form.get("endpoint_id", "")))
-    target = next((t for t in graph.targets if t.id == str(form.get("target_id", ""))), None)
-    if endpoint is None or target is None:
-        return _rejected("Endpunkt oder Ziel nicht gefunden.", 404)
-    if target.kind != "zone_slot" or target.slot is None:
-        return _rejected("Verbindungen zu Geräte-Eingängen werden noch nicht gespeichert.")
-    if target.zone_id not in zones:
-        return _rejected("Endpunkt oder Ziel nicht gefunden.", 404)
-    verdict = can_connect(endpoint, target)
-    if not verdict.ok:
+    ports = {p.id: p for p in graph.ports()}
+    first = ports.get(str(form.get("from_id", "")))
+    second = ports.get(str(form.get("to_id", "")))
+    if first is None or second is None:
+        return _rejected("Anschluss nicht gefunden.", 404)
+    zone_port = next((p for p in (first, second) if p.node_kind == "zone"), None)
+    if zone_port is None:
+        # Erst die Regeln: Unsinn wird als Unsinn begründet, nicht als „nicht gespeichert".
+        verdict = can_connect(first, second, graph.connections)
+        return _rejected(
+            verdict.reason or "Verbindungen zwischen Geräten werden nicht gespeichert."
+        )
+    if zone_port.zone_id not in zones or zone_port.slot is None:
+        return _rejected("Anschluss nicht gefunden.", 404)
+    verdict = can_connect(first, second, graph.connections)
+    if not verdict.ok or verdict.output is None or verdict.input is None:
         return _rejected(verdict.reason or "Diese Verbindung ist nicht möglich.")
-
-    zone = zones[target.zone_id]
-    device = session.get(Device, endpoint.device_id)
-    if device is None:  # pragma: no cover - der Endpunkt stammt aus derselben Sitzung
+    device_port = verdict.input if verdict.output is zone_port else verdict.output
+    zone = zones[zone_port.zone_id]
+    device = session.get(Device, device_port.device_id)
+    if device is None:  # pragma: no cover - der Anschluss stammt aus derselben Sitzung
         return _rejected("Gerät nicht gefunden.", 404)
     try:
-        if target.slot == TEMPERATURE_SOURCE:
+        if zone_port.slot == TEMPERATURE_SOURCE:
             set_temperature_source(session, zone, device, actor_id=principal.user_id)
         else:
-            role = session.scalar(select(DeviceRole).where(DeviceRole.code == target.slot))
+            role = session.scalar(select(DeviceRole).where(DeviceRole.code == zone_port.slot))
             if role is None:
                 return _rejected("Diese Rolle gibt es in der Anlage nicht.")
             assign_device(session, zone, device, role, actor_id=principal.user_id)
-    except AssignmentAlreadyExists:
+    except AssignmentAlreadyExists:  # pragma: no cover - `can_connect` kennt jede Doppelzuordnung
         return _rejected("Dieses Gerät ist der Zone in dieser Rolle bereits zugeordnet.", 409)
-    except CapabilityMissing as exc:
+    except CapabilityMissing as exc:  # pragma: no cover - `can_connect` prüft dieselbe Fähigkeit
         return _rejected(exc.notice)
     return JSONResponse({"ok": True})
 
