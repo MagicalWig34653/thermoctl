@@ -1,6 +1,6 @@
 # Stand
 
-Letzte Aktualisierung: 2026-10-11.
+Letzte Aktualisierung: 2026-10-14.
 
 ## Offene Entscheidungen (Projektinhaber)
 
@@ -24,7 +24,24 @@ Letzte Aktualisierung: 2026-10-11.
 - Web: Radio-Auswahl mit drei Erklärungen auf `/zones/{id}/devices`; REST/MCP haben das Merkmal nicht
   (im Änderungsprotokoll wurde es nicht geführt).
 - `swap_device`: die neue Zuordnung bekommt bewusst `controlled`, nicht die Betriebsart des alten Geräts.
-- Offen: Flussdiagramm-Seite (Folgeauftrag), Merge und Migrationskopf.
+- Offen: Merge und Migrationskopf.
+
+## Datenfluss-Seite (ungemergt, Unreleased)
+
+- `/zones/data-flow` (Analyse → Datenfluss, Recht `zone.manage`, Sichtbarkeit `visible_zones` wie
+  `/zones/history`) und `/zones/{id}/data-flow` (Knopf im Zonenkopf): je Zone ein Flussdiagramm.
+  Graph neutral in `domain/data_flow.py` (`build_data_flow`; Kantenarten Istwert/Sollwert/Ein-Aus/Fenster/
+  Frostschutz/fehlend), entschieden ausschließlich über `thermostat_mode.switches/writes_setpoint/writes_actual`;
+  Eigenschaftsnamen aus `SETPOINT_PROPERTY`/`TEMPERATURE_PROPERTIES` und `device_property`. Mermaid-Quelltext
+  getrennt in `domain/data_flow_mermaid.py` (Positivliste, alles Unbekannte als `#<Codepunkt>;`, Knoten-IDs erzeugt).
+- Mermaid 11.4.1 lokal unter `static/vendor/mermaid/` (MIT, SHA-384 in `static/HERKUNFT.md`), geladen nur von
+  `static/data_flow.js` (über `page_scripts.js` bei `[data-flow-diagram]`), `securityLevel: "strict"`. Ohne
+  JavaScript: Quelltext im `<pre>` plus Kantenliste. Keine CSP im Projekt (nur `frame-ancestors` auf der
+  OAuth-Seite), daher kein Inline-Problem; das Skript ist trotzdem eine eigene Datei.
+- Geprüft: `tests/test_data_flow.py`, Smoke-Test, Playwright-Test `browser_tests/test_data_flow.py` (SVG
+  entsteht, böser Name führt nichts aus, keine Anfrage an Dritte). Nur die Zeichnung selbst wurde nicht von
+  einem Menschen angesehen (Layout, Lesbarkeit bei vielen Aktoren).
+- Annahme: ein Aktor ohne `switch`/`thermostat`-Fähigkeit in `controlled` erscheint als gestrichelte Kante.
 
 ## 0.15.0 (2026-10-11) -- vorbereitet, noch nicht freigegeben
 

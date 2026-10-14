@@ -49,6 +49,7 @@
       "Erkennung selbst das Heizen abschaltet. Wirkt **wie ein echter",
       "Fall: ein Zigbee2MQTT-Thermostatventil ohne `self_regulating`.",
       "Fenster unter ihren Frostschutzwert, heizt sie jetzt wieder, mit derselben",
+      "Fensterkontakte, aufgelöster Sollwert) und wohin er geschrieben würde — je Aktor nach Betriebsart",
       "Fußbodenheizung) schaltet das Fenster gar nicht mehr ab — zu träge, als dass es",
       "Fußbodenheizung, Stellantrieb, Boiler, Brenner, Pumpe) sowie bei den Verb-/Adjektivstämmen",
       "Fälle.** Ein Meross-Aktor bekommt seinen Befehl über eine bei Bedarf erneuerte,",
@@ -138,6 +139,7 @@
       "**Schutz gegen Rückkopplung:** Eine aufgrund der Vermutung abgeschaltete Heizung",
       "**alle** Zonen **automatisch aktiv**: Migration `d4a81c6e5b29` schaltet jede Bestandszone",
       "- **Der Warm-Aus-Punkt beendet eine laufende Ein-Phase nicht vorzeitig** (Projektinhaber,",
+      "- Annahme: ein Aktor ohne `switch`/`thermostat`-Fähigkeit in `controlled` erscheint als gestrichelte Kante.",
       "Aktor etwas hinaus — das ist der Zustand einer neuen Anlage. `/control/arm` öffnet ihn,",
       "Anmelderate dadurch von rund 4 (Schalten, alle 6 Stunden `SESSION_TTL`) plus 24",
       "Der vereinfachte Editor bietet zwei Schaltzeiten je Tag („warm ab“, „kühler ab“).",
@@ -156,6 +158,7 @@
       "dauerhaften ±0,5-K-Schritt am laufenden Modus, „Für eine Weile wärmer\" und „Zur",
       "deshalb bleibt die Erkennung je Zone standardmäßig aus, und der Betreiber schaltet sie",
       "echten Fensteröffnen zu unterscheiden. Ein langsames Auskühlen nach Heizende und das Ende",
+      "einem Menschen angesehen (Layout, Lesbarkeit bei vielen Aktoren).",
       "ihren Frostschutzwert, heizt sie jetzt wieder: Heizen gegen ein offenes Fenster ist",
       "klammerte den Ventilschutz-Marker vorher nicht ab, wenn PI eine solche Blockade",
       "könnte, und da die Erkennung selbst das Heizen abschaltet, gäbe es ohnehin keine aktive",
@@ -183,7 +186,11 @@
       "![Betriebsseite im Trockenlauf mit der Schaltfläche „Scharf schalten …“](bilder/anlage-betrieb.png)",
       "![Relaisverschleiß-Seite mit Zeitraumauswahl (7/30/90 Tage) und dem Hinweis, dass in diesem Zeitraum noch keine Schaltaktoren protokolliert wurden](bilder/anlage-relaisverschleiss.png)",
       "**Betrieb** ist der Ort, an dem entschieden wird, ob die Anlage wirklich schaltet. Im",
+      "- **Ventil regelt selbst:** Sollwert und Istwert, bei einem Fensterkontakt zusätzlich der",
+      "- **thermoctl schaltet:** ein Pfeil „Ein/Aus“ von der Zone zum Gerät.",
       "- **„Für eine Weile wärmer\"** setzt eine feste Temperatur bis zu einem selbst gewählten",
+      "Betriebsart des Ventils:",
+      "Boost, Urlaub), in der Mitte die Zone, rechts je Aktor, was thermoctl an ihn schreiben würde — je nach",
       "Kostenmesser und keine Bestätigung einer körperlichen Heizwirkung: Wie warm ein Raum dabei",
       "Notbetrieb für diese Zone **ausschalten**, ein anderes vorhandenes Profil wählen oder",
       "Temperaturmessung, Schaltausgang oder Thermostatventil. Zonen ohne Meldung stehen oben",
@@ -340,9 +347,11 @@
       "- Ein als Aktor zugeordnetes Gerät, das über Tage überhaupt nicht im Protokoll auftaucht,",
       "- Innerhalb des ersten Regelzyklus nach dem Neustart erscheint für jedes als Aktor",
       "1. **Auf `Betrieb`, „Scharf schalten …\"** anklicken, eine Begründung eintragen (Pflicht)",
+      "1. **Selbstregelndes Thermostatventil** (Fähigkeit `thermostat`, Betriebsart",
       "2. **Gewöhnlicher Aktor** über Zigbee2MQTT (Rolle „Aktor\", Fähigkeit `switch`, nicht",
       "4. **Zigbee2MQTT-Thermostatventil ohne Selbstregelung** (Fähigkeit `thermostat`, aber",
       "Auf `Betrieb`, „Zurück in den Trockenlauf\" — derselbe Knopf, mit dem scharf geschaltet",
+      "Betriebsart `controlled` „thermoctl schaltet“ — thermoctls eigene Hysterese entscheidet, nicht das",
       "Die gefährlichere Richtung: Eine Zone, die laut `Betrieb` heizen würde, tut es in",
       "Für jede Zone lohnt der Blick, welche dieser vier Rollen ihr Aktor tatsächlich hat — auf",
       "Geräte laut Schaltprotokoll zuletzt eingeschaltet wurden, und schaltet sie bei Bedarf",
@@ -357,15 +366,13 @@
       "dass die Anlage später erneut scharf geschaltet wird und eine neue Entscheidung sendet.",
       "etwa nachts, wenn „würde heizen: nein\" gelten muss, wenn das nicht der Fall sein soll.",
       "geschaltet — jeder betroffene Zyklus versucht es erneut, ohne den übrigen Betrieb",
+      "melden“): dann geht nur der gemessene Istwert an das Ventil, nie ein Sollwert.",
       "nach dem Scharfschalten, damit er sich öffnet. Richtig ist: erst scharf schalten, dann",
       "nach mehreren Tagen Schattenbetrieb gegen das Altsystem scharf zu schalten. Wer diesen",
       "obwohl seine Zone laut `Betrieb` zwischen Heizen und Nicht-Heizen wechselt.",
       "selbstregelnde Thermostatventile werden jetzt versendet, ebenso Ein/Aus an die übrigen",
       "zeigt „würde heizen: ja\", die Ist-Temperatur der Zone bewegt sich aber nicht in Richtung",
       "zugeordnete Aktor-Gerät einmal unbedingt** — unabhängig davon, ob sich gegenüber vorher",
-      "1. **Selbstregelndes Thermostatventil** (Fähigkeit `thermostat`, Betriebsart",
-      "Betriebsart `controlled` „thermoctl schaltet“ — thermoctls eigene Hysterese entscheidet, nicht das",
-      "melden“): dann geht nur der gemessene Istwert an das Ventil, nie ein Sollwert.",
       "„Ventil regelt selbst“ = `self_regulating`). Es bekommt den aufgelösten Sollwert als"
     ],
     "docs/self-hosting.md": [
@@ -580,6 +587,13 @@
       "actuator",
       "switch",
       "switch"
+    ],
+    "thermoctl/domain/thermostat_mode.py": [
+      "Ventil regelt selbst",
+      "thermoctl entscheidet über die Ein/Aus-Anforderung — mit Hysterese, Mindestschaltdauer und Fensterkontakt — und gibt sie im scharfen Betrieb nach einem Neustart an diesen Aktor aus.",
+      "thermoctl schaltet",
+      "thermoctl schreibt Soll- und, wenn das Gerät es annimmt, Ist-Temperatur; das Ventil regelt damit selbst.",
+      "thermoctl schreibt nur die gemessene Raumtemperatur (Istwert) an das Ventil, nie einen Sollwert und kein Ein/Aus. Zeitplan, Übersteuerung und Boost wirken auf dieses Ventil nicht; der Sollwert bleibt, wie er am Gerät eingestellt ist."
     ],
     "thermoctl/domain/zone_settings.py": [
       "PI-Regelung (Beta) eingeschaltet",
@@ -845,13 +859,6 @@
       "/heating-time",
       "Für diesen Raum sind noch keine zwei Temperaturen hinterlegt -- ohne sie gibt es nichts, wozwischen ein Tag umschalten könnte.",
       "warmth"
-    ],
-    "thermoctl/domain/thermostat_mode.py": [
-      "Ventil regelt selbst",
-      "thermoctl entscheidet über die Ein/Aus-Anforderung — mit Hysterese, Mindestschaltdauer und Fensterkontakt — und gibt sie im scharfen Betrieb nach einem Neustart an diesen Aktor aus.",
-      "thermoctl schaltet",
-      "thermoctl schreibt Soll- und, wenn das Gerät es annimmt, Ist-Temperatur; das Ventil regelt damit selbst.",
-      "thermoctl schreibt nur die gemessene Raumtemperatur (Istwert) an das Ventil, nie einen Sollwert und kein Ein/Aus. Zeitplan, Übersteuerung und Boost wirken auf dieses Ventil nicht; der Sollwert bleibt, wie er am Gerät eingestellt ist."
     ]
   }
 }

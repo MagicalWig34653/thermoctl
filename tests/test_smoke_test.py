@@ -31,6 +31,8 @@ PROTECTED_PAGES = [
     "/devices",
     "/zones",
     "/zones/history",
+    "/zones/data-flow",
+    "/zones/{zone_id}/data-flow",
     "/modes",
     "/modes/new",
     "/audit",

@@ -3169,3 +3169,8 @@ body {
     .tc-history-tile:not(.tc-history-expanded) .tc-history-solar-label,
     .tc-history-tile:not(.tc-history-expanded) .tc-history-unknown-label { font-size: 11px; }
 }
+
+/* Datenfluss: das gezeichnete Diagramm scrollt bei Bedarf seitlich, die Seite nicht. */
+.tc-flow-canvas { overflow-x: auto; }
+.tc-flow-canvas svg { max-width: none; height: auto; }
+.tc-flow-source { white-space: pre-wrap; overflow-wrap: anywhere; font-size: .8rem; }

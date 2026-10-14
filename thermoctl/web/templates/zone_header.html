@@ -18,6 +18,7 @@ dasselbe. Der Kopf macht daraus einen Ort.
             ("/zones/" ~ zone.id ~ "/setpoints", "Sollwerte"),
             ("/zones/" ~ zone.id ~ "/devices", "Geräte"),
             ("/zones/" ~ zone.id ~ "/parameters", "Regelparameter"),
+            ("/zones/" ~ zone.id ~ "/data-flow", "Datenfluss"),
             ("/zones/" ~ zone.id, "Zonendaten"),
         ] %}
         <a class="btn btn-sm {{ 'btn-primary' if here == label else 'btn-outline-secondary' }}"
