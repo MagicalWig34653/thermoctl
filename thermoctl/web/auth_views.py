@@ -1,7 +1,6 @@
 import asyncio
 import secrets
 from typing import Annotated
-from urllib.parse import urlsplit
 
 from anyio import to_thread
 from fastapi import APIRouter, Depends, Form, Request, Response, status
@@ -25,7 +24,7 @@ from thermoctl.db.base import utcnow
 from thermoctl.db.models.identity import User
 from thermoctl.setup import setup_needed
 from thermoctl.web import templates
-from thermoctl.web.urls import cookie_path, prefixed
+from thermoctl.web.urls import cookie_path, prefixed, safe_return_to
 
 # `include_in_schema=False`: the OpenAPI description is the contract of the REST
 # interface. These routes deliver HTML for humans, and in the interface under
@@ -68,16 +67,6 @@ async def sleep(seconds: float) -> None:
     await asyncio.sleep(seconds)  # pragma: no cover - every test replaces this line
 
 
-def _consent_return(value: str | None) -> str | None:
-    """Nur die eigene Zustimmungsseite darf nach der Anmeldung Ziel sein."""
-    if value is None:
-        return None
-    parts = urlsplit(value)
-    if parts.scheme or parts.netloc or parts.fragment or parts.path != "/oauth/consent":
-        return None
-    return value
-
-
 @router.get("/login")
 async def login_form(
     request: Request, session: Annotated[Session, Depends(get_session)]
@@ -93,7 +82,7 @@ async def login_form(
         "login.html",
         {
             "passkeys_available": get_settings().passkeys_available(),
-            "return_to": _consent_return(request.query_params.get("return_to")),
+            "return_to": safe_return_to(request.query_params.get("return_to")),
         },
     )
 
@@ -147,7 +136,7 @@ async def login(
             {
                 "errors": _ERROR_MESSAGE,
                 "passkeys_available": settings.passkeys_available(),
-                "return_to": _consent_return(return_to),
+                "return_to": safe_return_to(return_to),
             },
             status_code=status.HTTP_401_UNAUTHORIZED,
         )
@@ -169,7 +158,7 @@ async def login(
     )
 
     response = RedirectResponse(
-        prefixed(request, _consent_return(return_to) or "/"),
+        prefixed(request, safe_return_to(return_to) or "/"),
         status_code=status.HTTP_303_SEE_OTHER,
     )
     response.set_cookie(

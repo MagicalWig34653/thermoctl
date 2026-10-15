@@ -1,6 +1,6 @@
 # Stand
 
-Letzte Aktualisierung: 2026-10-14.
+Letzte Aktualisierung: 2026-10-15.
 
 ## Offene Entscheidungen (Projektinhaber)
 
@@ -10,6 +10,21 @@ Letzte Aktualisierung: 2026-10-14.
   (per Test abgesichert, `tests/test_landingpage.py`). Wird eines gewünscht: `impressum.html` und ein
   Fußlink im Generator (`tools/landingpage_erzeugen.py`) ergänzen, `site/` neu erzeugen.
 - Das Paket `ghcr.io/magicalwig34653/thermoctl` ist öffentlich (Projektinhaber, 2026-10-10).
+
+## Login-Weiterleitung (Branch `feature/login-weiterleitung`, nicht gemergt)
+
+- Geschützte Seiten ohne Sitzung antworten für **Browser** (`Accept: text/html`) mit 303 auf
+  `/login?return_to=<Seite>` statt `401 {"detail": ...}`; nach der Anmeldung (Formular und Passkey) geht es dorthin
+  zurück. `NotLoggedIn` (Unterklasse von `HTTPException`, `auth/dependencies.py`) und sein Handler in `app.py`.
+- Unverändert 401: Anfragen ohne `text/html`, `/api/` und `/mcp`. htmx bekommt 401 mit `HX-Redirect`; Rücksprung
+  ist die Seite aus `HX-Current-URL` (bei `hx-boost` die angefragte Seite). Nicht-GET-Anfragen führen ohne
+  Rücksprung zum Login.
+- Ziel prüft `safe_return_to` (`web/urls.py`) an beiden Stellen (Weiterleitung und Login): nur eigener Pfad mit
+  einem Schrägstrich, kein Host, kein `//`, kein Rückwärtsstrich, keine Steuerzeichen, kein Fragment, kein `..`,
+  höchstens 2048 Zeichen; nie `/login`, `/logout`, `/setup`, `/api/`, `/mcp`, `/static/`. Ersetzt `_consent_return`
+  (die Zustimmungsseite bleibt als Ziel möglich).
+- Geprüft: `tests/test_login_weiterleitung.py`; volle Suite SQLite 6536 Tests, 0 Fehler, 7 übersprungen.
+  **Nicht ausprobiert:** echter Browser, Ingress-Betrieb, MariaDB.
 
 ## 0.16.0 (2026-10-14) -- vorbereitet, noch nicht freigegeben
 

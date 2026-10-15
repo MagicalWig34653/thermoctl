@@ -22,6 +22,8 @@ attribute to the same prefix (`base_url`, further below, covers a third: telling
 browser's own JavaScript where the prefix is).
 """
 
+from urllib.parse import urlsplit
+
 from fastapi import Request
 
 
@@ -62,3 +64,32 @@ def cookie_path(request: Request) -> str:
     cookies for it.
     """
     return request.scope.get("root_path", "") or "/"
+
+
+# Paths that are never a sensible place to return to after logging in: the login
+# itself (a loop), leaving, first-time setup, and everything that is not a page.
+_NO_RETURN_PREFIXES = ("/login", "/logout", "/setup", "/api/", "/mcp", "/static/", "/oauth/token")
+_MAX_RETURN_LENGTH = 2048
+
+
+def safe_return_to(value: str | None) -> str | None:
+    """`value` if it is an application-internal path to return to after logging in.
+
+    The target arrives from the outside (query string, form field) and ends up in a
+    `Location` header, so it is an open-redirect candidate: only a single-slash,
+    un-prefixed path with an optional query passes. No scheme, no host, no `//`, no
+    backslash (some browsers read `/\\host` as `//host`), no control characters, no
+    fragment. The prefix of the deployment is added by the caller, never taken from
+    here.
+    """
+    if value is None or not value.startswith("/") or len(value) > _MAX_RETURN_LENGTH:
+        return None
+    if value.startswith("//") or "\\" in value or any(ord(c) < 32 or ord(c) == 127 for c in value):
+        return None
+    parts = urlsplit(value)
+    if parts.scheme or parts.netloc or parts.fragment or ".." in parts.path.split("/"):
+        return None
+    path = parts.path
+    if any(path == p.rstrip("/") or path.startswith(p) for p in _NO_RETURN_PREFIXES):
+        return None
+    return value
