@@ -8,6 +8,14 @@ Wert oder Befehl an). Die Karte kennt zwei Arten von Knoten:
   Eingänge: was es annimmt (Schaltbefehle, Thermostat-Sollwert, beschreibbare Eigenschaften).
 * **Zone** -- Eingänge: Messquelle (Temperatur) und Fensterkontakt; Ausgang: der Heizbefehl.
 
+Die **Betriebsart** eines Thermostatventils (`domain/thermostat_mode.py`) hat in der Karte kein
+eigenes Feld, sie **folgt aus den Linien** zwischen Zone und Ventil. Die Zone hat dafür drei
+Ausgänge: „Heizbefehl" (Ein/Aus, `controlled`), „Sollwert" und „Raumtemperatur" (der Messwert der
+Messquelle, als Istwert ans Ventil geschrieben). Welche Linien eine Betriebsart hat, sagen
+`switches`, `writes_setpoint` und `writes_actual` -- dieselben Fragen, die die Regelkette stellt
+(`domain/self_regulating.py::valve_commands`, `services/publishing.py`) und die Datenfluss-Seite
+(`domain/data_flow.py`); die Karte formuliert sie nicht neu (`lines_for_mode`, `mode_for_lines`).
+
 Daraus folgt die Richtung der gespeicherten Zuordnungen: Messwerte laufen **Gerät → Zone**
 (Messquelle, Fensterkontakt), der Heizbefehl läuft **Zone → Gerät** (Aktor). Ein Schaltaktor ist
 darum nie eine Quelle, die man auf eine Zonenstelle „Aktor" zieht -- die Zone speist ihn.
@@ -44,6 +52,15 @@ from thermoctl.domain.device_assignment import (
     REQUIRED_CAPABILITY,
     TEMPERATURE_SOURCE,
     actuator_elsewhere_notice,
+)
+from thermoctl.domain.self_regulating import SETPOINT_PROPERTY, temperature_property_name
+from thermoctl.domain.thermostat_mode import (
+    MODE_LABELS,
+    MODES,
+    switches,
+    writes_actual,
+    writes_anything,
+    writes_setpoint,
 )
 
 Direction = Literal["out", "in"]
@@ -97,10 +114,70 @@ _IN_PHRASE = {
     "command": "Schaltbefehle",
 }
 
-SLOT_ORDER = ("temperature_source", "window_contact", "actuator")
-# Der Aktor-Slot ist der einzige Zonen-Ausgang: Die Zone befiehlt dem Gerät.
-OUTPUT_SLOTS = frozenset({"actuator"})
-SLOT_KIND = {"temperature_source": "temperature", "window_contact": "contact", "actuator": "command"}
+# Die drei Zonen-Ausgänge zum Thermostatventil: Heizbefehl (Ein/Aus), Sollwert, Raumtemperatur.
+# Alle drei gehören zur Rolle `actuator`; welche Linien ein Ventil hat, bestimmt seine Betriebsart.
+VALVE_SLOTS = ("actuator", "setpoint", "room_temperature")
+SLOT_ORDER = ("temperature_source", "window_contact", *VALVE_SLOTS)
+# Zonen-Ausgänge: Die Zone befiehlt dem Gerät beziehungsweise schreibt ihm Werte.
+OUTPUT_SLOTS = frozenset(VALVE_SLOTS)
+SLOT_KIND = {
+    "temperature_source": "temperature",
+    "window_contact": "contact",
+    "actuator": "command",
+    "setpoint": "temperature",
+    "room_temperature": "temperature",
+}
+SLOT_LABEL = {"actuator": "Heizbefehl", "setpoint": "Sollwert", "room_temperature": "Raumtemperatur"}
+# Welcher Geräte-Eingang (`Port.valve_channel`) zu welchem Zonen-Ausgang gehört.
+CHANNEL_BY_SLOT = {"setpoint": "setpoint", "room_temperature": "actual"}
+SLOT_TOOLTIP = {
+    "setpoint": "Ausgang: der Sollwert der Zone (Zeitplan, Übersteuerung, Boost, Frostschutz), wird als Sollwert ans Ventil geschrieben.",
+    "room_temperature": "Messwert der Messquelle dieser Zone, wird als Istwert ans Ventil geschrieben.",
+}
+NO_SOURCE_REASON = "Diese Zone hat keine Messquelle -- ohne Messwert gibt es keine Raumtemperatur, die ans Ventil geschrieben werden könnte. Verbinden Sie zuerst eine Messquelle."
+VIA_ZONE_REASON = "Diesen Eingang beschreibt thermoctl über die Zone: Verbinden Sie den Sensor mit der Messquelle der Zone und danach den Zonen-Ausgang 'Raumtemperatur' mit diesem Eingang."
+
+
+def role_for_slot(slot: str) -> str:
+    """Die Geräterolle hinter einer Zonenstelle (die drei Ventil-Ausgänge sind alle `actuator`)."""
+    return "actuator" if slot in VALVE_SLOTS else slot
+
+
+def lines_for_mode(mode: str, *, has_setpoint_port: bool = True, has_actual_port: bool = True) -> frozenset[str]:
+    """Welche Linien eine Betriebsart zwischen Zone und Ventil hat -- nach denselben Fragen wie die Regelkette.
+
+    `switches` -> Heizbefehl, `writes_setpoint` -> Sollwert, `writes_actual` -> Raumtemperatur.
+    Eine Linie gibt es nur, wenn das Gerät den Eingang hat, den die Regelkette beschreibt; ohne ihn
+    schreibt `valve_commands` nichts, und die Karte zeichnet nichts. Das gilt auch für den Istwert:
+    Eine Betriebsart mit Sollwert schreibt an einem Gerät ohne Sollwert-Eingang gar nichts
+    (`writes_anything`).
+    """
+    if not writes_anything(mode, has_setpoint_property=has_setpoint_port):
+        return frozenset()
+    lines: set[str] = set()
+    if switches(mode):
+        lines.add("actuator")
+    if writes_setpoint(mode) and has_setpoint_port:
+        lines.add("setpoint")
+    if writes_actual(mode) and has_actual_port:
+        lines.add("room_temperature")
+    return frozenset(lines)
+
+
+def mode_for_lines(lines: frozenset[str] | set[str], *, has_actual_port: bool) -> str | None:
+    """Die Betriebsart, die genau diese Linien hat -- oder `None`, wenn keine Betriebsart sie trägt.
+
+    Die Umkehrung von `lines_for_mode`. Ein Sollwert ohne Raumtemperatur ist nur dort eine
+    Betriebsart, wo das Gerät keinen Istwert-Eingang hat; sonst schreibt die Regelkette den Istwert
+    mit, und die Linie wäre unvollständig dargestellt.
+    """
+    wanted = frozenset(lines)
+    if not wanted:
+        return None
+    for mode in MODES:
+        if lines_for_mode(mode, has_actual_port=has_actual_port) == wanted:
+            return mode
+    return None
 # Nur die Messquelle *einer Zone* nimmt genau eine Verbindung an (`Zone.temperature_source_device_id`
 # ist eine Spalte). Das Gerät dagegen darf Messquelle beliebig vieler Zonen sein (offener Grundriss),
 # ein Kontakt Fensterkontakt beliebig vieler Zonen; mehrere Fensterkontakte und mehrere Aktoren
@@ -137,6 +214,12 @@ class Port:
     single: bool = False
     blocked_reason: str | None = None
     editable: bool = False
+    # Nur Geräte-Eingänge, die thermoctl über die Zone beschreibt (Eigenschaften eines
+    # Thermostatventils): `setpoint` (Sollwert) oder `actual` (Istwert, Raumtemperatur).
+    valve_channel: str | None = None
+    # Nur beim Sollwert-Eingang: das Ventil hat auch einen Istwert-Eingang, die Regelkette schreibt
+    # den Istwert dann immer mit -- ein Sollwert ohne Raumtemperatur gibt es dort nicht.
+    requires_actual: bool = False
     # Nur Geräte-Eingänge mit Schalt-/Thermostat-Fähigkeit: die Zonen, in denen das Gerät schon
     # Aktor ist, als (Zonen-Kennung, Satzteil für die Begründung) -- unabhängig davon, welche Zonen
     # der Betrachter sehen darf (eine nicht sichtbare Zone heißt „einer anderen Zone").
@@ -165,6 +248,8 @@ class Connection:
     zone_id: int
     slot: str
     editable: bool
+    # Läuft von der Zone zum Gerät (Heizbefehl, Sollwert, Raumtemperatur) statt vom Gerät zur Zone.
+    from_zone: bool = False
 
 
 @dataclass(frozen=True)
@@ -238,9 +323,20 @@ def can_connect(a: Port, b: Port, existing: Sequence[Connection] = ()) -> Verdic
             f"'{device_port.label}' passt nicht zu '{zone_port.label}' -- gebraucht wird "
             f"{zone_port.accepts_text}.",
         )
-    if inp.blocked_reason is not None:
+    valve_channel = CHANNEL_BY_SLOT.get(zone_port.slot or "") if zone_port.node_kind == "zone" else None
+    if valve_channel is not None and device_port.valve_channel != valve_channel:
+        return Verdict(
+            False,
+            f"'{device_port.label}' ist kein Eingang für '{zone_port.label}': thermoctl beschreibt "
+            f"am Thermostatventil nur die Eigenschaft, die an seiner Karte als "
+            f"{zone_port.label}-Eingang erscheint.",
+        )
+    # Die Zone beschreibt ihren Ventil-Eingang selbst; jede andere Quelle trifft die Sperre.
+    if inp.blocked_reason is not None and valve_channel is None:
         return Verdict(False, inp.blocked_reason)
     if zone_port.node_kind == "zone":
+        if zone_port.blocked_reason is not None:
+            return Verdict(False, zone_port.blocked_reason)
         same = [c for c in existing if c.zone_port_id == zone_port.id]
         if any(c.device_id == device_port.device_id for c in same):
             return Verdict(False, f"'{device_port.node_name}' ist mit '{zone_port.label}' der Zone '{zone_port.node_name}' bereits verbunden.")
@@ -250,7 +346,42 @@ def can_connect(a: Port, b: Port, existing: Sequence[Connection] = ()) -> Verdic
                 f"'{zone_port.label}' der Zone '{zone_port.node_name}' nimmt nur eine Verbindung an und "
                 f"ist schon mit '{same[0].device_name}' verbunden. Lösen Sie diese zuerst.",
             )
-        if zone_port.slot == "actuator":
+        if zone_port.slot in VALVE_SLOTS:
+            lines = {
+                c.slot
+                for c in existing
+                if c.zone_id == zone_port.zone_id and c.device_id == device_port.device_id and c.slot in VALVE_SLOTS
+            }
+            has_actual = device_port.requires_actual or zone_port.slot == "room_temperature"
+            if mode_for_lines(lines | {zone_port.slot}, has_actual_port=has_actual) is None:
+                name = f"'{device_port.node_name}'"
+                if any(
+                    c.slot == "actuator"
+                    and c.zone_id == zone_port.zone_id
+                    and c.device_id == device_port.device_id
+                    and (c.out_port_id is None or c.in_port_id is None)
+                    for c in existing
+                ):
+                    # Altbestand: zugeordnet, aber für diese Betriebsart zeichnet die Karte keine Linie.
+                    return Verdict(
+                        False,
+                        f"{name} ist der Zone '{zone_port.node_name}' mit einer Betriebsart "
+                        f"zugeordnet, für die diese Karte keine Linie zeichnet. Lösen Sie die "
+                        f"Zuordnung zuerst in der Tabelle 'Verbindungen'.",
+                    )
+                if not lines:
+                    return Verdict(
+                        False,
+                        f"{name} bekommt den Sollwert nur zusammen mit der Raumtemperatur: thermoctl "
+                        f"schreibt beides. Verbinden Sie zuerst '{SLOT_LABEL['room_temperature']}'.",
+                    )
+                have = " und ".join(f"'{SLOT_LABEL[x]}'" for x in VALVE_SLOTS if x in lines)
+                return Verdict(
+                    False,
+                    f"{name} ist in Zone '{zone_port.node_name}' schon mit {have} verbunden. "
+                    f"'Heizbefehl' (thermoctl entscheidet Ein/Aus) schließt 'Sollwert' und "
+                    f"'Raumtemperatur' (das Ventil regelt selbst) aus. Lösen Sie die vorhandene Linie zuerst.",
+                )
             elsewhere = [label for zone_id, label in device_port.actuator_zones if zone_id != zone_port.zone_id]
             if elsewhere:
                 return Verdict(False, actuator_elsewhere_notice(device_port.node_name, elsewhere))
@@ -301,14 +432,30 @@ def build_mapping_map(session: Session, zones: list[Zone], editable_zone_ids: se
         codes_by_device[device_id].append(code)
 
     # Beschreibbare Eigenschaften mit bekannter Einheit: weitere Eingänge des Geräts.
-    properties: dict[int, list[DeviceProperty]] = defaultdict(list)
+    # Dazu bei einem Thermostatventil die Eigenschaften, in die die Regelkette Sollwert und Istwert
+    # schreibt (`SETPOINT_PROPERTY`, `temperature_property_name`) -- unabhängig von der Einheit.
+    writable: dict[int, list[DeviceProperty]] = defaultdict(list)
     for prop in session.scalars(
         select(DeviceProperty)
         .where(DeviceProperty.is_writable.is_(True))
         .order_by(DeviceProperty.device_id, DeviceProperty.name)
     ):
-        if KIND_BY_UNIT.get(prop.unit or ""):
-            properties[prop.device_id].append(prop)
+        writable[prop.device_id].append(prop)
+    valve_properties: dict[int, dict[str, str]] = {}
+    properties: dict[int, list[DeviceProperty]] = defaultdict(list)
+    for device_id, props in writable.items():
+        names = [p.name for p in props]
+        channels: dict[str, str] = {}
+        if "thermostat" in codes_by_device.get(device_id, ()):
+            if SETPOINT_PROPERTY in names:
+                channels[SETPOINT_PROPERTY] = "setpoint"
+            actual_name = temperature_property_name(names)
+            if actual_name is not None:
+                channels[actual_name] = "actual"
+        valve_properties[device_id] = channels
+        for prop in props:
+            if prop.name in channels or KIND_BY_UNIT.get(prop.unit or ""):
+                properties[device_id].append(prop)
     blocked_by_device = {
         device.id: (
             None
@@ -359,8 +506,19 @@ def build_mapping_map(session: Session, zones: list[Zone], editable_zone_ids: se
                     actuator_zones=tuple(actuator_zones.get(device.id, ())) if code in actuator_codes else (),
                 )
             )
+        channels = valve_properties.get(device.id, {})
         for prop in properties.get(device.id, []):
-            kind = KIND_BY_UNIT[prop.unit or ""]
+            channel = channels.get(prop.name)
+            kind = "temperature" if channel is not None else KIND_BY_UNIT[prop.unit or ""]
+            blocked = blocked_by_device.get(device.id)
+            tooltip = _tooltip("in", kind, prop.name)
+            if channel is not None:
+                tooltip = (
+                    f"Eingang: {'Sollwert' if channel == 'setpoint' else 'Istwert (Raumtemperatur)'} "
+                    "des Ventils. thermoctl beschreibt ihn über die Zone."
+                )
+                if blocked is not None:
+                    blocked = VIA_ZONE_REASON
             ports.append(
                 Port(
                     id=property_port_id(device.id, prop.name),
@@ -370,12 +528,15 @@ def build_mapping_map(session: Session, zones: list[Zone], editable_zone_ids: se
                     direction="in",
                     kind=kind,
                     label=prop.name,
-                    tooltip=_tooltip("in", kind, prop.name),
+                    tooltip=tooltip,
                     capability=None,
                     device_id=device.id,
                     property_name=prop.name,
                     single=True,
-                    blocked_reason=blocked_by_device.get(device.id),
+                    blocked_reason=blocked,
+                    valve_channel=channel,
+                    requires_actual=channel == "setpoint" and "actual" in channels.values(),
+                    actuator_zones=tuple(actuator_zones.get(device.id, ())) if channel is not None else (),
                 )
             )
         # Eingänge links zuerst, dann Ausgänge; innerhalb stabil nach Beschriftung.
@@ -386,12 +547,11 @@ def build_mapping_map(session: Session, zones: list[Zone], editable_zone_ids: se
     for zone in zones:
         zone_ports: list[Port] = []
         for slot in SLOT_ORDER:
-            required = REQUIRED_CAPABILITY.get(slot)
-            if required is None:  # pragma: no cover - SLOT_ORDER und Tabelle gehören zusammen
-                continue
-            codes, _defect = required
+            # Sollwert und Raumtemperatur haben keine Fähigkeitsvorgabe: Ihr Ziel ist eine bestimmte
+            # Eigenschaft des Ventils (`CHANNEL_BY_SLOT`), keine Fähigkeit.
+            codes = REQUIRED_CAPABILITY[slot][0] if slot in REQUIRED_CAPABILITY else frozenset()
             direction = "out" if slot in OUTPUT_SLOTS else "in"
-            label = "Heizbefehl" if slot == "actuator" else slot_labels.get(slot, slot)
+            label = SLOT_LABEL.get(slot) or slot_labels.get(slot, slot)
             kind = SLOT_KIND[slot]
             zone_ports.append(
                 Port(
@@ -402,13 +562,18 @@ def build_mapping_map(session: Session, zones: list[Zone], editable_zone_ids: se
                     direction=direction,
                     kind=kind,
                     label=label,
-                    tooltip=_tooltip(direction, kind, label),
+                    tooltip=SLOT_TOOLTIP.get(slot) or _tooltip(direction, kind, label),
                     accepts=codes,
                     accepts_text=" oder ".join(sorted(capability_labels.get(c, c) for c in codes)),
                     zone_id=zone.id,
                     slot=slot,
                     single=slot in SINGLE_SLOTS,
                     editable=zone.id in editable_zone_ids,
+                    blocked_reason=(
+                        NO_SOURCE_REASON
+                        if slot == "room_temperature" and zone.temperature_source_device_id is None
+                        else None
+                    ),
                 )
             )
         nodes.append(Node(id=f"zone-{zone.id}", kind="zone", name=zone.display_name, ports=tuple(zone_ports)))
@@ -449,19 +614,18 @@ def _connections(
     names = {i: n for i, n in session.execute(select(Device.id, Device.display_name))}
 
     def device_port(device_id: int, slot: str) -> Port | None:
-        required = REQUIRED_CAPABILITY.get(slot)
-        if required is None:  # pragma: no cover - nur bekannte Stellen kommen hier an
-            return None
-        return next(
-            (p for p in by_device.get(device_id, []) if p.capability in required[0] and not p.technical),
-            None,
-        )
+        """Der Geräte-Anschluss, an dem die Linie dieser Zonenstelle endet (oder `None`)."""
+        ports = [p for p in by_device.get(device_id, []) if not p.technical]
+        if slot in CHANNEL_BY_SLOT:
+            return next((p for p in ports if p.valve_channel == CHANNEL_BY_SLOT[slot]), None)
+        required = REQUIRED_CAPABILITY[slot][0]
+        return next((p for p in ports if p.capability in required), None)
 
-    def make(zone: Zone, slot: str, device_id: int) -> Connection:
-        found = device_port(device_id, slot)
+    def make(zone: Zone, slot: str, device_id: int, *, text: str | None = None, drawn: bool = True) -> Connection:
+        found = device_port(device_id, slot) if drawn else None
         zone_port = zone_port_id(zone.id, slot)
         out_id, in_id = (zone_port, found.id if found else None) if slot in OUTPUT_SLOTS else (found.id if found else None, zone_port)
-        label = "Heizbefehl" if slot == "actuator" else slot_labels.get(slot, slot)
+        label = SLOT_LABEL.get(slot) or slot_labels.get(slot, slot)
         return Connection(
             id=f"conn-{zone.id}-{slot}-{device_id}",
             out_port_id=out_id,
@@ -469,23 +633,65 @@ def _connections(
             zone_port_id=zone_port,
             device_id=device_id,
             device_name=names.get(device_id, str(device_id)),
-            text=f"{zone.display_name}: {label}",
+            text=text or f"{zone.display_name}: {label}",
             zone_id=zone.id,
             slot=slot,
             editable=zone.id in editable_zone_ids,
+            from_zone=slot in OUTPUT_SLOTS,
         )
 
     result: list[Connection] = []
     for zone in zones:
         if zone.temperature_source_device_id is not None:
             result.append(make(zone, TEMPERATURE_SOURCE, zone.temperature_source_device_id))
-    for assignment, role_code in session.execute(
-        select(ZoneDevice, DeviceRole.code)
+    for assignment, role_code, mode in session.execute(
+        select(ZoneDevice, DeviceRole.code, ZoneDevice.thermostat_mode)
         .join(DeviceRole, DeviceRole.id == ZoneDevice.device_role_id)
         .where(ZoneDevice.zone_id.in_([zone.id for zone in zones]))
         .order_by(ZoneDevice.zone_id, ZoneDevice.id)
     ):
         if role_code not in SLOT_ORDER:
             continue  # zum Beispiel `controller`: ohne Fähigkeitsvorgabe, hier nicht dargestellt
-        result.append(make(zone_by_id[assignment.zone_id], role_code, assignment.device_id))
+        zone = zone_by_id[assignment.zone_id]
+        if role_code != "actuator":
+            result.append(make(zone, role_code, assignment.device_id))
+            continue
+        # Die Linien eines Aktors folgen aus seiner Betriebsart (`lines_for_mode`), nicht aus einer
+        # eigenen Tabelle: Gezeichnet wird, was die Regelkette ausführt -- und nur dort, wo es den
+        # Eingang am Gerät gibt und (beim Istwert) die Zone etwas zu schreiben hat.
+        ports = by_device.get(assignment.device_id, [])
+        lines = lines_for_mode(
+            mode,
+            has_setpoint_port=any(p.valve_channel == "setpoint" for p in ports),
+            has_actual_port=any(p.valve_channel == "actual" for p in ports),
+        )
+        if not lines:
+            # Keine Linie, die die Regelkette ausführen würde (zum Beispiel „nur Raumtemperatur" an
+            # einem Gerät ohne Istwert-Eingang): ungezeichnet, aber gelistet, damit sie lösbar bleibt.
+            label = MODE_LABELS.get(mode, mode)
+            result.append(
+                make(
+                    zone,
+                    "actuator",
+                    assignment.device_id,
+                    text=f"{zone.display_name}: Betriebsart '{label}' (ohne Linie, das Gerät hat keinen passenden Eingang)",
+                    drawn=False,
+                )
+            )
+            continue
+        for slot in VALVE_SLOTS:
+            if slot not in lines:
+                continue
+            if slot == "room_temperature" and zone.temperature_source_device_id is None:
+                result.append(
+                    make(
+                        zone,
+                        slot,
+                        assignment.device_id,
+                        text=f"{zone.display_name}: Raumtemperatur (ohne Messquelle wird nichts geschrieben)",
+                        drawn=False,
+                    )
+                )
+            else:
+                result.append(make(zone, slot, assignment.device_id))
     return result

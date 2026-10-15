@@ -295,12 +295,12 @@ def test_g_humidity_presence_and_unknown_values_have_no_zone_target(session: Ses
     graph = _graph(session, zone)
     ports = _ports(graph)
     zone_ports = [p for p in ports.values() if p.node_kind == "zone"]
-    assert {p.slot for p in zone_ports} == {"temperature_source", "window_contact", "actuator"}
+    assert {p.slot for p in zone_ports} == {"temperature_source", "window_contact", "actuator", "setpoint", "room_temperature"}
     for code in ("humidity", "occupancy", "illuminance"):
         port = ports[f"dev-{sensor.id}-{code}"]
         for target in zone_ports:
             assert not can_connect(port, target, []).ok, (code, target.slot)
-    # Keine Zonenstelle nimmt Luftfeuchte oder Anwesenheit an: Nur Temperatur, Kontakt, Heizbefehl.
+    # Keine Zonenstelle nimmt Luftfeuchte oder Anwesenheit an: Nur Temperatur, Kontakt, Heizbefehl (Sollwert und Raumtemperatur sind Ausgänge).
     assert {p.kind for p in zone_ports} == {"temperature", "contact", "command"}
 
 

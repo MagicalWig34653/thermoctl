@@ -69,3 +69,16 @@ def writes_actual(mode: str) -> bool:
 def switches(mode: str) -> bool:
     """Ob thermoctl dieses Ventil ein- und ausschaltet (Hysterese, Mindestschaltdauer)."""
     return mode == MODE_CONTROLLED
+
+
+def writes_anything(mode: str, *, has_setpoint_property: bool) -> bool:
+    """Ob thermoctl diesem Ventil überhaupt etwas schreibt, gegeben, ob es einen Sollwert annimmt.
+
+    Eine Betriebsart, die einen Sollwert schreiben soll, schreibt an einem Gerät ohne
+    beschreibbaren Sollwert-Eingang **gar nichts** -- auch keinen Istwert: `valve_commands`
+    überspringt es. Karte, Datenfluss und Regelkette fragen hier (Grundsatz 6), damit keine
+    Darstellung eine Linie zeigt, die nie ausgeführt wird.
+    """
+    if writes_setpoint(mode) and not has_setpoint_property:
+        return False
+    return switches(mode) or writes_setpoint(mode) or writes_actual(mode)

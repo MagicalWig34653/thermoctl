@@ -6,6 +6,7 @@ from typing import Any
 
 import pytest
 from playwright.sync_api import Page, expect
+from sqlalchemy import select
 
 from browser_tests import seed
 from browser_tests.live_server import LiveServer
@@ -406,3 +407,73 @@ def test_a_valve_cannot_be_the_actuator_of_a_second_zone(admin_page: Page, live_
     admin_page.reload()
     admin_page.locator("[data-map][data-ready]").wait_for()
     expect(rows).to_have_count(1)
+
+
+# ---- Betriebsart eines Thermostatventils folgt aus den Linien ---------------------------------
+
+
+def _seed_valve_properties(live_server: LiveServer, valve: int) -> None:
+    with live_server.session() as session:
+        for name in ("occupied_heating_setpoint", "remote_temperature"):
+            session.add(
+                DeviceProperty(
+                    device_id=valve, name=name, value_type="numeric", unit="°C",
+                    is_readable=True, is_writable=True,
+                )
+            )
+        session.commit()
+
+
+def _mode_of(live_server: LiveServer, zone: int, valve: int) -> str | None:
+    with live_server.session() as session:
+        return session.scalar(
+            select(ZoneDevice.thermostat_mode).where(
+                ZoneDevice.zone_id == zone, ZoneDevice.device_id == valve
+            )
+        )
+
+
+def test_the_mode_of_a_valve_follows_the_lines_drawn_and_removed(admin_page: Page, live_server: LiveServer) -> None:
+    zone, _, valve = _seed(live_server, "karte-betriebsart", connected=True)
+    _seed_valve_properties(live_server, valve)
+    with live_server.session() as session:
+        role(session, "actuator")
+        session.commit()
+    _open(admin_page)
+    room = f'[data-port="zone-{zone}-room_temperature"]'
+    expect(admin_page.locator(room)).to_have_attribute(
+        "title", "Messwert der Messquelle dieser Zone, wird als Istwert ans Ventil geschrieben."
+    )
+    _drag(admin_page, room, f'[data-port="dev-{valve}-prop-remote_temperature"]')
+    expect(admin_page.locator(f'[data-connection-row="conn-{zone}-room_temperature-{valve}"]')).to_have_count(1, timeout=10000)
+    admin_page.locator("[data-map][data-ready]").wait_for()
+    assert _mode_of(live_server, zone, valve) == "reading_only"
+    # Nur Raumtemperatur: keine Heizbefehl-Linie.
+    expect(admin_page.locator(f'path[data-out="zone-{zone}-actuator"]')).to_have_count(0)
+    expect(admin_page.locator(f'path[data-out="zone-{zone}-room_temperature"]')).to_have_count(1)
+
+    _drag(admin_page, f'[data-port="zone-{zone}-setpoint"]', f'[data-port="dev-{valve}-prop-occupied_heating_setpoint"]')
+    expect(admin_page.locator(f'[data-connection-row="conn-{zone}-setpoint-{valve}"]')).to_have_count(1, timeout=10000)
+    admin_page.locator("[data-map][data-ready]").wait_for()
+    assert _mode_of(live_server, zone, valve) == "self_regulating"
+    expect(admin_page.locator(f'path[data-out="zone-{zone}-actuator"]')).to_have_count(0)
+
+    # Linie Sollwert entfernen: zurück auf "nur Raumtemperatur".
+    admin_page.locator(f'path[data-hit="conn-{zone}-setpoint-{valve}"]').focus()
+    admin_page.keyboard.press("Delete")
+    expect(admin_page.locator("[data-map-notice]")).to_contain_text("Nur Raumtemperatur melden", timeout=10000)
+    admin_page.locator("[data-map][data-ready]").wait_for()
+    assert _mode_of(live_server, zone, valve) == "reading_only"
+    expect(admin_page.locator(f'[data-connection-row="conn-{zone}-setpoint-{valve}"]')).to_have_count(0)
+
+
+def test_a_sensor_on_the_valve_input_is_explained_not_just_refused(admin_page: Page, live_server: LiveServer) -> None:
+    zone, sensor, valve = _seed(live_server, "karte-sensor-direkt", connected=True)
+    _seed_valve_properties(live_server, valve)
+    _open(admin_page)
+    _drag(admin_page, f'[data-port="dev-{sensor}-temperature"]', f'[data-port="dev-{valve}-prop-remote_temperature"]')
+    error = admin_page.locator("[data-map-error]")
+    expect(error).to_be_visible()
+    expect(error).to_contain_text("Messquelle der Zone")
+    expect(error).to_contain_text("Raumtemperatur")
+    assert _mode_of(live_server, zone, valve) is None

@@ -203,7 +203,8 @@ def test_graph_gives_every_node_its_outputs_and_inputs(session: Session) -> None
     graph = build_mapping_map(session, [zone], {zone.id})
     ports = _ports(graph)
     assert {(p.label, p.direction) for p in graph.nodes[-1].ports} == {
-        ("Messquelle", "in"), ("Fensterkontakt", "in"), ("Heizbefehl", "out")}
+        ("Messquelle", "in"), ("Fensterkontakt", "in"), ("Heizbefehl", "out"),
+        ("Sollwert", "out"), ("Raumtemperatur", "out")}
     assert ports[f"dev-{sensor.id}-temperature"].direction == "out"
     assert ports[f"dev-{sensor.id}-humidity"].direction == "out"
     assert ports[f"dev-{valve.id}-thermostat"].direction == "in"
