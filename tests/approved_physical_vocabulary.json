@@ -37,6 +37,9 @@
       "- **Ventilschutz hält nun exakt die eingestellte Dauer ein.** Die Mindest-Einschaltdauer",
       "- **Ventilschutz je Zone.** Nach einer einstellbaren Zeit ohne reguläres Heizen erzeugt",
       "- **Zigbee-Heizkörperthermostate** (WT-A03E, BTH-RA) als Aktor. Ein Thermostatventil ist",
+      "- **Zuordnungskarte, Thermostatventile:** Die Betriebsart folgt jetzt aus den gezogenen Linien. Die",
+      "- Beim Zurückstufen von „Ventil regelt selbst“ auf „Nur Raumtemperatur melden“ weist die Karte",
+      "- Zwei gleichzeitige Änderungen am selben Ventil überschreiben die Betriebsart nicht mehr still.",
       "- `/control/arm` kann das öffnen, mit eigenem Recht `control.arm`. „Geschaltet wird",
       "> **alle** Zonen auf aus; wer ihn vorher von Hand für einzelne Zonen eingeschaltet hatte,",
       "> - **Heizkörper-Thermostate werden einmal** auf `manual` und den Notsollwert",
@@ -95,6 +98,7 @@
       "derzeit kein Ventil. Sie ist standardmäßig aus; Konfiguration gibt es in Oberfläche,",
       "deutlich häufiger und verkürzt die Lebensdauer des Schaltaktors spürbar. Hinter einem",
       "die Mindest-Einschaltdauer für reguläres Heizen bleibt erhalten.",
+      "ein Ventil in „Ventil regelt selbst“ ohne beschreibbaren Sollwert bekommt gar keine Werte).",
       "eine Zone, deren Mindest-Einschaltdauer **länger** ist als ihr Ventilschutzlauf: Nach",
       "etwas brächte. Gemischte Zonen (mindestens ein selbstregelndes Ventil) bleiben",
       "ganze Zone aus, unabhängig davon, was sonst noch daran hing. Ein selbstregelndes Ventil",
@@ -116,7 +120,8 @@
       "zeigen Wärme weiterhin in Orange und Kühle in Blau. Alle drei Ansichten desselben",
       "über beide. Ein Thermostatventil ohne `system_mode` geht über seinen Mindestsollwert aus",
       "„Die Zone regelt die Heizung bis auf Weiteres gegen den Frostschutz-Sollwert von",
-      "„brenner\" erkannt wurden. Die führende Grenze fällt jetzt bei den Substantiven, die"
+      "„brenner\" erkannt wurden. Die führende Grenze fällt jetzt bei den Substantiven, die",
+      "„thermoctl schaltet“. Sollwert und Raumtemperatur: „Ventil regelt selbst“. Nur Raumtemperatur:"
     ],
     "README.md": [
       "(Zigbee2MQTT-Schalter, Zigbee-Thermostatventile ohne eigene Regelung, Meross-Steckdosen).",
@@ -158,6 +163,7 @@
       "Erkennungsmerkmal: die Zone hat Aktoren, und keiner davon ist",
       "Fensterkontakt). Die Zone hat drei Ausgänge zum Thermostatventil: „Heizbefehl\" (Ein/Aus, Eingang",
       "Istwert ans Ventil geschrieben). Weitere Geräte-Eingänge: beschreibbare Eigenschaften mit Einheit °C/%; am",
+      "Korrektur der Zuordnungskarte (Betriebsart eines Thermostatventils folgt aus den Linien), gemergt; siehe Karten-Abschnitt",
       "Maus/Tastatur/Entwurf/Fehlschlag, Fan-out, Aktor in zweiter Zone, Betriebsart über Linien).",
       "Messquelle); Sollwert/Raumtemperatur nur an ihren eigenen Ventil-Eingang; Sperre des Eingangs (`may_be_written`;",
       "Projektinhabers: ein Gerät gehört höchstens einer Zone als Aktor, mehrere Aktoren je Zone gehen; ODER-Regel gibt es nicht.",

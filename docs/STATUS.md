@@ -11,6 +11,11 @@ Letzte Aktualisierung: 2026-10-15.
   Fußlink im Generator (`tools/landingpage_erzeugen.py`) ergänzen, `site/` neu erzeugen.
 - Das Paket `ghcr.io/magicalwig34653/thermoctl` ist öffentlich (Projektinhaber, 2026-10-10).
 
+## 0.17.1 (2026-10-15) -- vorbereitet
+
+Korrektur der Zuordnungskarte (Betriebsart eines Thermostatventils folgt aus den Linien), gemergt; siehe Karten-Abschnitt
+unter 0.17.0. Freigabe (Tag, Release, Add-on) folgt in diesem Schritt.
+
 ## 0.17.0 (2026-10-15) -- freigegeben
 
 Tag `v0.17.0`, GitHub-Release, Abbild auf ghcr.io gebaut, CI grün (SQLite, MariaDB, Docker); Add-on-Repository auf 0.17.0

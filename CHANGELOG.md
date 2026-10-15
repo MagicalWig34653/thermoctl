@@ -9,6 +9,29 @@ etwas so entschieden wurde — steht in [docs/STATUS.md](docs/STATUS.md).
 
 ---
 
+## 0.17.1 — 2026-10-15
+
+### Beim Upgrade zu wissen
+
+- **Keine Migration**, keine neuen Einstellungen. Es ändert sich nur die Zuordnungskarte; die
+  Regelung selbst verhält sich unverändert.
+
+### Behoben
+
+- **Zuordnungskarte, Thermostatventile:** Die Betriebsart folgt jetzt aus den gezogenen Linien. Die
+  Zone hat die Ausgänge „Heizbefehl“, „Sollwert“ und „Raumtemperatur“. Nur Heizbefehl:
+  „thermoctl schaltet“. Sollwert und Raumtemperatur: „Ventil regelt selbst“. Nur Raumtemperatur:
+  „Nur Raumtemperatur melden“ (ohne Heizbefehl-Linie). Bisher zeichnete die Karte auch dort einen
+  Heizbefehl, und ein Sensor ließ sich nicht an `remote_temperature` ziehen; der Sensor bleibt an
+  der Messquelle der Zone, die Karte erklärt den Weg.
+- Die Karte zeichnet nur Linien, die die Regelung wirklich ausführt (auch die Datenfluss-Seite:
+  ein Ventil in „Ventil regelt selbst“ ohne beschreibbaren Sollwert bekommt gar keine Werte).
+- Beim Zurückstufen von „Ventil regelt selbst“ auf „Nur Raumtemperatur melden“ weist die Karte
+  darauf hin, dass der Sollwert am Gerät stehen bleibt.
+- Zwei gleichzeitige Änderungen am selben Ventil überschreiben die Betriebsart nicht mehr still.
+
+---
+
 ## 0.17.0 — 2026-10-15
 
 ### Beim Upgrade zu wissen
