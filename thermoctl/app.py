@@ -1406,12 +1406,11 @@ def create_app() -> FastAPI:
         return to. Validity of the target is `safe_return_to`'s business, the same
         function the login applies again when it reads the value.
         """
+        # `request.url.path` carries no deployment prefix (the proxy strips it, see
+        # `resolve_root_path`), and `/api/` and `/mcp` authenticate with bearer tokens and
+        # never raise `NotLoggedIn`; only `HX-Current-URL` below needs its prefix removed.
         path = request.url.path
         root = request.scope.get("root_path", "")
-        if root and path.startswith(root):
-            path = path[len(root) :]
-        if path.startswith(("/api/", "/mcp")):
-            return await http_exception_handler(request, exc)
         from_htmx = request.headers.get("hx-request") is not None
         if not from_htmx and "text/html" not in request.headers.get("accept", ""):
             return await http_exception_handler(request, exc)

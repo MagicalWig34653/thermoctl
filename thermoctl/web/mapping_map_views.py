@@ -140,7 +140,9 @@ async def connect(
         return _rejected(
             verdict.reason or "Verbindungen zwischen Geräten werden nicht gespeichert."
         )
-    if zone_port.zone_id not in zones or zone_port.slot is None:
+    if zone_port.zone_id not in zones or zone_port.slot is None:  # pragma: no cover
+        # Der Graph ist aus genau diesen Zonen gebaut und jeder Zonenanschluss trägt eine
+        # Stelle; nur ein Fehler im Graphaufbau könnte hierher führen.
         return _rejected("Anschluss nicht gefunden.", 404)
     verdict = can_connect(first, second, graph.connections)
     if not verdict.ok or verdict.output is None or verdict.input is None:
@@ -155,7 +157,7 @@ async def connect(
             set_temperature_source(session, zone, device, actor_id=principal.user_id)
         else:
             role = session.scalar(select(DeviceRole).where(DeviceRole.code == zone_port.slot))
-            if role is None:
+            if role is None:  # pragma: no cover - die Rollen legt die Migration an
                 return _rejected("Diese Rolle gibt es in der Anlage nicht.")
             assign_device(session, zone, device, role, actor_id=principal.user_id)
     except AssignmentAlreadyExists:
