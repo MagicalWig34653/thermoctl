@@ -170,6 +170,7 @@
       "Zonen ohne Aktor, gemischte Zonen und mehrere reine EIN/AUS-Aktoren.",
       "[`docs/docker-swarm.md`](docker-swarm.md) und [`docs/kubernetes.md`](kubernetes.md), je",
       "`not situation.valve_protection_active`: ein unterbrochener Ventilschutzlauf wird",
+      "`self_regulating` an einem Ventil ohne beschreibbaren Sollwert-Eingang schreibt in `valve_commands` gar nichts",
       "allein, für den Aus-Timer zusätzlich `protection_allowed`. Ein Ventilschutzlauf, der",
       "benutzen jetzt dieselbe zweiseitige Skala: unter der Mitte kühl, darüber warm, die",
       "bestehenden Gates (Fenster/Frost/Sensor/Ventilschutz) und vor der eigentlichen",
@@ -600,6 +601,7 @@
       "actuator",
       "actuator",
       "actuator",
+      "actuator",
       "des Ventils. thermoctl beschreibt ihn über die Zone.",
       "switch",
       "switch",
@@ -732,7 +734,8 @@
     "thermoctl/web/mapping_map_views.py": [
       "Das Gerät wird nicht mehr von thermoctl geschaltet und behält seinen letzten Zustand.",
       "Der Sollwert wird immer zusammen mit der Raumtemperatur geschrieben: thermoctl kennt keine Betriebsart nur mit Sollwert. Lösen Sie zuerst die Linie 'Sollwert' (dann meldet das Ventil nur die Raumtemperatur).",
-      "Diese Linien ergeben keine Betriebsart des Ventils."
+      "Diese Linien ergeben keine Betriebsart des Ventils.",
+      "actuator"
     ],
     "thermoctl/web/navigation.py": [
       "/heating-time"

@@ -59,6 +59,7 @@ from thermoctl.domain.thermostat_mode import (
     MODES,
     switches,
     writes_actual,
+    writes_anything,
     writes_setpoint,
 )
 
@@ -147,8 +148,12 @@ def lines_for_mode(mode: str, *, has_setpoint_port: bool = True, has_actual_port
 
     `switches` -> Heizbefehl, `writes_setpoint` -> Sollwert, `writes_actual` -> Raumtemperatur.
     Eine Linie gibt es nur, wenn das Gerät den Eingang hat, den die Regelkette beschreibt; ohne ihn
-    schreibt `valve_commands` nichts, und die Karte zeichnet nichts.
+    schreibt `valve_commands` nichts, und die Karte zeichnet nichts. Das gilt auch für den Istwert:
+    Eine Betriebsart mit Sollwert schreibt an einem Gerät ohne Sollwert-Eingang gar nichts
+    (`writes_anything`).
     """
+    if not writes_anything(mode, has_setpoint_property=has_setpoint_port):
+        return frozenset()
     lines: set[str] = set()
     if switches(mode):
         lines.add("actuator")
@@ -350,6 +355,20 @@ def can_connect(a: Port, b: Port, existing: Sequence[Connection] = ()) -> Verdic
             has_actual = device_port.requires_actual or zone_port.slot == "room_temperature"
             if mode_for_lines(lines | {zone_port.slot}, has_actual_port=has_actual) is None:
                 name = f"'{device_port.node_name}'"
+                if any(
+                    c.slot == "actuator"
+                    and c.zone_id == zone_port.zone_id
+                    and c.device_id == device_port.device_id
+                    and (c.out_port_id is None or c.in_port_id is None)
+                    for c in existing
+                ):
+                    # Altbestand: zugeordnet, aber für diese Betriebsart zeichnet die Karte keine Linie.
+                    return Verdict(
+                        False,
+                        f"{name} ist der Zone '{zone_port.node_name}' mit einer Betriebsart "
+                        f"zugeordnet, für die diese Karte keine Linie zeichnet. Lösen Sie die "
+                        f"Zuordnung zuerst in der Tabelle 'Verbindungen'.",
+                    )
                 if not lines:
                     return Verdict(
                         False,

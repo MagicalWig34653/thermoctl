@@ -38,11 +38,12 @@ from thermoctl.domain.mapping_map import (
     MappingMap,
     build_mapping_map,
     can_connect,
+    lines_for_mode,
     mode_for_lines,
     role_for_slot,
 )
 from thermoctl.domain.principal import Principal
-from thermoctl.domain.thermostat_mode import MODE_LABELS
+from thermoctl.domain.thermostat_mode import MODE_LABELS, MODE_READING_ONLY, MODE_SELF_REGULATING
 from thermoctl.web import templates
 from thermoctl.web.guards import admin_ui_only
 
@@ -112,6 +113,15 @@ ACTUATOR_DETACHED_NOTE = (
 )
 
 
+# Zurückgestuft auf „nur Raumtemperatur": Der Sollwert am Gerät bleibt, wie er zuletzt geschrieben
+# wurde (`domain/thermostat_mode.py`: `reading_only` fasst ihn nie an).
+DOWNGRADE_NOTE = (
+    " Der Sollwert am Gerät bleibt, wie er zuletzt geschrieben wurde; thermoctl fasst ihn in "
+    "'Nur Raumtemperatur melden' nicht mehr an (kein Zeitplan, kein Frostschutz bei offenem "
+    "Fenster)."
+)
+
+
 def _device_lines(graph: MappingMap, zone_id: int, device_id: int) -> set[str]:
     """Die Ventil-Linien (Heizbefehl, Sollwert, Raumtemperatur) dieses Geräts in der Zone."""
     return {
@@ -119,6 +129,23 @@ def _device_lines(graph: MappingMap, zone_id: int, device_id: int) -> set[str]:
         for c in graph.connections
         if c.zone_id == zone_id and c.device_id == device_id and c.slot in VALVE_SLOTS
     }
+
+
+STALE_NOTICE = "Die Zuordnung wurde inzwischen geändert, bitte die Seite neu laden."
+
+
+def _fresh_lines(graph: MappingMap, assignment: ZoneDevice) -> set[str]:
+    """Die Linien, die die gespeicherte Betriebsart dieser Zeile jetzt hat, gezählt wie im Graphen.
+
+    Eine Zeile ohne gezeichnete Linie (Altbestand) zählt dort als `actuator`.
+    """
+    ports = [p for p in graph.ports() if p.device_id == assignment.device_id]
+    lines = lines_for_mode(
+        assignment.thermostat_mode,
+        has_setpoint_port=any(p.valve_channel == "setpoint" for p in ports),
+        has_actual_port=any(p.valve_channel == "actual" for p in ports),
+    )
+    return set(lines) or {"actuator"}
 
 
 def _editable_graph(
@@ -194,6 +221,13 @@ async def connect(
                     assignment = assign_device(
                         session, zone, device, role, actor_id=principal.user_id
                     )
+                else:
+                    # Die Linienmenge des Graphen stammt vom Anfang der Anfrage. Eine gleichzeitige
+                    # Anfrage kann die Betriebsart seither geändert haben; sie wäre sonst still
+                    # überschrieben. Zeile gesperrt neu lesen und gegen den Graphen halten.
+                    session.refresh(assignment, with_for_update=True)
+                    if _fresh_lines(graph, assignment) != _device_lines(graph, zone.id, device.id):
+                        return _rejected(STALE_NOTICE, 409)
                 lines = _device_lines(graph, zone.id, device.id) | {zone_port.slot}
                 has_actual = device_port.requires_actual or zone_port.slot == "room_temperature"
                 mode = mode_for_lines(lines, has_actual_port=has_actual)
@@ -263,12 +297,18 @@ async def disconnect(
                     "thermoctl kennt keine Betriebsart nur mit Sollwert. Lösen Sie zuerst die "
                     "Linie 'Sollwert' (dann meldet das Ventil nur die Raumtemperatur)."
                 )
+            previous = assignment.thermostat_mode
             set_thermostat_mode(session, zone, assignment, mode, actor_id=principal.user_id)
+            note = (
+                DOWNGRADE_NOTE
+                if previous == MODE_SELF_REGULATING and mode == MODE_READING_ONLY
+                else ""
+            )
             return JSONResponse(
                 {
                     "ok": True,
                     "message": f"Verbindung gelöst: {_title(connection)}. Betriebsart jetzt: "
-                    f"'{MODE_LABELS[mode]}'.",
+                    f"'{MODE_LABELS[mode]}'.{note}",
                 }
             )
         detach_device(session, zone, assignment, actor_id=principal.user_id)

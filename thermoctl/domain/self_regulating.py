@@ -35,6 +35,7 @@ from thermoctl.domain.schedule import frost_protection_temperature, resolved_set
 from thermoctl.domain.thermostat_mode import (
     MODE_READING_ONLY,
     MODE_SELF_REGULATING,
+    writes_anything,
     writes_setpoint,
 )
 
@@ -192,7 +193,10 @@ def valve_commands(session: Session, zone: Zone, now: datetime) -> list[ValveCom
         writable = _writable_properties(session, device)
         sets_setpoint = writes_setpoint(mode)
         target = writable.get(SETPOINT_PROPERTY)
-        if sets_setpoint and (target is None or not _in_range(target, setpoint)):
+        if not writes_anything(mode, has_setpoint_property=target is not None):
+            # Setpoint mode on a valve without a writable setpoint: nothing at all.
+            continue
+        if target is not None and sets_setpoint and not _in_range(target, setpoint):
             # Either not a valve we can aim, or a setpoint it would discard. Sending
             # it anyway would look like a command and change nothing.
             continue

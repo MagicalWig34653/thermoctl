@@ -39,6 +39,7 @@ from thermoctl.domain.thermostat_mode import (
     MODE_LABELS,
     switches,
     writes_actual,
+    writes_anything,
     writes_setpoint,
 )
 from thermoctl.integrations.actuators import THERMOSTAT_MIN_SETPOINT_C, thermostat_payload
@@ -349,6 +350,19 @@ def build_data_flow(session: Session, zone: Zone, now: datetime) -> DataFlowGrap
                         node_id,
                         EDGE_MISSING,
                         "ohne Messquelle kein Istwert zum Schreiben",
+                        dashed=True,
+                    )
+                )
+            elif temperature_property is not None and not writes_anything(
+                mode, has_setpoint_property=SETPOINT_PROPERTY in writable
+            ):
+                # Die Regelkette überspringt dieses Ventil ganz: kein Istwert ohne Sollwert-Eingang.
+                edges.append(
+                    FlowEdge(
+                        "sensor",
+                        node_id,
+                        EDGE_MISSING,
+                        "ohne beschreibbaren Sollwert schreibt thermoctl auch keinen Istwert",
                         dashed=True,
                     )
                 )

@@ -18,13 +18,22 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from tests.helpers import capability, create_device, create_settings, create_zone, role, source
+from tests.helpers import (
+    capability,
+    create_device,
+    create_mode,
+    create_settings,
+    create_zone,
+    create_zone_state,
+    role,
+    source,
+)
 from thermoctl.auth.csrf import CSRF_HEADER, csrf_token
 from thermoctl.auth.sessions import COOKIE_NAME
 from thermoctl.config import get_settings
 from thermoctl.db.models.device import Device, DeviceCapabilityLink, DeviceProperty, ZoneDevice
 from thermoctl.db.models.operations import AuditEvent, Setting
-from thermoctl.db.models.zone import Zone
+from thermoctl.db.models.zone import Zone, ZoneSetpoint
 from thermoctl.domain.data_flow import EDGE_ACTUAL, EDGE_SETPOINT, EDGE_SWITCH, build_data_flow
 from thermoctl.domain.mapping_map import (
     NO_SOURCE_REASON,
@@ -39,12 +48,13 @@ from thermoctl.domain.mapping_map import (
     property_port_id,
     zone_port_id,
 )
-from thermoctl.domain.self_regulating import SETPOINT_PROPERTY
+from thermoctl.domain.self_regulating import SETPOINT_PROPERTY, valve_commands
 from thermoctl.domain.thermostat_mode import (
     MODE_CONTROLLED,
     MODE_READING_ONLY,
     MODE_SELF_REGULATING,
     MODES,
+    writes_anything,
 )
 
 ClientAls = Callable[[list[tuple[str, int | None]]], TestClient]
@@ -178,6 +188,52 @@ def test_map_and_data_flow_show_the_same_lines(
     if EDGE_ACTUAL in solid:
         expected["room_temperature"] = solid[EDGE_ACTUAL].property_name or ""
     assert drawn == expected, (mode, with_source, actual)
+
+
+def test_a_setpoint_mode_without_a_setpoint_input_writes_and_shows_nothing() -> None:
+    # `valve_commands` überspringt ein Ventil ohne Sollwert-Eingang ganz -- auch den Istwert.
+    assert not writes_anything(MODE_SELF_REGULATING, has_setpoint_property=False)
+    assert writes_anything(MODE_SELF_REGULATING, has_setpoint_property=True)
+    assert writes_anything(MODE_READING_ONLY, has_setpoint_property=False)
+    assert writes_anything(MODE_CONTROLLED, has_setpoint_property=False)
+    assert lines_for_mode(MODE_SELF_REGULATING, has_setpoint_port=False, has_actual_port=True) == frozenset()
+    assert lines_for_mode(MODE_READING_ONLY, has_setpoint_port=False, has_actual_port=True) == {"room_temperature"}
+
+
+@pytest.mark.parametrize("mode", [MODE_SELF_REGULATING, MODE_READING_ONLY])
+@pytest.mark.parametrize("setpoint", [True, False])
+@pytest.mark.parametrize("actual", [ACTUAL, None])
+def test_map_and_data_flow_show_what_valve_commands_actually_writes(
+    session: Session, mode: str, setpoint: bool, actual: str | None
+) -> None:
+    """Gegen die Regelkette selbst, nicht nur gegeneinander: gezeichnet wird, was geschrieben wird."""
+    zone = _zone(session, "regelkette")
+    session.add(
+        ZoneSetpoint(
+            zone_id=zone.id, setpoint_mode_id=create_mode(session, "tag-regelkette").id,
+            temperature_c=Decimal("21.0"),
+        )
+    )
+    create_zone_state(session, zone).temperature_c = Decimal("19.5")
+    valve = _valve(session, "ventil-kette", setpoint=setpoint, actual=actual)
+    _assign(session, zone, valve, mode)
+    session.flush()
+
+    written: set[str] = set()
+    for command in valve_commands(session, zone, JETZT):
+        if command.setpoint_c is not None:
+            written.add("setpoint")
+        if command.temperature_property is not None:
+            written.add("room_temperature")
+
+    assert set(_drawn_slots(_graph(session, zone), valve)) == written, (mode, setpoint, actual)
+
+    flow = build_data_flow(session, zone, JETZT)
+    node = next(n for n in flow.nodes if n.device_id == valve.id)
+    kinds = {e.kind for e in flow.edges if e.target == node.id and not e.dashed}
+    assert kinds == ({EDGE_SETPOINT} if "setpoint" in written else set()) | (
+        {EDGE_ACTUAL} if "room_temperature" in written else set()
+    ), (mode, setpoint, actual)
 
 
 def test_reading_only_shows_no_heating_command_line(session: Session) -> None:
@@ -409,10 +465,14 @@ def test_removing_a_line_steps_the_mode_back_and_the_last_line_releases_the_valv
 
     stepped = _disconnect(client, zone, "setpoint", valve)
     assert stepped.status_code == 200 and "Nur Raumtemperatur melden" in stepped.json()["message"]
+    # Der Sollwert bleibt am Gerät stehen, und thermoctl fasst ihn nicht mehr an.
+    assert "Sollwert am Gerät bleibt, wie er zuletzt geschrieben wurde" in stepped.json()["message"]
+    assert "kein Zeitplan, kein Frostschutz bei offenem Fenster" in stepped.json()["message"]
     assert _mode(session, zone, valve) == MODE_READING_ONLY
 
     released = _disconnect(client, zone, "room_temperature", valve)
     assert released.status_code == 200 and "behält seinen letzten Zustand" in released.json()["message"]
+    assert "Sollwert am Gerät bleibt" not in released.json()["message"]
     assert _mode(session, zone, valve) is None
 
 
@@ -474,3 +534,53 @@ def test_page_carries_the_legend_and_the_tooltip(client_als: ClientAls, session:
     assert page.status_code == 200
     assert "Messwert der Messquelle dieser Zone, wird als Istwert ans Ventil geschrieben." in page.text
     assert "data-map-valve-note" in page.text
+
+
+def test_a_legacy_row_without_a_drawn_line_is_refused_with_a_true_reason(
+    client_als: ClientAls, session: Session
+) -> None:
+    source(session)
+    zone = _zone(session, "altbestand")
+    valve = _valve(session, "v-alt", actual=None)
+    _assign(session, zone, valve, MODE_READING_ONLY)  # ohne Istwert-Eingang: keine Linie
+    refused = _connect(
+        _manager(client_als, zone), zone_port_id(zone.id, "setpoint"),
+        property_port_id(valve.id, SETPOINT_PROPERTY),
+    )
+    reason = refused.json()["reason"]
+    assert refused.status_code == 422
+    assert "keine Linie zeichnet" in reason and "Tabelle 'Verbindungen'" in reason
+    assert "Heizbefehl" not in reason  # keine Heizbefehl-Linie gezeichnet, also auch nicht behaupten
+    assert _mode(session, zone, valve) == MODE_READING_ONLY
+
+
+def test_a_mode_changed_between_graph_and_save_is_not_silently_overwritten(
+    client_als: ClientAls, session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Zwei gleichzeitige Anfragen: Die Betriebsart ändert sich, nachdem der Graph gebaut wurde."""
+    from thermoctl.web import mapping_map_views
+
+    source(session)
+    zone = _zone(session, "rennen")
+    valve = _valve(session, "v-rennen")
+    row = _assign(session, zone, valve, MODE_READING_ONLY)
+    session.commit()
+    client = _manager(client_als, zone)
+
+    original = mapping_map_views._editable_graph
+
+    def graph_then_concurrent_change(*args: Any, **kwargs: Any) -> Any:
+        result = original(*args, **kwargs)
+        # die andere Anfrage (Heizbefehl) kommt zwischen Graphaufbau und Speichern durch
+        concurrent = session.get(ZoneDevice, row.id)
+        assert concurrent is not None
+        concurrent.thermostat_mode = MODE_CONTROLLED
+        session.commit()
+        return result
+
+    monkeypatch.setattr(mapping_map_views, "_editable_graph", graph_then_concurrent_change)
+    refused = _connect(client, zone_port_id(zone.id, "setpoint"), property_port_id(valve.id, SETPOINT_PROPERTY))
+
+    assert refused.status_code == 409
+    assert "inzwischen geändert" in refused.json()["reason"] and "neu laden" in refused.json()["reason"]
+    assert _mode(session, zone, valve) == MODE_CONTROLLED  # nichts überschrieben

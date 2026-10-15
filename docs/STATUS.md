@@ -69,7 +69,7 @@ Ergänzt die Zuordnungsseite `/zones/{id}/devices`, ersetzt sie nicht (sie bleib
   | Linien Zone → Ventil | Betriebsart | was die Regelkette schreibt |
   |---|---|---|
   | nur Heizbefehl | `controlled` | Ein/Aus |
-  | Sollwert + Raumtemperatur | `self_regulating` | Sollwert und Istwert |
+  | Sollwert + Raumtemperatur | `self_regulating` | Sollwert und Istwert (nur mit beschreibbarem Sollwert-Eingang) |
   | nur Raumtemperatur | `reading_only` | nur Istwert, kein Sollwert, kein Ein/Aus |
   | nur Sollwert (nur an Geräten ohne Istwert-Eingang) | `self_regulating` | nur Sollwert |
 
@@ -79,6 +79,10 @@ Ergänzt die Zuordnungsseite `/zones/{id}/devices`, ersetzt sie nicht (sie bleib
   Sollwert, den es dort nicht gibt: erst „Sollwert" lösen); Raumtemperatur in einer Zone ohne Messquelle. Eine
   Betriebsart ohne passenden Eingang am Gerät bleibt als Zeile in „Verbindungen" (lösbar), die Karte zeichnet
   nichts. Ohne Messquelle zeichnet die Karte die Raumtemperatur-Linie nicht (der Datenfluss zeigt sie gestrichelt).
+  `self_regulating` an einem Ventil ohne beschreibbaren Sollwert-Eingang schreibt in `valve_commands` gar nichts
+  (auch keinen Istwert); Karte und Datenfluss zeichnen dort keine Linie (eine Stelle: `writes_anything`).
+  Zurückstufen auf `reading_only` meldet, dass der Sollwert am Gerät stehen bleibt und nicht mehr angefasst wird.
+  Gleichzeitige Anfragen: die Betriebsart wird vor dem Setzen gesperrt neu gelesen; Abweichung → 409 „neu laden".
   Linie entfernen: Sollwert aus `self_regulating` → `reading_only`; letzte Linie → Zuordnung gelöst wie bisher
   (`detach_device`, Meldung „behält seinen letzten Zustand"). Betriebsart wird über `set_thermostat_mode` gesetzt
   (mit Audit). Konsistenz Karte ↔ Datenfluss-Seite: `tests/test_mapping_map_valve.py`.
