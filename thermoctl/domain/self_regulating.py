@@ -19,6 +19,7 @@ leaves this module therefore travels as a switching message and through both dry
 bolts -- the same as an on/off command, because the physical effect is the same.
 """
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
@@ -59,6 +60,17 @@ TEMPERATURE_PROPERTIES = (
     "remote_temperature",
     "external_measured_room_sensor",
 )
+
+
+def temperature_property_name(writable_names: Iterable[str]) -> str | None:
+    """The property a measured room temperature is written to, or `None`.
+
+    The one place that decides it (`valve_commands`, `domain/data_flow.py` and the
+    assignment map ask here): the first of `TEMPERATURE_PROPERTIES` the device reports
+    as writable.
+    """
+    names = set(writable_names)
+    return next((name for name in TEMPERATURE_PROPERTIES if name in names), None)
 
 
 @dataclass(frozen=True)
@@ -185,9 +197,7 @@ def valve_commands(session: Session, zone: Zone, now: datetime) -> list[ValveCom
             # it anyway would look like a command and change nothing.
             continue
 
-        temperature_property = next(
-            (name for name in TEMPERATURE_PROPERTIES if name in writable), None
-        )
+        temperature_property = temperature_property_name(writable)
         temperature = measured
         if temperature_property is not None and temperature is not None:
             if not _in_range(writable[temperature_property], temperature):

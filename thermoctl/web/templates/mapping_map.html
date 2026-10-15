@@ -49,6 +49,13 @@ nur im Browser gezeichnet.
         <span class="tc-legend-kind"><i class="tc-swatch tc-kind-command"></i>Schalten / Heizbefehl</span>
     </span>
 </div>
+<p class="t-quiet small" data-map-valve-note>
+    <strong>Thermostatventil:</strong> Die Betriebsart folgt aus den Linien, die von der Zone zum Ventil laufen.
+    Nur <em>Heizbefehl</em>: thermoctl entscheidet Ein/Aus. <em>Sollwert</em> und <em>Raumtemperatur</em>: das Ventil
+    regelt selbst. Nur <em>Raumtemperatur</em>: thermoctl meldet dem Ventil nur den Istwert und fasst den Sollwert nicht an.
+    <em>Raumtemperatur</em> ist der Messwert der Messquelle dieser Zone, er wird als Istwert ans Ventil geschrieben;
+    ein Sensor hängt deshalb an der Messquelle der Zone, nicht direkt am Ventil.
+</p>
 
 <p class="t-quiet" data-map-hint hidden>
     Ziehen Sie von einem Ausgang zu einem Eingang (oder umgekehrt), oder wählen Sie einen Anschluss
@@ -123,7 +130,7 @@ nur im Browser gezeichnet.
         <tbody>
         {% for c in graph.connections %}
         <tr data-connection-row="{{ c.id }}">
-            {% if c.slot == "actuator" %}
+            {% if c.from_zone %}
             <td>{{ c.text }}</td>
             <td>{{ c.device_name }}{% if not c.in_port_id %} <span class="t-quiet small">(kein passender Anschluss bekannt)</span>{% endif %}</td>
             {% else %}

@@ -27,16 +27,22 @@ from thermoctl.domain.device_assignment import (
     assign_device,
     detach_device,
     set_temperature_source,
+    set_thermostat_mode,
 )
 from thermoctl.domain.mapping_map import (
+    CHANNEL_BY_SLOT,
     SAME_SIDE,
     TECHNICAL_REASON,
+    VALVE_SLOTS,
     Connection,
     MappingMap,
     build_mapping_map,
     can_connect,
+    mode_for_lines,
+    role_for_slot,
 )
 from thermoctl.domain.principal import Principal
+from thermoctl.domain.thermostat_mode import MODE_LABELS
 from thermoctl.web import templates
 from thermoctl.web.guards import admin_ui_only
 
@@ -94,7 +100,9 @@ def _payload(graph: MappingMap) -> dict[str, object]:
 
 def _title(c: Connection) -> str:
     """Lesbarer Name einer Verbindung in Richtung des Datenflusses (Ausgang → Eingang)."""
-    return f"{c.text} → {c.device_name}" if c.slot == "actuator" else f"{c.device_name} → {c.text}"
+    if c.from_zone:
+        return f"{c.text} → {c.device_name}"
+    return f"{c.device_name} → {c.text}"
 
 
 # Nach dem Lösen eines Aktors: thermoctl schickt dem Gerät keinen Ausschaltbefehl (`detach_device`
@@ -102,6 +110,15 @@ def _title(c: Connection) -> str:
 ACTUATOR_DETACHED_NOTE = (
     " Das Gerät wird nicht mehr von thermoctl geschaltet und behält seinen letzten Zustand."
 )
+
+
+def _device_lines(graph: MappingMap, zone_id: int, device_id: int) -> set[str]:
+    """Die Ventil-Linien (Heizbefehl, Sollwert, Raumtemperatur) dieses Geräts in der Zone."""
+    return {
+        c.slot
+        for c in graph.connections
+        if c.zone_id == zone_id and c.device_id == device_id and c.slot in VALVE_SLOTS
+    }
 
 
 def _editable_graph(
@@ -156,10 +173,33 @@ async def connect(
         if zone_port.slot == TEMPERATURE_SOURCE:
             set_temperature_source(session, zone, device, actor_id=principal.user_id)
         else:
-            role = session.scalar(select(DeviceRole).where(DeviceRole.code == zone_port.slot))
+            role = session.scalar(
+                select(DeviceRole).where(DeviceRole.code == role_for_slot(zone_port.slot))
+            )
             if role is None:  # pragma: no cover - die Rollen legt die Migration an
                 return _rejected("Diese Rolle gibt es in der Anlage nicht.")
-            assign_device(session, zone, device, role, actor_id=principal.user_id)
+            if zone_port.slot not in CHANNEL_BY_SLOT:
+                assign_device(session, zone, device, role, actor_id=principal.user_id)
+            else:
+                # Sollwert oder Raumtemperatur: Das Ventil ist vielleicht schon Aktor dieser Zone
+                # (über die andere Linie); die Betriebsart folgt aus der Menge der Linien.
+                assignment = session.scalar(
+                    select(ZoneDevice).where(
+                        ZoneDevice.zone_id == zone.id,
+                        ZoneDevice.device_id == device.id,
+                        ZoneDevice.device_role_id == role.id,
+                    )
+                )
+                if assignment is None:
+                    assignment = assign_device(
+                        session, zone, device, role, actor_id=principal.user_id
+                    )
+                lines = _device_lines(graph, zone.id, device.id) | {zone_port.slot}
+                has_actual = device_port.requires_actual or zone_port.slot == "room_temperature"
+                mode = mode_for_lines(lines, has_actual_port=has_actual)
+                if mode is None:  # pragma: no cover - `can_connect` prüfte dieselbe Menge schon
+                    return _rejected("Diese Linien ergeben keine Betriebsart des Ventils.")
+                set_thermostat_mode(session, zone, assignment, mode, actor_id=principal.user_id)
     except AssignmentAlreadyExists:
         # `can_connect` kennt jede Doppelzuordnung, die beim Aufbau der Karte schon stand; hier
         # landet, wer gleichzeitig mit einer anderen Anfrage dieselbe Zeile anlegt (-> 409).
@@ -203,11 +243,34 @@ async def disconnect(
             .where(
                 ZoneDevice.zone_id == zone.id,
                 ZoneDevice.device_id == connection.device_id,
-                DeviceRole.code == connection.slot,
+                DeviceRole.code == role_for_slot(connection.slot),
             )
         )
         if assignment is None:  # pragma: no cover - die Verbindung stammt aus derselben Sitzung
             return _rejected("Verbindung nicht gefunden.", 404)
+        remaining = _device_lines(graph, zone.id, connection.device_id) - {connection.slot}
+        if connection.slot in VALVE_SLOTS and remaining:
+            # Eine Linie von mehreren: Das Ventil bleibt zugeordnet, die Betriebsart ändert sich.
+            has_actual = any(
+                p.valve_channel == "actual"
+                for p in graph.ports()
+                if p.device_id == connection.device_id
+            )
+            mode = mode_for_lines(remaining, has_actual_port=has_actual)
+            if mode is None:
+                return _rejected(
+                    "Der Sollwert wird immer zusammen mit der Raumtemperatur geschrieben: "
+                    "thermoctl kennt keine Betriebsart nur mit Sollwert. Lösen Sie zuerst die "
+                    "Linie 'Sollwert' (dann meldet das Ventil nur die Raumtemperatur)."
+                )
+            set_thermostat_mode(session, zone, assignment, mode, actor_id=principal.user_id)
+            return JSONResponse(
+                {
+                    "ok": True,
+                    "message": f"Verbindung gelöst: {_title(connection)}. Betriebsart jetzt: "
+                    f"'{MODE_LABELS[mode]}'.",
+                }
+            )
         detach_device(session, zone, assignment, actor_id=principal.user_id)
-    note = ACTUATOR_DETACHED_NOTE if connection.slot == "actuator" else ""
+    note = ACTUATOR_DETACHED_NOTE if connection.slot in VALVE_SLOTS else ""
     return JSONResponse({"ok": True, "message": f"Verbindung gelöst: {_title(connection)}.{note}"})

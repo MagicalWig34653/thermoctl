@@ -156,11 +156,15 @@
       "Durchlauf, wenn sie nicht fuehrt -- eine Instanz in Bereitschaft schaltet nichts.",
       "Ergänzt die Zuordnungsseite `/zones/{id}/devices`, ersetzt sie nicht (sie bleibt unverändert, außer dass auch sie die Regel „ein Aktor, eine Zone\" durchsetzt).",
       "Erkennungsmerkmal: die Zone hat Aktoren, und keiner davon ist",
-      "Fan-out, Aktor in zweiter Zone). Nur SQLite.",
+      "Fensterkontakt). Die Zone hat drei Ausgänge zum Thermostatventil: „Heizbefehl\" (Ein/Aus, Eingang",
+      "Istwert ans Ventil geschrieben). Weitere Geräte-Eingänge: beschreibbare Eigenschaften mit Einheit °C/%; am",
+      "Maus/Tastatur/Entwurf/Fehlschlag, Fan-out, Aktor in zweiter Zone, Betriebsart über Linien).",
+      "Messquelle); Sollwert/Raumtemperatur nur an ihren eigenen Ventil-Eingang; Sperre des Eingangs (`may_be_written`;",
       "Projektinhabers: ein Gerät gehört höchstens einer Zone als Aktor, mehrere Aktoren je Zone gehen; ODER-Regel gibt es nicht.",
       "Sensorausfall, Mindestschaltdauern und Ventilschutz laufen unwissend vom Urlaub",
       "Stufe das, was `decide()` und PI ohnehin liefern; die Aktor-/Taktentscheidung wird nie in sie",
       "Stufe, aktive Quelle, Sensor-Timeout, Außenwertqualität, Rückkehrfortschritt, je Aktor",
+      "Thermostatventil zusätzlich genau die Eigenschaften, in die die Regelkette schreibt (`occupied_heating_setpoint`;",
       "Thermostatventile, Ein/Aus an gewöhnliche Zigbee2MQTT-Aktoren",
       "Zone ist, nimmt keinen zweiten Heizbefehl („ein Gerät kann nur eine Zone heizen\"): `publishing`/`shadow_run`",
       "Zonen ohne Aktor, gemischte Zonen und mehrere reine EIN/AUS-Aktoren.",
@@ -171,6 +175,7 @@
       "bestehenden Gates (Fenster/Frost/Sensor/Ventilschutz) und vor der eigentlichen",
       "dauerhaften ±0,5-K-Schritt am laufenden Modus, „Für eine Weile wärmer\" und „Zur",
       "deshalb bleibt die Erkennung je Zone standardmäßig aus, und der Betreiber schaltet sie",
+      "die Zone beschreibt ihren Ventil-Eingang trotzdem, ein Sensor nicht: dort die Erklärung „über die Zone\");",
       "echten Fensteröffnen zu unterscheiden. Ein langsames Auskühlen nach Heizende und das Ende",
       "ihren Frostschutzwert, heizt sie jetzt wieder: Heizen gegen ein offenes Fenster ist",
       "klammerte den Ventilschutz-Marker vorher nicht ab, wenn PI eine solche Blockade",
@@ -183,6 +188,8 @@
       "sie zugeordnet sind. Auf den gewöhnlichen Pfaden (Sollwert, zentraler Ein/Aus, Ventilschutz,",
       "verliert, den nächsten Aktor trotzdem nicht mehr anfasst. Erreicht damit sowohl den",
       "| 4 — Regelkreis und Cutover | schaltet scharf an der echten Anlage; Ablösung des Altsystems noch offen |",
+      "| Linien Zone → Ventil | Betriebsart | was die Regelkette schreibt |",
+      "„Thermostatventil\" bzw. Schalter), „Sollwert\" und „Raumtemperatur\" (Messwert der Messquelle dieser Zone, wird als",
       "„ein Gerät, eine Zone\" an. **Abgelehnt:** ein Gerät (Ventil, Steckdose, Gruppe), das schon Aktor einer *anderen*"
     ],
     "docs/api.md": [
@@ -578,6 +585,10 @@
       "heizung"
     ],
     "thermoctl/domain/mapping_map.py": [
+      "': thermoctl beschreibt am Thermostatventil nur die Eigenschaft, die an seiner Karte als",
+      "Ausgang: der Sollwert der Zone (Zeitplan, Übersteuerung, Boost, Frostschutz), wird als Sollwert ans Ventil geschrieben.",
+      "Diese Zone hat keine Messquelle -- ohne Messwert gibt es keine Raumtemperatur, die ans Ventil geschrieben werden könnte. Verbinden Sie zuerst eine Messquelle.",
+      "Messwert der Messquelle dieser Zone, wird als Istwert ans Ventil geschrieben.",
       "Schalten",
       "Schreibkanäle sind nur auf Bediengeräten erlaubt, die nirgends Aktor sind.",
       "actuator",
@@ -588,8 +599,11 @@
       "actuator",
       "actuator",
       "actuator",
+      "actuator",
+      "des Ventils. thermoctl beschreibt ihn über die Zone.",
       "switch",
-      "switch"
+      "switch",
+      "verbunden. 'Heizbefehl' (thermoctl entscheidet Ein/Aus) schließt 'Sollwert' und 'Raumtemperatur' (das Ventil regelt selbst) aus. Lösen Sie die vorhandene Linie zuerst."
     ],
     "thermoctl/domain/pi_control.py": [
       "Ein Aktor ohne die Fähigkeit 'switch' ist der Zone zugeordnet.",
@@ -717,8 +731,8 @@
     ],
     "thermoctl/web/mapping_map_views.py": [
       "Das Gerät wird nicht mehr von thermoctl geschaltet und behält seinen letzten Zustand.",
-      "actuator",
-      "actuator"
+      "Der Sollwert wird immer zusammen mit der Raumtemperatur geschrieben: thermoctl kennt keine Betriebsart nur mit Sollwert. Lösen Sie zuerst die Linie 'Sollwert' (dann meldet das Ventil nur die Raumtemperatur).",
+      "Diese Linien ergeben keine Betriebsart des Ventils."
     ],
     "thermoctl/web/navigation.py": [
       "/heating-time"
@@ -797,9 +811,14 @@
     ],
     "thermoctl/web/templates/mapping_map.html": [
       "<div class=\"form-check form-switch mb-0\">",
+      "<em>Raumtemperatur</em> ist der Messwert der Messquelle dieser Zone, er wird als Istwert ans Ventil geschrieben;",
+      "<p class=\"t-quiet small\" data-map-valve-note>",
       "<span class=\"tc-legend-kind\"><i class=\"tc-swatch tc-kind-command\"></i>Schalten / Heizbefehl</span>",
+      "<strong>Thermostatventil:</strong> Die Betriebsart folgt aus den Linien, die von der Zone zum Ventil laufen.",
+      "Nur <em>Heizbefehl</em>: thermoctl entscheidet Ein/Aus. <em>Sollwert</em> und <em>Raumtemperatur</em>: das Ventil",
       "Zonen versorgen (mehrere Linien von einem Ausgang); ein Gerät kann dagegen nur eine Zone heizen.",
-      "{% if c.slot == \"actuator\" %}"
+      "ein Sensor hängt deshalb an der Messquelle der Zone, nicht direkt am Ventil.",
+      "regelt selbst. Nur <em>Raumtemperatur</em>: thermoctl meldet dem Ventil nur den Istwert und fasst den Sollwert nicht an."
     ],
     "thermoctl/web/templates/parameter.html": [
       "\"Nach so vielen Tagen ohne reguläres Heizen wird der Schutzlauf fällig.\", errors.valve_protection_interval_days, \"1\", \"1\") }}",

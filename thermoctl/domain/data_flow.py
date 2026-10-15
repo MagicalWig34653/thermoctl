@@ -34,7 +34,7 @@ from thermoctl.db.models.operations import Setting
 from thermoctl.db.models.zone import Zone
 from thermoctl.domain.number_text import temperature_text
 from thermoctl.domain.schedule import resolved_setpoint
-from thermoctl.domain.self_regulating import SETPOINT_PROPERTY, TEMPERATURE_PROPERTIES
+from thermoctl.domain.self_regulating import SETPOINT_PROPERTY, temperature_property_name
 from thermoctl.domain.thermostat_mode import (
     MODE_LABELS,
     switches,
@@ -341,9 +341,7 @@ def build_data_flow(session: Session, zone: Zone, now: datetime) -> DataFlowGrap
                 )
 
         if writes_actual(mode):
-            temperature_property = next(
-                (name for name in TEMPERATURE_PROPERTIES if name in writable), None
-            )
+            temperature_property = temperature_property_name(writable)
             if source_device is None:
                 edges.append(
                     FlowEdge(

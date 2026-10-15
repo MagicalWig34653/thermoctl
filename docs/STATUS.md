@@ -51,18 +51,42 @@ Ergänzt die Zuordnungsseite `/zones/{id}/devices`, ersetzt sie nicht (sie bleib
   Symbol in der Farbe der Wertart, Hinweis am Anschluss („Ausgang: liefert Temperatur"), Legende auf der Seite.
   Ziehen geht von jedem Ende aus; die Gegenrichtung findet die Domäne (`can_connect` ist symmetrisch).
 - **Modell** (`domain/mapping_map.py`): Messwerte sind Geräte-Ausgänge und gehen auf Zonen-Eingänge (Messquelle,
-  Fensterkontakt); der Heizbefehl ist ein Zonen-Ausgang und geht auf einen Geräte-Eingang (Schalter, Thermostat,
-  Rolle `actuator`). Weitere Geräte-Eingänge: beschreibbare Eigenschaften mit Einheit °C/%. Regeln in dieser
+  Fensterkontakt). Die Zone hat drei Ausgänge zum Thermostatventil: „Heizbefehl" (Ein/Aus, Eingang
+  „Thermostatventil" bzw. Schalter), „Sollwert" und „Raumtemperatur" (Messwert der Messquelle dieser Zone, wird als
+  Istwert ans Ventil geschrieben). Weitere Geräte-Eingänge: beschreibbare Eigenschaften mit Einheit °C/%; am
+  Thermostatventil zusätzlich genau die Eigenschaften, in die die Regelkette schreibt (`occupied_heating_setpoint`;
+  Istwert: erster Treffer der Liste `TEMPERATURE_PROPERTIES`, `temperature_property_name`). Regeln in dieser
   Reihenfolge: technischer Wert nie; derselbe Knoten nie, Zone↔Zone nie; Ausgang↔Ausgang und Eingang↔Eingang
   nie; Wertart gleich und bekannt; Fähigkeit der Zonenstelle (`REQUIRED_CAPABILITY`; ein Sollwert ist keine
-  Messquelle); Sperre des Eingangs (`may_be_written`); keine Doppelzuordnung; die Messquelle nimmt nur ein Gerät
-  (erst lösen). Batterie, Verbindungsqualität, Erreichbarkeit, Tastendruck und Werte ohne Wertart erscheinen nur
-  hinter „technische Werte zeigen" und sind nie verbindbar.
+  Messquelle); Sollwert/Raumtemperatur nur an ihren eigenen Ventil-Eingang; Sperre des Eingangs (`may_be_written`;
+  die Zone beschreibt ihren Ventil-Eingang trotzdem, ein Sensor nicht: dort die Erklärung „über die Zone");
+  keine Doppelzuordnung; die Messquelle nimmt nur ein Gerät (erst lösen); Linien-Kombination muss eine Betriebsart
+  ergeben; ein Gerät nur einer Zone (gilt für alle drei Ausgänge). Batterie, Verbindungsqualität, Erreichbarkeit,
+  Tastendruck und Werte ohne Wertart erscheinen nur hinter „technische Werte zeigen" und sind nie verbindbar.
+- **Betriebsart folgt aus den Linien** (`lines_for_mode`/`mode_for_lines`, gebaut auf `switches`/`writes_setpoint`/
+  `writes_actual` aus `domain/thermostat_mode.py`, nichts doppelt; keine Migration, kein neues Feld):
+
+  | Linien Zone → Ventil | Betriebsart | was die Regelkette schreibt |
+  |---|---|---|
+  | nur Heizbefehl | `controlled` | Ein/Aus |
+  | Sollwert + Raumtemperatur | `self_regulating` | Sollwert und Istwert |
+  | nur Raumtemperatur | `reading_only` | nur Istwert, kein Sollwert, kein Ein/Aus |
+  | nur Sollwert (nur an Geräten ohne Istwert-Eingang) | `self_regulating` | nur Sollwert |
+
+  **Abgelehnt:** Sollwert ohne Raumtemperatur, wo das Gerät einen Istwert-Eingang hat (die Regelkette schreibt ihn in
+  `self_regulating` immer mit; erst Raumtemperatur ziehen); Heizbefehl zusammen mit Sollwert oder Raumtemperatur
+  (schließen sich aus); „Raumtemperatur" aus der Linienmenge von `self_regulating` allein lösen (dann bliebe nur der
+  Sollwert, den es dort nicht gibt: erst „Sollwert" lösen); Raumtemperatur in einer Zone ohne Messquelle. Eine
+  Betriebsart ohne passenden Eingang am Gerät bleibt als Zeile in „Verbindungen" (lösbar), die Karte zeichnet
+  nichts. Ohne Messquelle zeichnet die Karte die Raumtemperatur-Linie nicht (der Datenfluss zeigt sie gestrichelt).
+  Linie entfernen: Sollwert aus `self_regulating` → `reading_only`; letzte Linie → Zuordnung gelöst wie bisher
+  (`detach_device`, Meldung „behält seinen letzten Zustand"). Betriebsart wird über `set_thermostat_mode` gesetzt
+  (mit Audit). Konsistenz Karte ↔ Datenfluss-Seite: `tests/test_mapping_map_valve.py`.
 - Die Seite rechnet nichts nach: `data-payload` liefert Anschlusskennungen, Ablehnungen (mit Begründungstabelle)
   und zwei feste Texte für „gleiche Seite".
 - Gespeichert wird nur zwischen Zone und Gerät (`POST /devices/map/connect` mit `from_id`/`to_id` in beliebiger
   Reihenfolge, `POST /devices/map/disconnect`; Recht `device.manage` je Zone; über `assign_device`/
-  `set_temperature_source`/`detach_device`). Zwischen zwei Geräten (Temperatur → Eingang `°C`) ist nur ein Entwurf
+  `set_temperature_source`/`set_thermostat_mode`/`detach_device`). Zwischen zwei Geräten (Temperatur → Eingang `°C`) ist nur ein Entwurf
   gezeichnet („nicht gespeichert"); der Server lehnt das mit 422 ab. Datenmodell dafür offen.
 - **Mehrfachzuordnung** (Regeln in `can_connect`, Tests `tests/test_mapping_map_multi.py`): Ein Fühler darf Messquelle
   **mehrerer** Zonen sein (offener Grundriss), ein Kontakt Fensterkontakt mehrerer Zonen; mehrere Kontakte und mehrere
@@ -91,8 +115,8 @@ Ergänzt die Zuordnungsseite `/zones/{id}/devices`, ersetzt sie nicht (sie bleib
   behält seinen letzten Zustand, die Bestätigung sagt das. Linien laufen unter den Karten; liegt eine Linienmitte
   hinter einer Karte, die Karte verschieben oder die Linie per Tab anwählen.
 - Geprüft: `tests/test_mapping_map.py`, `tests/test_mapping_map_multi.py`, Smoke-Test,
-  `browser_tests/test_mapping_map.py` (Ziehen, Zoom/Pan, gültig/ungültig, Entfernen per Maus/Tastatur/Entwurf/Fehlschlag,
-  Fan-out, Aktor in zweiter Zone). Nur SQLite.
+  `tests/test_mapping_map_valve.py`, `browser_tests/test_mapping_map.py` (Ziehen, Zoom/Pan, gültig/ungültig, Entfernen per
+  Maus/Tastatur/Entwurf/Fehlschlag, Fan-out, Aktor in zweiter Zone, Betriebsart über Linien).
 
 ## 0.16.0 (2026-10-14) -- freigegeben
 
