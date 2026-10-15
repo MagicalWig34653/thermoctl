@@ -233,8 +233,9 @@ assert {stem for stem in _DOCUMENTED if stem not in {v.stem for v in VIEWS}} == 
 
 EXCLUDED_ROUTES = {
     "/devices/map": (
-        "Zeichenfläche, deren Bild von der Anordnung der Knoten im Browser abhängt (Zoom, Lage, "
-        "gemerkte Positionen); wird durch browser_tests/test_mapping_map.py geprüft, nicht abgebildet."
+        "Zeichenfläche, deren Bild von der Anordnung der Knoten im Browser abhängt (Zoom, "
+        "Lage, gemerkte Positionen); wird durch browser_tests/test_mapping_map.py geprüft, "
+        "nicht abgebildet."
     ),
     "/kiosk": "Ziel der Token-Weiterleitung; wird über /kiosk/{plaintext} aufgenommen.",
     "/temperature-history/{zone_id}/tile": (
