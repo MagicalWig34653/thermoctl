@@ -11,9 +11,15 @@ Letzte Aktualisierung: 2026-10-15.
   Fußlink im Generator (`tools/landingpage_erzeugen.py`) ergänzen, `site/` neu erzeugen.
 - Das Paket `ghcr.io/magicalwig34653/thermoctl` ist öffentlich (Projektinhaber, 2026-10-10).
 
-## 0.17.0 (2026-10-15) -- vorbereitet, noch nicht freigegeben
+## 0.17.0 (2026-10-15) -- freigegeben
 
-Zwei Neuerungen, beide gemergt (`main`): Login-Weiterleitung und Zuordnungskarte. 0.16.0 ist freigegeben (Tag, GitHub-Release).
+Tag `v0.17.0`, GitHub-Release, Abbild auf ghcr.io gebaut, CI grün (SQLite, MariaDB, Docker); Add-on-Repository auf 0.17.0
+gepusht. Zwei Neuerungen: Login-Weiterleitung und Zuordnungskarte, dazu die Zuordnungsregel „ein Gerät, eine Zone".
+**Nicht ausprobiert:** echter Browser mit Passkey-Rücksprung, Ingress-Betrieb, die Karte auf dem Handy und mit Touch,
+die echte Anlage. **Bekannt offen:** Browsertests laufen im Gesamtlauf nicht stabil (Karten-Tests einzeln grün; im
+geteilten Server liegen andere Karten über Linienmitten); `browser_tests/test_screenshots.py` meldet drei Routen aus
+0.15.0/0.16.0 ohne Screenshot (`/changes`, `/oauth/consent`, `/zones/data-flow`); die Zuordnungsregel
+hat auf MariaDB bei gleichzeitigen Anfragen eine Restlücke (DB-Fehler statt Meldung, aber keine zweite Zeile).
 
 ### Login-Weiterleitung
 
