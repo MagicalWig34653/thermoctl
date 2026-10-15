@@ -133,6 +133,7 @@ from thermoctl.web.passkey_views import router as passkey_router
 from thermoctl.web.report_views import router as report_router
 from thermoctl.web.schedule_views import router as schedule_router
 from thermoctl.web.setup_views import router as setup_router
+from thermoctl.web.spa_views import router as spa_router
 from thermoctl.web.start_views import router as start_router
 from thermoctl.web.tenant_views import router as tenant_router
 from thermoctl.web.urls import cookie_path, prefixed, safe_return_to
@@ -1310,6 +1311,7 @@ def create_app() -> FastAPI:
     app.include_router(admin_router)
     app.include_router(account_router)
     app.include_router(glossary_router)
+    app.include_router(spa_router)
     app.include_router(kiosk_admin_router)
     app.include_router(kiosk_router)
     app.include_router(audit_router)

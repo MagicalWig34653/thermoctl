@@ -375,6 +375,10 @@ WITHOUT_PROFILE_GUARD: dict[tuple[str, str], str] = {
     # Der persönliche Bereich gehört beiden Oberflächen und braucht kein Recht.
     ("GET", "/account"): "eigenes Konto",
     ("GET", "/account/help"): "reiner Erklärtext, liest nichts aus der Datenbank",
+    # Svelte-Hülle: statisches HTML ohne Daten; Profil und Rechte prüft die Schnittstelle
+    # (/ui-api), die die Oberfläche aufruft.
+    ("GET", "/app"): "statische Svelte-Hülle ohne Anlagendaten",
+    ("GET", "/app/{path:path}"): "statische Svelte-Hülle ohne Anlagendaten",
     ("GET", "/glossar"): "reiner Erklärtext für beide Oberflächen, liest nichts aus der Datenbank",
     ("POST", "/account/password"): "eigenes Konto",
     ("POST", "/account/sessions/revoke-others"): "eigenes Konto",
