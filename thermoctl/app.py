@@ -8,8 +8,10 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any
+from urllib.parse import urlencode, urlsplit
 
 from fastapi import FastAPI, Request, Response
+from fastapi.exception_handlers import http_exception_handler
 from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -23,7 +25,7 @@ import thermoctl
 from thermoctl import audit
 from thermoctl.api.routes import router as api_router
 from thermoctl.auth.csrf import CSRF_COOKIE_NAME
-from thermoctl.auth.dependencies import StalePage
+from thermoctl.auth.dependencies import NotLoggedIn, StalePage
 from thermoctl.auth.sessions import COOKIE_NAME
 from thermoctl.config import Settings, get_settings
 from thermoctl.db.base import utcnow
@@ -132,7 +134,7 @@ from thermoctl.web.schedule_views import router as schedule_router
 from thermoctl.web.setup_views import router as setup_router
 from thermoctl.web.start_views import router as start_router
 from thermoctl.web.tenant_views import router as tenant_router
-from thermoctl.web.urls import cookie_path, prefixed
+from thermoctl.web.urls import cookie_path, prefixed, safe_return_to
 from thermoctl.web.vacation_views import router as vacation_router
 from thermoctl.web.zone_views import router as zone_router
 
@@ -1386,6 +1388,55 @@ def create_app() -> FastAPI:
             {"path": prefixed(request, request.url.path)},
             status_code=403,
         )
+
+    @app.exception_handler(NotLoggedIn)
+    async def not_logged_in_handler(request: Request, exc: NotLoggedIn) -> Response:
+        """A browser without a session is sent to the login form, and back afterwards.
+
+        Everything that is not a person in front of a browser keeps the plain 401:
+        REST and MCP (clients that read the status), and any request that does not ask
+        for HTML. htmx cannot follow a redirect usefully (it would swap the login form
+        into the middle of the old page), so it is told where to go through its own
+        header, exactly like `StalePage` above.
+
+        The way back (`return_to`) is only set for a page the person asked for with a
+        GET; a form that was posted with an expired session has nothing sensible to
+        return to. Validity of the target is `safe_return_to`'s business, the same
+        function the login applies again when it reads the value.
+        """
+        path = request.url.path
+        root = request.scope.get("root_path", "")
+        if root and path.startswith(root):
+            path = path[len(root) :]
+        if path.startswith(("/api/", "/mcp")):
+            return await http_exception_handler(request, exc)
+        from_htmx = request.headers.get("hx-request") is not None
+        if not from_htmx and "text/html" not in request.headers.get("accept", ""):
+            return await http_exception_handler(request, exc)
+
+        target: str | None = None
+        if from_htmx and request.headers.get("hx-boosted") is None:
+            # A fragment request (polling, partial reload): the address worth coming
+            # back to is the page the person is looking at, not the fragment URL.
+            current = urlsplit(request.headers.get("hx-current-url", ""))
+            current_path = current.path
+            if root and current_path.startswith(root):
+                current_path = current_path[len(root) :]
+            target = current_path + (f"?{current.query}" if current.query else "")
+        elif request.method in ("GET", "HEAD"):
+            target = path + (f"?{request.url.query}" if request.url.query else "")
+        return_to = safe_return_to(target)
+        login = prefixed(request, "/login")
+        if return_to is not None:
+            login = f"{login}?{urlencode({'return_to': return_to})}"
+        if from_htmx:
+            answer: Response = Response(status_code=401)
+            answer.headers["HX-Redirect"] = login
+            return answer
+        redirect = RedirectResponse(login, status_code=303)
+        # The answer depends on cookie and `Accept`; nothing in between may keep it.
+        redirect.headers["Cache-Control"] = "no-store"
+        return redirect
 
     @app.exception_handler(Forbidden)
     async def forbidden_handler(request: Request, exc: Forbidden) -> Response:

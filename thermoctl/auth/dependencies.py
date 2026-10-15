@@ -14,6 +14,18 @@ from thermoctl.domain.principal import Principal
 _NICHT_ANGEMELDET = "Nicht angemeldet"
 
 
+class NotLoggedIn(HTTPException):
+    """401 for a protected page without a valid session.
+
+    A subclass of its own so `app.py` can send a *browser* to the login form and leave
+    everything else -- REST, MCP, htmx fragments of other kinds -- with the plain 401
+    it always got. Anything that catches `HTTPException` keeps working unchanged.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(status_code=status.HTTP_401_UNAUTHORIZED, detail=_NICHT_ANGEMELDET)
+
+
 def get_session(request: Request) -> Iterator[Session]:
     """Provides a database session for the duration of the request.
 
@@ -43,15 +55,15 @@ def current_principal(
     """
     cookie_value = request.cookies.get(COOKIE_NAME)
     if cookie_value is None:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=_NICHT_ANGEMELDET)
+        raise NotLoggedIn()
 
     http_session = resolve_session(session, cookie_value)
     if http_session is None:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=_NICHT_ANGEMELDET)
+        raise NotLoggedIn()
 
     user = session.get(User, http_session.user_id)
     if user is None or not user.is_active:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=_NICHT_ANGEMELDET)
+        raise NotLoggedIn()
 
     # For the header bar, which should carry the logged-in name on every page (see
     # `_angemeldeter_benutzer` in thermoctl/web/__init__.py). Set here rather than in

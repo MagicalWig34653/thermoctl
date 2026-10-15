@@ -22,6 +22,8 @@ attribute to the same prefix (`base_url`, further below, covers a third: telling
 browser's own JavaScript where the prefix is).
 """
 
+from urllib.parse import unquote, urlsplit
+
 from fastapi import Request
 
 
@@ -62,3 +64,39 @@ def cookie_path(request: Request) -> str:
     cookies for it.
     """
     return request.scope.get("root_path", "") or "/"
+
+
+# Paths that are never a sensible place to return to after logging in: the login
+# itself (a loop), leaving, first-time setup, and everything that is not a page.
+_NO_RETURN_PREFIXES = ("/login", "/logout", "/setup", "/api/", "/mcp", "/static/", "/oauth/token")
+_MAX_RETURN_LENGTH = 2048
+
+
+def safe_return_to(value: str | None) -> str | None:
+    """`value` if it is an application-internal path to return to after logging in.
+
+    The target arrives from the outside (query string, form field) and ends up in a
+    `Location` header, so it is an open-redirect candidate: only a single-slash,
+    un-prefixed path with an optional query passes. No scheme, no host, no `//`, no
+    backslash (some browsers read `/\\host` as `//host`), no control characters, no
+    fragment, no dot segments. Every one of these is checked on the percent-decoded
+    form as well: a browser resolves `/%2e%2e/x` like `/../x`, which would climb out of
+    the deployment's prefix. The prefix itself is added by the caller, never taken from
+    here.
+    """
+    if value is None or not value.startswith("/") or len(value) > _MAX_RETURN_LENGTH:
+        return None
+    for candidate in (value, unquote(value)):
+        if candidate.startswith("//") or "\\" in candidate:
+            return None
+        if any(ord(c) < 32 or ord(c) == 127 for c in candidate):
+            return None
+        parts = urlsplit(candidate)
+        if parts.scheme or parts.netloc or parts.fragment:
+            return None
+        if ".." in parts.path.split("/") or "." in parts.path.split("/"):
+            return None
+        path = parts.path
+        if any(path == p.rstrip("/") or path.startswith(p) for p in _NO_RETURN_PREFIXES):
+            return None
+    return value
